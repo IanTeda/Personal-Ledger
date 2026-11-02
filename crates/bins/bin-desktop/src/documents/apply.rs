@@ -6,6 +6,8 @@
 //! The link picker answers with a request that needs the live rows and may open another Dialog,
 //! so it stays `Root`'s.
 
+use std::collections::HashSet;
+
 use lib_core::DocumentId;
 
 use chrono::NaiveDate;
@@ -16,7 +18,8 @@ use lib_ledger::{
 };
 
 use super::{
-    self as documents, AddError, ExtractedFacts, FilingError, FilingUndo, ImportOutcome, Source,
+    self as documents, AddError, ExtractedFacts, FilingError, FilingUndo, ImportOutcome,
+    LinkRecords, Source,
     files::DiskFiles,
     form::{DocumentForm, DocumentsDialog, ImportForm},
 };
@@ -39,13 +42,16 @@ pub enum DocumentCommand {
     AcceptAll,
 }
 
-/// A [`DocumentCommand`] with the context the form does not hold: today, and the Inbox row Accept
-/// all keeps in view (`focus`).
+/// A [`DocumentCommand`] with the context the form does not hold: today, the Inbox row Accept all
+/// keeps in view (`focus`), the session's skipped Documents, and the records Accept all matches
+/// against, read from their stores (#963).
 #[derive(Debug, Clone)]
 pub struct OnDocuments {
     pub command: DocumentCommand,
     pub today: NaiveDate,
     pub focus: Option<DocumentId>,
+    pub skipped: HashSet<DocumentId>,
+    pub records: LinkRecords,
 }
 
 /// What a landed [`OnDocuments`] did, for the View state and Toast that follow it.
@@ -95,6 +101,8 @@ impl LedgerCommand for OnDocuments {
             command,
             today,
             focus,
+            skipped,
+            records,
         } = self;
         match command {
             DocumentCommand::Save { editing, form } => {
@@ -155,7 +163,13 @@ impl LedgerCommand for OnDocuments {
                 Ok(DocumentOutcome::FactsSaved { id, title })
             }
             DocumentCommand::AcceptAll => {
-                let Ok(batch) = AcceptAllDocuments { focus }.run(ledger);
+                let Ok(batch) = AcceptAllDocuments {
+                    focus,
+                    skipped,
+                    transactions: records.transactions,
+                    payees: records.payees,
+                }
+                .run(ledger);
                 Ok(DocumentOutcome::Accepted(batch))
             }
         }
@@ -249,6 +263,8 @@ mod tests {
                 command,
                 today: today(),
                 focus: None,
+                skipped: HashSet::new(),
+                records: LinkRecords::default(),
             })
         });
         assert!(landed.is_none());
@@ -264,6 +280,8 @@ mod tests {
                 command,
                 today: today(),
                 focus: None,
+                skipped: HashSet::new(),
+                records: LinkRecords::default(),
             })
         });
         assert!(matches!(

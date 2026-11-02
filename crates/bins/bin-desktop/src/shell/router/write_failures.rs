@@ -136,6 +136,12 @@ pub(super) fn roll_back(
                 restored: crate::msg::desktop_toast_write_failed_inventory,
                 unsaved: crate::msg::desktop_toast_write_failed_inventory_unsaved,
             },
+            Domain::Documents => Reload {
+                name: "Documents",
+                reloaded: ledger.update(cx, |store, cx| store.reload_documents(cx)),
+                restored: crate::msg::desktop_toast_write_failed_documents,
+                unsaved: crate::msg::desktop_toast_write_failed_documents_unsaved,
+            },
         };
         let text = match reloaded {
             Ok(()) => restored(),

@@ -196,6 +196,19 @@ pub fn bill_payees(payees: &[Payee]) -> Vec<BillPayee> {
         .collect()
 }
 
+/// `payees` as `lib-documents`' `DocumentPayees` reads them, inactive ones included.
+pub(crate) fn document_payees(payees: &[Payee]) -> Vec<lib_documents::DocumentPayee> {
+    payees
+        .iter()
+        .map(|payee| lib_documents::DocumentPayee {
+            id: payee.id,
+            name: payee.name.clone(),
+            aliases: payee.aliases.clone(),
+            is_active: payee.is_active,
+        })
+        .collect()
+}
+
 impl Change for PayeesChange {
     fn domain(&self) -> Domain {
         Domain::Payees

@@ -77,6 +77,42 @@ pub(crate) fn store_stub_references(writer: &Writer) {
     crate::TagsAdapter::seed(writer, crate::seed::stub_tags()).expect("the stub Tags are written");
 }
 
+/// Stores the whole stub seed as of `today` but the Documents, which a Documents adapter test
+/// writes itself over the records its Links name (#963).
+pub(crate) fn store_stub_but_documents(writer: &Writer, today: chrono::NaiveDate) {
+    crate::seed::write_stub_rows(writer, chrono::Utc::now(), today, None, false)
+        .expect("the stub is written");
+}
+
+/// The records a Link may name, read from the stores loaded on `pending`'s file as the Desktop's
+/// Documents View reads them.
+pub(crate) fn stored_link_records(pending: &PendingWrites) -> lib_documents::LinkRecords {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    let reads = crate::StoredDocumentReads {
+        transactions: Rc::new(RefCell::new(
+            crate::TransactionsAdapter::load(pending.clone()).expect("the Transactions load"),
+        )),
+        payees: Rc::new(RefCell::new(
+            crate::PayeesAdapter::load(pending.clone()).expect("the Payees load"),
+        )),
+        accounts: Rc::new(RefCell::new(
+            crate::AccountsAdapter::load(pending.clone()).expect("the Accounts load"),
+        )),
+        institutions: Rc::new(RefCell::new(
+            crate::InstitutionsAdapter::load(pending.clone()).expect("the Institutions load"),
+        )),
+        bills: Rc::new(RefCell::new(
+            crate::BillsAdapter::load(pending.clone()).expect("the Bills load"),
+        )),
+        inventory: Rc::new(RefCell::new(
+            crate::InventoryAdapter::load(pending.clone()).expect("the Inventory loads"),
+        )),
+    };
+    lib_documents::LinkRecords::read(&reads)
+}
+
 /// Stores a top-level Category of `category_type`, returning its id.
 pub(crate) async fn insert_category(
     pool: &SqlitePool,

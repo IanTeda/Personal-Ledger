@@ -8,6 +8,7 @@ pub mod bill_payments;
 pub mod bills;
 pub mod budgets;
 pub mod categories;
+pub mod documents;
 pub mod institutions;
 pub mod inventory;
 pub mod payees;

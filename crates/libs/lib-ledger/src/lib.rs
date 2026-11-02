@@ -32,8 +32,8 @@ pub use change::{Domain, LedgerChange, LedgerCommand, domains};
 pub use document_commands::{
     AcceptAllDocuments, AcceptDocument, AddDocument, AddDocumentType, DocumentEdit,
     DropDocumentInventoryLinks, EditDocument, EditDocumentType, FileDocumentByHand,
-    ImportDocuments, MoveDocumentType, RemoveDocumentType, SetDocumentFacts, SkipDocument,
-    ToggleDocumentLink, UndoFiling, UnknownDocumentType,
+    ImportDocuments, MoveDocumentType, RemoveDocumentType, SetDocumentFacts, ToggleDocumentLink,
+    UndoFiling, UnknownDocumentType,
 };
 pub use inventory_commands::RemoveLocation;
 pub use repository::{LedgerRepository, RepositoryError, StubRepository};

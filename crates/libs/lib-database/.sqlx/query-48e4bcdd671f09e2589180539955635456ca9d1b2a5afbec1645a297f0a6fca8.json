@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n               id             AS \"id!: DocumentTypeId\",\n               name,\n               tracks_date,\n               remind_unit,\n               remind_count,\n               financial_year AS \"financial_year!: bool\",\n               files          AS \"files!: i64\",\n               is_default     AS \"is_default!: bool\"\n           FROM document_types\n           ORDER BY position, rowid",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: DocumentTypeId",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "tracks_date",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "remind_unit",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "remind_count",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "financial_year!: bool",
+        "ordinal": 5,
+        "type_info": "Bool"
+      },
+      {
+        "name": "files!: i64",
+        "ordinal": 6,
+        "type_info": "Integer"
+      },
+      {
+        "name": "is_default!: bool",
+        "ordinal": 7,
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "48e4bcdd671f09e2589180539955635456ca9d1b2a5afbec1645a297f0a6fca8"
+}

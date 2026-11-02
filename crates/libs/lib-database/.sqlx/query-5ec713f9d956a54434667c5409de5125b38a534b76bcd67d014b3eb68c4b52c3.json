@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO document_types\n             (id, name, position, tracks_date, remind_unit, remind_count, financial_year, files,\n              is_default)\n         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)\n         ON CONFLICT (id) DO UPDATE SET\n             name = excluded.name,\n             tracks_date = excluded.tracks_date,\n             remind_unit = excluded.remind_unit,\n             remind_count = excluded.remind_count,\n             financial_year = excluded.financial_year,\n             files = excluded.files,\n             is_default = excluded.is_default",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 9
+    },
+    "nullable": []
+  },
+  "hash": "5ec713f9d956a54434667c5409de5125b38a534b76bcd67d014b3eb68c4b52c3"
+}

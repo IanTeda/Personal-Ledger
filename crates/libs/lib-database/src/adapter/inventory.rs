@@ -381,6 +381,17 @@ async fn read(conn: &mut SqliteConnection) -> Result<Inventory> {
     Ok(Inventory { locations, items })
 }
 
+/// `items` as `lib-documents`' `DocumentItems` reads them.
+pub(crate) fn document_items(items: &[Item]) -> Vec<lib_documents::DocumentItem> {
+    items
+        .iter()
+        .map(|item| lib_documents::DocumentItem {
+            id: item.id,
+            name: item.name.clone(),
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::mpsc;

@@ -189,6 +189,19 @@ pub(crate) fn budget_bill_plans(plans: &[BillPlan]) -> Vec<lib_budgets::BudgetBi
         .collect()
 }
 
+/// `plans` as `lib-documents`' `DocumentBillPlans` reads them, each with its cadence in words.
+pub(crate) fn document_bill_plans(plans: &[BillPlan]) -> Vec<lib_documents::DocumentBillPlan> {
+    plans
+        .iter()
+        .map(|plan| lib_documents::DocumentBillPlan {
+            id: plan.id,
+            name: plan.name.clone(),
+            cadence: lib_bills::presenter::recurrence_label(plan.recurrence),
+            payee_id: plan.payee_id,
+        })
+        .collect()
+}
+
 impl Change for BillsChange {
     fn domain(&self) -> Domain {
         Domain::Bills

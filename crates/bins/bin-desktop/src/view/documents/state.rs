@@ -6,6 +6,8 @@
 //! through [`ViewEvent`]. It builds the Documents dialogs, which `Root`'s Dialog host draws and
 //! confirms.
 
+use std::collections::HashSet;
+
 use chrono::NaiveDate;
 use gpui::{
     App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, ScrollStrategy, Subscription,
@@ -13,7 +15,7 @@ use gpui::{
 };
 use lib_core::{DateStyle, DocumentId, TransactionId};
 use lib_ledger::{
-    AcceptDocument, FileDocumentByHand, LedgerCommand, SkipDocument, ToggleDocumentLink, UndoFiling,
+    AcceptDocument, FileDocumentByHand, LedgerCommand, ToggleDocumentLink, UndoFiling,
 };
 use lib_toast::ToastKind;
 
@@ -67,6 +69,9 @@ pub struct DocumentsState {
     pub inbox_selected: usize,
     /// The last filing action as a unit, for `u`. Session-only; a new filing action replaces it.
     pub undo: Option<FilingUndo>,
+    /// The Inbox Documents set aside to the bottom with Skip. Session-only and never written, so
+    /// each is back in place next time (#963).
+    pub skipped: HashSet<DocumentId>,
 }
 
 impl Default for DocumentsState {
@@ -82,6 +87,7 @@ impl Default for DocumentsState {
             inbox_scroll: ScrollHandle::new(),
             inbox_selected: 0,
             undo: None,
+            skipped: HashSet::new(),
         }
     }
 }
@@ -213,10 +219,10 @@ impl DocumentsView {
         }
     }
 
-    /// Every record a Link can name, read through `lib_documents`' ports, which the Ledger's read
-    /// copies answer until the stores do (#963).
-    fn records(&self, cx: &App) -> LinkRecords {
-        LinkRecords::read(self.sources.ledger.read(cx).ledger())
+    /// Every record a Link can name, read through `lib_documents`' ports, which the other domains'
+    /// stores answer (#963).
+    pub(crate) fn records(&self, cx: &App) -> LinkRecords {
+        self.sources.ledger.read(cx).document_records()
     }
 
     fn options(&self, cx: &App) -> DocumentOptions {
@@ -237,7 +243,7 @@ impl DocumentsView {
 
     /// The Inbox's rows: newest received first, Skipped Documents last.
     pub fn inbox_rows<'a>(&self, cx: &'a App) -> Vec<&'a Document> {
-        documents::inbox_rows(self.documents(cx))
+        documents::inbox_rows(self.documents(cx), &self.state.skipped)
     }
 
     /// The Inbox row focus is on, a position clamped to the rows.
@@ -597,7 +603,14 @@ impl DocumentsView {
         cx.notify();
     }
 
-    /// Focuses `id` in the Inbox, wherever it now sits (editing its facts clears a skip).
+    /// Follows `id` after its Extracted Facts were edited: editing clears its skip, so it may have
+    /// moved up the Inbox.
+    pub fn facts_edited(&mut self, id: DocumentId, cx: &mut Context<'_, Self>) {
+        self.state.skipped.remove(&id);
+        self.focus_inbox_document(id, cx);
+    }
+
+    /// Focuses `id` in the Inbox, wherever it now sits.
     pub fn focus_inbox_document(&mut self, id: DocumentId, cx: &mut Context<'_, Self>) {
         if let Some(at) = self
             .inbox_rows(cx)
@@ -901,7 +914,13 @@ impl DocumentsView {
         cx: &mut Context<'_, Self>,
     ) {
         let before = self.before_filing(id, cx);
-        let Ok(entry) = self.apply(cx, AcceptDocument { id, transaction_id }) else {
+        let transactions = self.records(cx).transactions;
+        let accept = AcceptDocument {
+            id,
+            transaction_id,
+            transactions,
+        };
+        let Ok(entry) = self.apply(cx, accept) else {
             return;
         };
         self.after_filing(id, before, entry, cx);
@@ -966,7 +985,8 @@ impl DocumentsView {
         let Some(id) = self.selected_document(cx).map(|document| document.id) else {
             return;
         };
-        if self.apply(cx, SkipDocument(id)).is_ok() {
+        let documents = self.sources.ledger.read(cx).ledger().documents();
+        if documents::skip(documents, &mut self.state.skipped, id).is_ok() {
             let len = self.inbox_rows(cx).len();
             self.state.inbox_selected = self.inbox_at(len);
         }

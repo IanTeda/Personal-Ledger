@@ -123,7 +123,7 @@ pub struct ShellLogs {
 /// Builds `Root` from persisted state the way the app does, so tests construct it identically.
 /// `clock` is a parameter so tests can pin, and move, the date the seeded stub data and scopes hang
 /// off. `stores` is where the Units, the Institutions, the Accounts, the Categories, the Tags, the Payees, the
-/// Transactions, the Bills, the Budgets and the Inventory are kept, the app's SQLite adapters or a test's in-memory ports, with the commit
+/// Transactions, the Bills, the Budgets, the Inventory and the Documents are kept, the app's SQLite adapters or a test's in-memory ports, with the commit
 /// every input ends in (`crate::input::send`) and the writer's failure channel, on which a failed
 /// write rolls back.
 pub fn build(
@@ -146,6 +146,7 @@ pub fn build(
         bills,
         budgets,
         inventory,
+        documents,
         commit,
         failures,
     } = stores;
@@ -224,6 +225,8 @@ pub fn build(
         &institutions,
         &bindings.keybindings,
     );
+    // The Documents store is shared by the Ledger's forwarding shim and read copy (#963).
+    let documents: lib_database::SharedDocumentsStore = Rc::new(std::cell::RefCell::new(documents));
     let storage = crate::ledger_store::LedgerSetup {
         institutions,
         accounts,
@@ -234,6 +237,7 @@ pub fn build(
         bills: bills.clone(),
         budgets,
         inventory,
+        documents,
     };
     let bills = crate::bills::BillsSetup::new(bills, payments, &bindings.keybindings);
     let settings = crate::settings::pages::SettingsSetup {

@@ -21,6 +21,10 @@
 //! writes it beside the Transactions store. A cross-domain adapter holds only the shared stores,
 //! so over [`Stores::fake`]'s in-memory stores it is its own in-memory counterpart.
 //!
+//! The Documents store is shared too ([`SharedDocumentsStore`]): the Desktop's Ledger forwards the
+//! Documents writers to it and keeps a read copy of it for the Documents View, which reads the
+//! other domains through [`StoredDocumentReads`] (#963).
+//!
 //! [`Stores::fake`] takes its in-memory stores as one [`FakeStores`], so a domain joining the
 //! bundle adds a field rather than an argument (#866).
 //!
@@ -47,6 +51,12 @@ use lib_budgets::{
 use lib_categories::CategoryRepository;
 use lib_categories::fake::InMemoryCategories;
 use lib_core::{AccountId, CategoryId, InstitutionId, LocationId, PayeeId, TagId, UnitId};
+use lib_documents::fake::InMemoryDocuments;
+use lib_documents::{
+    DocumentAccount, DocumentAccounts, DocumentBillPlan, DocumentBillPlans, DocumentItem,
+    DocumentItems, DocumentPayee, DocumentPayees, DocumentRepository, DocumentTransaction,
+    DocumentTransactions,
+};
 use lib_institutions::fake::InMemoryInstitutions;
 use lib_institutions::{InstitutionRepository, InstitutionUse};
 use lib_inventory::InventoryRepository;
@@ -64,11 +74,11 @@ use lib_units::{
 };
 
 use crate::adapter::payees::bill_payees;
-use crate::adapter::{accounts, bills, categories, transactions};
+use crate::adapter::{accounts, bills, categories, inventory, payees, transactions};
 use crate::{
-    AccountsAdapter, BillsAdapter, BudgetsAdapter, CategoriesAdapter, Commit, InMemoryCommit,
-    InstitutionsAdapter, InventoryAdapter, PayeesAdapter, Result, Stores, TagsAdapter,
-    TransactionsAdapter, UnitsAdapter,
+    AccountsAdapter, BillsAdapter, BudgetsAdapter, CategoriesAdapter, Commit, DocumentsAdapter,
+    InMemoryCommit, InstitutionsAdapter, InventoryAdapter, PayeesAdapter, Result, Stores,
+    TagsAdapter, TransactionsAdapter, UnitsAdapter,
 };
 
 /// The Units, Price Sources and base Unit ports, wherever they are kept. Usage and holdings are
@@ -627,6 +637,11 @@ pub trait InventoryStore {
     /// Document Links to its Items (Q18, #813).
     fn delete_location(&mut self, id: LocationId);
 
+    /// Every Item as `lib-documents`' `DocumentItems` reads it.
+    fn document_items(&self) -> Vec<DocumentItem> {
+        inventory::document_items(&self.inventory().items())
+    }
+
     /// How many Locations are priced in `unit`: the Locations half of `lib-units`' `UnitUsage`.
     /// The file refuses deleting a Unit one names, so Delete Unit must see them first (#885).
     fn unit_locations(&self, unit: UnitId) -> usize {
@@ -731,6 +746,11 @@ pub trait TransactionsStore {
     /// The Split `split` names: `lib-bills`' `BillTransactions::paid_split`.
     fn bill_paid_split(&self, split: SplitRef) -> Option<BillSplit> {
         transactions::paid_split(&self.all_transactions(), split)
+    }
+
+    /// Every Transaction as `lib-documents`' `DocumentTransactions` reads it.
+    fn document_transactions(&self) -> Vec<DocumentTransaction> {
+        transactions::document_transactions(&self.all_transactions())
     }
 
     /// The Splits dated `from` to `to`: `lib-budgets`' `BudgetSplits::budget_splits`.
@@ -860,6 +880,11 @@ pub trait BillsStore {
         bills::budget_bill_plans(&self.plans().bill_plans())
     }
 
+    /// Every Bill Plan as `lib-documents`' `DocumentBillPlans` reads it.
+    fn document_bill_plans(&self) -> Vec<DocumentBillPlan> {
+        bills::document_bill_plans(&self.plans().bill_plans())
+    }
+
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
     /// # Errors
@@ -961,6 +986,11 @@ pub trait PayeesStore {
     /// Every Payee as `lib-bills`' `BillPayees` reads it, inactive ones included.
     fn bill_payees(&self) -> Vec<BillPayee> {
         bill_payees(&self.payees().payees())
+    }
+
+    /// Every Payee as `lib-documents`' `DocumentPayees` reads it, inactive ones included.
+    fn document_payees(&self) -> Vec<DocumentPayee> {
+        payees::document_payees(&self.payees().payees())
     }
 
     /// Payee `id`'s name, as `lib-budgets`' `BudgetPayees` reads it.
@@ -1211,6 +1241,112 @@ impl BudgetPayees for StoredBudgetReads {
     }
 }
 
+/// A Documents store shared by the Ledger's forwarding shim and read copy. Single-threaded, as the
+/// ports are.
+pub type SharedDocumentsStore = Rc<RefCell<dyn DocumentsStore>>;
+
+/// The Documents repository port, wherever it is kept.
+pub trait DocumentsStore {
+    fn documents(&self) -> &dyn DocumentRepository;
+
+    fn documents_mut(&mut self) -> &mut dyn DocumentRepository;
+
+    /// Puts the rows back as they are stored, after a write failed (ADR-0046).
+    ///
+    /// # Errors
+    /// Returns the error reading them back; the rows in memory are left as they were.
+    fn reload(&mut self) -> Result<()>;
+}
+
+impl DocumentsStore for DocumentsAdapter {
+    fn documents(&self) -> &dyn DocumentRepository {
+        self
+    }
+
+    fn documents_mut(&mut self) -> &mut dyn DocumentRepository {
+        self
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        DocumentsAdapter::reload(self)
+    }
+}
+
+/// A boxed store is the store, so a bin given one can share it ([`SharedDocumentsStore`]).
+impl<T: DocumentsStore + ?Sized> DocumentsStore for Box<T> {
+    fn documents(&self) -> &dyn DocumentRepository {
+        (**self).documents()
+    }
+
+    fn documents_mut(&mut self) -> &mut dyn DocumentRepository {
+        (**self).documents_mut()
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        (**self).reload()
+    }
+}
+
+/// Memory is all there is, so a reload has nothing to read.
+impl DocumentsStore for InMemoryDocuments {
+    fn documents(&self) -> &dyn DocumentRepository {
+        self
+    }
+
+    fn documents_mut(&mut self) -> &mut dyn DocumentRepository {
+        self
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        Ok(())
+    }
+}
+
+/// `lib-documents`' five read ports answered by the shared stores of the domains a Link names,
+/// each borrowed for the one read (#963), as [`StoredBudgetReads`] answers Budgets'. The Desktop's
+/// Documents View reads through it, once per query into `LinkRecords`.
+pub struct StoredDocumentReads {
+    pub transactions: SharedTransactionsStore,
+    pub payees: SharedPayeesStore,
+    pub accounts: SharedAccountsStore,
+    pub institutions: SharedInstitutionsStore,
+    pub bills: SharedBillsStore,
+    pub inventory: SharedInventoryStore,
+}
+
+impl DocumentTransactions for StoredDocumentReads {
+    fn document_transactions(&self) -> Vec<DocumentTransaction> {
+        self.transactions.borrow().document_transactions()
+    }
+}
+
+impl DocumentPayees for StoredDocumentReads {
+    fn document_payees(&self) -> Vec<DocumentPayee> {
+        self.payees.borrow().document_payees()
+    }
+}
+
+impl DocumentAccounts for StoredDocumentReads {
+    fn document_accounts(&self) -> Vec<DocumentAccount> {
+        accounts::document_accounts(
+            &self.accounts.borrow().accounts().accounts(),
+            &self.institutions.borrow().institutions().institutions(),
+        )
+    }
+}
+
+impl DocumentBillPlans for StoredDocumentReads {
+    fn document_bill_plans(&self) -> Vec<DocumentBillPlan> {
+        self.bills.borrow().document_bill_plans()
+    }
+}
+
+impl DocumentItems for StoredDocumentReads {
+    fn document_items(&self) -> Vec<DocumentItem> {
+        self.inventory.borrow().document_items()
+    }
+}
+
 /// A commit that counts its calls before handing each on, so a test asserts the Client commits
 /// exactly once per input, whether or not the input wrote anything.
 pub struct CountingCommit {
@@ -1252,6 +1388,7 @@ pub struct FakeStores {
     pub bills: InMemoryBills,
     pub budgets: InMemoryBudgets,
     pub inventory: InMemoryInventory,
+    pub documents: InMemoryDocuments,
 }
 
 impl FakeStores {
@@ -1285,6 +1422,10 @@ impl FakeStores {
             bills: lib_bills::fake::InMemoryPorts::stub(today).bills,
             budgets,
             inventory: InMemoryInventory::stub(today),
+            documents: InMemoryDocuments {
+                documents: ledger.documents().to_vec(),
+                types: ledger.document_types().to_vec(),
+            },
         }
     }
 }
@@ -1304,6 +1445,7 @@ impl Stores {
             bills,
             budgets,
             inventory,
+            documents,
         } = fakes;
         let commit = CountingCommit::new(Rc::new(InMemoryCommit));
         let count = commit.count();
@@ -1318,6 +1460,7 @@ impl Stores {
             bills: Box::new(bills),
             budgets: Box::new(budgets),
             inventory: Box::new(inventory),
+            documents: Box::new(documents),
             commit: Rc::new(commit),
             failures: mpsc::channel().1,
         };
@@ -1342,6 +1485,7 @@ mod tests {
             bills: InMemoryBills::default(),
             budgets: InMemoryBudgets::default(),
             inventory: InMemoryInventory::default(),
+            documents: InMemoryDocuments::default(),
         });
 
         stores.commit.commit();

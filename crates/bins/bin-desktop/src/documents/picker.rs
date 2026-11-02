@@ -506,10 +506,11 @@ mod tests {
     fn world() -> World {
         crate::locale::init_for_tests();
         let today = NaiveDate::from_ymd_opt(2026, 10, 2).expect("a valid test date");
-        let ledger = lib_ledger::Ledger::stub_on(today);
+        let store = crate::ledger_store::LedgerStore::new(lib_ledger::Ledger::stub_on(today));
+        let ledger = store.ledger();
         World {
             types: crate::documents::types::default_types(),
-            records: LinkRecords::read(&ledger),
+            records: store.document_records(),
             seed: DocumentsSeed {
                 documents: ledger.documents().to_vec(),
             },

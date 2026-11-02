@@ -2,11 +2,13 @@
 //! refusal, checked before anything is written so a refusal leaves the Ledger untouched, and
 //! recording an upsert or delete per row it wrote (ADR-0039).
 //!
-//! Single-Document rules stay in `lib_documents`. What lives here crosses domains or rows: Accept
-//! reads the Transactions and Payees it matches against, and removing a Document Type moves its
-//! Filed Documents to another type in the same command.
+//! Single-Document rules stay in `lib_documents`. What lives here crosses rows: Accept matches
+//! against the Transactions and Payees its caller read from their stores and hands over (#963), and
+//! removing a Document Type moves its Filed Documents to another type in the same command. Skip is
+//! the Client's session state and writes nothing, so it is no command.
 
 use lib_core::{DocumentId, DocumentTypeId, ItemId, TransactionId};
+use std::collections::HashSet;
 use std::convert::Infallible;
 
 use chrono::NaiveDate;
@@ -14,7 +16,7 @@ use lib_documents::{
     AddError, Document, DocumentLink, DocumentType, ExtractedFacts, FiledEntry, FilingError,
     FilingUndo, ImportLine, ImportOutcome, KeyDate, NewDocument, Source, accept, accept_all_strong,
     add_filed, drop_inventory_links, edit_facts, edit_metadata, file_by_hand, get, import_batch,
-    skip, toggle_link,
+    toggle_link,
     types::{
         DocumentTypeDraft, DocumentTypeRow, RemoveError, add_type, edit_type, fallback_id,
         id_by_name, move_by, position, remove_type,
@@ -22,7 +24,7 @@ use lib_documents::{
     undo,
 };
 
-use lib_documents::{DocumentPayees, DocumentTransactions};
+use lib_documents::{DocumentPayee, DocumentTransaction};
 
 use crate::{Ledger, LedgerChange, LedgerCommand};
 
@@ -105,17 +107,17 @@ impl Ledger {
         Ok(added)
     }
 
-    /// Files Unfiled Document `id` under Transaction `transaction_id`.
+    /// Files Unfiled Document `id` under Transaction `transaction_id`, one of `transactions`.
     pub fn accept_document(
         &mut self,
         id: DocumentId,
         transaction_id: TransactionId,
+        transactions: &[DocumentTransaction],
     ) -> Result<FiledEntry, FilingError> {
-        let transactions = self.document_transactions();
         let entry = accept(
             &self.document_types,
             &mut self.documents,
-            &transactions,
+            transactions,
             id,
             transaction_id,
         )?;
@@ -135,13 +137,6 @@ impl Ledger {
         Ok(entry)
     }
 
-    /// Sets Unfiled Document `id` aside to the bottom of the Inbox.
-    pub fn skip_document(&mut self, id: DocumentId) -> Result<(), FilingError> {
-        skip(&mut self.documents, id)?;
-        self.record_document(id);
-        Ok(())
-    }
-
     /// Reverses a filing action and returns the Document focus goes back to.
     pub fn undo_filing(&mut self, record: FilingUndo) -> Option<DocumentId> {
         let ids: Vec<DocumentId> = record.entries.iter().map(|entry| entry.id).collect();
@@ -152,15 +147,22 @@ impl Ledger {
         focus
     }
 
-    /// Accepts every Unfiled Document whose Suggested Link is Strong, as one undoable batch.
-    /// `focus` is the Inbox row the Client keeps in view. Returns `None` when none was strong.
-    pub fn accept_all_documents(&mut self, focus: Option<DocumentId>) -> Option<FilingUndo> {
-        let (transactions, payees) = (self.document_transactions(), self.document_payees());
+    /// Accepts every Unfiled Document whose Suggested Link to one of `transactions` is Strong, as
+    /// one undoable batch, in the Inbox's order with the `skipped` last. `focus` is the Inbox row
+    /// the Client keeps in view. Returns `None` when none was strong.
+    pub fn accept_all_documents(
+        &mut self,
+        focus: Option<DocumentId>,
+        skipped: &HashSet<DocumentId>,
+        transactions: &[DocumentTransaction],
+        payees: &[DocumentPayee],
+    ) -> Option<FilingUndo> {
         let batch = accept_all_strong(
             &self.document_types,
             &mut self.documents,
-            &transactions,
-            &payees,
+            skipped,
+            transactions,
+            payees,
             focus,
         )?;
         for entry in &batch.entries {
@@ -347,18 +349,19 @@ impl LedgerCommand for ToggleDocumentLink {
     }
 }
 
-/// [`Ledger::accept_document`] as a value.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// [`Ledger::accept_document`] as a value, with the Transactions it matches against.
+#[derive(Debug, Clone, PartialEq)]
 pub struct AcceptDocument {
     pub id: DocumentId,
     pub transaction_id: TransactionId,
+    pub transactions: Vec<DocumentTransaction>,
 }
 
 impl LedgerCommand for AcceptDocument {
     type Outcome = FiledEntry;
     type Refusal = FilingError;
     fn run(self, ledger: &mut Ledger) -> Result<FiledEntry, FilingError> {
-        ledger.accept_document(self.id, self.transaction_id)
+        ledger.accept_document(self.id, self.transaction_id, &self.transactions)
     }
 }
 
@@ -378,18 +381,6 @@ impl LedgerCommand for FileDocumentByHand {
     }
 }
 
-/// [`Ledger::skip_document`] as a value.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SkipDocument(pub DocumentId);
-
-impl LedgerCommand for SkipDocument {
-    type Outcome = ();
-    type Refusal = FilingError;
-    fn run(self, ledger: &mut Ledger) -> Result<(), FilingError> {
-        ledger.skip_document(self.0)
-    }
-}
-
 /// [`Ledger::undo_filing`] as a value.
 #[derive(Debug, Clone, PartialEq)]
 pub struct UndoFiling(pub FilingUndo);
@@ -402,17 +393,28 @@ impl LedgerCommand for UndoFiling {
     }
 }
 
-/// [`Ledger::accept_all_documents`] as a value.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// [`Ledger::accept_all_documents`] as a value, with the session's skipped Documents and the
+/// Transactions and Payees it matches against.
+#[derive(Debug, Clone, PartialEq)]
 pub struct AcceptAllDocuments {
     pub focus: Option<DocumentId>,
+    pub skipped: HashSet<DocumentId>,
+    pub transactions: Vec<DocumentTransaction>,
+    pub payees: Vec<DocumentPayee>,
 }
 
 impl LedgerCommand for AcceptAllDocuments {
     type Outcome = Option<FilingUndo>;
     type Refusal = Infallible;
     fn run(self, ledger: &mut Ledger) -> Result<Option<FilingUndo>, Infallible> {
-        Ok(ledger.accept_all_documents(self.focus))
+        Ok(
+            ledger.accept_all_documents(
+                self.focus,
+                &self.skipped,
+                &self.transactions,
+                &self.payees,
+            ),
+        )
     }
 }
 
@@ -507,6 +509,20 @@ mod tests {
             ledger.documents().to_vec(),
             ledger.document_types().to_vec(),
         )
+    }
+
+    /// The Transactions as the caller reads them from their store, here the stub's.
+    fn transactions(ledger: &Ledger) -> Vec<DocumentTransaction> {
+        crate::document_reads::document_transactions(ledger.transactions())
+    }
+
+    fn accept_all(ledger: &Ledger) -> AcceptAllDocuments {
+        AcceptAllDocuments {
+            focus: None,
+            skipped: HashSet::new(),
+            transactions: transactions(ledger),
+            payees: crate::document_reads::document_payees(ledger.payees()),
+        }
     }
 
     fn unfiled(ledger: &Ledger) -> DocumentId {
@@ -716,17 +732,18 @@ mod tests {
     }
 
     #[test]
-    fn filing_skipping_and_undoing_record_each_document_they_touch() {
+    fn filing_and_undoing_record_each_document_they_touch() {
         let mut ledger = ledger();
         let id = unfiled(&ledger);
         let transaction_id = ledger.transactions()[0].id;
 
-        SkipDocument(id).run(&mut ledger).unwrap();
-        assert_recorded_rows_match(&mut ledger);
-
-        let entry = AcceptDocument { id, transaction_id }
-            .run(&mut ledger)
-            .unwrap();
+        let entry = AcceptDocument {
+            id,
+            transaction_id,
+            transactions: transactions(&ledger),
+        }
+        .run(&mut ledger)
+        .unwrap();
         assert_eq!(get(ledger.documents(), id).unwrap().filing, Filing::Filed);
         assert_recorded_rows_match(&mut ledger);
 
@@ -759,6 +776,7 @@ mod tests {
         let missing_transaction = AcceptDocument {
             id,
             transaction_id: TransactionId::seed(9_999),
+            transactions: transactions(&ledger),
         };
         assert_eq!(
             missing_transaction.run(&mut ledger),
@@ -769,12 +787,9 @@ mod tests {
             AcceptDocument {
                 id: filed,
                 transaction_id: ledger.transactions()[0].id,
+                transactions: transactions(&ledger),
             }
             .run(&mut ledger),
-            Err(FilingError::AlreadyFiled)
-        );
-        assert_eq!(
-            SkipDocument(filed).run(&mut ledger),
             Err(FilingError::AlreadyFiled)
         );
         assert_eq!(
@@ -793,16 +808,13 @@ mod tests {
     #[test]
     fn accept_all_records_every_document_it_filed() {
         let mut ledger = ledger();
-        let batch = AcceptAllDocuments { focus: None }.run(&mut ledger).unwrap();
+        let batch = accept_all(&ledger).run(&mut ledger).unwrap();
         let changes = ledger.drain_changes();
         let filed = batch.map_or(0, |batch| batch.entries.len());
         assert_eq!(changes.len(), filed);
 
         // Nothing strong is left, so a second pass records nothing.
-        assert_eq!(
-            AcceptAllDocuments { focus: None }.run(&mut ledger),
-            Ok(None)
-        );
+        assert_eq!(accept_all(&ledger).run(&mut ledger), Ok(None));
         assert!(ledger.drain_changes().is_empty());
     }
 

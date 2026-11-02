@@ -4,11 +4,56 @@
 //! each row's text is filled by its owning domain. `fake` implements each in memory.
 //!
 //! The rules read the records together, through [`LinkRecords`], read once per query.
+//!
+//! [`DocumentRepository`] is where the Documents and Document Types themselves are kept,
+//! synchronous as `lib-budgets`' is (ADR-0046): an adapter serves reads from memory and queues each
+//! write, so a write never fails here; a failed save is the adapter's to report. `lib-database`'s
+//! Documents adapter implements it (#963).
 
 use std::path::{Path, PathBuf};
 
 use chrono::NaiveDate;
-use lib_core::{AccountId, BillPlanId, ItemId, Money, PayeeId, TransactionId};
+use lib_core::{AccountId, BillPlanId, DocumentTypeId, ItemId, Money, PayeeId, TransactionId};
+
+use crate::Document;
+use crate::types::DocumentTypeRow;
+
+/// The Documents and Document Types on the Ledger. A Document is never deleted (#959), so there is
+/// no Document delete.
+pub trait DocumentRepository {
+    /// Every Document, in the order it was added.
+    fn documents(&self) -> Vec<Document>;
+
+    /// Every Document Type, in the user's order.
+    fn document_types(&self) -> Vec<DocumentTypeRow>;
+
+    /// Writes `document` whole, replacing the Document with its id or adding it: its row, its
+    /// Intake and its Links, so a Link it no longer holds is gone.
+    fn upsert_document(&mut self, document: &Document);
+
+    /// Writes Document Type `row`, replacing the type with its id where it stands in the order, or
+    /// adding it at the end.
+    fn upsert_document_type(&mut self, row: &DocumentTypeRow);
+
+    /// Removes Document Type `id`. The Documents of that type move to another in the same write,
+    /// as Remove does, or storage refuses it.
+    fn delete_document_type(&mut self, id: DocumentTypeId);
+
+    /// Moves Document Type `id` to place `to` in the order (the end, past it), the others keeping
+    /// theirs around it.
+    fn move_document_type(&mut self, id: DocumentTypeId, to: usize);
+}
+
+/// [`DocumentRepository::move_document_type`] over a list: moves `id` to `to`, clamped to the end.
+/// Returns whether it was there to move.
+pub fn move_type_to(types: &mut Vec<DocumentTypeRow>, id: DocumentTypeId, to: usize) -> bool {
+    let Some(from) = types.iter().position(|row| row.id == id) else {
+        return false;
+    };
+    let row = types.remove(from);
+    types.insert(to.min(types.len()), row);
+    true
+}
 
 /// A Transaction as Documents reads it: a candidate for the Suggested Link, a Link's label and a
 /// row of the link picker.

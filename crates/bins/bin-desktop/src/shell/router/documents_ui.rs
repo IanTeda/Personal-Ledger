@@ -200,12 +200,10 @@ impl Root {
         }
         let ledger = self.ledger.clone();
         let today = self.today;
-        let focus = self
-            .views
-            .documents
-            .read(cx)
-            .selected_document(cx)
-            .map(|document| document.id);
+        let view = self.views.documents.read(cx);
+        let focus = view.selected_document(cx).map(|document| document.id);
+        let skipped = view.state().skipped.clone();
+        let records = view.records(cx);
         let Some(dialog) = self.dialog_mut::<DocumentsDialog>() else {
             return;
         };
@@ -214,6 +212,8 @@ impl Root {
                 command,
                 today,
                 focus,
+                skipped,
+                records,
             })
         else {
             return;
@@ -260,7 +260,7 @@ impl Root {
                 // Editing clears a skip, so the Document may have moved up the list: follow it.
                 self.views
                     .documents
-                    .update(cx, |view, cx| view.focus_inbox_document(id, cx));
+                    .update(cx, |view, cx| view.facts_edited(id, cx));
                 self.raise_toast(
                     ToastKind::Success,
                     crate::msg::desktop_documents_toast_facts_saved(&title),

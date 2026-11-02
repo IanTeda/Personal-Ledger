@@ -9,7 +9,10 @@ use std::rc::Rc;
 
 use lib_core::{TransactionId, UnitId};
 
-pub use booked::{bill_transactions, document_transactions};
+pub use booked::{
+    FIRST_BOOKED, bill_transactions, booked_stub_transactions, document_transactions,
+    stub_transaction_count,
+};
 pub use seed::{DEFAULT_SEED, HISTORY_DAYS, SeedAccount, SeedNames, stub_transactions};
 
 use crate::protocols::SharedPorts;

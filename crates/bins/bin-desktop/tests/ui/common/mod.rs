@@ -38,10 +38,13 @@ use lib_colour_theme::ThemeOverrides;
 use lib_core::TransactionId;
 use lib_core::{AccountId, CategoryId, InstitutionId, PayeeId, PriceSourceId, TagId, UnitId};
 use lib_database::{
-    AccountsStore, BillsStore, BudgetsStore, CategoriesStore, Commit, CountingCommit, Domain,
-    FakeStores, InstitutionsStore, InventoryStore, PayeesStore, Stores, TagsStore,
-    TransactionsStore, UnitsStore, WriteFailure,
+    AccountsStore, BillsStore, BudgetsStore, CategoriesStore, Commit, CountingCommit,
+    DocumentsStore, Domain, FakeStores, InstitutionsStore, InventoryStore, PayeesStore, Stores,
+    TagsStore, TransactionsStore, UnitsStore, WriteFailure,
 };
+use lib_documents::fake::InMemoryDocuments;
+use lib_documents::types::DocumentTypeRow;
+use lib_documents::{Document, DocumentRepository};
 use lib_institutions::fake::InMemoryInstitutions;
 use lib_institutions::{Institution, InstitutionRepository};
 use lib_inventory::fake::InMemoryInventory;
@@ -561,6 +564,58 @@ impl BudgetsStore for FailingBudgets {
     }
 }
 
+impl<T: DocumentRepository> DocumentRepository for Marked<T> {
+    fn documents(&self) -> Vec<Document> {
+        self.inner.documents()
+    }
+
+    fn document_types(&self) -> Vec<DocumentTypeRow> {
+        self.inner.document_types()
+    }
+
+    fn upsert_document(&mut self, document: &Document) {
+        self.written.set(true);
+        self.inner.upsert_document(document);
+    }
+
+    fn upsert_document_type(&mut self, row: &DocumentTypeRow) {
+        self.written.set(true);
+        self.inner.upsert_document_type(row);
+    }
+
+    fn delete_document_type(&mut self, id: lib_core::DocumentTypeId) {
+        self.written.set(true);
+        self.inner.delete_document_type(id);
+    }
+
+    fn move_document_type(&mut self, id: lib_core::DocumentTypeId, to: usize) {
+        self.written.set(true);
+        self.inner.move_document_type(id, to);
+    }
+}
+
+/// A Documents store whose writes never reach `stored`, the rows as they are on disk: a reload
+/// puts memory back to `stored`. Each write marks `written` for [`FailingCommit`].
+struct FailingDocuments {
+    documents: Marked<InMemoryDocuments>,
+    stored: InMemoryDocuments,
+}
+
+impl DocumentsStore for FailingDocuments {
+    fn documents(&self) -> &dyn DocumentRepository {
+        &self.documents
+    }
+
+    fn documents_mut(&mut self) -> &mut dyn DocumentRepository {
+        &mut self.documents
+    }
+
+    fn reload(&mut self) -> lib_database::Result<()> {
+        self.documents.inner = self.stored.clone();
+        Ok(())
+    }
+}
+
 /// The stub Ledger's Bill Plans and Bill Schedule as of the test date, as the in-memory ports
 /// hold them.
 fn stub_bills() -> InMemoryBills {
@@ -589,6 +644,17 @@ fn stub_fakes() -> FakeStores {
         bills: stub_bills(),
         budgets: stub_budgets(),
         inventory: stub_inventory(),
+        documents: stub_documents(),
+    }
+}
+
+/// The stub Ledger's Documents and Document Types as of the test date, as the in-memory port
+/// holds them.
+fn stub_documents() -> InMemoryDocuments {
+    let ledger = lib_ledger::Ledger::stub_on(today());
+    InMemoryDocuments {
+        documents: ledger.documents().to_vec(),
+        types: ledger.document_types().to_vec(),
     }
 }
 
@@ -845,6 +911,7 @@ impl<'a> Harness<'a> {
                 bills: Box::new(stub_bills()),
                 budgets: Box::new(stub_budgets()),
                 inventory: Box::new(stub_inventory()),
+                documents: Box::new(stub_documents()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Units],
                     written,
@@ -883,6 +950,7 @@ impl<'a> Harness<'a> {
                 bills: Box::new(stub_bills()),
                 budgets: Box::new(stub_budgets()),
                 inventory: Box::new(stub_inventory()),
+                documents: Box::new(stub_documents()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Institutions],
                     written,
@@ -922,6 +990,7 @@ impl<'a> Harness<'a> {
                 bills: Box::new(stub_bills()),
                 budgets: Box::new(stub_budgets()),
                 inventory: Box::new(stub_inventory()),
+                documents: Box::new(stub_documents()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Accounts],
                     written,
@@ -960,6 +1029,7 @@ impl<'a> Harness<'a> {
                 bills: Box::new(stub_bills()),
                 budgets: Box::new(stub_budgets()),
                 inventory: Box::new(stub_inventory()),
+                documents: Box::new(stub_documents()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Categories],
                     written,
@@ -999,6 +1069,7 @@ impl<'a> Harness<'a> {
                 bills: Box::new(stub_bills()),
                 budgets: Box::new(stub_budgets()),
                 inventory: Box::new(stub_inventory()),
+                documents: Box::new(stub_documents()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Tags],
                     written,
@@ -1067,6 +1138,7 @@ impl<'a> Harness<'a> {
                 bills: Box::new(stub_bills()),
                 budgets: Box::new(stub_budgets()),
                 inventory: Box::new(stub_inventory()),
+                documents: Box::new(stub_documents()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Payees],
                     written,
@@ -1105,6 +1177,7 @@ impl<'a> Harness<'a> {
                 bills: Box::new(stub_bills()),
                 budgets: Box::new(stub_budgets()),
                 inventory: Box::new(stub_inventory()),
+                documents: Box::new(stub_documents()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Transactions],
                     written,
@@ -1143,6 +1216,7 @@ impl<'a> Harness<'a> {
                 }),
                 budgets: Box::new(stub_budgets()),
                 inventory: Box::new(stub_inventory()),
+                documents: Box::new(stub_documents()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Bills],
                     written,
@@ -1182,8 +1256,49 @@ impl<'a> Harness<'a> {
                     stored,
                 }),
                 inventory: Box::new(fakes.inventory),
+                documents: Box::new(fakes.documents),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Budgets],
+                    written,
+                    report,
+                }),
+                failures,
+            }),
+        )
+    }
+
+    /// As [`Harness::new`], on a Documents store whose every write fails, as SQLite refusing it
+    /// would; the reload after it puts the stored rows back. [`Harness::settle_writes`] lets the
+    /// Shell hear of the failure.
+    pub fn with_failing_documents(app: &'a mut TestAppContext) -> Self {
+        let (report, failures) = mpsc::channel();
+        let written = Rc::new(Cell::new(false));
+        let stored = stub_documents();
+        let fakes = stub_fakes();
+        Self::build(
+            app,
+            lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
+            None,
+            counted(Stores {
+                units: Box::new(fakes.units),
+                institutions: Box::new(fakes.institutions),
+                accounts: Box::new(fakes.accounts),
+                categories: Box::new(fakes.categories),
+                tags: Box::new(fakes.tags),
+                payees: Box::new(fakes.payees),
+                transactions: Box::new(fakes.transactions),
+                bills: Box::new(fakes.bills),
+                budgets: Box::new(fakes.budgets),
+                inventory: Box::new(fakes.inventory),
+                documents: Box::new(FailingDocuments {
+                    documents: Marked {
+                        inner: stored.clone(),
+                        written: written.clone(),
+                    },
+                    stored,
+                }),
+                commit: Rc::new(FailingCommit {
+                    domains: vec![Domain::Documents],
                     written,
                     report,
                 }),
@@ -1226,6 +1341,7 @@ impl<'a> Harness<'a> {
                 }),
                 budgets: Box::new(stub_budgets()),
                 inventory: Box::new(stub_inventory()),
+                documents: Box::new(stub_documents()),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Transactions, Domain::Bills],
                     written,

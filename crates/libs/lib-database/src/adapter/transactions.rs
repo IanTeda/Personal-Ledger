@@ -199,6 +199,28 @@ pub(crate) fn budget_splits(
         .collect()
 }
 
+/// `transactions` as `lib-documents`' `DocumentTransactions` reads them: each whole, with its
+/// total and the Payee each Split names.
+pub(crate) fn document_transactions(
+    transactions: &[Transaction],
+) -> Vec<lib_documents::DocumentTransaction> {
+    transactions
+        .iter()
+        .map(|transaction| lib_documents::DocumentTransaction {
+            id: transaction.id,
+            date: transaction.date,
+            amount: transaction.total(),
+            account_id: transaction.account_id,
+            payee_ids: transaction
+                .splits
+                .iter()
+                .map(|split| split.payee_id)
+                .collect(),
+            memo: transaction.description.clone(),
+        })
+        .collect()
+}
+
 /// The Split `split` names among `transactions`, as Bills reads it.
 pub(crate) fn paid_split(transactions: &[Transaction], split: SplitRef) -> Option<BillSplit> {
     let row = transactions

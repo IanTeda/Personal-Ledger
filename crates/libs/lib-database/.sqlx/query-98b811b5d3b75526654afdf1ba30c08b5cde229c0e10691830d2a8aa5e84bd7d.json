@@ -1,0 +1,128 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT\n               id                    AS \"id!: DocumentId\",\n               path,\n               kind,\n               pages                 AS \"pages!: i64\",\n               bytes                 AS \"bytes!: i64\",\n               title,\n               document_type_id      AS \"document_type_id!: DocumentTypeId\",\n               date                  AS \"date!: NaiveDate\",\n               key_date_kind,\n               key_date              AS \"key_date?: NaiveDate\",\n               key_date_reminder     AS \"key_date_reminder?: bool\",\n               extracted_text,\n               filing,\n               source,\n               received_on           AS \"received_on?: NaiveDate\",\n               fact_merchant,\n               fact_date             AS \"fact_date?: NaiveDate\",\n               fact_total            AS \"fact_total?: Money\",\n               fact_document_type_id AS \"fact_document_type_id?: DocumentTypeId\"\n           FROM documents\n           ORDER BY rowid",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: DocumentId",
+        "ordinal": 0,
+        "type_info": "Null"
+      },
+      {
+        "name": "path",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "kind",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "pages!: i64",
+        "ordinal": 3,
+        "type_info": "Integer"
+      },
+      {
+        "name": "bytes!: i64",
+        "ordinal": 4,
+        "type_info": "Integer"
+      },
+      {
+        "name": "title",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "document_type_id!: DocumentTypeId",
+        "ordinal": 6,
+        "type_info": "Null"
+      },
+      {
+        "name": "date!: NaiveDate",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "key_date_kind",
+        "ordinal": 8,
+        "type_info": "Text"
+      },
+      {
+        "name": "key_date?: NaiveDate",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "key_date_reminder?: bool",
+        "ordinal": 10,
+        "type_info": "Bool"
+      },
+      {
+        "name": "extracted_text",
+        "ordinal": 11,
+        "type_info": "Text"
+      },
+      {
+        "name": "filing",
+        "ordinal": 12,
+        "type_info": "Text"
+      },
+      {
+        "name": "source",
+        "ordinal": 13,
+        "type_info": "Text"
+      },
+      {
+        "name": "received_on?: NaiveDate",
+        "ordinal": 14,
+        "type_info": "Text"
+      },
+      {
+        "name": "fact_merchant",
+        "ordinal": 15,
+        "type_info": "Text"
+      },
+      {
+        "name": "fact_date?: NaiveDate",
+        "ordinal": 16,
+        "type_info": "Text"
+      },
+      {
+        "name": "fact_total?: Money",
+        "ordinal": 17,
+        "type_info": "Text"
+      },
+      {
+        "name": "fact_document_type_id?: DocumentTypeId",
+        "ordinal": 18,
+        "type_info": "Null"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "98b811b5d3b75526654afdf1ba30c08b5cde229c0e10691830d2a8aa5e84bd7d"
+}

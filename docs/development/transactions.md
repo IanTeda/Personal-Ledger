@@ -38,7 +38,7 @@ Each Split carries:
 - **Schema** — `transactions` (id, date, account, description, status, flagged), `splits` keyed `(transaction_id, position)` with ADR-0019's optional, unique `bill_schedule_entry_id`, and `split_tags` keyed `(transaction_id, position, tag_position)`. None has a foreign key to `accounts`, `categories`, `payees` or `tags`, which nothing persists yet; each table says why.
 - **Adapter** — `lib-database`'s `adapter/transactions.rs`, `TransactionsAdapter`: rows in memory, writes through the shared batch, reload on failure (ADR-0046). A Transaction is saved whole, its Splits and Tags written afresh, and a rewrite keeps a Split's Match to a Bill Schedule entry, which is the Bills adapter's to write. It also answers `lib-bills`' `BillTransactions` read port (Match candidates, a Paid entry's figures).
 - **Store** — `adapter/store.rs`' `TransactionsStore`, which the bins take, and `SharedTransactionsStore`, the handle `LedgerStore` and `lib-database`'s `BillPaymentsAdapter` both hold, so Pay it directly's Transaction joins the same commit as its entry.
-- **Seeds** — the first launch and `mise run db-seed` write the stub Ledger's Transactions (`seed::stub_ledger_transactions`, the rows the Bills and Documents name included), then `db-seed` adds generated ones (`seed::fake_transactions`).
+- **Seeds** — the first launch and `mise run db-seed` write the stub Transactions (`seed::stub_transactions`, from `lib_transactions::fake::booked_stub_transactions`, the rows the Bills and Documents name included), then `db-seed` adds generated ones (`seed::fake_transactions`).
 - **Balances** — an Account's Balance is its starting balance plus its Splits, computed on read and never stored (summed in Rust, since `Money` is stored as text).
 
 ## Desktop

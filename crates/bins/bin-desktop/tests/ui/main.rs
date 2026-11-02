@@ -62,6 +62,7 @@ mod smoke_accounts_persist;
 mod smoke_bills_persist;
 mod smoke_budgets_persist;
 mod smoke_categories_persist;
+mod smoke_documents_persist;
 mod smoke_institutions_persist;
 mod smoke_inventory_persist;
 mod smoke_payees_persist;

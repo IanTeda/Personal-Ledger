@@ -361,6 +361,31 @@ fn picking_in_the_inbox_files_the_document_and_u_undoes_it(app: &mut TestAppCont
 }
 
 #[gpui::test]
+fn a_failed_documents_write_puts_the_inbox_back_with_an_error_toast(app: &mut TestAppContext) {
+    let mut ui = Harness::with_failing_documents(app);
+    ui.press("g f");
+    ui.press("i");
+    focus_row(&mut ui, STRONG_RECEIPT);
+    let stored = ui.documents().inbox_rows;
+
+    ui.press("l");
+    ui.press("enter");
+    assert_eq!(
+        ui.documents().inbox_rows,
+        stored - 1,
+        "memory runs ahead of the file until the failure is heard"
+    );
+
+    ui.settle_writes();
+
+    assert_eq!(ui.documents().inbox_rows, stored);
+    assert!(ui.toasts().visible.into_iter().any(|toast| {
+        toast.kind == "Error"
+            && toast.text == "Couldn't save the change to documents, so they are back as last saved"
+    }));
+}
+
+#[gpui::test]
 fn l_in_the_inbox_opens_the_filing_picker(app: &mut TestAppContext) {
     let mut ui = on_documents(app);
     ui.press("i");

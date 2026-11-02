@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO document_links (document_id, item_id)\n             SELECT ?1, ?2 WHERE EXISTS (SELECT 1 FROM items WHERE id = ?2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "013532bbf7630014ac45e441dc6a8efca9a7bbb646801ae40a8d0202cb974efc"
+}

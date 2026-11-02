@@ -4,9 +4,10 @@
 //!
 //! The Budgets are `lib-budgets`' stub, fed the stub Accounts and Categories as Budgets reads them.
 //!
-//! The Transactions are the stub Ledger's rather than `lib_transactions::fake`'s alone: the Bills
-//! and Documents stubs add the Transactions their Paid entries and Links name (#774). They, and
-//! the Bills, come from `lib-ledger` until those domains persist their own seeds.
+//! The Transactions are `lib_transactions::fake`'s booked stub, the generated history then the
+//! rows the Bills' Paid entries and the Documents' Links name (#961), and the Bills and Documents
+//! are their own crates' stubs, each fed the rows it names as it reads them. No seed comes from
+//! `lib-ledger`'s joined stub (#963), and no seed writes another domain.
 //!
 //! Every write is an upsert, so seeding twice leaves the same rows. The base Unit is the exception:
 //! it is written only when the Ledger has none, so a base the person changed survives a re-seed.
@@ -19,7 +20,10 @@ use fake::rand::rngs::StdRng;
 use fake::rand::{Rng, SeedableRng};
 use fake::{Fake, Faker};
 use lib_bills::{AmountKind, BillPlan, BillsSeed, Recurrence};
-use lib_core::{BillPlanId, Money, TransactionId, TransactionStatus, UnitId, UnitKind};
+use lib_core::{
+    BillPlanId, CategoryId, Money, PayeeId, TagId, TransactionId, TransactionStatus, UnitId,
+    UnitKind,
+};
 use lib_transactions::{Split, Transaction};
 use lib_units::fake::InMemoryPorts;
 use lib_units::{Precision, PriceLink, UnitRow, seed_weekly_prices};
@@ -29,6 +33,7 @@ use crate::adapter::accounts::AccountsAdapter;
 use crate::adapter::bills::BillsAdapter;
 use crate::adapter::budgets::BudgetsAdapter;
 use crate::adapter::categories::CategoriesAdapter;
+use crate::adapter::documents::DocumentsAdapter;
 use crate::adapter::institutions::InstitutionsAdapter;
 use crate::adapter::inventory::InventoryAdapter;
 use crate::adapter::payees::PayeesAdapter;
@@ -42,9 +47,10 @@ use crate::writer::Writer;
 /// the Transactions and Bill Plans name, the Categories, which the Payees, Splits and Bill Plans
 /// name, the Tags, which the Splits name (#862), the Payees, which the Splits and Bill Plans name,
 /// then the Transactions and the Bills dated from `now`'s local day, the Budgets as of that day,
-/// which name the Units, Accounts and Categories (#952), and last the Inventory as of that day
-/// (#866), in the order Units, Institutions, Accounts, Categories, Tags, Payees, Transactions,
-/// Bills, Budgets, Inventory (Q17).
+/// which name the Units, Accounts and Categories (#952), the Inventory as of that day (#866), and
+/// last the Document Types and Documents as of that day, whose Links name the rows before them
+/// (#963), in the order Units, Institutions, Accounts, Categories, Tags, Payees, Transactions,
+/// Bills, Budgets, Inventory, Documents (Q17).
 ///
 /// # Errors
 /// Returns the error of a write; nothing is written then.
@@ -54,7 +60,7 @@ pub fn stub(writer: &Writer, now: DateTime<Utc>) -> Result<()> {
 }
 
 /// Writes [`stub`]'s seed in one transaction, its Units' prices as of `now` and its Transactions,
-/// Bills and Inventory as of `today`, with `personal` in place of the stub's Personal Institution
+/// Bills, Inventory and Documents as of `today`, with `personal` in place of the stub's Personal Institution
 /// when given. All or nothing, so a seed that fails partway, or a process that dies in it, never
 /// leaves a Ledger with a base Unit and only some of the rest (#886). The one place the domains'
 /// order lives: each names rows of those before it.
@@ -66,6 +72,18 @@ pub(crate) fn write_stub(
     now: DateTime<Utc>,
     today: NaiveDate,
     personal: Option<lib_institutions::Institution>,
+) -> Result<()> {
+    write_stub_rows(writer, now, today, personal, true)
+}
+
+/// [`write_stub`], with the Documents left out unless `documents`, for an adapter test that writes
+/// its own over the rest of the stub.
+pub(crate) fn write_stub_rows(
+    writer: &Writer,
+    now: DateTime<Utc>,
+    today: NaiveDate,
+    personal: Option<lib_institutions::Institution>,
+    documents: bool,
 ) -> Result<()> {
     let units = InMemoryPorts::stub(now);
     let institutions: Vec<_> = stub_institutions()
@@ -79,10 +97,18 @@ pub(crate) fn write_stub(
     let categories = stub_categories();
     let tags = stub_tags();
     let payees = stub_payees();
-    let transactions = stub_ledger_transactions(today);
-    let bills = stub_ledger_bills(today);
+    let transactions = stub_transactions(today);
+    let bills = stub_bills(today);
     let budgets = stub_budgets(today);
     let inventory = stub_inventory(today);
+    let (types, documents) = if documents {
+        (
+            lib_documents::types::default_types(),
+            stub_documents(today, &institutions),
+        )
+    } else {
+        (Vec::new(), Vec::new())
+    };
     writer.run(move |pool| async move {
         let mut conn = pool.begin().await?;
         // A seed's rows may name one written after them.
@@ -105,6 +131,7 @@ pub(crate) fn write_stub(
         BillsAdapter::seed_in(&mut conn, &bills.plans, &bills.entries).await?;
         BudgetsAdapter::seed_in(&mut conn, &budgets).await?;
         InventoryAdapter::seed_in(&mut conn, &inventory).await?;
+        DocumentsAdapter::seed_in(&mut conn, &types, &documents).await?;
         conn.commit().await?;
         Ok(())
     })
@@ -155,22 +182,77 @@ pub fn stub_payees() -> Vec<lib_payees::Payee> {
     lib_payees::fake::InMemoryPorts::stub().payees.payees
 }
 
-/// The stub Ledger's Transactions as of `today`: `lib_transactions::fake`'s, the generated history
-/// then the rows the Bills and Documents stubs name, over the per-domain stubs.
-pub fn stub_ledger_transactions(today: NaiveDate) -> Vec<Transaction> {
-    lib_ledger::seed::stub_transactions(
-        &stub_accounts(),
-        &stub_categories(),
-        &stub_payees(),
-        &stub_tags(),
-        today,
-    )
+/// The names `lib_transactions::fake`'s stub books by, looked up in the per-domain stubs.
+struct StubNames {
+    categories: Vec<lib_categories::Category>,
+    payees: Vec<lib_payees::Payee>,
+    tags: Vec<lib_tags::Tag>,
 }
 
-/// The stub Ledger's Bill Plans and Bill Schedule as of `today`, whose Paid entries name
-/// [`stub_ledger_transactions`]'.
-pub fn stub_ledger_bills(today: NaiveDate) -> BillsSeed {
-    lib_ledger::seed::stub_bills(&stub_accounts(), &stub_categories(), &stub_payees(), today)
+impl lib_transactions::fake::SeedNames for StubNames {
+    fn category(&self, name: &str) -> Option<CategoryId> {
+        lib_categories::find_by_name(&self.categories, name)
+    }
+
+    fn payee(&self, name: &str) -> Option<PayeeId> {
+        lib_payees::find_by_name(&self.payees, name)
+    }
+
+    fn tag(&self, name: &str) -> Option<TagId> {
+        lib_tags::find_by_name(&self.tags, name)
+    }
+}
+
+/// `lib_transactions::fake`'s booked stub as of `today` over the per-domain stubs: the generated
+/// history, then the rows the Bills and Documents stubs name, numbered from
+/// [`lib_transactions::fake::FIRST_BOOKED`].
+pub fn stub_transactions(today: NaiveDate) -> Vec<Transaction> {
+    let accounts: Vec<_> = stub_accounts()
+        .into_iter()
+        .map(|account| lib_transactions::fake::SeedAccount {
+            transaction_count: lib_transactions::fake::stub_transaction_count(account.id),
+            id: account.id,
+            name: account.name,
+            account_type: account.account_type,
+        })
+        .collect();
+    let names = StubNames {
+        categories: stub_categories(),
+        payees: stub_payees(),
+        tags: stub_tags(),
+    };
+    lib_transactions::fake::booked_stub_transactions(&accounts, &names, today)
+}
+
+/// `lib-bills`' stub Bill Plans and Bill Schedule as of `today`, fed the stub Accounts, Categories
+/// and Payees as Bills reads them, whose Paid entries name [`stub_transactions`]' payments.
+pub fn stub_bills(today: NaiveDate) -> BillsSeed {
+    lib_bills::default_bills(
+        &crate::adapter::accounts::bill_accounts(&stub_accounts()),
+        &crate::adapter::categories::bill_categories(&stub_categories()),
+        &crate::adapter::payees::bill_payees(&stub_payees()),
+        lib_transactions::fake::FIRST_BOOKED,
+        today,
+    )
+    .seed
+}
+
+/// `lib-documents`' stub Documents as of `today`, fed the stub rows their Links name as the stores
+/// answer Documents' read ports, the Accounts' Institutions from `institutions`.
+pub fn stub_documents(
+    today: NaiveDate,
+    institutions: &[lib_institutions::Institution],
+) -> Vec<lib_documents::Document> {
+    let records = lib_documents::LinkRecords {
+        transactions: crate::adapter::transactions::document_transactions(&stub_transactions(
+            today,
+        )),
+        payees: crate::adapter::payees::document_payees(&stub_payees()),
+        accounts: crate::adapter::accounts::document_accounts(&stub_accounts(), institutions),
+        plans: crate::adapter::bills::document_bill_plans(&stub_bills(today).plans),
+        items: crate::adapter::inventory::document_items(&stub_inventory(today).items),
+    };
+    lib_documents::default_documents(&records, today).documents
 }
 
 /// Fixed so the generated rows are the same on every run, which keeps `fake` seeding idempotent.
@@ -236,7 +318,7 @@ const FAKE_FIRST_TRANSACTION: u32 = 100_000;
 /// stub Ledger has and keeps the sign its Category takes. The same `count` and `today` always give
 /// the same rows, so a second seed upserts over the first rather than adding rows.
 pub fn fake_transactions(count: u32, today: NaiveDate) -> Vec<Transaction> {
-    let stub = stub_ledger_transactions(today);
+    let stub = stub_transactions(today);
     let mut rng = StdRng::seed_from_u64(FAKE_RNG_SEED);
     (0..count)
         .filter_map(|index| {
@@ -274,7 +356,7 @@ const FAKE_FIRST_BILL_PLAN: u32 = 1_000;
 /// The same `count` and `today` always give the same rows, so a second seed upserts over the
 /// first rather than adding rows.
 pub fn fake_bills(count: u32, today: NaiveDate) -> BillsSeed {
-    let stub = stub_ledger_bills(today).plans;
+    let stub = stub_bills(today).plans;
     let mut rng = StdRng::seed_from_u64(FAKE_RNG_SEED);
     let plans: Vec<BillPlan> = (0..count)
         .filter_map(|index| {
@@ -470,6 +552,51 @@ mod tests {
         );
     }
 
+    /// The Document Types and Documents are the stub Ledger's as of the seed's day, written last,
+    /// over the rows their Links name, so every Link is kept (#963).
+    #[test]
+    fn the_stub_seed_writes_the_stub_ledgers_documents_twice_over_the_same_rows() {
+        use lib_documents::DocumentRepository as _;
+
+        let (_dir, writer) = temp_writer();
+        let now = Utc::now();
+
+        stub(&writer, now).expect("the first seed lands");
+        stub(&writer, now).expect("the second seed lands");
+
+        let stored =
+            DocumentsAdapter::load(PendingWrites::new(writer.clone())).expect("the Documents load");
+        let ledger = lib_ledger::Ledger::stub_on(now.with_timezone(&Local).date_naive());
+        assert_eq!(stored.document_types(), ledger.document_types());
+        assert_eq!(stored.documents(), ledger.documents());
+    }
+
+    /// The seed builds the stub Transactions and Bills from the per-domain stubs itself, not from
+    /// `lib-ledger`'s joined stub, so the two are held to the same rows on several days (#963).
+    #[test]
+    fn the_seeds_own_stubs_are_the_stub_ledgers() {
+        for today in [
+            today(),
+            NaiveDate::from_ymd_opt(2026, 1, 31).expect("a real date"),
+            NaiveDate::from_ymd_opt(2028, 2, 29).expect("a real date"),
+        ] {
+            let ledger = lib_ledger::Ledger::stub_on(today);
+            assert_eq!(
+                stub_transactions(today),
+                ledger.transactions(),
+                "on {today}"
+            );
+            let bills = stub_bills(today);
+            assert_eq!(bills.plans, ledger.bill_plans(), "on {today}");
+            assert_eq!(bills.entries, ledger.bill_entries(), "on {today}");
+            assert_eq!(
+                stub_documents(today, &stub_institutions()),
+                ledger.documents(),
+                "on {today}"
+            );
+        }
+    }
+
     /// The Budgets are the stub Ledger's as of the seed's day, by id, so Categories 5c finds
     /// Personal spending by `PERSONAL_SPENDING_ID`.
     #[test]
@@ -513,7 +640,7 @@ mod tests {
     fn the_stub_seed_writes_the_stub_ledgers_bills_twice_over_the_same_rows() {
         let (_dir, writer) = temp_writer();
         let now = Utc::now();
-        let expected = stub_ledger_bills(now.with_timezone(&Local).date_naive());
+        let expected = stub_bills(now.with_timezone(&Local).date_naive());
 
         stub(&writer, now).expect("the first seed lands");
         let first = stored_bills(&writer);
@@ -534,7 +661,7 @@ mod tests {
 
         fake(&writer, now, 20).expect("the second generated seed lands");
 
-        let stub = stub_ledger_bills(now.with_timezone(&Local).date_naive());
+        let stub = stub_bills(now.with_timezone(&Local).date_naive());
         assert_eq!(first.0.len(), stub.plans.len() + 4);
         assert!(first.1.len() > stub.entries.len());
         assert_eq!(stored_bills(&writer), first);
@@ -543,7 +670,7 @@ mod tests {
     #[test]
     fn generated_bills_are_the_same_every_time_and_clear_of_the_stub() {
         let first = fake_bills(4, today());
-        let stub_ids: Vec<_> = stub_ledger_bills(today())
+        let stub_ids: Vec<_> = stub_bills(today())
             .plans
             .iter()
             .map(|plan| plan.id)
@@ -559,7 +686,7 @@ mod tests {
     fn the_stub_seed_writes_the_stub_ledgers_transactions_twice_over_the_same_rows() {
         let (_dir, writer) = temp_writer();
         let now = Utc::now();
-        let mut expected = stub_ledger_transactions(now.with_timezone(&Local).date_naive());
+        let mut expected = stub_transactions(now.with_timezone(&Local).date_naive());
         expected.sort_by_key(|transaction| transaction.id);
 
         stub(&writer, now).expect("the first seed lands");
@@ -575,7 +702,7 @@ mod tests {
     #[test]
     fn generated_transactions_are_the_same_every_time_and_clear_of_the_stub() {
         let first = fake_transactions(20, today());
-        let stub_ids: Vec<_> = stub_ledger_transactions(today())
+        let stub_ids: Vec<_> = stub_transactions(today())
             .iter()
             .map(|transaction| transaction.id)
             .collect();
@@ -711,7 +838,7 @@ mod tests {
 
         fake(&writer, now, 20).expect("the second generated seed lands");
 
-        let stub = stub_ledger_transactions(now.with_timezone(&Local).date_naive());
+        let stub = stub_transactions(now.with_timezone(&Local).date_naive());
         assert_eq!(first.len(), stub.len() + 20);
         assert_eq!(stored_transactions(&writer), first);
     }

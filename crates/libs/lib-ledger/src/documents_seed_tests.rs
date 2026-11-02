@@ -60,7 +60,7 @@ fn world() -> World {
 fn world_on(today: NaiveDate) -> World {
     let ledger = Ledger::stub_on(today);
     World {
-        records: LinkRecords::read(&ledger),
+        records: ledger.link_records(),
         documents: ledger.documents().to_vec(),
         inventory: ledger.inventory().clone(),
     }
@@ -126,6 +126,7 @@ fn accept_all_takes_strong_rows_only_and_undoes_as_one_batch() {
     let record = accept_all_strong(
         &types(),
         &mut documents,
+        &std::collections::HashSet::new(),
         &transactions,
         &payees,
         Some(DocumentId::seed(42)),

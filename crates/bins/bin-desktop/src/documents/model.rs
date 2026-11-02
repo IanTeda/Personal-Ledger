@@ -484,11 +484,13 @@ fn summary_text(types: &[DocumentTypeRow], document: &Document) -> String {
     }
 }
 
-/// An Inbox row. The Suggested Link is derived here, on every render, never stored.
+/// An Inbox row, dimmed when `skipped`. The Suggested Link is derived here, on every render, never
+/// stored.
 pub fn inbox_row(
     document: &Document,
     documents: &[Document],
     lookups: &Lookups<'_>,
+    skipped: bool,
 ) -> InboxRowView {
     let suggestion = documents::suggestion(
         document,
@@ -536,7 +538,7 @@ pub fn inbox_row(
         hint,
         signals,
         best,
-        skipped: document.is_skipped(),
+        skipped,
     }
 }
 
@@ -628,10 +630,11 @@ mod tests {
     fn world() -> World {
         crate::locale::init_for_tests();
         let today = NaiveDate::from_ymd_opt(2026, 10, 2).expect("a valid test date");
-        let ledger = lib_ledger::Ledger::stub_on(today);
+        let store = crate::ledger_store::LedgerStore::new(lib_ledger::Ledger::stub_on(today));
+        let ledger = store.ledger();
         World {
             types: documents::types::default_types(),
-            records: LinkRecords::read(&ledger),
+            records: store.document_records(),
             seed: DocumentsSeed {
                 documents: ledger.documents().to_vec(),
             },
@@ -786,6 +789,7 @@ mod tests {
             inbox_named(&world, "IMG_4471.jpg"),
             &world.seed.documents,
             &lookups,
+            false,
         );
         assert_eq!(row.state, InboxState::Link);
         assert!(row.summary.starts_with("Receipts · "), "{}", row.summary);
@@ -805,6 +809,7 @@ mod tests {
             inbox_named(&world, "scan0012.pdf"),
             &world.seed.documents,
             &lookups,
+            false,
         );
         assert_eq!(unreadable.state, InboxState::Unreadable);
         assert_eq!(unreadable.summary, "Unreadable — no amount found");
@@ -815,6 +820,7 @@ mod tests {
             inbox_named(&world, "ATO_NOA_2026.pdf"),
             &world.seed.documents,
             &lookups,
+            false,
         );
         assert_eq!(nothing.state, InboxState::NoSuggestion);
         assert!(

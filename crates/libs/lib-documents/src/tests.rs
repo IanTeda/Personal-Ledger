@@ -555,36 +555,39 @@ fn undo_returns_a_single_accept_to_unfiled_as_it_was() {
 }
 
 #[test]
-fn skipped_rows_sort_last_and_editing_clears_the_skip() {
-    let mut documents = vec![
+fn skipped_rows_sort_last_and_skipping_writes_nothing_to_the_document() {
+    let documents = vec![
         unfiled(1, ExtractedFacts::default()),
         unfiled(2, ExtractedFacts::default()),
     ];
-    let order = |documents: &[Document]| {
-        inbox_rows(documents)
+    let before = documents.clone();
+    let mut skipped = HashSet::new();
+    let order = |skipped: &HashSet<DocumentId>| {
+        inbox_rows(&documents, skipped)
             .iter()
             .map(|d| d.id)
             .collect::<Vec<_>>()
     };
+    assert_eq!(order(&skipped), [DocumentId::seed(2), DocumentId::seed(1)]);
+
+    skip(&documents, &mut skipped, DocumentId::seed(2)).unwrap();
+
+    assert_eq!(order(&skipped), [DocumentId::seed(1), DocumentId::seed(2)]);
     assert_eq!(
-        order(&documents),
-        [DocumentId::seed(2), DocumentId::seed(1)]
+        documents, before,
+        "Skip is the session's, not the Document's"
     );
-    skip(&mut documents, DocumentId::seed(2)).unwrap();
+}
+
+#[test]
+fn a_filed_document_cannot_be_skipped() {
+    let documents = vec![filed(1, DocumentType(DocumentTypeId::seed(1)), today())];
+    let mut skipped = HashSet::new();
     assert_eq!(
-        order(&documents),
-        [DocumentId::seed(1), DocumentId::seed(2)]
+        skip(&documents, &mut skipped, DocumentId::seed(1)),
+        Err(FilingError::AlreadyFiled)
     );
-    edit_facts(
-        &mut documents,
-        DocumentId::seed(2),
-        facts(None, None, Some(100)),
-    )
-    .unwrap();
-    assert_eq!(
-        order(&documents),
-        [DocumentId::seed(2), DocumentId::seed(1)]
-    );
+    assert!(skipped.is_empty());
 }
 
 #[test]

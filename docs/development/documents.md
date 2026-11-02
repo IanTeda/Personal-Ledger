@@ -4,13 +4,13 @@ End-user documentation: [Documents](../documents.md).
 
 ## Overview
 
-Documents is a desktop-only surface built against in-memory stubs, from the handoff `docs/ux/desktop-mockups/04-documents/` (frames 4a Library and 4b Inbox) under the Desktop Documents Surface map ([#430](https://github.com/IanTeda/Personal-Ledger/issues/430)). Everything lives in `crates/bins/bin-desktop`. There is no `lib-core` type, no table and no TUI screen, and nothing persists except the last mode, scope and sort.
+Documents is a desktop-only surface built from the handoff `docs/ux/desktop-mockups/04-documents/` (frames 4a Library and 4b Inbox) under the Desktop Documents Surface map ([#430](https://github.com/IanTeda/Personal-Ledger/issues/430)). The model is `lib-documents`, the View and Dialogs live in `crates/bins/bin-desktop`, and the Documents and Document Types persist through `lib-database` ([#963](https://github.com/IanTeda/Personal-Ledger/issues/963)). There is no TUI screen.
 
 ## Data model
 
-Document Types are user-managed ledger data ([ADR-0031](../adr/0031-document-types-are-user-managed-ledger-data.md)): `src/documents/types.rs` holds the in-memory list (stable ids, order, Tracks date, Remind, Financial year flag, the fixed Default type Other), and `documents/mod.rs` reads it for the Type filter, the Add and Edit form, the Inbox's extracted type (matched by name) and the Key Date kind. The Settings page that edits it is its own `DocumentsPage` Entity in `src/settings/documents/` (`mod.rs`, `render.rs`, `form.rs`, `apply.rs` and `dialogs/`, ADR-0037); `src/documents/types.rs` only re-exports the rows the destination shares; tests are `settings_documents_keyboard.rs`, `settings_documents_mouse.rs` and `document_type_dialogs.rs`. Persistence and sync of Document Types, and of per-Document Key Dates, are not specified yet (map [#472](https://github.com/IanTeda/Personal-Ledger/issues/472)).
+Document Types are user-managed ledger data ([ADR-0031](../adr/0031-document-types-are-user-managed-ledger-data.md)): `src/documents/types.rs` holds the in-memory list (stable ids, order, Tracks date, Remind, Financial year flag, the fixed Default type Other), and `documents/mod.rs` reads it for the Type filter, the Add and Edit form, the Inbox's extracted type (matched by name) and the Key Date kind. The Settings page that edits it is its own `DocumentsPage` Entity in `src/settings/documents/` (`mod.rs`, `render.rs`, `form.rs`, `apply.rs` and `dialogs/`, ADR-0037); `src/documents/types.rs` only re-exports the rows the destination shares; tests are `settings_documents_keyboard.rs`, `settings_documents_mouse.rs` and `document_type_dialogs.rs`. Sync of Document Types and Documents is not specified yet (map [#472](https://github.com/IanTeda/Personal-Ledger/issues/472)).
 
-Not yet built. No migration exists. The rules the schema must carry are in `GLOSSARY.md` (Document, Document Type, Financial Year, Key Date, Need Review, Document Link, Inbox, Extracted Facts, Suggested Link, Filing) and the doc comment at the top of `src/documents/mod.rs`:
+Three client tables, `document_types`, `documents` and `document_links`, carry the rules in `GLOSSARY.md` (Document, Document Type, Financial Year, Key Date, Need Review, Document Link, Inbox, Extracted Facts, Suggested Link, Filing) and the doc comment at the top of `src/documents/mod.rs`:
 
 - One entity, the `Document`, Unfiled or Filed. Only the user files one; gaining a Link never does.
 - The Financial Year is derived from the document date (`FINANCIAL_YEAR_START_MONTH`) and never stored.
@@ -23,7 +23,15 @@ The Financial Year (`financial_year_start`) is `lib-core`'s, shared with Bills. 
 
 ## Persistence
 
-`src/persistence.rs` stores the last mode, scope and sort only. Documents, Links and filings are in memory.
+`lib-database`'s `DocumentsAdapter` (`adapter/documents.rs`, [#963](https://github.com/IanTeda/Personal-Ledger/issues/963)) holds the Documents and Document Types in memory and sends writes to the shared writer, answering `lib-documents`' `DocumentRepository`:
+
+- `document_types` keeps its order in `position`; its name is unique ignoring case, one row is the Default type, and the Files count is a stored column for now.
+- `documents` holds the Key Date and the Inbox's Intake (source, received date, Extracted Facts). A Document names its type by a deferred foreign key with no cascade, so a type removal moves its Documents in the same batch, and the file refuses deleting a type a Document still names.
+- `document_links` holds one row per Link, its one target column set; a Link drops with the record it names (`ON DELETE CASCADE`), and a write skips a Link to a record the file no longer has.
+- A new Ledger is seeded with the stub's Document Types, Documents and Links last, after the domains they name (`seed::stub_documents`); an existing Ledger with no Document Types is given the nine default ones on open.
+- The Inbox's skipped Documents are the session's (`DocumentsState::skipped`), never written; editing a Document's facts clears its skip.
+- Every Documents writer is still a `LedgerCommand`, carried to the store by `documents::ports::forward`, with the `Ledger`'s copy refreshed after each write and on rollback (`LedgerStore::reload_documents`). The records a Link names are read from their own stores (`lib_database::StoredDocumentReads`).
+- `src/persistence.rs` stores the last mode, scope and sort.
 
 ## UI
 

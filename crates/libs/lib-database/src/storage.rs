@@ -1,6 +1,7 @@
 //! A Client's Ledger file, opened at start-up: the shared writer on the `[Personal-Ledger] file`,
 //! the Client migrations, then the Units, Institutions, Accounts, Categories, Tags, Payees,
-//! Transactions, Bills, Budgets and Inventory adapters on the pending batch every adapter shares. The Desktop and the TUI both open it here,
+//! Transactions, Bills, Budgets, Inventory and Documents adapters on the pending batch every
+//! adapter shares. The Desktop and the TUI both open it here,
 //! so they read and write the same rows (ADR-0046), and both build their Shell on the [`Stores`]
 //! made from it.
 
@@ -11,9 +12,9 @@ use std::sync::mpsc;
 use chrono::{NaiveDate, Utc};
 
 use crate::{
-    AccountsAdapter, BillsAdapter, BudgetsAdapter, CategoriesAdapter, Error, InstitutionsAdapter,
-    InventoryAdapter, PayeesAdapter, PendingWrites, Result, TagsAdapter, TransactionsAdapter,
-    UnitsAdapter, WriteFailure, Writer, adapter::store, seed,
+    AccountsAdapter, BillsAdapter, BudgetsAdapter, CategoriesAdapter, DocumentsAdapter, Error,
+    InstitutionsAdapter, InventoryAdapter, PayeesAdapter, PendingWrites, Result, TagsAdapter,
+    TransactionsAdapter, UnitsAdapter, WriteFailure, Writer, adapter::store, seed,
 };
 
 /// The Ledger file as start-up opens it: each adapter, the pending batch the bin commits after
@@ -29,6 +30,7 @@ pub struct Storage {
     pub bills: BillsAdapter,
     pub budgets: BudgetsAdapter,
     pub inventory: InventoryAdapter,
+    pub documents: DocumentsAdapter,
     pub pending: PendingWrites,
     /// Flushed when the Client quits, so the last writes land before the thread dies.
     pub writer: Writer,
@@ -51,6 +53,7 @@ pub struct Stores {
     pub bills: Box<dyn store::BillsStore>,
     pub budgets: Box<dyn store::BudgetsStore>,
     pub inventory: Box<dyn store::InventoryStore>,
+    pub documents: Box<dyn store::DocumentsStore>,
     pub commit: Rc<dyn crate::Commit>,
     pub failures: mpsc::Receiver<WriteFailure>,
 }
@@ -68,6 +71,7 @@ impl From<Storage> for Stores {
             bills: Box::new(storage.bills),
             budgets: Box::new(storage.budgets),
             inventory: Box::new(storage.inventory),
+            documents: Box::new(storage.documents),
             commit: Rc::new(storage.pending),
             failures: storage.failures,
         }
@@ -85,14 +89,18 @@ impl From<Storage> for Stores {
 /// Categories, which its Payees, Splits and Bill Plans name (#858), its Tags, which its Splits
 /// carry (#862), its Payees, which its Splits and Bill Plans name, the stub Ledger's Transactions
 /// and Bills as of `today`, whose Paid entries and Documents name those Transactions (#774), its
-/// Budgets as of `today`, which name its Units, Accounts and Categories (#952), and last its
-/// Inventory as of `today`, whose Items the stub Documents link (#866). All or nothing, so a first
+/// Budgets as of `today`, which name its Units, Accounts and Categories (#952), its Inventory as of
+/// `today`, whose Items the stub Documents link (#866), and last its Document Types and Documents
+/// as of `today`, whose Links name the rows before them (#963). All or nothing, so a first
 /// launch cut short leaves no base Unit and the next open writes it whole (#886). Opening an
 /// existing Ledger writes nothing of it.
 ///
 /// A Ledger with no Budget, one written before Budgets persisted, is given an empty default
 /// Personal spending Budget in its base Unit on every Account in it that takes Transactions
 /// (`lib_budgets::personal_spending`), so there is always an active Budget.
+///
+/// A Ledger with no Document Type, one written before Documents persisted, is given the nine
+/// default types (ADR-0031) and no Documents, so there is always a Default type.
 ///
 /// The first-launch seed is removed once every domain persists. The Personal Institution is part
 /// of every new Ledger, not of the stub seed, so it stays; but on its own it writes no base Unit,
@@ -131,6 +139,11 @@ pub fn open_storage(path: &Path, today: NaiveDate, personal: &str) -> Result<Sto
     }
     let budgets = BudgetsAdapter::load(pending.clone())?;
     let inventory = InventoryAdapter::load(pending.clone())?;
+    if DocumentsAdapter::has_no_types(&writer)? {
+        DocumentsAdapter::seed(&writer, lib_documents::types::default_types(), Vec::new())?;
+        tracing::info!(path = %path.display(), "Gave a Ledger with no Document Type the defaults");
+    }
+    let documents = DocumentsAdapter::load(pending.clone())?;
     Ok(Storage {
         units,
         institutions,
@@ -142,6 +155,7 @@ pub fn open_storage(path: &Path, today: NaiveDate, personal: &str) -> Result<Sto
         bills,
         budgets,
         inventory,
+        documents,
         pending,
         writer,
         failures,
@@ -172,7 +186,7 @@ mod tests {
 
         let mut storage = open_storage(&path, today(), PERSONAL).expect("a new Ledger opens");
         let seeded = storage.transactions.transactions();
-        assert_eq!(seeded, seed::stub_ledger_transactions(today()));
+        assert_eq!(seeded, seed::stub_transactions(today()));
         let gone = seeded[0].id;
         storage.transactions.delete_transaction(gone);
         storage.pending.commit();
@@ -359,7 +373,7 @@ mod tests {
         );
         assert_eq!(
             storage.transactions.transactions(),
-            seed::stub_ledger_transactions(today())
+            seed::stub_transactions(today())
         );
         assert_eq!(
             storage.inventory.inventory().inventory(),
@@ -566,7 +580,7 @@ mod tests {
         let storage = open_storage(&dir.path().join("ledger.pldb"), today(), PERSONAL)
             .expect("a new Ledger opens");
 
-        let expected = seed::stub_ledger_bills(today());
+        let expected = seed::stub_bills(today());
         assert_eq!(
             lib_bills::contract::snapshot(&storage.bills),
             (

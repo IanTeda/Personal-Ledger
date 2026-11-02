@@ -68,15 +68,17 @@ pub use adapter::bill_payments::BillPaymentsAdapter;
 pub use adapter::bills::BillsAdapter;
 pub use adapter::budgets::BudgetsAdapter;
 pub use adapter::categories::CategoriesAdapter;
+pub use adapter::documents::DocumentsAdapter;
 pub use adapter::institutions::InstitutionsAdapter;
 pub use adapter::inventory::InventoryAdapter;
 pub use adapter::payees::PayeesAdapter;
 pub use adapter::store::{
-    AccountsStore, BillsStore, BudgetsStore, CategoriesStore, CountingCommit, FakeStores,
-    InstitutionsStore, InventoryStore, PayeesStore, SharedAccountsStore, SharedBillsStore,
-    SharedBudgetsStore, SharedCategoriesStore, SharedInstitutionsStore, SharedInventoryStore,
-    SharedPayeesStore, SharedTagsStore, SharedTransactionsStore, SharedUnitsStore,
-    StoredBudgetReads, TagsStore, TransactionsStore, UnitsStore,
+    AccountsStore, BillsStore, BudgetsStore, CategoriesStore, CountingCommit, DocumentsStore,
+    FakeStores, InstitutionsStore, InventoryStore, PayeesStore, SharedAccountsStore,
+    SharedBillsStore, SharedBudgetsStore, SharedCategoriesStore, SharedDocumentsStore,
+    SharedInstitutionsStore, SharedInventoryStore, SharedPayeesStore, SharedTagsStore,
+    SharedTransactionsStore, SharedUnitsStore, StoredBudgetReads, StoredDocumentReads, TagsStore,
+    TransactionsStore, UnitsStore,
 };
 pub use adapter::tags::TagsAdapter;
 pub use adapter::transaction_import::TransactionImportAdapter;

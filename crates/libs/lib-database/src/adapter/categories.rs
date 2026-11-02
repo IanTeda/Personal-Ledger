@@ -571,7 +571,7 @@ mod tests {
     ) {
         let factory = AdapterFactory::new(options);
         crate::test_support::store_stub_references(&factory.writer);
-        let mut plan = crate::seed::stub_ledger_bills(day()).plans[0].clone();
+        let mut plan = crate::seed::stub_bills(day()).plans[0].clone();
         plan.id = lib_core::BillPlanId::new();
         plan.payee_id = None;
         plan.category_id = CategoryId::new();

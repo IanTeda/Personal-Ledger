@@ -1,22 +1,22 @@
-//! The stub Transactions joined to the other domains' stubs: `lib_transactions::fake`'s generator,
-//! given the stub Accounts and the Category, Payee and Tag names it seeds by, then the rows the
-//! Bills and Documents seeds name, booked after it from [`FIRST_BOOKED`]. It lives here, in the one
-//! crate that sees every domain, since the Categories, Payees and Tags crates depend on
-//! `lib-transactions`.
+//! The stub Transactions joined to the other domains' stubs: `lib_transactions::fake`'s booked stub,
+//! given the stub Accounts and the Category, Payee and Tag names it seeds by, which number the rows
+//! the Bills and Documents seeds name from [`FIRST_BOOKED`]. The names are looked up here, in the
+//! one crate that sees every domain, since the Categories, Payees and Tags crates depend on
+//! `lib-transactions`; `lib-database` looks them up the same way for the stored seed.
 
 use chrono::NaiveDate;
 use lib_accounts::Account;
 use lib_bills::BillsSeed;
 use lib_categories::{self as categories, Category};
-use lib_core::{AccountId, CategoryId, PayeeId, TagId, TransactionId};
+use lib_core::{AccountId, CategoryId, PayeeId, TagId};
 use lib_payees::{self as payees, Payee};
 use lib_tags::{self as tags, Tag};
 use lib_transactions::Transaction;
-use lib_transactions::fake::{self, SeedAccount, SeedNames};
+use lib_transactions::fake::{self, SeedAccount, SeedNames, stub_transaction_count};
 
 use crate::bill_reads::{bill_accounts, bill_categories, bill_payees};
 
-pub use lib_transactions::fake::{DEFAULT_SEED, HISTORY_DAYS};
+pub use lib_transactions::fake::{DEFAULT_SEED, FIRST_BOOKED, HISTORY_DAYS};
 
 /// The names the generator seeds by, looked up in the stub collections.
 pub(crate) struct StubNames<'a> {
@@ -37,38 +37,6 @@ impl SeedNames for StubNames<'_> {
     fn tag(&self, name: &str) -> Option<TagId> {
         tags::find_by_name(self.tags, name)
     }
-}
-
-/// How many Transactions the stub books to each stub Account that takes them. These were the
-/// Accounts' own stub counts until the Edit and Delete Dialogs counted the Transactions themselves
-/// (#852); Loan and Investment Accounts take none, so they aren't listed.
-const STUB_TRANSACTION_COUNTS: [(AccountId, u32); 4] = [
-    (AccountId::seed(1), 96),
-    (AccountId::seed(2), 312),
-    (AccountId::seed(3), 88),
-    (AccountId::seed(4), 204),
-];
-
-/// The first booked Transaction's id, numbered on from the generated history, which holds the sum
-/// of [`STUB_TRANSACTION_COUNTS`]: the Bills' payments take the ids from here, then the Documents'
-/// purchases.
-pub const FIRST_BOOKED: TransactionId = TransactionId::seed(history_count() + 1);
-
-const fn history_count() -> u32 {
-    let mut total = 0;
-    let mut index = 0;
-    while index < STUB_TRANSACTION_COUNTS.len() {
-        total += STUB_TRANSACTION_COUNTS[index].1;
-        index += 1;
-    }
-    total
-}
-
-fn stub_transaction_count(id: AccountId) -> u32 {
-    STUB_TRANSACTION_COUNTS
-        .iter()
-        .find_map(|(account, count)| (*account == id).then_some(*count))
-        .unwrap_or(0)
 }
 
 /// The stub Transactions over these stubs: newest first, ids assigned oldest-first (a higher id is
@@ -101,26 +69,16 @@ pub fn stub_transactions(
     tags: &[Tag],
     today: NaiveDate,
 ) -> Vec<Transaction> {
-    let mut all = default_transactions(accounts, categories, payees, tags, today);
-    let accounts = seed_accounts(accounts, stub_transaction_count);
     let names = StubNames {
         categories,
         payees,
         tags,
     };
-    let bills = fake::bill_transactions(&accounts, &names, FIRST_BOOKED, today);
-    let first_purchase = TransactionId::seed(
-        FIRST_BOOKED.seed_number() + u32::try_from(bills.len()).unwrap_or_default(),
-    );
-    let purchases = fake::document_transactions(&accounts, &names, first_purchase, today);
-    for transaction in bills.into_iter().chain(purchases) {
-        let at = all
-            .iter()
-            .position(|t| t.date <= transaction.date)
-            .unwrap_or(all.len());
-        all.insert(at, transaction);
-    }
-    all
+    fake::booked_stub_transactions(
+        &seed_accounts(accounts, stub_transaction_count),
+        &names,
+        today,
+    )
 }
 
 /// The stub Ledger's Bill Plans and Bill Schedule as of `today`, laid out against these stubs as

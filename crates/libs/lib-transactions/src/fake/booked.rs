@@ -8,11 +8,69 @@
 //! seed tests check the two agree.
 
 use chrono::{Datelike, Duration, Months, NaiveDate};
-use lib_core::{Period, TransactionId, TransactionStatus};
+use lib_core::{AccountId, Period, TransactionId, TransactionStatus};
 
 use super::seed::Lookup;
-use super::{SeedAccount, SeedNames};
+use super::{SeedAccount, SeedNames, stub_transactions};
 use crate::Transaction;
+
+/// How many Transactions the stub books to each stub Account that takes them. These were the
+/// Accounts' own stub counts until the Edit and Delete Dialogs counted the Transactions themselves
+/// (#852); Loan and Investment Accounts take none, so they aren't listed.
+const STUB_TRANSACTION_COUNTS: [(AccountId, u32); 4] = [
+    (AccountId::seed(1), 96),
+    (AccountId::seed(2), 312),
+    (AccountId::seed(3), 88),
+    (AccountId::seed(4), 204),
+];
+
+/// The first booked Transaction's id, numbered on from the generated history, which holds the sum
+/// of the stub's per-Account counts: the Bills' payments take the ids from here, then the
+/// Documents' purchases.
+pub const FIRST_BOOKED: TransactionId = TransactionId::seed(history_count() + 1);
+
+const fn history_count() -> u32 {
+    let mut total = 0;
+    let mut index = 0;
+    while index < STUB_TRANSACTION_COUNTS.len() {
+        total += STUB_TRANSACTION_COUNTS[index].1;
+        index += 1;
+    }
+    total
+}
+
+/// How many Transactions the stub gives Account `id`: none for an Account it has no count for.
+pub fn stub_transaction_count(id: AccountId) -> u32 {
+    STUB_TRANSACTION_COUNTS
+        .iter()
+        .find_map(|(account, count)| (*account == id).then_some(*count))
+        .unwrap_or(0)
+}
+
+/// The stub Ledger's Transactions: [`stub_transactions`]' history, then the Bills' payments and
+/// Match candidate and the Documents' purchases, numbered on from [`FIRST_BOOKED`] and each placed
+/// newest first, after any already on its date. `accounts` carry [`stub_transaction_count`]'s
+/// counts. Every Client's stub seed is this one, whoever looks the names up.
+pub fn booked_stub_transactions(
+    accounts: &[SeedAccount],
+    names: &dyn SeedNames,
+    today: NaiveDate,
+) -> Vec<Transaction> {
+    let mut all = stub_transactions(accounts, names, today);
+    let bills = bill_transactions(accounts, names, FIRST_BOOKED, today);
+    let first_purchase = TransactionId::seed(
+        FIRST_BOOKED.seed_number() + u32::try_from(bills.len()).unwrap_or_default(),
+    );
+    let purchases = document_transactions(accounts, names, first_purchase, today);
+    for transaction in bills.into_iter().chain(purchases) {
+        let at = all
+            .iter()
+            .position(|t| t.date <= transaction.date)
+            .unwrap_or(all.len());
+        all.insert(at, transaction);
+    }
+    all
+}
 
 /// What a payment reads of one stub Bill Plan that has earlier cycles to pay. Rent and Council
 /// Rates are first due after this month, so they have none and aren't listed.

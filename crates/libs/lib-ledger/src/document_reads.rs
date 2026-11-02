@@ -1,13 +1,17 @@
-//! Halfway shim (#962) between `lib-documents`' read ports and the domains that still live on the
-//! Ledger: the Ledger answers every Documents read port from its own collections, each row's text
-//! filled by its owning domain (`docs/development/viper-architecture.md`, Rules > Dependencies). It
-//! goes when `lib-database`'s stores answer them (#963).
+//! The Documents read copy and the rows the stub's own Documents seed reads.
+//!
+//! The Ledger's Documents and Document Types are a read copy of the Documents store, refreshed after
+//! each Documents write and on rollback ([`Ledger::refresh_documents`], #963), for the Documents
+//! View and Settings › Documents until they run on `lib-documents`' Presenters (#966 to #968).
+//!
+//! The mappings fill each row the way the owning domain's store does in `lib-database`, so the
+//! stub's Documents seed links what the stored stub holds; the seed tests hold the two together.
 
 use lib_accounts::Account;
 use lib_bills::BillPlan;
+use lib_documents::types::DocumentTypeRow;
 use lib_documents::{
-    DocumentAccount, DocumentAccounts, DocumentBillPlan, DocumentBillPlans, DocumentItem,
-    DocumentItems, DocumentPayee, DocumentPayees, DocumentTransaction, DocumentTransactions,
+    Document, DocumentAccount, DocumentBillPlan, DocumentItem, DocumentPayee, DocumentTransaction,
 };
 use lib_institutions::Institution;
 use lib_inventory::Inventory;
@@ -16,38 +20,37 @@ use lib_transactions::Transaction;
 
 use crate::Ledger;
 
-impl DocumentTransactions for Ledger {
-    fn document_transactions(&self) -> Vec<DocumentTransaction> {
-        document_transactions(&self.transactions)
+impl Ledger {
+    /// The Ledger's rows as Documents reads them, for the seed tests to match the stub's Documents
+    /// against the records they name.
+    #[cfg(test)]
+    pub(crate) fn link_records(&self) -> lib_documents::LinkRecords {
+        lib_documents::LinkRecords {
+            transactions: document_transactions(&self.transactions),
+            payees: document_payees(&self.payees),
+            accounts: document_accounts(&self.accounts, &self.institutions),
+            plans: document_bill_plans(&self.bill_plans),
+            items: document_items(&self.inventory),
+        }
+    }
+
+    /// Replaces the Documents and Document Types read copy with the store's rows, returning whether
+    /// either changed.
+    pub fn refresh_documents(
+        &mut self,
+        documents: Vec<Document>,
+        types: Vec<DocumentTypeRow>,
+    ) -> bool {
+        if self.documents == documents && self.document_types == types {
+            return false;
+        }
+        self.documents = documents;
+        self.document_types = types;
+        true
     }
 }
 
-impl DocumentPayees for Ledger {
-    fn document_payees(&self) -> Vec<DocumentPayee> {
-        document_payees(&self.payees)
-    }
-}
-
-impl DocumentAccounts for Ledger {
-    fn document_accounts(&self) -> Vec<DocumentAccount> {
-        document_accounts(&self.accounts, &self.institutions)
-    }
-}
-
-impl DocumentBillPlans for Ledger {
-    fn document_bill_plans(&self) -> Vec<DocumentBillPlan> {
-        document_bill_plans(&self.bill_plans)
-    }
-}
-
-impl DocumentItems for Ledger {
-    fn document_items(&self) -> Vec<DocumentItem> {
-        document_items(&self.inventory)
-    }
-}
-
-/// `transactions` as Documents reads them: the stub's own Documents seed's, and each command
-/// that matches against them.
+/// `transactions` as Documents reads them, for the stub's own Documents seed.
 pub(crate) fn document_transactions(transactions: &[Transaction]) -> Vec<DocumentTransaction> {
     transactions
         .iter()
@@ -114,4 +117,21 @@ pub(crate) fn document_items(inventory: &Inventory) -> Vec<DocumentItem> {
             name: item.name.clone(),
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn refreshing_the_documents_reports_only_a_change() {
+        let mut ledger = Ledger::stub();
+        let mut documents = ledger.documents().to_vec();
+        let types = ledger.document_types().to_vec();
+        assert!(!ledger.refresh_documents(documents.clone(), types.clone()));
+
+        documents[0].title = "Renamed".into();
+        assert!(ledger.refresh_documents(documents.clone(), types));
+        assert_eq!(ledger.documents(), documents);
+    }
 }

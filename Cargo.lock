@@ -4825,6 +4825,7 @@ dependencies = [
  "lib_categories",
  "lib_config",
  "lib_core",
+ "lib_documents",
  "lib_institutions",
  "lib_inventory",
  "lib_ledger",

@@ -326,6 +326,23 @@ pub(crate) fn budget_accounts(accounts: &[Account]) -> Vec<lib_budgets::BudgetAc
         .collect()
 }
 
+/// `accounts` as `lib-documents`' `DocumentAccounts` reads them, each with its Institution's name
+/// from `institutions`, or none when the Institution has gone.
+pub(crate) fn document_accounts(
+    accounts: &[Account],
+    institutions: &[lib_institutions::Institution],
+) -> Vec<lib_documents::DocumentAccount> {
+    accounts
+        .iter()
+        .map(|account| lib_documents::DocumentAccount {
+            id: account.id,
+            name: account.name.clone(),
+            institution: lib_institutions::get(institutions, account.institution)
+                .map_or_else(String::new, |institution| institution.name.clone()),
+        })
+        .collect()
+}
+
 impl Change for AccountsChange {
     fn domain(&self) -> Domain {
         Domain::Accounts

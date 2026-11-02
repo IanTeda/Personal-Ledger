@@ -1005,7 +1005,10 @@ impl Render for DocumentsView {
         let inbox_selected = self.inbox_at(inbox.len());
         let inbox_views: Vec<_> = inbox
             .iter()
-            .map(|document| model::inbox_row(document, all, &lookups))
+            .map(|document| {
+                let skipped = state.skipped.contains(&document.id);
+                model::inbox_row(document, all, &lookups, skipped)
+            })
             .collect();
         let inbox_detail = inbox
             .get(inbox_selected)

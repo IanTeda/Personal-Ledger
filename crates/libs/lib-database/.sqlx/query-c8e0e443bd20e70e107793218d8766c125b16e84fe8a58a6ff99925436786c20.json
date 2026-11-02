@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO documents\n             (id, path, kind, pages, bytes, title, document_type_id, date, key_date_kind, key_date,\n              key_date_reminder, extracted_text, filing, source, received_on, fact_merchant,\n              fact_date, fact_total, fact_document_type_id)\n         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18,\n                 (SELECT id FROM document_types WHERE id = ?19))\n         ON CONFLICT (id) DO UPDATE SET\n             path = excluded.path,\n             kind = excluded.kind,\n             pages = excluded.pages,\n             bytes = excluded.bytes,\n             title = excluded.title,\n             document_type_id = excluded.document_type_id,\n             date = excluded.date,\n             key_date_kind = excluded.key_date_kind,\n             key_date = excluded.key_date,\n             key_date_reminder = excluded.key_date_reminder,\n             extracted_text = excluded.extracted_text,\n             filing = excluded.filing,\n             source = excluded.source,\n             received_on = excluded.received_on,\n             fact_merchant = excluded.fact_merchant,\n             fact_date = excluded.fact_date,\n             fact_total = excluded.fact_total,\n             fact_document_type_id = excluded.fact_document_type_id",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 19
+    },
+    "nullable": []
+  },
+  "hash": "c8e0e443bd20e70e107793218d8766c125b16e84fe8a58a6ff99925436786c20"
+}

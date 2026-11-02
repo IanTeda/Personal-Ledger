@@ -108,3 +108,5 @@ desktop-toast-write-failed-budgets = Couldn't save the change to budgets, so the
 desktop-toast-write-failed-budgets-unsaved = Couldn't save the change to budgets or reload them, so what you see isn't saved
 desktop-toast-write-failed-inventory = Couldn't save the change to the inventory, so it is back as last saved
 desktop-toast-write-failed-inventory-unsaved = Couldn't save the change to the inventory or reload it, so what you see isn't saved
+desktop-toast-write-failed-documents = Couldn't save the change to documents, so they are back as last saved
+desktop-toast-write-failed-documents-unsaved = Couldn't save the change to documents or reload them, so what you see isn't saved

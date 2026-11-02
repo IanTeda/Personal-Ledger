@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO document_links (document_id, payee_id)\n             SELECT ?1, ?2 WHERE EXISTS (SELECT 1 FROM payees WHERE id = ?2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "d48dcf35ccbbf04bd6179ff7256152dd0079a3731a8b3f42bb1d7e8884375a96"
+}

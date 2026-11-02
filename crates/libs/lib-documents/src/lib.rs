@@ -15,8 +15,15 @@
 //! - The Suggested Link is derived on every call ([`suggestion`]) and never stored: only
 //!   Transactions within [`CANDIDATE_WINDOW_DAYS`] of the Document's date are candidates, each must
 //!   agree on amount or payee, and the date Signal allows [`DATE_SIGNAL_DAYS`].
-//! - Skip is session-only, and undo is one level: [`undo`] reverses the last [`FilingUndo`] whole.
+//! - Skip is session-only, held by the Client as a set of ids and never written, and undo is one
+//!   level: [`undo`] reverses the last [`FilingUndo`] whole.
 
+#[cfg(feature = "contract-tests")]
+#[expect(
+    clippy::expect_used,
+    reason = "a contract check is test code a consumer runs, and fails by panicking as a test does"
+)]
+pub mod contract;
 pub mod fake;
 pub mod protocols;
 pub mod types;
@@ -24,6 +31,7 @@ pub mod types;
 #[cfg(test)]
 mod tests;
 
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use bigdecimal::BigDecimal;
@@ -35,8 +43,8 @@ use lib_core::{
 
 pub use crate::protocols::{
     DocumentAccount, DocumentAccounts, DocumentBillPlan, DocumentBillPlans, DocumentFiles,
-    DocumentItem, DocumentItems, DocumentPayee, DocumentPayees, DocumentReads, DocumentTransaction,
-    DocumentTransactions, LinkRecords,
+    DocumentItem, DocumentItems, DocumentPayee, DocumentPayees, DocumentReads, DocumentRepository,
+    DocumentTransaction, DocumentTransactions, LinkRecords,
 };
 use crate::types::{DocumentTypeRow, TracksDate};
 
@@ -188,8 +196,6 @@ pub struct Intake {
     pub source: Source,
     pub received_at: NaiveDate,
     pub facts: ExtractedFacts,
-    /// Session-only: set aside to the bottom of the Inbox. Never persisted.
-    pub skipped: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -233,10 +239,6 @@ impl Document {
 
     pub fn is_unfiled(&self) -> bool {
         self.filing == Filing::Unfiled
-    }
-
-    pub fn is_skipped(&self) -> bool {
-        self.is_unfiled() && self.intake.as_ref().is_some_and(|intake| intake.skipped)
     }
 
     /// The file name, the Title's default.
@@ -772,16 +774,20 @@ pub fn suggestion(
     }
 }
 
-/// The Inbox's rows: newest `received_at` first, Skipped Documents after all others.
-pub fn inbox_rows(documents: &[Document]) -> Vec<&Document> {
+/// The Inbox's rows: newest `received_at` first, the Documents in `skipped` after all others.
+pub fn inbox_rows<'a>(
+    documents: &'a [Document],
+    skipped: &HashSet<DocumentId>,
+) -> Vec<&'a Document> {
     let mut rows: Vec<&Document> = documents
         .iter()
         .filter(|document| document.is_unfiled())
         .collect();
     let received = |document: &Document| document.intake.as_ref().map(|intake| intake.received_at);
     rows.sort_by(|a, b| {
-        a.is_skipped()
-            .cmp(&b.is_skipped())
+        skipped
+            .contains(&a.id)
+            .cmp(&skipped.contains(&b.id))
             .then_with(|| received(b).cmp(&received(a)))
             .then_with(|| b.id.cmp(&a.id))
     });
@@ -902,15 +908,17 @@ pub fn file_by_hand(
 }
 
 /// Accept all strong matches: accepts every Unfiled Document whose Suggested Link is Strong, as
-/// one undoable batch. Returns `None` when there were none.
+/// one undoable batch, in the Inbox's order (the `skipped` last). Returns `None` when there were
+/// none.
 pub fn accept_all_strong(
     types: &[DocumentTypeRow],
     documents: &mut [Document],
+    skipped: &HashSet<DocumentId>,
     transactions: &[DocumentTransaction],
     payees: &[DocumentPayee],
     focus: Option<DocumentId>,
 ) -> Option<FilingUndo> {
-    let strong: Vec<(DocumentId, TransactionId)> = inbox_rows(documents)
+    let strong: Vec<(DocumentId, TransactionId)> = inbox_rows(documents, skipped)
         .into_iter()
         .filter_map(|document| {
             let suggestion = suggestion(document, documents, transactions, payees);
@@ -962,12 +970,17 @@ pub fn undo(documents: &mut [Document], record: FilingUndo) -> Option<DocumentId
     record.focus
 }
 
-/// Skip: sets an Unfiled Document aside to the bottom of the Inbox for the session.
-pub fn skip(documents: &mut [Document], id: DocumentId) -> Result<(), FilingError> {
-    let document = get_mut(documents, id).ok_or(FilingError::NotFound)?;
-    match (&document.filing, &mut document.intake) {
-        (Filing::Unfiled, Some(intake)) => {
-            intake.skipped = true;
+/// Skip: sets an Unfiled Document aside to the bottom of the Inbox for the session, by adding it
+/// to `skipped`, which the Client holds and never writes.
+pub fn skip(
+    documents: &[Document],
+    skipped: &mut HashSet<DocumentId>,
+    id: DocumentId,
+) -> Result<(), FilingError> {
+    let document = get(documents, id).ok_or(FilingError::NotFound)?;
+    match (&document.filing, &document.intake) {
+        (Filing::Unfiled, Some(_)) => {
+            skipped.insert(id);
             Ok(())
         }
         (Filing::Filed, _) => Err(FilingError::AlreadyFiled),
@@ -975,8 +988,9 @@ pub fn skip(documents: &mut [Document], id: DocumentId) -> Result<(), FilingErro
     }
 }
 
-/// Edit: overwrites the Extracted Facts (there is no separate corrected copy) and clears the skip.
-/// Candidates recompute from the new facts on the next [`suggestion`].
+/// Edit: overwrites the Extracted Facts (there is no separate corrected copy). Editing also clears
+/// the skip, which the Client does, since it holds the skipped set. Candidates recompute from the
+/// new facts on the next [`suggestion`].
 pub fn edit_facts(
     documents: &mut [Document],
     id: DocumentId,
@@ -988,7 +1002,6 @@ pub fn edit_facts(
     }
     let intake = document.intake.as_mut().ok_or(FilingError::NotFound)?;
     intake.facts = facts;
-    intake.skipped = false;
     Ok(())
 }
 
@@ -1181,7 +1194,6 @@ pub fn import_path(
             source,
             received_at: today,
             facts,
-            skipped: false,
         }),
     });
     Ok(id)
@@ -1412,7 +1424,6 @@ impl Draft {
             source,
             received_at,
             facts,
-            skipped: false,
         });
         draft
     }
