@@ -1062,7 +1062,17 @@ mod tests {
         let mut view = prices_of_btc();
         view.handle_key(key(KeyCode::Char('[')));
         let earlier = view.prices_view_model().expect("still open");
-        assert_eq!(earlier.rows.len(), 48);
+        // A month back is four or five weeks depending on the day this runs on (five on Monday
+        // 2 Nov 2026), and the seed's 52 weeks end at the current one, so the earlier window
+        // holds that many fewer rows. The Presenter's own tests pin the day.
+        let today = chrono::Local::now().date_naive();
+        let a_month_back = today
+            .checked_sub_months(chrono::Months::new(1))
+            .expect("a month back exists");
+        let weeks_back = (lib_units::WeeklyPrice::week_of(today)
+            - lib_units::WeeklyPrice::week_of(a_month_back))
+        .num_weeks();
+        assert_eq!(earlier.rows.len() as i64, 52 - weeks_back);
         view.handle_key(key(KeyCode::Char(']')));
         assert_eq!(view.prices_view_model().expect("open").rows.len(), 52);
 

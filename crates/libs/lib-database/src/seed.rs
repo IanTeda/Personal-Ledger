@@ -290,7 +290,7 @@ pub fn fake_units(count: u32, now: DateTime<Utc>) -> Vec<UnitRow> {
             let last_price = (kind != UnitKind::Currency).then(|| {
                 (
                     rng.random_range(1..=2_000_000),
-                    now - Duration::minutes(rng.random_range(1..=1_440)),
+                    lib_units::seed_written_at(now, Duration::minutes(rng.random_range(1..=1_440))),
                 )
             });
             UnitRow {
@@ -416,6 +416,7 @@ pub fn fake(writer: &Writer, now: DateTime<Utc>, count: u32) -> Result<()> {
 mod tests {
     use super::*;
     use crate::commit::{Commit, PendingWrites};
+    use chrono::TimeZone;
 
     fn temp_writer() -> (tempfile::TempDir, Writer) {
         let dir = tempfile::tempdir().expect("a temporary directory");
@@ -804,31 +805,53 @@ mod tests {
         assert_eq!(second.units().units(), units);
     }
 
+    /// Mondays are the week boundary: a seed written a few minutes into one must still price that
+    /// week, not the Sunday's.
     #[test]
     fn every_seeded_priced_unit_loads_52_weeks_ending_on_the_current_week() {
-        let (_dir, writer) = temp_writer();
-        let now = Utc::now();
-        stub(&writer, now).expect("the stub lands");
-        fake(&writer, now, 20).expect("the generated seed lands");
-        let units = UnitsAdapter::load(PendingWrites::new(writer.clone()))
-            .expect("the seed loads")
-            .units()
-            .units();
-        let current = lib_units::WeeklyPrice::week_of(now.date_naive());
+        // 2026-11-02 is a Monday, so the week runs to the Sunday, the 8th.
+        for (day, hour, minute) in [
+            (2, 0, 3),
+            (2, 12, 0),
+            (3, 9, 30),
+            (4, 23, 59),
+            (5, 0, 0),
+            (6, 18, 45),
+            (7, 6, 15),
+            (8, 23, 59),
+            (9, 0, 1),
+        ] {
+            let now = Utc
+                .with_ymd_and_hms(2026, 11, day, hour, minute, 0)
+                .unwrap();
+            let (_dir, writer) = temp_writer();
+            stub(&writer, now).expect("the stub lands");
+            fake(&writer, now, 20).expect("the generated seed lands");
+            let units = UnitsAdapter::load(PendingWrites::new(writer.clone()))
+                .expect("the seed loads")
+                .units()
+                .units();
+            let current = lib_units::WeeklyPrice::week_of(now.date_naive());
 
-        let priced: Vec<_> = units
-            .iter()
-            .filter(|unit| !unit.prices.is_empty())
-            .collect();
+            let priced: Vec<_> = units
+                .iter()
+                .filter(|unit| !unit.prices.is_empty())
+                .collect();
 
-        assert!(
-            priced.iter().any(|unit| unit.id == UnitId::SEED_BTC),
-            "the stub's btc"
-        );
-        assert!(priced.len() > 1, "and some generated Units");
-        for unit in priced {
-            assert_eq!(unit.prices.len(), 52, "{}", unit.code);
-            assert_eq!(unit.last_price().map(|price| price.week), Some(current));
+            assert!(
+                priced.iter().any(|unit| unit.id == UnitId::SEED_BTC),
+                "the stub's btc on {now}"
+            );
+            assert!(priced.len() > 1, "and some generated Units on {now}");
+            for unit in priced {
+                assert_eq!(unit.prices.len(), 52, "{} on {now}", unit.code);
+                assert_eq!(
+                    unit.last_price().map(|price| price.week),
+                    Some(current),
+                    "{} on {now}",
+                    unit.code
+                );
+            }
         }
     }
 

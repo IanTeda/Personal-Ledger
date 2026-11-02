@@ -203,6 +203,16 @@ impl WeeklyPrice {
 /// How many weeks of Weekly Prices [`seed_weekly_prices`] gives: a year, for the 52-week range.
 const SEED_WEEKS: i64 = 52;
 
+/// When a seeded Unit's newest price was written: `ago` before `now`, but never before the start
+/// of `now`'s week. Without the clamp a Monday morning's seed would put the newest price in last
+/// week, so the Unit wouldn't price the week the Ledger is in.
+pub fn seed_written_at(now: DateTime<Utc>, ago: Duration) -> DateTime<Utc> {
+    let week_start = WeeklyPrice::week_of(now.date_naive())
+        .and_time(chrono::NaiveTime::MIN)
+        .and_utc();
+    (now - ago).max(week_start)
+}
+
 /// A year of deterministic Weekly Prices for a seeded Unit, ending with a close of `close_cents`
 /// written at `written_at` in that day's week. The past weeks climb from about 70% of it with a
 /// wobble `salt` varies, each with an open, high and low, so the Unit prices view has candles to
@@ -270,7 +280,7 @@ pub fn default_units(now: DateTime<Utc>) -> Vec<UnitRow> {
                 symbol: "bitcoin".to_string(),
                 quote: UnitId::SEED_AUD,
             },
-            prices: seed_weekly_prices(14_821_240, now - Duration::minutes(5), 2),
+            prices: seed_weekly_prices(14_821_240, seed_written_at(now, Duration::minutes(5)), 2),
             is_active: true,
         },
         UnitRow {
