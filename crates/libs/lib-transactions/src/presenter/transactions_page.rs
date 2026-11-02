@@ -161,6 +161,8 @@ pub struct TransactionsPagePresenter {
     /// Today, which the default filters and a date typed as `today` read.
     clock: Clock,
     keymap: Keymap<TransactionsPageEvent>,
+    /// The popover's own keys, read while it is open.
+    filter_keymap: Keymap<FilterEvent>,
     /// The Shell's chord for Search, which the legend names.
     search_chord: String,
     /// A position in the rows shown, clamped wherever it is read.
@@ -176,13 +178,14 @@ pub struct TransactionsPagePresenter {
 }
 
 impl TransactionsPagePresenter {
-    /// The page on its first row, filtered to the defaults (this year). `keymap` is the one the
-    /// Client looks keys up in and `search_chord` the Shell's key for Search, so the legend shows
-    /// the chords they bind.
+    /// The page on its first row, filtered to the defaults (this year). `keymap` and
+    /// `filter_keymap` are the ones the Client looks keys up in and `search_chord` the Shell's key
+    /// for Search, so the legend shows the chords they bind.
     pub fn new(
         ports: SharedPorts,
         clock: Clock,
         keymap: Keymap<TransactionsPageEvent>,
+        filter_keymap: Keymap<FilterEvent>,
         search_chord: String,
     ) -> Self {
         let filters = TransactionFilters::defaults(clock.today());
@@ -190,6 +193,7 @@ impl TransactionsPagePresenter {
             ports,
             clock,
             keymap,
+            filter_keymap,
             search_chord,
             selected: 0,
             half_page: lib_list_cursor::HALF_PAGE,
@@ -202,8 +206,14 @@ impl TransactionsPagePresenter {
     }
 
     /// Follows a change to `[keybindings]`.
-    pub fn set_keymap(&mut self, keymap: Keymap<TransactionsPageEvent>, search_chord: String) {
+    pub fn set_keymap(
+        &mut self,
+        keymap: Keymap<TransactionsPageEvent>,
+        filter_keymap: Keymap<FilterEvent>,
+        search_chord: String,
+    ) {
         self.keymap = keymap;
+        self.filter_keymap = filter_keymap;
         self.search_chord = search_chord;
     }
 
@@ -387,14 +397,39 @@ impl TransactionsPagePresenter {
             selected: self.selected.min(rows.len().saturating_sub(1)),
             footer: footer(&*ports, &visible, &self.filters),
             rows,
-            hints: self.hints(),
+            hints: self.page_hints(),
             filter: self.filter.as_ref().map(FilterPresenter::view_model),
         }
     }
 
-    /// The page's legend, its chords read from the keymap so an override shows. The status line
-    /// reads it on every draw, so it reads no rows.
-    pub fn hints(&self) -> Vec<Hint> {
+    /// The status line's legend: the open popover's, else the page's. `dialog_keymap` is the
+    /// Dialog keymap the Client looks the popover's keys up in, passed per call since it is
+    /// `lib-shell`'s. Read on every draw, so it reads no rows.
+    pub fn hints<E: Clone>(&self, dialog_keymap: &Keymap<E>) -> Vec<Hint> {
+        match &self.filter {
+            Some(filter) => filter.legend(dialog_keymap, &self.filter_keymap),
+            None => self.page_hints(),
+        }
+    }
+
+    /// Offers `chord` to the open popover's own keymap (reset), returning whether it took it.
+    /// False when the popover is closed or the chord is not bound there, so the Client goes on to
+    /// the field's typing.
+    pub fn filter_key(&mut self, chord: &str) -> bool {
+        if self.filter.is_none() {
+            return false;
+        }
+        let Some(event) = self.filter_keymap.event(chord) else {
+            return false;
+        };
+        if let Some(filter) = self.filter.as_mut() {
+            filter.handle(event);
+        }
+        true
+    }
+
+    /// The page's legend, its chords read from the keymap so an override shows.
+    fn page_hints(&self) -> Vec<Hint> {
         let chord = |command: &str| self.keymap.chord(command).unwrap_or_default().to_string();
         let hint = |chord: String, action: String| Hint { chord, action };
         vec![
@@ -588,10 +623,11 @@ mod tests {
     use super::*;
     use crate::Split;
     use crate::fake::{InMemoryPorts, InMemoryTransactions};
-    use crate::keymap::transactions_page_keymap;
+    use crate::keymap::{RESET_FILTERS, transactions_filter_keymap, transactions_page_keymap};
     use crate::presenter::FilterField;
     use crate::presenter::test_support::*;
     use crate::{TransactionRepository, TransactionUnit};
+    use lib_viper::keymap::{BACK, Binding, NEXT_FIELD};
 
     const SHOP: TransactionId = TransactionId::seed(1);
     const RENT: TransactionId = TransactionId::seed(2);
@@ -703,6 +739,7 @@ mod tests {
                 shared,
                 Clock::fixed(today()),
                 transactions_page_keymap(config),
+                transactions_filter_keymap(config),
                 "/".to_string(),
             );
             Self {
@@ -1054,6 +1091,108 @@ mod tests {
         );
     }
 
+    /// The Dialog commands the popover's legend reads, with `lib-shell`'s defaults.
+    fn dialog_keymap(config: &KeyBindingConfig) -> Keymap<()> {
+        const DIALOG: &[Binding<()>] = &[
+            Binding::hidden(NEXT_FIELD, "tab", ()),
+            Binding::hidden(SELECT, "enter", ()),
+            Binding::hidden(BACK, "esc", ()),
+        ];
+        Keymap::new(DIALOG, config)
+    }
+
+    fn legend_pairs(hints: Vec<Hint>) -> Vec<(String, String)> {
+        hints
+            .into_iter()
+            .map(|hint| (hint.chord, hint.action))
+            .collect()
+    }
+
+    #[test]
+    fn the_open_popover_names_its_keys_and_the_closed_page_its_own() {
+        let mut page = Page::new();
+        let keymap = dialog_keymap(&KeyBindingConfig::default());
+        let closed = legend_pairs(page.presenter.hints(&keymap));
+        assert_eq!(closed[0].1, "row");
+
+        page.send(TransactionsPageEvent::OpenFilter(None));
+
+        let commands: Vec<&str> = page
+            .view()
+            .filter
+            .expect("open")
+            .frame
+            .hints
+            .iter()
+            .flat_map(|hint| hint.commands.iter().copied())
+            .collect();
+        assert_eq!(commands, [NEXT_FIELD, SELECT, BACK, RESET_FILTERS]);
+        let pair = |chord: &str, action: &str| (chord.to_string(), action.to_string());
+        assert_eq!(
+            legend_pairs(page.presenter.hints(&keymap)),
+            [
+                pair("tab", "next field"),
+                pair("enter", "apply"),
+                pair("esc", "cancel"),
+                pair("ctrl+r", "reset"),
+            ]
+        );
+
+        page.send(TransactionsPageEvent::Filter(FilterEvent::Cancel));
+        assert_eq!(legend_pairs(page.presenter.hints(&keymap)), closed);
+    }
+
+    #[test]
+    fn an_override_of_a_dialog_command_or_of_reset_shows_in_the_popover_legend() {
+        let mut config = KeyBindingConfig::default();
+        config
+            .bindings
+            .insert(NEXT_FIELD.to_string(), "ctrl+n".to_string());
+        config
+            .bindings
+            .insert(RESET_FILTERS.to_string(), "ctrl+x".to_string());
+        let mut page = Page::with_keys(&config);
+        page.send(TransactionsPageEvent::OpenFilter(None));
+
+        let chords: Vec<String> = page
+            .presenter
+            .hints(&dialog_keymap(&config))
+            .into_iter()
+            .map(|hint| hint.chord)
+            .collect();
+
+        assert_eq!(chords, ["ctrl+n", "enter", "esc", "ctrl+x"]);
+    }
+
+    #[test]
+    fn the_filter_key_resets_the_draft_only_while_the_popover_is_open() {
+        let mut page = Page::new();
+        assert!(!page.presenter.filter_key("ctrl+r"), "closed");
+        page.send(TransactionsPageEvent::OpenFilter(None));
+        page.send(TransactionsPageEvent::Filter(FilterEvent::Focus(
+            FilterField::Payee,
+        )));
+        page.send(TransactionsPageEvent::Filter(FilterEvent::Type('x')));
+
+        assert!(!page.presenter.filter_key("ctrl+q"), "not bound there");
+        assert!(page.presenter.filter_key("ctrl+r"));
+
+        assert_eq!(page.view().filter.expect("open").payee.text, "");
+    }
+
+    #[test]
+    fn the_popover_legend_renders_in_the_pseudo_locale() {
+        locale();
+        lib_locale::with_locale(lib_locale::Locale::EnXa, || {
+            let keymap = dialog_keymap(&KeyBindingConfig::default());
+            let mut page = Page::new();
+            page.send(TransactionsPageEvent::OpenFilter(None));
+            for hint in page.presenter.hints(&keymap) {
+                assert!(hint.action.starts_with('['), "{}", hint.action);
+            }
+        });
+    }
+
     #[test]
     fn a_chip_opened_over_the_search_leaves_it_with_its_text_kept() {
         let mut page = Page::new();
@@ -1100,6 +1239,10 @@ mod tests {
     fn the_legend_is_read_without_the_rows() {
         let page = Page::new();
 
-        assert_eq!(page.presenter.hints(), page.view().hints);
+        assert_eq!(
+            page.presenter
+                .hints(&dialog_keymap(&KeyBindingConfig::default())),
+            page.view().hints
+        );
     }
 }

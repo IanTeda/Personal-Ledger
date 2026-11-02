@@ -116,7 +116,7 @@ A Toast or a status-line message that a View asks the Shell to show. The Shell d
 _Avoid_: notification (reserved for anything operating-system level), alert, message (a Message is translatable interface text).
 
 **Dialog**:
-A blocking panel a Client opens over the current view to add, edit, remove or confirm something. While it is open it takes every key; it ends by being confirmed, which applies it, or cancelled, which discards whatever was typed. `Enter` confirms only once the form is valid. The first `Esc` closes an open select inside it; the next cancels the Dialog. Only one Dialog is open at a time. Distinct from a Toast, which never blocks, and from the command palette, which navigates rather than edits.
+A blocking panel a Client opens over the current view to add, edit, remove or confirm something. While it is open it takes every key; it ends by being confirmed, which applies it, or cancelled, which discards whatever was typed. `Enter` confirms only once the form is valid. The first `Esc` closes an open select inside it; the next cancels the Dialog. Only one Dialog is open at a time. A Dialog may be drawn as a popover anchored to the control that opened it, as the Transactions filter popover is; it is still a Dialog. Distinct from a Toast, which never blocks, and from the command palette, which navigates rather than edits.
 _Avoid_: modal (as a noun), popup, window.
 
 **Command**:

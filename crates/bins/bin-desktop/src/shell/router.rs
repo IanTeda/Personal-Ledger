@@ -887,7 +887,6 @@ mod tests {
     };
     use crate::transactions;
     use crate::transactions::Transaction;
-    use crate::transactions::view::hints::filter_hints;
     use chrono::Local;
     use lib_accounts::Account;
 
@@ -989,10 +988,7 @@ mod tests {
             let hint = crate::msg::desktop_empty_state_hint(":open", ":new");
             assert!(hint.iter().any(|s| s.tag.as_deref() == Some("open")));
             assert!(hint.iter().any(|s| s.tag.as_deref() == Some("new")));
-            for (_, action) in settings_plain_page_hints()
-                .into_iter()
-                .chain(filter_hints())
-            {
+            for (_, action) in settings_plain_page_hints() {
                 assert!(action.starts_with('['), "{action}");
             }
         });

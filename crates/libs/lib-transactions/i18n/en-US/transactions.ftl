@@ -75,6 +75,10 @@ transactions-hint-edit = edit
 transactions-hint-add = add
 transactions-hint-search = search
 transactions-hint-filter = filter
+transactions-hint-next-field = next field
+transactions-hint-apply = apply
+transactions-hint-cancel = cancel
+transactions-hint-reset = reset
 
 ## What `Enter`, `e` and `n` answer: there is no Transaction form yet.
 

@@ -516,7 +516,7 @@ While a Dialog is open, its keys are the Dialog keymap, which takes `select` and
 | `select_previous` | `up`         |
 | `submit`          | `ctrl+enter` |
 
-`select` opens a closed list, picks from an open one, and otherwise confirms the Dialog once its form is valid; `submit` confirms a valid form from any field; `back` closes an open list first, otherwise cancels the Dialog. On the Desktop today only the Units, Bills and Pay Dialogs read this keymap; the rest keep their fixed keys until they move.
+`select` opens a closed list, picks from an open one, and otherwise confirms the Dialog once its form is valid; `submit` confirms a valid form from any field; `back` closes an open list first, otherwise cancels the Dialog. On the Desktop the module Dialogs read this keymap, and so does the Transactions filter popover; a Dialog not yet on a module keeps its fixed keys until it moves. The popover has one command of its own, `transactions.reset_filters` (`ctrl+r`), which puts its draft back to the defaults, and its status-line legend shows the chords in effect.
 
 On the Desktop, the keys that work on every screen are the global keymap, which takes `back`, `help`, `open_command_popup`, `move_up`, `move_down`, `select`, `dismiss_toasts` and `toast_history` from the first table and adds these:
 

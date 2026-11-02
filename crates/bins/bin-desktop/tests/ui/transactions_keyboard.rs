@@ -222,6 +222,48 @@ fn ctrl_r_resets_the_draft_but_not_the_applied_filters(app: &mut TestAppContext)
 }
 
 #[gpui::test]
+fn the_popovers_legend_and_reset_follow_keybindings(app: &mut TestAppContext) {
+    let mut config = lib_config::KeyBindingConfig::default();
+    config
+        .bindings
+        .insert("next_field".to_string(), "ctrl+n".to_string());
+    config.bindings.insert(
+        "transactions.reset_filters".to_string(),
+        "ctrl+x".to_string(),
+    );
+    let mut ui = Harness::with_keybindings(app, config);
+    ui.press("g l f");
+
+    let keys: Vec<String> = ui
+        .status_as_shortcuts()
+        .into_iter()
+        .map(|(_, keys)| keys)
+        .collect();
+    assert_eq!(keys, ["ctrl+n", "enter", "esc", "ctrl+x"]);
+    // The popover is modal and takes `?` as a typed key, so the cheat sheet can't be opened over
+    // it; its group reads the same hints as the status line.
+
+    ui.press("ctrl-n");
+    assert_eq!(ui.transactions().filter_focus.as_deref(), Some("Category"));
+
+    // Apply a Payee filter, then reopen it: the old reset chord does nothing and the new one does.
+    ui.press("ctrl-n k u r a enter");
+    assert!(ui.transactions().filters_changed);
+    ui.press("f ctrl-r");
+    ui.press("ctrl-n ctrl-n enter");
+    assert!(
+        ui.transactions().filters_changed,
+        "the old chord no longer resets"
+    );
+    ui.press("f ctrl-x");
+    ui.press("ctrl-n ctrl-n enter");
+    assert!(
+        !ui.transactions().filters_changed,
+        "the overridden reset chord resets the draft"
+    );
+}
+
+#[gpui::test]
 fn an_unparseable_date_blocks_apply(app: &mut TestAppContext) {
     let mut ui = on_transactions(app);
     // From is the fifth field; any text that is not a date.

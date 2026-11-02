@@ -32,7 +32,7 @@ use lib_transactions::presenter::{
 use lib_transactions::query::{StatusFilter, TransactionFilters};
 use lib_viper::keymap::Keymap;
 
-use super::{header::ChipBounds, hints::filter_hints};
+use super::header::ChipBounds;
 use crate::{
     form::select::SelectState,
     form::viper::{chosen_label, labels},
@@ -40,7 +40,7 @@ use crate::{
     navigation::{chord::chord, movement::Movement, nav::Noun},
     notices::Queue,
     settings::display::{RowDensity, StatusGlyphs},
-    shell::view::statusline::{PageStatus, owned_hints},
+    shell::view::statusline::PageStatus,
     view::{
         event::{ViewEvent, ViewMode},
         format,
@@ -93,8 +93,13 @@ impl TransactionsPage {
     ) -> Self {
         let config = lib_config::KeyBindingConfig::default();
         let keymap = lib_transactions::keymap::transactions_page_keymap(&config);
-        let presenter =
-            TransactionsPagePresenter::new(ports, clock, keymap.clone(), search_chord(&config));
+        let presenter = TransactionsPagePresenter::new(
+            ports,
+            clock,
+            keymap.clone(),
+            lib_transactions::keymap::transactions_filter_keymap(&config),
+            search_chord(&config),
+        );
         let _ledger_changed = cx.subscribe(ledger, |_page, _, event: &LedgerChanged, cx| {
             if READS.iter().any(|domain| event.what.contains(domain)) {
                 cx.notify();
@@ -119,8 +124,11 @@ impl TransactionsPage {
     pub fn set_keymaps(&mut self, config: &lib_config::KeyBindingConfig) {
         self.keymap = lib_transactions::keymap::transactions_page_keymap(config);
         self.dialog_keymap = lib_shell::dialog_keymap(config);
-        self.presenter
-            .set_keymap(self.keymap.clone(), search_chord(config));
+        self.presenter.set_keymap(
+            self.keymap.clone(),
+            lib_transactions::keymap::transactions_filter_keymap(config),
+            search_chord(config),
+        );
     }
 
     /// The page as drawn.
@@ -336,13 +344,8 @@ impl TransactionsPage {
 
     /// The status line's legend (the filter popover's or the page's), and its right-hand text.
     pub fn page_status(&self, _cx: &App) -> Option<PageStatus> {
-        let hints = if self.presenter.is_filtering() {
-            owned_hints(filter_hints())
-        } else {
-            self.presenter.hints()
-        };
         Some(PageStatus {
-            hints,
+            hints: self.presenter.hints(&self.dialog_keymap),
             right: format::status_legend(self.glyphs),
         })
     }
@@ -391,16 +394,22 @@ impl TransactionsPage {
     /// `previous_field` move between fields, `select_next` and `select_previous` step a closed
     /// select or move an open list's highlight, `select` opens or commits a select's list and
     /// otherwise applies, and `submit` applies from anywhere. Any other key is the field's own:
-    /// `Space` on a select or the Status control, `Left` / `Right` on Status, `Ctrl-r` reset,
-    /// and typing or `Backspace` in a text field.
+    /// `Space` on a select or the Status control, `Left` / `Right` on Status, and typing or
+    /// `Backspace` in a text field. Between the two, the Presenter's filter keymap takes its own
+    /// command (`transactions.reset_filters`).
     fn filter_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
-        match chord(keystroke).and_then(|chord| self.dialog_keymap.event(&chord)) {
-            Some(command) => {
-                self.filter_command(command, cx);
-                true
-            }
-            None => self.filter_typed(keystroke, cx),
+        let chord = chord(keystroke);
+        if let Some(command) = chord.as_ref().and_then(|c| self.dialog_keymap.event(c)) {
+            self.filter_command(command, cx);
+            return true;
         }
+        if let Some(chord) = &chord
+            && self.presenter.filter_key(chord)
+        {
+            cx.notify();
+            return true;
+        }
+        self.filter_typed(keystroke, cx)
     }
 
     fn filter_command(&mut self, command: DialogCommand, cx: &mut Context<'_, Self>) {
@@ -448,10 +457,6 @@ impl TransactionsPage {
             return false;
         };
         let modifiers = &keystroke.modifiers;
-        if modifiers.control && keystroke.key == "r" {
-            self.filter(FilterEvent::Reset, cx);
-            return true;
-        }
         let status = focused == FilterField::Status;
         match keystroke.key.as_str() {
             "left" if status => self.filter(FilterEvent::StatusPrevious, cx),

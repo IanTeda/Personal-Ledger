@@ -292,6 +292,9 @@ mod tests {
         let transactions = lib_transactions::keymap::TRANSACTIONS_PAGE_BINDINGS
             .iter()
             .map(|binding| (binding.command, binding.chord));
+        let transaction_filter = lib_transactions::keymap::TRANSACTIONS_FILTER_BINDINGS
+            .iter()
+            .map(|binding| (binding.command, binding.chord));
         let budgets = lib_budgets::keymap::BUDGETS_PAGE_BINDINGS
             .iter()
             .map(|binding| (binding.command, binding.chord));
@@ -314,6 +317,7 @@ mod tests {
             .chain(tags)
             .chain(inventory)
             .chain(transactions)
+            .chain(transaction_filter)
             .chain(budgets)
             .chain(import)
             .collect()

@@ -12,9 +12,10 @@ use lib_viper::keymap::{
 
 use crate::msg;
 
-use crate::presenter::TransactionsPageEvent;
+use crate::presenter::{FilterEvent, TransactionsPageEvent};
 
 pub const FILTER: &str = "transactions.filter";
+pub const RESET_FILTERS: &str = "transactions.reset_filters";
 
 const fn moves(
     command: &'static str,
@@ -69,6 +70,17 @@ pub fn transactions_page_keymap(config: &KeyBindingConfig) -> Keymap<Transaction
     Keymap::new(TRANSACTIONS_PAGE_BINDINGS, config)
 }
 
+/// The filter popover's own command, read beside the Dialog keymap while it is open: `ctrl+r`
+/// puts the draft back to the defaults. Hidden from the palette, since it means something only
+/// with the popover open; the popover's legend names it.
+pub const TRANSACTIONS_FILTER_BINDINGS: &[Binding<FilterEvent>] =
+    &[Binding::hidden(RESET_FILTERS, "ctrl+r", FilterEvent::Reset)];
+
+/// The filter popover's keymap under `config`'s overrides.
+pub fn transactions_filter_keymap(config: &KeyBindingConfig) -> Keymap<FilterEvent> {
+    Keymap::new(TRANSACTIONS_FILTER_BINDINGS, config)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -105,6 +117,16 @@ mod tests {
             Some(TransactionsPageEvent::OpenFilter(None))
         );
         assert_eq!(keymap.event("/"), None, "the Shell keeps `/`");
+    }
+
+    #[test]
+    fn reset_is_ctrl_r_until_overridden() {
+        let default = transactions_filter_keymap(&KeyBindingConfig::default());
+        assert_eq!(default.event("ctrl+r"), Some(FilterEvent::Reset));
+
+        let moved = transactions_filter_keymap(&overriding(RESET_FILTERS, "ctrl+x"));
+        assert_eq!(moved.event("ctrl+x"), Some(FilterEvent::Reset));
+        assert_eq!(moved.event("ctrl+r"), None);
     }
 
     #[test]

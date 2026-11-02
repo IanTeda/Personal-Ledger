@@ -20,8 +20,10 @@
 use chrono::NaiveDate;
 use lib_core::{AccountId, CategoryId, DateStyle, PayeeId, TagId};
 use lib_locale::format::{format_date_input, parse_optional_date};
-use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
+use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
+use lib_viper::view::{Choice, DialogFrame, DialogHint, Hint, SelectView, TextFieldView, legend};
 
+use crate::keymap::RESET_FILTERS;
 use crate::msg;
 use crate::query::{StatusFilter, TransactionFilters};
 use crate::{TransactionAccounts, TransactionCategories, TransactionPayees, TransactionTags};
@@ -363,6 +365,48 @@ impl FilterPresenter {
         })
     }
 
+    /// The popover's four keys, named by command so a Client reads the chords the keymaps bind.
+    fn dialog_hints() -> Vec<DialogHint> {
+        vec![
+            DialogHint {
+                commands: &[NEXT_FIELD],
+                action: msg::transactions_hint_next_field(),
+            },
+            DialogHint {
+                commands: &[SELECT],
+                action: msg::transactions_hint_apply(),
+            },
+            DialogHint {
+                commands: &[BACK],
+                action: msg::transactions_hint_cancel(),
+            },
+            DialogHint {
+                commands: &[RESET_FILTERS],
+                action: msg::transactions_hint_reset(),
+            },
+        ]
+    }
+
+    /// The popover's legend: the Dialog commands' chords read from `dialog_keymap` and reset's
+    /// from `filter_keymap`, so a `[keybindings]` override of either shows.
+    pub fn legend<E: Clone>(
+        &self,
+        dialog_keymap: &Keymap<E>,
+        filter_keymap: &Keymap<FilterEvent>,
+    ) -> Vec<Hint> {
+        Self::dialog_hints()
+            .into_iter()
+            .flat_map(|hint| {
+                let hints = std::slice::from_ref(&hint);
+                if hint.commands == [RESET_FILTERS] {
+                    legend(hints, filter_keymap)
+                } else {
+                    legend(hints, dialog_keymap)
+                }
+            })
+            .collect()
+    }
+
     pub fn view_model(&self) -> FilterViewModel {
         let text = |label: String, text: &str, placeholder: String, field| TextFieldView {
             label,
@@ -378,7 +422,7 @@ impl FilterPresenter {
                 submit: msg::transactions_filter_apply(),
                 can_confirm: from_error.is_none() && to_error.is_none(),
                 destructive: false,
-                hints: Vec::new(),
+                hints: Self::dialog_hints(),
             },
             account: SelectView {
                 label: lib_locale::msg::column_account(),
