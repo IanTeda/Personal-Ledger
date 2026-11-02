@@ -159,6 +159,7 @@ mod tests {
 
     use super::*;
     use crate::documents::DocumentLink;
+    use crate::ledger_store::LedgerSetup;
 
     fn stored(store: &SharedInventoryStore) -> Inventory {
         store.borrow().inventory().inventory()
@@ -189,11 +190,13 @@ mod tests {
 
     #[gpui::test]
     fn the_ports_read_the_ledgers_units_and_documents(cx: &mut TestAppContext) {
-        let ledger = cx.new(|_| LedgerStore::new(Ledger::stub_on(today())));
+        let ledger = cx.new(|_| {
+            LedgerStore::with_storage(Ledger::stub_on(today()), LedgerSetup::stub(today()))
+        });
         let linked = ledger.read_with(cx, |store, _| {
             store
                 .ledger()
-                .documents()
+                .stub_documents(today())
                 .iter()
                 .flat_map(|document| &document.links)
                 .find_map(|link| match link {

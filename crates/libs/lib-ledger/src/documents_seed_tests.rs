@@ -61,7 +61,7 @@ fn world_on(today: NaiveDate) -> World {
     let ledger = Ledger::stub_on(today);
     World {
         records: ledger.link_records(),
-        documents: ledger.documents().to_vec(),
+        documents: ledger.stub_documents(today),
         inventory: ledger.inventory().clone(),
     }
 }

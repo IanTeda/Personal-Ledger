@@ -14,8 +14,8 @@ use crate::protocols::{
     DocumentAccount, DocumentAccounts, DocumentBillPlan, DocumentBillPlans, DocumentFiles,
     DocumentItem, DocumentItems, DocumentPayee, DocumentPayees, DocumentRepository,
     DocumentTransaction, DocumentTransactions, DocumentTypesDialog, DocumentTypesOutcome,
-    DocumentTypesRouter, DocumentsDialog, DocumentsRouter, LinkRecords, move_type_to,
-    resolve_typed,
+    DocumentTypesRouter, DocumentsDialog, DocumentsOutcome, DocumentsRouter, LinkRecords,
+    move_type_to, resolve_typed,
 };
 use crate::types::DocumentTypeRow;
 use crate::{Document, DocumentLink};
@@ -193,6 +193,7 @@ pub enum DocumentsCall {
     Reveal(DocumentLink),
     OpenDialog(DocumentsDialog),
     OpenFile { path: PathBuf, in_folder: bool },
+    CloseDialog(Option<DocumentsOutcome>),
     Notice(Notice),
 }
 
@@ -219,6 +220,10 @@ impl DocumentsRouter for RecordingDocumentsRouter {
             path: path.to_path_buf(),
             in_folder,
         });
+    }
+
+    fn close_dialog(&mut self, outcome: Option<DocumentsOutcome>) {
+        self.calls.push(DocumentsCall::CloseDialog(outcome));
     }
 }
 

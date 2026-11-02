@@ -5,20 +5,44 @@
 //! [`SharedRepository`](crate::protocols::SharedRepository) and ask for navigation through the
 //! Router the Client passes in. Writes go through [`crate::interactor`]'s Interactors.
 //!
-//! The Documents page's Dialogs (Add, Edit, Import, Edit facts, Accept all and the link picker)
-//! aren't Presenters yet (#968): the page asks its Router to open each, and the Client hands back
-//! what one did. The link picker words its rows with [`library`]'s functions.
+//! The Documents page's Dialogs (Add and Edit, Import, Edit extracted facts, Accept all and the
+//! link picker) are each a Presenter too: the page asks its Router to open one, the Client builds
+//! it on the page's [`DialogPorts`], and the Dialog closes through the Router with what the page
+//! does next.
 
+mod accept_all;
 mod default_notice;
+mod document_form;
 mod documents_page;
+mod facts_form;
+mod import;
 pub mod inbox;
 pub mod library;
+mod link_picker;
 mod remove_type;
 mod type_form;
 mod types_page;
 
+use chrono::NaiveDate;
+use lib_core::DateStyle;
+
 use crate::msg;
+use crate::protocols::{SharedFiles, SharedReads, SharedRepository};
 use crate::types::TracksDate;
+
+pub use accept_all::{AcceptAllEvent, AcceptAllPresenter, AcceptAllViewModel};
+pub use document_form::{
+    CheckboxView, DocumentField, DocumentFormEvent, DocumentFormPresenter, DocumentFormViewModel,
+    KEY_KINDS,
+};
+pub use facts_form::{
+    FactsField, FactsFormEvent, FactsFormPresenter, FactsFormViewModel, parse_total,
+};
+pub use import::{ImportEvent, ImportPresenter, ImportViewModel};
+pub use link_picker::{
+    KindFilter, KindTab, LinkPickerEvent, LinkPickerPresenter, LinkPickerViewModel, NEAR_DAYS,
+    PickerRowView, PickerTypeLine, Purpose,
+};
 
 pub use default_notice::{DefaultNoticeEvent, DefaultNoticePresenter, DefaultNoticeViewModel};
 pub use documents_page::{
@@ -34,6 +58,17 @@ pub use types_page::{
     DocumentTypesPageEvent, DocumentTypesPagePresenter, DocumentTypesPageViewModel, TypeColumns,
     TypeLine,
 };
+
+/// What the Documents page's Dialogs read and write through: the page's own ports, the day and
+/// the Display Preference its dates follow, handed to each Dialog as it opens.
+#[derive(Clone)]
+pub struct DialogPorts {
+    pub documents: SharedRepository,
+    pub reads: SharedReads,
+    pub files: SharedFiles,
+    pub today: NaiveDate,
+    pub date_style: Option<DateStyle>,
+}
 
 /// The text of a Tracks date, in the page's cell and the form's options.
 fn tracks_label(tracks: TracksDate) -> String {
@@ -194,6 +229,23 @@ pub(crate) mod test_support {
                 .iter()
                 .find(|document| document.file_name() == file)
                 .expect("the seed holds that file")
+        }
+    }
+
+    /// A Dialog's ports over the stub Documents and [`records`], on [`today`], with `files` for the
+    /// disk.
+    pub fn dialog_ports(files: crate::fake::InMemoryFiles) -> super::DialogPorts {
+        let world = world();
+        let documents: SharedRepository = Rc::new(RefCell::new(InMemoryDocuments {
+            documents: world.documents,
+            types: world.types,
+        }));
+        super::DialogPorts {
+            documents,
+            reads: Rc::new(world.records),
+            files: Rc::new(files),
+            today: world.today,
+            date_style: None,
         }
     }
 

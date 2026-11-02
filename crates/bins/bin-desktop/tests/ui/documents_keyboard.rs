@@ -1,6 +1,7 @@
 //! The Documents page driven by keys alone: landing, the Inbox/Library toggle, the index and list
 //! zones, the Library's sort and search, the Inbox's accept, skip and undo, the link picker, `L`,
-//! the Add and Import dialogs and the palette's `documents` commands. Assertions read state back
+//! the Add, Import, Edit, Edit facts and Accept all Dialogs, their refusals, and the palette's
+//! `documents` commands. Assertions read state back
 //! from `Root`, never pixels.
 
 #![expect(
@@ -749,4 +750,198 @@ fn deleting_a_linked_payee_drops_its_link_and_keeps_the_document(app: &mut TestA
     );
     assert_eq!(page.selected_links, 0, "the Document stays, now not linked");
     assert!(page.selected_chips.is_empty());
+}
+
+/// Types `text` into the open Dialog, a key per character.
+fn type_text(ui: &mut Harness<'_>, text: &str) {
+    for ch in text.chars() {
+        ui.press(&if ch == ' ' {
+            "space".to_string()
+        } else {
+            ch.to_string()
+        });
+    }
+}
+
+/// A fresh directory under the system's temp folder for one test's files.
+#[expect(
+    clippy::expect_used,
+    reason = "test support: a temp folder that can't be made should fail the test loudly"
+)]
+fn scratch(test: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("pl-{test}-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("temp dir is writable");
+    dir
+}
+
+#[gpui::test]
+fn add_refuses_a_missing_file_an_unsupported_kind_and_one_already_in_the_library(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_documents(app);
+    let dir = scratch("add");
+    let receipt = dir.join("receipt.pdf");
+    let notes = dir.join("notes.txt");
+    std::fs::write(&receipt, b"stub").expect("temp file is writable");
+    std::fs::write(&notes, b"stub").expect("temp file is writable");
+    let before = ui.documents().library_rows;
+
+    ui.press("a");
+    type_text(&mut ui, &dir.join("missing.pdf").display().to_string());
+    assert!(
+        !ui.dialog_value("error").unwrap_or_default().is_empty(),
+        "a path with no file under it is refused"
+    );
+    ui.press("enter");
+    assert_eq!(
+        ui.documents().dialog,
+        Some("add"),
+        "a refusal keeps it open"
+    );
+
+    ui.press("escape");
+    ui.press("a");
+    type_text(&mut ui, &notes.display().to_string());
+    assert!(
+        !ui.dialog_value("error").unwrap_or_default().is_empty(),
+        "a file that is not a PDF, JPG or PNG is refused"
+    );
+    assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("false"));
+
+    ui.press("escape");
+    ui.press("a");
+    type_text(&mut ui, &receipt.display().to_string());
+    assert_eq!(
+        ui.dialog_value("document_title").as_deref(),
+        Some("receipt")
+    );
+    ui.press("enter");
+    let added = ui.documents();
+    assert_eq!(added.dialog, None);
+    assert_eq!(added.library_rows, before + 1, "the file is added");
+    assert_eq!(added.selected_file.as_deref(), Some("receipt.pdf"));
+
+    ui.press("a");
+    type_text(&mut ui, &receipt.display().to_string());
+    let already = ui.dialog_value("error").unwrap_or_default();
+    std::fs::remove_dir_all(&dir).ok();
+    assert!(
+        already.contains("receipt"),
+        "a file already in the Library names its Document: {already}"
+    );
+    ui.press("enter");
+    assert_eq!(
+        ui.documents().library_rows,
+        before + 1,
+        "nothing more lands"
+    );
+}
+
+#[gpui::test]
+fn an_import_that_takes_nothing_stays_open_and_says_why(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+    let dir = scratch("import");
+    let scan = dir.join("scan.pdf");
+    std::fs::write(&scan, b"stub").expect("temp file is writable");
+    let before = ui.documents().inbox_rows;
+
+    ui.press("I");
+    type_text(&mut ui, &dir.join("missing.pdf").display().to_string());
+    ui.press("ctrl-enter");
+    assert_eq!(ui.documents().dialog, Some("import"), "nothing imported");
+    assert!(
+        !ui.dialog_value("notes").unwrap_or_default().is_empty(),
+        "each refused path says why"
+    );
+
+    ui.press("enter");
+    type_text(&mut ui, &scan.display().to_string());
+    ui.press("ctrl-enter");
+    std::fs::remove_dir_all(&dir).ok();
+
+    let page = ui.documents();
+    assert_eq!(page.dialog, None, "an import that takes any closes");
+    assert_eq!(
+        page.inbox_rows,
+        before + 1,
+        "only the file that exists lands"
+    );
+    assert_eq!(page.toasts.len(), 1);
+}
+
+#[gpui::test]
+fn e_edits_the_selected_documents_title(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+    let file = ui.documents().selected_file;
+
+    ui.press("e");
+    assert_eq!(ui.documents().dialog, Some("edit"));
+    let title = ui.dialog_value("document_title").unwrap_or_default();
+    assert!(!title.is_empty(), "the form opens on the Document's Title");
+
+    type_text(&mut ui, " 2");
+    ui.press("enter");
+
+    let page = ui.documents();
+    assert_eq!(page.dialog, None);
+    assert_eq!(page.selected_file, file, "the Document stays selected");
+    assert!(
+        page.toasts
+            .iter()
+            .any(|toast| toast.contains(&format!("{title} 2"))),
+        "the Toast names the new Title: {:?}",
+        page.toasts
+    );
+}
+
+#[gpui::test]
+fn e_in_the_inbox_edits_the_extracted_facts_and_refuses_a_bad_total(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+    ui.press("i");
+    focus_row(&mut ui, STRONG_RECEIPT);
+
+    ui.press("e");
+    assert_eq!(ui.documents().dialog, Some("facts"));
+
+    // Merchant, then Date, then Total.
+    ui.press("tab");
+    ui.press("tab");
+    type_text(&mut ui, "abc");
+    assert!(!ui.dialog_value("error").unwrap_or_default().is_empty());
+    ui.press("enter");
+    assert_eq!(
+        ui.documents().dialog,
+        Some("facts"),
+        "a bad total is refused"
+    );
+
+    for _ in 0..3 {
+        ui.press("backspace");
+    }
+    ui.press("enter");
+    let page = ui.documents();
+    assert_eq!(page.dialog, None);
+    assert_eq!(page.toasts.len(), 1, "the save is announced");
+}
+
+#[gpui::test]
+fn accept_all_files_the_count_it_quotes_and_u_undoes_them_all(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+    ui.press("i");
+    let before = ui.documents().inbox_rows;
+
+    ui.press("Y");
+    let body = ui.dialog_value("body").unwrap_or_default();
+    ui.press("enter");
+    let filed = ui.documents();
+    assert_eq!(filed.dialog, None);
+    let count = before - filed.inbox_rows;
+    assert!(count > 0, "the stub has strong matches");
+    assert!(
+        body.contains(&count.to_string()),
+        "the confirm quotes the count it files: {body}"
+    );
+
+    ui.press("u");
+    assert_eq!(ui.documents().inbox_rows, before, "one `u` undoes them all");
 }

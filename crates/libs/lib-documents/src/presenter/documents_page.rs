@@ -22,7 +22,9 @@ use lib_viper::view::Hint;
 use super::count;
 use super::inbox::{self, InboxDetailView, InboxRowView};
 use super::library::{self, DetailView, Lookups, RailRow, RowView, link_name, size_text};
-use crate::interactor::{Accept, FileByHand, ImportDocuments, ToggleLink, UndoFiling};
+use crate::interactor::{
+    Accept, AcceptAllStrong, FileByHand, ImportDocuments, ToggleLink, UndoFiling,
+};
 use crate::keymap::{
     ACCEPT, ACCEPT_ALL, ADD, FOLLOW, IMPORT, LINK, SHOW_IN_FOLDER, SKIP, SORT, TOGGLE_MODE, UNDO,
 };
@@ -919,6 +921,26 @@ impl DocumentsPagePresenter {
         router.open_dialog(DocumentsDialog::AcceptAll(strong));
     }
 
+    /// Files every Strong match as one batch, keeping the focused row in view and the skipped
+    /// last; nothing happens when none is Strong any more.
+    fn accept_all(&mut self, router: &mut dyn DocumentsRouter) {
+        let batch = AcceptAllStrong {
+            focus: self.selected_document().map(|document| document.id),
+            skipped: self.skipped.clone(),
+        }
+        .run(&*self.reads, &mut *self.documents.borrow_mut());
+        let Some(batch) = batch else {
+            return;
+        };
+        let filed = batch.entries.len();
+        self.undo = Some(batch);
+        self.inbox_selected = 0;
+        router.notify(Notice::Toast(
+            ToastKind::Success,
+            msg::documents_toast_filed_many(&filed.to_string()),
+        ));
+    }
+
     /// Files dropped on the window land in the Inbox as `Import…` does, but the page stays where
     /// it is: the Toast and the rail's badge say what arrived.
     fn drop_files(&mut self, typed: Vec<String>, router: &mut dyn DocumentsRouter) {
@@ -962,19 +984,22 @@ impl DocumentsPagePresenter {
                     self.inbox_selected = at;
                 }
             }
-            DocumentsOutcome::AcceptedAll(batch) => {
-                let filed = batch.entries.len();
-                self.undo = Some(batch);
-                self.inbox_selected = 0;
-                router.notify(Notice::Toast(
-                    ToastKind::Success,
-                    msg::documents_toast_filed_many(&filed.to_string()),
-                ));
-            }
+            DocumentsOutcome::AcceptAll => self.accept_all(router),
             DocumentsOutcome::FileByHand { id, doc_type, link } => {
                 self.file_by_hand(id, doc_type, link, router);
             }
             DocumentsOutcome::Follow(link) => router.reveal(link),
+        }
+    }
+
+    /// What the page's Dialogs read and write through, for the Client to build one on.
+    pub fn dialog_ports(&self) -> super::DialogPorts {
+        super::DialogPorts {
+            documents: self.documents.clone(),
+            reads: self.reads.clone(),
+            files: self.files.clone(),
+            today: self.clock.today(),
+            date_style: self.date_style,
         }
     }
 
@@ -1524,14 +1549,8 @@ mod tests {
             [DocumentsCall::OpenDialog(DocumentsDialog::AcceptAll(1))]
         );
 
-        let batch = crate::interactor::AcceptAllStrong {
-            focus: None,
-            skipped: HashSet::new(),
-        }
-        .run(&records(today()), &mut *page.store.borrow_mut())
-        .expect("one Strong match");
         page.send(DocumentsPageEvent::DialogClosed(
-            DocumentsOutcome::AcceptedAll(batch),
+            DocumentsOutcome::AcceptAll,
         ));
         assert_eq!(
             page.toasts(),

@@ -491,7 +491,7 @@ mod tests {
         assert_eq!(paid, 67, "the stub Bills' Paid entries");
 
         let links: Vec<_> = ledger
-            .documents()
+            .stub_documents(today())
             .iter()
             .flat_map(|document| &document.links)
             .filter_map(|link| match link {

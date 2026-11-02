@@ -11,7 +11,6 @@ mod budgets_seed_tests;
 mod category_commands;
 mod category_reads;
 mod change;
-mod document_commands;
 mod document_reads;
 #[cfg(test)]
 mod documents_seed_tests;
@@ -29,10 +28,6 @@ mod unit_usage;
 pub use budget_reads::{budget_accounts, budget_categories};
 pub use category_commands::{CategoryDeleted, DeleteCategory, DeleteCategoryRefusal};
 pub use change::{Domain, LedgerChange, LedgerCommand, domains};
-pub use document_commands::{
-    AcceptAllDocuments, AcceptDocument, AddDocument, DocumentEdit, EditDocument,
-    FileDocumentByHand, ImportDocuments, SetDocumentFacts, ToggleDocumentLink, UndoFiling,
-};
 pub use inventory_commands::RemoveLocation;
 pub use repository::{LedgerRepository, RepositoryError, StubRepository};
 pub use seed::{DEFAULT_SEED, HISTORY_DAYS, default_transactions};
@@ -45,10 +40,6 @@ use lib_bills::{BillPlan, BillScheduleEntry};
 use lib_budgets::{Budgets, default_budgets};
 use lib_categories::{Category, default_categories};
 use lib_core::{PriceSourceId, UnitId, UnitKind};
-use lib_documents::{
-    Document, LinkRecords, default_documents,
-    types::{DocumentTypeRow, default_types},
-};
 use lib_institutions::{Institution, default_institutions};
 use lib_inventory::{Inventory, default_inventory};
 use lib_payees::{Payee, default_payees};
@@ -68,8 +59,6 @@ pub struct Ledger {
     bill_plans: Vec<BillPlan>,
     bill_entries: Vec<BillScheduleEntry>,
     budgets: Budgets,
-    documents: Vec<Document>,
-    document_types: Vec<DocumentTypeRow>,
     inventory: Inventory,
     institutions: Vec<Institution>,
     units: Vec<UnitRow>,
@@ -93,8 +82,6 @@ pub struct LedgerParts {
     pub bill_plans: Vec<BillPlan>,
     pub bill_entries: Vec<BillScheduleEntry>,
     pub budgets: Budgets,
-    pub documents: Vec<Document>,
-    pub document_types: Vec<DocumentTypeRow>,
     pub inventory: Inventory,
     pub institutions: Vec<Institution>,
     pub units: Vec<UnitRow>,
@@ -115,8 +102,6 @@ impl Default for LedgerParts {
             bill_plans: Vec::new(),
             bill_entries: Vec::new(),
             budgets: Budgets::default(),
-            documents: Vec::new(),
-            document_types: Vec::new(),
             inventory: Inventory::default(),
             institutions: Vec::new(),
             units: Vec::new(),
@@ -138,8 +123,6 @@ impl Ledger {
             bill_plans,
             bill_entries,
             budgets,
-            documents,
-            document_types,
             inventory,
             institutions,
             units,
@@ -155,8 +138,6 @@ impl Ledger {
             bill_plans,
             bill_entries,
             budgets,
-            documents,
-            document_types,
             inventory,
             institutions,
             units,
@@ -166,8 +147,9 @@ impl Ledger {
         }
     }
 
-    /// The stub Ledger, anchored to today: each domain's stub seed, the Bills and Documents naming
-    /// the Transactions `lib-transactions`' stub books for them.
+    /// The stub Ledger, anchored to today: each domain's stub seed, the Bills naming the
+    /// Transactions `lib-transactions`' stub books for them. The Documents aren't the Ledger's: the
+    /// stub's are [`Ledger::stub_documents`].
     pub fn stub() -> Self {
         Self::stub_at(Local::now().date_naive(), Utc::now())
     }
@@ -191,16 +173,6 @@ impl Ledger {
         let bills = seed::stub_bills(&accounts, &categories, &payees, today);
         let inventory = default_inventory(today);
         let institutions = default_institutions();
-        let documents = default_documents(
-            &LinkRecords {
-                transactions: document_reads::document_transactions(&transactions),
-                payees: document_reads::document_payees(&payees),
-                accounts: document_reads::document_accounts(&accounts, &institutions),
-                plans: document_reads::document_bill_plans(&bills.plans),
-                items: document_reads::document_items(&inventory),
-            },
-            today,
-        );
         let budgets = default_budgets(
             &budget_accounts(&accounts),
             &budget_categories(&categories),
@@ -215,8 +187,6 @@ impl Ledger {
             bill_plans: bills.plans,
             bill_entries: bills.entries,
             budgets,
-            documents: documents.documents,
-            document_types: default_types(),
             inventory,
             institutions,
             units: units.units.units,
@@ -268,14 +238,6 @@ impl Ledger {
 
     pub fn budgets(&self) -> &Budgets {
         &self.budgets
-    }
-
-    pub fn documents(&self) -> &[Document] {
-        &self.documents
-    }
-
-    pub fn document_types(&self) -> &[DocumentTypeRow] {
-        &self.document_types
     }
 
     pub fn inventory(&self) -> &Inventory {

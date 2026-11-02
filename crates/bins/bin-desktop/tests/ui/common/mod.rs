@@ -653,8 +653,8 @@ fn stub_fakes() -> FakeStores {
 fn stub_documents() -> InMemoryDocuments {
     let ledger = lib_ledger::Ledger::stub_on(today());
     InMemoryDocuments {
-        documents: ledger.documents().to_vec(),
-        types: ledger.document_types().to_vec(),
+        documents: ledger.stub_documents(today()),
+        types: lib_documents::types::default_types(),
     }
 }
 

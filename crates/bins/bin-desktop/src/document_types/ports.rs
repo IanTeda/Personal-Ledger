@@ -57,11 +57,11 @@ pub fn shared(store: &SharedDocumentsStore) -> SharedRepository {
     Rc::new(RefCell::new(StoreDocuments(store.clone())))
 }
 
-/// Brings the Ledger read copy of the Documents and Document Types in line with the store,
-/// announcing `Domain::Documents` and `Domain::DocumentTypes` when it changed. Run before and after
-/// every Document Types event and Dialog confirm, so the Documents View sees a write at once.
-pub fn refresh(ledger: &Entity<LedgerStore>, cx: &mut App) {
-    ledger.update(cx, |store, cx| store.refresh_documents(cx));
+/// Announces `Domain::Documents` and `Domain::DocumentTypes` after a Document Types event or Dialog
+/// confirm, so the Documents View redraws what the store now holds: a removal moves Documents, and
+/// a reorder or a new type reaches its type filter.
+pub fn announce(ledger: &Entity<LedgerStore>, cx: &mut App) {
+    ledger.update(cx, |store, cx| store.announce_documents(cx));
 }
 
 #[cfg(test)]

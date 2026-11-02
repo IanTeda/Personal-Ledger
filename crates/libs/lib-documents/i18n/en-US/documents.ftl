@@ -310,3 +310,60 @@ documents-command-library = browse the filed Documents
 documents-command-accept-all = accept every strong Inbox match
 documents-command-add = add a Document you already know the meaning of
 documents-command-import = import files into the Inbox
+
+## The Documents page's Dialogs: Add, Edit, Import, Edit extracted facts, Accept all and the link picker. `$title` is a Document's Title, `$path` a path as typed, `$record` a linked record's name and `$count` a count.
+
+documents-dialog-hint-cancel = cancel
+documents-dialog-hint-confirm = confirm
+documents-dialog-hint-next-field = next field
+documents-dialog-hint-kind = kind
+documents-dialog-add-title = Add document
+documents-dialog-add-submit = Add document
+documents-dialog-add-note = The file stays where it is. Add its links afterwards with the link key.
+documents-dialog-edit-title = Edit document
+documents-dialog-edit-submit = Save
+documents-dialog-import-title = Import files
+documents-dialog-import-submit = Import
+documents-dialog-import-note = Each file lands in the Inbox, unfiled. Files are referenced where they are, never moved or renamed.
+documents-dialog-field-path = File path
+documents-dialog-field-path-placeholder = ~/Documents/receipt.pdf
+documents-dialog-field-paths = File paths, one per line
+documents-dialog-field-paths-placeholder = ~/Downloads/scan.pdf
+documents-dialog-field-title = Title
+documents-dialog-field-type = Document type
+documents-dialog-field-date = Document date
+documents-dialog-field-key-kind = Key date
+documents-dialog-field-key-date = Key date on
+documents-dialog-field-reminder = Remind me before it falls due
+documents-dialog-key-none = None
+documents-dialog-error-path-missing = There is no file at { $path }.
+documents-dialog-error-unsupported = Only PDF, JPG and PNG files can be Documents.
+documents-dialog-error-already = Already in the Library as { $title }.
+documents-dialog-error-total = Enter an amount such as 212.40.
+documents-dialog-toast-added = Added "{ $title }".
+documents-dialog-toast-saved = Saved "{ $title }".
+documents-dialog-facts-title = Edit extracted facts
+documents-dialog-facts-submit = Save
+documents-dialog-facts-note = Suggestions are recomputed when you save. Clear the total to mark the file unreadable.
+documents-dialog-toast-facts-saved = Updated what was read from "{ $title }".
+documents-dialog-accept-all-title = Accept all strong matches
+documents-dialog-accept-all-body = { $count ->
+    [one] File { $count } document with a strong suggestion?
+   *[other] File { $count } documents with strong suggestions?
+}
+documents-dialog-accept-all-submit = File { $count }
+documents-dialog-accept-all-note = Only matches where the amount, date and payee all agree. You can undo it with u.
+documents-dialog-picker-kind-all = All
+documents-dialog-picker-file-without-link = File without link
+documents-dialog-picker-placeholder = Search transactions, accounts, payees, bills, items…
+documents-dialog-picker-title-link = Link
+documents-dialog-picker-title-file = File
+documents-dialog-picker-title-follow = Follow
+documents-dialog-picker-empty = Nothing matches.
+documents-dialog-picker-type = Type
+documents-dialog-picker-type-none = choose with ← →
+documents-dialog-picker-hint-pick = ↑↓ move · tab kind · enter pick · esc close
+documents-dialog-picker-hint-toggle = ↑↓ move · tab kind · enter link or unlink · esc close
+documents-dialog-picker-hint-follow = ↑↓ move · enter go · esc close
+documents-dialog-picker-need-type = Choose a document type first (← →).
+documents-dialog-toast-linked = Linked { $record }.

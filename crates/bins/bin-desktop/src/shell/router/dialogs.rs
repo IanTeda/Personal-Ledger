@@ -123,7 +123,6 @@ impl Root {
         }
         // Every domain's Dialog runs through the host's cycle (`DialogForm`/`confirm_ledger`, ADR-0037).
         match self.state.dialog {
-            Some(OpenDialog::Documents(_)) => self.confirm_documents_dialog(cx),
             // Read-only: it has nothing to apply.
             Some(OpenDialog::ToastHistory(_) | OpenDialog::Help(_)) => self.close_dialog(),
             // Hosted: confirmed above through the opener's confirm.

@@ -21,7 +21,7 @@ use lib_core::{
 use lib_toast::Notify;
 
 use crate::types::DocumentTypeRow;
-use crate::{Document, DocumentLink, DocumentType, FilingUndo, LibraryScope};
+use crate::{Document, DocumentLink, DocumentType, LibraryScope};
 
 /// The Documents and Document Types on the Ledger. A Document is never deleted (#959), so there is
 /// no Document delete.
@@ -101,8 +101,8 @@ pub type SharedReads = Rc<dyn DocumentReads>;
 /// The file system as the Documents page reaches it, shared with the Client that implements it.
 pub type SharedFiles = Rc<dyn DocumentFiles>;
 
-/// A Documents Dialog, as the page asks the Router to open it. The Dialogs aren't Presenters yet
-/// (#968): the Client builds each from what is named here.
+/// A Documents Dialog, as the page asks the Router to open it: the Client builds its Presenter
+/// ([`crate::presenter`]) from what is named here and the page's [`DialogPorts`](crate::presenter::DialogPorts).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DocumentsDialog {
     /// `+ Add`, its Document Type defaulting to the Library's `scope`.
@@ -132,8 +132,8 @@ pub enum DocumentsOutcome {
     Imported,
     /// Saved Document `id`'s Extracted Facts: its skip is cleared and it keeps focus.
     FactsSaved(DocumentId),
-    /// Accept all filed `batch`, the action `u` reverses.
-    AcceptedAll(FilingUndo),
+    /// Accept all strong matches was confirmed: the page files them, as one batch `u` reverses.
+    AcceptAll,
     /// The picker chose a Document Type and at most one Link to file Document `id` under.
     FileByHand {
         id: DocumentId,
@@ -152,8 +152,14 @@ pub trait DocumentsRouter: Notify {
     /// Account, a Payee, a Bill Plan or an Inventory Item.
     fn reveal(&mut self, link: DocumentLink);
 
-    /// Opens `dialog`. Returns whether it opened.
+    /// Builds `dialog`'s Presenter and hosts its View. Returns whether it opened: a Dialog on a
+    /// Document gone since it was asked for has no Presenter to build.
     fn open_dialog(&mut self, dialog: DocumentsDialog) -> bool;
+
+    /// Closes the open Documents Dialog. `outcome` is what its confirm asks of the page, `None`
+    /// when it was cancelled or needs nothing more; the Client hands it to the page as
+    /// `DocumentsPageEvent::DialogClosed`.
+    fn close_dialog(&mut self, outcome: Option<DocumentsOutcome>);
 
     /// Hands the file at `path`, which exists, to the platform: opened in its application, or
     /// shown in its folder when `in_folder`.

@@ -3,12 +3,11 @@
 //! domains it touched, which [`notify_on`] turns into a repaint for the Entities reading them.
 //!
 //! The Ledger's Institutions, Accounts, Categories, Tags, Payees, Transactions, Bill Plans, Bill
-//! Schedule, Budgets, Inventory, Documents and Document Types are read copies of their ports (#774,
-//! #831, #849, #850, #853, #858, #862, #866, #952, #963): `apply` forwards a command's Category,
-//! Tag, Payee, Transaction, Bills, Budgets, Inventory and Documents changes to the ports and
-//! refreshes the copies from them. The Documents View reads the other domains' rows through their
-//! stores, not the read copies ([`LedgerStore::document_records`]). The
-//! Institutions, Payees and Bills ports are shared with their modules, which write them through
+//! Schedule, Budgets and Inventory are read copies of their ports (#774, #831, #849, #850, #853,
+//! #858, #862, #866, #952): `apply` forwards a command's Category, Tag, Payee, Transaction, Bills,
+//! Budgets and Inventory changes to the ports and refreshes the copies from them. The Documents and
+//! Document Types have no read copy (#968): their modules read the Documents store, and the other
+//! domains' rows through their stores ([`LedgerStore::document_reads`]). The Institutions, Payees and Bills ports are shared with their modules, which write them through
 //! their Interactors and refresh the copy after each event ([`LedgerStore::refresh_institutions`],
 //! [`LedgerStore::refresh_payees`], [`LedgerStore::refresh_bills`]).
 //!
@@ -76,7 +75,10 @@ impl LedgerSetup {
             }));
         Self {
             budgets,
-            documents: crate::documents::ports::in_memory(&ledger),
+            documents: Rc::new(RefCell::new(lib_documents::fake::InMemoryDocuments {
+                documents: ledger.stub_documents(today),
+                types: lib_documents::types::default_types(),
+            })),
             tags: crate::tags::ports::in_memory(&ledger),
             inventory: crate::inventory::ports::in_memory(&ledger),
             institutions: crate::institutions::LedgerBackedPorts::in_memory(
@@ -164,7 +166,10 @@ impl LedgerStore {
             categories,
             tags: crate::tags::ports::in_memory(&ledger),
             inventory,
-            documents: crate::documents::ports::in_memory(&ledger),
+            documents: Rc::new(RefCell::new(lib_documents::fake::InMemoryDocuments {
+                documents: Vec::new(),
+                types: lib_documents::types::default_types(),
+            })),
             document_reads,
             ledger,
             payees,
@@ -208,20 +213,12 @@ impl LedgerStore {
         store.copy_bills();
         store.copy_budgets();
         store.copy_inventory();
-        store.copy_documents();
         store.count_tag_uses();
         store
     }
 
     pub fn ledger(&self) -> &Ledger {
         &self.ledger
-    }
-
-    /// The Transactions, Payees, Accounts, Bill Plans and Items as Documents reads them, through
-    /// their stores (#963): what the Documents View matches and labels Links against, read once
-    /// per query.
-    pub fn document_records(&self) -> lib_documents::LinkRecords {
-        lib_documents::LinkRecords::read(&self.document_reads)
     }
 
     /// The other domains' stores as `lib_documents`' reads, which the Documents page's Presenter
@@ -430,8 +427,6 @@ impl LedgerStore {
                 crate::tags::ports::forward_deletes(&mut *self.tags.borrow_mut(), &changes);
             let inventory_written =
                 crate::inventory::ports::forward(&mut *self.inventory.borrow_mut(), &changes);
-            let documents_written =
-                crate::documents::ports::forward(&mut *self.documents.borrow_mut(), &changes);
             if !crate::input::sending(cx) {
                 cx.emit(LegacyApplied);
             }
@@ -456,9 +451,6 @@ impl LedgerStore {
             }
             if budgets_written {
                 self.copy_budgets();
-            }
-            if documents_written {
-                self.copy_documents();
             }
             self.announce(cx, what);
         }
@@ -575,32 +567,24 @@ impl LedgerStore {
     }
 
     /// Puts the Documents and Document Types back as stored, after a write that named them failed,
-    /// and overwrites the read copy, announcing `Domain::Documents` and `Domain::DocumentTypes` so
-    /// every reader redraws (ADR-0046).
+    /// announcing `Domain::Documents` and `Domain::DocumentTypes` so every reader redraws
+    /// (ADR-0046).
     ///
     /// # Errors
-    /// Returns the error reading them back; the store and the read copy are left as they were.
+    /// Returns the error reading them back; the store is left as it was.
     pub fn reload_documents(&mut self, cx: &mut Context<'_, Self>) -> lib_database::Result<()> {
         self.documents.borrow_mut().reload()?;
-        self.copy_documents();
+        self.announce_documents(cx);
+        Ok(())
+    }
+
+    /// Announces `Domain::Documents` and `Domain::DocumentTypes`, after the Document Types module
+    /// wrote the store, so the Documents View redraws.
+    pub fn announce_documents(&mut self, cx: &mut Context<'_, Self>) {
         self.announce(
             cx,
             BTreeSet::from([Domain::Documents, Domain::DocumentTypes]),
         );
-        Ok(())
-    }
-
-    /// Brings the Documents and Document Types read copy in line with the store after the Document
-    /// Types module wrote it, announcing `Domain::Documents` and `Domain::DocumentTypes` only when
-    /// it changed: a removal moves Documents, and a reorder or a new type reaches the Documents
-    /// View's type filter.
-    pub fn refresh_documents(&mut self, cx: &mut Context<'_, Self>) {
-        if self.copy_documents() {
-            self.announce(
-                cx,
-                BTreeSet::from([Domain::Documents, Domain::DocumentTypes]),
-            );
-        }
     }
 
     /// Brings the Institutions read copy in line with the ports after the Institutions module wrote
@@ -743,17 +727,6 @@ impl LedgerStore {
     fn copy_inventory(&mut self) -> bool {
         let inventory = self.inventory.borrow().inventory().inventory();
         self.ledger.refresh_inventory(inventory)
-    }
-
-    /// Brings the Documents and Document Types read copy in line with the store, returning whether
-    /// it changed.
-    fn copy_documents(&mut self) -> bool {
-        let (documents, types) = {
-            let store = self.documents.borrow();
-            let port = store.documents();
-            (port.documents(), port.document_types())
-        };
-        self.ledger.refresh_documents(documents, types)
     }
 
     fn announce(&mut self, cx: &mut Context<'_, Self>, what: BTreeSet<Domain>) {

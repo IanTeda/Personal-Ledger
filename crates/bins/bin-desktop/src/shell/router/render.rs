@@ -298,7 +298,7 @@ impl Render for Root {
                                         .as_ref()
                                         .map_or(0, |figures| figures.over_count),
                                 )
-                                .documents_inbox(documents::inbox_count(self.documents(cx))),
+                                .documents_inbox(self.views.documents.read(cx).inbox_count()),
                             )
                             .when(
                                 self.nav().noun().has_context_entities()
@@ -376,7 +376,6 @@ impl Render for Root {
                     cx,
                 )
             }))
-            .children(self.render_documents_dialog(&entity, cx))
             .child(documents::view::drop_overlay::render(cx))
             .children(
                 self.state

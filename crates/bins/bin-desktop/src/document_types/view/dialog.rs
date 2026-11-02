@@ -37,7 +37,7 @@ pub(crate) type Landed = Box<dyn Fn(DocumentTypesOutcome, &mut App)>;
 
 /// The open Document Types Dialog: its Presenter and its widget state.
 pub struct DocumentTypesDialog {
-    /// The Ledger read copy a confirm brings in line with what it wrote.
+    /// The Ledger store a confirm announces what it wrote through.
     ledger: Entity<LedgerStore>,
     view: View,
     landed: Landed,
@@ -188,12 +188,11 @@ impl HostedDialog for DocumentTypesDialog {
         }
     }
 
-    /// Sends Confirm to the Presenter, which runs its Interactor, with the Ledger read copy in
-    /// line either side. A refusal stays on the Presenter's view model and keeps the Dialog open.
+    /// Sends Confirm to the Presenter, which runs its Interactor, then announces what it wrote. A
+    /// refusal stays on the Presenter's view model and keeps the Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
-        ports::refresh(&self.ledger, cx);
         let router = self.close_event(true);
-        ports::refresh(&self.ledger, cx);
+        ports::announce(&self.ledger, cx);
         self.closed(router, cx);
     }
 

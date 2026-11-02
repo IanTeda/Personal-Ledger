@@ -2,15 +2,15 @@
 //! hosts as the Documents destination (`docs/ux/desktop-mockups/04-documents/`). It looks up each
 //! key the Shell passes on, as chord text, in the Documents keymap and sends the event when the
 //! Presenter has a use for it in the zone and mode showing, turns clicks into events, draws the
-//! view model (`super::render`) and keeps the Ledger read copy in line after every event, so the
-//! legacy Dialogs read what the page wrote. Each key and click is one input
-//! (`crate::input::send`), which commits what it wrote.
+//! view model (`super::render`). Its Dialogs open as Entities in the Dialog host
+//! (`super::dialog`), and what each asks of the page as it closes comes back through
+//! [`DocumentsPage::dialog_landed`]. Each key and click is one input (`crate::input::send`), which
+//! commits what it wrote.
 //!
 //! The Library's Search is the Shell's Search mode: `/` comes in as [`DocumentsPage::start_search`]
 //! and the typed keys as [`DocumentsPage::search_key`]. The page leaves the mode as the Presenter
 //! closes the Search.
 
-use std::collections::HashSet;
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -18,11 +18,10 @@ use gpui::{
     App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, ScrollStrategy, Subscription,
     UniformListScrollHandle, Window, prelude::*,
 };
-use lib_core::{Clock, DateStyle, DocumentId};
+use lib_core::{Clock, DateStyle};
 use lib_documents::presenter::{DocumentsPageEvent, DocumentsPagePresenter};
 use lib_documents::{
-    Document, DocumentsMode, DocumentsOutcome, LibraryScope, LibrarySort, SharedFiles,
-    SharedRepository,
+    DocumentsMode, DocumentsOutcome, LibraryScope, LibrarySort, SharedFiles, SharedRepository,
 };
 use lib_ledger::Domain;
 use lib_viper::keymap::Keymap;
@@ -42,7 +41,6 @@ impl EventEmitter<ViewEvent> for DocumentsPage {}
 
 pub struct DocumentsPage {
     presenter: DocumentsPagePresenter,
-    ledger: Entity<LedgerStore>,
     keymap: Keymap<DocumentsPageEvent>,
     /// Whether the View zone has focus, which the index rail's and the list's focus rings draw
     /// within. Handed over by the Shell as it draws the page.
@@ -59,8 +57,8 @@ impl DocumentsPage {
         keymap: Keymap<DocumentsPageEvent>,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        // The rows name records from every domain a Link reaches, and the legacy Dialogs write the
-        // Documents through the Ledger: a change to any is redrawn.
+        // The rows name records from every domain a Link reaches, and Settings › Documents writes
+        // the Document Types: a change to any is redrawn.
         let _ledger_changed = cx.subscribe(&ledger, |_, _, event: &LedgerChanged, cx| {
             let reads = [
                 Domain::Accounts,
@@ -77,7 +75,6 @@ impl DocumentsPage {
         });
         Self {
             presenter,
-            ledger,
             keymap,
             zone_focused: false,
             library_scroll: UniformListScrollHandle::new(),
@@ -96,9 +93,8 @@ impl DocumentsPage {
         crate::input::send(cx, |cx| self.handle(event, cx));
     }
 
-    /// Hands `event` to the Presenter with the Desktop's Router, then brings the Ledger read copy
-    /// in line with what it wrote, the Shell's Search mode with the Presenter's Search, and the
-    /// scroll with the selection. Inside an input already, as [`Self::send`] or a Dialog's confirm.
+    /// Hands `event` to the Presenter with the Desktop's Router, then brings the Shell's Search
+    /// mode in line with the Presenter's Search, and the scroll with the selection. Inside an input already, as [`Self::send`] or a Dialog's confirm.
     fn handle(&mut self, event: DocumentsPageEvent, cx: &mut Context<'_, Self>) {
         let searching = self.presenter.searching();
         self.handle_quietly(event, cx);
@@ -113,13 +109,10 @@ impl DocumentsPage {
     fn handle_quietly(&mut self, event: DocumentsPageEvent, cx: &mut Context<'_, Self>) {
         let (mode, before) = (self.presenter.mode(), self.presenter.selected());
         let mut router = PageRouter {
-            ledger: self.ledger.clone(),
-            clock: self.clock(),
-            date_style: self.presenter.date_style(),
+            ports: self.presenter.dialog_ports(),
             cx,
         };
         self.presenter.handle(event, &mut router);
-        crate::document_types::ports::refresh(&self.ledger, cx);
         self.follow_selection(mode, before);
         cx.notify();
     }
@@ -146,14 +139,13 @@ impl DocumentsPage {
         }
     }
 
-    fn clock(&self) -> Clock {
-        Clock::fixed(self.presenter.today())
-    }
-
-    /// A Documents Dialog the page opened closed with `outcome`, handed back by the Shell inside
-    /// the input that confirmed it.
-    pub fn dialog_landed(&mut self, outcome: DocumentsOutcome, cx: &mut Context<'_, Self>) {
-        self.handle(DocumentsPageEvent::DialogClosed(outcome), cx);
+    /// A Documents Dialog the page opened has closed, inside the input that closed it: `outcome`
+    /// is what it asks of the page, or `None` when it asks nothing but a redraw of what it wrote.
+    pub fn dialog_landed(&mut self, outcome: Option<DocumentsOutcome>, cx: &mut Context<'_, Self>) {
+        match outcome {
+            Some(outcome) => self.handle(DocumentsPageEvent::DialogClosed(outcome), cx),
+            None => cx.notify(),
+        }
     }
 
     /// Files dropped anywhere on the window: into the Inbox, the page staying where it is.
@@ -165,19 +157,9 @@ impl DocumentsPage {
         self.send(DocumentsPageEvent::Drop(typed), cx);
     }
 
-    /// The Document the selection is on, which Accept all keeps in view.
-    pub fn selected_document(&self) -> Option<Document> {
-        self.presenter.selected_document()
-    }
-
-    /// The Inbox rows set aside this session, which Accept all leaves.
-    pub fn skipped(&self) -> HashSet<DocumentId> {
-        self.presenter.skipped().clone()
-    }
-
-    /// The Display Preference the page's dates follow, which the link picker's follow too.
-    pub fn date_style(&self) -> Option<DateStyle> {
-        self.presenter.date_style()
+    /// How many Documents wait in the Inbox, for the rail's badge.
+    pub fn inbox_count(&self) -> usize {
+        self.presenter.inbox_count()
     }
 
     /// The mode, scope and sort that persist across restarts.

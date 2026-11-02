@@ -21,9 +21,9 @@
 //! writes it beside the Transactions store. A cross-domain adapter holds only the shared stores,
 //! so over [`Stores::fake`]'s in-memory stores it is its own in-memory counterpart.
 //!
-//! The Documents store is shared too ([`SharedDocumentsStore`]): the Desktop's Ledger forwards the
-//! Documents writers to it and keeps a read copy of it for the Documents View, which reads the
-//! other domains through [`StoredDocumentReads`] (#963).
+//! The Documents store is shared too ([`SharedDocumentsStore`]): the Desktop's Documents module
+//! writes it through `lib-documents`' Interactors and reads the other domains through
+//! [`StoredDocumentReads`] (#963, #968).
 //!
 //! [`Stores::fake`] takes its in-memory stores as one [`FakeStores`], so a domain joining the
 //! bundle adds a field rather than an argument (#866).
@@ -1241,8 +1241,8 @@ impl BudgetPayees for StoredBudgetReads {
     }
 }
 
-/// A Documents store shared by the Ledger's forwarding shim and read copy. Single-threaded, as the
-/// ports are.
+/// The Documents store, shared by the Documents module's Presenters and the reads that count its
+/// Links. Single-threaded, as the ports are.
 pub type SharedDocumentsStore = Rc<RefCell<dyn DocumentsStore>>;
 
 /// The Documents repository port, wherever it is kept.
@@ -1424,8 +1424,8 @@ impl FakeStores {
             budgets,
             inventory: InMemoryInventory::stub(today),
             documents: InMemoryDocuments {
-                documents: ledger.documents().to_vec(),
-                types: ledger.document_types().to_vec(),
+                documents: ledger.stub_documents(today),
+                types: lib_documents::types::default_types(),
             },
         }
     }

@@ -566,9 +566,13 @@ mod tests {
 
         let stored =
             DocumentsAdapter::load(PendingWrites::new(writer.clone())).expect("the Documents load");
-        let ledger = lib_ledger::Ledger::stub_on(now.with_timezone(&Local).date_naive());
-        assert_eq!(stored.document_types(), ledger.document_types());
-        assert_eq!(stored.documents(), ledger.documents());
+        let today = now.with_timezone(&Local).date_naive();
+        let ledger = lib_ledger::Ledger::stub_on(today);
+        assert_eq!(
+            stored.document_types(),
+            lib_documents::types::default_types()
+        );
+        assert_eq!(stored.documents(), ledger.stub_documents(today));
     }
 
     /// The seed builds the stub Transactions and Bills from the per-domain stubs itself, not from
@@ -591,7 +595,7 @@ mod tests {
             assert_eq!(bills.entries, ledger.bill_entries(), "on {today}");
             assert_eq!(
                 stub_documents(today, &stub_institutions()),
-                ledger.documents(),
+                ledger.stub_documents(today),
                 "on {today}"
             );
         }

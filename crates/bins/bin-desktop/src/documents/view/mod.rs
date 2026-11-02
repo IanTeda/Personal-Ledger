@@ -4,12 +4,11 @@
 //!
 //! [`page::DocumentsPage`] holds the `lib-documents` page Presenter and draws its view model through
 //! these functions: every click is an event sent to the Presenter, as its key is. The detail pane is
-//! never focused: its actions are list keys (`enter`, `o`, `l`). The legacy Dialogs are drawn by
-//! `dialogs`, the window's drop overlay by `drop_overlay`.
+//! never focused: its actions are list keys (`enter`, `o`, `l`). The page's Dialogs are one hosted
+//! Entity, `dialog`; the window's drop overlay is `drop_overlay`.
 
-pub mod dialogs;
+pub mod dialog;
 pub mod drop_overlay;
-pub(crate) mod hints;
 mod inbox;
 pub mod page;
 pub mod snapshot;

@@ -12,7 +12,6 @@ use lib_bills::{BillPlan, BillScheduleEntry};
 use lib_budgets::Budget;
 use lib_categories::Category;
 use lib_core::{AreaId, CategoryId, ItemId, LocationId, TagId};
-use lib_documents::Document;
 use lib_payees::Payee;
 use lib_transactions::Transaction;
 
@@ -51,7 +50,6 @@ pub enum LedgerChange {
     UpsertBillPlan(BillPlan),
     UpsertBillEntry(BillScheduleEntry),
     UpsertBudget(Budget),
-    UpsertDocument(Document),
     DeleteLocation(LocationId),
     DeleteArea(AreaId),
     DeleteItem(ItemId),
@@ -66,7 +64,6 @@ impl LedgerChange {
             Self::UpsertTransaction(_) => Domain::Transactions,
             Self::UpsertBillPlan(_) | Self::UpsertBillEntry(_) => Domain::Bills,
             Self::UpsertBudget(_) => Domain::Budgets,
-            Self::UpsertDocument(_) => Domain::Documents,
             Self::DeleteLocation(_) | Self::DeleteArea(_) | Self::DeleteItem(_) => {
                 Domain::Inventory
             }

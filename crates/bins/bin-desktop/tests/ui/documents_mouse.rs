@@ -1,5 +1,6 @@
 //! The Documents page driven by the mouse alone: the primary and index rails, list rows, the
-//! detail pane's LINKED TO names and ×, the header buttons and the Inbox's Accept and Skip.
+//! detail pane's LINKED TO names and ×, the header buttons, the Inbox's Accept and Skip, and the
+//! Dialogs' fields, buttons and link picker rows.
 //! Targets are found with `debug_selector` tags and `debug_bounds`, never coordinates; assertions
 //! read state back from `Root`.
 
@@ -286,4 +287,160 @@ fn inbox_detail_primary_files_a_strong_match(app: &mut TestAppContext) {
     let page = ui.documents();
     assert_eq!(page.inbox_rows, before - 1, "the primary button files it");
     assert_ne!(page.selected_file.as_deref(), Some(STRONG_RECEIPT));
+}
+
+/// Types `text` into the open Dialog, a key per character: what the mouse can't do.
+fn type_text(ui: &mut Harness<'_>, text: &str) {
+    for ch in text.chars() {
+        ui.press(&if ch == ' ' {
+            "space".to_string()
+        } else {
+            ch.to_string()
+        });
+    }
+}
+
+#[gpui::test]
+fn clicking_a_pinned_link_picker_row_removes_the_link(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+    // The Amex statement links only to its Account, which the picker pins first.
+    assert_eq!(ui.documents().selected_links, 1);
+    ui.press("l");
+
+    ui.click("documents-picker-row-0");
+
+    let page = ui.documents();
+    assert_eq!(page.dialog, None, "a click picks and closes");
+    assert_eq!(page.selected_links, 0);
+    assert!(!page.toasts.is_empty(), "unlinking says so with a Toast");
+}
+
+#[gpui::test]
+fn clicking_a_follow_picker_row_goes_to_that_record(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+    focus_row(&mut ui, "aami-car-policy.pdf");
+    ui.press("L");
+    assert_eq!(ui.documents().dialog, Some("picker-follow"));
+
+    ui.click("documents-picker-row-0");
+
+    assert_eq!(ui.documents().dialog, None);
+    assert_ne!(
+        ui.noun(),
+        Noun::Documents,
+        "the click leaves for the record"
+    );
+}
+
+#[gpui::test]
+fn clicking_a_filing_picker_row_files_the_document_to_it(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+    ui.click("documents-rail-Inbox");
+    let before = ui.documents().inbox_rows;
+    click_inbox_row(&mut ui, STRONG_RECEIPT);
+    ui.click("documents-inbox-secondary");
+    let picker = ui.documents().picker.expect("the filing picker is open");
+    assert!(
+        picker.rows[1].3,
+        "the row under File without link is a record"
+    );
+
+    ui.click("documents-picker-row-1");
+
+    let page = ui.documents();
+    assert_eq!(page.dialog, None);
+    assert_eq!(page.inbox_rows, before - 1, "the Document is filed");
+}
+
+#[gpui::test]
+fn accept_all_cancel_files_nothing_and_its_confirm_files_the_strong_matches(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_documents(app);
+    ui.click("documents-rail-Inbox");
+    let before = ui.documents().inbox_rows;
+
+    ui.click("documents-accept-all");
+    ui.click("accept-all-cancel");
+    assert_eq!(ui.documents().dialog, None);
+    assert_eq!(
+        ui.documents().inbox_rows,
+        before,
+        "cancelling files nothing"
+    );
+
+    ui.click("documents-accept-all");
+    ui.click("accept-all-confirm");
+    let page = ui.documents();
+    assert_eq!(page.dialog, None);
+    assert!(page.inbox_rows < before, "the strong matches are filed");
+}
+
+#[gpui::test]
+fn add_and_import_confirm_buttons_refuse_a_missing_file(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+    let missing = std::env::temp_dir().join(format!("pl-none-{}.pdf", std::process::id()));
+
+    ui.click("documents-add");
+    ui.click("document-path");
+    type_text(&mut ui, &missing.display().to_string());
+    ui.click("add-document-confirm");
+    assert_eq!(
+        ui.documents().dialog,
+        Some("add"),
+        "a refusal keeps it open"
+    );
+    assert!(!ui.dialog_value("error").unwrap_or_default().is_empty());
+    ui.click("add-document-cancel");
+    assert_eq!(ui.documents().dialog, None);
+
+    ui.click("documents-import");
+    type_text(&mut ui, &missing.display().to_string());
+    ui.click("import-documents-confirm");
+    assert_eq!(ui.documents().dialog, Some("import"), "nothing imported");
+    assert!(!ui.dialog_value("notes").unwrap_or_default().is_empty());
+}
+
+#[gpui::test]
+fn the_edit_dialogs_fields_and_save_take_clicks(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+    ui.press("e");
+    let title = ui.dialog_value("document_title").unwrap_or_default();
+
+    ui.click("document-date");
+    ui.click("document-title");
+    type_text(&mut ui, " 2");
+    ui.click("edit-document-confirm");
+
+    let page = ui.documents();
+    assert_eq!(page.dialog, None);
+    assert!(
+        page.toasts
+            .iter()
+            .any(|toast| toast.contains(&format!("{title} 2"))),
+        "the click on Title focused it before the typing: {:?}",
+        page.toasts
+    );
+}
+
+#[gpui::test]
+fn the_facts_dialogs_save_is_disabled_by_a_bad_total(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+    ui.click("documents-rail-Inbox");
+    click_inbox_row(&mut ui, STRONG_RECEIPT);
+    ui.press("e");
+    assert_eq!(ui.documents().dialog, Some("facts"));
+
+    ui.click("facts-total");
+    type_text(&mut ui, "abc");
+    ui.click("facts-confirm");
+    assert_eq!(
+        ui.documents().dialog,
+        Some("facts"),
+        "a bad total is refused"
+    );
+
+    ui.press("backspace backspace backspace");
+    ui.click("facts-confirm");
+    assert_eq!(ui.documents().dialog, None);
 }

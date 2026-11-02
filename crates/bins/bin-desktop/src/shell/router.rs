@@ -18,8 +18,8 @@
 //! surface, `impl Focusable`, per-domain wiring and the unit tests. Each cross-cutting concern
 //! lives in a bare-named child file (`commands`, `dialogs`, `explorer`, `focus`, `key_dispatch`,
 //! `log_feed`, `rail`, `render`, `root_router`, `status`, `toasts`) under `router/` that is an
-//! `impl Root` block, not the real module of the same name; a `_ui` suffix (`documents_ui`,
-//! ...) marks per-domain wiring.
+//! `impl Root` block, not the real module of the same name; a `_ui` suffix (`transactions_ui`)
+//! marks per-domain wiring.
 //!
 //! `Root` holds exactly one `gpui::FocusHandle` for the whole window rather than one per
 //! zone: the three `FocusZone`s are our own conceptual navigation state
@@ -29,7 +29,6 @@
 mod commands;
 mod date_clock;
 mod dialogs;
-mod documents_ui;
 mod explorer;
 mod focus;
 mod history;
@@ -94,7 +93,6 @@ use crate::{
     navigation::nav::{NavState, RailMode},
     settings::{SettingsPage, display::DisplayPreferences},
     shell::state::ShellState,
-    shell::view::dialog_host::OpenDialog,
     shell::view::{rail as rail_view, window_size::WindowSize},
     view::dashboard::state::{DashboardSources, DashboardView},
 };
@@ -550,7 +548,22 @@ impl Root {
         sort: LibrarySort,
         cx: &mut App,
     ) {
-        self.set_documents_persisted(mode, scope, sort, cx);
+        self.views
+            .documents
+            .update(cx, |page, cx| page.set_persisted(mode, scope, sort, cx));
+    }
+
+    /// The Documents mode, Library scope and sort, for persistence.
+    pub fn documents_persisted(&self, cx: &App) -> (DocumentsMode, LibraryScope, LibrarySort) {
+        self.views.documents.read(cx).persisted()
+    }
+
+    /// Files dropped anywhere on the window land in the Inbox like `Import…`, but the page stays
+    /// where it is: the Toast and the rail badge say what arrived.
+    pub fn drop_documents(&mut self, paths: &[std::path::PathBuf], cx: &mut App) {
+        self.views
+            .documents
+            .update(cx, |page, cx| page.drop_paths(paths, cx));
     }
 
     /// The last-visited Settings page, for persistence.
