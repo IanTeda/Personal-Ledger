@@ -13,6 +13,7 @@ mod bills;
 mod budgets;
 mod categories;
 mod dialog;
+mod document_types;
 mod documents;
 mod error;
 mod form;

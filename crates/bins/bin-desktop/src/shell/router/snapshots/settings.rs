@@ -4,13 +4,13 @@
 #[doc(hidden)]
 pub use crate::accounts::SettingsAccountsSnapshot;
 #[doc(hidden)]
+pub use crate::document_types::SettingsDocumentTypesSnapshot;
+#[doc(hidden)]
 pub use crate::institutions::SettingsInstitutionsSnapshot;
 #[doc(hidden)]
 pub use crate::inventory::SettingsInventorySnapshot;
 #[doc(hidden)]
 pub use crate::payees::SettingsPayeesSnapshot;
-#[doc(hidden)]
-pub use crate::settings::documents::SettingsDocumentTypesSnapshot;
 #[doc(hidden)]
 pub use crate::settings::general::SettingsGeneralSnapshot;
 #[doc(hidden)]

@@ -268,6 +268,9 @@ mod tests {
         let payees = lib_payees::keymap::PAYEES_PAGE_BINDINGS
             .iter()
             .map(|binding| (binding.command, binding.chord));
+        let document_types = lib_documents::keymap::DOCUMENT_TYPES_PAGE_BINDINGS
+            .iter()
+            .map(|binding| (binding.command, binding.chord));
         let institutions = lib_institutions::keymap::INSTITUTIONS_PAGE_BINDINGS
             .iter()
             .map(|binding| (binding.command, binding.chord));
@@ -300,6 +303,7 @@ mod tests {
             .chain(unit_prices)
             .chain(bills)
             .chain(payees)
+            .chain(document_types)
             .chain(institutions)
             .chain(accounts)
             .chain(categories)

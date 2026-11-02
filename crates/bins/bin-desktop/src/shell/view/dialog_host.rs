@@ -31,8 +31,8 @@ use lib_toast::ToastKind;
 
 use crate::{
     dialog::OnClick, documents::form::DocumentsDialog, form::field::TextField,
-    ledger_store::LedgerStore, settings::documents::dialogs::DocumentTypesDialog,
-    settings::tracing::dialogs::TracingDialog, view::event::ViewEvent, view::help::HelpDialog,
+    ledger_store::LedgerStore, settings::tracing::dialogs::TracingDialog, view::event::ViewEvent,
+    view::help::HelpDialog,
 };
 
 /// A keystroke as a Dialog sees it, already stripped of modifiers by `Root`.
@@ -273,7 +273,6 @@ impl Dialog for ToastHistoryDialog {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OpenDialog {
     Tracing(TracingDialog),
-    DocumentTypes(DocumentTypesDialog),
     Documents(DocumentsDialog),
     ToastHistory(ToastHistoryDialog),
     Help(HelpDialog),
@@ -283,7 +282,6 @@ impl OpenDialog {
     fn inner(&self) -> &dyn Dialog {
         match self {
             Self::Tracing(dialog) => dialog,
-            Self::DocumentTypes(dialog) => dialog,
             Self::Documents(dialog) => dialog,
             Self::ToastHistory(dialog) => dialog,
             Self::Help(dialog) => dialog,
@@ -293,7 +291,6 @@ impl OpenDialog {
     fn inner_mut(&mut self) -> &mut dyn Dialog {
         match self {
             Self::Tracing(dialog) => dialog,
-            Self::DocumentTypes(dialog) => dialog,
             Self::Documents(dialog) => dialog,
             Self::ToastHistory(dialog) => dialog,
             Self::Help(dialog) => dialog,
@@ -336,7 +333,6 @@ macro_rules! dialog_variant {
 }
 
 dialog_variant!(Tracing, TracingDialog);
-dialog_variant!(DocumentTypes, DocumentTypesDialog);
 dialog_variant!(Documents, DocumentsDialog);
 dialog_variant!(Help, HelpDialog);
 
@@ -462,8 +458,8 @@ mod tests {
         let mut dialog = OpenDialog::Tracing(TracingDialog::ClearLogs);
         assert!(TracingDialog::from_open(&dialog).is_some());
         assert!(TracingDialog::from_open_mut(&mut dialog).is_some());
-        assert!(DocumentTypesDialog::from_open(&dialog).is_none());
-        assert!(DocumentTypesDialog::from_open_mut(&mut dialog).is_none());
+        assert!(DocumentsDialog::from_open(&dialog).is_none());
+        assert!(DocumentsDialog::from_open_mut(&mut dialog).is_none());
     }
 
     #[test]

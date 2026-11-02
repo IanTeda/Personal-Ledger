@@ -374,3 +374,200 @@ fn removing_the_type_a_library_is_scoped_to_falls_back_to_all_documents(app: &mu
     assert_eq!(ui.dialog(), None);
     assert_eq!(ui.documents().scope, "all");
 }
+
+#[gpui::test]
+fn the_form_fields_take_tab_the_arrows_and_space(app: &mut TestAppContext) {
+    let mut ui = in_documents(app);
+
+    ui.press("n");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Name"));
+    ui.press("l e a s e s");
+    // Remind is dimmed, and skipped, while no date is tracked.
+    ui.press("tab");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("TracksDate"));
+    ui.press("tab");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("FinancialYear"));
+    ui.press("shift-tab");
+    ui.press("right right");
+    assert_eq!(ui.dialog_value("tracks_date").as_deref(), Some("Ends"));
+    ui.press("tab");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Remind"));
+    ui.press("right right");
+    assert_eq!(ui.dialog_value("remind").as_deref(), Some("14 d"));
+    ui.press("tab");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("FinancialYear"));
+    ui.press("space");
+    assert_eq!(ui.dialog_value("financial_year").as_deref(), Some("true"));
+    // A control swallows typing rather than letting it reach the name.
+    ui.press("x");
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("leases"));
+    ui.press("enter");
+    assert_eq!(ui.dialog(), None);
+
+    // The added type is selected, and Edit reads back what was saved.
+    ui.press("e");
+    assert_eq!(ui.dialog(), Some("EditDocumentType"));
+    assert_eq!(ui.dialog_value("tracks_date").as_deref(), Some("Ends"));
+    assert_eq!(ui.dialog_value("remind").as_deref(), Some("14 d"));
+    assert_eq!(ui.dialog_value("financial_year").as_deref(), Some("true"));
+}
+
+#[gpui::test]
+fn clearing_the_tracks_date_clears_remind(app: &mut TestAppContext) {
+    let mut ui = in_documents(app);
+    // Insurance renews and reminds 30 days ahead.
+    ui.press("j j j");
+    ui.press("e");
+    assert_eq!(ui.dialog_value("tracks_date").as_deref(), Some("Renews"));
+    assert_eq!(ui.dialog_value("remind").as_deref(), Some("30 d"));
+
+    ui.press("tab");
+    ui.press("left");
+    assert_eq!(ui.dialog_value("tracks_date").as_deref(), Some("None"));
+    assert_eq!(ui.dialog_value("remind").as_deref(), Some("None"));
+    ui.press("enter");
+    ui.press("e");
+    assert_eq!(ui.dialog_value("remind").as_deref(), Some("None"));
+}
+
+#[gpui::test]
+fn the_edit_dialog_opens_on_the_selected_type_and_escape_closes_it(app: &mut TestAppContext) {
+    let mut ui = in_documents(app);
+    ui.press("j j j");
+
+    ui.press("e");
+
+    assert_eq!(
+        ui.dialog_value("title").as_deref(),
+        Some("Edit Document type")
+    );
+    assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("true"));
+    ui.press("escape");
+    assert_eq!(ui.dialog(), None);
+}
+
+#[gpui::test]
+fn the_name_error_shows_once_the_name_is_edited(app: &mut TestAppContext) {
+    let mut ui = in_documents(app);
+
+    ui.press("n");
+    assert_eq!(ui.dialog_value("error").as_deref(), Some(""));
+    ui.press("t a x");
+    assert_eq!(
+        ui.dialog_value("error").as_deref(),
+        Some("Another type already has that name.")
+    );
+    assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("false"));
+}
+
+#[gpui::test]
+fn a_remove_destination_defaults_to_other(app: &mut TestAppContext) {
+    let mut ui = in_documents(app);
+    ui.press("j j");
+
+    ui.press("x");
+
+    assert_eq!(ui.dialog_value("destination").as_deref(), Some("Other"));
+    assert_eq!(
+        ui.dialog_value("message").as_deref(),
+        Some("Tax has 31 Filed files. Move them to:")
+    );
+}
+
+#[gpui::test]
+fn a_failed_write_puts_the_types_back_with_an_error_toast(app: &mut TestAppContext) {
+    let mut ui = Harness::with_failing_documents(app);
+    ui.press("g s");
+    ui.press("j j j j j j j j");
+    ui.press("l");
+    let stored = ui
+        .settings::<SettingsDocumentTypesSnapshot>()
+        .document_type_names;
+
+    ui.press("n l e a s e s enter");
+    assert_eq!(
+        ui.settings::<SettingsDocumentTypesSnapshot>()
+            .document_type_names
+            .len(),
+        stored.len() + 1,
+        "memory runs ahead of the file until the failure is heard"
+    );
+    ui.settle_writes();
+
+    assert_eq!(
+        ui.settings::<SettingsDocumentTypesSnapshot>()
+            .document_type_names,
+        stored
+    );
+    assert!(ui.toasts().visible.into_iter().any(|toast| {
+        toast.kind == "Error"
+            && toast.text == "Couldn't save the change to documents, so they are back as last saved"
+    }));
+}
+
+#[gpui::test]
+fn a_failed_reorder_puts_the_order_back(app: &mut TestAppContext) {
+    let mut ui = Harness::with_failing_documents(app);
+    ui.press("g s");
+    ui.press("j j j j j j j j");
+    ui.press("l");
+    let stored = ui
+        .settings::<SettingsDocumentTypesSnapshot>()
+        .document_type_names;
+
+    ui.press("shift-j");
+    assert_ne!(
+        ui.settings::<SettingsDocumentTypesSnapshot>()
+            .document_type_names,
+        stored
+    );
+    ui.settle_writes();
+
+    assert_eq!(
+        ui.settings::<SettingsDocumentTypesSnapshot>()
+            .document_type_names,
+        stored
+    );
+}
+
+#[gpui::test]
+fn question_mark_lists_the_keys_the_status_line_shows(app: &mut TestAppContext) {
+    let mut ui = in_documents(app);
+
+    ui.assert_cheat_sheet_matches_status("Settings keys");
+}
+
+#[gpui::test]
+fn the_cheat_sheet_shows_a_rebound_key_and_the_key_works(app: &mut TestAppContext) {
+    let mut ui = Harness::with_keybindings(
+        app,
+        common::overriding("documents.move_type_down", "ctrl+j"),
+    );
+    ui.press("g s");
+    ui.press("j j j j j j j j");
+    ui.press("l");
+    assert!(
+        ui.status_as_shortcuts()
+            .iter()
+            .any(|(_, keys)| keys == "ctrl+j/K"),
+        "the status line shows the rebound key"
+    );
+
+    ui.press("ctrl-j");
+    let names = ui
+        .settings::<SettingsDocumentTypesSnapshot>()
+        .document_type_names;
+    assert_eq!(names[..2], ["Statements", "Receipts"]);
+    ui.assert_cheat_sheet_matches_status("Settings keys");
+}
+
+#[gpui::test]
+fn the_palette_lists_the_page_commands_and_runs_them(app: &mut TestAppContext) {
+    let mut ui = in_documents(app);
+
+    ui.press(":");
+    ui.press("d o c u m e n t - t y p e s space n e w");
+    ui.press("enter");
+
+    assert_eq!(ui.dialog(), Some("AddDocumentType"));
+}

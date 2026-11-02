@@ -13,6 +13,7 @@ use lib_shell::Hint;
 use crate::{
     accounts::{AccountsPage, AccountsSetup, accounts_page},
     categories::{CategoriesPage, CategoriesSetup, categories_page},
+    document_types::{DocumentTypesPage, DocumentTypesSetup, document_types_page},
     institutions::{InstitutionsPage, InstitutionsSetup, institutions_page},
     inventory::{InventoryPage, InventorySetup, inventory_page},
     ledger_store::LedgerStore,
@@ -23,7 +24,6 @@ use crate::{
         about::AboutPage,
         data_backup::DataBackupPage,
         display::DisplayPage,
-        documents::DocumentsPage,
         general::GeneralPage,
         hints::settings_plain_page_hints,
         page::PageRowClicked,
@@ -44,11 +44,12 @@ use crate::{
 };
 
 /// What `shell::router::build` hands the Settings pages that are modules' Views: the Units,
-/// Institutions, Accounts, Categories and Payees modules' ports and keymaps.
+/// Institutions, Accounts, Categories, Payees and Document Types modules' ports and keymaps.
 pub struct SettingsSetup {
     pub units: UnitsSetup,
     pub institutions: InstitutionsSetup,
     pub payees: PayeesSetup,
+    pub document_types: DocumentTypesSetup,
     pub accounts: AccountsSetup,
     pub categories: CategoriesSetup,
     pub tags: TagsSetup,
@@ -290,7 +291,7 @@ pub struct SettingsPages {
     pub categories: Entity<CategoriesPage>,
     pub tags: Entity<TagsPage>,
     pub payees: Entity<PayeesPage>,
-    pub documents: Entity<DocumentsPage>,
+    pub documents: Entity<DocumentTypesPage>,
     pub inventory: Entity<InventoryPage>,
     pub sync_server: Entity<SyncServerPage>,
     pub data_backup: Entity<DataBackupPage>,
@@ -309,6 +310,7 @@ impl SettingsPages {
             units,
             institutions,
             payees,
+            document_types,
             accounts,
             categories,
             tags,
@@ -341,7 +343,7 @@ impl SettingsPages {
                 payees.keymap,
                 cx,
             ),
-            documents: cx.new(|cx| DocumentsPage::new(ledger.clone(), cx)),
+            documents: document_types_page(document_types, ledger.clone(), cx),
             inventory: inventory_page(inventory, ledger.clone(), cx),
             sync_server: cx.new(|_| SyncServerPage),
             data_backup: cx.new(|_| DataBackupPage),

@@ -1,70 +1,32 @@
-//! The **Documents** page (`docs/ux/desktop-mockups/16-settings/README.md`'s 16p, as amended by #479): a
+//! Draws the Document Types page's view model (`docs/ux/desktop-mockups/16-settings/README.md`'s 16p, as amended by #479): a
 //! kicker with **+ Add document type** over one bordered table of the Ledger's Document Types in
 //! type-filter order, then four one-sentence notes. Other carries a `default` outline tag and no
 //! **remove** button.
 //!
-//! Every action is a callback into `Root`, so the keyboard (`n`/`e`/`x`/`J`/`K`) and the mouse
-//! reach the same handlers.
+//! Every click sends the Presenter the event its key does: a row click only selects.
 
 use std::rc::Rc;
 
 use gpui::{App, Context, Entity, Render, Rgba, SharedString, Window, div, prelude::*, px};
-use lib_documents::types::{self, DocumentTypeRow, RemindLead, TracksDate};
+use lib_documents::presenter::{DocumentTypesPageEvent, DocumentTypesPageViewModel, TypeLine};
 use lib_locale::format::upper;
 
-use super::DocumentsPage;
+use super::DocumentTypesPage;
 use crate::theme::color;
 
 /// A click on the page, run with its `Window` and `App`.
 type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
 
-/// A row count as the number a plural selector takes.
-fn count(len: usize) -> i64 {
-    i64::try_from(len).unwrap_or(i64::MAX)
-}
-
-/// The heading's meta as plain text, for the status line: `9 types · 392 of 412 files typed`.
-pub fn scope_text(types: &[DocumentTypeRow]) -> String {
-    crate::msg::desktop_document_types_scope(
-        &crate::msg::desktop_document_types_count(count(types.len())),
-        &crate::msg::desktop_document_types_files_typed(
-            i64::from(types::all_files(types)),
-            &types::typed_files(types).to_string(),
-        ),
-    )
-}
-
-/// The text of a Tracks date cell.
-pub(crate) fn tracks_label(tracks: TracksDate) -> String {
-    match tracks {
-        TracksDate::Renews => crate::msg::desktop_document_types_tracks_renews(),
-        TracksDate::Ends => crate::msg::desktop_document_types_tracks_ends(),
-        TracksDate::Expires => crate::msg::desktop_document_types_tracks_expires(),
-        TracksDate::Revalue => crate::msg::desktop_document_types_tracks_revalue(),
-    }
-}
-
-/// The text of a Remind cell.
-fn remind_label(lead: RemindLead) -> String {
-    match lead {
-        RemindLead::Days(days) => crate::msg::desktop_document_types_remind_days(i64::from(days)),
-        RemindLead::Months(months) => {
-            crate::msg::desktop_document_types_remind_months(i64::from(months))
-        }
-    }
-}
-
-impl Render for DocumentsPage {
+impl Render for DocumentTypesPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let entity = cx.entity();
-        let rows = self.types(cx);
-        let selected = self.selected_id(cx);
+        let view = self.view_model();
         let focused = self.page_focused;
-        let last = rows.len().saturating_sub(1);
+        let last = view.rows.len().saturating_sub(1);
         div()
             .flex()
             .flex_col()
-            .child(kicker_row(&entity, cx))
+            .child(kicker_row(&view, &entity, cx))
             .child(
                 div()
                     .flex()
@@ -72,13 +34,14 @@ impl Render for DocumentsPage {
                     .border_1()
                     .border_color(color::border(cx))
                     .mb(px(16.0))
-                    .child(table_header(cx))
-                    .children(rows.iter().enumerate().map(|(position, row_type)| {
+                    .child(table_header(&view, cx))
+                    .children(view.rows.iter().enumerate().map(|(position, line)| {
                         row(
                             &entity,
-                            row_type,
+                            line,
+                            &view,
                             position == last,
-                            selected == Some(row_type.id),
+                            view.selected == Some(line.id),
                             focused,
                             cx,
                         )
@@ -92,18 +55,13 @@ impl Render for DocumentsPage {
                     .max_w(px(640.0))
                     .text_size(px(12.0))
                     .text_color(color::muted(cx))
-                    .children([
-                        note(crate::msg::desktop_document_types_note_tracks_date(), cx),
-                        note(crate::msg::desktop_document_types_note_financial_year(), cx),
-                        note(crate::msg::desktop_document_types_note_removal(), cx),
-                        note(crate::msg::desktop_document_types_note_default(), cx),
-                    ]),
+                    .children(view.notes.iter().cloned().map(|note| note_line(note, cx))),
             )
     }
 }
 
 /// One note: its `<strong>` lead in the foreground colour, the rest muted.
-fn note(segments: Vec<lib_locale::Segment>, cx: &App) -> impl IntoElement {
+fn note_line(segments: Vec<lib_locale::Segment>, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .flex_wrap()
@@ -118,7 +76,11 @@ fn note(segments: Vec<lib_locale::Segment>, cx: &App) -> impl IntoElement {
         }))
 }
 
-fn kicker_row(entity: &Entity<DocumentsPage>, cx: &App) -> impl IntoElement {
+fn kicker_row(
+    view: &DocumentTypesPageViewModel,
+    entity: &Entity<DocumentTypesPage>,
+    cx: &App,
+) -> impl IntoElement {
     let hover = color::muted(cx);
     let entity = entity.clone();
     div()
@@ -131,7 +93,7 @@ fn kicker_row(entity: &Entity<DocumentsPage>, cx: &App) -> impl IntoElement {
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_size(px(10.0))
                 .text_color(color::faint_text(cx))
-                .child(upper(&crate::msg::desktop_document_types_kicker())),
+                .child(upper(&view.kicker)),
         )
         // `btn btn-primary` at `height:32px`.
         .child(
@@ -148,14 +110,14 @@ fn kicker_row(entity: &Entity<DocumentsPage>, cx: &App) -> impl IntoElement {
                 .whitespace_nowrap()
                 .hover(move |style| style.bg(hover))
                 .on_click(move |_event, _window, cx| {
-                    entity.update(cx, |page, cx| page.click_add(cx));
+                    entity.update(cx, |page, cx| page.click(DocumentTypesPageEvent::New, cx));
                 })
-                .child(crate::msg::desktop_document_types_add_button("+")),
+                .child(view.add_button.clone()),
         )
 }
 
 /// `padding:6px 14px; background:#eae9e9`, with the frame's column widths.
-fn table_header(cx: &App) -> impl IntoElement {
+fn table_header(view: &DocumentTypesPageViewModel, cx: &App) -> impl IntoElement {
     let cell = |label: String, width: f32, right: bool| {
         let cell = div().w(px(width)).flex_none().child(upper(&label));
         if right {
@@ -175,39 +137,20 @@ fn table_header(cx: &App) -> impl IntoElement {
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(10.0))
         .text_color(color::muted(cx))
-        .child(
-            div()
-                .flex_1()
-                .child(upper(&crate::msg::desktop_document_types_column_type())),
-        )
-        .child(cell(
-            crate::msg::desktop_document_types_column_tracks_date(),
-            150.0,
-            false,
-        ))
-        .child(cell(
-            crate::msg::desktop_document_types_column_remind(),
-            130.0,
-            false,
-        ))
-        .child(cell(
-            crate::msg::desktop_document_types_column_financial_year(),
-            120.0,
-            false,
-        ))
-        .child(cell(
-            crate::msg::desktop_document_types_column_files(),
-            60.0,
-            true,
-        ))
-        .child(cell(lib_locale::msg::column_actions(), 118.0, true))
+        .child(div().flex_1().child(upper(&view.columns.type_name)))
+        .child(cell(view.columns.tracks_date.clone(), 150.0, false))
+        .child(cell(view.columns.remind.clone(), 130.0, false))
+        .child(cell(view.columns.financial_year.clone(), 120.0, false))
+        .child(cell(view.columns.files.clone(), 60.0, true))
+        .child(cell(view.columns.actions.clone(), 118.0, true))
 }
 
 /// The selected row is inverted while the page has focus (`background:#201e1d; color:#f3f2f2`)
 /// and only tinted while the index does.
 fn row(
-    entity: &Entity<DocumentsPage>,
-    row_type: &DocumentTypeRow,
+    entity: &Entity<DocumentTypesPage>,
+    row_type: &TypeLine,
+    view: &DocumentTypesPageViewModel,
     last: bool,
     selected: bool,
     focused: bool,
@@ -232,32 +175,36 @@ fn row(
     let on_row_click = {
         let entity = entity.clone();
         move |_event: &gpui::ClickEvent, _window: &mut Window, cx: &mut App| {
-            entity.update(cx, |page, cx| page.click_row(id, cx));
+            entity.update(cx, |page, cx| {
+                page.click(DocumentTypesPageEvent::Select(id), cx);
+            });
         }
     };
     let on_edit_click: OnPlainClick = {
         let entity = entity.clone();
-        Rc::new(move |_window, cx| entity.update(cx, |page, cx| page.click_edit(id, cx)))
+        Rc::new(move |_window, cx| {
+            entity.update(cx, |page, cx| {
+                page.click(DocumentTypesPageEvent::EditRow(id), cx)
+            });
+        })
     };
     let on_remove_click: OnPlainClick = {
         let entity = entity.clone();
-        Rc::new(move |_window, cx| entity.update(cx, |page, cx| page.click_remove(id, cx)))
+        Rc::new(move |_window, cx| {
+            entity.update(cx, |page, cx| {
+                page.click(DocumentTypesPageEvent::RemoveRow(id), cx)
+            });
+        })
     };
     // A dash, in the muted colour, where the type tracks or reminds nothing.
     let optional = |text: Option<String>, width: f32| {
         let cell = div().w(px(width)).flex_none();
         match text {
             Some(text) => cell.child(text),
-            None => cell
-                .text_color(placeholder)
-                .child(crate::msg::desktop_document_types_none()),
+            None => cell.text_color(placeholder).child(row_type.none.clone()),
         }
     };
-    let yes_no = if row_type.financial_year {
-        crate::msg::desktop_document_types_yes()
-    } else {
-        crate::msg::desktop_document_types_no()
-    };
+    let yes_no = row_type.financial_year.clone();
 
     div()
         .debug_selector(move || format!("settings-documents-row-{id}"))
@@ -302,16 +249,13 @@ fn row(
                             .border_color(color::accent(cx))
                             .text_size(px(10.0))
                             .text_color(flag)
-                            .child(crate::msg::desktop_document_types_flag_default()),
+                            .child(view.default_flag.clone()),
                     )
                 }),
         )
-        .child(optional(row_type.tracks_date.map(tracks_label), 150.0))
+        .child(optional(row_type.tracks_date.clone(), 150.0))
         // Remind is inert without a Tracks date, so it reads as a dash too.
-        .child(optional(
-            row_type.tracks_date.and(row_type.remind).map(remind_label),
-            130.0,
-        ))
+        .child(optional(row_type.remind.clone(), 130.0))
         .child(div().w(px(120.0)).flex_none().child(yes_no))
         .child(
             div()
@@ -330,7 +274,7 @@ fn row(
                 .gap(px(4.0))
                 .child(row_action_button(
                     SharedString::from(format!("settings-documents-edit-{id}")),
-                    crate::msg::desktop_document_types_row_edit(),
+                    view.row_edit.clone(),
                     button_border,
                     on_edit_click,
                     cx,
@@ -338,7 +282,7 @@ fn row(
                 .when(!row_type.is_default, |this| {
                     this.child(row_action_button(
                         SharedString::from(format!("settings-documents-remove-{id}")),
-                        crate::msg::desktop_document_types_row_remove(),
+                        view.row_remove.clone(),
                         button_border,
                         on_remove_click,
                         cx,
@@ -375,33 +319,4 @@ fn row_action_button(
             on_click(window, cx)
         })
         .child(label)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn scope_text_reads_the_live_counts() {
-        crate::locale::init_for_tests();
-        assert_eq!(
-            scope_text(&types::default_types()),
-            "9 types \u{b7} 392 of 412 files typed"
-        );
-    }
-
-    #[test]
-    fn a_single_type_reads_singular() {
-        crate::locale::init_for_tests();
-        let one = &types::default_types()[..1];
-        assert!(scope_text(one).starts_with("1 type \u{b7} "));
-    }
-
-    #[test]
-    fn remind_reads_days_and_months() {
-        crate::locale::init_for_tests();
-        assert_eq!(remind_label(RemindLead::Days(30)), "30 days before");
-        assert_eq!(remind_label(RemindLead::Months(3)), "3 months before");
-        assert_eq!(remind_label(RemindLead::Days(1)), "1 day before");
-    }
 }

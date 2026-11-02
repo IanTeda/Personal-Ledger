@@ -1,13 +1,13 @@
-//! The Documents and Document Types writes (ADR-0038): each a command value with its own
+//! The Documents writes (ADR-0038): each a command value with its own
 //! refusal, checked before anything is written so a refusal leaves the Ledger untouched, and
 //! recording an upsert or delete per row it wrote (ADR-0039).
 //!
 //! Single-Document rules stay in `lib_documents`. What lives here crosses rows: Accept matches
-//! against the Transactions and Payees its caller read from their stores and hands over (#963), and
-//! removing a Document Type moves its Filed Documents to another type in the same command. Skip is
-//! the Client's session state and writes nothing, so it is no command.
+//! against the Transactions and Payees its caller read from their stores and hands over (#963).
+//! Skip is the Client's session state and writes nothing, so it is no command. The Document Types
+//! are written by `lib_documents`' Interactors (#966).
 
-use lib_core::{DocumentId, DocumentTypeId, TransactionId};
+use lib_core::{DocumentId, TransactionId};
 use std::collections::HashSet;
 use std::convert::Infallible;
 
@@ -15,17 +15,10 @@ use chrono::NaiveDate;
 use lib_documents::{
     AddError, Document, DocumentLink, DocumentType, ExtractedFacts, FiledEntry, FilingError,
     FilingUndo, ImportLine, ImportOutcome, KeyDate, NewDocument, Source, accept, accept_all_strong,
-    add_filed, edit_facts, edit_metadata, file_by_hand, get, import_batch, toggle_link,
-    types::{
-        DocumentTypeDraft, DocumentTypeRow, RemoveError, add_type, edit_type, fallback_id,
-        id_by_name, move_by, position, remove_type,
-    },
-    undo,
+    add_filed, edit_facts, edit_metadata, file_by_hand, get, import_batch, toggle_link, undo,
 };
 
 use lib_documents::{DocumentPayee, DocumentTransaction};
-
-pub use lib_documents::types::UnknownDocumentType;
 
 use crate::{Ledger, LedgerChange, LedgerCommand};
 
@@ -168,97 +161,10 @@ impl Ledger {
         Some(batch)
     }
 
-    /// Adds a Document Type at the end of the order and returns its id. Ids are never reused,
-    /// so removing the newest type never frees its id for a saved `type:<id>` filter to match
-    /// against a different type.
-    pub fn add_document_type(&mut self, draft: &DocumentTypeDraft) -> DocumentTypeId {
-        let id = DocumentTypeId::new();
-        add_type(&mut self.document_types, id, draft);
-        self.record_document_type(id);
-        id
-    }
-
-    /// Applies `draft` to Document Type `id`.
-    pub fn edit_document_type(
-        &mut self,
-        id: DocumentTypeId,
-        draft: &DocumentTypeDraft,
-    ) -> Result<(), UnknownDocumentType> {
-        if !edit_type(&mut self.document_types, id, draft) {
-            return Err(UnknownDocumentType);
-        }
-        self.record_document_type(id);
-        Ok(())
-    }
-
-    /// Removes Document Type `id`. Its Filed Documents move to the type named `destination`, or to
-    /// the Default when none is named.
-    pub fn remove_document_type(
-        &mut self,
-        id: DocumentTypeId,
-        destination: Option<&str>,
-    ) -> Result<(), RemoveError> {
-        let moved_to = destination
-            .and_then(|name| id_by_name(&self.document_types, name))
-            .filter(|moved_to| *moved_to != id)
-            .unwrap_or_else(|| fallback_id(&self.document_types));
-        let before = self.document_types.clone();
-        remove_type(&mut self.document_types, id, destination)?;
-        self.pending.push(LedgerChange::DeleteDocumentType(id));
-        // The destination's Filed count grew, so it is written too.
-        for row in &self.document_types {
-            if before.iter().any(|old| old.id == row.id && old != row) {
-                self.pending
-                    .push(LedgerChange::UpsertDocumentType(row.clone()));
-            }
-        }
-        // The Documents follow the list: Filed files move with their type.
-        let mut moved = Vec::new();
-        for document in &mut self.documents {
-            if document.doc_type == DocumentType(id) {
-                document.doc_type = DocumentType(moved_to);
-                moved.push(document.id);
-            }
-        }
-        for id in moved {
-            self.record_document(id);
-        }
-        Ok(())
-    }
-
-    /// Swaps Document Type `id` one place down (`delta` 1) or up (`delta` -1), stopping at either
-    /// end. Returns whether it moved.
-    pub fn move_document_type(&mut self, id: DocumentTypeId, delta: isize) -> bool {
-        let Some(from) = position(&self.document_types, id) else {
-            return false;
-        };
-        if !move_by(&mut self.document_types, id, delta) {
-            return false;
-        }
-        // Both rows changed place, and their order is the user's.
-        let to = from.saturating_add_signed(delta);
-        for row in [from, to]
-            .into_iter()
-            .filter_map(|at| self.document_types.get(at).cloned())
-        {
-            self.pending.push(LedgerChange::UpsertDocumentType(row));
-        }
-        true
-    }
-
     fn record_document(&mut self, id: DocumentId) {
         if let Some(document) = get(&self.documents, id) {
             self.pending
                 .push(LedgerChange::UpsertDocument(Document::clone(document)));
-        }
-    }
-
-    fn record_document_type(&mut self, id: DocumentTypeId) {
-        if let Some(row) = self.document_types.iter().find(|row| row.id == id) {
-            self.pending
-                .push(LedgerChange::UpsertDocumentType(DocumentTypeRow::clone(
-                    row,
-                )));
         }
     }
 }
@@ -405,68 +311,11 @@ impl LedgerCommand for AcceptAllDocuments {
     }
 }
 
-/// [`Ledger::add_document_type`] as a value.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AddDocumentType(pub DocumentTypeDraft);
-
-impl LedgerCommand for AddDocumentType {
-    type Outcome = DocumentTypeId;
-    type Refusal = Infallible;
-    fn run(self, ledger: &mut Ledger) -> Result<DocumentTypeId, Infallible> {
-        Ok(ledger.add_document_type(&self.0))
-    }
-}
-
-/// [`Ledger::edit_document_type`] as a value.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EditDocumentType {
-    pub id: DocumentTypeId,
-    pub draft: DocumentTypeDraft,
-}
-
-impl LedgerCommand for EditDocumentType {
-    type Outcome = ();
-    type Refusal = UnknownDocumentType;
-    fn run(self, ledger: &mut Ledger) -> Result<(), UnknownDocumentType> {
-        ledger.edit_document_type(self.id, &self.draft)
-    }
-}
-
-/// [`Ledger::remove_document_type`] as a value.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RemoveDocumentType {
-    pub id: DocumentTypeId,
-    pub destination: Option<String>,
-}
-
-impl LedgerCommand for RemoveDocumentType {
-    type Outcome = ();
-    type Refusal = RemoveError;
-    fn run(self, ledger: &mut Ledger) -> Result<(), RemoveError> {
-        ledger.remove_document_type(self.id, self.destination.as_deref())
-    }
-}
-
-/// [`Ledger::move_document_type`] as a value.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct MoveDocumentType {
-    pub id: DocumentTypeId,
-    pub delta: isize,
-}
-
-impl LedgerCommand for MoveDocumentType {
-    type Outcome = bool;
-    type Refusal = Infallible;
-    fn run(self, ledger: &mut Ledger) -> Result<bool, Infallible> {
-        Ok(ledger.move_document_type(self.id, self.delta))
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
 
-    use lib_documents::{Filing, types::default_types};
+    use lib_documents::{Filing, types::DocumentTypeRow};
 
     use super::*;
 
@@ -529,27 +378,12 @@ mod tests {
         }
     }
 
-    fn draft(name: &str) -> DocumentTypeDraft {
-        DocumentTypeDraft {
-            name: name.to_string(),
-            tracks_date: None,
-            remind: None,
-            financial_year: false,
-        }
-    }
-
     /// Every recorded Document change names the row the Ledger now holds.
     fn assert_recorded_rows_match(ledger: &mut Ledger) {
         for change in ledger.drain_changes() {
             match change {
                 LedgerChange::UpsertDocument(document) => {
                     assert_eq!(get(ledger.documents(), document.id), Some(&document));
-                }
-                LedgerChange::UpsertDocumentType(row) => {
-                    assert!(ledger.document_types().contains(&row));
-                }
-                LedgerChange::DeleteDocumentType(id) => {
-                    assert!(ledger.document_types().iter().all(|row| row.id != id));
                 }
                 other => panic!("a Documents command recorded {other:?}"),
             }
@@ -791,143 +625,5 @@ mod tests {
         // Nothing strong is left, so a second pass records nothing.
         assert_eq!(accept_all(&ledger).run(&mut ledger), Ok(None));
         assert!(ledger.drain_changes().is_empty());
-    }
-
-    #[test]
-    fn a_document_type_id_is_never_reused() {
-        let mut ledger = ledger();
-        let first = AddDocumentType(draft("Warranties"))
-            .run(&mut ledger)
-            .unwrap();
-        RemoveDocumentType {
-            id: first,
-            destination: None,
-        }
-        .run(&mut ledger)
-        .unwrap();
-        ledger.drain_changes();
-        let second = AddDocumentType(draft("Manuals")).run(&mut ledger).unwrap();
-        assert!(second > first);
-        assert_recorded_rows_match(&mut ledger);
-    }
-
-    #[test]
-    fn editing_a_document_type_records_it_and_refuses_an_unknown_one() {
-        let mut ledger = ledger();
-        EditDocumentType {
-            id: DocumentTypeId::seed(3),
-            draft: draft(" Renamed "),
-        }
-        .run(&mut ledger)
-        .unwrap();
-        assert_eq!(
-            ledger
-                .document_types()
-                .iter()
-                .find(|row| row.id == DocumentTypeId::seed(3))
-                .unwrap()
-                .name,
-            "Renamed"
-        );
-        assert_recorded_rows_match(&mut ledger);
-
-        let before = snapshot(&ledger);
-        let refused = EditDocumentType {
-            id: DocumentTypeId::seed(9_999),
-            draft: draft("Nope"),
-        }
-        .run(&mut ledger);
-        assert_eq!(refused, Err(UnknownDocumentType));
-        assert_eq!(snapshot(&ledger), before);
-        assert!(ledger.drain_changes().is_empty());
-    }
-
-    #[test]
-    fn removing_a_document_type_moves_its_documents_and_records_every_row() {
-        let mut ledger = ledger();
-        let doc = filed(&ledger);
-        EditDocument {
-            id: doc,
-            edit: DocumentEdit {
-                title: "Held".to_string(),
-                doc_type: DocumentType::TAX,
-                date: today(),
-                key_date: None,
-            },
-        }
-        .run(&mut ledger)
-        .unwrap();
-        ledger.drain_changes();
-
-        RemoveDocumentType {
-            id: DocumentType::TAX.0,
-            destination: Some("Bills".to_string()),
-        }
-        .run(&mut ledger)
-        .unwrap();
-        assert_eq!(
-            get(ledger.documents(), doc).unwrap().doc_type,
-            DocumentType::BILLS
-        );
-        let changes = ledger.drain_changes();
-        assert!(changes.contains(&LedgerChange::DeleteDocumentType(DocumentType::TAX.0)));
-        assert!(changes.iter().any(
-            |change| matches!(change, LedgerChange::UpsertDocumentType(row) if row.id == DocumentType::BILLS.0)
-        ));
-        assert!(
-            changes
-                .iter()
-                .any(|change| matches!(change, LedgerChange::UpsertDocument(d) if d.id == doc))
-        );
-    }
-
-    #[test]
-    fn a_refused_remove_changes_nothing() {
-        let mut ledger = ledger();
-        let before = snapshot(&ledger);
-        let remove = |id, destination: Option<&str>| RemoveDocumentType {
-            id,
-            destination: destination.map(str::to_string),
-        };
-        assert_eq!(
-            remove(DocumentType::OTHER.0, Some("Bills")).run(&mut ledger),
-            Err(RemoveError::IsDefault)
-        );
-        assert_eq!(
-            remove(DocumentType::TAX.0, None).run(&mut ledger),
-            Err(RemoveError::NeedsDestination)
-        );
-        assert_eq!(
-            remove(DocumentTypeId::seed(9_999), None).run(&mut ledger),
-            Err(RemoveError::Unknown)
-        );
-        assert_eq!(snapshot(&ledger), before);
-        assert!(ledger.drain_changes().is_empty());
-    }
-
-    #[test]
-    fn moving_a_document_type_records_both_rows_and_stops_at_the_ends() {
-        let mut ledger = ledger();
-        let first = default_types()[0].id;
-        assert_eq!(
-            MoveDocumentType {
-                id: first,
-                delta: -1
-            }
-            .run(&mut ledger),
-            Ok(false)
-        );
-        assert!(ledger.drain_changes().is_empty());
-
-        assert_eq!(
-            MoveDocumentType {
-                id: first,
-                delta: 1
-            }
-            .run(&mut ledger),
-            Ok(true)
-        );
-        assert_eq!(ledger.document_types()[1].id, first);
-        assert_eq!(ledger.drain_changes().len(), 2);
     }
 }

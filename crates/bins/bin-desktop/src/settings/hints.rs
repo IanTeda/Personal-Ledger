@@ -1,17 +1,6 @@
 //! The status-line legends of the Settings pages and of the dialogs they open, as `(key, action)`
 //! pairs. They live beside the Settings Views that own the keys, not in `Root`.
 
-/// The Settings Documents page's status-line legend (16p's keys), as `(key, action)`.
-pub(crate) fn settings_documents_hints() -> Vec<(&'static str, String)> {
-    vec![
-        ("j/k", crate::msg::desktop_hint_row()),
-        ("J/K", crate::msg::desktop_hint_reorder()),
-        ("e", crate::msg::desktop_hint_edit()),
-        ("x", crate::msg::desktop_hint_remove()),
-        ("n", crate::msg::desktop_hint_new()),
-    ]
-}
-
 /// The Settings index rail's keys (the keyboard model's index scope): `j`/`k` swap the page live,
 /// `l`/`enter` step into it.
 pub(crate) fn settings_index_hints() -> Vec<(&'static str, String)> {

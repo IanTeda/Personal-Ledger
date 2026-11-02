@@ -6,7 +6,6 @@
 pub mod about;
 pub mod data_backup;
 pub mod display;
-pub mod documents;
 pub mod general;
 pub(crate) mod hints;
 pub mod page;

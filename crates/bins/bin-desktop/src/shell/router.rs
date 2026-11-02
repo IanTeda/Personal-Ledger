@@ -200,7 +200,6 @@ pub fn build(
         categories.clone(),
         transactions.clone(),
     );
-    let payees_setup = crate::payees::PayeesSetup::new(payees.clone(), &bindings.keybindings);
     let tags_setup = crate::tags::TagsSetup::new(tags.clone(), &bindings.keybindings);
     let inventory_setup =
         crate::inventory::InventorySetup::new(inventory.clone(), &bindings.keybindings);
@@ -225,8 +224,12 @@ pub fn build(
         &institutions,
         &bindings.keybindings,
     );
-    // The Documents store is shared by the Ledger's forwarding shim and read copy (#963).
+    // The Documents store is shared by the Ledger's forwarding shim and read copy and the Document
+    // Types page (#963, #966).
     let documents: lib_database::SharedDocumentsStore = Rc::new(std::cell::RefCell::new(documents));
+    let payees_setup = crate::payees::PayeesSetup::new(payees.clone(), &bindings.keybindings);
+    let document_types_setup =
+        crate::document_types::DocumentTypesSetup::new(documents.clone(), &bindings.keybindings);
     let storage = crate::ledger_store::LedgerSetup {
         institutions,
         accounts,
@@ -244,6 +247,7 @@ pub fn build(
         units,
         institutions: institutions_setup,
         payees: payees_setup,
+        document_types: document_types_setup,
         accounts: accounts_setup,
         categories: categories_setup,
         tags: tags_setup,

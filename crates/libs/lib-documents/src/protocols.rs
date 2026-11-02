@@ -10,10 +10,13 @@
 //! write, so a write never fails here; a failed save is the adapter's to report. `lib-database`'s
 //! Documents adapter implements it (#963).
 
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use chrono::NaiveDate;
 use lib_core::{AccountId, BillPlanId, DocumentTypeId, ItemId, Money, PayeeId, TransactionId};
+use lib_toast::Notify;
 
 use crate::Document;
 use crate::types::DocumentTypeRow;
@@ -42,6 +45,52 @@ pub trait DocumentRepository {
     /// Moves Document Type `id` to place `to` in the order (the end, past it), the others keeping
     /// theirs around it.
     fn move_document_type(&mut self, id: DocumentTypeId, to: usize);
+}
+
+/// The repository as the Document Types page and its Dialogs hold it: one, shared, so a type a
+/// Dialog adds is on the page as soon as the Dialog closes. Single-threaded, as both Clients' UI
+/// threads are.
+pub type SharedRepository = Rc<RefCell<dyn DocumentRepository>>;
+
+/// A Document Types Dialog, as the page asks the Router to open it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DocumentTypesDialog {
+    Add,
+    Edit(DocumentTypeId),
+    Remove(DocumentTypeId),
+    /// What Other, the Default, gets in place of Remove.
+    DefaultNotice,
+}
+
+/// What a Dialog did to the Document Types.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypeChange {
+    /// Added or edited.
+    Saved,
+    /// Removed, its Filed Documents moved.
+    Removed,
+}
+
+/// What a confirmed Document Types Dialog did, handed to the page when the Dialog closes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DocumentTypesOutcome {
+    pub change: TypeChange,
+    /// The type the page selects: the one saved, or after a removal the one now where it stood.
+    pub select: Option<DocumentTypeId>,
+}
+
+/// Navigation out of the Document Types Presenters, implemented by each Client. The Client passes
+/// it into each `handle` call rather than the Presenter holding it, since the Desktop can only
+/// open a Dialog with the gpui context that call runs in. A status-line message goes to the Shell
+/// through [`Notify`] (ADR-0048).
+pub trait DocumentTypesRouter: Notify {
+    /// Builds `dialog`'s Presenter on the shared repository and hosts its View. Returns whether it
+    /// opened: a Dialog on a type removed since it was asked for has no Presenter to build.
+    fn open_dialog(&mut self, dialog: DocumentTypesDialog) -> bool;
+
+    /// Closes the open Document Types Dialog. `outcome` is what its confirm did, `None` when it was
+    /// cancelled; the Client hands it to the page as `DocumentTypesPageEvent::DialogClosed`.
+    fn close_dialog(&mut self, outcome: Option<DocumentTypesOutcome>);
 }
 
 /// [`DocumentRepository::move_document_type`] over a list: moves `id` to `to`, clamped to the end.

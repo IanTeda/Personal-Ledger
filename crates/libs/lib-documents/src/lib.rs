@@ -26,6 +26,9 @@
 pub mod contract;
 pub mod fake;
 pub mod interactor;
+pub mod keymap;
+pub mod msg;
+pub mod presenter;
 pub mod protocols;
 pub mod types;
 
@@ -45,7 +48,8 @@ use lib_core::{
 pub use crate::protocols::{
     DocumentAccount, DocumentAccounts, DocumentBillPlan, DocumentBillPlans, DocumentFiles,
     DocumentItem, DocumentItems, DocumentPayee, DocumentPayees, DocumentReads, DocumentRepository,
-    DocumentTransaction, DocumentTransactions, LinkRecords,
+    DocumentTransaction, DocumentTransactions, DocumentTypesDialog, DocumentTypesOutcome,
+    DocumentTypesRouter, LinkRecords, SharedRepository, TypeChange,
 };
 use crate::types::{DocumentTypeRow, TracksDate};
 

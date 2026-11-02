@@ -127,7 +127,7 @@ impl Root {
             // Read-only: it has nothing to apply.
             Some(OpenDialog::ToastHistory(_) | OpenDialog::Help(_)) => self.close_dialog(),
             // Hosted: confirmed above through the opener's confirm.
-            Some(OpenDialog::Tracing(_) | OpenDialog::DocumentTypes(_)) | None => {}
+            Some(OpenDialog::Tracing(_)) | None => {}
         }
     }
 

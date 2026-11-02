@@ -424,11 +424,8 @@ impl LedgerStore {
                 crate::tags::ports::forward_deletes(&mut *self.tags.borrow_mut(), &changes);
             let inventory_written =
                 crate::inventory::ports::forward(&mut *self.inventory.borrow_mut(), &changes);
-            let documents_written = crate::documents::ports::forward(
-                &mut *self.documents.borrow_mut(),
-                &changes,
-                self.ledger.document_types(),
-            );
+            let documents_written =
+                crate::documents::ports::forward(&mut *self.documents.borrow_mut(), &changes);
             if !crate::input::sending(cx) {
                 cx.emit(LegacyApplied);
             }
@@ -585,6 +582,19 @@ impl LedgerStore {
             BTreeSet::from([Domain::Documents, Domain::DocumentTypes]),
         );
         Ok(())
+    }
+
+    /// Brings the Documents and Document Types read copy in line with the store after the Document
+    /// Types module wrote it, announcing `Domain::Documents` and `Domain::DocumentTypes` only when
+    /// it changed: a removal moves Documents, and a reorder or a new type reaches the Documents
+    /// View's type filter.
+    pub fn refresh_documents(&mut self, cx: &mut Context<'_, Self>) {
+        if self.copy_documents() {
+            self.announce(
+                cx,
+                BTreeSet::from([Domain::Documents, Domain::DocumentTypes]),
+            );
+        }
     }
 
     /// Brings the Institutions read copy in line with the ports after the Institutions module wrote

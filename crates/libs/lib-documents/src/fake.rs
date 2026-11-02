@@ -8,11 +8,13 @@ use std::{
 };
 
 use lib_core::DocumentTypeId;
+use lib_toast::{Notice, Notify};
 
 use crate::protocols::{
     DocumentAccount, DocumentAccounts, DocumentBillPlan, DocumentBillPlans, DocumentFiles,
     DocumentItem, DocumentItems, DocumentPayee, DocumentPayees, DocumentRepository,
-    DocumentTransaction, DocumentTransactions, LinkRecords, move_type_to, resolve_typed,
+    DocumentTransaction, DocumentTransactions, DocumentTypesDialog, DocumentTypesOutcome,
+    DocumentTypesRouter, LinkRecords, move_type_to, resolve_typed,
 };
 use crate::types::DocumentTypeRow;
 use crate::{Document, DocumentLink};
@@ -136,5 +138,44 @@ impl DocumentBillPlans for LinkRecords {
 impl DocumentItems for LinkRecords {
     fn document_items(&self) -> Vec<DocumentItem> {
         self.items.clone()
+    }
+}
+
+/// A Document Types Router that does nothing but record each call, in order.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RecordingRouter {
+    pub calls: Vec<RouterCall>,
+}
+
+/// What a [`RecordingRouter`] was asked.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RouterCall {
+    OpenDialog(DocumentTypesDialog),
+    CloseDialog(Option<DocumentTypesOutcome>),
+    Notice(Notice),
+}
+
+impl RecordingRouter {
+    /// The calls made since the last `take`.
+    pub fn take(&mut self) -> Vec<RouterCall> {
+        std::mem::take(&mut self.calls)
+    }
+}
+
+impl DocumentTypesRouter for RecordingRouter {
+    /// Always opens: the recording Router builds no Presenter that could fail.
+    fn open_dialog(&mut self, dialog: DocumentTypesDialog) -> bool {
+        self.calls.push(RouterCall::OpenDialog(dialog));
+        true
+    }
+
+    fn close_dialog(&mut self, outcome: Option<DocumentTypesOutcome>) {
+        self.calls.push(RouterCall::CloseDialog(outcome));
+    }
+}
+
+impl Notify for RecordingRouter {
+    fn notify(&mut self, notice: Notice) {
+        self.calls.push(RouterCall::Notice(notice));
     }
 }

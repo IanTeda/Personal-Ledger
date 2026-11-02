@@ -144,9 +144,15 @@ fn the_add_button_opens_the_dialog_and_the_controls_click(app: &mut TestAppConte
     assert_eq!(ui.dialog(), Some("AddDocumentType"));
     ui.click("document-type-name");
     ui.press("l e a s e s");
-    ui.click("document-type-tracks-2");
+    // Remind is inert until a date is tracked.
     ui.click("document-type-remind-3");
+    assert_eq!(ui.dialog_value("remind").as_deref(), Some("None"));
+    ui.click("document-type-tracks-2");
+    assert_eq!(ui.dialog_value("tracks_date").as_deref(), Some("Ends"));
+    ui.click("document-type-remind-3");
+    assert_eq!(ui.dialog_value("remind").as_deref(), Some("30 d"));
     ui.click("document-type-financial-year");
+    assert_eq!(ui.dialog_value("financial_year").as_deref(), Some("true"));
     ui.click("add-document-type-confirm");
 
     let document_types_page = ui.settings::<SettingsDocumentTypesSnapshot>();
@@ -174,4 +180,65 @@ fn cancel_closes_the_add_dialog(app: &mut TestAppContext) {
             .len(),
         9
     );
+}
+
+#[gpui::test]
+fn clearing_the_tracks_date_by_click_clears_remind(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+
+    // Insurance renews and reminds 30 days ahead.
+    ui.click(&format!(
+        "settings-documents-edit-{}",
+        DocumentTypeId::seed(4)
+    ));
+    assert_eq!(ui.dialog_value("remind").as_deref(), Some("30 d"));
+    ui.click("document-type-tracks-0");
+
+    assert_eq!(ui.dialog_value("tracks_date").as_deref(), Some("None"));
+    assert_eq!(ui.dialog_value("remind").as_deref(), Some("None"));
+}
+
+#[gpui::test]
+fn the_kickers_add_button_is_the_n_key(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+
+    ui.click("settings-documents-add");
+    assert_eq!(ui.dialog(), Some("AddDocumentType"));
+    ui.click("add-document-type-cancel");
+    ui.press("n");
+    assert_eq!(ui.dialog(), Some("AddDocumentType"));
+}
+
+#[gpui::test]
+fn a_failed_write_puts_the_types_back_with_an_error_toast(app: &mut TestAppContext) {
+    let mut ui = Harness::with_failing_documents(app);
+    ui.press("g s");
+    ui.click("settings-index-Documents");
+    let stored = ui
+        .settings::<SettingsDocumentTypesSnapshot>()
+        .document_type_names;
+
+    ui.click(&format!(
+        "settings-documents-remove-{}",
+        DocumentTypeId::seed(3)
+    ));
+    ui.click("remove-document-type-confirm");
+    assert_eq!(
+        ui.settings::<SettingsDocumentTypesSnapshot>()
+            .document_type_names
+            .len(),
+        stored.len() - 1,
+        "memory runs ahead of the file until the failure is heard"
+    );
+    ui.settle_writes();
+
+    assert_eq!(
+        ui.settings::<SettingsDocumentTypesSnapshot>()
+            .document_type_names,
+        stored
+    );
+    assert!(ui.toasts().visible.into_iter().any(|toast| {
+        toast.kind == "Error"
+            && toast.text == "Couldn't save the change to documents, so they are back as last saved"
+    }));
 }

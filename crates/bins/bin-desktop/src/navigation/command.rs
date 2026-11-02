@@ -636,6 +636,12 @@ fn module_entries(config: &KeyBindingConfig) -> Vec<Entry> {
     );
     listed(
         &mut entries,
+        &lib_documents::keymap::document_types_page_keymap(config),
+        settings(Page::Documents),
+        Domain::Documents,
+    );
+    listed(
+        &mut entries,
         &lib_institutions::keymap::institutions_page_keymap(config),
         settings(Page::Institutions),
         Domain::Institutions,
