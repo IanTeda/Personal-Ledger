@@ -449,7 +449,7 @@ A Filed Document whose Key Date falls within 60 days either side of today, inclu
 _Avoid_: Needs Attention — that is the Ledger-wide list, which Documents do not join. Expiring — the name of the sort, not of the state.
 
 **Document Link**:
-A Document's reference to one record it proves: a Transaction (the whole Transaction, never a single Split), an Inventory Item, an Account, a Payee or a Bill Plan (never a Bill Schedule entry; proof for one paid instance links to the Transaction that paid it). Many-to-many: a Document has any number of Document Links and a record may be linked from any number of Documents.
+A Document's reference to one record it proves: a Transaction (the whole Transaction, never a single Split), an Inventory Item, an Account, a Payee or a Bill Plan (never a Bill Schedule entry; proof for one paid instance links to the Transaction that paid it). Many-to-many: a Document has any number of Document Links and a record may be linked from any number of Documents. Deleting the linked record drops its Document Links, never a Document.
 _Avoid_: Attachment, Match — Match is the Bills term for settling a Bill Schedule entry against a Split.
 
 **Inbox**:

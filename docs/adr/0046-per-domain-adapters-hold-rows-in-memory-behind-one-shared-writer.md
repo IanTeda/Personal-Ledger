@@ -22,3 +22,13 @@
 - The UI never waits on storage, but a failed write shows only as a Toast and a reload that drops the queued writes, as under ADR-0044.
 - Every adapter holds its whole domain in memory. That is fine at a personal ledger's size, and Transactions are the first place to check it.
 - A cross-domain module's atomic port goes through the same writer, so its one transaction is still ordered with every other write.
+
+## Amendment (2026-11-02): a cascade reloads the rows it changed
+
+Persisting Documents ([#812](https://github.com/IanTeda/Personal-Ledger/issues/812)) puts foreign keys with `ON DELETE CASCADE` on `document_links`: deleting a linked Transaction, Account, Payee, Bill Plan, Inventory Item or Location drops its Document Links and keeps the Document (GLOSSARY **Document Link**). SQLite then changes rows the Documents adapter holds in memory, without the adapter knowing, and the next upsert of that Document would write the dead Link back and fail on the foreign key. Decided in the slice 9 grilling.
+
+- **The schema is the source of truth for a cascade.** A delete in another domain never writes Documents itself, so Payee delete, Transaction delete and Account delete stay single-domain or keep the stores they have.
+- **A commit that deleted a linkable row reloads the Documents adapter's Links.** The pending batch knows which deletes it holds, and the Desktop's `input.rs` `send` asks for the reload after it commits. The reload goes through the writer like every load, queued behind the commit, so it sees the cascade.
+- **A later cascade follows the same rule.** A new table whose rows a cascade can change is reloaded the same way, by the commit that deleted the parent.
+
+Considered and rejected: each deleting Interactor also dropping the Links through a Documents port, which would make every delete of a linkable record a cross-domain write and give `AccountDeletionAdapter` a fourth store; and the Documents adapter filtering dead Links on upsert, which needs reads into every linked domain's store.
