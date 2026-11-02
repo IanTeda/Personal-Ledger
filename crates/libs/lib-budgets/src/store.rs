@@ -13,37 +13,9 @@ use super::protocols::{
     BudgetAccount, BudgetAccounts, BudgetCategories, BudgetCategory, BudgetReads,
 };
 use super::{
-    Budget, Limit, LimitRecord, Method, Rollover, applied, inherited_rollover, put, tree, zero,
+    Budget, Error, Limit, LimitRecord, Method, Result, Rollover, applied, inherited_rollover, put,
+    tree, zero,
 };
-
-/// Errors for Budget and Category Limit operations.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum BudgetError {
-    #[error("budget not found")]
-    NotFound,
-    #[error("a budget needs a name")]
-    NameRequired,
-    #[error("another budget already has that name")]
-    NameTaken,
-    #[error("an archived budget is read-only")]
-    Archived,
-    #[error("the default budget can't be archived")]
-    DefaultCannotBeArchived,
-    #[error("only a leaf expense category can be budgeted")]
-    NotAnExpenseLeaf,
-    #[error("closed months are read-only")]
-    ClosedMonth,
-    #[error("a budget amount can't be negative")]
-    NegativeAmount,
-    #[error("account not found")]
-    AccountNotFound,
-    #[error("an on-budget account must take transactions in the budget's unit")]
-    AccountNotInUnit,
-    #[error("that category has no budget amount this month")]
-    NotBudgeted,
-    #[error("that isn't an amount")]
-    InvalidAmount,
-}
 
 /// Where a new Budget's Category Limits come from (11c's Start from).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -118,17 +90,17 @@ impl Budgets {
         self.list.iter().find(|budget| budget.is_default)
     }
 
-    fn get_mut(&mut self, id: BudgetId) -> Result<&mut Budget, BudgetError> {
+    fn get_mut(&mut self, id: BudgetId) -> Result<&mut Budget> {
         self.list
             .iter_mut()
             .find(|budget| budget.id == id)
-            .ok_or(BudgetError::NotFound)
+            .ok_or(Error::NotFound)
     }
 
-    fn editable_mut(&mut self, id: BudgetId) -> Result<&mut Budget, BudgetError> {
+    fn editable_mut(&mut self, id: BudgetId) -> Result<&mut Budget> {
         let budget = self.get_mut(id)?;
         if budget.is_archived() {
-            return Err(BudgetError::Archived);
+            return Err(Error::Archived);
         }
         Ok(budget)
     }
@@ -145,19 +117,17 @@ impl Budgets {
         new: &NewBudget,
         reads: &dyn BudgetReads,
         today: NaiveDate,
-    ) -> Result<BudgetId, BudgetError> {
+    ) -> Result<BudgetId> {
         let name = new.name.trim();
         if name.is_empty() {
-            return Err(BudgetError::NameRequired);
+            return Err(Error::NameRequired);
         }
         if self.name_taken(name, None) {
-            return Err(BudgetError::NameTaken);
+            return Err(Error::NameTaken);
         }
         check_accounts(&reads.budget_accounts(), new.unit, &new.account_ids)?;
         let copy_from = match &new.start_from {
-            StartFrom::Copy(source) => {
-                Some(self.get(*source).ok_or(BudgetError::NotFound)?.clone())
-            }
+            StartFrom::Copy(source) => Some(self.get(*source).ok_or(Error::NotFound)?.clone()),
             StartFrom::Empty | StartFrom::LastThreeMonths => None,
         };
         let current = Period::of(today);
@@ -216,14 +186,14 @@ impl Budgets {
         name: &str,
         account_ids: Vec<AccountId>,
         accounts: &dyn BudgetAccounts,
-    ) -> Result<(), BudgetError> {
+    ) -> Result<()> {
         let accounts = accounts.budget_accounts();
         let name = name.trim();
         if name.is_empty() {
-            return Err(BudgetError::NameRequired);
+            return Err(Error::NameRequired);
         }
         if self.name_taken(name, Some(id)) {
-            return Err(BudgetError::NameTaken);
+            return Err(Error::NameTaken);
         }
         let budget = self.editable_mut(id)?;
         let account_ids: Vec<AccountId> = account_ids
@@ -238,8 +208,8 @@ impl Budgets {
 
     /// Copies Unit, Method, Accounts and the full chains as "<name> copy" (numbered when taken).
     /// The copy is never the default and is never archived.
-    pub fn duplicate(&mut self, id: BudgetId) -> Result<BudgetId, BudgetError> {
-        let source = self.get(id).ok_or(BudgetError::NotFound)?.clone();
+    pub fn duplicate(&mut self, id: BudgetId) -> Result<BudgetId> {
+        let source = self.get(id).ok_or(Error::NotFound)?.clone();
         let mut name = format!("{} copy", source.name);
         let mut number = 2;
         while self.name_taken(&name, None) {
@@ -259,22 +229,22 @@ impl Budgets {
     }
 
     /// Archiving never deletes, and never the default.
-    pub fn archive(&mut self, id: BudgetId, today: NaiveDate) -> Result<(), BudgetError> {
+    pub fn archive(&mut self, id: BudgetId, today: NaiveDate) -> Result<()> {
         let budget = self.get_mut(id)?;
         if budget.is_default {
-            return Err(BudgetError::DefaultCannotBeArchived);
+            return Err(Error::DefaultCannotBeArchived);
         }
         budget.archived_at.get_or_insert(today);
         Ok(())
     }
 
-    pub fn restore(&mut self, id: BudgetId) -> Result<(), BudgetError> {
+    pub fn restore(&mut self, id: BudgetId) -> Result<()> {
         self.get_mut(id)?.archived_at = None;
         Ok(())
     }
 
     /// Makes an active Budget the one default.
-    pub fn set_default(&mut self, id: BudgetId) -> Result<(), BudgetError> {
+    pub fn set_default(&mut self, id: BudgetId) -> Result<()> {
         self.editable_mut(id)?;
         for budget in &mut self.list {
             budget.is_default = budget.id == id;
@@ -297,7 +267,7 @@ impl Budgets {
         amount: Money,
         rollover: Option<Rollover>,
         today: NaiveDate,
-    ) -> Result<(), BudgetError> {
+    ) -> Result<()> {
         self.get_mut(id)?.set_amount(
             categories,
             category_id,
@@ -317,7 +287,7 @@ impl Budgets {
         category_id: CategoryId,
         month: Period,
         today: NaiveDate,
-    ) -> Result<(), BudgetError> {
+    ) -> Result<()> {
         self.get_mut(id)?
             .stop(categories, category_id, month, today)
     }
@@ -329,7 +299,7 @@ impl Budgets {
         category_id: CategoryId,
         month: Period,
         today: NaiveDate,
-    ) -> Result<bool, BudgetError> {
+    ) -> Result<bool> {
         self.get_mut(id)?
             .clear_month_only(category_id, month, today)
     }
@@ -340,7 +310,7 @@ impl Budgets {
         id: BudgetId,
         category_id: CategoryId,
         today: NaiveDate,
-    ) -> Result<Rollover, BudgetError> {
+    ) -> Result<Rollover> {
         self.get_mut(id)?.cycle_rollover(category_id, today)
     }
 
@@ -358,7 +328,7 @@ impl Budgets {
         span: Span,
         text: &str,
         today: NaiveDate,
-    ) -> Result<bool, BudgetError> {
+    ) -> Result<bool> {
         self.get_mut(id)?
             .save_cell(categories, category_id, month, span, text, today)
     }
@@ -371,7 +341,7 @@ impl Budgets {
         target: Period,
         source: FillSource,
         today: NaiveDate,
-    ) -> Result<usize, BudgetError> {
+    ) -> Result<usize> {
         self.get_mut(id)?.fill(reads, target, source, today)
     }
 
@@ -383,7 +353,7 @@ impl Budgets {
         category_id: CategoryId,
         amount: Option<Money>,
         today: NaiveDate,
-    ) -> Result<bool, BudgetError> {
+    ) -> Result<bool> {
         self.get_mut(id)?
             .set_monthly_limit(categories, category_id, amount, today)
     }
@@ -449,9 +419,9 @@ impl Budgets {
 /// share them. Each refuses an archived Budget; a refusal can leave the chain half-edited, so a
 /// caller applies a rule to a copy and keeps it only when it lands.
 impl Budget {
-    fn ensure_editable(&self) -> Result<(), BudgetError> {
+    fn ensure_editable(&self) -> Result<()> {
         if self.is_archived() {
-            Err(BudgetError::Archived)
+            Err(Error::Archived)
         } else {
             Ok(())
         }
@@ -472,11 +442,11 @@ impl Budget {
         amount: Money,
         rollover: Option<Rollover>,
         today: NaiveDate,
-    ) -> Result<(), BudgetError> {
+    ) -> Result<()> {
         check_leaf(&categories.budget_categories(), category_id)?;
         check_open_month(month, today)?;
         if amount.0.is_negative() {
-            return Err(BudgetError::NegativeAmount);
+            return Err(Error::NegativeAmount);
         }
         self.ensure_editable()?;
         let chain = self.limits.entry(category_id).or_default();
@@ -497,7 +467,7 @@ impl Budget {
         category_id: CategoryId,
         month: Period,
         today: NaiveDate,
-    ) -> Result<(), BudgetError> {
+    ) -> Result<()> {
         check_leaf(&categories.budget_categories(), category_id)?;
         check_open_month(month, today)?;
         self.ensure_editable()?;
@@ -557,7 +527,7 @@ impl Budget {
         category_id: CategoryId,
         month: Period,
         today: NaiveDate,
-    ) -> Result<bool, BudgetError> {
+    ) -> Result<bool> {
         check_open_month(month, today)?;
         self.ensure_editable()?;
         let Some(chain) = self.limits.get_mut(&category_id) else {
@@ -578,12 +548,12 @@ impl Budget {
         &mut self,
         category_id: CategoryId,
         today: NaiveDate,
-    ) -> Result<Rollover, BudgetError> {
+    ) -> Result<Rollover> {
         let current = Period::of(today);
         self.ensure_editable()?;
         let chain = self.limits.entry(category_id).or_default();
         let Some(found) = applied(chain, current) else {
-            return Err(BudgetError::NotBudgeted);
+            return Err(Error::NotBudgeted);
         };
         let next = found.rollover.next();
         put(
@@ -610,7 +580,7 @@ impl Budget {
         span: Span,
         text: &str,
         today: NaiveDate,
-    ) -> Result<bool, BudgetError> {
+    ) -> Result<bool> {
         let text = text.trim();
         if text.is_empty() {
             return match span {
@@ -622,7 +592,7 @@ impl Budget {
                 Span::MonthOnly => self.clear_month_only(category_id, month, today),
             };
         }
-        let amount: Money = text.parse().map_err(|_| BudgetError::InvalidAmount)?;
+        let amount: Money = text.parse().map_err(|_| Error::InvalidAmount)?;
         let amount = Money(amount.0.with_scale_round(2, RoundingMode::HalfUp));
         let chain = self.chain(category_id);
         let unchanged = applied(chain, month).is_some_and(|found| found.amount == amount)
@@ -644,7 +614,7 @@ impl Budget {
         target: Period,
         source: FillSource,
         today: NaiveDate,
-    ) -> Result<usize, BudgetError> {
+    ) -> Result<usize> {
         check_open_month(target, today)?;
         self.ensure_editable()?;
         let preview = fill_preview(self, reads, target, source);
@@ -673,7 +643,7 @@ impl Budget {
         category_id: CategoryId,
         amount: Option<Money>,
         today: NaiveDate,
-    ) -> Result<bool, BudgetError> {
+    ) -> Result<bool> {
         let current = Period::of(today);
         let existing = applied(self.chain(category_id), current).map(|found| found.amount);
         if existing == amount {
@@ -695,37 +665,30 @@ impl Budget {
     }
 }
 
-pub fn check_leaf(
-    categories: &[BudgetCategory],
-    category_id: CategoryId,
-) -> Result<(), BudgetError> {
+pub fn check_leaf(categories: &[BudgetCategory], category_id: CategoryId) -> Result<()> {
     if tree::is_expense(categories, category_id) && tree::is_leaf(categories, category_id) {
         Ok(())
     } else {
-        Err(BudgetError::NotAnExpenseLeaf)
+        Err(Error::NotAnExpenseLeaf)
     }
 }
 
-fn check_open_month(month: Period, today: NaiveDate) -> Result<(), BudgetError> {
+fn check_open_month(month: Period, today: NaiveDate) -> Result<()> {
     if month < Period::of(today) {
-        Err(BudgetError::ClosedMonth)
+        Err(Error::ClosedMonth)
     } else {
         Ok(())
     }
 }
 
-pub fn check_accounts(
-    accounts: &[BudgetAccount],
-    unit: UnitId,
-    ids: &[AccountId],
-) -> Result<(), BudgetError> {
+pub fn check_accounts(accounts: &[BudgetAccount], unit: UnitId, ids: &[AccountId]) -> Result<()> {
     for id in ids {
         let account = accounts
             .iter()
             .find(|a| a.id == *id)
-            .ok_or(BudgetError::AccountNotFound)?;
+            .ok_or(Error::AccountNotFound)?;
         if !account.takes_transactions || account.unit != unit {
-            return Err(BudgetError::AccountNotInUnit);
+            return Err(Error::AccountNotInUnit);
         }
     }
     Ok(())

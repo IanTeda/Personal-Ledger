@@ -14,7 +14,7 @@ use lib_viper::view::{Choice, Hint};
 use super::{count, error_text, method_label};
 use crate::interactor::{ArchiveBudget, DuplicateBudget, RestoreBudget, SetDefaultBudget};
 use crate::protocols::{BudgetsOutcome, BudgetsRouter, ManageAction, SharedPorts};
-use crate::{Budget, BudgetError, applied, msg};
+use crate::{Budget, Error, applied, msg};
 
 /// What Manage budgets is told.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -178,7 +178,7 @@ impl ManagePresenter {
                 router.close_dialog(Some(BudgetsOutcome::Show(id)));
                 return;
             }
-            ManageAction::Edit if budget.is_archived() => Err(BudgetError::Archived),
+            ManageAction::Edit if budget.is_archived() => Err(Error::Archived),
             ManageAction::Edit => {
                 router.close_dialog(Some(BudgetsOutcome::EditBudget(id)));
                 return;

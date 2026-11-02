@@ -392,10 +392,7 @@ fn progress_row(row: &CategoryFigures, categories: &[crate::BudgetCategory]) -> 
                 let over = Money(row.spent.0.clone() - budget.0.clone());
                 (msg::budgets_row_over(&money(&over)), true)
             } else if row.at_risk {
-                (
-                    format!("{} {}", money(left), msg::budgets_row_at_risk()),
-                    true,
-                )
+                (msg::budgets_row_at_risk(&money(left)), true)
             } else {
                 (money(left), false)
             };
@@ -411,7 +408,7 @@ fn progress_row(row: &CategoryFigures, categories: &[crate::BudgetCategory]) -> 
     let bar = bar_view(row);
     ProgressRow {
         name: if row.is_parent {
-            format!("\u{25be} {name}")
+            msg::budgets_row_parent(&name)
         } else {
             name
         },

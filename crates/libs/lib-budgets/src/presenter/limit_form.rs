@@ -404,11 +404,9 @@ impl LimitFormPresenter {
         if draft.month > current {
             lines.push(LimitPreviewView {
                 what: period_label(current),
-                figures: format!(
-                    "{} {}",
-                    or_dash(amount_in(&budget, current).as_ref()),
-                    msg::budgets_limit_preview_unchanged()
-                ),
+                figures: msg::budgets_limit_preview_unchanged(&or_dash(
+                    amount_in(&budget, current).as_ref(),
+                )),
                 strong: false,
             });
         }

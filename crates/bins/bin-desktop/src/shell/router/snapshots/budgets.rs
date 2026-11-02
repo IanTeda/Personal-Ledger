@@ -29,6 +29,11 @@ impl Root {
                 snapshot.switcher_names = Some(names);
                 snapshot.switcher_selected = Some(selected);
             }
+            if let Some((rows, selected, error)) = hosted.manage_rows() {
+                snapshot.manage_rows = Some(rows);
+                snapshot.manage_selected = Some(selected);
+                snapshot.manage_error = error;
+            }
         } else if let Some(hosted) = open.downcast::<FormDialog>() {
             let hosted = hosted.read(cx);
             snapshot.dialog = Some(hosted.kind().to_string());

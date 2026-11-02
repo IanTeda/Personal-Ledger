@@ -1198,7 +1198,7 @@ fn fill_from_the_average_rounds_spent_and_refuses_a_closed_month() {
             FillSource::Average,
             today()
         ),
-        Err(BudgetError::ClosedMonth)
+        Err(Error::ClosedMonth)
     );
 }
 
@@ -1373,7 +1373,7 @@ fn only_leaf_expense_categories_hold_amounts() {
             None,
             today(),
         );
-        assert_eq!(refused, Err(BudgetError::NotAnExpenseLeaf), "{name}");
+        assert_eq!(refused, Err(Error::NotAnExpenseLeaf), "{name}");
     }
 }
 
@@ -1392,7 +1392,7 @@ fn closed_months_are_read_only_and_amounts_cant_be_negative() {
         None,
         today(),
     );
-    assert_eq!(closed, Err(BudgetError::ClosedMonth));
+    assert_eq!(closed, Err(Error::ClosedMonth));
     let negative = budgets.set_amount(
         id,
         world.ledger(),
@@ -1403,10 +1403,10 @@ fn closed_months_are_read_only_and_amounts_cant_be_negative() {
         None,
         today(),
     );
-    assert_eq!(negative, Err(BudgetError::NegativeAmount));
+    assert_eq!(negative, Err(Error::NegativeAmount));
     assert_eq!(
         budgets.stop(id, world.ledger(), dining, sep().prev(), today()),
-        Err(BudgetError::ClosedMonth)
+        Err(Error::ClosedMonth)
     );
 }
 
@@ -1529,7 +1529,7 @@ fn cycling_the_rollover_writes_an_onward_from_the_current_month() {
     assert!(matches!(chain[0].limit, Limit::Onward { .. }));
     assert_eq!(
         budgets.cycle_rollover(id, world.category("Water"), today()),
-        Err(BudgetError::NotBudgeted)
+        Err(Error::NotBudgeted)
     );
 }
 
@@ -1649,30 +1649,24 @@ fn a_budget_needs_a_unique_name_and_same_unit_accounts_that_take_transactions() 
     let create = |budgets: &mut Budgets, new: NewBudget| budgets.create(&new, ledger, today());
     assert_eq!(
         create(&mut budgets, new_budget(&world, "  ", StartFrom::Empty)),
-        Err(BudgetError::NameRequired)
+        Err(Error::NameRequired)
     );
     assert_eq!(
         create(&mut budgets, new_budget(&world, "test", StartFrom::Empty)),
-        Err(BudgetError::NameTaken)
+        Err(Error::NameTaken)
     );
     let mut wrong_unit = new_budget(&world, "Crypto", StartFrom::Empty);
     wrong_unit.account_ids = vec![world.account("Bitcoin")];
     assert_eq!(
         create(&mut budgets, wrong_unit),
-        Err(BudgetError::AccountNotInUnit)
+        Err(Error::AccountNotInUnit)
     );
     let mut loan = new_budget(&world, "Loans", StartFrom::Empty);
     loan.account_ids = vec![world.account("Home Loan")];
-    assert_eq!(
-        create(&mut budgets, loan),
-        Err(BudgetError::AccountNotInUnit)
-    );
+    assert_eq!(create(&mut budgets, loan), Err(Error::AccountNotInUnit));
     let mut missing = new_budget(&world, "Missing", StartFrom::Empty);
     missing.account_ids = vec![AccountId::seed(9_999)];
-    assert_eq!(
-        create(&mut budgets, missing),
-        Err(BudgetError::AccountNotFound)
-    );
+    assert_eq!(create(&mut budgets, missing), Err(Error::AccountNotFound));
 }
 
 #[test]
@@ -1762,11 +1756,11 @@ fn edit_renames_and_changes_accounts_but_keeps_the_unit() {
     assert_eq!(edited.map(|b| b.account_ids.clone()), Some(accounts));
     assert_eq!(
         budgets.edit(id, "", vec![], world.ledger()),
-        Err(BudgetError::NameRequired)
+        Err(Error::NameRequired)
     );
     assert_eq!(
         budgets.edit(id, "X", vec![world.account("Bitcoin")], world.ledger()),
-        Err(BudgetError::AccountNotInUnit)
+        Err(Error::AccountNotInUnit)
     );
 }
 
@@ -1807,10 +1801,7 @@ fn duplicating_copies_the_chains_and_numbers_a_taken_name() {
             .map(|b| b.chain(world.category("Dining")))
             .unwrap_or_default()
     );
-    assert_eq!(
-        budgets.duplicate(BudgetId::seed(99)),
-        Err(BudgetError::NotFound)
-    );
+    assert_eq!(budgets.duplicate(BudgetId::seed(99)), Err(Error::NotFound));
 }
 
 #[test]
@@ -1826,7 +1817,7 @@ fn the_default_cant_be_archived_but_another_can_be_archived_and_restored() {
         .expect("the id exists");
     assert_eq!(
         budgets.archive(first, today()),
-        Err(BudgetError::DefaultCannotBeArchived)
+        Err(Error::DefaultCannotBeArchived)
     );
     assert_eq!(budgets.archive(second, today()), Ok(()));
     assert_eq!(
@@ -1858,7 +1849,7 @@ fn set_default_moves_the_flag_and_refuses_an_archived_budget() {
         )
         .expect("the id exists");
     assert_eq!(budgets.archive(third, today()), Ok(()));
-    assert_eq!(budgets.set_default(third), Err(BudgetError::Archived));
+    assert_eq!(budgets.set_default(third), Err(Error::Archived));
     assert_eq!(budgets.set_default(second), Ok(()));
     assert_eq!(budgets.all().iter().filter(|b| b.is_default).count(), 1);
     assert_eq!(budgets.default_budget().map(|b| b.id), Some(second));
@@ -1909,10 +1900,10 @@ fn an_archived_budget_is_read_only_but_still_computed() {
         None,
         today(),
     );
-    assert_eq!(refused, Err(BudgetError::Archived));
+    assert_eq!(refused, Err(Error::Archived));
     assert_eq!(
         budgets.edit(second, "New name", vec![], world.ledger()),
-        Err(BudgetError::Archived)
+        Err(Error::Archived)
     );
     let archived = budgets
         .get(second)
@@ -2073,7 +2064,7 @@ fn save(
     month: Period,
     span: Span,
     text: &str,
-) -> Result<bool, BudgetError> {
+) -> Result<bool> {
     budgets.save_cell(
         id,
         world.ledger(),
@@ -2298,7 +2289,7 @@ fn a_closed_month_or_a_bad_amount_is_refused() {
             Span::Onward,
             "250"
         ),
-        Err(BudgetError::ClosedMonth)
+        Err(Error::ClosedMonth)
     );
     assert_eq!(
         save(
@@ -2310,7 +2301,7 @@ fn a_closed_month_or_a_bad_amount_is_refused() {
             Span::Onward,
             "12x"
         ),
-        Err(BudgetError::InvalidAmount)
+        Err(Error::InvalidAmount)
     );
 }
 

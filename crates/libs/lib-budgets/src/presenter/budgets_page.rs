@@ -27,7 +27,7 @@ use crate::keymap::{
     PREVIOUS_PERIOD, ROLLOVER, STOP, SWITCH,
 };
 use crate::protocols::{BudgetRepository, BudgetsOutcome, BudgetsRouter, SharedPorts};
-use crate::{Budget, BudgetError, PERSONAL_SPENDING_ID, default_plan_start, msg};
+use crate::{Budget, Error, PERSONAL_SPENDING_ID, Result, default_plan_start, msg};
 
 /// Which tab of the page shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -301,7 +301,7 @@ impl BudgetsPagePresenter {
                 if self.editable().is_some() {
                     router.open_edit_budget(self.current);
                 } else {
-                    router.notify(Notice::Status(error_text(&BudgetError::Archived)));
+                    router.notify(Notice::Status(error_text(&Error::Archived)));
                 }
             }
             BudgetsPageEvent::Manage => {
@@ -388,7 +388,7 @@ impl BudgetsPagePresenter {
     }
 
     /// A Budget-wide verb's refusal, on the status line.
-    fn report(done: Result<(), BudgetError>, router: &mut dyn BudgetsRouter) {
+    fn report(done: Result<()>, router: &mut dyn BudgetsRouter) {
         if let Err(error) = done {
             router.notify(Notice::Status(error_text(&error)));
         }

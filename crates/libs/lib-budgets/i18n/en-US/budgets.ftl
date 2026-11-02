@@ -58,7 +58,8 @@ budgets-row-rollup = rollup
 budgets-row-carried = incl. { $amount } carried
 budgets-row-unbudgeted = unbudgeted
 budgets-row-over = { $amount } over
-budgets-row-at-risk = at risk
+budgets-row-at-risk = { $amount } at risk
+budgets-row-parent = ▾ { $name }
 budgets-row-edit = edit
 budgets-row-set = set
 budgets-progress-empty = Nothing is budgeted or spent this period.
@@ -68,7 +69,7 @@ budgets-progress-empty = Nothing is budgeted or spent this period.
 budgets-plan-meta = Monthly amounts per category · past months are read-only · bold = amount set this month
 budgets-plan-range = { $from } – { $to } { $year }
 budgets-plan-range-years = { $from } { $from_year } – { $to } { $to_year }
-budgets-plan-now = now
+budgets-plan-month-now = { $month } · now
 budgets-plan-column-rollover = Rollover
 budgets-plan-rollover-unspent = carry unspent
 budgets-plan-rollover-both = carry both
@@ -83,8 +84,9 @@ budgets-plan-unallocated = Unallocated of { $average } avg. income
 budgets-history-meta = Budget vs spent by month · the average and OVER count use closed months only
 budgets-history-empty = No category has a budget amount yet.
 budgets-history-pair = { $spent } / { $budget }
-budgets-history-to-date = to date
-budgets-history-over-mark = over
+budgets-history-month-to-date = { $month } · to date
+budgets-history-month-over = { $month } · over
+budgets-history-cell-over = ▲ { $amount }
 budgets-history-caption = { $months ->
     [one] over in { $over } of the last { $months } closed month
    *[other] over in { $over } of the last { $months } closed months

@@ -16,6 +16,9 @@ pub struct BudgetRowSnapshot {
     pub budgeted: bool,
 }
 
+/// One row of Manage budgets: its name, whether it is the default and whether it is archived.
+pub type ManageRowSnapshot = (String, bool, bool);
+
 /// The Budgets page's state: plain values, so the private budget types stay private.
 #[doc(hidden)]
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,6 +45,11 @@ pub struct BudgetsSnapshot {
     pub switcher_names: Option<Vec<String>>,
     /// The Switcher's highlighted row.
     pub switcher_selected: Option<usize>,
+    /// The rows Manage budgets lists, as `(name, is default, is archived)`, and its cursor.
+    pub manage_rows: Option<Vec<ManageRowSnapshot>>,
+    pub manage_selected: Option<usize>,
+    /// The refusal Manage budgets shows under its table.
+    pub manage_error: Option<String>,
     /// The open New budget form's Name draft.
     pub budget_name: Option<String>,
     /// The Fill dialog's chosen source, `PreviousMonth` or `Average`.
@@ -103,6 +111,9 @@ impl BudgetsPage {
             limit_amount: None,
             switcher_names: None,
             switcher_selected: None,
+            manage_rows: None,
+            manage_selected: None,
+            manage_error: None,
             budget_name: None,
             fill_source: None,
             stop_category: None,

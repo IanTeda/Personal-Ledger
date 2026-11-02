@@ -7,6 +7,8 @@ use super::common;
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use common::Harness;
 use gpui::TestAppContext;
+use lib_budgets::PERSONAL_SPENDING_ID;
+use lib_core::BudgetId;
 
 fn on_budgets(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
@@ -327,4 +329,91 @@ fn the_new_budget_dialog_start_cells_and_cancel(app: &mut TestAppContext) {
     );
     ui.click("budgets-new-cancel");
     assert_eq!(ui.budgets().dialog, None);
+}
+
+fn open_manage(ui: &mut Harness<'_>) {
+    ui.click("budgets-title");
+    ui.click("budgets-switcher-manage");
+    assert_eq!(ui.budgets().dialog.as_deref(), Some("Manage"));
+}
+
+fn manage_rows(ui: &mut Harness<'_>) -> Vec<(String, bool, bool)> {
+    ui.budgets().manage_rows.unwrap_or_default()
+}
+
+/// The selector of one of a Budget row's action links.
+fn link(id: BudgetId, action: &str) -> String {
+    format!("budgets-manage-{id}-{action}")
+}
+
+#[gpui::test]
+fn the_switchers_manage_button_opens_manage_budgets_and_close_shuts_it(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+
+    open_manage(&mut ui);
+    assert_eq!(manage_rows(&mut ui).len(), 2);
+    ui.click("budgets-manage-close");
+    assert_eq!(ui.budgets().dialog, None);
+}
+
+#[gpui::test]
+fn clicking_a_row_moves_the_manage_cursor(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+    open_manage(&mut ui);
+
+    ui.click("budgets-manage-row-1");
+    assert_eq!(ui.budgets().manage_selected, Some(1));
+    ui.click("budgets-manage-row-0");
+    assert_eq!(ui.budgets().manage_selected, Some(0));
+}
+
+#[gpui::test]
+fn the_archive_and_restore_links_archive_and_restore_a_budget(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+    open_manage(&mut ui);
+    let joint = BudgetId::seed(2);
+
+    ui.click(&link(joint, "Archive"));
+    assert_eq!(
+        manage_rows(&mut ui)[1],
+        ("Joint household".to_string(), false, true)
+    );
+    assert!(ui.is_drawn(&link(joint, "Restore")));
+    ui.click(&link(joint, "Restore"));
+    assert_eq!(
+        manage_rows(&mut ui)[1],
+        ("Joint household".to_string(), false, false)
+    );
+    assert_eq!(
+        ui.budgets().manage_selected,
+        Some(1),
+        "the click's row stays under the cursor"
+    );
+}
+
+#[gpui::test]
+fn the_set_default_link_moves_the_default_and_the_default_row_offers_no_archive_link(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_budgets(app);
+    open_manage(&mut ui);
+    let personal = PERSONAL_SPENDING_ID;
+    let joint = BudgetId::seed(2);
+    assert!(
+        !ui.is_drawn(&link(personal, "Archive")),
+        "the default can't be archived, so the link isn't offered"
+    );
+
+    ui.click(&link(joint, "SetDefault"));
+    assert_eq!(
+        manage_rows(&mut ui),
+        [
+            ("Personal spending".to_string(), false, false),
+            ("Joint household".to_string(), true, false),
+        ]
+    );
+    assert!(
+        ui.is_drawn(&link(personal, "Archive")),
+        "the old default can now be archived"
+    );
 }

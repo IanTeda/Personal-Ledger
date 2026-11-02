@@ -16,7 +16,7 @@ use std::rc::Rc;
 use chrono::NaiveDate;
 use gpui::{App, Entity};
 use lib_budgets::{
-    Budget, BudgetCategories, BudgetError, BudgetReads, BudgetRepository, BudgetsPorts, PortsMut,
+    Budget, BudgetCategories, BudgetReads, BudgetRepository, BudgetsPorts, PortsMut,
     SetMonthlyLimit, SharedPorts, StopNewParent, fake::InMemoryBudgets,
 };
 use lib_core::{BudgetId, CategoryId, Money};
@@ -137,7 +137,7 @@ pub fn set_monthly_limit(
     category: CategoryId,
     amount: Option<Money>,
     today: NaiveDate,
-) -> Result<bool, BudgetError> {
+) -> Result<bool, lib_budgets::Error> {
     SetMonthlyLimit {
         id,
         category_id: category,
@@ -228,7 +228,7 @@ mod tests {
         );
         assert_eq!(
             refused,
-            Err(BudgetError::NotAnExpenseLeaf),
+            Err(lib_budgets::Error::NotAnExpenseLeaf),
             "Food is a parent"
         );
     }

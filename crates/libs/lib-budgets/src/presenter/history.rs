@@ -248,7 +248,7 @@ impl BudgetsPagePresenter {
                     let name = category_name(&categories, row.category_id);
                     HistoryRowView {
                         name: if row.is_parent {
-                            format!("\u{25be} {name}")
+                            msg::budgets_row_parent(&name)
                         } else {
                             name
                         },
@@ -264,7 +264,7 @@ impl BudgetsPagePresenter {
                                     || EMPTY_CELL.to_string(),
                                     |cell| {
                                         if cell.over {
-                                            format!("\u{25b2} {}", money(&cell.spent))
+                                            msg::budgets_history_cell_over(&money(&cell.spent))
                                         } else {
                                             money(&cell.spent)
                                         }
@@ -346,9 +346,9 @@ fn bars(history: &History) -> Vec<HistoryBarView> {
         .map(|month| {
             let mut label = format_month(month.month.month);
             if month.is_current {
-                label = format!("{label} \u{b7} {}", msg::budgets_history_to_date());
+                label = msg::budgets_history_month_to_date(&label);
             } else if month.over {
-                label = format!("{label} \u{b7} {}", msg::budgets_history_over_mark());
+                label = msg::budgets_history_month_over(&label);
             }
             HistoryBarView {
                 budget: height(&month.budget),

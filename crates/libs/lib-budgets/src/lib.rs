@@ -36,6 +36,7 @@
 )]
 pub mod contract;
 mod detail;
+mod error;
 pub mod fake;
 mod figures;
 mod history;
@@ -50,6 +51,7 @@ mod store;
 mod tree;
 
 pub use detail::*;
+pub use error::{Error, Result};
 pub use figures::*;
 pub use history::*;
 pub use interactor::*;

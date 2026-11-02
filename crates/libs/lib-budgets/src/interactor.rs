@@ -1,6 +1,6 @@
 //! The Budgets intents, one Interactor each: it loads the Budget from the [`BudgetRepository`],
 //! applies the rule the entity or the set holds, and writes each Budget the rule changed whole
-//! through `upsert_budget`. A refusal is a [`BudgetError`] and writes nothing: a chain edit runs on a
+//! through `upsert_budget`. A refusal is a [`Error`] and writes nothing: a chain edit runs on a
 //! copy of the Budget, kept only when the rule lands, since some rules touch a chain before they
 //! refuse.
 //!
@@ -12,12 +12,12 @@ use chrono::NaiveDate;
 use lib_core::{AccountId, BudgetId, CategoryId, Money, Period};
 
 use crate::{
-    Budget, BudgetAccounts, BudgetCategories, BudgetError, BudgetReads, BudgetRepository, Budgets,
-    FillSource, NewBudget, Rollover, Span,
+    Budget, BudgetAccounts, BudgetCategories, BudgetReads, BudgetRepository, Budgets, Error,
+    FillSource, NewBudget, Result, Rollover, Span,
 };
 
 /// Logs how an intent ended and hands the outcome back.
-fn logged<R>(intent: &str, outcome: Result<R, BudgetError>) -> Result<R, BudgetError> {
+fn logged<R>(intent: &str, outcome: Result<R>) -> Result<R> {
     match &outcome {
         Ok(_) => tracing::info!(intent, "Budgets intent done"),
         Err(refusal) => tracing::info!(intent, %refusal, "Budgets intent refused"),
@@ -29,8 +29,8 @@ fn logged<R>(intent: &str, outcome: Result<R, BudgetError>) -> Result<R, BudgetE
 /// losing the default first (storage holds one).
 fn write_set<R>(
     repo: &mut dyn BudgetRepository,
-    rule: impl FnOnce(&mut Budgets) -> Result<R, BudgetError>,
-) -> Result<R, BudgetError> {
+    rule: impl FnOnce(&mut Budgets) -> Result<R>,
+) -> Result<R> {
     let before = Budgets::from_stored(repo.budgets());
     let mut after = before.clone();
     let result = rule(&mut after)?;
@@ -44,9 +44,9 @@ fn write_set<R>(
 fn write_budget<R>(
     repo: &mut dyn BudgetRepository,
     id: BudgetId,
-    rule: impl FnOnce(&mut Budget) -> Result<R, BudgetError>,
-) -> Result<R, BudgetError> {
-    let before = repo.budget(id).ok_or(BudgetError::NotFound)?;
+    rule: impl FnOnce(&mut Budget) -> Result<R>,
+) -> Result<R> {
+    let before = repo.budget(id).ok_or(Error::NotFound)?;
     let mut after = before.clone();
     let result = rule(&mut after)?;
     if after != before {
@@ -63,11 +63,7 @@ pub struct CreateBudget {
 }
 
 impl CreateBudget {
-    pub fn run(
-        self,
-        reads: &dyn BudgetReads,
-        repo: &mut dyn BudgetRepository,
-    ) -> Result<BudgetId, BudgetError> {
+    pub fn run(self, reads: &dyn BudgetReads, repo: &mut dyn BudgetRepository) -> Result<BudgetId> {
         logged(
             "create budget",
             write_set(repo, |budgets| budgets.create(&self.new, reads, self.today)),
@@ -84,11 +80,7 @@ pub struct EditBudget {
 }
 
 impl EditBudget {
-    pub fn run(
-        self,
-        accounts: &dyn BudgetAccounts,
-        repo: &mut dyn BudgetRepository,
-    ) -> Result<(), BudgetError> {
+    pub fn run(self, accounts: &dyn BudgetAccounts, repo: &mut dyn BudgetRepository) -> Result<()> {
         logged(
             "edit budget",
             write_set(repo, |budgets| {
@@ -103,7 +95,7 @@ impl EditBudget {
 pub struct DuplicateBudget(pub BudgetId);
 
 impl DuplicateBudget {
-    pub fn run(self, repo: &mut dyn BudgetRepository) -> Result<BudgetId, BudgetError> {
+    pub fn run(self, repo: &mut dyn BudgetRepository) -> Result<BudgetId> {
         logged(
             "duplicate budget",
             write_set(repo, |budgets| budgets.duplicate(self.0)),
@@ -119,7 +111,7 @@ pub struct ArchiveBudget {
 }
 
 impl ArchiveBudget {
-    pub fn run(self, repo: &mut dyn BudgetRepository) -> Result<(), BudgetError> {
+    pub fn run(self, repo: &mut dyn BudgetRepository) -> Result<()> {
         logged(
             "archive budget",
             write_set(repo, |budgets| budgets.archive(self.id, self.today)),
@@ -132,7 +124,7 @@ impl ArchiveBudget {
 pub struct RestoreBudget(pub BudgetId);
 
 impl RestoreBudget {
-    pub fn run(self, repo: &mut dyn BudgetRepository) -> Result<(), BudgetError> {
+    pub fn run(self, repo: &mut dyn BudgetRepository) -> Result<()> {
         logged(
             "restore budget",
             write_set(repo, |budgets| budgets.restore(self.0)),
@@ -145,7 +137,7 @@ impl RestoreBudget {
 pub struct SetDefaultBudget(pub BudgetId);
 
 impl SetDefaultBudget {
-    pub fn run(self, repo: &mut dyn BudgetRepository) -> Result<(), BudgetError> {
+    pub fn run(self, repo: &mut dyn BudgetRepository) -> Result<()> {
         logged(
             "set default budget",
             write_set(repo, |budgets| budgets.set_default(self.0)),
@@ -171,7 +163,7 @@ impl SetAmount {
         self,
         categories: &dyn BudgetCategories,
         repo: &mut dyn BudgetRepository,
-    ) -> Result<(), BudgetError> {
+    ) -> Result<()> {
         logged(
             "set amount",
             write_budget(repo, self.id, |budget| {
@@ -203,7 +195,7 @@ impl StopBudgeting {
         self,
         categories: &dyn BudgetCategories,
         repo: &mut dyn BudgetRepository,
-    ) -> Result<(), BudgetError> {
+    ) -> Result<()> {
         logged(
             "stop budgeting",
             write_budget(repo, self.id, |budget| {
@@ -223,7 +215,7 @@ pub struct ClearMonthOnly {
 }
 
 impl ClearMonthOnly {
-    pub fn run(self, repo: &mut dyn BudgetRepository) -> Result<bool, BudgetError> {
+    pub fn run(self, repo: &mut dyn BudgetRepository) -> Result<bool> {
         logged(
             "clear month only",
             write_budget(repo, self.id, |budget| {
@@ -242,7 +234,7 @@ pub struct CycleRollover {
 }
 
 impl CycleRollover {
-    pub fn run(self, repo: &mut dyn BudgetRepository) -> Result<Rollover, BudgetError> {
+    pub fn run(self, repo: &mut dyn BudgetRepository) -> Result<Rollover> {
         logged(
             "cycle rollover",
             write_budget(repo, self.id, |budget| {
@@ -268,7 +260,7 @@ impl SaveCell {
         self,
         categories: &dyn BudgetCategories,
         repo: &mut dyn BudgetRepository,
-    ) -> Result<bool, BudgetError> {
+    ) -> Result<bool> {
         logged(
             "save cell",
             write_budget(repo, self.id, |budget| {
@@ -295,11 +287,7 @@ pub struct Fill {
 }
 
 impl Fill {
-    pub fn run(
-        self,
-        reads: &dyn BudgetReads,
-        repo: &mut dyn BudgetRepository,
-    ) -> Result<usize, BudgetError> {
+    pub fn run(self, reads: &dyn BudgetReads, repo: &mut dyn BudgetRepository) -> Result<usize> {
         logged(
             "fill",
             write_budget(repo, self.id, |budget| {
@@ -324,7 +312,7 @@ impl SetMonthlyLimit {
         self,
         categories: &dyn BudgetCategories,
         repo: &mut dyn BudgetRepository,
-    ) -> Result<bool, BudgetError> {
+    ) -> Result<bool> {
         logged(
             "set monthly limit",
             write_budget(repo, self.id, |budget| {
@@ -423,7 +411,7 @@ mod tests {
             today: today(),
         }
         .run(&reads(), &mut repo);
-        assert_eq!(taken, Err(BudgetError::NameTaken));
+        assert_eq!(taken, Err(Error::NameTaken));
         let blank = CreateBudget {
             new: NewBudget {
                 name: " ".into(),
@@ -432,7 +420,7 @@ mod tests {
             today: today(),
         }
         .run(&reads(), &mut repo);
-        assert_eq!(blank, Err(BudgetError::NameRequired));
+        assert_eq!(blank, Err(Error::NameRequired));
         assert_eq!(repo, before);
     }
 
@@ -456,7 +444,7 @@ mod tests {
             account_ids: vec![],
         }
         .run(&reads(), &mut repo);
-        assert_eq!(taken, Err(BudgetError::NameTaken));
+        assert_eq!(taken, Err(Error::NameTaken));
         ArchiveBudget {
             id: JOINT,
             today: today(),
@@ -469,9 +457,23 @@ mod tests {
             account_ids: vec![],
         }
         .run(&reads(), &mut repo);
-        assert_eq!(archived, Err(BudgetError::Archived));
+        assert_eq!(archived, Err(Error::Archived));
         assert_ne!(repo, before, "only the archive landed");
         assert_eq!(budget(&repo, JOINT).name, "Shared house");
+    }
+
+    #[test]
+    fn an_edit_drops_the_id_of_an_account_deleted_since_the_budget_named_it() {
+        let mut repo = repo();
+        let deleted = AccountId::new();
+        EditBudget {
+            id: JOINT,
+            name: "Joint".into(),
+            account_ids: vec![ANZ_EVERYDAY, deleted],
+        }
+        .run(&reads(), &mut repo)
+        .unwrap();
+        assert_eq!(budget(&repo, JOINT).account_ids, [ANZ_EVERYDAY]);
     }
 
     #[test]
@@ -493,7 +495,7 @@ mod tests {
         );
         assert_eq!(
             DuplicateBudget(BudgetId::new()).run(&mut repo),
-            Err(BudgetError::NotFound)
+            Err(Error::NotFound)
         );
     }
 
@@ -507,7 +509,7 @@ mod tests {
                 today: today()
             }
             .run(&mut repo),
-            Err(BudgetError::DefaultCannotBeArchived)
+            Err(Error::DefaultCannotBeArchived)
         );
         assert_eq!(repo, before);
 
@@ -522,7 +524,7 @@ mod tests {
         assert_eq!(budget(&repo, JOINT).archived_at, None);
         assert_eq!(
             RestoreBudget(BudgetId::new()).run(&mut repo),
-            Err(BudgetError::NotFound)
+            Err(Error::NotFound)
         );
     }
 
@@ -547,7 +549,7 @@ mod tests {
         let before = repo.clone();
         assert_eq!(
             SetDefaultBudget(PERSONAL_SPENDING_ID).run(&mut repo),
-            Err(BudgetError::Archived)
+            Err(Error::Archived)
         );
         assert_eq!(repo, before);
     }
@@ -577,21 +579,21 @@ mod tests {
 
         let before = repo.clone();
         let closed = set(Span::Onward, current().prev(), 100).run(&reads(), &mut repo);
-        assert_eq!(closed, Err(BudgetError::ClosedMonth));
+        assert_eq!(closed, Err(Error::ClosedMonth));
         let negative = set(Span::Onward, current(), -1).run(&reads(), &mut repo);
-        assert_eq!(negative, Err(BudgetError::NegativeAmount));
+        assert_eq!(negative, Err(Error::NegativeAmount));
         let parent = SetAmount {
             category_id: FOOD,
             ..set(Span::Onward, current(), 100)
         }
         .run(&reads(), &mut repo);
-        assert_eq!(parent, Err(BudgetError::NotAnExpenseLeaf));
+        assert_eq!(parent, Err(Error::NotAnExpenseLeaf));
         let unknown = SetAmount {
             id: BudgetId::new(),
             ..set(Span::Onward, current(), 100)
         }
         .run(&reads(), &mut repo);
-        assert_eq!(unknown, Err(BudgetError::NotFound));
+        assert_eq!(unknown, Err(Error::NotFound));
         assert_eq!(repo, before);
     }
 
@@ -625,9 +627,9 @@ mod tests {
         }
         .run(&mut repo);
 
-        assert_eq!(set, Err(BudgetError::Archived));
-        assert_eq!(stop, Err(BudgetError::Archived));
-        assert_eq!(cycle, Err(BudgetError::Archived));
+        assert_eq!(set, Err(Error::Archived));
+        assert_eq!(stop, Err(Error::Archived));
+        assert_eq!(cycle, Err(Error::Archived));
         assert_eq!(repo, before);
     }
 
@@ -668,7 +670,7 @@ mod tests {
                 today: today(),
             }
             .run(&reads(), &mut repo),
-            Err(BudgetError::NotAnExpenseLeaf)
+            Err(Error::NotAnExpenseLeaf)
         );
     }
 
@@ -697,7 +699,7 @@ mod tests {
             ..clear
         }
         .run(&mut repo);
-        assert_eq!(closed, Err(BudgetError::ClosedMonth));
+        assert_eq!(closed, Err(Error::ClosedMonth));
     }
 
     #[test]
@@ -727,7 +729,7 @@ mod tests {
             ..cycle
         }
         .run(&mut repo);
-        assert_eq!(unbudgeted, Err(BudgetError::NotBudgeted));
+        assert_eq!(unbudgeted, Err(Error::NotBudgeted));
         assert_eq!(repo, before, "a refusal adds no empty chain");
     }
 
@@ -760,7 +762,7 @@ mod tests {
         let before = repo.clone();
         assert_eq!(
             save("lots", Span::Onward).run(&reads(), &mut repo),
-            Err(BudgetError::InvalidAmount)
+            Err(Error::InvalidAmount)
         );
         assert_eq!(repo, before);
     }
@@ -794,7 +796,7 @@ mod tests {
             ..fill
         }
         .run(&reads(), &mut repo);
-        assert_eq!(closed, Err(BudgetError::ClosedMonth));
+        assert_eq!(closed, Err(Error::ClosedMonth));
     }
 
     #[test]
@@ -828,7 +830,7 @@ mod tests {
             ..limit(Some(cents_money(1)))
         }
         .run(&reads(), &mut repo);
-        assert_eq!(parent, Err(BudgetError::NotAnExpenseLeaf));
+        assert_eq!(parent, Err(Error::NotAnExpenseLeaf));
     }
 
     const DINING: CategoryId = CategoryId::seed(8);

@@ -17,14 +17,15 @@ The parts that are hardest to change later:
 - **Rollover is held on each record** and applied on read. A closed month's carry is its effective budget (amount plus carry in) minus Spent, Known Costs excluded; it compounds, can go negative with Carry both, and resets on a Stop or an unbudgeted month. The current month never carries.
 - **Figures are derived, never stored.** Spent is signed Splits of every Transaction Status on the on-budget Accounts. Known Costs are the open Bill Schedule entries on those Accounts: the current month's plus carried-in Overdue, none for a past month, a future month's own.
 - **Parents only roll up.** A budgeted leaf that gains a child gets an automatic Stop from the current month, with any later record dropped, in every active Budget (`Budget::stop_new_parent`, run by the `StopNewParent` Interactor). Closed months keep their amounts and archived Budgets are untouched. `lib-categories`' Add and Edit call it through `CategoryBudget::stop_new_parent` (#957).
-- **Exactly one default, and it can't be archived**, so an active Budget always exists. Archived Budgets are read-only (`BudgetError::Archived`).
+- **Exactly one default, and it can't be archived**, so an active Budget always exists. Archived Budgets are read-only (`Error::Archived`).
 
 ## Domain types
 
 In `lib-budgets` (`crates/libs/lib-budgets/src/`), none in `lib-core`:
 
 - `lib.rs`: `Budget`, `Method`, `Rollover`, `LimitRecord`, `applied` (what a month resolves to).
-- `store.rs`: the `Budgets` set (`create`, `edit`, `duplicate`, `archive`, `restore`, `set_default`, which need the whole set for names and the one default), `BudgetError`, `NewBudget`, `StartFrom`, `Span`. The chain rules (`set_amount`, `stop`, `clear_month_only`, `cycle_rollover`, `save_cell`, `fill`, `set_monthly_limit`) are methods on `Budget`; `Budgets` keeps one-line wrappers.
+- `error.rs`: `Error` and `Result<T>`, the Refusals an Interactor returns; a Presenter words each as a Message and `debug_assert!`s on the ones it can't receive.
+- `store.rs`: the `Budgets` set (`create`, `edit`, `duplicate`, `archive`, `restore`, `set_default`, which need the whole set for names and the one default), `NewBudget`, `StartFrom`, `Span`. The chain rules (`set_amount`, `stop`, `clear_month_only`, `cycle_rollover`, `save_cell`, `fill`, `set_monthly_limit`) are methods on `Budget`; `Budgets` keeps one-line wrappers.
 - `figures.rs`: `effective_budget`, `period_figures` (the one shared period query), `health`, `dashboard_bars`. `plan.rs`: `plan`, `PlanEdit`, `fill_preview`, `three_month_average`, `unallocated`. `history.rs`: `history`, `history_range`, `history_csv`. `detail.rs`: `category_detail`.
 - `protocols.rs`: the read ports `BudgetCategories`, `BudgetAccounts`, `BudgetSplits`, `BudgetBills`, `BudgetUnits` and `BudgetPayees` (bundled as `BudgetReads`) with their row types, the write port `BudgetRepository` (`upsert_budget` only: a Budget is never deleted), `BudgetsPorts`, `BudgetsOutcome` and `BudgetsRouter`.
 - `interactor.rs`: `CreateBudget`, `EditBudget`, `DuplicateBudget`, `ArchiveBudget`, `RestoreBudget`, `SetDefaultBudget`, `SetAmount`, `StopBudgeting`, `ClearMonthOnly`, `CycleRollover`, `SaveCell`, `Fill`, `SetMonthlyLimit`. A chain Interactor runs the rule on a copy of one Budget and upserts it only if it changed; a set-wide one writes `changed_since`.

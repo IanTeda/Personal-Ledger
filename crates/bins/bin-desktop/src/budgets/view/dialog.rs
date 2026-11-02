@@ -17,6 +17,7 @@ use lib_toast::{Notice, Notify};
 use lib_viper::keymap::Keymap;
 
 use crate::budgets::ports;
+use crate::budgets::view::snapshot::ManageRowSnapshot;
 use crate::dialog::OnClick;
 use crate::ledger_store::LedgerStore;
 use crate::notices::Queue;
@@ -208,6 +209,21 @@ impl ListDialog {
         let view = presenter.view_model();
         let names = view.rows.into_iter().map(|row| row.name).collect();
         Some((names, view.selected.unwrap_or(0)))
+    }
+
+    /// Manage budgets' rows as `(name, is default, is archived)`, its cursor and its refusal;
+    /// `None` for the Switcher.
+    pub fn manage_rows(&self) -> Option<(Vec<ManageRowSnapshot>, usize, Option<String>)> {
+        let List::Manage(presenter) = &self.list else {
+            return None;
+        };
+        let view = presenter.view_model();
+        let rows = view
+            .rows
+            .into_iter()
+            .map(|row| (row.name, row.default.is_some(), row.archived))
+            .collect();
+        Some((rows, view.selected, view.error))
     }
 
     /// The Switcher's key: the list's own letters, or the search's while it has the keys.

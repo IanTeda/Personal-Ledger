@@ -17,7 +17,7 @@ use std::rc::Rc;
 
 use chrono::{Datelike as _, NaiveDate};
 use gpui::{App, Entity};
-use lib_budgets::{BudgetError, Budgets};
+use lib_budgets::{Budgets, Error};
 use lib_categories::{
     Category, CategoryBudget, CategoryReassign, CategoryReassigned, CategoryRepository,
     CategoryUsage, CategoryUse, MonthlyBudget, MonthlyBudgetRefusal, ParentStop, ReassignRefusal,
@@ -135,10 +135,10 @@ impl CategoryUsage for LedgerPorts<'_> {
 }
 
 /// What a refused Budget write means to the Categories Dialogs.
-fn budget_refusal(error: BudgetError) -> MonthlyBudgetRefusal {
+fn budget_refusal(error: Error) -> MonthlyBudgetRefusal {
     match error {
-        BudgetError::NotAnExpenseLeaf => MonthlyBudgetRefusal::NotAnExpenseLeaf,
-        BudgetError::Archived | BudgetError::ClosedMonth => MonthlyBudgetRefusal::ReadOnly,
+        Error::NotAnExpenseLeaf => MonthlyBudgetRefusal::NotAnExpenseLeaf,
+        Error::Archived | Error::ClosedMonth => MonthlyBudgetRefusal::ReadOnly,
         _ => MonthlyBudgetRefusal::Unavailable,
     }
 }

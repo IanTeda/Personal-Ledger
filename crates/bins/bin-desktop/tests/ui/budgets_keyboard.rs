@@ -534,3 +534,107 @@ fn the_new_budget_dialog_refuses_a_name_another_budget_has(app: &mut TestAppCont
     ui.press("escape");
     assert_eq!(ui.budgets().dialog, None);
 }
+
+/// Manage budgets has no key of its own, so it opens by its command.
+fn open_manage(ui: &mut Harness<'_>) {
+    ui.press(": b u d g e t s space m a n a g e enter");
+    assert_eq!(ui.budgets().dialog.as_deref(), Some("Manage"));
+}
+
+/// The rows Manage budgets lists, as `(name, is default, is archived)`.
+fn manage_rows(ui: &mut Harness<'_>) -> Vec<(String, bool, bool)> {
+    ui.budgets().manage_rows.unwrap_or_default()
+}
+
+#[gpui::test]
+fn the_manage_command_opens_manage_budgets_on_the_budget_shown_and_escape_closes_it(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_budgets(app);
+
+    open_manage(&mut ui);
+    assert_eq!(mode(&mut ui), InputMode::Dialog);
+    assert_eq!(
+        manage_rows(&mut ui),
+        [
+            ("Personal spending".to_string(), true, false),
+            ("Joint household".to_string(), false, false),
+        ]
+    );
+    assert_eq!(ui.budgets().manage_selected, Some(0));
+    ui.press("escape");
+    assert_eq!(ui.budgets().dialog, None);
+    assert_eq!(mode(&mut ui), InputMode::Normal);
+}
+
+#[gpui::test]
+fn x_archives_the_selected_budget_and_a_second_x_restores_it(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+    open_manage(&mut ui);
+
+    ui.press("j x");
+    assert_eq!(
+        manage_rows(&mut ui)[1],
+        ("Joint household".to_string(), false, true)
+    );
+    assert_eq!(ui.budgets().manage_error, None);
+    assert_eq!(
+        ui.budgets().dialog.as_deref(),
+        Some("Manage"),
+        "Manage stays open on the refreshed rows"
+    );
+
+    ui.press("x");
+    assert_eq!(
+        manage_rows(&mut ui)[1],
+        ("Joint household".to_string(), false, false)
+    );
+}
+
+#[gpui::test]
+fn star_makes_the_selected_budget_the_default(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+    open_manage(&mut ui);
+
+    ui.press("j *");
+    assert_eq!(
+        manage_rows(&mut ui),
+        [
+            ("Personal spending".to_string(), false, false),
+            ("Joint household".to_string(), true, false),
+        ]
+    );
+    assert_eq!(ui.budgets().manage_error, None);
+}
+
+#[gpui::test]
+fn archiving_the_default_is_refused_until_another_budget_is_the_default(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+    open_manage(&mut ui);
+
+    ui.press("x");
+    assert_eq!(
+        ui.budgets().manage_error.as_deref(),
+        Some("The default budget can't be archived. Set another default first.")
+    );
+    assert!(!manage_rows(&mut ui)[0].2, "the default stays active");
+
+    ui.press("j *");
+    assert_eq!(ui.budgets().manage_error, None, "the next action clears it");
+    ui.press("k x");
+    assert!(
+        manage_rows(&mut ui).contains(&("Personal spending".to_string(), false, true)),
+        "the old default can now archive"
+    );
+}
+
+#[gpui::test]
+fn j_and_k_move_the_manage_cursor(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+    open_manage(&mut ui);
+
+    ui.press("j");
+    assert_eq!(ui.budgets().manage_selected, Some(1));
+    ui.press("k");
+    assert_eq!(ui.budgets().manage_selected, Some(0));
+}

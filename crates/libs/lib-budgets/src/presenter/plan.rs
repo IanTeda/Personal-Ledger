@@ -292,7 +292,7 @@ impl BudgetsPagePresenter {
             return;
         };
         let saved = self.save_cell(edit.category_id, edit.month, span, &edit.text);
-        if saved == Err(crate::BudgetError::InvalidAmount) {
+        if saved == Err(crate::Error::InvalidAmount) {
             self.plan.edit = Some(edit);
             return;
         }
@@ -335,7 +335,7 @@ impl BudgetsPagePresenter {
         month: Period,
         span: Span,
         text: &str,
-    ) -> Result<bool, crate::BudgetError> {
+    ) -> Result<bool, crate::Error> {
         let today = self.today();
         let mut ports = self.ports.borrow_mut();
         let ports = ports.split_mut();
@@ -440,7 +440,7 @@ impl BudgetsPagePresenter {
                     let label = format_month(month.month);
                     PlanMonthView {
                         label: if now {
-                            format!("{label} \u{b7} {}", msg::budgets_plan_now())
+                            msg::budgets_plan_month_now(&label)
                         } else {
                             label
                         },

@@ -55,7 +55,7 @@ pub use stop::{StopEvent, StopPresenter, StopViewModel};
 pub use switcher::{SwitcherEvent, SwitcherPresenter, SwitcherRow, SwitcherViewModel};
 
 use crate::protocols::BudgetCategory;
-use crate::{BudgetError, Method, msg};
+use crate::{Error, Method, msg};
 
 /// A cell with no figure.
 const EMPTY_CELL: &str = "\u{2014}";
@@ -156,23 +156,36 @@ fn plain(text: String) -> Vec<Segment> {
 }
 
 /// A refused Budget-wide change, as the status line or Manage budgets words it.
-fn error_text(error: &BudgetError) -> String {
+fn error_text(error: &Error) -> String {
     match error {
-        BudgetError::DefaultCannotBeArchived => msg::budgets_manage_error_default(),
-        BudgetError::Archived => msg::budgets_manage_error_archived(),
-        _ => msg::budgets_manage_error_refused(),
+        Error::DefaultCannotBeArchived => msg::budgets_manage_error_default(),
+        Error::Archived => msg::budgets_manage_error_archived(),
+        // Budgets are archived, never deleted, so a Budget-wide verb can't find its Budget gone,
+        // and the other refusals belong to a Dialog's fields.
+        refusal => {
+            debug_assert!(false, "a Budget-wide verb doesn't return {refusal:?}");
+            msg::budgets_manage_error_refused()
+        }
     }
 }
 
 /// A refused Dialog write, as the Dialog words it under its fields.
-fn dialog_error_text(error: &BudgetError) -> String {
+fn dialog_error_text(error: &Error) -> String {
     match error {
-        BudgetError::NameTaken => msg::budgets_new_error_name(),
-        BudgetError::Archived => msg::budgets_limit_error_archived(),
-        BudgetError::NegativeAmount | BudgetError::InvalidAmount => {
-            msg::budgets_limit_error_amount()
+        Error::NameRequired => msg::budgets_new_error_name_required(),
+        Error::NameTaken => msg::budgets_new_error_name(),
+        Error::AccountNotFound => msg::budgets_new_error_account_gone(),
+        Error::AccountNotInUnit => msg::budgets_new_error_account_unit(),
+        Error::Archived => msg::budgets_limit_error_archived(),
+        Error::ClosedMonth => msg::budgets_limit_error_closed_month(),
+        Error::NotAnExpenseLeaf => msg::budgets_limit_error_not_leaf(),
+        Error::NotBudgeted => msg::budgets_limit_error_not_budgeted(),
+        Error::NegativeAmount | Error::InvalidAmount => msg::budgets_limit_error_amount(),
+        // Budgets are archived, never deleted, and a Dialog's Budget is the one open on the page.
+        refusal @ (Error::NotFound | Error::DefaultCannotBeArchived) => {
+            debug_assert!(false, "a Dialog write doesn't return {refusal:?}");
+            msg::budgets_limit_error_refused()
         }
-        _ => msg::budgets_limit_error_refused(),
     }
 }
 
