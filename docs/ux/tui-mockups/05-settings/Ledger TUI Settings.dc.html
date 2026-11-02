@@ -128,6 +128,8 @@ a{color:var(--color-accent,#ec3013);text-underline-offset:3px}a:hover{color:var(
 .ixg:first-of-type{margin-top:0}
 .off{opacity:.45}
 .ws .ixg{margin:15px 0 0}
+.ixs{padding:0 0 4px}
+.ws .ixs{padding:0 0 15px}
 .pane .row.ixp.sel{margin:0 -9px;padding:0 9px}
 .pk{color:#ec3013;font-weight:400}
 .pick{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:300px;padding:0}
@@ -178,20 +180,22 @@ a{color:var(--color-accent,#ec3013);text-underline-offset:3px}a:hover{color:var(
 
 <!-- ═════════ TUI-047 Settings index page ═════════ -->
 <div class="dv-opt" id="TUI-047">
-<div class="dv-olabel"><a class="dv-oid" href="#TUI-047">TUI-047</a><span><b>Settings.</b> The index page. <code>g s</code> lands here, one row per page with a one-line description, grouped <b>this device</b> then <b>this ledger</b>; the headings replace the old scope glyphs and legend. Back from Display, so Display is still selected. <code>enter</code> opens the page in its place.</span></div>
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-047">TUI-047</a><span><b>Settings.</b> The index page. <code>g s</code> lands here, one row per page with a one-line description, grouped <b>this device</b> then <b>this ledger</b>; the headings replace the old scope glyphs and legend. Each heading carries its page count and sync scope, and a dim line under it says what the divide means, as on the Desktop (DESKTOP-119). Back from Display, so Display is still selected. <code>enter</code> opens the page in its place.</span></div>
 <div class="dv-card" style="width:700px">
-<div class="t" style="height:470px">
+<div class="t" style="height:510px">
   <div class="tbar"><span><b>Personal Ledger</b></span><span>✓ Synced 14:22</span></div>
   <div class="tbody">
     <div class="pane" style="display:flex;flex-direction:column">
       <div class="ph"><b>Settings</b><span>17 pages</span></div>
-      <div class="hd ixg">this device</div>
+      <div class="hd ixg">this device<span>5 pages · never synced</span></div>
+      <div class="row ixs" style="grid-template-columns:1fr"><span class="mut">Stays on this computer and never syncs. Applies whichever Ledger is open, or none.</span></div>
       <div class="row ixp"><span>General</span><span class="mut">on start, toasts, locale and the ledger folder</span><span class="mut">›</span></div>
       <div class="row ixp sel"><span>Display</span><span class="mut">appearance, colour theme, date style, glyphs and hint bar</span><span class="mut">›</span></div>
       <div class="row ixp"><span>AI connections</span><span class="mut">model providers and assistant access</span><span class="mut">›</span></div>
       <div class="row ixp"><span>Logs</span><span class="mut">log level and the live log</span><span class="mut">›</span></div>
       <div class="row ixp"><span>About</span><span class="mut">version, licences and links</span><span class="mut">›</span></div>
-      <div class="hd ixg">this ledger</div>
+      <div class="hd ixg">this ledger<span>12 pages · synced with the Ledger</span></div>
+      <div class="row ixs" style="grid-template-columns:1fr"><span class="mut">Saved in the Ledger and synced with it, so every device that opens it shares them.</span></div>
       <div class="row ixp"><span>Ledger</span><span class="mut">ledger name, owner, financial year and base unit</span><span class="mut">›</span></div>
       <div class="row ixp"><span>Units</span><span class="mut">currencies and other units, and their price sources</span><span class="mut">›</span></div>
       <div class="row ixp"><span>Institutions</span><span class="mut">banks, brokers and lenders</span><span class="mut">›</span></div>
@@ -284,20 +288,22 @@ a{color:var(--color-accent,#ec3013);text-underline-offset:3px}a:hover{color:var(
 
 <!-- ═════════ TUI-059 Settings with no Ledger open ═════════ -->
 <div class="dv-opt" id="TUI-059">
-<div class="dv-olabel"><a class="dv-oid" href="#TUI-059">TUI-059</a><span><b>Settings with no Ledger open.</b> <code>g s</code> and <code>:settings</code> work with no Ledger open, landing on the remembered page if it is a <b>this device</b> page, else General. The <b>this ledger</b> rows are drawn dim and refused: <code>enter</code> on one, <code>[</code> / <code>]</code> or the picker onto one, or <code>:settings units</code> keeps you where you are and answers <b>No Ledger open: :open or :new first</b> on the status line, as drawn after <code>enter</code> on Units. The hint bar's right side reads <code>No Ledger open</code>, as on the cold-start screen.</span></div>
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-059">TUI-059</a><span><b>Settings with no Ledger open.</b> <code>g s</code> and <code>:settings</code> work with no Ledger open, landing on the index page as always (DESKTOP-119, DESKTOP-181). The <b>this ledger</b> rows are drawn dim and refused: <code>enter</code> on one, <code>[</code> / <code>]</code> or the picker onto one, or <code>:settings units</code> keeps you where you are and answers <b>No Ledger open: :open or :new first</b> on the status line, as drawn after <code>enter</code> on Units. The hint bar's right side reads <code>No Ledger open</code>, as on the cold-start screen.</span></div>
 <div class="dv-card" style="width:700px">
-<div class="t" style="height:470px">
+<div class="t" style="height:510px">
   <div class="tbar"><span><b>Personal Ledger</b></span><span>No Ledger open: :open or :new first</span></div>
   <div class="tbody">
     <div class="pane" style="display:flex;flex-direction:column">
       <div class="ph"><b>Settings</b><span>17 pages · 5 without a Ledger</span></div>
-      <div class="hd ixg">this device</div>
+      <div class="hd ixg">this device<span>5 pages · never synced</span></div>
+      <div class="row ixs" style="grid-template-columns:1fr"><span class="mut">Stays on this computer and never syncs. Applies whichever Ledger is open, or none.</span></div>
       <div class="row ixp sel"><span>General</span><span class="mut">on start, toasts, locale and the ledger folder</span><span class="mut">›</span></div>
       <div class="row ixp"><span>Display</span><span class="mut">appearance, colour theme, date style, glyphs and hint bar</span><span class="mut">›</span></div>
       <div class="row ixp"><span>AI connections</span><span class="mut">model providers and assistant access</span><span class="mut">›</span></div>
       <div class="row ixp"><span>Logs</span><span class="mut">log level and the live log</span><span class="mut">›</span></div>
       <div class="row ixp"><span>About</span><span class="mut">version, licences and links</span><span class="mut">›</span></div>
-      <div class="hd ixg">this ledger</div>
+      <div class="hd ixg">this ledger<span>12 pages · synced with the Ledger</span></div>
+      <div class="row ixs" style="grid-template-columns:1fr"><span class="mut">Saved in the Ledger and synced with it, so every device that opens it shares them.</span></div>
       <div class="row ixp off"><span>Ledger</span><span class="mut">ledger name, owner, financial year and base unit</span><span class="mut">›</span></div>
       <div class="row ixp off"><span>Units</span><span class="mut">currencies and other units, and their price sources</span><span class="mut">›</span></div>
       <div class="row ixp off"><span>Institutions</span><span class="mut">banks, brokers and lenders</span><span class="mut">›</span></div>
@@ -886,7 +892,7 @@ a{color:var(--color-accent,#ec3013);text-underline-offset:3px}a:hover{color:var(
 
 <section class="dv-turn ws {{ themeClass }}" id="t5">
 <div class="dv-thd"><a class="dv-tid" href="#t5">window sizes</a><span class="dv-tname">Settings at Medium, Large and X-Large</span></div>
-<p class="dv-sub">The TUI picks its Window Size by the Desktop's Breakpoints (ADR-0042), read as cells at 7.5 logical px per column: <b>Medium</b> 96–159 columns (720–1199px), <b>Large</b> 160–213 (1200–1599px), <b>X-Large</b> 214 and over (1600px and over). The 96-column floor is the Desktop's 720px. Height never picks a size. Each card is drawn at its size's reference frame, the Desktop's 960 × 1040, 1280 × 800 and 1920 × 1080 at 7.5 × 15px a cell, so a card is exactly as wide as its Desktop counterpart. Medium is the drill-down drawn above; Large docks the index; X-Large adds a detail pane on list pages.</p>
+<p class="dv-sub">The TUI picks its Window Size by the Desktop's Breakpoints (ADR-0042), read as cells at 7.5 logical px per column: <b>Medium</b> 96–159 columns (720–1199px), <b>Large</b> 160–213 (1200–1599px), <b>X-Large</b> 214 and over (1600px and over). The 96-column floor is the Desktop's 720px. Height never picks a size. Each card is drawn at its size's reference frame, the Desktop's 960 × 1040, 1280 × 800 and 1920 × 1080 at 7.5 × 15px a cell, so a card is exactly as wide as its Desktop counterpart. Medium is the drill-down drawn above; Large docks the index beside the index page and every page; X-Large adds a detail pane on the index page and list pages.</p>
 <div class="dv-opts">
 
 <!-- ═════════ TUI-049 Medium · Ledger ═════════ -->
@@ -941,32 +947,79 @@ a{color:var(--color-accent,#ec3013);text-underline-offset:3px}a:hover{color:var(
 </div>
 </div>
 
-<!-- ═════════ TUI-051 Large · Display ═════════ -->
+<!-- ═════════ TUI-051 Large · the Settings index ═════════ -->
 <div class="dv-opt" id="TUI-051">
-<div class="dv-olabel"><a class="dv-oid" href="#TUI-051">TUI-051</a><span><b>Large · 171 × 53.</b> The index has focus (<code>g s</code> lands here, or <code>esc</code> from a page). <code>j/k</code> moves the selection and the page beside it swaps live, as a click on the Desktop's docked index does. <code>enter</code> moves focus into the page; <code>esc</code> leaves Settings.</span></div>
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-051">TUI-051</a><span><b>Large · 171 × 53.</b> The Settings index page, where <code>g s</code> and <code>:settings</code> land (DESKTOP-181). The index page, with its scope lines and descriptions, fills the View at the 112-column cap beside the docked index. No page is open, so the docked index selects nothing; a dim <code>▸</code> marks the page under the cursor, General the first time, so the two lists read as one. The docked index never takes focus: <code>j/k</code> moves the cursor here, <code>enter</code> opens the page in the View, and <code>esc</code> on a page comes back here with that page under the cursor. Redrawn: it was the index focused with Display swapping live beside it.</span></div>
 <div class="dv-card" style="width:1282px">
 <div class="t" style="height:795px">
   <div class="tbar"><span><b>Personal Ledger</b></span><span>✓ Synced 14:22</span></div>
   <div class="tbody">
-    <div class="pane wsdock foc"><div class="ph"><b>Settings</b><span>17 pages</span></div><div class="hd ixg">this device</div><div class="row wsix"><span>General</span></div><div class="row wsix sel"><span>Display</span></div><div class="row wsix"><span>AI connections</span></div><div class="row wsix"><span>Logs</span></div><div class="row wsix"><span>About</span></div><div class="hd ixg">this ledger</div><div class="row wsix"><span>Ledger</span></div><div class="row wsix"><span>Units</span></div><div class="row wsix"><span>Institutions</span></div><div class="row wsix"><span>Accounts</span></div><div class="row wsix"><span>Categories</span></div><div class="row wsix"><span>Tags</span></div><div class="row wsix"><span>Payees</span></div><div class="row wsix"><span>Documents</span></div><div class="row wsix"><span>Inventory</span></div><div class="row wsix"><span>Sync server</span></div><div class="row wsix"><span>Backup</span></div><div class="row wsix"><span>History</span></div></div>
+    <div class="pane wsdock"><div class="ph"><b>Settings</b><span>17 pages</span></div><div class="hd ixg">this device</div><div class="row wsix" style="grid-template-columns:1fr auto"><span>General</span><span class="mut">▸</span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>Display</span><span></span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>AI connections</span><span></span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>Logs</span><span></span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>About</span><span></span></div><div class="hd ixg">this ledger</div><div class="row wsix" style="grid-template-columns:1fr auto"><span>Ledger</span><span></span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>Units</span><span></span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>Institutions</span><span></span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>Accounts</span><span></span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>Categories</span><span></span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>Tags</span><span></span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>Payees</span><span></span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>Documents</span><span></span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>Inventory</span><span></span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>Sync server</span><span></span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>Backup</span><span></span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>History</span><span></span></div></div>
     <div class="pane wspage"><div class="wscap">
-      <div class="ph"><b>Display</b><span>configuration · local · theme syncs</span></div>
-      <div class="row" style="grid-template-columns:2ch 22ch 1fr"><span class="mut">●</span><span class="mut">appearance</span><span>light &nbsp;dark &nbsp;<span class="seg">system</span></span></div>
-      <div class="row" style="grid-template-columns:2ch 22ch 1fr"><span class="mut">●</span><span class="mut">colour theme</span><span>Modernist <span class="mut">· enter opens the theme list</span></span></div>
-      <div class="row" style="grid-template-columns:2ch 22ch 1fr"><span class="mut">○</span><span class="mut">date style</span><span><span class="seg">locale</span> <span class="mut">· short · medium · long · iso</span></span></div>
-      <div class="row" style="grid-template-columns:2ch 22ch 1fr"><span class="mut">○</span><span class="mut">locale</span><span>en-AU <span class="mut">· from the config file · read-only</span></span></div>
-      <div class="row" style="grid-template-columns:2ch 22ch 1fr"><span class="mut">○</span><span class="mut">terminal colours</span><span>theme rgb <span class="mut">· terminal palette</span></span></div>
-      <div class="row" style="grid-template-columns:2ch 22ch 1fr"><span class="mut">○</span><span class="mut">status glyphs</span><span>unicode <span class="mut">○ ◐ ● ⚑ &nbsp;· ascii o / x !</span></span></div>
-      <div class="row" style="grid-template-columns:2ch 22ch 1fr"><span class="mut">○</span><span class="mut">toasts</span><span>[x] show toasts <span class="mut">· errors always show</span></span></div>
-      <div class="row" style="grid-template-columns:2ch 22ch 1fr"><span class="mut">○</span><span class="mut">hint bar</span><span>[x] show key hints <span class="mut">· also shows g-jumps</span></span></div>
-      <div class="hd tight">preview <span>date · payee · amount</span></div>
-      <div class="box"><div class="row" style="grid-template-columns:2ch 14ch 1fr 12ch"><span>●</span><span>12 sep 2026</span><span>Woolworths Metro</span><span class="n neg">−86.40</span></div><div class="row" style="grid-template-columns:2ch 14ch 1fr 12ch"><span>◐</span><span>10 sep 2026</span><span>Telstra</span><span class="n neg">−99.00</span></div><div class="row" style="grid-template-columns:2ch 14ch 1fr 12ch"><span>⚑</span><span>09 sep 2026</span><span>Dept of Education</span><span class="n">+4,210.00</span></div></div>
-      <div class="row" style="grid-template-columns:1fr;margin-top:15px"><span class="mut">Read from personal-ledger.conf at start-up and written back here.</span></div>
-      <div class="row" style="grid-template-columns:1fr"><span class="mut">● rows sync with the ledger. The locale changes only in the file, then a restart.</span></div>
+      <div class="ph"><b>Settings</b><span>17 pages</span></div>
+      <div class="hd ixg">this device<span>5 pages · never synced</span></div>
+      <div class="row ixs" style="grid-template-columns:1fr"><span class="mut">Stays on this computer and never syncs. Applies whichever Ledger is open, or none.</span></div>
+      <div class="row ixp sel" style="grid-template-columns:18ch 1fr auto"><span>General</span><span class="mut">on start, toasts, locale and the ledger folder</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Display</span><span class="mut">appearance, colour theme, date style, glyphs and hint bar</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>AI connections</span><span class="mut">model providers and assistant access</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Logs</span><span class="mut">log level and the live log</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>About</span><span class="mut">version, licences and links</span><span class="mut">›</span></div>
+      <div class="hd ixg">this ledger<span>12 pages · synced with the Ledger</span></div>
+      <div class="row ixs" style="grid-template-columns:1fr"><span class="mut">Saved in the Ledger and synced with it, so every device that opens it shares them.</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Ledger</span><span class="mut">ledger name, owner, financial year and base unit</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Units</span><span class="mut">currencies and other units, and their price sources</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Institutions</span><span class="mut">banks, brokers and lenders</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Accounts</span><span class="mut">every account, its institution and its unit</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Categories</span><span class="mut">income and expense categories</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Tags</span><span class="mut">free labels across transactions</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Payees</span><span class="mut">who you pay, their match rules and default category</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Documents</span><span class="mut">document types and their reminders</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Inventory</span><span class="mut">locations and their areas</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Sync server</span><span class="mut">server address, status and last sync</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Backup</span><span class="mut">local backups, export and Git backup</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>History</span><span class="mut">every change, with undo and restore</span><span class="mut">›</span></div>
     </div></div>
-    
   </div>
-  <div class="tk"><span><span class="k">j/k</span>page</span><span><span class="k">g/G</span>first/last</span><span><span class="k">enter</span>focus page</span><span><span class="k">esc</span>back</span></div>
+  <div class="tk"><span><span class="k">j/k</span>page</span><span><span class="k">enter</span>open</span><span><span class="k">g/G</span>first/last</span><span><span class="k">:settings</span>&lt;page&gt;</span><span><span class="k">u</span>undo</span><span><span class="k">esc</span>back</span></div>
+</div>
+</div>
+</div>
+
+<!-- ═════════ TUI-060 X-Large · the Settings index ═════════ -->
+<div class="dv-opt" id="TUI-060">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-060">TUI-060</a><span><b>X-Large · 256 × 72.</b> The Settings index page at X-Large (DESKTOP-182). TUI-051 plus the 53-column detail pane, which follows the cursor: <b>page</b> says what the page is for, its scope and its current values, read-only, with <code>enter</code> to open it; <b>this device or this ledger</b> explains where each kind of setting is stored and whether it syncs.</span></div>
+<div class="dv-card" style="width:1920px">
+<div class="t" style="height:1080px">
+  <div class="tbar"><span><b>Personal Ledger</b></span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    <div class="pane wsdock"><div class="ph"><b>Settings</b><span>17 pages</span></div><div class="hd ixg">this device</div><div class="row wsix" style="grid-template-columns:1fr auto"><span>General</span><span class="mut">▸</span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>Display</span><span></span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>AI connections</span><span></span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>Logs</span><span></span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>About</span><span></span></div><div class="hd ixg">this ledger</div><div class="row wsix" style="grid-template-columns:1fr auto"><span>Ledger</span><span></span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>Units</span><span></span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>Institutions</span><span></span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>Accounts</span><span></span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>Categories</span><span></span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>Tags</span><span></span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>Payees</span><span></span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>Documents</span><span></span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>Inventory</span><span></span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>Sync server</span><span></span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>Backup</span><span></span></div><div class="row wsix" style="grid-template-columns:1fr auto"><span>History</span><span></span></div></div>
+    <div class="pane wspage"><div class="wscap">
+      <div class="ph"><b>Settings</b><span>17 pages</span></div>
+      <div class="hd ixg">this device<span>5 pages · never synced</span></div>
+      <div class="row ixs" style="grid-template-columns:1fr"><span class="mut">Stays on this computer and never syncs. Applies whichever Ledger is open, or none.</span></div>
+      <div class="row ixp sel" style="grid-template-columns:18ch 1fr auto"><span>General</span><span class="mut">on start, toasts, locale and the ledger folder</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Display</span><span class="mut">appearance, colour theme, date style, glyphs and hint bar</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>AI connections</span><span class="mut">model providers and assistant access</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Logs</span><span class="mut">log level and the live log</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>About</span><span class="mut">version, licences and links</span><span class="mut">›</span></div>
+      <div class="hd ixg">this ledger<span>12 pages · synced with the Ledger</span></div>
+      <div class="row ixs" style="grid-template-columns:1fr"><span class="mut">Saved in the Ledger and synced with it, so every device that opens it shares them.</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Ledger</span><span class="mut">ledger name, owner, financial year and base unit</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Units</span><span class="mut">currencies and other units, and their price sources</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Institutions</span><span class="mut">banks, brokers and lenders</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Accounts</span><span class="mut">every account, its institution and its unit</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Categories</span><span class="mut">income and expense categories</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Tags</span><span class="mut">free labels across transactions</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Payees</span><span class="mut">who you pay, their match rules and default category</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Documents</span><span class="mut">document types and their reminders</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Inventory</span><span class="mut">locations and their areas</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Sync server</span><span class="mut">server address, status and last sync</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Backup</span><span class="mut">local backups, export and Git backup</span><span class="mut">›</span></div>
+      <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>History</span><span class="mut">every change, with undo and restore</span><span class="mut">›</span></div>
+    </div></div>
+    <div class="pane wsdetail"><div class="hd tight">page</div><div class="row" style="grid-template-columns:1fr"><span><b>General</b></span></div><div class="row" style="grid-template-columns:1fr"><span class="mut">this device · never synced</span></div><div class="row" style="grid-template-columns:1fr"><span class="mut">How Personal Ledger starts on this computer and where it looks for Ledger files. Nothing here changes a Ledger.</span></div><div class="row" style="grid-template-columns:18ch 1fr"><span class="mut">on start</span><span>reopen last Ledger</span></div><div class="row" style="grid-template-columns:18ch 1fr"><span class="mut">toasts</span><span>on</span></div><div class="row" style="grid-template-columns:18ch 1fr"><span class="mut">locale</span><span>en-AU · read-only</span></div><div class="row" style="grid-template-columns:18ch 1fr"><span class="mut">ledger folder</span><span>~/documents/ledgers</span></div><div class="wskeys"><span><span class="k">enter</span>open General</span></div><div class="hd tight">this device or this ledger</div><div class="row" style="grid-template-columns:1fr"><span class="mut"><b>This device</b> settings live in personal-ledger.conf on this computer. Another computer keeps its own, and they work with no Ledger open.</span></div><div class="row" style="grid-template-columns:1fr;margin-top:15px"><span class="mut"><b>This ledger</b> settings live in the Ledger file and sync with it. Change one here and every device that opens the Ledger sees it. They need a Ledger open.</span></div></div>
+  </div>
+  <div class="tk"><span><span class="k">j/k</span>page</span><span><span class="k">enter</span>open</span><span><span class="k">g/G</span>first/last</span><span><span class="k">:settings</span>&lt;page&gt;</span><span><span class="k">u</span>undo</span><span><span class="k">esc</span>back</span></div>
 </div>
 </div>
 </div>

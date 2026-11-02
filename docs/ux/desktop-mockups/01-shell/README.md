@@ -35,7 +35,7 @@ Frames 1a–1f are drawn at **1280 × 800**, the Large reference frame. The Wind
   - Stack gap: 14px, `text-align: center`, pane padding 24px
 - **Status bar** (28px): `NORMAL` mode chip, binding legend, right-aligned "No ledger open…" (the right-hand slot shows the Open Ledger's path, with the home directory as `~`, once a Ledger is open, e.g. `~/documents/ledgers/teda.pldb`)
 
-**Why it matters**: The rail stays drawn with no Ledger open, so the app's structure is visible before there is anything in it, but it is refused: every destination reads or writes a Ledger. A click, a `g` jump or a palette command for one leaves the empty Dashboard where it is and puts `No Ledger open: :open or :new first` on the status line. Only `:open`, `:new`, `:help`, quit and Settings work. Settings opens on its THIS DEVICE pages, with the THIS LEDGER pages dimmed and refused the same way (`../16-settings/` DESKTOP-179).
+**Why it matters**: The rail stays drawn with no Ledger open, so the app's structure is visible before there is anything in it, but it is refused: every destination reads or writes a Ledger. A click, a `g` jump or a palette command for one leaves the empty Dashboard where it is and puts `No Ledger open: :open or :new first` on the status line. Only `:open`, `:new`, `:help`, quit and Settings work. Settings opens on its index (`../16-settings/` DESKTOP-181), with the THIS LEDGER pages dimmed and refused the same way (DESKTOP-179).
 
 ### 1b — Dashboard with an accounts-at-a-glance rail
 **Purpose**: The active dashboard: net worth, cash / investments / liabilities at a glance, and what needs action today. The second rail is a persistent "accounts at a glance" panel rather than a record list. Dashboard has no records of its own, so nothing is selected; `j/k` + `enter` jumps into an account.
@@ -110,7 +110,7 @@ The Chrome arranges itself by the Window Size, picked from the window's width al
 
 At Medium, Settings is a drill-down with the page picker in a breadcrumb page heading. Large and X-Large keep the docked 232px index. Decided in [#692](https://github.com/IanTeda/Personal-Ledger/issues/692).
 
-- **DESKTOP-119 · index page (960):** `g s` lands on the Settings index, a full page with one row per Settings page, its icon and a one-line description. The heading is plain **Settings**, with no caret. `j/k` moves, `enter` or a click opens the page in its place.
+- **DESKTOP-119 · index page (960):** now in `../16-settings/Settings.dc.html`, first in that deck with its Large and X-Large cards (DESKTOP-181, 182); a pointer stays here. `g s` lands on the Settings index, a full page with one row per Settings page, its icon and a one-line description. The heading is plain **Settings**, with no caret. `j/k` moves, `enter` or a click opens the page in its place.
 - **DESKTOP-120 · a page, picker open (960):** the page heading is a breadcrumb, **Settings › Display ▾**. **Settings** is a link back to the index, with Display still selected. The caret after the page name opens the page picker: the page list in index order, a filter you type into, `enter` to open, `esc` to close. Picking a page goes straight to it without passing through the index.
 - **DESKTOP-121 · a page at rest (720):** the page has the whole View, 668px at the floor.
 

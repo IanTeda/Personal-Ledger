@@ -128,7 +128,7 @@ Done when:
 Done when:
 - `WindowSize::from_width(cols)` picks Medium (96–159), Large (160–213) or X-Large (≥ 214) from `frame.area().width` on each draw, never stored. Tests cover each Breakpoint's edges.
 - Below 96 columns the Shell draws the "terminal too small" screen in place of the View (a Shell change; take it in its own ticket if the Shell has none yet).
-- At Large and X-Large the index docks at 31 columns, with focus between index and page as in the README's key table; `p` does nothing; the hint bar ends `[/] pages · esc index`. Resizing across a Breakpoint keeps the page, selection and focus.
+- At Large and X-Large the index docks at 31 columns, with focus between index and page as in the README's key table (Stage 8 replaces this focus model); `p` does nothing; the hint bar ends `[/] pages · esc index`. Resizing across a Breakpoint keeps the page, selection and focus.
 - Page content stops at 112 columns at every size.
 - At X-Large each list page docks the 53-column detail pane; Units sends `UnitsPageEvent::SetDocked(true)` while docked, so its outcomes land in ACTIVITY instead of a Toast.
 - Render tests use `TestBackend` at each reference frame (128 × 69, 171 × 53, 256 × 72) and at the 96 × 30 floor.
@@ -142,8 +142,21 @@ Done when:
 Done when:
 - The page list carries each page's group, and the index page, the picker, the docked index and `[` / `]` run THIS DEVICE (General, Display, AI connections, Logs, About) then THIS LEDGER (Ledger, Units … History), under the two headings, with no scope glyphs or legend.
 - **Ledger** is today's General page, renamed; **General** is new: on start, toasts (moved from Display), the read-only locale and ledger folder, and the THIS DEVICE box. Display loses toasts and locale.
-- With no Ledger open, `g s` and `:settings` open Settings on the remembered page if it is a this device page, else General; this ledger rows draw dim, and `enter`, `[` / `]`, the picker or `:settings <page>` onto one answer `No Ledger open: :open or :new first` on the status line.
+- With no Ledger open, `g s` and `:settings` open Settings on the index page (Stage 8; it was the remembered page if a this device page, else General); this ledger rows draw dim, and `enter`, `[` / `]`, the picker or `:settings <page>` onto one answer `No Ledger open: :open or :new first` on the status line.
 - Render and key tests cover the grouped index, the picker order, General and the refusal.
+
+## Stage 8 — The Settings index is the resting view
+
+**Files:** `src/view/settings/{mod,index,keys,pane}.rs`, `i18n/` (`settings.ftl`)
+**Spec:** README § *Overview*, § *Large and X-Large: the index page and the docked index*, § *Keyboard*; cards TUI-047, TUI-051, TUI-059, TUI-060; Desktop cards DESKTOP-119, DESKTOP-181, DESKTOP-182 (`../../desktop-mockups/16-settings/`)
+**Decided in:** the Desktop Settings mockup's index view. It supersedes Stage 6's index-focused landing at Large and X-Large, and Stage 7's no-Ledger landing on a page.
+
+Done when:
+- `g s` and `:settings` show the index page at every Window Size, with or without a Ledger open, the cursor on the last page opened this session (General the first time). `:settings <page>` still opens a page directly.
+- Each group heading on the index page carries its page count and sync scope on the right and the scope line under it (README § *Overview*). The count, scope and line are Messages.
+- At Large and X-Large the index page fills the View beside the docked index, which selects nothing, marks the cursor's page with a dim `▸` and never takes focus; `esc` on a page returns to the index page, and the hint bar ends `[/] pages · esc index`.
+- At X-Large the index page docks the 53-column detail pane for the page under the cursor (PAGE, THIS DEVICE OR THIS LEDGER).
+- Render and key tests cover the index page at each reference frame, `esc` from a page landing back on it with that page under the cursor, and the no-Ledger landing.
 
 ## Throughout
 
