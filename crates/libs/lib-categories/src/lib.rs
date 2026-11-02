@@ -30,5 +30,5 @@ pub use entity::*;
 pub use protocols::{
     CategoriesDialog, CategoriesOutcome, CategoriesRouter, CategoryBudget, CategoryChange,
     CategoryReassign, CategoryReassigned, CategoryRepository, CategoryUsage, CategoryUse,
-    MonthlyBudget, MonthlyBudgetRefusal, ReassignRefusal, SharedCategories,
+    MonthlyBudget, MonthlyBudgetRefusal, ParentStop, ReassignRefusal, SharedCategories,
 };

@@ -425,38 +425,23 @@ impl Budgets {
     }
 
     /// A budgeted leaf that gained a child gets an automatic Stop from the current month and loses
-    /// any later record, in every active Budget; a parent only ever rolls up. Returns the Categories
-    /// stopped.
-    pub fn stop_new_parents(
-        &mut self,
-        categories: &dyn BudgetCategories,
-        today: NaiveDate,
-    ) -> Vec<CategoryId> {
-        let categories = categories.budget_categories();
+    /// any later record, in every active Budget; a parent only ever rolls up. Returns how many
+    /// Budgets changed. The caller says which Category gained the child.
+    pub fn stop_new_parent(&mut self, category_id: CategoryId, today: NaiveDate) -> usize {
+        self.list
+            .iter_mut()
+            .map(|budget| budget.stop_new_parent(category_id, today))
+            .filter(|changed| *changed)
+            .count()
+    }
+
+    /// How many active Budgets hold a Budget Amount for the Category this month: the Budgets a new
+    /// child would Stop it in.
+    pub fn budgeting(&self, category_id: CategoryId, today: NaiveDate) -> usize {
         let current = Period::of(today);
-        let mut stopped = Vec::new();
-        for budget in self.list.iter_mut().filter(|b| !b.is_archived()) {
-            for (id, chain) in &mut budget.limits {
-                if tree::is_leaf(&categories, *id) {
-                    continue;
-                }
-                let was_budgeted = applied(chain, current).is_some();
-                chain.retain(|record| record.month < current);
-                if was_budgeted {
-                    put(
-                        chain,
-                        LimitRecord {
-                            month: current,
-                            limit: Limit::Stop,
-                        },
-                    );
-                    if !stopped.contains(id) {
-                        stopped.push(*id);
-                    }
-                }
-            }
-        }
-        stopped
+        self.active()
+            .filter(|budget| applied(budget.chain(category_id), current).is_some())
+            .count()
     }
 }
 
@@ -531,6 +516,38 @@ impl Budget {
             self.limits.remove(&category_id);
         }
         Ok(())
+    }
+
+    /// Stops a Category that gained a child: its current month's record becomes a Stop and later
+    /// records go, so closed months keep their amounts and the parent rolls up its leaves from
+    /// then on. An archived Budget is left alone, and a Category not budgeted this month only loses
+    /// its later records. Returns whether the chain changed.
+    pub fn stop_new_parent(&mut self, category_id: CategoryId, today: NaiveDate) -> bool {
+        let current = Period::of(today);
+        if self.is_archived() {
+            return false;
+        }
+        let Some(chain) = self.limits.get_mut(&category_id) else {
+            return false;
+        };
+        let before = chain.clone();
+        let was_budgeted = applied(chain, current).is_some();
+        // An unbudgeted chain keeps its record starting now (a Stop already there).
+        chain.retain(|record| record.month < current || (!was_budgeted && record.month == current));
+        if was_budgeted {
+            put(
+                chain,
+                LimitRecord {
+                    month: current,
+                    limit: Limit::Stop,
+                },
+            );
+        }
+        if chain.is_empty() {
+            self.limits.remove(&category_id);
+            return true;
+        }
+        *chain != before
     }
 
     /// Removes the Month-only record starting in `month`, so the month falls back to the carried

@@ -15,13 +15,16 @@
 //! The parents, the usage and the budget are read when the Dialog opens, as it is modal. A confirm
 //! is lent the budget port, and a refusal stays in the Dialog.
 
+use std::collections::BTreeMap;
+
 use lib_core::{CategoryId, CategoryTypes, Money};
+use lib_locale::format::format_month;
 use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
 
 use super::{count, save_refusal_text};
 use crate::interactor::{AddCategory, BudgetChange, EditCategory};
 use crate::protocols::{
-    CategoriesOutcome, CategoriesRouter, CategoryBudget, CategoryChange, CategoryUsage,
+    CategoriesOutcome, CategoriesRouter, CategoryBudget, CategoryChange, CategoryUsage, ParentStop,
     SharedCategories,
 };
 use crate::{Category, depth, descendants_inclusive, get, is_leaf, move_exceeds_depth, msg, path};
@@ -109,6 +112,8 @@ pub struct CategoryFormPresenter {
     categories: SharedCategories,
     editing: Option<Editing>,
     parents: Vec<Choice<Option<CategoryId>>>,
+    /// Where each offered parent is budgeted, read when the Dialog opened.
+    stops: BTreeMap<CategoryId, ParentStop>,
     name: String,
     parent: Option<CategoryId>,
     category_type: CategoryTypes,
@@ -139,6 +144,7 @@ impl CategoryFormPresenter {
             .archived
             .map(BudgetLock::Archived);
         Self {
+            stops: parent_stops(budget, &parents),
             categories,
             editing: None,
             parents,
@@ -174,8 +180,10 @@ impl CategoryFormPresenter {
         } else {
             monthly.archived.map(BudgetLock::Archived)
         };
+        let parents = choices(&rows, offered);
         Some(Self {
-            parents: choices(&rows, offered),
+            stops: parent_stops(budget, &parents),
+            parents,
             editing: Some(Editing {
                 id,
                 splits: subtree
@@ -396,7 +404,22 @@ impl CategoryFormPresenter {
         }
     }
 
+    /// Where the chosen parent is budgeted, when this save would give it its first child.
+    fn parent_stop(&self) -> Option<(Category, ParentStop)> {
+        let parent = self.category(self.parent?)?;
+        let rows = self.categories.borrow().categories();
+        let stop = *self.stops.get(&parent.id)?;
+        is_leaf(&rows, parent.id).then_some((parent, stop))
+    }
+
     fn notice(&self) -> String {
+        if let Some((parent, stop)) = self.parent_stop() {
+            return msg::categories_notice_parent_stop(
+                &parent.name,
+                &format_month(stop.month),
+                count(stop.budgets),
+            );
+        }
         let nested = self.parent.and_then(|id| self.category(id)).map(|parent| {
             msg::categories_notice_nested(&parent.name, &type_label(&parent.category_type))
         });
@@ -414,6 +437,18 @@ impl CategoryFormPresenter {
             None => nested.unwrap_or_else(msg::categories_notice_default),
         }
     }
+}
+
+/// Where each parent on offer is budgeted this month.
+fn parent_stops(
+    budget: &dyn CategoryBudget,
+    parents: &[Choice<Option<CategoryId>>],
+) -> BTreeMap<CategoryId, ParentStop> {
+    parents
+        .iter()
+        .filter_map(|choice| choice.value)
+        .filter_map(|id| Some((id, budget.parent_stop(id)?)))
+        .collect()
 }
 
 /// None, then each of `offered` by its path, in tree order.
@@ -746,5 +781,56 @@ mod tests {
         confirm(&mut form, &mut budget);
 
         assert!(budget.amounts.is_empty());
+    }
+
+    #[test]
+    fn a_budgeted_parent_chosen_warns_its_budget_stops() {
+        let (_, shared) = stub();
+        let mut budget = InMemoryCategoryBudget {
+            other_budgets: 1,
+            ..Default::default()
+        };
+        budget.amounts.insert(TRANSPORT, money("600"));
+        budget.amounts.insert(FOOD, money("1"));
+        let mut form = CategoryFormPresenter::add(shared.clone(), &budget, None);
+        assert_eq!(
+            form.view_model().notice,
+            "Picking a parent will lock the type control to the parent's type."
+        );
+
+        send(&mut form, vec![CategoryFormEvent::Parent(Some(TRANSPORT))]);
+        let notice = form.view_model().notice;
+        assert!(
+            notice.starts_with("Transport' budget stops from Nov in 2 budgets"),
+            "{notice}"
+        );
+
+        // Food already has children, so it is a parent that only rolls up.
+        send(&mut form, vec![CategoryFormEvent::Parent(Some(FOOD))]);
+        assert!(!form.view_model().notice.contains("stops from"));
+
+        send(&mut form, vec![CategoryFormEvent::Parent(Some(UTILITIES))]);
+        assert!(
+            !form.view_model().notice.contains("stops from"),
+            "unbudgeted"
+        );
+    }
+
+    #[test]
+    fn the_stop_notice_shows_on_edit_when_moving_under_a_budgeted_leaf() {
+        let (_, shared) = stub();
+        let mut budget = InMemoryCategoryBudget::default();
+        budget.amounts.insert(TRANSPORT, money("600"));
+        let usage = InMemoryCategoryUsage::default();
+        let mut form =
+            CategoryFormPresenter::edit(shared, &budget, &usage, GROCERIES).expect("seeded");
+
+        send(&mut form, vec![CategoryFormEvent::Parent(Some(TRANSPORT))]);
+
+        assert!(
+            form.view_model()
+                .notice
+                .contains("stops from Nov in 1 budget")
+        );
     }
 }

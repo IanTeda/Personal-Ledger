@@ -1,6 +1,6 @@
 use lib_core::{CategoryId, CategoryTypes};
 
-use super::BudgetChange;
+use super::{BudgetChange, gains_first_child};
 use crate::protocols::{CategoryBudget, CategoryRepository};
 use crate::{
     Category, CategoryError, SaveCategoryRefusal, change_category_type, edit_category,
@@ -41,6 +41,9 @@ impl EditCategory {
                     categories.upsert_category(row.clone());
                 }
                 self.monthly.save(budget, self.id);
+                if let Some(parent) = gains_first_child(&before, self.parent_id) {
+                    budget.stop_new_parent(parent);
+                }
                 tracing::info!(category_id = %category.id, "Edited a Category");
             }
             Err(refusal) => {
@@ -202,5 +205,42 @@ mod tests {
         .run(&mut categories, &mut budget)
         .expect("a leaf's budget stops");
         assert!(budget.amounts.is_empty());
+    }
+
+    #[test]
+    fn moving_under_a_budgeted_leaf_stops_it_and_under_a_parent_stops_nothing() {
+        let mut categories = InMemoryCategories::stub();
+        let mut budget = InMemoryCategoryBudget::default();
+        budget.amounts.insert(FOOD, "1".parse().expect("an amount"));
+
+        // Food already has children: nothing to stop.
+        edit(TRANSPORT, "Transport", Some(FOOD))
+            .run(&mut categories, &mut budget)
+            .expect("Food takes children");
+        assert!(budget.stopped.is_empty());
+
+        // Rent is a budgeted Expense leaf.
+        let rent = CategoryId::seed(2);
+        budget.amounts.insert(rent, "1".parse().expect("an amount"));
+        edit(GROCERIES, "Groceries", Some(rent))
+            .run(&mut categories, &mut budget)
+            .expect("Rent takes a child");
+        assert_eq!(budget.stopped, [rent]);
+    }
+
+    #[test]
+    fn a_refused_move_stops_nothing() {
+        let mut categories = InMemoryCategories::stub();
+        let mut budget = InMemoryCategoryBudget::default();
+        budget
+            .amounts
+            .insert(SALARY, "1".parse().expect("an amount"));
+
+        assert!(
+            edit(FOOD, "Food", Some(SALARY))
+                .run(&mut categories, &mut budget)
+                .is_err()
+        );
+        assert!(budget.stopped.is_empty());
     }
 }

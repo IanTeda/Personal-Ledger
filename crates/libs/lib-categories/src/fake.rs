@@ -12,7 +12,7 @@ use lib_toast::{Notice, Notify};
 use crate::protocols::{
     CategoriesDialog, CategoriesOutcome, CategoriesRouter, CategoryBudget, CategoryReassign,
     CategoryReassigned, CategoryUsage, CategoryUse, MonthlyBudget, MonthlyBudgetRefusal,
-    ReassignRefusal, SharedCategories,
+    ParentStop, ReassignRefusal, SharedCategories,
 };
 use crate::{
     Category, CategoryRepository, default_categories, descendants_inclusive, get, is_leaf,
@@ -70,11 +70,17 @@ impl CategoryUsage for InMemoryCategoryUsage {
 }
 
 /// One Budget's amounts this month, by Category, keeping the Budgets' rule that only a leaf
-/// Expense Category is budgeted. With `archived` set, it is read-only under that name.
+/// Expense Category is budgeted. With `archived` set, it is read-only under that name. A Stop
+/// removes the Category's amount and is recorded in `stopped`, as November, in `1 + other_budgets`
+/// Budgets.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct InMemoryCategoryBudget {
     pub amounts: BTreeMap<CategoryId, Money>,
     pub archived: Option<String>,
+    /// Active Budgets besides this one that budget the same Categories.
+    pub other_budgets: usize,
+    /// The Categories [`CategoryBudget::stop_new_parent`] was asked to stop, in order.
+    pub stopped: Vec<CategoryId>,
 }
 
 impl CategoryBudget for InMemoryCategoryBudget {
@@ -133,6 +139,18 @@ impl CategoryBudget for InMemoryCategoryBudget {
             None => self.amounts.remove(&category),
         };
         Ok(())
+    }
+
+    fn parent_stop(&self, category: CategoryId) -> Option<ParentStop> {
+        (self.archived.is_none() && self.amounts.contains_key(&category)).then_some(ParentStop {
+            budgets: 1 + self.other_budgets,
+            month: 11,
+        })
+    }
+
+    fn stop_new_parent(&mut self, parent: CategoryId) {
+        self.stopped.push(parent);
+        self.amounts.remove(&parent);
     }
 }
 

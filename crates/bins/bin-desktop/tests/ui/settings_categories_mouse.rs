@@ -211,3 +211,30 @@ fn changing_the_type_then_confirm_cascades_to_the_descendants(app: &mut TestAppC
             .all(|(a, _)| a.1 == lib_core::CategoryTypes::Income)
     );
 }
+
+#[gpui::test]
+fn the_sub_button_on_a_budgeted_leaf_warns_and_the_confirm_stops_its_budget(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_categories(app);
+    let transport = CategoryId::seed(9);
+
+    ui.click(&format!("settings-categories-sub-{transport}"));
+    assert_eq!(ui.dialog_value("parent").as_deref(), Some("Transport"));
+    let notice = ui.dialog_value("notice").expect("a notice");
+    assert!(
+        notice.starts_with("Transport' budget stops from"),
+        "{notice}"
+    );
+    ui.press("f u e l");
+    ui.click("add-category-confirm");
+
+    assert_eq!(ui.dialog(), None);
+    ui.press("g b");
+    let row = ui
+        .budgets()
+        .rows
+        .into_iter()
+        .find(|row| row.category == "Transport");
+    assert!(!row.as_ref().is_some_and(|row| row.budgeted), "{row:?}");
+}

@@ -15,12 +15,12 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use chrono::NaiveDate;
+use chrono::{Datelike as _, NaiveDate};
 use gpui::{App, Entity};
 use lib_budgets::{BudgetError, Budgets};
 use lib_categories::{
     Category, CategoryBudget, CategoryReassign, CategoryReassigned, CategoryRepository,
-    CategoryUsage, CategoryUse, MonthlyBudget, MonthlyBudgetRefusal, ReassignRefusal,
+    CategoryUsage, CategoryUse, MonthlyBudget, MonthlyBudgetRefusal, ParentStop, ReassignRefusal,
     SharedCategories,
 };
 use lib_core::{CategoryId, Money};
@@ -209,6 +209,28 @@ impl CategoryBudget for LedgerPorts<'_> {
             saved.map(|_| ()).map_err(budget_refusal)
         })
     }
+
+    fn parent_stop(&self, category: CategoryId) -> Option<ParentStop> {
+        let budgets = self.budgets().budgeting(category, self.today);
+        (budgets > 0).then_some(ParentStop {
+            budgets,
+            month: self.today.month(),
+        })
+    }
+
+    /// Stops the parent in every active Budget in the Budgets store, in the input's one commit,
+    /// then brings the Budgets read copy in line.
+    fn stop_new_parent(&mut self, parent: CategoryId) {
+        let today = self.today;
+        self.ledger.update(self.cx, |store, cx| {
+            crate::budgets::ports::stop_new_parent(
+                &mut *store.budgets_store().borrow_mut(),
+                parent,
+                today,
+            );
+            store.refresh_budgets(cx);
+        });
+    }
 }
 
 impl CategoryReassign for LedgerPorts<'_> {
@@ -349,6 +371,37 @@ mod tests {
             assert_eq!(
                 ports.monthly_budget(&categories, Some(groceries)).amount,
                 Some(amount)
+            );
+        });
+    }
+
+    #[gpui::test]
+    fn a_new_parent_is_stopped_in_every_active_budget_through_the_store(cx: &mut TestAppContext) {
+        let ledger = cx.new(|_| LedgerStore::new(Ledger::stub_on(today())));
+        let categories = ledger.read_with(cx, |store, _| store.ledger().categories().to_vec());
+        let groceries = lib_categories::find_by_name(&categories, "Groceries").expect("seeded");
+
+        cx.update(|cx| {
+            let mut ports = LedgerPorts {
+                ledger: &ledger,
+                today: today(),
+                cx,
+            };
+            let stop = ports.parent_stop(groceries).expect("budgeted in the seed");
+            assert_eq!((stop.budgets, stop.month), (2, 10));
+            assert!(
+                ports
+                    .monthly_budget(&categories, Some(groceries))
+                    .amount
+                    .is_some()
+            );
+
+            ports.stop_new_parent(groceries);
+
+            assert_eq!(ports.parent_stop(groceries), None);
+            assert_eq!(
+                ports.monthly_budget(&categories, Some(groceries)).amount,
+                None
             );
         });
     }

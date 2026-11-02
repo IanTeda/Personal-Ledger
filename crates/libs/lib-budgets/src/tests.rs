@@ -1592,46 +1592,6 @@ fn a_parents_monthly_limit_is_the_sum_of_its_budgeted_leaves() {
 }
 
 #[test]
-fn a_leaf_that_gains_a_child_is_stopped_from_the_current_month() {
-    let mut world = World::new();
-    let (mut budgets, id) = world.budgets();
-    set(
-        &mut budgets,
-        &world,
-        id,
-        "Transport",
-        sep(),
-        Span::Onward,
-        "600.00",
-        None,
-    );
-    set(
-        &mut budgets,
-        &world,
-        id,
-        "Transport",
-        sep().next(),
-        Span::Onward,
-        "650.00",
-        None,
-    );
-    let transport = world.category("Transport");
-    world.add_child("Fuel", transport);
-    assert_eq!(
-        budgets.stop_new_parents(world.ledger(), today()),
-        vec![transport]
-    );
-    let chain = budgets
-        .get(id)
-        .map(|b| b.chain(transport).to_vec())
-        .unwrap_or_default();
-    assert_eq!(amount_in(&chain, sep()), None);
-    assert_eq!(amount_in(&chain, sep().next()), None);
-    // A second pass finds nothing left to stop.
-    assert!(budgets.stop_new_parents(world.ledger(), today()).is_empty());
-}
-
-#[test]
 fn a_deleted_categorys_records_go_with_it_in_every_budget() {
     let world = World::new();
     let (mut budgets, id) = world.budgets();

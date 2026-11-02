@@ -55,6 +55,10 @@ categories-field-monthly-budget = Monthly budget
 categories-budget-placeholder = leave blank to track only
 categories-notice-default = Picking a parent will lock the type control to the parent's type.
 categories-notice-nested = Nesting under { $parent } inherits its type ({ $kind }) — the type control locks once a parent is picked.
+categories-notice-parent-stop = { $category }' budget stops from { $month } in { $budgets ->
+    [one] { $budgets } budget
+   *[other] { $budgets } budgets
+} — a parent shows the sum of its children's budgets.
 categories-edit-notice = Changes apply when you save.
 categories-edit-parent-notice = This is a parent category — its budget shows the sum of its children's budgets.
 categories-edit-usage-notice = This category has { $count ->

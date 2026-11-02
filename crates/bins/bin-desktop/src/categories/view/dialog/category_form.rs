@@ -391,6 +391,7 @@ pub(super) fn readback(view: &CategoryFormViewModel) -> Vec<(&'static str, Strin
                 .unwrap_or_default(),
         ),
         ("budget", view.budget.field.text.clone()),
+        ("notice", view.notice.clone()),
         (
             "error",
             view.name_error

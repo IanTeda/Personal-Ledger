@@ -446,3 +446,65 @@ fn tab_reaches_the_parent_select_and_down_picks_a_parent_whose_type_it_takes(
     assert_eq!(ui.dialog_value("type").as_deref(), Some("Income"));
     ui.press("escape");
 }
+
+/// A Progress row of the Budgets page for `category`.
+fn budget_row(
+    ui: &mut Harness<'_>,
+    category: &str,
+) -> Option<bin_desktop::shell::router::BudgetRowSnapshot> {
+    ui.budgets()
+        .rows
+        .into_iter()
+        .find(|row| row.category == category)
+}
+
+#[gpui::test]
+fn adding_a_child_under_a_budgeted_leaf_warns_then_stops_its_budget(app: &mut TestAppContext) {
+    let mut ui = in_categories(app);
+    for _ in 0..12 {
+        if ui
+            .settings::<SettingsCategoriesSnapshot>()
+            .selected_category
+            .as_deref()
+            == Some("Transport")
+        {
+            break;
+        }
+        ui.press("j");
+    }
+
+    ui.press("shift-n");
+    let notice = ui.dialog_value("notice").expect("a notice");
+    assert!(
+        notice.starts_with("Transport' budget stops from"),
+        "{notice}"
+    );
+    ui.press("f u e l");
+    let commits = ui.commits();
+    ui.press("enter");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        ui.commits(),
+        commits + 1,
+        "the Category and its Stop in one commit"
+    );
+    ui.press("g b");
+    let after = budget_row(&mut ui, "Transport");
+    assert!(!after.as_ref().is_some_and(|row| row.budgeted), "{after:?}");
+}
+
+#[gpui::test]
+fn a_parent_with_children_or_an_unbudgeted_parent_shows_no_stop_notice(app: &mut TestAppContext) {
+    let mut ui = in_categories(app);
+
+    // Housing already has children.
+    ui.press("j shift-n");
+    assert_eq!(ui.dialog_value("parent").as_deref(), Some("Housing"));
+    assert!(
+        !ui.dialog_value("notice")
+            .expect("a notice")
+            .contains("stops from")
+    );
+    ui.press("escape");
+}

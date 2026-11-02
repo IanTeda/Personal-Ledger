@@ -17,7 +17,7 @@ use chrono::NaiveDate;
 use gpui::{App, Entity};
 use lib_budgets::{
     Budget, BudgetCategories, BudgetError, BudgetReads, BudgetRepository, BudgetsPorts, PortsMut,
-    SetMonthlyLimit, SharedPorts, fake::InMemoryBudgets,
+    SetMonthlyLimit, SharedPorts, StopNewParent, fake::InMemoryBudgets,
 };
 use lib_core::{BudgetId, CategoryId, Money};
 use lib_database::{BudgetsStore, SharedBudgetsStore, StoredBudgetReads};
@@ -145,6 +145,21 @@ pub fn set_monthly_limit(
         today,
     }
     .run(categories, store.budgets_mut())
+}
+
+/// Stops `category`, a leaf that just gained a child, from the current month in every active
+/// Budget in `store`, as `lib-budgets`' `StopNewParent` Interactor writes it: the Categories Add
+/// and Edit Dialogs' save, joined to the Category's one commit. Returns how many Budgets changed.
+pub fn stop_new_parent(
+    store: &mut dyn BudgetsStore,
+    category: CategoryId,
+    today: NaiveDate,
+) -> usize {
+    StopNewParent {
+        category_id: category,
+        today,
+    }
+    .run(store.budgets_mut())
 }
 
 #[cfg(test)]

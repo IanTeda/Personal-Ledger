@@ -16,7 +16,7 @@ The parts that are hardest to change later:
 - **Closed months are never rewritten.** Every write checks the month is the current one or later (`check_open_month`).
 - **Rollover is held on each record** and applied on read. A closed month's carry is its effective budget (amount plus carry in) minus Spent, Known Costs excluded; it compounds, can go negative with Carry both, and resets on a Stop or an unbudgeted month. The current month never carries.
 - **Figures are derived, never stored.** Spent is signed Splits of every Transaction Status on the on-budget Accounts. Known Costs are the open Bill Schedule entries on those Accounts: the current month's plus carried-in Overdue, none for a past month, a future month's own.
-- **Parents only roll up.** A budgeted leaf that gains a child should get an automatic Stop from the current month (`Budgets::stop_new_parents`), but nothing calls it yet (#957).
+- **Parents only roll up.** A budgeted leaf that gains a child gets an automatic Stop from the current month, with any later record dropped, in every active Budget (`Budget::stop_new_parent`, run by the `StopNewParent` Interactor). Closed months keep their amounts and archived Budgets are untouched. `lib-categories`' Add and Edit call it through `CategoryBudget::stop_new_parent` (#957).
 - **Exactly one default, and it can't be archived**, so an active Budget always exists. Archived Budgets are read-only (`BudgetError::Archived`).
 
 ## Domain types
@@ -95,7 +95,6 @@ Desktop locations for the ticked requirements. Paths are under `crates/libs/lib-
 
 - The Dialogs and tabs have been driven only by the headless UI tests, not walked live against the handoff, and the History export's save dialog has not been run end to end.
 - The last opened Budget is not kept: the Presenter holds the current Budget in memory and opens on the default. Persisting it as a Client-scoped Preference is out of scope (#950).
-- A budgeted Category that gains a child keeps its limit, because `Budgets::stop_new_parents` has no caller (#957).
 - The Switcher's search takes the keys only after `/` or a click, because `j`, `k` and `n` are letters too. The handoff doesn't say how the two share the keyboard.
 - The handoff doesn't say where Stop budgeting opens from. It is `s` on a Progress row and a link in Edit budget's footer.
 - History's table cells show Spent only; the month's effective budget is in the chart, the Category detail and the CSV export.

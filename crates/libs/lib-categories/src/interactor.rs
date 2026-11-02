@@ -64,3 +64,9 @@ impl BudgetChange {
         }
     }
 }
+
+/// Whether a save under `parent` turns a budgeted leaf into a parent: `parent` is a leaf in `rows`,
+/// the tree before the save, so it has no child yet.
+fn gains_first_child(rows: &[Category], parent: Option<CategoryId>) -> Option<CategoryId> {
+    parent.filter(|id| crate::get(rows, *id).is_some() && crate::is_leaf(rows, *id))
+}

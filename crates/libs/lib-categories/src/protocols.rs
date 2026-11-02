@@ -79,6 +79,15 @@ pub enum MonthlyBudgetRefusal {
     Unavailable,
 }
 
+/// Where a Category that is about to gain a child is budgeted, for the Dialogs' notice: the
+/// active Budgets that will Stop it, and the month they Stop it from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParentStop {
+    pub budgets: usize,
+    /// The calendar month (1–12) the Stop starts, the current one.
+    pub month: u32,
+}
+
 /// The one Budget the Add and Edit Dialogs read and save a Category's Monthly budget in (the
 /// Desktop's Personal spending Budget), held by the Budgets domain. A save checks before it
 /// writes, so a refused budget leaves the Category unwritten too.
@@ -107,6 +116,15 @@ pub trait CategoryBudget {
         category: CategoryId,
         amount: Option<Money>,
     ) -> Result<(), MonthlyBudgetRefusal>;
+
+    /// Where `category` is budgeted this month, in every active Budget, or `None` when nowhere.
+    /// The Dialogs ask it of a chosen parent to warn that a child will Stop its budget.
+    fn parent_stop(&self, category: CategoryId) -> Option<ParentStop>;
+
+    /// Stops `parent`'s budget from this month in every active Budget, once it has gained its first
+    /// child (a parent only rolls up). Closed months keep their amounts, and a Category budgeted
+    /// nowhere writes nothing.
+    fn stop_new_parent(&mut self, parent: CategoryId);
 }
 
 /// What a Category delete did, for its Toast.

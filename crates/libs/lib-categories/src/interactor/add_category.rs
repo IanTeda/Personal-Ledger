@@ -1,6 +1,6 @@
 use lib_core::{CategoryId, CategoryTypes};
 
-use super::BudgetChange;
+use super::{BudgetChange, gains_first_child};
 use crate::protocols::{CategoryBudget, CategoryRepository};
 use crate::{Category, CategoryError, SaveCategoryRefusal, get, insert_category};
 
@@ -22,7 +22,8 @@ impl AddCategory {
         categories: &mut dyn CategoryRepository,
         budget: &mut dyn CategoryBudget,
     ) -> Result<Category, SaveCategoryRefusal> {
-        let mut rows = categories.categories();
+        let before = categories.categories();
+        let mut rows = before.clone();
         let outcome = insert_category(&mut rows, self.name, self.parent_id, self.category_type)
             .and_then(|id| get(&rows, id).cloned().ok_or(CategoryError::NotFound))
             .map_err(SaveCategoryRefusal::from)
@@ -34,6 +35,9 @@ impl AddCategory {
             Ok(category) => {
                 categories.upsert_category(category.clone());
                 self.monthly.save(budget, category.id);
+                if let Some(parent) = gains_first_child(&before, self.parent_id) {
+                    budget.stop_new_parent(parent);
+                }
                 tracing::info!(category_id = %category.id, "Added a Category");
             }
             Err(refusal) => tracing::info!(%refusal, "Refused to add a Category"),
@@ -137,5 +141,55 @@ mod tests {
         );
         assert_eq!(categories, before);
         assert!(budget.amounts.is_empty());
+    }
+
+    #[test]
+    fn a_budgeted_leaf_that_gains_its_first_child_is_stopped() {
+        let mut categories = InMemoryCategories::stub();
+        let mut budget = InMemoryCategoryBudget::default();
+        let transport = CategoryId::seed(9);
+        budget.amounts.insert(transport, money("600"));
+
+        add("Fuel", Some(transport), CategoryTypes::Expense)
+            .run(&mut categories, &mut budget)
+            .expect("Transport takes children");
+
+        assert_eq!(budget.stopped, [transport]);
+    }
+
+    #[test]
+    fn a_parent_that_already_has_children_and_a_top_level_add_stop_nothing() {
+        let mut categories = InMemoryCategories::stub();
+        let mut budget = InMemoryCategoryBudget::default();
+
+        add(
+            "Takeaway",
+            Some(CategoryId::seed(6)),
+            CategoryTypes::Expense,
+        )
+        .run(&mut categories, &mut budget)
+        .expect("Food takes children");
+        add("Pets", None, CategoryTypes::Expense)
+            .run(&mut categories, &mut budget)
+            .expect("top level");
+
+        assert!(budget.stopped.is_empty());
+    }
+
+    #[test]
+    fn a_refused_add_stops_nothing() {
+        let mut categories = InMemoryCategories::stub();
+        let mut budget = InMemoryCategoryBudget::default();
+        let salary = CategoryId::seed(11);
+        budget.amounts.insert(salary, money("1"));
+
+        let refused = AddCategory {
+            monthly: BudgetChange::Set(money("40")),
+            ..add("Bonus", Some(salary), CategoryTypes::Income)
+        }
+        .run(&mut categories, &mut budget);
+
+        assert_eq!(refused, Err(MonthlyBudgetRefusal::NotAnExpenseLeaf.into()));
+        assert!(budget.stopped.is_empty());
     }
 }
