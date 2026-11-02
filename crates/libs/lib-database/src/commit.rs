@@ -13,8 +13,11 @@ use crate::writer::{Batch, Change, Domain, Writer};
 /// Ledger file's adapters and on a test's in-memory ports.
 pub trait Commit {
     /// Sends every write made since the last commit as one transaction. Never waits: a failure is
-    /// reported on the writer's failure channel.
-    fn commit(&self);
+    /// reported on the writer's failure channel. Returns each domain a cascade of the writes
+    /// changes in the file, whose adapter the caller reloads after (ADR-0046's 2026-11-02
+    /// amendment): a reload goes through the writer, so it is queued behind this commit and sees
+    /// the cascade.
+    fn commit(&self) -> Vec<Domain>;
 }
 
 /// The writes every adapter on one [`Writer`] has made since the last commit. Single-threaded, as
@@ -54,20 +57,27 @@ impl PendingWrites {
 
 impl Commit for PendingWrites {
     #[tracing::instrument(name = "Commit the Ledger writes", level = "debug", skip_all)]
-    fn commit(&self) {
+    fn commit(&self) -> Vec<Domain> {
         let changes = std::mem::take(&mut *self.changes.borrow_mut());
-        if !changes.is_empty() {
-            self.writer.write(Batch::new(changes));
+        if changes.is_empty() {
+            return Vec::new();
         }
+        let batch = Batch::new(changes);
+        let cascades = batch.cascades();
+        self.writer.write(batch);
+        cascades
     }
 }
 
-/// The commit of in-memory ports, which are their own storage, so there is nowhere to send.
+/// The commit of in-memory ports, which are their own storage, so there is nowhere to send and no
+/// file to cascade.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct InMemoryCommit;
 
 impl Commit for InMemoryCommit {
-    fn commit(&self) {}
+    fn commit(&self) -> Vec<Domain> {
+        Vec::new()
+    }
 }
 
 #[cfg(test)]
@@ -184,7 +194,7 @@ mod tests {
         let mut ledger = Ledger::open(options);
 
         ledger.add_unit_and_note(Some("paid"));
-        ledger.pending.commit();
+        let cascades = ledger.pending.commit();
         ledger
             .pending
             .writer()
@@ -193,6 +203,7 @@ mod tests {
 
         assert!(ledger.stored_codes().contains(&"nzd".to_string()));
         assert_eq!(ledger.stored_notes(), ["paid"]);
+        assert!(cascades.is_empty(), "nothing deleted, so nothing to reload");
         assert!(ledger.failures.try_recv().is_err());
     }
 

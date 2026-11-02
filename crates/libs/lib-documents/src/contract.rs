@@ -59,6 +59,15 @@ pub trait PortsFactory {
     /// Settles the writes sent so far, then returns `ports` reloaded to the last committed rows,
     /// with the number of failures reported naming the Documents domain.
     fn recover(&mut self, ports: Self::Ports) -> (Self::Ports, usize);
+
+    /// One stored record of each kind storage can delete, which nothing but a Link names. A Bill
+    /// Plan has no delete yet, so none is offered.
+    fn deletable(&mut self) -> Vec<DocumentLink>;
+
+    /// Deletes `record` as its own domain's delete does and commits it, which cascades to the
+    /// Links naming it, then returns `ports` with the cascade read back, as a Client does after
+    /// such a commit (ADR-0046's 2026-11-02 amendment).
+    fn delete_record(&mut self, ports: Self::Ports, record: DocumentLink) -> Self::Ports;
 }
 
 /// The in-memory repository is its own storage, so a reload hands it back as it is. It keeps a
@@ -138,6 +147,28 @@ impl PortsFactory for InMemoryFactory {
     fn recover(&mut self, _ports: InMemoryDocuments) -> (InMemoryDocuments, usize) {
         let committed = self.committed.clone().expect("create ran first");
         (committed, std::mem::take(&mut self.failures))
+    }
+
+    /// A second record of each kind beside [`Self::records`]' first.
+    fn deletable(&mut self) -> Vec<DocumentLink> {
+        vec![
+            DocumentLink::Transaction(lib_core::TransactionId::seed(2)),
+            DocumentLink::Account(AccountId::seed(2)),
+            DocumentLink::Payee(PayeeId::seed(2)),
+            DocumentLink::InventoryItem(ItemId::seed(2)),
+        ]
+    }
+
+    /// The repository is its own storage, so the cascade lands on it and on the committed copy.
+    fn delete_record(
+        &mut self,
+        mut ports: InMemoryDocuments,
+        record: DocumentLink,
+    ) -> InMemoryDocuments {
+        self.commit(&mut ports);
+        ports.cascade_delete(&[record]);
+        self.committed = Some(ports.clone());
+        ports
     }
 }
 
@@ -338,6 +369,59 @@ pub fn a_type_removal_moves_its_documents_in_one_batch<F: PortsFactory>(factory:
     );
 }
 
+/// Deleting a record a Link names drops that Link and keeps the Document (GLOSSARY Document
+/// Link), for each kind storage can delete: the Link is gone from memory once the cascade is read
+/// back, the Document's other Link stays, and the Document then writes again without it.
+pub fn deleting_a_linked_record_drops_its_links_and_keeps_the_document<F: PortsFactory>(
+    factory: &mut F,
+) {
+    let records = factory.records();
+    let deletable = factory.deletable();
+    assert_eq!(deletable.len(), 4, "a Transaction, Account, Payee and Item");
+    let kept = DocumentLink::InventoryItem(records.items[0].id);
+    let documents: Vec<Document> = (1..)
+        .zip(&deletable)
+        .map(|(id, record)| {
+            let mut document = filed(id, &format!("linked-{id}.pdf"), TAX);
+            document.links = vec![*record, kept];
+            document
+        })
+        .collect();
+    let mut ports = factory.create(default_types(), documents.clone());
+
+    for (document, record) in documents.iter().zip(&deletable) {
+        assert_ne!(*record, kept);
+        ports = factory.delete_record(ports, *record);
+
+        let held = ports
+            .documents()
+            .into_iter()
+            .find(|held| held.id == document.id)
+            .expect("the Document stays");
+        assert_eq!(
+            held.links,
+            [kept],
+            "{record:?}'s Link is dropped from memory"
+        );
+
+        let mut renamed = held;
+        renamed.title = format!("{} renamed", renamed.title);
+        ports.upsert_document(&renamed);
+        ports = factory.reload(ports);
+        let stored = ports
+            .documents()
+            .into_iter()
+            .find(|stored| stored.id == document.id)
+            .expect("the Document is still stored");
+        assert_eq!(stored, renamed, "it writes again without the Link");
+    }
+    assert_eq!(
+        ports.documents().len(),
+        documents.len(),
+        "no Document is removed"
+    );
+}
+
 /// A write storage refuses is reported and reloads to the last committed rows.
 pub fn a_failed_write_reloads_and_reports<F: PortsFactory>(factory: &mut F) {
     let mut ports = factory.create(default_types(), vec![filed(1, "a.pdf", TAX)]);
@@ -372,6 +456,13 @@ mod tests {
     #[test]
     fn in_memory_a_type_removal_moves_its_documents_in_one_batch() {
         a_type_removal_moves_its_documents_in_one_batch(&mut InMemoryFactory::default());
+    }
+
+    #[test]
+    fn in_memory_deleting_a_linked_record_drops_its_links_and_keeps_the_document() {
+        deleting_a_linked_record_drops_its_links_and_keeps_the_document(
+            &mut InMemoryFactory::default(),
+        );
     }
 
     #[test]

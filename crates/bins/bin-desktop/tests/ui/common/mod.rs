@@ -745,13 +745,14 @@ struct FailingCommit {
 }
 
 impl Commit for FailingCommit {
-    fn commit(&self) {
+    fn commit(&self) -> Vec<Domain> {
         if self.written.replace(false) {
             let _ = self.report.send(WriteFailure {
                 domains: self.domains.clone(),
                 error: lib_database::Error::Generic("the test's write fails".into()),
             });
         }
+        Vec::new()
     }
 }
 

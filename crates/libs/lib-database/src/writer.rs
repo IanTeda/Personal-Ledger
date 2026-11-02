@@ -59,6 +59,13 @@ pub trait Change: Send + 'static {
     /// The domain whose adapter holds the row in memory, so must reload if the write is lost.
     fn domain(&self) -> Domain;
 
+    /// The domain whose rows the file's `ON DELETE CASCADE` changes when this write lands, so its
+    /// adapter reloads after the commit (ADR-0046's 2026-11-02 amendment). Only a delete of a row
+    /// another table cascades from has one.
+    fn cascades_to(&self) -> Option<Domain> {
+        None
+    }
+
     /// Runs the write on `conn`, which is inside the batch's transaction.
     fn apply<'c>(self: Box<Self>, conn: &'c mut SqliteConnection) -> BoxFuture<'c, Result<()>>;
 }
@@ -76,6 +83,17 @@ impl Batch {
     pub fn domains(&self) -> Vec<Domain> {
         let mut domains = Vec::new();
         self.add_domains_to(&mut domains);
+        domains
+    }
+
+    /// Each domain a cascade of the batch's deletes changes, once, in the order first written.
+    pub fn cascades(&self) -> Vec<Domain> {
+        let mut domains = Vec::new();
+        for domain in self.0.iter().filter_map(|change| change.cascades_to()) {
+            if !domains.contains(&domain) {
+                domains.push(domain);
+            }
+        }
         domains
     }
 

@@ -77,7 +77,7 @@ use crate::adapter::payees::bill_payees;
 use crate::adapter::{accounts, bills, categories, inventory, payees, transactions};
 use crate::{
     AccountsAdapter, BillsAdapter, BudgetsAdapter, CategoriesAdapter, Commit, DocumentsAdapter,
-    InMemoryCommit, InstitutionsAdapter, InventoryAdapter, PayeesAdapter, Result, Stores,
+    Domain, InMemoryCommit, InstitutionsAdapter, InventoryAdapter, PayeesAdapter, Result, Stores,
     TagsAdapter, TransactionsAdapter, UnitsAdapter,
 };
 
@@ -1370,9 +1370,9 @@ impl CountingCommit {
 }
 
 impl Commit for CountingCommit {
-    fn commit(&self) {
+    fn commit(&self) -> Vec<Domain> {
         self.count.set(self.count.get() + 1);
-        self.inner.commit();
+        self.inner.commit()
     }
 }
 

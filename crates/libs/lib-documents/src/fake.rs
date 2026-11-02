@@ -8,9 +8,9 @@ use std::{
 
 use lib_core::DocumentTypeId;
 
-use crate::Document;
 use crate::protocols::{DocumentFiles, DocumentRepository, move_type_to, resolve_typed};
 use crate::types::DocumentTypeRow;
+use crate::{Document, DocumentLink};
 
 /// The Documents repository over plain lists: the Documents in the order they were added, the
 /// Document Types in the user's order.
@@ -18,6 +18,16 @@ use crate::types::DocumentTypeRow;
 pub struct InMemoryDocuments {
     pub documents: Vec<Document>,
     pub types: Vec<DocumentTypeRow>,
+}
+
+impl InMemoryDocuments {
+    /// What the file's `ON DELETE CASCADE` does when the records `gone` names are deleted: every
+    /// Link to one goes, and the Documents stay (GLOSSARY Document Link).
+    pub fn cascade_delete(&mut self, gone: &[DocumentLink]) {
+        for document in &mut self.documents {
+            document.links.retain(|link| !gone.contains(link));
+        }
+    }
 }
 
 impl DocumentRepository for InMemoryDocuments {

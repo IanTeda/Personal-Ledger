@@ -8,7 +8,7 @@ The Inventory is the Ledger's register of possessions: **Locations**, each with 
 
 Two halfway states remain, each a row in [During the transition](viper-architecture.md#during-the-transition):
 
-- Remove Location drops the Document Links to its Items, so it is a `lib-ledger` command that the Dialog confirms through a port, `InventoryReassign`, until `lib-reassign` ([#813](https://github.com/IanTeda/Personal-Ledger/issues/813)).
+- Remove Location is a `lib-ledger` command that the Dialog confirms through a port, `InventoryReassign`, until `lib-reassign` ([#813](https://github.com/IanTeda/Personal-Ledger/issues/813)). The Document Links to its Items drop by the file's cascade, and the Desktop reloads the Documents after the commit ([#964](https://github.com/IanTeda/Personal-Ledger/issues/964)).
 - Documents resolve a Link to an Item from a `Ledger` read copy, until they read Items through their own port ([#812](https://github.com/IanTeda/Personal-Ledger/issues/812)).
 
 The Desktop's Settings › Inventory page is the only Inventory UI. The Inventory register, where Items and a Location's address and Cover are edited, is a placeholder, so no Client calls the Item and Cover Interactors yet.
@@ -34,7 +34,7 @@ Two CHECKs pin the Cover: insurer and sum insured are both set or both NULL, and
 
 `items`: `id`, `location_id`, `area_id`, `name`, `replacement` (a decimal string in the Location's Unit) and the timestamps. It references its Location, its Area and the pair `(area_id, location_id)` against `areas UNIQUE (id, location_id)`, so the file refuses an Item in another Location's Area.
 
-Nothing cascades. Remove Area moves its Items first, and Remove Location deletes the Items, then the Areas, then the Location, so each key is the backstop to an Interactor rule, and each refusal is pinned in an adapter test (`UnknownArea`, `NeedsDestination`).
+Nothing within the Inventory cascades; only `document_links` cascades from `items`. Remove Area moves its Items first, and Remove Location deletes the Items, then the Areas, then the Location, so each key is the backstop to an Interactor rule, and each refusal is pinned in an adapter test (`UnknownArea`, `NeedsDestination`).
 
 Rows read back in rowid order (the order added, which an upsert keeps), and a Location's Areas in `position` order.
 
@@ -60,7 +60,7 @@ Invariants the schema leaves to `lib-inventory`:
 
 `lib-database`'s `adapter/inventory.rs` ([ADR-0041](../adr/0041-lib-database-one-file-per-entity.md), [ADR-0046](../adr/0046-per-domain-adapters-hold-rows-in-memory-behind-one-shared-writer.md)) is the first multi-table adapter. It holds `locations`, `areas` and `items` as one in-memory `Inventory` and queues each write on the shared writer. Writing a Location rewrites its Areas with their `position` and deletes any it no longer lists, so Area order is the `Vec` order and needs no Area-level write. `lib-inventory`'s contract suite runs on it under `sqlx::test`, failing adapter included, beside the in-memory fake.
 
-`InventoryStore::delete_location` is a store write rather than a port one, as `TagsStore::delete_tag` is, because Remove Location stays a `lib-ledger` command (Q18). It deletes the Items, the Areas and the Location in one change, and the forwarding shim sends it after the Document Links go.
+`InventoryStore::delete_location` is a store write rather than a port one, as `TagsStore::delete_tag` is, because Remove Location stays a `lib-ledger` command (Q18). It deletes the Items, the Areas and the Location in one change, which cascades to the Document Links naming the Items, so its change reports the Documents for reload (`cascades_to`).
 
 The stub seed is written last, after the Transactions and Bills: Units, Institutions, Accounts, Categories, Tags, Payees, Transactions, Bills, Inventory, in the first-launch seed and `db-seed`. Inventory names only the Units, but the stub Documents name its Items. `seed::fake` writes no Inventory.
 
@@ -74,7 +74,7 @@ The stub seed is written last, after the Transactions and Bills: Units, Institut
 - **Interactors** — `AddLocation`, `EditLocation`, `AddArea`, `EditArea`, `RemoveArea`, `MoveArea`, `AddItem`, `EditItem`, `RemoveItem` and `SetCover`. The Desktop calls the Location and Area ones; the Item and Cover ones are waiting for the register.
 - **`InventoryUnits`** — the fiat Units the Add form offers, lent at open.
 - **`LocationUsage`** — the Items and Documents a Location holds, which the Remove Dialog quotes, lent at open like Categories' usage. Documents depend on Inventory, so the count is the bin's.
-- **`InventoryReassign`** — `remove_location`, with `LocationRemoved`. The Desktop answers it by running `lib_ledger::RemoveLocation` through `LedgerStore::apply`, which also drops the Document Links to the Location's Items; `inventory::ports::LedgerPorts` is built around each call and lent to the Presenters (checklist step 17).
+- **`InventoryReassign`** — `remove_location`, with `LocationRemoved`. The Desktop answers it by running `lib_ledger::RemoveLocation` through `LedgerStore::apply`, whose commit cascades to the Document Links to the Location's Items; `LocationUsage` counts those Documents from the Documents store; `inventory::ports::LedgerPorts` is built around each call and lent to the Presenters (checklist step 17).
 
 `inventory::ports::forward` is the Inventory shim: it sends `DeleteLocation` to the store in the input's one commit. `UpsertLocation`, `UpsertArea` and `UpsertItem` have left `LedgerChange` with `lib-ledger`'s Add, Edit, Remove Area and Move Area commands, which `lib-inventory`'s Interactors replaced.
 

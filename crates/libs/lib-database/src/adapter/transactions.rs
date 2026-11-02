@@ -254,6 +254,11 @@ impl Change for TransactionsChange {
         Domain::Transactions
     }
 
+    /// A deleted Transaction drops the Document Links to it.
+    fn cascades_to(&self) -> Option<Domain> {
+        matches!(self, Self::Delete(_)).then_some(Domain::Documents)
+    }
+
     fn apply<'c>(self: Box<Self>, conn: &'c mut SqliteConnection) -> BoxFuture<'c, Result<()>> {
         Box::pin(async move {
             match *self {

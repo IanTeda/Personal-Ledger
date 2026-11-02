@@ -2,6 +2,7 @@
 //! button, the Shell's day poll and failed writes, and each Toast, status or write a View not yet
 //! a module reports reach a Presenter through [`send`]. It runs the Presenter's `handle`, commits
 //! exactly once, whether or not anything was written (an empty commit is a no-op in the writer),
+//! reloads what the commit's deletes cascaded into, such as the Document Links to a deleted Payee,
 //! then drains the Notices the Routers queued into the Shell and redraws. No port or store
 //! commits for itself.
 //!
@@ -64,8 +65,9 @@ pub(crate) fn sending(cx: &App) -> bool {
     cx.try_global::<Door>().is_some_and(|door| door.open)
 }
 
-/// Delivers one input: runs `handle`, which hands it to its Presenter, then commits once, drains
-/// the queued Notices into the Shell and redraws it. The drain waits for the current update to
+/// Delivers one input: runs `handle`, which hands it to its Presenter, then commits once, reloads
+/// each domain the commit's deletes cascade into (ADR-0046's 2026-11-02 amendment), drains the
+/// queued Notices into the Shell and redraws it. The reload and drain wait for the current update to
 /// end, since the Shell may be the Entity handling the input. Without a door (a unit test that
 /// builds a part with no Shell), it only runs `handle`.
 pub(crate) fn send<C: BorrowMut<App>, R>(cx: &mut C, handle: impl FnOnce(&mut C) -> R) -> R {
@@ -88,11 +90,12 @@ pub(crate) fn send<C: BorrowMut<App>, R>(cx: &mut C, handle: impl FnOnce(&mut C)
     let app: &mut App = cx.borrow_mut();
     let door = app.global_mut::<Door>();
     door.open = false;
-    door.commit.commit();
+    let cascades = door.commit.commit();
     let shell = door.shell.clone();
     app.defer(move |cx| {
         // Gone with the window, so there is nothing left to show the Notices on.
         let _ = shell.update(cx, |shell, cx| {
+            shell.reload_cascades(&cascades, cx);
             shell.drain_notices();
             cx.notify();
         });

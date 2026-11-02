@@ -11,7 +11,7 @@
 use super::common;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
-use bin_desktop::shell::router::DocumentsSnapshot;
+use bin_desktop::shell::router::{DocumentsSnapshot, SettingsPayeesSnapshot};
 use common::Harness;
 use gpui::TestAppContext;
 
@@ -593,4 +593,56 @@ fn question_mark_lists_the_documents_keys_under_their_own_heading(app: &mut Test
     let mut ui = on_documents(app);
 
     ui.assert_cheat_sheet_matches_status("Documents keys");
+}
+
+#[gpui::test]
+fn deleting_a_linked_payee_drops_its_link_and_keeps_the_document(app: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let config = common::config_for(&dir.path().join("ledger.pldb"));
+    let storage = bin_desktop::start_on(&config, common::today()).expect("a new Ledger starts");
+    let writer = storage.writer.clone();
+    let mut ui = Harness::with_storage(app, storage);
+    // A new Payee nothing else names, so the file lets it be deleted.
+    ui.press("g s");
+    ui.press("j j j j j j j");
+    ui.press("l");
+    ui.press("n z o o enter");
+    // The Amex statement's one Link, its Account, swapped for the new Payee.
+    ui.press("g f");
+    ui.press("l");
+    ui.press("enter");
+    ui.press("l");
+    ui.press("z o o");
+    ui.press("enter");
+    let linked = ui.documents();
+    assert_eq!(
+        linked.selected_file.as_deref(),
+        Some("amex-platinum-statement.pdf")
+    );
+    assert_eq!(linked.selected_chips, ["zoo"]);
+
+    ui.press("g s");
+    ui.press("l");
+    assert_eq!(
+        ui.settings::<SettingsPayeesSnapshot>()
+            .selected_payee
+            .as_deref(),
+        Some("zoo")
+    );
+    ui.press("d");
+    assert_eq!(ui.dialog(), Some("DeletePayee"));
+    ui.press("enter");
+    ui.press("z o o enter");
+    assert_eq!(ui.dialog(), None, "the Payee is deleted");
+    writer.flush().expect("the writer is running");
+    ui.settle_writes();
+    ui.press("g f");
+
+    let page = ui.documents();
+    assert_eq!(
+        page.selected_file.as_deref(),
+        Some("amex-platinum-statement.pdf")
+    );
+    assert_eq!(page.selected_links, 0, "the Document stays, now not linked");
+    assert!(page.selected_chips.is_empty());
 }

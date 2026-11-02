@@ -1328,25 +1328,6 @@ pub struct DocumentsSeed {
     pub documents: Vec<Document>,
 }
 
-/// Drops every Link to the given Items, as removing a Location does. The Documents themselves
-/// stay, whatever Links they have left; returns the ids of those that lost a Link.
-pub fn drop_inventory_links(
-    documents: &mut [Document],
-    removed_items: &[ItemId],
-) -> Vec<DocumentId> {
-    let mut affected = Vec::new();
-    for document in documents {
-        let before = document.links.len();
-        document.links.retain(
-            |link| !matches!(link, DocumentLink::InventoryItem(id) if removed_items.contains(id)),
-        );
-        if document.links.len() != before {
-            affected.push(document.id);
-        }
-    }
-    affected
-}
-
 fn cents_money(cents: i64) -> Money {
     Money(BigDecimal::new(cents.into(), 2))
 }

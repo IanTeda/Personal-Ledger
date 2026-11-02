@@ -2,9 +2,9 @@
 //! own refusal, checked before anything is written so a refusal leaves the Ledger untouched, and
 //! recording a change per row it wrote (ADR-0039).
 //!
-//! Single-entity rules are `lib_inventory`, which the Inventory page writes itself (#867). What
-//! lives here is the rule that crosses domains: a removed Location drops the Document Links to its
-//! Items, since a Document names an Item by id.
+//! Single-entity rules are `lib_inventory`, which the Inventory page writes itself (#867). Remove
+//! Location stays here until `lib-reassign` (#813). The Document Links to its Items aren't its to
+//! drop: the file's cascade does, and the Client reloads the Documents after the commit (#964).
 
 use lib_core::LocationId;
 use lib_inventory::{LocationError, RemovedLocation};
@@ -12,7 +12,8 @@ use lib_inventory::{LocationError, RemovedLocation};
 use crate::{Ledger, LedgerChange, LedgerCommand};
 
 impl Ledger {
-    /// Removes a Location with its Areas and Items, and drops the Document Links to those Items.
+    /// Removes a Location with its Areas and Items. The file's cascade drops the Document Links to
+    /// those Items, and the Client reloads the Documents after the commit (#964).
     pub fn remove_location(&mut self, id: LocationId) -> Result<RemovedLocation, LocationError> {
         let removed = self.inventory.remove_location(id)?;
         for area in &removed.areas {
@@ -22,7 +23,6 @@ impl Ledger {
             self.pending.push(LedgerChange::DeleteItem(*item));
         }
         self.pending.push(LedgerChange::DeleteLocation(id));
-        self.drop_document_inventory_links(&removed.items);
         Ok(removed)
     }
 }
@@ -43,11 +43,10 @@ impl LedgerCommand for RemoveLocation {
 mod tests {
     use chrono::NaiveDate;
     use lib_core::{AreaId, ItemId};
-    use lib_documents::DocumentLink;
     use lib_inventory::{Inventory, default_inventory};
 
     use super::*;
-    use crate::{Domain, LedgerParts, domains};
+    use crate::LedgerParts;
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 10, 15).unwrap()
@@ -98,37 +97,6 @@ mod tests {
         for item in &items {
             assert!(changes.contains(&LedgerChange::DeleteItem(*item)));
         }
-    }
-
-    #[test]
-    fn remove_location_drops_the_document_links_to_its_items() {
-        let mut ledger = Ledger::stub_on(today());
-        let linked = ledger
-            .documents()
-            .iter()
-            .flat_map(|d| &d.links)
-            .find_map(|link| match link {
-                DocumentLink::InventoryItem(id) => Some(*id),
-                _ => None,
-            })
-            .expect("the stub links a Document to an Inventory Item");
-        let location = ledger
-            .inventory()
-            .item(linked)
-            .expect("the Item exists")
-            .location;
-
-        ledger
-            .remove_location(location)
-            .expect("the Location exists");
-
-        let still_linked = ledger
-            .documents()
-            .iter()
-            .flat_map(|d| &d.links)
-            .any(|link| *link == DocumentLink::InventoryItem(linked));
-        assert!(!still_linked, "no Link names a removed Item");
-        assert!(domains(&ledger.drain_changes()).contains(&Domain::Documents));
     }
 
     #[test]

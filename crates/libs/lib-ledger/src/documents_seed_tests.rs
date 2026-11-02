@@ -67,49 +67,6 @@ fn world_on(today: NaiveDate) -> World {
 }
 
 #[test]
-fn dropping_inventory_links_keeps_the_documents() {
-    let mut world = world();
-    let fridge = world
-        .inventory
-        .items
-        .iter()
-        .find(|i| i.name == "Fridge")
-        .unwrap()
-        .id;
-    let count = world.documents.len();
-    let had = |docs: &[Document]| {
-        docs.iter()
-            .filter(|d| d.links.contains(&DocumentLink::InventoryItem(fridge)))
-            .count()
-    };
-    let linked = had(&world.documents);
-    assert!(linked > 0, "the seed links a Document to the Fridge");
-    assert_eq!(
-        drop_inventory_links(&mut world.documents, &[fridge]).len(),
-        linked
-    );
-    assert_eq!(had(&world.documents), 0);
-    assert_eq!(world.documents.len(), count, "no Document is removed");
-    assert!(drop_inventory_links(&mut world.documents, &[fridge]).is_empty());
-}
-
-#[test]
-fn removing_a_location_drops_only_its_items_links() {
-    let mut world = world();
-    let elm = world.inventory.locations[0].id;
-    let removed = world.inventory.remove_location(elm).unwrap();
-    let lost = drop_inventory_links(&mut world.documents, &removed.items);
-    assert!(!lost.is_empty());
-    for document in &world.documents {
-        for link in &document.links {
-            if let DocumentLink::InventoryItem(id) = link {
-                assert!(world.inventory.item(*id).is_some(), "no dangling Item Link");
-            }
-        }
-    }
-}
-
-#[test]
 fn accept_all_takes_strong_rows_only_and_undoes_as_one_batch() {
     let World {
         records:

@@ -30,10 +30,9 @@ pub use budget_reads::{budget_accounts, budget_categories};
 pub use category_commands::{CategoryDeleted, DeleteCategory, DeleteCategoryRefusal};
 pub use change::{Domain, LedgerChange, LedgerCommand, domains};
 pub use document_commands::{
-    AcceptAllDocuments, AcceptDocument, AddDocument, AddDocumentType, DocumentEdit,
-    DropDocumentInventoryLinks, EditDocument, EditDocumentType, FileDocumentByHand,
-    ImportDocuments, MoveDocumentType, RemoveDocumentType, SetDocumentFacts, ToggleDocumentLink,
-    UndoFiling, UnknownDocumentType,
+    AcceptAllDocuments, AcceptDocument, AddDocument, AddDocumentType, DocumentEdit, EditDocument,
+    EditDocumentType, FileDocumentByHand, ImportDocuments, MoveDocumentType, RemoveDocumentType,
+    SetDocumentFacts, ToggleDocumentLink, UndoFiling, UnknownDocumentType,
 };
 pub use inventory_commands::RemoveLocation;
 pub use repository::{LedgerRepository, RepositoryError, StubRepository};

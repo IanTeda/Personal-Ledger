@@ -106,8 +106,8 @@ impl InventoryAdapter {
     }
 
     /// Removes Location `id` with its Areas and Items: Remove Location's delete, which the
-    /// Desktop's forwarding shim sends once the Document Links to its Items are dropped (#813
-    /// moves it to `lib-reassign`).
+    /// Desktop's forwarding shim sends (#813 moves it to `lib-reassign`). The file's cascade drops
+    /// the Document Links to its Items.
     pub fn delete_location(&mut self, id: LocationId) {
         let rows = &mut self.inventory.rows;
         rows.locations.retain(|row| row.id != id);
@@ -162,6 +162,11 @@ impl InventoryRepository for StoredInventory {
 impl Change for InventoryChange {
     fn domain(&self) -> Domain {
         Domain::Inventory
+    }
+
+    /// A deleted Item drops the Document Links to it, and a Location deletes its Items.
+    fn cascades_to(&self) -> Option<Domain> {
+        matches!(self, Self::DeleteLocation(_) | Self::DeleteItem(_)).then_some(Domain::Documents)
     }
 
     fn apply<'c>(self: Box<Self>, conn: &'c mut SqliteConnection) -> BoxFuture<'c, Result<()>> {

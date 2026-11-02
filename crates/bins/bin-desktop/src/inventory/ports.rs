@@ -23,7 +23,6 @@ use lib_inventory::{
 };
 use lib_ledger::{Ledger, LedgerChange, RemoveLocation};
 
-use crate::documents::DocumentLink;
 use crate::ledger_store::LedgerStore;
 
 /// `ledger`'s own Inventory in memory, for a test that needs no storage.
@@ -126,27 +125,11 @@ impl InventoryUnits for LedgerPorts<'_> {
 }
 
 impl LocationUsage for LedgerPorts<'_> {
-    /// The Documents counted from the Ledger's read copy: those with a Link to one of the
-    /// Location's Items.
+    /// The Documents counted from the Documents store: those with a Link to one of the Location's
+    /// Items, which the file's cascade drops when it goes (#964).
     fn location_usage(&self, id: LocationId) -> LocationUse {
-        let ledger = self.ledger();
-        let items: Vec<ItemId> = ledger
-            .inventory()
-            .items
-            .iter()
-            .filter(|item| item.location == id)
-            .map(|item| item.id)
-            .collect();
         LocationUse {
-            documents: ledger
-                .documents()
-                .iter()
-                .filter(|document| {
-                    document.links.iter().any(|link| {
-                        matches!(link, DocumentLink::InventoryItem(item) if items.contains(item))
-                    })
-                })
-                .count(),
+            documents: self.ledger.read(self.cx).documents_linking_location(id),
         }
     }
 }
@@ -175,6 +158,7 @@ mod tests {
     use lib_core::AreaId;
 
     use super::*;
+    use crate::documents::DocumentLink;
 
     fn stored(store: &SharedInventoryStore) -> Inventory {
         store.borrow().inventory().inventory()

@@ -680,7 +680,12 @@ fn focus_document(ui: &mut Harness<'_>, file: &str) {
 fn removing_a_location_lands_in_one_commit_and_drops_its_items_document_links(
     app: &mut TestAppContext,
 ) {
-    let mut ui = Harness::new(app);
+    // On a Ledger file, whose cascade drops the Links (#964).
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let config = common::config_for(&dir.path().join("ledger.pldb"));
+    let storage = bin_desktop::start_on(&config, common::today()).expect("a new Ledger starts");
+    let writer = storage.writer.clone();
+    let mut ui = Harness::with_storage(app, storage);
     ui.click("primary-rail-Documents");
     focus_document(&mut ui, "aami-car-policy.pdf");
     assert_eq!(
@@ -701,9 +706,11 @@ fn removing_a_location_lands_in_one_commit_and_drops_its_items_document_links(
     assert_eq!(
         ui.commits(),
         before + 1,
-        "the removal and the dropped Links land in one commit"
+        "the removal lands in one commit, and the file's cascade drops the Links"
     );
     assert_eq!(names(&mut ui), ["Storage unit", "Hilux"]);
+    writer.flush().expect("the writer is running");
+    ui.settle_writes();
     ui.click("primary-rail-Documents");
     let page = ui.documents();
     assert_eq!(page.selected_file.as_deref(), Some("aami-car-policy.pdf"));

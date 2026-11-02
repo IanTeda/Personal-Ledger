@@ -8,10 +8,12 @@
 //! dropped is gone. A type's place in the order is its `position`, rewritten for every type
 //! whenever one moves or goes, so it always matches memory.
 //!
-//! Deleting a record a Link names cascades to the Link, but a Document in memory keeps it until it
-//! next loads. Writing such a Document again skips the Link whose record the file no longer has,
-//! rather than failing on its foreign key, so the file stays as the cascade left it. A fact's
-//! Document Type is written the same way: null once its type has gone.
+//! Deleting a record a Link names cascades to the Link in the file, and the commit that deleted it
+//! asks the Client to [`reload`](DocumentsAdapter::reload) the Documents, queued behind it on the
+//! writer, so memory drops the Link too (ADR-0046's 2026-11-02 amendment, #964). Should a Document
+//! still holding such a Link be written, the Link whose record the file no longer has is skipped
+//! rather than failing on its foreign key. A fact's Document Type is written the same way: null
+//! once its type has gone.
 
 use chrono::NaiveDate;
 use lib_core::{
@@ -123,8 +125,8 @@ impl DocumentsAdapter {
     }
 
     /// Drops the Documents changes not yet committed and loads the rows again, blocking. For after
-    /// a [`WriteFailure`](crate::writer::WriteFailure) names [`Domain::Documents`], so memory
-    /// matches the file again.
+    /// a [`WriteFailure`](crate::writer::WriteFailure) names [`Domain::Documents`], or a commit's
+    /// cascade does, so memory matches the file again.
     ///
     /// # Errors
     /// Returns the error of the read; memory is left as it was then.
@@ -692,6 +694,7 @@ mod tests {
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
     use super::*;
+    use crate::TransactionsStore as _;
     use crate::commit::Commit;
     use crate::writer::WriteFailure;
 
@@ -778,6 +781,78 @@ mod tests {
             ports.reload().expect("the rows load");
             (ports, failures)
         }
+
+        /// The stub's last Transaction and last Item, which only Links name, and a new Account and
+        /// Payee, since the stub's are each named by a Transaction or a Bill Plan.
+        fn deletable(&mut self) -> Vec<DocumentLink> {
+            let records = self.records();
+            let account = AccountId::new();
+            let payee = PayeeId::new();
+            self.writer
+                .run(move |pool| async move {
+                    sqlx::query(
+                        "INSERT INTO accounts (id, name, institution_id, account_type, unit_id, balance, opened_at)
+                         VALUES (?, 'Spare account', ?, 'bank', ?, '0', '2026-01-01')",
+                    )
+                    .bind(account)
+                    .bind(lib_core::InstitutionId::SEED_PERSONAL)
+                    .bind(lib_core::UnitId::SEED_AUD)
+                    .execute(&pool)
+                    .await?;
+                    sqlx::query("INSERT INTO payees (id, name) VALUES (?, 'Spare payee')")
+                        .bind(payee)
+                        .execute(&pool)
+                        .await?;
+                    Ok(())
+                })
+                .expect("the spare records are written");
+            vec![
+                DocumentLink::Transaction(records.transactions.last().expect("a Transaction").id),
+                DocumentLink::Account(account),
+                DocumentLink::Payee(payee),
+                DocumentLink::InventoryItem(records.items.last().expect("an Item").id),
+            ]
+        }
+
+        /// Deletes through the record's own adapter, so the commit's report of the cascade is
+        /// what the reload follows.
+        fn delete_record(
+            &mut self,
+            mut ports: DocumentsAdapter,
+            record: DocumentLink,
+        ) -> DocumentsAdapter {
+            let pending = self.pending.clone();
+            match record {
+                DocumentLink::Transaction(id) => crate::TransactionsAdapter::load(pending)
+                    .expect("the Transactions load")
+                    .transactions_mut()
+                    .delete_transaction(id),
+                DocumentLink::Account(id) => crate::AccountsAdapter::load(pending)
+                    .expect("the Accounts load")
+                    .accounts_mut()
+                    .delete_account(id),
+                DocumentLink::Payee(id) => crate::PayeesAdapter::load(pending)
+                    .expect("the Payees load")
+                    .payees_mut()
+                    .delete_payee(id),
+                DocumentLink::InventoryItem(id) => crate::InventoryAdapter::load(pending)
+                    .expect("the Inventory loads")
+                    .inventory_mut()
+                    .delete_item(id),
+                DocumentLink::BillPlan(_) => panic!("a Bill Plan has no delete"),
+            }
+            let cascades = self.pending.commit();
+            assert_eq!(
+                cascades,
+                [Domain::Documents],
+                "the commit asks for the reload"
+            );
+            if let Some(failure) = self.failures().first() {
+                panic!("the delete failed: {failure:?}");
+            }
+            ports.reload().expect("the rows load");
+            ports
+        }
     }
 
     #[sqlx::test(migrations = "migrations/client")]
@@ -806,6 +881,16 @@ mod tests {
         contract::a_type_removal_moves_its_documents_in_one_batch(&mut AdapterFactory::new(
             options,
         ));
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn deleting_a_linked_record_drops_its_links_and_keeps_the_document(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        contract::deleting_a_linked_record_drops_its_links_and_keeps_the_document(
+            &mut AdapterFactory::new(options),
+        );
     }
 
     #[sqlx::test(migrations = "migrations/client")]
@@ -857,6 +942,37 @@ mod tests {
         let stored = &documents.documents()[0];
         assert_eq!(stored.title, "Return 2025");
         assert!(stored.links.is_empty());
+    }
+
+    /// A Location's delete takes its Items, so their Links cascade too, and the commit asks for
+    /// the Documents' reload.
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn deleting_a_location_drops_the_links_to_its_items(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        let mut factory = AdapterFactory::new(options);
+        let item = factory.records().items[0].id;
+        let mut held = tax_return();
+        held.links = vec![DocumentLink::InventoryItem(item)];
+        let mut documents = factory.create(default_types(), vec![held.clone()]);
+        let mut inventory =
+            crate::InventoryAdapter::load(factory.pending.clone()).expect("the Inventory loads");
+        let location = inventory
+            .inventory()
+            .inventory()
+            .item(item)
+            .expect("the Item is stored")
+            .location;
+
+        inventory.delete_location(location);
+        let cascades = factory.pending.commit();
+        documents.reload().expect("the rows load");
+
+        assert_eq!(cascades, [Domain::Documents]);
+        assert!(factory.failures().is_empty());
+        held.links.clear();
+        assert_eq!(documents.documents(), [held]);
     }
 
     #[sqlx::test(migrations = "migrations/client")]

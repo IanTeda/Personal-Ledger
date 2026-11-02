@@ -2,8 +2,9 @@
 //! reads from memory and queues each write, so a write never fails here; a failed save is the
 //! adapter's to report. `fake` implements it in memory.
 //!
-//! There is no delete for a Location: removing one also drops the Document Links to its Items, so
-//! `lib-ledger` runs it and the Client's forwarding shim deletes the row (Q18). It is the reassign
+//! There is no delete for a Location: removing one takes its Areas and Items, so `lib-ledger` runs it
+//! and the Client's forwarding shim deletes the row (Q18). The file's cascade drops the Document
+//! Links to its Items (#964). It is the reassign
 //! port ([`InventoryReassign`], Q6) the Remove location Dialog's Presenter confirms through, which a
 //! Client answers through its Ledger until `lib-reassign` (#813); a Presenter's confirm is lent it
 //! rather than the Presenter holding it, since the Desktop writes its Ledger only with the gpui
@@ -97,8 +98,9 @@ pub struct LocationRemoved {
     pub name: String,
 }
 
-/// Location remove (Q6): it takes the Location's Areas and Items with it and drops the Document
-/// Links to those Items, in the one commit of the input, so it is no `lib-inventory` Interactor.
+/// Location remove (Q6): it takes the Location's Areas and Items with it, in the one commit of the
+/// input, whose cascade drops the Document Links to those Items, so it is no `lib-inventory`
+/// Interactor.
 /// The Remove location Dialog's Presenter confirms through it, the pattern Categories set
 /// (`CategoryReassign`), and the port `lib-reassign` (#813) answers.
 pub trait InventoryReassign {

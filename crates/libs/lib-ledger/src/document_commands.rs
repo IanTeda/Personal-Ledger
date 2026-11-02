@@ -7,7 +7,7 @@
 //! removing a Document Type moves its Filed Documents to another type in the same command. Skip is
 //! the Client's session state and writes nothing, so it is no command.
 
-use lib_core::{DocumentId, DocumentTypeId, ItemId, TransactionId};
+use lib_core::{DocumentId, DocumentTypeId, TransactionId};
 use std::collections::HashSet;
 use std::convert::Infallible;
 
@@ -15,8 +15,7 @@ use chrono::NaiveDate;
 use lib_documents::{
     AddError, Document, DocumentLink, DocumentType, ExtractedFacts, FiledEntry, FilingError,
     FilingUndo, ImportLine, ImportOutcome, KeyDate, NewDocument, Source, accept, accept_all_strong,
-    add_filed, drop_inventory_links, edit_facts, edit_metadata, file_by_hand, get, import_batch,
-    toggle_link,
+    add_filed, edit_facts, edit_metadata, file_by_hand, get, import_batch, toggle_link,
     types::{
         DocumentTypeDraft, DocumentTypeRow, RemoveError, add_type, edit_type, fallback_id,
         id_by_name, move_by, position, remove_type,
@@ -169,16 +168,6 @@ impl Ledger {
             self.record_document(entry.id);
         }
         Some(batch)
-    }
-
-    /// Drops every Link to the given Inventory Items, as removing a Location does. Returns how
-    /// many Documents lost a Link.
-    pub fn drop_document_inventory_links(&mut self, removed_items: &[ItemId]) -> usize {
-        let affected = drop_inventory_links(&mut self.documents, removed_items);
-        for id in &affected {
-            self.record_document(*id);
-        }
-        affected.len()
     }
 
     /// Adds a Document Type at the end of the order and returns its id. Ids are never reused,
@@ -415,18 +404,6 @@ impl LedgerCommand for AcceptAllDocuments {
                 &self.payees,
             ),
         )
-    }
-}
-
-/// [`Ledger::drop_document_inventory_links`] as a value.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DropDocumentInventoryLinks(pub Vec<ItemId>);
-
-impl LedgerCommand for DropDocumentInventoryLinks {
-    type Outcome = usize;
-    type Refusal = Infallible;
-    fn run(self, ledger: &mut Ledger) -> Result<usize, Infallible> {
-        Ok(ledger.drop_document_inventory_links(&self.0))
     }
 }
 
@@ -815,32 +792,6 @@ mod tests {
 
         // Nothing strong is left, so a second pass records nothing.
         assert_eq!(accept_all(&ledger).run(&mut ledger), Ok(None));
-        assert!(ledger.drain_changes().is_empty());
-    }
-
-    #[test]
-    fn dropping_inventory_links_records_the_documents_that_lost_one() {
-        let mut ledger = ledger();
-        let items: Vec<ItemId> = ledger
-            .documents()
-            .iter()
-            .flat_map(|document| &document.links)
-            .filter_map(|link| match link {
-                DocumentLink::InventoryItem(id) => Some(*id),
-                _ => None,
-            })
-            .collect();
-        assert!(!items.is_empty(), "the stub links a Document to an Item");
-        let lost = DropDocumentInventoryLinks(items).run(&mut ledger).unwrap();
-        assert!(lost > 0);
-        let changes = ledger.drain_changes();
-        assert_eq!(changes.len(), lost);
-
-        let before = snapshot(&ledger);
-        DropDocumentInventoryLinks(vec![ItemId::seed(9_999)])
-            .run(&mut ledger)
-            .unwrap();
-        assert_eq!(snapshot(&ledger), before);
         assert!(ledger.drain_changes().is_empty());
     }
 

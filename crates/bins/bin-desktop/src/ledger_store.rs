@@ -224,6 +224,28 @@ impl LedgerStore {
         lib_documents::LinkRecords::read(&self.document_reads)
     }
 
+    /// The Documents with a Link to one of Location `id`'s Items, as the Inventory and Documents
+    /// stores hold them (#964): what the Remove location Dialog quotes as losing a Link.
+    pub fn documents_linking_location(&self, id: lib_core::LocationId) -> usize {
+        let items: Vec<lib_documents::DocumentLink> = self
+            .inventory
+            .borrow()
+            .inventory()
+            .inventory()
+            .items
+            .iter()
+            .filter(|item| item.location == id)
+            .map(|item| lib_documents::DocumentLink::InventoryItem(item.id))
+            .collect();
+        self.documents
+            .borrow()
+            .documents()
+            .documents()
+            .iter()
+            .filter(|document| document.links.iter().any(|link| items.contains(link)))
+            .count()
+    }
+
     /// The Splits filed under Category `id`, as the Transactions store counts them: in the file for
     /// the adapter (#926). The Splits half of `lib-categories`' `CategoryUsage`.
     pub fn category_splits(&self, id: lib_core::CategoryId) -> usize {
@@ -374,8 +396,9 @@ impl LedgerStore {
     /// upserts go first, since Category reassign re-points rows to an Uncategorised it may create,
     /// then the Payees, then the Transactions, Bills and Budgets; the Category deletes go last, once
     /// nothing names them, the Budgets' chains included. The Inventory names only the Units, so its
-    /// changes go in any order with the rest. The Documents go after the rows their Links name,
-    /// and a Link to a row the file no longer has is skipped. The other domains' changes aren't persisted yet
+    /// changes go in any order with the rest. The Documents go after the rows their Links name;
+    /// a delete the Links cascade from is the file's to follow, which the input's `send` reloads
+    /// the Documents after (#964). The other domains' changes aren't persisted yet
     /// (#636), so they're dropped here.
     pub fn apply<C: LedgerCommand>(
         &mut self,
