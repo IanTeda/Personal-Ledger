@@ -1,14 +1,16 @@
-//! `Root`'s side of the Documents destination: the Dialog host's Documents dialogs (drawn,
-//! confirmed and, for the link picker, picked through), the `documents <verb>` palette commands,
-//! files dropped on the window and the persisted mode, scope and sort. The page itself renders and
-//! handles its own input in its Entity (`view::documents`, ADR-0037), which builds the dialogs;
-//! what a confirmed dialog changes on the page goes back to it through its named methods.
+//! `Root`'s side of the Documents destination: the legacy Dialog host's Documents Dialogs (drawn,
+//! confirmed and, for the link picker, picked through) and the persisted mode, scope and sort. The
+//! page runs on `lib-documents`' Presenter in its Entity (`documents::view::page`), whose Router
+//! opens these Dialogs; what a confirmed one did goes back to it as a `DocumentsOutcome`, until the
+//! Dialogs move onto Presenters too (#968).
 
 use lib_shell::NavInput;
 use std::rc::Rc;
 
 use gpui::{Context, Window};
-use lib_ledger::{ImportDocuments, ToggleDocumentLink};
+use lib_documents::DocumentsOutcome;
+use lib_documents::presenter::library::{Lookups, type_label};
+use lib_ledger::ToggleDocumentLink;
 use lib_toast::ToastKind;
 
 use super::{OpenDialog, Root};
@@ -16,13 +18,11 @@ use crate::{
     documents::apply::{DocumentOutcome, OnDocuments},
     documents::files::DiskFiles,
     documents::form::{DocumentField, DocumentForm, DocumentsDialog, FactsField, FactsForm},
-    documents::model as view_model,
     documents::picker::{PickerRequest, PickerRow, PickerState, Purpose},
     documents::types::DocumentTypeRow,
-    documents::{Document, DocumentsMode, ImportOutcome, LibraryScope, LibrarySort, Source},
-    navigation::nav::Noun,
+    documents::view::dialogs,
+    documents::{Document, DocumentLink, DocumentsMode, LibraryScope, LibrarySort},
     shell::view::dialog_apply,
-    view::documents::dialogs,
 };
 
 impl Root {
@@ -45,7 +45,7 @@ impl Root {
     ) {
         self.views
             .documents
-            .update(cx, |view, cx| view.set_persisted(mode, scope, sort, cx));
+            .update(cx, |page, cx| page.set_persisted(mode, scope, sort, cx));
     }
 
     pub fn documents_persisted(
@@ -55,9 +55,38 @@ impl Root {
         self.views.documents.read(cx).persisted()
     }
 
-    /// The picker's rows for `state`, as the Documents page words them.
-    fn documents_picker_rows(&self, state: &PickerState, cx: &gpui::App) -> Vec<PickerRow> {
-        self.views.documents.read(cx).picker_rows(state, cx)
+    /// The picker's rows for `state`, derived afresh from the stores and the Document's Links, as
+    /// the Documents page words them.
+    pub(super) fn documents_picker_rows(
+        &self,
+        state: &PickerState,
+        cx: &gpui::App,
+    ) -> Vec<PickerRow> {
+        let records = self.ledger.read(cx).document_records();
+        let lookups = Lookups {
+            types: self.document_types(cx),
+            records: &records,
+            today: self.today,
+            date_style: self.views.documents.read(cx).date_style(),
+        };
+        let current: Vec<DocumentLink> =
+            crate::documents::get(self.documents(cx), state.purpose.document())
+                .map(|document| document.links.clone())
+                .unwrap_or_default();
+        crate::documents::picker::rows(
+            state,
+            &crate::documents::picker::Sources {
+                lookups: &lookups,
+                current: &current,
+            },
+        )
+    }
+
+    /// Hands what a closed Documents Dialog did back to the page.
+    fn documents_landed(&self, outcome: DocumentsOutcome, cx: &mut gpui::App) {
+        self.views
+            .documents
+            .update(cx, |page, cx| page.dialog_landed(outcome, cx));
     }
 
     /// What `enter` or a click on picker row `index` does: toggles a Link, files the Unfiled
@@ -85,7 +114,7 @@ impl Root {
                     if added {
                         crate::msg::desktop_documents_toast_linked(&row.text)
                     } else {
-                        crate::msg::desktop_documents_toast_unlinked(&row.text)
+                        lib_documents::msg::documents_toast_unlinked(&row.text)
                     },
                 );
             }
@@ -95,16 +124,19 @@ impl Root {
                     return;
                 };
                 self.close_documents_dialog();
-                self.views.documents.update(cx, |view, cx| {
-                    view.file_by_hand(id, doc_type, row.link, cx);
-                });
+                self.documents_landed(
+                    DocumentsOutcome::FileByHand {
+                        id,
+                        doc_type,
+                        link: row.link,
+                    },
+                    cx,
+                );
             }
             Purpose::Follow(_) => {
                 self.close_documents_dialog();
                 if let Some(link) = row.link {
-                    self.views
-                        .documents
-                        .update(cx, |view, cx| view.goto_link(link, cx));
+                    self.documents_landed(DocumentsOutcome::Follow(link), cx);
                 }
             }
         }
@@ -126,34 +158,6 @@ impl Root {
             form.choose(index);
         }
         cx.notify();
-    }
-
-    // -----------------------------------------------------------------------------------------
-    // Commands
-    // -----------------------------------------------------------------------------------------
-
-    /// A `documents <verb>` palette command.
-    pub(super) fn run_documents_command(
-        &mut self,
-        verb: crate::navigation::command::DocumentsVerb,
-        cx: &mut gpui::App,
-    ) {
-        use crate::navigation::command::DocumentsVerb;
-        let noun_before = self.nav().noun();
-        self.navigate(NavInput::Show(Noun::Documents));
-        if noun_before != Noun::Documents {
-            self.reset_view_scroll(cx);
-        }
-        self.views.documents.update(cx, |view, cx| match verb {
-            DocumentsVerb::Inbox => view.set_mode(DocumentsMode::Inbox, cx),
-            DocumentsVerb::Library => view.set_mode(DocumentsMode::Library, cx),
-            DocumentsVerb::AcceptAll => {
-                view.set_mode(DocumentsMode::Inbox, cx);
-                view.open_accept_all(cx);
-            }
-            DocumentsVerb::Add => view.open_add(cx),
-            DocumentsVerb::Import => view.open_import(cx),
-        });
     }
 
     // -----------------------------------------------------------------------------------------
@@ -200,10 +204,10 @@ impl Root {
         }
         let ledger = self.ledger.clone();
         let today = self.today;
-        let view = self.views.documents.read(cx);
-        let focus = view.selected_document(cx).map(|document| document.id);
-        let skipped = view.state().skipped.clone();
-        let records = view.records(cx);
+        let page = self.views.documents.read(cx);
+        let focus = page.selected_document().map(|document| document.id);
+        let skipped = page.skipped();
+        let records = self.ledger.read(cx).document_records();
         let Some(dialog) = self.dialog_mut::<DocumentsDialog>() else {
             return;
         };
@@ -221,18 +225,14 @@ impl Root {
         self.close_dialog();
         match landed.outcome {
             DocumentOutcome::Added { id, title } => {
-                self.views
-                    .documents
-                    .update(cx, |view, cx| view.select_document(id, cx));
+                self.documents_landed(DocumentsOutcome::Shown(id), cx);
                 self.raise_toast(
                     ToastKind::Success,
                     crate::msg::desktop_documents_toast_added(&title),
                 );
             }
             DocumentOutcome::Saved { id, title } => {
-                self.views
-                    .documents
-                    .update(cx, |view, cx| view.select_document(id, cx));
+                self.documents_landed(DocumentsOutcome::Shown(id), cx);
                 self.raise_toast(
                     ToastKind::Success,
                     crate::msg::desktop_documents_toast_saved(&title),
@@ -242,25 +242,20 @@ impl Root {
                 self.raise_toast(
                     ToastKind::Success,
                     if skipped == 0 {
-                        crate::msg::desktop_documents_toast_imported(
+                        lib_documents::msg::documents_toast_imported(
                             i64::try_from(imported).unwrap_or(i64::MAX),
                         )
                     } else {
-                        crate::msg::desktop_documents_toast_import_partial(
+                        lib_documents::msg::documents_toast_import_partial(
                             &imported.to_string(),
                             &skipped.to_string(),
                         )
                     },
                 );
-                self.views
-                    .documents
-                    .update(cx, |view, cx| view.set_mode(DocumentsMode::Inbox, cx));
+                self.documents_landed(DocumentsOutcome::Imported, cx);
             }
             DocumentOutcome::FactsSaved { id, title } => {
-                // Editing clears a skip, so the Document may have moved up the list: follow it.
-                self.views
-                    .documents
-                    .update(cx, |view, cx| view.facts_edited(id, cx));
+                self.documents_landed(DocumentsOutcome::FactsSaved(id), cx);
                 self.raise_toast(
                     ToastKind::Success,
                     crate::msg::desktop_documents_toast_facts_saved(&title),
@@ -268,14 +263,7 @@ impl Root {
             }
             DocumentOutcome::Accepted(None) => {}
             DocumentOutcome::Accepted(Some(batch)) => {
-                let count = batch.entries.len();
-                self.views
-                    .documents
-                    .update(cx, |view, cx| view.accepted_batch(batch, cx));
-                self.raise_toast(
-                    ToastKind::Success,
-                    crate::msg::desktop_documents_toast_filed_many(&count.to_string()),
-                );
+                self.documents_landed(DocumentsOutcome::AcceptedAll(batch), cx);
             }
         }
     }
@@ -310,41 +298,9 @@ impl Root {
     /// Files dropped anywhere on the window land in the Inbox like `Import…`, but the page stays
     /// where it is: the Toast and the rail badge say what arrived.
     pub fn drop_documents(&mut self, paths: &[std::path::PathBuf], cx: &mut gpui::App) {
-        let typed: Vec<String> = paths
-            .iter()
-            .map(|path| path.display().to_string())
-            .collect();
-        let command = ImportDocuments {
-            lines: crate::documents::import_lines(&DiskFiles, typed.iter().map(String::as_str)),
-            today: self.today,
-            source: Source::Dropped,
-        };
-        let Ok(outcomes) = self.ledger.update(cx, |store, cx| store.apply(cx, command));
-        let imported = outcomes
-            .iter()
-            .filter(|outcome| matches!(outcome, ImportOutcome::Imported(_)))
-            .count();
-        let skipped = outcomes.len() - imported;
-        if imported == 0 {
-            if skipped > 0 {
-                self.raise_toast(
-                    ToastKind::Error,
-                    crate::msg::desktop_documents_toast_import_partial("0", &skipped.to_string()),
-                );
-            }
-            return;
-        }
-        let toast = if skipped == 0 {
-            crate::msg::desktop_documents_toast_imported(
-                i64::try_from(imported).unwrap_or(i64::MAX),
-            )
-        } else {
-            crate::msg::desktop_documents_toast_import_partial(
-                &imported.to_string(),
-                &skipped.to_string(),
-            )
-        };
-        self.raise_toast(ToastKind::Success, toast);
+        self.views
+            .documents
+            .update(cx, |page, cx| page.drop_paths(paths, cx));
     }
 
     fn handle_documents_field_click(&mut self, field: DocumentField, cx: &mut Context<'_, Self>) {
@@ -403,9 +359,10 @@ impl Root {
                 let rows = self.documents_picker_rows(state, cx);
                 let on_pick: dialogs::OnPickerRow = {
                     let entity = entity.clone();
+                    // A click is one input, as `enter` on the row is.
                     Rc::new(move |index, _window, cx| {
                         entity.update(cx, |shell, cx| {
-                            shell.documents_picker_pick(index, cx);
+                            crate::input::send(cx, |cx| shell.documents_picker_pick(index, cx));
                             cx.notify();
                         });
                     })
@@ -416,7 +373,7 @@ impl Root {
                         rows: &rows,
                         type_label: state
                             .doc_type
-                            .map(|kind| view_model::type_label(self.document_types(cx), kind)),
+                            .map(|kind| type_label(self.document_types(cx), kind)),
                         on_pick,
                     },
                     cx,

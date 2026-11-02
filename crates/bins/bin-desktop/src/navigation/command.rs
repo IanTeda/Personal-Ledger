@@ -63,8 +63,6 @@ pub enum CommandEffect {
     DismissToast,
     /// `:toasts on` / `:toasts off`: sets the Toasts Preference, the same as Settings' Toasts row.
     SetToasts(bool),
-    /// A `documents <verb>` command: `Root::run_command` jumps to Documents and runs the verb.
-    Documents(DocumentsVerb),
     /// `:import`: opens the stubbed 6e Import "match payees" step on the seeded statement.
     Import,
     /// A Command the Shell's global keymap lists: runs as its key does.
@@ -97,6 +95,7 @@ pub enum ModulePage {
     Settings(SettingsPage),
     Bills,
     Budgets,
+    Documents,
     Transactions,
 }
 
@@ -111,21 +110,6 @@ pub enum AccountsVerb {
     Edit,
     /// `accounts delete [<account name>]`: the Delete dialog for the named (or selected) account.
     Delete,
-}
-
-/// The Documents verbs the palette understands: the same actions the page's keys reach.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DocumentsVerb {
-    /// `documents inbox`: the Inbox.
-    Inbox,
-    /// `documents library`: the Library, on its last scope.
-    Library,
-    /// `documents accept-all`: the count-first confirm for every strong Inbox match.
-    AcceptAll,
-    /// `documents add`: the `+ Add` dialog.
-    Add,
-    /// `documents import`: the `Import…` dialog.
-    Import,
 }
 
 /// The palette's resting-state group a command sits under: one per noun or module, plus `Ledger`
@@ -241,7 +225,7 @@ pub fn split_input(input: &str) -> (&str, &str) {
 /// The Commands no keymap has, which the palette lists beside the keymaps' ([`entries`]): the
 /// noun aliases with no `g` jump (`accounts`, `categories`, `payees`, `tags`), the three `accounts
 /// <verb>` commands, which take a typed account name a keymap event can't carry (see
-/// [`split_input`]), the Documents verbs until their module has a keymap, the
+/// [`split_input`]), the
 /// file-level `open`/`new`/`close` trio, each `settings <page>`, the Colour Themes, and the Toast
 /// commands `dismiss`, `toasts on|off` and `messages` (an alias of the `toasts` binding). A
 /// Command a keymap lists has no row here (`no_commands_row_is_a_command_a_keymap_lists`).
@@ -280,41 +264,6 @@ pub const COMMANDS: &[Command] = &[
         description: crate::msg::desktop_command_categories_description,
         binding: None,
         effect: CommandEffect::OpenSettingsPage(SettingsPage::Categories),
-    },
-    Command {
-        name: "documents inbox",
-        domain: Domain::Documents,
-        description: crate::msg::desktop_command_documents_inbox_description,
-        binding: Some("i"),
-        effect: CommandEffect::Documents(DocumentsVerb::Inbox),
-    },
-    Command {
-        name: "documents library",
-        domain: Domain::Documents,
-        description: crate::msg::desktop_command_documents_library_description,
-        binding: Some("i"),
-        effect: CommandEffect::Documents(DocumentsVerb::Library),
-    },
-    Command {
-        name: "documents accept-all",
-        domain: Domain::Documents,
-        description: crate::msg::desktop_command_documents_accept_all_description,
-        binding: Some("Y"),
-        effect: CommandEffect::Documents(DocumentsVerb::AcceptAll),
-    },
-    Command {
-        name: "documents add",
-        domain: Domain::Documents,
-        description: crate::msg::desktop_command_documents_add_description,
-        binding: Some("a"),
-        effect: CommandEffect::Documents(DocumentsVerb::Add),
-    },
-    Command {
-        name: "documents import",
-        domain: Domain::Documents,
-        description: crate::msg::desktop_command_documents_import_description,
-        binding: Some("I"),
-        effect: CommandEffect::Documents(DocumentsVerb::Import),
     },
     Command {
         name: "open",
@@ -633,6 +582,12 @@ fn module_entries(config: &KeyBindingConfig) -> Vec<Entry> {
         &lib_categories::keymap::categories_page_keymap(config),
         settings(Page::Categories),
         Domain::Categories,
+    );
+    listed(
+        &mut entries,
+        &lib_documents::keymap::documents_page_keymap(config),
+        ModulePage::Documents,
+        Domain::Documents,
     );
     listed(
         &mut entries,

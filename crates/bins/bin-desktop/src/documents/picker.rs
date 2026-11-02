@@ -2,7 +2,7 @@
 //! palette-framed modal searches every record kind a Document can link to (Transaction, Account,
 //! Payee, Bill Plan, Inventory Item), so this is `gpui`-free and unit-tested without a window, the
 //! same split `shell/view/palette.rs` and `documents/mod.rs` use. `shell/router/documents_ui.rs` owns the keys and the
-//! effects of a pick; `view/documents/dialogs.rs` draws it.
+//! effects of a pick; `documents/view/dialogs.rs` draws it.
 
 use lib_core::DocumentId;
 use std::ops::Range;
@@ -10,9 +10,10 @@ use std::ops::Range;
 use chrono::NaiveDate;
 use lib_locale::format::format_date;
 
+use lib_documents::presenter::library::Lookups;
+
 use crate::{
     documents::DocumentTransaction,
-    documents::model::Lookups,
     documents::{DocumentLink, DocumentType},
     form::field::TextField,
     shell::view::dialog_host::{Dialog, DialogKey, DialogOutcome},
@@ -52,11 +53,11 @@ impl KindFilter {
     pub fn label(self) -> String {
         match self {
             KindFilter::All => crate::msg::desktop_documents_picker_kind_all(),
-            KindFilter::Transaction => crate::msg::desktop_documents_link_transaction(),
-            KindFilter::Account => crate::msg::desktop_documents_link_account(),
-            KindFilter::Payee => crate::msg::desktop_documents_link_payee(),
-            KindFilter::Bill => crate::msg::desktop_documents_link_bill(),
-            KindFilter::Inventory => crate::msg::desktop_documents_link_inventory(),
+            KindFilter::Transaction => lib_documents::msg::documents_link_transaction(),
+            KindFilter::Account => lib_documents::msg::documents_link_account(),
+            KindFilter::Payee => lib_documents::msg::documents_link_payee(),
+            KindFilter::Bill => lib_documents::msg::documents_link_bill(),
+            KindFilter::Inventory => lib_documents::msg::documents_link_inventory(),
         }
     }
 
@@ -384,7 +385,7 @@ fn describe(
                 String::new()
             };
             Some((
-                crate::msg::desktop_documents_link_transaction(),
+                lib_documents::msg::documents_link_transaction(),
                 text,
                 haystack,
             ))
@@ -393,7 +394,7 @@ fn describe(
             let account = lookups.records.account(id)?;
             let text = format!("{} \u{b7} {}", account.name, account.institution);
             Some((
-                crate::msg::desktop_documents_link_account(),
+                lib_documents::msg::documents_link_account(),
                 text.clone(),
                 text.to_lowercase(),
             ))
@@ -406,7 +407,7 @@ fn describe(
                 .join("\n")
                 .to_lowercase();
             Some((
-                crate::msg::desktop_documents_link_payee(),
+                lib_documents::msg::documents_link_payee(),
                 payee.name.clone(),
                 haystack,
             ))
@@ -420,12 +421,12 @@ fn describe(
                 .unwrap_or_default();
             let text = format!("{} \u{b7} {}", plan.name, plan.cadence);
             let haystack = format!("{}\n{payee}", plan.name).to_lowercase();
-            Some((crate::msg::desktop_documents_link_bill(), text, haystack))
+            Some((lib_documents::msg::documents_link_bill(), text, haystack))
         }
         DocumentLink::InventoryItem(id) => {
             let item = lookups.records.item(id)?;
             Some((
-                crate::msg::desktop_documents_link_inventory(),
+                lib_documents::msg::documents_link_inventory(),
                 item.name.clone(),
                 item.name.to_lowercase(),
             ))
@@ -522,7 +523,7 @@ mod tests {
         fn lookups(&self) -> Lookups<'_> {
             Lookups {
                 types: &self.types,
-                records: self.records.clone(),
+                records: &self.records,
                 today: self.today,
                 date_style: Some(DateStyle::Iso),
             }

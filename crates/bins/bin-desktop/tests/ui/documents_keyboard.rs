@@ -201,12 +201,10 @@ fn y_accepts_the_focused_strong_match_and_u_undoes_it(app: &mut TestAppContext) 
     assert!(!undone.toasts.is_empty(), "undo says so with a Toast");
 }
 
-/// The page isn't a module yet, so its key isn't one input: each request it makes of the root
-/// Router is, the write and the Toast saying so, each committed once through the one door.
+/// The page's key is one input: the filing and the Toast saying so commit once together, through
+/// the one door.
 #[gpui::test]
-fn an_accept_from_the_pages_own_key_commits_its_write_and_its_toast_once_each(
-    app: &mut TestAppContext,
-) {
+fn an_accept_is_one_input_committed_once_with_its_toast(app: &mut TestAppContext) {
     let mut ui = on_documents(app);
     ui.press("i");
     focus_row(&mut ui, STRONG_RECEIPT);
@@ -220,7 +218,7 @@ fn an_accept_from_the_pages_own_key_commits_its_write_and_its_toast_once_each(
         toasts + 1,
         "the accept says so"
     );
-    assert_eq!(ui.commits(), before + 2);
+    assert_eq!(ui.commits(), before + 1);
 }
 
 #[gpui::test]
@@ -257,6 +255,112 @@ fn x_skips_the_focused_row(app: &mut TestAppContext) {
         Some(STRONG_RECEIPT),
         "it sinks to the end"
     );
+}
+
+/// Skip is the session's: it writes nothing, so a restart brings the row back to its place.
+#[gpui::test]
+fn a_skip_is_gone_after_a_restart(app: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let config = common::config_for(&dir.path().join("ledger.pldb"));
+    {
+        let storage = bin_desktop::start_on(&config, common::today()).expect("a new Ledger starts");
+        let writer = storage.writer.clone();
+        let mut ui = Harness::with_storage(app, storage);
+        ui.press("g f");
+        ui.press("i");
+        focus_row(&mut ui, STRONG_RECEIPT);
+        ui.press("x");
+        ui.press("G");
+        assert_eq!(
+            ui.documents().selected_file.as_deref(),
+            Some(STRONG_RECEIPT),
+            "the skipped row sinks to the end"
+        );
+        ui.settle_writes();
+        bin_desktop::quit(&writer);
+    }
+
+    let storage = bin_desktop::start_on(&config, common::today()).expect("the Ledger starts again");
+    let mut ui = Harness::with_storage(app, storage);
+    ui.press("g f");
+    ui.press("i");
+    ui.press("G");
+
+    assert_ne!(
+        ui.documents().selected_file.as_deref(),
+        Some(STRONG_RECEIPT),
+        "the skip was never saved"
+    );
+}
+
+#[gpui::test]
+fn a_failed_accept_puts_the_inbox_back_with_an_error_toast(app: &mut TestAppContext) {
+    let mut ui = Harness::with_failing_documents(app);
+    ui.press("g f");
+    ui.press("i");
+    focus_row(&mut ui, STRONG_RECEIPT);
+    let stored = ui.documents().inbox_rows;
+
+    ui.press("y");
+    assert_eq!(ui.documents().inbox_rows, stored - 1);
+
+    ui.settle_writes();
+
+    assert_eq!(ui.documents().inbox_rows, stored);
+    assert!(
+        ui.toasts()
+            .visible
+            .into_iter()
+            .any(|toast| toast.kind == "Error")
+    );
+}
+
+/// The lease ends 115 days out: Upcoming in June, and within the 60-day window once the month has
+/// turned to August, with no key pressed between.
+#[gpui::test]
+fn the_month_turning_moves_a_key_date_into_need_review(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+    focus_row(&mut ui, "lease-agreement-12-elm-st.pdf");
+    let (_, red) = ui
+        .documents()
+        .selected_flag
+        .expect("the lease has a Key Date");
+    assert!(!red, "Upcoming is muted");
+
+    ui.turn_date_to(common::date(2026, 8, 15));
+
+    let page = ui.documents();
+    assert_eq!(
+        page.selected_file.as_deref(),
+        Some("lease-agreement-12-elm-st.pdf")
+    );
+    let (_, red) = page.selected_flag.expect("the lease has a Key Date");
+    assert!(red, "Need Review is red");
+}
+
+/// The Inbox's keys are the keymap's: a rebound Accept moves, and the legend and `?` follow it.
+#[gpui::test]
+fn a_rebound_accept_moves_and_the_cheat_sheet_follows(app: &mut TestAppContext) {
+    let mut ui = Harness::with_keybindings(
+        app,
+        common::overriding(lib_documents::keymap::ACCEPT, "ctrl+y"),
+    );
+    ui.press("g f");
+    ui.press("i");
+    focus_row(&mut ui, STRONG_RECEIPT);
+    let before = ui.documents().inbox_rows;
+
+    ui.press("y");
+    assert_eq!(ui.documents().inbox_rows, before, "y no longer accepts");
+    ui.press("ctrl-y");
+    assert_eq!(ui.documents().inbox_rows, before - 1);
+
+    assert!(
+        ui.status_as_shortcuts()
+            .iter()
+            .any(|(_, chord)| chord == "ctrl+y")
+    );
+    ui.assert_cheat_sheet_matches_status("Documents keys");
 }
 
 #[gpui::test]

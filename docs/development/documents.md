@@ -29,19 +29,20 @@ The Financial Year (`financial_year_start`) is `lib-core`'s, shared with Bills. 
 - `documents` holds the Key Date and the Inbox's Intake (source, received date, Extracted Facts). A Document names its type by a deferred foreign key with no cascade, so a type removal moves its Documents in the same batch, and the file refuses deleting a type a Document still names.
 - `document_links` holds one row per Link, its one target column set; a Link drops with the record it names (`ON DELETE CASCADE`), and the commit that deleted the record has the Desktop reload the Documents, so memory drops it too ([#964](https://github.com/IanTeda/Personal-Ledger/issues/964)). A write still skips a Link to a record the file no longer has. A Bill Plan has no delete yet, so its cascade is the schema's alone. The Remove location Dialog counts the Documents it unlinks from the Documents store (`LedgerStore::documents_linking_location`).
 - A new Ledger is seeded with the stub's Document Types, Documents and Links last, after the domains they name (`seed::stub_documents`); an existing Ledger with no Document Types is given the nine default ones on open.
-- The Inbox's skipped Documents are the session's (`DocumentsState::skipped`), never written; editing a Document's facts clears its skip.
-- The Document Types page writes the store itself through `lib-documents`' Interactors (`lib_documents::interactor`, [#965](https://github.com/IanTeda/Personal-Ledger/issues/965), [#966](https://github.com/IanTeda/Personal-Ledger/issues/966)): `AddDocumentType`, `EditDocumentType`, `RemoveDocumentType` and `MoveDocumentType`, in the one commit of the input that sent the event, with the `Ledger`'s copy refreshed either side (`LedgerStore::refresh_documents`). Every Documents writer is still a `LedgerCommand`, carried to the store by `documents::ports::forward`, with the copy refreshed after each write and on rollback (`LedgerStore::reload_documents`), until the Documents View moves onto the Interactors in #967. Each Interactor reads the Documents and Document Types from the repository, applies the rule `lib-documents` holds on a copy and writes the rows it changed, so a refusal writes nothing. Filing writes only Documents, so Accept and Accept all strong are Interactors here, not a cross-domain module; Import reaches the disk through `DocumentFiles`. The records a Link names are read from their own stores (`lib_database::StoredDocumentReads`).
+- The Inbox's skipped Documents are the session's, held by the page's Presenter (`DocumentsPagePresenter::skipped`) beside the one-level `FilingUndo`, and never written; editing a Document's facts clears its skip.
+- The Document Types page writes the store itself through `lib-documents`' Interactors (`lib_documents::interactor`, [#965](https://github.com/IanTeda/Personal-Ledger/issues/965), [#966](https://github.com/IanTeda/Personal-Ledger/issues/966)): `AddDocumentType`, `EditDocumentType`, `RemoveDocumentType` and `MoveDocumentType`, in the one commit of the input that sent the event, with the `Ledger`'s copy refreshed either side (`LedgerStore::refresh_documents`). The Documents page writes through them too ([#967](https://github.com/IanTeda/Personal-Ledger/issues/967)): Accept, filing by hand, a Link's ×, Undo and a drop (`Accept`, `FileByHand`, `ToggleLink`, `UndoFiling`, `ImportDocuments`), with the copy refreshed after each event. The legacy Dialogs (Add, Edit, Import, Edit facts, Accept all and the link picker's Link toggle) are still `LedgerCommand`s, carried to the store by `documents::ports::forward`, with the copy refreshed after each write and on rollback (`LedgerStore::reload_documents`), until they move onto Presenters in #968. Each Interactor reads the Documents and Document Types from the repository, applies the rule `lib-documents` holds on a copy and writes the rows it changed, so a refusal writes nothing. Filing writes only Documents, so Accept and Accept all strong are Interactors here, not a cross-domain module; Import reaches the disk through `DocumentFiles`. The records a Link names are read from their own stores (`lib_database::StoredDocumentReads`).
 - `src/persistence.rs` stores the last mode, scope and sort.
 
 ## UI
 
 - `src/documents/form.rs` — `DocumentsDialog`, `DocumentForm`, `ImportForm`, `FactsForm` and their validation.
 - `src/documents/picker.rs` — the link picker: `PickerState`, `Purpose` (link, file, follow) and the derived `rows`.
-- `src/view/documents/` — `state.rs` the `DocumentsView` Entity, which renders the page and handles its own keys (ahead of the global router), Search, movement, `Esc`, filing, the OS file hand-off and link navigation (as `ViewEvent::Reveal`), and builds the dialogs (ADR-0037); `mod.rs` (page and Library), `inbox.rs` (4b), `hints.rs` the status-line legends, `snapshot.rs` what the UI tests read back, `dialogs.rs`.
-- `src/app/documents_ui.rs` — `Shell`'s side: the Dialog host's Documents dialogs (drawn, confirmed, and the link picker's picks), the `documents <verb>` palette commands, dropped files and the persisted mode, scope and sort.
-- `src/navigation/command.rs` — `DocumentsVerb` and the `documents` / `documents inbox|library|accept-all|add|import` commands. `Noun::Documents` is bound to `g f`.
+- `lib_documents::presenter` — the page's Presenter (`DocumentsPagePresenter`, [#967](https://github.com/IanTeda/Personal-Ledger/issues/967)): mode, scope, sort, Search, focus zone, selections, Skip and the one-level Undo, the Library's and the Inbox's view models (`presenter::library`, `presenter::inbox`), its legend and `?` group. It reads today from the Clock, so a Key Date's band moves as the day does, and drops a Financial Year or Type scope that has left the rail. Its keys are `lib_documents::keymap::DOCUMENTS_PAGE_BINDINGS`, rebindable in `[keybindings]`, and the palette lists `documents inbox|library|add|import|accept-all` from them.
+- `src/documents/view/` — `page.rs` the `DocumentsPage` Entity holding the Presenter: it offers each key the keymap binds when the Presenter `takes` it, sends clicks as events, maps the Search onto the Shell's Search mode and draws the view model (`mod.rs` the page and Library, `inbox.rs` 4b); `snapshot.rs` what the UI tests read back; `dialogs.rs` and `hints.rs` the legacy Dialogs; `drop_overlay.rs` the window's drop overlay, whose drop the page takes as an Import event.
+- `src/documents/router.rs` — `DocumentsRouter` for the Desktop: a Link revealed through the Transactions entry point or a `ViewEvent::Reveal` (an Inventory Item shows the Inventory), the legacy Dialogs built and opened, files handed to the OS, Notices queued.
+- `src/shell/router/documents_ui.rs` — `Root`'s side: the legacy Dialog host's Documents Dialogs (drawn, confirmed, and the link picker's picks), each landed outcome handed back to the page as a `DocumentsOutcome`, and the persisted mode, scope and sort. `Noun::Documents` is bound to `g f`.
 - `src/chrome/rail/` — the index rail and count badges.
-- Messages in `i18n/en-US/documents.ftl`.
+- The page's Messages are `lib-documents`' (`lib_documents::msg`); the legacy Dialogs' are the Desktop's `i18n/en-US/documents.ftl`.
 
 Link targets: a Transaction row, Settings › Accounts or Payees, Bills › Planner, and the Inventory placeholder. `Open` and `Show in folder` call the real OS when the path exists.
 
@@ -49,17 +50,17 @@ Link targets: a Transaction row, Settings › Accounts or Payees, Bills › Plan
 
 | Requirement | Code | Test |
 | --- | --- | --- |
-| DOC-001 | `view/documents/mod.rs`, `documents::LibraryScope` | `tests/documents_mouse.rs::index_rail_facets_narrow_the_library` |
-| DOC-002 | `view/documents/state.rs`, `documents::LibrarySort` | `tests/documents_keyboard.rs::slash_searches_the_library`, `s_toggles_the_sort_in_the_library_only` |
-| DOC-003 | `view/documents/mod.rs` | `tests/documents_mouse.rs::clicking_a_list_row_selects_it_and_focuses_the_list` |
-| DOC-004 | `documents/picker.rs`, `app/documents_ui.rs` | `tests/documents_keyboard.rs::enter_in_the_link_picker_toggles_a_link`, `shift_l_follows_a_single_link` |
-| DOC-005 | `documents/form.rs`, `view/documents/dialogs.rs` | `tests/documents_keyboard.rs::a_opens_the_add_dialog_in_the_library` |
+| DOC-001 | `documents/view/mod.rs`, `documents::LibraryScope` | `tests/documents_mouse.rs::index_rail_facets_narrow_the_library` |
+| DOC-002 | `lib_documents::presenter::DocumentsPagePresenter`, `documents::LibrarySort` | `tests/documents_keyboard.rs::slash_searches_the_library`, `s_toggles_the_sort_in_the_library_only` |
+| DOC-003 | `documents/view/mod.rs` | `tests/documents_mouse.rs::clicking_a_list_row_selects_it_and_focuses_the_list` |
+| DOC-004 | `documents/picker.rs`, `shell/router/documents_ui.rs`, `documents/router.rs` | `tests/documents_keyboard.rs::enter_in_the_link_picker_toggles_a_link`, `shift_l_follows_a_single_link` |
+| DOC-005 | `documents/form.rs`, `documents/view/dialogs.rs` | `tests/documents_keyboard.rs::a_opens_the_add_dialog_in_the_library` |
 | DOC-006 | `documents/form.rs::ImportForm` | `tests/documents_keyboard.rs::shift_i_opens_the_import_dialog` |
-| DOC-007 | `documents::suggestion`, `view/documents/inbox.rs` | unit tests in `src/documents/mod.rs` |
-| DOC-008 | `documents::accept`, `accept_all_strong`, `undo` | `tests/documents_keyboard.rs::y_accepts_the_focused_strong_match_and_u_undoes_it`, `shift_y_opens_accept_all_and_esc_cancels` |
+| DOC-007 | `documents::suggestion`, `lib_documents::presenter::inbox` | unit tests in `src/documents/mod.rs` |
+| DOC-008 | `lib_documents::interactor::{Accept, AcceptAllStrong, UndoFiling}` | `tests/documents_keyboard.rs::y_accepts_the_focused_strong_match_and_u_undoes_it`, `shift_y_opens_accept_all_and_esc_cancels`, `a_skip_is_gone_after_a_restart` |
 | DOC-009 | `documents/form.rs::FactsForm` | unit tests in `src/documents/form.rs` |
-| DOC-010 | `documents::band`, `Document::band` | unit tests in `src/documents/mod.rs` |
-| DOC-011 | `view/documents/state.rs::open_selected` | none: it calls the OS, which the headless tests avoid |
+| DOC-010 | `documents::band`, `Document::band` | unit tests in `lib-documents`, `tests/documents_keyboard.rs::the_month_turning_moves_a_key_date_into_need_review` |
+| DOC-011 | `documents/router.rs::open_file` | none: it calls the OS, which the headless tests avoid |
 
 ## Decisions
 
@@ -69,7 +70,7 @@ Link targets: a Transaction row, Settings › Accounts or Payees, Bills › Plan
 
 ## Open questions and known gaps
 
-- **Drop overlay:** the full-window dashed overlay (`view/documents/drop_overlay.rs`) is stateless: gpui sets its active drag on a file drag entering the window, and the overlay turns opaque through `group_drag_over` at paint time. The headless harness can't read paint styles back, so it is checked live only.
+- **Drop overlay:** the full-window dashed overlay (`documents/view/drop_overlay.rs`) is stateless: gpui sets its active drag on a file drag entering the window, and the overlay turns opaque through `group_drag_over` at paint time. The headless harness can't read paint styles back, so it is checked live only.
 - **Search highlighting** inside the preview, since the preview is a placeholder.
 - **Missing-file state:** what "locate…" does without a file-picker decision.
 - **Persistence and sync** of metadata and file bytes.

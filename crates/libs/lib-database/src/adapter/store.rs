@@ -1305,6 +1305,7 @@ impl DocumentsStore for InMemoryDocuments {
 /// `lib-documents`' five read ports answered by the shared stores of the domains a Link names,
 /// each borrowed for the one read (#963), as [`StoredBudgetReads`] answers Budgets'. The Desktop's
 /// Documents View reads through it, once per query into `LinkRecords`.
+#[derive(Clone)]
 pub struct StoredDocumentReads {
     pub transactions: SharedTransactionsStore,
     pub payees: SharedPayeesStore,

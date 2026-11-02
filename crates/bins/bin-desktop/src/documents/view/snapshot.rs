@@ -1,10 +1,12 @@
-//! What the integration tests read back of the Documents page (ADR-0030), built by the Documents
-//! Entity from its own state (ADR-0037). The open dialog, the Toasts and the status message are
-//! `Root`'s, so its accessor fills them in.
+//! What the integration tests read back of the Documents page (ADR-0030), built from its
+//! Presenter. The open dialog, the Toasts and the status message are `Root`'s, so its accessor
+//! fills them in.
 
 use gpui::App;
+use lib_documents::presenter::DocumentsFocus;
+use lib_documents::presenter::library::RowTail;
 
-use super::{DocumentsFocus, state::DocumentsView};
+use super::page::DocumentsPage;
 use crate::documents::Document;
 
 /// The Documents page's state: ids and plain values, so the private `documents` types need not
@@ -27,6 +29,9 @@ pub struct DocumentsSnapshot {
     /// The names of the selected Document's Links that resolve to a record, as its row's chips
     /// draw them: a Link whose record has gone draws none.
     pub selected_chips: Vec<String>,
+    /// The selected Library row's Key Date flag and whether it is red (Need Review), when it has
+    /// one.
+    pub selected_flag: Option<(String, bool)>,
     /// Which dialog is open: `add`, `edit`, `import`, `facts`, `accept-all`, or
     /// `picker-link`, `picker-file`, `picker-follow`.
     pub dialog: Option<&'static str>,
@@ -52,30 +57,31 @@ pub struct PickerSnapshot {
     pub doc_type_chosen: bool,
 }
 
-impl DocumentsView {
+impl DocumentsPage {
     /// The page's part of the snapshot; the dialog, Toasts and status are left empty for `Root`.
     #[doc(hidden)]
-    pub fn snapshot(&self, cx: &App) -> DocumentsSnapshot {
-        let state = &self.state;
-        let selected = self.selected_document(cx);
+    pub fn snapshot(&self, _cx: &App) -> DocumentsSnapshot {
+        let presenter = self.presenter();
+        let (mode, scope, sort) = presenter.persisted();
+        let selected = presenter.selected_document();
         DocumentsSnapshot {
-            mode: state.mode.id(),
-            scope: state.scope.id(),
-            sort: state.sort.id(),
-            index_focused: state.focus == DocumentsFocus::Index,
-            query: state.query.clone(),
-            selected_file: selected.map(Document::file_name),
-            selected_links: selected.map_or(0, |document| document.links.len()),
-            selected_chips: selected.map_or_else(Vec::new, |document| {
-                crate::documents::model::row(document, &self.lookups(cx))
-                    .chips
-                    .into_iter()
-                    .map(|chip| chip.label)
-                    .collect()
+            mode: mode.id(),
+            scope: scope.id(),
+            sort: sort.id(),
+            index_focused: presenter.focus() == DocumentsFocus::Index,
+            query: presenter.query().to_string(),
+            selected_file: selected.as_ref().map(Document::file_name),
+            selected_links: selected.as_ref().map_or(0, |document| document.links.len()),
+            selected_chips: presenter.selected_chips(),
+            selected_flag: presenter.view_model().library.and_then(|library| {
+                match library.rows.get(library.selected)?.tail.clone() {
+                    RowTail::Flag { text, red } => Some((text, red)),
+                    RowTail::Type(_) => None,
+                }
             }),
             dialog: None,
-            library_rows: self.library_rows(cx).len(),
-            inbox_rows: self.inbox_rows(cx).len(),
+            library_rows: presenter.library_count(),
+            inbox_rows: presenter.inbox_count(),
             toasts: Vec::new(),
             status: None,
             picker: None,

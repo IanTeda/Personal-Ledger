@@ -224,6 +224,12 @@ impl LedgerStore {
         lib_documents::LinkRecords::read(&self.document_reads)
     }
 
+    /// The other domains' stores as `lib_documents`' reads, which the Documents page's Presenter
+    /// holds.
+    pub fn document_reads(&self) -> StoredDocumentReads {
+        self.document_reads.clone()
+    }
+
     /// The Documents with a Link to one of Location `id`'s Items, as the Inventory and Documents
     /// stores hold them (#964): what the Remove location Dialog quotes as losing a Link.
     pub fn documents_linking_location(&self, id: lib_core::LocationId) -> usize {

@@ -49,7 +49,8 @@ pub use crate::protocols::{
     DocumentAccount, DocumentAccounts, DocumentBillPlan, DocumentBillPlans, DocumentFiles,
     DocumentItem, DocumentItems, DocumentPayee, DocumentPayees, DocumentReads, DocumentRepository,
     DocumentTransaction, DocumentTransactions, DocumentTypesDialog, DocumentTypesOutcome,
-    DocumentTypesRouter, LinkRecords, SharedRepository, TypeChange,
+    DocumentTypesRouter, DocumentsDialog, DocumentsOutcome, DocumentsRouter, LinkRecords,
+    SharedFiles, SharedReads, SharedRepository, TypeChange,
 };
 use crate::types::{DocumentTypeRow, TracksDate};
 

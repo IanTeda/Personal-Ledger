@@ -123,10 +123,6 @@ impl Root {
                 self.navigate(NavInput::ExitMode);
                 self.open_import(cx);
             }
-            CommandEffect::Documents(verb) => {
-                self.navigate(NavInput::ExitMode);
-                self.run_documents_command(verb, cx);
-            }
             CommandEffect::NotYetBuilt => {
                 self.navigate(NavInput::ExitMode);
                 self.set_status(crate::msg::desktop_status_command_not_yet_built(
@@ -209,6 +205,12 @@ impl Root {
                 self.show_noun(Noun::Budgets, cx);
                 self.views
                     .budgets
+                    .update(cx, |page, cx| page.module_command(command, cx))
+            }
+            ModulePage::Documents => {
+                self.show_noun(Noun::Documents, cx);
+                self.views
+                    .documents
                     .update(cx, |page, cx| page.module_command(command, cx))
             }
             ModulePage::Transactions => {

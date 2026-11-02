@@ -86,7 +86,6 @@ use lib_ledger::Ledger;
 use lib_shell::{NavInput, ToastInput};
 
 use crate::view::active::{ActiveViewEntity, ViewEntities};
-use crate::view::documents::state::{DocumentsSources, DocumentsView};
 use crate::view::event::ViewMode;
 use crate::{
     documents::{DocumentsMode, LibraryScope, LibrarySort},
@@ -386,6 +385,9 @@ impl Root {
         });
         let budgets_ports =
             crate::budgets::ports::DesktopPorts::new(storage.budgets.clone(), budget_reads);
+        // The Documents page writes the store through its Interactors, and reads the other
+        // domains through their stores (#967).
+        let documents_store = crate::document_types::ports::shared(&storage.documents);
         // The Transactions and Bills ports are the truth; the Ledger keeps read copies of them
         // (#774).
         let ledger = cx.new(|_| LedgerStore::with_storage(Ledger::stub_on(today), storage));
@@ -451,15 +453,14 @@ impl Root {
         let bills_subscription = Self::view_event_subscription(&bills_view, cx);
         // The status line reads the page's state, so a change in it repaints `Root` too.
         let bills_view_observer = cx.observe(&bills_view, |_, _, cx| cx.notify());
-        let documents_view = cx.new(|cx| {
-            DocumentsView::new(
-                DocumentsSources {
-                    ledger: ledger.clone(),
-                },
-                &clock,
-                cx,
-            )
-        });
+        let documents_view = crate::documents::view::page::documents_page(
+            documents_store,
+            Rc::new(crate::documents::files::DiskFiles),
+            ledger.clone(),
+            lib_documents::keymap::documents_page_keymap(&lib_config::KeyBindingConfig::default()),
+            clock.clone(),
+            cx,
+        );
         let documents_subscription = Self::view_event_subscription(&documents_view, cx);
         // The status line reads the page's state, so a change in it repaints `Root` too.
         let documents_view_observer = cx.observe(&documents_view, |_, _, cx| cx.notify());
@@ -655,6 +656,9 @@ impl Root {
             .update(cx, |view, _| view.set_keymaps(config));
         self.views
             .budgets
+            .update(cx, |page, _| page.set_keymaps(config));
+        self.views
+            .documents
             .update(cx, |page, _| page.set_keymaps(config));
     }
 

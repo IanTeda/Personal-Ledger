@@ -1,43 +1,44 @@
 //! The Inbox (4b): the list pane's column header, rows, footnote and drop target, and the detail
 //! pane's extracted facts, Suggested Link card, other candidates and key hints. A child of the
-//! Documents page so it shares the Library's buttons, glyph and preview. Pure drawing: `Root`
-//! owns the focus, the filing actions and every key.
+//! Documents page so it shares the Library's buttons, glyph and preview. Pure drawing: the page's
+//! Presenter owns the focus, the filing actions and every key.
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
+use lib_documents::presenter::InboxViewModel;
+use lib_documents::presenter::inbox::{CandidateView, InboxDetailView, InboxRowView, InboxState};
 use lib_locale::format::upper;
 
 use super::{
     DETAIL_WIDTH, DocumentsPageProps, OnPlainClick, fact_row, file_glyph, preview, primary_button,
     secondary_button,
 };
-use crate::{
-    documents::Signals,
-    documents::model::{CandidateView, InboxDetailView, InboxRowView, InboxState},
-    theme::color,
-};
+use crate::{documents::Signals, theme::color};
 
 /// The list pane below the header: column header, rows (or the empty state), footnote and drop
 /// target.
-pub fn list_body(props: &DocumentsPageProps, cx: &App) -> AnyElement {
+pub fn list_body(props: &DocumentsPageProps, inbox: &InboxViewModel, cx: &App) -> AnyElement {
     div()
         .flex_1()
         .min_h(px(0.0))
         .flex()
         .flex_col()
-        .child(column_header(cx))
-        .child(rows(props, cx))
-        .child(footnote(props, cx))
-        .child(drop_target(cx))
+        .child(column_header(props, cx))
+        .child(rows(props, inbox, cx))
+        .child(footnote(props, inbox, cx))
+        .child(drop_target(props, cx))
         .into_any_element()
 }
 
 /// The header's right-hand buttons: **Watched folder…** and **Accept all strong matches · n**.
-pub fn header_buttons(props: &DocumentsPageProps, cx: &App) -> [AnyElement; 2] {
-    let strong = props.inbox_strong;
-    let accept_all: AnyElement = if strong > 0 {
+pub fn header_buttons(
+    props: &DocumentsPageProps,
+    inbox: &InboxViewModel,
+    cx: &App,
+) -> [AnyElement; 2] {
+    let accept_all: AnyElement = if inbox.strong > 0 {
         primary_button(
             "documents-accept-all",
-            crate::msg::desktop_documents_accept_all(&strong.to_string()),
+            inbox.accept_all.clone(),
             props.on_accept_all_click.clone(),
             cx,
         )
@@ -56,13 +57,13 @@ pub fn header_buttons(props: &DocumentsPageProps, cx: &App) -> [AnyElement; 2] {
             .font_weight(gpui::FontWeight::EXTRA_BOLD)
             .whitespace_nowrap()
             .opacity(0.45)
-            .child(crate::msg::desktop_documents_accept_all("0"))
+            .child(inbox.accept_all.clone())
             .into_any_element()
     };
     [
         secondary_button(
             "documents-watched-folder",
-            crate::msg::desktop_documents_watched_folder(),
+            props.labels.watched_folder.clone(),
             props.on_watched_click.clone(),
             cx,
         )
@@ -71,7 +72,7 @@ pub fn header_buttons(props: &DocumentsPageProps, cx: &App) -> [AnyElement; 2] {
     ]
 }
 
-fn column_header(cx: &App) -> impl IntoElement {
+fn column_header(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
     let label = |text: String| {
         div()
             .font_weight(gpui::FontWeight::EXTRA_BOLD)
@@ -92,24 +93,24 @@ fn column_header(cx: &App) -> impl IntoElement {
             div()
                 .w(px(252.0))
                 .flex_none()
-                .child(label(crate::msg::desktop_documents_inbox_col_file())),
+                .child(label(props.labels.file_column.clone())),
         )
         .child(
             div()
                 .flex_1()
                 .pl(px(26.0))
-                .child(label(crate::msg::desktop_documents_inbox_col_link())),
+                .child(label(props.labels.link_column.clone())),
         )
 }
 
-fn rows(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
+fn rows(props: &DocumentsPageProps, inbox: &InboxViewModel, cx: &App) -> impl IntoElement {
     let body = div()
         .id("documents-inbox-rows")
         .flex_1()
         .min_h(px(0.0))
         .overflow_y_scroll()
         .track_scroll(&props.inbox_scroll);
-    if props.inbox_rows.is_empty() {
+    if inbox.rows.is_empty() {
         return body.child(
             div()
                 .px(px(14.0))
@@ -117,14 +118,14 @@ fn rows(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_size(px(15.0))
                 .text_color(color::muted(cx))
-                .child(crate::msg::desktop_documents_inbox_empty()),
+                .child(props.labels.inbox_empty.clone()),
         );
     }
-    body.children(props.inbox_rows.iter().enumerate().map(|(index, row)| {
+    body.children(inbox.rows.iter().enumerate().map(|(index, row)| {
         inbox_row(
             row,
-            index == props.inbox_selected && props.list_focused,
-            index == props.inbox_selected,
+            index == inbox.selected && props.list_focused,
+            index == inbox.selected,
             index,
             props,
             cx,
@@ -143,12 +144,7 @@ fn inbox_row(
     let on_click = props.on_row_click.clone();
     let on_accept = props.on_accept_row_click.clone();
     let ink = color::foreground(cx);
-    let unreadable = row.state != InboxState::Link;
-    let action_label = if unreadable {
-        crate::msg::desktop_documents_file_button()
-    } else {
-        crate::msg::desktop_documents_accept()
-    };
+    let action_label = row.action.clone();
     let summary_color = match row.state {
         InboxState::Unreadable => color::negative_text(cx),
         _ => ink,
@@ -289,18 +285,15 @@ pub fn meter(signals: Signals, cx: &App) -> impl IntoElement {
         .child(square(signals.payee))
 }
 
-fn footnote(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
+fn footnote(props: &DocumentsPageProps, inbox: &InboxViewModel, cx: &App) -> impl IntoElement {
     // Rows below the last one in view, read from the list's scroll state of the previous frame.
-    let below = props
-        .inbox_rows
+    let below = inbox
+        .rows
         .len()
         .saturating_sub(props.inbox_scroll.bottom_item() + 1);
-    let note = crate::msg::desktop_documents_inbox_footnote();
-    let text = if below > 0 && !props.inbox_rows.is_empty() {
-        format!(
-            "{} · {note}",
-            crate::msg::desktop_documents_inbox_below(i64::try_from(below).unwrap_or(i64::MAX))
-        )
+    let note = props.labels.inbox_footnote.clone();
+    let text = if below > 0 && !inbox.rows.is_empty() {
+        format!("{} · {note}", lib_documents::presenter::inbox_below(below))
     } else {
         note
     };
@@ -314,7 +307,7 @@ fn footnote(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
 }
 
 /// The dashed drop target. Drawn as the handoff has it; the drop itself is handled by the Shell's root.
-fn drop_target(cx: &App) -> impl IntoElement {
+fn drop_target(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
     div()
         .flex_none()
         .mx(px(14.0))
@@ -329,7 +322,7 @@ fn drop_target(cx: &App) -> impl IntoElement {
         .text_size(px(12.5))
         .text_color(color::muted(cx))
         .child(div().child("\u{2193}"))
-        .child(crate::msg::desktop_documents_drop_target())
+        .child(props.labels.drop_target.clone())
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -346,7 +339,10 @@ pub fn detail_pane(props: &DocumentsPageProps, cx: &App) -> AnyElement {
         .bg(color::chrome(cx))
         .border_l(px(2.0))
         .border_color(color::structural_rule(cx));
-    let Some(detail) = props.inbox_detail.as_ref() else {
+    let Some(inbox) = props.inbox.as_ref() else {
+        return pane.into_any_element();
+    };
+    let Some(detail) = inbox.detail.as_ref() else {
         return pane.into_any_element();
     };
     pane.child(preview(detail.extension, cx))
@@ -390,16 +386,20 @@ pub fn detail_pane(props: &DocumentsPageProps, cx: &App) -> AnyElement {
                     detail
                         .suggested
                         .as_ref()
-                        .map(|card| suggested_card(card, cx)),
+                        .map(|card| suggested_card(card, &props.labels, cx)),
                 )
                 .child(other_candidates(detail, props, cx)),
         )
-        .child(key_hints(props, cx))
+        .child(key_hints(inbox, cx))
         .child(footer(detail, props, cx))
         .into_any_element()
 }
 
-fn suggested_card(card: &CandidateView, cx: &App) -> impl IntoElement {
+fn suggested_card(
+    card: &CandidateView,
+    labels: &lib_documents::presenter::PageLabels,
+    cx: &App,
+) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
@@ -413,7 +413,7 @@ fn suggested_card(card: &CandidateView, cx: &App) -> impl IntoElement {
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_size(px(9.5))
                 .text_color(color::faint_text(cx))
-                .child(upper(&crate::msg::desktop_documents_suggested_link())),
+                .child(upper(&labels.suggested_link)),
         )
         .child(
             div()
@@ -463,7 +463,7 @@ fn other_candidates(
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_size(px(10.0))
                 .text_color(color::faint_text(cx))
-                .child(upper(&crate::msg::desktop_documents_other_candidates())),
+                .child(upper(&props.labels.other_candidates)),
         )
         .children(detail.others.iter().enumerate().map(|(index, other)| {
             let on_accept = props.on_accept_candidate_click.clone();
@@ -494,7 +494,7 @@ fn other_candidates(
 }
 
 /// The strip under the detail body: each key in bold, then its action.
-fn key_hints(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
+fn key_hints(inbox: &InboxViewModel, cx: &App) -> impl IntoElement {
     div()
         .flex_none()
         .flex()
@@ -506,7 +506,7 @@ fn key_hints(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
         .border_color(color::border(cx))
         .text_size(px(11.0))
         .text_color(color::muted(cx))
-        .children(props.inbox_hints.iter().map(|(keys, action)| {
+        .children(inbox.keys.iter().map(|hint| {
             div()
                 .flex()
                 .gap(px(4.0))
@@ -514,33 +514,23 @@ fn key_hints(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
                     div()
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
                         .text_color(color::foreground(cx))
-                        .child(SharedString::from(*keys)),
+                        .child(SharedString::from(hint.chord.clone())),
                 )
-                .child(action.clone())
+                .child(hint.action.clone())
         }))
 }
 
 fn footer(detail: &InboxDetailView, props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
     let readable = detail.state == InboxState::Link;
-    let (primary_label, primary_click): (String, OnPlainClick) = if readable {
+    let (primary_label, secondary_label) = (detail.primary.clone(), detail.secondary.clone());
+    let (primary_click, secondary_click): (OnPlainClick, OnPlainClick) = if readable {
         (
-            crate::msg::desktop_documents_accept_next(),
             props.on_accept_next_click.clone(),
-        )
-    } else {
-        (
-            crate::msg::desktop_documents_file_button(),
-            props.on_link_elsewhere_click.clone(),
-        )
-    };
-    let (secondary_label, secondary_click): (String, OnPlainClick) = if readable {
-        (
-            crate::msg::desktop_documents_link_elsewhere(),
             props.on_link_elsewhere_click.clone(),
         )
     } else {
         (
-            crate::msg::desktop_documents_skip(),
+            props.on_link_elsewhere_click.clone(),
             props.on_skip_click.clone(),
         )
     };

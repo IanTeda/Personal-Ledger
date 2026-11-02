@@ -9,9 +9,10 @@
 
 use gpui::{AnyElement, App, Entity, IntoElement, Keystroke};
 
-use super::{dashboard::state::DashboardView, documents::state::DocumentsView, event::Reveal};
+use super::{dashboard::state::DashboardView, event::Reveal};
 use crate::bills::BillsPage;
 use crate::budgets::view::page::BudgetsPage;
+use crate::documents::view::page::DocumentsPage;
 use crate::settings::state::SettingsView;
 use crate::transaction_import::ImportPage;
 use crate::transactions::TransactionsPage;
@@ -32,7 +33,7 @@ pub enum ActiveViewEntity {
     /// The Transactions destination's Import step, shown in place of the list while it is open: the
     /// Transaction Import module's View.
     Import(Entity<ImportPage>),
-    Documents(Entity<DocumentsView>),
+    Documents(Entity<DocumentsPage>),
     /// Settings: the index and every page. A page with its own Entity (Accounts, Payees) is
     /// forwarded to by the View; `Root` still draws the other pages with Ledger data and handles
     /// their keys first (`Root`) until each moves into the View.
@@ -56,7 +57,7 @@ pub struct ViewEntities {
     pub budgets: Entity<BudgetsPage>,
     pub transactions: Entity<TransactionsPage>,
     pub import: Entity<ImportPage>,
-    pub documents: Entity<DocumentsView>,
+    pub documents: Entity<DocumentsPage>,
     pub settings: Entity<SettingsView>,
 }
 
@@ -108,7 +109,7 @@ impl ActiveViewEntity {
         }
     }
 
-    /// A key the focused module's keymap takes, by `chord`: the Bills, Budgets or Transactions
+    /// A key the focused module's keymap takes, by `chord`: the Bills, Budgets, Documents or Transactions
     /// page's, the Import step's, or a Settings page that is a module's View. Returns whether it took the key.
     pub fn module_key(&self, chord: &str, cx: &mut App) -> bool {
         match self {
@@ -117,7 +118,8 @@ impl ActiveViewEntity {
             Self::Settings(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
             Self::Import(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
             Self::Budgets(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
-            Self::Dashboard(_) | Self::Documents(_) | Self::Shell(_) => false,
+            Self::Documents(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
+            Self::Dashboard(_) | Self::Shell(_) => false,
         }
     }
 

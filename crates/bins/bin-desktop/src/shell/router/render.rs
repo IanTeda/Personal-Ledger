@@ -29,7 +29,6 @@ use crate::{
     theme::{color, type_scale},
     view::{
         active::{ActiveViewEntity, ShellView},
-        documents::{self as documents_view},
         help::{self as help_view, HelpDialog},
         placeholder,
     },
@@ -247,7 +246,7 @@ impl Render for Root {
             .font_family(type_scale::FONT_FAMILY)
             .text_size(type_scale::BODY)
             .track_focus(&self.focus_handle)
-            .group(documents_view::drop_overlay::GROUP)
+            .group(documents::view::drop_overlay::GROUP)
             .on_drop(cx.listener(|this, paths: &ExternalPaths, _window, cx| {
                 this.drop_documents(paths.paths(), cx);
                 cx.notify();
@@ -378,7 +377,7 @@ impl Render for Root {
                 )
             }))
             .children(self.render_documents_dialog(&entity, cx))
-            .child(documents_view::drop_overlay::render(cx))
+            .child(documents::view::drop_overlay::render(cx))
             .children(
                 self.state
                     .dialog

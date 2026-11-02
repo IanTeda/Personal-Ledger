@@ -1,0 +1,467 @@
+//! The Documents page's View: the `lib-documents` page Presenter in a gpui Entity, which the Shell
+//! hosts as the Documents destination (`docs/ux/desktop-mockups/04-documents/`). It looks up each
+//! key the Shell passes on, as chord text, in the Documents keymap and sends the event when the
+//! Presenter has a use for it in the zone and mode showing, turns clicks into events, draws the
+//! view model (`super::render`) and keeps the Ledger read copy in line after every event, so the
+//! legacy Dialogs read what the page wrote. Each key and click is one input
+//! (`crate::input::send`), which commits what it wrote.
+//!
+//! The Library's Search is the Shell's Search mode: `/` comes in as [`DocumentsPage::start_search`]
+//! and the typed keys as [`DocumentsPage::search_key`]. The page leaves the mode as the Presenter
+//! closes the Search.
+
+use std::collections::HashSet;
+use std::path::PathBuf;
+use std::rc::Rc;
+
+use gpui::{
+    App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, ScrollStrategy, Subscription,
+    UniformListScrollHandle, Window, prelude::*,
+};
+use lib_core::{Clock, DateStyle, DocumentId};
+use lib_documents::presenter::{DocumentsPageEvent, DocumentsPagePresenter};
+use lib_documents::{
+    Document, DocumentsMode, DocumentsOutcome, LibraryScope, LibrarySort, SharedFiles,
+    SharedRepository,
+};
+use lib_ledger::Domain;
+use lib_viper::keymap::Keymap;
+
+use super::{
+    DocumentsPageProps, OnCandidateClick, OnLinkClick, OnPlainClick, OnRailClick, OnRowClick,
+    OnSortClick,
+};
+use crate::documents::router::PageRouter;
+use crate::ledger_store::{LedgerChanged, LedgerStore};
+use crate::navigation::movement::Movement;
+use crate::shell::view::statusline::PageStatus;
+use crate::view::event::{Reveal, ViewEvent, ViewMode};
+use crate::view::help::HelpGroup;
+
+impl EventEmitter<ViewEvent> for DocumentsPage {}
+
+pub struct DocumentsPage {
+    presenter: DocumentsPagePresenter,
+    ledger: Entity<LedgerStore>,
+    keymap: Keymap<DocumentsPageEvent>,
+    /// Whether the View zone has focus, which the index rail's and the list's focus rings draw
+    /// within. Handed over by the Shell as it draws the page.
+    zone_focused: bool,
+    library_scroll: UniformListScrollHandle,
+    inbox_scroll: ScrollHandle,
+    _ledger_changed: Subscription,
+}
+
+impl DocumentsPage {
+    pub fn new(
+        presenter: DocumentsPagePresenter,
+        ledger: Entity<LedgerStore>,
+        keymap: Keymap<DocumentsPageEvent>,
+        cx: &mut Context<'_, Self>,
+    ) -> Self {
+        // The rows name records from every domain a Link reaches, and the legacy Dialogs write the
+        // Documents through the Ledger: a change to any is redrawn.
+        let _ledger_changed = cx.subscribe(&ledger, |_, _, event: &LedgerChanged, cx| {
+            let reads = [
+                Domain::Accounts,
+                Domain::Bills,
+                Domain::DocumentTypes,
+                Domain::Documents,
+                Domain::Inventory,
+                Domain::Payees,
+                Domain::Transactions,
+            ];
+            if reads.iter().any(|domain| event.what.contains(domain)) {
+                cx.notify();
+            }
+        });
+        Self {
+            presenter,
+            ledger,
+            keymap,
+            zone_focused: false,
+            library_scroll: UniformListScrollHandle::new(),
+            inbox_scroll: ScrollHandle::new(),
+            _ledger_changed,
+        }
+    }
+
+    /// A key or click on the page, or the Shell telling it something: `event` as one input,
+    /// committed once it is handled.
+    pub(in crate::documents) fn send(
+        &mut self,
+        event: DocumentsPageEvent,
+        cx: &mut Context<'_, Self>,
+    ) {
+        crate::input::send(cx, |cx| self.handle(event, cx));
+    }
+
+    /// Hands `event` to the Presenter with the Desktop's Router, then brings the Ledger read copy
+    /// in line with what it wrote, the Shell's Search mode with the Presenter's Search, and the
+    /// scroll with the selection. Inside an input already, as [`Self::send`] or a Dialog's confirm.
+    fn handle(&mut self, event: DocumentsPageEvent, cx: &mut Context<'_, Self>) {
+        let searching = self.presenter.searching();
+        self.handle_quietly(event, cx);
+        match (searching, self.presenter.searching()) {
+            (false, true) => cx.emit(ViewEvent::EnterMode(ViewMode::Search)),
+            (true, false) => cx.emit(ViewEvent::ExitMode),
+            _ => {}
+        }
+    }
+
+    /// [`Self::handle`] without the Search mode: for `/`, whose mode the Shell enters itself.
+    fn handle_quietly(&mut self, event: DocumentsPageEvent, cx: &mut Context<'_, Self>) {
+        let (mode, before) = (self.presenter.mode(), self.presenter.selected());
+        let mut router = PageRouter {
+            ledger: self.ledger.clone(),
+            clock: self.clock(),
+            date_style: self.presenter.date_style(),
+            cx,
+        };
+        self.presenter.handle(event, &mut router);
+        crate::document_types::ports::refresh(&self.ledger, cx);
+        self.follow_selection(mode, before);
+        cx.notify();
+    }
+
+    /// Back to the top as the mode changes; otherwise the selected row scrolled into view, landing
+    /// at the edge it came from, as on Transactions.
+    fn follow_selection(&mut self, mode: DocumentsMode, before: usize) {
+        let at = self.presenter.selected();
+        if self.presenter.mode() != mode {
+            self.library_scroll.scroll_to_item(0, ScrollStrategy::Top);
+            self.inbox_scroll.set_offset(gpui::Point::default());
+            return;
+        }
+        match mode {
+            DocumentsMode::Library => {
+                let strategy = if at < before {
+                    ScrollStrategy::Top
+                } else {
+                    ScrollStrategy::Bottom
+                };
+                self.library_scroll.scroll_to_item(at, strategy);
+            }
+            DocumentsMode::Inbox => self.inbox_scroll.scroll_to_item(at),
+        }
+    }
+
+    fn clock(&self) -> Clock {
+        Clock::fixed(self.presenter.today())
+    }
+
+    /// A Documents Dialog the page opened closed with `outcome`, handed back by the Shell inside
+    /// the input that confirmed it.
+    pub fn dialog_landed(&mut self, outcome: DocumentsOutcome, cx: &mut Context<'_, Self>) {
+        self.handle(DocumentsPageEvent::DialogClosed(outcome), cx);
+    }
+
+    /// Files dropped anywhere on the window: into the Inbox, the page staying where it is.
+    pub fn drop_paths(&mut self, paths: &[PathBuf], cx: &mut Context<'_, Self>) {
+        let typed = paths
+            .iter()
+            .map(|path| path.display().to_string())
+            .collect();
+        self.send(DocumentsPageEvent::Drop(typed), cx);
+    }
+
+    /// The Document the selection is on, which Accept all keeps in view.
+    pub fn selected_document(&self) -> Option<Document> {
+        self.presenter.selected_document()
+    }
+
+    /// The Inbox rows set aside this session, which Accept all leaves.
+    pub fn skipped(&self) -> HashSet<DocumentId> {
+        self.presenter.skipped().clone()
+    }
+
+    /// The Display Preference the page's dates follow, which the link picker's follow too.
+    pub fn date_style(&self) -> Option<DateStyle> {
+        self.presenter.date_style()
+    }
+
+    /// The mode, scope and sort that persist across restarts.
+    pub fn persisted(&self) -> (DocumentsMode, LibraryScope, LibrarySort) {
+        self.presenter.persisted()
+    }
+
+    /// Restores the mode, scope and sort from the last run. It writes nothing, so it is no input.
+    pub fn set_persisted(
+        &mut self,
+        mode: DocumentsMode,
+        scope: LibraryScope,
+        sort: LibrarySort,
+        cx: &mut Context<'_, Self>,
+    ) {
+        self.handle(DocumentsPageEvent::Restore { mode, scope, sort }, cx);
+    }
+
+    pub(in crate::documents) fn presenter(&self) -> &DocumentsPagePresenter {
+        &self.presenter
+    }
+
+    /// Records whether the View zone has focus, as the Shell draws the page.
+    pub fn set_zone_focused(&mut self, focused: bool) {
+        self.zone_focused = focused;
+    }
+
+    /// Follows a change to `[keybindings]`.
+    pub fn set_keymaps(&mut self, config: &lib_config::KeyBindingConfig) {
+        self.keymap = lib_documents::keymap::documents_page_keymap(config);
+        self.presenter.set_keymap(self.keymap.clone());
+    }
+
+    /// Every chord the Documents keymap binds that the zone and mode showing have a use for. A key
+    /// they don't is left to the Shell; `a` in the Inbox is swallowed so it never enters Insert.
+    pub fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {
+        let Some(event) = self.keymap.event(chord) else {
+            return false;
+        };
+        if !self.presenter.takes(&event) {
+            return false;
+        }
+        self.send(event, cx);
+        true
+    }
+
+    /// A palette Command, by its keymap `command` name: the event its key sends, in the mode it
+    /// belongs to. A Command of the other mode switches to it first, in the same input.
+    pub fn module_command(&mut self, command: &str, cx: &mut Context<'_, Self>) -> bool {
+        let Some(event) = self.keymap.event_for(command) else {
+            return false;
+        };
+        let switch = event
+            .mode()
+            .filter(|mode| *mode != self.presenter.mode())
+            .map(|mode| match mode {
+                DocumentsMode::Inbox => DocumentsPageEvent::ShowInbox,
+                DocumentsMode::Library => DocumentsPageEvent::ShowLibrary,
+            });
+        crate::input::send(cx, |cx| {
+            if let Some(switch) = switch {
+                self.handle(switch, cx);
+            }
+            self.handle(event, cx);
+        });
+        true
+    }
+
+    /// Every Documents key is the keymap's.
+    pub fn key_ahead(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    /// Every Documents key is the keymap's.
+    pub fn handle_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    /// A movement the keymap doesn't bind does nothing on the page.
+    pub fn apply_movement(&mut self, _movement: Movement, _cx: &mut Context<'_, Self>) {}
+
+    /// `Esc`, innermost first: the Search (its query cleared), then a kept query, then the list
+    /// back to the index.
+    pub fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
+        if !self.presenter.takes_back() {
+            return false;
+        }
+        self.send(DocumentsPageEvent::Back, cx);
+        true
+    }
+
+    /// The Library's `/`: the Search, from either zone. Inert in the Inbox, which has none. The
+    /// Shell enters Search mode on `true`.
+    pub fn start_search(&mut self, cx: &mut Context<'_, Self>) -> bool {
+        crate::input::send(cx, |cx| {
+            self.handle_quietly(DocumentsPageEvent::StartSearch, cx)
+        });
+        self.presenter.searching()
+    }
+
+    /// Keys while the Search is open: typing narrows live, `Backspace` edits, `Enter` keeps the
+    /// query and returns to the list. `Esc` comes back as [`Self::escape`].
+    pub fn search_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+        let event = match keystroke.key.as_str() {
+            "enter" => DocumentsPageEvent::KeepSearch,
+            "backspace" => DocumentsPageEvent::SearchBackspace,
+            _ => {
+                let modifiers = &keystroke.modifiers;
+                if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
+                    return false;
+                }
+                let mut chars = keystroke.key_char.as_deref().unwrap_or_default().chars();
+                match (chars.next(), chars.next()) {
+                    (Some(ch), None) if !ch.is_control() => DocumentsPageEvent::SearchType(ch),
+                    _ => return false,
+                }
+            }
+        };
+        self.send(event, cx);
+        true
+    }
+
+    /// The page has just become the destination: `g f` and the palette land on the list. A Search
+    /// left open does not come back with it.
+    pub fn on_enter(&mut self, cx: &mut Context<'_, Self>) {
+        self.send(DocumentsPageEvent::Entered, cx);
+    }
+
+    /// No other View hands a record to Documents yet.
+    pub fn reveal(&mut self, _reveal: Reveal, _cx: &mut Context<'_, Self>) {}
+
+    /// The calendar month turned while the Desktop was open: inside the day poll's input.
+    pub fn month_turned(&mut self, cx: &mut Context<'_, Self>) {
+        self.handle(DocumentsPageEvent::MonthTurned, cx);
+    }
+
+    /// Follows a change to the Display Preferences.
+    pub fn set_display(&mut self, date_style: Option<DateStyle>, cx: &mut Context<'_, Self>) {
+        self.send(DocumentsPageEvent::SetDateStyle(date_style), cx);
+    }
+
+    /// The status line's legend for the zone and mode, and the stored size.
+    pub fn page_status(&self, _cx: &App) -> Option<PageStatus> {
+        let view = self.presenter.view_model();
+        Some(PageStatus {
+            hints: view.hints,
+            right: view.stored,
+        })
+    }
+
+    /// The `?` cheat-sheet's Documents group: the index keys, then the mode's, as the keymap binds
+    /// them.
+    pub fn help_group(&self, _cx: &App) -> Option<HelpGroup> {
+        let keys = self
+            .presenter
+            .help()
+            .into_iter()
+            .map(|hint| (hint.action, hint.chord))
+            .collect();
+        Some(HelpGroup {
+            heading: crate::msg::desktop_help_documents_label(),
+            keys,
+        })
+    }
+}
+
+/// The Documents module's entry point: its page, on the Documents store (`documents`), the other
+/// domains' reads (`reads`) and the disk (`files`), which the Shell hosts as the Documents
+/// destination. `clock` reads the day the Key Dates are banded against.
+pub fn documents_page(
+    documents: SharedRepository,
+    files: SharedFiles,
+    ledger: Entity<LedgerStore>,
+    keymap: Keymap<DocumentsPageEvent>,
+    clock: Clock,
+    cx: &mut App,
+) -> Entity<DocumentsPage> {
+    let reads = Rc::new(ledger.read(cx).document_reads());
+    let presenter = DocumentsPagePresenter::new(
+        documents,
+        reads,
+        files,
+        clock,
+        keymap.clone(),
+        crate::shell::view::statusline::STUB_LEDGER_FILE.to_string(),
+    );
+    cx.new(|cx| DocumentsPage::new(presenter, ledger, keymap, cx))
+}
+
+/// A click that sends `event` to the page.
+fn on_event(entity: &Entity<DocumentsPage>, event: DocumentsPageEvent) -> OnPlainClick {
+    let entity = entity.clone();
+    Rc::new(move |_window, cx| {
+        let event = event.clone();
+        entity.update(cx, |page, cx| page.send(event, cx));
+    })
+}
+
+impl Render for DocumentsPage {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+        let entity = cx.entity();
+        let with = |make: fn(usize) -> DocumentsPageEvent| -> OnRowClick {
+            let entity = entity.clone();
+            Rc::new(move |index, _window, cx| {
+                entity.update(cx, |page, cx| page.send(make(index), cx));
+            })
+        };
+        let linked = |make: fn(lib_documents::DocumentLink) -> DocumentsPageEvent| -> OnLinkClick {
+            let entity = entity.clone();
+            Rc::new(move |link, _window, cx| {
+                entity.update(cx, |page, cx| page.send(make(link), cx));
+            })
+        };
+        let on_rail_click: OnRailClick = {
+            let entity = entity.clone();
+            Rc::new(move |entry, _window, cx| {
+                entity.update(cx, |page, cx| {
+                    page.send(DocumentsPageEvent::ClickRail(entry), cx);
+                });
+            })
+        };
+        let on_sort_click: OnSortClick = {
+            let entity = entity.clone();
+            Rc::new(move |sort, _window, cx| {
+                entity.update(cx, |page, cx| {
+                    page.send(DocumentsPageEvent::ClickSort(sort), cx);
+                });
+            })
+        };
+        let on_accept_candidate_click: OnCandidateClick = {
+            let entity = entity.clone();
+            Rc::new(move |transaction_id, _window, cx| {
+                entity.update(cx, |page, cx| {
+                    page.send(DocumentsPageEvent::AcceptCandidate(transaction_id), cx);
+                });
+            })
+        };
+        // A click on the Search box is `/`: the page asks for Search mode itself, since no key
+        // went through the Shell.
+        let on_search_click: OnPlainClick = {
+            let entity = entity.clone();
+            Rc::new(move |_window, cx| {
+                entity.update(cx, |page, cx| {
+                    page.send(DocumentsPageEvent::StartSearch, cx);
+                });
+            })
+        };
+        let view = self.presenter.view_model();
+        let props = DocumentsPageProps {
+            mode: view.mode,
+            focus: view.focus,
+            title: view.title,
+            subline: view.subline,
+            rail: view.rail,
+            rail_selected: view.rail_selected,
+            rail_footer: view.stored,
+            labels: view.labels,
+            library: view.library.map(|library| {
+                let rows = Rc::new(library.rows.clone());
+                (library, rows)
+            }),
+            inbox: view.inbox,
+            list_focused: false,
+            library_scroll: self.library_scroll.clone(),
+            inbox_scroll: self.inbox_scroll.clone(),
+            on_rail_click,
+            on_row_click: with(DocumentsPageEvent::ClickRow),
+            on_sort_click,
+            on_search_click,
+            on_add_click: on_event(&entity, DocumentsPageEvent::Add),
+            on_import_click: on_event(&entity, DocumentsPageEvent::Import),
+            on_open_click: on_event(&entity, DocumentsPageEvent::Open),
+            on_show_click: on_event(&entity, DocumentsPageEvent::ShowInFolder),
+            on_link_click: linked(DocumentsPageEvent::Reveal),
+            on_unlink_click: linked(DocumentsPageEvent::Unlink),
+            on_add_link_click: on_event(&entity, DocumentsPageEvent::OpenPicker),
+            on_watched_click: on_event(&entity, DocumentsPageEvent::WatchedFolder),
+            on_accept_all_click: on_event(&entity, DocumentsPageEvent::AcceptAll),
+            on_accept_row_click: with(DocumentsPageEvent::ClickAccept),
+            on_accept_next_click: on_event(&entity, DocumentsPageEvent::Accept),
+            on_accept_candidate_click,
+            on_link_elsewhere_click: on_event(&entity, DocumentsPageEvent::OpenPicker),
+            on_skip_click: on_event(&entity, DocumentsPageEvent::Skip),
+        };
+        super::render(self.zone_focused, props, cx)
+    }
+}

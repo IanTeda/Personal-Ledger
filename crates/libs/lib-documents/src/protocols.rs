@@ -15,11 +15,13 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use chrono::NaiveDate;
-use lib_core::{AccountId, BillPlanId, DocumentTypeId, ItemId, Money, PayeeId, TransactionId};
+use lib_core::{
+    AccountId, BillPlanId, DocumentId, DocumentTypeId, ItemId, Money, PayeeId, TransactionId,
+};
 use lib_toast::Notify;
 
-use crate::Document;
 use crate::types::DocumentTypeRow;
+use crate::{Document, DocumentLink, DocumentType, FilingUndo, LibraryScope};
 
 /// The Documents and Document Types on the Ledger. A Document is never deleted (#959), so there is
 /// no Document delete.
@@ -91,6 +93,71 @@ pub trait DocumentTypesRouter: Notify {
     /// Closes the open Document Types Dialog. `outcome` is what its confirm did, `None` when it was
     /// cancelled; the Client hands it to the page as `DocumentTypesPageEvent::DialogClosed`.
     fn close_dialog(&mut self, outcome: Option<DocumentTypesOutcome>);
+}
+
+/// The other domains as the Documents page reads them, shared with the Client that answers them.
+pub type SharedReads = Rc<dyn DocumentReads>;
+
+/// The file system as the Documents page reaches it, shared with the Client that implements it.
+pub type SharedFiles = Rc<dyn DocumentFiles>;
+
+/// A Documents Dialog, as the page asks the Router to open it. The Dialogs aren't Presenters yet
+/// (#968): the Client builds each from what is named here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DocumentsDialog {
+    /// `+ Add`, its Document Type defaulting to the Library's `scope`.
+    Add(LibraryScope),
+    /// Edit Filed Document `id`.
+    Edit(DocumentId),
+    /// `Import…`.
+    Import,
+    /// Edit Unfiled Document `id`'s Extracted Facts.
+    Facts(DocumentId),
+    /// The count-first confirm of Accept all strong matches, with how many it files.
+    AcceptAll(usize),
+    /// The link picker on Filed Document `id`, toggling a Link.
+    Link(DocumentId),
+    /// The link picker on Unfiled Document `id`, filing it by hand.
+    File(DocumentId),
+    /// The link picker over Filed Document `id`'s Links, following one.
+    Follow(DocumentId),
+}
+
+/// What a confirmed Documents Dialog did, handed to the page when it closes.
+#[derive(Debug, Clone, PartialEq)]
+pub enum DocumentsOutcome {
+    /// Added or saved Document `id`: the Library shows it.
+    Shown(DocumentId),
+    /// Imported into the Inbox, which shows.
+    Imported,
+    /// Saved Document `id`'s Extracted Facts: its skip is cleared and it keeps focus.
+    FactsSaved(DocumentId),
+    /// Accept all filed `batch`, the action `u` reverses.
+    AcceptedAll(FilingUndo),
+    /// The picker chose a Document Type and at most one Link to file Document `id` under.
+    FileByHand {
+        id: DocumentId,
+        doc_type: DocumentType,
+        link: Option<DocumentLink>,
+    },
+    /// The picker chose a Link to follow.
+    Follow(DocumentLink),
+}
+
+/// Navigation out of the Documents page's Presenter, implemented by each Client and passed into
+/// each `handle` call. A status-line message or a Toast goes to the Shell through [`Notify`]
+/// (ADR-0048).
+pub trait DocumentsRouter: Notify {
+    /// Shows the record `link` names, selected, in the View that owns it: a Transaction, an
+    /// Account, a Payee, a Bill Plan or an Inventory Item.
+    fn reveal(&mut self, link: DocumentLink);
+
+    /// Opens `dialog`. Returns whether it opened.
+    fn open_dialog(&mut self, dialog: DocumentsDialog) -> bool;
+
+    /// Hands the file at `path`, which exists, to the platform: opened in its application, or
+    /// shown in its folder when `in_folder`.
+    fn open_file(&mut self, path: &Path, in_folder: bool);
 }
 
 /// [`DocumentRepository::move_document_type`] over a list: moves `id` to `to`, clamped to the end.

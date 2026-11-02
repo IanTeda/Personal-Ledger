@@ -411,7 +411,7 @@ pub fn render_facts(props: FactsProps<'_>, cx: &App) -> AnyElement {
     let fields = vec![
         text_field(
             "facts-merchant",
-            label(crate::msg::desktop_documents_fact_merchant()),
+            label(lib_documents::msg::documents_fact_merchant()),
             form.merchant.text(),
             "",
             focused(FactsField::Merchant),
@@ -435,7 +435,7 @@ pub fn render_facts(props: FactsProps<'_>, cx: &App) -> AnyElement {
             with_error(
                 text_field(
                     "facts-total",
-                    label(crate::msg::desktop_documents_fact_total()),
+                    label(lib_documents::msg::documents_fact_total()),
                     form.total.text(),
                     "",
                     focused(FactsField::Total),

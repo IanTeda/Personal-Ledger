@@ -4,9 +4,9 @@
 
 use crate::documents::form::DocumentsDialog;
 use crate::documents::picker::Purpose;
-use crate::shell::router::Root;
 #[doc(hidden)]
-pub use crate::view::documents::snapshot::{DocumentsSnapshot, PickerSnapshot};
+pub use crate::documents::view::snapshot::{DocumentsSnapshot, PickerSnapshot};
+use crate::shell::router::Root;
 
 impl Root {
     /// The Documents page for a test, as its Entity builds it, plus the open Documents dialog.
@@ -40,8 +40,8 @@ impl Root {
                 kind: state.kind.label(),
                 query: state.query.text().to_string(),
                 selected: state.selected,
-                rows: view
-                    .picker_rows(state, cx)
+                rows: self
+                    .documents_picker_rows(state, cx)
                     .into_iter()
                     .map(|row| (row.kind, row.text, row.checked, row.link.is_some()))
                     .collect(),

@@ -2,36 +2,35 @@
 //! (header, toolbar, count line and rows) and the 300px detail pane. The Library (4a) is drawn
 //! here and the Inbox (4b) in `inbox`, each filling the list and detail panes.
 //!
-//! [`state::DocumentsView`] renders the page itself (ADR-0037): every action is a call back into the
-//! Documents Entity, so keys and clicks reach the same methods. The detail pane is never focused:
-//! its actions are list keys (`enter`, `o`, `l`).
+//! [`page::DocumentsPage`] holds the `lib-documents` page Presenter and draws its view model through
+//! these functions: every click is an event sent to the Presenter, as its key is. The detail pane is
+//! never focused: its actions are list keys (`enter`, `o`, `l`). The legacy Dialogs are drawn by
+//! `dialogs`, the window's drop overlay by `drop_overlay`.
 
 pub mod dialogs;
 pub mod drop_overlay;
 pub(crate) mod hints;
 mod inbox;
+pub mod page;
 pub mod snapshot;
-pub mod state;
 
-use crate::navigation::nav::NounLabel;
-use lib_core::TransactionId;
 use std::{ops::Range, rc::Rc};
 
 use gpui::{
-    AnyElement, App, Context, Pixels, ScrollHandle, SharedString, UniformListScrollHandle, Window,
-    div, prelude::*, px, uniform_list,
+    AnyElement, App, Pixels, ScrollHandle, SharedString, UniformListScrollHandle, Window, div,
+    prelude::*, px, uniform_list,
 };
+use lib_core::TransactionId;
+use lib_documents::presenter::library::{
+    Chip, ChipKind, DetailView, Fact, LinkRow, RailRow, RowTail, RowView,
+};
+use lib_documents::presenter::{DocumentsFocus, InboxViewModel, LibraryViewModel, PageLabels};
 use lib_locale::format::upper;
 
-use crate::documents::model::{
-    Chip, ChipKind, DetailView, Fact, InboxDetailView, InboxRowView, LinkRow, RailRow, RowTail,
-    RowView,
-};
 use crate::{
-    documents::{self, DocumentLink, DocumentsMode, LibraryScope, LibrarySort, RailEntry, model},
+    documents::{DocumentLink, DocumentsMode, LibrarySort, RailEntry},
     theme::color,
 };
-use state::DocumentsView;
 
 pub type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
 pub type OnRailClick = Rc<dyn Fn(RailEntry, &mut Window, &mut App)>;
@@ -44,39 +43,22 @@ pub type OnCandidateClick = Rc<dyn Fn(TransactionId, &mut Window, &mut App)>;
 const RAIL_WIDTH: Pixels = px(190.0);
 const DETAIL_WIDTH: Pixels = px(300.0);
 
-/// Whether keyboard focus is on the index rail or the list, while the View zone has it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum DocumentsFocus {
-    Index,
-    #[default]
-    List,
-}
-
 pub struct DocumentsPageProps {
     pub mode: DocumentsMode,
     pub focus: DocumentsFocus,
+    pub title: String,
+    pub subline: String,
     pub rail: Vec<RailRow>,
     /// The rail row the scope or mode selects.
     pub rail_selected: RailEntry,
     /// The stored size footer, already formatted.
     pub rail_footer: String,
-    pub subline: String,
-    pub query: String,
-    pub searching: bool,
-    pub sort: LibrarySort,
-    pub count_line: String,
-    /// Shared with the `uniform_list` that builds the rows in view.
-    pub rows: Rc<Vec<RowView>>,
-    pub selected: usize,
-    pub detail: Option<DetailView>,
-    /// The Inbox's rows (newest first, Skipped last), the focused index and its detail.
-    pub inbox_rows: Vec<InboxRowView>,
-    pub inbox_selected: usize,
-    pub inbox_detail: Option<InboxDetailView>,
-    /// How many Documents have a Strong Suggested Link: the Accept all button's count.
-    pub inbox_strong: usize,
-    /// The key strip under the Inbox detail: each key and what it does.
-    pub inbox_hints: Vec<(&'static str, String)>,
+    pub labels: PageLabels,
+    /// `Some` while the Library shows; its rows are shared with the `uniform_list` that builds
+    /// the rows in view.
+    pub library: Option<(LibraryViewModel, Rc<Vec<RowView>>)>,
+    /// `Some` while the Inbox shows.
+    pub inbox: Option<InboxViewModel>,
     /// Whether the list zone has keyboard focus, which draws the focused Inbox row's outline.
     pub list_focused: bool,
     pub library_scroll: UniformListScrollHandle,
@@ -105,7 +87,7 @@ pub struct DocumentsPageProps {
 
 /// The whole destination: rail, list pane and detail pane, side by side. `focused` is whether the
 /// View zone has focus; the focus ring is drawn on the rail or the list within it.
-fn render(focused: bool, props: DocumentsPageProps, cx: &App) -> AnyElement {
+pub(super) fn render(focused: bool, props: DocumentsPageProps, cx: &App) -> AnyElement {
     let list_focused = focused && props.focus == DocumentsFocus::List;
     let index_focused = focused && props.focus == DocumentsFocus::Index;
     let props = DocumentsPageProps {
@@ -134,11 +116,8 @@ fn render(focused: bool, props: DocumentsPageProps, cx: &App) -> AnyElement {
 
 fn index_rail(props: &DocumentsPageProps, focused: bool, cx: &App) -> impl IntoElement {
     let mut column = div().flex_1().min_h(px(0.0)).flex().flex_col().py(px(10.0));
-    for (index, row) in props.rail.iter().enumerate() {
-        // The section labels sit above the first Type and the first Financial Year.
-        if let RailEntry::Scope(scope) = row.entry
-            && let Some(label) = section_label(scope, index, &props.rail)
-        {
+    for row in &props.rail {
+        if let Some(label) = row.section.clone() {
             column = column.child(rail_label(label, cx));
         }
         column = column.child(rail_row(
@@ -173,30 +152,6 @@ fn index_rail(props: &DocumentsPageProps, focused: bool, cx: &App) -> impl IntoE
                 .text_color(color::faint_text(cx))
                 .child(props.rail_footer.clone()),
         )
-}
-
-/// The caps label that opens a section, if `scope` is its first row.
-fn section_label(scope: LibraryScope, index: usize, rows: &[RailRow]) -> Option<String> {
-    let previous = index.checked_sub(1).and_then(|at| rows.get(at));
-    match scope {
-        LibraryScope::Type(_)
-            if !matches!(
-                previous.map(|row| row.entry),
-                Some(RailEntry::Scope(LibraryScope::Type(_)))
-            ) =>
-        {
-            Some(crate::msg::desktop_documents_rail_type())
-        }
-        LibraryScope::Year(_)
-            if !matches!(
-                previous.map(|row| row.entry),
-                Some(RailEntry::Scope(LibraryScope::Year(_)))
-            ) =>
-        {
-            Some(crate::msg::desktop_documents_rail_year())
-        }
-        _ => None,
-    }
 }
 
 fn rail_label(label: String, cx: &App) -> impl IntoElement {
@@ -256,7 +211,6 @@ fn rail_row(row: &RailRow, active: bool, on_click: OnRailClick, cx: &App) -> imp
 // ---------------------------------------------------------------------------------------------
 
 fn list_pane(props: &DocumentsPageProps, focused: bool, cx: &App) -> impl IntoElement {
-    let library = props.mode == DocumentsMode::Library;
     div()
         .flex_1()
         .min_w(px(0.0))
@@ -268,8 +222,8 @@ fn list_pane(props: &DocumentsPageProps, focused: bool, cx: &App) -> impl IntoEl
             this.border_l(px(2.0)).border_color(color::foreground(cx))
         })
         .child(list_header(props, cx))
-        .when(library, |this| {
-            this.child(toolbar(props, cx))
+        .when_some(props.library.as_ref(), |this, (library, rows)| {
+            this.child(toolbar(props, library, cx))
                 .child(
                     div()
                         .px(px(14.0))
@@ -278,20 +232,16 @@ fn list_pane(props: &DocumentsPageProps, focused: bool, cx: &App) -> impl IntoEl
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
                         .text_size(px(10.0))
                         .text_color(color::faint_text(cx))
-                        .child(props.count_line.clone()),
+                        .child(library.count_line.clone()),
                 )
-                .child(rows(props, cx))
+                .child(self::rows(props, library, rows.clone(), cx))
         })
-        .when(!library, |this| this.child(inbox::list_body(props, cx)))
+        .when_some(props.inbox.as_ref(), |this, inbox| {
+            this.child(inbox::list_body(props, inbox, cx))
+        })
 }
 
 fn list_header(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
-    let library = props.mode == DocumentsMode::Library;
-    let title = if library {
-        crate::navigation::nav::Noun::Documents.label()
-    } else {
-        crate::msg::desktop_documents_inbox_title()
-    };
     div()
         .flex_none()
         .flex()
@@ -314,7 +264,7 @@ fn list_header(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
                         .text_size(px(28.0))
                         .line_height(gpui::relative(1.1))
                         .mb(px(4.0))
-                        .child(title),
+                        .child(props.title.clone()),
                 )
                 .child(
                     div()
@@ -323,25 +273,24 @@ fn list_header(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
                         .child(props.subline.clone()),
                 ),
         )
-        .children(if library {
-            vec![
+        .children(match props.inbox.as_ref() {
+            None => vec![
                 secondary_button(
                     "documents-import",
-                    crate::msg::desktop_documents_import_button(),
+                    props.labels.import.clone(),
                     props.on_import_click.clone(),
                     cx,
                 )
                 .into_any_element(),
                 primary_button(
                     "documents-add",
-                    crate::msg::desktop_documents_add_button(),
+                    props.labels.add.clone(),
                     props.on_add_click.clone(),
                     cx,
                 )
                 .into_any_element(),
-            ]
-        } else {
-            inbox::header_buttons(props, cx).into()
+            ],
+            Some(inbox) => inbox::header_buttons(props, inbox, cx).into(),
         })
 }
 
@@ -397,7 +346,7 @@ fn secondary_button(
         .child(label)
 }
 
-fn toolbar(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
+fn toolbar(props: &DocumentsPageProps, library: &LibraryViewModel, cx: &App) -> impl IntoElement {
     div()
         .flex_none()
         .flex()
@@ -407,23 +356,27 @@ fn toolbar(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
         .py(px(10.0))
         .border_b(px(1.0))
         .border_color(color::border(cx))
-        .child(search_box(props, cx))
-        .child(sort_control(props, cx))
+        .child(search_box(props, library, cx))
+        .child(sort_control(props, library, cx))
 }
 
 /// The search input (30px, 12.5px): the placeholder, or the text so far with a caret and an accent
 /// border while search mode is active.
-fn search_box(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
+fn search_box(
+    props: &DocumentsPageProps,
+    library: &LibraryViewModel,
+    cx: &App,
+) -> impl IntoElement {
     let on_click = props.on_search_click.clone();
-    let caret = if props.searching { "\u{2502}" } else { "" };
-    let (text, text_color) = if props.query.is_empty() && !props.searching {
+    let caret = if library.searching { "\u{2502}" } else { "" };
+    let (text, text_color) = if library.query.is_empty() && !library.searching {
         (
-            SharedString::from(crate::msg::desktop_documents_search_placeholder()),
+            SharedString::from(props.labels.search_placeholder.clone()),
             color::faint_text(cx),
         )
     } else {
         (
-            SharedString::from(format!("{}{caret}", props.query)),
+            SharedString::from(format!("{}{caret}", library.query)),
             color::foreground(cx),
         )
     };
@@ -437,7 +390,7 @@ fn search_box(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
         .h(px(30.0))
         .px(px(10.0))
         .border_1()
-        .border_color(if props.searching {
+        .border_color(if library.searching {
             color::accent(cx)
         } else {
             color::border(cx)
@@ -449,10 +402,14 @@ fn search_box(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
         .child(text)
 }
 
-fn sort_control(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
+fn sort_control(
+    props: &DocumentsPageProps,
+    library: &LibraryViewModel,
+    cx: &App,
+) -> impl IntoElement {
     let option = |sort: LibrarySort, label: String| {
         let on_click = props.on_sort_click.clone();
-        let active = props.sort == sort;
+        let active = library.sort == sort;
         div()
             .id(SharedString::from(format!("documents-sort-{sort:?}")))
             .cursor_pointer()
@@ -472,26 +429,20 @@ fn sort_control(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
         .border_1()
         .border_color(color::border(cx))
         .text_size(px(12.0))
-        .child(option(
-            LibrarySort::Newest,
-            crate::msg::desktop_documents_sort_newest(),
-        ))
-        .child(option(
-            LibrarySort::Expiring,
-            crate::msg::desktop_documents_sort_expiring(),
-        ))
+        .child(option(LibrarySort::Newest, props.labels.newest.clone()))
+        .child(option(LibrarySort::Expiring, props.labels.expiring.clone()))
 }
 
 /// The Library's rows, as a `uniform_list` so only the rows in view are built: drawing all of a
 /// large Library on every keystroke made each one cost a full layout of every row. Every row is
 /// the file glyph's height, which is why the chips keep to one line.
-fn rows(props: &DocumentsPageProps, cx: &App) -> AnyElement {
-    if props.rows.is_empty() {
-        let note = if props.query.trim().is_empty() {
-            crate::msg::desktop_documents_empty_scope()
-        } else {
-            crate::msg::desktop_documents_empty_search()
-        };
+fn rows(
+    props: &DocumentsPageProps,
+    library: &LibraryViewModel,
+    rows: Rc<Vec<RowView>>,
+    cx: &App,
+) -> AnyElement {
+    if rows.is_empty() {
         return div()
             .flex_1()
             .min_h(px(0.0))
@@ -503,11 +454,11 @@ fn rows(props: &DocumentsPageProps, cx: &App) -> AnyElement {
                     .px(px(14.0))
                     .py(px(16.0))
                     .text_color(color::muted(cx))
-                    .child(note)
-                    .when(props.query.trim().is_empty(), |this| {
+                    .child(library.empty.clone())
+                    .when(library.empty_offers_add, |this| {
                         this.child(secondary_button(
                             "documents-empty-add",
-                            crate::msg::desktop_documents_add_button(),
+                            props.labels.add.clone(),
                             props.on_add_click.clone(),
                             cx,
                         ))
@@ -515,8 +466,8 @@ fn rows(props: &DocumentsPageProps, cx: &App) -> AnyElement {
             )
             .into_any_element();
     }
-    let rows = props.rows.clone();
-    let selected = props.selected;
+    let selected = library.selected;
+    let not_linked = props.labels.not_linked.clone();
     let on_click = props.on_row_click.clone();
     uniform_list(
         "documents-rows",
@@ -524,8 +475,15 @@ fn rows(props: &DocumentsPageProps, cx: &App) -> AnyElement {
         move |range: Range<usize>, _window: &mut Window, cx: &mut App| {
             range
                 .map(|index| {
-                    document_row(&rows[index], index == selected, index, on_click.clone(), cx)
-                        .into_any_element()
+                    document_row(
+                        &rows[index],
+                        index == selected,
+                        index,
+                        &not_linked,
+                        on_click.clone(),
+                        cx,
+                    )
+                    .into_any_element()
                 })
                 .collect::<Vec<_>>()
         },
@@ -540,6 +498,7 @@ fn document_row(
     row: &RowView,
     selected: bool,
     index: usize,
+    not_linked: &str,
     on_click: OnRowClick,
     cx: &App,
 ) -> impl IntoElement {
@@ -579,7 +538,7 @@ fn document_row(
                         .truncate()
                         .child(row.title.clone()),
                 )
-                .child(chips(&row.chips, secondary, selected, cx)),
+                .child(chips(&row.chips, secondary, selected, not_linked, cx)),
         )
         .child(
             div()
@@ -617,12 +576,18 @@ fn file_glyph(extension: &'static str, ink: gpui::Rgba) -> impl IntoElement {
         .child(extension)
 }
 
-fn chips(chips: &[Chip], ink: gpui::Rgba, selected: bool, cx: &App) -> impl IntoElement {
+fn chips(
+    chips: &[Chip],
+    ink: gpui::Rgba,
+    selected: bool,
+    not_linked: &str,
+    cx: &App,
+) -> impl IntoElement {
     if chips.is_empty() {
         return div()
             .text_size(px(11.0))
             .text_color(if selected { ink } else { color::faint_text(cx) })
-            .child(crate::msg::desktop_documents_not_linked())
+            .child(SharedString::from(not_linked.to_string()))
             .into_any_element();
     }
     div()
@@ -694,7 +659,11 @@ fn detail_pane(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
         .bg(color::chrome(cx))
         .border_l(px(2.0))
         .border_color(color::structural_rule(cx));
-    let Some(detail) = props.detail.as_ref() else {
+    let Some(detail) = props
+        .library
+        .as_ref()
+        .and_then(|(library, _)| library.detail.as_ref())
+    else {
         return pane;
     };
     pane.child(preview(detail.extension, cx))
@@ -820,7 +789,7 @@ fn linked_to(props: &DocumentsPageProps, detail: &DetailView, cx: &App) -> impl 
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_size(px(10.0))
                 .text_color(color::faint_text(cx))
-                .child(upper(&crate::msg::desktop_documents_linked_to())),
+                .child(upper(&props.labels.linked_to)),
         )
         .children(detail.links.iter().enumerate().map(|(index, link)| {
             link_row(
@@ -838,7 +807,7 @@ fn linked_to(props: &DocumentsPageProps, detail: &DetailView, cx: &App) -> impl 
                 .text_size(px(11.5))
                 .text_color(color::muted(cx))
                 .on_click(move |_event, window, cx| on_add_link(window, cx))
-                .child(crate::msg::desktop_documents_link_add()),
+                .child(props.labels.link_add.clone()),
         )
 }
 
@@ -920,7 +889,7 @@ fn detail_footer(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .hover(move |style| style.bg(hover))
                 .on_click(move |_event, window, cx| on_open(window, cx))
-                .child(crate::msg::desktop_documents_open()),
+                .child(props.labels.open.clone()),
         )
         .child(
             div()
@@ -935,137 +904,6 @@ fn detail_footer(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
                 .border_color(color::border(cx))
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .on_click(move |_event, window, cx| on_show(window, cx))
-                .child(crate::msg::desktop_documents_show_in_folder()),
+                .child(props.labels.show_in_folder.clone()),
         )
-}
-
-impl Render for DocumentsView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let entity = cx.entity();
-        let plain = |act: fn(&mut DocumentsView, &mut Context<'_, DocumentsView>)| -> OnPlainClick {
-            let entity = entity.clone();
-            Rc::new(move |_window, cx| entity.update(cx, act))
-        };
-        let indexed =
-            |act: fn(&mut DocumentsView, usize, &mut Context<'_, DocumentsView>)| -> OnRowClick {
-                let entity = entity.clone();
-                Rc::new(move |index, _window, cx| {
-                    entity.update(cx, |view, cx| act(view, index, cx))
-                })
-            };
-        let linked = |act: fn(
-            &mut DocumentsView,
-            DocumentLink,
-            &mut Context<'_, DocumentsView>,
-        )|
-         -> OnLinkClick {
-            let entity = entity.clone();
-            Rc::new(move |link, _window, cx| entity.update(cx, |view, cx| act(view, link, cx)))
-        };
-        let on_rail_click: OnRailClick = {
-            let entity = entity.clone();
-            Rc::new(move |entry, _window, cx| {
-                entity.update(cx, |view, cx| view.click_rail(entry, cx))
-            })
-        };
-        let on_sort_click: OnSortClick = {
-            let entity = entity.clone();
-            Rc::new(move |sort, _window, cx| {
-                entity.update(cx, |view, cx| view.click_sort(sort, cx))
-            })
-        };
-        let on_accept_candidate_click: OnCandidateClick = {
-            let entity = entity.clone();
-            Rc::new(move |transaction_id, _window, cx| {
-                entity.update(cx, |view, cx| view.click_candidate(transaction_id, cx));
-            })
-        };
-
-        let cx: &App = cx;
-        let state = &self.state;
-        let lookups = self.lookups(cx);
-        let all = self.documents(cx);
-        let rows = self.library_rows(cx);
-        let selected = state.selected.min(rows.len().saturating_sub(1));
-        let total = documents::scope_count(self.types(cx), all, LibraryScope::All);
-        let count_line = crate::msg::desktop_documents_count_line(
-            &rows.len().to_string(),
-            &total.to_string(),
-            &documents::need_review_count(self.types(cx), &rows, self.today).to_string(),
-        );
-        let detail = rows
-            .get(selected)
-            .filter(|_| state.mode == DocumentsMode::Library)
-            .map(|document| model::detail(document, &lookups));
-        let row_views: Vec<_> = rows
-            .iter()
-            .map(|document| model::row(document, &lookups))
-            .collect();
-        let inbox = self.inbox_rows(cx);
-        let inbox_selected = self.inbox_at(inbox.len());
-        let inbox_views: Vec<_> = inbox
-            .iter()
-            .map(|document| {
-                let skipped = state.skipped.contains(&document.id);
-                model::inbox_row(document, all, &lookups, skipped)
-            })
-            .collect();
-        let inbox_detail = inbox
-            .get(inbox_selected)
-            .filter(|_| state.mode == DocumentsMode::Inbox)
-            .map(|document| model::inbox_detail(document, all, &lookups));
-        let props = DocumentsPageProps {
-            mode: state.mode,
-            focus: state.focus,
-            rail: model::rail_rows(self.types(cx), all, self.today),
-            rail_selected: self.rail_selected(),
-            rail_footer: self.stored_text(cx),
-            subline: match state.mode {
-                DocumentsMode::Library => {
-                    crate::msg::desktop_documents_subline(i64::try_from(total).unwrap_or(i64::MAX))
-                }
-                DocumentsMode::Inbox => crate::msg::desktop_documents_inbox_subline(
-                    i64::try_from(documents::inbox_count(all)).unwrap_or(i64::MAX),
-                ),
-            },
-            query: state.query.clone(),
-            searching: self.searching,
-            sort: state.sort,
-            count_line,
-            rows: Rc::new(row_views),
-            selected,
-            detail,
-            inbox_rows: inbox_views,
-            inbox_selected,
-            inbox_detail,
-            inbox_strong: documents::strong_count(
-                all,
-                &lookups.records.transactions,
-                &lookups.records.payees,
-            ),
-            inbox_hints: hints::inbox_hints(),
-            list_focused: false,
-            library_scroll: state.library_scroll.clone(),
-            inbox_scroll: state.inbox_scroll.clone(),
-            on_rail_click,
-            on_row_click: indexed(DocumentsView::click_row),
-            on_sort_click,
-            on_search_click: plain(DocumentsView::click_search),
-            on_add_click: plain(DocumentsView::open_add),
-            on_import_click: plain(DocumentsView::open_import),
-            on_open_click: plain(|view, cx| view.open_selected(false, cx)),
-            on_show_click: plain(|view, cx| view.open_selected(true, cx)),
-            on_link_click: linked(DocumentsView::goto_link),
-            on_unlink_click: linked(DocumentsView::unlink),
-            on_add_link_click: plain(DocumentsView::link_picker),
-            on_watched_click: plain(DocumentsView::watched_folder),
-            on_accept_all_click: plain(DocumentsView::open_accept_all),
-            on_accept_row_click: indexed(DocumentsView::click_accept_row),
-            on_accept_next_click: plain(DocumentsView::accept_focused),
-            on_accept_candidate_click,
-            on_link_elsewhere_click: plain(DocumentsView::link_picker),
-            on_skip_click: plain(DocumentsView::skip_focused),
-        };
-        render(self.zone_focused, props, cx)
-    }
 }

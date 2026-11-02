@@ -1,6 +1,6 @@
 //! In-memory ports for tests: [`InMemoryDocuments`], the Documents repository over plain lists,
 //! [`InMemoryFiles`], a file system of the files it is given, and [`LinkRecords`] answering every
-//! read port from its lists.
+//! read port from its lists, and Routers that record what each Presenter asked.
 
 use std::{
     collections::HashMap,
@@ -14,7 +14,8 @@ use crate::protocols::{
     DocumentAccount, DocumentAccounts, DocumentBillPlan, DocumentBillPlans, DocumentFiles,
     DocumentItem, DocumentItems, DocumentPayee, DocumentPayees, DocumentRepository,
     DocumentTransaction, DocumentTransactions, DocumentTypesDialog, DocumentTypesOutcome,
-    DocumentTypesRouter, LinkRecords, move_type_to, resolve_typed,
+    DocumentTypesRouter, DocumentsDialog, DocumentsRouter, LinkRecords, move_type_to,
+    resolve_typed,
 };
 use crate::types::DocumentTypeRow;
 use crate::{Document, DocumentLink};
@@ -177,5 +178,52 @@ impl DocumentTypesRouter for RecordingRouter {
 impl Notify for RecordingRouter {
     fn notify(&mut self, notice: Notice) {
         self.calls.push(RouterCall::Notice(notice));
+    }
+}
+
+/// A Documents page Router that does nothing but record each call, in order.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct RecordingDocumentsRouter {
+    pub calls: Vec<DocumentsCall>,
+}
+
+/// What a [`RecordingDocumentsRouter`] was asked.
+#[derive(Debug, Clone, PartialEq)]
+pub enum DocumentsCall {
+    Reveal(DocumentLink),
+    OpenDialog(DocumentsDialog),
+    OpenFile { path: PathBuf, in_folder: bool },
+    Notice(Notice),
+}
+
+impl RecordingDocumentsRouter {
+    /// The calls made since the last `take`.
+    pub fn take(&mut self) -> Vec<DocumentsCall> {
+        std::mem::take(&mut self.calls)
+    }
+}
+
+impl DocumentsRouter for RecordingDocumentsRouter {
+    fn reveal(&mut self, link: DocumentLink) {
+        self.calls.push(DocumentsCall::Reveal(link));
+    }
+
+    /// Always opens: the recording Router builds nothing that could fail.
+    fn open_dialog(&mut self, dialog: DocumentsDialog) -> bool {
+        self.calls.push(DocumentsCall::OpenDialog(dialog));
+        true
+    }
+
+    fn open_file(&mut self, path: &Path, in_folder: bool) {
+        self.calls.push(DocumentsCall::OpenFile {
+            path: path.to_path_buf(),
+            in_folder,
+        });
+    }
+}
+
+impl Notify for RecordingDocumentsRouter {
+    fn notify(&mut self, notice: Notice) {
+        self.calls.push(DocumentsCall::Notice(notice));
     }
 }

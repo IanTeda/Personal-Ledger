@@ -4,7 +4,6 @@
 
 pub mod active;
 pub mod dashboard;
-pub mod documents;
 pub mod event;
 pub(crate) mod format;
 pub mod help;

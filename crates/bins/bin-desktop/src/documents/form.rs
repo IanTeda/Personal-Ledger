@@ -824,7 +824,7 @@ impl Dialog for DocumentsDialog {
     }
 
     fn hints(&self) -> Option<Vec<lib_shell::Hint>> {
-        use crate::view::documents::hints::{dialog_hints, picker_hints};
+        use crate::documents::view::hints::{dialog_hints, picker_hints};
         Some(crate::shell::view::statusline::owned_hints(match self {
             Self::Import(..) => dialog_hints(true),
             Self::Picker(_) => picker_hints(),
