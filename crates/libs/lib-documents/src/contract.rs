@@ -4,8 +4,8 @@
 //!
 //! Each check is a function generic over a [`PortsFactory`]: a consumer runs it from its own test,
 //! since an adapter's tests need their own set-up (a fresh database per test). Each writes through
-//! the rules and the port, as the Ledger's Documents commands do until the Interactors (#965),
-//! reloads as a restart would, and expects the same rows back. A Link names a record the factory
+//! the port, the Documents' writes through their Interactors, reloads as a restart would, and
+//! expects the same rows back. A Link names a record the factory
 //! says storage holds ([`PortsFactory::records`]), since the adapter's Links are foreign keys.
 
 use std::path::PathBuf;
@@ -15,6 +15,7 @@ use chrono::NaiveDate;
 use lib_core::{AccountId, BillPlanId, DocumentId, DocumentTypeId, ItemId, Money, PayeeId};
 
 use crate::fake::InMemoryDocuments;
+use crate::interactor::{RemoveDocumentType, ToggleLink};
 use crate::protocols::{
     DocumentAccount, DocumentBillPlan, DocumentItem, DocumentPayee, DocumentRepository,
     DocumentTransaction, LinkRecords,
@@ -22,7 +23,7 @@ use crate::protocols::{
 use crate::types::{DocumentTypeRow, RemindLead, TracksDate, default_types, remove_type};
 use crate::{
     Document, DocumentLink, DocumentType, ExtractedFacts, FileKind, Filing, Intake, KeyDate,
-    KeyDateKind, Source, toggle_link,
+    KeyDateKind, Source,
 };
 
 const TAX: DocumentTypeId = DocumentTypeId::seed(3);
@@ -253,14 +254,17 @@ pub fn a_document_with_links_and_intake_reloads_the_same<F: PortsFactory>(factor
     assert_eq!(ports.documents(), [policy.clone(), receipt.clone()]);
     assert_eq!(ports.document_types(), default_types());
 
-    let mut documents = ports.documents();
     for link in [
         DocumentLink::Account(records.accounts[0].id),
         DocumentLink::BillPlan(records.plans[0].id),
     ] {
-        assert_eq!(toggle_link(&mut documents, policy.id, link), Some(false));
+        let toggle = ToggleLink {
+            id: policy.id,
+            link,
+        };
+        assert_eq!(toggle.run(&mut ports), Ok(false));
     }
-    ports.upsert_document(&documents[0]);
+    let documents = ports.documents();
     let ports = factory.reload(ports);
 
     assert_eq!(ports.documents(), documents);
@@ -324,9 +328,9 @@ pub fn the_document_types_keep_their_order<F: PortsFactory>(factory: &mut F) {
     );
 }
 
-/// Removes a Document Type with Filed Documents as Remove does, in one write: the type's delete,
-/// the destination's grown count and the moved Documents, in that order. Reloaded, the type is
-/// gone and its Documents are the destination's.
+/// Removes a Document Type with Filed Documents through [`RemoveDocumentType`], in one write: the
+/// type's delete, the destination's grown count and the moved Documents, in that order. Reloaded,
+/// the type is gone and its Documents are the destination's.
 pub fn a_type_removal_moves_its_documents_in_one_batch<F: PortsFactory>(factory: &mut F) {
     let return_2025 = filed(1, "tax/return-2025.pdf", TAX);
     let notice = filed(2, "tax/notice-2025.pdf", TAX);
@@ -338,17 +342,12 @@ pub fn a_type_removal_moves_its_documents_in_one_batch<F: PortsFactory>(factory:
 
     let mut types = ports.document_types();
     remove_type(&mut types, TAX, Some("Other")).expect("Other takes the files");
-    ports.delete_document_type(TAX);
-    let other = types
-        .iter()
-        .find(|row| row.id == OTHER)
-        .expect("the Default");
-    ports.upsert_document_type(other);
-    for document in [&return_2025, &notice] {
-        let mut moved = document.clone();
-        moved.doc_type = DocumentType(OTHER);
-        ports.upsert_document(&moved);
+    RemoveDocumentType {
+        id: TAX,
+        destination: Some("Other".into()),
     }
+    .run(&mut ports)
+    .expect("Other takes the files");
     factory.commit(&mut ports);
     let ports = factory.reload(ports);
 

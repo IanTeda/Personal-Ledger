@@ -1,5 +1,6 @@
-//! In-memory ports for tests: [`InMemoryDocuments`], the Documents repository over plain lists, and
-//! [`InMemoryFiles`], a file system of the files it is given.
+//! In-memory ports for tests: [`InMemoryDocuments`], the Documents repository over plain lists,
+//! [`InMemoryFiles`], a file system of the files it is given, and [`LinkRecords`] answering every
+//! read port from its lists.
 
 use std::{
     collections::HashMap,
@@ -8,7 +9,11 @@ use std::{
 
 use lib_core::DocumentTypeId;
 
-use crate::protocols::{DocumentFiles, DocumentRepository, move_type_to, resolve_typed};
+use crate::protocols::{
+    DocumentAccount, DocumentAccounts, DocumentBillPlan, DocumentBillPlans, DocumentFiles,
+    DocumentItem, DocumentItems, DocumentPayee, DocumentPayees, DocumentRepository,
+    DocumentTransaction, DocumentTransactions, LinkRecords, move_type_to, resolve_typed,
+};
 use crate::types::DocumentTypeRow;
 use crate::{Document, DocumentLink};
 
@@ -100,5 +105,36 @@ impl DocumentFiles for InMemoryFiles {
 
     fn size(&self, path: &Path) -> Option<u64> {
         self.files.get(path).copied()
+    }
+}
+
+/// The records as the read ports answer them, each port handing back its list.
+impl DocumentTransactions for LinkRecords {
+    fn document_transactions(&self) -> Vec<DocumentTransaction> {
+        self.transactions.clone()
+    }
+}
+
+impl DocumentPayees for LinkRecords {
+    fn document_payees(&self) -> Vec<DocumentPayee> {
+        self.payees.clone()
+    }
+}
+
+impl DocumentAccounts for LinkRecords {
+    fn document_accounts(&self) -> Vec<DocumentAccount> {
+        self.accounts.clone()
+    }
+}
+
+impl DocumentBillPlans for LinkRecords {
+    fn document_bill_plans(&self) -> Vec<DocumentBillPlan> {
+        self.plans.clone()
+    }
+}
+
+impl DocumentItems for LinkRecords {
+    fn document_items(&self) -> Vec<DocumentItem> {
+        self.items.clone()
     }
 }

@@ -197,6 +197,10 @@ pub fn edit_type(
     true
 }
 
+/// A Document Type that no longer exists, as an edit found it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UnknownDocumentType;
+
 /// Why a type can't be removed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RemoveError {

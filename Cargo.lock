@@ -4853,6 +4853,7 @@ dependencies = [
  "bigdecimal",
  "chrono",
  "lib_core",
+ "tracing",
 ]
 
 [[package]]

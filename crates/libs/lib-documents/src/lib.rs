@@ -25,6 +25,7 @@
 )]
 pub mod contract;
 pub mod fake;
+pub mod interactor;
 pub mod protocols;
 pub mod types;
 

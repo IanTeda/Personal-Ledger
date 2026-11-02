@@ -25,6 +25,8 @@ use lib_documents::{
 
 use lib_documents::{DocumentPayee, DocumentTransaction};
 
+pub use lib_documents::types::UnknownDocumentType;
+
 use crate::{Ledger, LedgerChange, LedgerCommand};
 
 /// What the Library's `e` replaces on a Filed Document.
@@ -35,10 +37,6 @@ pub struct DocumentEdit {
     pub date: NaiveDate,
     pub key_date: Option<KeyDate>,
 }
-
-/// A Document Type that no longer exists, as an edit found it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct UnknownDocumentType;
 
 impl Ledger {
     /// Adds a Filed Document and returns its id.
