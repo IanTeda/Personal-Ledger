@@ -1,6 +1,7 @@
 //! Pure Documents model, rules and stub seed (`docs/ux/desktop-mockups/04-documents/`): `gpui`-free and
-//! side-effect free, so every rule is unit-tested without a window. All data is stubbed and
-//! in-memory; nothing here reads `lib_database` or the file system.
+//! side-effect free, so every rule is unit-tested without a window. The other domains are read
+//! through [`protocols`]' read ports as `lib-documents`' own rows, and the file system through
+//! [`DocumentFiles`], so nothing here reads `lib_database` or the disk.
 //!
 //! The rules are the Desktop Documents Surface map's decision tickets (#431–#433, #435):
 //!
@@ -16,6 +17,8 @@
 //!   agree on amount or payee, and the date Signal allows [`DATE_SIGNAL_DAYS`].
 //! - Skip is session-only, and undo is one level: [`undo`] reverses the last [`FilingUndo`] whole.
 
+pub mod fake;
+pub mod protocols;
 pub mod types;
 
 #[cfg(test)]
@@ -26,16 +29,15 @@ use std::path::{Path, PathBuf};
 use bigdecimal::BigDecimal;
 use chrono::{Datelike, Duration, NaiveDate};
 use lib_core::{
-    AccountId, BillPlanId, DocumentId, DocumentTypeId, ItemId, Money, PayeeId, TransactionId,
+    AccountId, BillPlanId, DocumentId, DocumentTypeId, FINANCIAL_YEAR_START_MONTH, ItemId, Money,
+    PayeeId, TransactionId, financial_year_start,
 };
 
-use lib_accounts::Account;
-use lib_bills::{BillPlan, FINANCIAL_YEAR_START_MONTH, financial_year_start};
-use lib_categories::Category;
-use lib_inventory::Inventory;
-use lib_payees::{self as payees, Payee};
-use lib_transactions::Transaction;
-
+pub use crate::protocols::{
+    DocumentAccount, DocumentAccounts, DocumentBillPlan, DocumentBillPlans, DocumentFiles,
+    DocumentItem, DocumentItems, DocumentPayee, DocumentPayees, DocumentReads, DocumentTransaction,
+    DocumentTransactions, LinkRecords,
+};
 use crate::types::{DocumentTypeRow, TracksDate};
 
 /// Days either side of today, inclusive, in which a Key Date makes a Filed Document Need Review.
@@ -655,8 +657,8 @@ impl Suggestion {
 
 /// The Payee an extracted merchant names: an alias match, else the active Payee whose name the
 /// merchant contains (case-insensitive, the longest name winning).
-pub fn merchant_payee(payees: &[Payee], merchant: &str) -> Option<PayeeId> {
-    payees::match_alias(payees, merchant).or_else(|| {
+pub fn merchant_payee(payees: &[DocumentPayee], merchant: &str) -> Option<PayeeId> {
+    match_alias(payees, merchant).or_else(|| {
         let haystack = merchant.to_lowercase();
         payees
             .iter()
@@ -671,12 +673,30 @@ pub fn merchant_payee(payees: &[Payee], merchant: &str) -> Option<PayeeId> {
     })
 }
 
+/// The active Payee with an alias the merchant contains, the longest alias winning: the Payees'
+/// own alias rule (`lib_payees::match_alias`), over the rows Documents reads.
+fn match_alias(payees: &[DocumentPayee], raw: &str) -> Option<PayeeId> {
+    let haystack = raw.to_uppercase();
+    payees
+        .iter()
+        .filter(|payee| payee.is_active)
+        .flat_map(|payee| {
+            payee
+                .aliases
+                .iter()
+                .filter(|alias| haystack.contains(alias.as_str()))
+                .map(move |alias| (alias.len(), payee))
+        })
+        .max_by(|(a_len, a), (b_len, b)| a_len.cmp(b_len).then_with(|| b.name.cmp(&a.name)))
+        .map(|(_, payee)| payee.id)
+}
+
 /// Every qualifying candidate for an Unfiled Document's facts, best first. Empty when Unreadable.
 pub fn candidates(
     document: &Document,
     documents: &[Document],
-    transactions: &[Transaction],
-    payees: &[Payee],
+    transactions: &[DocumentTransaction],
+    payees: &[DocumentPayee],
 ) -> Vec<Candidate> {
     let Some(intake) = &document.intake else {
         return Vec::new();
@@ -697,16 +717,11 @@ pub fn candidates(
         .filter(|transaction| (transaction.date - anchor).num_days().abs() <= CANDIDATE_WINDOW_DAYS)
         .filter_map(|transaction| {
             let signals = Signals {
-                amount: transaction.total().0.abs() == magnitude,
+                amount: transaction.amount.0.abs() == magnitude,
                 date: facts.date.is_some_and(|date| {
                     (transaction.date - date).num_days().abs() <= DATE_SIGNAL_DAYS
                 }),
-                payee: payee_id.is_some_and(|id| {
-                    transaction
-                        .splits
-                        .iter()
-                        .any(|split| split.payee_id == Some(id))
-                }),
+                payee: payee_id.is_some_and(|id| transaction.names_payee(id)),
             };
             // Date alone never makes a candidate.
             (signals.amount || signals.payee).then(|| Candidate {
@@ -737,8 +752,8 @@ pub fn candidates(
 pub fn suggestion(
     document: &Document,
     documents: &[Document],
-    transactions: &[Transaction],
-    payees: &[Payee],
+    transactions: &[DocumentTransaction],
+    payees: &[DocumentPayee],
 ) -> Suggestion {
     let readable = document
         .intake
@@ -844,7 +859,7 @@ fn file_one(
 pub fn accept(
     types: &[DocumentTypeRow],
     documents: &mut [Document],
-    transactions: &[Transaction],
+    transactions: &[DocumentTransaction],
     id: DocumentId,
     transaction_id: TransactionId,
 ) -> Result<FiledEntry, FilingError> {
@@ -891,8 +906,8 @@ pub fn file_by_hand(
 pub fn accept_all_strong(
     types: &[DocumentTypeRow],
     documents: &mut [Document],
-    transactions: &[Transaction],
-    payees: &[Payee],
+    transactions: &[DocumentTransaction],
+    payees: &[DocumentPayee],
     focus: Option<DocumentId>,
 ) -> Option<FilingUndo> {
     let strong: Vec<(DocumentId, TransactionId)> = inbox_rows(documents)
@@ -921,8 +936,8 @@ pub fn accept_all_strong(
 /// How many Unfiled Documents have a Strong Suggested Link: the button's and confirm's count.
 pub fn strong_count(
     documents: &[Document],
-    transactions: &[Transaction],
-    payees: &[Payee],
+    transactions: &[DocumentTransaction],
+    payees: &[DocumentPayee],
 ) -> usize {
     documents
         .iter()
@@ -1013,37 +1028,57 @@ pub fn default_title(path: &Path) -> String {
         .unwrap_or_default()
 }
 
-/// A path as the user typed it, made absolute: `~` is the home directory and a relative path is
-/// taken from the working directory. Not canonicalised, so it never touches the file system.
-pub fn resolve_path(typed: &str) -> PathBuf {
-    let typed = typed.trim();
-    if let Some(rest) = typed.strip_prefix("~/")
-        && let Some(home) = dirs::home_dir()
-    {
-        return home.join(rest);
-    }
-    if typed == "~"
-        && let Some(home) = dirs::home_dir()
-    {
-        return home;
-    }
-    let path = PathBuf::from(typed);
-    if path.is_absolute() {
-        path
-    } else {
-        std::env::current_dir().map_or(path.clone(), |dir| dir.join(path))
-    }
-}
-
 /// The Document already holding `path`, whether Filed or Unfiled.
 pub fn find_by_path<'a>(documents: &'a [Document], path: &Path) -> Option<&'a Document> {
     documents.iter().find(|document| document.path == path)
+}
+
+/// Why a path typed for `+ Add` or `Import…` can't become a Document.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PathRefusal {
+    /// Only PDF, JPG and PNG files are Documents.
+    Unsupported,
+    /// One Document per path: the Library already holds this one, under this Title.
+    Already(String),
+    /// No file is there.
+    NotFound,
+}
+
+/// What Add and Import refuse of a resolved path, in order: a file that is not a Document, then
+/// a path the Library already holds, then a file that is not on disk.
+fn path_refusal(documents: &[Document], path: &Path, exists: bool) -> Option<PathRefusal> {
+    if FileKind::from_path(path).is_none() {
+        Some(PathRefusal::Unsupported)
+    } else if let Some(existing) = find_by_path(documents, path) {
+        Some(PathRefusal::Already(existing.title.clone()))
+    } else if !exists {
+        Some(PathRefusal::NotFound)
+    } else {
+        None
+    }
+}
+
+/// Resolves a typed path through `files` and checks it as Add and Import do, returning the path
+/// when it can become a Document.
+pub fn check_path(
+    files: &dyn DocumentFiles,
+    documents: &[Document],
+    typed: &str,
+) -> Result<PathBuf, PathRefusal> {
+    let path = files.resolve(typed);
+    let exists = files.exists(&path);
+    match path_refusal(documents, &path, exists) {
+        Some(refusal) => Err(refusal),
+        None => Ok(path),
+    }
 }
 
 /// What the `+ Add` dialog collects.
 #[derive(Debug, Clone, PartialEq)]
 pub struct NewDocument {
     pub path: PathBuf,
+    /// The file's size, read from disk when the file is there, else 0.
+    pub bytes: u64,
     pub title: String,
     pub doc_type: DocumentType,
     pub date: NaiveDate,
@@ -1051,7 +1086,7 @@ pub struct NewDocument {
 }
 
 /// `+ Add`: a Filed Document from a path the user already knows the meaning of. Its Links come
-/// afterwards, through the picker. The size is read from disk when the file is there.
+/// afterwards, through the picker.
 pub fn add_filed(documents: &mut Vec<Document>, new: NewDocument) -> Result<DocumentId, AddError> {
     let kind = FileKind::from_path(&new.path).ok_or(AddError::UnsupportedFile)?;
     if let Some(existing) = find_by_path(documents, &new.path) {
@@ -1064,7 +1099,7 @@ pub fn add_filed(documents: &mut Vec<Document>, new: NewDocument) -> Result<Docu
     let id = DocumentId::new();
     documents.push(Document {
         id,
-        bytes: std::fs::metadata(&new.path).map_or(0, |meta| meta.len()),
+        bytes: new.bytes,
         path: new.path,
         kind,
         pages: 1,
@@ -1110,12 +1145,14 @@ pub fn catalogue_facts(
     }
 }
 
-/// `Import…` and a file dropped on the window: one Unfiled Document, from `source`. It is readable
-/// only when the path is in the stub catalogue; otherwise it carries no facts and is filed by hand.
+/// `Import…` and a file dropped on the window: one Unfiled Document of `bytes`, from `source`. It
+/// is readable only when the path is in the stub catalogue; otherwise it carries no facts and is
+/// filed by hand.
 pub fn import_path(
     types: &[DocumentTypeRow],
     documents: &mut Vec<Document>,
     path: PathBuf,
+    bytes: u64,
     today: NaiveDate,
     source: Source,
 ) -> Result<DocumentId, AddError> {
@@ -1127,7 +1164,7 @@ pub fn import_path(
     let id = DocumentId::new();
     documents.push(Document {
         id,
-        bytes: std::fs::metadata(&path).map_or(0, |meta| meta.len()),
+        bytes,
         title: default_title(&path),
         path,
         kind,
@@ -1150,12 +1187,34 @@ pub fn import_path(
     Ok(id)
 }
 
-/// A path typed or dropped for import, with whether the file is on disk. The Client answers that,
-/// so what a batch refuses stays decided by the rules here and testable without a disk.
+/// A path typed or dropped for import, resolved, with what [`DocumentFiles`] found there: read
+/// before the import so the batch itself is a value the Ledger runs, never touching the disk.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImportLine {
     pub typed: String,
+    pub path: PathBuf,
     pub exists: bool,
+    /// The file's size, 0 when it can't be read.
+    pub bytes: u64,
+}
+
+/// Each typed or dropped path, resolved and looked up through `files`.
+pub fn import_lines<'a>(
+    files: &dyn DocumentFiles,
+    typed: impl IntoIterator<Item = &'a str>,
+) -> Vec<ImportLine> {
+    typed
+        .into_iter()
+        .map(|typed| {
+            let path = files.resolve(typed);
+            ImportLine {
+                typed: typed.to_string(),
+                exists: files.exists(&path),
+                bytes: files.size(&path).unwrap_or(0),
+                path,
+            }
+        })
+        .collect()
 }
 
 /// What an import made of one line.
@@ -1180,17 +1239,22 @@ pub fn import_batch(
     lines
         .iter()
         .map(|line| {
-            let path = resolve_path(&line.typed);
-            if FileKind::from_path(&path).is_none() {
-                return ImportOutcome::Unsupported(line.typed.clone());
+            match path_refusal(documents, &line.path, line.exists) {
+                Some(PathRefusal::Unsupported) => {
+                    return ImportOutcome::Unsupported(line.typed.clone());
+                }
+                Some(PathRefusal::Already(title)) => return ImportOutcome::Already(title),
+                Some(PathRefusal::NotFound) => return ImportOutcome::NotFound(line.typed.clone()),
+                None => {}
             }
-            if let Some(existing) = find_by_path(documents, &path) {
-                return ImportOutcome::Already(existing.title.clone());
-            }
-            if !line.exists {
-                return ImportOutcome::NotFound(line.typed.clone());
-            }
-            match import_path(types, documents, path, today, source) {
+            match import_path(
+                types,
+                documents,
+                line.path.clone(),
+                line.bytes,
+                today,
+                source,
+            ) {
                 Ok(id) => ImportOutcome::Imported(id),
                 Err(AddError::AlreadyInLibrary(title)) => ImportOutcome::Already(title),
                 Err(_) => ImportOutcome::Unsupported(line.typed.clone()),
@@ -1275,34 +1339,30 @@ fn cents_money(cents: i64) -> Money {
     Money(BigDecimal::new(cents.into(), 2))
 }
 
-/// Name lookups into the shared stubs, so the seed reads in names rather than ids.
+/// Name lookups into the shared stubs' records, so the seed reads in names rather than ids.
 struct Lookup<'a> {
-    accounts: &'a [Account],
-    categories: &'a [Category],
-    payees: &'a [Payee],
-    plans: &'a [BillPlan],
-    inventory: &'a Inventory,
+    records: &'a LinkRecords,
 }
 
 impl Lookup<'_> {
     fn account(&self, name: &str) -> Option<AccountId> {
-        self.accounts.iter().find(|a| a.name == name).map(|a| a.id)
+        let accounts = &self.records.accounts;
+        accounts.iter().find(|a| a.name == name).map(|a| a.id)
     }
 
     fn payee(&self, name: &str) -> Option<PayeeId> {
-        payees::find_by_name(self.payees, name)
+        let payees = &self.records.payees;
+        payees.iter().find(|p| p.name == name).map(|p| p.id)
     }
 
     fn plan(&self, name: &str) -> Option<BillPlanId> {
-        self.plans.iter().find(|p| p.name == name).map(|p| p.id)
+        let plans = &self.records.plans;
+        plans.iter().find(|p| p.name == name).map(|p| p.id)
     }
 
     fn item(&self, name: &str) -> Option<ItemId> {
-        self.inventory
-            .items
-            .iter()
-            .find(|i| i.name == name)
-            .map(|i| i.id)
+        let items = &self.records.items;
+        items.iter().find(|i| i.name == name).map(|i| i.id)
     }
 }
 
@@ -1419,29 +1479,16 @@ impl Draft {
 /// VAS for CMC Markets and Brisbane City Council for "City Council" (plus a lease, so no Type facet is empty), while the NRMA policy's
 /// Payee and Bill links move to an AAMI car policy whose Payee and Bill Plan exist. The sample
 /// purchases (Camera House, Woolworths, Bunnings, Sonos) are `lib-transactions`' stub's, read from
-/// `transactions` with the rest of its rows: the Camera House receipt links its purchase, and the
+/// `records` with the rest of its rows: the Camera House receipt links its purchase, and the
 /// filler receipts link older ones. Key Dates sit so three Library rows Need Review on any
 /// `today`.
-pub fn default_documents(
-    accounts: &[Account],
-    categories: &[Category],
-    payees: &[Payee],
-    plans: &[BillPlan],
-    inventory: &Inventory,
-    transactions: &[Transaction],
-    today: NaiveDate,
-) -> DocumentsSeed {
-    let lookup = Lookup {
-        accounts,
-        categories,
-        payees,
-        plans,
-        inventory,
-    };
+pub fn default_documents(records: &LinkRecords, today: NaiveDate) -> DocumentsSeed {
+    let lookup = Lookup { records };
+    let transactions = &records.transactions;
     let day = |offset: i64| today + Duration::days(offset);
     let camera = transactions
         .iter()
-        .find(|t| t.description.as_deref() == Some("CAMERA HOUSE \u{2014} Sony A7 IV"))
+        .find(|t| t.memo.as_deref() == Some("CAMERA HOUSE \u{2014} Sony A7 IV"))
         .map(|t| t.id);
 
     let transaction = |id: Option<TransactionId>| id.map(DocumentLink::Transaction);
@@ -1667,7 +1714,11 @@ const FILLER_STATEMENT_MONTHS: u32 = 18;
 
 /// Filler so the facets carry weight: a monthly statement for each banking Account, and a receipt
 /// for every fourth purchase of 100.00 or more older than the Inbox's window.
-fn filler(lookup: &Lookup<'_>, transactions: &[Transaction], today: NaiveDate) -> Vec<Draft> {
+fn filler(
+    lookup: &Lookup<'_>,
+    transactions: &[DocumentTransaction],
+    today: NaiveDate,
+) -> Vec<Draft> {
     let mut drafts = Vec::new();
     let mut month = today.with_day(1).unwrap_or(today);
     for _ in 0..FILLER_STATEMENT_MONTHS {
@@ -1698,15 +1749,13 @@ fn filler(lookup: &Lookup<'_>, transactions: &[Transaction], today: NaiveDate) -
     let hundred = cents_money(-10_000).0;
     let purchases = transactions
         .iter()
-        .filter(|t| t.date < cutoff && t.total().0 <= hundred)
-        .filter(|t| t.splits.iter().any(|split| split.payee_id.is_some()))
+        .filter(|t| t.date < cutoff && t.amount.0 <= hundred)
+        .filter(|t| t.first_payee().is_some())
         .filter(|t| t.id.seed_number() % 4 == 0);
     for purchase in purchases {
         let Some(name) = purchase
-            .splits
-            .iter()
-            .find_map(|split| split.payee_id)
-            .and_then(|id| payees::get(lookup.payees, id))
+            .first_payee()
+            .and_then(|id| lookup.records.payee(id))
             .map(|payee| payee.name.clone())
         else {
             continue;

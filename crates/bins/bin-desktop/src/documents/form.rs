@@ -19,8 +19,8 @@ use lib_locale::format::{format_date_input, parse_optional_date};
 use crate::{
     documents::types::DocumentTypeRow,
     documents::{
-        self, Document, DocumentType, FileKind, ImportLine, KeyDate, KeyDateKind, LibraryScope,
-        NewDocument,
+        self, Document, DocumentFiles, DocumentType, KeyDate, KeyDateKind, LibraryScope,
+        NewDocument, PathRefusal,
     },
     form::field::TextField,
     form::select::SelectKey,
@@ -353,8 +353,8 @@ impl DocumentForm {
     }
 
     /// Every field's problem, or none. `library` is checked for a duplicate path (Add only) and
-    /// `exists` is the file-system check, passed in so tests need no files.
-    pub fn problems(&self, library: &[Document], exists: impl Fn(&Path) -> bool) -> FormProblems {
+    /// `files` is the file system, a port so tests need no files.
+    pub fn problems(&self, library: &[Document], files: &dyn DocumentFiles) -> FormProblems {
         let (today, date_style) = (self.today, self.date_style);
         let mut problems = FormProblems::default();
         if !self.is_edit {
@@ -362,15 +362,13 @@ impl DocumentForm {
             problems.path = if typed.is_empty() {
                 None
             } else {
-                let path = documents::resolve_path(typed);
-                if FileKind::from_path(&path).is_none() {
-                    Some(FieldProblem::Unsupported)
-                } else if let Some(existing) = documents::find_by_path(library, &path) {
-                    Some(FieldProblem::Already(existing.title.clone()))
-                } else if !exists(&path) {
-                    Some(FieldProblem::PathMissing(typed.to_string()))
-                } else {
-                    None
+                match documents::check_path(files, library, typed) {
+                    Ok(_) => None,
+                    Err(PathRefusal::Unsupported) => Some(FieldProblem::Unsupported),
+                    Err(PathRefusal::Already(title)) => Some(FieldProblem::Already(title)),
+                    Err(PathRefusal::NotFound) => {
+                        Some(FieldProblem::PathMissing(typed.to_string()))
+                    }
                 }
             };
         }
@@ -405,13 +403,16 @@ impl DocumentForm {
             && (self.key_kind().is_none() || matches!(readable(&self.key_date), Ok(Some(_))))
     }
 
-    /// The form's values as a [`NewDocument`], or `None` while it cannot be saved.
-    pub fn build(&self) -> Option<NewDocument> {
+    /// The form's values as a [`NewDocument`], its path resolved and sized through `files`, or
+    /// `None` while it cannot be saved.
+    pub fn build(&self, files: &dyn DocumentFiles) -> Option<NewDocument> {
         let date = parse_optional_date(self.date.text(), self.today, self.date_style)
             .ok()?
             .unwrap_or(self.today);
+        let path = files.resolve(self.path.text());
         Some(NewDocument {
-            path: documents::resolve_path(self.path.text()),
+            bytes: files.size(&path).unwrap_or(0),
+            path,
             title: self.title.text().trim().to_string(),
             doc_type: self.doc_type(),
             date,
@@ -484,20 +485,6 @@ impl ImportForm {
     pub fn can_save(&self) -> bool {
         !self.lines().is_empty()
     }
-}
-
-/// Each typed or dropped path with whether it is on disk, for the Ledger's import to decide on.
-pub fn import_lines<'a>(
-    typed: impl IntoIterator<Item = &'a str>,
-    exists: impl Fn(&Path) -> bool,
-) -> Vec<ImportLine> {
-    typed
-        .into_iter()
-        .map(|typed| ImportLine {
-            exists: exists(&documents::resolve_path(typed)),
-            typed: typed.to_string(),
-        })
-        .collect()
 }
 
 /// The Extracted Facts form's fields, in `Tab` order.
@@ -902,6 +889,15 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
+    use crate::documents::{FileKind, fake::InMemoryFiles};
+
+    /// A disk holding the files the Add form's tests name as there.
+    fn disk() -> InMemoryFiles {
+        InMemoryFiles::default()
+            .with("/tmp/notes.txt", 10)
+            .with("/tmp/there.pdf", 10)
+            .with("/tmp/policy.pdf", 512)
+    }
 
     fn day(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).expect("a valid test date")
@@ -965,18 +961,18 @@ mod tests {
     fn a_missing_unsupported_or_duplicate_path_is_a_problem() {
         let mut form = form();
         form.path = TextField::new("/tmp/missing.pdf");
-        let problems = form.problems(&[], |_| false);
+        let problems = form.problems(&[], &disk());
         assert_eq!(
             problems.path,
             Some(FieldProblem::PathMissing("/tmp/missing.pdf".to_string()))
         );
 
         form.path = TextField::new("/tmp/notes.txt");
-        let problems = form.problems(&[], |_| true);
+        let problems = form.problems(&[], &disk());
         assert_eq!(problems.path, Some(FieldProblem::Unsupported));
 
         form.path = TextField::new("/tmp/there.pdf");
-        let problems = form.problems(&[], |_| true);
+        let problems = form.problems(&[], &disk());
         assert!(problems.is_empty());
     }
 
@@ -987,14 +983,15 @@ mod tests {
         form.path = TextField::new("/tmp/policy.pdf");
         form.key_kind = SelectState::new(Some("Renews".to_string()));
 
-        let problems = form.problems(&[], |_| true);
+        let problems = form.problems(&[], &disk());
         assert!(problems.key_date.is_some());
         assert!(!form.can_save(&problems));
 
         form.key_date = TextField::new("2027-01-14");
-        let problems = form.problems(&[], |_| true);
+        let problems = form.problems(&[], &disk());
         assert!(form.can_save(&problems));
-        let new = form.build().expect("the form is complete");
+        let new = form.build(&disk()).expect("the form is complete");
+        assert_eq!(new.bytes, 512);
         assert_eq!(
             new.key_date,
             Some(KeyDate {
@@ -1056,26 +1053,6 @@ mod tests {
         assert_eq!(parse_total("twelve"), None);
         assert_eq!(parse_total(""), None);
         assert_eq!(parse_total("1.2.3"), None);
-    }
-
-    #[test]
-    fn import_lines_ask_the_disk_about_each_resolved_path() {
-        let lines = import_lines(["/tmp/a.pdf", "/tmp/none.pdf"], |path| {
-            !path.ends_with("none.pdf")
-        });
-        assert_eq!(
-            lines,
-            vec![
-                ImportLine {
-                    typed: "/tmp/a.pdf".to_string(),
-                    exists: true
-                },
-                ImportLine {
-                    typed: "/tmp/none.pdf".to_string(),
-                    exists: false
-                },
-            ]
-        );
     }
 
     fn facts() -> documents::ExtractedFacts {

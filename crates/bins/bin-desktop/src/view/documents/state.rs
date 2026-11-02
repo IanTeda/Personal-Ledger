@@ -23,8 +23,9 @@ use super::{
 };
 use crate::{
     documents::{
-        self, Document, DocumentLink, DocumentsMode, FilingUndo, KeyDateKind, LibraryScope,
-        LibrarySort, RailEntry,
+        self, Document, DocumentFiles, DocumentLink, DocumentsMode, FilingUndo, KeyDateKind,
+        LibraryScope, LibrarySort, LinkRecords, RailEntry,
+        files::DiskFiles,
         form::{DocumentForm, DocumentOptions, DocumentsDialog, FactsForm, ImportForm},
         model::Lookups,
         picker::{PickerRow, PickerState, Purpose},
@@ -205,16 +206,17 @@ impl DocumentsView {
     /// Everything a Document's rows, detail and picker rows are worded from.
     pub fn lookups<'a>(&self, cx: &'a App) -> Lookups<'a> {
         Lookups {
-            accounts: self.sources.ledger.read(cx).ledger().accounts(),
-            institutions: self.sources.ledger.read(cx).ledger().institutions(),
-            payees: self.sources.ledger.read(cx).ledger().payees(),
-            plans: self.sources.ledger.read(cx).ledger().bill_plans(),
+            records: self.records(cx),
             types: self.types(cx),
-            inventory: self.sources.ledger.read(cx).ledger().inventory(),
-            transactions: self.sources.ledger.read(cx).ledger().transactions(),
             today: self.today,
             date_style: self.date_style,
         }
+    }
+
+    /// Every record a Link can name, read through `lib_documents`' ports, which the Ledger's read
+    /// copies answer until the stores do (#963).
+    fn records(&self, cx: &App) -> LinkRecords {
+        LinkRecords::read(self.sources.ledger.read(cx).ledger())
     }
 
     fn options(&self, cx: &App) -> DocumentOptions {
@@ -696,9 +698,9 @@ impl DocumentsView {
             self.status(crate::msg::desktop_documents_status_no_document(), cx);
             return;
         };
-        let path = documents::resolve_path(&document.path.to_string_lossy());
+        let path = DiskFiles.resolve(&document.path.to_string_lossy());
         let name = document.file_name();
-        if !path.exists() {
+        if !DiskFiles.exists(&path) {
             let shown = path.to_string_lossy().into_owned();
             self.toast(
                 ToastKind::Warning,
@@ -812,11 +814,12 @@ impl DocumentsView {
 
     /// The Transaction the Document's Suggested Link points at, if it has one.
     fn suggestion_for(&self, document: &Document, cx: &App) -> Option<TransactionId> {
+        let records = self.records(cx);
         documents::suggestion(
             document,
             self.documents(cx),
-            self.sources.ledger.read(cx).ledger().transactions(),
-            self.sources.ledger.read(cx).ledger().payees(),
+            &records.transactions,
+            &records.payees,
         )
         .best()
         .map(|best| best.transaction_id)
@@ -1010,11 +1013,9 @@ impl DocumentsView {
 
     /// `Y`, **Accept all strong matches** and `:documents accept-all`: asks first, with the count.
     pub fn open_accept_all(&mut self, cx: &mut Context<'_, Self>) {
-        let count = documents::strong_count(
-            self.documents(cx),
-            self.sources.ledger.read(cx).ledger().transactions(),
-            self.sources.ledger.read(cx).ledger().payees(),
-        );
+        let records = self.records(cx);
+        let count =
+            documents::strong_count(self.documents(cx), &records.transactions, &records.payees);
         if count == 0 {
             self.status(crate::msg::desktop_documents_status_no_strong(), cx);
             return;

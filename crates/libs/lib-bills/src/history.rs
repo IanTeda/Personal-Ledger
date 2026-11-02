@@ -7,7 +7,7 @@
 //!
 //! - Status chips are multi-select (all five on by default); Bill Plan, Category and Account are
 //!   single-select scopes over the rows [`crate::schedule_rows`] gives for the viewed month or All.
-//! - The financial year starts in [`FINANCIAL_YEAR_START_MONTH`] until Settings' "Financial year
+//! - The financial year starts in [`lib_core::FINANCIAL_YEAR_START_MONTH`] until Settings' "Financial year
 //!   starts" is wired to a real Preference.
 //! - The stat callout reads only its one Bill Plan, never the other filters: Last paid is the Paid
 //!   entry with the latest Matched-Transaction date (a later due date breaks a tie); Average is the
@@ -17,15 +17,13 @@
 
 use bigdecimal::{BigDecimal, RoundingMode};
 use chrono::{Datelike, Months, NaiveDate};
-use lib_core::{AccountId, BillPlanId, CategoryId, Money, Period};
+use lib_core::{
+    AccountId, BillPlanId, CategoryId, Money, Period, financial_year, financial_year_start,
+};
 
 use crate::{
     BillPlan, BillScheduleEntry, BillSplit, BillStatus, Recurrence, Resolution, ScheduleRow, bills,
 };
-
-/// The month the financial year starts in: July, the Australian year, until Settings' "Financial
-/// year starts" becomes a real Preference.
-pub const FINANCIAL_YEAR_START_MONTH: u32 = 7;
 
 /// The status chips, in the filter row's order.
 pub const STATUS_CHIPS: [BillStatus; 5] = [
@@ -35,29 +33,6 @@ pub const STATUS_CHIPS: [BillStatus; 5] = [
     BillStatus::Due,
     BillStatus::Upcoming,
 ];
-
-/// The calendar year the financial year holding `date` starts in.
-pub fn financial_year_start(date: NaiveDate) -> i32 {
-    if date.month() >= FINANCIAL_YEAR_START_MONTH {
-        date.year()
-    } else {
-        date.year() - 1
-    }
-}
-
-/// The inclusive bounds of the financial year starting in `start_year`.
-pub fn financial_year(start_year: i32) -> (NaiveDate, NaiveDate) {
-    let first = Period {
-        year: start_year,
-        month: FINANCIAL_YEAR_START_MONTH,
-    };
-    let last = Period {
-        year: start_year + 1,
-        month: FINANCIAL_YEAR_START_MONTH,
-    }
-    .prev();
-    (first.first_day(), last.last_day())
-}
 
 /// The Schedule tab's filters.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -242,13 +217,6 @@ mod tests {
 
     fn cents(value: i64) -> Money {
         Money(BigDecimal::new(value.into(), 2))
-    }
-
-    #[test]
-    fn financial_years_start_in_july() {
-        assert_eq!(financial_year_start(date(2026, 6, 30)), 2025);
-        assert_eq!(financial_year_start(date(2026, 7, 1)), 2026);
-        assert_eq!(financial_year(2025), (date(2025, 7, 1), date(2026, 6, 30)));
     }
 
     #[test]

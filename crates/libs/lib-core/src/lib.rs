@@ -116,6 +116,9 @@ pub use hybrid_logical_clock::{HlcClock, HybridLogicalClock, HybridLogicalClockE
 mod calendar_period;
 pub use calendar_period::Period;
 
+mod financial_year;
+pub use financial_year::{FINANCIAL_YEAR_START_MONTH, financial_year, financial_year_start};
+
 /// Where a Client reads the calendar day from: the local date, or a test's settable day.
 mod clock;
 pub use clock::Clock;

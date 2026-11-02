@@ -1035,7 +1035,11 @@ impl Render for DocumentsView {
             inbox_rows: inbox_views,
             inbox_selected,
             inbox_detail,
-            inbox_strong: documents::strong_count(all, lookups.transactions, lookups.payees),
+            inbox_strong: documents::strong_count(
+                all,
+                &lookups.records.transactions,
+                &lookups.records.payees,
+            ),
             inbox_hints: hints::inbox_hints(),
             list_focused: false,
             library_scroll: state.library_scroll.clone(),

@@ -19,7 +19,7 @@ Not yet built. No migration exists. The rules the schema must carry are in `GLOS
 
 ## Domain types
 
-None in `lib-core`. The pure model is `src/documents/mod.rs` (`gpui`-free and unit-tested): `Document`, `DocumentType`, `KeyDate`, `KeyDateBand` and `band` (60 days either side, inclusive), `DocumentLink`, `LibraryScope`, `LibrarySort`, `DocumentsMode`, `suggestion` (candidates within 7 days, amount or payee required, date signal within 3), `accept`, `accept_all_strong`, `FilingUndo` and `undo` (one level). The seed reads the stub Transactions, whose sample purchases `lib-transactions`' stub books, and links the Camera House receipt and the filler receipts to them.
+The Financial Year (`financial_year_start`) is `lib-core`'s, shared with Bills. The pure model is `lib-documents` (`gpui`-free and unit-tested), which reads the records a Link names through its own read ports (`DocumentTransactions`, `DocumentPayees`, `DocumentAccounts`, `DocumentBillPlans`, `DocumentItems`, read together as `LinkRecords`) and the disk through `DocumentFiles`, so it depends on no other feature crate: `Document`, `DocumentType`, `KeyDate`, `KeyDateBand` and `band` (60 days either side, inclusive), `DocumentLink`, `LibraryScope`, `LibrarySort`, `DocumentsMode`, `suggestion` (candidates within 7 days, amount or payee required, date signal within 3), `accept`, `accept_all_strong`, `FilingUndo` and `undo` (one level). The seed reads the stub's records as those rows, its sample purchases being the ones `lib-transactions`' stub books, and links the Camera House receipt and the filler receipts to them.
 
 ## Persistence
 

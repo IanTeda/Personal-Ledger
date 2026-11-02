@@ -22,6 +22,8 @@ use lib_documents::{
     undo,
 };
 
+use lib_documents::{DocumentPayees, DocumentTransactions};
+
 use crate::{Ledger, LedgerChange, LedgerCommand};
 
 /// What the Library's `e` replaces on a Filed Document.
@@ -109,10 +111,11 @@ impl Ledger {
         id: DocumentId,
         transaction_id: TransactionId,
     ) -> Result<FiledEntry, FilingError> {
+        let transactions = self.document_transactions();
         let entry = accept(
             &self.document_types,
             &mut self.documents,
-            &self.transactions,
+            &transactions,
             id,
             transaction_id,
         )?;
@@ -152,11 +155,12 @@ impl Ledger {
     /// Accepts every Unfiled Document whose Suggested Link is Strong, as one undoable batch.
     /// `focus` is the Inbox row the Client keeps in view. Returns `None` when none was strong.
     pub fn accept_all_documents(&mut self, focus: Option<DocumentId>) -> Option<FilingUndo> {
+        let (transactions, payees) = (self.document_transactions(), self.document_payees());
         let batch = accept_all_strong(
             &self.document_types,
             &mut self.documents,
-            &self.transactions,
-            &self.payees,
+            &transactions,
+            &payees,
             focus,
         )?;
         for entry in &batch.entries {
@@ -526,6 +530,7 @@ mod tests {
     fn new_document(name: &str) -> NewDocument {
         NewDocument {
             path: PathBuf::from(format!("/tmp/{name}.pdf")),
+            bytes: 0,
             title: name.to_string(),
             doc_type: DocumentType::TAX,
             date: today(),
@@ -651,7 +656,9 @@ mod tests {
         let mut ledger = ledger();
         let line = |typed: &str, exists| ImportLine {
             typed: typed.to_string(),
+            path: PathBuf::from(typed),
             exists,
+            bytes: 0,
         };
         let outcomes = ImportDocuments {
             lines: vec![

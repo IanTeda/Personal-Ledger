@@ -12,6 +12,9 @@ mod category_commands;
 mod category_reads;
 mod change;
 mod document_commands;
+mod document_reads;
+#[cfg(test)]
+mod documents_seed_tests;
 mod institution_reads;
 mod inventory_commands;
 mod inventory_reads;
@@ -45,7 +48,7 @@ use lib_budgets::{Budgets, default_budgets};
 use lib_categories::{Category, default_categories};
 use lib_core::{PriceSourceId, UnitId, UnitKind};
 use lib_documents::{
-    Document, default_documents,
+    Document, LinkRecords, default_documents,
     types::{DocumentTypeRow, default_types},
 };
 use lib_institutions::{Institution, default_institutions};
@@ -189,13 +192,15 @@ impl Ledger {
         let transactions = seed::stub_transactions(&accounts, &categories, &payees, &tags, today);
         let bills = seed::stub_bills(&accounts, &categories, &payees, today);
         let inventory = default_inventory(today);
+        let institutions = default_institutions();
         let documents = default_documents(
-            &accounts,
-            &categories,
-            &payees,
-            &bills.plans,
-            &inventory,
-            &transactions,
+            &LinkRecords {
+                transactions: document_reads::document_transactions(&transactions),
+                payees: document_reads::document_payees(&payees),
+                accounts: document_reads::document_accounts(&accounts, &institutions),
+                plans: document_reads::document_bill_plans(&bills.plans),
+                items: document_reads::document_items(&inventory),
+            },
             today,
         );
         let budgets = default_budgets(
@@ -215,7 +220,7 @@ impl Ledger {
             documents: documents.documents,
             document_types: default_types(),
             inventory,
-            institutions: default_institutions(),
+            institutions,
             units: units.units.units,
             base_unit: units.base_unit.0,
             price_sources: Vec::new(),

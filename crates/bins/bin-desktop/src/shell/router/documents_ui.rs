@@ -13,10 +13,9 @@ use lib_toast::ToastKind;
 
 use super::{OpenDialog, Root};
 use crate::{
-    documents::apply::{DocumentOutcome, OnDocuments, exists_on_disk},
-    documents::form::{
-        DocumentField, DocumentForm, DocumentsDialog, FactsField, FactsForm, import_lines,
-    },
+    documents::apply::{DocumentOutcome, OnDocuments},
+    documents::files::DiskFiles,
+    documents::form::{DocumentField, DocumentForm, DocumentsDialog, FactsField, FactsForm},
     documents::model as view_model,
     documents::picker::{PickerRequest, PickerRow, PickerState, Purpose},
     documents::types::DocumentTypeRow,
@@ -316,7 +315,7 @@ impl Root {
             .map(|path| path.display().to_string())
             .collect();
         let command = ImportDocuments {
-            lines: import_lines(typed.iter().map(String::as_str), exists_on_disk),
+            lines: crate::documents::import_lines(&DiskFiles, typed.iter().map(String::as_str)),
             today: self.today,
             source: Source::Dropped,
         };
@@ -465,7 +464,7 @@ impl Root {
                 cx,
             )),
             DocumentsDialog::Add(form) | DocumentsDialog::Edit(_, form) => {
-                let problems = form.problems(self.documents(cx), exists_on_disk);
+                let problems = form.problems(self.documents(cx), &DiskFiles);
                 let on_field_click: dialogs::OnFieldClick = {
                     let entity = entity.clone();
                     Rc::new(move |field, _window, cx| {

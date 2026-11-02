@@ -11,11 +11,11 @@ use chrono::NaiveDate;
 use lib_locale::format::format_date;
 
 use crate::{
+    documents::DocumentTransaction,
     documents::model::Lookups,
     documents::{DocumentLink, DocumentType},
     form::field::TextField,
     shell::view::dialog_host::{Dialog, DialogKey, DialogOutcome},
-    transactions::Transaction,
     view::format,
 };
 
@@ -291,7 +291,8 @@ pub fn rows(state: &PickerState, sources: &Sources<'_>) -> Vec<PickerRow> {
     let pinned = |link: &DocumentLink| sources.current.contains(link);
 
     // Transactions: the near window first, nearest first; a search then reaches the rest.
-    let mut ranked: Vec<(&Transaction, i64)> = lookups
+    let mut ranked: Vec<(&DocumentTransaction, i64)> = lookups
+        .records
         .transactions
         .iter()
         .map(|transaction| {
@@ -317,7 +318,7 @@ pub fn rows(state: &PickerState, sources: &Sources<'_>) -> Vec<PickerRow> {
         push(&mut out, DocumentLink::Transaction(transaction.id), false);
     }
 
-    let mut accounts: Vec<_> = lookups.accounts.iter().collect();
+    let mut accounts: Vec<_> = lookups.records.accounts.iter().collect();
     accounts.sort_by_key(|account| account.name.to_lowercase());
     for account in accounts {
         let link = DocumentLink::Account(account.id);
@@ -325,7 +326,7 @@ pub fn rows(state: &PickerState, sources: &Sources<'_>) -> Vec<PickerRow> {
             push(&mut out, link, false);
         }
     }
-    let mut payees: Vec<_> = lookups.payees.iter().collect();
+    let mut payees: Vec<_> = lookups.records.payees.iter().collect();
     payees.sort_by_key(|payee| payee.name.to_lowercase());
     for payee in payees {
         let link = DocumentLink::Payee(payee.id);
@@ -333,7 +334,7 @@ pub fn rows(state: &PickerState, sources: &Sources<'_>) -> Vec<PickerRow> {
             push(&mut out, link, false);
         }
     }
-    let mut plans: Vec<_> = lookups.plans.iter().collect();
+    let mut plans: Vec<_> = lookups.records.plans.iter().collect();
     plans.sort_by_key(|plan| plan.name.to_lowercase());
     for plan in plans {
         let link = DocumentLink::BillPlan(plan.id);
@@ -341,7 +342,7 @@ pub fn rows(state: &PickerState, sources: &Sources<'_>) -> Vec<PickerRow> {
             push(&mut out, link, false);
         }
     }
-    let mut items: Vec<_> = lookups.inventory.items.iter().collect();
+    let mut items: Vec<_> = lookups.records.items.iter().collect();
     items.sort_by_key(|item| item.name.to_lowercase());
     for item in items {
         let link = DocumentLink::InventoryItem(item.id);
@@ -361,23 +362,20 @@ fn describe(
 ) -> Option<(String, String, String)> {
     match link {
         DocumentLink::Transaction(id) => {
-            let transaction = lookups.transactions.iter().find(|t| t.id == id)?;
+            let transaction = lookups.records.transaction(id)?;
             let account = lookups
-                .accounts
-                .iter()
-                .find(|account| account.id == transaction.account_id)
+                .records
+                .account(transaction.account_id)
                 .map(|account| account.name.clone())
                 .unwrap_or_default();
             let payee = transaction
-                .splits
-                .iter()
-                .find_map(|split| split.payee_id)
-                .and_then(|id| lib_payees::get(lookups.payees, id));
+                .first_payee()
+                .and_then(|id| lookups.records.payee(id));
             let what = payee
                 .map(|payee| payee.name.clone())
-                .or_else(|| transaction.description.clone())
+                .or_else(|| transaction.memo.clone())
                 .unwrap_or_default();
-            let (_, amount) = format::signed_amount(&transaction.total());
+            let (_, amount) = format::signed_amount(&transaction.amount);
             let date = format_date(transaction.date, lookups.date_style);
             let text = format!("{date} \u{b7} {what} \u{b7} {amount} \u{b7} {account}");
             let haystack = if searchable {
@@ -392,10 +390,8 @@ fn describe(
             ))
         }
         DocumentLink::Account(id) => {
-            let account = lookups.accounts.iter().find(|account| account.id == id)?;
-            let institution =
-                crate::accounts::institution_label(account.institution, lookups.institutions);
-            let text = format!("{} \u{b7} {institution}", account.name);
+            let account = lookups.records.account(id)?;
+            let text = format!("{} \u{b7} {}", account.name, account.institution);
             Some((
                 crate::msg::desktop_documents_link_account(),
                 text.clone(),
@@ -403,7 +399,7 @@ fn describe(
             ))
         }
         DocumentLink::Payee(id) => {
-            let payee = lib_payees::get(lookups.payees, id)?;
+            let payee = lookups.records.payee(id)?;
             let haystack = std::iter::once(payee.name.as_str())
                 .chain(payee.aliases.iter().map(String::as_str))
                 .collect::<Vec<_>>()
@@ -416,19 +412,18 @@ fn describe(
             ))
         }
         DocumentLink::BillPlan(id) => {
-            let plan = crate::bills::get(lookups.plans, id)?;
-            let cadence = lib_bills::presenter::recurrence_label(plan.recurrence);
+            let plan = lookups.records.plan(id)?;
             let payee = plan
                 .payee_id
-                .and_then(|id| lib_payees::get(lookups.payees, id))
+                .and_then(|id| lookups.records.payee(id))
                 .map(|payee| payee.name.as_str())
                 .unwrap_or_default();
-            let text = format!("{} \u{b7} {cadence}", plan.name);
+            let text = format!("{} \u{b7} {}", plan.name, plan.cadence);
             let haystack = format!("{}\n{payee}", plan.name).to_lowercase();
             Some((crate::msg::desktop_documents_link_bill(), text, haystack))
         }
         DocumentLink::InventoryItem(id) => {
-            let item = lookups.inventory.items.iter().find(|item| item.id == id)?;
+            let item = lookups.records.item(id)?;
             Some((
                 crate::msg::desktop_documents_link_inventory(),
                 item.name.clone(),
@@ -442,21 +437,21 @@ fn describe(
 /// name, the amount as plain digits (`4380.00`, so `4380`, `4,380` and `-4380.00` all find it) and
 /// the date in both ISO and day-month form (`2026-09`, `14 sep`).
 fn transaction_haystack(
-    transaction: &Transaction,
+    transaction: &DocumentTransaction,
     account_name: &str,
     lookups: &Lookups<'_>,
 ) -> String {
     let mut parts: Vec<String> = Vec::new();
-    for split in &transaction.splits {
-        if let Some(payee) = split
-            .payee_id
-            .and_then(|id| lib_payees::get(lookups.payees, id))
-        {
-            parts.push(payee.name.clone());
-            parts.extend(payee.aliases.iter().cloned());
-        }
+    for payee in transaction
+        .payee_ids
+        .iter()
+        .flatten()
+        .filter_map(|id| lookups.records.payee(*id))
+    {
+        parts.push(payee.name.clone());
+        parts.extend(payee.aliases.iter().cloned());
     }
-    if let Some(memo) = &transaction.description {
+    if let Some(memo) = &transaction.memo {
         parts.push(memo.clone());
     }
     parts.push(account_name.to_string());
@@ -467,8 +462,8 @@ fn transaction_haystack(
 }
 
 /// `|total|` to two places, unsigned and ungrouped.
-fn amount_digits(transaction: &Transaction) -> String {
-    transaction.total().0.abs().with_scale(2).to_string()
+fn amount_digits(transaction: &DocumentTransaction) -> String {
+    transaction.amount.0.abs().with_scale(2).to_string()
 }
 
 /// A query matches when its text is a substring of the haystack, or, for a money-looking query
@@ -498,21 +493,13 @@ pub fn visible_window(selected: usize, len: usize, cap: usize) -> Range<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::inventory::Inventory;
-    use crate::{bills::BillPlan, documents::DocumentsSeed};
-    use lib_accounts::Account;
+    use crate::documents::{DocumentsSeed, LinkRecords};
     use lib_core::DateStyle;
-    use lib_payees::Payee;
 
     struct World {
         types: Vec<crate::documents::types::DocumentTypeRow>,
-        accounts: Vec<Account>,
-        institutions: Vec<lib_institutions::Institution>,
-        payees: Vec<Payee>,
-        plans: Vec<BillPlan>,
-        transactions: Vec<Transaction>,
+        records: LinkRecords,
         seed: DocumentsSeed,
-        inventory: Inventory,
         today: NaiveDate,
     }
 
@@ -522,15 +509,10 @@ mod tests {
         let ledger = lib_ledger::Ledger::stub_on(today);
         World {
             types: crate::documents::types::default_types(),
-            accounts: ledger.accounts().to_vec(),
-            institutions: ledger.institutions().to_vec(),
-            payees: ledger.payees().to_vec(),
-            plans: ledger.bill_plans().to_vec(),
-            transactions: ledger.transactions().to_vec(),
+            records: LinkRecords::read(&ledger),
             seed: DocumentsSeed {
                 documents: ledger.documents().to_vec(),
             },
-            inventory: ledger.inventory().clone(),
             today,
         }
     }
@@ -539,12 +521,7 @@ mod tests {
         fn lookups(&self) -> Lookups<'_> {
             Lookups {
                 types: &self.types,
-                accounts: &self.accounts,
-                institutions: &self.institutions,
-                payees: &self.payees,
-                plans: &self.plans,
-                inventory: &self.inventory,
-                transactions: &self.transactions,
+                records: self.records.clone(),
                 today: self.today,
                 date_style: Some(DateStyle::Iso),
             }
@@ -580,7 +557,7 @@ mod tests {
     fn current_links_are_pinned_first_and_ticked() {
         let world = world();
         let lookups = world.lookups();
-        let account = world.accounts[1].id;
+        let account = world.records.accounts[1].id;
         let current = [DocumentLink::Account(account)];
         let listed = rows(
             &state(&world, Purpose::Link(DocumentId::seed(1))),
@@ -615,9 +592,8 @@ mod tests {
             .iter()
             .filter_map(|row| match row.link {
                 Some(DocumentLink::Transaction(id)) => world
-                    .transactions
-                    .iter()
-                    .find(|t| t.id == id)
+                    .records
+                    .transaction(id)
                     .map(|t| (t.date - state.anchor).num_days().abs()),
                 _ => None,
             })
@@ -656,7 +632,7 @@ mod tests {
         let mut sorted = names.clone();
         sorted.sort();
         assert_eq!(names, sorted);
-        assert_eq!(listed.len(), world.payees.len());
+        assert_eq!(listed.len(), world.records.payees.len());
     }
 
     #[test]
@@ -664,9 +640,10 @@ mod tests {
         let world = world();
         let lookups = world.lookups();
         let transaction = world
+            .records
             .transactions
             .iter()
-            .find(|t| t.total().0.abs() >= 1000)
+            .find(|t| t.amount.0.abs() >= 1000)
             .expect("a large stub transaction");
         let plain = amount_digits(transaction);
         let whole = plain.trim_end_matches(".00").to_string();
@@ -740,8 +717,8 @@ mod tests {
         let world = world();
         let lookups = world.lookups();
         let current = [
-            DocumentLink::Account(world.accounts[0].id),
-            DocumentLink::Payee(world.payees[0].id),
+            DocumentLink::Account(world.records.accounts[0].id),
+            DocumentLink::Payee(world.records.payees[0].id),
         ];
         let listed = rows(
             &state(&world, Purpose::Follow(DocumentId::seed(1))),

@@ -6,33 +6,22 @@ use chrono::{Datelike, NaiveDate};
 use lib_core::{DateStyle, DocumentId, TransactionId};
 use lib_locale::format::{format_date, format_year_month, upper};
 
-use lib_payees::Payee;
-
 use crate::{
-    bills::BillPlan,
     documents,
     documents::types::DocumentTypeRow,
     documents::{
         CANDIDATE_WINDOW_DAYS, Candidate, Document, DocumentLink, DocumentType, FileKind, KeyDate,
-        KeyDateBand, KeyDateKind, LibraryScope, RailEntry, Signals, Source, Suggestion, YearFacet,
-        band, scope_count, tracks_financial_year,
+        KeyDateBand, KeyDateKind, LibraryScope, LinkRecords, RailEntry, Signals, Source,
+        Suggestion, YearFacet, band, scope_count, tracks_financial_year,
     },
-    inventory::Inventory,
-    transactions::Transaction,
     view::format,
 };
-use lib_accounts::Account;
-use lib_institutions::Institution;
 
-/// The shared stubs a Document's Links point into, and the clock they are read against.
+/// The records a Document's Links point into, read through `lib_documents`' ports, and the clock
+/// they are read against.
 pub struct Lookups<'a> {
     pub types: &'a [DocumentTypeRow],
-    pub accounts: &'a [Account],
-    pub institutions: &'a [Institution],
-    pub payees: &'a [Payee],
-    pub plans: &'a [BillPlan],
-    pub inventory: &'a Inventory,
-    pub transactions: &'a [Transaction],
+    pub records: LinkRecords,
     pub today: NaiveDate,
     pub date_style: Option<DateStyle>,
 }
@@ -192,27 +181,26 @@ pub fn flag_text(key_date: &KeyDate, lookups: &Lookups<'_>) -> String {
 fn link_name(link: DocumentLink, lookups: &Lookups<'_>) -> Option<(ChipKind, String)> {
     match link {
         DocumentLink::Transaction(id) => {
-            let transaction = lookups.transactions.iter().find(|t| t.id == id)?;
-            let (_, text) = format::signed_amount(&transaction.total());
+            let transaction = lookups.records.transaction(id)?;
+            let (_, text) = format::signed_amount(&transaction.amount);
             Some((ChipKind::Amount, text))
         }
         DocumentLink::InventoryItem(id) => lookups
-            .inventory
-            .items
-            .iter()
-            .find(|item| item.id == id)
+            .records
+            .item(id)
             .map(|item| (ChipKind::Item, item.name.clone())),
         DocumentLink::Account(id) => lookups
-            .accounts
-            .iter()
-            .find(|account| account.id == id)
+            .records
+            .account(id)
             .map(|account| (ChipKind::Account, account.name.clone())),
-        DocumentLink::Payee(id) => {
-            lib_payees::get(lookups.payees, id).map(|payee| (ChipKind::Payee, payee.name.clone()))
-        }
-        DocumentLink::BillPlan(id) => {
-            crate::bills::get(lookups.plans, id).map(|plan| (ChipKind::Bill, plan.name.clone()))
-        }
+        DocumentLink::Payee(id) => lookups
+            .records
+            .payee(id)
+            .map(|payee| (ChipKind::Payee, payee.name.clone())),
+        DocumentLink::BillPlan(id) => lookups
+            .records
+            .plan(id)
+            .map(|plan| (ChipKind::Bill, plan.name.clone())),
     }
 }
 
@@ -221,18 +209,20 @@ fn link_name(link: DocumentLink, lookups: &Lookups<'_>) -> Option<(ChipKind, Str
 fn link_row_name(link: DocumentLink, lookups: &Lookups<'_>) -> Option<String> {
     match link {
         DocumentLink::Transaction(id) => {
-            let transaction = lookups.transactions.iter().find(|t| t.id == id)?;
-            let (_, amount) = format::signed_amount(&transaction.total());
+            let transaction = lookups.records.transaction(id)?;
+            let (_, amount) = format::signed_amount(&transaction.amount);
             let date = format_date(transaction.date, lookups.date_style);
             let what = transaction
-                .description
+                .memo
                 .clone()
                 .or_else(|| {
+                    // The first Split's Payee only, not the first any Split names.
                     transaction
-                        .splits
+                        .payee_ids
                         .first()
-                        .and_then(|split| split.payee_id)
-                        .and_then(|id| lib_payees::get(lookups.payees, id))
+                        .copied()
+                        .flatten()
+                        .and_then(|id| lookups.records.payee(id))
                         .map(|payee| payee.name.clone())
                 })
                 .unwrap_or_default();
@@ -451,16 +441,10 @@ fn candidate_view(
 ) -> Option<CandidateView> {
     let line = link_row_name(DocumentLink::Transaction(candidate.transaction_id), lookups)?;
     let sub = if with_sub {
-        let account = lookups
-            .transactions
-            .iter()
-            .find(|transaction| transaction.id == candidate.transaction_id)
-            .and_then(|transaction| {
-                lookups
-                    .accounts
-                    .iter()
-                    .find(|account| account.id == transaction.account_id)
-            })
+        let records = &lookups.records;
+        let account = records
+            .transaction(candidate.transaction_id)
+            .and_then(|transaction| records.account(transaction.account_id))
             .map(|account| account.name.clone())
             .unwrap_or_default();
         let documents = if candidate.already_linked {
@@ -506,8 +490,12 @@ pub fn inbox_row(
     documents: &[Document],
     lookups: &Lookups<'_>,
 ) -> InboxRowView {
-    let suggestion =
-        documents::suggestion(document, documents, lookups.transactions, lookups.payees);
+    let suggestion = documents::suggestion(
+        document,
+        documents,
+        &lookups.records.transactions,
+        &lookups.records.payees,
+    );
     let (state, summary, hint, signals, best) = match &suggestion {
         Suggestion::Unreadable => (
             InboxState::Unreadable,
@@ -558,8 +546,12 @@ pub fn inbox_detail(
     documents: &[Document],
     lookups: &Lookups<'_>,
 ) -> InboxDetailView {
-    let suggestion =
-        documents::suggestion(document, documents, lookups.transactions, lookups.payees);
+    let suggestion = documents::suggestion(
+        document,
+        documents,
+        &lookups.records.transactions,
+        &lookups.records.payees,
+    );
     let facts = document
         .intake
         .as_ref()
@@ -628,13 +620,8 @@ mod tests {
 
     struct World {
         types: Vec<DocumentTypeRow>,
-        accounts: Vec<Account>,
-        institutions: Vec<Institution>,
-        payees: Vec<Payee>,
-        plans: Vec<BillPlan>,
-        transactions: Vec<Transaction>,
+        records: LinkRecords,
         seed: DocumentsSeed,
-        inventory: Inventory,
         today: NaiveDate,
     }
 
@@ -644,15 +631,10 @@ mod tests {
         let ledger = lib_ledger::Ledger::stub_on(today);
         World {
             types: documents::types::default_types(),
-            accounts: ledger.accounts().to_vec(),
-            institutions: ledger.institutions().to_vec(),
-            payees: ledger.payees().to_vec(),
-            plans: ledger.bill_plans().to_vec(),
-            transactions: ledger.transactions().to_vec(),
+            records: LinkRecords::read(&ledger),
             seed: DocumentsSeed {
                 documents: ledger.documents().to_vec(),
             },
-            inventory: ledger.inventory().clone(),
             today,
         }
     }
@@ -661,12 +643,7 @@ mod tests {
         fn lookups(&self) -> Lookups<'_> {
             Lookups {
                 types: &self.types,
-                accounts: &self.accounts,
-                institutions: &self.institutions,
-                payees: &self.payees,
-                plans: &self.plans,
-                inventory: &self.inventory,
-                transactions: &self.transactions,
+                records: self.records.clone(),
                 today: self.today,
                 date_style: Some(DateStyle::Iso),
             }

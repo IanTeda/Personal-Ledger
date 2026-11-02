@@ -7,7 +7,6 @@
 //! so it stays `Root`'s.
 
 use lib_core::DocumentId;
-use std::path::Path;
 
 use chrono::NaiveDate;
 
@@ -18,14 +17,10 @@ use lib_ledger::{
 
 use super::{
     self as documents, AddError, ExtractedFacts, FilingError, FilingUndo, ImportOutcome, Source,
-    form::{self, DocumentForm, DocumentsDialog, ImportForm},
+    files::DiskFiles,
+    form::{DocumentForm, DocumentsDialog, ImportForm},
 };
 use crate::shell::view::dialog_apply::{DialogForm, FormError, OutcomeToast};
-
-/// Whether the path exists on disk, passed to the form checks so they stay testable.
-pub fn exists_on_disk(path: &Path) -> bool {
-    path.exists()
-}
 
 /// What confirming a Documents Dialog asks for.
 #[derive(Debug, Clone)]
@@ -103,10 +98,10 @@ impl LedgerCommand for OnDocuments {
         } = self;
         match command {
             DocumentCommand::Save { editing, form } => {
-                let problems = form.problems(ledger.documents(), exists_on_disk);
+                let problems = form.problems(ledger.documents(), &DiskFiles);
                 let new = form
                     .can_save(&problems)
-                    .then(|| form.build())
+                    .then(|| form.build(&DiskFiles))
                     .flatten()
                     .ok_or(DocumentRefusal::Problems)?;
                 let title = new.title.clone();
@@ -130,7 +125,7 @@ impl LedgerCommand for OnDocuments {
                 }
             }
             DocumentCommand::Import(form) => {
-                let lines = form::import_lines(form.lines(), exists_on_disk);
+                let lines = documents::import_lines(&DiskFiles, form.lines());
                 let Ok(outcomes) = ImportDocuments {
                     lines,
                     today,

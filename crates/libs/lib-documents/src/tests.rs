@@ -1,7 +1,6 @@
 use super::*;
-use lib_core::{AccountId, CategoryId, DocumentId, PayeeId, TransactionId, TransactionStatus};
-use lib_payees::default_payees;
-use lib_transactions::Split;
+use crate::{fake::InMemoryFiles, protocols::resolve_typed};
+use lib_core::{AccountId, DocumentId, PayeeId, TransactionId};
 
 fn types() -> Vec<DocumentTypeRow> {
     types::default_types()
@@ -27,25 +26,40 @@ fn unfiled(id: u32, facts: ExtractedFacts) -> Document {
     Draft::unfiled("IMG.jpg", Source::Scanned, today(), facts).build(DocumentId::seed(id))
 }
 
-fn payee_split(cents: i64, payee_id: Option<PayeeId>) -> Split {
-    Split {
+fn txn(id: u32, on: NaiveDate, cents: i64, payee_id: Option<PayeeId>) -> DocumentTransaction {
+    DocumentTransaction {
+        id: TransactionId::seed(id),
+        date: on,
         amount: cents_money(cents),
-        category_id: CategoryId::seed(1),
-        payee_id,
-        tag_ids: Vec::new(),
+        account_id: AccountId::seed(1),
+        payee_ids: vec![payee_id],
+        memo: None,
     }
 }
 
-fn txn(id: u32, on: NaiveDate, cents: i64, payee_id: Option<PayeeId>) -> Transaction {
-    Transaction {
-        id: TransactionId::seed(id),
-        date: on,
-        account_id: AccountId::seed(1),
-        status: TransactionStatus::Cleared,
-        is_flagged: false,
-        description: None,
-        splits: vec![payee_split(cents, payee_id)],
+fn payee(id: u32, name: &str, aliases: &[&str]) -> DocumentPayee {
+    DocumentPayee {
+        id: PayeeId::seed(id),
+        name: name.to_string(),
+        aliases: aliases.iter().map(|alias| alias.to_string()).collect(),
+        is_active: true,
     }
+}
+
+/// Woolworths and Cafe Vittoria as the Payees' stub seeds them, and an inactive Payee whose alias
+/// the ATO's merchant would match.
+fn payees() -> Vec<DocumentPayee> {
+    let mut retired = payee(30, "Taxation", &["AUSTRALIAN TAXATION"]);
+    retired.is_active = false;
+    vec![
+        payee(
+            1,
+            "Woolworths",
+            &["WOOLWORTHS", "WW SUPERMARKET", "WOOLIES"],
+        ),
+        payee(11, "Cafe Vittoria", &[]),
+        retired,
+    ]
 }
 
 fn facts(merchant: Option<&str>, on: Option<NaiveDate>, cents: Option<i64>) -> ExtractedFacts {
@@ -310,8 +324,8 @@ fn removing_the_last_link_leaves_the_document_filed() {
 
 // Suggested Link
 
-fn woolworths() -> Vec<Payee> {
-    default_payees()
+fn woolworths() -> Vec<DocumentPayee> {
+    payees()
 }
 
 #[test]
@@ -329,8 +343,8 @@ fn three_agreeing_signals_are_strong() {
 
 #[test]
 fn amount_ignores_the_sign_and_compares_a_split_transactions_whole_total() {
-    let mut split = txn(1, today(), -10_000, None);
-    split.splits.push(payee_split(-2_000, None));
+    let mut split = txn(1, today(), -12_000, None);
+    split.payee_ids.push(None);
     let document = unfiled(1, facts(None, Some(today()), Some(12_000)));
     let found = candidates(&document, &[], &[split], &[]);
     assert!(found[0].signals.amount);
@@ -377,7 +391,7 @@ fn without_an_extracted_date_the_window_centres_on_received_and_date_never_agree
 
 #[test]
 fn payee_resolves_by_alias_then_by_name_contained_in_the_merchant() {
-    let payees = default_payees();
+    let payees = payees();
     assert_eq!(
         merchant_payee(&payees, "WW SUPERMARKET 1234"),
         Some(PayeeId::seed(1))
@@ -391,7 +405,7 @@ fn payee_resolves_by_alias_then_by_name_contained_in_the_merchant() {
 
 #[test]
 fn ranking_prefers_strength_then_amount_then_gap_then_unlinked_then_id() {
-    let payees = default_payees();
+    let payees = payees();
     let transactions = vec![
         txn(1, today(), -999, Some(PayeeId::seed(1))), // payee + date
         txn(2, today() - Duration::days(5), -500, Some(PayeeId::seed(1))), // amount + payee
@@ -423,7 +437,8 @@ fn ranking_prefers_strength_then_amount_then_gap_then_unlinked_then_id() {
 
 #[test]
 fn others_are_the_next_two() {
-    let transactions: Vec<Transaction> = (1..=5).map(|id| txn(id, today(), -500, None)).collect();
+    let transactions: Vec<DocumentTransaction> =
+        (1..=5).map(|id| txn(id, today(), -500, None)).collect();
     let document = unfiled(1, facts(None, Some(today()), Some(500)));
     let Suggestion::Link { best, others } = suggestion(&document, &[], &transactions, &[]) else {
         panic!("expected a Suggested Link");
@@ -440,7 +455,7 @@ fn no_total_is_unreadable() {
     let transactions = vec![txn(1, today(), -500, Some(PayeeId::seed(1)))];
     let document = unfiled(1, facts(Some("Woolworths"), Some(today()), None));
     assert_eq!(
-        suggestion(&document, &[], &transactions, &default_payees()),
+        suggestion(&document, &[], &transactions, &payees()),
         Suggestion::Unreadable
     );
 }
@@ -598,6 +613,7 @@ fn focus_moves_to_the_next_row_or_the_previous_when_last() {
 fn new_document(path: &str, title: &str) -> NewDocument {
     NewDocument {
         path: PathBuf::from(path),
+        bytes: 0,
         title: title.to_string(),
         doc_type: DocumentType::INSURANCE,
         date: today(),
@@ -631,6 +647,7 @@ fn import_makes_an_unfiled_document_readable_only_from_the_catalogue() {
         &types(),
         &mut documents,
         PathBuf::from("/tmp/Coles-Receipt.jpg"),
+        2_048,
         today(),
         Source::Import,
     )
@@ -639,6 +656,7 @@ fn import_makes_an_unfiled_document_readable_only_from_the_catalogue() {
         &types(),
         &mut documents,
         PathBuf::from("/tmp/scan0001.pdf"),
+        0,
         today(),
         Source::Dropped,
     )
@@ -649,6 +667,7 @@ fn import_makes_an_unfiled_document_readable_only_from_the_catalogue() {
     let intake = readable.intake.as_ref().unwrap();
     assert_eq!(intake.source, Source::Import);
     assert_eq!(intake.facts.merchant.as_deref(), Some("Coles"));
+    assert_eq!(readable.bytes, 2_048);
 
     let unreadable = get(&documents, unreadable).unwrap();
     let intake = unreadable.intake.as_ref().unwrap();
@@ -666,6 +685,7 @@ fn import_refuses_a_path_already_filed() {
             &types(),
             &mut documents,
             PathBuf::from("/tmp/a.pdf"),
+            0,
             today(),
             Source::Dropped
         ),
@@ -716,19 +736,50 @@ fn mode_and_sort_ids_round_trip_and_default_when_unknown() {
 }
 
 #[test]
-fn resolve_path_keeps_an_absolute_path_and_makes_a_relative_one_absolute() {
+fn a_typed_path_resolves_home_and_relative_paths_and_keeps_an_absolute_one() {
     // A rooted path with no drive letter is relative on Windows, so the absolute fixture needs one there.
     let absolute = if cfg!(windows) {
         "C:/tmp/a.pdf"
     } else {
         "/tmp/a.pdf"
     };
+    let (home, work) = (Path::new("/home/user"), Path::new("/work"));
+    let resolve = |typed: &str| resolve_typed(typed, Some(home), Some(work));
+    assert_eq!(resolve(&format!(" {absolute} ")), PathBuf::from(absolute));
+    assert_eq!(resolve("docs/a.pdf"), work.join("docs/a.pdf"));
+    assert_eq!(resolve("~/a.pdf"), home.join("a.pdf"));
+    assert_eq!(resolve("~"), home);
+    // Without a home directory `~` is just a relative name.
     assert_eq!(
-        resolve_path(&format!(" {absolute} ")),
-        PathBuf::from(absolute)
+        resolve_typed("~/a.pdf", None, None),
+        PathBuf::from("~/a.pdf")
     );
-    assert!(resolve_path("docs/a.pdf").is_absolute());
     assert_eq!(default_title(Path::new("/tmp/rates-q1.pdf")), "rates-q1");
+}
+
+#[test]
+fn add_refuses_an_unsupported_file_then_a_held_path_then_a_missing_file() {
+    let files = InMemoryFiles::default()
+        .with("/home/user/a.pdf", 10)
+        .with("/home/user/notes.txt", 10);
+    let mut documents = Vec::new();
+    add_filed(&mut documents, new_document("/home/user/held.pdf", "Held")).unwrap();
+    assert_eq!(
+        check_path(&files, &documents, "~/a.pdf"),
+        Ok(PathBuf::from("/home/user/a.pdf"))
+    );
+    assert_eq!(
+        check_path(&files, &documents, "~/notes.txt"),
+        Err(PathRefusal::Unsupported)
+    );
+    assert_eq!(
+        check_path(&files, &documents, "~/held.pdf"),
+        Err(PathRefusal::Already("Held".to_string()))
+    );
+    assert_eq!(
+        check_path(&files, &documents, "missing.pdf"),
+        Err(PathRefusal::NotFound)
+    );
 }
 
 fn set_type(
@@ -838,22 +889,48 @@ fn a_missing_type_reads_as_the_default() {
     assert_eq!(DocumentType::BILLS.or_fallback(&types), DocumentType::BILLS);
 }
 
-fn line(typed: &str, exists: bool) -> ImportLine {
-    ImportLine {
-        typed: typed.to_string(),
-        exists,
-    }
+/// A disk holding the receipt, a text file and the lease, sized so a test can tell them apart.
+fn disk() -> InMemoryFiles {
+    InMemoryFiles::default()
+        .with("/tmp/coles-receipt.jpg", 4_096)
+        .with("/tmp/readme.txt", 10)
+        .with("/tmp/x.txt", 10)
+}
+
+#[test]
+fn import_lines_resolve_each_path_and_read_what_is_there() {
+    let lines = import_lines(&disk(), ["/tmp/coles-receipt.jpg", "none.pdf"]);
+    assert_eq!(
+        lines,
+        [
+            ImportLine {
+                typed: "/tmp/coles-receipt.jpg".to_string(),
+                path: PathBuf::from("/tmp/coles-receipt.jpg"),
+                exists: true,
+                bytes: 4_096,
+            },
+            ImportLine {
+                typed: "none.pdf".to_string(),
+                path: PathBuf::from("/work/none.pdf"),
+                exists: false,
+                bytes: 0,
+            },
+        ]
+    );
 }
 
 #[test]
 fn an_import_batch_reports_each_line() {
     let mut documents = Vec::new();
-    let lines = [
-        line("/tmp/coles-receipt.jpg", true),
-        line("/tmp/none.pdf", false),
-        line("/tmp/readme.txt", true),
-        line("/tmp/coles-receipt.jpg", true),
-    ];
+    let lines = import_lines(
+        &disk(),
+        [
+            "/tmp/coles-receipt.jpg",
+            "/tmp/none.pdf",
+            "/tmp/readme.txt",
+            "/tmp/coles-receipt.jpg",
+        ],
+    );
     let outcomes = import_batch(&types(), &mut documents, &lines, today(), Source::Import);
     assert_eq!(
         outcomes,
@@ -865,6 +942,7 @@ fn an_import_batch_reports_each_line() {
         ]
     );
     assert_eq!(documents.len(), 1);
+    assert_eq!(documents[0].bytes, 4_096);
     assert!(documents[0].is_unfiled());
     assert!(
         documents[0]
@@ -877,10 +955,7 @@ fn an_import_batch_reports_each_line() {
 #[test]
 fn a_dropped_batch_lands_in_the_inbox_as_dropped() {
     let mut documents = Vec::new();
-    let lines = [
-        line("/tmp/coles-receipt.jpg", true),
-        line("/tmp/x.txt", true),
-    ];
+    let lines = import_lines(&disk(), ["/tmp/coles-receipt.jpg", "/tmp/x.txt"]);
     let outcomes = import_batch(&types(), &mut documents, &lines, today(), Source::Dropped);
     assert_eq!(
         outcomes,
