@@ -4899,7 +4899,6 @@ dependencies = [
  "bigdecimal",
  "chrono",
  "lib_accounts",
- "lib_bill_payments",
  "lib_bills",
  "lib_budgets",
  "lib_categories",

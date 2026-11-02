@@ -7,6 +7,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
 use lib_core::{AccountId, BillPlanId, CategoryId, Money, PayeeId, TransactionId, UnitId};
 use lib_toast::{Notice, Notify};
@@ -18,7 +19,7 @@ use crate::protocols::{
 use crate::{
     BillAccount, BillAccounts, BillCategories, BillCategory, BillPayee, BillPayees, BillPlan,
     BillPlanRepository, BillScheduleEntry, BillScheduleRepository, BillSplit, BillTransactions,
-    BillsSeed, EntryId, Resolution, SplitRef, StubBills,
+    BillsSeed, EntryId, SplitRef, StubBills,
 };
 
 /// The Bill Plans and the Bill Schedule, stored in memory.
@@ -155,10 +156,18 @@ impl InMemoryPorts {
         let accounts = stub_accounts();
         let categories = stub_categories();
         let payees = stub_payees();
-        let mut splits = Vec::new();
-        let seed = book(
-            crate::default_bills(&accounts, &categories, &payees, today),
-            &mut splits,
+        let (seed, splits) = book(
+            crate::default_bills(
+                &accounts,
+                &categories,
+                &payees,
+                TransactionId::seed(1),
+                today,
+            ),
+            &accounts,
+            &categories,
+            &payees,
+            today,
         );
         Self {
             bills: seed.into(),
@@ -215,34 +224,32 @@ impl BillsPorts for InMemoryPorts {
     }
 }
 
-/// Books `stub`'s payments and Match candidate into `splits`, as the stub Ledger does through
-/// `lib-bill-payments`' `PayBill`, which this crate can't reach: each payment a Transaction in its
-/// Plan's Account of one Split of `-amount` carrying the Plan's Category and Payee, newest first.
-/// `lib-ledger` checks the two agree.
-fn book(stub: StubBills, splits: &mut Vec<BillSplit>) -> BillsSeed {
-    let StubBills {
-        seed: BillsSeed { plans, mut entries },
-        payments,
-        match_candidate,
-    } = stub;
-    // Every booked Transaction has one Split, so the next seed id follows the Split count.
-    let next = |splits: &Vec<BillSplit>| SplitRef {
-        transaction_id: TransactionId::seed(u32::try_from(splits.len() + 1).unwrap_or_default()),
-        split_index: 0,
-    };
+/// The Splits `stub`'s payments were paid by, then the unmatched Telstra debit yesterday (the 8d
+/// Match candidate), newest first, as `lib-transactions`' stub books them: each payment a
+/// Transaction in its Plan's Account of one Split of `-amount` carrying the Plan's Category and
+/// Payee. `lib-ledger` checks the two agree.
+fn book(
+    stub: StubBills,
+    accounts: &[BillAccount],
+    categories: &[BillCategory],
+    payees: &[BillPayee],
+    today: NaiveDate,
+) -> (BillsSeed, Vec<BillSplit>) {
+    let StubBills { seed, payments } = stub;
+    let mut splits = Vec::new();
+    let mut next = 1;
     for payment in payments {
-        let Some(plan) = crate::get(&plans, payment.entry.plan_id) else {
+        next = payment.transaction_id.seed_number() + 1;
+        let Some(plan) = crate::get(&seed.plans, payment.entry.plan_id) else {
             continue;
         };
-        let Some(found) = crate::entry_mut(&mut entries, payment.entry) else {
-            continue;
-        };
-        let split = next(splits);
-        found.resolution = Resolution::Paid(split);
         insert_newest_first(
-            splits,
+            &mut splits,
             BillSplit {
-                split,
+                split: SplitRef {
+                    transaction_id: payment.transaction_id,
+                    split_index: 0,
+                },
                 date: payment.date,
                 account_id: plan.account_id,
                 description: Some(plan.name.clone()),
@@ -252,19 +259,27 @@ fn book(stub: StubBills, splits: &mut Vec<BillSplit>) -> BillsSeed {
             },
         );
     }
-    if let Some(debit) = match_candidate {
-        let split = BillSplit {
-            split: next(splits),
-            date: debit.date,
-            account_id: debit.account_id,
-            description: Some(debit.description),
-            amount: Money(-debit.amount.0),
-            category_id: debit.category_id,
-            payee_id: Some(debit.payee_id),
-        };
-        insert_newest_first(splits, split);
+    let account = accounts.iter().find(|a| a.name == "ANZ Everyday");
+    let category = categories.iter().find(|c| c.name == "Household");
+    let payee = payees.iter().find(|p| p.name == "Telstra");
+    if let (Some(account), Some(category), Some(payee)) = (account, category, payee) {
+        insert_newest_first(
+            &mut splits,
+            BillSplit {
+                split: SplitRef {
+                    transaction_id: TransactionId::seed(next),
+                    split_index: 0,
+                },
+                date: today - chrono::Duration::days(1),
+                account_id: account.id,
+                description: Some("TELSTRA DIRECT DEBIT".to_string()),
+                amount: Money(-BigDecimal::new(7_999.into(), 2)),
+                category_id: category.id,
+                payee_id: Some(payee.id),
+            },
+        );
     }
-    BillsSeed { plans, entries }
+    (seed, splits)
 }
 
 fn insert_newest_first(splits: &mut Vec<BillSplit>, split: BillSplit) {
@@ -464,7 +479,7 @@ mod tests {
             date: date(day),
             account_id: AccountId::seed(1),
             description: None,
-            amount: Money(bigdecimal::BigDecimal::from(-1)),
+            amount: Money(BigDecimal::from(-1)),
             category_id: CategoryId::seed(7),
             payee_id: None,
         };

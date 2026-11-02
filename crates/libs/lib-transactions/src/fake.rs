@@ -1,6 +1,7 @@
 //! The in-memory Transactions ports and the stub seed, for tests and UI-first work. Each port holds
 //! its rows in plain fields so a test can set up or read state directly.
 
+mod booked;
 mod seed;
 
 use std::cell::RefCell;
@@ -8,6 +9,7 @@ use std::rc::Rc;
 
 use lib_core::{TransactionId, UnitId};
 
+pub use booked::{bill_transactions, document_transactions};
 pub use seed::{DEFAULT_SEED, HISTORY_DAYS, SeedAccount, SeedNames, stub_transactions};
 
 use crate::protocols::SharedPorts;

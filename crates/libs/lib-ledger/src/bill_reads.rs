@@ -120,6 +120,7 @@ pub(crate) fn bill_payees(payees: &[Payee]) -> Vec<BillPayee> {
 #[cfg(test)]
 mod tests {
     use chrono::NaiveDate;
+    use lib_core::TransactionId;
 
     use super::*;
 
@@ -179,8 +180,8 @@ mod tests {
         assert!(bill_payees(ledger.payees()).iter().any(|p| !p.is_active));
     }
 
-    /// `lib-bills`' fake stub stands in for these mappings and for `PayBill`, so its tests run on
-    /// what the Ledger's stub holds.
+    /// `lib-bills`' fake stub stands in for these mappings and for `lib-transactions`' booked
+    /// payments, so its tests run on what the Ledger's stub holds.
     #[test]
     fn the_bills_fake_stub_is_the_ledgers() {
         let ledger = Ledger::stub_on(today());
@@ -197,19 +198,39 @@ mod tests {
             assert!(payees.contains(&payee), "{payee:?}");
         }
 
+        // The fake numbers the Bills' Transactions from 1 rather than after the generated history.
         let fake = lib_bills::fake::InMemoryPorts::stub(today());
-        let mut transactions = Vec::new();
-        let booked = crate::bills_seed::book_stub_bills(
-            lib_bills::default_bills(
-                &bill_accounts(ledger.accounts()),
-                &bill_categories(ledger.categories()),
-                &payees,
-                today(),
-            ),
-            &mut transactions,
+        let first = TransactionId::seed(1);
+        let stub = lib_bills::default_bills(
+            &bill_accounts(ledger.accounts()),
+            &bill_categories(ledger.categories()),
+            &payees,
+            first,
+            today(),
         );
-        assert_eq!(fake.bills.plans, booked.plans);
-        assert_eq!(fake.bills.entries, booked.entries);
+        let accounts: Vec<_> = ledger
+            .accounts()
+            .iter()
+            .map(|account| lib_transactions::fake::SeedAccount {
+                id: account.id,
+                name: account.name.clone(),
+                account_type: account.account_type.clone(),
+                transaction_count: 0,
+            })
+            .collect();
+        let mut transactions = lib_transactions::fake::bill_transactions(
+            &accounts,
+            &crate::seed::StubNames {
+                categories: ledger.categories(),
+                payees: ledger.payees(),
+                tags: ledger.tags(),
+            },
+            first,
+            today(),
+        );
+        transactions.sort_by(|a, b| b.date.cmp(&a.date).then(b.id.cmp(&a.id)));
+        assert_eq!(fake.bills.plans, stub.seed.plans);
+        assert_eq!(fake.bills.entries, stub.seed.entries);
         assert_eq!(fake.reads.splits, bill_splits(&transactions));
     }
 

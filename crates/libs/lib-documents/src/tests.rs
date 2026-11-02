@@ -1,6 +1,7 @@
 use super::*;
-use lib_core::{AccountId, CategoryId, DocumentId, PayeeId, TransactionId};
+use lib_core::{AccountId, CategoryId, DocumentId, PayeeId, TransactionId, TransactionStatus};
 use lib_payees::default_payees;
+use lib_transactions::Split;
 
 fn types() -> Vec<DocumentTypeRow> {
     types::default_types()

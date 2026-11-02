@@ -2,20 +2,17 @@
 //! Payees Bills reads, with the payments that settle their earlier cycles. Deterministic (no
 //! randomness; `today` is injected) and `gpui`-free, so both Clients can build the same Ledger.
 //!
-//! A payment writes a Transaction too, so the seed only lists them ([`StubBills::payments`]): the
-//! stub Ledger books them through `lib-bill-payments`' `PayBill`, and `fake`'s stub stands in for
-//! it.
+//! A payment is a Transaction too, which `lib-transactions`' stub holds: the seed names each by
+//! the id it is booked under there and lists what it paid ([`StubBills::payments`]), so `fake`'s
+//! stub can answer the Splits.
 
 use bigdecimal::BigDecimal;
 use chrono::{Datelike, Duration, NaiveDate};
-use lib_core::{
-    AccountId, BillPlanId, BillScheduleEntryId, CategoryId, Money, PayeeId, Period,
-    TransactionStatus,
-};
+use lib_core::{BillPlanId, BillScheduleEntryId, Money, Period, TransactionId};
 
 use crate::{
     AmountKind, BillAccount, BillCategory, BillPayee, BillPlan, BillPlanDraft, BillScheduleEntry,
-    EntryId, Recurrence, insert_plan_as, set_active, skip,
+    EntryId, Recurrence, Resolution, SplitRef, entry_mut, insert_plan_as, set_active, skip,
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -29,38 +26,22 @@ pub struct BillsSeed {
     pub entries: Vec<BillScheduleEntry>,
 }
 
-/// The stub Bills before their history is booked: the entries [`Self::payments`] settles are
-/// still open, and the Match candidate is not yet a Transaction.
+/// The stub Bills, their Paid entries naming the Transactions [`Self::payments`] lists.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StubBills {
     pub seed: BillsSeed,
-    /// In the order they are booked, each Transaction taking the next seed id.
+    /// In the order of their ids.
     pub payments: Vec<SeedPayment>,
-    pub match_candidate: Option<SeedDebit>,
 }
 
-/// One earlier cycle paid directly: what `PayBill` is given, and the status its Transaction is
-/// left at once booked.
+/// One earlier cycle paid directly: the Transaction `lib-transactions`' stub books it under, of
+/// one Split of `-amount` in its Plan's Account, Category and Payee.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SeedPayment {
     pub entry: EntryId,
+    pub transaction_id: TransactionId,
     pub amount: Money,
     pub date: NaiveDate,
-    pub status: TransactionStatus,
-}
-
-/// The unmatched Telstra payment yesterday, the handoff's 8d Match candidate: a Transaction of one
-/// Split, which the booking side writes under the next seed id.
-#[derive(Debug, Clone, PartialEq)]
-pub struct SeedDebit {
-    pub date: NaiveDate,
-    pub account_id: AccountId,
-    pub status: TransactionStatus,
-    pub description: String,
-    pub category_id: CategoryId,
-    pub payee_id: PayeeId,
-    /// A positive magnitude; the Split is the negative.
-    pub amount: Money,
 }
 
 /// A seeded entry's id, fixed by its Bill Plan's seed number and its due date rather than by its
@@ -284,14 +265,16 @@ fn paid_cents(seed: &PlanSeed, index: u32, cycles: u32) -> i64 {
 }
 
 /// Seeds the handoff's Bill Plans against `accounts`, `categories` and `payees` and lays out their
-/// history: every earlier-month cycle is a [`SeedPayment`] (Reconciled, dated a day or two either
-/// side of the due date) unless its Plan skipped it, and this month's is left as the handoff
-/// shows it. Also names one unmatched Telstra payment yesterday, the 8d Match candidate. A Plan
-/// whose Account, Category or Payee is missing is left out.
+/// history: every earlier-month cycle is Paid by a [`SeedPayment`] (dated a day either side of the
+/// due date) unless its Plan skipped it, and this month's is left as the handoff shows it. The
+/// payments name the stub Transactions numbered from `first_payment`, in order, as
+/// `lib-transactions`' stub books them. A Plan whose Account, Category or Payee is missing is left
+/// out.
 pub fn default_bills(
     accounts: &[BillAccount],
     categories: &[BillCategory],
     payees: &[BillPayee],
+    first_payment: TransactionId,
     today: NaiveDate,
 ) -> StubBills {
     let mut plans: Vec<BillPlan> = Vec::new();
@@ -364,16 +347,20 @@ pub fn default_bills(
                 }
                 ThisMonth::Paid => {
                     let shift = i64::from(index % 3) - 1;
-                    let date = (entry_id.due + Duration::days(shift)).min(today);
+                    let transaction_id = TransactionId::seed(
+                        first_payment.seed_number() + u32::try_from(payments.len()).unwrap_or(0),
+                    );
+                    if let Some(found) = entry_mut(&mut entries, entry_id) {
+                        found.resolution = Resolution::Paid(SplitRef {
+                            transaction_id,
+                            split_index: 0,
+                        });
+                    }
                     payments.push(SeedPayment {
                         entry: entry_id,
+                        transaction_id,
                         amount: cents_money(paid_cents(seed, index, cycles)),
-                        date,
-                        status: if Period::of(date) < this_month {
-                            TransactionStatus::Reconciled
-                        } else {
-                            TransactionStatus::Cleared
-                        },
+                        date: (entry_id.due + Duration::days(shift)).min(today),
                     });
                 }
             }
@@ -383,23 +370,6 @@ pub fn default_bills(
         }
     }
 
-    let match_candidate = match (
-        accounts.iter().find(|a| a.name == "ANZ Everyday"),
-        category_named("Household"),
-        payee_named("Telstra"),
-    ) {
-        (Some(account), Some(category_id), Some(payee_id)) => Some(SeedDebit {
-            date: today - Duration::days(1),
-            account_id: account.id,
-            status: TransactionStatus::Cleared,
-            description: "TELSTRA DIRECT DEBIT".to_string(),
-            category_id,
-            payee_id,
-            amount: cents_money(7_999),
-        }),
-        _ => None,
-    };
-
     for entry in &mut entries {
         entry.row_id = seed_entry_id(entry.plan_id, entry.due);
     }
@@ -407,6 +377,5 @@ pub fn default_bills(
     StubBills {
         seed: BillsSeed { plans, entries },
         payments,
-        match_candidate,
     }
 }

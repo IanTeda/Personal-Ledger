@@ -19,7 +19,7 @@ Not yet built. No migration exists. The rules the schema must carry are in `GLOS
 
 ## Domain types
 
-None in `lib-core`. The pure model is `src/documents/mod.rs` (`gpui`-free and unit-tested): `Document`, `DocumentType`, `KeyDate`, `KeyDateBand` and `band` (60 days either side, inclusive), `DocumentLink`, `LibraryScope`, `LibrarySort`, `DocumentsMode`, `suggestion` (candidates within 7 days, amount or payee required, date signal within 3), `accept`, `accept_all_strong`, `FilingUndo` and `undo` (one level). The seed writes sample purchases into the stub Transactions, so it must run after `default_bills`.
+None in `lib-core`. The pure model is `src/documents/mod.rs` (`gpui`-free and unit-tested): `Document`, `DocumentType`, `KeyDate`, `KeyDateBand` and `band` (60 days either side, inclusive), `DocumentLink`, `LibraryScope`, `LibrarySort`, `DocumentsMode`, `suggestion` (candidates within 7 days, amount or payee required, date signal within 3), `accept`, `accept_all_strong`, `FilingUndo` and `undo` (one level). The seed reads the stub Transactions, whose sample purchases `lib-transactions`' stub books, and links the Camera House receipt and the filler receipts to them.
 
 ## Persistence
 

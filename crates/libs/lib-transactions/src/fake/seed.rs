@@ -83,12 +83,12 @@ pub struct SeedAccount {
     pub transaction_count: u32,
 }
 
-struct Lookup<'a> {
-    names: &'a dyn SeedNames,
+pub(super) struct Lookup<'a> {
+    pub(super) names: &'a dyn SeedNames,
 }
 
 impl Lookup<'_> {
-    fn split(
+    pub(super) fn split(
         &self,
         cents: i64,
         category: &str,

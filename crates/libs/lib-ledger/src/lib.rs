@@ -3,7 +3,6 @@
 mod account_reads;
 mod account_usage;
 mod bill_reads;
-mod bills_seed;
 #[cfg(test)]
 mod bills_seed_tests;
 mod budget_reads;
@@ -41,7 +40,7 @@ pub use tag_usage::{TagRows, transaction_count};
 
 use chrono::{DateTime, Local, NaiveDate, NaiveTime, Utc};
 use lib_accounts::{Account, default_accounts};
-use lib_bills::{BillPlan, BillScheduleEntry, default_bills};
+use lib_bills::{BillPlan, BillScheduleEntry};
 use lib_budgets::{Budgets, default_budgets};
 use lib_categories::{Category, default_categories};
 use lib_core::{PriceSourceId, UnitId, UnitKind};
@@ -166,9 +165,8 @@ impl Ledger {
         }
     }
 
-    /// The stub Ledger, anchored to today. Built in the Shell's order: Bills and Documents write
-    /// their history into the Transactions, so Transactions are seeded before them and the rest
-    /// follow their dependencies.
+    /// The stub Ledger, anchored to today: each domain's stub seed, the Bills and Documents naming
+    /// the Transactions `lib-transactions`' stub books for them.
     pub fn stub() -> Self {
         Self::stub_at(Local::now().date_naive(), Utc::now())
     }
@@ -188,16 +186,8 @@ impl Ledger {
         let categories = default_categories();
         let payees = default_payees();
         let tags = default_tags();
-        let mut transactions = default_transactions(&accounts, &categories, &payees, &tags, today);
-        let bills = bills_seed::book_stub_bills(
-            default_bills(
-                &bill_reads::bill_accounts(&accounts),
-                &bill_reads::bill_categories(&categories),
-                &bill_reads::bill_payees(&payees),
-                today,
-            ),
-            &mut transactions,
-        );
+        let transactions = seed::stub_transactions(&accounts, &categories, &payees, &tags, today);
+        let bills = seed::stub_bills(&accounts, &categories, &payees, today);
         let inventory = default_inventory(today);
         let documents = default_documents(
             &accounts,
@@ -205,7 +195,7 @@ impl Ledger {
             &payees,
             &bills.plans,
             &inventory,
-            &mut transactions,
+            &transactions,
             today,
         );
         let budgets = default_budgets(

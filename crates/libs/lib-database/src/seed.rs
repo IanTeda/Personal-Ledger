@@ -155,20 +155,22 @@ pub fn stub_payees() -> Vec<lib_payees::Payee> {
     lib_payees::fake::InMemoryPorts::stub().payees.payees
 }
 
-/// The stub Ledger's Transactions as of `today`: `lib_transactions::fake`'s, with those the Bills
-/// and Documents stubs add.
+/// The stub Ledger's Transactions as of `today`: `lib_transactions::fake`'s, the generated history
+/// then the rows the Bills and Documents stubs name, over the per-domain stubs.
 pub fn stub_ledger_transactions(today: NaiveDate) -> Vec<Transaction> {
-    lib_ledger::Ledger::stub_on(today).transactions().to_vec()
+    lib_ledger::seed::stub_transactions(
+        &stub_accounts(),
+        &stub_categories(),
+        &stub_payees(),
+        &stub_tags(),
+        today,
+    )
 }
 
 /// The stub Ledger's Bill Plans and Bill Schedule as of `today`, whose Paid entries name
 /// [`stub_ledger_transactions`]'.
 pub fn stub_ledger_bills(today: NaiveDate) -> BillsSeed {
-    let ledger = lib_ledger::Ledger::stub_on(today);
-    BillsSeed {
-        plans: ledger.bill_plans().to_vec(),
-        entries: ledger.bill_entries().to_vec(),
-    }
+    lib_ledger::seed::stub_bills(&stub_accounts(), &stub_categories(), &stub_payees(), today)
 }
 
 /// Fixed so the generated rows are the same on every run, which keeps `fake` seeding idempotent.

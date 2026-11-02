@@ -1,24 +1,28 @@
 //! The stub Transactions joined to the other domains' stubs: `lib_transactions::fake`'s generator,
-//! given the stub Accounts and the Category, Payee and Tag names it seeds by. It lives here, in the
-//! one crate that sees every domain, since the Categories, Payees and Tags crates depend on
+//! given the stub Accounts and the Category, Payee and Tag names it seeds by, then the rows the
+//! Bills and Documents seeds name, booked after it from [`FIRST_BOOKED`]. It lives here, in the one
+//! crate that sees every domain, since the Categories, Payees and Tags crates depend on
 //! `lib-transactions`.
 
 use chrono::NaiveDate;
 use lib_accounts::Account;
+use lib_bills::BillsSeed;
 use lib_categories::{self as categories, Category};
-use lib_core::{AccountId, CategoryId, PayeeId, TagId};
+use lib_core::{AccountId, CategoryId, PayeeId, TagId, TransactionId};
 use lib_payees::{self as payees, Payee};
 use lib_tags::{self as tags, Tag};
 use lib_transactions::Transaction;
-use lib_transactions::fake::{SeedAccount, SeedNames, stub_transactions};
+use lib_transactions::fake::{self, SeedAccount, SeedNames};
+
+use crate::bill_reads::{bill_accounts, bill_categories, bill_payees};
 
 pub use lib_transactions::fake::{DEFAULT_SEED, HISTORY_DAYS};
 
 /// The names the generator seeds by, looked up in the stub collections.
-struct StubNames<'a> {
-    categories: &'a [Category],
-    payees: &'a [Payee],
-    tags: &'a [Tag],
+pub(crate) struct StubNames<'a> {
+    pub(crate) categories: &'a [Category],
+    pub(crate) payees: &'a [Payee],
+    pub(crate) tags: &'a [Tag],
 }
 
 impl SeedNames for StubNames<'_> {
@@ -44,6 +48,21 @@ const STUB_TRANSACTION_COUNTS: [(AccountId, u32); 4] = [
     (AccountId::seed(3), 88),
     (AccountId::seed(4), 204),
 ];
+
+/// The first booked Transaction's id, numbered on from the generated history, which holds the sum
+/// of [`STUB_TRANSACTION_COUNTS`]: the Bills' payments take the ids from here, then the Documents'
+/// purchases.
+pub const FIRST_BOOKED: TransactionId = TransactionId::seed(history_count() + 1);
+
+const fn history_count() -> u32 {
+    let mut total = 0;
+    let mut index = 0;
+    while index < STUB_TRANSACTION_COUNTS.len() {
+        total += STUB_TRANSACTION_COUNTS[index].1;
+        index += 1;
+    }
+    total
+}
 
 fn stub_transaction_count(id: AccountId) -> u32 {
     STUB_TRANSACTION_COUNTS
@@ -72,6 +91,70 @@ pub fn default_transactions(
     )
 }
 
+/// The stub Ledger's Transactions: [`default_transactions`], then the Bills' payments and Match
+/// candidate and the Documents' purchases, numbered on from [`FIRST_BOOKED`] and each placed newest
+/// first, after any already on its date.
+pub fn stub_transactions(
+    accounts: &[Account],
+    categories: &[Category],
+    payees: &[Payee],
+    tags: &[Tag],
+    today: NaiveDate,
+) -> Vec<Transaction> {
+    let mut all = default_transactions(accounts, categories, payees, tags, today);
+    let accounts = seed_accounts(accounts, stub_transaction_count);
+    let names = StubNames {
+        categories,
+        payees,
+        tags,
+    };
+    let bills = fake::bill_transactions(&accounts, &names, FIRST_BOOKED, today);
+    let first_purchase = TransactionId::seed(
+        FIRST_BOOKED.seed_number() + u32::try_from(bills.len()).unwrap_or_default(),
+    );
+    let purchases = fake::document_transactions(&accounts, &names, first_purchase, today);
+    for transaction in bills.into_iter().chain(purchases) {
+        let at = all
+            .iter()
+            .position(|t| t.date <= transaction.date)
+            .unwrap_or(all.len());
+        all.insert(at, transaction);
+    }
+    all
+}
+
+/// The stub Ledger's Bill Plans and Bill Schedule as of `today`, laid out against these stubs as
+/// Bills reads them, their Paid entries naming [`stub_transactions`]' payments.
+pub fn stub_bills(
+    accounts: &[Account],
+    categories: &[Category],
+    payees: &[Payee],
+    today: NaiveDate,
+) -> BillsSeed {
+    lib_bills::default_bills(
+        &bill_accounts(accounts),
+        &bill_categories(categories),
+        &bill_payees(payees),
+        FIRST_BOOKED,
+        today,
+    )
+    .seed
+}
+
+/// The stub Accounts as the generator reads them, with `count` giving each one's number of
+/// Transactions.
+fn seed_accounts(accounts: &[Account], count: impl Fn(AccountId) -> u32) -> Vec<SeedAccount> {
+    accounts
+        .iter()
+        .map(|account| SeedAccount {
+            id: account.id,
+            name: account.name.clone(),
+            account_type: account.account_type.clone(),
+            transaction_count: count(account.id),
+        })
+        .collect()
+}
+
 /// [`default_transactions`] with `count` giving each Account's number of Transactions.
 fn counted_transactions(
     accounts: &[Account],
@@ -81,21 +164,12 @@ fn counted_transactions(
     tags: &[Tag],
     today: NaiveDate,
 ) -> Vec<Transaction> {
-    let accounts: Vec<SeedAccount> = accounts
-        .iter()
-        .map(|account| SeedAccount {
-            id: account.id,
-            name: account.name.clone(),
-            account_type: account.account_type.clone(),
-            transaction_count: count(account.id),
-        })
-        .collect();
     let names = StubNames {
         categories,
         payees,
         tags,
     };
-    stub_transactions(&accounts, &names, today)
+    fake::stub_transactions(&seed_accounts(accounts, count), &names, today)
 }
 
 #[cfg(test)]
@@ -415,6 +489,65 @@ mod tests {
             today(),
         );
         assert_eq!(count_for(&transactions, &accounts, "ANZ Everyday"), 3);
+    }
+
+    /// `lib-transactions`' stub, as `lib-database` seeds it, holds every Transaction the other
+    /// domains' seeds name: each Paid entry's, which carries its Bill Plan's Account, Category,
+    /// Payee and name, and each Document Link's.
+    #[test]
+    fn every_paid_entry_and_document_link_names_a_stub_transaction() {
+        let ledger = crate::Ledger::stub_on(today());
+        let accounts = default_accounts();
+        let categories = default_categories();
+        let payees = default_payees();
+        let transactions =
+            stub_transactions(&accounts, &categories, &payees, &default_tags(), today());
+        let bills = stub_bills(&accounts, &categories, &payees, today());
+        assert_eq!(
+            FIRST_BOOKED,
+            TransactionId::seed(
+                default_transactions(&accounts, &categories, &payees, &default_tags(), today())
+                    .len() as u32
+                    + 1
+            )
+        );
+        assert_eq!(ledger.transactions(), transactions.as_slice());
+        assert_eq!(ledger.bill_entries(), bills.entries.as_slice());
+        let named = |id| transactions.iter().find(|t| t.id == id);
+
+        let mut paid = 0;
+        for entry in &bills.entries {
+            let lib_bills::Resolution::Paid(split) = entry.resolution else {
+                continue;
+            };
+            paid += 1;
+            let plan = lib_bills::get(&bills.plans, entry.plan_id).unwrap();
+            let transaction = named(split.transaction_id)
+                .unwrap_or_else(|| panic!("{} on {} names no Transaction", plan.name, entry.due));
+            let paid_by = &transaction.splits[split.split_index];
+            assert_eq!(transaction.account_id, plan.account_id, "{}", plan.name);
+            assert_eq!(paid_by.category_id, plan.category_id, "{}", plan.name);
+            assert_eq!(paid_by.payee_id, plan.payee_id, "{}", plan.name);
+            assert_eq!(transaction.description.as_ref(), Some(&plan.name));
+        }
+        assert_eq!(paid, 67, "the stub Bills' Paid entries");
+
+        let links: Vec<_> = ledger
+            .documents()
+            .iter()
+            .flat_map(|document| &document.links)
+            .filter_map(|link| match link {
+                lib_documents::DocumentLink::Transaction(id) => Some(*id),
+                _ => None,
+            })
+            .collect();
+        assert!(!links.is_empty());
+        for id in links {
+            assert!(
+                named(id).is_some(),
+                "a Document links {id}, not in the stub"
+            );
+        }
     }
 
     #[test]

@@ -1,7 +1,7 @@
 //! `lib-bills`' rules over the stub Ledger's Bills, against the handoff's 8a: generation,
 //! settlement, the Schedule's rows and figures. Here rather than in `lib-bills`, since the stub
-//! joins the Bills seed to the other domains' stubs and books its payments through
-//! `lib-bill-payments`.
+//! joins the Bills seed to the other domains' stubs, its Paid entries naming the payments
+//! `lib-transactions`' stub books.
 
 use bigdecimal::{BigDecimal, Signed};
 use chrono::{Datelike, NaiveDate};

@@ -27,15 +27,14 @@ use bigdecimal::BigDecimal;
 use chrono::{Datelike, Duration, NaiveDate};
 use lib_core::{
     AccountId, BillPlanId, DocumentId, DocumentTypeId, ItemId, Money, PayeeId, TransactionId,
-    TransactionStatus,
 };
 
 use lib_accounts::Account;
 use lib_bills::{BillPlan, FINANCIAL_YEAR_START_MONTH, financial_year_start};
-use lib_categories::{self as categories, Category};
+use lib_categories::Category;
 use lib_inventory::Inventory;
 use lib_payees::{self as payees, Payee};
-use lib_transactions::{Split, Transaction};
+use lib_transactions::Transaction;
 
 use crate::types::{DocumentTypeRow, TracksDate};
 
@@ -1276,21 +1275,6 @@ fn cents_money(cents: i64) -> Money {
     Money(BigDecimal::new(cents.into(), 2))
 }
 
-/// Inserts a Transaction newest first, as the stub keeps them, and returns its new id.
-fn insert_transaction(
-    transactions: &mut Vec<Transaction>,
-    mut transaction: Transaction,
-) -> TransactionId {
-    let id = TransactionId::seed(u32::try_from(transactions.len() + 1).unwrap_or_default());
-    transaction.id = id;
-    let at = transactions
-        .iter()
-        .position(|t| t.date <= transaction.date)
-        .unwrap_or(transactions.len());
-    transactions.insert(at, transaction);
-    id
-}
-
 /// Name lookups into the shared stubs, so the seed reads in names rather than ids.
 struct Lookup<'a> {
     accounts: &'a [Account],
@@ -1319,32 +1303,6 @@ impl Lookup<'_> {
             .iter()
             .find(|i| i.name == name)
             .map(|i| i.id)
-    }
-
-    /// A one-Split Transaction, or `None` when the stubs lack the Account or Category.
-    fn transaction(
-        &self,
-        account: &str,
-        date: NaiveDate,
-        cents: i64,
-        category: &str,
-        payee: Option<&str>,
-        memo: &str,
-    ) -> Option<Transaction> {
-        Some(Transaction {
-            id: TransactionId::seed(0),
-            date,
-            account_id: self.account(account)?,
-            status: TransactionStatus::Cleared,
-            is_flagged: false,
-            description: Some(memo.to_string()),
-            splits: vec![Split {
-                amount: cents_money(cents),
-                category_id: categories::find_by_name(self.categories, category)?,
-                payee_id: payee.and_then(|name| self.payee(name)),
-                tag_ids: Vec::new(),
-            }],
-        })
     }
 }
 
@@ -1460,16 +1418,17 @@ impl Draft {
 /// not final copy): Amex Platinum for "ANZ Platinum", Westpac's Home Loan for Macquarie's, Vanguard
 /// VAS for CMC Markets and Brisbane City Council for "City Council" (plus a lease, so no Type facet is empty), while the NRMA policy's
 /// Payee and Bill links move to an AAMI car policy whose Payee and Bill Plan exist. The sample
-/// purchases (Camera House, Woolworths, Bunnings, Sonos) are written to `transactions` as
-/// `default_bills` writes its payments, so run this after it. Key Dates sit so three Library rows
-/// Need Review on any `today`.
+/// purchases (Camera House, Woolworths, Bunnings, Sonos) are `lib-transactions`' stub's, read from
+/// `transactions` with the rest of its rows: the Camera House receipt links its purchase, and the
+/// filler receipts link older ones. Key Dates sit so three Library rows Need Review on any
+/// `today`.
 pub fn default_documents(
     accounts: &[Account],
     categories: &[Category],
     payees: &[Payee],
     plans: &[BillPlan],
     inventory: &Inventory,
-    transactions: &mut Vec<Transaction>,
+    transactions: &[Transaction],
     today: NaiveDate,
 ) -> DocumentsSeed {
     let lookup = Lookup {
@@ -1480,44 +1439,10 @@ pub fn default_documents(
         inventory,
     };
     let day = |offset: i64| today + Duration::days(offset);
-    let mut add = |transaction: Option<Transaction>| {
-        transaction.map(|transaction| insert_transaction(transactions, transaction))
-    };
-
-    let camera = add(lookup.transaction(
-        "Amex Platinum",
-        day(-212),
-        -438_000,
-        "Household",
-        None,
-        "CAMERA HOUSE — Sony A7 IV",
-    ));
-    // The Inbox's Strong pair and its Likely Sonos order (no Sonos Payee, so the payee Signal
-    // fails while amount and date agree).
-    add(lookup.transaction(
-        "Amex Platinum",
-        day(-3),
-        -21_240,
-        "Groceries",
-        Some("Woolworths"),
-        "WOOLWORTHS METRO",
-    ));
-    add(lookup.transaction(
-        "ANZ Everyday",
-        day(-6),
-        -61_235,
-        "Household",
-        Some("Bunnings Warehouse"),
-        "BUNNINGS INV88213",
-    ));
-    add(lookup.transaction(
-        "Amex Platinum",
-        day(-9),
-        -49_900,
-        "Household",
-        None,
-        "SONOS ONLINE",
-    ));
+    let camera = transactions
+        .iter()
+        .find(|t| t.description.as_deref() == Some("CAMERA HOUSE \u{2014} Sony A7 IV"))
+        .map(|t| t.id);
 
     let transaction = |id: Option<TransactionId>| id.map(DocumentLink::Transaction);
     let account = |name: &str| lookup.account(name).map(DocumentLink::Account);
