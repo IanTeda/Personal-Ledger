@@ -1,5 +1,7 @@
 # Colour Theme, Colour Appearance and date style are Client-scoped Preferences
 
+> Partly superseded by [ADR-0053](0053-a-devices-settings-are-configuration-in-the-conf-file.md): these settings are now Configuration, kept in the user's `personal-ledger.conf` rather than each Client's state file. Their scope, per device and never synced, stands.
+
 ADR-0014 made the display Preferences Ledger-scoped, kept in the Ledger file's `preferences` row and synced, and ADR-0023 kept Colour Theme and Colour Appearance there. A Client can now run with no Ledger open (#872): it starts that way under the On start Preference, and returns to it on `:close`. With no Ledger open there is no `preferences` row to read, yet the Shell still draws, and the Settings pages for this device, Display among them, must be shown and changed.
 
 We're making **Colour Theme**, **Colour Appearance** and **date style** Client-scoped Preferences: kept locally by each Client, beside Toasts (ADR-0027) and On start, never synced, and applying whichever Ledger is open or none. They stay nullable with the same defaults (Modernist; System; the Locale's default), and ADR-0023's resolution order and `[theme]` overrides are unchanged. The base Unit stays Ledger-scoped, since it is Ledger data. Settings groups its pages by scope, This device and This Ledger, and Display is wholly a This device page.

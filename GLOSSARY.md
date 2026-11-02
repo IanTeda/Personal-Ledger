@@ -49,7 +49,7 @@ The local SQLite database a Client keeps its copy of one Ledger in; what opening
 _Avoid_: database, book file.
 
 **Open Ledger**:
-The Ledger a Client currently has open, at most one at a time. With no Open Ledger the Shell offers only opening a Ledger, creating one, help, and the Settings pages for this device; everything else is shown but refused. "No Ledger open" names that state, not "empty state", which means a View with no rows. Which Ledger, if any, a Client opens as it starts is its On start Preference.
+The Ledger a Client currently has open, at most one at a time. With no Open Ledger the Shell offers only opening a Ledger, creating one, help, and the Settings pages for this device; everything else is shown but refused. "No Ledger open" names that state, not "empty state", which means a View with no rows. A Client with no Ledger open needs nothing from any Ledger file: it runs on its Configuration and built-in defaults alone. Starting never creates a Ledger file; only creating a Ledger does. Which Ledger, if any, a Client opens as it starts is its On start Configuration.
 _Avoid_: loaded ledger, active ledger, current ledger; load (as the verb).
 
 **Client**:
@@ -60,34 +60,11 @@ instance running on it; "backend" implied a single authoritative server, which n
 longer describes the architecture.
 
 **Preference**:
-A user-editable runtime setting that changes how a Client behaves, edited from inside a
-running Client — distinct from Configuration (see below), which is deployment-time and
-edited outside the running app. Each Preference is individually either Ledger-scoped
-(stored in `lib-database`, synced via Change Sets like other Ledger data) or
-Client-scoped (stored locally, never synced); which kind a given Preference is gets
-decided as it's defined, in CC-TUI-001/CC-DESKTOP-001 (`docs/product-requirements.md`).
-As of [ADR-0014](docs/adr/0014-preferences-table-and-leaner-sync-server-config.md) and
-[ADR-0021](docs/adr/0021-locale-owns-formatting-and-replaces-number-and-date-preferences.md),
-the Ledger-scoped Preference is the base Unit (which new Accounts default to; there is no separate default Unit), which syncs across a user's own Clients rather than being set separately on each one. The Client-scoped Preferences are Toasts on/off, default on
-([ADR-0027](docs/adr/0027-toasts-off-is-a-client-scoped-preference-and-errors-always-toast.md)),
-because whether Toasts are welcome depends on the device, not the Ledger; Colour Theme, Colour Appearance and date style, which belong to the device and must apply with no Ledger open ([ADR-0051](docs/adr/0051-colour-theme-appearance-and-date-style-are-client-scoped.md)); and On start, which Ledger a Client opens as it starts: Reopen last Ledger (the default; none if none was open when it last quit) or Start with no Ledger open. The Colour Theme, Colour Appearance and date style are nullable ([ADR-0023](docs/adr/0023-colour-theme-preferences-and-theme-role-overrides.md)): no date style means "use the Locale's default". The Locale is not a Preference
-(see Locale, below). Settings groups its pages by scope: This device and This Ledger.
-_Avoid_: Configuration, setting — "Configuration" is reserved for `lib-config`'s layered,
-deployment-time config (files/env vars, see `docs/settings.md`); a Preference is
-edited by the user from inside a running Client instead.
+A user-editable setting stored in the Ledger and synced with it, so every Client that opens the Ledger shares it, edited from a This Ledger Settings page. The one Preference is the base Unit (which new Accounts default to; there is no separate default Unit). A setting that belongs to the device rather than the Ledger is Configuration, not a Preference. Settings groups its pages by scope: This device (Configuration) and This Ledger (Preferences and other Ledger data).
+_Avoid_: Client-scoped Preference (now Configuration), setting.
 
 **Configuration**:
-Deployment-time settings loaded by `lib-config` before or as a Client/the Sync Server
-starts — defaults, an explicit path, or environment variables, plus a file-location
-search in between (the full system/user/executable-directory/working-directory search
-for a Client; a single configured file path for the Sync Server, per
-[ADR-0014](docs/adr/0014-preferences-table-and-leaner-sync-server-config.md)) — in that
-precedence order (see `docs/settings.md`). Not user-editable from inside a running
-app — see Preference, above, for that. Covers only settings needed before the app (or
-its database) can run — the database connection/pool settings and the telemetry level —
-not display-level settings, which are Preferences instead (see above). The Locale is the one
-display-level exception, because it is per-Client, needed before the interface can be drawn, and
-only changed by editing the file and restarting (see Locale, below).
+The settings that belong to one device and never sync, read as a Client or the Sync Server starts: built-in defaults, then the configuration files a Client finds, then environment variables, then an explicit file or flag, each outranking the one before (see `docs/settings.md`). A Client needs nothing else to run with no Ledger open. The user edits it by hand, or from a This device Settings page, which writes the user's configuration file. For a Client it covers the Locale, the `data` folder, `file`, Toasts on/off (default on), Colour Theme and Colour Appearance, date style, On start (Reopen last Ledger, the default, or Start with no Ledger open), Start view (the View a Client lands on as it starts, the Dashboard by default, or the Dashboard's no Ledger open content when the View needs a Ledger), Colour Role overrides, keybindings and the log level. Colour Theme, Colour Appearance and date style may be unset, meaning the built-in default or, for date style, the Locale's. What a Client remembers for itself between runs (the last Ledger, its window size, the last Settings page) is neither Configuration nor a Preference: it is never a choice the user makes, and a Client starts as well without it.
 _Avoid_: Preference, setting.
 
 **Locale**:
@@ -148,7 +125,7 @@ One entry in the Desktop Client's Settings index rail and the View it opens, suc
 _Avoid_: section, tab, settings screen.
 
 **Colour Theme**:
-A named set of colours a Client draws its interface in, holding a value for every Colour Role in each of its two Colour Variants (light and dark). A handful ship built into the Clients, and they are the only Colour Themes: the user cannot add one of their own, and overriding every Colour Role in `[theme]` changes how that Client looks without making a new Colour Theme. The user's chosen Colour Theme and Colour Appearance are Ledger-scoped Preferences, so they sync across the user's own Clients, but a `[theme]` section in a Client's static Configuration overrides individual Colour Roles on that one Client (it cannot choose the Colour Theme or Colour Appearance itself).
+A named set of colours a Client draws its interface in, holding a value for every Colour Role in each of its two Colour Variants (light and dark). A handful ship built into the Clients, and they are the only Colour Themes: the user cannot add one of their own, and overriding every Colour Role in `[theme]` changes how that Client looks without making a new Colour Theme. The user's chosen Colour Theme and Colour Appearance are Configuration, so each device keeps its own, and a `[theme]` section in a Client's static Configuration overrides individual Colour Roles on that one Client (it cannot choose the Colour Theme or Colour Appearance itself).
 _Avoid_: theme (alone), palette — "palette" already names the command palette; "theme" alone is ambiguous with typography and spacing.
 
 **Colour Role**:
@@ -349,7 +326,7 @@ The mechanism for paying down a Loan Account (see above): moves cash out of a Tr
 _Avoid_: Transaction — a Repayment crosses from a Transaction Account into a Loan Account, which a same-Account Transaction structurally cannot do; it uses Splits internally for its principal/interest breakdown but is its own mechanism, not a plain Transaction. Credit Card repayment — deliberately not called a Repayment; see Credit Card Account, above.
 
 **Budget**:
-A named view over the one Ledger that tracks spending against a plan (e.g. "Personal spending", "Kitchen reno"), with a Method (see below), exactly one Unit locked at creation (every figure in it is in that Unit), and a set of on-budget Accounts in that Unit. A Budget never owns or copies Transactions: a Split counts in every Budget whose on-budget Accounts and Categories cover it, so Budgets may overlap. Exactly one Budget is the default (a field of the Budget, synced with the Ledger), read by the Dashboard, the Budgets rail badge and first launch; the Budget last opened is a Client-scoped Preference. A Budget is archived, never deleted: an archived Budget keeps its records and computed figures and can be viewed and restored, but is read-only and feeds nothing outside its own screens (no rail badge, no Dashboard); the default Budget cannot be archived until another is made default. A new Account joins no Budget until it is added. Since the default cannot be archived, there is always at least one active Budget; on first run it is Personal spending. A new Budget starts **Empty**, as a **Copy** of another Budget's current-month effective Budget Amounts and Rollover, or from **Last 3 months' spending** (the Fill 3-month average, below, on its chosen Accounts; Categories averaging 0 stay Unbudgeted), each written as Onward Budget Amounts from the current month. Duplicating a Budget copies its Unit, Method, Accounts and full Budget Amount chains and Rollover, under the name "<name> copy", and never as the default. The Ledger's original per-Category limits migrate to a Category limits Budget named **Personal spending** (on all Accounts in its Unit), which the Categories Monthly budget field (5c) reads and writes by its id, whatever it is later renamed; while it is archived, 5c shows its value read-only. See [ADR-0029](docs/adr/0029-budgets-are-named-overlapping-views-over-one-ledger.md).
+A named view over the one Ledger that tracks spending against a plan (e.g. "Personal spending", "Kitchen reno"), with a Method (see below), exactly one Unit locked at creation (every figure in it is in that Unit), and a set of on-budget Accounts in that Unit. A Budget never owns or copies Transactions: a Split counts in every Budget whose on-budget Accounts and Categories cover it, so Budgets may overlap. Exactly one Budget is the default (a field of the Budget, synced with the Ledger), read by the Dashboard, the Budgets rail badge and first launch; the Client remembers the Budget last opened. A Budget is archived, never deleted: an archived Budget keeps its records and computed figures and can be viewed and restored, but is read-only and feeds nothing outside its own screens (no rail badge, no Dashboard); the default Budget cannot be archived until another is made default. A new Account joins no Budget until it is added. Since the default cannot be archived, there is always at least one active Budget; on first run it is Personal spending. A new Budget starts **Empty**, as a **Copy** of another Budget's current-month effective Budget Amounts and Rollover, or from **Last 3 months' spending** (the Fill 3-month average, below, on its chosen Accounts; Categories averaging 0 stay Unbudgeted), each written as Onward Budget Amounts from the current month. Duplicating a Budget copies its Unit, Method, Accounts and full Budget Amount chains and Rollover, under the name "<name> copy", and never as the default. The Ledger's original per-Category limits migrate to a Category limits Budget named **Personal spending** (on all Accounts in its Unit), which the Categories Monthly budget field (5c) reads and writes by its id, whatever it is later renamed; while it is archived, 5c shows its value read-only. See [ADR-0029](docs/adr/0029-budgets-are-named-overlapping-views-over-one-ledger.md).
 _Avoid_: Plan (that is a Bill Plan), account group — a Budget is a view, not a partition of the Ledger.
 
 **Method**:
