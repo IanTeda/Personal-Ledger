@@ -10,7 +10,7 @@ use gpui::TestAppContext;
 fn on_sync_server(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
     ui.press("g s");
-    ui.press(&["j"; 10].join(" "));
+    ui.press(&["j"; 13].join(" "));
     assert_eq!(ui.settings_frame().page, "SyncServer");
     ui
 }

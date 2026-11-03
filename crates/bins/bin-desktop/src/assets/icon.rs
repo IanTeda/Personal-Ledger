@@ -51,6 +51,8 @@ pub enum DesktopIcon {
     /// (DESKTOP-119).
     SettingsGeneral,
     SettingsDisplay,
+    /// The Ledger page, which acts on the Ledger file, so it shares the explorer's file.
+    SettingsLedger,
     SettingsUnits,
     SettingsSyncServer,
     SettingsDataBackup,
@@ -93,6 +95,7 @@ impl DesktopIcon {
             Self::File => "icons/file.svg",
             Self::SettingsGeneral => "icons/sliders-horizontal.svg",
             Self::SettingsDisplay => "icons/monitor.svg",
+            Self::SettingsLedger => "icons/file.svg",
             Self::SettingsUnits => "icons/circle-dollar-sign.svg",
             Self::SettingsSyncServer => "icons/refresh-cw.svg",
             Self::SettingsDataBackup => "icons/database.svg",

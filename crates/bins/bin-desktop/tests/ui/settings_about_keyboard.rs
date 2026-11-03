@@ -1,7 +1,7 @@
 //! The Settings About page driven by keys. About has no controls, so `l` and `enter` on the
-//! index are a quiet no-op and focus stays on the index. The checks cover reaching the page
-//! with `shift-g`, the keys that must leave it unchanged, and `esc` returning focus to the index
-//! from a page that has it. State is read back from `Root`.
+//! index are a quiet no-op and focus stays on the index. The checks cover reaching the page, the
+//! last of THIS DEVICE, the keys that must leave it unchanged, `j` crossing on into THIS LEDGER,
+//! and `esc` returning focus to the index from a page that has it. State is read back from `Root`.
 
 use super::common;
 
@@ -13,13 +13,13 @@ fn on_about(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
     ui.press("g s");
     assert_eq!(ui.noun(), Noun::Settings);
-    ui.press("shift-g");
+    ui.press("j j j");
     assert_eq!(ui.settings_frame().page, "About");
     ui
 }
 
 #[gpui::test]
-fn shift_g_from_the_index_swaps_to_about_with_focus_on_the_index(app: &mut TestAppContext) {
+fn j_down_the_index_swaps_to_about_with_focus_on_the_index(app: &mut TestAppContext) {
     let mut ui = on_about(app);
 
     let page = ui.settings_frame();
@@ -51,17 +51,17 @@ fn stepping_into_about_is_a_quiet_no_op(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn movement_keys_at_the_bottom_of_the_index_leave_about_unchanged(app: &mut TestAppContext) {
+fn j_from_about_crosses_from_this_device_into_this_ledger(app: &mut TestAppContext) {
     let mut ui = on_about(app);
     let toasts_before = ui.toasts();
 
-    ui.press("j j shift-g");
-
+    ui.press("j");
     let page = ui.settings_frame();
-    assert_eq!(page.page, "About");
+    assert_eq!(page.page, "Ledger");
     assert!(!page.page_focused);
+    ui.press("k");
+    assert_eq!(ui.settings_frame().page, "About");
     assert_eq!(ui.dialog(), None);
-    assert_eq!(page.status_message, None);
     assert_eq!(ui.toasts(), toasts_before);
     assert_eq!(ui.noun(), Noun::Settings);
 }
@@ -78,7 +78,7 @@ fn escape_returns_focus_to_the_index_before_reaching_about(app: &mut TestAppCont
     assert!(!after_escape.page_focused);
     assert_eq!(after_escape.page, "General");
 
-    ui.press("shift-g");
+    ui.press("j j j");
     let page = ui.settings_frame();
     assert_eq!(page.page, "About");
     assert!(!page.page_focused);

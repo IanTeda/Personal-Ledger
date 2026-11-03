@@ -140,11 +140,12 @@ fn a_cash_account_added_by_click_names_the_personal_institution(app: &mut TestAp
 }
 
 #[gpui::test]
-fn a_new_account_defaults_to_the_base_unit_set_on_general(app: &mut TestAppContext) {
+fn a_new_account_defaults_to_the_base_unit_set_on_ledger(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
     ui.press("g s");
-    ui.click("settings-general-base-unit-btc");
-    ui.press("j j j j");
+    ui.click("settings-index-Ledger");
+    ui.click("settings-ledger-base-unit-btc");
+    ui.press("j j j");
     assert_eq!(ui.settings_frame().page, "Accounts");
     ui.press("l");
 

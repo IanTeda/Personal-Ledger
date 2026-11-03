@@ -513,10 +513,10 @@ fn a_click_on_precision_focuses_it_for_typing(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn the_base_glyph_follows_the_unit_picked_on_general(app: &mut TestAppContext) {
+fn the_base_glyph_follows_the_unit_picked_on_ledger(app: &mut TestAppContext) {
     let mut ui = on_units(app);
     assert_eq!(ui.base_unit_code().as_deref(), Some("aud"));
-    ui.click("settings-index-General");
+    ui.click("settings-index-Ledger");
     ui.press("l j");
     ui.click("settings-index-Units");
     assert_ne!(ui.base_unit_code().as_deref(), Some("aud"));
@@ -598,4 +598,12 @@ fn the_set_price_menu_entry_and_pane_button_open_set_price_and_confirm_sets_it(
         .map(|fact| fact.value)
         .collect();
     assert_eq!(prices, ["7.50 aud"]);
+}
+
+#[gpui::test]
+fn clicking_add_price_source_opens_its_dialog(app: &mut TestAppContext) {
+    let mut ui = on_units(app);
+
+    ui.click("settings-add-price-source");
+    assert_eq!(ui.dialog(), Some("AddPriceSource"));
 }

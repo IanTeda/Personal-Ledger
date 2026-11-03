@@ -82,16 +82,6 @@ fn clicking_the_sidebar_checkbox_toggles_it(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn clicking_the_toasts_options_turns_them_off_and_on(app: &mut TestAppContext) {
-    let mut ui = on_display(app);
-
-    ui.click("display-toasts-1");
-    assert!(!ui.settings::<SettingsDisplaySnapshot>().toasts_on);
-    ui.click("display-toasts-0");
-    assert!(ui.settings::<SettingsDisplaySnapshot>().toasts_on);
-}
-
-#[gpui::test]
 fn clicking_an_appearance_option_changes_the_appearance(app: &mut TestAppContext) {
     let mut ui = on_display(app);
 

@@ -31,7 +31,7 @@ fn on_units_at(app: &mut TestAppContext, size: WindowSize) -> Harness<'_> {
 fn to_units(ui: &mut Harness<'_>) {
     ui.press("g s");
     assert_eq!(ui.noun(), Noun::Settings);
-    ui.press("j j");
+    ui.press("j j j j j");
     assert_eq!(ui.settings_frame().page, "Units");
     ui.press("l");
     assert!(ui.settings_frame().page_focused);
@@ -65,7 +65,7 @@ fn type_word(ui: &mut Harness<'_>, word: &str) {
 #[gpui::test]
 fn j_j_from_the_index_swaps_to_units_and_l_steps_into_it(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
-    ui.press("g s j j");
+    ui.press("g s j j j j j");
     assert_eq!(ui.settings_frame().page, "Units");
     assert!(!ui.settings_frame().page_focused);
 
@@ -600,7 +600,7 @@ fn a_renamed_unit_reaches_the_bill_plan_form_without_a_restart(app: &mut TestApp
 fn both_tables_fill_the_page_from_the_medium_floor_to_x_large(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
     ui.resize_to(WindowSize::Medium);
-    ui.press("g s j j enter");
+    ui.press("g s j j j j j enter");
     assert_eq!(ui.settings_frame().page, "Units");
     // The page's width in a window at Medium's 720px floor, where the tables stop shrinking.
     const MIN_WIDTH: gpui::Pixels = gpui::px(610.0);
@@ -653,7 +653,7 @@ fn visible_toasts(ui: &mut Harness<'_>) -> Vec<(String, String)> {
 fn a_failed_write_puts_the_units_back_as_stored_with_an_error_toast(app: &mut TestAppContext) {
     let mut ui = Harness::with_failing_units(app, false);
     ui.resize_to(WindowSize::Large);
-    ui.press("g s j j l");
+    ui.press("g s j j j j j l");
     rename_aud_to_aux(&mut ui);
 
     ui.settle_writes();
@@ -675,7 +675,7 @@ fn a_failed_write_puts_the_units_back_as_stored_with_an_error_toast(app: &mut Te
 fn a_failed_write_draws_its_error_toast_with_no_further_key(app: &mut TestAppContext) {
     let mut ui = Harness::with_failing_units(app, false);
     ui.resize_to(WindowSize::Large);
-    ui.press("g s j j l");
+    ui.press("g s j j j j j l");
     rename_aud_to_aux(&mut ui);
     let shown = visible_toasts(&mut ui).len();
     assert!(
@@ -721,7 +721,7 @@ fn each_units_key_commits_once_whether_or_not_it_writes(app: &mut TestAppContext
 fn a_failed_reload_leaves_the_units_in_memory_with_an_error_toast(app: &mut TestAppContext) {
     let mut ui = Harness::with_failing_units(app, true);
     ui.resize_to(WindowSize::Large);
-    ui.press("g s j j l");
+    ui.press("g s j j j j j l");
     rename_aud_to_aux(&mut ui);
 
     ui.settle_writes();

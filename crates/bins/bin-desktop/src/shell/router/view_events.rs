@@ -65,6 +65,7 @@ impl Root {
             ViewEvent::RunCommand(name) => self.handle_empty_state_command_click(name, cx),
             ViewEvent::SettingsPageChanged(page) => self.navigate(NavInput::SettingsPage(page)),
             ViewEvent::DisplayChanged(display) => self.push_display_preferences(display, cx),
+            ViewEvent::ToastsChanged(on) => self.push_toasts_on(on),
         }
     }
 

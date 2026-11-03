@@ -15,11 +15,11 @@ fn mode(ui: &mut Harness<'_>) -> InputMode {
     ui.read(|shell| shell.nav().mode())
 }
 
-/// Settings on the Accounts page (four presses down the index) with focus stepped into it.
+/// Settings on the Accounts page (seven presses down the index) with focus stepped into it.
 fn in_accounts(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
     ui.press("g s");
-    ui.press("j j j j");
+    ui.press("j j j j j j j");
     assert_eq!(ui.settings_frame().page, "Accounts");
     ui.press("l");
     assert!(ui.settings_frame().page_focused);
@@ -349,7 +349,7 @@ fn a_deactivated_unit_is_missing_from_the_add_account_unit_picker(app: &mut Test
 fn a_failed_write_puts_the_accounts_back_with_an_error_toast(app: &mut TestAppContext) {
     let mut ui = Harness::with_failing_accounts(app);
     ui.press("g s");
-    ui.press("j j j j");
+    ui.press("j j j j j j j");
     ui.press("l");
     let stored = ui.settings::<SettingsAccountsSnapshot>().account_names;
 
@@ -477,7 +477,7 @@ fn question_mark_lists_the_keys_the_status_line_shows(app: &mut TestAppContext) 
 fn the_cheat_sheet_and_the_legend_show_a_rebound_key(app: &mut TestAppContext) {
     let mut ui = Harness::with_keybindings(app, common::overriding("new", "ctrl+n"));
     ui.press("g s");
-    ui.press("j j j j");
+    ui.press("j j j j j j j");
     ui.press("l");
     let keys: Vec<String> = ui
         .status()

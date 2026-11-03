@@ -294,6 +294,7 @@ pub const COMMANDS: &[Command] = &[
         effect: CommandEffect::OpenSettingsPage(SettingsPage::Payees),
     },
     settings_page_command("settings general", SettingsPage::General),
+    settings_page_command("settings ledger", SettingsPage::Ledger),
     settings_page_command("settings display", SettingsPage::Display),
     settings_page_command("settings units", SettingsPage::Units),
     settings_page_command("settings institutions", SettingsPage::Institutions),

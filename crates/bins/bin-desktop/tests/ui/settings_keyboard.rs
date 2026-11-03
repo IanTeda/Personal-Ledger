@@ -48,15 +48,19 @@ fn j_and_k_swap_the_page_live(app: &mut TestAppContext) {
 
     ui.press("j");
     assert_eq!(ui.settings_frame().page, "Display");
-    ui.press("j j");
-    assert_eq!(ui.settings_frame().page, "Institutions");
+    ui.press("j j j");
+    assert_eq!(
+        ui.settings_frame().page,
+        "Ledger",
+        "THIS DEVICE runs into THIS LEDGER"
+    );
     ui.press("k");
-    assert_eq!(ui.settings_frame().page, "Units");
+    assert_eq!(ui.settings_frame().page, "About");
 }
 
 #[gpui::test]
 fn l_steps_into_a_page_and_h_or_escape_steps_back_out(app: &mut TestAppContext) {
-    let mut ui = in_page(app, 4, "Accounts");
+    let mut ui = in_page(app, 7, "Accounts");
 
     ui.press("h");
     assert!(!ui.settings_frame().page_focused);
@@ -70,7 +74,7 @@ fn l_steps_into_a_page_and_h_or_escape_steps_back_out(app: &mut TestAppContext) 
 fn the_page_on_show_survives_leaving_and_returning(app: &mut TestAppContext) {
     let mut ui = on_settings(app);
 
-    ui.press("j j j j");
+    ui.press("j j j j j j j");
     assert_eq!(ui.settings_frame().page, "Accounts");
     ui.press("g d");
     assert_eq!(ui.noun(), Noun::Dashboard);
@@ -80,9 +84,13 @@ fn the_page_on_show_survives_leaving_and_returning(app: &mut TestAppContext) {
     assert!(!page.page_focused);
 }
 
-const PAGES: [&str; 14] = [
+/// Every page in index order: THIS DEVICE, then THIS LEDGER.
+const PAGES: [&str; 15] = [
     "General",
     "Display",
+    "Tracing",
+    "About",
+    "Ledger",
     "Units",
     "Institutions",
     "Accounts",
@@ -93,8 +101,6 @@ const PAGES: [&str; 14] = [
     "Inventory",
     "SyncServer",
     "DataBackup",
-    "Tracing",
-    "About",
 ];
 
 /// The status line's hint keys, in order.
@@ -164,11 +170,11 @@ fn at_medium_esc_back_to_the_index_shows_the_page_it_left(app: &mut TestAppConte
     ui.press("g s enter p k");
     ui.press(&vec!["j"; PAGES.len()].join(" "));
     ui.press("enter");
-    assert_eq!(ui.settings_frame().page, "About");
+    assert_eq!(ui.settings_frame().page, "DataBackup");
 
     ui.press("escape");
 
-    assert!(index_row_on_show(&mut ui, "settings-index-page-About"));
+    assert!(index_row_on_show(&mut ui, "settings-index-page-DataBackup"));
 }
 
 #[gpui::test]
@@ -213,9 +219,13 @@ fn at_medium_brackets_step_through_every_page(app: &mut TestAppContext) {
         assert!(ui.is_drawn("settings-page"), "{page} renders at Medium");
     }
     ui.press("]");
-    assert_eq!(ui.settings_frame().page, "About", "stops at the last page");
+    assert_eq!(
+        ui.settings_frame().page,
+        "DataBackup",
+        "stops at the last page"
+    );
     ui.press("[ [");
-    assert_eq!(ui.settings_frame().page, "DataBackup");
+    assert_eq!(ui.settings_frame().page, "Inventory");
 }
 
 #[gpui::test]
@@ -230,13 +240,10 @@ fn at_medium_p_opens_the_picker_and_j_k_enter_jump_to_the_chosen_page(app: &mut 
         Some("Display")
     );
 
-    ui.press("j j");
-    assert_eq!(
-        ui.settings_frame().picker_chosen.as_deref(),
-        Some("Institutions")
-    );
+    ui.press("j j j");
+    assert_eq!(ui.settings_frame().picker_chosen.as_deref(), Some("Ledger"));
     ui.press("k");
-    assert_eq!(ui.settings_frame().picker_chosen.as_deref(), Some("Units"));
+    assert_eq!(ui.settings_frame().picker_chosen.as_deref(), Some("About"));
     assert_eq!(
         ui.settings_frame().page,
         "Display",
@@ -246,7 +253,7 @@ fn at_medium_p_opens_the_picker_and_j_k_enter_jump_to_the_chosen_page(app: &mut 
     ui.press("enter");
 
     let settings = ui.settings_frame();
-    assert_eq!(settings.page, "Units");
+    assert_eq!(settings.page, "About");
     assert!(settings.page_focused);
     assert_eq!(settings.picker_chosen, None);
     assert_eq!(mode(&mut ui), InputMode::Normal);
@@ -279,7 +286,10 @@ fn at_medium_the_picker_moves_with_the_arrows_and_stops_at_either_end(app: &mut 
     );
 
     ui.press(&vec!["j"; PAGES.len()].join(" "));
-    assert_eq!(ui.settings_frame().picker_chosen.as_deref(), Some("About"));
+    assert_eq!(
+        ui.settings_frame().picker_chosen.as_deref(),
+        Some("DataBackup")
+    );
 }
 
 #[gpui::test]
@@ -346,7 +356,52 @@ fn at_large_and_x_large_every_page_renders_beside_the_docked_index(app: &mut Tes
         }
         // `[`, `]` and `p` are Medium's; here they leave the page alone.
         ui.press("l ] p");
-        assert_eq!(ui.settings_frame().page, "About");
+        assert_eq!(ui.settings_frame().page, "DataBackup");
         assert_eq!(ui.settings_frame().picker_chosen, None);
     }
+}
+
+/// The top of the element tagged `selector`.
+fn top(ui: &mut Harness<'_>, selector: &str) -> gpui::Pixels {
+    ui.bounds(selector).top()
+}
+
+#[gpui::test]
+fn the_docked_index_groups_this_device_above_this_ledger(app: &mut TestAppContext) {
+    let mut ui = on_settings(app);
+
+    let device = top(&mut ui, "settings-index-group-ThisDevice");
+    let ledger = top(&mut ui, "settings-index-group-ThisLedger");
+    assert!(device < top(&mut ui, "settings-index-General"));
+    assert!(top(&mut ui, "settings-index-About") < ledger);
+    assert!(ledger < top(&mut ui, "settings-index-Ledger"));
+}
+
+#[gpui::test]
+fn at_medium_the_index_page_heads_each_group_with_its_scope_line(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::Medium);
+    ui.press("g s");
+
+    let device = top(&mut ui, "settings-index-page-group-ThisDevice");
+    let ledger = top(&mut ui, "settings-index-page-group-ThisLedger");
+    assert!(device < top(&mut ui, "settings-index-page-General"));
+    assert!(top(&mut ui, "settings-index-page-About") < ledger);
+    assert!(ledger < top(&mut ui, "settings-index-page-Ledger"));
+}
+
+#[gpui::test]
+fn at_medium_the_picker_lists_this_device_then_this_ledger(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::Medium);
+    ui.press("g s enter p");
+
+    let tops: Vec<_> = PAGES
+        .iter()
+        .map(|page| top(&mut ui, &format!("settings-picker-{page}")))
+        .collect();
+    assert!(tops.windows(2).all(|pair| pair[0] < pair[1]), "index order");
+    // The THIS LEDGER heading opens a gap wider than a row between About and Ledger.
+    let row = tops[1] - tops[0];
+    assert!(tops[4] - tops[3] > row);
 }

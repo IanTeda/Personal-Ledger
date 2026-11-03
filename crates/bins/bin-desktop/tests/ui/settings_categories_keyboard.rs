@@ -12,11 +12,11 @@ fn mode(ui: &mut Harness<'_>) -> InputMode {
     ui.read(|shell| shell.nav().mode())
 }
 
-/// Settings on the Categories page (five presses down the index) with focus stepped into it.
+/// Settings on the Categories page (eight presses down the index) with focus stepped into it.
 fn in_categories(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
     ui.press("g s");
-    ui.press("j j j j j");
+    ui.press("j j j j j j j j");
     assert_eq!(ui.settings_frame().page, "Categories");
     ui.press("l");
     assert!(ui.settings_frame().page_focused);
@@ -109,7 +109,7 @@ fn typing_a_name_and_pressing_enter_adds_the_category(app: &mut TestAppContext) 
 fn a_failed_write_puts_the_categories_back_with_an_error_toast(app: &mut TestAppContext) {
     let mut ui = Harness::with_failing_categories(app);
     ui.press("g s");
-    ui.press("j j j j j");
+    ui.press("j j j j j j j j");
     ui.press("l");
     let stored = ui.settings::<SettingsCategoriesSnapshot>().category_names;
 

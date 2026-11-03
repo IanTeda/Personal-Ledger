@@ -44,8 +44,10 @@ pub enum ViewEvent {
     /// `:open`/`:new` empty state).
     RunCommand(&'static str),
     /// The Display Preferences changed on Settings. They are cross-cutting: `Root` hands them to
-    /// the Views that draw with them, and the Toasts Preference to its Toasts.
+    /// the Views that draw with them.
     DisplayChanged(DisplayPreferences),
+    /// The Toasts Preference changed on Settings › General; `Root` hands it to its Toasts.
+    ToastsChanged(bool),
     /// Settings swapped its open page; `Root` records it as a step for Back and Forward.
     SettingsPageChanged(SettingsPage),
 }

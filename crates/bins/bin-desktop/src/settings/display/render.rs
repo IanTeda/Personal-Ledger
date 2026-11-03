@@ -1,7 +1,6 @@
 //! The **Display** section (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting state", moved
-//! directly after General by issue #189's own reorder): a column of three segmented
-//! controls (Date format, Row density) plus a read-only Locale and a dot-style Status
-//! glyphs radio group, beside a live **PREVIEW** table that re-renders the mockup's own three
+//! directly after General by issue #189's own reorder): a column of segmented controls (Date
+//! format, Row density) and a dot-style Status glyphs radio group, beside a live **PREVIEW** table that re-renders the mockup's own three
 //! seeded transaction rows under whichever combination is currently selected.
 //!
 //! Unlike every other section built so far, this one is genuinely reactive across *all* its
@@ -36,7 +35,6 @@ type OnValue<A> = Rc<dyn Fn(A, &mut Window, &mut App)>;
 pub type OnDateStyleClick = Rc<dyn Fn(Option<DateStyle>, &mut Window, &mut App)>;
 pub type OnRowDensityClick = Rc<dyn Fn(RowDensity, &mut Window, &mut App)>;
 pub type OnStatusGlyphsClick = Rc<dyn Fn(StatusGlyphs, &mut Window, &mut App)>;
-pub type OnToastsClick = Rc<dyn Fn(bool, &mut Window, &mut App)>;
 /// A curried, option-less click handler -- what a [`status_glyphs_option`] is bound to after its
 /// own option has already been curried in (mirrors the Units page's `OnPlainClick`).
 pub type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
@@ -86,12 +84,6 @@ impl Render for DisplayPage {
             .flex()
             .flex_col()
             .child(columns)
-            .child(toasts_field(
-                display.toasts_on,
-                bind(&entity, DisplayPage::click_toasts),
-                field_focus == Some(4),
-                cx,
-            ))
             .child(colour_theme::render(
                 self.colour_theme_focus(),
                 bind(&entity, DisplayPage::click_colour_theme),
@@ -141,7 +133,6 @@ fn field_column(
         .flex()
         .flex_col()
         .gap(px(18.0))
-        .child(locale_field(cx))
         .child(
             focus_mark(field_focus == Some(0), cx)
                 .child(field_label(
@@ -203,63 +194,6 @@ fn focus_mark(focused: bool, cx: &App) -> gpui::Div {
         } else {
             gpui::transparent_black()
         })
-}
-
-/// The "Toasts" On/Off row (ADR-0027), above the Colour Theme group, noting that Errors still
-/// show when off.
-fn toasts_field(
-    toasts_on: bool,
-    on_click: OnToastsClick,
-    focused: bool,
-    cx: &App,
-) -> impl IntoElement {
-    fn label(on: bool) -> String {
-        if on {
-            lib_locale::msg::toast_setting_on()
-        } else {
-            lib_locale::msg::toast_setting_off()
-        }
-    }
-    focus_mark(focused, cx)
-        .id("display-toasts")
-        .mt(px(24.0))
-        .w(FIELD_COLUMN_WIDTH)
-        .child(field_label(lib_locale::msg::toast_setting_label(), cx))
-        .child(segmented_control_sized(
-            "display-toasts",
-            &[true, false],
-            toasts_on,
-            label,
-            on_click,
-            Some(px(UNIFORM_OPTION_WIDTH)),
-            cx,
-        ))
-        .child(
-            div()
-                .mt(px(3.0))
-                .text_size(px(12.0))
-                .text_color(color::muted(cx))
-                .child(lib_locale::msg::toast_setting_note()),
-        )
-}
-
-/// The effective Locale, read-only, with where it came from. There is no control: the Locale is
-/// Configuration, changed by the `locale` setting or `--locale` and a restart.
-fn locale_field(cx: &App) -> impl IntoElement {
-    let (line, fallback_note) = crate::locale::describe(&crate::locale::info());
-    let note = |text: String| {
-        div()
-            .mt(px(3.0))
-            .text_size(px(12.0))
-            .text_color(color::muted(cx))
-            .child(text)
-    };
-    div()
-        .id("display-locale")
-        .child(field_label(crate::msg::desktop_display_locale_label(), cx))
-        .child(div().text_size(px(13.0)).child(line))
-        .children(fallback_note.map(note))
-        .child(note(crate::msg::desktop_display_locale_hint()))
 }
 
 fn start_sidebar_minimised_toggle(

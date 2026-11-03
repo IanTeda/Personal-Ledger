@@ -14,6 +14,8 @@ pub use crate::payees::SettingsPayeesSnapshot;
 #[doc(hidden)]
 pub use crate::settings::general::SettingsGeneralSnapshot;
 #[doc(hidden)]
+pub use crate::settings::ledger::SettingsLedgerSnapshot;
+#[doc(hidden)]
 pub use crate::settings::snapshot::{PageSnapshot, SettingsDisplaySnapshot, SettingsSnapshot};
 #[doc(hidden)]
 pub use crate::settings::tracing::SettingsTracingSnapshot;

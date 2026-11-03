@@ -106,12 +106,12 @@ pub fn gpui_component_tag(locale: Locale) -> &'static str {
 pub fn describe(info: &LocaleInfo) -> (String, Option<String>) {
     let tag = info.effective.tag();
     let line = match info.source {
-        LocaleSource::System => crate::msg::desktop_display_locale_from_system(tag),
-        LocaleSource::Config => crate::msg::desktop_display_locale_from_config(tag),
-        LocaleSource::Default => crate::msg::desktop_display_locale_from_default(tag),
+        LocaleSource::System => crate::msg::desktop_settings_general_locale_from_system(tag),
+        LocaleSource::Config => crate::msg::desktop_settings_general_locale_from_config(tag),
+        LocaleSource::Default => crate::msg::desktop_settings_general_locale_from_default(tag),
     };
     let note = (info.requested != tag)
-        .then(|| crate::msg::desktop_display_locale_fallback(&info.requested, tag));
+        .then(|| crate::msg::desktop_settings_general_locale_fallback(&info.requested, tag));
     (line, note)
 }
 

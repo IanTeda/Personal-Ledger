@@ -60,9 +60,10 @@ pub use snapshots::{
     DashboardBillSnapshot, DocumentsSnapshot, HelpGroup, ImportRowSnapshot, ImportSnapshot,
     PageSnapshot, PaletteSnapshot, SettingsAccountsSnapshot, SettingsCategoriesSnapshot,
     SettingsDisplaySnapshot, SettingsDocumentTypesSnapshot, SettingsGeneralSnapshot,
-    SettingsInstitutionsSnapshot, SettingsInventorySnapshot, SettingsPayeesSnapshot,
-    SettingsSnapshot, SettingsTagsSnapshot, SettingsTracingSnapshot, SettingsUnitsSnapshot,
-    StatusSnapshot, ToastSnapshot, ToastsSnapshot, TransactionsSnapshot, UnitPricesSnapshot,
+    SettingsInstitutionsSnapshot, SettingsInventorySnapshot, SettingsLedgerSnapshot,
+    SettingsPayeesSnapshot, SettingsSnapshot, SettingsTagsSnapshot, SettingsTracingSnapshot,
+    SettingsUnitsSnapshot, StatusSnapshot, ToastSnapshot, ToastsSnapshot, TransactionsSnapshot,
+    UnitPricesSnapshot,
 };
 pub use write_failures::WRITE_FAILURE_POLL;
 
@@ -365,8 +366,9 @@ impl Root {
             .update(cx, |view, cx| view.set_display(display, cx));
     }
 
-    /// Applies the date style and Toasts kept on this device (ADR-0051) to the Settings View and
-    /// the Views that draw with them, as the app starts.
+    /// Applies the Preferences kept on this device (ADR-0051) as the app starts: the date style
+    /// to the Settings View and the Views that draw with it, On start and Toasts to Settings ›
+    /// General and Toasts to the Toasts.
     pub fn set_client_preferences(
         &mut self,
         preferences: &lib_core::ClientPreferences,
@@ -374,33 +376,41 @@ impl Root {
     ) {
         let display = DisplayPreferences {
             date_style: preferences.date_style,
-            toasts_on: preferences.toasts_on,
             ..self.display(cx)
         };
-        self.open()
-            .views
-            .settings
-            .update(cx, |view, cx| view.set_display(display, cx));
+        let settings = self.open().views.settings.clone();
+        settings.update(cx, |view, cx| {
+            view.set_display(display, cx);
+            view.general().update(cx, |page, cx| {
+                page.set_preferences(preferences.on_start, preferences.toasts_on, cx);
+            });
+        });
         self.push_display_preferences(display, cx);
+        self.push_toasts_on(preferences.toasts_on);
     }
 
-    /// The Client-scoped Preferences as they stand, for the state file at quit. On start has no
-    /// control yet (#911), so it is kept as it was read.
-    pub fn client_preferences(
-        &self,
-        on_start: lib_core::OnStart,
-        cx: &App,
-    ) -> lib_core::ClientPreferences {
+    /// Shows `device` on Settings › General: what start-up knows of this device.
+    pub fn set_this_device(&mut self, device: crate::settings::general::ThisDevice, cx: &mut App) {
+        let settings = self.open().views.settings.clone();
+        settings.update(cx, |view, cx| {
+            view.general()
+                .update(cx, |page, cx| page.set_this_device(device, cx));
+        });
+    }
+
+    /// The Client-scoped Preferences as they stand, for the state file at quit.
+    pub fn client_preferences(&self, cx: &App) -> lib_core::ClientPreferences {
         let display = self.display(cx);
+        let general = self.open().views.settings.read(cx).general().read(cx);
         let colours = cx.global::<crate::theme::colours::Colours>();
         lib_core::ClientPreferences {
-            toasts_on: display.toasts_on,
+            toasts_on: general.toasts_on(),
             colour_theme: colours.colour_theme().map(str::to_string),
             colour_appearance: colours
                 .colour_appearance()
                 .map(|appearance| appearance.key().to_string()),
             date_style: display.date_style,
-            on_start,
+            on_start: general.on_start(),
         }
     }
 
@@ -603,13 +613,15 @@ impl Root {
         ActiveViewEntity::new(self.active_view(cx), &self.open().views)
     }
 
-    /// Hands the Display Preferences to the Views that read them and the Toasts Preference to
-    /// the Toasts, after a Settings change.
-    fn push_display_preferences(&mut self, display: DisplayPreferences, cx: &mut App) {
+    /// Hands the Toasts Preference to the Toasts, after a change on Settings › General or
+    /// `:toasts`.
+    fn push_toasts_on(&mut self, toasts_on: bool) {
         self.presenter
-            .toast(ToastInput::Display(lib_toast::Display {
-                toasts_on: display.toasts_on,
-            }));
+            .toast(ToastInput::Display(lib_toast::Display { toasts_on }));
+    }
+
+    /// Hands the Display Preferences to the Views that read them, after a Settings change.
+    fn push_display_preferences(&mut self, display: DisplayPreferences, cx: &mut App) {
         let (date_style, glyphs, density) = (
             display.date_style,
             display.status_glyphs,

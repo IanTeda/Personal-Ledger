@@ -26,6 +26,7 @@ use crate::{
         display::DisplayPage,
         general::GeneralPage,
         hints::settings_plain_page_hints,
+        ledger::LedgerPage,
         page::PageRowClicked,
         state::SettingsView,
         sync_server::SyncServerPage,
@@ -285,6 +286,7 @@ impl<T: Page> PageHandle for Entity<T> {
 pub struct SettingsPages {
     pub general: Entity<GeneralPage>,
     pub display: Entity<DisplayPage>,
+    pub ledger: Entity<LedgerPage>,
     pub units: Entity<UnitsPage>,
     pub institutions: Entity<InstitutionsPage>,
     pub accounts: Entity<AccountsPage>,
@@ -317,8 +319,9 @@ impl SettingsPages {
             inventory,
         } = setup;
         Self {
-            general: cx.new(|cx| GeneralPage::new(ledger.clone(), units.ports.clone(), cx)),
+            general: cx.new(|_| GeneralPage::default()),
             display: cx.new(|_| DisplayPage::default()),
+            ledger: cx.new(|cx| LedgerPage::new(ledger.clone(), units.ports.clone(), cx)),
             units: units_page(
                 units.ports,
                 units.deletion,
@@ -366,6 +369,7 @@ impl SettingsPages {
         match page {
             SettingsPage::General => &self.general,
             SettingsPage::Display => &self.display,
+            SettingsPage::Ledger => &self.ledger,
             SettingsPage::Units => &self.units,
             SettingsPage::Institutions => &self.institutions,
             SettingsPage::Accounts => &self.accounts,

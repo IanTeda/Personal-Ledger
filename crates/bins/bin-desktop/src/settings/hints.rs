@@ -48,8 +48,8 @@ pub(crate) fn settings_colour_grid_hints() -> Vec<(&'static str, String)> {
     ]
 }
 
-/// The keys of a Settings page with no row or field cursor of its own (the info pages, General,
-/// and the Institutions table, which is mouse-driven for now).
+/// The keys of a Settings page with no row or field cursor of its own (the info pages and the
+/// Institutions table, which is mouse-driven for now).
 pub(crate) fn settings_plain_page_hints() -> Vec<(&'static str, String)> {
     vec![
         ("j/k", crate::msg::desktop_hint_scroll()),
@@ -57,8 +57,17 @@ pub(crate) fn settings_plain_page_hints() -> Vec<(&'static str, String)> {
     ]
 }
 
-/// The General page's keys: `j`/`k` change the Base unit select.
+/// The General page's keys: `j`/`k` walk On start and Toasts, `h`/`l` change the one focused.
 pub(crate) fn settings_general_hints() -> Vec<(&'static str, String)> {
+    vec![
+        ("j/k", crate::msg::desktop_hint_field()),
+        ("h/l", crate::msg::desktop_hint_change()),
+        ("esc", crate::msg::desktop_hint_index()),
+    ]
+}
+
+/// The Ledger page's keys: `j`/`k` change the Base unit select.
+pub(crate) fn settings_ledger_hints() -> Vec<(&'static str, String)> {
     vec![
         ("j/k", crate::msg::desktop_hint_change()),
         ("h", crate::msg::desktop_hint_index()),

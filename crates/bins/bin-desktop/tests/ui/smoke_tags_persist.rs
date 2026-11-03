@@ -9,10 +9,10 @@ use bin_desktop::shell::router::SettingsTagsSnapshot;
 use common::{Harness, config_for};
 use gpui::TestAppContext;
 
-/// Settings on the Tags page (six presses down the index) with focus stepped into it.
+/// Settings on the Tags page (nine presses down the index) with focus stepped into it.
 fn in_tags(ui: &mut Harness<'_>) {
     ui.press("g s");
-    ui.press("j j j j j j");
+    ui.press("j j j j j j j j j");
     assert_eq!(ui.settings_frame().page, "Tags");
     ui.press("l");
 }

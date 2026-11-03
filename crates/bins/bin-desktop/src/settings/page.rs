@@ -7,14 +7,62 @@ use crate::{assets::icon::DesktopIcon, view::event::Reveal};
 #[derive(Debug, Clone, Copy)]
 pub struct PageRowClicked;
 
-/// The twelve pages of Settings, in the settings index rail's own row order. Settings is paged,
-/// not one continuous scroll: each entry swaps the body to its own page. Accounts, Categories,
-/// Tags and Payees joined the original eight when they left the primary rail.
+/// Which of Settings' two groups a page sits in (ADR-0051, `GLOSSARY.md` **Preference**): what
+/// belongs to this device and works with no Ledger open, or what is stored in the Open Ledger or
+/// acts on its file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScopeGroup {
+    ThisDevice,
+    ThisLedger,
+}
+
+impl ScopeGroup {
+    /// The groups, in index order.
+    pub const ALL: [ScopeGroup; 2] = [Self::ThisDevice, Self::ThisLedger];
+
+    /// The group's heading.
+    pub fn label(self) -> String {
+        match self {
+            Self::ThisDevice => crate::msg::desktop_settings_group_this_device(),
+            Self::ThisLedger => crate::msg::desktop_settings_group_this_ledger(),
+        }
+    }
+
+    /// The group's pages, in index order.
+    pub fn pages(self) -> impl Iterator<Item = SettingsPage> {
+        SettingsPage::ALL
+            .into_iter()
+            .filter(move |page| page.scope_group() == self)
+    }
+
+    /// The right-aligned line beside the heading on the index page: its page count and whether
+    /// it syncs.
+    pub fn scope_line(self) -> String {
+        let count = i64::try_from(self.pages().count()).unwrap_or(i64::MAX);
+        match self {
+            Self::ThisDevice => crate::msg::desktop_settings_group_this_device_scope(count),
+            Self::ThisLedger => crate::msg::desktop_settings_group_this_ledger_scope(count),
+        }
+    }
+
+    /// The line under the heading on the index page, saying where the group's settings live.
+    pub fn description(self) -> String {
+        match self {
+            Self::ThisDevice => crate::msg::desktop_settings_group_this_device_description(),
+            Self::ThisLedger => crate::msg::desktop_settings_group_this_ledger_description(),
+        }
+    }
+}
+
+/// The pages of Settings, in the settings index's own row order. Settings is paged, not one
+/// continuous scroll: each entry swaps the body to its own page. The index groups them by
+/// [`ScopeGroup`], this device's first.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SettingsPage {
     #[default]
     General,
     Display,
+    Ledger,
     Units,
     Institutions,
     Accounts,
@@ -30,12 +78,16 @@ pub enum SettingsPage {
 }
 
 impl SettingsPage {
-    /// Every page, in index-rail order (the handoff's canonical `General · Display · Units ·
-    /// Institutions · Accounts · Categories · Tags · Payees · Documents · Inventory · Sync server · Data & backup ·
-    /// Tracing (Logs) · About`).
-    pub const ALL: [SettingsPage; 14] = [
+    /// Every page, in index order: the mockups' THIS DEVICE group (`General · Display · Logs ·
+    /// About`), then THIS LEDGER (`Ledger · Units · Institutions · Accounts · Categories · Tags ·
+    /// Payees · Documents · Inventory · Sync server · Backup`). The mockups' AI Connections and
+    /// History have no page yet.
+    pub const ALL: [SettingsPage; 15] = [
         SettingsPage::General,
         SettingsPage::Display,
+        SettingsPage::Tracing,
+        SettingsPage::About,
+        SettingsPage::Ledger,
         SettingsPage::Units,
         SettingsPage::Institutions,
         SettingsPage::Accounts,
@@ -46,15 +98,33 @@ impl SettingsPage {
         SettingsPage::Inventory,
         SettingsPage::SyncServer,
         SettingsPage::DataBackup,
-        SettingsPage::Tracing,
-        SettingsPage::About,
     ];
+
+    /// The group the page sits in on the index. A Router decision, like [`Self::for_reveal`], so
+    /// it stays with the page's identity rather than on a page (#933, ADR-0037).
+    pub fn scope_group(self) -> ScopeGroup {
+        match self {
+            Self::General | Self::Display | Self::Tracing | Self::About => ScopeGroup::ThisDevice,
+            Self::Ledger
+            | Self::Units
+            | Self::Institutions
+            | Self::Accounts
+            | Self::Categories
+            | Self::Tags
+            | Self::Payees
+            | Self::Documents
+            | Self::Inventory
+            | Self::SyncServer
+            | Self::DataBackup => ScopeGroup::ThisLedger,
+        }
+    }
 
     /// The index-rail label / section heading text.
     pub fn label(self) -> String {
         match self {
             Self::General => crate::msg::desktop_settings_section_general(),
             Self::Display => crate::msg::desktop_settings_section_display(),
+            Self::Ledger => crate::msg::desktop_settings_section_ledger(),
             Self::Units => crate::msg::desktop_settings_section_units(),
             Self::Institutions => crate::msg::desktop_settings_section_institutions(),
             Self::Accounts => lib_locale::msg::nav_accounts(),
@@ -77,6 +147,7 @@ impl SettingsPage {
         match self {
             Self::General => DesktopIcon::SettingsGeneral,
             Self::Display => DesktopIcon::SettingsDisplay,
+            Self::Ledger => DesktopIcon::SettingsLedger,
             Self::Units => DesktopIcon::SettingsUnits,
             Self::Institutions => DesktopIcon::Loans,
             Self::Accounts => DesktopIcon::Accounts,
@@ -97,6 +168,7 @@ impl SettingsPage {
         match self {
             Self::General => crate::msg::desktop_settings_description_general(),
             Self::Display => crate::msg::desktop_settings_description_display(),
+            Self::Ledger => crate::msg::desktop_settings_description_ledger(),
             Self::Units => crate::msg::desktop_settings_description_units(),
             Self::Institutions => crate::msg::desktop_settings_description_institutions(),
             Self::Accounts => crate::msg::desktop_settings_description_accounts(),
@@ -116,7 +188,8 @@ impl SettingsPage {
     /// distinction the README calls "the UI must make ... legible" (issue #63/#101/ADR-0014).
     pub fn scope_note(self) -> String {
         match self {
-            Self::General => crate::msg::desktop_settings_scope_general(),
+            Self::General | Self::Display => crate::msg::desktop_settings_scope_this_device(),
+            Self::Ledger => crate::msg::desktop_settings_scope_ledger(),
             Self::Units | Self::Institutions => {
                 crate::msg::desktop_settings_scope_synced_change_sets()
             }
@@ -126,7 +199,6 @@ impl SettingsPage {
             | Self::Payees
             | Self::Documents
             | Self::Inventory => crate::msg::desktop_settings_scope_ledger_data(),
-            Self::Display => crate::msg::desktop_settings_scope_display(),
             Self::SyncServer => crate::msg::desktop_settings_scope_sync_server(30),
             Self::DataBackup => crate::msg::desktop_settings_scope_data_backup("aud", "2.84 mb"),
             Self::Tracing => crate::msg::desktop_settings_scope_tracing(
@@ -154,6 +226,7 @@ impl SettingsPage {
         match self {
             Self::General => "general",
             Self::Display => "display",
+            Self::Ledger => "ledger",
             Self::Units => "units",
             Self::Institutions => "institutions",
             Self::Accounts => "accounts",
@@ -238,6 +311,9 @@ mod tests {
             [
                 "general",
                 "display",
+                "tracing",
+                "about",
+                "ledger",
                 "units",
                 "institutions",
                 "accounts",
@@ -248,9 +324,36 @@ mod tests {
                 "inventory",
                 "sync-server",
                 "data-backup",
-                "tracing",
-                "about",
             ]
+        );
+    }
+
+    #[test]
+    fn this_device_holds_the_first_pages_and_this_ledger_the_rest() {
+        let groups: Vec<_> = SettingsPage::ALL
+            .iter()
+            .map(|page| page.scope_group())
+            .collect();
+        let split = groups
+            .iter()
+            .position(|group| *group == ScopeGroup::ThisLedger)
+            .expect("THIS LEDGER has pages");
+        assert_eq!(split, 4);
+        assert!(groups[..split].iter().all(|g| *g == ScopeGroup::ThisDevice));
+        assert!(groups[split..].iter().all(|g| *g == ScopeGroup::ThisLedger));
+        assert_eq!(SettingsPage::ALL[split], SettingsPage::Ledger);
+    }
+
+    #[test]
+    fn each_group_counts_its_own_pages_in_its_scope_line() {
+        crate::locale::init_for_tests();
+        assert_eq!(
+            ScopeGroup::ThisDevice.scope_line(),
+            "4 pages · never synced"
+        );
+        assert_eq!(
+            ScopeGroup::ThisLedger.scope_line(),
+            "11 pages · synced with the Ledger"
         );
     }
 
@@ -280,7 +383,7 @@ mod tests {
         crate::locale::init_for_tests();
         assert_eq!(
             SettingsPage::Display.scope_note(),
-            "client-scoped · never synced"
+            "this device · never synced"
         );
         assert_eq!(SettingsPage::Units.scope_note(), "synced · change sets");
         assert_eq!(

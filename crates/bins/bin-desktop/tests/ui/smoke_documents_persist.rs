@@ -17,7 +17,7 @@ use gpui::TestAppContext;
 /// The Document Type names Settings › Documents lists, with focus stepped into the page.
 fn type_names(ui: &mut Harness<'_>) -> Vec<String> {
     ui.press("g s");
-    ui.press("j j j j j j j j");
+    ui.press(&["j"; 11].join(" "));
     assert_eq!(ui.settings_frame().page, "Documents");
     ui.press("l");
     ui.settings::<SettingsDocumentTypesSnapshot>()

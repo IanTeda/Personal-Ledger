@@ -21,7 +21,7 @@ fn in_payees(app: &mut TestAppContext) -> Harness<'_> {
 
 fn to_payees(ui: &mut Harness<'_>) {
     ui.press("g s");
-    ui.press("j j j j j j j");
+    ui.press(&["j"; 10].join(" "));
     assert_eq!(ui.settings_frame().page, "Payees");
     ui.press("l");
     assert!(ui.settings_frame().page_focused);
@@ -136,7 +136,7 @@ fn e_edits_the_selected_payee_and_enter_saves_the_new_name(app: &mut TestAppCont
 fn a_failed_write_puts_the_payees_back_with_an_error_toast(app: &mut TestAppContext) {
     let mut ui = Harness::with_failing_payees(app);
     ui.press("g s");
-    ui.press("j j j j j j j");
+    ui.press("j j j j j j j j j j");
     ui.press("l");
     let stored = ui.settings::<SettingsPayeesSnapshot>().payee_names;
 
@@ -460,7 +460,7 @@ fn enter_in_the_rule_input_adds_a_chip_and_backspace_takes_it_back(app: &mut Tes
 fn an_override_of_next_field_moves_the_field_and_frees_tab(app: &mut TestAppContext) {
     let mut ui = Harness::with_keybindings(app, common::overriding("next_field", "ctrl+n"));
     ui.press("g s");
-    ui.press("j j j j j j j");
+    ui.press("j j j j j j j j j j");
     ui.press("l");
     ui.press("n");
 
@@ -513,7 +513,7 @@ fn question_mark_lists_the_keys_the_status_line_shows(app: &mut TestAppContext) 
 fn the_cheat_sheet_shows_a_rebound_key(app: &mut TestAppContext) {
     let mut ui = Harness::with_keybindings(app, common::overriding("new", "ctrl+n"));
     ui.press("g s");
-    ui.press("j j j j j j j");
+    ui.press("j j j j j j j j j j");
     ui.press("l");
     assert_eq!(hint_keys(&mut ui), ["j/k", "enter", "e", "d", "ctrl+n"]);
 

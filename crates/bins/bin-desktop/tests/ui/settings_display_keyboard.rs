@@ -38,15 +38,15 @@ fn j_and_k_walk_the_controls_and_stop_at_the_top(app: &mut TestAppContext) {
         ui.settings::<SettingsDisplaySnapshot>().display_field,
         Some(1)
     );
-    ui.press("j j j");
+    ui.press("j j");
     assert_eq!(
         ui.settings::<SettingsDisplaySnapshot>().display_field,
-        Some(4)
+        Some(3)
     );
     ui.press("k");
     assert_eq!(
         ui.settings::<SettingsDisplaySnapshot>().display_field,
-        Some(3)
+        Some(2)
     );
     ui.press("k k k k k");
     assert_eq!(
@@ -157,36 +157,23 @@ fn the_sidebar_checkbox_takes_l_h_enter_and_space(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn h_turns_toasts_on_and_l_turns_them_off(app: &mut TestAppContext) {
-    let mut ui = in_display(app);
-
-    ui.press("j j j j");
-    let was_on = ui.settings::<SettingsDisplaySnapshot>().toasts_on;
-    ui.press("l");
-    assert!(!ui.settings::<SettingsDisplaySnapshot>().toasts_on);
-    ui.press("h");
-    assert!(ui.settings::<SettingsDisplaySnapshot>().toasts_on);
-    assert!(was_on);
-}
-
-#[gpui::test]
 fn j_past_the_last_control_enters_the_grid_and_k_climbs_back(app: &mut TestAppContext) {
     let mut ui = in_display(app);
 
-    ui.press("j j j j j");
+    ui.press("j j j j");
     let display_page = ui.settings::<SettingsDisplaySnapshot>();
     assert_eq!(display_page.display_field, None);
     assert!(display_page.colour_theme_focus.is_some());
     ui.press("k");
     let display_page = ui.settings::<SettingsDisplaySnapshot>();
     assert_eq!(display_page.colour_theme_focus, None);
-    assert_eq!(display_page.display_field, Some(4));
+    assert_eq!(display_page.display_field, Some(3));
 }
 
 #[gpui::test]
 fn the_grid_moves_with_l_and_h_and_enter_chooses_the_card(app: &mut TestAppContext) {
     let mut ui = in_display(app);
-    ui.press("j j j j j");
+    ui.press("j j j j");
     let start = ui
         .settings::<SettingsDisplaySnapshot>()
         .colour_theme_focus
@@ -212,7 +199,7 @@ fn the_grid_moves_with_l_and_h_and_enter_chooses_the_card(app: &mut TestAppConte
 #[gpui::test]
 fn escape_in_the_grid_climbs_to_the_last_control_then_back_to_the_index(app: &mut TestAppContext) {
     let mut ui = in_display(app);
-    ui.press("j j j j j");
+    ui.press("j j j j");
 
     ui.press("escape");
     assert_eq!(
@@ -221,7 +208,7 @@ fn escape_in_the_grid_climbs_to_the_last_control_then_back_to_the_index(app: &mu
     );
     assert_eq!(
         ui.settings::<SettingsDisplaySnapshot>().display_field,
-        Some(4)
+        Some(3)
     );
     ui.press("escape");
     let display_page = ui.settings::<SettingsDisplaySnapshot>();
@@ -233,7 +220,7 @@ fn escape_in_the_grid_climbs_to_the_last_control_then_back_to_the_index(app: &mu
 #[gpui::test]
 fn h_in_the_first_grid_column_steps_out_to_the_index(app: &mut TestAppContext) {
     let mut ui = in_display(app);
-    ui.press("j j j j j");
+    ui.press("j j j j");
     // Home of the grid is the chosen card; walk left until focus leaves the grid.
     ui.press("h h h h h h");
 
@@ -248,7 +235,7 @@ fn settings_display_from_the_palette_puts_focus_back_on_the_first_control(
     app: &mut TestAppContext,
 ) {
     let mut ui = in_display(app);
-    ui.press("j j j j j");
+    ui.press("j j j j");
     assert!(
         ui.settings::<SettingsDisplaySnapshot>()
             .colour_theme_focus

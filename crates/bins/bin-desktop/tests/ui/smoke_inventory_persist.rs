@@ -10,10 +10,10 @@ use bin_desktop::shell::router::SettingsInventorySnapshot;
 use common::{Harness, config_for};
 use gpui::TestAppContext;
 
-/// Settings on the Inventory page (nine presses down the index) with focus stepped into it.
+/// Settings on the Inventory page (twelve presses down the index) with focus stepped into it.
 fn in_inventory(ui: &mut Harness<'_>) {
     ui.press("g s");
-    ui.press("j j j j j j j j j");
+    ui.press(&["j"; 12].join(" "));
     assert_eq!(ui.settings_frame().page, "Inventory");
     ui.press("l");
 }

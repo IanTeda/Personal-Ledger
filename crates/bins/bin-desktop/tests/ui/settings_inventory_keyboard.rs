@@ -12,11 +12,11 @@ const ELM: &str = "location:12 Elm St contents";
 const STORAGE: &str = "location:Storage unit";
 const HILUX: &str = "location:Hilux";
 
-/// Settings on the Inventory page (nine presses down the index) with focus stepped into it.
+/// Settings on the Inventory page (twelve presses down the index) with focus stepped into it.
 fn in_inventory(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
     ui.press("g s");
-    ui.press("j j j j j j j j j");
+    ui.press(&["j"; 12].join(" "));
     assert_eq!(ui.settings_frame().page, "Inventory");
     ui.press("l");
     assert!(ui.settings_frame().page_focused);
@@ -343,7 +343,7 @@ fn the_last_location_can_be_removed(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
     ui.empty_inventory();
     ui.press("g s");
-    ui.press("j j j j j j j j j l n o n e enter");
+    ui.press("j j j j j j j j j j j j l n o n e enter");
     assert_eq!(names(&mut ui), vec!["one".to_string()]);
     ui.press("x enter");
     assert!(names(&mut ui).is_empty());
@@ -382,7 +382,7 @@ fn the_empty_state_ignores_a_e_and_x_but_a_raises_a_toast(app: &mut TestAppConte
     let mut ui = Harness::new(app);
     ui.empty_inventory();
     ui.press("g s");
-    ui.press("j j j j j j j j j l");
+    ui.press("j j j j j j j j j j j j l");
     let inventory_page = ui.settings::<SettingsInventorySnapshot>();
     let page = ui.settings_frame();
     assert_eq!(page.page, "Inventory");
@@ -634,7 +634,7 @@ fn the_status_line_reads_the_live_counts_and_a_adds_an_area(app: &mut TestAppCon
 fn a_failed_write_puts_the_inventory_back_with_an_error_toast(app: &mut TestAppContext) {
     let mut ui = Harness::with_failing_inventory(app);
     ui.press("g s");
-    ui.press("j j j j j j j j j");
+    ui.press("j j j j j j j j j j j j");
     ui.press("l");
     let stored = names(&mut ui);
 
@@ -694,7 +694,7 @@ fn removing_a_location_lands_in_one_commit_and_drops_its_items_document_links(
         "a Payee, a Bill Plan and the Toyota Corolla in 12 Elm St"
     );
     ui.press("g s");
-    ui.press("j j j j j j j j j l");
+    ui.press("j j j j j j j j j j j j l");
     assert_eq!(ui.settings_frame().page, "Inventory");
     ui.press("x");
     ui.press("1 2 space shift-e l m space shift-s t space c o n t e n t s");

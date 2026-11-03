@@ -20,7 +20,7 @@ fn on_page(ui: &mut Harness<'_>, presses: &str, page: &str) {
 /// Whether the Add payee Dialog's Default category select reaches `name`, stepping down its
 /// leaves from the first. Settings opens on its first page.
 fn default_category_offers(ui: &mut Harness<'_>, name: &str) -> bool {
-    on_page(ui, "j j j j j j j", "Payees");
+    on_page(ui, "j j j j j j j j j j", "Payees");
     ui.press("n z o o tab");
     assert_eq!(ui.dialog_value("field").as_deref(), Some("DefaultCategory"));
     let mut offered = false;
@@ -46,7 +46,7 @@ fn an_added_category_is_there_after_a_restart_and_a_payee_may_default_to_it(
         let storage = bin_desktop::start_on(&config, common::today()).expect("a new Ledger starts");
         let writer = storage.writer.clone();
         let mut ui = Harness::with_storage(app, storage);
-        on_page(&mut ui, "j j j j j", "Categories");
+        on_page(&mut ui, "j j j j j j j j", "Categories");
         ui.press("n p e t s enter");
         assert_eq!(ui.dialog(), None, "the Add Dialog confirmed");
         let names = ui.settings::<SettingsCategoriesSnapshot>().category_names;

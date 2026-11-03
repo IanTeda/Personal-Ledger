@@ -13,6 +13,7 @@ use crate::{
     ledger_store::LedgerStore,
     navigation::movement::Movement,
     settings::display::DisplayPreferences,
+    settings::general::GeneralPage,
     settings::pages::{Page, PageFrame, PageHandle, SettingsPages, SettingsSetup},
     settings::picker::PagePicker,
     settings::{SettingsFocus, SettingsPage},
@@ -401,12 +402,8 @@ impl SettingsView {
         if !self.drill_down() {
             return;
         }
-        let row = SettingsPage::ALL
-            .iter()
-            .position(|page| *page == self.selected_section)
-            .unwrap_or(0);
         self.index_scroll
-            .scroll_to_item(super::INDEX_PAGE_FIRST_ROW + row);
+            .scroll_to_item(super::index_page_child(self.selected_section));
     }
 
     fn apply_section_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) {
@@ -552,12 +549,21 @@ impl SettingsView {
         self.pages.display.read(cx).preferences()
     }
 
-    /// Sets the Display Preferences from outside the page (launch, `:toasts`), without telling
-    /// `Root`, which made the change itself.
+    /// Sets the Display Preferences from outside the page (launch), without telling `Root`,
+    /// which made the change itself.
     pub fn set_display(&mut self, display: DisplayPreferences, cx: &mut Context<'_, Self>) {
         self.pages
             .display
             .update(cx, |page, cx| page.set_preferences(display, cx));
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // General
+    // -----------------------------------------------------------------------------------------
+
+    /// The General page, which owns On start and Toasts and shows this device (ADR-0037).
+    pub fn general(&self) -> &Entity<GeneralPage> {
+        &self.pages.general
     }
 }
 
@@ -575,7 +581,8 @@ mod tests {
         payees::PayeesPage,
         settings::{
             about::AboutPage, data_backup::DataBackupPage, display::DisplayPage,
-            general::GeneralPage, sync_server::SyncServerPage, tracing::TracingPage,
+            general::GeneralPage, ledger::LedgerPage, sync_server::SyncServerPage,
+            tracing::TracingPage,
         },
         tags::TagsPage,
         units::UnitsPage,
@@ -589,6 +596,7 @@ mod tests {
         }
         match page {
             SettingsPage::General => found::<GeneralPage>(view),
+            SettingsPage::Ledger => found::<LedgerPage>(view),
             SettingsPage::Display => found::<DisplayPage>(view),
             SettingsPage::Units => found::<UnitsPage>(view),
             SettingsPage::Institutions => found::<InstitutionsPage>(view),

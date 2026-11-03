@@ -246,7 +246,12 @@ log_file_path = "/var/log/personal-ledger/personal-ledger.log"
 
 ## The Settings screen in the Desktop app
 
-Settings in the Desktop app is paged: a list of pages down the left (the index) and one page open beside it. Choosing an entry swaps the page; nothing scrolls from one section into the next. The pages are General, Display, Units, Institutions, Accounts, Categories, Tags, Payees, Documents, Inventory, Sync server, Data and backup, Tracing and About.
+Settings in the Desktop app is paged: a list of pages down the left (the index) and one page open beside it. Choosing an entry swaps the page; nothing scrolls from one section into the next. The index lists its pages in two groups:
+
+- **This device:** General, Display, Tracing (Logs) and About. These belong to the computer you are on and never sync.
+- **This ledger:** Ledger, Units, Institutions, Accounts, Categories, Tags, Payees, Documents, Inventory, Sync server and Data & backup. These are stored in the open Ledger, or act on its file.
+
+`j`, `k`, `[` and `]` run from the end of This device straight into This ledger, and the page picker lists the pages under the same two headings. The Desktop has no AI connections or History page yet. A Ledger is always open in the Desktop for now, so every page opens.
 
 Accounts, Categories, Tags and Payees live here rather than on the main rail. You reach them from the index, with `:settings accounts` (and likewise `categories`, `tags`, `payees`, `documents`, `inventory`), or with the older `:accounts`, `:categories`, `:tags` and `:payees` commands, which still work. `:units` and `:institutions` open their pages the same way.
 
@@ -254,6 +259,18 @@ Accounts, Categories, Tags and Payees live here rather than on the main rail. Yo
 - Press `l` to move into the open page and `h` to come back to the index. Page keys such as `e` (edit), `d` (delete), `n` (new), `x` (remove) and `m` (merge) only act while the page has focus.
 - `Esc` backs out one step at a time: a dialog or search first, then the page back to the index.
 - The page you last had open is remembered, so Settings reopens where you left it.
+
+### General page
+
+General holds what belongs to this device:
+
+- **On start** chooses which Ledger the app opens as it starts: **Reopen last Ledger** (the default) opens the one open when you last quit, and **Start with no Ledger open** opens none. A file named by `--file` or `file` always wins. The Desktop can't start with no Ledger open yet, so for now Start with no Ledger open opens `My-Personal-Ledger.pldb` in the Ledger folder instead.
+- **Toasts** turns Toasts on or off (see Toasts below).
+- **Language and region** and **Ledger folder** show the Locale and the `data` folder. They are read from `personal-ledger.conf` when the app starts, so change them there.
+
+Press `l` to move onto On start, `j` and `k` to move between On start and Toasts, and `h` and `l` to change the one you are on. Beside the fields, the THIS DEVICE box shows the Ledger On start would reopen and the config file Settings writes to.
+
+The Ledger page holds what used to be on General: the Ledger's name, owner, financial year and Base unit.
 
 ### Documents page
 
@@ -382,7 +399,7 @@ A field name or value that `set` doesn't know is refused on the status line, whi
 
 ## Toasts
 
-A Toast is a short message in the bottom-right corner that tells you how something turned out, for example "Deleted tag Food". You can turn Toasts off from Settings. In the Desktop app go to Display, where an On / Off switch sits above the Colour Theme settings; in the TUI go to General, move to the Toasts row and press `Enter` or `Space` to flip it. From the command box you can also run `toasts on` or `toasts off`.
+A Toast is a short message in the bottom-right corner that tells you how something turned out, for example "Deleted tag Food". You can turn Toasts off from Settings. In the Desktop app go to General, where an On / Off switch sits under On start; in the TUI go to General, move to the Toasts row and press `Enter` or `Space` to flip it. From the command box you can also run `toasts on` or `toasts off`.
 
 With Toasts off, the message shows on the status line at the bottom instead, for as long as the Toast would have shown. Errors still appear as Toasts either way, so you never miss one; the note beside the row says so.
 

@@ -12,11 +12,11 @@ fn mode(ui: &mut Harness<'_>) -> InputMode {
     ui.read(|shell| shell.nav().mode())
 }
 
-/// Settings on the Tags page (seven presses down the index) with focus stepped into it.
+/// Settings on the Tags page (nine presses down the index) with focus stepped into it.
 fn in_tags(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
     ui.press("g s");
-    ui.press("j j j j j j");
+    ui.press("j j j j j j j j j");
     assert_eq!(ui.settings_frame().page, "Tags");
     ui.press("l");
     assert!(ui.settings_frame().page_focused);
@@ -263,7 +263,7 @@ fn question_mark_lists_the_keys_the_status_line_shows(app: &mut TestAppContext) 
 fn a_failed_write_puts_the_tags_back_with_an_error_toast(app: &mut TestAppContext) {
     let mut ui = Harness::with_failing_tags(app);
     ui.press("g s");
-    ui.press("j j j j j j");
+    ui.press("j j j j j j j j j");
     ui.press("l");
     let stored = ui.settings::<SettingsTagsSnapshot>().tag_names;
 

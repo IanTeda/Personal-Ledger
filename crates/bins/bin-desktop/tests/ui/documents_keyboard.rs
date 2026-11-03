@@ -709,7 +709,7 @@ fn deleting_a_linked_payee_drops_its_link_and_keeps_the_document(app: &mut TestA
     let mut ui = Harness::with_storage(app, storage);
     // A new Payee nothing else names, so the file lets it be deleted.
     ui.press("g s");
-    ui.press("j j j j j j j");
+    ui.press(&["j"; 10].join(" "));
     ui.press("l");
     ui.press("n z o o enter");
     // The Amex statement's one Link, its Account, swapped for the new Payee.

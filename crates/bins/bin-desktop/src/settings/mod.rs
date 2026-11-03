@@ -8,6 +8,7 @@ pub mod data_backup;
 pub mod display;
 pub mod general;
 pub(crate) mod hints;
+pub mod ledger;
 pub mod page;
 pub mod pages;
 pub mod picker;
@@ -40,14 +41,26 @@ pub const CONTENT_MAX_WIDTH: Pixels = px(840.0);
 /// The page picker's own width, under the page name.
 const PICKER_WIDTH: Pixels = px(280.0);
 
-/// Where the Medium index page's rows start among its scrolled children, after the heading and
-/// its rule, so the selected row can be scrolled to.
-const INDEX_PAGE_FIRST_ROW: usize = 2;
+/// Where the Medium index page's groups start among its scrolled children, after the heading and
+/// its rule.
+const INDEX_PAGE_FIRST_GROUP: usize = 2;
+
+/// Where `page`'s row sits among the Medium index page's scrolled children, so the selected row
+/// can be scrolled to: past the heading and its rule, the rows before it and one heading per group
+/// up to its own.
+fn index_page_child(page: SettingsPage) -> usize {
+    let groups = ScopeGroup::ALL
+        .iter()
+        .position(|group| *group == page.scope_group())
+        .unwrap_or(0)
+        + 1;
+    INDEX_PAGE_FIRST_GROUP + groups + page.index()
+}
 
 type OnClick = Rc<dyn Fn(&mut Window, &mut App)>;
 type OnPageClick = Rc<dyn Fn(SettingsPage, &mut Window, &mut App)>;
 
-pub use page::SettingsPage;
+pub use page::{ScopeGroup, SettingsPage};
 
 impl Render for SettingsView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
@@ -285,7 +298,8 @@ fn crumb_heading(
         .children(picker.map(|picker| gpui::deferred(page_picker(picker, on_pick, cx))))
 }
 
-/// The picker under the page name: every page, in index order, with the chosen one highlighted.
+/// The picker under the page name: every page, in index order under its group's heading, with the
+/// chosen one highlighted.
 fn page_picker(picker: &PagePicker, on_pick: OnPageClick, cx: &App) -> AnyElement {
     let chosen = picker.chosen();
     div()
@@ -302,29 +316,45 @@ fn page_picker(picker: &PagePicker, on_pick: OnPageClick, cx: &App) -> AnyElemen
         .font_weight(gpui::FontWeight::NORMAL)
         .text_size(px(13.0))
         .occlude()
-        .children(SettingsPage::ALL.into_iter().map(|page| {
+        .children(ScopeGroup::ALL.into_iter().flat_map(|group| {
             let on_pick = on_pick.clone();
-            div()
-                .id(SharedString::from(format!("settings-picker-{page:?}")))
-                .debug_selector(move || format!("settings-picker-{page:?}"))
-                .cursor_pointer()
-                .py(px(7.0))
-                .px(px(12.0))
-                .when(page == chosen, |this| {
-                    this.bg(color::selection_background(cx))
-                        .text_color(color::selection_text(cx))
-                        .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                })
-                .hover(|this| this.bg(color::hover(cx)))
-                .on_click(move |_event, window, cx| on_pick(page, window, cx))
-                .child(page.label())
+            std::iter::once(
+                div()
+                    .pt(px(10.0))
+                    .pb(px(4.0))
+                    .px(px(12.0))
+                    .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                    .text_size(px(9.5))
+                    .text_color(color::faint_text(cx))
+                    .child(lib_locale::format::upper(&group.label()))
+                    .into_any_element(),
+            )
+            .chain(group.pages().map(move |page| {
+                let on_pick = on_pick.clone();
+                div()
+                    .id(SharedString::from(format!("settings-picker-{page:?}")))
+                    .debug_selector(move || format!("settings-picker-{page:?}"))
+                    .cursor_pointer()
+                    .py(px(7.0))
+                    .px(px(12.0))
+                    .when(page == chosen, |this| {
+                        this.bg(color::selection_background(cx))
+                            .text_color(color::selection_text(cx))
+                            .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                    })
+                    .hover(|this| this.bg(color::hover(cx)))
+                    .on_click(move |_event, window, cx| on_pick(page, window, cx))
+                    .child(page.label())
+                    .into_any_element()
+            }))
         }))
         .into_any_element()
 }
 
 /// The Settings index as a page of its own, at Medium (DESKTOP-119): a plain **Settings** heading,
-/// then one row per page with its one-line description. The page on show stays selected. Each is
-/// a child of the scroll on its own, from [`INDEX_PAGE_FIRST_ROW`], so a row can be scrolled to.
+/// then each group's heading, with its scope line and what it holds, over one row per page with
+/// its one-line description. The page on show stays selected. Each is a child of the scroll on
+/// its own ([`index_page_child`]), so a row can be scrolled to.
 fn index_page(selected: SettingsPage, on_row_click: OnPageClick, cx: &App) -> Vec<AnyElement> {
     let count = i64::try_from(SettingsPage::ALL.len()).unwrap_or(i64::MAX);
     let heading = div()
@@ -349,7 +379,7 @@ fn index_page(selected: SettingsPage, on_row_click: OnPageClick, cx: &App) -> Ve
         .bg(color::structural_rule(cx))
         .mt(px(14.0))
         .mb(px(6.0));
-    let rows = SettingsPage::ALL.into_iter().map(|page| {
+    let row = |page: SettingsPage| {
         let on_row_click = on_row_click.clone();
         let active = page == selected;
         div()
@@ -406,16 +436,13 @@ fn index_page(selected: SettingsPage, on_row_click: OnPageClick, cx: &App) -> Ve
             )
             .child("\u{203a}")
             .into_any_element()
-    });
-    let footer = div()
-        .pt(px(10.0))
-        .text_size(px(11.5))
-        .text_color(color::faint_text(cx))
-        .child(crate::msg::desktop_settings_index_footer());
+    };
+    let groups = ScopeGroup::ALL
+        .into_iter()
+        .flat_map(|group| std::iter::once(group_heading(group, cx)).chain(group.pages().map(row)));
     [heading.into_any_element(), rule.into_any_element()]
         .into_iter()
-        .chain(rows)
-        .chain([footer.into_any_element()])
+        .chain(groups.collect::<Vec<_>>())
         .map(|child| {
             div()
                 .w_full()
@@ -425,6 +452,44 @@ fn index_page(selected: SettingsPage, on_row_click: OnPageClick, cx: &App) -> Ve
                 .into_any_element()
         })
         .collect()
+}
+
+/// A group's heading on the Medium index page: its name with the page count and sync scope at the
+/// right, and a line saying where its settings live.
+fn group_heading(group: ScopeGroup, cx: &App) -> AnyElement {
+    div()
+        .debug_selector(move || format!("settings-index-page-group-{group:?}"))
+        .pt(px(18.0))
+        .pb(px(8.0))
+        .border_b_1()
+        .border_color(color::hairline(cx))
+        .child(
+            div()
+                .flex()
+                .items_baseline()
+                .justify_between()
+                .child(
+                    div()
+                        .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                        .text_size(px(10.0))
+                        .text_color(color::faint_text(cx))
+                        .child(lib_locale::format::upper(&group.label())),
+                )
+                .child(
+                    div()
+                        .text_size(px(11.5))
+                        .text_color(color::faint_text(cx))
+                        .child(group.scope_line()),
+                ),
+        )
+        .child(
+            div()
+                .mt(px(4.0))
+                .text_size(px(12.0))
+                .text_color(color::muted(cx))
+                .child(group.description()),
+        )
+        .into_any_element()
 }
 
 /// A page that isn't rebuilt yet.

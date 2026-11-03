@@ -45,6 +45,8 @@ mod settings_institutions_mouse;
 mod settings_inventory_keyboard;
 mod settings_inventory_mouse;
 mod settings_keyboard;
+mod settings_ledger_keyboard;
+mod settings_ledger_mouse;
 mod settings_mouse;
 mod settings_payees_keyboard;
 mod settings_payees_mouse;

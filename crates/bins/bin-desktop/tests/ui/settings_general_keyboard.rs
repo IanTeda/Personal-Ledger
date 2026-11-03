@@ -1,143 +1,103 @@
-//! The Settings View's own keys on the index and the General page: the index's ends, `/` with no
-//! Search, and `Esc` on the index. State is read back from `Root`.
+//! Settings › General driven by keys: focus lands on On start, `j`/`k` walk On start and Toasts,
+//! and `h`/`l` change the one focused. On start is what the state file keeps at quit, and Toasts
+//! reach the Shell's Toasts. State is read back from `Root`.
 
 use super::common;
 use bin_desktop::shell::router::SettingsGeneralSnapshot;
 
-use bin_desktop::navigation::nav::{InputMode, Noun};
 use common::Harness;
 use gpui::TestAppContext;
+use lib_core::OnStart;
 
-fn on_settings(app: &mut TestAppContext) -> Harness<'_> {
+/// Settings on General, the first page, with focus stepped into it.
+fn in_general(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
     ui.press("g s");
-    assert_eq!(ui.noun(), Noun::Settings);
+    assert_eq!(ui.settings_frame().page, "General");
+    ui.press("l");
+    assert!(ui.settings_frame().page_focused);
     ui
 }
 
 #[gpui::test]
-fn shift_g_and_g_g_jump_to_the_index_ends(app: &mut TestAppContext) {
-    let mut ui = on_settings(app);
-
-    ui.press("shift-g");
-    assert_eq!(ui.settings_frame().page, "About");
-    ui.press("g g");
-    assert_eq!(ui.settings_frame().page, "General");
-}
-
-#[gpui::test]
-fn slash_is_inert_on_settings(app: &mut TestAppContext) {
-    let mut ui = on_settings(app);
-
-    ui.press("/");
-    assert_eq!(ui.read(|shell| shell.nav().mode()), InputMode::Normal);
-    assert_eq!(ui.settings_frame().page, "General");
-}
-
-#[gpui::test]
-fn escape_on_the_index_stays_on_settings(app: &mut TestAppContext) {
-    let mut ui = on_settings(app);
-
-    ui.press("l");
-    assert!(ui.settings_frame().page_focused);
-    ui.press("escape escape");
-    let page = ui.settings_frame();
-    assert!(!page.page_focused);
-    assert_eq!(page.page, "General");
-    assert_eq!(ui.noun(), Noun::Settings);
-}
-
-#[gpui::test]
-fn the_base_unit_select_starts_on_aud_and_lists_every_unit(app: &mut TestAppContext) {
-    let mut ui = on_settings(app);
+fn focus_starts_on_on_start(app: &mut TestAppContext) {
+    let mut ui = in_general(app);
 
     let general = ui.settings::<SettingsGeneralSnapshot>();
-    assert_eq!(general.base_unit.as_deref(), Some("aud"));
-    assert_eq!(general.options, ["aud", "btc", "vas"]);
+    assert_eq!(general.field, Some(0));
+    assert_eq!(general.on_start, OnStart::ReopenLastLedger);
+    assert!(general.toasts_on);
 }
 
 #[gpui::test]
-fn j_and_k_in_the_page_set_the_base_unit_and_stop_at_the_ends(app: &mut TestAppContext) {
-    let mut ui = on_settings(app);
+fn j_and_k_walk_the_two_controls_and_stop_at_the_ends(app: &mut TestAppContext) {
+    let mut ui = in_general(app);
 
-    ui.press("l");
-    ui.press("j");
-    assert_eq!(
-        ui.settings::<SettingsGeneralSnapshot>()
-            .base_unit
-            .as_deref(),
-        Some("btc")
-    );
     ui.press("j j");
-    assert_eq!(
-        ui.settings::<SettingsGeneralSnapshot>()
-            .base_unit
-            .as_deref(),
-        Some("vas")
-    );
-    ui.press("k");
-    assert_eq!(
-        ui.settings::<SettingsGeneralSnapshot>()
-            .base_unit
-            .as_deref(),
-        Some("btc")
-    );
+    assert_eq!(ui.settings::<SettingsGeneralSnapshot>().field, Some(1));
     ui.press("k k");
-    assert_eq!(
-        ui.settings::<SettingsGeneralSnapshot>()
-            .base_unit
-            .as_deref(),
-        Some("aud")
-    );
+    assert_eq!(ui.settings::<SettingsGeneralSnapshot>().field, Some(0));
 }
 
 #[gpui::test]
-fn j_on_the_index_changes_the_page_and_not_the_base_unit(app: &mut TestAppContext) {
-    let mut ui = on_settings(app);
-
-    ui.press("j");
-    assert_eq!(ui.settings_frame().page, "Display");
-    assert_eq!(
-        ui.settings::<SettingsGeneralSnapshot>()
-            .base_unit
-            .as_deref(),
-        Some("aud")
-    );
-}
-
-#[gpui::test]
-fn a_base_unit_set_by_key_moves_the_units_pages_glyph(app: &mut TestAppContext) {
-    let mut ui = on_settings(app);
+fn l_and_h_step_on_start_and_quit_keeps_it(app: &mut TestAppContext) {
+    let mut ui = in_general(app);
 
     ui.press("l");
-    ui.press("j");
-    ui.press("escape escape");
-    ui.press("j");
-    assert_eq!(ui.settings_frame().page, "Display");
-    ui.press("j");
-    assert_eq!(ui.settings_frame().page, "Units");
-    assert_eq!(ui.base_unit_code().as_deref(), Some("btc"));
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().on_start,
+        OnStart::NoLedger
+    );
+    assert_eq!(
+        ui.read_app(|shell, cx| shell.client_preferences(cx).on_start),
+        OnStart::NoLedger
+    );
+    ui.press("l");
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().on_start,
+        OnStart::NoLedger
+    );
+    ui.press("h");
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().on_start,
+        OnStart::ReopenLastLedger
+    );
 }
 
 #[gpui::test]
-fn a_deactivated_unit_is_not_offered_as_the_base_unit(app: &mut TestAppContext) {
-    let mut ui = on_settings(app);
-    assert!(
-        ui.settings::<SettingsGeneralSnapshot>()
-            .options
-            .contains(&"btc".to_string())
-    );
+fn l_turns_toasts_off_and_h_turns_them_back_on(app: &mut TestAppContext) {
+    let mut ui = in_general(app);
 
-    ui.press("j j");
-    ui.press("l");
-    ui.press("j");
-    ui.press("d");
-    // A Unit in use opens its Delete dialog as Deactivate.
-    ui.press("enter");
+    ui.press("j l");
+    assert!(!ui.settings::<SettingsGeneralSnapshot>().toasts_on);
+    assert!(!ui.toasts().on);
+    assert!(!ui.read_app(|shell, cx| shell.client_preferences(cx).toasts_on));
+    ui.press("h");
+    assert!(ui.settings::<SettingsGeneralSnapshot>().toasts_on);
+    assert!(ui.toasts().on);
+}
+
+#[gpui::test]
+fn the_toasts_command_moves_the_general_control(app: &mut TestAppContext) {
+    let mut ui = in_general(app);
+
+    ui.press(": t o a s t s space o f f enter");
+    assert!(!ui.toasts().on);
+    assert!(!ui.settings::<SettingsGeneralSnapshot>().toasts_on);
+}
+
+#[gpui::test]
+fn escape_steps_back_to_the_index_and_off_the_controls(app: &mut TestAppContext) {
+    let mut ui = in_general(app);
+
     ui.press("escape");
-    ui.press("g g");
+    assert!(!ui.settings_frame().page_focused);
+    assert_eq!(ui.settings::<SettingsGeneralSnapshot>().field, None);
+}
 
-    let general = ui.settings::<SettingsGeneralSnapshot>();
-    assert!(!general.options.contains(&"btc".to_string()));
-    assert_eq!(general.base_unit.as_deref(), Some("aud"));
+#[gpui::test]
+fn the_status_line_matches_the_cheat_sheet(app: &mut TestAppContext) {
+    let mut ui = in_general(app);
+
+    ui.assert_cheat_sheet_matches_status("Settings keys");
 }

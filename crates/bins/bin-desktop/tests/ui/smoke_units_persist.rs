@@ -11,7 +11,7 @@ use gpui::TestAppContext;
 
 /// Opens the Units page and adds `code`, a Currency, through its Add Dialog.
 fn add_unit(ui: &mut Harness<'_>, code: &str, name: &str) {
-    ui.press("g s j j l");
+    ui.press("g s j j j j j l");
     assert_eq!(ui.noun(), Noun::Settings);
     assert_eq!(ui.settings_frame().page, "Units");
     ui.press("n");

@@ -8,11 +8,11 @@ use common::Harness;
 use gpui::TestAppContext;
 use lib_documents::DocumentType;
 
-/// Settings on the Documents page (eight presses down the index) with focus stepped into it.
+/// Settings on the Documents page (eleven presses down the index) with focus stepped into it.
 fn in_documents(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
     ui.press("g s");
-    ui.press("j j j j j j j j");
+    ui.press(&["j"; 11].join(" "));
     assert_eq!(ui.settings_frame().page, "Documents");
     ui.press("l");
     assert!(ui.settings_frame().page_focused);
@@ -478,7 +478,7 @@ fn a_remove_destination_defaults_to_other(app: &mut TestAppContext) {
 fn a_failed_write_puts_the_types_back_with_an_error_toast(app: &mut TestAppContext) {
     let mut ui = Harness::with_failing_documents(app);
     ui.press("g s");
-    ui.press("j j j j j j j j");
+    ui.press("j j j j j j j j j j j");
     ui.press("l");
     let stored = ui
         .settings::<SettingsDocumentTypesSnapshot>()
@@ -509,7 +509,7 @@ fn a_failed_write_puts_the_types_back_with_an_error_toast(app: &mut TestAppConte
 fn a_failed_reorder_puts_the_order_back(app: &mut TestAppContext) {
     let mut ui = Harness::with_failing_documents(app);
     ui.press("g s");
-    ui.press("j j j j j j j j");
+    ui.press("j j j j j j j j j j j");
     ui.press("l");
     let stored = ui
         .settings::<SettingsDocumentTypesSnapshot>()
@@ -544,7 +544,7 @@ fn the_cheat_sheet_shows_a_rebound_key_and_the_key_works(app: &mut TestAppContex
         common::overriding("documents.move_type_down", "ctrl+j"),
     );
     ui.press("g s");
-    ui.press("j j j j j j j j");
+    ui.press("j j j j j j j j j j j");
     ui.press("l");
     assert!(
         ui.status_as_shortcuts()

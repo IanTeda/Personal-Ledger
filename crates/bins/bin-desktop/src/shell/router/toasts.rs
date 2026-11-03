@@ -7,10 +7,7 @@ use gpui::Context;
 use lib_toast::{Notice, ToastKind};
 
 use super::Root;
-use crate::{
-    settings::display::DisplayPreferences,
-    shell::view::dialog_host::{OpenDialog, ToastHistoryDialog},
-};
+use crate::shell::view::dialog_host::{OpenDialog, ToastHistoryDialog};
 
 impl Root {
     /// Opens the session Toast history as a modal, which pauses the Toast timers.
@@ -20,18 +17,14 @@ impl Root {
     }
 
     /// Sets the Client-scoped Toasts Preference (ADR-0027) from outside Settings (`:toasts`), held
-    /// in memory like the Colour Theme Preferences. The Settings View owns it with the other
-    /// Display Preferences, so it is told too.
+    /// in memory like the Colour Theme Preferences. Settings › General owns it, so it is told too.
     pub fn set_toasts_on(&mut self, on: bool, cx: &mut gpui::App) {
-        let display = DisplayPreferences {
-            toasts_on: on,
-            ..self.open().views.settings.read(cx).display(cx)
-        };
-        self.open()
-            .views
-            .settings
-            .update(cx, |view, cx| view.set_display(display, cx));
-        self.push_display_preferences(display, cx);
+        let settings = self.open().views.settings.clone();
+        settings.update(cx, |view, cx| {
+            view.general()
+                .update(cx, |page, cx| page.set_toasts_on(on, cx));
+        });
+        self.push_toasts_on(on);
     }
 
     /// Shows every Notice the Routers queued since the last drain (`crate::notices`) on the Shell's

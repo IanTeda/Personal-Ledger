@@ -43,7 +43,6 @@ pub struct SettingsDisplaySnapshot {
     pub row_density: String,
     pub status_glyphs: String,
     pub start_sidebar_minimised: bool,
-    pub toasts_on: bool,
 }
 
 impl SettingsView {
@@ -70,7 +69,6 @@ impl PageSnapshot for SettingsDisplaySnapshot {
             row_density: format!("{:?}", display.row_density),
             status_glyphs: format!("{:?}", display.status_glyphs),
             start_sidebar_minimised: display.start_sidebar_minimised,
-            toasts_on: display.toasts_on,
         }
     }
 }

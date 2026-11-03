@@ -15,7 +15,7 @@ fn on_accounts(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
     ui.press("g s");
     assert_eq!(ui.noun(), Noun::Settings);
-    ui.press("j j j j");
+    ui.press("j j j j j j j");
     assert_eq!(ui.settings_frame().page, "Accounts");
     ui.press("l");
     assert!(ui.settings_frame().page_focused);

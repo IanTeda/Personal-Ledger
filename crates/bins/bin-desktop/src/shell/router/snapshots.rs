@@ -21,8 +21,8 @@ pub use palette::PaletteSnapshot;
 pub use settings::{
     PageSnapshot, SettingsAccountsSnapshot, SettingsCategoriesSnapshot, SettingsDisplaySnapshot,
     SettingsDocumentTypesSnapshot, SettingsGeneralSnapshot, SettingsInstitutionsSnapshot,
-    SettingsInventorySnapshot, SettingsPayeesSnapshot, SettingsSnapshot, SettingsTagsSnapshot,
-    SettingsTracingSnapshot, SettingsUnitsSnapshot, UnitPricesSnapshot,
+    SettingsInventorySnapshot, SettingsLedgerSnapshot, SettingsPayeesSnapshot, SettingsSnapshot,
+    SettingsTagsSnapshot, SettingsTracingSnapshot, SettingsUnitsSnapshot, UnitPricesSnapshot,
 };
 pub use status::StatusSnapshot;
 pub use transactions::{ChipSnapshot, ImportRowSnapshot, ImportSnapshot, TransactionsSnapshot};

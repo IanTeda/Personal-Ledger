@@ -1,4 +1,4 @@
-## Settings, Display: the date style control and the read-only Locale.
+## Settings, Display: the date style control. The read-only Locale is on General.
 
 desktop-display-date-style-label = Date format
 desktop-display-date-style-default = Locale
@@ -7,17 +7,31 @@ desktop-display-date-style-medium = Medium
 desktop-display-date-style-long = Long
 desktop-display-date-style-iso = ISO
 
-desktop-display-locale-label = Language and region
-desktop-display-locale-from-system = { $locale }, from your system
-desktop-display-locale-from-config = { $locale }, from config
-desktop-display-locale-from-default = { $locale }, the default
-desktop-display-locale-fallback = { $requested } is not supported, so { $locale } is used.
-desktop-display-locale-hint = Set with the locale setting or the --locale flag, then restart.
+desktop-settings-general-locale-label = Language and region
+desktop-settings-general-locale-from-system = { $locale }, from your system
+desktop-settings-general-locale-from-config = { $locale }, from config
+desktop-settings-general-locale-from-default = { $locale }, the default
+desktop-settings-general-locale-fallback = { $requested } is not supported, so { $locale } is used.
+desktop-settings-general-locale-hint = Set with the locale setting or the --locale flag, then restart.
 
 ## Settings: the page, its index rail and the section headings. Terms such as Configuration,
 ## Preferences and Change Sets are the ones `GLOSSARY.md` defines.
 
-desktop-settings-index-footer = preferences sync · configuration local
+## The index's two groups (ADR-0051): each heading, its page count and sync scope, and the line
+## under it on the Medium index page.
+
+desktop-settings-group-this-device = This device
+desktop-settings-group-this-ledger = This ledger
+desktop-settings-group-this-device-scope = { $count ->
+    [one] { $count } page
+   *[other] { $count } pages
+} · never synced
+desktop-settings-group-this-ledger-scope = { $count ->
+    [one] { $count } page
+   *[other] { $count } pages
+} · synced with the Ledger
+desktop-settings-group-this-device-description = Stays on this computer and never syncs. Applies whichever Ledger is open, or none.
+desktop-settings-group-this-ledger-description = Saved in the Ledger and synced with it, so every device that opens it shares them.
 
 # The page heading at Large and X-Large, beside the docked index: `Settings - Display`.
 desktop-settings-page-heading = { $settings } - { $page }
@@ -29,8 +43,9 @@ desktop-settings-index-count = { $count ->
     [one] { $count } page
    *[other] { $count } pages
 }
-desktop-settings-description-general = ledger name, owner and start of the financial year
-desktop-settings-description-display = date format, separators, row density, colour theme
+desktop-settings-description-general = on start, toasts, locale and the ledger folder
+desktop-settings-description-display = date format, row density, status glyphs, colour theme
+desktop-settings-description-ledger = ledger name, owner and start of the financial year
 desktop-settings-description-units = currencies and other units, and the default
 desktop-settings-description-institutions = banks, brokers and lenders
 desktop-settings-description-accounts = every account, its institution and its unit
@@ -46,6 +61,7 @@ desktop-settings-description-about = version, licences and credits
 
 desktop-settings-section-general = General
 desktop-settings-section-display = Display
+desktop-settings-section-ledger = Ledger
 desktop-settings-section-units = Units
 desktop-settings-section-institutions = Institutions
 desktop-settings-section-inventory = Inventory
@@ -56,10 +72,10 @@ desktop-settings-section-about = About
 
 ## Each section's scope note. `$unit` and `$size` are the backup's Unit code and store size.
 
-desktop-settings-scope-general = ledger identity
+desktop-settings-scope-this-device = this device · never synced
+desktop-settings-scope-ledger = preferences · synced · ledger identity
 desktop-settings-scope-synced-change-sets = synced · change sets
 desktop-settings-scope-ledger-data = ledger data · synced
-desktop-settings-scope-display = client-scoped · never synced
 desktop-settings-scope-sync-server = synced · every { $seconds ->
     [one] { $seconds } second
    *[other] { $seconds } seconds
@@ -79,19 +95,34 @@ desktop-settings-scope-institutions = { $count ->
    *[other] { $count } institutions
 } · synced
 
-## General. The summary labels name what the ledger holds.
+## General (DESKTOP-178): On start, the read-only Ledger folder and the THIS DEVICE box, whose
+## rows are the Ledger On start reopens and the config file Settings writes to.
 
-desktop-settings-general-name = Ledger name
-desktop-settings-general-owner = Owner
-desktop-settings-general-financial-year = Financial year starts
-desktop-settings-general-base-unit = Base unit
-desktop-settings-general-base-unit-option = { $code } — { $name }
-desktop-settings-general-summary-title = This ledger
-desktop-settings-general-summary-accounts = accounts
-desktop-settings-general-summary-transactions = transactions
-desktop-settings-general-summary-units = units
-desktop-settings-general-summary-institutions = institutions
-desktop-settings-general-note = General settings are ledger-scoped Preferences — they travel with the ledger as Change Sets. Client-only Configuration lives under Display.
+desktop-settings-general-on-start = On start
+desktop-settings-general-on-start-reopen = Reopen last Ledger
+desktop-settings-general-on-start-none = Start with no Ledger open
+desktop-settings-general-on-start-hint = Reopens the Ledger open when Personal Ledger last quit, or none if none was. A file named by --file or file in the configuration file always wins.
+desktop-settings-general-ledger-folder = Ledger folder
+desktop-settings-general-ledger-folder-hint = Where :open and :new start browsing. Set by data in the configuration file.
+desktop-settings-general-this-device = This device
+desktop-settings-general-last-ledger = last ledger
+desktop-settings-general-configuration = configuration
+desktop-settings-general-none = none
+desktop-settings-general-note = General settings belong to this device and never sync. What travels with the Ledger is under Ledger.
+
+## Ledger. The summary labels name what the ledger holds.
+
+desktop-settings-ledger-name = Ledger name
+desktop-settings-ledger-owner = Owner
+desktop-settings-ledger-financial-year = Financial year starts
+desktop-settings-ledger-base-unit = Base unit
+desktop-settings-ledger-base-unit-option = { $code } — { $name }
+desktop-settings-ledger-summary-title = This ledger
+desktop-settings-ledger-summary-accounts = accounts
+desktop-settings-ledger-summary-transactions = transactions
+desktop-settings-ledger-summary-units = units
+desktop-settings-ledger-summary-institutions = institutions
+desktop-settings-ledger-note = Ledger settings are ledger-scoped Preferences that travel with the ledger as Change Sets. What belongs to this device is under General and Display.
 
 ## Display. `$glyphs` is the run of status glyphs the option draws.
 
@@ -99,7 +130,7 @@ desktop-settings-display-row-density = Row density
 desktop-settings-display-status-glyphs = Status glyphs
 desktop-settings-display-start-minimised = Start Sidebar minimised
 desktop-settings-display-preview = Preview
-desktop-settings-display-note = Display settings are Configuration, not Preferences — they are read from personal-ledger.conf at start-up and written back here. Ledger-scoped Preferences (like the default Unit for new entries) live under Units and sync as Change Sets.
+desktop-settings-display-note = These belong to this device and never sync: the Colour Theme, Appearance and date style are Client-scoped Preferences, the rest Configuration read from personal-ledger.conf. What travels with the Ledger is under Ledger.
 desktop-settings-display-colour-theme = Colour theme
 desktop-settings-display-colour-appearance = Appearance
 

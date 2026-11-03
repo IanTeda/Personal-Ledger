@@ -15,7 +15,7 @@ fn on_btc(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
     ui.press("g s");
     assert_eq!(ui.noun(), Noun::Settings);
-    ui.press("j j");
+    ui.press("j j j j j");
     assert_eq!(ui.settings_frame().page, "Units");
     ui.press("l");
     ui.press("j");

@@ -84,10 +84,10 @@ fn at_x_large_the_docked_index_swaps_the_capped_page(app: &mut TestAppContext) {
     assert!(!ui.is_drawn("settings-crumb-picker"));
 }
 
-/// Whether the wheel brought About, the last row, wholly inside the index page's scroll.
+/// Whether the wheel brought Data & backup, the last row, wholly inside the index page's scroll.
 fn index_row_bottom_on_show(ui: &mut Harness<'_>) -> bool {
     let frame = ui.bounds("settings-index-page");
-    ui.bounds("settings-index-page-About").bottom() <= frame.bottom()
+    ui.bounds("settings-index-page-DataBackup").bottom() <= frame.bottom()
 }
 
 #[gpui::test]
@@ -105,17 +105,17 @@ fn at_medium_the_index_page_has_a_scrollbar_and_scrolls_by_wheel(app: &mut TestA
     );
     assert_eq!(scrollbar.size.height, frame.size.height);
 
-    let before = ui.bounds("settings-index-page-About").top();
+    let before = ui.bounds("settings-index-page-DataBackup").top();
     ui.scroll_at(
         frame.center(),
         gpui::point(gpui::px(0.0), gpui::px(-2000.0)),
     );
-    let after = ui.bounds("settings-index-page-About").top();
+    let after = ui.bounds("settings-index-page-DataBackup").top();
     assert!(after < before, "the wheel scrolls the rows up");
     assert!(index_row_bottom_on_show(&mut ui));
 
-    ui.click("settings-index-page-About");
-    assert_eq!(ui.settings_frame().page, "About");
+    ui.click("settings-index-page-DataBackup");
+    assert_eq!(ui.settings_frame().page, "DataBackup");
 }
 
 #[gpui::test]

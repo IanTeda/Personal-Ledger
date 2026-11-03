@@ -383,7 +383,7 @@ fn a_bills_paid_row_reveal_clears_the_search(app: &mut TestAppContext) {
     reason = "test support: a stub with no Accounts should fail the test loudly"
 )]
 fn delete_the_first_account(ui: &mut Harness<'_>) {
-    ui.press("g s j j j j l");
+    ui.press("g s j j j j j j j l");
     assert_eq!(ui.settings_frame().page, "Accounts");
     let name = ui
         .settings::<SettingsAccountsSnapshot>()
@@ -481,7 +481,7 @@ fn a_payee_renamed_on_the_payees_page_shows_on_the_list(app: &mut TestAppContext
     let mut ui = Harness::new(app);
     ui.press("g l");
     let listed = ui.transactions().payees;
-    ui.press("g s j j j j j j j l");
+    ui.press("g s j j j j j j j j j j l");
     assert_eq!(ui.settings_frame().page, "Payees");
     // The first Payee on the page that the list shows.
     let is_listed = |name: &str| {

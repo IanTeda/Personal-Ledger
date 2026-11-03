@@ -15,10 +15,10 @@ use bin_desktop::navigation::nav::Noun;
 use common::{Harness, config_for};
 use gpui::TestAppContext;
 
-/// Settings on the Payees page (seven presses down the index) with focus stepped into it.
+/// Settings on the Payees page (ten presses down the index) with focus stepped into it.
 fn on_payees(ui: &mut Harness<'_>) {
     ui.press("g s");
-    ui.press("j j j j j j j");
+    ui.press(&["j"; 10].join(" "));
     assert_eq!(ui.settings_frame().page, "Payees");
     ui.press("l");
 }

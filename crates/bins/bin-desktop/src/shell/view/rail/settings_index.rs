@@ -1,6 +1,6 @@
 //! The Settings index rail (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting state", "Settings
-//! index rail" component): a list of the Settings pages, each entry swapping the
-//! body to its own page. Deliberately **not** a reuse of `shell::view::rail::context::ContextRail`'s "1c"
+//! index rail" component): a list of the Settings pages under their THIS DEVICE and THIS LEDGER
+//! headings, each entry swapping the body to its own page. Deliberately **not** a reuse of `shell::view::rail::context::ContextRail`'s "1c"
 //! pattern -- that rail is a flat record list with no page-index mode, so this is a separate
 //! mechanism (see issue #173's own ticket body).
 
@@ -9,7 +9,10 @@ use std::rc::Rc;
 
 use gpui::{App, SharedString, Window, div, prelude::*, px};
 
-use crate::{settings::SettingsPage, theme::color};
+use crate::{
+    settings::{ScopeGroup, SettingsPage},
+    theme::color,
+};
 
 /// Fixed column width: `docs/ux/desktop-mockups/16-settings/README.md`'s "Components" table.
 pub const WIDTH: gpui::Pixels = px(214.0);
@@ -37,6 +40,7 @@ impl SettingsIndexRail {
 
 impl RenderOnce for SettingsIndexRail {
     fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let cx: &App = cx;
         div()
             .w(WIDTH)
             .flex_none()
@@ -50,23 +54,35 @@ impl RenderOnce for SettingsIndexRail {
             } else {
                 color::structural_rule(cx)
             })
-            .child(
-                div()
-                    .flex_1()
-                    .min_h(px(0.0))
-                    .flex()
-                    .flex_col()
-                    .child(rail_label(
-                        &lib_locale::format::upper(&crate::navigation::nav::Noun::Settings.label()),
-                        cx,
-                    ))
-                    .children(SettingsPage::ALL.into_iter().map(|section| {
-                        entry_row(section, section == self.selected, self.on_click.clone(), cx)
-                    })),
-            )
-            .child(div().h(px(1.0)).bg(color::hairline(cx)))
-            .child(footer(cx))
+            .child(rail_label(
+                &lib_locale::format::upper(&crate::navigation::nav::Noun::Settings.label()),
+                cx,
+            ))
+            .children(ScopeGroup::ALL.into_iter().flat_map(|group| {
+                let on_click = self.on_click.clone();
+                let selected = self.selected;
+                std::iter::once(group_heading(group, cx).into_any_element()).chain(
+                    group.pages().map(move |section| {
+                        entry_row(section, section == selected, on_click.clone(), cx)
+                            .into_any_element()
+                    }),
+                )
+            }))
     }
+}
+
+/// A group's caps heading, **THIS DEVICE** or **THIS LEDGER**, which replaced the rail's footer
+/// note on the Configuration and Preference split.
+fn group_heading(group: ScopeGroup, cx: &App) -> impl IntoElement {
+    div()
+        .debug_selector(move || format!("settings-index-group-{group:?}"))
+        .pt(px(12.0))
+        .px(px(14.0))
+        .pb(px(6.0))
+        .font_weight(gpui::FontWeight::EXTRA_BOLD)
+        .text_size(px(9.5))
+        .text_color(color::faint_text(cx))
+        .child(lib_locale::format::upper(&group.label()))
 }
 
 fn rail_label(label: &str, cx: &App) -> impl IntoElement {
@@ -99,15 +115,4 @@ fn entry_row(
         })
         .on_click(move |_event, window, cx| on_click(section, window, cx))
         .child(section.label())
-}
-
-/// The rail's own footer note, above the 1px rule this sits below (README's "Layout" bullet:
-/// "Footer note, above a 1px rule").
-fn footer(cx: &App) -> impl IntoElement {
-    div()
-        .py(px(10.0))
-        .px(px(12.0))
-        .text_size(px(11.5))
-        .text_color(color::faint_text(cx))
-        .child(crate::msg::desktop_settings_index_footer())
 }

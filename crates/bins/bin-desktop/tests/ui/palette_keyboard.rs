@@ -453,7 +453,7 @@ fn a_bills_command_of_the_other_tab_shows_that_tab_first(app: &mut TestAppContex
 #[gpui::test]
 fn a_units_command_closes_an_open_prices_view_first(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
-    ui.press("g s j j l j enter");
+    ui.press("g s j j j j j l j enter");
     assert!(
         ui.settings::<Option<UnitPricesSnapshot>>().is_some(),
         "enter opens the prices view"

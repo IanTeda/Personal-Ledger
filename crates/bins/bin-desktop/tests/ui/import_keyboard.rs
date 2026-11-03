@@ -281,7 +281,7 @@ fn a_committed_new_payee_shows_on_the_payees_page_with_its_remembered_rule(
     commit_the_candle_shop_as_a_new_payee(&mut ui);
 
     ui.press("g s");
-    ui.press("j j j j j j j");
+    ui.press(&["j"; 10].join(" "));
     assert_eq!(ui.settings_frame().page, "Payees");
     let page = ui.settings::<SettingsPayeesSnapshot>();
     let row = page
@@ -302,7 +302,7 @@ fn a_committed_new_payee_shows_on_the_payees_page_with_its_remembered_rule(
 fn everyday_dialog_counts(ui: &mut Harness<'_>) -> (usize, usize) {
     ui.press("g s");
     if ui.settings_frame().page != "Accounts" {
-        ui.press("j j j j");
+        ui.press("j j j j j j j");
     }
     assert_eq!(ui.settings_frame().page, "Accounts");
     ui.press("l");

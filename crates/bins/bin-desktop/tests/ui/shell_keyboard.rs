@@ -312,7 +312,7 @@ fn esc_closes_the_undo_list_and_does_nothing_else(app: &mut TestAppContext) {
 
 /// Takes `ui` to the Settings Units page, a module's View, with keyboard focus on it.
 fn to_units(ui: &mut Harness<'_>) {
-    ui.press("g s j j l");
+    ui.press("g s j j j j j l");
     assert_eq!(ui.settings_frame().page, "Units");
     assert!(ui.settings_frame().page_focused);
 }

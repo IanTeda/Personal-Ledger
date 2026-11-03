@@ -13,7 +13,7 @@ use tracing::Level;
 /// Settings with the Tracing page focused.
 fn focused(mut ui: Harness<'_>) -> Harness<'_> {
     ui.press("g s");
-    ui.press(&["j"; 12].join(" "));
+    ui.press("j j");
     assert_eq!(ui.settings_frame().page, "Tracing");
     ui.press("l");
     assert!(ui.settings_frame().page_focused);

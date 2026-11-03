@@ -9,19 +9,19 @@ use gpui::TestAppContext;
 fn on_page(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
     ui.press("g s");
-    ui.press(&["j"; 11].join(" "));
+    ui.press(&["j"; 14].join(" "));
     assert_eq!(ui.settings_frame().page, "DataBackup");
     ui
 }
 
 #[gpui::test]
-fn j_pages_to_data_backup_between_sync_server_and_tracing(app: &mut TestAppContext) {
+fn data_backup_is_the_last_page_after_sync_server(app: &mut TestAppContext) {
     let mut ui = on_page(app);
 
     ui.press("k");
     assert_eq!(ui.settings_frame().page, "SyncServer");
     ui.press("j j");
-    assert_eq!(ui.settings_frame().page, "Tracing");
+    assert_eq!(ui.settings_frame().page, "DataBackup");
 }
 
 #[gpui::test]

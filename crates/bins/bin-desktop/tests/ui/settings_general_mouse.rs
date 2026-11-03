@@ -1,101 +1,66 @@
-//! The Settings View's own clicks: an index entry hands focus back to the index, and a button
-//! with nothing behind it says so on the status line. State is read back from `Root`.
+//! Settings › General driven by the mouse: the On start and Toasts options, and the read-only Locale, Ledger folder and THIS DEVICE box drawn beside them. State is read back from `Root`.
 
 use super::common;
 use bin_desktop::shell::router::SettingsGeneralSnapshot;
 
-use bin_desktop::navigation::nav::Noun;
 use common::Harness;
 use gpui::TestAppContext;
+use lib_core::OnStart;
 
-fn on_settings(app: &mut TestAppContext) -> Harness<'_> {
+fn on_general(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
     ui.press("g s");
-    assert_eq!(ui.noun(), Noun::Settings);
+    assert_eq!(ui.settings_frame().page, "General");
     ui
 }
 
 #[gpui::test]
-fn clicking_an_index_entry_from_a_page_focuses_the_index(app: &mut TestAppContext) {
-    let mut ui = on_settings(app);
+fn clicking_the_on_start_options_sets_on_start(app: &mut TestAppContext) {
+    let mut ui = on_general(app);
 
-    ui.press("l");
-    assert!(ui.settings_frame().page_focused);
-    ui.click("settings-index-Display");
-    let page = ui.settings_frame();
-    assert_eq!(page.page, "Display");
-    assert!(!page.page_focused);
-}
-
-#[gpui::test]
-fn clicking_add_price_source_opens_its_dialog(app: &mut TestAppContext) {
-    let mut ui = on_settings(app);
-
-    ui.click("settings-index-Units");
-    ui.click("settings-add-price-source");
-    assert_eq!(ui.dialog(), Some("AddPriceSource"));
-}
-
-#[gpui::test]
-fn clicking_a_unit_in_the_base_unit_select_makes_it_the_base_unit(app: &mut TestAppContext) {
-    let mut ui = on_settings(app);
+    ui.click("general-on-start-1");
     assert_eq!(
-        ui.settings::<SettingsGeneralSnapshot>()
-            .base_unit
-            .as_deref(),
-        Some("aud")
+        ui.settings::<SettingsGeneralSnapshot>().on_start,
+        OnStart::NoLedger
     );
-
-    ui.click("settings-general-base-unit-vas");
+    ui.click("general-on-start-0");
     assert_eq!(
-        ui.settings::<SettingsGeneralSnapshot>()
-            .base_unit
-            .as_deref(),
-        Some("vas")
-    );
-    ui.click("settings-general-base-unit-aud");
-    assert_eq!(
-        ui.settings::<SettingsGeneralSnapshot>()
-            .base_unit
-            .as_deref(),
-        Some("aud")
+        ui.settings::<SettingsGeneralSnapshot>().on_start,
+        OnStart::ReopenLastLedger
     );
 }
 
 #[gpui::test]
-fn the_units_page_marks_the_unit_picked_on_general(app: &mut TestAppContext) {
-    let mut ui = on_settings(app);
-    assert_eq!(ui.base_unit_code().as_deref(), Some("aud"));
+fn clicking_the_toasts_options_turns_them_off_and_on(app: &mut TestAppContext) {
+    let mut ui = on_general(app);
 
-    ui.click("settings-general-base-unit-btc");
-    assert_eq!(ui.base_unit_code().as_deref(), Some("btc"));
+    ui.click("general-toasts-1");
+    assert!(!ui.settings::<SettingsGeneralSnapshot>().toasts_on);
+    assert!(!ui.toasts().on);
+    ui.click("general-toasts-0");
+    assert!(ui.settings::<SettingsGeneralSnapshot>().toasts_on);
+    assert!(ui.toasts().on);
 }
 
 #[gpui::test]
-fn a_deactivated_unit_has_no_base_unit_option_to_click(app: &mut TestAppContext) {
-    let mut ui = on_settings(app);
-    assert!(
-        ui.settings::<SettingsGeneralSnapshot>()
-            .options
-            .contains(&"btc".to_string())
-    );
+fn the_locale_ledger_folder_and_this_device_box_are_drawn(app: &mut TestAppContext) {
+    let mut ui = on_general(app);
 
-    ui.click("settings-index-Units");
-    ui.right_click("unit-row-1");
-    ui.click("settings-units-menu-delete-unit");
-    // A Unit in use opens its Delete dialog as Deactivate.
-    ui.click("delete-unit-confirm");
-    ui.click("settings-index-General");
+    assert!(ui.is_drawn("general-locale"));
+    assert!(ui.is_drawn("general-ledger-folder"));
+    assert!(ui.is_drawn("general-this-device"));
+    // A test Shell is told nothing of this device, so THIS DEVICE reads none.
+    let general = ui.settings::<SettingsGeneralSnapshot>();
+    assert_eq!(general.last_ledger, None);
+    assert_eq!(general.configuration, None);
+}
 
-    assert_eq!(
-        ui.settings::<SettingsGeneralSnapshot>().options,
-        vec!["aud", "vas"]
-    );
-    ui.click("settings-general-base-unit-vas");
-    assert_eq!(
-        ui.settings::<SettingsGeneralSnapshot>()
-            .base_unit
-            .as_deref(),
-        Some("vas")
-    );
+#[gpui::test]
+fn toasts_are_no_longer_on_display(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.press("g s j");
+    assert_eq!(ui.settings_frame().page, "Display");
+
+    assert!(ui.is_drawn("display-fields"));
+    assert!(!ui.is_drawn("display-toasts-0"));
 }

@@ -1,145 +1,180 @@
-use gpui::{App, Context, SharedString, Window, div, prelude::*, px};
-use lib_core::UnitId;
+use std::{path::Path, rc::Rc};
 
-use super::GeneralPage;
-use crate::form::fields::{field_label, field_value, radio_dot};
-use crate::theme::color;
+use gpui::{App, Context, Window, div, prelude::*, px};
+use lib_core::OnStart;
 
-/// One ledger's worth of "THIS LEDGER" summary figures -- representative content matching the
-/// mockup's own row order (accounts, transactions, units, institutions), not real
-/// `lib_database` counts.
-fn ledger_summary() -> [(String, &'static str); 4] {
-    [
-        (crate::msg::desktop_settings_general_summary_accounts(), "7"),
-        (
-            crate::msg::desktop_settings_general_summary_transactions(),
-            "680",
-        ),
-        (crate::msg::desktop_settings_general_summary_units(), "3"),
-        (
-            crate::msg::desktop_settings_general_summary_institutions(),
-            "7",
-        ),
-    ]
-}
+use super::{
+    GENERAL_FIELD_ON_START, GENERAL_FIELD_TOASTS, GeneralPage, ON_START_CHOICES, TOASTS_CHOICES,
+    ThisDevice,
+};
+use crate::{
+    form::fields::{UNIFORM_OPTION_WIDTH, field_label, field_value, segmented_control_sized},
+    theme::color,
+};
+
+/// The field column's width (DESKTOP-178).
+const FIELD_COLUMN_WIDTH: gpui::Pixels = px(320.0);
 
 impl Render for GeneralPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let entity = cx.entity();
-        let options = self.unit_options(cx);
-        let base = self.base_unit(cx);
-        let page_focused = self.page_focused;
+        let on_start_click = {
+            let entity = entity.clone();
+            Rc::new(move |choice, _window: &mut Window, cx: &mut App| {
+                entity.update(cx, |page, cx| page.click_on_start(choice, cx));
+            })
+        };
+        let toasts_click = Rc::new(move |on, _window: &mut Window, cx: &mut App| {
+            entity.update(cx, |page, cx| page.click_toasts(on, cx));
+        });
+        let focus = self.field_focus;
         let cx: &App = cx;
         div()
             .flex()
-            .gap(px(40.0))
-            .child(field_column(
-                &options,
-                base,
-                page_focused,
-                move |id, cx| entity.update(cx, |page, cx| page.click_base_unit(id, cx)),
-                cx,
-            ))
-            .child(summary_panel(cx))
+            .flex_wrap()
+            .gap_x(px(40.0))
+            .gap_y(px(24.0))
+            .child(
+                div()
+                    .debug_selector(|| "general-fields".to_string())
+                    .w(FIELD_COLUMN_WIDTH)
+                    .flex_none()
+                    .flex()
+                    .flex_col()
+                    .gap(px(18.0))
+                    .child(
+                        focus_mark(focus == Some(GENERAL_FIELD_ON_START), cx)
+                            .child(field_label(crate::msg::desktop_settings_general_on_start()))
+                            .child(segmented_control_sized(
+                                "general-on-start",
+                                &ON_START_CHOICES,
+                                self.on_start,
+                                on_start_label,
+                                on_start_click,
+                                None,
+                                cx,
+                            ))
+                            .child(hint(
+                                crate::msg::desktop_settings_general_on_start_hint(),
+                                cx,
+                            )),
+                    )
+                    .child(
+                        focus_mark(focus == Some(GENERAL_FIELD_TOASTS), cx)
+                            .child(field_label(lib_locale::msg::toast_setting_label()))
+                            .child(segmented_control_sized(
+                                "general-toasts",
+                                &TOASTS_CHOICES,
+                                self.toasts_on,
+                                toasts_label,
+                                toasts_click,
+                                Some(px(UNIFORM_OPTION_WIDTH)),
+                                cx,
+                            ))
+                            .child(hint(lib_locale::msg::toast_setting_note(), cx)),
+                    )
+                    .child(locale_field(cx))
+                    .child(
+                        div()
+                            .debug_selector(|| "general-ledger-folder".to_string())
+                            .child(field_label(
+                                crate::msg::desktop_settings_general_ledger_folder(),
+                            ))
+                            .child(
+                                div()
+                                    .font_family("monospace")
+                                    .text_color(color::muted(cx))
+                                    .child(field_value(
+                                        self.device.ledger_folder.display().to_string(),
+                                        false,
+                                        cx,
+                                    )),
+                            )
+                            .child(hint(
+                                crate::msg::desktop_settings_general_ledger_folder_hint(),
+                                cx,
+                            )),
+                    ),
+            )
+            .child(this_device_panel(&self.device, cx))
     }
 }
 
-/// The 320px field column: Ledger name, Owner, Financial year starts, Base unit -- in the
-/// mockup's own order.
-fn field_column(
-    options: &[(UnitId, String, String)],
-    base: UnitId,
-    page_focused: bool,
-    on_pick: impl Fn(UnitId, &mut App) + Clone + 'static,
-    cx: &App,
-) -> impl IntoElement {
-    div()
-        .w(px(320.0))
-        .flex_none()
-        .flex()
-        .flex_col()
-        .gap(px(16.0))
-        .child(field(
-            crate::msg::desktop_settings_general_name(),
-            "Personal Ledger",
-            false,
-            cx,
-        ))
-        .child(field(
-            crate::msg::desktop_settings_general_owner(),
-            "alex@teda.id.au",
-            false,
-            cx,
-        ))
-        .child(field(
-            crate::msg::desktop_settings_general_financial_year(),
-            "july",
-            true,
-            cx,
-        ))
-        .child(base_unit_select(options, base, page_focused, on_pick, cx))
+fn on_start_label(choice: OnStart) -> String {
+    match choice {
+        OnStart::ReopenLastLedger => crate::msg::desktop_settings_general_on_start_reopen(),
+        OnStart::NoLedger => crate::msg::desktop_settings_general_on_start_none(),
+    }
 }
 
-/// The *Base unit* select: every Unit as a radio row, the base one checked. The keyboard moves it
-/// while the page has focus, which draws the border in the accent.
-fn base_unit_select(
-    options: &[(UnitId, String, String)],
-    base: UnitId,
-    page_focused: bool,
-    on_pick: impl Fn(UnitId, &mut App) + Clone + 'static,
-    cx: &App,
-) -> impl IntoElement {
+fn toasts_label(on: bool) -> String {
+    if on {
+        lib_locale::msg::toast_setting_on()
+    } else {
+        lib_locale::msg::toast_setting_off()
+    }
+}
+
+/// The keyboard-focus mark for one control: an accent rule down its left edge, drawn on every
+/// control so the column does not shift as focus moves (the Display page's treatment).
+fn focus_mark(focused: bool, cx: &App) -> gpui::Div {
     div()
-        .child(field_label(crate::msg::desktop_settings_general_base_unit()))
+        .pl(px(8.0))
+        .ml(px(-10.0))
+        .border_l(px(2.0))
+        .border_color(if focused {
+            gpui::Hsla::from(color::accent(cx))
+        } else {
+            gpui::transparent_black()
+        })
+}
+
+fn hint(text: String, cx: &App) -> impl IntoElement {
+    div()
+        .mt(px(3.0))
+        .text_size(px(12.0))
+        .text_color(color::muted(cx))
+        .child(text)
+}
+
+/// The effective Locale, read-only, with where it came from. There is no control: the Locale is
+/// Configuration, changed by the `locale` setting or `--locale` and a restart (ADR-0021).
+fn locale_field(cx: &App) -> impl IntoElement {
+    let (line, fallback_note) = crate::locale::describe(&crate::locale::info());
+    div()
+        .debug_selector(|| "general-locale".to_string())
+        .child(field_label(
+            crate::msg::desktop_settings_general_locale_label(),
+        ))
         .child(
             div()
-                .debug_selector(|| "settings-general-base-unit".to_string())
-                .w_full()
-                .flex()
-                .flex_col()
-                .border_1()
-                .border_color(if page_focused {
-                    color::accent(cx)
-                } else {
-                    color::border(cx)
-                })
-                .bg(color::background(cx))
-                .children(options.iter().map(|(id, code, name)| {
-                    let (id, on_pick) = (*id, on_pick.clone());
-                    let selector = format!("settings-general-base-unit-{code}");
-                    div()
-                        .debug_selector({
-                            let selector = selector.clone();
-                            move || selector.clone()
-                        })
-                        .id(SharedString::from(selector))
-                        .cursor_pointer()
-                        .flex()
-                        .items_center()
-                        .gap(px(8.0))
-                        .py(px(8.0))
-                        .px(px(10.0))
-                        .text_size(px(13.0))
-                        .on_click(move |_event, _window, cx| on_pick(id, cx))
-                        .child(radio_dot(id == base, cx))
-                        .child(crate::msg::desktop_settings_general_base_unit_option(
-                            code, name,
-                        ))
-                })),
+                .text_color(color::muted(cx))
+                .child(field_value(line, false, cx)),
         )
+        .children(fallback_note.map(|note| hint(note, cx)))
+        .child(hint(crate::msg::desktop_settings_general_locale_hint(), cx))
 }
 
-fn field(label: String, value: &'static str, select_style: bool, cx: &App) -> impl IntoElement {
+/// The THIS DEVICE box, in the Ledger page's summary treatment: the Ledger On start would reopen
+/// and the config file Settings writes to, then the page's footnote.
+fn this_device_panel(device: &ThisDevice, cx: &App) -> impl IntoElement {
+    let path = |path: Option<&Path>| {
+        path.map_or_else(crate::msg::desktop_settings_general_none, |path| {
+            path.display().to_string()
+        })
+    };
+    let rows = [
+        (
+            crate::msg::desktop_settings_general_last_ledger(),
+            path(device.last_ledger.as_deref()),
+        ),
+        (
+            crate::msg::desktop_settings_general_configuration(),
+            path(device.configuration.as_deref()),
+        ),
+    ];
     div()
-        .child(field_label(label))
-        .child(field_value(value, select_style, cx))
-}
-
-/// The right-hand "THIS LEDGER" panel: a bordered figure table, then a note explaining General's
-/// own Preference-vs-Configuration scope (mirrors the section's own "ledger identity" scope
-/// note).
-fn summary_panel(cx: &App) -> impl IntoElement {
-    div()
+        .debug_selector(|| "general-this-device".to_string())
         .flex_1()
         .min_w(px(0.0))
         .max_w(px(400.0))
@@ -150,7 +185,7 @@ fn summary_panel(cx: &App) -> impl IntoElement {
                 .text_color(color::faint_text(cx))
                 .mb(px(10.0))
                 .child(lib_locale::format::upper(
-                    &crate::msg::desktop_settings_general_summary_title(),
+                    &crate::msg::desktop_settings_general_this_device(),
                 )),
         )
         .child(
@@ -160,16 +195,26 @@ fn summary_panel(cx: &App) -> impl IntoElement {
                 .bg(color::chrome(cx))
                 .flex()
                 .flex_col()
-                .children({
-                    let summary = ledger_summary();
-                    let last = summary.len() - 1;
-                    summary
-                        .into_iter()
-                        .enumerate()
-                        .map(move |(index, (label, value))| {
-                            summary_row(label, value, index == last, cx)
+                .children(rows.into_iter().enumerate().map(|(index, (label, value))| {
+                    div()
+                        .flex()
+                        .justify_between()
+                        .gap(px(12.0))
+                        .px(px(12.0))
+                        .py(px(10.0))
+                        .text_size(px(12.0))
+                        .when(index == 0, |this| {
+                            this.border_b(px(1.0)).border_color(color::hairline(cx))
                         })
-                }),
+                        .child(div().flex_none().text_color(color::muted(cx)).child(label))
+                        .child(
+                            div()
+                                .min_w(px(0.0))
+                                .truncate()
+                                .font_family("monospace")
+                                .child(value),
+                        )
+                })),
         )
         .child(
             div()
@@ -178,18 +223,4 @@ fn summary_panel(cx: &App) -> impl IntoElement {
                 .text_color(color::muted(cx))
                 .child(crate::msg::desktop_settings_general_note()),
         )
-}
-
-fn summary_row(label: String, value: &'static str, last: bool, cx: &App) -> impl IntoElement {
-    div()
-        .flex()
-        .justify_between()
-        .px(px(12.0))
-        .py(px(10.0))
-        .text_size(px(12.0))
-        .when(!last, |this| {
-            this.border_b(px(1.0)).border_color(color::hairline(cx))
-        })
-        .child(div().text_color(color::muted(cx)).child(label))
-        .child(div().font_weight(gpui::FontWeight::EXTRA_BOLD).child(value))
 }

@@ -142,6 +142,11 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, storage: S
     let persisted = persistence::load();
     // The file `start` opened, remembered at quit for On start.
     let ledger = ledger_path(config, &persisted);
+    let this_device = settings::general::ThisDevice {
+        ledger_folder: config.personal_ledger_config().data().to_path_buf(),
+        last_ledger: Some(ledger.clone()),
+        configuration: config.writer().target().map(std::path::Path::to_path_buf),
+    };
 
     // Set once by `start`; the Locale never changes at runtime.
     let locale = locale::info().effective;
@@ -167,7 +172,6 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, storage: S
             }
 
             let window_geometry = persisted.window;
-            let on_start = persisted.preferences.on_start;
 
             // Restore the last saved window geometry; otherwise 1280x800 centered, the handoff's
             // own window size (`docs/ux/desktop-mockups/01-shell/README.md`, option 1a).
@@ -214,7 +218,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, storage: S
                         })
                         .detach();
                     cx.new(|cx| {
-                        shell::router::build(
+                        let mut shell = shell::router::build(
                             persisted,
                             shell::router::ShellBindings { keybindings },
                             shell::router::ShellLogs {
@@ -225,7 +229,9 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, storage: S
                             shell::router::wall_clock(chrono::Local::now().date_naive()),
                             focus_handle,
                             cx,
-                        )
+                        );
+                        shell.set_this_device(this_device, cx);
+                        shell
                     })
                 },
             );
@@ -263,7 +269,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, storage: S
                             width: f32::from(bounds.size.width),
                             height: f32::from(bounds.size.height),
                         }),
-                        preferences: shell.client_preferences(on_start, cx),
+                        preferences: shell.client_preferences(cx),
                         last_ledger: Some(ledger.clone()),
                     };
                     let _ = persistence::save(&state);

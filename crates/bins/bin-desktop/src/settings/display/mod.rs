@@ -31,9 +31,9 @@ use crate::{
 };
 
 /// The Display page's keyboard-reachable controls above the Colour Theme grid, top to bottom:
-/// Date format, Row density, Status glyphs, Start sidebar minimised, Toasts. The grid is the stop
-/// after the last one.
-pub const DISPLAY_FIELD_COUNT: usize = 5;
+/// Date format, Row density, Status glyphs, Start sidebar minimised. The grid is the stop after
+/// the last one.
+pub const DISPLAY_FIELD_COUNT: usize = 4;
 
 /// The Display field that is a checkbox rather than a segmented or radio control.
 pub const DISPLAY_FIELD_SIDEBAR: usize = 3;
@@ -145,7 +145,7 @@ impl DisplayPage {
         self.colour_theme_focus
     }
 
-    /// Sets the Display Preferences from outside the page (launch, `:toasts`), without telling
+    /// Sets the Display Preferences from outside the page (launch), without telling
     /// `Root`, which made the change itself.
     pub fn set_preferences(&mut self, preferences: DisplayPreferences, cx: &mut Context<'_, Self>) {
         self.preferences = preferences;
@@ -202,8 +202,7 @@ impl DisplayPage {
                             display.status_glyphs =
                                 step_choice(&StatusGlyphs::ALL, display.status_glyphs, delta);
                         }
-                        DISPLAY_FIELD_SIDEBAR => display.start_sidebar_minimised = delta > 0,
-                        _ => display.toasts_on = delta < 0,
+                        _ => display.start_sidebar_minimised = delta > 0,
                     },
                     cx,
                 );
@@ -294,10 +293,6 @@ impl DisplayPage {
             |display| display.start_sidebar_minimised = !display.start_sidebar_minimised,
             cx,
         );
-    }
-
-    fn click_toasts(&mut self, on: bool, cx: &mut Context<'_, Self>) {
-        self.change_display(|display| display.toasts_on = on, cx);
     }
 
     /// A card click selects its Colour Theme and clears any keyboard focus left on the grid.
