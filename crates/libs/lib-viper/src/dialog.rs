@@ -21,6 +21,10 @@ pub enum DialogInput {
     SelectNext,
     SelectPrevious,
     Submit,
+    /// `←` and `→`, which no Dialog command binds: a field that steps along a row (the Tag form's
+    /// swatches) reads them, and the others ignore them.
+    Left,
+    Right,
     /// A printable character, typed without a modifier.
     Char(char),
     Backspace,

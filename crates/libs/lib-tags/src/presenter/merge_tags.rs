@@ -14,11 +14,12 @@
 use lib_core::TagId;
 use lib_locale::Segment;
 use lib_toast::{Notice, ToastKind};
-use lib_viper::view::{Choice, DialogFrame, SelectView, count};
+use lib_viper::dialog::{DialogInput, DialogRouter};
+use lib_viper::view::{Choice, DialogFrame, SelectList, SelectMove, SelectView, count};
 
 use super::refusal_text;
 use crate::msg;
-use crate::protocols::{SharedPorts, TagChange, TagReassign, TagsOutcome, TagsRouter};
+use crate::protocols::{SharedPorts, TagChange, TagReassign, TagsOutcome};
 use crate::{Tag, sorted_by_counts, usage_counts};
 
 /// The Dialog's selects, in `Tab` order.
@@ -31,13 +32,17 @@ pub enum MergeField {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MergeTagsEvent {
+    /// A pick for the source, closing the lists.
     Source(TagId),
+    /// A pick for the target, closing the lists.
     Target(TagId),
-    /// `Tab`/`Shift-Tab`: the other select.
-    NextField,
-    PrevField,
-    /// A click on a select.
+    /// A click on a select's closed field: focuses it, closes the other's list and opens or
+    /// closes its own.
+    Toggle(MergeField),
+    /// A click on a field, which closes an open list.
     Focus(MergeField),
+    /// Closes an open list without picking: the host's `back`.
+    CloseLists,
     Cancel,
 }
 
@@ -57,6 +62,10 @@ pub struct MergeTagsViewModel {
     /// Why the last confirm was refused.
     pub refusal: Option<String>,
     pub focused: MergeField,
+    /// The source's list: open, and its highlight.
+    pub source_list: SelectList,
+    /// The target's list: open, and its highlight.
+    pub target_list: SelectList,
 }
 
 /// A Tag a select offers, with its Transactions read when the Dialog opened.
@@ -72,6 +81,8 @@ pub struct MergeTagsPresenter {
     source: Option<TagId>,
     target: Option<TagId>,
     focused: MergeField,
+    source_list: SelectList,
+    target_list: SelectList,
     refusal: Option<String>,
 }
 
@@ -103,41 +114,136 @@ impl MergeTagsPresenter {
             options,
             source,
             target,
+            source_list: SelectList::default(),
+            target_list: SelectList::default(),
             refusal: None,
         }
     }
 
-    pub fn handle(&mut self, event: MergeTagsEvent, router: &mut dyn TagsRouter) {
+    pub fn handle(&mut self, event: MergeTagsEvent, router: &mut dyn DialogRouter<TagsOutcome>) {
         match event {
-            MergeTagsEvent::Source(id) => {
-                if self.offers(id) {
-                    self.source = Some(id);
-                    if self.target == Some(id) {
-                        self.target = None;
-                    }
-                    self.refusal = None;
-                }
+            MergeTagsEvent::Source(id) => self.pick(MergeField::Source, id),
+            MergeTagsEvent::Target(id) => self.pick(MergeField::Target, id),
+            MergeTagsEvent::Toggle(field) => {
+                self.focused = field;
+                let other = match field {
+                    MergeField::Source => MergeField::Target,
+                    MergeField::Target => MergeField::Source,
+                };
+                self.list_mut(other).close();
+                let choices = self.choices(field);
+                let chosen = self.chosen(field);
+                self.list_mut(field).toggle(&choices, chosen.as_ref());
             }
-            MergeTagsEvent::Target(id) => {
-                if self.offers(id) && self.source != Some(id) {
-                    self.target = Some(id);
-                    self.refusal = None;
-                }
+            MergeTagsEvent::Focus(field) => {
+                self.close_lists();
+                self.focused = field;
             }
-            MergeTagsEvent::NextField | MergeTagsEvent::PrevField => {
-                self.focused = match self.focused {
+            MergeTagsEvent::CloseLists => self.close_lists(),
+            MergeTagsEvent::Cancel => router.close(None),
+        }
+    }
+
+    /// Reads `input` for the focused select. `submit` merges a pair, as does `select` while the
+    /// list is closed; `select` or `space` opens a closed list and picks from an open one, the
+    /// arrows step a closed select's value or move an open list's highlight, and the field keys
+    /// move to the other select, first committing an open list's highlight. Typing goes nowhere.
+    /// `reassign` is lent for the call (see [`RemoveTagPresenter::input`]).
+    ///
+    /// [`RemoveTagPresenter::input`]: super::RemoveTagPresenter::input
+    pub fn input(
+        &mut self,
+        input: DialogInput,
+        reassign: &mut dyn TagReassign,
+        router: &mut dyn DialogRouter<TagsOutcome>,
+    ) {
+        let field = self.focused;
+        match input {
+            DialogInput::Submit => self.confirm(reassign, router),
+            DialogInput::Select if !self.list(field).is_open() => self.confirm(reassign, router),
+            DialogInput::NextField | DialogInput::PreviousField => {
+                let choices = self.choices(field);
+                if let Some(id) = self.list_mut(field).commit(&choices) {
+                    self.pick(field, id);
+                }
+                self.focused = match field {
                     MergeField::Source => MergeField::Target,
                     MergeField::Target => MergeField::Source,
                 };
             }
-            MergeTagsEvent::Focus(field) => self.focused = field,
-            MergeTagsEvent::Cancel => router.close_dialog(None),
+            DialogInput::Select
+            | DialogInput::SelectNext
+            | DialogInput::SelectPrevious
+            | DialogInput::Char(' ') => {
+                let choices = self.choices(field);
+                let chosen = self.chosen(field);
+                let moved = self.list_mut(field).input(input, &choices, chosen.as_ref());
+                if let SelectMove::Chose(id) = moved {
+                    self.pick(field, id);
+                }
+            }
+            _ => {}
         }
+    }
+
+    fn list(&self, field: MergeField) -> SelectList {
+        match field {
+            MergeField::Source => self.source_list,
+            MergeField::Target => self.target_list,
+        }
+    }
+
+    fn list_mut(&mut self, field: MergeField) -> &mut SelectList {
+        match field {
+            MergeField::Source => &mut self.source_list,
+            MergeField::Target => &mut self.target_list,
+        }
+    }
+
+    fn close_lists(&mut self) {
+        self.source_list.close();
+        self.target_list.close();
+    }
+
+    /// `field`'s options.
+    fn choices(&self, field: MergeField) -> Vec<Choice<TagId>> {
+        self.select(String::new(), None, field).options
+    }
+
+    fn chosen(&self, field: MergeField) -> Option<TagId> {
+        match field {
+            MergeField::Source => self.source,
+            MergeField::Target => self.target,
+        }
+    }
+
+    /// Picks `id` for `field` and closes the lists. A Tag the select doesn't offer is ignored;
+    /// choosing as source the Tag already the target clears the target.
+    fn pick(&mut self, field: MergeField, id: TagId) {
+        self.close_lists();
+        if !self.offers(id) {
+            return;
+        }
+        match field {
+            MergeField::Source => {
+                self.source = Some(id);
+                if self.target == Some(id) {
+                    self.target = None;
+                }
+            }
+            MergeField::Target if self.source != Some(id) => self.target = Some(id),
+            MergeField::Target => return,
+        }
+        self.refusal = None;
     }
 
     /// Merges the pair through `reassign`, raises the Toast and closes the Dialog; a refusal stays
     /// in the Dialog. A Dialog without a pair does nothing.
-    pub fn confirm(&mut self, reassign: &mut dyn TagReassign, router: &mut dyn TagsRouter) {
+    pub fn confirm(
+        &mut self,
+        reassign: &mut dyn TagReassign,
+        router: &mut dyn DialogRouter<TagsOutcome>,
+    ) {
         let Some((source, target)) = self.pair() else {
             return;
         };
@@ -151,7 +257,7 @@ impl MergeTagsPresenter {
                         count(merged.retagged),
                     ),
                 ));
-                router.close_dialog(Some(TagsOutcome {
+                router.close(Some(TagsOutcome {
                     change: TagChange::Merged,
                     id: target,
                     name: merged.target_name,
@@ -206,6 +312,8 @@ impl MergeTagsPresenter {
             choosing: pair.is_none(),
             refusal: self.refusal.clone(),
             focused: self.focused,
+            source_list: self.source_list,
+            target_list: self.target_list,
         }
     }
 
@@ -266,6 +374,7 @@ mod tests {
     use crate::TagRepository as _;
     use crate::TagUse;
     use crate::fake::{InMemoryReassign, RecordingRouter, RouterCall};
+    use lib_viper::dialog::DialogInput;
 
     const SHARED: TagId = TagId::seed(2);
     const GIFT: TagId = TagId::seed(6);
@@ -383,18 +492,122 @@ mod tests {
         );
     }
 
+    fn press(
+        dialog: &mut MergeTagsPresenter,
+        ports: &std::rc::Rc<std::cell::RefCell<crate::fake::InMemoryPorts>>,
+        inputs: &[DialogInput],
+    ) -> Vec<RouterCall> {
+        let mut router = RecordingRouter::default();
+        let mut reassign = InMemoryReassign::new(ports.clone());
+        for input in inputs {
+            dialog.input(*input, &mut reassign, &mut router);
+        }
+        router.calls
+    }
+
     #[test]
-    fn tab_moves_to_the_other_select_and_a_click_focuses_one() {
-        let (_, shared) = stub();
+    fn a_field_key_moves_to_the_other_select_and_a_click_focuses_one() {
+        let (ports, shared) = stub();
         let mut dialog = MergeTagsPresenter::new(&shared, None, None);
 
-        send(&mut dialog, vec![MergeTagsEvent::NextField]);
+        press(&mut dialog, &ports, &[DialogInput::NextField]);
         assert_eq!(dialog.view_model().focused, MergeField::Target);
         assert!(dialog.view_model().target.focused);
-        send(&mut dialog, vec![MergeTagsEvent::PrevField]);
+        press(&mut dialog, &ports, &[DialogInput::PreviousField]);
         assert_eq!(dialog.view_model().focused, MergeField::Source);
         send(&mut dialog, vec![MergeTagsEvent::Focus(MergeField::Target)]);
         assert_eq!(dialog.view_model().focused, MergeField::Target);
+    }
+
+    #[test]
+    fn select_opens_a_list_on_the_chosen_tag_and_picks_the_highlight() {
+        let (ports, shared) = stub();
+        let mut dialog = MergeTagsPresenter::new(&shared, None, None);
+
+        press(&mut dialog, &ports, &[DialogInput::Char(' ')]);
+        assert!(dialog.view_model().source_list.is_open());
+        assert_eq!(dialog.view_model().source_list.highlight(), Some(0));
+        press(&mut dialog, &ports, &[DialogInput::SelectNext]);
+        assert_eq!(dialog.view_model().source_list.highlight(), Some(1));
+        assert_eq!(dialog.view_model().source.chosen, None, "only highlighted");
+        let second = dialog.view_model().source.options[1].value;
+        press(&mut dialog, &ports, &[DialogInput::Select]);
+
+        let view = dialog.view_model();
+        assert!(!view.source_list.is_open());
+        assert_eq!(view.source.chosen, Some(second));
+    }
+
+    #[test]
+    fn the_arrows_step_a_closed_select_and_select_then_merges_a_pair() {
+        let (ports, shared) = stub();
+        let mut dialog = MergeTagsPresenter::new(&shared, None, None);
+
+        press(&mut dialog, &ports, &[DialogInput::SelectNext]);
+        assert!(dialog.view_model().source.chosen.is_some());
+        assert_eq!(
+            press(&mut dialog, &ports, &[DialogInput::Select]),
+            [],
+            "no pair"
+        );
+        press(
+            &mut dialog,
+            &ports,
+            &[DialogInput::NextField, DialogInput::SelectNext],
+        );
+        let calls = press(&mut dialog, &ports, &[DialogInput::Select]);
+
+        assert!(
+            matches!(
+                calls.last(),
+                Some(RouterCall::CloseDialog(Some(outcome))) if outcome.change == TagChange::Merged
+            ),
+            "{calls:?}"
+        );
+    }
+
+    #[test]
+    fn leaving_an_open_list_commits_its_highlight_and_typing_goes_nowhere() {
+        let (ports, shared) = stub();
+        let mut dialog = MergeTagsPresenter::new(&shared, None, None);
+
+        press(
+            &mut dialog,
+            &ports,
+            &[
+                DialogInput::Char(' '),
+                DialogInput::SelectNext,
+                DialogInput::Char('x'),
+                DialogInput::Backspace,
+                DialogInput::NextField,
+            ],
+        );
+
+        let view = dialog.view_model();
+        assert!(!view.source_list.is_open());
+        assert!(view.source.chosen.is_some());
+        assert_eq!(view.focused, MergeField::Target);
+    }
+
+    #[test]
+    fn a_click_toggles_one_list_and_closes_the_other_and_close_lists_shuts_both() {
+        let (_, shared) = stub();
+        let mut dialog = MergeTagsPresenter::new(&shared, None, None);
+
+        send(
+            &mut dialog,
+            vec![MergeTagsEvent::Toggle(MergeField::Source)],
+        );
+        assert!(dialog.view_model().source_list.is_open());
+        send(
+            &mut dialog,
+            vec![MergeTagsEvent::Toggle(MergeField::Target)],
+        );
+        let view = dialog.view_model();
+        assert!(!view.source_list.is_open() && view.target_list.is_open());
+        assert_eq!(view.focused, MergeField::Target);
+        send(&mut dialog, vec![MergeTagsEvent::CloseLists]);
+        assert!(!dialog.view_model().target_list.is_open());
     }
 
     #[test]

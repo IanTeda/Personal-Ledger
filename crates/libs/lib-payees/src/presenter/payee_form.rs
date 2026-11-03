@@ -248,7 +248,8 @@ impl PayeeFormPresenter {
                 self.text_mut(field).pop();
                 self.error = None;
             }
-            (DialogInput::SelectNext | DialogInput::SelectPrevious, _) => {}
+            (DialogInput::SelectNext | DialogInput::SelectPrevious, _)
+            | (DialogInput::Left | DialogInput::Right, _) => {}
         }
     }
 

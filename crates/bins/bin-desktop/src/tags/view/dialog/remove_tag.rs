@@ -8,38 +8,10 @@ use lib_tags::presenter::{RemoveTagEvent, RemoveTagPresenter, RemoveTagViewModel
 
 use super::Clicks;
 use crate::form::colour_field::error_line;
-use crate::form::viper::{enter, typed};
-use crate::{
-    dialog,
-    shell::view::dialog_host::{DialogKey, DialogOutcome},
-    theme::color,
-};
+use crate::{dialog, theme::color};
 
 /// The Dialog's width: the handoff's 7d.
 const WIDTH: gpui::Pixels = px(400.0);
-
-pub(super) fn key(presenter: &mut RemoveTagPresenter, key: DialogKey) -> DialogOutcome {
-    let view = presenter.view_model();
-    match key {
-        DialogKey::Enter => enter(view.frame.can_confirm),
-        // The typed-back name is the only field.
-        DialogKey::Tab | DialogKey::BackTab => DialogOutcome::Handled,
-        _ => match view
-            .confirm
-            .as_ref()
-            .and_then(|field| typed(&field.text, key))
-        {
-            Some(text) => {
-                presenter.handle(
-                    RemoveTagEvent::ConfirmText(text),
-                    &mut crate::tags::router::DialogRouter::default(),
-                );
-                DialogOutcome::Handled
-            }
-            None => DialogOutcome::Ignored,
-        },
-    }
-}
 
 pub(super) fn render(view: &RemoveTagViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     let mut fields = vec![warning(view)];

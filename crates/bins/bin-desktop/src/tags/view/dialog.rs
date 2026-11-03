@@ -1,12 +1,14 @@
 //! The Tags Dialogs' Views, each open one an Entity in the Dialog host
 //! (`shell::view::dialog_entity`). [`TagsDialog`] holds a `lib-tags` Presenter and the widget state
-//! that is gpui's to keep (whether the Merge Dialog's lists are open and their highlights). Every
-//! key and click becomes a Presenter event; each View draws the Presenter's view model and nothing
+//! that is gpui's to keep (the Merge Dialog's lists' scroll windows). Every Dialog command and
+//! typed key reaches the Presenter as a `lib-viper` `DialogInput`, which it reads itself, and
+//! every click becomes a Presenter event; each View draws the Presenter's view model and nothing
 //! else.
 //!
 //! Remove and Merge confirm through the reassign port, answered from the Ledger ([`LedgerPorts`])
 //! and built around the confirm's gpui context. A confirmed outcome is handed to the page, and the
-//! host closes on [`DialogClosed`]. A Toast the Presenter raises goes onto the bin's queue, which
+//! host closes on [`DialogClosed`]. The Presenter closes its Dialog through the host's
+//! [`HostRouter`]. A Toast the Presenter raises goes onto the bin's queue, which
 //! the input's `send` drains.
 
 mod merge_tags;
@@ -20,14 +22,13 @@ use lib_tags::presenter::{
     TagFormPresenter,
 };
 use lib_tags::{SharedPorts, TagsDialog as Which, TagsOutcome};
+use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
 
-use crate::form::select::SelectState;
 use crate::ledger_store::LedgerStore;
-use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostedDialog};
-use crate::shell::view::dialog_host::{DialogKey, DialogOutcome, DialogReadback};
+use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
+use crate::shell::view::dialog_host::DialogReadback;
 use crate::tags::ports::{self, LedgerPorts};
-use crate::tags::router::DialogRouter;
 use lib_shell::Hint;
 
 /// The open Tags Dialog's clicks.
@@ -48,8 +49,8 @@ enum View {
     /// Add or Edit.
     Form(TagFormPresenter),
     Remove(RemoveTagPresenter),
-    /// Merge, with the source's and the target's open-list state.
-    Merge(MergeTagsPresenter, SelectState, SelectState),
+    /// Merge, with the top row of the source's and of the target's list window.
+    Merge(MergeTagsPresenter, usize, usize),
 }
 
 impl View {
@@ -78,11 +79,9 @@ impl TagsDialog {
             Which::AddTag => View::Form(TagFormPresenter::add(shared)),
             Which::EditTag(id) => View::Form(TagFormPresenter::edit(shared, id)?),
             Which::RemoveTag(id) => View::Remove(RemoveTagPresenter::new(&shared, id)?),
-            Which::MergeTags { source, target } => View::Merge(
-                MergeTagsPresenter::new(&shared, source, target),
-                SelectState::default(),
-                SelectState::default(),
-            ),
+            Which::MergeTags { source, target } => {
+                View::Merge(MergeTagsPresenter::new(&shared, source, target), 0, 0)
+            }
         };
         Some(Self {
             ledger: ledger.clone(),
@@ -93,8 +92,8 @@ impl TagsDialog {
 
     /// Hands a confirmed outcome to the page and tells the host, once the Presenter has closed
     /// the Dialog.
-    fn closed(&self, router: DialogRouter, cx: &mut Context<'_, Self>) {
-        let Some(outcome) = router.closed else {
+    fn closed(&self, router: Router, cx: &mut Context<'_, Self>) {
+        let Some(outcome) = router.closed() else {
             return;
         };
         if let Some(outcome) = outcome {
@@ -104,18 +103,37 @@ impl TagsDialog {
     }
 }
 
+/// The host's Router, as a Tags Dialog's Presenter closes through it.
+type Router = HostRouter<TagsOutcome>;
+
 impl EventEmitter<DialogClosed> for TagsDialog {}
 
 impl HostedDialog for TagsDialog {
-    /// Every key is the Tags Dialog's own: the Presenter holds every field.
-    fn key(&mut self, key: DialogKey, _cx: &mut Context<'_, Self>) -> DialogOutcome {
-        match &mut self.view {
-            View::Form(presenter) => tag_form::key(presenter, key),
-            View::Remove(presenter) => remove_tag::key(presenter, key),
-            View::Merge(presenter, source, target) => {
-                merge_tags::key(presenter, source, target, key)
-            }
+    /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) runs with
+    /// the Ledger read copy in line before it, and one that wrote something, after it. Remove and
+    /// Merge are lent the reassign port for the call, answered from the Ledger.
+    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) -> bool {
+        let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
+        if may_confirm {
+            ports::refresh(&self.ledger, cx);
         }
+        let mut router = Router::default();
+        let mut reassign = LedgerPorts {
+            ledger: &self.ledger,
+            cx,
+        };
+        match &mut self.view {
+            View::Form(presenter) => {
+                presenter.handle(TagFormEvent::Input(input), &mut router);
+            }
+            View::Remove(presenter) => presenter.input(input, &mut reassign, &mut router),
+            View::Merge(presenter, ..) => presenter.input(input, &mut reassign, &mut router),
+        }
+        if may_confirm {
+            ports::refresh(&self.ledger, cx);
+        }
+        self.closed(router, cx);
+        true
     }
 
     fn can_confirm(&self) -> bool {
@@ -130,7 +148,7 @@ impl HostedDialog for TagsDialog {
     /// either side. A refusal stays on the Presenter's view model and keeps the Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
         ports::refresh(&self.ledger, cx);
-        let mut router = DialogRouter::default();
+        let mut router = Router::default();
         let mut reassign = LedgerPorts {
             ledger: &self.ledger,
             cx,
@@ -146,7 +164,7 @@ impl HostedDialog for TagsDialog {
 
     /// A cancelled Tags Dialog has written nothing.
     fn cancel(&mut self, cx: &mut Context<'_, Self>) {
-        let mut router = DialogRouter::default();
+        let mut router = Router::default();
         match &mut self.view {
             View::Form(presenter) => presenter.handle(TagFormEvent::Cancel, &mut router),
             View::Remove(presenter) => presenter.handle(RemoveTagEvent::Cancel, &mut router),
@@ -157,10 +175,12 @@ impl HostedDialog for TagsDialog {
 
     fn close_open_select(&mut self) -> bool {
         match &mut self.view {
-            View::Merge(_, source, target) => {
-                let open = source.is_open() || target.is_open();
-                source.cancel();
-                target.cancel();
+            View::Merge(presenter, ..) => {
+                let view = presenter.view_model();
+                let open = view.source_list.is_open() || view.target_list.is_open();
+                if open {
+                    presenter.handle(MergeTagsEvent::CloseLists, &mut Router::default());
+                }
                 open
             }
             View::Form(_) | View::Remove(_) => false,
@@ -232,11 +252,11 @@ impl HostedDialog for TagsDialog {
 impl Render for TagsDialog {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let actions = Clicks::new(cx);
-        match &self.view {
+        match &mut self.view {
             View::Form(presenter) => tag_form::render(&presenter.view_model(), &actions, cx),
             View::Remove(presenter) => remove_tag::render(&presenter.view_model(), &actions, cx),
             View::Merge(presenter, source, target) => {
-                merge_tags::render(&presenter.view_model(), source, target, &actions, cx)
+                merge_tags::render(&presenter.view_model(), (source, target), &actions, cx)
             }
         }
     }

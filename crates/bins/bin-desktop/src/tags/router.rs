@@ -45,7 +45,8 @@ impl TagsRouter for PageRouter<'_, '_> {
         crate::transactions::router::show_filtered(self.cx, filters);
     }
 
-    /// The page closes no Dialog: a Dialog's own Presenter closes it through the host.
+    /// The page closes no Dialog: a Dialog's own Presenter closes it through the host's
+    /// `DialogRouter` (#991 removes this method).
     fn close_dialog(&mut self, _outcome: Option<TagsOutcome>) {}
 }
 
@@ -66,30 +67,4 @@ pub fn tags_page(
 ) -> Entity<TagsPage> {
     use gpui::AppContext as _;
     cx.new(|cx| TagsPage::new(setup, ledger, clock, cx))
-}
-
-/// What a Tags Dialog's Presenter asks: closing, and Notices, which go onto the bin's queue for
-/// `Root` to drain once the key or click returns. The page opens Dialogs.
-#[derive(Default)]
-pub(super) struct DialogRouter {
-    /// `Some` once the Presenter closed its Dialog, with what its confirm did.
-    pub closed: Option<Option<TagsOutcome>>,
-}
-
-impl TagsRouter for DialogRouter {
-    fn open_dialog(&mut self, _dialog: Which) -> bool {
-        false
-    }
-
-    fn open_transactions(&mut self, _id: lib_core::TagId) {}
-
-    fn close_dialog(&mut self, outcome: Option<TagsOutcome>) {
-        self.closed = Some(outcome);
-    }
-}
-
-impl Notify for DialogRouter {
-    fn notify(&mut self, notice: Notice) {
-        Queue.notify(notice);
-    }
 }

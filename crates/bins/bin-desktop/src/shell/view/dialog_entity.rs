@@ -93,11 +93,14 @@ fn command_key(command: DialogCommand) -> Option<DialogKey> {
     }
 }
 
-/// A typed key as a Presenter's input: a character or `Backspace`. The others type nothing.
+/// A typed key as a Presenter's input: a character, `Backspace` or an arrow along a row. The
+/// others type nothing.
 fn typed_input(key: DialogKey) -> Option<DialogInput> {
     match key {
         DialogKey::Char(ch) => Some(DialogInput::Char(ch)),
         DialogKey::Backspace => Some(DialogInput::Backspace),
+        DialogKey::Left => Some(DialogInput::Left),
+        DialogKey::Right => Some(DialogInput::Right),
         _ => None,
     }
 }

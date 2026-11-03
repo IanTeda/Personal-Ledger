@@ -11,11 +11,12 @@
 use lib_core::TagId;
 use lib_locale::Segment;
 use lib_toast::{Notice, ToastKind};
+use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::view::{DialogFrame, TextFieldView, count};
 
 use super::refusal_text;
 use crate::msg;
-use crate::protocols::{SharedPorts, TagChange, TagReassign, TagsOutcome, TagsRouter};
+use crate::protocols::{SharedPorts, TagChange, TagReassign, TagsOutcome};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RemoveTagEvent {
@@ -58,16 +59,40 @@ impl RemoveTagPresenter {
         })
     }
 
-    pub fn handle(&mut self, event: RemoveTagEvent, router: &mut dyn TagsRouter) {
+    pub fn handle(&mut self, event: RemoveTagEvent, router: &mut dyn DialogRouter<TagsOutcome>) {
         match event {
             RemoveTagEvent::ConfirmText(text) => self.confirm_text = text,
-            RemoveTagEvent::Cancel => router.close_dialog(None),
+            RemoveTagEvent::Cancel => router.close(None),
+        }
+    }
+
+    /// Reads `input`: `select` and `submit` confirm through `reassign` once the Dialog allows it,
+    /// and typing goes to the typed-back name, the only field, which an unused Tag doesn't have.
+    /// `reassign` is lent for the call, since the Desktop writes its Ledger only with the gpui
+    /// context the call runs in.
+    pub fn input(
+        &mut self,
+        input: DialogInput,
+        reassign: &mut dyn TagReassign,
+        router: &mut dyn DialogRouter<TagsOutcome>,
+    ) {
+        match input {
+            DialogInput::Select | DialogInput::Submit => self.confirm(reassign, router),
+            DialogInput::Char(ch) if self.transactions > 0 => self.confirm_text.push(ch),
+            DialogInput::Backspace if self.transactions > 0 => {
+                self.confirm_text.pop();
+            }
+            _ => {}
         }
     }
 
     /// Removes the Tag through `reassign` once the Dialog allows it, raises the Toast and closes
     /// the Dialog; a refusal stays in the Dialog.
-    pub fn confirm(&mut self, reassign: &mut dyn TagReassign, router: &mut dyn TagsRouter) {
+    pub fn confirm(
+        &mut self,
+        reassign: &mut dyn TagReassign,
+        router: &mut dyn DialogRouter<TagsOutcome>,
+    ) {
         if !self.can_confirm() {
             return;
         }
@@ -77,7 +102,7 @@ impl RemoveTagPresenter {
                     ToastKind::Success,
                     lib_locale::msg::toast_tag_deleted(&removed.name),
                 ));
-                router.close_dialog(Some(TagsOutcome {
+                router.close(Some(TagsOutcome {
                     change: TagChange::Removed,
                     id: self.id,
                     name: removed.name,
@@ -214,6 +239,59 @@ mod tests {
             ]
         );
         assert!(ports.borrow().tags.tag(SHARED).is_none());
+    }
+
+    #[test]
+    fn typing_builds_the_name_and_select_removes_only_once_it_is_exact() {
+        let (ports, shared) = stub();
+        ports.borrow_mut().usage.uses.insert(SHARED, used(4));
+        let mut reassign = InMemoryReassign::new(ports.clone());
+        let mut dialog = RemoveTagPresenter::new(&shared, SHARED).expect("a stub Tag");
+        let mut router = RecordingRouter::default();
+        let mut press = |dialog: &mut RemoveTagPresenter, input| {
+            dialog.input(input, &mut reassign, &mut router);
+        };
+
+        for ch in "shareX".chars() {
+            press(&mut dialog, DialogInput::Char(ch));
+        }
+        press(&mut dialog, DialogInput::Select);
+        press(&mut dialog, DialogInput::NextField);
+        assert!(
+            ports.borrow().tags.tag(SHARED).is_some(),
+            "not the name yet"
+        );
+        press(&mut dialog, DialogInput::Backspace);
+        press(&mut dialog, DialogInput::Char('d'));
+        assert_eq!(
+            dialog
+                .view_model()
+                .confirm
+                .map(|field| field.text)
+                .as_deref(),
+            Some("shared")
+        );
+        press(&mut dialog, DialogInput::Submit);
+
+        assert!(ports.borrow().tags.tag(SHARED).is_none());
+        assert!(matches!(
+            router.take().last(),
+            Some(RouterCall::CloseDialog(Some(_)))
+        ));
+    }
+
+    #[test]
+    fn an_unused_tag_takes_no_typing_and_select_removes_it() {
+        let (ports, shared) = stub();
+        let mut dialog = RemoveTagPresenter::new(&shared, ONE_OFF).expect("a stub Tag");
+        let mut reassign = InMemoryReassign::new(ports.clone());
+        let mut router = RecordingRouter::default();
+
+        dialog.input(DialogInput::Char('x'), &mut reassign, &mut router);
+        assert_eq!(dialog.view_model().confirm, None);
+        dialog.input(DialogInput::Select, &mut reassign, &mut router);
+
+        assert!(ports.borrow().tags.tag(ONE_OFF).is_none());
     }
 
     #[test]

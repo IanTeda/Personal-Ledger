@@ -3,8 +3,9 @@
 //! `view_model`, its text already localised from [`crate::msg`], so a View only draws. They share
 //! one set of ports ([`SharedPorts`](crate::protocols::SharedPorts)) and ask for navigation
 //! through the [`TagsRouter`](crate::protocols::TagsRouter) the Client passes in. A Dialog's
-//! confirm is lent the reassign port for Remove and Merge, which writes through the Client's
-//! Ledger.
+//! Presenter instead takes `lib-viper`'s `DialogInput`s, reads the keys itself and closes through
+//! the generic `DialogRouter` (#989); Remove and Merge are lent the reassign port with each input
+//! and confirm, which writes through the Client's Ledger.
 
 mod merge_tags;
 mod remove_tag;

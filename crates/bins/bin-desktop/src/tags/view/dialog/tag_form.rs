@@ -1,7 +1,7 @@
 //! The Add tag and Edit tag Dialogs (`docs/ux/desktop-mockups/19-tags/README.md`'s 7b and 7c) on
 //! the shared `crate::dialog` frame: Name with its live inline error, the shared Colour field, the
 //! Edit Dialog's Active checkbox and a callout on how names are matched. The swatch row and the
-//! checkbox take no text, and Backspace goes nowhere on them.
+//! checkbox take no text, and Backspace goes nowhere on them. The Presenter reads every key.
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use lib_tags::presenter::{
@@ -9,73 +9,16 @@ use lib_tags::presenter::{
 };
 
 use super::{Clicks, TagsDialog, View};
-use crate::form::viper::{enter, typed};
 use crate::{
     dialog,
     form::colour_field::{self, ColourFieldProps, error_line},
     form::dialog_fields::{label, text_field},
-    shell::view::dialog_host::{DialogKey, DialogOutcome},
+    shell::view::dialog_entity::HostRouter,
     theme::color,
 };
 
 fn handle(presenter: &mut TagFormPresenter, event: TagFormEvent) {
-    let mut router = crate::tags::router::DialogRouter::default();
-    presenter.handle(event, &mut router);
-}
-
-pub(super) fn key(presenter: &mut TagFormPresenter, key: DialogKey) -> DialogOutcome {
-    let view = presenter.view_model();
-    match key {
-        DialogKey::Tab => {
-            handle(presenter, TagFormEvent::NextField);
-            return DialogOutcome::Handled;
-        }
-        DialogKey::BackTab => {
-            handle(presenter, TagFormEvent::PrevField);
-            return DialogOutcome::Handled;
-        }
-        DialogKey::Enter => return enter(view.frame.can_confirm),
-        _ => {}
-    }
-    match view.focused {
-        TagField::Name => text_key(presenter, &view.name.text, key, TagFormEvent::Name),
-        TagField::Hex => text_key(presenter, &view.colour.hex.text, key, TagFormEvent::Hex),
-        TagField::Swatches => match key {
-            DialogKey::Left => step(presenter, false),
-            DialogKey::Right => step(presenter, true),
-            DialogKey::Char(_) | DialogKey::Backspace => DialogOutcome::Handled,
-            _ => DialogOutcome::Ignored,
-        },
-        TagField::Active => match key {
-            DialogKey::Char(' ') => {
-                handle(presenter, TagFormEvent::ToggleActive);
-                DialogOutcome::Handled
-            }
-            DialogKey::Char(_) | DialogKey::Backspace => DialogOutcome::Handled,
-            _ => DialogOutcome::Ignored,
-        },
-    }
-}
-
-fn step(presenter: &mut TagFormPresenter, forward: bool) -> DialogOutcome {
-    handle(presenter, TagFormEvent::StepPick { forward });
-    DialogOutcome::Handled
-}
-
-/// A key on a text field: typing edits it.
-fn text_key(
-    presenter: &mut TagFormPresenter,
-    text: &str,
-    key: DialogKey,
-    event: fn(String) -> TagFormEvent,
-) -> DialogOutcome {
-    match typed(text, key) {
-        Some(text) => {
-            handle(presenter, event(text));
-            DialogOutcome::Handled
-        }
-        None => DialogOutcome::Ignored,
-    }
+    presenter.handle(event, &mut HostRouter::default());
 }
 
 fn form(dialog: &mut TagsDialog) -> Option<&mut TagFormPresenter> {

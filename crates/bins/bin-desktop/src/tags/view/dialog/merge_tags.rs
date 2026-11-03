@@ -3,8 +3,8 @@
 //! keeps its accent border, marking the Tag that goes), the red-bordered irreversible callout with
 //! live counts and names, and a primary button whose label follows the target.
 //!
-//! The selects take the arrows and `Space`; `Enter` commits an open list, else merges. Typing goes
-//! nowhere, rather than reaching the Shell.
+//! The Presenter reads the keys: the selects take the arrows and `Space`, `Enter` commits an open
+//! list, else merges, and typing goes nowhere, rather than reaching the Shell.
 
 use gpui::{AnyElement, App, div, prelude::*, px};
 use lib_tags::presenter::{MergeField, MergeTagsEvent, MergeTagsPresenter, MergeTagsViewModel};
@@ -14,115 +14,62 @@ use super::{Clicks, TagsDialog, View};
 use crate::form::colour_field::error_line;
 use crate::form::select::SelectState;
 use crate::form::select_field::{self, SelectFieldProps};
-use crate::form::viper::{choose_option, enter, labels, select_key, synced, toggle_select};
-use crate::{
-    dialog,
-    shell::view::dialog_host::{DialogKey, DialogOutcome},
-    theme::color,
-};
+use crate::form::viper::{drawn, labels};
+use crate::{dialog, shell::view::dialog_entity::HostRouter, theme::color};
 
 /// The Dialog's width: the handoff's 7e.
 const WIDTH: gpui::Pixels = px(460.0);
 
 fn handle(presenter: &mut MergeTagsPresenter, event: MergeTagsEvent) {
-    let mut router = crate::tags::router::DialogRouter::default();
-    presenter.handle(event, &mut router);
+    presenter.handle(event, &mut HostRouter::default());
 }
 
-/// Sends the value a select key chose to the select's own field.
-fn choose(presenter: &mut MergeTagsPresenter, field: MergeField, id: lib_core::TagId) {
-    let event = match field {
-        MergeField::Source => MergeTagsEvent::Source(id),
-        MergeField::Target => MergeTagsEvent::Target(id),
-    };
-    handle(presenter, event);
-}
-
-pub(super) fn key(
-    presenter: &mut MergeTagsPresenter,
-    source: &mut SelectState,
-    target: &mut SelectState,
-    key: DialogKey,
-) -> DialogOutcome {
-    let view = presenter.view_model();
-    let (field, select, select_view) = match view.focused {
-        MergeField::Source => (MergeField::Source, source, &view.source),
-        MergeField::Target => (MergeField::Target, target, &view.target),
-    };
-    match key {
-        DialogKey::Tab | DialogKey::BackTab => {
-            // Leaving a select commits an open list's highlight, as a click elsewhere would.
-            if select.is_open() {
-                let (_, value) = select_key(select, select_view, DialogKey::Enter);
-                if let Some(id) = value {
-                    choose(presenter, field, id);
-                }
-            }
-            handle(presenter, MergeTagsEvent::NextField);
-            DialogOutcome::Handled
-        }
-        // Enter commits an open list, else merges.
-        DialogKey::Enter if !select.is_open() => enter(view.frame.can_confirm),
-        DialogKey::Enter | DialogKey::Char(' ') | DialogKey::Up | DialogKey::Down => {
-            let (_, value) = select_key(select, select_view, key);
-            if let Some(id) = value {
-                choose(presenter, field, id);
-            }
-            DialogOutcome::Handled
-        }
-        DialogKey::Char(_) | DialogKey::Backspace => DialogOutcome::Handled,
-        _ => DialogOutcome::Ignored,
-    }
-}
-
-fn merge(
-    dialog: &mut TagsDialog,
-) -> Option<(&mut MergeTagsPresenter, &mut SelectState, &mut SelectState)> {
+fn merge(dialog: &mut TagsDialog) -> Option<&mut MergeTagsPresenter> {
     match &mut dialog.view {
-        View::Merge(presenter, source, target) => Some((presenter, source, target)),
+        View::Merge(presenter, ..) => Some(presenter),
         View::Form(_) | View::Remove(_) => None,
     }
 }
 
 /// A click on a select's closed field focuses it and toggles its list, closing the other.
 fn click_field(dialog: &mut TagsDialog, field: MergeField) {
-    if let Some((presenter, source, target)) = merge(dialog) {
-        handle(presenter, MergeTagsEvent::Focus(field));
-        let view = presenter.view_model();
-        match field {
-            MergeField::Source => {
-                target.cancel();
-                toggle_select(source, &view.source);
-            }
-            MergeField::Target => {
-                source.cancel();
-                toggle_select(target, &view.target);
-            }
-        }
+    if let Some(presenter) = merge(dialog) {
+        handle(presenter, MergeTagsEvent::Toggle(field));
     }
 }
 
+/// A click on row `index` of a select's open list picks that Tag.
 fn click_option(dialog: &mut TagsDialog, field: MergeField, index: usize) {
-    if let Some((presenter, source, target)) = merge(dialog) {
+    if let Some(presenter) = merge(dialog) {
         handle(presenter, MergeTagsEvent::Focus(field));
         let view = presenter.view_model();
-        let id = match field {
-            MergeField::Source => choose_option(source, &view.source, index),
-            MergeField::Target => choose_option(target, &view.target, index),
+        let select = match field {
+            MergeField::Source => &view.source,
+            MergeField::Target => &view.target,
         };
-        if let Some(id) = id {
-            choose(presenter, field, id);
-        }
+        let Some(choice) = select.options.get(index) else {
+            return;
+        };
+        handle(
+            presenter,
+            match field {
+                MergeField::Source => MergeTagsEvent::Source(choice.value),
+                MergeField::Target => MergeTagsEvent::Target(choice.value),
+            },
+        );
     }
 }
 
 pub(super) fn render(
     view: &MergeTagsViewModel,
-    source: &SelectState,
-    target: &SelectState,
+    scrolls: (&mut usize, &mut usize),
     actions: &Clicks,
     cx: &App,
 ) -> AnyElement {
+    let (source, target) = (
+        drawn(&view.source, view.source_list, scrolls.0),
+        drawn(&view.target, view.target_list, scrolls.1),
+    );
     let select = |id: &'static str,
                   select_view: &SelectView<lib_core::TagId>,
                   state: &SelectState,
@@ -134,7 +81,7 @@ pub(super) fn render(
                 id: id.into(),
                 label: select_view.label.clone().into(),
                 options: &options,
-                state: &synced(state, select_view),
+                state,
                 focused: select_view.focused,
                 accent,
                 read_only: None,
@@ -153,7 +100,7 @@ pub(super) fn render(
         .child(select(
             "merge-tags-source",
             &view.source,
-            source,
+            &source,
             MergeField::Source,
             true,
         ))
@@ -169,7 +116,7 @@ pub(super) fn render(
         .child(select(
             "merge-tags-target",
             &view.target,
-            target,
+            &target,
             MergeField::Target,
             false,
         ))
