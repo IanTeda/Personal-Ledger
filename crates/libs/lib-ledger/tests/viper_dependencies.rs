@@ -1,4 +1,4 @@
-//! Enforces the VIPER Dependencies rule over `cargo metadata`: a migrated feature crate never
+//! Enforces the VIPER Dependencies rule over `cargo metadata`: a feature crate never
 //! depends on another feature crate, a UI toolkit or `lib_database`, and a cross-domain module
 //! depends on the feature crates it writes and nothing else does on it, and no module depends on
 //! `lib_shell`, which hosts them (docs/development/viper-architecture.md, Rules > Dependencies).
@@ -8,36 +8,19 @@
 //! crate depends on another", so this test carries that half. It lives here because `lib_ledger`
 //! is the one crate that already sees every feature crate.
 //!
-//! Only crates in `MIGRATED` are checked for feature crates. Today's domain crates still lean on
-//! each other, so each VIPER transition slice adds its crate here once it complies. Every feature
-//! crate, migrated or not, is checked for a cross-domain module and for `lib_shell`.
+//! Every crate in `FEATURE_CRATES` and `SHARED_CRATES` is checked, so a new feature crate is added
+//! to `FEATURE_CRATES` and keeps the rule from its first commit.
 
 use std::process::Command;
 
 use serde_json::Value;
 
-/// Crates that must keep the rule: the feature crates that have moved to the VIPER layout, and the
-/// shared crates every module may depend on, which no feature crate may reach another through:
+/// The shared crates every module may depend on, which no feature crate may reach another through:
 /// `lib_viper`, the generic types they share, and `lib_toast`, the Notices they send the Shell.
 /// `lib_shell`, the Shell module, keeps the rule too.
-const MIGRATED: &[&str] = &[
-    "lib_accounts",
-    "lib_bills",
-    "lib_budgets",
-    "lib_categories",
-    "lib_documents",
-    "lib_institutions",
-    "lib_inventory",
-    "lib_payees",
-    "lib_shell",
-    "lib_tags",
-    "lib_toast",
-    "lib_transactions",
-    "lib_units",
-    "lib_viper",
-];
+const SHARED_CRATES: &[&str] = &["lib_shell", "lib_toast", "lib_viper"];
 
-/// Every feature crate, migrated or not: one per domain.
+/// Every feature crate: one per domain.
 const FEATURE_CRATES: &[&str] = &[
     "lib_accounts",
     "lib_bills",
@@ -83,14 +66,14 @@ const FORBIDDEN: &[&str] = &[
 /// Whether `dependency` is one `name` may not have: a feature crate (unless `name` is a
 /// cross-domain module that writes it), a toolkit, `lib_database`, a cross-domain module, or the
 /// Shell.
-fn forbidden(name: &str, dependency: &str, migrated: &[&str]) -> bool {
+fn forbidden(name: &str, dependency: &str) -> bool {
     if dependency == name {
         return false;
     }
     if dependency == SHELL {
         return FEATURE_CRATES.contains(&name)
             || CROSS_DOMAIN.iter().any(|(m, _)| *m == name)
-            || migrated.contains(&name);
+            || SHARED_CRATES.contains(&name);
     }
     if CROSS_DOMAIN.iter().any(|(module, _)| *module == dependency) {
         return FEATURE_CRATES.contains(&name) || CROSS_DOMAIN.iter().any(|(m, _)| *m == name);
@@ -99,13 +82,13 @@ fn forbidden(name: &str, dependency: &str, migrated: &[&str]) -> bool {
         return (FEATURE_CRATES.contains(&dependency) && !writes.contains(&dependency))
             || FORBIDDEN.contains(&dependency);
     }
-    migrated.contains(&name)
+    (FEATURE_CRATES.contains(&name) || SHARED_CRATES.contains(&name))
         && (FEATURE_CRATES.contains(&dependency) || FORBIDDEN.contains(&dependency))
 }
 
-/// Each forbidden direct dependency (normal, dev or build) of a migrated crate, a cross-domain
-/// module or any feature crate, as `"<crate> -> <dependency>"`.
-fn violations(metadata: &Value, migrated: &[&str]) -> Vec<String> {
+/// Each forbidden direct dependency (normal, dev or build) of a feature crate, a shared crate or a
+/// cross-domain module, as `"<crate> -> <dependency>"`.
+fn violations(metadata: &Value) -> Vec<String> {
     let packages = metadata["packages"]
         .as_array()
         .map(Vec::as_slice)
@@ -122,14 +105,14 @@ fn violations(metadata: &Value, migrated: &[&str]) -> Vec<String> {
             dependencies
                 .iter()
                 .filter_map(|dependency| dependency["name"].as_str())
-                .filter(move |dependency| forbidden(name, dependency, migrated))
+                .filter(move |dependency| forbidden(name, dependency))
                 .map(move |dependency| format!("{name} -> {dependency}"))
         })
         .collect()
 }
 
 #[test]
-fn migrated_feature_crates_depend_on_no_feature_crate_toolkit_or_database() {
+fn feature_crates_depend_on_no_feature_crate_toolkit_or_database() {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
     let output = Command::new(cargo)
         .args([
@@ -156,8 +139,9 @@ fn migrated_feature_crates_depend_on_no_feature_crate_toolkit_or_database() {
         .iter()
         .filter_map(|package| package["name"].as_str())
         .collect();
-    for crate_name in MIGRATED
+    for crate_name in FEATURE_CRATES
         .iter()
+        .chain(SHARED_CRATES)
         .chain(CROSS_DOMAIN.iter().map(|(module, _)| module))
     {
         assert!(
@@ -166,7 +150,7 @@ fn migrated_feature_crates_depend_on_no_feature_crate_toolkit_or_database() {
         );
     }
 
-    let found = violations(&metadata, MIGRATED);
+    let found = violations(&metadata);
     assert!(
         found.is_empty(),
         "VIPER Dependencies rule broken: a feature crate never depends on another feature crate, \
@@ -180,7 +164,7 @@ fn migrated_feature_crates_depend_on_no_feature_crate_toolkit_or_database() {
 }
 
 #[test]
-fn violations_flags_feature_toolkit_and_database_dependencies_of_migrated_crates_only() {
+fn violations_flags_feature_toolkit_and_database_dependencies_of_every_feature_crate() {
     let metadata = serde_json::json!({
         "packages": [
             {
@@ -200,11 +184,12 @@ fn violations_flags_feature_toolkit_and_database_dependencies_of_migrated_crates
     });
 
     assert_eq!(
-        violations(&metadata, &["lib_units"]),
+        violations(&metadata),
         vec![
             "lib_units -> lib_bills",
             "lib_units -> gpui",
-            "lib_units -> lib_database"
+            "lib_units -> lib_database",
+            "lib_bills -> lib_payees"
         ]
     );
 }
@@ -226,7 +211,7 @@ fn violations_flags_a_feature_crate_toolkit_or_database_reaching_lib_toast() {
     });
 
     assert_eq!(
-        violations(&metadata, MIGRATED),
+        violations(&metadata),
         vec![
             "lib_toast -> lib_units",
             "lib_toast -> gpui",
@@ -242,7 +227,7 @@ fn violations_flags_a_feature_crate_on_a_cross_domain_module_and_what_the_module
         "packages": [
             {
                 "name": "lib_bills",
-                "dependencies": [{ "name": "lib_payees" }, { "name": "lib_bill_payments" }]
+                "dependencies": [{ "name": "lib_bill_payments" }]
             },
             {
                 "name": "lib_bill_payments",
@@ -262,7 +247,7 @@ fn violations_flags_a_feature_crate_on_a_cross_domain_module_and_what_the_module
     });
 
     assert_eq!(
-        violations(&metadata, &[]),
+        violations(&metadata),
         vec![
             "lib_bills -> lib_bill_payments",
             "lib_bill_payments -> lib_units",
@@ -294,7 +279,7 @@ fn violations_flags_any_module_depending_on_lib_shell_and_lib_shell_reaching_a_m
     });
 
     assert_eq!(
-        violations(&metadata, MIGRATED),
+        violations(&metadata),
         vec![
             "lib_payees -> lib_shell",
             "lib_units -> lib_shell",
@@ -331,7 +316,7 @@ fn violations_keeps_lib_units_off_lib_institutions_and_both_off_lib_unit_deletio
     });
 
     assert_eq!(
-        violations(&metadata, MIGRATED),
+        violations(&metadata),
         vec![
             "lib_units -> lib_institutions",
             "lib_units -> lib_unit_deletion",
@@ -370,7 +355,7 @@ fn violations_keeps_lib_transaction_import_on_payees_and_transactions_and_off_ev
     });
 
     assert_eq!(
-        violations(&metadata, MIGRATED),
+        violations(&metadata),
         vec![
             "lib_payees -> lib_transaction_import",
             "lib_transactions -> lib_transaction_import",

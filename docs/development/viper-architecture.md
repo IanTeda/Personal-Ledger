@@ -287,7 +287,7 @@ A domain's tickets link here rather than restate these steps. The worked example
 3. **Replace borrowed rows with read ports** by [Read ports](#read-ports), answered in `lib-database`, else by an `impl` for `Ledger` the bin copies (a transition row), filled in every in-memory store.
 4. **Keep `lib-ledger`'s callers running.** While it applies a domain rule to its own rows, write the rule over rows and a read port (`delete_payee(&mut Vec<Payee>, &dyn PayeeUsage, id)`), not the repository.
 5. **Move, don't copy.** A rule or query engine that leaves `lib-ledger` is deleted there and its rule tests move with it.
-6. **Add the crate to `MIGRATED`** in `lib-ledger/tests/viper_dependencies.rs` once it depends on no feature crate; `deny.toml` needs no edit.
+6. **Add the crate to `FEATURE_CRATES`** in `lib-ledger/tests/viper_dependencies.rs`, so it keeps the dependency rule from its first commit; `deny.toml` needs no edit.
 7. **Edit the schema** by [Schema](#schema): the table's file, the foreign keys the referencing tables gain, and the refusal each key without a cascade backs.
 8. **Grep what writes the old schema:** every `::seed(` and adapter test factory that writes a referencing table, the older per-entity `sqlx::test`s, and `bin-sync-server/tests`.
 9. **Write the adapter** after `adapter/units.rs`, with its `<Domain>Store` trait and fake, and its field in `Stores`, `Stores::fake` and `FakeStores::stub`.

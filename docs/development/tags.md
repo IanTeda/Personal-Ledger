@@ -4,7 +4,7 @@ End-user documentation: [Tags](../tags.md).
 
 ## Overview
 
-A Tag is a freeform, cross-cutting label attached many-to-many to Splits, independent of their Category and Payee. [ADR-0015](../adr/0015-tag-as-independent-transaction-label.md) settled the domain model and vocabulary. `lib-tags` is a VIPER module (slice 5, [#847](https://github.com/IanTeda/Personal-Ledger/issues/847)): it owns the Entity and its rules, the Interactors, the ports, the Presenters, the keymap and the Messages, toolkit-free and I/O-free, and it is in `MIGRATED`, so it depends on no other feature crate. Tags persist through `lib-database` ([#862](https://github.com/IanTeda/Personal-Ledger/issues/862)), and the Desktop's Tags page and Dialogs run on its Presenters ([#863](https://github.com/IanTeda/Personal-Ledger/issues/863)).
+A Tag is a freeform, cross-cutting label attached many-to-many to Splits, independent of their Category and Payee. [ADR-0015](../adr/0015-tag-as-independent-transaction-label.md) settled the domain model and vocabulary. `lib-tags` is a VIPER module (slice 5, [#847](https://github.com/IanTeda/Personal-Ledger/issues/847)): it owns the Entity and its rules, the Interactors, the ports, the Presenters, the keymap and the Messages, toolkit-free and I/O-free, and it is a `FEATURE_CRATES` entry, so it depends on no other feature crate. Tags persist through `lib-database` ([#862](https://github.com/IanTeda/Personal-Ledger/issues/862)), and the Desktop's Tags page and Dialogs run on its Presenters ([#863](https://github.com/IanTeda/Personal-Ledger/issues/863)).
 
 Two halfway states remain, each a row in [During the transition](viper-architecture.md#during-the-transition):
 
