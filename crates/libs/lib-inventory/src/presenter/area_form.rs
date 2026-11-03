@@ -9,17 +9,19 @@
 
 use lib_core::{AreaId, LocationId};
 use lib_toast::{Notice, ToastKind};
+use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::view::{DialogFrame, TextFieldView};
 
 use super::{area_name_error_text, area_refusal_text};
 use crate::interactor::{AddArea, EditArea};
-use crate::protocols::{
-    InventoryChange, InventoryOutcome, InventoryRouter, InventoryRow, SharedInventory,
-};
+use crate::protocols::{InventoryChange, InventoryOutcome, InventoryRow, SharedInventory};
 use crate::{AreaError, Inventory, NameError, msg};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AreaFormEvent {
+    /// A Dialog command or typed key: `select` and `submit` confirm a valid form, and typing edits
+    /// the Name, the only field.
+    Input(DialogInput),
     /// The name's whole new text, as its View's input holds it.
     Name(String),
     Cancel,
@@ -81,20 +83,40 @@ impl AreaFormPresenter {
         })
     }
 
-    pub fn handle(&mut self, event: AreaFormEvent, router: &mut dyn InventoryRouter) {
+    pub fn handle(
+        &mut self,
+        event: AreaFormEvent,
+        router: &mut dyn DialogRouter<InventoryOutcome>,
+    ) {
         match event {
-            AreaFormEvent::Name(text) => {
-                self.name = text;
-                self.touched = true;
-                self.refusal = None;
-            }
-            AreaFormEvent::Cancel => router.close_dialog(None),
+            AreaFormEvent::Input(input) => match input {
+                DialogInput::Select | DialogInput::Submit => self.confirm(router),
+                DialogInput::Char(ch) => {
+                    let mut name = self.name.clone();
+                    name.push(ch);
+                    self.set_name(name);
+                }
+                DialogInput::Backspace => {
+                    let mut name = self.name.clone();
+                    name.pop();
+                    self.set_name(name);
+                }
+                _ => {}
+            },
+            AreaFormEvent::Name(text) => self.set_name(text),
+            AreaFormEvent::Cancel => router.close(None),
         }
+    }
+
+    fn set_name(&mut self, text: String) {
+        self.name = text;
+        self.touched = true;
+        self.refusal = None;
     }
 
     /// Saves the form through the Interactors, raises the Toast and closes the Dialog; a refusal
     /// stays on the form. A form that can't confirm does nothing.
-    pub fn confirm(&mut self, router: &mut dyn InventoryRouter) {
+    pub fn confirm(&mut self, router: &mut dyn DialogRouter<InventoryOutcome>) {
         if !self.can_confirm() {
             return;
         }
@@ -131,7 +153,7 @@ impl AreaFormPresenter {
         match saved {
             Ok((area, change, toast)) => {
                 router.notify(Notice::Toast(ToastKind::Success, toast));
-                router.close_dialog(Some(InventoryOutcome {
+                router.close(Some(InventoryOutcome {
                     change,
                     location: self.location,
                     selected: Some(InventoryRow::Area(area)),
@@ -388,5 +410,24 @@ mod tests {
 
         assert!(AreaFormPresenter::add(&shared, LocationId::seed(9_999)).is_none());
         assert!(AreaFormPresenter::edit(&shared, AreaId::seed(9_999)).is_none());
+    }
+
+    #[test]
+    fn typed_keys_edit_the_name_and_select_confirms_a_valid_one() {
+        let mut form = Form::add();
+        assert_eq!(form.send(AreaFormEvent::Input(DialogInput::Select)), []);
+
+        for ch in "Atticx".chars() {
+            form.send(AreaFormEvent::Input(DialogInput::Char(ch)));
+        }
+        form.send(AreaFormEvent::Input(DialogInput::Backspace));
+        form.send(AreaFormEvent::Input(DialogInput::NextField));
+        assert_eq!(form.view().name.text, "Attic");
+        let calls = form.send(AreaFormEvent::Input(DialogInput::Submit));
+
+        assert!(matches!(
+            calls.as_slice(),
+            [_toast, RouterCall::CloseDialog(Some(_))]
+        ));
     }
 }

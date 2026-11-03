@@ -1,23 +1,12 @@
 //! The notice a Location's last Area gets in place of a Remove while it holds Items, on the shared
-//! `crate::dialog` frame: an info panel and a single **Close** button. Every key but `Enter` and
-//! `Esc` goes nowhere.
+//! `crate::dialog` frame: an info panel and a single **Close** button. Its Presenter closes it on
+//! `select` and `submit`, and every other key goes nowhere.
 
 use gpui::{AnyElement, App, div, prelude::*};
 use lib_inventory::presenter::AreaBlockedViewModel;
 
 use super::Clicks;
 use crate::dialog;
-use crate::shell::view::dialog_host::{DialogKey, DialogOutcome};
-
-pub(super) fn key(key: DialogKey) -> DialogOutcome {
-    match key {
-        DialogKey::Enter => DialogOutcome::Confirm,
-        DialogKey::Char(_) | DialogKey::Backspace | DialogKey::Tab | DialogKey::BackTab => {
-            DialogOutcome::Handled
-        }
-        _ => DialogOutcome::Ignored,
-    }
-}
 
 pub(super) fn render(view: &AreaBlockedViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     let card = div()

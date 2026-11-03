@@ -13,13 +13,13 @@
 
 use lib_core::{LocationId, UnitId};
 use lib_toast::{Notice, ToastKind};
-use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
+use lib_viper::dialog::{DialogInput, DialogRouter};
+use lib_viper::view::{Choice, DialogFrame, SelectList, SelectMove, SelectView, TextFieldView};
 
 use super::{location_name_error_text, location_refusal_text};
 use crate::interactor::{AddLocation, EditLocation};
 use crate::protocols::{
-    InventoryChange, InventoryOutcome, InventoryRouter, InventoryRow, InventoryUnits,
-    SharedInventory, UnitChoice,
+    InventoryChange, InventoryOutcome, InventoryRow, InventoryUnits, SharedInventory, UnitChoice,
 };
 use crate::{Inventory, LocationDraft, LocationError, NameError, msg};
 
@@ -34,13 +34,20 @@ pub enum LocationField {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LocationFormEvent {
+    /// A Dialog command or typed key. What it means is the focused field's: `select` commits the
+    /// Unit's open list, else confirms a valid form, and `submit` only confirms; `Space` and the
+    /// arrows open and step the Unit; typing edits the name and goes nowhere on the Unit; the
+    /// field keys move focus, wrapping and closing an open list.
+    Input(DialogInput),
     /// The name's whole new text, as its View's input holds it.
     Name(String),
+    /// The Unit picked, closing its list. Edit, and a Unit that is not an option, ignore it.
     Unit(UnitId),
-    /// `Tab`/`Shift-Tab`, wrapping.
-    NextField,
-    PrevField,
-    /// A click on a field.
+    /// A click on the Unit's field: focuses it and opens or closes its list.
+    ToggleUnits,
+    /// Closes the Unit's open list without picking: the host's `back`.
+    CloseUnits,
+    /// A click on a field, which closes an open list.
     Focus(LocationField),
     Cancel,
 }
@@ -52,6 +59,8 @@ pub struct LocationFormViewModel {
     /// The name's problem, once the name has been typed in.
     pub name_error: Option<String>,
     pub unit: UnitField,
+    /// The Unit's list: open, and its highlight.
+    pub unit_list: SelectList,
     /// Why the last confirm was refused.
     pub refusal: Option<String>,
     /// Edit, rather than Add.
@@ -94,6 +103,7 @@ pub struct LocationFormPresenter {
     name: String,
     unit: Option<UnitId>,
     focused: LocationField,
+    unit_list: SelectList,
     /// Whether the name has been typed in, which is when its error starts to show.
     touched: bool,
     refusal: Option<String>,
@@ -118,6 +128,7 @@ impl LocationFormPresenter {
             name: String::new(),
             unit,
             focused: LocationField::Name,
+            unit_list: SelectList::default(),
             touched: false,
             refusal: None,
         }
@@ -146,37 +157,105 @@ impl LocationFormPresenter {
             }),
             name: location.name,
             focused: LocationField::Name,
+            unit_list: SelectList::default(),
             touched: false,
             refusal: None,
         })
     }
 
-    pub fn handle(&mut self, event: LocationFormEvent, router: &mut dyn InventoryRouter) {
+    pub fn handle(
+        &mut self,
+        event: LocationFormEvent,
+        router: &mut dyn DialogRouter<InventoryOutcome>,
+    ) {
         match event {
-            LocationFormEvent::Name(text) => {
-                self.name = text;
-                self.touched = true;
-                self.refusal = None;
-            }
+            LocationFormEvent::Input(input) => self.input(input, router),
+            LocationFormEvent::Name(text) => self.set_name(text),
             LocationFormEvent::Unit(id) => {
-                if self.editing.is_none() && self.choices.iter().any(|choice| choice.id == id) {
-                    self.unit = Some(id);
+                self.unit_list.close();
+                self.pick(id);
+            }
+            LocationFormEvent::ToggleUnits => {
+                if self.order().contains(&LocationField::Unit) {
+                    self.focused = LocationField::Unit;
+                    let options = self.options();
+                    self.unit_list.toggle(&options, self.unit.as_ref());
                 }
             }
-            LocationFormEvent::NextField => self.cycle(false),
-            LocationFormEvent::PrevField => self.cycle(true),
+            LocationFormEvent::CloseUnits => {
+                self.unit_list.close();
+            }
             LocationFormEvent::Focus(field) => {
+                self.unit_list.close();
                 if self.order().contains(&field) {
                     self.focused = field;
                 }
             }
-            LocationFormEvent::Cancel => router.close_dialog(None),
+            LocationFormEvent::Cancel => router.close(None),
         }
+    }
+
+    /// Reads `input` for the focused field.
+    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<InventoryOutcome>) {
+        let on_unit = self.focused == LocationField::Unit;
+        match input {
+            // Leaving the Unit closes its list, as a click elsewhere would.
+            DialogInput::NextField | DialogInput::PreviousField => {
+                self.unit_list.close();
+                self.cycle(input == DialogInput::PreviousField);
+            }
+            DialogInput::Submit => self.confirm(router),
+            DialogInput::Select if !(on_unit && self.unit_list.is_open()) => self.confirm(router),
+            _ if on_unit => {
+                // A select swallows typing, so it never reaches the name.
+                let options = self.options();
+                if let SelectMove::Chose(id) =
+                    self.unit_list.input(input, &options, self.unit.as_ref())
+                {
+                    self.pick(id);
+                }
+            }
+            DialogInput::Char(ch) => {
+                let mut name = self.name.clone();
+                name.push(ch);
+                self.set_name(name);
+            }
+            DialogInput::Backspace => {
+                let mut name = self.name.clone();
+                name.pop();
+                self.set_name(name);
+            }
+            _ => {}
+        }
+    }
+
+    fn set_name(&mut self, text: String) {
+        self.name = text;
+        self.touched = true;
+        self.refusal = None;
+    }
+
+    /// Sets the Unit on Add, ignoring a Unit that is not an option.
+    fn pick(&mut self, id: UnitId) {
+        if self.editing.is_none() && self.choices.iter().any(|choice| choice.id == id) {
+            self.unit = Some(id);
+        }
+    }
+
+    /// The fiat Units as the select's options, labelled `AUD · Australian dollar`.
+    fn options(&self) -> Vec<Choice<UnitId>> {
+        self.choices
+            .iter()
+            .map(|choice| Choice {
+                value: choice.id,
+                label: msg::inventory_unit_option(&choice.code.to_uppercase(), &choice.name),
+            })
+            .collect()
     }
 
     /// Saves the form through the Interactors, raises the Toast and closes the Dialog; a refusal
     /// stays on the form. A form that can't confirm does nothing.
-    pub fn confirm(&mut self, router: &mut dyn InventoryRouter) {
+    pub fn confirm(&mut self, router: &mut dyn DialogRouter<InventoryOutcome>) {
         if !self.can_confirm() {
             return;
         }
@@ -222,7 +301,7 @@ impl LocationFormPresenter {
         match saved {
             Ok((id, change, toast)) => {
                 router.notify(Notice::Toast(ToastKind::Success, toast));
-                router.close_dialog(Some(InventoryOutcome {
+                router.close(Some(InventoryOutcome {
                     change,
                     location: id,
                     selected: Some(InventoryRow::Location(id)),
@@ -267,17 +346,7 @@ impl LocationFormPresenter {
             unit: UnitField {
                 select: SelectView {
                     label: msg::inventory_field_unit(),
-                    options: self
-                        .choices
-                        .iter()
-                        .map(|choice| Choice {
-                            value: choice.id,
-                            label: msg::inventory_unit_option(
-                                &choice.code.to_uppercase(),
-                                &choice.name,
-                            ),
-                        })
-                        .collect(),
+                    options: self.options(),
                     chosen: self.unit,
                     focused: self.focused == LocationField::Unit,
                 },
@@ -288,6 +357,7 @@ impl LocationFormPresenter {
                     .map(|editing| editing.fixed_unit.clone()),
                 error: (!editing && self.unit.is_none()).then(msg::inventory_error_unit_missing),
             },
+            unit_list: self.unit_list,
             refusal: self.refusal.clone(),
             editing,
             focused: self.focused,
@@ -391,6 +461,16 @@ mod tests {
             self.presenter.view_model()
         }
 
+        fn press(&mut self, input: DialogInput) -> Vec<RouterCall> {
+            self.send(LocationFormEvent::Input(input))
+        }
+
+        fn type_keys(&mut self, text: &str) {
+            for ch in text.chars() {
+                self.press(DialogInput::Char(ch));
+            }
+        }
+
         fn type_name(&mut self, name: &str) {
             self.send(LocationFormEvent::Name(name.into()));
         }
@@ -399,6 +479,66 @@ mod tests {
             self.presenter.confirm(&mut self.router);
             self.router.take()
         }
+    }
+
+    #[test]
+    fn typing_edits_the_name_and_goes_nowhere_on_the_unit() {
+        let mut form = Form::add();
+
+        form.type_keys("Bacx");
+        form.press(DialogInput::Backspace);
+        form.type_keys("h");
+        form.press(DialogInput::NextField);
+        form.type_keys("zz");
+        form.press(DialogInput::Backspace);
+
+        let view = form.view();
+        assert_eq!(view.name.text, "Bach");
+        assert_eq!(view.unit.select.chosen, Some(UnitId::SEED_AUD));
+    }
+
+    #[test]
+    fn the_unit_opens_on_space_steps_and_select_commits_then_confirms() {
+        let mut form = Form::add();
+        form.type_keys("Beach house");
+        form.press(DialogInput::NextField);
+
+        form.press(DialogInput::Char(' '));
+        assert!(form.view().unit_list.is_open());
+        form.press(DialogInput::SelectNext);
+        assert_eq!(form.press(DialogInput::Select), [], "commits the highlight");
+        let view = form.view();
+        assert!(!view.unit_list.is_open());
+        let second = view.unit.select.options[1].value;
+        assert_eq!(view.unit.select.chosen, Some(second));
+        form.press(DialogInput::SelectPrevious);
+        assert_eq!(
+            form.view().unit.select.chosen,
+            Some(UnitId::SEED_AUD),
+            "a closed select steps its value"
+        );
+
+        let calls = form.press(DialogInput::Select);
+        assert!(matches!(
+            calls.as_slice(),
+            [_toast, RouterCall::CloseDialog(Some(_))]
+        ));
+    }
+
+    #[test]
+    fn leaving_the_unit_closes_its_list_without_picking() {
+        let mut form = Form::add();
+        form.send(LocationFormEvent::ToggleUnits);
+        assert_eq!(form.view().focused, LocationField::Unit);
+        form.press(DialogInput::SelectNext);
+        form.press(DialogInput::NextField);
+
+        let view = form.view();
+        assert!(!view.unit_list.is_open());
+        assert_eq!(view.unit.select.chosen, Some(UnitId::SEED_AUD));
+        form.send(LocationFormEvent::ToggleUnits);
+        form.send(LocationFormEvent::CloseUnits);
+        assert!(!form.view().unit_list.is_open());
     }
 
     #[test]
@@ -486,18 +626,19 @@ mod tests {
     fn tab_walks_name_then_unit_on_add_and_edit_has_the_name_alone() {
         let mut form = Form::add();
         assert_eq!(form.view().focused, LocationField::Name);
-        form.send(LocationFormEvent::NextField);
+        form.press(DialogInput::NextField);
         assert_eq!(form.view().focused, LocationField::Unit);
-        form.send(LocationFormEvent::NextField);
+        form.press(DialogInput::NextField);
         assert_eq!(form.view().focused, LocationField::Name);
-        form.send(LocationFormEvent::PrevField);
+        form.press(DialogInput::PreviousField);
         assert_eq!(form.view().focused, LocationField::Unit);
         form.send(LocationFormEvent::Focus(LocationField::Name));
         assert_eq!(form.view().focused, LocationField::Name);
 
         let mut edit = Form::edit();
-        edit.send(LocationFormEvent::NextField);
+        edit.press(DialogInput::NextField);
         edit.send(LocationFormEvent::Focus(LocationField::Unit));
+        edit.send(LocationFormEvent::ToggleUnits);
         assert_eq!(edit.view().focused, LocationField::Name);
     }
 

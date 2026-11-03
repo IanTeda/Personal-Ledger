@@ -3,40 +3,12 @@
 //! back, which holds every typed key.
 
 use gpui::{AnyElement, App, div, prelude::*, px};
-use lib_inventory::presenter::{
-    RemoveLocationEvent, RemoveLocationPresenter, RemoveLocationViewModel,
-};
+use lib_inventory::presenter::RemoveLocationViewModel;
 
 use super::Clicks;
 use crate::dialog;
 use crate::form::colour_field::error_line;
 use crate::form::fields::text_field;
-use crate::form::viper::{enter, typed};
-use crate::inventory::router::DialogRouter;
-use crate::shell::view::dialog_host::{DialogKey, DialogOutcome};
-
-pub(super) fn key(presenter: &mut RemoveLocationPresenter, key: DialogKey) -> DialogOutcome {
-    let view = presenter.view_model();
-    match key {
-        DialogKey::Enter => enter(view.frame.can_confirm),
-        // The typed-back name is the only field, and swallows typing even when there is none.
-        DialogKey::Tab | DialogKey::BackTab => DialogOutcome::Handled,
-        DialogKey::Char(_) | DialogKey::Backspace => {
-            if let Some(text) = view
-                .confirm
-                .as_ref()
-                .and_then(|field| typed(&field.text, key))
-            {
-                presenter.handle(
-                    RemoveLocationEvent::ConfirmText(text),
-                    &mut DialogRouter::default(),
-                );
-            }
-            DialogOutcome::Handled
-        }
-        _ => DialogOutcome::Ignored,
-    }
-}
 
 pub(super) fn render(view: &RemoveLocationViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     let destructive = view.frame.destructive;

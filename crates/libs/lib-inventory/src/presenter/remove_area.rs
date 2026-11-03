@@ -9,20 +9,27 @@
 
 use lib_core::{AreaId, LocationId};
 use lib_toast::{Notice, ToastKind};
-use lib_viper::view::{Choice, DialogFrame, SelectView, count};
+use lib_viper::dialog::{DialogInput, DialogRouter};
+use lib_viper::view::{Choice, DialogFrame, SelectList, SelectMove, SelectView, count};
 
 use super::area_refusal_text;
 use crate::default_destination;
 use crate::interactor::RemoveArea;
 use crate::msg;
-use crate::protocols::{
-    InventoryChange, InventoryOutcome, InventoryRouter, InventoryRow, SharedInventory,
-};
+use crate::protocols::{InventoryChange, InventoryOutcome, InventoryRow, SharedInventory};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RemoveAreaEvent {
-    /// The Area that takes the Items.
+    /// A Dialog command or typed key: `select` commits the destination's open list, else removes,
+    /// and `submit` only removes; `Space` and the arrows open and step the destination; typing
+    /// goes nowhere.
+    Input(DialogInput),
+    /// The Area that takes the Items, closing the list.
     Destination(AreaId),
+    /// A click on the destination's field: opens or closes its list.
+    ToggleDestinations,
+    /// Closes the destination's open list without picking: the host's `back`.
+    CloseDestinations,
     Cancel,
 }
 
@@ -33,6 +40,8 @@ pub struct RemoveAreaViewModel {
     pub warning: String,
     /// The destination select; `None` for an empty Area, which has nothing to move.
     pub destination: Option<SelectView<AreaId>>,
+    /// The destination's list: open, and its highlight.
+    pub destination_list: SelectList,
     /// Why the last confirm was refused.
     pub refusal: Option<String>,
 }
@@ -46,6 +55,7 @@ pub struct RemoveAreaPresenter {
     /// The Location's other Areas, in tab order.
     destinations: Vec<(AreaId, String)>,
     chosen: Option<AreaId>,
+    list: SelectList,
     refusal: Option<String>,
 }
 
@@ -70,25 +80,73 @@ impl RemoveAreaPresenter {
             chosen: (items > 0)
                 .then(|| default_destination(&rows, id))
                 .flatten(),
+            list: SelectList::default(),
             refusal: None,
         })
     }
 
-    pub fn handle(&mut self, event: RemoveAreaEvent, router: &mut dyn InventoryRouter) {
+    pub fn handle(
+        &mut self,
+        event: RemoveAreaEvent,
+        router: &mut dyn DialogRouter<InventoryOutcome>,
+    ) {
         match event {
+            RemoveAreaEvent::Input(input) => self.input(input, router),
             RemoveAreaEvent::Destination(id) => {
-                if self.destinations.iter().any(|(area, _)| *area == id) {
-                    self.chosen = Some(id);
-                    self.refusal = None;
+                self.list.close();
+                self.pick(id);
+            }
+            RemoveAreaEvent::ToggleDestinations => {
+                if self.items > 0 {
+                    let options = self.options();
+                    self.list.toggle(&options, self.chosen.as_ref());
                 }
             }
-            RemoveAreaEvent::Cancel => router.close_dialog(None),
+            RemoveAreaEvent::CloseDestinations => {
+                self.list.close();
+            }
+            RemoveAreaEvent::Cancel => router.close(None),
         }
+    }
+
+    /// Reads `input`: the destination, when the Area holds Items, is the only field.
+    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<InventoryOutcome>) {
+        match input {
+            DialogInput::Submit => self.confirm(router),
+            DialogInput::Select if !self.list.is_open() => self.confirm(router),
+            _ if self.items > 0 => {
+                let options = self.options();
+                if let SelectMove::Chose(id) =
+                    self.list.input(input, &options, self.chosen.as_ref())
+                {
+                    self.pick(id);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn pick(&mut self, id: AreaId) {
+        if self.destinations.iter().any(|(area, _)| *area == id) {
+            self.chosen = Some(id);
+            self.refusal = None;
+        }
+    }
+
+    /// The Location's other Areas, as the destination's options.
+    fn options(&self) -> Vec<Choice<AreaId>> {
+        self.destinations
+            .iter()
+            .map(|(id, name)| Choice {
+                value: *id,
+                label: name.clone(),
+            })
+            .collect()
     }
 
     /// Removes the Area, moving its Items, raises the Toast and closes the Dialog; a refusal stays
     /// in the Dialog.
-    pub fn confirm(&mut self, router: &mut dyn InventoryRouter) {
+    pub fn confirm(&mut self, router: &mut dyn DialogRouter<InventoryOutcome>) {
         if !self.can_confirm() {
             return;
         }
@@ -131,7 +189,7 @@ impl RemoveAreaPresenter {
                     .map_or(InventoryRow::Location(self.location), |area| {
                         InventoryRow::Area(area.id)
                     });
-                router.close_dialog(Some(InventoryOutcome {
+                router.close(Some(InventoryOutcome {
                     change: InventoryChange::AreaRemoved,
                     location: self.location,
                     selected: Some(selected),
@@ -161,17 +219,11 @@ impl RemoveAreaPresenter {
             },
             destination: holds_items.then(|| SelectView {
                 label: msg::inventory_area_remove_destination(),
-                options: self
-                    .destinations
-                    .iter()
-                    .map(|(id, name)| Choice {
-                        value: *id,
-                        label: name.clone(),
-                    })
-                    .collect(),
+                options: self.options(),
                 chosen: self.chosen,
                 focused: true,
             }),
+            destination_list: self.list,
             refusal: self.refusal.clone(),
         }
     }
@@ -357,5 +409,62 @@ mod tests {
 
         let (_, shared) = stub();
         assert!(RemoveAreaPresenter::new(&shared, AreaId::seed(9_999)).is_none());
+    }
+
+    #[test]
+    fn the_destination_opens_steps_and_commits_and_select_removes_once_closed() {
+        let mut dialog = Dialog::on(1);
+        let areas = dialog.areas();
+        let mut press = |dialog: &mut Dialog, input| {
+            dialog
+                .presenter
+                .handle(RemoveAreaEvent::Input(input), &mut dialog.router);
+            dialog.router.take()
+        };
+
+        press(&mut dialog, DialogInput::Char('x'));
+        press(&mut dialog, DialogInput::Char(' '));
+        assert!(dialog.presenter.view_model().destination_list.is_open());
+        press(&mut dialog, DialogInput::SelectNext);
+        assert_eq!(
+            press(&mut dialog, DialogInput::Select),
+            [],
+            "commits the highlight"
+        );
+        let view = dialog.presenter.view_model();
+        assert!(!view.destination_list.is_open());
+        assert_eq!(
+            view.destination.map(|select| select.chosen),
+            Some(Some(areas[2]))
+        );
+
+        let calls = press(&mut dialog, DialogInput::Select);
+        assert!(matches!(
+            calls.as_slice(),
+            [_toast, RouterCall::CloseDialog(Some(_))]
+        ));
+        assert_eq!(dialog.items_in(areas[1]), 0);
+    }
+
+    #[test]
+    fn a_click_toggles_the_destination_list_and_back_closes_it() {
+        let mut dialog = Dialog::on(1);
+        let areas = dialog.areas();
+
+        dialog
+            .presenter
+            .handle(RemoveAreaEvent::ToggleDestinations, &mut dialog.router);
+        assert!(dialog.presenter.view_model().destination_list.is_open());
+        dialog
+            .presenter
+            .handle(RemoveAreaEvent::CloseDestinations, &mut dialog.router);
+        assert!(!dialog.presenter.view_model().destination_list.is_open());
+        dialog
+            .presenter
+            .handle(RemoveAreaEvent::ToggleDestinations, &mut dialog.router);
+        dialog
+            .presenter
+            .handle(RemoveAreaEvent::Destination(areas[2]), &mut dialog.router);
+        assert!(!dialog.presenter.view_model().destination_list.is_open());
     }
 }

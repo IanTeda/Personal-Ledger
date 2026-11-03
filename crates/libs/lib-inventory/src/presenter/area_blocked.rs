@@ -2,13 +2,17 @@
 //! other Area to take them. Its one button closes it, and it changes nothing.
 
 use lib_core::AreaId;
+use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::view::{DialogFrame, count};
 
 use crate::msg;
-use crate::protocols::{InventoryRouter, SharedInventory};
+use crate::protocols::{InventoryOutcome, SharedInventory};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AreaBlockedEvent {
+    /// A Dialog command or typed key: `select` and `submit` close it, and nothing else does
+    /// anything.
+    Input(DialogInput),
     Cancel,
 }
 
@@ -37,15 +41,23 @@ impl AreaBlockedPresenter {
         })
     }
 
-    pub fn handle(&mut self, event: AreaBlockedEvent, router: &mut dyn InventoryRouter) {
+    pub fn handle(
+        &mut self,
+        event: AreaBlockedEvent,
+        router: &mut dyn DialogRouter<InventoryOutcome>,
+    ) {
         match event {
-            AreaBlockedEvent::Cancel => router.close_dialog(None),
+            AreaBlockedEvent::Input(DialogInput::Select | DialogInput::Submit) => {
+                self.confirm(router);
+            }
+            AreaBlockedEvent::Input(_) => {}
+            AreaBlockedEvent::Cancel => router.close(None),
         }
     }
 
     /// Closing is all there is to confirm.
-    pub fn confirm(&mut self, router: &mut dyn InventoryRouter) {
-        router.close_dialog(None);
+    pub fn confirm(&mut self, router: &mut dyn DialogRouter<InventoryOutcome>) {
+        router.close(None);
     }
 
     pub fn view_model(&self) -> AreaBlockedViewModel {
@@ -85,13 +97,15 @@ mod tests {
         assert_eq!(view.frame.title, "Can't remove area");
         assert_eq!(view.frame.submit, "Close");
         assert!(view.body.contains("Storage unit") && view.body.contains("18 items"));
+        notice.handle(AreaBlockedEvent::Input(DialogInput::Char('x')), &mut router);
+        notice.handle(AreaBlockedEvent::Input(DialogInput::NextField), &mut router);
+        assert_eq!(router.take(), [], "only select and submit close it");
         notice.confirm(&mut router);
         notice.handle(AreaBlockedEvent::Cancel, &mut router);
+        notice.handle(AreaBlockedEvent::Input(DialogInput::Select), &mut router);
+        notice.handle(AreaBlockedEvent::Input(DialogInput::Submit), &mut router);
 
-        assert_eq!(
-            router.take(),
-            [RouterCall::CloseDialog(None), RouterCall::CloseDialog(None)]
-        );
+        assert_eq!(router.take(), vec![RouterCall::CloseDialog(None); 4]);
         assert_eq!(*inventory.borrow(), before);
         assert!(AreaBlockedPresenter::new(&shared, AreaId::seed(9_999)).is_none());
     }

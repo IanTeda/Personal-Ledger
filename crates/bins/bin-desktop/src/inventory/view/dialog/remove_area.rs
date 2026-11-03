@@ -2,8 +2,8 @@
 //! Area is empty, else the red dialog with the "Move items to" select, pre-selected on the Area
 //! above (below when first).
 //!
-//! The select takes the arrows and `Space`; `Enter` commits an open list, else removes. Typing goes
-//! nowhere, rather than reaching the Shell.
+//! The Presenter reads every Dialog command and typed key itself; the View draws its view model
+//! and turns each click into an event.
 
 use gpui::{AnyElement, App, div, prelude::*, px};
 use lib_inventory::presenter::{RemoveAreaEvent, RemoveAreaPresenter, RemoveAreaViewModel};
@@ -11,76 +11,41 @@ use lib_inventory::presenter::{RemoveAreaEvent, RemoveAreaPresenter, RemoveAreaV
 use super::{Clicks, InventoryDialog, View};
 use crate::dialog;
 use crate::form::colour_field::error_line;
-use crate::form::select::SelectState;
 use crate::form::select_field::{self, SelectFieldProps};
-use crate::form::viper::{choose_option, enter, labels, select_key, synced, toggle_select};
-use crate::inventory::router::DialogRouter;
-use crate::shell::view::dialog_host::{DialogKey, DialogOutcome};
+use crate::form::viper::{drawn, labels};
+use crate::shell::view::dialog_entity::HostRouter;
 
 fn handle(presenter: &mut RemoveAreaPresenter, event: RemoveAreaEvent) {
-    presenter.handle(event, &mut DialogRouter::default());
+    presenter.handle(event, &mut HostRouter::default());
 }
 
-pub(super) fn key(
-    presenter: &mut RemoveAreaPresenter,
-    select: &mut SelectState,
-    key: DialogKey,
-) -> DialogOutcome {
-    let view = presenter.view_model();
-    let Some(destination) = view.destination.as_ref() else {
-        // Nothing to choose: only confirming and cancelling are keys here.
-        return match key {
-            DialogKey::Enter => enter(view.frame.can_confirm),
-            DialogKey::Char(_) | DialogKey::Backspace | DialogKey::Tab | DialogKey::BackTab => {
-                DialogOutcome::Handled
-            }
-            _ => DialogOutcome::Ignored,
-        };
-    };
-    match key {
-        DialogKey::Enter if !select.is_open() => enter(view.frame.can_confirm),
-        DialogKey::Enter | DialogKey::Char(' ') | DialogKey::Up | DialogKey::Down => {
-            let (_, value) = select_key(select, destination, key);
-            if let Some(id) = value {
-                handle(presenter, RemoveAreaEvent::Destination(id));
-            }
-            DialogOutcome::Handled
-        }
-        DialogKey::Char(_) | DialogKey::Backspace | DialogKey::Tab | DialogKey::BackTab => {
-            DialogOutcome::Handled
-        }
-        _ => DialogOutcome::Ignored,
-    }
-}
-
-fn remove(dialog: &mut InventoryDialog) -> Option<(&mut RemoveAreaPresenter, &mut SelectState)> {
+fn remove(dialog: &mut InventoryDialog) -> Option<&mut RemoveAreaPresenter> {
     match &mut dialog.view {
-        View::RemoveArea(presenter, select) => Some((presenter, select)),
+        View::RemoveArea(presenter, _) => Some(presenter),
         _ => None,
     }
 }
 
 /// A click on the destination field toggles its list.
 fn click_field(dialog: &mut InventoryDialog) {
-    if let Some((presenter, select)) = remove(dialog)
-        && let Some(destination) = presenter.view_model().destination
-    {
-        toggle_select(select, &destination);
+    if let Some(presenter) = remove(dialog) {
+        handle(presenter, RemoveAreaEvent::ToggleDestinations);
     }
 }
 
+/// A click on row `index` of the open list.
 fn click_option(dialog: &mut InventoryDialog, index: usize) {
-    if let Some((presenter, select)) = remove(dialog)
+    if let Some(presenter) = remove(dialog)
         && let Some(destination) = presenter.view_model().destination
-        && let Some(id) = choose_option(select, &destination, index)
+        && let Some(choice) = destination.options.get(index)
     {
-        handle(presenter, RemoveAreaEvent::Destination(id));
+        handle(presenter, RemoveAreaEvent::Destination(choice.value));
     }
 }
 
 pub(super) fn render(
     view: &RemoveAreaViewModel,
-    select: &SelectState,
+    scroll: &mut usize,
     actions: &Clicks,
     cx: &App,
 ) -> AnyElement {
@@ -93,12 +58,13 @@ pub(super) fn render(
     ];
     body.extend(view.destination.as_ref().map(|destination| {
         let options = labels(destination);
+        let state = drawn(destination, view.destination_list, scroll);
         select_field::render(
             SelectFieldProps {
                 id: "area-destination".into(),
                 label: destination.label.clone().into(),
                 options: &options,
-                state: &synced(select, destination),
+                state: &state,
                 focused: destination.focused,
                 accent: false,
                 read_only: None,

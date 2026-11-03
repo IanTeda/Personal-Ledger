@@ -2,8 +2,8 @@
 //! renderer: the Name and the Unit (a picker on Add, shown disabled on Edit), and nothing else,
 //! since a Location's address and cover are edited from the Inventory surface (16q).
 //!
-//! The Unit select takes the arrows and `Space` while it has focus, `Enter` commits an open list,
-//! else confirms, and typing goes nowhere on it rather than reaching the Shell.
+//! The Presenter reads every Dialog command and typed key itself; the View draws its view model
+//! and turns each click into an event.
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*};
 use lib_inventory::presenter::{
@@ -14,95 +14,48 @@ use super::{Clicks, InventoryDialog, View, note};
 use crate::dialog;
 use crate::form::colour_field::error_line;
 use crate::form::fields::text_field;
-use crate::form::select::SelectState;
 use crate::form::select_field::{self, SelectFieldProps};
-use crate::form::viper::{choose_option, enter, labels, select_key, synced, toggle_select, typed};
-use crate::inventory::router::DialogRouter;
-use crate::shell::view::dialog_host::{DialogKey, DialogOutcome};
+use crate::form::viper::{drawn, labels};
+use crate::shell::view::dialog_entity::HostRouter;
 
 fn handle(presenter: &mut LocationFormPresenter, event: LocationFormEvent) {
-    presenter.handle(event, &mut DialogRouter::default());
+    presenter.handle(event, &mut HostRouter::default());
 }
 
-pub(super) fn key(
-    presenter: &mut LocationFormPresenter,
-    select: &mut SelectState,
-    key: DialogKey,
-) -> DialogOutcome {
-    let view = presenter.view_model();
-    match key {
-        // Leaving the Unit closes its list, as a click elsewhere would.
-        DialogKey::Tab | DialogKey::BackTab => {
-            select.cancel();
-            let event = if key == DialogKey::Tab {
-                LocationFormEvent::NextField
-            } else {
-                LocationFormEvent::PrevField
-            };
-            handle(presenter, event);
-            return DialogOutcome::Handled;
-        }
-        DialogKey::Enter if !(view.focused == LocationField::Unit && select.is_open()) => {
-            return enter(view.frame.can_confirm);
-        }
-        _ => {}
-    }
-    match view.focused {
-        LocationField::Name => match typed(&view.name.text, key) {
-            Some(text) => {
-                handle(presenter, LocationFormEvent::Name(text));
-                DialogOutcome::Handled
-            }
-            None => DialogOutcome::Ignored,
-        },
-        LocationField::Unit => match key {
-            DialogKey::Enter | DialogKey::Char(' ') | DialogKey::Up | DialogKey::Down => {
-                let (_, value) = select_key(select, &view.unit.select, key);
-                if let Some(id) = value {
-                    handle(presenter, LocationFormEvent::Unit(id));
-                }
-                DialogOutcome::Handled
-            }
-            DialogKey::Char(_) | DialogKey::Backspace => DialogOutcome::Handled,
-            _ => DialogOutcome::Ignored,
-        },
-    }
-}
-
-fn form(dialog: &mut InventoryDialog) -> Option<(&mut LocationFormPresenter, &mut SelectState)> {
+fn form(dialog: &mut InventoryDialog) -> Option<&mut LocationFormPresenter> {
     match &mut dialog.view {
-        View::Location(presenter, select) => Some((presenter, select)),
+        View::Location(presenter, _) => Some(presenter),
         _ => None,
     }
 }
 
 /// A click on the Unit field focuses it and toggles its list.
 fn click_unit(dialog: &mut InventoryDialog) {
-    if let Some((presenter, select)) = form(dialog) {
-        handle(presenter, LocationFormEvent::Focus(LocationField::Unit));
-        toggle_select(select, &presenter.view_model().unit.select);
+    if let Some(presenter) = form(dialog) {
+        handle(presenter, LocationFormEvent::ToggleUnits);
     }
 }
 
+/// A click on row `index` of the open list.
 fn click_option(dialog: &mut InventoryDialog, index: usize) {
-    if let Some((presenter, select)) = form(dialog) {
+    if let Some(presenter) = form(dialog) {
         handle(presenter, LocationFormEvent::Focus(LocationField::Unit));
-        if let Some(id) = choose_option(select, &presenter.view_model().unit.select, index) {
-            handle(presenter, LocationFormEvent::Unit(id));
+        if let Some(choice) = presenter.view_model().unit.select.options.get(index) {
+            handle(presenter, LocationFormEvent::Unit(choice.value));
         }
     }
 }
 
+/// A click on a field focuses it, closing the list.
 fn focus(dialog: &mut InventoryDialog, field: LocationField) {
-    if let Some((presenter, select)) = form(dialog) {
-        select.cancel();
+    if let Some(presenter) = form(dialog) {
         handle(presenter, LocationFormEvent::Focus(field));
     }
 }
 
 pub(super) fn render(
     view: &LocationFormViewModel,
-    select: &SelectState,
+    scroll: &mut usize,
     actions: &Clicks,
     cx: &App,
 ) -> AnyElement {
@@ -113,6 +66,7 @@ pub(super) fn render(
         "add-location"
     };
     let options = labels(&view.unit.select);
+    let state = drawn(&view.unit.select, view.unit_list, scroll);
     let name_error = view.name_error.clone().map(|text| note(text, true, cx));
     let fields: Vec<AnyElement> = vec![
         div()
@@ -133,7 +87,7 @@ pub(super) fn render(
                     id: "location-unit".into(),
                     label: view.unit.select.label.clone().into(),
                     options: &options,
-                    state: &synced(select, &view.unit.select),
+                    state: &state,
                     focused: view.unit.select.focused,
                     accent: false,
                     read_only: view.unit.fixed.clone().map(SharedString::from),

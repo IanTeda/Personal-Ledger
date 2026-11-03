@@ -2,30 +2,11 @@
 //! whose error shows once it has been typed in, and the note on which Location the Area is in.
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*};
-use lib_inventory::presenter::{AreaFormEvent, AreaFormPresenter, AreaFormViewModel};
+use lib_inventory::presenter::AreaFormViewModel;
 
 use super::{Clicks, note};
 use crate::form::fields::text_field;
-use crate::form::viper::{enter, typed};
-use crate::inventory::router::DialogRouter;
-use crate::shell::view::dialog_host::{DialogKey, DialogOutcome};
 use crate::{dialog, form::colour_field::error_line};
-
-pub(super) fn key(presenter: &mut AreaFormPresenter, key: DialogKey) -> DialogOutcome {
-    let view = presenter.view_model();
-    match key {
-        DialogKey::Enter => enter(view.frame.can_confirm),
-        // The Name is the only field.
-        DialogKey::Tab | DialogKey::BackTab => DialogOutcome::Handled,
-        _ => match typed(&view.name.text, key) {
-            Some(text) => {
-                presenter.handle(AreaFormEvent::Name(text), &mut DialogRouter::default());
-                DialogOutcome::Handled
-            }
-            None => DialogOutcome::Ignored,
-        },
-    }
-}
 
 pub(super) fn render(view: &AreaFormViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     // `text_field` and the buttons take a `'static` id, so these are spelt out.

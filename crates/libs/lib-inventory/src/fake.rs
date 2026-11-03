@@ -8,6 +8,7 @@ use std::rc::Rc;
 use chrono::NaiveDate;
 use lib_core::{ItemId, LocationId, UnitId};
 use lib_toast::{Notice, Notify};
+use lib_viper::dialog::DialogRouter;
 
 use crate::protocols::{
     InventoryDialog, InventoryOutcome, InventoryReassign, InventoryRepository, InventoryRouter,
@@ -173,6 +174,12 @@ impl InventoryRouter for RecordingRouter {
     }
 
     fn close_dialog(&mut self, outcome: Option<InventoryOutcome>) {
+        self.calls.push(RouterCall::CloseDialog(outcome));
+    }
+}
+
+impl DialogRouter<InventoryOutcome> for RecordingRouter {
+    fn close(&mut self, outcome: Option<InventoryOutcome>) {
         self.calls.push(RouterCall::CloseDialog(outcome));
     }
 }

@@ -9,13 +9,14 @@
 
 use lib_core::LocationId;
 use lib_toast::{Notice, ToastKind};
+use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::view::{DialogFrame, TextFieldView, count};
 
 use super::location_refusal_text;
 use crate::msg;
 use crate::protocols::{
-    InventoryChange, InventoryOutcome, InventoryReassign, InventoryRouter, InventoryRow,
-    LocationUsage, SharedInventory,
+    InventoryChange, InventoryOutcome, InventoryReassign, InventoryRow, LocationUsage,
+    SharedInventory,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,10 +71,35 @@ impl RemoveLocationPresenter {
         })
     }
 
-    pub fn handle(&mut self, event: RemoveLocationEvent, router: &mut dyn InventoryRouter) {
+    pub fn handle(
+        &mut self,
+        event: RemoveLocationEvent,
+        router: &mut dyn DialogRouter<InventoryOutcome>,
+    ) {
         match event {
             RemoveLocationEvent::ConfirmText(text) => self.confirm_text = text,
-            RemoveLocationEvent::Cancel => router.close_dialog(None),
+            RemoveLocationEvent::Cancel => router.close(None),
+        }
+    }
+
+    /// Reads a Dialog command or typed key: `select` and `submit` remove through `reassign` once
+    /// the Dialog allows it, and typing goes to the typed-back name, the only field, which an empty
+    /// Location doesn't have. `reassign` is lent for the call, since the Desktop writes its Ledger
+    /// only with the gpui context the call runs in.
+    pub fn input(
+        &mut self,
+        input: DialogInput,
+        reassign: &mut dyn InventoryReassign,
+        router: &mut dyn DialogRouter<InventoryOutcome>,
+    ) {
+        let typed_back = self.holds_something();
+        match input {
+            DialogInput::Select | DialogInput::Submit => self.confirm(reassign, router),
+            DialogInput::Char(ch) if typed_back => self.confirm_text.push(ch),
+            DialogInput::Backspace if typed_back => {
+                self.confirm_text.pop();
+            }
+            _ => {}
         }
     }
 
@@ -82,7 +108,7 @@ impl RemoveLocationPresenter {
     pub fn confirm(
         &mut self,
         reassign: &mut dyn InventoryReassign,
-        router: &mut dyn InventoryRouter,
+        router: &mut dyn DialogRouter<InventoryOutcome>,
     ) {
         if !self.can_confirm() {
             return;
@@ -105,7 +131,7 @@ impl RemoveLocationPresenter {
                 let selected = locations
                     .get(position.min(locations.len().saturating_sub(1)))
                     .map(|location| InventoryRow::Location(location.id));
-                router.close_dialog(Some(InventoryOutcome {
+                router.close(Some(InventoryOutcome {
                     change: InventoryChange::LocationRemoved,
                     location: self.id,
                     selected,
@@ -189,6 +215,11 @@ mod tests {
                 reassign: InMemoryReassign::new(inventory.clone()),
                 inventory,
             }
+        }
+
+        fn press(&mut self, input: DialogInput) {
+            self.presenter
+                .input(input, &mut self.reassign, &mut self.router);
         }
 
         fn typed(&mut self, text: &str) {
@@ -338,5 +369,43 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn typing_builds_the_name_and_select_removes_only_once_it_is_exact() {
+        let mut dialog = Dialog::on(0);
+        let id = dialog.inventory.borrow().locations()[0].id;
+        let name = dialog.inventory.borrow().locations()[0].name.clone();
+
+        for ch in name.chars() {
+            dialog.press(DialogInput::Char(ch));
+        }
+        dialog.press(DialogInput::Char('x'));
+        dialog.press(DialogInput::Select);
+        dialog.press(DialogInput::NextField);
+        assert!(
+            dialog.inventory.borrow().location(id).is_some(),
+            "not the name yet"
+        );
+        dialog.press(DialogInput::Backspace);
+        dialog.press(DialogInput::Submit);
+
+        assert!(dialog.inventory.borrow().location(id).is_none());
+        assert!(matches!(
+            dialog.router.take().last(),
+            Some(RouterCall::CloseDialog(Some(_)))
+        ));
+    }
+
+    #[test]
+    fn an_empty_location_takes_no_typing_and_select_removes_it() {
+        let mut dialog = Dialog::emptied(0);
+        let id = dialog.inventory.borrow().locations()[0].id;
+
+        dialog.press(DialogInput::Char('x'));
+        assert_eq!(dialog.presenter.view_model().confirm, None);
+        dialog.press(DialogInput::Select);
+
+        assert!(dialog.inventory.borrow().location(id).is_none());
     }
 }
