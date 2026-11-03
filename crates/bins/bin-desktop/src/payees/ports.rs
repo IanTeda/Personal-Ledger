@@ -83,10 +83,6 @@ impl PayeesStore for LedgerBackedPorts {
         self.store.payees_mut()
     }
 
-    fn bill_payees(&self) -> Vec<lib_bills::BillPayee> {
-        self.store.bill_payees()
-    }
-
     fn reload(&mut self) -> lib_database::Result<()> {
         self.store.reload()
     }

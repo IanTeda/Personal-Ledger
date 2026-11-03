@@ -47,8 +47,8 @@ use chrono::NaiveDate;
 use lib_accounts::{AccountRepository, AccountUsage, AccountUse};
 use lib_bills::fake::InMemoryBills;
 use lib_bills::{
-    BillAccount, BillCategory, BillPayee, BillPlanRepository, BillScheduleRepository, BillSplit,
-    BillTransactions, BillUnits, SplitRef,
+    BillAccount, BillAccounts, BillCategories, BillCategory, BillPayee, BillPayees,
+    BillPlanRepository, BillScheduleRepository, BillSplit, BillTransactions, BillUnits, SplitRef,
 };
 use lib_budgets::fake::InMemoryBudgets;
 use lib_budgets::{
@@ -66,13 +66,12 @@ use lib_documents::{
     DocumentTransactions,
 };
 use lib_institutions::fake::InMemoryInstitutions;
-use lib_institutions::{InstitutionRepository, InstitutionUse};
+use lib_institutions::{InstitutionRepository, InstitutionUsage, InstitutionUse};
 use lib_inventory::InventoryRepository;
 use lib_inventory::fake::InMemoryInventory;
 use lib_payees::{PayeeCategories, PayeeCategory, PayeeRepository, PayeeUsage, PayeeUse};
-use lib_tags::fake::InMemoryTagUsage;
-use lib_tags::{TagRepository, TagUsage};
-use lib_transaction_import::ImportAccount;
+use lib_tags::{TagRepository, TagUsage, TagUse};
+use lib_transaction_import::{ImportAccount, ImportAccounts, ImportCategories};
 use lib_transactions::fake::InMemoryTransactions;
 use lib_transactions::{Transaction, TransactionRepository};
 use lib_units::fake::InMemoryPorts;
@@ -272,10 +271,9 @@ impl<T: InstitutionsStore + ?Sized> InstitutionsStore for Box<T> {
 /// Single-threaded, as the ports are.
 pub type SharedAccountsStore = Rc<RefCell<dyn AccountsStore>>;
 
-/// The Accounts repository port, wherever it is kept, and the rows as the Units and
-/// Bills read them. What names an Account is other domains' rows, which [`StoredAccountReads`]
-/// counts in their stores (#993). The reads are the store's to answer, since the orphan rule stops
-/// `lib-database` implementing `lib-units`' and `lib-bills`' ports for `lib-accounts`' fake.
+/// The Accounts repository port, wherever it is kept. What names an Account is other domains'
+/// rows, which [`StoredAccountReads`] counts in their stores (#993); the reading modules map the
+/// Accounts' own rows themselves (#994).
 pub trait AccountsStore {
     fn accounts(&self) -> &dyn AccountRepository;
 
@@ -292,41 +290,9 @@ pub trait AccountsStore {
             .collect()
     }
 
-    /// The Accounts whose Unit is `unit`, in order, as `lib-units`' `UnitHoldings` reads them, each
-    /// with the Transactions `transactions` counts for it (the Transactions store's, as an Account
-    /// not listed has none).
-    fn holdings(&self, unit: UnitId, transactions: &HashMap<AccountId, usize>) -> Vec<Holding> {
-        accounts::holdings(&self.accounts().accounts(), unit, |id| {
-            transactions.get(&id).copied().unwrap_or_default()
-        })
-    }
-
     /// How many Accounts count in `unit`: the Accounts half of `lib-units`' `UnitUsage`.
     fn unit_accounts(&self, unit: UnitId) -> usize {
         accounts::unit_accounts(&self.accounts().accounts(), unit)
-    }
-
-    /// Every Account as `lib-bills`' `BillAccounts` reads it.
-    fn bill_accounts(&self) -> Vec<BillAccount> {
-        accounts::bill_accounts(&self.accounts().accounts())
-    }
-
-    /// Every Account as `lib-budgets`' `BudgetAccounts` reads it.
-    fn budget_accounts(&self) -> Vec<BudgetAccount> {
-        accounts::budget_accounts(&self.accounts().accounts())
-    }
-
-    /// Account `id` as `lib-transaction-import`'s `ImportAccounts` reads it.
-    fn import_account(&self, id: AccountId) -> Option<ImportAccount> {
-        accounts::import_account(&self.accounts().accounts(), id)
-    }
-
-    /// The Accounts naming `institution`: `lib-institutions`' `InstitutionUsage`. The one place this is
-    /// worked out: the adapter's `InstitutionUsage` impl, and every other store, answer through it.
-    fn institution_usage(&self, institution: InstitutionId) -> InstitutionUse {
-        InstitutionUse {
-            accounts: accounts::institution_accounts(&self.accounts().accounts(), institution),
-        }
     }
 
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
@@ -343,14 +309,6 @@ impl AccountsStore for AccountsAdapter {
 
     fn accounts_mut(&mut self) -> &mut dyn AccountRepository {
         AccountsAdapter::accounts_mut(self)
-    }
-
-    fn bill_accounts(&self) -> Vec<BillAccount> {
-        lib_bills::BillAccounts::bill_accounts(self)
-    }
-
-    fn import_account(&self, id: AccountId) -> Option<ImportAccount> {
-        lib_transaction_import::ImportAccounts::import_account(self, id)
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -372,20 +330,8 @@ impl<T: AccountsStore + ?Sized> AccountsStore for Box<T> {
         (**self).unit_account_ids(unit)
     }
 
-    fn holdings(&self, unit: UnitId, transactions: &HashMap<AccountId, usize>) -> Vec<Holding> {
-        (**self).holdings(unit, transactions)
-    }
-
     fn unit_accounts(&self, unit: UnitId) -> usize {
         (**self).unit_accounts(unit)
-    }
-
-    fn bill_accounts(&self) -> Vec<BillAccount> {
-        (**self).bill_accounts()
-    }
-
-    fn import_account(&self, id: AccountId) -> Option<ImportAccount> {
-        (**self).import_account(id)
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -414,10 +360,9 @@ impl AccountsStore for lib_accounts::fake::InMemoryPorts {
 /// Single-threaded, as the ports are.
 pub type SharedCategoriesStore = Rc<RefCell<dyn CategoriesStore>>;
 
-/// The Categories repository port, wherever it is kept, the delete Category reassign sends until
-/// `lib-reassign` (#813), and the rows as the Bills and Payees read them. The reads are the
-/// store's to answer, since the orphan rule stops `lib-database` implementing `lib-bills`' and
-/// `lib-payees`' ports for `lib-categories`' fake.
+/// The Categories repository port, wherever it is kept, and the delete Category reassign sends
+/// until `lib-reassign` (#813). The reading modules map the Categories' own rows themselves
+/// (#994).
 pub trait CategoriesStore {
     fn categories(&self) -> &dyn CategoryRepository;
 
@@ -427,21 +372,6 @@ pub trait CategoriesStore {
     /// Desktop's forwarding shim sends. Not a port write, since the delete re-points other
     /// domains' rows (#813).
     fn delete_category(&mut self, id: CategoryId);
-
-    /// Every Category as `lib-bills`' `BillCategories` reads it, in tree order.
-    fn bill_categories(&self) -> Vec<BillCategory> {
-        categories::bill_categories(&self.categories().categories())
-    }
-
-    /// The leaves as `lib-payees`' `PayeeCategories` reads them, in tree order.
-    fn payee_categories(&self) -> Vec<PayeeCategory> {
-        categories::payee_categories(&self.categories().categories())
-    }
-
-    /// Every Category as `lib-budgets`' `BudgetCategories` reads it, in tree order.
-    fn budget_categories(&self) -> Vec<BudgetCategory> {
-        categories::budget_categories(&self.categories().categories())
-    }
 
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
@@ -480,14 +410,6 @@ impl<T: CategoriesStore + ?Sized> CategoriesStore for Box<T> {
 
     fn delete_category(&mut self, id: CategoryId) {
         (**self).delete_category(id);
-    }
-
-    fn bill_categories(&self) -> Vec<BillCategory> {
-        (**self).bill_categories()
-    }
-
-    fn payee_categories(&self) -> Vec<PayeeCategory> {
-        (**self).payee_categories()
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -532,11 +454,9 @@ pub trait TagsStore {
     /// domains' rows (#813).
     fn delete_tag(&mut self, id: TagId);
 
-    /// The in-memory usage a test or the stub counts into, if the store keeps its usage in
-    /// memory: `None` for an adapter, which counts in the file.
-    fn usage_to_count(&mut self) -> Option<&mut InMemoryTagUsage> {
-        None
-    }
+    /// Takes `uses` as the figures an in-memory store reports for its Tags, counted from the
+    /// Transactions the Client holds. An adapter counts in the file, so it ignores them.
+    fn set_counted_uses(&mut self, _uses: HashMap<TagId, TagUse>) {}
 
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
@@ -585,8 +505,8 @@ impl<T: TagsStore + ?Sized> TagsStore for Box<T> {
         (**self).delete_tag(id);
     }
 
-    fn usage_to_count(&mut self) -> Option<&mut InMemoryTagUsage> {
-        (**self).usage_to_count()
+    fn set_counted_uses(&mut self, uses: HashMap<TagId, TagUse>) {
+        (**self).set_counted_uses(uses);
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -612,8 +532,8 @@ impl TagsStore for lib_tags::fake::InMemoryPorts {
         self.tags.tags.retain(|tag| tag.id != id);
     }
 
-    fn usage_to_count(&mut self) -> Option<&mut InMemoryTagUsage> {
-        Some(&mut self.usage)
+    fn set_counted_uses(&mut self, uses: HashMap<TagId, TagUse>) {
+        self.usage.uses = uses;
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -636,11 +556,6 @@ pub trait InventoryStore {
     /// Desktop's forwarding shim sends. Not a port write, since the delete also drops the
     /// Document Links to its Items (Q18, #813).
     fn delete_location(&mut self, id: LocationId);
-
-    /// Every Item as `lib-documents`' `DocumentItems` reads it.
-    fn document_items(&self) -> Vec<DocumentItem> {
-        inventory::document_items(&self.inventory().items())
-    }
 
     /// How many Locations are priced in `unit`: the Locations half of `lib-units`' `UnitUsage`.
     /// The file refuses deleting a Unit one names, so Delete Unit must see them first (#885).
@@ -738,26 +653,6 @@ pub trait TransactionsStore {
         self.transactions_mut().upsert_transaction(transaction);
     }
 
-    /// The Splits dated `from` to `to`: `lib-bills`' `BillTransactions::splits_between`.
-    fn bill_splits_between(&self, from: NaiveDate, to: NaiveDate) -> Vec<BillSplit> {
-        transactions::splits_between(&self.all_transactions(), from, to)
-    }
-
-    /// The Split `split` names: `lib-bills`' `BillTransactions::paid_split`.
-    fn bill_paid_split(&self, split: SplitRef) -> Option<BillSplit> {
-        transactions::paid_split(&self.all_transactions(), split)
-    }
-
-    /// Every Transaction as `lib-documents`' `DocumentTransactions` reads it.
-    fn document_transactions(&self) -> Vec<DocumentTransaction> {
-        transactions::document_transactions(&self.all_transactions())
-    }
-
-    /// The Splits dated `from` to `to`: `lib-budgets`' `BudgetSplits::budget_splits`.
-    fn budget_splits(&self, from: NaiveDate, to: NaiveDate) -> Vec<BudgetSplit> {
-        transactions::budget_splits(&self.all_transactions(), from, to)
-    }
-
     /// The Splits filed under Category `id`: the Splits half of `lib-categories`' `CategoryUsage`.
     /// An in-memory store counts its own rows; the adapter counts in the file.
     fn category_splits(&self, id: CategoryId) -> usize {
@@ -795,14 +690,6 @@ impl TransactionsStore for TransactionsAdapter {
         self
     }
 
-    fn bill_splits_between(&self, from: NaiveDate, to: NaiveDate) -> Vec<BillSplit> {
-        BillTransactions::splits_between(self, from, to)
-    }
-
-    fn bill_paid_split(&self, split: SplitRef) -> Option<BillSplit> {
-        BillTransactions::paid_split(self, split)
-    }
-
     fn category_splits(&self, id: CategoryId) -> usize {
         TransactionsAdapter::category_splits(self, id)
     }
@@ -828,18 +715,6 @@ impl<T: TransactionsStore + ?Sized> TransactionsStore for Box<T> {
 
     fn transactions_mut(&mut self) -> &mut dyn TransactionRepository {
         (**self).transactions_mut()
-    }
-
-    fn bill_splits_between(&self, from: NaiveDate, to: NaiveDate) -> Vec<BillSplit> {
-        (**self).bill_splits_between(from, to)
-    }
-
-    fn bill_paid_split(&self, split: SplitRef) -> Option<BillSplit> {
-        (**self).bill_paid_split(split)
-    }
-
-    fn budget_splits(&self, from: NaiveDate, to: NaiveDate) -> Vec<BudgetSplit> {
-        (**self).budget_splits(from, to)
     }
 
     fn category_splits(&self, id: CategoryId) -> usize {
@@ -870,18 +745,6 @@ impl TransactionsStore for InMemoryTransactions {
         self
     }
 
-    fn bill_splits_between(&self, from: NaiveDate, to: NaiveDate) -> Vec<BillSplit> {
-        transactions::splits_between(&self.transactions, from, to)
-    }
-
-    fn bill_paid_split(&self, split: SplitRef) -> Option<BillSplit> {
-        transactions::paid_split(&self.transactions, split)
-    }
-
-    fn budget_splits(&self, from: NaiveDate, to: NaiveDate) -> Vec<BudgetSplit> {
-        transactions::budget_splits(&self.transactions, from, to)
-    }
-
     fn category_splits(&self, id: CategoryId) -> usize {
         transactions::category_splits(&self.transactions, id)
     }
@@ -908,27 +771,6 @@ pub trait BillsStore {
     fn entries(&self) -> &dyn BillScheduleRepository;
 
     fn entries_mut(&mut self) -> &mut dyn BillScheduleRepository;
-
-    /// Every open Bill Schedule entry with its Plan's figures: `lib-budgets`' `BudgetBills::open_bills`.
-    fn budget_open_bills(&self) -> Vec<BudgetBill> {
-        bills::budget_open_bills(&self.plans().bill_plans(), &self.entries().entries())
-    }
-
-    /// Every active Bill Plan: `lib-budgets`' `BudgetBills::active_bill_plans`.
-    fn budget_bill_plans(&self) -> Vec<BudgetBillPlan> {
-        bills::budget_bill_plans(&self.plans().bill_plans())
-    }
-
-    /// Every Bill Plan as `lib-documents`' `DocumentBillPlans` reads it.
-    fn document_bill_plans(&self) -> Vec<DocumentBillPlan> {
-        bills::document_bill_plans(&self.plans().bill_plans())
-    }
-
-    /// The rows a store holds only in memory, for a test to clear directly, since a Bill Plan is
-    /// never deleted through the port. `None` for the adapter.
-    fn memory_mut(&mut self) -> Option<&mut InMemoryBills> {
-        None
-    }
 
     /// How many Bill Plans are named in `unit`: the Bill Plans half of `lib-units`' `UnitUsage`.
     fn unit_bill_plans(&self, unit: UnitId) -> usize {
@@ -1005,10 +847,6 @@ impl<T: BillsStore + ?Sized> BillsStore for Box<T> {
         (**self).unit_bill_plans(unit)
     }
 
-    fn memory_mut(&mut self) -> Option<&mut InMemoryBills> {
-        (**self).memory_mut()
-    }
-
     fn reload(&mut self) -> Result<()> {
         (**self).reload()
     }
@@ -1032,10 +870,6 @@ impl BillsStore for InMemoryBills {
         self
     }
 
-    fn memory_mut(&mut self) -> Option<&mut InMemoryBills> {
-        Some(self)
-    }
-
     fn reload(&mut self) -> Result<()> {
         Ok(())
     }
@@ -1045,22 +879,12 @@ impl BillsStore for InMemoryBills {
 /// the ports are.
 pub type SharedPayeesStore = Rc<RefCell<dyn PayeesStore>>;
 
-/// The Payees repository port, wherever it is kept, and the rows as Bills reads them. What names
-/// a Payee is other domains' rows, which [`StoredPayeeReads`] counts in their stores (#992).
+/// The Payees repository port, wherever it is kept. What names a Payee is other domains' rows,
+/// which [`StoredPayeeReads`] counts in their stores (#992).
 pub trait PayeesStore {
     fn payees(&self) -> &dyn PayeeRepository;
 
     fn payees_mut(&mut self) -> &mut dyn PayeeRepository;
-
-    /// Every Payee as `lib-bills`' `BillPayees` reads it, inactive ones included.
-    fn bill_payees(&self) -> Vec<BillPayee> {
-        bill_payees(&self.payees().payees())
-    }
-
-    /// Every Payee as `lib-documents`' `DocumentPayees` reads it, inactive ones included.
-    fn document_payees(&self) -> Vec<DocumentPayee> {
-        payees::document_payees(&self.payees().payees())
-    }
 
     /// Payee `id`'s name, as `lib-budgets`' `BudgetPayees` reads it.
     fn payee_name(&self, id: PayeeId) -> Option<String> {
@@ -1083,10 +907,6 @@ impl PayeesStore for PayeesAdapter {
         PayeesAdapter::payees_mut(self)
     }
 
-    fn bill_payees(&self) -> Vec<BillPayee> {
-        lib_bills::BillPayees::bill_payees(self)
-    }
-
     fn reload(&mut self) -> Result<()> {
         PayeesAdapter::reload(self)
     }
@@ -1100,10 +920,6 @@ impl<T: PayeesStore + ?Sized> PayeesStore for Box<T> {
 
     fn payees_mut(&mut self) -> &mut dyn PayeeRepository {
         (**self).payees_mut()
-    }
-
-    fn bill_payees(&self) -> Vec<BillPayee> {
-        (**self).bill_payees()
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -1138,12 +954,6 @@ pub trait BudgetsStore {
     fn budgets(&self) -> &dyn BudgetRepository;
 
     fn budgets_mut(&mut self) -> &mut dyn BudgetRepository;
-
-    /// The rows a store holds only in memory, for a test to set directly, since a Budget is never
-    /// deleted through the port. `None` for the adapter.
-    fn memory_mut(&mut self) -> Option<&mut InMemoryBudgets> {
-        None
-    }
 
     /// How many Budgets count Account `id`: the Budgets half of `lib-accounts`' `AccountUsage`.
     fn account_budgets(&self, id: AccountId) -> usize {
@@ -1200,10 +1010,6 @@ impl<T: BudgetsStore + ?Sized> BudgetsStore for Box<T> {
         (**self).budgets_mut()
     }
 
-    fn memory_mut(&mut self) -> Option<&mut InMemoryBudgets> {
-        (**self).memory_mut()
-    }
-
     fn reload(&mut self) -> Result<()> {
         (**self).reload()
     }
@@ -1219,12 +1025,22 @@ impl BudgetsStore for InMemoryBudgets {
         self
     }
 
-    fn memory_mut(&mut self) -> Option<&mut InMemoryBudgets> {
-        Some(self)
-    }
-
     fn reload(&mut self) -> Result<()> {
         Ok(())
+    }
+}
+
+/// `lib-budgets`' `BudgetCategories` answered by the Categories store alone, borrowed for the one
+/// read (#994): the Categories Monthly budget's save reads the tree before the six-port
+/// [`StoredBudgetReads`] is needed.
+#[derive(Clone)]
+pub struct StoredBudgetCategories {
+    pub categories: SharedCategoriesStore,
+}
+
+impl BudgetCategories for StoredBudgetCategories {
+    fn budget_categories(&self) -> Vec<BudgetCategory> {
+        categories::budget_categories(&self.categories.borrow().categories().categories())
     }
 }
 
@@ -1241,29 +1057,30 @@ pub struct StoredBudgetReads {
 
 impl BudgetCategories for StoredBudgetReads {
     fn budget_categories(&self) -> Vec<BudgetCategory> {
-        self.categories.borrow().budget_categories()
+        categories::budget_categories(&self.categories.borrow().categories().categories())
     }
 }
 
 impl BudgetAccounts for StoredBudgetReads {
     fn budget_accounts(&self) -> Vec<BudgetAccount> {
-        self.accounts.borrow().budget_accounts()
+        accounts::budget_accounts(&self.accounts.borrow().accounts().accounts())
     }
 }
 
 impl BudgetSplits for StoredBudgetReads {
     fn budget_splits(&self, from: NaiveDate, to: NaiveDate) -> Vec<BudgetSplit> {
-        self.transactions.borrow().budget_splits(from, to)
+        transactions::budget_splits(&self.transactions.borrow().all_transactions(), from, to)
     }
 }
 
 impl BudgetBills for StoredBudgetReads {
     fn open_bills(&self) -> Vec<BudgetBill> {
-        self.bills.borrow().budget_open_bills()
+        let bills = self.bills.borrow();
+        bills::budget_open_bills(&bills.plans().bill_plans(), &bills.entries().entries())
     }
 
     fn active_bill_plans(&self) -> Vec<BudgetBillPlan> {
-        self.bills.borrow().budget_bill_plans()
+        bills::budget_bill_plans(&self.bills.borrow().plans().bill_plans())
     }
 }
 
@@ -1276,6 +1093,83 @@ impl BudgetUnits for StoredBudgetReads {
 impl BudgetPayees for StoredBudgetReads {
     fn payee_name(&self, id: PayeeId) -> Option<String> {
         self.payees.borrow().payee_name(id)
+    }
+}
+
+/// `lib-bills`' four read ports answered by the shared stores of the domains Bills reads, each
+/// borrowed for the one read (#994), as [`StoredBudgetReads`] answers Budgets'. The same struct
+/// stands over the adapters and [`Stores::fake`]'s in-memory stores.
+#[derive(Clone)]
+pub struct StoredBillReads {
+    pub payees: SharedPayeesStore,
+    pub accounts: SharedAccountsStore,
+    pub categories: SharedCategoriesStore,
+    pub transactions: SharedTransactionsStore,
+}
+
+impl BillPayees for StoredBillReads {
+    fn bill_payees(&self) -> Vec<BillPayee> {
+        bill_payees(&self.payees.borrow().payees().payees())
+    }
+}
+
+impl BillAccounts for StoredBillReads {
+    fn bill_accounts(&self) -> Vec<BillAccount> {
+        accounts::bill_accounts(&self.accounts.borrow().accounts().accounts())
+    }
+}
+
+impl BillCategories for StoredBillReads {
+    fn bill_categories(&self) -> Vec<BillCategory> {
+        categories::bill_categories(&self.categories.borrow().categories().categories())
+    }
+}
+
+impl BillTransactions for StoredBillReads {
+    fn splits_between(&self, from: NaiveDate, to: NaiveDate) -> Vec<BillSplit> {
+        transactions::splits_between(&self.transactions.borrow().all_transactions(), from, to)
+    }
+
+    fn paid_split(&self, split: SplitRef) -> Option<BillSplit> {
+        transactions::paid_split(&self.transactions.borrow().all_transactions(), split)
+    }
+}
+
+/// `lib-transaction-import`'s two read ports answered by the Accounts and Categories stores, each
+/// borrowed for the one read (#994).
+#[derive(Clone)]
+pub struct StoredImportReads {
+    pub accounts: SharedAccountsStore,
+    pub categories: SharedCategoriesStore,
+}
+
+impl ImportAccounts for StoredImportReads {
+    fn import_account(&self, id: AccountId) -> Option<ImportAccount> {
+        accounts::import_account(&self.accounts.borrow().accounts().accounts(), id)
+    }
+}
+
+impl ImportCategories for StoredImportReads {
+    fn import_categories(&self) -> Vec<PayeeCategory> {
+        categories::payee_categories(&self.categories.borrow().categories().categories())
+    }
+}
+
+/// `lib-institutions`' `InstitutionUsage` answered by the Accounts store, borrowed for the one
+/// read (#994): the Accounts naming the Institution.
+#[derive(Clone)]
+pub struct StoredInstitutionReads {
+    pub accounts: SharedAccountsStore,
+}
+
+impl InstitutionUsage for StoredInstitutionReads {
+    fn institution_usage(&self, institution: InstitutionId) -> InstitutionUse {
+        InstitutionUse {
+            accounts: accounts::institution_accounts(
+                &self.accounts.borrow().accounts().accounts(),
+                institution,
+            ),
+        }
     }
 }
 
@@ -1333,7 +1227,9 @@ impl UnitHoldings for StoredUnitReads {
             .transactions
             .borrow()
             .account_transaction_counts(&accounts.unit_account_ids(id));
-        accounts.holdings(id, &counts)
+        accounts::holdings(&accounts.accounts().accounts(), id, |account| {
+            counts.get(&account).copied().unwrap_or_default()
+        })
     }
 }
 
@@ -1377,7 +1273,7 @@ impl PayeeUsage for StoredPayeeReads {
 
 impl PayeeCategories for StoredPayeeReads {
     fn payee_categories(&self) -> Vec<PayeeCategory> {
-        self.categories.borrow().payee_categories()
+        categories::payee_categories(&self.categories.borrow().categories().categories())
     }
 }
 
@@ -1457,13 +1353,13 @@ pub struct StoredDocumentReads {
 
 impl DocumentTransactions for StoredDocumentReads {
     fn document_transactions(&self) -> Vec<DocumentTransaction> {
-        self.transactions.borrow().document_transactions()
+        transactions::document_transactions(&self.transactions.borrow().all_transactions())
     }
 }
 
 impl DocumentPayees for StoredDocumentReads {
     fn document_payees(&self) -> Vec<DocumentPayee> {
-        self.payees.borrow().document_payees()
+        payees::document_payees(&self.payees.borrow().payees().payees())
     }
 }
 
@@ -1478,13 +1374,13 @@ impl DocumentAccounts for StoredDocumentReads {
 
 impl DocumentBillPlans for StoredDocumentReads {
     fn document_bill_plans(&self) -> Vec<DocumentBillPlan> {
-        self.bills.borrow().document_bill_plans()
+        bills::document_bill_plans(&self.bills.borrow().plans().bill_plans())
     }
 }
 
 impl DocumentItems for StoredDocumentReads {
     fn document_items(&self) -> Vec<DocumentItem> {
-        self.inventory.borrow().document_items()
+        inventory::document_items(&self.inventory.borrow().inventory().items())
     }
 }
 

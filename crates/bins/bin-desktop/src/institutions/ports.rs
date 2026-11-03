@@ -15,12 +15,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use gpui::{App, Entity};
-use lib_core::InstitutionId;
-use lib_database::{InstitutionsStore, SharedAccountsStore};
+use lib_database::{InstitutionsStore, SharedAccountsStore, StoredInstitutionReads};
 use lib_institutions::fake::InMemoryInstitutionUnits;
 use lib_institutions::{
-    InstitutionRepository, InstitutionUnit, InstitutionUnits, InstitutionUsage, InstitutionUse,
-    InstitutionsPorts,
+    InstitutionRepository, InstitutionUnit, InstitutionUnits, InstitutionUsage, InstitutionsPorts,
 };
 use lib_ledger::Ledger;
 
@@ -32,20 +30,10 @@ pub type DesktopPorts = Rc<RefCell<LedgerBackedPorts>>;
 /// `store`'s Institutions, with the Accounts naming each read from the Accounts store.
 pub struct LedgerBackedPorts {
     store: Box<dyn InstitutionsStore>,
-    usage: AccountsUsage,
+    usage: StoredInstitutionReads,
     /// The Units a Usual unit may name, copied from the Ledger (a halfway shim until Units answer
     /// through their own port, as the Accounts' do).
     units: InMemoryInstitutionUnits,
-}
-
-/// What names an Institution, answered from the Accounts store on each ask, so an Account added or
-/// moved while a Delete Dialog is open is seen when it confirms.
-struct AccountsUsage(SharedAccountsStore);
-
-impl InstitutionUsage for AccountsUsage {
-    fn institution_usage(&self, id: InstitutionId) -> InstitutionUse {
-        self.0.borrow().institution_usage(id)
-    }
 }
 
 impl LedgerBackedPorts {
@@ -55,7 +43,7 @@ impl LedgerBackedPorts {
     ) -> DesktopPorts {
         Rc::new(RefCell::new(Self {
             store,
-            usage: AccountsUsage(accounts),
+            usage: StoredInstitutionReads { accounts },
             units: InMemoryInstitutionUnits::default(),
         }))
     }
@@ -138,6 +126,8 @@ pub fn refresh(ledger: &Entity<LedgerStore>, cx: &mut App) {
 
 #[cfg(test)]
 mod tests {
+    use lib_core::InstitutionId;
+
     use super::*;
 
     #[test]

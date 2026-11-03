@@ -21,12 +21,9 @@ use lib_accounts::{
     AccountInstitution, AccountInstitutions, AccountRepository, AccountUnit, AccountUnits,
     AccountUsage, AccountsPorts,
 };
-use lib_bills::BillAccount;
 use lib_core::{AccountId, UnitId};
 use lib_database::{AccountsStore, StoredAccountReads};
 use lib_ledger::Ledger;
-use lib_units::Holding;
-use std::collections::HashMap;
 
 use crate::ledger_store::LedgerStore;
 
@@ -129,16 +126,8 @@ impl AccountsStore for LedgerBackedPorts {
         self.store.unit_account_ids(unit)
     }
 
-    fn holdings(&self, unit: UnitId, transactions: &HashMap<AccountId, usize>) -> Vec<Holding> {
-        self.store.holdings(unit, transactions)
-    }
-
     fn unit_accounts(&self, unit: UnitId) -> usize {
         self.store.unit_accounts(unit)
-    }
-
-    fn bill_accounts(&self) -> Vec<BillAccount> {
-        self.store.bill_accounts()
     }
 
     fn reload(&mut self) -> lib_database::Result<()> {
@@ -193,9 +182,20 @@ mod tests {
             expected
         );
 
-        if let Some(memory) = reads.budgets.borrow_mut().memory_mut() {
-            memory.budgets.truncate(1);
-        }
+        let mut budget = reads
+            .budgets
+            .borrow()
+            .budgets()
+            .budgets()
+            .into_iter()
+            .find(|budget| budget.account_ids.contains(&everyday))
+            .expect("a stub Budget counts the Account");
+        budget.account_ids.retain(|id| *id != everyday);
+        reads
+            .budgets
+            .borrow_mut()
+            .budgets_mut()
+            .upsert_budget(&budget);
         assert_eq!(
             AccountsPorts::usage(&*ports.borrow())
                 .account_usage(everyday)

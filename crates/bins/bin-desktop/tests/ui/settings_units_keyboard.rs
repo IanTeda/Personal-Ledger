@@ -21,7 +21,19 @@ fn on_units(app: &mut TestAppContext) -> Harness<'_> {
 }
 
 fn on_units_at(app: &mut TestAppContext, size: WindowSize) -> Harness<'_> {
-    let mut ui = Harness::new(app);
+    to_units_at(Harness::new(app), size)
+}
+
+/// As [`on_units`], on stores no Unit is in use in, so a seeded Unit can be deleted.
+fn on_units_unused(app: &mut TestAppContext) -> Harness<'_> {
+    on_units_unused_at(app, WindowSize::Large)
+}
+
+fn on_units_unused_at(app: &mut TestAppContext, size: WindowSize) -> Harness<'_> {
+    to_units_at(Harness::without_unit_users(app), size)
+}
+
+fn to_units_at(mut ui: Harness<'_>, size: WindowSize) -> Harness<'_> {
     ui.resize_to(size);
     to_units(&mut ui);
     ui
@@ -321,8 +333,7 @@ fn edit_unit_draws_the_real_usage_line(app: &mut TestAppContext) {
 
 #[gpui::test]
 fn a_confirmed_delete_below_x_large_raises_the_presenters_toast(app: &mut TestAppContext) {
-    let mut ui = on_units(app);
-    ui.drop_unit_users();
+    let mut ui = on_units_unused(app);
     ui.press("j j d");
     type_word(&mut ui, "vas");
     ui.press("enter");
@@ -363,8 +374,7 @@ fn a_notice_queued_while_a_dialog_handles_a_key_shows_once_the_key_returns(
 
 #[gpui::test]
 fn deleting_the_base_unit_moves_the_base_with_down(app: &mut TestAppContext) {
-    let mut ui = on_units(app);
-    ui.drop_unit_users();
+    let mut ui = on_units_unused(app);
     ui.unquote_units();
     ui.press("d");
     assert_eq!(
@@ -563,8 +573,7 @@ fn at_x_large_seeded_btc_docks_unit_with_its_precision_then_price_source_price_a
 
 #[gpui::test]
 fn at_x_large_an_outcome_lands_in_activity_without_a_toast(app: &mut TestAppContext) {
-    let mut ui = on_units_at(app, WindowSize::XLarge);
-    ui.drop_unit_users();
+    let mut ui = on_units_unused_at(app, WindowSize::XLarge);
     ui.press("j j d");
     type_word(&mut ui, "vas");
     ui.press("enter");
@@ -735,8 +744,7 @@ fn a_failed_reload_leaves_the_units_in_memory_with_an_error_toast(app: &mut Test
 
 #[gpui::test]
 fn deleting_a_unit_other_units_quote_shows_the_refusal_and_keeps_it(app: &mut TestAppContext) {
-    let mut ui = on_units(app);
-    ui.drop_unit_users();
+    let mut ui = on_units_unused(app);
     ui.press("d");
     type_word(&mut ui, "aud");
     ui.press("enter");
@@ -752,8 +760,7 @@ fn deleting_a_unit_other_units_quote_shows_the_refusal_and_keeps_it(app: &mut Te
 
 #[gpui::test]
 fn a_unit_a_budget_uses_opens_delete_as_deactivate_naming_the_budget(app: &mut TestAppContext) {
-    let mut ui = on_units(app);
-    ui.drop_unit_users();
+    let mut ui = on_units_unused(app);
     ui.add_budget_in(UnitId::SEED_VAS);
     ui.press("j j d");
     assert_eq!(ui.dialog(), Some("DeleteUnit"));
@@ -769,8 +776,7 @@ fn a_unit_a_budget_uses_opens_delete_as_deactivate_naming_the_budget(app: &mut T
 fn a_unit_a_location_names_opens_delete_as_deactivate_naming_the_location(
     app: &mut TestAppContext,
 ) {
-    let mut ui = on_units(app);
-    ui.drop_unit_users();
+    let mut ui = on_units_unused(app);
     ui.add_location_in(UnitId::SEED_VAS);
     ui.press("j j d");
     assert_eq!(ui.dialog(), Some("DeleteUnit"));
@@ -786,8 +792,7 @@ fn a_unit_a_location_names_opens_delete_as_deactivate_naming_the_location(
 fn a_unit_an_institution_names_asks_for_its_usual_unit_on_none_and_deletes_leaving_none(
     app: &mut TestAppContext,
 ) {
-    let mut ui = on_units(app);
-    ui.drop_unit_users();
+    let mut ui = on_units_unused(app);
     ui.press("j d");
     assert_eq!(ui.dialog(), Some("DeleteUnit"));
     assert_eq!(ui.dialog_value("in_use").as_deref(), Some("false"));
@@ -823,8 +828,7 @@ fn a_unit_an_institution_names_asks_for_its_usual_unit_on_none_and_deletes_leavi
 
 #[gpui::test]
 fn down_on_an_institutions_usual_unit_reassigns_it_as_the_unit_goes(app: &mut TestAppContext) {
-    let mut ui = on_units(app);
-    ui.drop_unit_users();
+    let mut ui = on_units_unused(app);
     ui.press("j d");
     ui.press("down");
     assert_eq!(
@@ -846,8 +850,7 @@ fn down_on_an_institutions_usual_unit_reassigns_it_as_the_unit_goes(app: &mut Te
 
 #[gpui::test]
 fn the_named_base_unit_asks_for_both_and_tab_moves_between_the_selects(app: &mut TestAppContext) {
-    let mut ui = on_units(app);
-    ui.drop_unit_users();
+    let mut ui = on_units_unused(app);
     ui.unquote_units();
     ui.name_usual_unit(InstitutionId::SEED_WESTPAC, UnitId::SEED_AUD);
     ui.press("d");
@@ -889,8 +892,7 @@ fn the_named_base_unit_asks_for_both_and_tab_moves_between_the_selects(app: &mut
 
 #[gpui::test]
 fn escape_cancels_a_named_units_delete_having_reassigned_nothing(app: &mut TestAppContext) {
-    let mut ui = on_units(app);
-    ui.drop_unit_users();
+    let mut ui = on_units_unused(app);
     ui.press("j d down");
     type_word(&mut ui, "btc");
 

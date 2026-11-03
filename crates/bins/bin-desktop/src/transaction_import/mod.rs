@@ -19,34 +19,13 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use gpui::{App, Entity};
-use lib_core::{AccountId, Clock};
+use lib_core::Clock;
 use lib_database::{SharedCategoriesStore, SharedTransactionsStore, TransactionImportAdapter};
-use lib_payees::PayeeCategory;
-use lib_transaction_import::{
-    ImportAccount, ImportAccounts, ImportCategories, ImportPorts, SeededStatement,
-};
+use lib_transaction_import::{ImportPorts, SeededStatement};
 
 use crate::ledger_store::LedgerStore;
 
 pub use view::page::ImportPage;
-
-/// The Accounts ports as the step reads the statement's Account, borrowed for each read.
-struct Accounts(crate::accounts::DesktopPorts);
-
-impl ImportAccounts for Accounts {
-    fn import_account(&self, id: AccountId) -> Option<ImportAccount> {
-        lib_database::AccountsStore::import_account(&*self.0.borrow(), id)
-    }
-}
-
-/// The Categories store as the step's Category select reads it, borrowed for each read.
-struct Categories(SharedCategoriesStore);
-
-impl ImportCategories for Categories {
-    fn import_categories(&self) -> Vec<PayeeCategory> {
-        self.0.borrow().payee_categories()
-    }
-}
 
 /// What the step reads and writes, built once over the stores the other modules hold: the import
 /// port and the Payees read over the Payees and Transactions stores, the Accounts and Categories
@@ -66,11 +45,15 @@ impl ImportStores {
             self.payees.clone(),
             self.transactions.clone(),
         )));
+        let reads = Rc::new(lib_database::StoredImportReads {
+            accounts: self.accounts.clone(),
+            categories: self.categories.clone(),
+        });
         ImportPorts {
             import: import.clone(),
             payees: import,
-            accounts: Rc::new(Accounts(self.accounts.clone())),
-            categories: Rc::new(Categories(self.categories.clone())),
+            accounts: reads.clone(),
+            categories: reads,
             statement: Rc::new(SeededStatement::stub(clock.today())),
         }
     }

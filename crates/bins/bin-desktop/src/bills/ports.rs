@@ -18,12 +18,11 @@ use gpui::{App, Entity};
 use lib_bills::interactor::PopulateSchedule;
 use lib_bills::{
     BillAccounts, BillCategories, BillPayees, BillPlan, BillPlanRepository, BillScheduleEntry,
-    BillScheduleRepository, BillSplit, BillTransactions, BillUnits, BillsPorts, BillsRepository,
-    PortsMut, SplitRef,
+    BillScheduleRepository, BillTransactions, BillUnits, BillsPorts, BillsRepository, PortsMut,
 };
 use lib_database::{
     SharedAccountsStore, SharedBillsStore, SharedCategoriesStore, SharedPayeesStore,
-    SharedTransactionsStore, SharedUnitsStore, StoredBillUnits,
+    SharedTransactionsStore, SharedUnitsStore, StoredBillReads, StoredBillUnits,
 };
 use lib_ledger::{Ledger, LedgerChange};
 
@@ -57,54 +56,11 @@ impl BillScheduleRepository for Store {
     }
 }
 
-/// The Payees store as Bills reads it, borrowed for each read for the reason [`Store`] is.
-struct Payees(SharedPayeesStore);
-
-impl BillPayees for Payees {
-    fn bill_payees(&self) -> Vec<lib_bills::BillPayee> {
-        self.0.borrow().bill_payees()
-    }
-}
-
-/// The Accounts store as Bills reads it, borrowed for each read for the reason [`Store`] is.
-struct Accounts(SharedAccountsStore);
-
-impl BillAccounts for Accounts {
-    fn bill_accounts(&self) -> Vec<lib_bills::BillAccount> {
-        self.0.borrow().bill_accounts()
-    }
-}
-
-/// The Categories store as Bills reads it, borrowed for each read for the reason [`Store`] is.
-struct Categories(SharedCategoriesStore);
-
-impl BillCategories for Categories {
-    fn bill_categories(&self) -> Vec<lib_bills::BillCategory> {
-        self.0.borrow().bill_categories()
-    }
-}
-
-/// The Transactions store as Bills reads it, borrowed for each read for the reason [`Store`] is.
-struct Transactions(SharedTransactionsStore);
-
-impl BillTransactions for Transactions {
-    fn splits_between(&self, from: chrono::NaiveDate, to: chrono::NaiveDate) -> Vec<BillSplit> {
-        self.0.borrow().bill_splits_between(from, to)
-    }
-
-    fn paid_split(&self, split: SplitRef) -> Option<BillSplit> {
-        self.0.borrow().bill_paid_split(split)
-    }
-}
-
-/// `store`'s Bill Plans and Bill Schedule, `payees`' Payees, `accounts`' Accounts, `categories`'
-/// Categories, `transactions`' Splits and `units`' Unit codes.
+/// `store`'s Bill Plans and Bill Schedule, `reads`' Payees, Accounts, Categories and Splits and
+/// `units`' Unit codes.
 pub struct LedgerBackedPorts {
     store: Store,
-    payees: Payees,
-    accounts: Accounts,
-    categories: Categories,
-    transactions: Transactions,
+    reads: StoredBillReads,
     units: StoredBillUnits,
 }
 
@@ -119,10 +75,12 @@ impl LedgerBackedPorts {
     ) -> DesktopPorts {
         Rc::new(RefCell::new(Self {
             store: Store(store),
-            payees: Payees(payees),
-            accounts: Accounts(accounts),
-            categories: Categories(categories),
-            transactions: Transactions(transactions),
+            reads: StoredBillReads {
+                payees,
+                accounts,
+                categories,
+                transactions,
+            },
             units: StoredBillUnits { units },
         }))
     }
@@ -167,19 +125,19 @@ impl BillsPorts for LedgerBackedPorts {
     }
 
     fn transactions(&self) -> &dyn BillTransactions {
-        &self.transactions
+        &self.reads
     }
 
     fn accounts(&self) -> &dyn BillAccounts {
-        &self.accounts
+        &self.reads
     }
 
     fn categories(&self) -> &dyn BillCategories {
-        &self.categories
+        &self.reads
     }
 
     fn payees(&self) -> &dyn BillPayees {
-        &self.payees
+        &self.reads
     }
 
     fn units(&self) -> &dyn BillUnits {
@@ -189,9 +147,9 @@ impl BillsPorts for LedgerBackedPorts {
     fn split_mut(&mut self) -> PortsMut<'_> {
         PortsMut {
             bills: &mut self.store,
-            transactions: &self.transactions,
-            accounts: &self.accounts,
-            categories: &self.categories,
+            transactions: &self.reads,
+            accounts: &self.reads,
+            categories: &self.reads,
         }
     }
 }
@@ -266,7 +224,7 @@ pub fn refresh(ledger: &Entity<LedgerStore>, cx: &mut App) {
 #[cfg(test)]
 mod tests {
     use chrono::NaiveDate;
-    use lib_bills::BillScheduleEntry;
+    use lib_bills::{BillScheduleEntry, SplitRef};
     use lib_database::AccountsStore as _;
 
     use super::*;

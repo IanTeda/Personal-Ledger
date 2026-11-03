@@ -72,7 +72,9 @@ impl UnitHoldings for StoredUsage {
         let counts = self
             .transactions
             .account_transaction_counts(&self.accounts.unit_account_ids(id));
-        self.accounts.holdings(id, &counts)
+        lib_database::account_holdings(&self.accounts.accounts().accounts(), id, |account| {
+            counts.get(&account).copied().unwrap_or_default()
+        })
     }
 }
 

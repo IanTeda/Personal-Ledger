@@ -63,7 +63,7 @@ pub use change_sets::ChangeSet;
 /// The per-domain adapters behind the VIPER modules' ports (ADR-0046).
 pub mod adapter;
 pub use adapter::account_deletion::AccountDeletionAdapter;
-pub use adapter::accounts::AccountsAdapter;
+pub use adapter::accounts::{AccountsAdapter, holdings as account_holdings};
 pub use adapter::bill_payments::BillPaymentsAdapter;
 pub use adapter::bills::BillsAdapter;
 pub use adapter::budgets::BudgetsAdapter;
@@ -77,8 +77,9 @@ pub use adapter::store::{
     FakeStores, InstitutionsStore, InventoryStore, PayeesStore, SharedAccountsStore,
     SharedBillsStore, SharedBudgetsStore, SharedCategoriesStore, SharedDocumentsStore,
     SharedInstitutionsStore, SharedInventoryStore, SharedPayeesStore, SharedTagsStore,
-    SharedTransactionsStore, SharedUnitsStore, StoredAccountReads, StoredBillUnits,
-    StoredBudgetReads, StoredDocumentReads, StoredPayeeReads, StoredUnitReads, TagsStore,
+    SharedTransactionsStore, SharedUnitsStore, StoredAccountReads, StoredBillReads,
+    StoredBillUnits, StoredBudgetCategories, StoredBudgetReads, StoredDocumentReads,
+    StoredImportReads, StoredInstitutionReads, StoredPayeeReads, StoredUnitReads, TagsStore,
     TransactionsStore, UnitsStore,
 };
 pub use adapter::tags::TagsAdapter;

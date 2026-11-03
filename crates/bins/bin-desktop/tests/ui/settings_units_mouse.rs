@@ -18,7 +18,15 @@ use lib_core::{InstitutionId, UnitId};
 use lib_toast::{Notice, ToastKind};
 
 fn on_units_at(app: &mut TestAppContext, size: WindowSize) -> Harness<'_> {
-    let mut ui = Harness::new(app);
+    to_units_at(Harness::new(app), size)
+}
+
+/// As [`on_units`], on stores no Unit is in use in, so a seeded Unit can be deleted.
+fn on_units_unused(app: &mut TestAppContext) -> Harness<'_> {
+    to_units_at(Harness::without_unit_users(app), WindowSize::Large)
+}
+
+fn to_units_at(mut ui: Harness<'_>, size: WindowSize) -> Harness<'_> {
     ui.resize_to(size);
     ui.press("g s");
     assert_eq!(ui.noun(), Noun::Settings);
@@ -170,8 +178,7 @@ fn the_delete_dialogs_cancel_button_closes_it(app: &mut TestAppContext) {
 
 #[gpui::test]
 fn deleting_a_unit_by_mouse_removes_its_row_once_the_code_is_typed(app: &mut TestAppContext) {
-    let mut ui = on_units(app);
-    ui.drop_unit_users();
+    let mut ui = on_units_unused(app);
     ui.unquote_units();
     let before = ui.unit_codes();
 
@@ -297,8 +304,7 @@ fn the_delete_confirm_button_deactivates_a_unit_in_use(app: &mut TestAppContext)
 
 #[gpui::test]
 fn the_new_base_select_moves_the_base_by_click(app: &mut TestAppContext) {
-    let mut ui = on_units(app);
-    ui.drop_unit_users();
+    let mut ui = on_units_unused(app);
     ui.unquote_units();
     ui.right_click("unit-row-0");
     ui.click("settings-units-menu-delete-unit");
@@ -318,8 +324,7 @@ fn the_new_base_select_moves_the_base_by_click(app: &mut TestAppContext) {
 
 #[gpui::test]
 fn an_institutions_usual_unit_select_reassigns_it_by_click(app: &mut TestAppContext) {
-    let mut ui = on_units(app);
-    ui.drop_unit_users();
+    let mut ui = on_units_unused(app);
     ui.right_click("unit-row-1");
     ui.click("settings-units-menu-delete-unit");
     assert_eq!(
@@ -347,8 +352,7 @@ fn an_institutions_usual_unit_select_reassigns_it_by_click(app: &mut TestAppCont
 
 #[gpui::test]
 fn the_named_base_units_two_selects_are_each_chosen_by_click(app: &mut TestAppContext) {
-    let mut ui = on_units(app);
-    ui.drop_unit_users();
+    let mut ui = on_units_unused(app);
     ui.unquote_units();
     ui.name_usual_unit(InstitutionId::SEED_WESTPAC, UnitId::SEED_AUD);
     ui.right_click("unit-row-0");
@@ -376,8 +380,7 @@ fn the_named_base_units_two_selects_are_each_chosen_by_click(app: &mut TestAppCo
 fn confirming_a_named_unit_untouched_by_click_leaves_its_institution_on_none(
     app: &mut TestAppContext,
 ) {
-    let mut ui = on_units(app);
-    ui.drop_unit_users();
+    let mut ui = on_units_unused(app);
     ui.right_click("unit-row-1");
     ui.click("settings-units-menu-delete-unit");
     ui.press("b t c");
@@ -392,8 +395,7 @@ fn confirming_a_named_unit_untouched_by_click_leaves_its_institution_on_none(
 
 #[gpui::test]
 fn cancel_on_a_named_units_delete_reassigns_nothing(app: &mut TestAppContext) {
-    let mut ui = on_units(app);
-    ui.drop_unit_users();
+    let mut ui = on_units_unused(app);
     ui.right_click("unit-row-1");
     ui.click("settings-units-menu-delete-unit");
     ui.click("delete-unit-usual-unit-0");
@@ -537,8 +539,7 @@ fn the_menus_test_entry_puts_not_built_on_the_status_line(app: &mut TestAppConte
 
 #[gpui::test]
 fn deleting_a_unit_other_units_quote_shows_the_refusal_and_keeps_it(app: &mut TestAppContext) {
-    let mut ui = on_units(app);
-    ui.drop_unit_users();
+    let mut ui = on_units_unused(app);
     ui.right_click("unit-row-0");
     ui.click("settings-units-menu-delete-unit");
     ui.press("a u d");

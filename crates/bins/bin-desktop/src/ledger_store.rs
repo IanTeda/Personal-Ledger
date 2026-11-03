@@ -377,44 +377,11 @@ impl LedgerStore {
     /// The Categories store's tree as the Budgets rules read it, for the Categories Monthly budget's
     /// save.
     pub fn budget_categories(&self) -> Vec<lib_budgets::BudgetCategory> {
-        self.categories.borrow().budget_categories()
-    }
-
-    /// Leaves no Unit in use, so a test can delete a seeded one: the Accounts and Inventory
-    /// stores' rows too, since the Units count their Accounts and Locations from them.
-    #[doc(hidden)]
-    pub fn drop_unit_users_for_test(&mut self, cx: &mut Context<'_, Self>) {
-        self.ledger.drop_unit_users_for_test();
-        if let Some(memory) = self.budgets.borrow_mut().memory_mut() {
-            memory.budgets.clear();
+        use lib_budgets::BudgetCategories as _;
+        lib_database::StoredBudgetCategories {
+            categories: self.categories.clone(),
         }
-        {
-            let mut inventory = self.inventory.borrow_mut();
-            for location in inventory.inventory().locations() {
-                inventory.delete_location(location.id);
-            }
-        }
-        self.copy_inventory();
-        let bills = self.bills.borrow().store();
-        if let Some(memory) = bills.borrow_mut().memory_mut() {
-            memory.plans.clear();
-            memory.entries.clear();
-        }
-        self.copy_bills();
-        let mut accounts = self.accounts.borrow_mut();
-        for account in accounts.accounts().accounts() {
-            accounts.accounts_mut().delete_account(account.id);
-        }
-        drop(accounts);
-        cx.emit(LedgerChanged {
-            what: BTreeSet::from([
-                Domain::Units,
-                Domain::Accounts,
-                Domain::Bills,
-                Domain::Budgets,
-            ]),
-        });
-        cx.notify();
+        .budget_categories()
     }
 
     /// Refreshes the Units read copy from the Units ports (#746's halfway shim), announcing
@@ -728,9 +695,9 @@ impl LedgerStore {
     /// Recounts an in-memory Tags store's usage from the Transactions read copy; a stored one
     /// counts in the file.
     fn count_tag_uses(&mut self) {
-        if let Some(usage) = self.tags.borrow_mut().usage_to_count() {
-            usage.uses = self.ledger.tag_uses();
-        }
+        self.tags
+            .borrow_mut()
+            .set_counted_uses(self.ledger.tag_uses());
     }
 
     /// Brings the Payees read copy in line with the port, returning whether it changed.

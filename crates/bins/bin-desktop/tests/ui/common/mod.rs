@@ -272,18 +272,6 @@ impl TransactionsStore for MiscountedTransactions {
         self.inner.transactions_mut()
     }
 
-    fn bill_splits_between(&self, from: NaiveDate, to: NaiveDate) -> Vec<lib_bills::BillSplit> {
-        self.inner.bill_splits_between(from, to)
-    }
-
-    fn bill_paid_split(&self, split: lib_bills::SplitRef) -> Option<lib_bills::BillSplit> {
-        self.inner.bill_paid_split(split)
-    }
-
-    fn budget_splits(&self, from: NaiveDate, to: NaiveDate) -> Vec<lib_budgets::BudgetSplit> {
-        self.inner.budget_splits(from, to)
-    }
-
     fn category_splits(&self, id: CategoryId) -> usize {
         self.inner.category_splits(id)
     }
@@ -822,6 +810,24 @@ impl<'a> Harness<'a> {
         configured_level: Option<lib_tracing::Levels>,
     ) -> Self {
         Self::build(app, logs, configured_level, Stores::fake(stub_fakes()))
+    }
+
+    /// As [`Harness::new`], on stores that leave no Unit in use, so a seeded Unit can be deleted
+    /// rather than deactivated: no Account, Bill Plan, Budget or Location names one.
+    pub fn without_unit_users(app: &'a mut TestAppContext) -> Self {
+        let mut fakes = stub_fakes();
+        fakes.accounts.accounts.accounts.clear();
+        fakes.bills.plans.clear();
+        fakes.bills.entries.clear();
+        fakes.budgets.budgets.clear();
+        fakes.inventory.locations.clear();
+        fakes.inventory.items.clear();
+        Self::build(
+            app,
+            lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
+            None,
+            Stores::fake(fakes),
+        )
     }
 
     /// As [`Harness::new`], under `[keybindings]` overrides.
@@ -1698,15 +1704,6 @@ impl<'a> Harness<'a> {
     pub fn empty_tags(&mut self) {
         self.shell.update(self.cx, |shell, cx| {
             shell.empty_tags_for_test(cx);
-            cx.notify();
-        });
-        self.cx.run_until_parked();
-    }
-
-    /// Leaves no Unit in use, so a seeded Unit can be deleted rather than deactivated.
-    pub fn drop_unit_users(&mut self) {
-        self.shell.update(self.cx, |shell, cx| {
-            shell.drop_unit_users_for_test(cx);
             cx.notify();
         });
         self.cx.run_until_parked();

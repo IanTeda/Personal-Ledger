@@ -684,10 +684,7 @@ mod tests {
 
         let (from, to) = (NaiveDate::MIN, NaiveDate::MAX);
         let splits = adapter.splits_between(from, to);
-        assert_eq!(
-            splits,
-            crate::TransactionsStore::bill_splits_between(&memory, from, to)
-        );
+        assert_eq!(splits, splits_between(&memory.transactions, from, to));
         assert_eq!(
             splits.len(),
             seeded.iter().map(|t| t.splits.len()).sum::<usize>()
@@ -712,10 +709,7 @@ mod tests {
         let paid = adapter
             .paid_split(second)
             .expect("its second Split is read");
-        assert_eq!(
-            Some(paid.clone()),
-            crate::TransactionsStore::bill_paid_split(&memory, second)
-        );
+        assert_eq!(Some(paid.clone()), paid_split(&memory.transactions, second));
         assert_eq!(
             (paid.date, paid.account_id, &paid.description),
             (split.date, split.account_id, &split.description)

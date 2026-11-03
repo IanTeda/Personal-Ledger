@@ -13,15 +13,6 @@ use lib_units::{PriceSourceRecord, UnitRow};
 use crate::Ledger;
 
 impl Ledger {
-    /// Drops every Account, Bill Plan and Budget so no Unit is in use, for a UI test that deletes a
-    /// seeded Unit.
-    #[doc(hidden)]
-    pub fn drop_unit_users_for_test(&mut self) {
-        self.accounts.clear();
-        self.bill_plans.clear();
-        self.budgets = lib_budgets::Budgets::default();
-    }
-
     /// Replaces the read copy of the Units, the base Unit and the stored Price Sources with what
     /// the Units ports hold. Returns whether anything changed, so a Client announces only a real
     /// change.

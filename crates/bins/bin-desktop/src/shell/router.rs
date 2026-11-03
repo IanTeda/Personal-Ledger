@@ -643,15 +643,6 @@ impl Root {
         });
     }
 
-    /// Leaves no Unit in use by an Account, a Bill Plan or a Budget, so a test can delete a
-    /// seeded Unit instead of meeting the in-use refusal.
-    #[doc(hidden)]
-    pub fn drop_unit_users_for_test(&mut self, cx: &mut App) {
-        self.open()
-            .ledger
-            .update(cx, |store, cx| store.drop_unit_users_for_test(cx));
-    }
-
     /// Adds a Location priced in `unit`, which then names it.
     #[doc(hidden)]
     pub fn add_location_in_for_test(&mut self, unit: lib_core::UnitId, cx: &mut App) {

@@ -137,7 +137,9 @@ impl AccountRepository for StoredAccounts {
 /// `AccountsStore`'s.
 impl InstitutionUsage for AccountsAdapter {
     fn institution_usage(&self, id: InstitutionId) -> InstitutionUse {
-        crate::AccountsStore::institution_usage(self, id)
+        InstitutionUse {
+            accounts: institution_accounts(&self.accounts.rows, id),
+        }
     }
 }
 
@@ -180,8 +182,9 @@ pub(crate) fn import_account(accounts: &[Account], id: AccountId) -> Option<Impo
 }
 
 /// The Accounts in `accounts` whose Unit is `unit`, in order, as the Units page lists them, each
-/// with the Transactions `transactions` says are booked to it.
-pub(crate) fn holdings(
+/// with the Transactions `transactions` says are booked to it. Public for the TUI's Units usage,
+/// which holds its stores unshared.
+pub fn holdings(
     accounts: &[Account],
     unit: UnitId,
     transactions: impl Fn(AccountId) -> usize,
@@ -368,8 +371,7 @@ mod tests {
     use crate::test_support::TransactionReadsFactory;
     use crate::writer::WriteFailure;
     use crate::{
-        BillsAdapter, InstitutionsAdapter, SharedBudgetsStore, StoredAccountReads,
-        TransactionsAdapter, UnitsAdapter,
+        BillsAdapter, InstitutionsAdapter, StoredAccountReads, TransactionsAdapter, UnitsAdapter,
     };
 
     /// The adapter with its usage read as a Client reads it: through [`StoredAccountReads`] over
@@ -400,7 +402,9 @@ mod tests {
                 &ports.adapter,
                 unit,
             ));
-        crate::AccountsStore::holdings(&ports.adapter, unit, &counts)
+        super::holdings(&ports.adapter.accounts.rows, unit, |id| {
+            counts.get(&id).copied().unwrap_or_default()
+        })
     }
 
     /// The adapter on one test database, with its pending batch. The stub's Units,
@@ -412,7 +416,7 @@ mod tests {
         writer: Writer,
         pending: PendingWrites,
         failures: mpsc::Receiver<WriteFailure>,
-        budgets: SharedBudgetsStore,
+        budgets: Rc<RefCell<InMemoryBudgets>>,
     }
 
     impl AdapterFactory {
@@ -537,12 +541,10 @@ mod tests {
             let transactions = (0..uses.transactions).map(|_| transaction_on(id)).collect();
             TransactionsAdapter::seed(&self.writer, transactions)
                 .expect("the Transactions are written");
-            let mut budgets = self.budgets.borrow_mut();
-            if let Some(memory) = budgets.memory_mut() {
-                memory
-                    .budgets
-                    .extend((0..uses.budgets).map(|_| budget_on(id)));
-            }
+            self.budgets
+                .borrow_mut()
+                .budgets
+                .extend((0..uses.budgets).map(|_| budget_on(id)));
         }
 
         fn break_writes(&mut self, _ports: &mut AdapterPorts) {
@@ -855,11 +857,6 @@ mod tests {
         assert_eq!(
             ImportAccounts::import_account(adapter, AccountId::new()),
             None
-        );
-        assert_eq!(
-            crate::adapter::store::AccountsStore::import_account(adapter, everyday),
-            import_account(&default_accounts(), everyday),
-            "the store answers as the in-memory rows do"
         );
     }
 
