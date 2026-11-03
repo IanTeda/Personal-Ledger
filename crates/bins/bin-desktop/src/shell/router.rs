@@ -20,7 +20,9 @@
 //! `log_feed`, `rail`, `render`, `root_router`, `status`, `toasts`) under `router/` that is an
 //! `impl Root` block, not the real module of the same name; a `_ui` suffix (`transactions_ui`)
 //! marks per-domain wiring. `open_ledger` is the exception: it holds [`OpenLedger`], everything
-//! built on a Ledger, which `Root` keeps as an `Option` (#975).
+//! built on a Ledger, which `Root` keeps as an `Option` (#975). With no Ledger open `Root` holds
+//! none, draws the Dashboard's no Ledger open content and Settings' This device pages, and refuses
+//! every input that needs a Ledger on the status line (#977).
 //!
 //! `Root` holds exactly one `gpui::FocusHandle` for the whole window rather than one per
 //! zone: the three `FocusZone`s are our own conceptual navigation state
@@ -75,7 +77,9 @@ use lib_database::Stores;
 /// The Shell's Presenter over the Desktop's Settings pages.
 type ShellPresenter = lib_shell::ShellPresenter<SettingsPage>;
 
-use gpui::{App, Context, FocusHandle, Focusable, ScrollHandle, Task};
+use gpui::{
+    App, AppContext as _, Context, Entity, FocusHandle, Focusable, ScrollHandle, Subscription, Task,
+};
 
 use lib_shell::{NavInput, ToastInput};
 
@@ -85,8 +89,8 @@ use crate::{
     documents::{DocumentsMode, LibraryScope, LibrarySort},
     navigation::active_view::ActiveView,
     navigation::explorer::{ExplorerFilters, FileExplorer},
-    navigation::nav::{NavState, RailMode},
-    settings::{SettingsPage, display::DisplayPreferences},
+    navigation::nav::{NavState, Noun, RailMode},
+    settings::{SettingsPage, display::DisplayPreferences, state::SettingsView},
     shell::state::ShellState,
     shell::view::{rail as rail_view, window_size::WindowSize},
 };
@@ -114,19 +118,25 @@ pub struct ShellLogs {
 /// Builds `Root` from persisted state the way the app does, so tests construct it identically.
 /// `clock` is a parameter so tests can pin, and move, the date the seeded stub data and scopes hang
 /// off. `stores` is the Ledger file start-up opened (the app's SQLite adapters or a test's
-/// in-memory ports), which the Shell opens as its Open Ledger through [`OpenLedger::build`].
+/// in-memory ports), which the Shell opens as its Open Ledger through [`OpenLedger::build`]; `None`
+/// starts with no Ledger open, on the Dashboard whatever noun the state file remembers.
 pub fn build(
     persisted: PersistedState,
     bindings: ShellBindings,
     logs: ShellLogs,
-    stores: Stores,
+    stores: Option<Stores>,
     clock: lib_core::Clock,
     focus_handle: FocusHandle,
     cx: &mut Context<'_, Root>,
 ) -> Root {
     crate::input::install(cx.weak_entity(), cx);
     let today = clock.today();
-    let nav = NavState::starting_at(persisted.noun);
+    let noun = if stores.is_some() {
+        persisted.noun
+    } else {
+        Noun::Dashboard
+    };
+    let nav = NavState::starting_at(noun);
     let documents_state = (
         DocumentsMode::from_id(persisted.documents_mode.as_deref()),
         LibraryScope::from_id(
@@ -142,8 +152,10 @@ pub fn build(
         .map(SettingsPage::from_id)
         .unwrap_or_default();
 
-    let mut shell = Root::with_clock(nav, focus_handle, clock);
-    shell.open_ledger(stores, &bindings.keybindings, cx);
+    let mut shell = Root::with_clock(nav, focus_handle, clock, cx);
+    if let Some(stores) = stores {
+        shell.open_ledger(stores, &bindings.keybindings, cx);
+    }
     shell.set_start_sidebar_minimised(persisted.start_sidebar_minimised, cx);
     shell.set_client_preferences(&persisted.preferences, cx);
     shell.set_settings_page(settings_page, cx);
@@ -200,6 +212,11 @@ pub struct Root {
     /// Everything built on the Ledger file, `None` with no Ledger open: the one source of truth
     /// for whether one is (#975).
     open: Option<OpenLedger>,
+    /// The Settings View, which stands with no Ledger open for its This device pages; the Open
+    /// Ledger gives it its This Ledger pages (#977).
+    settings: Entity<SettingsView>,
+    /// Keeps the Settings View's events reaching `Root` and its changes repainting it.
+    _settings_subscriptions: Vec<Subscription>,
     /// "Today" for the seed data and, later, the `this year` filter -- read at construction and
     /// moved on only when [`Self::presenter`] sees the Clock cross into a new calendar month, so
     /// everything derived from it (the seeded dates, the default range) agrees within a month.
@@ -213,9 +230,20 @@ pub struct Root {
 impl Root {
     /// Builds the Shell on `clock`, which dates the seeded stub data from the day it reads now, so
     /// tests pin it rather than live at the mercy of the wall clock. Builds no Ledger: that is
-    /// [`Self::open_ledger`]'s.
-    pub fn with_clock(nav: NavState, focus_handle: FocusHandle, clock: lib_core::Clock) -> Self {
+    /// [`Self::open_ledger`]'s. Settings comes up with its This device pages.
+    pub fn with_clock(
+        nav: NavState,
+        focus_handle: FocusHandle,
+        clock: lib_core::Clock,
+        cx: &mut Context<'_, Self>,
+    ) -> Self {
         let today = clock.today();
+        let settings = cx.new(SettingsView::new);
+        let _settings_subscriptions = vec![
+            Self::view_event_subscription(&settings, cx),
+            // The status line reads the page's state, so a change in it repaints `Root` too.
+            cx.observe(&settings, |_, _, cx| cx.notify()),
+        ];
         Self {
             focus_handle,
             view_x_scroll_handle: ScrollHandle::new(),
@@ -240,6 +268,8 @@ impl Root {
             file_explorer: None,
             explorer_filters: ExplorerFilters::default(),
             open: None,
+            settings,
+            _settings_subscriptions,
             today,
             presenter: ShellPresenter::new(clock, nav),
         }
@@ -254,10 +284,19 @@ impl Root {
         cx: &mut Context<'_, Self>,
     ) {
         let clock = self.presenter.clock().clone();
-        self.open = Some(OpenLedger::build(stores, keybindings, &clock, cx));
-        // The Views that read their keys after construction take `[keybindings]` here, so the
-        // Open Ledger comes up under them whoever opens it.
+        self.open = Some(OpenLedger::build(
+            stores,
+            keybindings,
+            &clock,
+            &self.settings,
+            cx,
+        ));
+        // The Views that read their keys and Display Preferences after construction take
+        // `[keybindings]` and the Preferences here, so the Open Ledger comes up under them whoever
+        // opens it.
         self.set_keymaps(keybindings, cx);
+        let display = self.display(cx);
+        self.push_display_preferences(display, cx);
     }
 
     /// Whether a Ledger is open: whether `Root` holds an Open Ledger.
@@ -265,34 +304,60 @@ impl Root {
         self.open.is_some()
     }
 
-    /// The Open Ledger. Start-up always opens one and nothing closes it until the no Ledger open
-    /// start (#977), so its absence is a bug for now.
+    /// Refuses an input that needs a Ledger while none is open, saying so on the status line.
+    /// Whether it refused.
+    fn refuse_without_ledger(&mut self) -> bool {
+        if self.ledger_open() {
+            return false;
+        }
+        self.set_status(crate::msg::desktop_status_refused_no_ledger(
+            ":open", ":new",
+        ));
+        true
+    }
+
+    /// Refuses showing `noun` while no Ledger is open, unless it stands without one
+    /// ([`crate::navigation::nav::needs_ledger`]). Whether it refused.
+    fn refuse_noun_without_ledger(&mut self, noun: Noun) -> bool {
+        crate::navigation::nav::needs_ledger(noun) && self.refuse_without_ledger()
+    }
+
+    /// The Ledger's read copy (ADR-0038), `None` with no Ledger open.
+    fn ledger<'a>(&self, cx: &'a App) -> Option<&'a lib_ledger::Ledger> {
+        Some(self.open.as_ref()?.ledger.read(cx).ledger())
+    }
+
+    /// The Open Ledger, for the test support and snapshots, which a test reads only on a Shell
+    /// built on a Ledger. Everything else asks `self.open` and has a no Ledger open path.
     #[expect(
         clippy::expect_used,
-        reason = "halfway state (#975): start-up always opens a Ledger and nothing drops it until #977"
+        reason = "test support only: a test reading Ledger state builds its Shell on a Ledger"
     )]
     fn open(&self) -> &OpenLedger {
         self.open
             .as_ref()
-            .expect("start-up opens a Ledger and nothing closes it until #977")
+            .expect("a test reading Ledger state builds its Shell on a Ledger")
     }
 
-    /// The Categories tree, read straight from the Ledger (ADR-0038).
+    /// The Categories tree, read straight from the Ledger (ADR-0038); none with no Ledger open.
     fn categories<'a>(&self, cx: &'a App) -> &'a [Category] {
-        self.open().ledger.read(cx).ledger().categories()
+        self.ledger(cx).map_or(&[], lib_ledger::Ledger::categories)
     }
 
-    /// The Bill Plans, from the Ledger's read copy of the Bills ports.
+    /// The Bill Plans, from the Ledger's read copy of the Bills ports; none with no Ledger open.
     fn bill_plans<'a>(&self, cx: &'a App) -> &'a [crate::bills::BillPlan] {
-        self.open().ledger.read(cx).ledger().bill_plans()
+        self.ledger(cx).map_or(&[], lib_ledger::Ledger::bill_plans)
     }
 
-    /// The Bill Schedule entries, from the Ledger's read copy of the Bills ports.
+    /// The Bill Schedule entries, from the Ledger's read copy of the Bills ports; none with no
+    /// Ledger open.
     fn bill_entries<'a>(&self, cx: &'a App) -> &'a [crate::bills::BillScheduleEntry] {
-        self.open().ledger.read(cx).ledger().bill_entries()
+        self.ledger(cx)
+            .map_or(&[], lib_ledger::Ledger::bill_entries)
     }
 
-    /// Restores the Documents mode, Library scope and sort from the last run.
+    /// Restores the Documents mode, Library scope and sort from the last run, onto the Open
+    /// Ledger's Documents page; nothing with no Ledger open.
     pub fn set_documents_state(
         &self,
         mode: DocumentsMode,
@@ -300,37 +365,48 @@ impl Root {
         sort: LibrarySort,
         cx: &mut App,
     ) {
-        self.open()
-            .views
-            .documents
-            .update(cx, |page, cx| page.set_persisted(mode, scope, sort, cx));
+        if let Some(open) = &self.open {
+            open.views
+                .documents
+                .update(cx, |page, cx| page.set_persisted(mode, scope, sort, cx));
+        }
     }
 
-    /// The Documents mode, Library scope and sort, for persistence.
-    pub fn documents_persisted(&self, cx: &App) -> (DocumentsMode, LibraryScope, LibrarySort) {
-        self.open().views.documents.read(cx).persisted()
+    /// The Documents mode, Library scope and sort, for persistence; `None` with no Ledger open,
+    /// which leaves the state file's as they were.
+    pub fn documents_persisted(
+        &self,
+        cx: &App,
+    ) -> Option<(DocumentsMode, LibraryScope, LibrarySort)> {
+        let open = self.open.as_ref()?;
+        Some(open.views.documents.read(cx).persisted())
     }
 
     /// Files dropped anywhere on the window land in the Inbox like `Import…`, but the page stays
-    /// where it is: the Toast and the rail badge say what arrived.
+    /// where it is: the Toast and the rail badge say what arrived. With no Ledger open there is no
+    /// Inbox, so the drop is refused.
     pub fn drop_documents(&mut self, paths: &[std::path::PathBuf], cx: &mut App) {
-        self.open()
-            .views
+        let Some(open) = &self.open else {
+            self.refuse_without_ledger();
+            return;
+        };
+        open.views
             .documents
             .update(cx, |page, cx| page.drop_paths(paths, cx));
     }
 
     /// The last-visited Settings page, for persistence.
     pub fn settings_page(&self, cx: &App) -> SettingsPage {
-        self.open().views.settings.read(cx).selected_section()
+        self.settings.read(cx).selected_section()
     }
 
+    /// Restores the last-visited Settings page at launch. A This Ledger page with no Ledger open
+    /// restores General instead.
     pub fn set_settings_page(&mut self, section: SettingsPage, cx: &mut App) {
-        self.navigate(NavInput::RestoreSettingsPage(section));
-        self.open()
-            .views
-            .settings
+        self.settings
             .update(cx, |v, cx| v.set_selected_section(cx, section));
+        let restored = self.settings.read(cx).selected_section();
+        self.navigate(NavInput::RestoreSettingsPage(restored));
     }
 
     pub fn explorer_filters(&self) -> ExplorerFilters {
@@ -360,9 +436,7 @@ impl Root {
             start_sidebar_minimised: minimised,
             ..self.display(cx)
         };
-        self.open()
-            .views
-            .settings
+        self.settings
             .update(cx, |view, cx| view.set_display(display, cx));
     }
 
@@ -378,8 +452,7 @@ impl Root {
             date_style: preferences.date_style,
             ..self.display(cx)
         };
-        let settings = self.open().views.settings.clone();
-        settings.update(cx, |view, cx| {
+        self.settings.update(cx, |view, cx| {
             view.set_display(display, cx);
             view.general().update(cx, |page, cx| {
                 page.set_preferences(preferences.on_start, preferences.toasts_on, cx);
@@ -391,8 +464,7 @@ impl Root {
 
     /// Shows `device` on Settings › General: what start-up knows of this device.
     pub fn set_this_device(&mut self, device: crate::settings::general::ThisDevice, cx: &mut App) {
-        let settings = self.open().views.settings.clone();
-        settings.update(cx, |view, cx| {
+        self.settings.update(cx, |view, cx| {
             view.general()
                 .update(cx, |page, cx| page.set_this_device(device, cx));
         });
@@ -401,7 +473,7 @@ impl Root {
     /// The Client-scoped Preferences as they stand, for the state file at quit.
     pub fn client_preferences(&self, cx: &App) -> lib_core::ClientPreferences {
         let display = self.display(cx);
-        let general = self.open().views.settings.read(cx).general().read(cx);
+        let general = self.settings.read(cx).general().read(cx);
         let colours = cx.global::<crate::theme::colours::Colours>();
         lib_core::ClientPreferences {
             toasts_on: general.toasts_on(),
@@ -416,7 +488,7 @@ impl Root {
 
     /// The Display Preferences, which the Settings View owns (ADR-0037).
     fn display(&self, cx: &App) -> DisplayPreferences {
-        self.open().views.settings.read(cx).display(cx)
+        self.settings.read(cx).display(cx)
     }
 
     /// The global keys and the keys every module Dialog shares, under `config`'s overrides, which
@@ -427,20 +499,19 @@ impl Root {
         self.palette_entries = command::entries(config);
         self.presenter.set_keymap(config);
         self.state.dialog_keymap = lib_shell::dialog_keymap(config);
-        self.open()
-            .views
+        let Some(open) = &self.open else {
+            return;
+        };
+        open.views
             .transactions
             .update(cx, |view, _| view.set_keymaps(config));
-        self.open()
-            .views
+        open.views
             .import
             .update(cx, |view, _| view.set_keymaps(config));
-        self.open()
-            .views
+        open.views
             .budgets
             .update(cx, |page, _| page.set_keymaps(config));
-        self.open()
-            .views
+        open.views
             .documents
             .update(cx, |page, _| page.set_keymaps(config));
     }
@@ -603,14 +674,21 @@ impl Root {
     fn active_view(&self, cx: &App) -> ActiveView {
         ActiveView::derive(
             self.nav().noun(),
-            self.open().views.settings.read(cx).selected_section(),
-            self.open().views.import.read(cx).is_open(),
+            self.settings.read(cx).selected_section(),
+            self.open
+                .as_ref()
+                .is_some_and(|open| open.views.import.read(cx).is_open()),
         )
     }
 
-    /// The active View as `Root` forwards to it (ADR-0037).
+    /// The active View as `Root` forwards to it (ADR-0037): with no Ledger open, Settings or the
+    /// no Ledger open content.
     fn active_view_entity(&self, cx: &App) -> ActiveViewEntity {
-        ActiveViewEntity::new(self.active_view(cx), &self.open().views)
+        ActiveViewEntity::new(
+            self.active_view(cx),
+            self.open.as_ref().map(|open| &open.views),
+            &self.settings,
+        )
     }
 
     /// Hands the Toasts Preference to the Toasts, after a change on Settings › General or
@@ -620,30 +698,30 @@ impl Root {
             .toast(ToastInput::Display(lib_toast::Display { toasts_on }));
     }
 
-    /// Hands the Display Preferences to the Views that read them, after a Settings change.
+    /// Hands the Display Preferences to the Views that read them, after a Settings change; with no
+    /// Ledger open there are none, and opening one hands them over.
     fn push_display_preferences(&mut self, display: DisplayPreferences, cx: &mut App) {
+        let Some(open) = &self.open else {
+            return;
+        };
         let (date_style, glyphs, density) = (
             display.date_style,
             display.status_glyphs,
             display.row_density,
         );
-        self.open()
-            .views
+        open.views
             .dashboard
             .update(cx, |view, cx| view.set_display(date_style, glyphs, cx));
-        self.open()
-            .views
+        open.views
             .bills
             .update(cx, |view, cx| view.set_display(date_style, glyphs, cx));
-        self.open().views.transactions.update(cx, |view, cx| {
+        open.views.transactions.update(cx, |view, cx| {
             view.set_display(date_style, glyphs, density, cx)
         });
-        self.open()
-            .views
+        open.views
             .documents
             .update(cx, |view, cx| view.set_display(date_style, cx));
-        self.open()
-            .views
+        open.views
             .budgets
             .update(cx, |page, cx| page.set_display(date_style, cx));
     }
@@ -740,10 +818,10 @@ mod tests {
     }
 
     #[test]
-    fn the_empty_state_hint_tags_both_commands_as_clickable_spans() {
+    fn the_no_ledger_hint_tags_both_commands_as_clickable_spans() {
         crate::locale::init_for_tests();
         let tagged: Vec<(Option<String>, String)> =
-            crate::msg::desktop_empty_state_hint(":open", ":new")
+            crate::msg::desktop_no_ledger_hint(":open", ":new")
                 .into_iter()
                 .filter(|segment| segment.tag.is_some())
                 .map(|segment| (segment.tag, segment.text))
@@ -758,11 +836,11 @@ mod tests {
     }
 
     #[test]
-    fn the_empty_state_and_hint_strips_render_in_the_pseudo_locale() {
+    fn the_no_ledger_content_and_hint_strips_render_in_the_pseudo_locale() {
         crate::locale::init_for_tests();
         lib_locale::with_locale(lib_locale::Locale::EnXa, || {
-            assert!(crate::msg::desktop_empty_state_title().starts_with('['));
-            let hint = crate::msg::desktop_empty_state_hint(":open", ":new");
+            assert!(crate::msg::desktop_no_ledger_title().starts_with('['));
+            let hint = crate::msg::desktop_no_ledger_hint(":open", ":new");
             assert!(hint.iter().any(|s| s.tag.as_deref() == Some("open")));
             assert!(hint.iter().any(|s| s.tag.as_deref() == Some("new")));
             for (_, action) in settings_plain_page_hints() {

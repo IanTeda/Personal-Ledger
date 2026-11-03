@@ -87,6 +87,8 @@ pub struct StatusLine {
     toast_echo: Option<(ToastKind, String)>,
     /// Replaces the mode badge's text: a page's own mode (6e's `IMPORT`), drawn like `Normal`.
     mode_label: Option<String>,
+    /// Whether a Ledger is open: the right-hand side names its file, or says none is open.
+    ledger_open: bool,
 }
 
 impl StatusLine {
@@ -101,7 +103,14 @@ impl StatusLine {
             page: None,
             toast_echo: None,
             mode_label: None,
+            ledger_open: true,
         }
+    }
+
+    /// Says whether a Ledger is open, for the right-hand side's file or "No ledger open…".
+    pub fn ledger_open(mut self, open: bool) -> Self {
+        self.ledger_open = open;
+        self
     }
 
     pub fn toast_echo(mut self, echo: Option<(ToastKind, String)>) -> Self {
@@ -129,11 +138,12 @@ impl StatusLine {
 impl RenderOnce for StatusLine {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let window_size = WindowSize::of(window);
-        let right = match (&self.command_echo, &self.page) {
-            (Some((_, hint)), _) => hint.clone(),
-            (None, Some(page)) => page.right.clone(),
-            (None, None) => file_path(window_size),
-        };
+        let right = right_side(
+            self.command_echo.as_ref(),
+            self.page.as_ref(),
+            self.ledger_open,
+            window_size,
+        );
         let badge_label = lib_locale::format::upper(
             &self
                 .mode_label
@@ -397,6 +407,22 @@ fn command_query_echo(query: &str, cx: &App) -> impl IntoElement {
         .child(div().w(px(2.0)).h(px(13.0)).bg(color::cursor(cx)))
 }
 
+/// The status line's right-hand side: the command surface's "esc closes" hint, else the page's
+/// note, else the open Ledger's file, or "No ledger open…" with none open.
+fn right_side(
+    command_echo: Option<&(String, String)>,
+    page: Option<&PageStatus>,
+    ledger_open: bool,
+    window_size: WindowSize,
+) -> String {
+    match (command_echo, page) {
+        (Some((_, hint)), _) => hint.clone(),
+        (None, Some(page)) => page.right.clone(),
+        (None, None) if ledger_open => file_path(window_size),
+        (None, None) => crate::msg::desktop_status_no_ledger_file(),
+    }
+}
+
 /// The open Ledger's own file path, moved here from the top bar's brand tile (`crate::shell::view::topbar`)
 /// -- representative content, not a real path yet (lands with the sync/open-file tickets,
 /// #164/#165). Shortened to its file name at Medium (DESKTOP-116).
@@ -419,6 +445,32 @@ mod tests {
 
     fn echo() -> Option<(ToastKind, String)> {
         Some((ToastKind::Success, "Deleted tag Food".to_string()))
+    }
+
+    #[test]
+    fn with_no_ledger_open_the_right_side_says_so_unless_a_page_or_command_has_it() {
+        crate::locale::init_for_tests();
+        assert_eq!(
+            right_side(None, None, false, WindowSize::Large),
+            "No ledger open…"
+        );
+        assert_eq!(
+            right_side(None, None, true, WindowSize::Large),
+            file_path(WindowSize::Large)
+        );
+        let page = PageStatus {
+            hints: Vec::new(),
+            right: "this device".to_string(),
+        };
+        assert_eq!(
+            right_side(None, Some(&page), false, WindowSize::Large),
+            "this device"
+        );
+        let echo = (String::new(), "esc close command window".to_string());
+        assert_eq!(
+            right_side(Some(&echo), None, false, WindowSize::Large),
+            "esc close command window"
+        );
     }
 
     #[test]

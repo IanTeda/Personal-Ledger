@@ -133,6 +133,8 @@ pub struct PrimaryRail {
     budget_over: usize,
     /// The Documents row's badge: how many Documents wait in the Inbox.
     documents_inbox: usize,
+    /// Whether a Ledger is open; with none, every row that needs one is drawn muted (#977).
+    ledger_open: bool,
 }
 
 impl PrimaryRail {
@@ -154,7 +156,20 @@ impl PrimaryRail {
             bill_attention: 0,
             budget_over: 0,
             documents_inbox: 0,
+            ledger_open: true,
         }
+    }
+
+    /// Says whether a Ledger is open: with none, the rows a click refuses are drawn muted.
+    pub fn ledger_open(mut self, open: bool) -> Self {
+        self.ledger_open = open;
+        self
+    }
+
+    /// Whether `noun`'s row is drawn muted: no Ledger is open and the noun needs one. The Dashboard
+    /// and Settings stand without one.
+    fn muted(&self, noun: Noun) -> bool {
+        !self.ledger_open && crate::navigation::nav::needs_ledger(noun)
     }
 
     /// Sets the Bills row's Needs Attention badge; zero draws none.
@@ -290,6 +305,8 @@ impl PrimaryRail {
         let selected = row.noun == self.active;
         let icon_color = if selected {
             color::selection_text(cx)
+        } else if self.muted(row.noun) {
+            color::faint_text(cx)
         } else {
             color::foreground(cx)
         };
@@ -354,6 +371,13 @@ impl PrimaryRail {
                 color::selection_text(cx),
                 gpui::FontWeight::EXTRA_BOLD,
                 color::selection_muted(cx),
+            )
+        } else if self.muted(row.noun) {
+            (
+                color::faint_text(cx),
+                color::faint_text(cx),
+                gpui::FontWeight::NORMAL,
+                color::faint_text(cx),
             )
         } else {
             (

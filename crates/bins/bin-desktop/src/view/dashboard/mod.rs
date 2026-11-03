@@ -16,9 +16,9 @@ use gpui_component::chart::{LineChart, PieChart};
 
 use crate::{bills::EntryId, msg, theme::color};
 
-/// A click on the empty state's own `:open`/`:new` text (issue #167): the clicked command's
+/// A click on the no Ledger open content's own `:open`/`:new` text (issue #167): the clicked command's
 /// name, which `Root` looks up with `command::find` and runs as the palette would.
-pub type OnEmptyStateCommandClick = Rc<dyn Fn(&'static str, &mut Window, &mut App)>;
+pub type OnNoLedgerCommandClick = Rc<dyn Fn(&'static str, &mut Window, &mut App)>;
 
 /// A Bill row's click: hands off to the Bills Schedule tab with that entry selected.
 pub type OnBillClick = Rc<dyn Fn(EntryId, &mut Window, &mut App)>;
@@ -668,7 +668,7 @@ fn bill_row(
         .child(text)
 }
 
-/// The "1a" cold-start empty state: "No ledger open" centered in the main pane, `:open`/`:new`
+/// The "1a" no Ledger open content: "No ledger open" centered in the main pane, `:open`/`:new`
 /// named in the body copy (`docs/ux/desktop-mockups/01-shell/README.md`'s "Main pane"
 /// bullet). `gpui` 0.2's `Styled` trait has no letter-spacing hook, so the title's `-.01em`
 /// tracking from the spec has no equivalent here -- a real, not merely unverified, gap.
@@ -676,13 +676,11 @@ fn bill_row(
 /// Both command names are real click targets (issue #167), not just copy: clicking one lands
 /// in exactly the state running it from the palette would (this shell's own repeated invariant
 /// -- rail click, `g`-jump and the palette already all call `NavState::set_noun` identically).
-pub(super) fn empty_state(
-    on_command_click: OnEmptyStateCommandClick,
-    cx: &App,
-) -> gpui::AnyElement {
-    let command = |name: &'static str, on_command_click: OnEmptyStateCommandClick, text: String| {
+pub fn no_ledger_content(on_command_click: OnNoLedgerCommandClick, cx: &App) -> gpui::AnyElement {
+    let command = |name: &'static str, on_command_click: OnNoLedgerCommandClick, text: String| {
         div()
-            .id(SharedString::from(format!("empty-state-{name}")))
+            .id(SharedString::from(format!("no-ledger-{name}")))
+            .debug_selector(move || format!("no-ledger-{name}"))
             .cursor_pointer()
             .font_weight(gpui::FontWeight::EXTRA_BOLD)
             .text_color(color::foreground(cx))
@@ -703,7 +701,7 @@ pub(super) fn empty_state(
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_size(px(26.0))
                 .line_height(relative(1.1))
-                .child(msg::desktop_empty_state_title()),
+                .child(msg::desktop_no_ledger_title()),
         )
         .child(
             div()
@@ -715,7 +713,7 @@ pub(super) fn empty_state(
                 .text_size(px(13.0))
                 .text_color(color::muted(cx))
                 .children(
-                    msg::desktop_empty_state_hint(":open", ":new")
+                    msg::desktop_no_ledger_hint(":open", ":new")
                         .into_iter()
                         .map(|segment| match segment.tag.as_deref() {
                             Some("open") => command("open", on_command_click.clone(), segment.text)

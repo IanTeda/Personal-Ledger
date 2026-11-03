@@ -6,7 +6,7 @@
 use super::common;
 use bin_desktop::shell::router::SettingsTagsSnapshot;
 
-use common::{Harness, config_for};
+use common::{Harness, new_ledger};
 use gpui::TestAppContext;
 
 /// Settings on the Tags page (nine presses down the index) with focus stepped into it.
@@ -40,10 +40,12 @@ fn select(ui: &mut Harness<'_>, name: &str) {
 #[gpui::test]
 fn an_added_tag_and_a_removed_used_tag_are_there_after_a_restart(app: &mut TestAppContext) {
     let dir = tempfile::tempdir().expect("a temporary directory");
-    let config = config_for(&dir.path().join("ledger.pldb"));
+    let config = new_ledger(&dir.path().join("ledger.pldb"));
 
     let names = {
-        let storage = bin_desktop::start_on(&config, common::today()).expect("a new Ledger starts");
+        let storage = bin_desktop::start_on(&config, common::today())
+            .storage()
+            .expect("a new Ledger starts");
         let writer = storage.writer.clone();
         let mut ui = Harness::with_storage(app, storage);
         in_tags(&mut ui);
@@ -65,7 +67,9 @@ fn an_added_tag_and_a_removed_used_tag_are_there_after_a_restart(app: &mut TestA
         names
     };
 
-    let storage = bin_desktop::start_on(&config, common::today()).expect("the Ledger starts again");
+    let storage = bin_desktop::start_on(&config, common::today())
+        .storage()
+        .expect("the Ledger starts again");
     let mut ui = Harness::with_storage(app, storage);
     in_tags(&mut ui);
     assert_eq!(ui.settings::<SettingsTagsSnapshot>().tag_names, names);

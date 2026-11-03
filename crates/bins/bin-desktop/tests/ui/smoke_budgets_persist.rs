@@ -11,7 +11,7 @@
 use super::common;
 
 use bin_desktop::navigation::nav::Noun;
-use common::{Harness, config_for};
+use common::{Harness, new_ledger};
 use gpui::TestAppContext;
 
 /// The Budget names the Switcher lists, closing it again.
@@ -27,10 +27,12 @@ fn budget_names(ui: &mut Harness<'_>) -> Vec<String> {
 #[gpui::test]
 fn an_added_budget_is_there_after_a_restart(app: &mut TestAppContext) {
     let dir = tempfile::tempdir().expect("a temporary directory");
-    let config = config_for(&dir.path().join("ledger.pldb"));
+    let config = new_ledger(&dir.path().join("ledger.pldb"));
 
     let names = {
-        let storage = bin_desktop::start_on(&config, common::today()).expect("a new Ledger starts");
+        let storage = bin_desktop::start_on(&config, common::today())
+            .storage()
+            .expect("a new Ledger starts");
         let writer = storage.writer.clone();
         let mut ui = Harness::with_storage(app, storage);
         assert!(!budget_names(&mut ui).contains(&"trip".to_string()));
@@ -42,7 +44,9 @@ fn an_added_budget_is_there_after_a_restart(app: &mut TestAppContext) {
         names
     };
 
-    let storage = bin_desktop::start_on(&config, common::today()).expect("the Ledger starts again");
+    let storage = bin_desktop::start_on(&config, common::today())
+        .storage()
+        .expect("the Ledger starts again");
     let mut ui = Harness::with_storage(app, storage);
     assert_eq!(budget_names(&mut ui), names);
 }

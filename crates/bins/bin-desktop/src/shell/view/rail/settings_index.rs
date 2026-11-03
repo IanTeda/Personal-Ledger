@@ -25,14 +25,22 @@ pub struct SettingsIndexRail {
     selected: SettingsPage,
     /// Whether keyboard focus is on the index rather than the page.
     focused: bool,
+    /// Whether a Ledger is open; with none, the This Ledger entries are drawn muted.
+    ledger_open: bool,
     on_click: OnEntryClick,
 }
 
 impl SettingsIndexRail {
-    pub fn new(selected: SettingsPage, focused: bool, on_click: OnEntryClick) -> Self {
+    pub fn new(
+        selected: SettingsPage,
+        focused: bool,
+        ledger_open: bool,
+        on_click: OnEntryClick,
+    ) -> Self {
         Self {
             selected,
             focused,
+            ledger_open,
             on_click,
         }
     }
@@ -61,9 +69,11 @@ impl RenderOnce for SettingsIndexRail {
             .children(ScopeGroup::ALL.into_iter().flat_map(|group| {
                 let on_click = self.on_click.clone();
                 let selected = self.selected;
+                let ledger_open = self.ledger_open;
                 std::iter::once(group_heading(group, cx).into_any_element()).chain(
                     group.pages().map(move |section| {
-                        entry_row(section, section == selected, on_click.clone(), cx)
+                        let muted = section.needs_ledger() && !ledger_open;
+                        entry_row(section, section == selected, muted, on_click.clone(), cx)
                             .into_any_element()
                     }),
                 )
@@ -96,9 +106,11 @@ fn rail_label(label: &str, cx: &App) -> impl IntoElement {
         .child(label.to_string())
 }
 
+/// One page's entry; `muted` for a This Ledger page with no Ledger open, which a click refuses.
 fn entry_row(
     section: SettingsPage,
     active: bool,
+    muted: bool,
     on_click: OnEntryClick,
     cx: &App,
 ) -> impl IntoElement {
@@ -108,6 +120,7 @@ fn entry_row(
         .cursor_pointer()
         .py(px(8.0))
         .px(px(14.0))
+        .when(muted, |this| this.text_color(color::faint_text(cx)))
         .when(active, |this| {
             this.bg(color::selection_background(cx))
                 .text_color(color::selection_text(cx))

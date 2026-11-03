@@ -214,27 +214,40 @@ impl Render for Root {
             cancel: on_settings_dialog_cancel.clone(),
             confirm: on_settings_dialog_confirm.clone(),
         };
-        // The default Budget's current month: the rail badge and the Dashboard's budget list.
-        let budget_reads = self.open().views.budgets.read(cx).ports().reads();
-        let default_budget_figures = self
-            .open()
-            .ledger
-            .read(cx)
-            .ledger()
-            .budgets()
-            .default_budget()
-            .map(|budget| {
-                budgets::period_figures(budget, &*budget_reads, Period::of(self.today), self.today)
-            });
+        // The default Budget's current month: the rail badge and the Dashboard's budget list. With
+        // no Ledger open the rail has no badges.
+        let default_budget_figures = self.open.as_ref().and_then(|open| {
+            let budget_reads = open.views.budgets.read(cx).ports().reads();
+            open.ledger
+                .read(cx)
+                .ledger()
+                .budgets()
+                .default_budget()
+                .map(|budget| {
+                    budgets::period_figures(
+                        budget,
+                        &*budget_reads,
+                        Period::of(self.today),
+                        self.today,
+                    )
+                })
+        });
+        let documents_inbox = self
+            .open
+            .as_ref()
+            .map_or(0, |open| open.views.documents.read(cx).inbox_count());
+        let on_no_ledger_command: crate::view::dashboard::OnNoLedgerCommandClick = {
+            let entity = entity.clone();
+            Rc::new(move |name, _window, cx| {
+                entity.update(cx, |shell, cx| {
+                    shell.handle_no_ledger_command_click(name, cx)
+                });
+            })
+        };
 
         // The active View's own element, told whether the View zone has focus before the status
         // line reads its page status.
-        let active_element = active_entity.element(
-            focus == FocusZone::View,
-            self.ledger_open(),
-            window_size,
-            cx,
-        );
+        let active_element = active_entity.element(focus == FocusZone::View, window_size, cx);
         let view_status = self.view_status(cx);
         let active_view = self.active_view(cx);
 
@@ -299,9 +312,8 @@ impl Render for Root {
                                         .as_ref()
                                         .map_or(0, |figures| figures.over_count),
                                 )
-                                .documents_inbox(
-                                    self.open().views.documents.read(cx).inbox_count(),
-                                ),
+                                .documents_inbox(documents_inbox)
+                                .ledger_open(self.ledger_open()),
                             )
                             .when(
                                 self.nav().context_rail_visible(self.ledger_open()),
@@ -314,9 +326,12 @@ impl Render for Root {
                                 },
                             )
                             .child(match active_entity {
-                                ActiveViewEntity::Shell(view) => {
-                                    render_view(view, focus == FocusZone::View, cx)
-                                }
+                                ActiveViewEntity::Shell(view) => render_view(
+                                    view,
+                                    focus == FocusZone::View,
+                                    on_no_ledger_command,
+                                    cx,
+                                ),
                                 _ => view_frame(
                                     active_element,
                                     active_entity.min_width(),
@@ -333,6 +348,7 @@ impl Render for Root {
             )
             .child(
                 StatusLine::new(self.presenter.view_model(), self.command_echo())
+                    .ledger_open(self.ledger_open())
                     .toast_echo(
                         self.presenter
                             .toasts()
@@ -391,12 +407,19 @@ impl Render for Root {
     }
 }
 
-/// The active noun's own view interior, for a View `Root` still draws: the placeholder Nouns. The
-/// pane is focus-bordered, a property of the `View` zone itself, and does not scroll: a placeholder
-/// has no content to move through.
-fn render_view(view: ShellView, focused: bool, cx: &gpui::App) -> gpui::AnyElement {
+/// The active noun's own view interior, for a View `Root` still draws: the placeholder Nouns and
+/// the no Ledger open content, whose `:open` and `:new` run through `on_command_click`. The pane is
+/// focus-bordered, a property of the `View` zone itself, and does not scroll: neither has content
+/// to move through.
+fn render_view(
+    view: ShellView,
+    focused: bool,
+    on_command_click: crate::view::dashboard::OnNoLedgerCommandClick,
+    cx: &gpui::App,
+) -> gpui::AnyElement {
     let content = match view {
         ShellView::Placeholder(noun) => placeholder::render(noun, cx),
+        ShellView::NoLedger => crate::view::dashboard::no_ledger_content(on_command_click, cx),
     };
 
     div()

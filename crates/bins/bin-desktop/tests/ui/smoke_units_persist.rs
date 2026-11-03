@@ -6,7 +6,7 @@
 use super::common;
 
 use bin_desktop::navigation::nav::Noun;
-use common::{Harness, config_for};
+use common::{Harness, new_ledger};
 use gpui::TestAppContext;
 
 /// Opens the Units page and adds `code`, a Currency, through its Add Dialog.
@@ -30,10 +30,12 @@ fn type_word(ui: &mut Harness<'_>, word: &str) {
 #[gpui::test]
 fn a_unit_added_on_a_new_ledger_is_there_after_a_restart(app: &mut TestAppContext) {
     let dir = tempfile::tempdir().expect("a temporary directory");
-    let config = config_for(&dir.path().join("ledger.pldb"));
+    let config = new_ledger(&dir.path().join("ledger.pldb"));
 
     {
-        let storage = bin_desktop::start(&config).expect("a new Ledger starts");
+        let storage = bin_desktop::start(&config)
+            .storage()
+            .expect("a new Ledger starts");
         let writer = storage.writer.clone();
         let mut ui = Harness::with_storage(app, storage);
         assert_eq!(
@@ -48,7 +50,9 @@ fn a_unit_added_on_a_new_ledger_is_there_after_a_restart(app: &mut TestAppContex
         bin_desktop::quit(&writer);
     }
 
-    let storage = bin_desktop::start(&config).expect("the Ledger starts again");
+    let storage = bin_desktop::start(&config)
+        .storage()
+        .expect("the Ledger starts again");
     let mut ui = Harness::with_storage(app, storage);
     assert_eq!(ui.unit_codes(), ["aud", "btc", "vas", "nzd"]);
 }

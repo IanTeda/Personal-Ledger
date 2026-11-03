@@ -62,7 +62,6 @@ impl Root {
                 }
                 self.view_mode = None;
             }
-            ViewEvent::RunCommand(name) => self.handle_empty_state_command_click(name, cx),
             ViewEvent::SettingsPageChanged(page) => self.navigate(NavInput::SettingsPage(page)),
             ViewEvent::DisplayChanged(display) => self.push_display_preferences(display, cx),
             ViewEvent::ToastsChanged(on) => self.push_toasts_on(on),
@@ -109,6 +108,7 @@ mod tests {
                 NavState::new(),
                 cx.focus_handle(),
                 lib_core::Clock::fixed(today),
+                cx,
             );
             let (stores, _) = lib_database::Stores::fake(lib_database::FakeStores::stub(today));
             shell.open_ledger(stores, &lib_config::KeyBindingConfig::default(), cx);
@@ -169,6 +169,7 @@ mod tests {
                 NavState::new(),
                 cx.focus_handle(),
                 lib_core::Clock::fixed(today),
+                cx,
             );
             let (stores, _) = lib_database::Stores::fake(lib_database::FakeStores::stub(today));
             shell.open_ledger(stores, &lib_config::KeyBindingConfig::default(), cx);

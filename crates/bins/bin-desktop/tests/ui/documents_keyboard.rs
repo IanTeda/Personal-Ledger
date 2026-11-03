@@ -262,9 +262,11 @@ fn x_skips_the_focused_row(app: &mut TestAppContext) {
 #[gpui::test]
 fn a_skip_is_gone_after_a_restart(app: &mut TestAppContext) {
     let dir = tempfile::tempdir().expect("a temporary directory");
-    let config = common::config_for(&dir.path().join("ledger.pldb"));
+    let config = common::new_ledger(&dir.path().join("ledger.pldb"));
     {
-        let storage = bin_desktop::start_on(&config, common::today()).expect("a new Ledger starts");
+        let storage = bin_desktop::start_on(&config, common::today())
+            .storage()
+            .expect("a new Ledger starts");
         let writer = storage.writer.clone();
         let mut ui = Harness::with_storage(app, storage);
         ui.press("g f");
@@ -281,7 +283,9 @@ fn a_skip_is_gone_after_a_restart(app: &mut TestAppContext) {
         bin_desktop::quit(&writer);
     }
 
-    let storage = bin_desktop::start_on(&config, common::today()).expect("the Ledger starts again");
+    let storage = bin_desktop::start_on(&config, common::today())
+        .storage()
+        .expect("the Ledger starts again");
     let mut ui = Harness::with_storage(app, storage);
     ui.press("g f");
     ui.press("i");
@@ -703,8 +707,10 @@ fn question_mark_lists_the_documents_keys_under_their_own_heading(app: &mut Test
 #[gpui::test]
 fn deleting_a_linked_payee_drops_its_link_and_keeps_the_document(app: &mut TestAppContext) {
     let dir = tempfile::tempdir().expect("a temporary directory");
-    let config = common::config_for(&dir.path().join("ledger.pldb"));
-    let storage = bin_desktop::start_on(&config, common::today()).expect("a new Ledger starts");
+    let config = common::new_ledger(&dir.path().join("ledger.pldb"));
+    let storage = bin_desktop::start_on(&config, common::today())
+        .storage()
+        .expect("a new Ledger starts");
     let writer = storage.writer.clone();
     let mut ui = Harness::with_storage(app, storage);
     // A new Payee nothing else names, so the file lets it be deleted.

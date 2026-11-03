@@ -48,6 +48,9 @@ pub enum ActiveViewEntity {
 pub enum ShellView {
     /// A Noun whose surface is a later map's work (#420).
     Placeholder(Noun),
+    /// No Ledger open (#977): the Dashboard's no Ledger open content, offering `:open` and `:new`,
+    /// which stands without the Open Ledger's Views.
+    NoLedger,
 }
 
 /// The View Entities `Root` owns, one per View that renders and handles its own input.
@@ -58,12 +61,22 @@ pub struct ViewEntities {
     pub transactions: Entity<TransactionsPage>,
     pub import: Entity<ImportPage>,
     pub documents: Entity<DocumentsPage>,
-    pub settings: Entity<SettingsView>,
 }
 
 impl ActiveViewEntity {
-    /// The Entity behind `view`, from the View Entities `Root` owns.
-    pub fn new(view: ActiveView, views: &ViewEntities) -> Self {
+    /// The Entity behind `view`, from the Open Ledger's View Entities and `Root`'s Settings. With
+    /// no Ledger open (`views` is `None`) every View but Settings is the no Ledger open content.
+    pub fn new(
+        view: ActiveView,
+        views: Option<&ViewEntities>,
+        settings: &Entity<SettingsView>,
+    ) -> Self {
+        if let ActiveView::Settings(_) = view {
+            return Self::Settings(settings.clone());
+        }
+        let Some(views) = views else {
+            return Self::Shell(ShellView::NoLedger);
+        };
         match view {
             ActiveView::Bills => Self::Bills(views.bills.clone()),
             ActiveView::Budgets => Self::Budgets(views.budgets.clone()),
@@ -71,7 +84,7 @@ impl ActiveViewEntity {
             ActiveView::Import => Self::Import(views.import.clone()),
             ActiveView::Dashboard => Self::Dashboard(views.dashboard.clone()),
             ActiveView::Documents => Self::Documents(views.documents.clone()),
-            ActiveView::Settings(_) => Self::Settings(views.settings.clone()),
+            ActiveView::Settings(_) => Self::Settings(settings.clone()),
             ActiveView::Placeholder(noun) => Self::Shell(ShellView::Placeholder(noun)),
         }
     }
@@ -81,15 +94,11 @@ impl ActiveViewEntity {
     pub fn element(
         &self,
         zone_focused: bool,
-        ledger_open: bool,
         window_size: crate::shell::view::window_size::WindowSize,
         cx: &mut App,
     ) -> AnyElement {
         match self {
-            Self::Dashboard(view) => {
-                view.update(cx, |view, _| view.set_ledger_open(ledger_open));
-                view.clone().into_any_element()
-            }
+            Self::Dashboard(view) => view.clone().into_any_element(),
             Self::Documents(view) => {
                 view.update(cx, |view, _| view.set_zone_focused(zone_focused));
                 view.clone().into_any_element()

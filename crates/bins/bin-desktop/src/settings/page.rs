@@ -119,6 +119,11 @@ impl SettingsPage {
         }
     }
 
+    /// Whether the page is built on a Ledger, so it is shown muted and refused with none open.
+    pub fn needs_ledger(self) -> bool {
+        self.scope_group() == ScopeGroup::ThisLedger
+    }
+
     /// The index-rail label / section heading text.
     pub fn label(self) -> String {
         match self {

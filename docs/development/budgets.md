@@ -23,12 +23,11 @@ The parts that are hardest to change later:
 
 In `lib-budgets` (`crates/libs/lib-budgets/src/`), none in `lib-core`:
 
-- `lib.rs`: `Budget`, `Method`, `Rollover`, `LimitRecord`, `applied` (what a month resolves to).
+- `entity/`, the Entity: every rule the Budgets aggregate keeps, with no I/O (#996). `budget.rs`: `Budget`, `Method`, `Rollover`, `LimitRecord`, `applied` (what a month resolves to). `chain.rs`: the chain rules (`set_amount`, `stop`, `stop_new_parent`, `clear_month_only`, `cycle_rollover`, `save_cell`, `fill`, `set_monthly_limit`) as methods on `Budget`, with `Span`, `check_leaf` and `check_open_month`. `budgets.rs`: the `Budgets` set (`create`, `edit`, `duplicate`, `archive`, `restore`, `set_default`, which need the whole set for names and the one default; one-line wrappers over the chain rules), `NewBudget`, `StartFrom`, `check_accounts`. `seed.rs`: the stub Budgets and `PERSONAL_SPENDING_ID`.
 - `error.rs`: `Error` and `Result<T>`, the Refusals an Interactor returns; a Presenter words each as a Message and `debug_assert!`s on the ones it can't receive.
-- `store.rs`: the `Budgets` set (`create`, `edit`, `duplicate`, `archive`, `restore`, `set_default`, which need the whole set for names and the one default), `NewBudget`, `StartFrom`, `Span`. The chain rules (`set_amount`, `stop`, `clear_month_only`, `cycle_rollover`, `save_cell`, `fill`, `set_monthly_limit`) are methods on `Budget`; `Budgets` keeps one-line wrappers.
-- `figures.rs`: `effective_budget`, `period_figures` (the one shared period query), `health`, `dashboard_bars`. `plan.rs`: `plan`, `PlanEdit`, `fill_preview`, `three_month_average`, `unallocated`. `history.rs`: `history`, `history_range`, `history_csv`. `detail.rs`: `category_detail`.
+- `figures.rs`: `effective_budget`, `period_figures` (the one shared period query), `health`, `dashboard_bars`, `is_over_budget`. `plan.rs`: `plan`, `PlanEdit`, `fill_preview`, `three_month_average`, `unallocated`, `AVERAGE_MONTHS`. `history.rs`: `history`, `history_range`, `history_csv`. `detail.rs`: `category_detail`.
 - `protocols.rs`: the read ports `BudgetCategories`, `BudgetAccounts`, `BudgetSplits`, `BudgetBills`, `BudgetUnits` and `BudgetPayees` (bundled as `BudgetReads`) with their row types, the write port `BudgetRepository` (`upsert_budget` only: a Budget is never deleted), `BudgetsPorts`, `BudgetsOutcome` and `BudgetsRouter`.
-- `interactor.rs`: `CreateBudget`, `EditBudget`, `DuplicateBudget`, `ArchiveBudget`, `RestoreBudget`, `SetDefaultBudget`, `SetAmount`, `StopBudgeting`, `ClearMonthOnly`, `CycleRollover`, `SaveCell`, `Fill`, `SetMonthlyLimit`. A chain Interactor runs the rule on a copy of one Budget and upserts it only if it changed; a set-wide one writes `changed_since`.
+- `interactor/<intent>.rs`, one file per Interactor with its tests: `CreateBudget`, `EditBudget`, `DuplicateBudget`, `ArchiveBudget`, `RestoreBudget`, `SetDefaultBudget`, `SetAmount`, `StopBudgeting`, `ClearMonthOnly`, `CycleRollover`, `SaveCell`, `Fill`, `SetMonthlyLimit`, `StopNewParent`. `support.rs` holds the logging and the write-a-copy helpers they share. A chain Interactor runs the rule on a copy of one Budget and upserts it only if it changed; a set-wide one writes `changed_since`.
 - `presenter/`: `BudgetsPagePresenter` (one Presenter for the three tabs, whose view models are in `progress.rs`, `plan.rs` and `history.rs`), `SwitcherPresenter`, `ManagePresenter`, `BudgetFormPresenter`, `LimitFormPresenter`, `StopPresenter`, `FillPresenter` and `DetailPresenter`. Every confirming Dialog raises its own Toast through `Notify`.
 
 ## Persistence
@@ -61,27 +60,27 @@ The Presenter takes `today` from the Shell's Clock on each event and refreshes o
 
 ## Traceability
 
-Desktop locations for the ticked requirements. Paths are under `crates/libs/lib-budgets/src/` (`lib-budgets`) or `crates/bins/bin-desktop/` (`desktop`); the rule tests are in `lib-budgets`' `tests.rs` and the Interactor tests in `interactor.rs`.
+Desktop locations for the ticked requirements. Paths are under `crates/libs/lib-budgets/src/` (`lib-budgets`) or `crates/bins/bin-desktop/` (`desktop`); each test sits beside the code it tests, in that file's `tests` module, sharing the fixtures in `test_support.rs` (the rules and figures) or `interactor/test_support.rs` (the Interactors).
 
 | Requirement | Code | Test |
 | --- | --- | --- |
-| BUD-001 | `lib.rs::Budget`, `store.rs::Budgets` | `tests.rs` |
-| BUD-002 | `interactor::CreateBudget`, `presenter/budget_form.rs`, desktop `src/budgets/view/form_dialog/budget.rs` | `tests.rs`, `presenter/budget_form.rs`, desktop `tests/ui/budgets_keyboard.rs` |
-| BUD-003 | `interactor::EditBudget`, `presenter/budget_form.rs` | `interactor.rs`, `presenter/budget_form.rs` |
-| BUD-004 | `presenter/switcher.rs`, `figures::health`, desktop `src/budgets/view/switcher.rs` | `presenter/switcher.rs`, `tests.rs` |
-| BUD-005 | `interactor::{DuplicateBudget, SetDefaultBudget, ArchiveBudget, RestoreBudget}`, `presenter/manage.rs` | `interactor.rs`, `presenter/manage.rs` |
-| BUD-006 | `interactor::SetAmount`, `presenter/limit_form.rs`, desktop `src/budgets/view/form_dialog/limit.rs` | `interactor.rs`, `presenter/limit_form.rs` |
-| BUD-007 | `interactor::StopBudgeting`, `presenter/stop.rs`, desktop `src/budgets/view/form_dialog/stop.rs` | `presenter/stop.rs` |
-| BUD-008 | `figures::period_figures`, `presenter/progress.rs`, desktop `src/budgets/view/progress.rs` | `tests.rs`, `presenter/budgets_page.rs` |
-| BUD-009 | `figures::period_figures` (parent rows, `unbudgeted_spent`) | `tests.rs` |
-| BUD-010 | `figures::effective_budget`, `interactor::CycleRollover` | `tests.rs`, `interactor.rs` |
-| BUD-011 | `plan::plan`, `interactor::SaveCell`, `presenter/plan.rs`, desktop `src/budgets/view/plan.rs` | `tests.rs`, `presenter/budgets_page.rs` |
-| BUD-012 | `plan::fill_preview`, `interactor::Fill`, `presenter/fill.rs` | `tests.rs`, `presenter/fill.rs` |
-| BUD-013 | `history::history`, `history::history_range`, `presenter/history.rs`, desktop `src/budgets/view/history.rs` | `tests.rs`, `presenter/budgets_page.rs` |
-| BUD-014 | `history::history_csv`, `presenter/history.rs` (`ExportHistory`), desktop `src/budgets/router.rs` | `tests.rs` (the CSV text), `presenter/budgets_page.rs` (the request); the save dialog is untested |
+| BUD-001 | `entity/budget.rs::Budget`, `entity/budgets.rs::Budgets` | `entity/budgets.rs` |
+| BUD-002 | `interactor::CreateBudget`, `presenter/budget_form.rs`, desktop `src/budgets/view/form_dialog/budget.rs` | `entity/budgets.rs`, `interactor/create_budget.rs`, `presenter/budget_form.rs`, desktop `tests/ui/budgets_keyboard.rs` |
+| BUD-003 | `interactor::EditBudget`, `presenter/budget_form.rs` | `interactor/edit_budget.rs`, `presenter/budget_form.rs` |
+| BUD-004 | `presenter/switcher.rs`, `figures::health`, desktop `src/budgets/view/switcher.rs` | `presenter/switcher.rs`, `figures.rs` |
+| BUD-005 | `interactor::{DuplicateBudget, SetDefaultBudget, ArchiveBudget, RestoreBudget}`, `presenter/manage.rs` | `interactor/{duplicate,set_default,archive,restore}_budget.rs`, `presenter/manage.rs` |
+| BUD-006 | `interactor::SetAmount`, `presenter/limit_form.rs`, desktop `src/budgets/view/form_dialog/limit.rs` | `interactor/set_amount.rs`, `presenter/limit_form.rs` |
+| BUD-007 | `interactor::StopBudgeting`, `presenter/stop.rs`, desktop `src/budgets/view/form_dialog/stop.rs` | `interactor/stop_budgeting.rs`, `presenter/stop.rs` |
+| BUD-008 | `figures::period_figures`, `presenter/progress.rs`, desktop `src/budgets/view/progress.rs` | `figures.rs`, `presenter/budgets_page.rs` |
+| BUD-009 | `figures::period_figures` (parent rows, `unbudgeted_spent`) | `figures.rs` |
+| BUD-010 | `figures::effective_budget`, `interactor::CycleRollover` | `figures.rs`, `interactor/cycle_rollover.rs` |
+| BUD-011 | `plan::plan`, `interactor::SaveCell`, `presenter/plan.rs`, desktop `src/budgets/view/plan.rs` | `plan.rs`, `entity/chain.rs`, `interactor/save_cell.rs`, `presenter/budgets_page.rs` |
+| BUD-012 | `plan::fill_preview`, `interactor::Fill`, `presenter/fill.rs` | `plan.rs`, `interactor/fill.rs`, `presenter/fill.rs` |
+| BUD-013 | `history::history`, `history::history_range`, `presenter/history.rs`, desktop `src/budgets/view/history.rs` | `history.rs`, `presenter/budgets_page.rs` |
+| BUD-014 | `history::history_csv`, `presenter/history.rs` (`ExportHistory`), desktop `src/budgets/router.rs` | `history.rs` (the CSV text), `presenter/budgets_page.rs` (the request); the save dialog is untested |
 | BUD-015 | `presenter/detail.rs` (`BudgetsOutcome::Transactions`), `BudgetsRouter::show_transactions` | `presenter/detail.rs`, desktop `tests/ui/budgets_mouse.rs` |
-| BUD-016 | `figures::dashboard_bars`, desktop `src/shell/view/rail/primary.rs` (`budget_over`) | `tests.rs`, desktop `tests/ui/dashboard_keyboard.rs` |
-| BUD-017 | `interactor::SetMonthlyLimit`, desktop `src/budgets/ports.rs::set_monthly_limit` | `interactor.rs`, desktop Categories UI tests |
+| BUD-016 | `figures::dashboard_bars`, desktop `src/shell/view/rail/primary.rs` (`budget_over`) | `figures.rs`, desktop `tests/ui/dashboard_keyboard.rs` |
+| BUD-017 | `interactor::SetMonthlyLimit`, desktop `src/budgets/ports.rs::set_monthly_limit` | `interactor/set_monthly_limit.rs`, desktop Categories UI tests |
 | BUD-018 | `lib-database` `adapter/budgets.rs`, `open_storage` | `lib_budgets::contract`, desktop `tests/ui/smoke_budgets_persist.rs` |
 
 ## Decisions

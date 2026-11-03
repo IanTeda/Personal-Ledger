@@ -14,7 +14,7 @@ use crate::{
     navigation::movement::Movement,
     settings::display::DisplayPreferences,
     settings::general::GeneralPage,
-    settings::pages::{Page, PageFrame, PageHandle, SettingsPages, SettingsSetup},
+    settings::pages::{LedgerPages, Page, PageFrame, PageHandle, SettingsPages, SettingsSetup},
     settings::picker::PagePicker,
     settings::{SettingsFocus, SettingsPage},
     shell::view::{
@@ -53,15 +53,10 @@ pub struct SettingsView {
 }
 
 impl SettingsView {
-    /// Builds the pages from the Ledger. The Tracing capture arrives later, through
-    /// `Root::set_log_capture`.
-    pub fn new(
-        ledger: &Entity<LedgerStore>,
-        clock: &lib_core::Clock,
-        setup: SettingsSetup,
-        cx: &mut Context<'_, Self>,
-    ) -> Self {
-        let pages = SettingsPages::new(ledger, clock, setup, cx);
+    /// Builds the This device pages, which stand with no Ledger open; [`Self::open_ledger`] adds
+    /// the This Ledger pages. The Tracing capture arrives later, through `Root::set_log_capture`.
+    pub fn new(cx: &mut Context<'_, Self>) -> Self {
+        let pages = SettingsPages::new(cx);
         let _page_subscriptions = pages.all().flat_map(|page| page.subscribe(cx)).collect();
         Self {
             pages,
@@ -76,6 +71,50 @@ impl SettingsView {
         }
     }
 
+    /// Builds the This Ledger pages on the Open Ledger's `ledger`, so they can be shown.
+    pub fn open_ledger(
+        &mut self,
+        ledger: &Entity<LedgerStore>,
+        clock: &lib_core::Clock,
+        setup: SettingsSetup,
+        cx: &mut Context<'_, Self>,
+    ) {
+        let pages = LedgerPages::new(ledger, clock, setup, cx);
+        self.pages.ledger = Some(pages);
+        let subscriptions: Vec<Subscription> = SettingsPage::ALL
+            .into_iter()
+            .filter(|page| page.needs_ledger())
+            .filter_map(|page| self.pages.get(page))
+            .flat_map(|page| page.subscribe(cx))
+            .collect();
+        self._page_subscriptions.extend(subscriptions);
+        self.sync_frame(cx);
+        cx.notify();
+    }
+
+    /// Whether a Ledger is open, so the This Ledger pages are built.
+    pub fn ledger_open(&self) -> bool {
+        self.pages.ledger.is_some()
+    }
+
+    /// Whether `page` can be shown: every This device page, and a This Ledger page only with a
+    /// Ledger open.
+    pub fn can_show(&self, page: SettingsPage) -> bool {
+        self.pages.get(page).is_some()
+    }
+
+    /// The open page's handle. Every way onto a page checks [`Self::can_show`] first, so the
+    /// selected page is always built.
+    #[expect(
+        clippy::expect_used,
+        reason = "select_page and set_selected_section only ever select a page can_show allows"
+    )]
+    pub(super) fn selected_page(&self) -> &dyn PageHandle {
+        self.pages
+            .get(self.selected_section)
+            .expect("the selected Settings page is one that is built")
+    }
+
     pub(super) fn pages(&self) -> &SettingsPages {
         &self.pages
     }
@@ -83,13 +122,16 @@ impl SettingsView {
     /// The `T` page's Entity, for what `Root` drives on a page: a module Router's entry point, the
     /// Tracing capture feed and the Settings snapshots. Found through `T::PAGE`, so a new page needs
     /// no accessor of its own (ADR-0037's 2026-10-30 amendment).
+    /// A This Ledger page is built only with a Ledger open, so only a caller on the Open Ledger asks
+    /// for one.
     #[expect(
         clippy::expect_used,
-        reason = "SettingsPages::get and T::PAGE can't disagree, and page_returns_the_page_for_every_settings_page checks each page"
+        reason = "SettingsPages::get and T::PAGE can't disagree, page_returns_the_page_for_every_settings_page checks each page, and only a caller on the Open Ledger asks for a This Ledger page"
     )]
     pub fn page<T: Page>(&self) -> Entity<T> {
         self.pages
             .get(T::PAGE)
+            .expect("a This Ledger page is asked for only with a Ledger open")
             .view()
             .downcast::<T>()
             // The `AnyView` handed back isn't `Debug`, so `expect` needs it dropped.
@@ -100,7 +142,7 @@ impl SettingsView {
     /// The open page, while it has focus: the page, rather than this View, then takes its keys,
     /// movement and status. `None` on the index.
     fn focused_page(&self) -> Option<&dyn PageHandle> {
-        (self.focus == SettingsFocus::Page).then(|| self.pages.get(self.selected_section))
+        (self.focus == SettingsFocus::Page).then(|| self.selected_page())
     }
 
     /// The space the pages are drawn in, as the pages are told it.
@@ -170,7 +212,10 @@ impl SettingsView {
         cx: &mut Context<'_, Self>,
     ) -> bool {
         self.sync_frame(cx);
-        let taken = self.pages.get(section).module_command(command, cx);
+        let taken = self
+            .pages
+            .get(section)
+            .is_some_and(|page| page.module_command(command, cx));
         if taken {
             cx.notify();
         }
@@ -282,8 +327,10 @@ impl SettingsView {
         let Some(page) = SettingsPage::for_reveal(&reveal) else {
             return;
         };
-        self.open_page(page, cx);
-        self.pages.get(page).reveal(reveal, cx);
+        if !self.open_page(page, cx) {
+            return;
+        }
+        self.selected_page().reveal(reveal, cx);
     }
 
     /// The status line's legend for the index or the open page, and the page's scope note. `None` while the View zone doesn't have focus.
@@ -316,7 +363,7 @@ impl SettingsView {
     pub fn help_group(&self, cx: &App) -> Option<HelpGroup> {
         let keys = owned_hints(settings_index_hints())
             .into_iter()
-            .chain(self.pages.get(self.selected_section).hints(cx))
+            .chain(self.selected_page().hints(cx))
             .map(|hint| (hint.action, hint.chord))
             .collect();
         Some(HelpGroup {
@@ -337,19 +384,28 @@ impl SettingsView {
         self.focus
     }
 
-    /// Restores the last-visited page at launch, without moving focus.
+    /// Restores the last-visited page at launch, without moving focus. A This Ledger page with no
+    /// Ledger open restores General instead.
     pub fn set_selected_section(&mut self, cx: &mut Context<'_, Self>, section: SettingsPage) {
-        self.selected_section = section;
+        self.selected_section = if self.can_show(section) {
+            section
+        } else {
+            SettingsPage::General
+        };
         cx.notify();
     }
 
     /// Opens a page with focus in it -- what `:settings <page>`, the old `:accounts` /
     /// `:categories` / `:payees` / `:tags` aliases and every hand-off to a moved noun land on (the
-    /// keyboard model's "commands and hand-offs land in the page").
-    pub fn open_page(&mut self, section: SettingsPage, cx: &mut Context<'_, Self>) {
-        self.select_page(section, cx);
+    /// keyboard model's "commands and hand-offs land in the page"). Whether the page opened: a This
+    /// Ledger page with no Ledger open is refused.
+    pub fn open_page(&mut self, section: SettingsPage, cx: &mut Context<'_, Self>) -> bool {
+        if !self.select_page(section, cx) {
+            return false;
+        }
         self.focus_page(cx);
         cx.notify();
+        true
     }
 
     /// Moves focus into the open page, as a click on one of its rows does.
@@ -360,19 +416,25 @@ impl SettingsView {
 
     /// Swaps the page on show. A new page starts at its top, with no control focused. The page
     /// showing loses focus even when it is the one selected again, so `:settings display` on
-    /// Display puts the keyboard back on its first control.
-    fn select_page(&mut self, section: SettingsPage, cx: &mut Context<'_, Self>) {
+    /// Display puts the keyboard back on its first control. A This Ledger page with no Ledger open
+    /// is refused on the status line, and the page on show stays; whether the page was selected.
+    fn select_page(&mut self, section: SettingsPage, cx: &mut Context<'_, Self>) -> bool {
+        if !self.can_show(section) {
+            cx.emit(ViewEvent::SetStatus(Some(
+                crate::msg::desktop_status_refused_no_ledger(":open", ":new"),
+            )));
+            return false;
+        }
         if self.selected_section != section {
             self.scroll_handle.set_offset(gpui::Point::default());
         }
         let changed = self.selected_section != section;
-        self.pages
-            .get(self.selected_section)
-            .set_page_focused(false, cx);
+        self.selected_page().set_page_focused(false, cx);
         self.selected_section = section;
         if changed {
             cx.emit(ViewEvent::SettingsPageChanged(section));
         }
+        true
     }
 
     /// Moves focus from the index rail into the open page (`l`/`enter`). A page with nothing to
@@ -383,16 +445,12 @@ impl SettingsView {
             return;
         }
         self.focus = SettingsFocus::Page;
-        self.pages
-            .get(self.selected_section)
-            .set_page_focused(true, cx);
+        self.selected_page().set_page_focused(true, cx);
     }
 
     fn focus_index(&mut self, cx: &mut Context<'_, Self>) {
         self.focus = SettingsFocus::Index;
-        self.pages
-            .get(self.selected_section)
-            .set_page_focused(false, cx);
+        self.selected_page().set_page_focused(false, cx);
         self.reveal_index_row();
     }
 
@@ -419,14 +477,16 @@ impl SettingsView {
             Movement::First => 0,
             _ => last,
         };
-        self.select_page(pages[next], cx);
-        self.reveal_index_row();
+        if self.select_page(pages[next], cx) {
+            self.reveal_index_row();
+        }
     }
 
     /// An index entry's click: swaps the body to that page and leaves focus on the index.
     pub(super) fn click_index(&mut self, section: SettingsPage, cx: &mut Context<'_, Self>) {
-        self.select_page(section, cx);
-        self.focus = SettingsFocus::Index;
+        if self.select_page(section, cx) {
+            self.focus = SettingsFocus::Index;
+        }
         cx.notify();
     }
 
@@ -458,8 +518,12 @@ impl SettingsView {
         cx.notify();
     }
 
-    /// A picker row's click: straight to that page.
+    /// A picker row's click: straight to that page. A refused page leaves the picker open.
     pub(super) fn click_picker_page(&mut self, section: SettingsPage, cx: &mut Context<'_, Self>) {
+        if !self.can_show(section) {
+            self.select_page(section, cx);
+            return;
+        }
         self.close_picker(cx);
         self.open_page(section, cx);
     }
@@ -488,8 +552,9 @@ impl SettingsView {
     fn step_page(&mut self, step: Step, cx: &mut Context<'_, Self>) {
         let pages = SettingsPage::ALL;
         let next = lib_list_cursor::step(self.selected_section.index(), pages.len(), step);
-        self.select_page(pages[next], cx);
-        self.focus_page(cx);
+        if self.select_page(pages[next], cx) {
+            self.focus_page(cx);
+        }
     }
 
     fn open_picker(&mut self, cx: &mut Context<'_, Self>) {
@@ -631,7 +696,17 @@ mod tests {
         let ledger =
             cx.new(|_| LedgerStore::with_storage(lib_ledger::Ledger::stub_on(today), storage));
         let clock = lib_core::Clock::fixed(today);
-        let view = cx.new(|cx| SettingsView::new(&ledger, &clock, setup, cx));
+        let view = cx.new(SettingsView::new);
+        view.update(cx, |view, cx| {
+            for page in SettingsPage::ALL {
+                assert_eq!(
+                    view.can_show(page),
+                    !page.needs_ledger(),
+                    "with no Ledger open only the This device pages are built"
+                );
+            }
+            view.open_ledger(&ledger, &clock, setup, cx);
+        });
 
         view.read_with(cx, |view, _| {
             for page in SettingsPage::ALL {
@@ -642,7 +717,11 @@ mod tests {
                 );
                 assert_eq!(
                     entity,
-                    view.pages.get(page).view().entity_id(),
+                    view.pages
+                        .get(page)
+                        .expect("every page is built with a Ledger open")
+                        .view()
+                        .entity_id(),
                     "page::<T>() for {page:?} is the page Settings shows"
                 );
             }

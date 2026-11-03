@@ -251,7 +251,9 @@ Settings in the Desktop app is paged: a list of pages down the left (the index) 
 - **This device:** General, Display, Tracing (Logs) and About. These belong to the computer you are on and never sync.
 - **This ledger:** Ledger, Units, Institutions, Accounts, Categories, Tags, Payees, Documents, Inventory, Sync server and Data & backup. These are stored in the open Ledger, or act on its file.
 
-`j`, `k`, `[` and `]` run from the end of This device straight into This ledger, and the page picker lists the pages under the same two headings. The Desktop has no AI connections or History page yet. A Ledger is always open in the Desktop for now, so every page opens.
+`j`, `k`, `[` and `]` run from the end of This device straight into This ledger, and the page picker lists the pages under the same two headings. The Desktop has no AI connections or History page yet.
+
+With no Ledger open, `g` `s` and `settings` still open Settings, on the page you last left if it is a This device page, otherwise on General. The This ledger pages are drawn dim. Choosing one says "No Ledger open: :open or :new first" and leaves you on the page you were on. That covers `j`, `k`, `G`, `[`, `]`, a click, the picker and `settings units`.
 
 Accounts, Categories, Tags and Payees live here rather than on the main rail. You reach them from the index, with `:settings accounts` (and likewise `categories`, `tags`, `payees`, `documents`, `inventory`), or with the older `:accounts`, `:categories`, `:tags` and `:payees` commands, which still work. `:units` and `:institutions` open their pages the same way.
 
@@ -264,7 +266,7 @@ Accounts, Categories, Tags and Payees live here rather than on the main rail. Yo
 
 General holds what belongs to this device:
 
-- **On start** chooses which Ledger the app opens as it starts: **Reopen last Ledger** (the default) opens the one open when you last quit, and **Start with no Ledger open** opens none. A file named by `--file` or `file` always wins. The Desktop can't start with no Ledger open yet, so for now Start with no Ledger open opens `My-Personal-Ledger.pldb` in the Ledger folder instead.
+- **On start** chooses which Ledger the app opens as it starts: **Reopen last Ledger** (the default) opens the one open when you last quit, or none if none was, and **Start with no Ledger open** opens none. A file named by `--file` or `file` always wins. Starting never creates a Ledger file: if the file named is missing or won't open, an error Toast says so and the app starts with no Ledger open. It still remembers that Ledger, so the next start tries it again.
 - **Toasts** turns Toasts on or off (see Toasts below).
 - **Language and region** and **Ledger folder** show the Locale and the `data` folder. They are read from `personal-ledger.conf` when the app starts, so change them there.
 

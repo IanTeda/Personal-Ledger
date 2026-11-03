@@ -33,15 +33,21 @@ impl Root {
         self.view_x_scroll_handle.set_offset(gpui::Point::default());
         let active = self.active_view_entity(cx);
         active.on_enter(cx);
-        if let ActiveViewEntity::Import(_) = active {
-            self.open()
-                .views
+        if let (ActiveViewEntity::Import(_), Some(open)) = (active, &self.open) {
+            open.views
                 .transactions
                 .update(cx, |page, cx| page.on_enter(cx));
         }
     }
 
+    /// Moving the highlight browses every row; committing it to a noun that needs a Ledger is
+    /// refused with none open.
     fn apply_primary_rail_movement(&mut self, movement: Movement) {
+        if movement == Movement::Enter
+            && self.refuse_noun_without_ledger(self.nav().primary_highlight())
+        {
+            return;
+        }
         let input = match movement {
             Movement::Next => NavInput::MoveHighlight(Step::Next),
             Movement::Prev => NavInput::MoveHighlight(Step::Prev),
@@ -85,8 +91,9 @@ impl Root {
             }
         };
         match view {
-            // A placeholder has no content to move through, so movement leaves it where it is.
-            ShellView::Placeholder(_) => {}
+            // A placeholder, or the no Ledger open content, has nothing to move through, so
+            // movement leaves it where it is.
+            ShellView::Placeholder(_) | ShellView::NoLedger => {}
         }
     }
 }

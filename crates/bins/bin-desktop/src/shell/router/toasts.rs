@@ -19,8 +19,7 @@ impl Root {
     /// Sets the Client-scoped Toasts Preference (ADR-0027) from outside Settings (`:toasts`), held
     /// in memory like the Colour Theme Preferences. Settings › General owns it, so it is told too.
     pub fn set_toasts_on(&mut self, on: bool, cx: &mut gpui::App) {
-        let settings = self.open().views.settings.clone();
-        settings.update(cx, |view, cx| {
+        self.settings.update(cx, |view, cx| {
             view.general()
                 .update(cx, |page, cx| page.set_toasts_on(on, cx));
         });
@@ -34,6 +33,19 @@ impl Root {
         for notice in crate::notices::drain() {
             self.presenter.show(notice, Local::now());
         }
+    }
+
+    /// Says the Ledger file start-up was told to open couldn't be, as an Error Toast naming it and
+    /// why (#977). The Shell then runs with no Ledger open.
+    pub fn ledger_open_failed(&mut self, failure: &crate::OpenFailure) {
+        let name = failure.path.file_name().map_or_else(
+            || failure.path.display().to_string(),
+            |name| name.to_string_lossy().into_owned(),
+        );
+        self.raise_toast(
+            ToastKind::Error,
+            lib_locale::msg::toast_ledger_open_failed(&name, &failure.reason),
+        );
     }
 
     /// Raises a Toast whose Message the caller has already resolved to text.

@@ -12,7 +12,7 @@ use super::common;
 use bin_desktop::shell::router::SettingsPayeesSnapshot;
 
 use bin_desktop::navigation::nav::Noun;
-use common::{Harness, config_for};
+use common::{Harness, new_ledger};
 use gpui::TestAppContext;
 
 /// Settings on the Payees page (ten presses down the index) with focus stepped into it.
@@ -71,10 +71,12 @@ fn telstra_internet_payee(ui: &mut Harness<'_>) -> String {
 #[gpui::test]
 fn an_added_and_a_renamed_payee_are_there_after_a_restart(app: &mut TestAppContext) {
     let dir = tempfile::tempdir().expect("a temporary directory");
-    let config = config_for(&dir.path().join("ledger.pldb"));
+    let config = new_ledger(&dir.path().join("ledger.pldb"));
 
     let names = {
-        let storage = bin_desktop::start_on(&config, common::today()).expect("a new Ledger starts");
+        let storage = bin_desktop::start_on(&config, common::today())
+            .storage()
+            .expect("a new Ledger starts");
         let writer = storage.writer.clone();
         let mut ui = Harness::with_storage(app, storage);
         assert_eq!(telstra_internet_payee(&mut ui), "Telstra");
@@ -91,7 +93,9 @@ fn an_added_and_a_renamed_payee_are_there_after_a_restart(app: &mut TestAppConte
         names
     };
 
-    let storage = bin_desktop::start_on(&config, common::today()).expect("the Ledger starts again");
+    let storage = bin_desktop::start_on(&config, common::today())
+        .storage()
+        .expect("the Ledger starts again");
     let mut ui = Harness::with_storage(app, storage);
     on_payees(&mut ui);
     assert_eq!(ui.settings::<SettingsPayeesSnapshot>().payee_names, names);

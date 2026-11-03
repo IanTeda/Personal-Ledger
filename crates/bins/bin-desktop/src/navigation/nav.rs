@@ -9,6 +9,13 @@ pub use lib_shell::{ContextSelection, FocusZone, InputMode, Noun};
 /// The rail state machine over the Desktop's Settings pages.
 pub type NavState = lib_shell::NavState<SettingsPage>;
 
+/// Whether showing `noun` needs a Ledger open (#977): every noun but the Dashboard, whose no Ledger
+/// open content offers `:open` and `:new`, and Settings, for its This device pages. The rail draws
+/// such a noun muted with none open, and every way onto it is refused.
+pub fn needs_ledger(noun: Noun) -> bool {
+    !matches!(noun, Noun::Dashboard | Noun::Settings)
+}
+
 /// A [`Noun`]'s name as the Desktop shows it, a Message: the Noun itself is `lib-shell`'s.
 pub trait NounLabel {
     /// The noun's display name in the Locale in effect, in sentence case.

@@ -682,8 +682,10 @@ fn removing_a_location_lands_in_one_commit_and_drops_its_items_document_links(
 ) {
     // On a Ledger file, whose cascade drops the Links (#964).
     let dir = tempfile::tempdir().expect("a temporary directory");
-    let config = common::config_for(&dir.path().join("ledger.pldb"));
-    let storage = bin_desktop::start_on(&config, common::today()).expect("a new Ledger starts");
+    let config = common::new_ledger(&dir.path().join("ledger.pldb"));
+    let storage = bin_desktop::start_on(&config, common::today())
+        .storage()
+        .expect("a new Ledger starts");
     let writer = storage.writer.clone();
     let mut ui = Harness::with_storage(app, storage);
     ui.click("primary-rail-Documents");

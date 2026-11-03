@@ -182,8 +182,10 @@ fn a_delete_the_files_foreign_keys_refuse_puts_the_payee_back_with_an_error_toas
     app: &mut TestAppContext,
 ) {
     let dir = tempfile::tempdir().expect("a temporary directory");
-    let config = common::config_for(&dir.path().join("ledger.pldb"));
-    let storage = bin_desktop::start_on(&config, common::today()).expect("a new Ledger starts");
+    let config = common::new_ledger(&dir.path().join("ledger.pldb"));
+    let storage = bin_desktop::start_on(&config, common::today())
+        .storage()
+        .expect("a new Ledger starts");
     let writer = storage.writer.clone();
     let mut ui = Harness::with_storage_counting_payees_unused(app, storage);
     on_payee(&mut ui, "Woolworths");

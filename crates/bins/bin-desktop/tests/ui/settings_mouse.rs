@@ -148,3 +148,30 @@ fn at_medium_every_index_row_carries_its_icon(app: &mut TestAppContext) {
         );
     }
 }
+
+#[gpui::test]
+fn with_no_ledger_open_clicking_a_this_ledger_entry_is_refused(app: &mut TestAppContext) {
+    let mut ui = Harness::without_ledger(app);
+    ui.press("g s");
+
+    ui.click("settings-index-Ledger");
+    let settings = ui.settings_frame();
+    assert_eq!(settings.page, "General", "the page on show stays");
+    assert_eq!(settings.status_message.as_deref(), Some(common::NO_LEDGER));
+    ui.click("settings-index-About");
+    assert_eq!(ui.settings_frame().page, "About");
+}
+
+#[gpui::test]
+fn with_no_ledger_open_clicking_a_this_ledger_row_on_the_medium_index_is_refused(
+    app: &mut TestAppContext,
+) {
+    let mut ui = Harness::without_ledger(app);
+    ui.resize_to(WindowSize::Medium);
+    ui.press("g s");
+
+    ui.click("settings-index-page-Payees");
+    let settings = ui.settings_frame();
+    assert_eq!(settings.page, "General");
+    assert!(!settings.page_focused, "the index stays on show");
+}

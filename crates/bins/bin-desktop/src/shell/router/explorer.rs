@@ -98,8 +98,8 @@ impl Root {
             .and_then(|path| path.file_name())
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_default();
-        // Neither mode can fail yet (no real `.pldb` I/O), so `toast-ledger-open-failed` waits
-        // for the ticket that parses and creates ledger files.
+        // Neither mode can fail yet (no real `.pldb` I/O); start-up raises `toast-ledger-open-failed`
+        // for a file it can't open, and these modes will once they open and create files.
         if explorer.mode() == ExplorerMode::Open {
             self.raise_toast(
                 ToastKind::Success,

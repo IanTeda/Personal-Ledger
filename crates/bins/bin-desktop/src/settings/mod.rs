@@ -101,7 +101,7 @@ impl Render for SettingsView {
                         .px(px(28.0))
                         .flex()
                         .flex_col()
-                        .children(index_page(selected, on_row_click, cx)),
+                        .children(index_page(selected, self.ledger_open(), on_row_click, cx)),
                 )
                 .child(
                     div()
@@ -120,7 +120,7 @@ impl Render for SettingsView {
                 .into_any_element();
         }
         self.sync_frame(cx);
-        let page = self.pages().get(selected);
+        let page = self.selected_page();
         page.set_page_focused(page_focused, cx);
         let meta = page.heading_meta(cx);
         let content = page.view().into_any_element();
@@ -164,8 +164,16 @@ impl Render for SettingsView {
                     entity.update(cx, |view, cx| view.click_picker_page(section, cx));
                 })
             };
-            crumb_heading(selected, self.picker(), on_crumb, on_caret, on_pick, cx)
-                .into_any_element()
+            crumb_heading(
+                selected,
+                self.picker(),
+                self.ledger_open(),
+                on_crumb,
+                on_caret,
+                on_pick,
+                cx,
+            )
+            .into_any_element()
         } else {
             plain_heading(selected, cx).into_any_element()
         };
@@ -181,6 +189,7 @@ impl Render for SettingsView {
                 this.child(SettingsIndexRail::new(
                     selected,
                     index_focused,
+                    self.ledger_open(),
                     on_index_click,
                 ))
             })
@@ -253,6 +262,7 @@ fn plain_heading(section: SettingsPage, cx: &App) -> impl IntoElement {
 fn crumb_heading(
     section: SettingsPage,
     picker: Option<&PagePicker>,
+    ledger_open: bool,
     on_crumb: OnClick,
     on_caret: OnClick,
     on_pick: OnPageClick,
@@ -295,12 +305,19 @@ fn crumb_heading(
                 ),
         )
         // Deferred so it paints after the page below it; otherwise the page draws over the menu.
-        .children(picker.map(|picker| gpui::deferred(page_picker(picker, on_pick, cx))))
+        .children(
+            picker.map(|picker| gpui::deferred(page_picker(picker, ledger_open, on_pick, cx))),
+        )
 }
 
 /// The picker under the page name: every page, in index order under its group's heading, with the
 /// chosen one highlighted.
-fn page_picker(picker: &PagePicker, on_pick: OnPageClick, cx: &App) -> AnyElement {
+fn page_picker(
+    picker: &PagePicker,
+    ledger_open: bool,
+    on_pick: OnPageClick,
+    cx: &App,
+) -> AnyElement {
     let chosen = picker.chosen();
     div()
         .absolute()
@@ -337,6 +354,9 @@ fn page_picker(picker: &PagePicker, on_pick: OnPageClick, cx: &App) -> AnyElemen
                     .cursor_pointer()
                     .py(px(7.0))
                     .px(px(12.0))
+                    .when(page.needs_ledger() && !ledger_open, |this| {
+                        this.text_color(color::faint_text(cx))
+                    })
                     .when(page == chosen, |this| {
                         this.bg(color::selection_background(cx))
                             .text_color(color::selection_text(cx))
@@ -355,7 +375,12 @@ fn page_picker(picker: &PagePicker, on_pick: OnPageClick, cx: &App) -> AnyElemen
 /// then each group's heading, with its scope line and what it holds, over one row per page with
 /// its one-line description. The page on show stays selected. Each is a child of the scroll on
 /// its own ([`index_page_child`]), so a row can be scrolled to.
-fn index_page(selected: SettingsPage, on_row_click: OnPageClick, cx: &App) -> Vec<AnyElement> {
+fn index_page(
+    selected: SettingsPage,
+    ledger_open: bool,
+    on_row_click: OnPageClick,
+    cx: &App,
+) -> Vec<AnyElement> {
     let count = i64::try_from(SettingsPage::ALL.len()).unwrap_or(i64::MAX);
     let heading = div()
         .flex()
@@ -382,6 +407,7 @@ fn index_page(selected: SettingsPage, on_row_click: OnPageClick, cx: &App) -> Ve
     let row = |page: SettingsPage| {
         let on_row_click = on_row_click.clone();
         let active = page == selected;
+        let muted = page.needs_ledger() && !ledger_open;
         div()
             .id(SharedString::from(format!("settings-index-page-{page:?}")))
             .debug_selector(move || format!("settings-index-page-{page:?}"))
@@ -398,6 +424,7 @@ fn index_page(selected: SettingsPage, on_row_click: OnPageClick, cx: &App) -> Ve
                     .text_color(color::selection_text(cx))
             })
             .when(!active, |this| this.hover(|this| this.bg(color::hover(cx))))
+            .when(muted, |this| this.text_color(color::faint_text(cx)))
             .on_click(move |_event, window, cx| on_row_click(page, window, cx))
             .child(
                 div()

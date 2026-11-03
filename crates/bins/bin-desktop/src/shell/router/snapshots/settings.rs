@@ -34,21 +34,13 @@ impl Root {
     pub fn settings_snapshot(&self, cx: &gpui::App) -> SettingsSnapshot {
         SettingsSnapshot {
             status_message: self.status_message(),
-            ..self.open().views.settings.read(cx).snapshot()
+            ..self.settings.read(cx).snapshot()
         }
     }
 
     /// A Settings page's snapshot for a test, read from the page `S` names, as the View builds it.
     #[doc(hidden)]
     pub fn settings_page_snapshot<S: PageSnapshot>(&self, cx: &gpui::App) -> S {
-        S::read(
-            self.open()
-                .views
-                .settings
-                .read(cx)
-                .page::<S::Page>()
-                .read(cx),
-            cx,
-        )
+        S::read(self.settings.read(cx).page::<S::Page>().read(cx), cx)
     }
 }

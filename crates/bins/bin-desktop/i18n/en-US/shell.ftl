@@ -1,4 +1,4 @@
-## Shell chrome: the mode badge, status line, top bar and the empty state. Key tokens (`esc`, `g x`)
+## Shell chrome: the mode badge, status line, top bar and the no Ledger open content. Key tokens (`esc`, `g x`)
 ## and command names (`:open`) are passed in, never translated.
 
 ## The mode badge. Written in sentence case; the renderer upper-cases it.
@@ -49,6 +49,18 @@ desktop-status-not-a-jump = { $keys } is not a jump
 desktop-status-command-not-yet-built = :{ $command } — not yet built
 desktop-status-command-refused = :{ $command } — not available here right now
 
+## With no Ledger open: the flash refusing anything that needs one, and the status line's right-hand
+## side in place of the open Ledger's file. `$open` and `$new` are the command names as typed.
+
+desktop-status-refused-no-ledger = No Ledger open: { $open } or { $new } first
+desktop-status-no-ledger-file = No ledger open…
+
+## Why start-up couldn't open the Ledger file it was told to, the `$reason` of the Toast saying so.
+
+desktop-ledger-open-missing = no such file
+desktop-ledger-open-not-a-file = not a file
+desktop-ledger-open-empty = the file is empty
+
 ## Status-line flashes for actions whose flow is not designed or wired yet.
 
 desktop-status-sync-now-not-implemented = sync now — not implemented
@@ -71,11 +83,11 @@ desktop-topbar-undo-action-delete-transaction = Delete transaction at Bunnings
 desktop-topbar-undo-action-import = Import statement.csv
 desktop-status-undo-not-yet-built = undo — not yet built
 
-## The cold-start empty state. `$open` and `$new` are the command names as typed, and the tags mark
-## them as the clickable spans.
+## The Dashboard with no Ledger open. `$open` and `$new` are the command names as typed, and the
+## tags mark them as the clickable spans.
 
-desktop-empty-state-title = No ledger open
-desktop-empty-state-hint = Run <open>{ $open }</open> to load a ledger file, or <new>{ $new }</new> to start one.
+desktop-no-ledger-title = No ledger open
+desktop-no-ledger-hint = Run <open>{ $open }</open> to open a ledger file, or <new>{ $new }</new> to start one.
 
 ## Toasts. The line above the stack counting Toasts held back out of view.
 

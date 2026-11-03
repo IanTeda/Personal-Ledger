@@ -11,7 +11,7 @@ use gpui::{div, prelude::*, px};
 use lib_core::DateStyle;
 use lib_ledger::Domain;
 
-use super::{AttentionBill, BudgetBar, BudgetList, Dashboard, OnBillClick, empty_state};
+use super::{AttentionBill, BudgetBar, BudgetList, Dashboard, OnBillClick};
 use crate::{
     bills, budgets,
     ledger_store::{LedgerStore, notify_on},
@@ -49,8 +49,6 @@ pub struct DashboardView {
     scroll: ScrollHandle,
     date_style: Option<DateStyle>,
     glyphs: StatusGlyphs,
-    /// Whether a Ledger is open: without one the page is the cold-start empty state.
-    ledger_open: bool,
     _bills_changed: Subscription,
     _budgets_changed: Subscription,
     _transactions_changed: Subscription,
@@ -70,7 +68,6 @@ impl DashboardView {
             scroll: ScrollHandle::new(),
             date_style: None,
             glyphs: StatusGlyphs::default(),
-            ledger_open: true,
             _bills_changed: notify_on(&sources.ledger, Domain::Bills, cx),
             _budgets_changed: notify_on(&sources.ledger, Domain::Budgets, cx),
             _transactions_changed: notify_on(&sources.ledger, Domain::Transactions, cx),
@@ -96,11 +93,6 @@ impl DashboardView {
         self.date_style = date_style;
         self.glyphs = glyphs;
         cx.notify();
-    }
-
-    /// Records whether a Ledger is open, as `Root` draws the page.
-    pub fn set_ledger_open(&mut self, open: bool) {
-        self.ledger_open = open;
     }
 
     /// No key is the Dashboard's ahead of the Shell's fallback.
@@ -245,25 +237,16 @@ impl DashboardView {
 impl Render for DashboardView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let entity = cx.entity();
-        let content = if self.ledger_open {
-            let on_bill_click: OnBillClick = Rc::new(move |id, _window, cx| {
-                entity.update(cx, |view, cx| view.click_bill(id, cx));
-            });
-            let cx: &App = cx;
-            Dashboard::new(
-                self.attention_bills(cx),
-                format::flag_glyph(self.glyphs),
-                on_bill_click,
-            )
-            .budgets(self.budget_list(cx))
-            .into_any_element()
-        } else {
-            let on_command_click: super::OnEmptyStateCommandClick =
-                Rc::new(move |name, _window, cx| {
-                    entity.update(cx, |_, cx| cx.emit(ViewEvent::RunCommand(name)));
-                });
-            empty_state(on_command_click, cx)
-        };
+        let on_bill_click: OnBillClick = Rc::new(move |id, _window, cx| {
+            entity.update(cx, |view, cx| view.click_bill(id, cx));
+        });
+        let cx: &App = cx;
+        let content = Dashboard::new(
+            self.attention_bills(cx),
+            format::flag_glyph(self.glyphs),
+            on_bill_click,
+        )
+        .budgets(self.budget_list(cx));
         div()
             .id("view")
             .flex_1()

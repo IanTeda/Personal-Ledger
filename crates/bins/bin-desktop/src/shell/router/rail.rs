@@ -71,7 +71,12 @@ impl Root {
     /// call `g`-jump (`Self::handle_key_down`'s pending-`g` arm) and the palette
     /// (`Self::run_command`'s noun Commands, through `Self::show_noun`) both make, so rail click,
     /// `g`-jump and the palette land in the same state per acceptance criterion 1.
+    /// With no Ledger open a noun that needs one is refused, and the Shell stays put.
     pub(super) fn handle_rail_click(&mut self, noun: Noun, cx: &mut Context<'_, Self>) {
+        if self.refuse_noun_without_ledger(noun) {
+            cx.notify();
+            return;
+        }
         let noun_before = self.nav().noun();
         self.navigate(NavInput::Show(noun));
         if self.nav().noun() != noun_before {

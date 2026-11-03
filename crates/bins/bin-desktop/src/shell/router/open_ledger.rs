@@ -4,10 +4,9 @@
 //! `lib_database::open_storage` opened, and `:open` will call it on another file's. Whether a Ledger
 //! is open is whether `Root` holds one.
 //!
-//! Halfway state: start-up always builds one and nothing drops it yet, so `Root` reads it through
-//! `Root::open`, which treats its absence as a bug until the no Ledger open start (#977). The
-//! Settings View is inside, This device pages and all, since it is built on the Ledger; #976 and
-//! #977 split those pages out.
+//! With no Ledger open there is none: start-up builds one only on a Ledger file it opened (#977).
+//! The Settings View stands outside it, since its This device pages work with no Ledger open;
+//! building the Open Ledger hands that View its This Ledger pages.
 
 use std::rc::Rc;
 
@@ -37,8 +36,8 @@ pub struct OpenLedger {
     /// Schedule is generated through.
     pub(super) bills: crate::bills::DesktopPorts,
     /// The Views that render themselves and handle their own input (ADR-0037): the Dashboard,
-    /// Bills, Budgets, Transactions with its Import step, Documents, and Settings. Each reaches
-    /// `Root` only through `ViewEvent`.
+    /// Bills, Budgets, Transactions with its Import step, and Documents. Each reaches `Root` only
+    /// through `ViewEvent`. Settings is `Root`'s own, given its This Ledger pages here.
     pub(super) views: ViewEntities,
     /// Keeps each View's event subscription and each Ledger domain's repaint alive: dropping one
     /// silently stops its events.
@@ -50,11 +49,12 @@ pub struct OpenLedger {
 impl OpenLedger {
     /// Builds everything on `stores` under `keybindings`, dated by `clock`, and installs the stores'
     /// commit as the one every input ends in. Wires the shared ports first, then the module Setups,
-    /// the Ledger's read copy and the Views.
+    /// the Ledger's read copy and the Views, and gives `settings` its This Ledger pages.
     pub fn build(
         stores: Stores,
         keybindings: &lib_config::KeyBindingConfig,
         clock: &lib_core::Clock,
+        settings: &Entity<SettingsView>,
         cx: &mut Context<'_, Root>,
     ) -> Self {
         let Stores {
@@ -152,7 +152,7 @@ impl OpenLedger {
             documents,
         };
         let bills = crate::bills::BillsSetup::new(bills, payments, keybindings);
-        let settings = crate::settings::pages::SettingsSetup {
+        let settings_setup = crate::settings::pages::SettingsSetup {
             units,
             institutions: institutions_setup,
             payees: payees_setup,
@@ -170,7 +170,7 @@ impl OpenLedger {
             storage.categories.clone(),
             storage.payees.clone(),
             storage.tags.clone(),
-            settings.units.ports.clone(),
+            settings_setup.units.ports.clone(),
         );
         // The Import writes the Payees and Transactions stores and reads the Accounts and
         // Categories, as their modules hold them.
@@ -187,7 +187,7 @@ impl OpenLedger {
             accounts: storage.accounts.clone(),
             transactions: storage.transactions.clone(),
             bills: storage.bills.borrow().store(),
-            units: settings.units.ports.clone(),
+            units: settings_setup.units.ports.clone(),
             payees: storage.payees.clone(),
         });
         let budgets_ports =
@@ -199,8 +199,8 @@ impl OpenLedger {
         // (#774).
         let ledger = cx.new(|_| LedgerStore::with_storage(Ledger::stub_on(today), storage));
         // The Units ports are the truth; the Ledger keeps a read copy of them (#746).
-        crate::units::ports::refresh(&settings.units.ports, &ledger, cx);
-        let units_ports = settings.units.ports.clone();
+        crate::units::ports::refresh(&settings_setup.units.ports, &ledger, cx);
+        let units_ports = settings_setup.units.ports.clone();
         // The Dialogs and the Dashboard read the Categories, Units and Institutions straight from the Ledger.
         let categories_subscription = notify_on(&ledger, lib_ledger::Domain::Categories, cx);
         // A View not yet a module wrote through the Ledger from its own click: one input commits it.
@@ -214,10 +214,9 @@ impl OpenLedger {
         let payees_changed = notify_on(&ledger, lib_ledger::Domain::Payees, cx);
         // Documents resolve their Links against the Inventory.
         let inventory_changed = notify_on(&ledger, lib_ledger::Domain::Inventory, cx);
-        let settings_view = cx.new(|cx| SettingsView::new(&ledger, clock, settings, cx));
-        let settings_subscription = Root::view_event_subscription(&settings_view, cx);
-        // The status line reads the page's state, so a change in it repaints `Root` too.
-        let settings_view_observer = cx.observe(&settings_view, |_, _, cx| cx.notify());
+        settings.update(cx, |view, cx| {
+            view.open_ledger(&ledger, clock, settings_setup, cx)
+        });
         let transactions_view =
             cx.new(|cx| TransactionsPage::new(transactions_ports, &ledger, clock.clone(), cx));
         crate::transactions::router::install(&transactions_view, cx);
@@ -282,7 +281,6 @@ impl OpenLedger {
                 transactions: transactions_view,
                 import: import_view,
                 documents: documents_view,
-                settings: settings_view,
             },
             _subscriptions: vec![
                 dashboard_subscription,
@@ -303,8 +301,6 @@ impl OpenLedger {
                 accounts_changed,
                 institutions_subscription,
                 inventory_changed,
-                settings_subscription,
-                settings_view_observer,
                 legacy_applied,
             ],
             _write_failures: Root::listen_for_write_failures(failures, cx),

@@ -80,6 +80,27 @@ pub enum CommandEffect {
 }
 
 impl CommandEffect {
+    /// Whether the effect needs a Ledger open, so it is refused with none (#977): one that opens a
+    /// This Ledger page, a noun that needs one or a module's page, and `:close`, `:import` and the
+    /// commands not yet built. `:open`, `:new`, Help, the This device Settings pages and the Shell's
+    /// and Preferences' own commands run with no Ledger open.
+    pub fn needs_ledger(&self) -> bool {
+        match self {
+            Self::OpenSettingsPage(section) => section.needs_ledger(),
+            Self::Shell(ShellCommand::Jump(noun)) => crate::navigation::nav::needs_ledger(*noun),
+            Self::CloseLedger
+            | Self::Accounts(_)
+            | Self::Import
+            | Self::Module { .. }
+            | Self::NotYetBuilt => true,
+            Self::OpenDialog(_)
+            | Self::Colour(_)
+            | Self::DismissToast
+            | Self::SetToasts(_)
+            | Self::Shell(_) => false,
+        }
+    }
+
     /// Whether text typed after the command name is an argument (`accounts delete Home Loan`)
     /// rather than more of the query. The one predicate [`split_input`] and the palette's Tab
     /// completion both read; a keymap event can't carry an argument, so only the Accounts verbs do.

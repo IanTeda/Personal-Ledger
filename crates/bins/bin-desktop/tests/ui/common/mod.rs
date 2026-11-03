@@ -63,6 +63,21 @@ use std::rc::Rc;
 use std::sync::mpsc;
 use std::time::Duration;
 
+/// The status line's refusal for anything that needs a Ledger with none open (#977).
+pub const NO_LEDGER: &str = "No Ledger open: :open or :new first";
+
+/// Creates a new Ledger file at `path`, as `:new` will (start-up never creates one), and returns the
+/// configuration `main` would hold, pointed at it, for a smoke test on the real start-up.
+pub fn new_ledger(path: &std::path::Path) -> lib_config::Config {
+    init_for_tests();
+    let storage =
+        lib_database::open_storage(path, today(), &lib_locale::msg::institution_personal())
+            .expect("a new Ledger file");
+    bin_desktop::quit(&storage.writer);
+    drop(storage);
+    config_for(path)
+}
+
 /// The configuration `main` would hold, pointed at the Ledger file `path`, for a smoke test on
 /// the real start-up.
 pub fn config_for(path: &std::path::Path) -> lib_config::Config {
@@ -1377,6 +1392,73 @@ impl<'a> Harness<'a> {
         (stores, commits): (Stores, Rc<Cell<usize>>),
         keybindings: lib_config::KeyBindingConfig,
     ) -> Self {
+        Self::build_on(
+            app,
+            logs,
+            configured_level,
+            (Some(stores), commits),
+            keybindings,
+            PersistedState::default(),
+        )
+    }
+
+    /// Whether the status line shows the refusal for something that needs a Ledger with none open.
+    pub fn refused_without_ledger(&mut self) -> bool {
+        self.read(Root::status_message).as_deref() == Some(NO_LEDGER)
+    }
+
+    /// The Shell as start-up leaves it with no Ledger named: no Ledger open, nothing persisted.
+    pub fn without_ledger(app: &'a mut TestAppContext) -> Self {
+        Self::starting(
+            app,
+            bin_desktop::Started::NoLedger,
+            PersistedState::default(),
+        )
+    }
+
+    /// The Shell as `run` builds it on what start-up made of the Ledger file, from `persisted`
+    /// state: on the Ledger `started` opened, or with none open, raising the Toast a failed open
+    /// raises.
+    pub fn starting(
+        app: &'a mut TestAppContext,
+        started: bin_desktop::Started,
+        persisted: PersistedState,
+    ) -> Self {
+        let failure = match &started {
+            bin_desktop::Started::Failed(failure) => Some(failure.clone()),
+            _ => None,
+        };
+        let stores = started
+            .storage()
+            .map(|storage| counted(Stores::from(storage)));
+        let (stores, commits) = match stores {
+            Some((stores, commits)) => (Some(stores), commits),
+            None => (None, Rc::new(Cell::new(0))),
+        };
+        let ui = Self::build_on(
+            app,
+            lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
+            None,
+            (stores, commits),
+            lib_config::KeyBindingConfig::default(),
+            persisted,
+        );
+        if let Some(failure) = failure {
+            ui.shell
+                .update(ui.cx, |shell, _| shell.ledger_open_failed(&failure));
+        }
+        ui
+    }
+
+    /// The Shell on `stores`, or with no Ledger open, from `persisted` state.
+    fn build_on(
+        app: &'a mut TestAppContext,
+        logs: lib_tracing::LogBuffer,
+        configured_level: Option<lib_tracing::Levels>,
+        (stores, commits): (Option<Stores>, Rc<Cell<usize>>),
+        keybindings: lib_config::KeyBindingConfig,
+        persisted: PersistedState,
+    ) -> Self {
         // Pins the process-wide Locale to en-US (and loads this bin's Messages), so rendered text
         // never depends on the host; `main` is never run in a test.
         init_for_tests();
@@ -1389,7 +1471,7 @@ impl<'a> Harness<'a> {
             let focus_handle = cx.focus_handle();
             window.focus(&focus_handle);
             router::build(
-                PersistedState::default(),
+                persisted,
                 ShellBindings { keybindings },
                 ShellLogs {
                     buffer: logs.clone(),

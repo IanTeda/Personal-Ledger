@@ -37,9 +37,7 @@ impl Root {
         }
         if matches!(action, TopBarAction::Back | TopBarAction::Forward) {
             let page = self.nav().settings_page();
-            self.open()
-                .views
-                .settings
+            self.settings
                 .update(cx, |view, cx| view.set_selected_section(cx, page));
         }
         if self.nav().noun() != noun_before {

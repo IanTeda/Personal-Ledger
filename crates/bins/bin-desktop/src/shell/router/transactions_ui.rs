@@ -12,9 +12,10 @@ use crate::{
 use gpui::App;
 
 impl Root {
-    /// The Transactions, read through their store (ADR-0032).
+    /// The Transactions, read through their store (ADR-0032); none with no Ledger open.
     pub(super) fn transactions<'a>(&self, cx: &'a App) -> &'a [Transaction] {
-        self.open().ledger.read(cx).ledger().transactions()
+        self.ledger(cx)
+            .map_or(&[], lib_ledger::Ledger::transactions)
     }
 
     /// `:import`: opens the stubbed 6e step on the seeded statement, the Import step shown in place
@@ -23,9 +24,8 @@ impl Root {
         self.navigate(NavInput::Show(Noun::Transactions));
         self.navigate(NavInput::Focus(FocusZone::View));
         self.reset_view_scroll(cx);
-        self.open()
-            .views
-            .import
-            .update(cx, |view, cx| view.open(cx));
+        if let Some(open) = &self.open {
+            open.views.import.update(cx, |view, cx| view.open(cx));
+        }
     }
 }

@@ -119,9 +119,11 @@ pub trait Dialog {
 pub type DialogToast = (ToastKind, String);
 
 /// What a hosted Dialog reads and writes through: the Ledger, and the day the Shell was built on.
+/// The Dialogs left in this host (Help, the Toast history, Tracing's) open with no Ledger open too,
+/// so the Ledger is `None` then.
 #[derive(Clone)]
 pub struct DialogScope {
-    pub ledger: Entity<LedgerStore>,
+    pub ledger: Option<Entity<LedgerStore>>,
     pub today: NaiveDate,
 }
 

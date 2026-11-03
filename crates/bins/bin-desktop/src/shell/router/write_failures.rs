@@ -58,8 +58,10 @@ impl Root {
     /// was, with an Error Toast that the rows aren't saved; called from `input::send` before the
     /// Notices drain.
     pub(crate) fn reload_cascades(&mut self, cascades: &[Domain], cx: &mut Context<'_, Self>) {
+        let Some(open) = &self.open else {
+            return;
+        };
         for &domain in cascades {
-            let open = self.open();
             let reload = reload(domain, &open.units, &open.ledger, cx);
             if let Err(error) = reload.reloaded {
                 tracing::error!(%error, domain = reload.name, "Failed to reload after a cascade");

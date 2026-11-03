@@ -8,7 +8,7 @@ use super::common;
 use bin_desktop::shell::router::SettingsInstitutionsSnapshot;
 
 use bin_desktop::navigation::nav::Noun;
-use common::{Harness, config_for};
+use common::{Harness, new_ledger};
 use gpui::TestAppContext;
 
 /// The Institutions page's names, in the order the page lists them.
@@ -42,10 +42,12 @@ fn account_select_institutions(ui: &mut Harness<'_>) -> Vec<String> {
 #[gpui::test]
 fn an_added_institution_is_there_after_a_restart(app: &mut TestAppContext) {
     let dir = tempfile::tempdir().expect("a temporary directory");
-    let config = config_for(&dir.path().join("ledger.pldb"));
+    let config = new_ledger(&dir.path().join("ledger.pldb"));
 
     let names = {
-        let storage = bin_desktop::start_on(&config, common::today()).expect("a new Ledger starts");
+        let storage = bin_desktop::start_on(&config, common::today())
+            .storage()
+            .expect("a new Ledger starts");
         let writer = storage.writer.clone();
         let mut ui = Harness::with_storage(app, storage);
         institution_names(&mut ui);
@@ -63,7 +65,9 @@ fn an_added_institution_is_there_after_a_restart(app: &mut TestAppContext) {
         names
     };
 
-    let storage = bin_desktop::start_on(&config, common::today()).expect("the Ledger starts again");
+    let storage = bin_desktop::start_on(&config, common::today())
+        .storage()
+        .expect("the Ledger starts again");
     let mut ui = Harness::with_storage(app, storage);
     assert_eq!(institution_names(&mut ui), names);
     assert!(
@@ -75,10 +79,12 @@ fn an_added_institution_is_there_after_a_restart(app: &mut TestAppContext) {
 #[gpui::test]
 fn an_edited_institution_is_there_after_a_restart(app: &mut TestAppContext) {
     let dir = tempfile::tempdir().expect("a temporary directory");
-    let config = config_for(&dir.path().join("ledger.pldb"));
+    let config = new_ledger(&dir.path().join("ledger.pldb"));
 
     let names = {
-        let storage = bin_desktop::start_on(&config, common::today()).expect("a new Ledger starts");
+        let storage = bin_desktop::start_on(&config, common::today())
+            .storage()
+            .expect("a new Ledger starts");
         let writer = storage.writer.clone();
         let mut ui = Harness::with_storage(app, storage);
         assert_eq!(
@@ -99,7 +105,9 @@ fn an_edited_institution_is_there_after_a_restart(app: &mut TestAppContext) {
         names
     };
 
-    let storage = bin_desktop::start_on(&config, common::today()).expect("the Ledger starts again");
+    let storage = bin_desktop::start_on(&config, common::today())
+        .storage()
+        .expect("the Ledger starts again");
     let mut ui = Harness::with_storage(app, storage);
     assert_eq!(institution_names(&mut ui), names);
     assert!(
@@ -111,10 +119,12 @@ fn an_edited_institution_is_there_after_a_restart(app: &mut TestAppContext) {
 #[gpui::test]
 fn a_deleted_institution_is_gone_after_a_restart(app: &mut TestAppContext) {
     let dir = tempfile::tempdir().expect("a temporary directory");
-    let config = config_for(&dir.path().join("ledger.pldb"));
+    let config = new_ledger(&dir.path().join("ledger.pldb"));
 
     let names = {
-        let storage = bin_desktop::start_on(&config, common::today()).expect("a new Ledger starts");
+        let storage = bin_desktop::start_on(&config, common::today())
+            .storage()
+            .expect("a new Ledger starts");
         let writer = storage.writer.clone();
         let mut ui = Harness::with_storage(app, storage);
         let before = institution_names(&mut ui);
@@ -132,7 +142,9 @@ fn a_deleted_institution_is_gone_after_a_restart(app: &mut TestAppContext) {
         names
     };
 
-    let storage = bin_desktop::start_on(&config, common::today()).expect("the Ledger starts again");
+    let storage = bin_desktop::start_on(&config, common::today())
+        .storage()
+        .expect("the Ledger starts again");
     let mut ui = Harness::with_storage(app, storage);
     assert_eq!(institution_names(&mut ui), names);
     assert!(
@@ -144,10 +156,12 @@ fn a_deleted_institution_is_gone_after_a_restart(app: &mut TestAppContext) {
 #[gpui::test]
 fn a_usual_unit_is_there_after_a_restart(app: &mut TestAppContext) {
     let dir = tempfile::tempdir().expect("a temporary directory");
-    let config = config_for(&dir.path().join("ledger.pldb"));
+    let config = new_ledger(&dir.path().join("ledger.pldb"));
 
     {
-        let storage = bin_desktop::start_on(&config, common::today()).expect("a new Ledger starts");
+        let storage = bin_desktop::start_on(&config, common::today())
+            .storage()
+            .expect("a new Ledger starts");
         let writer = storage.writer.clone();
         let mut ui = Harness::with_storage(app, storage);
         institution_names(&mut ui);
@@ -158,7 +172,9 @@ fn a_usual_unit_is_there_after_a_restart(app: &mut TestAppContext) {
         bin_desktop::quit(&writer);
     }
 
-    let storage = bin_desktop::start_on(&config, common::today()).expect("the Ledger starts again");
+    let storage = bin_desktop::start_on(&config, common::today())
+        .storage()
+        .expect("the Ledger starts again");
     let mut ui = Harness::with_storage(app, storage);
     institution_names(&mut ui);
     ui.click("institution-edit-1");

@@ -11,7 +11,7 @@
 use super::common;
 
 use bin_desktop::navigation::nav::Noun;
-use common::{Harness, config_for};
+use common::{Harness, new_ledger};
 use gpui::TestAppContext;
 
 fn skipped(ui: &mut Harness<'_>) -> usize {
@@ -61,10 +61,12 @@ fn telstra_transactions(ui: &mut Harness<'_>) -> usize {
 #[gpui::test]
 fn a_skipped_bill_is_still_skipped_after_a_restart(app: &mut TestAppContext) {
     let dir = tempfile::tempdir().expect("a temporary directory");
-    let config = config_for(&dir.path().join("ledger.pldb"));
+    let config = new_ledger(&dir.path().join("ledger.pldb"));
 
     let (rows, skipped_before) = {
-        let storage = bin_desktop::start_on(&config, common::today()).expect("a new Ledger starts");
+        let storage = bin_desktop::start_on(&config, common::today())
+            .storage()
+            .expect("a new Ledger starts");
         let writer = storage.writer.clone();
         let mut ui = Harness::with_storage(app, storage);
         ui.press("g w");
@@ -79,7 +81,9 @@ fn a_skipped_bill_is_still_skipped_after_a_restart(app: &mut TestAppContext) {
         (rows, after)
     };
 
-    let storage = bin_desktop::start_on(&config, common::today()).expect("the Ledger starts again");
+    let storage = bin_desktop::start_on(&config, common::today())
+        .storage()
+        .expect("the Ledger starts again");
     let mut ui = Harness::with_storage(app, storage);
     ui.press("g w");
     assert_eq!(skipped(&mut ui), skipped_before);
@@ -91,10 +95,12 @@ fn a_bill_paid_directly_is_still_paid_with_its_transaction_after_a_restart(
     app: &mut TestAppContext,
 ) {
     let dir = tempfile::tempdir().expect("a temporary directory");
-    let config = config_for(&dir.path().join("ledger.pldb"));
+    let config = new_ledger(&dir.path().join("ledger.pldb"));
 
     let (rows, telstra_paid) = {
-        let storage = bin_desktop::start_on(&config, common::today()).expect("a new Ledger starts");
+        let storage = bin_desktop::start_on(&config, common::today())
+            .storage()
+            .expect("a new Ledger starts");
         let writer = storage.writer.clone();
         let mut ui = Harness::with_storage(app, storage);
         let telstra_before = telstra_transactions(&mut ui);
@@ -121,7 +127,9 @@ fn a_bill_paid_directly_is_still_paid_with_its_transaction_after_a_restart(
         (rows, telstra_paid)
     };
 
-    let storage = bin_desktop::start_on(&config, common::today()).expect("the Ledger starts again");
+    let storage = bin_desktop::start_on(&config, common::today())
+        .storage()
+        .expect("the Ledger starts again");
     let mut ui = Harness::with_storage(app, storage);
     assert_eq!(telstra_transactions(&mut ui), telstra_paid);
     // Move off the top row, where the new Transaction (dated today, newest first) sits, so only the

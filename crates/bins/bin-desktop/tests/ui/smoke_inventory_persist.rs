@@ -7,7 +7,7 @@
 use super::common;
 use bin_desktop::shell::router::SettingsInventorySnapshot;
 
-use common::{Harness, config_for};
+use common::{Harness, new_ledger};
 use gpui::TestAppContext;
 
 /// Settings on the Inventory page (twelve presses down the index) with focus stepped into it.
@@ -37,10 +37,12 @@ fn shown(ui: &mut Harness<'_>) -> Shown {
 #[gpui::test]
 fn a_location_with_items_and_an_added_one_are_there_after_a_restart(app: &mut TestAppContext) {
     let dir = tempfile::tempdir().expect("a temporary directory");
-    let config = config_for(&dir.path().join("ledger.pldb"));
+    let config = new_ledger(&dir.path().join("ledger.pldb"));
 
     let before = {
-        let storage = bin_desktop::start_on(&config, common::today()).expect("a new Ledger starts");
+        let storage = bin_desktop::start_on(&config, common::today())
+            .storage()
+            .expect("a new Ledger starts");
         let writer = storage.writer.clone();
         let mut ui = Harness::with_storage(app, storage);
         in_inventory(&mut ui);
@@ -70,7 +72,9 @@ fn a_location_with_items_and_an_added_one_are_there_after_a_restart(app: &mut Te
         before
     };
 
-    let storage = bin_desktop::start_on(&config, common::today()).expect("the Ledger starts again");
+    let storage = bin_desktop::start_on(&config, common::today())
+        .storage()
+        .expect("the Ledger starts again");
     let mut ui = Harness::with_storage(app, storage);
     in_inventory(&mut ui);
     let after = shown(&mut ui);

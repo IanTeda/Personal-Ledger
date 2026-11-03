@@ -6,7 +6,7 @@
 use super::common;
 use bin_desktop::shell::router::SettingsCategoriesSnapshot;
 
-use common::{Harness, config_for};
+use common::{Harness, new_ledger};
 use gpui::TestAppContext;
 
 /// Settings on the page `presses` down the index, named `page`, with focus stepped into it.
@@ -40,10 +40,12 @@ fn an_added_category_is_there_after_a_restart_and_a_payee_may_default_to_it(
     app: &mut TestAppContext,
 ) {
     let dir = tempfile::tempdir().expect("a temporary directory");
-    let config = config_for(&dir.path().join("ledger.pldb"));
+    let config = new_ledger(&dir.path().join("ledger.pldb"));
 
     let names = {
-        let storage = bin_desktop::start_on(&config, common::today()).expect("a new Ledger starts");
+        let storage = bin_desktop::start_on(&config, common::today())
+            .storage()
+            .expect("a new Ledger starts");
         let writer = storage.writer.clone();
         let mut ui = Harness::with_storage(app, storage);
         on_page(&mut ui, "j j j j j j j j", "Categories");
@@ -55,7 +57,9 @@ fn an_added_category_is_there_after_a_restart_and_a_payee_may_default_to_it(
         names
     };
 
-    let storage = bin_desktop::start_on(&config, common::today()).expect("the Ledger starts again");
+    let storage = bin_desktop::start_on(&config, common::today())
+        .storage()
+        .expect("the Ledger starts again");
     let mut ui = Harness::with_storage(app, storage);
     assert!(
         default_category_offers(&mut ui, "pets"),

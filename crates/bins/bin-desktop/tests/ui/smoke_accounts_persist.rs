@@ -13,7 +13,7 @@ use super::common;
 use bin_desktop::shell::router::{SettingsAccountsSnapshot, SettingsUnitsSnapshot};
 
 use bin_desktop::{WindowSize, navigation::nav::Noun};
-use common::{Harness, config_for};
+use common::{Harness, new_ledger};
 use gpui::TestAppContext;
 
 /// The Accounts page's names, in the order the page lists them.
@@ -48,10 +48,12 @@ fn base_unit_holdings(ui: &mut Harness<'_>) -> Vec<String> {
 #[gpui::test]
 fn an_added_account_is_there_after_a_restart(app: &mut TestAppContext) {
     let dir = tempfile::tempdir().expect("a temporary directory");
-    let config = config_for(&dir.path().join("ledger.pldb"));
+    let config = new_ledger(&dir.path().join("ledger.pldb"));
 
     let names = {
-        let storage = bin_desktop::start_on(&config, common::today()).expect("a new Ledger starts");
+        let storage = bin_desktop::start_on(&config, common::today())
+            .storage()
+            .expect("a new Ledger starts");
         let writer = storage.writer.clone();
         let mut ui = Harness::with_storage(app, storage);
         let before = account_names(&mut ui);
@@ -66,7 +68,9 @@ fn an_added_account_is_there_after_a_restart(app: &mut TestAppContext) {
         names
     };
 
-    let storage = bin_desktop::start_on(&config, common::today()).expect("the Ledger starts again");
+    let storage = bin_desktop::start_on(&config, common::today())
+        .storage()
+        .expect("the Ledger starts again");
     let mut ui = Harness::with_storage(app, storage);
     ui.resize_to(WindowSize::XLarge);
     assert_eq!(account_names(&mut ui), names);

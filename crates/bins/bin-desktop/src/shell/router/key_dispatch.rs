@@ -19,10 +19,7 @@ use crate::{
     },
     shell::view::dialog_host::{self, Dialog, DialogKey, DialogOutcome},
     shell::view::window_size::WindowSize,
-    view::{
-        active::{ActiveViewEntity, ShellView},
-        event::ViewMode,
-    },
+    view::{active::ActiveViewEntity, event::ViewMode},
 };
 use lib_shell::NavInput;
 
@@ -109,6 +106,9 @@ impl Root {
             ShellCommand::DismissToasts => return false,
             ShellCommand::ToastHistory => self.open_toast_history(),
             ShellCommand::Jump(noun) => {
+                if self.refuse_noun_without_ledger(noun) {
+                    return true;
+                }
                 self.navigate(NavInput::Show(noun));
                 self.reset_view_scroll(cx);
             }
@@ -190,7 +190,7 @@ impl Root {
     /// The active View's own keys, taken ahead of the Shell's fallback.
     fn handle_view_key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         match self.active_view_entity(cx) {
-            ActiveViewEntity::Shell(ShellView::Placeholder(_)) => false,
+            ActiveViewEntity::Shell(_) => false,
             view => {
                 if !self.view_takes_key_ahead(keystroke) {
                     return false;
@@ -448,7 +448,7 @@ impl KeyRoute for Keys<'_, '_> {
         }
         !sequence
             && match shell.active_view_entity(self.cx) {
-                ActiveViewEntity::Shell(ShellView::Placeholder(_)) => false,
+                ActiveViewEntity::Shell(_) => false,
                 view => {
                     shell.view_takes_key(self.keystroke) && view.handle_key(self.keystroke, self.cx)
                 }

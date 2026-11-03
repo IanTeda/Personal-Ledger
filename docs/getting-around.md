@@ -104,6 +104,14 @@ Missed one? Run **`:toasts`** (or `:messages`) to see every Toast from this sess
 
 If you'd rather not see Toasts, you can turn them off in [Settings](settings.md#toasts).
 
+## Starting up
+
+When the desktop app starts, it opens the Ledger that **On start** names in [Settings](settings.md#general-page), by default the one you had open when you last quit. A file named with `--file` or `file` always wins. With no Ledger to open, it starts with none open. It never creates a Ledger file on its own: only `:new` does that.
+
+If the file it was told to open is missing, empty, a folder or won't open, an error Toast says which file and why. The app then starts with no Ledger open, and tries that file again next time.
+
+With no Ledger open the app sits on the Dashboard, which offers `:open` and `:new`, and the status line says "No ledger open…". The rail shows the screens that need a Ledger dimmed and without their counts. Choosing one says "No Ledger open: :open or :new first" and leaves you where you are. This applies to a click, a `g` jump or a command. `:open`, `:new`, `?` for help and Settings still work. In Settings only the This device pages open: General, Display, Tracing and About.
+
 ## Quitting
 
 In the terminal app there are three ways out, and they all work:

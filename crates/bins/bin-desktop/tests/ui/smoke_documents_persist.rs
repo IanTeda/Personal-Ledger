@@ -11,7 +11,7 @@
 use super::common;
 
 use bin_desktop::shell::router::SettingsDocumentTypesSnapshot;
-use common::{Harness, config_for};
+use common::{Harness, new_ledger};
 use gpui::TestAppContext;
 
 /// The Document Type names Settings › Documents lists, with focus stepped into the page.
@@ -48,10 +48,12 @@ fn focus_row(ui: &mut Harness<'_>, file: &str) {
 #[gpui::test]
 fn a_filed_document_and_a_renamed_type_are_there_after_a_restart(app: &mut TestAppContext) {
     let dir = tempfile::tempdir().expect("a temporary directory");
-    let config = config_for(&dir.path().join("ledger.pldb"));
+    let config = new_ledger(&dir.path().join("ledger.pldb"));
 
     let (rows, names) = {
-        let storage = bin_desktop::start_on(&config, common::today()).expect("a new Ledger starts");
+        let storage = bin_desktop::start_on(&config, common::today())
+            .storage()
+            .expect("a new Ledger starts");
         let writer = storage.writer.clone();
         let mut ui = Harness::with_storage(app, storage);
 
@@ -78,7 +80,9 @@ fn a_filed_document_and_a_renamed_type_are_there_after_a_restart(app: &mut TestA
         (rows, names)
     };
 
-    let storage = bin_desktop::start_on(&config, common::today()).expect("the Ledger starts again");
+    let storage = bin_desktop::start_on(&config, common::today())
+        .storage()
+        .expect("the Ledger starts again");
     let mut ui = Harness::with_storage(app, storage);
     assert_eq!(inbox_rows(&mut ui), rows);
     assert_eq!(type_names(&mut ui), names);

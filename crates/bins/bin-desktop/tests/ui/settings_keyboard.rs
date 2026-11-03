@@ -405,3 +405,51 @@ fn at_medium_the_picker_lists_this_device_then_this_ledger(app: &mut TestAppCont
     let row = tops[1] - tops[0];
     assert!(tops[4] - tops[3] > row);
 }
+
+#[gpui::test]
+fn with_no_ledger_open_a_bracket_onto_a_this_ledger_page_is_refused(app: &mut TestAppContext) {
+    let mut ui = Harness::without_ledger(app);
+    ui.resize_to(WindowSize::Medium);
+    ui.press("g s enter");
+    ui.press("] ] ]");
+    assert_eq!(ui.settings_frame().page, "About");
+
+    ui.press("]");
+    let settings = ui.settings_frame();
+    assert_eq!(settings.page, "About", "the page on show stays");
+    assert!(settings.page_focused);
+    assert_eq!(settings.status_message.as_deref(), Some(common::NO_LEDGER));
+}
+
+#[gpui::test]
+fn with_no_ledger_open_settings_on_a_this_ledger_page_is_refused(app: &mut TestAppContext) {
+    let mut ui = Harness::without_ledger(app);
+    ui.press("g s");
+
+    ui.press(": s e t t i n g s space u n i t s enter");
+    let settings = ui.settings_frame();
+    assert_eq!(settings.page, "General");
+    assert!(!settings.page_focused);
+    assert_eq!(settings.status_message.as_deref(), Some(common::NO_LEDGER));
+}
+
+#[gpui::test]
+fn with_no_ledger_open_enter_in_the_picker_on_a_this_ledger_page_is_refused(
+    app: &mut TestAppContext,
+) {
+    let mut ui = Harness::without_ledger(app);
+    ui.resize_to(WindowSize::Medium);
+    ui.press("g s enter p");
+    ui.press("j j j j");
+    assert_eq!(ui.settings_frame().picker_chosen.as_deref(), Some("Ledger"));
+
+    ui.press("enter");
+    let settings = ui.settings_frame();
+    assert_eq!(settings.page, "General");
+    assert_eq!(
+        settings.picker_chosen.as_deref(),
+        Some("Ledger"),
+        "the picker stays open"
+    );
+    assert_eq!(settings.status_message.as_deref(), Some(common::NO_LEDGER));
+}

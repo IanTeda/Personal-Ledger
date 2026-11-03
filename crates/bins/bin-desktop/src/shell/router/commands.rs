@@ -66,6 +66,10 @@ impl Root {
                 &format!("{} {argument}", command.name),
             );
         }
+        if command.effect.needs_ledger() && self.refuse_without_ledger() {
+            self.navigate(NavInput::ExitMode);
+            return;
+        }
         match command.effect {
             CommandEffect::OpenDialog(mode) => {
                 self.file_explorer = Some(FileExplorer::open_at(
@@ -133,12 +137,12 @@ impl Root {
         }
     }
 
-    /// A click on the empty state's own `:open`/`:new` text (`OnEmptyStateCommandClick`, issue
+    /// A click on the no Ledger open content's own `:open`/`:new` text (`OnNoLedgerCommandClick`, issue
     /// #167): looks `command_name` up in the registry and runs it exactly as the palette's own
     /// `enter` key would -- entering `InputMode::Command` first, same as typing `:` would, so
     /// the status line's `COMMAND` badge and `Esc` (which only acts outside `InputMode::Normal`)
     /// both behave identically regardless of which entry point opened the dialog.
-    pub(super) fn handle_empty_state_command_click(
+    pub(super) fn handle_no_ledger_command_click(
         &mut self,
         command_name: &'static str,
         cx: &mut Context<'_, Self>,
@@ -175,9 +179,7 @@ impl Root {
         if noun_before != Noun::Settings {
             self.reset_view_scroll(cx);
         }
-        self.open()
-            .views
-            .settings
+        self.settings
             .update(cx, |view, cx| view.open_page(section, cx));
     }
 
@@ -193,38 +195,40 @@ impl Root {
         match page {
             ModulePage::Settings(section) => {
                 self.open_settings_page(section, cx);
-                self.open()
-                    .views
-                    .settings
+                self.settings
                     .update(cx, |view, cx| view.module_command(section, command, cx))
             }
             ModulePage::Bills => {
                 self.show_noun(Noun::Bills, cx);
-                self.open()
-                    .views
-                    .bills
-                    .update(cx, |page, cx| page.module_command(command, cx))
+                self.open.as_ref().is_some_and(|open| {
+                    open.views
+                        .bills
+                        .update(cx, |page, cx| page.module_command(command, cx))
+                })
             }
             ModulePage::Budgets => {
                 self.show_noun(Noun::Budgets, cx);
-                self.open()
-                    .views
-                    .budgets
-                    .update(cx, |page, cx| page.module_command(command, cx))
+                self.open.as_ref().is_some_and(|open| {
+                    open.views
+                        .budgets
+                        .update(cx, |page, cx| page.module_command(command, cx))
+                })
             }
             ModulePage::Documents => {
                 self.show_noun(Noun::Documents, cx);
-                self.open()
-                    .views
-                    .documents
-                    .update(cx, |page, cx| page.module_command(command, cx))
+                self.open.as_ref().is_some_and(|open| {
+                    open.views
+                        .documents
+                        .update(cx, |page, cx| page.module_command(command, cx))
+                })
             }
             ModulePage::Transactions => {
                 self.show_noun(Noun::Transactions, cx);
-                self.open()
-                    .views
-                    .transactions
-                    .update(cx, |page, cx| page.module_command(command, cx))
+                self.open.as_ref().is_some_and(|open| {
+                    open.views
+                        .transactions
+                        .update(cx, |page, cx| page.module_command(command, cx))
+                })
             }
         }
     }
@@ -249,7 +253,7 @@ impl Root {
         cx: &mut Context<'_, Self>,
     ) {
         self.open_settings_page(SettingsPage::Accounts, cx);
-        let page = self.open().views.settings.read(cx).page::<AccountsPage>();
+        let page = self.settings.read(cx).page::<AccountsPage>();
         crate::accounts::router::run_command(&page, command_name, verb, argument, cx);
     }
 }

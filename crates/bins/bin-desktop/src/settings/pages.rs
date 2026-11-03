@@ -282,10 +282,19 @@ impl<T: Page> PageHandle for Entity<T> {
 
 /// The Entity of every Settings page. Settings builds them and `Root` reaches them only through
 /// [`SettingsView::page`], for a module Router's entry point, the Tracing capture feed and the
-/// test snapshots.
+/// test snapshots. The This device pages stand with no Ledger open; the This Ledger pages are built
+/// on one, so they are `None` until a Ledger opens (#977).
 pub struct SettingsPages {
     pub general: Entity<GeneralPage>,
     pub display: Entity<DisplayPage>,
+    pub tracing: Entity<TracingPage>,
+    pub about: Entity<AboutPage>,
+    /// The This Ledger pages, `None` with no Ledger open.
+    pub ledger: Option<LedgerPages>,
+}
+
+/// The This Ledger pages, built on the Open Ledger.
+pub struct LedgerPages {
     pub ledger: Entity<LedgerPage>,
     pub units: Entity<UnitsPage>,
     pub institutions: Entity<InstitutionsPage>,
@@ -297,11 +306,9 @@ pub struct SettingsPages {
     pub inventory: Entity<InventoryPage>,
     pub sync_server: Entity<SyncServerPage>,
     pub data_backup: Entity<DataBackupPage>,
-    pub tracing: Entity<TracingPage>,
-    pub about: Entity<AboutPage>,
 }
 
-impl SettingsPages {
+impl LedgerPages {
     pub fn new(
         ledger: &Entity<LedgerStore>,
         clock: &lib_core::Clock,
@@ -319,8 +326,6 @@ impl SettingsPages {
             inventory,
         } = setup;
         Self {
-            general: cx.new(|_| GeneralPage::default()),
-            display: cx.new(|_| DisplayPage::default()),
             ledger: cx.new(|cx| LedgerPage::new(ledger.clone(), units.ports.clone(), cx)),
             units: units_page(
                 units.ports,
@@ -350,6 +355,16 @@ impl SettingsPages {
             inventory: inventory_page(inventory, ledger.clone(), cx),
             sync_server: cx.new(|_| SyncServerPage),
             data_backup: cx.new(|_| DataBackupPage),
+        }
+    }
+}
+
+impl SettingsPages {
+    /// The This device pages, with no Ledger open.
+    pub fn new(cx: &mut Context<'_, SettingsView>) -> Self {
+        Self {
+            general: cx.new(|_| GeneralPage::default()),
+            display: cx.new(|_| DisplayPage::default()),
             // A private, empty capture until `set_log_capture` hands over the real one.
             tracing: cx.new(|_| {
                 TracingPage::new(
@@ -361,31 +376,39 @@ impl SettingsPages {
                 )
             }),
             about: cx.new(|_| AboutPage),
+            ledger: None,
         }
     }
 
-    /// The page's handle. The one match on the page: a new page fails to compile here.
-    pub fn get(&self, page: SettingsPage) -> &dyn PageHandle {
+    /// The page's handle, `None` for a This Ledger page with no Ledger open. The one match on the
+    /// page: a new page fails to compile here.
+    pub fn get(&self, page: SettingsPage) -> Option<&dyn PageHandle> {
+        let ledger = self.ledger.as_ref();
         match page {
-            SettingsPage::General => &self.general,
-            SettingsPage::Display => &self.display,
-            SettingsPage::Ledger => &self.ledger,
-            SettingsPage::Units => &self.units,
-            SettingsPage::Institutions => &self.institutions,
-            SettingsPage::Accounts => &self.accounts,
-            SettingsPage::Categories => &self.categories,
-            SettingsPage::Tags => &self.tags,
-            SettingsPage::Payees => &self.payees,
-            SettingsPage::Documents => &self.documents,
-            SettingsPage::Inventory => &self.inventory,
-            SettingsPage::SyncServer => &self.sync_server,
-            SettingsPage::DataBackup => &self.data_backup,
-            SettingsPage::Tracing => &self.tracing,
-            SettingsPage::About => &self.about,
+            SettingsPage::General => Some(&self.general),
+            SettingsPage::Display => Some(&self.display),
+            SettingsPage::Tracing => Some(&self.tracing),
+            SettingsPage::About => Some(&self.about),
+            SettingsPage::Ledger => ledger.map(|pages| &pages.ledger as &dyn PageHandle),
+            SettingsPage::Units => ledger.map(|pages| &pages.units as &dyn PageHandle),
+            SettingsPage::Institutions => {
+                ledger.map(|pages| &pages.institutions as &dyn PageHandle)
+            }
+            SettingsPage::Accounts => ledger.map(|pages| &pages.accounts as &dyn PageHandle),
+            SettingsPage::Categories => ledger.map(|pages| &pages.categories as &dyn PageHandle),
+            SettingsPage::Tags => ledger.map(|pages| &pages.tags as &dyn PageHandle),
+            SettingsPage::Payees => ledger.map(|pages| &pages.payees as &dyn PageHandle),
+            SettingsPage::Documents => ledger.map(|pages| &pages.documents as &dyn PageHandle),
+            SettingsPage::Inventory => ledger.map(|pages| &pages.inventory as &dyn PageHandle),
+            SettingsPage::SyncServer => ledger.map(|pages| &pages.sync_server as &dyn PageHandle),
+            SettingsPage::DataBackup => ledger.map(|pages| &pages.data_backup as &dyn PageHandle),
         }
     }
 
+    /// Every page built, in index order.
     pub fn all(&self) -> impl Iterator<Item = &dyn PageHandle> {
-        SettingsPage::ALL.into_iter().map(|page| self.get(page))
+        SettingsPage::ALL
+            .into_iter()
+            .filter_map(|page| self.get(page))
     }
 }
