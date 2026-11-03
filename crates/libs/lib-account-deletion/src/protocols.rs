@@ -21,7 +21,6 @@ use std::rc::Rc;
 use lib_accounts::{Account, AccountUsage};
 use lib_bills::BillScheduleEntry;
 use lib_core::{AccountId, TransactionId, UnitId};
-use lib_toast::Notify;
 
 /// Everything deleting one Account writes, as one write.
 #[derive(Debug, Clone, PartialEq)]
@@ -72,13 +71,4 @@ pub struct AccountDeleted {
     pub transactions: usize,
     /// How many Bill Schedule entries they paid, now Unmatched.
     pub unmatched: usize,
-}
-
-/// Navigation out of the Delete Dialog's Presenter, implemented by each Client and passed into
-/// each `handle` call. A Toast or status-line message goes to the Shell through [`Notify`]
-/// (ADR-0048).
-pub trait AccountDeletionRouter: Notify {
-    /// Closes the Delete Dialog. `outcome` is what its confirm removed, `None` when it was
-    /// cancelled.
-    fn close_dialog(&mut self, outcome: Option<AccountDeleted>);
 }

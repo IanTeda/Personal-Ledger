@@ -4,8 +4,9 @@
 //! Account, and the typed-back name. Every key and click becomes a `lib-account-deletion`
 //! Presenter event, and this draws the view model and nothing else.
 //!
-//! Keys: typing edits the typed-back name, and `select` confirms once the Presenter would.
-//! Confirm and Cancel go to the Presenter, which closes the Dialog through its Router; a confirmed
+//! Every Dialog command and typed key reaches the Presenter as a `lib-viper` `DialogInput`: typing
+//! edits the typed-back name, and `select` confirms once the Presenter would. Confirm and Cancel
+//! go to the Presenter, which closes the Dialog through the host's [`HostRouter`]; a confirmed
 //! outcome is handed to the page, and the host closes on [`DialogClosed`].
 
 use std::rc::Rc;
@@ -16,16 +17,15 @@ use lib_account_deletion::presenter::{
     DeleteAccountEvent, DeleteAccountPresenter, DeleteAccountViewModel,
 };
 use lib_shell::DialogCommand;
+use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{BACK, Keymap, SELECT};
 
-use crate::account_deletion::router::DialogRouter;
 use crate::bills::DesktopPorts;
 use crate::dialog;
 use crate::form::dialog_fields::text_field;
-use crate::form::viper::{enter, typed};
 use crate::ledger_store::LedgerStore;
-use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostedDialog};
-use crate::shell::view::dialog_host::{DialogKey, DialogOutcome, DialogReadback};
+use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
+use crate::shell::view::dialog_host::DialogReadback;
 use crate::theme::color;
 use lib_shell::Hint;
 
@@ -34,6 +34,9 @@ const WIDTH: gpui::Pixels = px(440.0);
 
 /// The open Delete Dialog's clicks.
 type Clicks = DialogClicks<DeleteAccountDialog>;
+
+/// The host's Router, as the Delete Dialog's Presenter closes through it.
+type Router = HostRouter<AccountDeleted>;
 
 /// What a landed delete hands the page that opened it.
 pub(crate) type Landed = Box<dyn Fn(AccountDeleted, &mut App)>;
@@ -67,16 +70,16 @@ impl DeleteAccountDialog {
     }
 
     /// Sends `event` to the Presenter, returning what its Router was asked.
-    fn send(&mut self, event: DeleteAccountEvent) -> DialogRouter {
-        let mut router = DialogRouter::default();
+    fn send(&mut self, event: DeleteAccountEvent) -> Router {
+        let mut router = Router::default();
         self.presenter.handle(event, &mut router);
         router
     }
 
     /// Hands a landed delete to the page and tells the host, once the Presenter has closed the
     /// Dialog.
-    fn closed(&self, router: DialogRouter, cx: &mut Context<'_, Self>) {
-        let Some(outcome) = router.closed else {
+    fn closed(&self, router: Router, cx: &mut Context<'_, Self>) {
+        let Some(outcome) = router.closed() else {
             return;
         };
         if let Some(outcome) = outcome {
@@ -89,20 +92,15 @@ impl DeleteAccountDialog {
 impl EventEmitter<DialogClosed> for DeleteAccountDialog {}
 
 impl HostedDialog for DeleteAccountDialog {
-    /// Every key but `select` types into the typed-back name.
-    fn key(&mut self, key: DialogKey, _cx: &mut Context<'_, Self>) -> DialogOutcome {
-        let view = self.view();
-        match key {
-            DialogKey::Enter => enter(view.frame.can_confirm),
-            DialogKey::Tab | DialogKey::BackTab => DialogOutcome::Handled,
-            _ => match typed(&view.confirm.text, key) {
-                Some(text) => {
-                    self.send(DeleteAccountEvent::ConfirmText(text));
-                    DialogOutcome::Handled
-                }
-                None => DialogOutcome::Ignored,
-            },
+    /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) brings the
+    /// Ledger's read copies in line after it.
+    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) -> bool {
+        let router = self.send(DeleteAccountEvent::Input(input));
+        if matches!(input, DialogInput::Select | DialogInput::Submit) {
+            crate::account_deletion::refresh(&self.bills, &self.ledger, cx);
         }
+        self.closed(router, cx);
+        true
     }
 
     fn can_confirm(&self) -> bool {

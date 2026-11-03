@@ -13,10 +13,9 @@ use lib_core::{AccountId, TransactionId, UnitId};
 use lib_toast::{Notice, Notify};
 use lib_transactions::TransactionRepository;
 use lib_transactions::fake::InMemoryTransactions;
+use lib_viper::dialog::DialogRouter;
 
-use crate::protocols::{
-    AccountDeleted, AccountDeletion, AccountDeletionRouter, AccountRemoval, DeletionReads,
-};
+use crate::protocols::{AccountDeleted, AccountDeletion, AccountRemoval, DeletionReads};
 
 /// A delete's three stores in memory, the Accounts, the Transactions and the Bills, written
 /// together.
@@ -91,8 +90,8 @@ pub struct RecordingRouter {
     pub notices: Vec<Notice>,
 }
 
-impl AccountDeletionRouter for RecordingRouter {
-    fn close_dialog(&mut self, outcome: Option<AccountDeleted>) {
+impl DialogRouter<AccountDeleted> for RecordingRouter {
+    fn close(&mut self, outcome: Option<AccountDeleted>) {
         self.closed.push(outcome);
     }
 }

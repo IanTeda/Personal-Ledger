@@ -16,15 +16,19 @@ use lib_core::AccountId;
 use lib_locale::Segment;
 use lib_locale::format::{AmountStyle, format_amount};
 use lib_toast::{Notice, ToastKind};
+use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::view::{DialogFrame, TextFieldView, count};
 
 use crate::error::Error;
 use crate::interactor::DeleteAccount;
 use crate::msg;
-use crate::protocols::{AccountDeletionRouter, DeletionReads, SharedDeletion};
+use crate::protocols::{AccountDeleted, DeletionReads, SharedDeletion};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeleteAccountEvent {
+    /// A Dialog command or typed key: `select` and `submit` delete once the Dialog allows it, and
+    /// typing goes to the typed-back name, the only field.
+    Input(DialogInput),
     /// The confirmation field's whole new text.
     ConfirmText(String),
     /// Deletes once the name is typed back and nothing pays from the Account.
@@ -86,11 +90,23 @@ impl DeleteAccountPresenter {
         })
     }
 
-    pub fn handle(&mut self, event: DeleteAccountEvent, router: &mut dyn AccountDeletionRouter) {
+    pub fn handle(
+        &mut self,
+        event: DeleteAccountEvent,
+        router: &mut dyn DialogRouter<AccountDeleted>,
+    ) {
         match event {
+            DeleteAccountEvent::Input(input) => match input {
+                DialogInput::Select | DialogInput::Submit => self.confirm(router),
+                DialogInput::Char(ch) => self.confirm_text.push(ch),
+                DialogInput::Backspace => {
+                    self.confirm_text.pop();
+                }
+                _ => {}
+            },
             DeleteAccountEvent::ConfirmText(text) => self.confirm_text = text,
             DeleteAccountEvent::Confirm => self.confirm(router),
-            DeleteAccountEvent::Cancel => router.close_dialog(None),
+            DeleteAccountEvent::Cancel => router.close(None),
         }
     }
 
@@ -126,7 +142,7 @@ impl DeleteAccountPresenter {
         self.plans == 0 && self.confirm_text == self.name
     }
 
-    fn confirm(&mut self, router: &mut dyn AccountDeletionRouter) {
+    fn confirm(&mut self, router: &mut dyn DialogRouter<AccountDeleted>) {
         if !self.can_confirm() {
             return;
         }
@@ -140,7 +156,7 @@ impl DeleteAccountPresenter {
                         count(deleted.transactions),
                     ),
                 ));
-                router.close_dialog(Some(deleted));
+                router.close(Some(deleted));
             }
             Err(Error::PaidFromByBillPlans { plans }) => {
                 self.plans = plans;
@@ -290,6 +306,28 @@ mod tests {
                 unmatched: 1,
             })]
         );
+        assert!(dialog.deletion.borrow().accounts.account(WALLET).is_none());
+    }
+
+    #[test]
+    fn typed_keys_build_the_name_and_select_deletes_only_once_it_is_exact() {
+        let mut dialog = Dialog::open(WALLET);
+        let mut press = |dialog: &mut Dialog, input| {
+            dialog.send(DeleteAccountEvent::Input(input));
+        };
+
+        for ch in "Wallex".chars() {
+            press(&mut dialog, DialogInput::Char(ch));
+        }
+        press(&mut dialog, DialogInput::Select);
+        press(&mut dialog, DialogInput::NextField);
+        assert!(dialog.router.closed.is_empty(), "not the name yet");
+        press(&mut dialog, DialogInput::Backspace);
+        press(&mut dialog, DialogInput::Char('t'));
+        assert_eq!(dialog.view().confirm.text, "Wallet");
+        press(&mut dialog, DialogInput::Submit);
+
+        assert!(matches!(dialog.router.closed.as_slice(), [Some(_)]));
         assert!(dialog.deletion.borrow().accounts.account(WALLET).is_none());
     }
 

@@ -1,37 +1,16 @@
-//! The Account Deletion module's entry point for other modules' pages ([`open_delete`]), and
-//! `impl AccountDeletionRouter` for the Delete Dialog. Its Router records a close for the Dialog
-//! to read, and puts a Notice onto the bin's queue (`crate::notices`).
+//! The Account Deletion module's entry point for other modules' pages ([`open_delete`]). The
+//! Delete Dialog's Presenter closes it through the host's `HostRouter`, which puts a Notice onto
+//! the bin's queue (`crate::notices`).
 
 use gpui::{Context, Entity, EventEmitter};
+use lib_account_deletion::AccountDeleted;
 use lib_account_deletion::presenter::DeleteAccountPresenter;
-use lib_account_deletion::{AccountDeleted, AccountDeletionRouter};
 use lib_core::AccountId;
-use lib_toast::{Notice, Notify};
 
 use super::{DeleteAccountDialog, DeletionStores, LedgerReads};
 use crate::ledger_store::LedgerStore;
 use crate::shell::view::dialog_entity::host_dialog;
 use crate::view::event::ViewEvent;
-
-/// Where the Delete Dialog's Presenter asks to go: closing, which the Dialog reads, and Notices,
-/// which `Root` drains once the key or click returns.
-#[derive(Default)]
-pub(super) struct DialogRouter {
-    /// `Some` once the Presenter closed the Dialog, with what its confirm removed.
-    pub closed: Option<Option<AccountDeleted>>,
-}
-
-impl AccountDeletionRouter for DialogRouter {
-    fn close_dialog(&mut self, outcome: Option<AccountDeleted>) {
-        self.closed = Some(outcome);
-    }
-}
-
-impl Notify for DialogRouter {
-    fn notify(&mut self, notice: Notice) {
-        crate::notices::Queue.notify(notice);
-    }
-}
 
 /// Opens the Delete account Dialog on Account `id` over page `P`, whose `landed` runs with what
 /// was removed once a confirm lands, so the page redraws. Its figures are read from `ledger` as it
