@@ -1,8 +1,10 @@
 //! The Institutions Add and Edit Dialog's View, an Entity in the Dialog host (`shell::view::dialog_entity`).
 //! [`InstitutionsDialog`] holds the `lib-institutions` form Presenter. Every key and click becomes
-//! a Presenter event; the View draws the Presenter's view model and nothing else.
+//! a Presenter event, or, for a Dialog command or typed key, a `lib-viper` `DialogInput` the
+//! Presenter reads itself; the View draws the Presenter's view model and nothing else.
 //!
-//! Confirm and Cancel go to the Presenter, which closes its Dialog through its Router; a confirmed
+//! Confirm and Cancel go to the Presenter, which closes its Dialog through the host's
+//! [`HostRouter`]; a confirmed
 //! outcome is handed to the page, and the host closes on [`DialogClosed`]. The Toast the Presenter
 //! raises goes onto the bin's queue, which the input's `send` drains.
 
@@ -13,16 +15,15 @@ pub(crate) use delete_institution::DeleteInstitutionDialog;
 
 use gpui::{App, Context, Entity, EventEmitter, IntoElement, Render, Window};
 use lib_institutions::presenter::{InstitutionFormEvent, InstitutionFormPresenter};
-use lib_institutions::{InstitutionsDialog as Which, InstitutionsOutcome, InstitutionsRouter};
+use lib_institutions::{InstitutionsDialog as Which, InstitutionsOutcome};
 use lib_shell::DialogCommand;
-use lib_toast::{Notice, Notify};
+use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
 
-use crate::form::select::SelectState;
 use crate::institutions::ports::{self, DesktopPorts};
 use crate::ledger_store::LedgerStore;
-use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostedDialog};
-use crate::shell::view::dialog_host::{DialogKey, DialogOutcome, DialogReadback};
+use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
+use crate::shell::view::dialog_host::DialogReadback;
 use lib_shell::Hint;
 
 /// The open Dialog's clicks.
@@ -37,8 +38,8 @@ pub struct InstitutionsDialog {
     /// The Ledger read copy a confirm brings in line with what it wrote.
     ledger: Entity<LedgerStore>,
     presenter: InstitutionFormPresenter,
-    /// The Usual unit select's open list and highlight, which the View owns.
-    usual_unit: SelectState,
+    /// The top row of the Usual unit list's window, which the View keeps between draws.
+    scroll: usize,
     /// Which Dialog this is, for the test readback.
     which: Which,
     landed: Landed,
@@ -63,23 +64,23 @@ impl InstitutionsDialog {
             ports: ports.clone(),
             ledger: ledger.clone(),
             presenter,
-            usual_unit: SelectState::default(),
+            scroll: 0,
             which,
             landed,
         })
     }
 
     /// Sends the Presenter `event`, returning what its Router was asked.
-    fn send(&mut self, event: InstitutionFormEvent) -> DialogRouter {
-        let mut router = DialogRouter::default();
+    fn send(&mut self, event: InstitutionFormEvent) -> Router {
+        let mut router = Router::default();
         self.presenter.handle(event, &mut router);
         router
     }
 
     /// Hands a confirmed outcome to the page and tells the host, once the Presenter has closed
     /// the Dialog.
-    fn closed(&self, router: DialogRouter, cx: &mut Context<'_, Self>) {
-        let Some(outcome) = router.closed else {
+    fn closed(&self, router: Router, cx: &mut Context<'_, Self>) {
+        let Some(outcome) = router.closed() else {
             return;
         };
         if let Some(outcome) = outcome {
@@ -89,36 +90,25 @@ impl InstitutionsDialog {
     }
 }
 
-/// Where the Dialog's Presenter asks to go: closing, and Notices, which go onto the bin's queue
-/// for `Root` to drain once the key or click returns. The page opens Dialogs.
-#[derive(Default)]
-pub(super) struct DialogRouter {
-    /// `Some` once the Presenter closed its Dialog, with what its confirm did.
-    pub(super) closed: Option<Option<InstitutionsOutcome>>,
-}
-
-impl InstitutionsRouter for DialogRouter {
-    fn open_dialog(&mut self, _dialog: Which) -> bool {
-        false
-    }
-
-    fn close_dialog(&mut self, outcome: Option<InstitutionsOutcome>) {
-        self.closed = Some(outcome);
-    }
-}
-
-impl Notify for DialogRouter {
-    fn notify(&mut self, notice: Notice) {
-        crate::notices::Queue.notify(notice);
-    }
-}
+/// The host's Router, as an Institutions Dialog's Presenter closes through it.
+type Router = HostRouter<InstitutionsOutcome>;
 
 impl EventEmitter<DialogClosed> for InstitutionsDialog {}
 
 impl HostedDialog for InstitutionsDialog {
-    /// Every key is the Dialog's own: the Presenter holds every field.
-    fn key(&mut self, key: DialogKey, _cx: &mut Context<'_, Self>) -> DialogOutcome {
-        institution_form::key(self, key)
+    /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) runs with
+    /// the Ledger read copy in line before it and after it.
+    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) -> bool {
+        let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
+        if may_confirm {
+            ports::refresh(&self.ledger, cx);
+        }
+        let router = self.send(InstitutionFormEvent::Input(input));
+        if may_confirm {
+            ports::refresh(&self.ledger, cx);
+        }
+        self.closed(router, cx);
+        true
     }
 
     fn can_confirm(&self) -> bool {
@@ -141,9 +131,11 @@ impl HostedDialog for InstitutionsDialog {
     }
 
     fn close_open_select(&mut self) -> bool {
-        let was_open = self.usual_unit.is_open();
-        self.usual_unit.cancel();
-        was_open
+        let open = self.presenter.view_model().usual_unit_list.is_open();
+        if open {
+            self.send(InstitutionFormEvent::CloseUnits);
+        }
+        open
     }
 
     /// Cancel and confirm, and the key that moves field.
@@ -177,6 +169,6 @@ impl HostedDialog for InstitutionsDialog {
 impl Render for InstitutionsDialog {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let actions = Clicks::new(cx);
-        institution_form::render(&self.presenter.view_model(), &self.usual_unit, &actions, cx)
+        institution_form::render(&self.presenter.view_model(), &mut self.scroll, &actions, cx)
     }
 }

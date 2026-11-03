@@ -18,103 +18,32 @@ use lib_institutions::presenter::{
 };
 
 use super::{Clicks, InstitutionsDialog};
-use crate::form::viper::{
-    choose_option, chosen_label, enter, labels, select_key, synced, toggle_select, typed,
-};
+use crate::form::viper::{chosen_label, drawn, labels};
 use crate::{
     dialog,
     form::colour_field::error_line,
     form::fields::{field_label, text_field},
-    form::select::SelectState,
     form::select_field::{self, SelectFieldProps},
-    shell::view::dialog_host::{DialogKey, DialogOutcome},
     theme::color,
 };
 
 const WIDTH: gpui::Pixels = px(460.0);
 
-/// A key on the Dialog: `Tab` commits an open list's highlight and moves field; the Usual unit
-/// select takes the arrows, `Enter` and `Space` and swallows other typing; on the name, typing edits
-/// it, `Enter` confirms a valid form and the arrows do nothing.
-pub(super) fn key(dialog: &mut InstitutionsDialog, key: DialogKey) -> DialogOutcome {
-    let view = dialog.presenter.view_model();
-    if matches!(key, DialogKey::Tab | DialogKey::BackTab) {
-        if let Some(event) = select_event(dialog, &view, DialogKey::Enter, true) {
-            dialog.send(event);
-        }
-        let event = if key == DialogKey::Tab {
-            InstitutionFormEvent::NextField
-        } else {
-            InstitutionFormEvent::PrevField
-        };
-        dialog.send(event);
-        dialog.usual_unit.cancel();
-        return DialogOutcome::Handled;
-    }
-    match view.focused {
-        InstitutionField::UsualUnit => {
-            let taken = matches!(
-                key,
-                DialogKey::Up | DialogKey::Down | DialogKey::Enter | DialogKey::Char(' ')
-            );
-            if let Some(event) = select_event(dialog, &view, key, false) {
-                dialog.send(event);
-            }
-            match key {
-                // A select swallows typing rather than letting it fall through to the Shell.
-                DialogKey::Char(_) | DialogKey::Backspace => DialogOutcome::Handled,
-                _ if taken => DialogOutcome::Handled,
-                _ => DialogOutcome::Ignored,
-            }
-        }
-        InstitutionField::Name => match key {
-            DialogKey::Enter => enter(view.frame.can_confirm),
-            DialogKey::Up | DialogKey::Down => DialogOutcome::Handled,
-            _ => match typed(&view.name.text, key) {
-                Some(text) => {
-                    dialog.send(InstitutionFormEvent::Name(text));
-                    DialogOutcome::Handled
-                }
-                None => DialogOutcome::Ignored,
-            },
-        },
-    }
-}
-
-/// Runs `key` through the Usual unit select, returning the event for a changed choice. With
-/// `only_open`, only an open list takes the key (a `Tab` commits its highlight).
-fn select_event(
-    dialog: &mut InstitutionsDialog,
-    view: &InstitutionFormViewModel,
-    key: DialogKey,
-    only_open: bool,
-) -> Option<InstitutionFormEvent> {
-    if view.focused != InstitutionField::UsualUnit || (only_open && !dialog.usual_unit.is_open()) {
-        return None;
-    }
-    select_key(&mut dialog.usual_unit, &view.usual_unit, key)
-        .1
-        .map(InstitutionFormEvent::UsualUnit)
-}
-
 /// A click on the name focuses it, closing the list.
 fn click_name(dialog: &mut InstitutionsDialog) {
-    dialog.usual_unit.cancel();
     dialog.send(InstitutionFormEvent::Focus(InstitutionField::Name));
 }
 
 /// A click on the Usual unit's closed field focuses it and toggles its list.
 fn click_usual_unit(dialog: &mut InstitutionsDialog) {
-    dialog.send(InstitutionFormEvent::Focus(InstitutionField::UsualUnit));
-    let view = dialog.presenter.view_model();
-    toggle_select(&mut dialog.usual_unit, &view.usual_unit);
+    dialog.send(InstitutionFormEvent::ToggleUnits);
 }
 
 /// A click on row `index` of the open list.
 fn click_option(dialog: &mut InstitutionsDialog, index: usize) {
     let view = dialog.presenter.view_model();
-    if let Some(unit) = choose_option(&mut dialog.usual_unit, &view.usual_unit, index) {
-        dialog.send(InstitutionFormEvent::UsualUnit(unit));
+    if let Some(choice) = view.usual_unit.options.get(index) {
+        dialog.send(InstitutionFormEvent::UsualUnit(choice.value));
     }
 }
 
@@ -124,12 +53,12 @@ fn click_product(dialog: &mut InstitutionsDialog, product: InstitutionProduct) {
 
 pub(super) fn render(
     view: &InstitutionFormViewModel,
-    usual_unit: &SelectState,
+    scroll: &mut usize,
     actions: &Clicks,
     cx: &App,
 ) -> AnyElement {
     let unit_options = labels(&view.usual_unit);
-    let unit_state = synced(usual_unit, &view.usual_unit);
+    let unit_state = drawn(&view.usual_unit, view.usual_unit_list, scroll);
     let card = div()
         .flex()
         .flex_col()

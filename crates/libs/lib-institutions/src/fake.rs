@@ -8,6 +8,7 @@ use std::rc::Rc;
 
 use lib_core::{InstitutionId, UnitId};
 use lib_toast::{Notice, Notify};
+use lib_viper::dialog::DialogRouter;
 
 use crate::protocols::{
     InstitutionsDialog, InstitutionsOutcome, InstitutionsPorts, InstitutionsRouter, SharedPorts,
@@ -172,6 +173,12 @@ impl InstitutionsRouter for RecordingRouter {
     }
 
     fn close_dialog(&mut self, outcome: Option<InstitutionsOutcome>) {
+        self.calls.push(RouterCall::CloseDialog(outcome));
+    }
+}
+
+impl DialogRouter<InstitutionsOutcome> for RecordingRouter {
+    fn close(&mut self, outcome: Option<InstitutionsOutcome>) {
         self.calls.push(RouterCall::CloseDialog(outcome));
     }
 }

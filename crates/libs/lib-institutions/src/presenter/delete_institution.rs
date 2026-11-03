@@ -9,11 +9,12 @@
 
 use lib_core::InstitutionId;
 use lib_toast::{Notice, ToastKind};
+use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::view::{DialogFrame, TextFieldView, count};
 
 use crate::interactor::{DeleteInstitution, DeleteInstitutionRefusal};
 use crate::msg;
-use crate::protocols::{InstitutionUse, InstitutionsOutcome, InstitutionsRouter, SharedPorts};
+use crate::protocols::{InstitutionUse, InstitutionsOutcome, SharedPorts};
 
 /// How many of the Accounts naming the Institution the refusal lists by name; the rest are
 /// counted.
@@ -21,6 +22,9 @@ const NAMES_SHOWN: usize = 5;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeleteInstitutionEvent {
+    /// A Dialog command or typed key: `select` deletes once the name is typed back, or closes a
+    /// refusal; `submit` only deletes; typing fills the confirmation, which a refusal has none of.
+    Input(DialogInput),
     /// The confirmation field's whole new text.
     ConfirmText(String),
     /// Deletes once the name is typed back; in a refusal, closes the Dialog.
@@ -87,15 +91,35 @@ impl DeleteInstitutionPresenter {
         })
     }
 
-    pub fn handle(&mut self, event: DeleteInstitutionEvent, router: &mut dyn InstitutionsRouter) {
+    pub fn handle(
+        &mut self,
+        event: DeleteInstitutionEvent,
+        router: &mut dyn DialogRouter<InstitutionsOutcome>,
+    ) {
         match event {
+            DeleteInstitutionEvent::Input(input) => self.input(input, router),
             DeleteInstitutionEvent::ConfirmText(text) => {
                 if matches!(self.state, State::Unused) {
                     self.confirm_text = text;
                 }
             }
             DeleteInstitutionEvent::Confirm => self.confirm(router),
-            DeleteInstitutionEvent::Cancel => router.close_dialog(None),
+            DeleteInstitutionEvent::Cancel => router.close(None),
+        }
+    }
+
+    /// Reads `input`: the typed-back name is the only field.
+    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<InstitutionsOutcome>) {
+        match input {
+            DialogInput::Select => self.confirm(router),
+            DialogInput::Submit if self.can_confirm() => self.confirm(router),
+            DialogInput::Char(ch) if matches!(self.state, State::Unused) => {
+                self.confirm_text.push(ch);
+            }
+            DialogInput::Backspace if matches!(self.state, State::Unused) => {
+                self.confirm_text.pop();
+            }
+            _ => {}
         }
     }
 
@@ -161,9 +185,9 @@ impl DeleteInstitutionPresenter {
         matches!(self.state, State::Unused) && self.confirm_text == self.name
     }
 
-    fn confirm(&mut self, router: &mut dyn InstitutionsRouter) {
+    fn confirm(&mut self, router: &mut dyn DialogRouter<InstitutionsOutcome>) {
         if !matches!(self.state, State::Unused) {
-            router.close_dialog(None);
+            router.close(None);
             return;
         }
         if !self.can_confirm() {
@@ -178,7 +202,7 @@ impl DeleteInstitutionPresenter {
                     ToastKind::Success,
                     msg::institutions_delete_toast(&deleted.name),
                 ));
-                router.close_dialog(Some(InstitutionsOutcome {
+                router.close(Some(InstitutionsOutcome {
                     id: deleted.id,
                     name: deleted.name,
                     next,
@@ -225,6 +249,10 @@ mod tests {
             self.router.take()
         }
 
+        fn press(&mut self, input: DialogInput) -> Vec<RouterCall> {
+            self.send(DeleteInstitutionEvent::Input(input))
+        }
+
         fn type_text(&mut self, text: &str) {
             self.send(DeleteInstitutionEvent::ConfirmText(text.to_string()));
         }
@@ -240,6 +268,49 @@ mod tests {
                 .accounts
                 .insert(id, names.iter().map(ToString::to_string).collect());
         }
+    }
+
+    #[test]
+    fn typed_keys_build_the_name_and_select_deletes_once_it_is_exact() {
+        let mut dialog = Dialog::open(InstitutionId::SEED_AMEX);
+        for ch in "American Expres".chars() {
+            dialog.press(DialogInput::Char(ch));
+        }
+        assert_eq!(dialog.press(DialogInput::Select), [], "not the name yet");
+        dialog.press(DialogInput::Char('x'));
+        dialog.press(DialogInput::Backspace);
+        dialog.press(DialogInput::Char('s'));
+        dialog.press(DialogInput::NextField);
+        assert_eq!(
+            dialog.view().confirm.map(|field| field.text).as_deref(),
+            Some("American Express")
+        );
+
+        let calls = dialog.press(DialogInput::Submit);
+
+        assert!(matches!(
+            calls.as_slice(),
+            [_toast, RouterCall::CloseDialog(Some(_))]
+        ));
+    }
+
+    #[test]
+    fn in_a_refusal_select_closes_and_nothing_types_or_submits() {
+        let (ports, shared) = stub();
+        ports
+            .borrow_mut()
+            .usage
+            .accounts
+            .insert(InstitutionId::SEED_AMEX, vec!["Visa".to_string()]);
+        let mut dialog = Dialog::on(ports, shared, InstitutionId::SEED_AMEX);
+
+        dialog.press(DialogInput::Char('x'));
+        assert_eq!(dialog.view().confirm, None);
+        assert_eq!(dialog.press(DialogInput::Submit), []);
+        assert_eq!(
+            dialog.press(DialogInput::Select),
+            [RouterCall::CloseDialog(None)]
+        );
     }
 
     #[test]

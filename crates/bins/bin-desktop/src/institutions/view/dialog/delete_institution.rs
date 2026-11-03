@@ -9,15 +9,15 @@ use lib_institutions::presenter::{
     DeleteInstitutionEvent, DeleteInstitutionPresenter, DeleteInstitutionViewModel,
 };
 use lib_shell::DialogCommand;
+use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{BACK, Keymap, SELECT};
 
-use super::{DialogRouter, Landed};
+use super::{Landed, Router};
 use crate::dialog;
-use crate::form::viper::{enter, typed};
 use crate::institutions::ports::{self, DesktopPorts};
 use crate::ledger_store::LedgerStore;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostedDialog};
-use crate::shell::view::dialog_host::{DialogKey, DialogOutcome, DialogReadback};
+use crate::shell::view::dialog_host::DialogReadback;
 use crate::theme::color;
 use lib_shell::Hint;
 
@@ -47,16 +47,16 @@ impl DeleteInstitutionDialog {
         })
     }
 
-    fn send(&mut self, event: DeleteInstitutionEvent) -> DialogRouter {
-        let mut router = DialogRouter::default();
+    fn send(&mut self, event: DeleteInstitutionEvent) -> Router {
+        let mut router = Router::default();
         self.presenter.handle(event, &mut router);
         router
     }
 
     /// Hands a confirmed outcome to the page and tells the host, once the Presenter has closed
     /// the Dialog.
-    fn closed(&self, router: DialogRouter, cx: &mut Context<'_, Self>) {
-        let Some(outcome) = router.closed else {
+    fn closed(&self, router: Router, cx: &mut Context<'_, Self>) {
+        let Some(outcome) = router.closed() else {
             return;
         };
         if let Some(outcome) = outcome {
@@ -69,28 +69,19 @@ impl DeleteInstitutionDialog {
 impl gpui::EventEmitter<DialogClosed> for DeleteInstitutionDialog {}
 
 impl HostedDialog for DeleteInstitutionDialog {
-    /// Typing fills the confirmation; `Enter` deletes once it is typed back, or closes a refusal.
-    fn key(&mut self, key: DialogKey, _cx: &mut Context<'_, Self>) -> DialogOutcome {
-        let view = self.presenter.view_model();
-        let Some(confirm) = view.confirm else {
-            return match key {
-                DialogKey::Enter => DialogOutcome::Confirm,
-                _ => DialogOutcome::Handled,
-            };
-        };
-        match key {
-            DialogKey::Enter => enter(view.frame.can_confirm),
-            DialogKey::Tab | DialogKey::BackTab | DialogKey::Up | DialogKey::Down => {
-                DialogOutcome::Handled
-            }
-            _ => match typed(&confirm.text, key) {
-                Some(text) => {
-                    self.send(DeleteInstitutionEvent::ConfirmText(text));
-                    DialogOutcome::Handled
-                }
-                None => DialogOutcome::Ignored,
-            },
+    /// Every input is the Presenter's to read: typing fills the confirmation, `select` deletes
+    /// once it is typed back, or closes a refusal.
+    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) -> bool {
+        let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
+        if may_confirm {
+            ports::refresh(&self.ledger, cx);
         }
+        let router = self.send(DeleteInstitutionEvent::Input(input));
+        if may_confirm {
+            ports::refresh(&self.ledger, cx);
+        }
+        self.closed(router, cx);
+        true
     }
 
     fn can_confirm(&self) -> bool {

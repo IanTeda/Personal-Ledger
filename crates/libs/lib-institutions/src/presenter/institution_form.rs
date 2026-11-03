@@ -12,12 +12,13 @@
 //! - A confirm raises its own Toast before it closes the Dialog.
 
 use lib_toast::{Notice, ToastKind};
-use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
+use lib_viper::dialog::{DialogInput, DialogRouter};
+use lib_viper::view::{Choice, DialogFrame, SelectList, SelectMove, SelectView, TextFieldView};
 
 use lib_core::{InstitutionId, UnitId};
 
 use crate::interactor::{AddInstitution, EditInstitution};
-use crate::protocols::{InstitutionsOutcome, InstitutionsRouter, SharedPorts};
+use crate::protocols::{InstitutionsOutcome, SharedPorts};
 use crate::{InstitutionDraft, InstitutionError, msg};
 
 /// The Products the Dialog offers (`GLOSSARY.md`'s Products), enough that every seeded
@@ -86,13 +87,22 @@ pub enum InstitutionField {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InstitutionFormEvent {
+    /// A Dialog command or typed key. What it means is the focused field's: `select` and `submit`
+    /// confirm a valid form, except that `select` on the Usual unit opens its list and picks from
+    /// it; typing edits the name and goes nowhere on the select; the arrows step the select; the
+    /// field keys move focus, committing an open list's highlight.
+    Input(DialogInput),
     /// The name field's whole new text, as its View's input holds it.
     Name(String),
-    /// The Usual unit picked, `None` for none. A Unit that is not an option is ignored.
+    /// The Usual unit picked, `None` for none, closing its list. A Unit that is not an option is
+    /// ignored.
     UsualUnit(Option<UnitId>),
+    /// A click on the Usual unit's field: focuses it and opens or closes its list.
+    ToggleUnits,
+    /// Closes the Usual unit's open list without picking: the host's `back`.
+    CloseUnits,
+    /// A click on a field, which closes an open list.
     Focus(InstitutionField),
-    NextField,
-    PrevField,
     /// A chip: checked becomes unchecked and back.
     ToggleProduct(InstitutionProduct),
     Confirm,
@@ -112,6 +122,8 @@ pub struct InstitutionFormViewModel {
     pub frame: DialogFrame,
     pub name: TextFieldView,
     pub usual_unit: SelectView<Option<UnitId>>,
+    /// The Usual unit's list: open, and its highlight.
+    pub usual_unit_list: SelectList,
     pub focused: InstitutionField,
     /// Why the last confirm was refused, until the name changes.
     pub name_error: Option<String>,
@@ -132,6 +144,7 @@ pub struct InstitutionFormPresenter {
     /// The Usual unit's options, read when the Dialog opens: None, then the active Units.
     units: Vec<Choice<Option<UnitId>>>,
     focused: InstitutionField,
+    unit_list: SelectList,
     /// The last refusal, with the name it refused.
     refusal: Option<(String, InstitutionError)>,
 }
@@ -148,6 +161,7 @@ impl InstitutionFormPresenter {
             usual_unit: None,
             units,
             focused: InstitutionField::Name,
+            unit_list: SelectList::default(),
             refusal: None,
         }
     }
@@ -171,24 +185,33 @@ impl InstitutionFormPresenter {
             usual_unit: institution.usual_unit,
             units,
             focused: InstitutionField::Name,
+            unit_list: SelectList::default(),
             refusal: None,
         })
     }
 
-    pub fn handle(&mut self, event: InstitutionFormEvent, router: &mut dyn InstitutionsRouter) {
+    pub fn handle(
+        &mut self,
+        event: InstitutionFormEvent,
+        router: &mut dyn DialogRouter<InstitutionsOutcome>,
+    ) {
         match event {
+            InstitutionFormEvent::Input(input) => self.input(input, router),
             InstitutionFormEvent::Name(text) => self.name = text,
             InstitutionFormEvent::UsualUnit(unit) => {
-                if self.units.iter().any(|choice| choice.value == unit) {
-                    self.usual_unit = unit;
-                }
+                self.unit_list.close();
+                self.pick(unit);
             }
-            InstitutionFormEvent::Focus(field) => self.focused = field,
-            InstitutionFormEvent::NextField | InstitutionFormEvent::PrevField => {
-                self.focused = match self.focused {
-                    InstitutionField::Name => InstitutionField::UsualUnit,
-                    InstitutionField::UsualUnit => InstitutionField::Name,
-                };
+            InstitutionFormEvent::ToggleUnits => {
+                self.focused = InstitutionField::UsualUnit;
+                self.unit_list.toggle(&self.units, Some(&self.usual_unit));
+            }
+            InstitutionFormEvent::CloseUnits => {
+                self.unit_list.close();
+            }
+            InstitutionFormEvent::Focus(field) => {
+                self.unit_list.close();
+                self.focused = field;
             }
             InstitutionFormEvent::ToggleProduct(product) => {
                 match self
@@ -203,7 +226,47 @@ impl InstitutionFormPresenter {
                 }
             }
             InstitutionFormEvent::Confirm => self.confirm(router),
-            InstitutionFormEvent::Cancel => router.close_dialog(None),
+            InstitutionFormEvent::Cancel => router.close(None),
+        }
+    }
+
+    /// Reads `input` for the focused field.
+    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<InstitutionsOutcome>) {
+        match (input, self.focused) {
+            (DialogInput::NextField | DialogInput::PreviousField, _) => {
+                // Leaving the select commits an open list's highlight, as a click elsewhere would.
+                if let Some(unit) = self.unit_list.commit(&self.units) {
+                    self.pick(unit);
+                }
+                self.focused = match self.focused {
+                    InstitutionField::Name => InstitutionField::UsualUnit,
+                    InstitutionField::UsualUnit => InstitutionField::Name,
+                };
+            }
+            (DialogInput::Submit, _) | (DialogInput::Select, InstitutionField::Name) => {
+                self.confirm(router);
+            }
+            (_, InstitutionField::UsualUnit) => {
+                // A select swallows typing, so it never reaches the name.
+                if let SelectMove::Chose(unit) =
+                    self.unit_list
+                        .input(input, &self.units, Some(&self.usual_unit))
+                {
+                    self.pick(unit);
+                }
+            }
+            (DialogInput::Char(ch), InstitutionField::Name) => self.name.push(ch),
+            (DialogInput::Backspace, InstitutionField::Name) => {
+                self.name.pop();
+            }
+            (_, InstitutionField::Name) => {}
+        }
+    }
+
+    /// Sets the Usual unit, ignoring a Unit that is not an option.
+    fn pick(&mut self, unit: Option<UnitId>) {
+        if self.units.iter().any(|choice| choice.value == unit) {
+            self.usual_unit = unit;
         }
     }
 
@@ -236,6 +299,7 @@ impl InstitutionFormPresenter {
                 chosen: Some(self.usual_unit),
                 focused: self.focused == InstitutionField::UsualUnit,
             },
+            usual_unit_list: self.unit_list,
             focused: self.focused,
             name_error: self
                 .refusal
@@ -259,7 +323,7 @@ impl InstitutionFormPresenter {
         !self.name.trim().is_empty() && !self.products.is_empty()
     }
 
-    fn confirm(&mut self, router: &mut dyn InstitutionsRouter) {
+    fn confirm(&mut self, router: &mut dyn DialogRouter<InstitutionsOutcome>) {
         if !self.is_valid() {
             return;
         }
@@ -285,7 +349,7 @@ impl InstitutionFormPresenter {
                         msg::institutions_add_toast(&institution.name)
                     },
                 ));
-                router.close_dialog(Some(InstitutionsOutcome {
+                router.close(Some(InstitutionsOutcome {
                     id: institution.id,
                     name: institution.name,
                     next: None,
@@ -353,6 +417,16 @@ mod tests {
         fn send(&mut self, event: InstitutionFormEvent) -> Vec<RouterCall> {
             self.presenter.handle(event, &mut self.router);
             self.router.take()
+        }
+
+        fn press(&mut self, input: DialogInput) -> Vec<RouterCall> {
+            self.send(InstitutionFormEvent::Input(input))
+        }
+
+        fn type_keys(&mut self, text: &str) {
+            for ch in text.chars() {
+                self.press(DialogInput::Char(ch));
+            }
         }
 
         fn view(&self) -> InstitutionFormViewModel {
@@ -663,12 +737,90 @@ mod tests {
         let mut form = Form::new();
         assert!(form.view().name.focused);
 
-        form.send(InstitutionFormEvent::NextField);
+        form.press(DialogInput::NextField);
         assert!(form.view().usual_unit.focused);
         assert!(!form.view().name.focused);
 
-        form.send(InstitutionFormEvent::PrevField);
+        form.press(DialogInput::PreviousField);
         assert_eq!(form.view().focused, InstitutionField::Name);
+    }
+
+    #[test]
+    fn typing_edits_the_name_and_goes_nowhere_on_the_select() {
+        let mut form = Form::new();
+
+        form.type_keys("ANX");
+        form.press(DialogInput::Backspace);
+        form.type_keys("Z");
+        assert_eq!(form.view().name.text, "ANZ");
+        form.press(DialogInput::NextField);
+        form.type_keys("xyz");
+        form.press(DialogInput::Backspace);
+        assert_eq!(form.view().name.text, "ANZ");
+        assert_eq!(form.view().usual_unit.chosen, Some(None));
+    }
+
+    #[test]
+    fn select_confirms_on_the_name_and_submit_confirms_from_the_select() {
+        let mut form = Form::new();
+        assert!(form.press(DialogInput::Select).is_empty(), "no name yet");
+
+        form.type_keys("ANZ");
+        form.press(DialogInput::NextField);
+        let opened = form.press(DialogInput::Select);
+        assert!(opened.is_empty(), "select opens the list instead");
+        assert!(form.view().usual_unit_list.is_open());
+        form.press(DialogInput::Select);
+        let calls = form.press(DialogInput::Submit);
+
+        assert!(matches!(
+            calls.as_slice(),
+            [_toast, RouterCall::CloseDialog(Some(outcome))] if outcome.name == "ANZ"
+        ));
+    }
+
+    #[test]
+    fn the_select_opens_moves_and_picks_and_leaving_it_commits_the_highlight() {
+        let mut form = Form::new();
+        form.press(DialogInput::NextField);
+
+        form.press(DialogInput::Char(' '));
+        assert_eq!(form.view().usual_unit_list.highlight(), Some(0), "on None");
+        form.press(DialogInput::SelectNext);
+        form.press(DialogInput::SelectNext);
+        assert_eq!(form.view().usual_unit_list.highlight(), Some(2));
+        assert_eq!(form.view().usual_unit.chosen, Some(None), "not yet picked");
+        form.press(DialogInput::NextField);
+
+        let view = form.view();
+        assert!(!view.usual_unit_list.is_open());
+        assert_eq!(view.focused, InstitutionField::Name);
+        let options = view.usual_unit.options;
+        assert_eq!(view.usual_unit.chosen, Some(options[2].value));
+        form.press(DialogInput::NextField);
+        form.press(DialogInput::SelectPrevious);
+        assert_eq!(
+            form.view().usual_unit.chosen,
+            Some(options[1].value),
+            "a closed select steps its value"
+        );
+    }
+
+    #[test]
+    fn a_click_toggles_the_list_and_back_or_a_focus_click_closes_it() {
+        let mut form = Form::new();
+
+        form.send(InstitutionFormEvent::ToggleUnits);
+        assert!(form.view().usual_unit_list.is_open());
+        assert_eq!(form.view().focused, InstitutionField::UsualUnit);
+        form.send(InstitutionFormEvent::CloseUnits);
+        assert!(!form.view().usual_unit_list.is_open());
+        form.send(InstitutionFormEvent::ToggleUnits);
+        form.send(InstitutionFormEvent::Focus(InstitutionField::Name));
+        assert!(!form.view().usual_unit_list.is_open());
+        form.send(InstitutionFormEvent::ToggleUnits);
+        form.send(InstitutionFormEvent::UsualUnit(Some(UnitId::SEED_BTC)));
+        assert!(!form.view().usual_unit_list.is_open());
     }
 
     #[test]

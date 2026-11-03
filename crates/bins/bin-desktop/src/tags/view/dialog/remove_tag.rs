@@ -4,7 +4,7 @@
 //! typed-back name, which holds every typed key; an unused one has no field.
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
-use lib_tags::presenter::{RemoveTagEvent, RemoveTagPresenter, RemoveTagViewModel};
+use lib_tags::presenter::RemoveTagViewModel;
 
 use super::Clicks;
 use crate::form::colour_field::error_line;
