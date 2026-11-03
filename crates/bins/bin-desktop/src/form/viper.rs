@@ -2,7 +2,7 @@
 //! text, and keeping a select's open list and highlight (widget state, the View's) in line with
 //! the option the Presenter chose (`lib_viper::view::SelectView`).
 
-use lib_viper::view::SelectView;
+use lib_viper::view::{SelectList, SelectView};
 
 use crate::form::select::SelectState;
 use crate::shell::view::dialog_host::{DialogKey, DialogOutcome};
@@ -54,6 +54,23 @@ pub(crate) fn synced<T: PartialEq>(state: &SelectState, view: &SelectView<T>) ->
     } else {
         SelectState::new(chosen)
     }
+}
+
+/// `view` with the list its Presenter holds, as the shared dropdown draws it. `scroll` is the open
+/// list's window, which the View keeps between draws so the window follows the highlight.
+pub(crate) fn drawn<T: PartialEq>(
+    view: &SelectView<T>,
+    list: SelectList,
+    scroll: &mut usize,
+) -> SelectState {
+    let state = SelectState::drawn(
+        chosen_label(view),
+        list.highlight(),
+        *scroll,
+        view.options.len(),
+    );
+    *scroll = state.scroll();
+    state
 }
 
 /// The value of the option labelled `label`.

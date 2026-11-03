@@ -2,6 +2,11 @@
 //!
 //! - The fields, in `Tab` order: Name, Default category (none, then every leaf Category), and the
 //!   match-rule input beside its chips.
+//! - It takes the Dialog keymap's commands and typed keys as [`DialogInput`]s and decides what each
+//!   means on the focused field: `select` opens the Default category's list, picks from it, adds a
+//!   rule from a rule input holding text, and otherwise confirms only a valid form; `submit`
+//!   confirms a valid form from any field; leaving the select commits its list's highlight. On a
+//!   select, typing does nothing; `Backspace` in the empty rule input takes the last chip back.
 //! - Name is checked live against every other Payee's name and rules (ADR-0012), and its problem
 //!   shows under it; a blank name only keeps Save from confirming.
 //! - A rule is added from the input normalised, and ignored when blank or already a chip. One
@@ -12,11 +17,14 @@
 //! nothing changes them under it.
 
 use lib_core::{CategoryId, PayeeId};
-use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView, count};
+use lib_viper::dialog::{DialogInput, DialogRouter};
+use lib_viper::view::{
+    Choice, DialogFrame, SelectList, SelectMove, SelectView, TextFieldView, count,
+};
 
 use super::refusal_text;
 use crate::interactor::{AddPayee, EditPayee};
-use crate::protocols::{PayeeChange, PayeesOutcome, PayeesRouter, SharedPorts};
+use crate::protocols::{PayeeChange, PayeesOutcome, SharedPorts};
 use crate::{PayeeDraft, PayeeError, alias_owner, clean_name, msg, normalise_alias};
 
 /// The form's fields, in `Tab` order.
@@ -35,20 +43,22 @@ impl PayeeField {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PayeeFormEvent {
-    /// A text field's whole new text, as its View's input holds it.
+    /// A Dialog keymap command or a typed key, meaning what the focused field makes it.
+    Input(DialogInput),
+    /// A text field's whole new text.
     Name(String),
     RuleInput(String),
+    /// A click on a row of the Default category's open list: picks it and closes the list.
     Category(Option<CategoryId>),
-    /// **+ add**, or `Enter` in a rule input holding text: the input becomes a chip.
+    /// A click on the Default category's field: focuses it and opens or closes its list.
+    ToggleCategories,
+    /// Closes the Default category's open list without picking: the host's `back`.
+    CloseCategories,
+    /// **+ add**: the input becomes a chip.
     AddRule,
     /// A chip's `✕`.
     RemoveRule(usize),
-    /// `Backspace` in the empty rule input.
-    RemoveLastRule,
-    /// `Tab`/`Shift-Tab`, wrapping.
-    NextField,
-    PrevField,
-    /// A click on a field.
+    /// A click on a field, which closes an open list.
     Focus(PayeeField),
     Confirm,
     Cancel,
@@ -61,6 +71,8 @@ pub struct PayeeFormViewModel {
     /// The name's problem, checked live.
     pub name_error: Option<String>,
     pub default_category: SelectView<Option<CategoryId>>,
+    /// The Default category's list: open, and its highlight.
+    pub default_category_list: SelectList,
     /// The chips, as stored.
     pub rules: Vec<String>,
     /// The neutral chip shown while there are none.
@@ -101,6 +113,8 @@ pub struct PayeeFormPresenter {
     rules: Vec<String>,
     rule_input: String,
     focused: PayeeField,
+    /// The Default category's list.
+    list: SelectList,
     error: Option<PayeeError>,
 }
 
@@ -117,6 +131,7 @@ impl PayeeFormPresenter {
             rules: Vec::new(),
             rule_input: String::new(),
             focused: PayeeField::Name,
+            list: SelectList::default(),
             error: None,
         }
     }
@@ -160,8 +175,9 @@ impl PayeeFormPresenter {
         .collect()
     }
 
-    pub fn handle(&mut self, event: PayeeFormEvent, router: &mut dyn PayeesRouter) {
+    pub fn handle(&mut self, event: PayeeFormEvent, router: &mut dyn DialogRouter<PayeesOutcome>) {
         match event {
+            PayeeFormEvent::Input(input) => self.input(input, router),
             PayeeFormEvent::Name(text) => {
                 self.name = text;
                 self.error = None;
@@ -171,9 +187,17 @@ impl PayeeFormPresenter {
                 self.error = None;
             }
             PayeeFormEvent::Category(id) => {
+                self.list.close();
                 if self.categories.iter().any(|choice| choice.value == id) {
                     self.category = id;
                 }
+            }
+            PayeeFormEvent::ToggleCategories => {
+                self.focused = PayeeField::DefaultCategory;
+                self.list.toggle(&self.categories, Some(&self.category));
+            }
+            PayeeFormEvent::CloseCategories => {
+                self.list.close();
             }
             PayeeFormEvent::AddRule => {
                 self.focused = PayeeField::Rule;
@@ -184,23 +208,66 @@ impl PayeeFormPresenter {
                     self.rules.remove(index);
                 }
             }
-            PayeeFormEvent::RemoveLastRule => {
+            PayeeFormEvent::Focus(field) => {
+                self.list.close();
+                self.focused = field;
+            }
+            PayeeFormEvent::Confirm => self.confirm(router),
+            PayeeFormEvent::Cancel => router.close(None),
+        }
+    }
+
+    /// What `input` means on the focused field.
+    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<PayeesOutcome>) {
+        match (input, self.focused) {
+            (DialogInput::NextField, _) => self.move_focus(1),
+            (DialogInput::PreviousField, _) => self.move_focus(PayeeField::ORDER.len() - 1),
+            (DialogInput::Submit, _) => self.confirm(router),
+            (_, PayeeField::DefaultCategory) => {
+                // A select swallows typing, so it never reaches another field.
+                if let SelectMove::Chose(id) =
+                    self.list
+                        .input(input, &self.categories, Some(&self.category))
+                {
+                    self.category = id;
+                }
+            }
+            (DialogInput::Select, PayeeField::Rule) if !self.rule_input.is_empty() => {
+                self.add_rule();
+            }
+            (DialogInput::Backspace, PayeeField::Rule) if self.rule_input.is_empty() => {
                 self.rules.pop();
                 self.error = None;
             }
-            PayeeFormEvent::NextField | PayeeFormEvent::PrevField => {
-                let order = PayeeField::ORDER;
-                let at = order.iter().position(|f| *f == self.focused).unwrap_or(0);
-                let next = if event == PayeeFormEvent::PrevField {
-                    at + order.len() - 1
-                } else {
-                    at + 1
-                };
-                self.focused = order[next % order.len()];
+            (DialogInput::Select, _) => self.confirm(router),
+            (DialogInput::Char(ch), field) => {
+                self.text_mut(field).push(ch);
+                self.error = None;
             }
-            PayeeFormEvent::Focus(field) => self.focused = field,
-            PayeeFormEvent::Confirm => self.confirm(router),
-            PayeeFormEvent::Cancel => router.close_dialog(None),
+            (DialogInput::Backspace, field) => {
+                self.text_mut(field).pop();
+                self.error = None;
+            }
+            (DialogInput::SelectNext | DialogInput::SelectPrevious, _) => {}
+        }
+    }
+
+    /// Moves focus `by` fields along the `Tab` order, wrapping. Leaving the select commits an
+    /// open list's highlight, as a click on it would.
+    fn move_focus(&mut self, by: usize) {
+        if let Some(id) = self.list.commit(&self.categories) {
+            self.category = id;
+        }
+        let order = PayeeField::ORDER;
+        let at = order.iter().position(|f| *f == self.focused).unwrap_or(0);
+        self.focused = order[(at + by) % order.len()];
+    }
+
+    /// The text field `field` types into; the select has none, so it never reaches here.
+    fn text_mut(&mut self, field: PayeeField) -> &mut String {
+        match field {
+            PayeeField::Rule => &mut self.rule_input,
+            PayeeField::Name | PayeeField::DefaultCategory => &mut self.name,
         }
     }
 
@@ -251,6 +318,7 @@ impl PayeeFormPresenter {
                 chosen: Some(self.category),
                 focused: self.focused == PayeeField::DefaultCategory,
             },
+            default_category_list: self.list,
             rules: self.rules.clone(),
             no_rules: msg::payees_no_rules(),
             rule_input: TextFieldView {
@@ -298,7 +366,7 @@ impl PayeeFormPresenter {
         self.error = None;
     }
 
-    fn confirm(&mut self, router: &mut dyn PayeesRouter) {
+    fn confirm(&mut self, router: &mut dyn DialogRouter<PayeesOutcome>) {
         if self.clean_name().is_err() {
             return;
         }
@@ -316,7 +384,7 @@ impl PayeeFormPresenter {
             }
         };
         match saved {
-            Ok(payee) => router.close_dialog(Some(PayeesOutcome {
+            Ok(payee) => router.close(Some(PayeesOutcome {
                 change: PayeeChange::Saved,
                 id: payee.id,
                 name: payee.name,
@@ -348,6 +416,25 @@ mod tests {
     fn rule(text: &str) -> PayeeFormEvent {
         PayeeFormEvent::RuleInput(text.to_string())
     }
+
+    fn input(input: DialogInput) -> PayeeFormEvent {
+        PayeeFormEvent::Input(input)
+    }
+
+    /// `text` typed key by key into the focused field.
+    fn typing(text: &str) -> Vec<PayeeFormEvent> {
+        text.chars()
+            .map(|ch| input(DialogInput::Char(ch)))
+            .collect()
+    }
+
+    const TAB: PayeeFormEvent = PayeeFormEvent::Input(DialogInput::NextField);
+    const SHIFT_TAB: PayeeFormEvent = PayeeFormEvent::Input(DialogInput::PreviousField);
+    const SELECT: PayeeFormEvent = PayeeFormEvent::Input(DialogInput::Select);
+    const SUBMIT: PayeeFormEvent = PayeeFormEvent::Input(DialogInput::Submit);
+    const DOWN: PayeeFormEvent = PayeeFormEvent::Input(DialogInput::SelectNext);
+    const UP: PayeeFormEvent = PayeeFormEvent::Input(DialogInput::SelectPrevious);
+    const BACKSPACE: PayeeFormEvent = PayeeFormEvent::Input(DialogInput::Backspace);
 
     #[test]
     fn a_taken_name_shows_under_the_field_and_a_blank_one_only_waits() {
@@ -403,8 +490,11 @@ mod tests {
         send(&mut form, vec![rule("woolie")]);
         assert_eq!(form.view_model().rule_error, None, "typing clears it");
 
-        send(&mut form, vec![PayeeFormEvent::RemoveLastRule]);
-        assert!(form.view_model().rules.is_empty());
+        send(&mut form, vec![rule(""), BACKSPACE]);
+        assert!(
+            form.view_model().rules.is_empty(),
+            "backspace in the empty rule input takes the last chip back"
+        );
     }
 
     #[test]
@@ -508,20 +598,20 @@ mod tests {
     }
 
     #[test]
-    fn the_dialog_keymap_keys_move_focus_both_ways_and_cancel_closes() {
+    fn next_and_previous_field_move_focus_both_ways_and_cancel_closes() {
         let (ports, shared) = stub();
         let before = ports.borrow().clone();
         let mut form = PayeeFormPresenter::add(shared);
         let focused = |form: &PayeeFormPresenter| form.view_model().focused;
 
-        send(&mut form, vec![PayeeFormEvent::NextField]);
+        send(&mut form, vec![TAB]);
         assert_eq!(focused(&form), PayeeField::DefaultCategory);
         assert!(form.view_model().default_category.focused);
-        send(&mut form, vec![PayeeFormEvent::NextField]);
+        send(&mut form, vec![TAB]);
         assert_eq!(focused(&form), PayeeField::Rule);
-        send(&mut form, vec![PayeeFormEvent::NextField]);
+        send(&mut form, vec![TAB]);
         assert_eq!(focused(&form), PayeeField::Name);
-        send(&mut form, vec![PayeeFormEvent::PrevField]);
+        send(&mut form, vec![SHIFT_TAB]);
         assert_eq!(focused(&form), PayeeField::Rule);
 
         assert_eq!(
@@ -529,5 +619,132 @@ mod tests {
             [RouterCall::CloseDialog(None)]
         );
         assert_eq!(*ports.borrow(), before, "a cancel writes nothing");
+    }
+
+    fn category_label(form: &PayeeFormPresenter) -> String {
+        let view = form.view_model().default_category;
+        view.options
+            .iter()
+            .find(|choice| Some(&choice.value) == view.chosen.as_ref())
+            .map(|choice| choice.label.clone())
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn typing_edits_the_focused_field_and_backspace_takes_a_character_back() {
+        let (_, shared) = stub();
+        let mut form = PayeeFormPresenter::add(shared);
+
+        send(&mut form, typing("Zoox"));
+        send(&mut form, vec![BACKSPACE, UP, DOWN]);
+        assert_eq!(form.view_model().name.text, "Zoo", "the arrows do nothing");
+        send(&mut form, vec![SHIFT_TAB]);
+        send(&mut form, typing("zoo"));
+        let view = form.view_model();
+        assert_eq!(view.rule_input.text, "zoo");
+        assert_eq!(view.name.text, "Zoo");
+    }
+
+    #[test]
+    fn select_opens_the_default_category_the_arrows_move_and_select_picks() {
+        let (_, shared) = stub();
+        let mut form = PayeeFormPresenter::add(shared);
+
+        send(&mut form, vec![TAB, DOWN]);
+        assert_eq!(category_label(&form), "Rent", "a closed select steps");
+        send(&mut form, typing("x"));
+        assert_eq!(
+            form.view_model().name.text,
+            "",
+            "the select swallows typing"
+        );
+
+        assert_eq!(
+            send(&mut form, vec![SELECT]),
+            [],
+            "select opens, never confirms"
+        );
+        let list = form.view_model().default_category_list;
+        assert!(list.is_open());
+        assert_eq!(list.highlight(), Some(1), "on the chosen option");
+        send(&mut form, vec![DOWN, DOWN]);
+        assert_eq!(
+            category_label(&form),
+            "Rent",
+            "moving the highlight picks nothing"
+        );
+        send(&mut form, vec![SELECT]);
+        assert!(!form.view_model().default_category_list.is_open());
+        assert_eq!(category_label(&form), "Water");
+    }
+
+    #[test]
+    fn leaving_the_select_commits_its_highlight_and_close_categories_drops_it() {
+        let (_, shared) = stub();
+        let mut form = PayeeFormPresenter::add(shared);
+
+        send(&mut form, vec![TAB, SELECT, DOWN, TAB]);
+        assert_eq!(category_label(&form), "Rent");
+        assert_eq!(form.view_model().focused, PayeeField::Rule);
+
+        send(&mut form, vec![SHIFT_TAB, SELECT, DOWN]);
+        send(&mut form, vec![PayeeFormEvent::CloseCategories]);
+        assert!(!form.view_model().default_category_list.is_open());
+        assert_eq!(
+            category_label(&form),
+            "Rent",
+            "a closed list picked nothing"
+        );
+
+        send(&mut form, vec![PayeeFormEvent::ToggleCategories]);
+        assert!(form.view_model().default_category_list.is_open());
+        send(
+            &mut form,
+            vec![PayeeFormEvent::Category(Some(CategoryId::seed(8)))],
+        );
+        assert!(!form.view_model().default_category_list.is_open());
+        assert_eq!(category_label(&form), "Dining");
+    }
+
+    #[test]
+    fn select_confirms_only_a_valid_form_and_adds_a_rule_from_a_rule_input_holding_text() {
+        let (ports, shared) = stub();
+        let mut form = PayeeFormPresenter::add(shared);
+
+        assert_eq!(send(&mut form, vec![SELECT]), [], "a blank name waits");
+        send(&mut form, typing("Zoo"));
+        send(&mut form, vec![SHIFT_TAB]);
+        send(&mut form, typing("zoox"));
+        assert_eq!(send(&mut form, vec![SELECT]), [], "select adds the rule");
+        assert_eq!(form.view_model().rules, ["ZOOX"]);
+
+        let calls = send(&mut form, vec![SELECT]);
+        let [RouterCall::CloseDialog(Some(outcome))] = calls.as_slice() else {
+            panic!("expected one close, got {calls:?}");
+        };
+        let payee = ports.borrow().payees.payee(outcome.id).expect("added");
+        assert_eq!(payee.name, "Zoo");
+        assert_eq!(payee.aliases, ["ZOOX"]);
+    }
+
+    #[test]
+    fn submit_confirms_a_valid_form_from_any_field() {
+        for field in 0..3 {
+            let (_, shared) = stub();
+            let mut form = PayeeFormPresenter::add(shared);
+            assert_eq!(send(&mut form, vec![SUBMIT]), [], "a blank name waits");
+            send(&mut form, typing("Zoo"));
+            send(&mut form, std::iter::repeat_n(TAB, field).collect());
+            if field == 1 {
+                send(&mut form, vec![SELECT]);
+                assert!(form.view_model().default_category_list.is_open());
+            }
+
+            let calls = send(&mut form, vec![SUBMIT]);
+            assert!(
+                matches!(calls.as_slice(), [RouterCall::CloseDialog(Some(_))]),
+                "field {field}: {calls:?}"
+            );
+        }
     }
 }

@@ -28,6 +28,31 @@ impl SelectState {
         }
     }
 
+    /// A list a Presenter holds (`lib_viper::view::SelectList`) as the dropdown draws it: showing
+    /// `value`, open on `highlight` when `Some`, its window scrolled from `scroll` to follow the
+    /// highlight across `len` options. The View keeps the scroll between draws, as widget
+    /// mechanics.
+    pub fn drawn(
+        value: Option<String>,
+        highlight: Option<usize>,
+        scroll: usize,
+        len: usize,
+    ) -> Self {
+        let mut state = Self {
+            value,
+            open: highlight.is_some(),
+            highlight: highlight.unwrap_or(0),
+            scroll: if highlight.is_some() { scroll } else { 0 },
+        };
+        state.follow_highlight(len);
+        state
+    }
+
+    /// The top row of the open list's window, for a View that keeps it between draws.
+    pub fn scroll(&self) -> usize {
+        self.scroll
+    }
+
     pub fn value(&self) -> Option<&str> {
         self.value.as_deref()
     }
@@ -240,6 +265,18 @@ mod tests {
         let mut state = SelectState::new(Some("option 9".to_string()));
         state.open(&options);
         assert_eq!(state.visible_range(10), 4..10);
+    }
+
+    #[test]
+    fn a_drawn_list_follows_its_highlight_from_the_kept_scroll_and_a_closed_one_resets_it() {
+        let shown = SelectState::drawn(Some("option 0".to_string()), Some(7), 0, 10);
+        assert!(shown.is_open());
+        assert_eq!(shown.visible_range(10), 2..8);
+        let back_up = SelectState::drawn(None, Some(3), shown.scroll(), 10);
+        assert_eq!(back_up.visible_range(10), 2..8, "still in the window");
+        let closed = SelectState::drawn(None, None, 4, 10);
+        assert!(!closed.is_open());
+        assert_eq!(closed.scroll(), 0);
     }
 
     #[test]

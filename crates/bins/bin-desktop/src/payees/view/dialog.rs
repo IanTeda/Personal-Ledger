@@ -1,12 +1,13 @@
 //! The Payees Dialogs' Views, each open one an Entity in the Dialog host
 //! (`shell::view::dialog_entity`). [`PayeesDialog`] holds a `lib-payees` Presenter and the widget
-//! state that is gpui's to keep (whether the Default category list is open and its highlight).
-//! Every key and click becomes a Presenter event; each View draws the Presenter's view model and
-//! nothing else.
+//! state that is gpui's to keep (the Default category list's scroll window). Every Dialog command
+//! and typed key reaches the Presenter as a `lib-viper` `DialogInput`, which it reads itself, and
+//! every click becomes a Presenter event; each View draws the Presenter's view model and nothing
+//! else.
 //!
-//! Confirm and Cancel go to the Presenter, which closes its Dialog through its Router; a confirmed
-//! outcome is handed to the page, and the host closes on [`DialogClosed`]. A Toast the Presenter
-//! raises goes onto the bin's queue, which the input's `send` drains.
+//! The Presenter closes its Dialog through the host's [`HostRouter`]; a confirmed outcome is
+//! handed to the page, and the host closes on [`DialogClosed`]. A Toast the Presenter raises goes
+//! onto the bin's queue, which the input's `send` drains.
 
 mod delete_payee;
 mod payee_form;
@@ -16,16 +17,15 @@ use gpui::{App, Context, Entity, EventEmitter, IntoElement, Render, Window};
 use lib_payees::presenter::{
     DeletePayeeEvent, DeletePayeePresenter, PayeeFormEvent, PayeeFormPresenter,
 };
-use lib_payees::{PayeesDialog as Which, PayeesOutcome, PayeesRouter};
+use lib_payees::{PayeesDialog as Which, PayeesOutcome};
 use lib_shell::DialogCommand;
-use lib_toast::{Notice, Notify};
+use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
 
-use crate::form::select::SelectState;
 use crate::ledger_store::LedgerStore;
 use crate::payees::ports::{self, DesktopPorts};
-use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostedDialog};
-use crate::shell::view::dialog_host::{DialogKey, DialogOutcome, DialogReadback};
+use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
+use crate::shell::view::dialog_host::DialogReadback;
 use lib_shell::Hint;
 
 /// The open Payees Dialog's clicks.
@@ -44,8 +44,8 @@ pub struct PayeesDialog {
 }
 
 enum View {
-    /// Add or Edit, with the Default category select's open state.
-    Form(PayeeFormPresenter, SelectState),
+    /// Add or Edit, with the top row of the Default category list's window.
+    Form(PayeeFormPresenter, usize),
     Delete(DeletePayeePresenter),
 }
 
@@ -71,11 +71,8 @@ impl PayeesDialog {
     ) -> Option<Self> {
         let shared = ports.clone();
         let view = match which {
-            Which::AddPayee => View::Form(PayeeFormPresenter::add(shared), SelectState::default()),
-            Which::EditPayee(id) => View::Form(
-                PayeeFormPresenter::edit(shared, id)?,
-                SelectState::default(),
-            ),
+            Which::AddPayee => View::Form(PayeeFormPresenter::add(shared), 0),
+            Which::EditPayee(id) => View::Form(PayeeFormPresenter::edit(shared, id)?, 0),
             Which::DeletePayee(id) => View::Delete(DeletePayeePresenter::new(shared, id)?),
         };
         Some(Self {
@@ -87,7 +84,7 @@ impl PayeesDialog {
     }
 
     /// Sends the open Presenter its Confirm or its Cancel, returning what its Router was asked.
-    fn close_event(&mut self, confirm: bool) -> DialogRouter {
+    fn close_event(&mut self, confirm: bool) -> Router {
         match &mut self.view {
             View::Form(presenter, _) => {
                 let event = if confirm {
@@ -108,10 +105,26 @@ impl PayeesDialog {
         }
     }
 
+    /// Sends the open Presenter `input`, returning what its Router was asked.
+    fn input_event(&mut self, input: DialogInput) -> Router {
+        match &mut self.view {
+            View::Form(presenter, _) => send(
+                presenter,
+                PayeeFormEvent::Input(input),
+                PayeeFormPresenter::handle,
+            ),
+            View::Delete(presenter) => send(
+                presenter,
+                DeletePayeeEvent::Input(input),
+                DeletePayeePresenter::handle,
+            ),
+        }
+    }
+
     /// Hands a confirmed outcome to the page and tells the host, once the Presenter has closed
     /// the Dialog.
-    fn closed(&self, router: DialogRouter, cx: &mut Context<'_, Self>) {
-        let Some(outcome) = router.closed else {
+    fn closed(&self, router: Router, cx: &mut Context<'_, Self>) {
+        let Some(outcome) = router.closed() else {
             return;
         };
         if let Some(outcome) = outcome {
@@ -121,39 +134,16 @@ impl PayeesDialog {
     }
 }
 
-/// Where a Payees Dialog's Presenter asks to go: closing, and Notices, which go onto the bin's
-/// queue for `Root` to drain once the key or click returns. The page opens Dialogs.
-#[derive(Default)]
-struct DialogRouter {
-    /// `Some` once the Presenter closed its Dialog, with what its confirm did.
-    closed: Option<Option<PayeesOutcome>>,
-}
-
-impl PayeesRouter for DialogRouter {
-    fn open_dialog(&mut self, _dialog: Which) -> bool {
-        false
-    }
-
-    fn open_transactions(&mut self, _id: lib_core::PayeeId) {}
-
-    fn close_dialog(&mut self, outcome: Option<PayeesOutcome>) {
-        self.closed = Some(outcome);
-    }
-}
-
-impl Notify for DialogRouter {
-    fn notify(&mut self, notice: Notice) {
-        crate::notices::Queue.notify(notice);
-    }
-}
+/// The host's Router, as a Payees Dialog's Presenter closes through it.
+type Router = HostRouter<PayeesOutcome>;
 
 /// Sends `event` to `presenter`, returning what its Router was asked.
 fn send<P, E>(
     presenter: &mut P,
     event: E,
-    handle: fn(&mut P, E, &mut dyn PayeesRouter),
-) -> DialogRouter {
-    let mut router = DialogRouter::default();
+    handle: fn(&mut P, E, &mut dyn DialogRouter<PayeesOutcome>),
+) -> Router {
+    let mut router = Router::default();
     handle(presenter, event, &mut router);
     router
 }
@@ -161,12 +151,19 @@ fn send<P, E>(
 impl EventEmitter<DialogClosed> for PayeesDialog {}
 
 impl HostedDialog for PayeesDialog {
-    /// Every key is the Payees Dialog's own: the Presenter holds every field.
-    fn key(&mut self, key: DialogKey, _cx: &mut Context<'_, Self>) -> DialogOutcome {
-        match &mut self.view {
-            View::Form(presenter, select) => payee_form::key(presenter, select, key),
-            View::Delete(presenter) => delete_payee::key(presenter, key),
+    /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) runs with
+    /// the Ledger read copy in line before it, and one that wrote something, after it.
+    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) -> bool {
+        let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
+        if may_confirm {
+            ports::refresh(&self.ports, &self.ledger, cx);
         }
+        let router = self.input_event(input);
+        if may_confirm {
+            ports::refresh(&self.ports, &self.ledger, cx);
+        }
+        self.closed(router, cx);
+        true
     }
 
     fn can_confirm(&self) -> bool {
@@ -193,9 +190,15 @@ impl HostedDialog for PayeesDialog {
 
     fn close_open_select(&mut self) -> bool {
         match &mut self.view {
-            View::Form(_, select) => {
-                let open = select.is_open();
-                select.cancel();
+            View::Form(presenter, _) => {
+                let open = presenter.view_model().default_category_list.is_open();
+                if open {
+                    send(
+                        presenter,
+                        PayeeFormEvent::CloseCategories,
+                        PayeeFormPresenter::handle,
+                    );
+                }
                 open
             }
             View::Delete(_) => false,
@@ -242,9 +245,9 @@ impl HostedDialog for PayeesDialog {
 impl Render for PayeesDialog {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let actions = Clicks::new(cx);
-        match &self.view {
-            View::Form(presenter, select) => {
-                payee_form::render(&presenter.view_model(), select, &actions, cx)
+        match &mut self.view {
+            View::Form(presenter, scroll) => {
+                payee_form::render(&presenter.view_model(), scroll, &actions, cx)
             }
             View::Delete(presenter) => delete_payee::render(&presenter.view_model(), &actions, cx),
         }

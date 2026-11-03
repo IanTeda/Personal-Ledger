@@ -8,6 +8,7 @@ use std::rc::Rc;
 
 use lib_core::{CategoryId, PayeeId};
 use lib_toast::{Notice, Notify};
+use lib_viper::dialog::DialogRouter;
 
 use crate::protocols::{
     PayeeCategories, PayeeCategory, PayeesDialog, PayeesOutcome, PayeesPorts, PayeesRouter,
@@ -176,6 +177,13 @@ impl PayeesRouter for RecordingRouter {
     }
 
     fn close_dialog(&mut self, outcome: Option<PayeesOutcome>) {
+        self.calls.push(RouterCall::CloseDialog(outcome));
+    }
+}
+
+/// A Dialog's close records as the page Router's does, so one recording reads either.
+impl DialogRouter<PayeesOutcome> for RecordingRouter {
+    fn close(&mut self, outcome: Option<PayeesOutcome>) {
         self.calls.push(RouterCall::CloseDialog(outcome));
     }
 }

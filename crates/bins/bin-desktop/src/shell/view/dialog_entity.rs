@@ -6,9 +6,15 @@
 //!
 //! Every key reaches the open Dialog through `lib-shell`'s Dialog keymap ([`DialogCommand`]), so
 //! `Enter`, `Esc`, `Tab` and select stepping are the same in each Dialog and follow
-//! `[keybindings]`. What a command means is the Dialog's call ([`HostedDialog::key`]), except
-//! `back`, which the Shell decides: it closes an open select first, otherwise cancels the Dialog
-//! and closes it. A key the keymap doesn't bind types into the focused field.
+//! `[keybindings]`. What a command means is the Dialog's call, except `back`, which the Shell
+//! decides: it closes an open select first, otherwise cancels the Dialog and closes it. A key the
+//! keymap doesn't bind types into the focused field.
+//!
+//! The host carries two paths while the module Dialogs move (#988 to #991). A Dialog whose
+//! Presenter takes `lib-viper`'s [`DialogInput`]s gets each command and typed key as one
+//! ([`HostedDialog::input`]) and closes through the one [`HostRouter`]; Payees' do. Every other
+//! Dialog gets the command turned back into the key it stands for ([`HostedDialog::key`]) and
+//! closes through its own `<Domain>Router`.
 //!
 //! A Dialog's Presenter closes it through its Router. The Dialog then hands a confirm's outcome to
 //! the page that opened it and emits [`DialogClosed`], which the Shell closes the host on, so a
@@ -20,6 +26,8 @@ use std::rc::Rc;
 use gpui::{AnyEntity, AnyView, App, AppContext as _, Context, Entity, EventEmitter, Render};
 use gpui::{EntityId, Subscription, WeakEntity, Window};
 use lib_shell::DialogCommand;
+use lib_toast::{Notice, Notify};
+use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::Keymap;
 
 use crate::dialog::OnClick;
@@ -34,10 +42,20 @@ pub struct DialogClosed;
 
 /// A module's Dialog as the host holds it: an Entity owning its Presenter and its widget state.
 pub trait HostedDialog: Render + EventEmitter<DialogClosed> + Sized + 'static {
-    /// A key as the Dialog's View reads it: `Enter` opens a closed select, picks from an open one,
-    /// else answers [`DialogOutcome::Confirm`] only while the form is valid; `Tab` moves field;
-    /// the arrows step a select; anything else types.
-    fn key(&mut self, key: DialogKey, cx: &mut Context<'_, Self>) -> DialogOutcome;
+    /// A Dialog input for a Dialog whose Presenter takes them: the Presenter decides what it means,
+    /// and confirms or closes through a [`HostRouter`]. Returns whether the Dialog takes inputs;
+    /// one that doesn't is sent the key instead ([`Self::key`]).
+    fn input(&mut self, _input: DialogInput, _cx: &mut Context<'_, Self>) -> bool {
+        false
+    }
+
+    /// A key as the Dialog's View reads it, for a Dialog still on the key path (#991 removes it):
+    /// `Enter` opens a closed select, picks from an open one, else answers
+    /// [`DialogOutcome::Confirm`] only while the form is valid; `Tab` moves field; the arrows step
+    /// a select; anything else types. A Dialog that takes inputs never gets a key.
+    fn key(&mut self, _key: DialogKey, _cx: &mut Context<'_, Self>) -> DialogOutcome {
+        DialogOutcome::Ignored
+    }
 
     /// Whether the form would confirm now.
     fn can_confirm(&self) -> bool;
@@ -75,6 +93,48 @@ fn command_key(command: DialogCommand) -> Option<DialogKey> {
     }
 }
 
+/// A typed key as a Presenter's input: a character or `Backspace`. The others type nothing.
+fn typed_input(key: DialogKey) -> Option<DialogInput> {
+    match key {
+        DialogKey::Char(ch) => Some(DialogInput::Char(ch)),
+        DialogKey::Backspace => Some(DialogInput::Backspace),
+        _ => None,
+    }
+}
+
+/// The one Router every module Dialog's Presenter closes through (`lib_viper::dialog`): it
+/// records the close for the Dialog to act on once its Presenter returns, and queues each Notice
+/// on the bin's queue for the input's `send` to drain. A Dialog builds one for each Presenter call.
+pub struct HostRouter<O> {
+    closed: Option<Option<O>>,
+}
+
+impl<O> Default for HostRouter<O> {
+    fn default() -> Self {
+        Self { closed: None }
+    }
+}
+
+impl<O> HostRouter<O> {
+    /// `Some` once the Presenter closed its Dialog, holding what its confirm did (`None` for a
+    /// cancel).
+    pub fn closed(self) -> Option<Option<O>> {
+        self.closed
+    }
+}
+
+impl<O> DialogRouter<O> for HostRouter<O> {
+    fn close(&mut self, outcome: Option<O>) {
+        self.closed = Some(outcome);
+    }
+}
+
+impl<O> Notify for HostRouter<O> {
+    fn notify(&mut self, notice: Notice) {
+        crate::notices::Queue.notify(notice);
+    }
+}
+
 /// Runs `key` on `dialog`, confirming when its View says so.
 fn press<D: HostedDialog>(dialog: &mut D, key: DialogKey, cx: &mut Context<'_, D>) {
     if dialog.key(key, cx) == DialogOutcome::Confirm {
@@ -98,6 +158,10 @@ trait AnyHosted {
 impl<D: HostedDialog> AnyHosted for Entity<D> {
     fn command(&self, command: DialogCommand, cx: &mut App) {
         self.update(cx, |dialog, cx| {
+            if command.input().is_some_and(|input| dialog.input(input, cx)) {
+                cx.notify();
+                return;
+            }
             match command_key(command) {
                 Some(key) => press(dialog, key, cx),
                 // `submit` confirms a valid form from any field, a select or a multi-line box.
@@ -121,7 +185,9 @@ impl<D: HostedDialog> AnyHosted for Entity<D> {
                 | DialogKey::Ctrl(_)
         ) {
             self.update(cx, |dialog, cx| {
-                press(dialog, key, cx);
+                if !typed_input(key).is_some_and(|input| dialog.input(input, cx)) {
+                    press(dialog, key, cx);
+                }
                 cx.notify();
             });
         }

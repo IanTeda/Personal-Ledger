@@ -4,42 +4,14 @@
 //! red frame.
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
-use lib_payees::presenter::{DeletePayeeEvent, DeletePayeePresenter, DeletePayeeViewModel};
+use lib_payees::presenter::DeletePayeeViewModel;
 
+use super::Clicks;
 use super::rules_field::error_line;
-use super::{Clicks, send};
-use crate::form::viper::{enter, typed};
-use crate::{
-    dialog,
-    shell::view::dialog_host::{DialogKey, DialogOutcome},
-    theme::color,
-};
+use crate::{dialog, theme::color};
 
 /// The Dialog's width: the handoff's 6d.
 const WIDTH: gpui::Pixels = px(440.0);
-
-pub(super) fn key(presenter: &mut DeletePayeePresenter, key: DialogKey) -> DialogOutcome {
-    let view = presenter.view_model();
-    match key {
-        DialogKey::Enter => enter(view.frame.can_confirm),
-        DialogKey::Tab | DialogKey::BackTab => DialogOutcome::Handled,
-        _ => match view
-            .confirm
-            .as_ref()
-            .and_then(|confirm| typed(&confirm.text, key))
-        {
-            Some(text) => {
-                send(
-                    presenter,
-                    DeletePayeeEvent::ConfirmText(text),
-                    DeletePayeePresenter::handle,
-                );
-                DialogOutcome::Handled
-            }
-            None => DialogOutcome::Ignored,
-        },
-    }
-}
 
 pub(super) fn render(view: &DeletePayeeViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     let destructive = view.frame.destructive;

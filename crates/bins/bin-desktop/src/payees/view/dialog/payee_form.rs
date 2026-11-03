@@ -2,24 +2,21 @@
 //! 6c) on the shared `crate::dialog` frame: Name, Default category (the shared `select_field`
 //! dropdown), the Match rules field and a callout.
 //!
-//! `Enter` in a rule input holding text adds it as a chip rather than confirming, and `Backspace`
-//! in the empty input removes the last chip. The select takes the arrows, `Enter` and `Space`, and
-//! swallows other typing rather than letting it reach the Shell.
+//! What each key means is the Presenter's (`lib_payees::presenter::PayeeFormPresenter`); this View
+//! draws the form and turns its clicks into Presenter events.
 
 use gpui::{AnyElement, App, div, prelude::*, px};
 use lib_payees::presenter::{PayeeField, PayeeFormEvent, PayeeFormPresenter, PayeeFormViewModel};
 
 use super::rules_field::{self, RulesFieldProps};
 use super::{Clicks, PayeesDialog, View, send};
-use crate::form::viper::{choose_option, chosen_label, enter, labels, select_key, synced};
+use crate::form::viper::{chosen_label, drawn, labels};
 use crate::{
     dialog,
     form::{
         dialog_fields::{label, text_field},
-        select::SelectState,
         select_field::{self, SelectFieldProps},
     },
-    shell::view::dialog_host::{DialogKey, DialogOutcome},
     theme::color,
 };
 
@@ -30,140 +27,53 @@ fn handle(presenter: &mut PayeeFormPresenter, event: PayeeFormEvent) {
     send(presenter, event, PayeeFormPresenter::handle);
 }
 
-pub(super) fn key(
-    presenter: &mut PayeeFormPresenter,
-    select: &mut SelectState,
-    key: DialogKey,
-) -> DialogOutcome {
-    let view = presenter.view_model();
-    match key {
-        DialogKey::Tab | DialogKey::BackTab => {
-            // Leaving the select commits an open list's highlight, as a click on it would.
-            if select.is_open() {
-                let (_, value) = select_key(select, &view.default_category, DialogKey::Enter);
-                if let Some(id) = value {
-                    handle(presenter, PayeeFormEvent::Category(id));
-                }
-            }
-            let event = if key == DialogKey::Tab {
-                PayeeFormEvent::NextField
-            } else {
-                PayeeFormEvent::PrevField
-            };
-            handle(presenter, event);
-            return DialogOutcome::Handled;
-        }
-        _ => {}
-    }
-    match view.focused {
-        PayeeField::DefaultCategory => {
-            let (taken, value) = select_key(select, &view.default_category, key);
-            if let Some(id) = value {
-                handle(presenter, PayeeFormEvent::Category(id));
-            }
-            match key {
-                DialogKey::Enter if !taken => enter(view.frame.can_confirm),
-                // A select swallows typing rather than letting it fall through to the Shell.
-                DialogKey::Char(_) | DialogKey::Backspace => DialogOutcome::Handled,
-                _ if taken => DialogOutcome::Handled,
-                _ => DialogOutcome::Ignored,
-            }
-        }
-        PayeeField::Rule => match key {
-            DialogKey::Enter if !view.rule_input.text.is_empty() => {
-                handle(presenter, PayeeFormEvent::AddRule);
-                DialogOutcome::Handled
-            }
-            DialogKey::Backspace if view.rule_input.text.is_empty() => {
-                handle(presenter, PayeeFormEvent::RemoveLastRule);
-                DialogOutcome::Handled
-            }
-            _ => text_key(presenter, &view, key, PayeeFormEvent::RuleInput),
-        },
-        PayeeField::Name => text_key(presenter, &view, key, PayeeFormEvent::Name),
-    }
-}
-
-/// A key on a text field: typing edits it, `Enter` confirms a valid form, the arrows do nothing.
-fn text_key(
-    presenter: &mut PayeeFormPresenter,
-    view: &PayeeFormViewModel,
-    key: DialogKey,
-    event: fn(String) -> PayeeFormEvent,
-) -> DialogOutcome {
-    let text = if view.focused == PayeeField::Rule {
-        &view.rule_input.text
-    } else {
-        &view.name.text
-    };
-    match key {
-        DialogKey::Enter => enter(view.frame.can_confirm),
-        DialogKey::Up | DialogKey::Down => DialogOutcome::Handled,
-        _ => match crate::form::viper::typed(text, key) {
-            Some(text) => {
-                handle(presenter, event(text));
-                DialogOutcome::Handled
-            }
-            None => DialogOutcome::Ignored,
-        },
-    }
-}
-
-fn form(dialog: &mut PayeesDialog) -> Option<(&mut PayeeFormPresenter, &mut SelectState)> {
+fn form(dialog: &mut PayeesDialog) -> Option<&mut PayeeFormPresenter> {
     match &mut dialog.view {
-        View::Form(presenter, select) => Some((presenter, select)),
+        View::Form(presenter, _) => Some(presenter),
         View::Delete(_) => None,
     }
 }
 
 /// A click on a text field focuses it.
 fn click_field(dialog: &mut PayeesDialog, field: PayeeField) {
-    if let Some((presenter, select)) = form(dialog) {
-        select.cancel();
+    if let Some(presenter) = form(dialog) {
         handle(presenter, PayeeFormEvent::Focus(field));
     }
 }
 
 /// A click on the select's closed field focuses it and toggles its list.
 fn click_select(dialog: &mut PayeesDialog) {
-    if let Some((presenter, select)) = form(dialog) {
-        handle(
-            presenter,
-            PayeeFormEvent::Focus(PayeeField::DefaultCategory),
-        );
-        let view = presenter.view_model();
-        *select = synced(select, &view.default_category);
-        if select.is_open() {
-            select.cancel();
-        } else {
-            select.open(&labels(&view.default_category));
-        }
+    if let Some(presenter) = form(dialog) {
+        handle(presenter, PayeeFormEvent::ToggleCategories);
     }
 }
 
+/// A click on row `index` of the open list picks its Category.
 fn click_option(dialog: &mut PayeesDialog, index: usize) {
-    if let Some((presenter, select)) = form(dialog)
-        && let Some(id) = choose_option(select, &presenter.view_model().default_category, index)
+    if let Some(presenter) = form(dialog)
+        && let Some(choice) = presenter.view_model().default_category.options.get(index)
     {
-        handle(presenter, PayeeFormEvent::Category(id));
+        handle(presenter, PayeeFormEvent::Category(choice.value));
     }
 }
 
 fn click_add_rule(dialog: &mut PayeesDialog) {
-    if let Some((presenter, _)) = form(dialog) {
+    if let Some(presenter) = form(dialog) {
         handle(presenter, PayeeFormEvent::AddRule);
     }
 }
 
 fn click_remove_rule(dialog: &mut PayeesDialog, index: usize) {
-    if let Some((presenter, _)) = form(dialog) {
+    if let Some(presenter) = form(dialog) {
         handle(presenter, PayeeFormEvent::RemoveRule(index));
     }
 }
 
+/// The form, its Default category list's window scrolled from `scroll`, which this draw moves to
+/// follow the highlight.
 pub(super) fn render(
     view: &PayeeFormViewModel,
-    select: &SelectState,
+    scroll: &mut usize,
     actions: &Clicks,
     cx: &App,
 ) -> AnyElement {
@@ -207,7 +117,7 @@ pub(super) fn render(
                     id: category_id.into(),
                     label: view.default_category.label.clone().into(),
                     options: &options,
-                    state: &synced(select, &view.default_category),
+                    state: &drawn(&view.default_category, view.default_category_list, scroll),
                     focused: view.default_category.focused,
                     accent: false,
                     read_only: None,

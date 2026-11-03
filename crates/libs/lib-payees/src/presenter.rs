@@ -2,8 +2,9 @@
 //! form; Delete, Deactivate and Reactivate share the Delete Dialog). Each takes events through
 //! `handle` and builds a plain-data view model through `view_model`, its text already localised
 //! from [`crate::msg`], so a View only draws. They share one set of ports
-//! ([`SharedPorts`](crate::protocols::SharedPorts)) and ask for navigation through the
-//! [`PayeesRouter`](crate::protocols::PayeesRouter) the Client passes in.
+//! ([`SharedPorts`](crate::protocols::SharedPorts)). The page asks for navigation through the
+//! [`PayeesRouter`](crate::protocols::PayeesRouter) the Client passes in, and each Dialog takes
+//! `lib-viper`'s `DialogInput`s and closes through its `DialogRouter`.
 
 mod delete_payee;
 mod payee_form;

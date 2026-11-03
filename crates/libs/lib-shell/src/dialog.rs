@@ -10,6 +10,7 @@
 //! first, otherwise cancels the Dialog and closes it.
 
 use lib_config::KeyBindingConfig;
+use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{
     BACK, Binding, Keymap, NEXT_FIELD, PREVIOUS_FIELD, SELECT, SELECT_NEXT, SELECT_PREVIOUS, SUBMIT,
 };
@@ -36,6 +37,22 @@ pub const DIALOG_BINDINGS: &[Binding<DialogCommand>] = &[
     Binding::hidden(SELECT_PREVIOUS, "up", DialogCommand::SelectPrevious),
     Binding::hidden(SUBMIT, "ctrl+enter", DialogCommand::Submit),
 ];
+
+impl DialogCommand {
+    /// The command as a module Dialog's Presenter takes it (`lib_viper::dialog`), `None` for
+    /// `back`, which the host decides.
+    pub fn input(self) -> Option<DialogInput> {
+        match self {
+            Self::Select => Some(DialogInput::Select),
+            Self::NextField => Some(DialogInput::NextField),
+            Self::PreviousField => Some(DialogInput::PreviousField),
+            Self::SelectNext => Some(DialogInput::SelectNext),
+            Self::SelectPrevious => Some(DialogInput::SelectPrevious),
+            Self::Submit => Some(DialogInput::Submit),
+            Self::Back => None,
+        }
+    }
+}
 
 /// The Dialog keymap under `config`'s overrides.
 pub fn dialog_keymap(config: &KeyBindingConfig) -> Keymap<DialogCommand> {
@@ -70,6 +87,16 @@ mod tests {
             assert_eq!(keymap.event(chord), Some(command), "{chord}");
         }
         assert_eq!(keymap.event("j"), None, "typing is the Dialog's own");
+    }
+
+    #[test]
+    fn every_command_but_back_is_a_presenters_input() {
+        assert_eq!(DialogCommand::Back.input(), None, "back is the host's");
+        assert_eq!(
+            DialogCommand::PreviousField.input(),
+            Some(DialogInput::PreviousField)
+        );
+        assert_eq!(DialogCommand::Submit.input(), Some(DialogInput::Submit));
     }
 
     #[test]

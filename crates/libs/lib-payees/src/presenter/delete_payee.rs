@@ -7,16 +7,20 @@
 //! loses nothing, so it drops both. A Payee that came into use under the open Dialog turns it into
 //! Deactivate, as the Interactor's refusal says.
 //!
+//! It takes the Dialog keymap's commands and typed keys as [`DialogInput`]s: typing edits the
+//! typed-back name, and `select` or `submit` confirms only once it matches.
+//!
 //! The Dialog raises its own Toast on landing, so the page only learns what it did.
 
 use lib_core::PayeeId;
 use lib_locale::Segment;
 use lib_toast::{Notice, ToastKind};
+use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::view::{DialogFrame, TextFieldView, count};
 
 use super::refusal_text;
 use crate::interactor::{DeactivatePayee, DeletePayee, ReactivatePayee};
-use crate::protocols::{PayeeChange, PayeesOutcome, PayeesRouter, SharedPorts};
+use crate::protocols::{PayeeChange, PayeesOutcome, SharedPorts};
 use crate::{DeletePayeeRefusal, PayeeError, PayeeUse, msg};
 
 /// What the Dialog does to the Payee, chosen from its use when it opens.
@@ -47,6 +51,8 @@ impl DeleteAction {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeletePayeeEvent {
+    /// A Dialog keymap command or a typed key.
+    Input(DialogInput),
     /// The confirmation field's whole new text.
     ConfirmText(String),
     Confirm,
@@ -98,11 +104,25 @@ impl DeletePayeePresenter {
         })
     }
 
-    pub fn handle(&mut self, event: DeletePayeeEvent, router: &mut dyn PayeesRouter) {
+    pub fn handle(
+        &mut self,
+        event: DeletePayeeEvent,
+        router: &mut dyn DialogRouter<PayeesOutcome>,
+    ) {
         match event {
+            DeletePayeeEvent::Input(DialogInput::Select | DialogInput::Submit)
+            | DeletePayeeEvent::Confirm => self.confirm(router),
+            // Reactivating has no typed-back name to type into.
+            DeletePayeeEvent::Input(DialogInput::Char(ch)) if self.action.is_destructive() => {
+                self.confirm_text.push(ch);
+            }
+            DeletePayeeEvent::Input(DialogInput::Backspace) => {
+                self.confirm_text.pop();
+            }
+            // One field, and no select.
+            DeletePayeeEvent::Input(_) => {}
             DeletePayeeEvent::ConfirmText(text) => self.confirm_text = text,
-            DeletePayeeEvent::Confirm => self.confirm(router),
-            DeletePayeeEvent::Cancel => router.close_dialog(None),
+            DeletePayeeEvent::Cancel => router.close(None),
         }
     }
 
@@ -161,7 +181,7 @@ impl DeletePayeePresenter {
         !self.action.is_destructive() || self.confirm_text == self.name
     }
 
-    fn confirm(&mut self, router: &mut dyn PayeesRouter) {
+    fn confirm(&mut self, router: &mut dyn DialogRouter<PayeesOutcome>) {
         if !self.can_confirm() {
             return;
         }
@@ -200,7 +220,7 @@ impl DeletePayeePresenter {
                     }
                 };
                 router.notify(Notice::Toast(ToastKind::Success, toast));
-                router.close_dialog(Some(PayeesOutcome {
+                router.close(Some(PayeesOutcome {
                     change,
                     id: self.id,
                     name,
@@ -492,6 +512,55 @@ mod tests {
         assert_eq!(
             send(&mut dialog, vec![DeletePayeeEvent::Cancel]),
             [RouterCall::CloseDialog(None)]
+        );
+    }
+
+    fn keys(text: &str) -> Vec<DeletePayeeEvent> {
+        text.chars()
+            .map(|ch| DeletePayeeEvent::Input(DialogInput::Char(ch)))
+            .collect()
+    }
+
+    #[test]
+    fn typing_fills_the_typed_back_name_and_select_or_submit_confirms_once_it_matches() {
+        let (ports, shared) = stub();
+        let mut dialog = DeletePayeePresenter::new(shared.clone(), NETFLIX).expect("stub");
+        let select = DeletePayeeEvent::Input(DialogInput::Select);
+        let submit = DeletePayeeEvent::Input(DialogInput::Submit);
+
+        send(&mut dialog, keys("Netflixx"));
+        assert_eq!(send(&mut dialog, vec![select.clone()]), [], "no match yet");
+        send(
+            &mut dialog,
+            vec![
+                DeletePayeeEvent::Input(DialogInput::Backspace),
+                DeletePayeeEvent::Input(DialogInput::NextField),
+            ],
+        );
+        assert_eq!(
+            dialog
+                .view_model()
+                .confirm
+                .map(|field| field.text)
+                .as_deref(),
+            Some("Netflix")
+        );
+        assert_eq!(
+            send(&mut dialog, vec![select])[0],
+            toast("Deleted payee Netflix")
+        );
+        assert_eq!(ports.borrow().payees.payee(NETFLIX), None);
+
+        ports.borrow_mut().usage.uses.insert(DON_QUIJOTE, used(1));
+        let mut reactivate = DeletePayeePresenter::new(shared, DON_QUIJOTE).expect("stub");
+        send(&mut reactivate, keys("x"));
+        assert!(
+            reactivate.view_model().frame.can_confirm,
+            "nothing to type into"
+        );
+        assert_eq!(
+            send(&mut reactivate, vec![submit])[0],
+            toast("Reactivated payee Don Quijote")
         );
     }
 }

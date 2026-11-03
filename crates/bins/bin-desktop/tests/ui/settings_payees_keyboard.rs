@@ -439,6 +439,28 @@ fn tab_reaches_the_default_category_and_down_picks_a_leaf_ctrl_enter_saves(
 }
 
 #[gpui::test]
+fn escape_closes_the_default_categorys_open_list_before_it_cancels(app: &mut TestAppContext) {
+    let mut ui = in_payees(app);
+
+    ui.press("n tab enter down down");
+    assert_eq!(
+        ui.dialog_value("category").as_deref(),
+        Some("— none, ask every time —"),
+        "an open list's highlight picks nothing"
+    );
+    ui.press("escape");
+    assert_eq!(ui.dialog(), Some("AddPayee"), "escape closed the list only");
+    ui.press("down");
+    assert_eq!(
+        ui.dialog_value("category").as_deref(),
+        Some("Rent"),
+        "the closed select steps its value"
+    );
+    ui.press("escape");
+    assert_eq!(ui.dialog(), None);
+}
+
+#[gpui::test]
 fn enter_in_the_rule_input_adds_a_chip_and_backspace_takes_it_back(app: &mut TestAppContext) {
     let mut ui = in_payees(app);
 

@@ -13,6 +13,7 @@ doctest = false
 [dependencies]
 ## -- Internal Dependencies --
 lib_config = { path = "../lib-config" }
+lib_toast = { path = "../lib-toast" }
 
 [lints]
 workspace = true

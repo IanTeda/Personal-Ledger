@@ -4,8 +4,9 @@
 //! memory.
 //!
 //! `lib-database`'s Payees adapter implements the repository and usage (#831). The Presenters
-//! reach every port together, through [`PayeesPorts`], and ask for navigation through
-//! [`PayeesRouter`], which each Client implements.
+//! reach every port together, through [`PayeesPorts`]. The page asks for navigation through
+//! [`PayeesRouter`], which each Client implements; the Dialogs close through `lib-viper`'s
+//! `DialogRouter`, which the Desktop's Dialog host implements once for every module.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -130,9 +131,8 @@ pub trait PayeesRouter: Notify {
     /// first row.
     fn open_transactions(&mut self, id: PayeeId);
 
-    /// Closes the open Payees Dialog. `outcome` is what its confirm did, `None` when it was
-    /// cancelled; the Client hands it to the page as [`PayeesPageEvent::DialogClosed`].
-    ///
-    /// [`PayeesPageEvent::DialogClosed`]: crate::presenter::PayeesPageEvent::DialogClosed
+    /// Closes the open Payees Dialog. The Dialogs close through `lib_viper::dialog::DialogRouter`
+    /// instead, so nothing calls this; it stays, with the page's stub, until every module's
+    /// Dialogs do (#991).
     fn close_dialog(&mut self, outcome: Option<PayeesOutcome>);
 }
