@@ -36,6 +36,11 @@ pub const DIALOG_BINDINGS: &[Binding<DialogCommand>] = &[
     Binding::hidden(SELECT_NEXT, "down", DialogCommand::SelectNext),
     Binding::hidden(SELECT_PREVIOUS, "up", DialogCommand::SelectPrevious),
     Binding::hidden(SUBMIT, "ctrl+enter", DialogCommand::Submit),
+    // The list-stepping chords of a terminal: a second chord for the same two commands, so every
+    // Dialog list takes them (the link picker did before `DialogInput` dropped Ctrl keys, #990).
+    // They sit last so a rebind that moves another command onto `ctrl+n` wins it.
+    Binding::hidden(SELECT_NEXT, "ctrl+n", DialogCommand::SelectNext),
+    Binding::hidden(SELECT_PREVIOUS, "ctrl+p", DialogCommand::SelectPrevious),
 ];
 
 impl DialogCommand {
@@ -83,6 +88,8 @@ mod tests {
             ("down", DialogCommand::SelectNext),
             ("up", DialogCommand::SelectPrevious),
             ("ctrl+enter", DialogCommand::Submit),
+            ("ctrl+n", DialogCommand::SelectNext),
+            ("ctrl+p", DialogCommand::SelectPrevious),
         ] {
             assert_eq!(keymap.event(chord), Some(command), "{chord}");
         }
@@ -109,6 +116,25 @@ mod tests {
             keymap.event("shift+tab"),
             Some(DialogCommand::PreviousField)
         );
+    }
+
+    #[test]
+    fn ctrl_n_and_ctrl_p_step_a_list_beside_the_arrows() {
+        let keymap = dialog_keymap(&KeyBindingConfig::default());
+
+        assert_eq!(keymap.event("ctrl+n"), Some(DialogCommand::SelectNext));
+        assert_eq!(keymap.event("ctrl+p"), Some(DialogCommand::SelectPrevious));
+        assert_eq!(keymap.event("down"), Some(DialogCommand::SelectNext));
+        assert_eq!(keymap.event("up"), Some(DialogCommand::SelectPrevious));
+    }
+
+    #[test]
+    fn a_rebound_next_field_keeps_ctrl_n() {
+        // `next_field` is bound earlier, so on `ctrl+n` it wins and the list step gives way.
+        let keymap = dialog_keymap(&overriding(NEXT_FIELD, "ctrl+n"));
+
+        assert_eq!(keymap.event("ctrl+n"), Some(DialogCommand::NextField));
+        assert_eq!(keymap.event("ctrl+p"), Some(DialogCommand::SelectPrevious));
     }
 
     #[test]

@@ -637,6 +637,28 @@ fn the_picker_cycles_kinds_and_filters_by_typing(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn ctrl_n_and_ctrl_p_move_the_pickers_highlight(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+    ui.press("l");
+    let start = ui.documents().picker.expect("picker open").selected;
+
+    ui.press("ctrl-n");
+    assert_eq!(
+        ui.documents().picker.expect("open").selected,
+        start + 1,
+        "`ctrl-n` steps down like `down`"
+    );
+
+    ui.press("ctrl-p");
+    assert_eq!(
+        ui.documents().picker.expect("open").selected,
+        start,
+        "`ctrl-p` steps back up like `up`"
+    );
+    assert_eq!(ui.documents().dialog, Some("picker-link"));
+}
+
+#[gpui::test]
 fn the_inbox_picker_pins_file_without_link_and_draws_its_rows(app: &mut TestAppContext) {
     let mut ui = on_documents(app);
     ui.press("i");
