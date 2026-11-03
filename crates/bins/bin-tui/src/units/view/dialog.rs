@@ -15,8 +15,10 @@ use lib_units::presenter::{
     DeletePriceSourceEvent, DeletePriceSourcePresenter, DeleteUnitEvent, DeleteUnitPresenter,
     PriceSourceField, PriceSourceFormEvent, PriceSourceFormPresenter, SetBaseUnitEvent,
     SetBaseUnitPresenter, SetPriceEvent, SetPricePresenter, UnitFormEvent, UnitFormPresenter,
+    UnitsOutcome,
 };
-use lib_units::{SharedPorts, UnitsDialog as Which, UnitsRouter};
+use lib_units::{SharedPorts, UnitsDialog as Which};
+use lib_viper::dialog::DialogRouter;
 use lib_viper::keymap::{Keymap, SELECT};
 use lib_viper::view::{DialogFrame, SelectView, TextFieldView};
 use ratatui::{
@@ -100,7 +102,7 @@ impl Dialog {
         &mut self,
         key: KeyEvent,
         keymap: &Keymap<DialogCommand>,
-        router: &mut dyn UnitsRouter,
+        router: &mut dyn DialogRouter<UnitsOutcome>,
     ) {
         let form = chord(key)
             .and_then(|chord| keymap.event(&chord))

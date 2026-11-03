@@ -21,7 +21,7 @@ use gpui::App;
 use lib_database::UnitsStore;
 pub use ports::{DesktopPorts, LedgerBackedPorts};
 pub use router::units_page;
-pub(crate) use view::dialog::{DialogRouter, Landed, help, refusal};
+pub(crate) use view::dialog::{Landed, Router, help, refusal};
 pub use view::page::UnitsPage;
 
 use crate::settings::snapshot::PageSnapshot;

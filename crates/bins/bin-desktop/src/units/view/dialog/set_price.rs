@@ -1,48 +1,18 @@
 //! The Set price Dialog: Week, with the Monday it snaps to under it, then Close in the quote Unit.
-//! `Tab` moves between them, and `Enter` confirms once both read.
+//! `Tab` moves between them, and `Enter` confirms once both read: the Presenter reads every key.
 
 use gpui::{AnyElement, App, div, prelude::*};
 use lib_units::presenter::{SetPriceEvent, SetPriceField, SetPricePresenter, SetPriceViewModel};
 use lib_viper::view::TextFieldView;
 
-use super::{Clicks, UnitsDialog, View, enter, help, refusal, send, typed};
+use super::{Clicks, UnitsDialog, View, help, refusal, send};
 use crate::{
     dialog,
     form::dialog_fields::{label, text_field},
-    shell::view::dialog_host::{DialogKey, DialogOutcome},
 };
 
 fn handle(presenter: &mut SetPricePresenter, event: SetPriceEvent) {
     send(presenter, event, SetPricePresenter::handle);
-}
-
-pub(super) fn key(presenter: &mut SetPricePresenter, key: DialogKey) -> DialogOutcome {
-    let view = presenter.view_model();
-    match key {
-        DialogKey::Enter => enter(view.frame.can_confirm),
-        DialogKey::Tab => {
-            handle(presenter, SetPriceEvent::NextField);
-            DialogOutcome::Handled
-        }
-        DialogKey::BackTab => {
-            handle(presenter, SetPriceEvent::PrevField);
-            DialogOutcome::Handled
-        }
-        _ if view.week.focused => match typed(&view.week.text, key) {
-            Some(text) => {
-                handle(presenter, SetPriceEvent::Week(text));
-                DialogOutcome::Handled
-            }
-            None => DialogOutcome::Ignored,
-        },
-        _ => match typed(&view.close.text, key) {
-            Some(text) => {
-                handle(presenter, SetPriceEvent::Close(text));
-                DialogOutcome::Handled
-            }
-            None => DialogOutcome::Ignored,
-        },
-    }
 }
 
 fn click_text(dialog: &mut UnitsDialog, field: SetPriceField) {

@@ -11,8 +11,12 @@
 //!   one that came into use under the open Dialog, as the Interactor's refusal says.
 //!
 //! Every figure is read when it opens: it is modal, so nothing changes them under it, and the
-//! Interactor reads the Institutions again on confirm. The Dialog closes through `lib-units`'
-//! [`UnitsRouter`] with the outcome every Units Dialog closes with.
+//! Interactor reads the Institutions again on confirm. The Dialog closes through the shared
+//! [`DialogRouter`] with the outcome every Units Dialog closes with.
+//!
+//! The typed-back code always holds the typing, `Space` included, so the selects are driven by
+//! `select_next`/`select_previous` (and `select` on an open list) on the select the field keys move
+//! to, and by the mouse.
 
 use lib_core::{InstitutionId, UnitId};
 use lib_units::presenter::{
@@ -20,8 +24,9 @@ use lib_units::presenter::{
     DeleteUnitViewModel as UnitsDeleteViewModel, UnitChange, UnitsOutcome, active_unit_choices,
     confirms_delete, delete_refusal,
 };
-use lib_units::{SharedPorts, UnitUse, UnitsRouter};
-use lib_viper::view::{Choice, SelectView, count};
+use lib_units::{SharedPorts, UnitUse};
+use lib_viper::dialog::{DialogInput, DialogRouter};
+use lib_viper::view::{Choice, SelectList, SelectMove, SelectView, count};
 
 use crate::error::Error;
 use crate::interactor::{DeleteUnit, Replacement};
@@ -30,10 +35,21 @@ use crate::protocols::SharedUnitDeletion;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeleteUnitEvent {
+    /// A Dialog command or typed key, as the Desktop sends them: the field keys move between the
+    /// selects, wrapping and closing an open list; `select_next`/`select_previous` drive the
+    /// focused select; `select` commits an open list, else confirms, and `submit` only confirms;
+    /// typing goes to the typed-back code.
+    Input(DialogInput),
     /// The confirmation field's whole new text.
     ConfirmText(String),
+    /// The New base unit picked, closing the list.
     NewBase(UnitId),
-    /// The Usual unit `institution` takes instead, `None` to leave it with none.
+    /// A click on the select at `index` (see [`DeleteUnitViewModel::focus`]): focuses it, and
+    /// opens or closes its list.
+    ToggleSelect(usize),
+    /// Closes the open list without picking: the Desktop host's `back`.
+    CloseList,
+    /// The Usual unit `institution` takes instead, `None` to leave it with none, closing the list.
     UsualUnit {
         institution: InstitutionId,
         unit: Option<UnitId>,
@@ -49,6 +65,11 @@ pub struct DeleteUnitViewModel {
     pub unit: UnitsDeleteViewModel,
     /// The Institutions naming the Unit; `None` when none does, or once it deactivates.
     pub usual_units: Option<UsualUnitsView>,
+    /// The select the arrow keys drive, by position: the New base unit first when it shows, then
+    /// the Usual unit selects in the Ledger's order.
+    pub focus: usize,
+    /// The focused select's list: open, and its highlight.
+    pub list: SelectList,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,6 +111,8 @@ struct Deleting {
     named: Vec<Named>,
     /// What each Institution's select offers: None, then every other active Unit.
     options: Vec<Choice<Option<UnitId>>>,
+    focus: usize,
+    list: SelectList,
     refusal: Option<String>,
 }
 
@@ -159,18 +182,27 @@ impl DeleteUnitPresenter {
                 candidates,
                 named,
                 options,
+                focus: 0,
+                list: SelectList::default(),
                 refusal: None,
             }),
         })
     }
 
-    pub fn handle(&mut self, event: DeleteUnitEvent, router: &mut dyn UnitsRouter) {
+    pub fn handle(&mut self, event: DeleteUnitEvent, router: &mut dyn DialogRouter<UnitsOutcome>) {
         match &mut self.mode {
             Mode::Deactivate(dialog) => {
                 let event = match event {
+                    // Deactivate has nothing to type or pick: `select` and `submit` confirm.
+                    DeleteUnitEvent::Input(DialogInput::Select | DialogInput::Submit) => {
+                        UnitsDeleteEvent::Confirm
+                    }
                     DeleteUnitEvent::ConfirmText(text) => UnitsDeleteEvent::ConfirmText(text),
                     DeleteUnitEvent::NewBase(id) => UnitsDeleteEvent::NewBase(id),
-                    DeleteUnitEvent::UsualUnit { .. } => return,
+                    DeleteUnitEvent::Input(_)
+                    | DeleteUnitEvent::ToggleSelect(_)
+                    | DeleteUnitEvent::CloseList
+                    | DeleteUnitEvent::UsualUnit { .. } => return,
                     DeleteUnitEvent::Confirm => UnitsDeleteEvent::Confirm,
                     DeleteUnitEvent::Cancel => UnitsDeleteEvent::Cancel,
                 };
@@ -189,6 +221,8 @@ impl DeleteUnitPresenter {
             Mode::Deactivate(dialog) => DeleteUnitViewModel {
                 unit: dialog.view_model(),
                 usual_units: None,
+                focus: 0,
+                list: SelectList::default(),
             },
             Mode::Delete(dialog) => dialog.view_model(),
         }
@@ -200,16 +234,23 @@ impl Deleting {
     fn handle(
         &mut self,
         event: DeleteUnitEvent,
-        router: &mut dyn UnitsRouter,
+        router: &mut dyn DialogRouter<UnitsOutcome>,
     ) -> Option<UnitsDeletePresenter> {
         match event {
+            DeleteUnitEvent::Input(input) => return self.input(input, router),
             DeleteUnitEvent::ConfirmText(text) => self.confirm_text = text,
             DeleteUnitEvent::NewBase(id) => {
+                self.list.close();
                 if self.candidates.iter().any(|choice| choice.value == id) {
                     self.new_base = Some(id);
                 }
             }
+            DeleteUnitEvent::ToggleSelect(index) => self.toggle(index),
+            DeleteUnitEvent::CloseList => {
+                self.list.close();
+            }
             DeleteUnitEvent::UsualUnit { institution, unit } => {
+                self.list.close();
                 let offered = self.options.iter().any(|choice| choice.value == unit);
                 let named = self.named.iter_mut().find(|named| named.id == institution);
                 if let (true, Some(named)) = (offered, named) {
@@ -217,9 +258,97 @@ impl Deleting {
                 }
             }
             DeleteUnitEvent::Confirm => return self.delete(router),
-            DeleteUnitEvent::Cancel => router.close_dialog(None),
+            DeleteUnitEvent::Cancel => router.close(None),
         }
         None
+    }
+
+    fn input(
+        &mut self,
+        input: DialogInput,
+        router: &mut dyn DialogRouter<UnitsOutcome>,
+    ) -> Option<UnitsDeletePresenter> {
+        let count = self.select_count();
+        match input {
+            DialogInput::NextField | DialogInput::PreviousField => {
+                if count > 0 {
+                    // Leaving a select closes its list, as a click elsewhere would.
+                    self.list.close();
+                    self.focus = if input == DialogInput::NextField {
+                        (self.focus + 1) % count
+                    } else {
+                        (self.focus + count - 1) % count
+                    };
+                }
+            }
+            DialogInput::Submit => return self.delete(router),
+            DialogInput::Select if !self.list.is_open() => return self.delete(router),
+            DialogInput::Select | DialogInput::SelectNext | DialogInput::SelectPrevious => {
+                self.select_input(input);
+            }
+            DialogInput::Char(ch) => self.confirm_text.push(ch),
+            DialogInput::Backspace => {
+                self.confirm_text.pop();
+            }
+            DialogInput::Left | DialogInput::Right => {}
+        }
+        None
+    }
+
+    /// How many selects the Dialog draws: the New base unit when it shows, then one per
+    /// Institution.
+    fn select_count(&self) -> usize {
+        usize::from(!self.candidates.is_empty()) + self.named.len()
+    }
+
+    /// The Institution whose Usual unit the select at `index` picks; `None` for the New base unit
+    /// or past the last select.
+    fn named_at(&self, index: usize) -> Option<usize> {
+        let first = usize::from(!self.candidates.is_empty());
+        let n = index.checked_sub(first)?;
+        (n < self.named.len()).then_some(n)
+    }
+
+    /// `input` on the focused select's list, a pick taken as the select's own event would be.
+    fn select_input(&mut self, input: DialogInput) {
+        match self.named_at(self.focus) {
+            Some(n) => {
+                let named = &mut self.named[n];
+                if let SelectMove::Chose(unit) =
+                    self.list
+                        .input(input, &self.options, Some(&named.usual_unit))
+                {
+                    named.usual_unit = unit;
+                }
+            }
+            None if self.focus == 0 && !self.candidates.is_empty() => {
+                if let SelectMove::Chose(id) =
+                    self.list
+                        .input(input, &self.candidates, self.new_base.as_ref())
+                {
+                    self.new_base = Some(id);
+                }
+            }
+            None => {}
+        }
+    }
+
+    /// A click on the select at `index`: it takes the arrow keys, and its list opens or closes.
+    fn toggle(&mut self, index: usize) {
+        if index >= self.select_count() {
+            return;
+        }
+        if index != self.focus {
+            self.list.close();
+            self.focus = index;
+        }
+        match self.named_at(index) {
+            Some(n) => {
+                let chosen = self.named[n].usual_unit;
+                self.list.toggle(&self.options, Some(&chosen));
+            }
+            None => self.list.toggle(&self.candidates, self.new_base.as_ref()),
+        }
     }
 
     fn view_model(&self) -> DeleteUnitViewModel {
@@ -247,10 +376,18 @@ impl Deleting {
                 })
                 .collect(),
         });
-        DeleteUnitViewModel { unit, usual_units }
+        DeleteUnitViewModel {
+            unit,
+            usual_units,
+            focus: self.focus,
+            list: self.list,
+        }
     }
 
-    fn delete(&mut self, router: &mut dyn UnitsRouter) -> Option<UnitsDeletePresenter> {
+    fn delete(
+        &mut self,
+        router: &mut dyn DialogRouter<UnitsOutcome>,
+    ) -> Option<UnitsDeletePresenter> {
         if !confirms_delete(&self.confirm_text, &self.code) {
             return None;
         }
@@ -275,7 +412,7 @@ impl Deleting {
         .run(&mut *self.deletion.borrow_mut(), &usage);
         self.refusal = match deleted {
             Ok(deleted) => {
-                router.close_dialog(Some(UnitsOutcome::Unit {
+                router.close(Some(UnitsOutcome::Unit {
                     change: UnitChange::Deleted,
                     code: deleted.unit.code,
                 }));
@@ -589,5 +726,105 @@ mod tests {
         let (_, shared) = InMemoryPorts::stub(now()).shared();
         let port: SharedUnitDeletion = Rc::new(RefCell::new(world()));
         assert!(DeleteUnitPresenter::new(shared, port, UnitId::new()).is_none());
+    }
+
+    fn input(dialog: &mut Dialog, inputs: &[DialogInput]) {
+        for &input in inputs {
+            dialog.send(DeleteUnitEvent::Input(input));
+        }
+    }
+
+    fn chosen(view: &DeleteUnitViewModel) -> Vec<Option<UnitId>> {
+        view.usual_units
+            .as_ref()
+            .map(|usual_units| {
+                usual_units
+                    .selects
+                    .iter()
+                    .map(|named| named.select.chosen.flatten())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn the_field_keys_move_between_the_selects_and_the_arrows_drive_the_focused_one() {
+        let mut dialog = Dialog::open(BTC);
+        assert_eq!(dialog.view().focus, 0);
+
+        input(
+            &mut dialog,
+            &[DialogInput::NextField, DialogInput::SelectNext],
+        );
+        let view = dialog.view();
+        assert_eq!(view.focus, 1);
+        assert_eq!(chosen(&view), [None, Some(AUD)], "Kraken steps off None");
+
+        input(&mut dialog, &[DialogInput::NextField]);
+        assert_eq!(dialog.view().focus, 0, "the field keys wrap");
+        input(&mut dialog, &[DialogInput::PreviousField]);
+        assert_eq!(dialog.view().focus, 1);
+    }
+
+    #[test]
+    fn typing_space_included_goes_to_the_typed_back_code_and_select_confirms() {
+        let mut dialog = Dialog::open(BTC);
+        input(
+            &mut dialog,
+            &[
+                DialogInput::Char(' '),
+                DialogInput::Backspace,
+                DialogInput::Char('b'),
+                DialogInput::Char('t'),
+                DialogInput::Char('c'),
+            ],
+        );
+        let view = dialog.view();
+        assert!(
+            !view.list.is_open(),
+            "Space types rather than opening a list"
+        );
+        assert_eq!(view.unit.confirm.expect("deleting").text, "btc");
+
+        input(&mut dialog, &[DialogInput::Select]);
+
+        dialog.closed_deleting("btc");
+    }
+
+    #[test]
+    fn a_click_opens_a_select_whose_list_select_commits_rather_than_confirming() {
+        let mut dialog = Dialog::open(BTC);
+        dialog.send(DeleteUnitEvent::ConfirmText("btc".into()));
+        dialog.send(DeleteUnitEvent::ToggleSelect(1));
+        let view = dialog.view();
+        assert_eq!(view.focus, 1);
+        assert!(view.list.is_open());
+
+        input(&mut dialog, &[DialogInput::SelectNext, DialogInput::Select]);
+
+        assert!(
+            dialog.router.calls.is_empty(),
+            "Enter on an open list commits it"
+        );
+        let view = dialog.view();
+        assert!(!view.list.is_open());
+        assert_eq!(chosen(&view), [None, Some(AUD)]);
+    }
+
+    #[test]
+    fn tab_and_back_close_an_open_list_without_picking() {
+        let mut dialog = Dialog::open(BTC);
+        dialog.send(DeleteUnitEvent::ToggleSelect(0));
+        input(
+            &mut dialog,
+            &[DialogInput::SelectNext, DialogInput::NextField],
+        );
+        let view = dialog.view();
+        assert!(!view.list.is_open());
+        assert_eq!(chosen(&view), [None, None]);
+
+        dialog.send(DeleteUnitEvent::ToggleSelect(1));
+        dialog.send(DeleteUnitEvent::CloseList);
+        assert!(!dialog.view().list.is_open());
     }
 }

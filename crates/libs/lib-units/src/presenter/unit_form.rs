@@ -8,11 +8,12 @@
 
 use lib_core::{PriceSourceId, UnitId, UnitKind};
 use lib_locale::Label as _;
-use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
+use lib_viper::dialog::{DialogInput, DialogRouter};
+use lib_viper::view::{Choice, DialogFrame, SelectList, SelectMove, SelectView, TextFieldView};
 
 use super::{UnitChange, UnitsOutcome, cycle, unique_label, uses_text};
 use crate::interactor::{AddUnit, EditUnit};
-use crate::protocols::{SharedPorts, UnitsRouter};
+use crate::protocols::SharedPorts;
 use crate::{Error, MANUAL_ENTRY, Precision, PriceLink, UnitUse, msg};
 
 /// The form's fields, in `Tab` order: the mockup's reading order, Code and Type, Name and
@@ -43,18 +44,31 @@ impl UnitField {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UnitFormEvent {
+    /// A Dialog command or typed key, as the Desktop sends them. What it means is the focused
+    /// field's: `select` confirms a valid form off a select and opens and commits a select's list
+    /// on one, and `submit` only confirms; `Space` and the arrows open and step a select; typing
+    /// edits a text field and goes nowhere on a select; the field keys move focus, skipping hidden
+    /// fields, wrapping and closing an open list.
+    Input(DialogInput),
     /// A text field's whole new text, as its View's input holds it.
     Code(String),
     Name(String),
     Precision(String),
     Symbol(String),
+    /// A select's chosen option, closing its list.
     Kind(UnitKind),
     Source(PriceSourceId),
     Quote(UnitId),
-    /// `Tab`/`Shift-Tab`, skipping hidden fields and wrapping.
+    /// A click on a select's field (Type, Source or Quoted in): focuses it and opens or closes its
+    /// list. A hidden field can't take focus.
+    ToggleList(UnitField),
+    /// Closes the open list without picking: the Desktop host's `back`.
+    CloseList,
+    /// `Tab`/`Shift-Tab`, skipping hidden fields and wrapping: the TUI's, which reads its own keys
+    /// until its redesign (#805).
     NextField,
     PrevField,
-    /// A click on a field. A hidden field can't take focus.
+    /// A click on a field, which closes an open list. A hidden field can't take focus.
     Focus(UnitField),
     Confirm,
     Cancel,
@@ -82,6 +96,8 @@ pub struct UnitFormViewModel {
     pub test_price: Option<String>,
     /// The fields on screen, in `Tab` order.
     pub fields: Vec<UnitField>,
+    /// The focused select's list: open, and its highlight. Closed on a text field.
+    pub list: SelectList,
     /// What names the Unit, for Edit: `Used by 2 accounts, 1 budget.`; `None` for Add.
     pub usage: Option<String>,
     /// Why the last confirm was refused.
@@ -111,6 +127,8 @@ pub struct UnitFormPresenter {
     symbol: String,
     quote: Option<UnitId>,
     focused: UnitField,
+    /// The focused select's list; only one is ever open.
+    list: SelectList,
     sources: Vec<SourceOption>,
     quotes: Vec<Choice<UnitId>>,
     /// What names the Unit being edited, read when the Dialog opens.
@@ -205,6 +223,7 @@ impl UnitFormPresenter {
             symbol: String::new(),
             quote: None,
             focused: UnitField::default(),
+            list: SelectList::default(),
             sources,
             quotes,
             usage: None,
@@ -222,8 +241,24 @@ impl UnitFormPresenter {
             .map(|choice| choice.value)
     }
 
-    pub fn handle(&mut self, event: UnitFormEvent, router: &mut dyn UnitsRouter) {
+    pub fn handle(&mut self, event: UnitFormEvent, router: &mut dyn DialogRouter<UnitsOutcome>) {
+        let closes_list = matches!(
+            event,
+            UnitFormEvent::Kind(_)
+                | UnitFormEvent::Source(_)
+                | UnitFormEvent::Quote(_)
+                | UnitFormEvent::CloseList
+                | UnitFormEvent::NextField
+                | UnitFormEvent::PrevField
+                | UnitFormEvent::Focus(_)
+        );
+        if closes_list {
+            self.list.close();
+        }
         match event {
+            UnitFormEvent::Input(input) => self.input(input, router),
+            UnitFormEvent::ToggleList(field) => self.toggle_list(field),
+            UnitFormEvent::CloseList => {}
             UnitFormEvent::Code(text) => self.code = text,
             UnitFormEvent::Name(text) => self.name = text,
             UnitFormEvent::Symbol(text) => self.symbol = text,
@@ -231,24 +266,9 @@ impl UnitFormPresenter {
                 self.precision = text;
                 self.precision_typed = true;
             }
-            UnitFormEvent::Kind(kind) => {
-                self.kind = kind;
-                if self.editing.is_none() && !self.precision_typed {
-                    self.precision = Precision::of_kind(kind).to_string();
-                }
-                self.sync_source();
-            }
-            UnitFormEvent::Source(id) => {
-                if self.sources_for_kind().any(|source| source.id == id) {
-                    self.source = id;
-                    self.sync_source();
-                }
-            }
-            UnitFormEvent::Quote(id) => {
-                if self.quotes.iter().any(|choice| choice.value == id) {
-                    self.quote = Some(id);
-                }
-            }
+            UnitFormEvent::Kind(kind) => self.pick_kind(kind),
+            UnitFormEvent::Source(id) => self.pick_source(id),
+            UnitFormEvent::Quote(id) => self.pick_quote(id),
             UnitFormEvent::NextField | UnitFormEvent::PrevField => {
                 let backward = event == UnitFormEvent::PrevField;
                 self.focused = cycle(&UnitField::ORDER, self.focused, backward, |field| {
@@ -261,7 +281,134 @@ impl UnitFormPresenter {
                 }
             }
             UnitFormEvent::Confirm => self.confirm(router),
-            UnitFormEvent::Cancel => router.close_dialog(None),
+            UnitFormEvent::Cancel => router.close(None),
+        }
+    }
+
+    /// Reads `input` for the focused field, as the Desktop sends it.
+    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<UnitsOutcome>) {
+        let on_select = matches!(
+            self.focused,
+            UnitField::Type | UnitField::Source | UnitField::Quote
+        );
+        match input {
+            DialogInput::NextField | DialogInput::PreviousField => {
+                // Leaving a select closes its list, as a click elsewhere would.
+                self.list.close();
+                let backward = input == DialogInput::PreviousField;
+                self.focused = cycle(&UnitField::ORDER, self.focused, backward, |field| {
+                    self.shows(field)
+                });
+            }
+            DialogInput::Submit => self.confirm(router),
+            // A select swallows typing, so it never reaches a text field.
+            _ if on_select => self.select_input(input),
+            DialogInput::Select => self.confirm(router),
+            DialogInput::Char(ch) => {
+                if let Some(text) = self.text_mut() {
+                    text.push(ch);
+                }
+                self.typed();
+            }
+            DialogInput::Backspace => {
+                if let Some(text) = self.text_mut() {
+                    text.pop();
+                }
+                self.typed();
+            }
+            _ => {}
+        }
+    }
+
+    /// The focused text field's text.
+    fn text_mut(&mut self) -> Option<&mut String> {
+        match self.focused {
+            UnitField::Code => Some(&mut self.code),
+            UnitField::Name => Some(&mut self.name),
+            UnitField::Precision => Some(&mut self.precision),
+            UnitField::Symbol => Some(&mut self.symbol),
+            UnitField::Type | UnitField::Source | UnitField::Quote => None,
+        }
+    }
+
+    /// A typed Precision stops Add following Type, as its event does.
+    fn typed(&mut self) {
+        if self.focused == UnitField::Precision {
+            self.precision_typed = true;
+        }
+    }
+
+    /// `input` on the focused select's list, a pick sent as the select's own event.
+    fn select_input(&mut self, input: DialogInput) {
+        let view = self.view_model();
+        match self.focused {
+            UnitField::Type => {
+                if let Some(kind) = pick(&mut self.list, input, &view.kind) {
+                    self.pick_kind(kind);
+                }
+            }
+            UnitField::Source => {
+                if let Some(id) = pick(&mut self.list, input, &view.source) {
+                    self.pick_source(id);
+                }
+            }
+            UnitField::Quote => {
+                if let Some(id) = view
+                    .quote
+                    .as_ref()
+                    .and_then(|quote| pick(&mut self.list, input, quote))
+                {
+                    self.pick_quote(id);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn pick_kind(&mut self, kind: UnitKind) {
+        self.kind = kind;
+        if self.editing.is_none() && !self.precision_typed {
+            self.precision = Precision::of_kind(kind).to_string();
+        }
+        self.sync_source();
+    }
+
+    fn pick_source(&mut self, id: PriceSourceId) {
+        if self.sources_for_kind().any(|source| source.id == id) {
+            self.source = id;
+            self.sync_source();
+        }
+    }
+
+    fn pick_quote(&mut self, id: UnitId) {
+        if self.quotes.iter().any(|choice| choice.value == id) {
+            self.quote = Some(id);
+        }
+    }
+
+    /// A click on `field`'s select: focuses it and opens or closes its list.
+    fn toggle_list(&mut self, field: UnitField) {
+        if !self.shows(field) {
+            return;
+        }
+        if self.focused != field {
+            self.list.close();
+            self.focused = field;
+        }
+        let view = self.view_model();
+        match field {
+            UnitField::Type => self
+                .list
+                .toggle(&view.kind.options, view.kind.chosen.as_ref()),
+            UnitField::Source => self
+                .list
+                .toggle(&view.source.options, view.source.chosen.as_ref()),
+            UnitField::Quote => {
+                if let Some(quote) = &view.quote {
+                    self.list.toggle(&quote.options, quote.chosen.as_ref());
+                }
+            }
+            _ => {}
         }
     }
 
@@ -346,6 +493,7 @@ impl UnitFormPresenter {
                 focused: self.focused == UnitField::Quote,
             }),
             test_price: fetching.then(msg::units_test_price),
+            list: self.list,
             fields: UnitField::ORDER
                 .into_iter()
                 .filter(|field| self.shows(*field))
@@ -421,7 +569,7 @@ impl UnitFormPresenter {
         }
     }
 
-    fn confirm(&mut self, router: &mut dyn UnitsRouter) {
+    fn confirm(&mut self, router: &mut dyn DialogRouter<UnitsOutcome>) {
         let Some(precision) = Precision::parse(&self.precision).filter(|_| self.is_valid()) else {
             return;
         };
@@ -461,7 +609,7 @@ impl UnitFormPresenter {
         match saved {
             Ok(unit) => {
                 self.refusal = None;
-                router.close_dialog(Some(UnitsOutcome::Unit {
+                router.close(Some(UnitsOutcome::Unit {
                     change: UnitChange::Saved,
                     code: unit.code,
                 }));
@@ -482,6 +630,18 @@ fn refusal_text(refusal: Error) -> String {
             debug_assert!(false, "AddUnit and EditUnit don't return {refusal:?}");
             msg::units_refusal_unit_gone()
         }
+    }
+}
+
+/// `input` on an open or closed select over `view`'s options: the value it picked, if any.
+fn pick<T: Clone + PartialEq>(
+    list: &mut SelectList,
+    input: DialogInput,
+    view: &SelectView<T>,
+) -> Option<T> {
+    match list.input(input, &view.options, view.chosen.as_ref()) {
+        SelectMove::Chose(value) => Some(value),
+        SelectMove::Moved | SelectMove::Ignored => None,
     }
 }
 
@@ -929,5 +1089,56 @@ mod tests {
                 ("back", "cancel")
             ])
         );
+    }
+
+    #[test]
+    fn dialog_input_types_into_the_focused_field_and_tab_leaving_a_select_closes_its_list() {
+        let (_, ports) = stub();
+        let mut form = UnitFormPresenter::add(ports);
+        send(
+            &mut form,
+            vec![
+                UnitFormEvent::Input(DialogInput::Char('a')),
+                UnitFormEvent::Input(DialogInput::Char('x')),
+                UnitFormEvent::Input(DialogInput::Backspace),
+                UnitFormEvent::Input(DialogInput::NextField),
+                UnitFormEvent::Input(DialogInput::Char(' ')),
+            ],
+        );
+        let view = form.view_model();
+        assert_eq!(view.code.text, "a");
+        assert!(
+            view.kind.focused && view.list.is_open(),
+            "Space opens Type's list"
+        );
+
+        send(
+            &mut form,
+            vec![UnitFormEvent::Input(DialogInput::NextField)],
+        );
+        let view = form.view_model();
+        assert!(view.name.focused);
+        assert!(!view.list.is_open(), "Tab off a select closes its list");
+    }
+
+    #[test]
+    fn dialog_input_steps_an_open_list_and_select_commits_it_rather_than_confirming() {
+        let (_, ports) = stub();
+        let mut form = UnitFormPresenter::add(ports);
+        let before = form.view_model().kind.chosen;
+        let calls = send(
+            &mut form,
+            vec![
+                UnitFormEvent::Focus(UnitField::Type),
+                UnitFormEvent::ToggleList(UnitField::Type),
+                UnitFormEvent::Input(DialogInput::SelectNext),
+                UnitFormEvent::Input(DialogInput::Select),
+            ],
+        );
+
+        assert_eq!(calls, [], "Enter on an open list commits it");
+        let view = form.view_model();
+        assert!(!view.list.is_open());
+        assert_ne!(view.kind.chosen, before);
     }
 }

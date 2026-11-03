@@ -2,15 +2,19 @@
 //! Units it prices, which fall back to Manual entry.
 
 use lib_core::PriceSourceId;
+use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::view::{DialogFrame, TextFieldView, count};
 
 use super::{UnitsOutcome, linked_codes};
 use crate::interactor::DeletePriceSource;
-use crate::protocols::{SharedPorts, UnitsRouter};
+use crate::protocols::SharedPorts;
 use crate::{Error, msg};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeletePriceSourceEvent {
+    /// A Dialog command or typed key, as the Desktop sends them: `select` and `submit` delete once
+    /// the name is typed back, and typing goes to the typed-back name, the only field.
+    Input(DialogInput),
     /// The confirmation field's whole new text.
     ConfirmText(String),
     Confirm,
@@ -57,11 +61,23 @@ impl DeletePriceSourcePresenter {
         })
     }
 
-    pub fn handle(&mut self, event: DeletePriceSourceEvent, router: &mut dyn UnitsRouter) {
+    pub fn handle(
+        &mut self,
+        event: DeletePriceSourceEvent,
+        router: &mut dyn DialogRouter<UnitsOutcome>,
+    ) {
         match event {
+            DeletePriceSourceEvent::Input(input) => match input {
+                DialogInput::Select | DialogInput::Submit => self.confirm(router),
+                DialogInput::Char(ch) => self.confirm_text.push(ch),
+                DialogInput::Backspace => {
+                    self.confirm_text.pop();
+                }
+                _ => {}
+            },
             DeletePriceSourceEvent::ConfirmText(text) => self.confirm_text = text,
             DeletePriceSourceEvent::Confirm => self.confirm(router),
-            DeletePriceSourceEvent::Cancel => router.close_dialog(None),
+            DeletePriceSourceEvent::Cancel => router.close(None),
         }
     }
 
@@ -89,7 +105,7 @@ impl DeletePriceSourcePresenter {
     }
 
     /// The typed name must match exactly, case and all, as Delete unit's code does.
-    fn confirm(&mut self, router: &mut dyn UnitsRouter) {
+    fn confirm(&mut self, router: &mut dyn DialogRouter<UnitsOutcome>) {
         if self.confirm_text != self.name {
             return;
         }
@@ -100,7 +116,7 @@ impl DeletePriceSourcePresenter {
         };
         self.refusal = match deleted {
             Ok(deleted) => {
-                router.close_dialog(Some(UnitsOutcome::SourceDeleted {
+                router.close(Some(UnitsOutcome::SourceDeleted {
                     name: deleted.source.name,
                     moved: deleted.moved,
                 }));
@@ -215,5 +231,38 @@ mod tests {
             .view_model();
 
         assert_eq!(hints(&view.frame), pairs(&[("back", "cancel")]));
+    }
+
+    #[test]
+    fn dialog_input_types_the_name_back_and_select_deletes() {
+        let (ports, shared) = stub();
+        let source = AddPriceSource {
+            name: "Fx".into(),
+            endpoint: crate::built_in(COINGECKO).unwrap().endpoint.clone(),
+            updates: Updates::Daily,
+        }
+        .run(&mut ports.borrow_mut().price_sources);
+        let mut dialog = DeletePriceSourcePresenter::new(shared, source.id).unwrap();
+        let mut events: Vec<_> = "Fxx"
+            .chars()
+            .map(|ch| DeletePriceSourceEvent::Input(DialogInput::Char(ch)))
+            .collect();
+        events.push(DeletePriceSourceEvent::Input(DialogInput::Select));
+        assert_eq!(send(&mut dialog, events), [], "Fxx is not the name");
+
+        let calls = send(
+            &mut dialog,
+            vec![
+                DeletePriceSourceEvent::Input(DialogInput::Backspace),
+                DeletePriceSourceEvent::Input(DialogInput::Select),
+            ],
+        );
+        assert_eq!(
+            calls,
+            [RouterCall::CloseDialog(Some(UnitsOutcome::SourceDeleted {
+                name: "Fx".into(),
+                moved: 0,
+            }))]
+        );
     }
 }

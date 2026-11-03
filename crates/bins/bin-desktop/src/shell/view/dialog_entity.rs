@@ -12,9 +12,9 @@
 //!
 //! The host carries two paths while the module Dialogs move (#988 to #991). A Dialog whose
 //! Presenter takes `lib-viper`'s [`DialogInput`]s gets each command and typed key as one
-//! ([`HostedDialog::input`]) and closes through the one [`HostRouter`]; Payees' do. Every other
-//! Dialog gets the command turned back into the key it stands for ([`HostedDialog::key`]) and
-//! closes through its own `<Domain>Router`.
+//! ([`HostedDialog::input`]) and closes through the one [`HostRouter`]; the Settings and deletion
+//! Dialogs do (#988, #989). Every other Dialog gets the command turned back into the key it stands
+//! for ([`HostedDialog::key`]) and closes through its own `<Domain>Router`.
 //!
 //! A Dialog's Presenter closes it through its Router. The Dialog then hands a confirm's outcome to
 //! the page that opened it and emits [`DialogClosed`], which the Shell closes the host on, so a

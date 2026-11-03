@@ -9,6 +9,7 @@ use std::rc::Rc;
 use chrono::{DateTime, Utc};
 use lib_core::{PriceSourceId, UnitId};
 use lib_toast::{Notice, Notify};
+use lib_viper::dialog::DialogRouter;
 
 use crate::protocols::{PortsMut, SharedPorts, UnitsDialog, UnitsOutcome, UnitsPorts, UnitsRouter};
 use crate::{
@@ -204,6 +205,12 @@ impl UnitsRouter for RecordingRouter {
 
     fn close_prices(&mut self) {
         self.calls.push(RouterCall::ClosePrices);
+    }
+}
+
+impl DialogRouter<UnitsOutcome> for RecordingRouter {
+    fn close(&mut self, outcome: Option<UnitsOutcome>) {
+        self.calls.push(RouterCall::CloseDialog(outcome));
     }
 }
 

@@ -1,13 +1,15 @@
 //! The Units Dialogs' Views, each open one an Entity in the Dialog host (`shell::view::dialog_entity`).
-//! [`UnitsDialog`] holds a `lib-units` Presenter and the widget state that is gpui's to keep (which
-//! select's list is open and its highlight). Every key and click becomes a Presenter event; each
-//! View draws the Presenter's view model and nothing else.
+//! [`UnitsDialog`] holds a `lib-units` Presenter and the one piece of widget state that is gpui's
+//! to keep, an open list's scroll window. Every Dialog command and typed key reaches the Presenter
+//! as a `lib-viper` `DialogInput`, and every click as a Presenter event; each View draws the
+//! Presenter's view model, open lists included, and nothing else.
 //!
 //! Delete unit is the Unit Deletion module's Dialog (`crate::unit_deletion`), which the page's
 //! Router opens instead, since it writes the Institutions too.
 //!
-//! Confirm and Cancel go to the Presenter, which closes its Dialog through its Router; a confirmed
-//! outcome is handed to the page, and the host closes on [`DialogClosed`].
+//! Confirm and Cancel go to the Presenter, which closes its Dialog through the host's
+//! [`HostRouter`]; a confirmed outcome is handed to the page, and the host closes on
+//! [`DialogClosed`].
 
 mod delete_price_source;
 mod price_source_form;
@@ -16,30 +18,31 @@ mod set_price;
 mod unit_form;
 
 use gpui::{AnyElement, App, Context, Entity, EventEmitter, Render, Window, div, prelude::*, px};
-use lib_toast::{Notice, Notify};
+use lib_units::UnitsDialog as Which;
 use lib_units::presenter::{
-    DeletePriceSourcePresenter, PriceSourceFormPresenter, SetBaseUnitPresenter, SetPricePresenter,
-    UnitFormPresenter, UnitsOutcome,
+    DeletePriceSourceEvent, DeletePriceSourcePresenter, PriceSourceFormEvent,
+    PriceSourceFormPresenter, SetBaseUnitEvent, SetBaseUnitPresenter, SetPriceEvent,
+    SetPricePresenter, UnitFormEvent, UnitFormPresenter, UnitsOutcome,
 };
-use lib_units::{UnitsDialog as Which, UnitsRouter};
+use lib_viper::dialog::{DialogInput, DialogRouter};
 
-use self::price_source_form::ApiKeyInput;
 use self::unit_form::UnitSelects;
-use crate::form::viper::{
-    choose_option, chosen_label, enter, labels, select_key, synced, toggle_select, typed,
-};
+use crate::form::viper::{chosen_label, drawn, labels};
 use crate::ledger_store::LedgerStore;
 use crate::units::ports::{self, DesktopPorts};
 use crate::{
     dialog,
-    form::select::SelectState,
-    shell::view::dialog_entity::{DialogClicks, DialogClosed, HostedDialog},
-    shell::view::dialog_host::{DialogKey, DialogOutcome, DialogReadback},
+    shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog},
+    shell::view::dialog_host::DialogReadback,
     theme::color,
 };
 
 /// The open Units Dialog's clicks.
 type Clicks = DialogClicks<UnitsDialog>;
+
+/// The Router a Units Dialog's Presenter closes through, which the Delete unit Dialog
+/// (`crate::unit_deletion`) shares.
+pub(crate) type Router = HostRouter<UnitsOutcome>;
 
 /// What a confirmed Units Dialog hands the page that opened it.
 pub(crate) type Landed = Box<dyn Fn(UnitsOutcome, &mut App)>;
@@ -56,9 +59,10 @@ pub struct UnitsDialog {
 enum View {
     /// Boxed: the form is the largest Presenter by far.
     UnitForm(Box<UnitFormPresenter>, UnitSelects),
-    SetBaseUnit(SetBaseUnitPresenter, SelectState),
+    /// With the open list's scroll window.
+    SetBaseUnit(SetBaseUnitPresenter, usize),
     SetPrice(SetPricePresenter),
-    PriceSourceForm(PriceSourceFormPresenter, ApiKeyInput),
+    PriceSourceForm(PriceSourceFormPresenter),
     DeletePriceSource(DeletePriceSourcePresenter),
 }
 
@@ -70,7 +74,7 @@ impl View {
             Self::UnitForm(..) => "AddUnit",
             Self::SetBaseUnit(..) => "SetBaseUnit",
             Self::SetPrice(_) => "SetPrice",
-            Self::PriceSourceForm(presenter, _) => {
+            Self::PriceSourceForm(presenter) => {
                 let view = presenter.view_model();
                 match (&view.endpoint, &view.usage) {
                     (None, _) => "EditBuiltInPriceSource",
@@ -98,17 +102,15 @@ impl UnitsDialog {
             Which::EditUnit(id) => unit_form::open(UnitFormPresenter::edit(shared, id)?, true),
             // The page's Router opens the Unit Deletion module's Dialog instead.
             Which::DeleteUnit(_) => return None,
-            Which::SetBaseUnit => {
-                View::SetBaseUnit(SetBaseUnitPresenter::new(shared), SelectState::default())
-            }
+            Which::SetBaseUnit => View::SetBaseUnit(SetBaseUnitPresenter::new(shared), 0),
             Which::SetPrice(id) => View::SetPrice(SetPricePresenter::new(
                 shared,
                 std::rc::Rc::new(chrono::Utc::now),
                 id,
             )?),
-            Which::AddPriceSource => price_source_form::open(PriceSourceFormPresenter::add(shared)),
+            Which::AddPriceSource => View::PriceSourceForm(PriceSourceFormPresenter::add(shared)),
             Which::EditPriceSource(id) => {
-                price_source_form::open(PriceSourceFormPresenter::edit(shared, id)?)
+                View::PriceSourceForm(PriceSourceFormPresenter::edit(shared, id)?)
             }
             Which::DeletePriceSource(id) => {
                 View::DeletePriceSource(DeletePriceSourcePresenter::new(shared, id)?)
@@ -136,11 +138,7 @@ impl UnitsDialog {
     }
 
     /// Sends the open Presenter its Confirm or its Cancel, returning what its Router was asked.
-    fn close_event(&mut self, confirm: bool) -> DialogRouter {
-        use lib_units::presenter::{
-            DeletePriceSourceEvent, PriceSourceFormEvent, SetBaseUnitEvent, SetPriceEvent,
-            UnitFormEvent,
-        };
+    fn close_event(&mut self, confirm: bool) -> Router {
         match &mut self.view {
             View::UnitForm(presenter, _) => {
                 let event = if confirm {
@@ -166,7 +164,7 @@ impl UnitsDialog {
                 };
                 send(presenter, event, SetPricePresenter::handle)
             }
-            View::PriceSourceForm(presenter, _) => {
+            View::PriceSourceForm(presenter) => {
                 let event = if confirm {
                     PriceSourceFormEvent::Confirm
                 } else {
@@ -185,10 +183,41 @@ impl UnitsDialog {
         }
     }
 
+    /// Sends the open Presenter `input`, returning what its Router was asked.
+    fn send_input(&mut self, input: DialogInput) -> Router {
+        match &mut self.view {
+            View::UnitForm(presenter, _) => send(
+                presenter.as_mut(),
+                UnitFormEvent::Input(input),
+                UnitFormPresenter::handle,
+            ),
+            View::SetBaseUnit(presenter, _) => send(
+                presenter,
+                SetBaseUnitEvent::Input(input),
+                SetBaseUnitPresenter::handle,
+            ),
+            View::SetPrice(presenter) => send(
+                presenter,
+                SetPriceEvent::Input(input),
+                SetPricePresenter::handle,
+            ),
+            View::PriceSourceForm(presenter) => send(
+                presenter,
+                PriceSourceFormEvent::Input(input),
+                PriceSourceFormPresenter::handle,
+            ),
+            View::DeletePriceSource(presenter) => send(
+                presenter,
+                DeletePriceSourceEvent::Input(input),
+                DeletePriceSourcePresenter::handle,
+            ),
+        }
+    }
+
     /// Hands a confirmed outcome to the page and tells the host, once the Presenter has closed
     /// the Dialog.
-    fn closed(&self, router: DialogRouter, cx: &mut Context<'_, Self>) {
-        let Some(outcome) = router.closed else {
+    fn closed(&self, router: Router, cx: &mut Context<'_, Self>) {
+        let Some(outcome) = router.closed() else {
             return;
         };
         if let Some(outcome) = outcome {
@@ -198,43 +227,13 @@ impl UnitsDialog {
     }
 }
 
-/// Where a Units Dialog's Presenter asks to go: closing, and Notices, which go onto the bin's
-/// queue for `Root` to drain once the key or click returns. The page opens Dialogs. The Delete unit
-/// Dialog (`crate::unit_deletion`) shares it.
-#[derive(Default)]
-pub(crate) struct DialogRouter {
-    /// `Some` once the Presenter closed its Dialog, with what its confirm did.
-    pub(crate) closed: Option<Option<UnitsOutcome>>,
-}
-
-impl UnitsRouter for DialogRouter {
-    fn open_dialog(&mut self, _dialog: Which) -> bool {
-        false
-    }
-
-    fn close_dialog(&mut self, outcome: Option<UnitsOutcome>) {
-        self.closed = Some(outcome);
-    }
-
-    /// A Dialog shows no prices view.
-    fn open_prices(&mut self, _unit: lib_units::UnitId) {}
-
-    fn close_prices(&mut self) {}
-}
-
-impl Notify for DialogRouter {
-    fn notify(&mut self, notice: Notice) {
-        crate::notices::Queue.notify(notice);
-    }
-}
-
 /// Sends `event` to `presenter`, returning what its Router was asked.
 fn send<P, E>(
     presenter: &mut P,
     event: E,
-    handle: fn(&mut P, E, &mut dyn UnitsRouter),
-) -> DialogRouter {
-    let mut router = DialogRouter::default();
+    handle: fn(&mut P, E, &mut dyn DialogRouter<UnitsOutcome>),
+) -> Router {
+    let mut router = Router::default();
     handle(presenter, event, &mut router);
     router
 }
@@ -291,17 +290,20 @@ fn test_not_built(id: &'static str, label: String, note: String, cx: &App) -> An
 impl EventEmitter<DialogClosed> for UnitsDialog {}
 
 impl HostedDialog for UnitsDialog {
-    /// Every key is the Units Dialog's own: the Presenter holds every field.
-    fn key(&mut self, key: DialogKey, _cx: &mut Context<'_, Self>) -> DialogOutcome {
-        match &mut self.view {
-            View::UnitForm(presenter, selects) => unit_form::key(presenter, selects, key),
-            View::SetBaseUnit(presenter, select) => set_base_unit::key(presenter, select, key),
-            View::SetPrice(presenter) => set_price::key(presenter, key),
-            View::PriceSourceForm(presenter, api_key) => {
-                price_source_form::key(presenter, api_key, key)
-            }
-            View::DeletePriceSource(presenter) => delete_price_source::key(presenter, key),
+    /// Every input is the Presenter's to read: it holds every field and every open list. One
+    /// that may confirm (`select`, `submit`) has the Ledger read copy in line either side, as
+    /// [`Self::confirm`] does.
+    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) -> bool {
+        let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
+        if may_confirm {
+            ports::refresh(&self.ports, &self.ledger, cx);
         }
+        let router = self.send_input(input);
+        if may_confirm {
+            ports::refresh(&self.ports, &self.ledger, cx);
+        }
+        self.closed(router, cx);
+        true
     }
 
     fn can_confirm(&self) -> bool {
@@ -309,7 +311,7 @@ impl HostedDialog for UnitsDialog {
             View::UnitForm(presenter, _) => presenter.view_model().frame.can_confirm,
             View::SetBaseUnit(presenter, _) => presenter.view_model().frame.can_confirm,
             View::SetPrice(presenter) => presenter.view_model().frame.can_confirm,
-            View::PriceSourceForm(presenter, _) => presenter.view_model().frame.can_confirm,
+            View::PriceSourceForm(presenter) => presenter.view_model().frame.can_confirm,
             View::DeletePriceSource(presenter) => presenter.view_model().frame.can_confirm,
         }
     }
@@ -330,24 +332,35 @@ impl HostedDialog for UnitsDialog {
     }
 
     fn close_open_select(&mut self) -> bool {
-        let close = |state: &mut SelectState| {
-            let open = state.is_open();
-            state.cancel();
-            open
-        };
         match &mut self.view {
-            View::UnitForm(_, selects) => selects.close(),
-            View::SetBaseUnit(_, select) => close(select),
-            View::SetPrice(_) | View::PriceSourceForm(..) | View::DeletePriceSource(_) => false,
+            View::UnitForm(presenter, _) => {
+                let open = presenter.view_model().list.is_open();
+                send(
+                    presenter.as_mut(),
+                    UnitFormEvent::CloseList,
+                    UnitFormPresenter::handle,
+                );
+                open
+            }
+            View::SetBaseUnit(presenter, _) => {
+                let open = presenter.view_model().list.is_open();
+                send(
+                    presenter,
+                    SetBaseUnitEvent::CloseList,
+                    SetBaseUnitPresenter::handle,
+                );
+                open
+            }
+            View::SetPrice(_) | View::PriceSourceForm(_) | View::DeletePriceSource(_) => false,
         }
     }
 
     /// The open Dialog's title, the fields it draws and whether it would confirm, for a test.
     fn readback(&self, _cx: &App) -> DialogReadback {
         let (frame, mut values) = match &self.view {
-            View::UnitForm(presenter, selects) => {
+            View::UnitForm(presenter, _) => {
                 let view = presenter.view_model();
-                (view.frame.clone(), unit_form::readback(&view, selects))
+                (view.frame.clone(), unit_form::readback(&view))
             }
             View::SetBaseUnit(presenter, _) => {
                 let view = presenter.view_model();
@@ -357,7 +370,7 @@ impl HostedDialog for UnitsDialog {
                 let view = presenter.view_model();
                 (view.frame.clone(), set_price::readback(&view))
             }
-            View::PriceSourceForm(presenter, _) => {
+            View::PriceSourceForm(presenter) => {
                 let view = presenter.view_model();
                 (view.frame.clone(), price_source_form::readback(&view))
             }
@@ -378,15 +391,15 @@ impl HostedDialog for UnitsDialog {
 impl Render for UnitsDialog {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let actions = Clicks::new(cx);
-        match &self.view {
+        match &mut self.view {
             View::UnitForm(presenter, selects) => {
                 unit_form::render(&presenter.view_model(), selects, &actions, cx)
             }
-            View::SetBaseUnit(presenter, select) => {
-                set_base_unit::render(&presenter.view_model(), select, &actions, cx)
+            View::SetBaseUnit(presenter, scroll) => {
+                set_base_unit::render(&presenter.view_model(), scroll, &actions, cx)
             }
             View::SetPrice(presenter) => set_price::render(&presenter.view_model(), &actions, cx),
-            View::PriceSourceForm(presenter, _) => {
+            View::PriceSourceForm(presenter) => {
                 price_source_form::render(&presenter.view_model(), &actions, cx)
             }
             View::DeletePriceSource(presenter) => {

@@ -1,53 +1,35 @@
 //! The Add unit and Edit unit Dialogs (16c·src): Code and Type, Name and Precision, then the PRICE
-//! SOURCE group, whose Symbol, Quoted in and Test price hide on Manual entry.
+//! SOURCE group, whose Symbol, Quoted in and Test price hide on Manual entry. The Presenter reads
+//! every key and holds the focused select's list.
 
 use gpui::{AnyElement, App, div, prelude::*, px};
 use lib_units::presenter::{UnitField, UnitFormEvent, UnitFormPresenter, UnitFormViewModel};
-use lib_viper::view::{SelectView, TextFieldView};
+use lib_viper::view::{SelectList, SelectView, TextFieldView};
 
-use super::{
-    Clicks, UnitsDialog, View, choose_option, enter, help, refusal, select_key, send, synced,
-    test_not_built, toggle_select, typed,
-};
+use super::{Clicks, UnitsDialog, View, drawn, help, refusal, send, test_not_built};
 use crate::{
     dialog,
     form::{
         dialog_fields::{label, text_field, two_up},
-        select::SelectState,
         select_field::{self, SelectFieldProps},
     },
-    shell::view::dialog_host::{DialogKey, DialogOutcome},
     theme::color,
 };
 
 /// The Symbol box holds a source's own id, so it is drawn in the monospace face.
 const MONOSPACE: &str = "monospace";
 
-/// Whether the form edits a Unit, and the open state of its three selects.
+/// Whether the form edits a Unit, and each select's open-list scroll window: Type, Source, Quoted
+/// in.
 #[derive(Debug, Clone, Default)]
 pub(super) struct UnitSelects {
     editing: bool,
-    kind: SelectState,
-    source: SelectState,
-    quote: SelectState,
+    scrolls: [usize; 3],
 }
 
 impl UnitSelects {
-    /// Closes every list. Returns whether one was open.
-    pub(super) fn close(&mut self) -> bool {
-        let open = self.kind.is_open() || self.source.is_open() || self.quote.is_open();
-        self.kind.cancel();
-        self.source.cancel();
-        self.quote.cancel();
-        open
-    }
-
     pub(super) fn editing(&self) -> bool {
         self.editing
-    }
-
-    fn any_open(&self) -> bool {
-        self.kind.is_open() || self.source.is_open() || self.quote.is_open()
     }
 }
 
@@ -65,95 +47,6 @@ fn handle(presenter: &mut UnitFormPresenter, event: UnitFormEvent) {
     send(presenter, event, UnitFormPresenter::handle);
 }
 
-pub(super) fn key(
-    presenter: &mut UnitFormPresenter,
-    selects: &mut UnitSelects,
-    key: DialogKey,
-) -> DialogOutcome {
-    let view = presenter.view_model();
-    let focused = view
-        .fields
-        .iter()
-        .copied()
-        .find(|field| focused(&view, *field));
-    match key {
-        DialogKey::Tab | DialogKey::BackTab => {
-            selects.close();
-            let event = if key == DialogKey::Tab {
-                UnitFormEvent::NextField
-            } else {
-                UnitFormEvent::PrevField
-            };
-            handle(presenter, event);
-            return DialogOutcome::Handled;
-        }
-        DialogKey::Enter if !selects.any_open() && !is_select(focused) => {
-            return enter(view.frame.can_confirm);
-        }
-        _ => {}
-    }
-    match focused {
-        Some(UnitField::Type) => {
-            let (taken, value) = select_key(&mut selects.kind, &view.kind, key);
-            if let Some(kind) = value {
-                handle(presenter, UnitFormEvent::Kind(kind));
-            }
-            outcome(taken || matches!(key, DialogKey::Char(_)))
-        }
-        Some(UnitField::Source) => {
-            let (taken, value) = select_key(&mut selects.source, &view.source, key);
-            if let Some(id) = value {
-                handle(presenter, UnitFormEvent::Source(id));
-            }
-            outcome(taken || matches!(key, DialogKey::Char(_)))
-        }
-        Some(UnitField::Quote) => match &view.quote {
-            Some(quote) => {
-                let (taken, value) = select_key(&mut selects.quote, quote, key);
-                if let Some(id) = value {
-                    handle(presenter, UnitFormEvent::Quote(id));
-                }
-                outcome(taken || matches!(key, DialogKey::Char(_)))
-            }
-            None => DialogOutcome::Ignored,
-        },
-        Some(
-            field @ (UnitField::Code | UnitField::Name | UnitField::Precision | UnitField::Symbol),
-        ) => {
-            let text = text_of(&view, field).unwrap_or_default();
-            match typed(&text, key) {
-                Some(text) => {
-                    let event = match field {
-                        UnitField::Code => UnitFormEvent::Code(text),
-                        UnitField::Name => UnitFormEvent::Name(text),
-                        UnitField::Precision => UnitFormEvent::Precision(text),
-                        _ => UnitFormEvent::Symbol(text),
-                    };
-                    handle(presenter, event);
-                    DialogOutcome::Handled
-                }
-                None => DialogOutcome::Ignored,
-            }
-        }
-        None => DialogOutcome::Ignored,
-    }
-}
-
-fn outcome(taken: bool) -> DialogOutcome {
-    if taken {
-        DialogOutcome::Handled
-    } else {
-        DialogOutcome::Ignored
-    }
-}
-
-fn is_select(field: Option<UnitField>) -> bool {
-    matches!(
-        field,
-        Some(UnitField::Type | UnitField::Source | UnitField::Quote)
-    )
-}
-
 fn focused(view: &UnitFormViewModel, field: UnitField) -> bool {
     match field {
         UnitField::Code => view.code.focused,
@@ -163,16 +56,6 @@ fn focused(view: &UnitFormViewModel, field: UnitField) -> bool {
         UnitField::Source => view.source.focused,
         UnitField::Symbol => view.symbol.as_ref().is_some_and(|symbol| symbol.focused),
         UnitField::Quote => view.quote.as_ref().is_some_and(|quote| quote.focused),
-    }
-}
-
-fn text_of(view: &UnitFormViewModel, field: UnitField) -> Option<String> {
-    match field {
-        UnitField::Code => Some(view.code.text.clone()),
-        UnitField::Name => Some(view.name.text.clone()),
-        UnitField::Precision => Some(view.precision.text.clone()),
-        UnitField::Symbol => view.symbol.as_ref().map(|symbol| symbol.text.clone()),
-        UnitField::Type | UnitField::Source | UnitField::Quote => None,
     }
 }
 
@@ -213,79 +96,66 @@ const EDIT: Ids = Ids {
     test: "edit-unit-test",
 };
 
-/// Which of the three selects a click is on.
-#[derive(Clone, Copy)]
-enum Which {
-    Kind,
-    Source,
-    Quote,
-}
-
-fn select_mut(selects: &mut UnitSelects, which: Which) -> &mut SelectState {
-    match which {
-        Which::Kind => &mut selects.kind,
-        Which::Source => &mut selects.source,
-        Which::Quote => &mut selects.quote,
-    }
-}
-
-/// A click on a select's field: focuses it and toggles its list, closing the others.
-fn click_select(dialog: &mut UnitsDialog, which: Which, field: UnitField) {
-    let View::UnitForm(presenter, selects) = &mut dialog.view else {
-        return;
-    };
-    handle(presenter, UnitFormEvent::Focus(field));
-    let view = presenter.view_model();
-    let state = select_mut(selects, which).clone();
-    selects.close();
-    *select_mut(selects, which) = state;
-    match which {
-        Which::Kind => toggle_select(&mut selects.kind, &view.kind),
-        Which::Source => toggle_select(&mut selects.source, &view.source),
-        Which::Quote => {
-            if let Some(quote) = &view.quote {
-                toggle_select(&mut selects.quote, quote);
-            }
-        }
+/// A click on a select's field: focuses it and toggles its list.
+fn click_select(dialog: &mut UnitsDialog, field: UnitField) {
+    if let View::UnitForm(presenter, _) = &mut dialog.view {
+        handle(presenter, UnitFormEvent::ToggleList(field));
     }
 }
 
 /// A click on row `index` of a select's open list.
-fn click_option(dialog: &mut UnitsDialog, which: Which, index: usize) {
-    let View::UnitForm(presenter, selects) = &mut dialog.view else {
+fn click_option(dialog: &mut UnitsDialog, field: UnitField, index: usize) {
+    let View::UnitForm(presenter, _) = &mut dialog.view else {
         return;
     };
     let view = presenter.view_model();
-    let event = match which {
-        Which::Kind => choose_option(&mut selects.kind, &view.kind, index).map(UnitFormEvent::Kind),
-        Which::Source => {
-            choose_option(&mut selects.source, &view.source, index).map(UnitFormEvent::Source)
-        }
-        Which::Quote => view
+    let event = match field {
+        UnitField::Type => view
+            .kind
+            .options
+            .get(index)
+            .map(|choice| UnitFormEvent::Kind(choice.value)),
+        UnitField::Source => view
+            .source
+            .options
+            .get(index)
+            .map(|choice| UnitFormEvent::Source(choice.value)),
+        UnitField::Quote => view
             .quote
             .as_ref()
-            .and_then(|quote| choose_option(&mut selects.quote, quote, index))
-            .map(UnitFormEvent::Quote),
+            .and_then(|quote| quote.options.get(index))
+            .map(|choice| UnitFormEvent::Quote(choice.value)),
+        _ => None,
     };
     if let Some(event) = event {
         handle(presenter, event);
     }
 }
 
+/// `select`'s list as the Presenter holds it: the focused select's, else closed.
+fn list_of<T>(view: &UnitFormViewModel, select: &SelectView<T>) -> SelectList {
+    if select.focused {
+        view.list
+    } else {
+        SelectList::default()
+    }
+}
+
+/// A click on a text field focuses it, closing an open list.
 fn click_text(dialog: &mut UnitsDialog, field: UnitField) {
-    if let View::UnitForm(presenter, selects) = &mut dialog.view {
-        selects.close();
+    if let View::UnitForm(presenter, _) = &mut dialog.view {
         handle(presenter, UnitFormEvent::Focus(field));
     }
 }
 
 pub(super) fn render(
     view: &UnitFormViewModel,
-    selects: &UnitSelects,
+    selects: &mut UnitSelects,
     actions: &Clicks,
     cx: &App,
 ) -> AnyElement {
     let ids = if selects.editing { EDIT } else { ADD };
+    let [kind_scroll, source_scroll, quote_scroll] = &mut selects.scrolls;
     let text = |id: &'static str, field: &TextFieldView, unit_field: UnitField| {
         text_field(
             id,
@@ -304,8 +174,9 @@ pub(super) fn render(
             select_field_of(
                 ids.kind,
                 &view.kind,
-                &selects.kind,
-                (Which::Kind, UnitField::Type),
+                list_of(view, &view.kind),
+                kind_scroll,
+                UnitField::Type,
                 actions,
                 cx,
             ),
@@ -322,8 +193,9 @@ pub(super) fn render(
             .child(select_field_of(
                 ids.source,
                 &view.source,
-                &selects.source,
-                (Which::Source, UnitField::Source),
+                list_of(view, &view.source),
+                source_scroll,
+                UnitField::Source,
                 actions,
                 cx,
             ))
@@ -341,8 +213,9 @@ pub(super) fn render(
             select_field_of(
                 ids.quote,
                 quote,
-                &selects.quote,
-                (Which::Quote, UnitField::Quote),
+                list_of(view, quote),
+                quote_scroll,
+                UnitField::Quote,
                 actions,
                 cx,
             ),
@@ -397,8 +270,9 @@ pub(super) fn render(
 fn select_field_of<T: PartialEq>(
     id: &'static str,
     select: &SelectView<T>,
-    state: &SelectState,
-    (which, field): (Which, UnitField),
+    list: SelectList,
+    scroll: &mut usize,
+    field: UnitField,
     actions: &Clicks,
     cx: &App,
 ) -> AnyElement {
@@ -408,15 +282,15 @@ fn select_field_of<T: PartialEq>(
             id: id.into(),
             label: select.label.clone().into(),
             options: &options,
-            state: &synced(state, select),
+            state: &drawn(select, list, scroll),
             focused: select.focused,
             accent: false,
             read_only: None,
             on_field_click: UnitsDialog::on_click(actions, move |dialog| {
-                click_select(dialog, which, field)
+                click_select(dialog, field)
             }),
             on_option_click: UnitsDialog::on_option(actions, move |dialog, index| {
-                click_option(dialog, which, index)
+                click_option(dialog, field, index)
             }),
         },
         cx,
@@ -472,10 +346,7 @@ fn symbol_field(id: &'static str, field: &TextFieldView, actions: &Clicks, cx: &
         .into_any_element()
 }
 
-pub(super) fn readback(
-    view: &UnitFormViewModel,
-    selects: &UnitSelects,
-) -> Vec<(&'static str, String)> {
+pub(super) fn readback(view: &UnitFormViewModel) -> Vec<(&'static str, String)> {
     vec![
         ("code", view.code.text.clone()),
         ("name", view.name.text.clone()),
@@ -516,7 +387,7 @@ pub(super) fn readback(
                 .collect::<Vec<_>>()
                 .join("|"),
         ),
-        ("select_open", selects.any_open().to_string()),
+        ("select_open", view.list.is_open().to_string()),
         ("usage", view.usage.clone().unwrap_or_default()),
         ("refusal", view.refusal.clone().unwrap_or_default()),
     ]

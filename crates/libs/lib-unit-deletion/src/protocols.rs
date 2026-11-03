@@ -13,7 +13,7 @@
 //! through `lib-units`' [`UnitUsage`](lib_units::UnitUsage) read port instead, which the Desktop
 //! answers from its Ledger copy.
 //!
-//! The Dialog closes through `lib-units`' [`UnitsRouter`](lib_units::UnitsRouter), as every Units
+//! The Dialog closes through the shared `lib_viper::dialog::DialogRouter`, as every Units
 //! Dialog does, so the Units page hears of the delete as it would of its own.
 
 use std::cell::RefCell;

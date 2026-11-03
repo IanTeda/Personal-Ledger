@@ -1,10 +1,10 @@
 //! Add and Edit price source for a Custom source (16z·custom, 620px) and Edit price source for a
 //! built-in (16z·edit, 480px): Name and Updates, then a Custom source's endpoint and key fields,
 //! or a built-in's endpoint as read-only facts. Updates and Authentication are segmented controls
-//! that `Left`/`Right` step while focused.
+//! that `Left`/`Right` step while focused. The Presenter reads every key.
 //!
-//! The typed API key is kept here only to append to; the Presenter takes it as a secret and the
-//! form draws it masked. It is never stored (ADR-0043).
+//! The typed API key is the Presenter's, held as a secret, and the form draws it masked. It is
+//! never stored (ADR-0043).
 
 use std::rc::Rc;
 
@@ -15,13 +15,11 @@ use lib_units::presenter::{
     PriceSourceFormViewModel,
 };
 use lib_viper::view::{Choice, SelectView, TextFieldView};
-use secrecy::{ExposeSecret as _, SecretString};
 
-use super::{Clicks, UnitsDialog, View, enter, help, refusal, send, test_not_built, typed};
+use super::{Clicks, UnitsDialog, View, help, refusal, send, test_not_built};
 use crate::{
     dialog,
     form::fields::{field_label, segmented_labelled, text_field},
-    shell::view::dialog_host::{DialogKey, DialogOutcome},
     theme::color,
 };
 
@@ -30,14 +28,6 @@ const CUSTOM_WIDTH: gpui::Pixels = px(620.0);
 /// `width:480px` (16z·edit).
 const BUILT_IN_WIDTH: gpui::Pixels = px(480.0);
 const MONOSPACE: &str = "monospace";
-
-/// The API key as typed so far.
-#[derive(Clone, Default)]
-pub(super) struct ApiKeyInput(SecretString);
-
-pub(super) fn open(presenter: PriceSourceFormPresenter) -> View {
-    View::PriceSourceForm(presenter, ApiKeyInput::default())
-}
 
 fn handle(presenter: &mut PriceSourceFormPresenter, event: PriceSourceFormEvent) {
     send(presenter, event, PriceSourceFormPresenter::handle);
@@ -74,61 +64,10 @@ fn focused(view: &PriceSourceFormViewModel) -> Option<PriceSourceField> {
     .find_map(|(is_focused, field)| is_focused.then_some(field))
 }
 
-/// The text a text field holds; the API key is read from the input, never the masked view.
-fn text_of(view: &PriceSourceFormViewModel, field: PriceSourceField) -> Option<String> {
-    let endpoint = view.endpoint.as_ref();
-    Some(match field {
-        PriceSourceField::Name => view.name.text.clone(),
-        PriceSourceField::Address => endpoint?.address.text.clone(),
-        PriceSourceField::Request => endpoint?.request.text.clone(),
-        PriceSourceField::PricePath => endpoint?.price_path.text.clone(),
-        PriceSourceField::KeyParam => endpoint?.key_param.as_ref()?.text.clone(),
-        PriceSourceField::Updates | PriceSourceField::Auth | PriceSourceField::ApiKey => {
-            return None;
-        }
-    })
-}
-
-pub(super) fn key(
-    presenter: &mut PriceSourceFormPresenter,
-    api_key: &mut ApiKeyInput,
-    key: DialogKey,
-) -> DialogOutcome {
-    let view = presenter.view_model();
-    let event = match (key, focused(&view)) {
-        (DialogKey::Tab, _) => PriceSourceFormEvent::NextField,
-        (DialogKey::BackTab, _) => PriceSourceFormEvent::PrevField,
-        (DialogKey::Enter, _) => return enter(view.frame.can_confirm),
-        (
-            DialogKey::Left | DialogKey::Right,
-            Some(PriceSourceField::Updates | PriceSourceField::Auth),
-        ) => PriceSourceFormEvent::Step(if key == DialogKey::Left { -1 } else { 1 }),
-        (DialogKey::Char(_), Some(PriceSourceField::Updates | PriceSourceField::Auth)) => {
-            return DialogOutcome::Handled;
-        }
-        (_, Some(PriceSourceField::ApiKey)) => {
-            let Some(text) = typed(api_key.0.expose_secret(), key) else {
-                return DialogOutcome::Ignored;
-            };
-            api_key.0 = SecretString::from(text);
-            PriceSourceFormEvent::ApiKey(api_key.0.clone())
-        }
-        (_, Some(field)) => {
-            let Some(text) = text_of(&view, field).and_then(|text| typed(&text, key)) else {
-                return DialogOutcome::Ignored;
-            };
-            PriceSourceFormEvent::Text(field, text)
-        }
-        (_, None) => return DialogOutcome::Ignored,
-    };
-    handle(presenter, event);
-    DialogOutcome::Handled
-}
-
 /// A click that sends `event` to the open form.
 fn click(actions: &Clicks, event: PriceSourceFormEvent) -> dialog::OnClick {
     UnitsDialog::on_click(actions, move |dialog| {
-        if let View::PriceSourceForm(presenter, _) = &mut dialog.view {
+        if let View::PriceSourceForm(presenter) = &mut dialog.view {
             handle(presenter, event.clone());
         }
     })

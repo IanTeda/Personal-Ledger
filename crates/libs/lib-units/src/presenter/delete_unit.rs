@@ -10,8 +10,9 @@ use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView, count};
 
 use super::{UnitChange, UnitsOutcome, uses_text};
 use crate::interactor::{DeactivateUnit, DeleteUnit};
-use crate::protocols::{SharedPorts, UnitsRouter};
+use crate::protocols::SharedPorts;
 use crate::{Error, UnitRow, UnitUse, msg, units_by_code};
+use lib_viper::dialog::DialogRouter;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeleteUnitEvent {
@@ -153,7 +154,7 @@ impl DeleteUnitPresenter {
         })
     }
 
-    pub fn handle(&mut self, event: DeleteUnitEvent, router: &mut dyn UnitsRouter) {
+    pub fn handle(&mut self, event: DeleteUnitEvent, router: &mut dyn DialogRouter<UnitsOutcome>) {
         match event {
             DeleteUnitEvent::ConfirmText(text) => self.confirm_text = text,
             DeleteUnitEvent::NewBase(id) => {
@@ -167,7 +168,7 @@ impl DeleteUnitPresenter {
                 }
             }
             DeleteUnitEvent::Confirm => self.delete(router),
-            DeleteUnitEvent::Cancel => router.close_dialog(None),
+            DeleteUnitEvent::Cancel => router.close(None),
         }
     }
 
@@ -201,7 +202,7 @@ impl DeleteUnitPresenter {
         }
     }
 
-    fn delete(&mut self, router: &mut dyn UnitsRouter) {
+    fn delete(&mut self, router: &mut dyn DialogRouter<UnitsOutcome>) {
         if !confirms_delete(&self.confirm_text, &self.code) {
             return;
         }
@@ -217,7 +218,7 @@ impl DeleteUnitPresenter {
         let code = self.code.as_str();
         self.refusal = match deleted {
             Ok(unit) => {
-                router.close_dialog(Some(UnitsOutcome::Unit {
+                router.close(Some(UnitsOutcome::Unit {
                     change: UnitChange::Deleted,
                     code: unit.code,
                 }));
@@ -231,7 +232,7 @@ impl DeleteUnitPresenter {
         };
     }
 
-    fn deactivate(&mut self, router: &mut dyn UnitsRouter) {
+    fn deactivate(&mut self, router: &mut dyn DialogRouter<UnitsOutcome>) {
         let deactivated = {
             let mut ports = self.ports.borrow_mut();
             let ports = ports.split_mut();
@@ -239,7 +240,7 @@ impl DeleteUnitPresenter {
         };
         self.refusal = match deactivated {
             Ok(unit) => {
-                router.close_dialog(Some(UnitsOutcome::Unit {
+                router.close(Some(UnitsOutcome::Unit {
                     change: UnitChange::Deactivated,
                     code: unit.code,
                 }));

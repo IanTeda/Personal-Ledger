@@ -1,11 +1,13 @@
 //! `impl UnitsRouter` for the TUI. A Presenter's `handle` can't reach the Units View it runs in, so
 //! the Router collects what it asked for (a Dialog to open, the open one to close, the prices view
 //! to open or close, Toasts) and the View applies them once `handle` returns. Built for each call,
-//! as on the Desktop.
+//! as on the Desktop. A Dialog's Presenter closes through the shared `DialogRouter`, which this
+//! Router also implements; the TUI's Dialogs still read their own keys until its redesign (#805).
 
 use lib_toast::{Notice, Notify, ToastKind};
 use lib_units::presenter::UnitsOutcome;
 use lib_units::{SharedPorts, UnitId, UnitsDialog as Which, UnitsRouter};
+use lib_viper::dialog::DialogRouter;
 
 use super::view::dialog::Dialog;
 
@@ -48,6 +50,12 @@ impl UnitsRouter for Router<'_> {
 
     fn close_prices(&mut self) {
         self.prices = Some(None);
+    }
+}
+
+impl DialogRouter<UnitsOutcome> for Router<'_> {
+    fn close(&mut self, outcome: Option<UnitsOutcome>) {
+        self.closed = Some(outcome);
     }
 }
 

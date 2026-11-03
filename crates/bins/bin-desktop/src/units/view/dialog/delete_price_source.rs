@@ -1,38 +1,14 @@
 //! Delete price source (16z·del, 420px) in 16d's red treatment: how many Units the source values,
 //! which fall back to Manual entry, and the source's name typed back before the confirm enables.
+//! The Presenter reads every key.
 
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, Window, div, prelude::*, px};
-use lib_units::presenter::{
-    DeletePriceSourceEvent, DeletePriceSourcePresenter, DeletePriceSourceViewModel,
-};
+use lib_units::presenter::DeletePriceSourceViewModel;
 
-use super::{Clicks, enter, refusal, send, typed};
-use crate::{
-    dialog,
-    form::fields::text_field,
-    shell::view::dialog_host::{DialogKey, DialogOutcome},
-};
-
-pub(super) fn key(presenter: &mut DeletePriceSourcePresenter, key: DialogKey) -> DialogOutcome {
-    let view = presenter.view_model();
-    match key {
-        DialogKey::Enter => enter(view.frame.can_confirm),
-        DialogKey::Tab | DialogKey::BackTab => DialogOutcome::Handled,
-        _ => match typed(&view.confirm.text, key) {
-            Some(text) => {
-                send(
-                    presenter,
-                    DeletePriceSourceEvent::ConfirmText(text),
-                    DeletePriceSourcePresenter::handle,
-                );
-                DialogOutcome::Handled
-            }
-            None => DialogOutcome::Ignored,
-        },
-    }
-}
+use super::{Clicks, refusal};
+use crate::{dialog, form::fields::text_field};
 
 pub(super) fn render(view: &DeletePriceSourceViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     let mut fields = vec![

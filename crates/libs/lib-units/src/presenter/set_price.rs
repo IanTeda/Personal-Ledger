@@ -9,11 +9,12 @@ use lib_locale::format::{
     AmountStyle, DateInputOptions, date_error_message, format_amount, format_date,
     format_date_input, parse_date_with, parse_positive_amount,
 };
+use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::view::{DialogFrame, TextFieldView};
 
 use super::{Clock, UnitsOutcome, cycle};
 use crate::interactor::SetPrice;
-use crate::protocols::{SharedPorts, UnitsRouter};
+use crate::protocols::SharedPorts;
 use crate::{Error, MANUAL_ENTRY, Precision, WeeklyPrice, msg};
 
 /// The form's fields, in `Tab` order.
@@ -29,10 +30,14 @@ impl SetPriceField {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SetPriceEvent {
+    /// A Dialog command or typed key, as the Desktop sends them: `select` and `submit` confirm
+    /// once both fields read, typing edits the focused field, and the field keys move focus,
+    /// wrapping.
+    Input(DialogInput),
     /// A text field's whole new text, as its View's input holds it.
     Week(String),
     Close(String),
-    /// `Tab`/`Shift-Tab`, wrapping.
+    /// `Tab`/`Shift-Tab`, wrapping: the TUI's, which reads its own keys until its redesign (#805).
     NextField,
     PrevField,
     /// A click on a field.
@@ -99,8 +104,20 @@ impl SetPricePresenter {
         })
     }
 
-    pub fn handle(&mut self, event: SetPriceEvent, router: &mut dyn UnitsRouter) {
+    pub fn handle(&mut self, event: SetPriceEvent, router: &mut dyn DialogRouter<UnitsOutcome>) {
         match event {
+            SetPriceEvent::Input(input) => match input {
+                DialogInput::NextField | DialogInput::PreviousField => {
+                    let backward = input == DialogInput::PreviousField;
+                    self.focused = cycle(&SetPriceField::ORDER, self.focused, backward, |_| true);
+                }
+                DialogInput::Select | DialogInput::Submit => self.confirm(router),
+                DialogInput::Char(ch) => self.focused_text().push(ch),
+                DialogInput::Backspace => {
+                    self.focused_text().pop();
+                }
+                _ => {}
+            },
             SetPriceEvent::Week(text) => self.week = text,
             SetPriceEvent::Close(text) => self.close = text,
             SetPriceEvent::NextField | SetPriceEvent::PrevField => {
@@ -109,7 +126,14 @@ impl SetPricePresenter {
             }
             SetPriceEvent::Focus(field) => self.focused = field,
             SetPriceEvent::Confirm => self.confirm(router),
-            SetPriceEvent::Cancel => router.close_dialog(None),
+            SetPriceEvent::Cancel => router.close(None),
+        }
+    }
+
+    fn focused_text(&mut self) -> &mut String {
+        match self.focused {
+            SetPriceField::Week => &mut self.week,
+            SetPriceField::Close => &mut self.close,
         }
     }
 
@@ -182,7 +206,7 @@ impl SetPricePresenter {
         Some(close)
     }
 
-    fn confirm(&mut self, router: &mut dyn UnitsRouter) {
+    fn confirm(&mut self, router: &mut dyn DialogRouter<UnitsOutcome>) {
         let (Ok(day), Some(close)) = (self.day(), self.price()) else {
             return;
         };
@@ -200,7 +224,7 @@ impl SetPricePresenter {
         match set {
             Ok(unit) => {
                 self.refusal = None;
-                router.close_dialog(Some(UnitsOutcome::PriceSet {
+                router.close(Some(UnitsOutcome::PriceSet {
                     code: unit.code,
                     week,
                 }));
@@ -417,5 +441,30 @@ mod tests {
             hints(&dialog.view_model().frame),
             pairs(&[("next_field", "next field"), ("back", "cancel")])
         );
+    }
+
+    #[test]
+    fn dialog_input_types_into_the_focused_field_and_tab_wraps() {
+        let (_, shared) = stub();
+        let mut dialog = vas(shared);
+        let calls = send(
+            &mut dialog,
+            vec![
+                SetPriceEvent::Input(DialogInput::Char('1')),
+                SetPriceEvent::Input(DialogInput::Char('9')),
+                SetPriceEvent::Input(DialogInput::Backspace),
+                SetPriceEvent::Input(DialogInput::NextField),
+            ],
+        );
+        assert_eq!(calls, []);
+        let view = dialog.view_model();
+        assert_eq!(view.close.text, "1");
+        assert!(view.week.focused, "Tab from Close wraps to Week");
+
+        let calls = send(&mut dialog, vec![SetPriceEvent::Input(DialogInput::Submit)]);
+        assert!(matches!(
+            calls.as_slice(),
+            [RouterCall::CloseDialog(Some(_))]
+        ));
     }
 }
