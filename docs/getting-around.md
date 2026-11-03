@@ -112,6 +112,12 @@ If the file it was told to open is missing, empty, a folder or won't open, an er
 
 With no Ledger open the app sits on the Dashboard, which offers `:open` and `:new`, and the status line says "No ledger open…". The rail shows the screens that need a Ledger dimmed and without their counts. Choosing one says "No Ledger open: :open or :new first" and leaves you where you are. This applies to a click, a `g` jump or a command. `:open`, `:new`, `?` for help and Settings still work. In Settings only the This device pages open: General, Display, Tracing and About.
 
+## Starting a new Ledger
+
+In the desktop app, **`:new`** opens the file explorer in New mode. Browse to the folder you want, type a name in the **File name** field and press `Enter` or **Create**. You don't need to type `.pldb`: Create adds it if the name doesn't end in it. If a file of that name is already in the folder, the field says so and Create stays off until you pick another name. Nothing is ever overwritten.
+
+Create writes the new Ledger file and opens it on the Dashboard with a "Created ledger" Toast. If a Ledger was already open, its changes are saved and the new one takes its place. If the file can't be written, for example in a folder you can't write to, an error Toast says why and whatever was open stays open. Until the new-Ledger workflow is built, a new Ledger starts with the same sample data as a first launch.
+
 ## Quitting
 
 In the terminal app there are three ways out, and they all work:

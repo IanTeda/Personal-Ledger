@@ -2,7 +2,9 @@
 //! Settings entries refuse a click on the status line and stay put, while Settings, its This device
 //! pages and the Dashboard's `:open` still run; `:open`'s file explorer opens the file picked, from
 //! no Ledger open or in place of another, and a file that won't open keeps whatever was open
-//! (#978). State is read back from `Root`.
+//! (#978). `:new`'s explorer browses by mouse too: a file row is inert, a folder carries the name
+//! into it and Create makes the file named there, in place of the Open Ledger (#980). State is
+//! read back from `Root`.
 
 #![expect(
     clippy::expect_used,
@@ -284,4 +286,75 @@ fn a_file_that_will_not_open_keeps_the_open_ledger(app: &mut TestAppContext) {
         "the empty file is left alone, not made a Ledger"
     );
     assert_eq!(folder.entries(), entries, ":open creates no file");
+}
+
+#[gpui::test]
+fn clicking_create_makes_the_named_ledger_in_place_of_the_open_one(app: &mut TestAppContext) {
+    let folder = Folder::new();
+    let mut ui = started_on(app, &folder, &folder.household());
+    ui.press("g w");
+
+    ui.press(": n e w enter");
+    ui.click("explorer-row-1");
+    ui.press("e m m a");
+    ui.click("explorer-open");
+
+    let created = folder.path().join("emma.pldb");
+    assert_eq!(ui.ledger_path(), Some(created.clone()));
+    assert_eq!(ui.noun(), Noun::Dashboard, "lands on the Dashboard");
+    assert_eq!(last_toast(&mut ui), "Created ledger emma.pldb");
+    assert!(created.is_file());
+}
+
+#[gpui::test]
+fn in_new_a_file_row_click_selects_nothing_and_create_waits_for_a_free_name(
+    app: &mut TestAppContext,
+) {
+    let folder = Folder::new();
+    let entries = folder.entries();
+    let mut ui = Harness::without_ledger(app);
+    ui.browse_from(folder.path());
+
+    ui.click("no-ledger-new");
+    ui.click("explorer-row-0");
+    ui.click("explorer-open");
+    assert_eq!(
+        ui.read(|shell| shell.nav().mode()),
+        InputMode::Command,
+        "no name, so nothing to create"
+    );
+
+    ui.press("a - h o u s e h o l d");
+    assert_eq!(
+        ui.read(|shell| shell.explorer_file_name_snapshot()),
+        Some((
+            "a-household".to_string(),
+            Some("a-household.pldb".to_string())
+        ))
+    );
+    assert!(ui.is_drawn("explorer-name-taken"));
+    ui.click("explorer-open");
+    assert!(!ui.read(|shell| shell.ledger_open()));
+    assert_eq!(folder.entries(), entries, "nothing written");
+}
+
+#[gpui::test]
+fn in_new_clicking_a_folder_creates_the_ledger_in_it(app: &mut TestAppContext) {
+    let folder = Folder::new();
+    let ledgers = folder.path().join("ledgers");
+    std::fs::create_dir(&ledgers).expect("a folder");
+    let mut ui = Harness::without_ledger(app);
+    ui.browse_from(folder.path());
+
+    ui.click("no-ledger-new");
+    ui.click("explorer-row-0");
+    assert_eq!(
+        ui.read(|shell| shell.explorer_rows_snapshot()),
+        Some(Vec::new()),
+        "browsing the empty folder"
+    );
+    ui.press("t e d a");
+    ui.click("explorer-open");
+
+    assert_eq!(ui.ledger_path(), Some(ledgers.join("teda.pldb")));
 }

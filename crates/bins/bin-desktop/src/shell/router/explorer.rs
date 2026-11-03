@@ -4,6 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use gpui::Context;
+use lib_database::Storage;
 use lib_toast::ToastKind;
 
 use super::{LedgerFile, Root};
@@ -93,37 +94,39 @@ impl Root {
         })
     }
 
-    /// The explorer dialog's own Open button.
+    /// `:new`'s File name field while its explorer is open: the name as typed, and the file it
+    /// clashes with, which the field refuses inline.
+    #[doc(hidden)]
+    pub fn explorer_file_name_snapshot(&self) -> Option<(String, Option<String>)> {
+        self.file_explorer
+            .as_ref()
+            .filter(|explorer| explorer.mode() == ExplorerMode::New)
+            .map(|explorer| (explorer.file_name().to_string(), explorer.name_taken()))
+    }
+
+    /// The explorer dialog's own Open or Create button.
     pub(super) fn handle_explorer_open(&mut self, cx: &mut Context<'_, Self>) {
         self.confirm_explorer_open(cx);
     }
 
-    /// Confirms the explorer's current selection and closes the dialog. `:open` opens the selected
-    /// Ledger file ([`Self::open_ledger_file`]); `:new` still only raises a stand-in Toast and
-    /// creates nothing, until it creates the file for real (#980). A no-op if nothing is selected
-    /// (Open/New is only clickable once `FileExplorer::can_open` is true, but a double-click can
-    /// also reach here -- see [`Self::handle_explorer_entry_click`] -- so this re-checks rather
-    /// than trusting the caller).
+    /// Confirms the explorer and closes it: `:open` opens the selected Ledger file
+    /// ([`Self::open_ledger_file`]), `:new` creates the file its name makes in the folder browsed
+    /// to and opens that ([`Self::create_ledger_file`]). A no-op while there is nothing to act on
+    /// (Open/Create is only clickable once `FileExplorer::can_open` is true, but a double-click or
+    /// `enter` can also reach here, so this re-checks rather than trusting the caller).
     pub(super) fn confirm_explorer_open(&mut self, cx: &mut Context<'_, Self>) {
         let Some(explorer) = self.file_explorer.as_ref() else {
             return;
         };
-        if !explorer.can_open() {
-            return;
-        }
-        let Some(path) = explorer.selected().map(Path::to_path_buf) else {
+        let Some(path) = explorer.target() else {
             return;
         };
         let mode = explorer.mode();
         self.file_explorer = None;
         self.navigate(NavInput::ExitMode);
-        if mode == ExplorerMode::Open {
-            self.open_ledger_file(&path, cx);
-        } else {
-            self.raise_toast(
-                ToastKind::Success,
-                lib_locale::msg::toast_ledger_created(&file_name(&path)),
-            );
+        match mode {
+            ExplorerMode::Open => self.open_ledger_file(&path, cx),
+            ExplorerMode::New => self.create_ledger_file(&path, cx),
         }
         cx.notify();
     }
@@ -136,9 +139,7 @@ impl Root {
         self.flush_ledger();
         match crate::open_ledger_file(path, self.presenter.clock().today()) {
             Ok(storage) => {
-                self.open_ledger(LedgerFile::opened(path.to_path_buf(), storage), cx);
-                self.show_noun(Noun::Dashboard, cx);
-                self.set_last_ledger(Some(path.to_path_buf()), cx);
+                self.swap_in_ledger(path, storage, cx);
                 self.raise_toast(
                     ToastKind::Success,
                     lib_locale::msg::toast_ledger_opened(&file_name(path)),
@@ -146,6 +147,37 @@ impl Root {
             }
             Err(failure) => self.ledger_open_failed(&failure),
         }
+    }
+
+    /// Creates a Ledger file at `path` and opens it in place of the Open Ledger, if any, as
+    /// [`Self::open_ledger_file`] does: swapped in only once it has opened, so a file that can't be
+    /// made keeps what was open, or none, and an Error Toast says why.
+    fn create_ledger_file(&mut self, path: &Path, cx: &mut Context<'_, Self>) {
+        self.flush_ledger();
+        match crate::create_ledger_file(path, self.presenter.clock().today()) {
+            Ok(storage) => {
+                self.swap_in_ledger(path, storage, cx);
+                self.raise_toast(
+                    ToastKind::Success,
+                    lib_locale::msg::toast_ledger_created(&file_name(path)),
+                );
+            }
+            Err(failure) => self.raise_toast(
+                ToastKind::Error,
+                lib_locale::msg::toast_ledger_create_failed(
+                    &file_name(&failure.path),
+                    &failure.reason,
+                ),
+            ),
+        }
+    }
+
+    /// Makes the Ledger file at `path`, open on `storage`, the Open Ledger, landing on its
+    /// Dashboard and remembering it for the next start.
+    fn swap_in_ledger(&mut self, path: &Path, storage: Storage, cx: &mut Context<'_, Self>) {
+        self.open_ledger(LedgerFile::opened(path.to_path_buf(), storage), cx);
+        self.show_noun(Noun::Dashboard, cx);
+        self.set_last_ledger(Some(path.to_path_buf()), cx);
     }
 }
 

@@ -261,6 +261,29 @@ impl Root {
         }
     }
 
+    /// Routes a keystroke while `:new`'s file explorer is open (1e·new): its File name field has
+    /// the focus, so `backspace` and any unmodified, printable key edit the name, and `enter`
+    /// creates the file, as Create does. `:open`'s explorer picks a file by mouse alone, so it
+    /// takes no key here.
+    fn handle_explorer_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+        let Some(explorer) = self
+            .file_explorer
+            .as_mut()
+            .filter(|explorer| explorer.mode() == ExplorerMode::New)
+        else {
+            return false;
+        };
+        match keystroke.key.as_str() {
+            "backspace" => explorer.backspace(),
+            "enter" => self.confirm_explorer_open(cx),
+            _ => match typed_char(keystroke) {
+                Some(ch) => explorer.push_char(ch),
+                None => return false,
+            },
+        }
+        true
+    }
+
     /// Routes a keystroke while `InputMode::Search` is active (step 2, mirroring
     /// [`Self::handle_palette_key`]'s shape): to the active View's Search. A no-op everywhere
     /// else.
@@ -383,6 +406,7 @@ impl KeyRoute for Keys<'_, '_> {
         let taken = match mode {
             InputMode::Command => {
                 shell.handle_palette_key(self.keystroke, self.window_size, self.cx)
+                    || shell.handle_explorer_key(self.keystroke, self.cx)
             }
             InputMode::Search => shell.handle_search_key(self.keystroke, self.cx),
             // Only a View opens a filter popover, and it reads the popover's keys above; what it

@@ -63,6 +63,11 @@ desktop-ledger-open-empty = the file is empty
 desktop-ledger-open-unreadable = it isn't a Ledger file, or can't be read
 desktop-ledger-open-out-of-date = it was made by an earlier version and can't be upgraded
 
+## Why `:new` couldn't create a Ledger file, the `$reason` of the Toast saying so.
+
+desktop-ledger-create-exists = a file of that name is already there
+desktop-ledger-create-unwritable = it can't be written there
+
 ## Status-line flashes for actions whose flow is not designed or wired yet.
 
 desktop-status-sync-now-not-implemented = sync now — not implemented

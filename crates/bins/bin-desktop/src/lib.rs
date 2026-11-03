@@ -197,6 +197,70 @@ pub fn open_ledger_file(
     }
 }
 
+/// Creates a Ledger file at `path` and opens it as [`open_ledger_file`] does, for `:new`. Until the
+/// new-Ledger workflow (#912) decides what a new Ledger starts with, it is the stub seed
+/// `open_storage` writes into a new file. Never touches a file already at `path`: claiming the
+/// name is the first write, and a file there by then is a failure. A Ledger that won't open once
+/// created is removed again, so a failed `:new` leaves nothing behind.
+pub fn create_ledger_file(
+    path: &std::path::Path,
+    today: chrono::NaiveDate,
+) -> std::result::Result<Storage, OpenFailure> {
+    let failed = |reason: String| OpenFailure {
+        path: path.to_path_buf(),
+        reason,
+    };
+    // `create_new` claims the name atomically, so a file made after the explorer checked the name
+    // is refused rather than overwritten.
+    if let Err(error) = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+    {
+        tracing::warn!(%error, path = %path.display(), "Couldn't create the Ledger file");
+        return Err(failed(
+            if error.kind() == std::io::ErrorKind::AlreadyExists {
+                msg::desktop_ledger_create_exists()
+            } else {
+                msg::desktop_ledger_create_unwritable()
+            },
+        ));
+    }
+    match open_storage(path, today, &lib_locale::msg::institution_personal()) {
+        Ok(mut storage) => {
+            bills::ports::generate(&mut storage.bills, today);
+            lib_database::Commit::commit(&storage.pending);
+            tracing::info!(path = %path.display(), "Created the Ledger file");
+            Ok(storage)
+        }
+        Err(error) => {
+            // Recovered: the Desktop keeps whatever Ledger was open, or none, and a Toast says why.
+            tracing::warn!(%error, path = %path.display(), "Failed to create the Ledger");
+            remove_ledger_file(path);
+            Err(failed(msg::desktop_ledger_create_unwritable()))
+        }
+    }
+}
+
+/// Removes a Ledger file a failed `:new` made, with the journal files SQLite keeps beside it.
+fn remove_ledger_file(path: &std::path::Path) {
+    let mut files = vec![path.to_path_buf()];
+    for suffix in ["-wal", "-shm", "-journal"] {
+        let mut side = path.as_os_str().to_owned();
+        side.push(suffix);
+        files.push(side.into());
+    }
+    for file in files {
+        match std::fs::remove_file(&file) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                tracing::warn!(%error, path = %file.display(), "Couldn't remove a failed Ledger file");
+            }
+        }
+    }
+}
+
 /// Why `path` can't be opened without creating a Ledger in it, or `None` if `open_storage` may
 /// open it. `open_storage` creates a missing file, and SQLite takes an empty one for a new database
 /// that it then migrates and seeds, so start-up refuses both rather than create a Ledger (#977).

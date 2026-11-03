@@ -47,6 +47,7 @@ toast-entity-tag = tag
 toast-ledger-opened = Opened ledger { $name }
 toast-ledger-created = Created ledger { $name }
 toast-ledger-open-failed = Couldn't open ledger { $name }: { $reason }
+toast-ledger-create-failed = Couldn't create ledger { $name }: { $reason }
 
 ## The session Toast history popup.
 

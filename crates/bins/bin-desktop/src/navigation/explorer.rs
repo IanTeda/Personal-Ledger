@@ -7,8 +7,8 @@
 //! Unlike `Dashboard`'s dummy data, the handoff's own Implementation note 11 is explicit that
 //! row eligibility must be "type-driven, not name-driven... gate selectability on the actual
 //! file extension read from the filesystem" -- so [`FileExplorer`] walks the real filesystem
-//! (`std::fs::read_dir`), not fixture data. "Opening" the selection itself stays a stand-in that
-//! only raises a Toast: opening the file as the Open Ledger is #978.
+//! (`std::fs::read_dir`), not fixture data. `Root` acts on [`FileExplorer::target`]: opening the
+//! selected file, or creating the one New mode's File name names (#980).
 
 use std::{
     path::{Path, PathBuf},
@@ -54,11 +54,8 @@ pub struct DirEntry {
     pub modified: Option<SystemTime>,
 }
 
-/// Which command opened the dialog (issue #167): `:open` and `:new` share the exact same
-/// browse-an-existing-`.pldb` dialog today, differing only in title/button text -- `:new`'s own
-/// eventual "create a fresh `.pldb`" workflow is still fog (the user's own words: "we still
-/// need to plan out the new file workflow"), not this. `Root::confirm_explorer_open` also
-/// reads this, for which stand-in Toast it raises.
+/// Which command opened the dialog: `:open` browses to a `.pldb` to open (1e), `:new` names a
+/// file to create in the folder browsed to (1e·new, #980).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExplorerMode {
     Open,
@@ -106,6 +103,8 @@ pub struct FileExplorer {
     entries: Vec<DirEntry>,
     filters: ExplorerFilters,
     selected: Option<PathBuf>,
+    /// New mode's File name field, as typed: [`Self::target`] adds `.pldb` if it's missing.
+    file_name: String,
     /// The row list's own scroll, unlike `Palette`'s fixed, small registry -- a real directory
     /// (the mockup's own illustrative 6 rows aside) can hold far more entries than fit the
     /// dialog's [`MAX_ROWS_HEIGHT`], discovered by browsing a real home directory (50 entries)
@@ -124,6 +123,7 @@ impl FileExplorer {
             entries: Vec::new(),
             filters,
             selected: None,
+            file_name: String::new(),
             scroll_handle: gpui::ScrollHandle::new(),
         };
         explorer.reload();
@@ -176,9 +176,67 @@ impl FileExplorer {
         self.selected.as_deref()
     }
 
-    /// README's "Open is disabled until a `.pldb` row is selected".
+    /// README's "Open is disabled until a `.pldb` row is selected", and 1e·new's "Create stays
+    /// disabled until the name is free".
     pub fn can_open(&self) -> bool {
-        self.selected.is_some()
+        self.target().is_some()
+    }
+
+    /// The Ledger file Open or Create acts on: Open's selected `.pldb`, or the file New mode's
+    /// name makes in the folder browsed to, while nothing is already there by that name.
+    pub fn target(&self) -> Option<PathBuf> {
+        match self.mode {
+            ExplorerMode::Open => self.selected.clone(),
+            ExplorerMode::New => self
+                .new_file_path()
+                .filter(|path| std::fs::symlink_metadata(path).is_err()),
+        }
+    }
+
+    /// New mode's File name field, as typed.
+    pub fn file_name(&self) -> &str {
+        &self.file_name
+    }
+
+    /// Types `ch` into New mode's File name field.
+    pub fn push_char(&mut self, ch: char) {
+        self.file_name.push(ch);
+    }
+
+    /// Deletes the last character of New mode's File name field, if any.
+    pub fn backspace(&mut self) {
+        self.file_name.pop();
+    }
+
+    /// The file name New mode's name clashes with in the folder browsed to, which 1e·new refuses
+    /// inline; `None` while the name is free, or names no file at all.
+    pub fn name_taken(&self) -> Option<String> {
+        let path = self.new_file_path()?;
+        std::fs::symlink_metadata(&path).ok()?;
+        path.file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+    }
+
+    /// The file New mode's name makes in the folder browsed to, with `.pldb` added if the name
+    /// doesn't end in it. `None` for a blank name, or one that isn't a single file name (`..`, or
+    /// one holding a separator), since Create makes the file in the folder browsed to and nowhere
+    /// else.
+    fn new_file_path(&self) -> Option<PathBuf> {
+        let name = self.file_name.trim();
+        let mut components = Path::new(name).components();
+        let single = matches!(
+            (components.next(), components.next()),
+            (Some(std::path::Component::Normal(part)), None) if part == name
+        );
+        if !single {
+            return None;
+        }
+        let file = if is_pldb(Path::new(name)) {
+            name.to_string()
+        } else {
+            format!("{name}.pldb")
+        };
+        Some(self.current_path.join(file))
     }
 
     /// Re-reads `current_path` from the real filesystem: folders first, then every other entry,
@@ -237,8 +295,11 @@ impl FileExplorer {
                 self.current_path = entry.path.clone();
                 self.reload();
             }
-            EntryKind::Ledger => self.selected = Some(entry.path.clone()),
-            EntryKind::Other => {}
+            // 1e·new: nothing is selected in New mode, where a file row only shows what is there.
+            EntryKind::Ledger if self.mode == ExplorerMode::Open => {
+                self.selected = Some(entry.path.clone());
+            }
+            EntryKind::Ledger | EntryKind::Other => {}
         }
     }
 
@@ -402,6 +463,14 @@ impl FileExplorer {
                                 row(entry, index, selected, is_last, on_entry_click.clone(), cx)
                             })),
                     )
+                    .when(self.mode == ExplorerMode::New, |this| {
+                        this.child(file_name_field(
+                            &self.file_name,
+                            self.name_taken(),
+                            &self.current_path,
+                            cx,
+                        ))
+                    })
                     .child(footer(
                         self.mode,
                         self.filters,
@@ -586,6 +655,77 @@ fn row(
         .child(div().w(px(120.0)).child(modified_text))
 }
 
+/// 1e·new's File name field under the listing, focused: the typed name, the caret and the
+/// `.pldb` Create adds, and under it the inline refusal when `taken` names a file already in
+/// `folder`, with the field's border in the refusal's colour.
+fn file_name_field(
+    file_name: &str,
+    taken: Option<String>,
+    folder: &Path,
+    cx: &App,
+) -> impl IntoElement {
+    let refused = taken.is_some();
+    let border = if refused {
+        color::negative_text(cx)
+    } else {
+        color::foreground(cx)
+    };
+    let folder_name = folder.file_name().map_or_else(
+        || folder.display().to_string(),
+        |name| name.to_string_lossy().into_owned(),
+    );
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(6.0))
+        .pt(px(14.0))
+        .pb(px(4.0))
+        .px(px(20.0))
+        .border_t(px(1.0))
+        .border_color(color::hairline(cx))
+        .child(
+            div()
+                .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                .text_size(px(12.0))
+                .text_color(color::foreground(cx))
+                .child(msg::desktop_explorer_file_name()),
+        )
+        .child(
+            div()
+                .debug_selector(|| "explorer-file-name".to_string())
+                .flex()
+                .items_center()
+                .px(px(10.0))
+                .py(px(8.0))
+                .border(px(2.0))
+                .border_color(border)
+                .text_color(color::foreground(cx))
+                .child(file_name.to_string())
+                .child(div().w(px(2.0)).h(px(15.0)).bg(color::cursor(cx)))
+                .child(div().flex_1())
+                // The extension Create adds, as the file is named: not prose, so not a Message.
+                .child(div().text_color(color::faint_text(cx)).child(".pldb")),
+        )
+        .children(taken.map(|name| {
+            div()
+                .debug_selector(|| "explorer-name-taken".to_string())
+                .flex()
+                .items_center()
+                .gap(px(8.0))
+                .text_size(px(11.5))
+                .text_color(color::negative_text(cx))
+                .child(
+                    div()
+                        .w(px(8.0))
+                        .h(px(8.0))
+                        .flex_none()
+                        .bg(color::negative_text(cx)),
+                )
+                .child(msg::desktop_explorer_name_taken(&name, &folder_name))
+        }))
+        .when(!refused, |this| this.pb(px(4.0)))
+}
+
 fn footer(
     mode: ExplorerMode,
     filters: ExplorerFilters,
@@ -735,6 +875,102 @@ mod tests {
             FileExplorer::open_at(ExplorerMode::New, dir.path().to_path_buf(), all_files());
 
         assert_eq!(explorer.mode(), ExplorerMode::New);
+    }
+
+    /// A New mode explorer browsing `dir`, with `name` typed into its File name field.
+    fn naming(dir: &Path, name: &str) -> FileExplorer {
+        let mut explorer = FileExplorer::open_at(ExplorerMode::New, dir.to_path_buf(), all_files());
+        name.chars().for_each(|ch| explorer.push_char(ch));
+        explorer
+    }
+
+    #[test]
+    fn a_typed_name_creates_that_name_with_pldb_added() {
+        let dir = tempfile::tempdir().expect("tempdir should be creatable");
+
+        let explorer = naming(dir.path(), "teda-2027");
+
+        assert_eq!(explorer.file_name(), "teda-2027");
+        assert_eq!(explorer.target(), Some(dir.path().join("teda-2027.pldb")));
+        assert!(explorer.can_open());
+    }
+
+    #[test]
+    fn a_name_ending_in_pldb_in_any_case_is_not_given_it_again() {
+        let dir = tempfile::tempdir().expect("tempdir should be creatable");
+
+        assert_eq!(
+            naming(dir.path(), "teda.PLDB").target(),
+            Some(dir.path().join("teda.PLDB"))
+        );
+        assert_eq!(
+            naming(dir.path(), "teda.pldb.bak").target(),
+            Some(dir.path().join("teda.pldb.bak.pldb")),
+            "only a real .pldb extension counts"
+        );
+    }
+
+    #[test]
+    fn a_name_already_in_the_folder_is_refused() {
+        let dir = tempfile::tempdir().expect("tempdir should be creatable");
+        touch(&dir.path().join("teda.pldb"));
+
+        let explorer = naming(dir.path(), "teda");
+
+        assert_eq!(
+            explorer.name_taken(),
+            Some("teda.pldb".to_string()),
+            "names the file it clashes with"
+        );
+        assert_eq!(explorer.target(), None);
+        assert!(!explorer.can_open());
+    }
+
+    #[test]
+    fn a_blank_name_or_one_naming_another_folder_creates_nothing() {
+        let dir = tempfile::tempdir().expect("tempdir should be creatable");
+
+        for name in ["", "   ", "sub/teda", "..", "."] {
+            let explorer = naming(dir.path(), name);
+            assert_eq!(explorer.target(), None, "{name:?}");
+            assert_eq!(explorer.name_taken(), None, "{name:?}");
+        }
+    }
+
+    #[test]
+    fn backspace_deletes_the_last_character_typed() {
+        let dir = tempfile::tempdir().expect("tempdir should be creatable");
+        let mut explorer = naming(dir.path(), "tedx");
+
+        explorer.backspace();
+        explorer.push_char('a');
+
+        assert_eq!(explorer.file_name(), "teda");
+        for _ in 0..5 {
+            explorer.backspace();
+        }
+        assert_eq!(explorer.file_name(), "", "nothing left to delete");
+    }
+
+    #[test]
+    fn in_new_mode_a_file_row_is_inert_and_a_folder_still_navigates() {
+        let dir = tempfile::tempdir().expect("tempdir should be creatable");
+        let ledger = dir.path().join("teda.pldb");
+        touch(&ledger);
+        let sub = dir.path().join("ledgers");
+        std::fs::create_dir(&sub).unwrap();
+        let mut explorer = naming(dir.path(), "teda-2027");
+
+        explorer.click_entry(&ledger);
+        assert_eq!(explorer.selected(), None, "nothing is selected in New mode");
+
+        explorer.click_entry(&sub);
+        assert_eq!(explorer.current_path(), sub);
+        assert_eq!(
+            explorer.target(),
+            Some(sub.join("teda-2027.pldb")),
+            "the name is kept, made in the folder browsed to"
+        );
     }
 
     #[test]

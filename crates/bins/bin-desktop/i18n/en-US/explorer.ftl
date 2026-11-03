@@ -58,4 +58,10 @@ desktop-explorer-filter-hide-hidden-detail = — dot files and folders
 
 desktop-explorer-cancel = Cancel
 desktop-explorer-open-button = Open
-desktop-explorer-new-button = New
+desktop-explorer-new-button = Create
+
+## New mode's File name field (1e·new): its label, and the inline refusal of a name already in the
+## folder browsed to. `$name` is the file name with `.pldb` added, `$folder` the folder's name.
+
+desktop-explorer-file-name = File name
+desktop-explorer-name-taken = { $name } is already in { $folder }. Pick another name, or :open it.

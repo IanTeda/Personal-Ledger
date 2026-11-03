@@ -4,6 +4,9 @@
 //! while `:open`, `:new`, Help and the This device Settings pages still run. State is read back
 //! from `Root`. `:open`'s file explorer picks a file by mouse alone (01-shell's "Row click selects
 //! it"), so opening one is `ledger_file_mouse.rs`'s; here `:open` and `esc` run from the keys (#978).
+//! `:new` names its file in a focused File name field, so creating one runs from the keys here
+//! (#980): a fresh name is created seeded and opened, a name already in the folder is refused
+//! inline, and a folder it can't write keeps the Open Ledger.
 
 use super::common;
 
@@ -224,4 +227,113 @@ fn escape_closes_open_s_file_explorer_keeping_the_open_ledger(app: &mut TestAppC
     assert_eq!(ui.ledger_path(), Some(path));
     assert_eq!(ui.noun(), Noun::Bills);
     assert!(ui.toasts().visible.is_empty(), "nothing opened to say");
+}
+
+/// `:new`'s File name field: the name typed, and the file it clashes with, if any; `None` while
+/// `:new`'s explorer isn't open.
+fn file_name_field(ui: &mut Harness<'_>) -> Option<(String, Option<String>)> {
+    assert!(ui.is_drawn("explorer-file-name"), "the File name field");
+    ui.read(|shell| shell.explorer_file_name_snapshot())
+}
+
+#[gpui::test]
+fn new_with_a_fresh_name_creates_the_ledger_file_and_opens_it(app: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let mut ui = Harness::without_ledger(app);
+    ui.browse_from(dir.path());
+
+    ui.press(": n e w enter");
+    ui.press("t e d a 2 0 2 7");
+    assert_eq!(
+        file_name_field(&mut ui),
+        Some(("teda2027".to_string(), None))
+    );
+    ui.press("enter");
+
+    let created = dir.path().join("teda2027.pldb");
+    assert!(created.is_file(), ".pldb is added and the file written");
+    assert_eq!(ui.ledger_path(), Some(created));
+    assert_eq!(ui.noun(), Noun::Dashboard);
+    assert_eq!(ui.read(|shell| shell.nav().mode()), InputMode::Normal);
+    assert_eq!(ui.unit_codes(), ["aud", "btc", "vas"], "the stand-in seed");
+    let toast = ui.toasts().visible.pop().expect("a Toast says so");
+    assert_eq!(toast.kind, "Success");
+    assert_eq!(toast.text, "Created ledger teda2027.pldb");
+}
+
+#[gpui::test]
+fn new_refuses_a_name_already_in_the_folder_inline_and_writes_nothing(app: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let existing = dir.path().join("teda.pldb");
+    std::fs::write(&existing, "someone's file").expect("a writable file");
+    let mut ui = Harness::without_ledger(app);
+    ui.browse_from(dir.path());
+
+    ui.press(": n e w enter");
+    ui.press("t e d a");
+    assert_eq!(
+        file_name_field(&mut ui),
+        Some(("teda".to_string(), Some("teda.pldb".to_string()))),
+        "refused inline"
+    );
+    assert!(ui.is_drawn("explorer-name-taken"));
+    ui.press("enter");
+
+    assert_eq!(
+        ui.read(|shell| shell.nav().mode()),
+        InputMode::Command,
+        "the explorer stays open"
+    );
+    assert!(!ui.read(|shell| shell.ledger_open()));
+    assert_eq!(
+        std::fs::read_to_string(&existing).ok().as_deref(),
+        Some("someone's file"),
+        "the file there is left alone"
+    );
+
+    ui.press("backspace backspace backspace backspace e m m a");
+    assert_eq!(
+        file_name_field(&mut ui),
+        Some(("emma".to_string(), None)),
+        "a free name is taken back"
+    );
+    ui.press("escape");
+    assert_eq!(ui.read(|shell| shell.nav().mode()), InputMode::Normal);
+    assert!(
+        !dir.path().join("emma.pldb").exists(),
+        "esc creates nothing"
+    );
+    assert!(ui.toasts().visible.is_empty());
+}
+
+#[cfg(unix)]
+#[gpui::test]
+fn new_in_a_folder_it_cannot_write_keeps_the_open_ledger_and_says_why(app: &mut TestAppContext) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let path = dir.path().join("ledger.pldb");
+    let started = bin_desktop::start_on(&new_ledger(&path), common::today());
+    let mut ui = Harness::starting(app, started, PersistedState::default());
+    let locked = dir.path().join("locked");
+    std::fs::create_dir(&locked).expect("a folder");
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o555))
+        .expect("a read-only folder");
+    ui.browse_from(&locked);
+    ui.press("g w");
+
+    ui.press(": n e w enter");
+    ui.press("t e d a enter");
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755))
+        .expect("the folder writable again, for the clean-up");
+
+    assert_eq!(ui.ledger_path(), Some(path), "the Open Ledger stays");
+    assert_eq!(ui.noun(), Noun::Bills, "stays where it was");
+    let toast = ui.toasts().visible.pop().expect("a Toast says why");
+    assert_eq!(toast.kind, "Error");
+    assert_eq!(
+        toast.text,
+        "Couldn't create ledger teda.pldb: it can't be written there"
+    );
+    assert!(!locked.join("teda.pldb").exists());
 }
