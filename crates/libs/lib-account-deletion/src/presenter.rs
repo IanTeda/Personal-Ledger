@@ -299,7 +299,7 @@ mod tests {
         );
         assert_eq!(
             dialog.router.closed,
-            [Some(crate::AccountDeleted {
+            [Some(AccountDeleted {
                 id: WALLET,
                 name: "Wallet".into(),
                 transactions: 2,
@@ -312,7 +312,7 @@ mod tests {
     #[test]
     fn typed_keys_build_the_name_and_select_deletes_only_once_it_is_exact() {
         let mut dialog = Dialog::open(WALLET);
-        let mut press = |dialog: &mut Dialog, input| {
+        let press = |dialog: &mut Dialog, input| {
             dialog.send(DeleteAccountEvent::Input(input));
         };
 

@@ -415,7 +415,7 @@ mod tests {
     fn the_destination_opens_steps_and_commits_and_select_removes_once_closed() {
         let mut dialog = Dialog::on(1);
         let areas = dialog.areas();
-        let mut press = |dialog: &mut Dialog, input| {
+        let press = |dialog: &mut Dialog, input| {
             dialog
                 .presenter
                 .handle(RemoveAreaEvent::Input(input), &mut dialog.router);
