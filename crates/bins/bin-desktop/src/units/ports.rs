@@ -1,92 +1,40 @@
 //! The Units ports as the Desktop holds them: the store `shell::router::build` is given, with
-//! `UnitHoldings` and the Accounts half of `UnitUsage` answered from the Accounts store (#853), the
-//! Locations half from the Inventory store (#885), the Budgets half from the Budgets store (#952),
-//! the Bill Plans half from the Ledger read copy (#746's halfway shim), and the step that keeps
-//! that read copy in line after a Units write. The write is committed by the input it was made in
-//! (`crate::input::send`), not here.
+//! `UnitUsage` and `UnitHoldings` read from the Accounts, Transactions, Bills, Budgets, Inventory
+//! and Institutions stores through `lib-database`'s [`StoredUnitReads`] (#993), and the step that
+//! keeps the Ledger's read copy of the Units in line after a Units write. The write is committed
+//! by the input it was made in (`crate::input::send`), not here.
 //!
-//! Usage and holdings are copied before each Units event, since a port can't reach the
-//! `LedgerStore` Entity without a gpui context. The Ledger's half goes with the shim, when Bills
-//! answer it through their own port.
+//! Usage and holdings are counted in the stores on each ask, whether they are the adapters or
+//! `Stores::fake`'s in-memory ones, so nothing is copied from the Ledger.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use gpui::{App, Entity};
-use lib_core::UnitId;
-use lib_ledger::Ledger;
-use lib_units::fake::{InMemoryHoldings, InMemoryUnitUsage};
+use lib_database::StoredUnitReads;
 use lib_units::{
     BaseUnitRepository, PortsMut, PriceSourceRepository, UnitHoldings, UnitRepository, UnitUsage,
     UnitsPorts,
 };
 
 use crate::ledger_store::LedgerStore;
-use lib_database::{SharedAccountsStore, SharedBudgetsStore, SharedInventoryStore};
 
 /// The Units ports the Units module and the General page share.
 pub type DesktopPorts = Rc<RefCell<LedgerBackedPorts>>;
 
-/// `store`'s Units, Price Sources and base Unit, with holdings and the Accounts naming each Unit
-/// copied from `accounts`, the Locations from `inventory`, the Budgets from `budgets`, and the Bill
-/// Plans naming it from the Ledger.
+/// `store`'s Units, Price Sources and base Unit, with what names each Unit and the holdings of
+/// each read from the other domains' stores through `reads`.
 pub struct LedgerBackedPorts {
     store: Box<dyn lib_database::UnitsStore>,
-    accounts: SharedAccountsStore,
-    inventory: SharedInventoryStore,
-    budgets: SharedBudgetsStore,
-    usage: InMemoryUnitUsage,
-    holdings: InMemoryHoldings,
+    reads: StoredUnitReads,
 }
 
 impl LedgerBackedPorts {
     pub fn shared(
         store: Box<dyn lib_database::UnitsStore>,
-        accounts: SharedAccountsStore,
-        inventory: SharedInventoryStore,
-        budgets: SharedBudgetsStore,
+        reads: StoredUnitReads,
     ) -> DesktopPorts {
-        Rc::new(RefCell::new(Self {
-            store,
-            accounts,
-            inventory,
-            budgets,
-            usage: InMemoryUnitUsage::default(),
-            holdings: InMemoryHoldings::default(),
-        }))
-    }
-
-    /// Copies what names each Unit from the Accounts, Inventory and Budgets stores and `ledger`,
-    /// so the next Interactor and view model read it.
-    fn copy_usage(&mut self, ledger: &Ledger) {
-        crate::accounts::ports::recount(&self.accounts, ledger);
-        let accounts = self.accounts.borrow();
-        let inventory = self.inventory.borrow();
-        let budgets = self.budgets.borrow();
-        let ids: Vec<UnitId> = self
-            .store
-            .units()
-            .units()
-            .into_iter()
-            .map(|unit| unit.id)
-            .collect();
-        self.usage.uses = ids
-            .iter()
-            .map(|id| {
-                let usage = lib_units::UnitUse {
-                    accounts: accounts.unit_accounts(*id),
-                    locations: inventory.unit_locations(*id),
-                    budgets: budgets.unit_budgets(*id),
-                    ..ledger.unit_usage(*id)
-                };
-                (*id, usage)
-            })
-            .collect();
-        self.holdings.by_unit = ids
-            .iter()
-            .map(|id| (*id, accounts.holdings(*id)))
-            .collect::<HashMap<_, _>>();
+        Rc::new(RefCell::new(Self { store, reads }))
     }
 }
 
@@ -104,15 +52,15 @@ impl UnitsPorts for LedgerBackedPorts {
     }
 
     fn usage(&self) -> &dyn UnitUsage {
-        &self.usage
+        &self.reads
     }
 
     fn holdings(&self) -> &dyn UnitHoldings {
-        &self.holdings
+        &self.reads
     }
 
     fn split_mut(&mut self) -> PortsMut<'_> {
-        self.store.split_mut(&self.usage)
+        self.store.split_mut(&self.reads)
     }
 }
 
@@ -157,12 +105,6 @@ pub fn unquote_for_test(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: 
     refresh(ports, ledger, cx);
 }
 
-/// Copies what names each Unit from `ledger` into `ports`, for a view model drawn outside an
-/// event.
-pub fn copy_usage(ports: &DesktopPorts, ledger: &Ledger) {
-    ports.borrow_mut().copy_usage(ledger);
-}
-
 /// Puts the ports back to the rows as stored, after a write that named the Units failed, and
 /// brings the Ledger read copy in line, announcing `Domain::Units` so every Units view model is
 /// rebuilt (ADR-0046).
@@ -180,8 +122,8 @@ pub fn reload(
 }
 
 /// Brings the Ledger read copy in line with the ports, announcing `Domain::Units` when it changed,
-/// and copies usage and holdings back for the next Units event. Run before and after every Units
-/// event and Dialog confirm, so Bills, Budgets, Transactions and the Dashboard see a write at once.
+/// Run before and after every Units event and Dialog confirm, so Bills, Budgets, Transactions and
+/// the Dashboard see a write at once.
 pub fn refresh(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: &mut App) {
     let (units, base, records) = {
         let ports = ports.borrow();
@@ -194,5 +136,4 @@ pub fn refresh(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: &mut App)
     ledger.update(cx, |store, cx| {
         store.refresh_units(units, base, records, cx)
     });
-    copy_usage(ports, ledger.read(cx).ledger());
 }

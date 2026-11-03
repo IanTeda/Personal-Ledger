@@ -67,8 +67,12 @@ impl UnitUsage for StoredUsage {
 }
 
 impl UnitHoldings for StoredUsage {
+    /// The Accounts' rows with the Transactions store's count of what is booked to each (#993).
     fn holdings(&self, id: UnitId) -> Vec<Holding> {
-        self.accounts.holdings(id)
+        let counts = self
+            .transactions
+            .account_transaction_counts(&self.accounts.unit_account_ids(id));
+        self.accounts.holdings(id, &counts)
     }
 }
 

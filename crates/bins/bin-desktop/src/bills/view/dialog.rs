@@ -171,16 +171,13 @@ fn send<P, E>(
 impl EventEmitter<DialogClosed> for BillsDialog {}
 
 impl HostedDialog for BillsDialog {
-    /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) runs with
-    /// the Ledger read copy in line before it, and one that wrote something, after it.
+    /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) brings the
+    /// Ledger's read copies in line after it, as it may have written something.
     fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) -> bool {
         let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
-        if may_confirm {
-            ports::copy_reads(&self.ports, self.ledger.read(cx).ledger());
-        }
         let router = self.input_event(input);
         if may_confirm {
-            ports::refresh(&self.ports, &self.ledger, cx);
+            ports::refresh(&self.ledger, cx);
         }
         self.closed(router, cx);
         true
@@ -196,9 +193,8 @@ impl HostedDialog for BillsDialog {
     /// Sends Confirm to the Presenter, which runs its Interactor. A refusal stays on the
     /// Presenter's view model and keeps the Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
-        ports::copy_reads(&self.ports, self.ledger.read(cx).ledger());
         let router = self.close_event(true);
-        ports::refresh(&self.ports, &self.ledger, cx);
+        ports::refresh(&self.ledger, cx);
         self.closed(router, cx);
     }
 

@@ -21,7 +21,7 @@ use std::collections::BTreeSet;
 use std::rc::Rc;
 
 use gpui::{Context, Entity, EventEmitter, Subscription};
-use lib_accounts::AccountUse;
+use lib_accounts::{AccountUsage as _, AccountUse};
 use lib_bills::BillsPorts as _;
 use lib_core::AccountId;
 use lib_database::{
@@ -67,11 +67,17 @@ impl LedgerSetup {
         let ledger = Ledger::stub_on(today);
         let categories = crate::categories::ports::in_memory(&ledger);
         let budgets = crate::budgets::ports::in_memory(&ledger);
-        let accounts = crate::accounts::LedgerBackedPorts::in_memory(&ledger, budgets.clone());
         let transactions: SharedTransactionsStore =
             Rc::new(RefCell::new(lib_transactions::fake::InMemoryTransactions {
                 transactions: ledger.transactions().to_vec(),
             }));
+        let accounts = crate::accounts::LedgerBackedPorts::in_memory(
+            &ledger,
+            lib_database::StoredAccountReads {
+                transactions: transactions.clone(),
+                budgets: budgets.clone(),
+            },
+        );
         let bills_store = crate::bills::ports::in_memory_store(&ledger);
         let payees = crate::payees::LedgerBackedPorts::in_memory(
             &ledger,
@@ -87,8 +93,8 @@ impl LedgerSetup {
             accounts.clone(),
             categories.clone(),
             transactions.clone(),
+            crate::bills::ports::in_memory_units(),
         );
-        crate::bills::ports::copy_reads(&bills, &ledger);
         Self {
             budgets,
             documents: Rc::new(RefCell::new(lib_documents::fake::InMemoryDocuments {
@@ -159,15 +165,21 @@ impl LedgerStore {
             },
         );
         let budgets = crate::budgets::ports::in_memory(&ledger);
-        let accounts = crate::accounts::LedgerBackedPorts::in_memory(&ledger, budgets.clone());
+        let accounts = crate::accounts::LedgerBackedPorts::in_memory(
+            &ledger,
+            lib_database::StoredAccountReads {
+                transactions: transactions.clone(),
+                budgets: budgets.clone(),
+            },
+        );
         let bills = LedgerBackedPorts::shared(
             bills_store,
             payees.clone(),
             accounts.clone(),
             categories.clone(),
             transactions.clone(),
+            crate::bills::ports::in_memory_units(),
         );
-        crate::bills::ports::copy_reads(&bills, &ledger);
         let institutions =
             crate::institutions::LedgerBackedPorts::in_memory(&ledger, accounts.clone());
         let inventory = crate::inventory::ports::in_memory(&ledger);
@@ -348,9 +360,13 @@ impl LedgerStore {
     }
 
     /// What names Account `id`, as its Edit and Delete Dialogs show: the Transactions counted by
-    /// the Accounts store, the Budgets by the Budgets store (#952).
+    /// the Transactions store, the Budgets by the Budgets store (#952, #993).
     pub fn account_usage(&self, id: AccountId) -> AccountUse {
-        crate::accounts::ports::usage(&self.accounts, &self.budgets, &self.ledger, id)
+        lib_database::StoredAccountReads {
+            transactions: self.transactions.clone(),
+            budgets: self.budgets.clone(),
+        }
+        .account_usage(id)
     }
 
     /// The Budgets store, which the Categories Monthly budget writes and the usage counts read.
@@ -379,6 +395,12 @@ impl LedgerStore {
             }
         }
         self.copy_inventory();
+        let bills = self.bills.borrow().store();
+        if let Some(memory) = bills.borrow_mut().memory_mut() {
+            memory.plans.clear();
+            memory.entries.clear();
+        }
+        self.copy_bills();
         let mut accounts = self.accounts.borrow_mut();
         for account in accounts.accounts().accounts() {
             accounts.accounts_mut().delete_account(account.id);
@@ -921,8 +943,14 @@ mod tests {
             },
         );
         let budgets: SharedBudgetsStore = Rc::new(RefCell::new(storage.budgets));
-        let accounts =
-            crate::accounts::LedgerBackedPorts::shared(Box::new(storage.accounts), budgets.clone());
+        let accounts = crate::accounts::LedgerBackedPorts::shared(
+            Box::new(storage.accounts),
+            lib_database::StoredAccountReads {
+                transactions: transactions.clone(),
+                budgets: budgets.clone(),
+            },
+        );
+        let units: lib_database::SharedUnitsStore = Rc::new(RefCell::new(storage.units));
         let institutions = crate::institutions::LedgerBackedPorts::shared(
             Box::new(storage.institutions),
             accounts.clone(),
@@ -933,6 +961,7 @@ mod tests {
             accounts.clone(),
             categories.clone(),
             transactions.clone(),
+            units,
         );
         let payments = crate::bill_payments::payments(transactions.clone(), &bills);
         let deletion =
@@ -972,7 +1001,7 @@ mod tests {
     ) -> lib_account_deletion::Result<lib_account_deletion::AccountDeleted> {
         let deleted = lib_account_deletion::interactor::DeleteAccount { id }
             .run(&mut *on.deletion.borrow_mut());
-        cx.update(|cx| crate::account_deletion::refresh(&on.bills, &on.store, cx));
+        cx.update(|cx| crate::account_deletion::refresh(&on.store, cx));
         deleted
     }
 
@@ -1167,7 +1196,6 @@ mod tests {
         }
         .run(&mut *payments.borrow_mut())
         .expect("the entry is paid");
-        cx.update(|cx| crate::bills::ports::copy_reads(&bills, store.read(cx).ledger()));
         {
             let mut ports = bills.borrow_mut();
             let ports = ports.split_mut();
@@ -1206,7 +1234,7 @@ mod tests {
             .run(ports.bills, ports.accounts, ports.categories)
             .expect("the plan is edited");
         }
-        cx.update(|cx| crate::bill_payments::refresh(&bills, &store, cx));
+        cx.update(|cx| crate::bill_payments::refresh(&store, cx));
         let before = bills_of(cx, &store);
         let transactions = store.read_with(cx, |store, _| store.ledger().transactions().to_vec());
 
@@ -1290,7 +1318,7 @@ mod tests {
                 ports.split_mut().bills.upsert_bill_plan(plan);
             }
         }
-        cx.update(|cx| crate::bills::ports::refresh(&on.bills, &on.store, cx));
+        cx.update(|cx| crate::bills::ports::refresh(&on.store, cx));
         on.pending.commit();
         let budgets = on
             .store

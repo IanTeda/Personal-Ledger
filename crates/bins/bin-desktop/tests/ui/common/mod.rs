@@ -26,7 +26,7 @@ use gpui::{
     App, Bounds, Entity, Modifiers, MouseButton, MouseDownEvent, MouseUpEvent, Pixels, Point,
     ScrollDelta, ScrollWheelEvent, Size, TestAppContext, VisualTestContext,
 };
-use lib_accounts::fake::{InMemoryAccountUsage, InMemoryAccounts};
+use lib_accounts::fake::InMemoryAccounts;
 use lib_accounts::{Account, AccountRepository};
 use lib_bills::fake::InMemoryBills;
 use lib_bills::{BillPlan, BillPlanRepository, BillScheduleEntry, BillScheduleRepository};
@@ -234,11 +234,9 @@ impl<T: AccountRepository> AccountRepository for Marked<T> {
 }
 
 /// An Accounts store whose writes never reach `stored`, the rows as they are on disk: a reload
-/// puts memory back to `stored`. Each write marks `written` for [`FailingCommit`]. Its usage is
-/// in memory, recounted from the Ledger by its holder.
+/// puts memory back to `stored`. Each write marks `written` for [`FailingCommit`].
 struct FailingAccounts {
     accounts: Marked<InMemoryAccounts>,
-    usage: InMemoryAccountUsage,
     stored: InMemoryAccounts,
 }
 
@@ -249,14 +247,6 @@ impl AccountsStore for FailingAccounts {
 
     fn accounts_mut(&mut self) -> &mut dyn AccountRepository {
         &mut self.accounts
-    }
-
-    fn usage(&self) -> &dyn lib_accounts::AccountUsage {
-        &self.usage
-    }
-
-    fn usage_to_count(&mut self) -> Option<&mut InMemoryAccountUsage> {
-        Some(&mut self.usage)
     }
 
     fn reload(&mut self) -> lib_database::Result<()> {
@@ -990,7 +980,6 @@ impl<'a> Harness<'a> {
                         inner: stored.clone(),
                         written: written.clone(),
                     },
-                    usage: InMemoryAccountUsage::default(),
                     stored,
                 }),
                 categories: Box::new(InMemoryCategories::stub()),

@@ -33,8 +33,8 @@ pub fn deletion(
 }
 
 /// Brings the Ledger's Units and Institutions read copies in line after a confirm, so the Units
-/// and Institutions pages, the Accounts and the Dashboard see the delete at once, and copies what
-/// names each Unit back into the Units ports for the next event. The confirm's input commits it.
+/// and Institutions pages, the Accounts and the Dashboard see the delete at once. The confirm's
+/// input commits it.
 pub(crate) fn refresh(
     units: &crate::units::DesktopPorts,
     ledger: &Entity<LedgerStore>,
@@ -42,5 +42,4 @@ pub(crate) fn refresh(
 ) {
     crate::units::ports::refresh(units, ledger, cx);
     crate::institutions::ports::refresh(ledger, cx);
-    crate::units::ports::copy_usage(units, ledger.read(cx).ledger());
 }

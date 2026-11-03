@@ -1,13 +1,11 @@
 //! The Bills ports as the Desktop holds them: the store `shell::router::build` is given, shared by
 //! the Bills module and `LedgerStore`, the Payees store Bills reads its Payees from (#831), the
 //! Accounts store it reads its Accounts from (#853), the Categories store it reads its
-//! Categories from (#858) and the Transactions store it reads its Splits from (#926), with the
-//! Units Bills reads copied from the Ledger (#778's halfway shim), and the step that keeps the
-//! Ledger's read copy in line after a Bills write. The write is committed by the input it was made
-//! in (`crate::input::send`), not here.
+//! Categories from (#858), the Transactions store it reads its Splits from (#926) and the Units
+//! store it reads its Unit codes from (#993), and the step that keeps the Ledger's read copy in
+//! line after a Bills write. The write is committed by the input it was made in
+//! (`crate::input::send`), not here.
 //!
-//! The Units are copied before each Bills event, since a port can't reach the `LedgerStore`
-//! Entity without a gpui context; they go when the Units answer through their own port.
 //! `LedgerStore` writes the store too, through [`forward`]: the Bills writer not yet migrated,
 //! Category reassign, still runs as a `LedgerCommand`. The store is shared with the Bill Payments
 //! module too, whose Pay it directly writes an entry, and the Account Deletion module, whose delete
@@ -17,7 +15,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use gpui::{App, Entity};
-use lib_bills::fake::InMemoryBillUnits;
 use lib_bills::interactor::PopulateSchedule;
 use lib_bills::{
     BillAccounts, BillCategories, BillPayees, BillPlan, BillPlanRepository, BillScheduleEntry,
@@ -26,7 +23,7 @@ use lib_bills::{
 };
 use lib_database::{
     SharedAccountsStore, SharedBillsStore, SharedCategoriesStore, SharedPayeesStore,
-    SharedTransactionsStore,
+    SharedTransactionsStore, SharedUnitsStore, StoredBillUnits,
 };
 use lib_ledger::{Ledger, LedgerChange};
 
@@ -101,14 +98,14 @@ impl BillTransactions for Transactions {
 }
 
 /// `store`'s Bill Plans and Bill Schedule, `payees`' Payees, `accounts`' Accounts, `categories`'
-/// Categories and `transactions`' Splits, with the Units copied from the Ledger.
+/// Categories, `transactions`' Splits and `units`' Unit codes.
 pub struct LedgerBackedPorts {
     store: Store,
     payees: Payees,
     accounts: Accounts,
     categories: Categories,
     transactions: Transactions,
-    units: InMemoryBillUnits,
+    units: StoredBillUnits,
 }
 
 impl LedgerBackedPorts {
@@ -118,6 +115,7 @@ impl LedgerBackedPorts {
         accounts: SharedAccountsStore,
         categories: SharedCategoriesStore,
         transactions: SharedTransactionsStore,
+        units: SharedUnitsStore,
     ) -> DesktopPorts {
         Rc::new(RefCell::new(Self {
             store: Store(store),
@@ -125,28 +123,28 @@ impl LedgerBackedPorts {
             accounts: Accounts(accounts),
             categories: Categories(categories),
             transactions: Transactions(transactions),
-            units: InMemoryBillUnits::default(),
+            units: StoredBillUnits { units },
         }))
     }
 
     /// `ledger`'s own Bill Plans and Bill Schedule in memory, reading `payees`, `accounts`,
-    /// `categories` and `transactions`, for a test that needs no storage.
+    /// `categories`, `transactions` and `units`, for a test that needs no storage.
     pub fn in_memory(
         ledger: &Ledger,
         payees: SharedPayeesStore,
         accounts: SharedAccountsStore,
         categories: SharedCategoriesStore,
         transactions: SharedTransactionsStore,
+        units: SharedUnitsStore,
     ) -> DesktopPorts {
-        let ports = Self::shared(
+        Self::shared(
             in_memory_store(ledger),
             payees,
             accounts,
             categories,
             transactions,
-        );
-        ports.borrow_mut().copy_reads(ledger);
-        ports
+            units,
+        )
     }
 
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
@@ -160,19 +158,6 @@ impl LedgerBackedPorts {
     /// The Bills store the ports write, which the Bill Payments module writes too.
     pub fn store(&self) -> SharedBillsStore {
         self.store.0.clone()
-    }
-
-    /// Copies the Units Bills reads from `ledger`, so the next Interactor and view model read
-    /// them.
-    fn copy_reads(&mut self, ledger: &Ledger) {
-        self.units = InMemoryBillUnits {
-            codes: ledger
-                .units()
-                .iter()
-                .map(|unit| (unit.id, unit.code.clone()))
-                .collect(),
-            base: ledger.base_unit_row().map(|unit| unit.id),
-        };
     }
 }
 
@@ -209,6 +194,14 @@ impl BillsPorts for LedgerBackedPorts {
             categories: &self.categories,
         }
     }
+}
+
+/// The stub Units in memory as the store Bills reads its Unit codes from, for a test that needs no
+/// storage and builds the Bills ports before the Units module's.
+pub fn in_memory_units() -> SharedUnitsStore {
+    Rc::new(RefCell::new(lib_units::fake::InMemoryPorts::stub(
+        chrono::Utc::now(),
+    )))
 }
 
 /// `ledger`'s own Bill Plans and Bill Schedule as an in-memory store, for a test that needs no
@@ -260,21 +253,14 @@ pub fn new_month(
     cx: &mut App,
 ) {
     PopulateSchedule { today }.run(ports.borrow_mut().split_mut().bills);
-    refresh(ports, ledger, cx);
-}
-
-/// Copies the Units Bills reads from `ledger` into `ports`, before an event or for a view model
-/// drawn outside one.
-pub fn copy_reads(ports: &DesktopPorts, ledger: &Ledger) {
-    ports.borrow_mut().copy_reads(ledger);
+    refresh(ledger, cx);
 }
 
 /// Brings the Ledger's Bills read copy in line with the ports, announcing `Domain::Bills` when it
-/// changed, and copies the reads back for the next event. Run after every Bills event and Dialog
-/// confirm, so the Dashboard, the rail badge, Budgets and Documents see a write at once.
-pub fn refresh(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: &mut App) {
+/// changed. Run after every Bills event and Dialog confirm, so the Dashboard, the rail badge,
+/// Budgets and Documents see a write at once.
+pub fn refresh(ledger: &Entity<LedgerStore>, cx: &mut App) {
     ledger.update(cx, |store, cx| store.refresh_bills(cx));
-    copy_reads(ports, ledger.read(cx).ledger());
 }
 
 #[cfg(test)]
@@ -292,10 +278,11 @@ mod tests {
             payees(&ledger),
             crate::accounts::LedgerBackedPorts::in_memory(
                 &ledger,
-                crate::budgets::ports::in_memory(&ledger),
+                crate::accounts::ports::in_memory_reads(&ledger),
             ),
             categories(&ledger),
             transactions(&ledger),
+            in_memory_units(),
         );
         (ledger, ports)
     }
@@ -356,16 +343,16 @@ mod tests {
             store.clone(),
             crate::accounts::LedgerBackedPorts::in_memory(
                 &ledger,
-                crate::budgets::ports::in_memory(&ledger),
+                crate::accounts::ports::in_memory_reads(&ledger),
             ),
             categories(&ledger),
             transactions(&ledger),
+            in_memory_units(),
         );
         let mut renamed = ledger.payees()[0].clone();
         renamed.name = "Renamed in the store".into();
         lib_payees::PayeeRepository::upsert_payee(store.borrow_mut().payees_mut(), renamed.clone());
         ledger.refresh_payees(Vec::new());
-        copy_reads(&ports, &ledger);
 
         let read = ports.borrow().payees().bill_payees();
         assert_eq!(read.len(), store.borrow().payees().payees().len());
@@ -377,7 +364,7 @@ mod tests {
         let (mut ledger, _) = stub();
         let store = crate::accounts::LedgerBackedPorts::in_memory(
             &ledger,
-            crate::budgets::ports::in_memory(&ledger),
+            crate::accounts::ports::in_memory_reads(&ledger),
         );
         let ports = LedgerBackedPorts::in_memory(
             &ledger,
@@ -385,6 +372,7 @@ mod tests {
             store.clone(),
             categories(&ledger),
             transactions(&ledger),
+            in_memory_units(),
         );
         let mut renamed = ledger.accounts()[1].clone();
         renamed.name = "Renamed in the store".into();
@@ -393,7 +381,6 @@ mod tests {
             .accounts_mut()
             .upsert_account(renamed.clone());
         ledger.refresh_accounts(Vec::new());
-        copy_reads(&ports, &ledger);
 
         let read = ports.borrow().accounts().bill_accounts();
         assert_eq!(read.len(), store.borrow().accounts().accounts().len());
@@ -409,10 +396,11 @@ mod tests {
             payees(&ledger),
             crate::accounts::LedgerBackedPorts::in_memory(
                 &ledger,
-                crate::budgets::ports::in_memory(&ledger),
+                crate::accounts::ports::in_memory_reads(&ledger),
             ),
             store.clone(),
             transactions(&ledger),
+            in_memory_units(),
         );
         let mut renamed = ledger.categories()[6].clone();
         renamed.name = "Renamed in the store".into();
@@ -421,7 +409,6 @@ mod tests {
             .categories_mut()
             .upsert_category(renamed.clone());
         ledger.refresh_categories(Vec::new());
-        copy_reads(&ports, &ledger);
 
         let read = ports.borrow().categories().bill_categories();
         assert_eq!(read.len(), store.borrow().categories().categories().len());
@@ -437,16 +424,16 @@ mod tests {
             payees(&ledger),
             crate::accounts::LedgerBackedPorts::in_memory(
                 &ledger,
-                crate::budgets::ports::in_memory(&ledger),
+                crate::accounts::ports::in_memory_reads(&ledger),
             ),
             categories(&ledger),
             store.clone(),
+            in_memory_units(),
         );
         let mut booked = ledger.transactions()[0].clone();
         booked.id = lib_core::TransactionId::new();
         booked.description = Some("Booked in the store".into());
         store.borrow_mut().upsert_transaction(booked.clone());
-        copy_reads(&ports, &ledger);
 
         let read = ports
             .borrow()

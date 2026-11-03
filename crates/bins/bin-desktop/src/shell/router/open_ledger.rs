@@ -151,17 +151,40 @@ impl OpenLedger {
         let budgets: lib_database::SharedBudgetsStore = Rc::new(std::cell::RefCell::new(budgets));
         // The Accounts store is shared by the Ledger's forwarding shim and the Units and Bills reads
         // (#853), and the Institutions' reads of which Accounts name one (#876).
-        let accounts = crate::accounts::LedgerBackedPorts::shared(accounts, budgets.clone());
+        let accounts = crate::accounts::LedgerBackedPorts::shared(
+            accounts,
+            lib_database::StoredAccountReads {
+                transactions: transactions.clone(),
+                budgets: budgets.clone(),
+            },
+        );
         let institutions =
             crate::institutions::LedgerBackedPorts::shared(institutions, accounts.clone());
         let institutions_setup =
             crate::institutions::InstitutionsSetup::new(institutions.clone(), keybindings);
+        // The Units ports count what names each Unit in the Accounts, Transactions, Bills,
+        // Budgets, Inventory and Institutions stores, and answer the Bills reads of the Unit codes
+        // (#993), so they are built before the Bills ports.
+        let units = crate::units::UnitsSetup::new(
+            units,
+            lib_database::StoredUnitReads {
+                accounts: accounts.clone(),
+                transactions: transactions.clone(),
+                bills: bills.clone(),
+                budgets: budgets.clone(),
+                inventory: inventory.clone(),
+                institutions: institutions.clone(),
+            },
+            &institutions,
+            keybindings,
+        );
         let bills = crate::bills::LedgerBackedPorts::shared(
             bills,
             payees.clone(),
             accounts.clone(),
             categories.clone(),
             transactions.clone(),
+            units.ports.clone(),
         );
         let tags_setup = crate::tags::TagsSetup::new(tags.clone(), keybindings);
         let inventory_setup = crate::inventory::InventorySetup::new(inventory.clone(), keybindings);
@@ -179,14 +202,6 @@ impl OpenLedger {
         };
         let accounts_setup =
             crate::accounts::AccountsSetup::new(accounts.clone(), account_deletion, keybindings);
-        let units = crate::units::UnitsSetup::new(
-            units,
-            accounts.clone(),
-            inventory.clone(),
-            budgets.clone(),
-            &institutions,
-            keybindings,
-        );
         // The Documents store is shared by the Ledger's forwarding shim and read copy and the Document
         // Types page (#963, #966).
         let documents: lib_database::SharedDocumentsStore =
@@ -246,7 +261,7 @@ impl OpenLedger {
             payees: storage.payees.clone(),
         });
         let budgets_ports =
-            crate::budgets::ports::DesktopPorts::new(storage.budgets.clone(), budget_reads);
+            crate::budgets::ports::DesktopPorts::new(storage.budgets.clone(), budget_reads.clone());
         // The Documents page writes the store through its Interactors, and reads the other
         // domains through their stores (#967).
         let documents_store = crate::document_types::ports::shared(&storage.documents);
@@ -295,6 +310,7 @@ impl OpenLedger {
             DashboardView::new(
                 DashboardSources {
                     ledger: ledger.clone(),
+                    budget_reads,
                 },
                 clock,
                 cx,

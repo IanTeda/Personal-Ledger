@@ -86,12 +86,11 @@ impl DeletionReads for LedgerReads<'_> {
 
 /// Brings the Ledger's Accounts, Transactions and Bills read copies in line after a confirm, so
 /// the Accounts page, the Transactions View, the Dashboard and the Bills page see the delete at
-/// once, and copies the reads back into the Bills ports for the next event. The confirm's input
-/// commits it.
-pub(crate) fn refresh(bills: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: &mut App) {
+/// once. The confirm's input commits it.
+pub(crate) fn refresh(ledger: &Entity<LedgerStore>, cx: &mut App) {
     ledger.update(cx, |store, cx| {
         store.refresh_accounts(cx);
         store.refresh_transactions(cx);
     });
-    crate::bills::ports::refresh(bills, ledger, cx);
+    crate::bills::ports::refresh(ledger, cx);
 }

@@ -138,9 +138,8 @@ impl DeleteUnitDialog {
         deletion: &SharedUnitDeletion,
         ledger: &Entity<LedgerStore>,
         landed: Landed,
-        cx: &App,
+        _cx: &App,
     ) -> Option<Self> {
-        crate::units::ports::copy_usage(ports, ledger.read(cx).ledger());
         let presenter = DeleteUnitPresenter::new(ports.clone(), deletion.clone(), id)?;
         Some(Self {
             presenter,

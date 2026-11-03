@@ -39,15 +39,16 @@
 //! test that drives only the Units: a domain joining the bundle then needs no edit there (#849).
 
 use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::mpsc;
 
 use chrono::NaiveDate;
-use lib_accounts::{AccountRepository, AccountUsage};
+use lib_accounts::{AccountRepository, AccountUsage, AccountUse};
 use lib_bills::fake::InMemoryBills;
 use lib_bills::{
     BillAccount, BillCategory, BillPayee, BillPlanRepository, BillScheduleRepository, BillSplit,
-    BillTransactions, SplitRef,
+    BillTransactions, BillUnits, SplitRef,
 };
 use lib_budgets::fake::InMemoryBudgets;
 use lib_budgets::{
@@ -76,8 +77,8 @@ use lib_transactions::fake::InMemoryTransactions;
 use lib_transactions::{Transaction, TransactionRepository};
 use lib_units::fake::InMemoryPorts;
 use lib_units::{
-    BaseUnitRepository, Holding, PortsMut, PriceSourceRepository, UnitRepository, UnitUsage,
-    UnitsPorts,
+    BaseUnitRepository, Holding, PortsMut, PriceSourceRepository, UnitHoldings, UnitRepository,
+    UnitUsage, UnitUse, UnitsPorts,
 };
 
 use crate::adapter::payees::bill_payees;
@@ -172,6 +173,16 @@ pub trait InstitutionsStore {
 
     fn institutions_mut(&mut self) -> &mut dyn InstitutionRepository;
 
+    /// How many Institutions name `unit` as their Usual unit: the Institutions half of `lib-units`'
+    /// `UnitUsage`.
+    fn unit_institutions(&self, unit: UnitId) -> usize {
+        self.institutions()
+            .institutions()
+            .iter()
+            .filter(|institution| institution.usual_unit == Some(unit))
+            .count()
+    }
+
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
     /// # Errors
@@ -248,6 +259,10 @@ impl<T: InstitutionsStore + ?Sized> InstitutionsStore for Box<T> {
         (**self).institutions_mut()
     }
 
+    fn unit_institutions(&self, unit: UnitId) -> usize {
+        (**self).unit_institutions(unit)
+    }
+
     fn reload(&mut self) -> Result<()> {
         (**self).reload()
     }
@@ -257,30 +272,32 @@ impl<T: InstitutionsStore + ?Sized> InstitutionsStore for Box<T> {
 /// Single-threaded, as the ports are.
 pub type SharedAccountsStore = Rc<RefCell<dyn AccountsStore>>;
 
-/// The Accounts repository and usage ports, wherever they are kept, and the rows as the Units and
-/// Bills read them. The reads are the store's to answer, since the orphan rule stops
+/// The Accounts repository port, wherever it is kept, and the rows as the Units and
+/// Bills read them. What names an Account is other domains' rows, which [`StoredAccountReads`]
+/// counts in their stores (#993). The reads are the store's to answer, since the orphan rule stops
 /// `lib-database` implementing `lib-units`' and `lib-bills`' ports for `lib-accounts`' fake.
 pub trait AccountsStore {
     fn accounts(&self) -> &dyn AccountRepository;
 
     fn accounts_mut(&mut self) -> &mut dyn AccountRepository;
 
-    /// The Transactions booked to each Account. Its Budgets count is the holder's to add from the
-    /// Budgets store ([`BudgetsStore::account_budgets`]).
-    fn usage(&self) -> &dyn AccountUsage;
-
-    /// The usage a store holds in memory rather than counts, for its holder to recount from the
-    /// Transactions it can see before each ask. `None` for the adapter, which counts in the file
-    /// on each ask.
-    fn usage_to_count(&mut self) -> Option<&mut lib_accounts::fake::InMemoryAccountUsage> {
-        None
+    /// The ids of the Accounts whose Unit is `unit`, in order: what [`Self::holdings`] needs
+    /// Transactions counted for.
+    fn unit_account_ids(&self, unit: UnitId) -> Vec<AccountId> {
+        self.accounts()
+            .accounts()
+            .iter()
+            .filter(|account| account.unit == unit)
+            .map(|account| account.id)
+            .collect()
     }
 
-    /// The Accounts whose Unit is `unit`, in order, as `lib-units`' `UnitHoldings` reads them.
-    fn holdings(&self, unit: UnitId) -> Vec<Holding> {
-        let usage = self.usage();
+    /// The Accounts whose Unit is `unit`, in order, as `lib-units`' `UnitHoldings` reads them, each
+    /// with the Transactions `transactions` counts for it (the Transactions store's, as an Account
+    /// not listed has none).
+    fn holdings(&self, unit: UnitId, transactions: &HashMap<AccountId, usize>) -> Vec<Holding> {
         accounts::holdings(&self.accounts().accounts(), unit, |id| {
-            usage.account_usage(id).transactions
+            transactions.get(&id).copied().unwrap_or_default()
         })
     }
 
@@ -328,19 +345,6 @@ impl AccountsStore for AccountsAdapter {
         AccountsAdapter::accounts_mut(self)
     }
 
-    fn usage(&self) -> &dyn AccountUsage {
-        AccountsAdapter::usage(self)
-    }
-
-    /// One count of the file for every Account, rather than one per Account.
-    fn holdings(&self, unit: UnitId) -> Vec<Holding> {
-        lib_units::UnitHoldings::holdings(self, unit)
-    }
-
-    fn unit_accounts(&self, unit: UnitId) -> usize {
-        UnitUsage::unit_usage(self, unit).accounts
-    }
-
     fn bill_accounts(&self) -> Vec<BillAccount> {
         lib_bills::BillAccounts::bill_accounts(self)
     }
@@ -364,16 +368,12 @@ impl<T: AccountsStore + ?Sized> AccountsStore for Box<T> {
         (**self).accounts_mut()
     }
 
-    fn usage(&self) -> &dyn AccountUsage {
-        (**self).usage()
+    fn unit_account_ids(&self, unit: UnitId) -> Vec<AccountId> {
+        (**self).unit_account_ids(unit)
     }
 
-    fn usage_to_count(&mut self) -> Option<&mut lib_accounts::fake::InMemoryAccountUsage> {
-        (**self).usage_to_count()
-    }
-
-    fn holdings(&self, unit: UnitId) -> Vec<Holding> {
-        (**self).holdings(unit)
+    fn holdings(&self, unit: UnitId, transactions: &HashMap<AccountId, usize>) -> Vec<Holding> {
+        (**self).holdings(unit, transactions)
     }
 
     fn unit_accounts(&self, unit: UnitId) -> usize {
@@ -393,8 +393,9 @@ impl<T: AccountsStore + ?Sized> AccountsStore for Box<T> {
     }
 }
 
-/// Memory is all there is, so a reload has nothing to read, and the usage is whatever its holder
-/// last counted.
+/// Memory is all there is, so a reload has nothing to read. Only the Accounts are the store's: its
+/// usage is `lib-accounts`' own test fake, which a Client reads through [`StoredAccountReads`]
+/// instead.
 impl AccountsStore for lib_accounts::fake::InMemoryPorts {
     fn accounts(&self) -> &dyn AccountRepository {
         &self.accounts
@@ -402,14 +403,6 @@ impl AccountsStore for lib_accounts::fake::InMemoryPorts {
 
     fn accounts_mut(&mut self) -> &mut dyn AccountRepository {
         &mut self.accounts
-    }
-
-    fn usage(&self) -> &dyn AccountUsage {
-        &self.usage
-    }
-
-    fn usage_to_count(&mut self) -> Option<&mut lib_accounts::fake::InMemoryAccountUsage> {
-        Some(&mut self.usage)
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -771,6 +764,14 @@ pub trait TransactionsStore {
         transactions::category_splits(&self.all_transactions(), id)
     }
 
+    /// The Transactions booked to each of `accounts` that has any: the Transactions half of
+    /// [`StoredAccountReads`]' `AccountUsage` and of [`StoredUnitReads`]' holdings. An in-memory
+    /// store counts its own rows; the adapter counts in the file in one query, and answers none
+    /// for a count it can't read.
+    fn account_transaction_counts(&self, accounts: &[AccountId]) -> HashMap<AccountId, usize> {
+        transactions::account_transaction_counts(&self.all_transactions(), accounts)
+    }
+
     /// The Splits naming Payee `id`, `None` when they can't be counted: the Splits half of
     /// [`StoredPayeeReads`]' `PayeeUsage`. An in-memory store counts its own rows; the adapter
     /// counts in the file.
@@ -810,6 +811,10 @@ impl TransactionsStore for TransactionsAdapter {
         TransactionsAdapter::payee_splits(self, id)
     }
 
+    fn account_transaction_counts(&self, accounts: &[AccountId]) -> HashMap<AccountId, usize> {
+        TransactionsAdapter::account_transaction_counts(self, accounts)
+    }
+
     fn reload(&mut self) -> Result<()> {
         TransactionsAdapter::reload(self)
     }
@@ -843,6 +848,10 @@ impl<T: TransactionsStore + ?Sized> TransactionsStore for Box<T> {
 
     fn payee_splits(&self, id: PayeeId) -> Option<usize> {
         (**self).payee_splits(id)
+    }
+
+    fn account_transaction_counts(&self, accounts: &[AccountId]) -> HashMap<AccountId, usize> {
+        (**self).account_transaction_counts(accounts)
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -881,6 +890,10 @@ impl TransactionsStore for InMemoryTransactions {
         Some(transactions::payee_splits(&self.transactions, id))
     }
 
+    fn account_transaction_counts(&self, accounts: &[AccountId]) -> HashMap<AccountId, usize> {
+        transactions::account_transaction_counts(&self.transactions, accounts)
+    }
+
     fn reload(&mut self) -> Result<()> {
         Ok(())
     }
@@ -909,6 +922,21 @@ pub trait BillsStore {
     /// Every Bill Plan as `lib-documents`' `DocumentBillPlans` reads it.
     fn document_bill_plans(&self) -> Vec<DocumentBillPlan> {
         bills::document_bill_plans(&self.plans().bill_plans())
+    }
+
+    /// The rows a store holds only in memory, for a test to clear directly, since a Bill Plan is
+    /// never deleted through the port. `None` for the adapter.
+    fn memory_mut(&mut self) -> Option<&mut InMemoryBills> {
+        None
+    }
+
+    /// How many Bill Plans are named in `unit`: the Bill Plans half of `lib-units`' `UnitUsage`.
+    fn unit_bill_plans(&self, unit: UnitId) -> usize {
+        self.plans()
+            .bill_plans()
+            .iter()
+            .filter(|plan| plan.unit == unit)
+            .count()
     }
 
     /// The Bill Plans naming Payee `id`, `None` when they can't be counted: the Bill Plans half of
@@ -973,6 +1001,14 @@ impl<T: BillsStore + ?Sized> BillsStore for Box<T> {
         (**self).payee_bill_plans(id)
     }
 
+    fn unit_bill_plans(&self, unit: UnitId) -> usize {
+        (**self).unit_bill_plans(unit)
+    }
+
+    fn memory_mut(&mut self) -> Option<&mut InMemoryBills> {
+        (**self).memory_mut()
+    }
+
     fn reload(&mut self) -> Result<()> {
         (**self).reload()
     }
@@ -994,6 +1030,10 @@ impl BillsStore for InMemoryBills {
 
     fn entries_mut(&mut self) -> &mut dyn BillScheduleRepository {
         self
+    }
+
+    fn memory_mut(&mut self) -> Option<&mut InMemoryBills> {
+        Some(self)
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -1239,6 +1279,80 @@ impl BudgetPayees for StoredBudgetReads {
     }
 }
 
+/// `lib-accounts`' `AccountUsage` answered by the shared stores of the domains that name an
+/// Account, each borrowed for the one read (#993), as [`StoredPayeeReads`] answers Payees'. The
+/// same struct stands over [`Stores::fake`]'s in-memory stores and the adapters. The Transactions
+/// store counts the Transactions booked to the Account and the Budgets store the Budgets that
+/// count it.
+#[derive(Clone)]
+pub struct StoredAccountReads {
+    pub transactions: SharedTransactionsStore,
+    pub budgets: SharedBudgetsStore,
+}
+
+impl AccountUsage for StoredAccountReads {
+    fn account_usage(&self, id: AccountId) -> AccountUse {
+        let counts = self.transactions.borrow().account_transaction_counts(&[id]);
+        AccountUse {
+            transactions: counts.get(&id).copied().unwrap_or_default(),
+            budgets: self.budgets.borrow().account_budgets(id),
+        }
+    }
+}
+
+/// `lib-units`' `UnitUsage` and `UnitHoldings` answered by the shared stores of the domains that
+/// name a Unit, each borrowed for the one read (#993): the Accounts (with their Transactions
+/// counted by the Transactions store), Bill Plans, Budgets, Locations and Institutions.
+#[derive(Clone)]
+pub struct StoredUnitReads {
+    pub accounts: SharedAccountsStore,
+    pub transactions: SharedTransactionsStore,
+    pub bills: SharedBillsStore,
+    pub budgets: SharedBudgetsStore,
+    pub inventory: SharedInventoryStore,
+    pub institutions: SharedInstitutionsStore,
+}
+
+impl UnitUsage for StoredUnitReads {
+    fn unit_usage(&self, id: UnitId) -> UnitUse {
+        UnitUse {
+            accounts: self.accounts.borrow().unit_accounts(id),
+            bill_plans: self.bills.borrow().unit_bill_plans(id),
+            budgets: self.budgets.borrow().unit_budgets(id),
+            locations: self.inventory.borrow().unit_locations(id),
+            institutions: self.institutions.borrow().unit_institutions(id),
+        }
+    }
+}
+
+impl UnitHoldings for StoredUnitReads {
+    /// One count of the Transactions for every Account in the Unit, rather than one per Account.
+    fn holdings(&self, id: UnitId) -> Vec<Holding> {
+        let accounts = self.accounts.borrow();
+        let counts = self
+            .transactions
+            .borrow()
+            .account_transaction_counts(&accounts.unit_account_ids(id));
+        accounts.holdings(id, &counts)
+    }
+}
+
+/// `lib-bills`' `BillUnits` answered by the Units store, borrowed for the one read (#993).
+#[derive(Clone)]
+pub struct StoredBillUnits {
+    pub units: SharedUnitsStore,
+}
+
+impl BillUnits for StoredBillUnits {
+    fn unit_code(&self, id: UnitId) -> Option<String> {
+        self.units.borrow().unit_code(id)
+    }
+
+    fn base_unit(&self) -> Option<UnitId> {
+        Some(self.units.borrow().base_unit().base_unit())
+    }
+}
+
 /// `lib-payees`' two read ports answered by the shared stores of the domains Payees reads, each
 /// borrowed for the one read (#992), as [`StoredDocumentReads`] answers Documents'. The same
 /// struct stands over [`Stores::fake`]'s in-memory stores and the adapters, so the UI tests read
@@ -1429,7 +1543,7 @@ impl FakeStores {
             .accounts()
             .iter()
             .map(|account| {
-                let uses = lib_accounts::AccountUse {
+                let uses = AccountUse {
                     transactions: ledger.account_transactions(account.id),
                     budgets: budgets.account_budgets(account.id),
                 };
@@ -1562,5 +1676,153 @@ mod tests {
                 .any(|leaf| leaf.id == CategoryId::seed(7)),
             "the Categories store's leaves"
         );
+    }
+
+    fn in_memory_stub_stores() -> (
+        lib_ledger::Ledger,
+        SharedTransactionsStore,
+        SharedBillsStore,
+    ) {
+        let ledger = lib_ledger::Ledger::stub();
+        let transactions: SharedTransactionsStore = Rc::new(RefCell::new(InMemoryTransactions {
+            transactions: ledger.transactions().to_vec(),
+        }));
+        let bills: SharedBillsStore = Rc::new(RefCell::new(InMemoryBills {
+            plans: ledger.bill_plans().to_vec(),
+            entries: ledger.bill_entries().to_vec(),
+        }));
+        (ledger, transactions, bills)
+    }
+
+    /// An Account's use is counted in the Transactions and Budgets stores on each ask.
+    #[test]
+    fn stored_account_reads_count_the_in_memory_stores_rows() {
+        let (ledger, transactions, _) = in_memory_stub_stores();
+        let budgets: SharedBudgetsStore = Rc::new(RefCell::new(InMemoryBudgets {
+            budgets: ledger.budgets().all().to_vec(),
+        }));
+        let reads = StoredAccountReads {
+            transactions: transactions.clone(),
+            budgets,
+        };
+        let everyday = AccountId::seed(2);
+        let before = reads.account_usage(everyday);
+        assert!(before.transactions > 0);
+        assert_eq!(before.budgets, 2);
+        assert_eq!(reads.account_usage(AccountId::new()), AccountUse::default());
+
+        let mut booked = ledger.transactions()[0].clone();
+        booked.id = lib_core::TransactionId::seed(9_999);
+        booked.account_id = everyday;
+        transactions.borrow_mut().upsert_transaction(booked);
+
+        assert_eq!(
+            reads.account_usage(everyday).transactions,
+            before.transactions + 1
+        );
+    }
+
+    /// A Unit's use and holdings are counted in the Accounts, Transactions, Bills and Budgets
+    /// stores.
+    #[test]
+    fn stored_unit_reads_count_the_in_memory_stores_rows() {
+        let (ledger, transactions, bills) = in_memory_stub_stores();
+        let accounts: SharedAccountsStore =
+            Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts {
+                accounts: lib_accounts::fake::InMemoryAccounts {
+                    accounts: ledger.accounts().to_vec(),
+                },
+                ..Default::default()
+            }));
+        let reads = StoredUnitReads {
+            accounts,
+            transactions,
+            bills,
+            budgets: Rc::new(RefCell::new(InMemoryBudgets {
+                budgets: ledger.budgets().all().to_vec(),
+            })),
+            inventory: Rc::new(RefCell::new(InMemoryInventory::default())),
+            institutions: Rc::new(RefCell::new(InMemoryInstitutions::stub())),
+        };
+        let aud = UnitId::SEED_AUD;
+
+        let usage = reads.unit_usage(aud);
+        assert_eq!(
+            usage.accounts,
+            ledger.accounts().iter().filter(|a| a.unit == aud).count()
+        );
+        assert_eq!(
+            usage.bill_plans,
+            ledger.bill_plans().iter().filter(|p| p.unit == aud).count()
+        );
+        assert_eq!(usage.locations, 0);
+        assert_eq!(reads.unit_usage(UnitId::new()), UnitUse::default());
+
+        let holdings = reads.holdings(aud);
+        assert_eq!(holdings.len(), usage.accounts);
+        let everyday = holdings
+            .iter()
+            .find(|holding| holding.name == "ANZ Everyday")
+            .expect("ANZ Everyday counts in aud");
+        assert_eq!(
+            usize::try_from(everyday.transactions).ok(),
+            Some(
+                ledger
+                    .transactions()
+                    .iter()
+                    .filter(|t| t.account_id == AccountId::seed(2))
+                    .count()
+            )
+        );
+        assert!(reads.holdings(UnitId::new()).is_empty());
+    }
+
+    /// Bills read a Unit's code and the base Unit from the Units store.
+    #[test]
+    fn stored_bill_units_read_the_units_store() {
+        let units: SharedUnitsStore =
+            Rc::new(RefCell::new(InMemoryPorts::stub(chrono::Utc::now())));
+        let reads = StoredBillUnits { units };
+        assert_eq!(reads.unit_code(UnitId::SEED_AUD).as_deref(), Some("aud"));
+        assert_eq!(reads.unit_code(UnitId::new()), None);
+        assert_eq!(reads.base_unit(), Some(UnitId::SEED_AUD));
+    }
+
+    /// The six Budgets read ports are answered by their stores, as the Ledger once answered them.
+    #[test]
+    fn stored_budget_reads_answer_each_port_from_its_store() {
+        let (ledger, transactions, bills) = in_memory_stub_stores();
+        let reads = StoredBudgetReads {
+            categories: Rc::new(RefCell::new(InMemoryCategories::stub())),
+            accounts: Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts::stub())),
+            transactions,
+            bills,
+            units: Rc::new(RefCell::new(InMemoryPorts::stub(chrono::Utc::now()))),
+            payees: Rc::new(RefCell::new(lib_payees::fake::InMemoryPorts::stub())),
+        };
+        let month = lib_core::Period::of(NaiveDate::from_ymd_opt(2026, 9, 21).expect("a date"));
+
+        let splits = reads.budget_splits(month.first_day(), month.last_day());
+        let expected: usize = ledger
+            .transactions()
+            .iter()
+            .filter(|t| month.contains(t.date))
+            .map(|t| t.splits.len())
+            .sum();
+        assert!(expected > 0);
+        assert_eq!(splits.len(), expected);
+        assert!(splits.iter().all(|split| month.contains(split.date)));
+
+        let open = ledger
+            .bill_entries()
+            .iter()
+            .filter(|entry| entry.is_open())
+            .count();
+        assert_eq!(reads.open_bills().len(), open);
+        assert!(!reads.budget_categories().is_empty());
+        assert!(!reads.budget_accounts().is_empty());
+        assert_eq!(reads.unit_code(UnitId::SEED_AUD).as_deref(), Some("aud"));
+        assert!(reads.payee_name(PayeeId::seed(1)).is_some());
+        assert!(reads.active_bill_plans().len() <= ledger.bill_plans().len());
     }
 }

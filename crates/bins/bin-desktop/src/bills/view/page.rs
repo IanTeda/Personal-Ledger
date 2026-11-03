@@ -70,12 +70,11 @@ impl BillsPage {
         clock: Clock,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        ports::copy_reads(&ports, ledger.read(cx).ledger());
         let presenter = BillsPagePresenter::new(ports.clone(), clock.clone(), keymap.clone());
-        // The rows name Accounts, Categories, Payees, Transactions and Units, which the Ledger
-        // still holds: a change to any is copied into the ports and redrawn, as is a Bills write
+        // The rows name Accounts, Categories, Payees, Transactions and Units, which the ports read
+        // from their stores on each ask: a change to any is redrawn, as is a Bills write
         // `LedgerStore` made (Account delete's Unmatch).
-        let _ledger_changed = cx.subscribe(&ledger, |page, ledger, event: &LedgerChanged, cx| {
+        let _ledger_changed = cx.subscribe(&ledger, |_, _, event: &LedgerChanged, cx| {
             let reads = [
                 Domain::Accounts,
                 Domain::Categories,
@@ -83,10 +82,9 @@ impl BillsPage {
                 Domain::Transactions,
                 Domain::Units,
             ];
-            if reads.iter().any(|domain| event.what.contains(domain)) {
-                ports::copy_reads(&page.ports, ledger.read(cx).ledger());
-                cx.notify();
-            } else if event.what.contains(&Domain::Bills) {
+            if reads.iter().any(|domain| event.what.contains(domain))
+                || event.what.contains(&Domain::Bills)
+            {
                 cx.notify();
             }
         });
@@ -124,7 +122,7 @@ impl BillsPage {
             cx,
         };
         self.presenter.handle(event, &mut router);
-        ports::refresh(&self.ports, &self.ledger, cx);
+        ports::refresh(&self.ledger, cx);
         if self.presenter.tab() != tab {
             self.scroll.set_offset(gpui::Point::default());
         }

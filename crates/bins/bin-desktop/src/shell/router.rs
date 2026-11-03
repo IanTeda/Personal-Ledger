@@ -681,7 +681,7 @@ impl Root {
             }
         }
         let open = self.open();
-        crate::bills::ports::refresh(&open.bills, &open.ledger, cx);
+        crate::bills::ports::refresh(&open.ledger, cx);
     }
 
     /// Leaves no Unit quoted in another, so a test can delete a seeded Unit instead of meeting the

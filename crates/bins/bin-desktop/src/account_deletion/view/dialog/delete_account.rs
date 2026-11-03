@@ -97,7 +97,7 @@ impl HostedDialog for DeleteAccountDialog {
     fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) -> bool {
         let router = self.send(DeleteAccountEvent::Input(input));
         if matches!(input, DialogInput::Select | DialogInput::Submit) {
-            crate::account_deletion::refresh(&self.bills, &self.ledger, cx);
+            crate::account_deletion::refresh(&self.ledger, cx);
         }
         self.closed(router, cx);
         true
@@ -111,7 +111,7 @@ impl HostedDialog for DeleteAccountDialog {
     /// line. A refusal stays on the view model and keeps the Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
         let router = self.send(DeleteAccountEvent::Confirm);
-        crate::account_deletion::refresh(&self.bills, &self.ledger, cx);
+        crate::account_deletion::refresh(&self.ledger, cx);
         self.closed(router, cx);
     }
 

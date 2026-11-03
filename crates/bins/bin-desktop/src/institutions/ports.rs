@@ -145,7 +145,7 @@ mod tests {
         let ledger = Ledger::stub();
         let accounts = crate::accounts::LedgerBackedPorts::in_memory(
             &ledger,
-            crate::budgets::ports::in_memory(&ledger),
+            crate::accounts::ports::in_memory_reads(&ledger),
         );
         let ports = LedgerBackedPorts::in_memory(&ledger, accounts);
         let ports = ports.borrow();
@@ -161,7 +161,7 @@ mod tests {
         let ledger = Ledger::stub();
         let accounts = crate::accounts::LedgerBackedPorts::in_memory(
             &ledger,
-            crate::budgets::ports::in_memory(&ledger),
+            crate::accounts::ports::in_memory_reads(&ledger),
         );
         let ports = LedgerBackedPorts::in_memory(&ledger, accounts);
         let ports = ports.borrow();

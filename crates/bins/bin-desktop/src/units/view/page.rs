@@ -170,9 +170,8 @@ impl UnitsPage {
         self.handle(UnitsPageEvent::DialogClosed(Some(outcome)), cx);
     }
 
-    /// The page as drawn, with usage and holdings as the Ledger has them now.
-    pub fn view_model(&self, cx: &App) -> UnitsPageViewModel {
-        ports::copy_usage(&self.ports, self.ledger.read(cx).ledger());
+    /// The page as drawn, with usage and holdings as the stores count them now.
+    pub fn view_model(&self, _cx: &App) -> UnitsPageViewModel {
         self.presenter.view_model()
     }
 

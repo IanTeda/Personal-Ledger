@@ -155,6 +155,26 @@ impl TransactionsAdapter {
 }
 
 impl TransactionsAdapter {
+    /// How many Transactions are booked to each of `accounts` that has any, counted in the file,
+    /// blocking: what the last commit left, not a write still pending. Counts only `accounts`'
+    /// Transactions, through `idx_transactions_account_id`, rather than grouping the whole table;
+    /// the list is a Unit's Accounts or one, so the placeholders stay few. It only feeds a figure
+    /// the Account Dialogs and the Units page show, so a count that can't be read is logged and
+    /// answered as none.
+    pub fn account_transaction_counts(&self, accounts: &[AccountId]) -> HashMap<AccountId, usize> {
+        let accounts = accounts.to_vec();
+        self.pending
+            .writer()
+            .run(move |pool| async move {
+                let mut conn = pool.acquire().await?;
+                count_account_transactions(&mut conn, &accounts).await
+            })
+            .inspect_err(|error| {
+                tracing::error!(%error, "Failed to count the Transactions booked to Accounts");
+            })
+            .unwrap_or_default()
+    }
+
     /// The Splits naming Payee `id` in the file, blocking: what the last commit left, not a write
     /// still pending. `None` when the count can't be read, logged, so a Payee that may be in use is
     /// never offered for deleting (#840).
@@ -176,6 +196,21 @@ impl TransactionsAdapter {
             })
             .ok()
     }
+}
+
+/// The Transactions among `transactions` booked to each of `accounts` that has any: how a store
+/// counts what it holds.
+pub(crate) fn account_transaction_counts(
+    transactions: &[Transaction],
+    accounts: &[AccountId],
+) -> HashMap<AccountId, usize> {
+    let mut counts = HashMap::new();
+    for transaction in transactions {
+        if accounts.contains(&transaction.account_id) {
+            *counts.entry(transaction.account_id).or_default() += 1;
+        }
+    }
+    counts
 }
 
 /// The Splits among `transactions` naming Payee `id`: how a store counts what it holds.
@@ -451,6 +486,39 @@ async fn read(conn: &mut SqliteConnection) -> Result<Vec<Transaction>> {
         )));
     }
     Ok(transactions)
+}
+
+/// The counts [`TransactionsAdapter::account_transaction_counts`] reads.
+async fn count_account_transactions(
+    conn: &mut SqliteConnection,
+    accounts: &[AccountId],
+) -> Result<HashMap<AccountId, usize>> {
+    if accounts.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let placeholders = vec!["?"; accounts.len()].join(", ");
+    let sql = format!(
+        "SELECT account_id, COUNT(*) FROM transactions WHERE account_id IN ({placeholders}) \
+         GROUP BY account_id"
+    );
+    let mut query = sqlx::query_as::<_, (AccountId, i64)>(&sql);
+    for account in accounts {
+        query = query.bind(*account);
+    }
+    query
+        .fetch_all(&mut *conn)
+        .await?
+        .into_iter()
+        .map(|(account_id, count)| {
+            usize::try_from(count)
+                .map(|count| (account_id, count))
+                .map_err(|_| {
+                    Error::Validation(format!(
+                        "Account {account_id}'s Transactions count is {count}"
+                    ))
+                })
+        })
+        .collect()
 }
 
 #[cfg(test)]

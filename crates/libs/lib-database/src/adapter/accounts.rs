@@ -1,6 +1,6 @@
-//! The Accounts adapter: `lib-accounts`' repository and `AccountUsage` ports over the `accounts`
-//! table, and the reads other modules make of the same rows: `lib-units`' `UnitHoldings` and the
-//! Accounts half of its `UnitUsage`, `lib-bills`' `BillAccounts`, `lib-institutions`'
+//! The Accounts adapter: `lib-accounts`' repository port over the `accounts` table, and the reads
+//! other modules make of the same rows: the Accounts half of `lib-units`' `UnitUsage` and its
+//! holdings (through `AccountsStore`), `lib-bills`' `BillAccounts`, `lib-institutions`'
 //! `InstitutionUsage`, `lib-transactions`' `TransactionAccounts` and `lib-transaction-import`'s
 //! `ImportAccounts` (ADR-0046, #853, #925, #945).
 //!
@@ -9,28 +9,24 @@
 //! shares, which the bin commits after each input. Every Account names a stored Institution, a
 //! Cash Account usually the Personal Institution (ADR-0049), so `institution_id` is never NULL.
 //!
-//! Usage is other domains' rows, so [`AccountUsage`] counts the `transactions` booked to an
-//! Account in the file, blocking: what the last commit left, not a write still pending. Budgets
-//! aren't persisted, so its Budgets count is always 0 here; the Desktop adds the `Ledger`'s until
-//! Budgets persist (#811). The count is only a figure the Account Dialogs and the Units page show,
-//! so one that can't be read is logged and answered as none. The `transactions` and `bill_plans`
-//! foreign keys refuse deleting an Account they name.
-
-use std::collections::HashMap;
+//! Usage is other domains' rows, so `lib-accounts`' `AccountUsage` is answered by
+//! [`StoredAccountReads`](crate::StoredAccountReads) from the Transactions and Budgets stores
+//! (#993), which count in the file. The `transactions` and `bill_plans` foreign keys refuse
+//! deleting an Account they name.
 
 use chrono::NaiveDate;
-use lib_accounts::{Account, AccountRepository, AccountUsage, AccountUse};
+use lib_accounts::{Account, AccountRepository};
 use lib_bills::{BillAccount, BillAccounts};
 use lib_core::{AccountId, AccountType, InstitutionId, Money, UnitId};
 use lib_institutions::{InstitutionUsage, InstitutionUse};
 use lib_transaction_import::{ImportAccount, ImportAccounts};
 use lib_transactions::{TransactionAccount, TransactionAccounts};
-use lib_units::{Holding, UnitHoldings, UnitUsage, UnitUse};
+use lib_units::Holding;
 use sqlx::SqliteConnection;
 
+use crate::Result;
 use crate::commit::PendingWrites;
 use crate::writer::{BoxFuture, Change, Domain, Writer};
-use crate::{Error, Result};
 
 /// One port write, saved in the order it was made.
 #[derive(Debug, Clone)]
@@ -42,18 +38,12 @@ enum AccountsChange {
 /// The Accounts domain, held in memory and saved through the shared writer.
 pub struct AccountsAdapter {
     accounts: StoredAccounts,
-    usage: StoredUsage,
 }
 
 /// The rows, with the batch their writes join.
 struct StoredAccounts {
     rows: Vec<Account>,
     pending: PendingWrites,
-}
-
-/// Counts in the file, read through the writer.
-struct StoredUsage {
-    writer: Writer,
 }
 
 impl AccountsAdapter {
@@ -69,9 +59,6 @@ impl AccountsAdapter {
             read(&mut conn).await
         })?;
         Ok(Self {
-            usage: StoredUsage {
-                writer: pending.writer().clone(),
-            },
             accounts: StoredAccounts { rows, pending },
         })
     }
@@ -125,10 +112,6 @@ impl AccountsAdapter {
     pub fn accounts_mut(&mut self) -> &mut dyn AccountRepository {
         &mut self.accounts
     }
-
-    pub fn usage(&self) -> &dyn AccountUsage {
-        &self.usage
-    }
 }
 
 impl AccountRepository for StoredAccounts {
@@ -147,68 +130,6 @@ impl AccountRepository for StoredAccounts {
     fn delete_account(&mut self, id: AccountId) {
         self.rows.retain(|row| row.id != id);
         self.pending.push(AccountsChange::Delete(id));
-    }
-}
-
-impl StoredUsage {
-    /// How many Transactions are booked to each of `accounts` that has any. A count that can't be
-    /// read is logged and answered as none, since it only feeds a figure.
-    fn transaction_counts(&self, accounts: Vec<AccountId>) -> HashMap<AccountId, usize> {
-        self.writer
-            .run(move |pool| async move {
-                let mut conn = pool.acquire().await?;
-                count_transactions(&mut conn, &accounts).await
-            })
-            .inspect_err(|error| {
-                tracing::error!(%error, "Failed to count the Transactions booked to a Unit's Accounts");
-            })
-            .unwrap_or_default()
-    }
-}
-
-impl AccountUsage for StoredUsage {
-    /// The Budgets count is the `Ledger`'s until Budgets persist (#811), so it is 0 here.
-    fn account_usage(&self, id: AccountId) -> AccountUse {
-        let transactions = self
-            .writer
-            .run(move |pool| async move {
-                let mut conn = pool.acquire().await?;
-                count_transactions_of(&mut conn, id).await
-            })
-            .inspect_err(|error| {
-                tracing::error!(%error, account = %id, "Failed to count an Account's Transactions");
-            })
-            .unwrap_or_default();
-        AccountUse {
-            transactions,
-            budgets: 0,
-        }
-    }
-}
-
-impl UnitHoldings for AccountsAdapter {
-    fn holdings(&self, id: UnitId) -> Vec<Holding> {
-        let ids = self
-            .accounts
-            .rows
-            .iter()
-            .filter(|account| account.unit == id)
-            .map(|account| account.id)
-            .collect();
-        let counts = self.usage.transaction_counts(ids);
-        holdings(&self.accounts.rows, id, |account| {
-            counts.get(&account).copied().unwrap_or_default()
-        })
-    }
-}
-
-/// Only the Accounts half: the Bill Plans and Budgets naming a Unit are other domains' to count.
-impl UnitUsage for AccountsAdapter {
-    fn unit_usage(&self, id: UnitId) -> UnitUse {
-        UnitUse {
-            accounts: unit_accounts(&self.accounts.rows, id),
-            ..UnitUse::default()
-        }
     }
 }
 
@@ -396,51 +317,6 @@ async fn delete(conn: &mut SqliteConnection, id: AccountId) -> Result<()> {
     Ok(())
 }
 
-async fn count_transactions_of(conn: &mut SqliteConnection, id: AccountId) -> Result<usize> {
-    let count = sqlx::query_scalar!(
-        r#"SELECT COUNT(*) AS "count!: i64" FROM transactions WHERE account_id = ?"#,
-        id,
-    )
-    .fetch_one(&mut *conn)
-    .await?;
-    usize::try_from(count)
-        .map_err(|_| Error::Validation(format!("Account {id}'s Transactions count is {count}")))
-}
-
-/// Counts only `accounts`' Transactions, through `idx_transactions_account_id`, rather than
-/// grouping the whole table. The list is a Unit's Accounts, so the placeholders stay few.
-async fn count_transactions(
-    conn: &mut SqliteConnection,
-    accounts: &[AccountId],
-) -> Result<HashMap<AccountId, usize>> {
-    if accounts.is_empty() {
-        return Ok(HashMap::new());
-    }
-    let placeholders = vec!["?"; accounts.len()].join(", ");
-    let sql = format!(
-        "SELECT account_id, COUNT(*) FROM transactions WHERE account_id IN ({placeholders}) \
-         GROUP BY account_id"
-    );
-    let mut query = sqlx::query_as::<_, (AccountId, i64)>(&sql);
-    for account in accounts {
-        query = query.bind(*account);
-    }
-    query
-        .fetch_all(&mut *conn)
-        .await?
-        .into_iter()
-        .map(|(account_id, count)| {
-            usize::try_from(count)
-                .map(|count| (account_id, count))
-                .map_err(|_| {
-                    Error::Validation(format!(
-                        "Account {account_id}'s Transactions count is {count}"
-                    ))
-                })
-        })
-        .collect()
-}
-
 async fn read(conn: &mut SqliteConnection) -> Result<Vec<Account>> {
     let rows = sqlx::query!(
         r#"SELECT
@@ -474,13 +350,15 @@ async fn read(conn: &mut SqliteConnection) -> Result<Vec<Account>> {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+    use std::rc::Rc;
     use std::sync::mpsc;
 
     use bigdecimal::BigDecimal;
     use lib_accounts::contract::{self, PortsFactory, StoredPorts};
-    use lib_accounts::default_accounts;
-    use lib_accounts::fake::InMemoryAccountUsage;
+    use lib_accounts::{AccountUsage, AccountUse, default_accounts};
     use lib_bills::{AmountKind, BillPlan, Recurrence};
+    use lib_budgets::fake::InMemoryBudgets;
     use lib_core::{BillPlanId, CategoryId, TransactionId, TransactionStatus};
     use lib_transactions::{Split, Transaction};
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
@@ -489,22 +367,16 @@ mod tests {
     use crate::commit::Commit;
     use crate::test_support::TransactionReadsFactory;
     use crate::writer::WriteFailure;
-    use crate::{BillsAdapter, InstitutionsAdapter, TransactionsAdapter, UnitsAdapter};
+    use crate::{
+        BillsAdapter, InstitutionsAdapter, SharedBudgetsStore, StoredAccountReads,
+        TransactionsAdapter, UnitsAdapter,
+    };
 
-    /// The adapter with the Budgets naming each Account kept beside it, as the Desktop adds the
-    /// `Ledger`'s Budgets count to the adapter's Transactions count until Budgets persist (#811).
+    /// The adapter with its usage read as a Client reads it: through [`StoredAccountReads`] over
+    /// the Transactions adapter on the same file and a Budgets store kept beside it.
     struct AdapterPorts {
         adapter: AccountsAdapter,
-        budgets: InMemoryAccountUsage,
-    }
-
-    impl AccountUsage for AdapterPorts {
-        fn account_usage(&self, id: AccountId) -> AccountUse {
-            AccountUse {
-                budgets: self.budgets.account_usage(id).budgets,
-                ..self.adapter.usage().account_usage(id)
-            }
-        }
+        reads: StoredAccountReads,
     }
 
     impl StoredPorts for AdapterPorts {
@@ -513,8 +385,22 @@ mod tests {
         }
 
         fn usage(&self) -> &dyn AccountUsage {
-            self
+            &self.reads
         }
+    }
+
+    /// The Holdings of `unit` as a Client reads them: the Accounts store's rows with the
+    /// Transactions store's counts.
+    fn holdings(ports: &AdapterPorts, unit: UnitId) -> Vec<Holding> {
+        let counts = ports
+            .reads
+            .transactions
+            .borrow()
+            .account_transaction_counts(&crate::AccountsStore::unit_account_ids(
+                &ports.adapter,
+                unit,
+            ));
+        crate::AccountsStore::holdings(&ports.adapter, unit, &counts)
     }
 
     /// The adapter on one test database, with its pending batch. The stub's Units,
@@ -526,7 +412,7 @@ mod tests {
         writer: Writer,
         pending: PendingWrites,
         failures: mpsc::Receiver<WriteFailure>,
-        budgets: InMemoryAccountUsage,
+        budgets: SharedBudgetsStore,
     }
 
     impl AdapterFactory {
@@ -547,14 +433,20 @@ mod tests {
                 pending: PendingWrites::new(writer.clone()),
                 writer,
                 failures,
-                budgets: InMemoryAccountUsage::default(),
+                budgets: Rc::new(RefCell::new(InMemoryBudgets::default())),
             }
         }
 
         fn ports(&self) -> AdapterPorts {
             AdapterPorts {
                 adapter: AccountsAdapter::load(self.pending.clone()).expect("the rows load"),
-                budgets: self.budgets.clone(),
+                reads: StoredAccountReads {
+                    transactions: Rc::new(RefCell::new(
+                        TransactionsAdapter::load(self.pending.clone())
+                            .expect("the Transactions load"),
+                    )),
+                    budgets: self.budgets.clone(),
+                },
             }
         }
 
@@ -584,6 +476,20 @@ mod tests {
                 payee_id: None,
                 tag_ids: Vec::new(),
             }],
+        }
+    }
+
+    /// A Budget counting `account`.
+    fn budget_on(account: AccountId) -> lib_budgets::Budget {
+        lib_budgets::Budget {
+            id: lib_core::BudgetId::new(),
+            name: "Budget".into(),
+            method: lib_budgets::Method::Limits,
+            unit: UnitId::SEED_AUD,
+            account_ids: vec![account],
+            is_default: false,
+            archived_at: None,
+            limits: Default::default(),
         }
     }
 
@@ -627,12 +533,15 @@ mod tests {
             self.pending.commit();
         }
 
-        fn name_account(&mut self, ports: &mut AdapterPorts, id: AccountId, uses: AccountUse) {
+        fn name_account(&mut self, _ports: &mut AdapterPorts, id: AccountId, uses: AccountUse) {
             let transactions = (0..uses.transactions).map(|_| transaction_on(id)).collect();
             TransactionsAdapter::seed(&self.writer, transactions)
                 .expect("the Transactions are written");
-            for counted in [&mut self.budgets, &mut ports.budgets] {
-                counted.uses.entry(id).or_default().budgets += uses.budgets;
+            let mut budgets = self.budgets.borrow_mut();
+            if let Some(memory) = budgets.memory_mut() {
+                memory
+                    .budgets
+                    .extend((0..uses.budgets).map(|_| budget_on(id)));
             }
         }
 
@@ -888,12 +797,12 @@ mod tests {
             },
         );
         let adapter = &ports.adapter;
+        let holdings = holdings(&ports, UnitId::SEED_AUD);
 
         let aud: Vec<_> = default_accounts()
             .into_iter()
             .filter(|account| account.unit == UnitId::SEED_AUD)
             .collect();
-        let holdings = adapter.holdings(UnitId::SEED_AUD);
         assert_eq!(
             holdings.iter().map(|h| h.name.clone()).collect::<Vec<_>>(),
             aud.iter().map(|a| a.name.clone()).collect::<Vec<_>>()
@@ -904,13 +813,13 @@ mod tests {
             .expect("ANZ Everyday counts in aud");
         assert_eq!(held.transactions, 2);
         assert_eq!(
-            adapter.unit_usage(UnitId::SEED_AUD),
-            UnitUse {
-                accounts: aud.len(),
-                ..UnitUse::default()
-            }
+            crate::AccountsStore::unit_accounts(adapter, UnitId::SEED_AUD),
+            aud.len()
         );
-        assert_eq!(adapter.unit_usage(UnitId::new()), UnitUse::default());
+        assert_eq!(
+            crate::AccountsStore::unit_accounts(adapter, UnitId::new()),
+            0
+        );
         let bills = adapter.bill_accounts();
         assert_eq!(bills.len(), default_accounts().len());
         assert_eq!(bills[1].id, everyday);
@@ -977,11 +886,8 @@ mod tests {
         };
         factory.name_account(&mut ports, aud.id, uses(2));
         factory.name_account(&mut ports, other.id, uses(3));
-        let adapter = &ports.adapter;
-
         let counted = |unit, name: &str| {
-            adapter
-                .holdings(unit)
+            holdings(&ports, unit)
                 .into_iter()
                 .find(|holding| holding.name == name)
                 .map(|holding| holding.transactions)
@@ -990,14 +896,13 @@ mod tests {
         assert_eq!(counted(other.unit, &other.name), Some(3));
         assert_eq!(counted(UnitId::SEED_AUD, &other.name), None);
         assert!(
-            adapter
-                .holdings(UnitId::SEED_AUD)
+            holdings(&ports, UnitId::SEED_AUD)
                 .iter()
                 .filter(|holding| holding.name != aud.name)
                 .all(|holding| holding.transactions == 0),
             "an Account with no Transactions counts zero"
         );
-        assert!(adapter.holdings(UnitId::new()).is_empty());
+        assert!(holdings(&ports, UnitId::new()).is_empty());
     }
 
     /// Usage is the names of the Accounts naming an Institution, in the Accounts' order.

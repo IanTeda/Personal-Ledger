@@ -27,10 +27,12 @@ use crate::{
 
 impl EventEmitter<ViewEvent> for DashboardView {}
 
-/// The store Entity the Dashboard reads.
+/// The store Entity the Dashboard reads, and the stores its Budget figures read the other domains
+/// through, as the Budgets page does (#993).
 #[derive(Clone)]
 pub struct DashboardSources {
     pub ledger: Entity<LedgerStore>,
+    pub budget_reads: Rc<lib_database::StoredBudgetReads>,
 }
 
 /// One Needs Attention row as a test reads it: its Plan and the `debug_selector` of its target.
@@ -180,8 +182,9 @@ impl DashboardView {
         let Some(budget) = ledger.budgets().default_budget() else {
             return BudgetList::default();
         };
-        let figures = budgets::period_figures(budget, ledger, Period::of(self.today), self.today);
-        let bars = budgets::dashboard_bars(&figures, ledger)
+        let reads = &*self.sources.budget_reads;
+        let figures = budgets::period_figures(budget, reads, Period::of(self.today), self.today);
+        let bars = budgets::dashboard_bars(&figures, reads)
             .into_iter()
             .map(|bar| BudgetBar {
                 category: ledger

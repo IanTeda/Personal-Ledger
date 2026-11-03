@@ -21,7 +21,6 @@ use lib_bill_payments::presenter::{
 };
 
 use crate::bills::DesktopPorts;
-use crate::bills::ports::copy_reads;
 use crate::dialog;
 use crate::form::dialog_fields::{label, text_field, two_up};
 use crate::ledger_store::LedgerStore;
@@ -109,17 +108,14 @@ type Router = HostRouter<PayOutcome>;
 impl EventEmitter<DialogClosed> for PayDialog {}
 
 impl HostedDialog for PayDialog {
-    /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) runs with
-    /// the Ledger read copy in line before it, and one that wrote something, after it. A step down
+    /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) brings the
+    /// Ledger's read copies in line after it, as it may have written something. A step down
     /// the Match list scrolls the chosen row into view.
     fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) -> bool {
         let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
-        if may_confirm {
-            copy_reads(&self.ports, self.ledger.read(cx).ledger());
-        }
         let router = self.send(PayEvent::Input(input));
         if may_confirm {
-            crate::bill_payments::refresh(&self.ports, &self.ledger, cx);
+            crate::bill_payments::refresh(&self.ledger, cx);
         }
         let steps = matches!(
             input,
@@ -143,9 +139,8 @@ impl HostedDialog for PayDialog {
     /// Sends Confirm to the Presenter, which pays or matches, then brings the Ledger's read copies
     /// in line. A refusal stays on the view model and keeps the Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
-        copy_reads(&self.ports, self.ledger.read(cx).ledger());
         let router = self.send(PayEvent::Confirm);
-        crate::bill_payments::refresh(&self.ports, &self.ledger, cx);
+        crate::bill_payments::refresh(&self.ledger, cx);
         self.closed(router, cx);
     }
 

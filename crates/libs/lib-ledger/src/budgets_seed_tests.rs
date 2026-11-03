@@ -7,10 +7,10 @@ use std::collections::BTreeMap;
 
 use chrono::NaiveDate;
 use lib_accounts::default_accounts;
+use lib_budgets::fake::InMemoryBudgetReads;
 use lib_budgets::{
-    Budget, BudgetAccounts, BudgetCategories, Budgets, CategoryFigures, LimitRecord, Method,
-    PERSONAL_SPENDING_ID, PeriodFigures, applied, check_accounts, check_leaf, default_budgets,
-    period_figures, zero,
+    Budget, BudgetSplit, Budgets, CategoryFigures, LimitRecord, Method, PERSONAL_SPENDING_ID,
+    PeriodFigures, applied, check_accounts, check_leaf, default_budgets, period_figures, zero,
 };
 use lib_categories::{self as categories, default_categories};
 use lib_core::{BudgetId, CategoryId, Money, Period, UnitId};
@@ -18,7 +18,7 @@ use lib_payees::default_payees;
 use lib_tags::default_tags;
 
 use crate::seed::default_transactions;
-use crate::{Ledger, LedgerParts};
+use crate::{Ledger, LedgerParts, budget_accounts, budget_categories};
 
 fn date(y: i32, m: u32, d: u32) -> NaiveDate {
     NaiveDate::from_ymd_opt(y, m, d).unwrap_or_default()
@@ -44,6 +44,29 @@ struct World {
 impl World {
     fn ledger(&self) -> &Ledger {
         &self.ledger
+    }
+
+    /// The Budgets read ports over the Ledger's rows, as `lib-database`'s stores answer them.
+    fn reads(&self) -> InMemoryBudgetReads {
+        InMemoryBudgetReads {
+            categories: budget_categories(self.ledger.categories()),
+            accounts: budget_accounts(self.ledger.accounts()),
+            splits: self
+                .ledger
+                .transactions()
+                .iter()
+                .flat_map(|transaction| {
+                    transaction.splits.iter().map(|split| BudgetSplit {
+                        date: transaction.date,
+                        account_id: transaction.account_id,
+                        category_id: split.category_id,
+                        amount: split.amount.clone(),
+                        payee_id: split.payee_id,
+                    })
+                })
+                .collect(),
+            ..InMemoryBudgetReads::default()
+        }
     }
 
     fn category(&self, name: &str) -> CategoryId {
@@ -88,8 +111,8 @@ fn seeded() -> (World, Budgets) {
         ..LedgerParts::default()
     });
     let budgets = default_budgets(
-        &ledger.budget_accounts(),
-        &ledger.budget_categories(),
+        &budget_accounts(ledger.accounts()),
+        &budget_categories(ledger.categories()),
         today(),
     );
     (World { ledger }, budgets)
@@ -121,8 +144,8 @@ fn the_seed_has_a_default_personal_spending_and_an_overlapping_second_budget() {
 fn the_seed_only_budgets_valid_leaves_and_accounts_in_the_unit() {
     let (world, budgets) = seeded();
     let (categories, accounts) = (
-        world.ledger().budget_categories(),
-        world.ledger().budget_accounts(),
+        budget_categories(world.ledger().categories()),
+        budget_accounts(world.ledger().accounts()),
     );
     for budget in budgets.all() {
         for id in budget.category_ids() {
@@ -143,7 +166,7 @@ fn the_seed_produces_figures_with_parents_as_rollups() {
         .get(PERSONAL_SPENDING_ID)
         .cloned()
         .unwrap_or_else(unreachable_budget);
-    let figures = period_figures(&personal, world.ledger(), sep(), today());
+    let figures = period_figures(&personal, &world.reads(), sep(), today());
     assert!(figures.budgeted.0 > zero());
     let household = row(&figures, world.category("Household"));
     assert!(household.is_some_and(|r| r.budget.is_some() && !r.is_parent));
