@@ -799,6 +799,9 @@ pub struct Harness<'a> {
     date: Rc<Cell<NaiveDate>>,
     /// How many times the Shell has committed, once per input (`input::send`).
     commits: Rc<Cell<usize>>,
+    /// Holds this Shell's own `personal-ledger.conf`, which Settings writes a device's settings to
+    /// (ADR-0053), so no test writes the real one.
+    conf_dir: tempfile::TempDir,
 }
 
 /// The open Add or Edit account dialog's form: plain values, as `Harness::account_form` reads
@@ -1483,13 +1486,55 @@ impl<'a> Harness<'a> {
                 cx,
             )
         });
-        Self {
+        let mut ui = Self {
             shell,
             cx,
             logs,
             date,
             commits,
-        }
+            conf_dir: tempfile::tempdir().expect("a temporary directory"),
+        };
+        ui.configure(&lib_config::PersonalLedgerConfig::default(), &[]);
+        ui
+    }
+
+    /// As [`Harness::new`], on a device's settings as start-up read them from `config`, under
+    /// `env`'s `PERSONAL_LEDGER_` variables.
+    pub fn with_configuration(
+        app: &'a mut TestAppContext,
+        config: &lib_config::PersonalLedgerConfig,
+        env: &[(&str, &str)],
+    ) -> Self {
+        let mut ui = Self::new(app);
+        ui.configure(config, env);
+        ui
+    }
+
+    /// Applies a device's settings from `config` as `run` does at start, writing to this Shell's
+    /// conf file under `env`.
+    fn configure(&mut self, config: &lib_config::PersonalLedgerConfig, env: &[(&str, &str)]) {
+        let writer = lib_config::ConfigWriter::new(
+            Some(self.conf_path()),
+            Vec::new(),
+            env.iter()
+                .map(|(name, value)| ((*name).to_string(), (*value).to_string())),
+        );
+        self.cx
+            .update(|_, cx| theme::colours::set_device_colours(config, cx));
+        self.shell.update(self.cx, |shell, cx| {
+            shell.set_configuration(config, writer, cx)
+        });
+        self.cx.run_until_parked();
+    }
+
+    /// The `personal-ledger.conf` Settings writes a device's settings to.
+    pub fn conf_path(&self) -> std::path::PathBuf {
+        self.conf_dir.path().join("personal-ledger.conf")
+    }
+
+    /// What Settings has written to [`Harness::conf_path`]; empty before the first write.
+    pub fn conf(&self) -> String {
+        std::fs::read_to_string(self.conf_path()).unwrap_or_default()
     }
 
     /// How many times the Shell has committed since it was built: once per input.

@@ -134,15 +134,13 @@ pub fn set_colour_appearance(colour_appearance: Option<ColourAppearance>, cx: &m
     update(cx, |colours| colours.colour_appearance = colour_appearance);
 }
 
-/// Applies the Colour Theme and Appearance kept on this device (ADR-0051), as the app starts. A
-/// stored appearance this release doesn't know falls back to System.
-pub fn set_client_preferences(preferences: &lib_core::ClientPreferences, cx: &mut App) {
+/// Applies the Colour Theme and Appearance as start-up read them from Configuration (ADR-0053),
+/// before the window opens. The Colour Theme's id stays raw, so one from a newer release survives
+/// a run of this one.
+pub fn set_device_colours(config: &lib_config::PersonalLedgerConfig, cx: &mut App) {
     update(cx, |colours| {
-        colours.colour_theme = preferences.colour_theme.clone();
-        colours.colour_appearance = preferences
-            .colour_appearance
-            .as_deref()
-            .and_then(ColourAppearance::from_key);
+        colours.colour_theme = config.colour_theme().map(str::to_string);
+        colours.colour_appearance = Some(config.colour_appearance());
     });
 }
 

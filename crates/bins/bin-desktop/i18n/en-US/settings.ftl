@@ -110,6 +110,14 @@ desktop-settings-general-configuration = configuration
 desktop-settings-general-none = none
 desktop-settings-general-note = General settings belong to this device and never sync. What travels with the Ledger is under Ledger.
 
+## A device's settings in personal-ledger.conf (ADR-0053). `$key` is the setting's key in the file,
+## such as on_start; `$source` is the environment variable or configuration file that sets it.
+desktop-settings-device-shadowed-note = Set by { $source }
+desktop-settings-device-shadowed = { $key } is set by { $source }, which outranks your personal-ledger.conf: change it there
+desktop-settings-device-no-file = { $key } can't be saved: there's no home folder to keep personal-ledger.conf in
+desktop-settings-device-saved = { $key } saved to { $path }
+desktop-settings-device-write-failed = Couldn't save { $key } to personal-ledger.conf: the log says why
+
 ## Ledger. The summary labels name what the ledger holds.
 
 desktop-settings-ledger-name = Ledger name

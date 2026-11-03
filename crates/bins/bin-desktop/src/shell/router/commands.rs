@@ -12,7 +12,7 @@ use crate::{
         explorer::FileExplorer,
         nav::{InputMode, Noun},
     },
-    settings::SettingsPage,
+    settings::{SettingsPage, device::DeviceSetting},
     shell::view::{palette::Palette, window_size::WindowSize},
 };
 
@@ -93,7 +93,9 @@ impl Root {
             }
             CommandEffect::Colour(change) => {
                 self.navigate(NavInput::ExitMode);
-                self.state.pending_colour_change = Some(change);
+                if self.save_device_setting(change.into(), cx) {
+                    self.state.pending_colour_change = Some(change);
+                }
             }
             CommandEffect::DismissToast => {
                 self.navigate(NavInput::ExitMode);
@@ -101,7 +103,7 @@ impl Root {
             }
             CommandEffect::SetToasts(on) => {
                 self.navigate(NavInput::ExitMode);
-                self.set_toasts_on(on, cx);
+                self.change_device_setting(DeviceSetting::Toasts(on), cx);
             }
             CommandEffect::Shell(shell_command) => {
                 self.navigate(NavInput::ExitMode);

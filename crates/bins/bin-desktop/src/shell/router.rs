@@ -90,9 +90,13 @@ use crate::{
     navigation::active_view::ActiveView,
     navigation::explorer::{ExplorerFilters, FileExplorer},
     navigation::nav::{NavState, Noun, RailMode},
-    settings::{SettingsPage, display::DisplayPreferences, state::SettingsView},
+    settings::{
+        SettingsPage, device::DeviceConfiguration, device::DeviceSetting,
+        display::DisplayPreferences, state::SettingsView,
+    },
     shell::state::ShellState,
     shell::view::{rail as rail_view, window_size::WindowSize},
+    theme::colours::ColourChange,
 };
 use lib_categories::Category;
 
@@ -157,7 +161,6 @@ pub fn build(
         shell.open_ledger(stores, &bindings.keybindings, cx);
     }
     shell.set_start_sidebar_minimised(persisted.start_sidebar_minimised, cx);
-    shell.set_client_preferences(&persisted.preferences, cx);
     shell.set_settings_page(settings_page, cx);
     shell.set_explorer_filters(persisted.explorer_filters);
     shell.set_documents_state(documents_state.0, documents_state.1, documents_state.2, cx);
@@ -440,26 +443,81 @@ impl Root {
             .update(cx, |view, cx| view.set_display(display, cx));
     }
 
-    /// Applies the Preferences kept on this device (ADR-0051) as the app starts: the date style
-    /// to the Settings View and the Views that draw with it, On start and Toasts to Settings ›
-    /// General and Toasts to the Toasts.
-    pub fn set_client_preferences(
+    /// Applies a device's settings as start-up read them from Configuration (ADR-0053), and keeps
+    /// where Settings writes them: the date style to the Settings View and the Views that draw with
+    /// it, On start and Toasts to Settings › General, and Toasts to the Toasts. The Colour Theme and
+    /// Appearance are the colours', set before the window opens
+    /// ([`crate::theme::colours::set_device_colours`]).
+    pub fn set_configuration(
         &mut self,
-        preferences: &lib_core::ClientPreferences,
+        config: &lib_config::PersonalLedgerConfig,
+        writer: lib_config::ConfigWriter,
         cx: &mut App,
     ) {
-        let display = DisplayPreferences {
-            date_style: preferences.date_style,
-            ..self.display(cx)
-        };
+        cx.set_global(DeviceConfiguration::new(writer));
+        self.show_date_style(config.date_style(), cx);
         self.settings.update(cx, |view, cx| {
-            view.set_display(display, cx);
             view.general().update(cx, |page, cx| {
-                page.set_preferences(preferences.on_start, preferences.toasts_on, cx);
+                page.set_on_start(config.on_start(), cx);
+                page.set_toasts_on(config.toasts(), cx);
             });
         });
+        self.push_toasts_on(config.toasts());
+    }
+
+    /// Shows `date_style` on Settings › Display and in the Views that draw dates.
+    fn show_date_style(&mut self, date_style: Option<lib_core::DateStyle>, cx: &mut App) {
+        let display = DisplayPreferences {
+            date_style,
+            ..self.display(cx)
+        };
+        self.settings
+            .update(cx, |view, cx| view.set_display(display, cx));
         self.push_display_preferences(display, cx);
-        self.push_toasts_on(preferences.toasts_on);
+    }
+
+    /// Saves a device's setting to the conf file, then applies it (ADR-0053): Settings and the
+    /// palette both come here. A refused or failed save says why on the status line and leaves
+    /// the setting as it was.
+    pub(super) fn change_device_setting(
+        &mut self,
+        setting: DeviceSetting,
+        cx: &mut Context<'_, Self>,
+    ) {
+        if !self.save_device_setting(setting, cx) {
+            return;
+        }
+        match setting {
+            DeviceSetting::Toasts(on) => self.show_toasts_on(on, cx),
+            // A colour change refreshes every window, which must wait until `Root` is updated.
+            DeviceSetting::ColourTheme(id) => cx.defer(move |cx| ColourChange::Theme(id).apply(cx)),
+            DeviceSetting::ColourAppearance(appearance) => {
+                cx.defer(move |cx| ColourChange::Appearance(appearance).apply(cx));
+            }
+            DeviceSetting::DateStyle(date_style) => self.show_date_style(date_style, cx),
+            DeviceSetting::OnStart(on_start) => self.settings.update(cx, |view, cx| {
+                view.general()
+                    .update(cx, |page, cx| page.set_on_start(on_start, cx));
+            }),
+        }
+    }
+
+    /// Saves `setting`, putting where it went, or why it wasn't saved, on the status line, as the
+    /// TUI does. `true` when it was saved.
+    pub(super) fn save_device_setting(&mut self, setting: DeviceSetting, cx: &App) -> bool {
+        match crate::settings::device::save(setting, cx) {
+            Ok(path) => {
+                self.set_status(crate::msg::desktop_settings_device_saved(
+                    setting.key().name(),
+                    &path.display().to_string(),
+                ));
+                true
+            }
+            Err(refusal) => {
+                self.set_status(refusal.message());
+                false
+            }
+        }
     }
 
     /// Shows `device` on Settings › General: what start-up knows of this device.
@@ -468,22 +526,6 @@ impl Root {
             view.general()
                 .update(cx, |page, cx| page.set_this_device(device, cx));
         });
-    }
-
-    /// The Client-scoped Preferences as they stand, for the state file at quit.
-    pub fn client_preferences(&self, cx: &App) -> lib_core::ClientPreferences {
-        let display = self.display(cx);
-        let general = self.settings.read(cx).general().read(cx);
-        let colours = cx.global::<crate::theme::colours::Colours>();
-        lib_core::ClientPreferences {
-            toasts_on: general.toasts_on(),
-            colour_theme: colours.colour_theme().map(str::to_string),
-            colour_appearance: colours
-                .colour_appearance()
-                .map(|appearance| appearance.key().to_string()),
-            date_style: display.date_style,
-            on_start: general.on_start(),
-        }
     }
 
     /// The Display Preferences, which the Settings View owns (ADR-0037).

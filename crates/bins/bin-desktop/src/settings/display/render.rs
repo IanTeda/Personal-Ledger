@@ -87,6 +87,7 @@ impl Render for DisplayPage {
             .child(colour_theme::render(
                 self.colour_theme_focus(),
                 bind(&entity, DisplayPage::click_colour_theme),
+                bind(&entity, DisplayPage::click_colour_appearance),
                 cx,
             ))
     }
@@ -146,6 +147,10 @@ fn field_column(
                     date_style_label,
                     on_date_style_click,
                     Some(px(UNIFORM_OPTION_WIDTH)),
+                    cx,
+                ))
+                .children(crate::settings::device::shadowed_note(
+                    lib_config::ConfigKey::DateStyle,
                     cx,
                 )),
         )

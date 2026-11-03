@@ -1,6 +1,9 @@
 use std::{path::Path, rc::Rc};
 
 use gpui::{App, Context, Window, div, prelude::*, px};
+use lib_config::ConfigKey;
+
+use crate::settings::device::shadowed_note;
 use lib_core::OnStart;
 
 use super::{
@@ -57,7 +60,8 @@ impl Render for GeneralPage {
                             .child(hint(
                                 crate::msg::desktop_settings_general_on_start_hint(),
                                 cx,
-                            )),
+                            ))
+                            .children(shadowed_note(ConfigKey::OnStart, cx)),
                     )
                     .child(
                         focus_mark(focus == Some(GENERAL_FIELD_TOASTS), cx)
@@ -71,7 +75,8 @@ impl Render for GeneralPage {
                                 Some(px(UNIFORM_OPTION_WIDTH)),
                                 cx,
                             ))
-                            .child(hint(lib_locale::msg::toast_setting_note(), cx)),
+                            .child(hint(lib_locale::msg::toast_setting_note(), cx))
+                            .children(shadowed_note(ConfigKey::Toasts, cx)),
                     )
                     .child(locale_field(cx))
                     .child(

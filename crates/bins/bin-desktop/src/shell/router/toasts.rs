@@ -16,9 +16,9 @@ impl Root {
         self.open_dialog(OpenDialog::ToastHistory(ToastHistoryDialog));
     }
 
-    /// Sets the Client-scoped Toasts Preference (ADR-0027) from outside Settings (`:toasts`), held
-    /// in memory like the Colour Theme Preferences. Settings › General owns it, so it is told too.
-    pub fn set_toasts_on(&mut self, on: bool, cx: &mut gpui::App) {
+    /// Shows Toasts on or off once the setting is saved: Settings › General's control follows, and
+    /// the Toasts take it.
+    pub(super) fn show_toasts_on(&mut self, on: bool, cx: &mut gpui::App) {
         self.settings.update(cx, |view, cx| {
             view.general()
                 .update(cx, |page, cx| page.set_toasts_on(on, cx));

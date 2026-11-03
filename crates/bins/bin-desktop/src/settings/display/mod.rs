@@ -1,8 +1,10 @@
 //! The Settings › Display page (ADR-0037's amendment, one folder per page). [`DisplayPage`] owns the
 //! Display Preferences (`preferences.rs`), the keyboard focus on its controls and on the Colour Theme
 //! grid (`colour_theme.rs`), and renders itself (`render.rs`). Each change reaches `Root` as
-//! [`ViewEvent::DisplayChanged`]; the Settings View forwards the page's keys and focus to it while
-//! the page has focus.
+//! [`ViewEvent::DisplayChanged`], except the date style, Colour Theme and Appearance: Configuration
+//! in the user's `personal-ledger.conf` (ADR-0053), which the page asks for as
+//! [`ViewEvent::DeviceSetting`] and `Root` saves before applying. The Settings View forwards the
+//! page's keys and focus to it while the page has focus.
 
 pub mod colour_theme;
 mod preferences;
@@ -20,6 +22,7 @@ use crate::{
     navigation::movement::Movement,
     settings::{
         SettingsPage,
+        device::DeviceSetting,
         hints::{settings_colour_grid_hints, settings_display_hints},
         page::PageRowClicked,
         pages::{Page, PageFrame},
@@ -187,13 +190,14 @@ impl DisplayPage {
                 self.field_focus = Some(field.saturating_sub(1));
                 true
             }
+            "h" | "left" | "l" | "right" if field == 0 => {
+                let style = step_choice(&DATE_STYLE_CHOICES, self.preferences.date_style, delta);
+                self.click_date_style(style, cx);
+                true
+            }
             "h" | "left" | "l" | "right" => {
                 self.change_display(
                     |display| match field {
-                        0 => {
-                            display.date_style =
-                                step_choice(&DATE_STYLE_CHOICES, display.date_style, delta);
-                        }
                         1 => {
                             display.row_density =
                                 step_choice(&RowDensity::ALL, display.row_density, delta);
@@ -274,8 +278,11 @@ impl DisplayPage {
         cx.notify();
     }
 
+    /// Asks `Root` to save the date style, which sets it back on the page once saved.
     fn click_date_style(&mut self, style: Option<DateStyle>, cx: &mut Context<'_, Self>) {
-        self.change_display(|display| display.date_style = style, cx);
+        if style != self.preferences.date_style {
+            cx.emit(ViewEvent::DeviceSetting(DeviceSetting::DateStyle(style)));
+        }
     }
 
     fn click_row_density(&mut self, density: RowDensity, cx: &mut Context<'_, Self>) {
@@ -301,10 +308,17 @@ impl DisplayPage {
         apply_colour(ColourChange::Theme(id), cx);
         cx.notify();
     }
+
+    fn click_colour_appearance(
+        &mut self,
+        appearance: lib_colour_theme::ColourAppearance,
+        cx: &mut Context<'_, Self>,
+    ) {
+        apply_colour(ColourChange::Appearance(appearance), cx);
+    }
 }
 
-/// Applies a Colour Theme once the current update is done: the change refreshes every window,
-/// which must not happen while `Root` is mid-update.
+/// Asks `Root` to save a Colour Theme or Appearance, which applies it once saved.
 fn apply_colour(change: ColourChange, cx: &mut Context<'_, DisplayPage>) {
-    cx.defer(move |cx| change.apply(cx));
+    cx.emit(ViewEvent::DeviceSetting(change.into()));
 }

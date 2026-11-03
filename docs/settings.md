@@ -270,7 +270,7 @@ Which Ledger the app opens as it starts: `reopen` opens the one open when you la
 * Default: reopen
 * Environment Variable: PERSONAL_LEDGER_PERSONAL_LEDGER__ON_START
 
-These five are the TUI's today. The Desktop app still keeps its own Toasts, Colour Theme, Colour Appearance, date style and On start, and ignores these keys until it reads them too. A value a key doesn't take, such as `on_start = sometimes`, stops the app starting with an error naming it.
+The TUI and the Desktop app both read these five, and both write them from Settings, so a change in one is the other's the next time it starts. A value a key doesn't take, such as `on_start = sometimes`, stops the app starting with an error naming it.
 
 Example:
 
@@ -326,6 +326,15 @@ General holds what belongs to this device:
 Press `l` to move onto On start, `j` and `k` to move between On start and Toasts, and `h` and `l` to change the one you are on. Beside the fields, the THIS DEVICE box shows the Ledger On start would reopen and the config file Settings writes to.
 
 The Ledger page holds what used to be on General: the Ledger's name, owner, financial year and Base unit.
+
+### What the Desktop's Settings write to personal-ledger.conf
+
+On start and Toasts on General, and Date format, Appearance and Colour Theme on Display, belong to this device, so the Desktop saves each to your `personal-ledger.conf` as you choose it, as `on_start`, `toasts`, `date_style`, `colour_appearance` and `colour_theme` (see the Personal Ledger Section). The `toasts`, `theme` and `appearance` commands save too. It is the same file and the same keys the TUI writes, so a change in either app is the other's the next time it starts.
+
+- The change applies at once, and the status line names the file it saved to: the one the THIS DEVICE box names. A save changes only that key's line and leaves the rest of the file as you wrote it.
+- An environment variable, or a file that comes after yours in the Configuration Hierarchy, wins over your file. When one sets a key, the control says `Set by` and names it, and choosing another option changes nothing: the status line says what sets it, so change it there.
+- With no home folder to keep the file in, these settings can't be changed, and trying says so on the status line.
+- Row density, Status glyphs and Start Sidebar minimised are not in the file: Row density and Status glyphs last until you quit, and the Desktop remembers Start Sidebar minimised itself.
 
 ### Documents page
 
@@ -469,7 +478,7 @@ See [Getting around](getting-around.md#toasts) for reading and dismissing Toasts
 
 ### Heads up
 
-- Whether Toasts are on belongs to this device. The TUI saves it to `personal-ledger.conf` as `toasts`; the Desktop app still keeps its own until it reads that key too.
+- Whether Toasts are on belongs to this device. Both apps save it to `personal-ledger.conf` as `toasts`.
 
 ## Colour Theme and Colour Appearance
 
@@ -478,7 +487,7 @@ You choose how Personal Ledger looks from Settings, not from a configuration fil
 - **Colour Theme**: the set of colours the app draws in. Five are built in: Modernist (the default), High Contrast, Catppuccin, Gruvbox and Nord. Each one has a light and a dark version.
 - **Colour Appearance**: which version you see. Light and Dark always use that version. System follows your computer's light or dark setting, and the picker tells you which one it found, for example "System (currently Dark)". If it can't find out, it uses Dark and says so: "System (not detected, using Dark)".
 
-A change applies straight away, with no Apply button. Both belong to this device, like the date style, whichever Ledger is open or none, and they don't sync to your other devices. The TUI saves them to `personal-ledger.conf` as `colour_theme` and `colour_appearance` (see the Personal Ledger Section); the Desktop app still remembers its own choice when you close it, until it reads those keys too.
+A change applies straight away, with no Apply button. Both belong to this device, like the date style, whichever Ledger is open or none, and they don't sync to your other devices. Both apps save them to `personal-ledger.conf` as `colour_theme` and `colour_appearance` (see the Personal Ledger Section).
 
 ### In the Desktop app
 
@@ -505,7 +514,7 @@ If a built-in Colour Theme is nearly right, you can change individual colours on
 
 ### Heads up
 
-- Your Colour Theme and Colour Appearance don't follow you to your other devices, or between the TUI and the Desktop app on one computer: each keeps its own.
+- Your Colour Theme and Colour Appearance don't follow you to your other devices. On one computer the TUI and the Desktop app share them: a change in one is the other's the next time it starts.
 
 ## Theme Section
 

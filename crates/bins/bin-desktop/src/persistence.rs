@@ -4,8 +4,10 @@
 //! not `lib_config`'s layered INI config: that config is for static, user-editable settings,
 //! this is transient UI state a user never hand-edits.
 //!
-//! It is also where the Desktop keeps its Client-scoped Preferences and the Ledger open when it
-//! last quit (ADR-0051): both belong to this device, and both are read before any window opens.
+//! It is also where the Desktop keeps the Ledger open when it last quit (ADR-0051), read before any
+//! window opens. A device's settings (Toasts, the Colour Theme and Appearance, the date style and
+//! On start) are not here: they are Configuration in the user's `personal-ledger.conf` (ADR-0053),
+//! and a `preferences` object an older state file still holds is read and ignored.
 
 use std::{
     io,
@@ -63,10 +65,6 @@ pub struct PersistedState {
     #[serde(default)]
     pub documents_sort: Option<String>,
     pub window: Option<WindowGeometry>,
-    /// Toasts, the Colour Theme and Appearance, the date style and On start, kept on this device
-    /// and never synced (ADR-0051).
-    #[serde(default)]
-    pub preferences: lib_core::ClientPreferences,
     /// The Ledger file open when the Desktop last quit, which On start's Reopen last Ledger
     /// opens. `None` when none was.
     #[serde(default)]
@@ -198,13 +196,6 @@ mod tests {
                 width: 1280.0,
                 height: 800.0,
             }),
-            preferences: lib_core::ClientPreferences {
-                toasts_on: false,
-                colour_theme: Some("nord".to_string()),
-                colour_appearance: Some("light".to_string()),
-                date_style: Some(lib_core::DateStyle::Iso),
-                on_start: lib_core::OnStart::NoLedger,
-            },
             last_ledger: Some(PathBuf::from("/ledgers/household.pldb")),
         };
 
@@ -227,7 +218,6 @@ mod tests {
             documents_scope: None,
             documents_sort: None,
             window: None,
-            preferences: lib_core::ClientPreferences::default(),
             last_ledger: None,
         };
 
@@ -254,16 +244,28 @@ mod tests {
     }
 
     #[test]
-    fn a_state_file_from_before_client_preferences_loads_their_defaults() {
+    fn a_state_file_still_holding_preferences_loads_the_rest_and_saves_none() {
         let dir = tempfile::tempdir().expect("tempdir should be creatable");
         let path = dir.path().join(STATE_FILE_NAME);
-        std::fs::write(&path, r#"{"noun":"Bills","window":null}"#).expect("write should succeed");
+        std::fs::write(
+            &path,
+            r#"{"noun":"Bills","window":null,"last_ledger":"/x/last.pldb",
+                "preferences":{"toasts_on":false,"colour_theme":"nord","on_start":"no_ledger"}}"#,
+        )
+        .expect("write should succeed");
 
         let loaded = load_from(&path);
-
         assert_eq!(loaded.noun, Noun::Bills);
-        assert_eq!(loaded.preferences, lib_core::ClientPreferences::default());
-        assert_eq!(loaded.last_ledger, None);
+        assert_eq!(
+            loaded.last_ledger.as_deref(),
+            Some(Path::new("/x/last.pldb"))
+        );
+
+        save_to(&path, &loaded).expect("save should succeed");
+        let saved = std::fs::read_to_string(&path).expect("read should succeed");
+        for setting in ["preferences", "toasts", "colour", "date_style", "on_start"] {
+            assert!(!saved.contains(setting), "{setting} in {saved}");
+        }
     }
 
     #[test]

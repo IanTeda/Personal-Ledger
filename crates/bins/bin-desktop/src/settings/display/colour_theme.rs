@@ -3,18 +3,23 @@
 //! of mini-ledger preview cards, one per built-in Colour Theme, each drawn through `resolve` with
 //! this Client's `[theme]` overrides so it shows what would actually appear.
 //!
-//! Reads and writes the `crate::theme::colours::Colours` Global directly: the Preferences live there,
-//! not on the Display page. Only the keyboard focus inside the grid is the page's state (`super`),
-//! since the page owns its keystrokes; focus and hover never preview, only a click or Enter selects.
+//! Reads the `crate::theme::colours::Colours` Global directly: the chosen Colour Theme and
+//! Appearance live there, not on the Display page, and a click hands its choice to the page, which
+//! asks `Root` to save it (ADR-0053). Only the keyboard focus inside the grid is the page's state
+//! (`super`), since the page owns its keystrokes; focus and hover never preview, only a click or
+//! Enter selects.
 
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, FontWeight, Rgba, SharedString, Window, div, prelude::*, px};
 use lib_colour_theme::{ColourAppearance, ColourTheme, ColourVariant, ResolvedColours};
+use lib_config::ConfigKey;
+
+use crate::settings::device::shadowed_note;
 
 use crate::{
     theme::color,
-    theme::colours::{self, ColourChange, to_gpui},
+    theme::colours::{self, to_gpui},
 };
 
 use crate::form::fields::{UNIFORM_OPTION_WIDTH, segmented_control_sized};
@@ -105,14 +110,17 @@ pub fn chosen_index(cx: &App) -> usize {
         .unwrap_or(0)
 }
 
-pub fn render(focused: Option<usize>, on_theme_click: OnColourThemeClick, cx: &App) -> AnyElement {
+/// A click on a Colour Appearance option.
+pub type OnColourAppearanceClick = Rc<dyn Fn(ColourAppearance, &mut Window, &mut App)>;
+
+pub fn render(
+    focused: Option<usize>,
+    on_theme_click: OnColourThemeClick,
+    on_appearance_click: OnColourAppearanceClick,
+    cx: &App,
+) -> AnyElement {
     let state = colours::colours(cx);
     let appearance = state.colour_appearance().unwrap_or_default();
-    let on_appearance_click = Rc::new(
-        |appearance: ColourAppearance, _window: &mut Window, cx: &mut App| {
-            ColourChange::Appearance(appearance).apply(cx);
-        },
-    );
     div()
         .id("display-colour-theme")
         .mt(px(28.0))
@@ -133,10 +141,12 @@ pub fn render(focused: Option<usize>, on_theme_click: OnColourThemeClick, cx: &A
             cx,
         ))
         .child(note(system_hint(state.system()), cx))
+        .children(shadowed_note(ConfigKey::ColourAppearance, cx))
         .child(div().mt(px(18.0)).child(field_label(
             crate::msg::desktop_settings_display_colour_theme(),
             cx,
         )))
+        .children(shadowed_note(ConfigKey::ColourTheme, cx))
         .child(
             div().flex().flex_wrap().gap(px(CARD_GAP)).children(
                 ColourTheme::built_in()

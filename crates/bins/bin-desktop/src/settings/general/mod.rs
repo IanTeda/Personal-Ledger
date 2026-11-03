@@ -2,10 +2,10 @@
 //! (moved from Display), the read-only Locale and Ledger folder, and the THIS DEVICE box.
 //! Everything here belongs to this device and works with no Ledger open (ADR-0051).
 //!
-//! On start and Toasts are Client-scoped Preferences, kept where they are today: the page holds
-//! them in memory, Toasts reaches `Root`'s Toasts as [`ViewEvent::ToastsChanged`], and `Root`
-//! reads both back for the state file at quit. The Locale and `data` are Configuration read at
-//! start-up, so they are shown, not set.
+//! On start and Toasts are Configuration in the user's `personal-ledger.conf` (ADR-0053): a
+//! control asks `Root` for the change as [`ViewEvent::DeviceSetting`], and `Root` saves it, then
+//! sets it back on the page. A key a source above the file sets says so under its control. The
+//! Locale and `data` are Configuration read at start-up, so they are shown, not set.
 
 mod render;
 
@@ -17,8 +17,8 @@ use lib_shell::Hint;
 
 use crate::{
     settings::{
-        SettingsPage, hints::settings_general_hints, page::PageRowClicked, pages::Page,
-        snapshot::PageSnapshot, step_choice,
+        SettingsPage, device::DeviceSetting, hints::settings_general_hints, page::PageRowClicked,
+        pages::Page, snapshot::PageSnapshot, step_choice,
     },
     shell::view::statusline::owned_hints,
     view::event::ViewEvent,
@@ -86,20 +86,14 @@ impl GeneralPage {
         self.toasts_on
     }
 
-    /// Sets On start and Toasts as the state file has them, at launch.
-    pub fn set_preferences(
-        &mut self,
-        on_start: OnStart,
-        toasts_on: bool,
-        cx: &mut Context<'_, Self>,
-    ) {
+    /// Sets On start once `Root` has saved it, or as start-up read it.
+    pub fn set_on_start(&mut self, on_start: OnStart, cx: &mut Context<'_, Self>) {
         self.on_start = on_start;
-        self.toasts_on = toasts_on;
         cx.notify();
     }
 
-    /// Sets Toasts from outside the page (`:toasts`), without telling `Root`, which made the
-    /// change itself.
+    /// Sets Toasts once `Root` has saved them, from this page or `:toasts`, or as start-up read
+    /// them.
     pub fn set_toasts_on(&mut self, on: bool, cx: &mut Context<'_, Self>) {
         self.toasts_on = on;
         cx.notify();
@@ -111,14 +105,15 @@ impl GeneralPage {
     }
 
     fn click_on_start(&mut self, on_start: OnStart, cx: &mut Context<'_, Self>) {
-        self.on_start = on_start;
-        cx.notify();
+        if on_start != self.on_start {
+            cx.emit(ViewEvent::DeviceSetting(DeviceSetting::OnStart(on_start)));
+        }
     }
 
     fn click_toasts(&mut self, on: bool, cx: &mut Context<'_, Self>) {
-        self.toasts_on = on;
-        cx.emit(ViewEvent::ToastsChanged(on));
-        cx.notify();
+        if on != self.toasts_on {
+            cx.emit(ViewEvent::DeviceSetting(DeviceSetting::Toasts(on)));
+        }
     }
 
     /// The page's form keys: `j`/`k` walk the controls, stopping at either end, and `h`/`l` step

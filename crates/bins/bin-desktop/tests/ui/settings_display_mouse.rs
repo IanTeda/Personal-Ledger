@@ -1,6 +1,7 @@
 //! The Settings Display page driven by clicks: each segmented control, the status glyph radios,
 //! the sidebar checkbox, the Toasts control and the Colour Theme cards, and the preview stacking
-//! under the fields at the Medium floor. Only elements tagged with `debug_selector` are clicked.
+//! under the fields at the Medium floor. The date style, Colour Theme and Appearance are saved to the
+//! conf file (ADR-0053). Only elements tagged with `debug_selector` are clicked.
 
 use super::common;
 use bin_desktop::shell::router::SettingsDisplaySnapshot;
@@ -29,6 +30,7 @@ fn clicking_a_date_format_option_selects_it(app: &mut TestAppContext) {
             .as_deref(),
         Some("Iso")
     );
+    assert_eq!(ui.conf(), "[Personal-Ledger]\ndate_style = iso\n");
     ui.click("display-date-style-0");
     assert_eq!(ui.settings::<SettingsDisplaySnapshot>().date_style, None);
 }
@@ -87,6 +89,7 @@ fn clicking_an_appearance_option_changes_the_appearance(app: &mut TestAppContext
 
     ui.click("display-colour-appearance-1");
     assert_eq!(ui.colour_choice().1.as_deref(), Some("Dark"));
+    assert_eq!(ui.conf(), "[Personal-Ledger]\ncolour_appearance = dark\n");
     ui.click("display-colour-appearance-0");
     assert_eq!(ui.colour_choice().1.as_deref(), Some("Light"));
 }
@@ -98,8 +101,35 @@ fn clicking_a_colour_theme_card_chooses_it(app: &mut TestAppContext) {
     let themes = ColourTheme::built_in();
     ui.click("display-colour-theme-3");
     assert_eq!(ui.colour_choice().0.as_deref(), Some(themes[3].id));
+    assert_eq!(
+        ui.conf(),
+        format!("[Personal-Ledger]\ncolour_theme = {}\n", themes[3].id)
+    );
     ui.click("display-colour-theme-1");
     assert_eq!(ui.colour_choice().0.as_deref(), Some(themes[1].id));
+}
+
+#[gpui::test]
+fn clicking_a_shadowed_colour_theme_or_appearance_changes_nothing(app: &mut TestAppContext) {
+    let mut ui = Harness::with_configuration(
+        app,
+        &lib_config::PersonalLedgerConfig::default(),
+        &[
+            ("PERSONAL_LEDGER_PERSONAL_LEDGER__COLOUR_THEME", "nord"),
+            ("PERSONAL_LEDGER_PERSONAL_LEDGER__COLOUR_APPEARANCE", "dark"),
+        ],
+    );
+    ui.press("g s");
+    ui.click("settings-index-Display");
+    assert!(ui.is_drawn("shadowed-colour_theme"));
+    assert!(ui.is_drawn("shadowed-colour_appearance"));
+    let before = ui.colour_choice();
+
+    ui.click("display-colour-theme-3");
+    ui.click("display-colour-appearance-1");
+
+    assert_eq!(ui.colour_choice(), before);
+    assert_eq!(ui.conf(), "");
 }
 
 #[gpui::test]

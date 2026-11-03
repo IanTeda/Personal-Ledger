@@ -1,6 +1,7 @@
 //! The Settings Display page driven by keys: walking the controls and into the Colour Theme
-//! grid, changing each control with `h`/`l`, toggling the checkbox, and stepping back out.
-//! State is read back from `Root`.
+//! grid, changing each control with `h`/`l`, toggling the checkbox, and stepping back out. The date
+//! style and Colour Theme are saved to the conf file (ADR-0053), unless a source above it sets
+//! them. State is read back from `Root` and the conf file.
 
 use super::common;
 use bin_desktop::shell::router::SettingsDisplaySnapshot;
@@ -74,8 +75,50 @@ fn l_and_h_step_the_date_format_and_stop_at_the_ends(app: &mut TestAppContext) {
             .as_deref(),
         Some("Iso")
     );
+    assert_eq!(ui.conf(), "[Personal-Ledger]\ndate_style = iso\n");
     ui.press("h h h h h h");
     assert_eq!(ui.settings::<SettingsDisplaySnapshot>().date_style, None);
+    assert_eq!(ui.conf(), "[Personal-Ledger]\ndate_style = default\n");
+}
+
+#[gpui::test]
+fn a_date_style_an_environment_variable_sets_is_shown_and_left_alone(app: &mut TestAppContext) {
+    let var = "PERSONAL_LEDGER_PERSONAL_LEDGER__DATE_STYLE";
+    let mut ui = Harness::with_configuration(
+        app,
+        &lib_config::PersonalLedgerConfig::default(),
+        &[(var, "iso")],
+    );
+    ui.press("g s j l");
+    assert!(ui.is_drawn("shadowed-date_style"));
+
+    ui.press("l");
+
+    assert_eq!(ui.settings::<SettingsDisplaySnapshot>().date_style, None);
+    assert_eq!(ui.conf(), "");
+    let status = ui.read(bin_desktop::shell::router::Root::status_message);
+    assert!(status.is_some_and(|text| text.contains(var)));
+}
+
+#[gpui::test]
+fn display_starts_on_the_date_style_and_colours_the_conf_file_holds(app: &mut TestAppContext) {
+    let mut config = lib_config::PersonalLedgerConfig::default();
+    config.date_style = Some(lib_core::DateStyle::Long);
+    config.colour_theme = Some("nord".into());
+    config.colour_appearance = lib_colour_theme::ColourAppearance::Light;
+    let mut ui = Harness::with_configuration(app, &config, &[]);
+    ui.press("g s j");
+
+    assert_eq!(
+        ui.settings::<SettingsDisplaySnapshot>()
+            .date_style
+            .as_deref(),
+        Some("Long")
+    );
+    assert_eq!(
+        ui.colour_choice(),
+        (Some("nord".to_string()), Some("Light".to_string()))
+    );
 }
 
 #[gpui::test]
@@ -185,9 +228,11 @@ fn the_grid_moves_with_l_and_h_and_enter_chooses_the_card(app: &mut TestAppConte
         Some(start + 1)
     );
     ui.press("enter");
+    let chosen = ColourTheme::built_in()[start + 1].id;
+    assert_eq!(ui.colour_choice().0.as_deref(), Some(chosen));
     assert_eq!(
-        ui.colour_choice().0.as_deref(),
-        Some(ColourTheme::built_in()[start + 1].id)
+        ui.conf(),
+        format!("[Personal-Ledger]\ncolour_theme = {chosen}\n")
     );
     ui.press("h");
     assert_eq!(
@@ -248,4 +293,23 @@ fn settings_display_from_the_palette_puts_focus_back_on_the_first_control(
     assert_eq!(display_page.colour_theme_focus, None);
     assert_eq!(display_page.display_field, Some(0));
     assert!(ui.settings_frame().page_focused);
+}
+
+#[gpui::test]
+fn the_theme_and_appearance_commands_save_to_the_conf_file(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+
+    ui.press(": t h e m e space n o r d enter");
+    ui.press(": a p p e a r a n c e space l i g h t enter");
+
+    assert_eq!(
+        ui.colour_choice(),
+        (Some("nord".to_string()), Some("Light".to_string()))
+    );
+    assert_eq!(
+        ui.conf(),
+        "[Personal-Ledger]\ncolour_theme = nord\ncolour_appearance = light\n"
+    );
+    let status = ui.read(bin_desktop::shell::router::Root::status_message);
+    assert!(status.is_some_and(|text| text.starts_with("colour_appearance saved to")));
 }

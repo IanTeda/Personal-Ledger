@@ -64,7 +64,7 @@ impl Root {
             }
             ViewEvent::SettingsPageChanged(page) => self.navigate(NavInput::SettingsPage(page)),
             ViewEvent::DisplayChanged(display) => self.push_display_preferences(display, cx),
-            ViewEvent::ToastsChanged(on) => self.push_toasts_on(on),
+            ViewEvent::DeviceSetting(setting) => self.change_device_setting(setting, cx),
         }
     }
 

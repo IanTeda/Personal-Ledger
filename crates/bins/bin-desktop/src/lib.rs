@@ -77,7 +77,7 @@ pub fn ledger_path(
 ) -> Option<std::path::PathBuf> {
     let config = config.personal_ledger_config();
     lib_core::ledger_to_open(
-        persisted.preferences.on_start,
+        config.on_start(),
         config.file(),
         persisted.last_ledger.as_deref(),
     )
@@ -248,9 +248,11 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, started: S
     let theme_overrides = config.theme_config().overrides.clone();
     let keybindings = config.keybindings_config().clone();
     // `noun`/window geometry survive restart (`docs/ux/desktop-mockups/README.md`'s "State
-    // machine"), as do the Client-scoped Preferences; everything else in `NavState` starts fresh
-    // every launch, so there's nothing else to seed here.
+    // machine"); everything else in `NavState` starts fresh every launch, so there's nothing else
+    // to seed here. A device's settings are Configuration (ADR-0053), not state.
     let persisted = persistence::load();
+    let device_settings = config.personal_ledger_config().clone();
+    let device_writer = config.writer().clone();
     // The file `start` opened, else the one remembered before, which the state file keeps at quit
     // for On start.
     let last_ledger = last_ledger_at_quit(opened.as_deref(), persisted.last_ledger.as_deref());
@@ -277,7 +279,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, started: S
             gpui_component::init(cx);
             gpui_component::set_locale(locale::gpui_component_tag(locale));
             theme::colours::init(theme_overrides, cx);
-            theme::colours::set_client_preferences(&persisted.preferences, cx);
+            theme::colours::set_device_colours(&device_settings, cx);
 
             // Registered once, before any window opens, so every `Font { family: "Archivo".into(),
             // .. }` request resolves against the bundled weights rather than a fallback.
@@ -350,6 +352,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, started: S
                             focus_handle,
                             cx,
                         );
+                        shell.set_configuration(&device_settings, device_writer, cx);
                         shell.set_this_device(this_device, cx);
                         if let Some(failure) = &failure {
                             shell.ledger_open_failed(failure);
@@ -410,7 +413,6 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, started: S
                             width: f32::from(bounds.size.width),
                             height: f32::from(bounds.size.height),
                         }),
-                        preferences: shell.client_preferences(cx),
                         last_ledger: last_ledger.clone(),
                     };
                     let _ = persistence::save(&state);
@@ -440,15 +442,18 @@ mod tests {
         config
     }
 
-    fn remembering(last_ledger: Option<&str>, on_start: lib_core::OnStart) -> PersistedState {
+    fn remembering(last_ledger: Option<&str>) -> PersistedState {
         PersistedState {
-            preferences: lib_core::ClientPreferences {
-                on_start,
-                ..Default::default()
-            },
             last_ledger: last_ledger.map(PathBuf::from),
             ..Default::default()
         }
+    }
+
+    /// [`config`] with On start set as the conf file would set it.
+    fn starting(file: Option<&str>, on_start: lib_core::OnStart) -> lib_config::Config {
+        let mut config = config(file);
+        config.personal_ledger.on_start = on_start;
+        config
     }
 
     #[test]
@@ -456,25 +461,31 @@ mod tests {
         let reopen = lib_core::OnStart::ReopenLastLedger;
         assert_eq!(
             ledger_path(
-                &config(Some("/x/explicit.pldb")),
-                &remembering(Some("/x/last.pldb"), reopen)
+                &starting(Some("/x/explicit.pldb"), reopen),
+                &remembering(Some("/x/last.pldb"))
             )
             .as_deref(),
             Some(Path::new("/x/explicit.pldb"))
         );
         assert_eq!(
-            ledger_path(&config(None), &remembering(Some("/x/last.pldb"), reopen)).as_deref(),
+            ledger_path(&starting(None, reopen), &remembering(Some("/x/last.pldb"))).as_deref(),
             Some(Path::new("/x/last.pldb"))
         );
     }
 
     #[test]
     fn with_no_ledger_named_the_desktop_opens_none() {
-        for state in [
-            remembering(None, lib_core::OnStart::ReopenLastLedger),
-            remembering(Some("/x/last.pldb"), lib_core::OnStart::NoLedger),
+        for (config, state) in [
+            (
+                starting(None, lib_core::OnStart::ReopenLastLedger),
+                remembering(None),
+            ),
+            (
+                starting(None, lib_core::OnStart::NoLedger),
+                remembering(Some("/x/last.pldb")),
+            ),
         ] {
-            assert_eq!(ledger_path(&config(None), &state), None);
+            assert_eq!(ledger_path(&config, &state), None);
         }
     }
 

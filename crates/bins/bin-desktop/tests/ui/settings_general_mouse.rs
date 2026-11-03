@@ -1,4 +1,4 @@
-//! Settings › General driven by the mouse: the On start and Toasts options, and the read-only Locale, Ledger folder and THIS DEVICE box drawn beside them. State is read back from `Root`.
+//! Settings › General driven by the mouse: the On start and Toasts options, each saved to the conf file (ADR-0053), and the read-only Locale, Ledger folder and THIS DEVICE box drawn beside them. State is read back from `Root` and the conf file.
 
 use super::common;
 use bin_desktop::shell::router::SettingsGeneralSnapshot;
@@ -23,6 +23,7 @@ fn clicking_the_on_start_options_sets_on_start(app: &mut TestAppContext) {
         ui.settings::<SettingsGeneralSnapshot>().on_start,
         OnStart::NoLedger
     );
+    assert_eq!(ui.conf(), "[Personal-Ledger]\non_start = none\n");
     ui.click("general-on-start-0");
     assert_eq!(
         ui.settings::<SettingsGeneralSnapshot>().on_start,
@@ -37,9 +38,27 @@ fn clicking_the_toasts_options_turns_them_off_and_on(app: &mut TestAppContext) {
     ui.click("general-toasts-1");
     assert!(!ui.settings::<SettingsGeneralSnapshot>().toasts_on);
     assert!(!ui.toasts().on);
+    assert_eq!(ui.conf(), "[Personal-Ledger]\ntoasts = false\n");
     ui.click("general-toasts-0");
     assert!(ui.settings::<SettingsGeneralSnapshot>().toasts_on);
     assert!(ui.toasts().on);
+}
+
+#[gpui::test]
+fn clicking_a_shadowed_toasts_option_changes_nothing(app: &mut TestAppContext) {
+    let mut ui = Harness::with_configuration(
+        app,
+        &lib_config::PersonalLedgerConfig::default(),
+        &[("PERSONAL_LEDGER_PERSONAL_LEDGER__TOASTS", "true")],
+    );
+    ui.press("g s");
+    assert!(ui.is_drawn("shadowed-toasts"));
+
+    ui.click("general-toasts-1");
+
+    assert!(ui.settings::<SettingsGeneralSnapshot>().toasts_on);
+    assert!(ui.toasts().on);
+    assert_eq!(ui.conf(), "");
 }
 
 #[gpui::test]
