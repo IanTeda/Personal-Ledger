@@ -57,9 +57,6 @@ impl UnitsRouter for PageRouter<'_, '_> {
         true
     }
 
-    /// The page closes no Dialog: a Dialog's own Presenter closes it through the host.
-    fn close_dialog(&mut self, _outcome: Option<UnitsOutcome>) {}
-
     fn open_prices(&mut self, unit: UnitId) {
         self.prices = Some(Some(unit));
     }

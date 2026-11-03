@@ -175,10 +175,6 @@ impl PayeesRouter for RecordingRouter {
     fn open_transactions(&mut self, id: PayeeId) {
         self.calls.push(RouterCall::OpenTransactions(id));
     }
-
-    fn close_dialog(&mut self, outcome: Option<PayeesOutcome>) {
-        self.calls.push(RouterCall::CloseDialog(outcome));
-    }
 }
 
 /// A Dialog's close records as the page Router's does, so one recording reads either.

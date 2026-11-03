@@ -223,10 +223,6 @@ impl AccountsRouter for RecordingRouter {
     fn open_ledger(&mut self, id: AccountId) {
         self.calls.push(RouterCall::OpenLedger(id));
     }
-
-    fn close_dialog(&mut self, outcome: Option<AccountsOutcome>) {
-        self.calls.push(RouterCall::CloseDialog(outcome));
-    }
 }
 
 impl DialogRouter<AccountsOutcome> for RecordingRouter {

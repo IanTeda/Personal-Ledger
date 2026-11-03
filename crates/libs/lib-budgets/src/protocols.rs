@@ -264,8 +264,4 @@ pub trait BudgetsRouter: Notify {
     /// Shows Transactions filtered to Category `category` in `month` and Budget `budget`'s
     /// on-budget Accounts.
     fn show_transactions(&mut self, budget: BudgetId, category: CategoryId, month: Period);
-
-    /// Closes the open Dialog. `outcome` is what it hands the page, `None` when it closed with
-    /// nothing to show.
-    fn close_dialog(&mut self, outcome: Option<BudgetsOutcome>);
 }

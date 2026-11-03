@@ -415,10 +415,6 @@ impl BillsRouter for RecordingRouter {
         !self.refuse
     }
 
-    fn close_dialog(&mut self, outcome: Option<BillsOutcome>) {
-        self.routed.push(Routed::Closed(outcome));
-    }
-
     fn show_transaction(&mut self, id: TransactionId) {
         self.routed.push(Routed::Transaction(id));
     }

@@ -199,12 +199,6 @@ pub trait BillsRouter: Notify {
     /// Opens the Pay Dialog on `request`'s entry. Returns whether it opened.
     fn open_pay(&mut self, request: PayRequest) -> bool;
 
-    /// Closes the open Bills Dialog. `outcome` is what its confirm did, `None` when it was
-    /// cancelled; the Client hands it to the page as [`BillsPageEvent::DialogClosed`].
-    ///
-    /// [`BillsPageEvent::DialogClosed`]: crate::presenter::BillsPageEvent::DialogClosed
-    fn close_dialog(&mut self, outcome: Option<BillsOutcome>);
-
     /// Shows Transaction `id` in the Transactions module.
     fn show_transaction(&mut self, id: TransactionId);
 }

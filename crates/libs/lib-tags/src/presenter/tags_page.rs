@@ -535,9 +535,6 @@ mod tests {
             fn open_transactions(&mut self, id: TagId) {
                 self.0.open_transactions(id);
             }
-            fn close_dialog(&mut self, outcome: Option<TagsOutcome>) {
-                self.0.close_dialog(outcome);
-            }
         }
         let (_, shared) = stub();
         let mut presenter =

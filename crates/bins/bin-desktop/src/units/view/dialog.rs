@@ -293,7 +293,7 @@ impl HostedDialog for UnitsDialog {
     /// Every input is the Presenter's to read: it holds every field and every open list. One
     /// that may confirm (`select`, `submit`) has the Ledger read copy in line either side, as
     /// [`Self::confirm`] does.
-    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) -> bool {
+    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
         let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
         if may_confirm {
             ports::refresh(&self.ports, &self.ledger, cx);
@@ -303,7 +303,6 @@ impl HostedDialog for UnitsDialog {
             ports::refresh(&self.ports, &self.ledger, cx);
         }
         self.closed(router, cx);
-        true
     }
 
     fn can_confirm(&self) -> bool {

@@ -66,9 +66,6 @@ impl DocumentsRouter for PageRouter<'_, '_> {
             app.open_with_system(path);
         }
     }
-
-    /// The page closes no Dialog: a Dialog's own Presenter closes it through the host.
-    fn close_dialog(&mut self, _outcome: Option<DocumentsOutcome>) {}
 }
 
 impl Notify for PageRouter<'_, '_> {

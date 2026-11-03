@@ -150,7 +150,7 @@ impl FormDialog {
 
 impl HostedDialog for FormDialog {
     /// Every input is the Presenter's to read.
-    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) -> bool {
+    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
         self.run(cx, |view, router| match view {
             Form::Budget(presenter, _) => presenter.handle(BudgetFormEvent::Input(input), router),
             Form::Limit(presenter, _) => presenter.handle(LimitFormEvent::Input(input), router),
@@ -158,7 +158,6 @@ impl HostedDialog for FormDialog {
             Form::Fill(presenter) => presenter.handle(FillEvent::Input(input), router),
             Form::Detail(presenter) => presenter.handle(DetailEvent::Input(input), router),
         });
-        true
     }
 
     fn can_confirm(&self) -> bool {

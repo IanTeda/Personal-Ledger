@@ -90,9 +90,6 @@ impl BillsRouter for PageRouter<'_, '_> {
         )
     }
 
-    /// The page closes no Dialog: a Dialog's own Presenter closes it through the host.
-    fn close_dialog(&mut self, _outcome: Option<BillsOutcome>) {}
-
     fn show_transaction(&mut self, id: TransactionId) {
         crate::transactions::router::show(self.cx, id);
     }

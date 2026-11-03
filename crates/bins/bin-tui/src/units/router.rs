@@ -40,10 +40,6 @@ impl UnitsRouter for Router<'_> {
         self.opened.is_some()
     }
 
-    fn close_dialog(&mut self, outcome: Option<UnitsOutcome>) {
-        self.closed = Some(outcome);
-    }
-
     fn open_prices(&mut self, unit: UnitId) {
         self.prices = Some(Some(unit));
     }

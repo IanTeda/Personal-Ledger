@@ -98,7 +98,7 @@ impl EventEmitter<DialogClosed> for InstitutionsDialog {}
 impl HostedDialog for InstitutionsDialog {
     /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) runs with
     /// the Ledger read copy in line before it and after it.
-    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) -> bool {
+    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
         let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
         if may_confirm {
             ports::refresh(&self.ledger, cx);
@@ -108,7 +108,6 @@ impl HostedDialog for InstitutionsDialog {
             ports::refresh(&self.ledger, cx);
         }
         self.closed(router, cx);
-        true
     }
 
     fn can_confirm(&self) -> bool {

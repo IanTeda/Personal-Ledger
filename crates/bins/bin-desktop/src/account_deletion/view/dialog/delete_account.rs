@@ -94,13 +94,12 @@ impl EventEmitter<DialogClosed> for DeleteAccountDialog {}
 impl HostedDialog for DeleteAccountDialog {
     /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) brings the
     /// Ledger's read copies in line after it.
-    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) -> bool {
+    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
         let router = self.send(DeleteAccountEvent::Input(input));
         if matches!(input, DialogInput::Select | DialogInput::Submit) {
             crate::account_deletion::refresh(&self.ledger, cx);
         }
         self.closed(router, cx);
-        true
     }
 
     fn can_confirm(&self) -> bool {

@@ -116,10 +116,4 @@ pub trait InstitutionsRouter: Notify {
     /// Builds `dialog`'s Presenter on the shared ports and hosts its View. Returns whether it
     /// opened.
     fn open_dialog(&mut self, dialog: InstitutionsDialog) -> bool;
-
-    /// Closes the open Institutions Dialog. `outcome` is what its confirm did, `None` when it was
-    /// cancelled; the Client hands it to the page as [`InstitutionsPageEvent::DialogClosed`].
-    ///
-    /// [`InstitutionsPageEvent::DialogClosed`]: crate::presenter::InstitutionsPageEvent::DialogClosed
-    fn close_dialog(&mut self, outcome: Option<InstitutionsOutcome>);
 }

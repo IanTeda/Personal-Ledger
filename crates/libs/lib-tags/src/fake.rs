@@ -183,10 +183,6 @@ impl TagsRouter for RecordingRouter {
     fn open_transactions(&mut self, id: TagId) {
         self.calls.push(RouterCall::OpenTransactions(id));
     }
-
-    fn close_dialog(&mut self, outcome: Option<TagsOutcome>) {
-        self.calls.push(RouterCall::CloseDialog(outcome));
-    }
 }
 
 impl DialogRouter<TagsOutcome> for RecordingRouter {

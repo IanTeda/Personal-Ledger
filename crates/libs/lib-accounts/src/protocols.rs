@@ -143,10 +143,4 @@ pub trait AccountsRouter: Notify {
 
     /// Shows Account `id`'s ledger: the Transactions filtered to it.
     fn open_ledger(&mut self, id: AccountId);
-
-    /// Closes the open Accounts Dialog. `outcome` is what its confirm did, `None` when it was
-    /// cancelled; the Client hands it to the page as [`AccountsPageEvent::DialogClosed`].
-    ///
-    /// [`AccountsPageEvent::DialogClosed`]: crate::presenter::AccountsPageEvent::DialogClosed
-    fn close_dialog(&mut self, outcome: Option<AccountsOutcome>);
 }

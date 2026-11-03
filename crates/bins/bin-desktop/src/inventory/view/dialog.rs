@@ -130,7 +130,7 @@ impl HostedDialog for InventoryDialog {
     /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) runs with
     /// the Ledger read copy in line before it and after it. Remove location is lent the reassign
     /// port for the call, answered from the Ledger.
-    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) -> bool {
+    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
         let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
         if may_confirm {
             ports::refresh(&self.ledger, cx);
@@ -157,7 +157,6 @@ impl HostedDialog for InventoryDialog {
             ports::refresh(&self.ledger, cx);
         }
         self.closed(router, cx);
-        true
     }
 
     fn can_confirm(&self) -> bool {

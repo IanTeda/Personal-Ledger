@@ -111,7 +111,7 @@ impl HostedDialog for PayDialog {
     /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) brings the
     /// Ledger's read copies in line after it, as it may have written something. A step down
     /// the Match list scrolls the chosen row into view.
-    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) -> bool {
+    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
         let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
         let router = self.send(PayEvent::Input(input));
         if may_confirm {
@@ -129,7 +129,6 @@ impl HostedDialog for PayDialog {
             self.scroll.scroll_to_item(row);
         }
         self.closed(router, cx);
-        true
     }
 
     fn can_confirm(&self) -> bool {

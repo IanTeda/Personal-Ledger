@@ -144,14 +144,13 @@ impl EventEmitter<DialogClosed> for DocumentsDialog {}
 
 impl HostedDialog for DocumentsDialog {
     /// Every input is the Presenter's to read; the one that confirms closes through the Router.
-    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) -> bool {
+    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
         let router = self.input_event(input);
         if let Some(outcome) = router.closed() {
             (self.landed)(outcome, cx);
             cx.emit(DialogClosed);
         }
         cx.notify();
-        true
     }
 
     fn can_confirm(&self) -> bool {

@@ -45,10 +45,6 @@ impl CategoriesRouter for PageRouter<'_, '_> {
         host_dialog(self.cx, |_| dialog);
         true
     }
-
-    /// The page closes no Dialog: a Dialog's own Presenter closes it through the host's
-    /// `DialogRouter` (#991 removes this method).
-    fn close_dialog(&mut self, _outcome: Option<CategoriesOutcome>) {}
 }
 
 impl Notify for PageRouter<'_, '_> {

@@ -162,10 +162,4 @@ pub trait InventoryRouter: Notify {
     /// Builds `dialog`'s Presenter and hosts its View. Returns whether it opened: a Dialog on a
     /// row removed since it was asked for has no Presenter to build.
     fn open_dialog(&mut self, dialog: InventoryDialog) -> bool;
-
-    /// Closes the open Inventory Dialog. `outcome` is what its confirm did, `None` when it was
-    /// cancelled; the Client hands it to the page as [`InventoryPageEvent::DialogClosed`].
-    ///
-    /// [`InventoryPageEvent::DialogClosed`]: crate::presenter::InventoryPageEvent::DialogClosed
-    fn close_dialog(&mut self, outcome: Option<InventoryOutcome>);
 }

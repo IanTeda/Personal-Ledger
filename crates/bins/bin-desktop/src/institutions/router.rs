@@ -45,9 +45,6 @@ impl InstitutionsRouter for PageRouter<'_, '_> {
         host_dialog(self.cx, |_| dialog);
         true
     }
-
-    /// The page closes no Dialog: the Dialog's own Presenter closes it through the host.
-    fn close_dialog(&mut self, _outcome: Option<InstitutionsOutcome>) {}
 }
 
 impl Notify for PageRouter<'_, '_> {

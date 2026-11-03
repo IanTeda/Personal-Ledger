@@ -1039,7 +1039,6 @@ mod tests {
             fn open_dialog(&mut self, _dialog: UnitsDialog) -> bool {
                 false
             }
-            fn close_dialog(&mut self, _outcome: Option<UnitsOutcome>) {}
             fn open_prices(&mut self, _unit: UnitId) {}
             fn close_prices(&mut self) {}
         }

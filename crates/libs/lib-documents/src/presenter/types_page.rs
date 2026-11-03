@@ -508,9 +508,6 @@ mod tests {
             fn open_dialog(&mut self, _dialog: DocumentTypesDialog) -> bool {
                 false
             }
-            fn close_dialog(&mut self, outcome: Option<DocumentTypesOutcome>) {
-                self.0.close_dialog(outcome);
-            }
         }
         let (_, shared) = stub();
         let mut presenter = DocumentTypesPagePresenter::new(

@@ -173,14 +173,13 @@ impl EventEmitter<DialogClosed> for BillsDialog {}
 impl HostedDialog for BillsDialog {
     /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) brings the
     /// Ledger's read copies in line after it, as it may have written something.
-    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) -> bool {
+    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
         let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
         let router = self.input_event(input);
         if may_confirm {
             ports::refresh(&self.ledger, cx);
         }
         self.closed(router, cx);
-        true
     }
 
     fn can_confirm(&self) -> bool {

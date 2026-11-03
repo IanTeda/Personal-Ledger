@@ -148,7 +148,7 @@ impl EventEmitter<DialogClosed> for DocumentTypesDialog {}
 impl HostedDialog for DocumentTypesDialog {
     /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) announces
     /// what it wrote after it.
-    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) -> bool {
+    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
         let router = match &mut self.view {
             View::Form(presenter) => send(
                 presenter,
@@ -170,7 +170,6 @@ impl HostedDialog for DocumentTypesDialog {
             ports::announce(&self.ledger, cx);
         }
         self.closed(router, cx);
-        true
     }
 
     fn can_confirm(&self) -> bool {

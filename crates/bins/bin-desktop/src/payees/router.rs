@@ -45,9 +45,6 @@ impl PayeesRouter for PageRouter<'_, '_> {
         let filters = TransactionFilters::for_payee(self.clock.today(), id);
         crate::transactions::router::show_filtered(self.cx, filters);
     }
-
-    /// The page closes no Dialog: a Dialog's own Presenter closes it through the host.
-    fn close_dialog(&mut self, _outcome: Option<PayeesOutcome>) {}
 }
 
 impl Notify for PageRouter<'_, '_> {

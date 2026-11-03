@@ -195,10 +195,6 @@ impl UnitsRouter for RecordingRouter {
         true
     }
 
-    fn close_dialog(&mut self, outcome: Option<UnitsOutcome>) {
-        self.calls.push(RouterCall::CloseDialog(outcome));
-    }
-
     fn open_prices(&mut self, unit: UnitId) {
         self.calls.push(RouterCall::OpenPrices(unit));
     }

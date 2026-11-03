@@ -192,7 +192,7 @@ impl EventEmitter<DialogClosed> for DeleteUnitDialog {}
 impl HostedDialog for DeleteUnitDialog {
     /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) has the
     /// Ledger's read copies in line either side, as [`Self::confirm`] does.
-    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) -> bool {
+    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
         let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
         if may_confirm {
             crate::units::ports::refresh(&self.ports, &self.ledger, cx);
@@ -202,7 +202,6 @@ impl HostedDialog for DeleteUnitDialog {
             crate::unit_deletion::refresh(&self.ports, &self.ledger, cx);
         }
         self.closed(router, cx);
-        true
     }
 
     fn can_confirm(&self) -> bool {

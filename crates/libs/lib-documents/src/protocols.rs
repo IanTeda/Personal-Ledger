@@ -89,10 +89,6 @@ pub trait DocumentTypesRouter: Notify {
     /// Builds `dialog`'s Presenter on the shared repository and hosts its View. Returns whether it
     /// opened: a Dialog on a type removed since it was asked for has no Presenter to build.
     fn open_dialog(&mut self, dialog: DocumentTypesDialog) -> bool;
-
-    /// Closes the open Document Types Dialog. `outcome` is what its confirm did, `None` when it was
-    /// cancelled; the Client hands it to the page as `DocumentTypesPageEvent::DialogClosed`.
-    fn close_dialog(&mut self, outcome: Option<DocumentTypesOutcome>);
 }
 
 /// The other domains as the Documents page reads them, shared with the Client that answers them.
@@ -155,11 +151,6 @@ pub trait DocumentsRouter: Notify {
     /// Builds `dialog`'s Presenter and hosts its View. Returns whether it opened: a Dialog on a
     /// Document gone since it was asked for has no Presenter to build.
     fn open_dialog(&mut self, dialog: DocumentsDialog) -> bool;
-
-    /// Closes the open Documents Dialog. `outcome` is what its confirm asks of the page, `None`
-    /// when it was cancelled or needs nothing more; the Client hands it to the page as
-    /// `DocumentsPageEvent::DialogClosed`.
-    fn close_dialog(&mut self, outcome: Option<DocumentsOutcome>);
 
     /// Hands the file at `path`, which exists, to the platform: opened in its application, or
     /// shown in its folder when `in_folder`.

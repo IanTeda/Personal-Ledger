@@ -194,10 +194,4 @@ pub trait CategoriesRouter: Notify {
     /// Builds `dialog`'s Presenter and hosts its View. Returns whether it opened: a Dialog on a
     /// Category removed since it was asked for has no Presenter to build.
     fn open_dialog(&mut self, dialog: CategoriesDialog) -> bool;
-
-    /// Closes the open Categories Dialog. `outcome` is what its confirm did, `None` when it was
-    /// cancelled; the Client hands it to the page as [`CategoriesPageEvent::DialogClosed`].
-    ///
-    /// [`CategoriesPageEvent::DialogClosed`]: crate::presenter::CategoriesPageEvent::DialogClosed
-    fn close_dialog(&mut self, outcome: Option<CategoriesOutcome>);
 }

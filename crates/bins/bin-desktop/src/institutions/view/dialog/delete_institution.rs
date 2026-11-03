@@ -71,7 +71,7 @@ impl gpui::EventEmitter<DialogClosed> for DeleteInstitutionDialog {}
 impl HostedDialog for DeleteInstitutionDialog {
     /// Every input is the Presenter's to read: typing fills the confirmation, `select` deletes
     /// once it is typed back, or closes a refusal.
-    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) -> bool {
+    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
         let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
         if may_confirm {
             ports::refresh(&self.ledger, cx);
@@ -81,7 +81,6 @@ impl HostedDialog for DeleteInstitutionDialog {
             ports::refresh(&self.ledger, cx);
         }
         self.closed(router, cx);
-        true
     }
 
     fn can_confirm(&self) -> bool {

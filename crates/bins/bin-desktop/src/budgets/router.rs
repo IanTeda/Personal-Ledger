@@ -198,9 +198,6 @@ impl BudgetsRouter for PageRouter<'_, '_> {
             TransactionFilters::for_budget_category(category, month, &account_ids),
         );
     }
-
-    /// The page closes no Dialog: a Dialog's own Presenter closes it through the host.
-    fn close_dialog(&mut self, _outcome: Option<BudgetsOutcome>) {}
 }
 
 impl Notify for PageRouter<'_, '_> {

@@ -130,9 +130,4 @@ pub trait PayeesRouter: Notify {
     /// Shows the Transactions of the Payee `id`: the Transactions page filtered to it, from its
     /// first row.
     fn open_transactions(&mut self, id: PayeeId);
-
-    /// Closes the open Payees Dialog. The Dialogs close through `lib_viper::dialog::DialogRouter`
-    /// instead, so nothing calls this; it stays, with the page's stub, until every module's
-    /// Dialogs do (#991).
-    fn close_dialog(&mut self, outcome: Option<PayeesOutcome>);
 }

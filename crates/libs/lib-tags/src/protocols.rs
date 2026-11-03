@@ -159,10 +159,4 @@ pub trait TagsRouter: Notify {
     /// Shows the Transactions of the Tag `id`: the Transactions page filtered to it, from its
     /// first row.
     fn open_transactions(&mut self, id: TagId);
-
-    /// Closes the open Tags Dialog. `outcome` is what its confirm did, `None` when it was
-    /// cancelled; the Client hands it to the page as [`TagsPageEvent::DialogClosed`].
-    ///
-    /// [`TagsPageEvent::DialogClosed`]: crate::presenter::TagsPageEvent::DialogClosed
-    fn close_dialog(&mut self, outcome: Option<TagsOutcome>);
 }

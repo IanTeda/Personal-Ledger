@@ -220,10 +220,6 @@ impl CategoriesRouter for RecordingRouter {
         self.calls.push(RouterCall::OpenDialog(dialog));
         true
     }
-
-    fn close_dialog(&mut self, outcome: Option<CategoriesOutcome>) {
-        self.calls.push(RouterCall::CloseDialog(outcome));
-    }
 }
 
 impl DialogRouter<CategoriesOutcome> for RecordingRouter {

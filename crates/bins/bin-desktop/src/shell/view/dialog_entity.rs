@@ -10,11 +10,8 @@
 //! decides: it closes an open select first, otherwise cancels the Dialog and closes it. A key the
 //! keymap doesn't bind types into the focused field.
 //!
-//! The host carries two paths while the module Dialogs move (#988 to #991). A Dialog whose
-//! Presenter takes `lib-viper`'s [`DialogInput`]s gets each command and typed key as one
-//! ([`HostedDialog::input`]) and closes through the one [`HostRouter`]; the Settings and deletion
-//! Dialogs do (#988, #989). Every other Dialog gets the command turned back into the key it stands
-//! for ([`HostedDialog::key`]) and closes through its own `<Domain>Router`.
+//! Every Dialog's Presenter takes `lib-viper`'s [`DialogInput`]s: each command and typed key is one
+//! ([`HostedDialog::input`]), and the Presenter closes through the one [`HostRouter`].
 //!
 //! A Dialog's Presenter closes it through its Router. The Dialog then hands a confirm's outcome to
 //! the page that opened it and emits [`DialogClosed`], which the Shell closes the host on, so a
@@ -42,20 +39,9 @@ pub struct DialogClosed;
 
 /// A module's Dialog as the host holds it: an Entity owning its Presenter and its widget state.
 pub trait HostedDialog: Render + EventEmitter<DialogClosed> + Sized + 'static {
-    /// A Dialog input for a Dialog whose Presenter takes them: the Presenter decides what it means,
-    /// and confirms or closes through a [`HostRouter`]. Returns whether the Dialog takes inputs;
-    /// one that doesn't is sent the key instead ([`Self::key`]).
-    fn input(&mut self, _input: DialogInput, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    /// A key as the Dialog's View reads it, for a Dialog still on the key path (#991 removes it):
-    /// `Enter` opens a closed select, picks from an open one, else answers
-    /// [`DialogOutcome::Confirm`] only while the form is valid; `Tab` moves field; the arrows step
-    /// a select; anything else types. A Dialog that takes inputs never gets a key.
-    fn key(&mut self, _key: DialogKey, _cx: &mut Context<'_, Self>) -> DialogOutcome {
-        DialogOutcome::Ignored
-    }
+    /// A Dialog input: the Presenter decides what it means, and confirms or closes through a
+    /// [`HostRouter`].
+    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>);
 
     /// Whether the form would confirm now.
     fn can_confirm(&self) -> bool;
@@ -78,19 +64,6 @@ pub trait HostedDialog: Render + EventEmitter<DialogClosed> + Sized + 'static {
 
     /// The open Dialog's state for the UI tests.
     fn readback(&self, cx: &App) -> DialogReadback;
-}
-
-/// The key a command stands for in the Dialog's View: `Back` never reaches the Dialog, and
-/// `Submit` is the host's own.
-fn command_key(command: DialogCommand) -> Option<DialogKey> {
-    match command {
-        DialogCommand::Select => Some(DialogKey::Enter),
-        DialogCommand::NextField => Some(DialogKey::Tab),
-        DialogCommand::PreviousField => Some(DialogKey::BackTab),
-        DialogCommand::SelectNext => Some(DialogKey::Down),
-        DialogCommand::SelectPrevious => Some(DialogKey::Up),
-        DialogCommand::Back | DialogCommand::Submit => None,
-    }
 }
 
 /// A typed key as a Presenter's input: a character, `Backspace` or an arrow along a row. The
@@ -138,13 +111,6 @@ impl<O> Notify for HostRouter<O> {
     }
 }
 
-/// Runs `key` on `dialog`, confirming when its View says so.
-fn press<D: HostedDialog>(dialog: &mut D, key: DialogKey, cx: &mut Context<'_, D>) {
-    if dialog.key(key, cx) == DialogOutcome::Confirm {
-        dialog.confirm(cx);
-    }
-}
-
 /// What the Shell holds of the open Dialog, whatever its type.
 trait AnyHosted {
     fn command(&self, command: DialogCommand, cx: &mut App);
@@ -161,17 +127,8 @@ trait AnyHosted {
 impl<D: HostedDialog> AnyHosted for Entity<D> {
     fn command(&self, command: DialogCommand, cx: &mut App) {
         self.update(cx, |dialog, cx| {
-            if command.input().is_some_and(|input| dialog.input(input, cx)) {
-                cx.notify();
-                return;
-            }
-            match command_key(command) {
-                Some(key) => press(dialog, key, cx),
-                // `submit` confirms a valid form from any field, a select or a multi-line box.
-                None if command == DialogCommand::Submit && dialog.can_confirm() => {
-                    dialog.confirm(cx);
-                }
-                None => {}
+            if let Some(input) = command.input() {
+                dialog.input(input, cx);
             }
             cx.notify();
         });
@@ -179,18 +136,9 @@ impl<D: HostedDialog> AnyHosted for Entity<D> {
 
     fn typed(&self, key: DialogKey, cx: &mut App) {
         // A key the keymap left unbound (`tab` once `next_field` moves) is no command here.
-        if matches!(
-            key,
-            DialogKey::Char(_)
-                | DialogKey::Backspace
-                | DialogKey::Left
-                | DialogKey::Right
-                | DialogKey::Ctrl(_)
-        ) {
+        if let Some(input) = typed_input(key) {
             self.update(cx, |dialog, cx| {
-                if !typed_input(key).is_some_and(|input| dialog.input(input, cx)) {
-                    press(dialog, key, cx);
-                }
+                dialog.input(input, cx);
                 cx.notify();
             });
         }

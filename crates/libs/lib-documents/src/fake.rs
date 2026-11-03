@@ -170,10 +170,6 @@ impl DocumentTypesRouter for RecordingRouter {
         self.calls.push(RouterCall::OpenDialog(dialog));
         true
     }
-
-    fn close_dialog(&mut self, outcome: Option<DocumentTypesOutcome>) {
-        self.calls.push(RouterCall::CloseDialog(outcome));
-    }
 }
 
 impl DialogRouter<DocumentTypesOutcome> for RecordingRouter {
@@ -227,10 +223,6 @@ impl DocumentsRouter for RecordingDocumentsRouter {
             path: path.to_path_buf(),
             in_folder,
         });
-    }
-
-    fn close_dialog(&mut self, outcome: Option<DocumentsOutcome>) {
-        self.calls.push(DocumentsCall::CloseDialog(outcome));
     }
 }
 

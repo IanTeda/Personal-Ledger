@@ -257,10 +257,6 @@ impl BudgetsRouter for RecordingRouter {
         self.routed
             .push(Routed::Transactions(budget, category, month));
     }
-
-    fn close_dialog(&mut self, outcome: Option<BudgetsOutcome>) {
-        self.routed.push(Routed::Closed(outcome));
-    }
 }
 
 /// A Dialog's close records as the page Router's does, so one recording reads either.

@@ -172,12 +172,11 @@ impl ListDialog {
 impl HostedDialog for ListDialog {
     /// Every input is the Presenter's to read: the list's own letters, or the Switcher's search
     /// text while it has the keys.
-    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) -> bool {
+    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
         self.run(cx, |list, router| match list {
             List::Switcher(presenter) => presenter.handle(SwitcherEvent::Input(input), router),
             List::Manage(presenter) => presenter.handle(ManageEvent::Input(input), router),
         });
-        true
     }
 
     fn can_confirm(&self) -> bool {
