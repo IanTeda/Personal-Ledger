@@ -1,78 +1,54 @@
 //! The Payees ports as the Desktop holds them: the store `shell::router::build` is given, with
-//! `PayeeCategories` read from the Categories store (#858) and an in-memory store's usage counted
-//! from the Ledger read copy (#841), and the step that keeps the Ledger's read copy of the Payees
-//! in line after a Payees write. The write is committed by the input it was made in
-//! (`crate::input::send`), not here.
+//! `PayeeUsage` and `PayeeCategories` read from the Transactions, Bills and Categories stores
+//! through `lib-database`'s [`StoredPayeeReads`] (#992), and the step that keeps the Ledger's read
+//! copy of the Payees in line after a Payees write. The write is committed by the input it was
+//! made in (`crate::input::send`), not here.
 //!
 //! The ports are one value shared three ways: the Payees module's Presenters read and write them
 //! as [`PayeesPorts`], and the Ledger's forwarding shim ([`forward`]) and the Bills reads hold the
 //! same value as a `PayeesStore`.
 //!
-//! An in-memory store's usage is copied from the Ledger before each Payees event, since a port
-//! can't reach the `LedgerStore` Entity without a gpui context. So a Split written since, by a
-//! Category reassign, is counted. The stored Desktop's usage is the adapter's, counted in the file.
+//! The usage is counted in the stores on each ask, whether they are the adapters or
+//! `Stores::fake`'s in-memory ones, so a Split written since, by a Category reassign or the Import,
+//! is counted with nothing copied from the Ledger.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use gpui::{App, Entity};
-use lib_database::{PayeesStore, SharedCategoriesStore};
+use lib_database::{PayeesStore, StoredPayeeReads};
 use lib_ledger::{Ledger, LedgerChange};
-use lib_payees::fake::InMemoryPayeeUsage;
-use lib_payees::{
-    PayeeCategories, PayeeCategory, PayeeRepository, PayeeUsage, PayeesPorts, PortsMut,
-};
+use lib_payees::{PayeeCategories, PayeeRepository, PayeeUsage, PayeesPorts, PortsMut};
 
 use crate::ledger_store::LedgerStore;
 
 /// The Payees ports the Payees module, the Ledger and the Bills reads share.
 pub type DesktopPorts = Rc<RefCell<LedgerBackedPorts>>;
 
-/// The Categories store as the Default category select reads it, borrowed for each read: the store
-/// is shared behind a `RefCell` whose guard can't be lent out of it.
-struct Categories(SharedCategoriesStore);
-
-impl PayeeCategories for Categories {
-    fn payee_categories(&self) -> Vec<PayeeCategory> {
-        self.0.borrow().payee_categories()
-    }
-}
-
-/// `store`'s Payees and their use, with the Categories a Payee may default to read from
-/// `categories`, and an in-memory store's use counted from the Ledger.
+/// `store`'s Payees, with their use and the Categories a Payee may default to read from the other
+/// domains' stores.
 pub struct LedgerBackedPorts {
     store: Box<dyn PayeesStore>,
-    categories: Categories,
+    reads: StoredPayeeReads,
 }
 
 impl LedgerBackedPorts {
-    pub fn shared(store: Box<dyn PayeesStore>, categories: SharedCategoriesStore) -> DesktopPorts {
-        Rc::new(RefCell::new(Self {
-            store,
-            categories: Categories(categories),
-        }))
+    pub fn shared(store: Box<dyn PayeesStore>, reads: StoredPayeeReads) -> DesktopPorts {
+        Rc::new(RefCell::new(Self { store, reads }))
     }
 
-    /// `ledger`'s own Payees in memory, their use counted from its Splits and Bill Plans, reading
-    /// `categories`, for a test that needs no storage.
-    pub fn in_memory(ledger: &Ledger, categories: SharedCategoriesStore) -> DesktopPorts {
-        let ports = Self::shared(
+    /// `ledger`'s own Payees in memory, reading the other domains through `reads`, for a test that
+    /// needs no storage.
+    pub fn in_memory(ledger: &Ledger, reads: StoredPayeeReads) -> DesktopPorts {
+        Self::shared(
             Box::new(lib_payees::fake::InMemoryPorts {
                 payees: lib_payees::fake::InMemoryPayees {
                     payees: ledger.payees().to_vec(),
                 },
                 ..Default::default()
             }),
-            categories,
-        );
-        ports.borrow_mut().copy_from_ledger(ledger);
-        ports
-    }
-
-    fn copy_from_ledger(&mut self, ledger: &Ledger) {
-        if let Some(usage) = self.store.usage_to_count() {
-            usage.uses = ledger.payee_uses();
-        }
+            reads,
+        )
     }
 }
 
@@ -82,15 +58,18 @@ impl PayeesPorts for LedgerBackedPorts {
     }
 
     fn usage(&self) -> &dyn PayeeUsage {
-        self.store.usage()
+        &self.reads
     }
 
     fn categories(&self) -> &dyn PayeeCategories {
-        &self.categories
+        &self.reads
     }
 
     fn split_mut(&mut self) -> PortsMut<'_> {
-        self.store.split_mut()
+        PortsMut {
+            payees: self.store.payees_mut(),
+            usage: &self.reads,
+        }
     }
 }
 
@@ -102,18 +81,6 @@ impl PayeesStore for LedgerBackedPorts {
 
     fn payees_mut(&mut self) -> &mut dyn PayeeRepository {
         self.store.payees_mut()
-    }
-
-    fn usage(&self) -> &dyn PayeeUsage {
-        self.store.usage()
-    }
-
-    fn split_mut(&mut self) -> PortsMut<'_> {
-        self.store.split_mut()
-    }
-
-    fn usage_to_count(&mut self) -> Option<&mut InMemoryPayeeUsage> {
-        self.store.usage_to_count()
     }
 
     fn bill_payees(&self) -> Vec<lib_bills::BillPayee> {
@@ -141,27 +108,35 @@ pub fn forward(store: &mut dyn PayeesStore, changes: &[LedgerChange]) -> bool {
     wrote
 }
 
-/// Recounts an in-memory store's usage from `ledger`'s Splits and Bill Plans, for the next Payees
-/// event and a view model drawn outside one.
-pub fn copy_from_ledger(ports: &DesktopPorts, ledger: &Ledger) {
-    ports.borrow_mut().copy_from_ledger(ledger);
-}
-
 /// Brings the Ledger read copy of the Payees in line with the ports, announcing `Domain::Payees`
-/// when it changed, and recounts the usage for the next Payees event. Run before and after
-/// every Payees event and Dialog confirm, so Transactions, Bills, Import and Documents see a write
-/// at once.
-pub fn refresh(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: &mut App) {
+/// when it changed. Run before and after every Payees event and Dialog confirm, so Transactions,
+/// Bills, Import and Documents see a write at once.
+pub fn refresh(ledger: &Entity<LedgerStore>, cx: &mut App) {
     ledger.update(cx, |store, cx| store.refresh_payees(cx));
-    copy_from_ledger(ports, ledger.read(cx).ledger());
 }
 
 #[cfg(test)]
 mod tests {
     use lib_core::{CategoryId, PayeeId, TagId, TransactionId};
+    use lib_database::SharedTransactionsStore;
     use lib_payees::fake::InMemoryPorts;
 
     use super::*;
+
+    /// The ports on `ledger`'s Payees, reading its Transactions, Bill Plans and Categories in
+    /// memory, with the Transactions store a test writes a Split to.
+    fn on(ledger: &Ledger) -> (DesktopPorts, SharedTransactionsStore) {
+        let transactions: SharedTransactionsStore =
+            Rc::new(RefCell::new(lib_transactions::fake::InMemoryTransactions {
+                transactions: ledger.transactions().to_vec(),
+            }));
+        let reads = StoredPayeeReads {
+            transactions: transactions.clone(),
+            bills: crate::bills::ports::in_memory_store(ledger),
+            categories: crate::categories::ports::in_memory(ledger),
+        };
+        (LedgerBackedPorts::in_memory(ledger, reads), transactions)
+    }
 
     #[test]
     fn payee_upserts_reach_the_store_and_others_are_left() {
@@ -182,10 +157,9 @@ mod tests {
     }
 
     #[test]
-    fn in_memory_ports_count_the_ledgers_use_and_offer_its_leaves() {
+    fn in_memory_ports_count_the_stores_use_and_offer_its_leaves() {
         let ledger = Ledger::stub();
-        let ports =
-            LedgerBackedPorts::in_memory(&ledger, crate::categories::ports::in_memory(&ledger));
+        let (ports, _) = on(&ledger);
         let ports = ports.borrow();
 
         let woolworths = PayeesPorts::usage(&*ports)
@@ -205,23 +179,19 @@ mod tests {
     }
 
     #[test]
-    fn a_split_written_after_the_ports_are_built_is_counted_at_the_next_copy() {
-        let mut ledger = Ledger::stub();
+    fn a_split_written_to_the_store_after_the_ports_are_built_is_counted() {
+        let ledger = Ledger::stub();
         let woolworths = PayeeId::seed(1);
-        let ports =
-            LedgerBackedPorts::in_memory(&ledger, crate::categories::ports::in_memory(&ledger));
+        let (ports, transactions) = on(&ledger);
         let before = PayeesPorts::usage(&*ports.borrow())
             .payee_usage(woolworths)
             .expect("memory always counts");
 
-        let mut transactions = ledger.transactions().to_vec();
-        let mut booked = transactions[0].clone();
+        let mut booked = ledger.transactions()[0].clone();
         booked.id = TransactionId::seed(9_999);
         booked.splits.truncate(1);
         booked.splits[0].payee_id = Some(woolworths);
-        transactions.push(booked);
-        ledger.refresh_transactions(transactions);
-        copy_from_ledger(&ports, &ledger);
+        transactions.borrow_mut().upsert_transaction(booked);
 
         let uses = PayeesPorts::usage(&*ports.borrow()).payee_usage(woolworths);
         assert_eq!(uses.map(|uses| uses.splits), Some(before.splits + 1));

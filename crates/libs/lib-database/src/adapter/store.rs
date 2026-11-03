@@ -25,6 +25,13 @@
 //! writes it through `lib-documents`' Interactors and reads the other domains through
 //! [`StoredDocumentReads`] (#963, #968).
 //!
+//! A module reads another domain's rows through one stored reads struct ([`StoredPayeeReads`],
+//! [`StoredDocumentReads`], [`StoredBudgetReads`]): it holds the shared stores of the domains it
+//! reads and answers the module's read ports from them, so the same struct stands over the
+//! adapters and over [`Stores::fake`]'s in-memory stores. Payees' is the pattern (#992): each
+//! store answers about its own rows in its own terms (`payee_splits`, `payee_bill_plans`), and
+//! the reads struct maps them into the reading module's.
+//!
 //! [`Stores::fake`] takes its in-memory stores as one [`FakeStores`], so a domain joining the
 //! bundle adds a field rather than an argument (#866).
 //!
@@ -61,7 +68,7 @@ use lib_institutions::fake::InMemoryInstitutions;
 use lib_institutions::{InstitutionRepository, InstitutionUse};
 use lib_inventory::InventoryRepository;
 use lib_inventory::fake::InMemoryInventory;
-use lib_payees::{PayeeCategory, PayeeRepository, PayeeUsage};
+use lib_payees::{PayeeCategories, PayeeCategory, PayeeRepository, PayeeUsage, PayeeUse};
 use lib_tags::fake::InMemoryTagUsage;
 use lib_tags::{TagRepository, TagUsage};
 use lib_transaction_import::ImportAccount;
@@ -764,6 +771,13 @@ pub trait TransactionsStore {
         transactions::category_splits(&self.all_transactions(), id)
     }
 
+    /// The Splits naming Payee `id`, `None` when they can't be counted: the Splits half of
+    /// [`StoredPayeeReads`]' `PayeeUsage`. An in-memory store counts its own rows; the adapter
+    /// counts in the file.
+    fn payee_splits(&self, id: PayeeId) -> Option<usize> {
+        Some(transactions::payee_splits(&self.all_transactions(), id))
+    }
+
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
     /// # Errors
@@ -790,6 +804,10 @@ impl TransactionsStore for TransactionsAdapter {
 
     fn category_splits(&self, id: CategoryId) -> usize {
         TransactionsAdapter::category_splits(self, id)
+    }
+
+    fn payee_splits(&self, id: PayeeId) -> Option<usize> {
+        TransactionsAdapter::payee_splits(self, id)
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -821,6 +839,10 @@ impl<T: TransactionsStore + ?Sized> TransactionsStore for Box<T> {
 
     fn category_splits(&self, id: CategoryId) -> usize {
         (**self).category_splits(id)
+    }
+
+    fn payee_splits(&self, id: PayeeId) -> Option<usize> {
+        (**self).payee_splits(id)
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -855,6 +877,10 @@ impl TransactionsStore for InMemoryTransactions {
         transactions::category_splits(&self.transactions, id)
     }
 
+    fn payee_splits(&self, id: PayeeId) -> Option<usize> {
+        Some(transactions::payee_splits(&self.transactions, id))
+    }
+
     fn reload(&mut self) -> Result<()> {
         Ok(())
     }
@@ -885,6 +911,13 @@ pub trait BillsStore {
         bills::document_bill_plans(&self.plans().bill_plans())
     }
 
+    /// The Bill Plans naming Payee `id`, `None` when they can't be counted: the Bill Plans half of
+    /// [`StoredPayeeReads`]' `PayeeUsage`. An in-memory store counts its own rows; the adapter
+    /// counts in the file.
+    fn payee_bill_plans(&self, id: PayeeId) -> Option<usize> {
+        Some(bills::payee_bill_plans(&self.plans().bill_plans(), id))
+    }
+
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
     /// # Errors
@@ -909,6 +942,10 @@ impl BillsStore for BillsAdapter {
         self
     }
 
+    fn payee_bill_plans(&self, id: PayeeId) -> Option<usize> {
+        BillsAdapter::payee_bill_plans(self, id)
+    }
+
     fn reload(&mut self) -> Result<()> {
         BillsAdapter::reload(self)
     }
@@ -930,6 +967,10 @@ impl<T: BillsStore + ?Sized> BillsStore for Box<T> {
 
     fn entries_mut(&mut self) -> &mut dyn BillScheduleRepository {
         (**self).entries_mut()
+    }
+
+    fn payee_bill_plans(&self, id: PayeeId) -> Option<usize> {
+        (**self).payee_bill_plans(id)
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -964,24 +1005,12 @@ impl BillsStore for InMemoryBills {
 /// the ports are.
 pub type SharedPayeesStore = Rc<RefCell<dyn PayeesStore>>;
 
-/// The Payees repository and usage ports, wherever they are kept, and the rows as Bills reads
-/// them.
+/// The Payees repository port, wherever it is kept, and the rows as Bills reads them. What names
+/// a Payee is other domains' rows, which [`StoredPayeeReads`] counts in their stores (#992).
 pub trait PayeesStore {
     fn payees(&self) -> &dyn PayeeRepository;
 
     fn payees_mut(&mut self) -> &mut dyn PayeeRepository;
-
-    fn usage(&self) -> &dyn PayeeUsage;
-
-    /// The repository and usage, for one write.
-    fn split_mut(&mut self) -> lib_payees::PortsMut<'_>;
-
-    /// The usage a store holds in memory rather than counts, for its holder to recount from the
-    /// Splits and Bill Plans it can see before each ask (#841). `None` for the adapter, which
-    /// counts in the file on each ask.
-    fn usage_to_count(&mut self) -> Option<&mut lib_payees::fake::InMemoryPayeeUsage> {
-        None
-    }
 
     /// Every Payee as `lib-bills`' `BillPayees` reads it, inactive ones included.
     fn bill_payees(&self) -> Vec<BillPayee> {
@@ -1014,14 +1043,6 @@ impl PayeesStore for PayeesAdapter {
         PayeesAdapter::payees_mut(self)
     }
 
-    fn usage(&self) -> &dyn PayeeUsage {
-        PayeesAdapter::usage(self)
-    }
-
-    fn split_mut(&mut self) -> lib_payees::PortsMut<'_> {
-        PayeesAdapter::split_mut(self)
-    }
-
     fn bill_payees(&self) -> Vec<BillPayee> {
         lib_bills::BillPayees::bill_payees(self)
     }
@@ -1041,18 +1062,6 @@ impl<T: PayeesStore + ?Sized> PayeesStore for Box<T> {
         (**self).payees_mut()
     }
 
-    fn usage(&self) -> &dyn PayeeUsage {
-        (**self).usage()
-    }
-
-    fn split_mut(&mut self) -> lib_payees::PortsMut<'_> {
-        (**self).split_mut()
-    }
-
-    fn usage_to_count(&mut self) -> Option<&mut lib_payees::fake::InMemoryPayeeUsage> {
-        (**self).usage_to_count()
-    }
-
     fn bill_payees(&self) -> Vec<BillPayee> {
         (**self).bill_payees()
     }
@@ -1062,8 +1071,9 @@ impl<T: PayeesStore + ?Sized> PayeesStore for Box<T> {
     }
 }
 
-/// Memory is all there is, so a reload has nothing to read, and the usage is whatever its holder
-/// last counted.
+/// Memory is all there is, so a reload has nothing to read. Only the Payees are the store's: its
+/// usage and Categories are `lib-payees`' own test fakes, which a Client reads through
+/// [`StoredPayeeReads`] instead.
 impl PayeesStore for lib_payees::fake::InMemoryPorts {
     fn payees(&self) -> &dyn PayeeRepository {
         &self.payees
@@ -1071,18 +1081,6 @@ impl PayeesStore for lib_payees::fake::InMemoryPorts {
 
     fn payees_mut(&mut self) -> &mut dyn PayeeRepository {
         &mut self.payees
-    }
-
-    fn usage(&self) -> &dyn PayeeUsage {
-        &self.usage
-    }
-
-    fn split_mut(&mut self) -> lib_payees::PortsMut<'_> {
-        lib_payees::fake::InMemoryPorts::split_mut(self)
-    }
-
-    fn usage_to_count(&mut self) -> Option<&mut lib_payees::fake::InMemoryPayeeUsage> {
-        Some(&mut self.usage)
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -1238,6 +1236,34 @@ impl BudgetUnits for StoredBudgetReads {
 impl BudgetPayees for StoredBudgetReads {
     fn payee_name(&self, id: PayeeId) -> Option<String> {
         self.payees.borrow().payee_name(id)
+    }
+}
+
+/// `lib-payees`' two read ports answered by the shared stores of the domains Payees reads, each
+/// borrowed for the one read (#992), as [`StoredDocumentReads`] answers Documents'. The same
+/// struct stands over [`Stores::fake`]'s in-memory stores and the adapters, so the UI tests read
+/// a Payee's use as the app does. Each store counts its own rows naming the Payee; this maps the
+/// counts into `lib-payees`' terms.
+#[derive(Clone)]
+pub struct StoredPayeeReads {
+    pub transactions: SharedTransactionsStore,
+    pub bills: SharedBillsStore,
+    pub categories: SharedCategoriesStore,
+}
+
+impl PayeeUsage for StoredPayeeReads {
+    /// Unknown when either half can't be counted, never unused (#840).
+    fn payee_usage(&self, id: PayeeId) -> Option<PayeeUse> {
+        Some(PayeeUse {
+            splits: self.transactions.borrow().payee_splits(id)?,
+            bill_plans: self.bills.borrow().payee_bill_plans(id)?,
+        })
+    }
+}
+
+impl PayeeCategories for StoredPayeeReads {
+    fn payee_categories(&self) -> Vec<PayeeCategory> {
+        self.categories.borrow().payee_categories()
     }
 }
 
@@ -1493,5 +1519,48 @@ mod tests {
         stores.commit.commit();
 
         assert_eq!(count.get(), 2);
+    }
+
+    /// Over the in-memory stores the UI tests run on, a Payee's use is what those stores hold, a
+    /// Split written to the Transactions store after the reads were built included.
+    #[test]
+    fn stored_payee_reads_count_the_in_memory_stores_rows() {
+        let ledger = lib_ledger::Ledger::stub();
+        let transactions: SharedTransactionsStore = Rc::new(RefCell::new(InMemoryTransactions {
+            transactions: ledger.transactions().to_vec(),
+        }));
+        let reads = StoredPayeeReads {
+            transactions: transactions.clone(),
+            bills: Rc::new(RefCell::new(InMemoryBills {
+                plans: ledger.bill_plans().to_vec(),
+                entries: Vec::new(),
+            })),
+            categories: Rc::new(RefCell::new(InMemoryCategories::stub())),
+        };
+        let (woolworths, telstra) = (PayeeId::seed(1), PayeeId::seed(20));
+        let before = reads.payee_usage(woolworths).expect("memory always counts");
+        assert!(before.splits > 0, "the stub's groceries name Woolworths");
+        assert_eq!(
+            reads.payee_usage(telstra).map(|uses| uses.bill_plans),
+            Some(1)
+        );
+
+        let mut booked = ledger.transactions()[0].clone();
+        booked.id = lib_core::TransactionId::seed(9_999);
+        booked.splits.truncate(1);
+        booked.splits[0].payee_id = Some(woolworths);
+        transactions.borrow_mut().upsert_transaction(booked);
+
+        assert_eq!(
+            reads.payee_usage(woolworths).map(|uses| uses.splits),
+            Some(before.splits + 1)
+        );
+        assert!(
+            reads
+                .payee_categories()
+                .iter()
+                .any(|leaf| leaf.id == CategoryId::seed(7)),
+            "the Categories store's leaves"
+        );
     }
 }

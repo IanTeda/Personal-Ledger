@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT COUNT(*) AS \"splits!: i64\" FROM splits WHERE payee_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "splits!: i64",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "77f64a225d6a85919d01918d4608e53a131ce2cc51b9afd84b53efd26dd623ad"
+}

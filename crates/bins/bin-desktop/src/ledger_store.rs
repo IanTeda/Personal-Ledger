@@ -27,7 +27,7 @@ use lib_core::AccountId;
 use lib_database::{
     PayeesStore, SharedAccountsStore, SharedBudgetsStore, SharedCategoriesStore,
     SharedDocumentsStore, SharedInventoryStore, SharedTagsStore, SharedTransactionsStore,
-    StoredDocumentReads,
+    StoredDocumentReads, StoredPayeeReads,
 };
 use lib_institutions::InstitutionsPorts as _;
 use lib_ledger::{Domain, Ledger, LedgerCommand, domains};
@@ -66,13 +66,29 @@ impl LedgerSetup {
     pub fn stub(today: chrono::NaiveDate) -> Self {
         let ledger = Ledger::stub_on(today);
         let categories = crate::categories::ports::in_memory(&ledger);
-        let payees = crate::payees::LedgerBackedPorts::in_memory(&ledger, categories.clone());
         let budgets = crate::budgets::ports::in_memory(&ledger);
         let accounts = crate::accounts::LedgerBackedPorts::in_memory(&ledger, budgets.clone());
         let transactions: SharedTransactionsStore =
             Rc::new(RefCell::new(lib_transactions::fake::InMemoryTransactions {
                 transactions: ledger.transactions().to_vec(),
             }));
+        let bills_store = crate::bills::ports::in_memory_store(&ledger);
+        let payees = crate::payees::LedgerBackedPorts::in_memory(
+            &ledger,
+            StoredPayeeReads {
+                transactions: transactions.clone(),
+                bills: bills_store.clone(),
+                categories: categories.clone(),
+            },
+        );
+        let bills = LedgerBackedPorts::shared(
+            bills_store,
+            payees.clone(),
+            accounts.clone(),
+            categories.clone(),
+            transactions.clone(),
+        );
+        crate::bills::ports::copy_reads(&bills, &ledger);
         Self {
             budgets,
             documents: Rc::new(RefCell::new(lib_documents::fake::InMemoryDocuments {
@@ -85,13 +101,7 @@ impl LedgerSetup {
                 &ledger,
                 accounts.clone(),
             ),
-            bills: LedgerBackedPorts::in_memory(
-                &ledger,
-                payees.clone(),
-                accounts.clone(),
-                categories.clone(),
-                transactions.clone(),
-            ),
+            bills,
             transactions,
             accounts,
             categories,
@@ -139,16 +149,25 @@ impl LedgerStore {
                 transactions: ledger.transactions().to_vec(),
             }));
         let categories = crate::categories::ports::in_memory(&ledger);
-        let payees = crate::payees::LedgerBackedPorts::in_memory(&ledger, categories.clone());
+        let bills_store = crate::bills::ports::in_memory_store(&ledger);
+        let payees = crate::payees::LedgerBackedPorts::in_memory(
+            &ledger,
+            StoredPayeeReads {
+                transactions: transactions.clone(),
+                bills: bills_store.clone(),
+                categories: categories.clone(),
+            },
+        );
         let budgets = crate::budgets::ports::in_memory(&ledger);
         let accounts = crate::accounts::LedgerBackedPorts::in_memory(&ledger, budgets.clone());
-        let bills = LedgerBackedPorts::in_memory(
-            &ledger,
+        let bills = LedgerBackedPorts::shared(
+            bills_store,
             payees.clone(),
             accounts.clone(),
             categories.clone(),
             transactions.clone(),
         );
+        crate::bills::ports::copy_reads(&bills, &ledger);
         let institutions =
             crate::institutions::LedgerBackedPorts::in_memory(&ledger, accounts.clone());
         let inventory = crate::inventory::ports::in_memory(&ledger);
@@ -891,8 +910,16 @@ mod tests {
         let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
         let pending = storage.pending;
         let categories: SharedCategoriesStore = Rc::new(RefCell::new(storage.categories));
-        let payees =
-            crate::payees::LedgerBackedPorts::shared(Box::new(storage.payees), categories.clone());
+        let transactions: SharedTransactionsStore = Rc::new(RefCell::new(storage.transactions));
+        let bills_store: lib_database::SharedBillsStore = Rc::new(RefCell::new(storage.bills));
+        let payees = crate::payees::LedgerBackedPorts::shared(
+            Box::new(storage.payees),
+            StoredPayeeReads {
+                transactions: transactions.clone(),
+                bills: bills_store.clone(),
+                categories: categories.clone(),
+            },
+        );
         let budgets: SharedBudgetsStore = Rc::new(RefCell::new(storage.budgets));
         let accounts =
             crate::accounts::LedgerBackedPorts::shared(Box::new(storage.accounts), budgets.clone());
@@ -900,9 +927,8 @@ mod tests {
             Box::new(storage.institutions),
             accounts.clone(),
         );
-        let transactions: SharedTransactionsStore = Rc::new(RefCell::new(storage.transactions));
         let bills = LedgerBackedPorts::shared(
-            Rc::new(RefCell::new(storage.bills)),
+            bills_store,
             payees.clone(),
             accounts.clone(),
             categories.clone(),

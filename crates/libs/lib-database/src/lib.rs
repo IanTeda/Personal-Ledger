@@ -77,8 +77,8 @@ pub use adapter::store::{
     FakeStores, InstitutionsStore, InventoryStore, PayeesStore, SharedAccountsStore,
     SharedBillsStore, SharedBudgetsStore, SharedCategoriesStore, SharedDocumentsStore,
     SharedInstitutionsStore, SharedInventoryStore, SharedPayeesStore, SharedTagsStore,
-    SharedTransactionsStore, SharedUnitsStore, StoredBudgetReads, StoredDocumentReads, TagsStore,
-    TransactionsStore, UnitsStore,
+    SharedTransactionsStore, SharedUnitsStore, StoredBudgetReads, StoredDocumentReads,
+    StoredPayeeReads, TagsStore, TransactionsStore, UnitsStore,
 };
 pub use adapter::tags::TagsAdapter;
 pub use adapter::transaction_import::TransactionImportAdapter;

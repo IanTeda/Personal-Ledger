@@ -51,7 +51,6 @@ impl PayeesPage {
         keymap: Keymap<PayeesPageEvent>,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        ports::copy_from_ledger(&ports, ledger.read(cx).ledger());
         Self {
             presenter: PayeesPagePresenter::new(ports.clone(), keymap.clone()),
             ports,
@@ -79,7 +78,7 @@ impl PayeesPage {
     /// in line with whatever it wrote. Inside an input already, as [`Self::send`] or a Dialog's
     /// confirm.
     fn handle(&mut self, event: PayeesPageEvent, cx: &mut Context<'_, Self>) {
-        ports::refresh(&self.ports, &self.ledger, cx);
+        ports::refresh(&self.ledger, cx);
         let mut router = PageRouter {
             ports: self.ports.clone(),
             ledger: self.ledger.clone(),
@@ -87,7 +86,7 @@ impl PayeesPage {
             cx,
         };
         self.presenter.handle(event, &mut router);
-        ports::refresh(&self.ports, &self.ledger, cx);
+        ports::refresh(&self.ledger, cx);
         cx.notify();
     }
 
@@ -100,9 +99,8 @@ impl PayeesPage {
         self.handle(PayeesPageEvent::DialogClosed(Some(outcome)), cx);
     }
 
-    /// The page as drawn, with the Categories as the Ledger has them now.
-    pub fn view_model(&self, cx: &App) -> PayeesPageViewModel {
-        ports::copy_from_ledger(&self.ports, self.ledger.read(cx).ledger());
+    /// The page as drawn, with each Payee's use as the stores count it now.
+    pub fn view_model(&self, _cx: &App) -> PayeesPageViewModel {
         self.presenter.view_model()
     }
 

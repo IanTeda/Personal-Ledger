@@ -157,6 +157,39 @@ impl BillScheduleRepository for BillsAdapter {
 /// The open Bill Schedule entries among `entries`, as `lib-budgets`' `BudgetBills` reads them,
 /// each with its Plan's Category, Account and estimated Amount. An entry whose Plan isn't among
 /// `plans` is left out.
+impl BillsAdapter {
+    /// The Bill Plans naming Payee `id` in the file, blocking: what the last commit left, not a
+    /// write still pending. `None` when the count can't be read, logged, so a Payee that may be in
+    /// use is never offered for deleting (#840).
+    pub fn payee_bill_plans(&self, id: PayeeId) -> Option<usize> {
+        self.pending
+            .writer()
+            .run(move |pool| async move {
+                let count = sqlx::query_scalar!(
+                    r#"SELECT COUNT(*) AS "plans!: i64" FROM bill_plans WHERE payee_id = ?"#,
+                    id
+                )
+                .fetch_one(&pool)
+                .await?;
+                usize::try_from(count).map_err(|_| {
+                    Error::Validation(format!("Payee {id}'s Bill Plans count is {count}"))
+                })
+            })
+            .inspect_err(|error| {
+                tracing::error!(%error, payee = %id, "Failed to count the Bill Plans naming a Payee");
+            })
+            .ok()
+    }
+}
+
+/// The Bill Plans among `plans` naming Payee `id`: how a store counts what it holds.
+pub(crate) fn payee_bill_plans(plans: &[BillPlan], id: PayeeId) -> usize {
+    plans
+        .iter()
+        .filter(|plan| plan.payee_id == Some(id))
+        .count()
+}
+
 pub(crate) fn budget_open_bills(
     plans: &[BillPlan],
     entries: &[BillScheduleEntry],

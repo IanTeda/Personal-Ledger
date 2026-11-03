@@ -442,9 +442,14 @@ mod tests {
     }
 
     fn stored_payees(writer: &Writer) -> Vec<lib_payees::Payee> {
-        let mut adapter =
+        let adapter =
             PayeesAdapter::load(PendingWrites::new(writer.clone())).expect("the Payees load");
-        lib_payees::contract::snapshot(&mut adapter)
+        let mut payees = lib_payees::PayeeRepository::payees(adapter.payees());
+        payees.sort_by_key(|payee| payee.id);
+        for payee in &mut payees {
+            payee.aliases.sort();
+        }
+        payees
     }
 
     /// The Institutions are the stub Ledger's, by id and in order, so the Accounts naming them

@@ -1,6 +1,6 @@
-//! The Payees adapter: `lib-payees`' Payee repository and `PayeeUsage` ports over the `payees` and
-//! `payee_aliases` tables, and `lib-bills`' `BillPayees` and `lib-transactions`'
-//! `TransactionPayees` read ports from the same rows (ADR-0046, #925).
+//! The Payees adapter: `lib-payees`' Payee repository port over the `payees` and `payee_aliases`
+//! tables, and `lib-bills`' `BillPayees` and `lib-transactions`' `TransactionPayees` read ports
+//! from the same rows (ADR-0046, #925).
 //!
 //! It loads every Payee and its aliases into memory, blocking, and serves the rows from there. A
 //! port write changes memory at once and joins the [`PendingWrites`] every adapter shares, which
@@ -8,14 +8,14 @@
 //! held, so they read back in that order; deleting one takes its aliases with it (the schema's
 //! cascade).
 //!
-//! Usage is other domains' rows, so [`PayeeUsage`] counts the `splits` and `bill_plans` naming a
-//! Payee in the file, blocking: what the last commit left, not a write still pending. A Payee
-//! those tables name can't be deleted (their foreign keys), which backstops the delete refusal. A
-//! count that can't be read is unknown, never unused (#840).
+//! Usage is other domains' rows, so `lib-payees`' `PayeeUsage` is answered by
+//! [`StoredPayeeReads`](crate::StoredPayeeReads) from the Transactions and Bills stores (#992),
+//! which count in the file. A Payee those tables name can't be deleted (their foreign keys), which
+//! backstops the delete refusal.
 
 use lib_bills::{BillPayee, BillPayees};
 use lib_core::{CategoryId, PayeeId, RowID};
-use lib_payees::{Payee, PayeeRepository, PayeeUsage, PayeeUse, PortsMut};
+use lib_payees::{Payee, PayeeRepository};
 use lib_transactions::{TransactionPayee, TransactionPayees};
 use sqlx::SqliteConnection;
 
@@ -33,18 +33,12 @@ enum PayeesChange {
 /// The Payees domain, held in memory and saved through the shared writer.
 pub struct PayeesAdapter {
     payees: StoredPayees,
-    usage: StoredUsage,
 }
 
 /// The rows, with the batch their writes join.
 struct StoredPayees {
     rows: Vec<Payee>,
     pending: PendingWrites,
-}
-
-/// Counts in the file, read through the writer.
-struct StoredUsage {
-    writer: Writer,
 }
 
 impl PayeesAdapter {
@@ -60,9 +54,6 @@ impl PayeesAdapter {
             read(&mut conn).await
         })?;
         Ok(Self {
-            usage: StoredUsage {
-                writer: pending.writer().clone(),
-            },
             payees: StoredPayees { rows, pending },
         })
     }
@@ -116,18 +107,6 @@ impl PayeesAdapter {
     pub fn payees_mut(&mut self) -> &mut dyn PayeeRepository {
         &mut self.payees
     }
-
-    pub fn usage(&self) -> &dyn PayeeUsage {
-        &self.usage
-    }
-
-    /// The repository and usage, for one write.
-    pub fn split_mut(&mut self) -> PortsMut<'_> {
-        PortsMut {
-            payees: &mut self.payees,
-            usage: &self.usage,
-        }
-    }
 }
 
 impl PayeeRepository for StoredPayees {
@@ -146,22 +125,6 @@ impl PayeeRepository for StoredPayees {
     fn delete_payee(&mut self, id: PayeeId) {
         self.rows.retain(|row| row.id != id);
         self.pending.push(PayeesChange::Delete(id));
-    }
-}
-
-impl PayeeUsage for StoredUsage {
-    /// A count that can't be read is logged and answered as unknown, so the Payee is never offered
-    /// for deleting while it may be in use (#840).
-    fn payee_usage(&self, id: PayeeId) -> Option<PayeeUse> {
-        self.writer
-            .run(move |pool| async move {
-                let mut conn = pool.acquire().await?;
-                count_usage(&mut conn, id).await
-            })
-            .inspect_err(|error| {
-                tracing::error!(%error, payee = %id, "Failed to count what names a Payee");
-            })
-            .ok()
     }
 }
 
@@ -269,24 +232,6 @@ async fn delete(conn: &mut SqliteConnection, id: PayeeId) -> Result<()> {
     Ok(())
 }
 
-async fn count_usage(conn: &mut SqliteConnection, id: PayeeId) -> Result<PayeeUse> {
-    let row = sqlx::query!(
-        r#"SELECT
-               (SELECT COUNT(*) FROM splits WHERE payee_id = ?1)     AS "splits!: i64",
-               (SELECT COUNT(*) FROM bill_plans WHERE payee_id = ?1) AS "bill_plans!: i64""#,
-        id,
-    )
-    .fetch_one(&mut *conn)
-    .await?;
-    let count = |n: i64| {
-        usize::try_from(n).map_err(|_| Error::Validation(format!("Payee {id}'s usage is {n}")))
-    };
-    Ok(PayeeUse {
-        splits: count(row.splits)?,
-        bill_plans: count(row.bill_plans)?,
-    })
-}
-
 async fn read(conn: &mut SqliteConnection) -> Result<Vec<Payee>> {
     let mut payees: Vec<Payee> = sqlx::query!(
         r#"SELECT
@@ -338,8 +283,11 @@ mod tests {
     use chrono::NaiveDate;
     use lib_bills::{AmountKind, BillPlan, Recurrence};
     use lib_core::{AccountId, BillPlanId, Money, TransactionId, TransactionStatus, UnitId};
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
     use lib_payees::contract::{self, PortsFactory, StoredPorts};
-    use lib_payees::default_payees;
+    use lib_payees::{PayeeUsage, PayeeUse, PortsMut, default_payees};
     use lib_transactions::{Split, Transaction};
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
@@ -347,11 +295,21 @@ mod tests {
     use crate::commit::Commit;
     use crate::test_support::TransactionReadsFactory;
     use crate::writer::WriteFailure;
-    use crate::{BillsAdapter, TransactionsAdapter};
+    use crate::{BillsAdapter, CategoriesAdapter, StoredPayeeReads, TransactionsAdapter};
 
-    impl StoredPorts for PayeesAdapter {
+    /// The Payees adapter with its usage read as a Client reads it: through [`StoredPayeeReads`]
+    /// over the Transactions, Bills and Categories adapters on the same file.
+    struct StoredPayeesPorts {
+        payees: PayeesAdapter,
+        reads: StoredPayeeReads,
+    }
+
+    impl StoredPorts for StoredPayeesPorts {
         fn split_mut(&mut self) -> PortsMut<'_> {
-            PayeesAdapter::split_mut(self)
+            PortsMut {
+                payees: self.payees.payees_mut(),
+                usage: &self.reads,
+            }
         }
     }
 
@@ -373,6 +331,25 @@ mod tests {
                 pending: PendingWrites::new(writer.clone()),
                 writer,
                 failures,
+            }
+        }
+
+        /// The Payees as stored, with the reads over the other adapters on the same file.
+        fn load(&self) -> StoredPayeesPorts {
+            let load = || {
+                Ok::<_, Error>(StoredPayeeReads {
+                    transactions: Rc::new(RefCell::new(TransactionsAdapter::load(
+                        self.pending.clone(),
+                    )?)),
+                    bills: Rc::new(RefCell::new(BillsAdapter::load(self.pending.clone())?)),
+                    categories: Rc::new(RefCell::new(CategoriesAdapter::load(
+                        self.pending.clone(),
+                    )?)),
+                })
+            };
+            StoredPayeesPorts {
+                payees: PayeesAdapter::load(self.pending.clone()).expect("the rows load"),
+                reads: load().expect("the other domains' rows load"),
             }
         }
 
@@ -453,27 +430,27 @@ mod tests {
     }
 
     impl PortsFactory for AdapterFactory {
-        type Ports = PayeesAdapter;
+        type Ports = StoredPayeesPorts;
 
-        fn create(&mut self, seed: Vec<Payee>) -> PayeesAdapter {
+        fn create(&mut self, seed: Vec<Payee>) -> StoredPayeesPorts {
             PayeesAdapter::seed(&self.writer, seed).expect("the seed is written");
-            PayeesAdapter::load(self.pending.clone()).expect("the seed loads")
+            self.load()
         }
 
-        fn reload(&mut self, _ports: PayeesAdapter) -> PayeesAdapter {
+        fn reload(&mut self, _ports: StoredPayeesPorts) -> StoredPayeesPorts {
             self.pending.commit();
-            let fresh = PayeesAdapter::load(self.pending.clone()).expect("the rows load");
+            let fresh = self.load();
             if let Some(failure) = self.failures().first() {
                 panic!("a write failed: {failure:?}");
             }
             fresh
         }
 
-        fn commit(&mut self, _ports: &mut PayeesAdapter) {
+        fn commit(&mut self, _ports: &mut StoredPayeesPorts) {
             self.pending.commit();
         }
 
-        fn name_payee(&mut self, _ports: &mut PayeesAdapter, id: PayeeId, uses: PayeeUse) {
+        fn name_payee(&mut self, _ports: &mut StoredPayeesPorts, id: PayeeId, uses: PayeeUse) {
             if uses.splits > 0 {
                 TransactionsAdapter::seed(
                     &self.writer,
@@ -488,7 +465,7 @@ mod tests {
                 .expect("the Bill Plans are written");
         }
 
-        fn break_writes(&mut self, _ports: &mut PayeesAdapter) {
+        fn break_writes(&mut self, _ports: &mut StoredPayeesPorts) {
             self.writer
                 .run(|pool| async move {
                     sqlx::query(
@@ -502,13 +479,13 @@ mod tests {
                 .expect("the trigger is created");
         }
 
-        fn recover(&mut self, mut ports: PayeesAdapter) -> (PayeesAdapter, usize) {
+        fn recover(&mut self, mut ports: StoredPayeesPorts) -> (StoredPayeesPorts, usize) {
             let failures = self
                 .failures()
                 .iter()
                 .filter(|failure| failure.domains == [Domain::Payees])
                 .count();
-            ports.reload().expect("the rows load");
+            ports.payees.reload().expect("the rows load");
             (ports, failures)
         }
     }
@@ -557,9 +534,8 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        let mut payees = factory.create(default_payees());
+        let mut ports = factory.create(default_payees());
         let (by_split, by_plan) = (PayeeId::seed(1), PayeeId::seed(2));
-        let mut ports = PayeesAdapter::load(factory.pending.clone()).expect("the rows load");
         factory.name_payee(
             &mut ports,
             by_split,
@@ -577,6 +553,7 @@ mod tests {
             },
         );
 
+        let payees = &mut ports.payees;
         for id in [by_split, by_plan] {
             payees.payees_mut().delete_payee(id);
             factory.pending.commit();
@@ -588,32 +565,44 @@ mod tests {
         }
     }
 
-    /// A count the file can't answer is unknown, not unused, so the delete it would allow is
-    /// refused before anything is written.
+    /// A count the file can't answer, of either half, is unknown, not unused, so the delete it
+    /// would allow is refused before anything is written.
     #[sqlx::test(migrations = "migrations/client")]
     async fn a_count_that_fails_is_unknown_and_refuses_the_delete(
         _: SqlitePoolOptions,
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        let mut payees = factory.create(default_payees());
+        let mut ports = factory.create(default_payees());
         let netflix = PayeeId::seed(3);
-        factory
-            .writer
-            .run(|pool| async move {
-                sqlx::query("ALTER TABLE splits RENAME TO splits_gone")
-                    .execute(&pool)
-                    .await?;
-                Ok(())
-            })
-            .expect("the table is renamed");
+        let rename = |table: &'static str| {
+            factory
+                .writer
+                .run(move |pool| async move {
+                    sqlx::query(&format!("ALTER TABLE {table} RENAME TO {table}_gone"))
+                        .execute(&pool)
+                        .await?;
+                    Ok(())
+                })
+                .expect("the table is renamed");
+        };
 
-        assert_eq!(payees.usage().payee_usage(netflix), None);
+        rename("bill_plans");
         assert_eq!(
-            lib_payees::interactor::DeletePayee(netflix).run(payees.split_mut()),
+            ports.reads.payee_usage(netflix),
+            None,
+            "no Bill Plans count"
+        );
+        rename("splits");
+        assert_eq!(ports.reads.payee_usage(netflix), None);
+        assert_eq!(
+            lib_payees::interactor::DeletePayee(netflix).run(ports.split_mut()),
             Err(lib_payees::DeletePayeeRefusal::Unchecked)
         );
-        assert!(payees.payees().payee(netflix).is_some(), "Netflix stays");
+        assert!(
+            ports.payees.payees().payee(netflix).is_some(),
+            "Netflix stays"
+        );
     }
 
     /// The new foreign keys refuse a Split or Bill Plan naming a Payee that doesn't exist.
@@ -641,16 +630,17 @@ mod tests {
     #[sqlx::test(migrations = "migrations/client")]
     async fn bills_read_the_payees_rows(_: SqlitePoolOptions, options: SqliteConnectOptions) {
         let mut factory = AdapterFactory::new(options);
-        let mut payees = factory.create(default_payees());
-        let mut hudson = payees
+        let mut ports = factory.create(default_payees());
+        let mut hudson = ports
+            .payees
             .payees()
             .payee(PayeeId::seed(17))
             .expect("a stub Payee");
         hudson.is_active = false;
-        payees.payees_mut().upsert_payee(hudson);
-        let payees = factory.reload(payees);
+        ports.payees.payees_mut().upsert_payee(hudson);
+        let ports = factory.reload(ports);
 
-        let read = payees.bill_payees();
+        let read = ports.payees.bill_payees();
         assert_eq!(read.len(), default_payees().len());
         let hudson = read
             .iter()

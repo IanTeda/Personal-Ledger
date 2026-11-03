@@ -156,11 +156,11 @@ impl HostedDialog for PayeesDialog {
     fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) -> bool {
         let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
         if may_confirm {
-            ports::refresh(&self.ports, &self.ledger, cx);
+            ports::refresh(&self.ledger, cx);
         }
         let router = self.input_event(input);
         if may_confirm {
-            ports::refresh(&self.ports, &self.ledger, cx);
+            ports::refresh(&self.ledger, cx);
         }
         self.closed(router, cx);
         true
@@ -176,9 +176,9 @@ impl HostedDialog for PayeesDialog {
     /// Sends Confirm to the Presenter, which runs its Interactor, with the Ledger read copy in
     /// line either side. A refusal stays on the Presenter's view model and keeps the Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
-        ports::refresh(&self.ports, &self.ledger, cx);
+        ports::refresh(&self.ledger, cx);
         let router = self.close_event(true);
-        ports::refresh(&self.ports, &self.ledger, cx);
+        ports::refresh(&self.ledger, cx);
         self.closed(router, cx);
     }
 

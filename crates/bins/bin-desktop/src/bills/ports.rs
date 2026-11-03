@@ -138,11 +138,13 @@ impl LedgerBackedPorts {
         categories: SharedCategoriesStore,
         transactions: SharedTransactionsStore,
     ) -> DesktopPorts {
-        let bills = Rc::new(RefCell::new(lib_bills::fake::InMemoryBills {
-            plans: ledger.bill_plans().to_vec(),
-            entries: ledger.bill_entries().to_vec(),
-        }));
-        let ports = Self::shared(bills, payees, accounts, categories, transactions);
+        let ports = Self::shared(
+            in_memory_store(ledger),
+            payees,
+            accounts,
+            categories,
+            transactions,
+        );
         ports.borrow_mut().copy_reads(ledger);
         ports
     }
@@ -207,6 +209,15 @@ impl BillsPorts for LedgerBackedPorts {
             categories: &self.categories,
         }
     }
+}
+
+/// `ledger`'s own Bill Plans and Bill Schedule as an in-memory store, for a test that needs no
+/// storage and builds the readers of the store before its ports.
+pub fn in_memory_store(ledger: &Ledger) -> SharedBillsStore {
+    Rc::new(RefCell::new(lib_bills::fake::InMemoryBills {
+        plans: ledger.bill_plans().to_vec(),
+        entries: ledger.bill_entries().to_vec(),
+    }))
 }
 
 /// Sends each Bill Plan and entry in `changes` to the store, in the order recorded. The writer it
@@ -300,7 +311,14 @@ mod tests {
     }
 
     fn payees(ledger: &Ledger) -> SharedPayeesStore {
-        crate::payees::LedgerBackedPorts::in_memory(ledger, categories(ledger))
+        crate::payees::LedgerBackedPorts::in_memory(
+            ledger,
+            lib_database::StoredPayeeReads {
+                transactions: transactions(ledger),
+                bills: in_memory_store(ledger),
+                categories: categories(ledger),
+            },
+        )
     }
 
     fn entries(ports: &DesktopPorts) -> Vec<BillScheduleEntry> {

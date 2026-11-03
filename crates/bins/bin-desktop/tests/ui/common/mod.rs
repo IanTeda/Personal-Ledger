@@ -49,7 +49,7 @@ use lib_institutions::fake::InMemoryInstitutions;
 use lib_institutions::{Institution, InstitutionRepository};
 use lib_inventory::fake::InMemoryInventory;
 use lib_inventory::{InventoryRepository, Item, Location};
-use lib_payees::{Payee, PayeeRepository, PayeeUsage};
+use lib_payees::{Payee, PayeeRepository};
 use lib_tags::{Tag, TagRepository, TagUsage};
 use lib_transactions::fake::InMemoryTransactions;
 use lib_transactions::{Transaction, TransactionRepository};
@@ -265,35 +265,41 @@ impl AccountsStore for FailingAccounts {
     }
 }
 
-/// A Payees store whose usage counts every Payee as unused, as a count taken before a Split
-/// naming one landed would, so a delete it allows reaches the file.
-struct CountedUnusedPayees {
-    inner: Box<dyn PayeesStore>,
-    usage: lib_payees::fake::InMemoryPayeeUsage,
+/// A Transactions store whose Splits naming a Payee are counted as `payee_splits` says, whatever
+/// it holds: `Some(0)`, as a count taken before a Split naming one landed would, so a delete it
+/// allows reaches the file; `None`, as a Ledger file that can't be read would.
+struct MiscountedTransactions {
+    inner: Box<dyn TransactionsStore>,
+    payee_splits: Option<usize>,
 }
 
-impl PayeesStore for CountedUnusedPayees {
-    fn payees(&self) -> &dyn PayeeRepository {
-        self.inner.payees()
+impl TransactionsStore for MiscountedTransactions {
+    fn transactions(&self) -> &dyn TransactionRepository {
+        self.inner.transactions()
     }
 
-    fn payees_mut(&mut self) -> &mut dyn PayeeRepository {
-        self.inner.payees_mut()
+    fn transactions_mut(&mut self) -> &mut dyn TransactionRepository {
+        self.inner.transactions_mut()
     }
 
-    fn usage(&self) -> &dyn PayeeUsage {
-        &self.usage
+    fn bill_splits_between(&self, from: NaiveDate, to: NaiveDate) -> Vec<lib_bills::BillSplit> {
+        self.inner.bill_splits_between(from, to)
     }
 
-    fn split_mut(&mut self) -> lib_payees::PortsMut<'_> {
-        lib_payees::PortsMut {
-            payees: self.inner.payees_mut(),
-            usage: &self.usage,
-        }
+    fn bill_paid_split(&self, split: lib_bills::SplitRef) -> Option<lib_bills::BillSplit> {
+        self.inner.bill_paid_split(split)
     }
 
-    fn bill_payees(&self) -> Vec<lib_bills::BillPayee> {
-        self.inner.bill_payees()
+    fn budget_splits(&self, from: NaiveDate, to: NaiveDate) -> Vec<lib_budgets::BudgetSplit> {
+        self.inner.budget_splits(from, to)
+    }
+
+    fn category_splits(&self, id: CategoryId) -> usize {
+        self.inner.category_splits(id)
+    }
+
+    fn payee_splits(&self, _id: PayeeId) -> Option<usize> {
+        self.payee_splits
     }
 
     fn reload(&mut self) -> lib_database::Result<()> {
@@ -438,7 +444,6 @@ impl InventoryStore for FailingInventory {
 /// memory back to `stored`. Each write marks `written` for [`FailingCommit`].
 struct FailingPayees {
     payees: Marked<lib_payees::fake::InMemoryPayees>,
-    usage: lib_payees::fake::InMemoryPayeeUsage,
     stored: lib_payees::fake::InMemoryPayees,
 }
 
@@ -449,21 +454,6 @@ impl PayeesStore for FailingPayees {
 
     fn payees_mut(&mut self) -> &mut dyn PayeeRepository {
         &mut self.payees
-    }
-
-    fn usage(&self) -> &dyn PayeeUsage {
-        &self.usage
-    }
-
-    fn split_mut(&mut self) -> lib_payees::PortsMut<'_> {
-        lib_payees::PortsMut {
-            payees: &mut self.payees,
-            usage: &self.usage,
-        }
-    }
-
-    fn usage_to_count(&mut self) -> Option<&mut lib_payees::fake::InMemoryPayeeUsage> {
-        Some(&mut self.usage)
     }
 
     fn reload(&mut self) -> lib_database::Result<()> {
@@ -869,33 +859,34 @@ impl<'a> Harness<'a> {
         )
     }
 
-    /// As [`Harness::new`], on a Payees usage whose every count fails, as a Ledger file that
-    /// can't be read would.
+    /// As [`Harness::new`], on a Transactions store whose count of the Splits naming a Payee
+    /// fails, as a Ledger file that can't be read would.
     pub fn with_unreadable_payee_usage(app: &'a mut TestAppContext) -> Self {
-        let mut payees = lib_payees::fake::InMemoryPorts::stub();
-        payees.usage.unreadable = true;
+        let (mut stores, count) = Stores::fake(stub_fakes());
+        stores.transactions = Box::new(MiscountedTransactions {
+            inner: stores.transactions,
+            payee_splits: None,
+        });
         Self::build(
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
-            Stores::fake(FakeStores {
-                payees,
-                ..stub_fakes()
-            }),
+            (stores, count),
         )
     }
 
-    /// As [`Harness::with_storage`], with a Payees usage that counts every Payee as unused, so a
-    /// delete of a Payee in use reaches the file and its foreign keys refuse it.
-    /// [`Harness::settle_writes`], after the writer is flushed, lets the Shell hear of the failure.
+    /// As [`Harness::with_storage`], with a Transactions store that counts no Split naming any
+    /// Payee, so a delete of a Payee only Splits name reaches the file and its foreign keys refuse
+    /// it. [`Harness::settle_writes`], after the writer is flushed, lets the Shell hear of the
+    /// failure.
     pub fn with_storage_counting_payees_unused(
         app: &'a mut TestAppContext,
         storage: lib_database::Storage,
     ) -> Self {
         let mut stores = Stores::from(storage);
-        stores.payees = Box::new(CountedUnusedPayees {
-            inner: stores.payees,
-            usage: lib_payees::fake::InMemoryPayeeUsage::default(),
+        stores.transactions = Box::new(MiscountedTransactions {
+            inner: stores.transactions,
+            payee_splits: Some(0),
         });
         Self::build(
             app,
@@ -1150,7 +1141,6 @@ impl<'a> Harness<'a> {
                         inner: stored.clone(),
                         written: written.clone(),
                     },
-                    usage: lib_payees::fake::InMemoryPayeeUsage::default(),
                     stored,
                 }),
                 transactions: Box::new(stub_transactions()),

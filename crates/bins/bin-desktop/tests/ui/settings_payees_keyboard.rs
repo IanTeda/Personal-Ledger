@@ -2,7 +2,7 @@
 //! with what confirming each one does. State is read back from `Root`.
 
 use super::common;
-use bin_desktop::shell::router::SettingsPayeesSnapshot;
+use bin_desktop::shell::router::{SettingsCategoriesSnapshot, SettingsPayeesSnapshot};
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use common::Harness;
@@ -243,6 +243,71 @@ fn d_on_a_payee_an_import_created_and_named_on_a_split_offers_only_deactivate(
 
     assert_eq!(ui.dialog(), Some("DeletePayee"));
     assert_eq!(ui.dialog_value("action").as_deref(), Some("Deactivate"));
+}
+
+/// The warning the Delete Dialog opens with on Woolworths, which quotes what uses it, closed again.
+/// Focus is on the Payees page.
+fn woolworths_warning(ui: &mut Harness<'_>) -> Option<String> {
+    let row = ui
+        .settings::<SettingsPayeesSnapshot>()
+        .payee_names
+        .iter()
+        .position(|payee| payee == "Woolworths")
+        .expect("a stub Payee");
+    ui.press("g g");
+    for _ in 0..row {
+        ui.press("j");
+    }
+    ui.press("d");
+    assert_eq!(ui.dialog(), Some("DeletePayee"));
+    let warning = ui.dialog_value("warning");
+    ui.press("escape");
+    warning
+}
+
+#[gpui::test]
+fn the_splits_a_category_reassign_rewrites_are_counted_on_the_payees_page(
+    app: &mut TestAppContext,
+) {
+    let mut ui = in_payees(app);
+    let before = woolworths_warning(&mut ui);
+    assert!(
+        before
+            .as_deref()
+            .is_some_and(|warning| warning.contains("transactions")),
+        "the stub's groceries name Woolworths: {before:?}"
+    );
+
+    // Deleting Groceries re-points its Splits, Woolworths' among them, to Uncategorised: the
+    // Category reassign writes them to the Transactions store.
+    ui.press("g s");
+    ui.press("k k");
+    assert_eq!(ui.settings_frame().page, "Categories");
+    ui.press("l");
+    for _ in 0..10 {
+        if ui
+            .settings::<SettingsCategoriesSnapshot>()
+            .selected_category
+            .as_deref()
+            == Some("Groceries")
+        {
+            break;
+        }
+        ui.press("j");
+    }
+    ui.press("d");
+    ui.press("shift-g r o c e r i e s enter");
+    assert_eq!(ui.dialog(), None);
+    ui.press("g s");
+    ui.press("j j");
+    assert_eq!(ui.settings_frame().page, "Payees");
+    ui.press("l");
+
+    assert_eq!(
+        woolworths_warning(&mut ui),
+        before,
+        "the rewritten Splits still name Woolworths, counted from the store"
+    );
 }
 
 #[gpui::test]

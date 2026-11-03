@@ -1,0 +1,20 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT COUNT(*) AS \"plans!: i64\" FROM bill_plans WHERE payee_id = ?",
+  "describe": {
+    "columns": [
+      {
+        "name": "plans!: i64",
+        "ordinal": 0,
+        "type_info": "Integer"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "c7e6e063e855e591f4c3f9a6b64a1b1255f984b3b3e818c88b95c9433067fcd2"
+}

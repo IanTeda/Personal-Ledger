@@ -75,13 +75,24 @@ impl OpenLedger {
         crate::input::open_ledger(commit, cx);
         let today = clock.today();
 
-        // The Transactions and Bills stores are shared: Pay it directly writes both (#779). The
-        // Payees ports are shared by the Payees module, the Ledger's forwarding shim and the Bills
-        // reads (#831, #832). The Categories store is shared by the Categories module, the Ledger's
-        // forwarding shim and the Bills and Payees reads (#858, #859).
+        // The Transactions and Bills stores are shared: Pay it directly writes both (#779), and
+        // Payees counts what names a Payee in them (#992). The Payees ports are shared by the
+        // Payees module, the Ledger's forwarding shim and the Bills reads (#831, #832). The
+        // Categories store is shared by the Categories module, the Ledger's forwarding shim and
+        // the Bills and Payees reads (#858, #859).
         let categories: lib_database::SharedCategoriesStore =
             Rc::new(std::cell::RefCell::new(categories));
-        let payees = crate::payees::LedgerBackedPorts::shared(payees, categories.clone());
+        let transactions: lib_database::SharedTransactionsStore =
+            Rc::new(std::cell::RefCell::new(transactions));
+        let bills: lib_database::SharedBillsStore = Rc::new(std::cell::RefCell::new(bills));
+        let payees = crate::payees::LedgerBackedPorts::shared(
+            payees,
+            lib_database::StoredPayeeReads {
+                transactions: transactions.clone(),
+                bills: bills.clone(),
+                categories: categories.clone(),
+            },
+        );
         // The Tags store is shared by the Ledger's forwarding shim and the Tags page's usage reads
         // (#862).
         let tags: lib_database::SharedTagsStore = Rc::new(std::cell::RefCell::new(tags));
@@ -99,10 +110,8 @@ impl OpenLedger {
             crate::institutions::LedgerBackedPorts::shared(institutions, accounts.clone());
         let institutions_setup =
             crate::institutions::InstitutionsSetup::new(institutions.clone(), keybindings);
-        let transactions: lib_database::SharedTransactionsStore =
-            Rc::new(std::cell::RefCell::new(transactions));
         let bills = crate::bills::LedgerBackedPorts::shared(
-            Rc::new(std::cell::RefCell::new(bills)),
+            bills,
             payees.clone(),
             accounts.clone(),
             categories.clone(),

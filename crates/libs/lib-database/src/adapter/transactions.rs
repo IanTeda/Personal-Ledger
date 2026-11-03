@@ -154,6 +154,39 @@ impl TransactionsAdapter {
     }
 }
 
+impl TransactionsAdapter {
+    /// The Splits naming Payee `id` in the file, blocking: what the last commit left, not a write
+    /// still pending. `None` when the count can't be read, logged, so a Payee that may be in use is
+    /// never offered for deleting (#840).
+    pub fn payee_splits(&self, id: PayeeId) -> Option<usize> {
+        self.pending
+            .writer()
+            .run(move |pool| async move {
+                let count = sqlx::query_scalar!(
+                    r#"SELECT COUNT(*) AS "splits!: i64" FROM splits WHERE payee_id = ?"#,
+                    id
+                )
+                .fetch_one(&pool)
+                .await?;
+                usize::try_from(count)
+                    .map_err(|_| Error::Validation(format!("Payee {id}'s Splits count is {count}")))
+            })
+            .inspect_err(|error| {
+                tracing::error!(%error, payee = %id, "Failed to count the Splits naming a Payee");
+            })
+            .ok()
+    }
+}
+
+/// The Splits among `transactions` naming Payee `id`: how a store counts what it holds.
+pub(crate) fn payee_splits(transactions: &[Transaction], id: PayeeId) -> usize {
+    transactions
+        .iter()
+        .flat_map(|transaction| &transaction.splits)
+        .filter(|split| split.payee_id == Some(id))
+        .count()
+}
+
 /// The Splits among `transactions` filed under Category `id`: how a store counts what it holds.
 pub(crate) fn category_splits(transactions: &[Transaction], id: CategoryId) -> usize {
     transactions
