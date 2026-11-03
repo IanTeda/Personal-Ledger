@@ -2,26 +2,23 @@
 //! 5b and 5c) on the shared `crate::dialog` frame: Name, Type (segmented, dimmed while locked),
 //! Parent category (the shared `select_field` dropdown), Monthly budget and the notice.
 //!
-//! The select takes the arrows, `Enter` and `Space`, and swallows other typing rather than letting
-//! it reach the Shell. On Type the arrows switch it, and typing is swallowed.
+//! The Presenter reads every Dialog command and typed key itself; the View draws its view model
+//! and turns each click into an event.
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use lib_categories::presenter::{
     CategoryField, CategoryFormEvent, CategoryFormPresenter, CategoryFormViewModel,
 };
 use lib_core::CategoryTypes;
-use lib_viper::view::SelectView;
 
 use super::{CategoriesDialog, Clicks, View, send};
-use crate::form::viper::{choose_option, chosen_label, enter, labels, select_key, synced, typed};
+use crate::form::viper::{chosen_label, drawn, labels};
 use crate::{
     dialog,
     form::{
         dialog_fields::{label, suffixed_label, text_field},
-        select::SelectState,
         select_field::{self, SelectFieldProps},
     },
-    shell::view::dialog_host::{DialogKey, DialogOutcome},
     theme::color,
 };
 
@@ -32,146 +29,45 @@ fn handle(presenter: &mut CategoryFormPresenter, event: CategoryFormEvent) {
     send(presenter, event, CategoryFormPresenter::handle);
 }
 
-pub(super) fn key(
-    presenter: &mut CategoryFormPresenter,
-    select: &mut SelectState,
-    key: DialogKey,
-) -> DialogOutcome {
-    let view = presenter.view_model();
-    if matches!(key, DialogKey::Tab | DialogKey::BackTab) {
-        // Leaving the select commits an open list's highlight, as a click on it would.
-        if select.is_open() {
-            let (_, value) = select_key(select, &view.parent, DialogKey::Enter);
-            if let Some(id) = value {
-                handle(presenter, CategoryFormEvent::Parent(id));
-            }
-        }
-        let event = if key == DialogKey::Tab {
-            CategoryFormEvent::NextField
-        } else {
-            CategoryFormEvent::PrevField
-        };
-        handle(presenter, event);
-        return DialogOutcome::Handled;
-    }
-    match view.focused {
-        CategoryField::Parent => {
-            let (taken, value) = select_key(select, &view.parent, key);
-            if let Some(id) = value {
-                handle(presenter, CategoryFormEvent::Parent(id));
-            }
-            match key {
-                DialogKey::Enter if !taken => enter(view.frame.can_confirm),
-                // A select swallows typing rather than letting it fall through to the Shell.
-                DialogKey::Char(_) | DialogKey::Backspace => DialogOutcome::Handled,
-                _ if taken => DialogOutcome::Handled,
-                _ => DialogOutcome::Ignored,
-            }
-        }
-        CategoryField::Type => match key {
-            DialogKey::Enter => enter(view.frame.can_confirm),
-            DialogKey::Up | DialogKey::Down => {
-                if let Some(other) = other_type(&view.category_type) {
-                    handle(presenter, CategoryFormEvent::Type(other));
-                }
-                DialogOutcome::Handled
-            }
-            DialogKey::Char(_) | DialogKey::Backspace => DialogOutcome::Handled,
-            _ => DialogOutcome::Ignored,
-        },
-        CategoryField::Name => text_key(
-            presenter,
-            &view.name.text,
-            &view,
-            key,
-            CategoryFormEvent::Name,
-        ),
-        CategoryField::Budget => text_key(
-            presenter,
-            &view.budget.field.text,
-            &view,
-            key,
-            CategoryFormEvent::Budget,
-        ),
-    }
-}
-
-/// The type the segmented control isn't on.
-fn other_type(view: &SelectView<CategoryTypes>) -> Option<CategoryTypes> {
-    view.options
-        .iter()
-        .map(|choice| choice.value.clone())
-        .find(|value| Some(value) != view.chosen.as_ref())
-}
-
-/// A key on a text field: typing edits it, `Enter` confirms a valid form, the arrows do nothing.
-fn text_key(
-    presenter: &mut CategoryFormPresenter,
-    text: &str,
-    view: &CategoryFormViewModel,
-    key: DialogKey,
-    event: fn(String) -> CategoryFormEvent,
-) -> DialogOutcome {
-    match key {
-        DialogKey::Enter => enter(view.frame.can_confirm),
-        DialogKey::Up | DialogKey::Down => DialogOutcome::Handled,
-        _ => match typed(text, key) {
-            Some(text) => {
-                handle(presenter, event(text));
-                DialogOutcome::Handled
-            }
-            None => DialogOutcome::Ignored,
-        },
-    }
-}
-
-fn form(dialog: &mut CategoriesDialog) -> Option<(&mut CategoryFormPresenter, &mut SelectState)> {
+fn form(dialog: &mut CategoriesDialog) -> Option<&mut CategoryFormPresenter> {
     match &mut dialog.view {
-        View::Form(presenter, select) => Some((presenter, select)),
+        View::Form(presenter, _) => Some(presenter),
         View::Delete(_) => None,
     }
 }
 
-/// A click on a text field focuses it.
+/// A click on a text field focuses it, closing the list.
 fn click_field(dialog: &mut CategoriesDialog, field: CategoryField) {
-    if let Some((presenter, select)) = form(dialog) {
-        select.cancel();
+    if let Some(presenter) = form(dialog) {
         handle(presenter, CategoryFormEvent::Focus(field));
     }
 }
 
 /// A click on the select's closed field focuses it and toggles its list.
 fn click_select(dialog: &mut CategoriesDialog) {
-    if let Some((presenter, select)) = form(dialog) {
-        handle(presenter, CategoryFormEvent::Focus(CategoryField::Parent));
-        let view = presenter.view_model();
-        *select = synced(select, &view.parent);
-        if select.is_open() {
-            select.cancel();
-        } else {
-            select.open(&labels(&view.parent));
-        }
+    if let Some(presenter) = form(dialog) {
+        handle(presenter, CategoryFormEvent::ToggleParents);
     }
 }
 
+/// A click on row `index` of the open list.
 fn click_option(dialog: &mut CategoriesDialog, index: usize) {
-    if let Some((presenter, select)) = form(dialog)
-        && let Some(id) = choose_option(select, &presenter.view_model().parent, index)
+    if let Some(presenter) = form(dialog)
+        && let Some(choice) = presenter.view_model().parent.options.get(index)
     {
-        handle(presenter, CategoryFormEvent::Parent(id));
+        handle(presenter, CategoryFormEvent::Parent(choice.value));
     }
 }
 
 fn click_type(dialog: &mut CategoriesDialog, category_type: CategoryTypes) {
-    if let Some((presenter, select)) = form(dialog) {
-        select.cancel();
+    if let Some(presenter) = form(dialog) {
         handle(presenter, CategoryFormEvent::Type(category_type));
     }
 }
 
 pub(super) fn render(
     view: &CategoryFormViewModel,
-    select: &SelectState,
+    scroll: &mut usize,
     actions: &Clicks,
     cx: &App,
 ) -> AnyElement {
@@ -196,6 +92,7 @@ pub(super) fn render(
         )
     };
     let options = labels(&view.parent);
+    let state = drawn(&view.parent, view.parent_list, scroll);
     let on_field = |field: CategoryField| actions.click(move |dialog| click_field(dialog, field));
     let mut fields = vec![
         div()
@@ -216,7 +113,7 @@ pub(super) fn render(
                 id: parent_id.into(),
                 label: view.parent.label.clone().into(),
                 options: &options,
-                state: &synced(select, &view.parent),
+                state: &state,
                 focused: view.parent.focused,
                 accent: false,
                 read_only: None,

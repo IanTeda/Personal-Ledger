@@ -4,41 +4,14 @@
 //! every typed key.
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
-use lib_categories::presenter::{
-    DeleteCategoryEvent, DeleteCategoryPresenter, DeleteCategoryViewModel,
-};
+use lib_categories::presenter::DeleteCategoryViewModel;
 
+use super::Clicks;
 use super::category_form::error_line;
-use super::{Clicks, send};
-use crate::form::viper::{enter, typed};
-use crate::{
-    dialog,
-    shell::view::dialog_host::{DialogKey, DialogOutcome},
-    theme::color,
-};
+use crate::{dialog, theme::color};
 
 /// The Dialog's width: the handoff's 5d.
 const WIDTH: gpui::Pixels = px(440.0);
-
-pub(super) fn key(presenter: &mut DeleteCategoryPresenter, key: DialogKey) -> DialogOutcome {
-    let view = presenter.view_model();
-    match key {
-        DialogKey::Enter => enter(view.frame.can_confirm),
-        // The typed-back name is the only field.
-        DialogKey::Tab | DialogKey::BackTab => DialogOutcome::Handled,
-        _ => match typed(&view.confirm.text, key) {
-            Some(text) => {
-                send(
-                    presenter,
-                    DeleteCategoryEvent::ConfirmText(text),
-                    DeleteCategoryPresenter::handle,
-                );
-                DialogOutcome::Handled
-            }
-            None => DialogOutcome::Ignored,
-        },
-    }
-}
 
 pub(super) fn render(view: &DeleteCategoryViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     let mut fields = vec![

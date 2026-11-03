@@ -10,13 +10,14 @@
 use lib_core::CategoryId;
 use lib_locale::Segment;
 use lib_toast::{Notice, ToastKind};
+use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::view::{DialogFrame, TextFieldView, count};
 
 use super::reassign_refusal_text;
 use crate::msg;
 use crate::protocols::{
-    CategoriesOutcome, CategoriesRouter, CategoryChange, CategoryReassign, CategoryUsage,
-    CategoryUse, SharedCategories,
+    CategoriesOutcome, CategoryChange, CategoryReassign, CategoryUsage, CategoryUse,
+    SharedCategories,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,10 +65,34 @@ impl DeleteCategoryPresenter {
         })
     }
 
-    pub fn handle(&mut self, event: DeleteCategoryEvent, router: &mut dyn CategoriesRouter) {
+    pub fn handle(
+        &mut self,
+        event: DeleteCategoryEvent,
+        router: &mut dyn DialogRouter<CategoriesOutcome>,
+    ) {
         match event {
             DeleteCategoryEvent::ConfirmText(text) => self.confirm_text = text,
-            DeleteCategoryEvent::Cancel => router.close_dialog(None),
+            DeleteCategoryEvent::Cancel => router.close(None),
+        }
+    }
+
+    /// Reads a Dialog command or typed key: `select` and `submit` delete through `reassign` once
+    /// the name is typed back, and typing goes to the typed-back name, the only field. `reassign`
+    /// is lent for the call, since the Desktop writes its Ledger only with the gpui context the
+    /// call runs in.
+    pub fn input(
+        &mut self,
+        input: DialogInput,
+        reassign: &mut dyn CategoryReassign,
+        router: &mut dyn DialogRouter<CategoriesOutcome>,
+    ) {
+        match input {
+            DialogInput::Select | DialogInput::Submit => self.confirm(reassign, router),
+            DialogInput::Char(ch) => self.confirm_text.push(ch),
+            DialogInput::Backspace => {
+                self.confirm_text.pop();
+            }
+            _ => {}
         }
     }
 
@@ -76,7 +101,7 @@ impl DeleteCategoryPresenter {
     pub fn confirm(
         &mut self,
         reassign: &mut dyn CategoryReassign,
-        router: &mut dyn CategoriesRouter,
+        router: &mut dyn DialogRouter<CategoriesOutcome>,
     ) {
         if !self.can_confirm() {
             return;
@@ -90,7 +115,7 @@ impl DeleteCategoryPresenter {
                         count(deleted.splits_moved),
                     ),
                 ));
-                router.close_dialog(Some(CategoriesOutcome {
+                router.close(Some(CategoriesOutcome {
                     change: CategoryChange::Deleted,
                     id: self.id,
                     name: deleted.name,
@@ -212,6 +237,39 @@ mod tests {
             ]
         );
         assert!(categories.borrow().category(RENT).is_none());
+    }
+
+    #[test]
+    fn typing_builds_the_name_and_select_deletes_only_once_it_is_exact() {
+        let (categories, shared) = stub();
+        let mut reassign = InMemoryReassign::new(categories.clone());
+        let mut dialog =
+            DeleteCategoryPresenter::new(&shared, &InMemoryCategoryUsage::default(), RENT)
+                .expect("seeded");
+        let mut router = RecordingRouter::default();
+        let mut press = |dialog: &mut DeleteCategoryPresenter, input| {
+            dialog.input(input, &mut reassign, &mut router);
+        };
+
+        for ch in "Renx".chars() {
+            press(&mut dialog, DialogInput::Char(ch));
+        }
+        press(&mut dialog, DialogInput::Select);
+        press(&mut dialog, DialogInput::NextField);
+        assert!(
+            categories.borrow().category(RENT).is_some(),
+            "not the name yet"
+        );
+        press(&mut dialog, DialogInput::Backspace);
+        press(&mut dialog, DialogInput::Char('t'));
+        assert_eq!(dialog.view_model().confirm.text, "Rent");
+        press(&mut dialog, DialogInput::Submit);
+
+        assert!(categories.borrow().category(RENT).is_none());
+        assert!(matches!(
+            router.take().last(),
+            Some(RouterCall::CloseDialog(Some(_)))
+        ));
     }
 
     #[test]

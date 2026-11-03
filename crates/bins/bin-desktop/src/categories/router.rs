@@ -46,7 +46,8 @@ impl CategoriesRouter for PageRouter<'_, '_> {
         true
     }
 
-    /// The page closes no Dialog: a Dialog's own Presenter closes it through the host.
+    /// The page closes no Dialog: a Dialog's own Presenter closes it through the host's
+    /// `DialogRouter` (#991 removes this method).
     fn close_dialog(&mut self, _outcome: Option<CategoriesOutcome>) {}
 }
 
@@ -68,28 +69,4 @@ pub fn categories_page(
     use gpui::AppContext as _;
     let today = clock.today();
     cx.new(|cx| CategoriesPage::new(setup, ledger, today, cx))
-}
-
-/// What a Categories Dialog's Presenter asks: closing, and Notices, which go onto the bin's queue
-/// for `Root` to drain once the key or click returns. The page opens Dialogs.
-#[derive(Default)]
-pub(super) struct DialogRouter {
-    /// `Some` once the Presenter closed its Dialog, with what its confirm did.
-    pub closed: Option<Option<CategoriesOutcome>>,
-}
-
-impl CategoriesRouter for DialogRouter {
-    fn open_dialog(&mut self, _dialog: Which) -> bool {
-        false
-    }
-
-    fn close_dialog(&mut self, outcome: Option<CategoriesOutcome>) {
-        self.closed = Some(outcome);
-    }
-}
-
-impl Notify for DialogRouter {
-    fn notify(&mut self, notice: Notice) {
-        Queue.notify(notice);
-    }
 }

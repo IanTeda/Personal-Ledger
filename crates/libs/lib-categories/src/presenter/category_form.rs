@@ -19,13 +19,15 @@ use std::collections::BTreeMap;
 
 use lib_core::{CategoryId, CategoryTypes, Money};
 use lib_locale::format::format_month;
-use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView, count};
+use lib_viper::dialog::{DialogInput, DialogRouter};
+use lib_viper::view::{
+    Choice, DialogFrame, SelectList, SelectMove, SelectView, TextFieldView, count,
+};
 
 use super::save_refusal_text;
 use crate::interactor::{AddCategory, BudgetChange, EditCategory};
 use crate::protocols::{
-    CategoriesOutcome, CategoriesRouter, CategoryBudget, CategoryChange, CategoryUsage, ParentStop,
-    SharedCategories,
+    CategoriesOutcome, CategoryBudget, CategoryChange, CategoryUsage, ParentStop, SharedCategories,
 };
 use crate::{Category, depth, descendants_inclusive, get, is_leaf, move_exceeds_depth, msg, path};
 
@@ -49,12 +51,15 @@ pub enum CategoryFormEvent {
     Name(String),
     /// The Monthly budget's new text: only its digits and `.` are kept.
     Budget(String),
+    /// The parent picked, closing its list. One that is not offered is ignored.
     Parent(Option<CategoryId>),
+    /// A click on the type's segmented control, closing the parent's list.
     Type(CategoryTypes),
-    /// `Tab`/`Shift-Tab`, wrapping.
-    NextField,
-    PrevField,
-    /// A click on a field.
+    /// A click on the Parent category's field: focuses it and opens or closes its list.
+    ToggleParents,
+    /// Closes the Parent category's open list without picking: the host's `back`.
+    CloseParents,
+    /// A click on a field, which closes an open list.
     Focus(CategoryField),
     Cancel,
 }
@@ -66,6 +71,8 @@ pub struct CategoryFormViewModel {
     /// The name's problem, checked live.
     pub name_error: Option<String>,
     pub parent: SelectView<Option<CategoryId>>,
+    /// The Parent category's list: open, and its highlight.
+    pub parent_list: SelectList,
     /// The type's segmented control.
     pub category_type: SelectView<CategoryTypes>,
     /// Whether the type follows the parent, drawn dimmed and not clickable.
@@ -120,6 +127,7 @@ pub struct CategoryFormPresenter {
     budget: String,
     lock: Option<BudgetLock>,
     focused: CategoryField,
+    parent_list: SelectList,
     refusal: Option<String>,
 }
 
@@ -154,6 +162,7 @@ impl CategoryFormPresenter {
             budget: String::new(),
             lock,
             focused: CategoryField::Name,
+            parent_list: SelectList::default(),
             refusal: None,
         }
     }
@@ -203,55 +212,149 @@ impl CategoryFormPresenter {
                 .unwrap_or_default(),
             lock,
             focused: CategoryField::Name,
+            parent_list: SelectList::default(),
             refusal: None,
         })
     }
 
-    pub fn handle(&mut self, event: CategoryFormEvent, router: &mut dyn CategoriesRouter) {
+    pub fn handle(
+        &mut self,
+        event: CategoryFormEvent,
+        router: &mut dyn DialogRouter<CategoriesOutcome>,
+    ) {
         match event {
-            CategoryFormEvent::Name(text) => {
-                self.name = text;
-                self.refusal = None;
-            }
-            CategoryFormEvent::Budget(text) => {
-                if self.lock.is_none() {
-                    self.budget = text
-                        .chars()
-                        .filter(|c| c.is_numeric() || *c == '.')
-                        .collect();
-                }
-            }
+            CategoryFormEvent::Name(text) => self.set_name(text),
+            CategoryFormEvent::Budget(text) => self.set_budget(&text),
             CategoryFormEvent::Parent(id) => {
-                if self.parents.iter().any(|choice| choice.value == id) {
-                    self.parent = id;
-                    if let Some(parent) = id.and_then(|id| self.category(id)) {
-                        self.category_type = parent.category_type;
-                    }
-                }
+                self.parent_list.close();
+                self.pick_parent(id);
             }
             CategoryFormEvent::Type(category_type) => {
-                if !self.type_locked() {
-                    self.category_type = category_type;
-                }
+                self.parent_list.close();
+                self.pick_type(category_type);
             }
-            CategoryFormEvent::NextField | CategoryFormEvent::PrevField => {
+            CategoryFormEvent::ToggleParents => {
+                self.focused = CategoryField::Parent;
+                self.parent_list.toggle(&self.parents, Some(&self.parent));
+            }
+            CategoryFormEvent::CloseParents => {
+                self.parent_list.close();
+            }
+            CategoryFormEvent::Focus(field) => {
+                self.parent_list.close();
+                self.focused = field;
+            }
+            CategoryFormEvent::Cancel => router.close(None),
+        }
+    }
+
+    /// Reads a Dialog command or typed key for the focused field: `select` and `submit` confirm a
+    /// valid form through `budget`, except that `select` on the Parent category opens its list and
+    /// picks from it; typing edits Name and Monthly budget and goes nowhere on the select or Type;
+    /// the arrows step the select and switch Type; the field keys move focus, wrapping and
+    /// committing an open list's highlight. `budget` is lent for the call, since the Desktop
+    /// writes its Ledger only with the gpui context the call runs in.
+    pub fn input(
+        &mut self,
+        input: DialogInput,
+        budget: &mut dyn CategoryBudget,
+        router: &mut dyn DialogRouter<CategoriesOutcome>,
+    ) {
+        match (input, self.focused) {
+            (DialogInput::NextField | DialogInput::PreviousField, _) => {
+                // Leaving the select commits an open list's highlight, as a click on it would.
+                if let Some(id) = self.parent_list.commit(&self.parents) {
+                    self.pick_parent(id);
+                }
                 let order = CategoryField::ORDER;
                 let at = order.iter().position(|f| *f == self.focused).unwrap_or(0);
-                let next = if event == CategoryFormEvent::PrevField {
+                let next = if input == DialogInput::PreviousField {
                     at + order.len() - 1
                 } else {
                     at + 1
                 };
                 self.focused = order[next % order.len()];
             }
-            CategoryFormEvent::Focus(field) => self.focused = field,
-            CategoryFormEvent::Cancel => router.close_dialog(None),
+            (DialogInput::Submit, _) => self.confirm(budget, router),
+            (_, CategoryField::Parent) => {
+                // A select swallows typing, so it never reaches the Shell.
+                if let SelectMove::Chose(id) =
+                    self.parent_list
+                        .input(input, &self.parents, Some(&self.parent))
+                {
+                    self.pick_parent(id);
+                }
+            }
+            (DialogInput::Select, _) => self.confirm(budget, router),
+            (DialogInput::SelectNext | DialogInput::SelectPrevious, CategoryField::Type) => {
+                let other = match self.category_type {
+                    CategoryTypes::Expense => CategoryTypes::Income,
+                    CategoryTypes::Income => CategoryTypes::Expense,
+                };
+                self.pick_type(other);
+            }
+            (DialogInput::Char(ch), CategoryField::Name) => {
+                let mut name = self.name.clone();
+                name.push(ch);
+                self.set_name(name);
+            }
+            (DialogInput::Backspace, CategoryField::Name) => {
+                let mut name = self.name.clone();
+                name.pop();
+                self.set_name(name);
+            }
+            (DialogInput::Char(ch), CategoryField::Budget) => {
+                let mut text = self.budget.clone();
+                text.push(ch);
+                self.set_budget(&text);
+            }
+            (DialogInput::Backspace, CategoryField::Budget) => {
+                let mut text = self.budget.clone();
+                text.pop();
+                self.set_budget(&text);
+            }
+            _ => {}
+        }
+    }
+
+    fn set_name(&mut self, text: String) {
+        self.name = text;
+        self.refusal = None;
+    }
+
+    /// Keeps only an amount's characters, while the Monthly budget can be typed into.
+    fn set_budget(&mut self, text: &str) {
+        if self.lock.is_none() {
+            self.budget = text
+                .chars()
+                .filter(|c| c.is_numeric() || *c == '.')
+                .collect();
+        }
+    }
+
+    /// Sets the parent, and with it the type, ignoring a parent that is not offered.
+    fn pick_parent(&mut self, id: Option<CategoryId>) {
+        if self.parents.iter().any(|choice| choice.value == id) {
+            self.parent = id;
+            if let Some(parent) = id.and_then(|id| self.category(id)) {
+                self.category_type = parent.category_type;
+            }
+        }
+    }
+
+    fn pick_type(&mut self, category_type: CategoryTypes) {
+        if !self.type_locked() {
+            self.category_type = category_type;
         }
     }
 
     /// Saves the form through the Interactor, the budget written through `budget`, and closes the
     /// Dialog; a refusal stays on the form. A form that can't confirm does nothing.
-    pub fn confirm(&mut self, budget: &mut dyn CategoryBudget, router: &mut dyn CategoriesRouter) {
+    pub fn confirm(
+        &mut self,
+        budget: &mut dyn CategoryBudget,
+        router: &mut dyn DialogRouter<CategoriesOutcome>,
+    ) {
         if !self.can_confirm() {
             return;
         }
@@ -278,7 +381,7 @@ impl CategoryFormPresenter {
             }
         };
         match saved {
-            Ok(category) => router.close_dialog(Some(CategoriesOutcome {
+            Ok(category) => router.close(Some(CategoriesOutcome {
                 change: CategoryChange::Saved,
                 id: category.id,
                 name: category.name,
@@ -314,6 +417,7 @@ impl CategoryFormPresenter {
                 chosen: Some(self.parent),
                 focused: self.focused == CategoryField::Parent,
             },
+            parent_list: self.parent_list,
             category_type: SelectView {
                 label: lib_locale::msg::column_type(),
                 options: [CategoryTypes::Expense, CategoryTypes::Income]
@@ -507,6 +611,22 @@ mod tests {
         router.calls
     }
 
+    fn press(
+        form: &mut CategoryFormPresenter,
+        budget: &mut InMemoryCategoryBudget,
+        inputs: &[DialogInput],
+    ) -> Vec<RouterCall> {
+        let mut router = RecordingRouter::default();
+        for input in inputs {
+            form.input(*input, budget, &mut router);
+        }
+        router.calls
+    }
+
+    fn keys(text: &str) -> Vec<DialogInput> {
+        text.chars().map(DialogInput::Char).collect()
+    }
+
     fn name(text: &str) -> CategoryFormEvent {
         CategoryFormEvent::Name(text.to_string())
     }
@@ -595,11 +715,13 @@ mod tests {
         let budget = InMemoryCategoryBudget::default();
         let mut form = CategoryFormPresenter::add(shared, &budget, None);
 
-        send(&mut form, vec![CategoryFormEvent::NextField]);
+        let mut budget = budget;
+        press(&mut form, &mut budget, &[DialogInput::NextField]);
         assert_eq!(form.view_model().focused, CategoryField::Parent);
-        send(
+        press(
             &mut form,
-            vec![CategoryFormEvent::PrevField, CategoryFormEvent::PrevField],
+            &mut budget,
+            &[DialogInput::PreviousField, DialogInput::PreviousField],
         );
         assert_eq!(form.view_model().focused, CategoryField::Budget);
         send(&mut form, vec![CategoryFormEvent::Budget("1a2.5".into())]);
@@ -608,6 +730,171 @@ mod tests {
             send(&mut form, vec![CategoryFormEvent::Cancel]),
             [RouterCall::CloseDialog(None)]
         );
+    }
+
+    #[test]
+    fn typing_edits_name_and_budget_and_goes_nowhere_on_parent_or_type() {
+        let (_, shared) = stub();
+        let mut budget = InMemoryCategoryBudget::default();
+        let mut form = CategoryFormPresenter::add(shared, &budget, None);
+
+        press(&mut form, &mut budget, &keys("Petx"));
+        press(&mut form, &mut budget, &[DialogInput::Backspace]);
+        press(&mut form, &mut budget, &keys("s"));
+        assert_eq!(form.view_model().name.text, "Pets");
+        press(&mut form, &mut budget, &[DialogInput::NextField]);
+        press(&mut form, &mut budget, &keys("ab"));
+        press(&mut form, &mut budget, &[DialogInput::NextField]);
+        press(&mut form, &mut budget, &keys("cd"));
+        press(&mut form, &mut budget, &[DialogInput::Backspace]);
+        press(&mut form, &mut budget, &[DialogInput::NextField]);
+        press(&mut form, &mut budget, &keys("4x0.59"));
+        press(&mut form, &mut budget, &[DialogInput::Backspace]);
+
+        let view = form.view_model();
+        assert_eq!(view.name.text, "Pets");
+        assert_eq!(view.parent.chosen, Some(None));
+        assert_eq!(view.budget.field.text, "40.5");
+    }
+
+    #[test]
+    fn the_arrows_switch_an_unlocked_type_and_leave_a_locked_one() {
+        let (_, shared) = stub();
+        let mut budget = InMemoryCategoryBudget::default();
+        let mut form = CategoryFormPresenter::add(shared.clone(), &budget, None);
+        form.handle(
+            CategoryFormEvent::Focus(CategoryField::Type),
+            &mut RecordingRouter::default(),
+        );
+
+        press(&mut form, &mut budget, &[DialogInput::SelectNext]);
+        assert_eq!(
+            form.view_model().category_type.chosen,
+            Some(CategoryTypes::Income)
+        );
+        press(&mut form, &mut budget, &[DialogInput::SelectPrevious]);
+        assert_eq!(
+            form.view_model().category_type.chosen,
+            Some(CategoryTypes::Expense)
+        );
+
+        let mut child = CategoryFormPresenter::add(shared, &budget, Some(SALARY));
+        child.handle(
+            CategoryFormEvent::Focus(CategoryField::Type),
+            &mut RecordingRouter::default(),
+        );
+        press(&mut child, &mut budget, &[DialogInput::SelectNext]);
+        assert_eq!(
+            child.view_model().category_type.chosen,
+            Some(CategoryTypes::Income)
+        );
+    }
+
+    #[test]
+    fn the_parent_select_opens_moves_and_picks_and_leaving_it_commits_the_highlight() {
+        let (_, shared) = stub();
+        let mut budget = InMemoryCategoryBudget::default();
+        let mut form = CategoryFormPresenter::add(shared, &budget, None);
+        press(&mut form, &mut budget, &[DialogInput::NextField]);
+
+        assert_eq!(press(&mut form, &mut budget, &[DialogInput::Select]), []);
+        assert_eq!(
+            form.view_model().parent_list.highlight(),
+            Some(0),
+            "on None"
+        );
+        press(&mut form, &mut budget, &[DialogInput::SelectNext]);
+        assert_eq!(
+            form.view_model().parent.chosen,
+            Some(None),
+            "not yet picked"
+        );
+        press(&mut form, &mut budget, &[DialogInput::Select]);
+        let view = form.view_model();
+        assert!(!view.parent_list.is_open());
+        let picked = view.parent.options[1].value;
+        assert_eq!(view.parent.chosen, Some(picked));
+
+        press(
+            &mut form,
+            &mut budget,
+            &[
+                DialogInput::Char(' '),
+                DialogInput::SelectNext,
+                DialogInput::NextField,
+            ],
+        );
+        let view = form.view_model();
+        assert!(!view.parent_list.is_open());
+        assert_eq!(view.focused, CategoryField::Type);
+        assert_eq!(view.parent.chosen, Some(view.parent.options[2].value));
+    }
+
+    #[test]
+    fn a_click_toggles_the_parent_list_and_back_or_a_focus_click_closes_it() {
+        let (_, shared) = stub();
+        let budget = InMemoryCategoryBudget::default();
+        let mut form = CategoryFormPresenter::add(shared, &budget, None);
+
+        send(&mut form, vec![CategoryFormEvent::ToggleParents]);
+        assert!(form.view_model().parent_list.is_open());
+        assert_eq!(form.view_model().focused, CategoryField::Parent);
+        send(&mut form, vec![CategoryFormEvent::CloseParents]);
+        assert!(!form.view_model().parent_list.is_open());
+        send(
+            &mut form,
+            vec![
+                CategoryFormEvent::ToggleParents,
+                CategoryFormEvent::Focus(CategoryField::Name),
+            ],
+        );
+        assert!(!form.view_model().parent_list.is_open());
+        send(
+            &mut form,
+            vec![
+                CategoryFormEvent::ToggleParents,
+                CategoryFormEvent::Parent(Some(FOOD)),
+            ],
+        );
+        assert!(!form.view_model().parent_list.is_open());
+        assert_eq!(form.view_model().parent.chosen, Some(Some(FOOD)));
+    }
+
+    #[test]
+    fn select_confirms_off_the_select_and_submit_confirms_from_it() {
+        let (categories, shared) = stub();
+        let mut budget = InMemoryCategoryBudget::default();
+        let mut form = CategoryFormPresenter::add(shared, &budget, None);
+        assert_eq!(
+            press(&mut form, &mut budget, &[DialogInput::Select]),
+            [],
+            "no name"
+        );
+
+        press(&mut form, &mut budget, &keys("Pets"));
+        press(&mut form, &mut budget, &[DialogInput::NextField]);
+        let calls = press(&mut form, &mut budget, &[DialogInput::Submit]);
+
+        assert!(matches!(
+            calls.as_slice(),
+            [RouterCall::CloseDialog(Some(outcome))] if outcome.name == "Pets"
+        ));
+        assert!(
+            categories
+                .borrow()
+                .categories()
+                .iter()
+                .any(|c| c.name == "Pets")
+        );
+
+        let (_, shared) = stub();
+        let mut form = CategoryFormPresenter::add(shared, &budget, None);
+        press(&mut form, &mut budget, &keys("Gifts"));
+        let calls = press(&mut form, &mut budget, &[DialogInput::Select]);
+        assert!(matches!(
+            calls.as_slice(),
+            [RouterCall::CloseDialog(Some(_))]
+        ));
     }
 
     #[test]

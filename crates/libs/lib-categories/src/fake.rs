@@ -8,6 +8,7 @@ use std::rc::Rc;
 
 use lib_core::{CategoryId, CategoryTypes, Money};
 use lib_toast::{Notice, Notify};
+use lib_viper::dialog::DialogRouter;
 
 use crate::protocols::{
     CategoriesDialog, CategoriesOutcome, CategoriesRouter, CategoryBudget, CategoryReassign,
@@ -221,6 +222,12 @@ impl CategoriesRouter for RecordingRouter {
     }
 
     fn close_dialog(&mut self, outcome: Option<CategoriesOutcome>) {
+        self.calls.push(RouterCall::CloseDialog(outcome));
+    }
+}
+
+impl DialogRouter<CategoriesOutcome> for RecordingRouter {
+    fn close(&mut self, outcome: Option<CategoriesOutcome>) {
         self.calls.push(RouterCall::CloseDialog(outcome));
     }
 }
