@@ -215,8 +215,9 @@ impl Render for Root {
             confirm: on_settings_dialog_confirm.clone(),
         };
         // The default Budget's current month: the rail badge and the Dashboard's budget list.
-        let budget_reads = self.views.budgets.read(cx).ports().reads();
+        let budget_reads = self.open().views.budgets.read(cx).ports().reads();
         let default_budget_figures = self
+            .open()
             .ledger
             .read(cx)
             .ledger()
@@ -230,7 +231,7 @@ impl Render for Root {
         // line reads its page status.
         let active_element = active_entity.element(
             focus == FocusZone::View,
-            self.nav().ledger_open(),
+            self.ledger_open(),
             window_size,
             cx,
         );
@@ -298,11 +299,12 @@ impl Render for Root {
                                         .as_ref()
                                         .map_or(0, |figures| figures.over_count),
                                 )
-                                .documents_inbox(self.views.documents.read(cx).inbox_count()),
+                                .documents_inbox(
+                                    self.open().views.documents.read(cx).inbox_count(),
+                                ),
                             )
                             .when(
-                                self.nav().noun().has_context_entities()
-                                    && self.nav().ledger_open(),
+                                self.nav().context_rail_visible(self.ledger_open()),
                                 |this| {
                                     this.child(ContextRail::new(
                                         self.nav().noun(),

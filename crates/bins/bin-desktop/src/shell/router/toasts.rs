@@ -25,9 +25,10 @@ impl Root {
     pub fn set_toasts_on(&mut self, on: bool, cx: &mut gpui::App) {
         let display = DisplayPreferences {
             toasts_on: on,
-            ..self.views.settings.read(cx).display(cx)
+            ..self.open().views.settings.read(cx).display(cx)
         };
-        self.views
+        self.open()
+            .views
             .settings
             .update(cx, |view, cx| view.set_display(display, cx));
         self.push_display_preferences(display, cx);

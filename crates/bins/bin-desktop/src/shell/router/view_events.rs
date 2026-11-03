@@ -14,19 +14,8 @@ use crate::view::event::{Reveal, ViewEvent};
 use lib_shell::NavInput;
 
 impl Root {
-    /// Subscribes `Root` to a View Entity's events. The subscription is kept on `Root`, since
-    /// dropping it would silently stop the View's events.
-    pub(super) fn subscribe_view<V: EventEmitter<ViewEvent>>(
-        &mut self,
-        view: &Entity<V>,
-        cx: &mut Context<'_, Self>,
-    ) {
-        let subscription = Self::view_event_subscription(view, cx);
-        self.view_subscriptions.push(subscription);
-    }
-
-    /// The subscription that hands a View's events to [`Self::handle_view_event`], for a View
-    /// built before `Root` itself is.
+    /// The subscription that hands a View's events to [`Self::handle_view_event`], which whoever
+    /// built the View keeps: dropping it silently stops the View's events.
     pub(super) fn view_event_subscription<V: EventEmitter<ViewEvent>>(
         view: &Entity<V>,
         cx: &mut Context<'_, Self>,
@@ -113,37 +102,20 @@ mod tests {
     fn each_view_event_reaches_shell(cx: &mut TestAppContext) {
         crate::locale::init_for_tests();
         let today = chrono::NaiveDate::from_ymd_opt(2026, 10, 9).expect("a valid date");
-        let storage = crate::ledger_store::LedgerSetup::stub(today);
         let shell = cx.new(|cx| {
-            Root::with_clock(
+            crate::input::install(cx.weak_entity(), cx);
+            let mut shell = Root::with_clock(
                 NavState::new(),
                 cx.focus_handle(),
                 lib_core::Clock::fixed(today),
-                crate::settings::pages::SettingsSetup {
-                    units: crate::units::UnitsSetup::stub(&storage),
-                    institutions: crate::institutions::InstitutionsSetup::stub(&storage),
-                    payees: crate::payees::PayeesSetup::stub(&storage),
-                    document_types: crate::document_types::DocumentTypesSetup::stub(&storage),
-                    accounts: crate::accounts::AccountsSetup::stub(&storage),
-                    categories: crate::categories::CategoriesSetup::stub(&storage),
-                    tags: crate::tags::TagsSetup::stub(&storage),
-                    inventory: crate::inventory::InventorySetup::stub(&storage),
-                },
-                crate::bills::BillsSetup::stub(&storage),
-                storage,
-                cx,
-            )
-        });
-        // A Toast or status arrives as one input, which drains into the Shell through the door.
-        cx.update(|cx| {
-            crate::input::install(
-                std::rc::Rc::new(lib_database::InMemoryCommit),
-                shell.downgrade(),
-                cx,
             );
+            let (stores, _) = lib_database::Stores::fake(lib_database::FakeStores::stub(today));
+            shell.open_ledger(stores, &lib_config::KeyBindingConfig::default(), cx);
+            shell
         });
         let view = cx.new(|_| StandInView);
-        shell.update(cx, |shell, cx| shell.subscribe_view(&view, cx));
+        // A Toast or status arrives as one input, which drains into the Shell through the door.
+        let _subscription = shell.update(cx, |_, cx| Root::view_event_subscription(&view, cx));
 
         view.update(cx, |_, cx| {
             cx.emit(ViewEvent::RaiseToast {
@@ -190,29 +162,20 @@ mod tests {
     fn a_reveal_makes_its_destination_active_and_shows_the_record(cx: &mut TestAppContext) {
         crate::locale::init_for_tests();
         let today = chrono::NaiveDate::from_ymd_opt(2026, 10, 9).expect("a valid date");
-        let storage = crate::ledger_store::LedgerSetup::stub(today);
         let shell = cx.new(|cx| {
-            Root::with_clock(
+            crate::input::install(cx.weak_entity(), cx);
+            let mut shell = Root::with_clock(
                 NavState::new(),
                 cx.focus_handle(),
                 lib_core::Clock::fixed(today),
-                crate::settings::pages::SettingsSetup {
-                    units: crate::units::UnitsSetup::stub(&storage),
-                    institutions: crate::institutions::InstitutionsSetup::stub(&storage),
-                    payees: crate::payees::PayeesSetup::stub(&storage),
-                    document_types: crate::document_types::DocumentTypesSetup::stub(&storage),
-                    accounts: crate::accounts::AccountsSetup::stub(&storage),
-                    categories: crate::categories::CategoriesSetup::stub(&storage),
-                    tags: crate::tags::TagsSetup::stub(&storage),
-                    inventory: crate::inventory::InventorySetup::stub(&storage),
-                },
-                crate::bills::BillsSetup::stub(&storage),
-                storage,
-                cx,
-            )
+            );
+            let (stores, _) = lib_database::Stores::fake(lib_database::FakeStores::stub(today));
+            shell.open_ledger(stores, &lib_config::KeyBindingConfig::default(), cx);
+            shell
         });
         let view = cx.new(|_| StandInView);
-        shell.update(cx, |shell, cx| shell.subscribe_view(&view, cx));
+        // A Toast or status arrives as one input, which drains into the Shell through the door.
+        let _subscription = shell.update(cx, |_, cx| Root::view_event_subscription(&view, cx));
         let (id, last_plan) = shell.read_with(cx, |shell, cx| {
             lib_bills::planner_order(shell.bill_plans(cx))
                 .last()

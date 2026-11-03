@@ -31,7 +31,7 @@ impl Root {
         // Runs on whichever thread logged: only signal. One stored permit absorbs a burst.
         buffer.set_waker(move || waker.notify_one());
         let log = LogView::new(buffer, level);
-        let tracing = self.views.settings.read(cx).page::<TracingPage>();
+        let tracing = self.open().views.settings.read(cx).page::<TracingPage>();
         tracing.update(cx, |page, cx| page.replace_log(cx, log));
         cx.spawn(async move |this, cx| {
             loop {
@@ -41,7 +41,7 @@ impl Root {
                 // Stops once the window, and with it the Shell, has gone.
                 if this
                     .update(cx, |shell, cx| {
-                        let tracing = shell.views.settings.read(cx).page::<TracingPage>();
+                        let tracing = shell.open().views.settings.read(cx).page::<TracingPage>();
                         tracing.update(cx, |page, cx| page.pull_log(cx));
                     })
                     .is_err()

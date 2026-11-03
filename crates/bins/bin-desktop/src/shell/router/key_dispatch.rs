@@ -94,8 +94,12 @@ impl Root {
             ShellCommand::Search => self.start_search(cx),
             // Mirrors the TopBar's own rail-toggle button (`Root::handle_toggle_rail`).
             ShellCommand::ToggleRail => self.toggle_rail(window_size, cx),
-            ShellCommand::FocusPrevious => self.navigate(NavInput::FocusPrevious),
-            ShellCommand::FocusNext => self.navigate(NavInput::FocusNext),
+            ShellCommand::FocusPrevious => self.navigate(NavInput::FocusPrevious {
+                ledger_open: self.ledger_open(),
+            }),
+            ShellCommand::FocusNext => self.navigate(NavInput::FocusNext {
+                ledger_open: self.ledger_open(),
+            }),
             // `Esc` asks the View, since only it knows what of its own is open.
             ShellCommand::Back => {
                 return (self.view_owns_mode() || self.view_has_keys())

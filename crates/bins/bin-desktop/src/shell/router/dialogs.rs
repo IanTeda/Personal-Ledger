@@ -54,7 +54,7 @@ impl Root {
     /// What a hosted Dialog reads and writes through.
     pub(super) fn dialog_scope(&self) -> DialogScope {
         DialogScope {
-            ledger: self.ledger.clone(),
+            ledger: self.open().ledger.clone(),
             today: self.today,
         }
     }

@@ -14,7 +14,7 @@ use gpui::App;
 impl Root {
     /// The Transactions, read through their store (ADR-0032).
     pub(super) fn transactions<'a>(&self, cx: &'a App) -> &'a [Transaction] {
-        self.ledger.read(cx).ledger().transactions()
+        self.open().ledger.read(cx).ledger().transactions()
     }
 
     /// `:import`: opens the stubbed 6e step on the seeded statement, the Import step shown in place
@@ -23,6 +23,9 @@ impl Root {
         self.navigate(NavInput::Show(Noun::Transactions));
         self.navigate(NavInput::Focus(FocusZone::View));
         self.reset_view_scroll(cx);
-        self.views.import.update(cx, |view, cx| view.open(cx));
+        self.open()
+            .views
+            .import
+            .update(cx, |view, cx| view.open(cx));
     }
 }

@@ -34,7 +34,8 @@ impl Root {
         let active = self.active_view_entity(cx);
         active.on_enter(cx);
         if let ActiveViewEntity::Import(_) = active {
-            self.views
+            self.open()
+                .views
                 .transactions
                 .update(cx, |page, cx| page.on_enter(cx));
         }

@@ -12,7 +12,7 @@ impl Root {
     /// The Bills page for a test, as its Entity builds it, plus the open Bills Dialog.
     #[doc(hidden)]
     pub fn bills_snapshot(&self, cx: &gpui::App) -> BillsSnapshot {
-        let mut snapshot = self.views.bills.read(cx).snapshot();
+        let mut snapshot = self.open().views.bills.read(cx).snapshot();
         let open = self.hosted_dialog();
         if let Some(dialog) = open.and_then(|open| open.downcast::<BillsDialog>()) {
             let readback =

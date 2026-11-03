@@ -19,7 +19,8 @@
 //! lives in a bare-named child file (`commands`, `dialogs`, `explorer`, `focus`, `key_dispatch`,
 //! `log_feed`, `rail`, `render`, `root_router`, `status`, `toasts`) under `router/` that is an
 //! `impl Root` block, not the real module of the same name; a `_ui` suffix (`transactions_ui`)
-//! marks per-domain wiring.
+//! marks per-domain wiring. `open_ledger` is the exception: it holds [`OpenLedger`], everything
+//! built on a Ledger, which `Root` keeps as an `Option` (#975).
 //!
 //! `Root` holds exactly one `gpui::FocusHandle` for the whole window rather than one per
 //! zone: the three `FocusZone`s are our own conceptual navigation state
@@ -34,6 +35,7 @@ mod focus;
 mod history;
 mod key_dispatch;
 mod log_feed;
+mod open_ledger;
 mod rail;
 mod render;
 mod root_router;
@@ -51,6 +53,7 @@ pub use date_clock::{DATE_POLL, wall_clock};
 pub use key_dispatch::PENDING_G_TIMEOUT;
 use lib_core::LocationId;
 pub use log_feed::LOG_COALESCE;
+pub use open_ledger::OpenLedger;
 #[doc(hidden)]
 pub use snapshots::{
     BillRowSnapshot, BillsSnapshot, BudgetRowSnapshot, BudgetsSnapshot, ChipSnapshot,
@@ -63,7 +66,6 @@ pub use snapshots::{
 };
 pub use write_failures::WRITE_FAILURE_POLL;
 
-use std::rc::Rc;
 use std::time::Duration;
 
 use crate::persistence::PersistedState;
@@ -72,19 +74,11 @@ use lib_database::Stores;
 /// The Shell's Presenter over the Desktop's Settings pages.
 type ShellPresenter = lib_shell::ShellPresenter<SettingsPage>;
 
-use crate::ledger_store::{LedgerStore, LegacyApplied, notify_on};
-use crate::settings::state::SettingsView;
-use crate::transaction_import::{ImportPage, ImportStores};
-use crate::transactions::TransactionsPage;
+use gpui::{App, Context, FocusHandle, Focusable, ScrollHandle, Task};
 
-use gpui::{
-    App, AppContext, Context, Entity, FocusHandle, Focusable, ScrollHandle, Subscription, Task,
-};
-
-use lib_ledger::Ledger;
 use lib_shell::{NavInput, ToastInput};
 
-use crate::view::active::{ActiveViewEntity, ViewEntities};
+use crate::view::active::ActiveViewEntity;
 use crate::view::event::ViewMode;
 use crate::{
     documents::{DocumentsMode, LibraryScope, LibrarySort},
@@ -94,7 +88,6 @@ use crate::{
     settings::{SettingsPage, display::DisplayPreferences},
     shell::state::ShellState,
     shell::view::{rail as rail_view, window_size::WindowSize},
-    view::dashboard::state::{DashboardSources, DashboardView},
 };
 use lib_categories::Category;
 
@@ -119,10 +112,8 @@ pub struct ShellLogs {
 
 /// Builds `Root` from persisted state the way the app does, so tests construct it identically.
 /// `clock` is a parameter so tests can pin, and move, the date the seeded stub data and scopes hang
-/// off. `stores` is where the Units, the Institutions, the Accounts, the Categories, the Tags, the Payees, the
-/// Transactions, the Bills, the Budgets, the Inventory and the Documents are kept, the app's SQLite adapters or a test's in-memory ports, with the commit
-/// every input ends in (`crate::input::send`) and the writer's failure channel, on which a failed
-/// write rolls back.
+/// off. `stores` is the Ledger file start-up opened (the app's SQLite adapters or a test's
+/// in-memory ports), which the Shell opens as its Open Ledger through [`OpenLedger::build`].
 pub fn build(
     persisted: PersistedState,
     bindings: ShellBindings,
@@ -132,22 +123,7 @@ pub fn build(
     focus_handle: FocusHandle,
     cx: &mut Context<'_, Root>,
 ) -> Root {
-    let Stores {
-        units,
-        institutions,
-        accounts,
-        categories,
-        tags,
-        payees,
-        transactions,
-        bills,
-        budgets,
-        inventory,
-        documents,
-        commit,
-        failures,
-    } = stores;
-    crate::input::install(commit, cx.weak_entity(), cx);
+    crate::input::install(cx.weak_entity(), cx);
     let today = clock.today();
     let nav = NavState::starting_at(persisted.noun);
     let documents_state = (
@@ -165,92 +141,8 @@ pub fn build(
         .map(SettingsPage::from_id)
         .unwrap_or_default();
 
-    // The Transactions and Bills stores are shared: Pay it directly writes both (#779). The
-    // Payees ports are shared by the Payees module, the Ledger's forwarding shim and the Bills
-    // reads (#831, #832). The Categories store is shared by the Categories module, the Ledger's
-    // forwarding shim and the Bills and Payees reads (#858, #859).
-    let categories: lib_database::SharedCategoriesStore =
-        Rc::new(std::cell::RefCell::new(categories));
-    let payees = crate::payees::LedgerBackedPorts::shared(payees, categories.clone());
-    // The Tags store is shared by the Ledger's forwarding shim and the Tags page's usage reads
-    // (#862).
-    let tags: lib_database::SharedTagsStore = Rc::new(std::cell::RefCell::new(tags));
-    // The Inventory store is shared by the Ledger's forwarding shim and read copy and the
-    // Inventory page (#866, #867).
-    let inventory: lib_database::SharedInventoryStore = Rc::new(std::cell::RefCell::new(inventory));
-    // The Budgets store is shared by the Ledger's forwarding shim and read copy, the Accounts,
-    // Units and Categories usage counts and the Categories Monthly budget (#952).
-    let budgets: lib_database::SharedBudgetsStore = Rc::new(std::cell::RefCell::new(budgets));
-    // The Accounts store is shared by the Ledger's forwarding shim and the Units and Bills reads
-    // (#853), and the Institutions' reads of which Accounts name one (#876).
-    let accounts = crate::accounts::LedgerBackedPorts::shared(accounts, budgets.clone());
-    let institutions =
-        crate::institutions::LedgerBackedPorts::shared(institutions, accounts.clone());
-    let institutions_setup =
-        crate::institutions::InstitutionsSetup::new(institutions.clone(), &bindings.keybindings);
-    let transactions: lib_database::SharedTransactionsStore =
-        Rc::new(std::cell::RefCell::new(transactions));
-    let bills = crate::bills::LedgerBackedPorts::shared(
-        Rc::new(std::cell::RefCell::new(bills)),
-        payees.clone(),
-        accounts.clone(),
-        categories.clone(),
-        transactions.clone(),
-    );
-    let tags_setup = crate::tags::TagsSetup::new(tags.clone(), &bindings.keybindings);
-    let inventory_setup =
-        crate::inventory::InventorySetup::new(inventory.clone(), &bindings.keybindings);
-    let categories_setup =
-        crate::categories::CategoriesSetup::new(categories.clone(), &bindings.keybindings);
-    let payments = crate::bill_payments::payments(transactions.clone(), &bills);
-    // Account delete writes the Accounts, Transactions and Bills stores together (#854).
-    let account_deletion = crate::account_deletion::DeletionStores {
-        deletion: crate::account_deletion::deletion(accounts.clone(), transactions.clone(), &bills),
-        bills: bills.clone(),
-    };
-    let accounts_setup = crate::accounts::AccountsSetup::new(
-        accounts.clone(),
-        account_deletion,
-        &bindings.keybindings,
-    );
-    let units = crate::units::UnitsSetup::new(
-        units,
-        accounts.clone(),
-        inventory.clone(),
-        budgets.clone(),
-        &institutions,
-        &bindings.keybindings,
-    );
-    // The Documents store is shared by the Ledger's forwarding shim and read copy and the Document
-    // Types page (#963, #966).
-    let documents: lib_database::SharedDocumentsStore = Rc::new(std::cell::RefCell::new(documents));
-    let payees_setup = crate::payees::PayeesSetup::new(payees.clone(), &bindings.keybindings);
-    let document_types_setup =
-        crate::document_types::DocumentTypesSetup::new(documents.clone(), &bindings.keybindings);
-    let storage = crate::ledger_store::LedgerSetup {
-        institutions,
-        accounts,
-        categories,
-        tags,
-        payees,
-        transactions,
-        bills: bills.clone(),
-        budgets,
-        inventory,
-        documents,
-    };
-    let bills = crate::bills::BillsSetup::new(bills, payments, &bindings.keybindings);
-    let settings = crate::settings::pages::SettingsSetup {
-        units,
-        institutions: institutions_setup,
-        payees: payees_setup,
-        document_types: document_types_setup,
-        accounts: accounts_setup,
-        categories: categories_setup,
-        tags: tags_setup,
-        inventory: inventory_setup,
-    };
-    let mut shell = Root::with_clock(nav, focus_handle, clock, settings, bills, storage, cx);
+    let mut shell = Root::with_clock(nav, focus_handle, clock);
+    shell.open_ledger(stores, &bindings.keybindings, cx);
     shell.set_start_sidebar_minimised(persisted.start_sidebar_minimised, cx);
     shell.set_client_preferences(&persisted.preferences, cx);
     shell.set_settings_page(settings_page, cx);
@@ -259,7 +151,6 @@ pub fn build(
     shell.set_keymaps(&bindings.keybindings, cx);
     shell.start_toast_clock(cx);
     shell.start_date_clock(cx);
-    shell.listen_for_write_failures(failures, cx);
     shell.set_log_capture(
         logs.buffer,
         crate::settings::tracing::log::TracingLevel::from_configured(logs.configured_level),
@@ -305,12 +196,9 @@ pub struct Root {
     /// The `:open` explorer's footer checkboxes, kept here so they outlive each dialog and reach
     /// `persistence::PersistedState` at quit.
     explorer_filters: ExplorerFilters,
-    /// The only copy of the Ledger (ADR-0038). Every page below reads through it and holds no rows
-    /// of its own.
-    ledger: Entity<LedgerStore>,
-    /// The Units ports the Units page and the General page share, reloaded here when a write to
-    /// them fails.
-    units: crate::units::DesktopPorts,
+    /// Everything built on the Ledger file, `None` with no Ledger open: the one source of truth
+    /// for whether one is (#975).
+    open: Option<OpenLedger>,
     /// "Today" for the seed data and, later, the `this year` filter -- read at construction and
     /// moved on only when [`Self::presenter`] sees the Clock cross into a new calendar month, so
     /// everything derived from it (the seeded dates, the default range) agrees within a month.
@@ -319,149 +207,14 @@ pub struct Root {
     /// noun, focus and mode), the global keymap, and the Clock (the local date, or a test's pinned
     /// day; every View is built with it), whose month turn it notices.
     presenter: ShellPresenter,
-    /// The Bills ports the Bills module and `LedgerStore` share, which a new month's Bill
-    /// Schedule is generated through.
-    bills: crate::bills::DesktopPorts,
-    /// The Budgets, read through their store Entity (ADR-0032). Shared so the Budgets surface and
-    /// Categories 5c read and write the same Category Limits, and so they survive leaving and
-    /// re-entering either view.
-    /// The Transactions, read through their store Entity (ADR-0032): saved-in-memory state that
-    /// survives leaving and re-entering the page. Deleting an account deletes its transactions
-    /// with it.
-    /// The Bill Plans and Bill Schedule, read through their store Entity (ADR-0032).
-    /// The Views that render themselves and handle their own input (ADR-0037): Bills, Budgets,
-    /// Transactions with its Import step, Documents, and Settings. Each reaches `Root` only
-    /// through `ViewEvent`.
-    views: ViewEntities,
-    /// The Documents and Document Types, read through their store Entity (ADR-0032). Shared:
-    /// Settings › Documents edits the Types, and the Documents page, the rail badge and the
-    /// Inventory removal read the Documents. Keeps each View's event subscription alive: dropping
-    /// one silently stops its events.
-    view_subscriptions: Vec<Subscription>,
 }
 
 impl Root {
     /// Builds the Shell on `clock`, which dates the seeded stub data from the day it reads now, so
-    /// tests pin it rather than live at the mercy of the wall clock. Creates the Accounts Entities,
-    /// so it takes a `Context`.
-    pub fn with_clock(
-        nav: NavState,
-        focus_handle: FocusHandle,
-        clock: lib_core::Clock,
-        settings: crate::settings::pages::SettingsSetup,
-        bills: crate::bills::BillsSetup,
-        storage: crate::ledger_store::LedgerSetup,
-        cx: &mut Context<'_, Self>,
-    ) -> Self {
+    /// tests pin it rather than live at the mercy of the wall clock. Builds no Ledger: that is
+    /// [`Self::open_ledger`]'s.
+    pub fn with_clock(nav: NavState, focus_handle: FocusHandle, clock: lib_core::Clock) -> Self {
         let today = clock.today();
-        // The Transactions page reads the stores, not the Ledger's read copies (#923).
-        let transactions_ports = crate::transactions::ports::DesktopPorts::shared(
-            storage.transactions.clone(),
-            storage.accounts.clone(),
-            storage.categories.clone(),
-            storage.payees.clone(),
-            storage.tags.clone(),
-            settings.units.ports.clone(),
-        );
-        // The Import writes the Payees and Transactions stores and reads the Accounts and
-        // Categories, as their modules hold them.
-        let import_stores = ImportStores {
-            payees: storage.payees.clone(),
-            transactions: storage.transactions.clone(),
-            accounts: storage.accounts.clone(),
-            categories: storage.categories.clone(),
-        };
-        // The Budgets page reads the other domains through their stores, not the Ledger's read
-        // copies (#952).
-        let budget_reads = Rc::new(lib_database::StoredBudgetReads {
-            categories: storage.categories.clone(),
-            accounts: storage.accounts.clone(),
-            transactions: storage.transactions.clone(),
-            bills: storage.bills.borrow().store(),
-            units: settings.units.ports.clone(),
-            payees: storage.payees.clone(),
-        });
-        let budgets_ports =
-            crate::budgets::ports::DesktopPorts::new(storage.budgets.clone(), budget_reads);
-        // The Documents page writes the store through its Interactors, and reads the other
-        // domains through their stores (#967).
-        let documents_store = crate::document_types::ports::shared(&storage.documents);
-        // The Transactions and Bills ports are the truth; the Ledger keeps read copies of them
-        // (#774).
-        let ledger = cx.new(|_| LedgerStore::with_storage(Ledger::stub_on(today), storage));
-        // The Units ports are the truth; the Ledger keeps a read copy of them (#746).
-        crate::units::ports::refresh(&settings.units.ports, &ledger, cx);
-        let units_ports = settings.units.ports.clone();
-        // The Dialogs and the Dashboard read the Categories, Units and Institutions straight from the Ledger.
-        let categories_subscription = notify_on(&ledger, lib_ledger::Domain::Categories, cx);
-        // A View not yet a module wrote through the Ledger from its own click: one input commits it.
-        let legacy_applied = cx.subscribe(&ledger, |shell, _, _: &LegacyApplied, cx| {
-            shell.send_shell(lib_shell::ShellInput::LegacyApply, cx);
-        });
-        let units_subscription = notify_on(&ledger, lib_ledger::Domain::Units, cx);
-        let tags_subscription = notify_on(&ledger, lib_ledger::Domain::Tags, cx);
-        let institutions_subscription = notify_on(&ledger, lib_ledger::Domain::Institutions, cx);
-        let accounts_changed = notify_on(&ledger, lib_ledger::Domain::Accounts, cx);
-        let payees_changed = notify_on(&ledger, lib_ledger::Domain::Payees, cx);
-        // Documents resolve their Links against the Inventory.
-        let inventory_changed = notify_on(&ledger, lib_ledger::Domain::Inventory, cx);
-        let settings_view = cx.new(|cx| SettingsView::new(&ledger, &clock, settings, cx));
-        let settings_subscription = Self::view_event_subscription(&settings_view, cx);
-        // The status line reads the page's state, so a change in it repaints `Root` too.
-        let settings_view_observer = cx.observe(&settings_view, |_, _, cx| cx.notify());
-        let transactions_view =
-            cx.new(|cx| TransactionsPage::new(transactions_ports, &ledger, clock.clone(), cx));
-        crate::transactions::router::install(&transactions_view, cx);
-        let transactions_subscription = Self::view_event_subscription(&transactions_view, cx);
-        // The status line reads the page's state, so a change in it repaints `Root` too.
-        let transactions_view_observer = cx.observe(&transactions_view, |_, _, cx| cx.notify());
-        let import_view = cx.new(|_| ImportPage::new(import_stores, ledger.clone(), clock.clone()));
-        // The status line reads the step's state, and which View shows turns on it being open.
-        let import_view_observer = cx.observe(&import_view, |_, _, cx| cx.notify());
-        let budgets_view = crate::budgets::router::budgets_page(
-            budgets_ports,
-            ledger.clone(),
-            lib_budgets::keymap::budgets_page_keymap(&lib_config::KeyBindingConfig::default()),
-            clock.clone(),
-            cx,
-        );
-        let budgets_subscription = Self::view_event_subscription(&budgets_view, cx);
-        // The status line reads the page's state, so a change in it repaints `Root` too.
-        let budgets_view_observer = cx.observe(&budgets_view, |_, _, cx| cx.notify());
-        let dashboard_view = cx.new(|cx| {
-            DashboardView::new(
-                DashboardSources {
-                    ledger: ledger.clone(),
-                },
-                &clock,
-                cx,
-            )
-        });
-        let dashboard_subscription = Self::view_event_subscription(&dashboard_view, cx);
-        let dashboard_view_observer = cx.observe(&dashboard_view, |_, _, cx| cx.notify());
-        let bills_ports = bills.ports.clone();
-        let bills_view = crate::bills::bills_page(
-            bills.ports,
-            bills.payments,
-            ledger.clone(),
-            bills.keymap,
-            clock.clone(),
-            cx,
-        );
-        let bills_subscription = Self::view_event_subscription(&bills_view, cx);
-        // The status line reads the page's state, so a change in it repaints `Root` too.
-        let bills_view_observer = cx.observe(&bills_view, |_, _, cx| cx.notify());
-        let documents_view = crate::documents::view::page::documents_page(
-            documents_store,
-            Rc::new(crate::documents::files::DiskFiles),
-            ledger.clone(),
-            lib_documents::keymap::documents_page_keymap(&lib_config::KeyBindingConfig::default()),
-            clock.clone(),
-            cx,
-        );
-        let documents_subscription = Self::view_event_subscription(&documents_view, cx);
-        // The status line reads the page's state, so a change in it repaints `Root` too.
-        let documents_view_observer = cx.observe(&documents_view, |_, _, cx| cx.notify());
         Self {
             focus_handle,
             view_x_scroll_handle: ScrollHandle::new(),
@@ -485,59 +238,57 @@ impl Root {
             palette_entries: command::entries(&lib_config::KeyBindingConfig::default()),
             file_explorer: None,
             explorer_filters: ExplorerFilters::default(),
-            ledger,
-            units: units_ports,
+            open: None,
             today,
             presenter: ShellPresenter::new(clock, nav),
-            bills: bills_ports,
-            views: ViewEntities {
-                dashboard: dashboard_view,
-                bills: bills_view,
-                budgets: budgets_view,
-                transactions: transactions_view,
-                import: import_view,
-                documents: documents_view,
-                settings: settings_view,
-            },
-            view_subscriptions: vec![
-                dashboard_subscription,
-                dashboard_view_observer,
-                budgets_subscription,
-                budgets_view_observer,
-                bills_subscription,
-                bills_view_observer,
-                transactions_subscription,
-                transactions_view_observer,
-                import_view_observer,
-                documents_subscription,
-                documents_view_observer,
-                tags_subscription,
-                payees_changed,
-                categories_subscription,
-                units_subscription,
-                accounts_changed,
-                institutions_subscription,
-                inventory_changed,
-                settings_subscription,
-                settings_view_observer,
-                legacy_applied,
-            ],
         }
+    }
+
+    /// Opens `stores` as the Open Ledger, building everything on it under `keybindings`. Start-up
+    /// calls it on the file it opened; `:open` will on the file picked.
+    pub fn open_ledger(
+        &mut self,
+        stores: Stores,
+        keybindings: &lib_config::KeyBindingConfig,
+        cx: &mut Context<'_, Self>,
+    ) {
+        let clock = self.presenter.clock().clone();
+        self.open = Some(OpenLedger::build(stores, keybindings, &clock, cx));
+        // The Views that read their keys after construction take `[keybindings]` here, so the
+        // Open Ledger comes up under them whoever opens it.
+        self.set_keymaps(keybindings, cx);
+    }
+
+    /// Whether a Ledger is open: whether `Root` holds an Open Ledger.
+    pub fn ledger_open(&self) -> bool {
+        self.open.is_some()
+    }
+
+    /// The Open Ledger. Start-up always opens one and nothing closes it until the no Ledger open
+    /// start (#977), so its absence is a bug for now.
+    #[expect(
+        clippy::expect_used,
+        reason = "halfway state (#975): start-up always opens a Ledger and nothing drops it until #977"
+    )]
+    fn open(&self) -> &OpenLedger {
+        self.open
+            .as_ref()
+            .expect("start-up opens a Ledger and nothing closes it until #977")
     }
 
     /// The Categories tree, read straight from the Ledger (ADR-0038).
     fn categories<'a>(&self, cx: &'a App) -> &'a [Category] {
-        self.ledger.read(cx).ledger().categories()
+        self.open().ledger.read(cx).ledger().categories()
     }
 
     /// The Bill Plans, from the Ledger's read copy of the Bills ports.
     fn bill_plans<'a>(&self, cx: &'a App) -> &'a [crate::bills::BillPlan] {
-        self.ledger.read(cx).ledger().bill_plans()
+        self.open().ledger.read(cx).ledger().bill_plans()
     }
 
     /// The Bill Schedule entries, from the Ledger's read copy of the Bills ports.
     fn bill_entries<'a>(&self, cx: &'a App) -> &'a [crate::bills::BillScheduleEntry] {
-        self.ledger.read(cx).ledger().bill_entries()
+        self.open().ledger.read(cx).ledger().bill_entries()
     }
 
     /// Restores the Documents mode, Library scope and sort from the last run.
@@ -548,32 +299,35 @@ impl Root {
         sort: LibrarySort,
         cx: &mut App,
     ) {
-        self.views
+        self.open()
+            .views
             .documents
             .update(cx, |page, cx| page.set_persisted(mode, scope, sort, cx));
     }
 
     /// The Documents mode, Library scope and sort, for persistence.
     pub fn documents_persisted(&self, cx: &App) -> (DocumentsMode, LibraryScope, LibrarySort) {
-        self.views.documents.read(cx).persisted()
+        self.open().views.documents.read(cx).persisted()
     }
 
     /// Files dropped anywhere on the window land in the Inbox like `Import…`, but the page stays
     /// where it is: the Toast and the rail badge say what arrived.
     pub fn drop_documents(&mut self, paths: &[std::path::PathBuf], cx: &mut App) {
-        self.views
+        self.open()
+            .views
             .documents
             .update(cx, |page, cx| page.drop_paths(paths, cx));
     }
 
     /// The last-visited Settings page, for persistence.
     pub fn settings_page(&self, cx: &App) -> SettingsPage {
-        self.views.settings.read(cx).selected_section()
+        self.open().views.settings.read(cx).selected_section()
     }
 
     pub fn set_settings_page(&mut self, section: SettingsPage, cx: &mut App) {
         self.navigate(NavInput::RestoreSettingsPage(section));
-        self.views
+        self.open()
+            .views
             .settings
             .update(cx, |v, cx| v.set_selected_section(cx, section));
     }
@@ -605,7 +359,8 @@ impl Root {
             start_sidebar_minimised: minimised,
             ..self.display(cx)
         };
-        self.views
+        self.open()
+            .views
             .settings
             .update(cx, |view, cx| view.set_display(display, cx));
     }
@@ -622,7 +377,8 @@ impl Root {
             toasts_on: preferences.toasts_on,
             ..self.display(cx)
         };
-        self.views
+        self.open()
+            .views
             .settings
             .update(cx, |view, cx| view.set_display(display, cx));
         self.push_display_preferences(display, cx);
@@ -650,7 +406,7 @@ impl Root {
 
     /// The Display Preferences, which the Settings View owns (ADR-0037).
     fn display(&self, cx: &App) -> DisplayPreferences {
-        self.views.settings.read(cx).display(cx)
+        self.open().views.settings.read(cx).display(cx)
     }
 
     /// The global keys and the keys every module Dialog shares, under `config`'s overrides, which
@@ -661,25 +417,22 @@ impl Root {
         self.palette_entries = command::entries(config);
         self.presenter.set_keymap(config);
         self.state.dialog_keymap = lib_shell::dialog_keymap(config);
-        self.views
+        self.open()
+            .views
             .transactions
             .update(cx, |view, _| view.set_keymaps(config));
-        self.views
+        self.open()
+            .views
             .import
             .update(cx, |view, _| view.set_keymaps(config));
-        self.views
+        self.open()
+            .views
             .budgets
             .update(cx, |page, _| page.set_keymaps(config));
-        self.views
+        self.open()
+            .views
             .documents
             .update(cx, |page, _| page.set_keymaps(config));
-    }
-
-    /// Stands in for opening a ledger, so a test can reach the context rail without the file
-    /// explorer's filesystem walk.
-    #[doc(hidden)]
-    pub fn open_ledger_for_test(&mut self) {
-        self.navigate(NavInput::OpenLedger);
     }
 
     /// Empties the Inventory, standing in for removing every Location until the Remove dialog
@@ -687,6 +440,7 @@ impl Root {
     #[doc(hidden)]
     pub fn empty_inventory_for_test(&mut self, cx: &mut App) {
         let ids: Vec<LocationId> = self
+            .open()
             .ledger
             .read(cx)
             .ledger()
@@ -695,7 +449,7 @@ impl Root {
             .iter()
             .map(|location| location.id)
             .collect();
-        self.ledger.update(cx, |store, cx| {
+        self.open().ledger.update(cx, |store, cx| {
             for id in ids {
                 assert!(
                     store.apply(cx, lib_ledger::RemoveLocation(id)).is_ok(),
@@ -709,6 +463,7 @@ impl Root {
     #[doc(hidden)]
     pub fn empty_tags_for_test(&mut self, cx: &mut App) {
         let ids: Vec<_> = self
+            .open()
             .ledger
             .read(cx)
             .ledger()
@@ -716,7 +471,7 @@ impl Root {
             .iter()
             .map(|tag| tag.id)
             .collect();
-        self.ledger.update(cx, |store, cx| {
+        self.open().ledger.update(cx, |store, cx| {
             for id in ids {
                 assert!(
                     store.apply(cx, lib_ledger::RemoveTag(id)).is_ok(),
@@ -730,28 +485,32 @@ impl Root {
     /// seeded Unit instead of meeting the in-use refusal.
     #[doc(hidden)]
     pub fn drop_unit_users_for_test(&mut self, cx: &mut App) {
-        self.ledger
+        self.open()
+            .ledger
             .update(cx, |store, cx| store.drop_unit_users_for_test(cx));
     }
 
     /// Adds a Location priced in `unit`, which then names it.
     #[doc(hidden)]
     pub fn add_location_in_for_test(&mut self, unit: lib_core::UnitId, cx: &mut App) {
-        self.ledger
+        self.open()
+            .ledger
             .update(cx, |store, cx| store.add_location_in_for_test(unit, cx));
     }
 
     /// Adds a Budget in `unit`, which then names it.
     #[doc(hidden)]
     pub fn add_budget_in_for_test(&mut self, unit: lib_core::UnitId, cx: &mut App) {
-        self.ledger
+        self.open()
+            .ledger
             .update(cx, |store, cx| store.add_budget_in_for_test(unit, cx));
     }
 
     /// Adds a Payee called `name`, so an Import that creates it is refused.
     #[doc(hidden)]
     pub fn add_payee_for_test(&mut self, name: &str, cx: &mut App) {
-        self.ledger
+        self.open()
+            .ledger
             .update(cx, |store, cx| store.add_payee_for_test(name, cx));
     }
 
@@ -760,7 +519,7 @@ impl Root {
     #[doc(hidden)]
     pub fn move_bill_plans_for_test(&mut self, to: lib_core::AccountId, cx: &mut App) {
         {
-            let mut ports = self.bills.borrow_mut();
+            let mut ports = self.open().bills.borrow_mut();
             for mut plan in lib_bills::BillsPorts::bills(&*ports).bill_plans() {
                 plan.account_id = to;
                 lib_bills::BillsPorts::split_mut(&mut *ports)
@@ -768,14 +527,15 @@ impl Root {
                     .upsert_bill_plan(plan);
             }
         }
-        crate::bills::ports::refresh(&self.bills, &self.ledger, cx);
+        let open = self.open();
+        crate::bills::ports::refresh(&open.bills, &open.ledger, cx);
     }
 
     /// Leaves no Unit quoted in another, so a test can delete a seeded Unit instead of meeting the
     /// quoted refusal.
     #[doc(hidden)]
     pub fn unquote_units_for_test(&mut self, cx: &mut App) {
-        crate::units::ports::unquote_for_test(&self.units, &self.ledger, cx);
+        crate::units::ports::unquote_for_test(&self.open().units, &self.open().ledger, cx);
     }
 
     /// Gives Institution `id` Unit `unit` as its Usual unit, so a test can delete a Unit an
@@ -787,14 +547,15 @@ impl Root {
         unit: lib_core::UnitId,
         cx: &mut App,
     ) {
-        self.ledger
+        self.open()
+            .ledger
             .update(cx, |store, cx| store.name_usual_unit_for_test(id, unit, cx));
     }
 
     /// The code of Institution `id`'s Usual unit, as the Ledger read copy has it: `None` for none.
     #[doc(hidden)]
     pub fn usual_unit_code(&self, id: lib_core::InstitutionId, cx: &App) -> Option<String> {
-        let ledger = self.ledger.read(cx).ledger();
+        let ledger = self.open().ledger.read(cx).ledger();
         let unit = ledger
             .institutions()
             .iter()
@@ -832,14 +593,14 @@ impl Root {
     fn active_view(&self, cx: &App) -> ActiveView {
         ActiveView::derive(
             self.nav().noun(),
-            self.views.settings.read(cx).selected_section(),
-            self.views.import.read(cx).is_open(),
+            self.open().views.settings.read(cx).selected_section(),
+            self.open().views.import.read(cx).is_open(),
         )
     }
 
     /// The active View as `Root` forwards to it (ADR-0037).
     fn active_view_entity(&self, cx: &App) -> ActiveViewEntity {
-        ActiveViewEntity::new(self.active_view(cx), &self.views)
+        ActiveViewEntity::new(self.active_view(cx), &self.open().views)
     }
 
     /// Hands the Display Preferences to the Views that read them and the Toasts Preference to
@@ -854,19 +615,23 @@ impl Root {
             display.status_glyphs,
             display.row_density,
         );
-        self.views
+        self.open()
+            .views
             .dashboard
             .update(cx, |view, cx| view.set_display(date_style, glyphs, cx));
-        self.views
+        self.open()
+            .views
             .bills
             .update(cx, |view, cx| view.set_display(date_style, glyphs, cx));
-        self.views.transactions.update(cx, |view, cx| {
+        self.open().views.transactions.update(cx, |view, cx| {
             view.set_display(date_style, glyphs, density, cx)
         });
-        self.views
+        self.open()
+            .views
             .documents
             .update(cx, |view, cx| view.set_display(date_style, cx));
-        self.views
+        self.open()
+            .views
             .budgets
             .update(cx, |page, cx| page.set_display(date_style, cx));
     }
@@ -926,7 +691,7 @@ mod tests {
     #[test]
     fn deleting_a_leaf_category_toasts_the_splits_it_moved() {
         crate::locale::init_for_tests();
-        let mut ledger = Ledger::stub();
+        let mut ledger = lib_ledger::Ledger::stub();
         let rent = lib_categories::find_by_name(ledger.categories(), "Rent").expect("seeded");
         let deleted = ledger.delete_category(rent).expect("a leaf");
         let text =

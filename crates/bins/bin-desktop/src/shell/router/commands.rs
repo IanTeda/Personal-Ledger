@@ -78,9 +78,10 @@ impl Root {
                 self.navigate(NavInput::ExitMode);
                 self.open_settings_page(section, cx);
             }
+            // Whether a Ledger is open is the Open Ledger's, which `:close` drops in #979; until
+            // then it only leaves the palette.
             CommandEffect::CloseLedger => {
                 self.navigate(NavInput::ExitMode);
-                self.navigate(NavInput::CloseLedger);
             }
             CommandEffect::Accounts(verb) => {
                 self.navigate(NavInput::ExitMode);
@@ -174,7 +175,8 @@ impl Root {
         if noun_before != Noun::Settings {
             self.reset_view_scroll(cx);
         }
-        self.views
+        self.open()
+            .views
             .settings
             .update(cx, |view, cx| view.open_page(section, cx));
     }
@@ -191,31 +193,36 @@ impl Root {
         match page {
             ModulePage::Settings(section) => {
                 self.open_settings_page(section, cx);
-                self.views
+                self.open()
+                    .views
                     .settings
                     .update(cx, |view, cx| view.module_command(section, command, cx))
             }
             ModulePage::Bills => {
                 self.show_noun(Noun::Bills, cx);
-                self.views
+                self.open()
+                    .views
                     .bills
                     .update(cx, |page, cx| page.module_command(command, cx))
             }
             ModulePage::Budgets => {
                 self.show_noun(Noun::Budgets, cx);
-                self.views
+                self.open()
+                    .views
                     .budgets
                     .update(cx, |page, cx| page.module_command(command, cx))
             }
             ModulePage::Documents => {
                 self.show_noun(Noun::Documents, cx);
-                self.views
+                self.open()
+                    .views
                     .documents
                     .update(cx, |page, cx| page.module_command(command, cx))
             }
             ModulePage::Transactions => {
                 self.show_noun(Noun::Transactions, cx);
-                self.views
+                self.open()
+                    .views
                     .transactions
                     .update(cx, |page, cx| page.module_command(command, cx))
             }
@@ -242,7 +249,7 @@ impl Root {
         cx: &mut Context<'_, Self>,
     ) {
         self.open_settings_page(SettingsPage::Accounts, cx);
-        let page = self.views.settings.read(cx).page::<AccountsPage>();
+        let page = self.open().views.settings.read(cx).page::<AccountsPage>();
         crate::accounts::router::run_command(&page, command_name, verb, argument, cx);
     }
 }

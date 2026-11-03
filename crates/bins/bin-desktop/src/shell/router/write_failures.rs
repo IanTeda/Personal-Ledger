@@ -8,7 +8,7 @@
 use std::sync::mpsc;
 use std::time::Duration;
 
-use gpui::{App, Context, Entity};
+use gpui::{App, Context, Entity, Task};
 use lib_database::{Domain, WriteFailure};
 use lib_shell::ShellInput;
 use lib_toast::{Notice, Notify, ToastKind};
@@ -23,15 +23,14 @@ use crate::ledger_store::LedgerStore;
 pub const WRITE_FAILURE_POLL: Duration = Duration::from_millis(250);
 
 impl Root {
-    /// Polls `failures` for the window's life and sends each one as an input, which rolls it back
-    /// and redraws without waiting for a keypress. Its commit is empty, and it isn't a key, so it
-    /// leaves the status line be. Stops once the writer has gone, or the window with the Shell.
-    /// Called once, by `shell::router::build`.
-    pub fn listen_for_write_failures(
-        &self,
+    /// Polls `failures` for as long as the returned task is held and sends each one as an input,
+    /// which rolls it back and redraws without waiting for a keypress. Its commit is empty, and it
+    /// isn't a key, so it leaves the status line be. Stops once the writer has gone, the window
+    /// with the Shell, or the Open Ledger holding the task.
+    pub(super) fn listen_for_write_failures(
         failures: mpsc::Receiver<WriteFailure>,
         cx: &mut Context<'_, Self>,
-    ) {
+    ) -> Task<()> {
         cx.spawn(async move |this, cx| {
             loop {
                 // The executor's timer, not `Timer::after`, so headless tests can advance it.
@@ -51,7 +50,6 @@ impl Root {
                 }
             }
         })
-        .detach();
     }
 
     /// Reads back each domain in `cascades`, which the input's commit changed in the file by
@@ -61,7 +59,8 @@ impl Root {
     /// Notices drain.
     pub(crate) fn reload_cascades(&mut self, cascades: &[Domain], cx: &mut Context<'_, Self>) {
         for &domain in cascades {
-            let reload = reload(domain, &self.units, &self.ledger, cx);
+            let open = self.open();
+            let reload = reload(domain, &open.units, &open.ledger, cx);
             if let Err(error) = reload.reloaded {
                 tracing::error!(%error, domain = reload.name, "Failed to reload after a cascade");
                 crate::notices::Queue.notify(Notice::Toast(ToastKind::Error, (reload.unsaved)()));

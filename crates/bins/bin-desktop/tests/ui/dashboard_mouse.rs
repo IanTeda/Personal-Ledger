@@ -10,11 +10,6 @@ use gpui::TestAppContext;
 #[gpui::test]
 fn clicking_a_dashboard_bill_opens_it_on_the_bills_schedule(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
-    ui.shell.update(ui.cx, |shell, cx| {
-        shell.open_ledger_for_test();
-        cx.notify();
-    });
-    ui.cx.run_until_parked();
     let bills = ui.dashboard_bills();
     let first = bills
         .first()

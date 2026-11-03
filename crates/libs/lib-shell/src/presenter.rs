@@ -90,14 +90,18 @@ pub enum NavInput<P> {
     /// Shows the primary rail's browsed row.
     CommitHighlight,
     Context(ContextSelection),
-    FocusNext,
-    FocusPrevious,
+    /// Cycles focus forward; the context rail is a stop only while a Ledger is open.
+    FocusNext {
+        ledger_open: bool,
+    },
+    /// Cycles focus backward, with the same stop.
+    FocusPrevious {
+        ledger_open: bool,
+    },
     Focus(FocusZone),
     EnterMode(InputMode),
     /// Leaves the mode, restoring the focus from before it.
     ExitMode,
-    OpenLedger,
-    CloseLedger,
 }
 
 /// A change to the Toast stack from a click, a command or a Preference. None asks the Router
@@ -178,6 +182,11 @@ impl<P: Copy + Eq + Default> ShellPresenter<P> {
             toasts_hovered: false,
             last_tick: None,
         }
+    }
+
+    /// The Clock the Shell reads the day from, which a Ledger opened later is built on too.
+    pub fn clock(&self) -> &Clock {
+        &self.clock
     }
 
     /// Puts the global keymap under `config`'s overrides.
@@ -290,8 +299,8 @@ impl<P: Copy + Eq + Default> ShellPresenter<P> {
             },
             NavInput::CommitHighlight => nav.commit_primary_highlight(),
             NavInput::Context(context) => nav.set_context(context),
-            NavInput::FocusNext => nav.cycle_focus_forward(),
-            NavInput::FocusPrevious => nav.cycle_focus_backward(),
+            NavInput::FocusNext { ledger_open } => nav.cycle_focus_forward(ledger_open),
+            NavInput::FocusPrevious { ledger_open } => nav.cycle_focus_backward(ledger_open),
             NavInput::Focus(zone) => nav.set_focus(zone),
             // The next key belongs to the mode, or to the one left, so a waiting prefix can't
             // finish on it; a Dialog opening drops it the same way.
@@ -303,8 +312,6 @@ impl<P: Copy + Eq + Default> ShellPresenter<P> {
                 self.prefix = None;
                 nav.exit_mode();
             }
-            NavInput::OpenLedger => nav.open_ledger(),
-            NavInput::CloseLedger => nav.close_ledger(),
         }
     }
 
@@ -870,7 +877,7 @@ mod tests {
         let mut shell = shell();
         assert_eq!(shell.view_model().focus, FocusZone::View);
 
-        shell.navigate(NavInput::FocusNext);
+        shell.navigate(NavInput::FocusNext { ledger_open: true });
         assert_eq!(shell.view_model().focus, FocusZone::PrimaryRail);
 
         shell.navigate(NavInput::EnterMode(InputMode::Search));
@@ -904,7 +911,7 @@ mod tests {
     #[test]
     fn showing_a_noun_moves_focus_to_the_view_and_back_returns() {
         let mut shell = shell();
-        shell.navigate(NavInput::FocusNext);
+        shell.navigate(NavInput::FocusNext { ledger_open: true });
 
         shell.navigate(NavInput::Show(Noun::Bills));
         assert_eq!(shell.nav().noun(), Noun::Bills);

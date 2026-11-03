@@ -136,17 +136,10 @@ fn tab_cycles_focus_between_the_view_and_the_primary_rail(app: &mut TestAppConte
 }
 
 #[gpui::test]
-fn tab_reaches_the_context_rail_only_once_a_ledger_is_open(app: &mut TestAppContext) {
+fn tab_reaches_the_context_rail_with_a_ledger_open(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
     ui.press("g r");
 
-    ui.press("tab");
-    assert_eq!(focus(&mut ui), FocusZone::PrimaryRail);
-    ui.press("tab");
-    assert_eq!(focus(&mut ui), FocusZone::View, "no context rail yet");
-
-    ui.shell
-        .update(ui.cx, |shell, _| shell.open_ledger_for_test());
     ui.press("tab");
     assert_eq!(focus(&mut ui), FocusZone::PrimaryRail);
     ui.press("tab");

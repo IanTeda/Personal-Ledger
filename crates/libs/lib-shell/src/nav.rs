@@ -72,13 +72,6 @@ pub struct NavState<P> {
     /// `Normal`, set once on the transition away from `Normal` and cleared on the way back.
     pre_mode_focus: Option<FocusZone>,
     primary_highlight: Noun,
-    /// Whether a ledger is loaded (`docs/ux/desktop-mockups/01-shell/README.md`'s "State"
-    /// block: `shell.ledgerOpen`). `false` on every launch (the "1a" cold-start state) --
-    /// deliberately absent from the Desktop's persisted state, since the "Empty state"
-    /// spec section reaches this state "on cold start and after `:close`", never by restoring
-    /// a previous session. Rails render identically either way (Implementation note 2); only
-    /// the main pane's `Dashboard` arm branches on it (the Desktop's `render_view`).
-    ledger_open: bool,
     /// The top bar's Back history: the nouns left by `set_noun`, most recent last, capped at
     /// `HISTORY_LIMIT`. A noun change clears `forward`, the way a browser's does.
     back: Vec<Place<P>>,
@@ -111,7 +104,6 @@ impl<P: Default> Default for NavState<P> {
             mode: InputMode::default(),
             pre_mode_focus: None,
             primary_highlight: Noun::default(),
-            ledger_open: false,
             back: Vec::new(),
             forward: Vec::new(),
             settings_page: P::default(),
@@ -150,10 +142,6 @@ impl<P: Copy + Eq + Default> NavState<P> {
 
     pub fn primary_highlight(&self) -> Noun {
         self.primary_highlight
-    }
-
-    pub fn ledger_open(&self) -> bool {
-        self.ledger_open
     }
 
     /// Rule 1: changing `noun` resets `context` to the noun's first entity (index `0`, or
@@ -273,20 +261,23 @@ impl<P: Copy + Eq + Default> NavState<P> {
         self.context = context;
     }
 
-    /// Whether the context rail is currently on screen at all: the active noun has entities to
-    /// show there (issue #148) *and* a ledger is actually open to source them from (issue
-    /// #166) -- the Desktop gates `ContextRail` on exactly this, and focus cycling below
-    /// must agree, or `Tab` could park focus on a rail that isn't rendered.
-    fn context_rail_visible(&self) -> bool {
-        self.noun.has_context_entities() && self.ledger_open
+    /// Whether the context rail is on screen at all: the active noun has entities to show there
+    /// (issue #148) *and* a Ledger is open to source them from (issue #166). Whether one is open
+    /// is the Client's to know, from its Open Ledger (#975), so it is passed in rather than kept
+    /// here. The Desktop gates `ContextRail` on exactly this, and focus cycling below must agree,
+    /// or `Tab` could park focus on a rail that isn't rendered.
+    pub fn context_rail_visible(&self, ledger_open: bool) -> bool {
+        self.noun.has_context_entities() && ledger_open
     }
 
     /// Rule 3: cycles focus forward (`PrimaryRail -> ContextRail -> View -> PrimaryRail`),
-    /// skipping `ContextRail` when it isn't currently visible (see
+    /// skipping `ContextRail` when it isn't visible with `ledger_open` (see
     /// [`Self::context_rail_visible`]).
-    pub fn cycle_focus_forward(&mut self) {
+    pub fn cycle_focus_forward(&mut self, ledger_open: bool) {
         let next = match self.focus {
-            FocusZone::PrimaryRail if self.context_rail_visible() => FocusZone::ContextRail,
+            FocusZone::PrimaryRail if self.context_rail_visible(ledger_open) => {
+                FocusZone::ContextRail
+            }
             FocusZone::PrimaryRail => FocusZone::View,
             FocusZone::ContextRail => FocusZone::View,
             FocusZone::View => FocusZone::PrimaryRail,
@@ -295,11 +286,11 @@ impl<P: Copy + Eq + Default> NavState<P> {
     }
 
     /// The reverse of [`Self::cycle_focus_forward`], same skip rule.
-    pub fn cycle_focus_backward(&mut self) {
+    pub fn cycle_focus_backward(&mut self, ledger_open: bool) {
         let next = match self.focus {
             FocusZone::PrimaryRail => FocusZone::View,
             FocusZone::ContextRail => FocusZone::PrimaryRail,
-            FocusZone::View if self.context_rail_visible() => FocusZone::ContextRail,
+            FocusZone::View if self.context_rail_visible(ledger_open) => FocusZone::ContextRail,
             FocusZone::View => FocusZone::PrimaryRail,
         };
         self.set_focus(next);
@@ -337,26 +328,6 @@ impl<P: Copy + Eq + Default> NavState<P> {
             self.focus = focus;
         }
     }
-
-    /// The `:open`/`:new` command handlers' stand-in effect : flips the "1a"
-    /// empty state off. Real file I/O (a native file picker, `lib_database` wiring) is separate
-    /// future work -- see issue #144's "Out of scope" -- so this is the whole of what either
-    /// command does today, just enough to demonstrate the empty-state -> populated-Dashboard
-    /// transition.
-    pub fn open_ledger(&mut self) {
-        self.ledger_open = true;
-    }
-
-    /// The `:close` command's effect: returns to the "1a" empty state, same as cold start.
-    /// Moves focus off `ContextRail` first if it's there -- that rail (issue #166) is about to
-    /// stop rendering, and leaving focus on a zone with nothing visible in it would be a
-    /// dead-end `Tab` couldn't even cycle out of consistently (see [`Self::context_rail_visible`]).
-    pub fn close_ledger(&mut self) {
-        if self.focus == FocusZone::ContextRail {
-            self.set_focus(FocusZone::View);
-        }
-        self.ledger_open = false;
-    }
 }
 
 #[cfg(test)]
@@ -382,24 +353,6 @@ mod tests {
         assert_eq!(nav.context(), Some(0));
         assert_eq!(nav.focus(), FocusZone::View);
         assert_eq!(nav.mode(), InputMode::Normal);
-    }
-
-    #[test]
-    fn default_state_has_no_ledger_open() {
-        // The "1a" cold-start state -- see docs/ux/desktop-mockups/01-shell/README.md's
-        // "Empty state" section.
-        assert!(!NavState::new().ledger_open());
-    }
-
-    #[test]
-    fn open_ledger_and_close_ledger_toggle_ledger_open() {
-        let mut nav = NavState::new();
-
-        nav.open_ledger();
-        assert!(nav.ledger_open());
-
-        nav.close_ledger();
-        assert!(!nav.ledger_open());
     }
 
     // Rule 1
@@ -445,14 +398,13 @@ mod tests {
     fn focus_cycles_through_all_three_zones_when_context_exists() {
         let mut nav = NavState::new();
         nav.set_noun(Noun::Budgets); // has_context_entities() == true
-        nav.open_ledger(); // the context rail also needs a ledger open (issue #166)
         nav.set_focus(FocusZone::PrimaryRail);
 
-        nav.cycle_focus_forward();
+        nav.cycle_focus_forward(true);
         assert_eq!(nav.focus(), FocusZone::ContextRail);
-        nav.cycle_focus_forward();
+        nav.cycle_focus_forward(true);
         assert_eq!(nav.focus(), FocusZone::View);
-        nav.cycle_focus_forward();
+        nav.cycle_focus_forward(true);
         assert_eq!(nav.focus(), FocusZone::PrimaryRail);
     }
 
@@ -460,37 +412,12 @@ mod tests {
     #[test]
     fn focus_skips_context_rail_when_no_ledger_is_open_even_with_entities() {
         let mut nav = NavState::new();
-        nav.set_noun(Noun::Budgets); // has_context_entities() == true, but...
-        assert!(!nav.ledger_open()); // ...no ledger is open by default.
+        nav.set_noun(Noun::Budgets); // has_context_entities() == true, but no Ledger is open
         nav.set_focus(FocusZone::PrimaryRail);
 
-        nav.cycle_focus_forward();
+        nav.cycle_focus_forward(false);
         assert_eq!(nav.focus(), FocusZone::View);
-        nav.cycle_focus_forward();
-        assert_eq!(nav.focus(), FocusZone::PrimaryRail);
-    }
-
-    #[test]
-    fn closing_the_ledger_moves_focus_off_the_context_rail() {
-        let mut nav = NavState::new();
-        nav.set_noun(Noun::Budgets);
-        nav.open_ledger();
-        nav.set_focus(FocusZone::ContextRail);
-
-        nav.close_ledger();
-
-        assert_eq!(nav.focus(), FocusZone::View);
-    }
-
-    #[test]
-    fn closing_the_ledger_leaves_other_focus_zones_alone() {
-        let mut nav = NavState::new();
-        nav.set_noun(Noun::Budgets);
-        nav.open_ledger();
-        nav.set_focus(FocusZone::PrimaryRail);
-
-        nav.close_ledger();
-
+        nav.cycle_focus_forward(false);
         assert_eq!(nav.focus(), FocusZone::PrimaryRail);
     }
 
@@ -498,12 +425,11 @@ mod tests {
     fn placeholder_nouns_have_no_context_rail_so_focus_skips_it() {
         let mut nav = NavState::new();
         nav.set_noun(Noun::Cash);
-        nav.open_ledger();
         assert!(!Noun::Cash.has_context_entities());
         assert_eq!(nav.context(), None);
         nav.set_focus(FocusZone::PrimaryRail);
 
-        nav.cycle_focus_forward();
+        nav.cycle_focus_forward(true);
         assert_eq!(nav.focus(), FocusZone::View);
     }
 
@@ -513,9 +439,9 @@ mod tests {
         nav.set_noun(Noun::Settings); // a noun with no context entities
         nav.set_focus(FocusZone::PrimaryRail);
 
-        nav.cycle_focus_forward();
+        nav.cycle_focus_forward(true);
         assert_eq!(nav.focus(), FocusZone::View);
-        nav.cycle_focus_forward();
+        nav.cycle_focus_forward(true);
         assert_eq!(nav.focus(), FocusZone::PrimaryRail);
     }
 
@@ -525,9 +451,9 @@ mod tests {
         nav.set_noun(Noun::Settings); // the one noun with no context entities
         nav.set_focus(FocusZone::PrimaryRail);
 
-        nav.cycle_focus_backward();
+        nav.cycle_focus_backward(true);
         assert_eq!(nav.focus(), FocusZone::View);
-        nav.cycle_focus_backward();
+        nav.cycle_focus_backward(true);
         assert_eq!(nav.focus(), FocusZone::PrimaryRail);
     }
 

@@ -11,7 +11,7 @@ impl Root {
     /// The Documents page for a test, as its Entity builds it, plus the open Documents Dialog.
     #[doc(hidden)]
     pub fn documents_snapshot(&self, cx: &gpui::App) -> DocumentsSnapshot {
-        let view = self.views.documents.read(cx);
+        let view = self.open().views.documents.read(cx);
         let mut snapshot = view.snapshot(cx);
         let dialog = self
             .hosted_dialog()

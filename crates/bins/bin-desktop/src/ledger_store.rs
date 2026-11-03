@@ -826,11 +826,8 @@ mod tests {
         let asked = Rc::new(RefCell::new(0));
         let sink = asked.clone();
         cx.update(|cx| {
-            crate::input::install(
-                Rc::new(lib_database::InMemoryCommit),
-                gpui::WeakEntity::new_invalid(),
-                cx,
-            );
+            crate::input::install(gpui::WeakEntity::new_invalid(), cx);
+            crate::input::open_ledger(Rc::new(lib_database::InMemoryCommit), cx);
             cx.subscribe(&store, move |_, _: &LegacyApplied, _| {
                 *sink.borrow_mut() += 1;
             })

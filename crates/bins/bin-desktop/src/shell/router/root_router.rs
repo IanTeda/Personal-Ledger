@@ -9,23 +9,17 @@
 //! So the Router hands each command back and `Root` acts on it once the Presenter returns.
 
 use chrono::NaiveDate;
-use gpui::{Context, Entity};
+use gpui::Context;
 use lib_database::WriteFailure;
 use lib_shell::{ShellCommand, ShellInput, ShellKey, ShellRouter};
 use lib_toast::{Notice, Notify};
 
-use super::Root;
-use crate::ledger_store::LedgerStore;
-use crate::view::dashboard::state::DashboardView;
+use super::{OpenLedger, Root};
 
 /// The parts of `Root` the Shell's Presenter acts on, borrowed for one input.
 struct RootRouter<'a, 'b> {
-    units: &'a crate::units::DesktopPorts,
-    bills: &'a crate::bills::DesktopPorts,
-    ledger: &'a Entity<LedgerStore>,
-    dashboard: &'a Entity<DashboardView>,
-    budgets: &'a Entity<crate::budgets::view::page::BudgetsPage>,
-    documents: &'a Entity<crate::documents::view::page::DocumentsPage>,
+    /// The Open Ledger a month turn and a failed write act on, `None` with no Ledger open.
+    open: Option<&'a OpenLedger>,
     /// The Shell's today, which its legacy pages are dated by.
     today: &'a mut NaiveDate,
     /// The global commands the Presenter ran, for the Shell to act on once it returns.
@@ -49,20 +43,32 @@ impl ShellRouter for RootRouter<'_, '_> {
     /// Documents page bands its Key Dates against the new day and drops a Financial Year scope
     /// that has left the rail. The Bills page catches up on its own next event too, which finds
     /// nothing left to generate.
+    /// With no Ledger open only the Shell's today moves on.
     fn month_turned(&mut self, today: NaiveDate) {
         *self.today = today;
-        crate::bills::ports::new_month(self.bills, self.ledger, today, self.cx);
-        self.dashboard
+        let Some(open) = self.open else {
+            return;
+        };
+        crate::bills::ports::new_month(&open.bills, &open.ledger, today, self.cx);
+        open.views
+            .dashboard
             .update(self.cx, |dashboard, cx| dashboard.set_today(today, cx));
-        self.budgets
+        open.views
+            .budgets
             .update(self.cx, |budgets, cx| budgets.month_turned(cx));
-        self.documents
+        open.views
+            .documents
             .update(self.cx, |documents, cx| documents.month_turned(cx));
     }
 
-    /// Puts each domain `failure` names back as stored, with an Error Toast for each.
+    /// Puts each domain `failure` names back as stored, with an Error Toast for each. A failure
+    /// arriving with no Ledger open has nothing left to put back.
     fn write_failed(&mut self, failure: WriteFailure) {
-        for notice in super::write_failures::roll_back(&failure, self.units, self.ledger, self.cx) {
+        let Some(open) = self.open else {
+            return;
+        };
+        for notice in super::write_failures::roll_back(&failure, &open.units, &open.ledger, self.cx)
+        {
             self.notify(notice);
         }
     }
@@ -89,12 +95,7 @@ impl Root {
     ) {
         crate::input::send(cx, |cx| {
             let mut router = RootRouter {
-                units: &self.units,
-                bills: &self.bills,
-                ledger: &self.ledger,
-                dashboard: &self.views.dashboard,
-                budgets: &self.views.budgets,
-                documents: &self.views.documents,
+                open: self.open.as_ref(),
                 today: &mut self.today,
                 ran: Vec::new(),
                 cx,
@@ -113,12 +114,7 @@ impl Root {
         cx: &mut Context<'_, Self>,
     ) -> (ShellKey, Vec<ShellCommand>) {
         let mut router = RootRouter {
-            units: &self.units,
-            bills: &self.bills,
-            ledger: &self.ledger,
-            dashboard: &self.views.dashboard,
-            budgets: &self.views.budgets,
-            documents: &self.views.documents,
+            open: self.open.as_ref(),
             today: &mut self.today,
             ran: Vec::new(),
             cx,

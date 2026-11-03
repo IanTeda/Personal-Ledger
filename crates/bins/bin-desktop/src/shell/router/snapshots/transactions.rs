@@ -11,12 +11,12 @@ impl Root {
     /// The Transactions page for a test, as its Entity builds it.
     #[doc(hidden)]
     pub fn transactions_snapshot(&self, cx: &gpui::App) -> TransactionsSnapshot {
-        self.views.transactions.read(cx).snapshot(cx)
+        self.open().views.transactions.read(cx).snapshot(cx)
     }
 
     /// The Import step for a test; `None` while it is not showing.
     #[doc(hidden)]
     pub fn import_snapshot(&self, cx: &gpui::App) -> Option<ImportSnapshot> {
-        self.views.import.read(cx).snapshot()
+        self.open().views.import.read(cx).snapshot()
     }
 }

@@ -7,9 +7,8 @@
 //! Unlike `Dashboard`'s dummy data, the handoff's own Implementation note 11 is explicit that
 //! row eligibility must be "type-driven, not name-driven... gate selectability on the actual
 //! file extension read from the filesystem" -- so [`FileExplorer`] walks the real filesystem
-//! (`std::fs::read_dir`), not fixture data. "Opening" the selection itself stays a stand-in
-//! (`crate::navigation::nav::NavState::open_ledger`, from issue #164): real `.pldb` parsing is separate
-//! future work, out of scope for this map (issue #144).
+//! (`std::fs::read_dir`), not fixture data. "Opening" the selection itself stays a stand-in that
+//! only raises a Toast: opening the file as the Open Ledger is #978.
 
 use std::{
     path::{Path, PathBuf},
@@ -59,9 +58,7 @@ pub struct DirEntry {
 /// browse-an-existing-`.pldb` dialog today, differing only in title/button text -- `:new`'s own
 /// eventual "create a fresh `.pldb`" workflow is still fog (the user's own words: "we still
 /// need to plan out the new file workflow"), not this. `Root::confirm_explorer_open` also
-/// reads this: only `Open` actually flips `NavState::ledger_open` on confirm, so picking an
-/// existing file in `New` mode does nothing beyond closing the dialog -- copying an existing
-/// ledger's data isn't what "new" means, even as a stand-in.
+/// reads this, for which stand-in Toast it raises.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExplorerMode {
     Open,

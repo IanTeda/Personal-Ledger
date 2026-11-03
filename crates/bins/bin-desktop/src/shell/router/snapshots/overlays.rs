@@ -63,6 +63,6 @@ impl Root {
     /// The Dashboard's Needs Attention Bill rows, in the order they draw.
     #[doc(hidden)]
     pub fn dashboard_bills_snapshot(&self, cx: &gpui::App) -> Vec<DashboardBillSnapshot> {
-        self.views.dashboard.read(cx).bills_snapshot(cx)
+        self.open().views.dashboard.read(cx).bills_snapshot(cx)
     }
 }

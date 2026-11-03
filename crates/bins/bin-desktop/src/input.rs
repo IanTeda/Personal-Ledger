@@ -42,7 +42,10 @@ use crate::shell::router::Root;
 /// What [`send`] reaches through: the commit every store's writes end in, and the Shell the
 /// Notices drain into. One per window's App, installed by `shell::router::build`.
 struct Door {
-    commit: Rc<dyn Commit>,
+    /// The Open Ledger's commit, installed by `OpenLedger::build`: here rather than on `Root`
+    /// because `send` runs while `Root` may be mid-update. `None` with no Ledger open, when an
+    /// input has nothing to commit.
+    commit: Option<Rc<dyn Commit>>,
     shell: WeakEntity<Root>,
     /// Whether a `send` is running, so a second one inside it is caught.
     open: bool,
@@ -50,13 +53,22 @@ struct Door {
 
 impl Global for Door {}
 
-/// Opens the door on `commit`, draining into `shell`. Called once, by `shell::router::build`.
-pub(crate) fn install(commit: Rc<dyn Commit>, shell: WeakEntity<Root>, cx: &mut App) {
+/// Opens the door, draining into `shell`, with no Ledger to commit to yet. Called once, by
+/// `shell::router::build`.
+pub(crate) fn install(shell: WeakEntity<Root>, cx: &mut App) {
     cx.set_global(Door {
-        commit,
+        commit: None,
         shell,
         open: false,
     });
+}
+
+/// Ends every input from now on in `commit`, the Open Ledger's. Called by `OpenLedger::build`; a
+/// door not yet installed (a unit test building a part with no Shell) is left without one.
+pub(crate) fn open_ledger(commit: Rc<dyn Commit>, cx: &mut App) {
+    if cx.has_global::<Door>() {
+        cx.global_mut::<Door>().commit = Some(commit);
+    }
 }
 
 /// Whether an input is being handled now, so a write made inside it waits for its commit rather
@@ -90,7 +102,11 @@ pub(crate) fn send<C: BorrowMut<App>, R>(cx: &mut C, handle: impl FnOnce(&mut C)
     let app: &mut App = cx.borrow_mut();
     let door = app.global_mut::<Door>();
     door.open = false;
-    let cascades = door.commit.commit();
+    let cascades = door
+        .commit
+        .as_ref()
+        .map(|commit| commit.commit())
+        .unwrap_or_default();
     let shell = door.shell.clone();
     app.defer(move |cx| {
         // Gone with the window, so there is nothing left to show the Notices on.
@@ -368,7 +384,10 @@ mod tests {
     fn door(cx: &mut TestAppContext) -> Rc<Cell<usize>> {
         let commit = lib_database::CountingCommit::new(Rc::new(lib_database::InMemoryCommit));
         let count = commit.count();
-        cx.update(|cx| install(Rc::new(commit), WeakEntity::new_invalid(), cx));
+        cx.update(|cx| {
+            install(WeakEntity::new_invalid(), cx);
+            open_ledger(Rc::new(commit), cx);
+        });
         count
     }
 

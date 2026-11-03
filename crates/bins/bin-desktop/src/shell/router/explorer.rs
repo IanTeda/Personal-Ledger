@@ -80,12 +80,9 @@ impl Root {
         self.confirm_explorer_open(cx);
     }
 
-    /// Confirms the explorer's current selection and closes the dialog. In `ExplorerMode::Open`
-    /// this is the stand-in "opening" effect (`NavState::open_ledger`, from issue #164) -- real
-    /// `.pldb` parsing stays out of scope for this map. In `ExplorerMode::New` (issue #167) it
-    /// closes without touching `NavState::ledger_open` at all: the dialog is a literal copy of
-    /// Open's for now, but confirming an *existing* file was never what "new" means, even as a
-    /// stand-in -- the real "create a fresh `.pldb`" workflow is still fog. A no-op if nothing
+    /// Confirms the explorer's current selection and closes the dialog with a stand-in Toast:
+    /// neither mode opens or creates a file yet, so the Open Ledger stays as it was. `:open`
+    /// opening the file for real is #978, and `:new` creating one #980. A no-op if nothing
     /// is selected (Open/New is only clickable once `FileExplorer::can_open` is true, but a
     /// double-click can also reach here -- see [`Self::handle_explorer_entry_click`] -- so this
     /// re-checks rather than trusting the caller).
@@ -104,7 +101,6 @@ impl Root {
         // Neither mode can fail yet (no real `.pldb` I/O), so `toast-ledger-open-failed` waits
         // for the ticket that parses and creates ledger files.
         if explorer.mode() == ExplorerMode::Open {
-            self.navigate(NavInput::OpenLedger);
             self.raise_toast(
                 ToastKind::Success,
                 lib_locale::msg::toast_ledger_opened(&name),
