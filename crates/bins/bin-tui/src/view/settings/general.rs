@@ -3,7 +3,8 @@
 //! works with no Ledger open (ADR-0051).
 //!
 //! On start opens in place as a choice and Toasts flips on `enter` or `space`; both are
-//! Client-scoped Preferences `Shell` writes to the TUI's state file as it quits. The Locale and
+//! Configuration (ADR-0053) `Shell` writes to the user's `personal-ledger.conf` as they change, and
+//! a key an environment variable or a higher file sets is noted `set by …` on its row. The Locale and
 //! `data` are Configuration read at start-up, so `enter` on either says where to change it. THIS
 //! DEVICE shows the Ledger file On start would reopen, which is the Open Ledger's, and the config
 //! file Display's rows write.
@@ -122,7 +123,7 @@ impl GeneralPage {
     ) -> Option<(Draft, String)> {
         match field {
             SettingField::OnStart => {
-                let on_start = context.values.on_start;
+                let on_start = context.values.configuration.on_start;
                 let segments = ON_STARTS
                     .iter()
                     .map(|(value, on_start)| Segment {
@@ -187,14 +188,15 @@ impl GeneralPage {
 
     /// One field's row at rest.
     fn row(&self, field: SettingField, context: &Context<'_>) -> FieldRow {
+        let shadowed = |field| context.values.configuration.shadowed_note(field);
         let (value, note) = match field {
             SettingField::OnStart => (
-                on_start_label(context.values.on_start),
-                msg::tui_settings_general_on_start_note(),
+                on_start_label(context.values.configuration.on_start),
+                shadowed(field).unwrap_or_else(msg::tui_settings_general_on_start_note),
             ),
             SettingField::Toasts => (
                 toasts_label(self.toasts_on),
-                lib_locale::msg::toast_setting_note(),
+                shadowed(field).unwrap_or_else(lib_locale::msg::toast_setting_note),
             ),
             SettingField::Locale => {
                 // The Locale startup resolved and where it came from, never a fixed value.

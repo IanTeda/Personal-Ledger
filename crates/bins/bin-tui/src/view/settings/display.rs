@@ -3,13 +3,13 @@
 //! glyphs and the hint bar. Toasts and the read-only Locale are on General.
 //!
 //! `enter` on Appearance or Colour Theme opens its existing list popup, which `Shell` hosts, and
-//! `enter` or `space` on the hint bar flips it. The date style opens in place and holds
-//! for the session ([`SettingsValues`](super::field::SettingsValues)): no TUI View formats dates by
-//! it yet, so the choice shows on this row, and the card's preview box isn't drawn until one does.
+//! `enter` or `space` on the hint bar flips it. The date style opens in place: no TUI View formats
+//! dates by it yet, so the choice shows on this row, and the card's preview box isn't drawn until
+//! one does.
 //!
-//! Terminal colours, status glyphs and the hint bar are Configuration in `personal-ledger.conf`
-//! ([`Configuration`](super::field::Configuration)), which `Shell` writes to the user's file
-//! (#904): terminal colours and status glyphs open in place, and the hint bar flips. A key an
+//! Every row is Configuration in `personal-ledger.conf` ([`Configuration`](super::field::Configuration)),
+//! which `Shell` writes to the user's file (#904, ADR-0053): terminal colours, status glyphs and
+//! the date style open in place, the hint bar flips, and a colour popup saves on `enter`. A key an
 //! environment variable or a higher file sets is noted `set by …` on its row, and `enter` on it
 //! says why it can't be saved here rather than appearing to save.
 
@@ -206,11 +206,11 @@ impl DisplayPage {
                     .collect();
                 let chosen = DATE_STYLES
                     .iter()
-                    .position(|(_, style)| *style == context.values.date_style)
+                    .position(|(_, style)| *style == context.values.configuration.date_style)
                     .unwrap_or_default();
                 Some((
                     Draft::Choice { segments, chosen },
-                    crate::locale::date_style_label(context.values.date_style),
+                    crate::locale::date_style_label(context.values.configuration.date_style),
                 ))
             }
             _ => None,
@@ -235,23 +235,29 @@ impl DisplayPage {
                     msg::tui_settings_config_shadowed_note(&source)
                 })
         };
+        let shadowed = configuration.shadowed_note(field);
         let (value, note) = match field {
             SettingField::Appearance => {
                 let appearance = c.colour_appearance().unwrap_or_default();
                 (
                     appearance_label(appearance),
                     // The System hint outgrows the value column, so it takes the note.
-                    if appearance == ColourAppearance::System {
-                        system_hint(c.system())
-                    } else {
-                        colour_note
-                    },
+                    shadowed.unwrap_or_else(|| {
+                        if appearance == ColourAppearance::System {
+                            system_hint(c.system())
+                        } else {
+                            colour_note
+                        }
+                    }),
                 )
             }
-            SettingField::ColourTheme => (colour_theme_name(c.resolved().theme_id), colour_note),
+            SettingField::ColourTheme => (
+                colour_theme_name(c.resolved().theme_id),
+                shadowed.unwrap_or(colour_note),
+            ),
             SettingField::DateStyle => (
-                crate::locale::date_style_label(context.values.date_style),
-                String::new(),
+                crate::locale::date_style_label(configuration.date_style),
+                shadowed.unwrap_or_default(),
             ),
             SettingField::TerminalColours => (
                 terminal_colours_label(configuration.terminal_colours),

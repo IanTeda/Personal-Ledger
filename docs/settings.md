@@ -122,7 +122,7 @@ personal_ledger --data/-d '~/Documents/Personal-Ledger/'
 
 __file:__
 
-An explicit override: open this Ledger file at start, whatever the On start Preference says. Leave it unset to let On start decide, which by default reopens the Ledger that was open when you last quit, or starts with no Ledger open if none was. Set it with `--file/-f` for a one-off run on another Ledger.
+An explicit override: open this Ledger file at start, whatever `on_start` says. Leave it unset to let On start decide, which by default reopens the Ledger that was open when you last quit, or starts with no Ledger open if none was. Set it with `--file/-f` for a one-off run on another Ledger.
 
 * Type: String (Optional)
 * CLI Flags: --file/-f 
@@ -228,6 +228,59 @@ Example:
 [Personal-Ledger]
 status_glyphs = ascii
 hint_bar = false
+```
+
+__toasts:__
+
+Whether Toasts show (see Toasts below). Errors show either way. Settings › General in the TUI writes it.
+
+* Type: Boolean
+* Default: true
+* Environment Variable: PERSONAL_LEDGER_PERSONAL_LEDGER__TOASTS
+
+__colour_theme:__
+
+The Colour Theme to draw in, by its id: `modernist`, `high_contrast`, `catppuccin`, `gruvbox` or `nord` (see Colour Theme and Colour Appearance below). Leave it unset for Modernist. An id this release doesn't know draws Modernist and is kept, so a newer release's Colour Theme survives. Settings › Display in the TUI writes it.
+
+* Type: String (Optional)
+* Default: unset (Modernist)
+* Environment Variable: PERSONAL_LEDGER_PERSONAL_LEDGER__COLOUR_THEME
+
+__colour_appearance:__
+
+Which version of the Colour Theme to draw: `light`, `dark` or `system`, which follows your computer or terminal. Settings › Display in the TUI writes it.
+
+* Type: String, `light`, `dark` or `system`
+* Default: system
+* Environment Variable: PERSONAL_LEDGER_PERSONAL_LEDGER__COLOUR_APPEARANCE
+
+__date_style:__
+
+How dates show: `short`, `medium` or `long` pick one of your Locale's date forms, `iso` shows `2026-07-01` whatever the Locale, and `default` uses the Locale's usual form. Settings › Display in the TUI writes it.
+
+* Type: String, `default`, `short`, `medium`, `long` or `iso`
+* Default: default
+* Environment Variable: PERSONAL_LEDGER_PERSONAL_LEDGER__DATE_STYLE
+
+__on_start:__
+
+Which Ledger the app opens as it starts: `reopen` opens the one open when you last quit, or none if none was, and `none` starts with no Ledger open. A file named by `file` or `--file` opens instead. Settings › General in the TUI writes it.
+
+* Type: String, `reopen` or `none`
+* Default: reopen
+* Environment Variable: PERSONAL_LEDGER_PERSONAL_LEDGER__ON_START
+
+These five are the TUI's today. The Desktop app still keeps its own Toasts, Colour Theme, Colour Appearance, date style and On start, and ignores these keys until it reads them too. A value a key doesn't take, such as `on_start = sometimes`, stops the app starting with an error naming it.
+
+Example:
+
+```ini
+[Personal-Ledger]
+toasts = false
+colour_theme = nord
+colour_appearance = dark
+date_style = iso
+on_start = none
 ```
 
 __log_file_path:__
@@ -357,11 +410,12 @@ Below the fields, the THIS DEVICE box shows the Ledger On start would reopen and
 
 ### What Settings writes to personal-ledger.conf
 
-Terminal colours, Status glyphs and Hint bar are Configuration, so Settings › Display saves them to `personal-ledger.conf` rather than the Ledger. Terminal colours opens a choice of theme RGB or terminal palette, Status glyphs a choice of unicode or ascii, and `Enter` or `Space` on Hint bar ticks or clears it at once.
+Every field on General and Display that you can change belongs to this device, so Settings saves it to `personal-ledger.conf` rather than the Ledger: On start and Toasts on General, and Appearance, Colour Theme, Date style, Terminal colours, Status glyphs and Hint bar on Display. Each saves as you choose it: `Enter` in an open field, `Enter` in the Colour Theme or Appearance list (`Esc` there saves nothing), `Enter` or `Space` on Toasts or Hint bar, or the `set` and `toasts` commands. Your choice is the TUI's on its next start; nothing else is kept for it.
 
 - Settings writes only your own file: `~/.config/personal-ledger/personal-ledger.conf` on Linux, `~/Library/Preferences/personal-ledger/personal-ledger.conf` on macOS and `%APPDATA%\personal-ledger\personal-ledger.conf` on Windows. It creates the file and its folder if they don't exist. The note under Display's rows names the file.
 - A save changes only that key's line in the `[Personal-Ledger]` section, or adds one line if the key isn't there. Your comments, the order of your keys and every other section are left as you wrote them.
-- Terminal colours and Hint bar apply as soon as you save. The status line names the file it saved to.
+- Every one applies as soon as you save, except Status glyphs (see Heads up). The status line names the file it saved to.
+- With no user config folder to write to, these fields can't be changed here, and trying says so.
 - An environment variable, or a file that comes after yours in the Configuration Hierarchy (beside the executable, `config/personal-ledger.conf` in the working directory, or `--config`), wins over your file. When one sets a key, its row says `set by` and names it, and Settings won't save the key, because the change would do nothing until that variable or file goes.
 
 ### Commands
@@ -389,6 +443,7 @@ The fields `set` takes are `ledger-name`, `owner`, `fy-start`, `base`, `appearan
 - `set ledger-name The Teda house`: the rest of the line is the value, spaces and all.
 - `set base btc`: opens the confirmation that changing the base unit always asks for.
 - `set terminal-colours on`, `set glyphs ascii` and `set hint-bar off`: saved to your `personal-ledger.conf` (`off`, `unicode` and `on` undo them).
+- `set on-start none` and `set toasts off`: saved to your `personal-ledger.conf` too, as every General and Display field is.
 
 A field name or value that `set` doesn't know is refused on the status line, which names what it takes.
 
@@ -414,7 +469,7 @@ See [Getting around](getting-around.md#toasts) for reading and dismissing Toasts
 
 ### Heads up
 
-- Whether Toasts are on is remembered only on this device, and each app keeps its own.
+- Whether Toasts are on belongs to this device. The TUI saves it to `personal-ledger.conf` as `toasts`; the Desktop app still keeps its own until it reads that key too.
 
 ## Colour Theme and Colour Appearance
 
@@ -423,7 +478,7 @@ You choose how Personal Ledger looks from Settings, not from a configuration fil
 - **Colour Theme**: the set of colours the app draws in. Five are built in: Modernist (the default), High Contrast, Catppuccin, Gruvbox and Nord. Each one has a light and a dark version.
 - **Colour Appearance**: which version you see. Light and Dark always use that version. System follows your computer's light or dark setting, and the picker tells you which one it found, for example "System (currently Dark)". If it can't find out, it uses Dark and says so: "System (not detected, using Dark)".
 
-A change applies straight away, with no Apply button. Both belong to this device, like the date style: each app remembers its own choice when you close it, whichever Ledger is open or none, and they don't sync to your other devices.
+A change applies straight away, with no Apply button. Both belong to this device, like the date style, whichever Ledger is open or none, and they don't sync to your other devices. The TUI saves them to `personal-ledger.conf` as `colour_theme` and `colour_appearance` (see the Personal Ledger Section); the Desktop app still remembers its own choice when you close it, until it reads those keys too.
 
 ### In the Desktop app
 
@@ -454,7 +509,7 @@ If a built-in Colour Theme is nearly right, you can change individual colours on
 
 ## Theme Section
 
-The `[theme]` section overrides the colours of the Colour Theme you picked in Settings, on this Client only. It holds only the seven Colour Role keys; it can't choose a Colour Theme or Colour Appearance, which are Preferences and sync. Every other colour (borders, hover, selection, chart series) is calculated from these roles, so it follows your overrides. Changing `[theme]` needs a restart.
+The `[theme]` section overrides the colours of the Colour Theme you picked in Settings, on this Client only. It holds only the seven Colour Role keys; it can't choose a Colour Theme or Colour Appearance, which are the `colour_theme` and `colour_appearance` keys of the Personal Ledger Section. Every other colour (borders, hover, selection, chart series) is calculated from these roles, so it follows your overrides. Changing `[theme]` needs a restart.
 
 A key in `[theme]` applies to both the light and dark Colour Variants. A key in `[theme.light]` or `[theme.dark]` applies to that Colour Variant only and wins over the same key in `[theme]`. Name only the roles you want to change; the rest come from the Colour Theme.
 
@@ -655,8 +710,8 @@ Example Configuration File
 # Client data directory: the folder `:open` starts in
 data = "~/Documents/Personal-Ledger"
 
-# Optional: a Ledger file to open at start, overriding the On start Preference. Usually left
-# unset, so the Client reopens the last Ledger, or none, as On start says.
+# Optional: a Ledger file to open at start, overriding on_start. Usually left unset, so the
+# Client reopens the last Ledger, or none, as on_start says.
 # file = "~/Documents/Personal-Ledger/My-Personal-Ledger.pldb"
 
 # Client tracing log level
@@ -668,6 +723,13 @@ log = "debug"
 # Optional: the interface Locale, as a BCP-47 tag -- "en-US", "en-GB" or "en-AU".
 # When absent, the operating system's locale is used, falling back to "en-US".
 # locale = "en-AU"
+
+# This device's settings, which Settings writes. Each shows its default.
+# toasts = true
+# colour_theme = modernist
+# colour_appearance = system
+# date_style = default
+# on_start = reopen
 
 
 
@@ -725,7 +787,7 @@ This example is kept in sync with the file shipped at `config/personal-ledger.co
 
 References
 
-Per ADR-0014, Configuration covers only settings needed before the app (or its database) can run: the database location (a Client’s optional `[Personal-Ledger] file` override, or the Sync Server’s own `[Sync-Server] database_uri`) and the telemetry level; connection-pool tuning (max/min connections, timeouts) is fixed in code rather than configurable. The gRPC bind address is Sync-Server-only. Everything else the user might tweak from inside a running Client — colour theme, date format, default Unit — is a Preference instead: the base Unit is stored in the Ledger, and the colour theme, date style, Toasts and On start are kept by each Client on its own device (ADR-0051), not here.
+Per ADR-0014, Configuration covers only settings needed before the app (or its database) can run: the database location (a Client’s optional `[Personal-Ledger] file` override, or the Sync Server’s own `[Sync-Server] database_uri`) and the telemetry level; connection-pool tuning (max/min connections, timeouts) is fixed in code rather than configurable. The gRPC bind address is Sync-Server-only. Everything else the user might tweak from inside a running Client — colour theme, date format, default Unit — is a Preference instead, stored in the Ledger: today the base Unit. A device's settings are the exception (ADR-0053): Toasts, the Colour Theme and Appearance, the date style and On start belong to the device rather than the Ledger, so they are Configuration in the `[Personal-Ledger]` section, which Settings writes. The TUI reads them from here; the Desktop still keeps its own until it does too.
 
 lib-config is shared by all three consumers (bin-tui, bin-desktop, bin-sync-server), but they don’t all see the same sections or search the same locations — see Configuration Hierarchy and Sync Server Section below.
 

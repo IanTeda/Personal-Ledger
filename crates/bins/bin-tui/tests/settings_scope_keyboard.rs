@@ -4,7 +4,7 @@
 
 mod common;
 
-use common::{cold_shell, press, run_command, screen, shell, type_text};
+use common::{cold_shell, press, read, run_command, screen, shell, type_text, writing_config};
 
 const REFUSED: &str = "No Ledger open: :open or :new first";
 
@@ -73,16 +73,14 @@ fn the_ledger_page_holds_what_general_held_and_general_holds_this_device() {
 }
 
 #[test]
-fn on_start_is_chosen_on_general_and_kept_for_the_state_file() {
-    let mut shell = shell();
+fn on_start_is_chosen_on_general_and_saved_to_the_config_file() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let (mut shell, path) = writing_config(shell(), &dir, &[]);
     run_command(&mut shell, "settings general");
 
     press(&mut shell, "Enter Right Enter");
 
-    assert_eq!(
-        shell.client_preferences().on_start,
-        lib_core::OnStart::NoLedger
-    );
+    assert_eq!(read(&path), "[Personal-Ledger]\non_start = none\n");
     assert!(screen(&mut shell).contains("start with no ledger open"));
 }
 
@@ -207,11 +205,12 @@ fn with_no_ledger_open_the_this_device_pages_open_by_name() {
 
 #[test]
 fn with_no_ledger_open_toasts_still_toggle_on_general() {
-    let mut shell = cold_shell(None);
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let (mut shell, path) = writing_config(cold_shell(None), &dir, &[]);
     run_command(&mut shell, "settings general");
 
     press(&mut shell, "j");
     type_text(&mut shell, " ");
 
-    assert!(!shell.client_preferences().toasts_on);
+    assert_eq!(read(&path), "[Personal-Ledger]\ntoasts = false\n");
 }

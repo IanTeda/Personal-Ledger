@@ -76,6 +76,29 @@ pub fn cold_shell(file: Option<&Path>) -> Shell {
     build_shell(KeyBindingConfig::default(), Colours::default(), file)
 }
 
+/// `shell`, its Settings writing Configuration to `personal-ledger.conf` in `dir` under the
+/// `env` given, as the user's own file and environment, so a test reads back what was saved.
+pub fn writing_config(
+    shell: Shell,
+    dir: &tempfile::TempDir,
+    env: &[(&str, &str)],
+) -> (Shell, std::path::PathBuf) {
+    let path = dir.path().join("personal-ledger.conf");
+    let writer = lib_config::ConfigWriter::new(
+        Some(path.clone()),
+        Vec::new(),
+        env.iter()
+            .map(|(name, value)| ((*name).to_string(), (*value).to_string())),
+    );
+    let shell = shell.with_configuration(&lib_config::PersonalLedgerConfig::default(), writer);
+    (shell, path)
+}
+
+/// What `path` holds, or nothing when it was never written.
+pub fn read(path: &Path) -> String {
+    std::fs::read_to_string(path).unwrap_or_default()
+}
+
 /// Sends a whitespace-separated key sequence, one key per token: a single character is that
 /// character, and `Esc`, `Enter`, `Tab`, `Backspace`, `Left`, `Right`, `Up` or `Down` name the
 /// special keys (e.g. `"g a"`, `": Esc"`).

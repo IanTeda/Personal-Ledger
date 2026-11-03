@@ -68,7 +68,7 @@ use crate::{
         reports::ReportsView,
         settings::{
             BackupCommand, PageCommand, SettingsPage, SettingsView, SyncCommand,
-            field::{Configuration, SettingField, SettingsValues},
+            field::{Configuration, SettingField, SettingsValues, on_off},
         },
         tags::TagsView,
         transactions::TransactionsView,
@@ -276,51 +276,15 @@ impl Shell {
         self
     }
 
-    /// Applies the Client-scoped Preferences kept on this device (ADR-0051): Toasts, the Colour
-    /// Theme and Appearance, the date style and On start. A stored appearance this release doesn't
-    /// know falls back to System.
-    pub fn with_client_preferences(mut self, preferences: &lib_core::ClientPreferences) -> Self {
-        self.toasts.set_display(Display {
-            toasts_on: preferences.toasts_on,
-        });
-        self.colours
-            .set_colour_theme(preferences.colour_theme.clone());
-        self.colours.set_colour_appearance(
-            preferences
-                .colour_appearance
-                .as_deref()
-                .and_then(ColourAppearance::from_key),
-        );
-        let mut values = self.settings_values.borrow_mut();
-        values.date_style = preferences.date_style;
-        values.on_start = preferences.on_start;
-        drop(values);
-        self
-    }
-
     /// Opens the Ledger file On start names, as `:open <path>` would: the configured `file` if
     /// there is one, else, under Reopen last Ledger, `remembered`, the one open at the last quit.
     /// A file that won't open raises the Error Toast and leaves no Ledger open.
     pub fn open_on_start(&mut self, remembered: Option<&Path>) {
-        let on_start = self.settings_values.borrow().on_start;
+        let on_start = self.settings_values.borrow().configuration.on_start;
         if let Some(path) =
             lib_core::ledger_to_open(on_start, self.ledger_file.as_deref(), remembered)
         {
             self.open_ledger(Some(path));
-        }
-    }
-
-    /// The Client-scoped Preferences as they stand, for the state file at quit.
-    pub fn client_preferences(&self) -> lib_core::ClientPreferences {
-        lib_core::ClientPreferences {
-            toasts_on: self.toasts.display().toasts_on,
-            colour_theme: self.colours.colour_theme().map(str::to_string),
-            colour_appearance: self
-                .colours
-                .colour_appearance()
-                .map(|appearance| appearance.key().to_string()),
-            date_style: self.settings_values.borrow().date_style,
-            on_start: self.settings_values.borrow().on_start,
         }
     }
 
@@ -347,13 +311,22 @@ impl Shell {
         self
     }
 
-    /// Shows `config`'s `[Personal-Ledger]` values on Settings › Display and writes its rows
-    /// through `writer` (#904).
+    /// Applies `config`'s `[Personal-Ledger]` values, a device's settings among them (ADR-0053):
+    /// Toasts, the Colour Theme and Appearance, the date style and On start. Settings › General
+    /// and Display show them and write their rows through `writer` (#904). Call it after
+    /// [`Self::with_colours`], whose `Colours` it sets the colour keys on.
     pub fn with_configuration(
         mut self,
         config: &PersonalLedgerConfig,
         writer: ConfigWriter,
     ) -> Self {
+        self.toasts.set_display(Display {
+            toasts_on: config.toasts(),
+        });
+        self.colours
+            .set_colour_theme(config.colour_theme().map(str::to_string));
+        self.colours
+            .set_colour_appearance(Some(config.colour_appearance()));
         let mut values = self.settings_values.borrow_mut();
         values.configuration = Configuration::from_config(config, &writer);
         values.ledger_folder = config.data().to_path_buf();
@@ -1524,8 +1497,7 @@ impl Shell {
             }
             Action::SetToasts(on) => {
                 self.command_popup = None;
-                self.toasts.set_display(Display { toasts_on: on });
-                self.view.set_toasts_on(on);
+                self.set_toasts(on);
             }
             Action::OpenToastHistory => {
                 self.command_popup = None;
@@ -1652,7 +1624,7 @@ impl Shell {
                     self.set_colour_preference(preview);
                 }
             }
-            Action::ColourPopupKeep => self.settings_popup = None,
+            Action::ColourPopupKeep => self.keep_colour_preference(),
             Action::ColourPopupRevert => {
                 if let Some(SettingsPopup::Colour(popup)) = self.settings_popup.take() {
                     self.set_colour_preference(popup.original());
@@ -2194,8 +2166,9 @@ impl Shell {
     }
 
     /// Opens a Settings field in place, or saves a value to it ([`Action::SetSetting`]). A
-    /// read-only field is refused with its reason on the status line. What `Shell` owns it keeps:
-    /// the Toasts Preference, the colour Preferences' list popups and the base unit guard, which
+    /// read-only field is refused with its reason on the status line, as is a Configuration row it
+    /// can't save. What `Shell` owns it keeps: Toasts, the colour rows' list popups and saving
+    /// every Configuration row to the user's file, and the base unit guard, which
     /// a new base opens rather than saving. Everything else, opening a field and saving the
     /// session's values, is the Settings View's, opened on the field's page first.
     fn set_setting(&mut self, field: SettingField, value: Option<String>) {
@@ -2224,19 +2197,20 @@ impl Shell {
             (SettingField::ColourTheme, None) => self.apply(Action::OpenColourThemePopup),
             (SettingField::Appearance, None) => self.apply(Action::OpenColourAppearancePopup),
             (SettingField::ColourTheme, Some(id)) => {
-                self.apply(Action::SetColourTheme(
-                    colour_theme_id(id).map(str::to_string),
-                ));
+                if self.save_configuration(field, id) {
+                    self.apply(Action::SetColourTheme(
+                        colour_theme_id(id).map(str::to_string),
+                    ));
+                }
             }
             (SettingField::Appearance, Some(key)) => {
-                self.apply(Action::SetColourAppearance(ColourAppearance::from_key(key)));
+                if self.save_configuration(field, key) {
+                    self.apply(Action::SetColourAppearance(ColourAppearance::from_key(key)));
+                }
             }
             (SettingField::Toasts, Some(on)) => {
-                self.view.update(&action);
-                match on {
-                    "on" => self.apply(Action::SetToasts(true)),
-                    "off" => self.apply(Action::SetToasts(false)),
-                    _ => {}
+                if matches!(on, "on" | "off") && self.set_toasts(on == "on") {
+                    self.view.update(&action);
                 }
             }
             (SettingField::BaseUnit, Some(code)) => {
@@ -2261,10 +2235,27 @@ impl Shell {
     /// copy. Status glyphs is written and shown on its row, but the TUI draws Unicode either way
     /// until it reads the key. A failed write leaves the field open with the reason.
     fn write_configuration(&mut self, field: SettingField, value: &str, action: &Action) {
+        if !self.save_configuration(field, value) {
+            return;
+        }
+        self.view.update(action);
+        if field == SettingField::TerminalColours {
+            self.colours.set_terminal_colours(value == "on");
+        }
+    }
+
+    /// Writes `field`'s `value`, as `:set` takes it, to its key in the user's file, saying on the
+    /// status line where it went. `false`, with the reason there instead, when there's no file to
+    /// write, a source above it sets the key, or the write fails: the caller then changes nothing.
+    fn save_configuration(&mut self, field: SettingField, value: &str) -> bool {
+        if let Some(reason) = self.settings_values.borrow().configuration.refusal(field) {
+            self.status_message = Some(reason);
+            return false;
+        }
         let (Some(key), Some(file_value)) =
             (field.config_key(), Configuration::file_value(field, value))
         else {
-            return;
+            return false;
         };
         if let Err(error) = self.config_writer.write(key, file_value) {
             tracing::warn!(%error, key = key.name(), "couldn't write Configuration");
@@ -2272,17 +2263,56 @@ impl Shell {
                 field.command_name(),
                 &error.to_string(),
             ));
-            return;
-        }
-        self.view.update(action);
-        if field == SettingField::TerminalColours {
-            self.colours.set_terminal_colours(file_value == "true");
+            return false;
         }
         if let Some(path) = self.config_writer.target() {
             self.status_message = Some(crate::msg::tui_settings_config_saved(
                 field.command_name(),
                 &path.display().to_string(),
             ));
+        }
+        true
+    }
+
+    /// Turns non-Error Toasts on or off, saving it first: `:toasts on|off` and the Toasts row both
+    /// come here. `false` when it couldn't be saved, which leaves Toasts as they were.
+    fn set_toasts(&mut self, on: bool) -> bool {
+        if !self.save_configuration(SettingField::Toasts, on_off(on)) {
+            return false;
+        }
+        self.toasts.set_display(Display { toasts_on: on });
+        self.view.set_toasts_on(on);
+        true
+    }
+
+    /// `enter` in a colour popup: saves the Colour Theme or Appearance it previewed and closes it.
+    /// An unmoved choice saves nothing, so a Colour Theme id this release doesn't know, which
+    /// draws as Modernist, survives a look at the list (ADR-0023). One that can't be saved goes
+    /// back to what it was before the popup opened.
+    fn keep_colour_preference(&mut self) {
+        let Some(SettingsPopup::Colour(popup)) = self.settings_popup.take() else {
+            return;
+        };
+        let original = popup.original();
+        let (field, chosen) = match &original {
+            ColourPreference::Theme(_) => (
+                SettingField::ColourTheme,
+                ColourPreference::Theme(self.colours.colour_theme().map(str::to_string)),
+            ),
+            ColourPreference::Appearance(_) => (
+                SettingField::Appearance,
+                ColourPreference::Appearance(self.colours.colour_appearance()),
+            ),
+        };
+        let value = match &chosen {
+            _ if chosen == original => return,
+            ColourPreference::Theme(theme) => theme.clone().unwrap_or_default(),
+            ColourPreference::Appearance(appearance) => {
+                appearance.unwrap_or_default().key().to_string()
+            }
+        };
+        if !self.save_configuration(field, &value) {
+            self.set_colour_preference(original);
         }
     }
 
@@ -2885,26 +2915,33 @@ mod tests {
     }
 
     #[test]
-    fn client_preferences_apply_at_start_and_read_back_for_the_state_file() {
-        let preferences = lib_core::ClientPreferences {
-            toasts_on: false,
-            colour_theme: Some("nord".into()),
-            colour_appearance: Some("light".into()),
-            date_style: Some(lib_core::DateStyle::Iso),
-            on_start: lib_core::OnStart::NoLedger,
-        };
-        let shell = Shell::new().with_client_preferences(&preferences);
+    fn a_devices_settings_apply_at_start_from_configuration() {
+        let mut config = PersonalLedgerConfig::default();
+        config.toasts = false;
+        config.colour_theme = Some("nord".into());
+        config.colour_appearance = ColourAppearance::Light;
+        config.date_style = Some(lib_core::DateStyle::Iso);
+        config.on_start = lib_core::OnStart::NoLedger;
+        let shell = Shell::new().with_configuration(&config, ConfigWriter::default());
         assert!(!shell.toasts.display().toasts_on);
         assert_eq!(shell.colours.colour_theme(), Some("nord"));
         assert_eq!(
             shell.colours.colour_appearance(),
             Some(ColourAppearance::Light)
         );
+        let values = shell.settings_values.borrow();
         assert_eq!(
-            shell.settings_values.borrow().date_style,
+            values.configuration.date_style,
             Some(lib_core::DateStyle::Iso)
         );
-        assert_eq!(shell.client_preferences(), preferences);
+        assert_eq!(values.configuration.on_start, lib_core::OnStart::NoLedger);
+    }
+
+    /// Turns Toasts on or off as a saved `:toasts` would, without the save's status line, for a
+    /// test of how Toasts show rather than of the save.
+    fn show_toasts(shell: &mut Shell, on: bool) {
+        shell.toasts.set_display(Display { toasts_on: on });
+        shell.view.set_toasts_on(on);
     }
 
     /// [`opened`], reading the global keys from `keybindings`.
@@ -3286,7 +3323,7 @@ mod tests {
         let mut shell = opened();
         let action = shell.command_action(CommandId::ToastsOff, "toasts off");
         assert_eq!(action, Some(Action::SetToasts(false)));
-        shell.update(Action::SetToasts(false));
+        show_toasts(&mut shell, false);
 
         shell.raise_toast(ToastKind::Success, "Deleted tag Food");
         let text = drawn(&mut shell);
@@ -3305,10 +3342,10 @@ mod tests {
         let mut shell = opened();
         shell.raise_toast(ToastKind::Info, "older");
         shell.raise_toast(ToastKind::Warning, "newer");
-        shell.update(Action::SetToasts(false));
+        show_toasts(&mut shell, false);
         assert!(shell.toasts.visible().is_empty());
         assert!(footer(&mut shell).starts_with(" ! newer"));
-        shell.update(Action::SetToasts(true));
+        show_toasts(&mut shell, true);
         assert!(footer(&mut shell).contains(&crate::msg::tui_hint_help()));
     }
 
@@ -3316,7 +3353,7 @@ mod tests {
     fn a_status_line_message_outranks_the_echo_which_outranks_the_hints() {
         crate::locale::init_for_tests();
         let mut shell = opened();
-        shell.update(Action::SetToasts(false));
+        show_toasts(&mut shell, false);
         let hints = crate::msg::tui_hint_help();
         assert!(footer(&mut shell).contains(&hints));
 
@@ -3714,7 +3751,8 @@ mod tests {
 
     #[test]
     fn enter_keeps_the_previewed_colour_appearance() {
-        let mut shell = opened();
+        let dir = tempfile::TempDir::new().unwrap();
+        let (mut shell, _) = writing_to(&dir, &[]);
         shell.update(Action::OpenColourAppearancePopup);
         shell.update(Action::ColourPopupUp);
         shell.update(Action::ColourPopupKeep);
@@ -4801,9 +4839,10 @@ mod tests {
     }
 
     #[test]
-    fn date_style_cycles_through_all_five_choices_in_place_and_holds_for_the_session() {
+    fn date_style_cycles_through_all_five_choices_in_place_and_is_saved() {
         crate::locale::init_for_tests();
-        let mut shell = opened();
+        let dir = tempfile::TempDir::new().unwrap();
+        let (mut shell, _) = writing_to(&dir, &[]);
         shell.update(Action::OpenSettingsPage(SettingsPage::Display));
         press(&mut shell, &[KeyCode::Char('j'), KeyCode::Char('j')]);
         for label in ["short", "medium", "long", "iso", "locale default", "short"] {
@@ -4826,7 +4865,8 @@ mod tests {
 
     #[test]
     fn space_toggles_toasts_at_rest_and_in_place() {
-        let mut shell = opened();
+        let dir = tempfile::TempDir::new().unwrap();
+        let (mut shell, _) = writing_to(&dir, &[]);
         shell.update(Action::OpenSettingsPage(SettingsPage::General));
         press(&mut shell, &[KeyCode::Char('j'), KeyCode::Char(' ')]);
         assert!(!shell.toasts.display().toasts_on);
@@ -5141,7 +5181,8 @@ mod tests {
 
     #[test]
     fn esc_closes_a_colour_popup_before_it_leaves_the_display_page() {
-        let mut shell = opened();
+        let dir = tempfile::TempDir::new().unwrap();
+        let (mut shell, _) = writing_to(&dir, &[]);
         shell.update(Action::OpenSettingsPage(SettingsPage::Display));
         press(&mut shell, &[KeyCode::Enter]);
         assert!(matches!(
@@ -5221,10 +5262,11 @@ mod tests {
     #[test]
     fn set_date_style_and_the_rows_enter_land_on_the_same_preference() {
         crate::locale::init_for_tests();
-        let mut by_command = opened();
+        let by_command_dir = tempfile::TempDir::new().unwrap();
+        let (mut by_command, _) = writing_to(&by_command_dir, &[]);
         run_command(&mut by_command, "set date-style iso");
         assert_eq!(
-            by_command.settings_values.borrow().date_style,
+            by_command.settings_values.borrow().configuration.date_style,
             Some(lib_core::DateStyle::Iso)
         );
         assert!(by_command.command_popup.is_none());
@@ -5232,7 +5274,7 @@ mod tests {
 
         // The Date style row, opened with `enter`, moved one segment back from the Locale's
         // default to iso, and saved with `enter`.
-        let mut by_key = opened();
+        let (mut by_key, _) = writing_to(&by_command_dir, &[]);
         by_key.update(Action::OpenSettingsPage(SettingsPage::Display));
         press(
             &mut by_key,
@@ -5253,7 +5295,8 @@ mod tests {
     #[test]
     fn set_with_no_value_opens_the_field_in_place_and_echoes_it_as_the_command() {
         crate::locale::init_for_tests();
-        let mut shell = opened();
+        let dir = tempfile::TempDir::new().unwrap();
+        let (mut shell, _) = writing_to(&dir, &[]);
         run_command(&mut shell, "set date-style");
         assert!(shell.view.editing(), "the field is open in place");
         let text = drawn(&mut shell);
@@ -5315,7 +5358,8 @@ mod tests {
     #[test]
     fn set_saves_a_ledger_name_with_spaces_and_the_colour_preferences() {
         crate::locale::init_for_tests();
-        let mut shell = opened();
+        let dir = tempfile::TempDir::new().unwrap();
+        let (mut shell, _) = writing_to(&dir, &[]);
         run_command(&mut shell, "set ledger-name The Teda house");
         assert_eq!(shell.settings_values.borrow().ledger_name, "The Teda house");
 

@@ -303,12 +303,11 @@ fn ledger_file(path: &std::path::Path) {
     );
 }
 
-/// On start set to start with no Ledger open.
-fn no_ledger_on_start() -> lib_core::ClientPreferences {
-    lib_core::ClientPreferences {
-        on_start: lib_core::OnStart::NoLedger,
-        ..lib_core::ClientPreferences::default()
-    }
+/// `shell` with On start set to start with no Ledger open, as the config file would set it.
+fn no_ledger_on_start(shell: bin_tui::Shell) -> bin_tui::Shell {
+    let mut config = lib_config::PersonalLedgerConfig::default();
+    config.on_start = lib_core::OnStart::NoLedger;
+    shell.with_configuration(&config, lib_config::ConfigWriter::default())
 }
 
 #[test]
@@ -333,7 +332,7 @@ fn start_with_no_ledger_open_ignores_the_remembered_ledger_file() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("household.pldb");
     ledger_file(&path);
-    let mut shell = cold_shell(None).with_client_preferences(&no_ledger_on_start());
+    let mut shell = no_ledger_on_start(cold_shell(None));
 
     shell.open_on_start(Some(&path));
     let frame = screen(&mut shell);
@@ -348,7 +347,7 @@ fn an_explicit_file_opens_at_start_whatever_on_start_says() {
     let remembered = directory.path().join("remembered.pldb");
     ledger_file(&explicit);
     ledger_file(&remembered);
-    let mut shell = cold_shell(Some(&explicit)).with_client_preferences(&no_ledger_on_start());
+    let mut shell = no_ledger_on_start(cold_shell(Some(&explicit)));
 
     shell.open_on_start(Some(&remembered));
     let frame = screen(&mut shell);

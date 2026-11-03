@@ -48,7 +48,10 @@ pub(crate) type Result<T> = std::result::Result<T, Error>;
 pub use ledger::LedgerConfig as Config;
 
 /// Personal Ledger configuration.
-pub use personal_ledger::{DEFAULT_LOCALE, LocaleSource, PersonalLedgerConfig, StatusGlyphs};
+pub use personal_ledger::{
+    DATE_STYLE_DEFAULT, DEFAULT_LOCALE, LocaleSource, PersonalLedgerConfig, StatusGlyphs,
+    date_style_key, on_start_from_key, on_start_key,
+};
 
 /// Writes Configuration back to the user's `personal-ledger.conf`, for Settings.
 pub use writer::{ConfigKey, ConfigWriter, Shadow};

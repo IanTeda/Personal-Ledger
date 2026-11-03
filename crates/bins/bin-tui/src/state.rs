@@ -1,9 +1,10 @@
-//! What the TUI keeps on this device between runs, in `tui-state.json`: its Client-scoped
-//! Preferences and the Ledger open when it last quit (ADR-0051). The Desktop keeps the same in its
-//! own `desktop-state.json`; each Client is its own device's choice, so they share no file.
+//! What the TUI remembers for itself between runs, in `tui-state.json`: the Ledger open when it
+//! last quit (ADR-0051). Never a choice the person made: a device's settings are Configuration in
+//! `personal-ledger.conf` (ADR-0053). The Desktop remembers its own in `desktop-state.json`.
 //!
 //! A small JSON file in the state directory, not `lib_config`'s INI: that is Configuration a
-//! person edits by hand, and this is state the TUI writes for itself.
+//! person edits by hand, and this is state the TUI writes for itself at every quit. A file from a
+//! release that kept Preferences here still loads; they are not migrated.
 
 use std::{
     io,
@@ -17,13 +18,11 @@ const APPLICATION_NAME: &str = "personal-ledger";
 
 const STATE_FILE_NAME: &str = "tui-state.json";
 
-/// What survives a restart. `Default` is "nothing kept yet", and every field defaults on its own,
-/// so a file from an older release still loads.
+/// What survives a restart. `Default` is "nothing kept yet", every field defaults on its own and
+/// an unknown one is ignored, so a file from an older release still loads.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct TuiState {
-    /// Toasts, the Colour Theme and Appearance, the date style and On start.
-    pub preferences: lib_core::ClientPreferences,
     /// The Ledger file open when the TUI last quit, which On start's Reopen last Ledger opens.
     /// `None` when none was, so `:close` then quit forgets it.
     pub last_ledger: Option<PathBuf>,
@@ -90,16 +89,30 @@ mod tests {
         let dir = tempfile::tempdir().expect("a temporary directory");
         let path = dir.path().join("nested").join(STATE_FILE_NAME);
         let state = TuiState {
-            preferences: lib_core::ClientPreferences {
-                toasts_on: false,
-                colour_theme: Some("gruvbox".into()),
-                colour_appearance: Some("dark".into()),
-                date_style: Some(lib_core::DateStyle::Long),
-                on_start: lib_core::OnStart::NoLedger,
-            },
             last_ledger: Some(PathBuf::from("/ledgers/household.pldb")),
         };
         save_to(&path, &state).expect("save creates the directory");
         assert_eq!(load_from(&path), state);
+        assert!(
+            !std::fs::read_to_string(&path)
+                .expect("saved")
+                .contains("preferences"),
+            "the state file holds no setting"
+        );
+    }
+
+    #[test]
+    fn a_file_that_kept_preferences_still_loads_its_last_ledger() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let path = dir.path().join(STATE_FILE_NAME);
+        std::fs::write(
+            &path,
+            r#"{ "preferences": { "toasts_on": false }, "last_ledger": "/ledgers/a.pldb" }"#,
+        )
+        .expect("write");
+        assert_eq!(
+            load_from(&path).last_ledger,
+            Some(PathBuf::from("/ledgers/a.pldb"))
+        );
     }
 }

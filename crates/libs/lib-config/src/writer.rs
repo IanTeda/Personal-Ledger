@@ -1,4 +1,5 @@
-//! Writes Configuration back to `personal-ledger.conf` (#904), for the Settings rows that edit it.
+//! Writes Configuration back to `personal-ledger.conf` (#904), for the Settings rows that edit it:
+//! the TUI's Display keys and a device's settings (ADR-0053).
 //!
 //! A write goes to the user's file (`~/.config/personal-ledger/personal-ledger.conf` on Linux),
 //! created with its directory when it doesn't exist. It is the one file that is the person's own
@@ -28,15 +29,42 @@ pub enum ConfigKey {
     StatusGlyphs,
     /// `hint_bar`: whether the footer shows the key hints.
     HintBar,
+    /// `toasts`: whether non-Error Toasts show.
+    Toasts,
+    /// `colour_theme`: the Colour Theme's id.
+    ColourTheme,
+    /// `colour_appearance`: `light`, `dark` or `system`.
+    ColourAppearance,
+    /// `date_style`: `default`, `short`, `medium`, `long` or `iso`.
+    DateStyle,
+    /// `on_start`: `reopen` or `none`.
+    OnStart,
 }
 
 impl ConfigKey {
+    /// Every key Settings writes, in the order the file's keys are documented.
+    pub const ALL: [ConfigKey; 8] = [
+        Self::TerminalColours,
+        Self::StatusGlyphs,
+        Self::HintBar,
+        Self::Toasts,
+        Self::ColourTheme,
+        Self::ColourAppearance,
+        Self::DateStyle,
+        Self::OnStart,
+    ];
+
     /// The key as it is written in the file.
     pub fn name(self) -> &'static str {
         match self {
             Self::TerminalColours => "terminal_colours",
             Self::StatusGlyphs => "status_glyphs",
             Self::HintBar => "hint_bar",
+            Self::Toasts => "toasts",
+            Self::ColourTheme => "colour_theme",
+            Self::ColourAppearance => "colour_appearance",
+            Self::DateStyle => "date_style",
+            Self::OnStart => "on_start",
         }
     }
 
@@ -311,6 +339,83 @@ back = \"esc\"
         assert!(section.terminal_colours());
         assert!(!section.hint_bar());
         assert_eq!(section.status_glyphs(), crate::StatusGlyphs::Ascii);
+    }
+
+    #[test]
+    fn each_device_setting_writes_its_key_and_reads_back() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("personal-ledger.conf");
+        let writer = ConfigWriter::new(Some(path.clone()), Vec::new(), []);
+        writer.write(ConfigKey::Toasts, "false").unwrap();
+        writer.write(ConfigKey::ColourTheme, "nord").unwrap();
+        writer.write(ConfigKey::ColourAppearance, "light").unwrap();
+        writer.write(ConfigKey::DateStyle, "iso").unwrap();
+        writer.write(ConfigKey::OnStart, "none").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "[Personal-Ledger]\ntoasts = false\ncolour_theme = nord\ncolour_appearance = light\n\
+             date_style = iso\non_start = none\n"
+        );
+
+        let config =
+            crate::Config::parse_with_detector(Some(&path), Some(HashMap::new()), || None).unwrap();
+        let section = config.personal_ledger_config();
+        assert!(!section.toasts());
+        assert_eq!(section.colour_theme(), Some("nord"));
+        assert_eq!(
+            section.colour_appearance(),
+            lib_colour_theme::ColourAppearance::Light
+        );
+        assert_eq!(section.date_style(), Some(lib_core::DateStyle::Iso));
+        assert_eq!(section.on_start(), lib_core::OnStart::NoLedger);
+
+        writer.write(ConfigKey::DateStyle, "default").unwrap();
+        let config =
+            crate::Config::parse_with_detector(Some(&path), Some(HashMap::new()), || None).unwrap();
+        assert_eq!(config.personal_ledger_config().date_style(), None);
+    }
+
+    #[test]
+    fn a_device_setting_an_environment_variable_sets_is_shadowed() {
+        let dir = TempDir::new().unwrap();
+        let writer = ConfigWriter::new(
+            Some(dir.path().join("user.conf")),
+            Vec::new(),
+            [(
+                "PERSONAL_LEDGER_PERSONAL_LEDGER__ON_START".into(),
+                "none".into(),
+            )],
+        );
+        assert_eq!(
+            writer.shadow(ConfigKey::OnStart),
+            Some(Shadow::Env(
+                "PERSONAL_LEDGER_PERSONAL_LEDGER__ON_START".into()
+            ))
+        );
+        assert_eq!(writer.shadow(ConfigKey::Toasts), None);
+
+        let higher = dir.path().join("cwd.conf");
+        std::fs::write(&higher, "[personal-ledger]\ncolour_theme = nord\n").unwrap();
+        let writer =
+            ConfigWriter::new(Some(dir.path().join("user.conf")), vec![higher.clone()], []);
+        assert_eq!(
+            writer.shadow(ConfigKey::ColourTheme),
+            Some(Shadow::File(higher))
+        );
+        assert_eq!(writer.shadow(ConfigKey::DateStyle), None);
+        assert_eq!(
+            ConfigKey::ALL.map(ConfigKey::name),
+            [
+                "terminal_colours",
+                "status_glyphs",
+                "hint_bar",
+                "toasts",
+                "colour_theme",
+                "colour_appearance",
+                "date_style",
+                "on_start",
+            ]
+        );
     }
 
     #[test]

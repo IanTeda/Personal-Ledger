@@ -2,7 +2,12 @@
 //!
 //! Configuration for the `[Personal-Ledger]` section: settings applied across Personal
 //! Ledger files and the client on a given system, but not intended to sync across computer
-//! systems (see `docs/settings.md`).
+//! systems (see `docs/settings.md`). A device's settings are among them (ADR-0053): Toasts, the
+//! Colour Theme and Appearance, the date style and On start, each spelled in the file as `:set`
+//! takes it.
+
+use lib_colour_theme::ColourAppearance;
+use lib_core::{DateStyle, OnStart};
 
 /// Default logging level for the `[Personal-Ledger]` section.
 const DEFAULT_LOG: lib_tracing::Levels = lib_tracing::Levels::INFO;
@@ -35,7 +40,7 @@ pub struct PersonalLedgerConfig {
     /// The folder `:open`'s file browser starts in. Defaults to the user's document folder.
     pub data: std::path::PathBuf,
 
-    /// A Ledger file to open at start, overriding the On start Preference. Optional, with no
+    /// A Ledger file to open at start, overriding On start. Optional, with no
     /// default: unset, the Client opens the Ledger On start names, or none (ADR-0051).
     #[serde(default)]
     pub file: Option<std::path::PathBuf>,
@@ -72,6 +77,122 @@ pub struct PersonalLedgerConfig {
     /// Whether the TUI's footer shows the key hints. Read only by the TUI; Configuration.
     #[serde(default = "shown")]
     pub hint_bar: bool,
+
+    /// Whether non-Error Toasts show (ADR-0027). Both Clients; on by default.
+    #[serde(default = "shown")]
+    pub toasts: bool,
+
+    /// The chosen Colour Theme's id. Unset is the default Colour Theme; kept raw, so an id from a
+    /// newer release survives a run of this one (ADR-0023).
+    #[serde(default)]
+    pub colour_theme: Option<String>,
+
+    /// Which Colour Variant to draw: `light`, `dark` or `system`, the default.
+    #[serde(default, with = "appearance")]
+    pub colour_appearance: ColourAppearance,
+
+    /// How dates show: `short`, `medium`, `long` or `iso`, or `default`, the Locale's (ADR-0021),
+    /// which unset means too.
+    #[serde(default, with = "date_style")]
+    pub date_style: Option<DateStyle>,
+
+    /// Which Ledger file a Client opens as it starts: `reopen`, the default, or `none`
+    /// (ADR-0051). `file` outranks it.
+    #[serde(default, with = "on_start")]
+    pub on_start: OnStart,
+}
+
+/// The value `date_style` and `:set date-style` spell the Locale's default with.
+pub const DATE_STYLE_DEFAULT: &str = "default";
+
+/// The value the file and `:set date-style` spell `style` with.
+pub fn date_style_key(style: Option<DateStyle>) -> &'static str {
+    style.map_or(DATE_STYLE_DEFAULT, |style| style.as_str())
+}
+
+/// The value the file and `:set on-start` spell `on_start` with.
+pub fn on_start_key(on_start: OnStart) -> &'static str {
+    match on_start {
+        OnStart::ReopenLastLedger => "reopen",
+        OnStart::NoLedger => "none",
+    }
+}
+
+/// The On start `key` spells, ignoring case.
+pub fn on_start_from_key(key: &str) -> Option<OnStart> {
+    [OnStart::ReopenLastLedger, OnStart::NoLedger]
+        .into_iter()
+        .find(|on_start| on_start_key(*on_start).eq_ignore_ascii_case(key.trim()))
+}
+
+/// Reads a value by its key: `parse` names the one the file spells, or refuses it.
+fn by_key<'de, D, T>(deserializer: D, parse: impl Fn(&str) -> Option<T>) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let key = <String as serde::Deserialize>::deserialize(deserializer)?;
+    parse(&key).ok_or_else(|| serde::de::Error::custom(format!("unknown value `{key}`")))
+}
+
+/// `colour_appearance` by [`ColourAppearance::key`].
+mod appearance {
+    use super::ColourAppearance;
+
+    pub fn serialize<S: serde::Serializer>(
+        value: &ColourAppearance,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(value.key())
+    }
+
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<ColourAppearance, D::Error> {
+        super::by_key(deserializer, ColourAppearance::from_key)
+    }
+}
+
+/// `date_style` by [`super::date_style_key`].
+mod date_style {
+    use super::DateStyle;
+
+    pub fn serialize<S: serde::Serializer>(
+        value: &Option<DateStyle>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(super::date_style_key(*value))
+    }
+
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Option<DateStyle>, D::Error> {
+        super::by_key(deserializer, |key| {
+            let key = key.trim();
+            if key.eq_ignore_ascii_case(super::DATE_STYLE_DEFAULT) {
+                Some(None)
+            } else {
+                key.parse().ok().map(Some)
+            }
+        })
+    }
+}
+
+/// `on_start` by [`super::on_start_key`].
+mod on_start {
+    use super::OnStart;
+
+    pub fn serialize<S: serde::Serializer>(
+        value: &OnStart,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(super::on_start_key(*value))
+    }
+
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<OnStart, D::Error> {
+        super::by_key(deserializer, super::on_start_from_key)
+    }
 }
 
 /// How the TUI draws its status glyphs: the `status_glyphs` key.
@@ -120,6 +241,11 @@ impl Default for PersonalLedgerConfig {
             terminal_colours: false,
             status_glyphs: StatusGlyphs::Unicode,
             hint_bar: true,
+            toasts: true,
+            colour_theme: None,
+            colour_appearance: ColourAppearance::System,
+            date_style: None,
+            on_start: OnStart::ReopenLastLedger,
         }
     }
 }
@@ -166,6 +292,31 @@ impl PersonalLedgerConfig {
     /// Whether the TUI's footer shows the key hints.
     pub fn hint_bar(&self) -> bool {
         self.hint_bar
+    }
+
+    /// Whether non-Error Toasts show.
+    pub fn toasts(&self) -> bool {
+        self.toasts
+    }
+
+    /// The chosen Colour Theme's id, or `None` for the default Colour Theme.
+    pub fn colour_theme(&self) -> Option<&str> {
+        self.colour_theme.as_deref()
+    }
+
+    /// Which Colour Variant to draw.
+    pub fn colour_appearance(&self) -> ColourAppearance {
+        self.colour_appearance
+    }
+
+    /// The date style, or `None` for the Locale's default.
+    pub fn date_style(&self) -> Option<DateStyle> {
+        self.date_style
+    }
+
+    /// Which Ledger file a Client opens as it starts, when `file` doesn't name one.
+    pub fn on_start(&self) -> OnStart {
+        self.on_start
     }
 
     /// Returns the Locale set by configuration, if any (canonical casing once parsed).
@@ -254,6 +405,8 @@ fn usable_system_locale(value: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
 
     #[test]
@@ -305,6 +458,86 @@ mod tests {
                 .map(|(_, v)| v.as_str()),
             Some("info")
         );
+    }
+
+    /// The `[Personal-Ledger]` section `text` and `env` give, with no system Locale.
+    fn parsed(text: &str, env: &[(&str, &str)]) -> PersonalLedgerConfig {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("personal-ledger.conf");
+        std::fs::write(&path, text).unwrap();
+        let env = env
+            .iter()
+            .map(|(name, value)| ((*name).to_string(), (*value).to_string()))
+            .collect();
+        crate::Config::parse_with_detector(Some(&path), Some(env), || None)
+            .unwrap()
+            .personal_ledger_config()
+            .clone()
+    }
+
+    #[test]
+    fn the_device_settings_default_to_toasts_on_the_default_theme_system_locale_style_and_reopen() {
+        let section = parsed("[Personal-Ledger]\n", &[]);
+        assert!(section.toasts());
+        assert_eq!(section.colour_theme(), None);
+        assert_eq!(section.colour_appearance(), ColourAppearance::System);
+        assert_eq!(section.date_style(), None);
+        assert_eq!(section.on_start(), OnStart::ReopenLastLedger);
+    }
+
+    #[test]
+    fn the_device_settings_read_from_the_file_as_set_spells_them() {
+        let section = parsed(
+            "[Personal-Ledger]\ntoasts = false\ncolour_theme = nord\ncolour_appearance = Light\n\
+             date_style = ISO\non_start = none\n",
+            &[],
+        );
+        assert!(!section.toasts());
+        assert_eq!(section.colour_theme(), Some("nord"));
+        assert_eq!(section.colour_appearance(), ColourAppearance::Light);
+        assert_eq!(section.date_style(), Some(DateStyle::Iso));
+        assert_eq!(section.on_start(), OnStart::NoLedger);
+
+        let section = parsed(
+            "[Personal-Ledger]\ndate_style = default\non_start = reopen\n",
+            &[],
+        );
+        assert_eq!(section.date_style(), None);
+        assert_eq!(section.on_start(), OnStart::ReopenLastLedger);
+    }
+
+    #[test]
+    fn an_environment_variable_outranks_the_file_for_a_device_setting() {
+        let section = parsed(
+            "[Personal-Ledger]\non_start = none\ndate_style = long\n",
+            &[
+                ("PERSONAL_LEDGER_PERSONAL_LEDGER__ON_START", "reopen"),
+                ("PERSONAL_LEDGER_PERSONAL_LEDGER__TOASTS", "false"),
+                ("PERSONAL_LEDGER_PERSONAL_LEDGER__COLOUR_APPEARANCE", "dark"),
+            ],
+        );
+        assert_eq!(section.on_start(), OnStart::ReopenLastLedger);
+        assert!(!section.toasts());
+        assert_eq!(section.colour_appearance(), ColourAppearance::Dark);
+        assert_eq!(section.date_style(), Some(DateStyle::Long));
+    }
+
+    #[test]
+    fn a_device_setting_value_it_doesnt_take_is_a_configuration_error() {
+        for text in [
+            "[Personal-Ledger]\non_start = sometimes\n",
+            "[Personal-Ledger]\ndate_style = fancy\n",
+            "[Personal-Ledger]\ncolour_appearance = sepia\n",
+        ] {
+            let dir = tempfile::TempDir::new().unwrap();
+            let path = dir.path().join("personal-ledger.conf");
+            std::fs::write(&path, text).unwrap();
+            assert!(
+                crate::Config::parse_with_detector(Some(&path), Some(HashMap::new()), || None)
+                    .is_err(),
+                "{text}"
+            );
+        }
     }
 
     #[test]

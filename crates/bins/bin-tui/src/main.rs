@@ -68,12 +68,10 @@ async fn main() -> Result<()> {
         config.personal_ledger_config().file(),
     )
     .with_configuration(config.personal_ledger_config(), config.writer().clone())
-    .with_client_preferences(&kept.preferences)
     .with_log_buffer(logs);
     shell.open_on_start(kept.last_ledger.as_deref());
     let ran = shell.run().await;
     let quit = state::TuiState {
-        preferences: shell.client_preferences(),
         last_ledger: shell.quit_ledger().map(std::path::Path::to_path_buf),
     };
     if let Err(error) = state::save(&quit) {

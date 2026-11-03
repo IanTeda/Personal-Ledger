@@ -1,6 +1,6 @@
 //! The fields the form pages edit ([`SettingField`]), by the name `:set` takes, the values that
-//! hold for the session or that `Shell` keeps for the state file ([`SettingsValues`]), and the Configuration Display writes back to
-//! `personal-ledger.conf` ([`Configuration`], #904).
+//! hold for the session ([`SettingsValues`]), and the Configuration General and Display write back
+//! to `personal-ledger.conf` ([`Configuration`], #904, ADR-0053).
 //!
 //! Opening and saving a field is one [`Action::SetSetting`] with the field and an optional value:
 //! `enter` on a row sends it without one, which opens the field in place, and the open field's
@@ -120,6 +120,11 @@ impl SettingField {
             Self::TerminalColours => Some(ConfigKey::TerminalColours),
             Self::StatusGlyphs => Some(ConfigKey::StatusGlyphs),
             Self::HintBar => Some(ConfigKey::HintBar),
+            Self::Toasts => Some(ConfigKey::Toasts),
+            Self::ColourTheme => Some(ConfigKey::ColourTheme),
+            Self::Appearance => Some(ConfigKey::ColourAppearance),
+            Self::DateStyle => Some(ConfigKey::DateStyle),
+            Self::OnStart => Some(ConfigKey::OnStart),
             _ => None,
         }
     }
@@ -164,7 +169,8 @@ pub fn month_label(month: u32) -> String {
     }
 }
 
-/// The On start choices, in the order the field shows them, by the value `:set on-start` takes.
+/// The On start choices, in the order the field shows them, by the value `:set on-start` and the
+/// file take ([`lib_config::on_start_key`]).
 pub const ON_STARTS: [(&str, OnStart); 2] = [
     ("reopen", OnStart::ReopenLastLedger),
     ("none", OnStart::NoLedger),
@@ -179,7 +185,8 @@ pub fn on_start_label(on_start: OnStart) -> String {
 }
 
 /// The date style choices, in the order the field cycles through them, by the value
-/// `:set date-style` takes. `None` is the Locale's default (ADR-0021).
+/// `:set date-style` and the file take ([`lib_config::date_style_key`]). `None` is the Locale's
+/// default (ADR-0021).
 pub const DATE_STYLES: [(&str, Option<DateStyle>); 5] = [
     ("default", None),
     ("short", Some(DateStyle::Short)),
@@ -193,8 +200,9 @@ pub fn on_off(on: bool) -> &'static str {
     if on { "on" } else { "off" }
 }
 
-/// The Configuration Display's rows edit, as read at start-up and written since, with what
-/// outranks each key's write. `Shell` writes the file; the rows read this.
+/// The Configuration General's and Display's rows edit, as read at start-up and written since,
+/// with what outranks each key's write. `Shell` writes the file; the rows read this. Toasts and
+/// the colour keys are held where they apply, by `Shell`'s `Toasts` and `Colours`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Configuration {
     /// The user's `personal-ledger.conf`, which a row writes; `None` leaves the rows read-only.
@@ -202,6 +210,8 @@ pub struct Configuration {
     pub terminal_colours: bool,
     pub status_glyphs: StatusGlyphs,
     pub hint_bar: bool,
+    pub date_style: Option<DateStyle>,
+    pub on_start: OnStart,
     /// The source above the file that sets each key, so a write there changes nothing. Read
     /// once at start-up, as the values are.
     pub shadows: Vec<(ConfigKey, Shadow)>,
@@ -221,14 +231,12 @@ impl Configuration {
             terminal_colours: config.terminal_colours(),
             status_glyphs: config.status_glyphs(),
             hint_bar: config.hint_bar(),
-            shadows: [
-                ConfigKey::TerminalColours,
-                ConfigKey::StatusGlyphs,
-                ConfigKey::HintBar,
-            ]
-            .into_iter()
-            .filter_map(|key| writer.shadow(key).map(|shadow| (key, shadow)))
-            .collect(),
+            date_style: config.date_style(),
+            on_start: config.on_start(),
+            shadows: ConfigKey::ALL
+                .into_iter()
+                .filter_map(|key| writer.shadow(key).map(|shadow| (key, shadow)))
+                .collect(),
         }
     }
 
@@ -241,6 +249,14 @@ impl Configuration {
                 Shadow::Env(var) => var.clone(),
                 Shadow::File(path) => path.display().to_string(),
             })
+    }
+
+    /// A Configuration row's note when a source above the file sets its key, else `None`.
+    pub fn shadowed_note(&self, field: SettingField) -> Option<String> {
+        field
+            .config_key()
+            .and_then(|key| self.shadow(key))
+            .map(|source| msg::tui_settings_config_shadowed_note(&source))
     }
 
     /// Why `field`'s Configuration row can't be written: there's no file to write, or a source
@@ -257,12 +273,28 @@ impl Configuration {
     /// The value `field` holds as the file spells it, from the value `:set` takes.
     pub fn file_value(field: SettingField, value: &str) -> Option<&'static str> {
         match field {
-            SettingField::TerminalColours | SettingField::HintBar => match value {
-                "on" => Some("true"),
-                "off" => Some("false"),
-                _ => None,
-            },
+            SettingField::TerminalColours | SettingField::HintBar | SettingField::Toasts => {
+                match value {
+                    "on" => Some("true"),
+                    "off" => Some("false"),
+                    _ => None,
+                }
+            }
             SettingField::StatusGlyphs => StatusGlyphs::from_key(value).map(StatusGlyphs::key),
+            SettingField::ColourTheme => lib_colour_theme::ColourTheme::built_in()
+                .iter()
+                .map(|theme| theme.id)
+                .find(|id| id.eq_ignore_ascii_case(value)),
+            SettingField::Appearance => {
+                lib_colour_theme::ColourAppearance::from_key(value).map(|a| a.key())
+            }
+            SettingField::DateStyle => DATE_STYLES
+                .iter()
+                .find(|(name, _)| name.eq_ignore_ascii_case(value))
+                .map(|(_, style)| lib_config::date_style_key(*style)),
+            SettingField::OnStart => {
+                lib_config::on_start_from_key(value).map(lib_config::on_start_key)
+            }
             _ => None,
         }
     }
@@ -272,16 +304,13 @@ impl Configuration {
 ///
 /// Ledger name, owner and the financial year's start have no Preference columns yet, so they
 /// start on TUI-019's worked values and hold for the session. The date style and On start are
-/// Client-scoped Preferences (ADR-0051): `Shell` reads them back for the state file as it quits,
-/// as it does the Colour Theme and Appearance from its `Colours`.
+/// Configuration (ADR-0053), in [`Configuration`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsValues {
     pub ledger_name: String,
     pub owner: String,
     /// The month the financial year starts on, 1–12.
     pub financial_year_start: u32,
-    pub date_style: Option<DateStyle>,
-    pub on_start: OnStart,
     /// `data`, the folder `:open` and `:new` start in, as read at start-up.
     pub ledger_folder: std::path::PathBuf,
     /// The Ledger file On start's Reopen last Ledger would reopen were the TUI to quit now: the
@@ -298,8 +327,6 @@ impl Default for SettingsValues {
             ledger_name: "Teda household".into(),
             owner: "Ian Teda".into(),
             financial_year_start: 7,
-            date_style: None,
-            on_start: OnStart::default(),
             ledger_folder: PersonalLedgerConfig::default().data().to_path_buf(),
             last_ledger: None,
             configuration: Configuration::default(),
@@ -340,7 +367,7 @@ impl SettingsValues {
                 else {
                     return false;
                 };
-                self.on_start = *on_start;
+                self.configuration.on_start = *on_start;
             }
             SettingField::DateStyle => {
                 let Some((_, style)) = DATE_STYLES
@@ -349,7 +376,7 @@ impl SettingsValues {
                 else {
                     return false;
                 };
-                self.date_style = *style;
+                self.configuration.date_style = *style;
             }
             SettingField::TerminalColours | SettingField::HintBar => {
                 let on = match value {
@@ -385,11 +412,11 @@ impl SettingsValues {
                 .map(|(name, _)| (*name).to_string())?,
             SettingField::OnStart => ON_STARTS
                 .iter()
-                .find(|(_, on_start)| *on_start == self.on_start)
+                .find(|(_, on_start)| *on_start == self.configuration.on_start)
                 .map(|(name, _)| (*name).to_string())?,
             SettingField::DateStyle => DATE_STYLES
                 .iter()
-                .find(|(_, style)| *style == self.date_style)
+                .find(|(_, style)| *style == self.configuration.date_style)
                 .map(|(name, _)| (*name).to_string())?,
             SettingField::TerminalColours => on_off(self.configuration.terminal_colours).into(),
             SettingField::StatusGlyphs => self.configuration.status_glyphs.key().into(),
@@ -465,13 +492,13 @@ mod tests {
         assert_eq!(values.financial_year_start, 1);
         assert!(!values.set(SettingField::FinancialYearStart, "march"));
         assert!(values.set(SettingField::DateStyle, "iso"));
-        assert_eq!(values.date_style, Some(DateStyle::Iso));
+        assert_eq!(values.configuration.date_style, Some(DateStyle::Iso));
         assert!(values.set(SettingField::DateStyle, "default"));
         assert!(values.set(SettingField::OnStart, "none"));
-        assert_eq!(values.on_start, OnStart::NoLedger);
+        assert_eq!(values.configuration.on_start, OnStart::NoLedger);
         assert_eq!(values.get(SettingField::OnStart).as_deref(), Some("none"));
         assert!(!values.set(SettingField::OnStart, "sometimes"));
-        assert_eq!(values.date_style, None);
+        assert_eq!(values.configuration.date_style, None);
         assert!(!values.set(SettingField::Owner, "  "));
         assert!(values.set(SettingField::Owner, "Alex"));
         assert_eq!(values.get(SettingField::Owner).as_deref(), Some("Alex"));
@@ -515,5 +542,33 @@ mod tests {
             Configuration::file_value(SettingField::StatusGlyphs, "ASCII"),
             Some("ascii")
         );
+    }
+
+    #[test]
+    fn a_device_setting_is_written_as_the_file_spells_it() {
+        for (field, value, written) in [
+            (SettingField::Toasts, "off", Some("false")),
+            (SettingField::ColourTheme, "NORD", Some("nord")),
+            (SettingField::ColourTheme, "no-such-theme", None),
+            (SettingField::Appearance, "Light", Some("light")),
+            (SettingField::DateStyle, "default", Some("default")),
+            (SettingField::DateStyle, "ISO", Some("iso")),
+            (SettingField::OnStart, "none", Some("none")),
+            (SettingField::OnStart, "sometimes", None),
+            (SettingField::Owner, "Alex", None),
+        ] {
+            assert_eq!(
+                Configuration::file_value(field, value),
+                written,
+                "{field:?} {value}"
+            );
+        }
+        // `:set` and the file spell every choice alike, so a value read back is one `:set` takes.
+        for (name, on_start) in ON_STARTS {
+            assert_eq!(lib_config::on_start_key(on_start), name);
+        }
+        for (name, style) in DATE_STYLES {
+            assert_eq!(lib_config::date_style_key(style), name);
+        }
     }
 }
