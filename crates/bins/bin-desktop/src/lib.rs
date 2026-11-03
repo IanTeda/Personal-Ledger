@@ -31,6 +31,7 @@ mod period;
 pub mod persistence;
 mod settings;
 pub mod shell;
+mod start_view;
 mod tags;
 pub mod theme;
 mod transaction_import;
@@ -333,8 +334,8 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, started: S
     let theme_overrides = config.theme_config().overrides.clone();
     let keybindings = config.keybindings_config().clone();
     // `noun`/window geometry survive restart (`docs/ux/desktop-mockups/README.md`'s "State
-    // machine"); everything else in `NavState` starts fresh every launch, so there's nothing else
-    // to seed here. A device's settings are Configuration (ADR-0053), not state.
+    // machine"), the noun for Start view's `last`; everything else in `NavState` starts fresh every
+    // launch, so there's nothing else to seed here. A device's settings are Configuration (ADR-0053), not state.
     let persisted = persistence::load();
     let device_settings = config.personal_ledger_config().clone();
     let device_writer = config.writer().clone();
@@ -428,6 +429,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, started: S
                     cx.new(|cx| {
                         let mut shell = shell::router::build(
                             persisted,
+                            device_settings.start_view(),
                             shell::router::ShellBindings { keybindings },
                             shell::router::ShellLogs {
                                 buffer: logs,
@@ -468,8 +470,9 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, started: S
                     // The writer thread dies with the process, so the Open Ledger's writes land first.
                     shell.flush_ledger();
                     let bounds = window.bounds();
-                    // With no Ledger open the Shell sits on the Dashboard and has no Documents
-                    // page, so the noun and Documents state the state file remembers stay.
+                    // With no Ledger open the Shell has no Documents page, so the Documents state
+                    // the state file remembers stays, and so does its noun unless Settings is
+                    // showing (`start_view::noun_at_quit`), for Start view's `last`.
                     let (noun, documents_mode, documents_scope, documents_sort) =
                         match shell.documents_persisted(cx) {
                             Some((mode, scope, sort)) => (
@@ -478,7 +481,19 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, started: S
                                 Some(scope.id()),
                                 Some(sort.id().to_string()),
                             ),
-                            None => remembered.clone(),
+                            None => {
+                                let (noun, mode, scope, sort) = remembered.clone();
+                                (
+                                    start_view::noun_at_quit(
+                                        shell.ledger_open(),
+                                        shell.nav().noun(),
+                                        noun,
+                                    ),
+                                    mode,
+                                    scope,
+                                    sort,
+                                )
+                            }
                         };
                     let state = PersistedState {
                         noun,

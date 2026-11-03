@@ -1,19 +1,25 @@
 use std::{path::Path, rc::Rc};
 
-use gpui::{App, Context, Window, div, prelude::*, px};
+use gpui::{App, Context, SharedString, Window, div, prelude::*, px};
 use lib_config::ConfigKey;
 
 use crate::settings::device::shadowed_note;
-use lib_core::OnStart;
+use lib_core::{OnStart, StartView};
 
 use super::{
-    GENERAL_FIELD_ON_START, GENERAL_FIELD_TOASTS, GeneralPage, ON_START_CHOICES, TOASTS_CHOICES,
-    ThisDevice,
+    GENERAL_FIELD_ON_START, GENERAL_FIELD_START_VIEW, GENERAL_FIELD_TOASTS, GeneralPage,
+    ON_START_CHOICES, TOASTS_CHOICES, ThisDevice,
 };
 use crate::{
-    form::fields::{UNIFORM_OPTION_WIDTH, field_label, field_value, segmented_control_sized},
+    form::fields::{
+        UNIFORM_OPTION_WIDTH, field_label, field_value, radio_dot, segmented_control_sized,
+    },
+    start_view,
     theme::color,
 };
+
+/// A click on a Start view choice, by its value.
+type OnStartViewClick = Rc<dyn Fn(&'static str, &mut Window, &mut App)>;
 
 /// The field column's width (DESKTOP-178).
 const FIELD_COLUMN_WIDTH: gpui::Pixels = px(320.0);
@@ -25,6 +31,12 @@ impl Render for GeneralPage {
             let entity = entity.clone();
             Rc::new(move |choice, _window: &mut Window, cx: &mut App| {
                 entity.update(cx, |page, cx| page.click_on_start(choice, cx));
+            })
+        };
+        let start_view_click: OnStartViewClick = {
+            let entity = entity.clone();
+            Rc::new(move |choice, _window: &mut Window, cx: &mut App| {
+                entity.update(cx, |page, cx| page.click_start_view(choice, cx));
             })
         };
         let toasts_click = Rc::new(move |on, _window: &mut Window, cx: &mut App| {
@@ -63,6 +75,12 @@ impl Render for GeneralPage {
                             ))
                             .children(shadowed_note(ConfigKey::OnStart, cx)),
                     )
+                    .child(start_view_field(
+                        &self.start_view,
+                        focus == Some(GENERAL_FIELD_START_VIEW),
+                        start_view_click,
+                        cx,
+                    ))
                     .child(
                         focus_mark(focus == Some(GENERAL_FIELD_TOASTS), cx)
                             .child(field_label(lib_locale::msg::toast_setting_label()))
@@ -110,6 +128,58 @@ fn on_start_label(choice: OnStart) -> String {
         OnStart::ReopenLastLedger => crate::msg::desktop_settings_general_on_start_reopen(),
         OnStart::NoLedger => crate::msg::desktop_settings_general_on_start_none(),
     }
+}
+
+/// Start view's choices as a radio group, one per line: seven don't fit a segmented control in the
+/// field column. A noun from the file that isn't a choice checks none and is named in the hint.
+fn start_view_field(
+    current: &StartView,
+    focused: bool,
+    on_click: OnStartViewClick,
+    cx: &App,
+) -> impl IntoElement {
+    let unlisted = (!start_view::CHOICES.contains(&current.key())).then(|| {
+        div()
+            .debug_selector(|| "general-start-view-unlisted".to_string())
+            .child(hint(
+                crate::msg::desktop_settings_general_start_view_unlisted(current.key()),
+                cx,
+            ))
+    });
+    focus_mark(focused, cx)
+        .child(field_label(
+            crate::msg::desktop_settings_general_start_view(),
+        ))
+        .child(
+            div().flex().flex_col().gap(px(6.0)).children(
+                start_view::CHOICES
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, choice)| {
+                        let on_click = on_click.clone();
+                        let id = format!("general-start-view-{index}");
+                        div()
+                            .debug_selector({
+                                let id = id.clone();
+                                move || id
+                            })
+                            .id(SharedString::from(id))
+                            .cursor_pointer()
+                            .flex()
+                            .items_center()
+                            .gap(px(8.0))
+                            .on_click(move |_event, window, cx| on_click(choice, window, cx))
+                            .child(radio_dot(choice == current.key(), cx))
+                            .child(div().text_size(px(13.0)).child(start_view::label(choice)))
+                    }),
+            ),
+        )
+        .children(unlisted)
+        .child(hint(
+            crate::msg::desktop_settings_general_start_view_hint(),
+            cx,
+        ))
+        .children(shadowed_note(ConfigKey::StartView, cx))
 }
 
 fn toasts_label(on: bool) -> String {

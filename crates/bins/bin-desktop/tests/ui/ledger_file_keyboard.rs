@@ -6,7 +6,8 @@
 //! it"), so opening one is `ledger_file_mouse.rs`'s; here `:open` and `esc` run from the keys (#978).
 //! `:new` names its file in a focused File name field, so creating one runs from the keys here
 //! (#980): a fresh name is created seeded and opened, a name already in the folder is refused
-//! inline, and a folder it can't write keeps the Open Ledger.
+//! inline, and a folder it can't write keeps the Open Ledger. Start view (#983) chooses where it
+//! lands: each value with a Ledger open, and with none, where a noun lands on the Dashboard.
 
 use super::common;
 
@@ -17,6 +18,7 @@ use bin_desktop::{
 };
 use common::{Harness, config_for, new_ledger};
 use gpui::TestAppContext;
+use lib_core::StartView;
 
 /// The state file of a run that last showed `noun` on Settings' `page`.
 fn remembering(noun: Noun, page: &str) -> PersistedState {
@@ -67,7 +69,7 @@ fn a_missing_named_ledger_starts_with_none_open_creates_nothing_and_says_so(
 }
 
 #[gpui::test]
-fn a_named_ledger_that_opens_starts_on_it_as_before(app: &mut TestAppContext) {
+fn a_named_ledger_that_opens_starts_on_it_on_the_dashboard(app: &mut TestAppContext) {
     let dir = tempfile::tempdir().expect("a temporary directory");
     let config = new_ledger(&dir.path().join("ledger.pldb"));
 
@@ -76,8 +78,151 @@ fn a_named_ledger_that_opens_starts_on_it_as_before(app: &mut TestAppContext) {
     let mut ui = Harness::starting(app, started, remembering(Noun::Bills, "units"));
 
     assert!(ui.read(|shell| shell.ledger_open()));
-    assert_eq!(ui.noun(), Noun::Bills, "the remembered noun");
+    assert_eq!(
+        ui.noun(),
+        Noun::Dashboard,
+        "Start view's default, whatever noun it last showed"
+    );
     assert_eq!(ui.unit_codes(), ["aud", "btc", "vas"]);
+}
+
+/// The Shell started on a new Ledger file in `dir`, under Start view `start_view`, from a state
+/// file that last showed `noun` on Settings' `page`.
+fn landing_on<'a>(
+    app: &'a mut TestAppContext,
+    dir: &tempfile::TempDir,
+    start_view: StartView,
+    noun: Noun,
+    page: &str,
+) -> Harness<'a> {
+    let started = bin_desktop::start_on(
+        &new_ledger(&dir.path().join("ledger.pldb")),
+        common::today(),
+    );
+    assert!(matches!(started, Started::Opened { .. }));
+    starting_on(app, started, start_view, noun, page)
+}
+
+/// The Shell from `started`, under Start view `start_view`, from a state file that last showed
+/// `noun` on Settings' `page`.
+fn starting_on<'a>(
+    app: &'a mut TestAppContext,
+    started: Started,
+    start_view: StartView,
+    noun: Noun,
+    page: &str,
+) -> Harness<'a> {
+    let mut config = lib_config::PersonalLedgerConfig::default();
+    config.start_view = start_view;
+    Harness::starting_with(app, started, remembering(noun, page), &config)
+}
+
+#[gpui::test]
+fn start_view_last_lands_on_the_noun_showing_at_the_last_quit(app: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let mut ui = landing_on(app, &dir, StartView::Last, Noun::Bills, "units");
+
+    assert_eq!(ui.noun(), Noun::Bills);
+}
+
+#[gpui::test]
+fn start_view_names_a_noun_to_land_on(app: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let mut ui = landing_on(
+        app,
+        &dir,
+        StartView::Noun("budgets".into()),
+        Noun::Bills,
+        "units",
+    );
+
+    assert_eq!(ui.noun(), Noun::Budgets, "not the remembered noun");
+}
+
+#[gpui::test]
+fn start_view_settings_lands_on_the_remembered_settings_page(app: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let mut ui = landing_on(app, &dir, StartView::Settings, Noun::Bills, "units");
+
+    assert_eq!(ui.noun(), Noun::Settings);
+    assert_eq!(ui.settings_frame().page, "Units");
+}
+
+#[gpui::test]
+fn start_view_naming_a_noun_the_desktop_doesnt_have_lands_on_the_dashboard(
+    app: &mut TestAppContext,
+) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let mut ui = landing_on(
+        app,
+        &dir,
+        StartView::Noun("units".into()),
+        Noun::Bills,
+        "units",
+    );
+
+    assert_eq!(ui.noun(), Noun::Dashboard);
+}
+
+#[gpui::test]
+fn with_no_ledger_open_start_view_naming_a_noun_lands_on_the_dashboard(app: &mut TestAppContext) {
+    let mut ui = starting_on(
+        app,
+        Started::NoLedger,
+        StartView::Noun("bills".into()),
+        Noun::Budgets,
+        "units",
+    );
+
+    assert_eq!(ui.noun(), Noun::Dashboard);
+    assert!(ui.is_drawn("no-ledger-open"), "its no Ledger open content");
+}
+
+#[gpui::test]
+fn with_no_ledger_open_start_view_last_lands_on_the_dashboard_for_a_noun(app: &mut TestAppContext) {
+    let mut ui = starting_on(
+        app,
+        Started::NoLedger,
+        StartView::Last,
+        Noun::Bills,
+        "units",
+    );
+
+    assert_eq!(ui.noun(), Noun::Dashboard);
+    assert!(ui.is_drawn("no-ledger-open"));
+}
+
+#[gpui::test]
+fn with_no_ledger_open_start_view_settings_lands_on_the_remembered_this_device_page(
+    app: &mut TestAppContext,
+) {
+    let mut ui = starting_on(
+        app,
+        Started::NoLedger,
+        StartView::Settings,
+        Noun::Bills,
+        "display",
+    );
+
+    assert_eq!(ui.noun(), Noun::Settings);
+    assert_eq!(ui.settings_frame().page, "Display");
+}
+
+#[gpui::test]
+fn with_no_ledger_open_start_view_settings_lands_on_general_for_a_this_ledger_page(
+    app: &mut TestAppContext,
+) {
+    let mut ui = starting_on(
+        app,
+        Started::NoLedger,
+        StartView::Settings,
+        Noun::Bills,
+        "units",
+    );
+
+    assert_eq!(ui.noun(), Noun::Settings);
+    assert_eq!(ui.settings_frame().page, "General");
+    assert!(!ui.refused_without_ledger(), "landing is not a refusal");
 }
 
 #[gpui::test]

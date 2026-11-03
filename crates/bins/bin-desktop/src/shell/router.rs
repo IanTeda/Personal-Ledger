@@ -122,9 +122,16 @@ pub struct ShellLogs {
 /// `clock` is a parameter so tests can pin, and move, the date the seeded stub data and scopes hang
 /// off. `ledger` is the Ledger file start-up opened (the app's SQLite adapters or a test's
 /// in-memory ports), which the Shell opens as its Open Ledger through [`OpenLedger::build`]; `None`
-/// starts with no Ledger open, on the Dashboard whatever noun the state file remembers.
+/// starts with no Ledger open. `start_view` is where it lands (ADR-0053,
+/// [`crate::start_view::landing`]): `last` reads the noun the state file remembers, and a noun that
+/// needs a Ledger lands on the Dashboard with none open.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "each is a separate thing start-up read; bundling them would only rename the list"
+)]
 pub fn build(
     persisted: PersistedState,
+    start_view: &lib_core::StartView,
     bindings: ShellBindings,
     logs: ShellLogs,
     ledger: Option<LedgerFile>,
@@ -134,11 +141,7 @@ pub fn build(
 ) -> Root {
     crate::input::install(cx.weak_entity(), cx);
     let today = clock.today();
-    let noun = if ledger.is_some() {
-        persisted.noun
-    } else {
-        Noun::Dashboard
-    };
+    let noun = crate::start_view::landing(start_view, persisted.noun, ledger.is_some());
     let nav = NavState::starting_at(noun);
     let documents_state = (
         DocumentsMode::from_id(persisted.documents_mode.as_deref()),
@@ -458,8 +461,8 @@ impl Root {
 
     /// Applies a device's settings as start-up read them from Configuration (ADR-0053), and keeps
     /// where Settings writes them: the date style to the Settings View and the Views that draw with
-    /// it, On start and Toasts to Settings › General, and Toasts to the Toasts. The Colour Theme and
-    /// Appearance are the colours', set before the window opens
+    /// it, On start, Start view and Toasts to Settings › General, and Toasts to the Toasts. The
+    /// Colour Theme and Appearance are the colours', set before the window opens
     /// ([`crate::theme::colours::set_device_colours`]).
     pub fn set_configuration(
         &mut self,
@@ -472,6 +475,7 @@ impl Root {
         self.settings.update(cx, |view, cx| {
             view.general().update(cx, |page, cx| {
                 page.set_on_start(config.on_start(), cx);
+                page.set_start_view(config.start_view().clone(), cx);
                 page.set_toasts_on(config.toasts(), cx);
             });
         });
@@ -511,6 +515,11 @@ impl Root {
             DeviceSetting::OnStart(on_start) => self.settings.update(cx, |view, cx| {
                 view.general()
                     .update(cx, |page, cx| page.set_on_start(on_start, cx));
+            }),
+            DeviceSetting::StartView(key) => self.settings.update(cx, |view, cx| {
+                view.general().update(cx, |page, cx| {
+                    page.set_start_view(lib_core::StartView::from_key(key), cx);
+                });
             }),
         }
     }

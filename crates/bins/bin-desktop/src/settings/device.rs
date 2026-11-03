@@ -1,5 +1,5 @@
 //! A device's settings as Configuration (ADR-0053): Toasts, the Colour Theme and Appearance, the
-//! date style and On start live in the `[Personal-Ledger]` section of the user's
+//! date style, On start and Start view live in the `[Personal-Ledger]` section of the user's
 //! `personal-ledger.conf`, which the This device Settings write through `lib_config`'s
 //! [`ConfigWriter`] as each one changes, the TUI's file and spellings included. `Root` saves a
 //! change before applying it, so a refused save leaves the setting as it was.
@@ -23,16 +23,19 @@ pub enum DeviceSetting {
     /// `None` is the Locale's default.
     DateStyle(Option<DateStyle>),
     OnStart(OnStart),
+    /// One of [`crate::start_view::CHOICES`], as the file spells it.
+    StartView(&'static str),
 }
 
 impl DeviceSetting {
-    /// The five keys, for the shadows start-up looks for.
-    const KEYS: [ConfigKey; 5] = [
+    /// The six keys, for the shadows start-up looks for.
+    const KEYS: [ConfigKey; 6] = [
         ConfigKey::Toasts,
         ConfigKey::ColourTheme,
         ConfigKey::ColourAppearance,
         ConfigKey::DateStyle,
         ConfigKey::OnStart,
+        ConfigKey::StartView,
     ];
 
     pub fn key(self) -> ConfigKey {
@@ -42,6 +45,7 @@ impl DeviceSetting {
             Self::ColourAppearance(_) => ConfigKey::ColourAppearance,
             Self::DateStyle(_) => ConfigKey::DateStyle,
             Self::OnStart(_) => ConfigKey::OnStart,
+            Self::StartView(_) => ConfigKey::StartView,
         }
     }
 
@@ -54,6 +58,7 @@ impl DeviceSetting {
             Self::ColourAppearance(appearance) => appearance.key(),
             Self::DateStyle(style) => lib_config::date_style_key(style),
             Self::OnStart(on_start) => lib_config::on_start_key(on_start),
+            Self::StartView(key) => key,
         }
     }
 }
@@ -205,13 +210,14 @@ mod tests {
             DeviceSetting::ColourAppearance(ColourAppearance::Light),
             DeviceSetting::DateStyle(None),
             DeviceSetting::OnStart(OnStart::NoLedger),
+            DeviceSetting::StartView("bills"),
         ] {
             device.save(setting).expect("saved");
         }
         assert_eq!(
             read(&path),
             "[Personal-Ledger]\ntoasts = false\ncolour_theme = nord\ncolour_appearance = light\n\
-             date_style = default\non_start = none\n"
+             date_style = default\non_start = none\nstart_view = bills\n"
         );
         device
             .save(DeviceSetting::DateStyle(Some(DateStyle::Iso)))

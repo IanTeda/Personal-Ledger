@@ -3,7 +3,8 @@
 //! pages and the Dashboard's `:open` still run; `:open`'s file explorer opens the file picked, from
 //! no Ledger open or in place of another, and a file that won't open keeps whatever was open
 //! (#978). `:new`'s explorer browses by mouse too: a file row is inert, a folder carries the name
-//! into it and Create makes the file named there, in place of the Open Ledger (#980). State is
+//! into it and Create makes the file named there, in place of the Open Ledger (#980). Start view
+//! (#983) is only where start-up lands: a file opened by click lands on the Dashboard. State is
 //! read back from `Root`.
 
 #![expect(
@@ -110,6 +111,28 @@ fn tag_names(ui: &mut Harness<'_>) -> Vec<String> {
     let names = ui.settings::<SettingsTagsSnapshot>().tag_names;
     ui.press("g d");
     names
+}
+
+#[gpui::test]
+fn a_file_opened_by_click_lands_on_the_dashboard_whatever_start_view_says(
+    app: &mut TestAppContext,
+) {
+    let folder = Folder::new();
+    let started = bin_desktop::start_on(&config_for(&folder.household()), common::today());
+    let mut config = lib_config::PersonalLedgerConfig::default();
+    config.start_view = lib_core::StartView::Noun("bills".into());
+    let mut ui = Harness::starting_with(app, started, PersistedState::default(), &config);
+    ui.browse_from(folder.path());
+    assert_eq!(
+        ui.noun(),
+        Noun::Bills,
+        "start-up lands where Start view says"
+    );
+
+    open_row(&mut ui, 1);
+
+    assert_eq!(ui.ledger_path(), Some(folder.business()));
+    assert_eq!(ui.noun(), Noun::Dashboard);
 }
 
 #[gpui::test]

@@ -95,13 +95,19 @@ desktop-settings-scope-institutions = { $count ->
    *[other] { $count } institutions
 } · synced
 
-## General (DESKTOP-178): On start, the read-only Ledger folder and the THIS DEVICE box, whose
+## General (DESKTOP-178): On start, Start view, the read-only Ledger folder and the THIS DEVICE box, whose
 ## rows are the Ledger On start reopens and the config file Settings writes to.
 
 desktop-settings-general-on-start = On start
 desktop-settings-general-on-start-reopen = Reopen last Ledger
 desktop-settings-general-on-start-none = Start with no Ledger open
 desktop-settings-general-on-start-hint = Reopens the Ledger open when Personal Ledger last quit, or none if none was. A file named by --file or file in the configuration file always wins.
+## Start view: the View the Desktop lands on as it starts. The nouns' own names are the rail's.
+desktop-settings-general-start-view = Start view
+desktop-settings-general-start-view-last = Last view
+## `$view` is the start_view value the configuration file holds, which isn't one of the choices.
+desktop-settings-general-start-view-unlisted = The configuration file names { $view }, which isn't one of these.
+desktop-settings-general-start-view-hint = Where Personal Ledger opens, after On start. A View that needs a Ledger opens the Dashboard when none is open.
 desktop-settings-general-ledger-folder = Ledger folder
 desktop-settings-general-ledger-folder-hint = Where :open and :new start browsing. Set by data in the configuration file.
 desktop-settings-general-this-device = This device

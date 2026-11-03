@@ -1381,6 +1381,7 @@ impl<'a> Harness<'a> {
             (Some(router::LedgerFile::in_memory(stores)), commits),
             keybindings,
             PersistedState::default(),
+            &lib_config::PersonalLedgerConfig::default(),
         )
     }
 
@@ -1418,6 +1419,22 @@ impl<'a> Harness<'a> {
         started: bin_desktop::Started,
         persisted: PersistedState,
     ) -> Self {
+        Self::starting_with(
+            app,
+            started,
+            persisted,
+            &lib_config::PersonalLedgerConfig::default(),
+        )
+    }
+
+    /// As [`Harness::starting`], on a device's settings as start-up read them from `config`, so
+    /// the Shell lands where its Start view says.
+    pub fn starting_with(
+        app: &'a mut TestAppContext,
+        started: bin_desktop::Started,
+        persisted: PersistedState,
+        config: &lib_config::PersonalLedgerConfig,
+    ) -> Self {
         let failure = match &started {
             bin_desktop::Started::Failed(failure) => Some(failure.clone()),
             _ => None,
@@ -1437,6 +1454,7 @@ impl<'a> Harness<'a> {
             (stores, commits),
             lib_config::KeyBindingConfig::default(),
             persisted,
+            config,
         );
         if let Some(failure) = failure {
             ui.shell
@@ -1445,7 +1463,8 @@ impl<'a> Harness<'a> {
         ui
     }
 
-    /// The Shell on `stores`, or with no Ledger open, from `persisted` state.
+    /// The Shell on `stores`, or with no Ledger open, from `persisted` state and a device's settings
+    /// in `config`.
     fn build_on(
         app: &'a mut TestAppContext,
         logs: lib_tracing::LogBuffer,
@@ -1453,6 +1472,7 @@ impl<'a> Harness<'a> {
         (stores, commits): (Option<router::LedgerFile>, Rc<Cell<usize>>),
         keybindings: lib_config::KeyBindingConfig,
         persisted: PersistedState,
+        config: &lib_config::PersonalLedgerConfig,
     ) -> Self {
         // Pins the process-wide Locale to en-US (and loads this bin's Messages), so rendered text
         // never depends on the host; `main` is never run in a test.
@@ -1467,6 +1487,7 @@ impl<'a> Harness<'a> {
             window.focus(&focus_handle);
             router::build(
                 persisted,
+                config.start_view(),
                 ShellBindings { keybindings },
                 ShellLogs {
                     buffer: logs.clone(),
@@ -1486,7 +1507,7 @@ impl<'a> Harness<'a> {
             commits,
             conf_dir: tempfile::tempdir().expect("a temporary directory"),
         };
-        ui.configure(&lib_config::PersonalLedgerConfig::default(), &[]);
+        ui.configure(config, &[]);
         ui
     }
 

@@ -1,4 +1,4 @@
-//! Settings › General driven by the mouse: the On start and Toasts options, each saved to the conf file (ADR-0053), and the read-only Locale, Ledger folder and THIS DEVICE box drawn beside them. State is read back from `Root` and the conf file.
+//! Settings › General driven by the mouse: the On start, Start view and Toasts options, each saved to the conf file (ADR-0053), and the read-only Locale, Ledger folder and THIS DEVICE box drawn beside them. State is read back from `Root` and the conf file.
 
 use super::common;
 use bin_desktop::shell::router::SettingsGeneralSnapshot;
@@ -29,6 +29,25 @@ fn clicking_the_on_start_options_sets_on_start(app: &mut TestAppContext) {
         ui.settings::<SettingsGeneralSnapshot>().on_start,
         OnStart::ReopenLastLedger
     );
+}
+
+#[gpui::test]
+fn clicking_a_start_view_option_sets_start_view(app: &mut TestAppContext) {
+    let mut ui = on_general(app);
+    assert!(!ui.is_drawn("general-start-view-unlisted"));
+
+    ui.click("general-start-view-4");
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().start_view,
+        "documents"
+    );
+    assert_eq!(ui.conf(), "[Personal-Ledger]\nstart_view = documents\n");
+    ui.click("general-start-view-2");
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().start_view,
+        "settings"
+    );
+    assert_eq!(ui.conf(), "[Personal-Ledger]\nstart_view = settings\n");
 }
 
 #[gpui::test]

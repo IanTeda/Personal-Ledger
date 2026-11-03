@@ -1,6 +1,6 @@
-//! Settings › General driven by keys: focus lands on On start, `j`/`k` walk On start and Toasts,
-//! and `h`/`l` change the one focused. Each change is saved to the conf file (ADR-0053) and Toasts
-//! reach the Shell's Toasts; a key an environment variable sets is shown as such and left alone.
+//! Settings › General driven by keys: focus lands on On start, `j`/`k` walk On start, Start view
+//! and Toasts, and `h`/`l` change the one focused. Each change is saved to the conf file (ADR-0053)
+//! and Toasts reach the Shell's Toasts; a key an environment variable sets is shown as such and left alone.
 //! State is read back from `Root` and the conf file.
 
 use super::common;
@@ -8,7 +8,7 @@ use bin_desktop::shell::router::SettingsGeneralSnapshot;
 
 use common::Harness;
 use gpui::TestAppContext;
-use lib_core::OnStart;
+use lib_core::{OnStart, StartView};
 
 /// Settings on General, the first page, with focus stepped into it.
 fn in_general(app: &mut TestAppContext) -> Harness<'_> {
@@ -31,12 +31,14 @@ fn focus_starts_on_on_start(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn j_and_k_walk_the_two_controls_and_stop_at_the_ends(app: &mut TestAppContext) {
+fn j_and_k_walk_the_three_controls_and_stop_at_the_ends(app: &mut TestAppContext) {
     let mut ui = in_general(app);
 
-    ui.press("j j");
+    ui.press("j");
     assert_eq!(ui.settings::<SettingsGeneralSnapshot>().field, Some(1));
-    ui.press("k k");
+    ui.press("j j");
+    assert_eq!(ui.settings::<SettingsGeneralSnapshot>().field, Some(2));
+    ui.press("k k k");
     assert_eq!(ui.settings::<SettingsGeneralSnapshot>().field, Some(0));
 }
 
@@ -64,10 +66,68 @@ fn l_and_h_step_on_start_and_each_step_is_saved_to_the_conf_file(app: &mut TestA
 }
 
 #[gpui::test]
+fn l_and_h_step_start_view_through_its_choices_and_each_step_is_saved(app: &mut TestAppContext) {
+    let mut ui = in_general(app);
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().start_view,
+        "dashboard"
+    );
+
+    ui.press("j l");
+    assert_eq!(ui.settings::<SettingsGeneralSnapshot>().start_view, "last");
+    assert_eq!(ui.conf(), "[Personal-Ledger]\nstart_view = last\n");
+    ui.press("l l l l l l");
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().start_view,
+        "budgets",
+        "stops at the last choice"
+    );
+    assert_eq!(ui.conf(), "[Personal-Ledger]\nstart_view = budgets\n");
+    ui.press("h");
+    assert_eq!(ui.settings::<SettingsGeneralSnapshot>().start_view, "bills");
+    assert_eq!(ui.conf(), "[Personal-Ledger]\nstart_view = bills\n");
+}
+
+#[gpui::test]
+fn a_start_view_from_the_file_that_isnt_a_choice_is_named_and_steps_from_the_dashboard(
+    app: &mut TestAppContext,
+) {
+    let mut config = lib_config::PersonalLedgerConfig::default();
+    config.start_view = StartView::Noun("units".into());
+    let mut ui = Harness::with_configuration(app, &config, &[]);
+    ui.press("g s l");
+    assert_eq!(ui.settings::<SettingsGeneralSnapshot>().start_view, "units");
+    assert!(ui.is_drawn("general-start-view-unlisted"));
+
+    ui.press("j l");
+    assert_eq!(ui.settings::<SettingsGeneralSnapshot>().start_view, "last");
+}
+
+#[gpui::test]
+fn a_start_view_an_environment_variable_sets_is_shown_and_left_alone(app: &mut TestAppContext) {
+    let var = "PERSONAL_LEDGER_PERSONAL_LEDGER__START_VIEW";
+    let mut ui = Harness::with_configuration(
+        app,
+        &lib_config::PersonalLedgerConfig::default(),
+        &[(var, "bills")],
+    );
+    ui.press("g s l");
+    assert!(ui.is_drawn("shadowed-start_view"));
+
+    ui.press("j l");
+
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().start_view,
+        "dashboard"
+    );
+    assert_eq!(ui.conf(), "", "nothing is written under the variable");
+}
+
+#[gpui::test]
 fn l_turns_toasts_off_and_h_turns_them_back_on(app: &mut TestAppContext) {
     let mut ui = in_general(app);
 
-    ui.press("j l");
+    ui.press("j j l");
     assert!(!ui.settings::<SettingsGeneralSnapshot>().toasts_on);
     assert!(!ui.toasts().on);
     assert_eq!(ui.conf(), "[Personal-Ledger]\ntoasts = false\n");
@@ -110,15 +170,19 @@ fn a_setting_an_environment_variable_sets_is_shown_and_left_alone(app: &mut Test
 }
 
 #[gpui::test]
-fn general_starts_on_the_on_start_and_toasts_the_conf_file_holds(app: &mut TestAppContext) {
+fn general_starts_on_the_on_start_start_view_and_toasts_the_conf_file_holds(
+    app: &mut TestAppContext,
+) {
     let mut config = lib_config::PersonalLedgerConfig::default();
     config.on_start = OnStart::NoLedger;
+    config.start_view = StartView::Last;
     config.toasts = false;
     let mut ui = Harness::with_configuration(app, &config, &[]);
     ui.press("g s l");
 
     let general = ui.settings::<SettingsGeneralSnapshot>();
     assert_eq!(general.on_start, OnStart::NoLedger);
+    assert_eq!(general.start_view, "last");
     assert!(!general.toasts_on);
     assert!(!ui.toasts().on);
 }
