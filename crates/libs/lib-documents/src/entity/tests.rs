@@ -1,6 +1,13 @@
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
+
+use super::seed::Draft;
 use super::*;
+use crate::types::{self, DocumentTypeRow, TracksDate};
+use crate::{DocumentPayee, DocumentTransaction};
 use crate::{fake::InMemoryFiles, protocols::resolve_typed};
-use lib_core::{AccountId, DocumentId, PayeeId, TransactionId};
+use chrono::{Duration, NaiveDate};
+use lib_core::{AccountId, DocumentId, DocumentTypeId, PayeeId, TransactionId};
 
 fn types() -> Vec<DocumentTypeRow> {
     types::default_types()
