@@ -1793,7 +1793,7 @@ mod tests {
         let row = |needle: &str| text.lines().position(|line| line.contains(needle));
         let rows = [
             row("this device \u{2500}"),
-            row("on start, toasts"),
+            row("on start, start view"),
             row("version, licences"),
             row("this ledger \u{2500}"),
             row("ledger name, owner"),

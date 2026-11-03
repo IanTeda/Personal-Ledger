@@ -477,3 +477,71 @@ fn with_no_ledger_open_quit_still_quits() {
 
     assert!(shell.should_quit());
 }
+
+/// `shell` with Start view set to `start_view`, as the config file would set it.
+fn start_view(shell: bin_tui::Shell, start_view: lib_core::StartView) -> bin_tui::Shell {
+    let mut config = lib_config::PersonalLedgerConfig::default();
+    config.start_view = start_view;
+    shell.with_configuration(&config, lib_config::ConfigWriter::default())
+}
+
+/// A cold `Shell` started as `main` starts it: On start reopening `path`'s Ledger, if any, then
+/// landing where `view` says, `last` reading `remembered`.
+fn started(
+    path: Option<&std::path::Path>,
+    view: lib_core::StartView,
+    remembered: Option<&str>,
+) -> String {
+    let mut shell = start_view(cold_shell(None), view);
+    shell.open_on_start(path);
+    shell.land_on_start(remembered);
+    screen(&mut shell)
+}
+
+#[test]
+fn start_view_lands_on_each_value_with_a_ledger_open() {
+    use lib_core::StartView;
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("household.pldb");
+    ledger_file(&path);
+    for (view, marker) in [
+        (StartView::Dashboard, "NET POSITION"),
+        (StartView::Settings, "17 pages"),
+        (StartView::Noun("units".into()), "UNITS"),
+        (StartView::Noun("tags".into()), "tags 3 of"),
+        (StartView::Last, "NET POSITION"),
+    ] {
+        let frame = started(Some(&path), view.clone(), None);
+        assert!(frame.contains(marker), "{view:?}:\n{frame}");
+    }
+}
+
+#[test]
+fn start_view_last_lands_on_the_view_showing_at_the_last_quit() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("household.pldb");
+    ledger_file(&path);
+
+    let frame = started(Some(&path), lib_core::StartView::Last, Some("units"));
+
+    assert!(frame.contains("UNITS"), "{frame}");
+}
+
+#[test]
+fn with_no_ledger_open_a_start_view_that_needs_one_lands_on_the_dashboard() {
+    for (view, remembered) in [
+        (lib_core::StartView::Noun("units".into()), None),
+        (lib_core::StartView::Last, Some("tags")),
+        (lib_core::StartView::Noun("bills".into()), None),
+    ] {
+        let frame = started(None, view.clone(), remembered);
+        assert!(frame.contains("No Ledger open."), "{view:?}:\n{frame}");
+    }
+}
+
+#[test]
+fn with_no_ledger_open_start_view_settings_opens_settings() {
+    let frame = started(None, lib_core::StartView::Settings, None);
+
+    assert!(frame.contains("5 without a Ledger"), "{frame}");
+}

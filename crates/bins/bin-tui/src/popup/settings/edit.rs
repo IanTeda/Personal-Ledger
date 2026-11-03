@@ -157,7 +157,9 @@ impl FieldEditor {
                 Paragraph::new(Span::styled(self.field.label(), bold)),
                 label,
             );
-            frame.render_widget(Paragraph::new(self.draft_line(c)), draft);
+            let line = self.draft_line(c);
+            let scroll = self.choice_scroll(draft.width);
+            frame.render_widget(Paragraph::new(line).scroll((0, scroll)), draft);
         }
         for ((label, value), row) in sub_rows.iter().zip(rows.iter().skip(1)) {
             let [label_area, value_area] =
@@ -169,6 +171,24 @@ impl FieldEditor {
             );
             frame.render_widget(Paragraph::new(value.as_str()), value_area);
         }
+    }
+
+    /// How many columns a Choice too wide for `width` scrolls left by so the chosen segment shows
+    /// whole at the right edge; `0` when it already shows, or for any other draft.
+    fn choice_scroll(&self, width: u16) -> u16 {
+        let Draft::Choice { segments, chosen } = &self.draft else {
+            return 0;
+        };
+        // Each segment is drawn ` label ` with two spaces before every one but the first.
+        let end: usize = segments
+            .iter()
+            .take(chosen.saturating_add(1))
+            .enumerate()
+            .map(|(index, segment)| {
+                segment.label.chars().count() + 2 + if index > 0 { 2 } else { 0 }
+            })
+            .sum();
+        u16::try_from(end.saturating_sub(usize::from(width))).unwrap_or(u16::MAX)
     }
 
     /// The draft as drawn: the segments with the chosen one reversed, the text and its cursor, or
@@ -263,6 +283,23 @@ mod tests {
             Outcome::SaveAndNext("b".into())
         );
         assert_eq!(editor.handle_key(key(KeyCode::Esc)), Outcome::Keep);
+    }
+
+    #[test]
+    fn a_choice_too_wide_scrolls_only_to_keep_the_chosen_segment_whole() {
+        // ` aaaa ` (6), then `  ` and ` bbbb ` (8 each).
+        let mut editor = choice(&["aaaa", "bbbb", "cccc"]);
+        assert_eq!(editor.choice_scroll(10), 0, "the first fits");
+        editor.handle_key(key(KeyCode::Right));
+        assert_eq!(editor.choice_scroll(14), 0, "the second ends at 14");
+        assert_eq!(editor.choice_scroll(10), 4);
+        editor.handle_key(key(KeyCode::Right));
+        assert_eq!(editor.choice_scroll(10), 12);
+        assert_eq!(
+            FieldEditor::new(SettingField::Toasts, Draft::Check(true), "on".into())
+                .choice_scroll(1),
+            0
+        );
     }
 
     #[test]

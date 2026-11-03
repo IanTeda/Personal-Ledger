@@ -1,5 +1,5 @@
 //! What the TUI remembers for itself between runs, in `tui-state.json`: the Ledger open when it
-//! last quit (ADR-0051). Never a choice the person made: a device's settings are Configuration in
+//! last quit (ADR-0051) and the View showing then, for Start view's `last` (ADR-0053). Never a choice the person made: a device's settings are Configuration in
 //! `personal-ledger.conf` (ADR-0053). The Desktop remembers its own in `desktop-state.json`.
 //!
 //! A small JSON file in the state directory, not `lib_config`'s INI: that is Configuration a
@@ -26,6 +26,9 @@ pub struct TuiState {
     /// The Ledger file open when the TUI last quit, which On start's Reopen last Ledger opens.
     /// `None` when none was, so `:close` then quit forgets it.
     pub last_ledger: Option<PathBuf>,
+    /// The View showing when the TUI last quit, by the word `start_view` spells it, which Start
+    /// view's `last` lands on. `None` when it was one Start view can't name.
+    pub last_view: Option<String>,
 }
 
 /// Where the state file lives: `dirs::state_dir()` (Linux's `$XDG_STATE_HOME`), else
@@ -90,6 +93,7 @@ mod tests {
         let path = dir.path().join("nested").join(STATE_FILE_NAME);
         let state = TuiState {
             last_ledger: Some(PathBuf::from("/ledgers/household.pldb")),
+            last_view: Some("units".into()),
         };
         save_to(&path, &state).expect("save creates the directory");
         assert_eq!(load_from(&path), state);

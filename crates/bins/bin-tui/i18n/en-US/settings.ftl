@@ -38,7 +38,7 @@ tui-settings-page-history = History
 
 ## The one-line description beside each page's name on the index page.
 
-tui-settings-description-general = on start, toasts, locale and the ledger folder
+tui-settings-description-general = on start, start view, toasts, locale and the ledger folder
 tui-settings-description-display = appearance, colour theme, date style, glyphs and hint bar
 tui-settings-description-ledger = ledger name, owner, financial year and base unit
 tui-settings-description-units = currencies and other units, and their price sources
@@ -112,6 +112,17 @@ tui-settings-general-on-start = on start
 tui-settings-on-start-reopen = reopen last ledger
 tui-settings-on-start-none = start with no ledger open
 tui-settings-general-on-start-note = a file named by --file or file wins
+tui-settings-general-start-view = start view
+tui-settings-general-start-view-note = a view that needs a ledger opens the dashboard with none open
+# Start view's choices: the views the TUI can land on as it starts.
+tui-settings-start-view-dashboard = dashboard
+tui-settings-start-view-last = last view
+tui-settings-start-view-settings = settings
+tui-settings-start-view-units = units
+tui-settings-start-view-accounts = accounts
+tui-settings-start-view-categories = categories
+tui-settings-start-view-payees = payees
+tui-settings-start-view-tags = tags
 tui-settings-general-ledger-folder = ledger folder
 tui-settings-general-ledger-folder-note = data · read-only
 tui-settings-general-this-device = this device

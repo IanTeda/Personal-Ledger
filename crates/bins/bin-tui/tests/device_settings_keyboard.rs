@@ -116,3 +116,72 @@ fn enter_on_an_unmoved_colour_popup_saves_nothing_and_keeps_an_unknown_theme() {
         "an id this release doesn't know survives a look at the list"
     );
 }
+
+#[test]
+fn the_start_view_row_saves_its_choice_to_the_config_file() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let (mut shell, path) = writing_config(shell(), &dir, &[]);
+    run_command(&mut shell, "settings general");
+
+    press(&mut shell, "j Enter Right Enter");
+
+    assert_eq!(read(&path), "[Personal-Ledger]\nstart_view = last\n");
+    let frame = screen(&mut shell);
+    assert!(frame.contains("start-view saved to"), "{frame}");
+    assert!(
+        frame.contains("last view"),
+        "the row shows the choice:\n{frame}"
+    );
+}
+
+#[test]
+fn the_start_view_choice_keeps_the_chosen_noun_in_view() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let (mut shell, _) = writing_config(shell(), &dir, &[]);
+    run_command(&mut shell, "settings general");
+
+    // `←` from the Dashboard wraps to the last noun, past the row's right edge.
+    press(&mut shell, "j Enter Left");
+
+    let frame = screen(&mut shell);
+    assert!(frame.contains(" tags "), "{frame}");
+}
+
+#[test]
+fn set_start_view_saves_a_noun_and_refuses_one_the_tui_does_not_have() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let (mut shell, path) = writing_config(shell(), &dir, &[]);
+
+    run_command(&mut shell, "set start-view bills");
+    assert_eq!(
+        read(&path),
+        "",
+        "nothing is written for a noun the TUI lacks"
+    );
+
+    run_command(&mut shell, "set start-view Units");
+    assert_eq!(read(&path), "[Personal-Ledger]\nstart_view = units\n");
+}
+
+#[test]
+fn a_start_view_an_environment_variable_sets_is_shown_and_not_saved() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let (mut shell, path) = writing_config(
+        shell(),
+        &dir,
+        &[("PERSONAL_LEDGER_PERSONAL_LEDGER__START_VIEW", "settings")],
+    );
+    run_command(&mut shell, "settings general");
+    assert!(
+        screen(&mut shell).contains("set by PERSONAL_LEDGER_PERSONAL_LEDGER__"),
+        "the row names what outranks it"
+    );
+
+    run_command(&mut shell, "set start-view units");
+
+    assert_eq!(read(&path), "", "nothing is written under the variable");
+    assert!(
+        screen(&mut shell).contains("PERSONAL_LEDGER_PERSONAL_LEDGER__START_VIEW"),
+        "the status line says why"
+    );
+}

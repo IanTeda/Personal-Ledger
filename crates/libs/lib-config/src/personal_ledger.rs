@@ -3,11 +3,11 @@
 //! Configuration for the `[Personal-Ledger]` section: settings applied across Personal
 //! Ledger files and the client on a given system, but not intended to sync across computer
 //! systems (see `docs/settings.md`). A device's settings are among them (ADR-0053): Toasts, the
-//! Colour Theme and Appearance, the date style and On start, each spelled in the file as `:set`
-//! takes it.
+//! Colour Theme and Appearance, the date style, On start and Start view, each spelled in the file
+//! as `:set` takes it.
 
 use lib_colour_theme::ColourAppearance;
-use lib_core::{DateStyle, OnStart};
+use lib_core::{DateStyle, OnStart, StartView};
 
 /// Default logging level for the `[Personal-Ledger]` section.
 const DEFAULT_LOG: lib_tracing::Levels = lib_tracing::Levels::INFO;
@@ -100,6 +100,11 @@ pub struct PersonalLedgerConfig {
     /// (ADR-0051). `file` outranks it.
     #[serde(default, with = "on_start")]
     pub on_start: OnStart,
+
+    /// The View a Client lands on as it starts: `dashboard`, the default, `last`, `settings` or a
+    /// noun, kept raw so a noun only the other Client has survives (ADR-0053).
+    #[serde(default, with = "start_view")]
+    pub start_view: StartView,
 }
 
 /// The value `date_style` and `:set date-style` spell the Locale's default with.
@@ -177,6 +182,25 @@ mod date_style {
     }
 }
 
+/// `start_view` by [`StartView::key`]. Every word is one: a noun no Client has lands on the
+/// Dashboard rather than stopping the app.
+mod start_view {
+    use super::StartView;
+
+    pub fn serialize<S: serde::Serializer>(
+        value: &StartView,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(value.key())
+    }
+
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<StartView, D::Error> {
+        super::by_key(deserializer, |key| Some(StartView::from_key(key)))
+    }
+}
+
 /// `on_start` by [`super::on_start_key`].
 mod on_start {
     use super::OnStart;
@@ -246,6 +270,7 @@ impl Default for PersonalLedgerConfig {
             colour_appearance: ColourAppearance::System,
             date_style: None,
             on_start: OnStart::ReopenLastLedger,
+            start_view: StartView::Dashboard,
         }
     }
 }
@@ -317,6 +342,11 @@ impl PersonalLedgerConfig {
     /// Which Ledger file a Client opens as it starts, when `file` doesn't name one.
     pub fn on_start(&self) -> OnStart {
         self.on_start
+    }
+
+    /// The View a Client lands on as it starts.
+    pub fn start_view(&self) -> &StartView {
+        &self.start_view
     }
 
     /// Returns the Locale set by configuration, if any (canonical casing once parsed).
@@ -483,6 +513,25 @@ mod tests {
         assert_eq!(section.colour_appearance(), ColourAppearance::System);
         assert_eq!(section.date_style(), None);
         assert_eq!(section.on_start(), OnStart::ReopenLastLedger);
+        assert_eq!(section.start_view(), &StartView::Dashboard);
+    }
+
+    #[test]
+    fn start_view_reads_its_three_words_or_a_noun_and_an_environment_variable_outranks_it() {
+        for (text, view) in [
+            ("last", StartView::Last),
+            ("Settings", StartView::Settings),
+            ("dashboard", StartView::Dashboard),
+            ("Units", StartView::Noun("units".into())),
+        ] {
+            let section = parsed(&format!("[Personal-Ledger]\nstart_view = {text}\n"), &[]);
+            assert_eq!(section.start_view(), &view, "{text}");
+        }
+        let section = parsed(
+            "[Personal-Ledger]\nstart_view = last\n",
+            &[("PERSONAL_LEDGER_PERSONAL_LEDGER__START_VIEW", "tags")],
+        );
+        assert_eq!(section.start_view(), &StartView::Noun("tags".into()));
     }
 
     #[test]

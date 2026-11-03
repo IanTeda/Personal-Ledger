@@ -39,11 +39,13 @@ pub enum ConfigKey {
     DateStyle,
     /// `on_start`: `reopen` or `none`.
     OnStart,
+    /// `start_view`: `dashboard`, `last`, `settings` or a noun.
+    StartView,
 }
 
 impl ConfigKey {
     /// Every key Settings writes, in the order the file's keys are documented.
-    pub const ALL: [ConfigKey; 8] = [
+    pub const ALL: [ConfigKey; 9] = [
         Self::TerminalColours,
         Self::StatusGlyphs,
         Self::HintBar,
@@ -52,6 +54,7 @@ impl ConfigKey {
         Self::ColourAppearance,
         Self::DateStyle,
         Self::OnStart,
+        Self::StartView,
     ];
 
     /// The key as it is written in the file.
@@ -65,6 +68,7 @@ impl ConfigKey {
             Self::ColourAppearance => "colour_appearance",
             Self::DateStyle => "date_style",
             Self::OnStart => "on_start",
+            Self::StartView => "start_view",
         }
     }
 
@@ -351,10 +355,11 @@ back = \"esc\"
         writer.write(ConfigKey::ColourAppearance, "light").unwrap();
         writer.write(ConfigKey::DateStyle, "iso").unwrap();
         writer.write(ConfigKey::OnStart, "none").unwrap();
+        writer.write(ConfigKey::StartView, "units").unwrap();
         assert_eq!(
             std::fs::read_to_string(&path).unwrap(),
             "[Personal-Ledger]\ntoasts = false\ncolour_theme = nord\ncolour_appearance = light\n\
-             date_style = iso\non_start = none\n"
+             date_style = iso\non_start = none\nstart_view = units\n"
         );
 
         let config =
@@ -368,6 +373,10 @@ back = \"esc\"
         );
         assert_eq!(section.date_style(), Some(lib_core::DateStyle::Iso));
         assert_eq!(section.on_start(), lib_core::OnStart::NoLedger);
+        assert_eq!(
+            section.start_view(),
+            &lib_core::StartView::Noun("units".into())
+        );
 
         writer.write(ConfigKey::DateStyle, "default").unwrap();
         let config =
@@ -414,6 +423,7 @@ back = \"esc\"
                 "colour_appearance",
                 "date_style",
                 "on_start",
+                "start_view",
             ]
         );
     }

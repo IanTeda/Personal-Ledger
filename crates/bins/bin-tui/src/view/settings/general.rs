@@ -1,8 +1,8 @@
-//! Settings › General (TUI-058), the first this device page: On start, Toasts, the read-only
-//! Locale and ledger folder, then the THIS DEVICE box. Everything here belongs to this device and
-//! works with no Ledger open (ADR-0051).
+//! Settings › General (TUI-058), the first this device page: On start, Start view, Toasts, the
+//! read-only Locale and ledger folder, then the THIS DEVICE box. Everything here belongs to this
+//! device and works with no Ledger open (ADR-0051).
 //!
-//! On start opens in place as a choice and Toasts flips on `enter` or `space`; both are
+//! On start and Start view open in place as a choice and Toasts flips on `enter` or `space`; all are
 //! Configuration (ADR-0053) `Shell` writes to the user's `personal-ledger.conf` as they change, and
 //! a key an environment variable or a higher file sets is noted `set by …` on its row. The Locale and
 //! `data` are Configuration read at start-up, so `enter` on either says where to change it. THIS
@@ -24,11 +24,13 @@ use super::{Context, FIELD_LABEL_WIDTH, FieldRow, Open, list, render_form};
 use crate::colours::Colours;
 use crate::msg;
 use crate::popup::settings::edit::{Draft, Segment};
+use crate::start_view;
 use crate::view::Action;
 
 /// The fields, in the page's order.
-const FIELDS: [SettingField; 4] = [
+const FIELDS: [SettingField; 5] = [
     SettingField::OnStart,
+    SettingField::StartView,
     SettingField::Toasts,
     SettingField::Locale,
     SettingField::LedgerFolder,
@@ -137,6 +139,22 @@ impl GeneralPage {
                     .unwrap_or_default();
                 Some((Draft::Choice { segments, chosen }, on_start_label(on_start)))
             }
+            SettingField::StartView => {
+                let key = context.values.configuration.start_view.key().to_string();
+                let segments = start_view::CHOICES
+                    .iter()
+                    .map(|choice| Segment {
+                        value: (*choice).to_string(),
+                        label: start_view::label(choice),
+                    })
+                    .collect();
+                // A noun from the file the TUI doesn't have opens on the Dashboard's choice.
+                let chosen = start_view::CHOICES
+                    .iter()
+                    .position(|choice| *choice == key)
+                    .unwrap_or_default();
+                Some((Draft::Choice { segments, chosen }, start_view::label(&key)))
+            }
             // `:set toasts` without a value opens the checkbox in place.
             SettingField::Toasts => {
                 Some((Draft::Check(self.toasts_on), toasts_label(self.toasts_on)))
@@ -193,6 +211,10 @@ impl GeneralPage {
             SettingField::OnStart => (
                 on_start_label(context.values.configuration.on_start),
                 shadowed(field).unwrap_or_else(msg::tui_settings_general_on_start_note),
+            ),
+            SettingField::StartView => (
+                start_view::label(context.values.configuration.start_view.key()),
+                shadowed(field).unwrap_or_else(msg::tui_settings_general_start_view_note),
             ),
             SettingField::Toasts => (
                 toasts_label(self.toasts_on),
@@ -290,13 +312,19 @@ mod tests {
     }
 
     #[test]
-    fn enter_opens_on_start_and_flips_toasts_and_the_read_only_rows_go_to_the_shell() {
+    fn enter_opens_on_start_and_start_view_and_flips_toasts_and_the_read_only_rows_go_to_the_shell()
+    {
         let mut page = GeneralPage::new();
         assert_eq!(
             page.handle_key(key(KeyCode::Enter)),
             Some(Action::SetSetting(SettingField::OnStart, None))
         );
         assert_eq!(page.handle_key(key(KeyCode::Char(' '))), Some(Action::NoOp));
+        page.handle_key(key(KeyCode::Char('j')));
+        assert_eq!(
+            page.handle_key(key(KeyCode::Enter)),
+            Some(Action::SetSetting(SettingField::StartView, None))
+        );
         page.handle_key(key(KeyCode::Char('j')));
         assert_eq!(
             page.handle_key(key(KeyCode::Enter)),
@@ -318,7 +346,7 @@ mod tests {
     }
 
     #[test]
-    fn it_draws_its_four_fields_and_this_device() {
+    fn it_draws_its_five_fields_and_this_device() {
         crate::locale::init_for_tests();
         let mut view = SettingsView::new();
         view.update(&Action::OpenSettingsPage(SettingsPage::General));
@@ -328,6 +356,8 @@ mod tests {
             "this device \u{b7} never synced",
             "on start",
             "reopen last ledger",
+            "start view",
+            "dashboard",
             "Toasts",
             "locale",
             "en-US",

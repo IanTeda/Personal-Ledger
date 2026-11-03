@@ -129,3 +129,7 @@ pub use total::Total;
 /// Which Ledger file a Client opens as it starts: the On start Preference and its resolver.
 mod on_start;
 pub use on_start::{OnStart, ledger_to_open};
+
+/// The View a Client lands on as it starts: the Start view setting and its resolver.
+mod start_view;
+pub use start_view::StartView;

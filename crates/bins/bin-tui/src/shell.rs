@@ -191,6 +191,9 @@ pub struct Shell {
     /// The Open Ledger's file as the Shell quit, which `main` remembers for On start (ADR-0051).
     /// `None` until then, and when no Ledger was open.
     quit_ledger: Option<PathBuf>,
+    /// The View showing as the Shell quit, by the word Start view's `last` reads back (ADR-0053).
+    /// `None` until then, and for a View Start view can't name.
+    quit_view: Option<&'static str>,
 }
 
 /// The Open Ledger: its Ledger file, the Units built on the Stores opened from it, and the writer
@@ -257,6 +260,7 @@ impl Shell {
             ledger: None,
             ledger_file: None,
             quit_ledger: None,
+            quit_view: None,
             keybindings,
         }
     }
@@ -291,6 +295,26 @@ impl Shell {
     /// The Ledger file open as the Shell quit, or `None` when none was.
     pub fn quit_ledger(&self) -> Option<&Path> {
         self.quit_ledger.as_deref()
+    }
+
+    /// Lands on the View Start view names, after [`Self::open_on_start`]: `last` reads
+    /// `remembered`, the View showing at the last quit. A View that needs a Ledger, with none
+    /// open, lands on the Dashboard's no Ledger open note.
+    pub fn land_on_start(&mut self, remembered: Option<&str>) {
+        let start_view = self
+            .settings_values
+            .borrow()
+            .configuration
+            .start_view
+            .clone();
+        let action = crate::start_view::landing(&start_view, remembered, self.ledger.is_some());
+        self.update(action);
+    }
+
+    /// The View showing as the Shell quit, by the word Start view's `last` reads, or `None` for one
+    /// it can't name.
+    pub fn quit_view(&self) -> Option<&'static str> {
+        self.quit_view
     }
 
     /// Whether the Shell has stopped: a quit key or command ran.
@@ -554,9 +578,11 @@ impl Shell {
         ran
     }
 
-    /// Remembers the Open Ledger's file for On start, then closes it: the writer's thread dies
+    /// Remembers the View showing for Start view and the Open Ledger's file for On start, then
+    /// closes it: the writer's thread dies
     /// with the process, so the last writes land before it does.
     fn quit(&mut self) {
+        self.quit_view = crate::start_view::noun(self.view.id());
         self.quit_ledger = self.ledger.as_ref().map(|ledger| ledger.path.clone());
         self.close_ledger();
     }
@@ -2915,6 +2941,25 @@ mod tests {
     }
 
     #[test]
+    fn quitting_remembers_the_view_showing_by_its_start_view_word() {
+        crate::locale::init_for_tests();
+        let mut shell = opened();
+        shell.update(Action::OpenPayees);
+        shell.quit();
+        assert_eq!(shell.quit_view(), Some("payees"));
+
+        let mut shell = opened();
+        shell.update(Action::OpenSettings);
+        shell.quit();
+        assert_eq!(shell.quit_view(), Some("settings"));
+
+        let mut shell = opened();
+        shell.update(Action::OpenHelp);
+        shell.quit();
+        assert_eq!(shell.quit_view(), None, "Help is no Start view");
+    }
+
+    #[test]
     fn a_devices_settings_apply_at_start_from_configuration() {
         let mut config = PersonalLedgerConfig::default();
         config.toasts = false;
@@ -2922,6 +2967,7 @@ mod tests {
         config.colour_appearance = ColourAppearance::Light;
         config.date_style = Some(lib_core::DateStyle::Iso);
         config.on_start = lib_core::OnStart::NoLedger;
+        config.start_view = lib_core::StartView::Last;
         let shell = Shell::new().with_configuration(&config, ConfigWriter::default());
         assert!(!shell.toasts.display().toasts_on);
         assert_eq!(shell.colours.colour_theme(), Some("nord"));
@@ -2935,6 +2981,7 @@ mod tests {
             Some(lib_core::DateStyle::Iso)
         );
         assert_eq!(values.configuration.on_start, lib_core::OnStart::NoLedger);
+        assert_eq!(values.configuration.start_view, lib_core::StartView::Last);
     }
 
     /// Turns Toasts on or off as a saved `:toasts` would, without the save's status line, for a
@@ -4868,7 +4915,10 @@ mod tests {
         let dir = tempfile::TempDir::new().unwrap();
         let (mut shell, _) = writing_to(&dir, &[]);
         shell.update(Action::OpenSettingsPage(SettingsPage::General));
-        press(&mut shell, &[KeyCode::Char('j'), KeyCode::Char(' ')]);
+        press(
+            &mut shell,
+            &[KeyCode::Char('j'), KeyCode::Char('j'), KeyCode::Char(' ')],
+        );
         assert!(!shell.toasts.display().toasts_on);
 
         // Opened by its Action, as `:set toasts` will, it's a checkbox `enter` saves.
@@ -4884,7 +4934,10 @@ mod tests {
         crate::locale::init_for_tests();
         let mut shell = opened();
         shell.update(Action::OpenSettingsPage(SettingsPage::General));
-        press(&mut shell, &[KeyCode::Char('j'), KeyCode::Char('j')]);
+        press(
+            &mut shell,
+            &[KeyCode::Char('j'), KeyCode::Char('j'), KeyCode::Char('j')],
+        );
         press(&mut shell, &[KeyCode::Enter]);
         assert!(!shell.view.editing());
         assert!(

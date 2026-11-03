@@ -29,7 +29,7 @@ fn the_index_groups_this_device_then_this_ledger() {
     // Each page by its description, as its name is drawn elsewhere too.
     let rows: Vec<Option<usize>> = [
         "this device",
-        "on start, toasts",
+        "on start, start view",
         "version, licences",
         "this ledger",
         "ledger name, owner",
@@ -209,7 +209,7 @@ fn with_no_ledger_open_toasts_still_toggle_on_general() {
     let (mut shell, path) = writing_config(cold_shell(None), &dir, &[]);
     run_command(&mut shell, "settings general");
 
-    press(&mut shell, "j");
+    press(&mut shell, "j j");
     type_text(&mut shell, " ");
 
     assert_eq!(read(&path), "[Personal-Ledger]\ntoasts = false\n");

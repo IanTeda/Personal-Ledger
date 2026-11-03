@@ -59,8 +59,8 @@ async fn main() -> Result<()> {
     )
     .with_system(system);
     // The Ledger file On start names opens before the first draw; one that won't open leaves
-    // none open behind its Error Toast. The Shell flushes the Open Ledger's writes as it quits, and
-    // the file it had open is remembered for the next start.
+    // none open behind its Error Toast. Then the TUI lands on the View Start view names. The Shell flushes the Open Ledger's writes as it quits, and
+    // the file it had open and the View showing are remembered for the next start.
     let kept = state::load();
     let mut shell = build_shell(
         config.keybindings_config().clone(),
@@ -70,9 +70,11 @@ async fn main() -> Result<()> {
     .with_configuration(config.personal_ledger_config(), config.writer().clone())
     .with_log_buffer(logs);
     shell.open_on_start(kept.last_ledger.as_deref());
+    shell.land_on_start(kept.last_view.as_deref());
     let ran = shell.run().await;
     let quit = state::TuiState {
         last_ledger: shell.quit_ledger().map(std::path::Path::to_path_buf),
+        last_view: shell.quit_view().map(str::to_string),
     };
     if let Err(error) = state::save(&quit) {
         tracing::warn!(%error, "Failed to save the TUI's state");

@@ -270,7 +270,15 @@ Which Ledger the app opens as it starts: `reopen` opens the one open when you la
 * Default: reopen
 * Environment Variable: PERSONAL_LEDGER_PERSONAL_LEDGER__ON_START
 
-The TUI and the Desktop app both read these five, and both write them from Settings, so a change in one is the other's the next time it starts. A value a key doesn't take, such as `on_start = sometimes`, stops the app starting with an error naming it.
+__start_view:__
+
+The View the app lands on as it starts: `dashboard`, `last` (the View showing when you last quit), `settings`, or a noun such as `units` or `tags`. A View that needs a Ledger lands on the Dashboard's no Ledger open note when none is open, and a noun the app doesn't have lands on the Dashboard. Settings › General in the TUI writes it; the Desktop app doesn't read it yet.
+
+* Type: String, `dashboard`, `last`, `settings` or a noun
+* Default: dashboard
+* Environment Variable: PERSONAL_LEDGER_PERSONAL_LEDGER__START_VIEW
+
+The TUI and the Desktop app both read the first five, and both write them from Settings, so a change in one is the other's the next time it starts. A value a key doesn't take, such as `on_start = sometimes`, stops the app starting with an error naming it.
 
 Example:
 
@@ -281,6 +289,7 @@ colour_theme = nord
 colour_appearance = dark
 date_style = iso
 on_start = none
+start_view = last
 ```
 
 __log_file_path:__
@@ -417,9 +426,13 @@ Settings › General's **on start** row chooses which Ledger the TUI opens as it
 
 Below the fields, the THIS DEVICE box shows the Ledger On start would reopen and the config file Settings writes to.
 
+### Start view
+
+Settings › General's **start view** row chooses the View the TUI lands on as it starts, after On start has opened a Ledger or none: **dashboard** (the default), **last view** (the View showing when you last quit), **settings** (the Settings index), or **units**, **accounts**, **categories**, **payees** or **tags**. Run `set start-view last` or `set start-view units` to set it by name. Every View but the Dashboard and Settings needs a Ledger, so with none open it lands on the Dashboard's no Ledger open note instead. `last` remembers only those Views, so quitting from Help or a View not built yet starts on the Dashboard next time.
+
 ### What Settings writes to personal-ledger.conf
 
-Every field on General and Display that you can change belongs to this device, so Settings saves it to `personal-ledger.conf` rather than the Ledger: On start and Toasts on General, and Appearance, Colour Theme, Date style, Terminal colours, Status glyphs and Hint bar on Display. Each saves as you choose it: `Enter` in an open field, `Enter` in the Colour Theme or Appearance list (`Esc` there saves nothing), `Enter` or `Space` on Toasts or Hint bar, or the `set` and `toasts` commands. Your choice is the TUI's on its next start; nothing else is kept for it.
+Every field on General and Display that you can change belongs to this device, so Settings saves it to `personal-ledger.conf` rather than the Ledger: On start, Start view and Toasts on General, and Appearance, Colour Theme, Date style, Terminal colours, Status glyphs and Hint bar on Display. Each saves as you choose it: `Enter` in an open field, `Enter` in the Colour Theme or Appearance list (`Esc` there saves nothing), `Enter` or `Space` on Toasts or Hint bar, or the `set` and `toasts` commands. Your choice is the TUI's on its next start; nothing else is kept for it.
 
 - Settings writes only your own file: `~/.config/personal-ledger/personal-ledger.conf` on Linux, `~/Library/Preferences/personal-ledger/personal-ledger.conf` on macOS and `%APPDATA%\personal-ledger\personal-ledger.conf` on Windows. It creates the file and its folder if they don't exist. The note under Display's rows names the file.
 - A save changes only that key's line in the `[Personal-Ledger]` section, or adds one line if the key isn't there. Your comments, the order of your keys and every other section are left as you wrote them.
@@ -444,7 +457,7 @@ Every Settings key can also be run by name from the command popup:
 
 `sync` and `backup` open their page first, so `Esc` afterwards takes you back to the index with that page selected.
 
-The fields `set` takes are `ledger-name`, `owner`, `fy-start`, `base`, `appearance`, `colour-theme`, `date-style`, `locale`, `terminal-colours`, `glyphs`, `toasts` and `hint-bar`, and `Tab` completes them. For example:
+The fields `set` takes are `on-start`, `start-view`, `ledger-name`, `owner`, `fy-start`, `base`, `appearance`, `colour-theme`, `date-style`, `locale`, `terminal-colours`, `glyphs`, `toasts` and `hint-bar`, and `Tab` completes them. For example:
 
 - `set fy-start january`: the financial year starts in January (or `july` or `april`).
 - `set date-style iso`: dates are drawn as `2026-07-01` (or `default`, `short`, `medium` or `long`).
@@ -452,7 +465,7 @@ The fields `set` takes are `ledger-name`, `owner`, `fy-start`, `base`, `appearan
 - `set ledger-name The Teda house`: the rest of the line is the value, spaces and all.
 - `set base btc`: opens the confirmation that changing the base unit always asks for.
 - `set terminal-colours on`, `set glyphs ascii` and `set hint-bar off`: saved to your `personal-ledger.conf` (`off`, `unicode` and `on` undo them).
-- `set on-start none` and `set toasts off`: saved to your `personal-ledger.conf` too, as every General and Display field is.
+- `set on-start none`, `set start-view last` and `set toasts off`: saved to your `personal-ledger.conf` too, as every General and Display field is.
 
 A field name or value that `set` doesn't know is refused on the status line, which names what it takes.
 
@@ -739,6 +752,7 @@ log = "debug"
 # colour_appearance = system
 # date_style = default
 # on_start = reopen
+# start_view = dashboard
 
 
 
@@ -796,7 +810,7 @@ This example is kept in sync with the file shipped at `config/personal-ledger.co
 
 References
 
-Per ADR-0014, Configuration covers only settings needed before the app (or its database) can run: the database location (a Client’s optional `[Personal-Ledger] file` override, or the Sync Server’s own `[Sync-Server] database_uri`) and the telemetry level; connection-pool tuning (max/min connections, timeouts) is fixed in code rather than configurable. The gRPC bind address is Sync-Server-only. Everything else the user might tweak from inside a running Client — colour theme, date format, default Unit — is a Preference instead, stored in the Ledger: today the base Unit. A device's settings are the exception (ADR-0053): Toasts, the Colour Theme and Appearance, the date style and On start belong to the device rather than the Ledger, so they are Configuration in the `[Personal-Ledger]` section, which Settings writes. The TUI reads them from here; the Desktop still keeps its own until it does too.
+Per ADR-0014, Configuration covers only settings needed before the app (or its database) can run: the database location (a Client’s optional `[Personal-Ledger] file` override, or the Sync Server’s own `[Sync-Server] database_uri`) and the telemetry level; connection-pool tuning (max/min connections, timeouts) is fixed in code rather than configurable. The gRPC bind address is Sync-Server-only. Everything else the user might tweak from inside a running Client — colour theme, date format, default Unit — is a Preference instead, stored in the Ledger: today the base Unit. A device's settings are the exception (ADR-0053): Toasts, the Colour Theme and Appearance, the date style, On start and Start view belong to the device rather than the Ledger, so they are Configuration in the `[Personal-Ledger]` section, which Settings writes. Both apps read them from here, except that the Desktop doesn't read Start view yet.
 
 lib-config is shared by all three consumers (bin-tui, bin-desktop, bin-sync-server), but they don’t all see the same sections or search the same locations — see Configuration Hierarchy and Sync Server Section below.
 

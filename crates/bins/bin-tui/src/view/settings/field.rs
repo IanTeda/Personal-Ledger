@@ -11,7 +11,7 @@
 
 use chrono::{Datelike, Months, NaiveDate};
 use lib_config::{ConfigKey, ConfigWriter, PersonalLedgerConfig, Shadow, StatusGlyphs};
-use lib_core::{DateStyle, OnStart};
+use lib_core::{DateStyle, OnStart, StartView};
 
 use super::SettingsPage;
 use crate::msg;
@@ -20,6 +20,7 @@ use crate::msg;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingField {
     OnStart,
+    StartView,
     Toasts,
     Locale,
     LedgerFolder,
@@ -46,8 +47,9 @@ pub enum ReadOnly {
 
 impl SettingField {
     /// Every field, General's, Ledger's then Display's, each in its page's row order.
-    pub const ALL: [SettingField; 14] = [
+    pub const ALL: [SettingField; 15] = [
         Self::OnStart,
+        Self::StartView,
         Self::Toasts,
         Self::Locale,
         Self::LedgerFolder,
@@ -68,6 +70,7 @@ impl SettingField {
     pub fn command_name(self) -> &'static str {
         match self {
             Self::OnStart => "on-start",
+            Self::StartView => "start-view",
             Self::LedgerFolder => "ledger-folder",
             Self::LedgerName => "ledger-name",
             Self::Owner => "owner",
@@ -94,7 +97,7 @@ impl SettingField {
     /// The page the field's row is on.
     pub fn page(self) -> SettingsPage {
         match self {
-            Self::OnStart | Self::Toasts | Self::Locale | Self::LedgerFolder => {
+            Self::OnStart | Self::StartView | Self::Toasts | Self::Locale | Self::LedgerFolder => {
                 SettingsPage::General
             }
             Self::LedgerName | Self::Owner | Self::FinancialYearStart | Self::BaseUnit => {
@@ -125,6 +128,7 @@ impl SettingField {
             Self::Appearance => Some(ConfigKey::ColourAppearance),
             Self::DateStyle => Some(ConfigKey::DateStyle),
             Self::OnStart => Some(ConfigKey::OnStart),
+            Self::StartView => Some(ConfigKey::StartView),
             _ => None,
         }
     }
@@ -133,6 +137,7 @@ impl SettingField {
     pub fn label(self) -> String {
         match self {
             Self::OnStart => msg::tui_settings_general_on_start(),
+            Self::StartView => msg::tui_settings_general_start_view(),
             Self::LedgerFolder => msg::tui_settings_general_ledger_folder(),
             Self::LedgerName => msg::tui_settings_ledger_ledger_name(),
             Self::Owner => msg::tui_settings_ledger_owner(),
@@ -184,6 +189,13 @@ pub fn on_start_label(on_start: OnStart) -> String {
     }
 }
 
+/// The Start view choice `value` names, ignoring case, as the file spells it.
+pub fn start_view_choice(value: &str) -> Option<&'static str> {
+    crate::start_view::CHOICES
+        .into_iter()
+        .find(|choice| choice.eq_ignore_ascii_case(value.trim()))
+}
+
 /// The date style choices, in the order the field cycles through them, by the value
 /// `:set date-style` and the file take ([`lib_config::date_style_key`]). `None` is the Locale's
 /// default (ADR-0021).
@@ -212,6 +224,7 @@ pub struct Configuration {
     pub hint_bar: bool,
     pub date_style: Option<DateStyle>,
     pub on_start: OnStart,
+    pub start_view: StartView,
     /// The source above the file that sets each key, so a write there changes nothing. Read
     /// once at start-up, as the values are.
     pub shadows: Vec<(ConfigKey, Shadow)>,
@@ -233,6 +246,7 @@ impl Configuration {
             hint_bar: config.hint_bar(),
             date_style: config.date_style(),
             on_start: config.on_start(),
+            start_view: config.start_view().clone(),
             shadows: ConfigKey::ALL
                 .into_iter()
                 .filter_map(|key| writer.shadow(key).map(|shadow| (key, shadow)))
@@ -295,6 +309,7 @@ impl Configuration {
             SettingField::OnStart => {
                 lib_config::on_start_from_key(value).map(lib_config::on_start_key)
             }
+            SettingField::StartView => start_view_choice(value),
             _ => None,
         }
     }
@@ -369,6 +384,12 @@ impl SettingsValues {
                 };
                 self.configuration.on_start = *on_start;
             }
+            SettingField::StartView => {
+                let Some(choice) = start_view_choice(value) else {
+                    return false;
+                };
+                self.configuration.start_view = StartView::from_key(choice);
+            }
             SettingField::DateStyle => {
                 let Some((_, style)) = DATE_STYLES
                     .iter()
@@ -414,6 +435,7 @@ impl SettingsValues {
                 .iter()
                 .find(|(_, on_start)| *on_start == self.configuration.on_start)
                 .map(|(name, _)| (*name).to_string())?,
+            SettingField::StartView => self.configuration.start_view.key().to_string(),
             SettingField::DateStyle => DATE_STYLES
                 .iter()
                 .find(|(_, style)| *style == self.configuration.date_style)
@@ -498,6 +520,21 @@ mod tests {
         assert_eq!(values.configuration.on_start, OnStart::NoLedger);
         assert_eq!(values.get(SettingField::OnStart).as_deref(), Some("none"));
         assert!(!values.set(SettingField::OnStart, "sometimes"));
+        assert!(values.set(SettingField::StartView, "Units"));
+        assert_eq!(
+            values.configuration.start_view,
+            StartView::Noun("units".into())
+        );
+        assert_eq!(
+            values.get(SettingField::StartView).as_deref(),
+            Some("units")
+        );
+        assert!(values.set(SettingField::StartView, "last"));
+        assert_eq!(values.configuration.start_view, StartView::Last);
+        assert!(
+            !values.set(SettingField::StartView, "bills"),
+            "a noun the TUI doesn't have"
+        );
         assert_eq!(values.configuration.date_style, None);
         assert!(!values.set(SettingField::Owner, "  "));
         assert!(values.set(SettingField::Owner, "Alex"));
@@ -555,6 +592,9 @@ mod tests {
             (SettingField::DateStyle, "ISO", Some("iso")),
             (SettingField::OnStart, "none", Some("none")),
             (SettingField::OnStart, "sometimes", None),
+            (SettingField::StartView, "Settings", Some("settings")),
+            (SettingField::StartView, "tags", Some("tags")),
+            (SettingField::StartView, "bills", None),
             (SettingField::Owner, "Alex", None),
         ] {
             assert_eq!(
@@ -569,6 +609,9 @@ mod tests {
         }
         for (name, style) in DATE_STYLES {
             assert_eq!(lib_config::date_style_key(style), name);
+        }
+        for name in crate::start_view::CHOICES {
+            assert_eq!(StartView::from_key(name).key(), name);
         }
     }
 }
