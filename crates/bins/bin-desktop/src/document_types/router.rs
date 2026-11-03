@@ -39,7 +39,8 @@ impl DocumentTypesRouter for PageRouter<'_, '_> {
         true
     }
 
-    /// The page closes no Dialog: a Dialog's own Presenter closes it through the host.
+    /// The page closes no Dialog: a Dialog's own Presenter closes it through the host's
+    /// `DialogRouter` (#991 removes this method).
     fn close_dialog(&mut self, _outcome: Option<DocumentTypesOutcome>) {}
 }
 
@@ -59,28 +60,4 @@ pub fn document_types_page(
 ) -> Entity<DocumentTypesPage> {
     use gpui::AppContext as _;
     cx.new(|cx| DocumentTypesPage::new(setup, ledger, cx))
-}
-
-/// What a Document Types Dialog's Presenter asks: closing, and Notices, which go onto the bin's
-/// queue for `Root` to drain once the key or click returns. The page opens Dialogs.
-#[derive(Default)]
-pub(super) struct DialogRouter {
-    /// `Some` once the Presenter closed its Dialog, with what its confirm did.
-    pub closed: Option<Option<DocumentTypesOutcome>>,
-}
-
-impl DocumentTypesRouter for DialogRouter {
-    fn open_dialog(&mut self, _dialog: Which) -> bool {
-        false
-    }
-
-    fn close_dialog(&mut self, outcome: Option<DocumentTypesOutcome>) {
-        self.closed = Some(outcome);
-    }
-}
-
-impl Notify for DialogRouter {
-    fn notify(&mut self, notice: Notice) {
-        Queue.notify(notice);
-    }
 }

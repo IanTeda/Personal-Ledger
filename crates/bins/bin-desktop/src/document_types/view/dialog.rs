@@ -1,11 +1,13 @@
 //! The Document Types Dialogs' Views, each open one an Entity in the Dialog host
 //! (`shell::view::dialog_entity`). [`DocumentTypesDialog`] holds a `lib-documents` Presenter and the
-//! widget state that is gpui's to keep (whether the Remove destination list is open and its
-//! highlight). Every key and click becomes a Presenter event; each View draws the Presenter's view
-//! model and nothing else.
+//! widget state that is gpui's to keep (the Remove destination list's scroll window). Every Dialog
+//! command and typed key reaches the Presenter as a `lib-viper` `DialogInput`, which it reads
+//! itself, and every click becomes a Presenter event; each View draws the Presenter's view model
+//! and nothing else.
 //!
-//! Confirm and Cancel go to the Presenter, which closes its Dialog through its Router; a confirmed
-//! outcome is handed to the page, and the host closes on [`DialogClosed`].
+//! Confirm and Cancel go to the Presenter, which closes its Dialog through the host's
+//! [`HostRouter`]; a confirmed outcome is handed to the page, and the host closes on
+//! [`DialogClosed`].
 
 mod default_notice;
 mod remove_type;
@@ -16,18 +18,15 @@ use lib_documents::presenter::{
     DefaultNoticeEvent, DefaultNoticePresenter, RemoveTypeEvent, RemoveTypePresenter,
     TypeFormEvent, TypeFormPresenter,
 };
-use lib_documents::{
-    DocumentTypesDialog as Which, DocumentTypesOutcome, DocumentTypesRouter, SharedRepository,
-};
+use lib_documents::{DocumentTypesDialog as Which, DocumentTypesOutcome, SharedRepository};
 use lib_shell::{DialogCommand, Hint};
-use lib_toast::{Notice, Notify};
+use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
 
 use crate::document_types::ports;
-use crate::form::select::SelectState;
 use crate::ledger_store::LedgerStore;
-use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostedDialog};
-use crate::shell::view::dialog_host::{DialogKey, DialogOutcome, DialogReadback};
+use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
+use crate::shell::view::dialog_host::DialogReadback;
 
 /// The open Document Types Dialog's clicks.
 type Clicks = DialogClicks<DocumentTypesDialog>;
@@ -46,8 +45,8 @@ pub struct DocumentTypesDialog {
 enum View {
     /// Add or Edit.
     Form(TypeFormPresenter),
-    /// Remove, with the destination select's open state.
-    Remove(RemoveTypePresenter, SelectState),
+    /// Remove, with the top row of the destination list's window.
+    Remove(RemoveTypePresenter, usize),
     /// What Other, the Default, gets in place of Remove.
     Notice(DefaultNoticePresenter),
 }
@@ -77,10 +76,7 @@ impl DocumentTypesDialog {
         let view = match which {
             Which::Add => View::Form(TypeFormPresenter::add(shared)),
             Which::Edit(id) => View::Form(TypeFormPresenter::edit(shared, id)?),
-            Which::Remove(id) => View::Remove(
-                RemoveTypePresenter::new(shared, id)?,
-                SelectState::default(),
-            ),
+            Which::Remove(id) => View::Remove(RemoveTypePresenter::new(shared, id)?, 0),
             Which::DefaultNotice => View::Notice(DefaultNoticePresenter),
         };
         Some(Self {
@@ -91,7 +87,7 @@ impl DocumentTypesDialog {
     }
 
     /// Sends the open Presenter its Confirm or its Cancel, returning what its Router was asked.
-    fn close_event(&mut self, confirm: bool) -> DialogRouter {
+    fn close_event(&mut self, confirm: bool) -> Router {
         match &mut self.view {
             View::Form(presenter) => {
                 let event = if confirm {
@@ -122,8 +118,8 @@ impl DocumentTypesDialog {
 
     /// Hands a confirmed outcome to the page and tells the host, once the Presenter has closed
     /// the Dialog.
-    fn closed(&self, router: DialogRouter, cx: &mut Context<'_, Self>) {
-        let Some(outcome) = router.closed else {
+    fn closed(&self, router: Router, cx: &mut Context<'_, Self>) {
+        let Some(outcome) = router.closed() else {
             return;
         };
         if let Some(outcome) = outcome {
@@ -133,51 +129,48 @@ impl DocumentTypesDialog {
     }
 }
 
-/// Where a Document Types Dialog's Presenter asks to go: closing, and Notices, which go onto the
-/// bin's queue for `Root` to drain once the key or click returns. The page opens Dialogs.
-#[derive(Default)]
-struct DialogRouter {
-    /// `Some` once the Presenter closed its Dialog, with what its confirm did.
-    closed: Option<Option<DocumentTypesOutcome>>,
-}
-
-impl DocumentTypesRouter for DialogRouter {
-    fn open_dialog(&mut self, _dialog: Which) -> bool {
-        false
-    }
-
-    fn close_dialog(&mut self, outcome: Option<DocumentTypesOutcome>) {
-        self.closed = Some(outcome);
-    }
-}
-
-impl Notify for DialogRouter {
-    fn notify(&mut self, notice: Notice) {
-        crate::notices::Queue.notify(notice);
-    }
-}
-
 /// Sends `event` to `presenter`, returning what its Router was asked.
 fn send<P, E>(
     presenter: &mut P,
     event: E,
-    handle: fn(&mut P, E, &mut dyn DocumentTypesRouter),
-) -> DialogRouter {
-    let mut router = DialogRouter::default();
+    handle: fn(&mut P, E, &mut dyn DialogRouter<DocumentTypesOutcome>),
+) -> Router {
+    let mut router = Router::default();
     handle(presenter, event, &mut router);
     router
 }
 
+/// The host's Router, as a Document Types Dialog's Presenter closes through it.
+type Router = HostRouter<DocumentTypesOutcome>;
+
 impl EventEmitter<DialogClosed> for DocumentTypesDialog {}
 
 impl HostedDialog for DocumentTypesDialog {
-    /// Every key is the Dialog's own: the Presenter holds every field.
-    fn key(&mut self, key: DialogKey, _cx: &mut Context<'_, Self>) -> DialogOutcome {
-        match &mut self.view {
-            View::Form(presenter) => type_form::key(presenter, key),
-            View::Remove(presenter, select) => remove_type::key(presenter, select, key),
-            View::Notice(_) => default_notice::key(key),
+    /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) announces
+    /// what it wrote after it.
+    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) -> bool {
+        let router = match &mut self.view {
+            View::Form(presenter) => send(
+                presenter,
+                TypeFormEvent::Input(input),
+                TypeFormPresenter::handle,
+            ),
+            View::Remove(presenter, _) => send(
+                presenter,
+                RemoveTypeEvent::Input(input),
+                RemoveTypePresenter::handle,
+            ),
+            View::Notice(presenter) => send(
+                presenter,
+                DefaultNoticeEvent::Input(input),
+                DefaultNoticePresenter::handle,
+            ),
+        };
+        if matches!(input, DialogInput::Select | DialogInput::Submit) {
+            ports::announce(&self.ledger, cx);
         }
+        self.closed(router, cx);
+        true
     }
 
     fn can_confirm(&self) -> bool {
@@ -204,9 +197,15 @@ impl HostedDialog for DocumentTypesDialog {
 
     fn close_open_select(&mut self) -> bool {
         match &mut self.view {
-            View::Remove(_, select) => {
-                let open = select.is_open();
-                select.cancel();
+            View::Remove(presenter, _) => {
+                let open = presenter.view_model().destination_list.is_open();
+                if open {
+                    send(
+                        presenter,
+                        RemoveTypeEvent::CloseDestinations,
+                        RemoveTypePresenter::handle,
+                    );
+                }
                 open
             }
             View::Form(_) | View::Notice(_) => false,
@@ -257,10 +256,10 @@ impl HostedDialog for DocumentTypesDialog {
 impl Render for DocumentTypesDialog {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let actions = Clicks::new(cx);
-        match &self.view {
+        match &mut self.view {
             View::Form(presenter) => type_form::render(&presenter.view_model(), &actions, cx),
-            View::Remove(presenter, select) => {
-                remove_type::render(&presenter.view_model(), select, &actions, cx)
+            View::Remove(presenter, scroll) => {
+                remove_type::render(&presenter.view_model(), scroll, &actions, cx)
             }
             View::Notice(presenter) => {
                 default_notice::render(&presenter.view_model(), &actions, cx)

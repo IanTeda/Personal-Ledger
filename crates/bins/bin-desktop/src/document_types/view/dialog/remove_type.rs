@@ -1,79 +1,44 @@
 //! The Remove Document type Dialog on the shared `crate::dialog` frame. A type with Filed files
 //! gets the red treatment and a destination dropdown; a type with none, a plain confirm.
 //!
-//! The select takes `Up`/`Down` (stepping the value, or walking an open list) and `Space` (opening
-//! it, or committing the highlight); `Enter` commits an open list, else confirms.
+//! The Presenter reads every Dialog command and typed key itself; the View draws its view model
+//! and turns each click into an event.
 
 use gpui::{AnyElement, App, div, prelude::*, px};
 use lib_documents::presenter::{RemoveTypeEvent, RemoveTypePresenter, RemoveTypeViewModel};
 
 use super::{Clicks, DocumentTypesDialog, View, send};
-use crate::form::select::SelectState;
 use crate::form::select_field::{self, SelectFieldProps};
-use crate::form::viper::{
-    choose_option, chosen_label, enter, labels, select_key, synced, toggle_select,
-};
-use crate::shell::view::dialog_host::{DialogKey, DialogOutcome};
+use crate::form::viper::{chosen_label, drawn, labels};
 use crate::{dialog, theme::color};
 
 fn handle(presenter: &mut RemoveTypePresenter, event: RemoveTypeEvent) {
     send(presenter, event, RemoveTypePresenter::handle);
 }
 
-pub(super) fn key(
-    presenter: &mut RemoveTypePresenter,
-    select: &mut SelectState,
-    key: DialogKey,
-) -> DialogOutcome {
-    let view = presenter.view_model();
-    match key {
-        DialogKey::Tab | DialogKey::BackTab => return DialogOutcome::Handled,
-        DialogKey::Enter | DialogKey::CtrlEnter if !select.is_open() => {
-            return enter(view.frame.can_confirm);
-        }
-        _ => {}
-    }
-    let Some(destination) = &view.destination else {
-        return match key {
-            DialogKey::Char(_) | DialogKey::Backspace | DialogKey::Up | DialogKey::Down => {
-                DialogOutcome::Handled
-            }
-            _ => DialogOutcome::Ignored,
-        };
-    };
-    let (taken, value) = select_key(select, destination, key);
-    if let Some(name) = value {
-        handle(presenter, RemoveTypeEvent::Destination(name));
-    }
-    match key {
-        // A select swallows typing rather than letting it fall through to the Shell.
-        DialogKey::Char(_) | DialogKey::Backspace => DialogOutcome::Handled,
-        _ if taken => DialogOutcome::Handled,
-        _ => DialogOutcome::Ignored,
-    }
-}
-
 /// A click on the destination field opens or closes its list.
 fn click_field(dialog: &mut DocumentTypesDialog) {
-    if let View::Remove(presenter, select) = &mut dialog.view
-        && let Some(destination) = presenter.view_model().destination
-    {
-        toggle_select(select, &destination);
+    if let View::Remove(presenter, _) = &mut dialog.view {
+        handle(presenter, RemoveTypeEvent::ToggleDestinations);
     }
 }
 
+/// A click on row `index` of the open list.
 fn click_option(dialog: &mut DocumentTypesDialog, index: usize) {
-    if let View::Remove(presenter, select) = &mut dialog.view
+    if let View::Remove(presenter, _) = &mut dialog.view
         && let Some(destination) = presenter.view_model().destination
-        && let Some(name) = choose_option(select, &destination, index)
+        && let Some(choice) = destination.options.get(index)
     {
-        handle(presenter, RemoveTypeEvent::Destination(name));
+        handle(
+            presenter,
+            RemoveTypeEvent::Destination(choice.value.clone()),
+        );
     }
 }
 
 pub(super) fn render(
     view: &RemoveTypeViewModel,
-    select: &SelectState,
+    scroll: &mut usize,
     actions: &Clicks,
     cx: &App,
 ) -> AnyElement {
@@ -90,7 +55,7 @@ pub(super) fn render(
                 id: "document-type-destination".into(),
                 label: destination.label.clone().into(),
                 options: &labels(destination),
-                state: &synced(select, destination),
+                state: &drawn(destination, view.destination_list, scroll),
                 focused: true,
                 accent: false,
                 read_only: None,

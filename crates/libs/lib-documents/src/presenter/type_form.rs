@@ -12,12 +12,13 @@
 //! under it.
 
 use lib_core::DocumentTypeId;
+use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView, count};
 
 use super::tracks_label;
 use crate::interactor::{AddDocumentType, EditDocumentType};
 use crate::msg;
-use crate::protocols::{DocumentTypesOutcome, DocumentTypesRouter, SharedRepository, TypeChange};
+use crate::protocols::{DocumentTypesOutcome, SharedRepository, TypeChange};
 use crate::types::{DocumentTypeDraft, DocumentTypeRow, RemindLead, TracksDate, get};
 
 /// Longest Document Type name, in characters (#477).
@@ -73,19 +74,19 @@ pub enum NameError {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeFormEvent {
+    /// A Dialog command or typed key. What it means is the focused field's: `select` and `submit`
+    /// confirm a valid form; `Left`/`Right` step the focused control, stopping at either end;
+    /// `Space` toggles the Financial year chip; typing edits the Name and goes nowhere on a
+    /// control; the field keys move focus, wrapping and skipping Remind while it is disabled.
+    Input(DialogInput),
     /// The Name field's whole new text, as its View's input holds it.
     Name(String),
     /// A click on a Tracks date option.
     TracksDate(Option<TracksDate>),
     /// A click on a Remind option; inert while no date is tracked.
     Remind(Option<RemindLead>),
-    /// The Financial year chip, clicked or pressed.
+    /// A click on the Financial year chip.
     ToggleFinancialYear,
-    /// `Left`/`Right` (-1/1) on the focused control; stops at either end.
-    Step(isize),
-    /// `Tab`/`Shift-Tab`, wrapping, skipping Remind while it is disabled.
-    NextField,
-    PrevField,
     /// A click on a field.
     Focus(DocumentTypeField),
     Confirm,
@@ -179,8 +180,13 @@ impl TypeFormPresenter {
         Some(form)
     }
 
-    pub fn handle(&mut self, event: TypeFormEvent, router: &mut dyn DocumentTypesRouter) {
+    pub fn handle(
+        &mut self,
+        event: TypeFormEvent,
+        router: &mut dyn DialogRouter<DocumentTypesOutcome>,
+    ) {
         match event {
+            TypeFormEvent::Input(input) => self.input(input, router),
             TypeFormEvent::Name(text) => {
                 self.name = text;
                 self.touched = true;
@@ -199,12 +205,34 @@ impl TypeFormPresenter {
                 self.focused = DocumentTypeField::FinancialYear;
                 self.financial_year = !self.financial_year;
             }
-            TypeFormEvent::Step(delta) => self.step_focused(delta),
-            TypeFormEvent::NextField => self.cycle_focus(false),
-            TypeFormEvent::PrevField => self.cycle_focus(true),
             TypeFormEvent::Focus(field) => self.focused = field,
             TypeFormEvent::Confirm => self.confirm(router),
-            TypeFormEvent::Cancel => router.close_dialog(None),
+            TypeFormEvent::Cancel => router.close(None),
+        }
+    }
+
+    /// Reads `input` for the focused field.
+    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<DocumentTypesOutcome>) {
+        let on_name = self.focused == DocumentTypeField::Name;
+        match input {
+            DialogInput::NextField => self.cycle_focus(false),
+            DialogInput::PreviousField => self.cycle_focus(true),
+            DialogInput::Select | DialogInput::Submit => self.confirm(router),
+            DialogInput::Left => self.step_focused(-1),
+            DialogInput::Right => self.step_focused(1),
+            DialogInput::Char(' ') if self.focused == DocumentTypeField::FinancialYear => {
+                self.financial_year = !self.financial_year;
+            }
+            DialogInput::Char(ch) if on_name => {
+                self.name.push(ch);
+                self.touched = true;
+            }
+            DialogInput::Backspace if on_name => {
+                self.name.pop();
+                self.touched = true;
+            }
+            // A control swallows typing, and the arrows step nothing here.
+            _ => {}
         }
     }
 
@@ -356,7 +384,7 @@ impl TypeFormPresenter {
         }
     }
 
-    fn confirm(&mut self, router: &mut dyn DocumentTypesRouter) {
+    fn confirm(&mut self, router: &mut dyn DialogRouter<DocumentTypesOutcome>) {
         if self.name_error().is_some() {
             return;
         }
@@ -373,13 +401,13 @@ impl TypeFormPresenter {
         };
         drop(repository);
         match saved {
-            Ok(id) => router.close_dialog(Some(DocumentTypesOutcome {
+            Ok(id) => router.close(Some(DocumentTypesOutcome {
                 change: TypeChange::Saved,
                 select: Some(id),
             })),
             // The type went while the Dialog was open: nothing was written and nothing is left to
             // edit, so it closes as a cancel does.
-            Err(_unknown) => router.close_dialog(None),
+            Err(_unknown) => router.close(None),
         }
     }
 }
@@ -452,6 +480,10 @@ mod tests {
         fn send(&mut self, event: TypeFormEvent) -> Vec<RouterCall> {
             self.presenter.handle(event, &mut self.router);
             self.router.take()
+        }
+
+        fn press(&mut self, input: DialogInput) -> Vec<RouterCall> {
+            self.send(TypeFormEvent::Input(input))
         }
 
         fn type_name(&mut self, name: &str) {
@@ -548,18 +580,60 @@ mod tests {
     }
 
     #[test]
+    fn typing_edits_the_name_and_goes_nowhere_on_a_control() {
+        let (mut form, _) = Form::add();
+
+        for ch in "Wartyx".chars() {
+            form.press(DialogInput::Char(ch));
+        }
+        form.press(DialogInput::Backspace);
+        form.press(DialogInput::NextField);
+        form.press(DialogInput::Char('z'));
+        form.press(DialogInput::Backspace);
+        form.press(DialogInput::SelectNext);
+
+        let view = form.view();
+        assert_eq!(view.name.text, "Warty");
+        assert_eq!(view.tracks_date.chosen, Some(None));
+    }
+
+    #[test]
+    fn select_and_submit_confirm_only_a_valid_form() {
+        let (mut form, documents) = Form::add();
+        assert_eq!(form.press(DialogInput::Select), [], "a blank name");
+
+        for ch in "Warranty".chars() {
+            form.press(DialogInput::Char(ch));
+        }
+        form.press(DialogInput::NextField);
+        let calls = form.press(DialogInput::Submit);
+
+        assert!(matches!(
+            calls.as_slice(),
+            [RouterCall::CloseDialog(Some(_))]
+        ));
+        assert!(
+            documents
+                .borrow()
+                .types
+                .iter()
+                .any(|row| row.name == "Warranty")
+        );
+    }
+
+    #[test]
     fn tab_skips_remind_while_it_is_disabled() {
         let (mut form, _) = Form::add();
 
-        form.send(TypeFormEvent::NextField);
+        form.press(DialogInput::NextField);
         assert_eq!(form.view().focused, DocumentTypeField::TracksDate);
-        form.send(TypeFormEvent::NextField);
+        form.press(DialogInput::NextField);
         assert_eq!(form.view().focused, DocumentTypeField::FinancialYear);
         form.send(TypeFormEvent::TracksDate(Some(TracksDate::Renews)));
-        form.send(TypeFormEvent::PrevField);
+        form.press(DialogInput::PreviousField);
         assert_eq!(form.view().focused, DocumentTypeField::Name);
-        form.send(TypeFormEvent::NextField);
-        form.send(TypeFormEvent::NextField);
+        form.press(DialogInput::NextField);
+        form.press(DialogInput::NextField);
         assert_eq!(form.view().focused, DocumentTypeField::Remind);
     }
 
@@ -568,10 +642,10 @@ mod tests {
         let (mut form, _) = Form::add();
         form.send(TypeFormEvent::Focus(DocumentTypeField::TracksDate));
 
-        form.send(TypeFormEvent::Step(-1));
+        form.press(DialogInput::Left);
         assert_eq!(form.view().tracks_date.chosen, Some(None));
         for _ in 0..9 {
-            form.send(TypeFormEvent::Step(1));
+            form.press(DialogInput::Right);
         }
         assert_eq!(
             form.view().tracks_date.chosen,
@@ -584,10 +658,12 @@ mod tests {
         let (mut form, _) = Form::add();
         form.send(TypeFormEvent::Focus(DocumentTypeField::FinancialYear));
 
-        form.send(TypeFormEvent::Step(1));
+        form.press(DialogInput::Right);
         assert!(form.view().financial_year);
-        form.send(TypeFormEvent::ToggleFinancialYear);
+        form.press(DialogInput::Char(' '));
         assert!(!form.view().financial_year);
+        form.send(TypeFormEvent::ToggleFinancialYear);
+        assert!(form.view().financial_year);
         assert!(form.view().financial_year_focused);
     }
 

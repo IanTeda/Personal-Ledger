@@ -6,17 +6,26 @@
 //! under it.
 
 use lib_core::DocumentTypeId;
-use lib_viper::view::{Choice, DialogFrame, SelectView};
+use lib_viper::dialog::{DialogInput, DialogRouter};
+use lib_viper::view::{Choice, DialogFrame, SelectList, SelectMove, SelectView};
 
 use crate::interactor::RemoveDocumentType;
 use crate::msg;
-use crate::protocols::{DocumentTypesOutcome, DocumentTypesRouter, SharedRepository, TypeChange};
+use crate::protocols::{DocumentTypesOutcome, SharedRepository, TypeChange};
 use crate::types::{RemoveError, get, position};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RemoveTypeEvent {
-    /// A destination's name, as the select lists it.
+    /// A Dialog command or typed key: `select` commits the destination's open list, else removes,
+    /// and `submit` only removes; `Space` and the arrows open and step the destination; typing
+    /// and the field keys go nowhere.
+    Input(DialogInput),
+    /// A destination's name, as the select lists it, closing the list.
     Destination(String),
+    /// A click on the destination's field: opens or closes its list.
+    ToggleDestinations,
+    /// Closes the destination's open list without picking: the host's `back`.
+    CloseDestinations,
     Confirm,
     Cancel,
 }
@@ -28,6 +37,8 @@ pub struct RemoveTypeViewModel {
     pub message: String,
     /// Where the files move, `None` when there are none to move.
     pub destination: Option<SelectView<String>>,
+    /// The destination's list: open, and its highlight.
+    pub destination_list: SelectList,
     /// The note under the select.
     pub moved_note: Option<String>,
     /// Why the last confirm was refused.
@@ -44,6 +55,7 @@ pub struct RemoveTypePresenter {
     /// Where the files can move: every other type, in order.
     destinations: Vec<String>,
     destination: Option<String>,
+    list: SelectList,
     error: Option<RemoveError>,
 }
 
@@ -70,21 +82,69 @@ impl RemoveTypePresenter {
             files,
             destinations,
             destination,
+            list: SelectList::default(),
             error: None,
         })
     }
 
-    pub fn handle(&mut self, event: RemoveTypeEvent, router: &mut dyn DocumentTypesRouter) {
+    pub fn handle(
+        &mut self,
+        event: RemoveTypeEvent,
+        router: &mut dyn DialogRouter<DocumentTypesOutcome>,
+    ) {
         match event {
+            RemoveTypeEvent::Input(input) => self.input(input, router),
             RemoveTypeEvent::Destination(name) => {
-                if self.destinations.contains(&name) {
-                    self.destination = Some(name);
-                    self.error = None;
+                self.list.close();
+                self.pick(name);
+            }
+            RemoveTypeEvent::ToggleDestinations => {
+                if self.files > 0 {
+                    let options = self.options();
+                    self.list.toggle(&options, self.destination.as_ref());
                 }
             }
+            RemoveTypeEvent::CloseDestinations => {
+                self.list.close();
+            }
             RemoveTypeEvent::Confirm => self.confirm(router),
-            RemoveTypeEvent::Cancel => router.close_dialog(None),
+            RemoveTypeEvent::Cancel => router.close(None),
         }
+    }
+
+    /// Reads `input`: the destination, when the type has files, is the only field.
+    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<DocumentTypesOutcome>) {
+        match input {
+            DialogInput::Submit => self.confirm(router),
+            DialogInput::Select if !self.list.is_open() => self.confirm(router),
+            _ if self.files > 0 => {
+                let options = self.options();
+                if let SelectMove::Chose(name) =
+                    self.list.input(input, &options, self.destination.as_ref())
+                {
+                    self.pick(name);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn pick(&mut self, name: String) {
+        if self.destinations.contains(&name) {
+            self.destination = Some(name);
+            self.error = None;
+        }
+    }
+
+    /// Every other type, as the destination's options.
+    fn options(&self) -> Vec<Choice<String>> {
+        self.destinations
+            .iter()
+            .map(|name| Choice {
+                value: name.clone(),
+                label: name.clone(),
+            })
+            .collect()
     }
 
     pub fn view_model(&self) -> RemoveTypeViewModel {
@@ -109,17 +169,11 @@ impl RemoveTypePresenter {
             },
             destination: has_files.then(|| SelectView {
                 label: msg::documents_types_remove_destination(),
-                options: self
-                    .destinations
-                    .iter()
-                    .map(|name| Choice {
-                        value: name.clone(),
-                        label: name.clone(),
-                    })
-                    .collect(),
+                options: self.options(),
                 chosen: self.destination.clone(),
                 focused: true,
             }),
+            destination_list: self.list,
             moved_note: has_files.then(msg::documents_types_remove_moved_note),
             refusal: self.error.map(|_| msg::documents_types_remove_refused()),
             files: self.files,
@@ -130,7 +184,7 @@ impl RemoveTypePresenter {
         self.files == 0 || self.destination.is_some()
     }
 
-    fn confirm(&mut self, router: &mut dyn DocumentTypesRouter) {
+    fn confirm(&mut self, router: &mut dyn DialogRouter<DocumentTypesOutcome>) {
         if !self.can_confirm() {
             return;
         }
@@ -145,7 +199,7 @@ impl RemoveTypePresenter {
         let after = repository.document_types();
         drop(repository);
         match removed {
-            Ok(()) => router.close_dialog(Some(DocumentTypesOutcome {
+            Ok(()) => router.close(Some(DocumentTypesOutcome {
                 change: TypeChange::Removed,
                 // The type now sitting where the removed one did.
                 select: after
@@ -318,5 +372,56 @@ mod tests {
         let (_, shared) = stub();
 
         assert!(RemoveTypePresenter::new(shared, DocumentTypeId::seed(999)).is_none());
+    }
+
+    #[test]
+    fn the_destination_opens_steps_and_commits_and_select_removes_once_closed() {
+        let (mut presenter, documents) = open(3);
+        let mut router = RecordingRouter::default();
+        let mut press = |presenter: &mut RemoveTypePresenter, input| {
+            presenter.handle(RemoveTypeEvent::Input(input), &mut router);
+            router.take()
+        };
+
+        press(&mut presenter, DialogInput::Char('x'));
+        press(&mut presenter, DialogInput::NextField);
+        press(&mut presenter, DialogInput::Char(' '));
+        assert!(presenter.view_model().destination_list.is_open());
+        press(&mut presenter, DialogInput::SelectPrevious);
+        assert_eq!(
+            press(&mut presenter, DialogInput::Select),
+            [],
+            "commits the highlight"
+        );
+        let view = presenter.view_model();
+        assert!(!view.destination_list.is_open());
+        let chosen = view.destination.and_then(|select| select.chosen);
+        assert_ne!(chosen.as_deref(), Some("Other"));
+
+        let calls = press(&mut presenter, DialogInput::Select);
+        assert!(matches!(
+            calls.as_slice(),
+            [RouterCall::CloseDialog(Some(_))]
+        ));
+        assert_eq!(documents.borrow().types.len(), 8);
+    }
+
+    #[test]
+    fn a_click_toggles_the_destination_list_and_back_closes_it() {
+        let (mut presenter, _) = open(3);
+        let mut router = RecordingRouter::default();
+
+        presenter.handle(RemoveTypeEvent::ToggleDestinations, &mut router);
+        assert!(presenter.view_model().destination_list.is_open());
+        presenter.handle(RemoveTypeEvent::CloseDestinations, &mut router);
+        assert!(!presenter.view_model().destination_list.is_open());
+        presenter.handle(RemoveTypeEvent::ToggleDestinations, &mut router);
+        presenter.handle(RemoveTypeEvent::Destination("Receipts".into()), &mut router);
+        let view = presenter.view_model();
+        assert!(!view.destination_list.is_open());
+        assert_eq!(
+            view.destination.and_then(|select| select.chosen).as_deref(),
+            Some("Receipts")
+        );
     }
 }

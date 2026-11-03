@@ -2,8 +2,9 @@
 //! `crate::dialog` frame. They share one View: Name, Tracks date, Remind and Financial year stacked
 //! with a hint under each.
 //!
-//! The controls take `Left`/`Right` to step, `Space` toggles the Financial year chip, and a control
-//! swallows other typing rather than letting it reach the Shell; typing on Name edits it.
+//! The Presenter reads every Dialog command and typed key itself (`Left`/`Right` step a control,
+//! `Space` toggles the Financial year chip); the View draws its view model and turns each click
+//! into an event.
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use lib_documents::presenter::{
@@ -13,36 +14,11 @@ use lib_viper::view::SelectView;
 
 use super::{Clicks, DocumentTypesDialog, View, send};
 use crate::form::fields::{field_label, segmented_labelled, text_field};
-use crate::form::viper::{chosen_label, enter, typed};
-use crate::shell::view::dialog_host::{DialogKey, DialogOutcome};
+use crate::form::viper::chosen_label;
 use crate::{dialog, theme::color};
 
 fn handle(presenter: &mut TypeFormPresenter, event: TypeFormEvent) {
     send(presenter, event, TypeFormPresenter::handle);
-}
-
-pub(super) fn key(presenter: &mut TypeFormPresenter, key: DialogKey) -> DialogOutcome {
-    let view = presenter.view_model();
-    match (key, view.focused) {
-        (DialogKey::Tab, _) => handle(presenter, TypeFormEvent::NextField),
-        (DialogKey::BackTab, _) => handle(presenter, TypeFormEvent::PrevField),
-        (DialogKey::Enter | DialogKey::CtrlEnter, _) => return enter(view.frame.can_confirm),
-        (DialogKey::Left, _) => handle(presenter, TypeFormEvent::Step(-1)),
-        (DialogKey::Right, _) => handle(presenter, TypeFormEvent::Step(1)),
-        (DialogKey::Up | DialogKey::Down, _) => {}
-        (DialogKey::Char(' '), DocumentTypeField::FinancialYear) => {
-            handle(presenter, TypeFormEvent::ToggleFinancialYear);
-        }
-        (DialogKey::Char(_) | DialogKey::Backspace, DocumentTypeField::Name) => {
-            if let Some(text) = typed(&view.name.text, key) {
-                handle(presenter, TypeFormEvent::Name(text));
-            }
-        }
-        // A control swallows typing rather than letting it fall through to the Shell.
-        (DialogKey::Char(_) | DialogKey::Backspace, _) => {}
-        _ => return DialogOutcome::Ignored,
-    }
-    DialogOutcome::Handled
 }
 
 fn form(dialog: &mut DocumentTypesDialog) -> Option<&mut TypeFormPresenter> {

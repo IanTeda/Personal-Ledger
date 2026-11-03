@@ -9,6 +9,7 @@ use std::{
 
 use lib_core::DocumentTypeId;
 use lib_toast::{Notice, Notify};
+use lib_viper::dialog::DialogRouter;
 
 use crate::protocols::{
     DocumentAccount, DocumentAccounts, DocumentBillPlan, DocumentBillPlans, DocumentFiles,
@@ -171,6 +172,12 @@ impl DocumentTypesRouter for RecordingRouter {
     }
 
     fn close_dialog(&mut self, outcome: Option<DocumentTypesOutcome>) {
+        self.calls.push(RouterCall::CloseDialog(outcome));
+    }
+}
+
+impl DialogRouter<DocumentTypesOutcome> for RecordingRouter {
+    fn close(&mut self, outcome: Option<DocumentTypesOutcome>) {
         self.calls.push(RouterCall::CloseDialog(outcome));
     }
 }

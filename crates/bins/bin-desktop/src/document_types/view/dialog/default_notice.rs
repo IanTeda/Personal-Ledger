@@ -7,17 +7,6 @@ use lib_documents::presenter::DefaultNoticeViewModel;
 
 use super::Clicks;
 use crate::dialog;
-use crate::form::viper::enter;
-use crate::shell::view::dialog_host::{DialogKey, DialogOutcome};
-
-/// `Enter` closes the notice; `Tab` has no field to move to and is swallowed.
-pub(super) fn key(key: DialogKey) -> DialogOutcome {
-    match key {
-        DialogKey::Enter | DialogKey::CtrlEnter => enter(true),
-        DialogKey::Tab | DialogKey::BackTab => DialogOutcome::Handled,
-        _ => DialogOutcome::Ignored,
-    }
-}
 
 pub(super) fn render(view: &DefaultNoticeViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     let card = div()
