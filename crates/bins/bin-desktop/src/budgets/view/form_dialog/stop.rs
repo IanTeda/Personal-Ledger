@@ -5,69 +5,41 @@
 use gpui::{AnyElement, App, div, prelude::*, px};
 use lib_budgets::presenter::{StopEvent, StopPresenter, StopViewModel};
 
-use super::{Clicks, Form, FormDialog};
+use super::{Clicks, Form, FormDialog, Router};
 use crate::dialog;
 use crate::form::colour_field::error_line;
-use crate::form::select::SelectState;
 use crate::form::select_field::{self, SelectFieldProps};
-use crate::form::viper::{choose_option, enter, labels, select_key, synced, toggle_select};
-use crate::shell::view::dialog_host::{DialogKey, DialogOutcome};
-
-use super::super::dialog::DialogRouter;
+use crate::form::viper::{drawn, labels};
 
 /// The dialog's width: the handoff's 9g.
 const WIDTH: gpui::Pixels = px(420.0);
 
-/// `↑`/`↓` (and `j`/`k`) pick the month and `Space` opens or commits its list, as `Enter` does
-/// while it is open (otherwise `Enter` confirms). Nothing takes text.
-pub(super) fn key(
-    presenter: &mut StopPresenter,
-    select: &mut SelectState,
-    key: DialogKey,
-) -> DialogOutcome {
-    let view = presenter.view_model();
-    let key = match key {
-        DialogKey::Char('k') => DialogKey::Up,
-        DialogKey::Char('j') => DialogKey::Down,
-        other => other,
-    };
-    match key {
-        DialogKey::Enter if !select.is_open() => enter(view.frame.can_confirm),
-        DialogKey::Enter | DialogKey::Char(' ') | DialogKey::Up | DialogKey::Down => {
-            let (_, value) = select_key(select, &view.from, key);
-            if let Some(month) = value {
-                presenter.handle(StopEvent::From(month), &mut DialogRouter::default());
-            }
-            DialogOutcome::Handled
-        }
-        _ => DialogOutcome::Ignored,
-    }
-}
-
-fn form(dialog: &mut FormDialog) -> Option<(&mut StopPresenter, &mut SelectState)> {
+/// What each key means is the Presenter's (`lib_budgets::presenter::StopPresenter`); this View
+/// draws the dialog and turns its clicks into Presenter events.
+fn form(dialog: &mut FormDialog) -> Option<&mut StopPresenter> {
     match &mut dialog.view {
-        Form::Stop(presenter, select) => Some((presenter, select)),
+        Form::Stop(presenter, _) => Some(presenter),
         _ => None,
     }
 }
 
 fn click_from(dialog: &mut FormDialog) {
-    if let Some((presenter, select)) = form(dialog) {
-        toggle_select(select, &presenter.view_model().from);
+    if let Some(presenter) = form(dialog) {
+        presenter.handle(StopEvent::ToggleList, &mut Router::default());
     }
 }
 
 fn click_option(dialog: &mut FormDialog, index: usize) {
-    if let Some((presenter, select)) = form(dialog)
-        && let Some(month) = choose_option(select, &presenter.view_model().from, index)
+    if let Some(presenter) = form(dialog)
+        && let Some(choice) = presenter.view_model().from.options.get(index)
     {
-        presenter.handle(StopEvent::From(month), &mut DialogRouter::default());
+        presenter.handle(StopEvent::From(choice.value), &mut Router::default());
     }
 }
 
 pub(super) fn render(
     view: &StopViewModel,
-    select: &SelectState,
+    scroll: &mut usize,
     actions: &Clicks,
     cx: &App,
 ) -> AnyElement {
@@ -78,7 +50,7 @@ pub(super) fn render(
                 id: "budgets-stop-from".into(),
                 label: view.from.label.clone().into(),
                 options: &options,
-                state: &synced(select, &view.from),
+                state: &drawn(&view.from, view.from_list, scroll),
                 focused: true,
                 accent: false,
                 read_only: None,

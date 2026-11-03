@@ -9,11 +9,12 @@ use bigdecimal::{BigDecimal, Signed, ToPrimitive, Zero};
 use lib_core::{BudgetId, CategoryId, CategoryTypes, Clock, Money, Period};
 use lib_list_cursor::Step;
 use lib_locale::format::format_month_day;
+use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::{BACK, Keymap};
 use lib_viper::view::{DialogFrame, Hint, count};
 
 use super::{BarView, EMPTY_CELL, bar_view, money, period_label};
-use crate::protocols::{BudgetsOutcome, BudgetsRouter, SharedPorts};
+use crate::protocols::{BudgetsOutcome, SharedPorts};
 use crate::{CategoryDetail, Rollover, category_detail, msg};
 
 /// The Transactions listed before the `+ N more` row.
@@ -21,6 +22,9 @@ pub const LISTED: usize = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DetailEvent {
+    /// A Dialog keymap command or a typed key: `j`/`k` and the arrows move the cursor, `t` and
+    /// `select` hand off to Transactions and `e` opens Edit budget.
+    Input(DialogInput),
     /// `j`/`k`, a Transaction down or up.
     Down,
     Up,
@@ -137,29 +141,41 @@ impl DetailPresenter {
             })
     }
 
-    pub fn handle(&mut self, event: DetailEvent, router: &mut dyn BudgetsRouter) {
+    pub fn handle(&mut self, event: DetailEvent, router: &mut dyn DialogRouter<BudgetsOutcome>) {
         match event {
+            DetailEvent::Input(input) => match input {
+                DialogInput::SelectNext | DialogInput::Char('j') => {
+                    self.handle(DetailEvent::Down, router);
+                }
+                DialogInput::SelectPrevious | DialogInput::Char('k') => {
+                    self.handle(DetailEvent::Up, router);
+                }
+                DialogInput::Char('t') => self.handle(DetailEvent::Transactions, router),
+                DialogInput::Char('e') => self.handle(DetailEvent::Edit, router),
+                DialogInput::Select | DialogInput::Submit => self.confirm(router),
+                _ => {}
+            },
             DetailEvent::Down => {
                 self.selected = lib_list_cursor::step(self.selected, self.listed(), Step::Next);
             }
             DetailEvent::Up => {
                 self.selected = lib_list_cursor::step(self.selected, self.listed(), Step::Prev);
             }
-            DetailEvent::Transactions => router.close_dialog(Some(BudgetsOutcome::Transactions(
+            DetailEvent::Transactions => router.close(Some(BudgetsOutcome::Transactions(
                 self.category,
                 self.month,
             ))),
             DetailEvent::Edit => {
                 if self.can_edit() {
-                    router.close_dialog(Some(BudgetsOutcome::Limit(self.category, self.month)));
+                    router.close(Some(BudgetsOutcome::Limit(self.category, self.month)));
                 }
             }
-            DetailEvent::Close => router.close_dialog(None),
+            DetailEvent::Close => router.close(None),
         }
     }
 
     /// `enter` hands off to Transactions, as `t` does.
-    pub fn confirm(&mut self, router: &mut dyn BudgetsRouter) {
+    pub fn confirm(&mut self, router: &mut dyn DialogRouter<BudgetsOutcome>) {
         self.handle(DetailEvent::Transactions, router);
     }
 
@@ -429,5 +445,39 @@ mod tests {
     #[test]
     fn it_does_not_open_once_the_category_is_gone() {
         assert!(detail(CategoryId::seed(9999)).is_none());
+    }
+
+    #[test]
+    fn j_k_and_the_arrows_move_the_cursor_and_t_e_select_and_submit_hand_off() {
+        let mut presenter = detail(GROCERIES).expect("budgeted");
+        let mut router = RecordingRouter::default();
+        let send = |presenter: &mut DetailPresenter, router: &mut RecordingRouter, input| {
+            presenter.handle(DetailEvent::Input(input), router);
+        };
+
+        send(&mut presenter, &mut router, DialogInput::SelectNext);
+        send(&mut presenter, &mut router, DialogInput::Char('j'));
+        let down = presenter.view_model().expect("detail").selected;
+        send(&mut presenter, &mut router, DialogInput::Char('k'));
+        send(&mut presenter, &mut router, DialogInput::SelectPrevious);
+        send(&mut presenter, &mut router, DialogInput::Char('x'));
+        send(&mut presenter, &mut router, DialogInput::Backspace);
+        assert!(down >= presenter.view_model().expect("detail").selected);
+        assert!(router.routed.is_empty());
+
+        send(&mut presenter, &mut router, DialogInput::Char('t'));
+        send(&mut presenter, &mut router, DialogInput::Select);
+        send(&mut presenter, &mut router, DialogInput::Submit);
+        send(&mut presenter, &mut router, DialogInput::Char('e'));
+
+        assert_eq!(
+            router.routed,
+            [
+                Routed::Closed(Some(BudgetsOutcome::Transactions(GROCERIES, current()))),
+                Routed::Closed(Some(BudgetsOutcome::Transactions(GROCERIES, current()))),
+                Routed::Closed(Some(BudgetsOutcome::Transactions(GROCERIES, current()))),
+                Routed::Closed(Some(BudgetsOutcome::Limit(GROCERIES, current()))),
+            ]
+        );
     }
 }

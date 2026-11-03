@@ -4,36 +4,20 @@
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use lib_budgets::FillSource;
-use lib_budgets::presenter::{ChangeRow, FillEvent, FillPresenter, FillViewModel, SourceRow};
+use lib_budgets::presenter::{ChangeRow, FillEvent, FillViewModel, SourceRow};
 use lib_locale::format::upper;
 
-use super::{Clicks, Form, FormDialog};
+use super::{Clicks, Form, FormDialog, Router};
 use crate::dialog;
 use crate::form::colour_field::error_line;
-use crate::form::viper::enter;
-use crate::shell::view::dialog_host::{DialogKey, DialogOutcome};
 use crate::theme::color;
-
-use super::super::dialog::DialogRouter;
 
 /// The dialog's width: the handoff's 9f.
 const WIDTH: gpui::Pixels = px(560.0);
 
-/// `j`/`k` pick the source; `enter` fills.
-pub(super) fn key(presenter: &mut FillPresenter, key: DialogKey) -> DialogOutcome {
-    let event = match key {
-        DialogKey::Down | DialogKey::Char('j') => FillEvent::Down,
-        DialogKey::Up | DialogKey::Char('k') => FillEvent::Up,
-        DialogKey::Enter => return enter(presenter.view_model().frame.can_confirm),
-        _ => return DialogOutcome::Ignored,
-    };
-    presenter.handle(event, &mut DialogRouter::default());
-    DialogOutcome::Handled
-}
-
 fn choose(dialog: &mut FormDialog, source: FillSource) {
     if let Form::Fill(presenter) = &mut dialog.view {
-        presenter.handle(FillEvent::Source(source), &mut DialogRouter::default());
+        presenter.handle(FillEvent::Source(source), &mut Router::default());
     }
 }
 

@@ -8,16 +8,20 @@
 
 use lib_core::{BudgetId, Clock, DateStyle};
 use lib_locale::format::format_date;
+use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::{BACK, Keymap, SELECT};
 use lib_viper::view::Hint;
 
 use super::{method_label, money};
-use crate::protocols::{BudgetsOutcome, BudgetsRouter, SharedPorts};
+use crate::protocols::{BudgetsOutcome, SharedPorts};
 use crate::{Budget, health, msg};
 
 /// What the Switcher is told.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SwitcherEvent {
+    /// A Dialog keymap command or a typed key: the list's own letters (`j`/`k`, `/`, `n`), or the
+    /// search's text while it has the keys; `select` and `submit` open the highlighted Budget.
+    Input(DialogInput),
     /// The highlight, a row down or up.
     Down,
     Up,
@@ -127,8 +131,9 @@ impl SwitcherPresenter {
             .collect()
     }
 
-    pub fn handle(&mut self, event: SwitcherEvent, router: &mut dyn BudgetsRouter) {
+    pub fn handle(&mut self, event: SwitcherEvent, router: &mut dyn DialogRouter<BudgetsOutcome>) {
         match event {
+            SwitcherEvent::Input(input) => self.input(input, router),
             SwitcherEvent::Down => {
                 let last = self.matching().len().saturating_sub(1);
                 self.selected = (self.selected + 1).min(last);
@@ -155,16 +160,34 @@ impl SwitcherPresenter {
                 let matching = self.matching();
                 let chosen = matching.get(self.selected.min(matching.len().saturating_sub(1)));
                 if let Some(budget) = chosen {
-                    router.close_dialog(Some(BudgetsOutcome::Show(budget.id)));
+                    router.close(Some(BudgetsOutcome::Show(budget.id)));
                 }
             }
             SwitcherEvent::ChooseBudget(id) => {
-                router.close_dialog(Some(BudgetsOutcome::Show(id)));
+                router.close(Some(BudgetsOutcome::Show(id)));
             }
-            SwitcherEvent::New => router.close_dialog(Some(BudgetsOutcome::NewBudget)),
-            SwitcherEvent::Manage => router.close_dialog(Some(BudgetsOutcome::Manage)),
-            SwitcherEvent::Cancel => router.close_dialog(None),
+            SwitcherEvent::New => router.close(Some(BudgetsOutcome::NewBudget)),
+            SwitcherEvent::Manage => router.close(Some(BudgetsOutcome::Manage)),
+            SwitcherEvent::Cancel => router.close(None),
         }
+    }
+
+    /// What `input` means: the movement keys and the list's letters, or the search's text while it
+    /// has the keys.
+    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<BudgetsOutcome>) {
+        let event = match input {
+            DialogInput::SelectNext => SwitcherEvent::Down,
+            DialogInput::SelectPrevious => SwitcherEvent::Up,
+            DialogInput::Select | DialogInput::Submit => SwitcherEvent::Choose,
+            DialogInput::Backspace if self.searching => SwitcherEvent::Backspace,
+            DialogInput::Char(c) if self.searching => SwitcherEvent::Type(c),
+            DialogInput::Char('j') => SwitcherEvent::Down,
+            DialogInput::Char('k') => SwitcherEvent::Up,
+            DialogInput::Char('/') => SwitcherEvent::Search,
+            DialogInput::Char('n') => SwitcherEvent::New,
+            _ => return,
+        };
+        self.handle(event, router);
     }
 
     /// A Budget's one-line summary: its health this month, or when it was archived.
@@ -318,5 +341,70 @@ mod tests {
                 Routed::Closed(None),
             ]
         );
+    }
+
+    fn input(switcher: &mut SwitcherPresenter, router: &mut RecordingRouter, input: DialogInput) {
+        switcher.handle(SwitcherEvent::Input(input), router);
+    }
+
+    #[test]
+    fn the_arrows_and_j_k_move_the_highlight_and_select_and_submit_open_it() {
+        let (mut switcher, mut router) = switcher();
+        let rows = switcher.view_model().rows;
+
+        input(&mut switcher, &mut router, DialogInput::SelectNext);
+        input(&mut switcher, &mut router, DialogInput::Char('j'));
+        input(&mut switcher, &mut router, DialogInput::Char('k'));
+        input(&mut switcher, &mut router, DialogInput::SelectPrevious);
+        assert_eq!(switcher.view_model().selected, Some(0));
+
+        input(&mut switcher, &mut router, DialogInput::SelectNext);
+        input(&mut switcher, &mut router, DialogInput::Select);
+        input(&mut switcher, &mut router, DialogInput::Submit);
+
+        assert_eq!(
+            router.routed,
+            [
+                Routed::Closed(Some(BudgetsOutcome::Show(rows[1].id))),
+                Routed::Closed(Some(BudgetsOutcome::Show(rows[1].id))),
+            ]
+        );
+    }
+
+    #[test]
+    fn slash_hands_the_keys_to_the_search_and_n_opens_a_new_budget_otherwise() {
+        let (mut switcher, mut router) = switcher();
+        input(&mut switcher, &mut router, DialogInput::Char('/'));
+        assert!(switcher.searching());
+        input(&mut switcher, &mut router, DialogInput::Char('n'));
+        input(&mut switcher, &mut router, DialogInput::Char('j'));
+        assert_eq!(
+            switcher.view_model().search,
+            "nj",
+            "the search takes the letters"
+        );
+        input(&mut switcher, &mut router, DialogInput::Backspace);
+        assert_eq!(switcher.view_model().search, "n");
+        assert!(router.routed.is_empty());
+
+        switcher.handle(SwitcherEvent::LeaveSearch, &mut router);
+        input(&mut switcher, &mut router, DialogInput::Char('n'));
+        assert_eq!(
+            router.routed,
+            [Routed::Closed(Some(BudgetsOutcome::NewBudget))]
+        );
+    }
+
+    #[test]
+    fn typing_and_backspace_do_nothing_while_the_list_has_the_keys() {
+        let (mut switcher, mut router) = switcher();
+        let before = switcher.view_model();
+
+        input(&mut switcher, &mut router, DialogInput::Char('x'));
+        input(&mut switcher, &mut router, DialogInput::Backspace);
+        input(&mut switcher, &mut router, DialogInput::NextField);
+
+        assert_eq!(switcher.view_model(), before);
+        assert!(router.routed.is_empty());
     }
 }

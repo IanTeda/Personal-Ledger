@@ -11,6 +11,7 @@ use std::rc::Rc;
 use chrono::NaiveDate;
 use lib_core::{AccountId, BudgetId, CategoryId, CategoryTypes, PayeeId, Period, UnitId};
 use lib_toast::{Notice, Notify};
+use lib_viper::dialog::DialogRouter;
 
 use crate::protocols::{
     BudgetAccount, BudgetAccounts, BudgetBill, BudgetBillPlan, BudgetBills, BudgetCategories,
@@ -258,6 +259,13 @@ impl BudgetsRouter for RecordingRouter {
     }
 
     fn close_dialog(&mut self, outcome: Option<BudgetsOutcome>) {
+        self.routed.push(Routed::Closed(outcome));
+    }
+}
+
+/// A Dialog's close records as the page Router's does, so one recording reads either.
+impl DialogRouter<BudgetsOutcome> for RecordingRouter {
+    fn close(&mut self, outcome: Option<BudgetsOutcome>) {
         self.routed.push(Routed::Closed(outcome));
     }
 }

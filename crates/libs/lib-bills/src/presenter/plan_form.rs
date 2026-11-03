@@ -10,16 +10,23 @@
 //!   Each field's problem shows under it, and Save waits until there are none. A refusal from the
 //!   Interactor shows under the fields until the form changes.
 //!
+//! It takes the Dialog keymap's commands and typed keys as [`DialogInput`]s and decides what each
+//! means on the focused field. On a select, `select` and `Space` open its list or pick from it and
+//! `↑`/`↓` step it or move its highlight; on Fixed/Estimated, `Space`, `←` and `→` flip it; on
+//! Active `Space` flips it; on a text field typing types. `select` anywhere else confirms a valid
+//! form, and `submit` confirms from any field. Leaving a select commits its list's highlight.
+//!
 //! The choices are read when the Dialog opens, as it is modal and nothing changes them under it.
 
 use chrono::NaiveDate;
 use lib_core::{AccountId, BillPlanId, CategoryId, Clock, DateStyle, Money, PayeeId, UnitId};
 use lib_locale::format::{format_date_input, parse_optional_date, parse_positive_amount};
-use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView};
+use lib_viper::dialog::{DialogInput, DialogRouter};
+use lib_viper::view::{Choice, DialogFrame, SelectList, SelectMove, SelectView, TextFieldView};
 
 use super::{cycle, recurrence_label};
 use crate::interactor::{AddBillPlan, EditBillPlan};
-use crate::protocols::{BillsOutcome, BillsRouter, SharedPorts};
+use crate::protocols::{BillsOutcome, SharedPorts};
 use crate::{AmountKind, BillPlanDraft, Error, Recurrence, msg};
 
 /// The form's fields, in `Tab` order.
@@ -59,6 +66,8 @@ impl PlanField {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PlanFormEvent {
+    /// A Dialog keymap command or a typed key, meaning what the focused field makes it.
+    Input(DialogInput),
     /// A text field's whole new text, as its View's input holds it. The amount keeps only a
     /// decimal's characters and the lead only digits.
     Name(String),
@@ -74,14 +83,13 @@ pub enum PlanFormEvent {
     Recurrence(Recurrence),
     /// A click on a Fixed/Estimated segment, which focuses it.
     AmountKind(AmountKind),
-    /// `Space`, `←` or `→` on Fixed/Estimated.
-    ToggleAmountKind,
-    /// `Space` on Active, or a click on it, which focuses it.
+    /// A click on Active, which focuses it.
     ToggleActive,
-    /// `Tab`/`Shift-Tab`, skipping hidden fields and wrapping.
-    NextField,
-    PrevField,
-    /// A click on a field. A hidden field can't take focus.
+    /// A click on a select's field: focuses it and opens or closes its list.
+    ToggleList(PlanField),
+    /// Closes an open list without picking: the host's `back`.
+    CloseList,
+    /// A click on a field. A hidden field can't take focus, and an open list closes.
     Focus(PlanField),
     Confirm,
     Cancel,
@@ -116,6 +124,8 @@ pub struct PlanFormViewModel {
     pub active: Option<ActiveView>,
     /// The fields on screen, in `Tab` order.
     pub fields: Vec<PlanField>,
+    /// The focused select's list: open, and its highlight.
+    pub list: SelectList,
     /// Why the last confirm was refused.
     pub refusal: Option<String>,
 }
@@ -157,6 +167,8 @@ pub struct PlanFormPresenter {
     lead: String,
     is_active: bool,
     focused: PlanField,
+    /// The focused select's list; it closes whenever focus leaves.
+    list: SelectList,
     refusal: Option<String>,
 }
 
@@ -186,6 +198,7 @@ impl PlanFormPresenter {
             lead: String::new(),
             is_active: true,
             focused: PlanField::Name,
+            list: SelectList::default(),
             refusal: None,
         };
         form.keep_account_in_unit();
@@ -235,6 +248,7 @@ impl PlanFormPresenter {
                 .unwrap_or_default(),
             is_active: plan.is_active,
             focused: PlanField::Name,
+            list: SelectList::default(),
             refusal: None,
         })
     }
@@ -300,11 +314,12 @@ impl PlanFormPresenter {
         }
     }
 
-    pub fn handle(&mut self, event: PlanFormEvent, router: &mut dyn BillsRouter) {
+    pub fn handle(&mut self, event: PlanFormEvent, router: &mut dyn DialogRouter<BillsOutcome>) {
         if event != PlanFormEvent::Confirm {
             self.refusal = None;
         }
         match event {
+            PlanFormEvent::Input(input) => self.input(input, router),
             PlanFormEvent::Name(text) => self.name = text,
             PlanFormEvent::Amount(text) => self.amount = decimal_characters(&text),
             PlanFormEvent::FirstDue(text) => self.first_due = text,
@@ -313,61 +328,246 @@ impl PlanFormPresenter {
                 self.lead = text.chars().filter(char::is_ascii_digit).collect();
             }
             PlanFormEvent::Category(id) => {
-                if self.choices.categories.iter().any(|c| c.value == id) {
-                    self.category = Some(id);
-                }
+                self.list.close();
+                self.set_category(id);
             }
             PlanFormEvent::Unit(id) => {
-                if self.editing.is_none() && self.choices.units.iter().any(|c| c.value == id) {
-                    self.unit = Some(id);
-                    self.keep_account_in_unit();
-                }
+                self.list.close();
+                self.set_unit(id);
             }
             PlanFormEvent::Account(id) => {
-                if self.accounts_in_unit().any(|c| c.value == id) {
-                    self.account = Some(id);
-                }
+                self.list.close();
+                self.set_account(id);
             }
             PlanFormEvent::Payee(id) => {
-                if self.choices.payees.iter().any(|c| c.value == id) {
-                    self.payee = id;
-                }
+                self.list.close();
+                self.set_payee(id);
             }
             PlanFormEvent::Recurrence(recurrence) => {
-                self.recurrence = recurrence;
-                if !self.shows(self.focused) {
-                    self.focused = PlanField::Recurrence;
-                }
+                self.list.close();
+                self.set_recurrence(recurrence);
             }
             PlanFormEvent::AmountKind(kind) => {
                 self.focused = PlanField::AmountKind;
                 self.amount_kind = kind;
             }
-            PlanFormEvent::ToggleAmountKind => {
-                self.amount_kind = match self.amount_kind {
-                    AmountKind::Fixed => AmountKind::Estimated,
-                    AmountKind::Estimated => AmountKind::Fixed,
-                };
-            }
-            PlanFormEvent::ToggleActive => {
-                if self.editing.is_some() {
-                    self.focused = PlanField::Active;
-                    self.is_active = !self.is_active;
+            PlanFormEvent::ToggleActive => self.toggle_active(),
+            PlanFormEvent::ToggleList(field) => {
+                if self.is_select(field) {
+                    // Only the clicked select's list opens; a second click closes it.
+                    if self.focused == field && self.list.is_open() {
+                        self.list.close();
+                    } else {
+                        self.focus(field);
+                        self.toggle_list();
+                    }
                 }
             }
-            PlanFormEvent::NextField | PlanFormEvent::PrevField => {
-                let backward = event == PlanFormEvent::PrevField;
-                self.focused = cycle(&PlanField::ORDER, self.focused, backward, |field| {
-                    self.shows(field)
-                });
+            PlanFormEvent::CloseList => {
+                self.list.close();
             }
             PlanFormEvent::Focus(field) => {
+                self.list.close();
                 if self.shows(field) {
                     self.focused = field;
                 }
             }
             PlanFormEvent::Confirm => self.confirm(router),
-            PlanFormEvent::Cancel => router.close_dialog(None),
+            PlanFormEvent::Cancel => router.close(None),
+        }
+    }
+
+    /// What `input` means on the focused field.
+    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<BillsOutcome>) {
+        match (input, self.focused) {
+            (DialogInput::NextField, _) => self.move_focus(false),
+            (DialogInput::PreviousField, _) => self.move_focus(true),
+            (DialogInput::Submit, _) => self.confirm(router),
+            (_, field) if self.is_select(field) => self.list_input(input),
+            (
+                DialogInput::Left | DialogInput::Right | DialogInput::Char(' '),
+                PlanField::AmountKind,
+            ) => {
+                self.amount_kind = match self.amount_kind {
+                    AmountKind::Fixed => AmountKind::Estimated,
+                    AmountKind::Estimated => AmountKind::Fixed,
+                };
+            }
+            (DialogInput::Char(' '), PlanField::Active) => self.toggle_active(),
+            (DialogInput::Select, _) => self.confirm(router),
+            (DialogInput::Char(ch), field) => {
+                if let Some(text) = self.text_mut(field) {
+                    text.push(ch);
+                    self.filter(field);
+                }
+            }
+            (DialogInput::Backspace, field) => {
+                if let Some(text) = self.text_mut(field) {
+                    text.pop();
+                }
+            }
+            (
+                DialogInput::SelectNext
+                | DialogInput::SelectPrevious
+                | DialogInput::Left
+                | DialogInput::Right,
+                _,
+            ) => {}
+        }
+    }
+
+    /// Moves focus to the next (or, `backward`, previous) field shown, wrapping. Leaving a select
+    /// commits an open list's highlight, as a click elsewhere would.
+    fn move_focus(&mut self, backward: bool) {
+        self.commit_list();
+        self.focused = cycle(&PlanField::ORDER, self.focused, backward, |field| {
+            self.shows(field)
+        });
+    }
+
+    /// Focuses `field` if it is shown, closing an open list on another select.
+    fn focus(&mut self, field: PlanField) {
+        if self.focused != field {
+            self.list.close();
+        }
+        if self.shows(field) {
+            self.focused = field;
+        }
+    }
+
+    /// Whether `field` is a select that takes list input: the Unit's is locked on Edit.
+    fn is_select(&self, field: PlanField) -> bool {
+        match field {
+            PlanField::Category | PlanField::Account | PlanField::Payee | PlanField::Recurrence => {
+                true
+            }
+            PlanField::Unit => self.editing.is_none(),
+            _ => false,
+        }
+    }
+
+    /// The text `field` types into, `None` for a select or a toggle.
+    fn text_mut(&mut self, field: PlanField) -> Option<&mut String> {
+        match field {
+            PlanField::Name => Some(&mut self.name),
+            PlanField::Amount => Some(&mut self.amount),
+            PlanField::FirstDue => Some(&mut self.first_due),
+            PlanField::EndsOn if self.shows(PlanField::EndsOn) => Some(&mut self.ends_on),
+            PlanField::AttentionLead => Some(&mut self.lead),
+            _ => None,
+        }
+    }
+
+    /// Keeps only the characters `field` takes after a typed one: the amount a decimal's, the lead
+    /// digits.
+    fn filter(&mut self, field: PlanField) {
+        match field {
+            PlanField::Amount => self.amount = decimal_characters(&self.amount),
+            PlanField::AttentionLead => self.lead.retain(|ch| ch.is_ascii_digit()),
+            _ => {}
+        }
+    }
+
+    /// Opens the focused select's list, or closes it when open.
+    fn toggle_list(&mut self) {
+        if self.list.is_open() {
+            self.list.close();
+        } else {
+            self.list_input(DialogInput::Select);
+        }
+    }
+
+    /// Commits an open list's highlight and closes it.
+    fn commit_list(&mut self) {
+        if self.list.is_open() {
+            self.list_input(DialogInput::Select);
+        }
+        self.list.close();
+    }
+
+    /// `input` on the focused select's list, applying a value it picks.
+    fn list_input(&mut self, input: DialogInput) {
+        match self.focused {
+            PlanField::Category => {
+                let moved =
+                    self.list
+                        .input(input, &self.choices.categories, self.category.as_ref());
+                if let SelectMove::Chose(id) = moved {
+                    self.set_category(id);
+                }
+            }
+            PlanField::Unit => {
+                let moved = self
+                    .list
+                    .input(input, &self.choices.units, self.unit.as_ref());
+                if let SelectMove::Chose(id) = moved {
+                    self.set_unit(id);
+                }
+            }
+            PlanField::Account => {
+                let accounts: Vec<Choice<AccountId>> = self.accounts_in_unit().cloned().collect();
+                let moved = self.list.input(input, &accounts, self.account.as_ref());
+                if let SelectMove::Chose(id) = moved {
+                    self.set_account(id);
+                }
+            }
+            PlanField::Payee => {
+                let moved = self
+                    .list
+                    .input(input, &self.choices.payees, Some(&self.payee));
+                if let SelectMove::Chose(id) = moved {
+                    self.set_payee(id);
+                }
+            }
+            PlanField::Recurrence => {
+                let options = recurrence_choices();
+                let moved = self.list.input(input, &options, Some(&self.recurrence));
+                if let SelectMove::Chose(recurrence) = moved {
+                    self.set_recurrence(recurrence);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn set_category(&mut self, id: CategoryId) {
+        if self.choices.categories.iter().any(|c| c.value == id) {
+            self.category = Some(id);
+        }
+    }
+
+    fn set_unit(&mut self, id: UnitId) {
+        if self.editing.is_none() && self.choices.units.iter().any(|c| c.value == id) {
+            self.unit = Some(id);
+            self.keep_account_in_unit();
+        }
+    }
+
+    fn set_account(&mut self, id: AccountId) {
+        if self.accounts_in_unit().any(|c| c.value == id) {
+            self.account = Some(id);
+        }
+    }
+
+    fn set_payee(&mut self, id: Option<PayeeId>) {
+        if self.choices.payees.iter().any(|c| c.value == id) {
+            self.payee = id;
+        }
+    }
+
+    fn set_recurrence(&mut self, recurrence: Recurrence) {
+        self.recurrence = recurrence;
+        if !self.shows(self.focused) {
+            self.focused = PlanField::Recurrence;
+        }
+    }
+
+    /// Flips Active, which Edit alone has, and focuses it.
+    fn toggle_active(&mut self) {
+        if self.editing.is_some() {
+            self.list.close();
+            self.focused = PlanField::Active;
+            self.is_active = !self.is_active;
         }
     }
 
@@ -463,7 +663,7 @@ impl PlanFormPresenter {
         })
     }
 
-    fn confirm(&mut self, router: &mut dyn BillsRouter) {
+    fn confirm(&mut self, router: &mut dyn DialogRouter<BillsOutcome>) {
         let Some(draft) = self.draft() else {
             return;
         };
@@ -487,7 +687,7 @@ impl PlanFormPresenter {
             }
         };
         match saved {
-            Ok(id) => router.close_dialog(Some(BillsOutcome::PlanSaved(id))),
+            Ok(id) => router.close(Some(BillsOutcome::PlanSaved(id))),
             Err(refusal) => self.refusal = Some(refusal_text(&refusal)),
         }
     }
@@ -580,13 +780,7 @@ impl PlanFormPresenter {
             ),
             recurrence: select_view(
                 msg::bills_plan_field_recurrence(),
-                Recurrence::ALL
-                    .into_iter()
-                    .map(|value| Choice {
-                        value,
-                        label: recurrence_label(value),
-                    })
-                    .collect(),
+                recurrence_choices(),
                 Some(self.recurrence),
                 select(PlanField::Recurrence),
             ),
@@ -623,9 +817,21 @@ impl PlanFormPresenter {
                 .into_iter()
                 .filter(|field| self.shows(*field))
                 .collect(),
+            list: self.list,
             refusal: self.refusal.clone(),
         }
     }
+}
+
+/// The Recurrences the select offers, in the order `Recurrence::ALL` lists them.
+fn recurrence_choices() -> Vec<Choice<Recurrence>> {
+    Recurrence::ALL
+        .into_iter()
+        .map(|value| Choice {
+            value,
+            label: recurrence_label(value),
+        })
+        .collect()
 }
 
 fn select_view<T>(
@@ -698,6 +904,21 @@ mod tests {
     use crate::fake::{InMemoryPorts, RecordingRouter, Routed};
     use crate::presenter::test_support::{stub, today};
 
+    const TAB: PlanFormEvent = PlanFormEvent::Input(DialogInput::NextField);
+    const SHIFT_TAB: PlanFormEvent = PlanFormEvent::Input(DialogInput::PreviousField);
+    const SELECT: PlanFormEvent = PlanFormEvent::Input(DialogInput::Select);
+    const SUBMIT: PlanFormEvent = PlanFormEvent::Input(DialogInput::Submit);
+    const DOWN: PlanFormEvent = PlanFormEvent::Input(DialogInput::SelectNext);
+    const UP: PlanFormEvent = PlanFormEvent::Input(DialogInput::SelectPrevious);
+    const SPACE: PlanFormEvent = PlanFormEvent::Input(DialogInput::Char(' '));
+    const BACKSPACE: PlanFormEvent = PlanFormEvent::Input(DialogInput::Backspace);
+
+    fn typing(text: &str) -> Vec<PlanFormEvent> {
+        text.chars()
+            .map(|ch| PlanFormEvent::Input(DialogInput::Char(ch)))
+            .collect()
+    }
+
     struct Form {
         ports: Rc<RefCell<InMemoryPorts>>,
         presenter: PlanFormPresenter,
@@ -734,6 +955,12 @@ mod tests {
 
         fn send(&mut self, event: PlanFormEvent) {
             self.presenter.handle(event, &mut self.router);
+        }
+
+        fn send_all(&mut self, events: impl IntoIterator<Item = PlanFormEvent>) {
+            for event in events {
+                self.send(event);
+            }
         }
 
         fn view(&self) -> PlanFormViewModel {
@@ -845,9 +1072,9 @@ mod tests {
         assert!(!view.fields.contains(&PlanField::EndsOn));
         assert!(view.recurrence.focused, "focus leaves the hidden field");
         form.send(PlanFormEvent::Focus(PlanField::FirstDue));
-        form.send(PlanFormEvent::NextField);
+        form.send(TAB);
         assert!(form.view().lead.focused);
-        form.send(PlanFormEvent::NextField);
+        form.send(TAB);
         assert!(form.view().name.focused, "Active is Edit only");
     }
 
@@ -938,5 +1165,201 @@ mod tests {
 
         assert_eq!(form.router.routed, [Routed::Closed(None)]);
         assert_eq!(form.ports.borrow().bills, before);
+    }
+
+    #[test]
+    fn tab_and_shift_tab_move_focus_skipping_hidden_fields_and_wrapping() {
+        let mut form = Form::add();
+        form.send(SHIFT_TAB);
+        assert!(
+            form.view().lead.focused,
+            "Active is Edit only, so back wraps to the lead"
+        );
+        form.send(TAB);
+        assert!(form.view().name.focused);
+        form.send(TAB);
+        assert!(form.view().category.focused);
+
+        let mut edit = Form::edit("Telstra Internet");
+        edit.send(SHIFT_TAB);
+        assert!(edit.view().active.is_some_and(|active| active.focused));
+    }
+
+    #[test]
+    fn typing_fills_the_focused_text_field_and_backspace_takes_a_character_back() {
+        let mut form = Form::add();
+        form.send_all(typing("Water"));
+        form.send(BACKSPACE);
+        assert_eq!(form.view().name.text, "Wate");
+
+        form.send_all([TAB, TAB, TAB, TAB, TAB]);
+        assert!(form.view().amount.focused);
+        form.send_all(typing("1a2.3.4-"));
+        assert_eq!(
+            form.view().amount.text,
+            "12.34",
+            "only a decimal's characters"
+        );
+
+        form.send(SHIFT_TAB);
+        form.send(SHIFT_TAB);
+        assert!(form.view().account.focused);
+        form.send_all(typing("zz"));
+        assert!(
+            form.view().account.chosen.is_some(),
+            "a select takes no text"
+        );
+        assert_eq!(form.view().name.text, "Wate");
+    }
+
+    #[test]
+    fn select_opens_a_list_the_arrows_move_and_select_picks() {
+        let mut form = Form::add();
+        form.send(TAB);
+        assert!(form.view().category.focused);
+        let first = form.view().category.chosen;
+        let options = form.view().category.options.clone();
+        assert!(options.len() > 2, "the stub has several expense leaves");
+
+        form.send(SELECT);
+        assert_eq!(form.view().list.highlight(), Some(0));
+        form.send(DOWN);
+        assert_eq!(form.view().list.highlight(), Some(1));
+        assert_eq!(form.view().category.chosen, first, "moving only highlights");
+        form.send(SELECT);
+        assert!(!form.view().list.is_open());
+        assert_eq!(form.view().category.chosen, Some(options[1].value));
+        assert!(form.router.routed.is_empty(), "picking is not confirming");
+    }
+
+    #[test]
+    fn the_arrows_step_a_closed_select_and_space_opens_it() {
+        let mut form = Form::add();
+        form.send(TAB);
+        let options = form.view().category.options.clone();
+
+        form.send(UP);
+        assert_eq!(
+            form.view().category.chosen,
+            options.last().map(|c| c.value),
+            "up from the first wraps to the last"
+        );
+        form.send(SPACE);
+        assert!(form.view().list.is_open());
+    }
+
+    #[test]
+    fn tab_commits_an_open_lists_highlight_and_moves_on() {
+        let mut form = Form::add();
+        form.send_all([TAB, SELECT, DOWN]);
+        let target = form.view().category.options[1].value;
+
+        form.send(TAB);
+
+        let view = form.view();
+        assert_eq!(view.category.chosen, Some(target));
+        assert!(!view.list.is_open());
+        assert!(view.unit.focused);
+    }
+
+    #[test]
+    fn close_list_leaves_the_highlight_unchosen() {
+        let mut form = Form::add();
+        form.send_all([TAB, SELECT, DOWN]);
+        let chosen = form.view().category.chosen;
+
+        form.send(PlanFormEvent::CloseList);
+
+        assert!(!form.view().list.is_open());
+        assert_eq!(form.view().category.chosen, chosen);
+    }
+
+    #[test]
+    fn space_left_and_right_flip_fixed_and_estimated() {
+        let mut form = Form::add();
+        form.send(PlanFormEvent::Focus(PlanField::AmountKind));
+        form.send(SPACE);
+        assert_eq!(form.view().amount_kind.chosen, Some(AmountKind::Estimated));
+        form.send(PlanFormEvent::Input(DialogInput::Left));
+        assert_eq!(form.view().amount_kind.chosen, Some(AmountKind::Fixed));
+        form.send(PlanFormEvent::Input(DialogInput::Right));
+        assert_eq!(form.view().amount_kind.chosen, Some(AmountKind::Estimated));
+    }
+
+    #[test]
+    fn space_flips_active_on_edit() {
+        let mut form = Form::edit("Telstra Internet");
+        form.send(SHIFT_TAB);
+        let before = form.view().active.expect("Edit has Active").checked;
+
+        form.send(SPACE);
+
+        assert_eq!(
+            form.view().active.map(|active| active.checked),
+            Some(!before)
+        );
+    }
+
+    #[test]
+    fn select_on_a_text_field_confirms_only_a_valid_form_and_submit_confirms_from_a_select() {
+        let mut form = Form::add();
+        form.send(SELECT);
+        assert!(form.router.routed.is_empty(), "no name or amount yet");
+
+        form.send_all(typing("Water"));
+        form.send(PlanFormEvent::Amount("90".into()));
+        form.send(TAB);
+        form.send(SUBMIT);
+
+        assert!(
+            matches!(
+                form.router.routed.as_slice(),
+                [Routed::Closed(Some(BillsOutcome::PlanSaved(_)))]
+            ),
+            "{:?}",
+            form.router.routed
+        );
+    }
+
+    #[test]
+    fn select_on_a_valid_text_field_confirms() {
+        let mut form = Form::add();
+        form.send(PlanFormEvent::Name("Water".into()));
+        form.send(PlanFormEvent::Amount("90".into()));
+
+        form.send(SELECT);
+
+        assert!(matches!(
+            form.router.routed.as_slice(),
+            [Routed::Closed(Some(BillsOutcome::PlanSaved(_)))]
+        ));
+    }
+
+    #[test]
+    fn a_click_toggles_one_selects_list_and_a_second_click_closes_it() {
+        let mut form = Form::add();
+        form.send(PlanFormEvent::ToggleList(PlanField::Payee));
+        assert!(form.view().payee.focused);
+        assert!(form.view().list.is_open());
+
+        form.send(PlanFormEvent::ToggleList(PlanField::Recurrence));
+        assert!(form.view().recurrence.focused);
+        assert!(
+            form.view().list.is_open(),
+            "the other list opened in its place"
+        );
+
+        form.send(PlanFormEvent::ToggleList(PlanField::Recurrence));
+        assert!(!form.view().list.is_open());
+
+        form.send(PlanFormEvent::ToggleList(PlanField::Name));
+        assert!(form.view().recurrence.focused, "a text field has no list");
+    }
+
+    #[test]
+    fn a_locked_unit_takes_no_list() {
+        let mut form = Form::edit("Telstra Internet");
+        form.send(PlanFormEvent::ToggleList(PlanField::Unit));
+        assert!(!form.view().list.is_open());
     }
 }

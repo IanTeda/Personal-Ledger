@@ -6,13 +6,10 @@
 //! The body scrolls past [`BODY_MAX_HEIGHT`], so the switch and the buttons stay on screen however
 //! many candidates the Match list holds, and `j`/`k` scroll the chosen row into view.
 //!
-//! Keys: `←`/`→` switch panel. On Match `j`/`k` (and `select_next`/`select_previous`) choose a
-//! row, and `select` on "None of these" switches to Pay it directly instead of confirming. On Pay
-//! it directly typing edits the focused field and `next_field` moves to the other. `select`
-//! confirms once the panel would.
-//!
-//! Confirm and Cancel go to the Presenter, which closes the Dialog through its Router; a confirmed
-//! outcome is handed to the page, and the host closes on [`DialogClosed`].
+//! What each key means is the Presenter's (`lib_bill_payments::presenter::PayPresenter`): every
+//! Dialog command and typed key reaches it as a `lib-viper` `DialogInput`. It closes the Dialog
+//! through the host's [`HostRouter`]; a confirmed outcome is handed to the page, and the host
+//! closes on [`DialogClosed`].
 
 use gpui::{
     AnyElement, App, Context, Entity, EventEmitter, Render, ScrollHandle, SharedString, Window,
@@ -23,18 +20,17 @@ use lib_bill_payments::presenter::{
     MatchChoice, PayEvent, PayField, PayMode, PayPresenter, PayViewModel,
 };
 
-use crate::bill_payments::router::DialogRouter;
 use crate::bills::DesktopPorts;
 use crate::bills::ports::copy_reads;
 use crate::dialog;
 use crate::form::dialog_fields::{label, text_field, two_up};
-use crate::form::viper::typed;
 use crate::ledger_store::LedgerStore;
-use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostedDialog};
-use crate::shell::view::dialog_host::{DialogKey, DialogOutcome, DialogReadback};
+use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
+use crate::shell::view::dialog_host::DialogReadback;
 use crate::theme::color;
 use lib_shell::DialogCommand;
 use lib_shell::Hint;
+use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{BACK, Keymap, SELECT};
 
 /// The Dialog's width: 8d's.
@@ -81,8 +77,8 @@ impl PayDialog {
     }
 
     /// Sends `event` to the Presenter, returning what its Router was asked.
-    fn send(&mut self, event: PayEvent) -> DialogRouter {
-        let mut router = DialogRouter::default();
+    fn send(&mut self, event: PayEvent) -> Router {
+        let mut router = Router::default();
         self.presenter.handle(event, &mut router);
         router
     }
@@ -96,8 +92,8 @@ impl PayDialog {
 
     /// Hands a landed payment to the page and tells the host, once the Presenter has closed the
     /// Dialog.
-    fn closed(&self, router: DialogRouter, cx: &mut Context<'_, Self>) {
-        let Some(outcome) = router.closed else {
+    fn closed(&self, router: Router, cx: &mut Context<'_, Self>) {
+        let Some(outcome) = router.closed() else {
             return;
         };
         if let Some(outcome) = outcome {
@@ -107,44 +103,37 @@ impl PayDialog {
     }
 }
 
+/// The host's Router, as the Pay Dialog's Presenter closes through it.
+type Router = HostRouter<PayOutcome>;
+
 impl EventEmitter<DialogClosed> for PayDialog {}
 
 impl HostedDialog for PayDialog {
-    /// Every key is the Dialog's own: the Presenter holds every field.
-    fn key(&mut self, key: DialogKey, _cx: &mut Context<'_, Self>) -> DialogOutcome {
+    /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) runs with
+    /// the Ledger read copy in line before it, and one that wrote something, after it. A step down
+    /// the Match list scrolls the chosen row into view.
+    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) -> bool {
+        let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
+        if may_confirm {
+            copy_reads(&self.ports, self.ledger.read(cx).ledger());
+        }
+        let router = self.send(PayEvent::Input(input));
+        if may_confirm {
+            crate::bill_payments::refresh(&self.ports, &self.ledger, cx);
+        }
+        let steps = matches!(
+            input,
+            DialogInput::SelectNext | DialogInput::SelectPrevious | DialogInput::Char('j' | 'k')
+        );
         let view = self.view();
-        let event = match (view.mode, key) {
-            (_, DialogKey::Left | DialogKey::Right) => PayEvent::ToggleMode,
-            // Enter confirms through the host while the panel would; otherwise the Presenter
-            // decides, which on "None of these" switches panel.
-            (_, DialogKey::Enter) if view.frame.can_confirm => return DialogOutcome::Confirm,
-            (_, DialogKey::Enter) => PayEvent::Confirm,
-            (PayMode::Match, DialogKey::Char('j') | DialogKey::Down) => PayEvent::NextChoice,
-            (PayMode::Match, DialogKey::Char('k') | DialogKey::Up) => PayEvent::PrevChoice,
-            (PayMode::Direct, DialogKey::Tab | DialogKey::BackTab) => PayEvent::NextField,
-            (PayMode::Direct, DialogKey::Char(_) | DialogKey::Backspace) => {
-                let (field, event): (_, fn(String) -> PayEvent) = if view.amount.focused {
-                    (&view.amount, PayEvent::Amount)
-                } else {
-                    (&view.date, PayEvent::Date)
-                };
-                match typed(&field.text, key) {
-                    Some(text) => event(text),
-                    None => return DialogOutcome::Handled,
-                }
-            }
-            // Match takes no typing.
-            (PayMode::Match, DialogKey::Char(_) | DialogKey::Backspace) => {
-                return DialogOutcome::Handled;
-            }
-            _ => return DialogOutcome::Ignored,
-        };
-        let chooses = matches!(event, PayEvent::NextChoice | PayEvent::PrevChoice);
-        self.send(event);
-        if chooses && let Some(row) = chosen_row(&self.view()) {
+        if steps
+            && view.mode == PayMode::Match
+            && let Some(row) = chosen_row(&view)
+        {
             self.scroll.scroll_to_item(row);
         }
-        DialogOutcome::Handled
+        self.closed(router, cx);
+        true
     }
 
     fn can_confirm(&self) -> bool {

@@ -234,6 +234,13 @@ impl DocumentsRouter for RecordingDocumentsRouter {
     }
 }
 
+/// A Dialog's close records as the page Router's does, so one recording reads either.
+impl DialogRouter<DocumentsOutcome> for RecordingDocumentsRouter {
+    fn close(&mut self, outcome: Option<DocumentsOutcome>) {
+        self.calls.push(DocumentsCall::CloseDialog(outcome));
+    }
+}
+
 impl Notify for RecordingDocumentsRouter {
     fn notify(&mut self, notice: Notice) {
         self.calls.push(DocumentsCall::Notice(notice));

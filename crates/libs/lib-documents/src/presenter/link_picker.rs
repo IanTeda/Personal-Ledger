@@ -17,6 +17,7 @@ use chrono::NaiveDate;
 use lib_core::DocumentId;
 use lib_locale::format::format_date;
 use lib_toast::{Notice, ToastKind};
+use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
 use lib_viper::view::Hint;
 
@@ -24,7 +25,7 @@ use super::DialogPorts;
 use super::document_form::document;
 use super::library::{Lookups, signed_amount, type_label};
 use crate::interactor::ToggleLink;
-use crate::protocols::{DocumentTransaction, DocumentsOutcome, DocumentsRouter, LinkRecords};
+use crate::protocols::{DocumentTransaction, DocumentsOutcome, LinkRecords};
 use crate::types::DocumentTypeRow;
 use crate::{DocumentLink, DocumentType, msg};
 
@@ -103,6 +104,11 @@ impl KindFilter {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LinkPickerEvent {
+    /// A Dialog keymap command or a typed key: `select` and `submit` act on the highlighted row,
+    /// the arrows move the highlight, `next_field` and `previous_field` cycle the kind filter,
+    /// `←`/`→` step the Document Type while filing, and a character or `Backspace` edits the
+    /// query.
+    Input(DialogInput),
     /// The query's whole new text, as the View's input holds it. The highlight goes back to the
     /// top.
     Query(String),
@@ -218,8 +224,13 @@ impl LinkPickerPresenter {
         self.purpose
     }
 
-    pub fn handle(&mut self, event: LinkPickerEvent, router: &mut dyn DocumentsRouter) {
+    pub fn handle(
+        &mut self,
+        event: LinkPickerEvent,
+        router: &mut dyn DialogRouter<DocumentsOutcome>,
+    ) {
         match event {
+            LinkPickerEvent::Input(input) => self.input(input, router),
             LinkPickerEvent::Query(text) => {
                 self.query = text;
                 self.selected = 0;
@@ -236,8 +247,33 @@ impl LinkPickerPresenter {
             LinkPickerEvent::StepType { forward } => self.step_type(forward),
             LinkPickerEvent::Pick => self.pick(self.selected, router),
             LinkPickerEvent::PickRow(index) => self.pick(index, router),
-            LinkPickerEvent::Cancel => router.close_dialog(None),
+            LinkPickerEvent::Cancel => router.close(None),
         }
+    }
+
+    /// What `input` means: the query line and the highlight.
+    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<DocumentsOutcome>) {
+        let event = match input {
+            DialogInput::Select | DialogInput::Submit => LinkPickerEvent::Pick,
+            DialogInput::SelectNext => LinkPickerEvent::Down,
+            DialogInput::SelectPrevious => LinkPickerEvent::Up,
+            DialogInput::NextField | DialogInput::PreviousField => LinkPickerEvent::CycleKind,
+            DialogInput::Left | DialogInput::Right if matches!(self.purpose, Purpose::File(_)) => {
+                LinkPickerEvent::StepType {
+                    forward: input == DialogInput::Right,
+                }
+            }
+            DialogInput::Char(ch) if !ch.is_control() => {
+                LinkPickerEvent::Query(format!("{}{ch}", self.query))
+            }
+            DialogInput::Backspace => {
+                let mut query = self.query.clone();
+                query.pop();
+                LinkPickerEvent::Query(query)
+            }
+            _ => return,
+        };
+        self.handle(event, router);
     }
 
     pub fn view_model(&self) -> LinkPickerViewModel {
@@ -318,7 +354,7 @@ impl LinkPickerPresenter {
         self.doc_type = Some(all[next]);
     }
 
-    fn pick(&mut self, index: usize, router: &mut dyn DocumentsRouter) {
+    fn pick(&mut self, index: usize, router: &mut dyn DialogRouter<DocumentsOutcome>) {
         let Some(row) = self.rows().into_iter().nth(index) else {
             return;
         };
@@ -338,21 +374,21 @@ impl LinkPickerPresenter {
                         },
                     ));
                 }
-                router.close_dialog(None);
+                router.close(None);
             }
             Purpose::File(id) => {
                 let Some(doc_type) = self.doc_type else {
                     router.notify(Notice::Status(msg::documents_dialog_picker_need_type()));
                     return;
                 };
-                router.close_dialog(Some(DocumentsOutcome::FileByHand {
+                router.close(Some(DocumentsOutcome::FileByHand {
                     id,
                     doc_type,
                     link: row.link,
                 }));
             }
             Purpose::Follow(_) => {
-                router.close_dialog(row.link.map(DocumentsOutcome::Follow));
+                router.close(row.link.map(DocumentsOutcome::Follow));
             }
         }
     }
@@ -839,5 +875,74 @@ mod tests {
                 current[1]
             )))]
         );
+    }
+
+    #[test]
+    fn typing_goes_to_the_query_and_backspace_takes_a_character_back() {
+        let mut picker = picker(Purpose::Link, POLICY);
+        for ch in "telx".chars() {
+            picker.send(LinkPickerEvent::Input(DialogInput::Char(ch)));
+        }
+        picker.send(LinkPickerEvent::Input(DialogInput::Backspace));
+        picker.send(LinkPickerEvent::Input(DialogInput::Char('\n')));
+        assert_eq!(picker.presenter.view_model().query, "tel");
+        assert_eq!(picker.presenter.view_model().selected, 0);
+    }
+
+    #[test]
+    fn the_arrows_move_the_highlight_and_next_field_cycles_the_kind_filter() {
+        let mut picker = picker(Purpose::Link, POLICY);
+        picker.send(LinkPickerEvent::Input(DialogInput::SelectNext));
+        picker.send(LinkPickerEvent::Input(DialogInput::SelectNext));
+        picker.send(LinkPickerEvent::Input(DialogInput::SelectPrevious));
+        assert_eq!(picker.presenter.view_model().selected, 1);
+
+        let all = picker.presenter.view_model().kind;
+        picker.send(LinkPickerEvent::Input(DialogInput::NextField));
+        assert_ne!(picker.presenter.view_model().kind, all);
+        assert_eq!(picker.presenter.view_model().selected, 0);
+        picker.send(LinkPickerEvent::Input(DialogInput::PreviousField));
+        assert_ne!(
+            picker.presenter.view_model().kind,
+            all,
+            "both keys cycle forward"
+        );
+    }
+
+    #[test]
+    fn left_and_right_step_the_document_type_only_while_filing() {
+        let mut filing = picker(Purpose::File, RECEIPT);
+        filing.send(LinkPickerEvent::Input(DialogInput::Right));
+        let first = filing
+            .presenter
+            .view_model()
+            .type_line
+            .and_then(|line| line.chosen);
+        filing.send(LinkPickerEvent::Input(DialogInput::Right));
+        let second = filing
+            .presenter
+            .view_model()
+            .type_line
+            .and_then(|line| line.chosen);
+        assert_ne!(first, second);
+
+        let mut linking = picker(Purpose::Link, POLICY);
+        let before = linking.presenter.view_model();
+        linking.send(LinkPickerEvent::Input(DialogInput::Right));
+        assert_eq!(linking.presenter.view_model(), before);
+    }
+
+    #[test]
+    fn select_and_submit_pick_the_highlighted_row() {
+        let mut picker = picker(Purpose::Link, POLICY);
+        picker.send(LinkPickerEvent::Input(DialogInput::Select));
+        picker.send(LinkPickerEvent::Input(DialogInput::Submit));
+        let closes = picker
+            .router
+            .calls
+            .iter()
+            .filter(|call| matches!(call, DocumentsCall::CloseDialog(_)))
+            .count();
+        assert_eq!(closes, 2, "{:?}", picker.router.calls);
     }
 }

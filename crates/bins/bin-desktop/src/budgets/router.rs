@@ -21,7 +21,6 @@ use super::ports::DesktopPorts;
 use super::view::dialog::ListDialog;
 use super::view::form_dialog::{Form, FormDialog};
 use super::view::page::BudgetsPage;
-use crate::form::select::SelectState;
 use crate::ledger_store::LedgerStore;
 use crate::notices::Queue;
 use crate::shell::view::dialog_entity::host_dialog;
@@ -81,12 +80,12 @@ impl BudgetsRouter for PageRouter<'_, '_> {
     fn open_new_budget(&mut self, current: BudgetId) -> bool {
         let presenter =
             BudgetFormPresenter::new_budget(&self.ports.presenter(), self.clock.clone(), current);
-        self.host(Form::Budget(presenter, SelectState::default()))
+        self.host(Form::Budget(presenter, 0))
     }
 
     fn open_edit_budget(&mut self, id: BudgetId) -> bool {
         match BudgetFormPresenter::edit(&self.ports.presenter(), self.clock.clone(), id) {
-            Some(presenter) => self.host(Form::Budget(presenter, SelectState::default())),
+            Some(presenter) => self.host(Form::Budget(presenter, 0)),
             None => false,
         }
     }
@@ -99,22 +98,14 @@ impl BudgetsRouter for PageRouter<'_, '_> {
             category,
             month,
         ) {
-            Some(presenter) => self.host(Form::Limit(
-                presenter,
-                SelectState::default(),
-                SelectState::default(),
-            )),
+            Some(presenter) => self.host(Form::Limit(presenter, 0)),
             None => false,
         }
     }
 
     fn open_limit_picker(&mut self, budget: BudgetId) -> bool {
         match LimitFormPresenter::picker(&self.ports.presenter(), self.clock.clone(), budget) {
-            Some(presenter) => self.host(Form::Limit(
-                presenter,
-                SelectState::default(),
-                SelectState::default(),
-            )),
+            Some(presenter) => self.host(Form::Limit(presenter, 0)),
             None => false,
         }
     }
@@ -127,7 +118,7 @@ impl BudgetsRouter for PageRouter<'_, '_> {
             category,
             month,
         ) {
-            Some(presenter) => self.host(Form::Stop(presenter, SelectState::default())),
+            Some(presenter) => self.host(Form::Stop(presenter, 0)),
             None => false,
         }
     }

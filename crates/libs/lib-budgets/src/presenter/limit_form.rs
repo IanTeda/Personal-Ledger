@@ -14,12 +14,15 @@
 use bigdecimal::{BigDecimal, RoundingMode, Signed};
 use lib_core::{BudgetId, CategoryId, Clock, Money, Period};
 use lib_toast::{Notice, ToastKind};
+use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
-use lib_viper::view::{Choice, DialogFrame, Hint, SelectView, TextFieldView};
+use lib_viper::view::{
+    Choice, DialogFrame, Hint, SelectList, SelectMove, SelectView, TextFieldView,
+};
 
 use super::{EMPTY_CELL, dialog_error_text, money, month_label, period_label};
 use crate::interactor::SetAmount;
-use crate::protocols::{BudgetCategories, BudgetsOutcome, BudgetsRouter, SharedPorts};
+use crate::protocols::{BudgetCategories, BudgetsOutcome, SharedPorts};
 use crate::{
     Budget, PERSONAL_SPENDING_ID, Rollover, Span, applied, msg, total_budgeted, unbudgeted_leaves,
 };
@@ -52,10 +55,20 @@ impl LimitField {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LimitFormEvent {
+    /// A Dialog keymap command or a typed key, meaning what the focused field makes it: `select`
+    /// commits an open list and otherwise confirms a valid form; `submit` confirms from any field;
+    /// the arrows and `Space` drive the Category and Starting selects, `←`/`→` step Applies to and
+    /// Rollover, and the Amount takes digits and one decimal point. The rest swallow text.
+    Input(DialogInput),
     /// The Amount's whole new text, as its View's input holds it.
     Amount(String),
+    /// A click on a row of the Category's or Starting's open list: picks it and closes the list.
     Category(CategoryId),
     Starting(Period),
+    /// A click on the Category's or Starting's field: focuses it and opens or closes its list.
+    ToggleList(LimitField),
+    /// Closes the open list without picking: the host's `back`.
+    CloseList,
     Span(Span),
     Rollover(Rollover),
     /// A click on a field.
@@ -90,6 +103,8 @@ pub struct LimitFormViewModel {
     /// `Enter an amount of 0.00 or more.`, once something unreadable is typed.
     pub amount_error: Option<String>,
     pub starting: SelectView<Period>,
+    /// The focused Category or Starting select's list: open, and its highlight.
+    pub list: SelectList,
     pub span: SelectView<Span>,
     pub rollover: SelectView<Rollover>,
     pub preview: Vec<LimitPreviewView>,
@@ -116,6 +131,8 @@ pub struct LimitFormPresenter {
     span: Span,
     rollover: Rollover,
     focused: LimitField,
+    /// The focused select's list; it closes whenever focus leaves.
+    list: SelectList,
     error: Option<String>,
 }
 
@@ -214,6 +231,7 @@ impl LimitFormPresenter {
             span: Span::Onward,
             rollover: Rollover::None,
             focused: LimitField::Category,
+            list: SelectList::default(),
             error: None,
         }
     }
@@ -230,35 +248,39 @@ impl LimitFormPresenter {
         self.focused
     }
 
-    pub fn handle(&mut self, event: LimitFormEvent, router: &mut dyn BudgetsRouter) {
+    pub fn handle(&mut self, event: LimitFormEvent, router: &mut dyn DialogRouter<BudgetsOutcome>) {
         match event {
+            LimitFormEvent::Input(input) => self.input(input, router),
             LimitFormEvent::Amount(text) => {
                 self.amount = text;
                 self.error = None;
             }
             LimitFormEvent::Category(id) => {
-                if self.categories.iter().any(|(each, _)| *each == id) && self.is_pick() {
-                    self.category = Some(id);
-                    self.error = None;
-                }
+                self.list.close();
+                self.pick_category(id);
             }
             LimitFormEvent::Starting(month) => {
-                if self.months.contains(&month) {
-                    self.starting = month;
-                    self.error = None;
-                }
+                self.list.close();
+                self.pick_starting(month);
+            }
+            LimitFormEvent::ToggleList(field) => self.toggle_list(field),
+            LimitFormEvent::CloseList => {
+                self.list.close();
             }
             LimitFormEvent::Span(span) => {
+                self.list.close();
                 self.focused = LimitField::Span;
                 self.span = span;
                 self.error = None;
             }
             LimitFormEvent::Rollover(rollover) => {
+                self.list.close();
                 self.focused = LimitField::Rollover;
                 self.rollover = rollover;
                 self.error = None;
             }
             LimitFormEvent::Focus(field) => {
+                self.list.close();
                 if field != LimitField::Category || self.is_pick() {
                     self.focused = field;
                 }
@@ -269,15 +291,120 @@ impl LimitFormPresenter {
             LimitFormEvent::StepForward => self.step(true),
             LimitFormEvent::StopBudgeting => {
                 if let Some(category) = self.fixed {
-                    router.close_dialog(Some(BudgetsOutcome::Stop(category, self.starting)));
+                    router.close(Some(BudgetsOutcome::Stop(category, self.starting)));
                 }
             }
-            LimitFormEvent::Cancel => router.close_dialog(None),
+            LimitFormEvent::Cancel => router.close(None),
         }
     }
 
-    /// `Tab` / `Shift+Tab`, wrapping, skipping the fixed Category.
+    /// What `input` means on the focused field.
+    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<BudgetsOutcome>) {
+        match (input, self.focused) {
+            (DialogInput::NextField, _) => self.cycle(false),
+            (DialogInput::PreviousField, _) => self.cycle(true),
+            (DialogInput::Submit, _) => self.confirm(router),
+            (DialogInput::Left, _) => self.step(false),
+            (DialogInput::Right, _) => self.step(true),
+            // `select` confirms except where it commits an open list.
+            (DialogInput::Select, _) if !self.list.is_open() => self.confirm(router),
+            (_, LimitField::Category) => {
+                if self.is_pick() {
+                    let options = self.category_choices();
+                    let moved = self.list.input(input, &options, self.category.as_ref());
+                    if let SelectMove::Chose(id) = moved {
+                        self.pick_category(id);
+                    }
+                }
+            }
+            (_, LimitField::Starting) => {
+                let options = self.starting_choices();
+                if let SelectMove::Chose(month) =
+                    self.list.input(input, &options, Some(&self.starting))
+                {
+                    self.pick_starting(month);
+                }
+            }
+            (DialogInput::Char(ch), LimitField::Amount)
+                if ch.is_ascii_digit() || (ch == '.' && !self.amount.contains('.')) =>
+            {
+                self.amount.push(ch);
+                self.error = None;
+            }
+            (DialogInput::Backspace, LimitField::Amount) => {
+                self.amount.pop();
+                self.error = None;
+            }
+            _ => {}
+        }
+    }
+
+    fn pick_category(&mut self, id: CategoryId) {
+        if self.categories.iter().any(|(each, _)| *each == id) && self.is_pick() {
+            self.category = Some(id);
+            self.error = None;
+        }
+    }
+
+    fn pick_starting(&mut self, month: Period) {
+        if self.months.contains(&month) {
+            self.starting = month;
+            self.error = None;
+        }
+    }
+
+    /// A click on a select's field: focuses it, closing the other's list, and opens or closes its
+    /// own.
+    fn toggle_list(&mut self, field: LimitField) {
+        let has_list = match field {
+            LimitField::Category => self.is_pick() && !self.categories.is_empty(),
+            LimitField::Starting => true,
+            _ => false,
+        };
+        if !has_list {
+            return;
+        }
+        if self.focused != field {
+            self.list.close();
+            self.focused = field;
+        }
+        match field {
+            LimitField::Category => {
+                let options = self.category_choices();
+                self.list.toggle(&options, self.category.as_ref());
+            }
+            _ => {
+                let options = self.starting_choices();
+                self.list.toggle(&options, Some(&self.starting));
+            }
+        }
+    }
+
+    fn category_choices(&self) -> Vec<Choice<CategoryId>> {
+        self.categories
+            .iter()
+            .map(|(id, path)| Choice {
+                value: *id,
+                label: path.clone(),
+            })
+            .collect()
+    }
+
+    fn starting_choices(&self) -> Vec<Choice<Period>> {
+        let current = Period::of(self.clock.today());
+        self.months
+            .iter()
+            .map(|month| Choice {
+                value: *month,
+                label: month_label(*month, current),
+            })
+            .collect()
+    }
+
+    /// `Tab` / `Shift+Tab`, wrapping, skipping the fixed Category. Leaving a select closes its
+    /// list, as a click elsewhere would.
     fn cycle(&mut self, back: bool) {
+        self.list.close();
         let order: Vec<LimitField> = LimitField::ORDER
             .into_iter()
             .filter(|field| *field != LimitField::Category || self.is_pick())
@@ -333,7 +460,7 @@ impl LimitFormPresenter {
 
     /// Saves the amount through the Interactor, raises the Toast and closes the Dialog; a refusal
     /// stays on the form. A form that can't confirm does nothing.
-    pub fn confirm(&mut self, router: &mut dyn BudgetsRouter) {
+    pub fn confirm(&mut self, router: &mut dyn DialogRouter<BudgetsOutcome>) {
         let Some(draft) = self.draft() else {
             return;
         };
@@ -358,7 +485,7 @@ impl LimitFormPresenter {
                     ToastKind::Success,
                     msg::budgets_toast_limit_saved(&self.category_name(draft.category)),
                 ));
-                router.close_dialog(None);
+                router.close(None);
             }
             Err(refusal) => self.error = Some(dialog_error_text(&refusal)),
         }
@@ -433,7 +560,6 @@ impl LimitFormPresenter {
     }
 
     pub fn view_model(&self) -> LimitFormViewModel {
-        let current = Period::of(self.clock.today());
         let draft = self.draft();
         let title = match self.fixed {
             Some(category) => msg::budgets_limit_title(&self.category_name(category)),
@@ -451,14 +577,7 @@ impl LimitFormPresenter {
             },
             category: (pick && !self.categories.is_empty()).then(|| SelectView {
                 label: msg::budgets_limit_field_category(),
-                options: self
-                    .categories
-                    .iter()
-                    .map(|(id, path)| Choice {
-                        value: *id,
-                        label: path.clone(),
-                    })
-                    .collect(),
+                options: self.category_choices(),
                 chosen: self.category,
                 focused: option(LimitField::Category),
             }),
@@ -474,17 +593,11 @@ impl LimitFormPresenter {
                 .then(msg::budgets_limit_error_amount),
             starting: SelectView {
                 label: msg::budgets_limit_field_starting(),
-                options: self
-                    .months
-                    .iter()
-                    .map(|month| Choice {
-                        value: *month,
-                        label: month_label(*month, current),
-                    })
-                    .collect(),
+                options: self.starting_choices(),
                 chosen: Some(self.starting),
                 focused: option(LimitField::Starting),
             },
+            list: self.list,
             span: SelectView {
                 label: msg::budgets_limit_field_span(),
                 options: SPANS
@@ -821,5 +934,101 @@ mod tests {
             LimitFormPresenter::picker(&shared, Clock::fixed(today()), PERSONAL_SPENDING_ID)
                 .is_none()
         );
+    }
+
+    fn type_into(form: &mut Form, text: &str) {
+        for ch in text.chars() {
+            form.send(LimitFormEvent::Input(DialogInput::Char(ch)));
+        }
+    }
+
+    #[test]
+    fn the_amount_takes_digits_and_one_point_and_backspace_takes_one_back() {
+        let mut form = Form::edit();
+        form.send(LimitFormEvent::Amount(String::new()));
+
+        type_into(&mut form, "1a2.3.4-");
+        assert_eq!(form.view().amount.text, "12.34");
+        form.send(LimitFormEvent::Input(DialogInput::Backspace));
+        assert_eq!(form.view().amount.text, "12.3");
+    }
+
+    #[test]
+    fn tab_moves_focus_and_the_arrows_step_the_segmented_controls() {
+        let mut form = Form::edit();
+        form.send(LimitFormEvent::Input(DialogInput::NextField));
+        assert_eq!(form.view().focused, LimitField::Starting);
+        form.send(LimitFormEvent::Input(DialogInput::NextField));
+        assert_eq!(form.view().focused, LimitField::Span);
+        form.send(LimitFormEvent::Input(DialogInput::Right));
+        let span = form.view().span.chosen;
+        form.send(LimitFormEvent::Input(DialogInput::Left));
+        assert_ne!(form.view().span.chosen, span);
+        type_into(&mut form, "zz");
+        assert_eq!(form.view().span.chosen, Some(Span::MonthOnly));
+        form.send(LimitFormEvent::Input(DialogInput::PreviousField));
+        assert_eq!(form.view().focused, LimitField::Starting);
+    }
+
+    #[test]
+    fn space_opens_the_starting_list_the_arrows_move_and_select_commits_it() {
+        let mut form = Form::edit();
+        form.send(LimitFormEvent::Focus(LimitField::Starting));
+        let chosen = form.view().starting.chosen;
+
+        form.send(LimitFormEvent::Input(DialogInput::Char(' ')));
+        assert!(form.view().list.is_open());
+        form.send(LimitFormEvent::Input(DialogInput::SelectNext));
+        assert_eq!(
+            form.view().starting.chosen,
+            chosen,
+            "moving only highlights"
+        );
+        form.send(LimitFormEvent::Input(DialogInput::Select));
+
+        assert!(!form.view().list.is_open());
+        assert_ne!(form.view().starting.chosen, chosen);
+        assert!(
+            form.router.routed.is_empty(),
+            "committing a list is not confirming"
+        );
+    }
+
+    #[test]
+    fn select_on_a_closed_field_confirms_a_valid_form_and_submit_confirms_from_a_list() {
+        let mut form = Form::edit();
+        form.send(LimitFormEvent::Focus(LimitField::Starting));
+        form.send(LimitFormEvent::Input(DialogInput::Char(' ')));
+        form.send(LimitFormEvent::Input(DialogInput::Submit));
+        assert!(
+            form.router.routed.contains(&Routed::Closed(None)),
+            "{:?}",
+            form.router.routed
+        );
+
+        let mut form = Form::edit();
+        form.send(LimitFormEvent::Input(DialogInput::Select));
+        assert!(form.router.routed.contains(&Routed::Closed(None)));
+    }
+
+    #[test]
+    fn the_picker_category_list_opens_by_click_and_a_click_elsewhere_closes_it() {
+        let mut form = Form::picker();
+        assert_eq!(form.view().focused, LimitField::Category);
+        form.send(LimitFormEvent::ToggleList(LimitField::Category));
+        assert!(form.view().list.is_open());
+        form.send(LimitFormEvent::Input(DialogInput::SelectNext));
+        form.send(LimitFormEvent::Input(DialogInput::Select));
+        assert!(form.view().category.expect("picker").chosen.is_some());
+
+        form.send(LimitFormEvent::ToggleList(LimitField::Starting));
+        assert!(form.view().list.is_open());
+        assert_eq!(form.view().focused, LimitField::Starting);
+        form.send(LimitFormEvent::Focus(LimitField::Amount));
+        assert!(!form.view().list.is_open());
+
+        form.send(LimitFormEvent::ToggleList(LimitField::Starting));
+        form.send(LimitFormEvent::CloseList);
+        assert!(!form.view().list.is_open());
     }
 }

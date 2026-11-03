@@ -1,96 +1,44 @@
 //! **Edit extracted facts** on the shared `crate::dialog` frame: an Unfiled Document's merchant,
-//! date, total and Document Type. The Type select takes the arrows, `Space` and `Enter` while
-//! focused and swallows typing; the other three take text.
+//! date, total and Document Type. What each key means is the
+//! Presenter's; this View draws the form and turns its clicks into Presenter events.
 
 use gpui::{AnyElement, App, div, prelude::*};
-use lib_documents::presenter::{
-    FactsField, FactsFormEvent, FactsFormPresenter, FactsFormViewModel,
-};
+use lib_documents::presenter::{FactsField, FactsFormEvent, FactsFormViewModel};
 use lib_viper::view::TextFieldView;
 
 use super::document_form::with_error;
-use super::{Clicks, DocumentsDialog, View, send};
+use super::{Clicks, DocumentsDialog, View};
 use crate::dialog;
 use crate::form::dialog_fields::{label, text_field, two_up};
-use crate::form::select::SelectState;
 use crate::form::select_field::{self, SelectFieldProps};
-use crate::form::viper::{choose_option, enter, labels, select_key, synced, toggle_select, typed};
-use crate::shell::view::dialog_host::{DialogKey, DialogOutcome};
-
-fn handle(presenter: &mut FactsFormPresenter, event: FactsFormEvent) {
-    send(presenter, event, FactsFormPresenter::handle);
-}
-
-pub(super) fn key(
-    presenter: &mut FactsFormPresenter,
-    doc_type: &mut SelectState,
-    key: DialogKey,
-) -> DialogOutcome {
-    let view = presenter.view_model();
-    match (key, view.focused) {
-        (DialogKey::Tab | DialogKey::BackTab, _) => {
-            doc_type.cancel();
-            let event = if key == DialogKey::Tab {
-                FactsFormEvent::NextField
-            } else {
-                FactsFormEvent::PrevField
-            };
-            handle(presenter, event);
-        }
-        (
-            DialogKey::Enter | DialogKey::Char(' ') | DialogKey::Up | DialogKey::Down,
-            FactsField::Type,
-        ) => {
-            if let (_, Some(kind)) = select_key(doc_type, &view.doc_type, key) {
-                handle(presenter, FactsFormEvent::Type(kind));
-            }
-        }
-        (DialogKey::Enter | DialogKey::CtrlEnter, _) => return enter(view.frame.can_confirm),
-        (DialogKey::Char(_) | DialogKey::Backspace, FactsField::Type) => {}
-        (DialogKey::Char(_) | DialogKey::Backspace, field) => {
-            let (text, event): (&str, fn(String) -> FactsFormEvent) = match field {
-                FactsField::Merchant => (&view.merchant.text, FactsFormEvent::Merchant),
-                FactsField::Date => (&view.date.text, FactsFormEvent::Date),
-                _ => (&view.total.text, FactsFormEvent::Total),
-            };
-            if let Some(text) = typed(text, key) {
-                handle(presenter, event(text));
-            }
-        }
-        _ => return DialogOutcome::Ignored,
-    }
-    DialogOutcome::Handled
-}
-
-fn form(dialog: &mut DocumentsDialog) -> Option<(&mut FactsFormPresenter, &mut SelectState)> {
-    match &mut dialog.view {
-        View::Facts(presenter, doc_type) => Some((presenter, doc_type)),
-        _ => None,
-    }
-}
+use crate::form::viper::{drawn, labels};
 
 fn click_field(dialog: &mut DocumentsDialog, field: FactsField) {
-    if let Some((presenter, doc_type)) = form(dialog) {
-        handle(presenter, FactsFormEvent::Focus(field));
-        if field == FactsField::Type {
-            toggle_select(doc_type, &presenter.view_model().doc_type);
-        } else {
-            doc_type.cancel();
+    dialog.apply(|view, router| {
+        if let View::Facts(presenter, _) = view {
+            let event = if field == FactsField::Type {
+                FactsFormEvent::ToggleTypeList
+            } else {
+                FactsFormEvent::Focus(field)
+            };
+            presenter.handle(event, router);
         }
-    }
+    });
 }
 
 fn choose_type(dialog: &mut DocumentsDialog, index: usize) {
-    if let Some((presenter, doc_type)) = form(dialog)
-        && let Some(kind) = choose_option(doc_type, &presenter.view_model().doc_type, index)
-    {
-        handle(presenter, FactsFormEvent::Type(kind));
-    }
+    dialog.apply(|view, router| {
+        if let View::Facts(presenter, _) = view
+            && let Some(choice) = presenter.view_model().doc_type.options.get(index)
+        {
+            presenter.handle(FactsFormEvent::Type(choice.value), router);
+        }
+    });
 }
 
 pub(super) fn render(
     view: &FactsFormViewModel,
-    doc_type: &SelectState,
+    scroll: &mut usize,
     actions: &Clicks,
     cx: &App,
 ) -> AnyElement {
@@ -110,7 +58,7 @@ pub(super) fn render(
             id: "facts-type".into(),
             label: view.doc_type.label.clone().into(),
             options: &labels(&view.doc_type),
-            state: &synced(doc_type, &view.doc_type),
+            state: &drawn(&view.doc_type, view.doc_type_list, scroll),
             focused: view.doc_type.focused,
             accent: false,
             read_only: None,

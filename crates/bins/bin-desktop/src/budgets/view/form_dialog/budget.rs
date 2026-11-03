@@ -3,9 +3,8 @@
 //! from. Only Category limits is built, so the other three cards are drawn dimmed and take no
 //! click (#400). Edit mode locks the Unit and leaves Start from out.
 //!
-//! The Unit select takes the arrows and `Space` while it has focus, `Enter` commits an open list,
-//! else confirms. `←`/`→` walk the Account chips and Start from; `Space` toggles the chip under
-//! the cursor. The Unit and Start from take no text.
+//! What each key means is the Presenter's (`lib_budgets::presenter::BudgetFormPresenter`); this
+//! View draws the form and turns its clicks into Presenter events.
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use lib_budgets::presenter::{
@@ -15,136 +14,63 @@ use lib_budgets::presenter::{
 use lib_core::AccountId;
 use lib_locale::format::upper;
 
-use super::{Clicks, Form, FormDialog, help, picker, segmented};
+use super::{Clicks, Form, FormDialog, Router, help, picker, segmented};
 use crate::dialog;
 use crate::form::colour_field::error_line;
 use crate::form::dialog_fields::{label, text_field, two_up};
-use crate::form::select::SelectState;
 use crate::form::select_field::{self, SelectFieldProps};
-use crate::form::viper::{choose_option, enter, labels, select_key, synced, toggle_select, typed};
-use crate::shell::view::dialog_host::{DialogKey, DialogOutcome};
+use crate::form::viper::{drawn, labels};
 use crate::theme::color;
-
-use super::super::dialog::DialogRouter;
 
 /// The dialog's width: the handoff's 11c.
 const WIDTH: gpui::Pixels = px(640.0);
 
 fn handle(presenter: &mut BudgetFormPresenter, event: BudgetFormEvent) {
-    presenter.handle(event, &mut DialogRouter::default());
+    presenter.handle(event, &mut Router::default());
 }
 
-pub(super) fn key(
-    presenter: &mut BudgetFormPresenter,
-    select: &mut SelectState,
-    key: DialogKey,
-) -> DialogOutcome {
-    let view = presenter.view_model();
-    let focused = view.focused;
-    match key {
-        // Leaving the Unit closes its list, as a click elsewhere would.
-        DialogKey::Tab | DialogKey::BackTab => {
-            select.cancel();
-            let event = if key == DialogKey::Tab {
-                BudgetFormEvent::NextField
-            } else {
-                BudgetFormEvent::PrevField
-            };
-            handle(presenter, event);
-            return DialogOutcome::Handled;
-        }
-        DialogKey::Enter if !(focused == BudgetField::Unit && select.is_open()) => {
-            return enter(view.frame.can_confirm);
-        }
-        _ => {}
-    }
-    match focused {
-        BudgetField::Name => match typed(&view.name.text, key) {
-            Some(text) => {
-                handle(presenter, BudgetFormEvent::Name(text));
-                DialogOutcome::Handled
-            }
-            None => DialogOutcome::Ignored,
-        },
-        BudgetField::Unit => match key {
-            DialogKey::Enter | DialogKey::Char(' ') | DialogKey::Up | DialogKey::Down => {
-                let (_, value) = select_key(select, &view.unit, key);
-                if let Some(id) = value {
-                    handle(presenter, BudgetFormEvent::Unit(id));
-                }
-                DialogOutcome::Handled
-            }
-            DialogKey::Char(_) | DialogKey::Backspace => DialogOutcome::Handled,
-            _ => DialogOutcome::Ignored,
-        },
-        BudgetField::Accounts | BudgetField::StartFrom => match key {
-            DialogKey::Char(' ') if focused == BudgetField::Accounts => {
-                handle(presenter, BudgetFormEvent::ToggleCursorAccount);
-                DialogOutcome::Handled
-            }
-            DialogKey::Left => {
-                handle(presenter, BudgetFormEvent::StepBack);
-                DialogOutcome::Handled
-            }
-            DialogKey::Right => {
-                handle(presenter, BudgetFormEvent::StepForward);
-                DialogOutcome::Handled
-            }
-            DialogKey::Char(_) | DialogKey::Backspace => DialogOutcome::Handled,
-            _ => DialogOutcome::Ignored,
-        },
-    }
-}
-
-fn form(dialog: &mut FormDialog) -> Option<(&mut BudgetFormPresenter, &mut SelectState)> {
+fn form(dialog: &mut FormDialog) -> Option<&mut BudgetFormPresenter> {
     match &mut dialog.view {
-        Form::Budget(presenter, select) => Some((presenter, select)),
+        Form::Budget(presenter, _) => Some(presenter),
         _ => None,
     }
 }
 
 fn focus(dialog: &mut FormDialog, field: BudgetField) {
-    if let Some((presenter, select)) = form(dialog) {
-        select.cancel();
+    if let Some(presenter) = form(dialog) {
         handle(presenter, BudgetFormEvent::Focus(field));
     }
 }
 
 /// A click on the Unit field focuses it and toggles its list; Edit's is locked.
 fn click_unit(dialog: &mut FormDialog) {
-    if let Some((presenter, select)) = form(dialog) {
-        let view = presenter.view_model();
-        if view.editing {
-            return;
-        }
-        handle(presenter, BudgetFormEvent::Focus(BudgetField::Unit));
-        toggle_select(select, &view.unit);
+    if let Some(presenter) = form(dialog) {
+        handle(presenter, BudgetFormEvent::ToggleUnitList);
     }
 }
 
+/// A click on row `index` of the Unit's open list picks it; Edit's is locked.
 fn click_option(dialog: &mut FormDialog, index: usize) {
-    if let Some((presenter, select)) = form(dialog) {
+    if let Some(presenter) = form(dialog) {
         let view = presenter.view_model();
         if view.editing {
             return;
         }
-        handle(presenter, BudgetFormEvent::Focus(BudgetField::Unit));
-        if let Some(id) = choose_option(select, &view.unit, index) {
-            handle(presenter, BudgetFormEvent::Unit(id));
+        if let Some(choice) = view.unit.options.get(index) {
+            handle(presenter, BudgetFormEvent::Focus(BudgetField::Unit));
+            handle(presenter, BudgetFormEvent::Unit(choice.value));
         }
     }
 }
 
 fn toggle_account(dialog: &mut FormDialog, id: AccountId) {
-    if let Some((presenter, select)) = form(dialog) {
-        select.cancel();
+    if let Some(presenter) = form(dialog) {
         handle(presenter, BudgetFormEvent::ToggleAccount(id));
     }
 }
 
 fn choose_start(dialog: &mut FormDialog, choice: StartChoice) {
-    if let Some((presenter, select)) = form(dialog) {
-        select.cancel();
+    if let Some(presenter) = form(dialog) {
         handle(presenter, BudgetFormEvent::StartFrom(choice));
     }
 }
@@ -263,7 +189,7 @@ fn account_chips(view: &BudgetFormViewModel, actions: &Clicks, cx: &App) -> AnyE
 
 pub(super) fn render(
     view: &BudgetFormViewModel,
-    select: &SelectState,
+    scroll: &mut usize,
     actions: &Clicks,
     cx: &App,
 ) -> AnyElement {
@@ -290,7 +216,7 @@ pub(super) fn render(
                         id: "budgets-new-unit".into(),
                         label: view.unit.label.clone().into(),
                         options: &labels(&view.unit),
-                        state: &synced(select, &view.unit),
+                        state: &drawn(&view.unit, view.unit_list, scroll),
                         focused: view.unit.focused,
                         accent: false,
                         read_only: view.unit_fixed.clone().map(SharedString::from),

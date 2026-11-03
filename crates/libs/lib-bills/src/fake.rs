@@ -11,6 +11,7 @@ use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
 use lib_core::{AccountId, BillPlanId, CategoryId, Money, PayeeId, TransactionId, UnitId};
 use lib_toast::{Notice, Notify};
+use lib_viper::dialog::DialogRouter;
 
 use crate::protocols::{
     BillUnits, BillsOutcome, BillsPorts, BillsRepository, BillsRouter, PayRequest, PortsMut,
@@ -420,6 +421,13 @@ impl BillsRouter for RecordingRouter {
 
     fn show_transaction(&mut self, id: TransactionId) {
         self.routed.push(Routed::Transaction(id));
+    }
+}
+
+/// A Dialog's close records as the page Router's does, so one recording reads either.
+impl DialogRouter<BillsOutcome> for RecordingRouter {
+    fn close(&mut self, outcome: Option<BillsOutcome>) {
+        self.routed.push(Routed::Closed(outcome));
     }
 }
 

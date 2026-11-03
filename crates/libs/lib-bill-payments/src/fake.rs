@@ -14,8 +14,9 @@ use lib_core::BillPlanId;
 use lib_toast::{Notice, Notify};
 use lib_transactions::fake::InMemoryTransactions;
 use lib_transactions::{Transaction, TransactionRepository};
+use lib_viper::dialog::DialogRouter;
 
-use crate::protocols::{BillPayments, BillPaymentsRouter, PayOutcome, SharedPayments};
+use crate::protocols::{BillPayments, PayOutcome, SharedPayments};
 
 /// A payment's two stores in memory, the Transactions and the Bills, written together.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -94,8 +95,8 @@ pub struct RecordingRouter {
     pub notices: Vec<Notice>,
 }
 
-impl BillPaymentsRouter for RecordingRouter {
-    fn close_dialog(&mut self, outcome: Option<PayOutcome>) {
+impl DialogRouter<PayOutcome> for RecordingRouter {
+    fn close(&mut self, outcome: Option<PayOutcome>) {
         self.closed.push(outcome);
     }
 }

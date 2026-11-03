@@ -7,13 +7,16 @@ use chrono::NaiveDate;
 use lib_core::{DocumentId, Money};
 use lib_locale::format::{format_date_input, parse_optional_date};
 use lib_toast::{Notice, ToastKind};
+use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::Keymap;
-use lib_viper::view::{Choice, DialogFrame, Hint, SelectView, TextFieldView};
+use lib_viper::view::{
+    Choice, DialogFrame, Hint, SelectList, SelectMove, SelectView, TextFieldView,
+};
 
 use super::DialogPorts;
 use super::document_form::{document, form_legend};
 use crate::interactor::SetFacts;
-use crate::protocols::{DocumentsOutcome, DocumentsRouter};
+use crate::protocols::DocumentsOutcome;
 use crate::types::{DocumentTypeRow, fallback_id};
 use crate::{DocumentType, ExtractedFacts, msg};
 
@@ -33,12 +36,21 @@ impl FactsField {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FactsFormEvent {
+    /// A Dialog keymap command or a typed key, meaning what the focused field makes it: on the
+    /// Document type select `select`, `Space` and the arrows open its list, move it and commit
+    /// it, and typing does nothing; elsewhere `select` confirms a valid form and typing edits the
+    /// field. `submit` confirms from any field.
+    Input(DialogInput),
     /// A text field's whole new text, as its View's input holds it.
     Merchant(String),
     Date(String),
     Total(String),
-    /// An option chosen on the Document type select.
+    /// A click on a row of the Document type's open list: picks it and closes the list.
     Type(DocumentType),
+    /// A click on the Document type field: focuses it and opens or closes its list.
+    ToggleTypeList,
+    /// Closes the open list without picking: the host's `back`.
+    CloseList,
     /// `Tab`/`Shift-Tab`, wrapping.
     NextField,
     PrevField,
@@ -57,6 +69,8 @@ pub struct FactsFormViewModel {
     pub total: TextFieldView,
     pub total_error: Option<String>,
     pub doc_type: SelectView<DocumentType>,
+    /// The Document type's list: open, and its highlight.
+    pub doc_type_list: SelectList,
     pub note: String,
     pub focused: FactsField,
 }
@@ -71,6 +85,8 @@ pub struct FactsFormPresenter {
     total: String,
     doc_type: DocumentType,
     focused: FactsField,
+    /// The Document type's list.
+    list: SelectList,
 }
 
 impl FactsFormPresenter {
@@ -97,25 +113,98 @@ impl FactsFormPresenter {
                 .map(|total| total.0.abs().with_scale(2).to_string())
                 .unwrap_or_default(),
             focused: FactsField::Merchant,
+            list: SelectList::default(),
             ports,
         })
     }
 
-    pub fn handle(&mut self, event: FactsFormEvent, router: &mut dyn DocumentsRouter) {
+    pub fn handle(
+        &mut self,
+        event: FactsFormEvent,
+        router: &mut dyn DialogRouter<DocumentsOutcome>,
+    ) {
         match event {
+            FactsFormEvent::Input(input) => self.input(input, router),
             FactsFormEvent::Merchant(text) => self.merchant = text,
             FactsFormEvent::Date(text) => self.date = text,
             FactsFormEvent::Total(text) => self.total = text,
             FactsFormEvent::Type(kind) => {
+                self.list.close();
                 self.focused = FactsField::Type;
                 self.doc_type = kind;
             }
+            FactsFormEvent::ToggleTypeList => {
+                self.focused = FactsField::Type;
+                let options = self.type_choices();
+                self.list.toggle(&options, Some(&self.doc_type));
+            }
+            FactsFormEvent::CloseList => {
+                self.list.close();
+            }
             FactsFormEvent::NextField => self.cycle_focus(false),
             FactsFormEvent::PrevField => self.cycle_focus(true),
-            FactsFormEvent::Focus(field) => self.focused = field,
+            FactsFormEvent::Focus(field) => {
+                self.list.close();
+                self.focused = field;
+            }
             FactsFormEvent::Confirm => self.confirm(router),
-            FactsFormEvent::Cancel => router.close_dialog(None),
+            FactsFormEvent::Cancel => router.close(None),
         }
+    }
+
+    /// What `input` means on the focused field.
+    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<DocumentsOutcome>) {
+        match (input, self.focused) {
+            (DialogInput::NextField, _) => self.cycle_focus(false),
+            (DialogInput::PreviousField, _) => self.cycle_focus(true),
+            (DialogInput::Submit, _) => self.confirm(router),
+            (
+                DialogInput::Select
+                | DialogInput::Char(' ')
+                | DialogInput::SelectNext
+                | DialogInput::SelectPrevious,
+                FactsField::Type,
+            ) => {
+                let options = self.type_choices();
+                if let SelectMove::Chose(kind) =
+                    self.list.input(input, &options, Some(&self.doc_type))
+                {
+                    self.doc_type = kind;
+                }
+            }
+            (DialogInput::Select, _) => self.confirm(router),
+            (DialogInput::Char(ch), field) => {
+                if let Some(text) = self.text_mut(field) {
+                    text.push(ch);
+                }
+            }
+            (DialogInput::Backspace, field) => {
+                if let Some(text) = self.text_mut(field) {
+                    text.pop();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// The text `field` types into; the Type select has none.
+    fn text_mut(&mut self, field: FactsField) -> Option<&mut String> {
+        match field {
+            FactsField::Merchant => Some(&mut self.merchant),
+            FactsField::Date => Some(&mut self.date),
+            FactsField::Total => Some(&mut self.total),
+            FactsField::Type => None,
+        }
+    }
+
+    fn type_choices(&self) -> Vec<Choice<DocumentType>> {
+        self.types
+            .iter()
+            .map(|row| Choice {
+                value: DocumentType(row.id),
+                label: row.name.clone(),
+            })
+            .collect()
     }
 
     pub fn view_model(&self) -> FactsFormViewModel {
@@ -153,17 +242,11 @@ impl FactsFormPresenter {
             total_error,
             doc_type: SelectView {
                 label: msg::documents_dialog_field_type(),
-                options: self
-                    .types
-                    .iter()
-                    .map(|row| Choice {
-                        value: DocumentType(row.id),
-                        label: row.name.clone(),
-                    })
-                    .collect(),
+                options: self.type_choices(),
                 chosen: Some(self.doc_type),
                 focused: self.focused == FactsField::Type,
             },
+            doc_type_list: self.list,
             note: msg::documents_dialog_facts_note(),
             focused: self.focused,
         }
@@ -175,6 +258,8 @@ impl FactsFormPresenter {
     }
 
     fn cycle_focus(&mut self, backward: bool) {
+        // Leaving a select closes its list, as a click elsewhere would.
+        self.list.close();
         let order = FactsField::ORDER;
         let index = order
             .iter()
@@ -212,7 +297,7 @@ impl FactsFormPresenter {
         })
     }
 
-    fn confirm(&mut self, router: &mut dyn DocumentsRouter) {
+    fn confirm(&mut self, router: &mut dyn DialogRouter<DocumentsOutcome>) {
         let Some(facts) = self.facts() else {
             return;
         };
@@ -223,10 +308,10 @@ impl FactsFormPresenter {
                     ToastKind::Success,
                     msg::documents_dialog_toast_facts_saved(&self.title),
                 ));
-                router.close_dialog(Some(DocumentsOutcome::FactsSaved(self.id)));
+                router.close(Some(DocumentsOutcome::FactsSaved(self.id)));
             }
             // Filed or gone while the Dialog was open: there are no facts left to edit.
-            Err(_) => router.close_dialog(None),
+            Err(_) => router.close(None),
         }
     }
 }
@@ -356,5 +441,98 @@ mod tests {
                 DocumentsCall::CloseDialog(Some(DocumentsOutcome::FactsSaved(saved_id))),
             ] if *saved_id == id
         ));
+    }
+
+    fn input(
+        presenter: &mut FactsFormPresenter,
+        router: &mut RecordingDocumentsRouter,
+        input: DialogInput,
+    ) {
+        presenter.handle(FactsFormEvent::Input(input), router);
+    }
+
+    #[test]
+    fn typing_edits_the_focused_text_field_and_the_type_select_swallows_it() {
+        let (mut presenter, _, mut router, _) = facts();
+        input(&mut presenter, &mut router, DialogInput::Backspace);
+        input(&mut presenter, &mut router, DialogInput::Char('!'));
+        assert_eq!(presenter.view_model().merchant.text, "Woolworths Metr!");
+
+        input(&mut presenter, &mut router, DialogInput::NextField);
+        input(&mut presenter, &mut router, DialogInput::NextField);
+        assert_eq!(presenter.view_model().focused, FactsField::Total);
+        input(&mut presenter, &mut router, DialogInput::Char('0'));
+        assert_eq!(presenter.view_model().total.text, "212.400");
+
+        input(&mut presenter, &mut router, DialogInput::NextField);
+        assert_eq!(presenter.view_model().focused, FactsField::Type);
+        input(&mut presenter, &mut router, DialogInput::Char('z'));
+        input(&mut presenter, &mut router, DialogInput::Backspace);
+        let view = presenter.view_model();
+        assert_eq!(view.merchant.text, "Woolworths Metr!");
+        assert_eq!(view.total.text, "212.400");
+        input(&mut presenter, &mut router, DialogInput::PreviousField);
+        assert_eq!(presenter.view_model().focused, FactsField::Total);
+    }
+
+    #[test]
+    fn the_type_select_opens_on_select_the_arrows_move_and_select_commits() {
+        let (mut presenter, _, mut router, _) = facts();
+        presenter.handle(FactsFormEvent::Focus(FactsField::Type), &mut router);
+        let chosen = presenter.view_model().doc_type.chosen;
+
+        input(&mut presenter, &mut router, DialogInput::Select);
+        assert!(presenter.view_model().doc_type_list.is_open());
+        input(&mut presenter, &mut router, DialogInput::SelectNext);
+        assert_eq!(
+            presenter.view_model().doc_type.chosen,
+            chosen,
+            "only highlighted"
+        );
+        input(&mut presenter, &mut router, DialogInput::Select);
+
+        assert!(!presenter.view_model().doc_type_list.is_open());
+        assert_ne!(presenter.view_model().doc_type.chosen, chosen);
+        assert!(
+            router.take().is_empty(),
+            "committing a list is not confirming"
+        );
+    }
+
+    #[test]
+    fn select_confirms_a_valid_form_from_a_text_field_and_submit_from_anywhere() {
+        let (mut presenter, _, mut router, id) = facts();
+        input(&mut presenter, &mut router, DialogInput::Select);
+        assert!(matches!(
+            router.take().as_slice(),
+            [
+                DocumentsCall::Notice(_),
+                DocumentsCall::CloseDialog(Some(DocumentsOutcome::FactsSaved(saved)))
+            ] if *saved == id
+        ));
+
+        let (mut presenter, _, mut router, _) = facts();
+        presenter.handle(FactsFormEvent::Focus(FactsField::Type), &mut router);
+        input(&mut presenter, &mut router, DialogInput::Submit);
+        assert!(!router.take().is_empty());
+
+        let (mut presenter, _, mut router, _) = facts();
+        presenter.handle(FactsFormEvent::Total("abc".to_string()), &mut router);
+        input(&mut presenter, &mut router, DialogInput::Select);
+        input(&mut presenter, &mut router, DialogInput::Submit);
+        assert!(router.take().is_empty(), "an invalid form never confirms");
+    }
+
+    #[test]
+    fn a_click_toggles_the_list_and_close_list_and_tab_close_it() {
+        let (mut presenter, _, mut router, _) = facts();
+        presenter.handle(FactsFormEvent::ToggleTypeList, &mut router);
+        assert!(presenter.view_model().doc_type_list.is_open());
+        presenter.handle(FactsFormEvent::CloseList, &mut router);
+        assert!(!presenter.view_model().doc_type_list.is_open());
+
+        presenter.handle(FactsFormEvent::ToggleTypeList, &mut router);
+        input(&mut presenter, &mut router, DialogInput::NextField);
+        assert!(!presenter.view_model().doc_type_list.is_open());
     }
 }

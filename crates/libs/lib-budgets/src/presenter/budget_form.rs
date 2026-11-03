@@ -14,12 +14,15 @@
 
 use lib_core::{AccountId, BudgetId, Clock, UnitId};
 use lib_toast::{Notice, ToastKind};
+use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
-use lib_viper::view::{Choice, DialogFrame, Hint, SelectView, TextFieldView};
+use lib_viper::view::{
+    Choice, DialogFrame, Hint, SelectList, SelectMove, SelectView, TextFieldView,
+};
 
 use super::dialog_error_text;
 use crate::interactor::{CreateBudget, EditBudget};
-use crate::protocols::{BudgetAccounts, BudgetsOutcome, BudgetsRouter, SharedPorts};
+use crate::protocols::{BudgetAccounts, BudgetsOutcome, SharedPorts};
 use crate::{Budget, NewBudget, StartFrom, msg};
 
 /// The form's focus stops, in `Tab` order. Edit mode skips Unit and Start from.
@@ -48,9 +51,20 @@ const START_CHOICES: [StartChoice; 3] = [
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BudgetFormEvent {
+    /// A Dialog keymap command or a typed key, meaning what the focused field makes it: `select`
+    /// commits an open Unit list and otherwise confirms a valid form; `submit` confirms from any
+    /// field; the arrows and `Space` drive the Unit select, `Space` toggles the Account chip under
+    /// the cursor, and `←`/`→` walk the chips and Start from. Name takes text; the other fields
+    /// swallow it.
+    Input(DialogInput),
     /// The name's whole new text, as its View's input holds it.
     Name(String),
+    /// A click on a row of the Unit's open list: picks it and closes the list.
     Unit(UnitId),
+    /// A click on the Unit field: focuses it and opens or closes its list. Edit's is locked.
+    ToggleUnitList,
+    /// Closes the Unit's open list without picking: the host's `back`.
+    CloseList,
     /// A click on an Account chip.
     ToggleAccount(AccountId),
     /// `space` on the Accounts: toggles the chip under the cursor.
@@ -92,6 +106,8 @@ pub struct BudgetFormViewModel {
     pub name: TextFieldView,
     /// The Unit's codes, to choose from on create.
     pub unit: SelectView<UnitId>,
+    /// The Unit's list: open, and its highlight.
+    pub unit_list: SelectList,
     /// Edit's read-only Unit code, in place of the select.
     pub unit_fixed: Option<String>,
     pub method_label: String,
@@ -140,6 +156,8 @@ pub struct BudgetFormPresenter {
     /// Every Unit some such Account is kept in, by code.
     units: Vec<(UnitId, String)>,
     focused: BudgetField,
+    /// The Unit's list.
+    list: SelectList,
     error: Option<String>,
 }
 
@@ -171,6 +189,7 @@ impl BudgetFormPresenter {
             candidates,
             units,
             focused: BudgetField::Name,
+            list: SelectList::default(),
             error: None,
         };
         form.account_ids = form.offered_ids();
@@ -209,6 +228,7 @@ impl BudgetFormPresenter {
             candidates,
             units,
             focused: BudgetField::Name,
+            list: SelectList::default(),
             error: None,
         }
     }
@@ -282,18 +302,30 @@ impl BudgetFormPresenter {
         self.focused
     }
 
-    pub fn handle(&mut self, event: BudgetFormEvent, router: &mut dyn BudgetsRouter) {
+    pub fn handle(
+        &mut self,
+        event: BudgetFormEvent,
+        router: &mut dyn DialogRouter<BudgetsOutcome>,
+    ) {
         match event {
+            BudgetFormEvent::Input(input) => self.input(input, router),
             BudgetFormEvent::Name(text) => {
                 self.name = text;
                 self.error = None;
             }
             BudgetFormEvent::Unit(unit) => {
-                if !self.is_edit() && self.units.iter().any(|(id, _)| *id == unit) {
-                    self.unit = Some(unit);
-                    self.error = None;
-                    self.sync_unit();
+                self.list.close();
+                self.set_unit(unit);
+            }
+            BudgetFormEvent::ToggleUnitList => {
+                if !self.is_edit() {
+                    self.focused = BudgetField::Unit;
+                    let options = self.unit_choices();
+                    self.list.toggle(&options, self.unit.as_ref());
                 }
+            }
+            BudgetFormEvent::CloseList => {
+                self.list.close();
             }
             BudgetFormEvent::ToggleAccount(id) => self.toggle_account(id),
             BudgetFormEvent::ToggleCursorAccount => {
@@ -303,6 +335,7 @@ impl BudgetFormPresenter {
                 }
             }
             BudgetFormEvent::StartFrom(choice) => {
+                self.list.close();
                 if self.is_edit() || (choice == StartChoice::Copy && !self.can_copy()) {
                     return;
                 }
@@ -311,6 +344,7 @@ impl BudgetFormPresenter {
                 self.error = None;
             }
             BudgetFormEvent::Focus(field) => {
+                self.list.close();
                 if self.stops().contains(&field) {
                     self.focused = field;
                 }
@@ -319,12 +353,73 @@ impl BudgetFormPresenter {
             BudgetFormEvent::PrevField => self.cycle(true),
             BudgetFormEvent::StepBack => self.step(false),
             BudgetFormEvent::StepForward => self.step(true),
-            BudgetFormEvent::Cancel => router.close_dialog(None),
+            BudgetFormEvent::Cancel => router.close(None),
         }
     }
 
-    /// `Tab` / `Shift+Tab`, wrapping.
+    /// What `input` means on the focused field.
+    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<BudgetsOutcome>) {
+        match (input, self.focused) {
+            (DialogInput::NextField, _) => self.cycle(false),
+            (DialogInput::PreviousField, _) => self.cycle(true),
+            (DialogInput::Submit, _) => self.confirm(router),
+            // `select` confirms except where it commits the Unit's open list.
+            (DialogInput::Select, field)
+                if !(field == BudgetField::Unit && self.list.is_open()) =>
+            {
+                self.confirm(router);
+            }
+            (_, BudgetField::Unit) => {
+                let options = self.unit_choices();
+                if let SelectMove::Chose(unit) =
+                    self.list.input(input, &options, self.unit.as_ref())
+                {
+                    self.set_unit(unit);
+                }
+            }
+            (DialogInput::Char(' '), BudgetField::Accounts) => {
+                self.handle(BudgetFormEvent::ToggleCursorAccount, router);
+            }
+            (DialogInput::Left, BudgetField::Accounts | BudgetField::StartFrom) => {
+                self.step(false);
+            }
+            (DialogInput::Right, BudgetField::Accounts | BudgetField::StartFrom) => {
+                self.step(true);
+            }
+            (DialogInput::Char(ch), BudgetField::Name) => {
+                self.name.push(ch);
+                self.error = None;
+            }
+            (DialogInput::Backspace, BudgetField::Name) => {
+                self.name.pop();
+                self.error = None;
+            }
+            _ => {}
+        }
+    }
+
+    fn set_unit(&mut self, unit: UnitId) {
+        if !self.is_edit() && self.units.iter().any(|(id, _)| *id == unit) {
+            self.unit = Some(unit);
+            self.error = None;
+            self.sync_unit();
+        }
+    }
+
+    /// The Units the select offers, by code.
+    fn unit_choices(&self) -> Vec<Choice<UnitId>> {
+        self.units
+            .iter()
+            .map(|(id, code)| Choice {
+                value: *id,
+                label: code.clone(),
+            })
+            .collect()
+    }
+
+    /// `Tab` / `Shift+Tab`, wrapping. Leaving the Unit closes its list, as a click elsewhere would.
     fn cycle(&mut self, back: bool) {
+        self.list.close();
         let stops = self.stops();
         let at = stops.iter().position(|f| *f == self.focused).unwrap_or(0);
         let next = if back {
@@ -389,6 +484,7 @@ impl BudgetFormPresenter {
     }
 
     fn toggle_account(&mut self, id: AccountId) {
+        self.list.close();
         self.focused = BudgetField::Accounts;
         if let Some(at) = self.offered().iter().position(|each| each.id == id) {
             self.account_cursor = at;
@@ -408,7 +504,7 @@ impl BudgetFormPresenter {
 
     /// Saves the form through the Interactors, raises the Toast and closes the Dialog; a refusal
     /// stays on the form. A form that can't confirm does nothing.
-    pub fn confirm(&mut self, router: &mut dyn BudgetsRouter) {
+    pub fn confirm(&mut self, router: &mut dyn DialogRouter<BudgetsOutcome>) {
         if !self.can_confirm() {
             return;
         }
@@ -451,7 +547,7 @@ impl BudgetFormPresenter {
         match done {
             Ok((toast, created)) => {
                 router.notify(Notice::Toast(ToastKind::Success, toast));
-                router.close_dialog(created.map(BudgetsOutcome::Show));
+                router.close(created.map(BudgetsOutcome::Show));
             }
             Err(refusal) => self.error = Some(dialog_error_text(&refusal)),
         }
@@ -501,17 +597,11 @@ impl BudgetFormPresenter {
             },
             unit: SelectView {
                 label: lib_locale::msg::column_unit(),
-                options: self
-                    .units
-                    .iter()
-                    .map(|(id, code)| Choice {
-                        value: *id,
-                        label: code.clone(),
-                    })
-                    .collect(),
+                options: self.unit_choices(),
                 chosen: self.unit,
                 focused: focused == BudgetField::Unit,
             },
+            unit_list: self.list,
             // Locked after creation, like a Bill Plan's.
             unit_fixed: edit.then_some(unit_code),
             method_label: msg::budgets_new_field_method(),
@@ -825,5 +915,115 @@ mod tests {
 
         assert_eq!(form.router.routed, [Routed::Closed(None)]);
         assert_eq!(form.budgets(), stored);
+    }
+
+    fn type_into(form: &mut Form, text: &str) {
+        for ch in text.chars() {
+            form.send(BudgetFormEvent::Input(DialogInput::Char(ch)));
+        }
+    }
+
+    #[test]
+    fn typing_edits_the_name_and_the_other_fields_swallow_it() {
+        let mut form = Form::new();
+        type_into(&mut form, "Trip");
+        form.send(BudgetFormEvent::Input(DialogInput::Backspace));
+        assert_eq!(form.view().name.text, "Tri");
+
+        form.send(BudgetFormEvent::Input(DialogInput::NextField));
+        assert_eq!(form.view().focused, BudgetField::Unit);
+        type_into(&mut form, "zz");
+        form.send(BudgetFormEvent::Input(DialogInput::Backspace));
+        assert_eq!(form.view().name.text, "Tri");
+        form.send(BudgetFormEvent::Input(DialogInput::PreviousField));
+        assert_eq!(form.view().focused, BudgetField::Name);
+    }
+
+    #[test]
+    fn select_confirms_a_valid_form_and_submit_confirms_from_any_field() {
+        let mut form = Form::new();
+        form.send(BudgetFormEvent::Input(DialogInput::Select));
+        assert!(form.router.routed.is_empty(), "no name yet");
+
+        type_into(&mut form, "Trip");
+        form.send(BudgetFormEvent::Input(DialogInput::NextField));
+        form.send(BudgetFormEvent::Input(DialogInput::Submit));
+
+        assert!(
+            form.router
+                .routed
+                .iter()
+                .any(|routed| matches!(routed, Routed::Closed(Some(BudgetsOutcome::Show(_))))),
+            "{:?}",
+            form.router.routed
+        );
+    }
+
+    #[test]
+    fn the_unit_select_opens_on_space_the_arrows_move_and_select_commits() {
+        let mut form = Form::new();
+        form.send(BudgetFormEvent::Focus(BudgetField::Unit));
+        let units = form.view().unit.options.clone();
+        let chosen = form.view().unit.chosen;
+
+        form.send(BudgetFormEvent::Input(DialogInput::Char(' ')));
+        assert!(form.view().unit_list.is_open());
+        if units.len() > 1 {
+            form.send(BudgetFormEvent::Input(DialogInput::SelectNext));
+            assert_eq!(form.view().unit.chosen, chosen, "moving only highlights");
+        }
+        form.send(BudgetFormEvent::Input(DialogInput::Select));
+
+        assert!(!form.view().unit_list.is_open());
+        assert!(
+            form.router.routed.is_empty(),
+            "committing a list is not confirming"
+        );
+        if units.len() > 1 {
+            assert_ne!(form.view().unit.chosen, chosen);
+        }
+    }
+
+    #[test]
+    fn tab_closes_the_unit_list_and_close_list_leaves_the_unit() {
+        let mut form = Form::new();
+        form.send(BudgetFormEvent::Focus(BudgetField::Unit));
+        let chosen = form.view().unit.chosen;
+        form.send(BudgetFormEvent::Input(DialogInput::Char(' ')));
+        form.send(BudgetFormEvent::CloseList);
+        assert!(!form.view().unit_list.is_open());
+        assert_eq!(form.view().unit.chosen, chosen);
+
+        form.send(BudgetFormEvent::ToggleUnitList);
+        assert!(form.view().unit_list.is_open());
+        form.send(BudgetFormEvent::Input(DialogInput::NextField));
+        assert!(!form.view().unit_list.is_open());
+        assert_eq!(form.view().focused, BudgetField::Accounts);
+    }
+
+    #[test]
+    fn space_and_the_arrows_work_the_chips_and_start_from() {
+        let mut form = Form::new();
+        form.send(BudgetFormEvent::Focus(BudgetField::Accounts));
+        let before = form.view().accounts[0].selected;
+        form.send(BudgetFormEvent::Input(DialogInput::Char(' ')));
+        assert_eq!(form.view().accounts[0].selected, !before);
+        form.send(BudgetFormEvent::Input(DialogInput::Right));
+        assert!(
+            form.view().accounts.iter().skip(1).any(|chip| chip.cursor)
+                || form.view().accounts.len() == 1
+        );
+
+        form.send(BudgetFormEvent::Focus(BudgetField::StartFrom));
+        form.send(BudgetFormEvent::Input(DialogInput::Right));
+        assert_ne!(
+            form.view().start.expect("create").chosen,
+            Some(StartChoice::Empty)
+        );
+        form.send(BudgetFormEvent::Input(DialogInput::Left));
+        assert_eq!(
+            form.view().start.expect("create").chosen,
+            Some(StartChoice::Empty)
+        );
     }
 }

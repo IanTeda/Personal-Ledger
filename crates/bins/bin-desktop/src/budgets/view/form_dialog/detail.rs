@@ -8,24 +8,10 @@ use lib_budgets::presenter::{DetailEvent, DetailViewModel};
 use super::Clicks;
 use crate::budgets::view::progress;
 use crate::dialog;
-use crate::shell::view::dialog_host::{DialogKey, DialogOutcome};
 use crate::theme::color;
 
 /// The dialog's width: the handoff's 9d.
 const WIDTH: gpui::Pixels = px(600.0);
-
-/// `j`/`k` move the cursor, `t` hands off to Transactions and `e` opens Edit budget; `enter`
-/// confirms, which is the hand-off too. `Err` is the outcome to answer with, `Ok` an event.
-pub(super) fn key(key: DialogKey) -> Option<Result<DetailEvent, DialogOutcome>> {
-    Some(match key {
-        DialogKey::Down | DialogKey::Char('j') => Ok(DetailEvent::Down),
-        DialogKey::Up | DialogKey::Char('k') => Ok(DetailEvent::Up),
-        DialogKey::Char('t') => Ok(DetailEvent::Transactions),
-        DialogKey::Char('e') => Ok(DetailEvent::Edit),
-        DialogKey::Enter => Err(DialogOutcome::Confirm),
-        _ => return None,
-    })
-}
 
 fn stat(label: &str, value: String, negative: bool, cx: &App) -> impl IntoElement {
     div()

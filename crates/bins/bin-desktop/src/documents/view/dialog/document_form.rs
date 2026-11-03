@@ -1,159 +1,67 @@
 //! **Add document** and **Edit document** on the shared `crate::dialog` frame: one View, Edit
 //! without the Path and the note. The Key date's date and reminder show once a kind is chosen.
 //!
-//! The two selects take the arrows, `Space` and `Enter` while focused; `Space` flips the reminder;
-//! the text fields take typing, and a select or the reminder swallows it.
+//! What each key means is the Presenter's; this View draws the form and turns its clicks into
+//! Presenter events.
 
 use gpui::{AnyElement, App, div, prelude::*, px};
 use lib_documents::presenter::{
-    CheckboxView, DocumentField, DocumentFormEvent, DocumentFormPresenter, DocumentFormViewModel,
+    CheckboxView, DocumentField, DocumentFormEvent, DocumentFormViewModel,
 };
-use lib_viper::view::TextFieldView;
+use lib_viper::view::{SelectList, TextFieldView};
 
-use super::{Clicks, DocumentsDialog, View, send};
+use super::{Clicks, DocumentsDialog, View};
 use crate::dialog;
 use crate::form::dialog_fields::{label, text_field, two_up};
-use crate::form::select::SelectState;
 use crate::form::select_field::{self, SelectFieldProps};
-use crate::form::viper::{choose_option, enter, labels, select_key, synced, toggle_select, typed};
-use crate::shell::view::dialog_host::{DialogKey, DialogOutcome};
+use crate::form::viper::{drawn, labels};
 use crate::theme::color;
-
-fn handle(presenter: &mut DocumentFormPresenter, event: DocumentFormEvent) {
-    send(presenter, event, DocumentFormPresenter::handle);
-}
-
-pub(super) fn key(
-    presenter: &mut DocumentFormPresenter,
-    doc_type: &mut SelectState,
-    key_kind: &mut SelectState,
-    key: DialogKey,
-) -> DialogOutcome {
-    let view = presenter.view_model();
-    let focused = view.focused;
-    if matches!(key, DialogKey::Tab | DialogKey::BackTab) {
-        // Leaving a select closes its list, as a click elsewhere would.
-        doc_type.cancel();
-        key_kind.cancel();
-        let event = if key == DialogKey::Tab {
-            DocumentFormEvent::NextField
-        } else {
-            DocumentFormEvent::PrevField
-        };
-        handle(presenter, event);
-        return DialogOutcome::Handled;
-    }
-    let select_keys = matches!(
-        key,
-        DialogKey::Enter | DialogKey::Char(' ') | DialogKey::Up | DialogKey::Down
-    );
-    match focused {
-        DocumentField::Type if select_keys => {
-            if let (_, Some(kind)) = select_key(doc_type, &view.doc_type, key) {
-                handle(presenter, DocumentFormEvent::Type(kind));
-            }
-            DialogOutcome::Handled
-        }
-        DocumentField::KeyKind if select_keys => {
-            if let (_, Some(kind)) = select_key(key_kind, &view.key_kind, key) {
-                handle(presenter, DocumentFormEvent::KeyKind(kind));
-            }
-            DialogOutcome::Handled
-        }
-        _ if matches!(key, DialogKey::Enter | DialogKey::CtrlEnter) => {
-            enter(view.frame.can_confirm)
-        }
-        DocumentField::Reminder if key == DialogKey::Char(' ') => {
-            handle(presenter, DocumentFormEvent::ToggleReminder);
-            DialogOutcome::Handled
-        }
-        DocumentField::Path
-        | DocumentField::Title
-        | DocumentField::Date
-        | DocumentField::KeyDate => {
-            let (field, event): (Option<&TextFieldView>, fn(String) -> DocumentFormEvent) =
-                match focused {
-                    DocumentField::Path => (view.path.as_ref(), DocumentFormEvent::Path),
-                    DocumentField::Title => (Some(&view.title), DocumentFormEvent::Title),
-                    DocumentField::Date => (Some(&view.date), DocumentFormEvent::Date),
-                    _ => (view.key_date.as_ref(), DocumentFormEvent::KeyDate),
-                };
-            match field.and_then(|field| typed(&field.text, key)) {
-                Some(text) => {
-                    handle(presenter, event(text));
-                    DialogOutcome::Handled
-                }
-                None => DialogOutcome::Ignored,
-            }
-        }
-        // A select or the reminder swallows typing rather than letting it reach the Shell.
-        _ if matches!(key, DialogKey::Char(_) | DialogKey::Backspace) => DialogOutcome::Handled,
-        _ => DialogOutcome::Ignored,
-    }
-}
-
-fn form(
-    dialog: &mut DocumentsDialog,
-) -> Option<(
-    &mut DocumentFormPresenter,
-    &mut SelectState,
-    &mut SelectState,
-)> {
-    match &mut dialog.view {
-        View::Form(presenter, doc_type, key_kind) => Some((presenter, doc_type, key_kind)),
-        _ => None,
-    }
-}
 
 /// A click on a text field or the reminder focuses it; the reminder's also flips it.
 fn click_field(dialog: &mut DocumentsDialog, field: DocumentField) {
-    if let Some((presenter, doc_type, key_kind)) = form(dialog) {
-        doc_type.cancel();
-        key_kind.cancel();
-        handle(presenter, DocumentFormEvent::Focus(field));
-        if field == DocumentField::Reminder {
-            handle(presenter, DocumentFormEvent::ToggleReminder);
+    dialog.apply(|view, router| {
+        if let View::Form(presenter, ..) = view {
+            presenter.handle(DocumentFormEvent::Focus(field), router);
+            if field == DocumentField::Reminder {
+                presenter.handle(DocumentFormEvent::ToggleReminder, router);
+            }
         }
-    }
+    });
 }
 
 /// A click on a select's field focuses it and toggles its list, closing the other's.
 fn click_select(dialog: &mut DocumentsDialog, field: DocumentField) {
-    if let Some((presenter, doc_type, key_kind)) = form(dialog) {
-        handle(presenter, DocumentFormEvent::Focus(field));
-        let view = presenter.view_model();
-        if field == DocumentField::Type {
-            key_kind.cancel();
-            toggle_select(doc_type, &view.doc_type);
-        } else {
-            doc_type.cancel();
-            toggle_select(key_kind, &view.key_kind);
+    dialog.apply(|view, router| {
+        if let View::Form(presenter, ..) = view {
+            presenter.handle(DocumentFormEvent::ToggleList(field), router);
         }
-    }
+    });
 }
 
 fn choose_type(dialog: &mut DocumentsDialog, index: usize) {
-    if let Some((presenter, doc_type, _)) = form(dialog) {
-        let view = presenter.view_model();
-        if let Some(kind) = choose_option(doc_type, &view.doc_type, index) {
-            handle(presenter, DocumentFormEvent::Type(kind));
+    dialog.apply(|view, router| {
+        if let View::Form(presenter, ..) = view
+            && let Some(choice) = presenter.view_model().doc_type.options.get(index)
+        {
+            presenter.handle(DocumentFormEvent::Type(choice.value), router);
         }
-    }
+    });
 }
 
 fn choose_key_kind(dialog: &mut DocumentsDialog, index: usize) {
-    if let Some((presenter, _, key_kind)) = form(dialog) {
-        let view = presenter.view_model();
-        if let Some(kind) = choose_option(key_kind, &view.key_kind, index) {
-            handle(presenter, DocumentFormEvent::KeyKind(kind));
+    dialog.apply(|view, router| {
+        if let View::Form(presenter, ..) = view
+            && let Some(choice) = presenter.view_model().key_kind.options.get(index)
+        {
+            presenter.handle(DocumentFormEvent::KeyKind(choice.value), router);
         }
-    }
+    });
 }
 
 pub(super) fn render(
     view: &DocumentFormViewModel,
-    doc_type: &SelectState,
-    key_kind: &SelectState,
+    doc_type_scroll: &mut usize,
+    key_kind_scroll: &mut usize,
     actions: &Clicks,
     cx: &App,
 ) -> AnyElement {
@@ -171,7 +79,7 @@ pub(super) fn render(
     let select = |id: &'static str,
                   field: DocumentField,
                   options: Vec<String>,
-                  state: SelectState,
+                  state: crate::form::select::SelectState,
                   focused: bool,
                   label: String,
                   on_option_click: select_field::OnOptionClick| {
@@ -205,7 +113,15 @@ pub(super) fn render(
             "document-type",
             DocumentField::Type,
             labels(&view.doc_type),
-            synced(doc_type, &view.doc_type),
+            drawn(
+                &view.doc_type,
+                if view.doc_type.focused {
+                    view.list
+                } else {
+                    SelectList::default()
+                },
+                doc_type_scroll,
+            ),
             view.doc_type.focused,
             view.doc_type.label.clone(),
             actions.option(choose_type),
@@ -220,7 +136,15 @@ pub(super) fn render(
         "document-key-kind",
         DocumentField::KeyKind,
         labels(&view.key_kind),
-        synced(key_kind, &view.key_kind),
+        drawn(
+            &view.key_kind,
+            if view.key_kind.focused {
+                view.list
+            } else {
+                SelectList::default()
+            },
+            key_kind_scroll,
+        ),
         view.key_kind.focused,
         view.key_kind.label.clone(),
         actions.option(choose_key_kind),

@@ -1,19 +1,11 @@
-//! Accept all strong matches' count-first confirm on the shared `crate::dialog` frame. `Enter`
-//! confirms and every other key is swallowed.
+//! Accept all strong matches' count-first confirm on the shared `crate::dialog` frame. What each key means is the
+//! Presenter's: `select` and `submit` confirm and every other input is swallowed.
 
 use gpui::{AnyElement, App, div, prelude::*, px};
 use lib_documents::presenter::AcceptAllViewModel;
 
 use super::Clicks;
 use crate::dialog;
-use crate::shell::view::dialog_host::{DialogKey, DialogOutcome};
-
-pub(super) fn key(key: DialogKey) -> DialogOutcome {
-    match key {
-        DialogKey::Enter | DialogKey::CtrlEnter => DialogOutcome::Confirm,
-        _ => DialogOutcome::Handled,
-    }
-}
 
 pub(super) fn render(view: &AcceptAllViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     let card = div()

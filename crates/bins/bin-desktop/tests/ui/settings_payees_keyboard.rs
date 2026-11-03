@@ -252,8 +252,7 @@ fn woolworths_warning(ui: &mut Harness<'_>) -> Option<String> {
         .settings::<SettingsPayeesSnapshot>()
         .payee_names
         .iter()
-        .position(|payee| payee == "Woolworths")
-        .expect("a stub Payee");
+        .position(|payee| payee == "Woolworths")?;
     ui.press("g g");
     for _ in 0..row {
         ui.press("j");

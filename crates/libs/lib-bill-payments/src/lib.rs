@@ -27,4 +27,4 @@ pub mod msg;
 pub mod presenter;
 pub mod protocols;
 
-pub use protocols::{BillPayments, BillPaymentsRouter, PayOutcome, SharedPayments};
+pub use protocols::{BillPayments, PayOutcome, SharedPayments};

@@ -2,52 +2,20 @@
 //! Type line and a capped, scrolling list of rows.
 //!
 //! Typing goes to the query, `tab` cycles the kind filter and, while filing, `←`/`→` step the
-//! Document Type. `↑`/`↓` (and `ctrl+n`/`ctrl+p`) move the highlight; `enter` or a click picks.
+//! Document Type. `↑`/`↓` move the highlight; `select` or a click picks. What each key means is the Presenter's.
 
 use std::ops::Range;
 
 use gpui::{AnyElement, App, IntoElement, div, prelude::*, px};
-use lib_documents::presenter::{
-    LinkPickerEvent, LinkPickerPresenter, LinkPickerViewModel, PickerRowView, Purpose,
-};
+use lib_documents::presenter::{LinkPickerViewModel, PickerRowView};
 
-use super::{Clicks, send};
+use super::Clicks;
 use crate::dialog;
 use crate::documents::view::snapshot::PickerSnapshot;
-use crate::form::viper::typed;
-use crate::shell::view::dialog_host::{DialogKey, DialogOutcome};
 use crate::theme::color;
 
 /// Rows drawn at once; the list scrolls past this, the palette's own capped-window idiom.
 const VISIBLE_ROWS: usize = 9;
-
-fn handle(presenter: &mut LinkPickerPresenter, event: LinkPickerEvent) {
-    send(presenter, event, LinkPickerPresenter::handle);
-}
-
-pub(super) fn key(presenter: &mut LinkPickerPresenter, key: DialogKey) -> DialogOutcome {
-    let event = match key {
-        DialogKey::Enter | DialogKey::CtrlEnter => return DialogOutcome::Confirm,
-        DialogKey::Down | DialogKey::Ctrl('n') => LinkPickerEvent::Down,
-        DialogKey::Up | DialogKey::Ctrl('p') => LinkPickerEvent::Up,
-        DialogKey::Tab | DialogKey::BackTab => LinkPickerEvent::CycleKind,
-        DialogKey::Left | DialogKey::Right if matches!(presenter.purpose(), Purpose::File(_)) => {
-            LinkPickerEvent::StepType {
-                forward: key == DialogKey::Right,
-            }
-        }
-        DialogKey::Char(ch) if ch.is_control() => return DialogOutcome::Ignored,
-        DialogKey::Char(_) | DialogKey::Backspace => {
-            match typed(&presenter.view_model().query, key) {
-                Some(text) => LinkPickerEvent::Query(text),
-                None => return DialogOutcome::Ignored,
-            }
-        }
-        _ => return DialogOutcome::Ignored,
-    };
-    handle(presenter, event);
-    DialogOutcome::Handled
-}
 
 /// What a test reads of the open picker.
 pub(super) fn snapshot(view: &LinkPickerViewModel) -> PickerSnapshot {

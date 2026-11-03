@@ -1,4 +1,5 @@
-//! The port Pay it directly writes through, and the Router the Pay Dialog closes through.
+//! The port Pay it directly writes through. The Pay Dialog closes through `lib-viper`'s
+//! `DialogRouter`, which the Desktop's Dialog host implements once for every module.
 //!
 //! [`BillPayments`] is the module's one atomic port: a payment is a Transaction and the Bill
 //! Schedule entry it settles, written together or not at all. It is synchronous (ADR-0046): an
@@ -14,7 +15,6 @@ use std::rc::Rc;
 
 use lib_bills::{BillPlan, BillScheduleEntry, EntryId};
 use lib_core::{BillPlanId, TransactionId};
-use lib_toast::Notify;
 use lib_transactions::Transaction;
 
 /// The Bills a payment checks, and the one write that records it.
@@ -41,12 +41,4 @@ pub enum PayOutcome {
     Paid(TransactionId),
     /// Matched to an existing Transaction's Split.
     Matched,
-}
-
-/// Navigation out of the Pay Dialog's Presenter, implemented by each Client and passed into each
-/// `handle` call, as `lib-bills`' Router is. A Toast or status-line message goes to the Shell
-/// through [`Notify`] (ADR-0048).
-pub trait BillPaymentsRouter: Notify {
-    /// Closes the Pay Dialog. `outcome` is what its confirm did, `None` when it was cancelled.
-    fn close_dialog(&mut self, outcome: Option<PayOutcome>);
 }

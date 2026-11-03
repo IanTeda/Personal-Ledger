@@ -22,11 +22,12 @@ use lib_locale::format::{
     AmountStyle, format_amount, format_date_input, format_month_day, parse_optional_date,
     parse_positive_amount, upper,
 };
+use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::view::{Choice, DialogFrame, TextFieldView};
 
 use crate::interactor::PayBill;
 use crate::msg;
-use crate::protocols::{BillPaymentsRouter, PayOutcome, SharedPayments};
+use crate::protocols::{PayOutcome, SharedPayments};
 
 /// The two settlement paths, in the switch's order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,20 +57,19 @@ pub enum MatchChoice {
 pub enum PayEvent {
     /// A click on a switch segment.
     Mode(PayMode),
-    /// `←`/`→`: the other panel.
-    ToggleMode,
-    /// `j`/`k` over the Match list, "None of these" last. Stops at either end; with nothing chosen
-    /// yet, either lands on the first row.
-    NextChoice,
-    PrevChoice,
+    /// A Dialog keymap command or a typed key, meaning what the panel makes it: `←`/`→` switch
+    /// panel; on Match `j`/`k` and `select_next`/`select_previous` step the Match list ("None of
+    /// these" last, stopping at either end, and with nothing chosen yet landing on the first row)
+    /// and typing does nothing; on Pay it directly typing edits the focused field and `next_field`
+    /// moves to the other. `select` confirms once the panel would, and on "None of these"
+    /// switches to Pay it directly instead; `submit` confirms only while the panel would.
+    Input(DialogInput),
     /// A click on a Match row; "None of these" switches to Pay it directly at once.
     Choose(MatchChoice),
     /// A text field's whole new text, as its View's input holds it. The amount keeps only a
     /// decimal's characters.
     Amount(String),
     Date(String),
-    /// `Tab`: the other text field.
-    NextField,
     /// A click on a text field.
     Focus(PayField),
     /// Pays or Matches from the active panel. On "None of these" it switches to Pay it directly
@@ -238,30 +238,72 @@ impl PayPresenter {
     }
 
     /// Any event clears a refused confirm; Confirm sets it again if it is refused once more.
-    pub fn handle(&mut self, event: PayEvent, router: &mut dyn BillPaymentsRouter) {
+    pub fn handle(&mut self, event: PayEvent, router: &mut dyn DialogRouter<PayOutcome>) {
         self.refusal = None;
         match event {
+            PayEvent::Input(input) => self.input(input, router),
             PayEvent::Mode(mode) => self.mode = mode,
-            PayEvent::ToggleMode => {
+            PayEvent::Choose(choice) => self.choose(choice),
+            PayEvent::Amount(text) => self.amount = decimal_characters(&text),
+            PayEvent::Date(text) => self.date = text,
+            PayEvent::Focus(field) => self.focused = field,
+            PayEvent::Confirm => self.confirm(router),
+            PayEvent::Cancel => router.close(None),
+        }
+    }
+
+    /// What `input` means on the active panel.
+    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<PayOutcome>) {
+        match (self.mode, input) {
+            (_, DialogInput::Left | DialogInput::Right) => {
                 self.mode = match self.mode {
                     PayMode::Direct => PayMode::Match,
                     PayMode::Match => PayMode::Direct,
                 };
             }
-            PayEvent::NextChoice => self.step_choice(true),
-            PayEvent::PrevChoice => self.step_choice(false),
-            PayEvent::Choose(choice) => self.choose(choice),
-            PayEvent::Amount(text) => self.amount = decimal_characters(&text),
-            PayEvent::Date(text) => self.date = text,
-            PayEvent::NextField => {
+            (_, DialogInput::Select) => self.confirm(router),
+            (_, DialogInput::Submit) => {
+                if self.can_confirm() {
+                    self.confirm(router);
+                }
+            }
+            (PayMode::Match, DialogInput::SelectNext | DialogInput::Char('j')) => {
+                self.step_choice(true)
+            }
+            (PayMode::Match, DialogInput::SelectPrevious | DialogInput::Char('k')) => {
+                self.step_choice(false)
+            }
+            (PayMode::Direct, DialogInput::NextField | DialogInput::PreviousField) => {
                 self.focused = match self.focused {
                     PayField::Amount => PayField::Date,
                     PayField::Date => PayField::Amount,
                 };
             }
-            PayEvent::Focus(field) => self.focused = field,
-            PayEvent::Confirm => self.confirm(router),
-            PayEvent::Cancel => router.close_dialog(None),
+            (PayMode::Direct, DialogInput::Char(ch)) => {
+                let text = self.focused_text();
+                text.push(ch);
+                self.keep_amount_decimal();
+            }
+            (PayMode::Direct, DialogInput::Backspace) => {
+                self.focused_text().pop();
+            }
+            // Match takes no typing, and the rest move nothing on either panel.
+            _ => {}
+        }
+    }
+
+    /// The text the focused field types into.
+    fn focused_text(&mut self) -> &mut String {
+        match self.focused {
+            PayField::Amount => &mut self.amount,
+            PayField::Date => &mut self.date,
+        }
+    }
+
+    /// Keeps the amount to a decimal's characters after a typed one.
+    fn keep_amount_decimal(&mut self) {
+        if self.focused == PayField::Amount {
+            self.amount = decimal_characters(&self.amount);
         }
     }
 
@@ -288,7 +330,7 @@ impl PayPresenter {
         }
     }
 
-    fn confirm(&mut self, router: &mut dyn BillPaymentsRouter) {
+    fn confirm(&mut self, router: &mut dyn DialogRouter<PayOutcome>) {
         let landed = match self.mode {
             PayMode::Direct => {
                 let (Some(amount), Ok(Some(date))) = (self.amount_money(), self.parse_date())
@@ -330,7 +372,7 @@ impl PayPresenter {
             },
         };
         match landed {
-            Ok(outcome) => router.close_dialog(Some(outcome)),
+            Ok(outcome) => router.close(Some(outcome)),
             Err(refusal) => self.refusal = Some(refusal_text(&refusal)),
         }
     }
@@ -594,16 +636,16 @@ mod tests {
         dialog.send(PayEvent::Confirm);
         assert!(dialog.router.closed.is_empty());
 
-        dialog.send(PayEvent::PrevChoice);
+        dialog.send(PayEvent::Input(DialogInput::SelectPrevious));
         assert_eq!(dialog.view().choice, Some(MatchChoice::Candidate(0)));
-        dialog.send(PayEvent::PrevChoice);
+        dialog.send(PayEvent::Input(DialogInput::SelectPrevious));
         assert_eq!(dialog.view().choice, Some(MatchChoice::Candidate(0)));
         for _ in 0..=rows {
-            dialog.send(PayEvent::NextChoice);
+            dialog.send(PayEvent::Input(DialogInput::SelectNext));
         }
         assert_eq!(dialog.view().choice, Some(MatchChoice::NoneOfThese));
         assert!(!dialog.view().frame.can_confirm);
-        dialog.send(PayEvent::PrevChoice);
+        dialog.send(PayEvent::Input(DialogInput::SelectPrevious));
         assert_eq!(dialog.view().choice, Some(MatchChoice::Candidate(rows - 1)));
     }
 
@@ -613,7 +655,7 @@ mod tests {
         dialog.send(PayEvent::Choose(MatchChoice::NoneOfThese));
         assert_eq!(dialog.view().mode, PayMode::Direct);
 
-        dialog.send(PayEvent::ToggleMode);
+        dialog.send(PayEvent::Input(DialogInput::Left));
         assert_eq!(dialog.view().mode, PayMode::Match);
         assert_eq!(dialog.view().choice, Some(MatchChoice::NoneOfThese));
         dialog.send(PayEvent::Confirm);
@@ -624,11 +666,11 @@ mod tests {
     #[test]
     fn switching_keeps_both_panels_state() {
         let mut dialog = Dialog::open();
-        dialog.send(PayEvent::NextChoice);
+        dialog.send(PayEvent::Input(DialogInput::SelectNext));
         let chosen = dialog.view().choice;
         dialog.send(PayEvent::Mode(PayMode::Direct));
         dialog.send(PayEvent::Amount("12.50".into()));
-        dialog.send(PayEvent::NextField);
+        dialog.send(PayEvent::Input(DialogInput::NextField));
 
         dialog.send(PayEvent::Mode(PayMode::Match));
         let view = dialog.view();
@@ -637,7 +679,7 @@ mod tests {
             !view.amount.focused && !view.date.focused,
             "Match has no text field"
         );
-        dialog.send(PayEvent::ToggleMode);
+        dialog.send(PayEvent::Input(DialogInput::Left));
         let view = dialog.view();
         assert_eq!(view.amount.text, "12.50");
         assert!(view.date.focused);
@@ -736,7 +778,7 @@ mod tests {
         );
         assert!(dialog.router.closed.is_empty());
 
-        dialog.send(PayEvent::ToggleMode);
+        dialog.send(PayEvent::Input(DialogInput::Left));
         assert_eq!(dialog.view().refusal, None);
         dialog.send(PayEvent::Confirm);
         assert_eq!(
@@ -781,5 +823,103 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    fn typing(text: &str) -> Vec<PayEvent> {
+        text.chars()
+            .map(|ch| PayEvent::Input(DialogInput::Char(ch)))
+            .collect()
+    }
+
+    #[test]
+    fn left_and_right_switch_panel_and_j_k_step_the_match_list() {
+        let mut dialog = Dialog::open_with(nothing_preselected);
+        dialog.send(PayEvent::Input(DialogInput::Char('j')));
+        assert_eq!(dialog.view().choice, Some(MatchChoice::Candidate(0)));
+        dialog.send(PayEvent::Input(DialogInput::SelectNext));
+        assert_ne!(dialog.view().choice, Some(MatchChoice::Candidate(0)));
+        dialog.send(PayEvent::Input(DialogInput::Char('k')));
+        assert_eq!(dialog.view().choice, Some(MatchChoice::Candidate(0)));
+
+        dialog.send(PayEvent::Input(DialogInput::Right));
+        assert_eq!(dialog.view().mode, PayMode::Direct);
+        dialog.send(PayEvent::Input(DialogInput::Left));
+        assert_eq!(dialog.view().mode, PayMode::Match);
+    }
+
+    #[test]
+    fn match_takes_no_typing() {
+        let mut dialog = Dialog::open();
+        let before = dialog.view();
+
+        for event in typing("x1") {
+            dialog.send(event);
+        }
+        dialog.send(PayEvent::Input(DialogInput::Backspace));
+
+        assert_eq!(dialog.view(), before);
+    }
+
+    #[test]
+    fn typing_edits_the_focused_field_and_tab_moves_to_the_other() {
+        let mut dialog = Dialog::open_with(no_candidates);
+        dialog.send(PayEvent::Input(DialogInput::Backspace));
+        dialog.send(PayEvent::Input(DialogInput::Backspace));
+        assert_eq!(dialog.view().amount.text, "89.");
+        for event in typing("5x") {
+            dialog.send(event);
+        }
+        assert_eq!(
+            dialog.view().amount.text,
+            "89.5",
+            "only a decimal's characters"
+        );
+
+        dialog.send(PayEvent::Input(DialogInput::NextField));
+        assert!(dialog.view().date.focused);
+        dialog.send(PayEvent::Input(DialogInput::Backspace));
+        assert_ne!(dialog.view().date.text, format_date_input(today(), None));
+        assert_eq!(dialog.view().amount.text, "89.5");
+        dialog.send(PayEvent::Input(DialogInput::PreviousField));
+        assert!(dialog.view().amount.focused);
+    }
+
+    #[test]
+    fn select_confirms_a_valid_panel_and_on_none_of_these_switches_panel() {
+        let mut dialog = Dialog::open();
+        dialog.send(PayEvent::Choose(MatchChoice::NoneOfThese));
+        dialog.send(PayEvent::Input(DialogInput::Left));
+        assert_eq!(dialog.view().mode, PayMode::Match);
+
+        dialog.send(PayEvent::Input(DialogInput::Select));
+        assert_eq!(dialog.view().mode, PayMode::Direct);
+        assert!(dialog.router.closed.is_empty());
+
+        dialog.send(PayEvent::Input(DialogInput::Select));
+        assert!(matches!(
+            dialog.router.closed.as_slice(),
+            [Some(PayOutcome::Paid(_))]
+        ));
+    }
+
+    #[test]
+    fn submit_confirms_only_while_the_panel_would() {
+        let mut dialog = Dialog::open_with(nothing_preselected);
+        dialog.send(PayEvent::Input(DialogInput::Submit));
+        assert!(dialog.router.closed.is_empty(), "nothing is chosen");
+
+        dialog.send(PayEvent::Choose(MatchChoice::NoneOfThese));
+        dialog.send(PayEvent::Input(DialogInput::Left));
+        dialog.send(PayEvent::Input(DialogInput::Submit));
+        assert_eq!(
+            dialog.view().mode,
+            PayMode::Match,
+            "None of these never confirms"
+        );
+        assert!(dialog.router.closed.is_empty());
+
+        dialog.send(PayEvent::Input(DialogInput::SelectPrevious));
+        dialog.send(PayEvent::Input(DialogInput::Submit));
+        assert_eq!(dialog.router.closed, [Some(PayOutcome::Matched)]);
     }
 }

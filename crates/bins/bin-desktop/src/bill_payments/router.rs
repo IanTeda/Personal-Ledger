@@ -1,38 +1,17 @@
-//! The Bill Payments module's entry point for other modules' Routers ([`open_pay`]), and
-//! `impl BillPaymentsRouter` for the Pay Dialog. Its Router records a close for the Dialog to read, and puts a Notice onto the bin's queue (`crate::notices`).
+//! The Bill Payments module's entry point for other modules' Routers ([`open_pay`]). The Pay Dialog
+//! closes through the host's `HostRouter`.
 
 use gpui::{Context, EventEmitter};
 use lib_bill_payments::presenter::PayPresenter;
-use lib_bill_payments::{BillPaymentsRouter, PayOutcome, SharedPayments};
+use lib_bill_payments::{PayOutcome, SharedPayments};
 use lib_bills::PayRequest;
 use lib_core::{Clock, DateStyle};
-use lib_toast::{Notice, Notify};
 
 use super::PayDialog;
 use crate::bills::DesktopPorts;
 use crate::ledger_store::LedgerStore;
 use crate::shell::view::dialog_entity::host_dialog;
 use crate::view::event::ViewEvent;
-
-/// Where the Pay Dialog's Presenter asks to go: closing, which the Dialog reads, and Notices, which
-/// `Root` drains once the key or click returns.
-#[derive(Default)]
-pub(super) struct DialogRouter {
-    /// `Some` once the Presenter closed the Dialog, with what its confirm did.
-    pub closed: Option<Option<PayOutcome>>,
-}
-
-impl BillPaymentsRouter for DialogRouter {
-    fn close_dialog(&mut self, outcome: Option<PayOutcome>) {
-        self.closed = Some(outcome);
-    }
-}
-
-impl Notify for DialogRouter {
-    fn notify(&mut self, notice: Notice) {
-        crate::notices::Queue.notify(notice);
-    }
-}
 
 /// What the Pay Dialog reads and writes through: the Bills ports its Match panel and wording read,
 /// the port Pay it directly writes through, and the Ledger read copy a confirm reads and brings in

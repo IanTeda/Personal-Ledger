@@ -1,28 +1,28 @@
 //! The Switcher (11b) and Manage budgets (11f) as one hosted Dialog Entity: each holds its
-//! `lib-budgets` Presenter, turns the keys the Dialog host passes on and its clicks into the
-//! Presenter's events, and draws its view model (`switcher.rs`, `manage.rs`).
+//! `lib-budgets` Presenter. Every Dialog command and typed key reaches it as a `lib-viper`
+//! `DialogInput`, which it reads itself, every click becomes a Presenter event, and the Dialog
+//! draws its view model (`switcher.rs`, `manage.rs`).
 //!
-//! A Presenter closes its Dialog through the Router with an outcome; the Dialog hands it to the
+//! A Presenter closes its Dialog through the host's [`HostRouter`] with an outcome; the Dialog hands it to the
 //! page that opened it ([`Landed`]), which opens what follows (another Budget, the Budget form,
 //! Manage budgets), then emits [`DialogClosed`] for the Shell to close the host.
 
 use std::rc::Rc;
 
 use gpui::{App, Context, Entity, EventEmitter, Pixels, Window, px};
+use lib_budgets::BudgetsOutcome;
+use lib_budgets::ManageAction;
 use lib_budgets::presenter::{ManageEvent, ManagePresenter, SwitcherEvent, SwitcherPresenter};
-use lib_budgets::{BudgetsOutcome, BudgetsRouter, ExportHistory, ManageAction};
-use lib_core::{BudgetId, CategoryId, Period};
 use lib_shell::{DialogCommand, Hint};
-use lib_toast::{Notice, Notify};
+use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::Keymap;
 
 use crate::budgets::ports;
 use crate::budgets::view::snapshot::ManageRowSnapshot;
 use crate::dialog::OnClick;
 use crate::ledger_store::LedgerStore;
-use crate::notices::Queue;
-use crate::shell::view::dialog_entity::{DialogClosed, HostedDialog};
-use crate::shell::view::dialog_host::{DialogKey, DialogOutcome, DialogReadback};
+use crate::shell::view::dialog_entity::{DialogClosed, HostRouter, HostedDialog};
+use crate::shell::view::dialog_host::DialogReadback;
 
 /// What a closed Switcher or Manage budgets hands the page: its outcome, or `None` on a cancel.
 pub type Landed = Box<dyn Fn(Option<BudgetsOutcome>, &mut App)>;
@@ -46,66 +46,8 @@ pub struct ListDialog {
 
 impl EventEmitter<DialogClosed> for ListDialog {}
 
-/// The Router a Dialog's Presenter closes it through: it opens nothing itself, so it only keeps
-/// the outcome for the Dialog to hand on.
-#[derive(Default)]
-pub(super) struct DialogRouter {
-    pub(super) closed: Option<Option<BudgetsOutcome>>,
-}
-
-impl BudgetsRouter for DialogRouter {
-    fn open_switcher(&mut self, _current: BudgetId) -> bool {
-        false
-    }
-
-    fn open_manage(&mut self, _current: BudgetId) -> bool {
-        false
-    }
-
-    fn open_new_budget(&mut self, _current: BudgetId) -> bool {
-        false
-    }
-
-    fn open_edit_budget(&mut self, _id: BudgetId) -> bool {
-        false
-    }
-
-    fn open_limit(&mut self, _budget: BudgetId, _category: CategoryId, _month: Period) -> bool {
-        false
-    }
-
-    fn open_limit_picker(&mut self, _budget: BudgetId) -> bool {
-        false
-    }
-
-    fn open_stop(&mut self, _budget: BudgetId, _category: CategoryId, _month: Period) -> bool {
-        false
-    }
-
-    fn open_fill(&mut self, _budget: BudgetId, _month: Period) -> bool {
-        false
-    }
-
-    fn open_detail(&mut self, _budget: BudgetId, _category: CategoryId, _month: Period) -> bool {
-        false
-    }
-
-    fn export_history(&mut self, _export: ExportHistory) {}
-
-    fn show_bills_period(&mut self, _period: Period) {}
-
-    fn show_transactions(&mut self, _budget: BudgetId, _category: CategoryId, _month: Period) {}
-
-    fn close_dialog(&mut self, outcome: Option<BudgetsOutcome>) {
-        self.closed = Some(outcome);
-    }
-}
-
-impl Notify for DialogRouter {
-    fn notify(&mut self, notice: Notice) {
-        Queue.notify(notice);
-    }
-}
+/// The host's Router, as a Switcher or Manage budgets Presenter closes through it.
+type Router = HostRouter<BudgetsOutcome>;
 
 impl ListDialog {
     pub fn switcher(
@@ -167,12 +109,12 @@ impl ListDialog {
     fn run(
         &mut self,
         cx: &mut Context<'_, Self>,
-        handle: impl FnOnce(&mut List, &mut DialogRouter),
+        handle: impl FnOnce(&mut List, &mut dyn DialogRouter<BudgetsOutcome>),
     ) {
-        let mut router = DialogRouter::default();
+        let mut router = Router::default();
         handle(&mut self.list, &mut router);
         ports::refresh(&self.ledger, cx);
-        if let Some(outcome) = router.closed {
+        if let Some(outcome) = router.closed() {
             (self.landed)(outcome, cx);
             cx.emit(DialogClosed);
         }
@@ -225,56 +167,17 @@ impl ListDialog {
             .collect();
         Some((rows, view.selected, view.error))
     }
-
-    /// The Switcher's key: the list's own letters, or the search's while it has the keys.
-    fn switcher_key(searching: bool, key: DialogKey) -> Option<SwitcherEvent> {
-        Some(match key {
-            DialogKey::Down => SwitcherEvent::Down,
-            DialogKey::Up => SwitcherEvent::Up,
-            DialogKey::Enter | DialogKey::CtrlEnter => SwitcherEvent::Choose,
-            DialogKey::Backspace if searching => SwitcherEvent::Backspace,
-            DialogKey::Char(c) if searching => SwitcherEvent::Type(c),
-            DialogKey::Char('j') => SwitcherEvent::Down,
-            DialogKey::Char('k') => SwitcherEvent::Up,
-            DialogKey::Char('/') => SwitcherEvent::Search,
-            DialogKey::Char('n') => SwitcherEvent::New,
-            _ => return None,
-        })
-    }
-
-    /// Manage budgets' key: the row cursor and each action's letter.
-    fn manage_key(key: DialogKey) -> Option<ManageEvent> {
-        Some(match key {
-            DialogKey::Down | DialogKey::Char('j') => ManageEvent::Down,
-            DialogKey::Up | DialogKey::Char('k') => ManageEvent::Up,
-            DialogKey::Enter | DialogKey::CtrlEnter => ManageEvent::Act(ManageAction::Open),
-            DialogKey::Char('e') => ManageEvent::Act(ManageAction::Edit),
-            DialogKey::Char('d') => ManageEvent::Act(ManageAction::Duplicate),
-            DialogKey::Char('*') => ManageEvent::Act(ManageAction::SetDefault),
-            DialogKey::Char('x') => ManageEvent::Act(ManageAction::Archive),
-            DialogKey::Char('n') => ManageEvent::New,
-            _ => return None,
-        })
-    }
 }
 
 impl HostedDialog for ListDialog {
-    fn key(&mut self, key: DialogKey, cx: &mut Context<'_, Self>) -> DialogOutcome {
-        match &self.list {
-            List::Switcher(presenter) => {
-                let Some(event) = Self::switcher_key(presenter.searching(), key) else {
-                    return DialogOutcome::Ignored;
-                };
-                self.switcher_event(event, cx);
-            }
-            List::Manage(_) => {
-                let Some(event) = Self::manage_key(key) else {
-                    return DialogOutcome::Ignored;
-                };
-                self.manage_event(event, cx);
-            }
-        }
-        DialogOutcome::Handled
+    /// Every input is the Presenter's to read: the list's own letters, or the Switcher's search
+    /// text while it has the keys.
+    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) -> bool {
+        self.run(cx, |list, router| match list {
+            List::Switcher(presenter) => presenter.handle(SwitcherEvent::Input(input), router),
+            List::Manage(presenter) => presenter.handle(ManageEvent::Input(input), router),
+        });
+        true
     }
 
     fn can_confirm(&self) -> bool {
@@ -304,7 +207,7 @@ impl HostedDialog for ListDialog {
         if !presenter.searching() {
             return false;
         }
-        presenter.handle(SwitcherEvent::LeaveSearch, &mut DialogRouter::default());
+        presenter.handle(SwitcherEvent::LeaveSearch, &mut Router::default());
         true
     }
 

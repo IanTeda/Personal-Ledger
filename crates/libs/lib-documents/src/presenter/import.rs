@@ -3,16 +3,20 @@
 //! change.
 
 use lib_toast::{Notice, ToastKind};
+use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::{BACK, Keymap, SUBMIT};
 use lib_viper::view::{DialogFrame, Hint, count};
 
 use super::DialogPorts;
 use crate::interactor::ImportDocuments;
-use crate::protocols::{DocumentsOutcome, DocumentsRouter};
+use crate::protocols::DocumentsOutcome;
 use crate::{ImportOutcome, Source, msg};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImportEvent {
+    /// A Dialog keymap command or a typed key: `select` (`Enter`) types a new line, `submit`
+    /// imports, a character or `Backspace` edits the paths, and `Tab` has nowhere to go.
+    Input(DialogInput),
     /// The paths' whole new text, as the View's input holds it.
     Paths(String),
     /// `Enter`: a new line, unless the last is blank already.
@@ -48,8 +52,23 @@ impl ImportPresenter {
         }
     }
 
-    pub fn handle(&mut self, event: ImportEvent, router: &mut dyn DocumentsRouter) {
+    pub fn handle(&mut self, event: ImportEvent, router: &mut dyn DialogRouter<DocumentsOutcome>) {
         match event {
+            ImportEvent::Input(input) => match input {
+                DialogInput::Select => self.handle(ImportEvent::Newline, router),
+                DialogInput::Submit => self.confirm(router),
+                DialogInput::Char(ch) if !ch.is_control() => {
+                    let mut paths = self.paths.clone();
+                    paths.push(ch);
+                    self.handle(ImportEvent::Paths(paths), router);
+                }
+                DialogInput::Backspace => {
+                    let mut paths = self.paths.clone();
+                    paths.pop();
+                    self.handle(ImportEvent::Paths(paths), router);
+                }
+                _ => {}
+            },
             ImportEvent::Paths(text) => {
                 self.paths = text;
                 self.notes.clear();
@@ -60,7 +79,7 @@ impl ImportPresenter {
                 }
             }
             ImportEvent::Confirm => self.confirm(router),
-            ImportEvent::Cancel => router.close_dialog(None),
+            ImportEvent::Cancel => router.close(None),
         }
     }
 
@@ -100,7 +119,7 @@ impl ImportPresenter {
             .collect()
     }
 
-    fn confirm(&mut self, router: &mut dyn DocumentsRouter) {
+    fn confirm(&mut self, router: &mut dyn DialogRouter<DocumentsOutcome>) {
         let typed = self.lines();
         if typed.is_empty() {
             return;
@@ -126,7 +145,7 @@ impl ImportPresenter {
             msg::documents_toast_import_partial(&imported.to_string(), &notes.len().to_string())
         };
         router.notify(Notice::Toast(ToastKind::Success, toast));
-        router.close_dialog(Some(DocumentsOutcome::Imported));
+        router.close(Some(DocumentsOutcome::Imported));
     }
 }
 
@@ -231,6 +250,51 @@ mod tests {
                 )),
                 DocumentsCall::CloseDialog(Some(DocumentsOutcome::Imported)),
             ]
+        );
+    }
+
+    fn type_into(
+        presenter: &mut ImportPresenter,
+        router: &mut RecordingDocumentsRouter,
+        text: &str,
+    ) {
+        for ch in text.chars() {
+            presenter.handle(ImportEvent::Input(DialogInput::Char(ch)), router);
+        }
+    }
+
+    #[test]
+    fn typing_builds_the_paths_select_adds_a_line_and_control_characters_are_ignored() {
+        let (mut presenter, _, mut router) = import();
+        type_into(&mut presenter, &mut router, "/tmp/a.pdf");
+        presenter.handle(ImportEvent::Input(DialogInput::Char('\n')), &mut router);
+        presenter.handle(ImportEvent::Input(DialogInput::Select), &mut router);
+        type_into(&mut presenter, &mut router, "/tmp/b.pngx");
+        presenter.handle(ImportEvent::Input(DialogInput::Backspace), &mut router);
+        presenter.handle(ImportEvent::Input(DialogInput::NextField), &mut router);
+
+        assert_eq!(presenter.view_model().paths, "/tmp/a.pdf\n/tmp/b.png");
+        assert!(
+            router.take().is_empty(),
+            "select types a line, it never imports"
+        );
+    }
+
+    #[test]
+    fn submit_imports_the_typed_paths_and_closes() {
+        let (mut presenter, _, mut router) = import();
+        presenter.handle(ImportEvent::Input(DialogInput::Submit), &mut router);
+        assert!(router.take().is_empty(), "nothing typed");
+
+        type_into(&mut presenter, &mut router, "/tmp/a.pdf");
+        presenter.handle(ImportEvent::Input(DialogInput::Submit), &mut router);
+
+        let calls = router.take();
+        assert!(
+            calls.contains(&DocumentsCall::CloseDialog(Some(
+                DocumentsOutcome::Imported
+            ))),
+            "{calls:?}"
         );
     }
 }

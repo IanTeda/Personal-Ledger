@@ -8,17 +8,21 @@
 
 use lib_core::{BudgetId, Clock, Period};
 use lib_locale::Segment;
+use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::{Keymap, SELECT};
 use lib_viper::view::{Choice, Hint, count};
 
 use super::{error_text, method_label};
 use crate::interactor::{ArchiveBudget, DuplicateBudget, RestoreBudget, SetDefaultBudget};
-use crate::protocols::{BudgetsOutcome, BudgetsRouter, ManageAction, SharedPorts};
+use crate::protocols::{BudgetsOutcome, ManageAction, SharedPorts};
 use crate::{Budget, Error, applied, msg};
 
 /// What Manage budgets is told.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ManageEvent {
+    /// A Dialog keymap command or a typed key: the row cursor (`j`/`k`) and each action's letter;
+    /// `select` and `submit` open the cursor's Budget.
+    Input(DialogInput),
     /// The row cursor, a row down or up.
     Down,
     Up,
@@ -145,10 +149,11 @@ impl ManagePresenter {
             .unwrap_or(0);
     }
 
-    pub fn handle(&mut self, event: ManageEvent, router: &mut dyn BudgetsRouter) {
+    pub fn handle(&mut self, event: ManageEvent, router: &mut dyn DialogRouter<BudgetsOutcome>) {
         let budgets = self.budgets();
         let last = budgets.len().saturating_sub(1);
         match event {
+            ManageEvent::Input(input) => self.input(input, router),
             ManageEvent::Down => self.selected = (self.selected + 1).min(last),
             ManageEvent::Up => self.selected = self.selected.min(last).saturating_sub(1),
             ManageEvent::Select(index) => self.selected = index.min(last),
@@ -166,28 +171,49 @@ impl ManagePresenter {
                     self.act(budget, action, router);
                 }
             }
-            ManageEvent::New => router.close_dialog(Some(BudgetsOutcome::NewBudget)),
-            ManageEvent::Cancel => router.close_dialog(None),
+            ManageEvent::New => router.close(Some(BudgetsOutcome::NewBudget)),
+            ManageEvent::Cancel => router.close(None),
         }
     }
 
-    fn act(&mut self, budget: &Budget, action: ManageAction, router: &mut dyn BudgetsRouter) {
+    /// What `input` means: the row cursor and each action's letter.
+    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<BudgetsOutcome>) {
+        let event = match input {
+            DialogInput::SelectNext | DialogInput::Char('j') => ManageEvent::Down,
+            DialogInput::SelectPrevious | DialogInput::Char('k') => ManageEvent::Up,
+            DialogInput::Select | DialogInput::Submit => ManageEvent::Act(ManageAction::Open),
+            DialogInput::Char('e') => ManageEvent::Act(ManageAction::Edit),
+            DialogInput::Char('d') => ManageEvent::Act(ManageAction::Duplicate),
+            DialogInput::Char('*') => ManageEvent::Act(ManageAction::SetDefault),
+            DialogInput::Char('x') => ManageEvent::Act(ManageAction::Archive),
+            DialogInput::Char('n') => ManageEvent::New,
+            _ => return,
+        };
+        self.handle(event, router);
+    }
+
+    fn act(
+        &mut self,
+        budget: &Budget,
+        action: ManageAction,
+        router: &mut dyn DialogRouter<BudgetsOutcome>,
+    ) {
         let id = budget.id;
         let done = match action {
             ManageAction::Open => {
-                router.close_dialog(Some(BudgetsOutcome::Show(id)));
+                router.close(Some(BudgetsOutcome::Show(id)));
                 return;
             }
             ManageAction::Edit if budget.is_archived() => Err(Error::Archived),
             ManageAction::Edit => {
-                router.close_dialog(Some(BudgetsOutcome::EditBudget(id)));
+                router.close(Some(BudgetsOutcome::EditBudget(id)));
                 return;
             }
             ManageAction::Duplicate => {
                 let copy = self.with_repo(|repo| DuplicateBudget(id).run(repo));
                 match copy {
                     Ok(copy) => {
-                        router.close_dialog(Some(BudgetsOutcome::ShowAndEdit(copy)));
+                        router.close(Some(BudgetsOutcome::ShowAndEdit(copy)));
                         return;
                     }
                     Err(error) => Err(error),
@@ -420,5 +446,54 @@ mod tests {
             .collect();
 
         assert!(counts.contains("opens to Personal spending"), "{counts}");
+    }
+
+    fn input(manage: &mut ManagePresenter, router: &mut RecordingRouter, input: DialogInput) {
+        manage.handle(ManageEvent::Input(input), router);
+    }
+
+    #[test]
+    fn the_arrows_and_j_k_move_the_cursor_and_select_and_submit_open_the_row() {
+        let (_ports, mut manage, mut router) = manage();
+        let rows = manage.view_model().rows;
+
+        input(&mut manage, &mut router, DialogInput::SelectNext);
+        assert_eq!(manage.view_model().selected, 1);
+        input(&mut manage, &mut router, DialogInput::Char('k'));
+        assert_eq!(manage.view_model().selected, 0);
+        input(&mut manage, &mut router, DialogInput::Char('j'));
+        assert_eq!(manage.view_model().selected, 1);
+        input(&mut manage, &mut router, DialogInput::SelectPrevious);
+        assert_eq!(manage.view_model().selected, 0);
+
+        input(&mut manage, &mut router, DialogInput::Select);
+        input(&mut manage, &mut router, DialogInput::Submit);
+
+        assert_eq!(
+            router.routed,
+            [
+                Routed::Closed(Some(BudgetsOutcome::Show(rows[0].id))),
+                Routed::Closed(Some(BudgetsOutcome::Show(rows[0].id))),
+            ]
+        );
+    }
+
+    #[test]
+    fn each_action_has_its_letter_and_other_keys_do_nothing() {
+        let (_ports, mut manage, mut router) = manage();
+        let id = manage.view_model().rows[0].id;
+
+        input(&mut manage, &mut router, DialogInput::Char('e'));
+        input(&mut manage, &mut router, DialogInput::Char('n'));
+        input(&mut manage, &mut router, DialogInput::Char('q'));
+        input(&mut manage, &mut router, DialogInput::Backspace);
+
+        assert_eq!(
+            router.routed,
+            [
+                Routed::Closed(Some(BudgetsOutcome::EditBudget(id))),
+                Routed::Closed(Some(BudgetsOutcome::NewBudget)),
+            ]
+        );
     }
 }

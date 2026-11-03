@@ -2,188 +2,80 @@
 //! picker when opened from **+ Budget a category**, Amount per month, Starting, the Applies to and
 //! Rollover segmented controls, the before/after summary and the note.
 //!
-//! The selects take the arrows and `Space` while they have focus, `Enter` commits an open list,
-//! else confirms. The Amount takes digits and one decimal point; nothing else takes text.
+//! What each key means is the Presenter's (`lib_budgets::presenter::LimitFormPresenter`); this View
+//! draws the form and turns its clicks into Presenter events.
 
 use gpui::{AnyElement, App, div, prelude::*, px};
 use lib_budgets::presenter::{LimitField, LimitFormEvent, LimitFormPresenter, LimitFormViewModel};
 use lib_budgets::{Rollover, Span};
 
-use super::{Clicks, Form, FormDialog, picker, segmented};
+use super::{Clicks, Form, FormDialog, Router, picker, segmented};
 use crate::dialog;
 use crate::form::colour_field::error_line;
 use crate::form::dialog_fields::{label, text_field};
-use crate::form::select::SelectState;
 use crate::form::select_field::{self, SelectFieldProps};
-use crate::form::viper::{choose_option, enter, labels, select_key, synced, toggle_select, typed};
-use crate::shell::view::dialog_host::{DialogKey, DialogOutcome};
+use crate::form::viper::{drawn, labels};
 use crate::theme::color;
-
-use super::super::dialog::DialogRouter;
 
 /// The dialog's width: the handoff's 9e.
 const WIDTH: gpui::Pixels = px(480.0);
 
 fn handle(presenter: &mut LimitFormPresenter, event: LimitFormEvent) {
-    presenter.handle(event, &mut DialogRouter::default());
+    presenter.handle(event, &mut Router::default());
 }
 
-pub(super) fn key(
-    presenter: &mut LimitFormPresenter,
-    category: &mut SelectState,
-    starting: &mut SelectState,
-    key: DialogKey,
-) -> DialogOutcome {
-    let view = presenter.view_model();
-    let focused = view.focused;
-    let list_open = category.is_open() || starting.is_open();
-    match key {
-        // Leaving a select closes its list, as a click elsewhere would.
-        DialogKey::Tab | DialogKey::BackTab => {
-            category.cancel();
-            starting.cancel();
-            let event = if key == DialogKey::Tab {
-                LimitFormEvent::NextField
-            } else {
-                LimitFormEvent::PrevField
-            };
-            handle(presenter, event);
-            return DialogOutcome::Handled;
-        }
-        DialogKey::Enter if !list_open => return enter(view.frame.can_confirm),
-        DialogKey::Left | DialogKey::Right => {
-            let event = if key == DialogKey::Right {
-                LimitFormEvent::StepForward
-            } else {
-                LimitFormEvent::StepBack
-            };
-            handle(presenter, event);
-            return DialogOutcome::Handled;
-        }
-        _ => {}
-    }
-    match focused {
-        LimitField::Category => match key {
-            DialogKey::Enter | DialogKey::Char(' ') | DialogKey::Up | DialogKey::Down => {
-                if let Some(select) = &view.category {
-                    let (_, value) = select_key(category, select, key);
-                    if let Some(id) = value {
-                        handle(presenter, LimitFormEvent::Category(id));
-                    }
-                }
-                DialogOutcome::Handled
-            }
-            DialogKey::Char(_) | DialogKey::Backspace => DialogOutcome::Handled,
-            _ => DialogOutcome::Ignored,
-        },
-        LimitField::Starting => match key {
-            DialogKey::Enter | DialogKey::Char(' ') | DialogKey::Up | DialogKey::Down => {
-                let (_, value) = select_key(starting, &view.starting, key);
-                if let Some(month) = value {
-                    handle(presenter, LimitFormEvent::Starting(month));
-                }
-                DialogOutcome::Handled
-            }
-            DialogKey::Char(_) | DialogKey::Backspace => DialogOutcome::Handled,
-            _ => DialogOutcome::Ignored,
-        },
-        LimitField::Amount => match key {
-            DialogKey::Char(ch)
-                if !(ch.is_ascii_digit() || (ch == '.' && !view.amount.text.contains('.'))) =>
-            {
-                DialogOutcome::Handled
-            }
-            _ => match typed(&view.amount.text, key) {
-                Some(text) => {
-                    handle(presenter, LimitFormEvent::Amount(text));
-                    DialogOutcome::Handled
-                }
-                None => DialogOutcome::Ignored,
-            },
-        },
-        LimitField::Span | LimitField::Rollover => match key {
-            DialogKey::Char(_) | DialogKey::Backspace => DialogOutcome::Handled,
-            _ => DialogOutcome::Ignored,
-        },
-    }
-}
-
-type Parts<'a> = (
-    &'a mut LimitFormPresenter,
-    &'a mut SelectState,
-    &'a mut SelectState,
-);
-
-fn form(dialog: &mut FormDialog) -> Option<Parts<'_>> {
+fn form(dialog: &mut FormDialog) -> Option<&mut LimitFormPresenter> {
     match &mut dialog.view {
-        Form::Limit(presenter, category, starting) => Some((presenter, category, starting)),
+        Form::Limit(presenter, _) => Some(presenter),
         _ => None,
     }
 }
 
-/// Moves focus to `field`, closing the lists as a click elsewhere does.
+/// Moves focus to `field`, closing an open list as a click elsewhere does.
 fn focus(dialog: &mut FormDialog, field: LimitField) {
-    if let Some((presenter, category, starting)) = form(dialog) {
-        category.cancel();
-        starting.cancel();
+    if let Some(presenter) = form(dialog) {
         handle(presenter, LimitFormEvent::Focus(field));
     }
 }
 
 /// A click on the Category field: focuses it and toggles its list.
 fn click_category(dialog: &mut FormDialog) {
-    if let Some((presenter, category, starting)) = form(dialog) {
-        if presenter.focused() != LimitField::Category {
-            category.cancel();
-            starting.cancel();
-            handle(presenter, LimitFormEvent::Focus(LimitField::Category));
-        }
-        if let Some(select) = presenter.view_model().category {
-            toggle_select(category, &select);
-        }
+    if let Some(presenter) = form(dialog) {
+        handle(presenter, LimitFormEvent::ToggleList(LimitField::Category));
     }
 }
 
 fn click_starting(dialog: &mut FormDialog) {
-    if let Some((presenter, category, starting)) = form(dialog) {
-        if presenter.focused() != LimitField::Starting {
-            category.cancel();
-            starting.cancel();
-            handle(presenter, LimitFormEvent::Focus(LimitField::Starting));
-        }
-        toggle_select(starting, &presenter.view_model().starting);
+    if let Some(presenter) = form(dialog) {
+        handle(presenter, LimitFormEvent::ToggleList(LimitField::Starting));
     }
 }
 
 fn choose_category(dialog: &mut FormDialog, index: usize) {
-    if let Some((presenter, category, _)) = form(dialog)
+    if let Some(presenter) = form(dialog)
         && let Some(select) = presenter.view_model().category
-        && let Some(id) = choose_option(category, &select, index)
+        && let Some(choice) = select.options.get(index)
     {
-        handle(presenter, LimitFormEvent::Category(id));
+        handle(presenter, LimitFormEvent::Category(choice.value));
     }
 }
 
 fn choose_starting(dialog: &mut FormDialog, index: usize) {
-    if let Some((presenter, _, starting)) = form(dialog)
-        && let Some(month) = choose_option(starting, &presenter.view_model().starting, index)
+    if let Some(presenter) = form(dialog)
+        && let Some(choice) = presenter.view_model().starting.options.get(index)
     {
-        handle(presenter, LimitFormEvent::Starting(month));
+        handle(presenter, LimitFormEvent::Starting(choice.value));
     }
 }
 
 fn set_span(dialog: &mut FormDialog, span: Span) {
-    if let Some((presenter, category, starting)) = form(dialog) {
-        category.cancel();
-        starting.cancel();
+    if let Some(presenter) = form(dialog) {
         handle(presenter, LimitFormEvent::Span(span));
     }
 }
 
 fn set_rollover(dialog: &mut FormDialog, rollover: Rollover) {
-    if let Some((presenter, category, starting)) = form(dialog) {
-        category.cancel();
-        starting.cancel();
+    if let Some(presenter) = form(dialog) {
         handle(presenter, LimitFormEvent::Rollover(rollover));
     }
 }
@@ -208,19 +100,25 @@ fn preview_line(what: String, figures: String, strong: bool, cx: &App) -> AnyEle
 
 pub(super) fn render(
     view: &LimitFormViewModel,
-    category: &SelectState,
-    starting: &SelectState,
+    scroll: &mut usize,
     actions: &Clicks,
     cx: &App,
 ) -> AnyElement {
     let mut fields = Vec::new();
+    // Only the focused select's list can be open, and only its window is kept.
+    let mut unused = 0;
     if let Some(select) = &view.category {
+        let scroll = if select.focused {
+            &mut *scroll
+        } else {
+            &mut unused
+        };
         fields.push(select_field::render(
             SelectFieldProps {
                 id: "budgets-limit-category".into(),
                 label: select.label.clone().into(),
                 options: &labels(select),
-                state: &synced(category, select),
+                state: &drawn(select, view.list, scroll),
                 focused: select.focused,
                 accent: false,
                 read_only: None,
@@ -247,12 +145,18 @@ pub(super) fn render(
             .children(view.amount_error.clone().map(|text| error_line(text, cx)))
             .into_any_element(),
     );
+    let mut unused = 0;
+    let scroll = if view.starting.focused {
+        scroll
+    } else {
+        &mut unused
+    };
     fields.push(select_field::render(
         SelectFieldProps {
             id: "budgets-limit-starting".into(),
             label: view.starting.label.clone().into(),
             options: &labels(&view.starting),
-            state: &synced(starting, &view.starting),
+            state: &drawn(&view.starting, view.list, scroll),
             focused: view.starting.focused,
             accent: false,
             read_only: None,
@@ -327,7 +231,7 @@ pub(super) fn render(
     if let Some(stop) = &view.stop {
         let on_stop = actions.act(|dialog, cx| {
             dialog.run(cx, |view, router| {
-                if let Form::Limit(presenter, ..) = view {
+                if let Form::Limit(presenter, _) = view {
                     presenter.handle(LimitFormEvent::StopBudgeting, router);
                 }
             });

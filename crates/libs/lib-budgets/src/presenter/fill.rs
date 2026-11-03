@@ -8,16 +8,20 @@ use bigdecimal::BigDecimal;
 use lib_core::{BudgetId, Clock, Money, Period};
 use lib_locale::format::format_month;
 use lib_toast::{Notice, ToastKind};
+use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::{BACK, Keymap, SELECT};
 use lib_viper::view::{DialogFrame, Hint, count};
 
 use super::{EMPTY_CELL, dialog_error_text, money, period_label, signed_money};
 use crate::interactor::Fill;
-use crate::protocols::{BudgetsRouter, SharedPorts};
+use crate::protocols::{BudgetsOutcome, SharedPorts};
 use crate::{FillPreview, FillSource, fill_preview, msg};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FillEvent {
+    /// A Dialog keymap command or a typed key: `j`/`k` and the arrows pick the source; `select`
+    /// and `submit` fill, once there is something to fill.
+    Input(DialogInput),
     /// A click on a source.
     Source(FillSource),
     /// `j`/`k`, a source down or up.
@@ -92,19 +96,32 @@ impl FillPresenter {
         self.source
     }
 
-    pub fn handle(&mut self, event: FillEvent, router: &mut dyn BudgetsRouter) {
+    pub fn handle(&mut self, event: FillEvent, router: &mut dyn DialogRouter<BudgetsOutcome>) {
         let at = FillSource::ALL
             .iter()
             .position(|each| *each == self.source)
             .unwrap_or(0);
         match event {
+            FillEvent::Input(input) => {
+                match input {
+                    DialogInput::SelectNext | DialogInput::Char('j') => {
+                        self.handle(FillEvent::Down, router);
+                    }
+                    DialogInput::SelectPrevious | DialogInput::Char('k') => {
+                        self.handle(FillEvent::Up, router);
+                    }
+                    DialogInput::Select | DialogInput::Submit => self.confirm(router),
+                    _ => {}
+                }
+                return;
+            }
             FillEvent::Source(source) => self.source = source,
             FillEvent::Down => {
                 self.source = FillSource::ALL[(at + 1).min(FillSource::ALL.len() - 1)]
             }
             FillEvent::Up => self.source = FillSource::ALL[at.saturating_sub(1)],
             FillEvent::Cancel => {
-                router.close_dialog(None);
+                router.close(None);
                 return;
             }
         }
@@ -124,7 +141,7 @@ impl FillPresenter {
 
     /// Fills the month through the Interactor, raises the Toast and closes the Dialog. A Fill
     /// that would change nothing does nothing; a refusal stays on the form.
-    pub fn confirm(&mut self, router: &mut dyn BudgetsRouter) {
+    pub fn confirm(&mut self, router: &mut dyn DialogRouter<BudgetsOutcome>) {
         if !self.can_confirm() {
             return;
         }
@@ -146,7 +163,7 @@ impl FillPresenter {
                     ToastKind::Success,
                     msg::budgets_toast_filled(&period_label(self.month)),
                 ));
-                router.close_dialog(None);
+                router.close(None);
             }
             Err(refusal) => self.error = Some(dialog_error_text(&refusal)),
         }
@@ -404,5 +421,53 @@ mod tests {
             FillPresenter::new(&shared, Clock::fixed(today()), PERSONAL_SPENDING_ID, next())
                 .is_none()
         );
+    }
+
+    #[test]
+    fn the_arrows_and_j_k_pick_the_source_and_select_and_submit_fill() {
+        let (_, mut presenter) = fill();
+        let mut router = RecordingRouter::default();
+        let send = |presenter: &mut FillPresenter, input| {
+            presenter.handle(FillEvent::Input(input), &mut RecordingRouter::default());
+        };
+
+        send(&mut presenter, DialogInput::SelectNext);
+        assert_eq!(presenter.source(), FillSource::Average);
+        send(&mut presenter, DialogInput::Char('k'));
+        assert_eq!(presenter.source(), FillSource::PreviousMonth);
+        send(&mut presenter, DialogInput::Char('j'));
+        send(&mut presenter, DialogInput::SelectPrevious);
+        assert_eq!(presenter.source(), FillSource::PreviousMonth);
+        send(&mut presenter, DialogInput::Char('x'));
+        assert_eq!(presenter.source(), FillSource::PreviousMonth);
+
+        presenter.handle(FillEvent::Input(DialogInput::Select), &mut router);
+        assert!(
+            router.routed.contains(&Routed::Closed(None)),
+            "{:?}",
+            router.routed
+        );
+    }
+
+    #[test]
+    fn submit_fills_like_select_and_a_fill_that_changes_nothing_does_nothing() {
+        let (_, mut presenter) = fill();
+        let mut router = RecordingRouter::default();
+        presenter.handle(FillEvent::Input(DialogInput::Submit), &mut router);
+        assert!(router.routed.contains(&Routed::Closed(None)));
+
+        let (_, shared) = stub();
+        let mut empty = FillPresenter::new(
+            &shared,
+            Clock::fixed(today()),
+            PERSONAL_SPENDING_ID,
+            Period::of(today()).prev().prev().prev().prev(),
+        )
+        .expect("the default takes edits");
+        let mut router = RecordingRouter::default();
+        if !empty.view_model().frame.can_confirm {
+            empty.handle(FillEvent::Input(DialogInput::Select), &mut router);
+            assert!(router.routed.is_empty());
+        }
     }
 }

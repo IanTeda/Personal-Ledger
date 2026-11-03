@@ -15,23 +15,20 @@ mod facts;
 mod import;
 mod picker;
 
-use std::path::Path;
-
 use gpui::{App, Context, EventEmitter, IntoElement, Render, Window};
 use lib_documents::presenter::{
     AcceptAllEvent, AcceptAllPresenter, DialogPorts, DocumentFormEvent, DocumentFormPresenter,
     FactsFormEvent, FactsFormPresenter, ImportEvent, ImportPresenter, LinkPickerEvent,
     LinkPickerPresenter, Purpose,
 };
-use lib_documents::{DocumentLink, DocumentsDialog as Which, DocumentsOutcome, DocumentsRouter};
+use lib_documents::{DocumentsDialog as Which, DocumentsOutcome};
 use lib_shell::{DialogCommand, Hint};
-use lib_toast::{Notice, Notify};
+use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::Keymap;
 
 use crate::documents::view::snapshot::PickerSnapshot;
-use crate::form::select::SelectState;
-use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostedDialog};
-use crate::shell::view::dialog_host::{DialogKey, DialogOutcome, DialogReadback};
+use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
+use crate::shell::view::dialog_host::DialogReadback;
 
 /// The open Documents Dialog's clicks.
 type Clicks = DialogClicks<DocumentsDialog>;
@@ -47,11 +44,11 @@ pub struct DocumentsDialog {
 }
 
 enum View {
-    /// Add or Edit, with the Document type and Key date selects' open state.
-    Form(DocumentFormPresenter, SelectState, SelectState),
+    /// Add or Edit, with the Document type and Key date selects' list scroll windows.
+    Form(DocumentFormPresenter, usize, usize),
     Import(ImportPresenter),
-    /// Edit extracted facts, with the Document type select's open state.
-    Facts(FactsFormPresenter, SelectState),
+    /// Edit extracted facts, with the Document type select's list scroll window.
+    Facts(FactsFormPresenter, usize),
     AcceptAll(AcceptAllPresenter),
     Picker(LinkPickerPresenter),
 }
@@ -61,20 +58,10 @@ impl DocumentsDialog {
     /// What its confirm asks of the page goes to `landed`.
     pub(crate) fn open(which: Which, ports: DialogPorts, landed: Landed) -> Option<Self> {
         let view = match which {
-            Which::Add(scope) => View::Form(
-                DocumentFormPresenter::add(ports, scope),
-                SelectState::default(),
-                SelectState::default(),
-            ),
-            Which::Edit(id) => View::Form(
-                DocumentFormPresenter::edit(ports, id)?,
-                SelectState::default(),
-                SelectState::default(),
-            ),
+            Which::Add(scope) => View::Form(DocumentFormPresenter::add(ports, scope), 0, 0),
+            Which::Edit(id) => View::Form(DocumentFormPresenter::edit(ports, id)?, 0, 0),
             Which::Import => View::Import(ImportPresenter::new(ports)),
-            Which::Facts(id) => {
-                View::Facts(FactsFormPresenter::new(ports, id)?, SelectState::default())
-            }
+            Which::Facts(id) => View::Facts(FactsFormPresenter::new(ports, id)?, 0),
             Which::AcceptAll(strong) => View::AcceptAll(AcceptAllPresenter::new(strong)),
             Which::Link(id) => View::Picker(LinkPickerPresenter::new(ports, Purpose::Link(id))?),
             Which::File(id) => View::Picker(LinkPickerPresenter::new(ports, Purpose::File(id))?),
@@ -111,18 +98,32 @@ impl DocumentsDialog {
 
     /// Runs `handle` on the open Presenter and, once it has closed the Dialog, hands what it asks
     /// of the page over and tells the host.
-    fn run(
-        &mut self,
-        cx: &mut Context<'_, Self>,
-        handle: impl FnOnce(&mut View, &mut DialogRouter),
-    ) {
-        let mut router = DialogRouter::default();
-        handle(&mut self.view, &mut router);
-        if let Some(outcome) = router.closed {
+    fn run(&mut self, cx: &mut Context<'_, Self>, handle: impl FnOnce(&mut View, &mut Router)) {
+        let router = self.apply(handle);
+        if let Some(outcome) = router.closed() {
             (self.landed)(outcome, cx);
             cx.emit(DialogClosed);
         }
         cx.notify();
+    }
+
+    /// Runs `handle` on the open Presenter, returning what its Router was asked. For an event
+    /// that cannot close the Dialog, such as a field changing, the Router is dropped.
+    fn apply(&mut self, handle: impl FnOnce(&mut View, &mut Router)) -> Router {
+        let mut router = Router::default();
+        handle(&mut self.view, &mut router);
+        router
+    }
+
+    /// Sends the open Presenter `input`.
+    fn input_event(&mut self, input: DialogInput) -> Router {
+        self.apply(|view, router| match view {
+            View::Form(presenter, ..) => presenter.handle(DocumentFormEvent::Input(input), router),
+            View::Import(presenter) => presenter.handle(ImportEvent::Input(input), router),
+            View::Facts(presenter, _) => presenter.handle(FactsFormEvent::Input(input), router),
+            View::AcceptAll(presenter) => presenter.handle(AcceptAllEvent::Input(input), router),
+            View::Picker(presenter) => presenter.handle(LinkPickerEvent::Input(input), router),
+        })
     }
 
     /// A click on the picker's row `index`, which picks it.
@@ -135,52 +136,22 @@ impl DocumentsDialog {
     }
 }
 
-/// Where a Documents Dialog's Presenter asks to go: closing, and Notices, which go onto the bin's
-/// queue for `Root` to drain once the key or click returns. The page opens Dialogs and reveals.
-#[derive(Default)]
-struct DialogRouter {
-    /// `Some` once the Presenter closed its Dialog, with what it asks of the page.
-    closed: Option<Option<DocumentsOutcome>>,
-}
-
-impl DocumentsRouter for DialogRouter {
-    fn reveal(&mut self, _link: DocumentLink) {}
-
-    fn open_dialog(&mut self, _dialog: Which) -> bool {
-        false
-    }
-
-    fn open_file(&mut self, _path: &Path, _in_folder: bool) {}
-
-    fn close_dialog(&mut self, outcome: Option<DocumentsOutcome>) {
-        self.closed = Some(outcome);
-    }
-}
-
-impl Notify for DialogRouter {
-    fn notify(&mut self, notice: Notice) {
-        crate::notices::Queue.notify(notice);
-    }
-}
-
-/// Sends `event` to `presenter` where it can't close the Dialog: a field changing.
-fn send<P, E>(presenter: &mut P, event: E, handle: fn(&mut P, E, &mut dyn DocumentsRouter)) {
-    handle(presenter, event, &mut DialogRouter::default());
-}
+/// The host's Router, as a Documents Dialog's Presenter closes through it. A Toast or status
+/// message it raises goes onto the bin's queue, which the input's `send` drains.
+type Router = HostRouter<DocumentsOutcome>;
 
 impl EventEmitter<DialogClosed> for DocumentsDialog {}
 
 impl HostedDialog for DocumentsDialog {
-    fn key(&mut self, key: DialogKey, _cx: &mut Context<'_, Self>) -> DialogOutcome {
-        match &mut self.view {
-            View::Form(presenter, doc_type, key_kind) => {
-                document_form::key(presenter, doc_type, key_kind, key)
-            }
-            View::Import(presenter) => import::key(presenter, key),
-            View::Facts(presenter, doc_type) => facts::key(presenter, doc_type, key),
-            View::AcceptAll(_) => accept_all::key(key),
-            View::Picker(presenter) => picker::key(presenter, key),
+    /// Every input is the Presenter's to read; the one that confirms closes through the Router.
+    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) -> bool {
+        let router = self.input_event(input);
+        if let Some(outcome) = router.closed() {
+            (self.landed)(outcome, cx);
+            cx.emit(DialogClosed);
         }
+        cx.notify();
+        true
     }
 
     fn can_confirm(&self) -> bool {
@@ -216,14 +187,29 @@ impl HostedDialog for DocumentsDialog {
     }
 
     fn close_open_select(&mut self) -> bool {
-        let close = |state: &mut SelectState| {
-            let open = state.is_open();
-            state.cancel();
-            open
-        };
         match &mut self.view {
-            View::Form(_, doc_type, key_kind) => close(doc_type) | close(key_kind),
-            View::Facts(_, doc_type) => close(doc_type),
+            View::Form(presenter, ..) => {
+                let open = presenter.view_model().list.is_open();
+                if open {
+                    self.apply(|view, router| {
+                        if let View::Form(presenter, ..) = view {
+                            presenter.handle(DocumentFormEvent::CloseList, router);
+                        }
+                    });
+                }
+                open
+            }
+            View::Facts(presenter, _) => {
+                let open = presenter.view_model().doc_type_list.is_open();
+                if open {
+                    self.apply(|view, router| {
+                        if let View::Facts(presenter, _) = view {
+                            presenter.handle(FactsFormEvent::CloseList, router);
+                        }
+                    });
+                }
+                open
+            }
             View::Import(_) | View::AcceptAll(_) | View::Picker(_) => false,
         }
     }
@@ -291,7 +277,7 @@ impl HostedDialog for DocumentsDialog {
 impl Render for DocumentsDialog {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let actions = Clicks::new(cx);
-        match &self.view {
+        match &mut self.view {
             View::Form(presenter, doc_type, key_kind) => {
                 document_form::render(&presenter.view_model(), doc_type, key_kind, &actions, cx)
             }

@@ -17,13 +17,16 @@ use chrono::NaiveDate;
 use lib_core::DocumentId;
 use lib_locale::format::{format_date_input, parse_optional_date};
 use lib_toast::{Notice, ToastKind};
+use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
-use lib_viper::view::{Choice, DialogFrame, Hint, SelectView, TextFieldView};
+use lib_viper::view::{
+    Choice, DialogFrame, Hint, SelectList, SelectMove, SelectView, TextFieldView,
+};
 
 use super::DialogPorts;
 use super::library::key_kind_label;
 use crate::interactor::{AddDocument, EditDocument};
-use crate::protocols::{DocumentsOutcome, DocumentsRouter};
+use crate::protocols::DocumentsOutcome;
 use crate::types::{DocumentTypeRow, fallback_id};
 use crate::{
     Document, DocumentType, KeyDate, KeyDateKind, LibraryScope, NewDocument, PathRefusal,
@@ -67,15 +70,25 @@ impl DocumentField {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DocumentFormEvent {
+    /// A Dialog keymap command or a typed key, meaning what the focused field makes it: on the
+    /// Document type and Key date selects `select`, `Space` and the arrows open the list, move it
+    /// and commit it; `Space` flips the reminder; the text fields take typing, and a select or the
+    /// reminder swallows it. `select` elsewhere confirms a valid form, and `submit` confirms from
+    /// any field.
+    Input(DialogInput),
     /// A text field's whole new text, as its View's input holds it.
     Path(String),
     Title(String),
     Date(String),
     KeyDate(String),
-    /// An option chosen on the Document type select.
+    /// A click on a row of the Document type's open list: picks it and closes the list.
     Type(DocumentType),
-    /// An option chosen on the Key date select.
+    /// A click on a row of the Key date's open list: picks it and closes the list.
     KeyKind(Option<KeyDateKind>),
+    /// A click on a select's field: focuses it and opens or closes its list, closing the other's.
+    ToggleList(DocumentField),
+    /// Closes the open list without picking: the host's `back`.
+    CloseList,
     /// The reminder checkbox, clicked or pressed.
     ToggleReminder,
     /// `Tab`/`Shift-Tab`, wrapping over the fields shown.
@@ -108,6 +121,8 @@ pub struct DocumentFormViewModel {
     pub date: TextFieldView,
     pub date_error: Option<String>,
     pub key_kind: SelectView<Option<KeyDateKind>>,
+    /// The focused select's list: open, and its highlight.
+    pub list: SelectList,
     /// The Key Date's date and reminder, once a kind is chosen.
     pub key_date: Option<TextFieldView>,
     pub key_date_error: Option<String>,
@@ -132,6 +147,8 @@ pub struct DocumentFormPresenter {
     key_date: String,
     reminder: bool,
     focused: DocumentField,
+    /// The focused select's list; it closes whenever focus leaves.
+    list: SelectList,
 }
 
 impl DocumentFormPresenter {
@@ -163,6 +180,7 @@ impl DocumentFormPresenter {
             key_date: String::new(),
             reminder: false,
             focused: DocumentField::Path,
+            list: SelectList::default(),
         }
     }
 
@@ -187,8 +205,13 @@ impl DocumentFormPresenter {
         Some(form)
     }
 
-    pub fn handle(&mut self, event: DocumentFormEvent, router: &mut dyn DocumentsRouter) {
+    pub fn handle(
+        &mut self,
+        event: DocumentFormEvent,
+        router: &mut dyn DialogRouter<DocumentsOutcome>,
+    ) {
         match event {
+            DocumentFormEvent::Input(input) => self.input(input, router),
             DocumentFormEvent::Path(text) => {
                 self.path = text;
                 if !self.title_typed {
@@ -202,15 +225,22 @@ impl DocumentFormPresenter {
             DocumentFormEvent::Date(text) => self.date = text,
             DocumentFormEvent::KeyDate(text) => self.key_date = text,
             DocumentFormEvent::Type(kind) => {
+                self.list.close();
                 self.focused = DocumentField::Type;
                 self.doc_type = kind;
             }
             DocumentFormEvent::KeyKind(kind) => {
+                self.list.close();
                 self.focused = DocumentField::KeyKind;
                 self.key_kind = kind;
             }
+            DocumentFormEvent::ToggleList(field) => self.toggle_list(field),
+            DocumentFormEvent::CloseList => {
+                self.list.close();
+            }
             DocumentFormEvent::ToggleReminder => {
                 if self.key_kind.is_some() {
+                    self.list.close();
                     self.focused = DocumentField::Reminder;
                     self.reminder = !self.reminder;
                 }
@@ -218,13 +248,125 @@ impl DocumentFormPresenter {
             DocumentFormEvent::NextField => self.cycle_focus(false),
             DocumentFormEvent::PrevField => self.cycle_focus(true),
             DocumentFormEvent::Focus(field) => {
+                self.list.close();
                 if self.shows(field) {
                     self.focused = field;
                 }
             }
             DocumentFormEvent::Confirm => self.confirm(router),
-            DocumentFormEvent::Cancel => router.close_dialog(None),
+            DocumentFormEvent::Cancel => router.close(None),
         }
+    }
+
+    /// What `input` means on the focused field.
+    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<DocumentsOutcome>) {
+        match (input, self.focused) {
+            (DialogInput::NextField, _) => self.cycle_focus(false),
+            (DialogInput::PreviousField, _) => self.cycle_focus(true),
+            (DialogInput::Submit, _) => self.confirm(router),
+            (
+                DialogInput::Select
+                | DialogInput::Char(' ')
+                | DialogInput::SelectNext
+                | DialogInput::SelectPrevious,
+                DocumentField::Type,
+            ) => {
+                let options = self.type_choices();
+                if let SelectMove::Chose(kind) =
+                    self.list.input(input, &options, Some(&self.doc_type))
+                {
+                    self.doc_type = kind;
+                }
+            }
+            (
+                DialogInput::Select
+                | DialogInput::Char(' ')
+                | DialogInput::SelectNext
+                | DialogInput::SelectPrevious,
+                DocumentField::KeyKind,
+            ) => {
+                let options = self.key_kind_choices();
+                if let SelectMove::Chose(kind) =
+                    self.list.input(input, &options, Some(&self.key_kind))
+                {
+                    self.key_kind = kind;
+                }
+            }
+            (DialogInput::Select, _) => self.confirm(router),
+            (DialogInput::Char(' '), DocumentField::Reminder) => {
+                self.handle(DocumentFormEvent::ToggleReminder, router);
+            }
+            (DialogInput::Char(ch), field) => self.edit_text(field, |text| text.push(ch)),
+            (DialogInput::Backspace, field) => {
+                self.edit_text(field, |text| {
+                    text.pop();
+                });
+            }
+            _ => {}
+        }
+    }
+
+    /// Edits the text field `field` types into, with the Title following the file name until it
+    /// is typed over. A select or the reminder has no text to edit.
+    fn edit_text(&mut self, field: DocumentField, edit: impl FnOnce(&mut String)) {
+        match field {
+            DocumentField::Path if self.editing.is_none() => {
+                edit(&mut self.path);
+                if !self.title_typed {
+                    self.title = default_title(Path::new(self.path.trim()));
+                }
+            }
+            DocumentField::Title => {
+                edit(&mut self.title);
+                self.title_typed = true;
+            }
+            DocumentField::Date => edit(&mut self.date),
+            DocumentField::KeyDate if self.key_kind.is_some() => edit(&mut self.key_date),
+            _ => {}
+        }
+    }
+
+    /// A click on a select's field: focuses it and opens or closes its list, closing the other's.
+    fn toggle_list(&mut self, field: DocumentField) {
+        match field {
+            DocumentField::Type => {
+                if self.focused != field {
+                    self.list.close();
+                }
+                self.focused = field;
+                let options = self.type_choices();
+                self.list.toggle(&options, Some(&self.doc_type));
+            }
+            DocumentField::KeyKind => {
+                if self.focused != field {
+                    self.list.close();
+                }
+                self.focused = field;
+                let options = self.key_kind_choices();
+                self.list.toggle(&options, Some(&self.key_kind));
+            }
+            _ => {}
+        }
+    }
+
+    fn type_choices(&self) -> Vec<Choice<DocumentType>> {
+        self.types
+            .iter()
+            .map(|row| Choice {
+                value: DocumentType(row.id),
+                label: row.name.clone(),
+            })
+            .collect()
+    }
+
+    fn key_kind_choices(&self) -> Vec<Choice<Option<KeyDateKind>>> {
+        KEY_KINDS
+            .iter()
+            .map(|kind| Choice {
+                value: *kind,
+                label: kind.map_or_else(msg::documents_dialog_key_none, key_kind_label),
+            })
+            .collect()
     }
 
     pub fn view_model(&self) -> DocumentFormViewModel {
@@ -276,14 +418,7 @@ impl DocumentFormPresenter {
             ),
             doc_type: SelectView {
                 label: msg::documents_dialog_field_type(),
-                options: self
-                    .types
-                    .iter()
-                    .map(|row| Choice {
-                        value: DocumentType(row.id),
-                        label: row.name.clone(),
-                    })
-                    .collect(),
+                options: self.type_choices(),
                 chosen: Some(self.doc_type),
                 focused: self.focused == DocumentField::Type,
             },
@@ -295,16 +430,11 @@ impl DocumentFormPresenter {
             date_error: problems.date,
             key_kind: SelectView {
                 label: msg::documents_dialog_field_key_kind(),
-                options: KEY_KINDS
-                    .iter()
-                    .map(|kind| Choice {
-                        value: *kind,
-                        label: kind.map_or_else(msg::documents_dialog_key_none, key_kind_label),
-                    })
-                    .collect(),
+                options: self.key_kind_choices(),
                 chosen: Some(self.key_kind),
                 focused: self.focused == DocumentField::KeyKind,
             },
+            list: self.list,
             key_date: key_shown.then(|| {
                 text(
                     msg::documents_dialog_field_key_date(),
@@ -339,6 +469,8 @@ impl DocumentFormPresenter {
     }
 
     fn cycle_focus(&mut self, backward: bool) {
+        // Leaving a select closes its list, as a click elsewhere would.
+        self.list.close();
         let order = DocumentField::ORDER;
         let mut index = order
             .iter()
@@ -403,7 +535,7 @@ impl DocumentFormPresenter {
         })
     }
 
-    fn confirm(&mut self, router: &mut dyn DocumentsRouter) {
+    fn confirm(&mut self, router: &mut dyn DialogRouter<DocumentsOutcome>) {
         if !self.can_save(&self.problems()) {
             return;
         }
@@ -444,12 +576,12 @@ impl DocumentFormPresenter {
         match saved {
             Ok((id, toast)) => {
                 router.notify(Notice::Toast(ToastKind::Success, toast));
-                router.close_dialog(Some(DocumentsOutcome::Shown(id)));
+                router.close(Some(DocumentsOutcome::Shown(id)));
             }
             // An Edit whose Document went while the Dialog was open has nothing left to save. An
             // Add the checks above passed can only be refused by a file gone from under it, which
             // the form then shows.
-            Err(_) if self.editing.is_some() => router.close_dialog(None),
+            Err(_) if self.editing.is_some() => router.close(None),
             Err(_) => {}
         }
     }
@@ -711,5 +843,115 @@ mod tests {
 
         assert_eq!(form.router.take(), [DocumentsCall::CloseDialog(None)]);
         assert_eq!(form.ports.documents.borrow().documents(), before);
+    }
+
+    fn type_into(form: &mut Form, text: &str) {
+        for ch in text.chars() {
+            form.send(DocumentFormEvent::Input(DialogInput::Char(ch)));
+        }
+    }
+
+    #[test]
+    fn typing_fills_the_focused_text_field_and_the_title_follows_a_typed_path() {
+        let mut form = add();
+        type_into(&mut form, "/tmp/policy.pdf");
+        form.send(DocumentFormEvent::Input(DialogInput::Backspace));
+        type_into(&mut form, "f");
+        let view = form.presenter.view_model();
+        assert_eq!(view.path.expect("add has a path").text, "/tmp/policy.pdf");
+        assert_eq!(view.title.text, "policy");
+
+        form.send(DocumentFormEvent::Input(DialogInput::NextField));
+        assert!(form.presenter.view_model().title.focused);
+        type_into(&mut form, "!");
+        form.send(DocumentFormEvent::Input(DialogInput::PreviousField));
+        type_into(&mut form, "x");
+        assert_eq!(
+            form.presenter.view_model().title.text,
+            "policy!",
+            "typed over, the title no longer follows the path"
+        );
+    }
+
+    #[test]
+    fn the_type_select_opens_on_space_the_arrows_move_and_select_commits() {
+        let mut form = add();
+        form.send(DocumentFormEvent::Focus(DocumentField::Type));
+        let chosen = form.presenter.view_model().doc_type.chosen;
+
+        form.send(DocumentFormEvent::Input(DialogInput::Char(' ')));
+        assert!(form.presenter.view_model().list.is_open());
+        form.send(DocumentFormEvent::Input(DialogInput::SelectNext));
+        assert_eq!(form.presenter.view_model().doc_type.chosen, chosen);
+        form.send(DocumentFormEvent::Input(DialogInput::Select));
+
+        let view = form.presenter.view_model();
+        assert!(!view.list.is_open());
+        assert_ne!(view.doc_type.chosen, chosen);
+        assert!(
+            form.router.calls.is_empty(),
+            "committing a list is not confirming"
+        );
+        type_into(&mut form, "zz");
+        assert_eq!(
+            form.presenter.view_model().doc_type.chosen,
+            view.doc_type.chosen,
+            "a select takes no text"
+        );
+    }
+
+    #[test]
+    fn the_key_date_select_steps_and_shows_its_date_and_space_flips_the_reminder() {
+        let mut form = add();
+        form.send(DocumentFormEvent::Focus(DocumentField::KeyKind));
+        form.send(DocumentFormEvent::Input(DialogInput::SelectNext));
+        let view = form.presenter.view_model();
+        assert_eq!(view.key_kind.chosen, Some(Some(KeyDateKind::Renews)));
+        assert!(view.key_date.is_some());
+
+        form.send(DocumentFormEvent::Input(DialogInput::NextField));
+        form.send(DocumentFormEvent::Input(DialogInput::NextField));
+        assert!(form.presenter.view_model().reminder.expect("shown").focused);
+        form.send(DocumentFormEvent::Input(DialogInput::Char(' ')));
+        assert!(form.presenter.view_model().reminder.expect("shown").checked);
+    }
+
+    #[test]
+    fn select_confirms_a_valid_form_from_a_text_field_and_submit_from_a_select() {
+        let mut form = add();
+        form.send(DocumentFormEvent::Input(DialogInput::Select));
+        assert!(form.router.calls.is_empty(), "no path yet");
+
+        form.send(DocumentFormEvent::Path("/tmp/policy.pdf".to_string()));
+        form.send(DocumentFormEvent::Focus(DocumentField::Type));
+        form.send(DocumentFormEvent::Input(DialogInput::Submit));
+
+        assert!(
+            form.router.calls.iter().any(|call| matches!(
+                call,
+                DocumentsCall::CloseDialog(Some(DocumentsOutcome::Shown(_)))
+            )),
+            "{:?}",
+            form.router.calls
+        );
+    }
+
+    #[test]
+    fn tab_and_a_click_close_an_open_list_and_close_list_leaves_the_choice() {
+        let mut form = add();
+        form.send(DocumentFormEvent::ToggleList(DocumentField::Type));
+        assert!(form.presenter.view_model().list.is_open());
+        form.send(DocumentFormEvent::ToggleList(DocumentField::KeyKind));
+        let view = form.presenter.view_model();
+        assert!(
+            view.list.is_open() && view.key_kind.focused,
+            "the other's list opens in its place"
+        );
+
+        form.send(DocumentFormEvent::CloseList);
+        assert!(!form.presenter.view_model().list.is_open());
+        form.send(DocumentFormEvent::ToggleList(DocumentField::KeyKind));
+        form.send(DocumentFormEvent::Input(DialogInput::NextField));
+        assert!(!form.presenter.view_model().list.is_open());
     }
 }

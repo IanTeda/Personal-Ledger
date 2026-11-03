@@ -3,14 +3,18 @@
 //! cancelled instead, since it has no next cycle (#368).
 
 use lib_locale::format::format_month_day;
+use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::view::DialogFrame;
 
 use crate::interactor::SkipBill;
-use crate::protocols::{BillsOutcome, BillsRouter, SharedPorts};
+use crate::protocols::{BillsOutcome, SharedPorts};
 use crate::{EntryId, Recurrence, msg};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SkipEvent {
+    /// A Dialog keymap command or a typed key: `select` and `submit` confirm, the rest do nothing
+    /// since the Dialog has no field.
+    Input(DialogInput),
     Confirm,
     Cancel,
 }
@@ -56,17 +60,18 @@ impl SkipPresenter {
 
     /// Confirm skips the entry and closes; an entry settled or superseded underneath closes the
     /// Dialog too, with the refusal for the page to report, since there is no form to show it on.
-    pub fn handle(&mut self, event: SkipEvent, router: &mut dyn BillsRouter) {
+    pub fn handle(&mut self, event: SkipEvent, router: &mut dyn DialogRouter<BillsOutcome>) {
         match event {
-            SkipEvent::Confirm => {
+            SkipEvent::Input(DialogInput::Select | DialogInput::Submit) | SkipEvent::Confirm => {
                 let skipped =
                     SkipBill { entry: self.entry }.run(self.ports.borrow_mut().split_mut().bills);
-                router.close_dialog(Some(match skipped {
+                router.close(Some(match skipped {
                     Ok(()) => BillsOutcome::Skipped,
                     Err(_) => BillsOutcome::SkipRefused,
                 }));
             }
-            SkipEvent::Cancel => router.close_dialog(None),
+            SkipEvent::Input(_) => {}
+            SkipEvent::Cancel => router.close(None),
         }
     }
 
@@ -100,6 +105,35 @@ mod tests {
             entry(&ports.borrow().bills.entries, origin).map(|e| &e.resolution),
             Some(Resolution::Skipped { .. })
         ));
+    }
+
+    #[test]
+    fn select_and_submit_confirm_and_other_inputs_do_nothing() {
+        for (input, confirms) in [
+            (DialogInput::Select, true),
+            (DialogInput::Submit, true),
+            (DialogInput::NextField, false),
+            (DialogInput::SelectNext, false),
+            (DialogInput::Char('x'), false),
+            (DialogInput::Backspace, false),
+        ] {
+            let (_ports, shared) = stub();
+            let origin = entry_of(&_ports.borrow(), "Origin Energy", date(2026, 9, 24));
+            let mut skip = SkipPresenter::new(shared, origin).expect("the Plan is there");
+            let mut router = RecordingRouter::default();
+
+            skip.handle(SkipEvent::Input(input), &mut router);
+
+            assert_eq!(
+                router.routed,
+                if confirms {
+                    vec![Routed::Closed(Some(BillsOutcome::Skipped))]
+                } else {
+                    Vec::new()
+                },
+                "{input:?}"
+            );
+        }
     }
 
     #[test]

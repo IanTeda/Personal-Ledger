@@ -1,10 +1,10 @@
 //! The Budget form (11c), Edit budget (9e), Stop budgeting (9g), Fill (9f) and the Category detail
 //! (9d) as one hosted Dialog Entity: each holds its `lib-budgets` Presenter and the widget state
-//! that is gpui's to keep (whether a select's list is open and its highlight), turns the keys the
-//! Dialog host passes on and its clicks into the Presenter's events, and draws its view model
-//! (`form_dialog/`).
+//! that is gpui's to keep (a select list's scroll window). Every Dialog command and typed key
+//! reaches the Presenter as a `lib-viper` `DialogInput`, which it reads itself, every click becomes
+//! a Presenter event, and the Dialog draws its view model (`form_dialog/`).
 //!
-//! A Presenter closes its Dialog through the Router with an outcome; the Dialog hands it to the
+//! A Presenter closes its Dialog through the host's [`HostRouter`] with an outcome; the Dialog hands it to the
 //! page that opened it ([`Landed`]), which opens what follows (Edit budget from the detail, Stop
 //! from Edit budget, the new Budget on show), then emits [`DialogClosed`] for the Shell to close
 //! the host. A Toast the Presenter raises goes onto the bin's queue, which the input's `send`
@@ -22,33 +22,37 @@ use gpui::{
     AnyElement, App, Context, EventEmitter, IntoElement, Render, SharedString, Window, div,
     prelude::*, px,
 };
+use lib_budgets::BudgetsOutcome;
 use lib_budgets::presenter::{
     BudgetFormEvent, BudgetFormPresenter, DetailEvent, DetailPresenter, FillEvent, FillPresenter,
     LimitFormEvent, LimitFormPresenter, StopEvent, StopPresenter,
 };
 use lib_shell::{DialogCommand, Hint};
+use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::Keymap;
 
-use super::dialog::{DialogRouter, Landed};
+use super::dialog::Landed;
 use crate::budgets::ports;
 use crate::dialog;
-use crate::form::select::SelectState;
 use crate::ledger_store::LedgerStore;
-use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostedDialog};
-use crate::shell::view::dialog_host::{DialogKey, DialogOutcome, DialogReadback};
+use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
+use crate::shell::view::dialog_host::DialogReadback;
 use crate::theme::color;
 
 /// The open Dialog's clicks.
 type Clicks = DialogClicks<FormDialog>;
 
-/// The open Dialog: its Presenter and the widget state of its selects.
+/// The host's Router, as a Budgets Dialog's Presenter closes through it.
+type Router = HostRouter<BudgetsOutcome>;
+
+/// The open Dialog: its Presenter and, for a select's list, its scroll window's top row.
 pub(crate) enum Form {
-    /// New budget or its edit mode, with the Unit select's open state.
-    Budget(BudgetFormPresenter, SelectState),
-    /// Edit budget, with the Category and Starting selects' open state.
-    Limit(LimitFormPresenter, SelectState, SelectState),
-    /// Stop budgeting, with the From select's open state.
-    Stop(StopPresenter, SelectState),
+    /// New budget or its edit mode, with the Unit list's window.
+    Budget(BudgetFormPresenter, usize),
+    /// Edit budget, with the open Category or Starting list's window.
+    Limit(LimitFormPresenter, usize),
+    /// Stop budgeting, with the From list's window.
+    Stop(StopPresenter, usize),
     Fill(FillPresenter),
     Detail(DetailPresenter),
 }
@@ -84,7 +88,7 @@ impl FormDialog {
     /// The open Edit budget form's Amount draft.
     pub fn limit_amount(&self) -> Option<String> {
         match &self.view {
-            Form::Limit(presenter, ..) => Some(presenter.view_model().amount.text),
+            Form::Limit(presenter, _) => Some(presenter.view_model().amount.text),
             _ => None,
         }
     }
@@ -118,12 +122,12 @@ impl FormDialog {
     fn run(
         &mut self,
         cx: &mut Context<'_, Self>,
-        handle: impl FnOnce(&mut Form, &mut DialogRouter),
+        handle: impl FnOnce(&mut Form, &mut dyn DialogRouter<BudgetsOutcome>),
     ) {
-        let mut router = DialogRouter::default();
+        let mut router = Router::default();
         handle(&mut self.view, &mut router);
         ports::refresh(&self.ledger, cx);
-        if let Some(outcome) = router.closed {
+        if let Some(outcome) = router.closed() {
             (self.landed)(outcome, cx);
             cx.emit(DialogClosed);
         }
@@ -145,29 +149,22 @@ impl FormDialog {
 }
 
 impl HostedDialog for FormDialog {
-    fn key(&mut self, key: DialogKey, cx: &mut Context<'_, Self>) -> DialogOutcome {
-        match &mut self.view {
-            Form::Budget(presenter, select) => budget::key(presenter, select, key),
-            Form::Limit(presenter, category, starting) => {
-                limit::key(presenter, category, starting, key)
-            }
-            Form::Stop(presenter, select) => stop::key(presenter, select, key),
-            Form::Fill(presenter) => fill::key(presenter, key),
-            Form::Detail(_) => match detail::key(key) {
-                Some(Ok(event)) => {
-                    self.detail_event(event, cx);
-                    DialogOutcome::Handled
-                }
-                Some(Err(outcome)) => outcome,
-                None => DialogOutcome::Ignored,
-            },
-        }
+    /// Every input is the Presenter's to read.
+    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) -> bool {
+        self.run(cx, |view, router| match view {
+            Form::Budget(presenter, _) => presenter.handle(BudgetFormEvent::Input(input), router),
+            Form::Limit(presenter, _) => presenter.handle(LimitFormEvent::Input(input), router),
+            Form::Stop(presenter, _) => presenter.handle(StopEvent::Input(input), router),
+            Form::Fill(presenter) => presenter.handle(FillEvent::Input(input), router),
+            Form::Detail(presenter) => presenter.handle(DetailEvent::Input(input), router),
+        });
+        true
     }
 
     fn can_confirm(&self) -> bool {
         match &self.view {
             Form::Budget(presenter, _) => presenter.view_model().frame.can_confirm,
-            Form::Limit(presenter, ..) => presenter.view_model().frame.can_confirm,
+            Form::Limit(presenter, _) => presenter.view_model().frame.can_confirm,
             Form::Stop(presenter, _) => presenter.view_model().frame.can_confirm,
             Form::Fill(presenter) => presenter.view_model().frame.can_confirm,
             Form::Detail(_) => true,
@@ -179,7 +176,7 @@ impl HostedDialog for FormDialog {
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
         self.run(cx, |view, router| match view {
             Form::Budget(presenter, _) => presenter.confirm(router),
-            Form::Limit(presenter, ..) => presenter.confirm(router),
+            Form::Limit(presenter, _) => presenter.confirm(router),
             Form::Stop(presenter, _) => presenter.confirm(router),
             Form::Fill(presenter) => presenter.confirm(router),
             Form::Detail(presenter) => presenter.confirm(router),
@@ -190,7 +187,7 @@ impl HostedDialog for FormDialog {
     fn cancel(&mut self, cx: &mut Context<'_, Self>) {
         self.run(cx, |view, router| match view {
             Form::Budget(presenter, _) => presenter.handle(BudgetFormEvent::Cancel, router),
-            Form::Limit(presenter, ..) => presenter.handle(LimitFormEvent::Cancel, router),
+            Form::Limit(presenter, _) => presenter.handle(LimitFormEvent::Cancel, router),
             Form::Stop(presenter, _) => presenter.handle(StopEvent::Cancel, router),
             Form::Fill(presenter) => presenter.handle(FillEvent::Cancel, router),
             Form::Detail(presenter) => presenter.handle(DetailEvent::Close, router),
@@ -198,14 +195,29 @@ impl HostedDialog for FormDialog {
     }
 
     fn close_open_select(&mut self) -> bool {
-        let close = |state: &mut SelectState| {
-            let open = state.is_open();
-            state.cancel();
-            open
-        };
+        let mut router = Router::default();
         match &mut self.view {
-            Form::Budget(_, select) | Form::Stop(_, select) => close(select),
-            Form::Limit(_, category, starting) => close(category) | close(starting),
+            Form::Budget(presenter, _) => {
+                let open = presenter.view_model().unit_list.is_open();
+                if open {
+                    presenter.handle(BudgetFormEvent::CloseList, &mut router);
+                }
+                open
+            }
+            Form::Limit(presenter, _) => {
+                let open = presenter.view_model().list.is_open();
+                if open {
+                    presenter.handle(LimitFormEvent::CloseList, &mut router);
+                }
+                open
+            }
+            Form::Stop(presenter, _) => {
+                let open = presenter.view_model().from_list.is_open();
+                if open {
+                    presenter.handle(StopEvent::CloseList, &mut router);
+                }
+                open
+            }
             Form::Fill(_) | Form::Detail(_) => false,
         }
     }
@@ -213,7 +225,7 @@ impl HostedDialog for FormDialog {
     fn hints(&self, keymap: &Keymap<DialogCommand>) -> Option<Vec<Hint>> {
         Some(match &self.view {
             Form::Budget(presenter, _) => presenter.legend(keymap),
-            Form::Limit(presenter, ..) => presenter.legend(keymap),
+            Form::Limit(presenter, _) => presenter.legend(keymap),
             Form::Stop(presenter, _) => presenter.legend(keymap),
             Form::Fill(presenter) => presenter.legend(keymap),
             Form::Detail(presenter) => presenter.legend(keymap),
@@ -230,7 +242,7 @@ impl HostedDialog for FormDialog {
                 values.push(("name", view.name.text));
                 values.push(("can_confirm", view.frame.can_confirm.to_string()));
             }
-            Form::Limit(presenter, ..) => {
+            Form::Limit(presenter, _) => {
                 let view = presenter.view_model();
                 values.push(("title", view.frame.title));
                 values.push(("amount", view.amount.text));
@@ -262,15 +274,15 @@ impl HostedDialog for FormDialog {
 impl Render for FormDialog {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let actions = Clicks::new(cx);
-        match &self.view {
-            Form::Budget(presenter, select) => {
-                budget::render(&presenter.view_model(), select, &actions, cx)
+        match &mut self.view {
+            Form::Budget(presenter, scroll) => {
+                budget::render(&presenter.view_model(), scroll, &actions, cx)
             }
-            Form::Limit(presenter, category, starting) => {
-                limit::render(&presenter.view_model(), category, starting, &actions, cx)
+            Form::Limit(presenter, scroll) => {
+                limit::render(&presenter.view_model(), scroll, &actions, cx)
             }
-            Form::Stop(presenter, select) => {
-                stop::render(&presenter.view_model(), select, &actions, cx)
+            Form::Stop(presenter, scroll) => {
+                stop::render(&presenter.view_model(), scroll, &actions, cx)
             }
             Form::Fill(presenter) => fill::render(&presenter.view_model(), &actions, cx),
             Form::Detail(presenter) => match presenter.view_model() {
