@@ -292,3 +292,160 @@ pub fn history_csv(
     }
     lines.join("\n") + "\n"
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::*;
+
+    #[test]
+    fn history_average_and_over_use_closed_months_only() {
+        let (world, budget) = history_world();
+        let first = Period::of(date(2026, 6, 1));
+        let history = history(&budget, world.ledger(), first, sep(), today());
+        let dining = history
+            .rows
+            .iter()
+            .find(|r| r.category_id == world.category("Dining"));
+        // June 100, July 350, August 200: mean 216.67; over in July only; September counts in neither.
+        assert_eq!(
+            dining.and_then(|r| r.average.clone()),
+            Some(money("216.67"))
+        );
+        assert_eq!(
+            dining.map(|r| (r.over_months, r.closed_months)),
+            Some((1, 3))
+        );
+        assert_eq!(dining.map(|r| r.cells.len()), Some(4));
+        let september = dining.and_then(|r| r.cells.last().cloned()).flatten();
+        assert_eq!(september.map(|c| c.over), Some(true));
+    }
+
+    #[test]
+    fn history_shows_a_dash_for_an_unbudgeted_month_and_parents_as_rollups() {
+        let (world, budget) = history_world();
+        let earlier = Period::of(date(2026, 5, 1));
+        let history = history(&budget, world.ledger(), earlier, sep(), today());
+        let dining = history
+            .rows
+            .iter()
+            .find(|r| r.category_id == world.category("Dining"));
+        assert_eq!(dining.map(|r| r.cells[0].is_none()), Some(true));
+        let food = history
+            .rows
+            .iter()
+            .find(|r| r.category_id == world.category("Food"));
+        assert_eq!(food.map(|r| r.is_parent), Some(true));
+        assert_eq!(
+            food.and_then(|r| r.cells[2].clone()).map(|c| c.spent),
+            Some(money("350.00"))
+        );
+        assert_eq!((history.leaves_shown, history.leaves_ever_budgeted), (1, 1));
+    }
+
+    #[test]
+    fn history_month_totals_count_budgeted_leaves_only_and_mark_the_current_month() {
+        let (mut world, budget) = history_world();
+        world.post("ANZ Everyday", "Household", date(2026, 7, 9), "-999.00");
+        let first = Period::of(date(2026, 6, 1));
+        let history = history(&budget, world.ledger(), first, sep(), today());
+        let july = &history.months[1];
+        assert_eq!(
+            (july.budget.clone(), july.spent.clone(), july.over),
+            (money("300.00"), money("350.00"), true)
+        );
+        assert_eq!(
+            history
+                .months
+                .iter()
+                .map(|m| m.is_current)
+                .collect::<Vec<_>>(),
+            [false, false, false, true]
+        );
+    }
+
+    #[test]
+    fn history_bounds_run_from_the_first_amount_to_the_current_month() {
+        let (_, budget) = history_world();
+        assert_eq!(
+            history_bounds(&budget, today()),
+            Some((Period::of(date(2026, 6, 1)), sep()))
+        );
+        assert_eq!(history_bounds(&unreachable_budget(), today()), None);
+    }
+
+    #[test]
+    fn the_history_range_is_six_months_inside_the_bounds() {
+        let (_, budget) = history_world();
+        let jun = Period::of(date(2026, 6, 1));
+        // The Budget starts in June, so only four months exist yet.
+        assert_eq!(history_range(&budget, sep(), today()), Some((jun, sep())));
+        assert_eq!(
+            history_range(&budget, sep().next(), today()),
+            Some((jun, sep())),
+            "never past the current month"
+        );
+        assert_eq!(
+            history_range(&budget, jun, today()),
+            Some((jun, sep())),
+            "never a shorter window than the Budget allows"
+        );
+        // A later today gives a full window that can step back.
+        let later = date(2027, 3, 10);
+        let mar = Period::of(later);
+        assert_eq!(
+            history_range(&budget, mar, later),
+            Some((Period::of(date(2026, 10, 1)), mar))
+        );
+        assert_eq!(
+            history_range(&budget, Period::of(date(2026, 12, 1)), later),
+            Some((Period::of(date(2026, 7, 1)), Period::of(date(2026, 12, 1))))
+        );
+        assert_eq!(history_range(&unreachable_budget(), sep(), today()), None);
+    }
+
+    #[test]
+    fn the_history_csv_writes_plain_numbers_and_quotes_awkward_names() {
+        let (mut world, budget) = history_world();
+        let dining = world.category("Dining");
+        if let Some(category) = world.reads.categories.iter_mut().find(|c| c.id == dining) {
+            category.name = "Dining, \"out\"".to_string();
+            category.path = "Food \u{203a} Dining, \"out\"".to_string();
+        }
+        let jun = Period::of(date(2026, 6, 1));
+        let shown = history(&budget, world.ledger(), jun, sep(), today());
+        let labels = HistoryCsvLabels {
+            category: "Category".into(),
+            budget: "budget".into(),
+            spent: "spent".into(),
+            average: "Avg".into(),
+            over: "Over".into(),
+        };
+        let csv = history_csv(&shown, world.ledger(), &labels, |month| {
+            format!("{}-{:02}", month.year, month.month)
+        });
+        let lines: Vec<&str> = csv.lines().collect();
+        assert_eq!(lines.len(), shown.rows.len() + 1);
+        assert!(lines[0].starts_with("Category,2026-06 budget,2026-06 spent,"));
+        assert!(lines[0].ends_with(",2026-09 budget,2026-09 spent,Avg,Over"));
+        let row = shown
+            .rows
+            .iter()
+            .position(|row| row.category_id == dining)
+            .unwrap_or_else(|| unreachable!("Dining is budgeted"));
+        let line = lines[row + 1];
+        assert!(
+            line.contains("Dining, \"\"out\"\"\",300.00,100.00,300.00,350.00,"),
+            "{line}"
+        );
+        assert!(line.starts_with('"'));
+        assert!(!line.contains('\u{25b2}'));
+        let dining_row = &shown.rows[row];
+        assert!(line.ends_with(&format!(
+            ",{}/{}",
+            dining_row.over_months, dining_row.closed_months
+        )));
+        // Every line has the same number of unquoted separators as the header has columns.
+        assert_eq!(lines[0].split(',').count(), 1 + shown.months.len() * 2 + 2);
+    }
+}

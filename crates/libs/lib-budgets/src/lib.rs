@@ -24,10 +24,12 @@
 //! read ports in [`protocols`], as `lib-budgets`' own rows, so the crate depends on no other
 //! feature crate.
 //!
-//! This file holds the Category Limit chain itself; each surface's figures sit in their own
-//! section module, re-exported here. The Budgets are kept behind [`BudgetRepository`], which
+//! A VIPER module (`docs/development/viper-architecture.md`): the Entity (`entity`: the Budget and
+//! its chain, the chain's edits, the Budgets set and the stub seed), one Interactor per intent
+//! (`interactor`), one Presenter per View and Dialog (`presenter`), the ports and the Router
+//! (`protocols`), the default keys (`keymap`) and the Messages (`msg`). Each surface's figures sit
+//! in their own calculation module (`figures`, `plan`, `history`, `detail`), re-exported here. The Budgets are kept behind [`BudgetRepository`], which
 //! `lib-database` implements; `fake` holds the in-memory ports and `contract` the checks both they
-//! and the adapter keep.
 
 #[cfg(feature = "contract-tests")]
 #[expect(
@@ -36,6 +38,7 @@
 )]
 pub mod contract;
 mod detail;
+mod entity;
 mod error;
 pub mod fake;
 mod figures;
@@ -46,211 +49,15 @@ pub mod msg;
 mod plan;
 pub mod presenter;
 pub mod protocols;
-mod seed;
-mod store;
+#[cfg(test)]
+mod test_support;
 mod tree;
 
 pub use detail::*;
+pub use entity::*;
 pub use error::{Error, Result};
 pub use figures::*;
 pub use history::*;
 pub use interactor::*;
 pub use plan::*;
 pub use protocols::*;
-pub use seed::*;
-pub use store::*;
-
-#[cfg(test)]
-mod tests;
-
-use std::collections::BTreeMap;
-
-use bigdecimal::BigDecimal;
-use chrono::NaiveDate;
-use lib_core::{AccountId, BudgetId, CategoryId, Money, Period, UnitId};
-
-/// The id the seeded **Personal spending** Budget carries: Categories 5c binds it by id, so a
-/// rename changes nothing (ADR-0029).
-pub const PERSONAL_SPENDING_ID: BudgetId = BudgetId::seed(1);
-
-/// How far back "the last 3 months" reaches, for the average and Unallocated figures.
-pub const AVERAGE_MONTHS: i32 = 3;
-
-/// How a Budget measures spending. Only Category limits is built; Envelope, Percentage split and
-/// Project are named Methods deferred to their own maps.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Method {
-    Limits,
-}
-
-impl Method {
-    pub const ALL: [Method; 1] = [Method::Limits];
-}
-
-/// What a Budget Amount carries into the next month once its own month has closed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Rollover {
-    #[default]
-    None,
-    /// Only a positive leftover.
-    CarryUnspent,
-    /// The leftover or the overspend, so the next month's budget can go negative.
-    CarryBoth,
-}
-
-impl Rollover {
-    /// The Plan grid's `r` key: `—` → carry unspent → carry both → `—`.
-    pub fn next(self) -> Self {
-        match self {
-            Rollover::None => Rollover::CarryUnspent,
-            Rollover::CarryUnspent => Rollover::CarryBoth,
-            Rollover::CarryBoth => Rollover::None,
-        }
-    }
-}
-
-/// What one record of a chain says.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Limit {
-    Onward { amount: Money, rollover: Rollover },
-    MonthOnly { amount: Money, rollover: Rollover },
-    Stop,
-}
-
-/// A chain entry: what starts in `month`.
-#[derive(Debug, Clone, PartialEq)]
-pub struct LimitRecord {
-    pub month: Period,
-    pub limit: Limit,
-}
-
-/// A named container of Category Limits over one Ledger (glossary: Budget).
-#[derive(Debug, Clone, PartialEq)]
-pub struct Budget {
-    pub id: BudgetId,
-    pub name: String,
-    pub method: Method,
-    /// The Unit code (e.g. `"aud"`), locked at creation; every on-budget Account shares it.
-    pub unit: UnitId,
-    /// The Account ids whose Splits this Budget counts. Storage drops a deleted Account's id
-    /// (its link cascades), but a Budget already in memory keeps it until it next loads, and
-    /// ignores it: see [`Budget::counts`].
-    pub account_ids: Vec<AccountId>,
-    pub is_default: bool,
-    /// Archived is computed and viewable but read-only; `None` while active.
-    pub archived_at: Option<NaiveDate>,
-    /// One chain per leaf Expense Category id, sorted by month with one record per month.
-    ///
-    /// Public only so the Desktop's seeded-data tests can build a chain directly; everything else
-    /// goes through [`Budgets`] and keeps the chain sorted.
-    pub limits: BTreeMap<CategoryId, Vec<LimitRecord>>,
-}
-
-impl Budget {
-    /// Whether the Budget counts Account `id`: one of its [`Budget::account_ids`] that names one
-    /// of `accounts`. An id with no Account counts nothing, so a Budget left with none compares
-    /// nothing (#854).
-    pub fn counts(&self, accounts: &[BudgetAccount], id: AccountId) -> bool {
-        self.account_ids.contains(&id) && accounts.iter().any(|account| account.id == id)
-    }
-}
-
-impl Budget {
-    pub fn is_archived(&self) -> bool {
-        self.archived_at.is_some()
-    }
-
-    /// A Category's chain, oldest record first.
-    pub fn chain(&self, category_id: CategoryId) -> &[LimitRecord] {
-        self.limits.get(&category_id).map_or(&[], Vec::as_slice)
-    }
-
-    /// The Categories that have (or once had) a chain here.
-    pub fn category_ids(&self) -> impl Iterator<Item = CategoryId> + '_ {
-        self.limits.keys().copied()
-    }
-
-    /// The first month a Budget Amount starts in: the History range's left edge.
-    pub fn first_amount_month(&self) -> Option<Period> {
-        self.limits
-            .values()
-            .flatten()
-            .filter(|record| !matches!(record.limit, Limit::Stop))
-            .map(|record| record.month)
-            .min()
-    }
-
-    /// The first month any record starts in, a Stop included: where a carry's walk begins.
-    fn first_record_month(&self) -> Option<Period> {
-        self.limits
-            .values()
-            .flatten()
-            .map(|record| record.month)
-            .min()
-    }
-}
-
-/// The Budget Amount a month resolves to.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Applied {
-    pub amount: Money,
-    pub rollover: Rollover,
-    /// A record starts in this month: the Plan grid's bold cells (an Onward change or a
-    /// Month-only amount).
-    pub own_record: bool,
-}
-
-/// What `month` resolves to along a chain, or `None` when it is Unbudgeted.
-pub fn applied(chain: &[LimitRecord], month: Period) -> Option<Applied> {
-    if let Some(record) = chain.iter().find(|record| record.month == month) {
-        return match &record.limit {
-            Limit::Onward { amount, rollover } | Limit::MonthOnly { amount, rollover } => {
-                Some(Applied {
-                    amount: amount.clone(),
-                    rollover: *rollover,
-                    own_record: true,
-                })
-            }
-            Limit::Stop => None,
-        };
-    }
-    // Month-only records never carry forward, so only the latest Onward or Stop before the month
-    // decides what falls through.
-    let earlier = chain
-        .iter()
-        .rfind(|record| record.month < month && !matches!(record.limit, Limit::MonthOnly { .. }))?;
-    match &earlier.limit {
-        Limit::Onward { amount, rollover } => Some(Applied {
-            amount: amount.clone(),
-            rollover: *rollover,
-            own_record: false,
-        }),
-        Limit::MonthOnly { .. } | Limit::Stop => None,
-    }
-}
-
-/// The Rollover a new record inherits: the one on the latest record before `month`, else None.
-pub fn inherited_rollover(chain: &[LimitRecord], month: Period) -> Rollover {
-    match chain.iter().rfind(|record| record.month < month) {
-        Some(LimitRecord {
-            limit: Limit::Onward { rollover, .. } | Limit::MonthOnly { rollover, .. },
-            ..
-        }) => *rollover,
-        _ => Rollover::None,
-    }
-}
-
-pub fn put(chain: &mut Vec<LimitRecord>, record: LimitRecord) {
-    chain.retain(|existing| existing.month != record.month);
-    chain.push(record);
-    chain.sort_by_key(|record| record.month);
-}
-
-pub fn zero() -> BigDecimal {
-    BigDecimal::from(0)
-}
-
-/// Builds an exact `Money` from a signed count of cents: `-1850` is `-18.50`.
-pub fn cents_money(cents: i64) -> Money {
-    Money(BigDecimal::new(cents.into(), 2))
-}

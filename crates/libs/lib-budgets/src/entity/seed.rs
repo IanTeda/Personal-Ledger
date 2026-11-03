@@ -6,11 +6,12 @@ use chrono::NaiveDate;
 
 use lib_core::{AccountId, BudgetId, CategoryId, Period, UnitId};
 
-use super::protocols::{BudgetAccount, BudgetCategory};
-use super::store::Budgets;
-use super::{
-    Budget, Limit, LimitRecord, Method, PERSONAL_SPENDING_ID, Rollover, cents_money, put, tree,
-};
+use crate::protocols::{BudgetAccount, BudgetCategory};
+use crate::{Budget, Budgets, Limit, LimitRecord, Method, Rollover, cents_money, put, tree};
+
+/// The id the seeded **Personal spending** Budget carries: Categories 5c binds it by id, so a
+/// rename changes nothing (ADR-0029).
+pub const PERSONAL_SPENDING_ID: BudgetId = BudgetId::seed(1);
 
 /// One seeded Category Limit: Onward from `from` months before the current month, with an
 /// optional later change.
@@ -160,4 +161,25 @@ pub fn default_budgets(
             limits: seeded_limits(&JOINT_HOUSEHOLD, categories, today),
         },
     ])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::*;
+
+    #[test]
+    fn personal_spending_is_an_empty_default_on_every_account_in_its_unit_that_takes_transactions()
+    {
+        let budget = personal_spending(UnitId::SEED_AUD, &fake::stub_accounts());
+        assert_eq!(budget.id, PERSONAL_SPENDING_ID);
+        assert!(budget.is_default);
+        assert!(!budget.is_archived());
+        assert!(budget.limits.is_empty());
+        assert_eq!(
+            budget.account_ids,
+            (1..=4).map(AccountId::seed).collect::<Vec<_>>(),
+            "the AUD Accounts that take Transactions, not the Home Loan"
+        );
+    }
 }

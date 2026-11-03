@@ -6,7 +6,10 @@ use lib_core::{CategoryId, CategoryTypes, Money, Period};
 
 use super::figures::{SpentIndex, expense_leaves};
 use super::protocols::{BudgetCategories, BudgetCategory, BudgetReads};
-use super::{AVERAGE_MONTHS, Budget, Rollover, applied, tree, zero};
+use super::{Budget, Rollover, applied, tree, zero};
+
+/// How far back "the last 3 months" reaches, for the average and Unallocated figures.
+pub const AVERAGE_MONTHS: i32 = 3;
 
 /// A month's Total budgeted: Budget Amounts only, no carry.
 pub fn total_budgeted(budget: &Budget, categories: &dyn BudgetCategories, month: Period) -> Money {
@@ -413,5 +416,323 @@ impl PlanEdit {
         } else {
             self.text.pop();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::*;
+
+    #[test]
+    fn the_three_month_average_rounds_to_the_nearest_ten_and_floors_at_zero() {
+        let mut world = World::new();
+        world.post("ANZ Everyday", "Dining", date(2026, 6, 4), "-100.00");
+        world.post("ANZ Everyday", "Dining", date(2026, 7, 4), "-100.00");
+        world.post("ANZ Everyday", "Dining", date(2026, 8, 4), "-113.00");
+        // Mean 104.33 rounds to 100.00. September itself is excluded.
+        world.post("ANZ Everyday", "Dining", date(2026, 9, 4), "-900.00");
+        world.post("ANZ Everyday", "Groceries", date(2026, 8, 4), "20.00");
+        let (budgets, id) = world.budgets();
+        let budget = budgets.get(id).cloned().unwrap_or_else(unreachable_budget);
+        let ledger = world.ledger();
+        assert_eq!(
+            three_month_average(&budget, ledger, world.category("Dining"), sep()),
+            money("100.00")
+        );
+        // A net refund averages below zero and is floored.
+        assert_eq!(
+            three_month_average(&budget, ledger, world.category("Groceries"), sep()),
+            money("0.00")
+        );
+    }
+
+    #[test]
+    fn fill_targets_the_first_open_month_at_or_after_the_cursor() {
+        assert_eq!(fill_target(Some(sep()), today()), sep());
+        assert_eq!(
+            fill_target(Some(sep().next().next()), today()),
+            sep().next().next()
+        );
+        assert_eq!(fill_target(Some(sep().prev()), today()), sep().next());
+        assert_eq!(fill_target(None, today()), sep().next());
+    }
+
+    #[test]
+    fn fill_from_the_previous_month_copies_amounts_and_keeps_edited_cells() {
+        let (world, mut budgets, id) = fill_world();
+        let october = sep().next();
+        let budget = budgets.get(id).cloned().unwrap_or_else(unreachable_budget);
+        let preview = fill_preview(&budget, world.ledger(), october, FillSource::PreviousMonth);
+        // Dining's September Month-only differs from the plan; Groceries matches it; Rent has its
+        // own October record; Transport wasn't budgeted in September.
+        assert_eq!(
+            preview.changes,
+            vec![FillLine {
+                category_id: world.category("Dining"),
+                before: Some(money("250.00")),
+                after: money("400.00"),
+            }]
+        );
+        assert_eq!(preview.kept, vec![world.category("Rent")]);
+        assert_eq!(preview.unchanged, 1);
+        assert_eq!(preview.total, money("2060.00"));
+
+        let wrote = budgets.fill(
+            id,
+            world.ledger(),
+            october,
+            FillSource::PreviousMonth,
+            today(),
+        );
+        assert_eq!(wrote, Ok(1));
+        let budget = budgets.get(id).cloned().unwrap_or_else(unreachable_budget);
+        let dining = budget.chain(world.category("Dining"));
+        let filled = applied(dining, october).unwrap_or_else(|| unreachable!("filled"));
+        assert_eq!(filled.amount, money("400.00"));
+        assert_eq!(filled.rollover, Rollover::CarryUnspent);
+        // Month-only: November falls back to the Onward amount.
+        assert_eq!(
+            applied(dining, october.next()).map(|found| found.amount),
+            Some(money("250.00"))
+        );
+        assert_eq!(
+            total_budgeted(&budget, world.ledger(), october),
+            preview.total
+        );
+        // A second Fill finds every Category kept or unchanged.
+        assert_eq!(
+            budgets.fill(
+                id,
+                world.ledger(),
+                october,
+                FillSource::PreviousMonth,
+                today()
+            ),
+            Ok(0)
+        );
+    }
+
+    #[test]
+    fn fill_from_the_average_rounds_spent_and_refuses_a_closed_month() {
+        let (world, mut budgets, id) = fill_world();
+        let budget = budgets.get(id).cloned().unwrap_or_else(unreachable_budget);
+        // The current month: the three months before it are June to August.
+        let preview = fill_preview(&budget, world.ledger(), sep(), FillSource::Average);
+        // Dining has its own September record and Rent has no spend: 1000.00 becomes 0.00.
+        assert_eq!(preview.kept, vec![world.category("Dining")]);
+        assert_eq!(
+            preview.changes,
+            vec![FillLine {
+                category_id: world.category("Rent"),
+                before: Some(money("1000.00")),
+                after: money("0.00"),
+            }]
+        );
+        assert_eq!(preview.unchanged, 1, "Groceries averages its 500.00");
+        assert_eq!(
+            budgets.fill(
+                id,
+                world.ledger(),
+                sep().prev(),
+                FillSource::Average,
+                today()
+            ),
+            Err(Error::ClosedMonth)
+        );
+    }
+
+    #[test]
+    fn an_average_exactly_on_a_five_rounds_away_from_zero() {
+        let mut world = World::new();
+        world.post("ANZ Everyday", "Dining", date(2026, 8, 4), "-45.00");
+        // Total 45 over 3 months is 15.00, which rounds up to 20.
+        let (budgets, id) = world.budgets();
+        let budget = budgets.get(id).cloned().unwrap_or_else(unreachable_budget);
+        assert_eq!(
+            three_month_average(&budget, world.ledger(), world.category("Dining"), sep()),
+            money("20.00")
+        );
+    }
+
+    #[test]
+    fn unallocated_is_average_income_minus_total_budgeted() {
+        let mut world = World::new();
+        world.post("ANZ Everyday", "Salary", date(2026, 6, 25), "6000.00");
+        world.post("ANZ Everyday", "Salary", date(2026, 7, 25), "6000.00");
+        world.post("ANZ Everyday", "Salary", date(2026, 8, 25), "5550.00");
+        // Off-budget income doesn't count.
+        world.post("Amex Platinum", "Salary", date(2026, 8, 26), "3000.00");
+        let (mut budgets, id) = world.budgets();
+        set(
+            &mut budgets,
+            &world,
+            id,
+            "Rent",
+            sep(),
+            Span::Onward,
+            "1000.00",
+            None,
+        );
+        set(
+            &mut budgets,
+            &world,
+            id,
+            "Groceries",
+            sep(),
+            Span::Onward,
+            "5000.00",
+            None,
+        );
+        let budget = budgets.get(id).cloned().unwrap_or_else(unreachable_budget);
+        let ledger = world.ledger();
+        assert_eq!(average_income(&budget, ledger, today()), money("5850.00"));
+        assert_eq!(
+            total_budgeted(&budget, world.ledger(), sep()),
+            money("6000.00")
+        );
+        assert_eq!(
+            unallocated(&budget, ledger, sep(), today()),
+            money("-150.00")
+        );
+    }
+
+    #[test]
+    fn the_first_key_replaces_the_prefilled_amount_and_later_keys_edit_it() {
+        let mut edit = PlanEdit::new(CategoryId::seed(1), sep(), Some(&money("250.00")));
+        assert_eq!(edit.text, "250.00");
+        edit.type_char('3');
+        edit.type_char('x');
+        edit.type_char('0');
+        edit.type_char('.');
+        edit.type_char('.');
+        edit.type_char('5');
+        assert_eq!(edit.text, "30.5");
+        edit.backspace();
+        assert_eq!(edit.text, "30.");
+    }
+
+    #[test]
+    fn backspace_on_a_prefilled_cell_clears_it_at_once() {
+        let mut edit = PlanEdit::new(CategoryId::seed(1), sep(), Some(&money("250.00")));
+        edit.backspace();
+        assert_eq!(edit.text, "");
+    }
+
+    #[test]
+    fn the_plan_groups_leaves_under_their_parent_and_totals_each_month() {
+        let world = World::new();
+        let (mut budgets, id) = world.budgets();
+        save(
+            &mut budgets,
+            &world,
+            id,
+            "Rent",
+            sep(),
+            Span::Onward,
+            "1000",
+        )
+        .ok();
+        save(
+            &mut budgets,
+            &world,
+            id,
+            "Electricity",
+            sep(),
+            Span::Onward,
+            "90",
+        )
+        .ok();
+        save(&mut budgets, &world, id, "Water", sep(), Span::Onward, "60").ok();
+        save(
+            &mut budgets,
+            &world,
+            id,
+            "Transport",
+            sep().next(),
+            Span::Onward,
+            "40",
+        )
+        .ok();
+        let Some(budget) = budgets.get(id) else {
+            panic!("the Budget was created");
+        };
+        let start = default_plan_start(today());
+        let grid = plan(budget, world.ledger(), start, today());
+        assert_eq!(grid.months.len(), PLAN_MONTHS);
+        assert_eq!(grid.months.get(2), Some(&sep()));
+        let labels: Vec<Option<&str>> = grid
+            .sections
+            .iter()
+            .map(|section| section.parent.as_deref())
+            .collect();
+        // A top-level leaf (Transport) closes the grid as the unlabelled group.
+        assert_eq!(labels, vec![Some("Housing"), Some("Utilities"), None]);
+        assert_eq!(grid.row_count(), 4);
+        // Sep is the third month; Oct the fourth.
+        assert_eq!(grid.totals.get(2), Some(&money("1150.00")));
+        assert_eq!(grid.totals.get(3), Some(&money("1190.00")));
+        assert_eq!(grid.totals.first(), Some(&money("0")));
+        let cell = grid
+            .row(0)
+            .and_then(|row| row.cells.get(2))
+            .expect("Rent's September cell");
+        assert!(cell.own_record && !cell.closed);
+        assert!(
+            grid.row(0)
+                .is_some_and(|row| row.cells.first().is_some_and(|c| c.closed))
+        );
+        // Unallocated is average income less the month's total.
+        assert_eq!(
+            grid.unallocated.get(2).map(|left| left.0.clone()),
+            Some(grid.average_income.0.clone() - money("1150.00").0)
+        );
+    }
+
+    #[test]
+    fn a_cleared_row_stays_in_the_grid_while_a_record_starts_in_the_range() {
+        let world = World::new();
+        let (mut budgets, id) = world.budgets();
+        save(
+            &mut budgets,
+            &world,
+            id,
+            "Rent",
+            sep().next(),
+            Span::Onward,
+            "1000",
+        )
+        .ok();
+        save(
+            &mut budgets,
+            &world,
+            id,
+            "Rent",
+            sep().next(),
+            Span::Onward,
+            "",
+        )
+        .ok();
+        let Some(budget) = budgets.get(id) else {
+            panic!("the Budget was created");
+        };
+        let grid = plan(budget, world.ledger(), default_plan_start(today()), today());
+        assert_eq!(grid.row_count(), 1);
+        assert!(
+            grid.row(0)
+                .is_some_and(|row| row.cells.iter().all(|c| c.amount.is_none()))
+        );
+    }
+
+    #[test]
+    fn the_plan_range_is_bounded_by_the_first_amount_and_a_year_ahead() {
+        let world = World::new();
+        let (budgets, id) = world.budgets();
+        let Some(budget) = budgets.get(id) else {
+            panic!("the Budget was created");
+        };
+        let (earliest, latest) = plan_start_bounds(budget, today());
+        assert_eq!(earliest, default_plan_start(today()));
+        assert_eq!(latest, (0..12).fold(earliest, |month, _| month.next()));
     }
 }

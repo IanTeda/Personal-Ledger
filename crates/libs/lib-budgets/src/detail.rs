@@ -203,3 +203,95 @@ fn track_record(
         ),
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::*;
+
+    #[test]
+    fn category_detail_lists_splits_largest_first_and_reads_the_track_record() {
+        let mut world = World::new();
+        let (budgets, id) = world.budgets();
+        let dining = world.category("Dining");
+        let Some(mut budget) = budgets.get(id).cloned() else {
+            panic!("the Budget was created");
+        };
+        budget.limits.insert(
+            dining,
+            vec![LimitRecord {
+                month: Period::of(date(2026, 6, 1)),
+                limit: Limit::Onward {
+                    amount: money("250.00"),
+                    rollover: Rollover::None,
+                },
+            }],
+        );
+        // Over in August, under in July.
+        world.post("ANZ Everyday", "Dining", date(2026, 8, 5), "-300.00");
+        world.post("ANZ Everyday", "Dining", date(2026, 7, 5), "-100.00");
+        world.post("ANZ Everyday", "Dining", date(2026, 9, 2), "-40.00");
+        world.post("ANZ Everyday", "Dining", date(2026, 9, 9), "-278.40");
+        // Off-budget Account: never counted.
+        world.post("Amex Platinum", "Dining", date(2026, 9, 9), "-999.00");
+        let detail = category_detail(&budget, world.ledger(), dining, sep(), today())
+            .expect("Dining is an Expense Category");
+
+        assert_eq!(detail.figures.spent, money("318.40"));
+        assert!(detail.figures.over);
+        let amounts: Vec<Money> = detail.lines.iter().map(|l| l.amount.clone()).collect();
+        assert_eq!(amounts, vec![money("278.40"), money("40.00")]);
+        let track = detail.track.expect("earlier budgeted months exist");
+        assert_eq!((track.months, track.over_months), (3, 1));
+        assert_eq!(track.average, money("133.33"));
+        assert_eq!(detail.rollover, Some(Rollover::None));
+    }
+
+    #[test]
+    fn category_detail_of_a_parent_rolls_up_and_has_no_rollover() {
+        let mut world = World::new();
+        let (mut budgets, id) = world.budgets();
+        set(
+            &mut budgets,
+            &world,
+            id,
+            "Groceries",
+            sep(),
+            Span::Onward,
+            "500.00",
+            None,
+        );
+        world.post("ANZ Everyday", "Groceries", date(2026, 9, 3), "-120.00");
+        let Some(budget) = budgets.get(id) else {
+            panic!("the Budget was created");
+        };
+        let parent = tree::get(&world.reads.categories, world.category("Groceries"))
+            .and_then(|c| c.parent)
+            .expect("Groceries sits under a parent");
+        let detail = category_detail(budget, world.ledger(), parent, sep(), today())
+            .expect("a parent Expense Category");
+        assert!(detail.figures.is_parent);
+        assert_eq!(detail.figures.spent, money("120.00"));
+        assert_eq!(detail.rollover, None);
+    }
+
+    #[test]
+    fn category_detail_is_none_for_a_non_expense_category() {
+        let world = World::new();
+        let (budgets, id) = world.budgets();
+        let Some(budget) = budgets.get(id) else {
+            panic!("the Budget was created");
+        };
+        let income = world
+            .reads
+            .categories
+            .iter()
+            .find(|c| c.category_type == CategoryTypes::Income)
+            .map(|c| c.id)
+            .expect("the id exists");
+        assert_eq!(
+            category_detail(budget, world.ledger(), income, sep(), today()),
+            None
+        );
+    }
+}
