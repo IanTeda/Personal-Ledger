@@ -1,17 +1,17 @@
 //! The Add and Edit account Dialogs (`docs/ux/desktop-mockups/17-accounts/README.md`'s 3b and 3c)
 //! on the shared `crate::dialog` frame, 440px wide rather than `dialog::WIDTH`'s 420px because the
 //! two-up field rows need the room. Name, Opening balance and Account number are typed into;
-//! Institution, Type and Unit are the shared dropdown (`crate::form::select_field`), which takes
-//! the arrows, `Enter` and `Space` and swallows other typing rather than letting it reach the
-//! Shell. Edit shows Unit and Opening balance read-only, with the reason in the usage notice.
+//! Institution, Type and Unit are the shared dropdown (`crate::form::select_field`), whose list
+//! the Presenter holds and every key of which it reads. Edit shows Unit and Opening balance
+//! read-only, with the reason in the usage notice.
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use lib_accounts::presenter::{AccountField, AccountFormEvent, AccountFormViewModel};
 
-use super::{AccountsDialog, Clicks, Selects};
-use crate::form::viper::{
-    choose_option, chosen_label, enter, labels, select_key, synced, toggle_select, typed,
-};
+use lib_viper::view::SelectList;
+
+use super::{AccountsDialog, Clicks};
+use crate::form::viper::{chosen_label, drawn, labels};
 use crate::{
     dialog,
     form::{
@@ -20,154 +20,41 @@ use crate::{
         select::SelectState,
         select_field::{self, SelectFieldProps},
     },
-    shell::view::dialog_host::{DialogKey, DialogOutcome},
     theme::color,
 };
 
 const WIDTH: gpui::Pixels = px(440.0);
 
-/// A key on the Dialog: `Tab` commits an open list's highlight and moves field; a select takes
-/// the arrows, `Enter` and `Space`; a text field takes typing, and `Enter` confirms a valid form.
-pub(super) fn key(dialog: &mut AccountsDialog, key: DialogKey) -> DialogOutcome {
-    let view = dialog.presenter.view_model();
-    if matches!(key, DialogKey::Tab | DialogKey::BackTab) {
-        if let Some(event) = select_event(dialog, &view, DialogKey::Enter, true) {
-            dialog.send(event);
-        }
-        let event = if key == DialogKey::Tab {
-            AccountFormEvent::NextField
-        } else {
-            AccountFormEvent::PrevField
-        };
-        dialog.send(event);
-        dialog.selects.close_all();
-        return DialogOutcome::Handled;
-    }
-    match view.focused {
-        AccountField::Institution | AccountField::Type | AccountField::Unit => {
-            let taken = matches!(
-                key,
-                DialogKey::Up | DialogKey::Down | DialogKey::Enter | DialogKey::Char(' ')
-            );
-            if let Some(event) = select_event(dialog, &view, key, false) {
-                dialog.send(event);
-            }
-            match key {
-                // A select swallows typing rather than letting it fall through to the Shell.
-                DialogKey::Char(_) | DialogKey::Backspace => DialogOutcome::Handled,
-                _ if taken => DialogOutcome::Handled,
-                _ => DialogOutcome::Ignored,
-            }
-        }
-        AccountField::Name => text_key(dialog, &view, key, &view.name.text, AccountFormEvent::Name),
-        AccountField::OpeningBalance => text_key(
-            dialog,
-            &view,
-            key,
-            &view.opening_balance.text,
-            AccountFormEvent::OpeningBalance,
-        ),
-        AccountField::AccountNumber => text_key(
-            dialog,
-            &view,
-            key,
-            &view.account_number.text,
-            AccountFormEvent::AccountNumber,
-        ),
-    }
-}
-
-/// Runs `key` through the focused select, returning the event for a changed choice. With
-/// `only_open`, only an open list takes the key (a `Tab` commits its highlight).
-fn select_event(
-    dialog: &mut AccountsDialog,
-    view: &AccountFormViewModel,
-    key: DialogKey,
-    only_open: bool,
-) -> Option<AccountFormEvent> {
-    let selects = &mut dialog.selects;
-    match view.focused {
-        AccountField::Institution if !only_open || selects.institution.is_open() => {
-            select_key(&mut selects.institution, &view.institution, key)
-                .1
-                .map(AccountFormEvent::Institution)
-        }
-        AccountField::Type if !only_open || selects.account_type.is_open() => {
-            select_key(&mut selects.account_type, &view.account_type, key)
-                .1
-                .map(AccountFormEvent::Type)
-        }
-        AccountField::Unit if !only_open || selects.unit.is_open() => {
-            select_key(&mut selects.unit, &view.unit, key)
-                .1
-                .map(AccountFormEvent::Unit)
-        }
-        _ => None,
-    }
-}
-
-/// A key on a text field: typing edits it, `Enter` confirms a valid form, the arrows do nothing.
-fn text_key(
-    dialog: &mut AccountsDialog,
-    view: &AccountFormViewModel,
-    key: DialogKey,
-    text: &str,
-    event: fn(String) -> AccountFormEvent,
-) -> DialogOutcome {
-    match key {
-        DialogKey::Enter => enter(view.frame.can_confirm),
-        DialogKey::Up | DialogKey::Down => DialogOutcome::Handled,
-        _ => match typed(text, key) {
-            Some(text) => {
-                dialog.send(event(text));
-                DialogOutcome::Handled
-            }
-            None => DialogOutcome::Ignored,
-        },
-    }
-}
-
-/// A click on a text field focuses it, closing a list open on another field.
+/// A click on a text field focuses it, closing an open list.
 fn click_text(dialog: &mut AccountsDialog, field: AccountField) {
-    if dialog.presenter.view_model().focused != field {
-        dialog.selects.close_all();
-    }
     dialog.send(AccountFormEvent::Focus(field));
 }
 
 /// A click on a select's closed field focuses it and toggles its list. A field that refuses focus
 /// takes no click.
 fn click_select(dialog: &mut AccountsDialog, field: AccountField) {
-    dialog.send(AccountFormEvent::Focus(field));
-    let view = dialog.presenter.view_model();
-    if view.focused != field {
-        return;
-    }
-    dialog.selects.close_except(field);
-    match field {
-        AccountField::Institution => {
-            toggle_select(&mut dialog.selects.institution, &view.institution);
-        }
-        AccountField::Type => toggle_select(&mut dialog.selects.account_type, &view.account_type),
-        AccountField::Unit => toggle_select(&mut dialog.selects.unit, &view.unit),
-        _ => {}
-    }
+    dialog.send(AccountFormEvent::ToggleList(field));
 }
 
 /// A click on row `index` of an open list.
 fn click_option(dialog: &mut AccountsDialog, field: AccountField, index: usize) {
     let view = dialog.presenter.view_model();
-    let selects = &mut dialog.selects;
     let event = match field {
-        AccountField::Institution => {
-            choose_option(&mut selects.institution, &view.institution, index)
-                .map(AccountFormEvent::Institution)
-        }
-        AccountField::Type => choose_option(&mut selects.account_type, &view.account_type, index)
-            .map(AccountFormEvent::Type),
-        AccountField::Unit => {
-            choose_option(&mut selects.unit, &view.unit, index).map(AccountFormEvent::Unit)
-        }
+        AccountField::Institution => view
+            .institution
+            .options
+            .get(index)
+            .map(|choice| AccountFormEvent::Institution(choice.value)),
+        AccountField::Type => view
+            .account_type
+            .options
+            .get(index)
+            .map(|choice| AccountFormEvent::Type(choice.value.clone())),
+        AccountField::Unit => view
+            .unit
+            .options
+            .get(index)
+            .map(|choice| AccountFormEvent::Unit(choice.value)),
         _ => None,
     };
     if let Some(event) = event {
@@ -175,12 +62,33 @@ fn click_option(dialog: &mut AccountsDialog, field: AccountField, index: usize) 
     }
 }
 
+/// `field`'s list as the Presenter holds it: the focused select's, else closed.
+fn list_of(view: &AccountFormViewModel, field: AccountField) -> SelectList {
+    if view.focused == field {
+        view.list
+    } else {
+        SelectList::default()
+    }
+}
+
 pub(super) fn render(
     view: &AccountFormViewModel,
-    selects: &Selects,
+    scrolls: &mut [usize; 3],
     actions: &Clicks,
     cx: &App,
 ) -> AnyElement {
+    let [institution_scroll, type_scroll, unit_scroll] = scrolls;
+    let institution_state = drawn(
+        &view.institution,
+        list_of(view, AccountField::Institution),
+        institution_scroll,
+    );
+    let type_state = drawn(
+        &view.account_type,
+        list_of(view, AccountField::Type),
+        type_scroll,
+    );
+    let unit_state = drawn(&view.unit, list_of(view, AccountField::Unit), unit_scroll);
     let (name_id, institution_id, type_id, unit_id, balance_id, number_id, cancel_id, confirm_id) =
         if view.editing {
             (
@@ -247,7 +155,7 @@ pub(super) fn render(
             unit_id,
             &view.unit.label,
             labels(&view.unit),
-            synced(&selects.unit, &view.unit),
+            unit_state,
             view.unit.focused,
             AccountField::Unit,
         ),
@@ -292,7 +200,7 @@ pub(super) fn render(
                 institution_id,
                 &view.institution.label,
                 labels(&view.institution),
-                synced(&selects.institution, &view.institution),
+                institution_state,
                 view.institution.focused,
                 AccountField::Institution,
             ),
@@ -300,7 +208,7 @@ pub(super) fn render(
                 type_id,
                 &view.account_type.label,
                 labels(&view.account_type),
-                synced(&selects.account_type, &view.account_type),
+                type_state,
                 view.account_type.focused,
                 AccountField::Type,
             ),
@@ -371,10 +279,7 @@ fn read_only_field(id: &'static str, label: AnyElement, value: String, cx: &App)
 /// The form's fields, for a test: the focused field's variant name, the drafts, the selects'
 /// chosen labels, the Unit codes on offer, and whether a list is open. Edit adds the counts it
 /// quotes.
-pub(super) fn readback(
-    view: &AccountFormViewModel,
-    select_open: bool,
-) -> Vec<(&'static str, String)> {
+pub(super) fn readback(view: &AccountFormViewModel) -> Vec<(&'static str, String)> {
     let mut values = vec![
         ("focused", format!("{:?}", view.focused)),
         ("name", view.name.text.clone()),
@@ -391,7 +296,7 @@ pub(super) fn readback(
             view.balance_read_only.clone().unwrap_or_default(),
         ),
         ("account_number", view.account_number.text.clone()),
-        ("select_open", select_open.to_string()),
+        ("select_open", view.list.is_open().to_string()),
         ("valid", view.frame.can_confirm.to_string()),
         ("error", view.error.clone().unwrap_or_default()),
     ];

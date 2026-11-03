@@ -7,6 +7,7 @@ use std::rc::Rc;
 
 use lib_core::{AccountId, InstitutionId, UnitId};
 use lib_toast::{Notice, Notify};
+use lib_viper::dialog::DialogRouter;
 
 use crate::protocols::{
     AccountInstitution, AccountInstitutions, AccountUnit, AccountUnits, AccountsDialog,
@@ -224,6 +225,12 @@ impl AccountsRouter for RecordingRouter {
     }
 
     fn close_dialog(&mut self, outcome: Option<AccountsOutcome>) {
+        self.calls.push(RouterCall::CloseDialog(outcome));
+    }
+}
+
+impl DialogRouter<AccountsOutcome> for RecordingRouter {
+    fn close(&mut self, outcome: Option<AccountsOutcome>) {
         self.calls.push(RouterCall::CloseDialog(outcome));
     }
 }

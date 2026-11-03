@@ -23,10 +23,13 @@ use chrono::{Datelike, NaiveDate};
 use lib_core::{AccountId, AccountType, InstitutionId, Money, UnitId};
 use lib_locale::Label;
 use lib_locale::format::{AmountStyle, format_amount};
-use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView, count};
+use lib_viper::dialog::{DialogInput, DialogRouter};
+use lib_viper::view::{
+    Choice, DialogFrame, SelectList, SelectMove, SelectView, TextFieldView, count,
+};
 
 use crate::interactor::{AddAccount, EditAccount};
-use crate::protocols::{AccountsOutcome, AccountsRouter, SharedPorts};
+use crate::protocols::{AccountsOutcome, SharedPorts};
 use crate::{AccountDraft, AccountError, GROUP_ORDER, NewAccount, msg};
 
 /// The form's fields, in `Tab` order.
@@ -54,19 +57,27 @@ impl AccountField {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AccountFormEvent {
+    /// A Dialog command or typed key. What it means is the focused field's: `select` and `submit`
+    /// confirm a valid form, except that `select` on Institution, Type or Unit opens its list and
+    /// picks from it; typing edits a text field and goes nowhere on a select; the arrows step a
+    /// select; the field keys move focus, wrapping, skipping the fields that can't take focus and
+    /// committing an open list's highlight.
+    Input(DialogInput),
     /// A text field's whole new text, as its View's input holds it.
     Name(String),
     /// Ignored unless the text could be part of a decimal amount.
     OpeningBalance(String),
     AccountNumber(String),
-    /// A select's chosen option. Ignored when it isn't one of the options.
+    /// A select's chosen option, closing its list. Ignored when it isn't one of the options.
     Institution(InstitutionId),
     Type(AccountType),
     Unit(UnitId),
-    /// `Tab`/`Shift-Tab`, wrapping and skipping the fields that can't take focus.
-    NextField,
-    PrevField,
-    /// A click on a field. Ignored for a field that can't take focus.
+    /// A click on a select's field: focuses it and opens or closes its list. Ignored for a field
+    /// that can't take focus.
+    ToggleList(AccountField),
+    /// Closes the open list without picking: the host's `back`.
+    CloseList,
+    /// A click on a field, which closes an open list. Ignored for a field that can't take focus.
     Focus(AccountField),
     Confirm,
     Cancel,
@@ -94,6 +105,8 @@ pub struct AccountFormViewModel {
     /// Edit: the opening balance as written, which can no longer change.
     pub balance_read_only: Option<String>,
     pub account_number: TextFieldView,
+    /// The focused select's list: open, and its highlight. Closed on a text field.
+    pub list: SelectList,
     /// Edit only.
     pub usage: Option<Usage>,
     /// Why the last confirm was refused.
@@ -136,6 +149,8 @@ pub struct AccountFormPresenter {
     opening_balance: String,
     account_number: String,
     focused: AccountField,
+    /// The focused select's list; only one is ever open.
+    list: SelectList,
     error: Option<AccountError>,
 }
 
@@ -198,6 +213,7 @@ impl AccountFormPresenter {
             opening_balance: String::new(),
             account_number: String::new(),
             focused: AccountField::Name,
+            list: SelectList::default(),
             error: None,
         };
         form.institution = form.default_institution();
@@ -265,47 +281,182 @@ impl AccountFormPresenter {
         Some(form)
     }
 
-    pub fn handle(&mut self, event: AccountFormEvent, router: &mut dyn AccountsRouter) {
+    pub fn handle(
+        &mut self,
+        event: AccountFormEvent,
+        router: &mut dyn DialogRouter<AccountsOutcome>,
+    ) {
         self.error = None;
         match event {
+            AccountFormEvent::Input(input) => self.input(input, router),
             AccountFormEvent::Name(text) => self.name = text,
-            AccountFormEvent::OpeningBalance(text) => {
-                if self.editing.is_none() && accepts_balance_text(&text) {
-                    self.opening_balance = text;
-                }
-            }
+            AccountFormEvent::OpeningBalance(text) => self.set_balance(text),
             AccountFormEvent::AccountNumber(text) => self.account_number = text,
             AccountFormEvent::Institution(id) => {
-                if self.institutions.iter().any(|choice| choice.value == id) {
-                    self.institution = Some(id);
-                    self.institution_picked = true;
-                    self.follow_usual_unit();
-                }
+                self.list.close();
+                self.pick_institution(id);
             }
             AccountFormEvent::Type(account_type) => {
-                if self.types.iter().any(|choice| choice.value == account_type) {
-                    self.account_type = account_type;
-                    if !self.institution_picked {
-                        self.institution = self.default_institution();
-                        self.follow_usual_unit();
-                    }
-                }
+                self.list.close();
+                self.pick_type(account_type);
             }
             AccountFormEvent::Unit(id) => {
-                if self.editing.is_none() && self.units.iter().any(|choice| choice.value == id) {
-                    self.unit = Some(id);
-                    self.unit_picked = true;
+                self.list.close();
+                self.pick_unit(id);
+            }
+            AccountFormEvent::ToggleList(field) => {
+                if self.is_skipped(field) {
+                    return;
+                }
+                if self.focused != field {
+                    self.list.close();
+                    self.focused = field;
+                }
+                match field {
+                    AccountField::Institution => self
+                        .list
+                        .toggle(&self.institutions, self.institution.as_ref()),
+                    AccountField::Type => {
+                        self.list.toggle(&self.types, Some(&self.account_type));
+                    }
+                    AccountField::Unit => self.list.toggle(&self.units, self.unit.as_ref()),
+                    _ => {}
                 }
             }
-            AccountFormEvent::NextField => self.cycle(false),
-            AccountFormEvent::PrevField => self.cycle(true),
+            AccountFormEvent::CloseList => {
+                self.list.close();
+            }
             AccountFormEvent::Focus(field) => {
                 if !self.is_skipped(field) {
+                    self.list.close();
                     self.focused = field;
                 }
             }
             AccountFormEvent::Confirm => self.confirm(router),
-            AccountFormEvent::Cancel => router.close_dialog(None),
+            AccountFormEvent::Cancel => router.close(None),
+        }
+    }
+
+    /// Reads `input` for the focused field.
+    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<AccountsOutcome>) {
+        let on_select = matches!(
+            self.focused,
+            AccountField::Institution | AccountField::Type | AccountField::Unit
+        );
+        match input {
+            DialogInput::NextField | DialogInput::PreviousField => {
+                // Leaving a select commits an open list's highlight, as a click on it would.
+                self.commit_list();
+                self.cycle(input == DialogInput::PreviousField);
+            }
+            DialogInput::Submit => self.confirm(router),
+            // A select swallows typing, so it never reaches a text field.
+            _ if on_select => self.select_input(input),
+            DialogInput::Select => self.confirm(router),
+            DialogInput::Char(ch) => self.edit_text(|text| text.push(ch)),
+            DialogInput::Backspace => self.edit_text(|text| {
+                text.pop();
+            }),
+            _ => {}
+        }
+    }
+
+    /// `input` on the focused select's list.
+    fn select_input(&mut self, input: DialogInput) {
+        match self.focused {
+            AccountField::Institution => {
+                if let SelectMove::Chose(id) =
+                    self.list
+                        .input(input, &self.institutions, self.institution.as_ref())
+                {
+                    self.pick_institution(id);
+                }
+            }
+            AccountField::Type => {
+                if let SelectMove::Chose(account_type) =
+                    self.list
+                        .input(input, &self.types, Some(&self.account_type))
+                {
+                    self.pick_type(account_type);
+                }
+            }
+            AccountField::Unit => {
+                if let SelectMove::Chose(id) =
+                    self.list.input(input, &self.units, self.unit.as_ref())
+                {
+                    self.pick_unit(id);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Closes the focused select's list, picking its highlight when it was open.
+    fn commit_list(&mut self) {
+        match self.focused {
+            AccountField::Institution => {
+                if let Some(id) = self.list.commit(&self.institutions) {
+                    self.pick_institution(id);
+                }
+            }
+            AccountField::Type => {
+                if let Some(account_type) = self.list.commit(&self.types) {
+                    self.pick_type(account_type);
+                }
+            }
+            AccountField::Unit => {
+                if let Some(id) = self.list.commit(&self.units) {
+                    self.pick_unit(id);
+                }
+            }
+            _ => {
+                self.list.close();
+            }
+        }
+    }
+
+    /// Applies `edit` to the focused text field's text, through the same checks as its event.
+    fn edit_text(&mut self, edit: impl FnOnce(&mut String)) {
+        match self.focused {
+            AccountField::Name => edit(&mut self.name),
+            AccountField::OpeningBalance => {
+                let mut text = self.opening_balance.clone();
+                edit(&mut text);
+                self.set_balance(text);
+            }
+            AccountField::AccountNumber => edit(&mut self.account_number),
+            AccountField::Institution | AccountField::Type | AccountField::Unit => {}
+        }
+    }
+
+    fn set_balance(&mut self, text: String) {
+        if self.editing.is_none() && accepts_balance_text(&text) {
+            self.opening_balance = text;
+        }
+    }
+
+    fn pick_institution(&mut self, id: InstitutionId) {
+        if self.institutions.iter().any(|choice| choice.value == id) {
+            self.institution = Some(id);
+            self.institution_picked = true;
+            self.follow_usual_unit();
+        }
+    }
+
+    fn pick_type(&mut self, account_type: AccountType) {
+        if self.types.iter().any(|choice| choice.value == account_type) {
+            self.account_type = account_type;
+            if !self.institution_picked {
+                self.institution = self.default_institution();
+                self.follow_usual_unit();
+            }
+        }
+    }
+
+    fn pick_unit(&mut self, id: UnitId) {
+        if self.editing.is_none() && self.units.iter().any(|choice| choice.value == id) {
+            self.unit = Some(id);
+            self.unit_picked = true;
         }
     }
 
@@ -364,6 +515,7 @@ impl AccountFormPresenter {
                 placeholder: msg::accounts_number_placeholder(),
                 focused: focus(AccountField::AccountNumber),
             },
+            list: self.list,
             usage: self.editing.as_ref().map(|editing| editing.usage.clone()),
             error: self.error.map(refusal_text),
             editing: self.editing.is_some(),
@@ -456,7 +608,7 @@ impl AccountFormPresenter {
         })
     }
 
-    fn confirm(&mut self, router: &mut dyn AccountsRouter) {
+    fn confirm(&mut self, router: &mut dyn DialogRouter<AccountsOutcome>) {
         if !self.is_valid() {
             return;
         }
@@ -498,7 +650,7 @@ impl AccountFormPresenter {
             }
         };
         match saved {
-            Ok(account) => router.close_dialog(Some(AccountsOutcome { id: account.id })),
+            Ok(account) => router.close(Some(AccountsOutcome { id: account.id })),
             Err(refusal) => self.error = Some(refusal),
         }
     }
@@ -545,6 +697,21 @@ mod tests {
             form.handle(event, &mut router);
         }
         router.calls
+    }
+
+    fn press(form: &mut AccountFormPresenter, inputs: &[DialogInput]) -> Vec<RouterCall> {
+        send(
+            form,
+            inputs
+                .iter()
+                .copied()
+                .map(AccountFormEvent::Input)
+                .collect(),
+        )
+    }
+
+    fn keys(text: &str) -> Vec<DialogInput> {
+        text.chars().map(DialogInput::Char).collect()
     }
 
     fn name(text: &str) -> AccountFormEvent {
@@ -607,12 +774,126 @@ mod tests {
     }
 
     #[test]
+    fn typing_edits_the_text_fields_and_goes_nowhere_on_a_select() {
+        let (_, shared) = stub();
+        let mut form = add(shared);
+
+        press(&mut form, &keys("Holidax"));
+        press(&mut form, &[DialogInput::Backspace]);
+        press(&mut form, &keys("y"));
+        press(&mut form, &[DialogInput::NextField]);
+        let institution = form.view_model().institution.chosen;
+        press(&mut form, &keys("zz"));
+        press(&mut form, &[DialogInput::Backspace]);
+        for _ in 0..3 {
+            press(&mut form, &[DialogInput::NextField]);
+        }
+        press(&mut form, &keys("12a.5.0-"));
+        press(&mut form, &[DialogInput::NextField]);
+        press(&mut form, &keys("0629"));
+
+        let view = form.view_model();
+        assert_eq!(view.name.text, "Holiday");
+        assert_eq!(view.institution.chosen, institution);
+        assert_eq!(view.opening_balance.text, "12.50");
+        assert_eq!(view.account_number.text, "0629");
+    }
+
+    #[test]
+    fn a_select_opens_moves_and_picks_and_leaving_it_commits_the_highlight() {
+        let (_, shared) = stub();
+        let mut form = add(shared);
+        press(&mut form, &[DialogInput::NextField, DialogInput::NextField]);
+        assert_eq!(form.view_model().focused, AccountField::Type);
+        let before = form.view_model().account_type.chosen;
+
+        assert_eq!(
+            press(&mut form, &[DialogInput::Select]),
+            [],
+            "opens the list"
+        );
+        assert!(form.view_model().list.is_open());
+        press(&mut form, &[DialogInput::SelectNext]);
+        assert_eq!(
+            form.view_model().account_type.chosen,
+            before,
+            "not yet picked"
+        );
+        press(&mut form, &[DialogInput::NextField]);
+
+        let view = form.view_model();
+        assert!(!view.list.is_open());
+        assert_eq!(view.focused, AccountField::Unit);
+        assert_ne!(view.account_type.chosen, before);
+        let unit = view.unit.chosen;
+        press(&mut form, &[DialogInput::SelectNext]);
+        assert_ne!(
+            form.view_model().unit.chosen,
+            unit,
+            "a closed select steps its value"
+        );
+    }
+
+    #[test]
+    fn a_click_toggles_one_list_at_a_time_and_back_or_a_focus_click_closes_it() {
+        let (_, shared) = stub();
+        let mut form = add(shared);
+
+        send(
+            &mut form,
+            vec![AccountFormEvent::ToggleList(AccountField::Unit)],
+        );
+        assert!(form.view_model().list.is_open());
+        assert_eq!(form.view_model().focused, AccountField::Unit);
+        send(
+            &mut form,
+            vec![AccountFormEvent::ToggleList(AccountField::Type)],
+        );
+        let view = form.view_model();
+        assert_eq!(view.focused, AccountField::Type);
+        assert!(view.list.is_open(), "the Type's list, the Unit's closed");
+        send(&mut form, vec![AccountFormEvent::CloseList]);
+        assert!(!form.view_model().list.is_open());
+        send(
+            &mut form,
+            vec![
+                AccountFormEvent::ToggleList(AccountField::Institution),
+                AccountFormEvent::Focus(AccountField::Name),
+            ],
+        );
+        assert!(!form.view_model().list.is_open());
+    }
+
+    #[test]
+    fn select_confirms_on_a_text_field_and_submit_confirms_from_a_select() {
+        let (_, shared) = stub();
+        let mut form = add(shared);
+        press(&mut form, &keys("Rainy Day"));
+        press(&mut form, &[DialogInput::NextField]);
+
+        let calls = press(&mut form, &[DialogInput::Submit]);
+        assert!(matches!(
+            calls.as_slice(),
+            [RouterCall::CloseDialog(Some(_))]
+        ));
+
+        let (_, shared) = stub();
+        let mut form = add(shared);
+        press(&mut form, &keys("Float"));
+        let calls = press(&mut form, &[DialogInput::Select]);
+        assert!(matches!(
+            calls.as_slice(),
+            [RouterCall::CloseDialog(Some(_))]
+        ));
+    }
+
+    #[test]
     fn tab_walks_the_fields_in_reading_order_and_wraps_both_ways() {
         let (_, shared) = stub();
         let mut form = add(shared);
         let mut seen = vec![form.view_model().focused];
         for _ in 0..6 {
-            send(&mut form, vec![AccountFormEvent::NextField]);
+            press(&mut form, &[DialogInput::NextField]);
             seen.push(form.view_model().focused);
         }
         assert_eq!(
@@ -627,7 +908,7 @@ mod tests {
                 AccountField::Name,
             ]
         );
-        send(&mut form, vec![AccountFormEvent::PrevField]);
+        press(&mut form, &[DialogInput::PreviousField]);
         assert_eq!(form.view_model().focused, AccountField::AccountNumber);
     }
 
@@ -644,7 +925,7 @@ mod tests {
             Some(InstitutionId::SEED_PERSONAL)
         );
 
-        send(&mut form, vec![AccountFormEvent::NextField]);
+        press(&mut form, &[DialogInput::NextField]);
         assert_eq!(
             form.view_model().focused,
             AccountField::Institution,
@@ -961,7 +1242,7 @@ mod tests {
             &mut form,
             vec![
                 AccountFormEvent::Focus(AccountField::Type),
-                AccountFormEvent::NextField,
+                AccountFormEvent::Input(DialogInput::NextField),
             ],
         );
         assert_eq!(form.view_model().focused, AccountField::AccountNumber);
