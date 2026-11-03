@@ -554,6 +554,7 @@ fn row(
 
     div()
         .id(SharedString::from(format!("explorer-row-{index}")))
+        .debug_selector(move || format!("explorer-row-{index}"))
         .when(clickable, |this| this.cursor_pointer())
         .when(!is_last, |this| {
             this.border_b(px(1.0)).border_color(color::hairline(cx))
@@ -655,6 +656,7 @@ fn footer(
         .child(
             div()
                 .id("explorer-open")
+                .debug_selector(|| "explorer-open".to_string())
                 .when(can_open, |this| this.cursor_pointer())
                 .py(px(8.0))
                 .px(px(16.0))

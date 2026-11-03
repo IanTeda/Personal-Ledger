@@ -1,20 +1,26 @@
 //! The file explorer's click handlers and open confirmation of `Root`. An `impl Root` block, not
 //! the explorer model (`navigation::explorer`).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use gpui::Context;
 use lib_toast::ToastKind;
 
-use super::Root;
+use super::{LedgerFile, Root};
 use crate::navigation::explorer::{ExplorerFilter, ExplorerMode};
+use crate::navigation::nav::Noun;
 use lib_shell::NavInput;
 
-/// Where `:open`'s file explorer starts browsing -- the handoff names no default starting
-/// directory of its own, so the platform home directory is the reasonable stand-in, falling
-/// back to the current directory on a platform/sandbox with no resolvable home.
-pub(super) fn explorer_start_dir() -> PathBuf {
-    dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
+/// Where `:open`'s and `:new`'s file explorer starts browsing: the Ledger folder (`data`), as
+/// Settings › General says, else -- before start-up has set it, or with no such folder on disk --
+/// the platform home directory, falling back to the current directory on a platform/sandbox with
+/// no resolvable home.
+pub(super) fn explorer_start_dir(ledger_folder: Option<&Path>) -> PathBuf {
+    ledger_folder
+        .filter(|folder| folder.is_dir())
+        .map(Path::to_path_buf)
+        .or_else(dirs::home_dir)
+        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 impl Root {
@@ -75,17 +81,29 @@ impl Root {
         cx.notify();
     }
 
+    /// The file explorer's rows by name, in order, while it is open.
+    #[doc(hidden)]
+    pub fn explorer_rows_snapshot(&self) -> Option<Vec<String>> {
+        self.file_explorer.as_ref().map(|explorer| {
+            explorer
+                .entries()
+                .iter()
+                .map(|entry| entry.name.clone())
+                .collect()
+        })
+    }
+
     /// The explorer dialog's own Open button.
     pub(super) fn handle_explorer_open(&mut self, cx: &mut Context<'_, Self>) {
         self.confirm_explorer_open(cx);
     }
 
-    /// Confirms the explorer's current selection and closes the dialog with a stand-in Toast:
-    /// neither mode opens or creates a file yet, so the Open Ledger stays as it was. `:open`
-    /// opening the file for real is #978, and `:new` creating one #980. A no-op if nothing
-    /// is selected (Open/New is only clickable once `FileExplorer::can_open` is true, but a
-    /// double-click can also reach here -- see [`Self::handle_explorer_entry_click`] -- so this
-    /// re-checks rather than trusting the caller).
+    /// Confirms the explorer's current selection and closes the dialog. `:open` opens the selected
+    /// Ledger file ([`Self::open_ledger_file`]); `:new` still only raises a stand-in Toast and
+    /// creates nothing, until it creates the file for real (#980). A no-op if nothing is selected
+    /// (Open/New is only clickable once `FileExplorer::can_open` is true, but a double-click can
+    /// also reach here -- see [`Self::handle_explorer_entry_click`] -- so this re-checks rather
+    /// than trusting the caller).
     pub(super) fn confirm_explorer_open(&mut self, cx: &mut Context<'_, Self>) {
         let Some(explorer) = self.file_explorer.as_ref() else {
             return;
@@ -93,26 +111,48 @@ impl Root {
         if !explorer.can_open() {
             return;
         }
-        let name = explorer
-            .selected()
-            .and_then(|path| path.file_name())
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        // Neither mode can fail yet (no real `.pldb` I/O); start-up raises `toast-ledger-open-failed`
-        // for a file it can't open, and these modes will once they open and create files.
-        if explorer.mode() == ExplorerMode::Open {
-            self.raise_toast(
-                ToastKind::Success,
-                lib_locale::msg::toast_ledger_opened(&name),
-            );
+        let Some(path) = explorer.selected().map(Path::to_path_buf) else {
+            return;
+        };
+        let mode = explorer.mode();
+        self.file_explorer = None;
+        self.navigate(NavInput::ExitMode);
+        if mode == ExplorerMode::Open {
+            self.open_ledger_file(&path, cx);
         } else {
             self.raise_toast(
                 ToastKind::Success,
-                lib_locale::msg::toast_ledger_created(&name),
+                lib_locale::msg::toast_ledger_created(&file_name(&path)),
             );
         }
-        self.file_explorer = None;
-        self.navigate(NavInput::ExitMode);
         cx.notify();
     }
+
+    /// Opens the Ledger file at `path` in place of the Open Ledger, if any, and lands on the
+    /// Dashboard saying so. The Open Ledger's writes land first, so reopening its own file reads
+    /// them back; it is swapped out only once the new file has opened, so a file that won't open
+    /// leaves it as it was, or none open, and an Error Toast says why. Never creates a file.
+    fn open_ledger_file(&mut self, path: &Path, cx: &mut Context<'_, Self>) {
+        self.flush_ledger();
+        match crate::open_ledger_file(path, self.presenter.clock().today()) {
+            Ok(storage) => {
+                self.open_ledger(LedgerFile::opened(path.to_path_buf(), storage), cx);
+                self.show_noun(Noun::Dashboard, cx);
+                self.set_last_ledger(Some(path.to_path_buf()), cx);
+                self.raise_toast(
+                    ToastKind::Success,
+                    lib_locale::msg::toast_ledger_opened(&file_name(path)),
+                );
+            }
+            Err(failure) => self.ledger_open_failed(&failure),
+        }
+    }
+}
+
+/// `path`'s file name as a Toast names it, else the whole path.
+pub(super) fn file_name(path: &Path) -> String {
+    path.file_name().map_or_else(
+        || path.display().to_string(),
+        |name| name.to_string_lossy().into_owned(),
+    )
 }

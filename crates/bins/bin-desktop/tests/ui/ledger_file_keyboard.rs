@@ -2,7 +2,8 @@
 //! open unless On start or `file` names one, a named file that is missing or won't open leaves none
 //! open and says so, and with none open every key that needs a Ledger is refused on the status line
 //! while `:open`, `:new`, Help and the This device Settings pages still run. State is read back
-//! from `Root`.
+//! from `Root`. `:open`'s file explorer picks a file by mouse alone (01-shell's "Row click selects
+//! it"), so opening one is `ledger_file_mouse.rs`'s; here `:open` and `esc` run from the keys (#978).
 
 use super::common;
 
@@ -179,4 +180,48 @@ fn stepping_the_settings_index_onto_a_this_ledger_page_is_refused(app: &mut Test
     ui.press("shift-g");
     assert_eq!(ui.settings_frame().page, "About");
     assert!(ui.refused_without_ledger());
+}
+
+#[gpui::test]
+fn the_status_line_names_the_open_ledgers_file(app: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let path = dir.path().join("ledger.pldb");
+    let started = bin_desktop::start_on(&new_ledger(&path), common::today());
+    let mut ui = Harness::starting(app, started, PersistedState::default());
+
+    assert_eq!(ui.ledger_path(), Some(path.clone()));
+    assert_eq!(
+        ui.read(|shell| shell.ledger_label_snapshot()),
+        path.display().to_string()
+    );
+}
+
+#[gpui::test]
+fn with_no_ledger_open_the_status_line_says_so(app: &mut TestAppContext) {
+    let mut ui = Harness::without_ledger(app);
+
+    assert_eq!(ui.ledger_path(), None);
+    assert_eq!(
+        ui.read(|shell| shell.ledger_label_snapshot()),
+        "No ledger open…"
+    );
+}
+
+#[gpui::test]
+fn escape_closes_open_s_file_explorer_keeping_the_open_ledger(app: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let path = dir.path().join("ledger.pldb");
+    let started = bin_desktop::start_on(&new_ledger(&path), common::today());
+    let mut ui = Harness::starting(app, started, PersistedState::default());
+    ui.browse_from(dir.path());
+    ui.press("g w");
+
+    ui.press(": o p e n enter");
+    assert_eq!(ui.read(|shell| shell.nav().mode()), InputMode::Command);
+    ui.press("escape");
+
+    assert_eq!(ui.read(|shell| shell.nav().mode()), InputMode::Normal);
+    assert_eq!(ui.ledger_path(), Some(path));
+    assert_eq!(ui.noun(), Noun::Bills);
+    assert!(ui.toasts().visible.is_empty(), "nothing opened to say");
 }

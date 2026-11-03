@@ -104,6 +104,12 @@ impl GeneralPage {
         cx.notify();
     }
 
+    /// Sets the Ledger file the state file will remember at quit, once `:open` has opened one.
+    pub fn set_last_ledger(&mut self, last_ledger: Option<PathBuf>, cx: &mut Context<'_, Self>) {
+        self.device.last_ledger = last_ledger;
+        cx.notify();
+    }
+
     fn click_on_start(&mut self, on_start: OnStart, cx: &mut Context<'_, Self>) {
         if on_start != self.on_start {
             cx.emit(ViewEvent::DeviceSetting(DeviceSetting::OnStart(on_start)));

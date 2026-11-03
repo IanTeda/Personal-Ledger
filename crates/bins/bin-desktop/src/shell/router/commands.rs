@@ -74,7 +74,7 @@ impl Root {
             CommandEffect::OpenDialog(mode) => {
                 self.file_explorer = Some(FileExplorer::open_at(
                     mode,
-                    explorer_start_dir(),
+                    explorer_start_dir(self.ledger_folder.as_deref()),
                     self.explorer_filters,
                 ));
             }
@@ -236,7 +236,7 @@ impl Root {
     }
 
     /// Shows `noun`, resetting the View's scroll when it wasn't already showing.
-    fn show_noun(&mut self, noun: Noun, cx: &mut App) {
+    pub(super) fn show_noun(&mut self, noun: Noun, cx: &mut App) {
         let noun_before = self.nav().noun();
         self.navigate(NavInput::Show(noun));
         if noun_before != noun {

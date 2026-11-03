@@ -35,16 +35,15 @@ impl Root {
         }
     }
 
-    /// Says the Ledger file start-up was told to open couldn't be, as an Error Toast naming it and
-    /// why (#977). The Shell then runs with no Ledger open.
+    /// Says a Ledger file start-up or `:open` was told to open couldn't be, as an Error Toast naming
+    /// it and why (#977). The Shell keeps whatever Ledger was open, or none.
     pub fn ledger_open_failed(&mut self, failure: &crate::OpenFailure) {
-        let name = failure.path.file_name().map_or_else(
-            || failure.path.display().to_string(),
-            |name| name.to_string_lossy().into_owned(),
-        );
         self.raise_toast(
             ToastKind::Error,
-            lib_locale::msg::toast_ledger_open_failed(&name, &failure.reason),
+            lib_locale::msg::toast_ledger_open_failed(
+                &super::explorer::file_name(&failure.path),
+                &failure.reason,
+            ),
         );
     }
 

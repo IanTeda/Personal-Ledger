@@ -348,7 +348,10 @@ impl Render for Root {
             )
             .child(
                 StatusLine::new(self.presenter.view_model(), self.command_echo())
-                    .ledger_open(self.ledger_open())
+                    .ledger(
+                        self.ledger_open(),
+                        self.ledger_path().map(std::path::Path::to_path_buf),
+                    )
                     .toast_echo(
                         self.presenter
                             .toasts()

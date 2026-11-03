@@ -71,7 +71,8 @@ impl SettingsView {
         }
     }
 
-    /// Builds the This Ledger pages on the Open Ledger's `ledger`, so they can be shown.
+    /// Builds the This Ledger pages on the Open Ledger's `ledger`, so they can be shown, in place
+    /// of any built on a Ledger opened before.
     pub fn open_ledger(
         &mut self,
         ledger: &Entity<LedgerStore>,
@@ -81,13 +82,12 @@ impl SettingsView {
     ) {
         let pages = LedgerPages::new(ledger, clock, setup, cx);
         self.pages.ledger = Some(pages);
-        let subscriptions: Vec<Subscription> = SettingsPage::ALL
-            .into_iter()
-            .filter(|page| page.needs_ledger())
-            .filter_map(|page| self.pages.get(page))
+        // Subscribed afresh, so a swapped-out Ledger's pages leave no subscription behind.
+        self._page_subscriptions = self
+            .pages
+            .all()
             .flat_map(|page| page.subscribe(cx))
             .collect();
-        self._page_subscriptions.extend(subscriptions);
         self.sync_frame(cx);
         cx.notify();
     }

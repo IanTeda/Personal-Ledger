@@ -52,7 +52,7 @@ use gpui::{
 };
 
 pub use error::Error;
-use lib_database::{Storage, Stores, open_storage};
+use lib_database::{Storage, open_storage};
 use persistence::{PersistedState, WindowGeometry};
 pub use shell::view::window_size::{WindowSize, WindowSizeExt};
 
@@ -153,26 +153,46 @@ fn start_with(
     let Some(path) = ledger_path(config, persisted) else {
         return Started::NoLedger;
     };
-    if let Some(reason) = unopenable(&path) {
-        tracing::warn!(path = %path.display(), %reason, "Couldn't open the Ledger file");
-        return Started::Failed(OpenFailure { path, reason });
+    match open_ledger_file(&path, today) {
+        Ok(storage) => Started::Opened {
+            path,
+            storage: Box::new(storage),
+        },
+        Err(failure) => Started::Failed(failure),
     }
-    match open_storage(&path, today, &lib_locale::msg::institution_personal()) {
+}
+
+/// Opens the Ledger file at `path` as start-up and `:open` do, with the stub dated from `today`,
+/// then generates the Bill Schedule through the horizon and commits the new entries (ADR-0019).
+/// Never creates a Ledger file: a missing or empty file, a folder, or one that isn't a Ledger is
+/// an [`OpenFailure`], written for the Toast that says so.
+pub fn open_ledger_file(
+    path: &std::path::Path,
+    today: chrono::NaiveDate,
+) -> std::result::Result<Storage, OpenFailure> {
+    let failed = |reason: String| OpenFailure {
+        path: path.to_path_buf(),
+        reason,
+    };
+    if let Some(reason) = unopenable(path) {
+        tracing::warn!(path = %path.display(), %reason, "Couldn't open the Ledger file");
+        return Err(failed(reason));
+    }
+    match open_storage(path, today, &lib_locale::msg::institution_personal()) {
         Ok(mut storage) => {
             bills::ports::generate(&mut storage.bills, today);
             lib_database::Commit::commit(&storage.pending);
-            Started::Opened {
-                path,
-                storage: Box::new(storage),
-            }
+            tracing::info!(path = %path.display(), "Opened the Ledger file");
+            Ok(storage)
         }
         Err(error) => {
-            // Recovered: the Desktop runs with no Ledger open and a Toast says why.
+            // Recovered: the Desktop keeps whatever Ledger was open, or none, and a Toast says why.
+            // The error's own text is for the log, never spliced into a Message.
             tracing::warn!(%error, path = %path.display(), "Failed to open the Ledger");
-            Started::Failed(OpenFailure {
-                path,
-                reason: error.to_string(),
-            })
+            Err(failed(match error {
+                lib_database::Error::LedgerOutOfDate(_) => msg::desktop_ledger_open_out_of_date(),
+                _ => msg::desktop_ledger_open_unreadable(),
+            }))
         }
     }
 }
@@ -236,13 +256,14 @@ pub fn quit(writer: &lib_database::Writer) {
 /// opens it as its Open Ledger, or starts with none, raising the failure as a Toast.
 pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, started: Started) {
     let opened = started.path().map(std::path::Path::to_path_buf);
-    let (stores, failure) = match started {
-        Started::Opened { storage, .. } => (Some(*storage), None),
+    let (ledger, failure) = match started {
+        Started::Opened { path, storage } => (
+            Some(shell::router::LedgerFile::opened(path, *storage)),
+            None,
+        ),
         Started::NoLedger => (None, None),
         Started::Failed(failure) => (None, Some(failure)),
     };
-    let writer = stores.as_ref().map(|storage| storage.writer.clone());
-    let stores = stores.map(Stores::from);
     let configured_level = Some(config.personal_ledger_config().log());
     config.theme_config().warn_invalid();
     let theme_overrides = config.theme_config().overrides.clone();
@@ -253,12 +274,13 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, started: S
     let persisted = persistence::load();
     let device_settings = config.personal_ledger_config().clone();
     let device_writer = config.writer().clone();
-    // The file `start` opened, else the one remembered before, which the state file keeps at quit
-    // for On start.
+    // The file `start` opened, else the one remembered before, which the General page shows. The
+    // state file keeps the one open at quit, which `:open` may have changed, for On start.
     let last_ledger = last_ledger_at_quit(opened.as_deref(), persisted.last_ledger.as_deref());
+    let remembered_ledger = persisted.last_ledger.clone();
     let this_device = settings::general::ThisDevice {
         ledger_folder: config.personal_ledger_config().data().to_path_buf(),
-        last_ledger: last_ledger.clone(),
+        last_ledger,
         configuration: config.writer().target().map(std::path::Path::to_path_buf),
     };
     // What the state file holds that only a Ledger open at quit replaces.
@@ -347,7 +369,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, started: S
                                 buffer: logs,
                                 configured_level,
                             },
-                            stores,
+                            ledger,
                             shell::router::wall_clock(chrono::Local::now().date_naive()),
                             focus_handle,
                             cx,
@@ -378,10 +400,9 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, started: S
             // registered, hence `detach()` (mirroring `cx.spawn(..).detach()` elsewhere in this
             // crate) rather than binding and dropping it.
             cx.on_app_quit(move |cx| {
-                if let Some(writer) = &writer {
-                    quit(writer);
-                }
                 let _ = window_handle.update(cx, |shell, window, cx| {
+                    // The writer thread dies with the process, so the Open Ledger's writes land first.
+                    shell.flush_ledger();
                     let bounds = window.bounds();
                     // With no Ledger open the Shell sits on the Dashboard and has no Documents
                     // page, so the noun and Documents state the state file remembers stay.
@@ -413,7 +434,10 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, started: S
                             width: f32::from(bounds.size.width),
                             height: f32::from(bounds.size.height),
                         }),
-                        last_ledger: last_ledger.clone(),
+                        last_ledger: last_ledger_at_quit(
+                            shell.ledger_path(),
+                            remembered_ledger.as_deref(),
+                        ),
                     };
                     let _ = persistence::save(&state);
                 });

@@ -1,17 +1,18 @@
 //! The Open Ledger (#975): everything the Desktop builds on a Ledger, held by `Root` as one
 //! `Option` so the Shell's own parts (the frame, Help, the status line, the Toasts, `NavState`) stand
 //! without it. [`OpenLedger::build`] is the one way to build it: start-up calls it on the stores
-//! `lib_database::open_storage` opened, and `:open` will call it on another file's. Whether a Ledger
+//! `lib_database::open_storage` opened, and `:open` calls it on the file picked. Whether a Ledger
 //! is open is whether `Root` holds one.
 //!
 //! With no Ledger open there is none: start-up builds one only on a Ledger file it opened (#977).
 //! The Settings View stands outside it, since its This device pages work with no Ledger open;
 //! building the Open Ledger hands that View its This Ledger pages.
 
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use gpui::{AppContext, Context, Entity, Subscription, Task};
-use lib_database::Stores;
+use lib_database::{Storage, Stores, Writer};
 use lib_ledger::Ledger;
 
 use super::Root;
@@ -21,6 +22,42 @@ use crate::transaction_import::{ImportPage, ImportStores};
 use crate::transactions::TransactionsPage;
 use crate::view::active::ViewEntities;
 use crate::view::dashboard::state::{DashboardSources, DashboardView};
+
+/// What an Open Ledger is built on: the stores, and the file they read and its writer when they are
+/// a Ledger file's rather than a test's in-memory ports.
+pub struct LedgerFile {
+    pub stores: Stores,
+    /// The file the stores read, which the status line shows and the state file remembers at quit.
+    pub path: Option<PathBuf>,
+    /// The writer the stores save through, flushed when the Ledger is swapped out or the app quits.
+    pub writer: Option<Writer>,
+}
+
+impl LedgerFile {
+    /// The Ledger file at `path`, as `crate::open_ledger_file` opened it.
+    pub fn opened(path: PathBuf, storage: Storage) -> Self {
+        Self::on(path, storage.writer.clone(), Stores::from(storage))
+    }
+
+    /// `stores` read from the Ledger file at `path` and saved through `writer`, for a caller that
+    /// wraps the stores first.
+    pub fn on(path: PathBuf, writer: Writer, stores: Stores) -> Self {
+        Self {
+            stores,
+            path: Some(path),
+            writer: Some(writer),
+        }
+    }
+
+    /// `stores` with no file behind them: a test's in-memory ports.
+    pub fn in_memory(stores: Stores) -> Self {
+        Self {
+            stores,
+            path: None,
+            writer: None,
+        }
+    }
+}
 
 /// Everything built on one Ledger file: its stores (through the Ledger's read copy and the ports
 /// kept here), the Views that read them, and the listener for its writer's failures. Its commit is
@@ -39,6 +76,10 @@ pub struct OpenLedger {
     /// Bills, Budgets, Transactions with its Import step, and Documents. Each reaches `Root` only
     /// through `ViewEvent`. Settings is `Root`'s own, given its This Ledger pages here.
     pub(super) views: ViewEntities,
+    /// The Ledger file, `None` for a test's in-memory stores.
+    path: Option<PathBuf>,
+    /// The writer the stores save through, `None` for a test's in-memory stores.
+    writer: Option<Writer>,
     /// Keeps each View's event subscription and each Ledger domain's repaint alive: dropping one
     /// silently stops its events.
     _subscriptions: Vec<Subscription>,
@@ -51,12 +92,17 @@ impl OpenLedger {
     /// commit as the one every input ends in. Wires the shared ports first, then the module Setups,
     /// the Ledger's read copy and the Views, and gives `settings` its This Ledger pages.
     pub fn build(
-        stores: Stores,
+        file: LedgerFile,
         keybindings: &lib_config::KeyBindingConfig,
         clock: &lib_core::Clock,
         settings: &Entity<SettingsView>,
         cx: &mut Context<'_, Root>,
     ) -> Self {
+        let LedgerFile {
+            stores,
+            path,
+            writer,
+        } = file;
         let Stores {
             units,
             institutions,
@@ -291,6 +337,8 @@ impl OpenLedger {
                 import: import_view,
                 documents: documents_view,
             },
+            path,
+            writer,
             _subscriptions: vec![
                 dashboard_subscription,
                 dashboard_view_observer,
@@ -314,5 +362,26 @@ impl OpenLedger {
             ],
             _write_failures: Root::listen_for_write_failures(failures, cx),
         }
+    }
+
+    /// The Ledger file, `None` for a test's in-memory stores.
+    pub fn path(&self) -> Option<&Path> {
+        self.path.as_deref()
+    }
+
+    /// Waits for every write sent so far to land in the file. A failure is logged, since the
+    /// Ledger it belongs to is closing or the app quitting, with nothing left to roll back.
+    pub fn flush(&self) {
+        if let Some(writer) = &self.writer {
+            crate::quit(writer);
+        }
+    }
+}
+
+/// A Ledger swapped out, or dropped with the window, flushes its writes first, so nothing it took
+/// is lost however it goes.
+impl Drop for OpenLedger {
+    fn drop(&mut self) {
+        self.flush();
     }
 }

@@ -111,7 +111,7 @@ mod tests {
                 cx,
             );
             let (stores, _) = lib_database::Stores::fake(lib_database::FakeStores::stub(today));
-            shell.open_ledger(stores, &lib_config::KeyBindingConfig::default(), cx);
+            shell.open_ledger(crate::shell::router::LedgerFile::in_memory(stores), cx);
             shell
         });
         let view = cx.new(|_| StandInView);
@@ -172,7 +172,7 @@ mod tests {
                 cx,
             );
             let (stores, _) = lib_database::Stores::fake(lib_database::FakeStores::stub(today));
-            shell.open_ledger(stores, &lib_config::KeyBindingConfig::default(), cx);
+            shell.open_ledger(crate::shell::router::LedgerFile::in_memory(stores), cx);
             shell
         });
         let view = cx.new(|_| StandInView);

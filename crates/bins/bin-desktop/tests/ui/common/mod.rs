@@ -1389,10 +1389,22 @@ impl<'a> Harness<'a> {
             app,
             logs,
             configured_level,
-            (Some(stores), commits),
+            (Some(router::LedgerFile::in_memory(stores)), commits),
             keybindings,
             PersistedState::default(),
         )
+    }
+
+    /// Points `:open`'s file explorer at `folder`, as the Ledger folder would.
+    pub fn browse_from(&mut self, folder: &std::path::Path) {
+        self.shell.update(self.cx, |shell, _| {
+            shell.browse_from_for_test(folder.to_path_buf())
+        });
+    }
+
+    /// The Open Ledger's file, `None` with none open.
+    pub fn ledger_path(&mut self) -> Option<std::path::PathBuf> {
+        self.read(|shell| shell.ledger_path().map(std::path::Path::to_path_buf))
     }
 
     /// Whether the status line shows the refusal for something that needs a Ledger with none open.
@@ -1421,12 +1433,13 @@ impl<'a> Harness<'a> {
             bin_desktop::Started::Failed(failure) => Some(failure.clone()),
             _ => None,
         };
-        let stores = started
-            .storage()
-            .map(|storage| counted(Stores::from(storage)));
-        let (stores, commits) = match stores {
-            Some((stores, commits)) => (Some(stores), commits),
-            None => (None, Rc::new(Cell::new(0))),
+        let (stores, commits) = match started {
+            bin_desktop::Started::Opened { path, storage } => {
+                let writer = storage.writer.clone();
+                let (stores, commits) = counted(Stores::from(*storage));
+                (Some(router::LedgerFile::on(path, writer, stores)), commits)
+            }
+            _ => (None, Rc::new(Cell::new(0))),
         };
         let ui = Self::build_on(
             app,
@@ -1448,7 +1461,7 @@ impl<'a> Harness<'a> {
         app: &'a mut TestAppContext,
         logs: lib_tracing::LogBuffer,
         configured_level: Option<lib_tracing::Levels>,
-        (stores, commits): (Option<Stores>, Rc<Cell<usize>>),
+        (stores, commits): (Option<router::LedgerFile>, Rc<Cell<usize>>),
         keybindings: lib_config::KeyBindingConfig,
         persisted: PersistedState,
     ) -> Self {

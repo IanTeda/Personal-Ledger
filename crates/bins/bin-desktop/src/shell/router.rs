@@ -55,7 +55,7 @@ pub use date_clock::{DATE_POLL, wall_clock};
 pub use key_dispatch::PENDING_G_TIMEOUT;
 use lib_core::LocationId;
 pub use log_feed::LOG_COALESCE;
-pub use open_ledger::OpenLedger;
+pub use open_ledger::{LedgerFile, OpenLedger};
 #[doc(hidden)]
 pub use snapshots::{
     BillRowSnapshot, BillsSnapshot, BudgetRowSnapshot, BudgetsSnapshot, ChipSnapshot,
@@ -72,7 +72,6 @@ pub use write_failures::WRITE_FAILURE_POLL;
 use std::time::Duration;
 
 use crate::persistence::PersistedState;
-use lib_database::Stores;
 
 /// The Shell's Presenter over the Desktop's Settings pages.
 type ShellPresenter = lib_shell::ShellPresenter<SettingsPage>;
@@ -121,21 +120,21 @@ pub struct ShellLogs {
 
 /// Builds `Root` from persisted state the way the app does, so tests construct it identically.
 /// `clock` is a parameter so tests can pin, and move, the date the seeded stub data and scopes hang
-/// off. `stores` is the Ledger file start-up opened (the app's SQLite adapters or a test's
+/// off. `ledger` is the Ledger file start-up opened (the app's SQLite adapters or a test's
 /// in-memory ports), which the Shell opens as its Open Ledger through [`OpenLedger::build`]; `None`
 /// starts with no Ledger open, on the Dashboard whatever noun the state file remembers.
 pub fn build(
     persisted: PersistedState,
     bindings: ShellBindings,
     logs: ShellLogs,
-    stores: Option<Stores>,
+    ledger: Option<LedgerFile>,
     clock: lib_core::Clock,
     focus_handle: FocusHandle,
     cx: &mut Context<'_, Root>,
 ) -> Root {
     crate::input::install(cx.weak_entity(), cx);
     let today = clock.today();
-    let noun = if stores.is_some() {
+    let noun = if ledger.is_some() {
         persisted.noun
     } else {
         Noun::Dashboard
@@ -157,14 +156,14 @@ pub fn build(
         .unwrap_or_default();
 
     let mut shell = Root::with_clock(nav, focus_handle, clock, cx);
-    if let Some(stores) = stores {
-        shell.open_ledger(stores, &bindings.keybindings, cx);
+    shell.set_keymaps(&bindings.keybindings, cx);
+    if let Some(ledger) = ledger {
+        shell.open_ledger(ledger, cx);
     }
     shell.set_start_sidebar_minimised(persisted.start_sidebar_minimised, cx);
     shell.set_settings_page(settings_page, cx);
     shell.set_explorer_filters(persisted.explorer_filters);
     shell.set_documents_state(documents_state.0, documents_state.1, documents_state.2, cx);
-    shell.set_keymaps(&bindings.keybindings, cx);
     shell.start_toast_clock(cx);
     shell.start_date_clock(cx);
     shell.set_log_capture(
@@ -201,6 +200,11 @@ pub struct Root {
     /// one `Palette` (see [`record_history`]), cloned into a fresh `Palette` on every `:` open
     /// so `^r` can reach commands run in an earlier palette session.
     command_history: Vec<String>,
+    /// The Ledger folder (`data`), where `:open` and `:new` start browsing; `None` until start-up
+    /// sets this device's settings.
+    ledger_folder: Option<std::path::PathBuf>,
+    /// The `[keybindings]` in effect, which a Ledger opened at run time builds its keymaps from.
+    keybindings: lib_config::KeyBindingConfig,
     /// The palette's rows under the `[keybindings]` in effect, rebuilt by [`Self::set_keymaps`]
     /// so opening the palette builds no keymap.
     palette_entries: Vec<command::Entry>,
@@ -267,6 +271,8 @@ impl Root {
             #[cfg(debug_assertions)]
             debug_toast_kind: 0,
             command_history: Vec::new(),
+            keybindings: lib_config::KeyBindingConfig::default(),
+            ledger_folder: None,
             palette_entries: command::entries(&lib_config::KeyBindingConfig::default()),
             file_explorer: None,
             explorer_filters: ExplorerFilters::default(),
@@ -278,26 +284,19 @@ impl Root {
         }
     }
 
-    /// Opens `stores` as the Open Ledger, building everything on it under `keybindings`. Start-up
-    /// calls it on the file it opened; `:open` will on the file picked.
-    pub fn open_ledger(
-        &mut self,
-        stores: Stores,
-        keybindings: &lib_config::KeyBindingConfig,
-        cx: &mut Context<'_, Self>,
-    ) {
+    /// Opens `ledger` as the Open Ledger, building everything on it under the `[keybindings]` in
+    /// effect, in place of any Ledger open before, which is dropped once the new one is built.
+    /// Start-up calls it on the file it opened; `:open` on the file picked, once it opened.
+    pub fn open_ledger(&mut self, ledger: LedgerFile, cx: &mut Context<'_, Self>) {
         let clock = self.presenter.clock().clone();
-        self.open = Some(OpenLedger::build(
-            stores,
-            keybindings,
-            &clock,
-            &self.settings,
-            cx,
-        ));
+        let keybindings = self.keybindings.clone();
+        let opened = OpenLedger::build(ledger, &keybindings, &clock, &self.settings, cx);
+        // The Ledger open before, if any, flushes its writes as it drops.
+        self.open = Some(opened);
         // The Views that read their keys and Display Preferences after construction take
         // `[keybindings]` and the Preferences here, so the Open Ledger comes up under them whoever
         // opens it.
-        self.set_keymaps(keybindings, cx);
+        self.set_keymaps(&keybindings, cx);
         let display = self.display(cx);
         self.push_display_preferences(display, cx);
     }
@@ -305,6 +304,20 @@ impl Root {
     /// Whether a Ledger is open: whether `Root` holds an Open Ledger.
     pub fn ledger_open(&self) -> bool {
         self.open.is_some()
+    }
+
+    /// The Open Ledger's file, which the status line shows and the state file remembers at quit;
+    /// `None` with no Ledger open, or on a test's in-memory stores.
+    pub fn ledger_path(&self) -> Option<&std::path::Path> {
+        self.open.as_ref()?.path()
+    }
+
+    /// Waits for the Open Ledger's writes to land in its file, as the app quits or before another
+    /// file is opened in its place.
+    pub fn flush_ledger(&self) {
+        if let Some(open) = &self.open {
+            open.flush();
+        }
     }
 
     /// Refuses an input that needs a Ledger while none is open, saying so on the status line.
@@ -522,9 +535,25 @@ impl Root {
 
     /// Shows `device` on Settings › General: what start-up knows of this device.
     pub fn set_this_device(&mut self, device: crate::settings::general::ThisDevice, cx: &mut App) {
+        self.ledger_folder = Some(device.ledger_folder.clone());
         self.settings.update(cx, |view, cx| {
             view.general()
                 .update(cx, |page, cx| page.set_this_device(device, cx));
+        });
+    }
+
+    /// Points `:open`'s and `:new`'s file explorer at `folder`, as start-up's Ledger folder would,
+    /// so a test browses a temporary folder.
+    #[doc(hidden)]
+    pub fn browse_from_for_test(&mut self, folder: std::path::PathBuf) {
+        self.ledger_folder = Some(folder);
+    }
+
+    /// Tells the General page which Ledger file the state file will remember at quit.
+    fn set_last_ledger(&mut self, last_ledger: Option<std::path::PathBuf>, cx: &mut App) {
+        self.settings.update(cx, |view, cx| {
+            view.general()
+                .update(cx, |page, cx| page.set_last_ledger(last_ledger, cx));
         });
     }
 
@@ -538,6 +567,7 @@ impl Root {
     /// The Transactions filter popover reads its keys through the Dialog keymap too, until it is a
     /// module Dialog (#923).
     pub fn set_keymaps(&mut self, config: &lib_config::KeyBindingConfig, cx: &mut App) {
+        self.keybindings = config.clone();
         self.palette_entries = command::entries(config);
         self.presenter.set_keymap(config);
         self.state.dialog_keymap = lib_shell::dialog_keymap(config);

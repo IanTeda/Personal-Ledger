@@ -55,11 +55,13 @@ desktop-status-command-refused = :{ $command } — not available here right now
 desktop-status-refused-no-ledger = No Ledger open: { $open } or { $new } first
 desktop-status-no-ledger-file = No ledger open…
 
-## Why start-up couldn't open the Ledger file it was told to, the `$reason` of the Toast saying so.
+## Why start-up or `:open` couldn't open a Ledger file, the `$reason` of the Toast saying so.
 
 desktop-ledger-open-missing = no such file
 desktop-ledger-open-not-a-file = not a file
 desktop-ledger-open-empty = the file is empty
+desktop-ledger-open-unreadable = it isn't a Ledger file, or can't be read
+desktop-ledger-open-out-of-date = it was made by an earlier version and can't be upgraded
 
 ## Status-line flashes for actions whose flow is not designed or wired yet.
 

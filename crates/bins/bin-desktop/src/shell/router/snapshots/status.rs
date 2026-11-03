@@ -26,6 +26,18 @@ impl Root {
         })
     }
 
+    /// What the status line's right-hand side says of the Open Ledger at Large, when no page or
+    /// command has it: its path with the home directory as `~`, or "No ledger open…".
+    #[doc(hidden)]
+    pub fn ledger_label_snapshot(&self) -> String {
+        crate::shell::view::statusline::ledger_label(
+            self.ledger_open(),
+            self.ledger_path(),
+            crate::WindowSize::Large,
+            dirs::home_dir().as_deref(),
+        )
+    }
+
     /// The Shell's own hint strip as `(key, action)` pairs, every one before any drops for width:
     /// what shows while the View on show has no legend of its own.
     #[doc(hidden)]

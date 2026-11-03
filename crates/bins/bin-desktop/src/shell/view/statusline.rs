@@ -3,6 +3,7 @@
 //! <noun>`) was dropped -- the active View's own heading names the screen, so a breadcrumb here
 //! was a plain duplicate (as was the top bar's View suffix, `crate::shell::view::topbar::brand_mark`).
 
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use gpui::{App, FontWeight, Pixels, Window, div, prelude::*, px};
@@ -89,6 +90,8 @@ pub struct StatusLine {
     mode_label: Option<String>,
     /// Whether a Ledger is open: the right-hand side names its file, or says none is open.
     ledger_open: bool,
+    /// The Open Ledger's file, `None` on a test's in-memory stores, which show the stub's.
+    ledger_file: Option<PathBuf>,
 }
 
 impl StatusLine {
@@ -104,12 +107,15 @@ impl StatusLine {
             toast_echo: None,
             mode_label: None,
             ledger_open: true,
+            ledger_file: None,
         }
     }
 
-    /// Says whether a Ledger is open, for the right-hand side's file or "No ledger open…".
-    pub fn ledger_open(mut self, open: bool) -> Self {
+    /// Says whether a Ledger is open, and its file, for the right-hand side's path or "No ledger
+    /// open…".
+    pub fn ledger(mut self, open: bool, file: Option<PathBuf>) -> Self {
         self.ledger_open = open;
+        self.ledger_file = file;
         self
     }
 
@@ -141,8 +147,12 @@ impl RenderOnce for StatusLine {
         let right = right_side(
             self.command_echo.as_ref(),
             self.page.as_ref(),
-            self.ledger_open,
-            window_size,
+            ledger_label(
+                self.ledger_open,
+                self.ledger_file.as_deref(),
+                window_size,
+                dirs::home_dir().as_deref(),
+            ),
         );
         let badge_label = lib_locale::format::upper(
             &self
@@ -408,29 +418,42 @@ fn command_query_echo(query: &str, cx: &App) -> impl IntoElement {
 }
 
 /// The status line's right-hand side: the command surface's "esc closes" hint, else the page's
-/// note, else the open Ledger's file, or "No ledger open…" with none open.
+/// note, else `ledger`, the Open Ledger's file or "No ledger open…" ([`ledger_label`]).
 fn right_side(
     command_echo: Option<&(String, String)>,
     page: Option<&PageStatus>,
-    ledger_open: bool,
-    window_size: WindowSize,
+    ledger: String,
 ) -> String {
     match (command_echo, page) {
         (Some((_, hint)), _) => hint.clone(),
         (None, Some(page)) => page.right.clone(),
-        (None, None) if ledger_open => file_path(window_size),
-        (None, None) => crate::msg::desktop_status_no_ledger_file(),
+        (None, None) => ledger,
     }
 }
 
-/// The open Ledger's own file path, moved here from the top bar's brand tile (`crate::shell::view::topbar`)
-/// -- representative content, not a real path yet (lands with the sync/open-file tickets,
-/// #164/#165). Shortened to its file name at Medium (DESKTOP-116).
-fn file_path(window_size: WindowSize) -> String {
-    match window_size {
-        WindowSize::Medium => format!("\u{2026}/{STUB_LEDGER_FILE} · aud"),
-        WindowSize::Large | WindowSize::XLarge => {
-            format!("~/Documents/{STUB_LEDGER_FILE} · aud")
+/// What the status line says of the Open Ledger: its file's path with `home` as `~`, shortened to
+/// its file name at Medium (DESKTOP-116), or "No ledger open…" with none open. A test's in-memory
+/// stores have no file, so show the stub's.
+pub fn ledger_label(
+    open: bool,
+    file: Option<&Path>,
+    window_size: WindowSize,
+    home: Option<&Path>,
+) -> String {
+    if !open {
+        return crate::msg::desktop_status_no_ledger_file();
+    }
+    let name = file
+        .and_then(Path::file_name)
+        .map_or(STUB_LEDGER_FILE.into(), |name| name.to_string_lossy());
+    match (window_size, file) {
+        (WindowSize::Medium, _) => format!("\u{2026}/{name}"),
+        (WindowSize::Large | WindowSize::XLarge, None) => format!("~/Documents/{name}"),
+        (WindowSize::Large | WindowSize::XLarge, Some(file)) => {
+            match home.and_then(|home| file.strip_prefix(home).ok()) {
+                Some(relative) => format!("~/{}", relative.display()),
+                None => file.display().to_string(),
+            }
         }
     }
 }
@@ -451,25 +474,44 @@ mod tests {
     fn with_no_ledger_open_the_right_side_says_so_unless_a_page_or_command_has_it() {
         crate::locale::init_for_tests();
         assert_eq!(
-            right_side(None, None, false, WindowSize::Large),
+            ledger_label(false, None, WindowSize::Large, None),
             "No ledger open…"
-        );
-        assert_eq!(
-            right_side(None, None, true, WindowSize::Large),
-            file_path(WindowSize::Large)
         );
         let page = PageStatus {
             hints: Vec::new(),
             right: "this device".to_string(),
         };
         assert_eq!(
-            right_side(None, Some(&page), false, WindowSize::Large),
+            right_side(None, Some(&page), "No ledger open…".to_string()),
             "this device"
         );
         let echo = (String::new(), "esc close command window".to_string());
         assert_eq!(
-            right_side(Some(&echo), None, false, WindowSize::Large),
+            right_side(Some(&echo), None, "No ledger open…".to_string()),
             "esc close command window"
+        );
+        assert_eq!(
+            right_side(None, None, "No ledger open…".to_string()),
+            "No ledger open…"
+        );
+    }
+
+    #[test]
+    fn the_open_ledger_shows_its_path_with_the_home_directory_as_a_tilde() {
+        let home = Path::new("/home/someone");
+        let file = Path::new("/home/someone/ledgers/household.pldb");
+        assert_eq!(
+            ledger_label(true, Some(file), WindowSize::Large, Some(home)),
+            "~/ledgers/household.pldb"
+        );
+        assert_eq!(
+            ledger_label(true, Some(file), WindowSize::Medium, Some(home)),
+            "\u{2026}/household.pldb"
+        );
+        let elsewhere = Path::new("/srv/ledgers/shared.pldb");
+        assert_eq!(
+            ledger_label(true, Some(elsewhere), WindowSize::XLarge, Some(home)),
+            "/srv/ledgers/shared.pldb"
         );
     }
 
