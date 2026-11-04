@@ -26,7 +26,7 @@
 //! [`StoredDocumentReads`] (#963, #968).
 //!
 //! A module reads another domain's rows through one stored reads struct ([`StoredPayeeReads`],
-//! [`StoredDocumentReads`], [`StoredBudgetReads`]): it holds the shared stores of the domains it
+//! [`StoredDocumentReads`], [`StoredBudgetReads`], [`StoredDashboardReads`]): it holds the shared stores of the domains it
 //! reads and answers the module's read ports from them, so the same struct stands over the
 //! adapters and over [`Stores::fake`]'s in-memory stores. Payees' is the pattern (#992): each
 //! store answers about its own rows in its own terms (`payee_splits`, `payee_bill_plans`), and
@@ -63,6 +63,10 @@ use lib_categories::CategoryRepository;
 use lib_categories::fake::InMemoryCategories;
 use lib_core::{
     AccountId, CategoryId, InstitutionId, PayeeId, TagId, Total, TransactionId, UnitId,
+};
+use lib_dashboard::{
+    DashboardBill, DashboardBills, DashboardBudgetBar, DashboardBudgetMonth, DashboardBudgets,
+    DashboardElapsed, DashboardEntryId,
 };
 use lib_documents::fake::InMemoryDocuments;
 use lib_documents::{
@@ -1118,6 +1122,100 @@ impl BudgetPayees for StoredBudgetReads {
     }
 }
 
+/// `lib-dashboard`'s two read ports answered by the shared stores of the domains the Dashboard
+/// reads, each borrowed for the one read (#1023), as [`StoredBudgetReads`] answers Budgets'. It
+/// calls `lib-bills`' Needs Attention rule and `lib-budgets`' period figures and bars and maps the
+/// answers into `lib-dashboard`'s rows; it re-implements no rule and copies nothing from the
+/// Ledger. The same struct stands over the adapters and [`Stores::fake`]'s in-memory stores.
+#[derive(Clone)]
+pub struct StoredDashboardReads {
+    pub bills: SharedBillsStore,
+    pub budgets: SharedBudgetsStore,
+    pub categories: SharedCategoriesStore,
+    pub units: SharedUnitsStore,
+    /// The stores the Budget figures read besides the three above.
+    pub accounts: SharedAccountsStore,
+    pub transactions: SharedTransactionsStore,
+    pub payees: SharedPayeesStore,
+}
+
+impl StoredDashboardReads {
+    /// The Budgets read ports over these stores, for one figure.
+    fn budget_reads(&self) -> StoredBudgetReads {
+        StoredBudgetReads {
+            categories: self.categories.clone(),
+            accounts: self.accounts.clone(),
+            transactions: self.transactions.clone(),
+            bills: self.bills.clone(),
+            units: self.units.clone(),
+            payees: self.payees.clone(),
+        }
+    }
+}
+
+impl DashboardBills for StoredDashboardReads {
+    fn attention_bills(&self, today: NaiveDate) -> Vec<DashboardBill> {
+        let bills = self.bills.borrow();
+        let (plans, entries) = (bills.plans().bill_plans(), bills.entries().entries());
+        let units = self.units.borrow();
+        lib_bills::attention_entries(&plans, &entries, today)
+            .into_iter()
+            .filter_map(|id| {
+                let entry = lib_bills::entry(&entries, id)?;
+                let plan = lib_bills::get(&plans, id.plan_id)?;
+                // An entry needing attention is open, so its amount is the Plan's and reads no Split.
+                let amount = lib_bills::amount(entry, &plans, &[])?;
+                Some(DashboardBill {
+                    id: DashboardEntryId {
+                        plan_id: id.plan_id,
+                        due: id.due,
+                    },
+                    plan: plan.name.clone(),
+                    overdue: lib_bills::status(entry, today) == lib_bills::BillStatus::Overdue,
+                    amount,
+                    unit_code: units.unit_code(plan.unit).unwrap_or_default(),
+                })
+            })
+            .collect()
+    }
+
+    fn base_unit_code(&self) -> Option<String> {
+        let units = self.units.borrow();
+        units.unit_code(units.base_unit().base_unit())
+    }
+}
+
+impl DashboardBudgets for StoredDashboardReads {
+    fn default_budget_month(&self, today: NaiveDate) -> Option<DashboardBudgetMonth> {
+        let stored = Budgets::from_stored(self.budgets.borrow().budgets().budgets());
+        let budget = stored.default_budget()?;
+        let reads = self.budget_reads();
+        let figures =
+            lib_budgets::period_figures(budget, &reads, lib_core::Period::of(today), today);
+        let categories = self.categories.borrow().categories().categories();
+        let bars = lib_budgets::dashboard_bars(&figures, &reads)
+            .into_iter()
+            .map(|bar| DashboardBudgetBar {
+                category: lib_categories::get(&categories, bar.category_id)
+                    .map(|category| category.name.clone())
+                    .unwrap_or_default(),
+                spent: bar.spent,
+                budget: bar.budget,
+                over: bar.over,
+            })
+            .collect();
+        Some(DashboardBudgetMonth {
+            month: figures.month,
+            elapsed: DashboardElapsed {
+                day: figures.elapsed.day,
+                days_in_month: figures.elapsed.days_in_month,
+                percent: figures.elapsed.percent,
+            },
+            bars,
+        })
+    }
+}
+
 /// `lib-bills`' four read ports answered by the shared stores of the domains Bills reads, each
 /// borrowed for the one read (#994), as [`StoredBudgetReads`] answers Budgets'. The same struct
 /// stands over the adapters and [`Stores::fake`]'s in-memory stores.
@@ -1883,5 +1981,181 @@ mod tests {
         assert_eq!(reads.unit_code(UnitId::SEED_AUD).as_deref(), Some("aud"));
         assert!(reads.payee_name(PayeeId::seed(1)).is_some());
         assert!(reads.active_bill_plans().len() <= ledger.bill_plans().len());
+    }
+}
+
+/// `StoredDashboardReads`, run over the in-memory stores and the adapters with the same
+/// assertions (#1023).
+#[cfg(test)]
+mod dashboard_reads_tests {
+    use chrono::TimeZone;
+    use lib_core::Period;
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+
+    use super::*;
+    use crate::{PendingWrites, Writer};
+
+    fn today() -> NaiveDate {
+        NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date")
+    }
+
+    fn now() -> chrono::DateTime<chrono::Utc> {
+        chrono::Utc.from_utc_datetime(&today().and_hms_opt(12, 0, 0).expect("a real time"))
+    }
+
+    /// The stub's rows in memory: the same rows the stub seed writes to the file.
+    fn in_memory(with_default_budget: bool) -> StoredDashboardReads {
+        let stub = crate::seed::stub_bills(today());
+        let budgets = if with_default_budget {
+            crate::seed::stub_budgets(today())
+        } else {
+            Vec::new()
+        };
+        StoredDashboardReads {
+            bills: Rc::new(RefCell::new(InMemoryBills {
+                plans: stub.plans,
+                entries: stub.entries,
+            })),
+            budgets: Rc::new(RefCell::new(InMemoryBudgets { budgets })),
+            categories: Rc::new(RefCell::new(InMemoryCategories::stub())),
+            units: Rc::new(RefCell::new(InMemoryPorts::stub(now()))),
+            accounts: Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts::stub())),
+            transactions: Rc::new(RefCell::new(InMemoryTransactions {
+                transactions: crate::seed::stub_transactions(today()),
+            })),
+            payees: Rc::new(RefCell::new(lib_payees::fake::InMemoryPorts::stub())),
+        }
+    }
+
+    /// The stub seeded into a test database, then loaded with fresh adapters as start-up does.
+    fn on_adapters(
+        options: SqliteConnectOptions,
+        with_default_budget: bool,
+    ) -> StoredDashboardReads {
+        let (writer, _failures) = Writer::spawn(options).expect("the test database opens");
+        crate::seed::write_stub_rows(&writer, now(), today(), None, false)
+            .expect("the stub is written");
+        if !with_default_budget {
+            writer
+                .run(|pool| async move {
+                    sqlx::query("UPDATE budgets SET is_default = 0")
+                        .execute(&pool)
+                        .await?;
+                    Ok(())
+                })
+                .expect("the default is cleared");
+        }
+        let pending = PendingWrites::new(writer);
+        let units = UnitsAdapter::load(pending.clone()).expect("the Units load");
+        let categories = CategoriesAdapter::load(pending.clone()).expect("the Categories load");
+        let accounts = AccountsAdapter::load(pending.clone()).expect("the Accounts load");
+        let payees = PayeesAdapter::load(pending.clone()).expect("the Payees load");
+        let transactions =
+            TransactionsAdapter::load(pending.clone()).expect("the Transactions load");
+        let bills = BillsAdapter::load(pending.clone()).expect("the Bills load");
+        let budgets = BudgetsAdapter::load(pending).expect("the Budgets load");
+        StoredDashboardReads {
+            bills: Rc::new(RefCell::new(bills)),
+            budgets: Rc::new(RefCell::new(budgets)),
+            categories: Rc::new(RefCell::new(categories)),
+            units: Rc::new(RefCell::new(units)),
+            accounts: Rc::new(RefCell::new(accounts)),
+            transactions: Rc::new(RefCell::new(transactions)),
+            payees: Rc::new(RefCell::new(payees)),
+        }
+    }
+
+    /// Needs Attention rows come in `attention_entries` order with their Plan's name, Unit code and
+    /// overdue mark.
+    fn needs_attention_rows_follow_the_bills_rule(reads: &StoredDashboardReads) {
+        let stub = crate::seed::stub_bills(today());
+        let expected = lib_bills::attention_entries(&stub.plans, &stub.entries, today());
+        assert!(!expected.is_empty(), "the stub has Bills needing attention");
+
+        let rows = reads.attention_bills(today());
+        let ids: Vec<_> = rows
+            .iter()
+            .map(|row| (row.id.plan_id, row.id.due))
+            .collect();
+        let expected_ids: Vec<_> = expected.iter().map(|id| (id.plan_id, id.due)).collect();
+        assert_eq!(ids, expected_ids);
+        for row in &rows {
+            let plan = lib_bills::get(&stub.plans, row.id.plan_id).expect("the Plan is stored");
+            assert_eq!(row.plan, plan.name);
+            assert_eq!(row.amount, plan.planned_amount);
+            assert_eq!(row.overdue, row.id.due < today());
+            assert_eq!(row.unit_code, "aud");
+        }
+        assert_eq!(reads.base_unit_code().as_deref(), Some("aud"));
+    }
+
+    /// The default Budget's current month has its fullest top-level bars, named by Category.
+    fn the_default_budget_shows_its_bars_with_category_names(reads: &StoredDashboardReads) {
+        let month = reads
+            .default_budget_month(today())
+            .expect("a Budget is the default");
+        assert_eq!(month.month, Period::of(today()));
+        assert_eq!(month.elapsed.day, 19);
+        assert_eq!(month.elapsed.days_in_month, 30);
+        assert_eq!(month.elapsed.percent, 63);
+        assert!(!month.bars.is_empty() && month.bars.len() <= lib_budgets::DASHBOARD_BARS);
+        assert!(month.bars.iter().all(|bar| !bar.category.is_empty()));
+        assert!(
+            month
+                .bars
+                .iter()
+                .all(|bar| bar.over == (bar.spent.0 > bar.budget.0))
+        );
+        let share = |bar: &DashboardBudgetBar| bar.spent.0.clone() * 1_000 / bar.budget.0.clone();
+        assert!(
+            month
+                .bars
+                .windows(2)
+                .all(|pair| share(&pair[0]) >= share(&pair[1])),
+            "the fullest bar comes first"
+        );
+    }
+
+    fn no_default_budget_shows_no_bars(reads: &StoredDashboardReads) {
+        assert_eq!(reads.default_budget_month(today()), None);
+    }
+
+    #[test]
+    fn over_the_in_memory_stores_needs_attention_follows_the_bills_rule() {
+        needs_attention_rows_follow_the_bills_rule(&in_memory(true));
+    }
+
+    #[test]
+    fn over_the_in_memory_stores_the_default_budget_shows_its_bars() {
+        the_default_budget_shows_its_bars_with_category_names(&in_memory(true));
+    }
+
+    #[test]
+    fn over_the_in_memory_stores_no_default_budget_shows_no_bars() {
+        no_default_budget_shows_no_bars(&in_memory(false));
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn over_the_adapters_needs_attention_follows_the_bills_rule(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        needs_attention_rows_follow_the_bills_rule(&on_adapters(options, true));
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn over_the_adapters_the_default_budget_shows_its_bars(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        the_default_budget_shows_its_bars_with_category_names(&on_adapters(options, true));
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn over_the_adapters_no_default_budget_shows_no_bars(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        no_default_budget_shows_no_bars(&on_adapters(options, false));
     }
 }
