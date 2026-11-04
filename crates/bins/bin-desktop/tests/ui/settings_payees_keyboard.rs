@@ -100,6 +100,17 @@ fn typing_a_name_and_pressing_enter_adds_and_selects_the_payee(app: &mut TestApp
     assert_eq!(payees_page.selected_payee.as_deref(), Some("zoo"));
 }
 
+/// `j` and `k` are the Dialog keymap's list step, which only a Dialog stepping a list reads.
+#[gpui::test]
+fn j_and_k_type_into_the_name(app: &mut TestAppContext) {
+    let mut ui = in_payees(app);
+
+    ui.press("n");
+    ui.press("j a k e");
+
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("jake"));
+}
+
 #[gpui::test]
 fn enter_on_a_blank_name_keeps_the_dialog_open(app: &mut TestAppContext) {
     let mut ui = in_payees(app);

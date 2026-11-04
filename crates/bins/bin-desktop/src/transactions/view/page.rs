@@ -399,7 +399,12 @@ impl TransactionsPage {
     /// command (`transactions.reset_filters`).
     fn filter_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         let chord = chord(keystroke);
-        if let Some(command) = chord.as_ref().and_then(|c| self.dialog_keymap.event(c)) {
+        // The filter steps no list on the list step's letters, so they type.
+        if let Some(command) = chord
+            .as_ref()
+            .and_then(|c| self.dialog_keymap.event(c))
+            .filter(|command| !command.is_list_step())
+        {
             self.filter_command(command, cx);
             return true;
         }
@@ -448,6 +453,8 @@ impl TransactionsPage {
                     self.filter(FilterEvent::SelectPrevious, cx);
                 }
             }
+            // `filter_key` types the list step's letters instead.
+            DialogCommand::ListNext | DialogCommand::ListPrevious => {}
         }
     }
 

@@ -252,6 +252,24 @@ fn the_switcher_selection_follows_j_and_k(app: &mut TestAppContext) {
     }
 }
 
+/// `j` and `k` are the Dialog keymap's list step, which the Switcher hands its search while `/`
+/// has given it the keys.
+#[gpui::test]
+fn j_and_k_type_into_the_switcher_search(app: &mut TestAppContext) {
+    let mut ui = on_budgets(app);
+    ui.press("shift-b");
+    let selected = ui.budgets().switcher_selected;
+
+    ui.press("/ j k");
+
+    assert_eq!(ui.dialog_value("Search").as_deref(), Some("jk"));
+    assert_eq!(
+        ui.budgets().switcher_selected,
+        selected,
+        "the search, not a step"
+    );
+}
+
 #[gpui::test]
 fn tab_steps_the_tabs_and_shift_tab_leaves_the_page(app: &mut TestAppContext) {
     let mut ui = on_budgets(app);

@@ -272,6 +272,22 @@ impl PayeeFormPresenter {
         }
     }
 
+    /// Whether a confirm would save: the view model's `frame.can_confirm`, without building the
+    /// rest of it.
+    pub fn can_confirm(&self) -> bool {
+        self.clean_name().is_ok()
+    }
+
+    /// Edit, rather than Add: the view model's `editing`.
+    pub fn is_editing(&self) -> bool {
+        self.editing.is_some()
+    }
+
+    /// Whether the Default category's list is open: the view model's `default_category_list`.
+    pub fn is_category_list_open(&self) -> bool {
+        self.list.is_open()
+    }
+
     pub fn view_model(&self) -> PayeeFormViewModel {
         let (title, submit, placeholder) = match &self.editing {
             Some(editing) => (
@@ -299,7 +315,7 @@ impl PayeeFormPresenter {
             frame: DialogFrame {
                 title,
                 submit,
-                can_confirm: self.clean_name().is_ok(),
+                can_confirm: self.can_confirm(),
                 destructive: false,
                 hints: Vec::new(),
             },

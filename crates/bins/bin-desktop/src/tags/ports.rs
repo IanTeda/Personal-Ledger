@@ -174,7 +174,7 @@ mod tests {
             usage: StoredTagReads {
                 transactions: setup.transactions.clone(),
                 accounts: setup.accounts.clone(),
-                units: crate::bills::ports::in_memory_units(),
+                units: setup.units.clone(),
             },
         };
 

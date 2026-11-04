@@ -267,12 +267,8 @@ impl PayPresenter {
                     self.confirm(router);
                 }
             }
-            (PayMode::Match, DialogInput::SelectNext | DialogInput::Char('j')) => {
-                self.step_choice(true)
-            }
-            (PayMode::Match, DialogInput::SelectPrevious | DialogInput::Char('k')) => {
-                self.step_choice(false)
-            }
+            (PayMode::Match, DialogInput::SelectNext) => self.step_choice(true),
+            (PayMode::Match, DialogInput::SelectPrevious) => self.step_choice(false),
             (PayMode::Direct, DialogInput::NextField | DialogInput::PreviousField) => {
                 self.focused = match self.focused {
                     PayField::Amount => PayField::Date,
@@ -394,6 +390,12 @@ impl PayPresenter {
             }
             PayMode::Match => matches!(self.choice, Some(MatchChoice::Candidate(_))),
         }
+    }
+
+    /// Whether the Dialog steps a list right now (the Match panel's), so the Dialog keymap's list step (`j`/`k` by
+    /// default) reaches it as a select step rather than typing.
+    pub fn steps_list(&self) -> bool {
+        self.mode == PayMode::Match
     }
 
     pub fn view_model(&self) -> PayViewModel {
@@ -832,17 +834,25 @@ mod tests {
     }
 
     #[test]
-    fn left_and_right_switch_panel_and_j_k_step_the_match_list() {
+    fn left_and_right_switch_panel_and_select_steps_the_match_list() {
         let mut dialog = Dialog::open_with(nothing_preselected);
-        dialog.send(PayEvent::Input(DialogInput::Char('j')));
+        assert!(
+            dialog.presenter.steps_list(),
+            "Match is the list the step reaches"
+        );
+        dialog.send(PayEvent::Input(DialogInput::SelectNext));
         assert_eq!(dialog.view().choice, Some(MatchChoice::Candidate(0)));
         dialog.send(PayEvent::Input(DialogInput::SelectNext));
         assert_ne!(dialog.view().choice, Some(MatchChoice::Candidate(0)));
-        dialog.send(PayEvent::Input(DialogInput::Char('k')));
+        dialog.send(PayEvent::Input(DialogInput::SelectPrevious));
         assert_eq!(dialog.view().choice, Some(MatchChoice::Candidate(0)));
 
         dialog.send(PayEvent::Input(DialogInput::Right));
         assert_eq!(dialog.view().mode, PayMode::Direct);
+        assert!(
+            !dialog.presenter.steps_list(),
+            "Direct's fields type the letters"
+        );
         dialog.send(PayEvent::Input(DialogInput::Left));
         assert_eq!(dialog.view().mode, PayMode::Match);
     }

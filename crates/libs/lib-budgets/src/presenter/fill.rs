@@ -9,7 +9,7 @@ use lib_core::{BudgetId, Clock, Money, Period};
 use lib_locale::format::format_month;
 use lib_toast::{Notice, ToastKind};
 use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::keymap::{BACK, Keymap, SELECT};
+use lib_viper::keymap::{BACK, Keymap, SELECT, list_step_chords};
 use lib_viper::view::{DialogFrame, Hint, count};
 
 use super::{EMPTY_CELL, dialog_error_text, money, period_label, signed_money};
@@ -104,10 +104,10 @@ impl FillPresenter {
         match event {
             FillEvent::Input(input) => {
                 match input {
-                    DialogInput::SelectNext | DialogInput::Char('j') => {
+                    DialogInput::SelectNext => {
                         self.handle(FillEvent::Down, router);
                     }
-                    DialogInput::SelectPrevious | DialogInput::Char('k') => {
+                    DialogInput::SelectPrevious => {
                         self.handle(FillEvent::Up, router);
                     }
                     DialogInput::Select | DialogInput::Submit => self.confirm(router),
@@ -275,7 +275,7 @@ impl FillPresenter {
     /// The status line's legend, `select` and `back` read from the Dialog `keymap`.
     pub fn legend<E: Clone>(&self, keymap: &Keymap<E>) -> Vec<Hint> {
         vec![
-            Hint::new("j/k", msg::budgets_hint_source()),
+            Hint::new(list_step_chords(keymap), msg::budgets_hint_source()),
             Hint::new(
                 keymap.chord(SELECT).unwrap_or_default(),
                 msg::budgets_hint_fill_confirm(),
@@ -433,9 +433,9 @@ mod tests {
 
         send(&mut presenter, DialogInput::SelectNext);
         assert_eq!(presenter.source(), FillSource::Average);
-        send(&mut presenter, DialogInput::Char('k'));
+        send(&mut presenter, DialogInput::SelectPrevious);
         assert_eq!(presenter.source(), FillSource::PreviousMonth);
-        send(&mut presenter, DialogInput::Char('j'));
+        send(&mut presenter, DialogInput::SelectNext);
         send(&mut presenter, DialogInput::SelectPrevious);
         assert_eq!(presenter.source(), FillSource::PreviousMonth);
         send(&mut presenter, DialogInput::Char('x'));

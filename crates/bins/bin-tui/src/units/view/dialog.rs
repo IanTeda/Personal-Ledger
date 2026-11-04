@@ -104,8 +104,10 @@ impl Dialog {
         keymap: &Keymap<DialogCommand>,
         router: &mut dyn DialogRouter<UnitsOutcome>,
     ) {
+        // No Units Dialog steps a list, so the list step's letters type.
         let form = chord(key)
             .and_then(|chord| keymap.event(&chord))
+            .filter(|command| !command.is_list_step())
             .map(FormKey::from);
         match self {
             Self::UnitForm(presenter) => {
@@ -416,8 +418,8 @@ impl From<DialogCommand> for FormKey {
             DialogCommand::Select | DialogCommand::Submit => Self::Confirm,
             DialogCommand::NextField => Self::Next,
             DialogCommand::PreviousField => Self::Prev,
-            DialogCommand::SelectNext => Self::Step(1),
-            DialogCommand::SelectPrevious => Self::Step(-1),
+            DialogCommand::SelectNext | DialogCommand::ListNext => Self::Step(1),
+            DialogCommand::SelectPrevious | DialogCommand::ListPrevious => Self::Step(-1),
         }
     }
 }

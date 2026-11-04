@@ -335,6 +335,10 @@ impl Root {
                     self.close_dialog();
                 }
             }
+            // The list step is a letter: a step only in a Dialog stepping a list, else typing.
+            Some(command) if command.is_list_step() && !dialog.steps_list(cx) => {
+                dialog.typed(dialog_key(keystroke), cx);
+            }
             Some(command) => dialog.command(command, cx),
             None => dialog.typed(dialog_key(keystroke), cx),
         });

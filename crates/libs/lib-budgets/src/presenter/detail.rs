@@ -10,7 +10,7 @@ use lib_core::{BudgetId, CategoryId, CategoryTypes, Clock, Money, Period};
 use lib_list_cursor::Step;
 use lib_locale::format::format_month_day;
 use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::keymap::{BACK, Keymap};
+use lib_viper::keymap::{BACK, Keymap, list_step_chords};
 use lib_viper::view::{DialogFrame, Hint, count};
 
 use super::{BarView, EMPTY_CELL, bar_view, money, period_label};
@@ -144,10 +144,10 @@ impl DetailPresenter {
     pub fn handle(&mut self, event: DetailEvent, router: &mut dyn DialogRouter<BudgetsOutcome>) {
         match event {
             DetailEvent::Input(input) => match input {
-                DialogInput::SelectNext | DialogInput::Char('j') => {
+                DialogInput::SelectNext => {
                     self.handle(DetailEvent::Down, router);
                 }
-                DialogInput::SelectPrevious | DialogInput::Char('k') => {
+                DialogInput::SelectPrevious => {
                     self.handle(DetailEvent::Up, router);
                 }
                 DialogInput::Char('t') => self.handle(DetailEvent::Transactions, router),
@@ -337,7 +337,7 @@ impl DetailPresenter {
                 keymap.chord(BACK).unwrap_or_default(),
                 msg::budgets_hint_close(),
             ),
-            Hint::new("j/k", msg::budgets_hint_row()),
+            Hint::new(list_step_chords(keymap), msg::budgets_hint_row()),
         ];
         if self.can_edit() {
             hints.push(Hint::new("e", msg::budgets_hint_edit_budget()));
@@ -456,9 +456,9 @@ mod tests {
         };
 
         send(&mut presenter, &mut router, DialogInput::SelectNext);
-        send(&mut presenter, &mut router, DialogInput::Char('j'));
+        send(&mut presenter, &mut router, DialogInput::SelectNext);
         let down = presenter.view_model().expect("detail").selected;
-        send(&mut presenter, &mut router, DialogInput::Char('k'));
+        send(&mut presenter, &mut router, DialogInput::SelectPrevious);
         send(&mut presenter, &mut router, DialogInput::SelectPrevious);
         send(&mut presenter, &mut router, DialogInput::Char('x'));
         send(&mut presenter, &mut router, DialogInput::Backspace);

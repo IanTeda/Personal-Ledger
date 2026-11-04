@@ -9,7 +9,7 @@
 use lib_core::{BudgetId, Clock, Period};
 use lib_locale::Segment;
 use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::keymap::{Keymap, SELECT};
+use lib_viper::keymap::{Keymap, SELECT, list_step_chords};
 use lib_viper::view::{Choice, Hint, count};
 
 use super::{error_text, method_label};
@@ -179,8 +179,8 @@ impl ManagePresenter {
     /// What `input` means: the row cursor and each action's letter.
     fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<BudgetsOutcome>) {
         let event = match input {
-            DialogInput::SelectNext | DialogInput::Char('j') => ManageEvent::Down,
-            DialogInput::SelectPrevious | DialogInput::Char('k') => ManageEvent::Up,
+            DialogInput::SelectNext => ManageEvent::Down,
+            DialogInput::SelectPrevious => ManageEvent::Up,
             DialogInput::Select | DialogInput::Submit => ManageEvent::Act(ManageAction::Open),
             DialogInput::Char('e') => ManageEvent::Act(ManageAction::Edit),
             DialogInput::Char('d') => ManageEvent::Act(ManageAction::Duplicate),
@@ -318,7 +318,7 @@ impl ManagePresenter {
     /// in. The row actions' letters are Manage's own, not a keymap's.
     pub fn legend<E: Clone>(&self, keymap: &Keymap<E>) -> Vec<Hint> {
         vec![
-            Hint::new("j/k", msg::budgets_hint_row()),
+            Hint::new(list_step_chords(keymap), msg::budgets_hint_row()),
             Hint::new(
                 keymap.chord(SELECT).unwrap_or_default(),
                 msg::budgets_hint_open(),
@@ -459,9 +459,9 @@ mod tests {
 
         input(&mut manage, &mut router, DialogInput::SelectNext);
         assert_eq!(manage.view_model().selected, 1);
-        input(&mut manage, &mut router, DialogInput::Char('k'));
+        input(&mut manage, &mut router, DialogInput::SelectPrevious);
         assert_eq!(manage.view_model().selected, 0);
-        input(&mut manage, &mut router, DialogInput::Char('j'));
+        input(&mut manage, &mut router, DialogInput::SelectNext);
         assert_eq!(manage.view_model().selected, 1);
         input(&mut manage, &mut router, DialogInput::SelectPrevious);
         assert_eq!(manage.view_model().selected, 0);

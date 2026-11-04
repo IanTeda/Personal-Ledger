@@ -221,6 +221,12 @@ impl HostedDialog for FormDialog {
         }
     }
 
+    /// The Stop, Fill and Detail Dialogs are each a list throughout; the Budget and Limit forms
+    /// type.
+    fn steps_list(&self) -> bool {
+        !matches!(self.view, Form::Budget(..) | Form::Limit(..))
+    }
+
     fn hints(&self, keymap: &Keymap<DialogCommand>) -> Option<Vec<Hint>> {
         Some(match &self.view {
             Form::Budget(presenter, _) => presenter.legend(keymap),

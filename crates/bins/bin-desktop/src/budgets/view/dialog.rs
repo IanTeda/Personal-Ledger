@@ -210,6 +210,14 @@ impl HostedDialog for ListDialog {
         true
     }
 
+    /// Manage is a list throughout; the Switcher is one until its search has the keys.
+    fn steps_list(&self) -> bool {
+        match &self.list {
+            List::Switcher(presenter) => presenter.steps_list(),
+            List::Manage(_) => true,
+        }
+    }
+
     fn hints(&self, keymap: &Keymap<DialogCommand>) -> Option<Vec<Hint>> {
         Some(match &self.list {
             List::Switcher(presenter) => presenter.legend(keymap),
@@ -234,7 +242,11 @@ impl HostedDialog for ListDialog {
                     .join(", ");
                 DialogReadback {
                     kind: "Switcher",
-                    values: vec![("Budgets", names), ("Selected", selected)],
+                    values: vec![
+                        ("Budgets", names),
+                        ("Selected", selected),
+                        ("Search", view.search),
+                    ],
                 }
             }
             List::Manage(presenter) => {

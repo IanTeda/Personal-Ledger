@@ -612,8 +612,10 @@ While a Dialog is open, its keys are the Dialog keymap, which takes `select` and
 | `select_next`     | `down`, `ctrl+n` |
 | `select_previous` | `up`, `ctrl+p`   |
 | `submit`          | `ctrl+enter`     |
+| `list_next`       | `j`              |
+| `list_previous`   | `k`              |
 
-`select` opens a closed list, picks from an open one, and otherwise confirms the Dialog once its form is valid; `submit` confirms a valid form from any field; `back` closes an open list first, otherwise cancels the Dialog. On the Desktop the module Dialogs read this keymap, and so does the Transactions filter popover; a Dialog not yet on a module keeps its fixed keys until it moves. Rebinding `select_next` or `select_previous` replaces both of its keys with the one you give. The popover has one command of its own, `transactions.reset_filters` (`ctrl+r`), which puts its draft back to the defaults, and its status-line legend shows the chords in effect.
+`select` opens a closed list, picks from an open one, and otherwise confirms the Dialog once its form is valid; `submit` confirms a valid form from any field; `back` closes an open list first, otherwise cancels the Dialog. On the Desktop the module Dialogs read this keymap, and so does the Transactions filter popover; a Dialog not yet on a module keeps its fixed keys until it moves. Rebinding `select_next` or `select_previous` replaces both of its keys with the one you give. `list_next` and `list_previous` step a list only in a Dialog that is showing one right then (the Pay Dialog's Match list, and the Budgets Switcher, Manage, Detail, Fill and Stop Dialogs); in any other Dialog or field the key types, and those Dialogs' legends show the chords in effect. Rebind them to a key those Dialogs don't use for an action of their own: on `n`, say, the Budgets Switcher's New no longer opens. The popover has one command of its own, `transactions.reset_filters` (`ctrl+r`), which puts its draft back to the defaults, and its status-line legend shows the chords in effect.
 
 On the Desktop, the keys that work on every screen are the global keymap, which takes `back`, `help`, `open_command_popup`, `move_up`, `move_down`, `select`, `dismiss_toasts` and `toast_history` from the first table and adds these:
 

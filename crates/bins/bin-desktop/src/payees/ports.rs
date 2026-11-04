@@ -105,8 +105,8 @@ pub fn forward(store: &mut dyn PayeesStore, changes: &[LedgerChange]) -> bool {
 }
 
 /// Brings the Ledger read copy of the Payees in line with the ports, announcing `Domain::Payees`
-/// when it changed. Run before and after every Payees event and Dialog confirm, so Transactions,
-/// Bills, Import and Documents see a write at once.
+/// when it changed. Run around every Payees page event and when a Payees Dialog closes, so
+/// Transactions, Bills, Import and Documents see a write at once.
 pub fn refresh(ledger: &Entity<LedgerStore>, cx: &mut App) {
     ledger.update(cx, |store, cx| store.refresh_payees(cx));
 }

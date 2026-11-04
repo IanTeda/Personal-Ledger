@@ -27,7 +27,7 @@ use lib_core::AccountId;
 use lib_database::{
     PayeesStore, SharedAccountsStore, SharedBudgetsStore, SharedCategoriesStore,
     SharedDocumentsStore, SharedInventoryStore, SharedTagsStore, SharedTransactionsStore,
-    StoredDocumentReads, StoredPayeeReads,
+    SharedUnitsStore, StoredDocumentReads, StoredPayeeReads,
 };
 use lib_institutions::InstitutionsPorts as _;
 use lib_ledger::{Domain, Ledger, LedgerCommand, domains};
@@ -57,6 +57,9 @@ pub struct LedgerSetup {
     pub budgets: SharedBudgetsStore,
     pub inventory: SharedInventoryStore,
     pub documents: SharedDocumentsStore,
+    /// The Units store the Bills and Tags reads take Unit codes from: the Units module's own on
+    /// a Ledger file, the Ledger's Units in memory in a test.
+    pub units: SharedUnitsStore,
 }
 
 impl LedgerSetup {
@@ -79,6 +82,7 @@ impl LedgerSetup {
             },
         );
         let bills_store = crate::bills::ports::in_memory_store(&ledger);
+        let units = crate::bills::ports::in_memory_units(&ledger);
         let payees = crate::payees::LedgerBackedPorts::in_memory(
             &ledger,
             StoredPayeeReads {
@@ -93,7 +97,7 @@ impl LedgerSetup {
             accounts.clone(),
             categories.clone(),
             transactions.clone(),
-            crate::bills::ports::in_memory_units(),
+            units.clone(),
         );
         Self {
             budgets,
@@ -112,6 +116,7 @@ impl LedgerSetup {
             accounts,
             categories,
             payees,
+            units,
         }
     }
 }
@@ -178,7 +183,7 @@ impl LedgerStore {
             accounts.clone(),
             categories.clone(),
             transactions.clone(),
-            crate::bills::ports::in_memory_units(),
+            crate::bills::ports::in_memory_units(&ledger),
         );
         let institutions =
             crate::institutions::LedgerBackedPorts::in_memory(&ledger, accounts.clone());
@@ -904,7 +909,7 @@ mod tests {
                 budgets: budgets.clone(),
             },
         );
-        let units: lib_database::SharedUnitsStore = Rc::new(RefCell::new(storage.units));
+        let units: SharedUnitsStore = Rc::new(RefCell::new(storage.units));
         let institutions = crate::institutions::LedgerBackedPorts::shared(
             Box::new(storage.institutions),
             accounts.clone(),
@@ -915,7 +920,7 @@ mod tests {
             accounts.clone(),
             categories.clone(),
             transactions.clone(),
-            units,
+            units.clone(),
         );
         let payments = crate::bill_payments::payments(transactions.clone(), &bills);
         let deletion =
@@ -934,6 +939,7 @@ mod tests {
                     budgets,
                     inventory: Rc::new(RefCell::new(storage.inventory)),
                     documents: Rc::new(RefCell::new(storage.documents)),
+                    units,
                 },
             )
         });

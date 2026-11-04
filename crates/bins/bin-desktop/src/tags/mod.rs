@@ -64,7 +64,7 @@ impl TagsSetup {
             StoredTagReads {
                 transactions: storage.transactions.clone(),
                 accounts: storage.accounts.clone(),
-                units: crate::bills::ports::in_memory_units(),
+                units: storage.units.clone(),
             },
             &lib_config::KeyBindingConfig::default(),
         )

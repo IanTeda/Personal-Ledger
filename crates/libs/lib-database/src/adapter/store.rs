@@ -85,6 +85,7 @@ use lib_units::{
 use crate::adapter::payees::bill_payees;
 use crate::adapter::transactions::TaggedSplit;
 use crate::adapter::{accounts, bills, categories, inventory, payees, transactions};
+use crate::commit::PendingWrites;
 use crate::{
     AccountsAdapter, BillsAdapter, BudgetsAdapter, CategoriesAdapter, Commit, DocumentsAdapter,
     Domain, InMemoryCommit, InstitutionsAdapter, InventoryAdapter, PayeesAdapter, Result, Stores,
@@ -666,6 +667,12 @@ pub trait TransactionsStore {
         transactions::tag_transaction_counts(&self.all_transactions())
     }
 
+    /// The writes an adapter joins, and through them its file, so a read across this and another
+    /// domain's store can be one job on the file they share. An in-memory store has no file.
+    fn file(&self) -> Option<&PendingWrites> {
+        None
+    }
+
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
     /// # Errors
@@ -702,6 +709,10 @@ impl TransactionsStore for TransactionsAdapter {
         TransactionsAdapter::tag_transaction_counts(self)
     }
 
+    fn file(&self) -> Option<&PendingWrites> {
+        Some(TransactionsAdapter::file(self))
+    }
+
     fn reload(&mut self) -> Result<()> {
         TransactionsAdapter::reload(self)
     }
@@ -735,6 +746,10 @@ impl<T: TransactionsStore + ?Sized> TransactionsStore for Box<T> {
 
     fn tag_transaction_counts(&self) -> HashMap<TagId, usize> {
         (**self).tag_transaction_counts()
+    }
+
+    fn file(&self) -> Option<&PendingWrites> {
+        (**self).file()
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -796,6 +811,12 @@ pub trait BillsStore {
         Some(bills::payee_bill_plans(&self.plans().bill_plans(), id))
     }
 
+    /// The writes an adapter joins, and through them its file, as
+    /// [`TransactionsStore::file`]. An in-memory store has no file.
+    fn file(&self) -> Option<&PendingWrites> {
+        None
+    }
+
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
     /// # Errors
@@ -824,6 +845,10 @@ impl BillsStore for BillsAdapter {
         BillsAdapter::payee_bill_plans(self, id)
     }
 
+    fn file(&self) -> Option<&PendingWrites> {
+        Some(BillsAdapter::file(self))
+    }
+
     fn reload(&mut self) -> Result<()> {
         BillsAdapter::reload(self)
     }
@@ -849,6 +874,10 @@ impl<T: BillsStore + ?Sized> BillsStore for Box<T> {
 
     fn payee_bill_plans(&self, id: PayeeId) -> Option<usize> {
         (**self).payee_bill_plans(id)
+    }
+
+    fn file(&self) -> Option<&PendingWrites> {
+        (**self).file()
     }
 
     fn unit_bill_plans(&self, unit: UnitId) -> usize {
@@ -1066,9 +1095,15 @@ pub struct StoredTagReads {
 impl TagUsage for StoredTagReads {
     fn tag_usage(&self, id: TagId) -> TagUse {
         let splits = self.transactions.borrow().tagged_splits(id);
-        let accounts = self.accounts.borrow();
         let units = self.units.borrow();
-        let accounts = accounts.accounts().accounts();
+        let account_units: HashMap<AccountId, UnitId> = self
+            .accounts
+            .borrow()
+            .accounts()
+            .accounts()
+            .into_iter()
+            .map(|account| (account.id, account.unit))
+            .collect();
 
         let mut transactions: std::collections::HashSet<TransactionId> = Default::default();
         let mut last_used: Option<NaiveDate> = None;
@@ -1076,11 +1111,7 @@ impl TagUsage for StoredTagReads {
         let mut mixed = false;
         let mut sum = bigdecimal::BigDecimal::new(0.into(), 2);
         for split in splits {
-            let Some(unit_id) = accounts
-                .iter()
-                .find(|account| account.id == split.account)
-                .map(|account| account.unit)
-            else {
+            let Some(&unit_id) = account_units.get(&split.account) else {
                 continue;
             };
             let Some(code) = units.unit_code(unit_id) else {
@@ -1336,12 +1367,21 @@ pub struct StoredPayeeReads {
 }
 
 impl PayeeUsage for StoredPayeeReads {
-    /// Unknown when either half can't be counted, never unused (#840).
+    /// Unknown when either half can't be counted, never unused (#840). When both stores read one
+    /// file, both halves are counted in one job on it, one blocking round trip to the writer
+    /// rather than two; otherwise each store counts its own rows.
     fn payee_usage(&self, id: PayeeId) -> Option<PayeeUse> {
-        Some(PayeeUse {
-            splits: self.transactions.borrow().payee_splits(id)?,
-            bill_plans: self.bills.borrow().payee_bill_plans(id)?,
-        })
+        let transactions = self.transactions.borrow();
+        let bills = self.bills.borrow();
+        match (transactions.file(), bills.file()) {
+            (Some(file), Some(other)) if file.shares_file(other) => {
+                payees::payee_usage(file.writer(), id)
+            }
+            _ => Some(PayeeUse {
+                splits: transactions.payee_splits(id)?,
+                bill_plans: bills.payee_bill_plans(id)?,
+            }),
+        }
     }
 }
 

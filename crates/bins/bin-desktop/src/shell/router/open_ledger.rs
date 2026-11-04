@@ -231,6 +231,7 @@ impl OpenLedger {
             budgets,
             inventory,
             documents,
+            units: units.ports.clone(),
         };
         let bills = crate::bills::BillsSetup::new(bills, payments, keybindings);
         let settings_setup = crate::settings::pages::SettingsSetup {

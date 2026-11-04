@@ -8,11 +8,17 @@
 //! form; [`DialogCommand::Submit`] confirms a valid form from anywhere, a multi-line box or a
 //! select included. Only [`DialogCommand::Back`] the host decides itself: it closes an open select
 //! first, otherwise cancels the Dialog and closes it.
+//!
+//! [`DialogCommand::ListNext`] and [`DialogCommand::ListPrevious`] are bound to letters, so they
+//! are a step only in a Dialog stepping a list right then (the Pay Dialog's Match list, the
+//! Budgets lists); every other Dialog and field takes the key as typing
+//! ([`DialogCommand::is_list_step`]).
 
 use lib_config::KeyBindingConfig;
 use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{
-    BACK, Binding, Keymap, NEXT_FIELD, PREVIOUS_FIELD, SELECT, SELECT_NEXT, SELECT_PREVIOUS, SUBMIT,
+    BACK, Binding, Keymap, LIST_NEXT, LIST_PREVIOUS, NEXT_FIELD, PREVIOUS_FIELD, SELECT,
+    SELECT_NEXT, SELECT_PREVIOUS, SUBMIT,
 };
 
 /// A key the Dialog keymap binds, as the open Dialog receives it.
@@ -25,6 +31,9 @@ pub enum DialogCommand {
     SelectNext,
     SelectPrevious,
     Submit,
+    /// A list Dialog's row step, typing in any other (see the module docs).
+    ListNext,
+    ListPrevious,
 }
 
 /// The Dialog keymap's commands with their default keys.
@@ -41,21 +50,29 @@ pub const DIALOG_BINDINGS: &[Binding<DialogCommand>] = &[
     // They sit last so a rebind that moves another command onto `ctrl+n` wins it.
     Binding::hidden(SELECT_NEXT, "ctrl+n", DialogCommand::SelectNext),
     Binding::hidden(SELECT_PREVIOUS, "ctrl+p", DialogCommand::SelectPrevious),
+    Binding::hidden(LIST_NEXT, "j", DialogCommand::ListNext),
+    Binding::hidden(LIST_PREVIOUS, "k", DialogCommand::ListPrevious),
 ];
 
 impl DialogCommand {
     /// The command as a module Dialog's Presenter takes it (`lib_viper::dialog`), `None` for
-    /// `back`, which the host decides.
+    /// `back`, which the host decides. A list step is a select step: the host sends one only to a
+    /// Dialog stepping a list, and types the key into any other.
     pub fn input(self) -> Option<DialogInput> {
         match self {
             Self::Select => Some(DialogInput::Select),
             Self::NextField => Some(DialogInput::NextField),
             Self::PreviousField => Some(DialogInput::PreviousField),
-            Self::SelectNext => Some(DialogInput::SelectNext),
-            Self::SelectPrevious => Some(DialogInput::SelectPrevious),
+            Self::SelectNext | Self::ListNext => Some(DialogInput::SelectNext),
+            Self::SelectPrevious | Self::ListPrevious => Some(DialogInput::SelectPrevious),
             Self::Submit => Some(DialogInput::Submit),
             Self::Back => None,
         }
+    }
+
+    /// A list Dialog's row step, which a Dialog or field not stepping a list takes as typing.
+    pub fn is_list_step(self) -> bool {
+        matches!(self, Self::ListNext | Self::ListPrevious)
     }
 }
 
@@ -90,10 +107,28 @@ mod tests {
             ("ctrl+enter", DialogCommand::Submit),
             ("ctrl+n", DialogCommand::SelectNext),
             ("ctrl+p", DialogCommand::SelectPrevious),
+            ("j", DialogCommand::ListNext),
+            ("k", DialogCommand::ListPrevious),
         ] {
             assert_eq!(keymap.event(chord), Some(command), "{chord}");
         }
-        assert_eq!(keymap.event("j"), None, "typing is the Dialog's own");
+        assert_eq!(keymap.event("x"), None, "typing is the Dialog's own");
+    }
+
+    #[test]
+    fn a_list_step_is_a_select_step_and_rebinds_on_its_own() {
+        assert_eq!(
+            DialogCommand::ListNext.input(),
+            Some(DialogInput::SelectNext)
+        );
+        assert!(DialogCommand::ListPrevious.is_list_step());
+        assert!(!DialogCommand::SelectNext.is_list_step());
+
+        let keymap = dialog_keymap(&overriding(LIST_NEXT, "ctrl+j"));
+
+        assert_eq!(keymap.event("ctrl+j"), Some(DialogCommand::ListNext));
+        assert_eq!(keymap.event("j"), None, "the default no longer binds");
+        assert_eq!(lib_viper::keymap::list_step_chords(&keymap), "ctrl+j/k");
     }
 
     #[test]

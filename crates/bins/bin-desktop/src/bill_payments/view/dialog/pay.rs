@@ -30,7 +30,7 @@ use crate::theme::color;
 use lib_shell::DialogCommand;
 use lib_shell::Hint;
 use lib_viper::dialog::DialogInput;
-use lib_viper::keymap::{BACK, Keymap, SELECT};
+use lib_viper::keymap::{BACK, Keymap, SELECT, list_step_chords};
 
 /// The Dialog's width: 8d's.
 const WIDTH: gpui::Pixels = px(460.0);
@@ -117,10 +117,7 @@ impl HostedDialog for PayDialog {
         if may_confirm {
             crate::bill_payments::refresh(&self.ledger, cx);
         }
-        let steps = matches!(
-            input,
-            DialogInput::SelectNext | DialogInput::SelectPrevious | DialogInput::Char('j' | 'k')
-        );
+        let steps = matches!(input, DialogInput::SelectNext | DialogInput::SelectPrevious);
         let view = self.view();
         if steps
             && view.mode == PayMode::Match
@@ -154,12 +151,17 @@ impl HostedDialog for PayDialog {
         false
     }
 
+    /// The Match panel's list; Direct's fields type.
+    fn steps_list(&self) -> bool {
+        self.presenter.steps_list()
+    }
+
     fn hints(&self, keymap: &Keymap<DialogCommand>) -> Option<Vec<Hint>> {
         let key = |command| keymap.chord(command).unwrap_or_default().to_string();
         Some(vec![
             Hint::new(key(BACK), crate::msg::desktop_hint_cancel()),
             Hint::new(key(SELECT), crate::msg::desktop_hint_confirm()),
-            Hint::new("j/k", crate::msg::desktop_hint_choose()),
+            Hint::new(list_step_chords(keymap), crate::msg::desktop_hint_choose()),
             Hint::new("\u{2190}/\u{2192}", crate::msg::desktop_hint_switch_panel()),
         ])
     }

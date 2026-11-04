@@ -131,11 +131,6 @@ impl StopPresenter {
 
     /// What `input` means: the From select's, except that `select` on a closed list confirms.
     fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<BudgetsOutcome>) {
-        let input = match input {
-            DialogInput::Char('j') => DialogInput::SelectNext,
-            DialogInput::Char('k') => DialogInput::SelectPrevious,
-            other => other,
-        };
         match input {
             DialogInput::Submit => self.confirm(router),
             DialogInput::Select if !self.list.is_open() => self.confirm(router),
@@ -391,12 +386,12 @@ mod tests {
 
         input(&mut presenter, &mut router, DialogInput::SelectNext);
         assert_eq!(presenter.view_model().from.chosen, Some(current().next()));
-        input(&mut presenter, &mut router, DialogInput::Char('k'));
+        input(&mut presenter, &mut router, DialogInput::SelectPrevious);
         assert_eq!(presenter.view_model().from.chosen, Some(current()));
 
         input(&mut presenter, &mut router, DialogInput::Char(' '));
         assert_eq!(presenter.view_model().from_list.highlight(), Some(0));
-        input(&mut presenter, &mut router, DialogInput::Char('j'));
+        input(&mut presenter, &mut router, DialogInput::SelectNext);
         assert_eq!(
             presenter.view_model().from.chosen,
             Some(current()),

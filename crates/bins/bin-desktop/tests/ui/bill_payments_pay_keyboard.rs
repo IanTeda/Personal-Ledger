@@ -264,6 +264,40 @@ fn an_override_of_next_field_moves_pay_it_directly_to_the_date(app: &mut TestApp
     assert_eq!(ui.dialog_value("amount"), Some(amount));
 }
 
+#[gpui::test]
+fn an_override_of_list_next_steps_the_match_list_and_shows_in_the_hint(app: &mut TestAppContext) {
+    let mut ui = Harness::with_keybindings(app, common::overriding("list_next", "ctrl+j"));
+    on_telstra(&mut ui);
+    ui.press("p");
+    let choice = ui.dialog_value("choice");
+
+    ui.press("j");
+    assert_eq!(ui.dialog_value("choice"), choice, "`j` no longer steps");
+
+    ui.press("ctrl-j");
+    assert_ne!(ui.dialog_value("choice"), choice);
+    let hints: Vec<String> = ui
+        .status()
+        .expect("the Dialog has hints")
+        .hints
+        .into_iter()
+        .map(|(key, _)| key)
+        .collect();
+    assert_eq!(hints[2], "ctrl+j/k");
+}
+
+#[gpui::test]
+fn the_list_step_types_into_pay_it_directly(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    on_telstra(&mut ui);
+    ui.press("p right tab");
+    let date = ui.dialog_value("date").expect("the Date is drawn");
+
+    ui.press("j k");
+
+    assert_eq!(ui.dialog_value("date"), Some(format!("{date}jk")));
+}
+
 /// Whether the chosen row's bounds sit inside the Dialog body's.
 fn chosen_row_in_body(ui: &mut Harness<'_>) -> bool {
     let row = match ui.dialog_value("choice").as_deref() {

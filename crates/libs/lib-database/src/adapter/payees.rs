@@ -10,12 +10,12 @@
 //!
 //! Usage is other domains' rows, so `lib-payees`' `PayeeUsage` is answered by
 //! [`StoredPayeeReads`](crate::StoredPayeeReads) from the Transactions and Bills stores (#992),
-//! which count in the file. A Payee those tables name can't be deleted (their foreign keys), which
+//! counted in one read of the file they share ([`payee_usage`]). A Payee those tables name can't be deleted (their foreign keys), which
 //! backstops the delete refusal.
 
 use lib_bills::{BillPayee, BillPayees};
 use lib_core::{CategoryId, PayeeId, RowID};
-use lib_payees::{Payee, PayeeRepository};
+use lib_payees::{Payee, PayeeRepository, PayeeUse};
 use lib_transactions::{TransactionPayee, TransactionPayees};
 use sqlx::SqliteConnection;
 
@@ -157,6 +157,37 @@ pub fn bill_payees(payees: &[Payee]) -> Vec<BillPayee> {
             is_active: payee.is_active,
         })
         .collect()
+}
+
+/// The Splits and Bill Plans naming Payee `id` in the file, counted in one job on `writer`, one
+/// blocking round trip rather than two: what [`StoredPayeeReads`](crate::StoredPayeeReads) answers
+/// when the Transactions and Bills stores share the file. `None` when it can't be read, logged, so a
+/// Payee that may be in use is never offered for deleting (#840).
+pub(crate) fn payee_usage(writer: &Writer, id: PayeeId) -> Option<PayeeUse> {
+    writer
+        .run(move |pool| async move {
+            let counts = sqlx::query!(
+                r#"SELECT
+                    (SELECT COUNT(*) FROM splits WHERE payee_id = ?) AS "splits!: i64",
+                    (SELECT COUNT(*) FROM bill_plans WHERE payee_id = ?) AS "plans!: i64""#,
+                id,
+                id
+            )
+            .fetch_one(&pool)
+            .await?;
+            let count = |count: i64, what: &str| {
+                usize::try_from(count)
+                    .map_err(|_| Error::Validation(format!("Payee {id}'s {what} count is {count}")))
+            };
+            Ok(PayeeUse {
+                splits: count(counts.splits, "Splits")?,
+                bill_plans: count(counts.plans, "Bill Plans")?,
+            })
+        })
+        .inspect_err(|error| {
+            tracing::error!(%error, payee = %id, "Failed to count what names a Payee");
+        })
+        .ok()
 }
 
 /// `payees` as `lib-documents`' `DocumentPayees` reads them, inactive ones included.

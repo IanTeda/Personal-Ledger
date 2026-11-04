@@ -158,6 +158,11 @@ impl BillScheduleRepository for BillsAdapter {
 /// each with its Plan's Category, Account and estimated Amount. An entry whose Plan isn't among
 /// `plans` is left out.
 impl BillsAdapter {
+    /// The writes this adapter joins, and through them the file it reads.
+    pub(crate) fn file(&self) -> &PendingWrites {
+        &self.pending
+    }
+
     /// The Bill Plans naming Payee `id` in the file, blocking: what the last commit left, not a
     /// write still pending. `None` when the count can't be read, logged, so a Payee that may be in
     /// use is never offered for deleting (#840).

@@ -53,7 +53,7 @@ impl View {
     /// Which Dialog is open, as the UI tests name it.
     fn kind(&self) -> &'static str {
         match self {
-            Self::Form(presenter, _) if presenter.view_model().editing => "EditPayee",
+            Self::Form(presenter, _) if presenter.is_editing() => "EditPayee",
             Self::Form(..) => "AddPayee",
             Self::Delete(_) => "DeletePayee",
         }
@@ -121,12 +121,14 @@ impl PayeesDialog {
         }
     }
 
-    /// Hands a confirmed outcome to the page and tells the host, once the Presenter has closed
-    /// the Dialog.
+    /// Once the Presenter has closed the Dialog, brings the Ledger read copy in line with what a
+    /// confirm wrote, hands its outcome to the page and tells the host. A Presenter writes only on
+    /// the confirm that closes it, so an input that leaves the Dialog open refreshes nothing.
     fn closed(&self, router: Router, cx: &mut Context<'_, Self>) {
         let Some(outcome) = router.closed() else {
             return;
         };
+        ports::refresh(&self.ledger, cx);
         if let Some(outcome) = outcome {
             (self.landed)(outcome, cx);
         }
@@ -151,33 +153,23 @@ fn send<P, E>(
 impl EventEmitter<DialogClosed> for PayeesDialog {}
 
 impl HostedDialog for PayeesDialog {
-    /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) runs with
-    /// the Ledger read copy in line before it, and one that wrote something, after it.
+    /// Every input is the Presenter's to read.
     fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
-        let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
-        if may_confirm {
-            ports::refresh(&self.ledger, cx);
-        }
         let router = self.input_event(input);
-        if may_confirm {
-            ports::refresh(&self.ledger, cx);
-        }
         self.closed(router, cx);
     }
 
     fn can_confirm(&self) -> bool {
         match &self.view {
-            View::Form(presenter, _) => presenter.view_model().frame.can_confirm,
-            View::Delete(presenter) => presenter.view_model().frame.can_confirm,
+            View::Form(presenter, _) => presenter.can_confirm(),
+            View::Delete(presenter) => presenter.can_confirm(),
         }
     }
 
-    /// Sends Confirm to the Presenter, which runs its Interactor, with the Ledger read copy in
-    /// line either side. A refusal stays on the Presenter's view model and keeps the Dialog open.
+    /// Sends Confirm to the Presenter, which runs its Interactor. A refusal stays on the
+    /// Presenter's view model and keeps the Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
-        ports::refresh(&self.ledger, cx);
         let router = self.close_event(true);
-        ports::refresh(&self.ledger, cx);
         self.closed(router, cx);
     }
 
@@ -190,7 +182,7 @@ impl HostedDialog for PayeesDialog {
     fn close_open_select(&mut self) -> bool {
         match &mut self.view {
             View::Form(presenter, _) => {
-                let open = presenter.view_model().default_category_list.is_open();
+                let open = presenter.is_category_list_open();
                 if open {
                     send(
                         presenter,

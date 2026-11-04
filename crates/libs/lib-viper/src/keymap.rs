@@ -213,6 +213,21 @@ pub const PREVIOUS_FIELD: &str = "previous_field";
 pub const SELECT_NEXT: &str = "select_next";
 pub const SELECT_PREVIOUS: &str = "select_previous";
 pub const SUBMIT: &str = "submit";
+/// A list Dialog's own row step (the Pay Dialog's Match list, the Budgets lists), on letters by
+/// default: only a Dialog stepping a list right then reads them, so in any other they type.
+/// Their own names, not `move_down` and `move_up`, so rebinding a page's rows leaves a Dialog's
+/// alone.
+pub const LIST_NEXT: &str = "list_next";
+pub const LIST_PREVIOUS: &str = "list_previous";
+
+/// The list step's two chords as a hint shows them, `j/k` by default, read from a Dialog `keymap`.
+pub fn list_step_chords<E: Clone>(keymap: &Keymap<E>) -> String {
+    format!(
+        "{}/{}",
+        keymap.chord(LIST_NEXT).unwrap_or_default(),
+        keymap.chord(LIST_PREVIOUS).unwrap_or_default()
+    )
+}
 
 #[cfg(test)]
 mod tests {

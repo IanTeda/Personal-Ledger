@@ -176,8 +176,9 @@ impl DeletePayeePresenter {
         }
     }
 
-    /// The typed name must match exactly, case and all, for a destructive action.
-    fn can_confirm(&self) -> bool {
+    /// The typed name must match exactly, case and all, for a destructive action: the view
+    /// model's `frame.can_confirm`, without building the rest of it.
+    pub fn can_confirm(&self) -> bool {
         !self.action.is_destructive() || self.confirm_text == self.name
     }
 

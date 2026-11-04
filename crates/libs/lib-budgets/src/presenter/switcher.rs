@@ -9,7 +9,7 @@
 use lib_core::{BudgetId, Clock, DateStyle};
 use lib_locale::format::format_date;
 use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::keymap::{BACK, Keymap, SELECT};
+use lib_viper::keymap::{BACK, Keymap, SELECT, list_step_chords};
 use lib_viper::view::Hint;
 
 use super::{method_label, money};
@@ -181,8 +181,6 @@ impl SwitcherPresenter {
             DialogInput::Select | DialogInput::Submit => SwitcherEvent::Choose,
             DialogInput::Backspace if self.searching => SwitcherEvent::Backspace,
             DialogInput::Char(c) if self.searching => SwitcherEvent::Type(c),
-            DialogInput::Char('j') => SwitcherEvent::Down,
-            DialogInput::Char('k') => SwitcherEvent::Up,
             DialogInput::Char('/') => SwitcherEvent::Search,
             DialogInput::Char('n') => SwitcherEvent::New,
             _ => return,
@@ -244,12 +242,18 @@ impl SwitcherPresenter {
         }
     }
 
+    /// Whether the Dialog steps a list right now (not while the search has the keys), so the Dialog keymap's list step (`j`/`k` by
+    /// default) reaches it as a select step rather than typing.
+    pub fn steps_list(&self) -> bool {
+        !self.searching
+    }
+
     /// The status line's legend, `select` and `back` read from the Dialog `keymap` the Client
     /// looks keys up in. The list's own letters are the Switcher's, not a keymap's.
     pub fn legend<E: Clone>(&self, keymap: &Keymap<E>) -> Vec<Hint> {
         let chord = |command: &str| keymap.chord(command).unwrap_or_default().to_string();
         vec![
-            Hint::new("j/k", msg::budgets_hint_row()),
+            Hint::new(list_step_chords(keymap), msg::budgets_hint_row()),
             Hint::new(chord(SELECT), msg::budgets_hint_open()),
             Hint::new("/", lib_locale::msg::hint_search()),
             Hint::new("n", msg::budgets_hint_new_budget()),
@@ -353,8 +357,8 @@ mod tests {
         let rows = switcher.view_model().rows;
 
         input(&mut switcher, &mut router, DialogInput::SelectNext);
-        input(&mut switcher, &mut router, DialogInput::Char('j'));
-        input(&mut switcher, &mut router, DialogInput::Char('k'));
+        input(&mut switcher, &mut router, DialogInput::SelectNext);
+        input(&mut switcher, &mut router, DialogInput::SelectPrevious);
         input(&mut switcher, &mut router, DialogInput::SelectPrevious);
         assert_eq!(switcher.view_model().selected, Some(0));
 
@@ -376,6 +380,10 @@ mod tests {
         let (mut switcher, mut router) = switcher();
         input(&mut switcher, &mut router, DialogInput::Char('/'));
         assert!(switcher.searching());
+        assert!(
+            !switcher.steps_list(),
+            "the list step types into the search"
+        );
         input(&mut switcher, &mut router, DialogInput::Char('n'));
         input(&mut switcher, &mut router, DialogInput::Char('j'));
         assert_eq!(
@@ -388,6 +396,7 @@ mod tests {
         assert!(router.routed.is_empty());
 
         switcher.handle(SwitcherEvent::LeaveSearch, &mut router);
+        assert!(switcher.steps_list());
         input(&mut switcher, &mut router, DialogInput::Char('n'));
         assert_eq!(
             router.routed,

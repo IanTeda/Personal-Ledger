@@ -55,6 +55,12 @@ pub trait HostedDialog: Render + EventEmitter<DialogClosed> + Sized + 'static {
     /// Closes an open select's list. Returns whether one was open.
     fn close_open_select(&mut self) -> bool;
 
+    /// Whether the Dialog steps a list right now, so the Dialog keymap's list step (`j`/`k` by
+    /// default) reaches it as a select step. Any other Dialog takes those keys as typing.
+    fn steps_list(&self) -> bool {
+        false
+    }
+
     /// The status line's hints while the Dialog is open, keyed as `keymap` binds them; `None`
     /// leaves the View's.
     fn hints(&self, _keymap: &Keymap<DialogCommand>) -> Option<Vec<Hint>> {
@@ -115,6 +121,7 @@ trait AnyHosted {
     fn command(&self, command: DialogCommand, cx: &mut App);
     fn typed(&self, key: DialogKey, cx: &mut App);
     fn close_open_select(&self, cx: &mut App) -> bool;
+    fn steps_list(&self, cx: &App) -> bool;
     fn cancel(&self, cx: &mut App);
     fn hints(&self, keymap: &Keymap<DialogCommand>, cx: &App) -> Option<Vec<Hint>>;
     fn readback(&self, cx: &App) -> DialogReadback;
@@ -148,6 +155,10 @@ impl<D: HostedDialog> AnyHosted for Entity<D> {
             cx.notify();
             dialog.close_open_select()
         })
+    }
+
+    fn steps_list(&self, cx: &App) -> bool {
+        self.read(cx).steps_list()
     }
 
     fn cancel(&self, cx: &mut App) {
@@ -215,6 +226,11 @@ impl DialogHandle {
 
     pub fn close_open_select(&self, cx: &mut App) -> bool {
         self.0.close_open_select(cx)
+    }
+
+    /// Whether the Dialog takes the list step as a step rather than typing.
+    pub fn steps_list(&self, cx: &App) -> bool {
+        self.0.steps_list(cx)
     }
 
     pub fn cancel(&self, cx: &mut App) {
