@@ -157,11 +157,12 @@ mod tests {
         );
         assert_eq!(view.frame.submit, "Delete document");
         assert!(view.frame.destructive && view.frame.can_confirm);
+        // The fixture's Filed Document has one Link, so this pins the singular, not "1 links".
+        assert_eq!(document.links.len(), 1);
         assert_eq!(
             view.body,
             format!(
-                "Its {} links go with it; the records they name stay. The file stays on disk at {}.",
-                document.links.len(),
+                "Its 1 link goes with it; the record it names stays. The file stays on disk at {}.",
                 document.path.display()
             )
         );

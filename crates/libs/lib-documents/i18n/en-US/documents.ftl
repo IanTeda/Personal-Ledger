@@ -358,6 +358,7 @@ documents-dialog-accept-all-note = Only matches where the amount, date and payee
 documents-dialog-delete-title = Delete document — { $title }
 documents-dialog-delete-body = { $links ->
     [0] The file stays on disk at { $path }.
+    [one] Its { $links } link goes with it; the record it names stays. The file stays on disk at { $path }.
    *[other] Its { $links } links go with it; the records they name stay. The file stays on disk at { $path }.
 }
 documents-dialog-delete-warning = Deleting it <strong>cannot be undone.</strong>
