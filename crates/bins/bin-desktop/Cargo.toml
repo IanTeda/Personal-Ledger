@@ -36,6 +36,7 @@ lib_bill_payments = { path = "../../libs/lib-bill-payments" }
 lib_account_deletion = { path = "../../libs/lib-account-deletion" }
 lib_budgets = { path = "../../libs/lib-budgets" }
 lib_categories = { path = "../../libs/lib-categories" }
+lib_dashboard = { path = "../../libs/lib-dashboard" }
 lib_institutions = { path = "../../libs/lib-institutions" }
 lib_documents = { path = "../../libs/lib-documents" }
 lib_inventory = { path = "../../libs/lib-inventory" }

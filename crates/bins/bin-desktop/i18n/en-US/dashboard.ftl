@@ -30,7 +30,6 @@ desktop-dashboard-where-it-went-title = WHERE IT WENT · 30 DAYS
 ## The budget list: title, period marker, and budget row legend.
 
 desktop-dashboard-budgets-title = BUDGETS THIS PERIOD
-desktop-dashboard-budgets-period = { $month } · day { $day }/{ $days } · { $percent }% elapsed
 desktop-dashboard-budgets-legend = │ = period progress · bar = spent / budget
 
 ## The "Needs Attention" section: title and actionable items.
@@ -44,6 +43,3 @@ desktop-dashboard-flagged-transactions = { $count ->
     [one] { $count } transaction
    *[other] { $count } transactions
 } flagged for review →
-desktop-dashboard-bill-overdue = { $plan } overdue since { $due }, { $amount } →
-desktop-dashboard-bill-due = { $plan } due { $due }, { $amount } →
-desktop-dashboard-budgets-none = No budget amounts this month.

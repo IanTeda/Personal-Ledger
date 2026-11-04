@@ -839,9 +839,9 @@ impl Root {
             display.status_glyphs,
             display.row_density,
         );
-        open.views
-            .dashboard
-            .update(cx, |view, cx| view.set_display(date_style, glyphs, cx));
+        open.views.dashboard.update(cx, |view, cx| {
+            view.set_display(date_style, glyphs, density, cx)
+        });
         open.views
             .bills
             .update(cx, |view, cx| view.set_display(date_style, glyphs, cx));

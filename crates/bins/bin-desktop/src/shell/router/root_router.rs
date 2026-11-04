@@ -38,8 +38,8 @@ impl ShellRouter for RootRouter<'_, '_> {
     type Failure = WriteFailure;
 
     /// Generates the new month's Bill Schedule, committed as the day poll's one write, and moves
-    /// the Shell's and the Dashboard's today on to it, so Needs Attention and the rail badge date
-    /// their entries by it. The Budgets page moves a month on its old one on to the new, and the
+    /// the Shell's today on to it, so the rail badge dates its entries by it, and redraws the
+    /// Dashboard, whose Presenter dates Needs Attention by the Clock. The Budgets page moves a month on its old one on to the new, and the
     /// Documents page bands its Key Dates against the new day and drops a Financial Year scope
     /// that has left the rail. The Bills page catches up on its own next event too, which finds
     /// nothing left to generate.
@@ -52,7 +52,7 @@ impl ShellRouter for RootRouter<'_, '_> {
         crate::bills::ports::new_month(&open.bills, &open.ledger, today, self.cx);
         open.views
             .dashboard
-            .update(self.cx, |dashboard, cx| dashboard.set_today(today, cx));
+            .update(self.cx, |dashboard, cx| dashboard.month_turned(cx));
         open.views
             .budgets
             .update(self.cx, |budgets, cx| budgets.month_turned(cx));

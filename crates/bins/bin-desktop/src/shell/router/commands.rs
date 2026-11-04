@@ -2,6 +2,7 @@
 //! command registry itself (`navigation::command`).
 
 use gpui::{App, Context};
+use lib_dashboard::NoLedgerCommand;
 use lib_shell::{NavInput, ShellCommand, ToastInput};
 
 use super::{Root, explorer::explorer_start_dir};
@@ -13,7 +14,7 @@ use crate::{
         nav::{InputMode, Noun},
     },
     settings::{SettingsPage, device::DeviceSetting},
-    shell::view::{palette::Palette, window_size::WindowSize},
+    shell::view::{page_clicks::PresenterPage, palette::Palette, window_size::WindowSize},
 };
 
 /// Records `name` as just-run in `history`, most-recent-first: drops any earlier occurrence
@@ -138,28 +139,6 @@ impl Root {
         }
     }
 
-    /// A click on the no Ledger open content's own `:open`/`:new` text (`OnNoLedgerCommandClick`, issue
-    /// #167): looks `command_name` up in the registry and runs it exactly as the palette's own
-    /// `enter` key would -- entering `InputMode::Command` first, same as typing `:` would, so
-    /// the status line's `COMMAND` badge and `Esc` (which only acts outside `InputMode::Normal`)
-    /// both behave identically regardless of which entry point opened the dialog.
-    pub(super) fn handle_no_ledger_command_click(
-        &mut self,
-        command_name: &'static str,
-        cx: &mut Context<'_, Self>,
-    ) {
-        let Some(command) = command::find(command_name, &self.palette_entries) else {
-            return;
-        };
-        self.navigate(NavInput::EnterMode(InputMode::Command));
-        // `open` and `new` read no Window Size: only the rail toggle does.
-        self.run_command(&command, "", WindowSize::Large, cx);
-        if let Some(change) = self.state.pending_colour_change.take() {
-            change.apply(cx);
-        }
-        cx.notify();
-    }
-
     pub(super) fn open_palette(&mut self) {
         self.navigate(NavInput::EnterMode(InputMode::Command));
         self.state.palette = Some(Palette::new(
@@ -256,5 +235,27 @@ impl Root {
         self.open_settings_page(SettingsPage::Accounts, cx);
         let page = self.settings.read(cx).page::<AccountsPage>();
         crate::accounts::router::run_command(&page, command_name, verb, argument, cx);
+    }
+}
+
+/// A click on the no Ledger open content's own `:open`/`:new` text (issue #167), through
+/// `PageClicks` (#1024): looks the command up in the registry and runs it exactly as the palette's
+/// own `enter` key would -- entering `InputMode::Command` first, same as typing `:` would, so the
+/// status line's `COMMAND` badge and `Esc` (which only acts outside `InputMode::Normal`) both
+/// behave identically regardless of which entry point opened the dialog. As the palette's `enter`,
+/// it runs outside an input: with no Ledger open there is nothing to commit, and `:open` and
+/// `:new` build the Ledger an input would commit to.
+impl PresenterPage<NoLedgerCommand> for Root {
+    fn send(&mut self, event: NoLedgerCommand, cx: &mut Context<'_, Self>) {
+        let Some(command) = command::find(event.name(), &self.palette_entries) else {
+            return;
+        };
+        self.navigate(NavInput::EnterMode(InputMode::Command));
+        // `open` and `new` read no Window Size: only the rail toggle does.
+        self.run_command(&command, "", WindowSize::Large, cx);
+        if let Some(change) = self.state.pending_colour_change.take() {
+            change.apply(cx);
+        }
+        cx.notify();
     }
 }

@@ -21,6 +21,7 @@ use crate::{
     period::Period,
     shell::view::dialog_entity::DialogHandle,
     shell::view::dialog_host::{Dialog, DialogActions},
+    shell::view::page_clicks::PageClicks,
     shell::view::rail::{self as rail_view, context::ContextRail, primary::PrimaryRail},
     shell::view::statusline::{self, StatusLine},
     shell::view::toast::history as toast_history_view,
@@ -236,14 +237,7 @@ impl Render for Root {
             .open
             .as_ref()
             .map_or(0, |open| open.views.documents.read(cx).inbox_count());
-        let on_no_ledger_command: crate::view::dashboard::OnNoLedgerCommandClick = {
-            let entity = entity.clone();
-            Rc::new(move |name, _window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.handle_no_ledger_command_click(name, cx)
-                });
-            })
-        };
+        let clicks = PageClicks::new(cx);
 
         // The active View's own element, told whether the View zone has focus before the status
         // line reads its page status.
@@ -326,12 +320,9 @@ impl Render for Root {
                                 },
                             )
                             .child(match active_entity {
-                                ActiveViewEntity::Shell(view) => render_view(
-                                    view,
-                                    focus == FocusZone::View,
-                                    on_no_ledger_command,
-                                    cx,
-                                ),
+                                ActiveViewEntity::Shell(view) => {
+                                    render_view(view, focus == FocusZone::View, &clicks, cx)
+                                }
                                 _ => view_frame(
                                     active_element,
                                     active_entity.min_width(),
@@ -411,18 +402,18 @@ impl Render for Root {
 }
 
 /// The active noun's own view interior, for a View `Root` still draws: the placeholder Nouns and
-/// the no Ledger open content, whose `:open` and `:new` run through `on_command_click`. The pane is
+/// the no Ledger open content, whose `:open` and `:new` go through `clicks`. The pane is
 /// focus-bordered, a property of the `View` zone itself, and does not scroll: neither has content
 /// to move through.
 fn render_view(
     view: ShellView,
     focused: bool,
-    on_command_click: crate::view::dashboard::OnNoLedgerCommandClick,
+    clicks: &PageClicks<Root>,
     cx: &gpui::App,
 ) -> gpui::AnyElement {
     let content = match view {
         ShellView::Placeholder(noun) => placeholder::render(noun, cx),
-        ShellView::NoLedger => crate::view::dashboard::no_ledger_content(on_command_click, cx),
+        ShellView::NoLedger => crate::shell::view::no_ledger::render(clicks, cx),
     };
 
     div()

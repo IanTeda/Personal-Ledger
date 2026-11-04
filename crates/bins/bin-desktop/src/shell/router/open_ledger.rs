@@ -16,12 +16,12 @@ use lib_database::{Storage, Stores, Writer};
 use lib_ledger::Ledger;
 
 use super::Root;
+use crate::dashboard::DashboardPage;
 use crate::ledger_store::{LedgerStore, LegacyApplied, notify_on};
 use crate::settings::state::SettingsView;
 use crate::transaction_import::{ImportPage, ImportStores};
 use crate::transactions::TransactionsPage;
 use crate::view::active::ViewEntities;
-use crate::view::dashboard::state::{DashboardSources, DashboardView};
 
 /// What an Open Ledger is built on: the stores, and the file they read and its writer when they are
 /// a Ledger file's rather than a test's in-memory ports.
@@ -275,7 +275,18 @@ impl OpenLedger {
             payees: storage.payees.clone(),
         });
         let budgets_ports =
-            crate::budgets::ports::DesktopPorts::new(storage.budgets.clone(), budget_reads.clone());
+            crate::budgets::ports::DesktopPorts::new(storage.budgets.clone(), budget_reads);
+        // The Dashboard reads its Bills and Budgets through the stores too, not the Ledger's read
+        // copies (#1024).
+        let dashboard_reads = Rc::new(lib_database::StoredDashboardReads {
+            bills: storage.bills.borrow().store(),
+            budgets: storage.budgets.clone(),
+            categories: storage.categories.clone(),
+            units: settings_setup.units.ports.clone(),
+            accounts: storage.accounts.clone(),
+            transactions: storage.transactions.clone(),
+            payees: storage.payees.clone(),
+        });
         // The Documents page writes the store through its Interactors, and reads the other
         // domains through their stores (#967).
         let documents_store = crate::document_types::ports::shared(&storage.documents);
@@ -285,7 +296,7 @@ impl OpenLedger {
         // The Units ports are the truth; the Ledger keeps a read copy of them (#746).
         crate::units::ports::refresh(&settings_setup.units.ports, &ledger, cx);
         let units_ports = settings_setup.units.ports.clone();
-        // The Dialogs and the Dashboard read the Categories, Units and Institutions straight from the Ledger.
+        // The Dialogs read the Categories, Units and Institutions straight from the Ledger.
         let categories_subscription = notify_on(&ledger, lib_ledger::Domain::Categories, cx);
         // A View not yet a module wrote through the Ledger from its own click: one input commits it.
         let legacy_applied = cx.subscribe(&ledger, |shell, _, _: &LegacyApplied, cx| {
@@ -320,16 +331,8 @@ impl OpenLedger {
         let budgets_subscription = Root::view_event_subscription(&budgets_view, cx);
         // The status line reads the page's state, so a change in it repaints `Root` too.
         let budgets_view_observer = cx.observe(&budgets_view, |_, _, cx| cx.notify());
-        let dashboard_view = cx.new(|cx| {
-            DashboardView::new(
-                DashboardSources {
-                    ledger: ledger.clone(),
-                    budget_reads,
-                },
-                clock,
-                cx,
-            )
-        });
+        let dashboard_view =
+            cx.new(|cx| DashboardPage::new(dashboard_reads, &ledger, clock.clone(), cx));
         let dashboard_subscription = Root::view_event_subscription(&dashboard_view, cx);
         let dashboard_view_observer = cx.observe(&dashboard_view, |_, _, cx| cx.notify());
         let bills_ports = bills.ports.clone();

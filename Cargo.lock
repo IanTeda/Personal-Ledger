@@ -725,6 +725,7 @@ dependencies = [
  "lib_colour_theme",
  "lib_config",
  "lib_core",
+ "lib_dashboard",
  "lib_database",
  "lib_documents",
  "lib_institutions",

@@ -12,6 +12,7 @@ mod bill_payments;
 mod bills;
 mod budgets;
 mod categories;
+mod dashboard;
 mod dialog;
 mod document_types;
 mod documents;

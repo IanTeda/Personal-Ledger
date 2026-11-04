@@ -9,9 +9,10 @@
 
 use gpui::{AnyElement, App, Entity, IntoElement, Keystroke};
 
-use super::{dashboard::state::DashboardView, event::Reveal};
+use super::event::Reveal;
 use crate::bills::BillsPage;
 use crate::budgets::view::page::BudgetsPage;
+use crate::dashboard::DashboardPage;
 use crate::documents::view::page::DocumentsPage;
 use crate::settings::state::SettingsView;
 use crate::transaction_import::ImportPage;
@@ -25,7 +26,7 @@ use crate::{
 /// The active View, holding its typed Entity once it renders and handles its own input.
 #[derive(Clone)]
 pub enum ActiveViewEntity {
-    Dashboard(Entity<DashboardView>),
+    Dashboard(Entity<DashboardPage>),
     Bills(Entity<BillsPage>),
     Budgets(Entity<BudgetsPage>),
     /// The Transactions list.
@@ -55,7 +56,7 @@ pub enum ShellView {
 
 /// The View Entities `Root` owns, one per View that renders and handles its own input.
 pub struct ViewEntities {
-    pub dashboard: Entity<DashboardView>,
+    pub dashboard: Entity<DashboardPage>,
     pub bills: Entity<BillsPage>,
     pub budgets: Entity<BudgetsPage>,
     pub transactions: Entity<TransactionsPage>,

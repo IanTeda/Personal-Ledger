@@ -3,98 +3,40 @@
 //! match the headers, column widths, and rules, not the sample data. Every figure below is
 //! representative content matching the handoff's own mockup, not real `lib_database` data --
 //! wiring a real Ledger's figures in is separate future work (issue #144's "Out of scope"). The
-//! exceptions are Needs Attention's Bill rows, which come from the Bills stub through the one
-//! shared rule (`bills::attention_entries`, #377), and the budget list, which reads the default
-//! Budget through `budgets::period_figures` (#411).
+//! exceptions are Needs Attention's Bill rows and the budget list, which `lib-dashboard`'s
+//! Presenter words from its read ports (#1024).
 
-pub mod state;
-
-use std::rc::Rc;
-
-use gpui::{App, SharedString, Window, div, prelude::*, px, relative};
+use gpui::{App, SharedString, div, prelude::*, px, relative};
 use gpui_component::chart::{LineChart, PieChart};
+use lib_dashboard::{
+    AttentionRow, BudgetBarView, BudgetListView, DashboardEvent, DashboardViewModel,
+};
 
-use crate::{bills::EntryId, msg, theme::color};
+use super::page::{DashboardPage, bill_selector};
+use crate::{msg, shell::view::page_clicks::PageClicks, theme::color};
 
-/// A click on the no Ledger open content's own `:open`/`:new` text (issue #167): the clicked command's
-/// name, which `Root` looks up with `command::find` and runs as the palette would.
-pub type OnNoLedgerCommandClick = Rc<dyn Fn(&'static str, &mut Window, &mut App)>;
-
-/// A Bill row's click: hands off to the Bills Schedule tab with that entry selected.
-pub type OnBillClick = Rc<dyn Fn(EntryId, &mut Window, &mut App)>;
-
-/// One Bill Schedule entry in Needs Attention, its text already formatted by the Shell.
-pub struct AttentionBill {
-    pub id: EntryId,
-    pub plan: String,
-    pub overdue: bool,
-    pub due: String,
-    pub amount: String,
-}
-
-/// One bar of the budget list, its text already formatted by the Shell.
-pub struct BudgetBar {
-    pub category: String,
-    /// "640.00 / 1,000.00".
-    pub figures: String,
-    /// Spent as a share of the budget, 0 to 1.
-    pub fraction: f32,
-    pub over: bool,
-}
-
-/// The default Budget's list for the current month.
-#[derive(Default)]
-pub struct BudgetList {
-    /// "September 2026 · day 21/30 · 70% elapsed".
-    pub period: String,
-    /// The month's elapsed share, 0 to 1: the tick on every bar.
-    pub elapsed: f32,
-    pub bars: Vec<BudgetBar>,
-}
-
-#[derive(IntoElement)]
-pub struct Dashboard {
-    bills: Vec<AttentionBill>,
-    flag: &'static str,
-    on_bill_click: OnBillClick,
-    budgets: BudgetList,
-}
-
-impl Dashboard {
-    pub fn new(bills: Vec<AttentionBill>, flag: &'static str, on_bill_click: OnBillClick) -> Self {
-        Self {
-            bills,
-            flag,
-            on_bill_click,
-            budgets: BudgetList::default(),
-        }
-    }
-
-    /// Sets the budget list from the default Budget's period figures.
-    pub fn budgets(mut self, budgets: BudgetList) -> Self {
-        self.budgets = budgets;
-        self
-    }
-}
-
-impl RenderOnce for Dashboard {
-    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
-        div()
-            .flex_1()
-            .min_w(px(0.0))
-            .flex()
-            .flex_col()
-            .pt(px(20.0))
-            .px(px(24.0))
-            .child(header(cx))
-            .child(figure_row(cx))
-            .child(div().h(px(2.0)).mt(px(16.0)).bg(color::structural_rule(cx)))
-            .child(chart_band(cx))
-            .child(div().h(px(1.0)).mt(px(16.0)).bg(color::hairline(cx)))
-            .child(lower_band(&self.budgets, cx))
-            .child(div().h(px(1.0)).mt(px(14.0)).bg(color::hairline(cx)))
-            .child(needs_attention(self, cx))
-    }
+/// The page's content: the literal header, figure row and charts, then the view model's budget
+/// list and Needs Attention rows, whose clicks go through `clicks`.
+pub(super) fn render(
+    view: &DashboardViewModel,
+    clicks: &PageClicks<DashboardPage>,
+    cx: &App,
+) -> impl IntoElement {
+    div()
+        .flex_1()
+        .min_w(px(0.0))
+        .flex()
+        .flex_col()
+        .pt(px(20.0))
+        .px(px(24.0))
+        .child(header(cx))
+        .child(figure_row(cx))
+        .child(div().h(px(2.0)).mt(px(16.0)).bg(color::structural_rule(cx)))
+        .child(chart_band(cx))
+        .child(div().h(px(1.0)).mt(px(16.0)).bg(color::hairline(cx)))
+        .child(lower_band(&view.budgets, cx))
+        .child(div().h(px(1.0)).mt(px(14.0)).bg(color::hairline(cx)))
+        .child(needs_attention(view, clicks, cx))
 }
 
 fn kicker(label: String, cx: &App) -> impl IntoElement {
@@ -420,7 +362,7 @@ const SEGMENTS: &[Segment] = &[
     },
 ];
 
-fn lower_band(budgets: &BudgetList, cx: &App) -> impl IntoElement {
+fn lower_band(budgets: &BudgetListView, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .gap(px(24.0))
@@ -487,7 +429,7 @@ fn legend_row(segment: &Segment, colour: gpui::Rgba) -> impl IntoElement {
         .child(format!("{}%", segment.pct))
 }
 
-fn budget_list(budgets: &BudgetList, cx: &App) -> impl IntoElement {
+fn budget_list(budgets: &BudgetListView, cx: &App) -> impl IntoElement {
     div()
         .flex_1()
         .min_w(px(0.0))
@@ -522,13 +464,12 @@ fn budget_list(budgets: &BudgetList, cx: &App) -> impl IntoElement {
                         .iter()
                         .map(|bar| budget_row(bar, budgets.elapsed, cx)),
                 )
-                .when(budgets.bars.is_empty(), |this| {
-                    this.child(
-                        div()
-                            .text_color(color::muted(cx))
-                            .child(msg::desktop_dashboard_budgets_none()),
-                    )
-                })
+                .children(
+                    budgets
+                        .none
+                        .clone()
+                        .map(|none| div().text_color(color::muted(cx)).child(none)),
+                )
                 .child(
                     div()
                         .text_size(px(11.0))
@@ -539,7 +480,7 @@ fn budget_list(budgets: &BudgetList, cx: &App) -> impl IntoElement {
         )
 }
 
-fn budget_row(bar: &BudgetBar, elapsed: f32, cx: &App) -> impl IntoElement {
+fn budget_row(bar: &BudgetBarView, elapsed: f32, cx: &App) -> impl IntoElement {
     let over_budget = bar.over;
     let fraction = bar.fraction.clamp(0.0, 1.0);
     let fill_color = if over_budget {
@@ -588,7 +529,11 @@ fn budget_row(bar: &BudgetBar, elapsed: f32, cx: &App) -> impl IntoElement {
         )
 }
 
-fn needs_attention(dashboard: Dashboard, cx: &App) -> impl IntoElement {
+fn needs_attention(
+    view: &DashboardViewModel,
+    clicks: &PageClicks<DashboardPage>,
+    cx: &App,
+) -> impl IntoElement {
     let bold = |text: String| div().font_weight(gpui::FontWeight::EXTRA_BOLD).child(text);
 
     div()
@@ -605,10 +550,9 @@ fn needs_attention(dashboard: Dashboard, cx: &App) -> impl IntoElement {
                 .child(msg::desktop_dashboard_needs_attention()),
         )
         .children(
-            dashboard
-                .bills
-                .into_iter()
-                .map(|bill| bill_row(bill, dashboard.flag, &dashboard.on_bill_click, cx)),
+            view.bills
+                .iter()
+                .map(|row| bill_row(row, view.flag, clicks, cx)),
         )
         .child(
             div()
@@ -636,95 +580,30 @@ fn needs_attention(dashboard: Dashboard, cx: &App) -> impl IntoElement {
 /// A Bill in Needs Attention: `⚑ Netflix overdue since 18 Sept, 22.99 →`, the flag in the accent
 /// text colour as on the Schedule tab.
 fn bill_row(
-    bill: AttentionBill,
+    row: &AttentionRow,
     flag: &'static str,
-    on_click: &OnBillClick,
+    clicks: &PageClicks<DashboardPage>,
     cx: &App,
 ) -> impl IntoElement {
-    let text = if bill.overdue {
-        msg::desktop_dashboard_bill_overdue(&bill.plan, &bill.due, &bill.amount)
-    } else {
-        msg::desktop_dashboard_bill_due(&bill.plan, &bill.due, &bill.amount)
-    };
-    let id = bill.id;
-    let on_click = on_click.clone();
+    let selector = bill_selector(row.id);
     div()
-        .debug_selector(move || format!("dashboard-bill-{}-{}", id.plan_id, id.due))
-        .id(SharedString::from(format!(
-            "dashboard-bill-{}-{}",
-            id.plan_id, id.due
-        )))
+        .debug_selector({
+            let selector = selector.clone();
+            move || selector.clone()
+        })
+        .id(SharedString::from(selector))
         .flex()
         .gap(px(4.0))
         .cursor_pointer()
         .hover(|this| this.bg(color::hover(cx)))
-        .on_click(move |_event, window, cx| on_click(id, window, cx))
+        .on_click(clicks.send(DashboardEvent::OpenBill(row.id)))
         .child(
             div()
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_color(color::accent_text(cx))
                 .child(flag),
         )
-        .child(text)
-}
-
-/// The "1a" no Ledger open content: "No ledger open" centered in the main pane, `:open`/`:new`
-/// named in the body copy (`docs/ux/desktop-mockups/01-shell/README.md`'s "Main pane"
-/// bullet). `gpui` 0.2's `Styled` trait has no letter-spacing hook, so the title's `-.01em`
-/// tracking from the spec has no equivalent here -- a real, not merely unverified, gap.
-///
-/// Both command names are real click targets (issue #167), not just copy: clicking one lands
-/// in exactly the state running it from the palette would (this shell's own repeated invariant
-/// -- rail click, `g`-jump and the palette already all call `NavState::set_noun` identically).
-pub fn no_ledger_content(on_command_click: OnNoLedgerCommandClick, cx: &App) -> gpui::AnyElement {
-    let command = |name: &'static str, on_command_click: OnNoLedgerCommandClick, text: String| {
-        div()
-            .id(SharedString::from(format!("no-ledger-{name}")))
-            .debug_selector(move || format!("no-ledger-{name}"))
-            .cursor_pointer()
-            .font_weight(gpui::FontWeight::EXTRA_BOLD)
-            .text_color(color::foreground(cx))
-            .on_click(move |_event, window, cx| on_command_click(name, window, cx))
-            .child(text)
-    };
-
-    div()
-        .size_full()
-        .flex()
-        .flex_col()
-        .items_center()
-        .justify_center()
-        .gap(px(14.0))
-        .p(px(24.0))
-        .child(
-            div()
-                .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .text_size(px(26.0))
-                .line_height(relative(1.1))
-                .child(msg::desktop_no_ledger_title()),
-        )
-        .child(
-            div()
-                .max_w(px(380.0))
-                .flex()
-                .flex_wrap()
-                .justify_center()
-                .text_align(gpui::TextAlign::Center)
-                .text_size(px(13.0))
-                .text_color(color::muted(cx))
-                .children(
-                    msg::desktop_no_ledger_hint(":open", ":new")
-                        .into_iter()
-                        .map(|segment| match segment.tag.as_deref() {
-                            Some("open") => command("open", on_command_click.clone(), segment.text)
-                                .into_any_element(),
-                            Some("new") => command("new", on_command_click.clone(), segment.text)
-                                .into_any_element(),
-                            _ => div().child(segment.text).into_any_element(),
-                        }),
-                ),
-        )
-        .into_any_element()
+        .child(row.text.clone())
 }
 
 #[cfg(test)]

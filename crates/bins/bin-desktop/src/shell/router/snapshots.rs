@@ -11,7 +11,7 @@ mod settings;
 mod status;
 mod transactions;
 
-pub use crate::view::dashboard::state::DashboardBillSnapshot;
+pub use crate::dashboard::DashboardBillSnapshot;
 pub use crate::view::help::HelpGroup;
 pub use bills::{BillRowSnapshot, BillsSnapshot};
 pub use budgets::{BudgetRowSnapshot, BudgetsSnapshot};

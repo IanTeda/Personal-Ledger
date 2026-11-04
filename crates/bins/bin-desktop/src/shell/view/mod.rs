@@ -6,6 +6,7 @@
 pub(crate) mod dialog_apply;
 pub(crate) mod dialog_entity;
 pub(crate) mod dialog_host;
+pub(crate) mod no_ledger;
 pub(crate) mod page_clicks;
 pub(crate) mod palette;
 pub(crate) mod rail;

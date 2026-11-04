@@ -1,8 +1,8 @@
 //! What the integration tests read back of the Dashboard and the Toast layer and its history, kept
 //! apart from `shell.rs` so the snapshot shapes and their accessors sit together.
 
+use crate::dashboard::DashboardBillSnapshot;
 use crate::shell::router::Root;
-use crate::view::dashboard::state::DashboardBillSnapshot;
 
 /// One Toast as the stack or the history shows it.
 #[doc(hidden)]
@@ -63,6 +63,6 @@ impl Root {
     /// The Dashboard's Needs Attention Bill rows, in the order they draw.
     #[doc(hidden)]
     pub fn dashboard_bills_snapshot(&self, cx: &gpui::App) -> Vec<DashboardBillSnapshot> {
-        self.open().views.dashboard.read(cx).bills_snapshot(cx)
+        self.open().views.dashboard.read(cx).bills_snapshot()
     }
 }

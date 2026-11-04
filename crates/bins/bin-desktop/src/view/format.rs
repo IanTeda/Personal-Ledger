@@ -39,10 +39,6 @@ pub fn signed_amount(money: &Money) -> (bool, String) {
     (formatted.is_negative, formatted.text)
 }
 
-/// The Flagged mark, which the Dashboard and the Bills schedule draw; the Transactions table's
-/// marks and legend are its Presenter's (`lib_transactions::presenter::status_glyph`).
-pub use lib_viper::display::flag_glyph;
-
 /// The height of one line of table text: 13px type at the shell's body line height.
 pub const ROW_LINE_HEIGHT_PX: f32 = 16.0;
 
