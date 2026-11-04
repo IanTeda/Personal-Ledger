@@ -1,10 +1,10 @@
 ---
-name: rank-now
+name: priorities-tickets
 description: Walk every open ticket, retire the ones other work has superseded, and set the next five `priority:10-now` tickets by cost of delay.
 disable-model-invocation: true
 ---
 
-# Rank Now
+# Priorities Tickets
 
 Walk the open tickets and leave the tracker with exactly five live, unblocked, specified tickets on `priority:10-now` and at most ten on `priority:20-next`, each with a `## Labels` line saying why it holds its slot. The caps are hard: **five Now, ten Next**, whatever a ticket's state. The base ranking order (compounding, leverage, route, effort) and the label rules are in `docs/agents/ticket-labels.md`, which wins where this skill disagrees; this skill adds the walk, the **supersession** sweep and the picking rules that turn that order into five tickets.
 
