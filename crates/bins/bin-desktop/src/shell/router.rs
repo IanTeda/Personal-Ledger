@@ -222,6 +222,9 @@ pub struct Root {
     /// Everything built on the Ledger file, `None` with no Ledger open: the one source of truth
     /// for whether one is (#975).
     open: Option<OpenLedger>,
+    /// Set by `:close` and cleared when a Ledger is next opened: the state file then remembers no
+    /// last Ledger, rather than the one remembered before this run.
+    last_ledger_forgotten: bool,
     /// The Settings View, which stands with no Ledger open for its This device pages; the Open
     /// Ledger gives it its This Ledger pages (#977).
     settings: Entity<SettingsView>,
@@ -278,6 +281,7 @@ impl Root {
             ledger_folder: None,
             palette_entries: command::entries(&lib_config::KeyBindingConfig::default()),
             file_explorer: None,
+            last_ledger_forgotten: false,
             explorer_filters: ExplorerFilters::default(),
             open: None,
             settings,
@@ -296,12 +300,47 @@ impl Root {
         let opened = OpenLedger::build(ledger, &keybindings, &clock, &self.settings, cx);
         // The Ledger open before, if any, flushes its writes as it drops.
         self.open = Some(opened);
+        self.last_ledger_forgotten = false;
         // The Views that read their keys and Display Preferences after construction take
         // `[keybindings]` and the Preferences here, so the Open Ledger comes up under them whoever
         // opens it.
         self.set_keymaps(&keybindings, cx);
         let display = self.display(cx);
         self.push_display_preferences(display, cx);
+    }
+
+    /// Closes the Open Ledger (`:close`): flushes its writes, drops everything built on it and
+    /// lands on the Dashboard's no Ledger open content. A write that failed since the last poll
+    /// raises one Error Toast, since there is nothing left to put back. The remembered last Ledger
+    /// is cleared, so the next run starts with none.
+    pub(super) fn close_ledger(&mut self, cx: &mut Context<'_, Self>) {
+        let Some(open) = self.open.take() else {
+            return;
+        };
+        let failures = open.flush_and_take_failures();
+        let name = open.path().map(explorer::file_name);
+        for failure in &failures {
+            tracing::error!(
+                error = %failure.error,
+                domains = ?failure.domains,
+                "A write failed as the Ledger closed"
+            );
+        }
+        tracing::info!(path = ?open.path(), "Closed the Ledger file");
+        crate::input::close_ledger(cx);
+        // Dropped here, once the failures are read: the writer flushes again, which finds nothing.
+        drop(open);
+        self.last_ledger_forgotten = true;
+        self.settings.update(cx, |view, cx| view.close_ledger(cx));
+        self.set_last_ledger(None, cx);
+        self.show_noun(Noun::Dashboard, cx);
+        if !failures.is_empty() {
+            self.raise_toast(
+                lib_toast::ToastKind::Error,
+                crate::msg::desktop_toast_write_failed_on_close(&name.unwrap_or_default()),
+            );
+        }
+        cx.notify();
     }
 
     /// Whether a Ledger is open: whether `Root` holds an Open Ledger.
@@ -313,6 +352,11 @@ impl Root {
     /// `None` with no Ledger open, or on a test's in-memory stores.
     pub fn ledger_path(&self) -> Option<&std::path::Path> {
         self.open.as_ref()?.path()
+    }
+
+    /// Whether `:close` has left no Ledger to remember: the state file then keeps no last Ledger.
+    pub fn last_ledger_forgotten(&self) -> bool {
+        self.last_ledger_forgotten
     }
 
     /// Waits for the Open Ledger's writes to land in its file, as the app quits or before another

@@ -28,7 +28,7 @@ impl Root {
     /// isn't a key, so it leaves the status line be. Stops once the writer has gone, the window
     /// with the Shell, or the Open Ledger holding the task.
     pub(super) fn listen_for_write_failures(
-        failures: mpsc::Receiver<WriteFailure>,
+        failures: std::rc::Rc<mpsc::Receiver<WriteFailure>>,
         cx: &mut Context<'_, Self>,
     ) -> Task<()> {
         cx.spawn(async move |this, cx| {

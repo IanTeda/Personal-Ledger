@@ -82,10 +82,9 @@ impl Root {
                 self.navigate(NavInput::ExitMode);
                 self.open_settings_page(section, cx);
             }
-            // Whether a Ledger is open is the Open Ledger's, which `:close` drops in #979; until
-            // then it only leaves the palette.
             CommandEffect::CloseLedger => {
                 self.navigate(NavInput::ExitMode);
+                self.close_ledger(cx);
             }
             CommandEffect::Accounts(verb) => {
                 self.navigate(NavInput::ExitMode);

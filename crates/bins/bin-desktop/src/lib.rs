@@ -513,10 +513,11 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, started: S
                             width: f32::from(bounds.size.width),
                             height: f32::from(bounds.size.height),
                         }),
-                        last_ledger: last_ledger_at_quit(
-                            shell.ledger_path(),
-                            remembered_ledger.as_deref(),
-                        ),
+                        last_ledger: if shell.last_ledger_forgotten() {
+                            None
+                        } else {
+                            last_ledger_at_quit(shell.ledger_path(), remembered_ledger.as_deref())
+                        },
                     };
                     let _ = persistence::save(&state);
                 });

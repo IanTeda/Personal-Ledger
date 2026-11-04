@@ -92,6 +92,22 @@ impl SettingsView {
         cx.notify();
     }
 
+    /// Drops the This Ledger pages with the Ledger they were built on. A This Ledger page on show
+    /// gives way to General, as at a start with no Ledger open.
+    pub fn close_ledger(&mut self, cx: &mut Context<'_, Self>) {
+        self.pages.ledger = None;
+        self._page_subscriptions = self
+            .pages
+            .all()
+            .flat_map(|page| page.subscribe(cx))
+            .collect();
+        if !self.can_show(self.selected_section) {
+            self.selected_section = SettingsPage::General;
+        }
+        self.sync_frame(cx);
+        cx.notify();
+    }
+
     /// Whether a Ledger is open, so the This Ledger pages are built.
     pub fn ledger_open(&self) -> bool {
         self.pages.ledger.is_some()

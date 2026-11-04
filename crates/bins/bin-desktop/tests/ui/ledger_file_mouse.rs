@@ -381,3 +381,40 @@ fn in_new_clicking_a_folder_creates_the_ledger_in_it(app: &mut TestAppContext) {
 
     assert_eq!(ui.ledger_path(), Some(ledgers.join("teda.pldb")));
 }
+
+#[gpui::test]
+fn after_close_the_dashboard_offers_open_and_the_rail_mutes_the_ledger_nouns(
+    app: &mut TestAppContext,
+) {
+    let folder = Folder::new();
+    let mut ui = started_on(app, &folder, &folder.household());
+    ui.press(": c l o s e enter");
+    assert!(!ui.read(|shell| shell.ledger_open()));
+
+    for noun in ["Transactions", "Bills", "Budgets", "Documents"] {
+        ui.click(&format!("primary-rail-{noun}"));
+        assert_eq!(ui.noun(), Noun::Dashboard, "{noun} stays muted");
+        assert!(ui.refused_without_ledger(), "{noun} says why");
+    }
+    ui.click("no-ledger-open");
+    assert_eq!(
+        ui.read(|shell| shell.nav().mode()),
+        InputMode::Command,
+        "the file explorer is open"
+    );
+}
+
+#[gpui::test]
+fn a_ledger_opened_by_click_after_close_is_remembered_again(app: &mut TestAppContext) {
+    let folder = Folder::new();
+    let mut ui = started_on(app, &folder, &folder.household());
+    ui.press(": c l o s e enter");
+    assert!(ui.read(|shell| shell.last_ledger_forgotten()));
+
+    ui.click("no-ledger-open");
+    ui.click("explorer-row-1");
+    ui.click("explorer-open");
+
+    assert_eq!(ui.ledger_path(), Some(folder.business()));
+    assert!(!ui.read(|shell| shell.last_ledger_forgotten()));
+}

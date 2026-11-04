@@ -71,6 +71,14 @@ pub(crate) fn open_ledger(commit: Rc<dyn Commit>, cx: &mut App) {
     }
 }
 
+/// Stops ending inputs in the closed Ledger's commit, so nothing commits to its dropped writer.
+/// Called by `Root::close_ledger`; a door not yet installed is left as it is.
+pub(crate) fn close_ledger(cx: &mut App) {
+    if cx.has_global::<Door>() {
+        cx.global_mut::<Door>().commit = None;
+    }
+}
+
 /// Whether an input is being handled now, so a write made inside it waits for its commit rather
 /// than asking for one of its own.
 pub(crate) fn sending(cx: &App) -> bool {

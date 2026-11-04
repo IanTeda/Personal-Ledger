@@ -83,6 +83,8 @@ pub struct OpenLedger {
     /// Keeps each View's event subscription and each Ledger domain's repaint alive: dropping one
     /// silently stops its events.
     _subscriptions: Vec<Subscription>,
+    /// The writer's failure channel, which the task below polls and `:close` drains once more.
+    failures: Rc<std::sync::mpsc::Receiver<lib_database::WriteFailure>>,
     /// Polls the writer's failure channel; dropped with the Ledger, which stops it.
     _write_failures: Task<()>,
 }
@@ -119,6 +121,7 @@ impl OpenLedger {
             failures,
         } = stores;
         crate::input::open_ledger(commit, cx);
+        let failures = Rc::new(failures);
         let today = clock.today();
 
         // The Transactions and Bills stores are shared: Pay it directly writes both (#779), and
@@ -186,7 +189,15 @@ impl OpenLedger {
             transactions.clone(),
             units.ports.clone(),
         );
-        let tags_setup = crate::tags::TagsSetup::new(tags.clone(), keybindings);
+        let tags_setup = crate::tags::TagsSetup::new(
+            tags.clone(),
+            lib_database::StoredTagReads {
+                transactions: transactions.clone(),
+                accounts: accounts.clone(),
+                units: units.ports.clone(),
+            },
+            keybindings,
+        );
         let inventory_setup = crate::inventory::InventorySetup::new(inventory.clone(), keybindings);
         let categories_setup =
             crate::categories::CategoriesSetup::new(categories.clone(), keybindings);
@@ -376,13 +387,21 @@ impl OpenLedger {
                 inventory_changed,
                 legacy_applied,
             ],
-            _write_failures: Root::listen_for_write_failures(failures, cx),
+            _write_failures: Root::listen_for_write_failures(failures.clone(), cx),
+            failures,
         }
     }
 
     /// The Ledger file, `None` for a test's in-memory stores.
     pub fn path(&self) -> Option<&Path> {
         self.path.as_deref()
+    }
+
+    /// Waits for the writes sent so far to land, then takes the failures not yet reported: a write
+    /// that failed since the last poll. Nothing is rolled back, since the Ledger is closing.
+    pub fn flush_and_take_failures(&self) -> Vec<lib_database::WriteFailure> {
+        self.flush();
+        self.failures.try_iter().collect()
     }
 
     /// Waits for every write sent so far to land in the file. A failure is logged, since the

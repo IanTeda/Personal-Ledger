@@ -482,3 +482,112 @@ fn new_in_a_folder_it_cannot_write_keeps_the_open_ledger_and_says_why(app: &mut 
     );
     assert!(!locked.join("teda.pldb").exists());
 }
+
+/// The Shell started on a new Ledger file `ledger.pldb` in `dir`.
+fn started_on_new<'a>(app: &'a mut TestAppContext, dir: &tempfile::TempDir) -> Harness<'a> {
+    let started = bin_desktop::start_on(
+        &new_ledger(&dir.path().join("ledger.pldb")),
+        common::today(),
+    );
+    assert!(matches!(started, Started::Opened { .. }));
+    Harness::starting(app, started, PersistedState::default())
+}
+
+#[gpui::test]
+fn close_drops_the_ledger_and_lands_on_the_dashboard_with_none_open(app: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let mut ui = started_on_new(app, &dir);
+    ui.press("g w");
+    assert_eq!(ui.noun(), Noun::Bills);
+
+    ui.press(": c l o s e enter");
+
+    assert!(!ui.read(|shell| shell.ledger_open()));
+    assert_eq!(ui.ledger_path(), None);
+    assert_eq!(ui.noun(), Noun::Dashboard);
+    assert_eq!(ui.read(|shell| shell.nav().mode()), InputMode::Normal);
+    assert_eq!(
+        ui.read(|shell| shell.ledger_label_snapshot()),
+        "No ledger open…"
+    );
+    ui.press("g w");
+    assert_eq!(ui.noun(), Noun::Dashboard, "Bills is muted again");
+    assert!(ui.refused_without_ledger());
+}
+
+#[gpui::test]
+fn close_moves_focus_off_the_context_rail(app: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let mut ui = started_on_new(app, &dir);
+    ui.press("g w");
+    ui.press("ctrl-w l");
+    ui.press(": c l o s e enter");
+
+    assert_ne!(
+        ui.read(|shell| shell.nav().focus()),
+        bin_desktop::navigation::nav::FocusZone::ContextRail
+    );
+}
+
+#[gpui::test]
+fn close_with_none_open_is_refused_like_any_ledger_command(app: &mut TestAppContext) {
+    let mut ui = Harness::without_ledger(app);
+
+    ui.press(": c l o s e enter");
+
+    assert!(ui.refused_without_ledger());
+    assert!(!ui.read(|shell| shell.ledger_open()));
+}
+
+#[gpui::test]
+fn close_flushes_the_last_writes_into_the_file(app: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let path = dir.path().join("ledger.pldb");
+    let mut ui = started_on_new(app, &dir);
+    ui.press("g s");
+    ui.click("settings-index-Tags");
+    ui.press("l");
+    ui.press("n h o l i d a y enter");
+    ui.press(": c l o s e enter");
+    drop(ui);
+
+    let reopened = bin_desktop::start_on(&config_for(&path), common::today());
+    let Started::Opened { storage, .. } = reopened else {
+        panic!("the closed Ledger file opens again");
+    };
+    let names: Vec<String> = storage
+        .tags
+        .tags()
+        .tags()
+        .into_iter()
+        .map(|tag| tag.name)
+        .collect();
+    assert!(names.iter().any(|name| name == "holiday"), "{names:?}");
+}
+
+#[gpui::test]
+fn quitting_after_close_remembers_no_last_ledger(app: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let mut ui = started_on_new(app, &dir);
+    assert!(!ui.read(|shell| shell.last_ledger_forgotten()));
+
+    ui.press(": c l o s e enter");
+
+    assert!(ui.read(|shell| shell.last_ledger_forgotten()));
+}
+
+#[gpui::test]
+fn a_write_that_failed_just_before_close_is_reported(app: &mut TestAppContext) {
+    let mut ui = Harness::with_failing_documents(app);
+    ui.press("g s");
+    ui.press("j j j j j j j j j j j");
+    ui.press("l");
+    ui.press("n l e a s e s enter");
+
+    ui.press(": c l o s e enter");
+
+    let toast = ui.toasts().visible.pop().expect("an Error Toast");
+    assert_eq!(toast.kind, "Error");
+    assert!(toast.text.contains("wasn't saved"), "{}", toast.text);
+    assert!(!ui.read(|shell| shell.ledger_open()));
+}

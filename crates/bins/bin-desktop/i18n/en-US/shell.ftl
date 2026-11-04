@@ -103,6 +103,7 @@ desktop-toast-more = +{ $count } more
 ## A write that didn't reach the Ledger file. The Units are put back as stored, or, when they
 ## can't be read back either, left as shown.
 
+desktop-toast-write-failed-on-close = Last change to { $name } wasn't saved
 desktop-toast-write-failed-units = Couldn't save the change to units, so they are back as last saved
 desktop-toast-write-failed-units-unsaved = Couldn't save the change to units or reload them, so what you see isn't saved
 desktop-toast-write-failed-institutions = Couldn't save the change to institutions, so they are back as last saved
