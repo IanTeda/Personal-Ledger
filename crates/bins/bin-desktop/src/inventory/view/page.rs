@@ -1,7 +1,7 @@
 //! The Inventory Settings page's View: the `lib-inventory` page Presenter in a gpui Entity. It
 //! looks up each key the Shell passes on, as chord text, in the Inventory keymap, turns clicks into
 //! events, draws the view model (`render.rs`), and keeps the Ledger read copy in line after every
-//! event ([`ports::refresh`]). Each key and click is one input (`crate::input::send`), which
+//! event. Each key and click is one input (`crate::input::send`), which
 //! commits what it wrote. The Settings View hosts it as any other page.
 //!
 //! The row menu's position is the View's: the Presenter holds which row the menu is on and its
@@ -89,18 +89,22 @@ impl InventoryPage {
         crate::input::send(cx, |cx| self.handle(event, cx));
     }
 
-    /// Hands `event` to the Presenter with the Desktop's Router, then brings the Ledger read copy
-    /// in line with whatever it wrote. Inside an input already, as [`Self::send`] or a Dialog's
-    /// confirm.
+    /// Hands `event` to the Presenter with the Desktop's Router, then announces
+    /// `Domain::Inventory` when the rows changed, so the Documents redraw. Inside an input already,
+    /// as [`Self::send`] or a Dialog's confirm, whose write is announced as it lands.
     fn handle(&mut self, event: InventoryPageEvent, cx: &mut Context<'_, Self>) {
-        ports::refresh(&self.ledger, cx);
+        let before = self.inventory.borrow().inventory();
+        let landed = matches!(event, InventoryPageEvent::DialogClosed(Some(_)));
         let mut router = PageRouter {
             inventory: self.inventory.clone(),
             ledger: self.ledger.clone(),
             cx,
         };
         self.presenter.handle(event, &mut router);
-        ports::refresh(&self.ledger, cx);
+        if landed || self.inventory.borrow().inventory() != before {
+            self.ledger
+                .update(cx, |store, cx| store.announce_inventory(cx));
+        }
         cx.notify();
     }
 

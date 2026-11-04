@@ -2,8 +2,9 @@
 //! frame that quotes what goes with it, its Areas and Items and the Documents that lose a Link to
 //! them, behind the typed-back name (exact, case-sensitive).
 //!
-//! Its confirm is lent the reassign port, which removes the Location with its Areas and Items and
-//! drops the Document Links to them in the one commit of the input; a refusal stays in the Dialog.
+//! Its confirm runs the Remove Location Interactor on the Inventory it holds, which removes the
+//! Location with its Areas and Items; the file's cascade drops the Document Links to them in the
+//! one commit of the input. A refusal stays in the Dialog.
 //! It raises its own Toast on landing, and tells the page which row the cursor lands on: the
 //! neighbour that takes the removed row's place. The last Location can go.
 
@@ -13,10 +14,10 @@ use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::view::{DialogFrame, TextFieldView, count};
 
 use super::location_refusal_text;
+use crate::interactor::RemoveLocation;
 use crate::msg;
 use crate::protocols::{
-    InventoryChange, InventoryOutcome, InventoryReassign, InventoryRow, LocationUsage,
-    SharedInventory,
+    InventoryChange, InventoryOutcome, InventoryRow, LocationUsage, SharedInventory,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -82,19 +83,13 @@ impl RemoveLocationPresenter {
         }
     }
 
-    /// Reads a Dialog command or typed key: `select` and `submit` remove through `reassign` once
-    /// the Dialog allows it, and typing goes to the typed-back name, the only field, which an empty
-    /// Location doesn't have. `reassign` is lent for the call, since the Desktop writes its Ledger
-    /// only with the gpui context the call runs in.
-    pub fn input(
-        &mut self,
-        input: DialogInput,
-        reassign: &mut dyn InventoryReassign,
-        router: &mut dyn DialogRouter<InventoryOutcome>,
-    ) {
+    /// Reads a Dialog command or typed key: `select` and `submit` remove the Location once the
+    /// Dialog allows it, and typing goes to the typed-back name, the only field, which an empty
+    /// Location doesn't have.
+    pub fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<InventoryOutcome>) {
         let typed_back = self.holds_something();
         match input {
-            DialogInput::Select | DialogInput::Submit => self.confirm(reassign, router),
+            DialogInput::Select | DialogInput::Submit => self.confirm(router),
             DialogInput::Char(ch) if typed_back => self.confirm_text.push(ch),
             DialogInput::Backspace if typed_back => {
                 self.confirm_text.pop();
@@ -103,13 +98,9 @@ impl RemoveLocationPresenter {
         }
     }
 
-    /// Removes the Location through `reassign` once the Dialog allows it, raises the Toast and
+    /// Removes the Location once the Dialog allows it, raises the Toast and
     /// closes the Dialog; a refusal stays in the Dialog.
-    pub fn confirm(
-        &mut self,
-        reassign: &mut dyn InventoryReassign,
-        router: &mut dyn DialogRouter<InventoryOutcome>,
-    ) {
+    pub fn confirm(&mut self, router: &mut dyn DialogRouter<InventoryOutcome>) {
         if !self.can_confirm() {
             return;
         }
@@ -120,11 +111,12 @@ impl RemoveLocationPresenter {
             .iter()
             .position(|location| location.id == self.id)
             .unwrap_or(0);
-        match reassign.remove_location(self.id) {
-            Ok(removed) => {
+        let removed = RemoveLocation(self.id).run(&mut *self.inventory.borrow_mut());
+        match removed {
+            Ok(_) => {
                 router.notify(Notice::Toast(
                     ToastKind::Success,
-                    msg::inventory_toast_location_removed(&removed.name),
+                    msg::inventory_toast_location_removed(&self.name),
                 ));
                 // The cursor lands on the neighbour that takes the removed row's place.
                 let locations = self.inventory.borrow().locations();
@@ -187,15 +179,12 @@ impl RemoveLocationPresenter {
 mod tests {
     use super::super::test_support::stub;
     use super::*;
-    use crate::fake::{
-        InMemoryInventory, InMemoryReassign, InMemoryUsage, RecordingRouter, RouterCall,
-    };
+    use crate::fake::{InMemoryInventory, InMemoryUsage, RecordingRouter, RouterCall};
     use crate::protocols::{InventoryRepository as _, LocationUse};
 
     struct Dialog {
         presenter: RemoveLocationPresenter,
         router: RecordingRouter,
-        reassign: InMemoryReassign,
         inventory: std::rc::Rc<std::cell::RefCell<InMemoryInventory>>,
     }
 
@@ -212,14 +201,12 @@ mod tests {
             Self {
                 presenter: RemoveLocationPresenter::new(&shared, &usage, id).expect("seeded"),
                 router: RecordingRouter::default(),
-                reassign: InMemoryReassign::new(inventory.clone()),
                 inventory,
             }
         }
 
         fn press(&mut self, input: DialogInput) {
-            self.presenter
-                .input(input, &mut self.reassign, &mut self.router);
+            self.presenter.input(input, &mut self.router);
         }
 
         fn typed(&mut self, text: &str) {
@@ -230,7 +217,7 @@ mod tests {
         }
 
         fn confirm(&mut self) -> Vec<RouterCall> {
-            self.presenter.confirm(&mut self.reassign, &mut self.router);
+            self.presenter.confirm(&mut self.router);
             self.router.take()
         }
 
@@ -248,7 +235,6 @@ mod tests {
                 presenter: RemoveLocationPresenter::new(&shared, &InMemoryUsage::default(), id)
                     .expect("seeded"),
                 router: RecordingRouter::default(),
-                reassign: InMemoryReassign::new(inventory.clone()),
                 inventory,
             }
         }

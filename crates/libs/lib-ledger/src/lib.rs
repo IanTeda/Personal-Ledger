@@ -15,8 +15,6 @@ mod document_reads;
 #[cfg(test)]
 mod documents_seed_tests;
 mod institution_reads;
-mod inventory_commands;
-mod inventory_reads;
 mod payee_reads;
 mod repository;
 pub mod seed;
@@ -28,7 +26,6 @@ mod unit_usage;
 pub use budget_reads::{budget_accounts, budget_categories};
 pub use category_commands::{CategoryDeleted, DeleteCategory, DeleteCategoryRefusal};
 pub use change::{Domain, LedgerChange, LedgerCommand, domains};
-pub use inventory_commands::RemoveLocation;
 pub use repository::{LedgerRepository, RepositoryError, StubRepository};
 pub use seed::{DEFAULT_SEED, HISTORY_DAYS, default_transactions};
 pub use tag_commands::{MergeTags, RemoveTag};

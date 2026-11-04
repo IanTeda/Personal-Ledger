@@ -1,27 +1,24 @@
-//! The Inventory ports as the Desktop holds them (#866, #867): the store `shell::router::build` is
-//! given, shared by the Inventory module and the Ledger's forwarding shim and read copy. The writes
-//! are committed by the input they were made in (`crate::input::send`), not here.
+//! The Inventory ports as the Desktop holds them (#866, #867, #1001): the store
+//! `shell::router::build` is given, which the Inventory module's Presenters write through
+//! `lib-inventory`'s Interactors. The writes are committed by the input they were made in
+//! (`crate::input::send`), not here.
 //!
-//! The Inventory page writes the repository through `lib-inventory`'s Interactors. What the module
-//! reaches of other domains goes through the Ledger, in [`LedgerPorts`]: the fiat Units the
-//! Location form offers, the Documents the Remove location Dialog quotes, and Remove Location, the
-//! reassign port, answered by running `lib_ledger::RemoveLocation` through `LedgerStore::apply`,
-//! which also drops the Document Links to the Location's Items; the forwarding shim carries the
-//! delete to the store in the input's one commit (Q6, until `lib-reassign`, #813). [`forward`] is
-//! the Inventory shim.
+//! What the module reads of other domains goes through the Ledger, in [`DialogReads`]: the fiat
+//! Units the Location form offers and the Documents the Remove location Dialog quotes. A Dialog
+//! copies them in when it opens.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use gpui::{App, Entity};
 use lib_core::{ItemId, LocationId, UnitId, UnitKind};
-use lib_database::{InventoryStore, SharedInventoryStore};
+use lib_database::SharedInventoryStore;
 use lib_inventory::fake::InMemoryInventory;
 use lib_inventory::{
-    Inventory, InventoryReassign, InventoryRepository, InventoryUnits, Item, Location,
-    LocationError, LocationRemoved, LocationUsage, LocationUse, SharedInventory, UnitChoice,
+    Inventory, InventoryRepository, InventoryUnits, Item, Location, LocationUsage, LocationUse,
+    SharedInventory, UnitChoice,
 };
-use lib_ledger::{Ledger, LedgerChange, RemoveLocation};
+use lib_ledger::Ledger;
 
 use crate::ledger_store::LedgerStore;
 
@@ -58,6 +55,10 @@ impl InventoryRepository for StoreInventory {
     fn delete_item(&mut self, id: ItemId) {
         self.0.borrow_mut().inventory_mut().delete_item(id);
     }
+
+    fn delete_location(&mut self, id: LocationId) {
+        self.0.borrow_mut().inventory_mut().delete_location(id);
+    }
 }
 
 /// `store` as the Inventory module's Presenters share it.
@@ -65,43 +66,20 @@ pub fn shared(store: &SharedInventoryStore) -> SharedInventory {
     Rc::new(RefCell::new(StoreInventory(store.clone())))
 }
 
-/// The forwarding shim (#866): sends each Location delete in `changes` to `store`, returning
-/// whether it wrote anything. The delete takes the Location's Areas and Items with it, so the
-/// Area and Item deletes `lib_ledger::RemoveLocation` also records need no write of their own.
-/// Writer carried: Remove Location, which also drops the Document Links to its Items, until
-/// `lib-reassign` (#813); the Inventory page writes every other row itself.
-pub fn forward(store: &mut dyn InventoryStore, changes: &[LedgerChange]) -> bool {
-    let mut wrote = false;
-    for change in changes {
-        if let LedgerChange::DeleteLocation(id) = change {
-            store.delete_location(*id);
-            wrote = true;
-        }
-    }
-    wrote
-}
-
-/// Brings the Ledger read copy of the Inventory in line with the store, announcing
-/// `Domain::Inventory` when it changed. Run before and after every Inventory event and Dialog
-/// confirm, so the Documents see a write at once, and a remove runs on the rows the page shows.
-pub fn refresh(ledger: &Entity<LedgerStore>, cx: &mut App) {
-    ledger.update(cx, |store, cx| store.refresh_inventory(cx));
-}
-
-/// The Inventory ports the Desktop answers from its Ledger, built for one call around its gpui
-/// context: the fiat Units, the Documents a Location's Items are linked from, and Remove Location.
-pub struct LedgerPorts<'a> {
+/// The reads of other domains the Inventory Dialogs quote, built for one call around the gpui
+/// context: the fiat Units and the Documents a Location's Items are linked from.
+pub struct DialogReads<'a> {
     pub ledger: &'a Entity<LedgerStore>,
     pub cx: &'a mut App,
 }
 
-impl LedgerPorts<'_> {
+impl DialogReads<'_> {
     fn ledger(&self) -> &Ledger {
         self.ledger.read(self.cx).ledger()
     }
 }
 
-impl InventoryUnits for LedgerPorts<'_> {
+impl InventoryUnits for DialogReads<'_> {
     fn currencies(&self) -> Vec<UnitChoice> {
         self.ledger()
             .units()
@@ -124,7 +102,7 @@ impl InventoryUnits for LedgerPorts<'_> {
     }
 }
 
-impl LocationUsage for LedgerPorts<'_> {
+impl LocationUsage for DialogReads<'_> {
     /// The Documents counted from the Documents store: those with a Link to one of the Location's
     /// Items, which the file's cascade drops when it goes (#964).
     fn location_usage(&self, id: LocationId) -> LocationUse {
@@ -134,28 +112,9 @@ impl LocationUsage for LedgerPorts<'_> {
     }
 }
 
-impl InventoryReassign for LedgerPorts<'_> {
-    /// Today's `LedgerCommand`, on the read copy brought in line with the store first. The name is
-    /// read before the write takes it.
-    fn remove_location(&mut self, id: LocationId) -> Result<LocationRemoved, LocationError> {
-        self.ledger.update(self.cx, |store, cx| {
-            store.refresh_inventory(cx);
-            let name = store
-                .ledger()
-                .inventory()
-                .location(id)
-                .map(|location| location.name.clone())
-                .ok_or(LocationError::Unknown)?;
-            store.apply(cx, RemoveLocation(id))?;
-            Ok(LocationRemoved { name })
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use gpui::{AppContext as _, TestAppContext};
-    use lib_core::AreaId;
 
     use super::*;
     use crate::documents::DocumentLink;
@@ -163,25 +122,6 @@ mod tests {
 
     fn stored(store: &SharedInventoryStore) -> Inventory {
         store.borrow().inventory().inventory()
-    }
-
-    #[test]
-    fn a_location_delete_reaches_the_store_with_its_areas_and_items() {
-        let ledger = Ledger::stub();
-        let store = in_memory(&ledger);
-        let elm = ledger.inventory().locations[0].id;
-        let changes = [
-            LedgerChange::DeleteArea(AreaId::seed(1)),
-            LedgerChange::DeleteLocation(elm),
-            LedgerChange::DeleteTag(lib_core::TagId::seed(1)),
-        ];
-
-        assert!(forward(&mut *store.borrow_mut(), &changes));
-
-        let after = stored(&store);
-        assert!(after.location(elm).is_none());
-        assert!(after.items.iter().all(|item| item.location != elm));
-        assert!(!forward(&mut *store.borrow_mut(), &changes[2..]));
     }
 
     fn today() -> chrono::NaiveDate {
@@ -208,7 +148,7 @@ mod tests {
         });
 
         cx.update(|cx| {
-            let ports = LedgerPorts {
+            let ports = DialogReads {
                 ledger: &ledger,
                 cx,
             };
@@ -222,32 +162,5 @@ mod tests {
                 LocationUse::default()
             );
         });
-    }
-
-    #[gpui::test]
-    fn the_reassign_port_removes_through_the_ledger_and_drops_the_links(cx: &mut TestAppContext) {
-        let ledger = cx.new(|_| LedgerStore::new(Ledger::stub_on(today())));
-        let elm = ledger.read_with(cx, |store, _| store.ledger().inventory().locations[0].id);
-
-        let removed = cx.update(|cx| {
-            LedgerPorts {
-                ledger: &ledger,
-                cx,
-            }
-            .remove_location(elm)
-        });
-
-        assert_eq!(removed.expect("a stub Location").name, "12 Elm St contents");
-        ledger.read_with(cx, |store, _| {
-            assert!(store.ledger().inventory().location(elm).is_none());
-        });
-        let gone = cx.update(|cx| {
-            LedgerPorts {
-                ledger: &ledger,
-                cx,
-            }
-            .remove_location(elm)
-        });
-        assert_eq!(gone, Err(LocationError::Unknown));
     }
 }

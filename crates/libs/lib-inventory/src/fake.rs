@@ -11,10 +11,10 @@ use lib_toast::{Notice, Notify};
 use lib_viper::dialog::DialogRouter;
 
 use crate::protocols::{
-    InventoryDialog, InventoryOutcome, InventoryReassign, InventoryRepository, InventoryRouter,
-    InventoryUnits, LocationRemoved, LocationUsage, LocationUse, SharedInventory, UnitChoice,
+    InventoryDialog, InventoryOutcome, InventoryRepository, InventoryRouter, InventoryUnits,
+    LocationUsage, LocationUse, SharedInventory, UnitChoice,
 };
-use crate::{Inventory, Item, Location, LocationError, default_inventory};
+use crate::{Inventory, Item, Location, default_inventory};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct InMemoryInventory {
@@ -67,6 +67,11 @@ impl InventoryRepository for InMemoryInventory {
     fn delete_item(&mut self, id: ItemId) {
         self.items.retain(|row| row.id != id);
     }
+
+    fn delete_location(&mut self, id: LocationId) {
+        self.items.retain(|row| row.location != id);
+        self.locations.retain(|row| row.id != id);
+    }
 }
 
 /// The fiat Units a test sets; any other Unit has no code.
@@ -114,34 +119,6 @@ pub struct InMemoryUsage {
 impl LocationUsage for InMemoryUsage {
     fn location_usage(&self, id: LocationId) -> LocationUse {
         self.uses.get(&id).copied().unwrap_or_default()
-    }
-}
-
-/// The reassign port over in-memory rows: it removes the Location with its Items. It drops no
-/// Document Links, since no Documents are held here.
-#[derive(Debug, Clone)]
-pub struct InMemoryReassign {
-    pub inventory: Rc<RefCell<InMemoryInventory>>,
-}
-
-impl InMemoryReassign {
-    pub fn new(inventory: Rc<RefCell<InMemoryInventory>>) -> Self {
-        Self { inventory }
-    }
-}
-
-impl InventoryReassign for InMemoryReassign {
-    fn remove_location(&mut self, id: LocationId) -> Result<LocationRemoved, LocationError> {
-        let mut rows = self.inventory.borrow_mut();
-        let location = rows
-            .locations
-            .iter()
-            .find(|row| row.id == id)
-            .ok_or(LocationError::Unknown)?;
-        let name = location.name.clone();
-        rows.locations.retain(|row| row.id != id);
-        rows.items.retain(|item| item.location != id);
-        Ok(LocationRemoved { name })
     }
 }
 

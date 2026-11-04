@@ -6,8 +6,8 @@
 //! model and nothing else.
 //!
 //! The Presenter closes its Dialog through the host's [`HostRouter`].
-//! Remove location confirms through the reassign port, answered from the Ledger ([`LedgerPorts`])
-//! and built around the confirm's gpui context. A confirmed outcome is handed to the page, and the
+//! Remove location runs `lib-inventory`'s Interactor on the shared Inventory, so every confirm is
+//! the Presenter's alone. A confirmed outcome is handed to the page, and the
 //! host closes on [`DialogClosed`]. A Toast the Presenter raises goes onto the bin's queue, which
 //! the input's `send` drains.
 
@@ -28,8 +28,7 @@ use lib_shell::DialogCommand;
 use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
 
-use crate::inventory::ports::{self, LedgerPorts};
-use crate::ledger_store::LedgerStore;
+use crate::inventory::ports::DialogReads;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
 use crate::shell::view::dialog_host::DialogReadback;
 use crate::theme::color;
@@ -43,8 +42,6 @@ pub(crate) type Landed = Box<dyn Fn(InventoryOutcome, &mut App)>;
 
 /// The open Inventory Dialog: its Presenter and its widget state.
 pub struct InventoryDialog {
-    /// The Ledger the confirm's reassign port writes, and whose read copy it brings in line.
-    ledger: Entity<LedgerStore>,
     view: View,
     landed: Landed,
 }
@@ -81,11 +78,11 @@ impl InventoryDialog {
     pub(crate) fn open(
         which: Which,
         inventory: &SharedInventory,
-        ledger: &Entity<LedgerStore>,
+        ledger: &Entity<crate::ledger_store::LedgerStore>,
         landed: Landed,
         cx: &mut App,
     ) -> Option<Self> {
-        let reads = LedgerPorts { ledger, cx };
+        let reads = DialogReads { ledger, cx };
         let view = match which {
             Which::AddLocation { unit } => {
                 View::Location(LocationFormPresenter::add(inventory, &reads, unit), 0)
@@ -101,11 +98,7 @@ impl InventoryDialog {
             Which::RemoveArea(id) => View::RemoveArea(RemoveAreaPresenter::new(inventory, id)?, 0),
             Which::AreaBlocked(id) => View::Blocked(AreaBlockedPresenter::new(inventory, id)?),
         };
-        Some(Self {
-            ledger: ledger.clone(),
-            view,
-            landed,
-        })
+        Some(Self { view, landed })
     }
 
     /// Hands a confirmed outcome to the page and tells the host, once the Presenter has closed
@@ -127,24 +120,14 @@ type Router = HostRouter<InventoryOutcome>;
 impl EventEmitter<DialogClosed> for InventoryDialog {}
 
 impl HostedDialog for InventoryDialog {
-    /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) runs with
-    /// the Ledger read copy in line before it and after it. Remove location is lent the reassign
-    /// port for the call, answered from the Ledger.
+    /// Every input is the Presenter's to read.
     fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
-        let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
-        if may_confirm {
-            ports::refresh(&self.ledger, cx);
-        }
         let mut router = Router::default();
-        let mut reassign = LedgerPorts {
-            ledger: &self.ledger,
-            cx,
-        };
         match &mut self.view {
             View::Location(presenter, _) => {
                 presenter.handle(LocationFormEvent::Input(input), &mut router);
             }
-            View::RemoveLocation(presenter) => presenter.input(input, &mut reassign, &mut router),
+            View::RemoveLocation(presenter) => presenter.input(input, &mut router),
             View::Area(presenter) => presenter.handle(AreaFormEvent::Input(input), &mut router),
             View::RemoveArea(presenter, _) => {
                 presenter.handle(RemoveAreaEvent::Input(input), &mut router);
@@ -152,9 +135,6 @@ impl HostedDialog for InventoryDialog {
             View::Blocked(presenter) => {
                 presenter.handle(AreaBlockedEvent::Input(input), &mut router);
             }
-        }
-        if may_confirm {
-            ports::refresh(&self.ledger, cx);
         }
         self.closed(router, cx);
     }
@@ -169,23 +149,17 @@ impl HostedDialog for InventoryDialog {
         }
     }
 
-    /// Sends Confirm to the Presenter, lent the reassign port, with the Ledger read copy in line
-    /// either side. A refusal stays on the Presenter's view model and keeps the Dialog open.
+    /// Sends Confirm to the Presenter. A refusal stays on the Presenter's view model and keeps the
+    /// Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
-        ports::refresh(&self.ledger, cx);
         let mut router = Router::default();
-        let mut reassign = LedgerPorts {
-            ledger: &self.ledger,
-            cx,
-        };
         match &mut self.view {
             View::Location(presenter, _) => presenter.confirm(&mut router),
-            View::RemoveLocation(presenter) => presenter.confirm(&mut reassign, &mut router),
+            View::RemoveLocation(presenter) => presenter.confirm(&mut router),
             View::Area(presenter) => presenter.confirm(&mut router),
             View::RemoveArea(presenter, _) => presenter.confirm(&mut router),
             View::Blocked(presenter) => presenter.confirm(&mut router),
         }
-        ports::refresh(&self.ledger, cx);
         self.closed(router, cx);
     }
 

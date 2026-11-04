@@ -59,7 +59,7 @@ use lib_budgets::{
 use lib_categories::CategoryRepository;
 use lib_categories::fake::InMemoryCategories;
 use lib_core::{
-    AccountId, CategoryId, InstitutionId, LocationId, PayeeId, TagId, Total, TransactionId, UnitId,
+    AccountId, CategoryId, InstitutionId, PayeeId, TagId, Total, TransactionId, UnitId,
 };
 use lib_documents::fake::InMemoryDocuments;
 use lib_documents::{
@@ -492,17 +492,11 @@ impl TagsStore for lib_tags::fake::InMemoryPorts {
 /// the ports are.
 pub type SharedInventoryStore = Rc<RefCell<dyn InventoryStore>>;
 
-/// The Inventory repository port, wherever it is kept, and the delete Remove Location sends until
-/// `lib-reassign` (#813).
+/// The Inventory repository port, wherever it is kept.
 pub trait InventoryStore {
     fn inventory(&self) -> &dyn InventoryRepository;
 
     fn inventory_mut(&mut self) -> &mut dyn InventoryRepository;
-
-    /// Removes Location `id` with its Areas and Items: Remove Location's delete, which the
-    /// Desktop's forwarding shim sends. Not a port write, since the delete also drops the
-    /// Document Links to its Items (Q18, #813).
-    fn delete_location(&mut self, id: LocationId);
 
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
@@ -520,10 +514,6 @@ impl InventoryStore for InventoryAdapter {
         InventoryAdapter::inventory_mut(self)
     }
 
-    fn delete_location(&mut self, id: LocationId) {
-        InventoryAdapter::delete_location(self, id);
-    }
-
     fn reload(&mut self) -> Result<()> {
         InventoryAdapter::reload(self)
     }
@@ -539,10 +529,6 @@ impl<T: InventoryStore + ?Sized> InventoryStore for Box<T> {
         (**self).inventory_mut()
     }
 
-    fn delete_location(&mut self, id: LocationId) {
-        (**self).delete_location(id);
-    }
-
     fn reload(&mut self) -> Result<()> {
         (**self).reload()
     }
@@ -556,11 +542,6 @@ impl InventoryStore for InMemoryInventory {
 
     fn inventory_mut(&mut self) -> &mut dyn InventoryRepository {
         self
-    }
-
-    fn delete_location(&mut self, id: LocationId) {
-        self.locations.retain(|location| location.id != id);
-        self.items.retain(|item| item.location != id);
     }
 
     fn reload(&mut self) -> Result<()> {

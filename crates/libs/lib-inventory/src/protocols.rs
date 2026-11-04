@@ -2,20 +2,16 @@
 //! reads from memory and queues each write, so a write never fails here; a failed save is the
 //! adapter's to report. `fake` implements it in memory.
 //!
-//! There is no delete for a Location: removing one takes its Areas and Items, so `lib-ledger` runs it
-//! and the Client's forwarding shim deletes the row (Q18). The file's cascade drops the Document
-//! Links to its Items (#964). It is the reassign
-//! port ([`InventoryReassign`], Q6) the Remove location Dialog's Presenter confirms through, which a
-//! Client answers through its Ledger until `lib-reassign` (#813); a Presenter's confirm is lent it
-//! rather than the Presenter holding it, since the Desktop writes its Ledger only with the gpui
-//! context that confirm runs in. The reads of other domains a Dialog quotes or lists
-//! ([`InventoryUnits`], [`LocationUsage`]) are lent the same way, when the Dialog opens. The
+//! Removing a Location takes its Areas and Items with it, so the port's delete ([`InventoryRepository::
+//! delete_location`]) does all three and the Remove Location Interactor checks the rule first. The
+//! file's cascade drops the Document Links to its Items (#964). The reads of other domains a Dialog
+//! quotes or lists ([`InventoryUnits`], [`LocationUsage`]) are lent to it when the Dialog opens. The
 //! Presenters ask for navigation through [`InventoryRouter`], which each Client implements.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::{Inventory, Item, Location, LocationError};
+use crate::{Inventory, Item, Location};
 use lib_core::{AreaId, ItemId, LocationId, UnitId};
 use lib_toast::Notify;
 
@@ -53,6 +49,12 @@ pub trait InventoryRepository {
     fn upsert_item(&mut self, item: Item);
 
     fn delete_item(&mut self, id: ItemId);
+
+    /// Deletes Location `id` with what it holds: its Items, then its Areas, then the Location,
+    /// the order the keys need (`areas.location_id` has no cascade). Each Item's delete names the
+    /// Documents as a cascade, so the Client reloads them after the commit. The Interactor has
+    /// checked that the Location exists; deleting an unknown one writes nothing.
+    fn delete_location(&mut self, id: LocationId);
 }
 
 /// The repository as the page and its Dialogs hold it: one set, shared, so an Area a Dialog adds is
@@ -89,23 +91,6 @@ pub struct LocationUse {
 /// Inventory and never the reverse.
 pub trait LocationUsage {
     fn location_usage(&self, id: LocationId) -> LocationUse;
-}
-
-/// What a Location remove did, for its Toast.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LocationRemoved {
-    /// The Location's name, read before it went.
-    pub name: String,
-}
-
-/// Location remove (Q6): it takes the Location's Areas and Items with it, in the one commit of the
-/// input, whose cascade drops the Document Links to those Items, so it is no `lib-inventory`
-/// Interactor.
-/// The Remove location Dialog's Presenter confirms through it, the pattern Categories set
-/// (`CategoryReassign`), and the port `lib-reassign` (#813) answers.
-pub trait InventoryReassign {
-    /// Removes Location `id` with its Areas and Items, used or not.
-    fn remove_location(&mut self, id: LocationId) -> Result<LocationRemoved, LocationError>;
 }
 
 /// A row of the page: a Location, or an Area of an open Location.

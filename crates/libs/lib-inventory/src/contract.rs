@@ -5,7 +5,7 @@
 //! Each check is a function generic over a [`PortsFactory`]: a consumer runs it from its own test,
 //! since an adapter's tests need their own set-up (a fresh database per test). Each writes through
 //! the Inventory Interactors, as a Client does, reloads as a restart would, and expects the same
-//! rows back, in the same order. Remove Location is `lib-ledger`'s write, not an Interactor.
+//! rows back, in the same order.
 
 use chrono::NaiveDate;
 use lib_core::{Money, UnitId};
@@ -13,7 +13,7 @@ use lib_core::{Money, UnitId};
 use crate::fake::InMemoryInventory;
 use crate::interactor::{
     AddArea, AddItem, AddLocation, EditArea, EditItem, EditLocation, MoveArea, RemoveArea,
-    RemoveItem, SetCover,
+    RemoveItem, RemoveLocation, SetCover,
 };
 use crate::{
     AreaError, CoverDraft, Inventory, InventoryRepository, ItemDraft, LocationDraft, LocationError,
@@ -406,6 +406,49 @@ pub fn an_empty_area_is_removed_alone<F: PortsFactory>(factory: &mut F) {
     assert_eq!(port.items(), items);
 }
 
+/// Remove Location takes its Areas and Items with it and leaves the other Locations as they were,
+/// and all of it reloads.
+pub fn removing_a_location_takes_its_areas_and_items<F: PortsFactory>(factory: &mut F) {
+    let mut port = factory.create(stub());
+    let before = port.inventory();
+    let elm = before.locations[0].id;
+    assert!(before.location_items(elm) > 0);
+
+    let removed = RemoveLocation(elm).run(&mut port).expect("it is stored");
+    assert_eq!(removed.areas.len(), before.locations[0].areas.len());
+    assert_eq!(removed.items.len(), before.location_items(elm));
+    factory.commit(&mut port);
+
+    let port = factory.reload(port);
+    let after = port.inventory();
+    assert!(after.location(elm).is_none());
+    assert_eq!(after.location_items(elm), 0);
+    assert_eq!(after.locations, before.locations[1..]);
+    assert_eq!(
+        after.items,
+        before
+            .items
+            .into_iter()
+            .filter(|item| item.location != elm)
+            .collect::<Vec<_>>()
+    );
+}
+
+/// An unknown Location is refused and nothing is written.
+pub fn removing_an_unknown_location_writes_nothing<F: PortsFactory>(factory: &mut F) {
+    let mut port = factory.create(stub());
+    let before = port.inventory();
+
+    assert_eq!(
+        RemoveLocation(lib_core::LocationId::seed(9_999)).run(&mut port),
+        Err(LocationError::Unknown)
+    );
+    factory.commit(&mut port);
+
+    let port = factory.reload(port);
+    assert_eq!(port.inventory(), before);
+}
+
 /// A write the store refuses is reported, and the rows fall back to the last committed ones.
 pub fn a_failed_write_is_reported_and_rolls_back<F: PortsFactory>(factory: &mut F) {
     let mut port = factory.create(stub());
@@ -457,6 +500,16 @@ mod tests {
     #[test]
     fn in_memory_an_empty_area_is_removed_alone() {
         an_empty_area_is_removed_alone(&mut InMemoryFactory::default());
+    }
+
+    #[test]
+    fn in_memory_removing_a_location_takes_its_areas_and_items() {
+        removing_a_location_takes_its_areas_and_items(&mut InMemoryFactory::default());
+    }
+
+    #[test]
+    fn in_memory_removing_an_unknown_location_writes_nothing() {
+        removing_an_unknown_location_writes_nothing(&mut InMemoryFactory::default());
     }
 
     #[test]

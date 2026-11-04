@@ -965,7 +965,7 @@ mod tests {
             .expect("the Item is stored")
             .location;
 
-        inventory.delete_location(location);
+        inventory.inventory_mut().delete_location(location);
         let cascades = factory.pending.commit();
         documents.reload().expect("the rows load");
 

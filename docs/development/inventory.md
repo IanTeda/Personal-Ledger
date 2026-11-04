@@ -8,8 +8,8 @@ The Inventory is the Ledger's register of possessions: **Locations**, each with 
 
 Two halfway states remain, each a row in [During the transition](viper-architecture.md#during-the-transition):
 
-- Remove Location is a `lib-ledger` command that the Dialog confirms through a port, `InventoryReassign`, until `lib-reassign` ([#813](https://github.com/IanTeda/Personal-Ledger/issues/813)). The Document Links to its Items drop by the file's cascade, and the Desktop reloads the Documents after the commit ([#964](https://github.com/IanTeda/Personal-Ledger/issues/964)).
-- Documents resolve a Link to an Item from a `Ledger` read copy, until they read Items through their own port ([#812](https://github.com/IanTeda/Personal-Ledger/issues/812)).
+- Remove Location is a `lib-inventory` Interactor, `RemoveLocation`, run by the Dialog's Presenter on the Inventory store ([#1001](https://github.com/IanTeda/Personal-Ledger/issues/1001)). The Document Links to its Items drop by the file's cascade, and the Desktop reloads the Documents after the commit ([#964](https://github.com/IanTeda/Personal-Ledger/issues/964)).
+- Documents resolve a Link to an Item from the Inventory store, through `StoredDocumentReads`.
 
 The Desktop's Settings › Inventory page is the only Inventory UI. The Inventory register, where Items and a Location's address and Cover are edited, is a placeholder, so no Client calls the Item and Cover Interactors yet.
 
@@ -38,7 +38,7 @@ Nothing within the Inventory cascades; only `document_links` cascades from `item
 
 Rows read back in rowid order (the order added, which an upsert keeps), and a Location's Areas in `position` order.
 
-A Ledger file made before #866 needs a fresh Ledger. The tables are new, and the first-launch seed runs only on a new file, so an older file opens with an empty Inventory and the read copy then empties the Inventory page and drops Documents' Item chips.
+A Ledger file made before #866 needs a fresh Ledger. The tables are new, and the first-launch seed runs only on a new file, so an older file opens with an empty Inventory, which empties the Inventory page and drops Documents' Item chips.
 
 Invariants the schema leaves to `lib-inventory`:
 
@@ -60,7 +60,7 @@ Invariants the schema leaves to `lib-inventory`:
 
 `lib-database`'s `adapter/inventory.rs` ([ADR-0041](../adr/0041-lib-database-one-file-per-entity.md), [ADR-0046](../adr/0046-per-domain-adapters-hold-rows-in-memory-behind-one-shared-writer.md)) is the first multi-table adapter. It holds `locations`, `areas` and `items` as one in-memory `Inventory` and queues each write on the shared writer. Writing a Location rewrites its Areas with their `position` and deletes any it no longer lists, so Area order is the `Vec` order and needs no Area-level write. `lib-inventory`'s contract suite runs on it under `sqlx::test`, failing adapter included, beside the in-memory fake.
 
-`InventoryStore::delete_location` is a store write rather than a port one, as `TagsStore::delete_tag` is, because Remove Location stays a `lib-ledger` command (Q18). It deletes the Items, the Areas and the Location in one change, which cascades to the Document Links naming the Items, so its change reports the Documents for reload (`cascades_to`).
+`InventoryRepository::delete_location` is a port write that the `RemoveLocation` Interactor calls after checking the Location exists. The adapter queues each Item's delete, then the Location's, which takes its Areas, in the keys' order; both cascade to the Document Links naming the Items, so their changes report the Documents for reload (`cascades_to`).
 
 The stub seed is written last, after the Transactions and Bills: Units, Institutions, Accounts, Categories, Tags, Payees, Transactions, Bills, Inventory, in the first-launch seed and `db-seed`. Inventory names only the Units, but the stub Documents name its Items. `seed::fake` writes no Inventory.
 
@@ -70,13 +70,13 @@ The stub seed is written last, after the Transactions and Bills: Units, Institut
 
 `lib-inventory` declares, and the bins or `lib-database` answer:
 
-- **`InventoryRepository`** — the persisted port: `locations`, `items`, `upsert_location`, `upsert_item` and `delete_item`. It has no delete Location (see above).
-- **Interactors** — `AddLocation`, `EditLocation`, `AddArea`, `EditArea`, `RemoveArea`, `MoveArea`, `AddItem`, `EditItem`, `RemoveItem` and `SetCover`. The Desktop calls the Location and Area ones; the Item and Cover ones are waiting for the register.
+- **`InventoryRepository`** — the persisted port: `locations`, `items`, `upsert_location`, `upsert_item`, `delete_item` and `delete_location` (see above).
+- **Interactors** — `AddLocation`, `EditLocation`, `AddArea`, `EditArea`, `RemoveArea`, `MoveArea`, `AddItem`, `EditItem`, `RemoveItem`, `RemoveLocation` and `SetCover`. The Desktop calls the Location and Area ones; the Item and Cover ones are waiting for the register.
 - **`InventoryUnits`** — the fiat Units the Add form offers, lent at open.
 - **`LocationUsage`** — the Items and Documents a Location holds, which the Remove Dialog quotes, lent at open like Categories' usage. Documents depend on Inventory, so the count is the bin's.
-- **`InventoryReassign`** — `remove_location`, with `LocationRemoved`. The Desktop answers it by running `lib_ledger::RemoveLocation` through `LedgerStore::apply`, whose commit cascades to the Document Links to the Location's Items; `LocationUsage` counts those Documents from the Documents store; `inventory::ports::LedgerPorts` is built around each call and lent to the Presenters (checklist step 17).
 
-`inventory::ports::forward` is the Inventory shim: it sends `DeleteLocation` to the store in the input's one commit. `UpsertLocation`, `UpsertArea` and `UpsertItem` have left `LedgerChange` with `lib-ledger`'s Add, Edit, Remove Area and Move Area commands, which `lib-inventory`'s Interactors replaced.
+
+`inventory::ports::DialogReads` answers `InventoryUnits` and `LocationUsage` from the Ledger and the Documents store when a Dialog opens. `UpsertLocation`, `UpsertArea`, `UpsertItem` and the Location, Area and Item deletes have left `LedgerChange`, with `lib-ledger`'s Inventory commands, which `lib-inventory`'s Interactors replaced.
 
 ## UI
 
@@ -102,7 +102,7 @@ Desktop locations for the ticked requirements.
 | INV-002 | `lib_inventory::interactor::EditLocation`, `inventory/view/dialog/` | `settings_inventory_keyboard.rs` |
 | INV-003 | `lib_inventory::interactor::{AddArea, EditArea, MoveArea}`, `inventory/view/dialog/` | `settings_inventory_keyboard.rs` |
 | INV-004 | `lib_inventory::interactor::RemoveArea`, `inventory/view/dialog/` | `settings_inventory_keyboard.rs` |
-| INV-005 | `lib_ledger::RemoveLocation`, `lib_inventory::InventoryReassign`, `inventory/ports.rs` | `settings_inventory_keyboard.rs` |
+| INV-005 | `lib_inventory::interactor::RemoveLocation`, `inventory/view/dialog/` | `settings_inventory_keyboard.rs` |
 | INV-006 | `lib_inventory::Inventory` counts, `inventory/view/page/render.rs` | `settings_inventory_keyboard.rs` |
 | INV-007 | `InventoryAdapter` (`lib-database`'s `adapter/inventory.rs`) | `smoke_inventory_persist.rs` |
 
@@ -115,8 +115,6 @@ Desktop locations for the ticked requirements.
 
 ## Open questions and known gaps
 
-- **Remove Location isn't an Interactor.** It answers `InventoryReassign` with a `LedgerCommand` until `lib-reassign` (#813).
-- **Documents read Items from `Ledger`**, a read copy refreshed after each Inventory write and on rollback (`LedgerStore::reload_inventory`, `Ledger::refresh_inventory`), until #812.
 - **The register isn't built**: no Item or Cover Dialog, so `AddItem`, `EditItem`, `RemoveItem` and `SetCover` have no Client caller, and nothing on the Desktop adds an Item. The smoke test works around it by renaming a Location that already holds Items.
 - **Duplicated conversion and `retain`s.** `InMemoryInventory` ↔ `Inventory` is written out in three places, and the Location delete's two `retain`s appear in both the adapter and the in-memory store. An `Inventory::remove_location_rows` or a `From` impl would fold them.
 - **`Stores::fake` still lists every store** in the older `with_failing_*` constructors; `with_failing_inventory` overrides one store on `Stores::fake(stub_fakes())` and the others could follow it.

@@ -8,10 +8,9 @@
 //! Areas with their positions, deleting any it no longer lists, so the Items in one must be moved
 //! first: Remove Area writes them before the Location, and `items`' keys refuse it otherwise.
 //!
-//! The port has no Location delete: removing one also drops the Document Links to its Items, so
-//! it stays a `lib-ledger` command (Q18, until `lib-reassign`, #813). [`InventoryAdapter::
-//! delete_location`] is the write the Desktop's forwarding shim sends it through, taking the
-//! Location's Items and Areas with it.
+//! The port's Location delete queues each Item's delete, then the Location's, which takes its
+//! Areas: the keys refuse any other order. Each names the Documents as a cascade, so the Client
+//! reloads them after the commit (#964).
 
 use chrono::NaiveDate;
 use lib_core::{AreaId, ItemId, LocationId, Money, UnitId};
@@ -105,18 +104,6 @@ impl InventoryAdapter {
         Ok(())
     }
 
-    /// Removes Location `id` with its Areas and Items: Remove Location's delete, which the
-    /// Desktop's forwarding shim sends (#813 moves it to `lib-reassign`). The file's cascade drops
-    /// the Document Links to its Items.
-    pub fn delete_location(&mut self, id: LocationId) {
-        let rows = &mut self.inventory.rows;
-        rows.locations.retain(|row| row.id != id);
-        rows.items.retain(|row| row.location != id);
-        self.inventory
-            .pending
-            .push(InventoryChange::DeleteLocation(id));
-    }
-
     pub fn inventory(&self) -> &dyn InventoryRepository {
         &self.inventory
     }
@@ -156,6 +143,21 @@ impl InventoryRepository for StoredInventory {
     fn delete_item(&mut self, id: ItemId) {
         self.rows.items.retain(|row| row.id != id);
         self.pending.push(InventoryChange::DeleteItem(id));
+    }
+
+    fn delete_location(&mut self, id: LocationId) {
+        let items: Vec<ItemId> = self
+            .rows
+            .items
+            .iter()
+            .filter(|row| row.location == id)
+            .map(|row| row.id)
+            .collect();
+        for item in items {
+            self.delete_item(item);
+        }
+        self.rows.locations.retain(|row| row.id != id);
+        self.pending.push(InventoryChange::DeleteLocation(id));
     }
 }
 
@@ -250,8 +252,8 @@ async fn upsert_location(conn: &mut SqliteConnection, location: &Location) -> Re
     Ok(())
 }
 
-/// Deletes the Location's Items, then its Areas, then the Location: the keys refuse any other
-/// order.
+/// Deletes the Location's Items (already queued one by one, so none is left), then its Areas, then
+/// the Location: the keys refuse any other order.
 async fn delete_location(conn: &mut SqliteConnection, id: LocationId) -> Result<()> {
     sqlx::query!("DELETE FROM items WHERE location_id = ?", id)
         .execute(&mut *conn)
@@ -436,6 +438,10 @@ mod tests {
 
         fn delete_item(&mut self, id: ItemId) {
             self.inventory.delete_item(id);
+        }
+
+        fn delete_location(&mut self, id: LocationId) {
+            self.inventory.delete_location(id);
         }
     }
 
@@ -635,34 +641,20 @@ mod tests {
         );
     }
 
-    /// Removing a Location takes its Items and Areas with it and leaves the other Locations as
-    /// they were.
     #[sqlx::test(migrations = "migrations/client")]
-    async fn deleting_a_location_takes_its_areas_and_items(
+    async fn removing_a_location_takes_its_areas_and_items(
         _: SqlitePoolOptions,
         options: SqliteConnectOptions,
     ) {
-        let mut factory = AdapterFactory::new(options);
-        let mut port = factory.create(lib_inventory::default_inventory(today()));
-        let stub = port.inventory().inventory();
-        let elm = stub.locations[0].id;
-        assert!(stub.location_items(elm) > 0);
+        contract::removing_a_location_takes_its_areas_and_items(&mut AdapterFactory::new(options));
+    }
 
-        port.delete_location(elm);
-        assert_eq!(factory.commit_and_count_failures(), 0);
-        let port = factory.reload(port);
-
-        let after = port.inventory().inventory();
-        assert!(after.location(elm).is_none());
-        assert_eq!(after.location_items(elm), 0);
-        assert_eq!(after.locations, stub.locations[1..]);
-        assert_eq!(
-            after.items,
-            stub.items
-                .into_iter()
-                .filter(|item| item.location != elm)
-                .collect::<Vec<_>>()
-        );
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn removing_an_unknown_location_writes_nothing(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        contract::removing_an_unknown_location_writes_nothing(&mut AdapterFactory::new(options));
     }
 
     #[sqlx::test(migrations = "migrations/client")]

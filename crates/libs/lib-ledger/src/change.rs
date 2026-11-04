@@ -11,7 +11,7 @@ use std::collections::BTreeSet;
 use lib_bills::{BillPlan, BillScheduleEntry};
 use lib_budgets::Budget;
 use lib_categories::Category;
-use lib_core::{AreaId, CategoryId, ItemId, LocationId, TagId};
+use lib_core::{CategoryId, TagId};
 use lib_payees::Payee;
 use lib_transactions::Transaction;
 
@@ -50,9 +50,6 @@ pub enum LedgerChange {
     UpsertBillPlan(BillPlan),
     UpsertBillEntry(BillScheduleEntry),
     UpsertBudget(Budget),
-    DeleteLocation(LocationId),
-    DeleteArea(AreaId),
-    DeleteItem(ItemId),
 }
 
 impl LedgerChange {
@@ -64,9 +61,6 @@ impl LedgerChange {
             Self::UpsertTransaction(_) => Domain::Transactions,
             Self::UpsertBillPlan(_) | Self::UpsertBillEntry(_) => Domain::Bills,
             Self::UpsertBudget(_) => Domain::Budgets,
-            Self::DeleteLocation(_) | Self::DeleteArea(_) | Self::DeleteItem(_) => {
-                Domain::Inventory
-            }
         }
     }
 }

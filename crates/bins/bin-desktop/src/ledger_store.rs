@@ -248,7 +248,6 @@ impl LedgerStore {
         store.copy_transactions();
         store.copy_bills();
         store.copy_budgets();
-        store.copy_inventory();
         store
     }
 
@@ -309,10 +308,32 @@ impl LedgerStore {
             .borrow_mut()
             .inventory_mut()
             .upsert_location(location);
-        self.copy_inventory();
         cx.emit(LedgerChanged {
             what: BTreeSet::from([Domain::Units, Domain::Inventory]),
         });
+    }
+
+    /// Removes every Location from the Inventory store through the Interactor, as the Remove
+    /// location Dialog does.
+    #[doc(hidden)]
+    pub fn empty_inventory_for_test(&mut self, cx: &mut Context<'_, Self>) {
+        let ids: Vec<lib_core::LocationId> = self
+            .inventory
+            .borrow()
+            .inventory()
+            .locations()
+            .iter()
+            .map(|location| location.id)
+            .collect();
+        for id in ids {
+            let removed = lib_inventory::interactor::RemoveLocation(id)
+                .run(self.inventory.borrow_mut().inventory_mut());
+            assert!(
+                removed.is_ok(),
+                "a Location listed a moment ago must still be removable"
+            );
+        }
+        self.announce_inventory(cx);
     }
 
     /// Writes an empty default Budget in `unit` straight to the Budgets store, which then names
@@ -437,8 +458,6 @@ impl LedgerStore {
             );
             let tags_deleted =
                 crate::tags::ports::forward_deletes(&mut *self.tags.borrow_mut(), &changes);
-            let inventory_written =
-                crate::inventory::ports::forward(&mut *self.inventory.borrow_mut(), &changes);
             if !crate::input::sending(cx) {
                 cx.emit(LegacyApplied);
             }
@@ -454,9 +473,6 @@ impl LedgerStore {
             }
             if what.contains(&Domain::Transactions) {
                 self.copy_transactions();
-            }
-            if inventory_written {
-                self.copy_inventory();
             }
             if bills_written && self.copy_bills() {
                 what.insert(Domain::Bills);
@@ -566,14 +582,13 @@ impl LedgerStore {
         Ok(())
     }
 
-    /// Puts the Inventory back as stored, after a write that named it failed, and overwrites the
-    /// read copy, announcing `Domain::Inventory` so every reader redraws (ADR-0046).
+    /// Puts the Inventory back as stored, after a write that named it failed, announcing
+    /// `Domain::Inventory` so every reader redraws (ADR-0046).
     ///
     /// # Errors
-    /// Returns the error reading it back; the store and the read copy are left as they were.
+    /// Returns the error reading it back; the store is left as it was.
     pub fn reload_inventory(&mut self, cx: &mut Context<'_, Self>) -> lib_database::Result<()> {
         self.inventory.borrow_mut().reload()?;
-        self.copy_inventory();
         self.announce(cx, BTreeSet::from([Domain::Inventory]));
         Ok(())
     }
@@ -632,12 +647,10 @@ impl LedgerStore {
         }
     }
 
-    /// Brings the Inventory read copy in line with the store after the Inventory page wrote it,
-    /// announcing `Domain::Inventory` only when it changed.
-    pub fn refresh_inventory(&mut self, cx: &mut Context<'_, Self>) {
-        if self.copy_inventory() {
-            self.announce(cx, BTreeSet::from([Domain::Inventory]));
-        }
+    /// Announces `Domain::Inventory`, after the Inventory page wrote the store, so the Documents
+    /// and the Inventory page redraw.
+    pub fn announce_inventory(&mut self, cx: &mut Context<'_, Self>) {
+        self.announce(cx, BTreeSet::from([Domain::Inventory]));
     }
 
     /// Brings the Accounts read copy in line with the store after the Account Deletion module
@@ -721,12 +734,6 @@ impl LedgerStore {
     fn copy_budgets(&mut self) -> bool {
         let budgets = self.budgets.borrow().budgets().budgets();
         self.ledger.refresh_budgets(budgets)
-    }
-
-    /// Brings the Inventory read copy in line with the store, returning whether it changed.
-    fn copy_inventory(&mut self) -> bool {
-        let inventory = self.inventory.borrow().inventory().inventory();
-        self.ledger.refresh_inventory(inventory)
     }
 
     fn announce(&mut self, cx: &mut Context<'_, Self>, what: BTreeSet<Domain>) {

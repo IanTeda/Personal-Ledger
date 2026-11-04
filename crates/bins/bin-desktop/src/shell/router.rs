@@ -53,7 +53,6 @@ use crate::navigation::command;
 use commands::record_history;
 pub use date_clock::{DATE_POLL, wall_clock};
 pub use key_dispatch::PENDING_G_TIMEOUT;
-use lib_core::LocationId;
 pub use log_feed::LOG_COALESCE;
 pub use open_ledger::{LedgerFile, OpenLedger};
 #[doc(hidden)]
@@ -671,28 +670,13 @@ impl Root {
             .update(cx, |page, _| page.set_keymaps(config));
     }
 
-    /// Empties the Inventory, standing in for removing every Location until the Remove dialog
-    /// lands, so a test can reach the Inventory page's empty state.
+    /// Empties the Inventory by removing every Location through `lib-inventory`'s Interactor, so
+    /// a test can reach the Inventory page's empty state.
     #[doc(hidden)]
     pub fn empty_inventory_for_test(&mut self, cx: &mut App) {
-        let ids: Vec<LocationId> = self
-            .open()
+        self.open()
             .ledger
-            .read(cx)
-            .ledger()
-            .inventory()
-            .locations
-            .iter()
-            .map(|location| location.id)
-            .collect();
-        self.open().ledger.update(cx, |store, cx| {
-            for id in ids {
-                assert!(
-                    store.apply(cx, lib_ledger::RemoveLocation(id)).is_ok(),
-                    "a Location listed a moment ago must still be removable"
-                );
-            }
-        });
+            .update(cx, |store, cx| store.empty_inventory_for_test(cx));
     }
 
     /// Removes every Tag, so a test can reach the Tags page with nothing to select.

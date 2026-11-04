@@ -30,7 +30,6 @@ pub mod protocols;
 
 pub use entity::*;
 pub use protocols::{
-    InventoryChange, InventoryDialog, InventoryOutcome, InventoryReassign, InventoryRepository,
-    InventoryRouter, InventoryRow, InventoryUnits, LocationRemoved, LocationUsage, LocationUse,
-    SharedInventory, UnitChoice,
+    InventoryChange, InventoryDialog, InventoryOutcome, InventoryRepository, InventoryRouter,
+    InventoryRow, InventoryUnits, LocationUsage, LocationUse, SharedInventory, UnitChoice,
 };

@@ -384,6 +384,11 @@ impl<T: InventoryRepository> InventoryRepository for Marked<T> {
         self.written.set(true);
         self.inner.delete_item(id);
     }
+
+    fn delete_location(&mut self, id: lib_core::LocationId) {
+        self.written.set(true);
+        self.inner.delete_location(id);
+    }
 }
 
 /// An Inventory store whose writes never reach `stored`, the rows as they are on disk: a reload
@@ -400,11 +405,6 @@ impl InventoryStore for FailingInventory {
 
     fn inventory_mut(&mut self) -> &mut dyn InventoryRepository {
         &mut self.inventory
-    }
-
-    fn delete_location(&mut self, id: lib_core::LocationId) {
-        self.inventory.written.set(true);
-        InventoryStore::delete_location(&mut self.inventory.inner, id);
     }
 
     fn reload(&mut self) -> lib_database::Result<()> {

@@ -3,8 +3,7 @@
 //! a plain-data view model through `view_model`, its text already localised from [`crate::msg`], so
 //! a View only draws. They share the repository ([`SharedInventory`]) and ask for navigation
 //! through the [`InventoryRouter`] the Client passes in. A Dialog opens with the reads of other
-//! domains it quotes lent to it, and its confirm is lent the reassign port for Remove location,
-//! which writes through the Client's Ledger.
+//! domains it quotes lent to it.
 //!
 //! [`SharedInventory`]: crate::protocols::SharedInventory
 //! [`InventoryRouter`]: crate::protocols::InventoryRouter

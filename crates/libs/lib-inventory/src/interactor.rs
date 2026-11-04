@@ -1,7 +1,7 @@
 //! One Interactor per Inventory intent, each a request value whose `run` takes the port it needs.
 //! It reads the rows, applies the Entity's rule to them and writes only the rows that changed, so
-//! a refusal leaves the port untouched. Remove Location is `lib-ledger`'s, since it also drops
-//! Document Links.
+//! a refusal leaves the port untouched. Remove Location writes only Inventory, since the file's
+//! cascade drops the Document Links to its Items (#964).
 
 mod add_area;
 mod add_item;
@@ -12,6 +12,7 @@ mod edit_location;
 mod move_area;
 mod remove_area;
 mod remove_item;
+mod remove_location;
 mod set_cover;
 
 pub use add_area::AddArea;
@@ -23,4 +24,5 @@ pub use edit_location::EditLocation;
 pub use move_area::MoveArea;
 pub use remove_area::RemoveArea;
 pub use remove_item::RemoveItem;
+pub use remove_location::RemoveLocation;
 pub use set_cover::SetCover;
