@@ -1,8 +1,8 @@
 //! The Transactions ports as the Desktop holds them (#774, #923).
 //!
 //! - [`DesktopPorts`]: what the page's Presenter reads, answered from the stores `shell::router::build`
-//!   is given (`LedgerSetup`) rather than from the Ledger read copy: the Transactions store, and the
-//!   Accounts, Categories, Payees, Tags and Units each read port names.
+//!   is given (`LedgerSetup`) rather than from the Ledger read copy: the Transactions store, and
+//!   the other domains through `lib_database`'s `StoredTransactionReads`.
 //! - [`forward`]: the forwarding shim that saves today's writers' Transaction changes through the
 //!   Transactions store. Every writer of Transactions is still today's code: each runs as a
 //!   `LedgerCommand` on the Ledger and records a `LedgerChange`, which [`forward`] sends to the store
@@ -14,10 +14,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use lib_core::UnitId;
-use lib_database::{
-    SharedAccountsStore, SharedCategoriesStore, SharedPayeesStore, SharedTagsStore,
-    SharedTransactionsStore, SharedUnitsStore, TransactionsStore,
-};
+use lib_database::{SharedTransactionsStore, StoredTransactionReads, TransactionsStore};
 use lib_ledger::LedgerChange;
 use lib_transactions::{
     SharedPorts, TransactionAccount, TransactionAccounts, TransactionCategories,
@@ -25,33 +22,23 @@ use lib_transactions::{
     TransactionUnits, TransactionsPorts,
 };
 
-/// The stores the page reads, each borrowed for one read, since a store is shared behind a
-/// `RefCell` whose guard can't be lent out of it.
+/// The Transactions store, and the other domains' rows read through `reads`, each store borrowed
+/// for one read, since a store is shared behind a `RefCell` whose guard can't be lent out of it.
+/// The port traits are `TransactionsPorts`' supertraits, so the other domains' reads are only
+/// forwarded: `lib_database` maps them (#998).
 pub struct DesktopPorts {
     pub transactions: SharedTransactionsStore,
-    pub accounts: SharedAccountsStore,
-    pub categories: SharedCategoriesStore,
-    pub payees: SharedPayeesStore,
-    pub tags: SharedTagsStore,
-    pub units: SharedUnitsStore,
+    pub reads: StoredTransactionReads,
 }
 
 impl DesktopPorts {
     pub fn shared(
         transactions: SharedTransactionsStore,
-        accounts: SharedAccountsStore,
-        categories: SharedCategoriesStore,
-        payees: SharedPayeesStore,
-        tags: SharedTagsStore,
-        units: SharedUnitsStore,
+        reads: StoredTransactionReads,
     ) -> SharedPorts {
         Rc::new(RefCell::new(Self {
             transactions,
-            accounts,
-            categories,
-            payees,
-            tags,
-            units,
+            reads,
         }))
     }
 }
@@ -64,73 +51,31 @@ impl TransactionsPorts for DesktopPorts {
 
 impl TransactionAccounts for DesktopPorts {
     fn transaction_accounts(&self) -> Vec<TransactionAccount> {
-        self.accounts
-            .borrow()
-            .accounts()
-            .accounts()
-            .into_iter()
-            .map(|account| TransactionAccount {
-                id: account.id,
-                name: account.name,
-                unit: account.unit,
-            })
-            .collect()
+        self.reads.transaction_accounts()
     }
 }
 
-/// In tree order, each with its path, as the Categories' rule writes it.
 impl TransactionCategories for DesktopPorts {
     fn transaction_categories(&self) -> Vec<TransactionCategory> {
-        let categories = self.categories.borrow().categories().categories();
-        lib_categories::paths_in_tree_order(&categories)
-            .into_iter()
-            .filter_map(|(id, path)| {
-                let category = lib_categories::get(&categories, id)?;
-                Some(TransactionCategory {
-                    id,
-                    name: category.name.clone(),
-                    parent: category.parent,
-                    path,
-                })
-            })
-            .collect()
+        self.reads.transaction_categories()
     }
 }
 
 impl TransactionPayees for DesktopPorts {
     fn transaction_payees(&self) -> Vec<TransactionPayee> {
-        self.payees
-            .borrow()
-            .payees()
-            .payees()
-            .into_iter()
-            .map(|payee| TransactionPayee {
-                id: payee.id,
-                name: payee.name,
-            })
-            .collect()
+        self.reads.transaction_payees()
     }
 }
 
 impl TransactionTags for DesktopPorts {
     fn transaction_tags(&self) -> Vec<TransactionTag> {
-        self.tags
-            .borrow()
-            .tags()
-            .tags()
-            .into_iter()
-            .map(|tag| TransactionTag {
-                id: tag.id,
-                name: tag.name,
-                color: tag.color,
-            })
-            .collect()
+        self.reads.transaction_tags()
     }
 }
 
 impl TransactionUnits for DesktopPorts {
     fn transaction_unit_code(&self, id: UnitId) -> Option<String> {
-        self.units.borrow().units().unit(id).map(|unit| unit.code)
+        self.reads.transaction_unit_code(id)
     }
 }
 

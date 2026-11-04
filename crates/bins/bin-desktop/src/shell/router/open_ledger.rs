@@ -248,11 +248,13 @@ impl OpenLedger {
         // The Transactions page reads the stores, not the Ledger's read copies (#923).
         let transactions_ports = crate::transactions::ports::DesktopPorts::shared(
             storage.transactions.clone(),
-            storage.accounts.clone(),
-            storage.categories.clone(),
-            storage.payees.clone(),
-            storage.tags.clone(),
-            settings_setup.units.ports.clone(),
+            lib_database::StoredTransactionReads {
+                accounts: storage.accounts.clone(),
+                categories: storage.categories.clone(),
+                payees: storage.payees.clone(),
+                tags: storage.tags.clone(),
+                units: settings_setup.units.ports.clone(),
+            },
         );
         // The Import writes the Payees and Transactions stores and reads the Accounts and
         // Categories, as their modules hold them.

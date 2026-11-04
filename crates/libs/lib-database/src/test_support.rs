@@ -200,3 +200,33 @@ impl OneSplit {
         .expect("the Split is written");
     }
 }
+
+/// `lib-transactions`' read ports as the Desktop's Transactions page reads them: the Accounts,
+/// Categories, Payees, Tags and Units adapters loaded on `pending`'s file, behind
+/// [`crate::StoredTransactionReads`] (#998).
+pub(crate) fn transaction_reads(pending: PendingWrites) -> crate::StoredTransactionReads {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    crate::StoredTransactionReads {
+        accounts: Rc::new(RefCell::new(
+            crate::AccountsAdapter::load(pending.clone()).expect("the Accounts load"),
+        )),
+        categories: Rc::new(RefCell::new(
+            crate::CategoriesAdapter::load(pending.clone()).expect("the Categories load"),
+        )),
+        payees: Rc::new(RefCell::new(
+            crate::PayeesAdapter::load(pending.clone()).expect("the Payees load"),
+        )),
+        tags: Rc::new(RefCell::new(
+            crate::TagsAdapter::load(pending.clone()).expect("the Tags load"),
+        )),
+        // The Units of a file with none stored are none, which only the Units check reads.
+        units: match crate::UnitsAdapter::load(pending) {
+            Ok(units) => Rc::new(RefCell::new(units)),
+            Err(_) => Rc::new(RefCell::new(lib_units::fake::InMemoryPorts::stub(
+                chrono::Utc::now(),
+            ))),
+        },
+    }
+}

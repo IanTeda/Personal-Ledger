@@ -13,7 +13,6 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, NaiveDate, Utc};
 use lib_core::{Money, PriceSourceId, UnitId, UnitKind};
-use lib_transactions::TransactionUnits;
 use lib_units::{
     BaseUnitRepository, BuiltInOverride, CustomSource, Endpoint, KeyPlacement, PortsMut, Precision,
     PriceLink, PriceSourceAuth, PriceSourceRecord, PriceSourceRepository, UnitRepository, UnitRow,
@@ -231,16 +230,6 @@ impl BaseUnitRepository for StoredBaseUnit {
     fn set_base_unit(&mut self, id: UnitId) {
         self.id = id;
         self.pending.push(UnitsChange::SetBaseUnit(id));
-    }
-}
-
-impl TransactionUnits for UnitsAdapter {
-    fn transaction_unit_code(&self, id: UnitId) -> Option<String> {
-        self.units
-            .rows
-            .iter()
-            .find(|unit| unit.id == id)
-            .map(|unit| unit.code.clone())
     }
 }
 
@@ -656,7 +645,7 @@ mod tests {
         lib_transactions::contract::unit_codes_read_back(&mut TransactionReadsFactory::new(
             options,
             store,
-            |pending| UnitsAdapter::load(pending).expect("the rows load"),
+            crate::test_support::transaction_reads,
         ));
     }
 

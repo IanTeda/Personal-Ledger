@@ -75,7 +75,11 @@ use lib_payees::{PayeeCategories, PayeeCategory, PayeeRepository, PayeeUsage, Pa
 use lib_tags::{TagRepository, TagUsage, TagUse};
 use lib_transaction_import::{ImportAccount, ImportAccounts, ImportCategories};
 use lib_transactions::fake::InMemoryTransactions;
-use lib_transactions::{Transaction, TransactionRepository};
+use lib_transactions::{
+    Transaction, TransactionAccount, TransactionAccounts, TransactionCategories,
+    TransactionCategory, TransactionPayee, TransactionPayees, TransactionRepository,
+    TransactionTag, TransactionTags, TransactionUnits,
+};
 use lib_units::fake::InMemoryPorts;
 use lib_units::{
     BaseUnitRepository, Holding, PortsMut, PriceSourceRepository, UnitHoldings, UnitRepository,
@@ -84,7 +88,9 @@ use lib_units::{
 
 use crate::adapter::payees::bill_payees;
 use crate::adapter::transactions::TaggedSplit;
-use crate::adapter::{accounts, bills, categories, inventory, payees, transactions};
+use crate::adapter::{
+    accounts, bills, categories, institutions, inventory, payees, tags, transactions,
+};
 use crate::commit::PendingWrites;
 use crate::{
     AccountsAdapter, BillsAdapter, BudgetsAdapter, CategoriesAdapter, Commit, DocumentsAdapter,
@@ -176,16 +182,6 @@ pub trait InstitutionsStore {
 
     fn institutions_mut(&mut self) -> &mut dyn InstitutionRepository;
 
-    /// How many Institutions name `unit` as their Usual unit: the Institutions half of `lib-units`'
-    /// `UnitUsage`.
-    fn unit_institutions(&self, unit: UnitId) -> usize {
-        self.institutions()
-            .institutions()
-            .iter()
-            .filter(|institution| institution.usual_unit == Some(unit))
-            .count()
-    }
-
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
     /// # Errors
@@ -262,10 +258,6 @@ impl<T: InstitutionsStore + ?Sized> InstitutionsStore for Box<T> {
         (**self).institutions_mut()
     }
 
-    fn unit_institutions(&self, unit: UnitId) -> usize {
-        (**self).unit_institutions(unit)
-    }
-
     fn reload(&mut self) -> Result<()> {
         (**self).reload()
     }
@@ -282,22 +274,6 @@ pub trait AccountsStore {
     fn accounts(&self) -> &dyn AccountRepository;
 
     fn accounts_mut(&mut self) -> &mut dyn AccountRepository;
-
-    /// The ids of the Accounts whose Unit is `unit`, in order: what [`StoredUnitReads`]'
-    /// [`UnitHoldings::holdings`] needs Transactions counted for.
-    fn unit_account_ids(&self, unit: UnitId) -> Vec<AccountId> {
-        self.accounts()
-            .accounts()
-            .iter()
-            .filter(|account| account.unit == unit)
-            .map(|account| account.id)
-            .collect()
-    }
-
-    /// How many Accounts count in `unit`: the Accounts half of `lib-units`' `UnitUsage`.
-    fn unit_accounts(&self, unit: UnitId) -> usize {
-        accounts::unit_accounts(&self.accounts().accounts(), unit)
-    }
 
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
@@ -328,14 +304,6 @@ impl<T: AccountsStore + ?Sized> AccountsStore for Box<T> {
 
     fn accounts_mut(&mut self) -> &mut dyn AccountRepository {
         (**self).accounts_mut()
-    }
-
-    fn unit_account_ids(&self, unit: UnitId) -> Vec<AccountId> {
-        (**self).unit_account_ids(unit)
-    }
-
-    fn unit_accounts(&self, unit: UnitId) -> usize {
-        (**self).unit_accounts(unit)
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -535,16 +503,6 @@ pub trait InventoryStore {
     /// Desktop's forwarding shim sends. Not a port write, since the delete also drops the
     /// Document Links to its Items (Q18, #813).
     fn delete_location(&mut self, id: LocationId);
-
-    /// How many Locations are priced in `unit`: the Locations half of `lib-units`' `UnitUsage`.
-    /// The file refuses deleting a Unit one names, so Delete Unit must see them first (#885).
-    fn unit_locations(&self, unit: UnitId) -> usize {
-        self.inventory()
-            .locations()
-            .iter()
-            .filter(|location| location.unit == unit)
-            .count()
-    }
 
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
@@ -795,15 +753,6 @@ pub trait BillsStore {
 
     fn entries_mut(&mut self) -> &mut dyn BillScheduleRepository;
 
-    /// How many Bill Plans are named in `unit`: the Bill Plans half of `lib-units`' `UnitUsage`.
-    fn unit_bill_plans(&self, unit: UnitId) -> usize {
-        self.plans()
-            .bill_plans()
-            .iter()
-            .filter(|plan| plan.unit == unit)
-            .count()
-    }
-
     /// The Bill Plans naming Payee `id`, `None` when they can't be counted: the Bill Plans half of
     /// [`StoredPayeeReads`]' `PayeeUsage`. An in-memory store counts its own rows; the adapter
     /// counts in the file.
@@ -878,10 +827,6 @@ impl<T: BillsStore + ?Sized> BillsStore for Box<T> {
 
     fn file(&self) -> Option<&PendingWrites> {
         (**self).file()
-    }
-
-    fn unit_bill_plans(&self, unit: UnitId) -> usize {
-        (**self).unit_bill_plans(unit)
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -1240,6 +1185,49 @@ impl BillTransactions for StoredBillReads {
     }
 }
 
+/// `lib-transactions`' five read ports answered by the shared stores of the domains a Transaction
+/// names, each borrowed for the one read (#998), as [`StoredBillReads`] answers Bills'. The same
+/// struct stands over the adapters and [`Stores::fake`]'s in-memory stores.
+#[derive(Clone)]
+pub struct StoredTransactionReads {
+    pub accounts: SharedAccountsStore,
+    pub categories: SharedCategoriesStore,
+    pub payees: SharedPayeesStore,
+    pub tags: SharedTagsStore,
+    pub units: SharedUnitsStore,
+}
+
+impl TransactionAccounts for StoredTransactionReads {
+    fn transaction_accounts(&self) -> Vec<TransactionAccount> {
+        accounts::transaction_accounts(&self.accounts.borrow().accounts().accounts())
+    }
+}
+
+/// In tree order, each with its path, as the Categories' rule writes it.
+impl TransactionCategories for StoredTransactionReads {
+    fn transaction_categories(&self) -> Vec<TransactionCategory> {
+        categories::transaction_categories(&self.categories.borrow().categories().categories())
+    }
+}
+
+impl TransactionPayees for StoredTransactionReads {
+    fn transaction_payees(&self) -> Vec<TransactionPayee> {
+        payees::transaction_payees(&self.payees.borrow().payees().payees())
+    }
+}
+
+impl TransactionTags for StoredTransactionReads {
+    fn transaction_tags(&self) -> Vec<TransactionTag> {
+        tags::transaction_tags(&self.tags.borrow().tags().tags())
+    }
+}
+
+impl TransactionUnits for StoredTransactionReads {
+    fn transaction_unit_code(&self, id: UnitId) -> Option<String> {
+        self.units.borrow().unit_code(id)
+    }
+}
+
 /// `lib-transaction-import`'s two read ports answered by the Accounts and Categories stores, each
 /// borrowed for the one read (#994).
 #[derive(Clone)]
@@ -1315,11 +1303,17 @@ pub struct StoredUnitReads {
 impl UnitUsage for StoredUnitReads {
     fn unit_usage(&self, id: UnitId) -> UnitUse {
         UnitUse {
-            accounts: self.accounts.borrow().unit_accounts(id),
-            bill_plans: self.bills.borrow().unit_bill_plans(id),
+            accounts: accounts::unit_accounts(&self.accounts.borrow().accounts().accounts(), id),
+            bill_plans: bills::unit_bill_plans(&self.bills.borrow().plans().bill_plans(), id),
             budgets: self.budgets.borrow().unit_budgets(id),
-            locations: self.inventory.borrow().unit_locations(id),
-            institutions: self.institutions.borrow().unit_institutions(id),
+            locations: inventory::unit_locations(
+                &self.inventory.borrow().inventory().locations(),
+                id,
+            ),
+            institutions: institutions::unit_institutions(
+                &self.institutions.borrow().institutions().institutions(),
+                id,
+            ),
         }
     }
 }
@@ -1327,12 +1321,12 @@ impl UnitUsage for StoredUnitReads {
 impl UnitHoldings for StoredUnitReads {
     /// One count of the Transactions for every Account in the Unit, rather than one per Account.
     fn holdings(&self, id: UnitId) -> Vec<Holding> {
-        let accounts = self.accounts.borrow();
+        let rows = self.accounts.borrow().accounts().accounts();
         let counts = self
             .transactions
             .borrow()
-            .account_transaction_counts(&accounts.unit_account_ids(id));
-        accounts::holdings(&accounts.accounts().accounts(), id, |account| {
+            .account_transaction_counts(&accounts::unit_account_ids(&rows, id));
+        accounts::holdings(&rows, id, |account| {
             counts.get(&account).copied().unwrap_or_default()
         })
     }

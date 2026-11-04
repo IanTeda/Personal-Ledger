@@ -15,7 +15,7 @@
 
 use lib_core::{HexColor, TagId};
 use lib_tags::{Tag, TagRepository};
-use lib_transactions::{TransactionTag, TransactionTags};
+use lib_transactions::TransactionTag;
 use sqlx::SqliteConnection;
 
 use crate::commit::PendingWrites;
@@ -128,20 +128,6 @@ impl TagRepository for StoredTags {
     }
 }
 
-impl TransactionTags for TagsAdapter {
-    fn transaction_tags(&self) -> Vec<TransactionTag> {
-        self.tags
-            .rows
-            .iter()
-            .map(|tag| TransactionTag {
-                id: tag.id,
-                name: tag.name.clone(),
-                color: tag.color.clone(),
-            })
-            .collect()
-    }
-}
-
 impl Change for TagsChange {
     fn domain(&self) -> Domain {
         Domain::Tags
@@ -209,6 +195,17 @@ async fn read(conn: &mut SqliteConnection) -> Result<Vec<Tag>> {
         })
     })
     .collect()
+}
+
+/// `tags` as Transactions reads them.
+pub(crate) fn transaction_tags(tags: &[Tag]) -> Vec<TransactionTag> {
+    tags.iter()
+        .map(|tag| TransactionTag {
+            id: tag.id,
+            name: tag.name.clone(),
+            color: tag.color.clone(),
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -324,7 +321,7 @@ mod tests {
         lib_transactions::contract::tags_read_back(&mut TransactionReadsFactory::new(
             options,
             store,
-            |pending| TagsAdapter::load(pending).expect("the rows load"),
+            crate::test_support::transaction_reads,
         ));
     }
 

@@ -45,23 +45,14 @@ pub struct StoredUsage {
 impl UnitUsage for StoredUsage {
     fn unit_usage(&self, id: UnitId) -> UnitUse {
         UnitUse {
-            accounts: self.accounts.unit_accounts(id),
-            bill_plans: self
-                .bills
-                .plans()
-                .bill_plans()
-                .iter()
-                .filter(|plan| plan.unit == id)
-                .count(),
+            accounts: lib_database::unit_accounts(&self.accounts.accounts().accounts(), id),
+            bill_plans: lib_database::unit_bill_plans(&self.bills.plans().bill_plans(), id),
             budgets: self.budgets.unit_budgets(id),
-            locations: self.inventory.unit_locations(id),
-            institutions: self
-                .institutions
-                .institutions()
-                .institutions()
-                .iter()
-                .filter(|institution| institution.usual_unit == Some(id))
-                .count(),
+            locations: lib_database::unit_locations(&self.inventory.inventory().locations(), id),
+            institutions: lib_database::unit_institutions(
+                &self.institutions.institutions().institutions(),
+                id,
+            ),
         }
     }
 }
@@ -69,10 +60,11 @@ impl UnitUsage for StoredUsage {
 impl UnitHoldings for StoredUsage {
     /// The Accounts' rows with the Transactions store's count of what is booked to each (#993).
     fn holdings(&self, id: UnitId) -> Vec<Holding> {
+        let accounts = self.accounts.accounts().accounts();
         let counts = self
             .transactions
-            .account_transaction_counts(&self.accounts.unit_account_ids(id));
-        lib_database::account_holdings(&self.accounts.accounts().accounts(), id, |account| {
+            .account_transaction_counts(&lib_database::unit_account_ids(&accounts, id));
+        lib_database::account_holdings(&accounts, id, |account| {
             counts.get(&account).copied().unwrap_or_default()
         })
     }

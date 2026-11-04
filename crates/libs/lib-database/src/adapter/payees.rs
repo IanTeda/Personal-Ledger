@@ -13,10 +13,10 @@
 //! counted in one read of the file they share ([`payee_usage`]). A Payee those tables name can't be deleted (their foreign keys), which
 //! backstops the delete refusal.
 
-use lib_bills::{BillPayee, BillPayees};
+use lib_bills::BillPayee;
 use lib_core::{CategoryId, PayeeId, RowID};
 use lib_payees::{Payee, PayeeRepository, PayeeUse};
-use lib_transactions::{TransactionPayee, TransactionPayees};
+use lib_transactions::TransactionPayee;
 use sqlx::SqliteConnection;
 
 use crate::commit::PendingWrites;
@@ -125,25 +125,6 @@ impl PayeeRepository for StoredPayees {
     fn delete_payee(&mut self, id: PayeeId) {
         self.rows.retain(|row| row.id != id);
         self.pending.push(PayeesChange::Delete(id));
-    }
-}
-
-impl TransactionPayees for PayeesAdapter {
-    fn transaction_payees(&self) -> Vec<TransactionPayee> {
-        self.payees
-            .rows
-            .iter()
-            .map(|payee| TransactionPayee {
-                id: payee.id,
-                name: payee.name.clone(),
-            })
-            .collect()
-    }
-}
-
-impl BillPayees for PayeesAdapter {
-    fn bill_payees(&self) -> Vec<BillPayee> {
-        bill_payees(&self.payees.rows)
     }
 }
 
@@ -306,6 +287,17 @@ async fn read(conn: &mut SqliteConnection) -> Result<Vec<Payee>> {
     Ok(payees)
 }
 
+/// `payees` as Transactions reads them.
+pub(crate) fn transaction_payees(payees: &[Payee]) -> Vec<TransactionPayee> {
+    payees
+        .iter()
+        .map(|payee| TransactionPayee {
+            id: payee.id,
+            name: payee.name.clone(),
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::mpsc;
@@ -413,7 +405,7 @@ mod tests {
         lib_transactions::contract::payees_read_back(&mut TransactionReadsFactory::new(
             options,
             store,
-            |pending| PayeesAdapter::load(pending).expect("the rows load"),
+            crate::test_support::transaction_reads,
         ));
     }
 
@@ -671,7 +663,7 @@ mod tests {
         ports.payees.payees_mut().upsert_payee(hudson);
         let ports = factory.reload(ports);
 
-        let read = ports.payees.bill_payees();
+        let read = bill_payees(&ports.payees.payees.rows);
         assert_eq!(read.len(), default_payees().len());
         let hudson = read
             .iter()

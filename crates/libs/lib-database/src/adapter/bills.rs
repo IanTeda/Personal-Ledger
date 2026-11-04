@@ -497,6 +497,11 @@ async fn read_entries(conn: &mut SqliteConnection) -> Result<Vec<BillScheduleEnt
     .collect()
 }
 
+/// How many of `plans` are named in `unit`.
+pub fn unit_bill_plans(plans: &[BillPlan], unit: UnitId) -> usize {
+    plans.iter().filter(|plan| plan.unit == unit).count()
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::mpsc;
@@ -538,6 +543,29 @@ mod tests {
 
         fn transactions(&self) -> TransactionsAdapter {
             TransactionsAdapter::load(self.pending.clone()).expect("the Transactions load")
+        }
+
+        /// Bills' reads as a Client has them: the adapters beside Bills loaded on the file, behind
+        /// [`StoredBillReads`] (#998).
+        fn bill_reads(&self) -> crate::StoredBillReads {
+            use std::cell::RefCell;
+            use std::rc::Rc;
+
+            let pending = &self.pending;
+            crate::StoredBillReads {
+                payees: Rc::new(RefCell::new(
+                    PayeesAdapter::load(pending.clone()).expect("the Payees load"),
+                )),
+                accounts: Rc::new(RefCell::new(
+                    crate::AccountsAdapter::load(pending.clone()).expect("the Accounts load"),
+                )),
+                categories: Rc::new(RefCell::new(
+                    crate::CategoriesAdapter::load(pending.clone()).expect("the Categories load"),
+                )),
+                transactions: Rc::new(RefCell::new(
+                    TransactionsAdapter::load(pending.clone()).expect("the Transactions load"),
+                )),
+            }
         }
 
         /// Makes every write to `table` fail from now on.
@@ -586,7 +614,7 @@ mod tests {
 
     impl PortsFactory for AdapterFactory {
         type Ports = BillsAdapter;
-        type Reads = TransactionsAdapter;
+        type Reads = crate::StoredBillReads;
 
         fn create(&mut self, seed: InMemoryBills, splits: Vec<BillSplit>) -> BillsAdapter {
             TransactionsAdapter::seed(&self.writer, transactions_of(splits))
@@ -596,8 +624,8 @@ mod tests {
             BillsAdapter::load(self.pending.clone()).expect("the seed loads")
         }
 
-        fn reads(&mut self) -> TransactionsAdapter {
-            self.transactions()
+        fn reads(&mut self) -> crate::StoredBillReads {
+            self.bill_reads()
         }
 
         fn reload(&mut self, _ports: BillsAdapter) -> BillsAdapter {

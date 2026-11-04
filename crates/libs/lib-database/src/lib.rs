@@ -63,14 +63,16 @@ pub use change_sets::ChangeSet;
 /// The per-domain adapters behind the VIPER modules' ports (ADR-0046).
 pub mod adapter;
 pub use adapter::account_deletion::AccountDeletionAdapter;
-pub use adapter::accounts::{AccountsAdapter, holdings as account_holdings};
+pub use adapter::accounts::{
+    AccountsAdapter, holdings as account_holdings, unit_account_ids, unit_accounts,
+};
 pub use adapter::bill_payments::BillPaymentsAdapter;
-pub use adapter::bills::BillsAdapter;
+pub use adapter::bills::{BillsAdapter, unit_bill_plans};
 pub use adapter::budgets::BudgetsAdapter;
 pub use adapter::categories::CategoriesAdapter;
 pub use adapter::documents::DocumentsAdapter;
-pub use adapter::institutions::InstitutionsAdapter;
-pub use adapter::inventory::InventoryAdapter;
+pub use adapter::institutions::{InstitutionsAdapter, unit_institutions};
+pub use adapter::inventory::{InventoryAdapter, unit_locations};
 pub use adapter::payees::PayeesAdapter;
 pub use adapter::store::{
     AccountsStore, BillsStore, BudgetsStore, CategoriesStore, CountingCommit, DocumentsStore,
@@ -79,8 +81,8 @@ pub use adapter::store::{
     SharedInstitutionsStore, SharedInventoryStore, SharedPayeesStore, SharedTagsStore,
     SharedTransactionsStore, SharedUnitsStore, StoredAccountReads, StoredBillReads,
     StoredBillUnits, StoredBudgetCategories, StoredBudgetReads, StoredDocumentReads,
-    StoredImportReads, StoredInstitutionReads, StoredPayeeReads, StoredTagReads, StoredUnitReads,
-    TagsStore, TransactionsStore, UnitsStore,
+    StoredImportReads, StoredInstitutionReads, StoredPayeeReads, StoredTagReads,
+    StoredTransactionReads, StoredUnitReads, TagsStore, TransactionsStore, UnitsStore,
 };
 pub use adapter::tags::TagsAdapter;
 pub use adapter::transaction_import::TransactionImportAdapter;

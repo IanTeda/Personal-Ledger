@@ -21,7 +21,6 @@ use lib_accounts::{
     AccountInstitution, AccountInstitutions, AccountRepository, AccountUnit, AccountUnits,
     AccountUsage, AccountsPorts,
 };
-use lib_core::{AccountId, UnitId};
 use lib_database::{AccountsStore, StoredAccountReads};
 use lib_ledger::Ledger;
 
@@ -122,14 +121,6 @@ impl AccountsStore for LedgerBackedPorts {
         self.store.accounts_mut()
     }
 
-    fn unit_account_ids(&self, unit: UnitId) -> Vec<AccountId> {
-        self.store.unit_account_ids(unit)
-    }
-
-    fn unit_accounts(&self, unit: UnitId) -> usize {
-        self.store.unit_accounts(unit)
-    }
-
     fn reload(&mut self) -> lib_database::Result<()> {
         self.store.reload()
     }
@@ -163,6 +154,8 @@ pub fn in_memory_reads(ledger: &Ledger) -> StoredAccountReads {
 
 #[cfg(test)]
 mod tests {
+    use lib_core::{AccountId, UnitId};
+
     use super::*;
 
     #[test]

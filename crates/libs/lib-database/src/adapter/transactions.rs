@@ -14,7 +14,7 @@
 use std::collections::HashMap;
 
 use chrono::NaiveDate;
-use lib_bills::{BillSplit, BillTransactions, SplitRef};
+use lib_bills::{BillSplit, SplitRef};
 use lib_core::{
     AccountId, BillScheduleEntryId, CategoryId, Money, PayeeId, TagId, TransactionId,
     TransactionStatus,
@@ -125,17 +125,6 @@ impl TransactionRepository for TransactionsAdapter {
     fn delete_transaction(&mut self, id: TransactionId) {
         self.rows.retain(|row| row.id != id);
         self.pending.push(TransactionsChange::Delete(id));
-    }
-}
-
-/// Bills' read port, answered from the rows in memory, each Split flattened as Bills reads it.
-impl BillTransactions for TransactionsAdapter {
-    fn splits_between(&self, from: NaiveDate, to: NaiveDate) -> Vec<BillSplit> {
-        splits_between(&self.rows, from, to)
-    }
-
-    fn paid_split(&self, split: SplitRef) -> Option<BillSplit> {
-        paid_split(&self.rows, split)
     }
 }
 
@@ -820,7 +809,7 @@ mod tests {
         let adapter = factory.reload(adapter);
 
         let (from, to) = (NaiveDate::MIN, NaiveDate::MAX);
-        let splits = adapter.splits_between(from, to);
+        let splits = splits_between(&adapter.rows, from, to);
         assert_eq!(splits, splits_between(&memory.transactions, from, to));
         assert_eq!(
             splits.len(),
@@ -831,7 +820,7 @@ mod tests {
             .iter()
             .find(|transaction| transaction.is_split())
             .expect("the stub has a split Transaction");
-        let window = adapter.splits_between(split.date, split.date);
+        let window = splits_between(&adapter.rows, split.date, split.date);
         assert!(window.iter().all(|read| read.date == split.date));
         assert!(
             window
@@ -843,9 +832,7 @@ mod tests {
             transaction_id: split.id,
             split_index: 1,
         };
-        let paid = adapter
-            .paid_split(second)
-            .expect("its second Split is read");
+        let paid = paid_split(&adapter.rows, second).expect("its second Split is read");
         assert_eq!(Some(paid.clone()), paid_split(&memory.transactions, second));
         assert_eq!(
             (paid.date, paid.account_id, &paid.description),
@@ -855,10 +842,13 @@ mod tests {
         assert_eq!(paid.category_id, split.splits[1].category_id);
         assert_eq!(paid.payee_id, split.splits[1].payee_id);
         assert_eq!(
-            adapter.paid_split(SplitRef {
-                transaction_id: TransactionId::new(),
-                split_index: 0,
-            }),
+            paid_split(
+                &adapter.rows,
+                SplitRef {
+                    transaction_id: TransactionId::new(),
+                    split_index: 0,
+                }
+            ),
             None
         );
     }

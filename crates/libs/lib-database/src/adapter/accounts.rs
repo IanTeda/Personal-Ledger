@@ -16,11 +16,11 @@
 
 use chrono::NaiveDate;
 use lib_accounts::{Account, AccountRepository};
-use lib_bills::{BillAccount, BillAccounts};
+use lib_bills::BillAccount;
 use lib_core::{AccountId, AccountType, InstitutionId, Money, UnitId};
-use lib_institutions::{InstitutionUsage, InstitutionUse};
-use lib_transaction_import::{ImportAccount, ImportAccounts};
-use lib_transactions::{TransactionAccount, TransactionAccounts};
+
+use lib_transaction_import::ImportAccount;
+use lib_transactions::TransactionAccount;
 use lib_units::Holding;
 use sqlx::SqliteConnection;
 
@@ -133,42 +133,6 @@ impl AccountRepository for StoredAccounts {
     }
 }
 
-/// The Accounts naming an Institution are this domain's rows, read from memory; the count is
-/// `AccountsStore`'s.
-impl InstitutionUsage for AccountsAdapter {
-    fn institution_usage(&self, id: InstitutionId) -> InstitutionUse {
-        InstitutionUse {
-            accounts: institution_accounts(&self.accounts.rows, id),
-        }
-    }
-}
-
-impl BillAccounts for AccountsAdapter {
-    fn bill_accounts(&self) -> Vec<BillAccount> {
-        bill_accounts(&self.accounts.rows)
-    }
-}
-
-impl TransactionAccounts for AccountsAdapter {
-    fn transaction_accounts(&self) -> Vec<TransactionAccount> {
-        self.accounts
-            .rows
-            .iter()
-            .map(|account| TransactionAccount {
-                id: account.id,
-                name: account.name.clone(),
-                unit: account.unit,
-            })
-            .collect()
-    }
-}
-
-impl ImportAccounts for AccountsAdapter {
-    fn import_account(&self, id: AccountId) -> Option<ImportAccount> {
-        import_account(&self.accounts.rows, id)
-    }
-}
-
 /// Account `id` in `accounts` as an Import reads it, active when `lib-transactions`' rule says it
 /// takes Transactions, or `None` when it is gone.
 pub(crate) fn import_account(accounts: &[Account], id: AccountId) -> Option<ImportAccount> {
@@ -202,7 +166,7 @@ pub fn holdings(
 }
 
 /// How many of `accounts` count in `unit`.
-pub(crate) fn unit_accounts(accounts: &[Account], unit: UnitId) -> usize {
+pub fn unit_accounts(accounts: &[Account], unit: UnitId) -> usize {
     accounts
         .iter()
         .filter(|account| account.unit == unit)
@@ -351,6 +315,27 @@ async fn read(conn: &mut SqliteConnection) -> Result<Vec<Account>> {
     Ok(rows)
 }
 
+/// `accounts` as Transactions reads them.
+pub(crate) fn transaction_accounts(accounts: &[Account]) -> Vec<TransactionAccount> {
+    accounts
+        .iter()
+        .map(|account| TransactionAccount {
+            id: account.id,
+            name: account.name.clone(),
+            unit: account.unit,
+        })
+        .collect()
+}
+
+/// The ids of the `accounts` that count in `unit`, in order.
+pub fn unit_account_ids(accounts: &[Account], unit: UnitId) -> Vec<AccountId> {
+    accounts
+        .iter()
+        .filter(|account| account.unit == unit)
+        .map(|account| account.id)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
@@ -398,10 +383,7 @@ mod tests {
             .reads
             .transactions
             .borrow()
-            .account_transaction_counts(&crate::AccountsStore::unit_account_ids(
-                &ports.adapter,
-                unit,
-            ));
+            .account_transaction_counts(&unit_account_ids(&ports.adapter.accounts.rows, unit));
         super::holdings(&ports.adapter.accounts.rows, unit, |id| {
             counts.get(&id).copied().unwrap_or_default()
         })
@@ -778,7 +760,7 @@ mod tests {
         lib_transactions::contract::accounts_read_back(&mut TransactionReadsFactory::new(
             options,
             store,
-            |pending| AccountsAdapter::load(pending).expect("the rows load"),
+            crate::test_support::transaction_reads,
         ));
     }
 
@@ -815,14 +797,11 @@ mod tests {
             .expect("ANZ Everyday counts in aud");
         assert_eq!(held.transactions, 2);
         assert_eq!(
-            crate::AccountsStore::unit_accounts(adapter, UnitId::SEED_AUD),
+            unit_accounts(&adapter.accounts.rows, UnitId::SEED_AUD),
             aud.len()
         );
-        assert_eq!(
-            crate::AccountsStore::unit_accounts(adapter, UnitId::new()),
-            0
-        );
-        let bills = adapter.bill_accounts();
+        assert_eq!(unit_accounts(&adapter.accounts.rows, UnitId::new()), 0);
+        let bills = bill_accounts(&adapter.accounts.rows);
         assert_eq!(bills.len(), default_accounts().len());
         assert_eq!(bills[1].id, everyday);
         assert!(bills[1].takes_transactions);
@@ -840,7 +819,7 @@ mod tests {
 
         let everyday = AccountId::seed(2);
         assert_eq!(
-            ImportAccounts::import_account(adapter, everyday),
+            import_account(&adapter.accounts.rows, everyday),
             Some(ImportAccount {
                 id: everyday,
                 is_active: true,
@@ -851,11 +830,11 @@ mod tests {
             .find(|account| !lib_transactions::takes_transactions(&account.account_type))
             .expect("a stub Account takes no Transactions");
         assert_eq!(
-            ImportAccounts::import_account(adapter, held.id).map(|account| account.is_active),
+            import_account(&adapter.accounts.rows, held.id).map(|account| account.is_active),
             Some(false)
         );
         assert_eq!(
-            ImportAccounts::import_account(adapter, AccountId::new()),
+            import_account(&adapter.accounts.rows, AccountId::new()),
             None
         );
     }
@@ -922,22 +901,20 @@ mod tests {
         let anz = named_by(InstitutionId::SEED_ANZ);
         assert!(anz.len() > 1, "the stub has more than one ANZ Account");
         assert_eq!(
-            adapter.institution_usage(InstitutionId::SEED_ANZ),
-            InstitutionUse { accounts: anz }
+            institution_accounts(&adapter.accounts.rows, InstitutionId::SEED_ANZ),
+            anz
         );
         assert_eq!(
-            adapter
-                .institution_usage(InstitutionId::SEED_PERSONAL)
-                .accounts,
+            institution_accounts(&adapter.accounts.rows, InstitutionId::SEED_PERSONAL),
             named_by(InstitutionId::SEED_PERSONAL)
         );
         assert_eq!(
-            adapter.institution_usage(InstitutionId::SEED_SUPER_FUND),
-            InstitutionUse::default()
+            institution_accounts(&adapter.accounts.rows, InstitutionId::SEED_SUPER_FUND),
+            Vec::<String>::new()
         );
         assert_eq!(
-            adapter.institution_usage(InstitutionId::new()),
-            InstitutionUse::default()
+            institution_accounts(&adapter.accounts.rows, InstitutionId::new()),
+            Vec::<String>::new()
         );
     }
 

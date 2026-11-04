@@ -397,6 +397,14 @@ pub(crate) fn document_items(items: &[Item]) -> Vec<lib_documents::DocumentItem>
         .collect()
 }
 
+/// How many of `locations` are priced in `unit`.
+pub fn unit_locations(locations: &[Location], unit: UnitId) -> usize {
+    locations
+        .iter()
+        .filter(|location| location.unit == unit)
+        .count()
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::mpsc;

@@ -15,12 +15,11 @@
 //! Plans and Payee defaults it re-points: their foreign keys, and `parent_id`'s, refuse deleting a
 //! Category anything still names.
 
-use lib_bills::{BillCategories, BillCategory};
+use lib_bills::BillCategory;
 use lib_categories::{Category, CategoryRepository, tree_order};
 use lib_core::{CategoryId, CategoryTypes};
-use lib_payees::{PayeeCategories, PayeeCategory};
-use lib_transaction_import::ImportCategories;
-use lib_transactions::{TransactionCategories, TransactionCategory};
+use lib_payees::PayeeCategory;
+use lib_transactions::TransactionCategory;
 use sqlx::SqliteConnection;
 
 use crate::Result;
@@ -120,41 +119,6 @@ impl CategoryRepository for CategoriesAdapter {
             None => self.rows.push(category.clone()),
         }
         self.pending.push(CategoriesChange::Upsert(category));
-    }
-}
-
-impl BillCategories for CategoriesAdapter {
-    fn bill_categories(&self) -> Vec<BillCategory> {
-        bill_categories(&self.categories())
-    }
-}
-
-impl PayeeCategories for CategoriesAdapter {
-    fn payee_categories(&self) -> Vec<PayeeCategory> {
-        payee_categories(&self.categories())
-    }
-}
-
-/// The leaves an Import row may be filed under, labelled as a Payee's Default category reads them.
-impl ImportCategories for CategoriesAdapter {
-    fn import_categories(&self) -> Vec<PayeeCategory> {
-        payee_categories(&self.categories())
-    }
-}
-
-impl TransactionCategories for CategoriesAdapter {
-    fn transaction_categories(&self) -> Vec<TransactionCategory> {
-        let categories = self.categories();
-        categories
-            .iter()
-            .map(|category| TransactionCategory {
-                id: category.id,
-                name: category.name.clone(),
-                parent: category.parent,
-                path: lib_categories::path(&categories, category.id)
-                    .unwrap_or_else(|| category.name.clone()),
-            })
-            .collect()
     }
 }
 
@@ -290,6 +254,22 @@ async fn read(conn: &mut SqliteConnection) -> Result<Vec<Category>> {
     })
     .collect();
     Ok(rows)
+}
+
+/// `categories` in tree order, each with its path, as Transactions reads them.
+pub(crate) fn transaction_categories(categories: &[Category]) -> Vec<TransactionCategory> {
+    lib_categories::paths_in_tree_order(categories)
+        .into_iter()
+        .filter_map(|(id, path)| {
+            let category = lib_categories::get(categories, id)?;
+            Some(TransactionCategory {
+                id,
+                name: category.name.clone(),
+                parent: category.parent,
+                path,
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -490,9 +470,11 @@ mod tests {
             CategoriesAdapter::seed(writer, categories).expect("the Categories are written");
         }
         lib_transactions::contract::categories_read_back_in_tree_order(
-            &mut TransactionReadsFactory::new(options, store, |pending| {
-                CategoriesAdapter::load(pending).expect("the rows load")
-            }),
+            &mut TransactionReadsFactory::new(
+                options,
+                store,
+                crate::test_support::transaction_reads,
+            ),
         );
     }
 
@@ -590,15 +572,15 @@ mod tests {
         let categories = factory.create(default_categories());
 
         assert_eq!(
-            categories.bill_categories(),
+            bill_categories(&categories.categories()),
             lib_bills::fake::stub_categories()
         );
         assert_eq!(
-            categories.payee_categories(),
+            payee_categories(&categories.categories()),
             lib_payees::fake::stub_categories()
         );
         assert_eq!(
-            categories.import_categories(),
+            payee_categories(&categories.categories()),
             lib_payees::fake::stub_categories(),
             "an Import files rows under the leaves a Payee's Default category is chosen from"
         );
