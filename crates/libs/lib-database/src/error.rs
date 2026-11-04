@@ -119,6 +119,13 @@ pub enum Error {
     )]
     LedgerOutOfDate(sqlx::migrate::MigrateError),
 
+    /// A database that isn't a Ledger file
+    ///
+    /// The file holds tables but no record of a Ledger's migrations: another app's SQLite
+    /// database. Opening it stops before migrating, so the file is left as it was.
+    #[error("The file is a database, but not a Ledger file")]
+    NotALedger,
+
     /// File system or thread error
     ///
     /// Occurs when the Ledger file's directory can't be made, or the writer's thread or runtime
@@ -166,12 +173,25 @@ impl PartialEq for Error {
             (Error::Generic(a), Error::Generic(b)) => a == b,
             (Error::Io(a), Error::Io(b)) => a.kind() == b.kind(),
             (Error::WriterStopped, Error::WriterStopped) => true,
+            (Error::NotALedger, Error::NotALedger) => true,
             _ => false,
         }
     }
 }
 
 impl Eq for Error {}
+
+impl Error {
+    /// Whether this is a [`Error::LedgerOutOfDate`] for a file a newer build made: it applied a
+    /// migration this build doesn't have, so a newer build opens it. Otherwise the file's
+    /// migrations were edited since it was made, and nothing opens it.
+    pub fn is_ledger_from_newer_build(&self) -> bool {
+        matches!(
+            self,
+            Error::LedgerOutOfDate(sqlx::migrate::MigrateError::VersionMissing(_))
+        )
+    }
+}
 
 #[cfg(test)]
 mod tests {

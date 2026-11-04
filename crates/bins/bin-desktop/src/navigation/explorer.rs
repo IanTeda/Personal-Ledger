@@ -105,6 +105,9 @@ pub struct FileExplorer {
     selected: Option<PathBuf>,
     /// New mode's File name field, as typed: [`Self::target`] adds `.pldb` if it's missing.
     file_name: String,
+    /// The file name New mode's name clashes with in the folder browsed to, checked as the name or
+    /// the folder changes rather than on every frame ([`Self::name_taken`]).
+    taken: Option<String>,
     /// The row list's own scroll, unlike `Palette`'s fixed, small registry -- a real directory
     /// (the mockup's own illustrative 6 rows aside) can hold far more entries than fit the
     /// dialog's [`MAX_ROWS_HEIGHT`], discovered by browsing a real home directory (50 entries)
@@ -124,6 +127,7 @@ impl FileExplorer {
             filters,
             selected: None,
             file_name: String::new(),
+            taken: None,
             scroll_handle: gpui::ScrollHandle::new(),
         };
         explorer.reload();
@@ -187,9 +191,7 @@ impl FileExplorer {
     pub fn target(&self) -> Option<PathBuf> {
         match self.mode {
             ExplorerMode::Open => self.selected.clone(),
-            ExplorerMode::New => self
-                .new_file_path()
-                .filter(|path| std::fs::symlink_metadata(path).is_err()),
+            ExplorerMode::New => self.new_file_path().filter(|_| self.taken.is_none()),
         }
     }
 
@@ -201,20 +203,31 @@ impl FileExplorer {
     /// Types `ch` into New mode's File name field.
     pub fn push_char(&mut self, ch: char) {
         self.file_name.push(ch);
+        self.check_name();
     }
 
     /// Deletes the last character of New mode's File name field, if any.
     pub fn backspace(&mut self) {
         self.file_name.pop();
+        self.check_name();
     }
 
     /// The file name New mode's name clashes with in the folder browsed to, which 1e·new refuses
     /// inline; `None` while the name is free, or names no file at all.
     pub fn name_taken(&self) -> Option<String> {
-        let path = self.new_file_path()?;
-        std::fs::symlink_metadata(&path).ok()?;
-        path.file_name()
-            .map(|name| name.to_string_lossy().into_owned())
+        self.taken.clone()
+    }
+
+    /// Checks New mode's name against the folder browsed to. The name is taken when the file is
+    /// there, or any journal SQLite keeps beside it ([`crate::ledger_files`]): a stale `-wal`
+    /// would replay an old Ledger into the new one, and a failed Create removes them all.
+    fn check_name(&mut self) {
+        self.taken = self.new_file_path().and_then(|path| {
+            crate::ledger_files(&path)
+                .iter()
+                .any(|file| std::fs::symlink_metadata(file).is_ok())
+                .then(|| display_name(&path))
+        });
     }
 
     /// The file New mode's name makes in the folder browsed to, with `.pldb` added if the name
@@ -281,6 +294,7 @@ impl FileExplorer {
         });
         self.listing = entries;
         self.apply_filters();
+        self.check_name();
     }
 
     /// A row click (README: "Row click selects it; only `.pldb` rows are selectable as the open
@@ -309,6 +323,14 @@ impl FileExplorer {
         self.current_path = path;
         self.reload();
     }
+}
+
+/// `path`'s file name as a Toast or the explorer names it, else the whole path (a root).
+pub fn display_name(path: &Path) -> String {
+    path.file_name().map_or_else(
+        || path.display().to_string(),
+        |name| name.to_string_lossy().into_owned(),
+    )
 }
 
 /// The literal, case-insensitive `.pldb` extension check the handoff's Implementation note 11
@@ -670,10 +692,7 @@ fn file_name_field(
     } else {
         color::foreground(cx)
     };
-    let folder_name = folder.file_name().map_or_else(
-        || folder.display().to_string(),
-        |name| name.to_string_lossy().into_owned(),
-    );
+    let folder_name = display_name(folder);
     div()
         .flex()
         .flex_col()

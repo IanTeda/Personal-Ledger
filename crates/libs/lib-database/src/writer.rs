@@ -179,6 +179,17 @@ impl Writer {
             .create_if_missing(true);
         let (writer, failures) = Self::spawn(options)?;
         writer.run(|pool| async move {
+            // A Ledger file records its migrations; tables without that record are another app's
+            // database, which migrating would change for good. A new, empty file has neither.
+            let (tables, migrated): (i64, i64) = sqlx::query_as(
+                "SELECT COUNT(*), COUNT(*) FILTER (WHERE name = '_sqlx_migrations') \
+                 FROM sqlite_master WHERE type = 'table'",
+            )
+            .fetch_one(&pool)
+            .await?;
+            if tables > 0 && migrated == 0 {
+                return Err(Error::NotALedger);
+            }
             CLIENT_MIGRATIONS
                 .run(&pool)
                 .await
@@ -456,6 +467,67 @@ mod tests {
 
         assert!(matches!(error, Error::LedgerOutOfDate(_)), "{error:?}");
         assert!(error.to_string().contains("start a new Ledger file"));
+        assert!(!error.is_ledger_from_newer_build());
+    }
+
+    #[test]
+    fn opening_a_file_with_a_migration_this_build_lacks_says_a_newer_build_made_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ledger.pldb");
+        let (writer, _failures) = Writer::open_ledger(&path).unwrap();
+        writer
+            .run(|pool| async move {
+                sqlx::query(
+                    "INSERT INTO _sqlx_migrations (version, description, success, checksum, execution_time) \
+                     VALUES (99999999999999, 'from a newer build', TRUE, x'00', 0)",
+                )
+                .execute(&pool)
+                .await?;
+                Ok(())
+            })
+            .unwrap();
+        drop(writer);
+
+        let error = Writer::open_ledger(&path)
+            .err()
+            .expect("a newer build made it");
+
+        assert!(error.is_ledger_from_newer_build(), "{error:?}");
+    }
+
+    #[test]
+    fn opening_another_apps_database_refuses_it_and_leaves_it_unmigrated() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("other.pldb");
+        let options = SqliteConnectOptions::new()
+            .filename(&path)
+            .create_if_missing(true);
+        let (writer, _failures) = Writer::spawn(options).unwrap();
+        writer
+            .run(|pool| async move {
+                sqlx::query("CREATE TABLE notes (body TEXT NOT NULL)")
+                    .execute(&pool)
+                    .await?;
+                Ok(())
+            })
+            .unwrap();
+        drop(writer);
+
+        let error = Writer::open_ledger(&path).err().expect("it isn't a Ledger");
+
+        assert_eq!(error, Error::NotALedger);
+        let options = SqliteConnectOptions::new().filename(&path);
+        let (writer, _failures) = Writer::spawn(options).unwrap();
+        let tables: i64 = writer
+            .run(|pool| async move {
+                Ok(
+                    sqlx::query_scalar("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'")
+                        .fetch_one(&pool)
+                        .await?,
+                )
+            })
+            .unwrap();
+        assert_eq!(tables, 1, "nothing was migrated into it");
     }
 
     #[test]

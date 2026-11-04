@@ -4,8 +4,10 @@
 //! no Ledger open or in place of another, and a file that won't open keeps whatever was open
 //! (#978). `:new`'s explorer browses by mouse too: a file row is inert, a folder carries the name
 //! into it and Create makes the file named there, in place of the Open Ledger (#980). Start view
-//! (#983) is only where start-up lands: a file opened by click lands on the Dashboard. State is
-//! read back from `Root`.
+//! (#983) is only where start-up lands: a file opened by click lands on the Dashboard. After
+//! `:close` Back has nowhere to go, a Ledger opened by click gets the remembered Documents view,
+//! and a swap reports the replaced Ledger's lost write as `:close` does. State is read back from
+//! `Root`.
 
 #![expect(
     clippy::expect_used,
@@ -417,4 +419,65 @@ fn a_ledger_opened_by_click_after_close_is_remembered_again(app: &mut TestAppCon
 
     assert_eq!(ui.ledger_path(), Some(folder.business()));
     assert!(!ui.read(|shell| shell.last_ledger_forgotten()));
+}
+
+#[gpui::test]
+fn after_close_back_has_nowhere_to_go(app: &mut TestAppContext) {
+    let folder = Folder::new();
+    let mut ui = started_on(app, &folder, &folder.household());
+    ui.press("g w");
+    ui.press(": c l o s e enter");
+
+    ui.click("topbar-back");
+
+    assert_eq!(
+        ui.noun(),
+        Noun::Dashboard,
+        "Bills was on the closed Ledger, so Back doesn't reach it"
+    );
+    assert!(!ui.read(|shell| shell.nav().can_go_back()));
+}
+
+#[gpui::test]
+fn a_ledger_opened_by_click_gets_the_remembered_documents_view_back(app: &mut TestAppContext) {
+    let folder = Folder::new();
+    let persisted = PersistedState {
+        documents_mode: Some("inbox".to_string()),
+        documents_sort: Some("expiring".to_string()),
+        ..Default::default()
+    };
+    let mut ui = Harness::starting(app, Started::NoLedger, persisted);
+    ui.browse_from(folder.path());
+
+    ui.click("no-ledger-open");
+    ui.click("explorer-row-0");
+    ui.click("explorer-open");
+
+    let (mode, _, sort) = ui
+        .read_app(|shell, cx| shell.documents_persisted(cx))
+        .expect("a Ledger is open");
+    assert_eq!(mode.id(), "inbox");
+    assert_eq!(sort.id(), "expiring");
+}
+
+#[gpui::test]
+fn a_write_that_failed_just_before_a_swap_is_reported(app: &mut TestAppContext) {
+    let folder = Folder::new();
+    let mut ui = Harness::with_failing_documents(app);
+    ui.browse_from(folder.path());
+    ui.press("g s");
+    ui.press("j j j j j j j j j j j");
+    ui.press("l");
+    ui.press("n l e a s e s enter");
+
+    open_row(&mut ui, 0);
+
+    assert_eq!(ui.ledger_path(), Some(folder.household()));
+    let toasts = ui.toasts().visible;
+    assert!(
+        toasts
+            .iter()
+            .any(|toast| toast.kind == "Error" && toast.text.contains("wasn't saved")),
+        "{toasts:?}"
+    );
 }

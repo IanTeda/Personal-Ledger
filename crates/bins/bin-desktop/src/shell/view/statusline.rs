@@ -151,7 +151,7 @@ impl RenderOnce for StatusLine {
                 self.ledger_open,
                 self.ledger_file.as_deref(),
                 window_size,
-                dirs::home_dir().as_deref(),
+                HOME.as_deref(),
             ),
         );
         let badge_label = lib_locale::format::upper(
@@ -457,6 +457,9 @@ pub fn ledger_label(
         }
     }
 }
+
+/// The home directory the Ledger's path is shown under, read once rather than on every frame.
+static HOME: std::sync::LazyLock<Option<PathBuf>> = std::sync::LazyLock::new(dirs::home_dir);
 
 /// The stub Ledger's file name, shared with the Documents status line's "stored beside" note until
 /// a real open-file path exists.

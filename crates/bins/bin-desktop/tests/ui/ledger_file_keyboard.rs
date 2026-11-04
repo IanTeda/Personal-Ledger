@@ -6,7 +6,8 @@
 //! it"), so opening one is `ledger_file_mouse.rs`'s; here `:open` and `esc` run from the keys (#978).
 //! `:new` names its file in a focused File name field, so creating one runs from the keys here
 //! (#980): a fresh name is created seeded and opened, a name already in the folder is refused
-//! inline, and a folder it can't write keeps the Open Ledger. Start view (#983) chooses where it
+//! inline, as is one whose SQLite journal is still there, and a folder it can't write keeps the
+//! Open Ledger. Start view (#983) chooses where it
 //! lands: each value with a Ledger open, and with none, where a noun lands on the Dashboard.
 
 use super::common;
@@ -449,6 +450,28 @@ fn new_refuses_a_name_already_in_the_folder_inline_and_writes_nothing(app: &mut 
         "esc creates nothing"
     );
     assert!(ui.toasts().visible.is_empty());
+}
+
+#[gpui::test]
+fn new_refuses_a_name_whose_journal_is_still_in_the_folder(app: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let journal = dir.path().join("teda.pldb-wal");
+    std::fs::write(&journal, "an old Ledger's journal").expect("a writable file");
+    let mut ui = Harness::without_ledger(app);
+    ui.browse_from(dir.path());
+
+    ui.press(": n e w enter");
+    ui.press("t e d a");
+    assert_eq!(
+        file_name_field(&mut ui),
+        Some(("teda".to_string(), Some("teda.pldb".to_string()))),
+        "a stale journal would replay into the new Ledger"
+    );
+    ui.press("enter");
+
+    assert!(!ui.read(|shell| shell.ledger_open()));
+    assert!(!dir.path().join("teda.pldb").exists());
+    assert!(journal.exists(), "the journal is left alone");
 }
 
 #[cfg(unix)]

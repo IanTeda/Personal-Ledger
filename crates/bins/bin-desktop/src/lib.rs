@@ -176,13 +176,10 @@ pub fn open_ledger_file(
         reason,
     };
     if let Some(reason) = unopenable(path) {
-        tracing::warn!(path = %path.display(), %reason, "Couldn't open the Ledger file");
         return Err(failed(reason));
     }
-    match open_storage(path, today, &lib_locale::msg::institution_personal()) {
-        Ok(mut storage) => {
-            bills::ports::generate(&mut storage.bills, today);
-            lib_database::Commit::commit(&storage.pending);
+    match open_and_generate(path, today) {
+        Ok(storage) => {
             tracing::info!(path = %path.display(), "Opened the Ledger file");
             Ok(storage)
         }
@@ -191,11 +188,27 @@ pub fn open_ledger_file(
             // The error's own text is for the log, never spliced into a Message.
             tracing::warn!(%error, path = %path.display(), "Failed to open the Ledger");
             Err(failed(match error {
+                lib_database::Error::LedgerOutOfDate(_) if error.is_ledger_from_newer_build() => {
+                    msg::desktop_ledger_open_newer()
+                }
                 lib_database::Error::LedgerOutOfDate(_) => msg::desktop_ledger_open_out_of_date(),
+                lib_database::Error::NotALedger => msg::desktop_ledger_open_not_a_ledger(),
                 _ => msg::desktop_ledger_open_unreadable(),
             }))
         }
     }
+}
+
+/// Opens the Ledger file at `path` through `open_storage`, then generates the Bill Schedule
+/// through the horizon and commits the new entries (ADR-0019): what opening and creating share.
+fn open_and_generate(
+    path: &std::path::Path,
+    today: chrono::NaiveDate,
+) -> lib_database::Result<Storage> {
+    let mut storage = open_storage(path, today, &lib_locale::msg::institution_personal())?;
+    bills::ports::generate(&mut storage.bills, today);
+    lib_database::Commit::commit(&storage.pending);
+    Ok(storage)
 }
 
 /// Creates a Ledger file at `path` and opens it as [`open_ledger_file`] does, for `:new`. Until the
@@ -227,10 +240,8 @@ pub fn create_ledger_file(
             },
         ));
     }
-    match open_storage(path, today, &lib_locale::msg::institution_personal()) {
-        Ok(mut storage) => {
-            bills::ports::generate(&mut storage.bills, today);
-            lib_database::Commit::commit(&storage.pending);
+    match open_and_generate(path, today) {
+        Ok(storage) => {
             tracing::info!(path = %path.display(), "Created the Ledger file");
             Ok(storage)
         }
@@ -243,15 +254,21 @@ pub fn create_ledger_file(
     }
 }
 
-/// Removes a Ledger file a failed `:new` made, with the journal files SQLite keeps beside it.
-fn remove_ledger_file(path: &std::path::Path) {
+/// The Ledger file at `path` and the journal files SQLite keeps beside it. `:new` refuses a name
+/// while any of them is there, so a failed Create removing them all removes only what it made.
+pub(crate) fn ledger_files(path: &std::path::Path) -> Vec<std::path::PathBuf> {
     let mut files = vec![path.to_path_buf()];
     for suffix in ["-wal", "-shm", "-journal"] {
         let mut side = path.as_os_str().to_owned();
         side.push(suffix);
         files.push(side.into());
     }
-    for file in files {
+    files
+}
+
+/// Removes a Ledger file a failed `:new` made, with the journal files SQLite keeps beside it.
+fn remove_ledger_file(path: &std::path::Path) {
+    for file in ledger_files(path) {
         match std::fs::remove_file(&file) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -266,20 +283,22 @@ fn remove_ledger_file(path: &std::path::Path) {
 /// open it. `open_storage` creates a missing file, and SQLite takes an empty one for a new database
 /// that it then migrates and seeds, so start-up refuses both rather than create a Ledger (#977).
 fn unopenable(path: &std::path::Path) -> Option<String> {
-    let metadata = match std::fs::metadata(path) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Some(msg::desktop_ledger_open_missing());
+    let reason = match std::fs::metadata(path) {
+        Ok(metadata) if !metadata.is_file() => msg::desktop_ledger_open_not_a_file(),
+        Ok(metadata) if metadata.len() == 0 => msg::desktop_ledger_open_empty(),
+        Ok(_) => return None,
+        Err(error) => {
+            // The error's own text is for the log, never spliced into a Message.
+            tracing::warn!(%error, path = %path.display(), "Couldn't open the Ledger file");
+            return Some(if error.kind() == std::io::ErrorKind::NotFound {
+                msg::desktop_ledger_open_missing()
+            } else {
+                msg::desktop_ledger_open_unreadable()
+            });
         }
-        Err(error) => return Some(error.to_string()),
     };
-    if !metadata.is_file() {
-        Some(msg::desktop_ledger_open_not_a_file())
-    } else if metadata.len() == 0 {
-        Some(msg::desktop_ledger_open_empty())
-    } else {
-        None
-    }
+    tracing::warn!(path = %path.display(), %reason, "Couldn't open the Ledger file");
+    Some(reason)
 }
 
 /// The Settings page the state file remembers at quit: the one on show, unless no Ledger is open

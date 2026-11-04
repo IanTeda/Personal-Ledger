@@ -192,6 +192,13 @@ impl<P: Copy + Eq + Default> NavState<P> {
         self.settings_page
     }
 
+    /// Drops the Back and Forward history, leaving the place showing. `:close` calls it: the
+    /// places visited were on the closed Ledger, so with none open Back must not reach them.
+    pub fn forget_history(&mut self) {
+        self.back.clear();
+        self.forward.clear();
+    }
+
     pub fn can_go_back(&self) -> bool {
         !self.back.is_empty()
     }
@@ -597,6 +604,18 @@ mod tests {
             steps += 1;
         }
         assert_eq!(steps, HISTORY_LIMIT);
+    }
+
+    #[test]
+    fn forgetting_history_leaves_nowhere_to_go_back_or_forward() {
+        let mut nav = NavState::new();
+        nav.set_noun(Noun::Transactions);
+        nav.set_noun(Noun::Reports);
+        nav.go_back();
+        nav.forget_history();
+        assert_eq!(nav.noun(), Noun::Transactions);
+        assert!(!nav.can_go_back());
+        assert!(!nav.can_go_forward());
     }
 
     #[test]

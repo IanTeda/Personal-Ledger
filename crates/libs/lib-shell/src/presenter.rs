@@ -202,6 +202,11 @@ impl<P: Copy + Eq + Default> ShellPresenter<P> {
         &self.nav
     }
 
+    /// Drops the Back and Forward history (`NavState::forget_history`), as `:close` does.
+    pub fn forget_history(&mut self) {
+        self.nav.forget_history();
+    }
+
     pub fn toasts(&self) -> &Toasts<DateTime<Local>> {
         &self.toasts
     }

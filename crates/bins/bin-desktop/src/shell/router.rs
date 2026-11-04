@@ -225,6 +225,10 @@ pub struct Root {
     /// Set by `:close` and cleared when a Ledger is next opened: the state file then remembers no
     /// last Ledger, rather than the one remembered before this run.
     last_ledger_forgotten: bool,
+    /// The Documents mode, Library scope and sort the state file remembers, or the last Ledger
+    /// closed left: put on each Ledger's Documents page as it opens, so one opened while the app
+    /// runs gets them back too.
+    documents_state: Option<(DocumentsMode, LibraryScope, LibrarySort)>,
     /// The Settings View, which stands with no Ledger open for its This device pages; the Open
     /// Ledger gives it its This Ledger pages (#977).
     settings: Entity<SettingsView>,
@@ -282,6 +286,7 @@ impl Root {
             palette_entries: command::entries(&lib_config::KeyBindingConfig::default()),
             file_explorer: None,
             last_ledger_forgotten: false,
+            documents_state: None,
             explorer_filters: ExplorerFilters::default(),
             open: None,
             settings,
@@ -298,8 +303,14 @@ impl Root {
         let clock = self.presenter.clock().clone();
         let keybindings = self.keybindings.clone();
         let opened = OpenLedger::build(ledger, &keybindings, &clock, &self.settings, cx);
-        // The Ledger open before, if any, flushes its writes as it drops.
-        self.open = Some(opened);
+        self.remember_documents_state(cx);
+        if let Some(replaced) = self.open.replace(opened) {
+            // Reported before it drops, as `:close` does, so a write it lost is never silent.
+            self.report_failures_on_close(&replaced);
+        }
+        if let Some((mode, scope, sort)) = self.documents_state {
+            self.set_documents_state(mode, scope, sort, cx);
+        }
         self.last_ledger_forgotten = false;
         // The Views that read their keys and Display Preferences after construction take
         // `[keybindings]` and the Preferences here, so the Open Ledger comes up under them whoever
@@ -317,8 +328,26 @@ impl Root {
         let Some(open) = self.open.take() else {
             return;
         };
+        self.documents_state = Some(open.views.documents.read(cx).persisted());
+        self.report_failures_on_close(&open);
+        crate::input::close_ledger(cx);
+        // Dropped here, once the failures are read: the writer flushes again, which finds nothing.
+        drop(open);
+        self.last_ledger_forgotten = true;
+        self.settings.update(cx, |view, cx| view.close_ledger(cx));
+        self.set_last_ledger(None, cx);
+        self.show_noun(Noun::Dashboard, cx);
+        // Every place in the history was on the closed Ledger, so Back and Forward must not reach
+        // one with none open.
+        self.presenter.forget_history();
+        cx.notify();
+    }
+
+    /// Flushes the closing Ledger `open` and reports a write that failed since the last poll: each
+    /// is logged, and one Error Toast names the file, since there is nothing left to put back.
+    /// `:close` calls it, and `:open` or `:new` on the Ledger they replace.
+    fn report_failures_on_close(&mut self, open: &OpenLedger) {
         let failures = open.flush_and_take_failures();
-        let name = open.path().map(explorer::file_name);
         for failure in &failures {
             tracing::error!(
                 error = %failure.error,
@@ -327,20 +356,13 @@ impl Root {
             );
         }
         tracing::info!(path = ?open.path(), "Closed the Ledger file");
-        crate::input::close_ledger(cx);
-        // Dropped here, once the failures are read: the writer flushes again, which finds nothing.
-        drop(open);
-        self.last_ledger_forgotten = true;
-        self.settings.update(cx, |view, cx| view.close_ledger(cx));
-        self.set_last_ledger(None, cx);
-        self.show_noun(Noun::Dashboard, cx);
         if !failures.is_empty() {
+            let name = open.path().map(explorer::file_name).unwrap_or_default();
             self.raise_toast(
                 lib_toast::ToastKind::Error,
-                crate::msg::desktop_toast_write_failed_on_close(&name.unwrap_or_default()),
+                crate::msg::desktop_toast_write_failed_on_close(&name),
             );
         }
-        cx.notify();
     }
 
     /// Whether a Ledger is open: whether `Root` holds an Open Ledger.
@@ -420,18 +442,26 @@ impl Root {
     }
 
     /// Restores the Documents mode, Library scope and sort from the last run, onto the Open
-    /// Ledger's Documents page; nothing with no Ledger open.
+    /// Ledger's Documents page, and keeps them for any Ledger opened later.
     pub fn set_documents_state(
-        &self,
+        &mut self,
         mode: DocumentsMode,
         scope: LibraryScope,
         sort: LibrarySort,
         cx: &mut App,
     ) {
+        self.documents_state = Some((mode, scope, sort));
         if let Some(open) = &self.open {
             open.views
                 .documents
                 .update(cx, |page, cx| page.set_persisted(mode, scope, sort, cx));
+        }
+    }
+
+    /// Keeps the Open Ledger's Documents mode, scope and sort for the Ledger opened next.
+    fn remember_documents_state(&mut self, cx: &App) {
+        if let Some(open) = &self.open {
+            self.documents_state = Some(open.views.documents.read(cx).persisted());
         }
     }
 

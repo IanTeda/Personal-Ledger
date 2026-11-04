@@ -62,6 +62,8 @@ desktop-ledger-open-not-a-file = not a file
 desktop-ledger-open-empty = the file is empty
 desktop-ledger-open-unreadable = it isn't a Ledger file, or can't be read
 desktop-ledger-open-out-of-date = it was made by an earlier version and can't be upgraded
+desktop-ledger-open-newer = it was made by a newer version; update Personal Ledger to open it
+desktop-ledger-open-not-a-ledger = it's a database, but not a Ledger file
 
 ## Why `:new` couldn't create a Ledger file, the `$reason` of the Toast saying so.
 

@@ -181,10 +181,4 @@ impl Root {
     }
 }
 
-/// `path`'s file name as a Toast names it, else the whole path.
-pub(super) fn file_name(path: &Path) -> String {
-    path.file_name().map_or_else(
-        || path.display().to_string(),
-        |name| name.to_string_lossy().into_owned(),
-    )
-}
+pub(super) use crate::navigation::explorer::display_name as file_name;
