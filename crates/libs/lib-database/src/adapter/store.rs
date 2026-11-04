@@ -1618,6 +1618,65 @@ mod tests {
         );
     }
 
+    /// Bills, Import, Institutions and the Budgets' Category tree read the stores' own rows, in
+    /// the reading module's terms, on each ask (#994).
+    #[test]
+    fn the_bill_import_and_institution_reads_map_the_in_memory_stores_rows() {
+        let (ledger, transactions, _) = in_memory_stub_stores();
+        let accounts: SharedAccountsStore =
+            Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts::stub()));
+        let categories: SharedCategoriesStore = Rc::new(RefCell::new(InMemoryCategories::stub()));
+        let payees: SharedPayeesStore =
+            Rc::new(RefCell::new(lib_payees::fake::InMemoryPorts::stub()));
+        let stored_accounts = accounts.borrow().accounts().accounts();
+        let stored_categories = categories.borrow().categories().categories();
+
+        let bills = StoredBillReads {
+            payees: payees.clone(),
+            accounts: accounts.clone(),
+            categories: categories.clone(),
+            transactions: transactions.clone(),
+        };
+        assert_eq!(bills.bill_accounts().len(), stored_accounts.len());
+        assert_eq!(bills.bill_categories().len(), stored_categories.len());
+        assert_eq!(
+            bills.bill_payees().len(),
+            payees.borrow().payees().payees().len()
+        );
+        let (from, to) = (NaiveDate::MIN, NaiveDate::MAX);
+        assert_eq!(
+            bills.splits_between(from, to).len(),
+            ledger
+                .transactions()
+                .iter()
+                .map(|transaction| transaction.splits.len())
+                .sum::<usize>()
+        );
+
+        let import = StoredImportReads {
+            accounts: accounts.clone(),
+            categories: categories.clone(),
+        };
+        let account = stored_accounts[0].id;
+        assert!(import.import_account(account).is_some());
+        assert!(import.import_account(AccountId::new()).is_none());
+        assert!(!import.import_categories().is_empty());
+
+        let institution = stored_accounts[0].institution;
+        let named = StoredInstitutionReads { accounts }.institution_usage(institution);
+        assert!(named.is_used());
+        assert_eq!(
+            StoredInstitutionReads {
+                accounts: Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts::default())),
+            }
+            .institution_usage(institution),
+            InstitutionUse::default()
+        );
+
+        let tree = StoredBudgetCategories { categories }.budget_categories();
+        assert_eq!(tree.len(), stored_categories.len());
+    }
+
     /// A Unit's use and holdings are counted in the Accounts, Transactions, Bills and Budgets
     /// stores.
     #[test]
