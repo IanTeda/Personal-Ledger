@@ -249,7 +249,7 @@ A notable moment on the Ledger's timeline, one of four kinds: a Milestone (a sin
 _Avoid_: event for a key, click or other input a Client handles, or for a signal one part of a Client sends another.
 
 **Category**:
-A user-defined label (e.g. "Groceries", "Salary") used to classify a Split (see below) — the unit a Transaction is actually broken into — carrying exactly one Category Type. Categories nest up to three levels deep (e.g. Housing › Utilities › Electricity): a sub-category always carries its parent's Category Type, only a leaf (a Category with nothing nested under it) is assigned to a Split, and a parent's totals roll up its descendants'.
+A user-defined label (e.g. "Groceries", "Salary") used to classify a Split (see below) — the unit a Transaction is actually broken into — carrying exactly one Category Type. Categories nest up to three levels deep (e.g. Housing › Utilities › Electricity): a sub-category always carries its parent's Category Type, only a leaf (a Category with nothing nested under it) is assigned to a Split, and a parent's totals roll up its descendants'. A leaf that gains its first child hands that child its Splits, the Bill Plans naming it and the Payees defaulting to it. A top-level Category's Category Type can be changed, cascading to everything nested under it, only while no Category in it is named by a Bill Plan or budgeted in an active Budget.
 _Avoid_: Group. Tag was once considered a synonym for Category and rejected on those
 grounds; Tag is now its own independent entity (see below), not a revival of that
 rejected idea.
@@ -259,7 +259,7 @@ One of the two fixed classifications a Category carries: Expense (money going ou
 _Avoid_: Account type.
 
 **Uncategorised**:
-The system-provided leaf Category, one per Category Type, that a deleted Category's Splits are re-pointed to, so deleting a Category never deletes a Split. Created the first time it is needed.
+The system-provided leaf Category, one per Category Type, that a deleted Category's Splits are re-pointed to, so deleting a Category never deletes a Split. Created the first time it is needed. Fixed once made: it cannot be renamed, moved, given another Category Type or have a Category nested under it.
 _Avoid_: Unknown, Other — those read as user-made Categories.
 
 **Payee**:
@@ -406,7 +406,7 @@ A physical possession recorded for its value and as something a Document can pro
 _Avoid_: Asset — too broad, and it collides with the Assets Category Type.
 
 **Document**:
-A reference to one file kept beside the Ledger, plus its metadata: a Title (defaulting to the file name without its extension, editable), exactly one Document Type, a document date, an optional Key Date and any number of Document Links. The file itself is never renamed or moved; the Ledger holds only the reference. A Document is either **Unfiled** (in the Inbox, carrying the Extracted Facts read from it and the source it arrived from) or **Filed**; it becomes Filed only by the user filing it, never by gaining a Link, so a Filed Document with no Links ("not linked") is valid.
+A reference to one file kept beside the Ledger, plus its metadata: a Title (defaulting to the file name without its extension, editable), exactly one Document Type, a document date, an optional Key Date and any number of Document Links. The file itself is never renamed or moved; the Ledger holds only the reference. A Document is either **Unfiled** (in the Inbox, carrying the Extracted Facts read from it and the source it arrived from) or **Filed**; it becomes Filed only by the user filing it, never by gaining a Link, so a Filed Document with no Links ("not linked") is valid. Deleting a Document drops its Document Links and never touches the file or the records it linked; the same file may then be added again.
 _Avoid_: Attachment, File (for the Ledger record rather than the bytes on disk), Inbox Item — an Inbox entry is just an Unfiled Document, not a separate thing.
 
 **Document Type**:
