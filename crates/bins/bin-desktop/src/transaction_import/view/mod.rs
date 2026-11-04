@@ -1,8 +1,8 @@
 //! The Import "match payees" step's drawing (`docs/ux/desktop-mockups/20-payees/README.md`, 6e):
 //! the stepper, heading and subline, a scrolling table (RAW DESCRIPTION / PAYEE / CATEGORY / STATUS
 //! / AMOUNT), and a footer bar with the summary, the "remember new payees' rules" checkbox, **back**
-//! and **continue**. It draws `lib-transaction-import`'s view model and nothing else; `page.rs`
-//! holds the Presenter.
+//! and **continue**. It draws a borrow of `lib-transaction-import`'s view model and nothing else,
+//! each click the Presenter's event sent through [`PageClicks`]; `page.rs` holds the Presenter.
 //!
 //! A row resolved by a rule shows its Payee and Category as text, as in the handoff; any other
 //! row, and any row whose select is open, shows the two selects. Their lists open inline beneath
@@ -12,16 +12,15 @@ pub mod page;
 pub mod snapshot;
 
 use std::ops::Range;
-use std::rc::Rc;
 
-use gpui::{
-    AnyElement, App, Context, Rgba, ScrollHandle, SharedString, Window, div, prelude::*, px,
-};
+use gpui::{AnyElement, App, ClickEvent, Context, Rgba, SharedString, Window, div, prelude::*, px};
 use lib_locale::format::upper;
 use lib_transaction_import::RowStatus;
-use lib_transaction_import::presenter::{ImportViewModel, OpenSelectView, RowLine, RowSelect};
+use lib_transaction_import::presenter::{
+    ImportEvent, ImportViewModel, OpenSelectView, RowLine, RowSelect,
+};
 
-use crate::theme::color;
+use crate::{shell::view::page_clicks::PageClicks, theme::color};
 use page::ImportPage;
 
 const MONOSPACE: &str = "monospace";
@@ -32,99 +31,41 @@ const AMOUNT_WIDTH: gpui::Pixels = px(90.0);
 /// The gap between the fixed columns, so a select never touches its neighbour.
 const COLUMN_GAP: gpui::Pixels = px(8.0);
 
-type OnRowClick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
-type OnSelectClick = Rc<dyn Fn(usize, RowSelect, &mut Window, &mut App)>;
-type OnOptionClick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
-type OnClick = Rc<dyn Fn(&mut Window, &mut App)>;
-
-struct ImportPageProps {
-    view: ImportViewModel,
-    /// The open select's options to draw, its window onto the highlight.
-    select_range: Option<Range<usize>>,
-    /// The chord **continue** is on, from the keymap.
-    continue_chord: String,
-    on_row_click: OnRowClick,
-    on_select_click: OnSelectClick,
-    on_option_click: OnOptionClick,
-    on_remember_click: OnClick,
-    on_back_click: OnClick,
-    on_continue_click: OnClick,
-}
-
 impl Render for ImportPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let Some(view) = self.view_model() else {
             return gpui::Empty.into_any_element();
         };
-        let entity = cx.entity();
-        let plain = |handler: fn(&mut ImportPage, &mut Context<'_, ImportPage>)| {
-            let entity = entity.clone();
-            let on_click: OnClick = Rc::new(move |_window, cx| entity.update(cx, handler));
-            on_click
-        };
-        let indexed = |handler: fn(&mut ImportPage, usize, &mut Context<'_, ImportPage>)| {
-            let entity = entity.clone();
-            let on_click: OnRowClick = Rc::new(move |index, _window, cx| {
-                entity.update(cx, |page, cx| handler(page, index, cx));
-            });
-            on_click
-        };
-        let on_select_click: OnSelectClick = {
-            let entity = entity.clone();
-            Rc::new(move |index, which: RowSelect, _window, cx| {
-                entity.update(cx, |page, cx| page.click_select(index, which, cx));
-            })
-        };
+        let clicks = PageClicks::new(cx);
         let select_range = view
             .open_select
             .as_ref()
             .map(|open| self.select_range(open.select.options.len()));
-        render(
-            &self.scroll,
-            ImportPageProps {
-                view,
-                select_range,
-                continue_chord: self.continue_chord(),
-                on_row_click: indexed(ImportPage::click_row),
-                on_select_click,
-                on_option_click: indexed(ImportPage::click_option),
-                on_remember_click: plain(ImportPage::click_remember),
-                on_back_click: plain(ImportPage::click_back),
-                on_continue_click: plain(ImportPage::click_continue),
-            },
-            cx,
-        )
+        let rows = div()
+            .id("import-rows")
+            .flex_1()
+            .min_h(px(0.0))
+            .overflow_y_scroll()
+            .track_scroll(&self.scroll)
+            .children(
+                view.rows
+                    .iter()
+                    .enumerate()
+                    .map(|(index, row)| render_row(index, row, &view, &select_range, &clicks, cx)),
+            );
+        div()
+            .id("import")
+            .flex_1()
+            .min_w(px(0.0))
+            .h_full()
+            .flex()
+            .flex_col()
+            .child(heading(&view, cx))
+            .child(table_header(&view, cx))
+            .child(rows)
+            .child(footer(&view, self.continue_chord(), &clicks, cx))
+            .into_any_element()
     }
-}
-
-fn render(scroll_handle: &ScrollHandle, props: ImportPageProps, cx: &App) -> AnyElement {
-    div()
-        .id("import")
-        .flex_1()
-        .min_w(px(0.0))
-        .h_full()
-        .flex()
-        .flex_col()
-        .child(heading(&props.view, cx))
-        .child(table_header(&props.view, cx))
-        .child(
-            div()
-                .id("import-rows")
-                .flex_1()
-                .min_h(px(0.0))
-                .overflow_y_scroll()
-                .track_scroll(scroll_handle)
-                .children(
-                    props
-                        .view
-                        .rows
-                        .iter()
-                        .enumerate()
-                        .map(|(index, row)| render_row(index, row, &props, cx)),
-                ),
-        )
-        .child(footer(&props, cx))
-        .into_any_element()
 }
 
 /// The stepper (step 1 done, 2 current, 3 upcoming), the heading and the subline.
@@ -197,17 +138,31 @@ fn table_header(view: &ImportViewModel, cx: &App) -> impl IntoElement {
         )
 }
 
-fn render_row(index: usize, row: &RowLine, props: &ImportPageProps, cx: &App) -> AnyElement {
-    let view = &props.view;
+/// Row `index`: a click selects it, and a click on one of its selects opens that select, or closes
+/// it when it is the open one.
+fn render_row(
+    index: usize,
+    row: &RowLine,
+    view: &ImportViewModel,
+    select_range: &Option<Range<usize>>,
+    clicks: &PageClicks<ImportPage>,
+    cx: &App,
+) -> AnyElement {
     let selected = view.selected == index;
     let unresolved = row.status != RowStatus::RuleMatch;
     let open = view.open_select.as_ref().filter(|open| open.row == index);
     let show_selects = unresolved || open.is_some();
-    let on_row_click = props.on_row_click.clone();
     let hover = color::hover(cx);
     let open_list = |which: RowSelect| {
         open.filter(|open| open.which == which)
-            .zip(props.select_range.clone())
+            .zip(select_range.clone())
+    };
+    let select_click = |which: RowSelect| {
+        if open_list(which).is_some() {
+            ImportEvent::Cancel
+        } else {
+            ImportEvent::OpenRow(index, which)
+        }
     };
 
     let payee_cell = if show_selects {
@@ -217,9 +172,9 @@ fn render_row(index: usize, row: &RowLine, props: &ImportPageProps, cx: &App) ->
                 text: row.payee.clone(),
                 missing: !row.payee_chosen,
                 open: open_list(RowSelect::Payee),
-                on_click: select_click(props, index, RowSelect::Payee),
-                on_option_click: props.on_option_click.clone(),
+                event: select_click(RowSelect::Payee),
             },
+            clicks,
             cx,
         )
     } else {
@@ -236,9 +191,9 @@ fn render_row(index: usize, row: &RowLine, props: &ImportPageProps, cx: &App) ->
                 text: row.category.clone(),
                 missing: !row.category_chosen,
                 open: open_list(RowSelect::Category),
-                on_click: select_click(props, index, RowSelect::Category),
-                on_option_click: props.on_option_click.clone(),
+                event: select_click(RowSelect::Category),
             },
+            clicks,
             cx,
         )
     } else {
@@ -262,7 +217,7 @@ fn render_row(index: usize, row: &RowLine, props: &ImportPageProps, cx: &App) ->
         .border_color(color::chrome(cx))
         .when(unresolved, |this| this.bg(color::chrome(cx)))
         .when(!unresolved, |this| this.hover(move |style| style.bg(hover)))
-        .on_click(move |_event, window, cx| on_row_click(index, window, cx))
+        .on_click(clicks.row(ImportEvent::SelectRow(index)))
         // The keyboard's row: a 2px accent bar in the left padding, so nothing shifts.
         .child(
             div()
@@ -305,11 +260,6 @@ fn render_row(index: usize, row: &RowLine, props: &ImportPageProps, cx: &App) ->
         .into_any_element()
 }
 
-fn select_click(props: &ImportPageProps, index: usize, select: RowSelect) -> OnClick {
-    let on_select_click = props.on_select_click.clone();
-    Rc::new(move |window: &mut Window, cx: &mut App| on_select_click(index, select, window, cx))
-}
-
 struct SelectCell<'a> {
     id: String,
     text: String,
@@ -317,20 +267,20 @@ struct SelectCell<'a> {
     missing: bool,
     /// The open select and the options of it to draw, when this select is the open one.
     open: Option<(&'a OpenSelectView, Range<usize>)>,
-    on_click: OnClick,
-    on_option_click: OnOptionClick,
+    /// What a click on the select sends.
+    event: ImportEvent,
 }
 
 /// `padding:5px 6px; border:1px; font-size:12px`, red-bordered while `missing`.
-fn cell_select(cell: SelectCell<'_>, cx: &App) -> AnyElement {
+fn cell_select(cell: SelectCell<'_>, clicks: &PageClicks<ImportPage>, cx: &App) -> AnyElement {
     let SelectCell {
         id,
         text,
         missing,
         open,
-        on_click,
-        on_option_click,
+        event,
     } = cell;
+    let on_click = clicks.send(event);
     let border = if missing || open.is_some() {
         color::accent(cx)
     } else {
@@ -356,9 +306,9 @@ fn cell_select(cell: SelectCell<'_>, cx: &App) -> AnyElement {
                 .border_color(border)
                 .bg(color::background(cx))
                 .text_size(px(12.0))
-                .on_click(move |_event, window, cx| {
+                .on_click(move |event: &ClickEvent, window, cx| {
                     cx.stop_propagation();
-                    on_click(window, cx)
+                    on_click(event, window, cx);
                 })
                 .child(div().min_w(px(0.0)).truncate().child(text))
                 .child(
@@ -384,7 +334,7 @@ fn cell_select(cell: SelectCell<'_>, cx: &App) -> AnyElement {
                 .border_color(color::border(cx))
                 .children(range.map(|option| {
                     let highlighted = option == open.highlight;
-                    let on_option_click = on_option_click.clone();
+                    let on_option_click = clicks.send(ImportEvent::Choose(option));
                     div()
                         .id(SharedString::from(format!("{id}-option-{option}")))
                         .debug_selector({
@@ -400,9 +350,9 @@ fn cell_select(cell: SelectCell<'_>, cx: &App) -> AnyElement {
                             this.bg(color::selection_background(cx))
                                 .text_color(color::selection_text(cx))
                         })
-                        .on_click(move |_event, window, cx| {
+                        .on_click(move |event: &ClickEvent, window, cx| {
                             cx.stop_propagation();
-                            on_option_click(option, window, cx)
+                            on_option_click(event, window, cx);
                         })
                         .child(options[option].label.clone())
                 }))
@@ -438,18 +388,20 @@ fn status_tag(status: RowStatus, label: String, cx: &App) -> impl IntoElement {
 }
 
 /// The footer bar: the summary, the remember checkbox, **back** and **continue** (disabled while
-/// any row needs review).
-fn footer(props: &ImportPageProps, cx: &App) -> impl IntoElement {
-    let view = &props.view;
+/// any row needs review), with the chord **continue** is on beside it.
+fn footer(
+    view: &ImportViewModel,
+    continue_chord: String,
+    clicks: &PageClicks<ImportPage>,
+    cx: &App,
+) -> impl IntoElement {
     let summary = &view.summary;
     let can_continue = view.can_continue;
     let needs_review = view
         .rows
         .iter()
         .any(|row| row.status == RowStatus::NeedsReview);
-    let on_remember_click = props.on_remember_click.clone();
-    let on_back_click = props.on_back_click.clone();
-    let on_continue_click = props.on_continue_click.clone();
+    let on_continue_click = clicks.send(ImportEvent::Continue);
     let hover = color::hover(cx);
     let dot = || div().child("\u{b7}");
 
@@ -493,7 +445,7 @@ fn footer(props: &ImportPageProps, cx: &App) -> impl IntoElement {
                 .flex()
                 .items_center()
                 .gap(px(6.0))
-                .on_click(move |_event, window, cx| on_remember_click(window, cx))
+                .on_click(clicks.send(ImportEvent::ToggleRemember))
                 .child(
                     div()
                         .size(px(12.0))
@@ -522,7 +474,7 @@ fn footer(props: &ImportPageProps, cx: &App) -> impl IntoElement {
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_color(color::foreground(cx))
                 .hover(move |style| style.bg(hover))
-                .on_click(move |_event, window, cx| on_back_click(window, cx))
+                .on_click(clicks.send(ImportEvent::Back))
                 .child(view.back.clone()),
         )
         .child(
@@ -538,13 +490,12 @@ fn footer(props: &ImportPageProps, cx: &App) -> impl IntoElement {
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .map(|this| {
                     if can_continue {
-                        this.cursor_pointer()
-                            .on_click(move |_event, window, cx| on_continue_click(window, cx))
+                        this.cursor_pointer().on_click(on_continue_click)
                     } else {
                         this.opacity(0.38)
                     }
                 })
                 .child(view.continue_label.clone())
-                .child(div().opacity(0.75).child(props.continue_chord.clone())),
+                .child(div().opacity(0.75).child(continue_chord)),
         )
 }

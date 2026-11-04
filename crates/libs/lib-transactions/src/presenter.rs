@@ -5,12 +5,14 @@
 //! View only draws.
 
 mod filter;
+mod glyphs;
 mod transactions_page;
 
 pub use filter::{
     ChipField, ChipView, FilterEvent, FilterField, FilterOutcome, FilterPresenter, FilterViewModel,
     status_filter_label,
 };
+pub use glyphs::{status_glyph, status_legend};
 pub use transactions_page::{
     EMPTY_CELL, FooterTotal, FooterView, RowView, TagsCell, TransactionsPageEvent,
     TransactionsPagePresenter, TransactionsPageViewModel,

@@ -55,6 +55,8 @@ pub enum ImportEvent {
     Continue,
     /// `esc`: closes an open select, else leaves the step.
     Cancel,
+    /// **back**: leaves the step, closing an open select on the way.
+    Back,
 }
 
 /// A row as drawn. `payee` and `category` read "choose …" until chosen, which `payee_chosen` and
@@ -189,6 +191,10 @@ impl ImportPresenter {
                 if self.open.take().is_none() {
                     router.close_import(None);
                 }
+            }
+            ImportEvent::Back => {
+                self.open = None;
+                router.close_import(None);
             }
         }
     }
@@ -856,6 +862,18 @@ mod tests {
             )]
         );
         assert_eq!(*step.store.borrow(), before);
+    }
+
+    #[test]
+    fn back_leaves_the_step_even_with_a_select_open() {
+        let mut step = Harness::new();
+        step.send(ImportEvent::Open(RowSelect::Category));
+        assert!(step.presenter.view_model().open_select.is_some());
+
+        step.send(ImportEvent::Back);
+
+        assert_eq!(step.router.closed, [None]);
+        assert!(step.store.borrow().transactions.transactions.is_empty());
     }
 
     #[test]

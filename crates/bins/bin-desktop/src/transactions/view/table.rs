@@ -19,11 +19,10 @@ use gpui::{
 };
 use gpui_component::scroll::Scrollbar;
 
-use lib_transactions::presenter::{EMPTY_CELL, RowView, TagsCell};
+use lib_transactions::presenter::{EMPTY_CELL, RowView, TagsCell, TransactionsPageEvent};
 
-use crate::{settings::display::StatusGlyphs, theme::color, view::format};
-
-pub type OnRowClick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
+use super::page::TransactionsPage;
+use crate::{shell::view::page_clicks::PageClicks, theme::color};
 
 const STATUS_WIDTH: Pixels = px(20.0);
 const FLAG_WIDTH: Pixels = px(16.0);
@@ -120,16 +119,16 @@ pub fn column_header(cx: &App) -> impl IntoElement {
         ))
 }
 
-/// The scrolling body: a `uniform_list` of `rows`, `selected` drawn dark, every row `row_height`
-/// tall and its status marks in `glyphs`. `flex_1` and a zero minimum height let it take exactly the space between the fixed header
-/// above and whatever sits below. An empty result shows a message instead of an empty list.
+/// The scrolling body: a `uniform_list` of `rows`, `selected` drawn dark and every row
+/// `row_height` tall, a click on one selecting it. `flex_1` and a zero minimum height let it take
+/// exactly the space between the fixed header above and whatever sits below. An empty result shows
+/// a message instead of an empty list.
 pub fn rows(
     rows: Rc<Vec<RowView>>,
     selected: usize,
     row_height: Pixels,
-    glyphs: StatusGlyphs,
     scroll: UniformListScrollHandle,
-    on_row_click: OnRowClick,
+    clicks: &PageClicks<TransactionsPage>,
     cx: &App,
 ) -> AnyElement {
     if rows.is_empty() {
@@ -144,6 +143,7 @@ pub fn rows(
     }
 
     let count = rows.len();
+    let clicks = clicks.clone();
     let list = uniform_list(
         "transactions-rows",
         count,
@@ -157,8 +157,7 @@ pub fn rows(
                         &rows[index],
                         index == selected,
                         row_height,
-                        glyphs,
-                        on_row_click.clone(),
+                        &clicks,
                         cx,
                     )
                 })
@@ -193,8 +192,7 @@ fn row(
     view: &RowView,
     selected: bool,
     height: Pixels,
-    glyphs: StatusGlyphs,
-    on_click: OnRowClick,
+    clicks: &PageClicks<TransactionsPage>,
     cx: &App,
 ) -> AnyElement {
     let (primary, secondary, tertiary) = if selected {
@@ -244,13 +242,13 @@ fn row(
             let hover = color::hover(cx);
             this.hover(move |style| style.bg(hover))
         })
-        .on_click(move |_event, window, cx| on_click(index, window, cx))
+        .on_click(clicks.row(TransactionsPageEvent::Select(index)))
         .child(
             div()
                 .w(STATUS_WIDTH)
                 .flex_none()
                 .text_color(primary)
-                .child(format::status_glyph(&view.status, glyphs)),
+                .child(view.status_glyph.clone()),
         )
         .child(
             div()
@@ -258,7 +256,7 @@ fn row(
                 .flex_none()
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_color(primary)
-                .children(view.flagged.then(|| format::flag_glyph(glyphs))),
+                .children(view.flag_glyph.clone()),
         )
         .child(
             div()

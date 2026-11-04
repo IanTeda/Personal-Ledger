@@ -1,7 +1,7 @@
 //! The Import step's View: `lib-transaction-import`'s Presenter in a gpui Entity, which the Shell
 //! shows in place of the Transactions list while the step is open (ADR-0037). It looks up each key
 //! the Shell passes on, as chord text, in the step's keymap (the open select's while one is open),
-//! turns clicks into events, and draws the view model (`super`). Each key and click is one input
+//! takes its clicks as events (`PresenterPage`), and draws the view model (`super`). Each key and click is one input
 //! (`crate::input::send`), which commits what it wrote.
 //!
 //! What stays here is gpui's: the rows' scroll and the open select's window of options. The
@@ -13,12 +13,13 @@ use std::ops::Range;
 use gpui::{App, Context, Entity, ScrollHandle};
 use lib_core::Clock;
 use lib_transaction_import::keymap::{CONTINUE, import_keymap, import_select_keymap};
-use lib_transaction_import::presenter::{ImportEvent, ImportPresenter, ImportViewModel, RowSelect};
+use lib_transaction_import::presenter::{ImportEvent, ImportPresenter, ImportViewModel};
 use lib_viper::keymap::Keymap;
 use lib_viper::view::legend;
 
 use crate::form::select::MAX_VISIBLE_ROWS;
 use crate::ledger_store::LedgerStore;
+use crate::shell::view::page_clicks::PresenterPage;
 use crate::shell::view::statusline::PageStatus;
 use crate::transaction_import::ImportStores;
 use crate::transaction_import::router::PageRouter;
@@ -126,56 +127,6 @@ impl ImportPage {
         true
     }
 
-    /// A click on a row selects it, closing another row's open select.
-    pub(super) fn click_row(&mut self, index: usize, cx: &mut Context<'_, Self>) {
-        self.send(ImportEvent::SelectRow(index), cx);
-    }
-
-    /// A click on a row's select: opens it, or closes it when it is already the open one.
-    pub(super) fn click_select(
-        &mut self,
-        index: usize,
-        which: RowSelect,
-        cx: &mut Context<'_, Self>,
-    ) {
-        let open = self
-            .view_model()
-            .and_then(|view| view.open_select)
-            .is_some_and(|open| open.row == index && open.which == which);
-        let event = if open {
-            ImportEvent::Cancel
-        } else {
-            ImportEvent::OpenRow(index, which)
-        };
-        self.send(event, cx);
-    }
-
-    pub(super) fn click_option(&mut self, option: usize, cx: &mut Context<'_, Self>) {
-        self.send(ImportEvent::Choose(option), cx);
-    }
-
-    pub(super) fn click_remember(&mut self, cx: &mut Context<'_, Self>) {
-        self.send(ImportEvent::ToggleRemember, cx);
-    }
-
-    /// **back** leaves the step, closing an open select on the way.
-    pub(super) fn click_back(&mut self, cx: &mut Context<'_, Self>) {
-        crate::input::send(cx, |cx| {
-            if self
-                .view_model()
-                .is_some_and(|view| view.open_select.is_some())
-            {
-                self.handle(ImportEvent::Cancel, cx);
-            }
-            self.handle(ImportEvent::Cancel, cx);
-        });
-    }
-
-    /// **continue**: commits the step, as `enter` does.
-    pub(super) fn click_continue(&mut self, cx: &mut Context<'_, Self>) {
-        self.send(ImportEvent::Continue, cx);
-    }
-
     /// A key or click as one input, committed once it is handled.
     fn send(&mut self, event: ImportEvent, cx: &mut Context<'_, Self>) {
         crate::input::send(cx, |cx| self.handle(event, cx));
@@ -248,6 +199,13 @@ impl ImportPage {
             hints: legend(&view.hints, keymap),
             right: view.status,
         })
+    }
+}
+
+/// The step's clicks: its rows, their selects and options, and the footer.
+impl PresenterPage<ImportEvent> for ImportPage {
+    fn send(&mut self, event: ImportEvent, cx: &mut Context<'_, Self>) {
+        ImportPage::send(self, event, cx);
     }
 }
 

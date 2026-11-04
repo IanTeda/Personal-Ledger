@@ -1,19 +1,19 @@
 //! The Settings **Display** preferences applied to real data: the date style (dates and amounts
-//! otherwise follow the Locale through `lib-locale`), the status and Flagged glyphs, and row
-//! density. `gpui`-free, and taking each
+//! otherwise follow the Locale through `lib-locale`), the Flagged glyph, and row density. `gpui`-free, and taking each
 //! preference as a plain argument (the enums in `settings.rs`, never `Root`), so every view
 //! renders from one place and the Display section's PREVIEW table keeps matching what the app
 //! actually shows.
 //!
 //! The Settings preview has its own primitive-argument helpers (`settings::display::format_preview_date` and
 //! `format_preview_amount`); these take the real types (`NaiveDate`, `Money`, `TransactionStatus`)
-//! and route through the same Locale formatting, so the two cannot disagree.
+//! and route through the same Locale formatting, so the two cannot disagree. The Transactions
+//! table's status glyphs and legend are its Presenter's, in `lib-transactions`.
 
 use chrono::NaiveDate;
-use lib_core::{DateStyle, Money, TransactionStatus};
+use lib_core::{DateStyle, Money};
 use lib_locale::format::{AmountStyle, format_amount, format_date};
 
-use crate::settings::display::{RowDensity, StatusGlyphs};
+use crate::settings::display::RowDensity;
 
 /// The mark for an empty table cell, as the Transactions table writes it.
 pub const EMPTY_CELL: &str = lib_transactions::presenter::EMPTY_CELL;
@@ -39,43 +39,9 @@ pub fn signed_amount(money: &Money) -> (bool, String) {
     (formatted.is_negative, formatted.text)
 }
 
-/// The status glyph: Open ○, Cleared ◐, Reconciled ● in the unicode style. The ascii fallback keeps
-/// the Display preview's own mapping for the glyphs they share (◐ is `o`, ● is `x`) and gives Open
-/// the remaining mark, `-`.
-pub fn status_glyph(status: &TransactionStatus, style: StatusGlyphs) -> &'static str {
-    match (status, style) {
-        (TransactionStatus::Open, StatusGlyphs::Unicode) => "\u{25cb}",
-        (TransactionStatus::Cleared, StatusGlyphs::Unicode) => "\u{25d0}",
-        (TransactionStatus::Reconciled, StatusGlyphs::Unicode) => "\u{25cf}",
-        (TransactionStatus::Open, StatusGlyphs::AsciiFallback) => "-",
-        (TransactionStatus::Cleared, StatusGlyphs::AsciiFallback) => "o",
-        (TransactionStatus::Reconciled, StatusGlyphs::AsciiFallback) => "x",
-    }
-}
-
-/// The Flagged mark, shown separately from the status (Flagged is independent of it): ⚑, or `!`.
-pub fn flag_glyph(style: StatusGlyphs) -> &'static str {
-    match style {
-        StatusGlyphs::Unicode => "\u{2691}",
-        StatusGlyphs::AsciiFallback => "!",
-    }
-}
-
-/// The status bar's glyph legend, in the chosen style:
-/// `○ open · ◐ cleared · ● reconciled · ⚑ flagged`.
-pub fn status_legend(style: StatusGlyphs) -> String {
-    let statuses = [
-        (TransactionStatus::Open, "open"),
-        (TransactionStatus::Cleared, "cleared"),
-        (TransactionStatus::Reconciled, "reconciled"),
-    ];
-    let mut parts: Vec<String> = statuses
-        .iter()
-        .map(|(status, name)| format!("{} {name}", status_glyph(status, style)))
-        .collect();
-    parts.push(format!("{} flagged", flag_glyph(style)));
-    parts.join(" \u{b7} ")
-}
+/// The Flagged mark, which the Dashboard and the Bills schedule draw; the Transactions table's
+/// marks and legend are its Presenter's (`lib_transactions::presenter::status_glyph`).
+pub use lib_viper::display::flag_glyph;
 
 /// The height of one line of table text: 13px type at the shell's body line height.
 pub const ROW_LINE_HEIGHT_PX: f32 = 16.0;
@@ -182,54 +148,6 @@ mod tests {
     }
 
     #[test]
-    fn status_glyphs_match_the_transactions_bundle_in_unicode() {
-        let unicode = StatusGlyphs::Unicode;
-        assert_eq!(status_glyph(&TransactionStatus::Open, unicode), "\u{25cb}");
-        assert_eq!(
-            status_glyph(&TransactionStatus::Cleared, unicode),
-            "\u{25d0}"
-        );
-        assert_eq!(
-            status_glyph(&TransactionStatus::Reconciled, unicode),
-            "\u{25cf}"
-        );
-        assert_eq!(flag_glyph(unicode), "\u{2691}");
-    }
-
-    #[test]
-    fn the_ascii_fallback_keeps_the_display_previews_marks_for_shared_glyphs() {
-        let ascii = StatusGlyphs::AsciiFallback;
-        assert_eq!(status_glyph(&TransactionStatus::Cleared, ascii), "o");
-        assert_eq!(status_glyph(&TransactionStatus::Reconciled, ascii), "x");
-        assert_eq!(flag_glyph(ascii), "!");
-        assert_eq!(status_glyph(&TransactionStatus::Open, ascii), "-");
-        for style in StatusGlyphs::ALL {
-            let glyphs = [
-                status_glyph(&TransactionStatus::Open, style),
-                status_glyph(&TransactionStatus::Cleared, style),
-                status_glyph(&TransactionStatus::Reconciled, style),
-                flag_glyph(style),
-            ];
-            let mut unique = glyphs.to_vec();
-            unique.sort_unstable();
-            unique.dedup();
-            assert_eq!(unique.len(), 4, "every mark is distinct in {style:?}");
-        }
-    }
-
-    #[test]
-    fn the_legend_names_every_status_and_the_flag_in_the_chosen_style() {
-        assert_eq!(
-            status_legend(StatusGlyphs::Unicode),
-            "\u{25cb} open \u{b7} \u{25d0} cleared \u{b7} \u{25cf} reconciled \u{b7} \u{2691} flagged"
-        );
-        assert_eq!(
-            status_legend(StatusGlyphs::AsciiFallback),
-            "- open \u{b7} o cleared \u{b7} x reconciled \u{b7} ! flagged"
-        );
-    }
-
-    #[test]
     fn row_height_grows_with_density_and_regular_is_the_bundles_nine_pixel_padding() {
         assert_eq!(row_padding_y_px(RowDensity::Regular), 9.0);
         assert_eq!(row_height_px(RowDensity::Compact), 26.0);
@@ -241,6 +159,7 @@ mod tests {
 
     #[test]
     fn the_density_step_matches_the_display_previews_step() {
+        use crate::settings::display::RowDensityChoice;
         for density in RowDensity::ALL {
             let preview = density.preview_row_padding_y();
             let regular_preview = RowDensity::Regular.preview_row_padding_y();

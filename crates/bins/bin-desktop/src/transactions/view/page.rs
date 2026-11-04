@@ -5,9 +5,11 @@
 //! `header.rs`, `table.rs`, `footer.rs`, `filter_popover.rs`). Each key and click is one input
 //! (`crate::input::send`), which commits what it wrote; the page writes nothing yet.
 //!
-//! What stays here is gpui's: the table's scroll and the half page it measures, the row height and
-//! status glyphs the Display Preferences choose, where each chip was painted, and a popover
-//! select's open list and highlight, while the Presenter holds the chosen option. The popover reads
+//! What stays here is gpui's: the table's scroll and the half page it measures by the row height,
+//! where each chip was painted, and a popover select's open list and highlight, while the
+//! Presenter holds the chosen option. The Display Preferences reach the Presenter as
+//! [`TransactionsPageEvent::DisplayChanged`], so the glyphs and the density it draws by are in the
+//! view model; only density to pixels is the bin's (`format::row_height_px`). The popover reads
 //! its keys through the Shell's Dialog keymap, pushed here by `Root`. Search and the popover stay
 //! modes in the bin (`InputMode::Search`, `InputMode::Filter`) until their own slice: the page
 //! enters and leaves them through [`ViewEvent`] as the Presenter opens and closes them.
@@ -29,7 +31,7 @@ use lib_transactions::presenter::{
     ChipField, FilterEvent, FilterField, FilterViewModel, TransactionsPageEvent,
     TransactionsPagePresenter, TransactionsPageViewModel,
 };
-use lib_transactions::query::{StatusFilter, TransactionFilters};
+use lib_transactions::query::TransactionFilters;
 use lib_viper::keymap::Keymap;
 
 use super::header::ChipBounds;
@@ -40,7 +42,7 @@ use crate::{
     navigation::{chord::chord, movement::Movement, nav::Noun},
     notices::Queue,
     settings::display::{RowDensity, StatusGlyphs},
-    shell::view::statusline::PageStatus,
+    shell::view::{page_clicks::PresenterPage, statusline::PageStatus},
     view::{
         event::{ViewEvent, ViewMode},
         format,
@@ -65,10 +67,6 @@ pub struct TransactionsPage {
     keymap: Keymap<TransactionsPageEvent>,
     /// The Shell's Dialog keymap, which the filter popover reads its keys through.
     dialog_keymap: Keymap<DialogCommand>,
-    /// The Display Preferences the table's glyphs and row height follow; the date style is the
-    /// Presenter's.
-    pub(super) glyphs: StatusGlyphs,
-    pub(super) density: RowDensity,
     /// The table's `uniform_list` scroll state: scrolls the selected row into view and reports the
     /// viewport height for half-page moves.
     pub(super) scroll: UniformListScrollHandle,
@@ -109,8 +107,6 @@ impl TransactionsPage {
             presenter,
             keymap,
             dialog_keymap: lib_shell::dialog_keymap(&config),
-            glyphs: StatusGlyphs::default(),
-            density: RowDensity::default(),
             scroll: UniformListScrollHandle::new(),
             filter_list: None,
             filter_anchor: ChipField::Account,
@@ -191,7 +187,7 @@ impl TransactionsPage {
     /// How many rows a half-page move steps, from the list's measured viewport height.
     fn half_page(&self) -> usize {
         let viewport = f32::from(self.scroll.0.borrow().base_handle.bounds().size.height);
-        half_page_rows(viewport, format::row_height_px(self.density))
+        half_page_rows(viewport, format::row_height_px(self.presenter.density()))
     }
 
     /// Every chord the Transactions keymap binds, the arrows, `g g` and `enter` among them. The
@@ -323,7 +319,8 @@ impl TransactionsPage {
         self.handle(TransactionsPageEvent::Move(Step::First), cx);
     }
 
-    /// Follows a change to the Display Preferences.
+    /// Follows a change to the Display Preferences: the date style, and the glyphs and density
+    /// the rows draw with, handed to the Presenter as one input.
     pub fn set_display(
         &mut self,
         date_style: Option<DateStyle>,
@@ -331,22 +328,26 @@ impl TransactionsPage {
         density: RowDensity,
         cx: &mut Context<'_, Self>,
     ) {
-        if density != self.density {
+        if density != self.presenter.density() {
             // The table's scroll offset is in pixels, so a new row height would leave it pointing
             // at a different row: re-anchor on the selected one for its next paint.
             self.scroll
                 .scroll_to_item_strict(self.presenter.selected(), ScrollStrategy::Center);
         }
-        self.glyphs = glyphs;
-        self.density = density;
-        self.send(TransactionsPageEvent::SetDateStyle(date_style), cx);
+        crate::input::send(cx, |cx| {
+            self.handle(TransactionsPageEvent::SetDateStyle(date_style), cx);
+            self.handle(
+                TransactionsPageEvent::DisplayChanged { glyphs, density },
+                cx,
+            );
+        });
     }
 
     /// The status line's legend (the filter popover's or the page's), and its right-hand text.
     pub fn page_status(&self, _cx: &App) -> Option<PageStatus> {
         Some(PageStatus {
             hints: self.presenter.hints(&self.dialog_keymap),
-            right: format::status_legend(self.glyphs),
+            right: self.presenter.legend(),
         })
     }
 
@@ -575,70 +576,54 @@ impl TransactionsPage {
         }
     }
 
-    /// A click that sends `event`, as one input.
-    pub(super) fn click(&mut self, event: TransactionsPageEvent, cx: &mut Context<'_, Self>) {
-        self.send(event, cx);
+    /// A click on a popover select's field opens its list, or closes it when it is open: the
+    /// list is the View's, so the Presenter's focus event leaves it to the page.
+    fn toggle_list(&mut self, field: FilterField) {
+        let Some(view) = self.filter_view() else {
+            return;
+        };
+        let options = select_labels(&view, field).0;
+        let list = self.list(&view, field);
+        if list.is_open() {
+            list.cancel();
+        } else {
+            list.open(&options);
+        }
     }
+}
 
-    /// A click on a filter chip (or its `▾`): opens the popover on that chip's field, anchored
-    /// under it.
-    pub(super) fn click_chip(&mut self, field: ChipField, cx: &mut Context<'_, Self>) {
-        self.filter_anchor = field;
-        self.send(TransactionsPageEvent::OpenFilter(Some(field)), cx);
-    }
-
-    /// A click on the search box: the same as pressing `/`, and the page enters the Search mode
-    /// itself, since no key did.
-    pub(super) fn click_search(&mut self, cx: &mut Context<'_, Self>) {
-        self.send(TransactionsPageEvent::StartSearch, cx);
-        cx.emit(ViewEvent::EnterMode(ViewMode::Search));
-    }
-
-    /// A click on a popover field: a text field takes focus; a select takes focus and toggles its
-    /// list.
-    pub(super) fn click_filter_field(&mut self, field: FilterField, cx: &mut Context<'_, Self>) {
-        crate::input::send(cx, |cx| {
-            self.filter(FilterEvent::Focus(field), cx);
-            let Some(view) = self.filter_view() else {
-                return;
-            };
-            if field.is_select() {
-                let options = select_labels(&view, field).0;
-                let list = self.list(&view, field);
-                if list.is_open() {
-                    list.cancel();
-                } else {
-                    list.open(&options);
-                }
+/// The page's clicks: its header, its rows and the filter popover. What a click leaves to the View
+/// follows the event here: the chip a popover opened from anchors it, a click on the search box
+/// enters the Search mode (a key's `Root` enters itself), and a select's field toggles its list
+/// while a chosen option closes it.
+impl PresenterPage<TransactionsPageEvent> for TransactionsPage {
+    fn send(&mut self, event: TransactionsPageEvent, cx: &mut Context<'_, Self>) {
+        if let TransactionsPageEvent::OpenFilter(Some(field)) = event {
+            self.filter_anchor = field;
+        }
+        let start_search = matches!(event, TransactionsPageEvent::StartSearch);
+        let focused_select = match &event {
+            TransactionsPageEvent::Filter(FilterEvent::Focus(field)) if field.is_select() => {
+                Some(*field)
             }
-            cx.notify();
-        });
-    }
-
-    /// A click on row `index` of a select's open list.
-    pub(super) fn click_filter_option(
-        &mut self,
-        field: FilterField,
-        index: usize,
-        cx: &mut Context<'_, Self>,
-    ) {
-        crate::input::send(cx, |cx| {
-            let Some(view) = self.filter_view() else {
-                return;
-            };
-            let options = select_labels(&view, field).0;
-            let list = self.list(&view, field);
-            list.choose(&options, index);
-            let chosen = list.value().map(str::to_string);
-            self.send_choice(&view, field, chosen, cx);
-        });
-    }
-
-    pub(super) fn click_filter_status(&mut self, status: StatusFilter, cx: &mut Context<'_, Self>) {
-        self.send(
-            TransactionsPageEvent::Filter(FilterEvent::Status(status)),
-            cx,
+            _ => None,
+        };
+        let chosen = matches!(
+            event,
+            TransactionsPageEvent::Filter(FilterEvent::Account(_) | FilterEvent::Category(_))
         );
+        crate::input::send(cx, |cx| {
+            self.handle(event, cx);
+            if let Some(field) = focused_select {
+                self.toggle_list(field);
+            }
+            if chosen {
+                self.filter_list = None;
+            }
+        });
+        if start_search {
+            cx.emit(ViewEvent::EnterMode(ViewMode::Search));
+        }
     }
 }
 

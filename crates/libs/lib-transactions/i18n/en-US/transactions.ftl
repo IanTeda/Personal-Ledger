@@ -78,6 +78,13 @@ transactions-hint-filter = filter
 transactions-hint-apply = apply
 transactions-hint-reset = reset
 
+## The status line's glyph legend, each name after its glyph: `○ open · ◐ cleared · ● reconciled · ⚑ flagged`.
+
+transactions-legend-open = open
+transactions-legend-cleared = cleared
+transactions-legend-reconciled = reconciled
+transactions-legend-flagged = flagged
+
 ## What `Enter`, `e` and `n` answer: there is no Transaction form yet.
 
 transactions-open-not-yet-built = open transaction — not yet built

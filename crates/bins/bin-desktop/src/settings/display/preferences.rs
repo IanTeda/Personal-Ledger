@@ -39,20 +39,25 @@ pub struct DisplayPreferences {
     pub start_sidebar_minimised: bool,
 }
 
-/// The same section's "Row density" segmented control (`regular` the mockup's own `checked`
-/// option).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum RowDensity {
-    Compact,
-    #[default]
-    Regular,
-    Roomy,
+/// The same section's "Row density" segmented control and "Status glyphs" radio group: the
+/// choices live in `lib-viper`, since the Transactions and Bills Presenters take them; their
+/// labels are this bin's Messages, through [`RowDensityChoice`] and [`StatusGlyphsChoice`].
+pub use lib_viper::display::{RowDensity, StatusGlyphs};
+
+/// The Display page's reading of a [`RowDensity`]: its label and its PREVIEW padding.
+pub trait RowDensityChoice {
+    fn label(self) -> String;
+
+    /// The PREVIEW table's own row vertical padding at this density -- the mockup only draws the
+    /// `regular` state (`padding:8px 12px`), so `compact`/`roomy` step by the design tokens' own
+    /// 4px rhythm (`docs/ux/desktop-mockups/16-settings/README.md`'s Spacing token list) either side of it,
+    /// the same "reflects the currently-selected values" the README's own field list promises
+    /// for this control.
+    fn preview_row_padding_y(self) -> f32;
 }
 
-impl RowDensity {
-    pub const ALL: [RowDensity; 3] = [Self::Compact, Self::Regular, Self::Roomy];
-
-    pub fn label(self) -> String {
+impl RowDensityChoice for RowDensity {
+    fn label(self) -> String {
         match self {
             Self::Compact => crate::msg::desktop_settings_density_compact(),
             Self::Regular => crate::msg::desktop_settings_density_regular(),
@@ -60,12 +65,7 @@ impl RowDensity {
         }
     }
 
-    /// The PREVIEW table's own row vertical padding at this density -- the mockup only draws the
-    /// `regular` state (`padding:8px 12px`), so `compact`/`roomy` step by the design tokens' own
-    /// 4px rhythm (`docs/ux/desktop-mockups/16-settings/README.md`'s Spacing token list) either side of it,
-    /// the same "reflects the currently-selected values" the README's own field list promises
-    /// for this control.
-    pub fn preview_row_padding_y(self) -> f32 {
+    fn preview_row_padding_y(self) -> f32 {
         match self {
             Self::Compact => 4.0,
             Self::Regular => 8.0,
@@ -74,19 +74,13 @@ impl RowDensity {
     }
 }
 
-/// The same section's "Status glyphs" radio group (dot-style, like the Tracing page's level
-/// radios, not segmented) -- `unicode` is the mockup's own `checked` option.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum StatusGlyphs {
-    #[default]
-    Unicode,
-    AsciiFallback,
+/// The Display page's label for a [`StatusGlyphs`] choice.
+pub trait StatusGlyphsChoice {
+    fn label(self) -> String;
 }
 
-impl StatusGlyphs {
-    pub const ALL: [StatusGlyphs; 2] = [Self::Unicode, Self::AsciiFallback];
-
-    pub fn label(self) -> String {
+impl StatusGlyphsChoice for StatusGlyphs {
+    fn label(self) -> String {
         match self {
             Self::Unicode => {
                 crate::msg::desktop_settings_glyphs_unicode("\u{25cb} \u{25d0} \u{25cf} \u{2691}")

@@ -14,6 +14,9 @@
 //!   hand-off (an Account's, a Payee's, a Tag's, a Budget Category's) starts from the first row.
 //! - **Not yet built:** `Enter`, `e` and `n` say so on the status line, since there is no
 //!   Transaction form yet.
+//! - **Display Preferences** are pushed to it ([`TransactionsPageEvent::DisplayChanged`]): each
+//!   row's status marks and the legend follow the Status glyphs, and the view model carries the
+//!   Row density for the Client to size its rows by.
 //!
 //! The rows are read from the ports each time the view model is built, so a write any module makes
 //! shows on the next draw.
@@ -21,17 +24,19 @@
 use std::collections::HashSet;
 
 use chrono::NaiveDate;
+use lib_core::Total;
 use lib_core::{AccountId, Clock, DateStyle, HexColor, Money, PayeeId, TagId, TransactionId};
-use lib_core::{Total, TransactionStatus};
 use lib_list_cursor::Step;
 use lib_locale::format::{AmountStyle, format_amount, format_date};
 use lib_toast::{Notice, Notify};
+use lib_viper::display::{RowDensity, StatusGlyphs, flag_glyph};
 use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW, SELECT};
 use lib_viper::view::{Hint, count};
 
 use super::filter::{
     ChipField, ChipView, FilterEvent, FilterOutcome, FilterPresenter, FilterViewModel,
 };
+use super::glyphs::{status_glyph, status_legend};
 use crate::keymap::FILTER;
 use crate::protocols::{SharedPorts, TransactionsPorts};
 use crate::query::{TransactionFilters, Visible, query};
@@ -79,6 +84,12 @@ pub enum TransactionsPageEvent {
     Entered,
     /// The Display Preference the dates show and are typed in.
     SetDateStyle(Option<DateStyle>),
+    /// The Display Preferences the rows draw with: the status marks and legend in `glyphs`, and
+    /// the rows spaced at `density`.
+    DisplayChanged {
+        glyphs: StatusGlyphs,
+        density: RowDensity,
+    },
 }
 
 /// The TAGS cell.
@@ -94,13 +105,14 @@ pub enum TagsCell {
     },
 }
 
-/// One row of the table, every cell formatted. The status glyphs are the Client's to draw, from
-/// `status` and `flagged`.
+/// One row of the table, every cell formatted, its status marks in the Status glyphs Preference.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RowView {
     pub id: TransactionId,
-    pub status: TransactionStatus,
-    pub flagged: bool,
+    /// The Status mark: `○`, `◐` or `●`, or their ascii fallbacks.
+    pub status_glyph: String,
+    /// The Flagged mark, on a flagged Transaction only.
+    pub flag_glyph: Option<String>,
     pub date: String,
     pub account: String,
     pub payee: String,
@@ -152,6 +164,10 @@ pub struct TransactionsPageViewModel {
     pub footer: FooterView,
     /// The status line's legend for the page.
     pub hints: Vec<Hint>,
+    /// The status line's glyph legend, on its right: `○ open · ◐ cleared · ● reconciled · ⚑ flagged`.
+    pub legend: String,
+    /// The Row density Preference, which the Client sizes every row by.
+    pub density: RowDensity,
     /// The filter popover, while it is open.
     pub filter: Option<FilterViewModel>,
 }
@@ -175,6 +191,8 @@ pub struct TransactionsPagePresenter {
     /// The filter popover, `Some` while it is open.
     filter: Option<FilterPresenter>,
     date_style: Option<DateStyle>,
+    glyphs: StatusGlyphs,
+    density: RowDensity,
 }
 
 impl TransactionsPagePresenter {
@@ -202,6 +220,8 @@ impl TransactionsPagePresenter {
             searching: false,
             filter: None,
             date_style: None,
+            glyphs: StatusGlyphs::default(),
+            density: RowDensity::default(),
         }
     }
 
@@ -245,6 +265,16 @@ impl TransactionsPagePresenter {
         self.date_style
     }
 
+    /// The Row density Preference, for the Client to measure a half page by.
+    pub fn density(&self) -> RowDensity {
+        self.density
+    }
+
+    /// The status line's glyph legend. Read on every draw, so it reads no rows.
+    pub fn legend(&self) -> String {
+        status_legend(self.glyphs)
+    }
+
     pub fn handle(&mut self, event: TransactionsPageEvent, notify: &mut dyn Notify) {
         if let Some(filter) = self.filter.as_mut() {
             match event {
@@ -265,6 +295,8 @@ impl TransactionsPagePresenter {
                 | TransactionsPageEvent::RevealAccount(_)
                 | TransactionsPageEvent::ShowFiltered(_)
                 | TransactionsPageEvent::Entered => self.filter = None,
+                // The rows behind the popover redraw in the new Preferences.
+                TransactionsPageEvent::DisplayChanged { .. } => {}
                 // The draft's dates follow a new style, so what was typed still reads as meant.
                 TransactionsPageEvent::SetDateStyle(style) => filter.set_date_style(style),
                 // The popover is modal: nothing else on the page is reached while it is open.
@@ -335,6 +367,10 @@ impl TransactionsPagePresenter {
             TransactionsPageEvent::ShowFiltered(filters) => self.show_filtered(filters),
             TransactionsPageEvent::Entered => self.searching = false,
             TransactionsPageEvent::SetDateStyle(style) => self.date_style = style,
+            TransactionsPageEvent::DisplayChanged { glyphs, density } => {
+                self.glyphs = glyphs;
+                self.density = density;
+            }
         }
     }
 
@@ -386,7 +422,7 @@ impl TransactionsPagePresenter {
         let ports = self.ports.borrow();
         let transactions = newest_first(&*ports);
         let visible = query(&*ports, &transactions, &self.filters, &self.search);
-        let rows = rows(&*ports, &visible, self.date_style);
+        let rows = rows(&*ports, &visible, self.date_style, self.glyphs);
         let today = self.clock.today();
         TransactionsPageViewModel {
             count_line: count_line(&transactions),
@@ -398,6 +434,8 @@ impl TransactionsPagePresenter {
             footer: footer(&*ports, &visible, &self.filters),
             rows,
             hints: self.page_hints(),
+            legend: self.legend(),
+            density: self.density,
             filter: self.filter.as_ref().map(FilterPresenter::view_model),
         }
     }
@@ -470,11 +508,12 @@ fn amount(money: &Money, signed: bool) -> (bool, String) {
     (formatted.is_negative, formatted.text)
 }
 
-/// Every row shown, formatted, with dates in `date_style`.
+/// Every row shown, formatted, with dates in `date_style` and status marks in `glyphs`.
 fn rows(
     ports: &dyn TransactionsPorts,
     visible: &Visible<'_>,
     date_style: Option<DateStyle>,
+    glyphs: StatusGlyphs,
 ) -> Vec<RowView> {
     let accounts = ports.transaction_accounts();
     let categories = ports.transaction_categories();
@@ -495,8 +534,10 @@ fn rows(
             };
             RowView {
                 id: transaction.id,
-                status: transaction.status.clone(),
-                flagged: transaction.is_flagged,
+                status_glyph: status_glyph(&transaction.status, glyphs).to_string(),
+                flag_glyph: transaction
+                    .is_flagged
+                    .then(|| flag_glyph(glyphs).to_string()),
                 date: format_date(transaction.date, date_style),
                 account: accounts
                     .iter()
@@ -618,7 +659,7 @@ mod tests {
     use std::rc::Rc;
 
     use lib_config::KeyBindingConfig;
-    use lib_core::{CategoryId, UnitId};
+    use lib_core::{CategoryId, TransactionStatus, UnitId};
 
     use super::*;
     use crate::Split;
@@ -1008,6 +1049,69 @@ mod tests {
 
         assert_eq!(page.view().rows[0].date, "2026-09-18");
         assert_eq!(page.presenter.date_style(), Some(DateStyle::Iso));
+    }
+
+    #[test]
+    fn the_status_marks_and_legend_follow_display_changed() {
+        let mut page = Page::new();
+        let view = page.view();
+        assert_eq!(view.rows[0].status_glyph, "\u{25cb}", "the shop is Open");
+        assert_eq!(view.rows[1].status_glyph, "\u{25d0}", "the rent is Cleared");
+        assert_eq!(view.rows[0].flag_glyph, None, "nothing is flagged");
+        assert_eq!(view.legend, status_legend(StatusGlyphs::Unicode));
+        assert_eq!(view.density, RowDensity::Regular);
+
+        page.send(TransactionsPageEvent::DisplayChanged {
+            glyphs: StatusGlyphs::AsciiFallback,
+            density: RowDensity::Compact,
+        });
+
+        let view = page.view();
+        assert_eq!(view.rows[0].status_glyph, "-");
+        assert_eq!(view.rows[1].status_glyph, "o");
+        assert_eq!(
+            view.legend,
+            "- open \u{b7} o cleared \u{b7} x reconciled \u{b7} ! flagged"
+        );
+        assert_eq!(page.presenter.legend(), view.legend);
+        assert_eq!(view.density, RowDensity::Compact);
+        assert_eq!(page.presenter.density(), RowDensity::Compact);
+    }
+
+    #[test]
+    fn a_flagged_row_carries_the_flag_in_the_chosen_glyphs() {
+        let mut page = Page::new();
+        page.ports.borrow_mut().transactions.transactions[0].is_flagged = true;
+        let flagged = |page: &Page| {
+            page.view()
+                .rows
+                .iter()
+                .find(|row| row.id == RENT)
+                .and_then(|row| row.flag_glyph.clone())
+        };
+        assert_eq!(flagged(&page).as_deref(), Some("\u{2691}"));
+
+        page.send(TransactionsPageEvent::DisplayChanged {
+            glyphs: StatusGlyphs::AsciiFallback,
+            density: RowDensity::Regular,
+        });
+        assert_eq!(flagged(&page).as_deref(), Some("!"));
+    }
+
+    #[test]
+    fn display_changed_reaches_the_rows_behind_an_open_popover() {
+        let mut page = Page::new();
+        page.send(TransactionsPageEvent::OpenFilter(None));
+
+        page.send(TransactionsPageEvent::DisplayChanged {
+            glyphs: StatusGlyphs::AsciiFallback,
+            density: RowDensity::Roomy,
+        });
+
+        let view = page.view();
+        assert!(view.filter.is_some(), "the popover stays open");
+        assert_eq!(view.rows[0].status_glyph, "-");
+        assert_eq!(view.density, RowDensity::Roomy);
     }
 
     #[test]

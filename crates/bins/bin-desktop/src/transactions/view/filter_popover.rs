@@ -8,68 +8,51 @@
 //! plain text; From and To are text dates that show an accent border and a hint while unparseable
 //! (which also disables **apply**); Status is the shared segmented control. The page behind is dimmed
 //! by the page itself (`opacity .55`, the map's blur-free replacement for the mockup's blur), not by
-//! a scrim here, so the rails and header stay at full strength.
+//! a scrim here, so the rails and header stay at full strength. Every click is a
+//! [`FilterEvent`] to the page's Presenter, sent through [`PageClicks`].
 
 use std::rc::Rc;
 
-use gpui::{AnyElement, App, BoxShadow, Pixels, SharedString, Window, div, point, prelude::*, px};
+use gpui::{
+    AnyElement, App, BoxShadow, ClickEvent, Pixels, Point, SharedString, Window, div, point,
+    prelude::*, px,
+};
 
-use lib_transactions::presenter::{FilterField, FilterViewModel, status_filter_label};
+use lib_transactions::presenter::{
+    FilterEvent, FilterField, FilterViewModel, TransactionsPageEvent, status_filter_label,
+};
 use lib_viper::view::TextFieldView;
 
-use super::page::select_labels;
+use super::page::{TransactionsPage, select_labels};
 use crate::{
     dialog,
-    form::fields::segmented_control,
+    form::fields::{OnSegmentClick, segmented_control},
     form::{
         dialog_fields::{label, text_field, two_up},
         select::SelectState,
         select_field::{self, SelectFieldProps},
     },
+    shell::view::page_clicks::PageClicks,
     theme::color,
 };
 use lib_transactions::query::StatusFilter;
 
-pub type OnFieldClick = Rc<dyn Fn(FilterField, &mut Window, &mut App)>;
-pub type OnOptionClick = Rc<dyn Fn(FilterField, usize, &mut Window, &mut App)>;
-pub type OnStatusClick = Rc<dyn Fn(StatusFilter, &mut Window, &mut App)>;
-
 /// The card's width: the bundle's own 400px.
 const WIDTH: Pixels = px(400.0);
 
-pub struct PopoverProps<'a> {
-    pub view: FilterViewModel,
-    /// A select's open list, and the field it belongs to.
-    pub list: Option<&'a (FilterField, SelectState)>,
-    /// The card's top-left corner in window coordinates: just below the triggering chip.
-    pub left: Pixels,
-    pub top: Pixels,
-    pub on_field_click: OnFieldClick,
-    pub on_option_click: OnOptionClick,
-    pub on_status_click: OnStatusClick,
-    pub on_reset: dialog::OnClick,
-    pub on_apply: dialog::OnClick,
-    /// A click outside the card.
-    pub on_cancel: dialog::OnClick,
-}
-
-pub fn render(props: PopoverProps<'_>, cx: &App) -> AnyElement {
-    let PopoverProps {
-        view,
-        list,
-        left,
-        top,
-        on_field_click,
-        on_option_click,
-        on_status_click,
-        on_reset,
-        on_apply,
-        on_cancel,
-    } = props;
-
+/// The card at `at`, its top-left corner in window coordinates just below the triggering chip,
+/// and `list` a select's open list with the field it belongs to.
+pub fn render(
+    view: &FilterViewModel,
+    list: Option<&(FilterField, SelectState)>,
+    at: Point<Pixels>,
+    clicks: &PageClicks<TransactionsPage>,
+    cx: &App,
+) -> AnyElement {
+    let filter = |event: FilterEvent| TransactionsPageEvent::Filter(event);
     // A select shows its own open list, else its choice closed.
     let select = |field: FilterField| -> (Vec<String>, SelectState) {
-        let (options, chosen) = select_labels(&view, field);
+        let (options, chosen) = select_labels(view, field);
         let state = match list {
             Some((at, state)) if *at == field => state.clone(),
             _ => SelectState::new(chosen),
@@ -79,22 +62,28 @@ pub fn render(props: PopoverProps<'_>, cx: &App) -> AnyElement {
     let (account_options, account_state) = select(FilterField::Account);
     let (category_options, category_state) = select(FilterField::Category);
     let can_apply = view.frame.can_confirm;
-    let click = |field: FilterField| -> dialog::OnClick {
-        let on_field_click = on_field_click.clone();
-        Rc::new(move |window: &mut Window, cx: &mut App| on_field_click(field, window, cx))
-    };
-    let option_click = |field: FilterField| -> select_field::OnOptionClick {
-        let on_option_click = on_option_click.clone();
-        Rc::new(move |index: usize, window: &mut Window, cx: &mut App| {
-            on_option_click(field, index, window, cx)
-        })
+    let click = |field: FilterField| clicks.click(filter(FilterEvent::Focus(field)));
+    // An option's index is its place in the select's options, as `select_labels` lists them.
+    let accounts: Vec<_> = view.account.options.iter().map(|o| o.value).collect();
+    let categories: Vec<_> = view.category.options.iter().map(|o| o.value).collect();
+    let account_option = clicks
+        .option(move |index| filter(FilterEvent::Account(accounts.get(index).copied().flatten())));
+    let category_option = clicks.option(move |index| {
+        filter(FilterEvent::Category(
+            categories.get(index).copied().flatten(),
+        ))
+    });
+    let on_status_click: OnSegmentClick<StatusFilter> = {
+        let send =
+            clicks.send_with(move |status: &StatusFilter| filter(FilterEvent::Status(*status)));
+        Rc::new(move |status, window, cx| send(&status, window, cx))
     };
 
     let card = div()
         .id("filter-popover")
         .absolute()
-        .left(left)
-        .top(top)
+        .left(at.x)
+        .top(at.y)
         .w(WIDTH)
         .flex()
         .flex_col()
@@ -136,7 +125,7 @@ pub fn render(props: PopoverProps<'_>, cx: &App) -> AnyElement {
                         accent: false,
                         read_only: None,
                         on_field_click: click(FilterField::Account),
-                        on_option_click: option_click(FilterField::Account),
+                        on_option_click: account_option,
                     },
                     cx,
                 ))
@@ -150,7 +139,7 @@ pub fn render(props: PopoverProps<'_>, cx: &App) -> AnyElement {
                         accent: false,
                         read_only: None,
                         on_field_click: click(FilterField::Category),
-                        on_option_click: option_click(FilterField::Category),
+                        on_option_click: category_option,
                     },
                     cx,
                 ))
@@ -192,14 +181,7 @@ pub fn render(props: PopoverProps<'_>, cx: &App) -> AnyElement {
                     &view.status.label,
                     view.status.chosen.unwrap_or_default(),
                     view.status.focused,
-                    {
-                        let on_status_click = on_status_click.clone();
-                        Rc::new(
-                            move |status: StatusFilter, window: &mut Window, cx: &mut App| {
-                                on_status_click(status, window, cx)
-                            },
-                        )
-                    },
+                    on_status_click,
                     cx,
                 )),
         )
@@ -212,11 +194,15 @@ pub fn render(props: PopoverProps<'_>, cx: &App) -> AnyElement {
                 .py(px(14.0))
                 .border_t(px(1.0))
                 .border_color(color::hairline(cx))
-                .child(reset_button(view.reset.clone(), on_reset, cx))
+                .child(reset_button(
+                    view.reset.clone(),
+                    clicks.send(filter(FilterEvent::Reset)),
+                    cx,
+                ))
                 .child(apply_button(
                     view.frame.submit.clone(),
                     can_apply,
-                    on_apply,
+                    clicks.send(filter(FilterEvent::Apply)),
                     cx,
                 )),
         );
@@ -225,7 +211,8 @@ pub fn render(props: PopoverProps<'_>, cx: &App) -> AnyElement {
         .id("filter-popover-layer")
         .absolute()
         .inset_0()
-        .on_click(move |_event, window, cx| on_cancel(window, cx))
+        // A click outside the card cancels the popover, its draft discarded.
+        .on_click(clicks.send(filter(FilterEvent::Cancel)))
         .child(card)
         .into_any_element()
 }
@@ -301,7 +288,7 @@ fn status_field(
     title: &str,
     current: StatusFilter,
     focused: bool,
-    on_click: OnStatusClick,
+    on_click: OnSegmentClick<StatusFilter>,
     cx: &App,
 ) -> AnyElement {
     div()
@@ -328,7 +315,11 @@ fn status_field(
 }
 
 /// `reset`: the ghost button.
-fn reset_button(text: String, on_click: dialog::OnClick, cx: &App) -> impl IntoElement {
+fn reset_button(
+    text: String,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> impl IntoElement {
     let hover = color::hover(cx);
     div()
         .id("filter-reset")
@@ -341,7 +332,7 @@ fn reset_button(text: String, on_click: dialog::OnClick, cx: &App) -> impl IntoE
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_color(color::foreground(cx))
         .hover(move |style| style.bg(hover))
-        .on_click(move |_event, window, cx| on_click(window, cx))
+        .on_click(on_click)
         .child(text)
 }
 
@@ -349,7 +340,7 @@ fn reset_button(text: String, on_click: dialog::OnClick, cx: &App) -> impl IntoE
 fn apply_button(
     text: String,
     enabled: bool,
-    on_click: dialog::OnClick,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> impl IntoElement {
     div()
@@ -365,9 +356,7 @@ fn apply_button(
         .bg(color::foreground(cx))
         .text_color(color::selection_text(cx))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
-        .when(enabled, |this| {
-            this.on_click(move |_event, window, cx| on_click(window, cx))
-        })
+        .when(enabled, |this| this.on_click(on_click))
         .child(text)
         .child(
             div()

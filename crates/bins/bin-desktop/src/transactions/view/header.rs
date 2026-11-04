@@ -1,7 +1,7 @@
 //! The 4a view header (`docs/ux/desktop-mockups/03-transactions/README.md`): the title with its computed count
 //! line and the **add transaction** button, then the filter chip row with `clear filters` and the
-//! search box, closed by the 2px rule. Every action is a callback into `Root`, so keys and clicks
-//! share handlers.
+//! search box, closed by the 2px rule. Every click is the page Presenter's event, sent through
+//! [`PageClicks`], so keys and clicks reach the Presenter alike.
 //!
 //! Chips follow the map's decision: an outline chip (at its default) ends in `▾`, an accent chip
 //! (changed from the default) ends in a clickable `✕` that resets just that filter, and a click on
@@ -10,55 +10,29 @@
 use crate::navigation::nav::NounLabel;
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use gpui::{AnyElement, App, Bounds, Pixels, SharedString, Window, canvas, div, prelude::*, px};
+use gpui::{
+    AnyElement, App, Bounds, ClickEvent, Pixels, SharedString, Window, canvas, div, prelude::*, px,
+};
 
-use lib_transactions::presenter::{ChipField, ChipView};
+use lib_transactions::presenter::{
+    ChipField, ChipView, TransactionsPageEvent, TransactionsPageViewModel,
+};
 
-use crate::{navigation::nav::Noun, theme::color};
+use super::page::TransactionsPage;
+use crate::{navigation::nav::Noun, shell::view::page_clicks::PageClicks, theme::color};
 
-pub type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
-pub type OnChipClick = Rc<dyn Fn(ChipField, &mut Window, &mut App)>;
 /// Where each chip was last painted, in window coordinates: written while painting, read by
 /// `Root` to anchor the filter popover under the chip that opened it.
 pub type ChipBounds = Rc<RefCell<HashMap<ChipField, Bounds<Pixels>>>>;
 
-pub struct HeaderProps {
-    /// `700 transactions across 4 accounts`.
-    pub count_line: String,
-    pub chips: Vec<ChipView>,
-    /// Whether the filters differ from the defaults, so `clear filters` has something to do.
-    pub show_clear: bool,
-    /// The search text.
-    pub search: String,
-    /// Whether the global search mode is active on this page (the box shows a caret).
-    pub searching: bool,
-    pub on_add_click: OnPlainClick,
-    /// A chip, or its `▾`: opens the filter popover on that chip's field.
-    pub on_chip_click: OnChipClick,
-    /// The `✕` on an accent chip.
-    pub on_chip_clear: OnChipClick,
-    pub on_clear_all: OnPlainClick,
-    /// A click on the search box: enters search mode.
-    pub on_search_click: OnPlainClick,
-    pub chip_bounds: ChipBounds,
-}
-
-/// `padding:16px 28px 14px; border-bottom:2px solid rgba(32,30,29,.38)`.
-pub fn render(props: HeaderProps, cx: &App) -> AnyElement {
-    let HeaderProps {
-        count_line,
-        chips,
-        show_clear,
-        search,
-        searching,
-        on_add_click,
-        on_chip_click,
-        on_chip_clear,
-        on_clear_all,
-        on_search_click,
-        chip_bounds,
-    } = props;
-
+/// `padding:16px 28px 14px; border-bottom:2px solid rgba(32,30,29,.38)`. Each chip reports where
+/// it was painted into `chip_bounds`.
+pub fn render(
+    view: &TransactionsPageViewModel,
+    chip_bounds: &ChipBounds,
+    clicks: &PageClicks<TransactionsPage>,
+    cx: &App,
+) -> AnyElement {
     div()
         .flex_none()
         .flex()
@@ -69,32 +43,43 @@ pub fn render(props: HeaderProps, cx: &App) -> AnyElement {
         .pb(px(14.0))
         .border_b(px(2.0))
         .border_color(color::structural_rule(cx))
-        .child(title_row(count_line, on_add_click, cx))
+        .child(title_row(
+            view.count_line.clone(),
+            clicks.send(TransactionsPageEvent::New),
+            cx,
+        ))
         .child(
             div()
                 .flex()
                 .flex_wrap()
                 .items_center()
                 .gap(px(8.0))
-                .children(chips.into_iter().enumerate().map(|(index, chip_data)| {
-                    chip(
-                        index,
-                        chip_data,
-                        on_chip_click.clone(),
-                        on_chip_clear.clone(),
-                        chip_bounds.clone(),
-                        cx,
-                    )
+                .children(view.chips.iter().enumerate().map(|(index, chip_data)| {
+                    chip(index, chip_data, clicks, chip_bounds.clone(), cx)
                 }))
-                .when(show_clear, |this| this.child(clear_link(on_clear_all, cx)))
+                .when(view.filters_changed, |this| {
+                    this.child(clear_link(
+                        clicks.send(TransactionsPageEvent::ClearFilters),
+                        cx,
+                    ))
+                })
                 .child(div().flex_1())
-                .child(search_box(search, searching, on_search_click, cx)),
+                .child(search_box(
+                    &view.search,
+                    view.searching,
+                    clicks.send(TransactionsPageEvent::StartSearch),
+                    cx,
+                )),
         )
         .into_any_element()
 }
 
 /// The title (26px/800) with the count line (11.5px, tertiary) beside it, and the primary button.
-fn title_row(count_line: String, on_add_click: OnPlainClick, cx: &App) -> impl IntoElement {
+fn title_row(
+    count_line: String,
+    on_add_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> impl IntoElement {
     div()
         .flex()
         .items_end()
@@ -124,7 +109,10 @@ fn title_row(count_line: String, on_add_click: OnPlainClick, cx: &App) -> impl I
 }
 
 /// The primary button: 32px tall, ink fill, with the `n` key hint trailing at 75% opacity.
-fn add_button(on_click: OnPlainClick, cx: &App) -> impl IntoElement {
+fn add_button(
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> impl IntoElement {
     let hover = color::muted(cx);
     div()
         .id("transactions-add")
@@ -141,7 +129,7 @@ fn add_button(on_click: OnPlainClick, cx: &App) -> impl IntoElement {
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .whitespace_nowrap()
         .hover(move |style| style.bg(hover))
-        .on_click(move |_event, window, cx| on_click(window, cx))
+        .on_click(on_click)
         .child(crate::msg::desktop_transactions_add_button())
         .child(
             div()
@@ -153,17 +141,17 @@ fn add_button(on_click: OnPlainClick, cx: &App) -> impl IntoElement {
 }
 
 /// A filter chip (`.tag`, `padding:2px 8px`): outline with a trailing `▾` at its default, accent
-/// with a trailing clickable `✕` once changed. The `✕` stops the click reaching the chip, which
-/// would otherwise also open the popover.
+/// with a trailing clickable `✕` once changed. A click on the chip opens the popover on its field;
+/// the `✕` stops the click reaching the chip, which would otherwise also open it.
 fn chip(
     index: usize,
-    chip: ChipView,
-    on_click: OnChipClick,
-    on_clear: OnChipClick,
+    chip: &ChipView,
+    clicks: &PageClicks<TransactionsPage>,
     bounds_store: ChipBounds,
     cx: &App,
 ) -> AnyElement {
     let field = chip.field;
+    let clear = clicks.send(TransactionsPageEvent::ClearChip(field));
     let base = div()
         .id(("transactions-chip", index))
         .debug_selector(move || format!("transactions-chip-{index}"))
@@ -178,8 +166,8 @@ fn chip(
         .text_size(px(11.5))
         .whitespace_nowrap()
         .relative()
-        .on_click(move |_event, window, cx| on_click(field, window, cx))
-        .child(SharedString::from(chip.label))
+        .on_click(clicks.send(TransactionsPageEvent::OpenFilter(Some(field))))
+        .child(SharedString::from(chip.label.clone()))
         // An invisible overlay whose only job is to report where this chip is painted.
         .child(
             canvas(
@@ -202,9 +190,9 @@ fn chip(
                     .debug_selector(move || format!("transactions-chip-clear-{index}"))
                     .cursor_pointer()
                     .opacity(0.85)
-                    .on_click(move |_event, window, cx| {
+                    .on_click(move |event: &ClickEvent, window, cx| {
                         cx.stop_propagation();
-                        on_clear(field, window, cx)
+                        clear(event, window, cx);
                     })
                     .child("\u{2715}"),
             )
@@ -220,7 +208,10 @@ fn chip(
 }
 
 /// The `clear filters` link: 11.5px, underlined.
-fn clear_link(on_click: OnPlainClick, cx: &App) -> impl IntoElement {
+fn clear_link(
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> impl IntoElement {
     div()
         .id("transactions-clear-filters")
         .debug_selector(|| "transactions-clear-filters".to_string())
@@ -229,16 +220,16 @@ fn clear_link(on_click: OnPlainClick, cx: &App) -> impl IntoElement {
         .text_size(px(11.5))
         .text_color(color::foreground(cx))
         .underline()
-        .on_click(move |_event, window, cx| on_click(window, cx))
+        .on_click(on_click)
         .child(crate::msg::desktop_transactions_clear_filters())
 }
 
 /// The right-aligned search box (28px tall, 12px): the `/ search payee or memo` placeholder, or the
 /// text typed so far, with a caret and an accent border while search mode is active.
 fn search_box(
-    search: String,
+    search: &str,
     searching: bool,
-    on_click: OnPlainClick,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> impl IntoElement {
     let caret = if searching { "\u{2502}" } else { "" };
@@ -272,6 +263,6 @@ fn search_box(
         .text_size(px(12.0))
         .text_color(text_color)
         .truncate()
-        .on_click(move |_event, window, cx| on_click(window, cx))
+        .on_click(on_click)
         .child(text)
 }
