@@ -22,7 +22,7 @@ pub use router::categories_page;
 pub use view::page::CategoriesPage;
 
 use lib_categories::presenter::CategoriesPageEvent;
-use lib_core::CategoryTypes;
+use lib_core::{CategoryId, CategoryTypes};
 use lib_database::SharedCategoriesStore;
 
 /// The Categories page as the UI tests read it: names and types in the store's tree order, and the
@@ -31,6 +31,8 @@ use lib_database::SharedCategoriesStore;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsCategoriesSnapshot {
     pub category_names: Vec<String>,
+    /// Each Category's id, in the same order, for a test that clicks a row it didn't seed.
+    pub category_ids: Vec<CategoryId>,
     /// Each Category's name and type, in the same order.
     pub category_types: Vec<(String, CategoryTypes)>,
     pub selected_category: Option<String>,

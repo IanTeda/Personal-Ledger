@@ -31,6 +31,7 @@ impl EditCategory {
         let before = categories.categories();
         let mut rows = before.clone();
         let outcome = self.edit(&mut rows).and_then(|category| {
+            self.check_leaf_holds_nothing(&before, budget)?;
             self.monthly.check(budget, &rows, self.id)?;
             Ok(category)
         });
@@ -52,6 +53,31 @@ impl EditCategory {
             }
         }
         outcome
+    }
+
+    /// A Category with children can't move under a leaf holding Splits, Bill Plans or Payee
+    /// defaults, since only a first child takes them and a Category that already has children isn't
+    /// one. A leaf moved there is that first child, so it is allowed.
+    fn check_leaf_holds_nothing(
+        &self,
+        before: &[Category],
+        ports: &dyn CategorySavePorts,
+    ) -> Result<(), SaveCategoryRefusal> {
+        let Some(target) = gains_first_child(before, self.parent_id) else {
+            return Ok(());
+        };
+        if crate::is_leaf(before, self.id) {
+            return Ok(());
+        }
+        let held = ports.holdings(target);
+        if held.is_empty() {
+            return Ok(());
+        }
+        let leaf = crate::get(before, target).map(|c| c.name.clone());
+        Err(SaveCategoryRefusal::LeafHoldsRows {
+            leaf: leaf.unwrap_or_default(),
+            held,
+        })
     }
 
     /// The rename, move and type change applied to `rows`, returning the Category as edited.
@@ -243,6 +269,51 @@ mod tests {
                 .is_err()
         );
         assert!(budget.stopped.is_empty());
+    }
+
+    #[test]
+    fn a_parent_moved_under_a_leaf_with_rows_is_refused_and_writes_nothing() {
+        let mut categories = InMemoryCategories::stub();
+        let before = categories.clone();
+        let mut budget = InMemoryCategoryBudget::default();
+        budget.held.insert(TRANSPORT, held(0, 0, 1));
+        budget
+            .amounts
+            .insert(GROCERIES, "1".parse().expect("an amount"));
+
+        // Food has children; Transport is a leaf holding a Payee default.
+        let refused = edit(FOOD, "Eating", Some(TRANSPORT)).run(&mut categories, &mut budget);
+
+        assert_eq!(
+            refused,
+            Err(SaveCategoryRefusal::LeafHoldsRows {
+                leaf: "Transport".into(),
+                held: held(0, 0, 1),
+            })
+        );
+        assert_eq!(categories, before, "the rename is unwritten too");
+        assert!(budget.handed_over.is_empty());
+        assert!(budget.stopped.is_empty());
+    }
+
+    #[test]
+    fn a_parent_moved_under_an_empty_leaf_or_a_leaf_moved_under_one_with_rows_is_allowed() {
+        let mut categories = InMemoryCategories::stub();
+        let mut budget = InMemoryCategoryBudget::default();
+        let household = CategoryId::seed(10);
+        budget.held.insert(TRANSPORT, held(2, 0, 0));
+
+        // Food has children, but Household holds nothing.
+        edit(FOOD, "Food", Some(household))
+            .run(&mut categories, &mut budget)
+            .expect("an empty leaf takes a parent");
+        // Interest is a leaf, so it is the first child that takes Salary's rows.
+        budget.held.insert(SALARY, held(2, 0, 0));
+        edit(CategoryId::seed(12), "Interest", Some(SALARY))
+            .run(&mut categories, &mut budget)
+            .expect("a leaf moved under a leaf with rows takes them");
+
+        assert_eq!(budget.handed_over, [(SALARY, CategoryId::seed(12))]);
     }
 
     fn held(splits: usize, bill_plans: usize, payee_defaults: usize) -> crate::Holdings {

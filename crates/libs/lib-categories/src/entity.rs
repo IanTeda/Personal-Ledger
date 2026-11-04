@@ -205,14 +205,24 @@ pub fn move_exceeds_depth(categories: &[Category], id: CategoryId, parent_id: Ca
     depth(categories, parent_id) + 1 + height(categories, id) > 2
 }
 
+/// The name Uncategorised is found by: it is where a deleted Category's rows go, so it is fixed.
+pub const UNCATEGORISED_NAME: &str = "Uncategorised";
+
+/// Whether `category` is an Uncategorised, as [`get_or_create_uncategorised`] finds it: so named
+/// and at top level. Its name, parent and type are fixed.
+pub fn is_uncategorised(category: &Category) -> bool {
+    category.name == UNCATEGORISED_NAME && category.parent.is_none()
+}
+
 /// Find or create an Uncategorised category for a type. Returns the id if found or created.
 pub fn get_or_create_uncategorised(
     categories: &mut Vec<Category>,
     category_type: CategoryTypes,
 ) -> CategoryId {
-    if let Some(cat) = categories.iter().find(|c| {
-        c.name == "Uncategorised" && c.category_type == category_type && c.parent.is_none()
-    }) {
+    if let Some(cat) = categories
+        .iter()
+        .find(|c| is_uncategorised(c) && c.category_type == category_type)
+    {
         return cat.id;
     }
 
@@ -220,7 +230,7 @@ pub fn get_or_create_uncategorised(
     let next_id = CategoryId::new();
     categories.push(Category {
         id: next_id,
-        name: "Uncategorised".to_string(),
+        name: UNCATEGORISED_NAME.to_string(),
         parent: None,
         category_type,
     });
@@ -245,6 +255,9 @@ pub enum CategoryError {
     /// Parent category not found.
     #[error("parent category not found")]
     ParentNotFound,
+    /// Attempted to rename, move, retype or nest under Uncategorised, which is fixed.
+    #[error("Uncategorised is fixed")]
+    UncategorisedFixed,
 }
 
 /// Why an Add or Edit of a Category was refused: the tree rules, or the Monthly budget it carried.
@@ -254,6 +267,13 @@ pub enum SaveCategoryRefusal {
     Category(#[from] CategoryError),
     #[error(transparent)]
     Budget(#[from] crate::protocols::MonthlyBudgetRefusal),
+    /// A Category with children can't move under a leaf that holds Splits, Bill Plans or Payee
+    /// defaults: they would have no child to take them.
+    #[error("{leaf} holds rows; add a Category under it first")]
+    LeafHoldsRows {
+        leaf: String,
+        held: crate::protocols::Holdings,
+    },
 }
 
 /// Whether `child_id` is a descendant of `parent_id` (cycle detection).
@@ -276,6 +296,7 @@ fn is_descendant(categories: &[Category], parent_id: CategoryId, child_id: Categ
 /// - Parent and category must match types
 /// - Depth must not exceed 3 levels
 /// - No cycles
+/// - Uncategorised takes no children
 pub fn insert_category(
     categories: &mut Vec<Category>,
     name: String,
@@ -284,6 +305,9 @@ pub fn insert_category(
 ) -> Result<CategoryId, CategoryError> {
     if let Some(parent_id) = parent_id {
         let parent = get(categories, parent_id).ok_or(CategoryError::ParentNotFound)?;
+        if is_uncategorised(parent) {
+            return Err(CategoryError::UncategorisedFixed);
+        }
         // Type must match
         if parent.category_type != category_type {
             return Err(CategoryError::TypeMismatch);
@@ -304,7 +328,7 @@ pub fn insert_category(
     Ok(next_id)
 }
 
-/// Edit a category's name (parent changes use `move_category`).
+/// Edit a category's name (parent changes use `move_category`). Uncategorised keeps its name.
 pub fn edit_category(
     categories: &mut [Category],
     id: CategoryId,
@@ -314,6 +338,9 @@ pub fn edit_category(
         .iter_mut()
         .find(|c| c.id == id)
         .ok_or(CategoryError::NotFound)?;
+    if is_uncategorised(category) && category.name != name {
+        return Err(CategoryError::UncategorisedFixed);
+    }
     category.name = name;
     Ok(())
 }
@@ -323,6 +350,7 @@ pub fn edit_category(
 /// - Types must match
 /// - Depth must not exceed 3 levels
 /// - No cycles allowed
+/// - Uncategorised neither moves nor takes children
 pub fn move_category(
     categories: &mut [Category],
     id: CategoryId,
@@ -333,9 +361,15 @@ pub fn move_category(
         .find(|c| c.id == id)
         .ok_or(CategoryError::NotFound)?;
     let category_type = category.category_type.clone();
+    if is_uncategorised(category) && category.parent != new_parent_id {
+        return Err(CategoryError::UncategorisedFixed);
+    }
 
     if let Some(parent_id) = new_parent_id {
         let parent = get(categories, parent_id).ok_or(CategoryError::ParentNotFound)?;
+        if is_uncategorised(parent) {
+            return Err(CategoryError::UncategorisedFixed);
+        }
         // Type must match
         if parent.category_type != category_type {
             return Err(CategoryError::TypeMismatch);
@@ -362,10 +396,13 @@ pub fn change_category_type(
     id: CategoryId,
     new_type: CategoryTypes,
 ) -> Result<(), CategoryError> {
-    let _category = categories
+    let category = categories
         .iter()
         .find(|c| c.id == id)
         .ok_or(CategoryError::NotFound)?;
+    if is_uncategorised(category) && category.category_type != new_type {
+        return Err(CategoryError::UncategorisedFixed);
+    }
 
     let descendants = descendants_inclusive(categories, id);
     for category in categories.iter_mut() {
@@ -889,5 +926,109 @@ mod tests {
         assert_eq!(levels_deep(&[]), 0);
         assert_eq!(child_count(&categories, CategoryId::seed(1)), 2);
         assert_eq!(child_count(&categories, CategoryId::seed(2)), 0);
+    }
+
+    /// The stub tree with an Expense Uncategorised added, and its id.
+    fn with_uncategorised() -> (Vec<Category>, CategoryId) {
+        let mut categories = default_categories();
+        let id = get_or_create_uncategorised(&mut categories, CategoryTypes::Expense);
+        (categories, id)
+    }
+
+    #[test]
+    fn uncategorised_is_found_by_its_name_at_top_level() {
+        let (mut categories, id) = with_uncategorised();
+        assert!(is_uncategorised(get(&categories, id).unwrap()));
+        let food = find_by_name(&categories, "Food").unwrap();
+        assert!(!is_uncategorised(get(&categories, food).unwrap()));
+
+        // The same name nested is an ordinary Category.
+        let nested = insert_category(
+            &mut categories,
+            UNCATEGORISED_NAME.to_string(),
+            Some(food),
+            CategoryTypes::Expense,
+        )
+        .unwrap();
+        assert!(!is_uncategorised(get(&categories, nested).unwrap()));
+    }
+
+    #[test]
+    fn uncategorised_is_refused_a_rename_a_move_a_type_change_and_a_child() {
+        let (mut categories, id) = with_uncategorised();
+        let food = find_by_name(&categories, "Food").unwrap();
+        let before = categories.clone();
+
+        assert_eq!(
+            edit_category(&mut categories, id, "Misc".into()),
+            Err(CategoryError::UncategorisedFixed)
+        );
+        assert_eq!(
+            move_category(&mut categories, id, Some(food)),
+            Err(CategoryError::UncategorisedFixed)
+        );
+        assert_eq!(
+            change_category_type(&mut categories, id, CategoryTypes::Income),
+            Err(CategoryError::UncategorisedFixed)
+        );
+        assert_eq!(
+            insert_category(
+                &mut categories,
+                "Child".into(),
+                Some(id),
+                CategoryTypes::Expense
+            ),
+            Err(CategoryError::UncategorisedFixed)
+        );
+        assert_eq!(
+            move_category(&mut categories, food, Some(id)),
+            Err(CategoryError::UncategorisedFixed),
+            "nothing moves under it"
+        );
+        assert_eq!(categories, before);
+    }
+
+    #[test]
+    fn uncategorised_restated_unchanged_is_not_a_change() {
+        let (mut categories, id) = with_uncategorised();
+
+        assert_eq!(
+            edit_category(&mut categories, id, UNCATEGORISED_NAME.into()),
+            Ok(())
+        );
+        assert_eq!(move_category(&mut categories, id, None), Ok(()));
+        assert_eq!(
+            change_category_type(&mut categories, id, CategoryTypes::Expense),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn other_categories_are_unaffected_by_the_uncategorised_rules() {
+        let (mut categories, _) = with_uncategorised();
+        let transport = find_by_name(&categories, "Transport").unwrap();
+        let food = find_by_name(&categories, "Food").unwrap();
+
+        assert_eq!(
+            edit_category(&mut categories, transport, "Getting around".into()),
+            Ok(())
+        );
+        assert_eq!(
+            move_category(&mut categories, transport, Some(food)),
+            Ok(())
+        );
+        assert_eq!(
+            change_category_type(&mut categories, food, CategoryTypes::Income),
+            Ok(())
+        );
+        assert!(
+            insert_category(
+                &mut categories,
+                "Child".into(),
+                Some(transport),
+                CategoryTypes::Income
+            )
+            .is_ok()
+        );
     }
 }

@@ -94,17 +94,25 @@ pub(super) fn render(
     let options = labels(&view.parent);
     let state = drawn(&view.parent, view.parent_list, scroll);
     let on_field = |field: CategoryField| actions.click(move |dialog| click_field(dialog, field));
+    let name_field = if view.name_read_only {
+        div()
+            .child(label(view.name.label.clone()))
+            .child(read_only_box(view.name.text.clone(), cx))
+            .into_any_element()
+    } else {
+        text_field(
+            name_id,
+            label(view.name.label.clone()),
+            &view.name.text,
+            &view.name.placeholder,
+            view.name.focused,
+            on_field(CategoryField::Name),
+            cx,
+        )
+    };
     let mut fields = vec![
         div()
-            .child(text_field(
-                name_id,
-                label(view.name.label.clone()),
-                &view.name.text,
-                &view.name.placeholder,
-                view.name.focused,
-                on_field(CategoryField::Name),
-                cx,
-            ))
+            .child(name_field)
             .children(view.name_error.clone().map(|error| error_line(error, cx)))
             .into_any_element(),
         type_field(view, actions, cx),
@@ -116,7 +124,9 @@ pub(super) fn render(
                 state: &state,
                 focused: view.parent.focused,
                 accent: false,
-                read_only: None,
+                read_only: view
+                    .parent_read_only
+                    .then(|| chosen_label(&view.parent).unwrap_or_default().into()),
                 on_field_click: actions.click(click_select),
                 on_option_click: actions.option(click_option),
             },
@@ -232,20 +242,23 @@ fn budget_field(
             view.optional.clone(),
             cx,
         ))
-        .child(
-            div()
-                .w_full()
-                .py(px(8.0))
-                .px(px(10.0))
-                .border_1()
-                .border_color(color::border(cx))
-                .bg(color::chrome(cx))
-                .text_size(px(13.0))
-                .text_color(color::muted(cx))
-                .opacity(0.6)
-                .child(read_only),
-        )
+        .child(read_only_box(read_only, cx))
         .into_any_element()
+}
+
+/// The dimmed box that stands in for an input while it can't be changed.
+fn read_only_box(text: String, cx: &App) -> impl IntoElement {
+    div()
+        .w_full()
+        .py(px(8.0))
+        .px(px(10.0))
+        .border_1()
+        .border_color(color::border(cx))
+        .bg(color::chrome(cx))
+        .text_size(px(13.0))
+        .text_color(color::muted(cx))
+        .opacity(0.6)
+        .child(text)
 }
 
 /// The dark-bordered note under the fields.
@@ -273,8 +286,8 @@ pub(super) fn error_line(text: String, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-/// The form's fields, for a test: the parent chosen, when there is one, and on Edit the parents
-/// offered.
+/// The form's fields, for a test: the parent chosen, when there is one, the parents offered and
+/// the fields that are read-only.
 pub(super) fn readback(view: &CategoryFormViewModel) -> Vec<(&'static str, String)> {
     let mut values = vec![
         ("field", format!("{:?}", view.focused)),
@@ -300,15 +313,17 @@ pub(super) fn readback(view: &CategoryFormViewModel) -> Vec<(&'static str, Strin
     if view.parent.chosen.flatten().is_some() {
         values.push(("parent", chosen_label(&view.parent).unwrap_or_default()));
     }
-    if view.editing {
-        let parents: Vec<&str> = view
-            .parent
-            .options
-            .iter()
-            .filter(|choice| choice.value.is_some())
-            .map(|choice| choice.label.as_str())
-            .collect();
-        values.push(("parents", parents.join(",")));
+    // Uncategorised's Name, Parent and Type go read-only together.
+    if view.name_read_only && view.parent_read_only && view.type_locked {
+        values.push(("read_only", "name,parent,type".to_string()));
     }
+    let parents: Vec<&str> = view
+        .parent
+        .options
+        .iter()
+        .filter(|choice| choice.value.is_some())
+        .map(|choice| choice.label.as_str())
+        .collect();
+    values.push(("parents", parents.join(",")));
     values
 }

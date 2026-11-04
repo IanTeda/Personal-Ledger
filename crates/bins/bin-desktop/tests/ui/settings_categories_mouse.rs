@@ -280,3 +280,72 @@ fn the_sub_button_on_a_leaf_with_splits_warns_and_the_confirm_hands_them_over(
 
     assert_eq!(ui.dialog(), None);
 }
+
+/// Deletes Household (which has Splits) by clicks, so the Ledger makes its Expense Uncategorised,
+/// and returns that row's id.
+fn make_uncategorised(ui: &mut Harness<'_>) -> Option<CategoryId> {
+    ui.click(&format!(
+        "settings-categories-delete-{}",
+        CategoryId::seed(10)
+    ));
+    ui.press("shift-h o u s e h o l d");
+    ui.click("delete-category-confirm");
+    assert_eq!(ui.dialog(), None);
+    let page = ui.settings::<SettingsCategoriesSnapshot>();
+    page.category_names
+        .iter()
+        .zip(&page.category_ids)
+        .find(|(name, _)| *name == "Uncategorised")
+        .map(|(_, id)| *id)
+}
+
+#[gpui::test]
+fn the_edit_action_on_uncategorised_opens_it_read_only_and_a_type_click_changes_nothing(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_categories(app);
+    let id = make_uncategorised(&mut ui).expect("Household's Splits moved to a new Uncategorised");
+
+    ui.click(&format!("settings-categories-edit-{id}"));
+    assert_eq!(ui.dialog(), Some("EditCategory"));
+    assert_eq!(
+        ui.dialog_value("read_only").as_deref(),
+        Some("name,parent,type")
+    );
+    ui.click("edit-type-income");
+    assert_eq!(ui.dialog_value("type").as_deref(), Some("Expense"));
+    ui.click("edit-category-confirm");
+
+    assert_eq!(ui.dialog(), None);
+    let page = ui.settings::<SettingsCategoriesSnapshot>();
+    assert!(page.category_types.contains(&(
+        "Uncategorised".to_string(),
+        lib_core::CategoryTypes::Expense
+    )));
+}
+
+#[gpui::test]
+fn the_sub_button_on_uncategorised_is_refused_on_the_status_line(app: &mut TestAppContext) {
+    let mut ui = on_categories(app);
+    let id = make_uncategorised(&mut ui).expect("Household's Splits moved to a new Uncategorised");
+
+    ui.click(&format!("settings-categories-sub-{id}"));
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        ui.settings_frame().status_message.as_deref(),
+        Some("Uncategorised is fixed, so it takes no subcategories")
+    );
+}
+
+#[gpui::test]
+fn the_add_buttons_parent_list_leaves_uncategorised_out(app: &mut TestAppContext) {
+    let mut ui = on_categories(app);
+    assert!(make_uncategorised(&mut ui).is_some());
+
+    ui.click("settings-categories-add");
+    assert_eq!(ui.dialog(), Some("AddCategory"));
+    let parents = ui.dialog_value("parents").expect("the offered parents");
+    assert!(!parents.split(',').any(|name| name == "Uncategorised"));
+    ui.click("add-category-cancel");
+}

@@ -647,3 +647,80 @@ fn a_leaf_holding_nothing_shows_no_handover_notice(app: &mut TestAppContext) {
     assert!(!notice.contains("move to"), "{notice}");
     ui.press("escape");
 }
+
+/// Deletes Groceries, which has Splits, so the Ledger makes its Expense Uncategorised; leaves the
+/// page with that row selected.
+fn with_uncategorised(app: &mut TestAppContext) -> Harness<'_> {
+    let mut ui = in_categories(app);
+    assert!(select_category(&mut ui, "Groceries"));
+    ui.press("d shift-g r o c e r i e s");
+    ui.press("enter");
+    assert_eq!(ui.dialog(), None);
+    assert!(select_category(&mut ui, "Uncategorised"));
+    ui
+}
+
+#[gpui::test]
+fn uncategorised_edits_with_name_parent_and_type_read_only_and_the_budget_settable(
+    app: &mut TestAppContext,
+) {
+    let mut ui = with_uncategorised(app);
+
+    ui.press("e");
+    assert_eq!(ui.dialog(), Some("EditCategory"));
+    assert_eq!(
+        ui.dialog_value("read_only").as_deref(),
+        Some("name,parent,type")
+    );
+    // Typing into the read-only Name changes nothing; the Monthly budget takes an amount.
+    ui.press("x");
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("Uncategorised"));
+    ui.press("tab tab tab 2 5");
+    assert_eq!(ui.dialog_value("budget").as_deref(), Some("25"));
+    ui.press("enter");
+
+    assert_eq!(ui.dialog(), None);
+    let page = ui.settings::<SettingsCategoriesSnapshot>();
+    assert!(
+        page.category_names
+            .iter()
+            .any(|name| name == "Uncategorised")
+    );
+    assert!(
+        !page
+            .category_names
+            .iter()
+            .any(|name| name == "Uncategorisedx")
+    );
+}
+
+#[gpui::test]
+fn add_leaves_uncategorised_out_of_its_parent_list(app: &mut TestAppContext) {
+    let mut ui = with_uncategorised(app);
+
+    ui.press("n");
+    assert_eq!(ui.dialog(), Some("AddCategory"));
+    let parents = ui.dialog_value("parents").expect("the offered parents");
+    assert!(parents.split(',').any(|name| name == "Food"));
+    assert!(!parents.split(',').any(|name| name == "Uncategorised"));
+    ui.press("escape");
+
+    // Nor does another Category's Edit offer it.
+    assert!(select_category(&mut ui, "Transport"));
+    ui.press("e");
+    let parents = ui.dialog_value("parents").expect("the offered parents");
+    assert!(!parents.split(',').any(|name| name == "Uncategorised"));
+}
+
+#[gpui::test]
+fn add_child_on_uncategorised_is_refused_on_the_status_line(app: &mut TestAppContext) {
+    let mut ui = with_uncategorised(app);
+
+    ui.press("shift-n");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        ui.settings_frame().status_message.as_deref(),
+        Some("Uncategorised is fixed, so it takes no subcategories")
+    );
+}

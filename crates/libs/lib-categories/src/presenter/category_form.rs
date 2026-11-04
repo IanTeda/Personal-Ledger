@@ -7,6 +7,8 @@
 //!   for a Category already at top level; a type chosen there cascades to its subtree on save.
 //! - Add offers every Category above the depth cap as a parent; Edit leaves out the Category's own
 //!   subtree and any parent that would nest it past three levels.
+//! - Uncategorised is fixed: Add never offers it as a parent, and its Edit opens with Name, Parent
+//!   and Type read-only and only the Monthly budget settable.
 //! - Name is required and unique among its siblings, ignoring case, checked live.
 //! - Monthly budget is the Category's amount this month in the one Budget the Dialogs save into.
 //!   It is read-only on a parent, which shows its leaves' sum, and while that Budget is archived.
@@ -30,7 +32,10 @@ use crate::protocols::{
     CategoriesOutcome, CategoryChange, CategorySavePorts, CategoryUsage, Holdings, ParentStop,
     SharedCategories,
 };
-use crate::{Category, depth, descendants_inclusive, get, is_leaf, move_exceeds_depth, msg, path};
+use crate::{
+    Category, depth, descendants_inclusive, get, is_leaf, is_uncategorised, move_exceeds_depth,
+    msg, path,
+};
 
 /// The form's fields, in `Tab` order.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -78,6 +83,10 @@ pub struct CategoryFormViewModel {
     pub category_type: SelectView<CategoryTypes>,
     /// Whether the type follows the parent, drawn dimmed and not clickable.
     pub type_locked: bool,
+    /// Name is read-only: Uncategorised keeps its name.
+    pub name_read_only: bool,
+    /// Parent category is read-only: Uncategorised stays at top level.
+    pub parent_read_only: bool,
     pub budget: BudgetField,
     /// The suffix on Parent category's and Monthly budget's labels.
     pub optional: String,
@@ -114,6 +123,8 @@ struct Editing {
     splits: usize,
     is_parent: bool,
     top_level: bool,
+    /// Uncategorised: Name, Parent and Type can't change.
+    fixed: bool,
 }
 
 pub struct CategoryFormPresenter {
@@ -144,9 +155,11 @@ impl CategoryFormPresenter {
         let rows = categories.borrow().categories();
         let parents = choices(
             &rows,
-            rows.iter().filter(|c| depth(&rows, c.id) < 2).collect(),
+            rows.iter()
+                .filter(|c| depth(&rows, c.id) < 2 && !is_uncategorised(c))
+                .collect(),
         );
-        let parent = parent.filter(|id| get(&rows, *id).is_some());
+        let parent = parent.filter(|id| parents.iter().any(|choice| choice.value == Some(*id)));
         let category_type = parent
             .and_then(|id| get(&rows, id))
             .map_or(CategoryTypes::Expense, |p| p.category_type.clone());
@@ -184,7 +197,11 @@ impl CategoryFormPresenter {
         let subtree = descendants_inclusive(&rows, id);
         let offered = rows
             .iter()
-            .filter(|c| !subtree.contains(&c.id) && !move_exceeds_depth(&rows, id, c.id))
+            .filter(|c| {
+                !subtree.contains(&c.id)
+                    && !move_exceeds_depth(&rows, id, c.id)
+                    && !is_uncategorised(c)
+            })
             .collect();
         let monthly = budget.monthly_budget(&rows, Some(id));
         let is_parent = !is_leaf(&rows, id);
@@ -206,6 +223,7 @@ impl CategoryFormPresenter {
                     .sum(),
                 is_parent,
                 top_level: category.parent.is_none(),
+                fixed: is_uncategorised(&category),
             }),
             categories,
             name: category.name,
@@ -240,7 +258,9 @@ impl CategoryFormPresenter {
             }
             CategoryFormEvent::ToggleParents => {
                 self.focused = CategoryField::Parent;
-                self.parent_list.toggle(&self.parents, Some(&self.parent));
+                if !self.fixed() {
+                    self.parent_list.toggle(&self.parents, Some(&self.parent));
+                }
             }
             CategoryFormEvent::CloseParents => {
                 self.parent_list.close();
@@ -281,6 +301,7 @@ impl CategoryFormPresenter {
                 self.focused = order[next % order.len()];
             }
             (DialogInput::Submit, _) => self.confirm(budget, router),
+            (_, CategoryField::Parent) if self.fixed() => {}
             (_, CategoryField::Parent) => {
                 // A select swallows typing, so it never reaches the Shell.
                 if let SelectMove::Chose(id) =
@@ -323,6 +344,9 @@ impl CategoryFormPresenter {
     }
 
     fn set_name(&mut self, text: String) {
+        if self.fixed() {
+            return;
+        }
         self.name = text;
         self.refusal = None;
     }
@@ -339,7 +363,7 @@ impl CategoryFormPresenter {
 
     /// Sets the parent, and with it the type, ignoring a parent that is not offered.
     fn pick_parent(&mut self, id: Option<CategoryId>) {
-        if self.parents.iter().any(|choice| choice.value == id) {
+        if !self.fixed() && self.parents.iter().any(|choice| choice.value == id) {
             self.parent = id;
             if let Some(parent) = id.and_then(|id| self.category(id)) {
                 self.category_type = parent.category_type;
@@ -436,6 +460,8 @@ impl CategoryFormPresenter {
                 focused: self.focused == CategoryField::Type,
             },
             type_locked: self.type_locked(),
+            name_read_only: self.fixed(),
+            parent_read_only: self.fixed(),
             budget: BudgetField {
                 field: TextFieldView {
                     label: msg::categories_field_monthly_budget(),
@@ -461,10 +487,16 @@ impl CategoryFormPresenter {
     /// type.
     fn type_locked(&self) -> bool {
         self.parent.is_some()
+            || self.fixed()
             || self
                 .editing
                 .as_ref()
                 .is_some_and(|editing| !editing.top_level)
+    }
+
+    /// Editing Uncategorised, whose Name, Parent and Type are fixed.
+    fn fixed(&self) -> bool {
+        self.editing.as_ref().is_some_and(|editing| editing.fixed)
     }
 
     /// Another Category under the same parent has this name, ignoring case.
@@ -573,6 +605,7 @@ impl CategoryFormPresenter {
             msg::categories_notice_nested(&parent.name, &type_label(&parent.category_type))
         });
         match &self.editing {
+            Some(editing) if editing.fixed => msg::categories_edit_uncategorised_notice(),
             Some(editing) if editing.splits > 0 => {
                 msg::categories_edit_usage_notice(count(editing.splits))
             }
@@ -637,6 +670,7 @@ fn type_label(category_type: &CategoryTypes) -> String {
 mod tests {
     use super::super::test_support::stub;
     use super::*;
+    use crate::CategoryError;
     use crate::CategoryRepository as _;
     use crate::fake::{InMemoryCategoryBudget, InMemoryCategoryUsage, RecordingRouter, RouterCall};
     use crate::protocols::{CategoryBudget as _, CategoryUse, MonthlyBudgetRefusal};
@@ -1246,6 +1280,113 @@ mod tests {
         assert_eq!(
             form.view_model().notice,
             "Transport' 2 Payee defaults move to Groceries."
+        );
+    }
+
+    /// The stub tree with an Expense Uncategorised added, and its id.
+    fn stub_with_uncategorised() -> (CategoryId, SharedCategories) {
+        let (categories, shared) = stub();
+        let id = crate::get_or_create_uncategorised(
+            &mut categories.borrow_mut().categories,
+            CategoryTypes::Expense,
+        );
+        (id, shared)
+    }
+
+    #[test]
+    fn add_never_offers_uncategorised_as_a_parent() {
+        let (uncategorised, shared) = stub_with_uncategorised();
+        let budget = InMemoryCategoryBudget::default();
+
+        let form = CategoryFormPresenter::add(shared.clone(), &budget, None);
+        assert!(
+            !labels(&form.view_model().parent).contains(&"Uncategorised".to_string()),
+            "not in Parent"
+        );
+
+        let asked_under_it = CategoryFormPresenter::add(shared, &budget, Some(uncategorised));
+        assert_eq!(asked_under_it.view_model().parent.chosen, Some(None));
+    }
+
+    #[test]
+    fn edit_never_offers_uncategorised_as_a_parent() {
+        let (_, shared) = stub_with_uncategorised();
+        let budget = InMemoryCategoryBudget::default();
+        let usage = InMemoryCategoryUsage::default();
+
+        let form = CategoryFormPresenter::edit(shared, &budget, &usage, TRANSPORT).expect("seeded");
+
+        assert!(!labels(&form.view_model().parent).contains(&"Uncategorised".to_string()));
+    }
+
+    #[test]
+    fn uncategorised_opens_with_name_parent_and_type_read_only_and_the_budget_settable() {
+        let (uncategorised, shared) = stub_with_uncategorised();
+        let mut budget = InMemoryCategoryBudget::default();
+        let usage = InMemoryCategoryUsage::default();
+        let mut form = CategoryFormPresenter::edit(shared.clone(), &budget, &usage, uncategorised)
+            .expect("added");
+
+        let view = form.view_model();
+        assert!(view.name_read_only && view.parent_read_only && view.type_locked);
+        assert_eq!(
+            view.notice,
+            "Uncategorised is fixed \u{2014} only its monthly budget can change."
+        );
+        assert!(view.budget.read_only.is_none(), "the budget is settable");
+
+        // Nothing the user does changes the fixed fields.
+        send(
+            &mut form,
+            vec![
+                name("Misc"),
+                CategoryFormEvent::Parent(Some(FOOD)),
+                CategoryFormEvent::Type(CategoryTypes::Income),
+                CategoryFormEvent::ToggleParents,
+            ],
+        );
+        press(&mut form, &mut budget, &[DialogInput::SelectNext]);
+        let view = form.view_model();
+        assert_eq!(view.name.text, "Uncategorised");
+        assert_eq!(view.parent.chosen, Some(None));
+        assert_eq!(view.category_type.chosen, Some(CategoryTypes::Expense));
+        assert!(!view.parent_list.is_open());
+
+        // The Monthly budget saves, and the Category stays as it was.
+        send(&mut form, vec![CategoryFormEvent::Budget("25".into())]);
+        let calls = confirm(&mut form, &mut budget);
+        assert_eq!(calls.len(), 1, "closed: {calls:?}");
+        assert_eq!(budget.amounts.get(&uncategorised), Some(&money("25")));
+        assert_eq!(
+            shared.borrow().category(uncategorised).map(|c| c.name),
+            Some("Uncategorised".into())
+        );
+    }
+
+    #[test]
+    fn a_save_that_moves_a_parent_under_a_leaf_with_rows_says_so_and_stays_open() {
+        let (_, shared) = stub();
+        let mut budget = InMemoryCategoryBudget::default();
+        budget.held.insert(TRANSPORT, held(2, 1, 0));
+        let usage = InMemoryCategoryUsage::default();
+        let mut form = CategoryFormPresenter::edit(shared, &budget, &usage, FOOD).expect("seeded");
+        send(&mut form, vec![CategoryFormEvent::Parent(Some(TRANSPORT))]);
+
+        let calls = confirm(&mut form, &mut budget);
+
+        assert_eq!(calls, []);
+        assert_eq!(
+            form.view_model().refusal.as_deref(),
+            Some("Transport has Splits and Bill Plans; add a Category under it first.")
+        );
+    }
+
+    #[test]
+    fn uncategorised_fixed_has_its_own_refusal_text() {
+        stub();
+        assert_eq!(
+            save_refusal_text(&CategoryError::UncategorisedFixed.into()),
+            "Uncategorised is fixed: it can't be renamed, moved, retyped or given subcategories."
         );
     }
 }

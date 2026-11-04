@@ -27,6 +27,7 @@ categories-note = Categories nest to any depth; only leaf categories can be pick
 ## The status line: a Delete asked of a parent.
 
 categories-status-delete-children-first = delete or move its children first
+categories-status-uncategorised-no-children = Uncategorised is fixed, so it takes no subcategories
 
 ## The page's legend.
 
@@ -37,7 +38,8 @@ categories-hint-delete = delete
 categories-hint-new = new
 categories-hint-sub = sub
 
-## The Add and Edit category Dialogs (5b, 5c). `$parent` is the parent's name and `$kind` its type,
+## The Add and Edit category Dialogs (5b, 5c). Uncategorised's Edit opens with Name, Parent and
+## Type read-only. `$parent` is the parent's name and `$kind` its type,
 ## one of the two type Messages below.
 
 categories-add-title = Add category
@@ -75,6 +77,7 @@ categories-handover-payee-defaults = { $count ->
 }
 categories-handover-two = { $first } and { $second }
 categories-handover-three = { $first }, { $second } and { $third }
+categories-edit-uncategorised-notice = Uncategorised is fixed — only its monthly budget can change.
 categories-edit-notice = Changes apply when you save.
 categories-edit-parent-notice = This is a parent category — its budget shows the sum of its children's budgets.
 categories-edit-usage-notice = This category has { $count ->
@@ -114,6 +117,11 @@ categories-refusal-too-deep = Categories nest at most three levels deep.
 categories-refusal-cycle = A category can't go under itself or one of its own subcategories.
 categories-refusal-has-children = Delete or move its subcategories first.
 categories-refusal-uncategorised-in-use = Uncategorised can't be deleted while transactions or bills use it.
+categories-refusal-uncategorised-fixed = Uncategorised is fixed: it can't be renamed, moved, retyped or given subcategories.
+categories-refusal-leaf-holds-rows = { $leaf } has { $rows }; add a Category under it first.
+categories-holds-splits = Splits
+categories-holds-bill-plans = Bill Plans
+categories-holds-payee-defaults = Payee defaults
 categories-refusal-budget-not-a-leaf = Only an expense category with no subcategories can have a monthly budget.
 categories-refusal-budget-read-only = The budget is read-only, so its monthly amount can't change.
 categories-refusal-budget-unavailable = The monthly budget couldn't be saved.

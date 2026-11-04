@@ -30,7 +30,27 @@ fn save_refusal_text(refusal: &SaveCategoryRefusal) -> String {
             CategoryError::TypeMismatch => msg::categories_refusal_type_mismatch(),
             CategoryError::DepthExceeded => msg::categories_refusal_too_deep(),
             CategoryError::CycleDetected => msg::categories_refusal_cycle(),
+            CategoryError::UncategorisedFixed => msg::categories_refusal_uncategorised_fixed(),
         },
+        SaveCategoryRefusal::LeafHoldsRows { leaf, held } => {
+            let mut parts = Vec::new();
+            if held.splits > 0 {
+                parts.push(msg::categories_holds_splits());
+            }
+            if held.bill_plans > 0 {
+                parts.push(msg::categories_holds_bill_plans());
+            }
+            if held.payee_defaults > 0 {
+                parts.push(msg::categories_holds_payee_defaults());
+            }
+            let rows = match parts.as_slice() {
+                [first, second, third] => msg::categories_handover_three(first, second, third),
+                [first, second] => msg::categories_handover_two(first, second),
+                [one] => one.clone(),
+                _ => String::new(),
+            };
+            msg::categories_refusal_leaf_holds_rows(leaf, &rows)
+        }
         SaveCategoryRefusal::Budget(refusal) => match refusal {
             MonthlyBudgetRefusal::NotAnExpenseLeaf => msg::categories_refusal_budget_not_a_leaf(),
             MonthlyBudgetRefusal::ReadOnly => msg::categories_refusal_budget_read_only(),

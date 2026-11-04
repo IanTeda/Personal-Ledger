@@ -134,6 +134,7 @@ impl PageSnapshot for SettingsCategoriesSnapshot {
                 .iter()
                 .map(|c| (c.name.clone(), c.category_type.clone()))
                 .collect(),
+            category_ids: categories.iter().map(|c| c.id).collect(),
             category_names: categories.into_iter().map(|c| c.name).collect(),
         }
     }

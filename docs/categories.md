@@ -34,7 +34,9 @@ When you create a hierarchy like Housing > Utilities > Electricity, you file tra
 
 To add a category, press `n` (or choose Add category) and fill in the name and type (Expense or Income). Optionally set a parent category to nest it, or leave it top-level. Adding under a category with no sub-categories yet moves that category's transactions' splits, bill plans and payee defaults to the new one; the form tells you how many before you save. You can also set a monthly budget if you want to track spending against a target. It becomes that category's amount in the Personal spending budget, from the current month onward (see [Budgets](budgets.md)).
 
-To edit a category, press `e` to rename it, move it to a different parent, or change its budget. The Monthly budget field shows this month's amount in the Personal spending budget. Changing it applies from this month onward, and clearing it stops budgeting the category from this month. Earlier months keep their amounts. On a category with sub-categories the field is read-only and shows the sum of its children, and it is read-only for every category while Personal spending is archived. The system updates your transactions and rollup totals automatically when you rename. Moving a category after you have transactions is allowed but changes how your past totals add up — think twice.
+To edit a category, press `e` to rename it, move it to a different parent, or change its budget. The Monthly budget field shows this month's amount in the Personal spending budget. Changing it applies from this month onward, and clearing it stops budgeting the category from this month. Earlier months keep their amounts. On a category with sub-categories the field is read-only and shows the sum of its children, and it is read-only for every category while Personal spending is archived. The system updates your transactions and rollup totals automatically when you rename. Moving a category after you have transactions is allowed but changes how your past totals add up — think twice. You can't move a category that has sub-categories under a category that still holds transactions, bills or payee defaults: the form says "Groceries has Splits; add a category under it first", because only a category's first new sub-category takes those over. Moving a category with no sub-categories there is fine, and it takes them.
+
+Uncategorised is fixed. You can't rename it, move it, change its type or add a sub-category under it, and it isn't offered as a parent. Its edit box shows the name, parent and type read-only, and only the monthly budget can change. Choosing add sub-category on its row says so on the status line.
 
 To delete, press `d` and confirm by typing the category name. The delete box says how many transactions use the category and how many budgets are attached, and warns that it can't be undone. Its transactions and bills move to Uncategorised, and any payee that defaulted to the category loses that default. A category with sub-categories can't be deleted until you delete or move its children first, and Uncategorised can't be deleted while transactions or bills still use it.
 
@@ -90,6 +92,7 @@ Intended features for Categories. Ticked means built in at least one app; the ta
 - [ ] CAT-007: Archive (hide) a category without deleting it
 - [x] CAT-008 (desktop): Keep categories after the app closes
 - [x] CAT-009 (desktop): Deleting a category moves its transactions and bills to Uncategorised and clears it as a payee's default category
+- [x] CAT-010 (desktop): Uncategorised is fixed: it can't be renamed, moved, retyped or given sub-categories, and a category with sub-categories can't be moved under a category that holds transactions, bills or payee defaults
 
 ## For developers
 

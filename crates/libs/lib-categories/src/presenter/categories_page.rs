@@ -17,7 +17,8 @@ use lib_viper::view::{Hint, count};
 use crate::keymap::{COLLAPSE, EXPAND, NEW_CHILD};
 use crate::protocols::{CategoriesDialog, CategoriesOutcome, CategoriesRouter, SharedCategories};
 use crate::{
-    Category, TreeNode, child_count, get, is_leaf, levels_deep, msg, settings_rows, toggle_expanded,
+    Category, TreeNode, child_count, get, is_leaf, is_uncategorised, levels_deep, msg,
+    settings_rows, toggle_expanded,
 };
 
 /// The parents open when the page is first drawn: the stub tree's Housing, Utilities and Food, as
@@ -143,7 +144,7 @@ impl CategoriesPagePresenter {
             }
             CategoriesPageEvent::NewChild => {
                 if let Some(id) = self.selected() {
-                    self.open(CategoriesDialog::AddCategory { parent: Some(id) }, router);
+                    self.add_child(id, router);
                 }
             }
             CategoriesPageEvent::Edit => {
@@ -158,7 +159,7 @@ impl CategoriesPagePresenter {
             }
             CategoriesPageEvent::AddChildRow(id) => {
                 self.select(id);
-                self.open(CategoriesDialog::AddCategory { parent: Some(id) }, router);
+                self.add_child(id, router);
             }
             CategoriesPageEvent::EditRow(id) => {
                 if self.exists(id) {
@@ -244,6 +245,22 @@ impl CategoriesPagePresenter {
         if !ids.is_empty() {
             self.selected = step_id(&ids, self.selected(), step);
         }
+    }
+
+    /// Add under `id`, except under Uncategorised, which is fixed: that says why on the status line
+    /// and opens nothing.
+    fn add_child(&mut self, id: CategoryId, router: &mut dyn CategoriesRouter) {
+        if self
+            .categories()
+            .iter()
+            .any(|c| c.id == id && is_uncategorised(c))
+        {
+            router.notify(Notice::Status(
+                msg::categories_status_uncategorised_no_children(),
+            ));
+            return;
+        }
+        self.open(CategoriesDialog::AddCategory { parent: Some(id) }, router);
     }
 
     /// Only a leaf is deleted; a parent says why on the status line and opens nothing.
@@ -563,5 +580,25 @@ mod tests {
 
         let chords: Vec<&str> = view.hints.iter().map(|hint| hint.chord.as_str()).collect();
         assert_eq!(chords, ["j/k", "right/left", "e", "d", "n", "s"]);
+    }
+
+    #[test]
+    fn add_child_on_uncategorised_says_why_on_the_status_line_and_opens_nothing() {
+        let (categories, shared) = stub();
+        let uncategorised = crate::get_or_create_uncategorised(
+            &mut categories.borrow_mut().categories,
+            CategoryTypes::Expense,
+        );
+        let mut page = Page::new(shared);
+        let status = vec![RouterCall::Notice(Notice::Status(
+            "Uncategorised is fixed, so it takes no subcategories".into(),
+        ))];
+
+        assert_eq!(
+            page.send(CategoriesPageEvent::AddChildRow(uncategorised)),
+            status
+        );
+        assert_eq!(page.send(CategoriesPageEvent::NewChild), status);
+        assert_eq!(page.view().open_dialog, None);
     }
 }
