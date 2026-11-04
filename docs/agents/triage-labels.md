@@ -52,8 +52,8 @@ An open ticket has exactly one `priority:` rank and at most one `state:` beside 
 
 | Rank                  | Means                                                                                                            |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `priority:10-now`     | Specified, and waiting costs: do these first                                                                     |
-| `priority:20-next`    | Specified and ready to start, with no compounding cost or leverage                                               |
+| `priority:10-now`     | Workable, and waiting costs: do these first. Workable is specified, or a decision ticket whose grilling is the work |
+| `priority:20-next`    | Workable and ready to start, with no compounding cost or leverage                                                |
 | `priority:99-backlog` | Not worked yet: an idea or parent ticket that isn't specified, or a specified ticket outside the Next ten. Its `flow:` label says which: how it gets specified, or `flow:implementation` |
 
 | State                | Means                                                                                                                                          |

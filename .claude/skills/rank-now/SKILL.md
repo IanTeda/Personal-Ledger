@@ -14,8 +14,8 @@ Walk the open tickets and leave the tracker with exactly five live, unblocked, s
 2. **Supersession sweep.** Give every open ticket, not just the candidates, one verdict by [Supersession](#supersession): **live**, **done**, **superseded** or **drifted**. Work oldest first: age is the strongest predictor of a stale spec. Done when every open ticket carries a verdict and each non-live verdict names its evidence (a commit, an ADR, a closed ticket, a missing file).
 3. **Eligibility.** Keep only the tickets [Eligibility](#eligibility) admits. Done when each excluded ticket has its reason.
 4. **Score.** Weigh each eligible ticket by [Picking rules](#picking-rules), writing one line per rule. Done when every eligible ticket has a line for blast radius, downstream impact, route and age.
-5. **Pick five Now.** Choose the set by [Choosing the set](#choosing-the-set). Fewer than five eligible tickets is a valid result: fill what you can and report the gap, never promote an unspecified ticket to fill it.
-6. **Pick ten Next.** Rank the remaining specified tickets by [The Next ten](#the-next-ten) and keep the top ten on `priority:20-next`; the rest overflow to `priority:99-backlog`. Done when Next holds at most ten and every overflow ticket has its reason.
+5. **Pick five Now.** Choose the set by [Choosing the set](#choosing-the-set). Fewer than five eligible tickets is a valid result: fill what you can and report the gap, never promote a ticket [Eligibility](#eligibility) excludes to fill it.
+6. **Pick ten Next.** Rank the remaining workable tickets by [The Next ten](#the-next-ten) and keep the top ten on `priority:20-next`; the rest overflow to `priority:99-backlog`. Done when Next holds at most ten and every overflow ticket has its reason.
 7. **Propose.** Show the user one table: the five Now picks and the ten Next picks with their reasons, every ticket leaving Now or Next and why, and every non-live verdict with the action it takes. Ask with `AskUserQuestion` and wait for a yes; the user may swap picks or overrule a verdict. Hand-set labels (a `priority:` with no line in the ticket's `## Labels` section) are the user's: list any change to one as a question in this step, and leave it as it is unless they say yes.
 8. **Apply.** Once approved, write in this order so neither cap is exceeded mid-run: retire the non-live tickets, move the Next overflow to `priority:99-backlog`, demote the tickets leaving Now to `priority:20-next`, promote the Next picks, then promote the Now picks. Each rank change updates its line in the ticket's `## Labels` section in place (`gh issue edit <n> --body-file`), and each `flow:` or `state:` change is a comment naming this skill as the step that caused it. Done when `gh issue list --state open --label priority:10-now` returns exactly the approved five and `--label priority:20-next` exactly the approved Next set.
 9. **Report.** List the five Now and ten Next with one-line reasons, what was retired and on what evidence, what left Now or Next, and any gap or hand-set label the user kept.
@@ -41,7 +41,7 @@ Verdicts and the action each takes on approval:
 
 A ticket can take a Now slot only if it is:
 
-- `flow:implementation`: specified, with an `agent:` label. `priority:99-backlog`, `flow:grilling`, `flow:wayfinding` and `flow:triage` tickets are not ready to be worked.
+- **Workable:** either `flow:implementation` (specified, with an `agent:` label), or a `flow:grilling` or `flow:wayfinding` decision ticket whose question is written down, since a grilling session is the work. A Wayfinder map, a parent whose own work is its sub-issues, and a `flow:triage` ticket take no slot of their own.
 - **Live** by the sweep.
 - **Unblocked:** `issue_dependencies_summary.blocked_by` is 0, or every blocker is itself one of the five. Rank the blocker, not the blocked ticket.
 - **Free:** no `state:waiting`, and no assignee other than the user.
@@ -71,11 +71,11 @@ Each pick's `## Labels` line names the rule that won it, e.g. `` `priority:10-no
 
 ## The Next ten
 
-Next is the queue the Now five refill from, so rank it by the same [Picking rules](#picking-rules) over every specified (`flow:implementation`), live ticket not picked for Now. It is looser than Now in two ways:
+Next is the queue the Now five refill from, so rank it by the same [Picking rules](#picking-rules) over every workable (as [Eligibility](#eligibility) defines it), live ticket not picked for Now. A map that already holds `priority:20-next` keeps it and counts toward the ten, as the rank its route carries. It is looser than Now in two ways:
 
 - **Blocked is fine** when the blocker is in Now or Next: the ticket queues behind it and rises when it closes. A ticket whose blocker sits outside both does not take a Next slot.
 - **Seams may repeat:** two Next tickets may touch the same seam, since they won't be worked at once. Order them blocker first.
 
 Every Next ticket counts toward the ten, `state:waiting` and assigned tickets included; a waiting ticket keeps its slot only if it outranks the eleventh.
 
-Tickets ranked below ten **overflow** to `priority:99-backlog`. They keep their `flow:implementation` and `agent:` labels, so the backlog shows they are specified and waiting for a slot rather than for charting, and their `## Labels` line says so, e.g. `` `priority:99-backlog`: specified; outside the Next ten, outranked by #962 and #970. `` Each run re-ranks them with the rest, so an overflow ticket rises once it outranks the tenth.
+Tickets ranked below ten **overflow** to `priority:99-backlog`. They keep their `flow:` and `agent:` labels, so the backlog shows they are workable and waiting for a slot, and their `## Labels` line says so, e.g. `` `priority:99-backlog`: specified; outside the Next ten, outranked by #962 and #970. `` Each run re-ranks them with the rest, so an overflow ticket rises once it outranks the tenth.

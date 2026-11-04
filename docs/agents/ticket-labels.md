@@ -42,10 +42,10 @@ The result:
 - High compounding or high leverage → `10-now`.
 - Specified, with neither → `20-next`.
 - Specified, but outside the Next ten → `99-backlog`, its `## Labels` line saying it waits for a slot.
-- Not yet specified → `99-backlog`.
+- Not yet specified → `99-backlog`, unless it is a decision ticket whose grilling is itself work that costs to delay: an unblocked grilling or Wayfinder ticket with its question written ranks by the rules above. A map or a parent takes no rank of its own beyond its route's.
+- A feature that would sit on an open architecture ticket waits behind it. Say so in the feature's ticket.
 
 `/rank-now` walks every open ticket, retires the ones other work has superseded, and re-ranks the Now five and the Next ten by these rules.
-- A feature that would sit on an open architecture ticket waits behind it. Say so in the feature's ticket.
 
 ## Closing or review
 
