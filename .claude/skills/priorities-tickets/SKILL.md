@@ -6,29 +6,34 @@ disable-model-invocation: true
 
 # Priorities Tickets
 
-Walk the open tickets and leave the tracker with exactly five live, unblocked, specified tickets on `priority:10-now` and at most ten on `priority:20-next`, each with a `## Labels` line saying why it holds its slot. The caps are hard: **five Now, ten Next**, whatever a ticket's state. The base ranking order (compounding, leverage, route, effort) and the label rules are in `docs/agents/ticket-labels.md`, which wins where this skill disagrees; this skill adds the walk, the **supersession** sweep and the picking rules that turn that order into five tickets.
+Walk the open tickets and leave the tracker with exactly five live, unblocked, specified tickets on `priority:10-now` and at most ten on `priority:20-next`, each with a `## Labels` line saying why it holds its slot. `docs/agents/ticket-labels.md` holds the caps and the base ranking order and wins where this skill disagrees; read only its **Ranking**, **Recording label decisions** and **Closing or review** sections. This skill adds the walk, the **supersession** sweep and the picking rules that turn that order into five tickets.
 
 ## Steps
 
-1. **Snapshot.** Pull every open ticket once and work from the snapshot: `gh issue list --state open --limit 500 --json number,title,body,labels,assignees,createdAt,updatedAt,comments`. For each ticket, read its blockers, sub-issues and parent with `gh api repos/IanTeda/Personal-Ledger/issues/<n> --jq '{deps: .issue_dependencies_summary, subs: .sub_issues_summary, parent: .parent_issue_url}'`, and read the current Now set (`--label priority:10-now`). Done when every open ticket has its labels, age, blockers and parent recorded.
-2. **Supersession sweep.** Give every open ticket, not just the candidates, one verdict by [Supersession](#supersession): **live**, **done**, **superseded** or **drifted**. Work oldest first: age is the strongest predictor of a stale spec. Done when every open ticket carries a verdict and each non-live verdict names its evidence (a commit, an ADR, a closed ticket, a missing file).
+1. **Snapshot.** Run `python3 .claude/skills/priorities-tickets/digest.py` once and work from its output: one block per open ticket, oldest first, with its labels, assignee, open blockers, parent, sub-issues, Seams to decide, latest comment, `## Labels` section and a `flags:` line, plus the current rank sets and the ADRs added since the oldest ticket. Read a full body (`gh issue view <n>`) only when a verdict or a seam collision needs more than the digest shows. Done when the digest has run.
+2. **Supersession sweep.** Give every open ticket one verdict by [Supersession](#supersession): **live**, **done**, **superseded** or **drifted**. Done when every ticket has a verdict and each non-live verdict names its evidence (a commit, an ADR, a closed ticket, a missing file).
 3. **Eligibility.** Keep only the tickets [Eligibility](#eligibility) admits. Done when each excluded ticket has its reason.
 4. **Score.** Weigh each eligible ticket by [Picking rules](#picking-rules), writing one line per rule. Done when every eligible ticket has a line for blast radius, downstream impact, route and age.
 5. **Pick five Now.** Choose the set by [Choosing the set](#choosing-the-set). Fewer than five eligible tickets is a valid result: fill what you can and report the gap, never promote a ticket [Eligibility](#eligibility) excludes to fill it.
 6. **Pick ten Next.** Rank the remaining workable tickets by [The Next ten](#the-next-ten) and keep the top ten on `priority:20-next`; the rest overflow to `priority:99-backlog`. Done when Next holds at most ten and every overflow ticket has its reason.
 7. **Propose.** Show the user one table: the five Now picks and the ten Next picks with their reasons, every ticket leaving Now or Next and why, and every non-live verdict with the action it takes. Ask with `AskUserQuestion` and wait for a yes; the user may swap picks or overrule a verdict. Hand-set labels (a `priority:` with no line in the ticket's `## Labels` section) are the user's: list any change to one as a question in this step, and leave it as it is unless they say yes.
-8. **Apply.** Once approved, write in this order so neither cap is exceeded mid-run: retire the non-live tickets, move the Next overflow to `priority:99-backlog`, demote the tickets leaving Now to `priority:20-next`, promote the Next picks, then promote the Now picks. Each rank change updates its line in the ticket's `## Labels` section in place (`gh issue edit <n> --body-file`), and each `flow:` or `state:` change is a comment naming this skill as the step that caused it. Done when `gh issue list --state open --label priority:10-now` returns exactly the approved five and `--label priority:20-next` exactly the approved Next set.
+8. **Apply.** Once approved, write in this order so neither cap is exceeded mid-run: retire the non-live tickets, move the Next overflow to `priority:99-backlog`, demote the tickets leaving Now to `priority:20-next`, promote the Now picks, then promote the Next picks. Each rank change updates its line in the ticket's `## Labels` section in place (`gh issue edit <n> --body-file`), and each `flow:` or `state:` change is a comment naming this skill as the step that caused it. Done when `gh issue list --state open --label priority:10-now` returns exactly the approved five and `--label priority:20-next` exactly the approved Next set.
 9. **Report.** List the five Now and ten Next with one-line reasons, what was retired and on what evidence, what left Now or Next, and any gap or hand-set label the user kept.
 
 ## Supersession
 
-A ticket is written against the codebase and decisions of its day; the work and the ADRs since can overtake it. Check each ticket against:
+A ticket is written against the codebase and decisions of its day; the work and the ADRs since can overtake it. The digest's `flags:` line runs the mechanical checks:
 
-- **Commits since it opened:** `git log --since=<createdAt> --oneline` filtered by its number (`#<n>`) and by the files, types and terms its body names. A commit citing the ticket, or one that already did what its acceptance criteria ask, is evidence of **done**.
-- **ADRs since it opened:** every `docs/adr/` file added or changed after `createdAt` (`git log --since=<createdAt> --name-only -- docs/adr/`). An ADR that decides the ticket's question differently, or supersedes the ADR the ticket builds on, makes it **superseded** or **drifted**.
+- **commits cite it:** commits since the ticket opened that name `#<n>`. One that did what the acceptance criteria ask is evidence of **done**.
+- **cited ADRs changed since:** an ADR the body cites, changed after the ticket opened.
+- **paths not in the tree:** backticked paths the body names that no tracked file matches: moved, deleted, or still to be created by the ticket.
+- **names closed:** tickets the body names that have closed, such as a blocker, a parent, or the work it waited on.
+
+A ticket with `flags: none` is **live** unless a judgement check below says otherwise. For a flagged ticket, and for these judgement checks across every ticket, decide the verdict:
+
+- **ADRs added since it opened** (the digest's list): one that decides the ticket's question differently, or supersedes the ADR it builds on.
 - **The glossary:** a term the ticket relies on renamed or retired in `GLOSSARY.md`.
-- **The tree:** files, modules and types the body names that no longer exist (`git ls-files`, `graphify query`), or that moved under a different module.
-- **Other tickets:** a closed ticket, or a newer open one, that did or now owns the same work; a closed parent or a cleared Wayfinder map whose route no longer includes it.
+- **Other tickets:** a newer open ticket that now owns the same work, or a closed parent or cleared Wayfinder map whose route no longer includes it.
 
 Verdicts and the action each takes on approval:
 
@@ -43,7 +48,7 @@ A ticket can take a Now slot only if it is:
 
 - **Workable:** either `flow:implementation` (specified, with an `agent:` label), or a `flow:grilling` or `flow:wayfinding` decision ticket whose question is written down, since a grilling session is the work. A Wayfinder map, a parent whose own work is its sub-issues, and a `flow:triage` ticket take no slot of their own.
 - **Live** by the sweep.
-- **Unblocked:** `issue_dependencies_summary.blocked_by` is 0, or every blocker is itself one of the five. Rank the blocker, not the blocked ticket.
+- **Unblocked:** no open blocker in the digest's `graph:` line, or every open blocker is itself one of the five. Rank the blocker, not the blocked ticket.
 - **Free:** no `state:waiting`, and no assignee other than the user.
 
 A `state:needs-review` ticket already on Now keeps its rank and counts toward the cap, because the cap counts every state. List it first in the proposal so the user can clear it and free the slot.
@@ -63,7 +68,6 @@ Cost of delay decides; these rules are how to read it for this codebase. The fir
 The five are worked together, so pick a set, not five individual winners:
 
 - **One per seam:** two picks that change the same module or crate at once collide. Keep the one with more downstream impact and leave the other on `20-next`, unless one blocks the other, in which case keep only the blocker.
-- **Architecture before its features:** a feature that would sit on an open architecture ticket waits behind it; pick the architecture ticket and say so in the feature's `## Labels` line.
 - **Mixed agents:** where the scores are close, prefer a set that is not all `agent:human` or all `agent:opus-high`, so the Now list can be worked without one bottleneck. This never outranks cost of delay.
 - **Keep what is moving:** a Now ticket that is assigned and in progress stays unless it went non-live in the sweep; demoting it mid-flight wastes the context already spent.
 
