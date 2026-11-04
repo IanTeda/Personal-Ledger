@@ -12,6 +12,7 @@
 
 mod accept_all;
 mod default_notice;
+mod delete_document;
 mod document_form;
 mod documents_page;
 mod facts_form;
@@ -45,6 +46,7 @@ pub use link_picker::{
 };
 
 pub use default_notice::{DefaultNoticeEvent, DefaultNoticePresenter, DefaultNoticeViewModel};
+pub use delete_document::{DeleteDocumentEvent, DeleteDocumentPresenter, DeleteDocumentViewModel};
 pub use documents_page::{
     DocumentsFocus, DocumentsPageEvent, DocumentsPagePresenter, DocumentsPageViewModel,
     InboxViewModel, LibraryViewModel, PageLabels, inbox_below,

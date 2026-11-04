@@ -73,6 +73,9 @@ pub enum DocumentsPageEvent {
     Sort,
     /// `e`: Edit in the Library, Edit facts in the Inbox.
     Edit,
+    /// `d`: the selected Document deleted after a confirm, in either mode. Its file and linked
+    /// records stay.
+    Delete,
     /// The selected file, opened in its application.
     Open,
     /// The selected file, shown in its folder.
@@ -154,6 +157,7 @@ pub struct PageLabels {
     pub link_add: String,
     pub open: String,
     pub show_in_folder: String,
+    pub delete: String,
     pub watched_folder: String,
     pub file_column: String,
     pub link_column: String,
@@ -177,6 +181,7 @@ impl PageLabels {
             link_add: msg::documents_link_add(),
             open: msg::documents_open(),
             show_in_folder: msg::documents_show_in_folder(),
+            delete: msg::documents_delete(),
             watched_folder: msg::documents_watched_folder(),
             file_column: msg::documents_inbox_col_file(),
             link_column: msg::documents_inbox_col_link(),
@@ -531,6 +536,7 @@ impl DocumentsPagePresenter {
                 }
             }
             DocumentsPageEvent::Edit => self.edit(router),
+            DocumentsPageEvent::Delete => self.delete_selected(router),
             DocumentsPageEvent::Open => self.open_selected(false, router),
             DocumentsPageEvent::ShowInFolder => self.open_selected(true, router),
             DocumentsPageEvent::Accept => self.accept_focused(router),
@@ -729,6 +735,28 @@ impl DocumentsPagePresenter {
             DocumentsMode::Library => DocumentsDialog::Edit(document.id),
             DocumentsMode::Inbox => DocumentsDialog::Facts(document.id),
         });
+    }
+
+    /// `d` / **Delete**: asks to delete the selected Document, whichever mode shows.
+    fn delete_selected(&mut self, router: &mut dyn DocumentsRouter) {
+        let Some(document) = self.selected_document() else {
+            Self::no_document(router);
+            return;
+        };
+        router.open_dialog(DocumentsDialog::Delete(document.id));
+    }
+
+    /// Document `id` has been deleted: it leaves the pending Undo (which is cleared when that
+    /// leaves it empty) and the skipped set, and the selection, which stays at its position in the
+    /// list, now rests on the next row, or the previous one when `id` was the last. The Library's
+    /// scope and Search are kept, even when they are left empty.
+    fn deleted(&mut self, id: DocumentId) {
+        self.undo = self.undo.take().and_then(|undo| undo.without(id));
+        self.skipped.remove(&id);
+        self.selected = self.selected.min(self.library_count().saturating_sub(1));
+        self.inbox_selected = self
+            .inbox_selected
+            .min(self.inbox_count().saturating_sub(1));
     }
 
     /// The one link picker: toggling a Link in the Library, filing the focused Document in the
@@ -988,6 +1016,7 @@ impl DocumentsPagePresenter {
                 self.file_by_hand(id, doc_type, link, router);
             }
             DocumentsOutcome::Follow(link) => router.reveal(link),
+            DocumentsOutcome::Deleted(id) => self.deleted(id),
         }
     }
 
@@ -1193,6 +1222,7 @@ mod tests {
     use lib_core::PayeeId;
 
     use super::*;
+    use crate::DocumentRepository as _;
     use crate::fake::{DocumentsCall, InMemoryDocuments, InMemoryFiles, RecordingDocumentsRouter};
     use crate::keymap::documents_page_keymap;
     use crate::presenter::test_support::{locale, records, today};
@@ -1564,6 +1594,148 @@ mod tests {
         );
 
         page.send(DocumentsPageEvent::Undo);
+        assert!(page.stored(STRONG).is_unfiled());
+    }
+
+    #[test]
+    fn delete_opens_the_confirm_on_the_selected_document_in_both_modes() {
+        let mut page = page();
+        page.select("aami-car-policy.pdf");
+        let filed = page.stored("aami-car-policy.pdf").id;
+        page.send(DocumentsPageEvent::Delete);
+        page.send(DocumentsPageEvent::ShowInbox);
+        page.select(STRONG);
+        let unfiled = page.stored(STRONG).id;
+        page.send(DocumentsPageEvent::Delete);
+
+        assert_eq!(
+            page.router.take(),
+            [
+                DocumentsCall::OpenDialog(DocumentsDialog::Delete(filed)),
+                DocumentsCall::OpenDialog(DocumentsDialog::Delete(unfiled)),
+            ]
+        );
+        assert!(page.presenter.takes(&DocumentsPageEvent::Delete));
+        assert_eq!(
+            page.store.borrow().documents.len(),
+            default_documents(&records(today()), today())
+                .documents
+                .len(),
+            "opening the confirm deletes nothing"
+        );
+    }
+
+    #[test]
+    fn delete_with_no_document_selected_says_so() {
+        let mut page = page();
+        page.store.borrow_mut().documents.clear();
+
+        page.send(DocumentsPageEvent::Delete);
+
+        assert_eq!(
+            page.router.take(),
+            [DocumentsCall::Notice(Notice::Status(
+                "No document is selected.".to_string()
+            ))]
+        );
+    }
+
+    /// What the Dialog does before it closes: removes the Document, then tells the page.
+    fn delete(page: &mut Page, file: &str) {
+        delete_id(page, page.stored(file).id);
+    }
+
+    fn delete_id(page: &mut Page, id: DocumentId) {
+        page.store.borrow_mut().delete_document(id);
+        page.send(DocumentsPageEvent::DialogClosed(DocumentsOutcome::Deleted(
+            id,
+        )));
+    }
+
+    #[test]
+    fn a_deleted_inbox_row_hands_focus_to_the_next_row_else_the_previous() {
+        let mut page = page();
+        page.send(DocumentsPageEvent::ShowInbox);
+        let names: Vec<String> = page.inbox_rows().into_iter().map(|row| row.name).collect();
+        assert!(names.len() >= 3);
+
+        page.send(DocumentsPageEvent::Move(Step::First));
+        delete(&mut page, &names[0]);
+        assert_eq!(page.selected_file().as_deref(), Some(names[1].as_str()));
+
+        page.send(DocumentsPageEvent::Move(Step::Last));
+        delete(&mut page, &names[names.len() - 1]);
+        assert_eq!(
+            page.selected_file().as_deref(),
+            Some(names[names.len() - 2].as_str())
+        );
+    }
+
+    #[test]
+    fn a_deleted_skipped_document_leaves_the_skipped_set() {
+        let mut page = page();
+        page.send(DocumentsPageEvent::ShowInbox);
+        page.select(STRONG);
+        page.send(DocumentsPageEvent::Skip);
+        assert_eq!(page.presenter.skipped().len(), 1);
+
+        delete(&mut page, STRONG);
+
+        assert!(page.presenter.skipped().is_empty());
+        assert!(page.inbox_rows().iter().all(|row| row.name != STRONG));
+    }
+
+    #[test]
+    fn a_deleted_library_row_keeps_the_scope_even_when_it_is_left_empty() {
+        let mut page = page();
+        let scope = {
+            page.send(DocumentsPageEvent::FocusIndex);
+            page.send(DocumentsPageEvent::Move(Step::Next));
+            page.presenter.scope()
+        };
+        assert!(matches!(scope, LibraryScope::Type(_)));
+        page.send(DocumentsPageEvent::FocusList);
+        let ids: Vec<DocumentId> = page.library().rows.into_iter().map(|row| row.id).collect();
+        for id in ids {
+            delete_id(&mut page, id);
+        }
+
+        assert_eq!(page.presenter.scope(), scope);
+        assert!(page.library().rows.is_empty());
+        assert_eq!(page.presenter.selected(), 0);
+    }
+
+    #[test]
+    fn deleting_the_document_a_filing_undo_names_clears_the_undo() {
+        let mut page = page();
+        page.send(DocumentsPageEvent::ShowInbox);
+        page.select(STRONG);
+        page.send(DocumentsPageEvent::Accept);
+        page.router.take();
+
+        delete(&mut page, STRONG);
+        page.send(DocumentsPageEvent::Undo);
+
+        assert_eq!(
+            page.router.take(),
+            [DocumentsCall::Notice(Notice::Status(
+                "Nothing to undo.".to_string()
+            ))],
+            "`u` never reports undoing a Document that is gone"
+        );
+    }
+
+    #[test]
+    fn deleting_an_unrelated_document_leaves_the_undo_alone() {
+        let mut page = page();
+        page.send(DocumentsPageEvent::ShowInbox);
+        page.select(STRONG);
+        page.send(DocumentsPageEvent::Accept);
+        page.router.take();
+
+        delete(&mut page, "scan0012.pdf");
+        page.send(DocumentsPageEvent::Undo);
+
         assert!(page.stored(STRONG).is_unfiled());
     }
 

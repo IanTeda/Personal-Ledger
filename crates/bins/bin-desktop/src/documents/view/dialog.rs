@@ -10,6 +10,7 @@
 //! input's `send` drains.
 
 mod accept_all;
+mod delete_document;
 mod document_form;
 mod facts;
 mod import;
@@ -17,9 +18,9 @@ mod picker;
 
 use gpui::{App, Context, EventEmitter, IntoElement, Render, Window};
 use lib_documents::presenter::{
-    AcceptAllEvent, AcceptAllPresenter, DialogPorts, DocumentFormEvent, DocumentFormPresenter,
-    FactsFormEvent, FactsFormPresenter, ImportEvent, ImportPresenter, LinkPickerEvent,
-    LinkPickerPresenter, Purpose,
+    AcceptAllEvent, AcceptAllPresenter, DeleteDocumentEvent, DeleteDocumentPresenter, DialogPorts,
+    DocumentFormEvent, DocumentFormPresenter, FactsFormEvent, FactsFormPresenter, ImportEvent,
+    ImportPresenter, LinkPickerEvent, LinkPickerPresenter, Purpose,
 };
 use lib_documents::{DocumentsDialog as Which, DocumentsOutcome};
 use lib_shell::{DialogCommand, Hint};
@@ -50,6 +51,7 @@ enum View {
     /// Edit extracted facts, with the Document type select's list scroll window.
     Facts(FactsFormPresenter, usize),
     AcceptAll(AcceptAllPresenter),
+    Delete(DeleteDocumentPresenter),
     Picker(LinkPickerPresenter),
 }
 
@@ -63,6 +65,7 @@ impl DocumentsDialog {
             Which::Import => View::Import(ImportPresenter::new(ports)),
             Which::Facts(id) => View::Facts(FactsFormPresenter::new(ports, id)?, 0),
             Which::AcceptAll(strong) => View::AcceptAll(AcceptAllPresenter::new(strong)),
+            Which::Delete(id) => View::Delete(DeleteDocumentPresenter::new(ports, id)?),
             Which::Link(id) => View::Picker(LinkPickerPresenter::new(ports, Purpose::Link(id))?),
             Which::File(id) => View::Picker(LinkPickerPresenter::new(ports, Purpose::File(id))?),
             Which::Follow(id) => {
@@ -80,6 +83,7 @@ impl DocumentsDialog {
             View::Import(_) => "import",
             View::Facts(..) => "facts",
             View::AcceptAll(_) => "accept-all",
+            View::Delete(_) => "delete",
             View::Picker(presenter) => match presenter.purpose() {
                 Purpose::Link(_) => "picker-link",
                 Purpose::File(_) => "picker-file",
@@ -122,6 +126,9 @@ impl DocumentsDialog {
             View::Import(presenter) => presenter.handle(ImportEvent::Input(input), router),
             View::Facts(presenter, _) => presenter.handle(FactsFormEvent::Input(input), router),
             View::AcceptAll(presenter) => presenter.handle(AcceptAllEvent::Input(input), router),
+            View::Delete(presenter) => {
+                presenter.handle(DeleteDocumentEvent::Input(input), router);
+            }
             View::Picker(presenter) => presenter.handle(LinkPickerEvent::Input(input), router),
         })
     }
@@ -158,7 +165,7 @@ impl HostedDialog for DocumentsDialog {
             View::Form(presenter, ..) => presenter.view_model().frame.can_confirm,
             View::Import(presenter) => presenter.view_model().frame.can_confirm,
             View::Facts(presenter, _) => presenter.view_model().frame.can_confirm,
-            View::AcceptAll(_) | View::Picker(_) => true,
+            View::AcceptAll(_) | View::Delete(_) | View::Picker(_) => true,
         }
     }
 
@@ -170,6 +177,7 @@ impl HostedDialog for DocumentsDialog {
             View::Import(presenter) => presenter.handle(ImportEvent::Confirm, router),
             View::Facts(presenter, _) => presenter.handle(FactsFormEvent::Confirm, router),
             View::AcceptAll(presenter) => presenter.handle(AcceptAllEvent::Confirm, router),
+            View::Delete(presenter) => presenter.handle(DeleteDocumentEvent::Confirm, router),
             View::Picker(presenter) => presenter.handle(LinkPickerEvent::Pick, router),
         });
     }
@@ -181,6 +189,7 @@ impl HostedDialog for DocumentsDialog {
             View::Import(presenter) => presenter.handle(ImportEvent::Cancel, router),
             View::Facts(presenter, _) => presenter.handle(FactsFormEvent::Cancel, router),
             View::AcceptAll(presenter) => presenter.handle(AcceptAllEvent::Cancel, router),
+            View::Delete(presenter) => presenter.handle(DeleteDocumentEvent::Cancel, router),
             View::Picker(presenter) => presenter.handle(LinkPickerEvent::Cancel, router),
         });
     }
@@ -209,7 +218,7 @@ impl HostedDialog for DocumentsDialog {
                 }
                 open
             }
-            View::Import(_) | View::AcceptAll(_) | View::Picker(_) => false,
+            View::Import(_) | View::AcceptAll(_) | View::Delete(_) | View::Picker(_) => false,
         }
     }
 
@@ -219,6 +228,7 @@ impl HostedDialog for DocumentsDialog {
             View::Import(presenter) => presenter.legend(keymap),
             View::Facts(presenter, _) => presenter.legend(keymap),
             View::AcceptAll(presenter) => presenter.legend(keymap),
+            View::Delete(presenter) => presenter.legend(keymap),
             View::Picker(presenter) => presenter.legend(keymap),
         })
     }
@@ -264,6 +274,12 @@ impl HostedDialog for DocumentsDialog {
                 values.push(("title", view.frame.title));
                 values.push(("body", view.body));
             }
+            View::Delete(presenter) => {
+                let view = presenter.view_model();
+                values.push(("title", view.frame.title));
+                values.push(("body", view.body));
+                values.push(("refusal", view.refusal.unwrap_or_default()));
+            }
             View::Picker(presenter) => values.push(("title", presenter.view_model().title)),
         }
         DialogReadback {
@@ -285,6 +301,9 @@ impl Render for DocumentsDialog {
                 facts::render(&presenter.view_model(), doc_type, &actions, cx)
             }
             View::AcceptAll(presenter) => accept_all::render(&presenter.view_model(), &actions, cx),
+            View::Delete(presenter) => {
+                delete_document::render(&presenter.view_model(), &actions, cx)
+            }
             View::Picker(presenter) => picker::render(&presenter.view_model(), &actions, cx),
         }
     }

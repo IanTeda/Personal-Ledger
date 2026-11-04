@@ -433,6 +433,7 @@ impl Render for DocumentsPage {
             on_import_click: on_event(&entity, DocumentsPageEvent::Import),
             on_open_click: on_event(&entity, DocumentsPageEvent::Open),
             on_show_click: on_event(&entity, DocumentsPageEvent::ShowInFolder),
+            on_delete_click: on_event(&entity, DocumentsPageEvent::Delete),
             on_link_click: linked(DocumentsPageEvent::Reveal),
             on_unlink_click: linked(DocumentsPageEvent::Unlink),
             on_add_link_click: on_event(&entity, DocumentsPageEvent::OpenPicker),

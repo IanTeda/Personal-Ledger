@@ -96,6 +96,16 @@ Two columns: File, with the source (Scanned, Emailed, Downloads, Watched folder,
 - **Search the money:** the link picker finds a Transaction by amount (`4380` or `4,380`) or by date (`14 sep`).
 - **Use key dates for the dull stuff:** insurance renewals and warranty ends are the ones you'll thank yourself for.
 
+## Deleting a document
+
+Press `d` on a document, or click **Delete** under its details, in the Library or the Inbox. A confirm names the document, how many links go with it and where its file stays.
+
+- Deleting a document removes it from the Ledger, and its links with it.
+- The records it linked stay: no transaction, account, payee, bill plan or inventory item changes.
+- The file on disk stays. The Ledger only refers to it and never renames, moves or deletes it, so you can add the same file again with `a` or import it again with `shift`+`i`.
+- A delete is permanent and can't be undone with `u`, which only reverses filing. It does trim the last filing: the deleted document leaves it, and the rest of an accept-all batch can still be undone.
+- Focus moves to the next row, or the previous one at the end of the list. A deleted skipped document leaves the skipped set, and the Library keeps its type or year filter even if the delete leaves it empty.
+
 ## Scope
 
 - Reading text out of files (OCR) and drawing real page previews aren't built. The text and previews you see are samples.
@@ -103,7 +113,6 @@ Two columns: File, with the source (Scanned, Emailed, Downloads, Watched folder,
 - Raising a notification from a key date isn't built; the Notifications screen is its own piece of work.
 - Attaching a file from a Transaction or Inventory item, with an `:attach` command, isn't built.
 - Documents isn't in the terminal app.
-- Deleting a document isn't built; only its links go, when the record they name is deleted.
 
 ## Related
 
@@ -119,7 +128,7 @@ Two columns: File, with the source (Scanned, Emailed, Downloads, Watched folder,
 | --- | --- | --- |
 | Documents | not in the terminal app yet | `g` `f` (or `:documents`) |
 
-Inside Documents, `i` flips between the Library and the Inbox, `h` and `l` move between the index rail and the list, and `:documents inbox`, `library`, `add`, `import` and `accept-all` run the same actions from the command box. The `?` screen lists the keys for the mode you're in.
+Inside Documents, `i` flips between the Library and the Inbox, `h` and `l` move between the index rail and the list, and `:documents inbox`, `library`, `add`, `import`, `delete` and `accept-all` run the same actions from the command box. The `?` screen lists the keys for the mode you're in.
 
 | Key | Library | Inbox |
 | --- | --- | --- |
@@ -130,6 +139,7 @@ Inside Documents, `i` flips between the Library and the Inbox, `h` and `l` move 
 | `l` | Change links | Link elsewhere |
 | `shift`+`l` | Follow a link | Follow the suggested link |
 | `e` | Edit details | Edit extracted facts |
+| `d` | Delete | Delete |
 | `s` | Switch Newest and Expiring | Not used |
 | `a` | Add a document | Not used |
 | `y` | Not used | Accept |
@@ -155,6 +165,7 @@ Intended features for Documents. Ticked means built in at least one app; the tag
 - [x] DOC-009 (desktop): Correct what was read from an Inbox file
 - [x] DOC-010 (desktop): Flag renewal, end, expiry and revalue dates, and count those needing review
 - [x] DOC-011 (desktop): Open a file or show it in its folder
+- [x] DOC-018 (desktop): Delete a document, keeping its file and the records it links
 - [x] DOC-017 (desktop): Manage document types in Settings: add, rename, reorder, remove, and set the date each tracks, its reminder and its financial year
 - [ ] DOC-012: Read text from files (OCR and PDF extraction)
 - [ ] DOC-013: Watched folder and dropping files onto the window

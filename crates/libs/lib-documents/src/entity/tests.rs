@@ -979,3 +979,26 @@ fn a_dropped_batch_lands_in_the_inbox_as_dropped() {
         Some(Source::Dropped)
     );
 }
+
+#[test]
+fn deleting_a_document_trims_the_undo_and_clears_one_left_empty() {
+    let entry = |id: u32| FiledEntry {
+        id: DocumentId::seed(id),
+        previous_type: DocumentType::TAX,
+        previous_date: today(),
+        added_links: Vec::new(),
+    };
+    let batch = FilingUndo {
+        entries: vec![entry(1), entry(2)],
+        focus: Some(DocumentId::seed(1)),
+    };
+
+    let trimmed = batch
+        .clone()
+        .without(DocumentId::seed(1))
+        .expect("the rest of the batch stays undoable");
+    assert_eq!(trimmed.entries, [entry(2)]);
+    assert_eq!(trimmed.focus, None, "the deleted Document can't take focus");
+    assert_eq!(batch.clone().without(DocumentId::seed(9)), Some(batch));
+    assert_eq!(trimmed.without(DocumentId::seed(2)), None);
+}

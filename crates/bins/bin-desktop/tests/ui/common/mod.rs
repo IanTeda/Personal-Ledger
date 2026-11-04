@@ -556,6 +556,11 @@ impl<T: DocumentRepository> DocumentRepository for Marked<T> {
         self.inner.upsert_document(document);
     }
 
+    fn delete_document(&mut self, id: lib_core::DocumentId) {
+        self.written.set(true);
+        self.inner.delete_document(id);
+    }
+
     fn upsert_document_type(&mut self, row: &DocumentTypeRow) {
         self.written.set(true);
         self.inner.upsert_document_type(row);

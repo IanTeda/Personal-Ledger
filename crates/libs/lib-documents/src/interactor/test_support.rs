@@ -30,6 +30,7 @@ pub(super) const COLES_SHOP: TransactionId = TransactionId::seed(2);
 #[derive(Debug, Clone, PartialEq)]
 pub(super) enum Write {
     Document(DocumentId),
+    DeleteDocument(DocumentId),
     Type(DocumentTypeId),
     DeleteType(DocumentTypeId),
     MoveType(DocumentTypeId, usize),
@@ -54,6 +55,11 @@ impl DocumentRepository for Recording {
     fn upsert_document(&mut self, document: &Document) {
         self.writes.push(Write::Document(document.id));
         self.repo.upsert_document(document);
+    }
+
+    fn delete_document(&mut self, id: DocumentId) {
+        self.writes.push(Write::DeleteDocument(id));
+        self.repo.delete_document(id);
     }
 
     fn upsert_document_type(&mut self, row: &DocumentTypeRow) {

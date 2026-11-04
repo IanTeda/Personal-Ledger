@@ -1,6 +1,6 @@
 //! The Documents page driven by keys alone: landing, the Inbox/Library toggle, the index and list
 //! zones, the Library's sort and search, the Inbox's accept, skip and undo, the link picker, `L`,
-//! the Add, Import, Edit, Edit facts and Accept all Dialogs, their refusals, and the palette's
+//! the Add, Import, Edit, Edit facts, Accept all and Delete Dialogs, their refusals, and the palette's
 //! `documents` commands. Assertions read state back
 //! from `Root`, never pixels.
 
@@ -972,4 +972,88 @@ fn accept_all_files_the_count_it_quotes_and_u_undoes_them_all(app: &mut TestAppC
 
     ui.press("u");
     assert_eq!(ui.documents().inbox_rows, before, "one `u` undoes them all");
+}
+
+#[gpui::test]
+fn d_in_the_library_confirms_then_deletes_the_document_and_esc_keeps_it(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+    let before = ui.documents();
+    let file = before.selected_file.clone();
+
+    ui.press("d");
+    assert_eq!(ui.documents().dialog, Some("delete"));
+    assert_eq!(mode(&mut ui), InputMode::Dialog);
+    let body = ui.dialog_value("body").unwrap_or_default();
+    assert!(
+        body.contains("The file stays on disk at"),
+        "the confirm says the file stays: {body}"
+    );
+    ui.press("escape");
+    assert_eq!(ui.documents().dialog, None);
+    assert_eq!(ui.documents().library_rows, before.library_rows);
+
+    ui.press("d");
+    ui.press("enter");
+
+    let after = ui.documents();
+    assert_eq!(after.dialog, None);
+    assert_eq!(after.library_rows, before.library_rows - 1);
+    assert_ne!(after.selected_file, file, "focus moves to the next row");
+    assert_eq!(
+        after.inbox_rows, before.inbox_rows,
+        "the Inbox is untouched"
+    );
+    assert!(
+        after
+            .toasts
+            .iter()
+            .any(|toast| toast.contains("The file is still on disk.")),
+        "{:?}",
+        after.toasts
+    );
+}
+
+#[gpui::test]
+fn d_in_the_inbox_confirms_then_deletes_and_u_has_nothing_to_undo_for_it(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+    ui.press("i");
+    focus_row(&mut ui, STRONG_RECEIPT);
+    let before = ui.documents();
+
+    ui.press("d");
+    assert_eq!(ui.documents().dialog, Some("delete"));
+    ui.press("escape");
+    assert_eq!(ui.documents().dialog, None);
+    assert_eq!(ui.documents().inbox_rows, before.inbox_rows);
+
+    // Accept it, so a filing Undo names it, then delete it from the Library.
+    ui.press("y");
+    ui.press("i");
+    focus_row(&mut ui, STRONG_RECEIPT);
+    ui.press("d");
+    ui.press("enter");
+    assert_eq!(ui.documents().library_rows, before.library_rows);
+    ui.press("i");
+    ui.press("u");
+    assert_eq!(
+        ui.documents().status.as_deref(),
+        Some("Nothing to undo."),
+        "`u` never reports undoing a Document that is gone"
+    );
+}
+
+#[gpui::test]
+fn d_on_an_unfiled_inbox_row_deletes_it(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+    ui.press("i");
+    focus_row(&mut ui, STRONG_RECEIPT);
+    let before = ui.documents().inbox_rows;
+
+    ui.press("d");
+    ui.press("enter");
+
+    let page = ui.documents();
+    assert_eq!(page.dialog, None);
+    assert_eq!(page.inbox_rows, before - 1);
+    assert_ne!(page.selected_file.as_deref(), Some(STRONG_RECEIPT));
 }

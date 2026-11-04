@@ -421,6 +421,38 @@ pub fn deleting_a_linked_record_drops_its_links_and_keeps_the_document<F: PortsF
     );
 }
 
+/// Deleting a Document removes it and its Links in one write and leaves every other Document and
+/// every record it linked; the same file can then be added again as a new Document (GLOSSARY
+/// Document).
+pub fn deleting_a_document_removes_it_and_its_links_and_keeps_the_records<F: PortsFactory>(
+    factory: &mut F,
+) {
+    let records = factory.records();
+    let mut linked = filed(1, "insurance/home-2026.pdf", INSURANCE);
+    linked.links = every_link(&records);
+    let mut other = filed(2, "tax/return-2025.pdf", TAX);
+    other.links = vec![DocumentLink::Payee(records.payees[0].id)];
+    let mut ports = factory.create(default_types(), vec![linked.clone(), other.clone()]);
+
+    ports.delete_document(linked.id);
+    assert_eq!(ports.documents(), [other.clone()], "gone from memory");
+    factory.commit(&mut ports);
+    let mut ports = factory.reload(ports);
+
+    assert_eq!(ports.documents(), [other.clone()], "gone once stored");
+    assert_eq!(factory.records(), records, "no linked record changed");
+
+    let mut again = linked.clone();
+    again.id = DocumentId::seed(3);
+    ports.upsert_document(&again);
+    let ports = factory.reload(ports);
+    assert_eq!(
+        ports.documents(),
+        [other, again],
+        "the file can be added again"
+    );
+}
+
 /// A write storage refuses is reported and reloads to the last committed rows.
 pub fn a_failed_write_reloads_and_reports<F: PortsFactory>(factory: &mut F) {
     let mut ports = factory.create(default_types(), vec![filed(1, "a.pdf", TAX)]);
@@ -460,6 +492,13 @@ mod tests {
     #[test]
     fn in_memory_deleting_a_linked_record_drops_its_links_and_keeps_the_document() {
         deleting_a_linked_record_drops_its_links_and_keeps_the_document(
+            &mut InMemoryFactory::default(),
+        );
+    }
+
+    #[test]
+    fn in_memory_deleting_a_document_removes_it_and_its_links_and_keeps_the_records() {
+        deleting_a_document_removes_it_and_its_links_and_keeps_the_records(
             &mut InMemoryFactory::default(),
         );
     }

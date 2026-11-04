@@ -14,7 +14,7 @@
 use lib_config::KeyBindingConfig;
 use lib_list_cursor::Step;
 use lib_viper::keymap::{
-    ARROW_DOWN, ARROW_UP, Binding, EDIT, END, HALF_PAGE_DOWN, HALF_PAGE_UP, HOME, Keymap,
+    ARROW_DOWN, ARROW_UP, Binding, DELETE, EDIT, END, HALF_PAGE_DOWN, HALF_PAGE_UP, HOME, Keymap,
     MOVE_DOWN, MOVE_FIRST, MOVE_LAST, MOVE_UP, NEW, PAGE_DOWN, PAGE_UP, SELECT,
 };
 
@@ -124,6 +124,13 @@ pub const DOCUMENTS_PAGE_BINDINGS: &[Binding<DocumentsPageEvent>] = &[
     ),
     Binding::hidden(SORT, "s", DocumentsPageEvent::Sort),
     Binding::hidden(EDIT, "e", DocumentsPageEvent::Edit),
+    Binding::listed(
+        DELETE,
+        "d",
+        DocumentsPageEvent::Delete,
+        "documents delete",
+        msg::documents_command_delete,
+    ),
     Binding::hidden(SHOW_IN_FOLDER, "o", DocumentsPageEvent::ShowInFolder),
     Binding::hidden(ACCEPT, "y", DocumentsPageEvent::Accept),
     Binding::listed(
@@ -229,6 +236,7 @@ mod tests {
         assert_eq!(keymap.event("y"), Some(DocumentsPageEvent::Accept));
         assert_eq!(keymap.event("Y"), Some(DocumentsPageEvent::AcceptAll));
         assert_eq!(keymap.event("I"), Some(DocumentsPageEvent::Import));
+        assert_eq!(keymap.event("d"), Some(DocumentsPageEvent::Delete));
         assert_eq!(keymap.event("l"), Some(DocumentsPageEvent::Link));
         assert_eq!(keymap.event("L"), Some(DocumentsPageEvent::Follow));
         assert_eq!(keymap.event("enter"), Some(DocumentsPageEvent::Select));
@@ -276,6 +284,7 @@ mod tests {
                 "documents library",
                 "documents add",
                 "documents import",
+                "documents delete",
                 "documents accept-all"
             ]
         );

@@ -39,6 +39,19 @@ pub struct FilingUndo {
     pub focus: Option<DocumentId>,
 }
 
+impl FilingUndo {
+    /// The Undo once Document `id` is deleted: it leaves the entries, and an Undo left with none is
+    /// gone, so `u` never reports undoing a Document that no longer exists. The focus it would
+    /// restore is dropped when it is that Document.
+    pub fn without(mut self, id: DocumentId) -> Option<Self> {
+        self.entries.retain(|entry| entry.id != id);
+        if self.focus == Some(id) {
+            self.focus = None;
+        }
+        (!self.entries.is_empty()).then_some(self)
+    }
+}
+
 fn file_one(
     documents: &mut [Document],
     id: DocumentId,

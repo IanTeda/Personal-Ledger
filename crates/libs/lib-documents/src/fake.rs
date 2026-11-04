@@ -7,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use lib_core::DocumentTypeId;
+use lib_core::{DocumentId, DocumentTypeId};
 use lib_toast::{Notice, Notify};
 use lib_viper::dialog::DialogRouter;
 
@@ -53,6 +53,10 @@ impl DocumentRepository for InMemoryDocuments {
             Some(row) => *row = document.clone(),
             None => self.documents.push(document.clone()),
         }
+    }
+
+    fn delete_document(&mut self, id: DocumentId) {
+        self.documents.retain(|row| row.id != id);
     }
 
     fn upsert_document_type(&mut self, row: &DocumentTypeRow) {

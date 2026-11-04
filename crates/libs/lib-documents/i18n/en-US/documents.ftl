@@ -209,6 +209,7 @@ documents-link-payee = Payee
 documents-link-bill = Bill
 documents-link-add = + Link to transaction, account, item…
 documents-open = Open
+documents-delete = Delete
 documents-show-in-folder = Show in folder
 documents-link-elsewhere = Link elsewhere…
 
@@ -310,6 +311,7 @@ documents-command-library = browse the filed Documents
 documents-command-accept-all = accept every strong Inbox match
 documents-command-add = add a Document you already know the meaning of
 documents-command-import = import files into the Inbox
+documents-command-delete = delete the selected Document, keeping its file
 
 ## The Documents page's Dialogs: Add, Edit, Import, Edit extracted facts, Accept all and the link picker. `$title` is a Document's Title, `$path` a path as typed, `$record` a linked record's name and `$count` a count.
 
@@ -353,6 +355,15 @@ documents-dialog-accept-all-body = { $count ->
 }
 documents-dialog-accept-all-submit = File { $count }
 documents-dialog-accept-all-note = Only matches where the amount, date and payee all agree. You can undo it with u.
+documents-dialog-delete-title = Delete document — { $title }
+documents-dialog-delete-body = { $links ->
+    [0] The file stays on disk at { $path }.
+   *[other] Its { $links } links go with it; the records they name stay. The file stays on disk at { $path }.
+}
+documents-dialog-delete-warning = Deleting it <strong>cannot be undone.</strong>
+documents-dialog-delete-submit = Delete document
+documents-dialog-delete-refused = This document has since been deleted.
+documents-dialog-toast-deleted = Deleted "{ $title }". The file is still on disk.
 documents-dialog-picker-kind-all = All
 documents-dialog-picker-file-without-link = File without link
 documents-dialog-picker-placeholder = Search transactions, accounts, payees, bills, items…

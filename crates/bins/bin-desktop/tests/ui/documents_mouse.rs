@@ -444,3 +444,48 @@ fn the_facts_dialogs_save_is_disabled_by_a_bad_total(app: &mut TestAppContext) {
     ui.click("facts-confirm");
     assert_eq!(ui.documents().dialog, None);
 }
+
+#[gpui::test]
+fn the_library_detail_deletes_after_a_confirm_and_cancel_keeps_the_document(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_documents(app);
+    let before = ui.documents();
+
+    ui.click("documents-delete");
+    assert_eq!(ui.documents().dialog, Some("delete"));
+    ui.click("delete-document-cancel");
+    assert_eq!(ui.documents().dialog, None);
+    assert_eq!(ui.documents().library_rows, before.library_rows);
+
+    ui.click("documents-delete");
+    ui.click("delete-document-confirm");
+
+    let after = ui.documents();
+    assert_eq!(after.dialog, None);
+    assert_eq!(after.library_rows, before.library_rows - 1);
+    assert_ne!(after.selected_file, before.selected_file);
+}
+
+#[gpui::test]
+fn the_inbox_detail_deletes_after_a_confirm_and_cancel_keeps_the_document(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_documents(app);
+    ui.click("documents-rail-Inbox");
+    click_inbox_row(&mut ui, STRONG_RECEIPT);
+    let before = ui.documents().inbox_rows;
+
+    ui.click("documents-inbox-delete");
+    assert_eq!(ui.documents().dialog, Some("delete"));
+    ui.click("delete-document-cancel");
+    assert_eq!(ui.documents().inbox_rows, before);
+
+    ui.click("documents-inbox-delete");
+    ui.click("delete-document-confirm");
+
+    let page = ui.documents();
+    assert_eq!(page.dialog, None);
+    assert_eq!(page.inbox_rows, before - 1);
+    assert_ne!(page.selected_file.as_deref(), Some(STRONG_RECEIPT));
+}

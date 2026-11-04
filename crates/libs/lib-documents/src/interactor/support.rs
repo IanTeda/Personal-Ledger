@@ -32,6 +32,12 @@ impl Refusal for FilingError {
     }
 }
 
+impl Refusal for super::DeleteDocumentError {
+    fn reason(&self) -> &'static str {
+        "no such Document"
+    }
+}
+
 impl Refusal for RemoveError {
     fn reason(&self) -> &'static str {
         match self {

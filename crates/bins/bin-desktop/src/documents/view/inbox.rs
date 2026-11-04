@@ -538,6 +538,8 @@ fn footer(detail: &InboxDetailView, props: &DocumentsPageProps, cx: &App) -> imp
     div()
         .flex_none()
         .flex()
+        // The Delete button wraps to a row of its own where the pane is too narrow for three.
+        .flex_wrap()
         .gap(px(8.0))
         .px(px(16.0))
         .py(px(12.0))
@@ -576,4 +578,10 @@ fn footer(detail: &InboxDetailView, props: &DocumentsPageProps, cx: &App) -> imp
                 .on_click(move |_event, window, cx| secondary_click(window, cx))
                 .child(secondary_label),
         )
+        .child(super::delete_button(
+            "documents-inbox-delete",
+            props,
+            props.on_delete_click.clone(),
+            cx,
+        ))
 }

@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use gpui::{App, Entity};
-use lib_core::DocumentTypeId;
+use lib_core::{DocumentId, DocumentTypeId};
 use lib_database::SharedDocumentsStore;
 use lib_documents::types::DocumentTypeRow;
 use lib_documents::{Document, DocumentRepository, SharedRepository};
@@ -31,6 +31,10 @@ impl DocumentRepository for StoreDocuments {
             .borrow_mut()
             .documents_mut()
             .upsert_document(document);
+    }
+
+    fn delete_document(&mut self, id: DocumentId) {
+        self.0.borrow_mut().documents_mut().delete_document(id);
     }
 
     fn upsert_document_type(&mut self, row: &DocumentTypeRow) {

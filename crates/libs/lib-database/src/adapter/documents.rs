@@ -35,6 +35,8 @@ use crate::{Error, Result};
 #[derive(Debug, Clone)]
 enum DocumentsChange {
     UpsertDocument(Box<Document>),
+    /// A Document and its Links, in one write.
+    DeleteDocument(DocumentId),
     /// A type's row, with its place in the order should it be new.
     UpsertType(DocumentTypeRow, usize),
     DeleteType(DocumentTypeId),
@@ -163,6 +165,11 @@ impl DocumentRepository for DocumentsAdapter {
             .push(DocumentsChange::UpsertDocument(Box::new(document.clone())));
     }
 
+    fn delete_document(&mut self, id: DocumentId) {
+        self.documents.retain(|row| row.id != id);
+        self.pending.push(DocumentsChange::DeleteDocument(id));
+    }
+
     fn upsert_document_type(&mut self, row: &DocumentTypeRow) {
         let position = match self.types.iter().position(|held| held.id == row.id) {
             Some(at) => {
@@ -200,6 +207,7 @@ impl Change for DocumentsChange {
         Box::pin(async move {
             match *self {
                 Self::UpsertDocument(document) => upsert_document(conn, &document).await,
+                Self::DeleteDocument(id) => delete_document(conn, id).await,
                 Self::UpsertType(row, position) => upsert_type(conn, &row, position).await,
                 Self::DeleteType(id) => {
                     sqlx::query!("DELETE FROM document_types WHERE id = ?", id)
@@ -459,6 +467,18 @@ async fn upsert_document(conn: &mut SqliteConnection, document: &Document) -> Re
     for link in &document.links {
         insert_link(conn, document.id, *link).await?;
     }
+    Ok(())
+}
+
+/// Deletes a Document and its Links, which the one change makes a single write. The file on disk
+/// and the records the Links named are not this adapter's to touch.
+async fn delete_document(conn: &mut SqliteConnection, id: DocumentId) -> Result<()> {
+    sqlx::query!("DELETE FROM document_links WHERE document_id = ?", id)
+        .execute(&mut *conn)
+        .await?;
+    sqlx::query!("DELETE FROM documents WHERE id = ?", id)
+        .execute(&mut *conn)
+        .await?;
     Ok(())
 }
 
@@ -889,6 +909,16 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         contract::deleting_a_linked_record_drops_its_links_and_keeps_the_document(
+            &mut AdapterFactory::new(options),
+        );
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn deleting_a_document_removes_it_and_its_links_and_keeps_the_records(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        contract::deleting_a_document_removes_it_and_its_links_and_keeps_the_records(
             &mut AdapterFactory::new(options),
         );
     }

@@ -23,8 +23,7 @@ use lib_toast::Notify;
 use crate::types::DocumentTypeRow;
 use crate::{Document, DocumentLink, DocumentType, LibraryScope};
 
-/// The Documents and Document Types on the Ledger. A Document is never deleted (#959), so there is
-/// no Document delete.
+/// The Documents and Document Types on the Ledger.
 pub trait DocumentRepository {
     /// Every Document, in the order it was added.
     fn documents(&self) -> Vec<Document>;
@@ -35,6 +34,10 @@ pub trait DocumentRepository {
     /// Writes `document` whole, replacing the Document with its id or adding it: its row, its
     /// Intake and its Links, so a Link it no longer holds is gone.
     fn upsert_document(&mut self, document: &Document);
+
+    /// Removes Document `id` and its Links in one write. The file on disk and the records the
+    /// Links named are untouched: the Ledger holds only a reference (#959).
+    fn delete_document(&mut self, id: DocumentId);
 
     /// Writes Document Type `row`, replacing the type with its id where it stands in the order, or
     /// adding it at the end.
@@ -117,6 +120,8 @@ pub enum DocumentsDialog {
     File(DocumentId),
     /// The link picker over Filed Document `id`'s Links, following one.
     Follow(DocumentId),
+    /// The confirm of deleting Document `id`, Filed or Unfiled.
+    Delete(DocumentId),
 }
 
 /// What a confirmed Documents Dialog did, handed to the page when it closes.
@@ -138,6 +143,9 @@ pub enum DocumentsOutcome {
     },
     /// The picker chose a Link to follow.
     Follow(DocumentLink),
+    /// Document `id` was deleted: the page drops it from its Undo and its skipped set, and moves
+    /// focus on.
+    Deleted(DocumentId),
 }
 
 /// Navigation out of the Documents page's Presenter, implemented by each Client and passed into

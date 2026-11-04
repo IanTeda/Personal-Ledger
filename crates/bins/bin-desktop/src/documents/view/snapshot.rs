@@ -32,7 +32,7 @@ pub struct DocumentsSnapshot {
     /// The selected Library row's Key Date flag and whether it is red (Need Review), when it has
     /// one.
     pub selected_flag: Option<(String, bool)>,
-    /// Which dialog is open: `add`, `edit`, `import`, `facts`, `accept-all`, or
+    /// Which dialog is open: `add`, `edit`, `import`, `facts`, `accept-all`, `delete`, or
     /// `picker-link`, `picker-file`, `picker-follow`.
     pub dialog: Option<&'static str>,
     pub library_rows: usize,

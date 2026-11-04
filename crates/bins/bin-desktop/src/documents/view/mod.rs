@@ -70,6 +70,8 @@ pub struct DocumentsPageProps {
     pub on_import_click: OnPlainClick,
     pub on_open_click: OnPlainClick,
     pub on_show_click: OnPlainClick,
+    /// The detail footer's Delete button, in either mode.
+    pub on_delete_click: OnPlainClick,
     pub on_link_click: OnLinkClick,
     /// The × on a LINKED TO row: removes that Link.
     pub on_unlink_click: OnLinkClick,
@@ -865,10 +867,13 @@ fn link_row(
 fn detail_footer(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
     let on_open = props.on_open_click.clone();
     let on_show = props.on_show_click.clone();
+    let on_delete = props.on_delete_click.clone();
     let hover = color::muted(cx);
     div()
         .flex_none()
         .flex()
+        // The Delete button wraps to a row of its own where the pane is too narrow for three.
+        .flex_wrap()
         .gap(px(8.0))
         .px(px(16.0))
         .py(px(12.0))
@@ -905,4 +910,28 @@ fn detail_footer(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
                 .on_click(move |_event, window, cx| on_show(window, cx))
                 .child(props.labels.show_in_folder.clone()),
         )
+        .child(delete_button("documents-delete", props, on_delete, cx))
+}
+
+/// The footer's plain bordered Delete button, last in the row in both modes.
+pub(super) fn delete_button(
+    id: &'static str,
+    props: &DocumentsPageProps,
+    on_click: OnPlainClick,
+    cx: &App,
+) -> impl IntoElement {
+    div()
+        .id(id)
+        .debug_selector(|| id.to_string())
+        .cursor_pointer()
+        .flex()
+        .items_center()
+        .justify_center()
+        .h(px(34.0))
+        .px(px(12.0))
+        .border_1()
+        .border_color(color::border(cx))
+        .font_weight(gpui::FontWeight::EXTRA_BOLD)
+        .on_click(move |_event, window, cx| on_click(window, cx))
+        .child(props.labels.delete.clone())
 }
