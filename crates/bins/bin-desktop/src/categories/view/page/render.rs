@@ -5,38 +5,19 @@
 //! Every click is an event sent to the Presenter, so the keyboard and the mouse reach the same
 //! handlers.
 
-use gpui::{AnyElement, App, Context, Entity, Render, SharedString, Window, div, prelude::*, px};
+use gpui::{
+    AnyElement, App, ClickEvent, Context, Render, SharedString, Window, div, prelude::*, px,
+};
 use lib_categories::presenter::{
     CategoriesPageEvent, CategoriesPageViewModel, CategoryLine, CategoryTree,
 };
-use lib_core::CategoryId;
 
 use super::CategoriesPage;
-use crate::theme::color;
-
-type OnClick = std::rc::Rc<dyn Fn(&mut Window, &mut App)>;
-
-/// A click that sends `event` to the page.
-fn on(entity: &Entity<CategoriesPage>, event: CategoriesPageEvent) -> OnClick {
-    let entity = entity.clone();
-    std::rc::Rc::new(move |_window, cx| {
-        entity.update(cx, |page, cx| page.send(event.clone(), cx));
-    })
-}
-
-/// A row click: selects it and hands focus to the page.
-fn on_row(entity: &Entity<CategoriesPage>, id: CategoryId) -> OnClick {
-    let entity = entity.clone();
-    std::rc::Rc::new(move |_window, cx| {
-        entity.update(cx, |page, cx| {
-            page.click(CategoriesPageEvent::Select(id), cx)
-        });
-    })
-}
+use crate::{shell::view::page_clicks::PageClicks, theme::color};
 
 impl Render for CategoriesPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let entity = cx.entity();
+        let clicks = PageClicks::new(cx);
         let view = self.view_model();
         let focused = self.page_focused;
         let cx: &App = cx;
@@ -47,13 +28,17 @@ impl Render for CategoriesPage {
                 view.expense.kicker.clone(),
                 Some((
                     view.add_button.clone(),
-                    on(&entity, CategoriesPageEvent::New),
+                    clicks.send(CategoriesPageEvent::New),
                 )),
                 cx,
             ))
-            .child(tree_table(&view.expense, &view, focused, &entity, cx))
-            .child(kicker_row(view.income.kicker.clone(), None, cx))
-            .child(tree_table(&view.income, &view, focused, &entity, cx))
+            .child(tree_table(&view.expense, &view, focused, &clicks, cx))
+            .child(kicker_row(
+                view.income.kicker.clone(),
+                None::<(String, fn(&ClickEvent, &mut Window, &mut App))>,
+                cx,
+            ))
+            .child(tree_table(&view.income, &view, focused, &clicks, cx))
             .child(
                 div()
                     .max_w(px(620.0))
@@ -64,7 +49,14 @@ impl Render for CategoriesPage {
     }
 }
 
-fn kicker_row(label: String, add: Option<(String, OnClick)>, cx: &App) -> impl IntoElement {
+fn kicker_row(
+    label: String,
+    add: Option<(
+        String,
+        impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    )>,
+    cx: &App,
+) -> impl IntoElement {
     div()
         .flex()
         .items_center()
@@ -81,7 +73,11 @@ fn kicker_row(label: String, add: Option<(String, OnClick)>, cx: &App) -> impl I
 }
 
 /// `btn btn-primary` at `height:32px`.
-fn add_button(label: String, on_click: OnClick, cx: &App) -> impl IntoElement {
+fn add_button(
+    label: String,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> impl IntoElement {
     let hover = color::muted(cx);
     div()
         .debug_selector(|| "settings-categories-add".to_string())
@@ -95,7 +91,7 @@ fn add_button(label: String, on_click: OnClick, cx: &App) -> impl IntoElement {
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .whitespace_nowrap()
         .hover(move |style| style.bg(hover))
-        .on_click(move |_event, window, cx| on_click(window, cx))
+        .on_click(on_click)
         .child(label)
 }
 
@@ -105,7 +101,7 @@ fn tree_table(
     tree: &CategoryTree,
     view: &CategoriesPageViewModel,
     focused: bool,
-    entity: &Entity<CategoriesPage>,
+    clicks: &PageClicks<CategoriesPage>,
     cx: &App,
 ) -> impl IntoElement {
     let last = tree.rows.len().saturating_sub(1);
@@ -136,7 +132,7 @@ fn tree_table(
                 view.selected == Some(row.id),
                 focused,
                 view,
-                entity,
+                clicks,
                 cx,
             )
         }))
@@ -150,13 +146,13 @@ fn tree_row(
     selected: bool,
     focused: bool,
     view: &CategoriesPageViewModel,
-    entity: &Entity<CategoriesPage>,
+    clicks: &PageClicks<CategoriesPage>,
     cx: &App,
 ) -> impl IntoElement {
     let id = row.id;
     let inverted = selected && focused;
     let hover = color::hover(cx);
-    let on_row_click = on_row(entity, id);
+    let on_row_click = clicks.row(CategoriesPageEvent::Select(id));
 
     div()
         .debug_selector(move || format!("settings-categories-row-{id}"))
@@ -176,7 +172,7 @@ fn tree_row(
                 .text_color(color::selection_text(cx))
         })
         .when(!selected, |this| this.hover(move |style| style.bg(hover)))
-        .on_click(move |_event, window, cx| on_row_click(window, cx))
+        .on_click(on_row_click)
         .child(
             div()
                 .flex_1()
@@ -188,7 +184,7 @@ fn tree_row(
                 .child(disclosure(
                     row,
                     inverted,
-                    on(entity, CategoriesPageEvent::Toggle(id)),
+                    clicks.send(CategoriesPageEvent::Toggle(id)),
                     cx,
                 ))
                 .child(
@@ -219,27 +215,32 @@ fn tree_row(
                     this.child(row_action_button(
                         SharedString::from(format!("settings-categories-sub-{id}")),
                         view.row_add_child.clone(),
-                        on(entity, CategoriesPageEvent::AddChildRow(id)),
+                        clicks.send(CategoriesPageEvent::AddChildRow(id)),
                         cx,
                     ))
                 })
                 .child(row_action_button(
                     SharedString::from(format!("settings-categories-edit-{id}")),
                     view.row_edit.clone(),
-                    on(entity, CategoriesPageEvent::EditRow(id)),
+                    clicks.send(CategoriesPageEvent::EditRow(id)),
                     cx,
                 ))
                 .child(row_action_button(
                     SharedString::from(format!("settings-categories-delete-{id}")),
                     view.row_delete.clone(),
-                    on(entity, CategoriesPageEvent::DeleteRow(id)),
+                    clicks.send(CategoriesPageEvent::DeleteRow(id)),
                     cx,
                 )),
         )
 }
 
 /// The 10px ▾/▸ cell; a leaf keeps the width, empty, so names line up.
-fn disclosure(row: &CategoryLine, inverted: bool, on_click: OnClick, cx: &App) -> AnyElement {
+fn disclosure(
+    row: &CategoryLine,
+    inverted: bool,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> AnyElement {
     let id = row.id;
     let cell = div().w(px(10.0)).flex_none().text_color(if inverted {
         color::selection_text(cx)
@@ -251,9 +252,9 @@ fn disclosure(row: &CategoryLine, inverted: bool, on_click: OnClick, cx: &App) -
     }
     cell.id(SharedString::from(format!("settings-categories-fold-{id}")))
         .cursor_pointer()
-        .on_click(move |_event, window, cx| {
+        .on_click(move |event: &ClickEvent, window, cx| {
             cx.stop_propagation();
-            on_click(window, cx)
+            on_click(event, window, cx);
         })
         .child(if row.is_expanded {
             "\u{25be}"
@@ -268,7 +269,7 @@ fn disclosure(row: &CategoryLine, inverted: bool, on_click: OnClick, cx: &App) -
 fn row_action_button(
     id: SharedString,
     label: String,
-    on_click: OnClick,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> impl IntoElement {
     let hover = color::hover(cx);
@@ -286,9 +287,9 @@ fn row_action_button(
         .text_size(px(11.0))
         .whitespace_nowrap()
         .hover(move |style| style.bg(hover))
-        .on_click(move |_event, window, cx| {
+        .on_click(move |event: &ClickEvent, window, cx| {
             cx.stop_propagation();
-            on_click(window, cx)
+            on_click(event, window, cx);
         })
         .child(label)
 }

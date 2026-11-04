@@ -8,11 +8,9 @@
 //! the row's context menu at the pointer. Every action is an event to the page's Presenter, so the
 //! keyboard and the mouse reach the same handlers.
 
-use std::rc::Rc;
-
 use gpui::{
-    AnyElement, App, BoxShadow, Context, MouseButton, Pixels, Point, Render, SharedString, Window,
-    div, point, prelude::*, px,
+    AnyElement, App, BoxShadow, ClickEvent, Context, MouseButton, MouseDownEvent, Pixels, Point,
+    Render, SharedString, Window, div, point, prelude::*, px,
 };
 use lib_core::LocationId;
 use lib_inventory::InventoryRow;
@@ -21,86 +19,25 @@ use lib_inventory::presenter::{
 };
 
 use super::{InventoryPage, slug};
-use crate::theme::color;
-
-type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
-type OnLocationClick = Rc<dyn Fn(LocationId, &mut Window, &mut App)>;
-type OnRowClick = Rc<dyn Fn(InventoryRow, &mut Window, &mut App)>;
-type OnRowMenu = Rc<dyn Fn(InventoryRow, Point<Pixels>, &mut Window, &mut App)>;
-type OnMenuAction = Rc<dyn Fn(lib_inventory::presenter::MenuAction, &mut Window, &mut App)>;
+use crate::{shell::view::page_clicks::PageClicks, theme::color};
 
 /// The context menu's width (`width:190px`).
 const MENU_WIDTH: f32 = 190.0;
 
-/// What the page draws from: its view model, and a click handler bound to the page for each
-/// action.
+/// What the page draws from: its view model, where its open menu is drawn, and its clicks.
 struct Props<'a> {
     view: &'a InventoryPageViewModel,
     menu_at: Point<Pixels>,
-    on_add_location_click: OnPlainClick,
-    on_toggle_click: OnLocationClick,
-    on_row_click: OnRowClick,
-    on_row_double_click: OnRowClick,
-    on_row_menu: OnRowMenu,
-    on_menu_action: OnMenuAction,
-    on_menu_dismiss: OnPlainClick,
+    clicks: PageClicks<InventoryPage>,
 }
 
 impl Render for InventoryPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let entity = cx.entity();
-        let page_event = |event: fn() -> InventoryPageEvent| {
-            let entity = entity.clone();
-            let on_click: OnPlainClick =
-                Rc::new(move |_window, cx| entity.update(cx, |page, cx| page.click(event(), cx)));
-            on_click
-        };
-        let by_row = |event: fn(InventoryRow) -> InventoryPageEvent| {
-            let entity = entity.clone();
-            let on_click: OnRowClick = Rc::new(move |row, _window, cx| {
-                entity.update(cx, |page, cx| page.click(event(row), cx))
-            });
-            on_click
-        };
-        let on_toggle_click: OnLocationClick = {
-            let entity = entity.clone();
-            Rc::new(move |id, _window, cx| {
-                entity.update(cx, |page, cx| {
-                    page.click(InventoryPageEvent::Toggle(id), cx)
-                })
-            })
-        };
-        let on_row_menu: OnRowMenu = {
-            let entity = entity.clone();
-            Rc::new(move |row, position, _window, cx| {
-                entity.update(cx, |page, cx| page.open_menu(row, position, cx))
-            })
-        };
-        let on_menu_action: OnMenuAction = {
-            let entity = entity.clone();
-            Rc::new(move |action, _window, cx| {
-                entity.update(cx, |page, cx| {
-                    page.send(InventoryPageEvent::Menu(action), cx)
-                })
-            })
-        };
-        let on_menu_dismiss: OnPlainClick = {
-            let entity = entity.clone();
-            Rc::new(move |_window, cx| {
-                entity.update(cx, |page, cx| page.send(InventoryPageEvent::CloseMenu, cx))
-            })
-        };
         let view = self.view_model();
         let props = Props {
             view: &view,
             menu_at: self.menu_at,
-            on_add_location_click: page_event(|| InventoryPageEvent::New),
-            on_toggle_click,
-            on_row_click: by_row(InventoryPageEvent::Select),
-            on_row_double_click: by_row(InventoryPageEvent::EditRow),
-            on_row_menu,
-            on_menu_action,
-            on_menu_dismiss,
+            clicks: PageClicks::new(cx),
         };
         render_page(&props, self.page_focused, cx)
     }
@@ -156,7 +93,7 @@ fn render_page(props: &Props<'_>, focused: bool, cx: &App) -> AnyElement {
 
 /// LOCATIONS · n, with the square **+** (`26px`, `background:#eae9e9`) that adds a Location.
 fn kicker_row(props: &Props<'_>, cx: &App) -> impl IntoElement {
-    let on_add_click = props.on_add_location_click.clone();
+    let on_add_click = props.clicks.row(InventoryPageEvent::New);
     let hover = color::hover(cx);
     div()
         .flex()
@@ -188,7 +125,7 @@ fn kicker_row(props: &Props<'_>, cx: &App) -> impl IntoElement {
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_size(px(15.0))
                 .hover(move |style| style.bg(hover))
-                .on_click(move |_event, window, cx| on_add_click(window, cx))
+                .on_click(on_add_click)
                 .child(props.view.add_button.clone()),
         )
 }
@@ -237,7 +174,7 @@ fn tree_row(
                     id,
                     line.disclosure.clone().unwrap_or_default(),
                     inverted,
-                    props.on_toggle_click.clone(),
+                    &props.clicks,
                     cx,
                 ))
                 .child(
@@ -269,9 +206,9 @@ fn tree_row(
     };
     let id = SharedString::from(id);
     let hover = color::hover(cx);
-    let on_row_click = props.on_row_click.clone();
-    let on_row_double_click = props.on_row_double_click.clone();
-    let on_row_menu = props.on_row_menu.clone();
+    let on_row_click = props.clicks.row(InventoryPageEvent::Select(row));
+    let on_row_double_click = props.clicks.row(InventoryPageEvent::EditRow(row));
+    let on_row_menu = props.clicks.menu(InventoryPageEvent::OpenMenu(row));
     div()
         .debug_selector({
             let id = id.clone();
@@ -293,17 +230,20 @@ fn tree_row(
                 .text_color(color::selection_text(cx))
         })
         .when(!selected, |this| this.hover(move |style| style.bg(hover)))
-        .on_click(move |event, window, cx| {
+        .on_click(move |event: &ClickEvent, window, cx| {
             if event.click_count() >= 2 {
-                on_row_double_click(row, window, cx);
+                on_row_double_click(event, window, cx);
             } else {
-                on_row_click(row, window, cx);
+                on_row_click(event, window, cx);
             }
         })
-        .on_mouse_down(MouseButton::Right, move |event, window, cx| {
-            cx.stop_propagation();
-            on_row_menu(row, event.position, window, cx);
-        })
+        .on_mouse_down(
+            MouseButton::Right,
+            move |event: &MouseDownEvent, window, cx| {
+                cx.stop_propagation();
+                on_row_menu(event, window, cx);
+            },
+        )
         .child(div().flex_1().min_w(px(0.0)).pl(px(depth)).child(name))
         .into_any_element()
 }
@@ -314,9 +254,10 @@ fn disclosure(
     id: LocationId,
     glyph: String,
     inverted: bool,
-    on_click: OnLocationClick,
+    clicks: &PageClicks<InventoryPage>,
     cx: &App,
 ) -> impl IntoElement {
+    let on_click = clicks.row(InventoryPageEvent::Toggle(id));
     div()
         .debug_selector(move || format!("settings-inventory-toggle-{id}"))
         .id(SharedString::from(format!(
@@ -330,9 +271,9 @@ fn disclosure(
         } else {
             color::muted(cx)
         })
-        .on_click(move |_event, window, cx| {
+        .on_click(move |event: &ClickEvent, window, cx| {
             cx.stop_propagation();
-            on_click(id, window, cx)
+            on_click(event, window, cx);
         })
         .child(glyph)
 }
@@ -341,11 +282,11 @@ fn disclosure(
 /// items `padding:7px 12px; 12.5px`, the hovered one tinted and in 800, the destructive one last
 /// in red below a 1px rule. A press anywhere outside it closes it.
 fn row_menu(menu: &MenuView, at: Point<Pixels>, props: &Props<'_>, cx: &App) -> AnyElement {
-    let on_dismiss = props.on_menu_dismiss.clone();
+    let on_dismiss = props.clicks.send(InventoryPageEvent::CloseMenu);
     let hover = color::hover(cx);
     let items = menu.entries.iter().map(|entry| {
-        let on_action = props.on_menu_action.clone();
         let action = entry.action;
+        let on_action = props.clicks.send(InventoryPageEvent::Menu(action));
         let id = SharedString::from(format!("settings-inventory-menu-{}", slug(action)));
         let item = div()
             .debug_selector({
@@ -363,7 +304,7 @@ fn row_menu(menu: &MenuView, at: Point<Pixels>, props: &Props<'_>, cx: &App) -> 
                 color::foreground(cx)
             })
             .hover(move |style| style.bg(hover).font_weight(gpui::FontWeight::EXTRA_BOLD))
-            .on_click(move |_event, window, cx| on_action(action, window, cx))
+            .on_click(on_action)
             .child(entry.label.clone());
         if entry.destructive {
             div()
@@ -396,7 +337,7 @@ fn row_menu(menu: &MenuView, at: Point<Pixels>, props: &Props<'_>, cx: &App) -> 
                     spread_radius: px(0.0),
                 }])
                 .font_weight(gpui::FontWeight::NORMAL)
-                .on_mouse_down_out(move |_event, window, cx| on_dismiss(window, cx))
+                .on_mouse_down_out(on_dismiss)
                 .children(items),
         ),
     )

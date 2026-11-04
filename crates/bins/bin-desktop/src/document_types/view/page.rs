@@ -22,6 +22,7 @@ use crate::{
     ledger_store::{LedgerStore, notify_on},
     navigation::movement::Movement,
     settings::{SettingsPage, page::PageRowClicked, pages::Page},
+    shell::view::page_clicks::PresenterPage,
     view::event::ViewEvent,
 };
 
@@ -65,11 +66,7 @@ impl DocumentTypesPage {
     }
 
     /// A key or click on the page: `event` as one input, committed once it is handled.
-    pub(in crate::document_types) fn send(
-        &mut self,
-        event: DocumentTypesPageEvent,
-        cx: &mut Context<'_, Self>,
-    ) {
+    fn send(&mut self, event: DocumentTypesPageEvent, cx: &mut Context<'_, Self>) {
         crate::input::send(cx, |cx| self.handle(event, cx));
     }
 
@@ -99,11 +96,17 @@ impl DocumentTypesPage {
     pub fn view_model(&self) -> DocumentTypesPageViewModel {
         self.presenter.view_model()
     }
+}
 
-    /// A click on a row or its controls: `event`, and focus on the page.
-    fn click(&mut self, event: DocumentTypesPageEvent, cx: &mut Context<'_, Self>) {
+/// The page's clicks on its rows and their controls.
+impl PresenterPage<DocumentTypesPageEvent> for DocumentTypesPage {
+    fn send(&mut self, event: DocumentTypesPageEvent, cx: &mut Context<'_, Self>) {
+        DocumentTypesPage::send(self, event, cx);
+    }
+
+    /// A click on a row or its controls hands the page focus.
+    fn row_clicked(&mut self, cx: &mut Context<'_, Self>) {
         cx.emit(PageRowClicked);
-        self.send(event, cx);
     }
 }
 

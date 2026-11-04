@@ -8,7 +8,7 @@
 use gpui::{AnyElement, App, div, prelude::*, px};
 use lib_payees::presenter::{PayeeField, PayeeFormEvent, PayeeFormPresenter, PayeeFormViewModel};
 
-use super::rules_field::{self, RulesFieldProps};
+use super::rules_field;
 use super::{Clicks, PayeesDialog, View, send};
 use crate::form::viper::{chosen_label, drawn, labels};
 use crate::{
@@ -128,19 +128,17 @@ pub(super) fn render(
             ),
             div()
                 .child(rules_field::render(
-                    RulesFieldProps {
-                        id,
-                        label: view.rule_input.label.clone(),
-                        rules: &view.rules,
-                        no_rules: view.no_rules.clone(),
-                        input: &view.rule_input.text,
-                        placeholder: view.rule_input.placeholder.clone(),
-                        add: view.rule_add.clone(),
-                        focused: view.rule_input.focused,
-                        on_input_click: on_field(PayeeField::Rule),
-                        on_add_click: actions.click(click_add_rule),
-                        on_remove_rule: actions.choose(click_remove_rule),
-                    },
+                    id,
+                    view.rule_input.label.clone(),
+                    &view.rules,
+                    view.no_rules.clone(),
+                    &view.rule_input.text,
+                    view.rule_input.placeholder.clone(),
+                    view.rule_add.clone(),
+                    view.rule_input.focused,
+                    on_field(PayeeField::Rule),
+                    actions.click(click_add_rule),
+                    actions.choose(click_remove_rule),
                     cx,
                 ))
                 .children(

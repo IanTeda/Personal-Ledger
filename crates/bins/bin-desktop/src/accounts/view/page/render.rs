@@ -3,9 +3,7 @@
 //! (NAME / INSTITUTION / UNIT / ACTIONS). Every click sends the Presenter the event its key does:
 //! a row opens the Account's ledger, as `enter` does.
 
-use std::rc::Rc;
-
-use gpui::{App, Context, Entity, SharedString, Window, div, prelude::*, px};
+use gpui::{App, ClickEvent, Context, SharedString, Window, div, prelude::*, px};
 use lib_accounts::presenter::{
     AccountGroupView, AccountLine, AccountsPageEvent, AccountsPageViewModel,
 };
@@ -13,23 +11,21 @@ use lib_core::AccountId;
 use lib_locale::format::upper;
 
 use super::AccountsPage;
-use crate::theme::color;
-
-type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
+use crate::{shell::view::page_clicks::PageClicks, theme::color};
 
 impl Render for AccountsPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let entity = cx.entity();
+        let clicks = PageClicks::new(cx);
         let view = self.view_model(cx);
         let focused = self.page_focused;
         div()
             .flex()
             .flex_col()
-            .child(kicker_row(&view, &entity, cx))
+            .child(kicker_row(&view, &clicks, cx))
             .children(
                 view.groups
                     .iter()
-                    .map(|group| group_block(group, &view, focused, &entity, cx)),
+                    .map(|group| group_block(group, &view, focused, &clicks, cx)),
             )
             .children(
                 view.empty
@@ -39,18 +35,9 @@ impl Render for AccountsPage {
     }
 }
 
-/// A click handler that sends the page `event`, as the key that does the same.
-fn on_event(entity: &Entity<AccountsPage>, event: AccountsPageEvent) -> OnPlainClick {
-    let entity = entity.clone();
-    Rc::new(move |_window, cx| {
-        let event = event.clone();
-        entity.update(cx, |page, cx| page.send(event, cx));
-    })
-}
-
 fn kicker_row(
     view: &AccountsPageViewModel,
-    entity: &Entity<AccountsPage>,
+    clicks: &PageClicks<AccountsPage>,
     cx: &App,
 ) -> impl IntoElement {
     div()
@@ -65,15 +52,15 @@ fn kicker_row(
                 .text_color(color::muted(cx))
                 .child(upper(&view.kicker)),
         )
-        .child(add_button(
-            view,
-            on_event(entity, AccountsPageEvent::New),
-            cx,
-        ))
+        .child(add_button(view, clicks.send(AccountsPageEvent::New), cx))
 }
 
 /// `padding:8px 14px; background:#201e1d; color:#f3f2f2; font-weight:800`.
-fn add_button(view: &AccountsPageViewModel, on_click: OnPlainClick, cx: &App) -> impl IntoElement {
+fn add_button(
+    view: &AccountsPageViewModel,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> impl IntoElement {
     let hover = color::muted(cx);
     div()
         .debug_selector(|| "settings-accounts-add".to_string())
@@ -87,7 +74,7 @@ fn add_button(view: &AccountsPageViewModel, on_click: OnPlainClick, cx: &App) ->
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .whitespace_nowrap()
         .hover(move |style| style.bg(hover))
-        .on_click(move |_event, window, cx| on_click(window, cx))
+        .on_click(on_click)
         .child(view.add_button.clone())
 }
 
@@ -102,7 +89,7 @@ fn group_block(
     group: &AccountGroupView,
     view: &AccountsPageViewModel,
     focused: bool,
-    entity: &Entity<AccountsPage>,
+    clicks: &PageClicks<AccountsPage>,
     cx: &App,
 ) -> impl IntoElement {
     let last = group.lines.len().saturating_sub(1);
@@ -131,7 +118,7 @@ fn group_block(
                         position == last,
                         view.selected == Some(line.id),
                         focused,
-                        entity,
+                        clicks,
                         cx,
                     )
                 })),
@@ -179,12 +166,12 @@ fn row(
     last: bool,
     selected: bool,
     focused: bool,
-    entity: &Entity<AccountsPage>,
+    clicks: &PageClicks<AccountsPage>,
     cx: &App,
 ) -> impl IntoElement {
     let hover = color::hover(cx);
     let id: AccountId = line.id;
-    let on_row_click = on_event(entity, AccountsPageEvent::Open(id));
+    let on_row_click = clicks.send(AccountsPageEvent::Open(id));
 
     div()
         .debug_selector(move || format!("settings-accounts-row-{id}"))
@@ -199,7 +186,7 @@ fn row(
         })
         .when(selected, |this| this.bg(color::chrome(cx)))
         .hover(move |style| style.bg(hover))
-        .on_click(move |_event, window, cx| on_row_click(window, cx))
+        .on_click(on_row_click)
         // The selection bar is drawn only while the page has focus -- the tint alone still marks
         // the row when focus is on the index.
         .child(
@@ -241,13 +228,13 @@ fn row(
                 .child(row_action_button(
                     SharedString::from(format!("settings-accounts-edit-{id}")),
                     view.row_edit.clone(),
-                    on_event(entity, AccountsPageEvent::EditRow(id)),
+                    clicks.send(AccountsPageEvent::EditRow(id)),
                     cx,
                 ))
                 .child(row_action_button(
                     SharedString::from(format!("settings-accounts-delete-{id}")),
                     view.row_delete.clone(),
-                    on_event(entity, AccountsPageEvent::DeleteRow(id)),
+                    clicks.send(AccountsPageEvent::DeleteRow(id)),
                     cx,
                 )),
         )
@@ -258,7 +245,7 @@ fn row(
 fn row_action_button(
     id: SharedString,
     label: String,
-    on_click: OnPlainClick,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> impl IntoElement {
     let hover = color::hover(cx);
@@ -275,9 +262,9 @@ fn row_action_button(
         .border_color(color::border(cx))
         .text_size(px(11.0))
         .hover(move |style| style.bg(hover))
-        .on_click(move |_event, window, cx| {
+        .on_click(move |event: &ClickEvent, window, cx| {
             cx.stop_propagation();
-            on_click(window, cx)
+            on_click(event, window, cx);
         })
         .child(label)
 }

@@ -3,11 +3,9 @@
 //! a "+ Add institution" button below it, the same shape as the Units page. Every click sends the
 //! Presenter the event its key does; a row click only selects.
 
-use std::rc::Rc;
-
 use gpui::{
-    AnyElement, App, BoxShadow, Context, Entity, MouseButton, Pixels, Point, Rgba, SharedString,
-    Window, div, point, prelude::*, px,
+    AnyElement, App, BoxShadow, ClickEvent, Context, MouseButton, MouseDownEvent, Pixels, Point,
+    Rgba, SharedString, Window, div, point, prelude::*, px,
 };
 use lib_institutions::presenter::{
     InstitutionLine, InstitutionsPageEvent, InstitutionsPageViewModel, MenuEntry, RowMenu,
@@ -15,9 +13,7 @@ use lib_institutions::presenter::{
 use lib_locale::format::upper;
 
 use super::InstitutionsPage;
-use crate::theme::color;
-
-type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
+use crate::{shell::view::page_clicks::PageClicks, theme::color};
 
 /// The context menu's width (`width:190px`), as Units' is.
 const MENU_WIDTH: f32 = 190.0;
@@ -26,7 +22,7 @@ const ACTIONS_WIDTH: Pixels = px(120.0);
 
 impl Render for InstitutionsPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let entity = cx.entity();
+        let clicks = PageClicks::new(cx);
         let view = self.view_model(cx);
         let focused = self.page_focused;
         let menu_at = self.menu_at;
@@ -48,27 +44,18 @@ impl Render for InstitutionsPage {
                             index,
                             view.selected == Some(line.id),
                             focused,
-                            &entity,
+                            &clicks,
                             cx,
                         )
                     })),
             )
             .child(add_button(
                 &view,
-                on_event(&entity, InstitutionsPageEvent::New),
+                clicks.send(InstitutionsPageEvent::New),
                 cx,
             ))
-            .children(menu.map(|menu| row_menu(menu, menu_at, &entity, cx)))
+            .children(menu.map(|menu| row_menu(menu, menu_at, &clicks, cx)))
     }
-}
-
-/// A click handler that sends the page `event`, as the key that does the same.
-fn on_event(entity: &Entity<InstitutionsPage>, event: InstitutionsPageEvent) -> OnPlainClick {
-    let entity = entity.clone();
-    Rc::new(move |_window, cx| {
-        let event = event.clone();
-        entity.update(cx, |page, cx| page.send(event, cx));
-    })
 }
 
 fn table_header(view: &InstitutionsPageViewModel, cx: &App) -> impl IntoElement {
@@ -102,7 +89,7 @@ fn row(
     index: usize,
     selected: bool,
     focused: bool,
-    entity: &Entity<InstitutionsPage>,
+    clicks: &PageClicks<InstitutionsPage>,
     cx: &App,
 ) -> impl IntoElement {
     let id = line.id;
@@ -114,14 +101,8 @@ fn row(
     } else {
         (color::faint_text(cx), color::border(cx))
     };
-    let on_row_click = {
-        let entity = entity.clone();
-        move |cx: &mut App| {
-            entity.update(cx, |page, cx| {
-                page.click(InstitutionsPageEvent::Select(id), cx)
-            });
-        }
-    };
+    let on_row_click = clicks.row(InstitutionsPageEvent::Select(id));
+    let open_menu = clicks.menu(InstitutionsPageEvent::OpenMenu(id));
     div()
         .debug_selector(move || format!("settings-institutions-row-{index}"))
         .id(SharedString::from(format!(
@@ -141,15 +122,14 @@ fn row(
                 .text_color(color::selection_text(cx))
         })
         .when(!selected, |this| this.hover(move |style| style.bg(hover)))
-        .on_click(move |_event, _window, cx| on_row_click(cx))
-        .on_mouse_down(MouseButton::Right, {
-            let entity = entity.clone();
-            move |event, _window, cx| {
+        .on_click(on_row_click)
+        .on_mouse_down(
+            MouseButton::Right,
+            move |event: &MouseDownEvent, window, cx| {
                 cx.stop_propagation();
-                let position = event.position;
-                entity.update(cx, |page, cx| page.open_menu(id, position, cx));
-            }
-        })
+                open_menu(event, window, cx);
+            },
+        )
         .child(
             div()
                 .flex_1()
@@ -172,14 +152,14 @@ fn row(
                     SharedString::from(format!("institution-edit-{index}")),
                     view.row_edit.clone(),
                     button_border,
-                    on_event(entity, InstitutionsPageEvent::EditRow(id)),
+                    clicks.send(InstitutionsPageEvent::EditRow(id)),
                     cx,
                 ))
                 .child(row_action_button(
                     SharedString::from(format!("institution-delete-{index}")),
                     view.row_delete.clone(),
                     button_border,
-                    on_event(entity, InstitutionsPageEvent::DeleteRow(id)),
+                    clicks.send(InstitutionsPageEvent::DeleteRow(id)),
                     cx,
                 )),
         )
@@ -191,7 +171,7 @@ fn row_action_button(
     id: SharedString,
     label: String,
     border: Rgba,
-    on_click: OnPlainClick,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> impl IntoElement {
     let hover = color::hover(cx);
@@ -208,9 +188,9 @@ fn row_action_button(
         .border_color(border)
         .text_size(px(11.0))
         .hover(move |style| style.bg(hover))
-        .on_click(move |_event, window, cx| {
+        .on_click(move |event: &ClickEvent, window, cx| {
             cx.stop_propagation();
-            on_click(window, cx)
+            on_click(event, window, cx);
         })
         .child(label)
 }
@@ -219,7 +199,7 @@ fn row_action_button(
 /// background:#eae9e9; font-weight:800; width:fit-content; margin-top:16px`.
 fn add_button(
     view: &InstitutionsPageViewModel,
-    on_click: OnPlainClick,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> impl IntoElement {
     // `align_self: flex-start` (no direct `Styled` builder for it, unlike the container-level
@@ -237,7 +217,7 @@ fn add_button(
         .border_color(color::border(cx))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .whitespace_nowrap()
-        .on_click(move |_event, window, cx| on_click(window, cx))
+        .on_click(on_click)
         .child(view.add_button.clone());
     button.style().align_self = Some(gpui::AlignItems::FlexStart);
     button
@@ -249,7 +229,7 @@ fn add_button(
 fn row_menu(
     menu: RowMenu,
     at: Point<Pixels>,
-    entity: &Entity<InstitutionsPage>,
+    clicks: &PageClicks<InstitutionsPage>,
     cx: &App,
 ) -> AnyElement {
     let hover = color::hover(cx);
@@ -259,7 +239,7 @@ fn row_menu(
              label,
              destructive,
          }| {
-            let on_click = on_event(entity, InstitutionsPageEvent::Menu(action));
+            let on_click = clicks.send(InstitutionsPageEvent::Menu(action));
             let id = SharedString::from(format!("settings-institutions-menu-{}", action.slug()));
             let item = div()
                 .debug_selector({
@@ -277,7 +257,7 @@ fn row_menu(
                     color::foreground(cx)
                 })
                 .hover(move |style| style.bg(hover).font_weight(gpui::FontWeight::EXTRA_BOLD))
-                .on_click(move |_event, window, cx| on_click(window, cx))
+                .on_click(on_click)
                 .child(label);
             if destructive {
                 div()
@@ -291,7 +271,7 @@ fn row_menu(
             }
         },
     );
-    let dismiss = on_event(entity, InstitutionsPageEvent::CloseMenu);
+    let dismiss = clicks.send(InstitutionsPageEvent::CloseMenu);
     gpui::deferred(
         gpui::anchored().position(at).snap_to_window().child(
             div()
@@ -312,7 +292,7 @@ fn row_menu(
                     spread_radius: px(0.0),
                 }])
                 .font_weight(gpui::FontWeight::NORMAL)
-                .on_mouse_down_out(move |_event, window, cx| dismiss(window, cx))
+                .on_mouse_down_out(dismiss)
                 .children(items),
         ),
     )

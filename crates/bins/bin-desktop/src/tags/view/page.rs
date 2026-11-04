@@ -22,6 +22,7 @@ use crate::{
     ledger_store::{LedgerStore, notify_on},
     navigation::movement::Movement,
     settings::{SettingsPage, page::PageRowClicked, pages::Page},
+    shell::view::page_clicks::PresenterPage,
     view::event::ViewEvent,
 };
 
@@ -73,7 +74,7 @@ impl TagsPage {
     }
 
     /// A key or click on the page: `event` as one input, committed once it is handled.
-    pub(in crate::tags) fn send(&mut self, event: TagsPageEvent, cx: &mut Context<'_, Self>) {
+    fn send(&mut self, event: TagsPageEvent, cx: &mut Context<'_, Self>) {
         crate::input::send(cx, |cx| self.handle(event, cx));
     }
 
@@ -105,10 +106,16 @@ impl TagsPage {
     pub fn view_model(&self) -> TagsPageViewModel {
         self.presenter.view_model()
     }
+}
 
-    /// A row click: `event`, and focus on the page.
-    fn click(&mut self, event: TagsPageEvent, cx: &mut Context<'_, Self>) {
-        self.send(event, cx);
+/// The page's clicks on its rows and buttons.
+impl PresenterPage<TagsPageEvent> for TagsPage {
+    fn send(&mut self, event: TagsPageEvent, cx: &mut Context<'_, Self>) {
+        TagsPage::send(self, event, cx);
+    }
+
+    /// A click on a row hands the page focus.
+    fn row_clicked(&mut self, cx: &mut Context<'_, Self>) {
         cx.emit(PageRowClicked);
     }
 }

@@ -26,6 +26,7 @@ use crate::{
     navigation::command::AccountsVerb,
     navigation::movement::Movement,
     settings::{SettingsPage, page::PageRowClicked, pages::Page},
+    shell::view::page_clicks::PresenterPage,
     view::event::{Reveal, ViewEvent},
 };
 
@@ -75,11 +76,7 @@ impl AccountsPage {
     }
 
     /// A key or click on the page: `event` as one input, committed once it is handled.
-    pub(in crate::accounts) fn send(
-        &mut self,
-        event: AccountsPageEvent,
-        cx: &mut Context<'_, Self>,
-    ) {
+    fn send(&mut self, event: AccountsPageEvent, cx: &mut Context<'_, Self>) {
         crate::input::send(cx, |cx| self.handle(event, cx));
     }
 
@@ -143,6 +140,13 @@ impl AccountsPage {
             },
             cx,
         );
+    }
+}
+
+/// The page's clicks on its rows and buttons.
+impl PresenterPage<AccountsPageEvent> for AccountsPage {
+    fn send(&mut self, event: AccountsPageEvent, cx: &mut Context<'_, Self>) {
+        AccountsPage::send(self, event, cx);
     }
 }
 

@@ -7,10 +7,8 @@
 //! Every click is an event sent to the Presenter, so the keyboard (`n`/`e`/`x`/`m`) and the mouse
 //! reach the same handlers.
 
-use std::rc::Rc;
-
 use gpui::{
-    AnyElement, App, Context, Entity, FontWeight, Render, Rgba, SharedString, Window, div,
+    AnyElement, App, ClickEvent, Context, FontWeight, Render, Rgba, SharedString, Window, div,
     prelude::*, px,
 };
 use lib_locale::{Segment, format::upper};
@@ -19,19 +17,9 @@ use lib_tags::presenter::{TagLine, TagsPageEvent, TagsPageViewModel};
 use super::TagsPage;
 use crate::{
     form::swatch::{SWATCH_SIZE, swatch},
+    shell::view::page_clicks::PageClicks,
     theme::color,
 };
-
-/// A click, run with its `Window` and `App`.
-type OnClick = Rc<dyn Fn(&mut Window, &mut App)>;
-
-/// A click that sends `event` to the page.
-fn on(entity: &Entity<TagsPage>, event: TagsPageEvent) -> OnClick {
-    let entity = entity.clone();
-    Rc::new(move |_window, cx| {
-        entity.update(cx, |page, cx| page.send(event.clone(), cx));
-    })
-}
 
 /// The heading's meta: the count, then the duplicates clause with its number bold in the accent
 /// text colour and no "merge them" link -- each flagged row has its own **merge**.
@@ -61,7 +49,7 @@ pub(super) fn scope_note(scope: &[Segment], cx: &App) -> AnyElement {
 
 impl Render for TagsPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let entity = cx.entity();
+        let clicks = PageClicks::new(cx);
         let view = self.view_model();
         let focused = self.page_focused;
         let last = view.rows.len().saturating_sub(1);
@@ -69,7 +57,7 @@ impl Render for TagsPage {
         div()
             .flex()
             .flex_col()
-            .child(kicker_row(&view, &entity, cx))
+            .child(kicker_row(&view, &clicks, cx))
             .children(view.empty.clone().map(|empty| {
                 div()
                     .text_color(color::muted(cx))
@@ -88,7 +76,7 @@ impl Render for TagsPage {
                         .children(view.rows.iter().enumerate().map(|(position, tag)| {
                             row(
                                 &view,
-                                &entity,
+                                &clicks,
                                 tag,
                                 position == last,
                                 view.selected == Some(tag.id),
@@ -109,9 +97,13 @@ impl Render for TagsPage {
 }
 
 /// The page's `+ Add tag` button, which opens the Add dialog as `n` does.
-fn kicker_row(view: &TagsPageViewModel, entity: &Entity<TagsPage>, cx: &App) -> impl IntoElement {
+fn kicker_row(
+    view: &TagsPageViewModel,
+    clicks: &PageClicks<TagsPage>,
+    cx: &App,
+) -> impl IntoElement {
     let hover = color::muted(cx);
-    let on_add = on(entity, TagsPageEvent::New);
+    let on_add = clicks.send(TagsPageEvent::New);
     div()
         .flex()
         .items_center()
@@ -138,7 +130,7 @@ fn kicker_row(view: &TagsPageViewModel, entity: &Entity<TagsPage>, cx: &App) -> 
                 .font_weight(FontWeight::EXTRA_BOLD)
                 .whitespace_nowrap()
                 .hover(move |style| style.bg(hover))
-                .on_click(move |_event, window, cx| on_add(window, cx))
+                .on_click(on_add)
                 .child(view.add_button.clone()),
         )
 }
@@ -163,7 +155,7 @@ fn table_header(view: &TagsPageViewModel, cx: &App) -> impl IntoElement {
 /// and only tinted while the index does. A likely duplicate takes the accent tint.
 fn row(
     view: &TagsPageViewModel,
-    entity: &Entity<TagsPage>,
+    clicks: &PageClicks<TagsPage>,
     tag: &TagLine,
     last: bool,
     selected: bool,
@@ -183,12 +175,7 @@ fn row(
     } else {
         (color::muted(cx), color::accent_text(cx), color::border(cx))
     };
-    let on_row = {
-        let entity = entity.clone();
-        move |_event: &gpui::ClickEvent, _window: &mut Window, cx: &mut App| {
-            entity.update(cx, |page, cx| page.click(TagsPageEvent::Select(id), cx));
-        }
-    };
+    let on_row = clicks.row(TagsPageEvent::Select(id));
 
     div()
         .debug_selector(move || format!("settings-tags-row-{id}"))
@@ -261,7 +248,7 @@ fn row(
                         SharedString::from(format!("settings-tags-merge-{id}")),
                         view.row_merge.clone(),
                         button_border,
-                        on(entity, TagsPageEvent::MergeRow(id)),
+                        clicks.send(TagsPageEvent::MergeRow(id)),
                         cx,
                     ))
                 })
@@ -269,14 +256,14 @@ fn row(
                     SharedString::from(format!("settings-tags-edit-{id}")),
                     view.row_edit.clone(),
                     button_border,
-                    on(entity, TagsPageEvent::EditRow(id)),
+                    clicks.send(TagsPageEvent::EditRow(id)),
                     cx,
                 ))
                 .child(row_action_button(
                     SharedString::from(format!("settings-tags-remove-{id}")),
                     view.row_remove.clone(),
                     button_border,
-                    on(entity, TagsPageEvent::RemoveRow(id)),
+                    clicks.send(TagsPageEvent::RemoveRow(id)),
                     cx,
                 )),
         )
@@ -287,7 +274,7 @@ fn row_action_button(
     id: SharedString,
     label: String,
     border: Rgba,
-    on_click: OnClick,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> impl IntoElement {
     let hover = color::hover(cx);
@@ -305,9 +292,9 @@ fn row_action_button(
         .text_size(px(11.0))
         .whitespace_nowrap()
         .hover(move |style| style.bg(hover))
-        .on_click(move |_event, window, cx| {
+        .on_click(move |event: &ClickEvent, window, cx| {
             cx.stop_propagation();
-            on_click(window, cx)
+            on_click(event, window, cx);
         })
         .child(label)
 }

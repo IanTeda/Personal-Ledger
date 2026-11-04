@@ -3,17 +3,13 @@
 //! and match rules, with `edit · delete` per row. Every click sends the Presenter the event its key
 //! does; a row click only selects.
 
-use std::rc::Rc;
-
-use gpui::{AnyElement, App, Context, Entity, Rgba, SharedString, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, ClickEvent, Context, Rgba, SharedString, Window, div, prelude::*, px};
 use lib_locale::Segment;
 use lib_locale::format::upper;
 use lib_payees::presenter::{PayeeLine, PayeesPageEvent, PayeesPageViewModel};
 
 use super::PayeesPage;
-use crate::theme::color;
-
-type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
+use crate::{shell::view::page_clicks::PageClicks, theme::color};
 
 /// The NAME column's floor, so the fixed columns never squeeze it to nothing.
 const NAME_MIN_WIDTH: gpui::Pixels = px(140.0);
@@ -48,14 +44,14 @@ pub(super) fn scope_note(scope: &[Segment], cx: &App) -> AnyElement {
 
 impl Render for PayeesPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let entity = cx.entity();
+        let clicks = PageClicks::new(cx);
         let view = self.view_model(cx);
         let focused = self.page_focused;
         let last = view.rows.len().saturating_sub(1);
         div()
             .flex()
             .flex_col()
-            .child(kicker_row(&view, &entity, cx))
+            .child(kicker_row(&view, &clicks, cx))
             .children(view.empty.clone().map(|empty| {
                 div()
                     .text_color(color::muted(cx))
@@ -78,7 +74,7 @@ impl Render for PayeesPage {
                                 position == last,
                                 view.selected == Some(line.id),
                                 focused,
-                                &entity,
+                                &clicks,
                                 cx,
                             )
                         })),
@@ -94,21 +90,12 @@ impl Render for PayeesPage {
     }
 }
 
-/// A click handler that sends the page `event`, as the key that does the same.
-fn on_event(entity: &Entity<PayeesPage>, event: PayeesPageEvent) -> OnPlainClick {
-    let entity = entity.clone();
-    Rc::new(move |_window, cx| {
-        let event = event.clone();
-        entity.update(cx, |page, cx| page.send(event, cx));
-    })
-}
-
 fn kicker_row(
     view: &PayeesPageViewModel,
-    entity: &Entity<PayeesPage>,
+    clicks: &PageClicks<PayeesPage>,
     cx: &App,
 ) -> impl IntoElement {
-    let on_add = on_event(entity, PayeesPageEvent::New);
+    let on_add = clicks.send(PayeesPageEvent::New);
     let hover = color::muted(cx);
     div()
         .flex()
@@ -136,7 +123,7 @@ fn kicker_row(
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .whitespace_nowrap()
                 .hover(move |style| style.bg(hover))
-                .on_click(move |_event, window, cx| on_add(window, cx))
+                .on_click(on_add)
                 .child(view.add_button.clone()),
         )
 }
@@ -183,7 +170,7 @@ fn row(
     last: bool,
     selected: bool,
     focused: bool,
-    entity: &Entity<PayeesPage>,
+    clicks: &PageClicks<PayeesPage>,
     cx: &App,
 ) -> impl IntoElement {
     let id = line.id;
@@ -204,12 +191,7 @@ fn row(
             color::border(cx),
         )
     };
-    let on_row_click = {
-        let entity = entity.clone();
-        move |cx: &mut App| {
-            entity.update(cx, |page, cx| page.click(PayeesPageEvent::Select(id), cx));
-        }
-    };
+    let on_row_click = clicks.row(PayeesPageEvent::Select(id));
 
     div()
         .debug_selector(move || format!("settings-payees-row-{id}"))
@@ -231,7 +213,7 @@ fn row(
         .when(!selected, |this| this.hover(move |style| style.bg(hover)))
         // An inactive Payee stays listed, dimmed and tagged, rather than hidden.
         .when(!line.is_active, |this| this.opacity(0.55))
-        .on_click(move |_event, _window, cx| on_row_click(cx))
+        .on_click(on_row_click)
         .child(
             div()
                 .flex_1()
@@ -283,14 +265,14 @@ fn row(
                     SharedString::from(format!("settings-payees-edit-{id}")),
                     view.row_edit.clone(),
                     button_border,
-                    on_event(entity, PayeesPageEvent::EditRow(id)),
+                    clicks.send(PayeesPageEvent::EditRow(id)),
                     cx,
                 ))
                 .child(row_action_button(
                     SharedString::from(format!("settings-payees-delete-{id}")),
                     view.row_delete.clone(),
                     button_border,
-                    on_event(entity, PayeesPageEvent::DeleteRow(id)),
+                    clicks.send(PayeesPageEvent::DeleteRow(id)),
                     cx,
                 )),
         )
@@ -301,7 +283,7 @@ fn row_action_button(
     id: SharedString,
     label: String,
     border: Rgba,
-    on_click: OnPlainClick,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> impl IntoElement {
     let hover = color::hover(cx);
@@ -319,9 +301,9 @@ fn row_action_button(
         .text_size(px(11.0))
         .whitespace_nowrap()
         .hover(move |style| style.bg(hover))
-        .on_click(move |_event, window, cx| {
+        .on_click(move |event: &ClickEvent, window, cx| {
             cx.stop_propagation();
-            on_click(window, cx)
+            on_click(event, window, cx);
         })
         .child(label)
 }

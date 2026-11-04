@@ -9,7 +9,6 @@ mod render;
 use gpui::{
     AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Pixels, Point, Subscription,
 };
-use lib_core::InstitutionId;
 use lib_institutions::InstitutionsOutcome;
 use lib_institutions::presenter::{
     InstitutionsPageEvent, InstitutionsPagePresenter, InstitutionsPageViewModel,
@@ -27,6 +26,7 @@ use crate::{
     ledger_store::{LedgerStore, notify_on},
     navigation::movement::Movement,
     settings::{SettingsPage, page::PageRowClicked, pages::Page},
+    shell::view::page_clicks::PresenterPage,
     view::event::ViewEvent,
 };
 
@@ -72,11 +72,7 @@ impl InstitutionsPage {
     }
 
     /// A key or click on the page: `event` as one input, committed once it is handled.
-    pub(in crate::institutions) fn send(
-        &mut self,
-        event: InstitutionsPageEvent,
-        cx: &mut Context<'_, Self>,
-    ) {
+    fn send(&mut self, event: InstitutionsPageEvent, cx: &mut Context<'_, Self>) {
         crate::input::send(cx, |cx| self.handle(event, cx));
     }
 
@@ -108,17 +104,22 @@ impl InstitutionsPage {
     pub fn view_model(&self, _cx: &App) -> InstitutionsPageViewModel {
         self.presenter.view_model()
     }
+}
 
-    /// A row click: `event`, and focus on the page.
-    fn click(&mut self, event: InstitutionsPageEvent, cx: &mut Context<'_, Self>) {
-        self.send(event, cx);
+/// The page's clicks on its rows, its row menu and its buttons.
+impl PresenterPage<InstitutionsPageEvent> for InstitutionsPage {
+    fn send(&mut self, event: InstitutionsPageEvent, cx: &mut Context<'_, Self>) {
+        InstitutionsPage::send(self, event, cx);
+    }
+
+    /// A click on a row hands the page focus.
+    fn row_clicked(&mut self, cx: &mut Context<'_, Self>) {
         cx.emit(PageRowClicked);
     }
 
-    /// A right-click on a row opens its menu at the pointer.
-    fn open_menu(&mut self, id: InstitutionId, at: Point<Pixels>, cx: &mut Context<'_, Self>) {
+    /// The open row menu is drawn where the pointer opened it.
+    fn menu_at(&mut self, at: Point<Pixels>, _cx: &mut Context<'_, Self>) {
         self.menu_at = at;
-        self.click(InstitutionsPageEvent::OpenMenu(id), cx);
     }
 }
 

@@ -5,28 +5,23 @@
 //!
 //! Every click sends the Presenter the event its key does: a row click only selects.
 
-use std::rc::Rc;
-
-use gpui::{App, Context, Entity, Render, Rgba, SharedString, Window, div, prelude::*, px};
+use gpui::{App, ClickEvent, Context, Render, Rgba, SharedString, Window, div, prelude::*, px};
 use lib_documents::presenter::{DocumentTypesPageEvent, DocumentTypesPageViewModel, TypeLine};
 use lib_locale::format::upper;
 
 use super::DocumentTypesPage;
-use crate::theme::color;
-
-/// A click on the page, run with its `Window` and `App`.
-type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
+use crate::{shell::view::page_clicks::PageClicks, theme::color};
 
 impl Render for DocumentTypesPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let entity = cx.entity();
+        let clicks = PageClicks::new(cx);
         let view = self.view_model();
         let focused = self.page_focused;
         let last = view.rows.len().saturating_sub(1);
         div()
             .flex()
             .flex_col()
-            .child(kicker_row(&view, &entity, cx))
+            .child(kicker_row(&view, &clicks, cx))
             .child(
                 div()
                     .flex()
@@ -37,7 +32,7 @@ impl Render for DocumentTypesPage {
                     .child(table_header(&view, cx))
                     .children(view.rows.iter().enumerate().map(|(position, line)| {
                         row(
-                            &entity,
+                            &clicks,
                             line,
                             &view,
                             position == last,
@@ -78,11 +73,11 @@ fn note_line(segments: Vec<lib_locale::Segment>, cx: &App) -> impl IntoElement {
 
 fn kicker_row(
     view: &DocumentTypesPageViewModel,
-    entity: &Entity<DocumentTypesPage>,
+    clicks: &PageClicks<DocumentTypesPage>,
     cx: &App,
 ) -> impl IntoElement {
     let hover = color::muted(cx);
-    let entity = entity.clone();
+    let on_add = clicks.row(DocumentTypesPageEvent::New);
     div()
         .flex()
         .items_center()
@@ -109,9 +104,7 @@ fn kicker_row(
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .whitespace_nowrap()
                 .hover(move |style| style.bg(hover))
-                .on_click(move |_event, _window, cx| {
-                    entity.update(cx, |page, cx| page.click(DocumentTypesPageEvent::New, cx));
-                })
+                .on_click(on_add)
                 .child(view.add_button.clone()),
         )
 }
@@ -148,7 +141,7 @@ fn table_header(view: &DocumentTypesPageViewModel, cx: &App) -> impl IntoElement
 /// The selected row is inverted while the page has focus (`background:#201e1d; color:#f3f2f2`)
 /// and only tinted while the index does.
 fn row(
-    entity: &Entity<DocumentTypesPage>,
+    clicks: &PageClicks<DocumentTypesPage>,
     row_type: &TypeLine,
     view: &DocumentTypesPageViewModel,
     last: bool,
@@ -172,30 +165,9 @@ fn row(
             color::border(cx),
         )
     };
-    let on_row_click = {
-        let entity = entity.clone();
-        move |_event: &gpui::ClickEvent, _window: &mut Window, cx: &mut App| {
-            entity.update(cx, |page, cx| {
-                page.click(DocumentTypesPageEvent::Select(id), cx);
-            });
-        }
-    };
-    let on_edit_click: OnPlainClick = {
-        let entity = entity.clone();
-        Rc::new(move |_window, cx| {
-            entity.update(cx, |page, cx| {
-                page.click(DocumentTypesPageEvent::EditRow(id), cx)
-            });
-        })
-    };
-    let on_remove_click: OnPlainClick = {
-        let entity = entity.clone();
-        Rc::new(move |_window, cx| {
-            entity.update(cx, |page, cx| {
-                page.click(DocumentTypesPageEvent::RemoveRow(id), cx)
-            });
-        })
-    };
+    let on_row_click = clicks.row(DocumentTypesPageEvent::Select(id));
+    let on_edit_click = clicks.row(DocumentTypesPageEvent::EditRow(id));
+    let on_remove_click = clicks.row(DocumentTypesPageEvent::RemoveRow(id));
     // A dash, in the muted colour, where the type tracks or reminds nothing.
     let optional = |text: Option<String>, width: f32| {
         let cell = div().w(px(width)).flex_none();
@@ -296,7 +268,7 @@ fn row_action_button(
     id: SharedString,
     label: String,
     border: Rgba,
-    on_click: OnPlainClick,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> impl IntoElement {
     let hover = color::hover(cx);
@@ -314,9 +286,9 @@ fn row_action_button(
         .text_size(px(11.5))
         .whitespace_nowrap()
         .hover(move |style| style.bg(hover))
-        .on_click(move |_event, window, cx| {
+        .on_click(move |event: &ClickEvent, window, cx| {
             cx.stop_propagation();
-            on_click(window, cx)
+            on_click(event, window, cx);
         })
         .child(label)
 }

@@ -22,6 +22,7 @@ use crate::{
     ledger_store::{LedgerStore, notify_on},
     navigation::movement::Movement,
     settings::{SettingsPage, page::PageRowClicked, pages::Page},
+    shell::view::page_clicks::PresenterPage,
     view::event::{Reveal, ViewEvent},
 };
 
@@ -70,7 +71,7 @@ impl PayeesPage {
     }
 
     /// A key or click on the page: `event` as one input, committed once it is handled.
-    pub(in crate::payees) fn send(&mut self, event: PayeesPageEvent, cx: &mut Context<'_, Self>) {
+    fn send(&mut self, event: PayeesPageEvent, cx: &mut Context<'_, Self>) {
         crate::input::send(cx, |cx| self.handle(event, cx));
     }
 
@@ -103,10 +104,16 @@ impl PayeesPage {
     pub fn view_model(&self, _cx: &App) -> PayeesPageViewModel {
         self.presenter.view_model()
     }
+}
 
-    /// A row click: `event`, and focus on the page.
-    fn click(&mut self, event: PayeesPageEvent, cx: &mut Context<'_, Self>) {
-        self.send(event, cx);
+/// The page's clicks on its rows and buttons.
+impl PresenterPage<PayeesPageEvent> for PayeesPage {
+    fn send(&mut self, event: PayeesPageEvent, cx: &mut Context<'_, Self>) {
+        PayeesPage::send(self, event, cx);
+    }
+
+    /// A click on a row hands the page focus.
+    fn row_clicked(&mut self, cx: &mut Context<'_, Self>) {
         cx.emit(PageRowClicked);
     }
 }

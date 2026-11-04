@@ -9,37 +9,26 @@ use crate::{dialog, form::dialog_fields, theme::color};
 
 const MONOSPACE: &str = "monospace";
 
-pub(super) struct RulesFieldProps<'a> {
-    /// Prefixes every element id, so the Add and Edit Dialogs never share one.
-    pub id: &'static str,
-    pub label: String,
-    pub rules: &'a [String],
-    pub no_rules: String,
-    pub input: &'a str,
-    pub placeholder: String,
-    pub add: String,
-    pub focused: bool,
-    pub on_input_click: dialog::OnClick,
-    pub on_add_click: dialog::OnClick,
-    /// Called with the index of the chip whose `✕` was clicked.
-    pub on_remove_rule: OnChoose<usize>,
-}
-
-pub(super) fn render(props: RulesFieldProps<'_>, cx: &App) -> AnyElement {
-    let RulesFieldProps {
-        id,
-        label,
-        rules,
-        no_rules,
-        input,
-        placeholder,
-        add,
-        focused,
-        on_input_click,
-        on_add_click,
-        on_remove_rule,
-    } = props;
-
+/// `id` prefixes every element id, so the Add and Edit Dialogs never share one. `on_remove_rule` is
+/// called with the index of the chip whose `✕` was clicked.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the field is part of the Payees Dialog's View, so it takes the Dialog's view-model fields and its callbacks directly"
+)]
+pub(super) fn render(
+    id: &'static str,
+    label: String,
+    rules: &[String],
+    no_rules: String,
+    input: &str,
+    placeholder: String,
+    add: String,
+    focused: bool,
+    on_input_click: dialog::OnClick,
+    on_add_click: dialog::OnClick,
+    on_remove_rule: OnChoose<usize>,
+    cx: &App,
+) -> AnyElement {
     let chips = if rules.is_empty() {
         vec![
             div()

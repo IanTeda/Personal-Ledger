@@ -30,6 +30,7 @@ use crate::{
     ledger_store::{LedgerStore, notify_on},
     navigation::movement::Movement,
     settings::{SettingsPage, page::PageRowClicked, pages::Page},
+    shell::view::page_clicks::PresenterPage,
     view::event::ViewEvent,
 };
 
@@ -81,11 +82,7 @@ impl InventoryPage {
     }
 
     /// A key or click on the page: `event` as one input, committed once it is handled.
-    pub(in crate::inventory) fn send(
-        &mut self,
-        event: InventoryPageEvent,
-        cx: &mut Context<'_, Self>,
-    ) {
+    fn send(&mut self, event: InventoryPageEvent, cx: &mut Context<'_, Self>) {
         crate::input::send(cx, |cx| self.handle(event, cx));
     }
 
@@ -121,23 +118,6 @@ impl InventoryPage {
         self.presenter.view_model()
     }
 
-    /// A click on a row or its controls: `event`, and focus on the page.
-    fn click(&mut self, event: InventoryPageEvent, cx: &mut Context<'_, Self>) {
-        cx.emit(PageRowClicked);
-        self.send(event, cx);
-    }
-
-    /// A right-click on a row: selects it and opens its menu at the pointer.
-    fn open_menu(
-        &mut self,
-        row: InventoryRow,
-        position: Point<Pixels>,
-        cx: &mut Context<'_, Self>,
-    ) {
-        self.menu_at = position;
-        self.click(InventoryPageEvent::OpenMenu(row), cx);
-    }
-
     /// An `InventoryRow` as `location:<name>` or `area:<name>`.
     fn row_label(&self, row: InventoryRow) -> String {
         let inventory = self.inventory.borrow().inventory();
@@ -151,6 +131,23 @@ impl InventoryPage {
                 .map(|(_, area)| format!("area:{}", area.name))
                 .unwrap_or_default(),
         }
+    }
+}
+
+/// The page's clicks on its rows, its row menu and its buttons.
+impl PresenterPage<InventoryPageEvent> for InventoryPage {
+    fn send(&mut self, event: InventoryPageEvent, cx: &mut Context<'_, Self>) {
+        InventoryPage::send(self, event, cx);
+    }
+
+    /// A click on a row or its controls hands the page focus.
+    fn row_clicked(&mut self, cx: &mut Context<'_, Self>) {
+        cx.emit(PageRowClicked);
+    }
+
+    /// The open row menu is drawn where the pointer opened it.
+    fn menu_at(&mut self, at: Point<Pixels>, _cx: &mut Context<'_, Self>) {
+        self.menu_at = at;
     }
 }
 
