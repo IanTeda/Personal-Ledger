@@ -4,13 +4,11 @@
 //! LAST UPDATED.
 //!
 //! Rows carry no buttons: a click selects, a double-click edits and a right-click opens the row's
-//! menu at the pointer. Every click is an event to the Presenter.
-
-use std::rc::Rc;
+//! menu at the pointer. Every click is an event to the Presenter, sent through [`PageClicks`].
 
 use gpui::{
-    AnyElement, App, BoxShadow, Context, Entity, MouseButton, Pixels, Point, SharedString, Window,
-    div, point, prelude::*, px,
+    AnyElement, App, BoxShadow, ClickEvent, Context, MouseButton, MouseDownEvent, Pixels, Point,
+    SharedString, Window, div, point, prelude::*, px,
 };
 use lib_units::presenter::{
     MenuEntry, NOT_FETCHED_GLYPH, RowMenu, SourceColumns, SourceKind, SourceLine, UnitColumns,
@@ -18,7 +16,7 @@ use lib_units::presenter::{
 };
 
 use super::UnitsPage;
-use crate::{settings::SettingsPage, theme::color};
+use crate::{settings::SettingsPage, shell::view::page_clicks::PageClicks, theme::color};
 
 /// The context menu's width (`width:190px`).
 const MENU_WIDTH: f32 = 190.0;
@@ -38,44 +36,11 @@ const LAST_WIDTH: Pixels = px(130.0);
 const PRICE_SOURCE_NAME_WIDTH: Pixels = px(130.0);
 const PRICE_SOURCE_LAST_UPDATED_WIDTH: Pixels = px(130.0);
 
-type OnClick = Rc<dyn Fn(&mut Window, &mut App)>;
-type OnRowClick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
-type OnRowMenu = Rc<dyn Fn(Point<Pixels>, &mut Window, &mut App)>;
-
-/// A click that sends `event` to the page.
-pub(super) fn send(entity: &Entity<UnitsPage>, event: UnitsPageEvent) -> OnClick {
-    let entity = entity.clone();
-    Rc::new(move |_window, cx| {
-        let event = event.clone();
-        entity.update(cx, |page, cx| page.send(event, cx));
-    })
-}
-
-/// A row's click: a double-click activates it, a single click selects it.
-fn row_click(entity: &Entity<UnitsPage>, row: UnitsRow) -> OnRowClick {
-    let entity = entity.clone();
-    Rc::new(move |clicks, _window, cx| {
-        let event = if clicks >= 2 {
-            UnitsPageEvent::Activate(row)
-        } else {
-            UnitsPageEvent::Select(row)
-        };
-        entity.update(cx, |page, cx| page.click(event, cx));
-    })
-}
-
-fn row_menu_click(entity: &Entity<UnitsPage>, row: UnitsRow) -> OnRowMenu {
-    let entity = entity.clone();
-    Rc::new(move |position, _window, cx| {
-        entity.update(cx, |page, cx| page.open_menu(row, position, cx));
-    })
-}
-
 impl Render for UnitsPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let entity = cx.entity();
+        let clicks = PageClicks::new(cx);
         if let Some(prices) = self.prices_view_model() {
-            return super::prices::prices_view(prices, &entity, cx);
+            return super::prices::prices_view(prices, &clicks, cx);
         }
         let view = self.view_model(cx);
         let menu_at = self.menu_at;
@@ -96,10 +61,10 @@ impl Render for UnitsPage {
             .child(table_title(
                 lib_locale::format::upper(&SettingsPage::Units.label()),
                 "settings-add-unit",
-                send(&entity, UnitsPageEvent::NewUnit),
+                clicks.send(UnitsPageEvent::NewUnit),
                 cx,
             ))
-            .child(units_table(&unit_columns, &units, &entity, cx))
+            .child(units_table(&unit_columns, &units, &clicks, cx))
             .child(legend(base_legend, cx))
             .child(
                 div()
@@ -109,18 +74,23 @@ impl Render for UnitsPage {
                     .child(table_title(
                         lib_locale::format::upper(&price_sources_heading),
                         "settings-add-price-source",
-                        send(&entity, UnitsPageEvent::NewPriceSource),
+                        clicks.send(UnitsPageEvent::NewPriceSource),
                         cx,
                     ))
-                    .child(sources_table(&source_columns, &price_sources, &entity, cx)),
+                    .child(sources_table(&source_columns, &price_sources, &clicks, cx)),
             )
-            .children(menu.map(|menu| row_menu(menu, menu_at, &entity, cx)))
+            .children(menu.map(|menu| row_menu(menu, menu_at, &clicks, cx)))
             .into_any_element()
     }
 }
 
 /// A table's caps title sharing its row with a square **+** at the table's right edge.
-fn table_title(text: String, id: &'static str, on_click: OnClick, cx: &App) -> impl IntoElement {
+fn table_title(
+    text: String,
+    id: &'static str,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> impl IntoElement {
     div()
         .flex()
         .items_center()
@@ -148,7 +118,7 @@ fn table_title(text: String, id: &'static str, on_click: OnClick, cx: &App) -> i
                 .bg(color::chrome(cx))
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_size(px(15.0))
-                .on_click(move |_event, window, cx| on_click(window, cx))
+                .on_click(on_click)
                 .child("+"),
         )
 }
@@ -204,15 +174,19 @@ fn table_frame(selector: &'static str, cx: &App) -> gpui::Div {
 }
 
 /// A row's frame: `padding:12px 16px`, a hairline under every row but the last, the selection
-/// treatment when `inverted`, and its click and right-click.
+/// treatment when `inverted`, and its clicks: a double-click activates `row`, a single click
+/// selects it and a right-click opens its menu.
 fn row_frame(
     id: SharedString,
     last: bool,
     inverted: bool,
-    on_click: OnRowClick,
-    on_menu: OnRowMenu,
+    row: UnitsRow,
+    clicks: &PageClicks<UnitsPage>,
     cx: &App,
 ) -> gpui::Stateful<gpui::Div> {
+    let activate = clicks.row(UnitsPageEvent::Activate(row));
+    let select = clicks.row(UnitsPageEvent::Select(row));
+    let open_menu = clicks.menu(UnitsPageEvent::OpenMenu(row));
     div()
         .debug_selector({
             let id = id.clone();
@@ -231,17 +205,26 @@ fn row_frame(
             this.bg(color::foreground(cx))
                 .text_color(color::selection_text(cx))
         })
-        .on_click(move |event, window, cx| on_click(event.click_count(), window, cx))
-        .on_mouse_down(MouseButton::Right, move |event, window, cx| {
-            cx.stop_propagation();
-            on_menu(event.position, window, cx);
+        .on_click(move |event: &ClickEvent, window, cx| {
+            if event.click_count() >= 2 {
+                activate(event, window, cx);
+            } else {
+                select(event, window, cx);
+            }
         })
+        .on_mouse_down(
+            MouseButton::Right,
+            move |event: &MouseDownEvent, window, cx| {
+                cx.stop_propagation();
+                open_menu(event, window, cx);
+            },
+        )
 }
 
 fn units_table(
     columns: &UnitColumns,
     units: &[UnitLine],
-    entity: &Entity<UnitsPage>,
+    clicks: &PageClicks<UnitsPage>,
     cx: &App,
 ) -> impl IntoElement {
     let last = units.len().saturating_sub(1);
@@ -259,7 +242,7 @@ fn units_table(
             units
                 .iter()
                 .enumerate()
-                .map(|(index, unit)| unit_row(unit, index, index == last, entity, cx)),
+                .map(|(index, unit)| unit_row(unit, index, index == last, clicks, cx)),
         )
 }
 
@@ -267,7 +250,7 @@ fn unit_row(
     unit: &UnitLine,
     index: usize,
     last: bool,
-    entity: &Entity<UnitsPage>,
+    clicks: &PageClicks<UnitsPage>,
     cx: &App,
 ) -> impl IntoElement {
     let inverted = unit.selected;
@@ -281,8 +264,8 @@ fn unit_row(
         SharedString::from(format!("unit-row-{index}")),
         last,
         inverted,
-        row_click(entity, row),
-        row_menu_click(entity, row),
+        row,
+        clicks,
         cx,
     )
     // A deactivated Unit stays listed, dimmed and tagged, rather than hidden.
@@ -360,7 +343,7 @@ fn unit_row(
 fn sources_table(
     columns: &SourceColumns,
     sources: &[SourceLine],
-    entity: &Entity<UnitsPage>,
+    clicks: &PageClicks<UnitsPage>,
     cx: &App,
 ) -> impl IntoElement {
     let last = sources.len().saturating_sub(1);
@@ -381,7 +364,7 @@ fn sources_table(
             sources
                 .iter()
                 .enumerate()
-                .map(|(index, source)| source_row(source, index, index == last, entity, cx)),
+                .map(|(index, source)| source_row(source, index, index == last, clicks, cx)),
         )
 }
 
@@ -391,7 +374,7 @@ fn source_row(
     source: &SourceLine,
     index: usize,
     last: bool,
-    entity: &Entity<UnitsPage>,
+    clicks: &PageClicks<UnitsPage>,
     cx: &App,
 ) -> impl IntoElement {
     let inverted = source.selected;
@@ -424,8 +407,8 @@ fn source_row(
         SharedString::from(format!("price-source-row-{index}")),
         last,
         inverted,
-        row_click(entity, row),
-        row_menu_click(entity, row),
+        row,
+        clicks,
         cx,
     )
     .child(
@@ -447,7 +430,12 @@ fn source_row(
 
 /// The row's context menu at the pointer: `190px`, `border:2px solid`, the dialog shadow, the
 /// destructive entry last in red below a 1px rule. A press anywhere outside it closes it.
-fn row_menu(menu: RowMenu, at: Point<Pixels>, entity: &Entity<UnitsPage>, cx: &App) -> AnyElement {
+fn row_menu(
+    menu: RowMenu,
+    at: Point<Pixels>,
+    clicks: &PageClicks<UnitsPage>,
+    cx: &App,
+) -> AnyElement {
     let hover = color::hover(cx);
     let items = menu.entries.into_iter().map(
         |MenuEntry {
@@ -455,7 +443,7 @@ fn row_menu(menu: RowMenu, at: Point<Pixels>, entity: &Entity<UnitsPage>, cx: &A
              label,
              destructive,
          }| {
-            let on_click = send(entity, UnitsPageEvent::Menu(action));
+            let on_click = clicks.send(UnitsPageEvent::Menu(action));
             let id = SharedString::from(format!("settings-units-menu-{}", action.slug()));
             let item = div()
                 .debug_selector({
@@ -473,7 +461,7 @@ fn row_menu(menu: RowMenu, at: Point<Pixels>, entity: &Entity<UnitsPage>, cx: &A
                     color::foreground(cx)
                 })
                 .hover(move |style| style.bg(hover).font_weight(gpui::FontWeight::EXTRA_BOLD))
-                .on_click(move |_event, window, cx| on_click(window, cx))
+                .on_click(on_click)
                 .child(label);
             if destructive {
                 div()
@@ -487,7 +475,7 @@ fn row_menu(menu: RowMenu, at: Point<Pixels>, entity: &Entity<UnitsPage>, cx: &A
             }
         },
     );
-    let dismiss = send(entity, UnitsPageEvent::CloseMenu);
+    let dismiss = clicks.send(UnitsPageEvent::CloseMenu);
     gpui::deferred(
         gpui::anchored().position(at).snap_to_window().child(
             div()
@@ -508,7 +496,7 @@ fn row_menu(menu: RowMenu, at: Point<Pixels>, entity: &Entity<UnitsPage>, cx: &A
                     spread_radius: px(0.0),
                 }])
                 .font_weight(gpui::FontWeight::NORMAL)
-                .on_mouse_down_out(move |_event, window, cx| dismiss(window, cx))
+                .on_mouse_down_out(dismiss)
                 .children(items),
         ),
     )

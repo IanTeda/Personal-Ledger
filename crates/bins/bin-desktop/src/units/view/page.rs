@@ -39,7 +39,10 @@ use crate::{
         page::PageRowClicked,
         pages::{Page, PageFrame},
     },
-    shell::view::window_size::WindowSize,
+    shell::view::{
+        page_clicks::{PageClicks, PresenterPage},
+        window_size::WindowSize,
+    },
     view::event::ViewEvent,
 };
 
@@ -89,7 +92,7 @@ impl UnitsPage {
     }
 
     /// A key or click on the page: `event` as one input, committed once it is handled.
-    pub(in crate::units) fn send(&mut self, event: UnitsPageEvent, cx: &mut Context<'_, Self>) {
+    fn send(&mut self, event: UnitsPageEvent, cx: &mut Context<'_, Self>) {
         crate::input::send(cx, |cx| self.handle(event, cx));
     }
 
@@ -113,11 +116,7 @@ impl UnitsPage {
     }
 
     /// A key or click on the prices view: `event` as one input, as [`Self::send`].
-    pub(in crate::units) fn send_prices(
-        &mut self,
-        event: UnitPricesEvent,
-        cx: &mut Context<'_, Self>,
-    ) {
+    fn send_prices(&mut self, event: UnitPricesEvent, cx: &mut Context<'_, Self>) {
         crate::input::send(cx, |cx| self.handle_prices(event, cx));
     }
 
@@ -174,22 +173,29 @@ impl UnitsPage {
     pub fn view_model(&self, _cx: &App) -> UnitsPageViewModel {
         self.presenter.view_model()
     }
+}
 
-    /// A row click: `event`, and focus on the page.
-    fn click(&mut self, event: UnitsPageEvent, cx: &mut Context<'_, Self>) {
-        self.send(event, cx);
+/// The page's clicks on its tables, its row menu and its detail pane.
+impl PresenterPage<UnitsPageEvent> for UnitsPage {
+    fn send(&mut self, event: UnitsPageEvent, cx: &mut Context<'_, Self>) {
+        UnitsPage::send(self, event, cx);
+    }
+
+    /// A click on a row hands the page focus.
+    fn row_clicked(&mut self, cx: &mut Context<'_, Self>) {
         cx.emit(PageRowClicked);
     }
 
-    /// A right-click on a row opens its menu at the pointer.
-    fn open_menu(
-        &mut self,
-        row: lib_units::presenter::UnitsRow,
-        at: Point<Pixels>,
-        cx: &mut Context<'_, Self>,
-    ) {
+    /// The open row menu is drawn where the pointer opened it.
+    fn menu_at(&mut self, at: Point<Pixels>, _cx: &mut Context<'_, Self>) {
         self.menu_at = at;
-        self.click(UnitsPageEvent::OpenMenu(row), cx);
+    }
+}
+
+/// The prices view's clicks on its weeks.
+impl PresenterPage<UnitPricesEvent> for UnitsPage {
+    fn send(&mut self, event: UnitPricesEvent, cx: &mut Context<'_, Self>) {
+        self.send_prices(event, cx);
     }
 }
 
@@ -282,6 +288,6 @@ impl Page for UnitsPage {
         }
         let view = self.view_model(cx);
         let pane = view.pane.as_ref()?;
-        Some(detail_pane(pane, entity, cx))
+        Some(detail_pane(pane, &PageClicks::of(entity), cx))
     }
 }

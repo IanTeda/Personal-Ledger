@@ -2,14 +2,14 @@
 //! the page view model's [`DetailPane`]: each group a caps label over a 2px rule, its buttons
 //! sending their events to the page.
 
-use gpui::{AnyElement, App, Entity, SharedString, div, prelude::*, px};
+use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use lib_units::presenter::{
     AccountLine, AccountsGroup, ActivityGroup, DetailPane, Fact, PaneButton, PaneGroup, PriceGroup,
     SourceGroup, UnitGroup, ValueLine, ValuesGroup,
 };
 
-use super::{UnitsPage, render::send};
-use crate::theme::color;
+use super::UnitsPage;
+use crate::{shell::view::page_clicks::PageClicks, theme::color};
 
 /// `width:400px` at the View's right edge.
 const PANE_WIDTH: gpui::Pixels = px(400.0);
@@ -18,7 +18,7 @@ const PANE_BUTTON_WIDTH: gpui::Pixels = px(112.0);
 const PANE_BUTTON_HEIGHT: gpui::Pixels = px(34.0);
 const MONOSPACE: &str = "monospace";
 
-pub fn detail_pane(pane: &DetailPane, entity: &Entity<UnitsPage>, cx: &App) -> AnyElement {
+pub fn detail_pane(pane: &DetailPane, clicks: &PageClicks<UnitsPage>, cx: &App) -> AnyElement {
     div()
         .debug_selector(|| "units-detail-pane".to_string())
         .id("units-detail-pane")
@@ -32,8 +32,8 @@ pub fn detail_pane(pane: &DetailPane, entity: &Entity<UnitsPage>, cx: &App) -> A
         .border_l(px(2.0))
         .border_color(color::structural_rule(cx))
         .children(pane.groups.iter().map(|group| match group {
-            PaneGroup::Unit(unit) => unit_group(unit, entity, cx),
-            PaneGroup::Source(source) => source_group(source, entity, cx),
+            PaneGroup::Unit(unit) => unit_group(unit, clicks, cx),
+            PaneGroup::Source(source) => source_group(source, clicks, cx),
             PaneGroup::Price(price) => price_group(price, cx),
             PaneGroup::Accounts(accounts) => accounts_group(accounts, cx),
             PaneGroup::Values(values) => values_group(values, cx),
@@ -128,7 +128,7 @@ fn note(text: String, cx: &App) -> impl IntoElement {
         .child(text)
 }
 
-fn buttons(buttons: &[PaneButton], entity: &Entity<UnitsPage>, cx: &App) -> impl IntoElement {
+fn buttons(buttons: &[PaneButton], clicks: &PageClicks<UnitsPage>, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .flex_wrap()
@@ -136,7 +136,7 @@ fn buttons(buttons: &[PaneButton], entity: &Entity<UnitsPage>, cx: &App) -> impl
         .mt(px(12.0))
         .children(buttons.iter().map(|button| {
             let id = SharedString::from(format!("units-pane-{}", button.slug));
-            let on_click = send(entity, button.event.clone());
+            let on_click = clicks.send(button.event.clone());
             div()
                 .debug_selector({
                     let id = id.clone();
@@ -155,22 +155,22 @@ fn buttons(buttons: &[PaneButton], entity: &Entity<UnitsPage>, cx: &App) -> impl
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_size(px(12.0))
                 .whitespace_nowrap()
-                .on_click(move |_event, window, cx| on_click(window, cx))
+                .on_click(on_click)
                 .child(button.label.clone())
         }))
 }
 
-fn unit_group(group: &UnitGroup, entity: &Entity<UnitsPage>, cx: &App) -> AnyElement {
+fn unit_group(group: &UnitGroup, clicks: &PageClicks<UnitsPage>, cx: &App) -> AnyElement {
     let body = div()
         .flex()
         .flex_col()
         .child(title(group.title.clone(), Some(group.meta.clone()), cx))
         .children(group.facts.iter().map(|row| fact(row, cx)))
-        .child(buttons(&group.buttons, entity, cx));
+        .child(buttons(&group.buttons, clicks, cx));
     pane_group(&group.heading, body, "unit", cx)
 }
 
-fn source_group(group: &SourceGroup, entity: &Entity<UnitsPage>, cx: &App) -> AnyElement {
+fn source_group(group: &SourceGroup, clicks: &PageClicks<UnitsPage>, cx: &App) -> AnyElement {
     let body = div()
         .flex()
         .flex_col()
@@ -183,7 +183,7 @@ fn source_group(group: &SourceGroup, entity: &Entity<UnitsPage>, cx: &App) -> An
         .children(group.facts.iter().map(|row| fact(row, cx)))
         .children(group.note.clone().map(|text| note(text, cx)))
         .when(!group.buttons.is_empty(), |this| {
-            this.child(buttons(&group.buttons, entity, cx))
+            this.child(buttons(&group.buttons, clicks, cx))
         });
     pane_group(&group.heading, body, "source", cx)
 }

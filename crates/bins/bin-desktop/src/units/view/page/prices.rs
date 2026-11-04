@@ -3,12 +3,12 @@
 //! (`gpui-component`'s candlestick chart, a close-only week drawn as a flat tick), then the WEEKLY
 //! PRICES table, newest week first. A row click selects its week.
 
-use gpui::{AnyElement, App, Entity, SharedString, div, prelude::*, px};
+use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use gpui_component::chart::CandlestickChart;
 use lib_units::presenter::{PriceRow, UnitPricesEvent, UnitPricesViewModel};
 
 use super::UnitsPage;
-use crate::theme::color;
+use crate::{shell::view::page_clicks::PageClicks, theme::color};
 
 /// The chart's height, its axis labels included.
 const CHART_HEIGHT: gpui::Pixels = px(220.0);
@@ -19,7 +19,7 @@ const AXIS_EVERY: usize = 4;
 
 pub(super) fn prices_view(
     view: UnitPricesViewModel,
-    entity: &Entity<UnitsPage>,
+    clicks: &PageClicks<UnitsPage>,
     cx: &App,
 ) -> AnyElement {
     let UnitPricesViewModel {
@@ -143,7 +143,7 @@ pub(super) fn prices_view(
                 .children(
                     rows.into_iter()
                         .enumerate()
-                        .map(|(index, row)| price_row(row, index, index == last, entity, cx)),
+                        .map(|(index, row)| price_row(row, index, index == last, clicks, cx)),
                 ),
         )
         .into_any_element()
@@ -175,14 +175,13 @@ fn price_row(
     row: PriceRow,
     index: usize,
     last: bool,
-    entity: &Entity<UnitsPage>,
+    clicks: &PageClicks<UnitsPage>,
     cx: &App,
 ) -> impl IntoElement {
     let id = SharedString::from(format!("unit-prices-row-{index}"));
     let selected = row.selected;
     let falling = row.falling;
     let week = row.week;
-    let entity = entity.clone();
     // A fall is marked by its sign as well as the colour, so it never rests on colour alone.
     let change = (falling && !selected).then(|| color::accent_text(cx));
     let cells = row_cells(
@@ -208,10 +207,6 @@ fn price_row(
             this.bg(color::foreground(cx))
                 .text_color(color::selection_text(cx))
         })
-        .on_click(move |_event, _window, cx| {
-            entity.update(cx, |page, cx| {
-                page.send_prices(UnitPricesEvent::Select(week), cx);
-            });
-        })
+        .on_click(clicks.send(UnitPricesEvent::Select(week)))
         .child(cells)
 }
