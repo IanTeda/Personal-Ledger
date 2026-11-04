@@ -397,9 +397,15 @@ pub(super) enum FilterClick {
     Option(FilterField, usize),
 }
 
+/// Reached by clicks only (a key goes through the inherent `send`). A tab click also clears the
+/// status line after its event, as the key that switches tabs does.
 impl PresenterPage<BillsPageEvent> for BillsPage {
     fn send(&mut self, event: BillsPageEvent, cx: &mut Context<'_, Self>) {
+        let show_tab = matches!(event, BillsPageEvent::ShowTab(_));
         Self::send(self, event, cx);
+        if show_tab {
+            cx.emit(ViewEvent::SetStatus(None));
+        }
     }
 }
 
@@ -415,7 +421,6 @@ impl PresenterPage<FilterClick> for BillsPage {
 impl Render for BillsPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let clicks = PageClicks::new(cx);
-        let entity = cx.entity();
         let view = self.view_model();
         let cx: &App = cx;
         let (meta, body) = match view.tab {
@@ -443,7 +448,7 @@ impl Render for BillsPage {
                 clicks.send(BillsPageEvent::New),
                 cx,
             ))
-            .child(tab_row(&view, &clicks, &entity, cx))
+            .child(tab_row(&view, &clicks, cx))
             .child(
                 div()
                     .h(px(2.0))
@@ -505,7 +510,6 @@ fn page_header(
 fn tab_row(
     view: &BillsPageViewModel,
     clicks: &PageClicks<BillsPage>,
-    entity: &Entity<BillsPage>,
     cx: &App,
 ) -> impl IntoElement {
     div()
@@ -515,14 +519,7 @@ fn tab_row(
             let id = tab.tab;
             // A click isn't a key, so the Shell keeps the status line through it: the tab clears
             // a message about the tab it leaves, as the key that switches tabs does.
-            let send = clicks.send(BillsPageEvent::ShowTab(id));
-            let on_click = {
-                let entity = entity.clone();
-                move |event: &gpui::ClickEvent, window: &mut Window, cx: &mut App| {
-                    send(event, window, cx);
-                    entity.update(cx, |_, cx| cx.emit(ViewEvent::SetStatus(None)));
-                }
-            };
+            let on_click = clicks.send(BillsPageEvent::ShowTab(id));
             let hover = color::hover(cx);
             div()
                 .id(SharedString::from(format!("bills-tab-{id:?}")))

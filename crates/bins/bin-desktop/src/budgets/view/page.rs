@@ -309,16 +309,21 @@ impl BudgetsPage {
     }
 }
 
+/// Reached by clicks only (a key goes through the inherent `send`). A tab click also clears the
+/// status line after its event, as the key that switches tabs does.
 impl PresenterPage<BudgetsPageEvent> for BudgetsPage {
     fn send(&mut self, event: BudgetsPageEvent, cx: &mut Context<'_, Self>) {
+        let show_tab = matches!(event, BudgetsPageEvent::ShowTab(_));
         Self::send(self, event, cx);
+        if show_tab {
+            cx.emit(ViewEvent::SetStatus(None));
+        }
     }
 }
 
 impl Render for BudgetsPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let clicks = PageClicks::new(cx);
-        let entity = cx.entity();
         let view = self.view_model();
         let cx: &App = cx;
         let page = div()
@@ -341,7 +346,7 @@ impl Render for BudgetsPage {
         page.px(px(28.0))
             .py(px(22.0))
             .child(page_header(header, view.tab, &clicks, cx))
-            .child(tab_row(&view, &clicks, &entity, cx))
+            .child(tab_row(&view, &clicks, cx))
             .child(
                 div()
                     .h(px(2.0))
@@ -490,7 +495,6 @@ fn meta_line(clauses: &[Vec<lib_locale::Segment>], cx: &App) -> impl IntoElement
 fn tab_row(
     view: &BudgetsPageViewModel,
     clicks: &PageClicks<BudgetsPage>,
-    entity: &Entity<BudgetsPage>,
     cx: &App,
 ) -> impl IntoElement {
     let (previous, next) = match view.tab {
@@ -514,14 +518,7 @@ fn tab_row(
             let id = tab.tab;
             // A click isn't a key, so the Shell keeps the status line through it: the tab clears
             // a message about the tab it leaves, as the key that switches tabs does.
-            let send = clicks.send(BudgetsPageEvent::ShowTab(id));
-            let on_click = {
-                let entity = entity.clone();
-                move |event: &gpui::ClickEvent, window: &mut Window, cx: &mut App| {
-                    send(event, window, cx);
-                    entity.update(cx, |_, cx| cx.emit(ViewEvent::SetStatus(None)));
-                }
-            };
+            let on_click = clicks.send(BudgetsPageEvent::ShowTab(id));
             let hover = color::hover(cx);
             div()
                 .id(SharedString::from(format!("budgets-tab-{id:?}")))
