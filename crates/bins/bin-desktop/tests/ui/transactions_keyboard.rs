@@ -185,6 +185,25 @@ fn typing_a_payee_and_pressing_enter_applies_the_filter(app: &mut TestAppContext
 }
 
 #[gpui::test]
+fn j_and_k_type_into_the_payee_field_rather_than_stepping(app: &mut TestAppContext) {
+    let mut ui = on_transactions(app);
+    let all = ui.transactions().visible;
+    ui.press("f tab tab j k");
+
+    let typing = ui.transactions();
+    assert_eq!(typing.filter_focus.as_deref(), Some("Payee"));
+
+    ui.press("enter");
+    let page = ui.transactions();
+    assert!(!page.filter_open);
+    assert_eq!(
+        page.visible, 0,
+        "no payee contains `jk`, so the typed letters filter every row out"
+    );
+    assert!(all > 0);
+}
+
+#[gpui::test]
 fn the_status_control_steps_with_right_and_left(app: &mut TestAppContext) {
     let mut ui = on_transactions(app);
     // Account, Category, Payee, Tag, From, To, then Status.

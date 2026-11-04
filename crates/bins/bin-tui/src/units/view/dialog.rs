@@ -104,11 +104,9 @@ impl Dialog {
         keymap: &Keymap<DialogCommand>,
         router: &mut dyn DialogRouter<UnitsOutcome>,
     ) {
-        // No Units Dialog steps a list, so the list step's letters type.
         let form = chord(key)
             .and_then(|chord| keymap.event(&chord))
-            .filter(|command| !command.is_list_step())
-            .map(FormKey::from);
+            .and_then(form_key);
         match self {
             Self::UnitForm(presenter) => {
                 if let Some(event) = unit_form_event(&presenter.view_model(), form, key) {
@@ -411,17 +409,18 @@ enum FormKey {
     Step(isize),
 }
 
-impl From<DialogCommand> for FormKey {
-    fn from(command: DialogCommand) -> Self {
-        match command {
-            DialogCommand::Back => Self::Cancel,
-            DialogCommand::Select | DialogCommand::Submit => Self::Confirm,
-            DialogCommand::NextField => Self::Next,
-            DialogCommand::PreviousField => Self::Prev,
-            DialogCommand::SelectNext | DialogCommand::ListNext => Self::Step(1),
-            DialogCommand::SelectPrevious | DialogCommand::ListPrevious => Self::Step(-1),
-        }
-    }
+/// The form key a Dialog keymap command means, or `None` for a list step: no Units Dialog steps a
+/// list, so its letters type into the focused text field instead.
+fn form_key(command: DialogCommand) -> Option<FormKey> {
+    Some(match command {
+        DialogCommand::Back => FormKey::Cancel,
+        DialogCommand::Select | DialogCommand::Submit => FormKey::Confirm,
+        DialogCommand::NextField => FormKey::Next,
+        DialogCommand::PreviousField => FormKey::Prev,
+        DialogCommand::SelectNext => FormKey::Step(1),
+        DialogCommand::SelectPrevious => FormKey::Step(-1),
+        DialogCommand::ListNext | DialogCommand::ListPrevious => return None,
+    })
 }
 
 /// How far a select steps: by the Dialog keymap's command, or for a key it doesn't bind, by an
