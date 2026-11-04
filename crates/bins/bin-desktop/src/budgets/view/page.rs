@@ -10,8 +10,6 @@
 //! the Shell ([`BudgetsPage::key_ahead`]) and turns into a cell event; `esc` comes back as
 //! [`BudgetsPage::escape`].
 
-use std::rc::Rc;
-
 use gpui::{
     AnyElement, App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, SharedString,
     Subscription, Window, div, prelude::*, px,
@@ -26,12 +24,13 @@ use lib_ledger::Domain;
 use lib_locale::format::upper;
 use lib_viper::keymap::Keymap;
 
-use super::{OnPlainClick, history, plan, progress};
+use super::{history, plan, progress};
 use crate::budgets::ports::{self, DesktopPorts};
 use crate::budgets::router::PageRouter;
 use crate::ledger_store::{LedgerChanged, LedgerStore};
 use crate::navigation::movement::Movement;
 use crate::navigation::nav::Noun;
+use crate::shell::view::page_clicks::{PageClicks, PresenterPage};
 use crate::shell::view::statusline::PageStatus;
 use crate::theme::color;
 use crate::view::event::{Reveal, ViewEvent, ViewMode};
@@ -109,7 +108,7 @@ impl BudgetsPage {
 
     /// A key or click on the page, or the Shell telling it something: `event` as one input,
     /// committed once it is handled.
-    pub(in crate::budgets) fn send(&mut self, event: BudgetsPageEvent, cx: &mut Context<'_, Self>) {
+    fn send(&mut self, event: BudgetsPageEvent, cx: &mut Context<'_, Self>) {
         crate::input::send(cx, |cx| self.handle(event, cx));
     }
 
@@ -310,17 +309,15 @@ impl BudgetsPage {
     }
 }
 
-/// A click that sends `event` to the page.
-pub(super) fn on_event(entity: &Entity<BudgetsPage>, event: BudgetsPageEvent) -> OnPlainClick {
-    let entity = entity.clone();
-    Rc::new(move |_window, cx| {
-        let event = event.clone();
-        entity.update(cx, |page, cx| page.send(event, cx));
-    })
+impl PresenterPage<BudgetsPageEvent> for BudgetsPage {
+    fn send(&mut self, event: BudgetsPageEvent, cx: &mut Context<'_, Self>) {
+        Self::send(self, event, cx);
+    }
 }
 
 impl Render for BudgetsPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+        let clicks = PageClicks::new(cx);
         let entity = cx.entity();
         let view = self.view_model();
         let cx: &App = cx;
@@ -336,15 +333,15 @@ impl Render for BudgetsPage {
             return page.child(placeholder::render(Noun::Budgets, cx));
         };
         let body = match &view.body {
-            TabBody::Progress(progress) => progress::render(progress, &entity, cx),
-            TabBody::Plan(plan) => plan::render(plan, &entity, cx),
-            TabBody::History(history) => history::render(history, &entity, cx),
+            TabBody::Progress(progress) => progress::render(progress, &clicks, cx),
+            TabBody::Plan(plan) => plan::render(plan, &clicks, cx),
+            TabBody::History(history) => history::render(history, &clicks, cx),
             TabBody::Gone => div().into_any_element(),
         };
         page.px(px(28.0))
             .py(px(22.0))
-            .child(page_header(header, view.tab, &entity, cx))
-            .child(tab_row(&view, &entity, cx))
+            .child(page_header(header, view.tab, &clicks, cx))
+            .child(tab_row(&view, &clicks, &entity, cx))
             .child(
                 div()
                     .h(px(2.0))
@@ -361,12 +358,12 @@ impl Render for BudgetsPage {
 fn page_header(
     header: &HeaderView,
     tab: BudgetsTab,
-    entity: &Entity<BudgetsPage>,
+    clicks: &PageClicks<BudgetsPage>,
     cx: &App,
 ) -> impl IntoElement {
     let hover = color::muted(cx);
-    let on_title = on_event(entity, BudgetsPageEvent::Switch);
-    let on_action = on_event(entity, header.action_event.clone());
+    let on_title = clicks.send(BudgetsPageEvent::Switch);
+    let on_action = clicks.send(header.action_event.clone());
     div()
         .flex()
         .items_end()
@@ -383,7 +380,7 @@ fn page_header(
                         .id("budgets-title")
                         .debug_selector(|| "budgets-title".to_string())
                         .cursor_pointer()
-                        .on_click(move |_event, window, cx| on_title(window, cx))
+                        .on_click(on_title)
                         .flex()
                         .items_center()
                         .gap(px(10.0))
@@ -405,7 +402,7 @@ fn page_header(
                 .child(meta_line(&header.meta, cx)),
         )
         .when_some(header.fill.clone(), |this, fill| {
-            let on_fill = on_event(entity, BudgetsPageEvent::Plan(PlanEvent::Fill));
+            let on_fill = clicks.send(BudgetsPageEvent::Plan(PlanEvent::Fill));
             let hover = color::hover(cx);
             this.child(div().flex_1()).child(
                 div()
@@ -420,7 +417,7 @@ fn page_header(
                     .font_weight(gpui::FontWeight::EXTRA_BOLD)
                     .whitespace_nowrap()
                     .hover(move |style| style.bg(hover))
-                    .on_click(move |_event, window, cx| on_fill(window, cx))
+                    .on_click(on_fill)
                     .child(fill),
             )
         })
@@ -437,7 +434,7 @@ fn page_header(
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .whitespace_nowrap()
                 .hover(move |style| style.bg(hover))
-                .on_click(move |_event, window, cx| on_action(window, cx))
+                .on_click(on_action)
                 .child(header.action.clone()),
         )
         // The tab is part of what a click on the action means, so a test can tell them apart.
@@ -492,6 +489,7 @@ fn meta_line(clauses: &[Vec<lib_locale::Segment>], cx: &App) -> impl IntoElement
 /// at the right.
 fn tab_row(
     view: &BudgetsPageViewModel,
+    clicks: &PageClicks<BudgetsPage>,
     entity: &Entity<BudgetsPage>,
     cx: &App,
 ) -> impl IntoElement {
@@ -516,14 +514,13 @@ fn tab_row(
             let id = tab.tab;
             // A click isn't a key, so the Shell keeps the status line through it: the tab clears
             // a message about the tab it leaves, as the key that switches tabs does.
-            let on_click: OnPlainClick = {
+            let send = clicks.send(BudgetsPageEvent::ShowTab(id));
+            let on_click = {
                 let entity = entity.clone();
-                Rc::new(move |_window, cx| {
-                    entity.update(cx, |page, cx| {
-                        page.send(BudgetsPageEvent::ShowTab(id), cx);
-                        cx.emit(ViewEvent::SetStatus(None));
-                    });
-                })
+                move |event: &gpui::ClickEvent, window: &mut Window, cx: &mut App| {
+                    send(event, window, cx);
+                    entity.update(cx, |_, cx| cx.emit(ViewEvent::SetStatus(None)));
+                }
             };
             let hover = color::hover(cx);
             div()
@@ -541,7 +538,7 @@ fn tab_row(
                     this.text_color(color::muted(cx))
                         .hover(move |style| style.bg(hover))
                 })
-                .on_click(move |_event, window, cx| on_click(window, cx))
+                .on_click(on_click)
                 .child(tab.label.clone())
         }))
         .when_some(
@@ -554,15 +551,23 @@ fn tab_row(
         .child(div().flex_1())
         .child(period_nav(
             view.nav.clone(),
-            on_event(entity, previous),
-            on_event(entity, next),
+            clicks.send(previous),
+            clicks.send(next),
             cx,
         ))
 }
 
+/// A period arrow's click, boxed so the two arrows share one builder.
+type ArrowClick = Box<dyn Fn(&gpui::ClickEvent, &mut Window, &mut App)>;
+
 /// `‹ Sep 2026 ›`, or the Plan's `‹ Jul – Dec 2026 ›`.
-fn period_nav(label: String, on_prev: OnPlainClick, on_next: OnPlainClick, cx: &App) -> AnyElement {
-    let arrow = |id: &'static str, glyph: &'static str, on_click: OnPlainClick| {
+fn period_nav(
+    label: String,
+    on_prev: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
+    on_next: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
+    cx: &App,
+) -> AnyElement {
+    let arrow = |id: &'static str, glyph: &'static str, on_click: ArrowClick| {
         let hover = color::foreground(cx);
         div()
             .id(id)
@@ -571,7 +576,7 @@ fn period_nav(label: String, on_prev: OnPlainClick, on_next: OnPlainClick, cx: &
             .px(px(8.0))
             .text_color(color::muted(cx))
             .hover(move |style| style.text_color(hover))
-            .on_click(move |_event, window, cx| on_click(window, cx))
+            .on_click(on_click)
             .child(glyph)
     };
     div()
@@ -579,7 +584,7 @@ fn period_nav(label: String, on_prev: OnPlainClick, on_next: OnPlainClick, cx: &
         .items_center()
         .gap(px(4.0))
         .text_size(px(12.0))
-        .child(arrow("budgets-period-prev", "\u{2039}", on_prev))
+        .child(arrow("budgets-period-prev", "\u{2039}", Box::new(on_prev)))
         .child(
             div()
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
@@ -587,6 +592,6 @@ fn period_nav(label: String, on_prev: OnPlainClick, on_next: OnPlainClick, cx: &
                 .whitespace_nowrap()
                 .child(label),
         )
-        .child(arrow("budgets-period-next", "\u{203a}", on_next))
+        .child(arrow("budgets-period-next", "\u{203a}", Box::new(on_next)))
         .into_any_element()
 }

@@ -7,11 +7,3 @@ pub mod page;
 mod planner;
 mod schedule;
 pub mod snapshot;
-
-use std::rc::Rc;
-
-use gpui::{App, Window};
-
-pub type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
-/// Called with a row's position in the tab's rows as its view model lists them.
-pub type OnRowClick = Rc<dyn Fn(usize, &mut Window, &mut App)>;

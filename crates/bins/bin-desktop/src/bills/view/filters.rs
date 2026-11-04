@@ -3,27 +3,17 @@
 //! Account selects, and the Last paid / Average / Same period last year figures while scoped to
 //! one Bill Plan. The selects are the dialogs' shared dropdown, opening inline beneath the row.
 
-use std::rc::Rc;
+use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
+use lib_bills::presenter::{
+    BillsPageEvent, ChipView, FilterField, FiltersView, ScheduleEvent, StatsView,
+};
 
-use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
-use lib_bills::BillStatus;
-use lib_bills::presenter::{ChipView, FilterField, FiltersView, StatsView};
-
+use super::page::{BillsPage, FilterClick};
 use crate::form::select::SelectState;
 use crate::form::select_field::{self, SelectFieldProps};
 use crate::form::viper::labels;
+use crate::shell::view::page_clicks::PageClicks;
 use crate::theme::color;
-
-pub(super) type OnChipClick = Rc<dyn Fn(BillStatus, &mut Window, &mut App)>;
-/// Called with a select's field and the chosen option's index.
-pub(super) type OnOptionClick = Rc<dyn Fn(FilterField, usize, &mut Window, &mut App)>;
-pub(super) type OnFieldClick = Rc<dyn Fn(FilterField, &mut Window, &mut App)>;
-
-pub(super) struct Handlers {
-    pub on_chip_click: OnChipClick,
-    pub on_field_click: OnFieldClick,
-    pub on_option_click: OnOptionClick,
-}
 
 const SELECT_WIDTH: gpui::Pixels = px(180.0);
 
@@ -41,13 +31,13 @@ pub(super) fn render(
     view: &FiltersView,
     stats: Option<&StatsView>,
     states: &[SelectState],
-    handlers: Handlers,
+    clicks: &PageClicks<BillsPage>,
     cx: &App,
 ) -> AnyElement {
     div()
         .flex()
         .flex_col()
-        .child(filter_row(view, states, handlers, cx))
+        .child(filter_row(view, states, clicks, cx))
         .children(stats.map(|stats| stat_callout(stats, cx)))
         .into_any_element()
 }
@@ -55,7 +45,7 @@ pub(super) fn render(
 fn filter_row(
     view: &FiltersView,
     states: &[SelectState],
-    handlers: Handlers,
+    clicks: &PageClicks<BillsPage>,
     cx: &App,
 ) -> impl IntoElement {
     div()
@@ -68,7 +58,7 @@ fn filter_row(
             view.chips
                 .iter()
                 .enumerate()
-                .map(|(index, chip_view)| chip(index, chip_view, &handlers.on_chip_click, cx)),
+                .map(|(index, chip_view)| chip(index, chip_view, clicks, cx)),
         )
         .child(
             div()
@@ -80,8 +70,6 @@ fn filter_row(
         )
         .children(view.selects.iter().zip(states).map(|(select, state)| {
             let field = select.field;
-            let on_field_click = handlers.on_field_click.clone();
-            let on_option_click = handlers.on_option_click.clone();
             let options = labels(&select.view);
             div()
                 .w(SELECT_WIDTH)
@@ -95,12 +83,9 @@ fn filter_row(
                         focused: select.view.focused,
                         accent: select.accent,
                         read_only: None,
-                        on_field_click: Rc::new(move |window, cx| {
-                            on_field_click(field, window, cx)
-                        }),
-                        on_option_click: Rc::new(move |index, window, cx| {
-                            on_option_click(field, index, window, cx)
-                        }),
+                        on_field_click: clicks.click(FilterClick::Field(field)),
+                        on_option_click: clicks
+                            .option(move |index| FilterClick::Option(field, index)),
                     },
                     cx,
                 ))
@@ -108,9 +93,10 @@ fn filter_row(
 }
 
 /// A status chip: dark and `✓`-marked while on, outlined while off.
-fn chip(index: usize, view: &ChipView, on_click: &OnChipClick, cx: &App) -> AnyElement {
-    let on_click = on_click.clone();
-    let status = view.status;
+fn chip(index: usize, view: &ChipView, clicks: &PageClicks<BillsPage>, cx: &App) -> AnyElement {
+    let on_click = clicks.send(BillsPageEvent::Schedule(ScheduleEvent::ToggleChip(
+        view.status,
+    )));
     let hover = color::hover(cx);
     let label = view.label.clone();
     div()
@@ -135,7 +121,7 @@ fn chip(index: usize, view: &ChipView, on_click: &OnChipClick, cx: &App) -> AnyE
                 .hover(move |style| style.bg(hover))
                 .child(label.clone())
         })
-        .on_click(move |_event, window, cx| on_click(status, window, cx))
+        .on_click(on_click)
         .into_any_element()
 }
 

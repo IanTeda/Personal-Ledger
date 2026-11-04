@@ -6,21 +6,25 @@
 //! header is filled, and the cursor cell inverts. The cell being typed into shows its text with a
 //! caret inside an accent border.
 
-use gpui::{AnyElement, App, Entity, SharedString, div, prelude::*, px};
+use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use lib_budgets::PLAN_ROLLOVER_COLUMN;
 use lib_budgets::presenter::{
     BudgetsPageEvent, PlanCellView, PlanEvent, PlanFooterView, PlanRowView, PlanViewModel,
 };
 use lib_locale::format::upper;
 
-use super::on_event;
 use super::page::BudgetsPage;
+use crate::shell::view::page_clicks::PageClicks;
 use crate::theme::color;
 
 const MONTH_WIDTH: gpui::Pixels = px(92.0);
 const ROLLOVER_WIDTH: gpui::Pixels = px(150.0);
 
-pub(super) fn render(view: &PlanViewModel, entity: &Entity<BudgetsPage>, cx: &App) -> AnyElement {
+pub(super) fn render(
+    view: &PlanViewModel,
+    clicks: &PageClicks<BudgetsPage>,
+    cx: &App,
+) -> AnyElement {
     if let Some(empty) = &view.empty {
         return div()
             .text_color(color::muted(cx))
@@ -30,7 +34,7 @@ pub(super) fn render(view: &PlanViewModel, entity: &Entity<BudgetsPage>, cx: &Ap
     let mut body: Vec<AnyElement> = Vec::new();
     for section in &view.sections {
         body.push(section_label(&section.label, cx));
-        body.extend(section.rows.iter().map(|row| render_row(row, entity, cx)));
+        body.extend(section.rows.iter().map(|row| render_row(row, clicks, cx)));
     }
     div()
         .flex()
@@ -97,7 +101,7 @@ fn section_label(label: &str, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-fn render_row(row: &PlanRowView, entity: &Entity<BudgetsPage>, cx: &App) -> AnyElement {
+fn render_row(row: &PlanRowView, clicks: &PageClicks<BudgetsPage>, cx: &App) -> AnyElement {
     let index = row.index;
     div()
         .flex()
@@ -120,9 +124,9 @@ fn render_row(row: &PlanRowView, entity: &Entity<BudgetsPage>, cx: &App) -> AnyE
             row.cells
                 .iter()
                 .enumerate()
-                .map(|(column, cell)| render_cell(index, column, cell, entity, cx)),
+                .map(|(column, cell)| render_cell(index, column, cell, clicks, cx)),
         )
-        .child(rollover_cell(index, &row.rollover, entity, cx))
+        .child(rollover_cell(index, &row.rollover, clicks, cx))
         .into_any_element()
 }
 
@@ -130,13 +134,10 @@ fn render_cell(
     index: usize,
     column: usize,
     cell: &PlanCellView,
-    entity: &Entity<BudgetsPage>,
+    clicks: &PageClicks<BudgetsPage>,
     cx: &App,
 ) -> AnyElement {
-    let on_click = on_event(
-        entity,
-        BudgetsPageEvent::Plan(PlanEvent::ClickCell(index, column)),
-    );
+    let on_click = clicks.send(BudgetsPageEvent::Plan(PlanEvent::ClickCell(index, column)));
     let base = div()
         .id(SharedString::from(format!("budgets-plan-{index}-{column}")))
         .debug_selector(move || format!("budgets-plan-{index}-{column}"))
@@ -146,7 +147,7 @@ fn render_cell(
         .px(px(6.0))
         .text_align(gpui::TextAlign::Right)
         .cursor_pointer()
-        .on_click(move |_event, window, cx| on_click(window, cx));
+        .on_click(on_click);
     if cell.editing {
         return base
             .border_2()
@@ -172,13 +173,13 @@ fn render_cell(
 fn rollover_cell(
     index: usize,
     cell: &PlanCellView,
-    entity: &Entity<BudgetsPage>,
+    clicks: &PageClicks<BudgetsPage>,
     cx: &App,
 ) -> AnyElement {
-    let on_click = on_event(
-        entity,
-        BudgetsPageEvent::Plan(PlanEvent::ClickCell(index, PLAN_ROLLOVER_COLUMN)),
-    );
+    let on_click = clicks.send(BudgetsPageEvent::Plan(PlanEvent::ClickCell(
+        index,
+        PLAN_ROLLOVER_COLUMN,
+    )));
     div()
         .id(SharedString::from(format!("budgets-plan-{index}-rollover")))
         .debug_selector(move || format!("budgets-plan-{index}-rollover"))
@@ -193,7 +194,7 @@ fn rollover_cell(
             this.bg(color::selection_background(cx))
                 .text_color(color::selection_text(cx))
         })
-        .on_click(move |_event, window, cx| on_click(window, cx))
+        .on_click(on_click)
         .child(cell.text.clone())
         .into_any_element()
 }

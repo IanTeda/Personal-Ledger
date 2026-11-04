@@ -8,7 +8,6 @@
 //! while one has focus, `j`/`k` and `Enter` drive it instead of the rows.
 
 use crate::navigation::nav::NounLabel;
-use std::rc::Rc;
 
 use gpui::{
     AnyElement, App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, SharedString,
@@ -25,21 +24,22 @@ use lib_list_cursor::Step;
 use lib_viper::keymap::Keymap;
 use lib_viper::view::SelectView;
 
-use super::{OnPlainClick, OnRowClick, filters, planner, schedule};
+use super::{planner, schedule};
 use crate::bills::ports::{self, DesktopPorts};
 use crate::bills::router::PageRouter;
 use crate::form::select::SelectState;
 use crate::form::viper::{choose_option, select_key, synced, toggle_select};
 use crate::ledger_store::{LedgerChanged, LedgerStore};
 use crate::navigation::{movement::Movement, nav::Noun};
-use crate::settings::display::StatusGlyphs;
 use crate::shell::view::dialog_host::DialogKey;
+use crate::shell::view::page_clicks::{PageClicks, PresenterPage};
 use crate::view::help::HelpGroup;
 use crate::{
     shell::view::statusline::PageStatus,
     theme::color,
     view::event::{Reveal, ViewEvent},
 };
+use lib_viper::display::StatusGlyphs;
 
 impl EventEmitter<ViewEvent> for BillsPage {}
 
@@ -52,8 +52,6 @@ pub struct BillsPage {
     payments: SharedPayments,
     ledger: Entity<LedgerStore>,
     keymap: Keymap<BillsPageEvent>,
-    /// The status glyphs Display Preference, which flags a row in Needs Attention.
-    glyphs: StatusGlyphs,
     /// The page's own scroll, reset as it becomes the destination and as its tab changes.
     scroll: ScrollHandle,
     /// The focused scope select and its open list and highlight.
@@ -95,7 +93,6 @@ impl BillsPage {
             payments,
             ledger,
             keymap,
-            glyphs: StatusGlyphs::default(),
             scroll: ScrollHandle::new(),
             filter_select: None,
             _ledger_changed,
@@ -104,7 +101,7 @@ impl BillsPage {
 
     /// A key or click on the page, or the page being entered: `event` as one input, committed
     /// once it is handled.
-    pub(in crate::bills) fn send(&mut self, event: BillsPageEvent, cx: &mut Context<'_, Self>) {
+    fn send(&mut self, event: BillsPageEvent, cx: &mut Context<'_, Self>) {
         crate::input::send(cx, |cx| self.handle(event, cx));
     }
 
@@ -344,8 +341,10 @@ impl BillsPage {
         glyphs: StatusGlyphs,
         cx: &mut Context<'_, Self>,
     ) {
-        self.glyphs = glyphs;
-        self.send(BillsPageEvent::SetDateStyle(date_style), cx);
+        crate::input::send(cx, |cx| {
+            self.handle(BillsPageEvent::DisplayChanged { glyphs }, cx);
+            self.handle(BillsPageEvent::SetDateStyle(date_style), cx);
+        });
     }
 
     /// The status line's hints and right-hand text for the tab shown.
@@ -390,89 +389,43 @@ impl BillsPage {
     }
 }
 
-/// A click that sends `event` to the page.
-fn on_event(entity: &Entity<BillsPage>, event: BillsPageEvent) -> OnPlainClick {
-    let entity = entity.clone();
-    Rc::new(move |_window, cx| {
-        let event = event.clone();
-        entity.update(cx, |page, cx| page.send(event, cx));
-    })
+/// A click on a scope select, which is the page's widget state as much as an event: the field
+/// focuses and toggles its list, and an option closes it with the choice.
+#[derive(Debug, Clone, Copy)]
+pub(super) enum FilterClick {
+    Field(FilterField),
+    Option(FilterField, usize),
 }
 
-/// A row click that sends `make(index)` to the page.
-fn on_row(entity: &Entity<BillsPage>, make: fn(usize) -> BillsPageEvent) -> OnRowClick {
-    let entity = entity.clone();
-    Rc::new(move |index, _window, cx| {
-        entity.update(cx, |page, cx| page.send(make(index), cx));
-    })
+impl PresenterPage<BillsPageEvent> for BillsPage {
+    fn send(&mut self, event: BillsPageEvent, cx: &mut Context<'_, Self>) {
+        Self::send(self, event, cx);
+    }
+}
+
+impl PresenterPage<FilterClick> for BillsPage {
+    fn send(&mut self, click: FilterClick, cx: &mut Context<'_, Self>) {
+        match click {
+            FilterClick::Field(field) => self.click_filter_field(field, cx),
+            FilterClick::Option(field, index) => self.click_filter_option(field, index, cx),
+        }
+    }
 }
 
 impl Render for BillsPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+        let clicks = PageClicks::new(cx);
         let entity = cx.entity();
         let view = self.view_model();
-        let schedule_handlers = schedule::Handlers {
-            on_row_click: on_row(&entity, |i| {
-                BillsPageEvent::Schedule(ScheduleEvent::Select(i))
-            }),
-            on_pay_click: on_row(&entity, |i| {
-                BillsPageEvent::Schedule(ScheduleEvent::PayRow(i))
-            }),
-            on_skip_click: on_row(&entity, |i| {
-                BillsPageEvent::Schedule(ScheduleEvent::SkipRow(i))
-            }),
-            on_view_transaction_click: on_row(&entity, |i| {
-                BillsPageEvent::Schedule(ScheduleEvent::ViewTransaction(i))
-            }),
-            filters: filters::Handlers {
-                on_chip_click: {
-                    let entity = entity.clone();
-                    Rc::new(move |status, _window, cx| {
-                        entity.update(cx, |page, cx| {
-                            page.send(
-                                BillsPageEvent::Schedule(ScheduleEvent::ToggleChip(status)),
-                                cx,
-                            );
-                        });
-                    })
-                },
-                on_field_click: {
-                    let entity = entity.clone();
-                    Rc::new(move |field, _window, cx| {
-                        entity.update(cx, |page, cx| page.click_filter_field(field, cx));
-                    })
-                },
-                on_option_click: {
-                    let entity = entity.clone();
-                    Rc::new(move |field, index, _window, cx| {
-                        entity.update(cx, |page, cx| page.click_filter_option(field, index, cx));
-                    })
-                },
-            },
-        };
-        let planner_handlers = planner::Handlers {
-            on_row_click: on_row(&entity, |i| {
-                BillsPageEvent::Planner(lib_bills::presenter::PlannerEvent::Select(i))
-            }),
-            on_edit_click: on_row(&entity, |i| {
-                BillsPageEvent::Planner(lib_bills::presenter::PlannerEvent::EditRow(i))
-            }),
-        };
         let cx: &App = cx;
         let (meta, body) = match view.tab {
             BillsTab::Schedule => (
                 schedule::meta_line(&view.schedule.meta, cx),
-                schedule::render(
-                    &view.schedule,
-                    &self.filter_states(&view),
-                    self.glyphs,
-                    schedule_handlers,
-                    cx,
-                ),
+                schedule::render(&view.schedule, &self.filter_states(&view), &clicks, cx),
             ),
             BillsTab::Planner => (
                 planner::meta_line(&view.planner, cx),
-                planner::render(&view.planner, planner_handlers, cx),
+                planner::render(&view.planner, &clicks, cx),
             ),
         };
         div()
@@ -487,10 +440,10 @@ impl Render for BillsPage {
             .child(page_header(
                 meta,
                 &view.add_button,
-                on_event(&entity, BillsPageEvent::New),
+                clicks.send(BillsPageEvent::New),
                 cx,
             ))
-            .child(tab_row(&view, &entity, cx))
+            .child(tab_row(&view, &clicks, &entity, cx))
             .child(
                 div()
                     .h(px(2.0))
@@ -505,7 +458,7 @@ impl Render for BillsPage {
 fn page_header(
     meta: AnyElement,
     add_button: &str,
-    on_add_click: OnPlainClick,
+    on_add_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> impl IntoElement {
     let hover = color::muted(cx);
@@ -542,14 +495,19 @@ fn page_header(
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .whitespace_nowrap()
                 .hover(move |style| style.bg(hover))
-                .on_click(move |_event, window, cx| on_add_click(window, cx))
+                .on_click(on_add_click)
                 .child(add_button.to_string()),
         )
 }
 
 /// The handoff's tab switcher: the active tab a dark filled cell, the rest plain text; the period
 /// nav at the right on the Schedule tab only.
-fn tab_row(view: &BillsPageViewModel, entity: &Entity<BillsPage>, cx: &App) -> impl IntoElement {
+fn tab_row(
+    view: &BillsPageViewModel,
+    clicks: &PageClicks<BillsPage>,
+    entity: &Entity<BillsPage>,
+    cx: &App,
+) -> impl IntoElement {
     div()
         .flex()
         .items_center()
@@ -557,14 +515,13 @@ fn tab_row(view: &BillsPageViewModel, entity: &Entity<BillsPage>, cx: &App) -> i
             let id = tab.tab;
             // A click isn't a key, so the Shell keeps the status line through it: the tab clears
             // a message about the tab it leaves, as the key that switches tabs does.
-            let on_click: OnPlainClick = {
+            let send = clicks.send(BillsPageEvent::ShowTab(id));
+            let on_click = {
                 let entity = entity.clone();
-                Rc::new(move |_window, cx| {
-                    entity.update(cx, |page, cx| {
-                        page.send(BillsPageEvent::ShowTab(id), cx);
-                        cx.emit(ViewEvent::SetStatus(None));
-                    });
-                })
+                move |event: &gpui::ClickEvent, window: &mut Window, cx: &mut App| {
+                    send(event, window, cx);
+                    entity.update(cx, |_, cx| cx.emit(ViewEvent::SetStatus(None)));
+                }
             };
             let hover = color::hover(cx);
             div()
@@ -582,22 +539,26 @@ fn tab_row(view: &BillsPageViewModel, entity: &Entity<BillsPage>, cx: &App) -> i
                     this.text_color(color::muted(cx))
                         .hover(move |style| style.bg(hover))
                 })
-                .on_click(move |_event, window, cx| on_click(window, cx))
+                .on_click(on_click)
                 .child(tab.label.clone())
         }))
         .child(div().flex_1())
         .when(view.tab == BillsTab::Schedule, |this| {
-            this.child(period_nav(view, entity, cx))
+            this.child(period_nav(view, clicks, cx))
         })
 }
 
 /// `‹ Sep 2026 ›  All`: the arrows step the Schedule a calendar month (from All, back to the month
 /// last viewed); `All` toggles every row ever generated.
-fn period_nav(view: &BillsPageViewModel, entity: &Entity<BillsPage>, cx: &App) -> impl IntoElement {
+fn period_nav(
+    view: &BillsPageViewModel,
+    clicks: &PageClicks<BillsPage>,
+    cx: &App,
+) -> impl IntoElement {
     let schedule = &view.schedule;
     let arrow = |id: &'static str, glyph: &'static str, event: ScheduleEvent| {
         let hover = color::foreground(cx);
-        let on_click = on_event(entity, BillsPageEvent::Schedule(event));
+        let on_click = clicks.send(BillsPageEvent::Schedule(event));
         div()
             .id(id)
             .debug_selector(move || id.to_string())
@@ -605,10 +566,10 @@ fn period_nav(view: &BillsPageViewModel, entity: &Entity<BillsPage>, cx: &App) -
             .px(px(8.0))
             .text_color(color::muted(cx))
             .hover(move |style| style.text_color(hover))
-            .on_click(move |_event, window, cx| on_click(window, cx))
+            .on_click(on_click)
             .child(glyph)
     };
-    let on_all_click = on_event(entity, BillsPageEvent::Schedule(ScheduleEvent::ToggleAll));
+    let on_all_click = clicks.send(BillsPageEvent::Schedule(ScheduleEvent::ToggleAll));
     let hover = color::hover(cx);
     div()
         .flex()
@@ -656,7 +617,7 @@ fn period_nav(view: &BillsPageViewModel, entity: &Entity<BillsPage>, cx: &App) -
                         .text_color(color::muted(cx))
                         .hover(move |style| style.bg(hover))
                 })
-                .on_click(move |_event, window, cx| on_all_click(window, cx))
+                .on_click(on_all_click)
                 .child(schedule.all_label.clone()),
         )
 }

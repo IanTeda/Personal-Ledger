@@ -6,14 +6,14 @@
 //! An over-budget month or cell takes the accent; the current month is drawn outlined. A month in
 //! which a row was unbudgeted is muted. The cursor cell inverts.
 
-use gpui::{AnyElement, App, Entity, SharedString, div, prelude::*, px};
+use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use lib_budgets::presenter::{
     BudgetsPageEvent, HistoryCellView, HistoryEvent, HistoryRowView, HistoryViewModel,
 };
 use lib_locale::format::upper;
 
-use super::on_event;
 use super::page::BudgetsPage;
+use crate::shell::view::page_clicks::PageClicks;
 use crate::theme::color;
 
 const BUDGET_WIDTH: gpui::Pixels = px(92.0);
@@ -25,7 +25,7 @@ const INDENT: f32 = 16.0;
 
 pub(super) fn render(
     view: &HistoryViewModel,
-    entity: &Entity<BudgetsPage>,
+    clicks: &PageClicks<BudgetsPage>,
     cx: &App,
 ) -> AnyElement {
     if let Some(empty) = &view.empty {
@@ -39,7 +39,7 @@ pub(super) fn render(
         .flex_col()
         .gap(px(24.0))
         .child(chart(view, cx))
-        .child(table(view, entity, cx))
+        .child(table(view, clicks, cx))
         .into_any_element()
 }
 
@@ -110,7 +110,7 @@ fn chart(view: &HistoryViewModel, cx: &App) -> impl IntoElement {
         )
 }
 
-fn table(view: &HistoryViewModel, entity: &Entity<BudgetsPage>, cx: &App) -> impl IntoElement {
+fn table(view: &HistoryViewModel, clicks: &PageClicks<BudgetsPage>, cx: &App) -> impl IntoElement {
     let count = view.rows.len();
     div()
         .flex()
@@ -122,7 +122,7 @@ fn table(view: &HistoryViewModel, entity: &Entity<BudgetsPage>, cx: &App) -> imp
             view.rows
                 .iter()
                 .enumerate()
-                .map(|(index, row)| render_row(index, row, index + 1 == count, entity, cx)),
+                .map(|(index, row)| render_row(index, row, index + 1 == count, clicks, cx)),
         )
 }
 
@@ -164,7 +164,7 @@ fn render_row(
     index: usize,
     row: &HistoryRowView,
     last: bool,
-    entity: &Entity<BudgetsPage>,
+    clicks: &PageClicks<BudgetsPage>,
     cx: &App,
 ) -> AnyElement {
     let figure = |width, value: String| {
@@ -199,7 +199,7 @@ fn render_row(
             row.cells
                 .iter()
                 .enumerate()
-                .map(|(column, cell)| render_cell(index, column, cell, entity, cx)),
+                .map(|(column, cell)| render_cell(index, column, cell, clicks, cx)),
         )
         .child(figure(AVERAGE_WIDTH, row.average.clone()))
         .child(
@@ -214,13 +214,12 @@ fn render_cell(
     index: usize,
     column: usize,
     cell: &HistoryCellView,
-    entity: &Entity<BudgetsPage>,
+    clicks: &PageClicks<BudgetsPage>,
     cx: &App,
 ) -> AnyElement {
-    let on_click = on_event(
-        entity,
-        BudgetsPageEvent::History(HistoryEvent::ClickCell(index, column)),
-    );
+    let on_click = clicks.send(BudgetsPageEvent::History(HistoryEvent::ClickCell(
+        index, column,
+    )));
     div()
         .id(SharedString::from(format!(
             "budgets-history-{index}-{column}"
@@ -246,7 +245,7 @@ fn render_cell(
                     color::selection_text(cx)
                 })
         })
-        .on_click(move |_event, window, cx| on_click(window, cx))
+        .on_click(on_click)
         .child(cell.text.clone())
         .into_any_element()
 }

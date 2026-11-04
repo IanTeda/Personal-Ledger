@@ -4,24 +4,17 @@
 //! footnote, with the header's meta line. Every figure, label and action comes from the view
 //! model; this only lays it out. The selected row inverts, as in the handoff.
 
-use std::rc::Rc;
-
-use gpui::{AnyElement, App, Rgba, SharedString, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, Rgba, SharedString, div, prelude::*, px};
 use lib_bills::BillStatus;
-use lib_bills::presenter::{LineActions, MetaClause, ScheduleLine, ScheduleViewModel};
+use lib_bills::presenter::{
+    BillsPageEvent, LineActions, MetaClause, ScheduleEvent, ScheduleLine, ScheduleViewModel,
+};
 
-use super::{OnPlainClick, OnRowClick, filters};
+use super::filters;
+use super::page::BillsPage;
 use crate::form::select::SelectState;
-use crate::settings::display::StatusGlyphs;
+use crate::shell::view::page_clicks::PageClicks;
 use crate::theme::color;
-
-pub(super) struct Handlers {
-    pub on_row_click: OnRowClick,
-    pub on_pay_click: OnRowClick,
-    pub on_skip_click: OnRowClick,
-    pub on_view_transaction_click: OnRowClick,
-    pub filters: filters::Handlers,
-}
 
 const BILL_MIN_WIDTH: gpui::Pixels = px(160.0);
 const ACCOUNT_WIDTH: gpui::Pixels = px(120.0);
@@ -68,11 +61,10 @@ pub(super) fn meta_line(clauses: &[MetaClause], cx: &App) -> AnyElement {
 pub(super) fn render(
     view: &ScheduleViewModel,
     filter_states: &[SelectState],
-    glyphs: StatusGlyphs,
-    handlers: Handlers,
+    clicks: &PageClicks<BillsPage>,
     cx: &App,
 ) -> AnyElement {
-    let rows = table(view, glyphs, &handlers, cx);
+    let rows = table(view, clicks, cx);
     div()
         .flex()
         .flex_col()
@@ -80,7 +72,7 @@ pub(super) fn render(
             &view.filters,
             view.stats.as_ref(),
             filter_states,
-            handlers.filters,
+            clicks,
             cx,
         ))
         .child(rows)
@@ -101,12 +93,7 @@ pub(super) fn render(
         .into_any_element()
 }
 
-fn table(
-    view: &ScheduleViewModel,
-    glyphs: StatusGlyphs,
-    handlers: &Handlers,
-    cx: &App,
-) -> AnyElement {
+fn table(view: &ScheduleViewModel, clicks: &PageClicks<BillsPage>, cx: &App) -> AnyElement {
     if let Some(empty) = &view.empty {
         return div()
             .text_color(color::muted(cx))
@@ -124,9 +111,12 @@ fn table(
                 .border_1()
                 .border_color(color::border(cx))
                 .child(table_header(view, cx))
-                .children(view.rows.iter().enumerate().map(|(index, row)| {
-                    render_row(index, row, index == last, glyphs, handlers, cx)
-                })),
+                .children(
+                    view.rows
+                        .iter()
+                        .enumerate()
+                        .map(|(index, row)| render_row(index, row, index == last, clicks, cx)),
+                ),
         )
         .into_any_element()
 }
@@ -215,13 +205,12 @@ fn render_row(
     index: usize,
     row: &ScheduleLine,
     last: bool,
-    glyphs: StatusGlyphs,
-    handlers: &Handlers,
+    clicks: &PageClicks<BillsPage>,
     cx: &App,
 ) -> AnyElement {
     let colours = RowColours::new(row.selected, row.quiet, cx);
     let hover = color::hover(cx);
-    let on_row_click = handlers.on_row_click.clone();
+    let on_row_click = clicks.row(BillsPageEvent::Schedule(ScheduleEvent::Select(index)));
     let overdue = row.status == BillStatus::Overdue;
 
     div()
@@ -245,7 +234,7 @@ fn render_row(
         .when(!row.selected, |this| {
             this.hover(move |style| style.bg(hover))
         })
-        .on_click(move |_event, window, cx| on_row_click(index, window, cx))
+        .on_click(on_row_click)
         .child(
             div()
                 .flex_1()
@@ -319,7 +308,7 @@ fn render_row(
                 .w(STATUS_WIDTH)
                 .flex_none()
                 .flex()
-                .child(status_cell(row, &colours, glyphs, cx)),
+                .child(status_cell(row, &colours, cx)),
         )
         .child(
             div()
@@ -328,24 +317,18 @@ fn render_row(
                 .flex()
                 .justify_end()
                 .gap(px(6.0))
-                .children(actions_cell(index, row, &colours, handlers, cx)),
+                .children(actions_cell(index, row, &colours, clicks, cx)),
         )
         .into_any_element()
 }
 
 /// A row's status: a pill for Overdue (accent) and Due (neutral), flagged while in Needs
 /// Attention; plain text for the rest.
-fn status_cell(
-    row: &ScheduleLine,
-    colours: &RowColours,
-    glyphs: StatusGlyphs,
-    cx: &App,
-) -> AnyElement {
-    let flag = if row.needs_attention {
-        format!("{} ", crate::view::format::flag_glyph(glyphs))
-    } else {
-        String::new()
-    };
+fn status_cell(row: &ScheduleLine, colours: &RowColours, cx: &App) -> AnyElement {
+    let flag = row
+        .flag_glyph
+        .as_ref()
+        .map_or_else(String::new, |glyph| format!("{glyph} "));
     let pill = |background: Rgba, text: Rgba| {
         div()
             .px(px(7.0))
@@ -386,14 +369,11 @@ fn actions_cell(
     index: usize,
     row: &ScheduleLine,
     colours: &RowColours,
-    handlers: &Handlers,
+    clicks: &PageClicks<BillsPage>,
     cx: &App,
 ) -> Vec<AnyElement> {
     let id = |kind: &str| SharedString::from(format!("bills-{kind}-{index}"));
-    let bind = |handler: &OnRowClick| -> OnPlainClick {
-        let handler = handler.clone();
-        Rc::new(move |window: &mut Window, cx: &mut App| handler(index, window, cx))
-    };
+    let bind = |event: ScheduleEvent| clicks.send(BillsPageEvent::Schedule(event));
     match &row.actions {
         LineActions::PayOrSkip { pay, skip } => {
             // `pay` is the filled one; on the inverted row it flips to the light fill.
@@ -408,7 +388,7 @@ fn actions_cell(
                     pay.clone(),
                     Some((pay_background, pay_text)),
                     colours.button_border,
-                    bind(&handlers.on_pay_click),
+                    bind(ScheduleEvent::PayRow(index)),
                     cx,
                 ),
                 action_button(
@@ -416,7 +396,7 @@ fn actions_cell(
                     skip.clone(),
                     None,
                     colours.button_border,
-                    bind(&handlers.on_skip_click),
+                    bind(ScheduleEvent::SkipRow(index)),
                     cx,
                 ),
             ]
@@ -426,7 +406,7 @@ fn actions_cell(
             label.clone(),
             None,
             colours.button_border,
-            bind(&handlers.on_view_transaction_click),
+            bind(ScheduleEvent::ViewTransaction(index)),
             cx,
         )],
         LineActions::Note(note) => vec![
@@ -446,7 +426,7 @@ fn action_button(
     label: String,
     fill: Option<(Rgba, Rgba)>,
     border: Rgba,
-    on_click: OnPlainClick,
+    on_click: impl Fn(&gpui::ClickEvent, &mut gpui::Window, &mut App) + 'static,
     cx: &App,
 ) -> AnyElement {
     let hover = color::hover(cx);
@@ -471,9 +451,9 @@ fn action_button(
         .when(fill.is_none(), |this| {
             this.hover(move |style| style.bg(hover))
         })
-        .on_click(move |_event, window, cx| {
+        .on_click(move |event, window, cx| {
             cx.stop_propagation();
-            on_click(window, cx)
+            on_click(event, window, cx)
         })
         .child(label)
         .into_any_element()

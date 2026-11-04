@@ -3,16 +3,12 @@
 //! a footnote, with the header's meta line. A Plan with an Attention Lead is tinted to draw the eye
 //! to LEAD; an inactive Plan is muted throughout; the selected row inverts, as on the Schedule.
 
-use gpui::{AnyElement, App, Rgba, SharedString, Window, div, prelude::*, px};
-use lib_bills::presenter::{PlanLine, PlannerViewModel};
+use gpui::{AnyElement, App, Rgba, SharedString, div, prelude::*, px};
+use lib_bills::presenter::{BillsPageEvent, PlanLine, PlannerEvent, PlannerViewModel};
 
-use super::OnRowClick;
+use super::page::BillsPage;
+use crate::shell::view::page_clicks::PageClicks;
 use crate::theme::color;
-
-pub(super) struct Handlers {
-    pub on_row_click: OnRowClick,
-    pub on_edit_click: OnRowClick,
-}
 
 const NAME_MIN_WIDTH: gpui::Pixels = px(160.0);
 const CATEGORY_WIDTH: gpui::Pixels = px(130.0);
@@ -49,7 +45,11 @@ pub(super) fn meta_line(view: &PlannerViewModel, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-pub(super) fn render(view: &PlannerViewModel, handlers: Handlers, cx: &App) -> AnyElement {
+pub(super) fn render(
+    view: &PlannerViewModel,
+    clicks: &PageClicks<BillsPage>,
+    cx: &App,
+) -> AnyElement {
     if let Some(empty) = &view.empty {
         return div()
             .text_color(color::muted(cx))
@@ -71,7 +71,7 @@ pub(super) fn render(view: &PlannerViewModel, handlers: Handlers, cx: &App) -> A
                     view.rows
                         .iter()
                         .enumerate()
-                        .map(|(index, row)| render_row(index, row, index == last, &handlers, cx)),
+                        .map(|(index, row)| render_row(index, row, index == last, clicks, cx)),
                 ),
         )
         .child(
@@ -131,7 +131,7 @@ fn render_row(
     index: usize,
     row: &PlanLine,
     last: bool,
-    handlers: &Handlers,
+    clicks: &PageClicks<BillsPage>,
     cx: &App,
 ) -> AnyElement {
     let (text, secondary, accent, button_border): (Rgba, Rgba, Rgba, Rgba) = if row.selected {
@@ -153,8 +153,8 @@ fn render_row(
         )
     };
     let hover = color::hover(cx);
-    let on_row_click = handlers.on_row_click.clone();
-    let on_edit_click = handlers.on_edit_click.clone();
+    let on_row_click = clicks.row(BillsPageEvent::Planner(PlannerEvent::Select(index)));
+    let on_edit_click = clicks.send(BillsPageEvent::Planner(PlannerEvent::EditRow(index)));
     let edit_hover = color::hover(cx);
     let id = row.id;
 
@@ -179,7 +179,7 @@ fn render_row(
         .when(!row.selected, |this| {
             this.hover(move |style| style.bg(hover))
         })
-        .on_click(move |_event, window, cx| on_row_click(index, window, cx))
+        .on_click(on_row_click)
         .child(
             div()
                 .flex_1()
@@ -260,9 +260,9 @@ fn render_row(
                         .border_color(button_border)
                         .text_size(px(11.0))
                         .hover(move |style| style.bg(edit_hover))
-                        .on_click(move |_event, window: &mut Window, cx| {
+                        .on_click(move |event, window, cx| {
                             cx.stop_propagation();
-                            on_edit_click(index, window, cx)
+                            on_edit_click(event, window, cx)
                         })
                         .child(row.edit.clone()),
                 ),

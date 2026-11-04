@@ -10,6 +10,7 @@
 use lib_core::{BillPlanId, Clock, DateStyle, Period};
 use lib_list_cursor::Step;
 use lib_toast::Notice;
+use lib_viper::display::{StatusGlyphs, flag_glyph};
 use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
 use lib_viper::view::Hint;
 
@@ -60,6 +61,10 @@ pub enum BillsPageEvent {
     Entered,
     /// The Display Preference the Plan form's dates are typed in.
     SetDateStyle(Option<DateStyle>),
+    /// The Status glyphs Display Preference, which marks a row in Needs Attention.
+    DisplayChanged {
+        glyphs: StatusGlyphs,
+    },
     /// A hand-off from another View: an entry in the month that shows it, a Plan on the Planner,
     /// or a month of the Schedule, with no filter hiding it.
     RevealEntry(EntryId),
@@ -112,6 +117,7 @@ pub struct BillsPagePresenter {
     /// The month generation last ran for.
     generated: Period,
     date_style: Option<DateStyle>,
+    glyphs: StatusGlyphs,
 }
 
 impl BillsPagePresenter {
@@ -129,6 +135,7 @@ impl BillsPagePresenter {
             tab: BillsTab::default(),
             generated: Period::of(today),
             date_style: None,
+            glyphs: StatusGlyphs::default(),
         }
     }
 
@@ -179,6 +186,7 @@ impl BillsPagePresenter {
             }
             BillsPageEvent::Entered => {}
             BillsPageEvent::SetDateStyle(style) => self.date_style = style,
+            BillsPageEvent::DisplayChanged { glyphs } => self.glyphs = glyphs,
             // A hand-off to a row that has gone leaves the page as it was.
             BillsPageEvent::RevealEntry(id) => {
                 if self.ports.borrow().bills().entry(id).is_some() {
@@ -228,7 +236,10 @@ impl BillsPagePresenter {
     }
 
     pub fn view_model(&self) -> BillsPageViewModel {
-        let schedule = self.schedule.view_model();
+        let mut schedule = self.schedule.view_model();
+        for row in schedule.rows.iter_mut().filter(|row| row.needs_attention) {
+            row.flag_glyph = Some(flag_glyph(self.glyphs).to_string());
+        }
         let status = match self.tab {
             BillsTab::Schedule => schedule.status.clone(),
             BillsTab::Planner => self.planner.status(),
@@ -408,6 +419,41 @@ mod tests {
     }
 
     use lib_locale::format::format_month_day;
+
+    #[test]
+    fn a_row_in_needs_attention_is_flagged_in_the_status_glyphs_preference() {
+        let mut page = Page::new();
+        let flagged = |page: &Page| -> Vec<Option<String>> {
+            page.view()
+                .schedule
+                .rows
+                .iter()
+                .map(|row| row.flag_glyph.clone())
+                .collect()
+        };
+        let attention = |page: &Page| -> Vec<bool> {
+            page.view()
+                .schedule
+                .rows
+                .iter()
+                .map(|row| row.needs_attention)
+                .collect()
+        };
+        assert!(attention(&page).contains(&true));
+        let unicode: Vec<_> = attention(&page)
+            .iter()
+            .map(|on| on.then(|| "\u{2691}".to_string()))
+            .collect();
+        assert_eq!(flagged(&page), unicode);
+        page.send(BillsPageEvent::DisplayChanged {
+            glyphs: StatusGlyphs::AsciiFallback,
+        });
+        let ascii: Vec<_> = attention(&page)
+            .iter()
+            .map(|on| on.then(|| "!".to_string()))
+            .collect();
+        assert_eq!(flagged(&page), ascii);
+    }
 
     #[test]
     fn the_meta_line_counts_the_month_and_totals_it() {

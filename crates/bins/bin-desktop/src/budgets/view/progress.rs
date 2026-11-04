@@ -7,14 +7,14 @@
 //! with a 2px tick at the period's elapsed share. An over-budget bar fills in the negative colour.
 //! The selected row inverts.
 
-use gpui::{AnyElement, App, Entity, Rgba, SharedString, div, prelude::*, px, relative};
+use gpui::{AnyElement, App, Rgba, SharedString, div, prelude::*, px, relative};
 use lib_budgets::presenter::{
     BarView, BudgetsPageEvent, ProgressEvent, ProgressRow, ProgressViewModel, StatView,
 };
 use lib_locale::format::upper;
 
-use super::on_event;
 use super::page::BudgetsPage;
+use crate::shell::view::page_clicks::PageClicks;
 use crate::theme::color;
 
 const BUDGET_WIDTH: gpui::Pixels = px(96.0);
@@ -81,19 +81,19 @@ pub(super) fn legend(labels: &[String; 4], cx: &App) -> impl IntoElement {
 
 pub(super) fn render(
     view: &ProgressViewModel,
-    entity: &Entity<BudgetsPage>,
+    clicks: &PageClicks<BudgetsPage>,
     cx: &App,
 ) -> AnyElement {
     div()
         .flex()
         .flex_col()
         .gap(px(20.0))
-        .child(stat_strip(&view.stats, entity, cx))
-        .child(table(view, entity, cx))
+        .child(stat_strip(&view.stats, clicks, cx))
+        .child(table(view, clicks, cx))
         .into_any_element()
 }
 
-fn stat_strip(stats: &[StatView], entity: &Entity<BudgetsPage>, cx: &App) -> impl IntoElement {
+fn stat_strip(stats: &[StatView], clicks: &PageClicks<BudgetsPage>, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .border_2()
@@ -107,10 +107,7 @@ fn stat_strip(stats: &[StatView], entity: &Entity<BudgetsPage>, cx: &App) -> imp
                     .into_any_element()
             };
             let link = stat.link.clone().map(|link| {
-                let on_click = on_event(
-                    entity,
-                    BudgetsPageEvent::Progress(ProgressEvent::KnownCosts),
-                );
+                let on_click = clicks.send(BudgetsPageEvent::Progress(ProgressEvent::KnownCosts));
                 let hover = color::foreground(cx);
                 div()
                     .id("budgets-known-schedule")
@@ -119,7 +116,7 @@ fn stat_strip(stats: &[StatView], entity: &Entity<BudgetsPage>, cx: &App) -> imp
                     .text_size(px(11.0))
                     .font_weight(gpui::FontWeight::EXTRA_BOLD)
                     .hover(move |style| style.text_color(hover))
-                    .on_click(move |_event, window, cx| on_click(window, cx))
+                    .on_click(on_click)
                     .child(link)
                     .into_any_element()
             });
@@ -158,7 +155,7 @@ fn stat_strip(stats: &[StatView], entity: &Entity<BudgetsPage>, cx: &App) -> imp
         }))
 }
 
-fn table(view: &ProgressViewModel, entity: &Entity<BudgetsPage>, cx: &App) -> AnyElement {
+fn table(view: &ProgressViewModel, clicks: &PageClicks<BudgetsPage>, cx: &App) -> AnyElement {
     if let Some(empty) = &view.empty {
         return div()
             .text_color(color::muted(cx))
@@ -179,7 +176,7 @@ fn table(view: &ProgressViewModel, entity: &Entity<BudgetsPage>, cx: &App) -> An
                 index == last,
                 view.selected == Some(index),
                 view.elapsed,
-                entity,
+                clicks,
                 cx,
             )
         }))
@@ -286,7 +283,7 @@ fn render_row(
     last: bool,
     selected: bool,
     elapsed: f32,
-    entity: &Entity<BudgetsPage>,
+    clicks: &PageClicks<BudgetsPage>,
     cx: &App,
 ) -> AnyElement {
     let (primary, secondary, accent) = if selected {
@@ -303,14 +300,8 @@ fn render_row(
         )
     };
     let hover = color::hover(cx);
-    let on_row_click = on_event(
-        entity,
-        BudgetsPageEvent::Progress(ProgressEvent::Select(index)),
-    );
-    let on_action_click = on_event(
-        entity,
-        BudgetsPageEvent::Progress(ProgressEvent::Action(index)),
-    );
+    let on_row_click = clicks.send(BudgetsPageEvent::Progress(ProgressEvent::Select(index)));
+    let on_action_click = clicks.send(BudgetsPageEvent::Progress(ProgressEvent::Action(index)));
     let cell = |width, value: String, colour: Rgba| {
         div()
             .w(width)
@@ -366,7 +357,7 @@ fn render_row(
         .when(!last, |this| {
             this.border_b(px(1.0)).border_color(color::hairline(cx))
         })
-        .on_click(move |_event, window, cx| on_row_click(window, cx))
+        .on_click(on_row_click)
         .child(name_cell)
         .child(cell(
             BUDGET_WIDTH,
@@ -395,10 +386,10 @@ fn render_row(
                 .text_size(px(11.0))
                 .text_color(secondary)
                 .when(row.action.is_some(), |this| {
-                    this.on_click(move |_event, window, cx| {
+                    this.on_click(move |event, window, cx| {
                         // The row's own click would open the detail underneath.
                         cx.stop_propagation();
-                        on_action_click(window, cx);
+                        on_action_click(event, window, cx);
                     })
                 })
                 .child(row.action.clone().unwrap_or_default()),

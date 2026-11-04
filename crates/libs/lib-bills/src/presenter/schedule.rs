@@ -206,6 +206,9 @@ pub struct ScheduleLine {
     pub status_label: String,
     /// In Needs Attention, which flags the status.
     pub needs_attention: bool,
+    /// The Flagged mark, in the Status glyphs Preference, while in Needs Attention. The page's
+    /// Presenter fills it in; the Schedule has no Display Preferences of its own.
+    pub flag_glyph: Option<String>,
     pub actions: LineActions,
     /// Skipped or Upcoming: nothing to do, drawn faint.
     pub quiet: bool,
@@ -766,6 +769,7 @@ fn line(input: LineInput<'_>) -> ScheduleLine {
         status: row.status,
         status_label,
         needs_attention: row.needs_attention,
+        flag_glyph: None,
         actions,
         quiet: matches!(row.status, BillStatus::Skipped | BillStatus::Upcoming),
         actionable: row.is_actionable(),
