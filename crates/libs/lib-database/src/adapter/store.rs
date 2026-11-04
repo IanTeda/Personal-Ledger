@@ -30,7 +30,10 @@
 //! reads and answers the module's read ports from them, so the same struct stands over the
 //! adapters and over [`Stores::fake`]'s in-memory stores. Payees' is the pattern (#992): each
 //! store answers about its own rows in its own terms (`payee_splits`, `payee_bill_plans`), and
-//! the reads struct maps them into the reading module's.
+//! the reads struct maps them into the reading module's. A stored reads struct composes its
+//! domains' store methods; it never runs SQL across two domains' tables in one job. An atomic
+//! write across domains is a cross-domain adapter's job (`BillPaymentsAdapter` and the like), not
+//! a read's.
 //!
 //! [`Stores::fake`] takes its in-memory stores as one [`FakeStores`], so a domain joining the
 //! bundle adds a field rather than an argument (#866).
@@ -92,7 +95,6 @@ use crate::adapter::transactions::TaggedSplit;
 use crate::adapter::{
     accounts, bills, categories, institutions, inventory, payees, tags, transactions,
 };
-use crate::commit::PendingWrites;
 use crate::{
     AccountsAdapter, BillsAdapter, BudgetsAdapter, CategoriesAdapter, Commit, DocumentsAdapter,
     Domain, InMemoryCommit, InstitutionsAdapter, InventoryAdapter, PayeesAdapter, Result, Stores,
@@ -607,12 +609,6 @@ pub trait TransactionsStore {
         transactions::tag_transaction_counts(&self.all_transactions())
     }
 
-    /// The writes an adapter joins, and through them its file, so a read across this and another
-    /// domain's store can be one job on the file they share. An in-memory store has no file.
-    fn file(&self) -> Option<&PendingWrites> {
-        None
-    }
-
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
     /// # Errors
@@ -649,10 +645,6 @@ impl TransactionsStore for TransactionsAdapter {
         TransactionsAdapter::tag_transaction_counts(self)
     }
 
-    fn file(&self) -> Option<&PendingWrites> {
-        Some(TransactionsAdapter::file(self))
-    }
-
     fn reload(&mut self) -> Result<()> {
         TransactionsAdapter::reload(self)
     }
@@ -686,10 +678,6 @@ impl<T: TransactionsStore + ?Sized> TransactionsStore for Box<T> {
 
     fn tag_transaction_counts(&self) -> HashMap<TagId, usize> {
         (**self).tag_transaction_counts()
-    }
-
-    fn file(&self) -> Option<&PendingWrites> {
-        (**self).file()
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -742,12 +730,6 @@ pub trait BillsStore {
         Some(bills::payee_bill_plans(&self.plans().bill_plans(), id))
     }
 
-    /// The writes an adapter joins, and through them its file, as
-    /// [`TransactionsStore::file`]. An in-memory store has no file.
-    fn file(&self) -> Option<&PendingWrites> {
-        None
-    }
-
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
     /// # Errors
@@ -776,10 +758,6 @@ impl BillsStore for BillsAdapter {
         BillsAdapter::payee_bill_plans(self, id)
     }
 
-    fn file(&self) -> Option<&PendingWrites> {
-        Some(BillsAdapter::file(self))
-    }
-
     fn reload(&mut self) -> Result<()> {
         BillsAdapter::reload(self)
     }
@@ -805,10 +783,6 @@ impl<T: BillsStore + ?Sized> BillsStore for Box<T> {
 
     fn payee_bill_plans(&self, id: PayeeId) -> Option<usize> {
         (**self).payee_bill_plans(id)
-    }
-
-    fn file(&self) -> Option<&PendingWrites> {
-        (**self).file()
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -1359,21 +1333,15 @@ pub struct StoredPayeeReads {
 }
 
 impl PayeeUsage for StoredPayeeReads {
-    /// Unknown when either half can't be counted, never unused (#840). When both stores read one
-    /// file, both halves are counted in one job on it, one blocking round trip to the writer
-    /// rather than two; otherwise each store counts its own rows.
+    /// Unknown when either half can't be counted, never unused (#840). The two counts are made
+    /// one after the other, not from one snapshot: that is safe because every write is queued from
+    /// the UI thread, which blocks across both, and the foreign keys (`splits.payee_id`,
+    /// `bill_plans.payee_id`) back the refusal in the file.
     fn payee_usage(&self, id: PayeeId) -> Option<PayeeUse> {
-        let transactions = self.transactions.borrow();
-        let bills = self.bills.borrow();
-        match (transactions.file(), bills.file()) {
-            (Some(file), Some(other)) if file.shares_file(other) => {
-                payees::payee_usage(file.writer(), id)
-            }
-            _ => Some(PayeeUse {
-                splits: transactions.payee_splits(id)?,
-                bill_plans: bills.payee_bill_plans(id)?,
-            }),
-        }
+        Some(PayeeUse {
+            splits: self.transactions.borrow().payee_splits(id)?,
+            bill_plans: self.bills.borrow().payee_bill_plans(id)?,
+        })
     }
 }
 

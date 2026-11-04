@@ -41,13 +41,6 @@ impl PendingWrites {
         &self.writer
     }
 
-    /// Whether `other` is a clone of these writes, so both adapters read and write one file
-    /// through one writer: what lets a read across two domains' stores be one job on it, one
-    /// round trip rather than one per store.
-    pub fn shares_file(&self, other: &Self) -> bool {
-        Rc::ptr_eq(&self.changes, &other.changes)
-    }
-
     /// Adds one port write, behind those already made.
     pub fn push(&self, change: impl Change) {
         self.changes.borrow_mut().push(Box::new(change));
@@ -191,18 +184,6 @@ mod tests {
                 })
                 .expect("the notes load")
         }
-    }
-
-    #[sqlx::test(migrations = false)]
-    async fn only_a_clone_shares_the_file(_: SqlitePoolOptions, options: SqliteConnectOptions) {
-        let (writer, _failures) = Writer::spawn(options).expect("the database opens");
-        let pending = PendingWrites::new(writer.clone());
-
-        assert!(pending.shares_file(&pending.clone()));
-        assert!(
-            !pending.shares_file(&PendingWrites::new(writer)),
-            "a second batch on the same writer is another adapter set's"
-        );
     }
 
     #[sqlx::test(migrations = "migrations/client")]

@@ -196,11 +196,6 @@ impl TransactionsAdapter {
             .ok()
     }
 
-    /// The writes this adapter joins, and through them the file it reads.
-    pub(crate) fn file(&self) -> &PendingWrites {
-        &self.pending
-    }
-
     /// The Splits carrying Tag `id` in the file, blocking: what the last commit left, not a write
     /// still pending. It only feeds figures the Tags page shows, so a read that can't be made is
     /// logged and answered as none (#862).
