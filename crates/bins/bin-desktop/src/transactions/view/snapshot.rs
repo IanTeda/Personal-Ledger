@@ -25,6 +25,8 @@ pub struct TransactionsSnapshot {
     pub selected: usize,
     /// The PAYEE cell of every visible row, in table order.
     pub payees: Vec<String>,
+    /// The CATEGORY cell of every visible row, parallel to `payees`.
+    pub categories: Vec<String>,
     pub search: String,
     pub chips: Vec<ChipSnapshot>,
     /// The `clear filters` link is showing (a filter differs from the default).
@@ -48,6 +50,7 @@ impl TransactionsPage {
             visible: view.rows.len(),
             selected: view.selected,
             payees: view.rows.iter().map(|row| row.payee.clone()).collect(),
+            categories: view.rows.iter().map(|row| row.category.clone()).collect(),
             search: view.search.clone(),
             chips: view
                 .chips

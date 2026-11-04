@@ -564,6 +564,20 @@ fn select_category(ui: &mut Harness<'_>, name: &str) -> bool {
 #[gpui::test]
 fn adding_a_child_under_a_leaf_with_splits_warns_then_hands_them_over(app: &mut TestAppContext) {
     let mut ui = in_categories(app);
+    ui.press("g l");
+    let groceries_splits = ui
+        .transactions()
+        .categories
+        .iter()
+        .filter(|category| *category == "Groceries")
+        .count();
+    assert!(
+        groceries_splits > 0,
+        "the stub files Splits under Groceries"
+    );
+    ui.press("g s");
+    assert_eq!(ui.settings_frame().page, "Categories");
+    ui.press("l");
     assert!(select_category(&mut ui, "Groceries"));
 
     ui.press("shift-n");
@@ -580,8 +594,28 @@ fn adding_a_child_under_a_leaf_with_splits_warns_then_hands_them_over(app: &mut 
         ui.commits(),
         "the Category and its handover in one commit"
     );
-    // Groceries has a child now, so another Add under it hands nothing over.
+    // Groceries is a parent now, so it stays folded over its new child: `right` opens it, and
+    // `j` then steps onto the child (`j` from the folded parent skips to Dining).
     assert!(select_category(&mut ui, "Groceries"));
+    ui.press("j");
+    assert_eq!(
+        ui.settings::<SettingsCategoriesSnapshot>()
+            .selected_category
+            .as_deref(),
+        Some("Dining"),
+        "folded, Groceries hides its child"
+    );
+    ui.press("k");
+    ui.press("right");
+    ui.press("j");
+    assert_eq!(
+        ui.settings::<SettingsCategoriesSnapshot>()
+            .selected_category
+            .as_deref(),
+        Some("supermarket")
+    );
+    ui.press("k");
+    // Groceries has a child now, so another Add under it hands nothing over.
     ui.press("shift-n");
     assert!(
         !ui.dialog_value("notice")
@@ -589,6 +623,18 @@ fn adding_a_child_under_a_leaf_with_splits_warns_then_hands_them_over(app: &mut 
             .contains("move to")
     );
     ui.press("escape");
+
+    // The Splits moved to the child, and none is left on Groceries.
+    ui.press("g l");
+    let categories = ui.transactions().categories;
+    let on = |name: &str| {
+        categories
+            .iter()
+            .filter(|category| *category == name)
+            .count()
+    };
+    assert_eq!(on("Groceries"), 0);
+    assert_eq!(on("supermarket"), groceries_splits);
 }
 
 #[gpui::test]

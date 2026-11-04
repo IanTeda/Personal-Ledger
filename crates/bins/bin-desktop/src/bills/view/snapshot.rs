@@ -26,6 +26,8 @@ pub struct BillsSnapshot {
     pub rows: Vec<BillRowSnapshot>,
     /// Every Bill Plan name in Planner order.
     pub plans: Vec<String>,
+    /// Each Bill Plan's Category name, parallel to `plans`.
+    pub plan_categories: Vec<String>,
     /// The status chips switched on, e.g. `Paid`.
     pub statuses_on: Vec<String>,
     /// The focused Schedule filter select, e.g. `Plan`; `None` while none is.
@@ -78,6 +80,12 @@ impl BillsPage {
                 .rows
                 .iter()
                 .map(|row| row.name.clone())
+                .collect(),
+            plan_categories: view
+                .planner
+                .rows
+                .iter()
+                .map(|row| row.category.clone())
                 .collect(),
             statuses_on: schedule
                 .filters
