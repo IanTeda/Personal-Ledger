@@ -11,9 +11,9 @@ use lib_toast::{Notice, Notify};
 use lib_viper::dialog::DialogRouter;
 
 use crate::protocols::{
-    CategoriesDialog, CategoriesOutcome, CategoriesRouter, CategoryBudget, CategoryReassign,
-    CategoryReassigned, CategoryUsage, CategoryUse, MonthlyBudget, MonthlyBudgetRefusal,
-    ParentStop, ReassignRefusal, SharedCategories,
+    CategoriesDialog, CategoriesOutcome, CategoriesRouter, CategoryBudget, CategoryHandover,
+    CategoryReassign, CategoryReassigned, CategoryUsage, CategoryUse, Holdings, MonthlyBudget,
+    MonthlyBudgetRefusal, ParentStop, ReassignRefusal, SharedCategories,
 };
 use crate::{
     Category, CategoryRepository, default_categories, descendants_inclusive, get, is_leaf,
@@ -82,6 +82,11 @@ pub struct InMemoryCategoryBudget {
     pub other_budgets: usize,
     /// The Categories [`CategoryBudget::stop_new_parent`] was asked to stop, in order.
     pub stopped: Vec<CategoryId>,
+    /// What each Category holds, for [`CategoryHandover`]: this fake is the one set of ports the
+    /// Add and Edit tests lend, so it answers the handover too.
+    pub held: BTreeMap<CategoryId, Holdings>,
+    /// Each `(from, to)` [`CategoryHandover::hand_over`] was asked for, in order.
+    pub handed_over: Vec<(CategoryId, CategoryId)>,
 }
 
 impl CategoryBudget for InMemoryCategoryBudget {
@@ -152,6 +157,24 @@ impl CategoryBudget for InMemoryCategoryBudget {
     fn stop_new_parent(&mut self, parent: CategoryId) {
         self.stopped.push(parent);
         self.amounts.remove(&parent);
+    }
+}
+
+impl CategoryHandover for InMemoryCategoryBudget {
+    fn holdings(&self, category: CategoryId) -> Holdings {
+        self.held.get(&category).copied().unwrap_or_default()
+    }
+
+    /// Moves `from`'s holdings to `to`, recording the call only when there was something to move.
+    fn hand_over(&mut self, from: CategoryId, to: CategoryId) {
+        let Some(held) = self.held.remove(&from).filter(|held| !held.is_empty()) else {
+            return;
+        };
+        let to_held = self.held.entry(to).or_default();
+        to_held.splits += held.splits;
+        to_held.bill_plans += held.bill_plans;
+        to_held.payee_defaults += held.payee_defaults;
+        self.handed_over.push((from, to));
     }
 }
 

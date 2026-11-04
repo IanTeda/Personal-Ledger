@@ -19,9 +19,9 @@ use chrono::{Datelike as _, NaiveDate};
 use gpui::{App, Entity};
 use lib_budgets::{Budgets, Error};
 use lib_categories::{
-    Category, CategoryBudget, CategoryReassign, CategoryReassigned, CategoryRepository,
-    CategoryUsage, CategoryUse, MonthlyBudget, MonthlyBudgetRefusal, ParentStop, ReassignRefusal,
-    SharedCategories,
+    Category, CategoryBudget, CategoryHandover, CategoryReassign, CategoryReassigned,
+    CategoryRepository, CategoryUsage, CategoryUse, Holdings, MonthlyBudget, MonthlyBudgetRefusal,
+    ParentStop, ReassignRefusal, SharedCategories,
 };
 use lib_core::{CategoryId, Money};
 use lib_database::{CategoriesStore, SharedCategoriesStore};
@@ -233,6 +233,19 @@ impl CategoryBudget for LedgerPorts<'_> {
     }
 }
 
+impl CategoryHandover for LedgerPorts<'_> {
+    fn holdings(&self, category: CategoryId) -> Holdings {
+        self.ledger.read(self.cx).category_holdings(category)
+    }
+
+    /// Re-points the rows in the Transactions, Bills and Payees stores, in the input's one commit,
+    /// then brings their read copies in line.
+    fn hand_over(&mut self, from: CategoryId, to: CategoryId) {
+        self.ledger
+            .update(self.cx, |store, cx| store.hand_over_category(from, to, cx));
+    }
+}
+
 impl CategoryReassign for LedgerPorts<'_> {
     /// Today's `LedgerCommand`, on the read copy brought in line with the store first.
     fn delete_category(&mut self, id: CategoryId) -> Result<CategoryReassigned, ReassignRefusal> {
@@ -402,6 +415,34 @@ mod tests {
             assert_eq!(
                 ports.monthly_budget(&categories, Some(groceries)).amount,
                 None
+            );
+        });
+    }
+
+    #[gpui::test]
+    fn the_handover_port_moves_splits_to_the_new_child_through_the_stores(cx: &mut TestAppContext) {
+        let ledger = cx.new(|_| LedgerStore::new(Ledger::stub_on(today())));
+        let categories = ledger.read_with(cx, |store, _| store.ledger().categories().to_vec());
+        let groceries = lib_categories::find_by_name(&categories, "Groceries").expect("seeded");
+        let child = lib_categories::find_by_name(&categories, "Dining")
+            .expect("another seeded leaf stands in for a new child");
+
+        cx.update(|cx| {
+            let mut ports = LedgerPorts {
+                ledger: &ledger,
+                today: today(),
+                cx,
+            };
+            let held = ports.holdings(groceries);
+            assert!(held.splits > 0, "the stub buys groceries");
+            let child_before = ports.holdings(child);
+
+            ports.hand_over(groceries, child);
+
+            assert_eq!(ports.holdings(groceries), Holdings::default());
+            assert_eq!(
+                ports.holdings(child).splits,
+                child_before.splits + held.splits
             );
         });
     }

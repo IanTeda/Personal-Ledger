@@ -59,6 +59,22 @@ categories-notice-parent-stop = { $category }' budget stops from { $month } in {
     [one] { $budgets } budget
    *[other] { $budgets } budgets
 } — a parent shows the sum of its children's budgets.
+categories-notice-handover = { $category }' { $rows } move to { $child }.
+categories-handover-this-category = this category
+categories-handover-splits = { $count ->
+    [one] { $count } Split
+   *[other] { $count } Splits
+}
+categories-handover-bill-plans = { $count ->
+    [one] { $count } Bill Plan
+   *[other] { $count } Bill Plans
+}
+categories-handover-payee-defaults = { $count ->
+    [one] { $count } Payee default
+   *[other] { $count } Payee defaults
+}
+categories-handover-two = { $first } and { $second }
+categories-handover-three = { $first }, { $second } and { $third }
 categories-edit-notice = Changes apply when you save.
 categories-edit-parent-notice = This is a parent category — its budget shows the sum of its children's budgets.
 categories-edit-usage-notice = This category has { $count ->

@@ -1,7 +1,7 @@
 use lib_core::{CategoryId, CategoryTypes};
 
 use super::{BudgetChange, gains_first_child};
-use crate::protocols::{CategoryBudget, CategoryRepository};
+use crate::protocols::{CategoryRepository, CategorySavePorts};
 use crate::{Category, CategoryError, SaveCategoryRefusal, get, insert_category};
 
 /// Add a Category at top level or under `parent_id`, with its Monthly budget. Refused when the
@@ -20,7 +20,7 @@ impl AddCategory {
     pub fn run(
         self,
         categories: &mut dyn CategoryRepository,
-        budget: &mut dyn CategoryBudget,
+        budget: &mut dyn CategorySavePorts,
     ) -> Result<Category, SaveCategoryRefusal> {
         let before = categories.categories();
         let mut rows = before.clone();
@@ -37,6 +37,7 @@ impl AddCategory {
                 self.monthly.save(budget, category.id);
                 if let Some(parent) = gains_first_child(&before, self.parent_id) {
                     budget.stop_new_parent(parent);
+                    budget.hand_over(parent, category.id);
                 }
                 tracing::info!(category_id = %category.id, "Added a Category");
             }
@@ -191,5 +192,63 @@ mod tests {
 
         assert_eq!(refused, Err(MonthlyBudgetRefusal::NotAnExpenseLeaf.into()));
         assert!(budget.stopped.is_empty());
+    }
+
+    fn held(splits: usize, bill_plans: usize, payee_defaults: usize) -> crate::Holdings {
+        crate::Holdings {
+            splits,
+            bill_plans,
+            payee_defaults,
+        }
+    }
+
+    #[test]
+    fn a_leaf_that_gains_its_first_child_hands_over_its_splits_bill_plans_and_payee_defaults() {
+        let mut categories = InMemoryCategories::stub();
+        let mut budget = InMemoryCategoryBudget::default();
+        let transport = CategoryId::seed(9);
+        budget.held.insert(transport, held(42, 1, 2));
+
+        let added = add("Fuel", Some(transport), CategoryTypes::Expense)
+            .run(&mut categories, &mut budget)
+            .expect("Transport takes children");
+
+        assert_eq!(budget.handed_over, [(transport, added.id)]);
+        assert_eq!(budget.held.get(&added.id), Some(&held(42, 1, 2)));
+        assert!(!budget.held.contains_key(&transport));
+    }
+
+    #[test]
+    fn a_leaf_holding_nothing_and_a_parent_with_children_hand_over_nothing() {
+        let mut categories = InMemoryCategories::stub();
+        let mut budget = InMemoryCategoryBudget::default();
+        budget.held.insert(CategoryId::seed(6), held(3, 0, 0));
+
+        add("Fuel", Some(CategoryId::seed(9)), CategoryTypes::Expense)
+            .run(&mut categories, &mut budget)
+            .expect("Transport takes children");
+        add(
+            "Takeaway",
+            Some(CategoryId::seed(6)),
+            CategoryTypes::Expense,
+        )
+        .run(&mut categories, &mut budget)
+        .expect("Food takes children");
+
+        assert!(budget.handed_over.is_empty());
+    }
+
+    #[test]
+    fn a_refused_add_hands_nothing_over() {
+        let mut categories = InMemoryCategories::stub();
+        let mut budget = InMemoryCategoryBudget::default();
+        let salary = CategoryId::seed(11);
+        budget.held.insert(salary, held(5, 0, 0));
+
+        let refused =
+            add("Bonus", Some(salary), CategoryTypes::Expense).run(&mut categories, &mut budget);
+
+        assert_eq!(refused, Err(CategoryError::TypeMismatch.into()));
+        assert!(budget.handed_over.is_empty());
     }
 }

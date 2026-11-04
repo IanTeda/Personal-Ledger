@@ -260,3 +260,23 @@ fn the_sub_button_on_an_unbudgeted_leaf_shows_no_notice_and_stops_nothing(
     assert_eq!(ui.dialog(), None);
     assert_eq!(ui.budgets().rows, budgets);
 }
+
+#[gpui::test]
+fn the_sub_button_on_a_leaf_with_splits_warns_and_the_confirm_hands_them_over(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_categories(app);
+    let groceries = CategoryId::seed(7);
+
+    ui.click(&format!("settings-categories-sub-{groceries}"));
+    assert!(
+        ui.dialog_value("parent")
+            .is_some_and(|parent| parent.ends_with("Groceries"))
+    );
+    ui.press("s u p e r m a r k e t");
+    let notice = ui.dialog_value("notice").expect("a notice");
+    assert!(notice.ends_with("move to supermarket."), "{notice}");
+    ui.click("add-category-confirm");
+
+    assert_eq!(ui.dialog(), None);
+}

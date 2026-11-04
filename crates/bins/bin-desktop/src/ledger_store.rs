@@ -289,6 +289,79 @@ impl LedgerStore {
         self.transactions.borrow().category_splits(id)
     }
 
+    /// What Category `id` holds that a first child would take: its Splits as the Transactions
+    /// store counts them, the Bill Plans naming it and the Payees defaulting to it.
+    pub fn category_holdings(&self, id: lib_core::CategoryId) -> lib_categories::Holdings {
+        let bill_plans = self.bills.borrow().store();
+        let bill_plans = bill_plans
+            .borrow()
+            .plans()
+            .bill_plans()
+            .iter()
+            .filter(|plan| plan.category_id == id)
+            .count();
+        let payee_defaults = PayeesStore::payees(&*self.payees.borrow())
+            .payees()
+            .iter()
+            .filter(|payee| payee.default_category == Some(id))
+            .count();
+        lib_categories::Holdings {
+            splits: self.category_splits(id),
+            bill_plans,
+            payee_defaults,
+        }
+    }
+
+    /// Points every Split, Bill Plan and Payee default naming `from` at `to`, in the Transactions,
+    /// Bills and Payees stores, for the input's one commit, then brings their read copies in line.
+    pub fn hand_over_category(
+        &mut self,
+        from: lib_core::CategoryId,
+        to: lib_core::CategoryId,
+        cx: &mut Context<'_, Self>,
+    ) {
+        {
+            let mut store = self.transactions.borrow_mut();
+            for mut transaction in store.all_transactions() {
+                if transaction
+                    .splits
+                    .iter()
+                    .all(|split| split.category_id != from)
+                {
+                    continue;
+                }
+                for split in &mut transaction.splits {
+                    if split.category_id == from {
+                        split.category_id = to;
+                    }
+                }
+                store.upsert_transaction(transaction);
+            }
+        }
+        {
+            let bills = self.bills.borrow().store();
+            let mut bills = bills.borrow_mut();
+            for mut plan in bills.plans().bill_plans() {
+                if plan.category_id == from {
+                    plan.category_id = to;
+                    bills.plans_mut().upsert_bill_plan(plan);
+                }
+            }
+        }
+        {
+            let mut payees = self.payees.borrow_mut();
+            for mut payee in PayeesStore::payees(&*payees).payees() {
+                if payee.default_category == Some(from) {
+                    payee.default_category = Some(to);
+                    PayeesStore::payees_mut(&mut *payees).upsert_payee(payee);
+                }
+            }
+        }
+        self.refresh_transactions(cx);
+        self.refresh_bills(cx);
+        self.refresh_payees(cx);
+    }
+
     /// Adds a Location priced in `unit` to the Inventory store, so a test can delete a Unit one
     /// names (#885).
     #[doc(hidden)]

@@ -1,7 +1,7 @@
 use lib_core::{CategoryId, CategoryTypes};
 
 use super::{BudgetChange, gains_first_child};
-use crate::protocols::{CategoryBudget, CategoryRepository};
+use crate::protocols::{CategoryRepository, CategorySavePorts};
 use crate::{
     Category, CategoryError, SaveCategoryRefusal, change_category_type, edit_category,
     move_category,
@@ -26,7 +26,7 @@ impl EditCategory {
     pub fn run(
         self,
         categories: &mut dyn CategoryRepository,
-        budget: &mut dyn CategoryBudget,
+        budget: &mut dyn CategorySavePorts,
     ) -> Result<Category, SaveCategoryRefusal> {
         let before = categories.categories();
         let mut rows = before.clone();
@@ -43,6 +43,7 @@ impl EditCategory {
                 self.monthly.save(budget, self.id);
                 if let Some(parent) = gains_first_child(&before, self.parent_id) {
                     budget.stop_new_parent(parent);
+                    budget.hand_over(parent, self.id);
                 }
                 tracing::info!(category_id = %category.id, "Edited a Category");
             }
@@ -242,5 +243,43 @@ mod tests {
                 .is_err()
         );
         assert!(budget.stopped.is_empty());
+    }
+
+    fn held(splits: usize, bill_plans: usize, payee_defaults: usize) -> crate::Holdings {
+        crate::Holdings {
+            splits,
+            bill_plans,
+            payee_defaults,
+        }
+    }
+
+    #[test]
+    fn moving_under_a_leaf_hands_its_rows_to_the_moved_category() {
+        let mut categories = InMemoryCategories::stub();
+        let mut budget = InMemoryCategoryBudget::default();
+        budget.held.insert(SALARY, held(4, 1, 1));
+        let moved = CategoryId::seed(12);
+
+        edit(moved, "Moved", Some(SALARY))
+            .run(&mut categories, &mut budget)
+            .expect("Salary takes children");
+
+        assert_eq!(budget.handed_over, [(SALARY, moved)]);
+    }
+
+    #[test]
+    fn moving_under_an_existing_parent_or_a_refused_move_hands_nothing_over() {
+        let mut categories = InMemoryCategories::stub();
+        let mut budget = InMemoryCategoryBudget::default();
+        budget.held.insert(FOOD, held(4, 0, 0));
+        budget.held.insert(SALARY, held(4, 0, 0));
+
+        edit(TRANSPORT, "Transport", Some(FOOD))
+            .run(&mut categories, &mut budget)
+            .expect("Food takes children");
+        let refused = edit(TRANSPORT, "Transport", Some(SALARY)).run(&mut categories, &mut budget);
+
+        assert!(refused.is_err(), "another type");
+        assert!(budget.handed_over.is_empty());
     }
 }

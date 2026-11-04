@@ -27,7 +27,8 @@ use lib_viper::view::{
 use super::save_refusal_text;
 use crate::interactor::{AddCategory, BudgetChange, EditCategory};
 use crate::protocols::{
-    CategoriesOutcome, CategoryBudget, CategoryChange, CategoryUsage, ParentStop, SharedCategories,
+    CategoriesOutcome, CategoryChange, CategorySavePorts, CategoryUsage, Holdings, ParentStop,
+    SharedCategories,
 };
 use crate::{Category, depth, descendants_inclusive, get, is_leaf, move_exceeds_depth, msg, path};
 
@@ -121,6 +122,8 @@ pub struct CategoryFormPresenter {
     parents: Vec<Choice<Option<CategoryId>>>,
     /// Where each offered parent is budgeted, read when the Dialog opened.
     stops: BTreeMap<CategoryId, ParentStop>,
+    /// What each offered parent holds that a first child would take, read when the Dialog opened.
+    holdings: BTreeMap<CategoryId, Holdings>,
     name: String,
     parent: Option<CategoryId>,
     category_type: CategoryTypes,
@@ -135,7 +138,7 @@ impl CategoryFormPresenter {
     /// A fresh Add form, at top level as an Expense or under `parent` as its type.
     pub fn add(
         categories: SharedCategories,
-        budget: &dyn CategoryBudget,
+        budget: &dyn CategorySavePorts,
         parent: Option<CategoryId>,
     ) -> Self {
         let rows = categories.borrow().categories();
@@ -153,6 +156,7 @@ impl CategoryFormPresenter {
             .map(BudgetLock::Archived);
         Self {
             stops: parent_stops(budget, &parents),
+            holdings: parent_holdings(budget, &parents),
             categories,
             editing: None,
             parents,
@@ -171,7 +175,7 @@ impl CategoryFormPresenter {
     /// shows this month's amount, a parent's being its leaves' sum.
     pub fn edit(
         categories: SharedCategories,
-        budget: &dyn CategoryBudget,
+        budget: &dyn CategorySavePorts,
         usage: &dyn CategoryUsage,
         id: CategoryId,
     ) -> Option<Self> {
@@ -192,6 +196,7 @@ impl CategoryFormPresenter {
         let parents = choices(&rows, offered);
         Some(Self {
             stops: parent_stops(budget, &parents),
+            holdings: parent_holdings(budget, &parents),
             parents,
             editing: Some(Editing {
                 id,
@@ -257,7 +262,7 @@ impl CategoryFormPresenter {
     pub fn input(
         &mut self,
         input: DialogInput,
-        budget: &mut dyn CategoryBudget,
+        budget: &mut dyn CategorySavePorts,
         router: &mut dyn DialogRouter<CategoriesOutcome>,
     ) {
         match (input, self.focused) {
@@ -352,7 +357,7 @@ impl CategoryFormPresenter {
     /// Dialog; a refusal stays on the form. A form that can't confirm does nothing.
     pub fn confirm(
         &mut self,
-        budget: &mut dyn CategoryBudget,
+        budget: &mut dyn CategorySavePorts,
         router: &mut dyn DialogRouter<CategoriesOutcome>,
     ) {
         if !self.can_confirm() {
@@ -516,13 +521,53 @@ impl CategoryFormPresenter {
         is_leaf(&rows, parent.id).then_some((parent, stop))
     }
 
+    /// What the chosen parent hands to this Category, when the save would give it its first child.
+    fn handover_notice(&self) -> Option<String> {
+        let parent = self.category(self.parent?)?;
+        let rows = self.categories.borrow().categories();
+        let held = *self.holdings.get(&parent.id)?;
+        if !is_leaf(&rows, parent.id) {
+            return None;
+        }
+        let mut parts = Vec::new();
+        if held.splits > 0 {
+            parts.push(msg::categories_handover_splits(count(held.splits)));
+        }
+        if held.bill_plans > 0 {
+            parts.push(msg::categories_handover_bill_plans(count(held.bill_plans)));
+        }
+        if held.payee_defaults > 0 {
+            parts.push(msg::categories_handover_payee_defaults(count(
+                held.payee_defaults,
+            )));
+        }
+        let rows = match parts.as_slice() {
+            [one] => one.clone(),
+            [first, second] => msg::categories_handover_two(first, second),
+            [first, second, third] => msg::categories_handover_three(first, second, third),
+            _ => return None,
+        };
+        let name = self.name.trim();
+        let child = if name.is_empty() {
+            msg::categories_handover_this_category()
+        } else {
+            name.to_string()
+        };
+        Some(msg::categories_notice_handover(&parent.name, &rows, &child))
+    }
+
     fn notice(&self) -> String {
-        if let Some((parent, stop)) = self.parent_stop() {
-            return msg::categories_notice_parent_stop(
+        let stop = self.parent_stop().map(|(parent, stop)| {
+            msg::categories_notice_parent_stop(
                 &parent.name,
                 &format_month(stop.month),
                 count(stop.budgets),
-            );
+            )
+        });
+        match (stop, self.handover_notice()) {
+            (Some(stop), Some(handover)) => return format!("{stop} {handover}"),
+            (Some(notice), None) | (None, Some(notice)) => return notice,
+            (None, None) => {}
         }
         let nested = self.parent.and_then(|id| self.category(id)).map(|parent| {
             msg::categories_notice_nested(&parent.name, &type_label(&parent.category_type))
@@ -545,13 +590,26 @@ impl CategoryFormPresenter {
 
 /// Where each parent on offer is budgeted this month.
 fn parent_stops(
-    budget: &dyn CategoryBudget,
+    budget: &dyn CategorySavePorts,
     parents: &[Choice<Option<CategoryId>>],
 ) -> BTreeMap<CategoryId, ParentStop> {
     parents
         .iter()
         .filter_map(|choice| choice.value)
         .filter_map(|id| Some((id, budget.parent_stop(id)?)))
+        .collect()
+}
+
+/// What each parent on offer holds, left out when it holds nothing.
+fn parent_holdings(
+    ports: &dyn CategorySavePorts,
+    parents: &[Choice<Option<CategoryId>>],
+) -> BTreeMap<CategoryId, Holdings> {
+    parents
+        .iter()
+        .filter_map(|choice| choice.value)
+        .map(|id| (id, ports.holdings(id)))
+        .filter(|(_, held)| !held.is_empty())
         .collect()
 }
 
@@ -581,7 +639,7 @@ mod tests {
     use super::*;
     use crate::CategoryRepository as _;
     use crate::fake::{InMemoryCategoryBudget, InMemoryCategoryUsage, RecordingRouter, RouterCall};
-    use crate::protocols::{CategoryUse, MonthlyBudgetRefusal};
+    use crate::protocols::{CategoryBudget as _, CategoryUse, MonthlyBudgetRefusal};
 
     const HOUSING: CategoryId = CategoryId::seed(1);
     const UTILITIES: CategoryId = CategoryId::seed(3);
@@ -1118,6 +1176,76 @@ mod tests {
             form.view_model()
                 .notice
                 .contains("stops from Nov in 1 budget")
+        );
+    }
+
+    fn held(splits: usize, bill_plans: usize, payee_defaults: usize) -> Holdings {
+        Holdings {
+            splits,
+            bill_plans,
+            payee_defaults,
+        }
+    }
+
+    #[test]
+    fn the_handover_notice_names_what_a_leaf_parent_holds_and_the_child() {
+        let (_, shared) = stub();
+        let mut budget = InMemoryCategoryBudget::default();
+        budget.held.insert(TRANSPORT, held(42, 1, 0));
+        let mut form = CategoryFormPresenter::add(shared, &budget, Some(TRANSPORT));
+        send(&mut form, vec![CategoryFormEvent::Name("Fuel".into())]);
+
+        assert_eq!(
+            form.view_model().notice,
+            "Transport' 42 Splits and 1 Bill Plan move to Fuel."
+        );
+    }
+
+    #[test]
+    fn the_handover_notice_lists_all_three_and_shows_beside_the_stop_notice() {
+        let (_, shared) = stub();
+        let mut budget = InMemoryCategoryBudget::default();
+        budget.held.insert(TRANSPORT, held(2, 3, 1));
+        budget.amounts.insert(TRANSPORT, money("600"));
+        let form = CategoryFormPresenter::add(shared, &budget, Some(TRANSPORT));
+
+        let notice = form.view_model().notice;
+
+        assert!(notice.contains("stops from Nov in 1 budget"), "{notice}");
+        assert!(
+            notice.contains("2 Splits, 3 Bill Plans and 1 Payee default move to this category."),
+            "{notice}"
+        );
+    }
+
+    #[test]
+    fn no_handover_notice_for_an_empty_leaf_a_parent_with_children_or_a_top_level_add() {
+        let (_, shared) = stub();
+        let mut budget = InMemoryCategoryBudget::default();
+        budget.held.insert(FOOD, held(9, 0, 0));
+        let empty = CategoryFormPresenter::add(shared.clone(), &budget, Some(TRANSPORT));
+        let parent = CategoryFormPresenter::add(shared.clone(), &budget, Some(FOOD));
+        let top = CategoryFormPresenter::add(shared, &budget, None);
+
+        for form in [empty, parent, top] {
+            assert!(!form.view_model().notice.contains("move to"));
+        }
+    }
+
+    #[test]
+    fn the_handover_notice_shows_on_edit_when_moving_under_a_leaf_holding_rows() {
+        let (_, shared) = stub();
+        let mut budget = InMemoryCategoryBudget::default();
+        budget.held.insert(TRANSPORT, held(0, 0, 2));
+        let usage = InMemoryCategoryUsage::default();
+        let mut form =
+            CategoryFormPresenter::edit(shared, &budget, &usage, GROCERIES).expect("seeded");
+
+        send(&mut form, vec![CategoryFormEvent::Parent(Some(TRANSPORT))]);
+
+        assert_eq!(
+            form.view_model().notice,
+            "Transport' 2 Payee defaults move to Groceries."
         );
     }
 }

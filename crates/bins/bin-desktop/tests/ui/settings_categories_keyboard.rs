@@ -541,3 +541,63 @@ fn adding_a_child_under_an_unbudgeted_leaf_shows_no_notice_and_stops_nothing(
     assert_eq!(ui.dialog(), None);
     assert_eq!(ui.budgets().rows, budgets);
 }
+
+/// Moves the Categories page's selection to the row called `name`, down from where it is and
+/// then back up.
+fn select_category(ui: &mut Harness<'_>, name: &str) -> bool {
+    for key in ["j", "k"] {
+        for _ in 0..20 {
+            if ui
+                .settings::<SettingsCategoriesSnapshot>()
+                .selected_category
+                .as_deref()
+                == Some(name)
+            {
+                return true;
+            }
+            ui.press(key);
+        }
+    }
+    false
+}
+
+#[gpui::test]
+fn adding_a_child_under_a_leaf_with_splits_warns_then_hands_them_over(app: &mut TestAppContext) {
+    let mut ui = in_categories(app);
+    assert!(select_category(&mut ui, "Groceries"));
+
+    ui.press("shift-n");
+    ui.press("s u p e r m a r k e t");
+    let notice = ui.dialog_value("notice").expect("a notice");
+    assert!(notice.contains("Splits"), "{notice}");
+    assert!(notice.ends_with("move to supermarket."), "{notice}");
+    let commits = ui.commits();
+    ui.press("enter");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        commits + 1,
+        ui.commits(),
+        "the Category and its handover in one commit"
+    );
+    // Groceries has a child now, so another Add under it hands nothing over.
+    assert!(select_category(&mut ui, "Groceries"));
+    ui.press("shift-n");
+    assert!(
+        !ui.dialog_value("notice")
+            .expect("a notice")
+            .contains("move to")
+    );
+    ui.press("escape");
+}
+
+#[gpui::test]
+fn a_leaf_holding_nothing_shows_no_handover_notice(app: &mut TestAppContext) {
+    let mut ui = in_categories(app);
+
+    // Housing already has children.
+    ui.press("j shift-n");
+    let notice = ui.dialog_value("notice").expect("a notice");
+    assert!(!notice.contains("move to"), "{notice}");
+    ui.press("escape");
+}

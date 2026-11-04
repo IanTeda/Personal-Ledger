@@ -29,6 +29,7 @@ pub mod protocols;
 pub use entity::*;
 pub use protocols::{
     CategoriesDialog, CategoriesOutcome, CategoriesRouter, CategoryBudget, CategoryChange,
-    CategoryReassign, CategoryReassigned, CategoryRepository, CategoryUsage, CategoryUse,
-    MonthlyBudget, MonthlyBudgetRefusal, ParentStop, ReassignRefusal, SharedCategories,
+    CategoryHandover, CategoryReassign, CategoryReassigned, CategoryRepository, CategorySavePorts,
+    CategoryUsage, CategoryUse, Holdings, MonthlyBudget, MonthlyBudgetRefusal, ParentStop,
+    ReassignRefusal, SharedCategories,
 };

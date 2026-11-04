@@ -127,6 +127,41 @@ pub trait CategoryBudget {
     fn stop_new_parent(&mut self, parent: CategoryId);
 }
 
+/// What a leaf Category holds that moves to its first child: the Splits filed under it, the Bill
+/// Plans naming it and the Payees defaulting to it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Holdings {
+    pub splits: usize,
+    pub bill_plans: usize,
+    pub payee_defaults: usize,
+}
+
+impl Holdings {
+    pub fn is_empty(&self) -> bool {
+        self.splits == 0 && self.bill_plans == 0 && self.payee_defaults == 0
+    }
+}
+
+/// The handover of a leaf's rows to its first child. Only a leaf is assigned to a Split, a Bill
+/// Plan or a Payee default, so a Category that gains its first child, added or moved in, passes
+/// them to it. Those rows belong to other domains, so the Interactors reach them through this
+/// port, which a Client answers over their stores in the input's one commit, as it does
+/// [`CategoryBudget`].
+pub trait CategoryHandover {
+    /// What `category` holds now, for the Dialogs' notice.
+    fn holdings(&self, category: CategoryId) -> Holdings;
+
+    /// Points every Split, Bill Plan and Payee default naming `from` at `to` instead. Writes
+    /// nothing when `from` holds nothing.
+    fn hand_over(&mut self, from: CategoryId, to: CategoryId);
+}
+
+/// Everything an Add or Edit save reaches beyond the Categories: the Monthly budget and the
+/// handover. One trait, so a Client lends its one set of ports once.
+pub trait CategorySavePorts: CategoryBudget + CategoryHandover {}
+
+impl<T: CategoryBudget + CategoryHandover + ?Sized> CategorySavePorts for T {}
+
 /// What a Category delete did, for its Toast.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CategoryReassigned {
