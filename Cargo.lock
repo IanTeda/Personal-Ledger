@@ -4829,6 +4829,7 @@ dependencies = [
  "lib_inventory",
  "lib_ledger",
  "lib_payees",
+ "lib_tag_removal",
  "lib_tags",
  "lib_transaction_import",
  "lib_transactions",
@@ -4992,6 +4993,23 @@ dependencies = [
  "lib_toast",
  "lib_viper",
  "serde",
+]
+
+[[package]]
+name = "lib_tag_removal"
+version = "0.1.0"
+dependencies = [
+ "bigdecimal",
+ "chrono",
+ "lib_core",
+ "lib_locale",
+ "lib_locale_build",
+ "lib_tags",
+ "lib_toast",
+ "lib_transactions",
+ "lib_viper",
+ "thiserror 2.0.20",
+ "tracing",
 ]
 
 [[package]]

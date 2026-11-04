@@ -270,6 +270,7 @@ An operation that writes more than one domain belongs to a cross-domain module, 
 | `lib-reassign` | Delete or merge a Category or Tag, re-pointing the rows that use it | Categories, Tags, Transactions, Bill Plans, Budgets | not built ([#813](https://github.com/IanTeda/Personal-Ledger/issues/813)) |
 | `lib-account-deletion` | Delete an Account with its Transactions, Unmatching the Bill Schedule entries they paid, refusing one a Bill Plan pays from | Accounts, Transactions, Bills | `AccountDeletion` |
 | `lib-unit-deletion` | Delete a Unit, moving the base and reassigning the Institutions that name it as their Usual unit | Units, Institutions | `UnitDeletion` |
+| `lib-tag-removal` | Remove a Tag, untagging its Splits; merge one Tag into another, retagging the source's Splits | Tags, Transactions | `TagRemoval` |
 
 `lib-reassign` may split per domain if it grows. Units and Price Sources are one domain, `lib-units`, since they only change together, so deleting a Price Source and setting the base Unit are single-domain Interactors. The transition tickets confirm the list against the code.
 

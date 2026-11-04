@@ -12,6 +12,7 @@ pub mod documents;
 pub mod institutions;
 pub mod inventory;
 pub mod payees;
+pub mod tag_removal;
 pub mod tags;
 pub mod transaction_import;
 pub mod transactions;

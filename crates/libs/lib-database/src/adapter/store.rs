@@ -72,6 +72,7 @@ use lib_institutions::{InstitutionRepository, InstitutionUsage, InstitutionUse};
 use lib_inventory::InventoryRepository;
 use lib_inventory::fake::InMemoryInventory;
 use lib_payees::{PayeeCategories, PayeeCategory, PayeeRepository, PayeeUsage, PayeeUse};
+use lib_tag_removal::{TagCount, TagRemovalReads};
 use lib_tags::{TagRepository, TagUsage, TagUse};
 use lib_transaction_import::{ImportAccount, ImportAccounts, ImportCategories};
 use lib_transactions::fake::InMemoryTransactions;
@@ -408,21 +409,21 @@ impl CategoriesStore for InMemoryCategories {
     }
 }
 
-/// A Tags store shared by the Ledger's forwarding shim and the Tags page. Single-threaded, as the
-/// ports are.
+/// A Tags store shared by the Ledger's forwarding shim, the Tags page and the Tag Removal
+/// adapter. Single-threaded, as the ports are.
 pub type SharedTagsStore = Rc<RefCell<dyn TagsStore>>;
 
-/// The Tags repository port, wherever it is kept, and the delete Tag delete and merge send until
-/// `lib-reassign` (#813). What carries a Tag is other domains' rows, which [`StoredTagReads`]
-/// counts in their stores.
+/// The Tags repository port, wherever it is kept, and the delete Tag remove and merge send. What
+/// carries a Tag is other domains' rows, which [`StoredTagReads`] counts in their stores.
 pub trait TagsStore {
     fn tags(&self) -> &dyn TagRepository;
 
     fn tags_mut(&mut self) -> &mut dyn TagRepository;
 
-    /// Removes Tag `id`, once no Split carries it: Tag delete's and merge's delete, which the
-    /// Desktop's forwarding shim sends. Not a port write, since the delete untags other
-    /// domains' rows (#813).
+    /// Removes Tag `id`, once no Split carries it: Tag remove's and merge's delete, which the
+    /// Desktop's forwarding shim sends until it hosts `lib-tag-removal` (#1003), whose
+    /// [`TagRemovalAdapter`](crate::TagRemovalAdapter) sends it after the Splits. Not a
+    /// `lib-tags` port write, since the delete untags other domains' rows.
     fn delete_tag(&mut self, id: TagId);
 
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
@@ -1072,6 +1073,22 @@ impl TagUsage for StoredTagReads {
         ids.iter()
             .map(|id| (*id, counted.get(id).copied().unwrap_or(0)))
             .collect()
+    }
+}
+
+/// `lib-tag-removal`'s [`TagRemovalReads`] answered from the shared stores (#994): the Tags from
+/// the Tags store and the distinct Transactions carrying each from the Transactions store, each
+/// borrowed for the one read when a Remove tag or Merge tags Dialog opens.
+#[derive(Clone)]
+pub struct StoredTagRemovalReads {
+    pub tags: SharedTagsStore,
+    pub transactions: SharedTransactionsStore,
+}
+
+impl TagRemovalReads for StoredTagRemovalReads {
+    fn tags_by_usage(&self) -> Vec<TagCount> {
+        let counts = self.transactions.borrow().tag_transaction_counts();
+        lib_tag_removal::protocols::by_usage(&self.tags.borrow().tags().tags(), &counts)
     }
 }
 
@@ -1819,6 +1836,36 @@ mod tests {
             )
         );
         assert!(reads.holdings(UnitId::new()).is_empty());
+    }
+
+    /// Over the in-memory stores [`Stores::fake`] bundles, the Remove tag and Merge tags Dialogs
+    /// read every Tag ranked by the Transactions store's rows, a Split booked after the reads were
+    /// built included.
+    #[test]
+    fn stored_tag_removal_reads_rank_the_in_memory_stores_rows() {
+        let world = lib_tag_removal::fake::world::world();
+        let transactions: SharedTransactionsStore =
+            Rc::new(RefCell::new(world.transactions.clone()));
+        let reads = StoredTagRemovalReads {
+            tags: Rc::new(RefCell::new(lib_tags::fake::InMemoryPorts {
+                tags: world.tags.clone(),
+                ..Default::default()
+            })),
+            transactions: transactions.clone(),
+        };
+
+        lib_tag_removal::contract::the_reads_rank_every_tag_by_usage(&reads);
+
+        let mut booked = world.transactions.transactions[0].clone();
+        booked.id = TransactionId::seed(9_999);
+        booked.splits[0].tag_ids = vec![lib_tag_removal::fake::world::ONE_OFF];
+        transactions.borrow_mut().upsert_transaction(booked);
+        let one_off = reads
+            .tags_by_usage()
+            .into_iter()
+            .find(|count| count.tag.id == lib_tag_removal::fake::world::ONE_OFF)
+            .map(|count| count.transactions);
+        assert_eq!(one_off, Some(1));
     }
 
     /// Bills read a Unit's code and the base Unit from the Units store.

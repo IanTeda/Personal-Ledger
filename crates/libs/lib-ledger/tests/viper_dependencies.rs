@@ -44,6 +44,7 @@ const CROSS_DOMAIN: &[(&str, &[&str])] = &[
         &["lib_accounts", "lib_transactions", "lib_bills"],
     ),
     ("lib_unit_deletion", &["lib_units", "lib_institutions"]),
+    ("lib_tag_removal", &["lib_tags", "lib_transactions"]),
     (
         "lib_transaction_import",
         &["lib_payees", "lib_transactions"],
