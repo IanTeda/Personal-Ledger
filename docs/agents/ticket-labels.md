@@ -8,8 +8,9 @@ On finishing, the `agent:*` label is set to the model and effort that actually a
 
 - **Category from creation:** a ticket gets its `category:` when it is created, usually in the backlog, whatever its `wayfinder:` type. A ticket charted from a parent inherits the parent's category unless its intent clearly differs, such as a bug found while charting an enhancement.
 - **The Now cap:** no more than 5 open tickets are `priority:10-now`, whatever their state. A sixth means moving one down to `priority:20-next`.
+- **The Next cap:** no more than 10 open tickets are `priority:20-next`, whatever their state. An eleventh means moving the lowest-ranked one down to `priority:99-backlog`, where it keeps its `flow:implementation` and `agent:` labels.
 - **Blocked by a ticket:** a ticket blocked only by another ticket keeps its rank and gets no state. GitHub's native dependency shows the block, and the ticket rises once the blocker closes.
-- **Backlog is for charting:** Claude takes a `priority:99-backlog` ticket only to grill or chart it, never to implement it.
+- **Backlog is not worked:** Claude takes a `priority:99-backlog` ticket only to grill or chart it, never to implement it. A specified ticket on the backlog is implemented only once it is ranked back into Next.
 
 ## Recording label decisions
 
@@ -40,7 +41,10 @@ The result:
 
 - High compounding or high leverage → `10-now`.
 - Specified, with neither → `20-next`.
+- Specified, but outside the Next ten → `99-backlog`, its `## Labels` line saying it waits for a slot.
 - Not yet specified → `99-backlog`.
+
+`/rank-now` walks every open ticket, retires the ones other work has superseded, and re-ranks the Now five and the Next ten by these rules.
 - A feature that would sit on an open architecture ticket waits behind it. Say so in the feature's ticket.
 
 ## Closing or review
