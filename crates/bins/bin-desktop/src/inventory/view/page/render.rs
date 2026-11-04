@@ -24,27 +24,21 @@ use crate::{shell::view::page_clicks::PageClicks, theme::color};
 /// The context menu's width (`width:190px`).
 const MENU_WIDTH: f32 = 190.0;
 
-/// What the page draws from: its view model, where its open menu is drawn, and its clicks.
-struct Props<'a> {
-    view: &'a InventoryPageViewModel,
-    menu_at: Point<Pixels>,
-    clicks: PageClicks<InventoryPage>,
-}
-
 impl Render for InventoryPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let view = self.view_model();
-        let props = Props {
-            view: &view,
-            menu_at: self.menu_at,
-            clicks: PageClicks::new(cx),
-        };
-        render_page(&props, self.page_focused, cx)
+        let clicks = PageClicks::new(cx);
+        render_page(&view, self.menu_at, &clicks, self.page_focused, cx)
     }
 }
 
-fn render_page(props: &Props<'_>, focused: bool, cx: &App) -> AnyElement {
-    let view = props.view;
+fn render_page(
+    view: &InventoryPageViewModel,
+    menu_at: Point<Pixels>,
+    clicks: &PageClicks<InventoryPage>,
+    focused: bool,
+    cx: &App,
+) -> AnyElement {
     let table = if view.rows.is_empty() {
         div()
             .mb(px(12.0))
@@ -64,17 +58,14 @@ fn render_page(props: &Props<'_>, focused: bool, cx: &App) -> AnyElement {
             .border_color(color::border(cx))
             .mb(px(12.0))
             .child(table_header(&view.column_name, cx))
-            .children(
-                view.rows
-                    .iter()
-                    .enumerate()
-                    .map(|(position, line)| tree_row(line, position == last, focused, props, cx)),
-            )
+            .children(view.rows.iter().enumerate().map(|(position, line)| {
+                tree_row(line, position == last, focused, view, clicks, cx)
+            }))
     };
     div()
         .flex()
         .flex_col()
-        .child(kicker_row(props, cx))
+        .child(kicker_row(view, clicks, cx))
         .child(table)
         .child(
             div()
@@ -86,14 +77,18 @@ fn render_page(props: &Props<'_>, focused: bool, cx: &App) -> AnyElement {
         .children(
             view.menu
                 .as_ref()
-                .map(|menu| row_menu(menu, props.menu_at, props, cx)),
+                .map(|menu| row_menu(menu, menu_at, clicks, cx)),
         )
         .into_any_element()
 }
 
 /// LOCATIONS · n, with the square **+** (`26px`, `background:#eae9e9`) that adds a Location.
-fn kicker_row(props: &Props<'_>, cx: &App) -> impl IntoElement {
-    let on_add_click = props.clicks.row(InventoryPageEvent::New);
+fn kicker_row(
+    view: &InventoryPageViewModel,
+    clicks: &PageClicks<InventoryPage>,
+    cx: &App,
+) -> impl IntoElement {
+    let on_add_click = clicks.row(InventoryPageEvent::New);
     let hover = color::hover(cx);
     div()
         .flex()
@@ -106,7 +101,7 @@ fn kicker_row(props: &Props<'_>, cx: &App) -> impl IntoElement {
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_size(px(10.0))
                 .text_color(color::faint_text(cx))
-                .child(props.view.kicker.clone()),
+                .child(view.kicker.clone()),
         )
         .child(
             div()
@@ -126,7 +121,7 @@ fn kicker_row(props: &Props<'_>, cx: &App) -> impl IntoElement {
                 .text_size(px(15.0))
                 .hover(move |style| style.bg(hover))
                 .on_click(on_add_click)
-                .child(props.view.add_button.clone()),
+                .child(view.add_button.clone()),
         )
 }
 
@@ -152,11 +147,12 @@ fn tree_row(
     line: &InventoryLine,
     last: bool,
     focused: bool,
-    props: &Props<'_>,
+    view: &InventoryPageViewModel,
+    clicks: &PageClicks<InventoryPage>,
     cx: &App,
 ) -> AnyElement {
     let row = line.row;
-    let selected = props.view.selected == Some(row);
+    let selected = view.selected == Some(row);
     let inverted = selected && focused;
     let note_colour = if inverted {
         color::selection_muted(cx)
@@ -174,7 +170,7 @@ fn tree_row(
                     id,
                     line.disclosure.clone().unwrap_or_default(),
                     inverted,
-                    &props.clicks,
+                    clicks,
                     cx,
                 ))
                 .child(
@@ -206,9 +202,9 @@ fn tree_row(
     };
     let id = SharedString::from(id);
     let hover = color::hover(cx);
-    let on_row_click = props.clicks.row(InventoryPageEvent::Select(row));
-    let on_row_double_click = props.clicks.row(InventoryPageEvent::EditRow(row));
-    let on_row_menu = props.clicks.menu(InventoryPageEvent::OpenMenu(row));
+    let on_row_click = clicks.row(InventoryPageEvent::Select(row));
+    let on_row_double_click = clicks.row(InventoryPageEvent::EditRow(row));
+    let on_row_menu = clicks.menu(InventoryPageEvent::OpenMenu(row));
     div()
         .debug_selector({
             let id = id.clone();
@@ -281,12 +277,17 @@ fn disclosure(
 /// The row's context menu at the pointer: `190px`, `border:2px solid #201e1d`, the dialog shadow,
 /// items `padding:7px 12px; 12.5px`, the hovered one tinted and in 800, the destructive one last
 /// in red below a 1px rule. A press anywhere outside it closes it.
-fn row_menu(menu: &MenuView, at: Point<Pixels>, props: &Props<'_>, cx: &App) -> AnyElement {
-    let on_dismiss = props.clicks.send(InventoryPageEvent::CloseMenu);
+fn row_menu(
+    menu: &MenuView,
+    at: Point<Pixels>,
+    clicks: &PageClicks<InventoryPage>,
+    cx: &App,
+) -> AnyElement {
+    let on_dismiss = clicks.send(InventoryPageEvent::CloseMenu);
     let hover = color::hover(cx);
     let items = menu.entries.iter().map(|entry| {
         let action = entry.action;
-        let on_action = props.clicks.send(InventoryPageEvent::Menu(action));
+        let on_action = clicks.send(InventoryPageEvent::Menu(action));
         let id = SharedString::from(format!("settings-inventory-menu-{}", slug(action)));
         let item = div()
             .debug_selector({

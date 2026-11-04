@@ -85,6 +85,11 @@ transactions-legend-cleared = cleared
 transactions-legend-reconciled = reconciled
 transactions-legend-flagged = flagged
 
+## One legend entry, its glyph then its name, and the separator between entries.
+
+transactions-legend-entry = { $glyph } { $name }
+transactions-legend-separator = {" · "}
+
 ## What `Enter`, `e` and `n` answer: there is no Transaction form yet.
 
 transactions-open-not-yet-built = open transaction — not yet built

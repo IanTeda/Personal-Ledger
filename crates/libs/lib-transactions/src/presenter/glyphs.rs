@@ -37,14 +37,13 @@ pub fn status_legend(style: StatusGlyphs) -> String {
     ];
     let mut parts: Vec<String> = statuses
         .iter()
-        .map(|(status, name)| format!("{} {name}", status_glyph(status, style)))
+        .map(|(status, name)| msg::transactions_legend_entry(status_glyph(status, style), name))
         .collect();
-    parts.push(format!(
-        "{} {}",
+    parts.push(msg::transactions_legend_entry(
         flag_glyph(style),
-        msg::transactions_legend_flagged()
+        &msg::transactions_legend_flagged(),
     ));
-    parts.join(" \u{b7} ")
+    parts.join(&msg::transactions_legend_separator())
 }
 
 #[cfg(test)]
