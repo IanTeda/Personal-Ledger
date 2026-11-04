@@ -1,6 +1,6 @@
 //! The legacy Dialog host: the slot the Dialogs not yet on a module's Presenter live in while
-//! open, and the keyboard handling they share. A module's Dialog (Units, Bills, Pay, Payees) is an
-//! Entity in `shell::view::dialog_entity` instead; these six move there with their slices
+//! open, and the keyboard handling they share. A module's Dialog is an Entity in
+//! `shell::view::dialog_entity` instead (#991); the Dialogs here move there with their slices
 //! (#820). The key handling needs no window, so a Dialog's keys are unit-tested without one.
 //!
 //! `Root` holds `Option<OpenDialog>` and opens and closes it only through `Root::open_dialog`

@@ -1,8 +1,7 @@
 //! The Dialog host for a module's Dialogs (#820): the open Dialog is a gpui Entity holding its
 //! Presenter, so every key and click updates the Presenter with a context, and the Dialog draws
-//! itself as a View. Units, Bills, Pay, Payees, Institutions, Accounts, Categories and Delete
-//! account live here; the other Dialogs keep today's host (`shell::view::dialog_host`) until their
-//! slices.
+//! itself as a View. Every module's Dialog lives here (#991); only the Dialogs not yet on a
+//! module keep the legacy host (`shell::view::dialog_host`).
 //!
 //! Every key reaches the open Dialog through `lib-shell`'s Dialog keymap ([`DialogCommand`]), so
 //! `Enter`, `Esc`, `Tab` and select stepping are the same in each Dialog and follow

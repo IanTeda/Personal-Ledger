@@ -282,8 +282,8 @@ pub trait AccountsStore {
 
     fn accounts_mut(&mut self) -> &mut dyn AccountRepository;
 
-    /// The ids of the Accounts whose Unit is `unit`, in order: what [`Self::holdings`] needs
-    /// Transactions counted for.
+    /// The ids of the Accounts whose Unit is `unit`, in order: what [`StoredUnitReads`]'
+    /// [`UnitHoldings::holdings`] needs Transactions counted for.
     fn unit_account_ids(&self, unit: UnitId) -> Vec<AccountId> {
         self.accounts()
             .accounts()
