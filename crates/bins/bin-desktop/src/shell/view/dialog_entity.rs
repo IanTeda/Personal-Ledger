@@ -116,6 +116,9 @@ impl<O> Notify for HostRouter<O> {
     }
 }
 
+/// The Router the Help card's Presenter closes through: it has no outcome to hand a page.
+pub type HelpRouter = HostRouter<()>;
+
 /// What the Shell holds of the open Dialog, whatever its type.
 trait AnyHosted {
     fn command(&self, command: DialogCommand, cx: &mut App);

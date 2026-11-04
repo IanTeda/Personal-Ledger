@@ -17,6 +17,7 @@
 
 pub mod dialog;
 pub mod fake;
+pub mod help;
 pub mod keymap;
 pub mod nav;
 pub mod navigation;
@@ -25,6 +26,7 @@ pub mod protocols;
 pub mod window_size;
 
 pub use dialog::{DialogCommand, dialog_keymap};
+pub use help::{HelpGroup, HelpPresenter, HelpViewModel};
 pub use keymap::{ShellCommand, global_keymap};
 pub use nav::{ContextSelection, FocusZone, InputMode, NavState};
 pub use navigation::{ActiveView, Noun};

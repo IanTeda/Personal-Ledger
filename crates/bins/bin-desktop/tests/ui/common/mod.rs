@@ -1898,7 +1898,7 @@ impl<'a> Harness<'a> {
     /// The open `?` Help Dialog's page group; `None` while it is not open or the View on show
     /// has no group.
     pub fn help_group(&mut self) -> Option<HelpGroup> {
-        self.read(Root::help_group)
+        self.read_app(Root::help_group)
     }
 
     /// The status line's hints as the `?` cheat sheet words them, `(action, keys)`; empty when

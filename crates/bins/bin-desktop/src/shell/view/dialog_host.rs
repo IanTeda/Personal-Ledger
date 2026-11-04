@@ -31,7 +31,7 @@ use lib_toast::ToastKind;
 
 use crate::{
     dialog::OnClick, form::field::TextField, ledger_store::LedgerStore,
-    settings::tracing::dialogs::TracingDialog, view::event::ViewEvent, view::help::HelpDialog,
+    settings::tracing::dialogs::TracingDialog, view::event::ViewEvent,
 };
 
 /// A keystroke as a Dialog sees it, already stripped of modifiers by `Root`.
@@ -275,7 +275,6 @@ impl Dialog for ToastHistoryDialog {
 pub enum OpenDialog {
     Tracing(TracingDialog),
     ToastHistory(ToastHistoryDialog),
-    Help(HelpDialog),
 }
 
 impl OpenDialog {
@@ -283,7 +282,6 @@ impl OpenDialog {
         match self {
             Self::Tracing(dialog) => dialog,
             Self::ToastHistory(dialog) => dialog,
-            Self::Help(dialog) => dialog,
         }
     }
 
@@ -291,7 +289,6 @@ impl OpenDialog {
         match self {
             Self::Tracing(dialog) => dialog,
             Self::ToastHistory(dialog) => dialog,
-            Self::Help(dialog) => dialog,
         }
     }
 }
@@ -331,7 +328,6 @@ macro_rules! dialog_variant {
 }
 
 dialog_variant!(Tracing, TracingDialog);
-dialog_variant!(Help, HelpDialog);
 
 impl Dialog for OpenDialog {
     fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
@@ -455,8 +451,8 @@ mod tests {
         let mut dialog = OpenDialog::Tracing(TracingDialog::ClearLogs);
         assert!(TracingDialog::from_open(&dialog).is_some());
         assert!(TracingDialog::from_open_mut(&mut dialog).is_some());
-        assert!(HelpDialog::from_open(&dialog).is_none());
-        assert!(HelpDialog::from_open_mut(&mut dialog).is_none());
+        let history = OpenDialog::ToastHistory(ToastHistoryDialog);
+        assert!(TracingDialog::from_open(&history).is_none());
     }
 
     #[test]
@@ -470,18 +466,6 @@ mod tests {
             DialogKey::Enter,
             DialogKey::Down,
         ] {
-            assert_eq!(handle_key(&mut dialog, key), DialogOutcome::Ignored);
-        }
-        assert!(!dialog.close_open_select(), "the first Esc closes it");
-    }
-
-    #[test]
-    fn help_closes_on_question_mark_or_enter_and_ignores_the_rest() {
-        let mut dialog = OpenDialog::Help(HelpDialog { group: None });
-        for key in [DialogKey::Char('?'), DialogKey::Enter] {
-            assert_eq!(handle_key(&mut dialog, key), DialogOutcome::Confirm);
-        }
-        for key in [DialogKey::Char('j'), DialogKey::Tab, DialogKey::Down] {
             assert_eq!(handle_key(&mut dialog, key), DialogOutcome::Ignored);
         }
         assert!(!dialog.close_open_select(), "the first Esc closes it");

@@ -2,12 +2,14 @@
 //! Dialogs it still confirms by variant. An `impl Root` block, not the Dialog host itself (`shell::view::dialog_host`).
 
 use super::Root;
+use crate::navigation::nav::NounLabel;
 use crate::shell::view::dialog_host::{
     Dialog, DialogReadback, DialogScope, DialogVariant, HostedOpen, OpenDialog,
 };
 use crate::view::help::{HelpDialog, HelpGroup};
-use gpui::Context;
+use gpui::{AppContext as _, Context};
 use lib_shell::DialogInput;
+use lib_shell::HelpPresenter;
 
 use crate::shell::view::dialog_entity::DialogHandle;
 
@@ -76,20 +78,26 @@ impl Root {
     /// global shortcuts.
     pub(super) fn open_help(&mut self, cx: &mut Context<'_, Self>) {
         let group = self.active_view_entity(cx).help_group(cx);
-        self.open_dialog(OpenDialog::Help(HelpDialog { group }));
+        let presenter = HelpPresenter::open(self.presenter.keymap(), NounLabel::label, group);
+        let dialog = cx.new(|_| HelpDialog::new(presenter));
+        self.host_dialog(DialogHandle::new(dialog), cx);
     }
 
     /// Whether the Help Dialog is the open Dialog.
     #[doc(hidden)]
     pub fn help_open(&self) -> bool {
-        matches!(self.state.dialog, Some(OpenDialog::Help(_)))
+        self.help_dialog().is_some()
+    }
+
+    fn help_dialog(&self) -> Option<gpui::Entity<HelpDialog>> {
+        self.hosted_dialog()?.downcast::<HelpDialog>()
     }
 
     /// The open Help Dialog's page group, for a test; `None` while it is not open or carries
     /// none.
     #[doc(hidden)]
-    pub fn help_group(&self) -> Option<HelpGroup> {
-        self.dialog::<HelpDialog>()?.group.clone()
+    pub fn help_group(&self, cx: &gpui::App) -> Option<HelpGroup> {
+        self.help_dialog()?.read(cx).group()
     }
 
     /// Closes the open Dialog, in either host, without applying it.
@@ -124,7 +132,7 @@ impl Root {
         // Every domain's Dialog runs through the host's cycle (`DialogForm`/`confirm_ledger`, ADR-0037).
         match self.state.dialog {
             // Read-only: it has nothing to apply.
-            Some(OpenDialog::ToastHistory(_) | OpenDialog::Help(_)) => self.close_dialog(),
+            Some(OpenDialog::ToastHistory(_)) => self.close_dialog(),
             // Hosted: confirmed above through the opener's confirm.
             Some(OpenDialog::Tracing(_)) | None => {}
         }

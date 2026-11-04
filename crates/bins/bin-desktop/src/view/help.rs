@@ -1,17 +1,21 @@
 //! The `?` help overlay: an About-style card on `dialog`'s frame -- project facts on the left,
-//! the shortcut cheat-sheet on the right, a Close button in the footer.
+//! the shortcut cheat-sheet on the right, a Close button in the footer. It is a module Dialog
+//! (#1025): an Entity holding `lib-shell`'s [`HelpPresenter`], hosted like any other.
 
 use std::rc::Rc;
 
-use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
-use lib_shell::ShellCommand;
-use lib_viper::keymap::Keymap;
+use gpui::{AnyElement, App, Context, EventEmitter, SharedString, Window, div, prelude::*, px};
+use lib_shell::{HelpPresenter, HelpViewModel};
+use lib_viper::dialog::DialogInput;
 
 use crate::{
     dialog, help,
-    shell::view::dialog_host::{Dialog, DialogKey, DialogOutcome},
+    shell::view::dialog_entity::{DialogClicks, DialogClosed, HelpRouter, HostedDialog},
+    shell::view::dialog_host::DialogReadback,
     theme::color,
 };
+
+pub use lib_shell::HelpGroup;
 
 const WIDTH: gpui::Pixels = px(720.0);
 const FACTS_WIDTH: gpui::Pixels = px(340.0);
@@ -19,36 +23,88 @@ const KEY_WIDTH: gpui::Pixels = px(44.0);
 
 pub type OnClose = dialog::OnClick;
 
-/// The `?` Help Dialog: read-only, so `?` or `Esc` closes it and every other key is left to the
-/// shell. It carries the page group of the View it was opened over, worded when it opened.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// The `?` Help Dialog: read-only, so `?`, `Enter`, `Esc` and the Close button close it and every
+/// other key is left to the Shell. The Presenter carries the page group of the View it was opened
+/// over, worded when it opened.
 pub struct HelpDialog {
-    pub group: Option<HelpGroup>,
+    presenter: HelpPresenter,
 }
 
-/// A View's own keys in the Help Dialog, under the View's heading: `keys` as `(action, keys)`,
-/// read from the hints its status line shows so a rebound key shows rebound.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HelpGroup {
-    pub heading: String,
-    pub keys: Vec<(String, String)>,
-}
+impl HelpDialog {
+    pub fn new(presenter: HelpPresenter) -> Self {
+        Self { presenter }
+    }
 
-impl Dialog for HelpDialog {
-    fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
-        Some(match key {
-            DialogKey::Char('?') | DialogKey::Enter => DialogOutcome::Confirm,
-            _ => DialogOutcome::Ignored,
-        })
+    /// The page group of the View the card opened over, for a test.
+    pub fn group(&self) -> Option<HelpGroup> {
+        self.presenter.view_model().group.clone()
+    }
+
+    /// Emits the close once the Presenter has closed it.
+    fn closed(router: HelpRouter, cx: &mut Context<'_, Self>) {
+        if router.closed().is_some() {
+            cx.emit(DialogClosed);
+        }
     }
 }
 
-pub fn render(
-    on_close: OnClose,
-    keymap: &Keymap<ShellCommand>,
-    group: Option<&HelpGroup>,
-    cx: &App,
-) -> AnyElement {
+impl EventEmitter<DialogClosed> for HelpDialog {}
+
+impl HostedDialog for HelpDialog {
+    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
+        let mut router = HelpRouter::default();
+        self.presenter.input(input, &mut router);
+        Self::closed(router, cx);
+    }
+
+    fn can_confirm(&self) -> bool {
+        true
+    }
+
+    /// The Close button.
+    fn confirm(&mut self, cx: &mut Context<'_, Self>) {
+        let mut router = HelpRouter::default();
+        self.presenter.confirm(&mut router);
+        Self::closed(router, cx);
+    }
+
+    fn cancel(&mut self, cx: &mut Context<'_, Self>) {
+        let mut router = HelpRouter::default();
+        self.presenter.cancel(&mut router);
+        Self::closed(router, cx);
+    }
+
+    fn close_open_select(&mut self) -> bool {
+        false
+    }
+
+    fn readback(&self, _cx: &App) -> DialogReadback {
+        let model = self.presenter.view_model();
+        DialogReadback {
+            kind: "Help",
+            values: vec![
+                (
+                    "group",
+                    model
+                        .group
+                        .as_ref()
+                        .map(|group| group.heading.clone())
+                        .unwrap_or_default(),
+                ),
+                ("jumps", model.jumps.len().to_string()),
+            ],
+        }
+    }
+}
+
+impl Render for HelpDialog {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+        let clicks = DialogClicks::new(cx);
+        render(clicks.confirm, self.presenter.view_model(), cx)
+    }
+}
+
+fn render(on_close: OnClose, model: &HelpViewModel, cx: &App) -> AnyElement {
     let overlay = dialog::overlay(
         WIDTH,
         false,
@@ -60,7 +116,7 @@ pub fn render(
                 div()
                     .flex()
                     .child(facts_column(cx))
-                    .child(shortcuts_column(keymap, group, cx)),
+                    .child(shortcuts_column(model, cx)),
             )
             .child(footer(on_close, cx)),
         cx,
@@ -267,11 +323,7 @@ fn two_columns(cells: Vec<AnyElement>) -> impl IntoElement {
     div().flex().flex_col().gap(px(10.0)).children(rows)
 }
 
-fn shortcuts_column(
-    keymap: &Keymap<ShellCommand>,
-    group: Option<&HelpGroup>,
-    cx: &App,
-) -> impl IntoElement {
+fn shortcuts_column(model: &HelpViewModel, cx: &App) -> impl IntoElement {
     div()
         .flex_1()
         .min_w_0()
@@ -284,32 +336,31 @@ fn shortcuts_column(
         .text_size(px(12.5))
         .child(kicker(crate::msg::desktop_help_shortcuts_label(), cx))
         .child(two_columns(
-            help::jump_shortcuts(keymap)
-                .into_iter()
+            model
+                .jumps
+                .iter()
                 .map(|(label, keys)| shortcut(label, keys, cx))
                 .collect(),
         ))
         .child(rule(cx))
         .child(two_columns(
-            help::global_shortcuts(keymap)
-                .into_iter()
+            model
+                .globals
+                .iter()
                 .map(|(label, keys)| shortcut(label, keys, cx))
                 .collect(),
         ))
-        .when_some(
-            group.filter(|group| !group.keys.is_empty()),
-            |this, group| {
-                this.child(rule(cx))
-                    .child(kicker(group.heading.clone(), cx))
-                    .child(two_columns(
-                        group
-                            .keys
-                            .iter()
-                            .map(|(label, keys)| shortcut(label, keys, cx))
-                            .collect(),
-                    ))
-            },
-        )
+        .when_some(model.group.as_ref(), |this, group| {
+            this.child(rule(cx))
+                .child(kicker(group.heading.clone(), cx))
+                .child(two_columns(
+                    group
+                        .keys
+                        .iter()
+                        .map(|(label, keys)| shortcut(label, keys, cx))
+                        .collect(),
+                ))
+        })
 }
 
 fn footer(on_close: OnClose, cx: &App) -> impl IntoElement {

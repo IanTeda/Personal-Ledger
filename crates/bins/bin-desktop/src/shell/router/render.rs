@@ -30,7 +30,6 @@ use crate::{
     theme::{color, type_scale},
     view::{
         active::{ActiveViewEntity, ShellView},
-        help::{self as help_view, HelpDialog},
         placeholder,
     },
 };
@@ -167,7 +166,6 @@ impl Render for Root {
                 });
             })
         };
-        let on_help_close: help_view::OnClose = on_toast_history_close.clone();
         let on_explorer_cancel: explorer_view::OnCancel = {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
@@ -370,14 +368,6 @@ impl Render for Root {
                     on_explorer_filter_toggle,
                     on_explorer_cancel,
                     on_explorer_open,
-                    cx,
-                )
-            }))
-            .children(self.dialog::<HelpDialog>().map(|dialog| {
-                help_view::render(
-                    on_help_close,
-                    self.presenter.keymap(),
-                    dialog.group.as_ref(),
                     cx,
                 )
             }))
