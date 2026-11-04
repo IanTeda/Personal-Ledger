@@ -21,7 +21,7 @@ pub use router::tags_page;
 pub use view::page::TagsPage;
 
 use lib_core::TagId;
-use lib_database::SharedTagsStore;
+use lib_database::{SharedTagsStore, StoredTagReads};
 use lib_tags::presenter::TagsPageEvent;
 
 /// The Tags page as the UI tests read it: names A–Z, each Tag's id in the same order, and the
@@ -38,13 +38,20 @@ pub struct SettingsTagsSnapshot {
 /// forwarding shim and read copy, and its keymap under `[keybindings]`.
 pub struct TagsSetup {
     pub store: SharedTagsStore,
+    /// What carries each Tag, counted in the Transactions, Accounts and Units stores (#994).
+    pub usage: StoredTagReads,
     pub keymap: lib_viper::keymap::Keymap<TagsPageEvent>,
 }
 
 impl TagsSetup {
-    pub fn new(store: SharedTagsStore, config: &lib_config::KeyBindingConfig) -> Self {
+    pub fn new(
+        store: SharedTagsStore,
+        usage: StoredTagReads,
+        config: &lib_config::KeyBindingConfig,
+    ) -> Self {
         Self {
             store,
+            usage,
             keymap: lib_tags::keymap::tags_page_keymap(config),
         }
     }
@@ -54,6 +61,11 @@ impl TagsSetup {
     pub fn stub(storage: &crate::ledger_store::LedgerSetup) -> Self {
         Self::new(
             storage.tags.clone(),
+            StoredTagReads {
+                transactions: storage.transactions.clone(),
+                accounts: storage.accounts.clone(),
+                units: crate::bills::ports::in_memory_units(),
+            },
             &lib_config::KeyBindingConfig::default(),
         )
     }

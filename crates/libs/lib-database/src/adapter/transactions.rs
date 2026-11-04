@@ -26,6 +26,16 @@ use crate::commit::PendingWrites;
 use crate::writer::{BoxFuture, Change, Domain, Writer};
 use crate::{Error, Result};
 
+/// One Split carrying a Tag, with what the Transactions know of it: the rows a Tag's usage is
+/// counted from (#994). Which Unit the Account holds is the Accounts' to say.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TaggedSplit {
+    pub transaction: TransactionId,
+    pub date: NaiveDate,
+    pub account: AccountId,
+    pub amount: Money,
+}
+
 /// One port write, saved in the order it was made.
 #[derive(Debug, Clone)]
 enum TransactionsChange {
@@ -196,6 +206,73 @@ impl TransactionsAdapter {
             })
             .ok()
     }
+
+    /// The Splits carrying Tag `id` in the file, blocking: what the last commit left, not a write
+    /// still pending. It only feeds figures the Tags page shows, so a read that can't be made is
+    /// logged and answered as none (#862).
+    pub fn tagged_splits(&self, id: TagId) -> Vec<TaggedSplit> {
+        self.pending
+            .writer()
+            .run(move |pool| async move {
+                let mut conn = pool.acquire().await?;
+                read_tagged_splits(&mut conn, id).await
+            })
+            .inspect_err(|error| {
+                tracing::error!(%error, tag = %id, "Failed to read the Splits carrying a Tag");
+            })
+            .unwrap_or_default()
+    }
+
+    /// Distinct Transactions per Tag, for every Tag a Split carries, in one grouped read of the
+    /// file. A read that can't be made is logged and answered as none.
+    pub fn tag_transaction_counts(&self) -> HashMap<TagId, usize> {
+        self.pending
+            .writer()
+            .run(|pool| async move {
+                let mut conn = pool.acquire().await?;
+                count_tag_transactions(&mut conn).await
+            })
+            .inspect_err(|error| {
+                tracing::error!(%error, "Failed to count the Transactions carrying each Tag");
+            })
+            .unwrap_or_default()
+    }
+}
+
+/// The Splits among `transactions` carrying Tag `id`, one each however often the Split lists it:
+/// how a store reads what it holds.
+pub(crate) fn tagged_splits(transactions: &[Transaction], id: TagId) -> Vec<TaggedSplit> {
+    transactions
+        .iter()
+        .flat_map(|transaction| {
+            transaction
+                .splits
+                .iter()
+                .filter(|split| split.tag_ids.contains(&id))
+                .map(|split| TaggedSplit {
+                    transaction: transaction.id,
+                    date: transaction.date,
+                    account: transaction.account_id,
+                    amount: split.amount.clone(),
+                })
+        })
+        .collect()
+}
+
+/// Distinct Transactions per Tag among `transactions`: how a store counts what it holds.
+pub(crate) fn tag_transaction_counts(transactions: &[Transaction]) -> HashMap<TagId, usize> {
+    let mut counts = HashMap::new();
+    for transaction in transactions {
+        let tags: std::collections::HashSet<TagId> = transaction
+            .splits
+            .iter()
+            .flat_map(|split| split.tag_ids.iter().copied())
+            .collect();
+        for tag in tags {
+            *counts.entry(tag).or_default() += 1;
+        }
+    }
+    counts
 }
 
 /// The Transactions among `transactions` booked to each of `accounts` that has any: how a store
@@ -519,6 +596,61 @@ async fn count_account_transactions(
                 })
         })
         .collect()
+}
+
+/// The Splits [`TransactionsAdapter::tagged_splits`] reads, in the Transactions' order.
+async fn read_tagged_splits(conn: &mut SqliteConnection, id: TagId) -> Result<Vec<TaggedSplit>> {
+    let rows = sqlx::query!(
+        r#"SELECT
+               t.id         AS "transaction_id!: TransactionId",
+               t.date       AS "date!: NaiveDate",
+               t.account_id AS "account_id!: AccountId",
+               s.amount     AS "amount!: Money"
+           FROM splits s
+           JOIN transactions t ON t.id = s.transaction_id
+           WHERE EXISTS (
+               SELECT 1 FROM split_tags st
+               WHERE st.transaction_id = s.transaction_id
+                 AND st.position = s.position
+                 AND st.tag_id = ?
+           )
+           ORDER BY t.rowid, s.position"#,
+        id,
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| TaggedSplit {
+            transaction: row.transaction_id,
+            date: row.date,
+            account: row.account_id,
+            amount: row.amount,
+        })
+        .collect())
+}
+
+/// Distinct Transactions per Tag, for every Tag a Split carries, in one grouped read. A Tag
+/// nothing carries has no row.
+async fn count_tag_transactions(conn: &mut SqliteConnection) -> Result<HashMap<TagId, usize>> {
+    let rows = sqlx::query!(
+        r#"SELECT
+               tag_id                          AS "tag_id!: TagId",
+               COUNT(DISTINCT transaction_id)  AS "transactions!: i64"
+           FROM split_tags
+           GROUP BY tag_id"#
+    )
+    .fetch_all(&mut *conn)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            (
+                row.tag_id,
+                usize::try_from(row.transactions).unwrap_or_default(),
+            )
+        })
+        .collect())
 }
 
 #[cfg(test)]

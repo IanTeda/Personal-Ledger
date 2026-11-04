@@ -18,7 +18,7 @@ use std::rc::Rc;
 
 use gpui::{App, Entity};
 use lib_core::TagId;
-use lib_database::{SharedTagsStore, TagsStore};
+use lib_database::{SharedTagsStore, StoredTagReads, TagsStore};
 use lib_ledger::{Ledger, LedgerChange, MergeTags, RemoveTag};
 use lib_tags::fake::{InMemoryPorts, InMemoryTagUsage, InMemoryTags};
 use lib_tags::{
@@ -27,46 +27,53 @@ use lib_tags::{
 
 use crate::ledger_store::LedgerStore;
 
-/// `ledger`'s own Tags in memory, their usage counted from its Transactions, for a test that
-/// needs no storage.
+/// `ledger`'s own Tags in memory, for a test that needs no storage. What carries them is read
+/// through [`StoredTagReads`].
 pub fn in_memory(ledger: &Ledger) -> SharedTagsStore {
     Rc::new(RefCell::new(InMemoryPorts {
         tags: InMemoryTags {
             tags: ledger.tags().to_vec(),
         },
-        usage: InMemoryTagUsage {
-            uses: ledger.tag_uses(),
-        },
+        usage: InMemoryTagUsage::default(),
     }))
 }
 
 /// The shared store as the module's Presenters hold the ports, borrowed for each call: the store
 /// is shared behind a `RefCell` whose guard can't be lent out of it.
-pub struct StorePorts(SharedTagsStore);
+///
+/// The Tags are the store's; what carries them is counted by `usage` in the other domains' stores
+/// (#994).
+pub struct StorePorts {
+    store: SharedTagsStore,
+    usage: StoredTagReads,
+}
 
 impl TagRepository for StorePorts {
     fn tags(&self) -> Vec<Tag> {
-        self.0.borrow().tags().tags()
+        self.store.borrow().tags().tags()
     }
 
     fn upsert_tag(&mut self, tag: Tag) {
-        self.0.borrow_mut().tags_mut().upsert_tag(tag);
+        self.store.borrow_mut().tags_mut().upsert_tag(tag);
     }
 }
 
 impl TagUsage for StorePorts {
     fn tag_usage(&self, id: TagId) -> TagUse {
-        self.0.borrow().usage().tag_usage(id)
+        self.usage.tag_usage(id)
     }
 
     fn transactions_by_tag(&self, ids: &[TagId]) -> HashMap<TagId, usize> {
-        self.0.borrow().usage().transactions_by_tag(ids)
+        self.usage.transactions_by_tag(ids)
     }
 }
 
 /// `store` as the Tags module's Presenters share it.
-pub fn shared(store: &SharedTagsStore) -> SharedPorts {
-    Rc::new(RefCell::new(StorePorts(store.clone())))
+pub fn shared(store: &SharedTagsStore, usage: StoredTagReads) -> SharedPorts {
+    Rc::new(RefCell::new(StorePorts {
+        store: store.clone(),
+        usage,
+    }))
 }
 
 /// The forwarding shim: sends each Tag `changes` delete to `store`, returning whether it wrote
@@ -158,18 +165,24 @@ mod tests {
     }
 
     #[test]
-    fn an_in_memory_store_counts_the_ledgers_transactions() {
+    fn usage_is_counted_from_the_ledgers_transactions() {
         let ledger = Ledger::stub();
         let shared = lib_tags::find_by_name(ledger.tags(), "shared").expect("a stub Tag");
+        let setup = crate::ledger_store::LedgerSetup::stub(today());
+        let ports = StorePorts {
+            store: in_memory(&ledger),
+            usage: StoredTagReads {
+                transactions: setup.transactions.clone(),
+                accounts: setup.accounts.clone(),
+                units: crate::bills::ports::in_memory_units(),
+            },
+        };
 
-        let used = StorePorts(in_memory(&ledger)).tag_usage(shared);
+        let used = ports.tag_usage(shared);
 
         assert!(used.transactions > 0, "the stub's Splits carry it");
-        assert_eq!(used, ledger.tag_uses()[&shared]);
-        assert_eq!(
-            StorePorts(in_memory(&ledger)).tag_usage(TagId::seed(999)),
-            TagUse::default()
-        );
+        assert_eq!(used.transactions, ledger.tag_uses()[&shared].transactions);
+        assert_eq!(ports.tag_usage(TagId::seed(999)), TagUse::default());
     }
 
     fn today() -> chrono::NaiveDate {

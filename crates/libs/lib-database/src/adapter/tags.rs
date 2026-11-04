@@ -1,4 +1,4 @@
-//! The Tags adapter: `lib-tags`' repository and `TagUsage` ports over the `tags` table, and
+//! The Tags adapter: `lib-tags`' repository port over the `tags` table, and
 //! `lib-transactions`' `TransactionTags` read port from the same rows (ADR-0046, #862, #925).
 //!
 //! It loads every Tag into memory, blocking, and serves the rows from there in the order they were
@@ -10,16 +10,11 @@
 //! forwarding shim sends those commands' deletes through, after the Transactions that drop the
 //! Tag: `split_tags.tag_id`'s foreign key refuses deleting a Tag a Split still carries.
 //!
-//! Usage is other domains' rows, so [`TagUsage`] reads the `split_tags`, `splits`, `transactions`,
-//! `accounts` and `units` in the file, blocking: what the last commit left, not a write still
-//! pending. It only feeds figures the page shows, so a read that can't be made is logged and
-//! answered as unused (#862).
+//! What carries a Tag is other domains' rows, so `StoredTagReads` counts it from the Transactions,
+//! Accounts and Units stores (#994), not here.
 
-use std::collections::HashMap;
-
-use chrono::NaiveDate;
-use lib_core::{HexColor, Money, TagId, Total, TransactionId, UnitId};
-use lib_tags::{Tag, TagRepository, TagUsage, TagUse};
+use lib_core::{HexColor, TagId};
+use lib_tags::{Tag, TagRepository};
 use lib_transactions::{TransactionTag, TransactionTags};
 use sqlx::SqliteConnection;
 
@@ -37,18 +32,12 @@ enum TagsChange {
 /// The Tags domain, held in memory and saved through the shared writer.
 pub struct TagsAdapter {
     tags: StoredTags,
-    usage: StoredUsage,
 }
 
 /// The rows, with the batch their writes join.
 struct StoredTags {
     rows: Vec<Tag>,
     pending: PendingWrites,
-}
-
-/// Figures read from the file, through the writer.
-struct StoredUsage {
-    writer: Writer,
 }
 
 impl TagsAdapter {
@@ -64,9 +53,6 @@ impl TagsAdapter {
             read(&mut conn).await
         })?;
         Ok(Self {
-            usage: StoredUsage {
-                writer: pending.writer().clone(),
-            },
             tags: StoredTags { rows, pending },
         })
     }
@@ -126,10 +112,6 @@ impl TagsAdapter {
     pub fn tags_mut(&mut self) -> &mut dyn TagRepository {
         &mut self.tags
     }
-
-    pub fn usage(&self) -> &dyn TagUsage {
-        &self.usage
-    }
 }
 
 impl TagRepository for StoredTags {
@@ -156,36 +138,6 @@ impl TransactionTags for TagsAdapter {
                 name: tag.name.clone(),
                 color: tag.color.clone(),
             })
-            .collect()
-    }
-}
-
-impl TagUsage for StoredUsage {
-    fn tag_usage(&self, id: TagId) -> TagUse {
-        self.writer
-            .run(move |pool| async move {
-                let mut conn = pool.acquire().await?;
-                count_usage(&mut conn, id).await
-            })
-            .inspect_err(|error| {
-                tracing::error!(%error, tag = %id, "Failed to read what carries a Tag");
-            })
-            .unwrap_or_default()
-    }
-
-    fn transactions_by_tag(&self, ids: &[TagId]) -> HashMap<TagId, usize> {
-        let counted = self
-            .writer
-            .run(|pool| async move {
-                let mut conn = pool.acquire().await?;
-                count_transactions(&mut conn).await
-            })
-            .inspect_err(|error| {
-                tracing::error!(%error, "Failed to count the Transactions carrying each Tag");
-            })
-            .unwrap_or_default();
-        ids.iter()
-            .map(|id| (*id, counted.get(id).copied().unwrap_or(0)))
             .collect()
     }
 }
@@ -231,86 +183,6 @@ async fn delete(conn: &mut SqliteConnection, id: TagId) -> Result<()> {
     Ok(())
 }
 
-/// Distinct Transactions per Tag, for every Tag a Split carries, in one grouped read. A Tag
-/// nothing carries has no row.
-async fn count_transactions(conn: &mut SqliteConnection) -> Result<HashMap<TagId, usize>> {
-    let rows = sqlx::query!(
-        r#"SELECT
-               tag_id                          AS "tag_id!: TagId",
-               COUNT(DISTINCT transaction_id)  AS "transactions!: i64"
-           FROM split_tags
-           GROUP BY tag_id"#
-    )
-    .fetch_all(&mut *conn)
-    .await?;
-    Ok(rows
-        .into_iter()
-        .map(|row| {
-            (
-                row.tag_id,
-                usize::try_from(row.transactions).unwrap_or_default(),
-            )
-        })
-        .collect())
-}
-
-/// A Tag's figures from the Splits that carry it: distinct Transactions, the newest date, and the
-/// sum when the carrying Transactions' Accounts share one Unit. A Split lists a Tag at most once
-/// in practice, but is counted once whatever the rows say.
-async fn count_usage(conn: &mut SqliteConnection, id: TagId) -> Result<TagUse> {
-    let rows = sqlx::query!(
-        r#"SELECT
-               t.id        AS "transaction_id!: TransactionId",
-               t.date      AS "date!: NaiveDate",
-               a.unit_id   AS "unit_id!: UnitId",
-               u.code      AS "unit_code!",
-               s.amount    AS "amount!: Money"
-           FROM splits s
-           JOIN transactions t ON t.id = s.transaction_id
-           JOIN accounts a ON a.id = t.account_id
-           JOIN units u ON u.id = a.unit_id
-           WHERE EXISTS (
-               SELECT 1 FROM split_tags st
-               WHERE st.transaction_id = s.transaction_id
-                 AND st.position = s.position
-                 AND st.tag_id = ?
-           )
-           ORDER BY t.rowid, s.position"#,
-        id,
-    )
-    .fetch_all(&mut *conn)
-    .await?;
-
-    let mut transactions: std::collections::HashSet<TransactionId> = Default::default();
-    let mut last_used: Option<NaiveDate> = None;
-    let mut unit: Option<(UnitId, String)> = None;
-    let mut mixed = false;
-    let mut sum = bigdecimal::BigDecimal::new(0.into(), 2);
-    for row in rows {
-        transactions.insert(row.transaction_id);
-        last_used = last_used.max(Some(row.date));
-        match &unit {
-            None => unit = Some((row.unit_id, row.unit_code)),
-            Some((seen, _)) if *seen != row.unit_id => mixed = true,
-            Some(_) => {}
-        }
-        sum += row.amount.0;
-    }
-    let total = match unit {
-        None => Total::Empty,
-        Some(_) if mixed => Total::Mixed,
-        Some((_, unit)) => Total::Single {
-            unit,
-            amount: Money(sum),
-        },
-    };
-    Ok(TagUse {
-        transactions: transactions.len(),
-        total,
-        last_used,
-    })
-}
-
 async fn read(conn: &mut SqliteConnection) -> Result<Vec<Tag>> {
     sqlx::query!(
         r#"SELECT id AS "id!: TagId", name, color, is_active
@@ -341,29 +213,42 @@ async fn read(conn: &mut SqliteConnection) -> Result<Vec<Tag>> {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+    use std::rc::Rc;
     use std::sync::mpsc;
+
+    use chrono::NaiveDate;
 
     use bigdecimal::BigDecimal;
     use lib_accounts::default_accounts;
-    use lib_core::{AccountId, CategoryId, TransactionStatus};
+    use lib_core::{AccountId, CategoryId, Money, Total, TransactionId, TransactionStatus, UnitId};
     use lib_tags::contract::{self, PortsFactory, StoredPorts};
     use lib_tags::default_tags;
+    use lib_tags::{TagUsage, TagUse};
     use lib_transactions::{Split, Transaction};
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
     use super::*;
-    use crate::TransactionsAdapter;
     use crate::commit::Commit;
     use crate::test_support::TransactionReadsFactory;
     use crate::writer::WriteFailure;
+    use crate::{AccountsAdapter, StoredTagReads, TransactionsAdapter, UnitsAdapter};
 
-    impl StoredPorts for TagsAdapter {
+    /// The adapter with the reads that count what carries its Tags, over the other stores loaded
+    /// on the same file, as a Client holds them (#994).
+    struct Ports {
+        tags: TagsAdapter,
+        reads: StoredTagReads,
+    }
+
+    impl StoredPorts for Ports {
         fn tags(&mut self) -> &mut dyn TagRepository {
-            &mut self.tags
+            &mut self.tags.tags
         }
 
         fn usage(&self) -> &dyn TagUsage {
-            &self.usage
+            &self.reads
         }
     }
 
@@ -385,6 +270,32 @@ mod tests {
                 pending: PendingWrites::new(writer.clone()),
                 writer,
                 failures,
+            }
+        }
+
+        /// `tags` with the reads over the stores loaded now on the file.
+        fn ports(&self, tags: TagsAdapter) -> Ports {
+            let load = |pending: &PendingWrites| {
+                (
+                    Rc::new(RefCell::new(
+                        TransactionsAdapter::load(pending.clone()).expect("the rows load"),
+                    )),
+                    Rc::new(RefCell::new(
+                        AccountsAdapter::load(pending.clone()).expect("the rows load"),
+                    )),
+                    Rc::new(RefCell::new(
+                        UnitsAdapter::load(pending.clone()).expect("the rows load"),
+                    )),
+                )
+            };
+            let (transactions, accounts, units) = load(&self.pending);
+            Ports {
+                tags,
+                reads: StoredTagReads {
+                    transactions,
+                    accounts,
+                    units,
+                },
             }
         }
 
@@ -458,30 +369,30 @@ mod tests {
     }
 
     impl PortsFactory for AdapterFactory {
-        type Ports = TagsAdapter;
+        type Ports = Ports;
 
-        fn create(&mut self, seed: Vec<Tag>) -> TagsAdapter {
+        fn create(&mut self, seed: Vec<Tag>) -> Ports {
             TagsAdapter::seed(&self.writer, seed).expect("the seed is written");
-            TagsAdapter::load(self.pending.clone()).expect("the seed loads")
+            self.ports(TagsAdapter::load(self.pending.clone()).expect("the seed loads"))
         }
 
-        fn reload(&mut self, _ports: TagsAdapter) -> TagsAdapter {
+        fn reload(&mut self, _ports: Ports) -> Ports {
             self.pending.commit();
             let fresh = TagsAdapter::load(self.pending.clone()).expect("the rows load");
             if let Some(failure) = self.failures().first() {
                 panic!("a write failed: {failure:?}");
             }
-            fresh
+            self.ports(fresh)
         }
 
-        fn commit(&mut self, _ports: &mut TagsAdapter) {
+        fn commit(&mut self, _ports: &mut Ports) {
             self.pending.commit();
         }
 
         /// Stores Transactions whose Splits carry the Tag so the SQL answers `uses`: the sum on
         /// the first Split, nothing on the rest, the newest on the last Transaction. A `Mixed`
         /// total takes one Transaction in the base Unit and the rest in another.
-        fn carry_tag(&mut self, _ports: &mut TagsAdapter, id: TagId, uses: TagUse) {
+        fn carry_tag(&mut self, _ports: &mut Ports, id: TagId, uses: TagUse) {
             let aud = account_in(UnitId::SEED_AUD);
             let Some(last_used) = uses.last_used else {
                 return;
@@ -510,7 +421,7 @@ mod tests {
                 .expect("the carrying Transactions are written");
         }
 
-        fn break_writes(&mut self, _ports: &mut TagsAdapter) {
+        fn break_writes(&mut self, _ports: &mut Ports) {
             self.writer
                 .run(|pool| async move {
                     sqlx::query(
@@ -524,13 +435,13 @@ mod tests {
                 .expect("the trigger is created");
         }
 
-        fn recover(&mut self, mut ports: TagsAdapter) -> (TagsAdapter, usize) {
+        fn recover(&mut self, mut ports: Ports) -> (Ports, usize) {
             let failures = self
                 .failures()
                 .iter()
                 .filter(|failure| failure.domains == [Domain::Tags])
                 .count();
-            ports.reload().expect("the rows load");
+            ports.tags.reload().expect("the rows load");
             (ports, failures)
         }
     }
@@ -598,7 +509,7 @@ mod tests {
             "no such Tag"
         );
 
-        let mut tags = factory.create(default_tags());
+        let mut ports = factory.create(default_tags());
         let carried = TagId::seed(2);
         TransactionsAdapter::seed(
             &factory.writer,
@@ -606,20 +517,20 @@ mod tests {
         )
         .expect("a stored Tag may be carried");
 
-        tags.delete_tag(carried);
+        ports.tags.delete_tag(carried);
         factory.pending.commit();
         let failures = factory.failures();
         assert_eq!(failures.len(), 1, "the delete is refused");
         assert_eq!(failures[0].domains, [Domain::Tags]);
-        tags.reload().expect("the rows load");
-        assert!(tags.tags().tag(carried).is_some(), "the Tag stays");
+        ports.tags.reload().expect("the rows load");
+        assert!(ports.tags().tag(carried).is_some(), "the Tag stays");
 
         let uncarried = TagId::seed(1);
-        tags.delete_tag(uncarried);
+        ports.tags.delete_tag(uncarried);
         factory.pending.commit();
         assert!(factory.failures().is_empty());
-        let tags = factory.reload(tags);
-        assert!(tags.tags().tag(uncarried).is_none(), "an unused Tag goes");
+        let mut ports = factory.reload(ports);
+        assert!(ports.tags().tag(uncarried).is_none(), "an unused Tag goes");
     }
 
     /// Two Splits of one Transaction carrying the Tag count the Transaction once and sum both.
@@ -629,7 +540,8 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        let tags = factory.create(default_tags());
+        let ports = factory.create(default_tags());
+        let tags = &ports.reads;
         let shared = TagId::seed(2);
         TransactionsAdapter::seed(
             &factory.writer,
@@ -642,12 +554,12 @@ mod tests {
         )
         .expect("the Transaction is written");
 
-        let used = tags.usage().tag_usage(shared);
+        let used = tags.tag_usage(shared);
         assert_eq!(used.transactions, 1);
         let unused = TagId::seed(1);
         let missing = TagId::seed(999);
         assert_eq!(
-            tags.usage().transactions_by_tag(&[shared, unused, missing]),
+            tags.transactions_by_tag(&[shared, unused, missing]),
             HashMap::from([(shared, 1), (unused, 0), (missing, 0)]),
             "the batch counts the Transaction once and answers every id asked"
         );
@@ -665,6 +577,6 @@ mod tests {
     async fn an_empty_database_loads_no_tags(_: SqlitePoolOptions, options: SqliteConnectOptions) {
         let (writer, _failures) = Writer::spawn(options).expect("the test database opens");
         let adapter = TagsAdapter::load(PendingWrites::new(writer)).expect("it loads");
-        assert!(adapter.tags().tags().is_empty());
+        assert!(TagsAdapter::tags(&adapter).tags().is_empty());
     }
 }

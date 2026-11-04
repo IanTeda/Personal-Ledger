@@ -244,7 +244,6 @@ impl LedgerStore {
         store.copy_bills();
         store.copy_budgets();
         store.copy_inventory();
-        store.count_tag_uses();
         store
     }
 
@@ -692,14 +691,6 @@ impl LedgerStore {
         self.ledger.refresh_tags(tags)
     }
 
-    /// Recounts an in-memory Tags store's usage from the Transactions read copy; a stored one
-    /// counts in the file.
-    fn count_tag_uses(&mut self) {
-        self.tags
-            .borrow_mut()
-            .set_counted_uses(self.ledger.tag_uses());
-    }
-
     /// Brings the Payees read copy in line with the port, returning whether it changed.
     fn copy_payees(&mut self) -> bool {
         let payees = PayeesStore::payees(&*self.payees.borrow()).payees();
@@ -709,11 +700,7 @@ impl LedgerStore {
     /// Brings the read copy in line with the port, returning whether it changed.
     fn copy_transactions(&mut self) -> bool {
         let transactions = self.transactions.borrow().all_transactions();
-        let changed = self.ledger.refresh_transactions(transactions);
-        if changed {
-            self.count_tag_uses();
-        }
-        changed
+        self.ledger.refresh_transactions(transactions)
     }
 
     /// Brings the Bills read copy in line with the ports, returning whether it changed.

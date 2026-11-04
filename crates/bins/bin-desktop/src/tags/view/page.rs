@@ -50,7 +50,7 @@ impl TagsPage {
         clock: lib_core::Clock,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        let ports = ports::shared(&setup.store);
+        let ports = ports::shared(&setup.store, setup.usage.clone());
         Self {
             presenter: TagsPagePresenter::new(ports.clone(), setup.keymap.clone()),
             ports,

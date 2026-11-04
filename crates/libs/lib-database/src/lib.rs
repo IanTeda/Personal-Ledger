@@ -79,12 +79,12 @@ pub use adapter::store::{
     SharedInstitutionsStore, SharedInventoryStore, SharedPayeesStore, SharedTagsStore,
     SharedTransactionsStore, SharedUnitsStore, StoredAccountReads, StoredBillReads,
     StoredBillUnits, StoredBudgetCategories, StoredBudgetReads, StoredDocumentReads,
-    StoredImportReads, StoredInstitutionReads, StoredPayeeReads, StoredUnitReads, TagsStore,
-    TransactionsStore, UnitsStore,
+    StoredImportReads, StoredInstitutionReads, StoredPayeeReads, StoredTagReads, StoredUnitReads,
+    TagsStore, TransactionsStore, UnitsStore,
 };
 pub use adapter::tags::TagsAdapter;
 pub use adapter::transaction_import::TransactionImportAdapter;
-pub use adapter::transactions::TransactionsAdapter;
+pub use adapter::transactions::{TaggedSplit, TransactionsAdapter};
 pub use adapter::unit_deletion::UnitDeletionAdapter;
 pub use adapter::units::UnitsAdapter;
 

@@ -58,7 +58,9 @@ use lib_budgets::{
 };
 use lib_categories::CategoryRepository;
 use lib_categories::fake::InMemoryCategories;
-use lib_core::{AccountId, CategoryId, InstitutionId, LocationId, PayeeId, TagId, UnitId};
+use lib_core::{
+    AccountId, CategoryId, InstitutionId, LocationId, PayeeId, TagId, Total, TransactionId, UnitId,
+};
 use lib_documents::fake::InMemoryDocuments;
 use lib_documents::{
     DocumentAccount, DocumentAccounts, DocumentBillPlan, DocumentBillPlans, DocumentItem,
@@ -81,6 +83,7 @@ use lib_units::{
 };
 
 use crate::adapter::payees::bill_payees;
+use crate::adapter::transactions::TaggedSplit;
 use crate::adapter::{accounts, bills, categories, inventory, payees, transactions};
 use crate::{
     AccountsAdapter, BillsAdapter, BudgetsAdapter, CategoriesAdapter, Commit, DocumentsAdapter,
@@ -440,23 +443,18 @@ impl CategoriesStore for InMemoryCategories {
 /// ports are.
 pub type SharedTagsStore = Rc<RefCell<dyn TagsStore>>;
 
-/// The Tags repository and usage ports, wherever they are kept, and the delete Tag delete and
-/// merge send until `lib-reassign` (#813).
+/// The Tags repository port, wherever it is kept, and the delete Tag delete and merge send until
+/// `lib-reassign` (#813). What carries a Tag is other domains' rows, which [`StoredTagReads`]
+/// counts in their stores.
 pub trait TagsStore {
     fn tags(&self) -> &dyn TagRepository;
 
     fn tags_mut(&mut self) -> &mut dyn TagRepository;
 
-    fn usage(&self) -> &dyn TagUsage;
-
     /// Removes Tag `id`, once no Split carries it: Tag delete's and merge's delete, which the
     /// Desktop's forwarding shim sends. Not a port write, since the delete untags other
     /// domains' rows (#813).
     fn delete_tag(&mut self, id: TagId);
-
-    /// Takes `uses` as the figures an in-memory store reports for its Tags, counted from the
-    /// Transactions the Client holds. An adapter counts in the file, so it ignores them.
-    fn set_counted_uses(&mut self, _uses: HashMap<TagId, TagUse>) {}
 
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
@@ -472,10 +470,6 @@ impl TagsStore for TagsAdapter {
 
     fn tags_mut(&mut self) -> &mut dyn TagRepository {
         TagsAdapter::tags_mut(self)
-    }
-
-    fn usage(&self) -> &dyn TagUsage {
-        TagsAdapter::usage(self)
     }
 
     fn delete_tag(&mut self, id: TagId) {
@@ -497,16 +491,8 @@ impl<T: TagsStore + ?Sized> TagsStore for Box<T> {
         (**self).tags_mut()
     }
 
-    fn usage(&self) -> &dyn TagUsage {
-        (**self).usage()
-    }
-
     fn delete_tag(&mut self, id: TagId) {
         (**self).delete_tag(id);
-    }
-
-    fn set_counted_uses(&mut self, uses: HashMap<TagId, TagUse>) {
-        (**self).set_counted_uses(uses);
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -524,16 +510,8 @@ impl TagsStore for lib_tags::fake::InMemoryPorts {
         &mut self.tags
     }
 
-    fn usage(&self) -> &dyn TagUsage {
-        &self.usage
-    }
-
     fn delete_tag(&mut self, id: TagId) {
         self.tags.tags.retain(|tag| tag.id != id);
-    }
-
-    fn set_counted_uses(&mut self, uses: HashMap<TagId, TagUse>) {
-        self.usage.uses = uses;
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -674,6 +652,20 @@ pub trait TransactionsStore {
         Some(transactions::payee_splits(&self.all_transactions(), id))
     }
 
+    /// The Splits carrying Tag `id`, one each however often the Split lists it, in the
+    /// Transactions' order: the Transactions half of [`StoredTagReads`]' `TagUsage`. An in-memory
+    /// store reads its own rows; the adapter reads the file, and answers none for a read it can't
+    /// make.
+    fn tagged_splits(&self, id: TagId) -> Vec<TaggedSplit> {
+        transactions::tagged_splits(&self.all_transactions(), id)
+    }
+
+    /// Distinct Transactions per Tag, for every Tag a Split carries; a Tag nothing carries has no
+    /// entry. The batch half of [`StoredTagReads`]' `TagUsage`.
+    fn tag_transaction_counts(&self) -> HashMap<TagId, usize> {
+        transactions::tag_transaction_counts(&self.all_transactions())
+    }
+
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
     /// # Errors
@@ -702,6 +694,14 @@ impl TransactionsStore for TransactionsAdapter {
         TransactionsAdapter::account_transaction_counts(self, accounts)
     }
 
+    fn tagged_splits(&self, id: TagId) -> Vec<TaggedSplit> {
+        TransactionsAdapter::tagged_splits(self, id)
+    }
+
+    fn tag_transaction_counts(&self) -> HashMap<TagId, usize> {
+        TransactionsAdapter::tag_transaction_counts(self)
+    }
+
     fn reload(&mut self) -> Result<()> {
         TransactionsAdapter::reload(self)
     }
@@ -727,6 +727,14 @@ impl<T: TransactionsStore + ?Sized> TransactionsStore for Box<T> {
 
     fn account_transaction_counts(&self, accounts: &[AccountId]) -> HashMap<AccountId, usize> {
         (**self).account_transaction_counts(accounts)
+    }
+
+    fn tagged_splits(&self, id: TagId) -> Vec<TaggedSplit> {
+        (**self).tagged_splits(id)
+    }
+
+    fn tag_transaction_counts(&self) -> HashMap<TagId, usize> {
+        (**self).tag_transaction_counts()
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -1041,6 +1049,72 @@ pub struct StoredBudgetCategories {
 impl BudgetCategories for StoredBudgetCategories {
     fn budget_categories(&self) -> Vec<BudgetCategory> {
         categories::budget_categories(&self.categories.borrow().categories().categories())
+    }
+}
+
+/// `lib-tags`' [`TagUsage`] answered from the shared stores of the domains that carry a Tag: the
+/// Splits from the Transactions, and the Unit each Split's Account holds from the Accounts and
+/// Units, each borrowed for the one read (#994). A figure only the page shows, so a Split whose
+/// Account or Unit can't be found is left out rather than refused.
+#[derive(Clone)]
+pub struct StoredTagReads {
+    pub transactions: SharedTransactionsStore,
+    pub accounts: SharedAccountsStore,
+    pub units: SharedUnitsStore,
+}
+
+impl TagUsage for StoredTagReads {
+    fn tag_usage(&self, id: TagId) -> TagUse {
+        let splits = self.transactions.borrow().tagged_splits(id);
+        let accounts = self.accounts.borrow();
+        let units = self.units.borrow();
+        let accounts = accounts.accounts().accounts();
+
+        let mut transactions: std::collections::HashSet<TransactionId> = Default::default();
+        let mut last_used: Option<NaiveDate> = None;
+        let mut unit: Option<(UnitId, String)> = None;
+        let mut mixed = false;
+        let mut sum = bigdecimal::BigDecimal::new(0.into(), 2);
+        for split in splits {
+            let Some(unit_id) = accounts
+                .iter()
+                .find(|account| account.id == split.account)
+                .map(|account| account.unit)
+            else {
+                continue;
+            };
+            let Some(code) = units.unit_code(unit_id) else {
+                continue;
+            };
+            transactions.insert(split.transaction);
+            last_used = last_used.max(Some(split.date));
+            match &unit {
+                None => unit = Some((unit_id, code)),
+                Some((seen, _)) if *seen != unit_id => mixed = true,
+                Some(_) => {}
+            }
+            sum += split.amount.0;
+        }
+        let total = match unit {
+            None => Total::Empty,
+            Some(_) if mixed => Total::Mixed,
+            Some((_, unit)) => Total::Single {
+                unit,
+                amount: lib_core::Money(sum),
+            },
+        };
+        TagUse {
+            transactions: transactions.len(),
+            total,
+            last_used,
+        }
+    }
+
+    fn transactions_by_tag(&self, ids: &[TagId]) -> HashMap<TagId, usize> {
+        let counted = self.transactions.borrow().tag_transaction_counts();
+        ids.iter()
+            .map(|id| (*id, counted.get(id).copied().unwrap_or(0)))
+            .collect()
     }
 }
 
@@ -1556,7 +1630,7 @@ mod tests {
         );
 
         let mut booked = ledger.transactions()[0].clone();
-        booked.id = lib_core::TransactionId::seed(9_999);
+        booked.id = TransactionId::seed(9_999);
         booked.splits.truncate(1);
         booked.splits[0].payee_id = Some(woolworths);
         transactions.borrow_mut().upsert_transaction(booked);
@@ -1608,7 +1682,7 @@ mod tests {
         assert_eq!(reads.account_usage(AccountId::new()), AccountUse::default());
 
         let mut booked = ledger.transactions()[0].clone();
-        booked.id = lib_core::TransactionId::seed(9_999);
+        booked.id = TransactionId::seed(9_999);
         booked.account_id = everyday;
         transactions.borrow_mut().upsert_transaction(booked);
 

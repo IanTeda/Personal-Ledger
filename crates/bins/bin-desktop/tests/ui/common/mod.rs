@@ -50,7 +50,7 @@ use lib_institutions::{Institution, InstitutionRepository};
 use lib_inventory::fake::InMemoryInventory;
 use lib_inventory::{InventoryRepository, Item, Location};
 use lib_payees::{Payee, PayeeRepository};
-use lib_tags::{Tag, TagRepository, TagUsage};
+use lib_tags::{Tag, TagRepository};
 use lib_transactions::fake::InMemoryTransactions;
 use lib_transactions::{Transaction, TransactionRepository};
 use lib_units::fake::{InMemoryBaseUnit, InMemoryPorts, InMemoryPriceSources, InMemoryUnits};
@@ -338,7 +338,6 @@ impl<T: TagRepository> TagRepository for Marked<T> {
 /// memory back to `stored`. Each write marks `written` for [`FailingCommit`].
 struct FailingTags {
     tags: Marked<lib_tags::fake::InMemoryTags>,
-    usage: lib_tags::fake::InMemoryTagUsage,
     stored: lib_tags::fake::InMemoryTags,
 }
 
@@ -349,10 +348,6 @@ impl TagsStore for FailingTags {
 
     fn tags_mut(&mut self) -> &mut dyn TagRepository {
         &mut self.tags
-    }
-
-    fn usage(&self) -> &dyn TagUsage {
-        &self.usage
     }
 
     fn delete_tag(&mut self, id: TagId) {
@@ -1066,7 +1061,6 @@ impl<'a> Harness<'a> {
                         inner: stored.clone(),
                         written: written.clone(),
                     },
-                    usage: lib_tags::fake::InMemoryTagUsage::default(),
                     stored,
                 }),
                 payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
