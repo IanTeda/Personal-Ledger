@@ -4,7 +4,7 @@
 //! input's `send` drains.
 
 use gpui::{Context, Entity};
-use lib_tags::{SharedPorts, TagsDialog as Which, TagsOutcome, TagsRouter};
+use lib_tags::{SharedPorts, TagsDialog as Which, TagsRouter};
 use lib_toast::{Notice, Notify};
 use lib_transactions::query::TransactionFilters;
 

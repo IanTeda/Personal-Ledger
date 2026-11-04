@@ -5,7 +5,7 @@
 
 use gpui::Context;
 
-use lib_accounts::{AccountsDialog as Which, AccountsOutcome, AccountsRouter};
+use lib_accounts::{AccountsDialog as Which, AccountsRouter};
 use lib_core::AccountId;
 use lib_toast::{Notice, Notify};
 use lib_transactions::query::TransactionFilters;

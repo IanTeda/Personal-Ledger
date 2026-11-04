@@ -5,7 +5,7 @@
 
 use gpui::Context;
 use lib_payees::presenter::PayeesPageEvent;
-use lib_payees::{PayeesDialog as Which, PayeesOutcome, PayeesRouter};
+use lib_payees::{PayeesDialog as Which, PayeesRouter};
 use lib_toast::{Notice, Notify};
 use lib_transactions::query::TransactionFilters;
 

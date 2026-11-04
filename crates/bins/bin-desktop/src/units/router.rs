@@ -6,7 +6,6 @@
 
 use gpui::Context;
 use lib_toast::{Notice, Notify};
-use lib_units::presenter::UnitsOutcome;
 use lib_units::{UnitId, UnitsDialog as Which, UnitsRouter};
 
 use super::ports::DesktopPorts;

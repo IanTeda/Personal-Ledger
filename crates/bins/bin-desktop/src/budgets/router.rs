@@ -12,7 +12,7 @@ use lib_budgets::presenter::{
     BudgetFormPresenter, BudgetsPageEvent, DetailPresenter, FillPresenter, LimitFormPresenter,
     ManagePresenter, StopPresenter, SwitcherPresenter,
 };
-use lib_budgets::{BudgetRepository as _, BudgetsOutcome, BudgetsRouter, ExportHistory};
+use lib_budgets::{BudgetRepository as _, BudgetsRouter, ExportHistory};
 use lib_core::{BudgetId, CategoryId, Clock, DateStyle, Period};
 use lib_toast::{Notice, Notify, ToastKind};
 use lib_transactions::query::TransactionFilters;

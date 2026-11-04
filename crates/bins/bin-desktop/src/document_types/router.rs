@@ -4,9 +4,7 @@
 //! (`crate::notices`), which the input's `send` drains.
 
 use gpui::{Context, Entity};
-use lib_documents::{
-    DocumentTypesDialog as Which, DocumentTypesOutcome, DocumentTypesRouter, SharedRepository,
-};
+use lib_documents::{DocumentTypesDialog as Which, DocumentTypesRouter, SharedRepository};
 use lib_toast::{Notice, Notify};
 
 use super::DocumentTypesSetup;

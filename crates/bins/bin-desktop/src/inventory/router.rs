@@ -4,7 +4,7 @@
 //! (`crate::notices`), which the input's `send` drains.
 
 use gpui::{Context, Entity};
-use lib_inventory::{InventoryDialog as Which, InventoryOutcome, InventoryRouter, SharedInventory};
+use lib_inventory::{InventoryDialog as Which, InventoryRouter, SharedInventory};
 use lib_toast::{Notice, Notify};
 
 use super::InventorySetup;

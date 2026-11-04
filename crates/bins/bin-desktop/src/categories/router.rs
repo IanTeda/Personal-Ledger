@@ -5,7 +5,7 @@
 
 use chrono::NaiveDate;
 use gpui::{Context, Entity};
-use lib_categories::{CategoriesDialog as Which, CategoriesOutcome, CategoriesRouter};
+use lib_categories::{CategoriesDialog as Which, CategoriesRouter};
 use lib_toast::{Notice, Notify};
 
 use super::CategoriesSetup;

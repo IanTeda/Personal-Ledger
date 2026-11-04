@@ -5,7 +5,7 @@
 
 use gpui::Context;
 use lib_institutions::presenter::InstitutionsPageEvent;
-use lib_institutions::{InstitutionsDialog as Which, InstitutionsOutcome, InstitutionsRouter};
+use lib_institutions::{InstitutionsDialog as Which, InstitutionsRouter};
 use lib_toast::{Notice, Notify};
 
 use super::ports::DesktopPorts;

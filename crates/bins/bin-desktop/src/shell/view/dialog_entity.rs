@@ -29,7 +29,7 @@ use lib_viper::keymap::Keymap;
 
 use crate::dialog::OnClick;
 use crate::form::select_field::OnOptionClick;
-use crate::shell::view::dialog_host::{DialogKey, DialogOutcome, DialogReadback};
+use crate::shell::view::dialog_host::{DialogKey, DialogReadback};
 use crate::view::event::ViewEvent;
 use lib_shell::Hint;
 

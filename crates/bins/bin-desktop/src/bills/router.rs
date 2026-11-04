@@ -7,7 +7,7 @@
 use gpui::{Context, Entity};
 use lib_bill_payments::SharedPayments;
 use lib_bills::presenter::{BillsPageEvent, PlanFormPresenter, SkipPresenter};
-use lib_bills::{BillsOutcome, BillsRouter, EntryId, PayRequest};
+use lib_bills::{BillsRouter, EntryId, PayRequest};
 use lib_core::{BillPlanId, Clock, DateStyle, TransactionId};
 use lib_toast::{Notice, Notify};
 

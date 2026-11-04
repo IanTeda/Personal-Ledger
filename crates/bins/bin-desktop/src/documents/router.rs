@@ -9,7 +9,7 @@ use std::path::Path;
 
 use gpui::{App, Context};
 use lib_documents::presenter::DialogPorts;
-use lib_documents::{DocumentLink, DocumentsDialog as Which, DocumentsOutcome, DocumentsRouter};
+use lib_documents::{DocumentLink, DocumentsDialog as Which, DocumentsRouter};
 use lib_toast::{Notice, Notify};
 
 use super::view::dialog::DocumentsDialog;
