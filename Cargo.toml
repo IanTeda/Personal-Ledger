@@ -79,6 +79,7 @@ members = [
   "./crates/libs/lib-bill-payments",
   "./crates/libs/lib-transaction-import",
   "./crates/libs/lib-budgets",
+  "./crates/libs/lib-dashboard",
   "./crates/libs/lib-categories",
   "./crates/libs/lib-institutions",
   "./crates/libs/lib-documents",

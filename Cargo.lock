@@ -4809,6 +4809,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "lib_dashboard"
+version = "0.1.0"
+dependencies = [
+ "bigdecimal",
+ "chrono",
+ "lib_core",
+ "lib_locale",
+ "lib_locale_build",
+ "lib_toast",
+ "lib_viper",
+]
+
+[[package]]
 name = "lib_database"
 version = "0.1.0"
 dependencies = [

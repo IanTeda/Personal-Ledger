@@ -67,7 +67,8 @@ allow-wildcard-paths = true
 # Server's handlers live in `bin_sync_server` (#759). A cross-domain module is reached only
 # by the bins and the adapter that implements its port, so no feature crate depends on it (the
 # `cargo metadata` test in `lib-ledger` checks the same, and what the module itself depends on).
-# `lib_shell` hosts every module, so only the bins reach it.
+# `lib_shell` hosts every module, so only the bins reach it. `lib_dashboard` reads several domains
+# through its own ports, so only the bins and `lib_database`, which answers them, reach it.
 deny = [
   { crate = "gpui", wrappers = ["bin_desktop", "gpui-component"], reason = "UI toolkit: only bin-desktop may depend on it (VIPER Dependencies rule)" },
   { crate = "gpui-component", wrappers = ["bin_desktop"], reason = "UI toolkit: only bin-desktop may depend on it (VIPER Dependencies rule)" },
@@ -80,6 +81,7 @@ deny = [
   { crate = "lib_tag_removal", wrappers = ["bin_desktop", "lib_database"], reason = "cross-domain module: only the bins and its adapter may depend on it (VIPER Dependencies rule)" },
   { crate = "lib_transaction_import", wrappers = ["bin_desktop", "lib_database"], reason = "cross-domain module: only the bins and its adapter may depend on it (VIPER Dependencies rule)" },
   { crate = "lib_bill_payments", wrappers = ["bin_desktop", "lib_database"], reason = "cross-domain module: only the bins and its adapter may depend on it (VIPER Dependencies rule)" },
+  { crate = "lib_dashboard", wrappers = ["bin_desktop", "lib_database"], reason = "the Dashboard module: only the bins and the adapter answering its read ports may depend on it (VIPER Dependencies rule)" },
 ]
 
 # Only crates.io, plus any git dependency listed in `allow-git`.
