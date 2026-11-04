@@ -19,94 +19,58 @@ use gpui::{
     AnyElement, App, Pixels, ScrollHandle, SharedString, UniformListScrollHandle, Window, div,
     prelude::*, px, uniform_list,
 };
-use lib_core::TransactionId;
 use lib_documents::presenter::library::{
     Chip, ChipKind, DetailView, Fact, LinkRow, RailRow, RowTail, RowView,
 };
-use lib_documents::presenter::{DocumentsFocus, InboxViewModel, LibraryViewModel, PageLabels};
+use lib_documents::presenter::{
+    DocumentsFocus, DocumentsPageEvent, DocumentsPageViewModel, LibraryViewModel,
+};
 use lib_locale::format::upper;
 
 use crate::{
-    documents::{DocumentLink, DocumentsMode, LibrarySort, RailEntry},
+    dialog::OnClick,
+    documents::{DocumentsMode, LibrarySort, RailEntry},
+    shell::view::page_clicks::PageClicks,
     theme::color,
 };
-
-pub type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
-pub type OnRailClick = Rc<dyn Fn(RailEntry, &mut Window, &mut App)>;
-pub type OnRowClick = Rc<dyn Fn(usize, &mut Window, &mut App)>;
-pub type OnSortClick = Rc<dyn Fn(LibrarySort, &mut Window, &mut App)>;
-pub type OnLinkClick = Rc<dyn Fn(DocumentLink, &mut Window, &mut App)>;
-/// A Transaction id: an Other candidate to accept instead of the Suggested Link.
-pub type OnCandidateClick = Rc<dyn Fn(TransactionId, &mut Window, &mut App)>;
+use page::DocumentsPage;
 
 const RAIL_WIDTH: Pixels = px(190.0);
 const DETAIL_WIDTH: Pixels = px(300.0);
 
-pub struct DocumentsPageProps {
-    pub mode: DocumentsMode,
-    pub focus: DocumentsFocus,
-    pub title: String,
-    pub subline: String,
-    pub rail: Vec<RailRow>,
-    /// The rail row the scope or mode selects.
-    pub rail_selected: RailEntry,
-    /// The stored size footer, already formatted.
-    pub rail_footer: String,
-    pub labels: PageLabels,
-    /// `Some` while the Library shows; its rows are shared with the `uniform_list` that builds
-    /// the rows in view.
-    pub library: Option<(LibraryViewModel, Rc<Vec<RowView>>)>,
-    /// `Some` while the Inbox shows.
-    pub inbox: Option<InboxViewModel>,
-    /// Whether the list zone has keyboard focus, which draws the focused Inbox row's outline.
+/// What of the page's draw state the Presenter's view model doesn't hold: the list scroll handles,
+/// which stay on the page Entity, and whether the list zone has keyboard focus, which draws the
+/// focused Inbox row's outline.
+pub(super) struct Scrolls {
+    pub library: UniformListScrollHandle,
+    pub inbox: ScrollHandle,
     pub list_focused: bool,
-    pub library_scroll: UniformListScrollHandle,
-    pub inbox_scroll: ScrollHandle,
-    pub on_rail_click: OnRailClick,
-    pub on_row_click: OnRowClick,
-    pub on_sort_click: OnSortClick,
-    pub on_search_click: OnPlainClick,
-    pub on_add_click: OnPlainClick,
-    pub on_import_click: OnPlainClick,
-    pub on_open_click: OnPlainClick,
-    pub on_show_click: OnPlainClick,
-    /// The detail footer's Delete button, in either mode.
-    pub on_delete_click: OnPlainClick,
-    pub on_link_click: OnLinkClick,
-    /// The × on a LINKED TO row: removes that Link.
-    pub on_unlink_click: OnLinkClick,
-    pub on_add_link_click: OnPlainClick,
-    pub on_watched_click: OnPlainClick,
-    pub on_accept_all_click: OnPlainClick,
-    /// A row's own Accept (or File…) button.
-    pub on_accept_row_click: OnRowClick,
-    pub on_accept_next_click: OnPlainClick,
-    pub on_accept_candidate_click: OnCandidateClick,
-    pub on_link_elsewhere_click: OnPlainClick,
-    pub on_skip_click: OnPlainClick,
 }
 
 /// The whole destination: rail, list pane and detail pane, side by side. `focused` is whether the
 /// View zone has focus; the focus ring is drawn on the rail or the list within it.
-pub(super) fn render(focused: bool, props: DocumentsPageProps, cx: &App) -> AnyElement {
-    let list_focused = focused && props.focus == DocumentsFocus::List;
-    let index_focused = focused && props.focus == DocumentsFocus::Index;
-    let props = DocumentsPageProps {
-        list_focused,
-        ..props
-    };
+pub(super) fn render(
+    focused: bool,
+    view: &DocumentsPageViewModel,
+    clicks: &PageClicks<DocumentsPage>,
+    mut scroll: Scrolls,
+    cx: &App,
+) -> AnyElement {
+    let list_focused = focused && view.focus == DocumentsFocus::List;
+    let index_focused = focused && view.focus == DocumentsFocus::Index;
+    scroll.list_focused = list_focused;
     div()
         .id("documents")
         .flex_1()
         .min_w(px(0.0))
         .h_full()
         .flex()
-        .child(index_rail(&props, index_focused, cx))
-        .child(list_pane(&props, list_focused, cx))
-        .child(if props.mode == DocumentsMode::Library {
-            detail_pane(&props, cx).into_any_element()
+        .child(index_rail(view, clicks, index_focused, cx))
+        .child(list_pane(view, clicks, &scroll, list_focused, cx))
+        .child(if view.mode == DocumentsMode::Library {
+            detail_pane(view, clicks, cx).into_any_element()
         } else {
-            inbox::detail_pane(&props, cx)
+            inbox::detail_pane(view, clicks, cx)
         })
         .into_any_element()
 }
@@ -115,18 +79,18 @@ pub(super) fn render(focused: bool, props: DocumentsPageProps, cx: &App) -> AnyE
 // Index rail
 // ---------------------------------------------------------------------------------------------
 
-fn index_rail(props: &DocumentsPageProps, focused: bool, cx: &App) -> impl IntoElement {
+fn index_rail(
+    view: &DocumentsPageViewModel,
+    clicks: &PageClicks<DocumentsPage>,
+    focused: bool,
+    cx: &App,
+) -> impl IntoElement {
     let mut column = div().flex_1().min_h(px(0.0)).flex().flex_col().py(px(10.0));
-    for row in &props.rail {
+    for row in &view.rail {
         if let Some(label) = row.section.clone() {
             column = column.child(rail_label(label, cx));
         }
-        column = column.child(rail_row(
-            row,
-            row.entry == props.rail_selected,
-            props.on_rail_click.clone(),
-            cx,
-        ));
+        column = column.child(rail_row(row, row.entry == view.rail_selected, clicks, cx));
     }
     div()
         .w(RAIL_WIDTH)
@@ -151,7 +115,7 @@ fn index_rail(props: &DocumentsPageProps, focused: bool, cx: &App) -> impl IntoE
                 .text_size(px(11.0))
                 .line_height(gpui::relative(1.4))
                 .text_color(color::faint_text(cx))
-                .child(props.rail_footer.clone()),
+                .child(view.stored.clone()),
         )
 }
 
@@ -166,7 +130,12 @@ fn rail_label(label: String, cx: &App) -> impl IntoElement {
         .child(upper(&label))
 }
 
-fn rail_row(row: &RailRow, active: bool, on_click: OnRailClick, cx: &App) -> impl IntoElement {
+fn rail_row(
+    row: &RailRow,
+    active: bool,
+    clicks: &PageClicks<DocumentsPage>,
+    cx: &App,
+) -> impl IntoElement {
     let entry = row.entry;
     let badge = entry == RailEntry::Inbox && row.count > 0;
     div()
@@ -183,7 +152,7 @@ fn rail_row(row: &RailRow, active: bool, on_click: OnRailClick, cx: &App) -> imp
                 .text_color(color::selection_text(cx))
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
         })
-        .on_click(move |_event, window, cx| on_click(entry, window, cx))
+        .on_click(clicks.send(DocumentsPageEvent::ClickRail(entry)))
         .child(div().flex_1().truncate().child(row.label.clone()))
         .child(if badge {
             // The Inbox badge stays red even on the active row.
@@ -211,7 +180,13 @@ fn rail_row(row: &RailRow, active: bool, on_click: OnRailClick, cx: &App) -> imp
 // List pane
 // ---------------------------------------------------------------------------------------------
 
-fn list_pane(props: &DocumentsPageProps, focused: bool, cx: &App) -> impl IntoElement {
+fn list_pane(
+    view: &DocumentsPageViewModel,
+    clicks: &PageClicks<DocumentsPage>,
+    scroll: &Scrolls,
+    focused: bool,
+    cx: &App,
+) -> impl IntoElement {
     div()
         .flex_1()
         .min_w(px(0.0))
@@ -222,9 +197,9 @@ fn list_pane(props: &DocumentsPageProps, focused: bool, cx: &App) -> impl IntoEl
         .when(focused, |this| {
             this.border_l(px(2.0)).border_color(color::foreground(cx))
         })
-        .child(list_header(props, cx))
-        .when_some(props.library.as_ref(), |this, (library, rows)| {
-            this.child(toolbar(props, library, cx))
+        .child(list_header(view, clicks, cx))
+        .when_some(view.library.as_ref(), |this, library| {
+            this.child(toolbar(view, clicks, library, cx))
                 .child(
                     div()
                         .px(px(14.0))
@@ -235,14 +210,25 @@ fn list_pane(props: &DocumentsPageProps, focused: bool, cx: &App) -> impl IntoEl
                         .text_color(color::faint_text(cx))
                         .child(library.count_line.clone()),
                 )
-                .child(self::rows(props, library, rows.clone(), cx))
+                .child(rows(
+                    view,
+                    clicks,
+                    scroll,
+                    library,
+                    Rc::new(library.rows.clone()),
+                    cx,
+                ))
         })
-        .when_some(props.inbox.as_ref(), |this, inbox| {
-            this.child(inbox::list_body(props, inbox, cx))
+        .when_some(view.inbox.as_ref(), |this, inbox| {
+            this.child(inbox::list_body(view, clicks, scroll, inbox, cx))
         })
 }
 
-fn list_header(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
+fn list_header(
+    view: &DocumentsPageViewModel,
+    clicks: &PageClicks<DocumentsPage>,
+    cx: &App,
+) -> impl IntoElement {
     div()
         .flex_none()
         .flex()
@@ -265,40 +251,40 @@ fn list_header(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
                         .text_size(px(28.0))
                         .line_height(gpui::relative(1.1))
                         .mb(px(4.0))
-                        .child(props.title.clone()),
+                        .child(view.title.clone()),
                 )
                 .child(
                     div()
                         .text_size(px(11.5))
                         .text_color(color::faint_text(cx))
-                        .child(props.subline.clone()),
+                        .child(view.subline.clone()),
                 ),
         )
-        .children(match props.inbox.as_ref() {
+        .children(match view.inbox.as_ref() {
             None => vec![
                 secondary_button(
                     "documents-import",
-                    props.labels.import.clone(),
-                    props.on_import_click.clone(),
+                    view.labels.import.clone(),
+                    clicks.click(DocumentsPageEvent::Import),
                     cx,
                 )
                 .into_any_element(),
                 primary_button(
                     "documents-add",
-                    props.labels.add.clone(),
-                    props.on_add_click.clone(),
+                    view.labels.add.clone(),
+                    clicks.click(DocumentsPageEvent::Add),
                     cx,
                 )
                 .into_any_element(),
             ],
-            Some(inbox) => inbox::header_buttons(props, inbox, cx).into(),
+            Some(inbox) => inbox::header_buttons(view, clicks, inbox, cx).into(),
         })
 }
 
 fn primary_button(
     id: &'static str,
     label: String,
-    on_click: OnPlainClick,
+    on_click: OnClick,
     cx: &App,
 ) -> impl IntoElement {
     let hover = color::muted(cx);
@@ -323,7 +309,7 @@ fn primary_button(
 fn secondary_button(
     id: &'static str,
     label: String,
-    on_click: OnPlainClick,
+    on_click: OnClick,
     cx: &App,
 ) -> impl IntoElement {
     let hover = color::hover(cx);
@@ -347,7 +333,12 @@ fn secondary_button(
         .child(label)
 }
 
-fn toolbar(props: &DocumentsPageProps, library: &LibraryViewModel, cx: &App) -> impl IntoElement {
+fn toolbar(
+    view: &DocumentsPageViewModel,
+    clicks: &PageClicks<DocumentsPage>,
+    library: &LibraryViewModel,
+    cx: &App,
+) -> impl IntoElement {
     div()
         .flex_none()
         .flex()
@@ -357,22 +348,22 @@ fn toolbar(props: &DocumentsPageProps, library: &LibraryViewModel, cx: &App) -> 
         .py(px(10.0))
         .border_b(px(1.0))
         .border_color(color::border(cx))
-        .child(search_box(props, library, cx))
-        .child(sort_control(props, library, cx))
+        .child(search_box(view, clicks, library, cx))
+        .child(sort_control(view, clicks, library, cx))
 }
 
 /// The search input (30px, 12.5px): the placeholder, or the text so far with a caret and an accent
 /// border while search mode is active.
 fn search_box(
-    props: &DocumentsPageProps,
+    view: &DocumentsPageViewModel,
+    clicks: &PageClicks<DocumentsPage>,
     library: &LibraryViewModel,
     cx: &App,
 ) -> impl IntoElement {
-    let on_click = props.on_search_click.clone();
     let caret = if library.searching { "\u{2502}" } else { "" };
     let (text, text_color) = if library.query.is_empty() && !library.searching {
         (
-            SharedString::from(props.labels.search_placeholder.clone()),
+            SharedString::from(view.labels.search_placeholder.clone()),
             color::faint_text(cx),
         )
     } else {
@@ -399,17 +390,17 @@ fn search_box(
         .text_size(px(12.5))
         .text_color(text_color)
         .truncate()
-        .on_click(move |_event, window, cx| on_click(window, cx))
+        .on_click(clicks.send(DocumentsPageEvent::StartSearch))
         .child(text)
 }
 
 fn sort_control(
-    props: &DocumentsPageProps,
+    view: &DocumentsPageViewModel,
+    clicks: &PageClicks<DocumentsPage>,
     library: &LibraryViewModel,
     cx: &App,
 ) -> impl IntoElement {
     let option = |sort: LibrarySort, label: String| {
-        let on_click = props.on_sort_click.clone();
         let active = library.sort == sort;
         div()
             .id(SharedString::from(format!("documents-sort-{sort:?}")))
@@ -421,7 +412,7 @@ fn sort_control(
                     .text_color(color::selection_text(cx))
                     .font_weight(gpui::FontWeight::EXTRA_BOLD)
             })
-            .on_click(move |_event, window, cx| on_click(sort, window, cx))
+            .on_click(clicks.send(DocumentsPageEvent::ClickSort(sort)))
             .child(label)
     };
     div()
@@ -430,15 +421,17 @@ fn sort_control(
         .border_1()
         .border_color(color::border(cx))
         .text_size(px(12.0))
-        .child(option(LibrarySort::Newest, props.labels.newest.clone()))
-        .child(option(LibrarySort::Expiring, props.labels.expiring.clone()))
+        .child(option(LibrarySort::Newest, view.labels.newest.clone()))
+        .child(option(LibrarySort::Expiring, view.labels.expiring.clone()))
 }
 
 /// The Library's rows, as a `uniform_list` so only the rows in view are built: drawing all of a
 /// large Library on every keystroke made each one cost a full layout of every row. Every row is
 /// the file glyph's height, which is why the chips keep to one line.
 fn rows(
-    props: &DocumentsPageProps,
+    view: &DocumentsPageViewModel,
+    clicks: &PageClicks<DocumentsPage>,
+    scroll: &Scrolls,
     library: &LibraryViewModel,
     rows: Rc<Vec<RowView>>,
     cx: &App,
@@ -459,8 +452,8 @@ fn rows(
                     .when(library.empty_offers_add, |this| {
                         this.child(secondary_button(
                             "documents-empty-add",
-                            props.labels.add.clone(),
-                            props.on_add_click.clone(),
+                            view.labels.add.clone(),
+                            clicks.click(DocumentsPageEvent::Add),
                             cx,
                         ))
                     }),
@@ -468,8 +461,8 @@ fn rows(
             .into_any_element();
     }
     let selected = library.selected;
-    let not_linked = props.labels.not_linked.clone();
-    let on_click = props.on_row_click.clone();
+    let not_linked = view.labels.not_linked.clone();
+    let clicks = clicks.clone();
     uniform_list(
         "documents-rows",
         rows.len(),
@@ -481,7 +474,7 @@ fn rows(
                         index == selected,
                         index,
                         &not_linked,
-                        on_click.clone(),
+                        &clicks,
                         cx,
                     )
                     .into_any_element()
@@ -489,7 +482,7 @@ fn rows(
                 .collect::<Vec<_>>()
         },
     )
-    .track_scroll(props.library_scroll.clone())
+    .track_scroll(scroll.library.clone())
     .flex_1()
     .min_h(px(0.0))
     .into_any_element()
@@ -500,7 +493,7 @@ fn document_row(
     selected: bool,
     index: usize,
     not_linked: &str,
-    on_click: OnRowClick,
+    clicks: &PageClicks<DocumentsPage>,
     cx: &App,
 ) -> impl IntoElement {
     let (primary, secondary) = if selected {
@@ -523,7 +516,7 @@ fn document_row(
             this.bg(color::selection_background(cx))
                 .text_color(color::selection_text(cx))
         })
-        .on_click(move |_event, window, cx| on_click(index, window, cx))
+        .on_click(clicks.row(DocumentsPageEvent::ClickRow(index)))
         .child(file_glyph(row.extension, primary))
         .child(
             div()
@@ -650,7 +643,11 @@ fn tail(tail: &RowTail, selected: bool, cx: &App) -> impl IntoElement {
 // Detail pane
 // ---------------------------------------------------------------------------------------------
 
-fn detail_pane(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
+fn detail_pane(
+    view: &DocumentsPageViewModel,
+    clicks: &PageClicks<DocumentsPage>,
+    cx: &App,
+) -> impl IntoElement {
     let pane = div()
         .w(DETAIL_WIDTH)
         .flex_none()
@@ -660,10 +657,10 @@ fn detail_pane(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
         .bg(color::chrome(cx))
         .border_l(px(2.0))
         .border_color(color::structural_rule(cx));
-    let Some(detail) = props
+    let Some(detail) = view
         .library
         .as_ref()
-        .and_then(|(library, _)| library.detail.as_ref())
+        .and_then(|library| library.detail.as_ref())
     else {
         return pane;
     };
@@ -704,9 +701,9 @@ fn detail_pane(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
                         .flex_col()
                         .children(detail.facts.iter().map(|fact| fact_row(fact, cx))),
                 )
-                .child(linked_to(props, detail, cx)),
+                .child(linked_to(view, clicks, detail, cx)),
         )
-        .child(detail_footer(props, cx))
+        .child(detail_footer(view, clicks, cx))
 }
 
 /// The 200px preview well with a drawn page: real page-1 rendering is out of scope, so the page is
@@ -779,8 +776,12 @@ fn fact_row(fact: &Fact, cx: &App) -> impl IntoElement {
         )
 }
 
-fn linked_to(props: &DocumentsPageProps, detail: &DetailView, cx: &App) -> impl IntoElement {
-    let on_add_link = props.on_add_link_click.clone();
+fn linked_to(
+    view: &DocumentsPageViewModel,
+    clicks: &PageClicks<DocumentsPage>,
+    detail: &DetailView,
+    cx: &App,
+) -> impl IntoElement {
     div()
         .flex()
         .flex_col()
@@ -790,33 +791,30 @@ fn linked_to(props: &DocumentsPageProps, detail: &DetailView, cx: &App) -> impl 
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_size(px(10.0))
                 .text_color(color::faint_text(cx))
-                .child(upper(&props.labels.linked_to)),
+                .child(upper(&view.labels.linked_to)),
         )
-        .children(detail.links.iter().enumerate().map(|(index, link)| {
-            link_row(
-                index,
-                link,
-                props.on_link_click.clone(),
-                props.on_unlink_click.clone(),
-                cx,
-            )
-        }))
+        .children(
+            detail
+                .links
+                .iter()
+                .enumerate()
+                .map(|(index, link)| link_row(index, link, clicks, cx)),
+        )
         .child(
             div()
                 .id("documents-add-link")
                 .cursor_pointer()
                 .text_size(px(11.5))
                 .text_color(color::muted(cx))
-                .on_click(move |_event, window, cx| on_add_link(window, cx))
-                .child(props.labels.link_add.clone()),
+                .on_click(clicks.send(DocumentsPageEvent::OpenPicker))
+                .child(view.labels.link_add.clone()),
         )
 }
 
 fn link_row(
     index: usize,
     link: &LinkRow,
-    on_click: OnLinkClick,
-    on_unlink: OnLinkClick,
+    clicks: &PageClicks<DocumentsPage>,
     cx: &App,
 ) -> impl IntoElement {
     let target = link.link;
@@ -832,7 +830,7 @@ fn link_row(
         .border_color(color::border(cx))
         .bg(color::background(cx))
         .text_size(px(12.0))
-        .on_click(move |_event, window, cx| on_click(target, window, cx))
+        .on_click(clicks.send(DocumentsPageEvent::Reveal(target)))
         .child(
             div()
                 .w(px(62.0))
@@ -856,18 +854,22 @@ fn link_row(
                 .px(px(6.0))
                 .text_color(color::faint_text(cx))
                 .hover(|style| style.text_color(color::foreground(cx)))
-                .on_click(move |_event, window, cx| {
-                    cx.stop_propagation();
-                    on_unlink(target, window, cx);
+                .on_click({
+                    let unlink = clicks.send(DocumentsPageEvent::Unlink(target));
+                    move |event, window, cx| {
+                        cx.stop_propagation();
+                        unlink(event, window, cx);
+                    }
                 })
                 .child("\u{d7}"),
         )
 }
 
-fn detail_footer(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
-    let on_open = props.on_open_click.clone();
-    let on_show = props.on_show_click.clone();
-    let on_delete = props.on_delete_click.clone();
+fn detail_footer(
+    view: &DocumentsPageViewModel,
+    clicks: &PageClicks<DocumentsPage>,
+    cx: &App,
+) -> impl IntoElement {
     let hover = color::muted(cx);
     div()
         .flex_none()
@@ -892,8 +894,8 @@ fn detail_footer(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
                 .text_color(color::selection_text(cx))
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .hover(move |style| style.bg(hover))
-                .on_click(move |_event, window, cx| on_open(window, cx))
-                .child(props.labels.open.clone()),
+                .on_click(clicks.send(DocumentsPageEvent::Open))
+                .child(view.labels.open.clone()),
         )
         .child(
             div()
@@ -907,17 +909,22 @@ fn detail_footer(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
                 .border_1()
                 .border_color(color::border(cx))
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .on_click(move |_event, window, cx| on_show(window, cx))
-                .child(props.labels.show_in_folder.clone()),
+                .on_click(clicks.send(DocumentsPageEvent::ShowInFolder))
+                .child(view.labels.show_in_folder.clone()),
         )
-        .child(delete_button("documents-delete", props, on_delete, cx))
+        .child(delete_button(
+            "documents-delete",
+            view,
+            clicks.click(DocumentsPageEvent::Delete),
+            cx,
+        ))
 }
 
 /// The footer's plain bordered Delete button, last in the row in both modes.
 pub(super) fn delete_button(
     id: &'static str,
-    props: &DocumentsPageProps,
-    on_click: OnPlainClick,
+    view: &DocumentsPageViewModel,
+    on_click: OnClick,
     cx: &App,
 ) -> impl IntoElement {
     div()
@@ -933,5 +940,5 @@ pub(super) fn delete_button(
         .border_color(color::border(cx))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .on_click(move |_event, window, cx| on_click(window, cx))
-        .child(props.labels.delete.clone())
+        .child(view.labels.delete.clone())
 }

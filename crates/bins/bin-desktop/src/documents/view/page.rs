@@ -26,13 +26,11 @@ use lib_documents::{
 use lib_ledger::Domain;
 use lib_viper::keymap::Keymap;
 
-use super::{
-    DocumentsPageProps, OnCandidateClick, OnLinkClick, OnPlainClick, OnRailClick, OnRowClick,
-    OnSortClick,
-};
+use super::Scrolls;
 use crate::documents::router::PageRouter;
 use crate::ledger_store::{LedgerChanged, LedgerStore};
 use crate::navigation::movement::Movement;
+use crate::shell::view::page_clicks::{PageClicks, PresenterPage};
 use crate::shell::view::statusline::PageStatus;
 use crate::view::event::{Reveal, ViewEvent, ViewMode};
 use crate::view::help::HelpGroup;
@@ -85,11 +83,7 @@ impl DocumentsPage {
 
     /// A key or click on the page, or the Shell telling it something: `event` as one input,
     /// committed once it is handled.
-    pub(in crate::documents) fn send(
-        &mut self,
-        event: DocumentsPageEvent,
-        cx: &mut Context<'_, Self>,
-    ) {
+    fn send(&mut self, event: DocumentsPageEvent, cx: &mut Context<'_, Self>) {
         crate::input::send(cx, |cx| self.handle(event, cx));
     }
 
@@ -349,102 +343,22 @@ pub fn documents_page(
     cx.new(|cx| DocumentsPage::new(presenter, ledger, keymap, cx))
 }
 
-/// A click that sends `event` to the page.
-fn on_event(entity: &Entity<DocumentsPage>, event: DocumentsPageEvent) -> OnPlainClick {
-    let entity = entity.clone();
-    Rc::new(move |_window, cx| {
-        let event = event.clone();
-        entity.update(cx, |page, cx| page.send(event, cx));
-    })
+/// The page's clicks, each one an event sent to its Presenter.
+impl PresenterPage<DocumentsPageEvent> for DocumentsPage {
+    fn send(&mut self, event: DocumentsPageEvent, cx: &mut Context<'_, Self>) {
+        DocumentsPage::send(self, event, cx);
+    }
 }
 
 impl Render for DocumentsPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let entity = cx.entity();
-        let with = |make: fn(usize) -> DocumentsPageEvent| -> OnRowClick {
-            let entity = entity.clone();
-            Rc::new(move |index, _window, cx| {
-                entity.update(cx, |page, cx| page.send(make(index), cx));
-            })
-        };
-        let linked = |make: fn(lib_documents::DocumentLink) -> DocumentsPageEvent| -> OnLinkClick {
-            let entity = entity.clone();
-            Rc::new(move |link, _window, cx| {
-                entity.update(cx, |page, cx| page.send(make(link), cx));
-            })
-        };
-        let on_rail_click: OnRailClick = {
-            let entity = entity.clone();
-            Rc::new(move |entry, _window, cx| {
-                entity.update(cx, |page, cx| {
-                    page.send(DocumentsPageEvent::ClickRail(entry), cx);
-                });
-            })
-        };
-        let on_sort_click: OnSortClick = {
-            let entity = entity.clone();
-            Rc::new(move |sort, _window, cx| {
-                entity.update(cx, |page, cx| {
-                    page.send(DocumentsPageEvent::ClickSort(sort), cx);
-                });
-            })
-        };
-        let on_accept_candidate_click: OnCandidateClick = {
-            let entity = entity.clone();
-            Rc::new(move |transaction_id, _window, cx| {
-                entity.update(cx, |page, cx| {
-                    page.send(DocumentsPageEvent::AcceptCandidate(transaction_id), cx);
-                });
-            })
-        };
-        // A click on the Search box is `/`: the page asks for Search mode itself, since no key
-        // went through the Shell.
-        let on_search_click: OnPlainClick = {
-            let entity = entity.clone();
-            Rc::new(move |_window, cx| {
-                entity.update(cx, |page, cx| {
-                    page.send(DocumentsPageEvent::StartSearch, cx);
-                });
-            })
-        };
+        let clicks = PageClicks::new(cx);
         let view = self.presenter.view_model();
-        let props = DocumentsPageProps {
-            mode: view.mode,
-            focus: view.focus,
-            title: view.title,
-            subline: view.subline,
-            rail: view.rail,
-            rail_selected: view.rail_selected,
-            rail_footer: view.stored,
-            labels: view.labels,
-            library: view.library.map(|library| {
-                let rows = Rc::new(library.rows.clone());
-                (library, rows)
-            }),
-            inbox: view.inbox,
+        let scroll = Scrolls {
+            library: self.library_scroll.clone(),
+            inbox: self.inbox_scroll.clone(),
             list_focused: false,
-            library_scroll: self.library_scroll.clone(),
-            inbox_scroll: self.inbox_scroll.clone(),
-            on_rail_click,
-            on_row_click: with(DocumentsPageEvent::ClickRow),
-            on_sort_click,
-            on_search_click,
-            on_add_click: on_event(&entity, DocumentsPageEvent::Add),
-            on_import_click: on_event(&entity, DocumentsPageEvent::Import),
-            on_open_click: on_event(&entity, DocumentsPageEvent::Open),
-            on_show_click: on_event(&entity, DocumentsPageEvent::ShowInFolder),
-            on_delete_click: on_event(&entity, DocumentsPageEvent::Delete),
-            on_link_click: linked(DocumentsPageEvent::Reveal),
-            on_unlink_click: linked(DocumentsPageEvent::Unlink),
-            on_add_link_click: on_event(&entity, DocumentsPageEvent::OpenPicker),
-            on_watched_click: on_event(&entity, DocumentsPageEvent::WatchedFolder),
-            on_accept_all_click: on_event(&entity, DocumentsPageEvent::AcceptAll),
-            on_accept_row_click: with(DocumentsPageEvent::ClickAccept),
-            on_accept_next_click: on_event(&entity, DocumentsPageEvent::Accept),
-            on_accept_candidate_click,
-            on_link_elsewhere_click: on_event(&entity, DocumentsPageEvent::OpenPicker),
-            on_skip_click: on_event(&entity, DocumentsPageEvent::Skip),
         };
-        super::render(self.zone_focused, props, cx)
+        super::render(self.zone_focused, &view, &clicks, scroll, cx)
     }
 }

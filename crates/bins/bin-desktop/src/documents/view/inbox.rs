@@ -4,34 +4,43 @@
 //! Presenter owns the focus, the filing actions and every key.
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
-use lib_documents::presenter::InboxViewModel;
 use lib_documents::presenter::inbox::{CandidateView, InboxDetailView, InboxRowView, InboxState};
+use lib_documents::presenter::{DocumentsPageEvent, DocumentsPageViewModel, InboxViewModel};
 use lib_locale::format::upper;
 
+use super::page::DocumentsPage;
 use super::{
-    DETAIL_WIDTH, DocumentsPageProps, OnPlainClick, fact_row, file_glyph, preview, primary_button,
-    secondary_button,
+    DETAIL_WIDTH, Scrolls, fact_row, file_glyph, preview, primary_button, secondary_button,
 };
-use crate::{documents::Signals, theme::color};
+use crate::{
+    dialog::OnClick, documents::Signals, shell::view::page_clicks::PageClicks, theme::color,
+};
 
 /// The list pane below the header: column header, rows (or the empty state), footnote and drop
 /// target.
-pub fn list_body(props: &DocumentsPageProps, inbox: &InboxViewModel, cx: &App) -> AnyElement {
+pub fn list_body(
+    view: &DocumentsPageViewModel,
+    clicks: &PageClicks<DocumentsPage>,
+    scroll: &Scrolls,
+    inbox: &InboxViewModel,
+    cx: &App,
+) -> AnyElement {
     div()
         .flex_1()
         .min_h(px(0.0))
         .flex()
         .flex_col()
-        .child(column_header(props, cx))
-        .child(rows(props, inbox, cx))
-        .child(footnote(props, inbox, cx))
-        .child(drop_target(props, cx))
+        .child(column_header(view, cx))
+        .child(rows(view, clicks, scroll, inbox, cx))
+        .child(footnote(view, scroll, inbox, cx))
+        .child(drop_target(view, cx))
         .into_any_element()
 }
 
 /// The header's right-hand buttons: **Watched folder…** and **Accept all strong matches · n**.
 pub fn header_buttons(
-    props: &DocumentsPageProps,
+    view: &DocumentsPageViewModel,
+    clicks: &PageClicks<DocumentsPage>,
     inbox: &InboxViewModel,
     cx: &App,
 ) -> [AnyElement; 2] {
@@ -39,7 +48,7 @@ pub fn header_buttons(
         primary_button(
             "documents-accept-all",
             inbox.accept_all.clone(),
-            props.on_accept_all_click.clone(),
+            clicks.click(DocumentsPageEvent::AcceptAll),
             cx,
         )
         .into_any_element()
@@ -63,8 +72,8 @@ pub fn header_buttons(
     [
         secondary_button(
             "documents-watched-folder",
-            props.labels.watched_folder.clone(),
-            props.on_watched_click.clone(),
+            view.labels.watched_folder.clone(),
+            clicks.click(DocumentsPageEvent::WatchedFolder),
             cx,
         )
         .into_any_element(),
@@ -72,7 +81,7 @@ pub fn header_buttons(
     ]
 }
 
-fn column_header(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
+fn column_header(view: &DocumentsPageViewModel, cx: &App) -> impl IntoElement {
     let label = |text: String| {
         div()
             .font_weight(gpui::FontWeight::EXTRA_BOLD)
@@ -93,23 +102,29 @@ fn column_header(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
             div()
                 .w(px(252.0))
                 .flex_none()
-                .child(label(props.labels.file_column.clone())),
+                .child(label(view.labels.file_column.clone())),
         )
         .child(
             div()
                 .flex_1()
                 .pl(px(26.0))
-                .child(label(props.labels.link_column.clone())),
+                .child(label(view.labels.link_column.clone())),
         )
 }
 
-fn rows(props: &DocumentsPageProps, inbox: &InboxViewModel, cx: &App) -> impl IntoElement {
+fn rows(
+    view: &DocumentsPageViewModel,
+    clicks: &PageClicks<DocumentsPage>,
+    scroll: &Scrolls,
+    inbox: &InboxViewModel,
+    cx: &App,
+) -> impl IntoElement {
     let body = div()
         .id("documents-inbox-rows")
         .flex_1()
         .min_h(px(0.0))
         .overflow_y_scroll()
-        .track_scroll(&props.inbox_scroll);
+        .track_scroll(&scroll.inbox);
     if inbox.rows.is_empty() {
         return body.child(
             div()
@@ -118,16 +133,16 @@ fn rows(props: &DocumentsPageProps, inbox: &InboxViewModel, cx: &App) -> impl In
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_size(px(15.0))
                 .text_color(color::muted(cx))
-                .child(props.labels.inbox_empty.clone()),
+                .child(view.labels.inbox_empty.clone()),
         );
     }
     body.children(inbox.rows.iter().enumerate().map(|(index, row)| {
         inbox_row(
             row,
-            index == inbox.selected && props.list_focused,
+            index == inbox.selected && scroll.list_focused,
             index == inbox.selected,
             index,
-            props,
+            clicks,
             cx,
         )
     }))
@@ -138,11 +153,9 @@ fn inbox_row(
     focus_ring: bool,
     focused: bool,
     index: usize,
-    props: &DocumentsPageProps,
+    clicks: &PageClicks<DocumentsPage>,
     cx: &App,
 ) -> impl IntoElement {
-    let on_click = props.on_row_click.clone();
-    let on_accept = props.on_accept_row_click.clone();
     let ink = color::foreground(cx);
     let action_label = row.action.clone();
     let summary_color = match row.state {
@@ -163,7 +176,7 @@ fn inbox_row(
         .border_color(color::hairline(cx))
         .when(focused, |this| this.bg(color::background(cx)))
         .when(row.skipped, |this| this.opacity(0.55))
-        .on_click(move |_event, window, cx| on_click(index, window, cx))
+        .on_click(clicks.row(DocumentsPageEvent::ClickRow(index)))
         .child(file_glyph(row.extension, ink))
         .child(
             div()
@@ -237,9 +250,12 @@ fn inbox_row(
                 .when(!focused, |this| {
                     this.border_1().border_color(color::border(cx))
                 })
-                .on_click(move |_event, window, cx| {
-                    cx.stop_propagation();
-                    on_accept(index, window, cx);
+                .on_click({
+                    let accept = clicks.send(DocumentsPageEvent::ClickAccept(index));
+                    move |event, window, cx| {
+                        cx.stop_propagation();
+                        accept(event, window, cx);
+                    }
                 })
                 .child(action_label)
                 .when(focused, |this| {
@@ -285,13 +301,18 @@ pub fn meter(signals: Signals, cx: &App) -> impl IntoElement {
         .child(square(signals.payee))
 }
 
-fn footnote(props: &DocumentsPageProps, inbox: &InboxViewModel, cx: &App) -> impl IntoElement {
+fn footnote(
+    view: &DocumentsPageViewModel,
+    scroll: &Scrolls,
+    inbox: &InboxViewModel,
+    cx: &App,
+) -> impl IntoElement {
     // Rows below the last one in view, read from the list's scroll state of the previous frame.
     let below = inbox
         .rows
         .len()
-        .saturating_sub(props.inbox_scroll.bottom_item() + 1);
-    let note = props.labels.inbox_footnote.clone();
+        .saturating_sub(scroll.inbox.bottom_item() + 1);
+    let note = view.labels.inbox_footnote.clone();
     let text = if below > 0 && !inbox.rows.is_empty() {
         format!("{} · {note}", lib_documents::presenter::inbox_below(below))
     } else {
@@ -307,7 +328,7 @@ fn footnote(props: &DocumentsPageProps, inbox: &InboxViewModel, cx: &App) -> imp
 }
 
 /// The dashed drop target. Drawn as the handoff has it; the drop itself is handled by the Shell's root.
-fn drop_target(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
+fn drop_target(view: &DocumentsPageViewModel, cx: &App) -> impl IntoElement {
     div()
         .flex_none()
         .mx(px(14.0))
@@ -322,14 +343,18 @@ fn drop_target(props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
         .text_size(px(12.5))
         .text_color(color::muted(cx))
         .child(div().child("\u{2193}"))
-        .child(props.labels.drop_target.clone())
+        .child(view.labels.drop_target.clone())
 }
 
 // ---------------------------------------------------------------------------------------------
 // Detail pane
 // ---------------------------------------------------------------------------------------------
 
-pub fn detail_pane(props: &DocumentsPageProps, cx: &App) -> AnyElement {
+pub fn detail_pane(
+    view: &DocumentsPageViewModel,
+    clicks: &PageClicks<DocumentsPage>,
+    cx: &App,
+) -> AnyElement {
     let pane = div()
         .w(DETAIL_WIDTH)
         .flex_none()
@@ -339,7 +364,7 @@ pub fn detail_pane(props: &DocumentsPageProps, cx: &App) -> AnyElement {
         .bg(color::chrome(cx))
         .border_l(px(2.0))
         .border_color(color::structural_rule(cx));
-    let Some(inbox) = props.inbox.as_ref() else {
+    let Some(inbox) = view.inbox.as_ref() else {
         return pane.into_any_element();
     };
     let Some(detail) = inbox.detail.as_ref() else {
@@ -386,12 +411,12 @@ pub fn detail_pane(props: &DocumentsPageProps, cx: &App) -> AnyElement {
                     detail
                         .suggested
                         .as_ref()
-                        .map(|card| suggested_card(card, &props.labels, cx)),
+                        .map(|card| suggested_card(card, &view.labels, cx)),
                 )
-                .child(other_candidates(detail, props, cx)),
+                .child(other_candidates(detail, view, clicks, cx)),
         )
         .child(key_hints(inbox, cx))
-        .child(footer(detail, props, cx))
+        .child(footer(detail, view, clicks, cx))
         .into_any_element()
 }
 
@@ -441,7 +466,8 @@ fn suggested_card(
 
 fn other_candidates(
     detail: &InboxDetailView,
-    props: &DocumentsPageProps,
+    view: &DocumentsPageViewModel,
+    clicks: &PageClicks<DocumentsPage>,
     cx: &App,
 ) -> impl IntoElement {
     if detail.state != InboxState::Link {
@@ -463,10 +489,9 @@ fn other_candidates(
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
                 .text_size(px(10.0))
                 .text_color(color::faint_text(cx))
-                .child(upper(&props.labels.other_candidates)),
+                .child(upper(&view.labels.other_candidates)),
         )
         .children(detail.others.iter().enumerate().map(|(index, other)| {
-            let on_accept = props.on_accept_candidate_click.clone();
             let transaction_id = other.transaction_id;
             div()
                 .id(("documents-inbox-other", index))
@@ -480,7 +505,7 @@ fn other_candidates(
                 .border_color(color::border(cx))
                 .bg(color::background(cx))
                 .text_size(px(11.5))
-                .on_click(move |_event, window, cx| on_accept(transaction_id, window, cx))
+                .on_click(clicks.send(DocumentsPageEvent::AcceptCandidate(transaction_id)))
                 .child(meter(other.signals, cx))
                 .child(
                     div()
@@ -520,18 +545,23 @@ fn key_hints(inbox: &InboxViewModel, cx: &App) -> impl IntoElement {
         }))
 }
 
-fn footer(detail: &InboxDetailView, props: &DocumentsPageProps, cx: &App) -> impl IntoElement {
+fn footer(
+    detail: &InboxDetailView,
+    view: &DocumentsPageViewModel,
+    clicks: &PageClicks<DocumentsPage>,
+    cx: &App,
+) -> impl IntoElement {
     let readable = detail.state == InboxState::Link;
     let (primary_label, secondary_label) = (detail.primary.clone(), detail.secondary.clone());
-    let (primary_click, secondary_click): (OnPlainClick, OnPlainClick) = if readable {
+    let (primary_click, secondary_click): (OnClick, OnClick) = if readable {
         (
-            props.on_accept_next_click.clone(),
-            props.on_link_elsewhere_click.clone(),
+            clicks.click(DocumentsPageEvent::Accept),
+            clicks.click(DocumentsPageEvent::OpenPicker),
         )
     } else {
         (
-            props.on_link_elsewhere_click.clone(),
-            props.on_skip_click.clone(),
+            clicks.click(DocumentsPageEvent::OpenPicker),
+            clicks.click(DocumentsPageEvent::Skip),
         )
     };
     let hover = color::muted(cx);
@@ -580,8 +610,8 @@ fn footer(detail: &InboxDetailView, props: &DocumentsPageProps, cx: &App) -> imp
         )
         .child(super::delete_button(
             "documents-inbox-delete",
-            props,
-            props.on_delete_click.clone(),
+            view,
+            clicks.click(DocumentsPageEvent::Delete),
             cx,
         ))
 }
