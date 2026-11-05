@@ -4953,7 +4953,6 @@ dependencies = [
  "lib_transactions",
  "lib_units",
  "serde_json",
- "thiserror 2.0.20",
 ]
 
 [[package]]

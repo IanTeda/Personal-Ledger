@@ -226,7 +226,7 @@ The Shell is the always-present frame around the current View (see GLOSSARY.md).
 
 ## Persistence
 
-Each module owns its repository ports, replacing the single `LedgerRepository` ([ADR-0039](../adr/0039-ledger-persists-through-one-store-wide-repository.md), amended).
+Each module owns its repository ports, replacing the single store-wide repository ([ADR-0039](../adr/0039-ledger-persists-through-one-store-wide-repository.md), amended).
 
 Ports are synchronous, and `sqlx` is async ([ADR-0046](../adr/0046-per-domain-adapters-hold-rows-in-memory-behind-one-shared-writer.md)). Each `lib-database` adapter holds its domain's rows in memory, loaded when the Client starts, and serves reads from there. A write changes memory at once and goes to one writer thread shared by every domain, which runs it in one database transaction. A failed write is reported on a channel the bin listens on, so it can reload, redraw and show an error Toast. `lib-database`'s `adapter/units.rs` and `writer.rs` are the worked example.
 
@@ -338,7 +338,6 @@ Until every domain is a module and `lib-shell` is whole, these stand in, each re
 | The TUI's Router turns a status into an Info Toast | The TUI has no `lib-shell` Presenter | The TUI's redesign ([#805](https://github.com/IanTeda/Personal-Ledger/issues/805)) |
 | The TUI's Units ports hold the commit and commit after each `handle` (`bin-tui/src/units/ports.rs`); it builds on `Stores` but has no `send` | The TUI's redesign and its own `input.rs` are their own ticket ([#805](https://github.com/IanTeda/Personal-Ledger/issues/805)) | The TUI's `input.rs` commits after each input |
 | The TUI's keys reach the Units keymap through `shell.rs`, and its Units View maps the arrows, Home/End and Page keys to `Move` itself | The TUI has no `input.rs` yet | The TUI's redesign gives it one ([#805](https://github.com/IanTeda/Personal-Ledger/issues/805)) |
-| `LedgerRepository` and `LedgerChange`, persisting nothing since Units left and recording nothing since slice 10's close-out ([#1006](https://github.com/IanTeda/Personal-Ledger/issues/1006)); `LedgerChange` keeps one variant so the repository stands | `Ledger` and `LedgerStore` still stand | Every View is a module ([#816](https://github.com/IanTeda/Personal-Ledger/issues/816)), with `Ledger` and `LedgerStore` |
 
 The slices left are on the transition map ([#747](https://github.com/IanTeda/Personal-Ledger/issues/747)): removing `Ledger` and its stand-ins ([#816](https://github.com/IanTeda/Personal-Ledger/issues/816)), and the first-launch seed after the new-Ledger workflow ([#171](https://github.com/IanTeda/Personal-Ledger/issues/171)). Each slice removes the rows above whose condition it meets.
 

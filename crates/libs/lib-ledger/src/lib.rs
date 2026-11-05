@@ -14,15 +14,13 @@ mod document_reads;
 #[cfg(test)]
 mod documents_seed_tests;
 mod institution_reads;
-mod repository;
 pub mod seed;
 mod tag_reads;
 mod tag_usage;
 mod unit_usage;
 
 pub use budget_reads::{budget_accounts, budget_categories};
-pub use change::{Domain, LedgerChange, domains};
-pub use repository::{LedgerRepository, RepositoryError, StubRepository};
+pub use change::Domain;
 pub use seed::{DEFAULT_SEED, HISTORY_DAYS, default_transactions};
 pub use tag_usage::{TagRows, transaction_count};
 
@@ -253,7 +251,7 @@ impl Ledger {
         lib_units::units_by_code(&self.units)
     }
 
-    /// The stored Price Source rows, as the repository receives them.
+    /// The stored Price Source rows, as the Ledger holds them.
     pub fn price_source_records(&self) -> &[PriceSourceRecord] {
         &self.price_sources
     }

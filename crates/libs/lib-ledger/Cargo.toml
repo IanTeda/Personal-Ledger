@@ -28,7 +28,6 @@ lib_units = { path = "../lib-units" }
 ## -- Workspace Dependencies --
 bigdecimal = { workspace = true }
 chrono = { workspace = true }
-thiserror = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
