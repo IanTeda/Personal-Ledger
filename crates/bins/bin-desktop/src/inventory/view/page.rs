@@ -94,7 +94,7 @@ impl InventoryPage {
         let landed = matches!(event, InventoryPageEvent::DialogClosed(Some(_)));
         let mut router = PageRouter {
             inventory: self.inventory.clone(),
-            ledger: self.ledger.clone(),
+            reads: self.ledger.read(cx).inventory_reads(),
             cx,
         };
         self.presenter.handle(event, &mut router);

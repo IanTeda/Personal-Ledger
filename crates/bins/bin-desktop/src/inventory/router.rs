@@ -4,6 +4,7 @@
 //! (`crate::notices`), which the input's `send` drains.
 
 use gpui::{Context, Entity};
+use lib_database::StoredInventoryReads;
 use lib_inventory::{InventoryDialog as Which, InventoryRouter, SharedInventory};
 use lib_toast::{Notice, Notify};
 
@@ -16,13 +17,13 @@ use crate::shell::view::dialog_entity::host_dialog;
 
 pub(super) struct PageRouter<'a, 'b> {
     pub inventory: SharedInventory,
-    pub ledger: Entity<LedgerStore>,
+    pub reads: StoredInventoryReads,
     pub cx: &'a mut Context<'b, InventoryPage>,
 }
 
 impl InventoryRouter for PageRouter<'_, '_> {
-    /// Builds `dialog`'s Presenter on the shared Inventory, its Units and Documents read from the
-    /// Ledger, and hosts its View; its confirmed outcome comes back to the page through
+    /// Builds `dialog`'s Presenter on the shared Inventory, its Units and Documents read through
+    /// [`StoredInventoryReads`], and hosts its View; its confirmed outcome comes back to the page through
     /// [`InventoryPage::dialog_landed`].
     fn open_dialog(&mut self, dialog: Which) -> bool {
         let page = self.cx.weak_entity();
@@ -30,8 +31,7 @@ impl InventoryRouter for PageRouter<'_, '_> {
             // A page that has gone has nothing to land on.
             let _ = page.update(cx, |page, cx| page.dialog_landed(outcome, cx));
         });
-        let Some(dialog) =
-            InventoryDialog::open(dialog, &self.inventory, &self.ledger, landed, self.cx)
+        let Some(dialog) = InventoryDialog::open(dialog, &self.inventory, &self.reads, landed)
         else {
             return false;
         };

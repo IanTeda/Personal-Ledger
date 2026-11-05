@@ -28,7 +28,7 @@ use lib_core::AccountId;
 use lib_database::{
     PayeesStore, SharedAccountsStore, SharedBudgetsStore, SharedCategoriesStore,
     SharedDocumentsStore, SharedInventoryStore, SharedTagsStore, SharedTransactionsStore,
-    SharedUnitsStore, StoredDocumentReads, StoredPayeeReads,
+    SharedUnitsStore, StoredDocumentReads, StoredInventoryReads, StoredPayeeReads,
 };
 use lib_institutions::InstitutionsPorts as _;
 use lib_ledger::{Domain, Ledger};
@@ -136,6 +136,8 @@ pub struct LedgerStore {
     documents: SharedDocumentsStore,
     /// The other domains as Documents reads them, through the stores above (#963).
     document_reads: StoredDocumentReads,
+    /// The Units and Documents the Inventory Dialogs quote (#1014).
+    inventory_reads: StoredInventoryReads,
 }
 
 impl EventEmitter<LedgerChanged> for LedgerStore {}
@@ -177,6 +179,16 @@ impl LedgerStore {
         let institutions =
             crate::institutions::LedgerBackedPorts::in_memory(&ledger, accounts.clone());
         let inventory = crate::inventory::ports::in_memory(&ledger);
+        let documents: SharedDocumentsStore =
+            Rc::new(RefCell::new(lib_documents::fake::InMemoryDocuments {
+                documents: Vec::new(),
+                types: lib_documents::types::default_types(),
+            }));
+        let inventory_reads = StoredInventoryReads {
+            units: crate::bills::ports::in_memory_units(&ledger),
+            inventory: inventory.clone(),
+            documents: documents.clone(),
+        };
         let document_reads = StoredDocumentReads {
             transactions: transactions.clone(),
             payees: payees.clone(),
@@ -191,11 +203,9 @@ impl LedgerStore {
             categories,
             tags: crate::tags::ports::in_memory(&ledger),
             inventory,
-            documents: Rc::new(RefCell::new(lib_documents::fake::InMemoryDocuments {
-                documents: Vec::new(),
-                types: lib_documents::types::default_types(),
-            })),
+            documents,
             document_reads,
+            inventory_reads,
             ledger,
             payees,
             transactions,
@@ -215,6 +225,11 @@ impl LedgerStore {
             bills: setup.bills.borrow().store(),
             inventory: setup.inventory.clone(),
         };
+        let inventory_reads = StoredInventoryReads {
+            units: setup.units.clone(),
+            inventory: setup.inventory.clone(),
+            documents: setup.documents.clone(),
+        };
         let mut store = Self {
             ledger,
             institutions: setup.institutions,
@@ -228,6 +243,7 @@ impl LedgerStore {
             inventory: setup.inventory,
             documents: setup.documents,
             document_reads,
+            inventory_reads,
         };
         store.copy_institutions();
         store.copy_accounts();
@@ -242,32 +258,15 @@ impl LedgerStore {
         &self.ledger
     }
 
+    /// The other domains' stores as `lib_inventory`' reads, which the Inventory Dialogs hold.
+    pub fn inventory_reads(&self) -> StoredInventoryReads {
+        self.inventory_reads.clone()
+    }
+
     /// The other domains' stores as `lib_documents`' reads, which the Documents page's Presenter
     /// holds.
     pub fn document_reads(&self) -> StoredDocumentReads {
         self.document_reads.clone()
-    }
-
-    /// The Documents with a Link to one of Location `id`'s Items, as the Inventory and Documents
-    /// stores hold them (#964): what the Remove location Dialog quotes as losing a Link.
-    pub fn documents_linking_location(&self, id: lib_core::LocationId) -> usize {
-        let items: Vec<lib_documents::DocumentLink> = self
-            .inventory
-            .borrow()
-            .inventory()
-            .inventory()
-            .items
-            .iter()
-            .filter(|item| item.location == id)
-            .map(|item| lib_documents::DocumentLink::InventoryItem(item.id))
-            .collect();
-        self.documents
-            .borrow()
-            .documents()
-            .documents()
-            .iter()
-            .filter(|document| document.links.iter().any(|link| items.contains(link)))
-            .count()
     }
 
     /// The Splits filed under Category `id`, as the Transactions store counts them: in the file for

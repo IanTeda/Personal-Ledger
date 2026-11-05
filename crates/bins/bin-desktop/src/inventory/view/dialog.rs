@@ -17,7 +17,8 @@ mod location_form;
 mod remove_area;
 mod remove_location;
 
-use gpui::{App, Context, Entity, EventEmitter, IntoElement, Render, Window, div, prelude::*, px};
+use gpui::{App, Context, EventEmitter, IntoElement, Render, Window, div, prelude::*, px};
+use lib_database::StoredInventoryReads;
 use lib_inventory::presenter::{
     AreaBlockedEvent, AreaBlockedPresenter, AreaFormEvent, AreaFormPresenter, LocationFormEvent,
     LocationFormPresenter, RemoveAreaEvent, RemoveAreaPresenter, RemoveLocationEvent,
@@ -28,7 +29,6 @@ use lib_shell::DialogCommand;
 use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
 
-use crate::inventory::ports::DialogReads;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
 use crate::shell::view::dialog_host::DialogReadback;
 use crate::theme::color;
@@ -73,25 +73,23 @@ impl View {
 }
 
 impl InventoryDialog {
-    /// `which`'s Presenter on `inventory`, its Units and Documents read from `ledger`, or `None`
+    /// `which`'s Presenter on `inventory`, its Units and Documents read through `reads`, or `None`
     /// when the row it names is gone. A confirm hands its outcome to `landed`.
     pub(crate) fn open(
         which: Which,
         inventory: &SharedInventory,
-        ledger: &Entity<crate::ledger_store::LedgerStore>,
+        reads: &StoredInventoryReads,
         landed: Landed,
-        cx: &mut App,
     ) -> Option<Self> {
-        let reads = DialogReads { ledger, cx };
         let view = match which {
             Which::AddLocation { unit } => {
-                View::Location(LocationFormPresenter::add(inventory, &reads, unit), 0)
+                View::Location(LocationFormPresenter::add(inventory, reads, unit), 0)
             }
             Which::EditLocation(id) => {
-                View::Location(LocationFormPresenter::edit(inventory, &reads, id)?, 0)
+                View::Location(LocationFormPresenter::edit(inventory, reads, id)?, 0)
             }
             Which::RemoveLocation(id) => {
-                View::RemoveLocation(RemoveLocationPresenter::new(inventory, &reads, id)?)
+                View::RemoveLocation(RemoveLocationPresenter::new(inventory, reads, id)?)
             }
             Which::AddArea(location) => View::Area(AreaFormPresenter::add(inventory, location)?),
             Which::EditArea(id) => View::Area(AreaFormPresenter::edit(inventory, id)?),
