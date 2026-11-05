@@ -32,26 +32,32 @@ pub type DesktopPorts = Rc<RefCell<LedgerBackedPorts>>;
 
 /// The store's two repositories as the one a Bills Interactor writes through. It forwards rather
 /// than lending the store's own: `bills()` returns a borrow that must outlive the call, and the
-/// store is shared behind a `RefCell` whose guard can't be lent out of it.
-struct Store(SharedBillsStore);
+/// store is shared behind a `RefCell` whose guard can't be lent out of it. It notes each write, so
+/// the Bills are announced only after an event that wrote them ([`announce_written`]).
+struct Store {
+    rows: SharedBillsStore,
+    wrote: bool,
+}
 
 impl BillPlanRepository for Store {
     fn bill_plans(&self) -> Vec<BillPlan> {
-        self.0.borrow().plans().bill_plans()
+        self.rows.borrow().plans().bill_plans()
     }
 
     fn upsert_bill_plan(&mut self, plan: BillPlan) {
-        self.0.borrow_mut().plans_mut().upsert_bill_plan(plan);
+        self.wrote = true;
+        self.rows.borrow_mut().plans_mut().upsert_bill_plan(plan);
     }
 }
 
 impl BillScheduleRepository for Store {
     fn entries(&self) -> Vec<BillScheduleEntry> {
-        self.0.borrow().entries().entries()
+        self.rows.borrow().entries().entries()
     }
 
     fn upsert_entry(&mut self, entry: BillScheduleEntry) {
-        self.0.borrow_mut().entries_mut().upsert_entry(entry);
+        self.wrote = true;
+        self.rows.borrow_mut().entries_mut().upsert_entry(entry);
     }
 }
 
@@ -73,7 +79,10 @@ impl LedgerBackedPorts {
         units: SharedUnitsStore,
     ) -> DesktopPorts {
         Rc::new(RefCell::new(Self {
-            store: Store(store),
+            store: Store {
+                rows: store,
+                wrote: false,
+            },
             reads: StoredBillReads {
                 payees,
                 accounts,
@@ -109,12 +118,17 @@ impl LedgerBackedPorts {
     /// # Errors
     /// Returns the error reading them back; the rows in memory are left as they were.
     pub fn reload(&mut self) -> lib_database::Result<()> {
-        self.store.0.borrow_mut().reload()
+        self.store.rows.borrow_mut().reload()
     }
 
     /// The Bills store the ports write, which the Bill Payments module writes too.
     pub fn store(&self) -> SharedBillsStore {
-        self.store.0.clone()
+        self.store.rows.clone()
+    }
+
+    /// Whether a Bills Interactor wrote through these ports since the last ask.
+    fn take_wrote(&mut self) -> bool {
+        std::mem::take(&mut self.store.wrote)
     }
 }
 
@@ -197,13 +211,21 @@ pub fn new_month(
     cx: &mut App,
 ) {
     PopulateSchedule { today }.run(ports.borrow_mut().split_mut().bills);
-    announce(ledger, cx);
+    announce_written(ports, ledger, cx);
 }
 
-/// Announces `Domain::Bills` after every Bills event and Dialog confirm, so the Dashboard, Bills,
-/// Budgets and Documents redraw on a write at once (#1028).
+/// Announces `Domain::Bills`, so the Dashboard, Bills, Budgets and Documents redraw on a write at
+/// once (#1028): for a module that wrote the Bills store directly, such as Bill Payments.
 pub fn announce(ledger: &Entity<LedgerStore>, cx: &mut App) {
     ledger.update(cx, |store, cx| store.announce_bills(cx));
+}
+
+/// Announces `Domain::Bills` after a Bills event or Dialog input, but only when it wrote through
+/// `ports`, so a cursor move or a keystroke into a field redraws no other View.
+pub fn announce_written(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: &mut App) {
+    if ports.borrow_mut().take_wrote() {
+        announce(ledger, cx);
+    }
 }
 
 #[cfg(test)]

@@ -10,7 +10,7 @@ use gpui::{div, prelude::*, px};
 use lib_core::{Clock, DateStyle};
 use lib_dashboard::{DashboardEvent, DashboardPresenter, DashboardReads, DashboardViewModel};
 use lib_ledger::Domain;
-use lib_viper::display::{RowDensity, StatusGlyphs};
+use lib_viper::display::StatusGlyphs;
 
 use super::content;
 use crate::dashboard::router::PageRouter;
@@ -46,7 +46,8 @@ pub struct DashboardPage {
 
 impl DashboardPage {
     /// The page over `reads`, dated by `clock`. It redraws on a change to any domain its figures
-    /// read, as the Ledger announces it, as the Budgets page does (#952).
+    /// read, as the Ledger announces it, as the Budgets page does (#952): the Budget figures read
+    /// the Accounts and Payees as well as the Bills, Transactions, Categories and Units.
     pub fn new(
         reads: std::rc::Rc<dyn DashboardReads>,
         ledger: &Entity<LedgerStore>,
@@ -60,6 +61,8 @@ impl DashboardPage {
                 Domain::Transactions,
                 Domain::Categories,
                 Domain::Units,
+                Domain::Accounts,
+                Domain::Payees,
             ];
             if reads.iter().any(|domain| event.what.contains(domain)) {
                 cx.notify();
@@ -97,17 +100,9 @@ impl DashboardPage {
         &mut self,
         date_style: Option<DateStyle>,
         glyphs: StatusGlyphs,
-        density: RowDensity,
         cx: &mut Context<'_, Self>,
     ) {
-        self.send(
-            DashboardEvent::DisplayChanged {
-                date_style,
-                glyphs,
-                density,
-            },
-            cx,
-        );
+        self.send(DashboardEvent::DisplayChanged { date_style, glyphs }, cx);
     }
 
     /// No key is the Dashboard's ahead of the Shell's fallback.

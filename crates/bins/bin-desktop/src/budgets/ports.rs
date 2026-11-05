@@ -7,7 +7,8 @@
 //! The Budgets page and its Dialogs write the store through `lib-budgets`' Interactors on
 //! [`DesktopPorts`] (#954, #955), as does the Categories Monthly budget ([`set_monthly_limit`]).
 //! Category delete drops the Category's Limits through `lib-category-deletion`'s port (#1005).
-//! After any of them, [`announce`] tells the Views reading the Budgets (#1028).
+//! After a write through these ports, [`announce_written`] tells the Views reading the Budgets
+//! (#1028); the Categories Monthly budget and Category delete announce their own.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -26,20 +27,25 @@ use crate::ledger_store::LedgerStore;
 
 /// The Budgets store as the repository an Interactor writes through. It forwards rather than
 /// lending the store's own: the store is shared behind a `RefCell` whose guard can't be lent out
-/// of it.
-pub struct Store(pub SharedBudgetsStore);
+/// of it. It notes each write, so the Budgets are announced only after an event that wrote them
+/// ([`announce_written`]).
+pub struct Store {
+    rows: SharedBudgetsStore,
+    wrote: bool,
+}
 
 impl BudgetRepository for Store {
     fn budgets(&self) -> Vec<Budget> {
-        self.0.borrow().budgets().budgets()
+        self.rows.borrow().budgets().budgets()
     }
 
     fn budget(&self, id: BudgetId) -> Option<Budget> {
-        self.0.borrow().budgets().budget(id)
+        self.rows.borrow().budgets().budget(id)
     }
 
     fn upsert_budget(&mut self, budget: &Budget) {
-        self.0.borrow_mut().budgets_mut().upsert_budget(budget);
+        self.wrote = true;
+        self.rows.borrow_mut().budgets_mut().upsert_budget(budget);
     }
 }
 
@@ -77,7 +83,10 @@ impl DesktopPorts {
     pub fn new(store: SharedBudgetsStore, reads: Rc<StoredBudgetReads>) -> Self {
         Self {
             shared: Rc::new(RefCell::new(StoredPorts {
-                budgets: Store(store),
+                budgets: Store {
+                    rows: store,
+                    wrote: false,
+                },
                 reads,
             })),
         }
@@ -94,10 +103,14 @@ impl DesktopPorts {
     }
 }
 
-/// Announces `Domain::Budgets` after a Budgets write, so the Dashboard and Budgets redraw
-/// (#1028).
-pub fn announce(ledger: &Entity<LedgerStore>, cx: &mut App) {
-    ledger.update(cx, |store, cx| store.announce_budgets(cx));
+/// Announces `Domain::Budgets` after a Budgets event or Dialog input, but only when it wrote
+/// through `ports`, so the Dashboard and Budgets redraw on a write (#1028) and not on a cursor
+/// move or a keystroke into a cell.
+pub fn announce_written(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: &mut App) {
+    let wrote = std::mem::take(&mut ports.shared.borrow_mut().budgets.wrote);
+    if wrote {
+        ledger.update(cx, |store, cx| store.announce_budgets(cx));
+    }
 }
 
 /// `ledger`'s own Budgets in memory, for a test that needs no storage.

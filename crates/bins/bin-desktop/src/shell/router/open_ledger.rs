@@ -286,34 +286,27 @@ impl OpenLedger {
             units: settings_setup.units.ports.clone(),
             payees: storage.payees.clone(),
         });
-        let budgets_ports =
-            crate::budgets::ports::DesktopPorts::new(storage.budgets.clone(), budget_reads);
         // The Dashboard reads its Bills and Budgets through the stores too, not the Ledger's read
         // copies (#1024).
         let dashboard_reads = Rc::new(lib_database::StoredDashboardReads {
-            bills: storage.bills.borrow().store(),
             budgets: storage.budgets.clone(),
-            categories: storage.categories.clone(),
-            units: settings_setup.units.ports.clone(),
-            accounts: storage.accounts.clone(),
-            transactions: storage.transactions.clone(),
-            payees: storage.payees.clone(),
+            budget_reads: (*budget_reads).clone(),
         });
         // The rail's badges read their counts through the Shell's port, answered over the stores
         // (#1026).
         let rail_reads = lib_database::StoredShellReads {
-            bills: storage.bills.borrow().store(),
             budgets: storage.budgets.clone(),
             documents: storage.documents.clone(),
-            categories: storage.categories.clone(),
-            accounts: storage.accounts.clone(),
-            transactions: storage.transactions.clone(),
-            units: settings_setup.units.ports.clone(),
-            payees: storage.payees.clone(),
+            budget_reads: (*budget_reads).clone(),
         };
+        let budgets_ports =
+            crate::budgets::ports::DesktopPorts::new(storage.budgets.clone(), budget_reads);
         // The Documents page writes the store through its Interactors, and reads the other
-        // domains through their stores (#967).
-        let documents_store = crate::document_types::ports::shared(&storage.documents);
+        // domains through their stores (#967). It announces the Documents after an event that
+        // wrote them, so the rail's Inbox count follows a filing.
+        let documents_written = crate::document_types::ports::Written::default();
+        let documents_store =
+            crate::document_types::ports::shared(&storage.documents, &documents_written);
         // The Transactions, Bills and Budgets stores are the truth, with no read copy on the
         // Ledger: their writers announce through it (#1028).
         let ledger = cx.new(|_| LedgerStore::with_storage(Ledger::stub_on(today), storage));
@@ -369,6 +362,7 @@ impl OpenLedger {
         let bills_view_observer = cx.observe(&bills_view, |_, _, cx| cx.notify());
         let documents_view = crate::documents::view::page::documents_page(
             documents_store,
+            documents_written,
             Rc::new(crate::documents::files::DiskFiles),
             ledger.clone(),
             lib_documents::keymap::documents_page_keymap(keybindings),

@@ -47,7 +47,8 @@ impl DocumentTypesPage {
         ledger: Entity<LedgerStore>,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        let documents = ports::shared(&setup.store);
+        // Settings › Documents announces after each event itself, so its writes go unnoted.
+        let documents = ports::shared(&setup.store, &ports::Written::default());
         Self {
             presenter: DocumentTypesPagePresenter::new(documents.clone(), setup.keymap.clone()),
             documents,

@@ -27,6 +27,7 @@ use lib_ledger::Domain;
 use lib_viper::keymap::Keymap;
 
 use super::Scrolls;
+use crate::document_types::ports::Written;
 use crate::documents::router::PageRouter;
 use crate::ledger_store::{LedgerChanged, LedgerStore};
 use crate::navigation::movement::Movement;
@@ -45,6 +46,10 @@ pub struct DocumentsPage {
     zone_focused: bool,
     library_scroll: UniformListScrollHandle,
     inbox_scroll: ScrollHandle,
+    /// The Ledger the page announces the Documents through after an event that wrote them.
+    ledger: Entity<LedgerStore>,
+    /// Set by each write through the page's repository.
+    written: Written,
     _ledger_changed: Subscription,
 }
 
@@ -52,6 +57,7 @@ impl DocumentsPage {
     pub fn new(
         presenter: DocumentsPagePresenter,
         ledger: Entity<LedgerStore>,
+        written: Written,
         keymap: Keymap<DocumentsPageEvent>,
         cx: &mut Context<'_, Self>,
     ) -> Self {
@@ -77,7 +83,18 @@ impl DocumentsPage {
             zone_focused: false,
             library_scroll: UniformListScrollHandle::new(),
             inbox_scroll: ScrollHandle::new(),
+            ledger,
+            written,
             _ledger_changed,
+        }
+    }
+
+    /// Announces the Documents if the page or its Dialogs wrote them since the last ask, so the
+    /// rail's Inbox count and the other readers follow, and a cursor move announces nothing.
+    fn announce_written(&self, cx: &mut Context<'_, Self>) {
+        if self.written.take() {
+            self.ledger
+                .update(cx, |store, cx| store.announce_documents(cx));
         }
     }
 
@@ -107,6 +124,7 @@ impl DocumentsPage {
             cx,
         };
         self.presenter.handle(event, &mut router);
+        self.announce_written(cx);
         self.follow_selection(mode, before);
         cx.notify();
     }
@@ -138,7 +156,10 @@ impl DocumentsPage {
     pub fn dialog_landed(&mut self, outcome: Option<DocumentsOutcome>, cx: &mut Context<'_, Self>) {
         match outcome {
             Some(outcome) => self.handle(DocumentsPageEvent::DialogClosed(outcome), cx),
-            None => cx.notify(),
+            None => {
+                self.announce_written(cx);
+                cx.notify();
+            }
         }
     }
 
@@ -325,6 +346,7 @@ impl DocumentsPage {
 /// destination. `clock` reads the day the Key Dates are banded against.
 pub fn documents_page(
     documents: SharedRepository,
+    written: Written,
     files: SharedFiles,
     ledger: Entity<LedgerStore>,
     keymap: Keymap<DocumentsPageEvent>,
@@ -340,7 +362,7 @@ pub fn documents_page(
         keymap.clone(),
         crate::shell::view::statusline::STUB_LEDGER_FILE.to_string(),
     );
-    cx.new(|cx| DocumentsPage::new(presenter, ledger, keymap, cx))
+    cx.new(|cx| DocumentsPage::new(presenter, ledger, written, keymap, cx))
 }
 
 /// The page's clicks, each one an event sent to its Presenter.

@@ -12,6 +12,7 @@
 //! writes to the Transactions, Bills and Payees stores itself ([`LedgerPorts`]'s `hand_over`).
 
 use std::cell::RefCell;
+use std::collections::BTreeSet;
 use std::rc::Rc;
 
 use chrono::{Datelike as _, NaiveDate};
@@ -24,7 +25,7 @@ use lib_categories::{
 };
 use lib_core::{CategoryId, Money};
 use lib_database::{PayeesStore, SharedCategoriesStore};
-use lib_ledger::Ledger;
+use lib_ledger::{Domain, Ledger};
 
 use crate::budgets::PERSONAL_SPENDING_ID;
 use crate::ledger_store::LedgerStore;
@@ -217,9 +218,10 @@ impl CategoryHandover for LedgerPorts<'_> {
     fn hand_over(&mut self, from: CategoryId, to: CategoryId) {
         self.ledger.update(self.cx, |store, cx| {
             hand_over_rows(store, from, to);
-            store.announce_transactions(cx);
-            store.announce_bills(cx);
-            store.announce_payees(cx);
+            store.announce(
+                cx,
+                BTreeSet::from([Domain::Transactions, Domain::Bills, Domain::Payees]),
+            );
         });
     }
 }

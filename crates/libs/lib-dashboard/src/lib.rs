@@ -19,5 +19,5 @@ pub use crate::presenter::{
 };
 pub use crate::protocols::{
     DashboardBill, DashboardBills, DashboardBudgetBar, DashboardBudgetMonth, DashboardBudgets,
-    DashboardElapsed, DashboardEntryId, DashboardReads, DashboardRouter, NoLedgerCommand,
+    DashboardElapsed, DashboardEntryId, DashboardReads, DashboardRouter,
 };

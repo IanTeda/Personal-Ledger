@@ -2,63 +2,82 @@
 //! `shell::router::build` is given, shared with the Documents page. The
 //! writes are committed by the input they were made in (`crate::input::send`), not here.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell, RefMut};
 use std::rc::Rc;
 
 use gpui::{App, Entity};
 use lib_core::{DocumentId, DocumentTypeId};
-use lib_database::SharedDocumentsStore;
+use lib_database::{DocumentsStore, SharedDocumentsStore};
 use lib_documents::types::DocumentTypeRow;
 use lib_documents::{Document, DocumentRepository, SharedRepository};
 
 use crate::ledger_store::LedgerStore;
 
-/// The shared store as the module's Presenters hold the repository, borrowed for each call: the
-/// store is shared behind a `RefCell` whose guard can't be lent out of it.
-pub struct StoreDocuments(SharedDocumentsStore);
+/// Whether a write went through a [`StoreDocuments`] since the last ask, so the Documents page
+/// announces the Documents only after an event that wrote them. A clone shares the one flag.
+#[derive(Clone, Default)]
+pub struct Written(Rc<Cell<bool>>);
 
-impl DocumentRepository for StoreDocuments {
-    fn documents(&self) -> Vec<Document> {
-        self.0.borrow().documents().documents()
-    }
-
-    fn document_types(&self) -> Vec<DocumentTypeRow> {
-        self.0.borrow().documents().document_types()
-    }
-
-    fn upsert_document(&mut self, document: &Document) {
-        self.0
-            .borrow_mut()
-            .documents_mut()
-            .upsert_document(document);
-    }
-
-    fn delete_document(&mut self, id: DocumentId) {
-        self.0.borrow_mut().documents_mut().delete_document(id);
-    }
-
-    fn upsert_document_type(&mut self, row: &DocumentTypeRow) {
-        self.0
-            .borrow_mut()
-            .documents_mut()
-            .upsert_document_type(row);
-    }
-
-    fn delete_document_type(&mut self, id: DocumentTypeId) {
-        self.0.borrow_mut().documents_mut().delete_document_type(id);
-    }
-
-    fn move_document_type(&mut self, id: DocumentTypeId, to: usize) {
-        self.0
-            .borrow_mut()
-            .documents_mut()
-            .move_document_type(id, to);
+impl Written {
+    /// Whether anything was written since the last ask.
+    pub fn take(&self) -> bool {
+        self.0.take()
     }
 }
 
-/// `store` as the Document Types module's Presenters share it.
-pub fn shared(store: &SharedDocumentsStore) -> SharedRepository {
-    Rc::new(RefCell::new(StoreDocuments(store.clone())))
+/// The shared store as the module's Presenters hold the repository, borrowed for each call: the
+/// store is shared behind a `RefCell` whose guard can't be lent out of it. Each write sets
+/// `written`.
+pub struct StoreDocuments {
+    store: SharedDocumentsStore,
+    written: Written,
+}
+
+impl StoreDocuments {
+    /// The store to write, noting the write.
+    fn write(&self) -> RefMut<'_, dyn DocumentsStore> {
+        self.written.0.set(true);
+        self.store.borrow_mut()
+    }
+}
+
+impl DocumentRepository for StoreDocuments {
+    fn documents(&self) -> Vec<Document> {
+        self.store.borrow().documents().documents()
+    }
+
+    fn document_types(&self) -> Vec<DocumentTypeRow> {
+        self.store.borrow().documents().document_types()
+    }
+
+    fn upsert_document(&mut self, document: &Document) {
+        self.write().documents_mut().upsert_document(document);
+    }
+
+    fn delete_document(&mut self, id: DocumentId) {
+        self.write().documents_mut().delete_document(id);
+    }
+
+    fn upsert_document_type(&mut self, row: &DocumentTypeRow) {
+        self.write().documents_mut().upsert_document_type(row);
+    }
+
+    fn delete_document_type(&mut self, id: DocumentTypeId) {
+        self.write().documents_mut().delete_document_type(id);
+    }
+
+    fn move_document_type(&mut self, id: DocumentTypeId, to: usize) {
+        self.write().documents_mut().move_document_type(id, to);
+    }
+}
+
+/// `store` as the Document Types module's Presenters and the Documents page share it, each write
+/// noted in `written`.
+pub fn shared(store: &SharedDocumentsStore, written: &Written) -> SharedRepository {
+    Rc::new(RefCell::new(StoreDocuments {
+        store: store.clone(),
+        written: written.clone(),
+    }))
 }
 
 /// Announces `Domain::Documents` and `Domain::DocumentTypes` after a Document Types event or Dialog
@@ -86,7 +105,12 @@ mod tests {
     #[test]
     fn the_interactors_write_the_shared_store_through_the_wrapper() {
         let store = store();
-        let shared = shared(&store);
+        let written = Written::default();
+        let shared = shared(&store, &written);
+        assert!(
+            !written.take(),
+            "nothing is written before an Interactor runs"
+        );
 
         assert!(
             MoveDocumentType {
@@ -107,5 +131,7 @@ mod tests {
         assert_eq!(stored[1].name, "Receipts");
         assert_eq!(stored.last().map(|row| row.files), Some(33));
         assert_eq!(shared.borrow().document_types(), stored);
+        assert!(written.take(), "the writes are noted");
+        assert!(!written.take(), "and the note is taken once");
     }
 }

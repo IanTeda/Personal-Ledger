@@ -12,7 +12,7 @@
 
 use std::time::{Duration, Instant};
 
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Local, NaiveDate};
 use lib_config::KeyBindingConfig;
 use lib_core::{Clock, Period};
 use lib_list_cursor::{HALF_PAGE, Step};
@@ -161,8 +161,8 @@ pub struct ShellPresenter<P> {
     /// The last [`ShellPresenter::tick_toasts`]' time, which the next advances from. `None` while the
     /// stack is empty, so the first tick after a raise only starts the count.
     last_tick: Option<Instant>,
-    /// The rail's badge counts, read after the last input; `None` with no Ledger open.
-    rail_counts: Option<RailCounts>,
+    /// The rail's badge counts with the day they were read on; `None` with no Ledger open.
+    rail_counts: Option<(NaiveDate, RailCounts)>,
 }
 
 impl<P: Copy + Eq + Default> ShellPresenter<P> {
@@ -230,16 +230,26 @@ impl<P: Copy + Eq + Default> ShellPresenter<P> {
                     ))
                 })
                 .collect(),
-            rail_counts: self.rail_counts,
+            rail_counts: self.rail_counts.map(|(_, counts)| counts),
         }
     }
 
     /// Reads the rail's badge counts afresh from `ledger` on the day the Clock reads, or drops
     /// them with no Ledger open. The Client calls it once each input's writes are committed, so
     /// a paid Bill, a changed Budget, a filed Document or a month turn shows at once, and as a
-    /// Ledger opens or closes.
-    pub fn refresh_rail_counts(&mut self, ledger: Option<&dyn ShellRailCounts>) {
-        self.rail_counts = ledger.map(|ledger| ledger.rail_counts(self.clock.today()));
+    /// Ledger opens or closes. The counts are read again only when the Client says the Ledger
+    /// `changed`, the day has moved since they were read or none are held, so an input that wrote
+    /// nothing, such as a cursor move, costs no read.
+    pub fn refresh_rail_counts(&mut self, ledger: Option<&dyn ShellRailCounts>, changed: bool) {
+        let Some(ledger) = ledger else {
+            self.rail_counts = None;
+            return;
+        };
+        let today = self.clock.today();
+        let fresh = self.rail_counts.is_some_and(|(day, _)| day == today);
+        if changed || !fresh {
+            self.rail_counts = Some((today, ledger.rail_counts(today)));
+        }
     }
 
     /// A key arrived, before anything handles it: clears the status message, so the message a key
@@ -947,7 +957,7 @@ mod tests {
         let mut shell = shell();
         assert_eq!(shell.view_model().rail_counts, None);
 
-        shell.refresh_rail_counts(None);
+        shell.refresh_rail_counts(None, true);
         assert_eq!(shell.view_model().rail_counts, None);
     }
 
@@ -957,7 +967,7 @@ mod tests {
         let ledger = FakeRailCounts::default();
         ledger.counts.set(counts(2, 1, 3));
 
-        shell.refresh_rail_counts(Some(&ledger));
+        shell.refresh_rail_counts(Some(&ledger), true);
         ledger.counts.set(counts(1, 1, 3));
         assert_eq!(
             shell.view_model().rail_counts,
@@ -965,8 +975,27 @@ mod tests {
             "held until refreshed"
         );
 
-        shell.refresh_rail_counts(Some(&ledger));
+        shell.refresh_rail_counts(Some(&ledger), true);
         assert_eq!(shell.view_model().rail_counts, Some(counts(1, 1, 3)));
+    }
+
+    #[test]
+    fn an_input_that_changed_nothing_on_the_same_day_reads_no_counts() {
+        let mut shell = shell();
+        let ledger = FakeRailCounts::default();
+        ledger.counts.set(counts(2, 1, 3));
+        shell.refresh_rail_counts(Some(&ledger), false);
+        assert_eq!(
+            shell.view_model().rail_counts,
+            Some(counts(2, 1, 3)),
+            "none held yet, so the first refresh reads them"
+        );
+
+        ledger.counts.set(counts(1, 1, 3));
+        shell.refresh_rail_counts(Some(&ledger), false);
+
+        assert_eq!(shell.view_model().rail_counts, Some(counts(2, 1, 3)));
+        assert_eq!(ledger.read_on.borrow().len(), 1, "read once");
     }
 
     #[test]
@@ -974,9 +1003,9 @@ mod tests {
         let mut shell = shell();
         let ledger = FakeRailCounts::default();
         ledger.counts.set(counts(2, 1, 3));
-        shell.refresh_rail_counts(Some(&ledger));
+        shell.refresh_rail_counts(Some(&ledger), true);
 
-        shell.refresh_rail_counts(None);
+        shell.refresh_rail_counts(None, true);
 
         assert_eq!(shell.view_model().rail_counts, None);
     }
@@ -986,11 +1015,12 @@ mod tests {
         let (clock, day) = Clock::settable(date(2026, 9, 30));
         let mut shell = presenter(clock);
         let ledger = FakeRailCounts::default();
-        shell.refresh_rail_counts(Some(&ledger));
+        shell.refresh_rail_counts(Some(&ledger), false);
 
         day.set(date(2026, 10, 1));
         shell.handle(ShellInput::DayTick, &mut RecordingRouter::default());
-        shell.refresh_rail_counts(Some(&ledger));
+        // Nothing changed in the Ledger, but the day moved, so the counts are read again.
+        shell.refresh_rail_counts(Some(&ledger), false);
 
         assert_eq!(
             *ledger.read_on.borrow(),

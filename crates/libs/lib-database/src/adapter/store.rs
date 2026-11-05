@@ -1095,6 +1095,7 @@ impl CategoryDeletionReads for StoredCategoryDeletionReads {
 
 /// `lib-budgets`' six read ports answered by the shared stores of the domains Budgets reads, each
 /// borrowed for the one read (#952). The Desktop's Budgets View reads through it.
+#[derive(Clone)]
 pub struct StoredBudgetReads {
     pub categories: SharedCategoriesStore,
     pub accounts: SharedAccountsStore,
@@ -1189,28 +1190,11 @@ fn default_budget_figures(
 /// Ledger. The same struct stands over the adapters and [`Stores::fake`]'s in-memory stores.
 #[derive(Clone)]
 pub struct StoredDashboardReads {
-    pub bills: SharedBillsStore,
     pub budgets: SharedBudgetsStore,
-    pub categories: SharedCategoriesStore,
-    pub units: SharedUnitsStore,
-    /// The stores the Budget figures read besides the three above.
-    pub accounts: SharedAccountsStore,
-    pub transactions: SharedTransactionsStore,
-    pub payees: SharedPayeesStore,
-}
-
-impl StoredDashboardReads {
-    /// The Budgets read ports over these stores, for one figure.
-    fn budget_reads(&self) -> StoredBudgetReads {
-        StoredBudgetReads {
-            categories: self.categories.clone(),
-            accounts: self.accounts.clone(),
-            transactions: self.transactions.clone(),
-            bills: self.bills.clone(),
-            units: self.units.clone(),
-            payees: self.payees.clone(),
-        }
-    }
+    /// The other domains' stores as the Budget figures read them. The Needs Attention rows read
+    /// their Bills and Unit codes and the bars their Category names from them too, so a store the
+    /// figures come to read is added in one place.
+    pub budget_reads: StoredBudgetReads,
 }
 
 impl DashboardBills for StoredDashboardReads {
@@ -1219,8 +1203,8 @@ impl DashboardBills for StoredDashboardReads {
             plans,
             entries,
             ids,
-        } = bills_attention(&self.bills, today);
-        let units = self.units.borrow();
+        } = bills_attention(&self.budget_reads.bills, today);
+        let units = self.budget_reads.units.borrow();
         ids.into_iter()
             .filter_map(|id| {
                 let entry = lib_bills::entry(&entries, id)?;
@@ -1242,17 +1226,17 @@ impl DashboardBills for StoredDashboardReads {
     }
 
     fn base_unit_code(&self) -> Option<String> {
-        let units = self.units.borrow();
+        let units = self.budget_reads.units.borrow();
         units.unit_code(units.base_unit().base_unit())
     }
 }
 
 impl DashboardBudgets for StoredDashboardReads {
     fn default_budget_month(&self, today: NaiveDate) -> Option<DashboardBudgetMonth> {
-        let reads = self.budget_reads();
-        let figures = default_budget_figures(&self.budgets, &reads, today)?;
-        let categories = self.categories.borrow().categories().categories();
-        let bars = lib_budgets::dashboard_bars(&figures, &reads)
+        let reads = &self.budget_reads;
+        let figures = default_budget_figures(&self.budgets, reads, today)?;
+        let categories = reads.categories.borrow().categories().categories();
+        let bars = lib_budgets::dashboard_bars(&figures, reads)
             .into_iter()
             .map(|bar| DashboardBudgetBar {
                 category: lib_categories::get(&categories, bar.category_id)
@@ -1282,35 +1266,17 @@ impl DashboardBudgets for StoredDashboardReads {
 /// over the adapters and [`Stores::fake`]'s in-memory stores.
 #[derive(Clone)]
 pub struct StoredShellReads {
-    pub bills: SharedBillsStore,
     pub budgets: SharedBudgetsStore,
     pub documents: SharedDocumentsStore,
-    /// The stores the Budget figures read besides the two above.
-    pub categories: SharedCategoriesStore,
-    pub accounts: SharedAccountsStore,
-    pub transactions: SharedTransactionsStore,
-    pub units: SharedUnitsStore,
-    pub payees: SharedPayeesStore,
-}
-
-impl StoredShellReads {
-    /// The Budgets read ports over these stores, for the over-budget count.
-    fn budget_reads(&self) -> StoredBudgetReads {
-        StoredBudgetReads {
-            categories: self.categories.clone(),
-            accounts: self.accounts.clone(),
-            transactions: self.transactions.clone(),
-            bills: self.bills.clone(),
-            units: self.units.clone(),
-            payees: self.payees.clone(),
-        }
-    }
+    /// The other domains' stores as the Budget figures read them, which the Needs Attention count
+    /// reads its Bills from too.
+    pub budget_reads: StoredBudgetReads,
 }
 
 impl ShellRailCounts for StoredShellReads {
     fn rail_counts(&self, today: NaiveDate) -> RailCounts {
-        let bills_attention = bills_attention(&self.bills, today).ids.len();
-        let budgets_over = default_budget_figures(&self.budgets, &self.budget_reads(), today)
+        let bills_attention = bills_attention(&self.budget_reads.bills, today).ids.len();
+        let budgets_over = default_budget_figures(&self.budgets, &self.budget_reads, today)
             .map_or(0, |figures| figures.over_count);
         let documents_inbox =
             lib_documents::inbox_count(&self.documents.borrow().documents().documents());
@@ -2194,18 +2160,20 @@ mod dashboard_reads_tests {
             Vec::new()
         };
         StoredDashboardReads {
-            bills: Rc::new(RefCell::new(InMemoryBills {
-                plans: stub.plans,
-                entries: stub.entries,
-            })),
             budgets: Rc::new(RefCell::new(InMemoryBudgets { budgets })),
-            categories: Rc::new(RefCell::new(InMemoryCategories::stub())),
-            units: Rc::new(RefCell::new(InMemoryPorts::stub(now()))),
-            accounts: Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts::stub())),
-            transactions: Rc::new(RefCell::new(InMemoryTransactions {
-                transactions: crate::seed::stub_transactions(today()),
-            })),
-            payees: Rc::new(RefCell::new(lib_payees::fake::InMemoryPorts::stub())),
+            budget_reads: StoredBudgetReads {
+                bills: Rc::new(RefCell::new(InMemoryBills {
+                    plans: stub.plans,
+                    entries: stub.entries,
+                })),
+                categories: Rc::new(RefCell::new(InMemoryCategories::stub())),
+                units: Rc::new(RefCell::new(InMemoryPorts::stub(now()))),
+                accounts: Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts::stub())),
+                transactions: Rc::new(RefCell::new(InMemoryTransactions {
+                    transactions: crate::seed::stub_transactions(today()),
+                })),
+                payees: Rc::new(RefCell::new(lib_payees::fake::InMemoryPorts::stub())),
+            },
         }
     }
 
@@ -2237,13 +2205,15 @@ mod dashboard_reads_tests {
         let bills = BillsAdapter::load(pending.clone()).expect("the Bills load");
         let budgets = BudgetsAdapter::load(pending).expect("the Budgets load");
         StoredDashboardReads {
-            bills: Rc::new(RefCell::new(bills)),
             budgets: Rc::new(RefCell::new(budgets)),
-            categories: Rc::new(RefCell::new(categories)),
-            units: Rc::new(RefCell::new(units)),
-            accounts: Rc::new(RefCell::new(accounts)),
-            transactions: Rc::new(RefCell::new(transactions)),
-            payees: Rc::new(RefCell::new(payees)),
+            budget_reads: StoredBudgetReads {
+                bills: Rc::new(RefCell::new(bills)),
+                categories: Rc::new(RefCell::new(categories)),
+                units: Rc::new(RefCell::new(units)),
+                accounts: Rc::new(RefCell::new(accounts)),
+                transactions: Rc::new(RefCell::new(transactions)),
+                payees: Rc::new(RefCell::new(payees)),
+            },
         }
     }
 
@@ -2370,22 +2340,24 @@ mod shell_reads_tests {
             Vec::new()
         };
         StoredShellReads {
-            bills: Rc::new(RefCell::new(InMemoryBills {
-                plans: stub.plans,
-                entries: stub.entries,
-            })),
             budgets: Rc::new(RefCell::new(InMemoryBudgets { budgets })),
             documents: Rc::new(RefCell::new(InMemoryDocuments {
                 documents: crate::seed::stub_documents(today(), &[]),
                 types: lib_documents::types::default_types(),
             })),
-            categories: Rc::new(RefCell::new(InMemoryCategories::stub())),
-            accounts: Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts::stub())),
-            transactions: Rc::new(RefCell::new(InMemoryTransactions {
-                transactions: crate::seed::stub_transactions(today()),
-            })),
-            units: Rc::new(RefCell::new(InMemoryPorts::stub(now()))),
-            payees: Rc::new(RefCell::new(lib_payees::fake::InMemoryPorts::stub())),
+            budget_reads: StoredBudgetReads {
+                bills: Rc::new(RefCell::new(InMemoryBills {
+                    plans: stub.plans,
+                    entries: stub.entries,
+                })),
+                categories: Rc::new(RefCell::new(InMemoryCategories::stub())),
+                accounts: Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts::stub())),
+                transactions: Rc::new(RefCell::new(InMemoryTransactions {
+                    transactions: crate::seed::stub_transactions(today()),
+                })),
+                units: Rc::new(RefCell::new(InMemoryPorts::stub(now()))),
+                payees: Rc::new(RefCell::new(lib_payees::fake::InMemoryPorts::stub())),
+            },
         }
     }
 
@@ -2416,14 +2388,16 @@ mod shell_reads_tests {
         let documents = DocumentsAdapter::load(pending.clone()).expect("the Documents load");
         let budgets = BudgetsAdapter::load(pending).expect("the Budgets load");
         StoredShellReads {
-            bills: Rc::new(RefCell::new(bills)),
             budgets: Rc::new(RefCell::new(budgets)),
             documents: Rc::new(RefCell::new(documents)),
-            categories: Rc::new(RefCell::new(categories)),
-            accounts: Rc::new(RefCell::new(accounts)),
-            transactions: Rc::new(RefCell::new(transactions)),
-            units: Rc::new(RefCell::new(units)),
-            payees: Rc::new(RefCell::new(payees)),
+            budget_reads: StoredBudgetReads {
+                bills: Rc::new(RefCell::new(bills)),
+                categories: Rc::new(RefCell::new(categories)),
+                accounts: Rc::new(RefCell::new(accounts)),
+                transactions: Rc::new(RefCell::new(transactions)),
+                units: Rc::new(RefCell::new(units)),
+                payees: Rc::new(RefCell::new(payees)),
+            },
         }
     }
 
@@ -2439,20 +2413,9 @@ mod shell_reads_tests {
         let budget = budgets
             .default_budget()
             .expect("a stub Budget is the default");
-        let over = lib_budgets::period_figures(
-            budget,
-            &StoredBudgetReads {
-                categories: reads.categories.clone(),
-                accounts: reads.accounts.clone(),
-                transactions: reads.transactions.clone(),
-                bills: reads.bills.clone(),
-                units: reads.units.clone(),
-                payees: reads.payees.clone(),
-            },
-            Period::of(today()),
-            today(),
-        )
-        .over_count;
+        let over =
+            lib_budgets::period_figures(budget, &reads.budget_reads, Period::of(today()), today())
+                .over_count;
         assert!(over > 0, "the stub's default Budget is over somewhere");
 
         assert_eq!(

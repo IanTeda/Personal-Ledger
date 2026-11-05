@@ -6,6 +6,8 @@
 
 mod render;
 
+use std::collections::BTreeSet;
+
 use chrono::NaiveDate;
 use gpui::{AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Subscription};
 use lib_categories::presenter::{
@@ -110,10 +112,15 @@ impl CategoriesPage {
     ) {
         if outcome.change == CategoryChange::Deleted {
             self.ledger.update(cx, |store, cx| {
-                store.announce_transactions(cx);
-                store.announce_bills(cx);
-                store.announce_budgets(cx);
-                store.announce_payees(cx);
+                store.announce(
+                    cx,
+                    BTreeSet::from([
+                        Domain::Transactions,
+                        Domain::Bills,
+                        Domain::Budgets,
+                        Domain::Payees,
+                    ]),
+                );
             });
         }
         self.handle(CategoriesPageEvent::DialogClosed(Some(outcome)), cx);

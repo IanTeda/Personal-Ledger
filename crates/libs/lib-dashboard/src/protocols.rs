@@ -83,23 +83,6 @@ pub trait DashboardReads: DashboardBills + DashboardBudgets {}
 
 impl<T> DashboardReads for T where T: DashboardBills + DashboardBudgets + ?Sized {}
 
-/// A command the no Ledger open content names as a click target.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NoLedgerCommand {
-    Open,
-    New,
-}
-
-impl NoLedgerCommand {
-    /// The command's name, as the palette knows it.
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Open => "open",
-            Self::New => "new",
-        }
-    }
-}
-
 /// Navigation out of the Dashboard, implemented by each Client and passed into each `handle`
 /// call. A Toast or status-line message goes to the Shell through [`Notify`] (ADR-0048).
 pub trait DashboardRouter: Notify {

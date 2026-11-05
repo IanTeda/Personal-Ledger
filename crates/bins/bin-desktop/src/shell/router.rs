@@ -317,18 +317,25 @@ impl Root {
         self.set_keymaps(&keybindings, cx);
         let display = self.display(cx);
         self.push_display_preferences(display, cx);
-        self.refresh_rail_counts();
+        self.refresh_rail_counts(true, cx);
     }
 
-    /// Reads the rail's badge counts afresh into the Shell's Presenter from the Open Ledger's
-    /// stores, or drops them with none open. `send` calls it once each input is committed, and the
-    /// Ledger opening and closing do.
-    pub(crate) fn refresh_rail_counts(&mut self) {
+    /// Reads the rail's badge counts into the Shell's Presenter from the Open Ledger's stores, or
+    /// drops them with none open. `send` calls it once each input is committed, and the Ledger
+    /// opening and closing do, `changed` because the Ledger itself is new or gone. The counts are
+    /// read again only when the Ledger announced a change since the last read (or the day moved),
+    /// so a cursor move costs no read.
+    pub(crate) fn refresh_rail_counts(&mut self, changed: bool, cx: &mut App) {
+        let announced = self
+            .open
+            .as_ref()
+            .is_some_and(|open| open.ledger.update(cx, |store, _| store.take_announced()));
         let reads = self
             .open
             .as_ref()
             .map(|open| &open.rail_reads as &dyn lib_shell::ShellRailCounts);
-        self.presenter.refresh_rail_counts(reads);
+        self.presenter
+            .refresh_rail_counts(reads, changed || announced);
     }
 
     /// Closes the Open Ledger (`:close`): flushes its writes, drops everything built on it and
@@ -351,7 +358,7 @@ impl Root {
         // Every place in the history was on the closed Ledger, so Back and Forward must not reach
         // one with none open.
         self.presenter.forget_history();
-        self.refresh_rail_counts();
+        self.refresh_rail_counts(true, cx);
         cx.notify();
     }
 
@@ -859,9 +866,9 @@ impl Root {
             display.status_glyphs,
             display.row_density,
         );
-        open.views.dashboard.update(cx, |view, cx| {
-            view.set_display(date_style, glyphs, density, cx)
-        });
+        open.views
+            .dashboard
+            .update(cx, |view, cx| view.set_display(date_style, glyphs, cx));
         open.views
             .bills
             .update(cx, |view, cx| view.set_display(date_style, glyphs, cx));

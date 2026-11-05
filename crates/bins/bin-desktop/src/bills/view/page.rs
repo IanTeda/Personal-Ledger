@@ -1,7 +1,8 @@
 //! The Bills page's View: the `lib-bills` page Presenter in a gpui Entity, which the Shell hosts as
 //! the Bills destination (`docs/ux/desktop-mockups/12-bills/`). It looks up each key the
 //! Shell passes on, as chord text, in the Bills keymap, turns clicks into events, draws the view model (`schedule.rs`, `filters.rs`,
-//! `planner.rs`), and announces the Bills after every event ([`ports::announce`]).
+//! `planner.rs`), and announces the Bills after an event that wrote them
+//! ([`ports::announce_written`]).
 //! Each key and click is one input (`crate::input::send`), which commits what it wrote.
 //!
 //! A focused scope select's open list and highlight are gpui's widget state, so they are kept here:
@@ -105,9 +106,8 @@ impl BillsPage {
         crate::input::send(cx, |cx| self.handle(event, cx));
     }
 
-    /// Hands `event` to the Presenter with the Desktop's Router, then announces the Bills, as
-    /// it may have written them. Inside an input already, as [`Self::send`] or a Dialog's
-    /// confirm.
+    /// Hands `event` to the Presenter with the Desktop's Router, then announces the Bills if it
+    /// wrote them. Inside an input already, as [`Self::send`] or a Dialog's confirm.
     fn handle(&mut self, event: BillsPageEvent, cx: &mut Context<'_, Self>) {
         let tab = self.presenter.tab();
         let mut router = PageRouter {
@@ -119,7 +119,7 @@ impl BillsPage {
             cx,
         };
         self.presenter.handle(event, &mut router);
-        ports::announce(&self.ledger, cx);
+        ports::announce_written(&self.ports, &self.ledger, cx);
         if self.presenter.tab() != tab {
             self.scroll.set_offset(gpui::Point::default());
         }

@@ -17,7 +17,7 @@ use lib_shell::{DialogCommand, Hint};
 use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::Keymap;
 
-use crate::budgets::ports;
+use crate::budgets::ports::{self, DesktopPorts};
 use crate::budgets::view::snapshot::ManageRowSnapshot;
 use crate::dialog::OnClick;
 use crate::ledger_store::LedgerStore;
@@ -38,6 +38,8 @@ pub(crate) enum List {
 
 pub struct ListDialog {
     pub(crate) list: List,
+    /// The ports the Presenter writes through, asked after each event whether it wrote.
+    ports: DesktopPorts,
     ledger: Entity<LedgerStore>,
     landed: Landed,
     /// The Switcher card's left edge: the page's, which the Shell sets as it draws the rails.
@@ -52,23 +54,26 @@ type Router = HostRouter<BudgetsOutcome>;
 impl ListDialog {
     pub fn switcher(
         presenter: SwitcherPresenter,
+        ports: DesktopPorts,
         ledger: &Entity<LedgerStore>,
         landed: Landed,
     ) -> Self {
-        Self::new(List::Switcher(presenter), ledger, landed)
+        Self::new(List::Switcher(presenter), ports, ledger, landed)
     }
 
     pub fn manage(
         presenter: ManagePresenter,
+        ports: DesktopPorts,
         ledger: &Entity<LedgerStore>,
         landed: Landed,
     ) -> Self {
-        Self::new(List::Manage(presenter), ledger, landed)
+        Self::new(List::Manage(presenter), ports, ledger, landed)
     }
 
-    fn new(list: List, ledger: &Entity<LedgerStore>, landed: Landed) -> Self {
+    fn new(list: List, ports: DesktopPorts, ledger: &Entity<LedgerStore>, landed: Landed) -> Self {
         Self {
             list,
+            ports,
             ledger: ledger.clone(),
             landed,
             left: px(0.0),
@@ -104,7 +109,7 @@ impl ListDialog {
         });
     }
 
-    /// Hands an event to the Presenter, announces the Budgets it may have written,
+    /// Hands an event to the Presenter, announces the Budgets if it wrote them,
     /// and, once the Presenter has closed the Dialog, hands its outcome to the page.
     fn run(
         &mut self,
@@ -113,7 +118,7 @@ impl ListDialog {
     ) {
         let mut router = Router::default();
         handle(&mut self.list, &mut router);
-        ports::announce(&self.ledger, cx);
+        ports::announce_written(&self.ports, &self.ledger, cx);
         if let Some(outcome) = router.closed() {
             (self.landed)(outcome, cx);
             cx.emit(DialogClosed);

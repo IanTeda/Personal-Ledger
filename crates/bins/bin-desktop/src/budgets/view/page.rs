@@ -2,7 +2,7 @@
 //! hosts as the Budgets destination (`docs/ux/desktop-mockups/14-budgets-v2/`). It looks up each
 //! key the Shell passes on, as chord text, in the Budgets keymap for the tab shown, turns clicks
 //! into events, draws the view model (`progress.rs`, `plan.rs`, `history.rs`) and announces
-//! the Budgets after every event ([`ports::announce`]). Each key and click is one
+//! the Budgets after an event that wrote them ([`ports::announce_written`]). Each key and click is one
 //! input (`crate::input::send`), which commits what it wrote.
 //!
 //! Typing into a Plan cell is the Shell's Insert mode, which the page asks for as the Presenter
@@ -137,7 +137,7 @@ impl BudgetsPage {
             cx,
         };
         self.presenter.handle(event, &mut router);
-        ports::announce(&self.ledger, cx);
+        ports::announce_written(&self.ports, &self.ledger, cx);
         match (was_editing, self.presenter.editing()) {
             (false, true) => cx.emit(ViewEvent::EnterMode(ViewMode::Insert)),
             (true, false) => cx.emit(ViewEvent::ExitMode),

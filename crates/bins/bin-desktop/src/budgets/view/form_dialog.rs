@@ -32,7 +32,7 @@ use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::Keymap;
 
 use super::dialog::Landed;
-use crate::budgets::ports;
+use crate::budgets::ports::{self, DesktopPorts};
 use crate::dialog;
 use crate::ledger_store::LedgerStore;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
@@ -58,6 +58,8 @@ pub(crate) enum Form {
 }
 
 pub struct FormDialog {
+    /// The ports the Presenter writes through, asked after each event whether it wrote.
+    ports: DesktopPorts,
     ledger: gpui::Entity<LedgerStore>,
     view: Form,
     landed: Landed,
@@ -66,8 +68,14 @@ pub struct FormDialog {
 impl EventEmitter<DialogClosed> for FormDialog {}
 
 impl FormDialog {
-    pub(crate) fn new(view: Form, ledger: &gpui::Entity<LedgerStore>, landed: Landed) -> Self {
+    pub(crate) fn new(
+        view: Form,
+        ports: DesktopPorts,
+        ledger: &gpui::Entity<LedgerStore>,
+        landed: Landed,
+    ) -> Self {
         Self {
+            ports,
             ledger: ledger.clone(),
             view,
             landed,
@@ -117,7 +125,7 @@ impl FormDialog {
         }
     }
 
-    /// Runs `handle` on the open Presenter, announces the Budgets it may have written
+    /// Runs `handle` on the open Presenter, announces the Budgets if it wrote them
     /// and, once the Presenter has closed the Dialog, hands its outcome to the page.
     fn run(
         &mut self,
@@ -126,7 +134,7 @@ impl FormDialog {
     ) {
         let mut router = Router::default();
         handle(&mut self.view, &mut router);
-        ports::announce(&self.ledger, cx);
+        ports::announce_written(&self.ports, &self.ledger, cx);
         if let Some(outcome) = router.closed() {
             (self.landed)(outcome, cx);
             cx.emit(DialogClosed);

@@ -8,11 +8,28 @@
 //! [`PageClicks`] to `Root`, which runs the command exactly as the palette's `enter` would (#1024).
 
 use gpui::{App, SharedString, div, prelude::*, px, relative};
-use lib_dashboard::NoLedgerCommand;
 
 use crate::shell::router::Root;
 use crate::shell::view::page_clicks::PageClicks;
 use crate::{msg, theme::color};
+
+/// A command the no Ledger open content names as a click target. The Shell's, not the Dashboard
+/// module's, since it is shown only while no Ledger, and so no Dashboard, is open.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoLedgerCommand {
+    Open,
+    New,
+}
+
+impl NoLedgerCommand {
+    /// The command's name, as the palette knows it.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Open => "open",
+            Self::New => "new",
+        }
+    }
+}
 
 /// The content, its `:open` and `:new` sending their [`NoLedgerCommand`] through `clicks`.
 pub fn render(clicks: &PageClicks<Root>, cx: &App) -> gpui::AnyElement {

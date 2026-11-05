@@ -3,15 +3,15 @@
 //!
 //! It reads today from the Shell's Clock on every view model, so a day or month turn shows on the
 //! next draw with nothing to catch up. The Display Preferences are pushed to it
-//! ([`DashboardEvent::DisplayChanged`]): the due dates follow the date style, the flag the Status
-//! glyphs, and the view model carries the Row density for the Client to space rows by.
+//! ([`DashboardEvent::DisplayChanged`]): the due dates follow the date style and the flag the
+//! Status glyphs. Row density isn't among them, since the Dashboard draws no table rows.
 
 use std::rc::Rc;
 
 use bigdecimal::{ToPrimitive, Zero};
 use lib_core::{Clock, DateStyle, Money};
 use lib_locale::format::{AmountStyle, format_amount, format_date, format_year_month};
-use lib_viper::display::{RowDensity, StatusGlyphs, flag_glyph};
+use lib_viper::display::{StatusGlyphs, flag_glyph};
 
 use crate::msg;
 use crate::protocols::{
@@ -27,7 +27,6 @@ pub enum DashboardEvent {
     DisplayChanged {
         date_style: Option<DateStyle>,
         glyphs: StatusGlyphs,
-        density: RowDensity,
     },
 }
 
@@ -74,8 +73,6 @@ pub struct DashboardViewModel {
     /// The Flagged mark each Needs Attention row leads with, in the Status glyphs.
     pub flag: &'static str,
     pub budgets: BudgetListView,
-    /// The Row density Preference, which the Client spaces the rows by.
-    pub density: RowDensity,
 }
 
 pub struct DashboardPresenter {
@@ -83,7 +80,6 @@ pub struct DashboardPresenter {
     clock: Clock,
     date_style: Option<DateStyle>,
     glyphs: StatusGlyphs,
-    density: RowDensity,
 }
 
 impl DashboardPresenter {
@@ -94,21 +90,15 @@ impl DashboardPresenter {
             clock,
             date_style: None,
             glyphs: StatusGlyphs::default(),
-            density: RowDensity::default(),
         }
     }
 
     pub fn handle(&mut self, event: DashboardEvent, router: &mut dyn DashboardRouter) {
         match event {
             DashboardEvent::OpenBill(id) => router.reveal_bill_entry(id),
-            DashboardEvent::DisplayChanged {
-                date_style,
-                glyphs,
-                density,
-            } => {
+            DashboardEvent::DisplayChanged { date_style, glyphs } => {
                 self.date_style = date_style;
                 self.glyphs = glyphs;
-                self.density = density;
             }
         }
     }
@@ -125,7 +115,6 @@ impl DashboardPresenter {
                 .collect(),
             flag: flag_glyph(self.glyphs),
             budgets: self.budget_list(),
-            density: self.density,
         }
     }
 }
@@ -405,20 +394,17 @@ mod tests {
         )]));
         let before = presenter.view_model();
         assert_eq!(before.flag, "\u{2691}");
-        assert_eq!(before.density, RowDensity::Regular);
 
         presenter.handle(
             DashboardEvent::DisplayChanged {
                 date_style: Some(DateStyle::Iso),
                 glyphs: StatusGlyphs::AsciiFallback,
-                density: RowDensity::Compact,
             },
             &mut RecordingRouter::default(),
         );
 
         let after = presenter.view_model();
         assert_eq!(after.flag, "!");
-        assert_eq!(after.density, RowDensity::Compact);
         assert_eq!(after.bills[0].due, "2026-09-18");
         assert_eq!(
             after.bills[0].text,

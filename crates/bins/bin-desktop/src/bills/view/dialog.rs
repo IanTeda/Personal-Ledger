@@ -171,14 +171,10 @@ fn send<P, E>(
 impl EventEmitter<DialogClosed> for BillsDialog {}
 
 impl HostedDialog for BillsDialog {
-    /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) announces the
-    /// Bills after it, as it may have written something.
+    /// Every input is the Presenter's to read, and announces the Bills after it if it wrote them.
     fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
-        let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
         let router = self.input_event(input);
-        if may_confirm {
-            ports::announce(&self.ledger, cx);
-        }
+        ports::announce_written(&self.ports, &self.ledger, cx);
         self.closed(router, cx);
     }
 
@@ -193,7 +189,7 @@ impl HostedDialog for BillsDialog {
     /// Presenter's view model and keeps the Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
         let router = self.close_event(true);
-        ports::announce(&self.ledger, cx);
+        ports::announce_written(&self.ports, &self.ledger, cx);
         self.closed(router, cx);
     }
 

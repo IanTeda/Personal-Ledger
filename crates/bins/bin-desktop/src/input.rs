@@ -87,7 +87,8 @@ pub(crate) fn sending(cx: &App) -> bool {
 
 /// Delivers one input: runs `handle`, which hands it to its Presenter, then commits once, reloads
 /// each domain the commit's deletes cascade into (ADR-0046's 2026-11-02 amendment), reads the
-/// rail's badge counts afresh, drains the queued Notices into the Shell and redraws it. The reload and drain wait for the current update to
+/// rail's badge counts again if the Ledger announced a change, drains the queued Notices into the
+/// Shell and redraws it. The reload and drain wait for the current update to
 /// end, since the Shell may be the Entity handling the input. Without a door (a unit test that
 /// builds a part with no Shell), it only runs `handle`.
 pub(crate) fn send<C: BorrowMut<App>, R>(cx: &mut C, handle: impl FnOnce(&mut C) -> R) -> R {
@@ -120,7 +121,7 @@ pub(crate) fn send<C: BorrowMut<App>, R>(cx: &mut C, handle: impl FnOnce(&mut C)
         // Gone with the window, so there is nothing left to show the Notices on.
         let _ = shell.update(cx, |shell, cx| {
             shell.reload_cascades(&cascades, cx);
-            shell.refresh_rail_counts();
+            shell.refresh_rail_counts(false, cx);
             shell.drain_notices();
             cx.notify();
         });

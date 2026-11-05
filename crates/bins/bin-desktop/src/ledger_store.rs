@@ -139,6 +139,8 @@ pub struct LedgerStore {
     document_reads: StoredDocumentReads,
     /// The Units and Documents the Inventory Dialogs quote (#1014).
     inventory_reads: StoredInventoryReads,
+    /// Whether a change was announced since the Shell last read the rail's counts.
+    announced: bool,
 }
 
 impl EventEmitter<LedgerChanged> for LedgerStore {}
@@ -212,6 +214,7 @@ impl LedgerStore {
             transactions,
             bills,
             budgets,
+            announced: false,
         }
     }
 
@@ -245,6 +248,7 @@ impl LedgerStore {
             documents: setup.documents,
             document_reads,
             inventory_reads,
+            announced: false,
         };
         store.copy_institutions();
         store.copy_accounts();
@@ -328,9 +332,7 @@ impl LedgerStore {
             .borrow_mut()
             .inventory_mut()
             .upsert_location(location);
-        cx.emit(LedgerChanged {
-            what: BTreeSet::from([Domain::Units, Domain::Inventory]),
-        });
+        self.announce(cx, BTreeSet::from([Domain::Units, Domain::Inventory]));
     }
 
     /// Removes every Location from the Inventory store through the Interactor, as the Remove
@@ -365,9 +367,7 @@ impl LedgerStore {
             .borrow_mut()
             .budgets_mut()
             .upsert_budget(&budget);
-        cx.emit(LedgerChanged {
-            what: BTreeSet::from([Domain::Units, Domain::Budgets]),
-        });
+        self.announce(cx, BTreeSet::from([Domain::Units, Domain::Budgets]));
     }
 
     /// Writes a Payee called `name` straight to the Payees store, so a test can meet the refusal
@@ -643,9 +643,18 @@ impl LedgerStore {
         self.ledger.refresh_categories(categories)
     }
 
-    fn announce(&mut self, cx: &mut Context<'_, Self>, what: BTreeSet<Domain>) {
+    /// Tells every reader of `what` that it changed, in one event however many domains it names,
+    /// and marks the rail's counts as needing a fresh read ([`Self::take_announced`]).
+    pub(crate) fn announce(&mut self, cx: &mut Context<'_, Self>, what: BTreeSet<Domain>) {
+        self.announced = true;
         cx.emit(LedgerChanged { what });
         cx.notify();
+    }
+
+    /// Whether anything was announced since the last ask, so the Shell reads the rail's counts
+    /// afresh only after a change rather than after every input.
+    pub(crate) fn take_announced(&mut self) -> bool {
+        std::mem::take(&mut self.announced)
     }
 }
 
