@@ -141,7 +141,7 @@ fn reload(
         },
         Domain::Tags => Reload {
             name: "Tags",
-            reloaded: ledger.update(cx, |store, cx| store.reload_tags(cx)),
+            reloaded: crate::tags::ports::reload(ledger, cx),
             restored: crate::msg::desktop_toast_write_failed_tags,
             unsaved: crate::msg::desktop_toast_write_failed_tags_unsaved,
         },

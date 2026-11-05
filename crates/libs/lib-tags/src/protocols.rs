@@ -4,12 +4,11 @@
 //! memory.
 //!
 //! `lib-database`'s Tags adapter implements the repository and the usage (#861, #862). Remove and
-//! merge rewrite other domains' Splits, so they are no single-domain Interactor but the reassign
-//! port ([`TagReassign`], Q6), which a Client answers through its Ledger until `lib-reassign`
-//! (#813); a Presenter's confirm is lent it rather than the Presenter holding it, since the Desktop
-//! writes its Ledger only with the gpui context that confirm runs in. The Presenters reach the
-//! repository and the usage together, through [`TagsPorts`], and ask for navigation through
-//! [`TagsRouter`], which each Client implements.
+//! merge rewrite other domains' Splits, so they are no single-domain Interactor but
+//! `lib-tag-removal`'s atomic port (#1002); its Dialogs close with [`TagsOutcome`], so the page
+//! hears of them as of its own. The Presenters reach the repository and the usage together,
+//! through [`TagsPorts`], and ask for navigation through [`TagsRouter`], which each Client
+//! implements.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -19,7 +18,7 @@ use chrono::NaiveDate;
 use lib_core::{TagId, Total};
 use lib_toast::Notify;
 
-use crate::{Tag, TagError};
+use crate::Tag;
 
 /// The Tags on the Ledger.
 pub trait TagRepository {
@@ -79,39 +78,6 @@ impl<T: TagRepository + TagUsage> TagsPorts for T {}
 /// The ports as the page and its Dialogs hold them: one set, shared, so a Tag a Dialog adds is on
 /// the page as soon as the Dialog closes. Single-threaded, as both Clients' UI threads are.
 pub type SharedPorts = Rc<RefCell<dyn TagsPorts>>;
-
-/// What a Tag remove did, for its Toast.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TagRemoved {
-    /// The Tag's name, read before it went.
-    pub name: String,
-    /// The Transactions whose Splits no longer carry it.
-    pub untagged: usize,
-}
-
-/// What a Tag merge did, for its Toast.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TagMerged {
-    /// The names of the two Tags, read before the source went.
-    pub source_name: String,
-    pub target_name: String,
-    /// The Transactions that carried the source and so now carry the target.
-    pub retagged: usize,
-}
-
-/// Tag remove and merge (Q6): each rewrites the Splits that carry the Tag, in the one commit of the
-/// input, so neither is a `lib-tags` Interactor. The Remove and Merge Dialogs' Presenters confirm
-/// through it, the pattern Categories set (`CategoryReassign`), and the port `lib-reassign` (#813)
-/// answers.
-pub trait TagReassign {
-    /// Untags every Split carrying Tag `id` and deletes it, used or not.
-    fn remove_tag(&mut self, id: TagId) -> Result<TagRemoved, TagError>;
-
-    /// Folds `source` into `target`: each Split carrying the source carries the target instead
-    /// (once, if it already had it), then the source is deleted. The target keeps its name, colour
-    /// and Active flag.
-    fn merge_tags(&mut self, source: TagId, target: TagId) -> Result<TagMerged, TagError>;
-}
 
 /// A Tags Dialog, as the page asks the Router to open it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

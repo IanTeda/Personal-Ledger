@@ -1,10 +1,11 @@
 //! `impl TagsRouter` for the Desktop: where the Tags page's Presenter asks to go. A Dialog opens as
 //! an Entity in the Dialog host through the page's gpui context, which is why the Router is built
 //! for each `handle` call, and a Notice goes onto the bin's queue (`crate::notices`), which the
-//! input's `send` drains.
+//! input's `send` drains. The Remove tag and Merge tags Dialogs are the Tag Removal module's
+//! (`crate::tag_removal`, #1003), opened through its entry points.
 
 use gpui::{Context, Entity};
-use lib_tags::{SharedPorts, TagsDialog as Which, TagsRouter};
+use lib_tags::{SharedPorts, TagsDialog as Which, TagsOutcome, TagsRouter};
 use lib_toast::{Notice, Notify};
 use lib_transactions::query::TransactionFilters;
 
@@ -14,25 +15,48 @@ use super::view::page::TagsPage;
 use crate::ledger_store::LedgerStore;
 use crate::notices::Queue;
 use crate::shell::view::dialog_entity::host_dialog;
+use crate::tag_removal::RemovalStores;
 
 pub(super) struct PageRouter<'a, 'b> {
     pub ports: SharedPorts,
-    pub ledger: Entity<LedgerStore>,
+    pub removal: RemovalStores,
     pub clock: lib_core::Clock,
     pub cx: &'a mut Context<'b, TagsPage>,
 }
 
 impl TagsRouter for PageRouter<'_, '_> {
-    /// Builds `dialog`'s Presenter on the shared ports and hosts its View; its confirmed outcome
-    /// comes back to the page through [`TagsPage::dialog_landed`].
+    /// Builds `dialog`'s Presenter and hosts its View: Add and Edit on the shared ports, Remove
+    /// and Merge on the Tag Removal module's port. Its confirmed outcome comes back to the page
+    /// through [`TagsPage::dialog_landed`].
     fn open_dialog(&mut self, dialog: Which) -> bool {
+        let landed = |page: &mut TagsPage, outcome: TagsOutcome, cx: &mut Context<'_, TagsPage>| {
+            page.dialog_landed(outcome, cx);
+        };
         let page = self.cx.weak_entity();
-        let landed = Box::new(move |outcome, cx: &mut gpui::App| {
+        let form_landed = Box::new(move |outcome, cx: &mut gpui::App| {
             // A page that has gone has nothing to land on.
             let _ = page.update(cx, |page, cx| page.dialog_landed(outcome, cx));
         });
-        let Some(dialog) = TagsDialog::open(dialog, &self.ports, &self.ledger, landed) else {
-            return false;
+        let dialog = match dialog {
+            Which::RemoveTag(id) => {
+                return crate::tag_removal::router::open_remove(self.cx, &self.removal, id, landed);
+            }
+            Which::MergeTags { source, target } => {
+                return crate::tag_removal::router::open_merge(
+                    self.cx,
+                    &self.removal,
+                    source,
+                    target,
+                    landed,
+                );
+            }
+            Which::AddTag => TagsDialog::add(&self.ports, form_landed),
+            Which::EditTag(id) => {
+                let Some(dialog) = TagsDialog::edit(&self.ports, id, form_landed) else {
+                    return false;
+                };
+                dialog
+            }
         };
         host_dialog(self.cx, |_| dialog);
         true

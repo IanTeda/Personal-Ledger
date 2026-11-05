@@ -41,6 +41,7 @@ lib_institutions = { path = "../../libs/lib-institutions" }
 lib_documents = { path = "../../libs/lib-documents" }
 lib_inventory = { path = "../../libs/lib-inventory" }
 lib_payees = { path = "../../libs/lib-payees" }
+lib_tag_removal = { path = "../../libs/lib-tag-removal" }
 lib_tags = { path = "../../libs/lib-tags" }
 lib_unit_deletion = { path = "../../libs/lib-unit-deletion" }
 lib_units = { path = "../../libs/lib-units" }

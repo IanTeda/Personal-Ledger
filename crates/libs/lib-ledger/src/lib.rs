@@ -18,7 +18,6 @@ mod institution_reads;
 mod payee_reads;
 mod repository;
 pub mod seed;
-mod tag_commands;
 mod tag_reads;
 mod tag_usage;
 mod unit_usage;
@@ -28,7 +27,6 @@ pub use category_commands::{CategoryDeleted, DeleteCategory, DeleteCategoryRefus
 pub use change::{Domain, LedgerChange, LedgerCommand, domains};
 pub use repository::{LedgerRepository, RepositoryError, StubRepository};
 pub use seed::{DEFAULT_SEED, HISTORY_DAYS, default_transactions};
-pub use tag_commands::{MergeTags, RemoveTag};
 pub use tag_usage::{TagRows, transaction_count};
 
 use chrono::{DateTime, Local, NaiveDate, NaiveTime, Utc};

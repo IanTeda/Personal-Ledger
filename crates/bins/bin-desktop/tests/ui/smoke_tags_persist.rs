@@ -56,8 +56,14 @@ fn an_added_tag_and_a_removed_used_tag_are_there_after_a_restart(app: &mut TestA
         select(&mut ui, "shared");
         ui.press("x s h a r e d");
         assert_eq!(ui.dialog_value("confirm").as_deref(), Some("shared"));
+        let commits = ui.commits();
         ui.press("enter");
         assert_eq!(ui.dialog(), None, "the Remove Dialog confirmed");
+        assert_eq!(
+            ui.commits(),
+            commits + 1,
+            "the untagging and the delete land in one commit"
+        );
         ui.settle_writes();
 
         let names = ui.settings::<SettingsTagsSnapshot>().tag_names;

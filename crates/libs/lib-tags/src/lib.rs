@@ -4,9 +4,9 @@
 //! Dialog (`presenter`), the ports and the `TagsRouter` (`protocols`), the page's default keys
 //! (`keymap`) and its Messages (`msg`). `fake` holds the in-memory ports, the stub seed and a
 //! recording Router; `contract` the checks both they and a stored adapter keep (#861). Remove and
-//! merge rewrite other domains' Splits, so they go through the reassign port (`TagReassign`, Q6),
-//! which a Client answers through its Ledger until `lib-reassign` (#813). No UI toolkit and no
-//! I/O; the Desktop draws the view models (`bin-desktop/src/tags/`).
+//! merge rewrite other domains' Splits, so they are `lib-tag-removal`'s (#1002), whose Dialogs
+//! close with this crate's [`TagsOutcome`]. No UI toolkit and no I/O; the Desktop draws the view
+//! models (`bin-desktop/src/tags/`).
 
 #[cfg(feature = "contract-tests")]
 #[expect(
@@ -24,6 +24,6 @@ pub mod protocols;
 
 pub use entity::*;
 pub use protocols::{
-    SharedPorts, TagChange, TagMerged, TagReassign, TagRemoved, TagRepository, TagUsage, TagUse,
-    TagsDialog, TagsOutcome, TagsPorts, TagsRouter,
+    SharedPorts, TagChange, TagRepository, TagUsage, TagUse, TagsDialog, TagsOutcome, TagsPorts,
+    TagsRouter,
 };

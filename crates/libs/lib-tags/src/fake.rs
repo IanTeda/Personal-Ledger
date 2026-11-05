@@ -11,10 +11,9 @@ use lib_toast::{Notice, Notify};
 use lib_viper::dialog::DialogRouter;
 
 use crate::protocols::{
-    SharedPorts, TagMerged, TagReassign, TagRemoved, TagRepository, TagUsage, TagUse, TagsDialog,
-    TagsOutcome, TagsRouter,
+    SharedPorts, TagRepository, TagUsage, TagUse, TagsDialog, TagsOutcome, TagsRouter,
 };
-use crate::{Tag, TagError, default_tags};
+use crate::{Tag, default_tags};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct InMemoryTags {
@@ -106,48 +105,6 @@ impl TagUsage for InMemoryPorts {
 
     fn transactions_by_tag(&self, ids: &[TagId]) -> HashMap<TagId, usize> {
         self.usage.transactions_by_tag(ids)
-    }
-}
-
-/// The reassign port over in-memory ports: it deletes the Tag, and counts the Transactions it
-/// reports from the usage the test set. It rewrites no Splits, since none are held here.
-#[derive(Debug, Clone)]
-pub struct InMemoryReassign {
-    pub ports: Rc<RefCell<InMemoryPorts>>,
-}
-
-impl InMemoryReassign {
-    pub fn new(ports: Rc<RefCell<InMemoryPorts>>) -> Self {
-        Self { ports }
-    }
-}
-
-impl TagReassign for InMemoryReassign {
-    fn remove_tag(&mut self, id: TagId) -> Result<TagRemoved, TagError> {
-        let mut ports = self.ports.borrow_mut();
-        let tag = ports.tags.tag(id).ok_or(TagError::NotFound)?;
-        let untagged = ports.usage.tag_usage(id).transactions;
-        ports.tags.tags.retain(|row| row.id != id);
-        Ok(TagRemoved {
-            name: tag.name,
-            untagged,
-        })
-    }
-
-    fn merge_tags(&mut self, source: TagId, target: TagId) -> Result<TagMerged, TagError> {
-        if source == target {
-            return Err(TagError::MergeIntoItself);
-        }
-        let mut ports = self.ports.borrow_mut();
-        let source_tag = ports.tags.tag(source).ok_or(TagError::NotFound)?;
-        let target_tag = ports.tags.tag(target).ok_or(TagError::NotFound)?;
-        let retagged = ports.usage.tag_usage(source).transactions;
-        ports.tags.tags.retain(|row| row.id != source);
-        Ok(TagMerged {
-            source_name: source_tag.name,
-            target_name: target_tag.name,
-            retagged,
-        })
     }
 }
 

@@ -103,12 +103,12 @@ mod tests {
         type Refusal = String;
 
         fn run(self, ledger: &mut lib_ledger::Ledger) -> Result<Removed, String> {
-            let tag = lib_tags::find_by_name(ledger.tags(), &self.0)
+            let category = lib_categories::find_by_name(ledger.categories(), &self.0)
                 .ok_or_else(|| format!("{} is gone", self.0))?;
             ledger
-                .remove_tag(tag)
+                .delete_category(category)
                 .map_err(|_| format!("{} is gone", self.0))?;
-            Ok(Removed(ledger.tags().len()))
+            Ok(Removed(ledger.categories().len()))
         }
     }
 
@@ -135,24 +135,24 @@ mod tests {
         }
     }
 
-    /// A Ledger holding the one Tag the sample command removes.
+    /// A Ledger holding the one Category the sample command removes.
     fn seeded(cx: &mut gpui::TestAppContext) -> Entity<LedgerStore> {
         crate::ledger_store::test_ledger(
             cx,
             lib_ledger::LedgerParts {
-                tags: vec![lib_tags::Tag {
-                    id: lib_core::TagId::seed(1),
+                categories: vec![lib_categories::Category {
+                    id: lib_core::CategoryId::seed(1),
                     name: "Bank X".into(),
-                    color: None,
-                    is_active: true,
+                    parent: None,
+                    category_type: lib_core::CategoryTypes::Expense,
                 }],
                 ..lib_ledger::LedgerParts::default()
             },
         )
     }
 
-    fn tag_count(ledger: &Entity<LedgerStore>, cx: &gpui::TestAppContext) -> usize {
-        ledger.read_with(cx, |store, _| store.ledger().tags().len())
+    fn category_count(ledger: &Entity<LedgerStore>, cx: &gpui::TestAppContext) -> usize {
+        ledger.read_with(cx, |store, _| store.ledger().categories().len())
     }
 
     #[gpui::test]
@@ -164,7 +164,7 @@ mod tests {
 
         assert!(landed.is_none());
         assert!(form.shown.is_none());
-        assert_eq!(tag_count(&ledger, cx), 1);
+        assert_eq!(category_count(&ledger, cx), 1);
     }
 
     #[gpui::test]
@@ -184,7 +184,7 @@ mod tests {
             landed.toast,
             Some((lib_toast::ToastKind::Success, "row 0".into()))
         );
-        assert_eq!(tag_count(&ledger, cx), 0);
+        assert_eq!(category_count(&ledger, cx), 0);
     }
 
     #[gpui::test]
@@ -201,6 +201,6 @@ mod tests {
 
         assert!(landed.is_none());
         assert_eq!(form.shown.as_deref(), Some("Bank X is gone"));
-        assert_eq!(tag_count(&ledger, cx), 0);
+        assert_eq!(category_count(&ledger, cx), 0);
     }
 }

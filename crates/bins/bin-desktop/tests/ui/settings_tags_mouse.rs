@@ -91,9 +91,11 @@ fn the_remove_action_opens_its_dialog_and_removes_an_unused_tag(app: &mut TestAp
     ui.click("remove-tag-cancel");
     assert_eq!(ui.dialog(), None);
     ui.click(&format!("settings-tags-remove-{zebra}"));
+    let commits = ui.commits();
     ui.click("remove-tag-confirm");
     let tags_page = ui.settings::<SettingsTagsSnapshot>();
     assert_eq!(ui.dialog(), None);
+    assert_eq!(ui.commits(), commits + 1, "the click is one input");
     assert_eq!(tags_page.tag_names.len(), before - 1);
     assert!(!tags_page.tag_names.iter().any(|name| name == "zebra"));
 }
@@ -109,8 +111,14 @@ fn the_merge_action_on_a_flagged_duplicate_merges_it_away(app: &mut TestAppConte
     ui.click("merge-tags-cancel");
     assert_eq!(ui.dialog(), None);
     ui.click(&format!("settings-tags-merge-{}", TagId::seed(9)));
+    let commits = ui.commits();
     ui.click("merge-tags-confirm");
     let tags_page = ui.settings::<SettingsTagsSnapshot>();
     assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        ui.commits(),
+        commits + 1,
+        "the retagging and the delete land in one commit"
+    );
     assert_eq!(tags_page.tag_names.len(), before - 1);
 }

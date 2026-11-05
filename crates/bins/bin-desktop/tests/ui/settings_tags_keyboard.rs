@@ -175,9 +175,11 @@ fn x_removes_an_unused_tag_without_typing_its_name(app: &mut TestAppContext) {
     ui.press("x");
     assert_eq!(ui.dialog(), Some("RemoveTag"));
     assert_eq!(ui.dialog_value("confirm").as_deref(), Some(""));
+    let commits = ui.commits();
     ui.press("enter");
     let tags_page = ui.settings::<SettingsTagsSnapshot>();
     assert_eq!(ui.dialog(), None);
+    assert_eq!(ui.commits(), commits + 1, "the remove lands in one commit");
     assert_eq!(tags_page.tag_names.len(), before.len() - 1);
     assert!(!tags_page.tag_names.iter().any(|name| name == "zebra"));
 }
@@ -202,9 +204,15 @@ fn a_used_tag_is_removed_only_once_its_name_is_typed(app: &mut TestAppContext) {
     assert_eq!(ui.dialog(), Some("RemoveTag"));
     ui.press("s h a r e d");
     assert_eq!(ui.dialog_value("confirm").as_deref(), Some(used));
+    let commits = ui.commits();
     ui.press("enter");
     let tags_page = ui.settings::<SettingsTagsSnapshot>();
     assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        ui.commits(),
+        commits + 1,
+        "the untagging and the delete land in one commit"
+    );
     assert!(!tags_page.tag_names.iter().any(|name| name == used));
 }
 

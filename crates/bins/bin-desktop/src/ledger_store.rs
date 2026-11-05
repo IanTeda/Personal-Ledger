@@ -2,12 +2,14 @@
 //! write runs through [`LedgerStore::apply`], and a landed one emits a [`LedgerChanged`] naming the
 //! domains it touched, which [`notify_on`] turns into a repaint for the Entities reading them.
 //!
-//! The Ledger's Institutions, Accounts, Categories, Tags, Payees, Transactions, Bill Plans, Bill
+//! The Ledger's Institutions, Accounts, Categories, Payees, Transactions, Bill Plans, Bill
 //! Schedule, Budgets and Inventory are read copies of their ports (#774, #831, #849, #850, #853,
-//! #858, #862, #866, #952): `apply` forwards a command's Category, Tag, Payee, Transaction, Bills,
-//! Budgets and Inventory changes to the ports and refreshes the copies from them. The Documents and
-//! Document Types have no read copy (#968): their modules read the Documents store, and the other
-//! domains' rows through their stores ([`LedgerStore::document_reads`]). The Institutions, Payees and Bills ports are shared with their modules, which write them through
+//! #858, #866, #952): `apply` forwards a command's Category, Payee, Transaction, Bills, Budgets and
+//! Inventory changes to the ports and refreshes the copies from them. The Tags have no read copy
+//! (#1003): the Tags page and Tag remove and merge write the Tags store, and announce the change
+//! through [`LedgerStore::announce_tags`]. The Documents and Document Types have no read copy
+//! (#968): their modules read the Documents store, and the other domains' rows through their
+//! stores ([`LedgerStore::document_reads`]). The Institutions, Payees and Bills ports are shared with their modules, which write them through
 //! their Interactors and refresh the copy after each event ([`LedgerStore::refresh_institutions`],
 //! [`LedgerStore::refresh_payees`], [`LedgerStore::refresh_bills`]).
 //!
@@ -243,7 +245,6 @@ impl LedgerStore {
         store.copy_institutions();
         store.copy_accounts();
         store.copy_categories();
-        store.copy_tags();
         store.copy_payees();
         store.copy_transactions();
         store.copy_bills();
@@ -472,6 +473,16 @@ impl LedgerStore {
         &self.budgets
     }
 
+    /// The Tags store, for a write failure's rollback to read back (ADR-0046).
+    pub fn tags_store(&self) -> &SharedTagsStore {
+        &self.tags
+    }
+
+    /// The Transactions store, for a test helper that writes beside the Tags store.
+    pub fn transactions_store(&self) -> &SharedTransactionsStore {
+        &self.transactions
+    }
+
     /// The Categories store's tree as the Budgets rules read it, for the Categories Monthly budget's
     /// save.
     pub fn budget_categories(&self) -> Vec<lib_budgets::BudgetCategory> {
@@ -529,17 +540,12 @@ impl LedgerStore {
                 &mut *self.categories.borrow_mut(),
                 &changes,
             );
-            let tags_deleted =
-                crate::tags::ports::forward_deletes(&mut *self.tags.borrow_mut(), &changes);
             if !crate::input::sending(cx) {
                 cx.emit(LegacyApplied);
             }
             let mut what = domains(&changes);
             if categories_upserted || categories_deleted {
                 self.copy_categories();
-            }
-            if tags_deleted {
-                self.copy_tags();
             }
             if payees_written {
                 self.copy_payees();
@@ -591,18 +597,6 @@ impl LedgerStore {
         self.categories.borrow_mut().reload()?;
         self.copy_categories();
         self.announce(cx, BTreeSet::from([Domain::Categories]));
-        Ok(())
-    }
-
-    /// Puts the Tags back as stored, after a write that named them failed, and overwrites the read
-    /// copy, announcing `Domain::Tags` so every reader redraws (ADR-0046).
-    ///
-    /// # Errors
-    /// Returns the error reading them back; the store and the read copy are left as they were.
-    pub fn reload_tags(&mut self, cx: &mut Context<'_, Self>) -> lib_database::Result<()> {
-        self.tags.borrow_mut().reload()?;
-        self.copy_tags();
-        self.announce(cx, BTreeSet::from([Domain::Tags]));
         Ok(())
     }
 
@@ -712,12 +706,10 @@ impl LedgerStore {
         }
     }
 
-    /// Brings the Tags read copy in line with the store, announcing `Domain::Tags` only when it
-    /// changed.
-    pub fn refresh_tags(&mut self, cx: &mut Context<'_, Self>) {
-        if self.copy_tags() {
-            self.announce(cx, BTreeSet::from([Domain::Tags]));
-        }
+    /// Announces `Domain::Tags`, after the Tags page, Tag remove or merge, or a rollback wrote the
+    /// Tags store, so the Tags page, the Transactions and the Shell redraw.
+    pub fn announce_tags(&mut self, cx: &mut Context<'_, Self>) {
+        self.announce(cx, BTreeSet::from([Domain::Tags]));
     }
 
     /// Announces `Domain::Inventory`, after the Inventory page wrote the store, so the Documents
@@ -774,12 +766,6 @@ impl LedgerStore {
     fn copy_categories(&mut self) -> bool {
         let categories = self.categories.borrow().categories().categories();
         self.ledger.refresh_categories(categories)
-    }
-
-    /// Brings the Tags read copy in line with the store, returning whether it changed.
-    fn copy_tags(&mut self) -> bool {
-        let tags = self.tags.borrow().tags().tags();
-        self.ledger.refresh_tags(tags)
     }
 
     /// Brings the Payees read copy in line with the port, returning whether it changed.
@@ -845,15 +831,15 @@ mod tests {
 
     use gpui::{AppContext, Entity, TestAppContext};
     use lib_database::{Commit, PendingWrites};
-    use lib_ledger::{LedgerParts, RemoveTag};
+    use lib_ledger::{DeleteCategory, LedgerParts};
 
     use super::*;
-    use lib_core::TagId;
+    use lib_core::CategoryId;
 
     fn store(cx: &mut TestAppContext) -> (Entity<LedgerStore>, Rc<RefCell<Vec<LedgerChanged>>>) {
         let store = cx.new(|_| {
             LedgerStore::new(Ledger::from_parts(LedgerParts {
-                tags: lib_tags::default_tags(),
+                categories: lib_categories::default_categories(),
                 ..LedgerParts::default()
             }))
         });
@@ -868,20 +854,28 @@ mod tests {
         (store, events)
     }
 
+    /// Two of the stub's Categories with no children, which nothing in [`store`]'s Ledger uses.
+    fn leaves() -> [CategoryId; 2] {
+        let categories = lib_categories::default_categories();
+        ["Rent", "Water"].map(|name| {
+            lib_categories::find_by_name(&categories, name).expect("a stub leaf Category")
+        })
+    }
+
     #[gpui::test]
     fn a_landed_command_announces_the_domains_it_changed(cx: &mut TestAppContext) {
         let (store, events) = store(cx);
-        let id = store.read_with(cx, |store, _| store.ledger().tags()[0].id);
-
         store.update(cx, |store, cx| {
-            store.apply(cx, RemoveTag(id)).expect("the Tag exists")
+            store
+                .apply(cx, DeleteCategory(leaves()[0]))
+                .expect("an unused leaf")
         });
         cx.run_until_parked();
 
         assert_eq!(
             *events.borrow(),
             vec![LedgerChanged {
-                what: BTreeSet::from([Domain::Tags])
+                what: BTreeSet::from([Domain::Categories])
             }]
         );
     }
@@ -891,7 +885,11 @@ mod tests {
         let (store, events) = store(cx);
 
         store.update(cx, |store, cx| {
-            assert!(store.apply(cx, RemoveTag(TagId::seed(u32::MAX))).is_err());
+            assert!(
+                store
+                    .apply(cx, DeleteCategory(CategoryId::seed(u32::MAX)))
+                    .is_err()
+            );
         });
         cx.run_until_parked();
 
@@ -913,12 +911,10 @@ mod tests {
             })
             .detach();
         });
-        let ids: Vec<_> = store.read_with(cx, |store, _| {
-            store.ledger().tags().iter().map(|tag| tag.id).collect()
-        });
+        let ids = leaves();
 
         store.update(cx, |store, cx| {
-            store.apply(cx, RemoveTag(ids[0])).expect("removed")
+            store.apply(cx, DeleteCategory(ids[0])).expect("deleted")
         });
         cx.run_until_parked();
         assert_eq!(
@@ -930,7 +926,7 @@ mod tests {
         cx.update(|cx| {
             crate::input::send(cx, |cx| {
                 store.update(cx, |store, cx| {
-                    store.apply(cx, RemoveTag(ids[1])).expect("removed")
+                    store.apply(cx, DeleteCategory(ids[1])).expect("deleted")
                 })
             })
         });

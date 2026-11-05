@@ -17,7 +17,7 @@
 //!   already carries the target) and deletes the source; the target keeps its name, colour and
 //!   `is_active`. Likely duplicates exist only in data that broke the uniqueness rule (e.g. from
 //!   Sync), so the seed carries one such pair on purpose. Remove and merge rewrite Splits, so they
-//!   are `lib-ledger`'s (`tag_commands`), not this crate's.
+//!   are `lib-tag-removal`'s (#1002), not this crate's.
 //! - Usage is all time across every Account: distinct Transactions, the newest one's date, and a
 //!   total that only sums when every Split carrying the Tag shares one Unit. This crate reads it
 //!   through the [`TagUsage`] port.
@@ -108,8 +108,6 @@ pub enum TagError {
     /// Another Tag already has this name once normalised; carries that Tag's name.
     #[error("{0} already exists")]
     DuplicateName(String),
-    #[error("a tag can't be merged into itself")]
-    MergeIntoItself,
     #[error("tag not found")]
     NotFound,
 }

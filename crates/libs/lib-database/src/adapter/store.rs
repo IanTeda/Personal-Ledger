@@ -428,9 +428,8 @@ pub trait TagsStore {
     fn tags_mut(&mut self) -> &mut dyn TagRepository;
 
     /// Removes Tag `id`, once no Split carries it: Tag remove's and merge's delete, which the
-    /// Desktop's forwarding shim sends until it hosts `lib-tag-removal` (#1003), whose
-    /// [`TagRemovalAdapter`](crate::TagRemovalAdapter) sends it after the Splits. Not a
-    /// `lib-tags` port write, since the delete untags other domains' rows.
+    /// [`TagRemovalAdapter`](crate::TagRemovalAdapter) sends after the Splits. Not a `lib-tags`
+    /// port write, since the delete untags other domains' rows.
     fn delete_tag(&mut self, id: TagId);
 
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).

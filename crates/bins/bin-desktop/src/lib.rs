@@ -33,6 +33,7 @@ pub mod persistence;
 mod settings;
 pub mod shell;
 mod start_view;
+mod tag_removal;
 mod tags;
 pub mod theme;
 mod transaction_import;

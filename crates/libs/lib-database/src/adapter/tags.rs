@@ -5,10 +5,10 @@
 //! added (rowid order, which an upsert keeps). A port write changes memory at once and joins the
 //! [`PendingWrites`] every adapter shares, which the bin commits after each input.
 //!
-//! The port has no delete: Tag delete and merge rewrite Splits, so they stay `lib-ledger` commands
-//! (Q6, until `lib-reassign`, #813). [`TagsAdapter::delete_tag`] is the write the Desktop's
-//! forwarding shim sends those commands' deletes through, after the Transactions that drop the
-//! Tag: `split_tags.tag_id`'s foreign key refuses deleting a Tag a Split still carries.
+//! The port has no delete: Tag remove and merge rewrite Splits, so they are `lib-tag-removal`'s
+//! (#1002). [`TagsAdapter::delete_tag`] is the write its `TagRemovalAdapter` sends their deletes
+//! through, after the Transactions that drop the Tag: `split_tags.tag_id`'s foreign key refuses
+//! deleting a Tag a Split still carries.
 //!
 //! What carries a Tag is other domains' rows, so `StoredTagReads` counts it from the Transactions,
 //! Accounts and Units stores (#994), not here.

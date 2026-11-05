@@ -1,7 +1,7 @@
 //! Tag remove and merge, the module's two Interactors: each rewrites the Splits that carry a Tag,
 //! another domain's rows, before deleting the Tag, so they live here rather than in `lib-tags`.
-//! The rules are `lib-ledger`'s `tag_commands.rs`', unchanged, and every refusal is checked before
-//! anything is written, so a refusal writes nothing.
+//! The rules moved from `lib-ledger`'s `tag_commands.rs` unchanged (#1003), and every refusal is
+//! checked before anything is written, so a refusal writes nothing.
 
 use lib_core::TagId;
 use lib_transactions::Transaction;

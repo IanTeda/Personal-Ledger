@@ -4,16 +4,12 @@
 //! one set of ports ([`SharedPorts`](crate::protocols::SharedPorts)) and ask for navigation
 //! through the [`TagsRouter`](crate::protocols::TagsRouter) the Client passes in. A Dialog's
 //! Presenter instead takes `lib-viper`'s `DialogInput`s, reads the keys itself and closes through
-//! the generic `DialogRouter` (#989); Remove and Merge are lent the reassign port with each input
-//! and confirm, which writes through the Client's Ledger.
+//! the generic `DialogRouter` (#989). The Remove tag and Merge tags Dialogs are `lib-tag-removal`'s
+//! (#1002), which closes them with this crate's `TagsOutcome`.
 
-mod merge_tags;
-mod remove_tag;
 mod tag_form;
 mod tags_page;
 
-pub use merge_tags::{MergeField, MergeTagsEvent, MergeTagsPresenter, MergeTagsViewModel};
-pub use remove_tag::{RemoveTagEvent, RemoveTagPresenter, RemoveTagViewModel};
 pub use tag_form::{
     ActiveField, ColourField, Swatch, TagField, TagFormEvent, TagFormPresenter, TagFormViewModel,
 };
@@ -21,23 +17,18 @@ pub use tags_page::{TagLine, TagsPageEvent, TagsPagePresenter, TagsPageViewModel
 
 use crate::{TagError, msg};
 
-/// A name's problem as the form words it. A blank name only keeps Save from confirming, and the
-/// rest come from Remove and Merge, so none has text of its own here.
+/// A name's problem as the form words it, or the refusal it shows in its place: a blank name only
+/// keeps Save from confirming, so it has no text of its own here.
 fn name_error_text(error: &TagError) -> String {
     match error {
         TagError::DuplicateName(name) => msg::tags_error_name_taken(name),
         TagError::NoLetterOrDigit => msg::tags_error_no_letter_or_digit(),
-        other => refusal_text(other),
-    }
-}
-
-/// A refusal a Dialog shows in place of a name's problem.
-fn refusal_text(error: &TagError) -> String {
-    match error {
-        TagError::MergeIntoItself => msg::tags_refusal_merge_into_itself(),
         TagError::NotFound => msg::tags_refusal_gone(),
-        other => {
-            debug_assert!(false, "no Tags Dialog shows {other:?} as a refusal");
+        TagError::NameRequired => {
+            debug_assert!(
+                false,
+                "a blank name has no text: it only keeps Save from confirming"
+            );
             msg::tags_refusal_gone()
         }
     }

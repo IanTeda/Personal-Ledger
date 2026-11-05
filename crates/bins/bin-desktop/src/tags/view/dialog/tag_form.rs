@@ -8,7 +8,7 @@ use lib_tags::presenter::{
     ActiveField, TagField, TagFormEvent, TagFormPresenter, TagFormViewModel,
 };
 
-use super::{Clicks, TagsDialog, View};
+use super::{Clicks, TagsDialog};
 use crate::{
     dialog,
     form::colour_field::{self, ColourFieldProps, error_line},
@@ -21,18 +21,9 @@ fn handle(presenter: &mut TagFormPresenter, event: TagFormEvent) {
     presenter.handle(event, &mut HostRouter::default());
 }
 
-fn form(dialog: &mut TagsDialog) -> Option<&mut TagFormPresenter> {
-    match &mut dialog.view {
-        View::Form(presenter) => Some(presenter),
-        View::Remove(_) | View::Merge(..) => None,
-    }
-}
-
 fn send(dialog: &mut TagsDialog, events: Vec<TagFormEvent>) {
-    if let Some(presenter) = form(dialog) {
-        for event in events {
-            handle(presenter, event);
-        }
+    for event in events {
+        handle(&mut dialog.presenter, event);
     }
 }
 

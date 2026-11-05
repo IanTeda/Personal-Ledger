@@ -687,25 +687,37 @@ impl Root {
             .update(cx, |store, cx| store.empty_inventory_for_test(cx));
     }
 
-    /// Removes every Tag, so a test can reach the Tags page with nothing to select.
+    /// Removes every Tag through `lib-tag-removal`'s Interactor over the Tags and Transactions
+    /// stores, so a test can reach the Tags page with nothing to select.
     #[doc(hidden)]
     pub fn empty_tags_for_test(&mut self, cx: &mut App) {
-        let ids: Vec<_> = self
-            .open()
-            .ledger
-            .read(cx)
-            .ledger()
+        let ledger = self.open().ledger.clone();
+        let (tags, transactions) = {
+            let store = ledger.read(cx);
+            (
+                store.tags_store().clone(),
+                store.transactions_store().clone(),
+            )
+        };
+        let ids: Vec<_> = tags
+            .borrow()
+            .tags()
             .tags()
             .iter()
             .map(|tag| tag.id)
             .collect();
-        self.open().ledger.update(cx, |store, cx| {
-            for id in ids {
-                assert!(
-                    store.apply(cx, lib_ledger::RemoveTag(id)).is_ok(),
-                    "a Tag listed a moment ago must still be removable"
-                );
-            }
+        let mut removal = lib_database::TagRemovalAdapter::new(tags, transactions);
+        for id in ids {
+            assert!(
+                lib_tag_removal::interactor::RemoveTag { id }
+                    .run(&mut removal)
+                    .is_ok(),
+                "a Tag listed a moment ago must still be removable"
+            );
+        }
+        ledger.update(cx, |store, cx| {
+            store.refresh_transactions(cx);
+            store.announce_tags(cx);
         });
     }
 

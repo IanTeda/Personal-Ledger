@@ -7,10 +7,12 @@
 //! list, else merges, and typing goes nowhere, rather than reaching the Shell.
 
 use gpui::{AnyElement, App, div, prelude::*, px};
-use lib_tags::presenter::{MergeField, MergeTagsEvent, MergeTagsPresenter, MergeTagsViewModel};
+use lib_tag_removal::presenter::{
+    MergeField, MergeTagsEvent, MergeTagsPresenter, MergeTagsViewModel,
+};
 use lib_viper::view::SelectView;
 
-use super::{Clicks, TagsDialog, View};
+use super::{Clicks, TagRemovalDialog, View};
 use crate::form::colour_field::error_line;
 use crate::form::select::SelectState;
 use crate::form::select_field::{self, SelectFieldProps};
@@ -24,22 +26,22 @@ fn handle(presenter: &mut MergeTagsPresenter, event: MergeTagsEvent) {
     presenter.handle(event, &mut HostRouter::default());
 }
 
-fn merge(dialog: &mut TagsDialog) -> Option<&mut MergeTagsPresenter> {
+fn merge(dialog: &mut TagRemovalDialog) -> Option<&mut MergeTagsPresenter> {
     match &mut dialog.view {
         View::Merge(presenter, ..) => Some(presenter),
-        View::Form(_) | View::Remove(_) => None,
+        View::Remove(_) => None,
     }
 }
 
 /// A click on a select's closed field focuses it and toggles its list, closing the other.
-fn click_field(dialog: &mut TagsDialog, field: MergeField) {
+fn click_field(dialog: &mut TagRemovalDialog, field: MergeField) {
     if let Some(presenter) = merge(dialog) {
         handle(presenter, MergeTagsEvent::Toggle(field));
     }
 }
 
 /// A click on row `index` of a select's open list picks that Tag.
-fn click_option(dialog: &mut TagsDialog, field: MergeField, index: usize) {
+fn click_option(dialog: &mut TagRemovalDialog, field: MergeField, index: usize) {
     if let Some(presenter) = merge(dialog) {
         handle(presenter, MergeTagsEvent::Focus(field));
         let view = presenter.view_model();

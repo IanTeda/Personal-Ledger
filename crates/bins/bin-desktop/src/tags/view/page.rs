@@ -1,21 +1,21 @@
 //! The Tags Settings page's View: the `lib-tags` page Presenter in a gpui Entity. It looks up each
 //! key the Shell passes on, as chord text, in the Tags keymap, turns clicks into events, draws the
-//! view model (`render.rs`), and keeps the Ledger read copy in line after every event
-//! ([`ports::refresh`]). Each key and click is one input (`crate::input::send`), which commits
-//! what it wrote. The Settings View hosts it as any other page.
+//! view model (`render.rs`), and announces `Domain::Tags` after an event or Dialog that wrote the
+//! Tags ([`ports::announce`]). Each key and click is one input (`crate::input::send`), which
+//! commits what it wrote. The Settings View hosts it as any other page.
 
 mod render;
 
 use gpui::{AnyElement, App, Context, Entity, EventEmitter, Subscription};
 use lib_ledger::Domain;
-use lib_tags::SharedPorts;
-use lib_tags::TagsOutcome;
 use lib_tags::presenter::{TagsPageEvent, TagsPagePresenter, TagsPageViewModel};
+use lib_tags::{SharedPorts, TagChange, TagsOutcome};
 use lib_viper::keymap::Keymap;
 
 use lib_shell::Hint;
 
 use crate::settings::snapshot::PageSnapshot;
+use crate::tag_removal::RemovalStores;
 use crate::tags::router::PageRouter;
 use crate::tags::{SettingsTagsSnapshot, TagsSetup, ports};
 use crate::{
@@ -32,6 +32,9 @@ impl EventEmitter<PageRowClicked> for TagsPage {}
 pub struct TagsPage {
     presenter: TagsPagePresenter,
     ports: SharedPorts,
+    /// Tag remove and merge's port and reads, which their Dialogs open on.
+    removal: RemovalStores,
+    /// What hears of a Tags write: the Tags page itself, the Transactions and the Shell.
     ledger: Entity<LedgerStore>,
     clock: lib_core::Clock,
     keymap: Keymap<TagsPageEvent>,
@@ -55,6 +58,7 @@ impl TagsPage {
         Self {
             presenter: TagsPagePresenter::new(ports.clone(), setup.keymap.clone()),
             ports,
+            removal: setup.removal,
             _tags_changed: notify_on(&ledger, Domain::Tags, cx),
             _transactions_changed: notify_on(&ledger, Domain::Transactions, cx),
             ledger,
@@ -78,28 +82,32 @@ impl TagsPage {
         crate::input::send(cx, |cx| self.handle(event, cx));
     }
 
-    /// Hands `event` to the Presenter with the Desktop's Router, then brings the Ledger read copy
-    /// in line with whatever it wrote. Inside an input already, as [`Self::send`] or a Dialog's
-    /// confirm.
+    /// Hands `event` to the Presenter with the Desktop's Router, announcing the Tags when it wrote
+    /// them. Inside an input already, as [`Self::send`] or a Dialog's confirm.
     fn handle(&mut self, event: TagsPageEvent, cx: &mut Context<'_, Self>) {
-        ports::refresh(&self.ledger, cx);
+        let before = self.ports.borrow().tags();
         let mut router = PageRouter {
             ports: self.ports.clone(),
-            ledger: self.ledger.clone(),
+            removal: self.removal.clone(),
             clock: self.clock.clone(),
             cx,
         };
         self.presenter.handle(event, &mut router);
-        ports::refresh(&self.ledger, cx);
+        if self.ports.borrow().tags() != before {
+            ports::announce(&self.ledger, cx);
+        }
         cx.notify();
     }
 
     /// A confirmed Dialog's outcome, handed back by the Dialog host inside the confirm's input.
-    pub(in crate::tags) fn dialog_landed(
-        &mut self,
-        outcome: TagsOutcome,
-        cx: &mut Context<'_, Self>,
-    ) {
+    /// Every confirm wrote the Tags, so they are announced; a remove or merge rewrote Splits too,
+    /// so the Ledger's Transactions read copy is brought in line for the Views still reading it.
+    pub(crate) fn dialog_landed(&mut self, outcome: TagsOutcome, cx: &mut Context<'_, Self>) {
+        if matches!(outcome.change, TagChange::Removed | TagChange::Merged) {
+            self.ledger
+                .update(cx, |store, cx| store.refresh_transactions(cx));
+        }
+        ports::announce(&self.ledger, cx);
         self.handle(TagsPageEvent::DialogClosed(Some(outcome)), cx);
     }
 
