@@ -8,8 +8,10 @@
 //! module reaches of other domains goes through [`LedgerPorts`]: the usage its Dialogs quote (the
 //! Splits from the Transactions store, #926, the Budgets from the Budgets store, #952), the
 //! Monthly budget the Add and Edit Dialogs read and save in the Personal spending Budget, on the
-//! Budgets store (#952), and the handover of a leaf's rows to its first child, which the module
-//! writes to the Transactions, Bills and Payees stores itself ([`LedgerPorts`]'s `hand_over`).
+//! Budgets store (#952), and the handover of a leaf's rows to its first child, written to the
+//! Transactions, Bills and Payees stores ([`LedgerPorts`]'s `hand_over`). What names a Category,
+//! the holdings, the handover and the type-change blockers' Bill Plans, is `lib-database`'s
+//! `StoredCategoryRows`, the one selection Category delete reads too (#1034).
 
 use std::cell::RefCell;
 use std::collections::BTreeSet;
@@ -24,7 +26,7 @@ use lib_categories::{
     TypeChangeBlockers,
 };
 use lib_core::{CategoryId, Clock, Money};
-use lib_database::{PayeesStore, SharedCategoriesStore};
+use lib_database::SharedCategoriesStore;
 use lib_ledger::{Domain, Ledger};
 
 use crate::budgets::PERSONAL_SPENDING_ID;
@@ -98,7 +100,7 @@ impl CategoryUsage for LedgerPorts<'_> {
     fn category_usage(&self, id: CategoryId) -> CategoryUse {
         let ledger_store = self.ledger.read(self.cx);
         CategoryUse {
-            splits: ledger_store.category_splits(id),
+            splits: ledger_store.category_rows().splits(id),
             budgets: ledger_store.budgets_store().borrow().category_budgets(id),
         }
     }
@@ -107,7 +109,11 @@ impl CategoryUsage for LedgerPorts<'_> {
     fn type_change_blockers(&self, subtree: &[CategoryId]) -> TypeChangeBlockers {
         TypeChangeBlockers {
             budgets: self.budgets().using(subtree, self.clock.today()),
-            bill_plans: self.ledger.read(self.cx).bill_plans_naming(subtree),
+            bill_plans: self
+                .ledger
+                .read(self.cx)
+                .category_rows()
+                .bill_plans_naming(subtree),
         }
     }
 }
@@ -213,59 +219,19 @@ impl CategoryBudget for LedgerPorts<'_> {
 
 impl CategoryHandover for LedgerPorts<'_> {
     fn holdings(&self, category: CategoryId) -> Holdings {
-        self.ledger.read(self.cx).category_holdings(category)
+        self.ledger.read(self.cx).category_rows().holdings(category)
     }
 
     /// Re-points the rows in the Transactions, Bills and Payees stores, in the input's one commit,
     /// then announces the three.
     fn hand_over(&mut self, from: CategoryId, to: CategoryId) {
         self.ledger.update(self.cx, |store, cx| {
-            hand_over_rows(store, from, to);
+            store.category_rows().hand_over(from, to);
             store.announce(
                 cx,
                 BTreeSet::from([Domain::Transactions, Domain::Bills, Domain::Payees]),
             );
         });
-    }
-}
-
-/// Points every Split, Bill Plan and Payee default naming `from` at `to`, in the stores `store`
-/// lends: the Categories module writes them, not the Ledger store (#1006).
-fn hand_over_rows(store: &LedgerStore, from: CategoryId, to: CategoryId) {
-    {
-        let mut transactions = store.transactions_store().borrow_mut();
-        for mut transaction in transactions.all_transactions() {
-            if transaction
-                .splits
-                .iter()
-                .all(|split| split.category_id != from)
-            {
-                continue;
-            }
-            for split in &mut transaction.splits {
-                if split.category_id == from {
-                    split.category_id = to;
-                }
-            }
-            transactions.upsert_transaction(transaction);
-        }
-    }
-    {
-        let bills = store.bills_store();
-        let mut bills = bills.borrow_mut();
-        for mut plan in bills.plans().bill_plans() {
-            if plan.category_id == from {
-                plan.category_id = to;
-                bills.plans_mut().upsert_bill_plan(plan);
-            }
-        }
-    }
-    let mut payees = store.payees_ports().borrow_mut();
-    for mut payee in PayeesStore::payees(&*payees).payees() {
-        if payee.default_category == Some(from) {
-            payee.default_category = Some(to);
-            PayeesStore::payees_mut(&mut *payees).upsert_payee(payee);
-        }
     }
 }
 

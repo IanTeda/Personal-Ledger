@@ -71,6 +71,7 @@ pub use adapter::bills::{BillsAdapter, unit_bill_plans};
 pub use adapter::budgets::BudgetsAdapter;
 pub use adapter::categories::CategoriesAdapter;
 pub use adapter::category_deletion::CategoryDeletionAdapter;
+pub use adapter::category_rows::StoredCategoryRows;
 pub use adapter::documents::DocumentsAdapter;
 pub use adapter::institutions::{InstitutionsAdapter, unit_institutions};
 pub use adapter::inventory::{InventoryAdapter, unit_locations};

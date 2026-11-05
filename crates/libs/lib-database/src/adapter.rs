@@ -9,6 +9,7 @@ pub mod bills;
 pub mod budgets;
 pub mod categories;
 pub mod category_deletion;
+pub mod category_rows;
 pub mod documents;
 pub mod institutions;
 pub mod inventory;

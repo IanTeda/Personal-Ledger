@@ -29,7 +29,8 @@ use lib_core::AccountId;
 use lib_database::{
     PayeesStore, SharedAccountsStore, SharedBudgetsStore, SharedCategoriesStore,
     SharedDocumentsStore, SharedInventoryStore, SharedTagsStore, SharedTransactionsStore,
-    SharedUnitsStore, StoredDocumentReads, StoredInventoryReads, StoredPayeeReads,
+    SharedUnitsStore, StoredCategoryRows, StoredDocumentReads, StoredInventoryReads,
+    StoredPayeeReads,
 };
 use lib_institutions::InstitutionsPorts as _;
 use lib_ledger::{Domain, Ledger};
@@ -269,45 +270,14 @@ impl LedgerStore {
         self.document_reads.clone()
     }
 
-    /// The Splits filed under Category `id`, as the Transactions store counts them: in the file for
-    /// the adapter (#926). The Splits half of `lib-categories`' `CategoryUsage`.
-    pub fn category_splits(&self, id: lib_core::CategoryId) -> usize {
-        self.transactions.borrow().category_splits(id)
-    }
-
-    /// How many Bill Plans, active or not, name any of `categories`: the Bills half of what keeps
-    /// a Category's type from changing.
-    pub fn bill_plans_naming(&self, categories: &[lib_core::CategoryId]) -> usize {
-        let bills = self.bills.borrow().store();
-        let bills = bills.borrow();
-        bills
-            .plans()
-            .bill_plans()
-            .iter()
-            .filter(|plan| categories.contains(&plan.category_id))
-            .count()
-    }
-
-    /// What Category `id` holds that a first child would take: its Splits as the Transactions
-    /// store counts them, the Bill Plans naming it and the Payees defaulting to it.
-    pub fn category_holdings(&self, id: lib_core::CategoryId) -> lib_categories::Holdings {
-        let bill_plans = self.bills.borrow().store();
-        let bill_plans = bill_plans
-            .borrow()
-            .plans()
-            .bill_plans()
-            .iter()
-            .filter(|plan| plan.category_id == id)
-            .count();
-        let payee_defaults = PayeesStore::payees(&*self.payees.borrow())
-            .payees()
-            .iter()
-            .filter(|payee| payee.default_category == Some(id))
-            .count();
-        lib_categories::Holdings {
-            splits: self.category_splits(id),
-            bill_plans,
-            payee_defaults,
+    /// The rows naming a Category in the Transactions, Bills and Payees stores, which the
+    /// Categories ports count and hand over through (#1034): the one selection Category delete
+    /// reads too.
+    pub fn category_rows(&self) -> StoredCategoryRows {
+        StoredCategoryRows {
+            transactions: self.transactions.clone(),
+            bills: self.bills.borrow().store(),
+            payees: self.payees.clone(),
         }
     }
 

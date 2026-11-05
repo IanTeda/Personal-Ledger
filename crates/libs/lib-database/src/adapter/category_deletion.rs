@@ -12,26 +12,24 @@
 use lib_bills::BillPlan;
 use lib_budgets::Budget;
 use lib_categories::Category;
-use lib_category_deletion::protocols::{
-    bill_plans_using, budgets_limiting, payees_defaulting_to, transactions_using,
-};
+use lib_category_deletion::protocols::budgets_limiting;
 use lib_category_deletion::{CategoryDeletion, CategoryRemoval};
 use lib_core::CategoryId;
 use lib_payees::Payee;
 use lib_transactions::Transaction;
 
+use super::category_rows::StoredCategoryRows;
 use super::store::{
     SharedBillsStore, SharedBudgetsStore, SharedCategoriesStore, SharedPayeesStore,
     SharedTransactionsStore,
 };
 
 /// The deletion port over the stores the Categories, Transactions, Bills, Payees and Budgets
-/// modules also hold.
+/// modules also hold. The rows naming the Category are read through [`StoredCategoryRows`], the
+/// one selection the Categories handover and its counts read too (#1034).
 pub struct CategoryDeletionAdapter {
     categories: SharedCategoriesStore,
-    transactions: SharedTransactionsStore,
-    bills: SharedBillsStore,
-    payees: SharedPayeesStore,
+    rows: StoredCategoryRows,
     budgets: SharedBudgetsStore,
 }
 
@@ -45,9 +43,11 @@ impl CategoryDeletionAdapter {
     ) -> Self {
         Self {
             categories,
-            transactions,
-            bills,
-            payees,
+            rows: StoredCategoryRows {
+                transactions,
+                bills,
+                payees,
+            },
             budgets,
         }
     }
@@ -59,15 +59,15 @@ impl CategoryDeletion for CategoryDeletionAdapter {
     }
 
     fn transactions_using(&self, id: CategoryId) -> Vec<Transaction> {
-        transactions_using(self.transactions.borrow().all_transactions(), id)
+        self.rows.transactions_using(id)
     }
 
     fn bill_plans_using(&self, id: CategoryId) -> Vec<BillPlan> {
-        bill_plans_using(self.bills.borrow().plans().bill_plans(), id)
+        self.rows.bill_plans_using(id)
     }
 
     fn payees_defaulting_to(&self, id: CategoryId) -> Vec<Payee> {
-        payees_defaulting_to(self.payees.borrow().payees().payees(), id)
+        self.rows.payees_defaulting_to(id)
     }
 
     fn budgets_limiting(&self, id: CategoryId) -> Vec<Budget> {
@@ -91,19 +91,19 @@ impl CategoryDeletion for CategoryDeletionAdapter {
                 .upsert_category(home);
         }
         {
-            let mut store = self.transactions.borrow_mut();
+            let mut store = self.rows.transactions.borrow_mut();
             for transaction in transactions {
                 store.upsert_transaction(transaction);
             }
         }
         {
-            let mut store = self.bills.borrow_mut();
+            let mut store = self.rows.bills.borrow_mut();
             for plan in bill_plans {
                 store.plans_mut().upsert_bill_plan(plan);
             }
         }
         {
-            let mut store = self.payees.borrow_mut();
+            let mut store = self.rows.payees.borrow_mut();
             for payee in payees {
                 store.payees_mut().upsert_payee(payee);
             }
