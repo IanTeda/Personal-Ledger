@@ -10,7 +10,7 @@
    "url": "https://github.com/IanTeda/Personal-Ledger",
    "provider": "github",
    "link_mode": "web",
-   "revision": "5332e701995753a81764538c00c219eb7c68ab0d"
+   "revision": "82ef11775bd520669044f58b271bf660415e00f1"
   },
   "legend": {
    "entries": {
@@ -56,7 +56,7 @@
     {
      "path": "crates/bins/bin-desktop/Cargo.toml",
      "line": 31,
-     "end_line": 60
+     "end_line": 77
     }
    ],
    "sublabel": "gpui Client"
@@ -188,7 +188,7 @@
     {
      "path": "crates/libs/lib-database/Cargo.toml",
      "line": 17,
-     "end_line": 43
+     "end_line": 63
     }
    ],
    "sublabel": "SQLx adapters"
@@ -221,7 +221,7 @@
    "label": "lib-unit-deletion",
    "tag": "cross-domain",
    "pos": [
-    152,
+    40,
     340
    ],
    "size": [
@@ -243,7 +243,7 @@
    "label": "lib-account-deletion",
    "tag": "cross-domain",
    "pos": [
-    376,
+    264,
     340
    ],
    "size": [
@@ -265,7 +265,7 @@
    "label": "lib-bill-payments",
    "tag": "cross-domain",
    "pos": [
-    600,
+    488,
     340
    ],
    "size": [
@@ -287,7 +287,7 @@
    "label": "lib-transaction-import",
    "tag": "cross-domain",
    "pos": [
-    824,
+    712,
     340
    ],
    "size": [
@@ -309,7 +309,7 @@
    "label": "lib-tag-removal",
    "tag": "cross-domain",
    "pos": [
-    1048,
+    936,
     340
    ],
    "size": [
@@ -324,6 +324,28 @@
     }
    ],
    "sublabel": "Tag remove, merge"
+  },
+  {
+   "id": "lib-category-deletion",
+   "type": "messagebus",
+   "label": "lib-category-deletion",
+   "tag": "cross-domain",
+   "pos": [
+    1160,
+    340
+   ],
+   "size": [
+    160,
+    64
+   ],
+   "sources": [
+    {
+     "path": "crates/libs/lib-category-deletion/Cargo.toml",
+     "line": 13,
+     "end_line": 33
+    }
+   ],
+   "sublabel": "Category delete"
   },
   {
    "id": "lib-institutions",
@@ -767,6 +789,11 @@
    "to": "lib-bill-payments"
   },
   {
+   "id": "bin-desktop--lib-category-deletion",
+   "from": "bin-desktop",
+   "to": "lib-category-deletion"
+  },
+  {
    "id": "bin-desktop--lib-dashboard",
    "from": "bin-desktop",
    "to": "lib-dashboard"
@@ -830,6 +857,11 @@
    "id": "lib-database--lib-bill-payments",
    "from": "lib-database",
    "to": "lib-bill-payments"
+  },
+  {
+   "id": "lib-database--lib-category-deletion",
+   "from": "lib-database",
+   "to": "lib-category-deletion"
   },
   {
    "id": "lib-database--lib-dashboard",
@@ -917,6 +949,31 @@
    "to": "lib-transactions"
   },
   {
+   "id": "lib-category-deletion--lib-bills",
+   "from": "lib-category-deletion",
+   "to": "lib-bills"
+  },
+  {
+   "id": "lib-category-deletion--lib-budgets",
+   "from": "lib-category-deletion",
+   "to": "lib-budgets"
+  },
+  {
+   "id": "lib-category-deletion--lib-categories",
+   "from": "lib-category-deletion",
+   "to": "lib-categories"
+  },
+  {
+   "id": "lib-category-deletion--lib-payees",
+   "from": "lib-category-deletion",
+   "to": "lib-payees"
+  },
+  {
+   "id": "lib-category-deletion--lib-transactions",
+   "from": "lib-category-deletion",
+   "to": "lib-transactions"
+  },
+  {
    "id": "lib-viper--lib-config",
    "from": "lib-viper",
    "to": "lib-config"
@@ -959,7 +1016,7 @@
    "title": "Rule holds today",
    "items": [
     "No feature crate depends on another feature crate, a UI toolkit or lib-database; the 20 old rule-break edges are gone",
-    "Cross-domain modules (lib-bill-payments, lib-account-deletion, lib-unit-deletion, lib-transaction-import, lib-tag-removal) read only the feature crates they write",
+    "Cross-domain modules (lib-bill-payments, lib-account-deletion, lib-unit-deletion, lib-transaction-import, lib-tag-removal, lib-category-deletion) read only the feature crates they write",
     "lib-shell and lib-dashboard depend on support crates only; lib-database implements their ports",
     "deny.toml bans the toolkits outside the bins; lib-ledger/tests/viper_dependencies.rs checks the module rules"
    ]
