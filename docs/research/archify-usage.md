@@ -83,7 +83,7 @@ Research was done by reading the vendored skill at `.claude/skills/archify/` (`S
 | Navigation modes and pending-chord states (`docs/navigation-design.md`), Toast lifecycle, ticket `state:` flow | `lifecycle` | Repo-backed for code states, authored for process states | One lifecycle per concurrent region; `mainPath` is the happy path. |
 | Crate/workspace layout, `bin-desktop` module tree | `tree` with `layout.direction: "right"` | Repo-backed: each folder node cites its `mod.rs`/`lib.rs` | `references/authoring-defaults.md:55`. |
 | Ticket or map history, release history | `timeline` with `meta.evidence: "observed"` | Events cite a file at the pinned revision; times from commits or tags | `references/repository-authoring.md:84-88`. |
-| Startup or `LedgerStore::apply` timing | `waterfall` | `measured` only from a real `lib-tracing` trace; else `illustrative` | Don't time the app just to draw it (`references/repository-authoring.md:88-90`). |
+| Startup or `input::send` timing | `waterfall` | `measured` only from a real `lib-tracing` trace; else `illustrative` | Don't time the app just to draw it (`references/repository-authoring.md:88-90`). |
 | Inline diagram in an issue body | Mermaid, not Archify | — | GitHub renders Mermaid in issues; it doesn't render the HTML (`docs/agents/issue-tracker.md:21`, `:24`). |
 
 ## 5. Recommended end-to-end workflow

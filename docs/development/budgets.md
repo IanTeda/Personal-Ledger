@@ -101,4 +101,3 @@ Desktop locations for the ticked requirements. Paths are under `crates/libs/lib-
 - Whether an over-budget Category earns a row in the Dashboard's Needs Attention list ([ADR-0020](../adr/0020-needs-attention-as-derived-view.md)) is undecided.
 - The Plan range starts no earlier than the Budget's first Budget Amount month and no later than 12 months ahead (`plan_start_bounds`, `PLAN_MAX_LEAD`); the handoff sets no bounds.
 - The Dashboard budget list carries no label naming the default Budget it is showing yet.
-- The Dashboard and the rail badge still read Budgets from the `Ledger` read copy (`viper-architecture.md`, During the transition) until the Dashboard (#814) and `lib-reassign` (#813) move.
