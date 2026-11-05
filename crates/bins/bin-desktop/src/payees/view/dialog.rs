@@ -121,15 +121,15 @@ impl PayeesDialog {
         }
     }
 
-    /// Once the Presenter has closed the Dialog, brings the Ledger read copy in line with what a
-    /// confirm wrote, hands its outcome to the page and tells the host. A Presenter writes only on
-    /// the confirm that closes it, so an input that leaves the Dialog open refreshes nothing.
+    /// Once the Presenter has closed the Dialog, announces the Payees a confirm wrote, hands its
+    /// outcome to the page and tells the host. A Presenter writes only on the confirm that closes
+    /// it, so an input that leaves the Dialog open, or a cancel, announces nothing.
     fn closed(&self, router: Router, cx: &mut Context<'_, Self>) {
         let Some(outcome) = router.closed() else {
             return;
         };
-        ports::refresh(&self.ledger, cx);
         if let Some(outcome) = outcome {
+            ports::announce(&self.ledger, cx);
             (self.landed)(outcome, cx);
         }
         cx.emit(DialogClosed);

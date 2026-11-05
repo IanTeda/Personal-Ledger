@@ -7,10 +7,9 @@
 //! View and Dialog (`presenter`), the ports and the `CategoriesRouter` (`protocols`), the page's
 //! default keys (`keymap`) and its Messages (`msg`). `fake` holds the in-memory ports, the stub
 //! seed and a recording Router; `contract` the checks both they and `lib-database`'s adapter keep
-//! (#858). Delete re-points other domains' rows, so it goes through the reassign port
-//! (`CategoryReassign`, Q6), which a Client answers through its Ledger until `lib-reassign`
-//! (#813). No UI toolkit and no I/O; the Desktop draws the view models
-//! (`bin-desktop/src/categories/`).
+//! (#858). Delete re-points other domains' rows, so it and its Dialog are
+//! `lib-category-deletion`'s (#1004, #1005); the page only asks its Router to open that Dialog.
+//! No UI toolkit and no I/O; the Desktop draws the view models (`bin-desktop/src/categories/`).
 
 #[cfg(feature = "contract-tests")]
 #[expect(
@@ -29,7 +28,6 @@ pub mod protocols;
 pub use entity::*;
 pub use protocols::{
     CategoriesDialog, CategoriesOutcome, CategoriesRouter, CategoryBudget, CategoryChange,
-    CategoryHandover, CategoryReassign, CategoryReassigned, CategoryRepository, CategorySavePorts,
-    CategoryUsage, CategoryUse, Holdings, MonthlyBudget, MonthlyBudgetRefusal, ParentStop,
-    ReassignRefusal, SharedCategories, TypeChangeBlockers,
+    CategoryHandover, CategoryRepository, CategorySavePorts, CategoryUsage, CategoryUse, Holdings,
+    MonthlyBudget, MonthlyBudgetRefusal, ParentStop, SharedCategories, TypeChangeBlockers,
 };

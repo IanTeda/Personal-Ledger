@@ -8,14 +8,12 @@ mod bills_seed_tests;
 mod budget_reads;
 #[cfg(test)]
 mod budgets_seed_tests;
-mod category_commands;
 mod category_reads;
 mod change;
 mod document_reads;
 #[cfg(test)]
 mod documents_seed_tests;
 mod institution_reads;
-mod payee_reads;
 mod repository;
 pub mod seed;
 mod tag_reads;
@@ -23,7 +21,6 @@ mod tag_usage;
 mod unit_usage;
 
 pub use budget_reads::{budget_accounts, budget_categories};
-pub use category_commands::{CategoryDeleted, DeleteCategory, DeleteCategoryRefusal};
 pub use change::{Domain, LedgerChange, LedgerCommand, domains};
 pub use repository::{LedgerRepository, RepositoryError, StubRepository};
 pub use seed::{DEFAULT_SEED, HISTORY_DAYS, default_transactions};
@@ -212,9 +209,9 @@ impl Ledger {
 
     /// Replaces the read copy of the Transactions with what the Transactions port holds (#774's
     /// halfway shim), newest first as every reader takes them, since a port lists in no particular
-    /// order. Its readers are the commands that rewrite Splits on the copy, Category reassign and
-    /// Tag remove and merge, so it goes when they leave the Ledger (#813). Returns whether anything
-    /// changed, so a Client announces only a real change.
+    /// order. The commands that rewrote Splits on the copy have left the Ledger for
+    /// `lib-tag-removal` and `lib-category-deletion` (#1003, #1005), so it goes with its last
+    /// reader (#816). Returns whether anything changed, so a Client announces only a real change.
     pub fn refresh_transactions(&mut self, mut transactions: Vec<Transaction>) -> bool {
         sort_newest_first(&mut transactions);
         if self.transactions == transactions {

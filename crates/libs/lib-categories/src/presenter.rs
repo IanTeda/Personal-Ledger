@@ -1,13 +1,12 @@
-//! One Presenter per Categories View: the Settings page and each of its Dialogs (Add and Edit
-//! share the form). Each takes events through `handle` and builds a plain-data view model through
-//! `view_model`, its text already localised from [`crate::msg`], so a View only draws. They share
+//! One Presenter per Categories View: the Settings page and its Add and Edit Dialogs, which share
+//! the form. The Delete category Dialog's is `lib-category-deletion`'s (#1004). Each takes events
+//! through `handle` and builds a plain-data view model through `view_model`, its text already localised from [`crate::msg`], so a View only draws. They share
 //! one repository ([`SharedCategories`](crate::protocols::SharedCategories)) and ask for
 //! navigation through the [`CategoriesRouter`](crate::protocols::CategoriesRouter) the Client
-//! passes in. A Dialog's confirm is lent the port that writes through the Client's Ledger.
+//! passes in. A Dialog's confirm is lent the ports onto the other domains its save reaches.
 
 mod categories_page;
 mod category_form;
-mod delete_category;
 
 pub use categories_page::{
     CategoriesPageEvent, CategoriesPagePresenter, CategoriesPageViewModel, CategoryColumns,
@@ -16,12 +15,11 @@ pub use categories_page::{
 pub use category_form::{
     BudgetField, CategoryField, CategoryFormEvent, CategoryFormPresenter, CategoryFormViewModel,
 };
-pub use delete_category::{DeleteCategoryEvent, DeleteCategoryPresenter, DeleteCategoryViewModel};
 
 use lib_core::CategoryTypes;
 use lib_viper::view::count;
 
-use crate::protocols::{MonthlyBudgetRefusal, ReassignRefusal, TypeChangeBlockers};
+use crate::protocols::{MonthlyBudgetRefusal, TypeChangeBlockers};
 use crate::{CategoryError, SaveCategoryRefusal, msg};
 
 /// A refused Add or Edit as the form shows it.
@@ -84,15 +82,6 @@ fn type_in_use_text(category: &str, to: &CategoryTypes, blockers: TypeChangeBloc
         _ => String::new(),
     };
     msg::categories_type_in_use(category, &lib_locale::Label::label(to), &uses)
-}
-
-/// A refused delete as the Delete Dialog shows it.
-fn reassign_refusal_text(refusal: ReassignRefusal) -> String {
-    match refusal {
-        ReassignRefusal::NotFound => msg::categories_refusal_gone(),
-        ReassignRefusal::HasChildren => msg::categories_refusal_has_children(),
-        ReassignRefusal::UncategorisedInUse => msg::categories_refusal_uncategorised_in_use(),
-    }
 }
 
 #[cfg(test)]

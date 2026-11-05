@@ -4,10 +4,9 @@
 //! every typed key.
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
-use lib_categories::presenter::DeleteCategoryViewModel;
+use lib_category_deletion::presenter::DeleteCategoryViewModel;
 
 use super::Clicks;
-use super::category_form::error_line;
 use crate::{dialog, theme::color};
 
 /// The Dialog's width: the handoff's 5d.
@@ -92,6 +91,17 @@ fn confirm_field(label: &str, text: &str, placeholder: &str, cx: &App) -> AnyEle
                 .text_color(text_color)
                 .child(SharedString::from(shown)),
         )
+        .into_any_element()
+}
+
+/// A refused confirm, under the field, as the Categories form draws its own.
+fn error_line(text: String, cx: &App) -> AnyElement {
+    div()
+        .mt(px(4.0))
+        .text_size(px(11.5))
+        .font_weight(gpui::FontWeight::EXTRA_BOLD)
+        .text_color(color::accent_text(cx))
+        .child(text)
         .into_any_element()
 }
 

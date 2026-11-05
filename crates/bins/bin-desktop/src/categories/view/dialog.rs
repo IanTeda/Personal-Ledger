@@ -1,24 +1,22 @@
-//! The Categories Dialogs' Views, each open one an Entity in the Dialog host
-//! (`shell::view::dialog_entity`). [`CategoriesDialog`] holds a `lib-categories` Presenter and the
-//! widget state that is gpui's to keep (the Parent category list's scroll window). Every Dialog
+//! The Add and Edit category Dialog's View, the open one an Entity in the Dialog host
+//! (`shell::view::dialog_entity`). [`CategoriesDialog`] holds a `lib-categories` form Presenter and
+//! the widget state that is gpui's to keep (the Parent category list's scroll window). Every Dialog
 //! command and typed key reaches the Presenter as a `lib-viper` `DialogInput`, which it reads
-//! itself, and every click becomes a Presenter event; each View draws the Presenter's view model
-//! and nothing else.
+//! itself, and every click becomes a Presenter event; the View draws the Presenter's view model
+//! and nothing else. The Delete category Dialog is the Category Deletion module's
+//! (`crate::category_deletion`, #1005).
 //!
 //! The Presenter closes its Dialog through the host's [`HostRouter`]. An input and a confirm are
-//! lent the ports the Desktop answers from its Ledger ([`LedgerPorts`]), built around
-//! the confirm's gpui context: the Monthly budget for the form, the reassign port for Delete. A
-//! confirmed outcome is handed to the page, and the host closes on [`DialogClosed`]. A Toast the
-//! Presenter raises goes onto the bin's queue, which the input's `send` drains.
+//! lent the ports the Desktop answers from its Ledger ([`LedgerPorts`]), built around the
+//! confirm's gpui context: the usage, the Monthly budget and the handover. A confirmed outcome is
+//! handed to the page, and the host closes on [`DialogClosed`]. A Toast the Presenter raises goes
+//! onto the bin's queue, which the input's `send` drains.
 
 mod category_form;
-mod delete_category;
 
 use chrono::NaiveDate;
 use gpui::{App, Context, Entity, EventEmitter, IntoElement, Render, Window};
-use lib_categories::presenter::{
-    CategoryFormEvent, CategoryFormPresenter, DeleteCategoryEvent, DeleteCategoryPresenter,
-};
+use lib_categories::presenter::{CategoryFormEvent, CategoryFormPresenter};
 use lib_categories::{CategoriesDialog as Which, CategoriesOutcome, SharedCategories};
 use lib_shell::DialogCommand;
 use lib_viper::dialog::DialogInput;
@@ -36,36 +34,21 @@ type Clicks = DialogClicks<CategoriesDialog>;
 /// What a confirmed Categories Dialog hands the page that opened it.
 pub(crate) type Landed = Box<dyn Fn(CategoriesOutcome, &mut App)>;
 
-/// The open Categories Dialog: its Presenter and its widget state.
+/// The open Add or Edit category Dialog: its Presenter and its widget state.
 pub struct CategoriesDialog {
     /// The Ledger the confirm's ports read and write, and whose read copy it brings in line.
     ledger: Entity<LedgerStore>,
     today: NaiveDate,
-    view: View,
+    presenter: CategoryFormPresenter,
+    /// The top row of the Parent category list's window.
+    scroll: usize,
     landed: Landed,
 }
 
-enum View {
-    /// Add or Edit, with the top row of the Parent category list's window.
-    Form(CategoryFormPresenter, usize),
-    Delete(DeleteCategoryPresenter),
-}
-
-impl View {
-    /// Which Dialog is open, as the UI tests name it.
-    fn kind(&self) -> &'static str {
-        match self {
-            Self::Form(presenter, _) if presenter.view_model().editing => "EditCategory",
-            Self::Form(..) => "AddCategory",
-            Self::Delete(_) => "DeleteCategory",
-        }
-    }
-}
-
 impl CategoriesDialog {
-    /// `which`'s Presenter on `categories`, its usage and Monthly budget read from `ledger` as of
-    /// `today`, or `None` when the Category it names is gone. A confirm hands its outcome to
-    /// `landed`.
+    /// `which`'s form Presenter on `categories`, its usage and Monthly budget read from `ledger` as
+    /// of `today`, or `None` when the Category it edits is gone, or `which` is a delete, which is
+    /// not this Dialog's. A confirm hands its outcome to `landed`.
     pub(crate) fn open(
         which: Which,
         categories: &SharedCategories,
@@ -76,21 +59,16 @@ impl CategoriesDialog {
     ) -> Option<Self> {
         let reads = LedgerPorts { ledger, today, cx };
         let shared = categories.clone();
-        let view = match which {
-            Which::AddCategory { parent } => {
-                View::Form(CategoryFormPresenter::add(shared, &reads, parent), 0)
-            }
-            Which::EditCategory(id) => {
-                View::Form(CategoryFormPresenter::edit(shared, &reads, &reads, id)?, 0)
-            }
-            Which::DeleteCategory(id) => {
-                View::Delete(DeleteCategoryPresenter::new(&shared, &reads, id)?)
-            }
+        let presenter = match which {
+            Which::AddCategory { parent } => CategoryFormPresenter::add(shared, &reads, parent),
+            Which::EditCategory(id) => CategoryFormPresenter::edit(shared, &reads, &reads, id)?,
+            Which::DeleteCategory(_) => return None,
         };
         Some(Self {
             ledger: ledger.clone(),
             today,
-            view,
+            presenter,
+            scroll: 0,
             landed,
         })
     }
@@ -138,10 +116,7 @@ impl HostedDialog for CategoriesDialog {
             today: self.today,
             cx,
         };
-        match &mut self.view {
-            View::Form(presenter, _) => presenter.input(input, &mut ports, &mut router),
-            View::Delete(presenter) => presenter.input(input, &mut ports, &mut router),
-        }
+        self.presenter.input(input, &mut ports, &mut router);
         if may_confirm {
             ports::refresh(&self.ledger, cx);
         }
@@ -149,10 +124,7 @@ impl HostedDialog for CategoriesDialog {
     }
 
     fn can_confirm(&self) -> bool {
-        match &self.view {
-            View::Form(presenter, _) => presenter.view_model().frame.can_confirm,
-            View::Delete(presenter) => presenter.view_model().frame.can_confirm,
-        }
+        self.presenter.view_model().frame.can_confirm
     }
 
     /// Sends Confirm to the Presenter, lent the Ledger's ports, with the Ledger read copy in line
@@ -165,80 +137,55 @@ impl HostedDialog for CategoriesDialog {
             today: self.today,
             cx,
         };
-        match &mut self.view {
-            View::Form(presenter, _) => presenter.confirm(&mut ports, &mut router),
-            View::Delete(presenter) => presenter.confirm(&mut ports, &mut router),
-        }
+        self.presenter.confirm(&mut ports, &mut router);
         ports::refresh(&self.ledger, cx);
         self.closed(router, cx);
     }
 
     /// A cancelled Categories Dialog has written nothing.
     fn cancel(&mut self, cx: &mut Context<'_, Self>) {
-        let router = match &mut self.view {
-            View::Form(presenter, _) => send(
-                presenter,
-                CategoryFormEvent::Cancel,
-                CategoryFormPresenter::handle,
-            ),
-            View::Delete(presenter) => send(
-                presenter,
-                DeleteCategoryEvent::Cancel,
-                DeleteCategoryPresenter::handle,
-            ),
-        };
+        let router = send(
+            &mut self.presenter,
+            CategoryFormEvent::Cancel,
+            CategoryFormPresenter::handle,
+        );
         self.closed(router, cx);
     }
 
     fn close_open_select(&mut self) -> bool {
-        match &mut self.view {
-            View::Form(presenter, _) => {
-                let open = presenter.view_model().parent_list.is_open();
-                if open {
-                    send(
-                        presenter,
-                        CategoryFormEvent::CloseParents,
-                        CategoryFormPresenter::handle,
-                    );
-                }
-                open
-            }
-            View::Delete(_) => false,
+        let open = self.presenter.view_model().parent_list.is_open();
+        if open {
+            send(
+                &mut self.presenter,
+                CategoryFormEvent::CloseParents,
+                CategoryFormPresenter::handle,
+            );
         }
+        open
     }
 
-    /// Cancel and confirm, and on the form, the key that moves field.
+    /// Cancel, confirm and the key that moves field.
     fn hints(&self, keymap: &Keymap<DialogCommand>) -> Option<Vec<Hint>> {
         let key = |command| keymap.chord(command).unwrap_or_default().to_string();
-        let mut hints = vec![
+        Some(vec![
             Hint::new(key(BACK), crate::msg::desktop_hint_cancel()),
             Hint::new(key(SELECT), crate::msg::desktop_hint_confirm()),
-        ];
-        if matches!(self.view, View::Form(..)) {
-            hints.push(Hint::new(
-                key(NEXT_FIELD),
-                crate::msg::desktop_hint_next_field(),
-            ));
-        }
-        Some(hints)
+            Hint::new(key(NEXT_FIELD), crate::msg::desktop_hint_next_field()),
+        ])
     }
 
     /// The open Dialog's title, the fields it draws and whether it would confirm, for a test.
     fn readback(&self, _cx: &App) -> DialogReadback {
-        let (frame, mut values) = match &self.view {
-            View::Form(presenter, _) => {
-                let view = presenter.view_model();
-                (view.frame.clone(), category_form::readback(&view))
-            }
-            View::Delete(presenter) => {
-                let view = presenter.view_model();
-                (view.frame.clone(), delete_category::readback(&view))
-            }
-        };
-        values.insert(0, ("title", frame.title));
-        values.push(("can_confirm", frame.can_confirm.to_string()));
+        let view = self.presenter.view_model();
+        let mut values = category_form::readback(&view);
+        values.insert(0, ("title", view.frame.title.clone()));
+        values.push(("can_confirm", view.frame.can_confirm.to_string()));
         DialogReadback {
-            kind: self.view.kind(),
+            kind: if view.editing {
+                "EditCategory"
+            } else {
+                "AddCategory"
+            },
             values,
         }
     }
@@ -247,13 +194,6 @@ impl HostedDialog for CategoriesDialog {
 impl Render for CategoriesDialog {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let actions = Clicks::new(cx);
-        match &mut self.view {
-            View::Form(presenter, scroll) => {
-                category_form::render(&presenter.view_model(), scroll, &actions, cx)
-            }
-            View::Delete(presenter) => {
-                delete_category::render(&presenter.view_model(), &actions, cx)
-            }
-        }
+        category_form::render(&self.presenter.view_model(), &mut self.scroll, &actions, cx)
     }
 }

@@ -102,21 +102,6 @@ categories-parent-budget-rollup-sum = { $amount } · rollup of children's budget
 categories-budget-archived = { $amount } · { $budget } is archived, so its amounts are read-only
 categories-budget-none = —
 
-## The Delete category Dialog (5d).
-
-categories-delete-title = Delete category — { $name }
-categories-delete-submit = Delete category
-categories-delete-warning = This category has <strong>{ $count ->
-    [one] { $count } transaction
-   *[other] { $count } transactions
-}.</strong> Deleting it cannot be undone.
-categories-delete-reference = Splits will be moved to Uncategorised · { $budgets ->
-    [0] no budget attached
-    [one] { $budgets } budget attached
-   *[other] { $budgets } budgets attached
-}
-categories-delete-confirm-label = Type { $name } to confirm
-
 ## Why a confirm was refused, shown in the Dialog.
 
 categories-refusal-gone = This category has since been deleted.
@@ -124,8 +109,6 @@ categories-refusal-parent-gone = The parent category has since been deleted.
 categories-refusal-type-mismatch = A category must be the same type as its parent.
 categories-refusal-too-deep = Categories nest at most three levels deep.
 categories-refusal-cycle = A category can't go under itself or one of its own subcategories.
-categories-refusal-has-children = Delete or move its subcategories first.
-categories-refusal-uncategorised-in-use = Uncategorised can't be deleted while transactions or bills use it.
 categories-refusal-uncategorised-fixed = Uncategorised is fixed: it can't be renamed, moved, retyped or given subcategories.
 categories-refusal-leaf-holds-rows = { $leaf } has { $rows }; add a Category under it first.
 categories-holds-splits = Splits

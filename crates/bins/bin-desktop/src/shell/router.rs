@@ -929,13 +929,9 @@ mod tests {
     }
 
     #[test]
-    fn deleting_a_leaf_category_toasts_the_splits_it_moved() {
+    fn the_category_deleted_toast_names_the_category() {
         crate::locale::init_for_tests();
-        let mut ledger = lib_ledger::Ledger::stub();
-        let rent = lib_categories::find_by_name(ledger.categories(), "Rent").expect("seeded");
-        let deleted = ledger.delete_category(rent).expect("a leaf");
-        let text =
-            lib_locale::msg::toast_category_deleted(&deleted.name, deleted.splits_moved as i64);
+        let text = lib_locale::msg::toast_category_deleted("Rent", 3);
         assert!(text.starts_with("Deleted category Rent · "), "{text}");
     }
 

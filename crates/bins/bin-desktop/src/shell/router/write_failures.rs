@@ -147,7 +147,7 @@ fn reload(
         },
         Domain::Payees => Reload {
             name: "Payees",
-            reloaded: ledger.update(cx, |store, cx| store.reload_payees(cx)),
+            reloaded: crate::payees::ports::reload(ledger, cx),
             restored: crate::msg::desktop_toast_write_failed_payees,
             unsaved: crate::msg::desktop_toast_write_failed_payees_unsaved,
         },

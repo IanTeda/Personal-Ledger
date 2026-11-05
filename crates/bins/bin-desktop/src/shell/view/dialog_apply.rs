@@ -105,9 +105,13 @@ mod tests {
         fn run(self, ledger: &mut lib_ledger::Ledger) -> Result<Removed, String> {
             let category = lib_categories::find_by_name(ledger.categories(), &self.0)
                 .ok_or_else(|| format!("{} is gone", self.0))?;
-            ledger
-                .delete_category(category)
-                .map_err(|_| format!("{} is gone", self.0))?;
+            let kept = ledger
+                .categories()
+                .iter()
+                .filter(|row| row.id != category)
+                .cloned()
+                .collect();
+            ledger.refresh_categories(kept);
             Ok(Removed(ledger.categories().len()))
         }
     }

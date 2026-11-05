@@ -267,9 +267,15 @@ fn typing_the_exact_name_and_pressing_enter_removes_the_leaf(app: &mut TestAppCo
     assert_eq!(ui.dialog(), Some("DeleteCategory"));
     ui.press("shift-r e n t");
     assert_eq!(ui.dialog_value("confirm").as_deref(), Some("Rent"));
+    let commits = ui.commits();
     ui.press("enter");
     let categories_page = ui.settings::<SettingsCategoriesSnapshot>();
     assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        ui.commits(),
+        commits + 1,
+        "the re-pointing and the delete land in one commit"
+    );
     assert!(
         !categories_page
             .category_names

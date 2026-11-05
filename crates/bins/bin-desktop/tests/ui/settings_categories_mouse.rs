@@ -157,10 +157,12 @@ fn the_delete_confirm_is_inert_until_the_name_is_typed(app: &mut TestAppContext)
     ui.click("delete-category-confirm");
     assert_eq!(ui.dialog(), Some("DeleteCategory"));
     ui.press("shift-h o u s e h o l d");
+    let commits = ui.commits();
     ui.click("delete-category-confirm");
     // Household is used by splits, so they move to Uncategorised: the count can stay level.
     let categories_page = ui.settings::<SettingsCategoriesSnapshot>();
     assert_eq!(ui.dialog(), None);
+    assert_eq!(ui.commits(), commits + 1, "the click is one input");
     assert!(
         !categories_page
             .category_names

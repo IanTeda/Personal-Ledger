@@ -2,9 +2,9 @@
 //! tree in `docs/ux/desktop-mockups/18-categories/` (Housing, Food, Transport, Household, Salary,
 //! Interest and their children: 12 categories, three levels deep).
 //!
-//! The rules take the rows rather than the repository, because `lib-ledger` still runs them on
-//! its own rows for delete (reassign), which stays there until `lib-reassign` (#847, Q6, #813);
-//! the Interactors read the rows from the repository, run the same rule and write what changed.
+//! The rules take the rows rather than the repository, because `lib-category-deletion` runs them
+//! on the rows its port serves for delete (#1004); the Interactors read the rows from the
+//! repository, run the same rule and write what changed.
 
 use lib_core::{CategoryId, CategoryTypes};
 

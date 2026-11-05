@@ -1,32 +1,48 @@
 //! `impl CategoriesRouter` for the Desktop: where the Categories page's Presenter asks to go. A
 //! Dialog opens as an Entity in the Dialog host through the page's gpui context, which is why the
 //! Router is built for each `handle` call, and a Notice goes onto the bin's queue
-//! (`crate::notices`), which the input's `send` drains.
+//! (`crate::notices`), which the input's `send` drains. The Delete category Dialog is the Category
+//! Deletion module's (`crate::category_deletion`, #1005), opened through its entry point.
 
 use chrono::NaiveDate;
 use gpui::{Context, Entity};
-use lib_categories::{CategoriesDialog as Which, CategoriesRouter};
+use lib_categories::{CategoriesDialog as Which, CategoriesOutcome, CategoriesRouter};
 use lib_toast::{Notice, Notify};
 
 use super::CategoriesSetup;
 use super::view::dialog::CategoriesDialog;
 use super::view::page::CategoriesPage;
+use crate::category_deletion::DeletionStores;
 use crate::ledger_store::LedgerStore;
 use crate::notices::Queue;
 use crate::shell::view::dialog_entity::host_dialog;
 
 pub(super) struct PageRouter<'a, 'b> {
     pub categories: lib_categories::SharedCategories,
+    pub deletion: DeletionStores,
     pub ledger: Entity<LedgerStore>,
     pub today: NaiveDate,
     pub cx: &'a mut Context<'b, CategoriesPage>,
 }
 
 impl CategoriesRouter for PageRouter<'_, '_> {
-    /// Builds `dialog`'s Presenter on the shared Categories, its usage and budget read from the
-    /// Ledger, and hosts its View; its confirmed outcome comes back to the page through
-    /// [`CategoriesPage::dialog_landed`].
+    /// Builds `dialog`'s Presenter and hosts its View: Add and Edit on the shared Categories, their
+    /// usage and budget read from the Ledger, Delete on the Category Deletion module's port. Its
+    /// confirmed outcome comes back to the page through [`CategoriesPage::dialog_landed`].
     fn open_dialog(&mut self, dialog: Which) -> bool {
+        if let Which::DeleteCategory(id) = dialog {
+            let landed = |page: &mut CategoriesPage,
+                          outcome: CategoriesOutcome,
+                          cx: &mut Context<'_, CategoriesPage>| {
+                page.dialog_landed(outcome, cx);
+            };
+            return crate::category_deletion::router::open_delete(
+                self.cx,
+                &self.deletion,
+                id,
+                landed,
+            );
+        }
         let page = self.cx.weak_entity();
         let landed = Box::new(move |outcome, cx: &mut gpui::App| {
             // A page that has gone has nothing to land on.

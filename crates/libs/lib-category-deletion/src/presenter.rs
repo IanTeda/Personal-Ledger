@@ -1,4 +1,4 @@
-//! The Delete category Dialog's Presenter, copied from `lib-categories` (#1004). It takes
+//! The Delete category Dialog's Presenter, moved from `lib-categories` (#1004, #1005). It takes
 //! `lib-viper`'s `DialogInput`s and its own events, builds a plain-data view model with its text
 //! already localised from [`crate::msg`], and closes through the generic `DialogRouter` with
 //! `lib-categories`' `CategoriesOutcome`. It holds the shared deletion port its confirm runs the

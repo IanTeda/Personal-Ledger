@@ -11,7 +11,7 @@ use lib_categories::presenter::{
 };
 use lib_core::CategoryTypes;
 
-use super::{CategoriesDialog, Clicks, View, send};
+use super::{CategoriesDialog, Clicks, send};
 use crate::form::viper::{chosen_label, drawn, labels};
 use crate::{
     dialog,
@@ -29,40 +29,31 @@ fn handle(presenter: &mut CategoryFormPresenter, event: CategoryFormEvent) {
     send(presenter, event, CategoryFormPresenter::handle);
 }
 
-fn form(dialog: &mut CategoriesDialog) -> Option<&mut CategoryFormPresenter> {
-    match &mut dialog.view {
-        View::Form(presenter, _) => Some(presenter),
-        View::Delete(_) => None,
-    }
-}
-
 /// A click on a text field focuses it, closing the list.
 fn click_field(dialog: &mut CategoriesDialog, field: CategoryField) {
-    if let Some(presenter) = form(dialog) {
-        handle(presenter, CategoryFormEvent::Focus(field));
-    }
+    handle(&mut dialog.presenter, CategoryFormEvent::Focus(field));
 }
 
 /// A click on the select's closed field focuses it and toggles its list.
 fn click_select(dialog: &mut CategoriesDialog) {
-    if let Some(presenter) = form(dialog) {
-        handle(presenter, CategoryFormEvent::ToggleParents);
-    }
+    handle(&mut dialog.presenter, CategoryFormEvent::ToggleParents);
 }
 
 /// A click on row `index` of the open list.
 fn click_option(dialog: &mut CategoriesDialog, index: usize) {
-    if let Some(presenter) = form(dialog)
-        && let Some(choice) = presenter.view_model().parent.options.get(index)
-    {
-        handle(presenter, CategoryFormEvent::Parent(choice.value));
+    if let Some(choice) = dialog.presenter.view_model().parent.options.get(index) {
+        handle(
+            &mut dialog.presenter,
+            CategoryFormEvent::Parent(choice.value),
+        );
     }
 }
 
 fn click_type(dialog: &mut CategoriesDialog, category_type: CategoryTypes) {
-    if let Some(presenter) = form(dialog) {
-        handle(presenter, CategoryFormEvent::Type(category_type));
-    }
+    handle(
+        &mut dialog.presenter,
+        CategoryFormEvent::Type(category_type),
+    );
 }
 
 pub(super) fn render(

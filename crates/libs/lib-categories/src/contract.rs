@@ -4,8 +4,8 @@
 //! Each check is a function generic over a [`PortsFactory`]: a consumer runs it from its own test,
 //! since an adapter's tests need their own set-up (a fresh database per test). Each writes through
 //! the Categories Interactors, as a Client does, reloads as a restart would, and expects the same
-//! tree back, in the same order. There is no delete check: delete is `lib-ledger`'s reassign
-//! (#847, Q6), not a port write.
+//! tree back, in the same order. There is no delete check: delete is `lib-category-deletion`'s
+//! atomic port (#1004), whose own contract checks it.
 
 use lib_core::{CategoryId, CategoryTypes};
 

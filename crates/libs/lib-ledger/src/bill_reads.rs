@@ -8,11 +8,10 @@
 //!   once (`docs/development/viper-architecture.md`, Rules > Dependencies). `BillTransactions` is
 //!   `lib-database`'s Transactions store's (#926); [`Ledger::bill_splits`] flattens the Ledger's copy
 //!   the same way for the tests that check the stub's Bills seed against it.
-//! - **The Bills read copy ([`Ledger::refresh_bills`]).** The Bills ports are the truth; the
-//!   Ledger keeps a copy for Category reassign ([`crate::DeleteCategory`]), which re-points the
-//!   Bill Plans naming the Category on it. The Dashboard and the rail badge read Bills through
-//!   `lib-bills` (#1024, #1026), so the copy goes when Category reassign leaves the Ledger with
-//!   `lib-reassign` (#813).
+//! - **The Bills read copy ([`Ledger::refresh_bills`]).** The Bills ports are the truth. Category
+//!   delete, the last command that re-pointed Bill Plans on the copy, writes the Bills store
+//!   through `lib-category-deletion` (#1005), and the Dashboard and the rail badge read Bills
+//!   through `lib-bills` (#1024, #1026), so the copy goes with its last reader (#816).
 
 use lib_accounts::Account;
 use lib_bills::{

@@ -12,8 +12,8 @@ use lib_viper::dialog::DialogRouter;
 
 use crate::protocols::{
     CategoriesDialog, CategoriesOutcome, CategoriesRouter, CategoryBudget, CategoryHandover,
-    CategoryReassign, CategoryReassigned, CategoryUsage, CategoryUse, Holdings, MonthlyBudget,
-    MonthlyBudgetRefusal, ParentStop, ReassignRefusal, SharedCategories, TypeChangeBlockers,
+    CategoryUsage, CategoryUse, Holdings, MonthlyBudget, MonthlyBudgetRefusal, ParentStop,
+    SharedCategories, TypeChangeBlockers,
 };
 use crate::{
     Category, CategoryRepository, default_categories, descendants_inclusive, get, is_leaf,
@@ -209,44 +209,6 @@ impl CategoryHandover for InMemoryCategoryBudget {
         to_held.bill_plans += held.bill_plans;
         to_held.payee_defaults += held.payee_defaults;
         self.handed_over.push((from, to));
-    }
-}
-
-/// Category delete over shared in-memory Categories, with nothing in other domains to re-point:
-/// it removes a leaf and reports `splits_moved`. With `refusal` set, every delete is refused so.
-#[derive(Debug, Clone)]
-pub struct InMemoryReassign {
-    pub categories: Rc<RefCell<InMemoryCategories>>,
-    pub splits_moved: usize,
-    pub refusal: Option<ReassignRefusal>,
-}
-
-impl InMemoryReassign {
-    pub fn new(categories: Rc<RefCell<InMemoryCategories>>) -> Self {
-        Self {
-            categories,
-            splits_moved: 0,
-            refusal: None,
-        }
-    }
-}
-
-impl CategoryReassign for InMemoryReassign {
-    fn delete_category(&mut self, id: CategoryId) -> Result<CategoryReassigned, ReassignRefusal> {
-        if let Some(refusal) = self.refusal {
-            return Err(refusal);
-        }
-        let mut categories = self.categories.borrow_mut();
-        let rows = &mut categories.categories;
-        let name = get(rows, id).ok_or(ReassignRefusal::NotFound)?.name.clone();
-        if !is_leaf(rows, id) {
-            return Err(ReassignRefusal::HasChildren);
-        }
-        rows.retain(|row| row.id != id);
-        Ok(CategoryReassigned {
-            name,
-            splits_moved: self.splits_moved,
-        })
     }
 }
 

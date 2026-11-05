@@ -1,8 +1,8 @@
 //! The Payees Settings page's View: the `lib-payees` page Presenter in a gpui Entity. It looks up
 //! each key the Shell passes on, as chord text, in the Payees keymap, turns clicks into events,
-//! draws the view model (`render.rs`), and keeps the Ledger read copy in line after every event
-//! ([`ports::refresh`]). Each key and click is one input (`crate::input::send`), which commits
-//! what it wrote. The Settings View hosts it as any other page.
+//! draws the view model (`render.rs`), and announces `Domain::Payees` after an event that wrote
+//! the Payees ([`ports::announce`]). Each key and click is one input (`crate::input::send`), which
+//! commits what it wrote. The Settings View hosts it as any other page.
 
 mod render;
 
@@ -15,7 +15,7 @@ use lib_viper::keymap::Keymap;
 use lib_shell::Hint;
 
 use crate::payees::SettingsPayeesSnapshot;
-use crate::payees::ports::{self, DesktopPorts};
+use crate::payees::ports::{self, DesktopPorts, payees};
 use crate::payees::router::PageRouter;
 use crate::settings::snapshot::PageSnapshot;
 use crate::{
@@ -75,11 +75,10 @@ impl PayeesPage {
         crate::input::send(cx, |cx| self.handle(event, cx));
     }
 
-    /// Hands `event` to the Presenter with the Desktop's Router, then brings the Ledger read copy
-    /// in line with whatever it wrote. Inside an input already, as [`Self::send`] or a Dialog's
-    /// confirm.
+    /// Hands `event` to the Presenter with the Desktop's Router, announcing the Payees when it
+    /// wrote them. Inside an input already, as [`Self::send`] or a Dialog's confirm.
     fn handle(&mut self, event: PayeesPageEvent, cx: &mut Context<'_, Self>) {
-        ports::refresh(&self.ledger, cx);
+        let before = payees(&self.ports);
         let mut router = PageRouter {
             ports: self.ports.clone(),
             ledger: self.ledger.clone(),
@@ -87,7 +86,9 @@ impl PayeesPage {
             cx,
         };
         self.presenter.handle(event, &mut router);
-        ports::refresh(&self.ledger, cx);
+        if payees(&self.ports) != before {
+            ports::announce(&self.ledger, cx);
+        }
         cx.notify();
     }
 

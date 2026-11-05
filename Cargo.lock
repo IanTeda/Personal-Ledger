@@ -722,6 +722,7 @@ dependencies = [
  "lib_bills",
  "lib_budgets",
  "lib_categories",
+ "lib_category_deletion",
  "lib_colour_theme",
  "lib_config",
  "lib_core",

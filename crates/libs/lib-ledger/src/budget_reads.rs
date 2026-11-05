@@ -4,11 +4,10 @@
 //!   the stub's rows for its Budgets seed and the Category-tree callers. The Ledger no longer
 //!   answers the Budgets read ports: the Budgets page, the Dashboard and the rail badge read
 //!   `lib-database`'s `StoredBudgetReads` (#952, #993).
-//! - **The Budgets read copy ([`Ledger::refresh_budgets`]).** The Budgets store is the truth; the
-//!   Ledger keeps a copy for Category reassign ([`crate::DeleteCategory`]), which drops the
-//!   Category's Limits from every Budget on it. The Dashboard and the rail badge read Budgets
-//!   through `StoredBudgetReads` (#1024, #1026), so the copy goes when Category reassign leaves the
-//!   Ledger with `lib-reassign` (#813).
+//! - **The Budgets read copy ([`Ledger::refresh_budgets`]).** The Budgets store is the truth.
+//!   Category delete, the last command that dropped Limits on the copy, writes the Budgets store
+//!   through `lib-category-deletion` (#1005), and the Dashboard and the rail badge read Budgets
+//!   through `StoredBudgetReads` (#1024, #1026), so the copy goes with its last reader (#816).
 
 use lib_accounts::Account;
 use lib_budgets::{BudgetAccount, BudgetCategory};

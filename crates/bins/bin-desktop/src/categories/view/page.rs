@@ -11,7 +11,7 @@ use gpui::{AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Sub
 use lib_categories::presenter::{
     CategoriesPageEvent, CategoriesPagePresenter, CategoriesPageViewModel,
 };
-use lib_categories::{CategoriesOutcome, SharedCategories};
+use lib_categories::{CategoriesOutcome, CategoryChange, SharedCategories};
 use lib_ledger::Domain;
 use lib_viper::keymap::Keymap;
 
@@ -20,6 +20,7 @@ use lib_shell::Hint;
 use crate::categories::ports;
 use crate::categories::router::PageRouter;
 use crate::categories::{CategoriesSetup, SettingsCategoriesSnapshot};
+use crate::category_deletion::DeletionStores;
 use crate::settings::snapshot::PageSnapshot;
 use crate::{
     ledger_store::{LedgerStore, notify_on},
@@ -35,6 +36,8 @@ impl EventEmitter<PageRowClicked> for CategoriesPage {}
 pub struct CategoriesPage {
     presenter: CategoriesPagePresenter,
     categories: SharedCategories,
+    /// Category delete's port and reads, which the Delete category Dialog opens on.
+    deletion: DeletionStores,
     ledger: Entity<LedgerStore>,
     keymap: Keymap<CategoriesPageEvent>,
     /// "Today" for the Monthly budget a Dialog shows, read once when the Shell is built.
@@ -57,6 +60,7 @@ impl CategoriesPage {
         Self {
             presenter: CategoriesPagePresenter::new(categories.clone(), setup.keymap.clone()),
             categories,
+            deletion: setup.deletion,
             _categories_changed: notify_on(&ledger, Domain::Categories, cx),
             ledger,
             keymap: setup.keymap,
@@ -86,6 +90,7 @@ impl CategoriesPage {
         ports::refresh(&self.ledger, cx);
         let mut router = PageRouter {
             categories: self.categories.clone(),
+            deletion: self.deletion.clone(),
             ledger: self.ledger.clone(),
             today: self.today,
             cx,
@@ -95,12 +100,23 @@ impl CategoriesPage {
         cx.notify();
     }
 
-    /// A confirmed Dialog's outcome, handed back by the Dialog host inside the confirm's input.
+    /// A confirmed Dialog's outcome, handed back by the Dialog host inside the confirm's input. A
+    /// delete re-pointed the Splits, Bill Plans, Payee defaults and Budget Limits naming the
+    /// Category, so the Ledger's Transactions, Bills and Budgets read copies are brought in line
+    /// and the Payees announced, for the Views still reading them.
     pub(in crate::categories) fn dialog_landed(
         &mut self,
         outcome: CategoriesOutcome,
         cx: &mut Context<'_, Self>,
     ) {
+        if outcome.change == CategoryChange::Deleted {
+            self.ledger.update(cx, |store, cx| {
+                store.refresh_transactions(cx);
+                store.refresh_bills(cx);
+                store.refresh_budgets(cx);
+                store.announce_payees(cx);
+            });
+        }
         self.handle(CategoriesPageEvent::DialogClosed(Some(outcome)), cx);
     }
 

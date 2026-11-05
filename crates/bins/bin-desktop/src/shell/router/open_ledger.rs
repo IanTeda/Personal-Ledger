@@ -201,8 +201,19 @@ impl OpenLedger {
             keybindings,
         );
         let inventory_setup = crate::inventory::InventorySetup::new(inventory.clone(), keybindings);
-        let categories_setup =
-            crate::categories::CategoriesSetup::new(categories.clone(), keybindings);
+        // Category delete writes the Categories, Transactions, Bills, Payees and Budgets stores
+        // together (#1005).
+        let categories_setup = crate::categories::CategoriesSetup::new(
+            categories.clone(),
+            crate::category_deletion::DeletionStores::new(
+                categories.clone(),
+                transactions.clone(),
+                &bills,
+                payees.clone(),
+                budgets.clone(),
+            ),
+            keybindings,
+        );
         let payments = crate::bill_payments::payments(transactions.clone(), &bills);
         // Account delete writes the Accounts, Transactions and Bills stores together (#854).
         let account_deletion = crate::account_deletion::DeletionStores {

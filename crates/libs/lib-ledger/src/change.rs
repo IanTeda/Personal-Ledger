@@ -43,7 +43,8 @@ pub enum Domain {
 /// prototype's commands write so far; each domain adds its own as its writes move onto commands.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LedgerChange {
-    /// From Category reassign; the Payees module (#832) and the Import (#943) write their own ports.
+    /// No command records it any more: Category delete writes the Payees store through
+    /// `lib-category-deletion` (#1005).
     UpsertPayee(Payee),
     UpsertCategory(Category),
     DeleteCategory(CategoryId),

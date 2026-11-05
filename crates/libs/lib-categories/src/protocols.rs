@@ -5,11 +5,11 @@
 //!
 //! `lib-database`'s Categories adapter implements the repository (#858). The rest are ports onto
 //! domains that aren't modules yet (#859): what names a Category ([`CategoryUsage`]), the Monthly
-//! budget the Add and Edit Dialogs save into a Budget ([`CategoryBudget`]), and Category delete,
-//! which re-points the rows naming it ([`CategoryReassign`], Q6). A Client answers the last two
-//! through its Ledger until `lib-reassign` (#813) and Budgets (#811), and lends them to a
-//! Presenter's confirm rather than the Presenter holding them, since the Desktop writes its Ledger
-//! only with the gpui context that confirm runs in. The Presenters ask for navigation through
+//! budget the Add and Edit Dialogs save into a Budget ([`CategoryBudget`]) and the handover of a
+//! leaf's rows to its first child ([`CategoryHandover`]). A Client lends them to a Presenter's
+//! confirm rather than the Presenter holding them, since the Desktop writes them only with the gpui
+//! context that confirm runs in. Category delete re-points other domains' rows, so it is
+//! `lib-category-deletion`'s (#1004, #1005). The Presenters ask for navigation through
 //! [`CategoriesRouter`], which each Client implements.
 
 use std::cell::RefCell;
@@ -42,7 +42,7 @@ pub trait CategoryRepository {
 /// threads are.
 pub type SharedCategories = Rc<RefCell<dyn CategoryRepository>>;
 
-/// How many rows in other domains name one Category, as the Edit and Delete Dialogs quote them.
+/// How many rows in other domains name one Category, as the Edit Dialog quotes them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct CategoryUse {
     pub splits: usize,
@@ -52,7 +52,7 @@ pub struct CategoryUse {
 
 /// What names a Category, for wording only: a read port, so `lib-categories` needn't depend on
 /// the Transactions or Budgets crates. Counted from what the Client holds, and 0 when it can't
-/// count, since a delete's refusal is [`CategoryReassign`]'s.
+/// count.
 pub trait CategoryUsage {
     fn category_usage(&self, id: CategoryId) -> CategoryUse;
 
@@ -181,37 +181,6 @@ pub trait CategoryHandover {
 pub trait CategorySavePorts: CategoryBudget + CategoryHandover + CategoryUsage {}
 
 impl<T: CategoryBudget + CategoryHandover + CategoryUsage + ?Sized> CategorySavePorts for T {}
-
-/// What a Category delete did, for its Toast.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CategoryReassigned {
-    /// The Category's name, read before it went.
-    pub name: String,
-    /// The Splits moved to Uncategorised.
-    pub splits_moved: usize,
-}
-
-/// Why a Category delete was refused.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum ReassignRefusal {
-    #[error("category not found")]
-    NotFound,
-    /// Only leaves are deleted; a parent's children go first.
-    #[error("delete or move its children first")]
-    HasChildren,
-    /// Uncategorised is where a deleted Category's rows go, so it can't go while anything uses it.
-    #[error("Uncategorised can't be deleted while anything uses it")]
-    UncategorisedInUse,
-}
-
-/// Category delete (Q6): removes a leaf Category once its Splits and Bill Plans are moved to the
-/// Uncategorised Category of its type (made if needed), the Payees defaulting to it are cleared and
-/// the Budgets drop its Limits, all in the one commit of the input. The Delete Dialog's Presenter
-/// confirms through it; it re-points other domains' rows, so it is no `lib-categories` Interactor.
-/// The pattern Tags and Inventory repeat, and the port `lib-reassign` (#813) answers.
-pub trait CategoryReassign {
-    fn delete_category(&mut self, id: CategoryId) -> Result<CategoryReassigned, ReassignRefusal>;
-}
 
 /// A Categories Dialog, as the page asks the Router to open it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

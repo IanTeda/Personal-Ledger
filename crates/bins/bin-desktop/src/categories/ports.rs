@@ -1,16 +1,14 @@
 //! The Categories ports as the Desktop holds them (#858, #859): the store `shell::router::build` is
-//! given, shared by the Categories module, the Ledger's forwarding shim and read copy, the Bills
-//! ports (`BillCategories`) and the Payees ports and the Import's Category select (`PayeeCategories`, `ImportCategories`).
-//! The writes are committed by the input they were made in (`crate::input::send`), not here.
+//! given, shared by the Categories module, Category delete (`crate::category_deletion`, #1005), the
+//! Ledger's read copy, the Bills ports (`BillCategories`) and the Payees ports and the Import's
+//! Category select (`PayeeCategories`, `ImportCategories`). The writes are committed by the input
+//! they were made in (`crate::input::send`), not here.
 //!
 //! The Categories page writes the repository through `lib-categories`' Interactors. What the
 //! module reaches of other domains goes through [`LedgerPorts`]: the usage its Dialogs quote (the
 //! Splits from the Transactions store, #926, the Budgets from the Budgets store, #952), the
 //! Monthly budget the Add and Edit Dialogs read and save in the Personal spending Budget, on the
-//! Budgets store (#952), and Category delete, the reassign port, answered by running
-//! `lib_ledger::DeleteCategory` through `LedgerStore::apply`, whose shims carry its writes to the
-//! Categories, Payees, Transactions and Bills stores in the one commit (Q6, until `lib-reassign`,
-//! #813). [`forward`] and [`forward_deletes`] are the Categories shim's two halves.
+//! Budgets store (#952), and the handover of a leaf's rows to its first child.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -19,13 +17,13 @@ use chrono::{Datelike as _, NaiveDate};
 use gpui::{App, Entity};
 use lib_budgets::{Budgets, Error};
 use lib_categories::{
-    Category, CategoryBudget, CategoryHandover, CategoryReassign, CategoryReassigned,
-    CategoryRepository, CategoryUsage, CategoryUse, Holdings, MonthlyBudget, MonthlyBudgetRefusal,
-    ParentStop, ReassignRefusal, SharedCategories, TypeChangeBlockers,
+    Category, CategoryBudget, CategoryHandover, CategoryRepository, CategoryUsage, CategoryUse,
+    Holdings, MonthlyBudget, MonthlyBudgetRefusal, ParentStop, SharedCategories,
+    TypeChangeBlockers,
 };
 use lib_core::{CategoryId, Money};
-use lib_database::{CategoriesStore, SharedCategoriesStore};
-use lib_ledger::{DeleteCategory, DeleteCategoryRefusal, Ledger, LedgerChange};
+use lib_database::SharedCategoriesStore;
+use lib_ledger::Ledger;
 
 use crate::budgets::PERSONAL_SPENDING_ID;
 use crate::ledger_store::LedgerStore;
@@ -59,49 +57,16 @@ pub fn shared(store: &SharedCategoriesStore) -> SharedCategories {
     Rc::new(RefCell::new(StoreCategories(store.clone())))
 }
 
-/// The forwarding shim's first half (#858): sends each Category row `changes` upserts to `store`,
-/// in the order recorded, returning whether it wrote anything. Run before the Payees, Transactions
-/// and Bills, since Category reassign re-points their rows to an Uncategorised it may create.
-/// Writer carried: Category reassign's Uncategorised, until `lib-reassign` (#813); the Categories
-/// page writes the port itself (#859).
-pub fn forward(store: &mut dyn CategoriesStore, changes: &[LedgerChange]) -> bool {
-    let port = store.categories_mut();
-    let mut wrote = false;
-    for change in changes {
-        if let LedgerChange::UpsertCategory(category) = change {
-            port.upsert_category(category.clone());
-            wrote = true;
-        }
-    }
-    wrote
-}
-
-/// The forwarding shim's second half: sends each Category `changes` deletes to `store`, returning
-/// whether it wrote anything. Run after the Payees, Transactions and Bills, since the rows naming
-/// the Category must be re-pointed before it goes (their foreign keys). Writer carried: Category
-/// reassign, until `lib-reassign` (#813).
-pub fn forward_deletes(store: &mut dyn CategoriesStore, changes: &[LedgerChange]) -> bool {
-    let mut wrote = false;
-    for change in changes {
-        if let LedgerChange::DeleteCategory(id) = change {
-            store.delete_category(*id);
-            wrote = true;
-        }
-    }
-    wrote
-}
-
 /// Brings the Ledger read copy of the Categories in line with the store, announcing
 /// `Domain::Categories` when it changed. Run before and after every Categories event and Dialog
-/// confirm, so Transactions, Budgets, Import and the Dashboard see a write at once, and a reassign
-/// runs on the rows the page shows.
+/// confirm, so Transactions, Budgets, Import and the Dashboard see a write at once.
 pub fn refresh(ledger: &Entity<LedgerStore>, cx: &mut App) {
     ledger.update(cx, |store, cx| store.refresh_categories(cx));
 }
 
 /// The Categories ports the Desktop answers from its Ledger, built for one call around its gpui
 /// context: what names a Category, the Monthly budget in the Personal spending Budget as of
-/// `today` (the day the page was built), and Category delete.
+/// `today` (the day the page was built), and the handover.
 pub struct LedgerPorts<'a> {
     pub ledger: &'a Entity<LedgerStore>,
     pub today: NaiveDate,
@@ -254,108 +219,14 @@ impl CategoryHandover for LedgerPorts<'_> {
     }
 }
 
-impl CategoryReassign for LedgerPorts<'_> {
-    /// Today's `LedgerCommand`, on the read copy brought in line with the store first.
-    fn delete_category(&mut self, id: CategoryId) -> Result<CategoryReassigned, ReassignRefusal> {
-        self.ledger.update(self.cx, |store, cx| {
-            store.refresh_categories(cx);
-            store
-                .apply(cx, DeleteCategory(id))
-                .map(|deleted| CategoryReassigned {
-                    name: deleted.name,
-                    splits_moved: deleted.splits_moved,
-                })
-                .map_err(|refusal| match refusal {
-                    DeleteCategoryRefusal::NotFound => ReassignRefusal::NotFound,
-                    DeleteCategoryRefusal::HasChildren => ReassignRefusal::HasChildren,
-                    DeleteCategoryRefusal::UncategorisedInUse => {
-                        ReassignRefusal::UncategorisedInUse
-                    }
-                })
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use gpui::{AppContext as _, TestAppContext};
 
     use super::*;
 
-    #[test]
-    fn category_upserts_and_deletes_reach_the_store_in_their_own_halves() {
-        let ledger = Ledger::stub();
-        let store = in_memory(&ledger);
-        let mut groceries = ledger.categories()[6].clone();
-        groceries.name = "Supermarket".into();
-        let gone = CategoryId::seed(8);
-        let changes = [
-            LedgerChange::UpsertCategory(groceries.clone()),
-            LedgerChange::DeleteCategory(gone),
-            LedgerChange::UpsertTransaction(ledger.transactions()[0].clone()),
-        ];
-
-        assert!(forward(&mut *store.borrow_mut(), &changes));
-        assert!(
-            store.borrow().categories().category(gone).is_some(),
-            "not yet"
-        );
-        assert!(forward_deletes(&mut *store.borrow_mut(), &changes));
-
-        let store = store.borrow();
-        assert_eq!(store.categories().category(groceries.id), Some(groceries));
-        assert!(store.categories().category(gone).is_none());
-        assert!(!forward(
-            &mut lib_categories::fake::InMemoryCategories::default(),
-            &changes[2..]
-        ));
-    }
-
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 10, 11).expect("a real date")
-    }
-
-    #[gpui::test]
-    fn the_reassign_port_moves_the_splits_and_deletes_through_the_ledger(cx: &mut TestAppContext) {
-        let ledger = cx.new(|_| LedgerStore::new(Ledger::stub_on(today())));
-        let groceries = lib_categories::find_by_name(
-            ledger
-                .read_with(cx, |store, _| store.ledger().categories().to_vec())
-                .as_slice(),
-            "Groceries",
-        )
-        .expect("seeded");
-
-        let (uses, deleted) = cx.update(|cx| {
-            let mut ports = LedgerPorts {
-                ledger: &ledger,
-                today: today(),
-                cx,
-            };
-            (
-                ports.category_usage(groceries),
-                ports.delete_category(groceries),
-            )
-        });
-
-        let deleted = deleted.expect("Groceries is a leaf");
-        assert_eq!(deleted.name, "Groceries");
-        assert_eq!(deleted.splits_moved, uses.splits);
-        assert!(uses.splits > 0, "the stub buys groceries");
-        ledger.read_with(cx, |store, _| {
-            assert!(
-                lib_categories::find_by_name(store.ledger().categories(), "Groceries").is_none()
-            );
-        });
-        let refusal = cx.update(|cx| {
-            LedgerPorts {
-                ledger: &ledger,
-                today: today(),
-                cx,
-            }
-            .delete_category(CategoryId::seed(1))
-        });
-        assert_eq!(refusal, Err(ReassignRefusal::HasChildren));
     }
 
     #[gpui::test]

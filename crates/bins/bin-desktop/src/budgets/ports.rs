@@ -1,14 +1,14 @@
 //! The Budgets store as the Desktop holds it (#952): the store `shell::router::build` is given,
-//! shared by the Ledger's forwarding shim and read copy, the Accounts, Units and Categories usage
+//! shared by the Ledger's read copy, Category delete, the Accounts, Units and Categories usage
 //! counts and the Categories Monthly budget, and the Budgets read ports the Budgets View reads the
 //! other domains through. The writes are committed by the input they were made in
 //! (`crate::input::send`), not here.
 //!
 //! The Budgets page and its Dialogs write the store through `lib-budgets`' Interactors on
 //! [`DesktopPorts`] (#954, #955), as does the Categories Monthly budget ([`set_monthly_limit`]).
-//! The one writer left on the Ledger's forwarding shim is Category reassign, so [`forward`] carries
-//! the Budgets it writes to the store. After either, [`refresh`] brings the Ledger's read copy in
-//! line, for the Dashboard and the rail badge.
+//! Category delete drops the Category's Limits through `lib-category-deletion`'s port (#1005).
+//! After any of them, [`refresh`] brings the Ledger's read copy in line, for the Views still
+//! reading it.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -21,7 +21,7 @@ use lib_budgets::{
 };
 use lib_core::{BudgetId, CategoryId, Money};
 use lib_database::{BudgetsStore, SharedBudgetsStore, StoredBudgetReads};
-use lib_ledger::{Ledger, LedgerChange};
+use lib_ledger::Ledger;
 
 use crate::ledger_store::LedgerStore;
 
@@ -108,22 +108,6 @@ pub fn in_memory(ledger: &Ledger) -> SharedBudgetsStore {
     }))
 }
 
-/// The forwarding shim (#952): sends each Budget `changes` upserts to `store`, in the order
-/// recorded, returning whether it wrote anything. Run before the Categories' deletes, since
-/// Category reassign clears the chains naming the Category it deletes (their foreign key). The one
-/// writer carried is Category reassign, until `lib-reassign` (#813).
-pub fn forward(store: &mut dyn BudgetsStore, changes: &[LedgerChange]) -> bool {
-    let port = store.budgets_mut();
-    let mut wrote = false;
-    for change in changes {
-        if let LedgerChange::UpsertBudget(budget) = change {
-            port.upsert_budget(budget);
-            wrote = true;
-        }
-    }
-    wrote
-}
-
 /// Budget `id`'s Monthly budget for Category `category`, as `lib-budgets`' `SetMonthlyLimit`
 /// Interactor writes it, straight to `store`: the Categories Add and Edit Dialogs' save, which the input's
 /// one commit joins with the Category's. Returns whether it wrote.
@@ -171,25 +155,6 @@ mod tests {
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 21).unwrap_or_default()
-    }
-
-    #[test]
-    fn budget_upserts_reach_the_store_and_nothing_else_does() {
-        let ledger = Ledger::stub_on(today());
-        let store = in_memory(&ledger);
-        let mut joint = ledger.budgets().all()[1].clone();
-        joint.name = "Shared house".into();
-        let changes = [
-            LedgerChange::UpsertBudget(joint.clone()),
-            LedgerChange::DeleteCategory(CategoryId::seed(1)),
-        ];
-
-        assert!(forward(&mut *store.borrow_mut(), &changes));
-        assert_eq!(store.borrow().budgets().budget(joint.id), Some(joint));
-        assert!(!forward(
-            &mut *store.borrow_mut(),
-            &[LedgerChange::DeleteCategory(CategoryId::seed(1))]
-        ));
     }
 
     #[test]

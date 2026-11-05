@@ -2,16 +2,16 @@
 //! write runs through [`LedgerStore::apply`], and a landed one emits a [`LedgerChanged`] naming the
 //! domains it touched, which [`notify_on`] turns into a repaint for the Entities reading them.
 //!
-//! The Ledger's Institutions, Accounts, Categories, Payees, Transactions, Bill Plans, Bill
-//! Schedule, Budgets and Inventory are read copies of their ports (#774, #831, #849, #850, #853,
-//! #858, #866, #952): `apply` forwards a command's Category, Payee, Transaction, Bills, Budgets and
-//! Inventory changes to the ports and refreshes the copies from them. The Tags have no read copy
-//! (#1003): the Tags page and Tag remove and merge write the Tags store, and announce the change
-//! through [`LedgerStore::announce_tags`]. The Documents and Document Types have no read copy
-//! (#968): their modules read the Documents store, and the other domains' rows through their
-//! stores ([`LedgerStore::document_reads`]). The Institutions, Payees and Bills ports are shared with their modules, which write them through
-//! their Interactors and refresh the copy after each event ([`LedgerStore::refresh_institutions`],
-//! [`LedgerStore::refresh_payees`], [`LedgerStore::refresh_bills`]).
+//! The Ledger's Institutions, Accounts, Categories, Transactions, Bill Plans, Bill Schedule and
+//! Budgets are read copies of their ports (#774, #849, #850, #853, #858, #952): their modules
+//! write the ports and refresh the copies from them ([`LedgerStore::refresh_institutions`],
+//! [`LedgerStore::refresh_bills`], …). `apply` forwards a command's Transaction changes to the
+//! Transactions port, though no command records any since Category delete moved to
+//! `lib-category-deletion` (#1005). The Tags and the Payees have no read copy (#1003, #1005): their
+//! modules, Tag remove and merge, Category delete and the Import write their stores, and announce
+//! the change through [`LedgerStore::announce_tags`] and [`LedgerStore::announce_payees`]. The
+//! Documents and Document Types have no read copy (#968): their modules read the Documents store,
+//! and the other domains' rows through their stores ([`LedgerStore::document_reads`]).
 //!
 //! The store holds no commit: what `apply` forwards is committed by the input it ran in
 //! (`crate::input::send`). A View not yet a module runs `apply` from its own click, outside any
@@ -245,7 +245,6 @@ impl LedgerStore {
         store.copy_institutions();
         store.copy_accounts();
         store.copy_categories();
-        store.copy_payees();
         store.copy_transactions();
         store.copy_bills();
         store.copy_budgets();
@@ -327,7 +326,8 @@ impl LedgerStore {
     }
 
     /// Points every Split, Bill Plan and Payee default naming `from` at `to`, in the Transactions,
-    /// Bills and Payees stores, for the input's one commit, then brings their read copies in line.
+    /// Bills and Payees stores, for the input's one commit, then brings their read copies in line
+    /// and announces the Payees.
     pub fn hand_over_category(
         &mut self,
         from: lib_core::CategoryId,
@@ -373,7 +373,7 @@ impl LedgerStore {
         }
         self.refresh_transactions(cx);
         self.refresh_bills(cx);
-        self.refresh_payees(cx);
+        self.announce_payees(cx);
     }
 
     /// Adds a Location priced in `unit` to the Inventory store, so a test can delete a Unit one
@@ -449,7 +449,7 @@ impl LedgerStore {
             default_category: None,
             is_active: true,
         });
-        self.refresh_payees(cx);
+        self.announce_payees(cx);
     }
 
     /// Gives Institution `id` Unit `unit` as its Usual unit, so a test can delete a Unit an
@@ -484,6 +484,11 @@ impl LedgerStore {
     /// The Budgets store, which the Categories Monthly budget writes and the usage counts read.
     pub fn budgets_store(&self) -> &SharedBudgetsStore {
         &self.budgets
+    }
+
+    /// The Payees ports, for a write failure's rollback to read back (ADR-0046).
+    pub fn payees_ports(&self) -> &DesktopPayeesPorts {
+        &self.payees
     }
 
     /// The Tags store, for a write failure's rollback to read back (ADR-0046).
@@ -522,17 +527,11 @@ impl LedgerStore {
 
     /// Runs any command, the one write path a Dialog confirms through (ADR-0037). A refusal changes
     /// nothing and emits nothing; a landed command announces the domains its recorded changes
-    /// touched. Its Category, Tag, Payee, Transaction, Bills, Budgets, Inventory and Documents
-    /// changes go to the ports (the forwarding shims, #774, #831, #858, #862, #866, #952, #963), for
-    /// the input's one
-    /// commit; run outside any input, it emits [`LegacyApplied`] to be committed. The Category
-    /// upserts go first, since Category reassign re-points rows to an Uncategorised it may create,
-    /// then the Payees, then the Transactions, Bills and Budgets; the Category deletes go last, once
-    /// nothing names them, the Budgets' chains included. The Inventory names only the Units, so its
-    /// changes go in any order with the rest. The Documents go after the rows their Links name;
-    /// a delete the Links cascade from is the file's to follow, which the input's `send` reloads
-    /// the Documents after (#964). The other domains' changes aren't persisted yet
-    /// (#636), so they're dropped here.
+    /// touched. Its Transaction changes go to the Transactions port (the forwarding shim, #774),
+    /// for the input's one commit; run outside any input, it emits [`LegacyApplied`] to be
+    /// committed. No command records a change any more (#1005): the shim and `apply` go with the
+    /// slice's close-out (#1006). The other domains' changes aren't persisted, so they're dropped
+    /// here.
     pub fn apply<C: LedgerCommand>(
         &mut self,
         cx: &mut Context<'_, Self>,
@@ -541,36 +540,13 @@ impl LedgerStore {
         let outcome = command.run(&mut self.ledger)?;
         let changes = self.ledger.drain_changes();
         if !changes.is_empty() {
-            let categories_upserted =
-                crate::categories::ports::forward(&mut *self.categories.borrow_mut(), &changes);
-            let payees_written =
-                crate::payees::ports::forward(&mut *self.payees.borrow_mut(), &changes);
             crate::transactions::ports::forward(&mut *self.transactions.borrow_mut(), &changes);
-            let bills_written = crate::bills::ports::forward(&self.bills, &changes);
-            let budgets_written =
-                crate::budgets::ports::forward(&mut *self.budgets.borrow_mut(), &changes);
-            let categories_deleted = crate::categories::ports::forward_deletes(
-                &mut *self.categories.borrow_mut(),
-                &changes,
-            );
             if !crate::input::sending(cx) {
                 cx.emit(LegacyApplied);
             }
-            let mut what = domains(&changes);
-            if categories_upserted || categories_deleted {
-                self.copy_categories();
-            }
-            if payees_written {
-                self.copy_payees();
-            }
+            let what = domains(&changes);
             if what.contains(&Domain::Transactions) {
                 self.copy_transactions();
-            }
-            if bills_written && self.copy_bills() {
-                what.insert(Domain::Bills);
-            }
-            if budgets_written {
-                self.copy_budgets();
             }
             self.announce(cx, what);
         }
@@ -610,18 +586,6 @@ impl LedgerStore {
         self.categories.borrow_mut().reload()?;
         self.copy_categories();
         self.announce(cx, BTreeSet::from([Domain::Categories]));
-        Ok(())
-    }
-
-    /// Puts the Payees back as stored, after a write that named them failed, and overwrites the
-    /// read copy, announcing `Domain::Payees` so every reader redraws (ADR-0046).
-    ///
-    /// # Errors
-    /// Returns the error reading them back; the port and the read copy are left as they were.
-    pub fn reload_payees(&mut self, cx: &mut Context<'_, Self>) -> lib_database::Result<()> {
-        self.payees.borrow_mut().reload()?;
-        self.copy_payees();
-        self.announce(cx, BTreeSet::from([Domain::Payees]));
         Ok(())
     }
 
@@ -703,12 +667,10 @@ impl LedgerStore {
         }
     }
 
-    /// Brings the Payees read copy in line with the ports after the Payees module wrote them,
-    /// announcing `Domain::Payees` only when it changed.
-    pub fn refresh_payees(&mut self, cx: &mut Context<'_, Self>) {
-        if self.copy_payees() {
-            self.announce(cx, BTreeSet::from([Domain::Payees]));
-        }
+    /// Announces `Domain::Payees`, after the Payees module, Category delete, the Import or a
+    /// rollback wrote the Payees store, so Transactions, Bills, Budgets and Documents redraw.
+    pub fn announce_payees(&mut self, cx: &mut Context<'_, Self>) {
+        self.announce(cx, BTreeSet::from([Domain::Payees]));
     }
 
     /// Brings the Categories read copy in line with the store after the Categories module wrote
@@ -781,12 +743,6 @@ impl LedgerStore {
         self.ledger.refresh_categories(categories)
     }
 
-    /// Brings the Payees read copy in line with the port, returning whether it changed.
-    fn copy_payees(&mut self) -> bool {
-        let payees = PayeesStore::payees(&*self.payees.borrow()).payees();
-        self.ledger.refresh_payees(payees)
-    }
-
     /// Brings the read copy in line with the port, returning whether it changed.
     fn copy_transactions(&mut self) -> bool {
         let transactions = self.transactions.borrow().all_transactions();
@@ -844,10 +800,9 @@ mod tests {
 
     use gpui::{AppContext, Entity, TestAppContext};
     use lib_database::{Commit, PendingWrites};
-    use lib_ledger::{DeleteCategory, LedgerParts};
+    use lib_ledger::LedgerParts;
 
     use super::*;
-    use lib_core::CategoryId;
 
     fn store(cx: &mut TestAppContext) -> (Entity<LedgerStore>, Rc<RefCell<Vec<LedgerChanged>>>) {
         let store = cx.new(|_| {
@@ -867,30 +822,19 @@ mod tests {
         (store, events)
     }
 
-    /// Two of the stub's Categories with no children, which nothing in [`store`]'s Ledger uses.
-    fn leaves() -> [CategoryId; 2] {
-        let categories = lib_categories::default_categories();
-        ["Rent", "Water"].map(|name| {
-            lib_categories::find_by_name(&categories, name).expect("a stub leaf Category")
-        })
+    /// A command that records no change, as every command has since Category delete left the
+    /// Ledger (#1005): it lands unless told to refuse.
+    struct Untouched {
+        refuse: bool,
     }
 
-    #[gpui::test]
-    fn a_landed_command_announces_the_domains_it_changed(cx: &mut TestAppContext) {
-        let (store, events) = store(cx);
-        store.update(cx, |store, cx| {
-            store
-                .apply(cx, DeleteCategory(leaves()[0]))
-                .expect("an unused leaf")
-        });
-        cx.run_until_parked();
+    impl LedgerCommand for Untouched {
+        type Outcome = ();
+        type Refusal = ();
 
-        assert_eq!(
-            *events.borrow(),
-            vec![LedgerChanged {
-                what: BTreeSet::from([Domain::Categories])
-            }]
-        );
+        fn run(self, _ledger: &mut Ledger) -> Result<(), ()> {
+            if self.refuse { Err(()) } else { Ok(()) }
+        }
     }
 
     #[gpui::test]
@@ -898,11 +842,7 @@ mod tests {
         let (store, events) = store(cx);
 
         store.update(cx, |store, cx| {
-            assert!(
-                store
-                    .apply(cx, DeleteCategory(CategoryId::seed(u32::MAX)))
-                    .is_err()
-            );
+            assert!(store.apply(cx, Untouched { refuse: true }).is_err());
         });
         cx.run_until_parked();
 
@@ -910,41 +850,26 @@ mod tests {
     }
 
     #[gpui::test]
-    fn a_write_outside_any_input_asks_for_one_and_a_write_inside_one_asks_nothing(
+    fn a_command_that_records_nothing_announces_nothing_and_asks_for_no_input(
         cx: &mut TestAppContext,
     ) {
-        let (store, _) = store(cx);
+        let (store, events) = store(cx);
         let asked = Rc::new(RefCell::new(0));
         let sink = asked.clone();
         cx.update(|cx| {
-            crate::input::install(gpui::WeakEntity::new_invalid(), cx);
-            crate::input::open_ledger(Rc::new(lib_database::InMemoryCommit), cx);
             cx.subscribe(&store, move |_, _: &LegacyApplied, _| {
                 *sink.borrow_mut() += 1;
             })
             .detach();
         });
-        let ids = leaves();
 
         store.update(cx, |store, cx| {
-            store.apply(cx, DeleteCategory(ids[0])).expect("deleted")
+            assert!(store.apply(cx, Untouched { refuse: false }).is_ok());
         });
         cx.run_until_parked();
-        assert_eq!(
-            *asked.borrow(),
-            1,
-            "a View's own click asks the root Router for an input"
-        );
 
-        cx.update(|cx| {
-            crate::input::send(cx, |cx| {
-                store.update(cx, |store, cx| {
-                    store.apply(cx, DeleteCategory(ids[1])).expect("deleted")
-                })
-            })
-        });
-        cx.run_until_parked();
-        assert_eq!(*asked.borrow(), 1, "the input it ran in commits it");
+        assert!(events.borrow().is_empty());
+        assert_eq!(*asked.borrow(), 0);
     }
 
     /// The Desktop's start-up storage on a Ledger file in `dir`, as of `today`.
@@ -972,10 +897,14 @@ mod tests {
         /// The deletion port over the Accounts, Transactions and Bills stores, the Account
         /// Deletion module's.
         deletion: lib_account_deletion::SharedDeletion,
+        /// The deletion port over the Categories, Transactions, Bills, Payees and Budgets stores,
+        /// the Category Deletion module's.
+        category_deletion: lib_category_deletion::SharedCategoryDeletion,
         pending: PendingWrites,
     }
 
-    /// [`on_storage`] with the ports the Bills, Bill Payments and Account Deletion modules write.
+    /// [`on_storage`] with the ports the Bills, Bill Payments, Account Deletion and Category
+    /// Deletion modules write.
     fn on_storage_with_bills(cx: &mut TestAppContext, storage: lib_database::Storage) -> OnStorage {
         let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
         let pending = storage.pending;
@@ -1014,6 +943,14 @@ mod tests {
         let payments = crate::bill_payments::payments(transactions.clone(), &bills);
         let deletion =
             crate::account_deletion::deletion(accounts.clone(), transactions.clone(), &bills);
+        let category_deletion = crate::category_deletion::DeletionStores::new(
+            categories.clone(),
+            transactions.clone(),
+            &bills,
+            payees.clone(),
+            budgets.clone(),
+        )
+        .deletion;
         let store = cx.new(|_| {
             LedgerStore::with_storage(
                 Ledger::stub_on(today),
@@ -1037,6 +974,7 @@ mod tests {
             bills,
             payments,
             deletion,
+            category_deletion,
             pending,
         }
     }
@@ -1095,20 +1033,24 @@ mod tests {
         );
     }
 
-    /// Category reassign re-points the Splits and Bill Plans to an Uncategorised it creates and
-    /// clears the Payee defaults before the delete, so the file's foreign keys let it through, and
-    /// a restart reads the result back.
+    /// Category delete, through the Category Deletion module's port, re-points the Splits and Bill
+    /// Plans to an Uncategorised it creates and clears the Payee defaults before the delete, so the
+    /// file's foreign keys let it through, and a restart reads the result back.
     #[gpui::test]
-    fn a_reassigned_categorys_rows_survive_a_restart(cx: &mut TestAppContext) {
-        use lib_ledger::DeleteCategory;
-
+    fn a_deleted_categorys_rows_survive_a_restart(cx: &mut TestAppContext) {
         let dir = tempfile::tempdir().expect("a temporary directory");
         let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
         let storage = storage_in(dir.path(), today);
         let writer = storage.writer.clone();
-        let (store, pending) = on_storage(cx, storage);
+        let OnStorage {
+            store,
+            category_deletion,
+            pending,
+            ..
+        } = on_storage_with_bills(cx, storage);
         let gone = store.read_with(cx, |store, _| {
             let ledger = store.ledger();
+            let payees = payees_of(store);
             ledger
                 .categories()
                 .iter()
@@ -1118,10 +1060,7 @@ mod tests {
                         .bill_plans()
                         .iter()
                         .any(|plan| plan.category_id == id)
-                        && ledger
-                            .payees()
-                            .iter()
-                            .any(|p| p.default_category == Some(id))
+                        && payees.iter().any(|p| p.default_category == Some(id))
                         && ledger
                             .transactions()
                             .iter()
@@ -1130,9 +1069,11 @@ mod tests {
                 .expect("a stub Category with Splits, a Bill Plan and a Payee default")
         });
 
-        let deleted = store.update(cx, |store, cx| {
-            store.apply(cx, DeleteCategory(gone)).expect("a leaf")
-        });
+        let deleted = lib_category_deletion::interactor::DeleteCategory { id: gone }
+            .run(&mut *category_deletion.borrow_mut())
+            .expect("a leaf");
+        // The port holds the stores; let them go before the restart reopens the file.
+        drop(category_deletion);
         assert!(deleted.splits_moved > 0 && deleted.bill_plans_moved > 0);
         assert!(deleted.payee_defaults_cleared > 0);
         let reopened = restart(cx, (store, pending), writer, dir.path(), today);
@@ -1141,7 +1082,7 @@ mod tests {
             let ledger = store.ledger();
             assert!(ledger.categories().iter().all(|c| c.id != gone));
             let home = lib_categories::find_by_name(ledger.categories(), "Uncategorised")
-                .expect("the reassign's Uncategorised is stored");
+                .expect("the delete's Uncategorised is stored");
             let splits = ledger.transactions().iter().flat_map(|t| &t.splits);
             assert!(splits.clone().all(|s| s.category_id != gone));
             assert_eq!(
@@ -1150,12 +1091,16 @@ mod tests {
             );
             assert!(ledger.bill_plans().iter().all(|p| p.category_id != gone));
             assert!(
-                ledger
-                    .payees()
+                payees_of(store)
                     .iter()
                     .all(|p| p.default_category != Some(gone))
             );
         });
+    }
+
+    /// The Payees as the Payees store holds them: the Ledger keeps no read copy (#1005).
+    fn payees_of(store: &LedgerStore) -> Vec<lib_payees::Payee> {
+        PayeesStore::payees(&*store.payees_ports().borrow()).payees()
     }
 
     /// The Bills read copy, as every reader takes it.

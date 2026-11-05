@@ -1,15 +1,15 @@
 //! The Payees ports as the Desktop holds them: the store `shell::router::build` is given, with
 //! `PayeeUsage` and `PayeeCategories` read from the Transactions, Bills and Categories stores
-//! through `lib-database`'s [`StoredPayeeReads`] (#992), and the step that keeps the Ledger's read
-//! copy of the Payees in line after a Payees write. The write is committed by the input it was
-//! made in (`crate::input::send`), not here.
+//! through `lib-database`'s [`StoredPayeeReads`] (#992), and the announcement that tells the Views
+//! reading the Payees of a write. The write is committed by the input it was made in
+//! (`crate::input::send`), not here. The Ledger keeps no read copy of the Payees (#1005).
 //!
 //! The ports are one value shared three ways: the Payees module's Presenters read and write them
-//! as [`PayeesPorts`], and the Ledger's forwarding shim ([`forward`]) and the Bills reads hold the
-//! same value as a `PayeesStore`.
+//! as [`PayeesPorts`], and Category delete, the Import and the Bills reads hold the same value as a
+//! `PayeesStore`.
 //!
 //! The usage is counted in the stores on each ask, whether they are the adapters or
-//! `Stores::fake`'s in-memory ones, so a Split written since, by a Category reassign or the Import,
+//! `Stores::fake`'s in-memory ones, so a Split written since, by a Category delete or the Import,
 //! is counted with nothing copied from the Ledger.
 
 use std::cell::RefCell;
@@ -17,12 +17,12 @@ use std::rc::Rc;
 
 use gpui::{App, Entity};
 use lib_database::{PayeesStore, StoredPayeeReads};
-use lib_ledger::{Ledger, LedgerChange};
+use lib_ledger::Ledger;
 use lib_payees::{PayeeCategories, PayeeRepository, PayeeUsage, PayeesPorts, PortsMut};
 
 use crate::ledger_store::LedgerStore;
 
-/// The Payees ports the Payees module, the Ledger and the Bills reads share.
+/// The Payees ports the Payees module, Category delete, the Import and the Bills reads share.
 pub type DesktopPorts = Rc<RefCell<LedgerBackedPorts>>;
 
 /// `store`'s Payees, with their use and the Categories a Payee may default to read from the other
@@ -73,7 +73,7 @@ impl PayeesPorts for LedgerBackedPorts {
     }
 }
 
-/// The same ports as the store they wrap, for the Ledger's shim and the Bills reads.
+/// The same ports as the store they wrap, for Category delete, the Import and the Bills reads.
 impl PayeesStore for LedgerBackedPorts {
     fn payees(&self) -> &dyn PayeeRepository {
         self.store.payees()
@@ -88,34 +88,33 @@ impl PayeesStore for LedgerBackedPorts {
     }
 }
 
-/// The forwarding shim (#831): sends each Payee row in `changes` to `store`, in the order recorded,
-/// returning whether it wrote anything. What it still carries is the one writer not yet migrated:
-/// Category reassign (the Default categories it clears, #813); the Import writes through
-/// `lib-transaction-import`'s port (#943). Every other change is another domain's.
-pub fn forward(store: &mut dyn PayeesStore, changes: &[LedgerChange]) -> bool {
-    let port = store.payees_mut();
-    let mut wrote = false;
-    for change in changes {
-        if let LedgerChange::UpsertPayee(payee) = change {
-            port.upsert_payee(payee.clone());
-            wrote = true;
-        }
-    }
-    wrote
+/// The Payees as `ports` hold them now, for a page to tell whether an event wrote them.
+pub fn payees(ports: &DesktopPorts) -> Vec<lib_payees::Payee> {
+    PayeesStore::payees(&*ports.borrow()).payees()
 }
 
-/// Brings the Ledger read copy of the Payees in line with the ports, announcing `Domain::Payees`
-/// when it changed. Run around every Payees page event and when a Payees Dialog closes, so
-/// Transactions, Bills, Import and Documents see a write at once.
-pub fn refresh(ledger: &Entity<LedgerStore>, cx: &mut App) {
-    ledger.update(cx, |store, cx| store.refresh_payees(cx));
+/// Announces `Domain::Payees`, after a write to the Payees store, so Transactions, Bills, Budgets
+/// and Documents redraw.
+pub fn announce(ledger: &Entity<LedgerStore>, cx: &mut App) {
+    ledger.update(cx, |store, cx| store.announce_payees(cx));
+}
+
+/// Puts the Payees back as stored, after a write that named them failed, and announces them so
+/// every reader redraws (ADR-0046).
+///
+/// # Errors
+/// Returns the error reading them back; the store is left as it was.
+pub fn reload(ledger: &Entity<LedgerStore>, cx: &mut App) -> lib_database::Result<()> {
+    let ports = ledger.read(cx).payees_ports().clone();
+    PayeesStore::reload(&mut *ports.borrow_mut())?;
+    announce(ledger, cx);
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use lib_core::{CategoryId, PayeeId, TransactionId};
     use lib_database::SharedTransactionsStore;
-    use lib_payees::fake::InMemoryPorts;
 
     use super::*;
 
@@ -132,24 +131,6 @@ mod tests {
             categories: crate::categories::ports::in_memory(ledger),
         };
         (LedgerBackedPorts::in_memory(ledger, reads), transactions)
-    }
-
-    #[test]
-    fn payee_upserts_reach_the_store_and_others_are_left() {
-        let mut store = InMemoryPorts::stub();
-        let mut coles = store.payees.payee(PayeeId::seed(2)).expect("a stub Payee");
-        coles.default_category = None;
-
-        assert!(forward(
-            &mut store,
-            &[LedgerChange::UpsertPayee(coles.clone())]
-        ));
-        assert!(!forward(
-            &mut store,
-            &[LedgerChange::DeleteCategory(CategoryId::seed(1))]
-        ));
-
-        assert_eq!(store.payees.payee(coles.id), Some(coles));
     }
 
     #[test]

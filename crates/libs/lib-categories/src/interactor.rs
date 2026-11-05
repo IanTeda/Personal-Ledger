@@ -1,7 +1,7 @@
 //! One Interactor per Categories intent, each a request value whose `run` takes the ports it needs.
 //! Every rule is the Entity's and is checked before anything is written, so a refusal leaves the
-//! ports untouched. Delete re-points other domains' rows, so it is a port of its own,
-//! [`CategoryReassign`](crate::protocols::CategoryReassign), rather than an Interactor (#847, Q6).
+//! ports untouched. Delete re-points other domains' rows, so it is `lib-category-deletion`'s
+//! Interactor rather than one of these (#1004).
 
 mod add_category;
 mod edit_category;

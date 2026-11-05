@@ -1,15 +1,15 @@
 //! The Bills ports as the Desktop holds them: the store `shell::router::build` is given, shared by
-//! the Bills module and `LedgerStore`, the Payees store Bills reads its Payees from (#831), the
+//! the Bills module and `LedgerStore`'s read copy, the Payees store Bills reads its Payees from (#831), the
 //! Accounts store it reads its Accounts from (#853), the Categories store it reads its
 //! Categories from (#858), the Transactions store it reads its Splits from (#926) and the Units
 //! store it reads its Unit codes from (#993), and the step that keeps the Ledger's read copy in
 //! line after a Bills write. The write is committed by the input it was made in
 //! (`crate::input::send`), not here.
 //!
-//! `LedgerStore` writes the store too, through [`forward`]: the Bills writer not yet migrated,
-//! Category reassign, still runs as a `LedgerCommand`. The store is shared with the Bill Payments
-//! module too, whose Pay it directly writes an entry, and the Account Deletion module, whose delete
-//! Unmatches the entries an Account's Transactions paid (#854).
+//! The store is shared with the Bill Payments module too, whose Pay it directly writes an entry,
+//! the Account Deletion module, whose delete Unmatches the entries an Account's Transactions paid
+//! (#854), and the Category Deletion module, whose delete moves the Bill Plans naming the Category
+//! to Uncategorised (#1005).
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -24,7 +24,7 @@ use lib_database::{
     SharedAccountsStore, SharedBillsStore, SharedCategoriesStore, SharedPayeesStore,
     SharedTransactionsStore, SharedUnitsStore, StoredBillReads, StoredBillUnits,
 };
-use lib_ledger::{Ledger, LedgerChange};
+use lib_ledger::Ledger;
 
 use crate::ledger_store::LedgerStore;
 
@@ -181,29 +181,6 @@ pub fn in_memory_store(ledger: &Ledger) -> SharedBillsStore {
     }))
 }
 
-/// Sends each Bill Plan and entry in `changes` to the store, in the order recorded. The writer it
-/// carries: Category reassign. Returns whether it wrote anything, so the caller refreshes the read
-/// copy.
-pub fn forward(ports: &DesktopPorts, changes: &[LedgerChange]) -> bool {
-    let mut ports = ports.borrow_mut();
-    let store = &mut ports.store;
-    let mut wrote = false;
-    for change in changes {
-        match change {
-            LedgerChange::UpsertBillPlan(plan) => {
-                store.upsert_bill_plan(plan.clone());
-                wrote = true;
-            }
-            LedgerChange::UpsertBillEntry(entry) => {
-                store.upsert_entry(entry.clone());
-                wrote = true;
-            }
-            _ => {}
-        }
-    }
-    wrote
-}
-
 /// Brings the stored Bill Schedule up to the horizon as of `today` (ADR-0019's "on Client start"),
 /// writing the entries generation adds. The caller commits them.
 pub fn generate(store: &mut dyn BillsRepository, today: chrono::NaiveDate) {
@@ -281,30 +258,8 @@ mod tests {
     }
 
     #[test]
-    fn bill_plan_and_entry_changes_reach_the_store() {
-        let (_ledger, ports) = stub();
-        let mut plan = ports.borrow().bills().bill_plans()[0].clone();
-        plan.name = "Renamed".into();
-        let entry = BillScheduleEntry {
-            superseded: true,
-            ..entries(&ports)[0].clone()
-        };
-
-        assert!(forward(
-            &ports,
-            &[
-                LedgerChange::UpsertBillPlan(plan.clone()),
-                LedgerChange::UpsertBillEntry(entry.clone()),
-            ]
-        ));
-
-        assert_eq!(ports.borrow().bills().bill_plan(plan.id), Some(plan));
-        assert_eq!(ports.borrow().bills().entry(entry.id()), Some(entry));
-    }
-
-    #[test]
     fn the_payees_are_read_from_the_payees_store_not_copied_from_the_ledger() {
-        let (mut ledger, _) = stub();
+        let (ledger, _) = stub();
         let store = payees(&ledger);
         let ports = LedgerBackedPorts::in_memory(
             &ledger,
@@ -320,7 +275,6 @@ mod tests {
         let mut renamed = ledger.payees()[0].clone();
         renamed.name = "Renamed in the store".into();
         lib_payees::PayeeRepository::upsert_payee(store.borrow_mut().payees_mut(), renamed.clone());
-        ledger.refresh_payees(Vec::new());
 
         let read = ports.borrow().payees().bill_payees();
         assert_eq!(read.len(), store.borrow().payees().payees().len());
