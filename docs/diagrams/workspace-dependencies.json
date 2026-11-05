@@ -10,7 +10,7 @@
    "url": "https://github.com/IanTeda/Personal-Ledger",
    "provider": "github",
    "link_mode": "web",
-   "revision": "82ef11775bd520669044f58b271bf660415e00f1"
+   "revision": "481fce0a3f461158419f79aa0701c165b0934292"
   },
   "legend": {
    "entries": {
@@ -148,6 +148,28 @@
     }
    ],
    "sublabel": "Dashboard module"
+  },
+  {
+   "id": "lib-settings",
+   "type": "backend",
+   "label": "lib-settings",
+   "tag": "module",
+   "pos": [
+    40,
+    40
+   ],
+   "size": [
+    160,
+    64
+   ],
+   "sources": [
+    {
+     "path": "crates/libs/lib-settings/Cargo.toml",
+     "line": 17,
+     "end_line": 26
+    }
+   ],
+   "sublabel": "Settings module"
   },
   {
    "id": "lib-ledger",
@@ -799,6 +821,11 @@
    "to": "lib-dashboard"
   },
   {
+   "id": "bin-desktop--lib-settings",
+   "from": "bin-desktop",
+   "to": "lib-settings"
+  },
+  {
    "id": "bin-desktop--lib-database",
    "from": "bin-desktop",
    "to": "lib-database"
@@ -877,6 +904,11 @@
    "id": "lib-database--lib-shell",
    "from": "lib-database",
    "to": "lib-shell"
+  },
+  {
+   "id": "lib-database--lib-settings",
+   "from": "lib-database",
+   "to": "lib-settings"
   },
   {
    "id": "lib-database--lib-tag-removal",
@@ -1017,7 +1049,7 @@
    "items": [
     "No feature crate depends on another feature crate, a UI toolkit or lib-database; the 20 old rule-break edges are gone",
     "Cross-domain modules (lib-bill-payments, lib-account-deletion, lib-unit-deletion, lib-transaction-import, lib-tag-removal, lib-category-deletion) read only the feature crates they write",
-    "lib-shell and lib-dashboard depend on support crates only; lib-database implements their ports",
+    "lib-shell, lib-dashboard and lib-settings depend on support crates only; lib-database implements their ports",
     "deny.toml bans the toolkits outside the bins; lib-ledger/tests/viper_dependencies.rs checks the module rules"
    ]
   },
@@ -1025,7 +1057,7 @@
    "dot": "slate",
    "title": "Edges left undrawn",
    "items": [
-    "Every feature crate, cross-domain module, lib-shell, lib-dashboard and lib-database depend on lib-core, lib-config, lib-locale, lib-toast, lib-viper and lib-list-cursor where they use them",
+    "Every feature crate, cross-domain module, lib-shell, lib-dashboard, lib-settings and lib-database depend on lib-core, lib-config, lib-locale, lib-toast, lib-viper and lib-list-cursor where they use them; lib-settings also on lib-colour-theme",
     "bin-desktop and lib-database depend on every feature crate; lib-ledger on 11 of them",
     "bin-desktop, bin-tui and bin-sync-server depend on lib-config, lib-tracing and lib-core; bin-desktop and bin-tui on lib-colour-theme, lib-list-cursor, lib-toast and lib-viper",
     "Dev-dependencies are not drawn: bin-tui on lib-bills, lib-budgets and lib-payees; lib-database's contract tests on the module crates"
