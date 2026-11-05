@@ -273,7 +273,6 @@ impl Root {
                 collapsed_rail_tooltip: None,
                 rail_override: None,
                 hover_generation: 0,
-                dialog: None,
                 hosted: None,
                 dialog_keymap: lib_shell::dialog_keymap(&lib_config::KeyBindingConfig::default()),
                 undo_menu_open: false,

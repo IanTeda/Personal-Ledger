@@ -17,11 +17,9 @@ use crate::{
     navigation::explorer::{self as explorer_view},
     navigation::nav::{FocusZone, InputMode},
     shell::view::dialog_entity::DialogHandle,
-    shell::view::dialog_host::{Dialog, DialogActions},
     shell::view::page_clicks::PageClicks,
     shell::view::rail::{self as rail_view, context::ContextRail, primary::PrimaryRail},
     shell::view::statusline::{self, StatusLine},
-    shell::view::toast::history as toast_history_view,
     shell::view::topbar::{self, TopBar},
     shell::view::window_size::{WindowSize, WindowSizeExt},
     theme::{color, type_scale},
@@ -154,15 +152,6 @@ impl Render for Root {
                 cx,
             )
         };
-        let on_toast_history_close: toast_history_view::OnClose = {
-            let entity = entity.clone();
-            Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| {
-                    shell.close_dialog();
-                    cx.notify();
-                });
-            })
-        };
         let on_explorer_cancel: explorer_view::OnCancel = {
             let entity = entity.clone();
             Rc::new(move |_window, cx| {
@@ -174,41 +163,6 @@ impl Render for Root {
             Rc::new(move |_window, cx| {
                 entity.update(cx, |shell, cx| shell.handle_explorer_open(cx));
             })
-        };
-        let on_settings_dialog_cancel: crate::dialog::OnClick = {
-            let entity = entity.clone();
-            Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_dialog_cancel(cx));
-            })
-        };
-        let on_settings_dialog_confirm: crate::dialog::OnClick = {
-            let entity = entity.clone();
-            Rc::new(move |_window, cx| {
-                entity.update(cx, |shell, cx| shell.handle_dialog_confirm(cx));
-            })
-        };
-        // The hosted Dialogs' clicks, each one input: an edit runs on the open Dialog and raises
-        // the Toast it returns; cancel and confirm run the host's cycle.
-        let dialog_actions = DialogActions {
-            edit: {
-                let entity = entity.clone();
-                Rc::new(move |cx, change| {
-                    entity.update(cx, |shell, cx| {
-                        crate::input::send(cx, |cx| {
-                            let toast = shell
-                                .state
-                                .dialog
-                                .as_mut()
-                                .and_then(|dialog| change(dialog, cx));
-                            if let Some((kind, message)) = toast {
-                                shell.raise_toast(kind, message);
-                            }
-                        });
-                    });
-                })
-            },
-            cancel: on_settings_dialog_cancel.clone(),
-            confirm: on_settings_dialog_confirm.clone(),
         };
         // The rail's badges, as the Shell's Presenter last read them; with no Ledger open it holds
         // none, so the rail has no badges.
@@ -337,20 +291,7 @@ impl Render for Root {
                     cx,
                 )
             }))
-            .children(toast_history_open.then(|| {
-                toast_history_view::render(
-                    self.presenter.toasts().history(),
-                    on_toast_history_close,
-                    cx,
-                )
-            }))
             .child(documents::view::drop_overlay::render(cx))
-            .children(
-                self.state
-                    .dialog
-                    .as_ref()
-                    .and_then(|dialog| dialog.render(&self.dialog_scope(), &dialog_actions, cx)),
-            )
             .children(self.hosted_dialog().map(DialogHandle::view))
             // Last: above every dialog, the palette and their scrim, never over the status line.
             .children(toast_layer)

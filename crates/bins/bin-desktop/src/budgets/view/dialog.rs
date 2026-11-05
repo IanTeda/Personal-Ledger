@@ -21,8 +21,8 @@ use crate::budgets::ports::{self, DesktopPorts};
 use crate::budgets::view::snapshot::ManageRowSnapshot;
 use crate::dialog::OnClick;
 use crate::ledger_store::LedgerStore;
+use crate::shell::view::dialog_entity::DialogReadback;
 use crate::shell::view::dialog_entity::{DialogClosed, HostRouter, HostedDialog};
-use crate::shell::view::dialog_host::DialogReadback;
 
 /// What a closed Switcher or Manage budgets hands the page: its outcome, or `None` on a cancel.
 pub type Landed = Box<dyn Fn(Option<BudgetsOutcome>, &mut App)>;

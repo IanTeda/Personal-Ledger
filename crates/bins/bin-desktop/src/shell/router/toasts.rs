@@ -3,17 +3,22 @@
 //! its drawing (`shell::view::toast`).
 
 use chrono::Local;
-use gpui::Context;
+use gpui::{AppContext as _, Context};
 use lib_toast::{Notice, ToastKind};
 
 use super::Root;
-use crate::shell::view::dialog_host::{OpenDialog, ToastHistoryDialog};
+use lib_shell::ToastHistoryPresenter;
+
+use crate::shell::view::dialog_entity::DialogHandle;
+use crate::shell::view::toast::history::ToastHistoryDialog;
 
 impl Root {
     /// Opens the session Toast history as a modal, which pauses the Toast timers.
-    pub(super) fn open_toast_history(&mut self) {
+    pub(super) fn open_toast_history(&mut self, cx: &mut Context<'_, Self>) {
         self.state.palette = None;
-        self.open_dialog(OpenDialog::ToastHistory(ToastHistoryDialog));
+        let presenter = ToastHistoryPresenter::open(self.presenter.toasts().history());
+        let dialog = cx.new(|_| ToastHistoryDialog::new(presenter));
+        self.host_dialog(DialogHandle::new(dialog), cx);
     }
 
     /// Shows every Notice the Routers queued since the last drain (`crate::notices`) on the Shell's
@@ -78,6 +83,7 @@ impl Root {
     }
 
     pub(super) fn toast_history_open(&self) -> bool {
-        matches!(self.state.dialog, Some(OpenDialog::ToastHistory(_)))
+        self.hosted_dialog()
+            .is_some_and(|dialog| dialog.downcast::<ToastHistoryDialog>().is_some())
     }
 }

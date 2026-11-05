@@ -5,13 +5,17 @@
 
 use std::rc::Rc;
 
-use chrono::{DateTime, Local};
-use gpui::{AnyElement, App, div, prelude::*, px};
-use lib_locale::format::format_time;
-use lib_toast::{History, ToastKind};
+use gpui::{
+    AnyElement, App, Context, EventEmitter, IntoElement, Render, Window, div, prelude::*, px,
+};
+use lib_shell::{ToastHistoryPresenter, ToastHistoryRow};
+use lib_viper::dialog::DialogInput;
 
 use crate::{
     dialog,
+    shell::view::dialog_entity::{
+        DialogClicks, DialogClosed, DialogReadback, HostRouter, HostedDialog,
+    },
     theme::{color, type_scale},
 };
 
@@ -21,29 +25,69 @@ const LIST_MAX_HEIGHT: gpui::Pixels = px(420.0);
 
 pub type OnClose = dialog::OnClick;
 
-/// One history row as text, so the ordering and merging are testable without a window.
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct Row {
-    kind: ToastKind,
-    time: String,
-    text: String,
-    badge: Option<String>,
+/// The session Toast history: an Entity holding `lib-shell`'s [`ToastHistoryPresenter`], hosted
+/// like any module Dialog (#1043). Read-only, so `Esc` and the Close button close it and every
+/// key is left to the Shell.
+pub struct ToastHistoryDialog {
+    presenter: ToastHistoryPresenter,
 }
 
-fn rows(history: &History<DateTime<Local>>) -> Vec<Row> {
-    history
-        .iter()
-        .map(|entry| Row {
-            kind: entry.kind(),
-            time: format_time(entry.last_raised().time()),
-            text: entry.text().to_string(),
-            badge: (entry.count() > 1).then(|| format!("×{}", entry.count())),
-        })
-        .collect()
+impl ToastHistoryDialog {
+    pub fn new(presenter: ToastHistoryPresenter) -> Self {
+        Self { presenter }
+    }
+
+    /// Emits the close once the Presenter has closed it.
+    fn closed(router: HostRouter<()>, cx: &mut Context<'_, Self>) {
+        if router.closed().is_some() {
+            cx.emit(DialogClosed);
+        }
+    }
 }
 
-pub fn render(history: &History<DateTime<Local>>, on_close: OnClose, cx: &App) -> AnyElement {
-    let rows = rows(history);
+impl EventEmitter<DialogClosed> for ToastHistoryDialog {}
+
+impl HostedDialog for ToastHistoryDialog {
+    /// Every key is left to the Shell, so none reaches the Presenter.
+    fn input(&mut self, _input: DialogInput, _cx: &mut Context<'_, Self>) {}
+
+    fn can_confirm(&self) -> bool {
+        true
+    }
+
+    /// The Close button.
+    fn confirm(&mut self, cx: &mut Context<'_, Self>) {
+        let mut router = HostRouter::default();
+        self.presenter.confirm(&mut router);
+        Self::closed(router, cx);
+    }
+
+    fn cancel(&mut self, cx: &mut Context<'_, Self>) {
+        let mut router = HostRouter::default();
+        self.presenter.cancel(&mut router);
+        Self::closed(router, cx);
+    }
+
+    fn close_open_select(&mut self) -> bool {
+        false
+    }
+
+    fn readback(&self, _cx: &App) -> DialogReadback {
+        DialogReadback {
+            kind: "ToastHistory",
+            values: vec![("rows", self.presenter.view_model().rows.len().to_string())],
+        }
+    }
+}
+
+impl Render for ToastHistoryDialog {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+        let clicks = DialogClicks::new(cx);
+        render(&self.presenter.view_model().rows, clicks.confirm, cx)
+    }
+}
+
+fn render(rows: &[ToastHistoryRow], on_close: OnClose, cx: &App) -> AnyElement {
     let list = if rows.is_empty() {
         div()
             .text_color(color::muted(cx))
@@ -54,7 +98,7 @@ pub fn render(history: &History<DateTime<Local>>, on_close: OnClose, cx: &App) -
             .flex()
             .flex_col()
             .gap(px(10.0))
-            .children(rows.into_iter().map(|row| render_row(row, cx)))
+            .children(rows.iter().map(|row| render_row(row, cx)))
             .into_any_element()
     };
 
@@ -104,7 +148,7 @@ pub fn render(history: &History<DateTime<Local>>, on_close: OnClose, cx: &App) -
         .into_any_element()
 }
 
-fn render_row(row: Row, cx: &App) -> AnyElement {
+fn render_row(row: &ToastHistoryRow, cx: &App) -> AnyElement {
     div()
         .flex()
         .items_start()
@@ -122,65 +166,14 @@ fn render_row(row: Row, cx: &App) -> AnyElement {
                 .flex_none()
                 .text_size(type_scale::META)
                 .text_color(color::muted(cx))
-                .child(row.time),
+                .child(row.time.clone()),
         )
         // Wraps rather than truncating: the history is where a long Message is read in full.
-        .child(div().flex_1().min_w(px(0.0)).child(row.text))
+        .child(div().flex_1().min_w(px(0.0)).child(row.text.clone()))
         .children(
             row.badge
+                .clone()
                 .map(|badge| div().flex_none().text_color(color::muted(cx)).child(badge)),
         )
         .into_any_element()
-}
-
-#[cfg(test)]
-mod tests {
-    use chrono::TimeZone;
-    use lib_toast::Toasts;
-
-    use super::*;
-
-    fn at(second: u32) -> DateTime<Local> {
-        Local
-            .with_ymd_and_hms(2026, 9, 28, 15, 4, second)
-            .single()
-            .expect("test time is unambiguous")
-    }
-
-    #[test]
-    fn an_empty_history_has_no_rows() {
-        let toasts: Toasts<DateTime<Local>> = Toasts::default();
-        assert!(rows(toasts.history()).is_empty());
-    }
-
-    #[test]
-    fn rows_list_newest_first() {
-        crate::locale::init_for_tests();
-        let mut toasts = Toasts::default();
-        toasts.raise(ToastKind::Info, "older", at(1));
-        toasts.raise(ToastKind::Error, "newer", at(2));
-        let texts: Vec<_> = rows(toasts.history())
-            .into_iter()
-            .map(|row| (row.kind, row.text))
-            .collect();
-        assert_eq!(
-            texts,
-            [
-                (ToastKind::Error, "newer".to_string()),
-                (ToastKind::Info, "older".to_string())
-            ]
-        );
-    }
-
-    #[test]
-    fn a_merged_duplicate_is_one_row_with_its_count_and_last_time() {
-        crate::locale::init_for_tests();
-        let mut toasts = Toasts::default();
-        toasts.raise(ToastKind::Success, "Deleted tag Food", at(1));
-        toasts.raise(ToastKind::Success, "Deleted tag Food", at(2));
-        let rows = rows(toasts.history());
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].badge.as_deref(), Some("×2"));
-        assert_eq!(rows[0].time, format_time(at(2).time()));
-    }
 }

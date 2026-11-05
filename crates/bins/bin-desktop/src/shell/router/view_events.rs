@@ -34,8 +34,6 @@ impl Root {
             ViewEvent::RaiseToast { kind, text } => {
                 self.send_shell(ShellInput::Notice(Notice::Toast(kind, text)), cx);
             }
-            // The legacy arm: the eleven Dialogs not yet on a module's Presenter (#820).
-            ViewEvent::OpenDialog(dialog) => self.open_dialog(*dialog),
             ViewEvent::HostDialog(dialog) => self.host_dialog(dialog, cx),
             ViewEvent::Navigate(noun) => {
                 let noun_before = self.nav().noun();
@@ -86,10 +84,7 @@ mod tests {
     use lib_toast::ToastKind;
 
     use super::*;
-    use crate::{
-        navigation::nav::{InputMode, NavState, Noun},
-        shell::view::dialog_host::{OpenDialog, ToastHistoryDialog},
-    };
+    use crate::navigation::nav::{NavState, Noun};
 
     /// A stand-in for a View Entity: it emits whatever the test hands it and holds no `Root`.
     struct StandInView;
@@ -127,17 +122,6 @@ mod tests {
             let toasts = shell.presenter.toasts().visible();
             assert_eq!(toasts.len(), 1);
             assert_eq!(toasts[0].text(), "Saved");
-        });
-
-        view.update(cx, |_, cx| {
-            cx.emit(ViewEvent::OpenDialog(Box::new(OpenDialog::ToastHistory(
-                ToastHistoryDialog,
-            ))));
-        });
-        cx.run_until_parked();
-        shell.read_with(cx, |shell, _| {
-            assert!(shell.state.dialog.is_some());
-            assert_eq!(shell.nav().mode(), InputMode::Dialog);
         });
 
         view.update(cx, |_, cx| cx.emit(ViewEvent::Navigate(Noun::Bills)));

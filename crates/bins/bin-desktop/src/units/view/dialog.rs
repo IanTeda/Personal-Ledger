@@ -32,8 +32,8 @@ use crate::ledger_store::LedgerStore;
 use crate::units::ports::{self, DesktopPorts};
 use crate::{
     dialog,
+    shell::view::dialog_entity::DialogReadback,
     shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog},
-    shell::view::dialog_host::DialogReadback,
     theme::color,
 };
 

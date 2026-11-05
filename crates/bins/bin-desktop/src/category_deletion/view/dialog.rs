@@ -17,8 +17,8 @@ use lib_shell::{DialogCommand, Hint};
 use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{BACK, Keymap, SELECT};
 
+use crate::shell::view::dialog_entity::DialogReadback;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
-use crate::shell::view::dialog_host::DialogReadback;
 
 /// The open Dialog's clicks.
 type Clicks = DialogClicks<CategoryDeletionDialog>;

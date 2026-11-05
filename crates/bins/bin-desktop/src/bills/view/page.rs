@@ -32,7 +32,7 @@ use crate::form::select::SelectState;
 use crate::form::viper::{choose_option, select_key, synced, toggle_select};
 use crate::ledger_store::{LedgerChanged, LedgerStore};
 use crate::navigation::{movement::Movement, nav::Noun};
-use crate::shell::view::dialog_host::DialogKey;
+use crate::shell::view::dialog_entity::DialogKey;
 use crate::shell::view::page_clicks::{PageClicks, PresenterPage};
 use crate::view::help::HelpGroup;
 use crate::{

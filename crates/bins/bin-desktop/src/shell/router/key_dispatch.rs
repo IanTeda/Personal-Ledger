@@ -17,7 +17,7 @@ use crate::{
         movement::Movement,
         nav::{FocusZone, InputMode},
     },
-    shell::view::dialog_host::{self, Dialog, DialogKey, DialogOutcome},
+    shell::view::dialog_entity::DialogKey,
     shell::view::window_size::WindowSize,
     view::{active::ActiveViewEntity, event::ViewMode},
 };
@@ -104,7 +104,7 @@ impl Root {
             }
             // The Presenter clears its own Toasts, so the command never reaches here.
             ShellCommand::DismissToasts => return false,
-            ShellCommand::ToastHistory => self.open_toast_history(),
+            ShellCommand::ToastHistory => self.open_toast_history(cx),
             ShellCommand::Jump(noun) => {
                 if self.refuse_noun_without_ledger(noun) {
                     return true;
@@ -295,29 +295,6 @@ impl Root {
         false
     }
 
-    /// Routes a keystroke while a legacy Dialog is open (step 1). A Dialog in the legacy Dialog host
-    /// goes through [`shell::view::dialog_host::handle_key`]. The step returns before the global keymap
-    /// is asked, so the shell-wide zones stay untouched while a Dialog is up. Each key the Dialog
-    /// takes is one input, whose commit saves what its confirm wrote.
-    fn handle_dialog_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
-        if self.state.dialog.is_none() {
-            return false;
-        }
-        input::send(cx, |cx| {
-            let Some(dialog) = self.state.dialog.as_mut() else {
-                return false;
-            };
-            match dialog_host::handle_key(dialog, dialog_key(keystroke)) {
-                DialogOutcome::Ignored => false,
-                DialogOutcome::Handled => true,
-                DialogOutcome::Confirm => {
-                    self.confirm_open_dialog(cx);
-                    true
-                }
-            }
-        })
-    }
-
     /// A key while a module's Dialog is open, as one input: resolved through the Dialog keymap,
     /// with `back` the host's own (an open select closes first, otherwise the Dialog cancels and
     /// closes), and any key the keymap doesn't bind typed into the focused field.
@@ -354,29 +331,12 @@ struct Keys<'a, 'b> {
 }
 
 impl KeyRoute for Keys<'_, '_> {
-    /// A module's Dialog reads its keys through the Dialog keymap; a legacy Dialog through its own
-    /// handler, with `Esc` closing its open select first, otherwise the Dialog unapplied.
+    /// A module's Dialog reads its keys through the Dialog keymap.
     fn dialog(&mut self) -> Option<bool> {
         let shell = &mut *self.shell;
-        if !shell.presenter.dialog_open() {
-            return None;
-        }
-        if let Some(dialog) = shell.hosted_dialog().cloned() {
-            shell.handle_hosted_dialog_key(&dialog, self.keystroke, self.cx);
-            return Some(true);
-        }
-        if self.keystroke.key == "escape" {
-            if !shell
-                .state
-                .dialog
-                .as_mut()
-                .is_some_and(Dialog::close_open_select)
-            {
-                shell.close_popups_and_exit_mode();
-            }
-            return Some(true);
-        }
-        Some(shell.handle_dialog_key(self.keystroke, self.cx))
+        let dialog = shell.hosted_dialog().cloned()?;
+        shell.handle_hosted_dialog_key(&dialog, self.keystroke, self.cx);
+        Some(true)
     }
 
     /// The palette, Search, a filter, the file explorer or Insert takes every key. A mode the View

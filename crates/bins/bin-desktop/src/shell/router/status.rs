@@ -7,7 +7,6 @@ use super::Root;
 use crate::view::active::ActiveViewEntity;
 use crate::{
     navigation::nav::InputMode,
-    shell::view::dialog_host::Dialog,
     shell::view::statusline::{HintAction, PageStatus},
     shell::view::view_status::ViewStatus,
     shell::view::window_size::WindowSize,
@@ -53,10 +52,9 @@ impl Root {
             ActiveViewEntity::Shell(_) => None,
             view => view.page_status(cx),
         };
-        let hints = match self.hosted_dialog() {
-            Some(dialog) => dialog.hints(&self.state.dialog_keymap, cx),
-            None => self.state.dialog.as_ref().and_then(Dialog::hints),
-        };
+        let hints = self
+            .hosted_dialog()
+            .and_then(|dialog| dialog.hints(&self.state.dialog_keymap, cx));
         match hints {
             Some(hints) => Some(PageStatus {
                 hints,

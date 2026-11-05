@@ -1,11 +1,9 @@
-//! The Dialog host plumbing of `Root`: opening, closing and confirming, the Documents
-//! Dialogs it still confirms by variant. An `impl Root` block, not the Dialog host itself (`shell::view::dialog_host`).
+//! The Dialog host plumbing of `Root`: opening and closing a module's Dialog Entity. An `impl Root`
+//! block, not the Dialog host itself (`shell::view::dialog_entity`).
 
 use super::Root;
 use crate::navigation::nav::NounLabel;
-use crate::shell::view::dialog_host::{
-    Dialog, DialogReadback, DialogScope, DialogVariant, OpenDialog,
-};
+use crate::shell::view::dialog_entity::DialogReadback;
 use crate::view::help::{HelpDialog, HelpGroup};
 use gpui::{AppContext as _, Context};
 use lib_shell::DialogInput;
@@ -14,13 +12,6 @@ use lib_shell::HelpPresenter;
 use crate::shell::view::dialog_entity::DialogHandle;
 
 impl Root {
-    /// Opens `dialog` in the legacy Dialog host, entering `InputMode::Dialog` with it.
-    pub(super) fn open_dialog(&mut self, dialog: OpenDialog) {
-        self.close_dialog();
-        self.state.dialog = Some(dialog);
-        self.presenter.dialog(DialogInput::Opened);
-    }
-
     /// Opens a module's Dialog Entity, closing the host once its Presenter closes it.
     pub(super) fn host_dialog(&mut self, dialog: DialogHandle, cx: &mut Context<'_, Self>) {
         self.close_dialog();
@@ -47,25 +38,11 @@ impl Root {
         self.state.hosted.as_ref().map(|(dialog, _)| dialog)
     }
 
-    /// What a hosted Dialog reads and writes through.
-    pub(super) fn dialog_scope(&self) -> DialogScope {
-        DialogScope {
-            ledger: self.open.as_ref().map(|open| open.ledger.clone()),
-            today: self.today,
-        }
-    }
-
     /// The open hosted Dialog's state as labelled values, for a test; `None` when no Dialog or
     /// one not yet hosted is open.
     #[doc(hidden)]
     pub fn dialog_readback(&self, cx: &gpui::App) -> Option<DialogReadback> {
-        if let Some(dialog) = self.hosted_dialog() {
-            return Some(dialog.readback(cx));
-        }
-        self.state
-            .dialog
-            .as_ref()?
-            .readback(&self.dialog_scope(), cx)
+        Some(self.hosted_dialog()?.readback(cx))
     }
 
     /// Opens the Help Dialog over the active View, carrying the page group that View adds to the
@@ -94,52 +71,10 @@ impl Root {
         self.help_dialog()?.read(cx).group()
     }
 
-    /// Closes the open Dialog, in either host, without applying it.
+    /// Closes the open Dialog without applying it.
     pub(super) fn close_dialog(&mut self) {
-        let legacy = self.state.dialog.take().is_some();
-        if legacy || self.state.hosted.take().is_some() {
+        if self.state.hosted.take().is_some() {
             self.presenter.dialog(DialogInput::Closed);
         }
-    }
-
-    /// `Enter` and the confirm button both land here. The one Dialog left on the host is the Toast
-    /// history, which is read-only: it has nothing to apply, so confirming closes it.
-    pub(super) fn confirm_open_dialog(&mut self, _cx: &mut Context<'_, Self>) {
-        if matches!(self.state.dialog, Some(OpenDialog::ToastHistory(_))) {
-            self.close_dialog();
-        }
-    }
-
-    /// The cancel button: closes the Dialog without applying it, as one input.
-    pub(super) fn handle_dialog_cancel(&mut self, cx: &mut Context<'_, Self>) {
-        crate::input::send(cx, |_| self.close_dialog());
-    }
-
-    /// The confirm button, the click twin of `Enter`: one input, whose commit saves what the
-    /// Dialog and the page it hands its outcome to wrote.
-    pub(super) fn handle_dialog_confirm(&mut self, cx: &mut Context<'_, Self>) {
-        crate::input::send(cx, |cx| self.confirm_open_dialog(cx));
-    }
-
-    /// A click inside the open `T` Dialog: runs `change` on it and repaints. A no-op when another
-    /// feature's Dialog is open.
-    pub(super) fn edit_dialog<T: DialogVariant>(
-        &mut self,
-        cx: &mut Context<'_, Self>,
-        change: impl FnOnce(&mut T),
-    ) {
-        if let Some(dialog) = self.dialog_mut::<T>() {
-            change(dialog);
-        }
-        cx.notify();
-    }
-
-    /// The open Dialog as a `T`, `None` when no Dialog or another feature's is open.
-    pub(super) fn dialog<T: DialogVariant>(&self) -> Option<&T> {
-        T::from_open(self.state.dialog.as_ref()?)
-    }
-
-    pub(super) fn dialog_mut<T: DialogVariant>(&mut self) -> Option<&mut T> {
-        T::from_open_mut(self.state.dialog.as_mut()?)
     }
 }

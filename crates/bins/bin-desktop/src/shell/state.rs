@@ -5,9 +5,7 @@
 
 use crate::{
     navigation::nav::Noun,
-    shell::view::{
-        dialog_entity::DialogHandle, dialog_host::OpenDialog, palette::Palette, rail::RailOverride,
-    },
+    shell::view::{dialog_entity::DialogHandle, palette::Palette, rail::RailOverride},
 };
 
 pub(crate) struct ShellState {
@@ -27,13 +25,10 @@ pub(crate) struct ShellState {
     /// it captured before applying, so hovering a second row (or leaving the rail entirely)
     /// before the first row's delay elapses can't reveal the wrong tooltip.
     pub(crate) hover_generation: u64,
-    /// The open Dialog in the Dialog host (`crate::shell::view::dialog_host`), if any. Only
-    /// `Root::open_dialog`/`Root::close_dialog` change it, so `NavState::mode` is
-    /// `InputMode::Dialog` for exactly as long as this is `Some`. Every feature's Dialog lives here.
-    pub(crate) dialog: Option<OpenDialog>,
     /// The open module Dialog, an Entity holding its Presenter (`crate::shell::view::dialog_entity`),
-    /// and the subscription that closes it once its Presenter does. Opened and closed with
-    /// `dialog` by the same two methods, so at most one of the two is ever `Some`.
+    /// and the subscription that closes it once its Presenter does. Only `Root::host_dialog` and
+    /// `Root::close_dialog` change it, so `NavState::mode` is `InputMode::Dialog` for exactly as
+    /// long as this is `Some`.
     pub(crate) hosted: Option<(DialogHandle, gpui::Subscription)>,
     /// The keys every module Dialog shares, under `[keybindings]` (`lib_shell::dialog`).
     pub(crate) dialog_keymap: lib_viper::keymap::Keymap<lib_shell::DialogCommand>,

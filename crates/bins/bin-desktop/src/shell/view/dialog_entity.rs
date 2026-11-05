@@ -1,7 +1,6 @@
 //! The Dialog host for a module's Dialogs (#820): the open Dialog is a gpui Entity holding its
 //! Presenter, so every key and click updates the Presenter with a context, and the Dialog draws
-//! itself as a View. Every module's Dialog lives here (#991); only the Dialogs not yet on a
-//! module keep the legacy host (`shell::view::dialog_host`).
+//! itself as a View. Every Dialog lives here (#991, #1043).
 //!
 //! Every key reaches the open Dialog through `lib-shell`'s Dialog keymap ([`DialogCommand`]), so
 //! `Enter`, `Esc`, `Tab` and select stepping are the same in each Dialog and follow
@@ -28,9 +27,59 @@ use lib_viper::keymap::Keymap;
 
 use crate::dialog::OnClick;
 use crate::form::select_field::OnOptionClick;
-use crate::shell::view::dialog_host::{DialogKey, DialogReadback};
 use crate::view::event::ViewEvent;
 use lib_shell::Hint;
+
+/// A keystroke as a Dialog sees it, already stripped of modifiers by `Root`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DialogKey {
+    Backspace,
+    Tab,
+    /// `Shift-Tab`; a Dialog without its own handling treats it as `Tab`.
+    BackTab,
+    Up,
+    Down,
+    Left,
+    Right,
+    Enter,
+    /// `Ctrl-Enter`: a multi-line box takes it to save, and any other Dialog treats it as `Enter`.
+    CtrlEnter,
+    /// A printable character, typed without Ctrl/Alt/Cmd/Fn.
+    Char(char),
+    /// A character chord held with Ctrl alone (`Ctrl-N`), for a list Dialog's own keys.
+    Ctrl(char),
+    /// Anything else (arrows, function keys, a modified chord).
+    Other,
+}
+
+/// What `Root` does after a Dialog has seen a key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DialogOutcome {
+    /// Not the Dialog's key; `Root` lets it fall through.
+    Ignored,
+    Handled,
+    /// The form is valid and the user confirmed: `Root` applies it and closes the Dialog.
+    Confirm,
+}
+
+/// A hosted Dialog's state as labelled values, read back by the UI tests: `kind` names which
+/// Dialog is open (`AddTag`), and each value a field it shows (`name`, `confirm`).
+#[doc(hidden)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DialogReadback {
+    pub kind: &'static str,
+    pub values: Vec<(&'static str, String)>,
+}
+
+impl DialogReadback {
+    /// The value labelled `label`, if the Dialog shows one.
+    pub fn value(&self, label: &str) -> Option<&str> {
+        self.values
+            .iter()
+            .find(|(name, _)| *name == label)
+            .map(|(_, value)| value.as_str())
+    }
+}
 
 /// A Dialog's Presenter has closed it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -1,4 +1,4 @@
-//! The Other notice (`dialog_host`'s old `DefaultNotice`): why the Default Document Type has no
+//! The Other notice (the old legacy host's `DefaultNotice`): why the Default Document Type has no
 //! remove action, on the shared `crate::dialog` frame. Its one button closes it; nothing is
 //! written.
 

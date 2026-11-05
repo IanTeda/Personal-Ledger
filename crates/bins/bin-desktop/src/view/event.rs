@@ -9,15 +9,13 @@ use crate::{
     bills::EntryId,
     navigation::nav::{InputMode, Noun},
     period::Period,
-    shell::view::{dialog_entity::DialogHandle, dialog_host::OpenDialog},
+    shell::view::dialog_entity::DialogHandle,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ViewEvent {
     /// Raise a Toast whose Message the View has already resolved to text.
     RaiseToast { kind: ToastKind, text: String },
-    /// Open a Dialog in the Dialog host.
-    OpenDialog(Box<OpenDialog>),
     /// Open a module's Dialog, an Entity holding its Presenter (`dialog_entity::host_dialog`).
     HostDialog(DialogHandle),
     /// Make `Noun` the active destination, as the rail or a `g`-jump would.

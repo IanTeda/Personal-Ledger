@@ -1,10 +1,9 @@
 //! The Shell's view: the frame the Desktop draws around the View on show -- the top bar
 //! (`topbar`), the rails (`rail`), the status line (`statusline`), the command palette
-//! (`palette`), the Dialog host (`dialog_host`), the page clicks (`page_clicks`) and the Toast
+//! (`palette`), the Dialog host (`dialog_entity`), the page clicks (`page_clicks`) and the Toast
 //! layer with its session history (`toast`).
 
 pub(crate) mod dialog_entity;
-pub(crate) mod dialog_host;
 pub(crate) mod no_ledger;
 pub(crate) mod page_clicks;
 pub(crate) mod palette;

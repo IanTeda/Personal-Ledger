@@ -1,6 +1,6 @@
 //! The pure state behind a dialog's text input: append-only typing and `Backspace`, the only
 //! editing a Dialog offers (there is no caret). Forms hold one per text field and hand the
-//! focused one to `dialog_host`, which does the typing for every Dialog in one place.
+//! focused one to `dialog_entity`'s host, which types into it for every Dialog.
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct TextField {

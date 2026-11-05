@@ -28,8 +28,8 @@ use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::Keymap;
 
 use crate::documents::view::snapshot::PickerSnapshot;
+use crate::shell::view::dialog_entity::DialogReadback;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
-use crate::shell::view::dialog_host::DialogReadback;
 
 /// The open Documents Dialog's clicks.
 type Clicks = DialogClicks<DocumentsDialog>;

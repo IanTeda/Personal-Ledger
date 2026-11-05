@@ -29,8 +29,8 @@ use lib_shell::DialogCommand;
 use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
 
+use crate::shell::view::dialog_entity::DialogReadback;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
-use crate::shell::view::dialog_host::DialogReadback;
 use crate::theme::color;
 use lib_shell::Hint;
 

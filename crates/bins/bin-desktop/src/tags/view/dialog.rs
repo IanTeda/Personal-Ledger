@@ -18,8 +18,8 @@ use lib_tags::{SharedPorts, TagsOutcome};
 use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
 
+use crate::shell::view::dialog_entity::DialogReadback;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
-use crate::shell::view::dialog_host::DialogReadback;
 
 /// The open Tags Dialog's clicks.
 type Clicks = DialogClicks<TagsDialog>;

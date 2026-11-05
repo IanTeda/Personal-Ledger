@@ -10,8 +10,8 @@ use lib_viper::dialog::DialogInput;
 
 use crate::{
     dialog, help,
+    shell::view::dialog_entity::DialogReadback,
     shell::view::dialog_entity::{DialogClicks, DialogClosed, HelpRouter, HostedDialog},
-    shell::view::dialog_host::DialogReadback,
     theme::color,
 };
 

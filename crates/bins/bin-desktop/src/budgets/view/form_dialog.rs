@@ -35,8 +35,8 @@ use super::dialog::Landed;
 use crate::budgets::ports::{self, DesktopPorts};
 use crate::dialog;
 use crate::ledger_store::LedgerStore;
+use crate::shell::view::dialog_entity::DialogReadback;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
-use crate::shell::view::dialog_host::DialogReadback;
 use crate::theme::color;
 
 /// The open Dialog's clicks.

@@ -22,9 +22,9 @@
 //! (opened via a `:`-palette command, so reusing `InputMode::Command` while it's open was a
 //! natural fit), a Settings dialog opens from a plain button click inside the Settings view, with
 //! no palette dispatch to piggyback on. Issues #184/#185 picked `InputMode::Dialog`
-//! (`Root::handle_dialog_key`), a new mode alongside `Command`/`Search`.
+//! (`Root::handle_hosted_dialog_key`), a new mode alongside `Command`/`Search`.
 //!
-//! Dialog state and the keyboard handling Dialogs share now live in `crate::shell::view::dialog_host`; this
+//! Dialog state and the keyboard handling Dialogs share now live in `crate::shell::view::dialog_entity`; this
 //! module still only draws.
 
 use std::rc::Rc;

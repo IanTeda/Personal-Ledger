@@ -25,8 +25,8 @@ use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
 
 use crate::document_types::ports;
 use crate::ledger_store::LedgerStore;
+use crate::shell::view::dialog_entity::DialogReadback;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
-use crate::shell::view::dialog_host::DialogReadback;
 
 /// The open Document Types Dialog's clicks.
 type Clicks = DialogClicks<DocumentTypesDialog>;
