@@ -533,10 +533,7 @@ mod tests {
         stub(&writer, now).expect("the second seed lands");
 
         let stored = TagsAdapter::load(PendingWrites::new(writer.clone())).expect("the Tags load");
-        assert_eq!(
-            stored.tags().tags(),
-            lib_ledger::Ledger::stub().tags().to_vec()
-        );
+        assert_eq!(stored.tags().tags(), lib_tags::default_tags());
     }
 
     /// The Inventory is the stub Ledger's as of the seed's day, by id, so the stub Documents' Links
@@ -554,7 +551,7 @@ mod tests {
         let today = now.with_timezone(&Local).date_naive();
         assert_eq!(
             stored.inventory().inventory(),
-            *lib_ledger::Ledger::stub_on(today).inventory()
+            lib_inventory::default_inventory(today)
         );
     }
 
@@ -634,7 +631,7 @@ mod tests {
     fn the_stub_seed_writes_the_stub_ledgers_payees_twice_over_the_same_rows() {
         let (_dir, writer) = temp_writer();
         let now = Utc::now();
-        let mut expected = lib_ledger::Ledger::stub().payees().to_vec();
+        let mut expected = lib_payees::default_payees();
         expected.sort_by_key(|payee| payee.id);
         for payee in &mut expected {
             payee.aliases.sort();

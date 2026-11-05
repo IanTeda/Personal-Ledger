@@ -263,14 +263,11 @@ mod tests {
     }
 
     fn payees(ledger: &Ledger) -> SharedPayeesStore {
-        crate::payees::LedgerBackedPorts::in_memory(
-            ledger,
-            lib_database::StoredPayeeReads {
-                transactions: transactions(ledger),
-                bills: in_memory_store(ledger),
-                categories: categories(ledger),
-            },
-        )
+        crate::payees::LedgerBackedPorts::in_memory(lib_database::StoredPayeeReads {
+            transactions: transactions(ledger),
+            bills: in_memory_store(ledger),
+            categories: categories(ledger),
+        })
     }
 
     fn entries(ports: &DesktopPorts) -> Vec<BillScheduleEntry> {
@@ -292,7 +289,7 @@ mod tests {
             transactions(&ledger),
             in_memory_units(&ledger),
         );
-        let mut renamed = ledger.payees()[0].clone();
+        let mut renamed = store.borrow().payees().payees()[0].clone();
         renamed.name = "Renamed in the store".into();
         lib_payees::PayeeRepository::upsert_payee(store.borrow_mut().payees_mut(), renamed.clone());
 

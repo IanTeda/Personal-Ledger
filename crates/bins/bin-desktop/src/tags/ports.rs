@@ -15,18 +15,17 @@ use std::rc::Rc;
 use gpui::{App, Entity};
 use lib_core::TagId;
 use lib_database::{SharedTagsStore, StoredTagReads};
-use lib_ledger::Ledger;
 use lib_tags::fake::{InMemoryPorts, InMemoryTagUsage, InMemoryTags};
 use lib_tags::{SharedPorts, Tag, TagRepository, TagUsage, TagUse};
 
 use crate::ledger_store::LedgerStore;
 
-/// `ledger`'s own Tags in memory, for a test that needs no storage. What carries them is read
-/// through [`StoredTagReads`].
-pub fn in_memory(ledger: &Ledger) -> SharedTagsStore {
+/// The stub Tags in memory, for a test that needs no storage. What carries them is read through
+/// [`StoredTagReads`].
+pub fn in_memory() -> SharedTagsStore {
     Rc::new(RefCell::new(InMemoryPorts {
         tags: InMemoryTags {
-            tags: ledger.tags().to_vec(),
+            tags: lib_tags::default_tags(),
         },
         usage: InMemoryTagUsage::default(),
     }))
@@ -94,11 +93,11 @@ mod tests {
 
     #[test]
     fn usage_is_counted_from_the_ledgers_transactions() {
-        let ledger = Ledger::stub();
-        let shared = lib_tags::find_by_name(ledger.tags(), "shared").expect("a stub Tag");
+        let shared =
+            lib_tags::find_by_name(&lib_tags::default_tags(), "shared").expect("a stub Tag");
         let setup = crate::ledger_store::LedgerSetup::stub(today());
         let ports = StorePorts {
-            store: in_memory(&ledger),
+            store: in_memory(),
             usage: StoredTagReads {
                 transactions: setup.transactions.clone(),
                 accounts: setup.accounts.clone(),
@@ -109,7 +108,6 @@ mod tests {
         let used = ports.tag_usage(shared);
 
         assert!(used.transactions > 0, "the stub's Splits carry it");
-        assert_eq!(used.transactions, ledger.tag_uses()[&shared].transactions);
         assert_eq!(ports.tag_usage(TagId::seed(999)), TagUse::default());
     }
 

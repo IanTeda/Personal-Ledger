@@ -17,7 +17,6 @@ use std::rc::Rc;
 
 use gpui::{App, Entity};
 use lib_database::{PayeesStore, StoredPayeeReads};
-use lib_ledger::Ledger;
 use lib_payees::{PayeeCategories, PayeeRepository, PayeeUsage, PayeesPorts, PortsMut};
 
 use crate::ledger_store::LedgerStore;
@@ -37,13 +36,13 @@ impl LedgerBackedPorts {
         Rc::new(RefCell::new(Self { store, reads }))
     }
 
-    /// `ledger`'s own Payees in memory, reading the other domains through `reads`, for a test that
-    /// needs no storage.
-    pub fn in_memory(ledger: &Ledger, reads: StoredPayeeReads) -> DesktopPorts {
+    /// The stub Payees in memory, reading the other domains through `reads`, for a test that needs
+    /// no storage.
+    pub fn in_memory(reads: StoredPayeeReads) -> DesktopPorts {
         Self::shared(
             Box::new(lib_payees::fake::InMemoryPorts {
                 payees: lib_payees::fake::InMemoryPayees {
-                    payees: ledger.payees().to_vec(),
+                    payees: lib_payees::default_payees(),
                 },
                 ..Default::default()
             }),
@@ -115,6 +114,7 @@ pub fn reload(ledger: &Entity<LedgerStore>, cx: &mut App) -> lib_database::Resul
 mod tests {
     use lib_core::{CategoryId, PayeeId, TransactionId};
     use lib_database::SharedTransactionsStore;
+    use lib_ledger::Ledger;
 
     use super::*;
 
@@ -130,7 +130,7 @@ mod tests {
             bills: crate::bills::ports::in_memory_store(ledger),
             categories: crate::categories::ports::in_memory(ledger),
         };
-        (LedgerBackedPorts::in_memory(ledger, reads), transactions)
+        (LedgerBackedPorts::in_memory(reads), transactions)
     }
 
     #[test]

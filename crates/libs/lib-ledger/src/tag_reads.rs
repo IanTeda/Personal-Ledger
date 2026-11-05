@@ -17,7 +17,7 @@ use crate::tag_usage::TagRows;
 impl Ledger {
     /// What carries each Tag, counted from the Transactions and Accounts; a Tag nothing carries
     /// is left out.
-    pub fn tag_uses(&self) -> HashMap<TagId, TagUse> {
+    pub(crate) fn tag_uses(&self) -> HashMap<TagId, TagUse> {
         let rows = TagRows {
             transactions: &self.transactions,
             accounts: &self.accounts,

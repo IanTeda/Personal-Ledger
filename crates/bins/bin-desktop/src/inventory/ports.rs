@@ -14,11 +14,10 @@ use lib_core::{ItemId, LocationId};
 use lib_database::SharedInventoryStore;
 use lib_inventory::fake::InMemoryInventory;
 use lib_inventory::{Inventory, InventoryRepository, Item, Location, SharedInventory};
-use lib_ledger::Ledger;
 
-/// `ledger`'s own Inventory in memory, for a test that needs no storage.
-pub fn in_memory(ledger: &Ledger) -> SharedInventoryStore {
-    let Inventory { locations, items } = ledger.inventory().clone();
+/// The stub Inventory as of `today` in memory, for a test that needs no storage.
+pub fn in_memory(today: chrono::NaiveDate) -> SharedInventoryStore {
+    let Inventory { locations, items } = lib_inventory::default_inventory(today);
     Rc::new(RefCell::new(InMemoryInventory { locations, items }))
 }
 

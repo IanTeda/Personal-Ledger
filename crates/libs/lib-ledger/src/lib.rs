@@ -192,11 +192,11 @@ impl Ledger {
         &self.categories
     }
 
-    pub fn payees(&self) -> &[Payee] {
+    pub(crate) fn payees(&self) -> &[Payee] {
         &self.payees
     }
 
-    pub fn tags(&self) -> &[Tag] {
+    pub(crate) fn tags(&self) -> &[Tag] {
         &self.tags
     }
 
@@ -216,7 +216,7 @@ impl Ledger {
         &self.budgets
     }
 
-    pub fn inventory(&self) -> &Inventory {
+    pub(crate) fn inventory(&self) -> &Inventory {
         &self.inventory
     }
 

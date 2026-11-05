@@ -79,14 +79,11 @@ impl LedgerSetup {
         );
         let bills_store = crate::bills::ports::in_memory_store(&ledger);
         let units = crate::bills::ports::in_memory_units(&ledger);
-        let payees = crate::payees::LedgerBackedPorts::in_memory(
-            &ledger,
-            StoredPayeeReads {
-                transactions: transactions.clone(),
-                bills: bills_store.clone(),
-                categories: categories.clone(),
-            },
-        );
+        let payees = crate::payees::LedgerBackedPorts::in_memory(StoredPayeeReads {
+            transactions: transactions.clone(),
+            bills: bills_store.clone(),
+            categories: categories.clone(),
+        });
         let bills = LedgerBackedPorts::shared(
             bills_store,
             payees.clone(),
@@ -101,8 +98,8 @@ impl LedgerSetup {
                 documents: ledger.stub_documents(today),
                 types: lib_documents::types::default_types(),
             })),
-            tags: crate::tags::ports::in_memory(&ledger),
-            inventory: crate::inventory::ports::in_memory(&ledger),
+            tags: crate::tags::ports::in_memory(),
+            inventory: crate::inventory::ports::in_memory(today),
             institutions: crate::institutions::LedgerBackedPorts::in_memory(
                 &ledger,
                 accounts.clone(),
@@ -157,14 +154,11 @@ impl LedgerStore {
             }));
         let categories = crate::categories::ports::in_memory(&ledger);
         let bills_store = crate::bills::ports::in_memory_store(&ledger);
-        let payees = crate::payees::LedgerBackedPorts::in_memory(
-            &ledger,
-            StoredPayeeReads {
-                transactions: transactions.clone(),
-                bills: bills_store.clone(),
-                categories: categories.clone(),
-            },
-        );
+        let payees = crate::payees::LedgerBackedPorts::in_memory(StoredPayeeReads {
+            transactions: transactions.clone(),
+            bills: bills_store.clone(),
+            categories: categories.clone(),
+        });
         let budgets = crate::budgets::ports::in_memory(&ledger);
         let accounts = crate::accounts::LedgerBackedPorts::in_memory(
             &ledger,
@@ -183,7 +177,7 @@ impl LedgerStore {
         );
         let institutions =
             crate::institutions::LedgerBackedPorts::in_memory(&ledger, accounts.clone());
-        let inventory = crate::inventory::ports::in_memory(&ledger);
+        let inventory = crate::inventory::ports::in_memory(chrono::Local::now().date_naive());
         let documents: SharedDocumentsStore =
             Rc::new(RefCell::new(lib_documents::fake::InMemoryDocuments {
                 documents: Vec::new(),
@@ -206,7 +200,7 @@ impl LedgerStore {
             institutions,
             accounts,
             categories,
-            tags: crate::tags::ports::in_memory(&ledger),
+            tags: crate::tags::ports::in_memory(),
             inventory,
             documents,
             document_reads,
