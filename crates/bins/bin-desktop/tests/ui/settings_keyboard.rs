@@ -453,3 +453,50 @@ fn with_no_ledger_open_enter_in_the_picker_on_a_this_ledger_page_is_refused(
     );
     assert_eq!(settings.status_message.as_deref(), Some(common::NO_LEDGER));
 }
+
+#[gpui::test]
+fn with_no_ledger_open_a_refused_settings_command_leaves_back_where_it_was(
+    app: &mut TestAppContext,
+) {
+    let mut ui = Harness::without_ledger(app);
+    ui.press("g s");
+    assert_eq!(ui.noun(), Noun::Settings);
+
+    ui.press(": s e t t i n g s space u n i t s enter");
+    assert_eq!(
+        ui.settings_frame().status_message.as_deref(),
+        Some(common::NO_LEDGER)
+    );
+
+    ui.click("topbar-back");
+    assert_eq!(
+        ui.noun(),
+        Noun::Dashboard,
+        "a refused page open records nothing, so Back goes to where the person was before"
+    );
+}
+
+#[gpui::test]
+fn an_accepted_settings_page_open_steps_back_and_forward_through_the_page_it_left(
+    app: &mut TestAppContext,
+) {
+    let mut ui = Harness::new(app);
+    ui.press("g s");
+    ui.press(": s e t t i n g s space u n i t s enter");
+    assert_eq!(ui.settings_frame().page, "Units");
+
+    ui.click("topbar-back");
+    assert_eq!(ui.noun(), Noun::Settings);
+    assert_eq!(ui.settings_frame().page, "General");
+
+    ui.click("topbar-back");
+    assert_eq!(ui.noun(), Noun::Dashboard);
+
+    ui.click("topbar-forward");
+    assert_eq!(ui.noun(), Noun::Settings);
+    assert_eq!(ui.settings_frame().page, "General");
+
+    ui.click("topbar-forward");
+    assert_eq!(ui.noun(), Noun::Settings);
+    assert_eq!(ui.settings_frame().page, "Units");
+}
