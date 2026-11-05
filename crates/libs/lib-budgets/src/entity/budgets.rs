@@ -403,6 +403,25 @@ impl Budgets {
             .filter(|budget| applied(budget.chain(category_id), current).is_some())
             .count()
     }
+
+    /// How many active Budgets use any of `categories` this month or later: a Budget Amount in
+    /// effect this month, or a record starting after it that isn't a Stop. A chain Stopped before
+    /// this month, and an archived Budget, don't count. Those Budgets are what a type change to
+    /// the Categories would leave budgeting the wrong kind.
+    pub fn using(&self, categories: &[CategoryId], today: NaiveDate) -> usize {
+        let current = Period::of(today);
+        self.active()
+            .filter(|budget| {
+                categories.iter().any(|id| {
+                    let chain = budget.chain(*id);
+                    applied(chain, current).is_some()
+                        || chain.iter().any(|record| {
+                            record.month > current && !matches!(record.limit, Limit::Stop)
+                        })
+                })
+            })
+            .count()
+    }
 }
 
 pub fn check_accounts(accounts: &[BudgetAccount], unit: UnitId, ids: &[AccountId]) -> Result<()> {
@@ -789,5 +808,49 @@ mod tests {
             .unwrap_or_else(unreachable_budget);
         let figures = period_figures(&archived, world.ledger(), sep(), today());
         assert_eq!(figures.budgeted, money("100.00"));
+    }
+
+    /// A Budget uses a Category while an amount is in effect this month or one starts later; a
+    /// chain Stopped before this month and an archived Budget don't use it.
+    #[test]
+    fn using_counts_the_active_budgets_with_an_amount_this_month_or_later() {
+        let (world, mut budgets, id) = september();
+        let dining = world.category("Dining");
+        let groceries = world.category("Groceries");
+        let household = world.category("Household");
+        let october = Period::of(date(2026, 10, 1));
+
+        assert_eq!(budgets.using(&[dining, groceries], today()), 1);
+        assert_eq!(budgets.using(&[household], today()), 0, "never budgeted");
+
+        // Household starts next month.
+        set(
+            &mut budgets,
+            &world,
+            id,
+            "Household",
+            october,
+            Span::Onward,
+            "50.00",
+            None,
+        );
+        assert_eq!(budgets.using(&[household], today()), 1, "starts later");
+
+        // Stopped from this month, then nothing is left to use.
+        for name in ["Dining", "Groceries"] {
+            let stopped = budgets.stop(id, world.ledger(), world.category(name), sep(), today());
+            assert_eq!(stopped, Ok(()));
+        }
+        assert_eq!(budgets.using(&[dining, groceries], today()), 0);
+
+        // An archived Budget doesn't block, even with a later record.
+        let copy = budgets.duplicate(id).expect("the id exists");
+        assert_eq!(
+            budgets.using(&[household], today()),
+            2,
+            "the copy uses it too"
+        );
+        assert_eq!(budgets.archive(copy, today()), Ok(()));
+        assert_eq!(budgets.using(&[household], today()), 1);
     }
 }

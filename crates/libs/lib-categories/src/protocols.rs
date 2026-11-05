@@ -55,6 +55,26 @@ pub struct CategoryUse {
 /// count, since a delete's refusal is [`CategoryReassign`]'s.
 pub trait CategoryUsage {
     fn category_usage(&self, id: CategoryId) -> CategoryUse;
+
+    /// What stops a top-level Category's type changing: the Budgets and Bill Plans using any
+    /// Category in `subtree` (the Category and everything nested under it).
+    fn type_change_blockers(&self, subtree: &[CategoryId]) -> TypeChangeBlockers;
+}
+
+/// The rows that keep a Category's subtree from changing type. A Budget counts when it is active
+/// and a Budget Amount of a Category in the subtree is in effect this month or starts later, so a
+/// chain Stopped before this month and an archived Budget don't. A Bill Plan counts whether or
+/// not it is active.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TypeChangeBlockers {
+    pub budgets: usize,
+    pub bill_plans: usize,
+}
+
+impl TypeChangeBlockers {
+    pub fn is_empty(&self) -> bool {
+        self.budgets == 0 && self.bill_plans == 0
+    }
 }
 
 /// The Monthly budget field as a Dialog opens it: the amount this month, and the Budget's name
@@ -158,9 +178,9 @@ pub trait CategoryHandover {
 
 /// Everything an Add or Edit save reaches beyond the Categories: the Monthly budget and the
 /// handover. One trait, so a Client lends its one set of ports once.
-pub trait CategorySavePorts: CategoryBudget + CategoryHandover {}
+pub trait CategorySavePorts: CategoryBudget + CategoryHandover + CategoryUsage {}
 
-impl<T: CategoryBudget + CategoryHandover + ?Sized> CategorySavePorts for T {}
+impl<T: CategoryBudget + CategoryHandover + CategoryUsage + ?Sized> CategorySavePorts for T {}
 
 /// What a Category delete did, for its Toast.
 #[derive(Debug, Clone, PartialEq, Eq)]

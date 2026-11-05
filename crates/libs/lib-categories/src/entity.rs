@@ -274,6 +274,13 @@ pub enum SaveCategoryRefusal {
         leaf: String,
         held: crate::protocols::Holdings,
     },
+    /// A top-level Category can't change type while Budgets or Bill Plans use its Categories.
+    #[error("{category} can't change type while its categories are in use")]
+    TypeInUse {
+        category: String,
+        to: CategoryTypes,
+        blockers: crate::protocols::TypeChangeBlockers,
+    },
 }
 
 /// Whether `child_id` is a descendant of `parent_id` (cycle detection).

@@ -18,7 +18,10 @@ pub use category_form::{
 };
 pub use delete_category::{DeleteCategoryEvent, DeleteCategoryPresenter, DeleteCategoryViewModel};
 
-use crate::protocols::{MonthlyBudgetRefusal, ReassignRefusal};
+use lib_core::CategoryTypes;
+use lib_viper::view::count;
+
+use crate::protocols::{MonthlyBudgetRefusal, ReassignRefusal, TypeChangeBlockers};
 use crate::{CategoryError, SaveCategoryRefusal, msg};
 
 /// A refused Add or Edit as the form shows it.
@@ -51,12 +54,36 @@ fn save_refusal_text(refusal: &SaveCategoryRefusal) -> String {
             };
             msg::categories_refusal_leaf_holds_rows(leaf, &rows)
         }
+        SaveCategoryRefusal::TypeInUse {
+            category,
+            to,
+            blockers,
+        } => type_in_use_text(category, to, *blockers),
         SaveCategoryRefusal::Budget(refusal) => match refusal {
             MonthlyBudgetRefusal::NotAnExpenseLeaf => msg::categories_refusal_budget_not_a_leaf(),
             MonthlyBudgetRefusal::ReadOnly => msg::categories_refusal_budget_read_only(),
             MonthlyBudgetRefusal::Unavailable => msg::categories_refusal_budget_unavailable(),
         },
     }
+}
+
+/// Why `category` can't become `to`: the notice under Type and the refusal on save say the same.
+fn type_in_use_text(category: &str, to: &CategoryTypes, blockers: TypeChangeBlockers) -> String {
+    let mut parts = Vec::new();
+    if blockers.budgets > 0 {
+        parts.push(msg::categories_type_in_use_budgets(count(blockers.budgets)));
+    }
+    if blockers.bill_plans > 0 {
+        parts.push(msg::categories_type_in_use_bill_plans(count(
+            blockers.bill_plans,
+        )));
+    }
+    let uses = match parts.as_slice() {
+        [first, second] => msg::categories_handover_two(first, second),
+        [one] => one.clone(),
+        _ => String::new(),
+    };
+    msg::categories_type_in_use(category, &lib_locale::Label::label(to), &uses)
 }
 
 /// A refused delete as the Delete Dialog shows it.

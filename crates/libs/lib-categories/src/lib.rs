@@ -31,5 +31,5 @@ pub use protocols::{
     CategoriesDialog, CategoriesOutcome, CategoriesRouter, CategoryBudget, CategoryChange,
     CategoryHandover, CategoryReassign, CategoryReassigned, CategoryRepository, CategorySavePorts,
     CategoryUsage, CategoryUse, Holdings, MonthlyBudget, MonthlyBudgetRefusal, ParentStop,
-    ReassignRefusal, SharedCategories,
+    ReassignRefusal, SharedCategories, TypeChangeBlockers,
 };

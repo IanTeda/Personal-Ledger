@@ -290,6 +290,19 @@ impl LedgerStore {
         self.transactions.borrow().category_splits(id)
     }
 
+    /// How many Bill Plans, active or not, name any of `categories`: the Bills half of what keeps
+    /// a Category's type from changing.
+    pub fn bill_plans_naming(&self, categories: &[lib_core::CategoryId]) -> usize {
+        let bills = self.bills.borrow().store();
+        let bills = bills.borrow();
+        bills
+            .plans()
+            .bill_plans()
+            .iter()
+            .filter(|plan| categories.contains(&plan.category_id))
+            .count()
+    }
+
     /// What Category `id` holds that a first child would take: its Splits as the Transactions
     /// store counts them, the Bill Plans naming it and the Payees defaulting to it.
     pub fn category_holdings(&self, id: lib_core::CategoryId) -> lib_categories::Holdings {

@@ -26,11 +26,11 @@ use lib_viper::view::{
     Choice, DialogFrame, SelectList, SelectMove, SelectView, TextFieldView, count,
 };
 
-use super::save_refusal_text;
+use super::{save_refusal_text, type_in_use_text};
 use crate::interactor::{AddCategory, BudgetChange, EditCategory};
 use crate::protocols::{
     CategoriesOutcome, CategoryChange, CategorySavePorts, CategoryUsage, Holdings, ParentStop,
-    SharedCategories,
+    SharedCategories, TypeChangeBlockers,
 };
 use crate::{
     Category, depth, descendants_inclusive, get, is_leaf, is_uncategorised, move_exceeds_depth,
@@ -125,6 +125,11 @@ struct Editing {
     top_level: bool,
     /// Uncategorised: Name, Parent and Type can't change.
     fixed: bool,
+    /// The type it opened with, and what in its subtree Budgets and Bill Plans use: a type change
+    /// is refused while that is anything.
+    original_type: CategoryTypes,
+    name_on_open: String,
+    blockers: TypeChangeBlockers,
 }
 
 pub struct CategoryFormPresenter {
@@ -224,6 +229,9 @@ impl CategoryFormPresenter {
                 is_parent,
                 top_level: category.parent.is_none(),
                 fixed: is_uncategorised(&category),
+                original_type: category.category_type.clone(),
+                name_on_open: category.name.clone(),
+                blockers: usage.type_change_blockers(&subtree),
             }),
             categories,
             name: category.name,
@@ -588,7 +596,19 @@ impl CategoryFormPresenter {
         Some(msg::categories_notice_handover(&parent.name, &rows, &child))
     }
 
+    /// Why the picked type is refused, as soon as it is picked.
+    fn type_in_use_notice(&self) -> Option<String> {
+        let editing = self.editing.as_ref()?;
+        (editing.top_level
+            && self.category_type != editing.original_type
+            && !editing.blockers.is_empty())
+        .then(|| type_in_use_text(&editing.name_on_open, &self.category_type, editing.blockers))
+    }
+
     fn notice(&self) -> String {
+        if let Some(notice) = self.type_in_use_notice() {
+            return notice;
+        }
         let stop = self.parent_stop().map(|(parent, stop)| {
             msg::categories_notice_parent_stop(
                 &parent.name,
@@ -1048,6 +1068,59 @@ mod tests {
                 .map(|c| c.category_type),
             Some(CategoryTypes::Income)
         );
+    }
+
+    #[test]
+    fn a_blocked_type_shows_its_notice_on_pick_and_the_save_is_refused_with_the_same_text() {
+        let (categories, shared) = stub();
+        let mut budget = InMemoryCategoryBudget::default();
+        let used = TypeChangeBlockers {
+            budgets: 2,
+            bill_plans: 1,
+        };
+        // The form reads the notice through `usage` and the save refuses through `budget`; a
+        // Client lends one set of ports as both, so both hold the same blockers.
+        budget.blockers.insert(GROCERIES, used);
+        let mut usage = InMemoryCategoryUsage::default();
+        usage.blockers.insert(GROCERIES, used);
+        let mut form = CategoryFormPresenter::edit(shared, &budget, &usage, FOOD).expect("seeded");
+        assert!(!form.view_model().notice.contains("can't become"));
+
+        send(
+            &mut form,
+            vec![CategoryFormEvent::Type(CategoryTypes::Income)],
+        );
+        let said = "Food can't become Income: 2 Budgets and 1 Bill Plan use its Categories.";
+        assert_eq!(form.view_model().notice, said);
+
+        let calls = confirm(&mut form, &mut budget);
+        assert!(calls.is_empty(), "the Dialog stays open");
+        assert_eq!(form.view_model().refusal.as_deref(), Some(said));
+        assert_eq!(
+            categories.borrow().category(FOOD).map(|c| c.category_type),
+            Some(CategoryTypes::Expense)
+        );
+
+        send(
+            &mut form,
+            vec![CategoryFormEvent::Type(CategoryTypes::Expense)],
+        );
+        assert!(!form.view_model().notice.contains("can't become"));
+    }
+
+    #[test]
+    fn an_unused_subtree_shows_no_type_notice() {
+        let (_, shared) = stub();
+        let budget = InMemoryCategoryBudget::default();
+        let usage = InMemoryCategoryUsage::default();
+        let mut form = CategoryFormPresenter::edit(shared, &budget, &usage, FOOD).expect("seeded");
+
+        send(
+            &mut form,
+            vec![CategoryFormEvent::Type(CategoryTypes::Income)],
+        );
+
+        assert!(!form.view_model().notice.contains("can't become"));
     }
 
     #[test]

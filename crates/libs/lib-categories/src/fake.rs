@@ -13,7 +13,7 @@ use lib_viper::dialog::DialogRouter;
 use crate::protocols::{
     CategoriesDialog, CategoriesOutcome, CategoriesRouter, CategoryBudget, CategoryHandover,
     CategoryReassign, CategoryReassigned, CategoryUsage, CategoryUse, Holdings, MonthlyBudget,
-    MonthlyBudgetRefusal, ParentStop, ReassignRefusal, SharedCategories,
+    MonthlyBudgetRefusal, ParentStop, ReassignRefusal, SharedCategories, TypeChangeBlockers,
 };
 use crate::{
     Category, CategoryRepository, default_categories, descendants_inclusive, get, is_leaf,
@@ -62,11 +62,18 @@ impl CategoryRepository for InMemoryCategories {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct InMemoryCategoryUsage {
     pub uses: BTreeMap<CategoryId, CategoryUse>,
+    /// The Budgets and Bill Plans in use per Category, for [`CategoryUsage::type_change_blockers`].
+    pub blockers: BTreeMap<CategoryId, TypeChangeBlockers>,
 }
 
 impl CategoryUsage for InMemoryCategoryUsage {
     fn category_usage(&self, id: CategoryId) -> CategoryUse {
         self.uses.get(&id).copied().unwrap_or_default()
+    }
+
+    /// The sum over the subtree's Categories.
+    fn type_change_blockers(&self, subtree: &[CategoryId]) -> TypeChangeBlockers {
+        sum_blockers(&self.blockers, subtree)
     }
 }
 
@@ -87,6 +94,33 @@ pub struct InMemoryCategoryBudget {
     pub held: BTreeMap<CategoryId, Holdings>,
     /// Each `(from, to)` [`CategoryHandover::hand_over`] was asked for, in order.
     pub handed_over: Vec<(CategoryId, CategoryId)>,
+    /// The Budgets and Bill Plans in use per Category, for [`CategoryUsage::type_change_blockers`].
+    pub blockers: BTreeMap<CategoryId, TypeChangeBlockers>,
+}
+
+impl CategoryUsage for InMemoryCategoryBudget {
+    fn category_usage(&self, _id: CategoryId) -> CategoryUse {
+        CategoryUse::default()
+    }
+
+    /// The sum over the subtree's Categories.
+    fn type_change_blockers(&self, subtree: &[CategoryId]) -> TypeChangeBlockers {
+        sum_blockers(&self.blockers, subtree)
+    }
+}
+
+/// The blockers `blockers` holds for the Categories in `subtree`, summed.
+fn sum_blockers(
+    blockers: &BTreeMap<CategoryId, TypeChangeBlockers>,
+    subtree: &[CategoryId],
+) -> TypeChangeBlockers {
+    subtree.iter().filter_map(|id| blockers.get(id)).fold(
+        TypeChangeBlockers::default(),
+        |sum, used| TypeChangeBlockers {
+            budgets: sum.budgets + used.budgets,
+            bill_plans: sum.bill_plans + used.bill_plans,
+        },
+    )
 }
 
 impl CategoryBudget for InMemoryCategoryBudget {

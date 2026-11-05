@@ -21,7 +21,7 @@ use lib_budgets::{Budgets, Error};
 use lib_categories::{
     Category, CategoryBudget, CategoryHandover, CategoryReassign, CategoryReassigned,
     CategoryRepository, CategoryUsage, CategoryUse, Holdings, MonthlyBudget, MonthlyBudgetRefusal,
-    ParentStop, ReassignRefusal, SharedCategories,
+    ParentStop, ReassignRefusal, SharedCategories, TypeChangeBlockers,
 };
 use lib_core::{CategoryId, Money};
 use lib_database::{CategoriesStore, SharedCategoriesStore};
@@ -130,6 +130,14 @@ impl CategoryUsage for LedgerPorts<'_> {
         CategoryUse {
             splits: ledger_store.category_splits(id),
             budgets: ledger_store.budgets_store().borrow().category_budgets(id),
+        }
+    }
+
+    /// The active Budgets using the subtree this month or later, and every Bill Plan naming it.
+    fn type_change_blockers(&self, subtree: &[CategoryId]) -> TypeChangeBlockers {
+        TypeChangeBlockers {
+            budgets: self.budgets().using(subtree, self.today),
+            bill_plans: self.ledger.read(self.cx).bill_plans_naming(subtree),
         }
     }
 }

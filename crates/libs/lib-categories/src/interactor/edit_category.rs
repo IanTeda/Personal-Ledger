@@ -32,6 +32,7 @@ impl EditCategory {
         let mut rows = before.clone();
         let outcome = self.edit(&mut rows).and_then(|category| {
             self.check_leaf_holds_nothing(&before, budget)?;
+            self.check_type_change_unused(&before, &category, budget)?;
             self.monthly.check(budget, &rows, self.id)?;
             Ok(category)
         });
@@ -77,6 +78,30 @@ impl EditCategory {
         Err(SaveCategoryRefusal::LeafHoldsRows {
             leaf: leaf.unwrap_or_default(),
             held,
+        })
+    }
+
+    /// A top-level type change cascades to the subtree, so it is refused while a Budget or a Bill
+    /// Plan uses any Category in it. `category` is the Category as edited.
+    fn check_type_change_unused(
+        &self,
+        before: &[Category],
+        category: &Category,
+        ports: &dyn CategorySavePorts,
+    ) -> Result<(), SaveCategoryRefusal> {
+        let unchanged = crate::get(before, self.id)
+            .is_none_or(|old| old.category_type == category.category_type);
+        if unchanged {
+            return Ok(());
+        }
+        let blockers = ports.type_change_blockers(&crate::descendants_inclusive(before, self.id));
+        if blockers.is_empty() {
+            return Ok(());
+        }
+        Err(SaveCategoryRefusal::TypeInUse {
+            category: crate::get(before, self.id).map_or_else(String::new, |c| c.name.clone()),
+            to: category.category_type.clone(),
+            blockers,
         })
     }
 
@@ -314,6 +339,75 @@ mod tests {
             .expect("a leaf moved under a leaf with rows takes them");
 
         assert_eq!(budget.handed_over, [(SALARY, CategoryId::seed(12))]);
+    }
+
+    fn blocked(budgets: usize, bill_plans: usize) -> crate::TypeChangeBlockers {
+        crate::TypeChangeBlockers {
+            budgets,
+            bill_plans,
+        }
+    }
+
+    fn to_income(id: CategoryId, name: &str) -> EditCategory {
+        EditCategory {
+            category_type: Some(CategoryTypes::Income),
+            ..edit(id, name, None)
+        }
+    }
+
+    #[test]
+    fn a_type_change_is_refused_for_a_used_leaf_in_the_subtree_and_writes_nothing() {
+        for used in [blocked(1, 0), blocked(0, 1), blocked(2, 1)] {
+            let mut categories = InMemoryCategories::stub();
+            let before = categories.clone();
+            let mut ports = InMemoryCategoryBudget::default();
+            // Groceries is a leaf under Food.
+            ports.blockers.insert(GROCERIES, used);
+
+            let refused = to_income(FOOD, "Eating").run(&mut categories, &mut ports);
+
+            assert_eq!(
+                refused,
+                Err(SaveCategoryRefusal::TypeInUse {
+                    category: "Food".into(),
+                    to: CategoryTypes::Income,
+                    blockers: used,
+                })
+            );
+            assert_eq!(categories, before, "the rename is unwritten too");
+        }
+    }
+
+    #[test]
+    fn a_type_change_is_allowed_for_an_unused_subtree_and_a_use_outside_it() {
+        let mut categories = InMemoryCategories::stub();
+        let mut ports = InMemoryCategoryBudget::default();
+        // Nothing in Food's subtree is used (a chain Stopped before this month, or an archived
+        // Budget, counts as no use): only Transport is.
+        ports.blockers.insert(TRANSPORT, blocked(1, 1));
+
+        to_income(FOOD, "Food")
+            .run(&mut categories, &mut ports)
+            .expect("an unused subtree changes type");
+
+        assert_eq!(
+            categories.category(GROCERIES).map(|c| c.category_type),
+            Some(CategoryTypes::Income)
+        );
+    }
+
+    #[test]
+    fn an_unchanged_type_is_not_checked_against_usage() {
+        let mut categories = InMemoryCategories::stub();
+        let mut ports = InMemoryCategoryBudget::default();
+        ports.blockers.insert(GROCERIES, blocked(1, 1));
+
+        EditCategory {
+            category_type: Some(CategoryTypes::Expense),
+            ..edit(FOOD, "Eating", None)
+        }
+        .run(&mut categories, &mut ports)
+        .expect("a rename keeps the type");
     }
 
     fn held(splits: usize, bill_plans: usize, payee_defaults: usize) -> crate::Holdings {

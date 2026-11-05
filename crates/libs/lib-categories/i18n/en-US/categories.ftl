@@ -75,6 +75,15 @@ categories-handover-payee-defaults = { $count ->
     [one] { $count } Payee default
    *[other] { $count } Payee defaults
 }
+categories-type-in-use = { $category } can't become { $kind }: { $uses } use its Categories.
+categories-type-in-use-budgets = { $count ->
+    [one] { $count } Budget
+   *[other] { $count } Budgets
+}
+categories-type-in-use-bill-plans = { $count ->
+    [one] { $count } Bill Plan
+   *[other] { $count } Bill Plans
+}
 categories-handover-two = { $first } and { $second }
 categories-handover-three = { $first }, { $second } and { $third }
 categories-edit-uncategorised-notice = Uncategorised is fixed — only its monthly budget can change.
