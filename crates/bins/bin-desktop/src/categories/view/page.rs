@@ -14,6 +14,7 @@ use lib_categories::presenter::{
     CategoriesPageEvent, CategoriesPagePresenter, CategoriesPageViewModel,
 };
 use lib_categories::{CategoriesOutcome, CategoryChange, SharedCategories};
+use lib_core::Clock;
 use lib_ledger::Domain;
 use lib_viper::keymap::Keymap;
 
@@ -47,6 +48,7 @@ pub struct CategoriesPage {
     keymap: Keymap<CategoriesPageEvent>,
     /// "Today" for the Monthly budget a Dialog shows, read once when the Shell is built.
     today: NaiveDate,
+    clock: Clock,
     /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
     /// draws the page.
     page_focused: bool,
@@ -59,6 +61,7 @@ impl CategoriesPage {
         setup: CategoriesSetup,
         ledger: Entity<LedgerStore>,
         today: NaiveDate,
+        clock: Clock,
         cx: &mut Context<'_, Self>,
     ) -> Self {
         let categories = ports::shared(&setup.store);
@@ -70,6 +73,7 @@ impl CategoriesPage {
             ledger,
             keymap: setup.keymap,
             today,
+            clock,
             page_focused: false,
         }
     }
@@ -98,6 +102,7 @@ impl CategoriesPage {
             deletion: self.deletion.clone(),
             ledger: self.ledger.clone(),
             today: self.today,
+            clock: self.clock.clone(),
             cx,
         };
         self.presenter.handle(event, &mut router);

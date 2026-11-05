@@ -23,7 +23,7 @@ use lib_categories::{
     Holdings, MonthlyBudget, MonthlyBudgetRefusal, ParentStop, SharedCategories,
     TypeChangeBlockers,
 };
-use lib_core::{CategoryId, Money};
+use lib_core::{CategoryId, Clock, Money};
 use lib_database::{PayeesStore, SharedCategoriesStore};
 use lib_ledger::{Domain, Ledger};
 
@@ -72,6 +72,9 @@ pub fn refresh(ledger: &Entity<LedgerStore>, cx: &mut App) {
 pub struct LedgerPorts<'a> {
     pub ledger: &'a Entity<LedgerStore>,
     pub today: NaiveDate,
+    /// The Shell's Clock, read on each call by `type_change_blockers` so a month turn is seen.
+    /// #783 moves the calls reading `today` to it, and `today` goes.
+    pub clock: Clock,
     pub cx: &'a mut App,
 }
 
@@ -103,7 +106,7 @@ impl CategoryUsage for LedgerPorts<'_> {
     /// The active Budgets using the subtree this month or later, and every Bill Plan naming it.
     fn type_change_blockers(&self, subtree: &[CategoryId]) -> TypeChangeBlockers {
         TypeChangeBlockers {
-            budgets: self.budgets().using(subtree, self.today),
+            budgets: self.budgets().using(subtree, self.clock.today()),
             bill_plans: self.ledger.read(self.cx).bill_plans_naming(subtree),
         }
     }
@@ -288,6 +291,7 @@ mod tests {
             let mut ports = LedgerPorts {
                 ledger: &ledger,
                 today: today(),
+                clock: Clock::fixed(today()),
                 cx,
             };
             assert_eq!(
@@ -323,6 +327,7 @@ mod tests {
             let mut ports = LedgerPorts {
                 ledger: &ledger,
                 today: today(),
+                clock: Clock::fixed(today()),
                 cx,
             };
             let stop = ports.parent_stop(groceries).expect("budgeted in the seed");
@@ -356,6 +361,7 @@ mod tests {
             let mut ports = LedgerPorts {
                 ledger: &ledger,
                 today: today(),
+                clock: Clock::fixed(today()),
                 cx,
             };
             let held = ports.holdings(groceries);
@@ -369,6 +375,41 @@ mod tests {
                 ports.holdings(child).splits,
                 child_before.splits + held.splits
             );
+        });
+    }
+
+    #[gpui::test]
+    fn type_change_blockers_judge_the_budgets_by_the_clock_after_a_month_turn(
+        cx: &mut TestAppContext,
+    ) {
+        let ledger = cx.new(|_| LedgerStore::new(Ledger::stub_on(today())));
+        let categories = ledger.read_with(cx, |store, _| store.ledger().categories().to_vec());
+        let groceries = lib_categories::find_by_name(&categories, "Groceries").expect("seeded");
+        let next_month = NaiveDate::from_ymd_opt(2026, 11, 1).expect("a real date");
+        let (clock, day) = Clock::settable(today());
+
+        cx.update(|cx| {
+            // Stop Groceries from next month in every active Budget.
+            LedgerPorts {
+                ledger: &ledger,
+                today: next_month,
+                clock: Clock::fixed(next_month),
+                cx,
+            }
+            .stop_new_parent(groceries);
+
+            // The page was built in October and never rebuilt: only the Clock moves.
+            let ports = LedgerPorts {
+                ledger: &ledger,
+                today: today(),
+                clock,
+                cx,
+            };
+            assert!(ports.type_change_blockers(&[groceries]).budgets > 0);
+
+            day.set(next_month);
+
+            assert_eq!(ports.type_change_blockers(&[groceries]).budgets, 0);
         });
     }
 }

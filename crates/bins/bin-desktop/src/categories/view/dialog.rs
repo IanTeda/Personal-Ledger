@@ -18,6 +18,7 @@ use chrono::NaiveDate;
 use gpui::{App, Context, Entity, EventEmitter, IntoElement, Render, Window};
 use lib_categories::presenter::{CategoryFormEvent, CategoryFormPresenter};
 use lib_categories::{CategoriesDialog as Which, CategoriesOutcome, SharedCategories};
+use lib_core::Clock;
 use lib_shell::DialogCommand;
 use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
@@ -39,6 +40,7 @@ pub struct CategoriesDialog {
     /// The Ledger the confirm's ports read and write, and whose read copy it brings in line.
     ledger: Entity<LedgerStore>,
     today: NaiveDate,
+    clock: Clock,
     presenter: CategoryFormPresenter,
     /// The top row of the Parent category list's window.
     scroll: usize,
@@ -54,10 +56,16 @@ impl CategoriesDialog {
         categories: &SharedCategories,
         ledger: &Entity<LedgerStore>,
         today: NaiveDate,
+        clock: &Clock,
         landed: Landed,
         cx: &mut App,
     ) -> Option<Self> {
-        let reads = LedgerPorts { ledger, today, cx };
+        let reads = LedgerPorts {
+            ledger,
+            today,
+            clock: clock.clone(),
+            cx,
+        };
         let shared = categories.clone();
         let presenter = match which {
             Which::AddCategory { parent } => CategoryFormPresenter::add(shared, &reads, parent),
@@ -67,6 +75,7 @@ impl CategoriesDialog {
         Some(Self {
             ledger: ledger.clone(),
             today,
+            clock: clock.clone(),
             presenter,
             scroll: 0,
             landed,
@@ -114,6 +123,7 @@ impl HostedDialog for CategoriesDialog {
         let mut ports = LedgerPorts {
             ledger: &self.ledger,
             today: self.today,
+            clock: self.clock.clone(),
             cx,
         };
         self.presenter.input(input, &mut ports, &mut router);
@@ -135,6 +145,7 @@ impl HostedDialog for CategoriesDialog {
         let mut ports = LedgerPorts {
             ledger: &self.ledger,
             today: self.today,
+            clock: self.clock.clone(),
             cx,
         };
         self.presenter.confirm(&mut ports, &mut router);

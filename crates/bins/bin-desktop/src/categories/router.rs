@@ -7,6 +7,7 @@
 use chrono::NaiveDate;
 use gpui::{Context, Entity};
 use lib_categories::{CategoriesDialog as Which, CategoriesOutcome, CategoriesRouter};
+use lib_core::Clock;
 use lib_toast::{Notice, Notify};
 
 use super::CategoriesSetup;
@@ -22,6 +23,7 @@ pub(super) struct PageRouter<'a, 'b> {
     pub deletion: DeletionStores,
     pub ledger: Entity<LedgerStore>,
     pub today: NaiveDate,
+    pub clock: Clock,
     pub cx: &'a mut Context<'b, CategoriesPage>,
 }
 
@@ -53,6 +55,7 @@ impl CategoriesRouter for PageRouter<'_, '_> {
             &self.categories,
             &self.ledger,
             self.today,
+            &self.clock,
             landed,
             self.cx,
         ) else {
@@ -75,10 +78,10 @@ impl Notify for PageRouter<'_, '_> {
 pub fn categories_page(
     setup: CategoriesSetup,
     ledger: Entity<LedgerStore>,
-    clock: &lib_core::Clock,
+    clock: &Clock,
     cx: &mut gpui::App,
 ) -> Entity<CategoriesPage> {
     use gpui::AppContext as _;
     let today = clock.today();
-    cx.new(|cx| CategoriesPage::new(setup, ledger, today, cx))
+    cx.new(|cx| CategoriesPage::new(setup, ledger, today, clock.clone(), cx))
 }
