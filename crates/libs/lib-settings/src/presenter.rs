@@ -1,15 +1,20 @@
 //! The Settings module's Presenters: the frame's, and each config page's as it moves here
 //! (General and Display, #1039).
 
+mod about;
 mod clear_logs;
+mod data_backup;
 mod device;
 pub mod display;
 mod frame;
 pub mod general;
 pub mod ledger;
+mod sync_server;
 pub mod tracing;
 
+pub use about::{AboutPresenter, AboutSetup, AboutViewModel};
 pub use clear_logs::{ClearLogsOutcome, ClearLogsPresenter, ClearLogsViewModel};
+pub use data_backup::{DataBackupEvent, DataBackupPresenter, DataBackupRow, DataBackupViewModel};
 pub use device::{ControlView, PageKey};
 pub use display::{
     CheckboxView, ColourCardView, ColourThemeView, DisplayEvent, DisplayOutput, DisplayPresenter,
@@ -26,6 +31,7 @@ pub use general::{
 pub use ledger::{
     BaseUnitOption, BaseUnitView, LedgerEvent, LedgerPresenter, LedgerSetup, LedgerViewModel,
 };
+pub use sync_server::{SyncServerEvent, SyncServerPresenter, SyncServerViewModel};
 pub use tracing::{
     LogChange, LogListChange, LogScroll, TracingEvent, TracingPresenter, TracingSetup,
     TracingViewModel,
