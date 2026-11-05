@@ -70,6 +70,7 @@ pub use adapter::bill_payments::BillPaymentsAdapter;
 pub use adapter::bills::{BillsAdapter, unit_bill_plans};
 pub use adapter::budgets::BudgetsAdapter;
 pub use adapter::categories::CategoriesAdapter;
+pub use adapter::category_deletion::CategoryDeletionAdapter;
 pub use adapter::documents::DocumentsAdapter;
 pub use adapter::institutions::{InstitutionsAdapter, unit_institutions};
 pub use adapter::inventory::{InventoryAdapter, unit_locations};
@@ -80,10 +81,10 @@ pub use adapter::store::{
     SharedBillsStore, SharedBudgetsStore, SharedCategoriesStore, SharedDocumentsStore,
     SharedInstitutionsStore, SharedInventoryStore, SharedPayeesStore, SharedTagsStore,
     SharedTransactionsStore, SharedUnitsStore, StoredAccountReads, StoredBillReads,
-    StoredBillUnits, StoredBudgetCategories, StoredBudgetReads, StoredDashboardReads,
-    StoredDocumentReads, StoredImportReads, StoredInstitutionReads, StoredPayeeReads,
-    StoredShellReads, StoredTagReads, StoredTagRemovalReads, StoredTransactionReads,
-    StoredUnitReads, TagsStore, TransactionsStore, UnitsStore,
+    StoredBillUnits, StoredBudgetCategories, StoredBudgetReads, StoredCategoryDeletionReads,
+    StoredDashboardReads, StoredDocumentReads, StoredImportReads, StoredInstitutionReads,
+    StoredPayeeReads, StoredShellReads, StoredTagReads, StoredTagRemovalReads,
+    StoredTransactionReads, StoredUnitReads, TagsStore, TransactionsStore, UnitsStore,
 };
 pub use adapter::tag_removal::TagRemovalAdapter;
 pub use adapter::tags::TagsAdapter;

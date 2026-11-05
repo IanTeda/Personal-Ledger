@@ -36,6 +36,7 @@ lib_bill_payments = { path = "../../../crates/libs/lib-bill-payments" }
 lib_account_deletion = { path = "../../../crates/libs/lib-account-deletion" }
 lib_unit_deletion = { path = "../../../crates/libs/lib-unit-deletion" }
 lib_tag_removal = { path = "../../../crates/libs/lib-tag-removal" }
+lib_category_deletion = { path = "../../../crates/libs/lib-category-deletion" }
 lib_transaction_import = { path = "../../../crates/libs/lib-transaction-import" }
 ## The first-launch and dev seeds write the stub Ledger's Transactions, which the Bills and
 ## Documents stubs add to, and its Bills, so they take them from the joined stub (#774, removed
@@ -76,6 +77,7 @@ lib_bill_payments = { path = "../../../crates/libs/lib-bill-payments", features 
 lib_account_deletion = { path = "../../../crates/libs/lib-account-deletion", features = ["contract-tests"] }
 lib_unit_deletion = { path = "../../../crates/libs/lib-unit-deletion", features = ["contract-tests"] }
 lib_tag_removal = { path = "../../../crates/libs/lib-tag-removal", features = ["contract-tests"] }
+lib_category_deletion = { path = "../../../crates/libs/lib-category-deletion", features = ["contract-tests"] }
 lib_transaction_import = { path = "../../../crates/libs/lib-transaction-import", features = ["contract-tests"] }
 serde_json = { workspace = true }
 tempfile = { workspace = true }

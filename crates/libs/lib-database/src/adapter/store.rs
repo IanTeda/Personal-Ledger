@@ -61,6 +61,7 @@ use lib_budgets::{
 };
 use lib_categories::CategoryRepository;
 use lib_categories::fake::InMemoryCategories;
+use lib_category_deletion::{CategoryDeletionReads, CategoryInUse};
 use lib_core::{
     AccountId, CategoryId, InstitutionId, PayeeId, TagId, Total, TransactionId, UnitId,
 };
@@ -1070,6 +1071,27 @@ impl TagRemovalReads for StoredTagRemovalReads {
     }
 }
 
+/// `lib-category-deletion`'s [`CategoryDeletionReads`] answered from the shared stores (#994): the
+/// Category from the Categories store, its Splits from the Transactions store and the Budgets
+/// limiting it from the Budgets store, each borrowed for the one read when the Delete category
+/// Dialog opens.
+#[derive(Clone)]
+pub struct StoredCategoryDeletionReads {
+    pub categories: SharedCategoriesStore,
+    pub transactions: SharedTransactionsStore,
+    pub budgets: SharedBudgetsStore,
+}
+
+impl CategoryDeletionReads for StoredCategoryDeletionReads {
+    fn category_in_use(&self, id: CategoryId) -> Option<CategoryInUse> {
+        Some(CategoryInUse {
+            category: self.categories.borrow().categories().category(id)?,
+            splits: self.transactions.borrow().category_splits(id),
+            budgets: self.budgets.borrow().category_budgets(id),
+        })
+    }
+}
+
 /// `lib-budgets`' six read ports answered by the shared stores of the domains Budgets reads, each
 /// borrowed for the one read (#952). The Desktop's Budgets View reads through it.
 pub struct StoredBudgetReads {
@@ -2015,6 +2037,34 @@ mod tests {
             .find(|count| count.tag.id == lib_tag_removal::fake::world::ONE_OFF)
             .map(|count| count.transactions);
         assert_eq!(one_off, Some(1));
+    }
+
+    /// Over the in-memory stores [`Stores::fake`] bundles, the Delete category Dialog quotes a
+    /// Category's Splits and Budgets from the stores' rows, a Split booked after the reads were
+    /// built included.
+    #[test]
+    fn stored_category_deletion_reads_quote_the_in_memory_stores_rows() {
+        use lib_category_deletion::fake::world::{RENT, world};
+
+        let world = world();
+        let transactions: SharedTransactionsStore =
+            Rc::new(RefCell::new(world.transactions.clone()));
+        let reads = StoredCategoryDeletionReads {
+            categories: Rc::new(RefCell::new(world.categories.clone())),
+            transactions: transactions.clone(),
+            budgets: Rc::new(RefCell::new(world.budgets.clone())),
+        };
+
+        lib_category_deletion::contract::the_reads_quote_a_category_in_use(&reads);
+
+        let mut booked = world.transactions.transactions[0].clone();
+        booked.id = TransactionId::seed(9_999);
+        booked.splits[0].category_id = RENT;
+        transactions.borrow_mut().upsert_transaction(booked);
+        assert_eq!(
+            reads.category_in_use(RENT).map(|in_use| in_use.splits),
+            Some(2)
+        );
     }
 
     /// Bills read a Unit's code and the base Unit from the Units store.

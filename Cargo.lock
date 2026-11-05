@@ -4770,6 +4770,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "lib_category_deletion"
+version = "0.1.0"
+dependencies = [
+ "bigdecimal",
+ "chrono",
+ "lib_bills",
+ "lib_budgets",
+ "lib_categories",
+ "lib_core",
+ "lib_locale",
+ "lib_locale_build",
+ "lib_payees",
+ "lib_toast",
+ "lib_transactions",
+ "lib_viper",
+ "thiserror 2.0.20",
+ "tracing",
+]
+
+[[package]]
 name = "lib_colour_theme"
 version = "0.1.0"
 dependencies = [
@@ -4837,6 +4857,7 @@ dependencies = [
  "lib_bills",
  "lib_budgets",
  "lib_categories",
+ "lib_category_deletion",
  "lib_config",
  "lib_core",
  "lib_dashboard",
