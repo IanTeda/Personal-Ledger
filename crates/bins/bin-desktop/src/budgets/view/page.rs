@@ -1,8 +1,8 @@
 //! The Budgets page's View: the `lib-budgets` page Presenter in a gpui Entity, which the Shell
 //! hosts as the Budgets destination (`docs/ux/desktop-mockups/14-budgets-v2/`). It looks up each
 //! key the Shell passes on, as chord text, in the Budgets keymap for the tab shown, turns clicks
-//! into events, draws the view model (`progress.rs`, `plan.rs`, `history.rs`) and keeps the
-//! Ledger read copy in line after every event ([`ports::refresh`]). Each key and click is one
+//! into events, draws the view model (`progress.rs`, `plan.rs`, `history.rs`) and announces
+//! the Budgets after every event ([`ports::announce`]). Each key and click is one
 //! input (`crate::input::send`), which commits what it wrote.
 //!
 //! Typing into a Plan cell is the Shell's Insert mode, which the page asks for as the Presenter
@@ -112,8 +112,8 @@ impl BudgetsPage {
         crate::input::send(cx, |cx| self.handle(event, cx));
     }
 
-    /// Hands `event` to the Presenter with the Desktop's Router, then brings the Ledger read copy
-    /// in line with what it wrote, and the Shell's Insert mode with the cell being typed into.
+    /// Hands `event` to the Presenter with the Desktop's Router, then announces the Budgets, as
+    /// it may have written them, and the Shell's Insert mode with the cell being typed into.
     /// Inside an input already, as [`Self::send`] or a Dialog's confirm.
     fn handle(&mut self, event: BudgetsPageEvent, cx: &mut Context<'_, Self>) {
         let (tab, budget) = (self.presenter.tab(), self.presenter.current());
@@ -137,7 +137,7 @@ impl BudgetsPage {
             cx,
         };
         self.presenter.handle(event, &mut router);
-        ports::refresh(&self.ledger, cx);
+        ports::announce(&self.ledger, cx);
         match (was_editing, self.presenter.editing()) {
             (false, true) => cx.emit(ViewEvent::EnterMode(ViewMode::Insert)),
             (true, false) => cx.emit(ViewEvent::ExitMode),

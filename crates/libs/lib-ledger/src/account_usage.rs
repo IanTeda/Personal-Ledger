@@ -1,4 +1,4 @@
-//! How many Transactions the Ledger's read copy books to an Account (#852), for a Client's
+//! How many Transactions the Ledger's stub seed books to an Account (#852), for a Client's
 //! in-memory Accounts store to recount its usage from, since it has no file to count in; the
 //! adapter counts in the file (#853). The Budgets half of an Account's usage is the Budgets
 //! store's (#952), so the Ledger no longer answers `AccountUsage`.

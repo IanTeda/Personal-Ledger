@@ -1954,6 +1954,12 @@ impl<'a> Harness<'a> {
         self.read_app(Root::dashboard_bills_snapshot)
     }
 
+    /// A count of the Dashboard's redraws from now on, wherever the Shell is showing.
+    pub fn count_dashboard_redraws(&mut self) -> Rc<Cell<usize>> {
+        self.shell
+            .update(self.cx, |shell, cx| shell.count_dashboard_redraws(cx))
+    }
+
     /// Queues `notice` as a module Router does from inside a Presenter's `handle`. Nothing shows
     /// until `Root` drains the queue, after the next key or Dialog click.
     pub fn queue_notice(&mut self, notice: lib_toast::Notice) {

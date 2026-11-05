@@ -33,7 +33,7 @@ pub(crate) type Landed = Box<dyn Fn(BillsOutcome, &mut App)>;
 /// The open Bills Dialog: its Presenter and its widget state.
 pub struct BillsDialog {
     ports: DesktopPorts,
-    /// The Ledger read copy a confirm reads from and brings in line with what it wrote.
+    /// The Ledger a confirm reads from and announces what it wrote through.
     ledger: Entity<LedgerStore>,
     view: View,
     landed: Landed,
@@ -171,13 +171,13 @@ fn send<P, E>(
 impl EventEmitter<DialogClosed> for BillsDialog {}
 
 impl HostedDialog for BillsDialog {
-    /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) brings the
-    /// Ledger's read copies in line after it, as it may have written something.
+    /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) announces the
+    /// Bills after it, as it may have written something.
     fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
         let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
         let router = self.input_event(input);
         if may_confirm {
-            ports::refresh(&self.ledger, cx);
+            ports::announce(&self.ledger, cx);
         }
         self.closed(router, cx);
     }
@@ -193,7 +193,7 @@ impl HostedDialog for BillsDialog {
     /// Presenter's view model and keeps the Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
         let router = self.close_event(true);
-        ports::refresh(&self.ledger, cx);
+        ports::announce(&self.ledger, cx);
         self.closed(router, cx);
     }
 

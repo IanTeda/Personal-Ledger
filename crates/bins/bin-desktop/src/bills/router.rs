@@ -25,7 +25,7 @@ pub(super) struct PageRouter<'a, 'b> {
     /// The day and date style the page's Dialogs are opened on.
     pub clock: Clock,
     pub date_style: Option<DateStyle>,
-    /// The Ledger read copy the page's Dialogs read from and bring in line.
+    /// The Ledger the page's Dialogs read from and announce their writes through.
     pub ledger: Entity<LedgerStore>,
     pub cx: &'a mut Context<'b, BillsPage>,
 }

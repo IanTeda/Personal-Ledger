@@ -33,10 +33,10 @@ pub fn payments(transactions: SharedTransactionsStore, bills: &DesktopPorts) -> 
     )))
 }
 
-/// Brings the Ledger's Transactions and Bills read copies in line after a confirm, so the
-/// Transactions View, the Dashboard and the Bills page see the payment at once. The confirm's
+/// Announces the Transactions and the Bills after a confirm, so the Transactions View, the
+/// Dashboard and the Bills page see the payment at once (#1028). The confirm's
 /// input commits it.
-pub(crate) fn refresh(ledger: &Entity<LedgerStore>, cx: &mut App) {
-    ledger.update(cx, |store, cx| store.refresh_transactions(cx));
-    crate::bills::ports::refresh(ledger, cx);
+pub(crate) fn announce(ledger: &Entity<LedgerStore>, cx: &mut App) {
+    ledger.update(cx, |store, cx| store.announce_transactions(cx));
+    crate::bills::ports::announce(ledger, cx);
 }

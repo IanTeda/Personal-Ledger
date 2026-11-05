@@ -117,7 +117,7 @@ impl FormDialog {
         }
     }
 
-    /// Runs `handle` on the open Presenter, brings the Ledger read copy in line with what it wrote
+    /// Runs `handle` on the open Presenter, announces the Budgets it may have written
     /// and, once the Presenter has closed the Dialog, hands its outcome to the page.
     fn run(
         &mut self,
@@ -126,7 +126,7 @@ impl FormDialog {
     ) {
         let mut router = Router::default();
         handle(&mut self.view, &mut router);
-        ports::refresh(&self.ledger, cx);
+        ports::announce(&self.ledger, cx);
         if let Some(outcome) = router.closed() {
             (self.landed)(outcome, cx);
             cx.emit(DialogClosed);

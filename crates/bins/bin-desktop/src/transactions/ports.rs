@@ -1,9 +1,9 @@
 //! The Transactions ports as the Desktop holds them (#774, #923): [`DesktopPorts`], what the
 //! page's Presenter reads, answered from the stores `shell::router::build` is given
-//! (`LedgerSetup`) rather than from the Ledger read copy: the Transactions store, and the other
-//! domains through `lib_database`'s `StoredTransactionReads`. Every writer of Transactions is a
-//! module writing the store, or a cross-domain module's port over it (#1006). The Ledger's
-//! Transactions stay a read copy refreshed from the store for the readers not yet on the port.
+//! (`LedgerSetup`): the Transactions store, and the other domains through `lib_database`'s
+//! `StoredTransactionReads`. Every writer of Transactions is a module writing the store, or a
+//! cross-domain module's port over it (#1006), and announces the write through
+//! `LedgerStore::announce_transactions`; the Ledger keeps no read copy (#1028).
 
 use std::cell::RefCell;
 use std::rc::Rc;

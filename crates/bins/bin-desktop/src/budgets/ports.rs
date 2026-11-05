@@ -1,5 +1,5 @@
 //! The Budgets store as the Desktop holds it (#952): the store `shell::router::build` is given,
-//! shared by the Ledger's read copy, Category delete, the Accounts, Units and Categories usage
+//! shared by `LedgerStore`, Category delete, the Accounts, Units and Categories usage
 //! counts and the Categories Monthly budget, and the Budgets read ports the Budgets View reads the
 //! other domains through. The writes are committed by the input they were made in
 //! (`crate::input::send`), not here.
@@ -7,8 +7,7 @@
 //! The Budgets page and its Dialogs write the store through `lib-budgets`' Interactors on
 //! [`DesktopPorts`] (#954, #955), as does the Categories Monthly budget ([`set_monthly_limit`]).
 //! Category delete drops the Category's Limits through `lib-category-deletion`'s port (#1005).
-//! After any of them, [`refresh`] brings the Ledger's read copy in line, for the Views still
-//! reading it.
+//! After any of them, [`announce`] tells the Views reading the Budgets (#1028).
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -95,10 +94,10 @@ impl DesktopPorts {
     }
 }
 
-/// Brings the Ledger's Budgets read copy in line with the store after a Budgets write, announcing
-/// `Domain::Budgets` when it changed.
-pub fn refresh(ledger: &Entity<LedgerStore>, cx: &mut App) {
-    ledger.update(cx, |store, cx| store.refresh_budgets(cx));
+/// Announces `Domain::Budgets` after a Budgets write, so the Dashboard and Budgets redraw
+/// (#1028).
+pub fn announce(ledger: &Entity<LedgerStore>, cx: &mut App) {
+    ledger.update(cx, |store, cx| store.announce_budgets(cx));
 }
 
 /// `ledger`'s own Budgets in memory, for a test that needs no storage.

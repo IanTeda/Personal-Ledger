@@ -161,7 +161,7 @@ impl CategoryBudget for LedgerPorts<'_> {
     }
 
     /// Saves the amount to the Budgets store on the Categories store's tree, which holds the
-    /// Category just written, then brings the Budgets read copy in line.
+    /// Category just written, then announces the Budgets.
     fn set_monthly_budget(
         &mut self,
         category: CategoryId,
@@ -179,7 +179,7 @@ impl CategoryBudget for LedgerPorts<'_> {
                 amount,
                 today,
             );
-            store.refresh_budgets(cx);
+            store.announce_budgets(cx);
             saved.map(|_| ()).map_err(budget_refusal)
         })
     }
@@ -193,7 +193,7 @@ impl CategoryBudget for LedgerPorts<'_> {
     }
 
     /// Stops the parent in every active Budget in the Budgets store, in the input's one commit,
-    /// then brings the Budgets read copy in line.
+    /// then announces the Budgets.
     fn stop_new_parent(&mut self, parent: CategoryId) {
         let today = self.today;
         self.ledger.update(self.cx, |store, cx| {
@@ -202,7 +202,7 @@ impl CategoryBudget for LedgerPorts<'_> {
                 parent,
                 today,
             );
-            store.refresh_budgets(cx);
+            store.announce_budgets(cx);
         });
     }
 }
@@ -213,12 +213,12 @@ impl CategoryHandover for LedgerPorts<'_> {
     }
 
     /// Re-points the rows in the Transactions, Bills and Payees stores, in the input's one commit,
-    /// then brings their read copies in line and announces the Payees.
+    /// then announces the three.
     fn hand_over(&mut self, from: CategoryId, to: CategoryId) {
         self.ledger.update(self.cx, |store, cx| {
             hand_over_rows(store, from, to);
-            store.refresh_transactions(cx);
-            store.refresh_bills(cx);
+            store.announce_transactions(cx);
+            store.announce_bills(cx);
             store.announce_payees(cx);
         });
     }

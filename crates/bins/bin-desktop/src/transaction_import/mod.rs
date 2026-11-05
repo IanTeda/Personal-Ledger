@@ -59,12 +59,12 @@ impl ImportStores {
     }
 }
 
-/// Brings the Ledger's Transactions read copy in line after a commit and announces the Payees, so
+/// Announces the Transactions and the Payees after a commit, so
 /// the Transactions list, the Dashboard and the Views reading the Payees see the Import at once.
 /// The continuing input commits it.
-pub(crate) fn refresh(ledger: &Entity<LedgerStore>, cx: &mut App) {
+pub(crate) fn announce(ledger: &Entity<LedgerStore>, cx: &mut App) {
     ledger.update(cx, |store, cx| {
-        store.refresh_transactions(cx);
+        store.announce_transactions(cx);
         store.announce_payees(cx);
     });
 }

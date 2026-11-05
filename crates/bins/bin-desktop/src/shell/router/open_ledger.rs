@@ -128,7 +128,7 @@ impl OpenLedger {
 
         // The Transactions and Bills stores are shared: Pay it directly writes both (#779), and
         // Payees counts what names a Payee in them (#992). The Payees ports are shared by the
-        // Payees module, the cross-domain adapters, the Ledger's read copies and the Bills reads
+        // Payees module, the cross-domain adapters, the Ledger and the Bills reads
         // (#831, #832). The Categories store is shared by the Categories module, Category delete,
         // the Ledger's read copy and the Bills and Payees reads (#858, #859, #1005).
         let categories: lib_database::SharedCategoriesStore =
@@ -149,7 +149,7 @@ impl OpenLedger {
         // The Inventory store is shared by the Inventory page and the Documents reads (#866, #867).
         let inventory: lib_database::SharedInventoryStore =
             Rc::new(std::cell::RefCell::new(inventory));
-        // The Budgets store is shared by the Budgets module, the Ledger's read copy, Category
+        // The Budgets store is shared by the Budgets module, the Ledger, Category
         // delete, the Accounts, Units and Categories usage counts and the Categories Monthly budget
         // (#952).
         let budgets: lib_database::SharedBudgetsStore = Rc::new(std::cell::RefCell::new(budgets));
@@ -314,8 +314,8 @@ impl OpenLedger {
         // The Documents page writes the store through its Interactors, and reads the other
         // domains through their stores (#967).
         let documents_store = crate::document_types::ports::shared(&storage.documents);
-        // The Transactions and Bills ports are the truth; the Ledger keeps read copies of them
-        // (#774).
+        // The Transactions, Bills and Budgets stores are the truth, with no read copy on the
+        // Ledger: their writers announce through it (#1028).
         let ledger = cx.new(|_| LedgerStore::with_storage(Ledger::stub_on(today), storage));
         // The Units ports are the truth; the Ledger keeps a read copy of them (#746).
         crate::units::ports::refresh(&settings_setup.units.ports, &ledger, cx);

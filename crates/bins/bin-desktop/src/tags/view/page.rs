@@ -101,11 +101,11 @@ impl TagsPage {
 
     /// A confirmed Dialog's outcome, handed back by the Dialog host inside the confirm's input.
     /// Every confirm wrote the Tags, so they are announced; a remove or merge rewrote Splits too,
-    /// so the Ledger's Transactions read copy is brought in line for the Views still reading it.
+    /// so the Transactions are announced for the Views reading them.
     pub(crate) fn dialog_landed(&mut self, outcome: TagsOutcome, cx: &mut Context<'_, Self>) {
         if matches!(outcome.change, TagChange::Removed | TagChange::Merged) {
             self.ledger
-                .update(cx, |store, cx| store.refresh_transactions(cx));
+                .update(cx, |store, cx| store.announce_transactions(cx));
         }
         ports::announce(&self.ledger, cx);
         self.handle(TagsPageEvent::DialogClosed(Some(outcome)), cx);

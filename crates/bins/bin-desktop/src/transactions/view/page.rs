@@ -14,10 +14,9 @@
 //! modes in the bin (`InputMode::Search`, `InputMode::Filter`) until their own slice: the page
 //! enters and leaves them through [`ViewEvent`] as the Presenter opens and closes them.
 //!
-//! The rows name Accounts, Categories, Payees, Tags and Units, read through the stores. A writer
-//! not yet on a module (a Tag merge) writes through `LedgerStore`, and a module that writes the
-//! Transactions (an Import commit) refreshes its read copy, so the page redraws on every
-//! `LedgerChanged` naming any of them.
+//! The rows name Accounts, Categories, Payees, Tags and Units, read through the stores. A module
+//! that writes any of them (an Import commit, a Tag merge) announces it through `LedgerStore`, so
+//! the page redraws on every `LedgerChanged` naming any of them.
 
 use gpui::UniformListScrollHandle;
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollStrategy, Subscription};

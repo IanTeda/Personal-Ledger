@@ -8,15 +8,9 @@
 //!   once (`docs/development/viper-architecture.md`, Rules > Dependencies). `BillTransactions` is
 //!   `lib-database`'s Transactions store's (#926); [`Ledger::bill_splits`] flattens the Ledger's copy
 //!   the same way for the tests that check the stub's Bills seed against it.
-//! - **The Bills read copy ([`Ledger::refresh_bills`]).** The Bills ports are the truth. Category
-//!   delete, the last command that re-pointed Bill Plans on the copy, writes the Bills store
-//!   through `lib-category-deletion` (#1005), and the Dashboard and the rail badge read Bills
-//!   through `lib-bills` (#1024, #1026), so the copy goes with its last reader (#816).
 
 use lib_accounts::Account;
-use lib_bills::{
-    BillAccount, BillCategory, BillPayee, BillPlan, BillScheduleEntry, BillSplit, SplitRef,
-};
+use lib_bills::{BillAccount, BillCategory, BillPayee, BillSplit, SplitRef};
 use lib_categories::Category;
 use lib_core::CategoryTypes;
 use lib_payees::Payee;
@@ -25,24 +19,6 @@ use lib_transactions::Transaction;
 use crate::Ledger;
 
 impl Ledger {
-    /// Replaces the read copy of the Bill Plans and the Bill Schedule with what the Bills ports
-    /// hold, the entries by due date and then Plan as generation leaves them, since a port lists
-    /// them in no particular order. Returns whether anything changed, so a Client announces only
-    /// a real change.
-    pub fn refresh_bills(
-        &mut self,
-        plans: Vec<BillPlan>,
-        mut entries: Vec<BillScheduleEntry>,
-    ) -> bool {
-        entries.sort_by_key(|entry| (entry.due, entry.plan_id));
-        if self.bill_plans == plans && self.bill_entries == entries {
-            return false;
-        }
-        self.bill_plans = plans;
-        self.bill_entries = entries;
-        true
-    }
-
     /// The Ledger's Transactions as Bills reads them, a [`BillSplit`] per Split, in the
     /// Transactions' order.
     pub fn bill_splits(&self) -> Vec<BillSplit> {
@@ -233,24 +209,6 @@ mod tests {
         assert_eq!(fake.bills.plans, stub.seed.plans);
         assert_eq!(fake.bills.entries, stub.seed.entries);
         assert_eq!(fake.reads.splits, bill_splits(&transactions));
-    }
-
-    #[test]
-    fn a_refresh_sorts_the_entries_and_reports_only_a_change() {
-        let mut ledger = Ledger::stub_on(today());
-        let plans = ledger.bill_plans().to_vec();
-        let mut entries = ledger.bill_entries().to_vec();
-        entries.reverse();
-
-        assert!(!ledger.refresh_bills(plans.clone(), entries.clone()));
-
-        entries[0].superseded = !entries[0].superseded;
-        assert!(ledger.refresh_bills(plans, entries));
-        assert!(
-            ledger
-                .bill_entries()
-                .is_sorted_by_key(|entry| (entry.due, entry.plan_id))
-        );
     }
 
     #[test]

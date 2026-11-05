@@ -102,8 +102,7 @@ impl CategoriesPage {
 
     /// A confirmed Dialog's outcome, handed back by the Dialog host inside the confirm's input. A
     /// delete re-pointed the Splits, Bill Plans, Payee defaults and Budget Limits naming the
-    /// Category, so the Ledger's Transactions, Bills and Budgets read copies are brought in line
-    /// and the Payees announced, for the Views still reading them.
+    /// Category, so the four are announced, for the Views reading them.
     pub(in crate::categories) fn dialog_landed(
         &mut self,
         outcome: CategoriesOutcome,
@@ -111,9 +110,9 @@ impl CategoriesPage {
     ) {
         if outcome.change == CategoryChange::Deleted {
             self.ledger.update(cx, |store, cx| {
-                store.refresh_transactions(cx);
-                store.refresh_bills(cx);
-                store.refresh_budgets(cx);
+                store.announce_transactions(cx);
+                store.announce_bills(cx);
+                store.announce_budgets(cx);
                 store.announce_payees(cx);
             });
         }

@@ -14,8 +14,7 @@ use crate::shell::view::dialog_entity::host_dialog;
 use crate::view::event::ViewEvent;
 
 /// What the Pay Dialog reads and writes through: the Bills ports its Match panel and wording read,
-/// the port Pay it directly writes through, and the Ledger read copy a confirm reads and brings in
-/// line.
+/// the port Pay it directly writes through, and the Ledger a confirm announces its write through.
 pub struct PayStores<'a> {
     pub bills: &'a DesktopPorts,
     pub payments: &'a SharedPayments,

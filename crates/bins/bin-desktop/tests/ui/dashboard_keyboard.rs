@@ -136,3 +136,48 @@ fn a_new_months_generation_that_fails_to_save_rolls_back_with_an_error_toast(
         "the failed save raises an error Toast"
     );
 }
+
+/// Presses `confirm` and says whether the Dashboard asked to redraw for it, though another page
+/// shows: the write's module announces its domain, with no Ledger read copy in between (#1028).
+fn redraws_on(ui: &mut Harness<'_>, confirm: &str) -> bool {
+    let redraws = ui.count_dashboard_redraws();
+    ui.press(confirm);
+    redraws.get() > 0
+}
+
+#[gpui::test]
+fn a_skipped_bill_redraws_the_dashboard(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.press("g w s");
+    assert_eq!(ui.bills().dialog.as_deref(), Some("Skip"));
+
+    assert!(redraws_on(&mut ui, "enter"), "a Bills write");
+    assert_eq!(ui.bills().dialog, None, "the Skip landed");
+}
+
+#[gpui::test]
+fn a_saved_budget_limit_redraws_the_dashboard(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.press("g b j e");
+    assert_eq!(ui.budgets().dialog.as_deref(), Some("EditLimit"));
+    let prefilled = ui.budgets().limit_amount.unwrap_or_default().len();
+    for _ in 0..prefilled {
+        ui.press("backspace");
+    }
+    ui.press("7");
+
+    assert!(redraws_on(&mut ui, "enter"), "a Budgets write");
+    assert_eq!(ui.budgets().dialog, None, "the Limit saved");
+}
+
+/// The Import writes only Transactions and Payees, and the Dashboard reads no Payees: its
+/// redraw is the Transactions' announcement.
+#[gpui::test]
+fn an_import_redraws_the_dashboard(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    let redraws = ui.count_dashboard_redraws();
+
+    super::import_keyboard::commit_the_candle_shop_as_a_new_payee(&mut ui);
+
+    assert!(redraws.get() > 0, "a Transactions write");
+}

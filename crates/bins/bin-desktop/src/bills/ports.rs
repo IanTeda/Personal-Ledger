@@ -1,10 +1,9 @@
 //! The Bills ports as the Desktop holds them: the store `shell::router::build` is given, shared by
-//! the Bills module and `LedgerStore`'s read copy, the Payees store Bills reads its Payees from (#831), the
+//! the Bills module and `LedgerStore`, the Payees store Bills reads its Payees from (#831), the
 //! Accounts store it reads its Accounts from (#853), the Categories store it reads its
 //! Categories from (#858), the Transactions store it reads its Splits from (#926) and the Units
-//! store it reads its Unit codes from (#993), and the step that keeps the Ledger's read copy in
-//! line after a Bills write. The write is committed by the input it was made in
-//! (`crate::input::send`), not here.
+//! store it reads its Unit codes from (#993), and the announcement of a Bills write (#1028). The
+//! write is committed by the input it was made in (`crate::input::send`), not here.
 //!
 //! The store is shared with the Bill Payments module too, whose Pay it directly writes an entry,
 //! the Account Deletion module, whose delete Unmatches the entries an Account's Transactions paid
@@ -188,7 +187,7 @@ pub fn generate(store: &mut dyn BillsRepository, today: chrono::NaiveDate) {
 }
 
 /// Brings the Bill Schedule up to the horizon for the month a running Desktop has crossed into,
-/// wherever it is (ADR-0019), then refreshes the read copy as after a Bills event, so the
+/// wherever it is (ADR-0019), then announces the Bills as after a Bills event, so the
 /// Dashboard and Budgets redraw on the new entries. The day poll's input commits them as
 /// one write, and a failed save rolls back like any Bills write.
 pub fn new_month(
@@ -198,14 +197,13 @@ pub fn new_month(
     cx: &mut App,
 ) {
     PopulateSchedule { today }.run(ports.borrow_mut().split_mut().bills);
-    refresh(ledger, cx);
+    announce(ledger, cx);
 }
 
-/// Brings the Ledger's Bills read copy in line with the ports, announcing `Domain::Bills` when it
-/// changed. Run after every Bills event and Dialog confirm, so Category reassign reads the write
-/// and the Dashboard, Budgets and Documents redraw on it at once.
-pub fn refresh(ledger: &Entity<LedgerStore>, cx: &mut App) {
-    ledger.update(cx, |store, cx| store.refresh_bills(cx));
+/// Announces `Domain::Bills` after every Bills event and Dialog confirm, so the Dashboard, Bills,
+/// Budgets and Documents redraw on a write at once (#1028).
+pub fn announce(ledger: &Entity<LedgerStore>, cx: &mut App) {
+    ledger.update(cx, |store, cx| store.announce_bills(cx));
 }
 
 #[cfg(test)]

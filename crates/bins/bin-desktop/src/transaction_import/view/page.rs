@@ -149,7 +149,7 @@ impl ImportPage {
             Some(committed) => {
                 self.close();
                 if committed.is_some() {
-                    super::super::refresh(&self.ledger, cx);
+                    super::super::announce(&self.ledger, cx);
                     crate::transactions::router::first_row(cx);
                 }
             }

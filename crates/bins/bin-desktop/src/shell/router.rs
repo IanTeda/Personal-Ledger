@@ -716,7 +716,7 @@ impl Root {
             );
         }
         ledger.update(cx, |store, cx| {
-            store.refresh_transactions(cx);
+            store.announce_transactions(cx);
             store.announce_tags(cx);
         });
     }
@@ -759,7 +759,7 @@ impl Root {
             }
         }
         let open = self.open();
-        crate::bills::ports::refresh(&open.ledger, cx);
+        crate::bills::ports::announce(&open.ledger, cx);
     }
 
     /// Leaves no Unit quoted in another, so a test can delete a seeded Unit instead of meeting the

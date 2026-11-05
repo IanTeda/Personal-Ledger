@@ -65,4 +65,20 @@ impl Root {
     pub fn dashboard_bills_snapshot(&self, cx: &gpui::App) -> Vec<DashboardBillSnapshot> {
         self.open().views.dashboard.read(cx).bills_snapshot()
     }
+
+    /// How many times the Dashboard has asked to redraw from now on, for a test that checks a
+    /// write elsewhere reaches it.
+    #[doc(hidden)]
+    pub fn count_dashboard_redraws(
+        &self,
+        cx: &mut gpui::App,
+    ) -> std::rc::Rc<std::cell::Cell<usize>> {
+        let count = std::rc::Rc::new(std::cell::Cell::new(0));
+        let seen = count.clone();
+        cx.observe(&self.open().views.dashboard, move |_, _| {
+            seen.set(seen.get() + 1);
+        })
+        .detach();
+        count
+    }
 }
