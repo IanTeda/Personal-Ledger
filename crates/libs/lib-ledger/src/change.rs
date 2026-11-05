@@ -1,7 +1,7 @@
 //! The domains a write can touch, and the row change the Ledger's repository takes (ADR-0039).
 //!
 //! No write records a [`LedgerChange`] any more: every domain is written by its module, through its
-//! ports, and the `LedgerCommand` trait that recorded them went with slice 10 (#1006).
+//! ports, and the command trait that recorded them went with slice 10 (#1006).
 //! [`LedgerChange`] keeps one variant so [`crate::LedgerRepository`] still stands until #816
 //! decides how it and the Ledger go.
 
