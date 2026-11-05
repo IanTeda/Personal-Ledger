@@ -10,6 +10,10 @@ license.workspace = true
 # Usage is specified by unit tests, not doctests (see CLAUDE.md Conventions).
 doctest = false
 
+[features]
+# The port contract suite (`contract`), for a Client to run against its own `DeviceConfiguration`.
+contract-tests = []
+
 [dependencies]
 ## -- Internal Dependencies --
 # Never `lib_config`, `lib_tracing` or `lib_units`: the frame reads `[keybindings]` through
@@ -20,6 +24,9 @@ lib_list_cursor = { path = "../lib-list-cursor" }
 lib_locale = { path = "../lib-locale" }
 lib_toast = { path = "../lib-toast" }
 lib_viper = { path = "../lib-viper" }
+
+## -- Workspace Dependencies --
+chrono = { workspace = true }
 
 [build-dependencies]
 lib_locale_build = { path = "../lib-locale-build" }

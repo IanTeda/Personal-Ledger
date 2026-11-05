@@ -90,3 +90,66 @@ settings-hint-close = close
 
 # Choosing a This Ledger page with no Ledger open. `$open` and `$new` are the commands to type.
 settings-status-refused-no-ledger = No Ledger open: { $open } or { $new } first
+
+## A This device page's status-line hints.
+
+settings-hint-field = field
+settings-hint-change = change
+settings-hint-toggle = toggle
+settings-hint-index = index
+settings-hint-colour = colour
+settings-hint-choose = choose
+
+## A device's settings in personal-ledger.conf (ADR-0053). `$key` is the setting's key in the file,
+## such as on_start; `$source` is the environment variable or configuration file that sets it, and
+## `$path` the file a setting was saved to.
+
+settings-device-shadowed-note = Set by { $source }
+settings-device-shadowed = { $key } is set by { $source }, which outranks your personal-ledger.conf: change it there
+settings-device-no-file = { $key } can't be saved: there's no home folder to keep personal-ledger.conf in
+settings-device-saved = { $key } saved to { $path }
+settings-device-write-failed = Couldn't save { $key } to personal-ledger.conf: the log says why
+
+## General (DESKTOP-178): On start, Start view, Toasts, the read-only Locale and Ledger folder, and
+## the THIS DEVICE box, whose rows are the Ledger On start reopens and the config file Settings
+## writes to. Toasts' own label, choices and note are `lib-locale`'s, shared with the TUI.
+
+settings-general-on-start = On start
+settings-general-on-start-reopen = Reopen last Ledger
+settings-general-on-start-none = Start with no Ledger open
+settings-general-on-start-hint = Reopens the Ledger open when Personal Ledger last quit, or none if none was. A file named by --file or file in the configuration file always wins.
+settings-general-start-view = Start view
+# `$view` is the start_view value the configuration file holds, which isn't one of the choices.
+settings-general-start-view-unlisted = The configuration file names { $view }, which isn't one of these.
+settings-general-start-view-hint = Where Personal Ledger opens, after On start. A View that needs a Ledger opens the Dashboard when none is open.
+settings-general-locale-label = Language and region
+settings-general-locale-hint = Set with the locale setting or the --locale flag, then restart.
+settings-general-ledger-folder = Ledger folder
+settings-general-ledger-folder-hint = Where :open and :new start browsing. Set by data in the configuration file.
+settings-general-this-device = This device
+settings-general-last-ledger = last ledger
+settings-general-configuration = configuration
+settings-general-none = none
+settings-general-note = General settings belong to this device and never sync. What travels with the Ledger is under Ledger.
+
+## Display: the date style, Row density, Status glyphs, Start Sidebar minimised, the PREVIEW and the
+## Colour Theme group. `$glyphs` is the run of status glyphs the option draws.
+
+settings-display-date-style-label = Date format
+settings-display-date-style-default = Locale
+settings-display-date-style-short = Short
+settings-display-date-style-medium = Medium
+settings-display-date-style-long = Long
+settings-display-date-style-iso = ISO
+settings-display-row-density = Row density
+settings-display-density-compact = compact
+settings-display-density-regular = regular
+settings-display-density-roomy = roomy
+settings-display-status-glyphs = Status glyphs
+settings-display-glyphs-unicode = unicode — { $glyphs }
+settings-display-glyphs-ascii = ascii fallback — { $glyphs }
+settings-display-start-minimised = Start Sidebar minimised
+settings-display-preview = Preview
+settings-display-note = These belong to this device and never sync: the Colour Theme, Appearance and date style are Client-scoped Preferences, the rest Configuration read from personal-ledger.conf. What travels with the Ledger is under Ledger.
+settings-display-colour-theme = Colour theme
+settings-display-colour-appearance = Appearance

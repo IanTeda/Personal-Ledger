@@ -7,6 +7,10 @@
 //! While the picker is open the same keys move its highlight and open its chosen page, and every
 //! other key the frame binds is swallowed ([`SettingsFramePresenter::takes`]).
 //!
+//! The This device pages' keys ([`device_page_keymap`]) walk a page's controls and change the one
+//! focused, and on Display toggle its checkbox and choose a Colour Theme. A page's keys are offered
+//! before the frame's, so its `h`/`l` win over the frame's `h`.
+//!
 //! [`SettingsFramePresenter::takes`]: crate::presenter::SettingsFramePresenter::takes
 
 use lib_list_cursor::Step;
@@ -15,7 +19,7 @@ use lib_viper::keymap::{
     MOVE_LAST, MOVE_UP, SELECT,
 };
 
-use crate::presenter::SettingsFrameEvent;
+use crate::presenter::{PageKey, SettingsFrameEvent};
 
 /// From the index into the page on show.
 pub const ENTER_PAGE: &str = "settings.enter_page";
@@ -58,6 +62,37 @@ pub fn settings_frame_keymap(config: &KeyBindingConfig) -> Keymap<SettingsFrameE
     Keymap::new(SETTINGS_FRAME_BINDINGS, config)
 }
 
+/// On a This device page, the focused control's choice before.
+pub const PREVIOUS_CHOICE: &str = "settings.previous_choice";
+/// On a This device page, the focused control's choice after.
+pub const NEXT_CHOICE: &str = "settings.next_choice";
+/// The choice before, on the left arrow.
+pub const CHOICE_LEFT: &str = "settings.choice_left";
+/// The choice after, on the right arrow.
+pub const CHOICE_RIGHT: &str = "settings.choice_right";
+/// Ticks or clears the focused checkbox.
+pub const TOGGLE: &str = "settings.toggle";
+
+/// The This device pages' commands (General and Display), with today's keys. None is listed in
+/// the palette: each means something only where the focus is.
+pub const DEVICE_PAGE_BINDINGS: &[Binding<PageKey>] = &[
+    Binding::hidden(MOVE_DOWN, "j", PageKey::Move(Step::Next)),
+    Binding::hidden(MOVE_UP, "k", PageKey::Move(Step::Prev)),
+    Binding::hidden(ARROW_DOWN, "down", PageKey::Move(Step::Next)),
+    Binding::hidden(ARROW_UP, "up", PageKey::Move(Step::Prev)),
+    Binding::hidden(PREVIOUS_CHOICE, "h", PageKey::Change(Step::Prev)),
+    Binding::hidden(NEXT_CHOICE, "l", PageKey::Change(Step::Next)),
+    Binding::hidden(CHOICE_LEFT, "left", PageKey::Change(Step::Prev)),
+    Binding::hidden(CHOICE_RIGHT, "right", PageKey::Change(Step::Next)),
+    Binding::hidden(SELECT, "enter", PageKey::Select),
+    Binding::hidden(TOGGLE, "space", PageKey::Toggle),
+];
+
+/// The This device pages' keymap under `config`'s overrides.
+pub fn device_page_keymap(config: &KeyBindingConfig) -> Keymap<PageKey> {
+    Keymap::new(DEVICE_PAGE_BINDINGS, config)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -79,6 +114,26 @@ mod tests {
             ("[", SettingsFrameEvent::StepPage(Step::Prev)),
             ("]", SettingsFrameEvent::StepPage(Step::Next)),
             ("p", SettingsFrameEvent::OpenPicker),
+        ] {
+            assert_eq!(keymap.event(chord), Some(event), "{chord}");
+        }
+        assert_eq!(keymap.listed().count(), 0, "the palette lists none");
+    }
+
+    #[test]
+    fn the_device_page_defaults_are_todays_keys() {
+        let keymap = device_page_keymap(&KeyBindingConfig::default());
+
+        for (chord, event) in [
+            ("j", PageKey::Move(Step::Next)),
+            ("down", PageKey::Move(Step::Next)),
+            ("k", PageKey::Move(Step::Prev)),
+            ("h", PageKey::Change(Step::Prev)),
+            ("left", PageKey::Change(Step::Prev)),
+            ("l", PageKey::Change(Step::Next)),
+            ("right", PageKey::Change(Step::Next)),
+            ("enter", PageKey::Select),
+            ("space", PageKey::Toggle),
         ] {
             assert_eq!(keymap.event(chord), Some(event), "{chord}");
         }

@@ -1,13 +1,20 @@
 //! Settings as a VIPER module (`docs/development/viper-architecture.md`): the frame's Presenter,
-//! view model and keymap, and [`SettingsPage`], the pages and their This device / This Ledger
-//! grouping. Toolkit-free and I/O-free, it depends on no feature crate, nor on `lib-config`,
-//! `lib-tracing` or `lib-units`: the config pages that join it reach Configuration, the log and the
-//! Units through its own ports (#1036).
+//! view model and keymap, [`SettingsPage`], the pages and their This device / This Ledger
+//! grouping, and the config pages' Presenters as each moves here (General and Display, #1039).
+//! Toolkit-free and I/O-free, it depends on no feature crate, nor on `lib-config`, `lib-tracing`
+//! or `lib-units`: the config pages reach Configuration, the log and the Units through its own
+//! ports, such as [`DeviceConfiguration`] (#1036).
 //!
 //! The domain pages (Units, Institutions, Accounts, …) stay in their own modules; the frame only
 //! chooses which page shows and where focus sits. A page's icon is the Client's (ADR-0037,
 //! 2026-10-30).
 
+#[cfg(any(test, feature = "contract-tests"))]
+#[expect(
+    clippy::panic,
+    reason = "a contract check is test code a consumer runs, and fails by panicking as a test does"
+)]
+pub mod contract;
 pub mod fake;
 pub mod keymap;
 pub mod msg;
@@ -17,7 +24,13 @@ pub mod protocols;
 
 pub use crate::page::{ScopeFacts, ScopeGroup, SettingsPage};
 pub use crate::presenter::{
-    Breadcrumb, IndexGroup, IndexRow, PickerGroup, PickerRow, PickerView, SettingsFocus,
-    SettingsFrameEvent, SettingsFramePresenter, SettingsFrameSetup, SettingsFrameViewModel,
+    Breadcrumb, DisplayEvent, DisplayOutput, DisplayPresenter, DisplaySettings, DisplaySetup,
+    DisplayViewModel, GeneralEvent, GeneralPresenter, GeneralSettings, GeneralSetup,
+    GeneralViewModel, IndexGroup, IndexRow, LocaleLine, PageKey, PickerGroup, PickerRow,
+    PickerView, SettingsFocus, SettingsFrameEvent, SettingsFramePresenter, SettingsFrameSetup,
+    SettingsFrameViewModel, ThisDevice,
 };
-pub use crate::protocols::SettingsRouter;
+pub use crate::protocols::{
+    ColourChoice, DeviceAnswer, DeviceConfiguration, DeviceKey, DeviceRefusal, DeviceRouter,
+    SettingsRouter,
+};
