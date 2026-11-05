@@ -63,7 +63,8 @@ use lib_categories::CategoryRepository;
 use lib_categories::fake::InMemoryCategories;
 use lib_category_deletion::{CategoryDeletionReads, CategoryInUse};
 use lib_core::{
-    AccountId, CategoryId, InstitutionId, PayeeId, TagId, Total, TransactionId, UnitId,
+    AccountId, CategoryId, InstitutionId, LocationId, PayeeId, TagId, Total, TransactionId, UnitId,
+    UnitKind,
 };
 use lib_dashboard::{
     DashboardBill, DashboardBills, DashboardBudgetBar, DashboardBudgetMonth, DashboardBudgets,
@@ -77,8 +78,8 @@ use lib_documents::{
 };
 use lib_institutions::fake::InMemoryInstitutions;
 use lib_institutions::{InstitutionRepository, InstitutionUsage, InstitutionUse};
-use lib_inventory::InventoryRepository;
 use lib_inventory::fake::InMemoryInventory;
+use lib_inventory::{InventoryRepository, InventoryUnits, LocationUsage, LocationUse, UnitChoice};
 use lib_payees::{PayeeCategories, PayeeCategory, PayeeRepository, PayeeUsage, PayeeUse};
 use lib_shell::{RailCounts, ShellRailCounts};
 use lib_tag_removal::{TagCount, TagRemovalReads};
@@ -1658,6 +1659,54 @@ impl DocumentBillPlans for StoredDocumentReads {
 impl DocumentItems for StoredDocumentReads {
     fn document_items(&self) -> Vec<DocumentItem> {
         inventory::document_items(&self.inventory.borrow().inventory().items())
+    }
+}
+
+/// `lib-inventory`'s two read ports answered by the Units, Inventory and Documents stores, each
+/// borrowed for the one read (#1014): the fiat Units its Location form offers and the Documents
+/// its Remove location Dialog quotes.
+#[derive(Clone)]
+pub struct StoredInventoryReads {
+    pub units: SharedUnitsStore,
+    pub inventory: SharedInventoryStore,
+    pub documents: SharedDocumentsStore,
+}
+
+impl InventoryUnits for StoredInventoryReads {
+    /// In the Units' order.
+    fn currencies(&self) -> Vec<UnitChoice> {
+        self.units
+            .borrow()
+            .units()
+            .units()
+            .into_iter()
+            .filter(|unit| unit.kind == UnitKind::Currency)
+            .map(|unit| UnitChoice {
+                id: unit.id,
+                code: unit.code,
+                name: unit.name,
+            })
+            .collect()
+    }
+
+    fn unit_code(&self, id: UnitId) -> Option<String> {
+        self.units.borrow().unit_code(id)
+    }
+}
+
+impl LocationUsage for StoredInventoryReads {
+    /// The Documents with a Link to one of the Location's Items, which the file's cascade drops
+    /// when it goes (#964).
+    fn location_usage(&self, id: LocationId) -> LocationUse {
+        let links =
+            inventory::location_item_links(&self.inventory.borrow().inventory().items(), id);
+        let documents = self.documents.borrow().documents().documents();
+        LocationUse {
+            documents: documents
+                .iter()
+                .filter(|document| document.links.iter().any(|link| links.contains(link)))
+                .count(),
+        }
     }
 }
 

@@ -399,6 +399,18 @@ pub(crate) fn document_items(items: &[Item]) -> Vec<lib_documents::DocumentItem>
         .collect()
 }
 
+/// The Document Links naming Location `id`'s Items.
+pub(crate) fn location_item_links(
+    items: &[Item],
+    id: LocationId,
+) -> Vec<lib_documents::DocumentLink> {
+    items
+        .iter()
+        .filter(|item| item.location == id)
+        .map(|item| lib_documents::DocumentLink::InventoryItem(item.id))
+        .collect()
+}
+
 /// How many of `locations` are priced in `unit`.
 pub fn unit_locations(locations: &[Location], unit: UnitId) -> usize {
     locations
@@ -411,7 +423,7 @@ pub fn unit_locations(locations: &[Location], unit: UnitId) -> usize {
 mod tests {
     use std::sync::mpsc;
 
-    use lib_inventory::contract::{self, PortsFactory};
+    use lib_inventory::contract::{self, PortsFactory, ReadsFactory};
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
     use super::*;
@@ -529,6 +541,93 @@ mod tests {
             port.reload().expect("the rows load");
             (port, failures)
         }
+    }
+
+    /// The Units, Inventory and Documents adapters loaded on one test database, behind
+    /// [`crate::StoredInventoryReads`] (#1014). The Documents are the stub's first, one copy for
+    /// each list of Items, Linked to those Items alone.
+    struct ReadsAdapters {
+        writer: Writer,
+        pending: PendingWrites,
+    }
+
+    impl ReadsAdapters {
+        fn new(options: SqliteConnectOptions) -> Self {
+            let (writer, _failures) = Writer::spawn(options).expect("the test database opens");
+            crate::test_support::store_stub_references(&writer);
+            Self {
+                pending: PendingWrites::new(writer.clone()),
+                writer,
+            }
+        }
+    }
+
+    impl ReadsFactory for ReadsAdapters {
+        type Reads = crate::StoredInventoryReads;
+
+        fn create(
+            &mut self,
+            inventory: Inventory,
+            documents: Vec<Vec<ItemId>>,
+        ) -> crate::StoredInventoryReads {
+            use std::cell::RefCell;
+            use std::rc::Rc;
+
+            let template = crate::seed::stub_documents(today(), &crate::seed::stub_institutions())
+                .into_iter()
+                .next()
+                .expect("the stub has a Document");
+            let documents = documents
+                .into_iter()
+                .enumerate()
+                .map(|(n, items)| lib_documents::Document {
+                    id: lib_core::DocumentId::seed(1_000 + u32::try_from(n).expect("a few")),
+                    path: format!("inventory-reads/{n}.pdf").into(),
+                    links: items
+                        .into_iter()
+                        .map(lib_documents::DocumentLink::InventoryItem)
+                        .collect(),
+                    ..template.clone()
+                })
+                .collect();
+            InventoryAdapter::seed(&self.writer, inventory).expect("the Inventory is written");
+            crate::DocumentsAdapter::seed(
+                &self.writer,
+                lib_documents::types::default_types(),
+                documents,
+            )
+            .expect("the Documents are written");
+            crate::StoredInventoryReads {
+                units: Rc::new(RefCell::new(
+                    crate::UnitsAdapter::load(self.pending.clone()).expect("the Units load"),
+                )),
+                inventory: Rc::new(RefCell::new(
+                    InventoryAdapter::load(self.pending.clone()).expect("the Inventory loads"),
+                )),
+                documents: Rc::new(RefCell::new(
+                    crate::DocumentsAdapter::load(self.pending.clone())
+                        .expect("the Documents load"),
+                )),
+            }
+        }
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn the_currencies_are_the_fiat_units(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        contract::the_currencies_are_the_fiat_units(&mut ReadsAdapters::new(options));
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn a_locations_usage_counts_the_documents_linking_its_items(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        contract::a_locations_usage_counts_the_documents_linking_its_items(
+            &mut ReadsAdapters::new(options),
+        );
     }
 
     fn today() -> NaiveDate {

@@ -8,7 +8,7 @@
 //! rows back, in the same order.
 
 use chrono::NaiveDate;
-use lib_core::{Money, UnitId};
+use lib_core::{ItemId, Money, UnitId};
 
 use crate::fake::InMemoryInventory;
 use crate::interactor::{
@@ -16,8 +16,8 @@ use crate::interactor::{
     RemoveItem, RemoveLocation, SetCover,
 };
 use crate::{
-    AreaError, CoverDraft, Inventory, InventoryRepository, ItemDraft, LocationDraft, LocationError,
-    NameError, default_inventory,
+    AreaError, CoverDraft, Inventory, InventoryRepository, InventoryUnits, ItemDraft,
+    LocationDraft, LocationError, LocationUsage, LocationUse, NameError, default_inventory,
 };
 
 /// Builds the port a contract check runs on.
@@ -41,6 +41,15 @@ pub trait PortsFactory {
     /// Settles the writes sent so far, then returns `port` reloaded to the last committed rows,
     /// with the number of failures reported naming the Inventory domain.
     fn recover(&mut self, port: Self::Port) -> (Self::Port, usize);
+}
+
+/// Builds the read ports the Inventory Dialogs quote other domains through.
+pub trait ReadsFactory {
+    type Reads: InventoryUnits + LocationUsage;
+
+    /// The reads over the stub Units, `inventory`, and one Document for each entry of `documents`,
+    /// Linked to the Items it lists.
+    fn create(&mut self, inventory: Inventory, documents: Vec<Vec<ItemId>>) -> Self::Reads;
 }
 
 /// The in-memory port is its own storage, so a reload hands it back as it is. It keeps a copy as of
@@ -466,6 +475,53 @@ pub fn a_failed_write_is_reported_and_rolls_back<F: PortsFactory>(factory: &mut 
     let (port, failures) = factory.recover(port);
     assert_eq!(failures, 1);
     assert_eq!(port.inventory(), before);
+}
+
+/// The Units a Location can be kept in are the stub's fiat ones, and a code is found for any
+/// Unit, fiat or not, and for none that isn't there.
+pub fn the_currencies_are_the_fiat_units<F: ReadsFactory>(factory: &mut F) {
+    let reads = factory.create(stub(), Vec::new());
+
+    let currencies = reads.currencies();
+    assert!(currencies.iter().any(|unit| unit.id == UnitId::SEED_AUD));
+    assert!(!currencies.iter().any(|unit| unit.id == UnitId::SEED_BTC));
+    let aud = currencies
+        .iter()
+        .find(|unit| unit.id == UnitId::SEED_AUD)
+        .expect("checked above");
+    assert_eq!(
+        reads.unit_code(UnitId::SEED_AUD).as_deref(),
+        Some(aud.code.as_str())
+    );
+    assert_eq!(reads.unit_code(UnitId::SEED_BTC).as_deref(), Some("btc"));
+    assert_eq!(reads.unit_code(UnitId::seed(9_999)), None);
+}
+
+/// A Location's usage is the Documents Linking any of its Items, each counted once however many
+/// Items it Links; a Location nothing Links, and one that isn't there, are used by none.
+pub fn a_locations_usage_counts_the_documents_linking_its_items<F: ReadsFactory>(factory: &mut F) {
+    let inventory = stub();
+    let items = |location: usize| -> Vec<ItemId> {
+        inventory
+            .items
+            .iter()
+            .filter(|item| item.location == inventory.locations[location].id)
+            .map(|item| item.id)
+            .collect()
+    };
+    let (first, second) = (items(0), items(1));
+    assert!(first.len() >= 2 && !second.is_empty());
+    let documents = vec![first.clone(), vec![first[0]], vec![second[0]], Vec::new()];
+    let reads = factory.create(inventory.clone(), documents);
+
+    let usage = |location: usize| reads.location_usage(inventory.locations[location].id);
+    assert_eq!(usage(0), LocationUse { documents: 2 });
+    assert_eq!(usage(1), LocationUse { documents: 1 });
+    assert_eq!(usage(2), LocationUse::default());
+    assert_eq!(
+        reads.location_usage(lib_core::LocationId::seed(9_999)),
+        LocationUse::default()
+    );
 }
 
 #[cfg(test)]
