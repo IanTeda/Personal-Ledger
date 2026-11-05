@@ -25,6 +25,7 @@ pub mod nav;
 pub mod navigation;
 pub mod presenter;
 pub mod protocols;
+pub mod toast_history;
 pub mod window_size;
 
 pub use dialog::{DialogCommand, dialog_keymap};
@@ -36,6 +37,7 @@ pub use presenter::{
     DialogInput, NavInput, ShellInput, ShellKey, ShellPresenter, ShellViewModel, ToastInput,
 };
 pub use protocols::{RailCounts, ShellRailCounts, ShellRouter};
+pub use toast_history::{ToastHistoryPresenter, ToastHistoryRow, ToastHistoryViewModel};
 pub use window_size::WindowSize;
 
 /// What every status-line hint is, the Shell's own and each module's, so the bins name it here.
