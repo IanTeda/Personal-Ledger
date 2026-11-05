@@ -193,23 +193,65 @@ fn changing_the_type_then_cancel_leaves_the_category_and_its_descendants(app: &m
 #[gpui::test]
 fn changing_the_type_then_confirm_cascades_to_the_descendants(app: &mut TestAppContext) {
     let mut ui = on_categories(app);
+    let salary = CategoryId::seed(11);
+
+    // Salary, a top-level Income no Budget or Bill Plan uses, takes a child first, so the change
+    // has a subtree to cascade to.
+    ui.click(&format!("settings-categories-sub-{salary}"));
+    ui.press("b o n u s");
+    ui.click("add-category-confirm");
+    assert_eq!(ui.dialog(), None);
     let before = ui.settings::<SettingsCategoriesSnapshot>().category_types;
 
-    ui.click(&format!("settings-categories-edit-{}", CategoryId::seed(6)));
-    ui.click("edit-type-income");
+    ui.click(&format!("settings-categories-edit-{salary}"));
+    ui.click("edit-type-expense");
     ui.click("edit-category-confirm");
     assert_eq!(ui.dialog(), None);
     let after = ui.settings::<SettingsCategoriesSnapshot>().category_types;
     assert_ne!(after, before);
-    let changed = after.iter().zip(&before).filter(|(a, b)| a != b).count();
-    assert!(changed >= 2, "Food and at least one child changed type");
+    for name in ["Salary", "bonus"] {
+        assert!(
+            after
+                .iter()
+                .any(|(n, t)| n == name && *t == lib_core::CategoryTypes::Expense),
+            "{name} is an Expense: {after:?}"
+        );
+    }
+    let changed = before.iter().filter(|row| !after.contains(row)).count();
+    assert_eq!(changed, 2, "only Salary and its child changed type");
+}
+
+#[gpui::test]
+fn a_blocked_type_shows_its_notice_on_click_and_the_confirm_is_refused_with_the_same_text(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_categories(app);
+    let before = ui.settings::<SettingsCategoriesSnapshot>().category_types;
+
+    // Food's Groceries is budgeted and named by a Bill Plan in the stub.
+    ui.click(&format!("settings-categories-edit-{}", CategoryId::seed(6)));
+    ui.click("edit-type-income");
+    let notice = ui.dialog_value("notice").expect("a notice");
     assert!(
-        after
-            .iter()
-            .zip(&before)
-            .filter(|(a, b)| a != b)
-            .all(|(a, _)| a.1 == lib_core::CategoryTypes::Income)
+        notice.starts_with("Food can't become Income: ")
+            && notice.ends_with(" use its Categories."),
+        "{notice}"
     );
+
+    ui.click("edit-category-confirm");
+    assert_eq!(ui.dialog(), Some("EditCategory"), "the Dialog stays open");
+    assert_eq!(ui.dialog_value("error"), Some(notice));
+    assert_eq!(
+        ui.settings::<SettingsCategoriesSnapshot>().category_types,
+        before
+    );
+
+    // Picking the type it has again clears the notice.
+    ui.click("edit-type-expense");
+    let notice = ui.dialog_value("notice").unwrap_or_default();
+    assert!(!notice.contains("can't become"), "{notice}");
+    ui.click("edit-category-cancel");
+    assert_eq!(ui.dialog(), None);
 }
 
 #[gpui::test]

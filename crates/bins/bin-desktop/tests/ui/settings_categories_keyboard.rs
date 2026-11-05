@@ -317,11 +317,13 @@ fn the_edit_type_change_is_held_until_enter_and_dropped_by_escape(app: &mut Test
     let mut ui = in_categories(app);
     let before = ui.settings::<SettingsCategoriesSnapshot>().category_types;
 
-    // The first row is Housing, a top-level Expense with children.
-    ui.press("j");
+    // The last row is Interest, a top-level Income no Budget or Bill Plan uses, so its type can
+    // change.
+    ui.press("shift-g");
     ui.press("e");
     assert_eq!(ui.dialog(), Some("EditCategory"));
-    ui.click("edit-type-income");
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("Interest"));
+    ui.click("edit-type-expense");
     assert_eq!(
         ui.settings::<SettingsCategoriesSnapshot>().category_types,
         before
@@ -334,10 +336,47 @@ fn the_edit_type_change_is_held_until_enter_and_dropped_by_escape(app: &mut Test
     );
 
     ui.press("e");
-    ui.click("edit-type-income");
+    ui.click("edit-type-expense");
     ui.press("enter");
     assert_eq!(ui.dialog(), None);
     assert_ne!(
+        ui.settings::<SettingsCategoriesSnapshot>().category_types,
+        before
+    );
+}
+
+#[gpui::test]
+fn a_blocked_type_shows_its_notice_on_pick_and_enter_is_refused_with_the_same_text(
+    app: &mut TestAppContext,
+) {
+    let mut ui = in_categories(app);
+    let before = ui.settings::<SettingsCategoriesSnapshot>().category_types;
+
+    // The first row is Housing, whose Rent the stub Budgets and Bill Plans use.
+    ui.press("j e");
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("Housing"));
+    let opened = ui.dialog_value("notice").unwrap_or_default();
+    assert!(!opened.contains("can't become"), "{opened}");
+
+    ui.click("edit-type-income");
+    let notice = ui.dialog_value("notice").expect("a notice");
+    assert!(
+        notice.starts_with("Housing can't become Income: ")
+            && notice.ends_with(" use its Categories."),
+        "{notice}"
+    );
+
+    ui.press("enter");
+    assert_eq!(ui.dialog(), Some("EditCategory"), "the Dialog stays open");
+    assert_eq!(ui.dialog_value("error"), Some(notice));
+    assert_eq!(
+        ui.settings::<SettingsCategoriesSnapshot>().category_types,
+        before
+    );
+
+    ui.press("escape");
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(
         ui.settings::<SettingsCategoriesSnapshot>().category_types,
         before
     );
