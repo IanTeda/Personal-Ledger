@@ -17,20 +17,24 @@
 pub mod contract;
 pub mod fake;
 pub mod keymap;
+pub mod log;
 pub mod msg;
 pub mod page;
 pub mod presenter;
 pub mod protocols;
 
+pub use crate::log::{LogLevel, LogLine, TracingLevel};
 pub use crate::page::{ScopeFacts, ScopeGroup, SettingsPage};
 pub use crate::presenter::{
-    Breadcrumb, DisplayEvent, DisplayOutput, DisplayPresenter, DisplaySettings, DisplaySetup,
-    DisplayViewModel, GeneralEvent, GeneralPresenter, GeneralSettings, GeneralSetup,
-    GeneralViewModel, IndexGroup, IndexRow, LocaleLine, PageKey, PickerGroup, PickerRow,
-    PickerView, SettingsFocus, SettingsFrameEvent, SettingsFramePresenter, SettingsFrameSetup,
-    SettingsFrameViewModel, ThisDevice,
+    Breadcrumb, ClearLogsOutcome, ClearLogsPresenter, ClearLogsViewModel, DisplayEvent,
+    DisplayOutput, DisplayPresenter, DisplaySettings, DisplaySetup, DisplayViewModel, GeneralEvent,
+    GeneralPresenter, GeneralSettings, GeneralSetup, GeneralViewModel, IndexGroup, IndexRow,
+    LocaleLine, LogChange, LogListChange, LogScroll, PageKey, PickerGroup, PickerRow, PickerView,
+    SettingsFocus, SettingsFrameEvent, SettingsFramePresenter, SettingsFrameSetup,
+    SettingsFrameViewModel, ThisDevice, TracingEvent, TracingPresenter, TracingSetup,
+    TracingViewModel,
 };
 pub use crate::protocols::{
     ColourChoice, DeviceAnswer, DeviceConfiguration, DeviceKey, DeviceRefusal, DeviceRouter,
-    SettingsRouter,
+    SettingsRouter, TracingLog, TracingRouter,
 };

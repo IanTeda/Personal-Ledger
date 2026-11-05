@@ -9,7 +9,8 @@ use lib_colour_theme::ColourAppearance;
 use lib_core::{DateStyle, OnStart, StartView};
 
 use crate::fake::StoredDevice;
-use crate::protocols::{DeviceAnswer, DeviceConfiguration, DeviceKey, DeviceRefusal};
+use crate::log::LogLevel;
+use crate::protocols::{DeviceAnswer, DeviceConfiguration, DeviceKey, DeviceRefusal, TracingLog};
 
 /// Builds the device a contract check runs on.
 pub trait DeviceFactory {
@@ -171,10 +172,101 @@ fn assert_refused(device: &impl DeviceConfiguration, refusal: DeviceRefusal) {
     assert_eq!(refusals, [Some(refusal); 6]);
 }
 
+/// Builds the capture a [`TracingLog`] contract check runs on. The capture fills from the Client's
+/// own side, not through the port, so the factory also says how an event is captured.
+pub trait TracingLogFactory {
+    type Log: TracingLog;
+
+    /// An empty capture keeping `capacity` entries.
+    fn with_capacity(&mut self, capacity: usize) -> Self::Log;
+
+    /// Captures an event at `level` from `bin_desktop::shell`, with no fields.
+    fn capture(&mut self, log: &Self::Log, level: LogLevel, message: &str);
+}
+
+fn messages(log: &impl TracingLog, from: u64) -> Vec<String> {
+    log.since(from)
+        .iter()
+        .map(|line| line.message.clone())
+        .collect()
+}
+
+/// `since` hands back what arrived at or after a `seq`, oldest first, keeping what was captured.
+pub fn since_hands_back_what_arrived_oldest_first(factory: &mut impl TracingLogFactory) {
+    let log = factory.with_capacity(8);
+    factory.capture(&log, LogLevel::Info, "a");
+    factory.capture(&log, LogLevel::Warn, "b");
+    factory.capture(&log, LogLevel::Error, "c");
+
+    let all = log.since(0);
+    assert_eq!(messages(&log, 0), ["a", "b", "c"]);
+    assert!(all.windows(2).all(|pair| pair[0].seq < pair[1].seq));
+    assert_eq!(
+        all.iter().map(|line| line.level).collect::<Vec<_>>(),
+        [LogLevel::Info, LogLevel::Warn, LogLevel::Error]
+    );
+    assert_eq!(all[0].target, "bin_desktop::shell");
+    assert_eq!(messages(&log, all[1].seq), ["b", "c"]);
+    assert!(log.since(log.next_seq()).is_empty());
+}
+
+/// A full capture evicts its oldest entry, and says how many it keeps.
+pub fn a_full_capture_evicts_the_oldest(factory: &mut impl TracingLogFactory) {
+    let log = factory.with_capacity(2);
+    for message in ["a", "b", "c"] {
+        factory.capture(&log, LogLevel::Info, message);
+    }
+
+    assert_eq!(log.capacity(), 2);
+    assert_eq!(messages(&log, 0), ["b", "c"]);
+}
+
+/// Clear empties the capture for every reader, and the `seq` keeps counting up, so a reader's
+/// cursor stays valid.
+pub fn clear_empties_and_seq_keeps_counting(factory: &mut impl TracingLogFactory) {
+    let log = factory.with_capacity(8);
+    factory.capture(&log, LogLevel::Info, "old");
+    let next = log.next_seq();
+
+    log.clear();
+    assert!(log.since(0).is_empty());
+    assert_eq!(log.next_seq(), next);
+
+    factory.capture(&log, LogLevel::Info, "new");
+    assert_eq!(messages(&log, next), ["new"]);
+    assert_eq!(messages(&log, 0), ["new"]);
+}
+
+/// Runs every [`TracingLog`] check.
+pub fn run_all_tracing_log(factory: &mut impl TracingLogFactory) {
+    since_hands_back_what_arrived_oldest_first(factory);
+    a_full_capture_evicts_the_oldest(factory);
+    clear_empties_and_seq_keeps_counting(factory);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fake::InMemoryDeviceConfiguration;
+    use crate::fake::{InMemoryDeviceConfiguration, InMemoryTracingLog};
+
+    struct FakeLogs;
+
+    impl TracingLogFactory for FakeLogs {
+        type Log = InMemoryTracingLog;
+
+        fn with_capacity(&mut self, capacity: usize) -> Self::Log {
+            InMemoryTracingLog::new(capacity)
+        }
+
+        fn capture(&mut self, log: &Self::Log, level: LogLevel, message: &str) {
+            log.push(level, "bin_desktop::shell", message);
+        }
+    }
+
+    #[test]
+    fn the_in_memory_capture_keeps_the_tracing_log_contract() {
+        run_all_tracing_log(&mut FakeLogs);
+    }
 
     struct Fakes;
 

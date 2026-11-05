@@ -4,12 +4,15 @@
 //! [`Notify`] (ADR-0048). [`DeviceConfiguration`] writes a device's settings, Configuration in the
 //! user's configuration file (ADR-0053), which the Client answers over its own configuration writer.
 
+use std::rc::Rc;
+
 use lib_colour_theme::ColourAppearance;
 use lib_core::{DateStyle, OnStart, StartView};
 use lib_toast::Notify;
 
+use crate::log::LogLine;
 use crate::page::SettingsPage;
-use crate::presenter::DisplayOutput;
+use crate::presenter::{ClearLogsPresenter, DisplayOutput, LogListChange, LogScroll};
 
 /// What only the Shell does for the Settings frame.
 pub trait SettingsRouter: Notify {
@@ -125,4 +128,37 @@ pub trait DeviceConfiguration {
 
     fn set_colour_appearance(&self, appearance: ColourAppearance)
     -> DeviceAnswer<ColourAppearance>;
+}
+
+/// What only the Shell does for Settings › Tracing: the log box's list is the Client's, and Clear
+/// logs is a Dialog it hosts.
+pub trait TracingRouter: Notify {
+    /// Scrolls the log box.
+    fn scroll(&mut self, scroll: LogScroll);
+
+    /// The rows the log box shows changed, so the Client keeps its list in step.
+    fn log_changed(&mut self, change: LogListChange);
+
+    /// Opens the Clear logs Dialog, which `dialog` is the Presenter of.
+    fn open_clear_logs(&mut self, dialog: ClearLogsPresenter);
+}
+
+/// The log capture Settings › Tracing reads and Clear logs empties. The Client answers it over its
+/// capture ring, which fills from any thread and signals the page ([`TracingEvent::Appended`])
+/// when entries arrive.
+///
+/// [`TracingEvent::Appended`]: crate::TracingEvent::Appended
+pub trait TracingLog {
+    /// How many entries the capture keeps before it evicts the oldest.
+    fn capacity(&self) -> usize;
+
+    /// The entries whose `seq` is `from` or later, oldest first: what arrived since a reader last
+    /// saw [`Self::next_seq`].
+    fn since(&self, from: u64) -> Vec<Rc<LogLine>>;
+
+    /// The `seq` the next entry will get.
+    fn next_seq(&self) -> u64;
+
+    /// Empties the capture for every reader. Sequence numbers keep counting up.
+    fn clear(&self);
 }

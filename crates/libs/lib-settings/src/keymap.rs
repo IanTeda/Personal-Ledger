@@ -19,7 +19,7 @@ use lib_viper::keymap::{
     MOVE_LAST, MOVE_UP, SELECT,
 };
 
-use crate::presenter::{PageKey, SettingsFrameEvent};
+use crate::presenter::{LogScroll, PageKey, SettingsFrameEvent, TracingEvent};
 
 /// From the index into the page on show.
 pub const ENTER_PAGE: &str = "settings.enter_page";
@@ -93,6 +93,61 @@ pub fn device_page_keymap(config: &KeyBindingConfig) -> Keymap<PageKey> {
     Keymap::new(DEVICE_PAGE_BINDINGS, config)
 }
 
+/// On Settings › Tracing, a page of the log box down.
+pub const PAGE_DOWN: &str = "settings.log_page_down";
+/// On Settings › Tracing, a page of the log box up.
+pub const PAGE_UP: &str = "settings.log_page_up";
+/// On Settings › Tracing, the log box's oldest entry.
+pub const OLDEST: &str = "settings.log_oldest";
+/// On Settings › Tracing, Clear logs.
+pub const CLEAR_LOGS: &str = "settings.clear_logs";
+
+/// Settings › Tracing's commands, with today's keys: `h`/`l` the level, `j`/`k` a line, `J`/`K` a
+/// page, `G` the oldest entry and `c` Clear logs. None is listed in the palette.
+pub const TRACING_BINDINGS: &[Binding<TracingEvent>] = &[
+    Binding::hidden(PREVIOUS_CHOICE, "h", TracingEvent::Level(Step::Prev)),
+    Binding::hidden(NEXT_CHOICE, "l", TracingEvent::Level(Step::Next)),
+    Binding::hidden(CHOICE_LEFT, "left", TracingEvent::Level(Step::Prev)),
+    Binding::hidden(CHOICE_RIGHT, "right", TracingEvent::Level(Step::Next)),
+    Binding::hidden(
+        MOVE_DOWN,
+        "j",
+        TracingEvent::Scroll(LogScroll::Line(Step::Next)),
+    ),
+    Binding::hidden(
+        MOVE_UP,
+        "k",
+        TracingEvent::Scroll(LogScroll::Line(Step::Prev)),
+    ),
+    Binding::hidden(
+        ARROW_DOWN,
+        "down",
+        TracingEvent::Scroll(LogScroll::Line(Step::Next)),
+    ),
+    Binding::hidden(
+        ARROW_UP,
+        "up",
+        TracingEvent::Scroll(LogScroll::Line(Step::Prev)),
+    ),
+    Binding::hidden(
+        PAGE_DOWN,
+        "J",
+        TracingEvent::Scroll(LogScroll::Page(Step::Next)),
+    ),
+    Binding::hidden(
+        PAGE_UP,
+        "K",
+        TracingEvent::Scroll(LogScroll::Page(Step::Prev)),
+    ),
+    Binding::hidden(OLDEST, "G", TracingEvent::Scroll(LogScroll::Oldest)),
+    Binding::hidden(CLEAR_LOGS, "c", TracingEvent::ClearLogs),
+];
+
+/// Settings › Tracing's keymap under `config`'s overrides.
+pub fn tracing_keymap(config: &KeyBindingConfig) -> Keymap<TracingEvent> {
+    Keymap::new(TRACING_BINDINGS, config)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -150,5 +205,26 @@ mod tests {
 
         assert_eq!(keymap.event("ctrl+p"), Some(SettingsFrameEvent::OpenPicker));
         assert_eq!(keymap.event("p"), None);
+    }
+
+    #[test]
+    fn the_tracing_defaults_are_todays_keys() {
+        let keymap = tracing_keymap(&KeyBindingConfig::default());
+
+        for (chord, event) in [
+            ("h", TracingEvent::Level(Step::Prev)),
+            ("left", TracingEvent::Level(Step::Prev)),
+            ("l", TracingEvent::Level(Step::Next)),
+            ("right", TracingEvent::Level(Step::Next)),
+            ("j", TracingEvent::Scroll(LogScroll::Line(Step::Next))),
+            ("up", TracingEvent::Scroll(LogScroll::Line(Step::Prev))),
+            ("J", TracingEvent::Scroll(LogScroll::Page(Step::Next))),
+            ("K", TracingEvent::Scroll(LogScroll::Page(Step::Prev))),
+            ("G", TracingEvent::Scroll(LogScroll::Oldest)),
+            ("c", TracingEvent::ClearLogs),
+        ] {
+            assert_eq!(keymap.event(chord), Some(event), "{chord}");
+        }
+        assert_eq!(keymap.listed().count(), 0, "the palette lists none");
     }
 }

@@ -1,17 +1,21 @@
-//! A recording Router and an in-memory [`DeviceConfiguration`], for the Presenters' tests and a
+//! A recording Router, an in-memory [`DeviceConfiguration`] and an in-memory [`TracingLog`], for the Presenters' tests and a
 //! Client's UI-first work.
 
 use std::cell::RefCell;
+use std::collections::VecDeque;
+use std::rc::Rc;
+use std::time::SystemTime;
 
 use lib_colour_theme::ColourAppearance;
 use lib_core::{DateStyle, OnStart, StartView};
 use lib_toast::{Notice, Notify};
 
+use crate::log::{LogLevel, LogLine};
 use crate::page::SettingsPage;
-use crate::presenter::DisplayOutput;
+use crate::presenter::{ClearLogsPresenter, DisplayOutput, LogListChange, LogScroll};
 use crate::protocols::{
     ColourChoice, DeviceAnswer, DeviceConfiguration, DeviceKey, DeviceRefusal, DeviceRouter,
-    SettingsRouter,
+    SettingsRouter, TracingLog, TracingRouter,
 };
 
 /// One thing a Presenter asked of the Shell, in the order asked.
@@ -23,6 +27,9 @@ pub enum Routed {
     ToastsChanged(bool),
     DisplayChanged(DisplayOutput),
     ColourChanged(ColourChoice),
+    LogScrolled(LogScroll),
+    LogChanged(LogListChange),
+    ClearLogsOpened,
     Notice(Notice),
 }
 
@@ -98,6 +105,20 @@ impl DeviceRouter for RecordingRouter {
 
     fn colour_changed(&mut self, colour: ColourChoice) {
         self.routed.push(Routed::ColourChanged(colour));
+    }
+}
+
+impl TracingRouter for RecordingRouter {
+    fn scroll(&mut self, scroll: LogScroll) {
+        self.routed.push(Routed::LogScrolled(scroll));
+    }
+
+    fn log_changed(&mut self, change: LogListChange) {
+        self.routed.push(Routed::LogChanged(change));
+    }
+
+    fn open_clear_logs(&mut self, _dialog: ClearLogsPresenter) {
+        self.routed.push(Routed::ClearLogsOpened);
     }
 }
 
@@ -215,5 +236,67 @@ impl DeviceConfiguration for InMemoryDeviceConfiguration {
         self.write(DeviceKey::ColourAppearance, appearance, |stored, value| {
             stored.colour_appearance = Some(value);
         })
+    }
+}
+
+/// A log capture in memory: a ring of `capacity` lines whose `seq` keeps counting up past a clear.
+#[derive(Debug)]
+pub struct InMemoryTracingLog {
+    capacity: usize,
+    lines: RefCell<VecDeque<Rc<LogLine>>>,
+    next_seq: RefCell<u64>,
+}
+
+impl InMemoryTracingLog {
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            capacity,
+            lines: RefCell::default(),
+            next_seq: RefCell::default(),
+        }
+    }
+
+    /// Captures an event with no fields, evicting the oldest line when the ring is full.
+    pub fn push(&self, level: LogLevel, target: &str, message: &str) {
+        let mut next_seq = self.next_seq.borrow_mut();
+        let mut lines = self.lines.borrow_mut();
+        if self.capacity == 0 {
+            return;
+        }
+        if lines.len() == self.capacity {
+            lines.pop_front();
+        }
+        lines.push_back(Rc::new(LogLine {
+            seq: *next_seq,
+            time: SystemTime::UNIX_EPOCH,
+            level,
+            target: target.to_string(),
+            message: message.to_string(),
+            fields: Vec::new(),
+        }));
+        *next_seq += 1;
+    }
+}
+
+impl TracingLog for InMemoryTracingLog {
+    fn capacity(&self) -> usize {
+        self.capacity
+    }
+
+    fn since(&self, from: u64) -> Vec<Rc<LogLine>> {
+        self.lines
+            .borrow()
+            .iter()
+            .filter(|line| line.seq >= from)
+            .cloned()
+            .collect()
+    }
+
+    fn next_seq(&self) -> u64 {
+        *self.next_seq.borrow()
+    }
+
+    fn clear(&self) {
+        self.lines.borrow_mut().clear();
     }
 }
