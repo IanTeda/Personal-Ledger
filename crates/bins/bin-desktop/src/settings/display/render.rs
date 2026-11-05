@@ -73,13 +73,28 @@ impl Render for DisplayPage {
                             cx,
                         )),
                     )
-                    .child(segmented(
-                        "display-row-density",
-                        &model.row_density,
-                        clicks.segment(DisplayEvent::ChooseRowDensity),
-                        cx,
-                    ))
-                    .child(status_glyphs_field(&model.status_glyphs, &clicks, cx))
+                    .child(
+                        segmented(
+                            "display-row-density",
+                            &model.row_density.select,
+                            clicks.segment(DisplayEvent::ChooseRowDensity),
+                            cx,
+                        )
+                        .children(shadowed(
+                            DeviceKey::RowDensity,
+                            model.row_density.shadowed.as_deref(),
+                            cx,
+                        )),
+                    )
+                    .child(
+                        status_glyphs_field(&model.status_glyphs.select, &clicks, cx).children(
+                            shadowed(
+                                DeviceKey::StatusGlyphs,
+                                model.status_glyphs.shadowed.as_deref(),
+                                cx,
+                            ),
+                        ),
+                    )
                     .child(
                         focus_mark(model.field == Some(DISPLAY_FIELD_SIDEBAR), cx).child(
                             start_sidebar_minimised_toggle(
@@ -177,7 +192,7 @@ fn status_glyphs_field(
     select: &SelectView<StatusGlyphs>,
     clicks: &PageClicks<DisplayPage>,
     cx: &App,
-) -> impl IntoElement {
+) -> gpui::Div {
     focus_mark(select.focused, cx)
         .child(field_label(select.label.clone(), cx))
         .child(div().flex().flex_col().gap(px(7.0)).mt(px(2.0)).children(

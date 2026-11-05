@@ -1,5 +1,5 @@
 //! Writes Configuration back to `personal-ledger.conf` (#904), for the Settings rows that edit it:
-//! the TUI's Display keys and a device's settings (ADR-0053).
+//! a device's settings (ADR-0053), the TUI's own Display keys among them.
 //!
 //! A write goes to the user's file (`~/.config/personal-ledger/personal-ledger.conf` on Linux),
 //! created with its directory when it doesn't exist. It is the one file that is the person's own
@@ -41,13 +41,16 @@ pub enum ConfigKey {
     OnStart,
     /// `start_view`: `dashboard`, `last`, `settings` or a noun.
     StartView,
+    /// `row_density`: `compact`, `regular` or `roomy`.
+    RowDensity,
 }
 
 impl ConfigKey {
     /// Every key Settings writes, in the order the file's keys are documented.
-    pub const ALL: [ConfigKey; 9] = [
+    pub const ALL: [ConfigKey; 10] = [
         Self::TerminalColours,
         Self::StatusGlyphs,
+        Self::RowDensity,
         Self::HintBar,
         Self::Toasts,
         Self::ColourTheme,
@@ -69,6 +72,7 @@ impl ConfigKey {
             Self::DateStyle => "date_style",
             Self::OnStart => "on_start",
             Self::StartView => "start_view",
+            Self::RowDensity => "row_density",
         }
     }
 
@@ -342,7 +346,7 @@ back = \"esc\"
         let section = config.personal_ledger_config();
         assert!(section.terminal_colours());
         assert!(!section.hint_bar());
-        assert_eq!(section.status_glyphs(), crate::StatusGlyphs::Ascii);
+        assert_eq!(section.status_glyphs(), crate::StatusGlyphs::AsciiFallback);
     }
 
     #[test]
@@ -385,6 +389,52 @@ back = \"esc\"
     }
 
     #[test]
+    fn row_density_and_status_glyphs_write_their_keys_and_read_back() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("personal-ledger.conf");
+        let writer = ConfigWriter::new(Some(path.clone()), Vec::new(), []);
+        writer
+            .write(ConfigKey::RowDensity, crate::RowDensity::Roomy.key())
+            .unwrap();
+        writer
+            .write(
+                ConfigKey::StatusGlyphs,
+                crate::StatusGlyphs::AsciiFallback.key(),
+            )
+            .unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "[Personal-Ledger]\nrow_density = roomy\nstatus_glyphs = ascii\n"
+        );
+
+        let config =
+            crate::Config::parse_with_detector(Some(&path), Some(HashMap::new()), || None).unwrap();
+        let section = config.personal_ledger_config();
+        assert_eq!(section.row_density(), crate::RowDensity::Roomy);
+        assert_eq!(section.status_glyphs(), crate::StatusGlyphs::AsciiFallback);
+    }
+
+    #[test]
+    fn row_density_an_environment_variable_sets_is_shadowed() {
+        let dir = TempDir::new().unwrap();
+        let writer = ConfigWriter::new(
+            Some(dir.path().join("user.conf")),
+            Vec::new(),
+            [(
+                "PERSONAL_LEDGER_PERSONAL_LEDGER__ROW_DENSITY".into(),
+                "compact".into(),
+            )],
+        );
+        assert_eq!(
+            writer.shadow(ConfigKey::RowDensity),
+            Some(Shadow::Env(
+                "PERSONAL_LEDGER_PERSONAL_LEDGER__ROW_DENSITY".into()
+            ))
+        );
+        assert_eq!(writer.shadow(ConfigKey::StatusGlyphs), None);
+    }
+
+    #[test]
     fn a_device_setting_an_environment_variable_sets_is_shadowed() {
         let dir = TempDir::new().unwrap();
         let writer = ConfigWriter::new(
@@ -417,6 +467,7 @@ back = \"esc\"
             [
                 "terminal_colours",
                 "status_glyphs",
+                "row_density",
                 "hint_bar",
                 "toasts",
                 "colour_theme",

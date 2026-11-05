@@ -1,7 +1,8 @@
 //! The Settings Display page driven by keys: walking the controls and into the Colour Theme
 //! grid, changing each control with `h`/`l`, toggling the checkbox, and stepping back out. The date
-//! style and Colour Theme are saved to the conf file (ADR-0053), unless a source above it sets
-//! them. State is read back from `Root` and the conf file.
+//! style, Row density, Status glyphs and Colour Theme are saved to the conf file (ADR-0053), unless
+//! a source above it sets them, and the page starts on what the file holds. State is read back from
+//! `Root` and the conf file.
 
 use super::common;
 use bin_desktop::shell::router::SettingsDisplaySnapshot;
@@ -135,11 +136,52 @@ fn l_and_h_step_the_row_density(app: &mut TestAppContext) {
         ui.settings::<SettingsDisplaySnapshot>().row_density,
         "Roomy"
     );
+    assert_eq!(ui.conf(), "[Personal-Ledger]\nrow_density = roomy\n");
     ui.press("h h h");
     assert_eq!(
         ui.settings::<SettingsDisplaySnapshot>().row_density,
         "Compact"
     );
+    assert_eq!(ui.conf(), "[Personal-Ledger]\nrow_density = compact\n");
+}
+
+#[gpui::test]
+fn a_row_density_an_environment_variable_sets_is_shown_and_left_alone(app: &mut TestAppContext) {
+    let var = "PERSONAL_LEDGER_PERSONAL_LEDGER__ROW_DENSITY";
+    let mut ui = Harness::with_configuration(
+        app,
+        &lib_config::PersonalLedgerConfig::default(),
+        &[(var, "roomy")],
+    );
+    ui.press("g s j l");
+    assert!(ui.is_drawn("shadowed-row_density"));
+    assert!(!ui.is_drawn("shadowed-status_glyphs"));
+
+    ui.press("j l");
+
+    assert_eq!(
+        ui.settings::<SettingsDisplaySnapshot>().row_density,
+        "Regular"
+    );
+    assert_eq!(ui.conf(), "");
+    let status = ui.read(bin_desktop::shell::router::Root::status_message);
+    assert!(status.is_some_and(|text| text.contains(var)));
+}
+
+#[gpui::test]
+fn display_starts_on_the_row_density_and_status_glyphs_the_conf_file_holds(
+    app: &mut TestAppContext,
+) {
+    let mut config = lib_config::PersonalLedgerConfig::default();
+    config.row_density = lib_core::RowDensity::Compact;
+    config.status_glyphs = lib_core::StatusGlyphs::AsciiFallback;
+    let mut ui = Harness::with_configuration(app, &config, &[]);
+    ui.press("g s j");
+
+    let display_page = ui.settings::<SettingsDisplaySnapshot>();
+    assert_eq!(display_page.row_density, "Compact");
+    assert_eq!(display_page.status_glyphs, "AsciiFallback");
+    assert_eq!(ui.conf(), "", "a restore writes nothing");
 }
 
 #[gpui::test]
@@ -156,6 +198,7 @@ fn l_and_h_step_the_status_glyphs(app: &mut TestAppContext) {
         ui.settings::<SettingsDisplaySnapshot>().status_glyphs,
         "AsciiFallback"
     );
+    assert_eq!(ui.conf(), "[Personal-Ledger]\nstatus_glyphs = ascii\n");
     ui.press("l");
     assert_eq!(
         ui.settings::<SettingsDisplaySnapshot>().status_glyphs,
@@ -166,6 +209,7 @@ fn l_and_h_step_the_status_glyphs(app: &mut TestAppContext) {
         ui.settings::<SettingsDisplaySnapshot>().status_glyphs,
         "Unicode"
     );
+    assert_eq!(ui.conf(), "[Personal-Ledger]\nstatus_glyphs = unicode\n");
 }
 
 #[gpui::test]

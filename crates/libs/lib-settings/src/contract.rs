@@ -6,7 +6,7 @@
 //! port, reads the file back as a restart would, and expects what was saved, and only that.
 
 use lib_colour_theme::ColourAppearance;
-use lib_core::{DateStyle, OnStart, StartView, UnitId};
+use lib_core::{DateStyle, OnStart, RowDensity, StartView, StatusGlyphs, UnitId};
 
 use crate::fake::StoredDevice;
 use crate::log::LogLevel;
@@ -50,6 +50,14 @@ pub fn every_setting_is_saved_and_reads_back(factory: &mut impl DeviceFactory) {
         device.set_date_style(Some(DateStyle::Iso)),
         Some(DateStyle::Iso),
     );
+    assert_saved(
+        device.set_row_density(RowDensity::Compact),
+        RowDensity::Compact,
+    );
+    assert_saved(
+        device.set_status_glyphs(StatusGlyphs::AsciiFallback),
+        StatusGlyphs::AsciiFallback,
+    );
     assert_saved(device.set_colour_theme("nord"), "nord");
     assert_saved(
         device.set_colour_appearance(ColourAppearance::Light),
@@ -63,6 +71,8 @@ pub fn every_setting_is_saved_and_reads_back(factory: &mut impl DeviceFactory) {
             start_view: Some(StartView::Noun("bills".into())),
             toasts: Some(false),
             date_style: Some(Some(DateStyle::Iso)),
+            row_density: Some(RowDensity::Compact),
+            status_glyphs: Some(StatusGlyphs::AsciiFallback),
             colour_theme: Some("nord".to_string()),
             colour_appearance: Some(ColourAppearance::Light),
         }
@@ -83,7 +93,17 @@ pub fn a_later_write_replaces_the_value(factory: &mut impl DeviceFactory) {
         StartView::Dashboard,
     );
 
+    assert_saved(
+        device.set_status_glyphs(StatusGlyphs::AsciiFallback),
+        StatusGlyphs::AsciiFallback,
+    );
+    assert_saved(
+        device.set_status_glyphs(StatusGlyphs::Unicode),
+        StatusGlyphs::Unicode,
+    );
+
     let stored = factory.reload(&device);
+    assert_eq!(stored.status_glyphs, Some(StatusGlyphs::Unicode));
     assert_eq!(stored.date_style, Some(None));
     assert_eq!(stored.start_view, Some(StartView::Dashboard));
 }
@@ -110,6 +130,12 @@ pub fn a_shadowed_key_is_named_and_left_unwritten(factory: &mut impl DeviceFacto
             DeviceKey::StartView => shadowed(source_of(device.set_start_view(StartView::Last))),
             DeviceKey::Toasts => shadowed(source_of(device.set_toasts(false))),
             DeviceKey::DateStyle => shadowed(source_of(device.set_date_style(None))),
+            DeviceKey::RowDensity => {
+                shadowed(source_of(device.set_row_density(RowDensity::Roomy)));
+            }
+            DeviceKey::StatusGlyphs => shadowed(source_of(
+                device.set_status_glyphs(StatusGlyphs::AsciiFallback),
+            )),
             DeviceKey::ColourTheme => shadowed(source_of(device.set_colour_theme("nord"))),
             DeviceKey::ColourAppearance => shadowed(source_of(
                 device.set_colour_appearance(ColourAppearance::Dark),
@@ -169,10 +195,12 @@ fn assert_refused(device: &impl DeviceConfiguration, refusal: DeviceRefusal) {
         refused(device.set_start_view(StartView::Last)),
         refused(device.set_toasts(false)),
         refused(device.set_date_style(None)),
+        refused(device.set_row_density(RowDensity::Roomy)),
+        refused(device.set_status_glyphs(StatusGlyphs::AsciiFallback)),
         refused(device.set_colour_theme("nord")),
         refused(device.set_colour_appearance(ColourAppearance::Dark)),
     ];
-    assert_eq!(refusals, [Some(refusal); 6]);
+    assert_eq!(refusals, [Some(refusal); 8]);
 }
 
 /// Builds the capture a [`TracingLog`] contract check runs on. The capture fills from the Client's

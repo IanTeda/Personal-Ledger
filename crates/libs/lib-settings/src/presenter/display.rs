@@ -1,7 +1,7 @@
-//! Settings › Display's Presenter: the date style, Colour Theme and Appearance, Configuration in
-//! the user's configuration file (ADR-0053) written through [`DeviceConfiguration`]; Row density
-//! and Status glyphs, session-only; and Start Sidebar minimised, which the Client remembers in its
-//! own state file. Beside them a PREVIEW re-renders three seeded rows under the choices made.
+//! Settings › Display's Presenter: the date style, Row density, Status glyphs, Colour Theme and
+//! Appearance, Configuration in the user's configuration file (ADR-0053) written through
+//! [`DeviceConfiguration`]; and Start Sidebar minimised, which the Client remembers in its own
+//! state file. Beside them a PREVIEW re-renders three seeded rows under the choices made.
 //!
 //! The date style, Row density, Status glyphs and Start Sidebar minimised are the Display output,
 //! which the Presenter hands the Shell on each change ([`DeviceRouter::display_changed`]) for the
@@ -77,10 +77,12 @@ pub enum DisplayEvent {
     ChooseColour(ColourChoice),
 }
 
-/// The Colour Theme and Appearance as start-up read them, and the date style.
+/// What start-up read of Display's Configuration.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DisplaySettings {
     pub date_style: Option<DateStyle>,
+    pub row_density: RowDensity,
+    pub status_glyphs: StatusGlyphs,
     /// The `colour_theme` key raw, so an id from a newer release survives; `None` is the default.
     pub colour_theme: Option<String>,
     pub colour_appearance: ColourAppearance,
@@ -153,8 +155,8 @@ pub struct DisplayViewModel {
     /// The Colour Theme card the keyboard is on, while the grid has it.
     pub grid: Option<usize>,
     pub date_style: ControlView<Option<DateStyle>>,
-    pub row_density: SelectView<RowDensity>,
-    pub status_glyphs: SelectView<StatusGlyphs>,
+    pub row_density: ControlView<RowDensity>,
+    pub status_glyphs: ControlView<StatusGlyphs>,
     pub start_sidebar_minimised: CheckboxView,
     pub preview: PreviewView,
     pub appearance: ControlView<ColourAppearance>,
@@ -212,6 +214,8 @@ impl DisplayPresenter {
     pub fn configure(&mut self, device: Rc<dyn DeviceConfiguration>, settings: DisplaySettings) {
         self.device = device;
         self.output.date_style = settings.date_style;
+        self.output.row_density = settings.row_density;
+        self.output.status_glyphs = settings.status_glyphs;
         self.colour_theme = settings.colour_theme;
         self.colour_appearance = settings.colour_appearance;
     }
@@ -286,12 +290,8 @@ impl DisplayPresenter {
             }
             DisplayEvent::LeaveGrid => self.grid = None,
             DisplayEvent::ChooseDateStyle(style) => self.choose_date_style(style, router),
-            DisplayEvent::ChooseRowDensity(density) => {
-                self.change(|output| output.row_density = density, router);
-            }
-            DisplayEvent::ChooseStatusGlyphs(glyphs) => {
-                self.change(|output| output.status_glyphs = glyphs, router);
-            }
+            DisplayEvent::ChooseRowDensity(density) => self.choose_row_density(density, router),
+            DisplayEvent::ChooseStatusGlyphs(glyphs) => self.choose_status_glyphs(glyphs, router),
             DisplayEvent::ToggleStartSidebarMinimised => self.change(
                 |output| output.start_sidebar_minimised = !output.start_sidebar_minimised,
                 router,
@@ -355,29 +355,37 @@ impl DisplayPresenter {
                 hint: None,
                 shadowed: shadowed_note(device, DeviceKey::DateStyle),
             },
-            row_density: SelectView {
-                label: msg::settings_display_row_density(),
-                options: RowDensity::ALL
-                    .into_iter()
-                    .map(|value| Choice {
-                        value,
-                        label: row_density_label(value),
-                    })
-                    .collect(),
-                chosen: Some(output.row_density),
-                focused: self.field == Some(1),
+            row_density: ControlView {
+                select: SelectView {
+                    label: msg::settings_display_row_density(),
+                    options: RowDensity::ALL
+                        .into_iter()
+                        .map(|value| Choice {
+                            value,
+                            label: row_density_label(value),
+                        })
+                        .collect(),
+                    chosen: Some(output.row_density),
+                    focused: self.field == Some(1),
+                },
+                hint: None,
+                shadowed: shadowed_note(device, DeviceKey::RowDensity),
             },
-            status_glyphs: SelectView {
-                label: msg::settings_display_status_glyphs(),
-                options: StatusGlyphs::ALL
-                    .into_iter()
-                    .map(|value| Choice {
-                        value,
-                        label: status_glyphs_label(value),
-                    })
-                    .collect(),
-                chosen: Some(output.status_glyphs),
-                focused: self.field == Some(2),
+            status_glyphs: ControlView {
+                select: SelectView {
+                    label: msg::settings_display_status_glyphs(),
+                    options: StatusGlyphs::ALL
+                        .into_iter()
+                        .map(|value| Choice {
+                            value,
+                            label: status_glyphs_label(value),
+                        })
+                        .collect(),
+                    chosen: Some(output.status_glyphs),
+                    focused: self.field == Some(2),
+                },
+                hint: None,
+                shadowed: shadowed_note(device, DeviceKey::StatusGlyphs),
             },
             start_sidebar_minimised: CheckboxView {
                 label: msg::settings_display_start_minimised(),
@@ -485,15 +493,16 @@ impl DisplayPresenter {
                 }
                 1 => {
                     let current = self.output.row_density;
-                    let density =
-                        step_choice(&RowDensity::ALL, &current, &current, step).unwrap_or(current);
-                    self.change(|output| output.row_density = density, router);
+                    if let Some(density) = step_choice(&RowDensity::ALL, &current, &current, step) {
+                        self.choose_row_density(density, router);
+                    }
                 }
                 2 => {
                     let current = self.output.status_glyphs;
-                    let glyphs = step_choice(&StatusGlyphs::ALL, &current, &current, step)
-                        .unwrap_or(current);
-                    self.change(|output| output.status_glyphs = glyphs, router);
+                    if let Some(glyphs) = step_choice(&StatusGlyphs::ALL, &current, &current, step)
+                    {
+                        self.choose_status_glyphs(glyphs, router);
+                    }
                 }
                 _ => self.change(
                     |output| output.start_sidebar_minimised = step == Step::Next,
@@ -546,6 +555,28 @@ impl DisplayPresenter {
         let answer = self.device.set_date_style(style);
         if let Some(saved) = settle(answer, DeviceKey::DateStyle, router) {
             self.change(|output| output.date_style = saved, router);
+        }
+    }
+
+    /// Saves the Row density, which shows, and reaches the Views, only once saved.
+    fn choose_row_density(&mut self, density: RowDensity, router: &mut dyn DeviceRouter) {
+        if density == self.output.row_density {
+            return;
+        }
+        let answer = self.device.set_row_density(density);
+        if let Some(saved) = settle(answer, DeviceKey::RowDensity, router) {
+            self.change(|output| output.row_density = saved, router);
+        }
+    }
+
+    /// Saves the Status glyphs, which show, and reach the Views, only once saved.
+    fn choose_status_glyphs(&mut self, glyphs: StatusGlyphs, router: &mut dyn DeviceRouter) {
+        if glyphs == self.output.status_glyphs {
+            return;
+        }
+        let answer = self.device.set_status_glyphs(glyphs);
+        if let Some(saved) = settle(answer, DeviceKey::StatusGlyphs, router) {
+            self.change(|output| output.status_glyphs = saved, router);
         }
     }
 
@@ -853,7 +884,7 @@ mod tests {
     }
 
     #[test]
-    fn row_density_glyphs_and_the_sidebar_are_the_display_output_unwritten() {
+    fn row_density_and_status_glyphs_are_saved_then_reach_the_views() {
         let (device, mut display) = writable();
 
         let router = send(
@@ -861,24 +892,124 @@ mod tests {
             [
                 DisplayEvent::ChooseRowDensity(RowDensity::Roomy),
                 DisplayEvent::ChooseStatusGlyphs(StatusGlyphs::AsciiFallback),
-                DisplayEvent::ToggleStartSidebarMinimised,
             ],
         );
 
         assert_eq!(
+            router.statuses(),
+            [
+                "row_density saved to personal-ledger.conf",
+                "status_glyphs saved to personal-ledger.conf",
+            ]
+        );
+        assert_eq!(device.stored().row_density, Some(RowDensity::Roomy));
+        assert_eq!(
+            device.stored().status_glyphs,
+            Some(StatusGlyphs::AsciiFallback)
+        );
+        assert_eq!(
             router.displays().last(),
             Some(&DisplayOutput {
-                date_style: None,
                 row_density: RowDensity::Roomy,
                 status_glyphs: StatusGlyphs::AsciiFallback,
-                start_sidebar_minimised: true,
+                ..DisplayOutput::default()
             })
         );
-        assert!(router.statuses().is_empty());
-        assert_eq!(device.stored(), Default::default());
         let preview = display.view_model().preview;
         assert_eq!(preview.rows[2].glyph, "!");
         assert!(preview.rows[2].flagged);
+    }
+
+    #[test]
+    fn choosing_the_row_density_or_status_glyphs_already_shown_writes_nothing() {
+        let (device, mut display) = writable();
+
+        let router = send(
+            &mut display,
+            [
+                DisplayEvent::ChooseRowDensity(RowDensity::Regular),
+                DisplayEvent::ChooseStatusGlyphs(StatusGlyphs::Unicode),
+            ],
+        );
+
+        assert!(router.routed.is_empty());
+        assert_eq!(device.stored(), Default::default());
+    }
+
+    #[test]
+    fn a_shadowed_row_density_or_status_glyphs_is_noted_and_reaches_no_view() {
+        for (key, event) in [
+            (
+                DeviceKey::RowDensity,
+                DisplayEvent::ChooseRowDensity(RowDensity::Compact),
+            ),
+            (
+                DeviceKey::StatusGlyphs,
+                DisplayEvent::ChooseStatusGlyphs(StatusGlyphs::AsciiFallback),
+            ),
+        ] {
+            let device = Rc::new(InMemoryDeviceConfiguration::shadowing(key, "ABOVE"));
+            let mut display = display_on(device);
+            let view = display.view_model();
+            let notes = [view.row_density.shadowed, view.status_glyphs.shadowed];
+            assert_eq!(
+                notes.iter().filter(|note| note.is_some()).count(),
+                1,
+                "{key:?}"
+            );
+
+            let router = send(&mut display, [event]);
+
+            assert_eq!(display.output(), DisplayOutput::default(), "{key:?}");
+            assert!(router.displays().is_empty(), "{key:?}");
+            assert!(router.statuses()[0].contains("ABOVE"), "{key:?}");
+        }
+    }
+
+    #[test]
+    fn a_refused_row_density_keeps_what_was_shown() {
+        let mut display = display_on(Rc::new(InMemoryDeviceConfiguration::default()));
+
+        let router = send(
+            &mut display,
+            [DisplayEvent::ChooseRowDensity(RowDensity::Compact)],
+        );
+
+        assert_eq!(display.output().row_density, RowDensity::Regular);
+        assert!(router.statuses()[0].contains("row_density can't be saved"));
+    }
+
+    #[test]
+    fn display_starts_on_the_row_density_and_status_glyphs_start_up_read() {
+        let (device, mut display) = writable();
+        display.configure(
+            device,
+            DisplaySettings {
+                row_density: RowDensity::Compact,
+                status_glyphs: StatusGlyphs::AsciiFallback,
+                ..DisplaySettings::default()
+            },
+        );
+
+        let view = display.view_model();
+        assert_eq!(view.row_density.select.chosen, Some(RowDensity::Compact));
+        assert_eq!(
+            view.status_glyphs.select.chosen,
+            Some(StatusGlyphs::AsciiFallback)
+        );
+        assert_eq!(view.preview.row_density, RowDensity::Compact);
+    }
+
+    #[test]
+    fn the_sidebar_is_the_display_output_unwritten() {
+        let (device, mut display) = writable();
+
+        let router = send(&mut display, [DisplayEvent::ToggleStartSidebarMinimised]);
+
+        assert!(display.output().start_sidebar_minimised);
+        assert_eq!(router.displays(), [display.output()]);
+        assert!(router.statuses().is_empty());
+        assert_eq!(device.stored(), Default::default());
     }
 
     #[test]
@@ -999,9 +1130,9 @@ mod tests {
             .map(|choice| choice.label)
             .collect();
         assert_eq!(labels, ["Locale", "Short", "Medium", "Long", "ISO"]);
-        assert_eq!(view.row_density.options[2].label, "roomy");
+        assert_eq!(view.row_density.select.options[2].label, "roomy");
         assert_eq!(
-            view.status_glyphs.options[1].label,
+            view.status_glyphs.select.options[1].label,
             "ascii fallback \u{2014} o / x !"
         );
     }

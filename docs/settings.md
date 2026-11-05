@@ -208,11 +208,19 @@ terminal_colours = true
 
 __status_glyphs:__
 
-TUI only. `unicode` draws status glyphs such as `●`, `✓` and `⚑`; `ascii` asks for plain stand-ins, for a terminal font that lacks them. Settings › Display in the TUI writes it. The Desktop ignores it.
+`unicode` draws status glyphs such as `●`, `◐` and `⚑`; `ascii` draws plain stand-ins such as `x`, `o` and `!`, for a font that lacks them. Settings › Display writes it in both apps, so a choice in one is the other's the next time it starts. The Desktop draws with it; the TUI saves it but doesn't draw with it yet (see Heads up under The Settings screen in the TUI).
 
 * Type: String, `unicode` or `ascii`
 * Default: unicode
 * Environment Variable: PERSONAL_LEDGER_PERSONAL_LEDGER__STATUS_GLYPHS
+
+__row_density:__
+
+Desktop only. How tightly the Desktop spaces the rows of its tables, such as Transactions: `compact`, `regular` or `roomy`. Settings › Display in the Desktop app writes it. The TUI ignores it.
+
+* Type: String, `compact`, `regular` or `roomy`
+* Default: regular
+* Environment Variable: PERSONAL_LEDGER_PERSONAL_LEDGER__ROW_DENSITY
 
 __hint_bar:__
 
@@ -227,6 +235,7 @@ Example:
 ```ini
 [Personal-Ledger]
 status_glyphs = ascii
+row_density = compact
 hint_bar = false
 ```
 
@@ -339,12 +348,12 @@ The Ledger page holds what used to be on General: the Ledger's name, owner, fina
 
 ### What the Desktop's Settings write to personal-ledger.conf
 
-On start, Start view and Toasts on General, and Date format, Appearance and Colour Theme on Display, belong to this device, so the Desktop saves each to your `personal-ledger.conf` as you choose it, as `on_start`, `start_view`, `toasts`, `date_style`, `colour_appearance` and `colour_theme` (see the Personal Ledger Section). The `toasts`, `theme` and `appearance` commands save too. It is the same file and the same keys the TUI writes, so a change in either app is the other's the next time it starts.
+On start, Start view and Toasts on General, and Date format, Row density, Status glyphs, Appearance and Colour Theme on Display, belong to this device, so the Desktop saves each to your `personal-ledger.conf` as you choose it, as `on_start`, `start_view`, `toasts`, `date_style`, `row_density`, `status_glyphs`, `colour_appearance` and `colour_theme` (see the Personal Ledger Section), and starts on them next time. The `toasts`, `theme` and `appearance` commands save too. It is the same file and the same keys the TUI writes, so a change in either app is the other's the next time it starts. Only the TUI ignores `row_density`, since it has no row spacing to choose.
 
 - The change applies at once, and the status line names the file it saved to: the one the THIS DEVICE box names. A save changes only that key's line and leaves the rest of the file as you wrote it.
 - An environment variable, or a file that comes after yours in the Configuration Hierarchy, wins over your file. When one sets a key, the control says `Set by` and names it, and choosing another option changes nothing: the status line says what sets it, so change it there.
 - With no home folder to keep the file in, these settings can't be changed, and trying says so on the status line.
-- Row density, Status glyphs and Start Sidebar minimised are not in the file: Row density and Status glyphs last until you quit, and the Desktop remembers Start Sidebar minimised itself.
+- Start Sidebar minimised is not in the file: the Desktop remembers it itself.
 
 ### Documents page
 

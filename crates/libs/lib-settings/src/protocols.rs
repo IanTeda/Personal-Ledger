@@ -7,7 +7,7 @@
 use std::rc::Rc;
 
 use lib_colour_theme::ColourAppearance;
-use lib_core::{DateStyle, OnStart, StartView, UnitId};
+use lib_core::{DateStyle, OnStart, RowDensity, StartView, StatusGlyphs, UnitId};
 use lib_toast::Notify;
 
 use crate::log::LogLine;
@@ -58,16 +58,20 @@ pub enum DeviceKey {
     StartView,
     Toasts,
     DateStyle,
+    RowDensity,
+    StatusGlyphs,
     ColourTheme,
     ColourAppearance,
 }
 
 impl DeviceKey {
-    pub const ALL: [DeviceKey; 6] = [
+    pub const ALL: [DeviceKey; 8] = [
         Self::OnStart,
         Self::StartView,
         Self::Toasts,
         Self::DateStyle,
+        Self::RowDensity,
+        Self::StatusGlyphs,
         Self::ColourTheme,
         Self::ColourAppearance,
     ];
@@ -80,6 +84,8 @@ impl DeviceKey {
             Self::StartView => "start_view",
             Self::Toasts => "toasts",
             Self::DateStyle => "date_style",
+            Self::RowDensity => "row_density",
+            Self::StatusGlyphs => "status_glyphs",
             Self::ColourTheme => "colour_theme",
             Self::ColourAppearance => "colour_appearance",
         }
@@ -122,6 +128,11 @@ pub trait DeviceConfiguration {
 
     /// `None` is the Locale's default.
     fn set_date_style(&self, style: Option<DateStyle>) -> DeviceAnswer<Option<DateStyle>>;
+
+    fn set_row_density(&self, density: RowDensity) -> DeviceAnswer<RowDensity>;
+
+    /// Shared with the TUI, which reads the same key.
+    fn set_status_glyphs(&self, glyphs: StatusGlyphs) -> DeviceAnswer<StatusGlyphs>;
 
     /// A built-in Colour Theme, by its id.
     fn set_colour_theme(&self, id: &'static str) -> DeviceAnswer<&'static str>;

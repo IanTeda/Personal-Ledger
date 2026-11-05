@@ -1,7 +1,8 @@
 //! The Settings Display page driven by clicks: each segmented control, the status glyph radios,
 //! the sidebar checkbox, the Toasts control and the Colour Theme cards, and the preview stacking
-//! under the fields at the Medium floor. The date style, Colour Theme and Appearance are saved to the
-//! conf file (ADR-0053). Only elements tagged with `debug_selector` are clicked.
+//! under the fields at the Medium floor. The date style, Row density, Status glyphs, Colour Theme and
+//! Appearance are saved to the conf file (ADR-0053). Only elements tagged with `debug_selector` are
+//! clicked.
 
 use super::common;
 use bin_desktop::shell::router::SettingsDisplaySnapshot;
@@ -49,6 +50,7 @@ fn clicking_a_row_density_option_selects_it(app: &mut TestAppContext) {
         ui.settings::<SettingsDisplaySnapshot>().row_density,
         "Roomy"
     );
+    assert_eq!(ui.conf(), "[Personal-Ledger]\nrow_density = roomy\n");
 }
 
 #[gpui::test]
@@ -60,11 +62,36 @@ fn clicking_a_status_glyph_radio_selects_it(app: &mut TestAppContext) {
         ui.settings::<SettingsDisplaySnapshot>().status_glyphs,
         "AsciiFallback"
     );
+    assert_eq!(ui.conf(), "[Personal-Ledger]\nstatus_glyphs = ascii\n");
     ui.click("display-status-glyphs-0");
     assert_eq!(
         ui.settings::<SettingsDisplaySnapshot>().status_glyphs,
         "Unicode"
     );
+}
+
+#[gpui::test]
+fn clicking_a_status_glyph_radio_a_higher_file_or_variable_sets_changes_nothing(
+    app: &mut TestAppContext,
+) {
+    let mut config = lib_config::PersonalLedgerConfig::default();
+    config.status_glyphs = lib_core::StatusGlyphs::AsciiFallback;
+    let mut ui = Harness::with_configuration(
+        app,
+        &config,
+        &[("PERSONAL_LEDGER_PERSONAL_LEDGER__STATUS_GLYPHS", "ascii")],
+    );
+    ui.press("g s");
+    ui.click("settings-index-Display");
+    assert!(ui.is_drawn("shadowed-status_glyphs"));
+
+    ui.click("display-status-glyphs-0");
+
+    assert_eq!(
+        ui.settings::<SettingsDisplaySnapshot>().status_glyphs,
+        "AsciiFallback"
+    );
+    assert_eq!(ui.conf(), "");
 }
 
 #[gpui::test]

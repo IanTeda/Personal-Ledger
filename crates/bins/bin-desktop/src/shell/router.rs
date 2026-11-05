@@ -539,8 +539,8 @@ impl Root {
     }
 
     /// Applies a device's settings as start-up read them from Configuration (ADR-0053), and hands
-    /// Settings › General and Display the configuration file to write them to: the date style to
-    /// the Views that draw with it, and Toasts to the Toasts. The Colour Theme and Appearance are
+    /// Settings › General and Display the configuration file to write them to: the date style, Row
+    /// density and Status glyphs to the Views that draw with them, and Toasts to the Toasts. The Colour Theme and Appearance are
     /// the colours', set before the window opens ([`crate::theme::colours::set_device_colours`]).
     pub fn set_configuration(
         &mut self,
@@ -557,6 +557,8 @@ impl Root {
         };
         let display = lib_settings::DisplaySettings {
             date_style: config.date_style(),
+            row_density: config.row_density(),
+            status_glyphs: config.status_glyphs(),
             colour_theme: config.colour_theme().map(str::to_string),
             colour_appearance: config.colour_appearance(),
         };

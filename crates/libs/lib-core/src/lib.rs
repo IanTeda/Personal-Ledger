@@ -133,3 +133,8 @@ pub use on_start::{OnStart, ledger_to_open};
 /// The View a Client lands on as it starts: the Start view setting and its resolver.
 mod start_view;
 pub use start_view::StartView;
+
+/// How a table's rows are spaced and how a status is marked: Row density and Status glyphs,
+/// Configuration both Clients read from the same `[Personal-Ledger]` keys (ADR-0053).
+mod display;
+pub use display::{RowDensity, StatusGlyphs};

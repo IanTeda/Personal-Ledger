@@ -3,11 +3,11 @@
 //! Configuration for the `[Personal-Ledger]` section: settings applied across Personal
 //! Ledger files and the client on a given system, but not intended to sync across computer
 //! systems (see `docs/settings.md`). A device's settings are among them (ADR-0053): Toasts, the
-//! Colour Theme and Appearance, the date style, On start and Start view, each spelled in the file
-//! as `:set` takes it.
+//! Colour Theme and Appearance, the date style, Row density, Status glyphs, On start and Start
+//! view, each spelled in the file as `:set` takes it.
 
 use lib_colour_theme::ColourAppearance;
-use lib_core::{DateStyle, OnStart, StartView};
+use lib_core::{DateStyle, OnStart, RowDensity, StartView, StatusGlyphs};
 
 /// Default logging level for the `[Personal-Ledger]` section.
 const DEFAULT_LOG: lib_tracing::Levels = lib_tracing::Levels::INFO;
@@ -70,9 +70,15 @@ pub struct PersonalLedgerConfig {
     #[serde(default)]
     pub terminal_colours: bool,
 
-    /// Draw status glyphs as Unicode or plain ASCII. Read only by the TUI; Configuration.
-    #[serde(default)]
+    /// Draw status glyphs as Unicode or plain ASCII: `unicode`, the default, or `ascii`. Both
+    /// Clients read and write it.
+    #[serde(default, with = "status_glyphs")]
     pub status_glyphs: StatusGlyphs,
+
+    /// How tightly a table's rows are spaced: `compact`, `regular`, the default, or `roomy`. Read
+    /// only by the Desktop, which has the tables it spaces.
+    #[serde(default, with = "row_density")]
+    pub row_density: RowDensity,
 
     /// Whether the TUI's footer shows the key hints. Read only by the TUI; Configuration.
     #[serde(default = "shown")]
@@ -219,31 +225,39 @@ mod on_start {
     }
 }
 
-/// How the TUI draws its status glyphs: the `status_glyphs` key.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum StatusGlyphs {
-    /// `●`, `✓`, `⚑` and the rest, the default.
-    #[default]
-    Unicode,
-    /// Plain ASCII stand-ins, for a terminal font without them.
-    Ascii,
-}
+/// `status_glyphs` by [`StatusGlyphs::key`].
+mod status_glyphs {
+    use super::StatusGlyphs;
 
-impl StatusGlyphs {
-    /// The value as the file and `:set glyphs` spell it.
-    pub fn key(self) -> &'static str {
-        match self {
-            Self::Unicode => "unicode",
-            Self::Ascii => "ascii",
-        }
+    pub fn serialize<S: serde::Serializer>(
+        value: &StatusGlyphs,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(value.key())
     }
 
-    /// The value `key` spells, ignoring case.
-    pub fn from_key(key: &str) -> Option<Self> {
-        [Self::Unicode, Self::Ascii]
-            .into_iter()
-            .find(|glyphs| glyphs.key().eq_ignore_ascii_case(key))
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<StatusGlyphs, D::Error> {
+        super::by_key(deserializer, StatusGlyphs::from_key)
+    }
+}
+
+/// `row_density` by [`RowDensity::key`].
+mod row_density {
+    use super::RowDensity;
+
+    pub fn serialize<S: serde::Serializer>(
+        value: &RowDensity,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(value.key())
+    }
+
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<RowDensity, D::Error> {
+        super::by_key(deserializer, RowDensity::from_key)
     }
 }
 
@@ -264,6 +278,7 @@ impl Default for PersonalLedgerConfig {
             system_locale: None,
             terminal_colours: false,
             status_glyphs: StatusGlyphs::Unicode,
+            row_density: RowDensity::Regular,
             hint_bar: true,
             toasts: true,
             colour_theme: None,
@@ -309,9 +324,14 @@ impl PersonalLedgerConfig {
         self.terminal_colours
     }
 
-    /// How the TUI draws its status glyphs.
+    /// How status glyphs are drawn.
     pub fn status_glyphs(&self) -> StatusGlyphs {
         self.status_glyphs
+    }
+
+    /// How tightly the Desktop spaces a table's rows.
+    pub fn row_density(&self) -> RowDensity {
+        self.row_density
     }
 
     /// Whether the TUI's footer shows the key hints.
@@ -572,11 +592,55 @@ mod tests {
     }
 
     #[test]
+    fn row_density_and_status_glyphs_default_to_regular_and_unicode() {
+        let section = parsed("[Personal-Ledger]\n", &[]);
+        assert_eq!(section.row_density(), RowDensity::Regular);
+        assert_eq!(section.status_glyphs(), StatusGlyphs::Unicode);
+    }
+
+    #[test]
+    fn row_density_and_status_glyphs_read_as_the_file_spells_them_in_any_case() {
+        for (text, density, glyphs) in [
+            ("compact", RowDensity::Compact, "ascii"),
+            ("Roomy", RowDensity::Roomy, "ASCII"),
+            ("regular", RowDensity::Regular, "Ascii"),
+        ] {
+            let section = parsed(
+                &format!("[Personal-Ledger]\nrow_density = {text}\nstatus_glyphs = {glyphs}\n"),
+                &[],
+            );
+            assert_eq!(section.row_density(), density, "{text}");
+            assert_eq!(
+                section.status_glyphs(),
+                StatusGlyphs::AsciiFallback,
+                "{glyphs}"
+            );
+        }
+        let section = parsed("[Personal-Ledger]\nstatus_glyphs = unicode\n", &[]);
+        assert_eq!(section.status_glyphs(), StatusGlyphs::Unicode);
+    }
+
+    #[test]
+    fn an_environment_variable_outranks_the_file_for_row_density_and_status_glyphs() {
+        let section = parsed(
+            "[Personal-Ledger]\nrow_density = compact\nstatus_glyphs = ascii\n",
+            &[
+                ("PERSONAL_LEDGER_PERSONAL_LEDGER__ROW_DENSITY", "roomy"),
+                ("PERSONAL_LEDGER_PERSONAL_LEDGER__STATUS_GLYPHS", "unicode"),
+            ],
+        );
+        assert_eq!(section.row_density(), RowDensity::Roomy);
+        assert_eq!(section.status_glyphs(), StatusGlyphs::Unicode);
+    }
+
+    #[test]
     fn a_device_setting_value_it_doesnt_take_is_a_configuration_error() {
         for text in [
             "[Personal-Ledger]\non_start = sometimes\n",
             "[Personal-Ledger]\ndate_style = fancy\n",
             "[Personal-Ledger]\ncolour_appearance = sepia\n",
+            "[Personal-Ledger]\nrow_density = cosy\n",
+            "[Personal-Ledger]\nstatus_glyphs = ascii fallback\n",
         ] {
             let dir = tempfile::TempDir::new().unwrap();
             let path = dir.path().join("personal-ledger.conf");

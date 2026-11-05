@@ -7,7 +7,7 @@ use std::rc::Rc;
 use std::time::SystemTime;
 
 use lib_colour_theme::ColourAppearance;
-use lib_core::{DateStyle, OnStart, StartView, UnitId};
+use lib_core::{DateStyle, OnStart, RowDensity, StartView, StatusGlyphs, UnitId};
 use lib_toast::{Notice, Notify};
 
 use crate::log::{LogLevel, LogLine};
@@ -218,6 +218,8 @@ pub struct StoredDevice {
     pub start_view: Option<StartView>,
     pub toasts: Option<bool>,
     pub date_style: Option<Option<DateStyle>>,
+    pub row_density: Option<RowDensity>,
+    pub status_glyphs: Option<StatusGlyphs>,
     pub colour_theme: Option<String>,
     pub colour_appearance: Option<ColourAppearance>,
 }
@@ -309,6 +311,18 @@ impl DeviceConfiguration for InMemoryDeviceConfiguration {
     fn set_date_style(&self, style: Option<DateStyle>) -> DeviceAnswer<Option<DateStyle>> {
         self.write(DeviceKey::DateStyle, style, |stored, value| {
             stored.date_style = Some(value);
+        })
+    }
+
+    fn set_row_density(&self, density: RowDensity) -> DeviceAnswer<RowDensity> {
+        self.write(DeviceKey::RowDensity, density, |stored, value| {
+            stored.row_density = Some(value);
+        })
+    }
+
+    fn set_status_glyphs(&self, glyphs: StatusGlyphs) -> DeviceAnswer<StatusGlyphs> {
+        self.write(DeviceKey::StatusGlyphs, glyphs, |stored, value| {
+            stored.status_glyphs = Some(value);
         })
     }
 

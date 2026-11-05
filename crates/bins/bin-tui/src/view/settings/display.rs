@@ -183,7 +183,10 @@ impl DisplayPage {
                     choice(
                         &[
                             (StatusGlyphs::Unicode, StatusGlyphs::Unicode.key()),
-                            (StatusGlyphs::Ascii, StatusGlyphs::Ascii.key()),
+                            (
+                                StatusGlyphs::AsciiFallback,
+                                StatusGlyphs::AsciiFallback.key(),
+                            ),
                         ],
                         glyphs,
                         |glyphs| status_glyphs_label(*glyphs),
@@ -300,7 +303,7 @@ fn terminal_colours_label(on: bool) -> String {
 fn status_glyphs_label(glyphs: StatusGlyphs) -> String {
     match glyphs {
         StatusGlyphs::Unicode => msg::tui_settings_status_glyphs_unicode(),
-        StatusGlyphs::Ascii => msg::tui_settings_status_glyphs_ascii(),
+        StatusGlyphs::AsciiFallback => msg::tui_settings_status_glyphs_ascii(),
     }
 }
 

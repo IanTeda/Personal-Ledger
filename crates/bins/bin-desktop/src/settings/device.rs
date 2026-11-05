@@ -1,12 +1,13 @@
 //! `impl DeviceConfiguration` for the Desktop (ADR-0053): Toasts, the Colour Theme and
-//! Appearance, the date style, On start and Start view live in the `[Personal-Ledger]` section of
+//! Appearance, the date style, Row density, Status glyphs, On start and Start view live in the
+//! `[Personal-Ledger]` section of
 //! the user's `personal-ledger.conf`, which Settings › General and Display write through
 //! `lib_config`'s [`ConfigWriter`] as each one changes, the TUI's file and spellings included.
 //! The pages' Presenters (`lib-settings`) decide what a write's answer means; this only writes.
 
 use lib_colour_theme::ColourAppearance;
 use lib_config::{ConfigKey, ConfigWriter, Shadow};
-use lib_core::{DateStyle, OnStart, StartView};
+use lib_core::{DateStyle, OnStart, RowDensity, StartView, StatusGlyphs};
 use lib_settings::{DeviceAnswer, DeviceConfiguration, DeviceKey, DeviceRefusal};
 
 /// The file a key is written under.
@@ -16,6 +17,8 @@ fn config_key(key: DeviceKey) -> ConfigKey {
         DeviceKey::StartView => ConfigKey::StartView,
         DeviceKey::Toasts => ConfigKey::Toasts,
         DeviceKey::DateStyle => ConfigKey::DateStyle,
+        DeviceKey::RowDensity => ConfigKey::RowDensity,
+        DeviceKey::StatusGlyphs => ConfigKey::StatusGlyphs,
         DeviceKey::ColourTheme => ConfigKey::ColourTheme,
         DeviceKey::ColourAppearance => ConfigKey::ColourAppearance,
     }
@@ -95,6 +98,14 @@ impl DeviceConfiguration for DeviceConfigFile {
             lib_config::date_style_key(style),
             style,
         )
+    }
+
+    fn set_row_density(&self, density: RowDensity) -> DeviceAnswer<RowDensity> {
+        self.write(DeviceKey::RowDensity, density.key(), density)
+    }
+
+    fn set_status_glyphs(&self, glyphs: StatusGlyphs) -> DeviceAnswer<StatusGlyphs> {
+        self.write(DeviceKey::StatusGlyphs, glyphs.key(), glyphs)
     }
 
     fn set_colour_theme(&self, id: &'static str) -> DeviceAnswer<&'static str> {
@@ -192,6 +203,8 @@ mod tests {
                         .into_iter()
                         .find(|style| lib_config::date_style_key(*style) == value);
                 }
+                "row_density" => stored.row_density = RowDensity::from_key(value),
+                "status_glyphs" => stored.status_glyphs = StatusGlyphs::from_key(value),
                 "colour_theme" => stored.colour_theme = Some(value.to_string()),
                 "colour_appearance" => {
                     stored.colour_appearance = ColourAppearance::from_key(value);
@@ -229,10 +242,13 @@ mod tests {
         device.set_date_style(None);
         device.set_on_start(OnStart::NoLedger);
         device.set_start_view(StartView::Noun("bills".into()));
+        device.set_row_density(RowDensity::Compact);
+        device.set_status_glyphs(StatusGlyphs::AsciiFallback);
         assert_eq!(
             std::fs::read_to_string(&path).unwrap_or_default(),
             "[Personal-Ledger]\ntoasts = false\ncolour_theme = nord\ncolour_appearance = light\n\
-             date_style = default\non_start = none\nstart_view = bills\n"
+             date_style = default\non_start = none\nstart_view = bills\nrow_density = compact\n\
+             status_glyphs = ascii\n"
         );
     }
 }

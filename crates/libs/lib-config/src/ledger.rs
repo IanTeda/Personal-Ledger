@@ -863,7 +863,7 @@ mod tests {
         let config = LedgerConfig::parse_for_sync_server_with_env(None, env).unwrap();
         assert_eq!(
             config.personal_ledger.status_glyphs(),
-            crate::StatusGlyphs::Ascii
+            crate::StatusGlyphs::AsciiFallback
         );
         assert!(!config.personal_ledger.hint_bar());
     }

@@ -150,6 +150,6 @@ settings-display-glyphs-unicode = unicode — { $glyphs }
 settings-display-glyphs-ascii = ascii fallback — { $glyphs }
 settings-display-start-minimised = Start Sidebar minimised
 settings-display-preview = Preview
-settings-display-note = These belong to this device and never sync: the Colour Theme, Appearance and date style are Client-scoped Preferences, the rest Configuration read from personal-ledger.conf. What travels with the Ledger is under Ledger.
+settings-display-note = These belong to this device and never sync: each is saved to personal-ledger.conf, except Start Sidebar minimised, which the app remembers itself. What travels with the Ledger is under Ledger.
 settings-display-colour-theme = Colour theme
 settings-display-colour-appearance = Appearance
