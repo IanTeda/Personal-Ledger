@@ -1,7 +1,7 @@
 //! The Account Entity: what an Account holds, the rules over a list of them (add, edit, remove,
 //! grouping, the net figure, finding one by name) and the stub seed. The rules work over rows, not
-//! the repository, so `lib-ledger` can still run them on its own Accounts while the Desktop writes
-//! Accounts through a `LedgerCommand` (#852).
+//! the repository, so a caller holding a list of Accounts, such as the TUI or a read copy, can run
+//! them.
 
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;

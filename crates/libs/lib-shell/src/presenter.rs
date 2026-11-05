@@ -35,10 +35,6 @@ pub enum ShellInput<F> {
     /// A View not yet a module raised a Toast or set the status line. It reaches the Router, which
     /// queues it with every module's Notices for the Client to show ([`ShellPresenter::show`]).
     Notice(Notice),
-    /// A View not yet a module ran a write on the Client's legacy store, outside any input the
-    /// Shell saw. The write has run; this input exists so the `send` it arrives in commits it,
-    /// the one commit path (#823). It goes when the last such View migrates.
-    LegacyApply,
     /// A committed write failed.
     WriteFailed(F),
     /// The Client's timer ran out on a prefix (the `g` of `g d`) with no second key: drop it.
@@ -449,7 +445,6 @@ impl<P: Copy + Eq + Default> ShellPresenter<P> {
                 }
             }
             ShellInput::Notice(notice) => router.notify(notice),
-            ShellInput::LegacyApply => {}
             ShellInput::WriteFailed(failure) => router.write_failed(failure),
             ShellInput::PrefixExpired => self.prefix = None,
         }
@@ -505,13 +500,12 @@ mod tests {
     }
 
     #[test]
-    fn a_notice_and_a_write_failure_go_to_the_router_and_a_legacy_write_asks_nothing() {
+    fn a_notice_and_a_write_failure_go_to_the_router() {
         let mut shell = presenter(Clock::fixed(date(2026, 9, 19)));
         let mut router = RecordingRouter::default();
         let saved = Notice::Toast(ToastKind::Success, "Saved".to_string());
 
         shell.handle(ShellInput::Notice(saved.clone()), &mut router);
-        shell.handle(ShellInput::LegacyApply, &mut router);
         shell.handle(
             ShellInput::WriteFailed("disk full".to_string()),
             &mut router,
@@ -782,14 +776,13 @@ mod tests {
     }
 
     #[test]
-    fn a_click_a_tick_or_a_dialog_button_leaves_the_status() {
+    fn a_tick_or_a_dialog_button_leaves_the_status() {
         let mut shell = shell();
         let mut router = RecordingRouter::default();
         shell.show(status("Exported"), local(0));
         shell.show(toast(ToastKind::Info, "Synced"), local(0));
         shell.dialog(DialogInput::Opened);
 
-        shell.handle(ShellInput::LegacyApply, &mut router);
         shell.handle(ShellInput::DayTick, &mut router);
         shell.tick_toasts(Instant::now());
         shell.toast(ToastInput::DismissVisible(0));

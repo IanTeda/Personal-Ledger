@@ -129,7 +129,7 @@ impl Root {
             }
             return;
         }
-        // Every domain's Dialog runs through the host's cycle (`DialogForm`/`confirm_ledger`, ADR-0037).
+        // Every Dialog left on the host runs through its cycle (`DialogForm`/`ConfirmDialog`, ADR-0037).
         match self.state.dialog {
             // Read-only: it has nothing to apply.
             Some(OpenDialog::ToastHistory(_)) => self.close_dialog(),

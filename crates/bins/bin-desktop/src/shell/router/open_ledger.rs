@@ -17,7 +17,7 @@ use lib_ledger::Ledger;
 
 use super::Root;
 use crate::dashboard::DashboardPage;
-use crate::ledger_store::{LedgerStore, LegacyApplied, notify_on};
+use crate::ledger_store::{LedgerStore, notify_on};
 use crate::settings::state::SettingsView;
 use crate::transaction_import::{ImportPage, ImportStores};
 use crate::transactions::TransactionsPage;
@@ -323,10 +323,6 @@ impl OpenLedger {
         let units_ports = settings_setup.units.ports.clone();
         // The Dialogs read the Categories, Units and Institutions straight from the Ledger.
         let categories_subscription = notify_on(&ledger, lib_ledger::Domain::Categories, cx);
-        // A View not yet a module wrote through the Ledger from its own click: one input commits it.
-        let legacy_applied = cx.subscribe(&ledger, |shell, _, _: &LegacyApplied, cx| {
-            shell.send_shell(lib_shell::ShellInput::LegacyApply, cx);
-        });
         let units_subscription = notify_on(&ledger, lib_ledger::Domain::Units, cx);
         let tags_subscription = notify_on(&ledger, lib_ledger::Domain::Tags, cx);
         let institutions_subscription = notify_on(&ledger, lib_ledger::Domain::Institutions, cx);
@@ -417,7 +413,6 @@ impl OpenLedger {
                 accounts_changed,
                 institutions_subscription,
                 inventory_changed,
-                legacy_applied,
             ],
             _write_failures: Root::listen_for_write_failures(failures.clone(), cx),
             failures,

@@ -1,8 +1,8 @@
 //! The Ledger's Categories are a read copy of the Categories port (#858): a Client refreshes it from
 //! the port after each Categories write and on rollback ([`Ledger::refresh_categories`]), for the
 //! Views not yet modules. The Categories page writes the port itself (#859) and Category delete
-//! writes it through `lib-category-deletion` (#1005), so no `LedgerCommand` writes the copy; it goes
-//! when the last reader has its own port.
+//! writes it through `lib-category-deletion` (#1005), so nothing writes the copy but the refresh;
+//! it goes when the last reader has its own port.
 
 use lib_categories::Category;
 

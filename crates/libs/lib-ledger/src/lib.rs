@@ -21,7 +21,7 @@ mod tag_usage;
 mod unit_usage;
 
 pub use budget_reads::{budget_accounts, budget_categories};
-pub use change::{Domain, LedgerChange, LedgerCommand, domains};
+pub use change::{Domain, LedgerChange, domains};
 pub use repository::{LedgerRepository, RepositoryError, StubRepository};
 pub use seed::{DEFAULT_SEED, HISTORY_DAYS, default_transactions};
 pub use tag_usage::{TagRows, transaction_count};
@@ -39,8 +39,8 @@ use lib_tags::{Tag, default_tags};
 use lib_transactions::Transaction;
 use lib_units::{PriceSource, PriceSourceRecord, UnitRow};
 
-/// Every domain collection the Clients read, owned in one place. Every write is a
-/// [`LedgerCommand`] that records what it changed.
+/// Every domain collection the Clients read, owned in one place. Nothing writes it but the read
+/// copies' refreshes: every domain is written by its module, through its ports (#1006).
 #[derive(Debug, Clone)]
 pub struct Ledger {
     accounts: Vec<Account>,
@@ -58,8 +58,6 @@ pub struct Ledger {
     base_unit: UnitId,
     /// Only the Price Sources a person changed: built-in overrides and Custom sources.
     price_sources: Vec<PriceSourceRecord>,
-    /// The changes recorded since the last [`Ledger::drain_changes`].
-    pending: Vec<LedgerChange>,
 }
 
 /// Every collection a [`Ledger`] is built from. A test fills only the collections it reads and
@@ -135,7 +133,6 @@ impl Ledger {
             units,
             base_unit,
             price_sources,
-            pending: Vec::new(),
         }
     }
 
@@ -302,12 +299,6 @@ impl Ledger {
     /// When Price Source `id` last fetched a price, or `None` when it has not fetched yet.
     pub fn last_fetched(&self, id: PriceSourceId) -> Option<DateTime<Utc>> {
         lib_units::last_fetched(&self.units, id)
-    }
-
-    /// The changes recorded since the last drain, oldest first, for the store to hand to the
-    /// repository (ADR-0039).
-    pub fn drain_changes(&mut self) -> Vec<LedgerChange> {
-        std::mem::take(&mut self.pending)
     }
 }
 
