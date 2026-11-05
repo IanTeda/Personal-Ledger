@@ -128,9 +128,9 @@ impl OpenLedger {
 
         // The Transactions and Bills stores are shared: Pay it directly writes both (#779), and
         // Payees counts what names a Payee in them (#992). The Payees ports are shared by the
-        // Payees module, the Ledger's forwarding shim and the Bills reads (#831, #832). The
-        // Categories store is shared by the Categories module, the Ledger's forwarding shim and
-        // the Bills and Payees reads (#858, #859).
+        // Payees module, the cross-domain adapters, the Ledger's read copies and the Bills reads
+        // (#831, #832). The Categories store is shared by the Categories module, Category delete,
+        // the Ledger's read copy and the Bills and Payees reads (#858, #859, #1005).
         let categories: lib_database::SharedCategoriesStore =
             Rc::new(std::cell::RefCell::new(categories));
         let transactions: lib_database::SharedTransactionsStore =
@@ -144,17 +144,16 @@ impl OpenLedger {
                 categories: categories.clone(),
             },
         );
-        // The Tags store is shared by the Ledger's forwarding shim and the Tags page's usage reads
-        // (#862).
+        // The Tags store is shared by the Tags page and Tag remove and merge (#862, #1003).
         let tags: lib_database::SharedTagsStore = Rc::new(std::cell::RefCell::new(tags));
-        // The Inventory store is shared by the Ledger's forwarding shim and read copy and the
-        // Inventory page (#866, #867).
+        // The Inventory store is shared by the Inventory page and the Documents reads (#866, #867).
         let inventory: lib_database::SharedInventoryStore =
             Rc::new(std::cell::RefCell::new(inventory));
-        // The Budgets store is shared by the Ledger's forwarding shim and read copy, the Accounts,
-        // Units and Categories usage counts and the Categories Monthly budget (#952).
+        // The Budgets store is shared by the Budgets module, the Ledger's read copy, Category
+        // delete, the Accounts, Units and Categories usage counts and the Categories Monthly budget
+        // (#952).
         let budgets: lib_database::SharedBudgetsStore = Rc::new(std::cell::RefCell::new(budgets));
-        // The Accounts store is shared by the Ledger's forwarding shim and the Units and Bills reads
+        // The Accounts store is shared by the Accounts module, the Ledger's read copy and the Units and Bills reads
         // (#853), and the Institutions' reads of which Accounts name one (#876).
         let accounts = crate::accounts::LedgerBackedPorts::shared(
             accounts,
@@ -226,8 +225,8 @@ impl OpenLedger {
         };
         let accounts_setup =
             crate::accounts::AccountsSetup::new(accounts.clone(), account_deletion, keybindings);
-        // The Documents store is shared by the Ledger's forwarding shim and read copy and the Document
-        // Types page (#963, #966).
+        // The Documents store is shared by the Documents page, the Document Types page and the
+        // Ledger's Documents reads (#963, #966).
         let documents: lib_database::SharedDocumentsStore =
             Rc::new(std::cell::RefCell::new(documents));
         let payees_setup = crate::payees::PayeesSetup::new(payees.clone(), keybindings);

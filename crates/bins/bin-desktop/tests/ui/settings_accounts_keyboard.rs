@@ -376,10 +376,10 @@ fn a_failed_write_puts_the_accounts_back_with_an_error_toast(app: &mut TestAppCo
     }));
 }
 
-/// The legacy Add Dialog writes through the Accounts forwarding shim, so its confirm commits once
-/// with the input it ran in, and the page reads the Account back from the store.
+/// The legacy Add Dialog writes the Accounts store, so its confirm commits once with the input it
+/// ran in, and the page reads the Account back from the store.
 #[gpui::test]
-fn adding_an_account_commits_once_through_the_shim(app: &mut TestAppContext) {
+fn adding_an_account_commits_once(app: &mut TestAppContext) {
     let mut ui = in_accounts(app);
     ui.press("n");
     ui.press("r a i n y");

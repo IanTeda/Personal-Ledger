@@ -98,8 +98,8 @@ impl TagsAdapter {
         Ok(())
     }
 
-    /// Removes Tag `id`: Tag delete's and merge's delete, which the Desktop's forwarding shim
-    /// sends once the Splits carrying it are retagged (#813 moves it to `lib-reassign`).
+    /// Removes Tag `id`: Tag remove's and merge's delete, which the `TagRemovalAdapter` sends once
+    /// the Splits carrying it are untagged or retagged (#1002).
     pub fn delete_tag(&mut self, id: TagId) {
         self.tags.rows.retain(|row| row.id != id);
         self.tags.pending.push(TagsChange::Delete(id));

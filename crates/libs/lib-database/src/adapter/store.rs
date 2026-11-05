@@ -272,8 +272,8 @@ impl<T: InstitutionsStore + ?Sized> InstitutionsStore for Box<T> {
     }
 }
 
-/// An Accounts store shared by the Ledger's forwarding shim and the Units and Bills reads.
-/// Single-threaded, as the ports are.
+/// An Accounts store shared by the Accounts module, the cross-domain adapters that write it and the
+/// Units and Bills reads. Single-threaded, as the ports are.
 pub type SharedAccountsStore = Rc<RefCell<dyn AccountsStore>>;
 
 /// The Accounts repository port, wherever it is kept. What names an Account is other domains'
@@ -337,21 +337,21 @@ impl AccountsStore for lib_accounts::fake::InMemoryPorts {
     }
 }
 
-/// A Categories store shared by the Ledger's forwarding shim and the Bills and Payees reads.
-/// Single-threaded, as the ports are.
+/// A Categories store shared by the Categories module, the Category Deletion adapter and the Bills
+/// and Payees reads. Single-threaded, as the ports are.
 pub type SharedCategoriesStore = Rc<RefCell<dyn CategoriesStore>>;
 
-/// The Categories repository port, wherever it is kept, and the delete Category reassign sends
-/// until `lib-reassign` (#813). The reading modules map the Categories' own rows themselves
-/// (#994).
+/// The Categories repository port, wherever it is kept, and the delete Category delete sends. The
+/// reading modules map the Categories' own rows themselves (#994).
 pub trait CategoriesStore {
     fn categories(&self) -> &dyn CategoryRepository;
 
     fn categories_mut(&mut self) -> &mut dyn CategoryRepository;
 
-    /// Removes Category `id`, once nothing names it: Category reassign's delete, which the
-    /// Desktop's forwarding shim sends. Not a port write, since the delete re-points other
-    /// domains' rows (#813).
+    /// Removes Category `id`, once nothing names it: Category delete's delete, which the
+    /// [`CategoryDeletionAdapter`](crate::CategoryDeletionAdapter) sends after the rows it
+    /// re-points. Not a `lib-categories` port write, since the delete re-points other domains'
+    /// rows (#1004).
     fn delete_category(&mut self, id: CategoryId);
 
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
@@ -417,8 +417,8 @@ impl CategoriesStore for InMemoryCategories {
     }
 }
 
-/// A Tags store shared by the Ledger's forwarding shim, the Tags page and the Tag Removal
-/// adapter. Single-threaded, as the ports are.
+/// A Tags store shared by the Tags page and the Tag Removal adapter. Single-threaded, as the ports
+/// are.
 pub type SharedTagsStore = Rc<RefCell<dyn TagsStore>>;
 
 /// The Tags repository port, wherever it is kept, and the delete Tag remove and merge send. What
@@ -496,8 +496,8 @@ impl TagsStore for lib_tags::fake::InMemoryPorts {
     }
 }
 
-/// An Inventory store shared by the Ledger's forwarding shim and read copy. Single-threaded, as
-/// the ports are.
+/// An Inventory store shared by the Inventory page and the Documents reads. Single-threaded, as the
+/// ports are.
 pub type SharedInventoryStore = Rc<RefCell<dyn InventoryStore>>;
 
 /// The Inventory repository port, wherever it is kept.
@@ -818,8 +818,8 @@ impl BillsStore for InMemoryBills {
     }
 }
 
-/// A Payees store shared by the Ledger's forwarding shim and the Bills reads. Single-threaded, as
-/// the ports are.
+/// A Payees store shared by the Payees module, the cross-domain adapters that write it and the
+/// Bills reads. Single-threaded, as the ports are.
 pub type SharedPayeesStore = Rc<RefCell<dyn PayeesStore>>;
 
 /// The Payees repository port, wherever it is kept. What names a Payee is other domains' rows,
@@ -887,8 +887,8 @@ impl PayeesStore for lib_payees::fake::InMemoryPorts {
     }
 }
 
-/// A Budgets store shared by the Ledger's forwarding shim and the Accounts, Units and Categories
-/// usage counts. Single-threaded, as the ports are.
+/// A Budgets store shared by the Budgets module, the Category Deletion adapter and the Accounts,
+/// Units and Categories usage counts. Single-threaded, as the ports are.
 pub type SharedBudgetsStore = Rc<RefCell<dyn BudgetsStore>>;
 
 /// The Budgets repository port, wherever it is kept, and the counts of the Budgets naming another

@@ -9,9 +9,8 @@
 //! - `view/dialog.rs` holds each Dialog's Presenter in an Entity in the Dialog host, one View per
 //!   Dialog in `view/dialog/`.
 //! - `router.rs` is the Router and the module's entry point ([`inventory_page`]).
-//! - `ports.rs` holds the store as the Presenters share it, the forwarding shim Remove Location
-//!   still goes through, and the ports answered from the Ledger: the Units, the Documents and the
-//!   reassign port (#867).
+//! - `ports.rs` holds the store as the Presenters share it, and the reads answered from the
+//!   Ledger: the Units and the Documents (#867, #1001).
 //!
 //! The Inventory destination (`Noun::Inventory`) is a placeholder that shares nothing with the
 //! page. Where the Inventory is kept, the SQLite adapter opened at start or memory, is
@@ -45,8 +44,8 @@ pub struct SettingsInventorySnapshot {
     pub inventory_area_items: Vec<(String, usize)>,
 }
 
-/// What `shell::router::build` hands the Inventory module: the store it shares with the Ledger's
-/// forwarding shim and read copy, and its keymap under `[keybindings]`.
+/// What `shell::router::build` hands the Inventory module: the store it shares with the Documents
+/// reads, and its keymap under `[keybindings]`.
 pub struct InventorySetup {
     pub store: SharedInventoryStore,
     pub keymap: lib_viper::keymap::Keymap<InventoryPageEvent>,

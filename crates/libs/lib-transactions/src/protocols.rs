@@ -2,8 +2,9 @@
 //! reads from memory and queues each write, so a write never fails here; a failed save is the
 //! adapter's to report. `fake` implements it in memory.
 //!
-//! Every writer of Transactions is still today's code, which reaches the repository through the
-//! Desktop's forwarding shim (#774); the Transactions page reads it, with the read ports, as one
+//! Every writer of Transactions is another module, which reaches the repository through its own
+//! port or a cross-domain module's (Bill Payments, Account Deletion, the Import, Tag Removal,
+//! Category Deletion); the Transactions page reads it, with the read ports, as one
 //! [`TransactionsPorts`] value.
 //!
 //! The read ports name the other domains' rows as Transactions-owned values with only the fields

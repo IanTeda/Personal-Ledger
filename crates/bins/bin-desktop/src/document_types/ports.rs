@@ -1,5 +1,5 @@
 //! The Documents store as the Document Types module's Presenters hold it (#966): the store
-//! `shell::router::build` is given, shared with the Ledger's forwarding shim and read copy. The
+//! `shell::router::build` is given, shared with the Documents page. The
 //! writes are committed by the input they were made in (`crate::input::send`), not here.
 
 use std::cell::RefCell;

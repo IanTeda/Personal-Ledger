@@ -7,8 +7,7 @@
 //!   `view/filter_popover.rs` draw it.
 //! - `router.rs` is the module's entry point for other modules' Routers: `show` selects a
 //!   Transaction and `show_filtered` lists the Transactions a filter leaves, from the first row.
-//! - `ports.rs` answers the page's ports from the stores, and holds the forwarding shim that saves
-//!   today's writers' Transaction changes (#774).
+//! - `ports.rs` answers the page's ports from the stores (#774).
 //!
 //! The stub seed is `lib_transactions::fake`'s, joined to the other stubs by
 //! `lib_ledger::default_transactions`.

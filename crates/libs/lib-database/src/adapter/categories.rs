@@ -9,11 +9,11 @@
 //! changes memory at once and joins the [`PendingWrites`] every adapter shares, which the bin
 //! commits after each input.
 //!
-//! The port has no delete: Category delete re-points other domains' rows, so it stays a
-//! `lib-ledger` command until `lib-reassign` (#813). [`CategoriesAdapter::delete_category`] is the
-//! write the Desktop's forwarding shim sends that command's delete through, after the Splits, Bill
-//! Plans and Payee defaults it re-points: their foreign keys, and `parent_id`'s, refuse deleting a
-//! Category anything still names.
+//! The port has no delete: Category delete re-points other domains' rows, so it is
+//! `lib-category-deletion`'s (#1004). [`CategoriesAdapter::delete_category`] is the write its
+//! `CategoryDeletionAdapter` sends the delete through, after the Splits, Bill Plans and Payee
+//! defaults it re-points: their foreign keys, and `parent_id`'s, refuse deleting a Category
+//! anything still names.
 
 use lib_bills::BillCategory;
 use lib_categories::{Category, CategoryRepository, tree_order};
@@ -100,8 +100,8 @@ impl CategoriesAdapter {
         Ok(())
     }
 
-    /// Removes Category `id`: Category reassign's delete, which the Desktop's forwarding shim
-    /// sends once the rows naming it are re-pointed (#813 moves it to `lib-reassign`).
+    /// Removes Category `id`: Category delete's delete, which the `CategoryDeletionAdapter` sends
+    /// once the rows naming it are re-pointed (#1004).
     pub fn delete_category(&mut self, id: CategoryId) {
         self.rows.retain(|row| row.id != id);
         self.pending.push(CategoriesChange::Delete(id));

@@ -38,7 +38,7 @@ pub struct SettingsDocumentTypesSnapshot {
 }
 
 /// What `shell::router::build` hands the Document Types module: the Documents store it shares with
-/// the Ledger's forwarding shim and read copy, and its keymap under `[keybindings]`.
+/// the Documents page, and its keymap under `[keybindings]`.
 pub struct DocumentTypesSetup {
     pub store: SharedDocumentsStore,
     pub keymap: lib_viper::keymap::Keymap<DocumentTypesPageEvent>,
