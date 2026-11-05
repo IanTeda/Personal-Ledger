@@ -90,6 +90,8 @@ impl<P> Notify for DeviceRouter<'_, '_, P> {
 pub(super) struct TracingRouter<'a, 'b> {
     pub list: &'a ListState,
     pub cx: &'a mut Context<'b, TracingPage>,
+    /// Whether the Presenter changed the log list, so a capture wake redraws only then.
+    pub list_changed: bool,
 }
 
 impl lib_settings::TracingRouter for TracingRouter<'_, '_> {
@@ -99,6 +101,7 @@ impl lib_settings::TracingRouter for TracingRouter<'_, '_> {
 
     fn log_changed(&mut self, change: LogListChange) {
         apply_change(self.list, change);
+        self.list_changed = true;
     }
 
     /// Clear logs asks first, since the capture is emptied for good (#502), and clears the status

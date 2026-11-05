@@ -149,9 +149,10 @@ impl Mirror {
         self.rebuild_visible();
     }
 
-    /// The capture was emptied: forget every entry, and read on from where it counts now.
+    /// The capture was emptied: forget every entry. The cursor stays, since the capture's `seq`s
+    /// keep counting after a clear: an entry logged between the clear and this call is still
+    /// read, where moving the cursor to `next_seq` would skip it.
     fn emptied(&mut self) {
-        self.cursor = self.log.next_seq();
         self.entries.clear();
         self.visible = Rc::default();
     }
@@ -447,6 +448,21 @@ mod tests {
         log.push(LogLevel::Info, "bin_desktop::shell", "new");
         presenter.handle(TracingEvent::Appended, &mut router);
         assert_eq!(messages(&presenter), ["new"]);
+    }
+
+    #[test]
+    fn an_entry_logged_between_the_clear_and_cleared_still_arrives() {
+        let log = Rc::new(InMemoryTracingLog::new(8));
+        log.push(LogLevel::Info, "bin_desktop::shell", "old");
+        let mut presenter = presenter(&log, TracingLevel::Info);
+        let mut router = Recording::default();
+
+        log.clear();
+        log.push(LogLevel::Info, "lib_database::writer", "between");
+        presenter.handle(TracingEvent::Cleared, &mut router);
+        presenter.handle(TracingEvent::Appended, &mut router);
+
+        assert_eq!(messages(&presenter), ["between"]);
     }
 
     #[test]

@@ -123,7 +123,7 @@ pub(crate) fn send<C: BorrowMut<App>, R>(cx: &mut C, handle: impl FnOnce(&mut C)
         let _ = shell.update(cx, |shell, cx| {
             shell.reload_cascades(&cascades, cx);
             shell.refresh_rail_counts(false, cx);
-            shell.drain_notices();
+            shell.drain_notices(cx);
             cx.notify();
         });
     });

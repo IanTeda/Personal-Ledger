@@ -191,12 +191,15 @@ impl GeneralPresenter {
     }
 
     /// Whether the page, not Settings' index, has the keyboard. Arriving puts it on On start, and
-    /// leaving takes it off the controls; only a change moves it.
-    pub fn set_page_focused(&mut self, focused: bool) {
-        if focused != self.page_focused {
-            self.page_focused = focused;
-            self.field = focused.then_some(GENERAL_FIELD_ON_START);
+    /// leaving takes it off the controls; only a change moves it. Answers whether it changed, so
+    /// the View redraws only then: the frame tells the page on every draw.
+    pub fn set_page_focused(&mut self, focused: bool) -> bool {
+        if focused == self.page_focused {
+            return false;
         }
+        self.page_focused = focused;
+        self.field = focused.then_some(GENERAL_FIELD_ON_START);
+        true
     }
 
     pub fn settings(&self) -> &GeneralSettings {
@@ -493,6 +496,15 @@ mod tests {
         assert!(general.view_model().on_start.select.focused);
         general.set_page_focused(false);
         assert_eq!(general.view_model().field, None);
+    }
+
+    #[test]
+    fn telling_the_page_its_focus_again_is_no_change() {
+        let (_, mut general) = writable();
+        assert!(general.set_page_focused(true));
+        assert!(!general.set_page_focused(true));
+        assert!(general.set_page_focused(false));
+        assert!(!general.set_page_focused(false));
     }
 
     #[test]

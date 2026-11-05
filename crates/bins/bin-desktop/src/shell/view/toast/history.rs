@@ -5,10 +5,12 @@
 
 use std::rc::Rc;
 
+use chrono::{DateTime, Local};
 use gpui::{
     AnyElement, App, Context, EventEmitter, IntoElement, Render, Window, div, prelude::*, px,
 };
 use lib_shell::{ToastHistoryPresenter, ToastHistoryRow};
+use lib_toast::History;
 use lib_viper::dialog::DialogInput;
 
 use crate::{
@@ -35,6 +37,12 @@ pub struct ToastHistoryDialog {
 impl ToastHistoryDialog {
     pub fn new(presenter: ToastHistoryPresenter) -> Self {
         Self { presenter }
+    }
+
+    /// Shows a Toast raised while the card is up.
+    pub fn refresh(&mut self, history: &History<DateTime<Local>>, cx: &mut Context<'_, Self>) {
+        self.presenter.refresh(history);
+        cx.notify();
     }
 
     /// Emits the close once the Presenter has closed it.

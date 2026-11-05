@@ -98,10 +98,13 @@ impl TracingPage {
         cx.notify();
     }
 
-    /// The capture gained entries: pulls them in. Not an input, since nothing here writes, so an
-    /// idle capture redraws nothing.
+    /// The capture gained entries: pulls them in. Not an input, since nothing here writes, and it
+    /// redraws only when the rows changed, or while none show, since the empty note counts the
+    /// hidden ones; entries the level hides redraw nothing else.
     pub fn appended(&mut self, cx: &mut Context<'_, Self>) {
-        self.handle(TracingEvent::Appended, cx);
+        if self.route(TracingEvent::Appended, cx) || self.presenter.visible_count() == 0 {
+            cx.notify();
+        }
     }
 
     /// Clear logs was confirmed, so the capture is empty.
@@ -120,12 +123,19 @@ impl TracingPage {
     }
 
     fn handle(&mut self, event: TracingEvent, cx: &mut Context<'_, Self>) {
+        self.route(event, cx);
+        cx.notify();
+    }
+
+    /// Hands `event` to the Presenter; whether it changed the log list.
+    fn route(&mut self, event: TracingEvent, cx: &mut Context<'_, Self>) -> bool {
         let mut router = TracingRouter {
             list: &self.log_list,
             cx,
+            list_changed: false,
         };
         self.presenter.handle(event, &mut router);
-        cx.notify();
+        router.list_changed
     }
 }
 

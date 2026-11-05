@@ -172,8 +172,9 @@ impl Page for LedgerPage {
     }
 
     fn set_page_focused(&mut self, focused: bool, cx: &mut Context<'_, Self>) {
-        self.presenter.set_page_focused(focused);
-        cx.notify();
+        if self.presenter.set_page_focused(focused) {
+            cx.notify();
+        }
     }
 
     /// The Presenter's legend, rebound keys included, which the `?` cheat sheet reads.

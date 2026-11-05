@@ -228,13 +228,16 @@ impl DisplayPresenter {
 
     /// Whether the page, not Settings' index, has the keyboard. Arriving puts it on the first
     /// control, and leaving takes it off the controls and the grid; only a change moves it.
-    pub fn set_page_focused(&mut self, focused: bool) {
+    /// Answers whether it changed, so the View redraws only then: the frame tells the page on
+    /// every draw.
+    pub fn set_page_focused(&mut self, focused: bool) -> bool {
         if focused == self.page_focused {
-            return;
+            return false;
         }
         self.page_focused = focused;
         self.field = focused.then_some(0);
         self.grid = None;
+        true
     }
 
     pub fn output(&self) -> DisplayOutput {

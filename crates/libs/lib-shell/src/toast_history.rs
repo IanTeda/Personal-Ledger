@@ -33,22 +33,23 @@ pub struct ToastHistoryPresenter {
 }
 
 impl ToastHistoryPresenter {
-    /// Opens over the Toasts raised so far, a snapshot while the card is up (the Toast timers
-    /// pause behind a Dialog, so nothing changes under it).
+    /// Opens over the Toasts raised so far.
     pub fn open(history: &History<DateTime<Local>>) -> Self {
-        let rows = history
-            .iter()
-            .map(|entry| ToastHistoryRow {
-                kind: entry.kind(),
-                time: format_time(entry.last_raised().time()),
-                text: entry.text().to_string(),
-                badge: (entry.count() > 1).then(|| format!("×{}", entry.count())),
-            })
-            .collect();
         Self {
-            view_model: ToastHistoryViewModel { rows },
+            view_model: ToastHistoryViewModel {
+                rows: rows(history),
+            },
             scroll: 0,
         }
+    }
+
+    /// Reads the history again after a Toast was raised behind the card. The Toast stack is hidden
+    /// while the card is up, so the card is the only place a new Toast shows.
+    pub fn refresh(&mut self, history: &History<DateTime<Local>>) {
+        self.view_model.rows = rows(history);
+        self.scroll = self
+            .scroll
+            .min(self.view_model.rows.len().saturating_sub(1));
     }
 
     pub fn view_model(&self) -> &ToastHistoryViewModel {
@@ -75,6 +76,19 @@ impl ToastHistoryPresenter {
     pub fn cancel(&mut self, router: &mut impl DialogRouter<()>) {
         router.close(None);
     }
+}
+
+/// The history's rows, newest first.
+fn rows(history: &History<DateTime<Local>>) -> Vec<ToastHistoryRow> {
+    history
+        .iter()
+        .map(|entry| ToastHistoryRow {
+            kind: entry.kind(),
+            time: format_time(entry.last_raised().time()),
+            text: entry.text().to_string(),
+            badge: (entry.count() > 1).then(|| format!("×{}", entry.count())),
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -115,6 +129,24 @@ mod tests {
         let toasts = Toasts::default();
 
         assert!(open(&toasts).view_model().rows.is_empty());
+    }
+
+    #[test]
+    fn a_toast_raised_behind_the_card_shows_on_refresh() {
+        let mut toasts = Toasts::default();
+        toasts.raise(ToastKind::Info, "before", at(1));
+        let mut history = open(&toasts);
+        toasts.raise(ToastKind::Error, "behind", at(2));
+
+        history.refresh(toasts.history());
+
+        let texts: Vec<_> = history
+            .view_model()
+            .rows
+            .iter()
+            .map(|row| row.text.as_str())
+            .collect();
+        assert_eq!(texts, ["behind", "before"]);
     }
 
     #[test]

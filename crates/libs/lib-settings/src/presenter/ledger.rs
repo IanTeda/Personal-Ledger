@@ -96,9 +96,12 @@ impl LedgerPresenter {
         self.back_chord = back_chord;
     }
 
-    /// Whether the page, not Settings' index, has the keyboard.
-    pub fn set_page_focused(&mut self, focused: bool) {
+    /// Whether the page, not Settings' index, has the keyboard. Answers whether that changed, so
+    /// the View redraws only then: the frame tells the page on every draw.
+    pub fn set_page_focused(&mut self, focused: bool) -> bool {
+        let changed = focused != self.page_focused;
         self.page_focused = focused;
+        changed
     }
 
     /// Whether the Presenter takes `event` as things stand, so a key it declines goes on to the

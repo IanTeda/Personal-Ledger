@@ -3,7 +3,7 @@
 //! its drawing (`shell::view::toast`).
 
 use chrono::Local;
-use gpui::{AppContext as _, Context};
+use gpui::{App, AppContext as _, Context};
 use lib_toast::{Notice, ToastKind};
 
 use super::Root;
@@ -23,10 +23,23 @@ impl Root {
 
     /// Shows every Notice the Routers queued since the last drain (`crate::notices`) on the Shell's
     /// Presenter, stamped with the local time for the Toast history. Each input's `send` runs it
-    /// once the input is handled and committed (`crate::input`).
-    pub(crate) fn drain_notices(&mut self) {
+    /// once the input is handled and committed (`crate::input`). An open Toast history card reads
+    /// them too, since it hides the Toast stack.
+    pub(crate) fn drain_notices(&mut self, cx: &mut App) {
+        let mut shown = false;
         for notice in crate::notices::drain() {
             self.presenter.show(notice, Local::now());
+            shown = true;
+        }
+        if !shown {
+            return;
+        }
+        if let Some(dialog) = self
+            .hosted_dialog()
+            .and_then(|dialog| dialog.downcast::<ToastHistoryDialog>())
+        {
+            let history = self.presenter.toasts().history();
+            dialog.update(cx, |dialog, cx| dialog.refresh(history, cx));
         }
     }
 
