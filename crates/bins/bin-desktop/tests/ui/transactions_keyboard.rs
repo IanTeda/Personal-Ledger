@@ -422,7 +422,7 @@ fn delete_the_first_account(ui: &mut Harness<'_>) {
 }
 
 #[gpui::test]
-fn a_failed_forwarded_write_puts_the_transactions_back_with_an_error_toast(
+fn a_failed_transactions_write_puts_the_transactions_back_with_an_error_toast(
     app: &mut TestAppContext,
 ) {
     let mut ui = Harness::with_failing_transactions(app);

@@ -1,6 +1,6 @@
 //! The Desktop's one copy of the Ledger (ADR-0038). [`LedgerStore`] holds the only [`Ledger`],
-//! and writes no domain of it: every domain is written by its module, through its ports or a
-//! cross-domain module's port, and the store brings its read copies in line and emits a
+//! and writes no domain outside its `#[doc(hidden)]` test hooks (`*_for_test`): every domain is
+//! written by its module, through its ports or a cross-domain module's port, and the store brings its read copies in line and emits a
 //! [`LedgerChanged`] naming the domains that changed, which [`notify_on`] turns into a repaint for
 //! the Entities reading them.
 //!
