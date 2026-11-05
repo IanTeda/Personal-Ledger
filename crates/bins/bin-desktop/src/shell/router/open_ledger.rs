@@ -72,6 +72,8 @@ pub struct OpenLedger {
     /// The Bills ports the Bills module and `LedgerStore` share, which a new month's Bill
     /// Schedule is generated through.
     pub(super) bills: crate::bills::DesktopPorts,
+    /// The rail's badge counts over the stores, which the Shell's Presenter reads after each input.
+    pub(super) rail_reads: lib_database::StoredShellReads,
     /// The Views that render themselves and handle their own input (ADR-0037): the Dashboard,
     /// Bills, Budgets, Transactions with its Import step, and Documents. Each reaches `Root` only
     /// through `ViewEvent`. Settings is `Root`'s own, given its This Ledger pages here.
@@ -287,6 +289,18 @@ impl OpenLedger {
             transactions: storage.transactions.clone(),
             payees: storage.payees.clone(),
         });
+        // The rail's badges read their counts through the Shell's port, answered over the stores
+        // (#1026).
+        let rail_reads = lib_database::StoredShellReads {
+            bills: storage.bills.borrow().store(),
+            budgets: storage.budgets.clone(),
+            documents: storage.documents.clone(),
+            categories: storage.categories.clone(),
+            accounts: storage.accounts.clone(),
+            transactions: storage.transactions.clone(),
+            units: settings_setup.units.ports.clone(),
+            payees: storage.payees.clone(),
+        };
         // The Documents page writes the store through its Interactors, and reads the other
         // domains through their stores (#967).
         let documents_store = crate::document_types::ports::shared(&storage.documents);
@@ -362,6 +376,7 @@ impl OpenLedger {
             ledger,
             units: units_ports,
             bills: bills_ports,
+            rail_reads,
             views: ViewEntities {
                 dashboard: dashboard_view,
                 bills: bills_view,

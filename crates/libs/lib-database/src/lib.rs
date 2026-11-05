@@ -82,8 +82,8 @@ pub use adapter::store::{
     SharedTransactionsStore, SharedUnitsStore, StoredAccountReads, StoredBillReads,
     StoredBillUnits, StoredBudgetCategories, StoredBudgetReads, StoredDashboardReads,
     StoredDocumentReads, StoredImportReads, StoredInstitutionReads, StoredPayeeReads,
-    StoredTagReads, StoredTagRemovalReads, StoredTransactionReads, StoredUnitReads, TagsStore,
-    TransactionsStore, UnitsStore,
+    StoredShellReads, StoredTagReads, StoredTagRemovalReads, StoredTransactionReads,
+    StoredUnitReads, TagsStore, TransactionsStore, UnitsStore,
 };
 pub use adapter::tag_removal::TagRemovalAdapter;
 pub use adapter::tags::TagsAdapter;

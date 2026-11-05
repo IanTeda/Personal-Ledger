@@ -4844,6 +4844,7 @@ dependencies = [
  "lib_inventory",
  "lib_ledger",
  "lib_payees",
+ "lib_shell",
  "lib_tag_removal",
  "lib_tags",
  "lib_transaction_import",

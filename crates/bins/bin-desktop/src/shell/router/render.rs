@@ -13,12 +13,9 @@ use gpui::{
 };
 
 use crate::{
-    bills::{self},
-    budgets,
     documents::{self},
     navigation::explorer::{self as explorer_view},
     navigation::nav::{FocusZone, InputMode},
-    period::Period,
     shell::view::dialog_entity::DialogHandle,
     shell::view::dialog_host::{Dialog, DialogActions},
     shell::view::page_clicks::PageClicks,
@@ -213,28 +210,9 @@ impl Render for Root {
             cancel: on_settings_dialog_cancel.clone(),
             confirm: on_settings_dialog_confirm.clone(),
         };
-        // The default Budget's current month: the rail badge and the Dashboard's budget list. With
-        // no Ledger open the rail has no badges.
-        let default_budget_figures = self.open.as_ref().and_then(|open| {
-            let budget_reads = open.views.budgets.read(cx).ports().reads();
-            open.ledger
-                .read(cx)
-                .ledger()
-                .budgets()
-                .default_budget()
-                .map(|budget| {
-                    budgets::period_figures(
-                        budget,
-                        &*budget_reads,
-                        Period::of(self.today),
-                        self.today,
-                    )
-                })
-        });
-        let documents_inbox = self
-            .open
-            .as_ref()
-            .map_or(0, |open| open.views.documents.read(cx).inbox_count());
+        // The rail's badges, as the Shell's Presenter last read them; with no Ledger open it holds
+        // none, so the rail has no badges.
+        let rail_counts = self.presenter.view_model().rail_counts.unwrap_or_default();
         let clicks = PageClicks::new(cx);
 
         // The active View's own element, told whether the View zone has focus before the status
@@ -291,20 +269,9 @@ impl Render for Root {
                                     on_row_hover,
                                     on_row_click,
                                 )
-                                .bill_attention(
-                                    bills::attention_entries(
-                                        self.bill_plans(cx),
-                                        self.bill_entries(cx),
-                                        self.today,
-                                    )
-                                    .len(),
-                                )
-                                .budget_over(
-                                    default_budget_figures
-                                        .as_ref()
-                                        .map_or(0, |figures| figures.over_count),
-                                )
-                                .documents_inbox(documents_inbox)
+                                .bill_attention(rail_counts.bills_attention)
+                                .budget_over(rail_counts.budgets_over)
+                                .documents_inbox(rail_counts.documents_inbox)
                                 .ledger_open(self.ledger_open()),
                             )
                             .when(

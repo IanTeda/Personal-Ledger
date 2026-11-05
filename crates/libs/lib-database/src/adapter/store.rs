@@ -79,6 +79,7 @@ use lib_institutions::{InstitutionRepository, InstitutionUsage, InstitutionUse};
 use lib_inventory::InventoryRepository;
 use lib_inventory::fake::InMemoryInventory;
 use lib_payees::{PayeeCategories, PayeeCategory, PayeeRepository, PayeeUsage, PayeeUse};
+use lib_shell::{RailCounts, ShellRailCounts};
 use lib_tag_removal::{TagCount, TagRemovalReads};
 use lib_tags::{TagRepository, TagUsage, TagUse};
 use lib_transaction_import::{ImportAccount, ImportAccounts, ImportCategories};
@@ -1216,6 +1217,58 @@ impl DashboardBudgets for StoredDashboardReads {
     }
 }
 
+/// `lib-shell`'s rail counts answered by the shared stores of the domains whose rules they are, each
+/// borrowed for the one read (#1026), as [`StoredDashboardReads`] answers the Dashboard's. It calls
+/// `lib-bills`' Needs Attention rule, `lib-budgets`' over-budget count for the default Budget this
+/// month and `lib-documents`' Inbox count, and re-implements none of them. The same struct stands
+/// over the adapters and [`Stores::fake`]'s in-memory stores.
+#[derive(Clone)]
+pub struct StoredShellReads {
+    pub bills: SharedBillsStore,
+    pub budgets: SharedBudgetsStore,
+    pub documents: SharedDocumentsStore,
+    /// The stores the Budget figures read besides the two above.
+    pub categories: SharedCategoriesStore,
+    pub accounts: SharedAccountsStore,
+    pub transactions: SharedTransactionsStore,
+    pub units: SharedUnitsStore,
+    pub payees: SharedPayeesStore,
+}
+
+impl ShellRailCounts for StoredShellReads {
+    fn rail_counts(&self, today: NaiveDate) -> RailCounts {
+        let bills_attention = {
+            let bills = self.bills.borrow();
+            lib_bills::attention_entries(
+                &bills.plans().bill_plans(),
+                &bills.entries().entries(),
+                today,
+            )
+            .len()
+        };
+        let stored = Budgets::from_stored(self.budgets.borrow().budgets().budgets());
+        let budgets_over = stored.default_budget().map_or(0, |budget| {
+            let reads = StoredBudgetReads {
+                categories: self.categories.clone(),
+                accounts: self.accounts.clone(),
+                transactions: self.transactions.clone(),
+                bills: self.bills.clone(),
+                units: self.units.clone(),
+                payees: self.payees.clone(),
+            };
+            lib_budgets::period_figures(budget, &reads, lib_core::Period::of(today), today)
+                .over_count
+        });
+        let documents_inbox =
+            lib_documents::inbox_count(&self.documents.borrow().documents().documents());
+        RailCounts {
+            bills_attention,
+            budgets_over,
+            documents_inbox,
+        }
+    }
+}
+
 /// `lib-bills`' four read ports answered by the shared stores of the domains Bills reads, each
 /// borrowed for the one read (#994), as [`StoredBudgetReads`] answers Budgets'. The same struct
 /// stands over the adapters and [`Stores::fake`]'s in-memory stores.
@@ -2157,5 +2210,196 @@ mod dashboard_reads_tests {
         options: SqliteConnectOptions,
     ) {
         no_default_budget_shows_no_bars(&on_adapters(options, false));
+    }
+}
+
+/// `StoredShellReads`, run over the in-memory stores and the adapters with the same assertions
+/// (#1026).
+#[cfg(test)]
+mod shell_reads_tests {
+    use chrono::TimeZone;
+    use lib_core::Period;
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+
+    use super::*;
+    use crate::{PendingWrites, Writer};
+
+    fn today() -> NaiveDate {
+        NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date")
+    }
+
+    fn now() -> chrono::DateTime<chrono::Utc> {
+        chrono::Utc.from_utc_datetime(&today().and_hms_opt(12, 0, 0).expect("a real time"))
+    }
+
+    /// The stub's rows in memory: the same rows the stub seed writes to the file.
+    fn in_memory(with_default_budget: bool) -> StoredShellReads {
+        let stub = crate::seed::stub_bills(today());
+        let budgets = if with_default_budget {
+            crate::seed::stub_budgets(today())
+        } else {
+            Vec::new()
+        };
+        StoredShellReads {
+            bills: Rc::new(RefCell::new(InMemoryBills {
+                plans: stub.plans,
+                entries: stub.entries,
+            })),
+            budgets: Rc::new(RefCell::new(InMemoryBudgets { budgets })),
+            documents: Rc::new(RefCell::new(InMemoryDocuments {
+                documents: crate::seed::stub_documents(today(), &[]),
+                types: lib_documents::types::default_types(),
+            })),
+            categories: Rc::new(RefCell::new(InMemoryCategories::stub())),
+            accounts: Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts::stub())),
+            transactions: Rc::new(RefCell::new(InMemoryTransactions {
+                transactions: crate::seed::stub_transactions(today()),
+            })),
+            units: Rc::new(RefCell::new(InMemoryPorts::stub(now()))),
+            payees: Rc::new(RefCell::new(lib_payees::fake::InMemoryPorts::stub())),
+        }
+    }
+
+    /// The stub seeded into a test database, Documents included, then loaded with fresh adapters as
+    /// start-up does.
+    fn on_adapters(options: SqliteConnectOptions, with_default_budget: bool) -> StoredShellReads {
+        let (writer, _failures) = Writer::spawn(options).expect("the test database opens");
+        crate::seed::write_stub_rows(&writer, now(), today(), None, true)
+            .expect("the stub is written");
+        if !with_default_budget {
+            writer
+                .run(|pool| async move {
+                    sqlx::query("UPDATE budgets SET is_default = 0")
+                        .execute(&pool)
+                        .await?;
+                    Ok(())
+                })
+                .expect("the default is cleared");
+        }
+        let pending = PendingWrites::new(writer);
+        let units = UnitsAdapter::load(pending.clone()).expect("the Units load");
+        let categories = CategoriesAdapter::load(pending.clone()).expect("the Categories load");
+        let accounts = AccountsAdapter::load(pending.clone()).expect("the Accounts load");
+        let payees = PayeesAdapter::load(pending.clone()).expect("the Payees load");
+        let transactions =
+            TransactionsAdapter::load(pending.clone()).expect("the Transactions load");
+        let bills = BillsAdapter::load(pending.clone()).expect("the Bills load");
+        let documents = DocumentsAdapter::load(pending.clone()).expect("the Documents load");
+        let budgets = BudgetsAdapter::load(pending).expect("the Budgets load");
+        StoredShellReads {
+            bills: Rc::new(RefCell::new(bills)),
+            budgets: Rc::new(RefCell::new(budgets)),
+            documents: Rc::new(RefCell::new(documents)),
+            categories: Rc::new(RefCell::new(categories)),
+            accounts: Rc::new(RefCell::new(accounts)),
+            transactions: Rc::new(RefCell::new(transactions)),
+            units: Rc::new(RefCell::new(units)),
+            payees: Rc::new(RefCell::new(payees)),
+        }
+    }
+
+    /// Each count is its domain's rule over the stub: Needs Attention, the default Budget's
+    /// over-budget Categories this month and the Unfiled Documents.
+    fn each_count_is_its_domains_rule(reads: &StoredShellReads) {
+        let stub = crate::seed::stub_bills(today());
+        let attention = lib_bills::attention_entries(&stub.plans, &stub.entries, today()).len();
+        assert!(attention > 0, "the stub has Bills needing attention");
+        let inbox = lib_documents::inbox_count(&crate::seed::stub_documents(today(), &[]));
+        assert!(inbox > 0, "the stub has Documents in the Inbox");
+        let budgets = Budgets::from_stored(crate::seed::stub_budgets(today()));
+        let budget = budgets
+            .default_budget()
+            .expect("a stub Budget is the default");
+        let over = lib_budgets::period_figures(
+            budget,
+            &StoredBudgetReads {
+                categories: reads.categories.clone(),
+                accounts: reads.accounts.clone(),
+                transactions: reads.transactions.clone(),
+                bills: reads.bills.clone(),
+                units: reads.units.clone(),
+                payees: reads.payees.clone(),
+            },
+            Period::of(today()),
+            today(),
+        )
+        .over_count;
+        assert!(over > 0, "the stub's default Budget is over somewhere");
+
+        assert_eq!(
+            reads.rail_counts(today()),
+            RailCounts {
+                bills_attention: attention,
+                budgets_over: over,
+                documents_inbox: inbox,
+            }
+        );
+    }
+
+    fn no_default_budget_counts_none_over(reads: &StoredShellReads) {
+        assert_eq!(reads.rail_counts(today()).budgets_over, 0);
+    }
+
+    /// Filing a Document takes it out of the Inbox count at once.
+    fn filing_a_document_drops_the_inbox_count(reads: &StoredShellReads) {
+        let before = reads.rail_counts(today()).documents_inbox;
+        let unfiled = reads
+            .documents
+            .borrow()
+            .documents()
+            .documents()
+            .into_iter()
+            .find(|document| document.is_unfiled())
+            .expect("a Document waits in the Inbox");
+        let filed = lib_documents::Document {
+            filing: lib_documents::Filing::Filed,
+            ..unfiled
+        };
+        reads
+            .documents
+            .borrow_mut()
+            .documents_mut()
+            .upsert_document(&filed);
+
+        assert_eq!(reads.rail_counts(today()).documents_inbox, before - 1);
+    }
+
+    #[test]
+    fn over_the_in_memory_stores_each_count_is_its_domains_rule() {
+        each_count_is_its_domains_rule(&in_memory(true));
+    }
+
+    #[test]
+    fn over_the_in_memory_stores_no_default_budget_counts_none_over() {
+        no_default_budget_counts_none_over(&in_memory(false));
+    }
+
+    #[test]
+    fn over_the_in_memory_stores_filing_a_document_drops_the_inbox_count() {
+        filing_a_document_drops_the_inbox_count(&in_memory(true));
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn over_the_adapters_each_count_is_its_domains_rule(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        each_count_is_its_domains_rule(&on_adapters(options, true));
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn over_the_adapters_no_default_budget_counts_none_over(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        no_default_budget_counts_none_over(&on_adapters(options, false));
+    }
+
+    #[sqlx::test(migrations = "migrations/client")]
+    async fn over_the_adapters_filing_a_document_drops_the_inbox_count(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        filing_a_document_drops_the_inbox_count(&on_adapters(options, true));
     }
 }

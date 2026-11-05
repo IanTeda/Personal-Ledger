@@ -23,6 +23,8 @@ lib_transactions = { path = "../../../crates/libs/lib-transactions" }
 lib_bills = { path = "../../../crates/libs/lib-bills" }
 lib_budgets = { path = "../../../crates/libs/lib-budgets" }
 lib_dashboard = { path = "../../../crates/libs/lib-dashboard" }
+## Only for the rail counts port `StoredShellReads` answers (#1026).
+lib_shell = { path = "../../../crates/libs/lib-shell" }
 lib_documents = { path = "../../../crates/libs/lib-documents" }
 lib_payees = { path = "../../../crates/libs/lib-payees" }
 lib_institutions = { path = "../../../crates/libs/lib-institutions" }

@@ -317,6 +317,18 @@ impl Root {
         self.set_keymaps(&keybindings, cx);
         let display = self.display(cx);
         self.push_display_preferences(display, cx);
+        self.refresh_rail_counts();
+    }
+
+    /// Reads the rail's badge counts afresh into the Shell's Presenter from the Open Ledger's
+    /// stores, or drops them with none open. `send` calls it once each input is committed, and the
+    /// Ledger opening and closing do.
+    pub(crate) fn refresh_rail_counts(&mut self) {
+        let reads = self
+            .open
+            .as_ref()
+            .map(|open| &open.rail_reads as &dyn lib_shell::ShellRailCounts);
+        self.presenter.refresh_rail_counts(reads);
     }
 
     /// Closes the Open Ledger (`:close`): flushes its writes, drops everything built on it and
@@ -339,6 +351,7 @@ impl Root {
         // Every place in the history was on the closed Ledger, so Back and Forward must not reach
         // one with none open.
         self.presenter.forget_history();
+        self.refresh_rail_counts();
         cx.notify();
     }
 
@@ -431,13 +444,6 @@ impl Root {
     /// The Bill Plans, from the Ledger's read copy of the Bills ports; none with no Ledger open.
     fn bill_plans<'a>(&self, cx: &'a App) -> &'a [crate::bills::BillPlan] {
         self.ledger(cx).map_or(&[], lib_ledger::Ledger::bill_plans)
-    }
-
-    /// The Bill Schedule entries, from the Ledger's read copy of the Bills ports; none with no
-    /// Ledger open.
-    fn bill_entries<'a>(&self, cx: &'a App) -> &'a [crate::bills::BillScheduleEntry] {
-        self.ledger(cx)
-            .map_or(&[], lib_ledger::Ledger::bill_entries)
     }
 
     /// Restores the Documents mode, Library scope and sort from the last run, onto the Open
@@ -622,6 +628,13 @@ impl Root {
             view.general()
                 .update(cx, |page, cx| page.set_this_device(device, cx));
         });
+    }
+
+    /// The rail's badge counts the Shell's Presenter holds, which the rail draws; `None` with no
+    /// Ledger open.
+    #[doc(hidden)]
+    pub fn rail_counts(&self) -> Option<lib_shell::RailCounts> {
+        self.presenter.view_model().rail_counts
     }
 
     /// Points `:open`'s and `:new`'s file explorer at `folder`, as start-up's Ledger folder would,

@@ -1,10 +1,13 @@
-//! [`RecordingRouter`], a root Router that only records what it was asked, for tests.
+//! [`RecordingRouter`], a root Router that only records what it was asked, and [`FakeRailCounts`],
+//! rail counts a test sets, for tests.
+
+use std::cell::{Cell, RefCell};
 
 use chrono::NaiveDate;
 use lib_toast::{Notice, Notify};
 
 use crate::keymap::ShellCommand;
-use crate::protocols::ShellRouter;
+use crate::protocols::{RailCounts, ShellRailCounts, ShellRouter};
 
 /// One call the Presenter made on its Router, in order.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,5 +48,19 @@ impl ShellRouter for RecordingRouter {
 
     fn not_a_jump(&mut self, sequence: String) {
         self.routed.push(Routed::NotAJump(sequence));
+    }
+}
+
+/// Rail counts a test sets, recording each day they were read on.
+#[derive(Debug, Default)]
+pub struct FakeRailCounts {
+    pub counts: Cell<RailCounts>,
+    pub read_on: RefCell<Vec<NaiveDate>>,
+}
+
+impl ShellRailCounts for FakeRailCounts {
+    fn rail_counts(&self, today: NaiveDate) -> RailCounts {
+        self.read_on.borrow_mut().push(today);
+        self.counts.get()
     }
 }

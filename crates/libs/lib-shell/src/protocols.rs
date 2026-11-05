@@ -1,4 +1,5 @@
-//! What the Shell's Presenter asks of the Client: the root Router, which the bin implements.
+//! What the Shell's Presenter asks of the Client: the root Router, which the bin implements, and
+//! the rail's badge counts, which the bin answers from the open Ledger's stores.
 
 use chrono::NaiveDate;
 use lib_toast::Notify;
@@ -27,4 +28,22 @@ pub trait ShellRouter: Notify {
     /// A prefix was followed by a key that finishes no sequence (`g x`): say so on the status
     /// line.
     fn not_a_jump(&mut self, sequence: String);
+}
+
+/// The counts the primary rail's badges show, each worked out by the domain that owns its rule.
+/// A zero draws no badge.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RailCounts {
+    /// The Bills badge: how many Bill Schedule entries need attention.
+    pub bills_attention: usize,
+    /// The Budgets badge: how many of the default Budget's Categories are over this month.
+    pub budgets_over: usize,
+    /// The Documents badge: how many Documents wait in the Inbox.
+    pub documents_inbox: usize,
+}
+
+/// The rail's badge counts on `today`, read from the open Ledger. The Shell depends on no feature
+/// crate, so it receives each count through this port rather than reaching the rules itself.
+pub trait ShellRailCounts {
+    fn rail_counts(&self, today: NaiveDate) -> RailCounts;
 }

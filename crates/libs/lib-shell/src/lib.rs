@@ -13,7 +13,9 @@
 //! key the Client offers it ([`keymap`], [`ShellPresenter::key`]), with the `g` prefix the Client's
 //! timer ends ([`ShellInput::PrefixExpired`]), and owns the [`Noun`] and [`ActiveView`] the Client
 //! navigates by ([`navigation`]). A Notice from a View not yet a module and a failed write pass
-//! through it to the Router. No module depends on it; only the bins do.
+//! through it to the Router. It holds the rail's badge counts, read through [`ShellRailCounts`]
+//! after each input while a Ledger is open. No module depends on it; only the bins and the adapter
+//! answering that port do.
 
 pub mod dialog;
 pub mod fake;
@@ -33,7 +35,7 @@ pub use navigation::{ActiveView, Noun};
 pub use presenter::{
     DialogInput, NavInput, ShellInput, ShellKey, ShellPresenter, ShellViewModel, ToastInput,
 };
-pub use protocols::ShellRouter;
+pub use protocols::{RailCounts, ShellRailCounts, ShellRouter};
 pub use window_size::WindowSize;
 
 /// What every status-line hint is, the Shell's own and each module's, so the bins name it here.

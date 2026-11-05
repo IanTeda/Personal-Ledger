@@ -1,8 +1,14 @@
 //! The Shell driven by keys alone: `g` jumps, the primary rail's browse-and-commit, focus
 //! zone cycling, the rail toggle, the modes the global keys enter and leave, and the order a key
 //! is offered in (`bin_desktop`'s `input::route_key`), each step winning a key a later one also
-//! binds, the status message answering one key, and the hints naming rebound keys. Assertions read
-//! `NavState` back from `Root`, never pixels.
+//! binds, the status message answering one key, the hints naming rebound keys, and the rail's
+//! badges following a commit. Assertions read `NavState` and the rail counts back from `Root`,
+//! never pixels.
+
+#![expect(
+    clippy::expect_used,
+    reason = "test support: a stub row or count the test relies on missing should fail it loudly"
+)]
 
 use std::time::Duration;
 
@@ -14,6 +20,7 @@ use bin_desktop::{
 };
 use common::Harness;
 use gpui::TestAppContext;
+use lib_shell::RailCounts;
 
 fn focus(ui: &mut Harness<'_>) -> FocusZone {
     ui.read(|shell| shell.nav().focus())
@@ -452,4 +459,108 @@ fn the_shell_hints_name_a_rebound_key(app: &mut TestAppContext) {
         .collect();
 
     assert_eq!(keys, [":", "/", "?", "ctrl+b"]);
+}
+
+/// The rail's badge counts, which a Ledger being open gives.
+fn badges(ui: &mut Harness<'_>) -> RailCounts {
+    ui.read(|shell| shell.rail_counts())
+        .expect("a Ledger is open, so the rail has counts")
+}
+
+#[gpui::test]
+fn the_rail_counts_the_stub_ledger_and_holds_none_once_it_closes(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    let counts = badges(&mut ui);
+    assert!(
+        counts.bills_attention > 0,
+        "the stub has Bills needing attention"
+    );
+    assert!(
+        counts.budgets_over > 0,
+        "the stub's default Budget is over somewhere"
+    );
+    assert!(
+        counts.documents_inbox > 0,
+        "the stub has Documents in the Inbox"
+    );
+
+    ui.press(": c l o s e enter");
+
+    assert!(!ui.read(|shell| shell.ledger_open()));
+    assert_eq!(ui.read(|shell| shell.rail_counts()), None);
+}
+
+#[gpui::test]
+fn paying_a_bill_needing_attention_drops_the_bills_badge(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    let before = badges(&mut ui);
+    ui.press("g w");
+    // The Bills page lists the entries needing attention first.
+    assert_ne!(ui.bills().rows[0].status, "Paid");
+
+    ui.press("p right enter");
+
+    assert_eq!(ui.bills().dialog, None, "the payment saved");
+    assert_eq!(
+        badges(&mut ui),
+        RailCounts {
+            bills_attention: before.bills_attention - 1,
+            ..before
+        }
+    );
+}
+
+#[gpui::test]
+fn a_new_default_budget_moves_the_budgets_badge(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    let before = badges(&mut ui);
+    assert_eq!(before.budgets_over, 4, "Personal spending is over in four");
+    ui.press("g b");
+    ui.press(": b u d g e t s space m a n a g e enter");
+    assert_eq!(ui.budgets().dialog.as_deref(), Some("Manage"));
+
+    // Joint household becomes the default, so the badge counts its over-budget Categories.
+    ui.press("j *");
+
+    assert_eq!(
+        ui.budgets().manage_rows.unwrap_or_default()[1],
+        ("Joint household".to_string(), true, false)
+    );
+    assert_eq!(
+        badges(&mut ui),
+        RailCounts {
+            budgets_over: 2,
+            ..before
+        },
+        "Joint household is over in two Categories this month"
+    );
+}
+
+#[gpui::test]
+fn filing_a_document_drops_the_documents_badge(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    let before = badges(&mut ui);
+    ui.press("g f i");
+    // A receipt with a strong match, so the picker's preselected record files it.
+    for _ in 0..200 {
+        if ui.documents().selected_file.as_deref() == Some("IMG_4471.jpg") {
+            break;
+        }
+        ui.press("j");
+    }
+    assert_eq!(
+        ui.documents().selected_file.as_deref(),
+        Some("IMG_4471.jpg")
+    );
+
+    ui.press("l enter");
+
+    assert_eq!(ui.documents().dialog, None, "the Document filed");
+    assert_eq!(
+        badges(&mut ui),
+        RailCounts {
+            documents_inbox: before.documents_inbox - 1,
+            ..before
+        }
+    );
 }

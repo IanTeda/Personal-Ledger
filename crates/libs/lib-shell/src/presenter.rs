@@ -24,7 +24,7 @@ use lib_viper::view::Hint;
 use crate::keymap::{HELP, OPEN_COMMAND_POPUP, SEARCH, ShellCommand, TOGGLE_RAIL, global_keymap};
 use crate::nav::{ContextSelection, FocusZone, InputMode, NavState};
 use crate::navigation::Noun;
-use crate::protocols::ShellRouter;
+use crate::protocols::{RailCounts, ShellRailCounts, ShellRouter};
 
 /// What the Client delivers to the Shell, each through its one `send`. `F` is the Client's write
 /// failure ([`ShellRouter::Failure`]).
@@ -129,6 +129,8 @@ pub struct ShellViewModel {
     /// rail toggle, each under its key now. A command `[keybindings]` unbinds has none. Each keeps
     /// its command, so the Client can tell what a click on it does.
     pub hints: Vec<(ShellCommand, Hint)>,
+    /// The rail's badge counts as of the last input, `None` with no Ledger open.
+    pub rail_counts: Option<RailCounts>,
 }
 
 /// A Shell hint's Message: what its key does.
@@ -163,6 +165,8 @@ pub struct ShellPresenter<P> {
     /// The last [`ShellPresenter::tick_toasts`]' time, which the next advances from. `None` while the
     /// stack is empty, so the first tick after a raise only starts the count.
     last_tick: Option<Instant>,
+    /// The rail's badge counts, read after the last input; `None` with no Ledger open.
+    rail_counts: Option<RailCounts>,
 }
 
 impl<P: Copy + Eq + Default> ShellPresenter<P> {
@@ -181,6 +185,7 @@ impl<P: Copy + Eq + Default> ShellPresenter<P> {
             toasts: Toasts::default(),
             toasts_hovered: false,
             last_tick: None,
+            rail_counts: None,
         }
     }
 
@@ -229,7 +234,16 @@ impl<P: Copy + Eq + Default> ShellPresenter<P> {
                     ))
                 })
                 .collect(),
+            rail_counts: self.rail_counts,
         }
+    }
+
+    /// Reads the rail's badge counts afresh from `ledger` on the day the Clock reads, or drops
+    /// them with no Ledger open. The Client calls it once each input's writes are committed, so
+    /// a paid Bill, a changed Budget, a filed Document or a month turn shows at once, and as a
+    /// Ledger opens or closes.
+    pub fn refresh_rail_counts(&mut self, ledger: Option<&dyn ShellRailCounts>) {
+        self.rail_counts = ledger.map(|ledger| ledger.rail_counts(self.clock.today()));
     }
 
     /// A key arrived, before anything handles it: clears the status message, so the message a key
@@ -451,7 +465,7 @@ mod tests {
     use lib_toast::ToastKind;
 
     use super::*;
-    use crate::fake::{RecordingRouter, Routed};
+    use crate::fake::{FakeRailCounts, RecordingRouter, Routed};
     use crate::keymap::GLOBAL_BINDINGS;
 
     fn date(y: i32, m: u32, d: u32) -> NaiveDate {
@@ -925,6 +939,70 @@ mod tests {
         shell.navigate(NavInput::Back);
         assert_eq!(shell.nav().noun(), Noun::Dashboard);
         assert!(!shell.nav().can_go_back(), "nowhere further back");
+    }
+
+    fn counts(bills: usize, budgets: usize, documents: usize) -> RailCounts {
+        RailCounts {
+            bills_attention: bills,
+            budgets_over: budgets,
+            documents_inbox: documents,
+        }
+    }
+
+    #[test]
+    fn with_no_ledger_open_the_shell_holds_no_rail_counts() {
+        let mut shell = shell();
+        assert_eq!(shell.view_model().rail_counts, None);
+
+        shell.refresh_rail_counts(None);
+        assert_eq!(shell.view_model().rail_counts, None);
+    }
+
+    #[test]
+    fn the_rail_counts_are_held_from_a_refresh_until_the_next() {
+        let mut shell = shell();
+        let ledger = FakeRailCounts::default();
+        ledger.counts.set(counts(2, 1, 3));
+
+        shell.refresh_rail_counts(Some(&ledger));
+        ledger.counts.set(counts(1, 1, 3));
+        assert_eq!(
+            shell.view_model().rail_counts,
+            Some(counts(2, 1, 3)),
+            "held until refreshed"
+        );
+
+        shell.refresh_rail_counts(Some(&ledger));
+        assert_eq!(shell.view_model().rail_counts, Some(counts(1, 1, 3)));
+    }
+
+    #[test]
+    fn closing_the_ledger_clears_the_rail_counts() {
+        let mut shell = shell();
+        let ledger = FakeRailCounts::default();
+        ledger.counts.set(counts(2, 1, 3));
+        shell.refresh_rail_counts(Some(&ledger));
+
+        shell.refresh_rail_counts(None);
+
+        assert_eq!(shell.view_model().rail_counts, None);
+    }
+
+    #[test]
+    fn the_rail_counts_are_read_on_the_day_the_clock_reads_after_a_month_turn() {
+        let (clock, day) = Clock::settable(date(2026, 9, 30));
+        let mut shell = presenter(clock);
+        let ledger = FakeRailCounts::default();
+        shell.refresh_rail_counts(Some(&ledger));
+
+        day.set(date(2026, 10, 1));
+        shell.handle(ShellInput::DayTick, &mut RecordingRouter::default());
+        shell.refresh_rail_counts(Some(&ledger));
+
+        assert_eq!(
+            *ledger.read_on.borrow(),
+            [date(2026, 9, 30), date(2026, 10, 1)]
+        );
     }
 
     fn hint_keys(shell: &Shell) -> Vec<(ShellCommand, String)> {
