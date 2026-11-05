@@ -3,7 +3,7 @@
 //! Notice goes onto the bin's queue (`crate::notices`), which the input's `send` drains.
 
 use gpui::Context;
-use lib_dashboard::{DashboardEntryId, DashboardRouter, NoLedgerCommand};
+use lib_dashboard::{DashboardEntryId, DashboardRouter};
 use lib_toast::{Notice, Notify};
 
 use super::view::page::DashboardPage;
@@ -22,11 +22,6 @@ impl DashboardRouter for PageRouter<'_, '_> {
             due: id.due,
         })));
     }
-
-    /// Never reached on the Desktop: the page is built only on an open Ledger, and the no Ledger
-    /// open content that names `:open` and `:new` is the Shell's, whose clicks reach `Root`
-    /// directly (`shell/view/no_ledger.rs`).
-    fn run_no_ledger_command(&mut self, _command: NoLedgerCommand) {}
 }
 
 impl Notify for PageRouter<'_, '_> {

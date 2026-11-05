@@ -8,7 +8,7 @@ use lib_toast::{Notice, Notify};
 
 use crate::protocols::{
     DashboardBill, DashboardBills, DashboardBudgetBar, DashboardBudgetMonth, DashboardBudgets,
-    DashboardElapsed, DashboardEntryId, DashboardRouter, NoLedgerCommand,
+    DashboardElapsed, DashboardEntryId, DashboardRouter,
 };
 
 /// The Needs Attention rows over a plain list, in the order given. An entry is overdue once its due
@@ -87,7 +87,6 @@ impl DashboardBudgets for InMemoryDashboardReads {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Routed {
     BillEntry(DashboardEntryId),
-    Command(NoLedgerCommand),
     Notice(Notice),
 }
 
@@ -106,9 +105,5 @@ impl Notify for RecordingRouter {
 impl DashboardRouter for RecordingRouter {
     fn reveal_bill_entry(&mut self, id: DashboardEntryId) {
         self.routed.push(Routed::BillEntry(id));
-    }
-
-    fn run_no_ledger_command(&mut self, command: NoLedgerCommand) {
-        self.routed.push(Routed::Command(command));
     }
 }

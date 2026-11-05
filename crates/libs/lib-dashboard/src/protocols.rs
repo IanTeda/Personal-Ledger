@@ -105,7 +105,4 @@ impl NoLedgerCommand {
 pub trait DashboardRouter: Notify {
     /// The Bills Schedule tab with entry `id` selected.
     fn reveal_bill_entry(&mut self, id: DashboardEntryId);
-
-    /// Runs `command` as the palette would.
-    fn run_no_ledger_command(&mut self, command: NoLedgerCommand);
 }

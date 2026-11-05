@@ -16,7 +16,6 @@ use lib_viper::display::{RowDensity, StatusGlyphs, flag_glyph};
 use crate::msg;
 use crate::protocols::{
     DashboardBill, DashboardBudgetBar, DashboardEntryId, DashboardReads, DashboardRouter,
-    NoLedgerCommand,
 };
 
 /// What the Dashboard is told.
@@ -24,8 +23,6 @@ use crate::protocols::{
 pub enum DashboardEvent {
     /// A click on a Needs Attention row.
     OpenBill(DashboardEntryId),
-    /// A click on a command the no Ledger open content names.
-    NoLedgerCommand(NoLedgerCommand),
     /// The Display Preferences the page draws with.
     DisplayChanged {
         date_style: Option<DateStyle>,
@@ -104,7 +101,6 @@ impl DashboardPresenter {
     pub fn handle(&mut self, event: DashboardEvent, router: &mut dyn DashboardRouter) {
         match event {
             DashboardEvent::OpenBill(id) => router.reveal_bill_entry(id),
-            DashboardEvent::NoLedgerCommand(command) => router.run_no_ledger_command(command),
             DashboardEvent::DisplayChanged {
                 date_style,
                 glyphs,
@@ -431,7 +427,7 @@ mod tests {
     }
 
     #[test]
-    fn a_click_on_a_bill_reveals_its_entry_and_a_command_runs() {
+    fn a_click_on_a_bill_reveals_its_entry() {
         let (_, mut presenter) = presenter(InMemoryDashboardReads::default());
         let mut router = RecordingRouter::default();
         let id = DashboardEntryId {
@@ -440,14 +436,7 @@ mod tests {
         };
 
         presenter.handle(DashboardEvent::OpenBill(id), &mut router);
-        presenter.handle(
-            DashboardEvent::NoLedgerCommand(NoLedgerCommand::New),
-            &mut router,
-        );
 
-        assert_eq!(
-            router.routed,
-            [Routed::BillEntry(id), Routed::Command(NoLedgerCommand::New)]
-        );
+        assert_eq!(router.routed, [Routed::BillEntry(id)]);
     }
 }

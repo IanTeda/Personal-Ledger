@@ -52,8 +52,9 @@ const CROSS_DOMAIN: &[(&str, &[&str])] = &[
     ),
 ];
 
-/// The Shell module, which hosts every other module: only the bins may depend on it, so no
-/// module, cross-domain module or shared crate may.
+/// The Shell module, which hosts every other module: only the bins and `lib_database`, which
+/// answers its rail-count port, may depend on it (as in `deny.toml`), so no feature crate,
+/// cross-domain module or other shared crate may.
 const SHELL: &str = "lib_shell";
 
 /// Crates no feature crate may depend on besides the other feature crates.
