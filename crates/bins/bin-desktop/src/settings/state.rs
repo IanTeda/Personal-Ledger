@@ -104,10 +104,19 @@ impl SettingsView {
         self.pages
             .tracing
             .update(cx, |page, _| page.set_keymaps(config, back_chord(config)));
+        self.pages.about.update(cx, |page, _| {
+            page.set_keymap(settings_frame_keymap(config));
+        });
         if let Some(pages) = &self.pages.ledger {
             pages
                 .ledger
                 .update(cx, |page, _| page.set_keymaps(config, back_chord(config)));
+            pages.sync_server.update(cx, |page, _| {
+                page.set_keymap(settings_frame_keymap(config));
+            });
+            pages.data_backup.update(cx, |page, _| {
+                page.set_keymap(settings_frame_keymap(config));
+            });
         }
     }
 
@@ -141,7 +150,7 @@ impl SettingsView {
         setup: SettingsSetup,
         cx: &mut Context<'_, Self>,
     ) {
-        let pages = LedgerPages::new(ledger, clock, setup, cx);
+        let pages = LedgerPages::new(ledger, clock, setup, self.frame.keymap(), cx);
         self.pages.ledger = Some(pages);
         // Subscribed afresh, so a swapped-out Ledger's pages leave no subscription behind.
         self._page_subscriptions = self

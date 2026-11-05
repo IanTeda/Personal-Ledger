@@ -5,12 +5,15 @@
 
 mod render;
 
-use gpui::{Context, EventEmitter};
-use lib_settings::{SyncServerEvent, SyncServerPresenter, SyncServerViewModel};
+use gpui::{App, Context, EventEmitter};
+use lib_settings::{SettingsFrameEvent, SyncServerEvent, SyncServerPresenter, SyncServerViewModel};
+use lib_shell::Hint;
+use lib_viper::keymap::Keymap;
 
 use crate::{
     settings::{
         SettingsPage,
+        hints::settings_plain_page_hints,
         pages::{Page, PageRowClicked},
     },
     shell::view::page_clicks::PresenterPage,
@@ -22,22 +25,24 @@ impl EventEmitter<ViewEvent> for SyncServerPage {}
 /// The page has no rows, so it never emits a row click.
 impl EventEmitter<PageRowClicked> for SyncServerPage {}
 
-/// The Sync server page: its Presenter, which holds no state.
+/// The Sync server page: its Presenter, which holds no state, and the frame's keys for its legend.
 pub struct SyncServerPage {
     presenter: SyncServerPresenter,
-}
-
-impl Default for SyncServerPage {
-    fn default() -> Self {
-        Self::new()
-    }
+    keymap: Keymap<SettingsFrameEvent>,
 }
 
 impl SyncServerPage {
-    pub fn new() -> Self {
+    /// The page, its legend read from the frame's `keymap`.
+    pub fn new(keymap: Keymap<SettingsFrameEvent>) -> Self {
         Self {
             presenter: SyncServerPresenter::new(),
+            keymap,
         }
+    }
+
+    /// The frame's keys under `[keybindings]`, for a rebind.
+    pub fn set_keymap(&mut self, keymap: Keymap<SettingsFrameEvent>) {
+        self.keymap = keymap;
     }
 
     pub fn view_model(&self) -> SyncServerViewModel {
@@ -64,4 +69,8 @@ impl PresenterPage<SyncServerEvent> for SyncServerPage {
 
 impl Page for SyncServerPage {
     const PAGE: SettingsPage = SettingsPage::SyncServer;
+
+    fn hints(&self, _cx: &App) -> Vec<Hint> {
+        settings_plain_page_hints(&self.keymap)
+    }
 }

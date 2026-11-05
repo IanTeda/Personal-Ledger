@@ -4,12 +4,15 @@
 
 mod render;
 
-use gpui::EventEmitter;
-use lib_settings::{AboutPresenter, AboutSetup, AboutViewModel};
+use gpui::{App, EventEmitter};
+use lib_settings::{AboutPresenter, AboutSetup, AboutViewModel, SettingsFrameEvent};
+use lib_shell::Hint;
+use lib_viper::keymap::Keymap;
 
 use crate::{
     settings::{
         SettingsPage,
+        hints::settings_plain_page_hints,
         pages::{Page, PageRowClicked},
     },
     view::event::ViewEvent,
@@ -23,16 +26,24 @@ impl EventEmitter<PageRowClicked> for AboutPage {}
 /// The About page.
 pub struct AboutPage {
     presenter: AboutPresenter,
+    /// The frame's keys, which the legend's chords are read from.
+    keymap: Keymap<SettingsFrameEvent>,
 }
 
 impl AboutPage {
-    /// The page for a build of `version`.
-    pub fn new(version: &str) -> Self {
+    /// The page for a build of `version`, its legend read from the frame's `keymap`.
+    pub fn new(version: &str, keymap: Keymap<SettingsFrameEvent>) -> Self {
         Self {
             presenter: AboutPresenter::new(AboutSetup {
                 version: version.to_string(),
             }),
+            keymap,
         }
+    }
+
+    /// The frame's keys under `[keybindings]`, for a rebind.
+    pub fn set_keymap(&mut self, keymap: Keymap<SettingsFrameEvent>) {
+        self.keymap = keymap;
     }
 
     pub fn view_model(&self) -> AboutViewModel {
@@ -42,4 +53,8 @@ impl AboutPage {
 
 impl Page for AboutPage {
     const PAGE: SettingsPage = SettingsPage::About;
+
+    fn hints(&self, _cx: &App) -> Vec<Hint> {
+        settings_plain_page_hints(&self.keymap)
+    }
 }

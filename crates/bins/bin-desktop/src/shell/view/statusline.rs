@@ -39,14 +39,6 @@ pub struct PageStatus {
     pub right: String,
 }
 
-/// `hints` written with fixed keys, as the status line takes them.
-pub fn owned_hints(hints: Vec<(&'static str, String)>) -> Vec<Hint> {
-    hints
-        .into_iter()
-        .map(|(key, action)| Hint::new(key, action))
-        .collect()
-}
-
 /// The shell-wide hint strip's clickable entries -- each does what its key does in `Normal` mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HintAction {

@@ -10,8 +10,9 @@ use gpui::{
 
 use std::rc::Rc;
 
+use lib_settings::{SettingsFrameEvent, keymap::settings_frame_keymap};
 use lib_shell::Hint;
-use lib_viper::keymap::KeyBindingConfig;
+use lib_viper::keymap::{KeyBindingConfig, Keymap};
 
 use crate::{
     accounts::{AccountsPage, AccountsSetup, accounts_page},
@@ -29,16 +30,12 @@ use crate::{
         device::DeviceConfigFile,
         display::DisplayPage,
         general::GeneralPage,
-        hints::settings_plain_page_hints,
         ledger::{LedgerKeys, LedgerPage},
         state::SettingsView,
         sync_server::SyncServerPage,
         tracing::{TracingPage, log::CaptureLog},
     },
-    shell::view::{
-        statusline::{PageStatus, owned_hints},
-        window_size::WindowSize,
-    },
+    shell::view::{statusline::PageStatus, window_size::WindowSize},
     tags::{TagsPage, TagsSetup, tags_page},
     units::{UnitsPage, UnitsSetup, units_page},
     view::event::{Reveal, ViewEvent},
@@ -149,12 +146,9 @@ pub trait Page: Render + EventEmitter<ViewEvent> + EventEmitter<PageRowClicked> 
         super::scope_note(Self::PAGE).into_any_element()
     }
 
-    /// The page's keys, for the legend and the `?` cheat sheet. The keys are
-    /// owned, so a page on a module Presenter returns its Presenter's hints here, rebound keys
-    /// included, and the cheat sheet lists what its status line shows.
-    fn hints(&self, _cx: &App) -> Vec<Hint> {
-        owned_hints(settings_plain_page_hints())
-    }
+    /// The page's keys, for the legend and the `?` cheat sheet. A page returns its Presenter's
+    /// hints here, rebound keys included, so the cheat sheet lists what its status line shows.
+    fn hints(&self, cx: &App) -> Vec<Hint>;
 
     /// The status line while the page has focus.
     fn page_status(&self, cx: &App) -> Option<PageStatus> {
@@ -314,10 +308,13 @@ pub struct LedgerPages {
 }
 
 impl LedgerPages {
+    /// The This Ledger pages. `frame_keys` is the frame's keymap, which the Sync server and Data &
+    /// backup legends read their chords from.
     pub fn new(
         ledger: &Entity<LedgerStore>,
         clock: &lib_core::Clock,
         setup: SettingsSetup,
+        frame_keys: &Keymap<SettingsFrameEvent>,
         cx: &mut Context<'_, SettingsView>,
     ) -> Self {
         let SettingsSetup {
@@ -360,8 +357,8 @@ impl LedgerPages {
             ),
             documents: document_types_page(document_types, ledger.clone(), cx),
             inventory: inventory_page(inventory, ledger.clone(), cx),
-            sync_server: cx.new(|_| SyncServerPage::new()),
-            data_backup: cx.new(|_| DataBackupPage::new()),
+            sync_server: cx.new(|_| SyncServerPage::new(frame_keys.clone())),
+            data_backup: cx.new(|_| DataBackupPage::new(frame_keys.clone())),
         }
     }
 }
@@ -398,7 +395,12 @@ impl SettingsPages {
                     ListState::new(0, ListAlignment::Top, LOG_LIST_OVERDRAW),
                 )
             }),
-            about: cx.new(|_| AboutPage::new(env!("CARGO_PKG_VERSION"))),
+            about: cx.new(|_| {
+                AboutPage::new(
+                    env!("CARGO_PKG_VERSION"),
+                    settings_frame_keymap(&KeyBindingConfig::default()),
+                )
+            }),
             ledger: None,
         }
     }

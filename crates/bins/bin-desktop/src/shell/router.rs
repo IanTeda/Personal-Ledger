@@ -854,7 +854,9 @@ mod tests {
     use crate::transactions;
     use chrono::Local;
     use lib_accounts::Account;
+    use lib_settings::keymap::settings_frame_keymap;
     use lib_transactions::Transaction;
+    use lib_viper::keymap::KeyBindingConfig;
 
     fn seeded_ledger() -> (Vec<Account>, Vec<Category>, Vec<Transaction>) {
         let accounts = lib_accounts::default_accounts();
@@ -872,10 +874,11 @@ mod tests {
     #[test]
     fn a_plain_settings_page_has_its_own_legend() {
         crate::locale::init_for_tests();
-        let hints = settings_plain_page_hints();
-        let keys: Vec<&str> = hints.iter().map(|(key, _)| *key).collect();
+        let keymap = settings_frame_keymap(&KeyBindingConfig::default());
+        let hints = settings_plain_page_hints(&keymap);
+        let keys: Vec<&str> = hints.iter().map(|hint| hint.chord.as_str()).collect();
         assert_eq!(keys, ["j/k", "h"]);
-        assert!(hints.iter().all(|(_, action)| !action.is_empty()));
+        assert!(hints.iter().all(|hint| !hint.action.is_empty()));
     }
 
     #[test]
@@ -939,8 +942,9 @@ mod tests {
             let hint = crate::msg::desktop_no_ledger_hint(":open", ":new");
             assert!(hint.iter().any(|s| s.tag.as_deref() == Some("open")));
             assert!(hint.iter().any(|s| s.tag.as_deref() == Some("new")));
-            for (_, action) in settings_plain_page_hints() {
-                assert!(action.starts_with('['), "{action}");
+            let keymap = settings_frame_keymap(&KeyBindingConfig::default());
+            for hint in settings_plain_page_hints(&keymap) {
+                assert!(hint.action.starts_with('['), "{}", hint.action);
             }
         });
     }
