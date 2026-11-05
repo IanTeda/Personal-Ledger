@@ -1,14 +1,19 @@
 //! The Dashboard's Presenter: Needs Attention's Bill rows and the default Budget's budget list,
 //! built into a plain-data view model with every figure already worded, so a View only draws.
 //!
-//! It reads today from the Shell's Clock on every view model, so a day or month turn shows on the
-//! next draw with nothing to catch up. The Display Preferences are pushed to it
+//! It keeps its view model with the day it was built on and reads the ports again only after a
+//! change ([`DashboardEvent::LedgerChanged`], [`DashboardEvent::DisplayChanged`]) or when the Shell's
+//! Clock says the day moved, so a day or month turn shows on the next draw with nothing to catch up.
+//!
+//! The Display Preferences are pushed to it
 //! ([`DashboardEvent::DisplayChanged`]): the due dates follow the date style and the flag the
 //! Status glyphs. Row density isn't among them, since the Dashboard draws no table rows.
 
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use bigdecimal::{ToPrimitive, Zero};
+use chrono::NaiveDate;
 use lib_core::{Clock, DateStyle, Money};
 use lib_locale::format::{AmountStyle, format_amount, format_date, format_year_month};
 use lib_viper::display::{StatusGlyphs, flag_glyph};
@@ -23,6 +28,8 @@ use crate::protocols::{
 pub enum DashboardEvent {
     /// A click on a Needs Attention row.
     OpenBill(DashboardEntryId),
+    /// A domain the page reads changed in the Ledger: the kept view model is stale.
+    LedgerChanged,
     /// The Display Preferences the page draws with.
     DisplayChanged {
         date_style: Option<DateStyle>,
@@ -80,6 +87,9 @@ pub struct DashboardPresenter {
     clock: Clock,
     date_style: Option<DateStyle>,
     glyphs: StatusGlyphs,
+    /// The view model with the day it was built on, kept until the Ledger changes, the Display
+    /// Preferences change or the day moves, so a render or a scroll reads no port (#1029).
+    kept: RefCell<Option<(NaiveDate, DashboardViewModel)>>,
 }
 
 impl DashboardPresenter {
@@ -90,21 +100,36 @@ impl DashboardPresenter {
             clock,
             date_style: None,
             glyphs: StatusGlyphs::default(),
+            kept: RefCell::new(None),
         }
     }
 
     pub fn handle(&mut self, event: DashboardEvent, router: &mut dyn DashboardRouter) {
         match event {
             DashboardEvent::OpenBill(id) => router.reveal_bill_entry(id),
+            DashboardEvent::LedgerChanged => *self.kept.get_mut() = None,
             DashboardEvent::DisplayChanged { date_style, glyphs } => {
                 self.date_style = date_style;
                 self.glyphs = glyphs;
+                *self.kept.get_mut() = None;
             }
         }
     }
 
+    /// The kept view model, rebuilt only when none is kept or the day has moved.
     pub fn view_model(&self) -> DashboardViewModel {
         let today = self.clock.today();
+        if let Some((day, kept)) = &*self.kept.borrow()
+            && *day == today
+        {
+            return kept.clone();
+        }
+        let built = self.build(today);
+        *self.kept.borrow_mut() = Some((today, built.clone()));
+        built
+    }
+
+    fn build(&self, today: NaiveDate) -> DashboardViewModel {
         let base_unit = self.reads.base_unit_code();
         DashboardViewModel {
             bills: self
@@ -114,7 +139,7 @@ impl DashboardPresenter {
                 .map(|bill| self.attention_row(bill, base_unit.as_deref()))
                 .collect(),
             flag: flag_glyph(self.glyphs),
-            budgets: self.budget_list(),
+            budgets: self.budget_list(today),
         }
     }
 }
@@ -139,8 +164,8 @@ impl DashboardPresenter {
     }
 
     /// The default Budget's month containing today, empty when no Budget is the default.
-    fn budget_list(&self) -> BudgetListView {
-        let Some(month) = self.reads.default_budget_month(self.clock.today()) else {
+    fn budget_list(&self, today: NaiveDate) -> BudgetListView {
+        let Some(month) = self.reads.default_budget_month(today) else {
             return BudgetListView {
                 none: Some(msg::dashboard_budgets_none()),
                 ..BudgetListView::default()
@@ -381,6 +406,71 @@ mod tests {
         let budgets = presenter.view_model().budgets;
         assert_eq!(budgets.period, "Oct 2026 · day 1/31 · 3% elapsed");
         assert_eq!(budgets.elapsed, 0.03);
+    }
+
+    /// Reads that count each time the Presenter asks a port, so a test sees a kept view model.
+    struct CountingReads {
+        inner: InMemoryDashboardReads,
+        asked: Cell<usize>,
+    }
+
+    impl crate::protocols::DashboardBills for CountingReads {
+        fn attention_bills(&self, today: NaiveDate) -> Vec<DashboardBill> {
+            self.asked.set(self.asked.get() + 1);
+            self.inner.attention_bills(today)
+        }
+
+        fn base_unit_code(&self) -> Option<String> {
+            self.inner.base_unit_code()
+        }
+    }
+
+    impl crate::protocols::DashboardBudgets for CountingReads {
+        fn default_budget_month(
+            &self,
+            today: NaiveDate,
+        ) -> Option<crate::protocols::DashboardBudgetMonth> {
+            self.asked.set(self.asked.get() + 1);
+            self.inner.default_budget_month(today)
+        }
+    }
+
+    #[test]
+    fn the_view_model_reads_the_ports_once_until_a_change_or_a_new_day() {
+        locale();
+        let reads = Rc::new(CountingReads {
+            inner: reads_with_bills(vec![bill(1, "Rent", date(2026, 9, 24), "2400.00", "aud")]),
+            asked: Cell::new(0),
+        });
+        let (clock, day) = Clock::settable(date(2026, 9, 21));
+        let mut presenter = DashboardPresenter::new(reads.clone(), clock);
+        let mut router = RecordingRouter::default();
+
+        presenter.view_model();
+        let once = reads.asked.get();
+        assert!(once > 0);
+        assert_eq!(presenter.view_model().bills.len(), 1);
+        assert_eq!(reads.asked.get(), once, "a repeat reads no port");
+
+        presenter.handle(DashboardEvent::LedgerChanged, &mut router);
+        presenter.view_model();
+        assert_eq!(reads.asked.get(), once * 2, "a change reads again");
+
+        presenter.handle(
+            DashboardEvent::DisplayChanged {
+                date_style: None,
+                glyphs: StatusGlyphs::default(),
+            },
+            &mut router,
+        );
+        presenter.view_model();
+        assert_eq!(reads.asked.get(), once * 3, "a Display change rebuilds");
+
+        day.set(date(2026, 9, 22));
+        presenter.view_model();
+        assert_eq!(reads.asked.get(), once * 4, "a new day reads again");
+        presenter.view_model();
+        assert_eq!(reads.asked.get(), once * 4);
     }
 
     #[test]

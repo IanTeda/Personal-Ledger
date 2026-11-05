@@ -141,6 +141,8 @@ pub struct LedgerStore {
     inventory_reads: StoredInventoryReads,
     /// Whether a change was announced since the Shell last read the rail's counts.
     announced: bool,
+    /// How many changes were announced, for a test that asserts a keystroke announced none.
+    announcements: usize,
 }
 
 impl EventEmitter<LedgerChanged> for LedgerStore {}
@@ -215,6 +217,7 @@ impl LedgerStore {
             bills,
             budgets,
             announced: false,
+            announcements: 0,
         }
     }
 
@@ -249,6 +252,7 @@ impl LedgerStore {
             document_reads,
             inventory_reads,
             announced: false,
+            announcements: 0,
         };
         store.copy_institutions();
         store.copy_accounts();
@@ -647,12 +651,19 @@ impl LedgerStore {
     /// and marks the rail's counts as needing a fresh read ([`Self::take_announced`]).
     pub(crate) fn announce(&mut self, cx: &mut Context<'_, Self>, what: BTreeSet<Domain>) {
         self.announced = true;
+        self.announcements += 1;
         cx.emit(LedgerChanged { what });
         cx.notify();
     }
 
     /// Whether anything was announced since the last ask, so the Shell reads the rail's counts
     /// afresh only after a change rather than after every input.
+    /// How many changes were announced so far, for a test.
+    #[doc(hidden)]
+    pub fn announcements(&self) -> usize {
+        self.announcements
+    }
+
     pub(crate) fn take_announced(&mut self) -> bool {
         std::mem::take(&mut self.announced)
     }

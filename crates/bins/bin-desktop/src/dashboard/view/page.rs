@@ -54,7 +54,7 @@ impl DashboardPage {
         clock: Clock,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        let _ledger_changed = cx.subscribe(ledger, |_, _, event: &LedgerChanged, cx| {
+        let _ledger_changed = cx.subscribe(ledger, |this, _, event: &LedgerChanged, cx| {
             let reads = [
                 Domain::Bills,
                 Domain::Budgets,
@@ -65,6 +65,10 @@ impl DashboardPage {
                 Domain::Payees,
             ];
             if reads.iter().any(|domain| event.what.contains(domain)) {
+                // Not `send`: the announcement is raised inside the input that wrote, whose one commit
+                // is still to come, so a second commit here would count as another input.
+                this.presenter
+                    .handle(DashboardEvent::LedgerChanged, &mut PageRouter { cx });
                 cx.notify();
             }
         });
@@ -87,12 +91,6 @@ impl DashboardPage {
     /// The page as drawn.
     pub fn view_model(&self) -> DashboardViewModel {
         self.presenter.view_model()
-    }
-
-    /// The month turned: the Presenter reads today from the Clock on every view model, so the page
-    /// only redraws.
-    pub fn month_turned(&mut self, cx: &mut Context<'_, Self>) {
-        cx.notify();
     }
 
     /// Follows a change to the Display Preferences, handed to the Presenter as one input.
