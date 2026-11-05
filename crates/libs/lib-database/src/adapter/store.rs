@@ -1123,6 +1123,43 @@ impl BudgetPayees for StoredBudgetReads {
     }
 }
 
+/// The Bills store's Needs Attention entries as of `today`, by `lib-bills`' one rule, with the Plans
+/// and entries they were read from: the Dashboard's Bill rows and, counted, the Bills rail badge, so
+/// [`StoredDashboardReads`] and [`StoredShellReads`] read the store the same way.
+struct BillsAttention {
+    plans: Vec<lib_bills::BillPlan>,
+    entries: Vec<lib_bills::BillScheduleEntry>,
+    ids: Vec<lib_bills::EntryId>,
+}
+
+fn bills_attention(bills: &SharedBillsStore, today: NaiveDate) -> BillsAttention {
+    let bills = bills.borrow();
+    let (plans, entries) = (bills.plans().bill_plans(), bills.entries().entries());
+    let ids = lib_bills::attention_entries(&plans, &entries, today);
+    BillsAttention {
+        plans,
+        entries,
+        ids,
+    }
+}
+
+/// The default Budget's figures for `today`'s month, or `None` with no default Budget: the
+/// Dashboard's bars and, counted, the Budgets rail badge, so both read the one period query.
+fn default_budget_figures(
+    budgets: &SharedBudgetsStore,
+    reads: &StoredBudgetReads,
+    today: NaiveDate,
+) -> Option<lib_budgets::PeriodFigures> {
+    let stored = Budgets::from_stored(budgets.borrow().budgets().budgets());
+    let budget = stored.default_budget()?;
+    Some(lib_budgets::period_figures(
+        budget,
+        reads,
+        lib_core::Period::of(today),
+        today,
+    ))
+}
+
 /// `lib-dashboard`'s two read ports answered by the shared stores of the domains the Dashboard
 /// reads, each borrowed for the one read (#1023), as [`StoredBudgetReads`] answers Budgets'. It
 /// calls `lib-bills`' Needs Attention rule and `lib-budgets`' period figures and bars and maps the
@@ -1156,11 +1193,13 @@ impl StoredDashboardReads {
 
 impl DashboardBills for StoredDashboardReads {
     fn attention_bills(&self, today: NaiveDate) -> Vec<DashboardBill> {
-        let bills = self.bills.borrow();
-        let (plans, entries) = (bills.plans().bill_plans(), bills.entries().entries());
+        let BillsAttention {
+            plans,
+            entries,
+            ids,
+        } = bills_attention(&self.bills, today);
         let units = self.units.borrow();
-        lib_bills::attention_entries(&plans, &entries, today)
-            .into_iter()
+        ids.into_iter()
             .filter_map(|id| {
                 let entry = lib_bills::entry(&entries, id)?;
                 let plan = lib_bills::get(&plans, id.plan_id)?;
@@ -1188,11 +1227,8 @@ impl DashboardBills for StoredDashboardReads {
 
 impl DashboardBudgets for StoredDashboardReads {
     fn default_budget_month(&self, today: NaiveDate) -> Option<DashboardBudgetMonth> {
-        let stored = Budgets::from_stored(self.budgets.borrow().budgets().budgets());
-        let budget = stored.default_budget()?;
         let reads = self.budget_reads();
-        let figures =
-            lib_budgets::period_figures(budget, &reads, lib_core::Period::of(today), today);
+        let figures = default_budget_figures(&self.budgets, &reads, today)?;
         let categories = self.categories.borrow().categories().categories();
         let bars = lib_budgets::dashboard_bars(&figures, &reads)
             .into_iter()
@@ -1235,30 +1271,25 @@ pub struct StoredShellReads {
     pub payees: SharedPayeesStore,
 }
 
+impl StoredShellReads {
+    /// The Budgets read ports over these stores, for the over-budget count.
+    fn budget_reads(&self) -> StoredBudgetReads {
+        StoredBudgetReads {
+            categories: self.categories.clone(),
+            accounts: self.accounts.clone(),
+            transactions: self.transactions.clone(),
+            bills: self.bills.clone(),
+            units: self.units.clone(),
+            payees: self.payees.clone(),
+        }
+    }
+}
+
 impl ShellRailCounts for StoredShellReads {
     fn rail_counts(&self, today: NaiveDate) -> RailCounts {
-        let bills_attention = {
-            let bills = self.bills.borrow();
-            lib_bills::attention_entries(
-                &bills.plans().bill_plans(),
-                &bills.entries().entries(),
-                today,
-            )
-            .len()
-        };
-        let stored = Budgets::from_stored(self.budgets.borrow().budgets().budgets());
-        let budgets_over = stored.default_budget().map_or(0, |budget| {
-            let reads = StoredBudgetReads {
-                categories: self.categories.clone(),
-                accounts: self.accounts.clone(),
-                transactions: self.transactions.clone(),
-                bills: self.bills.clone(),
-                units: self.units.clone(),
-                payees: self.payees.clone(),
-            };
-            lib_budgets::period_figures(budget, &reads, lib_core::Period::of(today), today)
-                .over_count
-        });
+        let bills_attention = bills_attention(&self.bills, today).ids.len();
+        let budgets_over = default_budget_figures(&self.budgets, &self.budget_reads(), today)
+            .map_or(0, |figures| figures.over_count);
         let documents_inbox =
             lib_documents::inbox_count(&self.documents.borrow().documents().documents());
         RailCounts {

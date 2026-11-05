@@ -1,7 +1,8 @@
 //! Enforces the VIPER Dependencies rule over `cargo metadata`: a feature crate never
 //! depends on another feature crate, a UI toolkit or `lib_database`, and a cross-domain module
-//! depends on the feature crates it writes and nothing else does on it, and no module depends on
-//! `lib_shell`, which hosts them (docs/development/viper-architecture.md, Rules > Dependencies).
+//! depends on the feature crates it writes and nothing else does on it, and no crate but the bins
+//! and `lib_database` depends on `lib_shell`, which hosts the modules
+//! (docs/development/viper-architecture.md, Rules > Dependencies).
 //!
 //! `deny.toml` already bans the toolkits and `lib_database` outside the bins, and each
 //! cross-domain module outside the bins and its adapter, but cargo-deny can't express "no feature
@@ -54,8 +55,13 @@ const CROSS_DOMAIN: &[(&str, &[&str])] = &[
 
 /// The Shell module, which hosts every other module: only the bins and `lib_database`, which
 /// answers its rail-count port, may depend on it (as in `deny.toml`), so no feature crate,
-/// cross-domain module or other shared crate may.
+/// cross-domain module, shared crate or any other crate may.
 const SHELL: &str = "lib_shell";
+
+/// The only crates that may depend on the Shell: the two Clients and `lib_database`, whose
+/// `StoredShellReads` answers its rail-count port over the stores (#1026), as `deny.toml`'s
+/// `lib_shell` wrappers list.
+const SHELL_DEPENDANTS: &[&str] = &["bin_desktop", "bin_tui", "lib_database"];
 
 /// Crates no feature crate may depend on besides the other feature crates.
 const FORBIDDEN: &[&str] = &[
@@ -68,15 +74,13 @@ const FORBIDDEN: &[&str] = &[
 
 /// Whether `dependency` is one `name` may not have: a feature crate (unless `name` is a
 /// cross-domain module that writes it), a toolkit, `lib_database`, a cross-domain module, or the
-/// Shell.
+/// Shell (for any crate but [`SHELL_DEPENDANTS`]).
 fn forbidden(name: &str, dependency: &str) -> bool {
     if dependency == name {
         return false;
     }
     if dependency == SHELL {
-        return FEATURE_CRATES.contains(&name)
-            || CROSS_DOMAIN.iter().any(|(m, _)| *m == name)
-            || SHARED_CRATES.contains(&name);
+        return !SHELL_DEPENDANTS.contains(&name);
     }
     if CROSS_DOMAIN.iter().any(|(module, _)| *module == dependency) {
         return FEATURE_CRATES.contains(&name) || CROSS_DOMAIN.iter().any(|(m, _)| *m == name);
@@ -90,7 +94,7 @@ fn forbidden(name: &str, dependency: &str) -> bool {
 }
 
 /// Each forbidden direct dependency (normal, dev or build) of a feature crate, a shared crate or a
-/// cross-domain module, as `"<crate> -> <dependency>"`.
+/// cross-domain module, and any crate's on the Shell, as `"<crate> -> <dependency>"`.
 fn violations(metadata: &Value) -> Vec<String> {
     let packages = metadata["packages"]
         .as_array()
@@ -146,6 +150,7 @@ fn feature_crates_depend_on_no_feature_crate_toolkit_or_database() {
         .iter()
         .chain(SHARED_CRATES)
         .chain(CROSS_DOMAIN.iter().map(|(module, _)| module))
+        .chain(SHELL_DEPENDANTS)
     {
         assert!(
             names.contains(crate_name),
@@ -158,7 +163,8 @@ fn feature_crates_depend_on_no_feature_crate_toolkit_or_database() {
         found.is_empty(),
         "VIPER Dependencies rule broken: a feature crate never depends on another feature crate, \
          a UI toolkit (gpui, gpui-component, ratatui, crossterm), lib_database or a cross-domain \
-         module, and a cross-domain module depends only on the feature crates it writes. See \
+         module, a cross-domain module depends only on the feature crates it writes, and only the \
+         bins and lib_database depend on lib_shell. See \
          docs/development/viper-architecture.md, Rules > Dependencies. Move shared value types to \
          lib_core, declare a read port in protocols.rs, or put a multi-domain write in a \
          cross-domain module.\nOffending dependencies:\n  {}",
@@ -291,6 +297,33 @@ fn violations_flags_any_module_depending_on_lib_shell_and_lib_shell_reaching_a_m
             "lib_shell -> lib_bills",
             "lib_shell -> gpui",
             "lib_shell -> lib_database"
+        ]
+    );
+}
+
+#[test]
+fn violations_flags_every_crate_but_the_bins_and_lib_database_depending_on_lib_shell() {
+    let metadata = serde_json::json!({
+        "packages": [
+            { "name": "lib_ledger", "dependencies": [{ "name": "lib_shell" }] },
+            { "name": "lib_core", "dependencies": [{ "name": "lib_shell" }] },
+            { "name": "lib_config", "dependencies": [{ "name": "lib_shell" }] },
+            { "name": "lib_rpc", "dependencies": [{ "name": "lib_shell" }] },
+            { "name": "bin_sync_server", "dependencies": [{ "name": "lib_shell" }] },
+            { "name": "lib_database", "dependencies": [{ "name": "lib_shell" }] },
+            { "name": "bin_desktop", "dependencies": [{ "name": "lib_shell" }] },
+            { "name": "bin_tui", "dependencies": [{ "name": "lib_shell" }] }
+        ]
+    });
+
+    assert_eq!(
+        violations(&metadata),
+        vec![
+            "lib_ledger -> lib_shell",
+            "lib_core -> lib_shell",
+            "lib_config -> lib_shell",
+            "lib_rpc -> lib_shell",
+            "bin_sync_server -> lib_shell"
         ]
     );
 }
