@@ -515,28 +515,9 @@ fn placeholder(cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-/// `delta` steps along a control's choices, stopping at either end rather than wrapping (the
-/// grid's own edge rule), for `h`/`l` on a segmented or radio control.
-pub fn step_choice<T: Copy + PartialEq>(choices: &[T], current: T, delta: isize) -> T {
-    let Some(position) = choices.iter().position(|choice| *choice == current) else {
-        return current;
-    };
-    let last = choices.len() - 1;
-    choices[position.saturating_add_signed(delta).min(last)]
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn step_choice_stops_at_both_ends() {
-        let choices = [1, 2, 3];
-        assert_eq!(step_choice(&choices, 2, 1), 3);
-        assert_eq!(step_choice(&choices, 3, 1), 3);
-        assert_eq!(step_choice(&choices, 1, -1), 1);
-        assert_eq!(step_choice(&choices, 9, 1), 9);
-    }
 
     #[test]
     fn a_revealed_account_or_payee_opens_its_page_and_a_bills_record_opens_none() {

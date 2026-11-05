@@ -104,6 +104,11 @@ impl SettingsView {
         self.pages
             .tracing
             .update(cx, |page, _| page.set_keymaps(config, back_chord(config)));
+        if let Some(pages) = &self.pages.ledger {
+            pages
+                .ledger
+                .update(cx, |page, _| page.set_keymaps(config, back_chord(config)));
+        }
     }
 
     // -----------------------------------------------------------------------------------------
@@ -691,6 +696,7 @@ mod tests {
             categories: crate::categories::CategoriesSetup::stub(&storage),
             tags: crate::tags::TagsSetup::stub(&storage),
             inventory: crate::inventory::InventorySetup::stub(&storage),
+            ledger: crate::settings::ledger::LedgerKeys::new(&KeyBindingConfig::default()),
         };
         let ledger =
             cx.new(|_| LedgerStore::with_storage(lib_ledger::Ledger::stub_on(today), storage));

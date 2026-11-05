@@ -1,21 +1,24 @@
 //! The Settings module's Routers for the Desktop: [`FrameRouter`], what the frame's Presenter asks
 //! of the Shell, [`DeviceRouter`], what the This device pages' Presenters ask, and
-//! [`TracingRouter`], what Tracing's does. Each goes
+//! [`TracingRouter`], what Tracing's does, and [`LedgerRouter`], what Ledger's does. Each goes
 //! through its Entity's gpui context, which is why a Router is built for each `handle` call. A
 //! page change reaches the root Router as [`PageChanged`], which feeds the Shell's history; the
 //! picker's mode is the View's own (`ViewEvent::EnterMode`); Toasts and the Display output reach
 //! the root Router as [`ViewEvent`]s; a colour change is applied once the current update ends; a
 //! Notice goes onto the bin's queue (`crate::notices`), which the input's `send` drains.
 
-use gpui::{Context, EventEmitter, ListState};
+use gpui::{Context, Entity, EventEmitter, ListState};
 use lib_settings::{
     ClearLogsPresenter, ColourChoice, DisplayOutput, LogListChange, LogScroll, SettingsPage,
     SettingsRouter,
 };
 use lib_toast::{Notice, Notify};
 
+use super::ledger::LedgerPage;
 use super::state::SettingsView;
 use super::tracing::{TracingPage, apply_change, dialogs::clear_logs::ClearLogsDialog, scroll};
+use crate::ledger_store::LedgerStore;
+use crate::units::DesktopPorts;
 use crate::view::event::{ViewEvent, ViewMode};
 
 /// The page on show changed by the person's hand, for the root Router to record in the Shell's
@@ -113,5 +116,21 @@ impl Notify for TracingRouter<'_, '_> {
     /// Queues `notice`, for the input's `send` to drain into the Shell.
     fn notify(&mut self, notice: Notice) {
         crate::notices::Queue.notify(notice);
+    }
+}
+
+/// `impl lib_settings::LedgerRouter` for the Ledger page: the Units ports and the Ledger's read
+/// copy of them, lent beside its Presenter.
+pub(super) struct LedgerRouter<'a, 'b> {
+    pub ports: &'a DesktopPorts,
+    pub ledger: &'a Entity<LedgerStore>,
+    pub cx: &'a mut Context<'b, LedgerPage>,
+}
+
+impl lib_settings::LedgerRouter for LedgerRouter<'_, '_> {
+    /// Brings the Ledger's read copy in line, announcing `Domain::Units` so every view of the base
+    /// Unit follows at once.
+    fn base_unit_changed(&mut self) {
+        crate::units::ports::refresh(self.ports, self.ledger, self.cx);
     }
 }

@@ -24,7 +24,6 @@ desktop-hint-cancel = cancel
 desktop-hint-colour = colour
 desktop-hint-choose = choose
 desktop-hint-toggle-active = toggle active
-desktop-hint-change = change
 desktop-hint-scroll = scroll
 desktop-hint-index = index
 

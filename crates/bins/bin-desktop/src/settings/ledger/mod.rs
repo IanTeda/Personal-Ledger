@@ -1,28 +1,33 @@
-//! The **Ledger** page (`docs/ux/desktop-mockups/16-settings/README.md`'s 16a),
-//! first in the THIS LEDGER group: ledger identity fields plus a "THIS LEDGER" summary panel. The identity fields
-//! are still the mockup's own dummy values, with no `lib_database::Preferences` wiring; *Base unit*
-//! is real, a select over the Ledger's Units that runs `lib-units`' `SetBaseUnit` Interactor on the
-//! Units ports.
+//! The **Ledger** page (`docs/ux/desktop-mockups/16-settings/README.md`'s 16a), first in the THIS
+//! LEDGER group: `lib-settings`' Ledger Presenter in a gpui Entity, which the Settings View hosts
+//! as any other page. The identity fields and the summary are the mockup's placeholder values; the
+//! *Base unit* select is real, read from the Units store through `lib-database`'s
+//! `StoredSettingsReads` and set through its `LedgerPreferencesAdapter`, so the page holds no
+//! Units and reads none from the `Ledger`. It looks up each key the Shell passes on in the page's
+//! keymap, turns clicks into events through `PageClicks` and draws the view model (`render.rs`).
+//! Each key and click is one input (`crate::input::send`).
 
 mod render;
 
-use gpui::{Context, Entity, EventEmitter, Keystroke, Subscription};
-use lib_core::UnitId;
-use lib_ledger::Domain;
-use lib_units::UnitsPorts as _;
-use lib_units::interactor::SetBaseUnit;
+use std::rc::Rc;
 
+use gpui::{App, Context, Entity, EventEmitter, Subscription};
+use lib_database::{LedgerPreferencesAdapter, SharedUnitsStore, StoredSettingsReads};
+use lib_ledger::Domain;
+use lib_settings::keymap::ledger_keymap;
+use lib_settings::{LedgerEvent, LedgerPresenter, LedgerSetup, LedgerViewModel};
 use lib_shell::Hint;
+use lib_viper::keymap::{KeyBindingConfig, Keymap};
 
 use crate::settings::snapshot::PageSnapshot;
 use crate::{
     ledger_store::{LedgerStore, notify_on},
     settings::{
         SettingsPage,
-        hints::settings_ledger_hints,
         pages::{Page, PageRowClicked},
+        router::LedgerRouter,
     },
-    shell::view::statusline::owned_hints,
+    shell::view::page_clicks::PresenterPage,
     units::DesktopPorts,
     view::event::ViewEvent,
 };
@@ -32,12 +37,28 @@ impl EventEmitter<ViewEvent> for LedgerPage {}
 /// The page has no rows, so it never emits a row click.
 impl EventEmitter<PageRowClicked> for LedgerPage {}
 
-/// The Ledger page. It reads the Ledger for the *Base unit* select and holds only whether the
-/// keyboard is on the page, which draws the select focused.
+/// What `shell::router::build` hands the Ledger page: its keymap and the `back` chord, under
+/// `[keybindings]`.
+pub struct LedgerKeys {
+    pub keymap: Keymap<LedgerEvent>,
+    pub back_chord: String,
+}
+
+impl LedgerKeys {
+    pub fn new(config: &KeyBindingConfig) -> Self {
+        Self {
+            keymap: ledger_keymap(config),
+            back_chord: crate::settings::state::back_chord(config),
+        }
+    }
+}
+
+/// The Ledger page: its Presenter, and the Units ports and read copy a base Unit change brings in
+/// line (`crate::units::ports::refresh`). The page itself reads neither.
 pub struct LedgerPage {
-    ledger: Entity<LedgerStore>,
+    presenter: LedgerPresenter,
     ports: DesktopPorts,
-    page_focused: bool,
+    ledger: Entity<LedgerStore>,
     _units_changed: Subscription,
 }
 
@@ -45,62 +66,61 @@ impl LedgerPage {
     pub fn new(
         ledger: Entity<LedgerStore>,
         ports: DesktopPorts,
+        keys: LedgerKeys,
         cx: &mut Context<'_, Self>,
     ) -> Self {
+        // The Presenter reads the Units on each draw, so a write anywhere repaints the page.
         let units_changed = notify_on(&ledger, Domain::Units, cx);
+        let store: SharedUnitsStore = ports.clone();
+        let presenter = LedgerPresenter::new(LedgerSetup {
+            units: Rc::new(StoredSettingsReads {
+                units: store.clone(),
+            }),
+            preferences: Rc::new(LedgerPreferencesAdapter::new(store)),
+            keymap: keys.keymap,
+            back_chord: keys.back_chord,
+        });
         Self {
-            ledger,
+            presenter,
             ports,
-            page_focused: false,
+            ledger,
             _units_changed: units_changed,
         }
     }
 
-    /// The select's options in the Ledger's by-code order: `(id, code, name)`.
-    fn unit_options(&self, cx: &gpui::App) -> Vec<(UnitId, String, String)> {
-        self.ledger
-            .read(cx)
-            .ledger()
-            .units_by_code()
-            .into_iter()
-            .filter(|unit| unit.is_active)
-            .map(|unit| (unit.id, unit.code.clone(), unit.name.clone()))
-            .collect()
+    /// The page's keys under `config`'s overrides.
+    pub fn set_keymaps(&mut self, config: &KeyBindingConfig, back_chord: String) {
+        self.presenter.set_keymap(ledger_keymap(config), back_chord);
     }
 
-    fn base_unit(&self, cx: &gpui::App) -> UnitId {
-        self.ledger.read(cx).ledger().base_unit()
+    pub fn view_model(&self) -> LedgerViewModel {
+        self.presenter.view_model()
     }
 
-    /// Makes `id` the base Unit, one input committed once it ran (`crate::input::send`). A
-    /// refusal means the Unit was removed under the select, which repaints without it, so there
-    /// is nothing to report.
-    fn set_base_unit(&mut self, id: UnitId, cx: &mut Context<'_, Self>) {
-        crate::input::send(cx, |cx| {
-            let _ = {
-                let mut ports = self.ports.borrow_mut();
-                let ports = ports.split_mut();
-                SetBaseUnit(id).run(ports.units, ports.base_unit)
-            };
-            crate::units::ports::refresh(&self.ports, &self.ledger, cx);
-        });
+    /// A key or click as one input, committed once it is handled.
+    fn send(&mut self, event: LedgerEvent, cx: &mut Context<'_, Self>) {
+        if crate::input::sending(cx) {
+            self.handle(event, cx);
+        } else {
+            crate::input::send(cx, |cx| self.handle(event, cx));
+        }
+    }
+
+    fn handle(&mut self, event: LedgerEvent, cx: &mut Context<'_, Self>) {
+        let mut router = LedgerRouter {
+            ports: &self.ports,
+            ledger: &self.ledger,
+            cx,
+        };
+        self.presenter.handle(event, &mut router);
         cx.notify();
     }
+}
 
-    /// Clicking an option of the select.
-    fn click_base_unit(&mut self, id: UnitId, cx: &mut Context<'_, Self>) {
-        self.set_base_unit(id, cx);
-    }
-
-    /// `j`/`k` move the select to the next or previous Unit, stopping at the ends.
-    fn step_base_unit(&mut self, delta: isize, cx: &mut Context<'_, Self>) {
-        let ids: Vec<_> = self
-            .unit_options(cx)
-            .into_iter()
-            .map(|(id, ..)| id)
-            .collect();
-        let next = crate::settings::step_choice(&ids, self.base_unit(cx), delta);
-        self.set_base_unit(next, cx);
+/// The page's clicks on the Base unit select's options.
+impl PresenterPage<LedgerEvent> for LedgerPage {
+    fn send(&mut self, event: LedgerEvent, cx: &mut Context<'_, Self>) {
+        LedgerPage::send(self, event, cx);
     }
 }
 
@@ -108,18 +128,20 @@ impl PageSnapshot for SettingsLedgerSnapshot {
     type Page = LedgerPage;
 
     /// The select's state for a test: the base Unit's code and the options' codes in order.
-    fn read(page: &LedgerPage, cx: &gpui::App) -> Self {
+    fn read(page: &LedgerPage, _cx: &App) -> Self {
+        let select = page.view_model().base_unit;
         SettingsLedgerSnapshot {
-            base_unit: page
-                .ledger
-                .read(cx)
-                .ledger()
-                .base_unit_row()
-                .map(|unit| unit.code.clone()),
-            options: page
-                .unit_options(cx)
+            base_unit: select.chosen.and_then(|chosen| {
+                select
+                    .options
+                    .iter()
+                    .find(|option| option.id == chosen)
+                    .map(|option| option.code.clone())
+            }),
+            options: select
+                .options
                 .into_iter()
-                .map(|(_, code, _)| code)
+                .map(|option| option.code)
                 .collect(),
         }
     }
@@ -136,23 +158,26 @@ pub struct SettingsLedgerSnapshot {
 impl Page for LedgerPage {
     const PAGE: SettingsPage = SettingsPage::Ledger;
 
-    fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
-        if !self.page_focused || keystroke.modifiers.shift {
+    /// The keymap's steps while the page has the keyboard, ahead of the frame's; the rest go on to
+    /// the frame.
+    fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {
+        let Some(event) = self.presenter.keymap().event(chord) else {
+            return false;
+        };
+        if !self.presenter.takes(&event) {
             return false;
         }
-        match keystroke.key.as_str() {
-            "j" | "down" => self.step_base_unit(1, cx),
-            "k" | "up" => self.step_base_unit(-1, cx),
-            _ => return false,
-        }
+        self.send(event, cx);
         true
     }
 
-    fn set_page_focused(&mut self, focused: bool, _cx: &mut Context<'_, Self>) {
-        self.page_focused = focused;
+    fn set_page_focused(&mut self, focused: bool, cx: &mut Context<'_, Self>) {
+        self.presenter.set_page_focused(focused);
+        cx.notify();
     }
 
-    fn hints(&self, _cx: &gpui::App) -> Vec<Hint> {
-        owned_hints(settings_ledger_hints())
+    /// The Presenter's legend, rebound keys included, which the `?` cheat sheet reads.
+    fn hints(&self, _cx: &App) -> Vec<Hint> {
+        self.presenter.view_model().hints
     }
 }

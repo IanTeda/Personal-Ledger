@@ -255,6 +255,7 @@ impl OpenLedger {
             categories: categories_setup,
             tags: tags_setup,
             inventory: inventory_setup,
+            ledger: crate::settings::ledger::LedgerKeys::new(keybindings),
         };
 
         // The Transactions page reads the stores, not the Ledger's read copies (#923).

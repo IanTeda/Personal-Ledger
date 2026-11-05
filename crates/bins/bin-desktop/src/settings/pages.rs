@@ -30,7 +30,7 @@ use crate::{
         display::DisplayPage,
         general::GeneralPage,
         hints::settings_plain_page_hints,
-        ledger::LedgerPage,
+        ledger::{LedgerKeys, LedgerPage},
         state::SettingsView,
         sync_server::SyncServerPage,
         tracing::{TracingPage, log::CaptureLog},
@@ -60,6 +60,7 @@ pub struct SettingsSetup {
     pub categories: CategoriesSetup,
     pub tags: TagsSetup,
     pub inventory: InventorySetup,
+    pub ledger: LedgerKeys,
 }
 
 /// Rows measured beyond the Tracing log box's visible edge, so scrolling doesn't pop rows in.
@@ -328,9 +329,11 @@ impl LedgerPages {
             categories,
             tags,
             inventory,
+            ledger: ledger_keys,
         } = setup;
         Self {
-            ledger: cx.new(|cx| LedgerPage::new(ledger.clone(), units.ports.clone(), cx)),
+            ledger: cx
+                .new(|cx| LedgerPage::new(ledger.clone(), units.ports.clone(), ledger_keys, cx)),
             units: units_page(
                 units.ports,
                 units.deletion,

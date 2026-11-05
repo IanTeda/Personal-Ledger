@@ -9,11 +9,3 @@ pub(crate) fn settings_plain_page_hints() -> Vec<(&'static str, String)> {
         ("h", crate::msg::desktop_hint_index()),
     ]
 }
-
-/// The Ledger page's keys: `j`/`k` change the Base unit select.
-pub(crate) fn settings_ledger_hints() -> Vec<(&'static str, String)> {
-    vec![
-        ("j/k", crate::msg::desktop_hint_change()),
-        ("h", crate::msg::desktop_hint_index()),
-    ]
-}

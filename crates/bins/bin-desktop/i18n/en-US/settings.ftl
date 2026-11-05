@@ -19,20 +19,6 @@ desktop-settings-general-start-view-last = Last view
 ## A device's settings in personal-ledger.conf (ADR-0053). `$key` is the setting's key in the file,
 ## such as on_start; `$source` is the environment variable or configuration file that sets it.
 
-## Ledger. The summary labels name what the ledger holds.
-
-desktop-settings-ledger-name = Ledger name
-desktop-settings-ledger-owner = Owner
-desktop-settings-ledger-financial-year = Financial year starts
-desktop-settings-ledger-base-unit = Base unit
-desktop-settings-ledger-base-unit-option = { $code } — { $name }
-desktop-settings-ledger-summary-title = This ledger
-desktop-settings-ledger-summary-accounts = accounts
-desktop-settings-ledger-summary-transactions = transactions
-desktop-settings-ledger-summary-units = units
-desktop-settings-ledger-summary-institutions = institutions
-desktop-settings-ledger-note = Ledger settings are ledger-scoped Preferences that travel with the ledger as Change Sets. What belongs to this device is under General and Display.
-
 ## Display. `$glyphs` is the run of status glyphs the option draws.
 
 ## `$roles` is the overridden Colour Role keys, comma-separated.
