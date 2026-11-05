@@ -114,7 +114,7 @@ impl LedgerRepository for StubRepository {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lib_core::{TagId, UnitId};
+    use lib_core::{CategoryId, UnitId};
 
     #[test]
     fn a_new_stub_loads_the_stub_ledger() {
@@ -127,8 +127,8 @@ mod tests {
     #[test]
     fn apply_records_each_batch_in_order() {
         let repository = StubRepository::new();
-        let first = vec![LedgerChange::DeleteTag(TagId::seed(1))];
-        let second = vec![LedgerChange::DeleteTag(TagId::seed(2))];
+        let first = vec![LedgerChange::DeleteCategory(CategoryId::seed(1))];
+        let second = vec![LedgerChange::DeleteCategory(CategoryId::seed(2))];
         repository.apply(&first).unwrap();
         repository.apply(&second).unwrap();
         assert_eq!(repository.applied(), vec![first, second]);
@@ -147,7 +147,7 @@ mod tests {
         let repository = StubRepository::new();
         repository.fail_next();
         assert!(matches!(
-            repository.apply(&[LedgerChange::DeleteTag(TagId::seed(1))]),
+            repository.apply(&[LedgerChange::DeleteCategory(CategoryId::seed(1))]),
             Err(RepositoryError::StubFailure)
         ));
         assert!(repository.applied().is_empty());
@@ -171,10 +171,12 @@ mod tests {
     #[test]
     fn changes_are_recorded_but_not_replayed() {
         let repository = StubRepository::new();
-        let before = repository.load().unwrap().tags().len();
-        let id = repository.load().unwrap().tags()[0].id;
-        repository.apply(&[LedgerChange::DeleteTag(id)]).unwrap();
-        assert_eq!(repository.load().unwrap().tags().len(), before);
+        let before = repository.load().unwrap().categories().len();
+        let id = repository.load().unwrap().categories()[0].id;
+        repository
+            .apply(&[LedgerChange::DeleteCategory(id)])
+            .unwrap();
+        assert_eq!(repository.load().unwrap().categories().len(), before);
         assert_eq!(repository.applied().len(), 1);
     }
 }

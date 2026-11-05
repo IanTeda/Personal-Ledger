@@ -113,7 +113,7 @@ pub fn refresh(ledger: &Entity<LedgerStore>, cx: &mut App) {
 
 #[cfg(test)]
 mod tests {
-    use lib_core::{CategoryId, PayeeId, TagId, TransactionId};
+    use lib_core::{CategoryId, PayeeId, TransactionId};
     use lib_database::SharedTransactionsStore;
     use lib_payees::fake::InMemoryPorts;
 
@@ -146,7 +146,7 @@ mod tests {
         ));
         assert!(!forward(
             &mut store,
-            &[LedgerChange::DeleteTag(TagId::seed(1))]
+            &[LedgerChange::DeleteCategory(CategoryId::seed(1))]
         ));
 
         assert_eq!(store.payees.payee(coles.id), Some(coles));

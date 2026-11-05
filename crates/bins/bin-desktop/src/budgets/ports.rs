@@ -165,7 +165,7 @@ pub fn stop_new_parent(
 #[cfg(test)]
 mod tests {
     use lib_budgets::{PERSONAL_SPENDING_ID, applied};
-    use lib_core::{Period, TagId};
+    use lib_core::{CategoryId, Period};
 
     use super::*;
 
@@ -181,14 +181,14 @@ mod tests {
         joint.name = "Shared house".into();
         let changes = [
             LedgerChange::UpsertBudget(joint.clone()),
-            LedgerChange::DeleteTag(TagId::seed(1)),
+            LedgerChange::DeleteCategory(CategoryId::seed(1)),
         ];
 
         assert!(forward(&mut *store.borrow_mut(), &changes));
         assert_eq!(store.borrow().budgets().budget(joint.id), Some(joint));
         assert!(!forward(
             &mut *store.borrow_mut(),
-            &[LedgerChange::DeleteTag(TagId::seed(1))]
+            &[LedgerChange::DeleteCategory(CategoryId::seed(1))]
         ));
     }
 

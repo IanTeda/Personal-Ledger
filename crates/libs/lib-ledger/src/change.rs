@@ -11,7 +11,7 @@ use std::collections::BTreeSet;
 use lib_bills::{BillPlan, BillScheduleEntry};
 use lib_budgets::Budget;
 use lib_categories::Category;
-use lib_core::{CategoryId, TagId};
+use lib_core::CategoryId;
 use lib_payees::Payee;
 use lib_transactions::Transaction;
 
@@ -24,6 +24,8 @@ pub enum Domain {
     Accounts,
     Categories,
     Payees,
+    /// No change carries it: the Tags store is written outside the Ledger, and the Desktop announces
+    /// it after each write (`LedgerStore::announce_tags`, #1003).
     Tags,
     Transactions,
     Bills,
@@ -45,7 +47,6 @@ pub enum LedgerChange {
     UpsertPayee(Payee),
     UpsertCategory(Category),
     DeleteCategory(CategoryId),
-    DeleteTag(TagId),
     UpsertTransaction(Transaction),
     UpsertBillPlan(BillPlan),
     UpsertBillEntry(BillScheduleEntry),
@@ -57,7 +58,6 @@ impl LedgerChange {
         match self {
             Self::UpsertPayee(_) => Domain::Payees,
             Self::UpsertCategory(_) | Self::DeleteCategory(_) => Domain::Categories,
-            Self::DeleteTag(_) => Domain::Tags,
             Self::UpsertTransaction(_) => Domain::Transactions,
             Self::UpsertBillPlan(_) | Self::UpsertBillEntry(_) => Domain::Bills,
             Self::UpsertBudget(_) => Domain::Budgets,
@@ -85,14 +85,15 @@ mod tests {
 
     #[test]
     fn domains_names_each_touched_domain_once() {
+        let transaction = Ledger::stub().transactions()[0].clone();
         let changes = [
-            LedgerChange::DeleteTag(TagId::seed(1)),
-            LedgerChange::DeleteTag(TagId::seed(2)),
-            LedgerChange::DeleteCategory(CategoryId::seed(3)),
+            LedgerChange::DeleteCategory(CategoryId::seed(1)),
+            LedgerChange::DeleteCategory(CategoryId::seed(2)),
+            LedgerChange::UpsertTransaction(transaction),
         ];
         assert_eq!(
             domains(&changes),
-            BTreeSet::from([Domain::Tags, Domain::Categories])
+            BTreeSet::from([Domain::Categories, Domain::Transactions])
         );
     }
 

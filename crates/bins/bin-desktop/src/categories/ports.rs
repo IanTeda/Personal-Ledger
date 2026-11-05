@@ -271,7 +271,6 @@ impl CategoryReassign for LedgerPorts<'_> {
 #[cfg(test)]
 mod tests {
     use gpui::{AppContext as _, TestAppContext};
-    use lib_core::TagId;
 
     use super::*;
 
@@ -285,7 +284,7 @@ mod tests {
         let changes = [
             LedgerChange::UpsertCategory(groceries.clone()),
             LedgerChange::DeleteCategory(gone),
-            LedgerChange::DeleteTag(TagId::seed(1)),
+            LedgerChange::UpsertTransaction(ledger.transactions()[0].clone()),
         ];
 
         assert!(forward(&mut *store.borrow_mut(), &changes));
