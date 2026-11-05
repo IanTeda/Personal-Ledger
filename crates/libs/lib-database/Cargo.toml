@@ -25,6 +25,8 @@ lib_budgets = { path = "../../../crates/libs/lib-budgets" }
 lib_dashboard = { path = "../../../crates/libs/lib-dashboard" }
 ## Only for the rail counts port `StoredShellReads` answers (#1026).
 lib_shell = { path = "../../../crates/libs/lib-shell" }
+## Only for the ports Settings › Ledger reads and writes the base Unit through (#1041).
+lib_settings = { path = "../../../crates/libs/lib-settings" }
 lib_documents = { path = "../../../crates/libs/lib-documents" }
 lib_payees = { path = "../../../crates/libs/lib-payees" }
 lib_institutions = { path = "../../../crates/libs/lib-institutions" }
@@ -62,6 +64,7 @@ uuid = { workspace = true }
 
 
 [dev-dependencies]
+lib_settings = { path = "../../../crates/libs/lib-settings", features = ["contract-tests"] }
 lib_units = { path = "../../../crates/libs/lib-units", features = ["contract-tests"] }
 lib_transactions = { path = "../../../crates/libs/lib-transactions", features = ["contract-tests"] }
 lib_bills = { path = "../../../crates/libs/lib-bills", features = ["contract-tests"] }

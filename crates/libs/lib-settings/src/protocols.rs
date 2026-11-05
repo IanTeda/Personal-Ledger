@@ -7,7 +7,7 @@
 use std::rc::Rc;
 
 use lib_colour_theme::ColourAppearance;
-use lib_core::{DateStyle, OnStart, StartView};
+use lib_core::{DateStyle, OnStart, StartView, UnitId};
 use lib_toast::Notify;
 
 use crate::log::LogLine;
@@ -161,4 +161,42 @@ pub trait TracingLog {
 
     /// Empties the capture for every reader. Sequence numbers keep counting up.
     fn clear(&self);
+}
+
+/// A Unit the Base unit select offers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnitChoice {
+    pub id: UnitId,
+    pub code: String,
+    pub name: String,
+}
+
+/// What Settings › Ledger reads of the Units: the Client answers it over the Units store
+/// (`lib-database`'s `StoredSettingsReads`), so the page never holds a copy.
+pub trait LedgerUnits {
+    /// The Units the Base unit select offers: the active ones, by code.
+    fn choices(&self) -> Vec<UnitChoice>;
+
+    /// The Ledger's base Unit.
+    fn base_unit(&self) -> Option<UnitId>;
+}
+
+/// How a write of the base Unit went.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BaseUnitAnswer {
+    Saved,
+    /// The Unit was removed or deactivated under the select, which repaints without it.
+    Refused,
+}
+
+/// Writes the Ledger's one Preference, its base Unit.
+pub trait LedgerPreferences {
+    fn set_base_unit(&self, id: UnitId) -> BaseUnitAnswer;
+}
+
+/// What only the Shell does once Settings › Ledger has set the base Unit: every view of the Units
+/// is the Client's to bring in line.
+pub trait LedgerRouter {
+    /// The base Unit was saved, so the Client announces the Units domain.
+    fn base_unit_changed(&mut self);
 }

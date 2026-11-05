@@ -75,6 +75,7 @@ pub use adapter::documents::DocumentsAdapter;
 pub use adapter::institutions::{InstitutionsAdapter, unit_institutions};
 pub use adapter::inventory::{InventoryAdapter, unit_locations};
 pub use adapter::payees::PayeesAdapter;
+pub use adapter::settings::{LedgerPreferencesAdapter, StoredSettingsReads};
 pub use adapter::store::{
     AccountsStore, BillsStore, BudgetsStore, CategoriesStore, CountingCommit, DocumentsStore,
     FakeStores, InstitutionsStore, InventoryStore, PayeesStore, SharedAccountsStore,

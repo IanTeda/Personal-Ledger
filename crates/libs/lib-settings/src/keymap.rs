@@ -19,7 +19,7 @@ use lib_viper::keymap::{
     MOVE_LAST, MOVE_UP, SELECT,
 };
 
-use crate::presenter::{LogScroll, PageKey, SettingsFrameEvent, TracingEvent};
+use crate::presenter::{LedgerEvent, LogScroll, PageKey, SettingsFrameEvent, TracingEvent};
 
 /// From the index into the page on show.
 pub const ENTER_PAGE: &str = "settings.enter_page";
@@ -91,6 +91,20 @@ pub const DEVICE_PAGE_BINDINGS: &[Binding<PageKey>] = &[
 /// The This device pages' keymap under `config`'s overrides.
 pub fn device_page_keymap(config: &KeyBindingConfig) -> Keymap<PageKey> {
     Keymap::new(DEVICE_PAGE_BINDINGS, config)
+}
+
+/// Settings › Ledger's commands, with today's keys: `j`/`k` step the Base unit select. None is
+/// listed in the palette.
+pub const LEDGER_BINDINGS: &[Binding<LedgerEvent>] = &[
+    Binding::hidden(MOVE_DOWN, "j", LedgerEvent::Step(Step::Next)),
+    Binding::hidden(MOVE_UP, "k", LedgerEvent::Step(Step::Prev)),
+    Binding::hidden(ARROW_DOWN, "down", LedgerEvent::Step(Step::Next)),
+    Binding::hidden(ARROW_UP, "up", LedgerEvent::Step(Step::Prev)),
+];
+
+/// Settings › Ledger's keymap under `config`'s overrides.
+pub fn ledger_keymap(config: &KeyBindingConfig) -> Keymap<LedgerEvent> {
+    Keymap::new(LEDGER_BINDINGS, config)
 }
 
 /// On Settings › Tracing, a page of the log box down.

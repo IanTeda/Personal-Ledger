@@ -6,11 +6,14 @@
 //! port, reads the file back as a restart would, and expects what was saved, and only that.
 
 use lib_colour_theme::ColourAppearance;
-use lib_core::{DateStyle, OnStart, StartView};
+use lib_core::{DateStyle, OnStart, StartView, UnitId};
 
 use crate::fake::StoredDevice;
 use crate::log::LogLevel;
-use crate::protocols::{DeviceAnswer, DeviceConfiguration, DeviceKey, DeviceRefusal, TracingLog};
+use crate::protocols::{
+    BaseUnitAnswer, DeviceAnswer, DeviceConfiguration, DeviceKey, DeviceRefusal, LedgerPreferences,
+    LedgerUnits, TracingLog,
+};
 
 /// Builds the device a contract check runs on.
 pub trait DeviceFactory {
@@ -244,10 +247,61 @@ pub fn run_all_tracing_log(factory: &mut impl TracingLogFactory) {
     clear_empties_and_seq_keeps_counting(factory);
 }
 
+/// Builds the read and write ports Settings › Ledger runs on, over the same Units.
+pub trait LedgerFactory {
+    type Reads: LedgerUnits;
+    type Writes: LedgerPreferences;
+
+    /// The stub Units (aud, btc, vas, aud the base) with those of `deactivated` made inactive,
+    /// read and written through ports on one store.
+    fn create(&mut self, deactivated: &[UnitId]) -> (Self::Reads, Self::Writes);
+}
+
+/// The choices are the active Units by code, and the base is the stub's.
+pub fn the_choices_are_the_active_units_by_code(factory: &mut impl LedgerFactory) {
+    let (reads, _) = factory.create(&[UnitId::SEED_BTC]);
+
+    let codes: Vec<_> = reads.choices().into_iter().map(|unit| unit.code).collect();
+    assert_eq!(codes, ["aud", "vas"]);
+    assert_eq!(reads.base_unit(), Some(UnitId::SEED_AUD));
+}
+
+/// A base Unit that is saved reads back, and only it moves.
+pub fn a_saved_base_unit_reads_back(factory: &mut impl LedgerFactory) {
+    let (reads, writes) = factory.create(&[]);
+
+    assert_eq!(
+        writes.set_base_unit(UnitId::SEED_BTC),
+        BaseUnitAnswer::Saved
+    );
+
+    assert_eq!(reads.base_unit(), Some(UnitId::SEED_BTC));
+    assert_eq!(reads.choices().len(), 3, "no Unit is added or removed");
+}
+
+/// A Unit that is gone, or deactivated, is refused and the base stays.
+pub fn a_unit_that_is_gone_or_inactive_is_refused(factory: &mut impl LedgerFactory) {
+    let (reads, writes) = factory.create(&[UnitId::SEED_VAS]);
+
+    assert_eq!(writes.set_base_unit(UnitId::new()), BaseUnitAnswer::Refused);
+    assert_eq!(
+        writes.set_base_unit(UnitId::SEED_VAS),
+        BaseUnitAnswer::Refused
+    );
+    assert_eq!(reads.base_unit(), Some(UnitId::SEED_AUD));
+}
+
+/// Runs every Settings › Ledger check on `factory`.
+pub fn run_all_ledger(factory: &mut impl LedgerFactory) {
+    the_choices_are_the_active_units_by_code(factory);
+    a_saved_base_unit_reads_back(factory);
+    a_unit_that_is_gone_or_inactive_is_refused(factory);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fake::{InMemoryDeviceConfiguration, InMemoryTracingLog};
+    use crate::fake::{InMemoryDeviceConfiguration, InMemoryLedgerUnits, InMemoryTracingLog};
 
     struct FakeLogs;
 
@@ -266,6 +320,26 @@ mod tests {
     #[test]
     fn the_in_memory_capture_keeps_the_tracing_log_contract() {
         run_all_tracing_log(&mut FakeLogs);
+    }
+
+    struct FakeLedger;
+
+    impl LedgerFactory for FakeLedger {
+        type Reads = InMemoryLedgerUnits;
+        type Writes = InMemoryLedgerUnits;
+
+        fn create(&mut self, deactivated: &[UnitId]) -> (InMemoryLedgerUnits, InMemoryLedgerUnits) {
+            let units = InMemoryLedgerUnits::stub();
+            for id in deactivated {
+                units.deactivate(*id);
+            }
+            (units.clone(), units)
+        }
+    }
+
+    #[test]
+    fn the_in_memory_ledger_units_keep_the_contract() {
+        run_all_ledger(&mut FakeLedger);
     }
 
     struct Fakes;

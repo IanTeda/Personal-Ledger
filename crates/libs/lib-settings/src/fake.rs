@@ -7,12 +7,13 @@ use std::rc::Rc;
 use std::time::SystemTime;
 
 use lib_colour_theme::ColourAppearance;
-use lib_core::{DateStyle, OnStart, StartView};
+use lib_core::{DateStyle, OnStart, StartView, UnitId};
 use lib_toast::{Notice, Notify};
 
 use crate::log::{LogLevel, LogLine};
 use crate::page::SettingsPage;
 use crate::presenter::{ClearLogsPresenter, DisplayOutput, LogListChange, LogScroll};
+use crate::protocols::{BaseUnitAnswer, LedgerPreferences, LedgerRouter, LedgerUnits, UnitChoice};
 use crate::protocols::{
     ColourChoice, DeviceAnswer, DeviceConfiguration, DeviceKey, DeviceRefusal, DeviceRouter,
     SettingsRouter, TracingLog, TracingRouter,
@@ -30,6 +31,7 @@ pub enum Routed {
     LogScrolled(LogScroll),
     LogChanged(LogListChange),
     ClearLogsOpened,
+    BaseUnitChanged,
     Notice(Notice),
 }
 
@@ -105,6 +107,93 @@ impl DeviceRouter for RecordingRouter {
 
     fn colour_changed(&mut self, colour: ColourChoice) {
         self.routed.push(Routed::ColourChanged(colour));
+    }
+}
+
+impl LedgerRouter for RecordingRouter {
+    fn base_unit_changed(&mut self) {
+        self.routed.push(Routed::BaseUnitChanged);
+    }
+}
+
+/// The Units Settings › Ledger reads and the base Unit it writes, in memory: the stub's aud, btc
+/// and vas with aud the base. Clones share the rows, so a Presenter's write reads back.
+#[derive(Debug, Clone)]
+pub struct InMemoryLedgerUnits {
+    rows: Rc<RefCell<LedgerRows>>,
+}
+
+#[derive(Debug)]
+struct LedgerRows {
+    /// `(choice, is_active)`, in code order.
+    units: Vec<(UnitChoice, bool)>,
+    base: UnitId,
+}
+
+impl InMemoryLedgerUnits {
+    /// aud, btc and vas, all active, with aud the base.
+    pub fn stub() -> Self {
+        let unit = |id, code: &str, name: &str| {
+            (
+                UnitChoice {
+                    id,
+                    code: code.to_string(),
+                    name: name.to_string(),
+                },
+                true,
+            )
+        };
+        Self {
+            rows: Rc::new(RefCell::new(LedgerRows {
+                units: vec![
+                    unit(UnitId::SEED_AUD, "aud", "Australian dollar"),
+                    unit(UnitId::SEED_BTC, "btc", "Bitcoin"),
+                    unit(UnitId::SEED_VAS, "vas", "Vanguard Australian Shares"),
+                ],
+                base: UnitId::SEED_AUD,
+            })),
+        }
+    }
+
+    /// Deactivates `id`, as the Units page does.
+    pub fn deactivate(&self, id: UnitId) {
+        for (choice, active) in &mut self.rows.borrow_mut().units {
+            if choice.id == id {
+                *active = false;
+            }
+        }
+    }
+}
+
+impl LedgerUnits for InMemoryLedgerUnits {
+    fn choices(&self) -> Vec<UnitChoice> {
+        self.rows
+            .borrow()
+            .units
+            .iter()
+            .filter(|(_, active)| *active)
+            .map(|(choice, _)| choice.clone())
+            .collect()
+    }
+
+    fn base_unit(&self) -> Option<UnitId> {
+        Some(self.rows.borrow().base)
+    }
+}
+
+impl LedgerPreferences for InMemoryLedgerUnits {
+    fn set_base_unit(&self, id: UnitId) -> BaseUnitAnswer {
+        let mut rows = self.rows.borrow_mut();
+        if rows
+            .units
+            .iter()
+            .any(|(choice, active)| choice.id == id && *active)
+        {
+            rows.base = id;
+            BaseUnitAnswer::Saved
+        } else {
+            BaseUnitAnswer::Refused
+        }
     }
 }
 
