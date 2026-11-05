@@ -1071,6 +1071,31 @@ mod tests {
     }
 
     #[test]
+    fn a_type_blocked_by_one_use_reads_in_the_singular() {
+        let (_categories, shared) = stub();
+        let budget = InMemoryCategoryBudget::default();
+        let mut usage = InMemoryCategoryUsage::default();
+        usage.blockers.insert(
+            GROCERIES,
+            TypeChangeBlockers {
+                budgets: 0,
+                bill_plans: 1,
+            },
+        );
+        let mut form = CategoryFormPresenter::edit(shared, &budget, &usage, FOOD).expect("seeded");
+
+        send(
+            &mut form,
+            vec![CategoryFormEvent::Type(CategoryTypes::Income)],
+        );
+
+        assert_eq!(
+            form.view_model().notice,
+            "Food can't become Income: 1 Bill Plan uses its Categories."
+        );
+    }
+
+    #[test]
     fn a_blocked_type_shows_its_notice_on_pick_and_the_save_is_refused_with_the_same_text() {
         let (categories, shared) = stub();
         let mut budget = InMemoryCategoryBudget::default();

@@ -76,6 +76,8 @@ categories-handover-payee-defaults = { $count ->
    *[other] { $count } Payee defaults
 }
 categories-type-in-use = { $category } can't become { $kind }: { $uses } use its Categories.
+# When `$uses` names a single Budget or Bill Plan, so the verb agrees with it.
+categories-type-in-use-single = { $category } can't become { $kind }: { $uses } uses its Categories.
 categories-type-in-use-budgets = { $count ->
     [one] { $count } Budget
    *[other] { $count } Budgets

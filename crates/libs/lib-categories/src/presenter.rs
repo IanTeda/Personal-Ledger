@@ -81,7 +81,12 @@ fn type_in_use_text(category: &str, to: &CategoryTypes, blockers: TypeChangeBloc
         [one] => one.clone(),
         _ => String::new(),
     };
-    msg::categories_type_in_use(category, &lib_locale::Label::label(to), &uses)
+    let kind = lib_locale::Label::label(to);
+    if blockers.budgets + blockers.bill_plans == 1 {
+        msg::categories_type_in_use_single(category, &kind, &uses)
+    } else {
+        msg::categories_type_in_use(category, &kind, &uses)
+    }
 }
 
 #[cfg(test)]
