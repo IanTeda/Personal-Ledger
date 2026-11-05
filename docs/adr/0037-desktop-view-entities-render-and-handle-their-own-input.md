@@ -119,3 +119,10 @@ The decision above made click handlers `cx.listener` closures and said the Props
 - **Migration.** Units first (#1016), then the other migrated pages one ticket each (#1017 to #1020); until then they keep their aliases. Views not yet modules (Dashboard, Help, Settings › Display, Tracing, General, Sync Server) move with their slices, #814 and #815.
 
 Consequences: a migrated page adds a `PresenterPage` impl per Presenter and passes `&PageClicks<Self>` to its render helpers; it has no Props struct, closure builder or callback alias of its own.
+
+## Amendment (2026-11-06): the legacy Dialog host is gone
+
+Slice 12 ([#1036](https://github.com/IanTeda/Personal-Ledger/issues/1036)) moved the last two Dialogs on `shell/view/dialog_host.rs`, Tracing's Clear logs ([#1040](https://github.com/IanTeda/Personal-Ledger/issues/1040)) and Toast History ([#1043](https://github.com/IanTeda/Personal-Ledger/issues/1043)), onto the Entity host, and deleted `dialog_host.rs` and the `OpenDialog` enum. The 2026-10-18 and 2026-10-19 amendments above are history: `DialogForm`, `ConfirmDialog`, `confirm_ledger` and `LedgerCommand` went with slice 10 ([#1006](https://github.com/IanTeda/Personal-Ledger/issues/1006)), and every Dialog is now an Entity holding its Presenter (`shell/view/dialog_entity.rs`), its keys read through `lib-shell`'s Dialog keymap at the first step of `input.rs`'s `route_key`.
+
+- **Settings is a module.** The frame's state and keys are `lib-settings`' frame Presenter and keymap, which emits `PageChanged` for Back and Forward, and every config page renders from its Presenter's view model and a `PageClicks` (the 2026-11-04 amendment), with no `On*` alias, closure builder or `LogBoxProps` left.
+- **The Tracing log feed is a port.** The 2026-10-30 Settings page amendment kept the feed pushing entries through `SettingsView::page::<T>()`. Tracing now reads the capture through `lib-settings`' `TracingLog` port, and the bin only signals `TracingEvent::Appended`. `SettingsView::page::<T>()` stays for the palette commands and the test snapshots.

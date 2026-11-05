@@ -60,8 +60,8 @@ impl BudgetsPage {
         cx: &mut Context<'_, Self>,
     ) -> Self {
         let presenter = BudgetsPagePresenter::new(ports.presenter(), clock.clone(), keymap.clone());
-        // The figures read every domain Budgets counts, and the legacy Dialogs write the Budgets
-        // through the Ledger: a change to any is redrawn.
+        // The figures read every domain Budgets counts, so a change the Ledger announces in any of
+        // them is redrawn.
         let _ledger_changed = cx.subscribe(&ledger, |_, _, event: &LedgerChanged, cx| {
             let reads = [
                 Domain::Accounts,
@@ -92,7 +92,7 @@ impl BudgetsPage {
         self.presenter.current()
     }
 
-    /// The ports the page reads, which the legacy Dialogs `Root` hosts read too.
+    /// The ports the page reads, which its snapshot reads too.
     pub fn ports(&self) -> &DesktopPorts {
         &self.ports
     }
