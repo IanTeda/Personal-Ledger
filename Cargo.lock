@@ -5021,6 +5021,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "lib_settings"
+version = "0.1.0"
+dependencies = [
+ "lib_colour_theme",
+ "lib_core",
+ "lib_list_cursor",
+ "lib_locale",
+ "lib_locale_build",
+ "lib_toast",
+ "lib_viper",
+]
+
+[[package]]
 name = "lib_shell"
 version = "0.1.0"
 dependencies = [

@@ -21,7 +21,8 @@ use serde_json::Value;
 /// `lib_shell`, the Shell module, keeps the rule too.
 const SHARED_CRATES: &[&str] = &["lib_shell", "lib_toast", "lib_viper"];
 
-/// Every feature crate: one per domain, and the Dashboard, which reads others through its ports.
+/// Every feature crate: one per domain, the Dashboard, which reads others through its ports, and
+/// Settings, whose pages reach Configuration and the Ledger through theirs.
 const FEATURE_CRATES: &[&str] = &[
     "lib_accounts",
     "lib_bills",
@@ -32,6 +33,7 @@ const FEATURE_CRATES: &[&str] = &[
     "lib_institutions",
     "lib_inventory",
     "lib_payees",
+    "lib_settings",
     "lib_tags",
     "lib_transactions",
     "lib_units",

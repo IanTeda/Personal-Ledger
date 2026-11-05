@@ -70,6 +70,8 @@ allow-wildcard-paths = true
 # `lib_shell` hosts every module, so only the bins and `lib_database`, which answers its rail-count
 # port, reach it. `lib_dashboard` reads several domains
 # through its own ports, so only the bins and `lib_database`, which answers them, reach it.
+# `lib_settings` is the Desktop's Settings module: only `bin_desktop` and `lib_database`, which
+# answers its Ledger page's ports, reach it (the TUI keeps its own Settings until #805).
 deny = [
   { crate = "gpui", wrappers = ["bin_desktop", "gpui-component"], reason = "UI toolkit: only bin-desktop may depend on it (VIPER Dependencies rule)" },
   { crate = "gpui-component", wrappers = ["bin_desktop"], reason = "UI toolkit: only bin-desktop may depend on it (VIPER Dependencies rule)" },
@@ -84,6 +86,7 @@ deny = [
   { crate = "lib_transaction_import", wrappers = ["bin_desktop", "lib_database"], reason = "cross-domain module: only the bins and its adapter may depend on it (VIPER Dependencies rule)" },
   { crate = "lib_bill_payments", wrappers = ["bin_desktop", "lib_database"], reason = "cross-domain module: only the bins and its adapter may depend on it (VIPER Dependencies rule)" },
   { crate = "lib_dashboard", wrappers = ["bin_desktop", "lib_database"], reason = "the Dashboard module: only the bins and the adapter answering its read ports may depend on it (VIPER Dependencies rule)" },
+  { crate = "lib_settings", wrappers = ["bin_desktop", "lib_database"], reason = "the Settings module: only bin-desktop and the adapter answering its ports may depend on it (VIPER Dependencies rule)" },
 ]
 
 # Only crates.io, plus any git dependency listed in `allow-git`.

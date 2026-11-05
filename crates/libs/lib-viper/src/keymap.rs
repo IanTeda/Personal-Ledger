@@ -11,7 +11,9 @@
 //! The keymap is also the command palette's table: each binding says whether the palette lists its
 //! Command ([`Palette`]), so a module can't add a key and forget its palette entry.
 
-use lib_config::KeyBindingConfig;
+/// Re-exported so a module builds its keymap from `[keybindings]` without depending on
+/// `lib-config` itself, which `lib-settings` may not.
+pub use lib_config::KeyBindingConfig;
 
 /// One command: its name in `[keybindings]`, its chord when nothing overrides it, its event, and
 /// whether the command palette lists it. An empty chord leaves the command unbound until

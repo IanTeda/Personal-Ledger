@@ -1,0 +1,28 @@
+[package]
+name = "lib_settings"
+version = "0.1.0"
+edition = "2024"
+# Never published to crates.io; also lets cargo-deny skip licence checks on workspace crates.
+publish = false
+license.workspace = true
+
+[lib]
+# Usage is specified by unit tests, not doctests (see CLAUDE.md Conventions).
+doctest = false
+
+[dependencies]
+## -- Internal Dependencies --
+# Never `lib_config`, `lib_tracing` or `lib_units`: the frame reads `[keybindings]` through
+# `lib_viper`'s re-export, and the pages reach Configuration, the log and the Units through ports.
+lib_colour_theme = { path = "../lib-colour-theme" }
+lib_core = { path = "../lib-core" }
+lib_list_cursor = { path = "../lib-list-cursor" }
+lib_locale = { path = "../lib-locale" }
+lib_toast = { path = "../lib-toast" }
+lib_viper = { path = "../lib-viper" }
+
+[build-dependencies]
+lib_locale_build = { path = "../lib-locale-build" }
+
+[lints]
+workspace = true
