@@ -27,7 +27,6 @@ use crate::{
         general::GeneralPage,
         hints::settings_plain_page_hints,
         ledger::LedgerPage,
-        page::PageRowClicked,
         state::SettingsView,
         sync_server::SyncServerPage,
         tracing::{
@@ -43,6 +42,11 @@ use crate::{
     units::{UnitsPage, UnitsSetup, units_page},
     view::event::{Reveal, ViewEvent},
 };
+
+/// A click on a row of a Settings page, which hands the page keyboard focus. Every page with rows
+/// emits it, and the Settings View, which owns the focus, follows it.
+#[derive(Debug, Clone, Copy)]
+pub struct PageRowClicked;
 
 /// What `shell::router::build` hands the Settings pages that are modules' Views: the Units,
 /// Institutions, Accounts, Categories, Payees and Document Types modules' ports and keymaps.
@@ -140,7 +144,7 @@ pub trait Page: Render + EventEmitter<ViewEvent> + EventEmitter<PageRowClicked> 
 
     /// The heading's right-aligned meta.
     fn heading_meta(&self, _cx: &App) -> AnyElement {
-        Self::PAGE.scope_note().into_any_element()
+        super::scope_note(Self::PAGE).into_any_element()
     }
 
     /// The page's keys, for the legend and the `?` cheat sheet. The keys are
@@ -160,7 +164,7 @@ pub trait Page: Render + EventEmitter<ViewEvent> + EventEmitter<PageRowClicked> 
 
     /// The status line's right-aligned note while the page has focus.
     fn status_note(&self, _cx: &App) -> String {
-        Self::PAGE.scope_note()
+        super::scope_note(Self::PAGE)
     }
 
     /// A pane drawn at the View's right edge, beside the page.

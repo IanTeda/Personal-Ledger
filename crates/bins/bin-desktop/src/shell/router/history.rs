@@ -37,8 +37,7 @@ impl Root {
         }
         if matches!(action, TopBarAction::Back | TopBarAction::Forward) {
             let page = self.nav().settings_page();
-            self.settings
-                .update(cx, |view, cx| view.set_selected_section(cx, page));
+            self.settings.update(cx, |view, cx| view.restore(page, cx));
         }
         if self.nav().noun() != noun_before {
             self.state.undo_menu_open = false;

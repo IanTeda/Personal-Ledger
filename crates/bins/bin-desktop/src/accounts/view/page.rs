@@ -25,7 +25,10 @@ use crate::{
     ledger_store::{LedgerStore, notify_on},
     navigation::command::AccountsVerb,
     navigation::movement::Movement,
-    settings::{SettingsPage, page::PageRowClicked, pages::Page},
+    settings::{
+        SettingsPage,
+        pages::{Page, PageRowClicked},
+    },
     shell::view::page_clicks::PresenterPage,
     view::event::{Reveal, ViewEvent},
 };

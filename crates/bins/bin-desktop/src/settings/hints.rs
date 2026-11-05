@@ -1,34 +1,6 @@
 //! The status-line legends of the Settings pages and of the dialogs they open, as `(key, action)`
 //! pairs. They live beside the Settings Views that own the keys, not in `Root`.
 
-/// The Settings index rail's keys (the keyboard model's index scope): `j`/`k` swap the page live,
-/// `l`/`enter` step into it.
-pub(crate) fn settings_index_hints() -> Vec<(&'static str, String)> {
-    vec![
-        ("j/k", crate::msg::desktop_hint_page()),
-        ("l/enter", crate::msg::desktop_hint_open()),
-    ]
-}
-
-/// What a page adds to its legend at Medium, where Settings is a drill-down (DESKTOP-120):
-/// `[`/`]` step through the pages, `p` opens the picker and `esc` goes back to the index.
-pub(crate) fn settings_medium_page_hints() -> Vec<(&'static str, String)> {
-    vec![
-        ("[/]", crate::msg::desktop_hint_pages()),
-        ("p", crate::msg::desktop_hint_picker()),
-        ("esc", crate::msg::desktop_hint_settings()),
-    ]
-}
-
-/// The page picker's keys while it is open.
-pub(crate) fn settings_picker_hints() -> Vec<(&'static str, String)> {
-    vec![
-        ("j/k", crate::msg::desktop_hint_page()),
-        ("enter", crate::msg::desktop_hint_open()),
-        ("esc", crate::msg::desktop_hint_close()),
-    ]
-}
-
 /// The Display page's keys while a control above the Colour Theme grid has focus.
 pub(crate) fn settings_display_hints() -> Vec<(&'static str, String)> {
     vec![

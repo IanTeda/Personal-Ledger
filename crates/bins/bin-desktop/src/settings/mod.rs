@@ -2,6 +2,11 @@
 //! at a time, not a continuous scroll. The settings index rail (`shell::view::rail::settings_index`) swaps the
 //! page, and only the selected page is mounted. Each page keeps the same anatomy: one heading
 //! ("Settings - <page>") with its right-aligned meta over a 2px rule, then the page's content.
+//!
+//! The frame (which page shows, the Index/Page focus, the Medium drill-down and the page picker)
+//! is `lib-settings`' Presenter, held by [`state::SettingsView`] and drawn here from its view
+//! model, its clicks going through [`PageClicks`]. What stays the Desktop's of a page's identity
+//! is its icon ([`icon`]) and which page shows a revealed record ([`for_reveal`]).
 
 pub mod about;
 pub mod data_backup;
@@ -10,16 +15,14 @@ pub mod display;
 pub mod general;
 pub(crate) mod hints;
 pub mod ledger;
-pub mod page;
 pub mod pages;
-pub mod picker;
+pub mod router;
 pub mod snapshot;
 pub mod state;
 pub mod sync_server;
 pub mod tracing;
 
 use crate::navigation::nav::NounLabel;
-use std::rc::Rc;
 
 use gpui::{AnyElement, App, Context, Pixels, SharedString, Window, div, prelude::*, px};
 
@@ -27,13 +30,19 @@ use gpui_component::{
     Sizable,
     scroll::{Scrollbar, ScrollbarShow},
 };
+use lib_settings::{Breadcrumb, IndexGroup, IndexRow, PickerView, ScopeFacts, SettingsFrameEvent};
 
 use crate::{
-    navigation::nav::Noun, shell::view::rail::settings_index::SettingsIndexRail, theme::color,
+    assets::icon::DesktopIcon,
+    navigation::nav::Noun,
+    shell::view::{page_clicks::PageClicks, rail::settings_index::SettingsIndexRail},
+    theme::color,
+    view::event::Reveal,
 };
 
-use picker::PagePicker;
 use state::SettingsView;
+
+pub use lib_settings::{ScopeGroup, SettingsFocus, SettingsPage};
 
 /// The widest a page's content draws, at every Window Size; the View past it stays empty
 /// (DESKTOP-107).
@@ -58,32 +67,56 @@ fn index_page_child(page: SettingsPage) -> usize {
     INDEX_PAGE_FIRST_GROUP + groups + page.index()
 }
 
-type OnClick = Rc<dyn Fn(&mut Window, &mut App)>;
-type OnPageClick = Rc<dyn Fn(SettingsPage, &mut Window, &mut App)>;
+/// The page's scope note, right of its heading and on the status line. The Tracing note counts the
+/// entries the log capture keeps, which is `lib-tracing`'s to say.
+pub fn scope_note(page: SettingsPage) -> String {
+    page.scope_note(ScopeFacts {
+        log_capacity: lib_tracing::LOG_CAPACITY,
+    })
+}
 
-pub use page::{ScopeGroup, SettingsPage};
+/// The icon beside the page's name on the Medium index page (DESKTOP-119). A page that was a
+/// rail noun keeps that noun's icon, so it reads the same wherever it shows; Institutions
+/// shares Loans' bank.
+pub fn icon(page: SettingsPage) -> DesktopIcon {
+    match page {
+        SettingsPage::General => DesktopIcon::SettingsGeneral,
+        SettingsPage::Display => DesktopIcon::SettingsDisplay,
+        SettingsPage::Ledger => DesktopIcon::SettingsLedger,
+        SettingsPage::Units => DesktopIcon::SettingsUnits,
+        SettingsPage::Institutions => DesktopIcon::Loans,
+        SettingsPage::Accounts => DesktopIcon::Accounts,
+        SettingsPage::Categories => DesktopIcon::Categories,
+        SettingsPage::Tags => DesktopIcon::Tags,
+        SettingsPage::Payees => DesktopIcon::Payees,
+        SettingsPage::Documents => DesktopIcon::Documents,
+        SettingsPage::Inventory => DesktopIcon::Inventory,
+        SettingsPage::SyncServer => DesktopIcon::SettingsSyncServer,
+        SettingsPage::DataBackup => DesktopIcon::SettingsDataBackup,
+        SettingsPage::Tracing => DesktopIcon::SettingsTracing,
+        SettingsPage::About => DesktopIcon::SettingsAbout,
+    }
+}
+
+/// The page that owns a revealed record, or `None` for a record another View owns. Which page
+/// shows a record is a Router decision, and `Reveal` is the Desktop's routing vocabulary.
+pub fn for_reveal(reveal: &Reveal) -> Option<SettingsPage> {
+    match reveal {
+        Reveal::Account(_) => Some(SettingsPage::Accounts),
+        Reveal::Payee(_) => Some(SettingsPage::Payees),
+        Reveal::BillEntry(_) | Reveal::BillPlan(_) | Reveal::BillsPeriod(_) => None,
+    }
+}
 
 impl Render for SettingsView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let entity = cx.entity();
-        let selected = self.selected_section();
-        let index_focused = self.zone_focused && self.focus() == SettingsFocus::Index;
-        let page_focused = self.zone_focused && self.focus() == SettingsFocus::Page;
-        let on_index_click = {
-            let entity = entity.clone();
-            Rc::new(move |section, _window: &mut Window, cx: &mut App| {
-                entity.update(cx, |view, cx| view.click_index(section, cx));
-            })
-        };
-        let drill_down = self.drill_down();
+        let model = self.view_model();
+        let clicks = PageClicks::new(cx);
+        let index_focused = self.zone_focused && model.focus == SettingsFocus::Index;
+        let page_focused = self.zone_focused && model.focus == SettingsFocus::Page;
+        let drill_down = model.drill_down;
         // At Medium the index is a page of its own, in the page's place (DESKTOP-119).
-        if drill_down && self.focus() == SettingsFocus::Index {
-            let on_row_click: OnPageClick = {
-                let entity = entity.clone();
-                Rc::new(move |section, _window: &mut Window, cx: &mut App| {
-                    entity.update(cx, |view, cx| view.click_index_page(section, cx));
-                })
-            };
+        if model.index_page {
             return div()
                 .id("settings")
                 .relative()
@@ -102,7 +135,7 @@ impl Render for SettingsView {
                         .px(px(28.0))
                         .flex()
                         .flex_col()
-                        .children(index_page(selected, self.ledger_open(), on_row_click, cx)),
+                        .children(index_page(&model.groups, &model.index_count, &clicks, cx)),
                 )
                 .child(
                     div()
@@ -146,37 +179,11 @@ impl Render for SettingsView {
             .px(px(28.0))
             .flex()
             .flex_col();
-        let heading = if drill_down {
-            let on_crumb: OnClick = {
-                let entity = entity.clone();
-                Rc::new(move |_window: &mut Window, cx: &mut App| {
-                    entity.update(cx, |view, cx| view.click_index_crumb(cx));
-                })
-            };
-            let on_caret: OnClick = {
-                let entity = entity.clone();
-                Rc::new(move |_window: &mut Window, cx: &mut App| {
-                    entity.update(cx, |view, cx| view.click_picker_caret(cx));
-                })
-            };
-            let on_pick: OnPageClick = {
-                let entity = entity.clone();
-                Rc::new(move |section, _window: &mut Window, cx: &mut App| {
-                    entity.update(cx, |view, cx| view.click_picker_page(section, cx));
-                })
-            };
-            crumb_heading(
-                selected,
-                self.picker(),
-                self.ledger_open(),
-                on_crumb,
-                on_caret,
-                on_pick,
-                cx,
-            )
-            .into_any_element()
-        } else {
-            plain_heading(selected, cx).into_any_element()
+        let heading = match &model.breadcrumb {
+            Some(crumb) => {
+                crumb_heading(crumb, model.picker.as_ref(), &clicks, cx).into_any_element()
+            }
+            None => plain_heading(&model.heading, cx).into_any_element(),
         };
         let body = body.child(section_block(heading, meta, content, fills, full_width, cx));
         // A page can dock a pane at the View's right edge (Units' detail pane at X-Large).
@@ -188,10 +195,9 @@ impl Render for SettingsView {
             .flex()
             .when(!drill_down, |this| {
                 this.child(SettingsIndexRail::new(
-                    selected,
+                    model.groups.clone(),
                     index_focused,
-                    self.ledger_open(),
-                    on_index_click,
+                    clicks.clone(),
                 ))
             })
             .child(body)
@@ -247,26 +253,20 @@ fn section_block(
 }
 
 /// The page heading at Large and X-Large, beside the docked index: `Settings - Display`.
-fn plain_heading(section: SettingsPage, cx: &App) -> impl IntoElement {
+fn plain_heading(heading: &str, cx: &App) -> impl IntoElement {
     div()
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .text_size(px(28.0))
         .text_color(color::foreground(cx))
-        .child(crate::msg::desktop_settings_page_heading(
-            &Noun::Settings.label(),
-            &section.label(),
-        ))
+        .child(heading.to_string())
 }
 
 /// The page heading at Medium, a breadcrumb that is the only trail on screen (DESKTOP-120):
 /// **Settings** goes back to the index, and the caret after the page name opens the picker under it.
 fn crumb_heading(
-    section: SettingsPage,
-    picker: Option<&PagePicker>,
-    ledger_open: bool,
-    on_crumb: OnClick,
-    on_caret: OnClick,
-    on_pick: OnPageClick,
+    crumb: &Breadcrumb,
+    picker: Option<&PickerView>,
+    clicks: &PageClicks<SettingsView>,
     cx: &App,
 ) -> impl IntoElement {
     div()
@@ -284,8 +284,8 @@ fn crumb_heading(
                 .cursor_pointer()
                 .text_color(color::muted(cx))
                 .hover(|this| this.text_color(color::foreground(cx)))
-                .on_click(move |_event, window, cx| on_crumb(window, cx))
-                .child(Noun::Settings.label()),
+                .on_click(clicks.send(SettingsFrameEvent::ClickCrumb))
+                .child(crumb.settings.clone()),
         )
         .child(div().text_color(color::faint_text(cx)).child("\u{203a}"))
         .child(
@@ -296,8 +296,8 @@ fn crumb_heading(
                 .flex()
                 .items_baseline()
                 .gap(px(8.0))
-                .on_click(move |_event, window, cx| on_caret(window, cx))
-                .child(section.label())
+                .on_click(clicks.send(SettingsFrameEvent::ClickCaret))
+                .child(crumb.page.clone())
                 .child(
                     div()
                         .text_size(px(16.0))
@@ -306,20 +306,12 @@ fn crumb_heading(
                 ),
         )
         // Deferred so it paints after the page below it; otherwise the page draws over the menu.
-        .children(
-            picker.map(|picker| gpui::deferred(page_picker(picker, ledger_open, on_pick, cx))),
-        )
+        .children(picker.map(|picker| gpui::deferred(page_picker(picker, clicks, cx))))
 }
 
 /// The picker under the page name: every page, in index order under its group's heading, with the
 /// chosen one highlighted.
-fn page_picker(
-    picker: &PagePicker,
-    ledger_open: bool,
-    on_pick: OnPageClick,
-    cx: &App,
-) -> AnyElement {
-    let chosen = picker.chosen();
+fn page_picker(picker: &PickerView, clicks: &PageClicks<SettingsView>, cx: &App) -> AnyElement {
     div()
         .absolute()
         .top_full()
@@ -334,8 +326,7 @@ fn page_picker(
         .font_weight(gpui::FontWeight::NORMAL)
         .text_size(px(13.0))
         .occlude()
-        .children(ScopeGroup::ALL.into_iter().flat_map(|group| {
-            let on_pick = on_pick.clone();
+        .children(picker.groups.iter().flat_map(|group| {
             std::iter::once(
                 div()
                     .pt(px(10.0))
@@ -344,30 +335,29 @@ fn page_picker(
                     .font_weight(gpui::FontWeight::EXTRA_BOLD)
                     .text_size(px(9.5))
                     .text_color(color::faint_text(cx))
-                    .child(lib_locale::format::upper(&group.label()))
+                    .child(lib_locale::format::upper(&group.label))
                     .into_any_element(),
             )
-            .chain(group.pages().map(move |page| {
-                let on_pick = on_pick.clone();
+            .chain(group.rows.iter().map(|row| {
+                let page = row.page;
                 div()
                     .id(SharedString::from(format!("settings-picker-{page:?}")))
                     .debug_selector(move || format!("settings-picker-{page:?}"))
                     .cursor_pointer()
                     .py(px(7.0))
                     .px(px(12.0))
-                    .when(page.needs_ledger() && !ledger_open, |this| {
-                        this.text_color(color::faint_text(cx))
-                    })
-                    .when(page == chosen, |this| {
+                    .when(row.muted, |this| this.text_color(color::faint_text(cx)))
+                    .when(row.chosen, |this| {
                         this.bg(color::selection_background(cx))
                             .text_color(color::selection_text(cx))
                             .font_weight(gpui::FontWeight::EXTRA_BOLD)
                     })
                     .hover(|this| this.bg(color::hover(cx)))
-                    .on_click(move |_event, window, cx| on_pick(page, window, cx))
-                    .child(page.label())
+                    .on_click(clicks.send(SettingsFrameEvent::ClickPicker(page)))
+                    .child(row.label.clone())
                     .into_any_element()
             }))
+            .collect::<Vec<_>>()
         }))
         .into_any_element()
 }
@@ -377,12 +367,11 @@ fn page_picker(
 /// its one-line description. The page on show stays selected. Each is a child of the scroll on
 /// its own ([`index_page_child`]), so a row can be scrolled to.
 fn index_page(
-    selected: SettingsPage,
-    ledger_open: bool,
-    on_row_click: OnPageClick,
+    groups: &[IndexGroup],
+    index_count: &str,
+    clicks: &PageClicks<SettingsView>,
     cx: &App,
 ) -> Vec<AnyElement> {
-    let count = i64::try_from(SettingsPage::ALL.len()).unwrap_or(i64::MAX);
     let heading = div()
         .flex()
         .items_baseline()
@@ -398,17 +387,16 @@ fn index_page(
             div()
                 .text_size(px(11.5))
                 .text_color(color::faint_text(cx))
-                .child(crate::msg::desktop_settings_index_count(count)),
+                .child(index_count.to_string()),
         );
     let rule = div()
         .h(px(2.0))
         .bg(color::structural_rule(cx))
         .mt(px(14.0))
         .mb(px(6.0));
-    let row = |page: SettingsPage| {
-        let on_row_click = on_row_click.clone();
-        let active = page == selected;
-        let muted = page.needs_ledger() && !ledger_open;
+    let row = |row: &IndexRow| {
+        let page = row.page;
+        let active = row.selected;
         div()
             .id(SharedString::from(format!("settings-index-page-{page:?}")))
             .debug_selector(move || format!("settings-index-page-{page:?}"))
@@ -425,22 +413,17 @@ fn index_page(
                     .text_color(color::selection_text(cx))
             })
             .when(!active, |this| this.hover(|this| this.bg(color::hover(cx))))
-            .when(muted, |this| this.text_color(color::faint_text(cx)))
-            .on_click(move |_event, window, cx| on_row_click(page, window, cx))
+            .when(row.muted, |this| this.text_color(color::faint_text(cx)))
+            .on_click(clicks.send(SettingsFrameEvent::ClickIndexPage(page)))
             .child(
                 div()
                     .debug_selector(move || format!("settings-index-page-{page:?}-icon"))
                     .flex_none()
-                    .child(
-                        page.icon()
-                            .icon()
-                            .with_size(px(16.0))
-                            .text_color(if active {
-                                color::selection_text(cx)
-                            } else {
-                                color::foreground(cx)
-                            }),
-                    ),
+                    .child(icon(page).icon().with_size(px(16.0)).text_color(if active {
+                        color::selection_text(cx)
+                    } else {
+                        color::foreground(cx)
+                    })),
             )
             .child(
                 div()
@@ -452,25 +435,27 @@ fn index_page(
                     .child(
                         div()
                             .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                            .child(page.label()),
+                            .child(row.label.clone()),
                     )
                     .child(
                         div()
                             .text_size(px(11.5))
                             .when(!active, |this| this.text_color(color::muted(cx)))
                             .truncate()
-                            .child(page.description()),
+                            .child(row.description.clone()),
                     ),
             )
             .child("\u{203a}")
             .into_any_element()
     };
-    let groups = ScopeGroup::ALL
-        .into_iter()
-        .flat_map(|group| std::iter::once(group_heading(group, cx)).chain(group.pages().map(row)));
+    let groups = groups.iter().flat_map(|group| {
+        std::iter::once(group_heading(group, cx))
+            .chain(group.rows.iter().map(row))
+            .collect::<Vec<_>>()
+    });
     [heading.into_any_element(), rule.into_any_element()]
         .into_iter()
-        .chain(groups.collect::<Vec<_>>())
+        .chain(groups)
         .map(|child| {
             div()
                 .w_full()
@@ -484,9 +469,10 @@ fn index_page(
 
 /// A group's heading on the Medium index page: its name with the page count and sync scope at the
 /// right, and a line saying where its settings live.
-fn group_heading(group: ScopeGroup, cx: &App) -> AnyElement {
+fn group_heading(group: &IndexGroup, cx: &App) -> AnyElement {
+    let scope = group.group;
     div()
-        .debug_selector(move || format!("settings-index-page-group-{group:?}"))
+        .debug_selector(move || format!("settings-index-page-group-{scope:?}"))
         .pt(px(18.0))
         .pb(px(8.0))
         .border_b_1()
@@ -501,13 +487,13 @@ fn group_heading(group: ScopeGroup, cx: &App) -> AnyElement {
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
                         .text_size(px(10.0))
                         .text_color(color::faint_text(cx))
-                        .child(lib_locale::format::upper(&group.label())),
+                        .child(lib_locale::format::upper(&group.label)),
                 )
                 .child(
                     div()
                         .text_size(px(11.5))
                         .text_color(color::faint_text(cx))
-                        .child(group.scope_line()),
+                        .child(group.scope_line.clone()),
                 ),
         )
         .child(
@@ -515,7 +501,7 @@ fn group_heading(group: ScopeGroup, cx: &App) -> AnyElement {
                 .mt(px(4.0))
                 .text_size(px(12.0))
                 .text_color(color::muted(cx))
-                .child(group.description()),
+                .child(group.description.clone()),
         )
         .into_any_element()
 }
@@ -526,15 +512,6 @@ fn placeholder(cx: &App) -> AnyElement {
         .text_color(color::faint_text(cx))
         .child(crate::msg::desktop_settings_page_placeholder())
         .into_any_element()
-}
-
-/// Where keyboard focus sits within Settings: the index rail, or the page it has open. Only
-/// meaningful while the View zone has focus on the Settings noun.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum SettingsFocus {
-    #[default]
-    Index,
-    Page,
 }
 
 /// `delta` steps along a control's choices, stopping at either end rather than wrapping (the
@@ -558,5 +535,21 @@ mod tests {
         assert_eq!(step_choice(&choices, 3, 1), 3);
         assert_eq!(step_choice(&choices, 1, -1), 1);
         assert_eq!(step_choice(&choices, 9, 1), 9);
+    }
+
+    #[test]
+    fn a_revealed_account_or_payee_opens_its_page_and_a_bills_record_opens_none() {
+        assert_eq!(
+            for_reveal(&Reveal::Account(lib_core::AccountId::new())),
+            Some(SettingsPage::Accounts)
+        );
+        assert_eq!(
+            for_reveal(&Reveal::Payee(lib_core::PayeeId::new())),
+            Some(SettingsPage::Payees)
+        );
+        assert_eq!(
+            for_reveal(&Reveal::BillPlan(lib_core::BillPlanId::new())),
+            None
+        );
     }
 }

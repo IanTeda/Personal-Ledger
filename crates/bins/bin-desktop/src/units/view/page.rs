@@ -36,8 +36,7 @@ use crate::{
     navigation::movement::Movement,
     settings::{
         SettingsPage,
-        page::PageRowClicked,
-        pages::{Page, PageFrame},
+        pages::{Page, PageFrame, PageRowClicked},
     },
     shell::view::{
         page_clicks::{PageClicks, PresenterPage},

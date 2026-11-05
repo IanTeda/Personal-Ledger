@@ -24,8 +24,7 @@ use crate::{
         SettingsPage,
         device::DeviceSetting,
         hints::{settings_colour_grid_hints, settings_display_hints},
-        page::PageRowClicked,
-        pages::{Page, PageFrame},
+        pages::{Page, PageFrame, PageRowClicked},
         step_choice,
     },
     shell::view::statusline::{PageStatus, owned_hints},
@@ -114,7 +113,7 @@ impl Page for DisplayPage {
             } else {
                 settings_display_hints()
             }),
-            right: Self::PAGE.scope_note(),
+            right: crate::settings::scope_note(Self::PAGE),
         })
     }
 }

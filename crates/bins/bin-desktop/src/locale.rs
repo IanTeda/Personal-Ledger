@@ -45,6 +45,7 @@ pub fn init(requested: &str, source: LocaleSource) -> Locale {
             lib_budgets::msg::LAYER,
             lib_documents::msg::LAYER,
             lib_dashboard::msg::LAYER,
+            lib_settings::msg::LAYER,
         ],
     );
     let _ = INFO.set(LocaleInfo {
@@ -82,6 +83,7 @@ pub fn init_for_tests() {
             lib_budgets::msg::LAYER,
             lib_documents::msg::LAYER,
             lib_dashboard::msg::LAYER,
+            lib_settings::msg::LAYER,
         ],
     );
 }

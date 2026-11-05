@@ -243,6 +243,11 @@ impl SettingsFramePresenter {
         self.keymap = keymap;
     }
 
+    /// Replaces the chord of the Shell's `back` the legend shows, for a `[keybindings]` change.
+    pub fn set_back_chord(&mut self, back_chord: String) {
+        self.back_chord = back_chord;
+    }
+
     /// The page on show, also the last-visited page the Client remembers.
     pub fn selected(&self) -> SettingsPage {
         self.selected

@@ -120,12 +120,15 @@ impl ActiveViewEntity {
     }
 
     /// A key the focused module's keymap takes, by `chord`: the Bills, Budgets, Documents or Transactions
-    /// page's, the Import step's, or a Settings page that is a module's View. Returns whether it took the key.
-    pub fn module_key(&self, chord: &str, cx: &mut App) -> bool {
+    /// page's, the Import step's, or the Settings frame's and its open page's, which read
+    /// `keystroke` too while their pages aren't all modules. Returns whether it took the key.
+    pub fn module_key(&self, chord: &str, keystroke: &Keystroke, cx: &mut App) -> bool {
         match self {
             Self::Bills(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
             Self::Transactions(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
-            Self::Settings(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
+            Self::Settings(view) => {
+                view.update(cx, |view, cx| view.module_key(chord, keystroke, cx))
+            }
             Self::Import(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
             Self::Budgets(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
             Self::Documents(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),

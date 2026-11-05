@@ -62,7 +62,6 @@ impl Root {
                 }
                 self.view_mode = None;
             }
-            ViewEvent::SettingsPageChanged(page) => self.navigate(NavInput::SettingsPage(page)),
             ViewEvent::DisplayChanged(display) => self.push_display_preferences(display, cx),
             ViewEvent::DeviceSetting(setting) => self.change_device_setting(setting, cx),
         }

@@ -52,7 +52,11 @@ impl SettingsView {
             page: format!("{:?}", self.selected_section()),
             page_focused: self.focus() == SettingsFocus::Page,
             status_message: None,
-            picker_chosen: self.picker().map(|picker| format!("{:?}", picker.chosen())),
+            picker_chosen: self
+                .view_model()
+                .picker
+                .and_then(|picker| picker.chosen)
+                .map(|page| format!("{page:?}")),
         }
     }
 }

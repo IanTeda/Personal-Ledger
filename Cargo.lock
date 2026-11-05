@@ -736,6 +736,7 @@ dependencies = [
  "lib_locale",
  "lib_locale_build",
  "lib_payees",
+ "lib_settings",
  "lib_shell",
  "lib_tag_removal",
  "lib_tags",

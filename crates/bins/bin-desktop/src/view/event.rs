@@ -9,7 +9,7 @@ use crate::{
     bills::EntryId,
     navigation::nav::{InputMode, Noun},
     period::Period,
-    settings::{SettingsPage, device::DeviceSetting, display::DisplayPreferences},
+    settings::{device::DeviceSetting, display::DisplayPreferences},
     shell::view::{
         dialog_entity::DialogHandle,
         dialog_host::{HostedOpen, OpenDialog},
@@ -46,8 +46,6 @@ pub enum ViewEvent {
     /// A device's setting asked for on Settings (ADR-0053): `Root` saves it to the conf file, then
     /// applies it, so a page shows the change only once it is saved.
     DeviceSetting(DeviceSetting),
-    /// Settings swapped its open page; `Root` records it as a step for Back and Forward.
-    SettingsPageChanged(SettingsPage),
 }
 
 /// A mode a View enters for something it has opened itself: the [`InputMode`]s `Root` hands

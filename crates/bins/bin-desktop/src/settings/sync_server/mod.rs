@@ -8,7 +8,10 @@ mod render;
 use gpui::{Context, EventEmitter};
 
 use crate::{
-    settings::{SettingsPage, page::PageRowClicked, pages::Page},
+    settings::{
+        SettingsPage,
+        pages::{Page, PageRowClicked},
+    },
     view::event::ViewEvent,
 };
 

@@ -90,7 +90,7 @@ use crate::{
     navigation::nav::{NavState, Noun, RailMode},
     settings::{
         SettingsPage, device::DeviceConfiguration, device::DeviceSetting,
-        display::DisplayPreferences, state::SettingsView,
+        display::DisplayPreferences, router::PageChanged, state::SettingsView,
     },
     shell::state::ShellState,
     shell::view::{rail as rail_view, window_size::WindowSize},
@@ -163,7 +163,7 @@ pub fn build(
         shell.open_ledger(ledger, cx);
     }
     shell.set_start_sidebar_minimised(persisted.start_sidebar_minimised, cx);
-    shell.set_settings_page(settings_page, cx);
+    shell.restore_settings_page(settings_page, cx);
     shell.set_explorer_filters(persisted.explorer_filters);
     shell.set_documents_state(documents_state.0, documents_state.1, documents_state.2, cx);
     shell.start_toast_clock(cx);
@@ -257,6 +257,11 @@ impl Root {
         let settings = cx.new(SettingsView::new);
         let _settings_subscriptions = vec![
             Self::view_event_subscription(&settings, cx),
+            // The frame's Router says which page the person moved to, for Back and Forward.
+            cx.subscribe(&settings, |shell, _, PageChanged(page), cx| {
+                shell.navigate(NavInput::SettingsPage(*page));
+                cx.notify();
+            }),
             // The status line reads the page's state, so a change in it repaints `Root` too.
             cx.observe(&settings, |_, _, cx| cx.notify()),
         ];
@@ -500,12 +505,13 @@ impl Root {
         self.settings.read(cx).selected_section()
     }
 
-    /// Restores the last-visited Settings page at launch. A This Ledger page with no Ledger open
-    /// restores General instead.
-    pub fn set_settings_page(&mut self, section: SettingsPage, cx: &mut App) {
-        self.settings
-            .update(cx, |v, cx| v.set_selected_section(cx, section));
-        let restored = self.settings.read(cx).selected_section();
+    /// Restores the last-visited Settings page at launch, through the frame's Presenter. A This
+    /// Ledger page with no Ledger open restores General instead.
+    fn restore_settings_page(&mut self, section: SettingsPage, cx: &mut App) {
+        let restored = self.settings.update(cx, |view, cx| {
+            view.restore(section, cx);
+            view.selected_section()
+        });
         self.navigate(NavInput::RestoreSettingsPage(restored));
     }
 
@@ -668,6 +674,7 @@ impl Root {
         self.palette_entries = command::entries(config);
         self.presenter.set_keymap(config);
         self.state.dialog_keymap = lib_shell::dialog_keymap(config);
+        self.settings.update(cx, |view, _| view.set_keymaps(config));
         let Some(open) = &self.open else {
             return;
         };
@@ -894,8 +901,7 @@ impl Focusable for Root {
 mod tests {
     use super::*;
     use crate::settings::hints::{
-        settings_colour_grid_hints, settings_display_hints, settings_index_hints,
-        settings_plain_page_hints,
+        settings_colour_grid_hints, settings_display_hints, settings_plain_page_hints,
     };
     use crate::transactions;
     use chrono::Local;
@@ -921,7 +927,6 @@ mod tests {
         let keys = |hints: Vec<(&'static str, String)>| -> Vec<&'static str> {
             hints.into_iter().map(|(key, _)| key).collect()
         };
-        assert_eq!(keys(settings_index_hints()), ["j/k", "l/enter"]);
         assert_eq!(
             keys(settings_display_hints()),
             ["j/k", "h/l", "enter", "esc"]

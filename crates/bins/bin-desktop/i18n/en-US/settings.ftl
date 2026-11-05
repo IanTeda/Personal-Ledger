@@ -14,86 +14,9 @@ desktop-settings-general-locale-from-default = { $locale }, the default
 desktop-settings-general-locale-fallback = { $requested } is not supported, so { $locale } is used.
 desktop-settings-general-locale-hint = Set with the locale setting or the --locale flag, then restart.
 
-## Settings: the page, its index rail and the section headings. Terms such as Configuration,
-## Preferences and Change Sets are the ones `GLOSSARY.md` defines.
-
-## The index's two groups (ADR-0051): each heading, its page count and sync scope, and the line
-## under it on the Medium index page.
-
-desktop-settings-group-this-device = This device
-desktop-settings-group-this-ledger = This ledger
-desktop-settings-group-this-device-scope = { $count ->
-    [one] { $count } page
-   *[other] { $count } pages
-} · never synced
-desktop-settings-group-this-ledger-scope = { $count ->
-    [one] { $count } page
-   *[other] { $count } pages
-} · synced with the Ledger
-desktop-settings-group-this-device-description = Stays on this computer and never syncs. Applies whichever Ledger is open, or none.
-desktop-settings-group-this-ledger-description = Saved in the Ledger and synced with it, so every device that opens it shares them.
-
-# The page heading at Large and X-Large, beside the docked index: `Settings - Display`.
-desktop-settings-page-heading = { $settings } - { $page }
-
-## Settings at Medium (DESKTOP-119, DESKTOP-120): the index page's count and each page's one-line
-## description, and the page picker's filter prompt.
-
-desktop-settings-index-count = { $count ->
-    [one] { $count } page
-   *[other] { $count } pages
-}
-desktop-settings-description-general = on start, toasts, locale and the ledger folder
-desktop-settings-description-display = date format, row density, status glyphs, colour theme
-desktop-settings-description-ledger = ledger name, owner and start of the financial year
-desktop-settings-description-units = currencies and other units, and the default
-desktop-settings-description-institutions = banks, brokers and lenders
-desktop-settings-description-accounts = every account, its institution and its unit
-desktop-settings-description-categories = income and expense categories
-desktop-settings-description-tags = free labels across transactions
-desktop-settings-description-payees = who you pay and who pays you
-desktop-settings-description-documents = document types and where files are kept
-desktop-settings-description-inventory = item types and depreciation
-desktop-settings-description-sync-server = server address, sign-in, interval
-desktop-settings-description-data-backup = backups, export and the ledger file
-desktop-settings-description-tracing = log level and the live log
-desktop-settings-description-about = version, licences and credits
-
-desktop-settings-section-general = General
-desktop-settings-section-display = Display
-desktop-settings-section-ledger = Ledger
-desktop-settings-section-units = Units
-desktop-settings-section-institutions = Institutions
-desktop-settings-section-inventory = Inventory
-desktop-settings-section-sync-server = Sync server
-desktop-settings-section-data-backup = Data & backup
-desktop-settings-section-tracing = Tracing (Logs)
-desktop-settings-section-about = About
-
-## Each section's scope note. `$unit` and `$size` are the backup's Unit code and store size.
-
-desktop-settings-scope-this-device = this device · never synced
-desktop-settings-scope-ledger = preferences · synced · ledger identity
-desktop-settings-scope-synced-change-sets = synced · change sets
-desktop-settings-scope-ledger-data = ledger data · synced
-desktop-settings-scope-sync-server = synced · every { $seconds ->
-    [one] { $seconds } second
-   *[other] { $seconds } seconds
-}
-desktop-settings-scope-data-backup = local files · { $unit } · { $size }
-desktop-settings-scope-tracing = this device · diagnostic · last { $entries ->
-    [one] { $entries } entry
-   *[other] { $entries } entries
-}
-desktop-settings-scope-about = version info
-desktop-settings-scope-units = { $count ->
-    [one] { $count } unit
-   *[other] { $count } units
-} · synced
-desktop-settings-scope-institutions = { $count ->
-    [one] { $count } institution
-   *[other] { $count } institutions
-} · synced
+## Settings' pages. The frame, its index and each page's name, description and scope note are
+## `lib-settings`' Messages. Terms such as Configuration, Preferences and Change Sets are the ones
+## `GLOSSARY.md` defines.
 
 ## General (DESKTOP-178): On start, Start view, the read-only Ledger folder and the THIS DEVICE box, whose
 ## rows are the Ledger On start reopens and the config file Settings writes to.

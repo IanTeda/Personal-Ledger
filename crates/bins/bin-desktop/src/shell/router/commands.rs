@@ -161,6 +161,9 @@ impl Root {
         }
         self.settings
             .update(cx, |view, cx| view.open_page(section, cx));
+        // The frame's refusal of a This Ledger page with no Ledger open, shown now rather than
+        // waiting for the next input's drain.
+        self.drain_notices();
     }
 
     /// A module Command from the palette: opens `page` (Settings' page with focus in it, or the

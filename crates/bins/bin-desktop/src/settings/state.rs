@@ -1,74 +1,99 @@
-//! The Settings destination's Entity (ADR-0032, ADR-0037). [`SettingsView`] owns the View state
-//! that belongs to Settings: the page on show, where keyboard focus sits and the Medium page
-//! picker. It builds its pages ([`SettingsPages`]), renders itself (`impl Render` in `super`),
-//! handles the index and its focus keys, and reaches `Root` only through [`ViewEvent`], which it
-//! re-emits from its pages.
+//! The Settings destination's Entity (ADR-0032, ADR-0037). [`SettingsView`] holds `lib-settings`'
+//! frame Presenter, which owns the page on show, where keyboard focus sits, the Medium drill-down
+//! and the page picker, and builds its pages ([`SettingsPages`]). It renders the Presenter's view
+//! model (`impl Render` in `super`), sends the frame its keys and clicks, and reaches `Root` only
+//! through [`ViewEvent`], which it re-emits from its pages, and [`PageChanged`], which the frame's
+//! Router raises.
 //!
 //! Every page is a [`Page`](super::pages::Page) behind one `dyn` handle, so while a page has
 //! focus this View forwards its keys, movement, `Esc`, Search and status to it without knowing
-//! which page it is.
+//! which page it is. Halfway state (#1036): every page, domain or config, still renders through
+//! that trait.
 
-use super::hints::{settings_index_hints, settings_medium_page_hints, settings_picker_hints};
+use super::router::{FrameRouter, PageChanged};
 use crate::{
     ledger_store::LedgerStore,
-    navigation::movement::Movement,
+    navigation::{chord::chord, movement::Movement},
     settings::display::DisplayPreferences,
     settings::general::GeneralPage,
     settings::pages::{LedgerPages, Page, PageFrame, PageHandle, SettingsPages, SettingsSetup},
-    settings::picker::PagePicker,
     settings::{SettingsFocus, SettingsPage},
-    shell::view::{
-        statusline::{PageStatus, owned_hints},
-        window_size::WindowSize,
-    },
-    view::event::{Reveal, ViewEvent, ViewMode},
+    shell::view::{page_clicks::PresenterPage, statusline::PageStatus, window_size::WindowSize},
+    view::event::{Reveal, ViewEvent},
     view::help::HelpGroup,
 };
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, Subscription};
 use lib_list_cursor::Step;
+use lib_settings::{
+    ScopeFacts, SettingsFrameEvent, SettingsFramePresenter, SettingsFrameSetup,
+    SettingsFrameViewModel, keymap::settings_frame_keymap,
+};
+use lib_viper::keymap::KeyBindingConfig;
 
 impl EventEmitter<ViewEvent> for SettingsView {}
+
+impl EventEmitter<PageChanged> for SettingsView {}
 
 /// The Settings View's own state. The page is the last one visited, so it survives leaving and
 /// re-entering Settings, as `g s` relies on.
 pub struct SettingsView {
     pages: SettingsPages,
-    selected_section: SettingsPage,
-    focus: SettingsFocus,
+    frame: SettingsFramePresenter,
     /// The page body's scroll, which also gives the Colour Theme grid its width.
     pub(super) scroll_handle: ScrollHandle,
     /// The Medium index page's scroll, its own so moving the selection doesn't reset it.
     pub(super) index_scroll: ScrollHandle,
     /// Whether the View zone has focus, told by `Root` as it draws the View.
     pub(super) zone_focused: bool,
-    /// The Window Size the View was last drawn at, told by `Root` as it draws the View, so its
-    /// keys and status line act on the layout on screen. At Medium, Settings is a drill-down: the
-    /// index is a page of its own and a page's heading carries the page picker (DESKTOP-119).
+    /// The Window Size the View was last drawn at, told by `Root` as it draws the View, so the
+    /// pages act on the layout on screen. At Medium, Settings is a drill-down: the index is a page
+    /// of its own and a page's heading carries the page picker (DESKTOP-119), which the frame is
+    /// told as the Window Size changes.
     window_size: WindowSize,
-    /// The Medium page picker, while it is open.
-    picker: Option<PagePicker>,
     /// Keeps each page's events reaching this View: its `ViewEvent`s re-emitted for `Root`, its
     /// changes repainting this View and its row clicks handing it focus.
     _page_subscriptions: Vec<Subscription>,
 }
 
+/// The chord of the Shell's `back` under `config`, which the frame's legend shows.
+fn back_chord(config: &KeyBindingConfig) -> String {
+    lib_shell::global_keymap(config)
+        .chord(lib_viper::keymap::BACK)
+        .unwrap_or_default()
+        .to_string()
+}
+
 impl SettingsView {
     /// Builds the This device pages, which stand with no Ledger open; [`Self::open_ledger`] adds
-    /// the This Ledger pages. The Tracing capture arrives later, through `Root::set_log_capture`.
+    /// the This Ledger pages. The Tracing capture arrives later, through `Root::set_log_capture`,
+    /// and the frame's `[keybindings]` through [`Self::set_keymaps`].
     pub fn new(cx: &mut Context<'_, Self>) -> Self {
         let pages = SettingsPages::new(cx);
         let _page_subscriptions = pages.all().flat_map(|page| page.subscribe(cx)).collect();
+        let config = KeyBindingConfig::default();
+        let frame = SettingsFramePresenter::new(SettingsFrameSetup {
+            keymap: settings_frame_keymap(&config),
+            back_chord: back_chord(&config),
+            facts: ScopeFacts {
+                log_capacity: lib_tracing::LOG_CAPACITY,
+            },
+            ledger_open: false,
+        });
         Self {
             pages,
-            selected_section: SettingsPage::default(),
-            focus: SettingsFocus::default(),
+            frame,
             scroll_handle: ScrollHandle::new(),
             index_scroll: ScrollHandle::new(),
             zone_focused: false,
             window_size: WindowSize::Large,
-            picker: None,
             _page_subscriptions,
         }
+    }
+
+    /// The frame's keys under `config`'s overrides.
+    pub fn set_keymaps(&mut self, config: &KeyBindingConfig) {
+        self.frame.set_keymap(settings_frame_keymap(config));
+        self.frame.set_back_chord(back_chord(config));
     }
 
     /// Builds the This Ledger pages on the Open Ledger's `ledger`, so they can be shown, in place
@@ -88,8 +113,8 @@ impl SettingsView {
             .all()
             .flat_map(|page| page.subscribe(cx))
             .collect();
+        self.handle(SettingsFrameEvent::LedgerOpened, cx);
         self.sync_frame(cx);
-        cx.notify();
     }
 
     /// Drops the This Ledger pages with the Ledger they were built on. A This Ledger page on show
@@ -101,11 +126,8 @@ impl SettingsView {
             .all()
             .flat_map(|page| page.subscribe(cx))
             .collect();
-        if !self.can_show(self.selected_section) {
-            self.selected_section = SettingsPage::General;
-        }
+        self.handle(SettingsFrameEvent::LedgerClosed, cx);
         self.sync_frame(cx);
-        cx.notify();
     }
 
     /// Whether a Ledger is open, so the This Ledger pages are built.
@@ -119,20 +141,26 @@ impl SettingsView {
         self.pages.get(page).is_some()
     }
 
-    /// The open page's handle. Every way onto a page checks [`Self::can_show`] first, so the
+    /// The open page's handle. The frame never shows a page it can't (a This Ledger page with no
+    /// Ledger open), and the pages are built before the frame hears a Ledger opened, so the
     /// selected page is always built.
     #[expect(
         clippy::expect_used,
-        reason = "select_page and set_selected_section only ever select a page can_show allows"
+        reason = "the frame shows a This Ledger page only once told a Ledger opened, after its pages are built, and falls back to General as one closes"
     )]
     pub(super) fn selected_page(&self) -> &dyn PageHandle {
         self.pages
-            .get(self.selected_section)
+            .get(self.frame.selected())
             .expect("the selected Settings page is one that is built")
     }
 
     pub(super) fn pages(&self) -> &SettingsPages {
         &self.pages
+    }
+
+    /// The frame as drawn.
+    pub(super) fn view_model(&self) -> SettingsFrameViewModel {
+        self.frame.view_model()
     }
 
     /// The `T` page's Entity, for what `Root` drives on a page: a module Router's entry point, the
@@ -155,14 +183,14 @@ impl SettingsView {
             .expect("`SettingsPages::get` hands back `T::PAGE`'s page, which is a `T`")
     }
 
-    /// The open page, while it has focus: the page, rather than this View, then takes its keys,
+    /// The open page, while it has focus: the page, rather than the frame, then takes its keys,
     /// movement and status. `None` on the index.
     fn focused_page(&self) -> Option<&dyn PageHandle> {
-        (self.focus == SettingsFocus::Page).then(|| self.selected_page())
+        (self.frame.focus() == SettingsFocus::Page).then(|| self.selected_page())
     }
 
     /// The space the pages are drawn in, as the pages are told it.
-    fn frame(&self) -> PageFrame {
+    fn frame_space(&self) -> PageFrame {
         PageFrame {
             window_size: self.window_size,
             body_width: f32::from(self.scroll_handle.bounds().size.width),
@@ -171,7 +199,7 @@ impl SettingsView {
 
     /// Tells every page the frame, so a page acts on the layout on screen, not the one it last saw.
     pub(super) fn sync_frame(&self, cx: &mut App) {
-        let frame = self.frame();
+        let frame = self.frame_space();
         for page in self.pages.all() {
             page.set_frame(frame, cx);
         }
@@ -181,43 +209,135 @@ impl SettingsView {
         self.zone_focused = focused;
     }
 
-    /// Tells the View the Window Size it is drawn at. Leaving Medium closes the picker, which only
-    /// Medium draws.
+    /// Tells the View the Window Size it is drawn at, and the frame whether that makes Settings a
+    /// drill-down. Leaving Medium closes the picker, which only Medium draws.
     pub fn set_window_size(&mut self, window_size: WindowSize, cx: &mut Context<'_, Self>) {
+        let changed = window_size != self.window_size;
         self.window_size = window_size;
         self.sync_frame(cx);
-        if window_size != WindowSize::Medium && self.picker.is_some() {
-            self.close_picker(cx);
+        if changed {
+            self.handle(
+                SettingsFrameEvent::DrillDown(window_size == WindowSize::Medium),
+                cx,
+            );
         }
     }
 
-    /// Whether Settings is drawn as a drill-down, the index and each page taking the View in turn.
-    pub(super) fn drill_down(&self) -> bool {
-        self.window_size == WindowSize::Medium
+    // -----------------------------------------------------------------------------------------
+    // The frame's Presenter
+    // -----------------------------------------------------------------------------------------
+
+    /// A key, click or command for the frame, as one input, committed once it is handled. One sent
+    /// while another module's input is being handled (a hand-off from the palette's no Ledger open
+    /// content) runs inside it.
+    fn send_frame(&mut self, event: SettingsFrameEvent, cx: &mut Context<'_, Self>) {
+        if crate::input::sending(cx) {
+            self.handle(event, cx);
+        } else {
+            crate::input::send(cx, |cx| self.handle(event, cx));
+        }
     }
 
-    pub(super) fn picker(&self) -> Option<&PagePicker> {
-        self.picker.as_ref()
+    /// Hands `event` to the frame, then brings the pages and scrolls into line with where it left
+    /// the selection and focus: a newly shown page starts at its top, a page losing the keyboard is
+    /// told so, and one (re)opened is told it has it, so `:settings display` on Display puts the
+    /// keyboard back on its first control. A restored page keeps its scroll. The index scrolls to
+    /// the selected row at Medium.
+    fn handle(&mut self, event: SettingsFrameEvent, cx: &mut Context<'_, Self>) {
+        let page_before = self.frame.selected();
+        let focus_before = self.frame.focus();
+        let opens = matches!(
+            event,
+            SettingsFrameEvent::OpenPage(_)
+                | SettingsFrameEvent::ClickIndexPage(_)
+                | SettingsFrameEvent::ClickPicker(_)
+                | SettingsFrameEvent::StepPage(_)
+        ) || (self.frame.picker_open() && event == SettingsFrameEvent::Select);
+        let mut router = FrameRouter { cx, refused: false };
+        self.frame.handle(event, &mut router);
+        let reopened = opens && !router.refused;
+        let page = self.frame.selected();
+        let focus = self.frame.focus();
+        let moved = page != page_before;
+        if moved {
+            if !matches!(event, SettingsFrameEvent::Restore(_)) {
+                self.scroll_handle.set_offset(gpui::Point::default());
+            }
+            if let Some(before) = self.pages.get(page_before) {
+                before.set_page_focused(false, cx);
+            }
+        }
+        if moved || reopened || focus != focus_before {
+            self.selected_page().set_page_focused(false, cx);
+            if focus == SettingsFocus::Page {
+                self.selected_page().set_page_focused(true, cx);
+            }
+        }
+        let entered = event == SettingsFrameEvent::Entered;
+        if focus == SettingsFocus::Index && (moved || entered || focus != focus_before) {
+            self.reveal_index_row();
+        }
+        cx.notify();
+    }
+
+    /// Scrolls the Medium index page just enough to show the selected row, as the selection moves
+    /// or the index comes back on show.
+    fn reveal_index_row(&self) {
+        if self.window_size != WindowSize::Medium {
+            return;
+        }
+        self.index_scroll
+            .scroll_to_item(super::index_page_child(self.frame.selected()));
+    }
+
+    /// The frame's key by `chord`, when the frame takes it as things stand. The Colour Theme grid
+    /// keeps its own `h`, so the frame's step back to the index waits until the grid is left.
+    fn frame_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {
+        let Some(event) = self.frame.keymap().event(chord) else {
+            return false;
+        };
+        if !self.frame.takes(&event) {
+            return false;
+        }
+        if event == SettingsFrameEvent::FocusIndex
+            && self.pages.display.read(cx).colour_theme_focus().is_some()
+        {
+            return false;
+        }
+        self.send_frame(event, cx);
+        true
     }
 
     // -----------------------------------------------------------------------------------------
     // The interface `Root` forwards to (ADR-0037)
     // -----------------------------------------------------------------------------------------
 
-    /// The focused page's module keymap, by `chord`, ahead of every key of Settings' own. Not while
-    /// the page picker is open, which takes every key.
-    pub fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {
-        if self.picker.is_some() {
+    /// Settings' keys at the key route's module-keymap step, by `chord` (`keystroke` its last key),
+    /// in order: the focused page's module keymap, then the page's own keys (Display's controls and
+    /// Colour Theme grid, Tracing's, General's), then the frame's keymap. The page goes first, so a
+    /// page's `h`/`l` win over the frame's `h`. Not while the page picker is open, whose keys
+    /// [`Self::key_ahead`] reads in its mode.
+    pub fn module_key(
+        &mut self,
+        chord: &str,
+        keystroke: &Keystroke,
+        cx: &mut Context<'_, Self>,
+    ) -> bool {
+        if self.frame.picker_open() {
             return false;
         }
         self.sync_frame(cx);
-        let taken = self
-            .focused_page()
-            .is_some_and(|page| page.module_key(chord, cx));
-        if taken {
-            cx.notify();
+        if let Some(page) = self.focused_page() {
+            // A page's own keys read one key at a time, with no `Ctrl`, `Alt` or `Cmd` (ADR-0037).
+            let modifiers = &keystroke.modifiers;
+            let plain =
+                !chord.contains(' ') && !(modifiers.control || modifiers.alt || modifiers.platform);
+            if page.module_key(chord, cx) || (plain && page.key_ahead(keystroke, cx)) {
+                cx.notify();
+                return true;
+            }
         }
-        taken
+        self.frame_key(chord, cx)
     }
 
     /// A palette Command on `section`'s page, by its keymap `command` name. Whether the page has it.
@@ -238,34 +358,25 @@ impl SettingsView {
         taken
     }
 
-    /// Settings' own keys ahead of the Shell's fallback, in order: the focused page's keys (the Display page's
-    /// controls and Colour Theme grid and Tracing's among them), then the index-and-page focus
-    /// keys. The page goes first, since a page's `h`/`l` must win over the focus keys' `h`. `false`
-    /// for any key none of them takes. `Esc` is left to [`Self::escape`].
+    /// Every key but `Esc` while the page picker is open, which reads them in its own mode: its
+    /// moves step the highlight and `select` opens the chosen page. Every other key is swallowed,
+    /// as before the frame was a module, so the picker's query (`SettingsFrameEvent::Type`) is
+    /// not typed into yet. `Esc` comes back as [`Self::escape`]. Every other key is the module
+    /// step's ([`Self::module_key`]).
     pub fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
-        if keystroke.key == "escape" {
+        if keystroke.key == "escape" || !self.frame.picker_open() {
             return false;
         }
-        if self.picker.is_some() {
-            self.picker_key(keystroke, cx);
-            cx.notify();
-            return true;
+        let event = chord(keystroke).and_then(|chord| self.frame.keymap().event(&chord));
+        if let Some(
+            event
+            @ (SettingsFrameEvent::Move(Step::Next | Step::Prev) | SettingsFrameEvent::Select),
+        ) = event
+        {
+            self.send_frame(event, cx);
         }
-        if self.medium_page_key(keystroke, cx) {
-            cx.notify();
-            return true;
-        }
-        // The focused page goes before `focus_key`, which would otherwise move focus to the index
-        // on `left` before the page could fold its own tree, or take the Display page's `h`.
-        self.sync_frame(cx);
-        let taken = self
-            .focused_page()
-            .is_some_and(|page| page.key_ahead(keystroke, cx))
-            || self.focus_key(keystroke, cx);
-        if taken {
-            cx.notify();
-        }
-        taken
+        cx.notify();
+        true
     }
 
     /// A key no other step took goes to the open page's own Entity; the static pages claim their
@@ -275,46 +386,43 @@ impl SettingsView {
             .is_some_and(|page| page.handle_key(keystroke, cx))
     }
 
-    /// `j`/`k`/`g g`/`G` on the index step through the pages and swap the page live, like an index
-    /// click. A page with its own selection moves it; any other page scrolls.
+    /// A movement the Shell fell back on: a page with its own selection moves it, the index steps
+    /// through the pages as the frame's own keys do, and anything else scrolls.
     pub fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) {
         if let Some(page) = self.focused_page()
             && page.apply_movement(movement, cx)
         {
             return;
         }
-        if self.focus == SettingsFocus::Index
-            && matches!(
-                movement,
-                Movement::Next | Movement::Prev | Movement::First | Movement::Last
-            )
-        {
-            self.apply_section_movement(movement, cx);
-        } else {
-            crate::view::scroll_by_movement(&self.scroll_handle, movement);
+        let step = match movement {
+            Movement::Next => Some(Step::Next),
+            Movement::Prev => Some(Step::Prev),
+            Movement::First => Some(Step::First),
+            Movement::Last => Some(Step::Last),
+            _ => None,
+        };
+        match step {
+            Some(step) if self.frame.focus() == SettingsFocus::Index => {
+                self.send_frame(SettingsFrameEvent::Move(step), cx);
+            }
+            _ => crate::view::scroll_by_movement(&self.scroll_handle, movement),
         }
         cx.notify();
     }
 
-    /// `Esc` closes what the open page has open (the Colour Theme grid among it), then leaves the
-    /// page for the index.
+    /// `Esc` closes the page picker, then what the open page has open (the Colour Theme grid among
+    /// it), then leaves the page for the index.
     pub fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
-        if self.picker.is_some() {
-            self.close_picker(cx);
-            cx.notify();
-            return true;
-        }
-        if let Some(page) = self.focused_page()
+        if !self.frame.picker_open()
+            && let Some(page) = self.focused_page()
             && page.escape(cx)
         {
             return true;
         }
-        if self.focus == SettingsFocus::Page {
-            self.focus_index(cx);
-        } else {
+        if !self.frame.takes_back() {
             return false;
         }
-        cx.notify();
+        self.send_frame(SettingsFrameEvent::Back, cx);
         true
     }
 
@@ -334,50 +442,51 @@ impl SettingsView {
     /// the index"), and the page on show, the last-visited one, starts at its top.
     pub fn on_enter(&mut self, cx: &mut Context<'_, Self>) {
         self.scroll_handle.set_offset(gpui::Point::default());
-        self.focus_index(cx);
-        cx.notify();
+        self.handle(SettingsFrameEvent::Entered, cx);
     }
 
     /// Opens the page that owns the record, with focus in it, and has the page show it.
     pub fn reveal(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
-        let Some(page) = SettingsPage::for_reveal(&reveal) else {
+        let Some(page) = super::for_reveal(&reveal) else {
             return;
         };
-        if !self.open_page(page, cx) {
-            return;
+        if self.open_page(page, cx) {
+            self.selected_page().reveal(reveal, cx);
         }
-        self.selected_page().reveal(reveal, cx);
     }
 
-    /// The status line's legend for the index or the open page, and the page's scope note. `None` while the View zone doesn't have focus.
+    /// The status line's legend for the index, the open page or the picker, and the page's scope
+    /// note. `None` while the View zone doesn't have focus. A page's own legend gains the frame's
+    /// Medium keys.
     pub fn page_status(&self, cx: &App) -> Option<PageStatus> {
         if !self.zone_focused {
             return None;
         }
-        if self.picker.is_some() {
+        let right = super::scope_note(self.frame.selected());
+        if self.frame.picker_open() {
             return Some(PageStatus {
-                hints: owned_hints(settings_picker_hints()),
-                right: self.selected_section.scope_note(),
+                hints: self.frame.hints(),
+                right,
             });
         }
-        let mut status = match self.focused_page() {
-            Some(page) => page.page_status(cx)?,
-            None => PageStatus {
-                hints: owned_hints(settings_index_hints()),
-                right: self.selected_section.scope_note(),
-            },
-        };
-        if self.drill_down() && self.focus == SettingsFocus::Page {
-            status
-                .hints
-                .extend(owned_hints(settings_medium_page_hints()));
+        match self.focused_page() {
+            Some(page) => {
+                let mut status = page.page_status(cx)?;
+                status.hints.extend(self.frame.hints());
+                Some(status)
+            }
+            None => Some(PageStatus {
+                hints: self.frame.hints(),
+                right,
+            }),
         }
-        Some(status)
     }
 
     /// The `?` cheat-sheet's Settings group: the index keys, then the open page's.
     pub fn help_group(&self, cx: &App) -> Option<HelpGroup> {
-        let keys = owned_hints(settings_index_hints())
+        let keys = self
+            .frame
+            .help()
             .into_iter()
             .chain(self.selected_page().hints(cx))
             .map(|hint| (hint.action, hint.chord))
@@ -393,232 +502,33 @@ impl SettingsView {
     // -----------------------------------------------------------------------------------------
 
     pub fn selected_section(&self) -> SettingsPage {
-        self.selected_section
+        self.frame.selected()
     }
 
     pub fn focus(&self) -> SettingsFocus {
-        self.focus
+        self.frame.focus()
     }
 
-    /// Restores the last-visited page at launch, without moving focus. A This Ledger page with no
+    /// Back, Forward or the launch restore `page`, without moving focus. A This Ledger page with no
     /// Ledger open restores General instead.
-    pub fn set_selected_section(&mut self, cx: &mut Context<'_, Self>, section: SettingsPage) {
-        self.selected_section = if self.can_show(section) {
-            section
-        } else {
-            SettingsPage::General
-        };
-        cx.notify();
+    pub fn restore(&mut self, page: SettingsPage, cx: &mut Context<'_, Self>) {
+        self.handle(SettingsFrameEvent::Restore(page), cx);
     }
 
     /// Opens a page with focus in it -- what `:settings <page>`, the old `:accounts` /
     /// `:categories` / `:payees` / `:tags` aliases and every hand-off to a moved noun land on (the
     /// keyboard model's "commands and hand-offs land in the page"). Whether the page opened: a This
-    /// Ledger page with no Ledger open is refused.
+    /// Ledger page with no Ledger open is refused. Not an input of its own: it is part of the
+    /// command or hand-off that asked, so a palette Command run on the page commits once, and the
+    /// Shell shows a refusal's Notice itself.
     pub fn open_page(&mut self, section: SettingsPage, cx: &mut Context<'_, Self>) -> bool {
-        if !self.select_page(section, cx) {
-            return false;
-        }
-        self.focus_page(cx);
-        cx.notify();
-        true
+        self.handle(SettingsFrameEvent::OpenPage(section), cx);
+        self.frame.selected() == section
     }
 
     /// Moves focus into the open page, as a click on one of its rows does.
     pub fn focus_page_from_click(&mut self, cx: &mut Context<'_, Self>) {
-        self.focus_page(cx);
-        cx.notify();
-    }
-
-    /// Swaps the page on show. A new page starts at its top, with no control focused. The page
-    /// showing loses focus even when it is the one selected again, so `:settings display` on
-    /// Display puts the keyboard back on its first control. A This Ledger page with no Ledger open
-    /// is refused on the status line, and the page on show stays; whether the page was selected.
-    fn select_page(&mut self, section: SettingsPage, cx: &mut Context<'_, Self>) -> bool {
-        if !self.can_show(section) {
-            cx.emit(ViewEvent::SetStatus(Some(
-                crate::msg::desktop_status_refused_no_ledger(":open", ":new"),
-            )));
-            return false;
-        }
-        if self.selected_section != section {
-            self.scroll_handle.set_offset(gpui::Point::default());
-        }
-        let changed = self.selected_section != section;
-        self.selected_page().set_page_focused(false, cx);
-        self.selected_section = section;
-        if changed {
-            cx.emit(ViewEvent::SettingsPageChanged(section));
-        }
-        true
-    }
-
-    /// Moves focus from the index rail into the open page (`l`/`enter`). A page with nothing to
-    /// focus keeps focus on the index, as a quiet no-op.
-    fn focus_page(&mut self, cx: &mut Context<'_, Self>) {
-        // At Medium the page is what's on screen, so even a page with nothing to focus opens.
-        if !self.selected_section.has_controls() && !self.drill_down() {
-            return;
-        }
-        self.focus = SettingsFocus::Page;
-        self.selected_page().set_page_focused(true, cx);
-    }
-
-    fn focus_index(&mut self, cx: &mut Context<'_, Self>) {
-        self.focus = SettingsFocus::Index;
-        self.selected_page().set_page_focused(false, cx);
-        self.reveal_index_row();
-    }
-
-    /// Scrolls the Medium index page just enough to show the selected row, as the selection moves
-    /// or the index comes back on show.
-    fn reveal_index_row(&self) {
-        if !self.drill_down() {
-            return;
-        }
-        self.index_scroll
-            .scroll_to_item(super::index_page_child(self.selected_section));
-    }
-
-    fn apply_section_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) {
-        let pages = SettingsPage::ALL;
-        let last = pages.len() - 1;
-        let current = pages
-            .iter()
-            .position(|section| *section == self.selected_section)
-            .unwrap_or(0);
-        let next = match movement {
-            Movement::Next => (current + 1).min(last),
-            Movement::Prev => current.saturating_sub(1),
-            Movement::First => 0,
-            _ => last,
-        };
-        if self.select_page(pages[next], cx) {
-            self.reveal_index_row();
-        }
-    }
-
-    /// An index entry's click: swaps the body to that page and leaves focus on the index.
-    pub(super) fn click_index(&mut self, section: SettingsPage, cx: &mut Context<'_, Self>) {
-        if self.select_page(section, cx) {
-            self.focus = SettingsFocus::Index;
-        }
-        cx.notify();
-    }
-
-    // -----------------------------------------------------------------------------------------
-    // Medium: the drill-down and its page picker (DESKTOP-119 to DESKTOP-121)
-    // -----------------------------------------------------------------------------------------
-
-    /// An index page row's click at Medium: opens that page in the index's place.
-    pub(super) fn click_index_page(&mut self, section: SettingsPage, cx: &mut Context<'_, Self>) {
-        self.open_page(section, cx);
-    }
-
-    /// The heading's **Settings**: back to the index, with the page still selected.
-    pub(super) fn click_index_crumb(&mut self, cx: &mut Context<'_, Self>) {
-        if self.picker.is_some() {
-            self.close_picker(cx);
-        }
-        self.focus_index(cx);
-        cx.notify();
-    }
-
-    /// The heading's caret: opens the picker, or closes it if it is open.
-    pub(super) fn click_picker_caret(&mut self, cx: &mut Context<'_, Self>) {
-        if self.picker.is_some() {
-            self.close_picker(cx);
-        } else {
-            self.open_picker(cx);
-        }
-        cx.notify();
-    }
-
-    /// A picker row's click: straight to that page. A refused page leaves the picker open.
-    pub(super) fn click_picker_page(&mut self, section: SettingsPage, cx: &mut Context<'_, Self>) {
-        if !self.can_show(section) {
-            self.select_page(section, cx);
-            return;
-        }
-        self.close_picker(cx);
-        self.open_page(section, cx);
-    }
-
-    /// A page's own keys at Medium: `[`/`]` step to the previous and next page in index order, and
-    /// `p` opens the picker. `Esc` back to the index is [`Self::escape`]'s.
-    fn medium_page_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
-        let modifiers = &keystroke.modifiers;
-        if !self.drill_down()
-            || self.focus != SettingsFocus::Page
-            || modifiers.control
-            || modifiers.alt
-            || modifiers.platform
-        {
-            return false;
-        }
-        match keystroke.key.as_str() {
-            "[" => self.step_page(Step::Prev, cx),
-            "]" => self.step_page(Step::Next, cx),
-            "p" if !modifiers.shift => self.open_picker(cx),
-            _ => return false,
-        }
-        true
-    }
-
-    fn step_page(&mut self, step: Step, cx: &mut Context<'_, Self>) {
-        let pages = SettingsPage::ALL;
-        let next = lib_list_cursor::step(self.selected_section.index(), pages.len(), step);
-        if self.select_page(pages[next], cx) {
-            self.focus_page(cx);
-        }
-    }
-
-    fn open_picker(&mut self, cx: &mut Context<'_, Self>) {
-        self.picker = Some(PagePicker::new(self.selected_section));
-        cx.emit(ViewEvent::EnterMode(ViewMode::Filter));
-    }
-
-    fn close_picker(&mut self, cx: &mut Context<'_, Self>) {
-        self.picker = None;
-        cx.emit(ViewEvent::ExitMode);
-    }
-
-    /// Every key while the picker is open: `j`/`k` or `↓`/`↑` move, `enter` opens the chosen page.
-    /// Anything else is swallowed. `Esc` comes back as [`Self::escape`].
-    fn picker_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) {
-        let Some(picker) = self.picker.as_mut() else {
-            return;
-        };
-        match keystroke.key.as_str() {
-            "k" | "up" => picker.step(Step::Prev),
-            "j" | "down" => picker.step(Step::Next),
-            "enter" => {
-                let section = picker.chosen();
-                self.click_picker_page(section, cx);
-            }
-            _ => {}
-        }
-    }
-
-    /// Settings' own focus keys: `l`/`right`/`enter` on the index step into the page, `h`/`left`
-    /// on the page step back out (not from the Colour Theme grid, which has its own `h`).
-    fn focus_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
-        if keystroke.modifiers.shift {
-            return false;
-        }
-        match (self.focus, keystroke.key.as_str()) {
-            (SettingsFocus::Index, "l" | "right" | "enter") => {
-                self.focus_page(cx);
-                true
-            }
-            (SettingsFocus::Page, "h" | "left")
-                if self.pages.display.read(cx).colour_theme_focus().is_none() =>
-            {
-                self.focus_index(cx);
-                true
-            }
-            _ => false,
-        }
+        self.send_frame(SettingsFrameEvent::PageClicked, cx);
     }
 
     // -----------------------------------------------------------------------------------------
@@ -645,6 +555,14 @@ impl SettingsView {
     /// The General page, which owns On start and Toasts and shows this device (ADR-0037).
     pub fn general(&self) -> &Entity<GeneralPage> {
         &self.pages.general
+    }
+}
+
+/// The frame's clicks: the docked index rail's rows, the Medium index page's rows, the
+/// breadcrumb and the picker, each as one input.
+impl PresenterPage<SettingsFrameEvent> for SettingsView {
+    fn send(&mut self, event: SettingsFrameEvent, cx: &mut Context<'_, Self>) {
+        self.send_frame(event, cx);
     }
 }
 

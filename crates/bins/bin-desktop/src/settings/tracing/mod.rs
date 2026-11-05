@@ -14,8 +14,8 @@ mod render;
 
 use lib_shell::Hint;
 
+use crate::settings::pages::{Page, PageRowClicked};
 use crate::settings::snapshot::PageSnapshot;
-use crate::settings::{page::PageRowClicked, pages::Page};
 use gpui::{App, Context, EventEmitter, Keystroke, ListOffset, ListState, Pixels, px};
 
 use crate::{

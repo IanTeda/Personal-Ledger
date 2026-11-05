@@ -21,11 +21,9 @@ desktop-hint-add = add
 desktop-hint-filter = filter
 desktop-hint-next-field = next field
 desktop-hint-cancel = cancel
-desktop-hint-close = close
 desktop-hint-colour = colour
 desktop-hint-choose = choose
 desktop-hint-toggle-active = toggle active
-desktop-hint-page = page
 desktop-hint-field = field
 desktop-hint-change = change
 desktop-hint-toggle = toggle
@@ -33,9 +31,6 @@ desktop-hint-scroll = scroll
 desktop-hint-index = index
 desktop-hint-level = level
 desktop-hint-clear-logs = clear logs
-desktop-hint-pages = pages
-desktop-hint-picker = picker
-desktop-hint-settings = settings
 
 ## The right-hand side of the status line while a command surface is open. `$key` is the key token.
 

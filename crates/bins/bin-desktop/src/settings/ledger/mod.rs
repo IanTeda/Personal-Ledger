@@ -17,7 +17,11 @@ use lib_shell::Hint;
 use crate::settings::snapshot::PageSnapshot;
 use crate::{
     ledger_store::{LedgerStore, notify_on},
-    settings::{SettingsPage, hints::settings_ledger_hints, page::PageRowClicked, pages::Page},
+    settings::{
+        SettingsPage,
+        hints::settings_ledger_hints,
+        pages::{Page, PageRowClicked},
+    },
     shell::view::statusline::owned_hints,
     units::DesktopPorts,
     view::event::ViewEvent,

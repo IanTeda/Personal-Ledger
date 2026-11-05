@@ -18,8 +18,12 @@ use lib_shell::Hint;
 
 use crate::{
     settings::{
-        SettingsPage, device::DeviceSetting, hints::settings_general_hints, page::PageRowClicked,
-        pages::Page, snapshot::PageSnapshot, step_choice,
+        SettingsPage,
+        device::DeviceSetting,
+        hints::settings_general_hints,
+        pages::{Page, PageRowClicked},
+        snapshot::PageSnapshot,
+        step_choice,
     },
     shell::view::statusline::owned_hints,
     start_view,

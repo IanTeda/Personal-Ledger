@@ -38,6 +38,7 @@ lib_budgets = { path = "../../libs/lib-budgets" }
 lib_categories = { path = "../../libs/lib-categories" }
 lib_category_deletion = { path = "../../libs/lib-category-deletion" }
 lib_dashboard = { path = "../../libs/lib-dashboard" }
+lib_settings = { path = "../../libs/lib-settings" }
 lib_institutions = { path = "../../libs/lib-institutions" }
 lib_documents = { path = "../../libs/lib-documents" }
 lib_inventory = { path = "../../libs/lib-inventory" }
