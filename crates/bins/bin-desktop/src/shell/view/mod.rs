@@ -3,7 +3,6 @@
 //! (`palette`), the Dialog host (`dialog_host`), the page clicks (`page_clicks`) and the Toast
 //! layer with its session history (`toast`).
 
-pub(crate) mod dialog_apply;
 pub(crate) mod dialog_entity;
 pub(crate) mod dialog_host;
 pub(crate) mod no_ledger;

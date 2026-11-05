@@ -168,7 +168,7 @@ pub fn build(
     shell.start_date_clock(cx);
     shell.set_log_capture(
         logs.buffer,
-        crate::settings::tracing::log::TracingLevel::from_configured(logs.configured_level),
+        crate::settings::tracing::log::opening_level(logs.configured_level),
         cx,
     );
     shell
@@ -274,7 +274,6 @@ impl Root {
                 rail_override: None,
                 hover_generation: 0,
                 dialog: None,
-                dialog_confirm: None,
                 hosted: None,
                 dialog_keymap: lib_shell::dialog_keymap(&lib_config::KeyBindingConfig::default()),
                 undo_menu_open: false,

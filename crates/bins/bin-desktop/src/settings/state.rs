@@ -25,7 +25,7 @@ use lib_list_cursor::Step;
 use lib_settings::{
     ColourChoice, DeviceConfiguration, DisplayOutput, DisplaySettings, GeneralSettings, ScopeFacts,
     SettingsFrameEvent, SettingsFramePresenter, SettingsFrameSetup, SettingsFrameViewModel,
-    ThisDevice, keymap::settings_frame_keymap,
+    ThisDevice, TracingLevel, TracingLog, keymap::settings_frame_keymap,
 };
 use lib_viper::keymap::KeyBindingConfig;
 use std::path::PathBuf;
@@ -101,6 +101,30 @@ impl SettingsView {
         self.pages
             .display
             .update(cx, |page, _| page.set_keymaps(config, back_chord(config)));
+        self.pages
+            .tracing
+            .update(cx, |page, _| page.set_keymaps(config, back_chord(config)));
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Tracing
+    // -----------------------------------------------------------------------------------------
+
+    /// Hands the Tracing page the app's live log capture, opening on `level`.
+    pub fn set_log_capture(
+        &mut self,
+        log: Rc<dyn TracingLog>,
+        level: TracingLevel,
+        cx: &mut Context<'_, Self>,
+    ) {
+        self.pages
+            .tracing
+            .update(cx, |page, cx| page.configure(log, level, cx));
+    }
+
+    /// The capture gained entries, so the Tracing page pulls them in.
+    pub fn log_appended(&mut self, cx: &mut Context<'_, Self>) {
+        self.pages.tracing.update(cx, |page, cx| page.appended(cx));
     }
 
     /// Builds the This Ledger pages on the Open Ledger's `ledger`, so they can be shown, in place
@@ -170,8 +194,8 @@ impl SettingsView {
         self.frame.view_model()
     }
 
-    /// The `T` page's Entity, for what `Root` drives on a page: a module Router's entry point, the
-    /// Tracing capture feed and the Settings snapshots. Found through `T::PAGE`, so a new page needs
+    /// The `T` page's Entity, for what `Root` drives on a page: a module Router's entry point and
+    /// the Settings snapshots. Found through `T::PAGE`, so a new page needs
     /// no accessor of its own (ADR-0037's 2026-10-30 amendment).
     /// A This Ledger page is built only with a Ledger open, so only a caller on the Open Ledger asks
     /// for one.

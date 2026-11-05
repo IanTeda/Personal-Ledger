@@ -27,8 +27,6 @@ desktop-hint-toggle-active = toggle active
 desktop-hint-change = change
 desktop-hint-scroll = scroll
 desktop-hint-index = index
-desktop-hint-level = level
-desktop-hint-clear-logs = clear logs
 
 ## The right-hand side of the status line while a command surface is open. `$key` is the key token.
 

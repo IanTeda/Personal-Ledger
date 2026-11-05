@@ -15,24 +15,18 @@
 //! `Esc` is not a key here: step 1 of the key route (`crate::input`) asks
 //! [`Dialog::close_open_select`] first, closing the Dialog only when no select was open.
 //!
-//! A hosted Dialog (ADR-0037's 2026-10-18 amendment) also draws itself ([`Dialog::render`]),
-//! describes itself for the UI tests ([`Dialog::readback`]) and confirms itself
-//! ([`ConfirmDialog::confirm`]), so it lives in its page's folder and needs nothing of `Root` but
-//! the host. Its page opens it with [`open_dialog`], naming the opener its outcome goes back to.
-//! Its clicks edit it through [`DialogActions::edit`], the one callback `Root` supplies. The
-//! Dialogs not moved yet return `None` from both and `Root` still draws and confirms them by
-//! variant.
+//! The Dialog draws itself ([`Dialog::render`]) and describes itself for the UI tests
+//! ([`Dialog::readback`]); its clicks edit it through [`DialogActions::edit`], the one callback
+//! `Root` supplies. Only the Toast history is left here (#1043 moves it), so the host confirms
+//! nothing: it is read-only.
 
-use std::{fmt, rc::Rc};
+use std::rc::Rc;
 
 use chrono::NaiveDate;
-use gpui::{AnyElement, App, Context, Entity, EventEmitter, WeakEntity};
+use gpui::{AnyElement, App, Entity};
 use lib_toast::ToastKind;
 
-use crate::{
-    dialog::OnClick, form::field::TextField, ledger_store::LedgerStore,
-    settings::tracing::dialogs::TracingDialog, view::event::ViewEvent,
-};
+use crate::{dialog::OnClick, form::field::TextField, ledger_store::LedgerStore};
 
 /// A keystroke as a Dialog sees it, already stripped of modifiers by `Root`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -119,7 +113,7 @@ pub trait Dialog {
 pub type DialogToast = (ToastKind, String);
 
 /// What a hosted Dialog reads and writes through: the Ledger, and the day the Shell was built on.
-/// The Dialogs left in this host (Help, the Toast history, Tracing's) open with no Ledger open too,
+/// The Dialogs left in this host (the Toast history) open with no Ledger open too,
 /// so the Ledger is `None` then.
 #[derive(Clone)]
 pub struct DialogScope {
@@ -174,90 +168,6 @@ impl DialogReadback {
     }
 }
 
-/// A confirm that landed: the Toast the host raises, if any, and what the opener is handed.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Landed<O> {
-    pub toast: Option<DialogToast>,
-    pub outcome: O,
-}
-
-/// A hosted Dialog's confirm: its form's command runs on its own, since no Dialog left on the host
-/// writes the Ledger.
-pub trait ConfirmDialog: Dialog + DialogVariant + 'static {
-    type Outcome: 'static;
-
-    /// `Some` when the command landed and the Dialog should close, `None` while the form is not
-    /// valid or the domain refused it (the refusal is already on the form).
-    fn confirm(&mut self, scope: &DialogScope, cx: &mut App) -> Option<Landed<Self::Outcome>>;
-}
-
-/// The open Dialog's confirm with its opener bound: a landed one has handed its outcome back and
-/// leaves the host only its Toast.
-pub type HostConfirm = Rc<dyn Fn(&mut OpenDialog, &DialogScope, &mut App) -> Option<Landed<()>>>;
-
-/// A hosted Dialog a page asked the host to open, carrying the confirm that hands its outcome
-/// back to the page.
-#[derive(Clone)]
-pub struct HostedOpen {
-    pub dialog: OpenDialog,
-    pub confirm: HostConfirm,
-}
-
-impl fmt::Debug for HostedOpen {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("HostedOpen")
-            .field("dialog", &self.dialog)
-            .finish_non_exhaustive()
-    }
-}
-
-/// Two opens are the same when they open the same Dialog with the same opener.
-impl PartialEq for HostedOpen {
-    fn eq(&self, other: &Self) -> bool {
-        self.dialog == other.dialog && Rc::ptr_eq(&self.confirm, &other.confirm)
-    }
-}
-
-impl Eq for HostedOpen {}
-
-impl HostedOpen {
-    /// `dialog`, opened by `page`: after a landed confirm, `opener` runs on the page with the
-    /// outcome. A page that has gone is skipped, and the Toast is still raised.
-    pub fn new<D, P>(
-        dialog: D,
-        page: WeakEntity<P>,
-        opener: impl Fn(&mut P, D::Outcome, &mut Context<'_, P>) + 'static,
-    ) -> Self
-    where
-        D: ConfirmDialog,
-        P: 'static,
-    {
-        let confirm: HostConfirm = Rc::new(move |open, scope, cx| {
-            let Landed { toast, outcome } = D::from_open_mut(open)?.confirm(scope, cx)?;
-            // A page that has gone has nothing to land on.
-            let _ = page.update(cx, |page, cx| opener(page, outcome, cx));
-            Some(Landed { toast, outcome: () })
-        });
-        Self {
-            dialog: dialog.into_open(),
-            confirm,
-        }
-    }
-}
-
-/// Asks the host to open `dialog` over page `P`, which `opener` hands the outcome back to.
-pub fn open_dialog<D, P>(
-    dialog: D,
-    opener: impl Fn(&mut P, D::Outcome, &mut Context<'_, P>) + 'static,
-    cx: &mut Context<'_, P>,
-) where
-    D: ConfirmDialog,
-    P: EventEmitter<ViewEvent> + 'static,
-{
-    let open = HostedOpen::new(dialog, cx.weak_entity(), opener);
-    cx.emit(ViewEvent::OpenHostedDialog(Box::new(open)));
-}
-
 /// The session Toast history: read-only, so it takes no key but `Esc`, which the key route turns
 /// into closing it. Showing Toasts hide behind it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -273,21 +183,18 @@ impl Dialog for ToastHistoryDialog {
 /// The open legacy Dialog, one variant per feature: the ones not yet on a module's Presenter.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OpenDialog {
-    Tracing(TracingDialog),
     ToastHistory(ToastHistoryDialog),
 }
 
 impl OpenDialog {
     fn inner(&self) -> &dyn Dialog {
         match self {
-            Self::Tracing(dialog) => dialog,
             Self::ToastHistory(dialog) => dialog,
         }
     }
 
     fn inner_mut(&mut self) -> &mut dyn Dialog {
         match self {
-            Self::Tracing(dialog) => dialog,
             Self::ToastHistory(dialog) => dialog,
         }
     }
@@ -301,33 +208,21 @@ pub trait DialogVariant: Sized {
     fn into_open(self) -> OpenDialog;
 }
 
-/// Generates the [`DialogVariant`] impl for the `OpenDialog` variant that holds `$ty`; a boxed
-/// variant passes the inner type and the box derefs.
-macro_rules! dialog_variant {
-    ($variant:ident, $ty:ty) => {
-        impl DialogVariant for $ty {
-            fn from_open(open: &OpenDialog) -> Option<&Self> {
-                match open {
-                    OpenDialog::$variant(dialog) => Some(dialog),
-                    _ => None,
-                }
-            }
+impl DialogVariant for ToastHistoryDialog {
+    fn from_open(open: &OpenDialog) -> Option<&Self> {
+        let OpenDialog::ToastHistory(dialog) = open;
+        Some(dialog)
+    }
 
-            fn from_open_mut(open: &mut OpenDialog) -> Option<&mut Self> {
-                match open {
-                    OpenDialog::$variant(dialog) => Some(dialog),
-                    _ => None,
-                }
-            }
+    fn from_open_mut(open: &mut OpenDialog) -> Option<&mut Self> {
+        let OpenDialog::ToastHistory(dialog) = open;
+        Some(dialog)
+    }
 
-            fn into_open(self) -> OpenDialog {
-                OpenDialog::$variant(self.into())
-            }
-        }
-    };
+    fn into_open(self) -> OpenDialog {
+        OpenDialog::ToastHistory(self)
+    }
 }
-
-dialog_variant!(Tracing, TracingDialog);
 
 impl Dialog for OpenDialog {
     fn handle_own_key(&mut self, key: DialogKey) -> Option<DialogOutcome> {
@@ -417,42 +312,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_dialog_without_text_fields_ignores_typing_but_swallows_tab() {
-        let mut dialog = OpenDialog::Tracing(TracingDialog::ClearLogs);
-        assert_eq!(
-            handle_key(&mut dialog, DialogKey::Char('x')),
-            DialogOutcome::Ignored
-        );
-        assert_eq!(
-            handle_key(&mut dialog, DialogKey::Backspace),
-            DialogOutcome::Ignored
-        );
-        assert_eq!(
-            handle_key(&mut dialog, DialogKey::Tab),
-            DialogOutcome::Handled
-        );
-        assert_eq!(
-            handle_key(&mut dialog, DialogKey::Enter),
-            DialogOutcome::Confirm
-        );
-    }
-
-    #[test]
-    fn other_keys_fall_through() {
-        let mut dialog = OpenDialog::Tracing(TracingDialog::ClearLogs);
-        assert_eq!(
-            handle_key(&mut dialog, DialogKey::Other),
-            DialogOutcome::Ignored
-        );
-    }
-
-    #[test]
-    fn dialog_variant_finds_only_its_own_features_dialog() {
-        let mut dialog = OpenDialog::Tracing(TracingDialog::ClearLogs);
-        assert!(TracingDialog::from_open(&dialog).is_some());
-        assert!(TracingDialog::from_open_mut(&mut dialog).is_some());
-        let history = OpenDialog::ToastHistory(ToastHistoryDialog);
-        assert!(TracingDialog::from_open(&history).is_none());
+    fn dialog_variant_finds_the_open_dialog() {
+        let mut dialog = OpenDialog::ToastHistory(ToastHistoryDialog);
+        assert!(ToastHistoryDialog::from_open(&dialog).is_some());
+        assert!(ToastHistoryDialog::from_open_mut(&mut dialog).is_some());
     }
 
     #[test]

@@ -1,16 +1,21 @@
 //! The Settings module's Routers for the Desktop: [`FrameRouter`], what the frame's Presenter asks
-//! of the Shell, and [`DeviceRouter`], what the This device pages' Presenters ask. Each goes
+//! of the Shell, [`DeviceRouter`], what the This device pages' Presenters ask, and
+//! [`TracingRouter`], what Tracing's does. Each goes
 //! through its Entity's gpui context, which is why a Router is built for each `handle` call. A
 //! page change reaches the root Router as [`PageChanged`], which feeds the Shell's history; the
 //! picker's mode is the View's own (`ViewEvent::EnterMode`); Toasts and the Display output reach
 //! the root Router as [`ViewEvent`]s; a colour change is applied once the current update ends; a
 //! Notice goes onto the bin's queue (`crate::notices`), which the input's `send` drains.
 
-use gpui::{Context, EventEmitter};
-use lib_settings::{ColourChoice, DisplayOutput, SettingsPage, SettingsRouter};
+use gpui::{Context, EventEmitter, ListState};
+use lib_settings::{
+    ClearLogsPresenter, ColourChoice, DisplayOutput, LogListChange, LogScroll, SettingsPage,
+    SettingsRouter,
+};
 use lib_toast::{Notice, Notify};
 
 use super::state::SettingsView;
+use super::tracing::{TracingPage, apply_change, dialogs::clear_logs::ClearLogsDialog, scroll};
 use crate::view::event::{ViewEvent, ViewMode};
 
 /// The page on show changed by the person's hand, for the root Router to record in the Shell's
@@ -71,6 +76,40 @@ impl<P: EventEmitter<ViewEvent>> lib_settings::DeviceRouter for DeviceRouter<'_,
 }
 
 impl<P> Notify for DeviceRouter<'_, '_, P> {
+    /// Queues `notice`, for the input's `send` to drain into the Shell.
+    fn notify(&mut self, notice: Notice) {
+        crate::notices::Queue.notify(notice);
+    }
+}
+
+/// `impl lib_settings::TracingRouter` for the Tracing page: the log box's list and the Dialog it
+/// opens. `list` is the page's own, lent beside its Presenter.
+pub(super) struct TracingRouter<'a, 'b> {
+    pub list: &'a ListState,
+    pub cx: &'a mut Context<'b, TracingPage>,
+}
+
+impl lib_settings::TracingRouter for TracingRouter<'_, '_> {
+    fn scroll(&mut self, to: LogScroll) {
+        scroll(self.list, to);
+    }
+
+    fn log_changed(&mut self, change: LogListChange) {
+        apply_change(self.list, change);
+    }
+
+    /// Clear logs asks first, since the capture is emptied for good (#502), and clears the status
+    /// line as the page's other Dialogs do.
+    fn open_clear_logs(&mut self, dialog: ClearLogsPresenter) {
+        self.cx.emit(ViewEvent::SetStatus(None));
+        let page = self.cx.weak_entity();
+        crate::shell::view::dialog_entity::host_dialog(self.cx, |_| {
+            ClearLogsDialog::new(dialog, page)
+        });
+    }
+}
+
+impl Notify for TracingRouter<'_, '_> {
     /// Queues `notice`, for the input's `send` to drain into the Shell.
     fn notify(&mut self, notice: Notice) {
         crate::notices::Queue.notify(notice);

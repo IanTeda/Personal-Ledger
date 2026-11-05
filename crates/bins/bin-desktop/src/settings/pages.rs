@@ -33,10 +33,7 @@ use crate::{
         ledger::LedgerPage,
         state::SettingsView,
         sync_server::SyncServerPage,
-        tracing::{
-            TracingPage,
-            log::{LogView, TracingLevel},
-        },
+        tracing::{TracingPage, log::CaptureLog},
     },
     shell::view::{
         statusline::{PageStatus, owned_hints},
@@ -289,8 +286,7 @@ impl<T: Page> PageHandle for Entity<T> {
 }
 
 /// The Entity of every Settings page. Settings builds them and `Root` reaches them only through
-/// [`SettingsView::page`], for a module Router's entry point, the Tracing capture feed and the
-/// test snapshots. The This device pages stand with no Ledger open; the This Ledger pages are built
+/// [`SettingsView::page`], for a module Router's entry point and the test snapshots. The This device pages stand with no Ledger open; the This Ledger pages are built
 /// on one, so they are `None` until a Ledger opens (#977).
 pub struct SettingsPages {
     pub general: Entity<GeneralPage>,
@@ -390,10 +386,12 @@ impl SettingsPages {
             // A private, empty capture until `set_log_capture` hands over the real one.
             tracing: cx.new(|_| {
                 TracingPage::new(
-                    LogView::new(
-                        lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
-                        TracingLevel::default(),
-                    ),
+                    Rc::new(CaptureLog::new(lib_tracing::LogBuffer::new(
+                        lib_tracing::LOG_CAPACITY,
+                    ))),
+                    lib_settings::TracingLevel::default(),
+                    &KeyBindingConfig::default(),
+                    super::state::back_chord(&KeyBindingConfig::default()),
                     ListState::new(0, ListAlignment::Top, LOG_LIST_OVERDRAW),
                 )
             }),

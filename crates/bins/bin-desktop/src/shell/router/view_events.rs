@@ -36,7 +36,6 @@ impl Root {
             }
             // The legacy arm: the eleven Dialogs not yet on a module's Presenter (#820).
             ViewEvent::OpenDialog(dialog) => self.open_dialog(*dialog),
-            ViewEvent::OpenHostedDialog(open) => self.open_hosted_dialog(*open),
             ViewEvent::HostDialog(dialog) => self.host_dialog(dialog, cx),
             ViewEvent::Navigate(noun) => {
                 let noun_before = self.nav().noun();

@@ -6,10 +6,7 @@
 use crate::{
     navigation::nav::Noun,
     shell::view::{
-        dialog_entity::DialogHandle,
-        dialog_host::{HostConfirm, OpenDialog},
-        palette::Palette,
-        rail::RailOverride,
+        dialog_entity::DialogHandle, dialog_host::OpenDialog, palette::Palette, rail::RailOverride,
     },
 };
 
@@ -34,9 +31,6 @@ pub(crate) struct ShellState {
     /// `Root::open_dialog`/`Root::close_dialog` change it, so `NavState::mode` is
     /// `InputMode::Dialog` for exactly as long as this is `Some`. Every feature's Dialog lives here.
     pub(crate) dialog: Option<OpenDialog>,
-    /// The open Dialog's confirm, opener bound, while it is a hosted one
-    /// (`dialog_host::open_dialog`). Set and cleared with `dialog`.
-    pub(crate) dialog_confirm: Option<HostConfirm>,
     /// The open module Dialog, an Entity holding its Presenter (`crate::shell::view::dialog_entity`),
     /// and the subscription that closes it once its Presenter does. Opened and closed with
     /// `dialog` by the same two methods, so at most one of the two is ever `Some`.

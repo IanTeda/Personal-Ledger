@@ -1,80 +1,29 @@
-//! The **Tracing (Logs)** page (16m, issues #499–#502): level radios on the left and **Clear logs**
-//! on the right of one row, then a log box filling the rest of the page with the live capture,
-//! newest first. The box is a virtualised `list` (rows wrap, so heights vary) with an
-//! always-visible scroll bar; [`TracingPage`](super::TracingPage) owns its `ListState` and splices it as entries arrive.
-//!
-//! One entry is `[hh:mm:ss] LEVEL subsystem: message key=value` (`super::log`): the time is
-//! a fixed column, and a long body wraps under the level tag, not under the time.
-//!
-//! Element ids are namespaced `tracing-level-*`/`settings-clear-logs`
-//! (`docs/ux/desktop-mockups/16-settings/README.md`'s implementation note 11: "namespace radio groups per
-//! instance").
-
-use std::{rc::Rc, sync::Arc};
-
 use gpui::{
     AnyElement, App, Context, HighlightStyle, ListState, Rgba, SharedString, StyledText, Window,
     div, list, prelude::*, px,
 };
 use gpui_component::scroll::{Scrollbar, ScrollbarShow};
-use lib_tracing::LogEntry;
-use tracing::Level;
+use lib_settings::log::{LogLevel, LogLine};
+use lib_settings::{TracingEvent, TracingLevel, TracingViewModel};
 
 use crate::{
-    form::fields::radio_dot,
-    settings::tracing::TracingPage,
-    settings::tracing::log::{self as tracing_log, TracingLevel},
-    theme::color,
+    dialog::OnClick, form::fields::radio_dot, settings::tracing::TracingPage,
+    shell::view::page_clicks::PageClicks, theme::color,
 };
-
-type OnLevelClick = Rc<dyn Fn(TracingLevel, &mut Window, &mut App)>;
-type OnClearLogsClick = Rc<dyn Fn(&mut Window, &mut App)>;
-/// A plain, level-less click handler -- what a [`radio_option`] is bound to after its own level
-/// has already been curried in (mirrors the Units page's `OnPlainClick`).
-type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
 
 const LOG_TEXT_SIZE: gpui::Pixels = px(11.0);
 
-/// What the log box shows, gathered from the page's `LogView`.
-struct LogBoxProps {
-    level: TracingLevel,
-    /// Filtered, newest first.
-    entries: Rc<Vec<Arc<LogEntry>>>,
-    /// Captured entries the filter hides, for the empty state.
-    hidden: usize,
-    list: ListState,
-}
-
 impl Render for TracingPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let entity = cx.entity();
-        let on_level_click: OnLevelClick = {
-            let entity = entity.clone();
-            Rc::new(move |level, _window, cx| {
-                entity.update(cx, |page, cx| page.set_level(level, cx));
-            })
-        };
-        let on_clear_logs_click: OnClearLogsClick = Rc::new(move |_window, cx| {
-            entity.update(cx, |page, cx| page.click_clear_logs(cx));
-        });
-        render_page(
-            &LogBoxProps {
-                level: self.log.level(),
-                entries: self.log.visible(),
-                hidden: self.log.hidden_count(),
-                list: self.log_list.clone(),
-            },
-            on_level_click,
-            on_clear_logs_click,
-            cx,
-        )
+        let clicks = PageClicks::new(cx);
+        render_page(&self.view_model(), self.log_list().clone(), &clicks, cx)
     }
 }
 
 fn render_page(
-    log: &LogBoxProps,
-    on_level_click: OnLevelClick,
-    on_clear_logs_click: OnClearLogsClick,
+    view: &TracingViewModel,
+    list: ListState,
+    clicks: &PageClicks<TracingPage>,
     cx: &App,
 ) -> AnyElement {
     div()
@@ -90,23 +39,31 @@ fn render_page(
                 .justify_between()
                 .gap(px(12.0))
                 .mb(px(10.0))
-                .child(level_row(log.level, on_level_click, cx))
-                .child(clear_logs_button(on_clear_logs_click, cx)),
+                .child(level_row(view, clicks, cx))
+                .child(clear_logs_button(
+                    view.clear_label.clone(),
+                    clicks.click(TracingEvent::ClearLogs),
+                    cx,
+                )),
         )
-        .child(log_box(log, cx))
+        .child(log_box(view, list, cx))
         .into_any_element()
 }
 
-fn level_row(selected: TracingLevel, on_click: OnLevelClick, cx: &App) -> impl IntoElement {
+fn level_row(
+    view: &TracingViewModel,
+    clicks: &PageClicks<TracingPage>,
+    cx: &App,
+) -> impl IntoElement {
     div()
         .flex()
         .gap(px(8.0))
-        .children(TracingLevel::ALL.into_iter().map(|level| {
-            let on_click = on_click.clone();
+        .children(view.levels.iter().map(|choice| {
             radio_option(
-                level,
-                level == selected,
-                Rc::new(move |window: &mut Window, cx: &mut App| on_click(level, window, cx)),
+                choice.value,
+                choice.label.clone(),
+                choice.value == view.level,
+                clicks.click(TracingEvent::ChooseLevel(choice.value)),
                 cx,
             )
         }))
@@ -114,8 +71,9 @@ fn level_row(selected: TracingLevel, on_click: OnLevelClick, cx: &App) -> impl I
 
 fn radio_option(
     level: TracingLevel,
+    label: String,
     checked: bool,
-    on_click: OnPlainClick,
+    on_click: OnClick,
     cx: &App,
 ) -> impl IntoElement {
     let id = format!("tracing-level-{}", format!("{level:?}").to_lowercase());
@@ -131,12 +89,12 @@ fn radio_option(
         .gap(px(8.0))
         .on_click(move |_event, window, cx| on_click(window, cx))
         .child(radio_dot(checked, cx))
-        .child(div().text_size(px(12.0)).child(level.label()))
+        .child(div().text_size(px(12.0)).child(label))
 }
 
 /// The log box: `flex:1; min-height:0; border:1px solid rgba(32,30,29,.30); #eae9e9;
 /// padding:10px 12px`, monospace 11px/1.6 muted, with the scroll bar always shown.
-fn log_box(log: &LogBoxProps, cx: &App) -> impl IntoElement {
+fn log_box(view: &TracingViewModel, list_state: ListState, cx: &App) -> impl IntoElement {
     let frame = div()
         .id("tracing-log-box")
         .debug_selector(|| "tracing-log-box".to_string())
@@ -151,15 +109,7 @@ fn log_box(log: &LogBoxProps, cx: &App) -> impl IntoElement {
         .line_height(gpui::relative(1.6))
         .text_color(color::muted(cx));
 
-    if log.entries.is_empty() {
-        let message = if log.hidden == 0 {
-            crate::msg::desktop_settings_tracing_empty()
-        } else {
-            crate::msg::desktop_settings_tracing_all_hidden(
-                &log.level.label(),
-                i64::try_from(log.hidden).unwrap_or(i64::MAX),
-            )
-        };
+    if let Some(message) = view.empty.clone() {
         return frame
             .flex()
             .items_center()
@@ -174,8 +124,8 @@ fn log_box(log: &LogBoxProps, cx: &App) -> impl IntoElement {
             );
     }
 
-    let entries = log.entries.clone();
-    let rows = list(log.list.clone(), move |index, _window, cx| {
+    let entries = view.entries.clone();
+    let rows = list(list_state.clone(), move |index, _window, cx| {
         match entries.get(index) {
             Some(entry) => entry_row(index, entry, cx),
             // The list's count can briefly lead the entries during a splice; draw nothing.
@@ -194,18 +144,18 @@ fn log_box(log: &LogBoxProps, cx: &App) -> impl IntoElement {
             .right_0()
             .bottom_0()
             .w(px(12.0))
-            .child(Scrollbar::vertical(&log.list).scrollbar_show(ScrollbarShow::Always)),
+            .child(Scrollbar::vertical(&list_state).scrollbar_show(ScrollbarShow::Always)),
     )
 }
 
 /// One entry: the time in a fixed column, then the level tag (coloured) and body as one wrapping
 /// run, so continuation lines hang under the level tag.
-fn entry_row(index: usize, entry: &LogEntry, cx: &App) -> AnyElement {
-    let tag = tracing_log::level_tag(entry.level);
-    let text = format!("{tag} {}", tracing_log::body(entry));
+fn entry_row(index: usize, entry: &LogLine, cx: &App) -> AnyElement {
+    let tag = entry.tag();
+    let text = format!("{tag} {}", entry.body());
     let highlight = HighlightStyle {
         color: Some(level_colour(entry.level, cx).into()),
-        font_weight: (entry.level <= Level::WARN).then_some(gpui::FontWeight::EXTRA_BOLD),
+        font_weight: (entry.level <= LogLevel::Warn).then_some(gpui::FontWeight::EXTRA_BOLD),
         ..Default::default()
     };
     div()
@@ -217,7 +167,7 @@ fn entry_row(index: usize, entry: &LogEntry, cx: &App) -> AnyElement {
             div()
                 .flex_none()
                 .text_color(color::faint_text(cx))
-                .child(tracing_log::timestamp(entry.time)),
+                .child(entry.timestamp()),
         )
         .child(
             div()
@@ -230,17 +180,17 @@ fn entry_row(index: usize, entry: &LogEntry, cx: &App) -> AnyElement {
 
 /// Error and warning use the Toast marks, which hold 3:1 against the box's `chrome` ground; info
 /// stays muted like the body and debug drops back to faint.
-fn level_colour(level: Level, cx: &App) -> Rgba {
+fn level_colour(level: LogLevel, cx: &App) -> Rgba {
     match level {
-        Level::ERROR => color::toast_mark(lib_toast::ToastKind::Error, cx),
-        Level::WARN => color::toast_mark(lib_toast::ToastKind::Warning, cx),
-        Level::INFO => color::muted(cx),
-        Level::DEBUG | Level::TRACE => color::faint_text(cx),
+        LogLevel::Error => color::toast_mark(lib_toast::ToastKind::Error, cx),
+        LogLevel::Warn => color::toast_mark(lib_toast::ToastKind::Warning, cx),
+        LogLevel::Info => color::muted(cx),
+        LogLevel::Debug | LogLevel::Trace => color::faint_text(cx),
     }
 }
 
 /// **Clear logs**: `.btn.btn-secondary`, 32px, top right of the level row.
-fn clear_logs_button(on_click: OnClearLogsClick, cx: &App) -> impl IntoElement {
+fn clear_logs_button(label: String, on_click: OnClick, cx: &App) -> impl IntoElement {
     div()
         .id("settings-clear-logs")
         .debug_selector(|| "settings-clear-logs".to_string())
@@ -256,5 +206,5 @@ fn clear_logs_button(on_click: OnClearLogsClick, cx: &App) -> impl IntoElement {
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .whitespace_nowrap()
         .on_click(move |_event, window, cx| on_click(window, cx))
-        .child(crate::msg::desktop_settings_tracing_clear())
+        .child(label)
 }

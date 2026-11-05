@@ -4,7 +4,7 @@
 use super::Root;
 use crate::navigation::nav::NounLabel;
 use crate::shell::view::dialog_host::{
-    Dialog, DialogReadback, DialogScope, DialogVariant, HostedOpen, OpenDialog,
+    Dialog, DialogReadback, DialogScope, DialogVariant, OpenDialog,
 };
 use crate::view::help::{HelpDialog, HelpGroup};
 use gpui::{AppContext as _, Context};
@@ -19,12 +19,6 @@ impl Root {
         self.close_dialog();
         self.state.dialog = Some(dialog);
         self.presenter.dialog(DialogInput::Opened);
-    }
-
-    /// Opens a hosted Dialog, keeping the confirm that hands its outcome back to its page.
-    pub(super) fn open_hosted_dialog(&mut self, open: HostedOpen) {
-        self.open_dialog(open.dialog);
-        self.state.dialog_confirm = Some(open.confirm);
     }
 
     /// Opens a module's Dialog Entity, closing the host once its Presenter closes it.
@@ -102,39 +96,17 @@ impl Root {
 
     /// Closes the open Dialog, in either host, without applying it.
     pub(super) fn close_dialog(&mut self) {
-        self.state.dialog_confirm = None;
         let legacy = self.state.dialog.take().is_some();
         if legacy || self.state.hosted.take().is_some() {
             self.presenter.dialog(DialogInput::Closed);
         }
     }
 
-    /// `Enter` and the confirm button both land here: applies the open Dialog if its form is
-    /// valid, then closes it. A no-op while the form is invalid, leaving the Dialog open.
-    pub(super) fn confirm_open_dialog(&mut self, cx: &mut Context<'_, Self>) {
-        if !self.state.dialog.as_ref().is_some_and(Dialog::is_valid) {
-            return;
-        }
-        // A hosted Dialog confirms itself and has already handed its outcome to its page.
-        if let Some(confirm) = self.state.dialog_confirm.clone() {
-            let scope = self.dialog_scope();
-            let Some(dialog) = self.state.dialog.as_mut() else {
-                return;
-            };
-            if let Some(landed) = confirm(dialog, &scope, cx) {
-                self.close_dialog();
-                if let Some((kind, message)) = landed.toast {
-                    self.raise_toast(kind, message);
-                }
-            }
-            return;
-        }
-        // Every Dialog left on the host runs through its cycle (`DialogForm`/`ConfirmDialog`, ADR-0037).
-        match self.state.dialog {
-            // Read-only: it has nothing to apply.
-            Some(OpenDialog::ToastHistory(_)) => self.close_dialog(),
-            // Hosted: confirmed above through the opener's confirm.
-            Some(OpenDialog::Tracing(_)) | None => {}
+    /// `Enter` and the confirm button both land here. The one Dialog left on the host is the Toast
+    /// history, which is read-only: it has nothing to apply, so confirming closes it.
+    pub(super) fn confirm_open_dialog(&mut self, _cx: &mut Context<'_, Self>) {
+        if matches!(self.state.dialog, Some(OpenDialog::ToastHistory(_))) {
+            self.close_dialog();
         }
     }
 

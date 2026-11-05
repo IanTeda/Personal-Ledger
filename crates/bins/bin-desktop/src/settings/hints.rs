@@ -17,23 +17,3 @@ pub(crate) fn settings_ledger_hints() -> Vec<(&'static str, String)> {
         ("h", crate::msg::desktop_hint_index()),
     ]
 }
-
-/// The Tracing page's keys while it has focus: the level radios, scrolling the log box, and
-/// Clear logs.
-pub(crate) fn settings_tracing_hints() -> Vec<(&'static str, String)> {
-    vec![
-        ("h/l", crate::msg::desktop_hint_level()),
-        ("j/k", crate::msg::desktop_hint_scroll()),
-        ("c", crate::msg::desktop_hint_clear_logs()),
-        ("esc", crate::msg::desktop_hint_index()),
-    ]
-}
-
-/// The status-line legend while a plain confirm dialog is open (Remove tag, Clear logs): each has
-/// at most the one confirm field, so no `tab`.
-pub(crate) fn confirm_dialog_hints() -> Vec<(&'static str, String)> {
-    vec![
-        ("esc", crate::msg::desktop_hint_cancel()),
-        ("enter", crate::msg::desktop_hint_confirm()),
-    ]
-}
