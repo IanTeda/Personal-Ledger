@@ -86,6 +86,22 @@ pub(crate) fn sending(cx: &App) -> bool {
     cx.try_global::<Door>().is_some_and(|door| door.open)
 }
 
+/// Hands `handle` to its Presenter as part of the input being sent, when one is, so it shares that
+/// input's commit and nothing nests a `send`; else sends it as an input of its own. A module's
+/// click or key that another module's input may already be sending (a Dialog's, the palette's,
+/// a hand-off) goes through here rather than choosing between the two itself.
+pub(crate) fn join_or_send<C: BorrowMut<App>, R>(
+    cx: &mut C,
+    handle: impl FnOnce(&mut C) -> R,
+) -> R {
+    let app: &App = cx.borrow();
+    if sending(app) {
+        handle(cx)
+    } else {
+        send(cx, handle)
+    }
+}
+
 /// Delivers one input: runs `handle`, which hands it to its Presenter, then commits once, reloads
 /// each domain the commit's deletes cascade into (ADR-0046's 2026-11-02 amendment), reads the
 /// rail's badge counts again if the Ledger announced a change, drains the queued Notices into the

@@ -35,10 +35,6 @@ pub enum SettingsFrameEvent {
     OpenPicker,
     /// The Shell's `back` (`esc`): close the picker, else leave the page for the index.
     Back,
-    /// A character typed into the open picker's query.
-    Type(char),
-    /// `Backspace` in the open picker's query.
-    Backspace,
     /// A click on a docked index row: that page shows, and the index keeps the keyboard.
     ClickIndex(SettingsPage),
     /// A click on a Medium index page row: that page opens in the index's place.
@@ -78,8 +74,6 @@ impl SettingsFrameEvent {
                 | Self::StepPage(_)
                 | Self::OpenPicker
                 | Self::Back
-                | Self::Type(_)
-                | Self::Backspace
         )
     }
 }
@@ -365,7 +359,6 @@ impl SettingsFramePresenter {
                     self.close_picker(router);
                 }
             }
-            SettingsFrameEvent::Type(_) | SettingsFrameEvent::Backspace => {}
         }
     }
 
@@ -498,7 +491,7 @@ impl SettingsFramePresenter {
     }
 
     /// A key while the picker is open: the moves step its highlight through the matches, `enter`
-    /// opens it, typing narrows the query, `back` closes it, and every other key is swallowed.
+    /// opens it, `back` closes it, and every other key is swallowed.
     fn picker_key(&mut self, event: SettingsFrameEvent, router: &mut dyn SettingsRouter) {
         let Some(picker) = self.picker.as_mut() else {
             return;
@@ -509,10 +502,6 @@ impl SettingsFramePresenter {
                 if let Some(page) = lib_list_cursor::step_id(&matches, picker.chosen(), step) {
                     picker.chosen = page;
                 }
-            }
-            SettingsFrameEvent::Type(character) => picker.query.push(character),
-            SettingsFrameEvent::Backspace => {
-                picker.query.pop();
             }
             SettingsFrameEvent::Select => {
                 if let Some(page) = picker.chosen() {
@@ -935,43 +924,6 @@ mod tests {
                 Routed::PickerClosed,
                 Routed::PageChanged(SettingsPage::Tracing)
             ]
-        );
-    }
-
-    #[test]
-    fn the_picker_finds_a_page_by_name() {
-        let mut frame = frame();
-        medium(&mut frame);
-        send(&mut frame, [E::Select, E::OpenPicker]);
-
-        send(&mut frame, "pay".chars().map(E::Type));
-        let picker = frame.view_model().picker.expect("the picker is open");
-        assert_eq!(picker.query, "pay");
-        let shown: Vec<_> = picker
-            .groups
-            .iter()
-            .flat_map(|group| group.rows.iter().map(|row| row.page))
-            .collect();
-        assert_eq!(shown, [SettingsPage::Payees]);
-        assert_eq!(picker.chosen, Some(SettingsPage::Payees));
-
-        send(
-            &mut frame,
-            [E::Backspace, E::Backspace, E::Backspace, E::Type('z')],
-        );
-        let picker = frame.view_model().picker.expect("the picker is open");
-        assert!(picker.groups.is_empty());
-        assert_eq!(picker.chosen, None);
-        send(&mut frame, [E::Select]);
-        assert!(frame.picker_open(), "nothing to open");
-
-        send(&mut frame, [E::Backspace]);
-        send(&mut frame, "DIS".chars().map(E::Type));
-        send(&mut frame, [E::Select]);
-        assert_eq!(
-            frame.selected(),
-            SettingsPage::Display,
-            "matching ignores case"
         );
     }
 

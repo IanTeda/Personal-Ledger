@@ -1,6 +1,6 @@
 //! The session Toast history Dialog's Presenter (#1043): the Toasts the Shell's Presenter holds,
-//! newest first, as rows of text with their scroll. It is read-only: `Esc` and the Close button
-//! close it, viewing dismisses nothing, and every key is left to the Shell.
+//! newest first, as rows of text. It is read-only: `Esc` and the Close button close it, viewing
+//! dismisses nothing, and every key is left to the Shell. The card scrolls by pointer, in gpui.
 
 use chrono::{DateTime, Local};
 use lib_locale::format::format_time;
@@ -28,8 +28,6 @@ pub struct ToastHistoryViewModel {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ToastHistoryPresenter {
     view_model: ToastHistoryViewModel,
-    /// The first row in view.
-    scroll: usize,
 }
 
 impl ToastHistoryPresenter {
@@ -39,7 +37,6 @@ impl ToastHistoryPresenter {
             view_model: ToastHistoryViewModel {
                 rows: rows(history),
             },
-            scroll: 0,
         }
     }
 
@@ -47,24 +44,10 @@ impl ToastHistoryPresenter {
     /// while the card is up, so the card is the only place a new Toast shows.
     pub fn refresh(&mut self, history: &History<DateTime<Local>>) {
         self.view_model.rows = rows(history);
-        self.scroll = self
-            .scroll
-            .min(self.view_model.rows.len().saturating_sub(1));
     }
 
     pub fn view_model(&self) -> &ToastHistoryViewModel {
         &self.view_model
-    }
-
-    /// The first row in view.
-    pub fn scroll(&self) -> usize {
-        self.scroll
-    }
-
-    /// Scrolls the list by `rows` (negative is up), stopping at the first and last row.
-    pub fn scroll_by(&mut self, rows: isize) {
-        let last = self.view_model.rows.len().saturating_sub(1);
-        self.scroll = self.scroll.saturating_add_signed(rows).min(last);
     }
 
     /// The Close button.
@@ -183,33 +166,6 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].badge.as_deref(), Some("×2"));
         assert_eq!(rows[0].time, format_time(at(2).time()));
-    }
-
-    #[test]
-    fn scrolling_stops_at_the_first_and_last_row() {
-        let mut toasts = Toasts::default();
-        for second in 0..3 {
-            toasts.raise(ToastKind::Info, format!("toast {second}"), at(second));
-        }
-        let mut presenter = open(&toasts);
-
-        presenter.scroll_by(-1);
-        assert_eq!(presenter.scroll(), 0);
-        presenter.scroll_by(1);
-        assert_eq!(presenter.scroll(), 1);
-        presenter.scroll_by(10);
-        assert_eq!(presenter.scroll(), 2);
-        presenter.scroll_by(-1);
-        assert_eq!(presenter.scroll(), 1);
-    }
-
-    #[test]
-    fn scrolling_an_empty_history_stays_put() {
-        let mut presenter = open(&Toasts::default());
-
-        presenter.scroll_by(5);
-
-        assert_eq!(presenter.scroll(), 0);
     }
 
     #[test]

@@ -301,11 +301,7 @@ impl TransactionsPage {
     /// input is already being sent, so the hand-off runs inside it and its one commit; one from a
     /// View that isn't a module yet is an input of its own.
     fn hand_off(&mut self, event: TransactionsPageEvent, cx: &mut Context<'_, Self>) {
-        if crate::input::sending(cx) {
-            self.handle(event, cx);
-        } else {
-            self.send(event, cx);
-        }
+        crate::input::join_or_send(cx, |cx| self.handle(event, cx));
         cx.emit(ViewEvent::Navigate(Noun::Transactions));
     }
 

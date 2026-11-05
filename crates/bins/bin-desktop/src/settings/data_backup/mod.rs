@@ -46,11 +46,7 @@ impl DataBackupPage {
 
     /// A click as one input, committed once it is handled.
     fn send(&mut self, event: DataBackupEvent, cx: &mut Context<'_, Self>) {
-        if crate::input::sending(cx) {
-            self.handle(event);
-        } else {
-            crate::input::send(cx, |_| self.handle(event));
-        }
+        crate::input::join_or_send(cx, |_| self.handle(event));
         cx.notify();
     }
 

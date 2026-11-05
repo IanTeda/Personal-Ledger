@@ -267,11 +267,7 @@ impl SettingsView {
     /// while another module's input is being handled (a hand-off from the palette's no Ledger open
     /// content) runs inside it.
     fn send_frame(&mut self, event: SettingsFrameEvent, cx: &mut Context<'_, Self>) {
-        if crate::input::sending(cx) {
-            self.handle(event, cx);
-        } else {
-            crate::input::send(cx, |cx| self.handle(event, cx));
-        }
+        crate::input::join_or_send(cx, |cx| self.handle(event, cx));
     }
 
     /// Hands `event` to the frame, then brings the pages and scrolls into line with where it left
@@ -391,9 +387,8 @@ impl SettingsView {
 
     /// Every key but `Esc` while the page picker is open, which reads them in its own mode: its
     /// moves step the highlight and `select` opens the chosen page. Every other key is swallowed,
-    /// as before the frame was a module, so the picker's query (`SettingsFrameEvent::Type`) is
-    /// not typed into yet. `Esc` comes back as [`Self::escape`]. Every other key is the module
-    /// step's ([`Self::module_key`]).
+    /// as before the frame was a module, so the picker's query is not typed into yet. `Esc` comes
+    /// back as [`Self::escape`]. Every other key is the module step's ([`Self::module_key`]).
     pub fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         if keystroke.key == "escape" || !self.frame.picker_open() {
             return false;

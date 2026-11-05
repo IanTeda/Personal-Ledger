@@ -115,11 +115,7 @@ impl TracingPage {
     /// A key, click or command as one input, committed once it is handled; one sent inside another
     /// input (a Dialog's) runs in it.
     fn send(&mut self, event: TracingEvent, cx: &mut Context<'_, Self>) {
-        if crate::input::sending(cx) {
-            self.handle(event, cx);
-        } else {
-            crate::input::send(cx, |cx| self.handle(event, cx));
-        }
+        crate::input::join_or_send(cx, |cx| self.handle(event, cx));
     }
 
     fn handle(&mut self, event: TracingEvent, cx: &mut Context<'_, Self>) {
