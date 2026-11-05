@@ -212,7 +212,7 @@ pub fn generate(store: &mut dyn BillsRepository, today: chrono::NaiveDate) {
 
 /// Brings the Bill Schedule up to the horizon for the month a running Desktop has crossed into,
 /// wherever it is (ADR-0019), then refreshes the read copy as after a Bills event, so the
-/// Dashboard, the rail badge and Budgets see the new entries. The day poll's input commits them as
+/// Dashboard and Budgets redraw on the new entries. The day poll's input commits them as
 /// one write, and a failed save rolls back like any Bills write.
 pub fn new_month(
     ports: &DesktopPorts,
@@ -225,8 +225,8 @@ pub fn new_month(
 }
 
 /// Brings the Ledger's Bills read copy in line with the ports, announcing `Domain::Bills` when it
-/// changed. Run after every Bills event and Dialog confirm, so the Dashboard, the rail badge,
-/// Budgets and Documents see a write at once.
+/// changed. Run after every Bills event and Dialog confirm, so Category reassign reads the write
+/// and the Dashboard, Budgets and Documents redraw on it at once.
 pub fn refresh(ledger: &Entity<LedgerStore>, cx: &mut App) {
     ledger.update(cx, |store, cx| store.refresh_bills(cx));
 }

@@ -213,8 +213,9 @@ impl Ledger {
     }
 
     /// Replaces the read copy of the Transactions with what the Transactions port holds (#774's
-    /// halfway shim, removed once every reader goes through that port), newest first as every
-    /// reader takes them, since a port lists in no particular order. Returns whether anything
+    /// halfway shim), newest first as every reader takes them, since a port lists in no particular
+    /// order. Its readers are the commands that rewrite Splits on the copy, Category reassign and
+    /// Tag remove and merge, so it goes when they leave the Ledger (#813). Returns whether anything
     /// changed, so a Client announces only a real change.
     pub fn refresh_transactions(&mut self, mut transactions: Vec<Transaction>) -> bool {
         sort_newest_first(&mut transactions);

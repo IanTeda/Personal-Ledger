@@ -178,12 +178,12 @@ mod tests {
         let view = cx.new(|_| StandInView);
         // A Toast or status arrives as one input, which drains into the Shell through the door.
         let _subscription = shell.update(cx, |_, cx| Root::view_event_subscription(&view, cx));
-        let (id, last_plan) = shell.read_with(cx, |shell, cx| {
-            lib_bills::planner_order(shell.bill_plans(cx))
+        // The stub seed's plans, which `FakeStores::stub` holds.
+        let (id, last_plan) =
+            lib_bills::planner_order(lib_ledger::Ledger::stub_on(today).bill_plans())
                 .last()
                 .map(|plan| (plan.id, plan.name.clone()))
-                .expect("the seed has Bill Plans")
-        });
+                .expect("the seed has Bill Plans");
 
         view.update(cx, |_, cx| cx.emit(ViewEvent::Reveal(Reveal::BillPlan(id))));
         cx.run_until_parked();

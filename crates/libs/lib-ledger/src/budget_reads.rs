@@ -5,8 +5,10 @@
 //!   answers the Budgets read ports: the Budgets page, the Dashboard and the rail badge read
 //!   `lib-database`'s `StoredBudgetReads` (#952, #993).
 //! - **The Budgets read copy ([`Ledger::refresh_budgets`]).** The Budgets store is the truth; the
-//!   Ledger keeps a copy for its Budgets and Category reassign commands, the Dashboard and the rail
-//!   badge. It goes when the Dashboard (#814) and `lib-reassign` (#813) leave it.
+//!   Ledger keeps a copy for Category reassign ([`crate::DeleteCategory`]), which drops the
+//!   Category's Limits from every Budget on it. The Dashboard and the rail badge read Budgets
+//!   through `StoredBudgetReads` (#1024, #1026), so the copy goes when Category reassign leaves the
+//!   Ledger with `lib-reassign` (#813).
 
 use lib_accounts::Account;
 use lib_budgets::{BudgetAccount, BudgetCategory};

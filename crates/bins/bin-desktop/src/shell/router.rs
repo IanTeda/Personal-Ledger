@@ -441,11 +441,6 @@ impl Root {
         self.ledger(cx).map_or(&[], lib_ledger::Ledger::categories)
     }
 
-    /// The Bill Plans, from the Ledger's read copy of the Bills ports; none with no Ledger open.
-    fn bill_plans<'a>(&self, cx: &'a App) -> &'a [crate::bills::BillPlan] {
-        self.ledger(cx).map_or(&[], lib_ledger::Ledger::bill_plans)
-    }
-
     /// Restores the Documents mode, Library scope and sort from the last run, onto the Open
     /// Ledger's Documents page, and keeps them for any Ledger opened later.
     pub fn set_documents_state(
@@ -884,9 +879,9 @@ mod tests {
         settings_plain_page_hints,
     };
     use crate::transactions;
-    use crate::transactions::Transaction;
     use chrono::Local;
     use lib_accounts::Account;
+    use lib_transactions::Transaction;
 
     fn seeded_ledger() -> (Vec<Account>, Vec<Category>, Vec<Transaction>) {
         let accounts = lib_accounts::default_accounts();
