@@ -13,7 +13,7 @@ use crate::{Error, msg};
 /// A refusal the Dialog shows.
 fn refusal_text(error: Error) -> String {
     match error {
-        Error::NotFound => msg::categories_refusal_gone(),
+        Error::NotFound => msg::categories_delete_refusal_gone(),
         Error::HasChildren => msg::categories_refusal_has_children(),
         Error::UncategorisedInUse => msg::categories_refusal_uncategorised_in_use(),
     }

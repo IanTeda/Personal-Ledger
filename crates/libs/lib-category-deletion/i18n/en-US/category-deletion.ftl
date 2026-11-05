@@ -20,6 +20,6 @@ categories-delete-confirm-label = Type { $name } to confirm
 
 ## A confirm the Dialog's Category no longer allows.
 
-categories-refusal-gone = This category has since been deleted.
+categories-delete-refusal-gone = This category has since been deleted.
 categories-refusal-has-children = Delete or move its subcategories first.
 categories-refusal-uncategorised-in-use = Uncategorised can't be deleted while transactions or bills use it.

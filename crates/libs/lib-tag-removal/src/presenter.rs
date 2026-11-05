@@ -16,7 +16,7 @@ use crate::{Error, msg};
 fn refusal_text(error: Error) -> String {
     match error {
         Error::MergeIntoItself => msg::tags_refusal_merge_into_itself(),
-        Error::NotFound => msg::tags_refusal_gone(),
+        Error::NotFound => msg::tags_remove_refusal_gone(),
     }
 }
 

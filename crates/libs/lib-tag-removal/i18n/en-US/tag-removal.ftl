@@ -39,5 +39,5 @@ tags-merge-submit-empty = Merge
 
 ## A confirm a Dialog's Tag no longer allows.
 
-tags-refusal-gone = This tag has since been removed.
+tags-remove-refusal-gone = This tag has since been removed.
 tags-refusal-merge-into-itself = A tag can't be merged into itself.
