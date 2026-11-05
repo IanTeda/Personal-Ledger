@@ -19,7 +19,7 @@ unmaintained = "workspace"
 # { id = "RUSTSEC-0000-0000", reason = "not reachable: we never call the affected API" },
 ignore = [
   { id = "RUSTSEC-2023-0071", reason = "rsa is pulled in by jsonwebtoken, but the Sync Server signs and verifies HS256 only (bin-sync-server/src/auth/jwt.rs), so no RSA key is ever used; no patched rsa exists yet" },
-  { id = "RUSTSEC-2026-0381", reason = "flags webpki-roots 0.26.11, which sqlx 0.8 pins; 0.26.11 bundles no certificates of its own but re-exports webpki-roots 1.x, locked at the patched 1.0.10. Remove once sqlx moves to webpki-roots 1.x (added 2026-10-21)" },
+  { id = "RUSTSEC-2026-0387", reason = "crypto-bigint 0.5.5 is pulled in only by jsonwebtoken's rust_crypto feature (elliptic-curve, p256 and p384 for ES256/ES384), and jsonwebtoken 11.1.0 still pulls it; the Sync Server signs and verifies HS256 only (bin-sync-server/src/auth/jwt.rs) and nothing in the workspace uses an EC key, so the affected constant-time bigint operations never run on a secret. Remove once jsonwebtoken moves to crypto-bigint 0.7 or the lock no longer holds 0.5.5 (added 2026-11-05)" },
 ]
 
 # Licences must keep the shipped binaries distributable under this project's MIT licence, so
