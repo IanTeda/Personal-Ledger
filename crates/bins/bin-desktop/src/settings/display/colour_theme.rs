@@ -3,57 +3,29 @@
 //! of mini-ledger preview cards, one per built-in Colour Theme, each drawn through `resolve` with
 //! this Client's `[theme]` overrides so it shows what would actually appear.
 //!
-//! Reads the `crate::theme::colours::Colours` Global directly: the chosen Colour Theme and
-//! Appearance live there, not on the Display page, and a click hands its choice to the page, which
-//! asks `Root` to save it (ADR-0053). Only the keyboard focus inside the grid is the page's state
-//! (`super`), since the page owns its keystrokes; focus and hover never preview, only a click or
-//! Enter selects.
+//! Which card and Appearance are chosen, and which card the keyboard is on, come from the Display
+//! Presenter's view model; a click is its event through [`PageClicks`]. How a card looks, the
+//! system's light or dark setting and what `[theme]` overrides make of it are toolkit colour work,
+//! read from the `crate::theme::colours::Colours` Global. Focus and hover never preview, only a
+//! click or Enter selects.
 
-use std::rc::Rc;
+use gpui::{AnyElement, App, FontWeight, Rgba, SharedString, div, prelude::*, px};
+use lib_colour_theme::{ColourAppearance, ColourVariant, ResolvedColours};
+use lib_settings::presenter::display::appearance_label;
+use lib_settings::presenter::{ColourCardView, ColourThemeView, ControlView};
+use lib_settings::{ColourChoice, DeviceKey, DisplayEvent};
 
-use gpui::{AnyElement, App, FontWeight, Rgba, SharedString, Window, div, prelude::*, px};
-use lib_colour_theme::{ColourAppearance, ColourTheme, ColourVariant, ResolvedColours};
-use lib_config::ConfigKey;
-
-use crate::settings::device::shadowed_note;
-
+use super::DisplayPage;
 use crate::{
+    form::fields::{UNIFORM_OPTION_WIDTH, segmented_labelled},
+    settings::controls::shadowed,
+    shell::view::page_clicks::PageClicks,
     theme::color,
     theme::colours::{self, to_gpui},
 };
 
-use crate::form::fields::{UNIFORM_OPTION_WIDTH, segmented_control_sized};
-
-/// A click on a card, curried with its Colour Theme id.
-pub type OnColourThemeClick = Rc<dyn Fn(&'static str, &mut Window, &mut App)>;
-
 pub const CARD_WIDTH: f32 = 160.0;
 pub const CARD_GAP: f32 = 12.0;
-
-const APPEARANCES: [ColourAppearance; 3] = [
-    ColourAppearance::Light,
-    ColourAppearance::Dark,
-    ColourAppearance::System,
-];
-
-/// The Colour Theme's name, a shared Message.
-pub fn colour_theme_name(id: &str) -> String {
-    match id {
-        "high_contrast" => lib_locale::msg::colour_theme_high_contrast(),
-        "catppuccin" => lib_locale::msg::colour_theme_catppuccin(),
-        "gruvbox" => lib_locale::msg::colour_theme_gruvbox(),
-        "nord" => lib_locale::msg::colour_theme_nord(),
-        _ => lib_locale::msg::colour_theme_modernist(),
-    }
-}
-
-pub fn appearance_label(appearance: ColourAppearance) -> String {
-    match appearance {
-        ColourAppearance::Light => lib_locale::msg::colour_appearance_light(),
-        ColourAppearance::Dark => lib_locale::msg::colour_appearance_dark(),
-        ColourAppearance::System => lib_locale::msg::colour_appearance_system(),
-    }
-}
 
 fn variant_label(variant: ColourVariant) -> String {
     appearance_label(match variant {
@@ -80,87 +52,58 @@ pub fn grid_columns(body_width: f32) -> usize {
     if fits >= 1.0 { fits as usize } else { 1 }
 }
 
-/// The card focus after `key` in a grid of `len` cards, `columns` to a row; `None` when the key
-/// is not a grid movement. Stops at the edges rather than wrapping.
-pub fn grid_move(index: usize, len: usize, columns: usize, key: &str) -> Option<usize> {
-    let last = len.checked_sub(1)?;
-    let columns = columns.max(1);
-    let next = match key {
-        "left" | "h" => index.saturating_sub(1),
-        "right" | "l" => (index + 1).min(last),
-        "up" | "k" => index.checked_sub(columns).unwrap_or(index),
-        "down" | "j" => {
-            if index + columns <= last {
-                index + columns
-            } else {
-                index
-            }
-        }
-        _ => return None,
-    };
-    Some(next)
-}
-
-/// The index of the Colour Theme drawn now, where grid focus starts.
-pub fn chosen_index(cx: &App) -> usize {
-    let chosen = colours::resolved(cx).theme_id;
-    ColourTheme::built_in()
-        .iter()
-        .position(|theme| theme.id == chosen)
-        .unwrap_or(0)
-}
-
-/// A click on a Colour Appearance option.
-pub type OnColourAppearanceClick = Rc<dyn Fn(ColourAppearance, &mut Window, &mut App)>;
-
 pub fn render(
-    focused: Option<usize>,
-    on_theme_click: OnColourThemeClick,
-    on_appearance_click: OnColourAppearanceClick,
+    view: &ColourThemeView,
+    appearance: &ControlView<ColourAppearance>,
+    clicks: &PageClicks<DisplayPage>,
     cx: &App,
 ) -> AnyElement {
     let state = colours::colours(cx);
-    let appearance = state.colour_appearance().unwrap_or_default();
+    let select = &appearance.select;
+    let options = select
+        .options
+        .iter()
+        .map(|choice| (choice.value, SharedString::from(choice.label.clone())))
+        .collect();
     div()
         .id("display-colour-theme")
         .mt(px(28.0))
         .w_full()
         .flex()
         .flex_col()
-        .child(field_label(
-            crate::msg::desktop_settings_display_colour_appearance(),
-            cx,
-        ))
-        .child(segmented_control_sized(
+        .child(field_label(select.label.clone(), cx))
+        .child(segmented_labelled(
             "display-colour-appearance",
-            &APPEARANCES,
-            appearance,
-            appearance_label,
-            on_appearance_click,
+            options,
+            select.chosen.unwrap_or_default(),
+            clicks.segment(|appearance| {
+                DisplayEvent::ChooseColour(ColourChoice::Appearance(appearance))
+            }),
             Some(px(UNIFORM_OPTION_WIDTH)),
             cx,
         ))
         .child(note(system_hint(state.system()), cx))
-        .children(shadowed_note(ConfigKey::ColourAppearance, cx))
-        .child(div().mt(px(18.0)).child(field_label(
-            crate::msg::desktop_settings_display_colour_theme(),
+        .children(shadowed(
+            DeviceKey::ColourAppearance,
+            appearance.shadowed.as_deref(),
             cx,
-        )))
-        .children(shadowed_note(ConfigKey::ColourTheme, cx))
+        ))
+        .child(
+            div()
+                .mt(px(18.0))
+                .child(field_label(view.label.clone(), cx)),
+        )
+        .children(shadowed(
+            DeviceKey::ColourTheme,
+            view.shadowed.as_deref(),
+            cx,
+        ))
         .child(
             div().flex().flex_wrap().gap(px(CARD_GAP)).children(
-                ColourTheme::built_in()
+                view.cards
                     .iter()
                     .enumerate()
-                    .map(|(index, theme)| {
-                        card(
-                            index,
-                            theme.id,
-                            focused == Some(index),
-                            on_theme_click.clone(),
-                            cx,
-                        )
-                    }),
+                    .map(|(index, view)| card(index, view, clicks, cx)),
             ),
         )
         .children(override_note(cx))
@@ -198,13 +141,12 @@ fn override_note(cx: &App) -> Option<impl IntoElement> {
 
 fn card(
     index: usize,
-    id: &'static str,
-    focused: bool,
-    on_click: OnColourThemeClick,
+    view: &ColourCardView,
+    clicks: &PageClicks<DisplayPage>,
     cx: &App,
 ) -> impl IntoElement {
-    let chosen = colours::resolved(cx).theme_id == id;
-    let preview = colours::colours(cx).preview(id);
+    let chosen = view.chosen;
+    let preview = colours::colours(cx).preview(view.id);
     // The focus ring sits outside the chosen border so the two never hide each other.
     div()
         .debug_selector(move || format!("display-colour-theme-{index}"))
@@ -213,12 +155,12 @@ fn card(
         .w(px(CARD_WIDTH + 4.0))
         .p(px(2.0))
         .border_1()
-        .border_color(if focused {
+        .border_color(if view.focused {
             color::foreground(cx)
         } else {
             gpui::transparent_black().into()
         })
-        .on_click(move |_event, window, cx| on_click(id, window, cx))
+        .on_click(clicks.send(DisplayEvent::ClickColourTheme(view.id)))
         .child(
             div()
                 .border(px(if chosen { 2.0 } else { 1.0 }))
@@ -234,7 +176,7 @@ fn card(
                 .mt(px(6.0))
                 .text_size(px(12.0))
                 .when(chosen, |this| this.font_weight(FontWeight::EXTRA_BOLD))
-                .child(colour_theme_name(id)),
+                .child(view.name.clone()),
         )
 }
 
@@ -316,43 +258,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn grid_move_steps_within_the_row_and_stops_at_the_ends() {
-        assert_eq!(grid_move(0, 5, 3, "l"), Some(1));
-        assert_eq!(grid_move(0, 5, 3, "h"), Some(0));
-        assert_eq!(grid_move(4, 5, 3, "right"), Some(4));
-    }
-
-    #[test]
-    fn grid_move_steps_a_row_only_onto_a_card() {
-        assert_eq!(grid_move(1, 5, 3, "j"), Some(4));
-        assert_eq!(grid_move(2, 5, 3, "down"), Some(2), "no card below");
-        assert_eq!(grid_move(4, 5, 3, "k"), Some(1));
-        assert_eq!(grid_move(1, 5, 3, "up"), Some(1));
-    }
-
-    #[test]
-    fn grid_move_ignores_other_keys_and_an_empty_grid() {
-        assert_eq!(grid_move(0, 5, 3, "x"), None);
-        assert_eq!(grid_move(0, 0, 3, "l"), None);
-    }
-
-    #[test]
     fn grid_columns_fits_cards_and_never_drops_below_one() {
         assert_eq!(grid_columns(58.0 + 160.0), 1);
         assert_eq!(grid_columns(58.0 + 3.0 * 160.0 + 2.0 * 12.0), 3);
         assert_eq!(grid_columns(100.0), 1);
-    }
-
-    #[test]
-    fn every_built_in_colour_theme_has_its_own_name() {
-        crate::locale::init_for_tests();
-        let names: Vec<String> = ColourTheme::built_in()
-            .iter()
-            .map(|theme| colour_theme_name(theme.id))
-            .collect();
-        for (index, name) in names.iter().enumerate() {
-            assert!(!names[..index].contains(name), "{name} named twice");
-        }
     }
 
     #[test]

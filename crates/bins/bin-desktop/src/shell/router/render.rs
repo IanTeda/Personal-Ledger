@@ -239,7 +239,6 @@ impl Render for Root {
                 if this.handle_key_down(event, WindowSize::of(window), cx) {
                     cx.notify();
                 }
-                this.run_pending_effects(cx);
             }))
             .child(
                 div()

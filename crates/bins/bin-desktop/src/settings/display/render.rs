@@ -1,43 +1,23 @@
-//! The **Display** section (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting state", moved
-//! directly after General by issue #189's own reorder): a column of segmented controls (Date
-//! format, Row density) and a dot-style Status glyphs radio group, beside a live **PREVIEW** table that re-renders the mockup's own three
-//! seeded transaction rows under whichever combination is currently selected.
-//!
-//! Unlike every other section built so far, this one is genuinely reactive across *all* its
-//! fields at once -- General's/Units' own interactive bits (issues #175/#177) are either static
-//! or scoped to one table, but here every field click re-formats the PREVIEW table's date,
-//! amount, and glyph columns, and shifts its row padding (see
-//! `crate::settings::display::RowDensityChoice::preview_row_padding_y`'s own doc for why row density gets a
-//! real visual effect here despite this map's data otherwise being static/dummy).
-//!
-//! Configuration, not Preferences (`docs/ux/desktop-mockups/16-settings/README.md`'s Overview) -- like
-//! every other click in this map, a selection is "saved" only in `Root`-owned in-memory state,
-//! not written to `personal-ledger.conf`.
+//! Settings › Display drawn from its view model (`docs/ux/desktop-mockups/16-settings/README.md`'s
+//! "2a resting state"): a column of segmented controls (Date format, Row density), a Status glyphs
+//! radio group and the Start Sidebar minimised checkbox, beside a PREVIEW of three seeded rows
+//! under the choices made, then the Colour Theme grid (`colour_theme.rs`). Every click is a
+//! Presenter event through [`PageClicks`].
 
-use std::rc::Rc;
+use gpui::{App, Context, SharedString, Window, div, prelude::*, px};
+use lib_settings::presenter::display::{DATE_STYLE_CHOICES, DISPLAY_FIELD_SIDEBAR};
+use lib_settings::presenter::{CheckboxView, PreviewView};
+use lib_settings::{DeviceKey, DisplayEvent};
+use lib_viper::display::{RowDensity, StatusGlyphs};
+use lib_viper::view::SelectView;
 
-use gpui::{App, Context, Entity, Render, SharedString, Window, div, prelude::*, px};
-use lib_core::DateStyle;
-
-use super::{
-    DATE_STYLE_CHOICES, DEFAULT_DISPLAY_PREVIEW_ROWS, DISPLAY_FIELD_SIDEBAR, DisplayPage,
-    DisplayPreviewRow, PreviewStatus, RowDensity, RowDensityChoice, StatusGlyphs,
-    StatusGlyphsChoice, colour_theme, date_style_label, format_preview_amount, format_preview_date,
-};
+use super::{DisplayPage, colour_theme};
 use crate::{
-    form::fields::{UNIFORM_OPTION_WIDTH, radio_dot, segmented_control_sized},
+    form::fields::{OnSegmentClick, UNIFORM_OPTION_WIDTH, radio_dot, segmented_labelled},
+    settings::controls::{focus_mark, shadowed},
+    shell::view::page_clicks::PageClicks,
     theme::color,
 };
-
-/// A click handler the page binds for a control, given the clicked value.
-type OnValue<A> = Rc<dyn Fn(A, &mut Window, &mut App)>;
-
-pub type OnDateStyleClick = Rc<dyn Fn(Option<DateStyle>, &mut Window, &mut App)>;
-pub type OnRowDensityClick = Rc<dyn Fn(RowDensity, &mut Window, &mut App)>;
-pub type OnStatusGlyphsClick = Rc<dyn Fn(StatusGlyphs, &mut Window, &mut App)>;
-/// A curried, option-less click handler -- what a [`status_glyphs_option`] is bound to after its
-/// own option has already been curried in (mirrors the Units page's `OnPlainClick`).
-pub type OnPlainClick = Rc<dyn Fn(&mut Window, &mut App)>;
 
 /// As wide as the widest control, Date format's uniform bar (one option per choice plus its 1px
 /// border each side): any narrower and the bar overflows the `flex_none` column into the
@@ -52,160 +32,109 @@ const PREVIEW_GLYPH_WIDTH: gpui::Pixels = px(18.0);
 const PREVIEW_DATE_WIDTH: gpui::Pixels = px(92.0);
 const PREVIEW_AMOUNT_WIDTH: gpui::Pixels = px(96.0);
 
+/// A PREVIEW row's vertical padding under `density`: the one place in this concept that Row
+/// density visibly changes, on the 4px rhythm either side of Regular.
+pub fn preview_row_padding_y(density: RowDensity) -> f32 {
+    match density {
+        RowDensity::Compact => 4.0,
+        RowDensity::Regular => 8.0,
+        RowDensity::Roomy => 12.0,
+    }
+}
+
 impl Render for DisplayPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let entity = cx.entity();
-        let display = self.preferences();
-        let field_focus = self.field_focus();
+        let model = self.view_model();
+        let clicks = PageClicks::new(cx);
+        let cx: &App = cx;
         let columns = div()
             .flex()
             .flex_wrap()
             .gap_x(px(40.0))
             .gap_y(px(24.0))
-            .child(field_column(
-                display.date_style,
-                display.row_density,
-                display.status_glyphs,
-                display.start_sidebar_minimised,
-                plain(&entity, DisplayPage::click_start_sidebar_minimised),
-                bind(&entity, DisplayPage::click_date_style),
-                bind(&entity, DisplayPage::click_row_density),
-                bind(&entity, DisplayPage::click_status_glyphs),
-                field_focus,
-                cx,
-            ))
-            .child(preview_column(
-                display.date_style,
-                display.row_density,
-                display.status_glyphs,
-                cx,
-            ));
+            .child(
+                div()
+                    .debug_selector(|| "display-fields".to_string())
+                    .w(FIELD_COLUMN_WIDTH)
+                    .flex_none()
+                    .flex()
+                    .flex_col()
+                    .gap(px(18.0))
+                    .child(
+                        segmented(
+                            "display-date-style",
+                            &model.date_style.select,
+                            clicks.segment(DisplayEvent::ChooseDateStyle),
+                            cx,
+                        )
+                        .children(shadowed(
+                            DeviceKey::DateStyle,
+                            model.date_style.shadowed.as_deref(),
+                            cx,
+                        )),
+                    )
+                    .child(segmented(
+                        "display-row-density",
+                        &model.row_density,
+                        clicks.segment(DisplayEvent::ChooseRowDensity),
+                        cx,
+                    ))
+                    .child(status_glyphs_field(&model.status_glyphs, &clicks, cx))
+                    .child(
+                        focus_mark(model.field == Some(DISPLAY_FIELD_SIDEBAR), cx).child(
+                            start_sidebar_minimised_toggle(
+                                &model.start_sidebar_minimised,
+                                &clicks,
+                                cx,
+                            ),
+                        ),
+                    ),
+            )
+            .child(preview_column(&model.preview, cx));
         div()
             .flex()
             .flex_col()
             .child(columns)
             .child(colour_theme::render(
-                self.colour_theme_focus(),
-                bind(&entity, DisplayPage::click_colour_theme),
-                bind(&entity, DisplayPage::click_colour_appearance),
+                &model.colour_theme,
+                &model.appearance,
+                &clicks,
                 cx,
             ))
     }
 }
 
-/// A click handler that runs `act` on the Display page with the clicked value.
-fn bind<A: 'static>(
-    entity: &Entity<DisplayPage>,
-    act: fn(&mut DisplayPage, A, &mut Context<'_, DisplayPage>),
-) -> OnValue<A> {
-    let entity = entity.clone();
-    Rc::new(move |value, _window, cx| entity.update(cx, |page, cx| act(page, value, cx)))
-}
-
-/// As [`bind`], for a click that carries no value.
-fn plain(
-    entity: &Entity<DisplayPage>,
-    act: fn(&mut DisplayPage, &mut Context<'_, DisplayPage>),
-) -> OnPlainClick {
-    let entity = entity.clone();
-    Rc::new(move |_window, cx| entity.update(cx, act))
-}
-
-#[expect(
-    clippy::too_many_arguments,
-    reason = "a stateless GPUI render fn takes each value and handler it wires; a props struct would only rename the list"
-)]
-fn field_column(
-    date_style: Option<DateStyle>,
-    row_density: RowDensity,
-    status_glyphs: StatusGlyphs,
-    start_sidebar_minimised: bool,
-    on_start_sidebar_minimised_click: OnPlainClick,
-    on_date_style_click: OnDateStyleClick,
-    on_row_density_click: OnRowDensityClick,
-    on_status_glyphs_click: OnStatusGlyphsClick,
-    field_focus: Option<usize>,
+/// A uniform segmented control with its label, the keyboard's mark on it while focused.
+fn segmented<T: Copy + PartialEq + 'static>(
+    id: &'static str,
+    select: &SelectView<T>,
+    on_click: OnSegmentClick<T>,
     cx: &App,
-) -> impl IntoElement {
-    div()
-        .debug_selector(|| "display-fields".to_string())
-        .w(FIELD_COLUMN_WIDTH)
-        .flex_none()
-        .flex()
-        .flex_col()
-        .gap(px(18.0))
-        .child(
-            focus_mark(field_focus == Some(0), cx)
-                .child(field_label(
-                    crate::msg::desktop_display_date_style_label(),
-                    cx,
-                ))
-                .child(segmented_control_sized(
-                    "display-date-style",
-                    &DATE_STYLE_CHOICES,
-                    date_style,
-                    date_style_label,
-                    on_date_style_click,
-                    Some(px(UNIFORM_OPTION_WIDTH)),
-                    cx,
-                ))
-                .children(crate::settings::device::shadowed_note(
-                    lib_config::ConfigKey::DateStyle,
-                    cx,
-                )),
-        )
-        .child(
-            focus_mark(field_focus == Some(1), cx)
-                .child(field_label(
-                    crate::msg::desktop_settings_display_row_density(),
-                    cx,
-                ))
-                .child(segmented_control_sized(
-                    "display-row-density",
-                    &RowDensity::ALL,
-                    row_density,
-                    RowDensity::label,
-                    on_row_density_click,
-                    Some(px(UNIFORM_OPTION_WIDTH)),
-                    cx,
-                )),
-        )
-        .child(status_glyphs_field(
-            status_glyphs,
-            on_status_glyphs_click,
-            field_focus == Some(2),
+) -> gpui::Div {
+    let options = select
+        .options
+        .iter()
+        .map(|choice| (choice.value, SharedString::from(choice.label.clone())))
+        .collect();
+    let chosen = select.chosen.unwrap_or(select.options[0].value);
+    focus_mark(select.focused, cx)
+        .child(field_label(select.label.clone(), cx))
+        .child(segmented_labelled(
+            id,
+            options,
+            chosen,
+            on_click,
+            Some(px(UNIFORM_OPTION_WIDTH)),
             cx,
         ))
-        .child(
-            focus_mark(field_focus == Some(DISPLAY_FIELD_SIDEBAR), cx).child(
-                start_sidebar_minimised_toggle(
-                    start_sidebar_minimised,
-                    on_start_sidebar_minimised_click,
-                    cx,
-                ),
-            ),
-        )
-}
-
-/// The keyboard-focus mark for one control: an accent rule down its left edge, drawn on every
-/// control so the column does not shift as focus moves.
-fn focus_mark(focused: bool, cx: &App) -> gpui::Div {
-    div()
-        .pl(px(8.0))
-        .ml(px(-10.0))
-        .border_l(px(2.0))
-        .border_color(if focused {
-            gpui::Hsla::from(color::accent(cx))
-        } else {
-            gpui::transparent_black()
-        })
 }
 
 fn start_sidebar_minimised_toggle(
-    checked: bool,
-    on_click: OnPlainClick,
+    view: &CheckboxView,
+    clicks: &PageClicks<DisplayPage>,
     cx: &App,
 ) -> impl IntoElement {
+    let checked = view.checked;
     div()
         .debug_selector(|| "display-start-sidebar-minimised".to_string())
         .id("display-start-sidebar-minimised")
@@ -213,7 +142,7 @@ fn start_sidebar_minimised_toggle(
         .flex()
         .items_center()
         .gap(px(8.0))
-        .on_click(move |_event, window, cx| on_click(window, cx))
+        .on_click(clicks.send(DisplayEvent::ToggleStartSidebarMinimised))
         .child(
             div()
                 .w(px(14.0))
@@ -231,17 +160,11 @@ fn start_sidebar_minimised_toggle(
                     color::background(cx)
                 }),
         )
-        .child(
-            div()
-                .text_size(px(12.0))
-                .child(crate::msg::desktop_settings_display_start_minimised()),
-        )
+        .child(div().text_size(px(12.0)).child(view.label.clone()))
 }
 
-/// `.field > label`: `display:block; font-size:12px; margin-bottom:5px; color: color-mix(text
-/// 70%, transparent)` -- the same style the now-removed `ledger_units.rs`'s own field label used
-/// (issue #189), distinct from General's bold `crate::form::fields::field_label`
-/// (`font-weight:800; margin-bottom:6px`), which only sits over `Input`/`select` pairs.
+/// Display's own field label, lighter than the form fields' bold one, which sits over
+/// `Input`/`select` pairs.
 fn field_label(label: impl Into<SharedString>, cx: &App) -> impl IntoElement {
     div()
         .text_size(px(12.0))
@@ -251,63 +174,30 @@ fn field_label(label: impl Into<SharedString>, cx: &App) -> impl IntoElement {
 }
 
 fn status_glyphs_field(
-    selected: StatusGlyphs,
-    on_click: OnStatusGlyphsClick,
-    focused: bool,
+    select: &SelectView<StatusGlyphs>,
+    clicks: &PageClicks<DisplayPage>,
     cx: &App,
 ) -> impl IntoElement {
-    focus_mark(focused, cx)
-        .child(field_label(
-            crate::msg::desktop_settings_display_status_glyphs(),
-            cx,
+    focus_mark(select.focused, cx)
+        .child(field_label(select.label.clone(), cx))
+        .child(div().flex().flex_col().gap(px(7.0)).mt(px(2.0)).children(
+            select.options.iter().enumerate().map(|(index, choice)| {
+                let checked = select.chosen == Some(choice.value);
+                div()
+                    .debug_selector(move || format!("display-status-glyphs-{index}"))
+                    .id(SharedString::from(format!("display-status-glyphs-{index}")))
+                    .cursor_pointer()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    .on_click(clicks.send(DisplayEvent::ChooseStatusGlyphs(choice.value)))
+                    .child(radio_dot(checked, cx))
+                    .child(div().text_size(px(12.0)).child(choice.label.clone()))
+            }),
         ))
-        .child(
-            div().flex().flex_col().gap(px(7.0)).mt(px(2.0)).children(
-                StatusGlyphs::ALL
-                    .into_iter()
-                    .enumerate()
-                    .map(|(index, option)| {
-                        let checked = option == selected;
-                        let on_click = on_click.clone();
-                        status_glyphs_option(
-                            index,
-                            option,
-                            checked,
-                            Rc::new(move |window: &mut Window, cx: &mut App| {
-                                on_click(option, window, cx)
-                            }),
-                            cx,
-                        )
-                    }),
-            ),
-        )
 }
 
-fn status_glyphs_option(
-    index: usize,
-    option: StatusGlyphs,
-    checked: bool,
-    on_click: OnPlainClick,
-    cx: &App,
-) -> impl IntoElement {
-    div()
-        .debug_selector(move || format!("display-status-glyphs-{index}"))
-        .id(SharedString::from(format!("display-status-glyphs-{index}")))
-        .cursor_pointer()
-        .flex()
-        .items_center()
-        .gap(px(8.0))
-        .on_click(move |_event, window, cx| on_click(window, cx))
-        .child(radio_dot(checked, cx))
-        .child(div().text_size(px(12.0)).child(option.label()))
-}
-
-fn preview_column(
-    date_style: Option<DateStyle>,
-    row_density: RowDensity,
-    status_glyphs: StatusGlyphs,
-    cx: &App,
-) -> impl IntoElement {
+fn preview_column(preview: &PreviewView, cx: &App) -> impl IntoElement {
     div()
         .debug_selector(|| "display-preview".to_string())
         .flex_1()
@@ -319,52 +209,58 @@ fn preview_column(
                 .text_size(px(10.0))
                 .text_color(color::faint_text(cx))
                 .mb(px(10.0))
-                .child(lib_locale::format::upper(
-                    &crate::msg::desktop_settings_display_preview(),
-                )),
+                .child(lib_locale::format::upper(&preview.heading)),
         )
-        .child(preview_table(date_style, row_density, status_glyphs, cx))
+        .child(preview_table(preview, cx))
         .child(
             div()
                 .mt(px(14.0))
                 .text_size(px(12.0))
                 .text_color(color::muted(cx))
-                .child(crate::msg::desktop_settings_display_note()),
+                .child(preview.note.clone()),
         )
 }
 
-fn preview_table(
-    date_style: Option<DateStyle>,
-    row_density: RowDensity,
-    status_glyphs: StatusGlyphs,
-    cx: &App,
-) -> impl IntoElement {
-    let last_index = DEFAULT_DISPLAY_PREVIEW_ROWS.len().saturating_sub(1);
+fn preview_table(preview: &PreviewView, cx: &App) -> impl IntoElement {
+    let last_index = preview.rows.len().saturating_sub(1);
+    let padding_y = px(preview_row_padding_y(preview.row_density));
     div()
         .border_1()
         .border_color(color::border(cx))
         .bg(color::chrome(cx))
         .flex()
         .flex_col()
-        .child(preview_table_header(cx))
-        .children(
-            DEFAULT_DISPLAY_PREVIEW_ROWS
-                .iter()
-                .enumerate()
-                .map(|(index, row)| {
-                    preview_row(
-                        row,
-                        index == last_index,
-                        date_style,
-                        row_density,
-                        status_glyphs,
-                        cx,
-                    )
-                }),
-        )
+        .child(preview_table_header(preview, cx))
+        .children(preview.rows.iter().enumerate().map(|(index, row)| {
+            // The glyph column takes the accent only for the Flagged row, as the mockup colours
+            // only that one of its three seeded rows.
+            div()
+                .flex()
+                .items_center()
+                .px(px(12.0))
+                .py(padding_y)
+                .when(index != last_index, |this| {
+                    this.border_b(px(1.0)).border_color(color::hairline(cx))
+                })
+                .child(
+                    div()
+                        .w(PREVIEW_GLYPH_WIDTH)
+                        .when(row.flagged, |this| this.text_color(color::accent_text(cx)))
+                        .child(row.glyph.clone()),
+                )
+                .child(div().w(PREVIEW_DATE_WIDTH).child(row.date.clone()))
+                .child(div().flex_1().child(row.payee.clone()))
+                .child(
+                    div()
+                        .w(PREVIEW_AMOUNT_WIDTH)
+                        .text_align(gpui::TextAlign::Right)
+                        .child(row.amount.clone()),
+                )
+        }))
 }
 
-fn preview_table_header(cx: &App) -> impl IntoElement {
+fn preview_table_header(preview: &PreviewView, cx: &App) -> impl IntoElement {
+    let upper = lib_locale::format::upper;
     div()
         .flex()
         .px(px(12.0))
@@ -378,56 +274,13 @@ fn preview_table_header(cx: &App) -> impl IntoElement {
         .child(
             div()
                 .w(PREVIEW_DATE_WIDTH)
-                .child(lib_locale::format::upper(&lib_locale::msg::column_date())),
+                .child(upper(&preview.date_column)),
         )
-        .child(
-            div()
-                .flex_1()
-                .child(lib_locale::format::upper(&lib_locale::msg::column_payee())),
-        )
+        .child(div().flex_1().child(upper(&preview.payee_column)))
         .child(
             div()
                 .w(PREVIEW_AMOUNT_WIDTH)
                 .text_align(gpui::TextAlign::Right)
-                .child(lib_locale::format::upper(&lib_locale::msg::column_amount())),
-        )
-}
-
-/// One PREVIEW row -- the glyph column takes `color::accent(cx)` only for a flagged row, matching
-/// the mockup's own `<span style="color:#ec3013">\u{2691}</span>` (the only coloured glyph among
-/// the three seeded rows).
-fn preview_row(
-    row: &DisplayPreviewRow,
-    last: bool,
-    date_style: Option<DateStyle>,
-    row_density: RowDensity,
-    status_glyphs: StatusGlyphs,
-    cx: &App,
-) -> impl IntoElement {
-    div()
-        .flex()
-        .items_center()
-        .px(px(12.0))
-        .py(px(row_density.preview_row_padding_y()))
-        .when(!last, |this| {
-            this.border_b(px(1.0)).border_color(color::hairline(cx))
-        })
-        .child(
-            div()
-                .w(PREVIEW_GLYPH_WIDTH)
-                .when(row.status == PreviewStatus::Flagged, |this| {
-                    this.text_color(color::accent_text(cx))
-                })
-                .child(row.status.glyph(status_glyphs)),
-        )
-        .child(div().w(PREVIEW_DATE_WIDTH).child(format_preview_date(
-            row.year, row.month, row.day, date_style,
-        )))
-        .child(div().flex_1().child(row.payee))
-        .child(
-            div()
-                .w(PREVIEW_AMOUNT_WIDTH)
-                .text_align(gpui::TextAlign::Right)
-                .child(format_preview_amount(row.amount_cents)),
+                .child(upper(&preview.amount_column)),
         )
 }

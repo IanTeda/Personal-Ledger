@@ -1,11 +1,13 @@
-//! `impl SettingsRouter` for the Desktop: what the Settings frame's Presenter asks of the Shell. It
-//! goes through the Settings View's gpui context, which is why the Router is built for each
-//! `handle` call. A page change reaches the root Router as [`PageChanged`], which feeds the
-//! Shell's history; the picker's mode is the View's own (`ViewEvent::EnterMode`); a Notice goes
-//! onto the bin's queue (`crate::notices`), which the input's `send` drains.
+//! The Settings module's Routers for the Desktop: [`FrameRouter`], what the frame's Presenter asks
+//! of the Shell, and [`DeviceRouter`], what the This device pages' Presenters ask. Each goes
+//! through its Entity's gpui context, which is why a Router is built for each `handle` call. A
+//! page change reaches the root Router as [`PageChanged`], which feeds the Shell's history; the
+//! picker's mode is the View's own (`ViewEvent::EnterMode`); Toasts and the Display output reach
+//! the root Router as [`ViewEvent`]s; a colour change is applied once the current update ends; a
+//! Notice goes onto the bin's queue (`crate::notices`), which the input's `send` drains.
 
-use gpui::Context;
-use lib_settings::{SettingsPage, SettingsRouter};
+use gpui::{Context, EventEmitter};
+use lib_settings::{ColourChoice, DisplayOutput, SettingsPage, SettingsRouter};
 use lib_toast::{Notice, Notify};
 
 use super::state::SettingsView;
@@ -43,6 +45,34 @@ impl Notify for FrameRouter<'_, '_> {
     /// a refusal.
     fn notify(&mut self, notice: Notice) {
         self.refused = true;
+        crate::notices::Queue.notify(notice);
+    }
+}
+
+/// `impl lib_settings::DeviceRouter` for a This device page `P` (General or Display).
+pub(super) struct DeviceRouter<'a, 'b, P> {
+    pub cx: &'a mut Context<'b, P>,
+}
+
+impl<P: EventEmitter<ViewEvent>> lib_settings::DeviceRouter for DeviceRouter<'_, '_, P> {
+    fn toasts_changed(&mut self, on: bool) {
+        self.cx.emit(ViewEvent::ToastsChanged(on));
+    }
+
+    fn display_changed(&mut self, display: DisplayOutput) {
+        self.cx.emit(ViewEvent::DisplayChanged(display));
+    }
+
+    /// A colour change refreshes every window, which must wait until the Shell's update ends.
+    fn colour_changed(&mut self, colour: ColourChoice) {
+        self.cx
+            .defer(move |cx| crate::theme::colours::apply(colour, cx));
+    }
+}
+
+impl<P> Notify for DeviceRouter<'_, '_, P> {
+    /// Queues `notice`, for the input's `send` to drain into the Shell.
+    fn notify(&mut self, notice: Notice) {
         crate::notices::Queue.notify(notice);
     }
 }

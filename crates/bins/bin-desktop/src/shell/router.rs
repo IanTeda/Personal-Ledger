@@ -88,15 +88,13 @@ use crate::{
     navigation::active_view::ActiveView,
     navigation::explorer::{ExplorerFilters, FileExplorer},
     navigation::nav::{NavState, Noun, RailMode},
-    settings::{
-        SettingsPage, device::DeviceConfiguration, device::DeviceSetting,
-        display::DisplayPreferences, router::PageChanged, state::SettingsView,
-    },
+    settings::{SettingsPage, device::DeviceConfigFile, router::PageChanged, state::SettingsView},
     shell::state::ShellState,
     shell::view::{rail as rail_view, window_size::WindowSize},
-    theme::colours::ColourChange,
 };
 use lib_categories::Category;
+use lib_settings::DisplayOutput;
+use std::rc::Rc;
 
 /// The collapsed rail's own hover-reveal delay (`docs/ux/desktop-mockups/01-shell/README.md`'s
 /// "1c" tooltip spec) -- deliberately the same 500ms `gpui`'s own built-in `.tooltip()` uses,
@@ -279,7 +277,6 @@ impl Root {
                 dialog_confirm: None,
                 hosted: None,
                 dialog_keymap: lib_shell::dialog_keymap(&lib_config::KeyBindingConfig::default()),
-                pending_colour_change: None,
                 undo_menu_open: false,
             },
             #[cfg(debug_assertions)]
@@ -320,7 +317,7 @@ impl Root {
         // `[keybindings]` and the Preferences here, so the Open Ledger comes up under them whoever
         // opens it.
         self.set_keymaps(&keybindings, cx);
-        let display = self.display(cx);
+        let display = self.display_output(cx);
         self.push_display_preferences(display, cx);
         self.refresh_rail_counts(true, cx);
     }
@@ -534,108 +531,50 @@ impl Root {
     }
 
     pub fn start_sidebar_minimised(&self, cx: &App) -> bool {
-        self.display(cx).start_sidebar_minimised
+        self.display_output(cx).start_sidebar_minimised
     }
 
     pub fn set_start_sidebar_minimised(&mut self, minimised: bool, cx: &mut App) {
-        let display = DisplayPreferences {
-            start_sidebar_minimised: minimised,
-            ..self.display(cx)
-        };
-        self.settings
-            .update(cx, |view, cx| view.set_display(display, cx));
+        self.settings.update(cx, |view, cx| {
+            view.set_start_sidebar_minimised(minimised, cx)
+        });
     }
 
-    /// Applies a device's settings as start-up read them from Configuration (ADR-0053), and keeps
-    /// where Settings writes them: the date style to the Settings View and the Views that draw with
-    /// it, On start, Start view and Toasts to Settings › General, and Toasts to the Toasts. The
-    /// Colour Theme and Appearance are the colours', set before the window opens
-    /// ([`crate::theme::colours::set_device_colours`]).
+    /// Applies a device's settings as start-up read them from Configuration (ADR-0053), and hands
+    /// Settings › General and Display the configuration file to write them to: the date style to
+    /// the Views that draw with it, and Toasts to the Toasts. The Colour Theme and Appearance are
+    /// the colours', set before the window opens ([`crate::theme::colours::set_device_colours`]).
     pub fn set_configuration(
         &mut self,
         config: &lib_config::PersonalLedgerConfig,
         writer: lib_config::ConfigWriter,
         cx: &mut App,
     ) {
-        cx.set_global(DeviceConfiguration::new(writer));
-        self.show_date_style(config.date_style(), cx);
+        let device: Rc<dyn lib_settings::DeviceConfiguration> =
+            Rc::new(DeviceConfigFile::new(writer));
+        let general = lib_settings::GeneralSettings {
+            on_start: config.on_start(),
+            start_view: config.start_view().clone(),
+            toasts_on: config.toasts(),
+        };
+        let display = lib_settings::DisplaySettings {
+            date_style: config.date_style(),
+            colour_theme: config.colour_theme().map(str::to_string),
+            colour_appearance: config.colour_appearance(),
+        };
         self.settings.update(cx, |view, cx| {
-            view.general().update(cx, |page, cx| {
-                page.set_on_start(config.on_start(), cx);
-                page.set_start_view(config.start_view().clone(), cx);
-                page.set_toasts_on(config.toasts(), cx);
-            });
+            view.configure_device(device, general, display, cx);
         });
+        let output = self.display_output(cx);
+        self.push_display_preferences(output, cx);
         self.push_toasts_on(config.toasts());
     }
 
-    /// Shows `date_style` on Settings › Display and in the Views that draw dates.
-    fn show_date_style(&mut self, date_style: Option<lib_core::DateStyle>, cx: &mut App) {
-        let display = DisplayPreferences {
-            date_style,
-            ..self.display(cx)
-        };
-        self.settings
-            .update(cx, |view, cx| view.set_display(display, cx));
-        self.push_display_preferences(display, cx);
-    }
-
-    /// Saves a device's setting to the conf file, then applies it (ADR-0053): Settings and the
-    /// palette both come here. A refused or failed save says why on the status line and leaves
-    /// the setting as it was.
-    pub(super) fn change_device_setting(
-        &mut self,
-        setting: DeviceSetting,
-        cx: &mut Context<'_, Self>,
-    ) {
-        if !self.save_device_setting(setting, cx) {
-            return;
-        }
-        match setting {
-            DeviceSetting::Toasts(on) => self.show_toasts_on(on, cx),
-            // A colour change refreshes every window, which must wait until `Root` is updated.
-            DeviceSetting::ColourTheme(id) => cx.defer(move |cx| ColourChange::Theme(id).apply(cx)),
-            DeviceSetting::ColourAppearance(appearance) => {
-                cx.defer(move |cx| ColourChange::Appearance(appearance).apply(cx));
-            }
-            DeviceSetting::DateStyle(date_style) => self.show_date_style(date_style, cx),
-            DeviceSetting::OnStart(on_start) => self.settings.update(cx, |view, cx| {
-                view.general()
-                    .update(cx, |page, cx| page.set_on_start(on_start, cx));
-            }),
-            DeviceSetting::StartView(key) => self.settings.update(cx, |view, cx| {
-                view.general().update(cx, |page, cx| {
-                    page.set_start_view(lib_core::StartView::from_key(key), cx);
-                });
-            }),
-        }
-    }
-
-    /// Saves `setting`, putting where it went, or why it wasn't saved, on the status line, as the
-    /// TUI does. `true` when it was saved.
-    pub(super) fn save_device_setting(&mut self, setting: DeviceSetting, cx: &App) -> bool {
-        match crate::settings::device::save(setting, cx) {
-            Ok(path) => {
-                self.set_status(crate::msg::desktop_settings_device_saved(
-                    setting.key().name(),
-                    &path.display().to_string(),
-                ));
-                true
-            }
-            Err(refusal) => {
-                self.set_status(refusal.message());
-                false
-            }
-        }
-    }
-
     /// Shows `device` on Settings › General: what start-up knows of this device.
-    pub fn set_this_device(&mut self, device: crate::settings::general::ThisDevice, cx: &mut App) {
+    pub fn set_this_device(&mut self, device: lib_settings::ThisDevice, cx: &mut App) {
         self.ledger_folder = Some(device.ledger_folder.clone());
-        self.settings.update(cx, |view, cx| {
-            view.general()
-                .update(cx, |page, cx| page.set_this_device(device, cx));
-        });
+        self.settings
+            .update(cx, |view, cx| view.set_this_device(device, cx));
     }
 
     /// The rail's badge counts the Shell's Presenter holds, which the rail draws; `None` with no
@@ -654,15 +593,13 @@ impl Root {
 
     /// Tells the General page which Ledger file the state file will remember at quit.
     fn set_last_ledger(&mut self, last_ledger: Option<std::path::PathBuf>, cx: &mut App) {
-        self.settings.update(cx, |view, cx| {
-            view.general()
-                .update(cx, |page, cx| page.set_last_ledger(last_ledger, cx));
-        });
+        self.settings
+            .update(cx, |view, cx| view.set_last_ledger(last_ledger, cx));
     }
 
-    /// The Display Preferences, which the Settings View owns (ADR-0037).
-    fn display(&self, cx: &App) -> DisplayPreferences {
-        self.settings.read(cx).display(cx)
+    /// The Display output, which Settings › Display's Presenter holds.
+    fn display_output(&self, cx: &App) -> DisplayOutput {
+        self.settings.read(cx).display_output(cx)
     }
 
     /// The global keys and the keys every module Dialog shares, under `config`'s overrides, which
@@ -674,7 +611,8 @@ impl Root {
         self.palette_entries = command::entries(config);
         self.presenter.set_keymap(config);
         self.state.dialog_keymap = lib_shell::dialog_keymap(config);
-        self.settings.update(cx, |view, _| view.set_keymaps(config));
+        self.settings
+            .update(cx, |view, cx| view.set_keymaps(config, cx));
         let Some(open) = &self.open else {
             return;
         };
@@ -862,9 +800,9 @@ impl Root {
             .toast(ToastInput::Display(lib_toast::Display { toasts_on }));
     }
 
-    /// Hands the Display Preferences to the Views that read them, after a Settings change; with no
-    /// Ledger open there are none, and opening one hands them over.
-    fn push_display_preferences(&mut self, display: DisplayPreferences, cx: &mut App) {
+    /// Hands the Display output to the Views that read it, after a Settings change; with no Ledger
+    /// open there are none, and opening one hands it over.
+    fn push_display_preferences(&mut self, display: DisplayOutput, cx: &mut App) {
         let Some(open) = &self.open else {
             return;
         };
@@ -900,9 +838,7 @@ impl Focusable for Root {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::settings::hints::{
-        settings_colour_grid_hints, settings_display_hints, settings_plain_page_hints,
-    };
+    use crate::settings::hints::settings_plain_page_hints;
     use crate::transactions;
     use chrono::Local;
     use lib_accounts::Account;
@@ -922,22 +858,12 @@ mod tests {
     }
 
     #[test]
-    fn each_settings_focus_has_its_own_legend() {
+    fn a_plain_settings_page_has_its_own_legend() {
         crate::locale::init_for_tests();
-        let keys = |hints: Vec<(&'static str, String)>| -> Vec<&'static str> {
-            hints.into_iter().map(|(key, _)| key).collect()
-        };
-        assert_eq!(
-            keys(settings_display_hints()),
-            ["j/k", "h/l", "enter", "esc"]
-        );
-        assert_eq!(keys(settings_colour_grid_hints())[1], "enter");
-        assert_eq!(keys(settings_plain_page_hints()), ["j/k", "h"]);
-        assert!(
-            settings_display_hints()
-                .iter()
-                .all(|(_, action)| !action.is_empty())
-        );
+        let hints = settings_plain_page_hints();
+        let keys: Vec<&str> = hints.iter().map(|(key, _)| *key).collect();
+        assert_eq!(keys, ["j/k", "h"]);
+        assert!(hints.iter().all(|(_, action)| !action.is_empty()));
     }
 
     #[test]

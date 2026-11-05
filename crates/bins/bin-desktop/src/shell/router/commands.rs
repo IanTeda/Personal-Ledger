@@ -13,7 +13,7 @@ use crate::{
         explorer::FileExplorer,
         nav::{InputMode, Noun},
     },
-    settings::{SettingsPage, device::DeviceSetting},
+    settings::SettingsPage,
     shell::view::{page_clicks::PresenterPage, palette::Palette, window_size::WindowSize},
 };
 
@@ -91,11 +91,10 @@ impl Root {
                 self.navigate(NavInput::ExitMode);
                 self.run_accounts_command(command.name, verb, argument, cx);
             }
-            CommandEffect::Colour(change) => {
+            CommandEffect::Colour(colour) => {
                 self.navigate(NavInput::ExitMode);
-                if self.save_device_setting(change.into(), cx) {
-                    self.state.pending_colour_change = Some(change);
-                }
+                self.settings
+                    .update(cx, |view, cx| view.choose_colour(colour, cx));
             }
             CommandEffect::DismissToast => {
                 self.navigate(NavInput::ExitMode);
@@ -103,7 +102,7 @@ impl Root {
             }
             CommandEffect::SetToasts(on) => {
                 self.navigate(NavInput::ExitMode);
-                self.change_device_setting(DeviceSetting::Toasts(on), cx);
+                self.settings.update(cx, |view, cx| view.set_toasts(on, cx));
             }
             CommandEffect::Shell(shell_command) => {
                 self.navigate(NavInput::ExitMode);
@@ -257,9 +256,6 @@ impl PresenterPage<NoLedgerCommand> for Root {
             self.navigate(NavInput::EnterMode(InputMode::Command));
             // `open` and `new` read no Window Size: only the rail toggle does.
             self.run_command(&command, "", WindowSize::Large, cx);
-            if let Some(change) = self.state.pending_colour_change.take() {
-                change.apply(cx);
-            }
             cx.notify();
         });
     }

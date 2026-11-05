@@ -1,48 +1,32 @@
-use std::{path::Path, rc::Rc};
+//! Settings › General drawn from its view model (DESKTOP-178): the field column (On start, Start
+//! view, Toasts, the read-only Locale and Ledger folder) beside the THIS DEVICE box. Every click is
+//! a Presenter event through [`PageClicks`].
 
 use gpui::{App, Context, SharedString, Window, div, prelude::*, px};
-use lib_config::ConfigKey;
-
-use crate::settings::device::shadowed_note;
-use lib_core::{OnStart, StartView};
-
-use super::{
-    GENERAL_FIELD_ON_START, GENERAL_FIELD_START_VIEW, GENERAL_FIELD_TOASTS, GeneralPage,
-    ON_START_CHOICES, TOASTS_CHOICES, ThisDevice,
+use lib_core::StartView;
+use lib_settings::presenter::general::{
+    GENERAL_FIELD_ON_START, GENERAL_FIELD_START_VIEW, GENERAL_FIELD_TOASTS,
 };
+use lib_settings::{
+    DeviceKey, GeneralEvent,
+    presenter::{ControlView, ReadOnlyView, StartViewControl, ThisDeviceView},
+};
+
+use super::GeneralPage;
 use crate::{
-    form::fields::{
-        UNIFORM_OPTION_WIDTH, field_label, field_value, radio_dot, segmented_control_sized,
-    },
-    start_view,
+    form::fields::{UNIFORM_OPTION_WIDTH, field_label, field_value, radio_dot, segmented_labelled},
+    settings::controls::{focus_mark, hint, shadowed},
+    shell::view::page_clicks::PageClicks,
     theme::color,
 };
-
-/// A click on a Start view choice, by its value.
-type OnStartViewClick = Rc<dyn Fn(&'static str, &mut Window, &mut App)>;
 
 /// The field column's width (DESKTOP-178).
 const FIELD_COLUMN_WIDTH: gpui::Pixels = px(320.0);
 
 impl Render for GeneralPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let entity = cx.entity();
-        let on_start_click = {
-            let entity = entity.clone();
-            Rc::new(move |choice, _window: &mut Window, cx: &mut App| {
-                entity.update(cx, |page, cx| page.click_on_start(choice, cx));
-            })
-        };
-        let start_view_click: OnStartViewClick = {
-            let entity = entity.clone();
-            Rc::new(move |choice, _window: &mut Window, cx: &mut App| {
-                entity.update(cx, |page, cx| page.click_start_view(choice, cx));
-            })
-        };
-        let toasts_click = Rc::new(move |on, _window: &mut Window, cx: &mut App| {
-            entity.update(cx, |page, cx| page.click_toasts(on, cx));
-        });
-        let focus = self.field_focus;
+        let model = self.view_model();
+        let clicks = PageClicks::new(cx);
         let cx: &App = cx;
         div()
             .flex()
@@ -57,107 +41,103 @@ impl Render for GeneralPage {
                     .flex()
                     .flex_col()
                     .gap(px(18.0))
-                    .child(
-                        focus_mark(focus == Some(GENERAL_FIELD_ON_START), cx)
-                            .child(field_label(crate::msg::desktop_settings_general_on_start()))
-                            .child(segmented_control_sized(
-                                "general-on-start",
-                                &ON_START_CHOICES,
-                                self.on_start,
-                                on_start_label,
-                                on_start_click,
-                                None,
-                                cx,
-                            ))
-                            .child(hint(
-                                crate::msg::desktop_settings_general_on_start_hint(),
-                                cx,
-                            ))
-                            .children(shadowed_note(ConfigKey::OnStart, cx)),
-                    )
+                    .child(segmented(
+                        "general-on-start",
+                        &model.on_start,
+                        DeviceKey::OnStart,
+                        model.field == Some(GENERAL_FIELD_ON_START),
+                        None,
+                        clicks.segment(GeneralEvent::ChooseOnStart),
+                        cx,
+                    ))
                     .child(start_view_field(
-                        &self.start_view,
-                        focus == Some(GENERAL_FIELD_START_VIEW),
-                        start_view_click,
+                        &model.start_view,
+                        model.field == Some(GENERAL_FIELD_START_VIEW),
+                        &clicks,
+                        cx,
+                    ))
+                    .child(segmented(
+                        "general-toasts",
+                        &model.toasts,
+                        DeviceKey::Toasts,
+                        model.field == Some(GENERAL_FIELD_TOASTS),
+                        Some(px(UNIFORM_OPTION_WIDTH)),
+                        clicks.segment(GeneralEvent::ChooseToasts),
                         cx,
                     ))
                     .child(
-                        focus_mark(focus == Some(GENERAL_FIELD_TOASTS), cx)
-                            .child(field_label(lib_locale::msg::toast_setting_label()))
-                            .child(segmented_control_sized(
-                                "general-toasts",
-                                &TOASTS_CHOICES,
-                                self.toasts_on,
-                                toasts_label,
-                                toasts_click,
-                                Some(px(UNIFORM_OPTION_WIDTH)),
-                                cx,
-                            ))
-                            .child(hint(lib_locale::msg::toast_setting_note(), cx))
-                            .children(shadowed_note(ConfigKey::Toasts, cx)),
+                        read_only("general-locale", &model.locale, false, cx)
+                            .children(model.locale_fallback.clone().map(|note| hint(note, cx)))
+                            .child(hint(model.locale.hint.clone(), cx)),
                     )
-                    .child(locale_field(cx))
                     .child(
-                        div()
-                            .debug_selector(|| "general-ledger-folder".to_string())
-                            .child(field_label(
-                                crate::msg::desktop_settings_general_ledger_folder(),
-                            ))
-                            .child(
-                                div()
-                                    .font_family("monospace")
-                                    .text_color(color::muted(cx))
-                                    .child(field_value(
-                                        self.device.ledger_folder.display().to_string(),
-                                        false,
-                                        cx,
-                                    )),
-                            )
-                            .child(hint(
-                                crate::msg::desktop_settings_general_ledger_folder_hint(),
-                                cx,
-                            )),
+                        read_only("general-ledger-folder", &model.ledger_folder, true, cx)
+                            .child(hint(model.ledger_folder.hint.clone(), cx)),
                     ),
             )
-            .child(this_device_panel(&self.device, cx))
+            .child(this_device_panel(&model.this_device, cx))
     }
 }
 
-fn on_start_label(choice: OnStart) -> String {
-    match choice {
-        OnStart::ReopenLastLedger => crate::msg::desktop_settings_general_on_start_reopen(),
-        OnStart::NoLedger => crate::msg::desktop_settings_general_on_start_none(),
-    }
+/// A segmented control with its label, hint and shadowed note. `focused` is the keyboard's mark,
+/// drawn as the Display page draws it.
+fn segmented<T: Copy + PartialEq + 'static>(
+    id: &'static str,
+    control: &ControlView<T>,
+    key: DeviceKey,
+    focused: bool,
+    option_width: Option<gpui::Pixels>,
+    on_click: crate::form::fields::OnSegmentClick<T>,
+    cx: &App,
+) -> impl IntoElement {
+    let select = &control.select;
+    let options = select
+        .options
+        .iter()
+        .map(|choice| (choice.value, SharedString::from(choice.label.clone())))
+        .collect();
+    let chosen = select.chosen.unwrap_or(select.options[0].value);
+    focus_mark(focused, cx)
+        .child(field_label(select.label.clone()))
+        .child(segmented_labelled(
+            id,
+            options,
+            chosen,
+            on_click,
+            option_width,
+            cx,
+        ))
+        .children(control.hint.clone().map(|text| hint(text, cx)))
+        .children(shadowed(key, control.shadowed.as_deref(), cx))
 }
 
 /// Start view's choices as a radio group, one per line: seven don't fit a segmented control in the
 /// field column. A noun from the file that isn't a choice checks none and is named in the hint.
 fn start_view_field(
-    current: &StartView,
+    view: &StartViewControl,
     focused: bool,
-    on_click: OnStartViewClick,
+    clicks: &PageClicks<GeneralPage>,
     cx: &App,
 ) -> impl IntoElement {
-    let unlisted = (!start_view::CHOICES.contains(&current.key())).then(|| {
+    let control = &view.control;
+    let unlisted = view.unlisted.clone().map(|text| {
         div()
             .debug_selector(|| "general-start-view-unlisted".to_string())
-            .child(hint(
-                crate::msg::desktop_settings_general_start_view_unlisted(current.key()),
-                cx,
-            ))
+            .child(hint(text, cx))
     });
     focus_mark(focused, cx)
-        .child(field_label(
-            crate::msg::desktop_settings_general_start_view(),
-        ))
+        .child(field_label(control.select.label.clone()))
         .child(
             div().flex().flex_col().gap(px(6.0)).children(
-                start_view::CHOICES
-                    .into_iter()
+                control
+                    .select
+                    .options
+                    .iter()
                     .enumerate()
                     .map(|(index, choice)| {
-                        let on_click = on_click.clone();
                         let id = format!("general-start-view-{index}");
+                        let checked = control.select.chosen.as_ref() == Some(&choice.value);
+                        let value: StartView = choice.value.clone();
                         div()
                             .debug_selector({
                                 let id = id.clone();
@@ -168,86 +148,37 @@ fn start_view_field(
                             .flex()
                             .items_center()
                             .gap(px(8.0))
-                            .on_click(move |_event, window, cx| on_click(choice, window, cx))
-                            .child(radio_dot(choice == current.key(), cx))
-                            .child(div().text_size(px(13.0)).child(start_view::label(choice)))
+                            .on_click(clicks.send(GeneralEvent::ChooseStartView(value)))
+                            .child(radio_dot(checked, cx))
+                            .child(div().text_size(px(13.0)).child(choice.label.clone()))
                     }),
             ),
         )
         .children(unlisted)
-        .child(hint(
-            crate::msg::desktop_settings_general_start_view_hint(),
+        .children(control.hint.clone().map(|text| hint(text, cx)))
+        .children(shadowed(
+            DeviceKey::StartView,
+            control.shadowed.as_deref(),
             cx,
         ))
-        .children(shadowed_note(ConfigKey::StartView, cx))
 }
 
-fn toasts_label(on: bool) -> String {
-    if on {
-        lib_locale::msg::toast_setting_on()
-    } else {
-        lib_locale::msg::toast_setting_off()
-    }
-}
-
-/// The keyboard-focus mark for one control: an accent rule down its left edge, drawn on every
-/// control so the column does not shift as focus moves (the Display page's treatment).
-fn focus_mark(focused: bool, cx: &App) -> gpui::Div {
+/// A read-only line: its label over its value, the Ledger folder's in monospace.
+fn read_only(selector: &'static str, view: &ReadOnlyView, monospace: bool, cx: &App) -> gpui::Div {
     div()
-        .pl(px(8.0))
-        .ml(px(-10.0))
-        .border_l(px(2.0))
-        .border_color(if focused {
-            gpui::Hsla::from(color::accent(cx))
-        } else {
-            gpui::transparent_black()
-        })
-}
-
-fn hint(text: String, cx: &App) -> impl IntoElement {
-    div()
-        .mt(px(3.0))
-        .text_size(px(12.0))
-        .text_color(color::muted(cx))
-        .child(text)
-}
-
-/// The effective Locale, read-only, with where it came from. There is no control: the Locale is
-/// Configuration, changed by the `locale` setting or `--locale` and a restart (ADR-0021).
-fn locale_field(cx: &App) -> impl IntoElement {
-    let (line, fallback_note) = crate::locale::describe(&crate::locale::info());
-    div()
-        .debug_selector(|| "general-locale".to_string())
-        .child(field_label(
-            crate::msg::desktop_settings_general_locale_label(),
-        ))
+        .debug_selector(move || selector.to_string())
+        .child(field_label(view.label.clone()))
         .child(
             div()
+                .when(monospace, |this| this.font_family("monospace"))
                 .text_color(color::muted(cx))
-                .child(field_value(line, false, cx)),
+                .child(field_value(view.value.clone(), false, cx)),
         )
-        .children(fallback_note.map(|note| hint(note, cx)))
-        .child(hint(crate::msg::desktop_settings_general_locale_hint(), cx))
 }
 
 /// The THIS DEVICE box, in the Ledger page's summary treatment: the Ledger On start would reopen
 /// and the config file Settings writes to, then the page's footnote.
-fn this_device_panel(device: &ThisDevice, cx: &App) -> impl IntoElement {
-    let path = |path: Option<&Path>| {
-        path.map_or_else(crate::msg::desktop_settings_general_none, |path| {
-            path.display().to_string()
-        })
-    };
-    let rows = [
-        (
-            crate::msg::desktop_settings_general_last_ledger(),
-            path(device.last_ledger.as_deref()),
-        ),
-        (
-            crate::msg::desktop_settings_general_configuration(),
-            path(device.configuration.as_deref()),
-        ),
-    ];
+fn this_device_panel(view: &ThisDeviceView, cx: &App) -> impl IntoElement {
     div()
         .debug_selector(|| "general-this-device".to_string())
         .flex_1()
@@ -259,9 +190,7 @@ fn this_device_panel(device: &ThisDevice, cx: &App) -> impl IntoElement {
                 .text_size(px(10.0))
                 .text_color(color::faint_text(cx))
                 .mb(px(10.0))
-                .child(lib_locale::format::upper(
-                    &crate::msg::desktop_settings_general_this_device(),
-                )),
+                .child(lib_locale::format::upper(&view.heading)),
         )
         .child(
             div()
@@ -270,7 +199,7 @@ fn this_device_panel(device: &ThisDevice, cx: &App) -> impl IntoElement {
                 .bg(color::chrome(cx))
                 .flex()
                 .flex_col()
-                .children(rows.into_iter().enumerate().map(|(index, (label, value))| {
+                .children(view.rows.iter().enumerate().map(|(index, (label, value))| {
                     div()
                         .flex()
                         .justify_between()
@@ -281,13 +210,18 @@ fn this_device_panel(device: &ThisDevice, cx: &App) -> impl IntoElement {
                         .when(index == 0, |this| {
                             this.border_b(px(1.0)).border_color(color::hairline(cx))
                         })
-                        .child(div().flex_none().text_color(color::muted(cx)).child(label))
+                        .child(
+                            div()
+                                .flex_none()
+                                .text_color(color::muted(cx))
+                                .child(label.clone()),
+                        )
                         .child(
                             div()
                                 .min_w(px(0.0))
                                 .truncate()
                                 .font_family("monospace")
-                                .child(value),
+                                .child(value.clone()),
                         )
                 })),
         )
@@ -296,6 +230,6 @@ fn this_device_panel(device: &ThisDevice, cx: &App) -> impl IntoElement {
                 .mt(px(14.0))
                 .text_size(px(12.0))
                 .text_color(color::muted(cx))
-                .child(crate::msg::desktop_settings_general_note()),
+                .child(view.note.clone()),
         )
 }

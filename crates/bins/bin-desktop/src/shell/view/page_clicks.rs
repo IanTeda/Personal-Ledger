@@ -12,6 +12,7 @@ use std::rc::Rc;
 use gpui::{App, Context, Entity, MouseDownEvent, Pixels, Point, WeakEntity, Window};
 
 use crate::dialog::OnClick;
+use crate::form::fields::OnSegmentClick;
 use crate::form::select_field::OnOptionClick;
 
 /// A page whose clicks are events `E` of a Presenter it holds. A page with two Presenters (a list
@@ -122,6 +123,17 @@ impl<P: 'static> PageClicks<P> {
     {
         let send = self.send::<E, ()>(event);
         Rc::new(move |window, cx| send(&(), window, cx))
+    }
+
+    /// A shared segmented control's click, sending the event `event` builds from the value the
+    /// clicked option sets.
+    pub fn segment<E, T>(&self, event: impl Fn(T) -> E + 'static) -> OnSegmentClick<T>
+    where
+        P: PresenterPage<E>,
+        T: Copy + 'static,
+    {
+        let send = self.send_with(move |value: &T| event(*value));
+        Rc::new(move |value, window, cx| send(&value, window, cx))
     }
 
     /// A shared select's option click, sending the event `event` builds from the option's index.

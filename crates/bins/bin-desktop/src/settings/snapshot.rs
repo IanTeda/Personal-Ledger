@@ -65,10 +65,11 @@ impl PageSnapshot for SettingsDisplaySnapshot {
     type Page = DisplayPage;
 
     fn read(page: &DisplayPage, _cx: &App) -> Self {
-        let display = page.preferences();
+        let model = page.view_model();
+        let display = model.output;
         SettingsDisplaySnapshot {
-            display_field: page.field_focus(),
-            colour_theme_focus: page.colour_theme_focus(),
+            display_field: model.field,
+            colour_theme_focus: model.grid,
             date_style: display.date_style.map(|style| format!("{style:?}")),
             row_density: format!("{:?}", display.row_density),
             status_glyphs: format!("{:?}", display.status_glyphs),

@@ -365,7 +365,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, started: S
     // state file keeps the one open at quit, which `:open` may have changed, for On start.
     let last_ledger = last_ledger_at_quit(opened.as_deref(), persisted.last_ledger.as_deref());
     let remembered_ledger = persisted.last_ledger.clone();
-    let this_device = settings::general::ThisDevice {
+    let this_device = lib_settings::ThisDevice {
         ledger_folder: config.personal_ledger_config().data().to_path_buf(),
         last_ledger,
         configuration: config.writer().target().map(std::path::Path::to_path_buf),

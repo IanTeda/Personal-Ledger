@@ -80,6 +80,8 @@ gpui-component = { version = "0.5.1" }
 lib_locale_build = { path = "../../libs/lib-locale-build" }
 
 [dev-dependencies]
+# The contract suite `settings::device` runs its `DeviceConfiguration` against.
+lib_settings = { path = "../../libs/lib-settings", features = ["contract-tests"] }
 bin_desktop = { path = ".", features = ["test-support"] }
 tempfile = { workspace = true }
 fake = { workspace = true }

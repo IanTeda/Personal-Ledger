@@ -144,19 +144,12 @@ pub fn set_device_colours(config: &lib_config::PersonalLedgerConfig, cx: &mut Ap
     });
 }
 
-/// A Preference change picked in Settings or the command palette, carried out of `Root`'s
-/// key handling (which has no `App`) and applied once it has one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ColourChange {
-    Theme(&'static str),
-    Appearance(ColourAppearance),
-}
-
-impl ColourChange {
-    pub fn apply(self, cx: &mut App) {
-        match self {
-            Self::Theme(id) => set_colour_theme(Some(id.to_string()), cx),
-            Self::Appearance(appearance) => set_colour_appearance(Some(appearance), cx),
+/// Applies a Colour Theme or Appearance Settings › Display saved, from a click or the palette.
+pub fn apply(choice: lib_settings::ColourChoice, cx: &mut App) {
+    match choice {
+        lib_settings::ColourChoice::Theme(id) => set_colour_theme(Some(id.to_string()), cx),
+        lib_settings::ColourChoice::Appearance(appearance) => {
+            set_colour_appearance(Some(appearance), cx);
         }
     }
 }

@@ -8,7 +8,10 @@ use gpui::{
     Keystroke, ListAlignment, ListState, Render, Subscription,
 };
 
+use std::rc::Rc;
+
 use lib_shell::Hint;
+use lib_viper::keymap::KeyBindingConfig;
 
 use crate::{
     accounts::{AccountsPage, AccountsSetup, accounts_page},
@@ -23,6 +26,7 @@ use crate::{
         SettingsPage,
         about::AboutPage,
         data_backup::DataBackupPage,
+        device::DeviceConfigFile,
         display::DisplayPage,
         general::GeneralPage,
         hints::settings_plain_page_hints,
@@ -367,8 +371,22 @@ impl SettingsPages {
     /// The This device pages, with no Ledger open.
     pub fn new(cx: &mut Context<'_, SettingsView>) -> Self {
         Self {
-            general: cx.new(|_| GeneralPage::default()),
-            display: cx.new(|_| DisplayPage::default()),
+            // No configuration file until `configure_device` hands over start-up's, so a write
+            // before then is refused.
+            general: cx.new(|_| {
+                GeneralPage::new(
+                    Rc::new(DeviceConfigFile::default()),
+                    &KeyBindingConfig::default(),
+                    super::state::back_chord(&KeyBindingConfig::default()),
+                )
+            }),
+            display: cx.new(|_| {
+                DisplayPage::new(
+                    Rc::new(DeviceConfigFile::default()),
+                    &KeyBindingConfig::default(),
+                    super::state::back_chord(&KeyBindingConfig::default()),
+                )
+            }),
             // A private, empty capture until `set_log_capture` hands over the real one.
             tracing: cx.new(|_| {
                 TracingPage::new(

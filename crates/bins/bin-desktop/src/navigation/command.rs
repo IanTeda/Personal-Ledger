@@ -33,13 +33,11 @@
 use crate::navigation::nav::NounLabel;
 use lib_colour_theme::ColourAppearance;
 use lib_config::KeyBindingConfig;
+use lib_settings::ColourChoice;
 use lib_shell::ShellCommand;
 use lib_viper::keymap::Keymap;
 
-use crate::{
-    navigation::explorer::ExplorerMode, navigation::nav::Noun, settings::SettingsPage,
-    theme::colours::ColourChange,
-};
+use crate::{navigation::explorer::ExplorerMode, navigation::nav::Noun, settings::SettingsPage};
 
 /// What running a command does -- the palette's, and `Root::run_command`'s, one source of
 /// truth. Every variant is a real effect: there's no `None`/`Option` case standing in for "not
@@ -58,7 +56,7 @@ pub enum CommandEffect {
     Accounts(AccountsVerb),
     /// Sets the `colour_theme` or `colour_appearance` Preference, the same as picking it in
     /// Settings' Colour Theme group.
-    Colour(ColourChange),
+    Colour(ColourChoice),
     /// `:dismiss`: removes the newest Toast.
     DismissToast,
     /// `:toasts on` / `:toasts off`: sets the Toasts Preference, the same as Settings' Toasts row.
@@ -438,7 +436,7 @@ const fn colour_theme_command(
         domain: Domain::Settings,
         description,
         binding: None,
-        effect: CommandEffect::Colour(ColourChange::Theme(id)),
+        effect: CommandEffect::Colour(ColourChoice::Theme(id)),
     }
 }
 
@@ -452,7 +450,7 @@ const fn colour_appearance_command(
         domain: Domain::Settings,
         description,
         binding: None,
-        effect: CommandEffect::Colour(ColourChange::Appearance(appearance)),
+        effect: CommandEffect::Colour(ColourChoice::Appearance(appearance)),
     }
 }
 
@@ -1020,7 +1018,7 @@ mod tests {
             assert!(
                 COMMANDS
                     .iter()
-                    .any(|c| c.effect == CommandEffect::Colour(ColourChange::Theme(theme.id))),
+                    .any(|c| c.effect == CommandEffect::Colour(ColourChoice::Theme(theme.id))),
                 "no command sets Colour Theme {}",
                 theme.id
             );
@@ -1032,7 +1030,7 @@ mod tests {
         ] {
             assert!(
                 COMMANDS.iter().any(
-                    |c| c.effect == CommandEffect::Colour(ColourChange::Appearance(appearance))
+                    |c| c.effect == CommandEffect::Colour(ColourChoice::Appearance(appearance))
                 ),
                 "no command sets {appearance:?}"
             );

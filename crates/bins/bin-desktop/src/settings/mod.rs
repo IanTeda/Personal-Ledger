@@ -9,6 +9,7 @@
 //! is its icon ([`icon`]) and which page shows a revealed record ([`for_reveal`]).
 
 pub mod about;
+pub(crate) mod controls;
 pub mod data_backup;
 pub mod device;
 pub mod display;

@@ -1,101 +1,68 @@
-//! A device's settings as Configuration (ADR-0053): Toasts, the Colour Theme and Appearance, the
-//! date style, On start and Start view live in the `[Personal-Ledger]` section of the user's
-//! `personal-ledger.conf`, which the This device Settings write through `lib_config`'s
-//! [`ConfigWriter`] as each one changes, the TUI's file and spellings included. `Root` saves a
-//! change before applying it, so a refused save leaves the setting as it was.
+//! `impl DeviceConfiguration` for the Desktop (ADR-0053): Toasts, the Colour Theme and
+//! Appearance, the date style, On start and Start view live in the `[Personal-Ledger]` section of
+//! the user's `personal-ledger.conf`, which Settings › General and Display write through
+//! `lib_config`'s [`ConfigWriter`] as each one changes, the TUI's file and spellings included.
+//! The pages' Presenters (`lib-settings`) decide what a write's answer means; this only writes.
 
-use std::path::PathBuf;
-
-use gpui::{App, Global, prelude::*};
 use lib_colour_theme::ColourAppearance;
 use lib_config::{ConfigKey, ConfigWriter, Shadow};
-use lib_core::{DateStyle, OnStart};
+use lib_core::{DateStyle, OnStart, StartView};
+use lib_settings::{DeviceAnswer, DeviceConfiguration, DeviceKey, DeviceRefusal};
 
-use crate::theme::colours::ColourChange;
-
-/// One change to a device's setting, as Settings or the palette asks for it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DeviceSetting {
-    Toasts(bool),
-    /// A built-in Colour Theme's id.
-    ColourTheme(&'static str),
-    ColourAppearance(ColourAppearance),
-    /// `None` is the Locale's default.
-    DateStyle(Option<DateStyle>),
-    OnStart(OnStart),
-    /// One of [`crate::start_view::CHOICES`], as the file spells it.
-    StartView(&'static str),
-}
-
-impl DeviceSetting {
-    /// The six keys, for the shadows start-up looks for.
-    const KEYS: [ConfigKey; 6] = [
-        ConfigKey::Toasts,
-        ConfigKey::ColourTheme,
-        ConfigKey::ColourAppearance,
-        ConfigKey::DateStyle,
-        ConfigKey::OnStart,
-        ConfigKey::StartView,
-    ];
-
-    pub fn key(self) -> ConfigKey {
-        match self {
-            Self::Toasts(_) => ConfigKey::Toasts,
-            Self::ColourTheme(_) => ConfigKey::ColourTheme,
-            Self::ColourAppearance(_) => ConfigKey::ColourAppearance,
-            Self::DateStyle(_) => ConfigKey::DateStyle,
-            Self::OnStart(_) => ConfigKey::OnStart,
-            Self::StartView(_) => ConfigKey::StartView,
-        }
-    }
-
-    /// The value as the file spells it, which is what the TUI's `:set` takes.
-    fn file_value(self) -> &'static str {
-        match self {
-            Self::Toasts(true) => "true",
-            Self::Toasts(false) => "false",
-            Self::ColourTheme(id) => id,
-            Self::ColourAppearance(appearance) => appearance.key(),
-            Self::DateStyle(style) => lib_config::date_style_key(style),
-            Self::OnStart(on_start) => lib_config::on_start_key(on_start),
-            Self::StartView(key) => key,
-        }
+/// The file a key is written under.
+fn config_key(key: DeviceKey) -> ConfigKey {
+    match key {
+        DeviceKey::OnStart => ConfigKey::OnStart,
+        DeviceKey::StartView => ConfigKey::StartView,
+        DeviceKey::Toasts => ConfigKey::Toasts,
+        DeviceKey::DateStyle => ConfigKey::DateStyle,
+        DeviceKey::ColourTheme => ConfigKey::ColourTheme,
+        DeviceKey::ColourAppearance => ConfigKey::ColourAppearance,
     }
 }
 
-impl From<ColourChange> for DeviceSetting {
-    fn from(change: ColourChange) -> Self {
-        match change {
-            ColourChange::Theme(id) => Self::ColourTheme(id),
-            ColourChange::Appearance(appearance) => Self::ColourAppearance(appearance),
-        }
-    }
-}
-
-/// Where a device's settings are written and what outranks the file, as start-up found them. A
-/// Global, so a Settings page reads a row's shadowed note as it draws. With none installed there
-/// is no file to write, and every save is refused.
+/// Where a device's settings are written and what outranks the file, as start-up found them.
+/// The default has no file, so every write is refused, as with no home folder.
 #[derive(Debug, Clone, Default)]
-pub struct DeviceConfiguration {
+pub struct DeviceConfigFile {
     writer: ConfigWriter,
     /// The keys a source above the file sets, read once: the files above don't change while the
     /// Desktop runs, and a draw shouldn't read them.
-    shadows: Vec<(ConfigKey, Shadow)>,
+    shadows: Vec<(DeviceKey, Shadow)>,
 }
 
-impl Global for DeviceConfiguration {}
-
-impl DeviceConfiguration {
+impl DeviceConfigFile {
     pub fn new(writer: ConfigWriter) -> Self {
-        let shadows = DeviceSetting::KEYS
+        let shadows = DeviceKey::ALL
             .into_iter()
-            .filter_map(|key| writer.shadow(key).map(|shadow| (key, shadow)))
+            .filter_map(|key| writer.shadow(config_key(key)).map(|shadow| (key, shadow)))
             .collect();
         Self { writer, shadows }
     }
 
-    /// What sets `key` above the file, by name, or `None` when a write to the file applies.
-    fn shadow(&self, key: ConfigKey) -> Option<String> {
+    /// Writes `value`, spelt as the file and the TUI's `:set` spell it, under `key`.
+    fn write<T>(&self, key: DeviceKey, spelt: &str, value: T) -> DeviceAnswer<T> {
+        if let Some(source) = self.shadow(key) {
+            return DeviceAnswer::Shadowed { source };
+        }
+        let Some(path) = self.writer.target() else {
+            return DeviceAnswer::Refused(DeviceRefusal::NoFile);
+        };
+        match self.writer.write(config_key(key), spelt) {
+            Ok(()) => DeviceAnswer::Saved {
+                value,
+                file: path.display().to_string(),
+            },
+            Err(error) => {
+                tracing::error!(%error, key = key.name(), "Couldn't write a device's setting");
+                DeviceAnswer::Refused(DeviceRefusal::WriteFailed)
+            }
+        }
+    }
+}
+
+impl DeviceConfiguration for DeviceConfigFile {
+    fn shadow(&self, key: DeviceKey) -> Option<String> {
         self.shadows
             .iter()
             .find(|(shadowed, _)| *shadowed == key)
@@ -105,151 +72,167 @@ impl DeviceConfiguration {
             })
     }
 
-    /// Writes `setting` to the file, returning the file it went to.
-    ///
-    /// # Errors
-    /// A [`Refusal`] when a source above the file sets its key, there is no file to write, or the
-    /// write failed, which is logged with its cause.
-    pub fn save(&self, setting: DeviceSetting) -> Result<PathBuf, Refusal> {
-        let key = setting.key();
-        if let Some(source) = self.shadow(key) {
-            return Err(Refusal::Shadowed { key, source });
-        }
-        let Some(path) = self.writer.target() else {
-            return Err(Refusal::NoFile(key));
-        };
-        match self.writer.write(key, setting.file_value()) {
-            Ok(()) => Ok(path.to_path_buf()),
-            Err(error) => {
-                tracing::error!(%error, key = key.name(), "Couldn't write a device's setting");
-                Err(Refusal::WriteFailed(key))
-            }
-        }
+    fn set_on_start(&self, on_start: OnStart) -> DeviceAnswer<OnStart> {
+        self.write(
+            DeviceKey::OnStart,
+            lib_config::on_start_key(on_start),
+            on_start,
+        )
     }
-}
 
-/// Why a device's setting wasn't saved, which the status line says. Not the crate's `Error`: a
-/// shadowed key or a missing file is an answer for the person, not a failure for the caller to pass
-/// on, and a failed write's cause is logged rather than spliced into the sentence.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Refusal {
-    /// A source above the file sets the key, named by `source`.
-    Shadowed { key: ConfigKey, source: String },
-    /// There is no home folder to keep the file in.
-    NoFile(ConfigKey),
-    /// The file or its folder couldn't be written.
-    WriteFailed(ConfigKey),
-}
-
-impl Refusal {
-    /// The status line's text.
-    pub fn message(&self) -> String {
-        match self {
-            Self::Shadowed { key, source } => {
-                crate::msg::desktop_settings_device_shadowed(key.name(), source)
-            }
-            Self::NoFile(key) => crate::msg::desktop_settings_device_no_file(key.name()),
-            Self::WriteFailed(key) => crate::msg::desktop_settings_device_write_failed(key.name()),
-        }
+    fn set_start_view(&self, start_view: StartView) -> DeviceAnswer<StartView> {
+        let spelt = start_view.key().to_string();
+        self.write(DeviceKey::StartView, &spelt, start_view)
     }
-}
 
-/// Saves `setting` through the installed [`DeviceConfiguration`].
-///
-/// # Errors
-/// As [`DeviceConfiguration::save`]; with none installed, there is no file to write.
-pub fn save(setting: DeviceSetting, cx: &App) -> Result<PathBuf, Refusal> {
-    cx.try_global::<DeviceConfiguration>().map_or_else(
-        || DeviceConfiguration::default().save(setting),
-        |device| device.save(setting),
-    )
-}
+    fn set_toasts(&self, on: bool) -> DeviceAnswer<bool> {
+        self.write(DeviceKey::Toasts, if on { "true" } else { "false" }, on)
+    }
 
-/// A control's note when a source above the file sets `key`, so the control says why a change
-/// won't take. Drawn as both pages draw a control's hint.
-pub fn shadowed_note(key: ConfigKey, cx: &App) -> Option<gpui::Div> {
-    let source = cx.try_global::<DeviceConfiguration>()?.shadow(key)?;
-    Some(
-        gpui::div()
-            .debug_selector(move || format!("shadowed-{}", key.name()))
-            .mt(gpui::px(3.0))
-            .text_size(gpui::px(12.0))
-            .text_color(crate::theme::color::muted(cx))
-            .child(crate::msg::desktop_settings_device_shadowed_note(&source)),
-    )
+    fn set_date_style(&self, style: Option<DateStyle>) -> DeviceAnswer<Option<DateStyle>> {
+        self.write(
+            DeviceKey::DateStyle,
+            lib_config::date_style_key(style),
+            style,
+        )
+    }
+
+    fn set_colour_theme(&self, id: &'static str) -> DeviceAnswer<&'static str> {
+        self.write(DeviceKey::ColourTheme, id, id)
+    }
+
+    fn set_colour_appearance(
+        &self,
+        appearance: ColourAppearance,
+    ) -> DeviceAnswer<ColourAppearance> {
+        self.write(DeviceKey::ColourAppearance, appearance.key(), appearance)
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
+
+    use lib_settings::contract::{self, DeviceFactory};
+    use lib_settings::fake::StoredDevice;
 
     use super::*;
 
-    fn writing_to(path: &Path, env: &[(&str, &str)]) -> DeviceConfiguration {
-        DeviceConfiguration::new(ConfigWriter::new(
+    fn writing_to(path: &Path, env: &[(String, String)]) -> DeviceConfigFile {
+        DeviceConfigFile::new(ConfigWriter::new(
             Some(path.to_path_buf()),
             Vec::new(),
-            env.iter()
-                .map(|(name, value)| ((*name).to_string(), (*value).to_string())),
+            env.iter().cloned(),
         ))
     }
 
-    fn read(path: &Path) -> String {
-        std::fs::read_to_string(path).unwrap_or_default()
+    /// Each check's device on a file of its own in one temporary folder.
+    struct ConfFiles {
+        dir: tempfile::TempDir,
+        made: usize,
+    }
+
+    impl ConfFiles {
+        fn next_path(&mut self) -> PathBuf {
+            self.made += 1;
+            self.dir
+                .path()
+                .join(format!("{}/personal-ledger.conf", self.made))
+        }
+    }
+
+    impl DeviceFactory for ConfFiles {
+        type Device = DeviceConfigFile;
+
+        fn writable(&mut self) -> Self::Device {
+            writing_to(&self.next_path(), &[])
+        }
+
+        fn shadowing(&mut self, key: DeviceKey) -> (Self::Device, String) {
+            let var = config_key(key).env_var();
+            let path = self.next_path();
+            (writing_to(&path, &[(var.clone(), "x".to_string())]), var)
+        }
+
+        fn without_file(&mut self) -> Self::Device {
+            DeviceConfigFile::default()
+        }
+
+        /// A file whose folder is a file, so nothing can be written under it.
+        fn unwritable(&mut self) -> Self::Device {
+            let blocker = self.dir.path().join("blocker");
+            std::fs::write(&blocker, "").expect("a file to block the folder");
+            writing_to(&blocker.join("personal-ledger.conf"), &[])
+        }
+
+        fn reload(&mut self, device: &Self::Device) -> StoredDevice {
+            let text = device
+                .writer
+                .target()
+                .and_then(|path| std::fs::read_to_string(path).ok())
+                .unwrap_or_default();
+            stored(&text)
+        }
+    }
+
+    /// The `[Personal-Ledger]` keys `text` holds, read with the file's spellings.
+    fn stored(text: &str) -> StoredDevice {
+        let mut stored = StoredDevice::default();
+        for (key, value) in text
+            .lines()
+            .filter_map(|line| line.split_once(" = "))
+            .map(|(key, value)| (key.trim(), value.trim()))
+        {
+            match key {
+                "on_start" => stored.on_start = lib_config::on_start_from_key(value),
+                "start_view" => stored.start_view = Some(StartView::from_key(value)),
+                "toasts" => stored.toasts = value.parse().ok(),
+                "date_style" => {
+                    stored.date_style = lib_settings::presenter::display::DATE_STYLE_CHOICES
+                        .into_iter()
+                        .find(|style| lib_config::date_style_key(*style) == value);
+                }
+                "colour_theme" => stored.colour_theme = Some(value.to_string()),
+                "colour_appearance" => {
+                    stored.colour_appearance = ColourAppearance::from_key(value);
+                }
+                _ => {}
+            }
+        }
+        stored
+    }
+
+    #[test]
+    fn the_conf_file_keeps_the_device_configuration_contract() {
+        let mut files = ConfFiles {
+            dir: tempfile::tempdir().expect("a temporary directory"),
+            made: 0,
+        };
+        contract::run_all(&mut files);
+    }
+
+    #[test]
+    fn each_key_is_the_one_lib_config_writes() {
+        for key in DeviceKey::ALL {
+            assert_eq!(key.name(), config_key(key).name());
+        }
     }
 
     #[test]
     fn each_setting_is_written_as_the_tuis_set_spells_it() {
-        crate::locale::init_for_tests();
         let dir = tempfile::tempdir().expect("a temporary directory");
         let path = dir.path().join("personal-ledger.conf");
         let device = writing_to(&path, &[]);
-        for setting in [
-            DeviceSetting::Toasts(false),
-            DeviceSetting::ColourTheme("nord"),
-            DeviceSetting::ColourAppearance(ColourAppearance::Light),
-            DeviceSetting::DateStyle(None),
-            DeviceSetting::OnStart(OnStart::NoLedger),
-            DeviceSetting::StartView("bills"),
-        ] {
-            device.save(setting).expect("saved");
-        }
+        device.set_toasts(false);
+        device.set_colour_theme("nord");
+        device.set_colour_appearance(ColourAppearance::Light);
+        device.set_date_style(None);
+        device.set_on_start(OnStart::NoLedger);
+        device.set_start_view(StartView::Noun("bills".into()));
         assert_eq!(
-            read(&path),
+            std::fs::read_to_string(&path).unwrap_or_default(),
             "[Personal-Ledger]\ntoasts = false\ncolour_theme = nord\ncolour_appearance = light\n\
              date_style = default\non_start = none\nstart_view = bills\n"
         );
-        device
-            .save(DeviceSetting::DateStyle(Some(DateStyle::Iso)))
-            .expect("saved");
-        assert!(read(&path).contains("date_style = iso\n"));
-    }
-
-    #[test]
-    fn a_key_an_environment_variable_sets_is_refused_and_not_written() {
-        crate::locale::init_for_tests();
-        let dir = tempfile::tempdir().expect("a temporary directory");
-        let path = dir.path().join("personal-ledger.conf");
-        let var = "PERSONAL_LEDGER_PERSONAL_LEDGER__TOASTS";
-        let device = writing_to(&path, &[(var, "true")]);
-
-        let refusal = device
-            .save(DeviceSetting::Toasts(false))
-            .expect_err("refused");
-
-        assert!(refusal.message().contains(var), "{refusal:?}");
-        assert_eq!(read(&path), "");
-        assert_eq!(device.shadow(ConfigKey::Toasts).as_deref(), Some(var));
-        assert_eq!(device.shadow(ConfigKey::OnStart), None);
-    }
-
-    #[test]
-    fn with_no_file_to_write_a_save_is_refused() {
-        crate::locale::init_for_tests();
-        let refusal = DeviceConfiguration::default()
-            .save(DeviceSetting::OnStart(OnStart::NoLedger))
-            .expect_err("refused");
-        assert_eq!(refusal, Refusal::NoFile(ConfigKey::OnStart));
-        assert!(refusal.message().contains("on_start"));
     }
 }

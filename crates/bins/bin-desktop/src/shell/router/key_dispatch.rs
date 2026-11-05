@@ -343,14 +343,6 @@ impl Root {
             None => dialog.typed(dialog_key(keystroke), cx),
         });
     }
-
-    /// Runs what the key handlers left pending for after the `cx.notify()` -- effects that need
-    /// the `gpui::App` rather than just `Root`'s own state.
-    pub(super) fn run_pending_effects(&mut self, cx: &mut Context<'_, Self>) {
-        if let Some(change) = self.state.pending_colour_change.take() {
-            change.apply(cx);
-        }
-    }
 }
 
 /// One keystroke on its way through the key route, with the Shell it acts on.

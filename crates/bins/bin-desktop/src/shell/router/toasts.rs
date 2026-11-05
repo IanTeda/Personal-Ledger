@@ -16,16 +16,6 @@ impl Root {
         self.open_dialog(OpenDialog::ToastHistory(ToastHistoryDialog));
     }
 
-    /// Shows Toasts on or off once the setting is saved: Settings › General's control follows, and
-    /// the Toasts take it.
-    pub(super) fn show_toasts_on(&mut self, on: bool, cx: &mut gpui::App) {
-        self.settings.update(cx, |view, cx| {
-            view.general()
-                .update(cx, |page, cx| page.set_toasts_on(on, cx));
-        });
-        self.push_toasts_on(on);
-    }
-
     /// Shows every Notice the Routers queued since the last drain (`crate::notices`) on the Shell's
     /// Presenter, stamped with the local time for the Toast history. Each input's `send` runs it
     /// once the input is handled and committed (`crate::input`).

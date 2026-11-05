@@ -11,7 +11,6 @@ use crate::{
         palette::Palette,
         rail::RailOverride,
     },
-    theme::colours::ColourChange,
 };
 
 pub(crate) struct ShellState {
@@ -44,9 +43,6 @@ pub(crate) struct ShellState {
     pub(crate) hosted: Option<(DialogHandle, gpui::Subscription)>,
     /// The keys every module Dialog shares, under `[keybindings]` (`lib_shell::dialog`).
     pub(crate) dialog_keymap: lib_viper::keymap::Keymap<lib_shell::DialogCommand>,
-    /// A Colour Theme or Colour Appearance picked by a keystroke or palette command, applied by
-    /// the caller once it has an `App` (the key handling runs without one).
-    pub(crate) pending_colour_change: Option<ColourChange>,
     /// The top bar's recent-actions list below Undo is open.
     pub(crate) undo_menu_open: bool,
 }

@@ -63,7 +63,7 @@ impl Root {
                 self.view_mode = None;
             }
             ViewEvent::DisplayChanged(display) => self.push_display_preferences(display, cx),
-            ViewEvent::DeviceSetting(setting) => self.change_device_setting(setting, cx),
+            ViewEvent::ToastsChanged(on) => self.push_toasts_on(on),
         }
     }
 

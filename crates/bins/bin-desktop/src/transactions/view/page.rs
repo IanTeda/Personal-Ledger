@@ -40,7 +40,6 @@ use crate::{
     ledger_store::{LedgerChanged, LedgerStore},
     navigation::{chord::chord, movement::Movement, nav::Noun},
     notices::Queue,
-    settings::display::{RowDensity, StatusGlyphs},
     shell::view::{page_clicks::PresenterPage, statusline::PageStatus},
     view::{
         event::{ViewEvent, ViewMode},
@@ -48,6 +47,7 @@ use crate::{
         help::HelpGroup,
     },
 };
+use lib_viper::display::{RowDensity, StatusGlyphs};
 
 impl EventEmitter<ViewEvent> for TransactionsPage {}
 

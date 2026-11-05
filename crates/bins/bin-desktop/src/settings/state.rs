@@ -14,8 +14,6 @@ use super::router::{FrameRouter, PageChanged};
 use crate::{
     ledger_store::LedgerStore,
     navigation::{chord::chord, movement::Movement},
-    settings::display::DisplayPreferences,
-    settings::general::GeneralPage,
     settings::pages::{LedgerPages, Page, PageFrame, PageHandle, SettingsPages, SettingsSetup},
     settings::{SettingsFocus, SettingsPage},
     shell::view::{page_clicks::PresenterPage, statusline::PageStatus, window_size::WindowSize},
@@ -25,10 +23,13 @@ use crate::{
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, Subscription};
 use lib_list_cursor::Step;
 use lib_settings::{
-    ScopeFacts, SettingsFrameEvent, SettingsFramePresenter, SettingsFrameSetup,
-    SettingsFrameViewModel, keymap::settings_frame_keymap,
+    ColourChoice, DeviceConfiguration, DisplayOutput, DisplaySettings, GeneralSettings, ScopeFacts,
+    SettingsFrameEvent, SettingsFramePresenter, SettingsFrameSetup, SettingsFrameViewModel,
+    ThisDevice, keymap::settings_frame_keymap,
 };
 use lib_viper::keymap::KeyBindingConfig;
+use std::path::PathBuf;
+use std::rc::Rc;
 
 impl EventEmitter<ViewEvent> for SettingsView {}
 
@@ -56,7 +57,7 @@ pub struct SettingsView {
 }
 
 /// The chord of the Shell's `back` under `config`, which the frame's legend shows.
-fn back_chord(config: &KeyBindingConfig) -> String {
+pub(super) fn back_chord(config: &KeyBindingConfig) -> String {
     lib_shell::global_keymap(config)
         .chord(lib_viper::keymap::BACK)
         .unwrap_or_default()
@@ -91,9 +92,15 @@ impl SettingsView {
     }
 
     /// The frame's keys under `config`'s overrides.
-    pub fn set_keymaps(&mut self, config: &KeyBindingConfig) {
+    pub fn set_keymaps(&mut self, config: &KeyBindingConfig, cx: &mut Context<'_, Self>) {
         self.frame.set_keymap(settings_frame_keymap(config));
         self.frame.set_back_chord(back_chord(config));
+        self.pages
+            .general
+            .update(cx, |page, _| page.set_keymaps(config, back_chord(config)));
+        self.pages
+            .display
+            .update(cx, |page, _| page.set_keymaps(config, back_chord(config)));
     }
 
     /// Builds the This Ledger pages on the Open Ledger's `ledger`, so they can be shown, in place
@@ -290,18 +297,13 @@ impl SettingsView {
             .scroll_to_item(super::index_page_child(self.frame.selected()));
     }
 
-    /// The frame's key by `chord`, when the frame takes it as things stand. The Colour Theme grid
-    /// keeps its own `h`, so the frame's step back to the index waits until the grid is left.
+    /// The frame's key by `chord`, when the frame takes it as things stand. The page has had the
+    /// key first, so the Colour Theme grid has kept its own `h` or been left by it.
     fn frame_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {
         let Some(event) = self.frame.keymap().event(chord) else {
             return false;
         };
         if !self.frame.takes(&event) {
-            return false;
-        }
-        if event == SettingsFrameEvent::FocusIndex
-            && self.pages.display.read(cx).colour_theme_focus().is_some()
-        {
             return false;
         }
         self.send_frame(event, cx);
@@ -535,26 +537,65 @@ impl SettingsView {
     // Display
     // -----------------------------------------------------------------------------------------
 
-    /// The Display Preferences, which the Display page owns (ADR-0037).
-    pub fn display(&self, cx: &App) -> DisplayPreferences {
-        self.pages.display.read(cx).preferences()
+    /// The Display output the Views draw with, which the Display page's Presenter holds.
+    pub fn display_output(&self, cx: &App) -> DisplayOutput {
+        self.pages.display.read(cx).output()
     }
 
-    /// Sets the Display Preferences from outside the page (launch), without telling `Root`,
-    /// which made the change itself.
-    pub fn set_display(&mut self, display: DisplayPreferences, cx: &mut Context<'_, Self>) {
+    /// Start Sidebar minimised as the state file remembered it, at launch.
+    pub fn set_start_sidebar_minimised(&mut self, minimised: bool, cx: &mut Context<'_, Self>) {
+        self.pages.display.update(cx, |page, cx| {
+            page.set_start_sidebar_minimised(minimised, cx)
+        });
+    }
+
+    /// `theme` or `appearance` from the palette, saved and applied as Display's own choice is.
+    pub fn choose_colour(&mut self, colour: ColourChoice, cx: &mut Context<'_, Self>) {
         self.pages
             .display
-            .update(cx, |page, cx| page.set_preferences(display, cx));
+            .update(cx, |page, cx| page.choose_colour(colour, cx));
     }
 
     // -----------------------------------------------------------------------------------------
     // General
     // -----------------------------------------------------------------------------------------
 
-    /// The General page, which owns On start and Toasts and shows this device (ADR-0037).
-    pub fn general(&self) -> &Entity<GeneralPage> {
-        &self.pages.general
+    /// Writes General's and Display's settings to `device` from now on, showing them as start-up
+    /// read them.
+    pub fn configure_device(
+        &mut self,
+        device: Rc<dyn DeviceConfiguration>,
+        general: GeneralSettings,
+        display: DisplaySettings,
+        cx: &mut Context<'_, Self>,
+    ) {
+        let for_general = device.clone();
+        self.pages
+            .general
+            .update(cx, |page, cx| page.configure(for_general, general, cx));
+        self.pages
+            .display
+            .update(cx, |page, cx| page.configure(device, display, cx));
+    }
+
+    pub fn set_this_device(&mut self, device: ThisDevice, cx: &mut Context<'_, Self>) {
+        self.pages
+            .general
+            .update(cx, |page, cx| page.set_this_device(device, cx));
+    }
+
+    /// The Ledger file the state file will remember at quit, once `:open` has opened one.
+    pub fn set_last_ledger(&mut self, last_ledger: Option<PathBuf>, cx: &mut Context<'_, Self>) {
+        self.pages
+            .general
+            .update(cx, |page, cx| page.set_last_ledger(last_ledger, cx));
+    }
+
+    /// `:toasts on|off`, saved as General's own choice is.
+    pub fn set_toasts(&mut self, on: bool, cx: &mut Context<'_, Self>) {
+        self.pages
+            .general
+            .update(cx, |page, cx| page.set_toasts(on, cx));
     }
 }
 

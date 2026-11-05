@@ -9,7 +9,6 @@ use crate::{
     bills::EntryId,
     navigation::nav::{InputMode, Noun},
     period::Period,
-    settings::{device::DeviceSetting, display::DisplayPreferences},
     shell::view::{
         dialog_entity::DialogHandle,
         dialog_host::{HostedOpen, OpenDialog},
@@ -40,12 +39,12 @@ pub enum ViewEvent {
     EnterMode(ViewMode),
     /// Leave the mode the View entered, once what it opened is closed.
     ExitMode,
-    /// The Display Preferences changed on Settings. They are cross-cutting: `Root` hands them to
-    /// the Views that draw with them.
-    DisplayChanged(DisplayPreferences),
-    /// A device's setting asked for on Settings (ADR-0053): `Root` saves it to the conf file, then
-    /// applies it, so a page shows the change only once it is saved.
-    DeviceSetting(DeviceSetting),
+    /// The Display output changed on Settings › Display. It is cross-cutting: `Root` hands it to
+    /// the Views that draw with it.
+    DisplayChanged(lib_settings::DisplayOutput),
+    /// Toasts was saved on or off, on Settings › General or by `:toasts`: `Root` hands it to the
+    /// Toasts.
+    ToastsChanged(bool),
 }
 
 /// A mode a View enters for something it has opened itself: the [`InputMode`]s `Root` hands

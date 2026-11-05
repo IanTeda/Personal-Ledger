@@ -4,7 +4,7 @@
 //! renders from one place and the Display section's PREVIEW table keeps matching what the app
 //! actually shows.
 //!
-//! The Settings preview has its own primitive-argument helpers (`settings::display::format_preview_date` and
+//! The Settings preview has its own primitive-argument helpers (`lib_settings::presenter::display::format_preview_date` and
 //! `format_preview_amount`); these take the real types (`NaiveDate`, `Money`, `TransactionStatus`)
 //! and route through the same Locale formatting, so the two cannot disagree. The Transactions
 //! table's status glyphs and legend are its Presenter's, in `lib-transactions`.
@@ -13,7 +13,7 @@ use chrono::NaiveDate;
 use lib_core::{DateStyle, Money};
 use lib_locale::format::{AmountStyle, format_amount, format_date};
 
-use crate::settings::display::RowDensity;
+use lib_viper::display::RowDensity;
 
 /// The mark for an empty table cell, as the Transactions table writes it.
 pub const EMPTY_CELL: &str = lib_transactions::presenter::EMPTY_CELL;
@@ -89,10 +89,10 @@ mod tests {
     #[test]
     fn dates_agree_with_the_settings_previews_helper() {
         with_locale(Locale::EnGb, || {
-            for style in crate::settings::display::DATE_STYLE_CHOICES {
+            for style in lib_settings::presenter::display::DATE_STYLE_CHOICES {
                 assert_eq!(
                     date(day(2026, 9, 12), style),
-                    crate::settings::display::format_preview_date(2026, 9, 12, style)
+                    lib_settings::presenter::display::format_preview_date(2026, 9, 12, style)
                 );
             }
         });
@@ -108,7 +108,7 @@ mod tests {
 
     #[test]
     fn amounts_agree_with_the_settings_previews_helper_apart_from_the_plus() {
-        let expected = crate::settings::display::format_preview_amount(-864_050);
+        let expected = lib_settings::presenter::display::format_preview_amount(-864_050);
         assert_eq!(amount(&money("-8640.50")).1, expected);
     }
 
@@ -122,7 +122,7 @@ mod tests {
         assert_eq!(signed_amount(&money("0.00")), (false, "0.00".to_string()));
         assert_eq!(
             signed_amount(&money("4210.00")).1,
-            crate::settings::display::format_preview_amount(421_000)
+            lib_settings::presenter::display::format_preview_amount(421_000)
         );
     }
 
@@ -138,10 +138,10 @@ mod tests {
 
     #[test]
     fn the_density_step_matches_the_display_previews_step() {
-        use crate::settings::display::RowDensityChoice;
+        use crate::settings::display::render::preview_row_padding_y;
         for density in RowDensity::ALL {
-            let preview = density.preview_row_padding_y();
-            let regular_preview = RowDensity::Regular.preview_row_padding_y();
+            let preview = preview_row_padding_y(density);
+            let regular_preview = preview_row_padding_y(RowDensity::Regular);
             let regular = row_padding_y_px(RowDensity::Regular);
             assert_eq!(
                 row_padding_y_px(density) - regular,
