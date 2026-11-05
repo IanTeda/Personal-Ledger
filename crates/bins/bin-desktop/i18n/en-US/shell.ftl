@@ -60,12 +60,6 @@ desktop-ledger-open-not-a-ledger = it's a database, but not a Ledger file
 desktop-ledger-create-exists = a file of that name is already there
 desktop-ledger-create-unwritable = it can't be written there
 
-## Status-line flashes for actions whose flow is not designed or wired yet.
-
-desktop-status-sync-now-not-implemented = sync now — not implemented
-desktop-status-backup-now-not-implemented = backup now — not implemented
-desktop-status-export-ledger-not-implemented = export ledger — not implemented
-
 ## The top bar. `$time` is the time of the last sync.
 
 desktop-topbar-synced = Synced { $time }

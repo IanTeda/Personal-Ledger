@@ -360,8 +360,8 @@ impl LedgerPages {
             ),
             documents: document_types_page(document_types, ledger.clone(), cx),
             inventory: inventory_page(inventory, ledger.clone(), cx),
-            sync_server: cx.new(|_| SyncServerPage),
-            data_backup: cx.new(|_| DataBackupPage),
+            sync_server: cx.new(|_| SyncServerPage::new()),
+            data_backup: cx.new(|_| DataBackupPage::new()),
         }
     }
 }
@@ -398,7 +398,7 @@ impl SettingsPages {
                     ListState::new(0, ListAlignment::Top, LOG_LIST_OVERDRAW),
                 )
             }),
-            about: cx.new(|_| AboutPage),
+            about: cx.new(|_| AboutPage::new(env!("CARGO_PKG_VERSION"))),
             ledger: None,
         }
     }

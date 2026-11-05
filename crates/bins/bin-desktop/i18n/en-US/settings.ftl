@@ -30,23 +30,6 @@ desktop-settings-display-colour-overrides = { $roles } overridden by [theme] in 
 
 desktop-settings-display-colour-contrast = { $subject } on { $surface } is { $ratio }:1, needs { $required }:1
 
-## Sync server, Data & backup and Tracing.
-
-desktop-settings-sync-url = Server URL
-desktop-settings-sync-last = Last sync
-desktop-settings-sync-status = Status
-desktop-settings-sync-connected = connected
-desktop-settings-sync-now = Sync now
-desktop-settings-backup-location = Store location
-desktop-settings-backup-last = Last backup
-desktop-settings-backup-now = Backup now
-desktop-settings-backup-export = Export ledger (CSV)
-
-## About.
-
-desktop-settings-about-version = Personal Ledger v{ $version }
-desktop-settings-about-built-with = Built with Rust + GPUI + SQLite
-
 ## The pages that moved in from the primary rail, until each is rebuilt to the handoff.
 
 desktop-settings-page-placeholder = Not yet rebuilt as a Settings page.

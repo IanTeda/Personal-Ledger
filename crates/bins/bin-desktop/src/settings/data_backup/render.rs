@@ -9,16 +9,18 @@
 //! `sync_server::sync_now_button`, their stub status-line messages name no issue.
 
 use gpui::{App, Context, Window, div, prelude::*, px};
+use lib_settings::{DataBackupEvent, DataBackupRow};
 
 use super::DataBackupPage;
+use crate::shell::view::page_clicks::PageClicks;
 use crate::theme::color;
 
 const COLUMN_WIDTH: gpui::Pixels = px(300.0);
 
 impl Render for DataBackupPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let backup_entity = cx.entity();
-        let export_entity = backup_entity.clone();
+        let model = self.view_model();
+        let clicks = PageClicks::new(cx);
         let cx: &App = cx;
         div()
             .w(COLUMN_WIDTH)
@@ -26,47 +28,36 @@ impl Render for DataBackupPage {
             .flex()
             .flex_col()
             .gap(px(12.0))
-            .child(row(
-                crate::msg::desktop_settings_backup_location(),
-                "~/.ledger/personal",
-                px(11.0),
-                cx,
-            ))
-            .child(row(
-                crate::msg::desktop_settings_backup_last(),
-                "12 sep 2026 \u{b7} 23:10",
-                px(12.0),
-                cx,
-            ))
+            .children(model.rows.iter().map(|data| row(data, cx)))
             .child(button(
                 "settings-backup-now",
-                crate::msg::desktop_settings_backup_now(),
+                model.backup_now.clone(),
                 true,
-                move |_window, cx| backup_entity.update(cx, DataBackupPage::click_backup_now),
+                clicks.send(DataBackupEvent::BackupNow),
                 cx,
             ))
             .child(button(
                 "settings-export-ledger",
-                crate::msg::desktop_settings_backup_export(),
+                model.export_ledger.clone(),
                 false,
-                move |_window, cx| export_entity.update(cx, DataBackupPage::click_export_ledger),
+                clicks.send(DataBackupEvent::ExportLedger),
                 cx,
             ))
     }
 }
 
-fn row(label: String, value: &'static str, value_size: gpui::Pixels, cx: &App) -> impl IntoElement {
+fn row(data: &DataBackupRow, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .justify_between()
         .items_center()
         .py(px(8.0))
-        .child(div().text_color(color::muted(cx)).child(label))
+        .child(div().text_color(color::muted(cx)).child(data.label.clone()))
         .child(
             div()
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
-                .text_size(value_size)
-                .child(value),
+                .text_size(px(f32::from(data.value_size)))
+                .child(data.value.clone()),
         )
 }
 
@@ -78,7 +69,7 @@ fn button(
     id: &'static str,
     label: String,
     top_gap: bool,
-    on_click: impl Fn(&mut Window, &mut App) + 'static,
+    on_click: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
     cx: &App,
 ) -> impl IntoElement {
     let mut button = div()
@@ -93,7 +84,7 @@ fn button(
         .border_color(color::border(cx))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .whitespace_nowrap()
-        .on_click(move |_event, window, cx| on_click(window, cx))
+        .on_click(on_click)
         .child(label);
     button.style().align_self = Some(gpui::AlignItems::FlexStart);
     button

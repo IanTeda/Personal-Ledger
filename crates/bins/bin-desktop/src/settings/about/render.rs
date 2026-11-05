@@ -14,18 +14,21 @@ use crate::{theme::color, view::help};
 
 impl Render for AboutPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+        let model = self.view_model();
         let cx: &App = cx;
         let version = div()
             .flex()
             .gap(px(4.0))
             .debug_selector(|| "settings-about-version".to_string())
-            .child(div().font_weight(gpui::FontWeight::EXTRA_BOLD).child(
-                crate::msg::desktop_settings_about_version(env!("CARGO_PKG_VERSION")),
-            ))
-            .child("(08 September 2026)");
+            .child(
+                div()
+                    .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                    .child(model.version),
+            )
+            .child(model.released);
         let built_with = div()
             .text_color(color::faint_text(cx))
-            .child(crate::msg::desktop_settings_about_built_with());
+            .child(model.built_with);
         let before_author = div()
             .flex()
             .flex_col()

@@ -10,14 +10,12 @@
 //! stand-in with no real effect) rather than "not yet built" behind a future ticket -- so its
 //! stub status-line message, unlike Units'/Institutions' "+ Add" buttons, names no issue.
 
-use std::rc::Rc;
-
 use gpui::{App, Context, Window, div, prelude::*, px};
+use lib_settings::{SyncServerEvent, SyncServerViewModel};
 
 use super::SyncServerPage;
+use crate::shell::view::page_clicks::PageClicks;
 use crate::theme::color;
-
-type OnSyncNowClick = Rc<dyn Fn(&mut Window, &mut App)>;
 
 const COLUMN_WIDTH: gpui::Pixels = px(300.0);
 /// The status dot's own `border-radius:50%` on a 6x6 box -- a one-off exception to the
@@ -31,9 +29,8 @@ const DOT_RADIUS: gpui::Pixels = px(3.0);
 
 impl Render for SyncServerPage {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let entity = cx.entity();
-        let on_sync_now_click: OnSyncNowClick =
-            Rc::new(move |_window, cx| entity.update(cx, SyncServerPage::click_sync_now));
+        let model = self.view_model();
+        let clicks = PageClicks::new(cx);
         let cx: &App = cx;
         div()
             .w(COLUMN_WIDTH)
@@ -41,22 +38,14 @@ impl Render for SyncServerPage {
             .flex()
             .flex_col()
             .gap(px(12.0))
-            .child(row(
-                crate::msg::desktop_settings_sync_url(),
-                "sync.ledger.localhost",
-                cx,
-            ))
-            .child(status_row(cx))
-            .child(row(
-                crate::msg::desktop_settings_sync_last(),
-                "14 sep 2026 \u{b7} 09:14",
-                cx,
-            ))
-            .child(sync_now_button(on_sync_now_click, cx))
+            .child(row(model.url_label.clone(), model.url.clone(), cx))
+            .child(status_row(&model, cx))
+            .child(row(model.last_label.clone(), model.last.clone(), cx))
+            .child(sync_now_button(&model, &clicks, cx))
     }
 }
 
-fn row(label: String, value: &'static str, cx: &App) -> impl IntoElement {
+fn row(label: String, value: String, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .justify_between()
@@ -71,7 +60,7 @@ fn row(label: String, value: &'static str, cx: &App) -> impl IntoElement {
         )
 }
 
-fn status_row(cx: &App) -> impl IntoElement {
+fn status_row(model: &SyncServerViewModel, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .justify_between()
@@ -80,7 +69,7 @@ fn status_row(cx: &App) -> impl IntoElement {
         .child(
             div()
                 .text_color(color::muted(cx))
-                .child(crate::msg::desktop_settings_sync_status()),
+                .child(model.status_label.clone()),
         )
         .child(
             div()
@@ -92,7 +81,7 @@ fn status_row(cx: &App) -> impl IntoElement {
                     div()
                         .font_weight(gpui::FontWeight::EXTRA_BOLD)
                         .text_color(color::positive_text(cx))
-                        .child(crate::msg::desktop_settings_sync_connected()),
+                        .child(model.connected.clone()),
                 ),
         )
 }
@@ -111,7 +100,11 @@ fn status_dot(cx: &App) -> impl IntoElement {
 /// The "Sync now" button: `padding:8px 16px; border:1px solid rgba(32,30,29,.30);
 /// background:#eae9e9; font-weight:800; margin-top:8px` -- narrower top gap than the "+ Add
 /// unit"/"+ Add institution" buttons' own `16px`, matching the mockup's own markup here.
-fn sync_now_button(on_click: OnSyncNowClick, cx: &App) -> impl IntoElement {
+fn sync_now_button(
+    model: &SyncServerViewModel,
+    clicks: &PageClicks<SyncServerPage>,
+    cx: &App,
+) -> impl IntoElement {
     let mut button = div()
         .id("settings-sync-now")
         .debug_selector(|| "settings-sync-now".to_string())
@@ -124,8 +117,8 @@ fn sync_now_button(on_click: OnSyncNowClick, cx: &App) -> impl IntoElement {
         .border_color(color::border(cx))
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .whitespace_nowrap()
-        .on_click(move |_event, window, cx| on_click(window, cx))
-        .child(crate::msg::desktop_settings_sync_now());
+        .on_click(clicks.send(SyncServerEvent::SyncNow))
+        .child(model.sync_now.clone());
     button.style().align_self = Some(gpui::AlignItems::FlexStart);
     button
 }
