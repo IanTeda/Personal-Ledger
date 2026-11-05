@@ -145,17 +145,12 @@ impl InventoryRepository for StoredInventory {
         self.pending.push(InventoryChange::DeleteItem(id));
     }
 
+    /// One change for the Location and its Items. The file deletes the Items with it, and each
+    /// Item's Document Links go with them by the keys, so `DeleteLocation` names the Documents
+    /// cascade for all of them (a change per Item cost a retain each, over seconds at thousands of
+    /// Items).
     fn delete_location(&mut self, id: LocationId) {
-        let items: Vec<ItemId> = self
-            .rows
-            .items
-            .iter()
-            .filter(|row| row.location == id)
-            .map(|row| row.id)
-            .collect();
-        for item in items {
-            self.delete_item(item);
-        }
+        self.rows.items.retain(|row| row.location != id);
         self.rows.locations.retain(|row| row.id != id);
         self.pending.push(InventoryChange::DeleteLocation(id));
     }
@@ -252,8 +247,7 @@ async fn upsert_location(conn: &mut SqliteConnection, location: &Location) -> Re
     Ok(())
 }
 
-/// Deletes the Location's Items (already queued one by one, so none is left), then its Areas, then
-/// the Location: the keys refuse any other order.
+/// Deletes the Location's Items, then its Areas, then the Location: the keys refuse any other order.
 async fn delete_location(conn: &mut SqliteConnection, id: LocationId) -> Result<()> {
     sqlx::query!("DELETE FROM items WHERE location_id = ?", id)
         .execute(&mut *conn)
@@ -627,6 +621,40 @@ mod tests {
     ) {
         contract::a_locations_usage_counts_the_documents_linking_its_items(
             &mut ReadsAdapters::new(options),
+        );
+    }
+
+    /// Times a Location remove over a large Inventory (#1035): the in-memory step and the commit.
+    /// Run by hand with `--ignored --nocapture`; it asserts only that the Items are gone.
+    #[sqlx::test(migrations = "migrations/client")]
+    #[ignore = "a timing, not a check"]
+    async fn timing_a_location_remove_over_thousands_of_items(
+        _: SqlitePoolOptions,
+        options: SqliteConnectOptions,
+    ) {
+        const ITEMS: u32 = 20_000;
+        let mut seed = lib_inventory::default_inventory(today());
+        let template = seed.items[0].clone();
+        seed.items.extend((0..ITEMS).map(|n| Item {
+            id: ItemId::seed(100_000 + n),
+            name: format!("bulk {n}"),
+            ..template.clone()
+        }));
+        let mut factory = AdapterFactory::new(options);
+        let mut port = factory.create(seed);
+
+        let started = std::time::Instant::now();
+        port.delete_location(template.location);
+        let queued = started.elapsed();
+        factory.commit(&mut port);
+        factory.failures();
+        let committed = started.elapsed();
+
+        eprintln!("{ITEMS} Items: queued in {queued:?}, committed in {committed:?}");
+        assert!(
+            port.items()
+                .iter()
+                .all(|item| item.location != template.location)
         );
     }
 

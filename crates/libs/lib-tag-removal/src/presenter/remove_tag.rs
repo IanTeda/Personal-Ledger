@@ -52,10 +52,7 @@ impl RemoveTagPresenter {
     /// The Dialog for Tag `id`, its usage read from `reads` when it opens, or `None` when it is
     /// gone.
     pub fn new(removal: SharedTagRemoval, reads: &dyn TagRemovalReads, id: TagId) -> Option<Self> {
-        let offered = reads
-            .tags_by_usage()
-            .into_iter()
-            .find(|count| count.tag.id == id)?;
+        let offered = reads.tag_count(id)?;
         Some(Self {
             removal,
             id,

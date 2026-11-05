@@ -286,6 +286,15 @@ pub fn the_reads_rank_every_tag_by_usage(reads: &dyn TagRemovalReads) {
     assert_eq!(ranked, expected);
 }
 
+/// Reads over [`world`]'s rows answer one Tag's count as the ranking does, a used Tag with its
+/// distinct Transactions, an unused one with none, and a Tag that isn't there with nothing.
+pub fn the_reads_count_one_tag(reads: &dyn TagRemovalReads) {
+    for ranked in reads.tags_by_usage() {
+        assert_eq!(reads.tag_count(ranked.tag.id), Some(ranked.clone()));
+    }
+    assert_eq!(reads.tag_count(TagId::seed(9_999)), None);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -318,5 +327,6 @@ mod tests {
     #[test]
     fn the_fake_reads_rank_every_tag_by_usage() {
         the_reads_rank_every_tag_by_usage(&world());
+        the_reads_count_one_tag(&world());
     }
 }

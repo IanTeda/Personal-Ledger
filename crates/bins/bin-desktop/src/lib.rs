@@ -42,6 +42,7 @@ mod transactions;
 mod unit_deletion;
 mod units;
 mod view;
+mod write_count;
 
 /// This bin's own Messages, generated at build time from `i18n/<locale>/*.ftl`.
 mod msg {

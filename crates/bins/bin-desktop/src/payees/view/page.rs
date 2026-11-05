@@ -15,7 +15,7 @@ use lib_viper::keymap::Keymap;
 use lib_shell::Hint;
 
 use crate::payees::SettingsPayeesSnapshot;
-use crate::payees::ports::{self, DesktopPorts, payees};
+use crate::payees::ports::{self, DesktopPorts};
 use crate::payees::router::PageRouter;
 use crate::settings::snapshot::PageSnapshot;
 use crate::{
@@ -81,7 +81,7 @@ impl PayeesPage {
     /// Hands `event` to the Presenter with the Desktop's Router, announcing the Payees when it
     /// wrote them. Inside an input already, as [`Self::send`] or a Dialog's confirm.
     fn handle(&mut self, event: PayeesPageEvent, cx: &mut Context<'_, Self>) {
-        let before = payees(&self.ports);
+        let before = self.ports.borrow().writes();
         let mut router = PageRouter {
             ports: self.ports.clone(),
             ledger: self.ledger.clone(),
@@ -89,7 +89,7 @@ impl PayeesPage {
             cx,
         };
         self.presenter.handle(event, &mut router);
-        if payees(&self.ports) != before {
+        if self.ports.borrow().writes() != before {
             ports::announce(&self.ledger, cx);
         }
         cx.notify();

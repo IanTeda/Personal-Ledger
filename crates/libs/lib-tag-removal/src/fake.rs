@@ -66,6 +66,22 @@ impl TagRemovalReads for InMemoryTagRemoval {
         }
         by_usage(&self.tags.tags, &counts)
     }
+
+    fn tag_count(&self, id: TagId) -> Option<TagCount> {
+        let tag = self.tags.tags.iter().find(|tag| tag.id == id)?.clone();
+        let transactions = self
+            .transactions
+            .transactions
+            .iter()
+            .filter(|transaction| {
+                transaction
+                    .splits
+                    .iter()
+                    .any(|split| split.tag_ids.contains(&id))
+            })
+            .count();
+        Some(TagCount { tag, transactions })
+    }
 }
 
 /// The small Ledger the tests and the contract remove from: `lib-tags`' stub Tags and five

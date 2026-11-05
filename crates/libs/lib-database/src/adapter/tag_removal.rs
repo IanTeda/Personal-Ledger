@@ -210,6 +210,8 @@ mod tests {
         let factory = AdapterFactory::new(options);
         let (tags, transactions) = factory.stores(world());
 
-        contract::the_reads_rank_every_tag_by_usage(&StoredTagRemovalReads { tags, transactions });
+        let reads = StoredTagRemovalReads { tags, transactions };
+        contract::the_reads_rank_every_tag_by_usage(&reads);
+        contract::the_reads_count_one_tag(&reads);
     }
 }

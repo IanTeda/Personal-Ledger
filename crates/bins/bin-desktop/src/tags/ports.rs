@@ -19,6 +19,7 @@ use lib_tags::fake::{InMemoryPorts, InMemoryTagUsage, InMemoryTags};
 use lib_tags::{SharedPorts, Tag, TagRepository, TagUsage, TagUse};
 
 use crate::ledger_store::LedgerStore;
+use crate::write_count::WriteCount;
 
 /// The stub Tags in memory, for a test that needs no storage. What carries them is read through
 /// [`StoredTagReads`].
@@ -39,6 +40,7 @@ pub fn in_memory() -> SharedTagsStore {
 pub struct StorePorts {
     store: SharedTagsStore,
     usage: StoredTagReads,
+    writes: WriteCount,
 }
 
 impl TagRepository for StorePorts {
@@ -47,6 +49,7 @@ impl TagRepository for StorePorts {
     }
 
     fn upsert_tag(&mut self, tag: Tag) {
+        self.writes.bump();
         self.store.borrow_mut().tags_mut().upsert_tag(tag);
     }
 }
@@ -62,10 +65,11 @@ impl TagUsage for StorePorts {
 }
 
 /// `store` as the Tags module's Presenters share it.
-pub fn shared(store: &SharedTagsStore, usage: StoredTagReads) -> SharedPorts {
+pub fn shared(store: &SharedTagsStore, usage: StoredTagReads, writes: &WriteCount) -> SharedPorts {
     Rc::new(RefCell::new(StorePorts {
         store: store.clone(),
         usage,
+        writes: writes.clone(),
     }))
 }
 
@@ -103,6 +107,7 @@ mod tests {
                 accounts: setup.accounts.clone(),
                 units: setup.units.clone(),
             },
+            writes: WriteCount::default(),
         };
 
         let used = ports.tag_usage(shared);

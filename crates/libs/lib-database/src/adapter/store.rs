@@ -1070,6 +1070,27 @@ impl TagRemovalReads for StoredTagRemovalReads {
         let counts = self.transactions.borrow().tag_transaction_counts();
         lib_tag_removal::protocols::by_usage(&self.tags.borrow().tags().tags(), &counts)
     }
+
+    fn tag_count(&self, id: TagId) -> Option<TagCount> {
+        let tag = self
+            .tags
+            .borrow()
+            .tags()
+            .tags()
+            .into_iter()
+            .find(|tag| tag.id == id)?;
+        // The Splits carrying the Tag, not every Tag counted over every Transaction: the adapter
+        // filters them in the file.
+        let transactions = self
+            .transactions
+            .borrow()
+            .tagged_splits(id)
+            .into_iter()
+            .map(|split| split.transaction)
+            .collect::<std::collections::HashSet<_>>()
+            .len();
+        Some(TagCount { tag, transactions })
+    }
 }
 
 /// `lib-category-deletion`'s [`CategoryDeletionReads`] answered from the shared stores (#994): the
@@ -2041,6 +2062,7 @@ mod tests {
         };
 
         lib_tag_removal::contract::the_reads_rank_every_tag_by_usage(&reads);
+        lib_tag_removal::contract::the_reads_count_one_tag(&reads);
 
         let mut booked = world.transactions.transactions[0].clone();
         booked.id = TransactionId::seed(9_999);

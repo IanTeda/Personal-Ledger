@@ -18,6 +18,7 @@ use crate::settings::snapshot::PageSnapshot;
 use crate::tag_removal::RemovalStores;
 use crate::tags::router::PageRouter;
 use crate::tags::{SettingsTagsSnapshot, TagsSetup, ports};
+use crate::write_count::WriteCount;
 use crate::{
     ledger_store::{LedgerStore, notify_on},
     navigation::movement::Movement,
@@ -35,6 +36,8 @@ impl EventEmitter<PageRowClicked> for TagsPage {}
 pub struct TagsPage {
     presenter: TagsPagePresenter,
     ports: SharedPorts,
+    /// The writes the page's ports have made, read around an input to tell whether it wrote.
+    writes: WriteCount,
     /// Tag remove and merge's port and reads, which their Dialogs open on.
     removal: RemovalStores,
     /// What hears of a Tags write: the Tags page itself, the Transactions and the Shell.
@@ -57,10 +60,12 @@ impl TagsPage {
         clock: lib_core::Clock,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        let ports = ports::shared(&setup.store, setup.usage.clone());
+        let writes = WriteCount::default();
+        let ports = ports::shared(&setup.store, setup.usage.clone(), &writes);
         Self {
             presenter: TagsPagePresenter::new(ports.clone(), setup.keymap.clone()),
             ports,
+            writes,
             removal: setup.removal,
             _tags_changed: notify_on(&ledger, Domain::Tags, cx),
             _transactions_changed: notify_on(&ledger, Domain::Transactions, cx),
@@ -88,7 +93,7 @@ impl TagsPage {
     /// Hands `event` to the Presenter with the Desktop's Router, announcing the Tags when it wrote
     /// them. Inside an input already, as [`Self::send`] or a Dialog's confirm.
     fn handle(&mut self, event: TagsPageEvent, cx: &mut Context<'_, Self>) {
-        let before = self.ports.borrow().tags();
+        let before = self.writes.get();
         let mut router = PageRouter {
             ports: self.ports.clone(),
             removal: self.removal.clone(),
@@ -96,7 +101,7 @@ impl TagsPage {
             cx,
         };
         self.presenter.handle(event, &mut router);
-        if self.ports.borrow().tags() != before {
+        if self.writes.get() != before {
             ports::announce(&self.ledger, cx);
         }
         cx.notify();

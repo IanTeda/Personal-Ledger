@@ -77,6 +77,10 @@ pub trait TagRemovalReads {
     /// Every Tag with its count, most-used first, ties A–Z ignoring case: the Merge selects'
     /// order.
     fn tags_by_usage(&self) -> Vec<TagCount>;
+
+    /// One Tag with its count, or `None` when it is gone: the Remove tag Dialog's read, which
+    /// needs one Tag, not every Tag counted and sorted to find it.
+    fn tag_count(&self, id: TagId) -> Option<TagCount>;
 }
 
 /// `tags` with their counts from `counts`, in usage order: what every reads answers

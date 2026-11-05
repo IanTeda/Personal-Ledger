@@ -26,6 +26,7 @@ use crate::inventory::ports;
 use crate::inventory::router::PageRouter;
 use crate::inventory::{InventorySetup, SettingsInventorySnapshot};
 use crate::settings::snapshot::PageSnapshot;
+use crate::write_count::WriteCount;
 use crate::{
     ledger_store::{LedgerStore, notify_on},
     navigation::movement::Movement,
@@ -43,6 +44,8 @@ impl EventEmitter<PageRowClicked> for InventoryPage {}
 pub struct InventoryPage {
     presenter: InventoryPagePresenter,
     inventory: SharedInventory,
+    /// The writes the page's ports have made, read around an input to tell whether it wrote.
+    writes: WriteCount,
     ledger: Entity<LedgerStore>,
     keymap: Keymap<InventoryPageEvent>,
     /// Where the open row menu was asked for, in window coordinates.
@@ -62,10 +65,12 @@ impl InventoryPage {
         ledger: Entity<LedgerStore>,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        let inventory = ports::shared(&setup.store);
+        let writes = WriteCount::default();
+        let inventory = ports::shared(&setup.store, &writes);
         Self {
             presenter: InventoryPagePresenter::new(inventory.clone(), setup.keymap.clone()),
             inventory,
+            writes,
             _inventory_changed: notify_on(&ledger, Domain::Inventory, cx),
             _units_changed: notify_on(&ledger, Domain::Units, cx),
             ledger,
@@ -93,7 +98,7 @@ impl InventoryPage {
     /// `Domain::Inventory` when the rows changed, so the Documents redraw. Inside an input already,
     /// as [`Self::send`] or a Dialog's confirm, whose write is announced as it lands.
     fn handle(&mut self, event: InventoryPageEvent, cx: &mut Context<'_, Self>) {
-        let before = self.inventory.borrow().inventory();
+        let before = self.writes.get();
         let landed = matches!(event, InventoryPageEvent::DialogClosed(Some(_)));
         let mut router = PageRouter {
             inventory: self.inventory.clone(),
@@ -101,7 +106,7 @@ impl InventoryPage {
             cx,
         };
         self.presenter.handle(event, &mut router);
-        if landed || self.inventory.borrow().inventory() != before {
+        if landed || self.writes.get() != before {
             self.ledger
                 .update(cx, |store, cx| store.announce_inventory(cx));
         }

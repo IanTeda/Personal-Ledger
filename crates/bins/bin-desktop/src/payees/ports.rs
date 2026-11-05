@@ -20,6 +20,7 @@ use lib_database::{PayeesStore, StoredPayeeReads};
 use lib_payees::{PayeeCategories, PayeeRepository, PayeeUsage, PayeesPorts, PortsMut};
 
 use crate::ledger_store::LedgerStore;
+use crate::write_count::WriteCount;
 
 /// The Payees ports the Payees module, Category delete, the Import and the Bills reads share.
 pub type DesktopPorts = Rc<RefCell<LedgerBackedPorts>>;
@@ -29,11 +30,22 @@ pub type DesktopPorts = Rc<RefCell<LedgerBackedPorts>>;
 pub struct LedgerBackedPorts {
     store: Box<dyn PayeesStore>,
     reads: StoredPayeeReads,
+    writes: WriteCount,
 }
 
 impl LedgerBackedPorts {
     pub fn shared(store: Box<dyn PayeesStore>, reads: StoredPayeeReads) -> DesktopPorts {
-        Rc::new(RefCell::new(Self { store, reads }))
+        Rc::new(RefCell::new(Self {
+            store,
+            reads,
+            writes: WriteCount::default(),
+        }))
+    }
+
+    /// How many times these ports handed a mutable store out, so a page can tell whether an input
+    /// wrote without cloning the Payees around it.
+    pub fn writes(&self) -> u64 {
+        self.writes.get()
     }
 
     /// The stub Payees in memory, reading the other domains through `reads`, for a test that needs
@@ -65,6 +77,7 @@ impl PayeesPorts for LedgerBackedPorts {
     }
 
     fn split_mut(&mut self) -> PortsMut<'_> {
+        self.writes.bump();
         PortsMut {
             payees: self.store.payees_mut(),
             usage: &self.reads,
@@ -79,17 +92,13 @@ impl PayeesStore for LedgerBackedPorts {
     }
 
     fn payees_mut(&mut self) -> &mut dyn PayeeRepository {
+        self.writes.bump();
         self.store.payees_mut()
     }
 
     fn reload(&mut self) -> lib_database::Result<()> {
         self.store.reload()
     }
-}
-
-/// The Payees as `ports` hold them now, for a page to tell whether an event wrote them.
-pub fn payees(ports: &DesktopPorts) -> Vec<lib_payees::Payee> {
-    PayeesStore::payees(&*ports.borrow()).payees()
 }
 
 /// Announces `Domain::Payees`, after a write to the Payees store, so Transactions, Bills, Budgets
