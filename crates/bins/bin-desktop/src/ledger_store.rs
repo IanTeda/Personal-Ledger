@@ -713,7 +713,6 @@ mod tests {
 
     use gpui::{AppContext, Entity, TestAppContext};
     use lib_database::{Commit, PendingWrites};
-    use lib_ledger::LedgerParts;
 
     use super::*;
 
