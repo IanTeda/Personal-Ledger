@@ -10,7 +10,7 @@
    "url": "https://github.com/IanTeda/Personal-Ledger",
    "provider": "github",
    "link_mode": "web",
-   "revision": "4589e759b56512297712317ea882af59070b2a47"
+   "revision": "5332e701995753a81764538c00c219eb7c68ab0d"
   },
   "legend": {
    "entries": {
@@ -56,7 +56,7 @@
     {
      "path": "crates/bins/bin-desktop/Cargo.toml",
      "line": 31,
-     "end_line": 59
+     "end_line": 60
     }
    ],
    "sublabel": "gpui Client"
@@ -785,6 +785,11 @@
    "id": "bin-desktop--lib-shell",
    "from": "bin-desktop",
    "to": "lib-shell"
+  },
+  {
+   "id": "bin-desktop--lib-tag-removal",
+   "from": "bin-desktop",
+   "to": "lib-tag-removal"
   },
   {
    "id": "bin-desktop--lib-transaction-import",
