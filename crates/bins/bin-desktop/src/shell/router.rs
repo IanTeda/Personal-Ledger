@@ -233,10 +233,6 @@ pub struct Root {
     settings: Entity<SettingsView>,
     /// Keeps the Settings View's events reaching `Root` and its changes repainting it.
     _settings_subscriptions: Vec<Subscription>,
-    /// "Today" for the seed data and, later, the `this year` filter -- read at construction and
-    /// moved on only when [`Self::presenter`] sees the Clock cross into a new calendar month, so
-    /// everything derived from it (the seeded dates, the default range) agrees within a month.
-    today: chrono::NaiveDate,
     /// The Shell as a `lib-shell` module: the status line, the Toasts, where the person is (the
     /// noun, focus and mode), the global keymap, and the Clock (the local date, or a test's pinned
     /// day; every View is built with it), whose month turn it notices.
@@ -253,7 +249,6 @@ impl Root {
         clock: lib_core::Clock,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        let today = clock.today();
         let settings = cx.new(SettingsView::new);
         let _settings_subscriptions = vec![
             Self::view_event_subscription(&settings, cx),
@@ -292,7 +287,6 @@ impl Root {
             open: None,
             settings,
             _settings_subscriptions,
-            today,
             presenter: ShellPresenter::new(clock, nav),
         }
     }

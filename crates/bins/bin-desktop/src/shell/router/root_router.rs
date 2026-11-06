@@ -20,8 +20,6 @@ use super::{OpenLedger, Root};
 struct RootRouter<'a, 'b> {
     /// The Open Ledger a month turn and a failed write act on, `None` with no Ledger open.
     open: Option<&'a OpenLedger>,
-    /// The Shell's today, which its legacy pages are dated by.
-    today: &'a mut NaiveDate,
     /// The global commands the Presenter ran, for the Shell to act on once it returns.
     ran: Vec<ShellCommand>,
     cx: &'a mut Context<'b, Root>,
@@ -37,15 +35,12 @@ impl Notify for RootRouter<'_, '_> {
 impl ShellRouter for RootRouter<'_, '_> {
     type Failure = WriteFailure;
 
-    /// Generates the new month's Bill Schedule, committed as the day poll's one write, and moves
-    /// the Shell's today on to it, so the rail badge dates its entries by it. The Dashboard keeps its
-    /// view model by the day, so it rebuilds on its own. The Budgets page moves a month on its old
-    /// one on to the new, and the Documents page bands its Key Dates against the new day and drops a
-    /// Financial Year scope that has left the rail. The Bills page catches up on its own next event too, which finds
-    /// nothing left to generate.
-    /// With no Ledger open only the Shell's today moves on.
+    /// Generates the new month's Bill Schedule, committed as the day poll's one write. The Dashboard
+    /// keeps its view model by the day, so it rebuilds on its own. The Budgets page moves a month on
+    /// its old one on to the new, and the Documents page bands its Key Dates against the new day and
+    /// drops a Financial Year scope that has left the rail. The Bills page catches up on its own next
+    /// event too, which finds nothing left to generate. With no Ledger open there is nothing to move.
     fn month_turned(&mut self, today: NaiveDate) {
-        *self.today = today;
         let Some(open) = self.open else {
             return;
         };
@@ -92,7 +87,6 @@ impl Root {
         crate::input::send(cx, |cx| {
             let mut router = RootRouter {
                 open: self.open.as_ref(),
-                today: &mut self.today,
                 ran: Vec::new(),
                 cx,
             };
@@ -111,7 +105,6 @@ impl Root {
     ) -> (ShellKey, Vec<ShellCommand>) {
         let mut router = RootRouter {
             open: self.open.as_ref(),
-            today: &mut self.today,
             ran: Vec::new(),
             cx,
         };
