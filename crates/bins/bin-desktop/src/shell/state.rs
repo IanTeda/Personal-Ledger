@@ -4,7 +4,8 @@
 //! state, so they do not move into `lib_shell` and do not become Entities (ADR-0032). The status
 //! message, the Toasts, focus, modes, the rail's `b` override and the Dialog keymap are the Shell's
 //! Presenter's (`lib_shell`), and so is the command palette's input, selection and history (#1063):
-//! only its row list's scroll handle is View state here.
+//! only its row list's scroll handle is View state here. So is the file explorer's (#1064): its
+//! row list's scroll handle is the one piece of it here.
 
 use crate::{navigation::nav::Noun, shell::view::dialog_entity::DialogHandle};
 
@@ -12,6 +13,10 @@ pub(crate) struct ShellState {
     /// The command palette's row list scroll, kept on the selected row after each palette key
     /// and fresh each time the palette opens.
     pub(crate) palette_scroll: gpui::ScrollHandle,
+    /// The file explorer's row list scroll, back at the top on each folder it browses.
+    pub(crate) explorer_scroll: gpui::ScrollHandle,
+    /// The folder the explorer's scroll belongs to, so a new one starts at the top.
+    pub(crate) explorer_folder: Option<std::path::PathBuf>,
     /// The collapsed primary rail's row whose hover has settled past
     /// `TOOLTIP_REVEAL_DELAY` -- `None` while nothing's hovered, the delay hasn't elapsed
     /// yet, or the rail isn't collapsed (see `shell::view::rail::primary::PrimaryRail`, which only wires

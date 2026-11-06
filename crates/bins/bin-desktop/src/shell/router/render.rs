@@ -45,12 +45,14 @@ impl Render for Root {
         // the status line's own COMMAND-mode content (the live query, "esc close command
         // window"), which stays meaningful precisely because it stays legible; only the
         // navigational frame the palette/explorer visually floats over goes dim.
-        let content_opacity =
-            if self.presenter.palette_open() || self.file_explorer.is_some() || self.help_open() {
-                0.3
-            } else {
-                1.0
-            };
+        let content_opacity = if self.presenter.palette_open()
+            || self.presenter.explorer_open()
+            || self.help_open()
+        {
+            0.3
+        } else {
+            1.0
+        };
 
         // Both closures go through an `Entity` handle rather than `cx.listener`:
         // `on_click`/`on_hover`'s own signatures are `Fn(_, &mut Window, &mut App)`, with no
@@ -277,8 +279,10 @@ impl Render for Root {
                     cx,
                 )
             }))
-            .children(self.file_explorer.as_ref().map(|explorer| {
-                explorer.render(
+            .children(self.presenter.explorer().map(|explorer| {
+                explorer_view::render(
+                    &explorer,
+                    &self.state.explorer_scroll,
                     on_explorer_entry_click,
                     on_explorer_breadcrumb_click,
                     on_explorer_filter_toggle,

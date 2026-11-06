@@ -278,7 +278,11 @@ fn a_file_that_will_not_open_keeps_no_ledger_open_and_says_why(app: &mut TestApp
 
     assert!(!ui.read(|shell| shell.ledger_open()));
     assert_eq!(ui.noun(), Noun::Dashboard);
-    assert_eq!(ui.read(|shell| shell.nav().mode()), InputMode::Normal);
+    assert!(
+        ui.read(|shell| shell.explorer_rows_snapshot()).is_some(),
+        "the explorer stays open for another pick"
+    );
+    assert_eq!(ui.read(|shell| shell.nav().mode()), InputMode::Command);
     let toast = ui.toasts().visible.pop().expect("a Toast says why");
     assert_eq!(toast.kind, "Error");
     assert_eq!(

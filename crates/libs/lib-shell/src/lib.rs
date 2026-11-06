@@ -13,12 +13,14 @@
 //! key the Client offers it ([`keymap`], [`ShellPresenter::key`]), with the `g` prefix the Client's
 //! timer ends ([`ShellInput::PrefixExpired`]), and owns the [`Noun`] and [`ActiveView`] the Client
 //! navigates by ([`navigation`]). It holds the command palette ([`palette`]): its input, matching,
-//! selection and history, over the Commands the Client lists and runs. A Notice from a View not
+//! selection and history, over the Commands the Client lists and runs. It holds the file explorer
+//! behind `:open` and `:new` ([`explorer`]), reading folders through [`LedgerFolders`]. A Notice from a View not
 //! yet a module and a failed write pass through it to the Router. It holds the rail's badge counts, read through [`ShellRailCounts`]
 //! after each input while a Ledger is open. No module depends on it; only the bins and the adapter
 //! answering that port do.
 
 pub mod dialog;
+pub mod explorer;
 pub mod fake;
 pub mod help;
 pub mod keymap;
@@ -32,6 +34,10 @@ pub mod toast_history;
 pub mod window_size;
 
 pub use dialog::{DialogCommand, dialog_keymap};
+pub use explorer::{
+    EntryKind, ExplorerChoice, ExplorerFilter, ExplorerFilters, ExplorerMode, ExplorerOutcome,
+    ExplorerViewModel, FolderEntry, FolderUnreadable, LedgerFolders,
+};
 pub use help::{HelpGroup, HelpPresenter, HelpViewModel};
 pub use keymap::{ShellCommand, global_keymap};
 pub use nav::{ContextSelection, FocusZone, InputMode, NavState};

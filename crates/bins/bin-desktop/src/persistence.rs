@@ -16,7 +16,8 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{navigation::explorer::ExplorerFilters, navigation::nav::Noun};
+use crate::navigation::nav::Noun;
+use lib_shell::ExplorerFilters;
 
 /// Directory name under the platform's state directory, mirroring `lib_config`'s own
 /// `APPLICATION_NAME` convention (`crates/libs/lib-config/src/ledger.rs`).

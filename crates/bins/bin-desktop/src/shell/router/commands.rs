@@ -4,13 +4,12 @@
 use gpui::{App, Context};
 use lib_shell::{NavInput, ShellCommand, ToastInput};
 
-use super::{Root, explorer::explorer_start_dir};
+use super::Root;
 use crate::shell::view::no_ledger::NoLedgerCommand;
 use crate::{
     accounts::AccountsPage,
     navigation::{
         command::{self, AccountsVerb, CommandEffect, ModulePage},
-        explorer::FileExplorer,
         nav::{InputMode, Noun},
     },
     settings::SettingsPage,
@@ -36,8 +35,7 @@ impl Root {
     /// `NavState::exit_mode` -- unlike every other effect, opening the dialog does *not* leave
     /// `InputMode::Command`: the "1e" file explorer's own status-line treatment (`Root::render`'s
     /// `command_echo`) depends on staying there for as long as the dialog is on screen, exiting
-    /// only when it closes (`Self::handle_explorer_cancel`/`Self::confirm_explorer_open`, or
-    /// `Self::handle_key_down`'s `escape` arm).
+    /// only when it closes (its `back` key or Cancel, or a file it chose opening).
     ///
     /// [`CommandEffect::Shell`] runs as its global key does, at `window_size` (the rail toggle
     /// reads it); [`CommandEffect::Module`] opens its page and sends its event there.
@@ -54,13 +52,7 @@ impl Root {
             return;
         }
         match effect {
-            CommandEffect::OpenDialog(mode) => {
-                self.file_explorer = Some(FileExplorer::open_at(
-                    mode,
-                    explorer_start_dir(self.ledger_folder.as_deref()),
-                    self.explorer_filters,
-                ));
-            }
+            CommandEffect::OpenDialog(mode) => self.open_explorer(mode),
             CommandEffect::OpenSettingsPage(section) => {
                 self.navigate(NavInput::ExitMode);
                 self.open_settings_page(section, cx);

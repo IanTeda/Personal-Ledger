@@ -21,7 +21,13 @@ use lib_toast::{Display, Notice, Toasts};
 use lib_viper::keymap::Keymap;
 use lib_viper::view::Hint;
 
+use std::path::{Path, PathBuf};
+
 use crate::dialog::{DialogCommand, dialog_keymap};
+use crate::explorer::{
+    ExplorerFilter, ExplorerFilters, ExplorerMode, ExplorerOutcome, ExplorerPresenter,
+    ExplorerViewModel, LedgerFolders,
+};
 use crate::keymap::{HELP, OPEN_COMMAND_POPUP, SEARCH, ShellCommand, TOGGLE_RAIL, global_keymap};
 use crate::nav::{ContextSelection, FocusZone, InputMode, NavState};
 use crate::navigation::Noun;
@@ -168,6 +174,8 @@ pub struct ShellPresenter<P, E = ()> {
     palette_keymap: Keymap<PaletteCommand>,
     /// The command palette, whose history outlives each time it opens.
     palette: PalettePresenter<E>,
+    /// The file explorer behind `:open` and `:new`, whose filters and start outlive each opening.
+    explorer: ExplorerPresenter,
     /// The rail `b` last set, with the Window Size it was set at (ADR-0042).
     rail_override: Option<RailOverride>,
     /// The first key of a sequence typed so far, until the next key or [`ShellInput::PrefixExpired`].
@@ -197,6 +205,7 @@ impl<P: Copy + Eq + Default, E: Clone> ShellPresenter<P, E> {
             dialog_keymap: dialog_keymap(&KeyBindingConfig::default()),
             palette_keymap: palette_keymap(&KeyBindingConfig::default()),
             palette: PalettePresenter::default(),
+            explorer: ExplorerPresenter::default(),
             rail_override: None,
             prefix: None,
             nav,
@@ -264,6 +273,102 @@ impl<P: Copy + Eq + Default, E: Clone> ShellPresenter<P, E> {
             self.navigate(NavInput::ExitMode);
         }
         outcome
+    }
+
+    /// `:open` or `:new`: opens the file explorer in `mode`, in Command mode, which it stays in
+    /// while open, reading its start through `folders`.
+    pub fn open_explorer(&mut self, mode: ExplorerMode, folders: &dyn LedgerFolders) {
+        self.navigate(NavInput::EnterMode(InputMode::Command));
+        self.explorer.open(mode, folders);
+    }
+
+    /// Drops the explorer without leaving Command mode, for the Client leaving it some other way.
+    pub fn close_explorer(&mut self) {
+        self.explorer.close();
+    }
+
+    pub fn explorer_open(&self) -> bool {
+        self.explorer.is_open()
+    }
+
+    /// What the explorer draws, `None` while it is closed.
+    pub fn explorer(&self) -> Option<ExplorerViewModel> {
+        self.explorer.view_model(&self.dialog_keymap)
+    }
+
+    /// A key while the explorer is open, as [`Self::palette_key`] takes one. Closing it leaves
+    /// Command mode; a file it chooses leaves it open for the Client to act on
+    /// ([`Self::explorer_chosen`]).
+    pub fn explorer_key(
+        &mut self,
+        chord: &str,
+        typed: Option<char>,
+        folders: &dyn LedgerFolders,
+    ) -> ExplorerOutcome {
+        let outcome = self
+            .explorer
+            .key(chord, typed, &self.dialog_keymap, folders);
+        if outcome == ExplorerOutcome::Closed {
+            self.navigate(NavInput::ExitMode);
+        }
+        outcome
+    }
+
+    /// A click on one of the explorer's rows, `click_count` `2` for a double-click.
+    pub fn explorer_click(
+        &mut self,
+        path: &Path,
+        click_count: usize,
+        folders: &dyn LedgerFolders,
+    ) -> ExplorerOutcome {
+        self.explorer.click_entry(path, click_count, folders)
+    }
+
+    /// A click on one of the explorer's breadcrumbs, browsing `folder`.
+    pub fn explorer_browse(
+        &mut self,
+        folder: PathBuf,
+        folders: &dyn LedgerFolders,
+    ) -> ExplorerOutcome {
+        self.explorer.navigate_to(folder, folders)
+    }
+
+    /// A click on one of the explorer's footer checkboxes.
+    pub fn explorer_toggle_filter(&mut self, filter: ExplorerFilter) -> ExplorerOutcome {
+        self.explorer.toggle_filter(filter)
+    }
+
+    /// The explorer's Open or Create button.
+    pub fn explorer_confirm(&self) -> ExplorerOutcome {
+        self.explorer.confirm()
+    }
+
+    /// The Client's word on the file the explorer chose: one that opened closes it and leaves
+    /// Command mode; one that failed leaves it open for another pick.
+    pub fn explorer_chosen(&mut self, succeeded: bool) {
+        self.explorer.chosen(succeeded);
+        if succeeded {
+            self.navigate(NavInput::ExitMode);
+        }
+    }
+
+    /// The explorer's footer checkboxes, which the Client keeps across a restart.
+    pub fn explorer_filters(&self) -> ExplorerFilters {
+        self.explorer.filters()
+    }
+
+    pub fn set_explorer_filters(&mut self, filters: ExplorerFilters) {
+        self.explorer.set_filters(filters);
+    }
+
+    /// Where the explorer starts: `ledger_folder` while it can be read, else `fallback`.
+    pub fn set_explorer_start(
+        &mut self,
+        ledger_folder: Option<PathBuf>,
+        fallback: Option<PathBuf>,
+    ) {
+        self.explorer.set_start_folder(ledger_folder);
+        self.explorer.set_fallback_folder(fallback);
     }
 
     /// The keys every module Dialog shares.
@@ -682,6 +787,64 @@ mod tests {
             shell.rail_mode(WindowSize::Medium, false),
             RailMode::Expanded
         );
+    }
+
+    /// The Shell with `:open` or `:new`'s explorer open on an empty `/ledgers`.
+    fn exploring(mode: ExplorerMode) -> (Shell, crate::fake::FakeLedgerFolders) {
+        let folders = crate::fake::FakeLedgerFolders::default().folder(PathBuf::from("/ledgers"));
+        let mut shell = shell();
+        shell.set_explorer_start(Some(PathBuf::from("/ledgers")), None);
+        shell.open_explorer(mode, &folders);
+        (shell, folders)
+    }
+
+    #[test]
+    fn the_explorer_stays_in_command_mode_while_open_and_back_leaves_it() {
+        let (mut shell, folders) = exploring(ExplorerMode::Open);
+        assert_eq!(shell.nav().mode(), InputMode::Command);
+        assert_eq!(
+            shell.explorer().map(|explorer| explorer.mode),
+            Some(ExplorerMode::Open)
+        );
+
+        assert_eq!(
+            shell.explorer_key("esc", None, &folders),
+            ExplorerOutcome::Closed
+        );
+
+        assert!(!shell.explorer_open());
+        assert_eq!(shell.nav().mode(), InputMode::Normal);
+    }
+
+    #[test]
+    fn a_chosen_file_that_opened_closes_the_explorer_and_one_that_failed_keeps_it() {
+        let (mut shell, folders) = exploring(ExplorerMode::New);
+        for ch in "teda".chars() {
+            shell.explorer_key("", Some(ch), &folders);
+        }
+        assert!(matches!(
+            shell.explorer_key("enter", None, &folders),
+            ExplorerOutcome::Chosen(_)
+        ));
+
+        shell.explorer_chosen(false);
+        assert!(shell.explorer_open(), "stays open for another pick");
+        assert_eq!(shell.nav().mode(), InputMode::Command);
+
+        shell.explorer_chosen(true);
+        assert!(!shell.explorer_open());
+        assert_eq!(shell.nav().mode(), InputMode::Normal);
+    }
+
+    #[test]
+    fn the_explorers_filters_outlive_each_opening() {
+        let (mut shell, folders) = exploring(ExplorerMode::Open);
+        shell.explorer_toggle_filter(ExplorerFilter::PldbOnly);
+        shell.explorer_key("esc", None, &folders);
+
+        shell.open_explorer(ExplorerMode::Open, &folders);
+
+        assert!(!shell.explorer_filters().pldb_only);
     }
 
     #[test]

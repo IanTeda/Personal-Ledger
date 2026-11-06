@@ -13,7 +13,7 @@ use crate::navigation::chord::chord;
 use crate::shell::view::dialog_entity::DialogHandle;
 use crate::{
     navigation::{
-        explorer::ExplorerMode,
+        explorer::FsLedgerFolders,
         movement::Movement,
         nav::{FocusZone, InputMode},
     },
@@ -29,24 +29,20 @@ pub const PENDING_G_TIMEOUT: Duration = Duration::from_millis(1000);
 
 impl Root {
     /// The status line's own COMMAND-mode echo (`crate::shell::view::statusline::StatusLine`'s
-    /// `command_echo`): the palette's live input while it's open, or -- once `:open` has been
-    /// confirmed and the palette has closed in its favour -- the file explorer's frozen
-    /// `"open"` echo, each paired with its own "esc closes ..." hint text, under the key `back` is
-    /// bound to now for the palette.
+    /// `command_echo`): the palette's live input while it's open, or -- once `:open` or `:new` has
+    /// been confirmed and the palette has closed in its favour -- the file explorer's frozen
+    /// `"open"` or `"new"` echo, each read from its Presenter and paired with its own "esc closes
+    /// ..." hint text, under the key `back` is bound to now.
     pub(super) fn command_echo(&self) -> Option<(String, String)> {
         if let Some(palette) = self.presenter.palette() {
             Some((
                 palette.input,
                 crate::msg::desktop_status_close_command_window(&palette.keys.close),
             ))
-        } else if let Some(explorer) = self.file_explorer.as_ref() {
-            let name = match explorer.mode() {
-                ExplorerMode::Open => "open",
-                ExplorerMode::New => "new",
-            };
+        } else if let Some(explorer) = self.presenter.explorer() {
             Some((
-                name.to_string(),
-                crate::msg::desktop_status_close_file_explorer("esc"),
+                explorer.mode.command().to_string(),
+                crate::msg::desktop_status_close_file_explorer(&explorer.close_key),
             ))
         } else {
             None
@@ -129,7 +125,7 @@ impl Root {
     /// and any Dialog without applying it, and leaves the mode.
     fn close_popups_and_exit_mode(&mut self) {
         self.presenter.close_palette();
-        self.file_explorer = None;
+        self.presenter.close_explorer();
         // The README's own Dialog lifecycle table: "`esc` closes any dialog without saving" --
         // discards whatever was typed, same as Cancel.
         self.close_dialog();
@@ -229,27 +225,16 @@ impl Root {
         }
     }
 
-    /// Routes a keystroke while `:new`'s file explorer is open (1e·new): its File name field has
-    /// the focus, so `backspace` and any unmodified, printable key edit the name, and `enter`
-    /// creates the file, as Create does. `:open`'s explorer picks a file by mouse alone, so it
-    /// takes no key here.
+    /// A key while the file explorer is open: its Presenter resolves it through the Dialog keymap,
+    /// `back` closing it, and in `:new` types any key the keymap doesn't bind into the File name,
+    /// select creating the file, as Create does. `:open`'s explorer picks a file by mouse alone.
+    /// The explorer takes every key, so a key it gives no meaning to goes no further.
     fn handle_explorer_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
-        let Some(explorer) = self
-            .file_explorer
-            .as_mut()
-            .filter(|explorer| explorer.mode() == ExplorerMode::New)
-        else {
-            return false;
-        };
-        match keystroke.key.as_str() {
-            "backspace" => explorer.backspace(),
-            "enter" => self.confirm_explorer_open(cx),
-            _ => match typed_char(keystroke) {
-                Some(ch) => explorer.push_char(ch),
-                None => return false,
-            },
-        }
-        true
+        let chord = chord(keystroke).unwrap_or_default();
+        let outcome = self
+            .presenter
+            .explorer_key(&chord, typed_char(keystroke), &FsLedgerFolders);
+        self.explorer_outcome(outcome, cx)
     }
 
     /// Routes a keystroke while `InputMode::Search` is active (step 2, mirroring
@@ -308,9 +293,10 @@ impl KeyRoute for Keys<'_, '_> {
         Some(true)
     }
 
-    /// The palette, Search, a filter, the file explorer or Insert takes every key. A mode the View
-    /// entered for something of its own reads them first, `Esc` included. The palette reads its
-    /// keys, `back` included, through its Presenter.
+    /// The palette, Search, a filter, the file explorer or Insert takes every key. The palette and
+    /// the file explorer are the Shell's own, and read their keys, `back` included, through its
+    /// Presenter. A mode the View entered for something of its own reads them first, `Esc`
+    /// included.
     fn mode(&mut self) -> Option<bool> {
         let shell = &mut *self.shell;
         let mode = shell.nav().mode();
@@ -319,6 +305,9 @@ impl KeyRoute for Keys<'_, '_> {
         }
         if shell.presenter.palette_open() {
             return Some(shell.handle_palette_key(self.keystroke, self.window_size, self.cx));
+        }
+        if shell.presenter.explorer_open() {
+            return Some(shell.handle_explorer_key(self.keystroke, self.cx));
         }
         if self.keystroke.key == "escape" {
             if !(shell.view_owns_mode() && shell.active_view_entity(self.cx).escape(self.cx)) {
@@ -333,11 +322,15 @@ impl KeyRoute for Keys<'_, '_> {
             return Some(true);
         }
         let taken = match mode {
-            InputMode::Command => shell.handle_explorer_key(self.keystroke, self.cx),
             InputMode::Search => shell.handle_search_key(self.keystroke, self.cx),
             // Only a View opens a filter popover, and it reads the popover's keys above; what it
             // leaves is swallowed, as is every key in Insert, which has no input surface yet.
-            InputMode::Filter | InputMode::Insert | InputMode::Dialog | InputMode::Normal => false,
+            // Command mode with neither the palette nor the explorer open has nothing to type into.
+            InputMode::Command
+            | InputMode::Filter
+            | InputMode::Insert
+            | InputMode::Dialog
+            | InputMode::Normal => false,
         };
         Some(taken)
     }

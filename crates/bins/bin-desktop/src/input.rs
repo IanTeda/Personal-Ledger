@@ -14,11 +14,12 @@
 //! Every key takes one route, [`route_key`], offered to each step in turn until one takes it:
 //!
 //! 1. An open Dialog takes every key.
-//! 2. A mode: the command palette, whose keys `lib-shell`'s palette Presenter resolves through the
-//!    Dialog keymap, or one left in the bin: Search, a filter, the file explorer, or a mode the
-//!    active View entered for something of its own. Whether the View or the Shell entered the
-//!    current mode is the Shell's: `lib-shell`'s `NavState` records it (`view_owns_mode`), set by
-//!    the View's `ViewEvent::EnterMode` and cleared on leaving any mode.
+//! 2. A mode: the Shell's own command palette or file explorer, whose keys their `lib-shell`
+//!    Presenters resolve through the Dialog keymap, or else the bin hosts only a mode the active
+//!    View entered for something of its own: its Search, a filter popover or an edit in place.
+//!    Whether the View or the Shell entered the current mode is the Shell's: `lib-shell`'s
+//!    `NavState` records it (`view_owns_mode`), set by the View's `ViewEvent::EnterMode` and
+//!    cleared on leaving any mode.
 //! 3. `lib-shell`'s global keymap, which takes the keys the Shell keeps (`?`, `:`, `/`, the rail
 //!    toggle, `shift+tab`, `esc`, the Toast keys and the `g` jumps) and passes the rest on.
 //! 4. The focused module's keymap. In Settings that is the open page's, then the page's own keys
@@ -31,8 +32,8 @@
 //!
 //! Before any step, the Shell's Presenter hears the key arrive and clears the status message, so a
 //! message the key sets answers it alone. The Notices drain into the Presenter's Toast stack and
-//! status line. Halfway state: Search, the filter and the file explorer stay in the bin behind
-//! `InputMode` until their own slice.
+//! status line. Halfway state: the file a palette Command or the file explorer chooses is still
+//! `Root`'s to act on, until the root Router acts on each command itself (#1065).
 
 use std::borrow::BorrowMut;
 use std::rc::Rc;

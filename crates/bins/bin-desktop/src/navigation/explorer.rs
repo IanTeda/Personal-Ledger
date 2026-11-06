@@ -1,14 +1,14 @@
-//! The floating "1e" file explorer behind `:open`
-//! (`docs/ux/desktop-mockups/01-shell/README.md`) -- browsing real directories to a `.pldb`
-//! ledger file. `Root` owns `Option<FileExplorer>`, `Some` only while the dialog is open,
-//! mirroring the split the command palette had before its state moved into `lib-shell`: pure, `gpui`-free state and unit tests
-//! here, `render` the one method that touches `gpui`.
+//! The floating "1e" file explorer behind `:open` and `:new`
+//! (`docs/ux/desktop-mockups/01-shell/README.md`), drawn from `lib-shell`'s explorer Presenter
+//! ([`lib_shell::explorer`]), which the Shell's Presenter holds, and [`FsLedgerFolders`], the
+//! `LedgerFolders` port it reads the disk through. `render` draws the Presenter's view model; the
+//! row list's scroll handle is the Desktop's own.
 //!
-//! Unlike `Dashboard`'s dummy data, the handoff's own Implementation note 11 is explicit that
-//! row eligibility must be "type-driven, not name-driven... gate selectability on the actual
-//! file extension read from the filesystem" -- so [`FileExplorer`] walks the real filesystem
-//! (`std::fs::read_dir`), not fixture data. `Root` acts on [`FileExplorer::target`]: opening the
-//! selected file, or creating the one New mode's File name names (#980).
+//! The handoff's Implementation note 11 asks for row eligibility to be "type-driven, not
+//! name-driven... gate selectability on the actual file extension read from the filesystem", so
+//! the adapter reads the real folder (`std::fs::read_dir`) and each entry's kind is its real
+//! extension ([`lib_shell::EntryKind::of`]). `Root` acts on the file the Presenter chooses:
+//! opening it, or creating the one `:new`'s File name names (#980).
 
 use std::{
     path::{Path, PathBuf},
@@ -18,8 +18,14 @@ use std::{
 
 use gpui::{App, BoxShadow, SharedString, Window, div, point, prelude::*, px};
 use gpui_component::Sizable;
+use lib_shell::{
+    EntryKind, ExplorerFilter, ExplorerFilters, ExplorerMode, ExplorerViewModel, FolderEntry,
+    FolderUnreadable, LedgerFolders,
+};
 
 use crate::{assets::icon::DesktopIcon, msg, theme::color};
+
+pub use lib_shell::explorer::display_name;
 
 /// Dialog width: the "1e" spec's own `640px`.
 pub const WIDTH: gpui::Pixels = px(640.0);
@@ -32,319 +38,40 @@ pub const TOP_OFFSET: gpui::Pixels = px(80.0);
 /// more than that, but a real directory can hold far more entries than fit the dialog.
 const MAX_ROWS_HEIGHT: gpui::Pixels = px(6.0 * 31.0);
 
-/// What kind of thing a row represents -- drives both its icon/dimming and whether a click on
-/// it selects, navigates, or does nothing (README's "Row click selects it; only `.pldb` rows
-/// are selectable as the open target -- folders navigate in, other extensions are inert").
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EntryKind {
-    Folder,
-    /// A real `.pldb` file -- the only kind [`FileExplorer::click_entry`] will select.
-    Ledger,
-    /// Any other file: visible (so the mockup's own decoys read at a glance), never selectable.
-    Other,
-}
+/// The explorer's folders, read from the disk. An entry whose metadata can't be read (a race with
+/// its deletion) is left out.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct FsLedgerFolders;
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct DirEntry {
-    pub name: String,
-    pub path: PathBuf,
-    pub kind: EntryKind,
-    /// `None` for a folder -- the mockup's own SIZE column renders `—` for one.
-    pub size: Option<u64>,
-    pub modified: Option<SystemTime>,
-}
-
-/// Which command opened the dialog: `:open` browses to a `.pldb` to open (1e), `:new` names a
-/// file to create in the folder browsed to (1e·new, #980).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExplorerMode {
-    Open,
-    New,
-}
-
-/// The two footer checkboxes (frame 1e). Persisted by `crate::persistence` so the choice
-/// survives a restart, hence `Serialize`/`Deserialize` and a hand-written `Default`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(default)]
-pub struct ExplorerFilters {
-    /// Show only folders and real `.pldb` files. Folders stay so navigation still works.
-    pub pldb_only: bool,
-    /// Hide entries whose name begins with `.`.
-    pub hide_hidden: bool,
-}
-
-impl Default for ExplorerFilters {
-    fn default() -> Self {
-        Self {
-            pldb_only: true,
-            hide_hidden: true,
-        }
-    }
-}
-
-/// Which footer checkbox a click toggled.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExplorerFilter {
-    PldbOnly,
-    HideHidden,
-}
-
-/// State for the floating file explorer: the directory currently being browsed, its entries,
-/// and the current `.pldb` selection (if any). Re-reads the filesystem on every navigation
-/// (`reload`) rather than caching -- a directory listing is cheap enough that staleness isn't
-/// worth guarding against here.
-pub struct FileExplorer {
-    mode: ExplorerMode,
-    current_path: PathBuf,
-    /// Everything `read_dir` returned for `current_path`, unfiltered, so toggling a filter
-    /// re-filters live without touching the filesystem again.
-    listing: Vec<DirEntry>,
-    /// `listing` after `filters`: what the rows and the item count show.
-    entries: Vec<DirEntry>,
-    filters: ExplorerFilters,
-    selected: Option<PathBuf>,
-    /// New mode's File name field, as typed: [`Self::target`] adds `.pldb` if it's missing.
-    file_name: String,
-    /// The file name New mode's name clashes with in the folder browsed to, checked as the name or
-    /// the folder changes rather than on every frame ([`Self::name_taken`]).
-    taken: Option<String>,
-    /// The row list's own scroll, unlike `Palette`'s fixed, small registry -- a real directory
-    /// (the mockup's own illustrative 6 rows aside) can hold far more entries than fit the
-    /// dialog's [`MAX_ROWS_HEIGHT`], discovered by browsing a real home directory (50 entries)
-    /// during this ticket's own verification.
-    scroll_handle: gpui::ScrollHandle,
-}
-
-impl FileExplorer {
-    /// Opens browsing `start` -- callers pass `dirs::home_dir()` (falling back to the current
-    /// directory), since the handoff names no default starting directory of its own.
-    pub fn open_at(mode: ExplorerMode, start: PathBuf, filters: ExplorerFilters) -> Self {
-        let mut explorer = Self {
-            mode,
-            current_path: start,
-            listing: Vec::new(),
-            entries: Vec::new(),
-            filters,
-            selected: None,
-            file_name: String::new(),
-            taken: None,
-            scroll_handle: gpui::ScrollHandle::new(),
-        };
-        explorer.reload();
-        explorer
-    }
-
-    pub fn mode(&self) -> ExplorerMode {
-        self.mode
-    }
-
-    pub fn current_path(&self) -> &Path {
-        &self.current_path
-    }
-
-    pub fn entries(&self) -> &[DirEntry] {
-        &self.entries
-    }
-
-    pub fn filters(&self) -> ExplorerFilters {
-        self.filters
-    }
-
-    /// Flips one footer checkbox and re-filters the loaded listing. A selection the new filters
-    /// hide is dropped, so Open can never act on a row the user can no longer see.
-    pub fn toggle_filter(&mut self, filter: ExplorerFilter) {
-        match filter {
-            ExplorerFilter::PldbOnly => self.filters.pldb_only = !self.filters.pldb_only,
-            ExplorerFilter::HideHidden => self.filters.hide_hidden = !self.filters.hide_hidden,
-        }
-        self.apply_filters();
-        if let Some(selected) = &self.selected
-            && !self.entries.iter().any(|entry| &entry.path == selected)
-        {
-            self.selected = None;
-        }
-    }
-
-    fn apply_filters(&mut self) {
-        let filters = self.filters;
-        self.entries = self
-            .listing
-            .iter()
-            .filter(|entry| !(filters.hide_hidden && entry.name.starts_with('.')))
-            .filter(|entry| !(filters.pldb_only && entry.kind == EntryKind::Other))
-            .cloned()
-            .collect();
-    }
-
-    pub fn selected(&self) -> Option<&Path> {
-        self.selected.as_deref()
-    }
-
-    /// README's "Open is disabled until a `.pldb` row is selected", and 1e·new's "Create stays
-    /// disabled until the name is free".
-    pub fn can_open(&self) -> bool {
-        self.target().is_some()
-    }
-
-    /// The Ledger file Open or Create acts on: Open's selected `.pldb`, or the file New mode's
-    /// name makes in the folder browsed to, while nothing is already there by that name.
-    pub fn target(&self) -> Option<PathBuf> {
-        match self.mode {
-            ExplorerMode::Open => self.selected.clone(),
-            ExplorerMode::New => self.new_file_path().filter(|_| self.taken.is_none()),
-        }
-    }
-
-    /// New mode's File name field, as typed.
-    pub fn file_name(&self) -> &str {
-        &self.file_name
-    }
-
-    /// Types `ch` into New mode's File name field.
-    pub fn push_char(&mut self, ch: char) {
-        self.file_name.push(ch);
-        self.check_name();
-    }
-
-    /// Deletes the last character of New mode's File name field, if any.
-    pub fn backspace(&mut self) {
-        self.file_name.pop();
-        self.check_name();
-    }
-
-    /// The file name New mode's name clashes with in the folder browsed to, which 1e·new refuses
-    /// inline; `None` while the name is free, or names no file at all.
-    pub fn name_taken(&self) -> Option<String> {
-        self.taken.clone()
-    }
-
-    /// Checks New mode's name against the folder browsed to. The name is taken when the file is
-    /// there, or any journal SQLite keeps beside it ([`crate::ledger_files`]): a stale `-wal`
-    /// would replay an old Ledger into the new one, and a failed Create removes them all.
-    fn check_name(&mut self) {
-        self.taken = self.new_file_path().and_then(|path| {
-            crate::ledger_files(&path)
-                .iter()
-                .any(|file| std::fs::symlink_metadata(file).is_ok())
-                .then(|| display_name(&path))
-        });
-    }
-
-    /// The file New mode's name makes in the folder browsed to, with `.pldb` added if the name
-    /// doesn't end in it. `None` for a blank name, or one that isn't a single file name (`..`, or
-    /// one holding a separator), since Create makes the file in the folder browsed to and nowhere
-    /// else.
-    fn new_file_path(&self) -> Option<PathBuf> {
-        let name = self.file_name.trim();
-        let mut components = Path::new(name).components();
-        let single = matches!(
-            (components.next(), components.next()),
-            (Some(std::path::Component::Normal(part)), None) if part == name
-        );
-        if !single {
-            return None;
-        }
-        let file = if is_pldb(Path::new(name)) {
-            name.to_string()
-        } else {
-            format!("{name}.pldb")
-        };
-        Some(self.current_path.join(file))
-    }
-
-    /// Re-reads `current_path` from the real filesystem: folders first, then every other entry,
-    /// both ordered case-insensitively by name -- a directory a user can actually read never
-    /// depends on the mockup's own illustrative (non-alphabetical) row order. An unreadable
-    /// directory (permissions, a race with deletion) yields an empty listing rather than an
-    /// error -- there's nothing actionable a user could do about it from this dialog beyond
-    /// navigating elsewhere.
-    fn reload(&mut self) {
-        self.selected = None;
-        self.scroll_handle.set_offset(gpui::Point::default());
-        let mut entries = Vec::new();
-        if let Ok(read_dir) = std::fs::read_dir(&self.current_path) {
-            for entry in read_dir.flatten() {
+impl LedgerFolders for FsLedgerFolders {
+    fn read_folder(&self, folder: &Path) -> Result<Vec<FolderEntry>, FolderUnreadable> {
+        let read_dir =
+            std::fs::read_dir(folder).map_err(|error| FolderUnreadable(error.to_string()))?;
+        Ok(read_dir
+            .flatten()
+            .filter_map(|entry| {
                 let path = entry.path();
-                let Ok(metadata) = entry.metadata() else {
-                    continue;
-                };
-                let is_dir = metadata.is_dir();
-                let kind = if is_dir {
-                    EntryKind::Folder
-                } else if is_pldb(&path) {
-                    EntryKind::Ledger
-                } else {
-                    EntryKind::Other
-                };
-                entries.push(DirEntry {
+                let metadata = entry.metadata().ok()?;
+                let is_folder = metadata.is_dir();
+                Some(FolderEntry {
                     name: entry.file_name().to_string_lossy().into_owned(),
-                    path,
-                    kind,
-                    size: (!is_dir).then_some(metadata.len()),
+                    kind: EntryKind::of(&path, is_folder),
+                    size: (!is_folder).then_some(metadata.len()),
                     modified: metadata.modified().ok(),
-                });
-            }
-        }
-        entries.sort_by(|a, b| {
-            let a_is_folder = a.kind == EntryKind::Folder;
-            let b_is_folder = b.kind == EntryKind::Folder;
-            b_is_folder
-                .cmp(&a_is_folder)
-                .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-        });
-        self.listing = entries;
-        self.apply_filters();
-        self.check_name();
+                    path,
+                })
+            })
+            .collect())
     }
 
-    /// A row click (README: "Row click selects it; only `.pldb` rows are selectable as the open
-    /// target -- folders navigate in, other extensions are inert"). A `path` that no longer
-    /// matches any current entry (stale after a concurrent filesystem change) is a no-op.
-    pub fn click_entry(&mut self, path: &Path) {
-        let Some(entry) = self.entries.iter().find(|entry| entry.path == path) else {
-            return;
-        };
-        match entry.kind {
-            EntryKind::Folder => {
-                self.current_path = entry.path.clone();
-                self.reload();
-            }
-            // 1e·new: nothing is selected in New mode, where a file row only shows what is there.
-            EntryKind::Ledger if self.mode == ExplorerMode::Open => {
-                self.selected = Some(entry.path.clone());
-            }
-            EntryKind::Ledger | EntryKind::Other => {}
-        }
+    /// A broken link is there too: `symlink_metadata` doesn't follow it.
+    fn exists(&self, path: &Path) -> bool {
+        std::fs::symlink_metadata(path).is_ok()
     }
-
-    /// A breadcrumb segment click (README: "Breadcrumb segments are clickable to jump up the
-    /// path"): jumps straight to `path`, one of [`breadcrumb_segments`]'s own ancestor paths.
-    pub fn navigate_to(&mut self, path: PathBuf) {
-        self.current_path = path;
-        self.reload();
-    }
-}
-
-/// `path`'s file name as a Toast or the explorer names it, else the whole path (a root).
-pub fn display_name(path: &Path) -> String {
-    path.file_name().map_or_else(
-        || path.display().to_string(),
-        |name| name.to_string_lossy().into_owned(),
-    )
-}
-
-/// The literal, case-insensitive `.pldb` extension check the handoff's Implementation note 11
-/// calls for ("gate selectability on the actual file extension... not name-driven") --
-/// `Path::extension()`, never a filename substring match, so `old-ledger.pldb.bak` (the
-/// mockup's own decoy) reads as extension `bak`, not a match.
-fn is_pldb(path: &Path) -> bool {
-    path.extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("pldb"))
 }
 
 /// Breadcrumb segments for `path`, oldest first: a display label paired with the real ancestor
-/// path a click on it should jump to (`FileExplorer::navigate_to`). A path under the home
+/// path a click on it should jump to (the Presenter's `explorer_browse`). A path under the home
 /// directory collapses its home prefix to a leading `~` segment, matching the mockup's own
 /// `~ / documents / **ledgers**`; anything else walks every component from the filesystem root.
 pub fn breadcrumb_segments(path: &Path) -> Vec<(String, PathBuf)> {
@@ -428,83 +155,86 @@ pub type OnFilterToggle = Rc<dyn Fn(ExplorerFilter, &mut Window, &mut App)>;
 pub type OnCancel = Rc<dyn Fn(&mut Window, &mut App)>;
 pub type OnOpen = Rc<dyn Fn(&mut Window, &mut App)>;
 
-impl FileExplorer {
-    /// The floating dialog itself: `position: absolute`, centred at [`TOP_OFFSET`] from the
-    /// window's top edge -- the same centring technique as `shell::view::palette::render`'s own doc explains
-    /// (`gpui` has no CSS-style transform to recentre a percentage position). Borrows `self`
-    /// rather than consuming it, since `Root` keeps this state past the render call that draws
-    /// it.
-    pub fn render(
-        &self,
-        on_entry_click: OnEntryClick,
-        on_breadcrumb_click: OnBreadcrumbClick,
-        on_filter_toggle: OnFilterToggle,
-        on_cancel: OnCancel,
-        on_open: OnOpen,
-        cx: &App,
-    ) -> gpui::AnyElement {
-        div()
-            .absolute()
-            .top(TOP_OFFSET)
-            .left(px(0.0))
-            .right(px(0.0))
-            .flex()
-            .justify_center()
-            .child(
-                div()
-                    .w(WIDTH)
-                    .flex()
-                    .flex_col()
-                    .bg(color::background(cx))
-                    .border(px(2.0))
-                    .border_color(color::foreground(cx))
-                    .shadow(vec![BoxShadow {
-                        color: color::dialog_shadow(cx).into(),
-                        offset: point(px(0.0), px(16.0)),
-                        blur_radius: px(48.0),
-                        spread_radius: px(0.0),
-                    }])
-                    .child(header(self.mode, cx))
-                    .child(path_bar(
-                        &self.current_path,
-                        self.entries.len(),
-                        on_breadcrumb_click,
+/// The floating dialog itself: `position: absolute`, centred at [`TOP_OFFSET`] from the window's
+/// top edge -- the same centring technique as `shell::view::palette::render`'s own doc explains
+/// (`gpui` has no CSS-style transform to recentre a percentage position). `scroll_handle` keeps
+/// the row list's scroll, which `Root` puts back at the top on each new folder.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "one handler per affordance, as the palette and rails take theirs"
+)]
+pub fn render(
+    explorer: &ExplorerViewModel,
+    scroll_handle: &gpui::ScrollHandle,
+    on_entry_click: OnEntryClick,
+    on_breadcrumb_click: OnBreadcrumbClick,
+    on_filter_toggle: OnFilterToggle,
+    on_cancel: OnCancel,
+    on_open: OnOpen,
+    cx: &App,
+) -> gpui::AnyElement {
+    let entries = &explorer.entries;
+    div()
+        .absolute()
+        .top(TOP_OFFSET)
+        .left(px(0.0))
+        .right(px(0.0))
+        .flex()
+        .justify_center()
+        .child(
+            div()
+                .w(WIDTH)
+                .flex()
+                .flex_col()
+                .bg(color::background(cx))
+                .border(px(2.0))
+                .border_color(color::foreground(cx))
+                .shadow(vec![BoxShadow {
+                    color: color::dialog_shadow(cx).into(),
+                    offset: point(px(0.0), px(16.0)),
+                    blur_radius: px(48.0),
+                    spread_radius: px(0.0),
+                }])
+                .child(header(explorer.mode, cx))
+                .child(path_bar(
+                    &explorer.folder,
+                    entries.len(),
+                    on_breadcrumb_click,
+                    cx,
+                ))
+                .child(column_header(cx))
+                .child(
+                    div()
+                        .id("explorer-rows")
+                        .max_h(MAX_ROWS_HEIGHT)
+                        .overflow_y_scroll()
+                        .track_scroll(scroll_handle)
+                        .children(entries.iter().enumerate().map(|(index, entry)| {
+                            let is_last = index == entries.len() - 1;
+                            let selected =
+                                explorer.selected.as_deref() == Some(entry.path.as_path());
+                            row(entry, index, selected, is_last, on_entry_click.clone(), cx)
+                        })),
+                )
+                .when(explorer.mode == ExplorerMode::New, |this| {
+                    this.child(file_name_field(
+                        &explorer.file_name,
+                        explorer.name_taken.clone(),
+                        &explorer.folder,
                         cx,
                     ))
-                    .child(column_header(cx))
-                    .child(
-                        div()
-                            .id("explorer-rows")
-                            .max_h(MAX_ROWS_HEIGHT)
-                            .overflow_y_scroll()
-                            .track_scroll(&self.scroll_handle)
-                            .children(self.entries.iter().enumerate().map(|(index, entry)| {
-                                let is_last = index == self.entries.len() - 1;
-                                let selected =
-                                    self.selected.as_deref() == Some(entry.path.as_path());
-                                row(entry, index, selected, is_last, on_entry_click.clone(), cx)
-                            })),
-                    )
-                    .when(self.mode == ExplorerMode::New, |this| {
-                        this.child(file_name_field(
-                            &self.file_name,
-                            self.name_taken(),
-                            &self.current_path,
-                            cx,
-                        ))
-                    })
-                    .child(footer(
-                        self.mode,
-                        self.filters,
-                        self.can_open(),
-                        on_filter_toggle,
-                        on_cancel,
-                        on_open,
-                        cx,
-                    )),
-            )
-            .into_any_element()
-    }
+                })
+                .child(footer(
+                    explorer.mode,
+                    explorer.filters,
+                    explorer.can_confirm,
+                    on_filter_toggle,
+                    on_cancel,
+                    on_open,
+                    cx,
+                )),
+        )
+        .into_any_element()
 }
 
 fn header(mode: ExplorerMode, cx: &App) -> impl IntoElement {
@@ -607,7 +337,7 @@ fn column_header(cx: &App) -> impl IntoElement {
 }
 
 fn row(
-    entry: &DirEntry,
+    entry: &FolderEntry,
     index: usize,
     selected: bool,
     is_last: bool,
@@ -874,326 +604,38 @@ fn filter_checkbox(
 mod tests {
     use super::*;
 
-    /// Every file kind visible, so tests of listing, sorting and clicking see all fixtures.
-    fn all_files() -> ExplorerFilters {
-        ExplorerFilters {
-            pldb_only: false,
-            hide_hidden: true,
-        }
-    }
-
-    fn touch(path: &Path) {
-        std::fs::write(path, b"stub").expect("write should succeed");
-    }
-
     #[test]
-    fn open_at_records_its_mode() {
+    fn the_disk_adapter_reads_a_real_folder_and_says_what_is_there() {
         let dir = tempfile::tempdir().expect("tempdir should be creatable");
+        std::fs::create_dir(dir.path().join("archive")).expect("a folder");
+        std::fs::write(dir.path().join("teda.pldb"), b"stub").expect("a file");
+        std::fs::write(dir.path().join("notes.csv"), b"stub").expect("a file");
 
-        let explorer =
-            FileExplorer::open_at(ExplorerMode::New, dir.path().to_path_buf(), all_files());
+        let mut entries = FsLedgerFolders
+            .read_folder(dir.path())
+            .expect("the folder reads");
+        entries.sort_by(|a, b| a.name.cmp(&b.name));
 
-        assert_eq!(explorer.mode(), ExplorerMode::New);
-    }
-
-    /// A New mode explorer browsing `dir`, with `name` typed into its File name field.
-    fn naming(dir: &Path, name: &str) -> FileExplorer {
-        let mut explorer = FileExplorer::open_at(ExplorerMode::New, dir.to_path_buf(), all_files());
-        name.chars().for_each(|ch| explorer.push_char(ch));
-        explorer
-    }
-
-    #[test]
-    fn a_typed_name_creates_that_name_with_pldb_added() {
-        let dir = tempfile::tempdir().expect("tempdir should be creatable");
-
-        let explorer = naming(dir.path(), "teda-2027");
-
-        assert_eq!(explorer.file_name(), "teda-2027");
-        assert_eq!(explorer.target(), Some(dir.path().join("teda-2027.pldb")));
-        assert!(explorer.can_open());
-    }
-
-    #[test]
-    fn a_name_ending_in_pldb_in_any_case_is_not_given_it_again() {
-        let dir = tempfile::tempdir().expect("tempdir should be creatable");
-
+        let read: Vec<_> = entries
+            .iter()
+            .map(|entry| (entry.name.as_str(), entry.kind, entry.size))
+            .collect();
         assert_eq!(
-            naming(dir.path(), "teda.PLDB").target(),
-            Some(dir.path().join("teda.PLDB"))
-        );
-        assert_eq!(
-            naming(dir.path(), "teda.pldb.bak").target(),
-            Some(dir.path().join("teda.pldb.bak.pldb")),
-            "only a real .pldb extension counts"
-        );
-    }
-
-    #[test]
-    fn a_name_already_in_the_folder_is_refused() {
-        let dir = tempfile::tempdir().expect("tempdir should be creatable");
-        touch(&dir.path().join("teda.pldb"));
-
-        let explorer = naming(dir.path(), "teda");
-
-        assert_eq!(
-            explorer.name_taken(),
-            Some("teda.pldb".to_string()),
-            "names the file it clashes with"
-        );
-        assert_eq!(explorer.target(), None);
-        assert!(!explorer.can_open());
-    }
-
-    #[test]
-    fn a_blank_name_or_one_naming_another_folder_creates_nothing() {
-        let dir = tempfile::tempdir().expect("tempdir should be creatable");
-
-        for name in ["", "   ", "sub/teda", "..", "."] {
-            let explorer = naming(dir.path(), name);
-            assert_eq!(explorer.target(), None, "{name:?}");
-            assert_eq!(explorer.name_taken(), None, "{name:?}");
-        }
-    }
-
-    #[test]
-    fn backspace_deletes_the_last_character_typed() {
-        let dir = tempfile::tempdir().expect("tempdir should be creatable");
-        let mut explorer = naming(dir.path(), "tedx");
-
-        explorer.backspace();
-        explorer.push_char('a');
-
-        assert_eq!(explorer.file_name(), "teda");
-        for _ in 0..5 {
-            explorer.backspace();
-        }
-        assert_eq!(explorer.file_name(), "", "nothing left to delete");
-    }
-
-    #[test]
-    fn in_new_mode_a_file_row_is_inert_and_a_folder_still_navigates() {
-        let dir = tempfile::tempdir().expect("tempdir should be creatable");
-        let ledger = dir.path().join("teda.pldb");
-        touch(&ledger);
-        let sub = dir.path().join("ledgers");
-        std::fs::create_dir(&sub).unwrap();
-        let mut explorer = naming(dir.path(), "teda-2027");
-
-        explorer.click_entry(&ledger);
-        assert_eq!(explorer.selected(), None, "nothing is selected in New mode");
-
-        explorer.click_entry(&sub);
-        assert_eq!(explorer.current_path(), sub);
-        assert_eq!(
-            explorer.target(),
-            Some(sub.join("teda-2027.pldb")),
-            "the name is kept, made in the folder browsed to"
-        );
-    }
-
-    #[test]
-    fn lists_folders_before_files_case_insensitively() {
-        let dir = tempfile::tempdir().expect("tempdir should be creatable");
-        std::fs::create_dir(dir.path().join("Zeta")).unwrap();
-        std::fs::create_dir(dir.path().join("archive")).unwrap();
-        touch(&dir.path().join("beta.pldb"));
-        touch(&dir.path().join("Alpha.csv"));
-
-        let explorer =
-            FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf(), all_files());
-
-        let names: Vec<_> = explorer.entries().iter().map(|e| e.name.as_str()).collect();
-        assert_eq!(names, vec!["archive", "Zeta", "Alpha.csv", "beta.pldb"]);
-    }
-
-    #[test]
-    fn only_a_real_pldb_extension_is_a_ledger() {
-        let dir = tempfile::tempdir().expect("tempdir should be creatable");
-        touch(&dir.path().join("real.pldb"));
-        // A distinct base name, not just a different case of "real.pldb" -- macOS (APFS) and
-        // Windows (NTFS) are case-insensitive-but-preserving by default, so two paths differing
-        // only by case silently collide onto the one directory entry there (CI caught this: it
-        // passed on Linux, panicked on both macOS and Windows).
-        touch(&dir.path().join("second.PLDB"));
-        touch(&dir.path().join("decoy.pldb.bak"));
-        touch(&dir.path().join("plain.csv"));
-
-        let explorer =
-            FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf(), all_files());
-
-        let kind_of = |name: &str| {
-            explorer
-                .entries()
-                .iter()
-                .find(|e| e.name == name)
-                .map(|e| e.kind)
-                .unwrap()
-        };
-        assert_eq!(kind_of("real.pldb"), EntryKind::Ledger);
-        assert_eq!(
-            kind_of("second.PLDB"),
-            EntryKind::Ledger,
-            "extension check is case-insensitive"
-        );
-        assert_eq!(
-            kind_of("decoy.pldb.bak"),
-            EntryKind::Other,
-            "a `.pldb.bak` file's real extension is `bak`, not `pldb`"
-        );
-        assert_eq!(kind_of("plain.csv"), EntryKind::Other);
-    }
-
-    fn names(explorer: &FileExplorer) -> Vec<&str> {
-        explorer.entries().iter().map(|e| e.name.as_str()).collect()
-    }
-
-    fn filtered_fixture() -> tempfile::TempDir {
-        let dir = tempfile::tempdir().expect("tempdir should be creatable");
-        std::fs::create_dir(dir.path().join("archive")).unwrap();
-        std::fs::create_dir(dir.path().join(".cache")).unwrap();
-        touch(&dir.path().join("teda.pldb"));
-        touch(&dir.path().join(".hidden.pldb"));
-        touch(&dir.path().join("old-ledger.pldb.bak"));
-        touch(&dir.path().join("expenses.csv"));
-        dir
-    }
-
-    #[test]
-    fn default_filters_hide_dot_entries_but_show_every_other_file() {
-        let dir = filtered_fixture();
-
-        let explorer =
-            FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf(), all_files());
-
-        assert_eq!(
-            names(&explorer),
-            vec![
-                "archive",
-                "expenses.csv",
-                "old-ledger.pldb.bak",
-                "teda.pldb"
+            read,
+            [
+                ("archive", EntryKind::Folder, None),
+                ("notes.csv", EntryKind::Other, Some(4)),
+                ("teda.pldb", EntryKind::Ledger, Some(4)),
             ]
         );
-    }
-
-    #[test]
-    fn pldb_only_keeps_folders_and_real_pldb_files_but_not_the_bak_decoy() {
-        let dir = filtered_fixture();
-        let mut explorer =
-            FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf(), all_files());
-
-        explorer.toggle_filter(ExplorerFilter::PldbOnly);
-
-        assert_eq!(names(&explorer), vec!["archive", "teda.pldb"]);
-    }
-
-    #[test]
-    fn showing_hidden_files_reveals_dot_entries_and_counts_them() {
-        let dir = filtered_fixture();
-        let mut explorer =
-            FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf(), all_files());
-
-        explorer.toggle_filter(ExplorerFilter::HideHidden);
-
-        assert_eq!(explorer.entries().len(), 6);
-        assert!(names(&explorer).contains(&".cache"));
-    }
-
-    #[test]
-    fn a_filter_that_hides_the_selection_clears_it() {
-        let dir = filtered_fixture();
-        let hidden = dir.path().join(".hidden.pldb");
-        let mut explorer = FileExplorer::open_at(
-            ExplorerMode::Open,
-            dir.path().to_path_buf(),
-            ExplorerFilters {
-                pldb_only: false,
-                hide_hidden: false,
-            },
+        assert!(entries.iter().all(|entry| entry.modified.is_some()));
+        assert!(FsLedgerFolders.exists(&dir.path().join("teda.pldb")));
+        assert!(!FsLedgerFolders.exists(&dir.path().join("teda.pldb-wal")));
+        assert!(
+            FsLedgerFolders
+                .read_folder(&dir.path().join("missing"))
+                .is_err()
         );
-        explorer.click_entry(&hidden);
-        assert!(explorer.can_open());
-
-        explorer.toggle_filter(ExplorerFilter::HideHidden);
-
-        assert!(!explorer.can_open());
-    }
-
-    #[test]
-    fn clicking_a_folder_navigates_into_it() {
-        let dir = tempfile::tempdir().expect("tempdir should be creatable");
-        let sub = dir.path().join("ledgers");
-        std::fs::create_dir(&sub).unwrap();
-        touch(&sub.join("inner.pldb"));
-
-        let mut explorer =
-            FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf(), all_files());
-        explorer.click_entry(&sub);
-
-        assert_eq!(explorer.current_path(), sub);
-        assert_eq!(explorer.entries().len(), 1);
-        assert_eq!(explorer.entries()[0].name, "inner.pldb");
-    }
-
-    #[test]
-    fn clicking_a_pldb_file_selects_it_but_does_not_open_it() {
-        let dir = tempfile::tempdir().expect("tempdir should be creatable");
-        let pldb = dir.path().join("real.pldb");
-        touch(&pldb);
-
-        let mut explorer =
-            FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf(), all_files());
-        assert!(!explorer.can_open());
-
-        explorer.click_entry(&pldb);
-
-        assert_eq!(explorer.selected(), Some(pldb.as_path()));
-        assert!(explorer.can_open());
-    }
-
-    #[test]
-    fn clicking_a_non_pldb_file_does_nothing() {
-        let dir = tempfile::tempdir().expect("tempdir should be creatable");
-        let csv = dir.path().join("plain.csv");
-        touch(&csv);
-
-        let mut explorer =
-            FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf(), all_files());
-        explorer.click_entry(&csv);
-
-        assert_eq!(explorer.selected(), None);
-        assert!(!explorer.can_open());
-    }
-
-    #[test]
-    fn navigating_into_a_folder_clears_any_prior_selection() {
-        let dir = tempfile::tempdir().expect("tempdir should be creatable");
-        let pldb = dir.path().join("real.pldb");
-        touch(&pldb);
-        let sub = dir.path().join("ledgers");
-        std::fs::create_dir(&sub).unwrap();
-
-        let mut explorer =
-            FileExplorer::open_at(ExplorerMode::Open, dir.path().to_path_buf(), all_files());
-        explorer.click_entry(&pldb);
-        assert!(explorer.can_open());
-
-        explorer.click_entry(&sub);
-
-        assert!(!explorer.can_open());
-    }
-
-    #[test]
-    fn navigate_to_jumps_straight_to_an_ancestor() {
-        let dir = tempfile::tempdir().expect("tempdir should be creatable");
-        let sub = dir.path().join("ledgers");
-        std::fs::create_dir(&sub).unwrap();
-
-        let mut explorer = FileExplorer::open_at(ExplorerMode::Open, sub.clone(), all_files());
-        explorer.navigate_to(dir.path().to_path_buf());
-
-        assert_eq!(explorer.current_path(), dir.path());
     }
 
     #[test]

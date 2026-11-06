@@ -37,7 +37,8 @@ use lib_settings::ColourChoice;
 use lib_shell::{PaletteEntry, ShellCommand};
 use lib_viper::keymap::Keymap;
 
-use crate::{navigation::explorer::ExplorerMode, navigation::nav::Noun, settings::SettingsPage};
+use crate::{navigation::nav::Noun, settings::SettingsPage};
+use lib_shell::ExplorerMode;
 
 /// What running a command does -- the palette's, and `Root::run_command`'s, one source of
 /// truth. Every variant is a real effect: there's no `None`/`Option` case standing in for "not

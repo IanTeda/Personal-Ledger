@@ -86,7 +86,6 @@ use crate::view::active::ActiveViewEntity;
 use crate::{
     documents::{DocumentsMode, LibraryScope, LibrarySort},
     navigation::active_view::ActiveView,
-    navigation::explorer::{ExplorerFilters, FileExplorer},
     navigation::nav::{NavState, Noun, RailMode},
     settings::{SettingsPage, device::DeviceConfigFile, router::PageChanged, state::SettingsView},
     shell::state::ShellState,
@@ -191,19 +190,8 @@ pub struct Root {
     /// Debug builds only: the Kind `F9` raises next, so each can be eyeballed.
     #[cfg(debug_assertions)]
     debug_toast_kind: usize,
-    /// The Ledger folder (`data`), where `:open` and `:new` start browsing; `None` until start-up
-    /// sets this device's settings.
-    ledger_folder: Option<std::path::PathBuf>,
     /// The `[keybindings]` in effect, which a Ledger opened at run time builds its keymaps from.
     keybindings: lib_config::KeyBindingConfig,
-    /// The "1e" file explorer's own state -- `Some` only while `:open`'s dialog is on screen,
-    /// `NavState::mode` stays `InputMode::Command` for as long as
-    /// this is `Some` (see [`Self::run_command`]'s own doc), so the two together -- rather than
-    /// a third `InputMode` variant -- are what "the file explorer is open" means.
-    file_explorer: Option<FileExplorer>,
-    /// The `:open` explorer's footer checkboxes, kept here so they outlive each dialog and reach
-    /// `persistence::PersistedState` at quit.
-    explorer_filters: ExplorerFilters,
     /// Everything built on the Ledger file, `None` with no Ledger open: the one source of truth
     /// for whether one is (#975).
     open: Option<OpenLedger>,
@@ -252,6 +240,8 @@ impl Root {
             prefix_timer: None,
             state: ShellState {
                 palette_scroll: ScrollHandle::new(),
+                explorer_scroll: ScrollHandle::new(),
+                explorer_folder: None,
                 collapsed_rail_tooltip: None,
                 hover_generation: 0,
                 hosted: None,
@@ -260,11 +250,8 @@ impl Root {
             #[cfg(debug_assertions)]
             debug_toast_kind: 0,
             keybindings: lib_config::KeyBindingConfig::default(),
-            ledger_folder: None,
-            file_explorer: None,
             last_ledger_forgotten: false,
             documents_state: None,
-            explorer_filters: ExplorerFilters::default(),
             open: None,
             settings,
             _settings_subscriptions,
@@ -273,6 +260,8 @@ impl Root {
                 presenter.set_palette_entries(command::palette_entries(
                     &lib_config::KeyBindingConfig::default(),
                 ));
+                // Until start-up names the Ledger folder, `:open` and `:new` start at home.
+                presenter.set_explorer_start(None, dirs::home_dir());
                 presenter
             },
         }
@@ -483,12 +472,12 @@ impl Root {
         self.navigate(NavInput::RestoreSettingsPage(restored));
     }
 
-    pub fn explorer_filters(&self) -> ExplorerFilters {
-        self.explorer_filters
+    pub fn explorer_filters(&self) -> lib_shell::ExplorerFilters {
+        self.presenter.explorer_filters()
     }
 
-    pub fn set_explorer_filters(&mut self, filters: ExplorerFilters) {
-        self.explorer_filters = filters;
+    pub fn set_explorer_filters(&mut self, filters: lib_shell::ExplorerFilters) {
+        self.presenter.set_explorer_filters(filters);
     }
 
     /// The primary rail drawn at `window_size`: a `b` override made at that Window Size, or the
@@ -542,7 +531,8 @@ impl Root {
 
     /// Shows `device` on Settings › General: what start-up knows of this device.
     pub fn set_this_device(&mut self, device: lib_settings::ThisDevice, cx: &mut App) {
-        self.ledger_folder = Some(device.ledger_folder.clone());
+        self.presenter
+            .set_explorer_start(Some(device.ledger_folder.clone()), dirs::home_dir());
         self.settings
             .update(cx, |view, cx| view.set_this_device(device, cx));
     }
@@ -572,7 +562,8 @@ impl Root {
     /// so a test browses a temporary folder.
     #[doc(hidden)]
     pub fn browse_from_for_test(&mut self, folder: std::path::PathBuf) {
-        self.ledger_folder = Some(folder);
+        self.presenter
+            .set_explorer_start(Some(folder), dirs::home_dir());
     }
 
     /// Tells the General page which Ledger file the state file will remember at quit.

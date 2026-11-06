@@ -258,21 +258,10 @@ pub fn create_ledger_file(
     }
 }
 
-/// The Ledger file at `path` and the journal files SQLite keeps beside it. `:new` refuses a name
-/// while any of them is there, so a failed Create removing them all removes only what it made.
-pub(crate) fn ledger_files(path: &std::path::Path) -> Vec<std::path::PathBuf> {
-    let mut files = vec![path.to_path_buf()];
-    for suffix in ["-wal", "-shm", "-journal"] {
-        let mut side = path.as_os_str().to_owned();
-        side.push(suffix);
-        files.push(side.into());
-    }
-    files
-}
-
 /// Removes a Ledger file a failed `:new` made, with the journal files SQLite keeps beside it.
 fn remove_ledger_file(path: &std::path::Path) {
-    for file in ledger_files(path) {
+    // The same files `:new`'s explorer refuses a name while any is there.
+    for file in lib_shell::explorer::ledger_files(path) {
         match std::fs::remove_file(&file) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
