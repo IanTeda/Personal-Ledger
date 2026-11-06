@@ -479,8 +479,10 @@ impl<P: Copy + Eq + Default, E: Clone> ShellPresenter<P, E> {
     }
 
     /// How the file the explorer chose went: one that opened closes it, leaves Command mode and
-    /// lands on the new Ledger's Dashboard; one that failed leaves it open for another pick.
-    fn explorer_chosen<R: ShellRouter + ?Sized>(&mut self, opened: bool, router: &mut R) {
+    /// lands on the new Ledger's Dashboard; one that failed leaves it open for another pick. A
+    /// Client that finishes a `:new` after the explorer returned (the Desktop's Create ledger
+    /// Dialog) reports it here.
+    pub fn explorer_chosen<R: ShellRouter + ?Sized>(&mut self, opened: bool, router: &mut R) {
         self.explorer.chosen(opened);
         if opened {
             self.navigate(NavInput::ExitMode);

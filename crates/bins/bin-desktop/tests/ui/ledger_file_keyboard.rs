@@ -5,7 +5,9 @@
 //! from `Root`. `:open`'s file explorer picks a file by mouse alone (01-shell's "Row click selects
 //! it"), so opening one is `ledger_file_mouse.rs`'s; here `:open` and `esc` run from the keys (#978).
 //! `:new` names its file in a focused File name field, so creating one runs from the keys here
-//! (#980): a fresh name is created with what every new Ledger starts with (#1067) and opened, a
+//! (#980): a fresh name opens the Create ledger Dialog (#1068), which asks for the base Unit and
+//! writes nothing until Create, then creates the Ledger with what every new Ledger starts with
+//! (#1067) and opens it; Esc leaves what was open and writes nothing, a
 //! name already in the folder is refused
 //! inline, as is one whose SQLite journal is still there, and a folder it can't write keeps the
 //! Open Ledger. Start view (#983) chooses where it
@@ -398,7 +400,21 @@ fn new_with_a_fresh_name_creates_the_ledger_file_and_opens_it(app: &mut TestAppC
     ui.press("enter");
 
     let created = dir.path().join("teda2027.pldb");
-    assert!(created.is_file(), ".pldb is added and the file written");
+    assert_eq!(ui.dialog(), Some("CreateLedger"), "the Dialog asks first");
+    assert_eq!(
+        ui.dialog_value("file").as_deref(),
+        Some("teda2027.pldb"),
+        ".pldb is added and shown, read-only"
+    );
+    assert_eq!(ui.dialog_value("code").as_deref(), Some("usd"));
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("US Dollar"));
+    assert_eq!(ui.dialog_value("kind").as_deref(), Some("Currency"));
+    assert!(!created.exists(), "nothing is written until Create");
+    assert!(!ui.read(|shell| shell.ledger_open()));
+    ui.press("enter");
+
+    assert_eq!(ui.dialog(), None);
+    assert!(created.is_file(), "the file written");
     assert_eq!(ui.ledger_path(), Some(created));
     assert_eq!(ui.noun(), Noun::Dashboard);
     assert_eq!(ui.read(|shell| shell.nav().mode()), InputMode::Normal);
@@ -498,6 +514,8 @@ fn new_in_a_folder_it_cannot_write_keeps_the_open_ledger_and_says_why(app: &mut 
 
     ui.press(": n e w enter");
     ui.press("t e d a enter");
+    assert_eq!(ui.dialog(), Some("CreateLedger"));
+    ui.press("enter");
     std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755))
         .expect("the folder writable again, for the clean-up");
 
@@ -510,6 +528,94 @@ fn new_in_a_folder_it_cannot_write_keeps_the_open_ledger_and_says_why(app: &mut 
         "Couldn't create ledger teda.pldb: it can't be written there"
     );
     assert!(!locked.join("teda.pldb").exists());
+    assert_eq!(
+        ui.dialog(),
+        Some("CreateLedger"),
+        "the Dialog stays for another try"
+    );
+}
+
+#[gpui::test]
+fn esc_on_the_create_ledger_dialog_writes_nothing_and_leaves_the_open_ledger(
+    app: &mut TestAppContext,
+) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let path = dir.path().join("ledger.pldb");
+    let started = bin_desktop::start_on(&new_ledger(&path), common::today());
+    let mut ui = Harness::starting(app, started, PersistedState::default());
+    ui.browse_from(dir.path());
+    ui.press("g w");
+
+    ui.press(": n e w enter");
+    ui.press("t e d a enter");
+    assert_eq!(ui.dialog(), Some("CreateLedger"));
+    ui.press("escape");
+
+    assert_eq!(ui.dialog(), None);
+    assert!(!dir.path().join("teda.pldb").exists(), "esc writes nothing");
+    assert_eq!(ui.ledger_path(), Some(path), "the Open Ledger stays");
+    assert_eq!(ui.noun(), Noun::Bills);
+    assert!(ui.toasts().visible.is_empty());
+    assert_eq!(
+        file_name_field(&mut ui),
+        Some(("teda".to_string(), None)),
+        "the explorer is still up for another name"
+    );
+}
+
+#[gpui::test]
+fn create_ledger_with_a_changed_base_unit_makes_it_the_new_ledgers_base(app: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let mut ui = Harness::without_ledger(app);
+    ui.browse_from(dir.path());
+
+    ui.press(": n e w enter");
+    ui.press("t e d a enter");
+    ui.press("backspace backspace backspace b t c");
+    ui.press("tab down");
+    assert_eq!(ui.dialog_value("field").as_deref(), Some("Type"));
+    assert_eq!(ui.dialog_value("kind").as_deref(), Some("Crypto"));
+    assert_eq!(
+        ui.dialog_value("precision").as_deref(),
+        Some("8"),
+        "Precision follows the Type until typed"
+    );
+    ui.press("tab");
+    ui.press(&"backspace ".repeat("US Dollar".len()));
+    ui.press("B i t c o i n");
+    assert_eq!(ui.dialog_value("name").as_deref(), Some("Bitcoin"));
+    ui.press("enter");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(ui.noun(), Noun::Dashboard);
+    assert_eq!(ui.base_unit_code().as_deref(), Some("btc"));
+    assert_eq!(
+        ui.unit_rows(),
+        [(
+            "btc".to_string(),
+            "Bitcoin".to_string(),
+            "Crypto".to_string()
+        )]
+    );
+}
+
+#[gpui::test]
+fn create_is_off_while_a_field_is_invalid_and_enter_writes_nothing(app: &mut TestAppContext) {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let mut ui = Harness::without_ledger(app);
+    ui.browse_from(dir.path());
+
+    ui.press(": n e w enter");
+    ui.press("t e d a enter");
+    ui.press("backspace backspace backspace");
+    assert_eq!(ui.dialog_value("code").as_deref(), Some(""));
+    assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("false"));
+    ui.press("enter");
+
+    assert_eq!(ui.dialog(), Some("CreateLedger"), "Create is refused");
+    assert!(!dir.path().join("teda.pldb").exists());
+    ui.press("u s d");
+    assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("true"));
 }
 
 /// The Shell started on a new Ledger file `ledger.pldb` in `dir`.

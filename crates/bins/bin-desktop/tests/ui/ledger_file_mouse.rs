@@ -363,6 +363,12 @@ fn clicking_create_makes_the_named_ledger_in_place_of_the_open_one(app: &mut Tes
     ui.click("explorer-open");
 
     let created = folder.path().join("emma.pldb");
+    assert_eq!(ui.dialog(), Some("CreateLedger"), "the Dialog asks first");
+    assert!(!created.exists(), "nothing is written until Create");
+    assert_eq!(ui.ledger_path(), Some(folder.household()), "still open");
+    ui.click("create-ledger-confirm");
+
+    assert_eq!(ui.dialog(), None);
     assert_eq!(ui.ledger_path(), Some(created.clone()));
     assert_eq!(ui.noun(), Noun::Dashboard, "lands on the Dashboard");
     assert_eq!(last_toast(&mut ui), "Created ledger emma.pldb");
@@ -424,8 +430,79 @@ fn in_new_clicking_a_folder_creates_the_ledger_in_it(app: &mut TestAppContext) {
     );
     ui.press("t e d a");
     ui.click("explorer-open");
+    ui.click("create-ledger-confirm");
 
     assert_eq!(ui.ledger_path(), Some(ledgers.join("teda.pldb")));
+}
+
+#[gpui::test]
+fn cancel_on_the_create_ledger_dialog_writes_nothing_and_leaves_the_open_ledger(
+    app: &mut TestAppContext,
+) {
+    let folder = Folder::new();
+    let mut ui = started_on(app, &folder, &folder.household());
+    let entries = folder.entries();
+
+    ui.press(": n e w enter");
+    ui.press("e m m a");
+    ui.click("explorer-open");
+    assert_eq!(ui.dialog(), Some("CreateLedger"));
+    ui.click("create-ledger-cancel");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(ui.ledger_path(), Some(folder.household()));
+    assert_eq!(folder.entries(), entries, "nothing written");
+    assert!(ui.toasts().visible.is_empty());
+}
+
+#[gpui::test]
+fn clicking_a_changed_base_unit_through_the_dialog_makes_it_the_new_ledgers_base(
+    app: &mut TestAppContext,
+) {
+    let folder = Folder::new();
+    let mut ui = Harness::without_ledger(app);
+    ui.browse_from(folder.path());
+
+    ui.click("no-ledger-new");
+    ui.press("e m m a");
+    ui.click("explorer-open");
+    ui.click("create-ledger-code");
+    ui.press("backspace backspace backspace e t h");
+    ui.click("create-ledger-type");
+    assert_eq!(ui.dialog_value("select_open").as_deref(), Some("true"));
+    ui.click("create-ledger-type-option-1");
+    assert_eq!(ui.dialog_value("select_open").as_deref(), Some("false"));
+    assert_eq!(ui.dialog_value("kind").as_deref(), Some("Crypto"));
+    ui.click("create-ledger-name");
+    ui.press(&"backspace ".repeat("US Dollar".len()));
+    ui.press("E t h e r");
+    ui.click("create-ledger-confirm");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(ui.base_unit_code().as_deref(), Some("eth"));
+    assert_eq!(
+        ui.unit_rows(),
+        [("eth".to_string(), "Ether".to_string(), "Crypto".to_string())]
+    );
+}
+
+#[gpui::test]
+fn create_does_nothing_while_a_field_is_invalid(app: &mut TestAppContext) {
+    let folder = Folder::new();
+    let entries = folder.entries();
+    let mut ui = Harness::without_ledger(app);
+    ui.browse_from(folder.path());
+
+    ui.click("no-ledger-new");
+    ui.press("e m m a");
+    ui.click("explorer-open");
+    ui.click("create-ledger-precision");
+    ui.press("backspace x");
+    assert_eq!(ui.dialog_value("can_confirm").as_deref(), Some("false"));
+    ui.click("create-ledger-confirm");
+
+    assert_eq!(ui.dialog(), Some("CreateLedger"));
+    assert_eq!(folder.entries(), entries, "nothing written");
 }
 
 #[gpui::test]

@@ -266,14 +266,30 @@ impl ShellRouter for RootRouter<'_, '_> {
         }
     }
 
-    /// Creates a Ledger file at `path` with the Locale's Currency as its base Unit, then opens it
-    /// in place of the Open Ledger, if any, as [`Self::open_ledger`] does. A create that fails
-    /// raises its own Error Toast and leaves the Open Ledger as it was.
+    /// Opens the Create ledger Dialog on `path`, which writes nothing until Create. Returns
+    /// `false` either way: the explorer stays up under the Dialog, for another pick if Esc
+    /// cancels it, and [`Root::ledger_created`] finishes the job once Create has written the file.
     fn create_ledger(&mut self, path: &Path) -> bool {
+        let dialog = crate::ledger_creation::open(path.to_path_buf(), self.cx);
+        self.cx
+            .subscribe(
+                &dialog,
+                |root, _dialog, event: &crate::ledger_creation::LedgerCreatedEvent, cx| {
+                    root.ledger_created(&event.0.path, cx);
+                },
+            )
+            .detach();
+        super::dialogs::host(self.state, DialogHandle::new(dialog), self.cx);
+        false
+    }
+}
+
+impl RootRouter<'_, '_> {
+    /// Opens the Ledger file the Create ledger Dialog has just written, in place of the Open
+    /// Ledger, if any, as [`ShellRouter::open_ledger`] does, but saying it was created. The Open
+    /// Ledger's writes land first. Whether it opened; one that didn't says why.
+    pub(super) fn open_created(&mut self, path: &Path) -> bool {
         self.flush();
-        if !crate::create_ledger_file(path, self) {
-            return false;
-        }
         match crate::open_ledger_file(path, self.clock.today()) {
             Ok(storage) => {
                 self.swap_in_ledger(path, storage);
@@ -289,9 +305,7 @@ impl ShellRouter for RootRouter<'_, '_> {
             }
         }
     }
-}
 
-impl RootRouter<'_, '_> {
     /// The View showing `noun`, as `Root` forwards to it (ADR-0037).
     fn active_view_entity(&self, noun: Noun) -> ActiveViewEntity {
         active_view_entity(noun, self.settings, self.open.as_ref(), self.cx)

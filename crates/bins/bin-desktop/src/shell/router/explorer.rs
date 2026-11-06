@@ -2,7 +2,7 @@
 //! Presenter is `lib-shell`'s, held by the Shell's (`lib_shell::explorer`), the root Router opens
 //! the file it chooses, and `navigation::explorer` draws it and reads the disk for it.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use gpui::Context;
 use lib_shell::{ExplorerFilter, ExplorerMode, NavInput};
@@ -22,6 +22,18 @@ impl Root {
     ) {
         self.send_with_router(WindowSize::Large, cx, |presenter, router| {
             presenter.explorer_click(&path, click_count, router)
+        });
+        cx.notify();
+    }
+
+    /// The Create ledger Dialog has written the Ledger file at `path`: opens it in place of the
+    /// Open Ledger and, once it opened, closes the explorer and lands on the Dashboard, as the
+    /// explorer's own pick of a file does, as one input. One that didn't open leaves the explorer
+    /// up with the Error Toast.
+    pub(super) fn ledger_created(&mut self, path: &Path, cx: &mut Context<'_, Self>) {
+        self.send_with_router(WindowSize::Large, cx, |presenter, router| {
+            let opened = router.open_created(path);
+            presenter.explorer_chosen(opened, router);
         });
         cx.notify();
     }

@@ -95,7 +95,8 @@ pub trait ShellRouter: Notify {
     fn open_ledger(&mut self, path: &Path) -> bool;
 
     /// `:new`'s file explorer chose `path`: creates a Ledger file there and opens it. Whether it
-    /// opened.
+    /// opened. A Client that asks first (the Desktop's Create ledger Dialog) returns `false` and
+    /// reports the open later through `Presenter::explorer_chosen`.
     fn create_ledger(&mut self, path: &Path) -> bool;
 }
 

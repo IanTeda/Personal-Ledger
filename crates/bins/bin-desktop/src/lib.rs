@@ -24,6 +24,7 @@ mod help;
 mod input;
 mod institutions;
 mod inventory;
+mod ledger_creation;
 pub mod locale;
 pub mod navigation;
 #[doc(hidden)]
@@ -213,21 +214,6 @@ fn open_and_generate(
     bills::ports::generate(&mut storage.bills, today);
     lib_database::Commit::commit(&storage.pending);
     Ok(storage)
-}
-
-/// Creates a Ledger file at `path` for `:new`, with what every new Ledger starts with and the
-/// Locale's Currency as its base Unit, through `lib-ledger-creation` (ADR-0054). The Create ledger
-/// Dialog will ask for the base Unit (#1068); until then nothing is asked. Never touches a file
-/// already at `path`, and a create that fails leaves nothing there. A failure raises the Error
-/// Toast through `notify` and returns `false`; the caller opens the new Ledger.
-pub fn create_ledger_file(path: &std::path::Path, notify: &mut dyn lib_toast::Notify) -> bool {
-    lib_ledger_creation::interactor::CreateLedger {
-        path: path.to_path_buf(),
-        base_unit: lib_ledger_creation::interactor::base_unit_for(lib_locale::locale().currency()),
-        personal: lib_locale::msg::institution_personal(),
-    }
-    .run(&mut lib_database::LedgerCreationAdapter::new(), notify)
-    .is_ok()
 }
 
 /// Why `path` can't be opened without writing to it, or `None` if `open_storage` may open it.

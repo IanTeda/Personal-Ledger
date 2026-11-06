@@ -26,6 +26,7 @@ mod error;
 pub mod fake;
 pub mod interactor;
 pub mod msg;
+pub mod presenter;
 pub mod protocols;
 mod starting;
 

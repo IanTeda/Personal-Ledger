@@ -69,6 +69,7 @@ mod smoke_categories_persist;
 mod smoke_documents_persist;
 mod smoke_institutions_persist;
 mod smoke_inventory_persist;
+mod smoke_ledger_create_persist;
 mod smoke_payees_persist;
 mod smoke_tags_persist;
 mod smoke_units_persist;
