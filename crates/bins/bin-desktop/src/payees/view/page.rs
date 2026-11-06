@@ -6,8 +6,8 @@
 
 mod render;
 
+use crate::ledger_store::Domain;
 use gpui::{AnyElement, App, Context, Entity, EventEmitter, Subscription};
-use lib_ledger::Domain;
 use lib_payees::PayeesOutcome;
 use lib_payees::presenter::{PayeesPageEvent, PayeesPagePresenter, PayeesPageViewModel};
 use lib_viper::keymap::Keymap;

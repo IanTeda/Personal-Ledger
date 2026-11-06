@@ -9,6 +9,7 @@
 
 mod render;
 
+use crate::ledger_store::Domain;
 use gpui::{
     AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Keystroke, Pixels, Point,
     Subscription,
@@ -17,7 +18,6 @@ use lib_inventory::presenter::{
     InventoryPageEvent, InventoryPagePresenter, InventoryPageViewModel, MenuAction,
 };
 use lib_inventory::{InventoryOutcome, InventoryRow, InventoryUnits as _, SharedInventory};
-use lib_ledger::Domain;
 use lib_viper::keymap::Keymap;
 
 use lib_shell::Hint;

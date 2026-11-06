@@ -22,7 +22,7 @@ pub struct InMemoryAccounts {
 
 impl InMemoryAccounts {
     /// The stub seed: the stub Ledger's Accounts (see [`default_accounts`]). Ids match
-    /// `lib-ledger`'s stub, so its Transactions and Budgets still resolve their Accounts.
+    /// `lib-database`'s joined stub, so its Transactions and Budgets still resolve their Accounts.
     pub fn stub() -> Self {
         Self {
             accounts: default_accounts(),

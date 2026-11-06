@@ -19,11 +19,11 @@ use lib_bills::{
     BillAccounts, BillCategories, BillPayees, BillPlan, BillPlanRepository, BillScheduleEntry,
     BillScheduleRepository, BillTransactions, BillUnits, BillsPorts, BillsRepository, PortsMut,
 };
+use lib_database::FakeStores;
 use lib_database::{
     SharedAccountsStore, SharedBillsStore, SharedCategoriesStore, SharedPayeesStore,
     SharedTransactionsStore, SharedUnitsStore, StoredBillReads, StoredBillUnits,
 };
-use lib_ledger::Ledger;
 
 use crate::ledger_store::LedgerStore;
 
@@ -93,10 +93,10 @@ impl LedgerBackedPorts {
         }))
     }
 
-    /// `ledger`'s own Bill Plans and Bill Schedule in memory, reading `payees`, `accounts`,
+    /// `stub`'s Bill Plans and Bill Schedule in memory, reading `payees`, `accounts`,
     /// `categories`, `transactions` and `units`, for a test that needs no storage.
     pub fn in_memory(
-        ledger: &Ledger,
+        stub: &FakeStores,
         payees: SharedPayeesStore,
         accounts: SharedAccountsStore,
         categories: SharedCategoriesStore,
@@ -104,7 +104,7 @@ impl LedgerBackedPorts {
         units: SharedUnitsStore,
     ) -> DesktopPorts {
         Self::shared(
-            in_memory_store(ledger),
+            in_memory_store(stub),
             payees,
             accounts,
             categories,
@@ -174,13 +174,10 @@ pub fn in_memory_units(now: chrono::DateTime<chrono::Utc>) -> SharedUnitsStore {
     Rc::new(RefCell::new(lib_units::fake::InMemoryPorts::stub(now)))
 }
 
-/// `ledger`'s own Bill Plans and Bill Schedule as an in-memory store, for a test that needs no
-/// storage and builds the readers of the store before its ports.
-pub fn in_memory_store(ledger: &Ledger) -> SharedBillsStore {
-    Rc::new(RefCell::new(lib_bills::fake::InMemoryBills {
-        plans: ledger.bill_plans().to_vec(),
-        entries: ledger.bill_entries().to_vec(),
-    }))
+/// `stub`'s Bill Plans and Bill Schedule as an in-memory store, for a test that needs no storage
+/// and builds the readers of the store before its ports.
+pub fn in_memory_store(stub: &FakeStores) -> SharedBillsStore {
+    Rc::new(RefCell::new(stub.bills.clone()))
 }
 
 /// Brings the stored Bill Schedule up to the horizon as of `today` (ADR-0019's "on Client start"),
@@ -225,35 +222,33 @@ mod tests {
 
     use super::*;
 
-    fn stub() -> (Ledger, DesktopPorts) {
-        let ledger = Ledger::stub_on(NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date"));
+    fn stub() -> (FakeStores, DesktopPorts) {
+        let fakes = FakeStores::stub(NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date"));
         let ports = LedgerBackedPorts::in_memory(
-            &ledger,
-            payees(&ledger),
+            &fakes,
+            payees(&fakes),
             crate::accounts::LedgerBackedPorts::in_memory(crate::accounts::ports::in_memory_reads(
-                &ledger,
+                &fakes,
             )),
             categories(),
-            transactions(&ledger),
+            transactions(&fakes),
             in_memory_units(chrono::Utc::now()),
         );
-        (ledger, ports)
+        (fakes, ports)
     }
 
     fn categories() -> SharedCategoriesStore {
         crate::categories::ports::in_memory()
     }
 
-    fn transactions(ledger: &Ledger) -> SharedTransactionsStore {
-        Rc::new(RefCell::new(lib_transactions::fake::InMemoryTransactions {
-            transactions: ledger.transactions().to_vec(),
-        }))
+    fn transactions(fakes: &FakeStores) -> SharedTransactionsStore {
+        Rc::new(RefCell::new(fakes.transactions.clone()))
     }
 
-    fn payees(ledger: &Ledger) -> SharedPayeesStore {
+    fn payees(fakes: &FakeStores) -> SharedPayeesStore {
         crate::payees::LedgerBackedPorts::in_memory(lib_database::StoredPayeeReads {
-            transactions: transactions(ledger),
-            bills: in_memory_store(ledger),
+            transactions: transactions(fakes),
+            bills: in_memory_store(fakes),
             categories: categories(),
         })
     }
@@ -264,16 +259,16 @@ mod tests {
 
     #[test]
     fn the_payees_are_read_from_the_payees_store_not_copied_from_the_ledger() {
-        let (ledger, _) = stub();
-        let store = payees(&ledger);
+        let (fakes, _) = stub();
+        let store = payees(&fakes);
         let ports = LedgerBackedPorts::in_memory(
-            &ledger,
+            &fakes,
             store.clone(),
             crate::accounts::LedgerBackedPorts::in_memory(crate::accounts::ports::in_memory_reads(
-                &ledger,
+                &fakes,
             )),
             categories(),
-            transactions(&ledger),
+            transactions(&fakes),
             in_memory_units(chrono::Utc::now()),
         );
         let mut renamed = store.borrow().payees().payees()[0].clone();
@@ -287,16 +282,16 @@ mod tests {
 
     #[test]
     fn the_accounts_are_read_from_the_accounts_store_not_copied_from_the_ledger() {
-        let (ledger, _) = stub();
+        let (fakes, _) = stub();
         let store = crate::accounts::LedgerBackedPorts::in_memory(
-            crate::accounts::ports::in_memory_reads(&ledger),
+            crate::accounts::ports::in_memory_reads(&fakes),
         );
         let ports = LedgerBackedPorts::in_memory(
-            &ledger,
-            payees(&ledger),
+            &fakes,
+            payees(&fakes),
             store.clone(),
             categories(),
-            transactions(&ledger),
+            transactions(&fakes),
             in_memory_units(chrono::Utc::now()),
         );
         let mut renamed = lib_accounts::default_accounts()[1].clone();
@@ -313,16 +308,16 @@ mod tests {
 
     #[test]
     fn the_categories_are_read_from_the_categories_store_not_copied_from_the_ledger() {
-        let (ledger, _) = stub();
+        let (fakes, _) = stub();
         let store = categories();
         let ports = LedgerBackedPorts::in_memory(
-            &ledger,
-            payees(&ledger),
+            &fakes,
+            payees(&fakes),
             crate::accounts::LedgerBackedPorts::in_memory(crate::accounts::ports::in_memory_reads(
-                &ledger,
+                &fakes,
             )),
             store.clone(),
-            transactions(&ledger),
+            transactions(&fakes),
             in_memory_units(chrono::Utc::now()),
         );
         let mut renamed = store.borrow().categories().categories()[6].clone();
@@ -339,19 +334,19 @@ mod tests {
 
     #[test]
     fn the_splits_are_read_from_the_transactions_store_not_copied_from_the_ledger() {
-        let (ledger, _) = stub();
-        let store = transactions(&ledger);
+        let (fakes, _) = stub();
+        let store = transactions(&fakes);
         let ports = LedgerBackedPorts::in_memory(
-            &ledger,
-            payees(&ledger),
+            &fakes,
+            payees(&fakes),
             crate::accounts::LedgerBackedPorts::in_memory(crate::accounts::ports::in_memory_reads(
-                &ledger,
+                &fakes,
             )),
             categories(),
             store.clone(),
             in_memory_units(chrono::Utc::now()),
         );
-        let mut booked = ledger.transactions()[0].clone();
+        let mut booked = fakes.transactions.transactions[0].clone();
         booked.id = lib_core::TransactionId::new();
         booked.description = Some("Booked in the store".into());
         store.borrow_mut().upsert_transaction(booked.clone());
@@ -376,7 +371,7 @@ mod tests {
 
     #[test]
     fn the_reads_are_the_ledgers() {
-        let (_ledger, ports) = stub();
+        let (_fakes, ports) = stub();
         let ports = ports.borrow();
         let ids: Vec<_> = ports
             .accounts()

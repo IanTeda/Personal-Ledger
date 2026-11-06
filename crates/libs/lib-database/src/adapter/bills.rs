@@ -689,14 +689,11 @@ mod tests {
 
     /// The stub Ledger's Bills and the Splits their Paid entries name, as of a fixed day.
     fn stub() -> (Vec<BillSplit>, InMemoryBills) {
-        let ledger =
-            lib_ledger::Ledger::stub_on(NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date"));
+        let stub =
+            crate::FakeStores::stub(NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date"));
         (
-            ledger.bill_splits(),
-            InMemoryBills {
-                plans: ledger.bill_plans().to_vec(),
-                entries: ledger.bill_entries().to_vec(),
-            },
+            crate::seed::bill_splits(&stub.transactions.transactions),
+            stub.bills,
         )
     }
 

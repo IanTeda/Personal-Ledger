@@ -731,7 +731,6 @@ dependencies = [
  "lib_documents",
  "lib_institutions",
  "lib_inventory",
- "lib_ledger",
  "lib_list_cursor",
  "lib_locale",
  "lib_locale_build",
@@ -4866,7 +4865,6 @@ dependencies = [
  "lib_documents",
  "lib_institutions",
  "lib_inventory",
- "lib_ledger",
  "lib_payees",
  "lib_settings",
  "lib_shell",
@@ -4932,26 +4930,6 @@ dependencies = [
  "lib_toast",
  "lib_viper",
  "tracing",
-]
-
-[[package]]
-name = "lib_ledger"
-version = "0.1.0"
-dependencies = [
- "bigdecimal",
- "chrono",
- "lib_accounts",
- "lib_bills",
- "lib_budgets",
- "lib_categories",
- "lib_core",
- "lib_documents",
- "lib_institutions",
- "lib_inventory",
- "lib_payees",
- "lib_tags",
- "lib_transactions",
- "serde_json",
 ]
 
 [[package]]

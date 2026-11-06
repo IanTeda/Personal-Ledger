@@ -101,7 +101,6 @@ Desktop locations for the ticked requirements. The TUI's Tags code lives in `cra
 
 ## Open questions and known gaps
 
-- **`TagRows` is still public in `lib-ledger`**, now only behind `Ledger::tag_uses`, which recounts an in-memory store. It goes when the Transactions View reads its Splits through its own domain.
 - **`lib-budgets` lists `lib-tags` as a dev-dependency** that nothing in its sources or tests uses (a finding of #864, left for the Budgets slice).
 - **A malformed `tags.color` fails the whole load** rather than degrading to no colour.
 - **`Stores::fake` takes eight arguments** and carries `#[expect(clippy::too_many_arguments)]`; give it a builder or a struct when the next domain adds a ninth.

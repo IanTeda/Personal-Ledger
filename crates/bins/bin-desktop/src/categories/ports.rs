@@ -19,6 +19,7 @@ use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::rc::Rc;
 
+use crate::ledger_store::Domain;
 use chrono::{Datelike as _, NaiveDate};
 use gpui::{App, Entity};
 use lib_budgets::{Budgets, Error};
@@ -29,7 +30,6 @@ use lib_categories::{
 };
 use lib_core::{CategoryId, Clock, Money};
 use lib_database::{CategoriesStore, SharedCategoriesStore};
-use lib_ledger::Domain;
 
 use crate::budgets::PERSONAL_SPENDING_ID;
 use crate::ledger_store::LedgerStore;
@@ -206,7 +206,7 @@ impl CategoryBudget for LedgerPorts<'_> {
             amount: category.and_then(|id| {
                 budgets.monthly_limit(
                     PERSONAL_SPENDING_ID,
-                    &lib_ledger::budget_categories(categories),
+                    &lib_database::budget_categories(categories),
                     id,
                     self.today,
                 )
@@ -229,7 +229,7 @@ impl CategoryBudget for LedgerPorts<'_> {
         budgets
             .set_monthly_limit(
                 PERSONAL_SPENDING_ID,
-                &lib_ledger::budget_categories(categories),
+                &lib_database::budget_categories(categories),
                 category,
                 amount.cloned(),
                 self.today,
@@ -306,7 +306,7 @@ impl CategoryHandover for LedgerPorts<'_> {
 #[cfg(test)]
 mod tests {
     use gpui::{AppContext as _, TestAppContext};
-    use lib_ledger::Ledger;
+    use lib_database::FakeStores;
 
     use super::*;
 
@@ -333,7 +333,7 @@ mod tests {
 
     #[gpui::test]
     fn the_budget_port_checks_on_a_copy_and_saves_through_the_ledger(cx: &mut TestAppContext) {
-        let ledger = cx.new(|_| LedgerStore::new(Ledger::stub_on(today())));
+        let ledger = cx.new(|_| LedgerStore::new(&FakeStores::stub(today())));
         let categories = lib_categories::default_categories();
         let groceries = lib_categories::find_by_name(&categories, "Groceries").expect("seeded");
         let salary = lib_categories::find_by_name(&categories, "Salary").expect("seeded");
@@ -371,7 +371,7 @@ mod tests {
 
     #[gpui::test]
     fn a_new_parent_is_stopped_in_every_active_budget_through_the_store(cx: &mut TestAppContext) {
-        let ledger = cx.new(|_| LedgerStore::new(Ledger::stub_on(today())));
+        let ledger = cx.new(|_| LedgerStore::new(&FakeStores::stub(today())));
         let categories = lib_categories::default_categories();
         let groceries = lib_categories::find_by_name(&categories, "Groceries").expect("seeded");
 
@@ -403,7 +403,7 @@ mod tests {
 
     #[gpui::test]
     fn the_handover_port_moves_splits_to_the_new_child_through_the_stores(cx: &mut TestAppContext) {
-        let ledger = cx.new(|_| LedgerStore::new(Ledger::stub_on(today())));
+        let ledger = cx.new(|_| LedgerStore::new(&FakeStores::stub(today())));
         let categories = lib_categories::default_categories();
         let groceries = lib_categories::find_by_name(&categories, "Groceries").expect("seeded");
         let child = lib_categories::find_by_name(&categories, "Dining")
@@ -434,7 +434,7 @@ mod tests {
     fn type_change_blockers_judge_the_budgets_by_the_clock_after_a_month_turn(
         cx: &mut TestAppContext,
     ) {
-        let ledger = cx.new(|_| LedgerStore::new(Ledger::stub_on(today())));
+        let ledger = cx.new(|_| LedgerStore::new(&FakeStores::stub(today())));
         let categories = lib_categories::default_categories();
         let groceries = lib_categories::find_by_name(&categories, "Groceries").expect("seeded");
         let next_month = NaiveDate::from_ymd_opt(2026, 11, 1).expect("a real date");

@@ -5,7 +5,7 @@
 //! I/O-free.
 //!
 //! It depends on `lib-tags` and `lib-transactions`, the feature crates it writes, and none depends
-//! on it; the guardrail test in `lib-ledger` keeps it that way.
+//! on it; the guardrail test in `lib-database` keeps it that way.
 //!
 //! - `protocols`: the one atomic port, [`TagRemoval`], which `lib-database` implements over its
 //!   Tags and Transactions stores, and [`TagRemovalReads`], what the Dialogs show when they open.

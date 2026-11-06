@@ -5,11 +5,11 @@
 //! of the View interface is a no-op. Each click is one input (`crate::input::send`), whose commit
 //! writes nothing, since the Dashboard writes nothing.
 
+use crate::ledger_store::Domain;
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, Subscription, Window};
 use gpui::{div, prelude::*, px};
 use lib_core::{Clock, DateStyle};
 use lib_dashboard::{DashboardEvent, DashboardPresenter, DashboardReads, DashboardViewModel};
-use lib_ledger::Domain;
 use lib_viper::display::StatusGlyphs;
 
 use super::content;

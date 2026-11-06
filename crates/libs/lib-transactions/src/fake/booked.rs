@@ -4,7 +4,7 @@
 //! is given, in the order listed, so the Bills and Documents seeds can name them.
 //!
 //! The payments follow `lib-bills`' stub Bill Plans (`PLAN_SEEDS` in its `seed.rs`), which this
-//! crate can't reach: [`PAID_BILLS`] repeats what a payment reads of each Plan, and `lib-ledger`'s
+//! crate can't reach: [`PAID_BILLS`] repeats what a payment reads of each Plan, and `lib-database`'s
 //! seed tests check the two agree.
 
 use chrono::{Datelike, Duration, Months, NaiveDate};

@@ -5,7 +5,7 @@
 //! `gpui`-free and I/O-free.
 //!
 //! It depends on `lib-units` and `lib-institutions`, the feature crates it writes, and none
-//! depends on it; the guardrail test in `lib-ledger` keeps it that way, and keeps `lib-units` off
+//! depends on it; the guardrail test in `lib-database` keeps it that way, and keeps `lib-units` off
 //! `lib-institutions`. `lib-units`' own delete still refuses a Unit an Institution names, since it
 //! can't reach them: the TUI, which has no Institutions screen, keeps that Dialog.
 //!

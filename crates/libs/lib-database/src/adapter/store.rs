@@ -1786,18 +1786,23 @@ pub struct FakeStores {
 }
 
 impl FakeStores {
-    /// Every domain's stub seed as of `today`, with the stub Ledger's Transactions and each
-    /// Account's usage counted from them and the stub Budgets. For a Client that runs on the stub without a Ledger file.
+    /// Every domain's stub seed as of `today`: the joined stub `crate::seed` writes to a Ledger
+    /// file, with each Account's usage counted from its Transactions and Budgets. The one way a
+    /// test or a Client that runs without a Ledger file reaches the stub (#1056).
     pub fn stub(today: NaiveDate) -> Self {
-        let ledger = lib_ledger::Ledger::stub_on(today);
-        let budgets = InMemoryBudgets::stub(today);
+        let transactions = crate::seed::stub_transactions(today);
+        let bills = crate::seed::stub_bills(today);
+        let budgets = InMemoryBudgets {
+            budgets: crate::seed::stub_budgets(today),
+        };
         let mut accounts = lib_accounts::fake::InMemoryPorts::stub();
-        accounts.usage.uses = ledger
-            .accounts()
+        accounts.usage.uses = accounts
+            .accounts
+            .accounts
             .iter()
             .map(|account| {
                 let uses = AccountUse {
-                    transactions: ledger.account_transactions(account.id),
+                    transactions: crate::seed::account_transactions(&transactions, account.id),
                     budgets: budgets.account_budgets(account.id),
                 };
                 (account.id, uses)
@@ -1810,16 +1815,17 @@ impl FakeStores {
             categories: InMemoryCategories::stub(),
             tags: lib_tags::fake::InMemoryPorts::stub(),
             payees: lib_payees::fake::InMemoryPorts::stub(),
-            transactions: InMemoryTransactions {
-                transactions: ledger.transactions().to_vec(),
-            },
-            bills: lib_bills::fake::InMemoryPorts::stub(today).bills,
-            budgets,
-            inventory: InMemoryInventory::stub(today),
             documents: InMemoryDocuments {
-                documents: ledger.stub_documents(today),
+                documents: crate::seed::stub_documents(today, &crate::seed::stub_institutions()),
                 types: lib_documents::types::default_types(),
             },
+            transactions: InMemoryTransactions { transactions },
+            bills: InMemoryBills {
+                plans: bills.plans,
+                entries: bills.entries,
+            },
+            budgets,
+            inventory: InMemoryInventory::stub(today),
         }
     }
 }
@@ -1892,14 +1898,14 @@ mod tests {
     /// Split written to the Transactions store after the reads were built included.
     #[test]
     fn stored_payee_reads_count_the_in_memory_stores_rows() {
-        let ledger = lib_ledger::Ledger::stub();
+        let stub = FakeStores::stub(chrono::Local::now().date_naive());
         let transactions: SharedTransactionsStore = Rc::new(RefCell::new(InMemoryTransactions {
-            transactions: ledger.transactions().to_vec(),
+            transactions: stub.transactions.transactions.clone(),
         }));
         let reads = StoredPayeeReads {
             transactions: transactions.clone(),
             bills: Rc::new(RefCell::new(InMemoryBills {
-                plans: ledger.bill_plans().to_vec(),
+                plans: stub.bills.plans.clone(),
                 entries: Vec::new(),
             })),
             categories: Rc::new(RefCell::new(InMemoryCategories::stub())),
@@ -1912,7 +1918,7 @@ mod tests {
             Some(1)
         );
 
-        let mut booked = ledger.transactions()[0].clone();
+        let mut booked = stub.transactions.transactions[0].clone();
         booked.id = TransactionId::seed(9_999);
         booked.splits.truncate(1);
         booked.splits[0].payee_id = Some(woolworths);
@@ -1931,28 +1937,24 @@ mod tests {
         );
     }
 
-    fn in_memory_stub_stores() -> (
-        lib_ledger::Ledger,
-        SharedTransactionsStore,
-        SharedBillsStore,
-    ) {
-        let ledger = lib_ledger::Ledger::stub();
+    fn in_memory_stub_stores() -> (FakeStores, SharedTransactionsStore, SharedBillsStore) {
+        let stub = FakeStores::stub(chrono::Local::now().date_naive());
         let transactions: SharedTransactionsStore = Rc::new(RefCell::new(InMemoryTransactions {
-            transactions: ledger.transactions().to_vec(),
+            transactions: stub.transactions.transactions.clone(),
         }));
         let bills: SharedBillsStore = Rc::new(RefCell::new(InMemoryBills {
-            plans: ledger.bill_plans().to_vec(),
-            entries: ledger.bill_entries().to_vec(),
+            plans: stub.bills.plans.clone(),
+            entries: stub.bills.entries.clone(),
         }));
-        (ledger, transactions, bills)
+        (stub, transactions, bills)
     }
 
     /// An Account's use is counted in the Transactions and Budgets stores on each ask.
     #[test]
     fn stored_account_reads_count_the_in_memory_stores_rows() {
-        let (ledger, transactions, _) = in_memory_stub_stores();
+        let (stub, transactions, _) = in_memory_stub_stores();
         let budgets: SharedBudgetsStore = Rc::new(RefCell::new(InMemoryBudgets {
-            budgets: ledger.budgets().all().to_vec(),
+            budgets: stub.budgets.budgets.clone(),
         }));
         let reads = StoredAccountReads {
             transactions: transactions.clone(),
@@ -1966,7 +1968,7 @@ mod tests {
         assert_eq!(before.budgets, 2);
         assert_eq!(reads.account_usage(AccountId::new()), AccountUse::default());
 
-        let mut booked = ledger.transactions()[0].clone();
+        let mut booked = stub.transactions.transactions[0].clone();
         booked.id = TransactionId::seed(9_999);
         booked.account_id = everyday;
         transactions.borrow_mut().upsert_transaction(booked);
@@ -1981,7 +1983,7 @@ mod tests {
     /// the reading module's terms, on each ask (#994).
     #[test]
     fn the_bill_import_and_institution_reads_map_the_in_memory_stores_rows() {
-        let (ledger, transactions, _) = in_memory_stub_stores();
+        let (stub, transactions, _) = in_memory_stub_stores();
         let accounts: SharedAccountsStore =
             Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts::stub()));
         let categories: SharedCategoriesStore = Rc::new(RefCell::new(InMemoryCategories::stub()));
@@ -2005,8 +2007,8 @@ mod tests {
         let (from, to) = (NaiveDate::MIN, NaiveDate::MAX);
         assert_eq!(
             bills.splits_between(from, to).len(),
-            ledger
-                .transactions()
+            stub.transactions
+                .transactions
                 .iter()
                 .map(|transaction| transaction.splits.len())
                 .sum::<usize>()
@@ -2094,12 +2096,12 @@ mod tests {
     /// code, active flag and Precision, and the base Unit while the store still holds it.
     #[test]
     fn stored_account_reads_answer_account_units_from_the_units_store() {
-        let (ledger, transactions, _) = in_memory_stub_stores();
+        let (stub, transactions, _) = in_memory_stub_stores();
         let units = stub_units();
         let reads = StoredAccountReads {
             transactions,
             budgets: Rc::new(RefCell::new(InMemoryBudgets {
-                budgets: ledger.budgets().all().to_vec(),
+                budgets: stub.budgets.budgets.clone(),
             })),
             units: units.clone(),
             institutions: stub_institutions(),
@@ -2191,11 +2193,11 @@ mod tests {
     /// stores.
     #[test]
     fn stored_unit_reads_count_the_in_memory_stores_rows() {
-        let (ledger, transactions, bills) = in_memory_stub_stores();
+        let (stub, transactions, bills) = in_memory_stub_stores();
         let accounts: SharedAccountsStore =
             Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts {
                 accounts: lib_accounts::fake::InMemoryAccounts {
-                    accounts: ledger.accounts().to_vec(),
+                    accounts: stub.accounts.accounts.accounts.clone(),
                 },
                 ..Default::default()
             }));
@@ -2204,7 +2206,7 @@ mod tests {
             transactions,
             bills,
             budgets: Rc::new(RefCell::new(InMemoryBudgets {
-                budgets: ledger.budgets().all().to_vec(),
+                budgets: stub.budgets.budgets.clone(),
             })),
             inventory: Rc::new(RefCell::new(InMemoryInventory::default())),
             institutions: Rc::new(RefCell::new(InMemoryInstitutions::stub())),
@@ -2214,11 +2216,16 @@ mod tests {
         let usage = reads.unit_usage(aud);
         assert_eq!(
             usage.accounts,
-            ledger.accounts().iter().filter(|a| a.unit == aud).count()
+            stub.accounts
+                .accounts
+                .accounts
+                .iter()
+                .filter(|a| a.unit == aud)
+                .count()
         );
         assert_eq!(
             usage.bill_plans,
-            ledger.bill_plans().iter().filter(|p| p.unit == aud).count()
+            stub.bills.plans.iter().filter(|p| p.unit == aud).count()
         );
         assert_eq!(usage.locations, 0);
         assert_eq!(reads.unit_usage(UnitId::new()), UnitUse::default());
@@ -2232,8 +2239,8 @@ mod tests {
         assert_eq!(
             usize::try_from(everyday.transactions).ok(),
             Some(
-                ledger
-                    .transactions()
+                stub.transactions
+                    .transactions
                     .iter()
                     .filter(|t| t.account_id == AccountId::seed(2))
                     .count()
@@ -2315,7 +2322,7 @@ mod tests {
     /// The six Budgets read ports are answered by their stores, as the Ledger once answered them.
     #[test]
     fn stored_budget_reads_answer_each_port_from_its_store() {
-        let (ledger, transactions, bills) = in_memory_stub_stores();
+        let (stub, transactions, bills) = in_memory_stub_stores();
         let reads = StoredBudgetReads {
             categories: Rc::new(RefCell::new(InMemoryCategories::stub())),
             accounts: Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts::stub())),
@@ -2327,8 +2334,9 @@ mod tests {
         let month = lib_core::Period::of(NaiveDate::from_ymd_opt(2026, 9, 21).expect("a date"));
 
         let splits = reads.budget_splits(month.first_day(), month.last_day());
-        let expected: usize = ledger
-            .transactions()
+        let expected: usize = stub
+            .transactions
+            .transactions
             .iter()
             .filter(|t| month.contains(t.date))
             .map(|t| t.splits.len())
@@ -2337,8 +2345,9 @@ mod tests {
         assert_eq!(splits.len(), expected);
         assert!(splits.iter().all(|split| month.contains(split.date)));
 
-        let open = ledger
-            .bill_entries()
+        let open = stub
+            .bills
+            .entries
             .iter()
             .filter(|entry| entry.is_open())
             .count();
@@ -2347,7 +2356,7 @@ mod tests {
         assert!(!reads.budget_accounts().is_empty());
         assert_eq!(reads.unit_code(UnitId::SEED_AUD).as_deref(), Some("aud"));
         assert!(reads.payee_name(PayeeId::seed(1)).is_some());
-        assert!(reads.active_bill_plans().len() <= ledger.bill_plans().len());
+        assert!(reads.active_bill_plans().len() <= stub.bills.plans.len());
     }
 }
 

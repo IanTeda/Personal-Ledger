@@ -6,6 +6,7 @@
 
 mod render;
 
+use crate::ledger_store::Domain;
 use gpui::{
     AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Pixels, Point, Subscription,
 };
@@ -13,7 +14,6 @@ use lib_institutions::InstitutionsOutcome;
 use lib_institutions::presenter::{
     InstitutionsPageEvent, InstitutionsPagePresenter, InstitutionsPageViewModel,
 };
-use lib_ledger::Domain;
 use lib_viper::keymap::Keymap;
 
 use lib_shell::Hint;

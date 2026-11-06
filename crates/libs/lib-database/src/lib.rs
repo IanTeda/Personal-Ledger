@@ -69,7 +69,7 @@ pub use adapter::accounts::{
 pub use adapter::bill_payments::BillPaymentsAdapter;
 pub use adapter::bills::{BillsAdapter, unit_bill_plans};
 pub use adapter::budgets::BudgetsAdapter;
-pub use adapter::categories::CategoriesAdapter;
+pub use adapter::categories::{CategoriesAdapter, budget_categories};
 pub use adapter::category_deletion::CategoryDeletionAdapter;
 pub use adapter::category_rows::StoredCategoryRows;
 pub use adapter::documents::DocumentsAdapter;

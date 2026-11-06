@@ -702,8 +702,7 @@ mod tests {
             inventory: crate::inventory::InventorySetup::stub(&storage),
             ledger: crate::settings::ledger::LedgerKeys::new(&KeyBindingConfig::default()),
         };
-        let ledger =
-            cx.new(|_| LedgerStore::with_storage(lib_ledger::Ledger::stub_on(today), storage));
+        let ledger = cx.new(|_| LedgerStore::with_storage(storage));
         let clock = lib_core::Clock::fixed(today);
         let view = cx.new(SettingsView::new);
         view.update(cx, |view, cx| {

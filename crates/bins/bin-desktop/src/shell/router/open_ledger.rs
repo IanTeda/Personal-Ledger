@@ -13,7 +13,6 @@ use std::rc::Rc;
 
 use gpui::{AppContext, Context, Entity, Subscription, Task};
 use lib_database::{Storage, Stores, Writer};
-use lib_ledger::Ledger;
 
 use super::Root;
 use crate::dashboard::DashboardPage;
@@ -151,7 +150,6 @@ impl OpenLedger {
         } = stores;
         crate::input::open_ledger(commit, cx);
         let failures = Rc::new(failures);
-        let today = clock.today();
 
         // The Transactions and Bills stores are shared: Pay it directly writes both (#779), and
         // Payees counts what names a Payee in them (#992). The Payees ports are shared by the
@@ -354,17 +352,19 @@ impl OpenLedger {
             crate::document_types::ports::shared(&storage.documents, &documents_written);
         // The Transactions, Bills and Budgets stores are the truth, with no read copy on the
         // Ledger: their writers announce through it (#1028).
-        let ledger = cx.new(|_| LedgerStore::with_storage(Ledger::stub_on(today), storage));
+        let ledger = cx.new(|_| LedgerStore::with_storage(storage));
         let units_ports = settings_setup.units.ports.clone();
         // The pages repaint when a domain they read is announced.
-        let categories_subscription = notify_on(&ledger, lib_ledger::Domain::Categories, cx);
-        let units_subscription = notify_on(&ledger, lib_ledger::Domain::Units, cx);
-        let tags_subscription = notify_on(&ledger, lib_ledger::Domain::Tags, cx);
-        let institutions_subscription = notify_on(&ledger, lib_ledger::Domain::Institutions, cx);
-        let accounts_changed = notify_on(&ledger, lib_ledger::Domain::Accounts, cx);
-        let payees_changed = notify_on(&ledger, lib_ledger::Domain::Payees, cx);
+        let categories_subscription =
+            notify_on(&ledger, crate::ledger_store::Domain::Categories, cx);
+        let units_subscription = notify_on(&ledger, crate::ledger_store::Domain::Units, cx);
+        let tags_subscription = notify_on(&ledger, crate::ledger_store::Domain::Tags, cx);
+        let institutions_subscription =
+            notify_on(&ledger, crate::ledger_store::Domain::Institutions, cx);
+        let accounts_changed = notify_on(&ledger, crate::ledger_store::Domain::Accounts, cx);
+        let payees_changed = notify_on(&ledger, crate::ledger_store::Domain::Payees, cx);
         // Documents resolve their Links against the Inventory.
-        let inventory_changed = notify_on(&ledger, lib_ledger::Domain::Inventory, cx);
+        let inventory_changed = notify_on(&ledger, crate::ledger_store::Domain::Inventory, cx);
         settings.update(cx, |view, cx| {
             view.open_ledger(&ledger, clock, settings_setup, cx)
         });

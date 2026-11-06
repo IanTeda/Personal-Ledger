@@ -164,13 +164,17 @@ pub fn refresh(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: &mut App)
 #[cfg(test)]
 mod tests {
     use lib_core::InstitutionId;
-    use lib_ledger::Ledger;
+    use lib_database::FakeStores;
 
     use super::*;
 
-    fn ports(ledger: &Ledger) -> DesktopPorts {
+    fn stub() -> FakeStores {
+        FakeStores::stub(chrono::Local::now().date_naive())
+    }
+
+    fn ports(stub: &FakeStores) -> DesktopPorts {
         let accounts = crate::accounts::LedgerBackedPorts::in_memory(
-            crate::accounts::ports::in_memory_reads(ledger),
+            crate::accounts::ports::in_memory_reads(stub),
         );
         LedgerBackedPorts::shared(
             in_memory_store(),
@@ -181,7 +185,7 @@ mod tests {
 
     #[test]
     fn in_memory_ports_hold_the_stub_institutions() {
-        let ports = ports(&Ledger::stub());
+        let ports = ports(&stub());
         let ports = ports.borrow();
 
         assert_eq!(
@@ -192,7 +196,7 @@ mod tests {
 
     #[test]
     fn a_write_through_the_ports_lands_in_the_shared_store_and_is_noted_once() {
-        let ports = ports(&Ledger::stub());
+        let ports = ports(&stub());
         let mut held = ports.borrow_mut();
         assert!(!held.take_written());
 
@@ -216,12 +220,14 @@ mod tests {
 
     #[test]
     fn usage_is_the_accounts_naming_the_institution() {
-        let ledger = Ledger::stub();
-        let ports = ports(&ledger);
+        let stub = stub();
+        let ports = ports(&stub);
         let ports = ports.borrow();
 
-        let wallet: Vec<_> = ledger
-            .accounts()
+        let wallet: Vec<_> = stub
+            .accounts
+            .accounts
+            .accounts
             .iter()
             .filter(|account| account.institution == InstitutionId::SEED_PERSONAL)
             .map(|account| account.name.clone())

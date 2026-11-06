@@ -17,11 +17,11 @@ use chrono::NaiveDate;
 use gpui::{App, Entity};
 use lib_budgets::{
     Budget, BudgetCategories, BudgetReads, BudgetRepository, BudgetsPorts, PortsMut,
-    SetMonthlyLimit, SharedPorts, StopNewParent, fake::InMemoryBudgets,
+    SetMonthlyLimit, SharedPorts, StopNewParent,
 };
 use lib_core::{BudgetId, CategoryId, Money};
+use lib_database::FakeStores;
 use lib_database::{BudgetsStore, SharedBudgetsStore, StoredBudgetReads};
-use lib_ledger::Ledger;
 
 use crate::ledger_store::LedgerStore;
 
@@ -113,11 +113,9 @@ pub fn announce_written(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: 
     }
 }
 
-/// `ledger`'s own Budgets in memory, for a test that needs no storage.
-pub fn in_memory(ledger: &Ledger) -> SharedBudgetsStore {
-    Rc::new(RefCell::new(InMemoryBudgets {
-        budgets: ledger.budgets().all().to_vec(),
-    }))
+/// `stub`'s Budgets in memory, for a test that needs no storage.
+pub fn in_memory(stub: &FakeStores) -> SharedBudgetsStore {
+    Rc::new(RefCell::new(stub.budgets.clone()))
 }
 
 /// Budget `id`'s Monthly budget for Category `category`, as `lib-budgets`' `SetMonthlyLimit`
@@ -171,9 +169,8 @@ mod tests {
 
     #[test]
     fn a_monthly_limit_is_written_to_the_store_by_the_budgets_rule() {
-        let ledger = Ledger::stub_on(today());
-        let store = in_memory(&ledger);
-        let categories = lib_ledger::budget_categories(&lib_categories::default_categories());
+        let store = in_memory(&FakeStores::stub(today()));
+        let categories = lib_database::budget_categories(&lib_categories::default_categories());
         let groceries = CategoryId::seed(7);
 
         let wrote = set_monthly_limit(

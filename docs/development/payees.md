@@ -110,7 +110,6 @@ Desktop locations for the ticked requirements. The TUI's PAY-001 to PAY-004 live
 - **The contract's writes don't run the Interactors.** `contract.rs` applies the Entity rules to rows itself, so the Interactors are tested only on the fakes ([#836](https://github.com/IanTeda/Personal-Ledger/issues/836)).
 - **The Deactivate Dialog counts transactions only.** A Payee only Bill Plans name reads "used by 0 transactions" ([#837](https://github.com/IanTeda/Personal-Ledger/issues/837)).
 - **A delete the foreign keys refuse shows its success Toast first.** Only when a Split or Bill Plan lands between the count and the commit: the Dialog's "Deleted payee" Toast shows, then the Error Toast as the Payees reload. The commit runs after the Dialog closes, so it can't know sooner (ADR-0046).
-- **The `Payee` to `BillPayee` mapping exists twice**, in `lib_database::adapter::payees` and `lib-ledger`'s `bill_reads.rs`, which the stub's Bills seed needs; the copy goes with the stub seed.
 - **The usage count is taken once in memory.** The in-memory Desktop and the UI harness count the stub's Splits and Bill Plans when they're built, so a Split a test adds later isn't counted.
 - **The older `payees/` modules are unused**, and `resolve_or_create` still matches an alias exactly.
 - **The TUI doesn't persist Payees.** It draws fixtures until its redesign (#805).

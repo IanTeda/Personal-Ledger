@@ -66,7 +66,8 @@ allow-wildcard-paths = true
 # wrappers are the toolkits' own companion crates. `lib_rpc` is the wire protocol only; the Sync
 # Server's handlers live in `bin_sync_server` (#759). A cross-domain module is reached only
 # by the bins and the adapter that implements its port, so no feature crate depends on it (the
-# `cargo metadata` test in `lib-ledger` checks the same, and what the module itself depends on).
+# `cargo metadata` test in `lib-database/tests/viper_dependencies.rs` checks the same, and what
+# the module itself depends on).
 # `lib_shell` hosts every module, so only the bins and `lib_database`, which answers its rail-count
 # port, reach it. `lib_dashboard` reads several domains
 # through its own ports, so only the bins and `lib_database`, which answers them, reach it.

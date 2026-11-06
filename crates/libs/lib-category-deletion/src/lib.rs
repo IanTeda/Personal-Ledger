@@ -6,7 +6,7 @@
 //!
 //! It depends on `lib-categories`, `lib-transactions`, `lib-bills`, `lib-payees` and
 //! `lib-budgets`, the feature crates it writes, and none depends on it; the guardrail test in
-//! `lib-ledger` keeps it that way.
+//! `lib-database` keeps it that way.
 //!
 //! - `protocols`: the one atomic port, [`CategoryDeletion`], which `lib-database` implements over
 //!   its Categories, Transactions, Bills, Payees and Budgets stores, and

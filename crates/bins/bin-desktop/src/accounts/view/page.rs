@@ -6,12 +6,12 @@
 
 mod render;
 
+use crate::ledger_store::Domain;
 use gpui::{AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Subscription};
 use lib_accounts::AccountsOutcome;
 use lib_accounts::presenter::{
     AccountsCommand, AccountsPageEvent, AccountsPagePresenter, AccountsPageViewModel,
 };
-use lib_ledger::Domain;
 use lib_viper::keymap::Keymap;
 
 use lib_shell::Hint;

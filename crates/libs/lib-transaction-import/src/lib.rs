@@ -3,7 +3,7 @@
 //! new Payees, their aliases and one Transaction per line in one write. `gpui`-free and I/O-free.
 //!
 //! It depends on `lib-payees` and `lib-transactions`, the feature crates it writes, and neither
-//! depends on it; the guardrail test in `lib-ledger` keeps it that way.
+//! depends on it; the guardrail test in `lib-database` keeps it that way.
 //!
 //! - `entity`: a statement line, the cleaning and Payee Alias matching rules, the Import row, its
 //!   Row status, a row's Payee choices and the summary, moved from the Desktop's `import.rs`.

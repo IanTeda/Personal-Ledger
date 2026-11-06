@@ -6,12 +6,12 @@
 
 mod render;
 
+use crate::ledger_store::Domain;
 use gpui::{AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Subscription};
 use lib_documents::presenter::{
     DocumentTypesPageEvent, DocumentTypesPagePresenter, DocumentTypesPageViewModel,
 };
 use lib_documents::{DocumentTypesOutcome, SharedRepository};
-use lib_ledger::Domain;
 use lib_shell::Hint;
 use lib_viper::keymap::Keymap;
 

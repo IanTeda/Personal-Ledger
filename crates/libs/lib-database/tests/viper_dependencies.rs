@@ -6,8 +6,9 @@
 //!
 //! `deny.toml` already bans the toolkits and `lib_database` outside the bins, and each
 //! cross-domain module outside the bins and its adapter, but cargo-deny can't express "no feature
-//! crate depends on another", so this test carries that half. It lives here because `lib_ledger`
-//! is the one crate that already sees every feature crate.
+//! crate depends on another", so this test carries that half. It lives here because
+//! `lib_database` is the one crate that already sees every feature crate (moved from `lib-ledger`
+//! with that crate, #1056).
 //!
 //! Every crate in `FEATURE_CRATES` and `SHARED_CRATES` is checked, so a new feature crate is added
 //! to `FEATURE_CRATES` and keeps the rule from its first commit.
@@ -317,7 +318,6 @@ fn violations_flags_any_module_depending_on_lib_shell_and_lib_shell_reaching_a_m
 fn violations_flags_every_crate_but_the_bins_and_lib_database_depending_on_lib_shell() {
     let metadata = serde_json::json!({
         "packages": [
-            { "name": "lib_ledger", "dependencies": [{ "name": "lib_shell" }] },
             { "name": "lib_core", "dependencies": [{ "name": "lib_shell" }] },
             { "name": "lib_config", "dependencies": [{ "name": "lib_shell" }] },
             { "name": "lib_rpc", "dependencies": [{ "name": "lib_shell" }] },
@@ -331,7 +331,6 @@ fn violations_flags_every_crate_but_the_bins_and_lib_database_depending_on_lib_s
     assert_eq!(
         violations(&metadata),
         vec![
-            "lib_ledger -> lib_shell",
             "lib_core -> lib_shell",
             "lib_config -> lib_shell",
             "lib_rpc -> lib_shell",

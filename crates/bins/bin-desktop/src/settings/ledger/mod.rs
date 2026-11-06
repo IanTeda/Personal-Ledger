@@ -11,9 +11,9 @@ mod render;
 
 use std::rc::Rc;
 
+use crate::ledger_store::Domain;
 use gpui::{App, Context, Entity, EventEmitter, Subscription};
 use lib_database::{LedgerPreferencesAdapter, SharedUnitsStore, StoredSettingsReads};
-use lib_ledger::Domain;
 use lib_settings::keymap::ledger_keymap;
 use lib_settings::{LedgerEvent, LedgerPresenter, LedgerSetup, LedgerViewModel};
 use lib_shell::Hint;

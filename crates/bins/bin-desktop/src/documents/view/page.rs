@@ -14,6 +14,7 @@
 use std::path::PathBuf;
 use std::rc::Rc;
 
+use crate::ledger_store::Domain;
 use gpui::{
     App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, ScrollStrategy, Subscription,
     UniformListScrollHandle, Window, prelude::*,
@@ -23,7 +24,6 @@ use lib_documents::presenter::{DocumentsPageEvent, DocumentsPagePresenter};
 use lib_documents::{
     DocumentsMode, DocumentsOutcome, LibraryScope, LibrarySort, SharedFiles, SharedRepository,
 };
-use lib_ledger::Domain;
 use lib_viper::keymap::Keymap;
 
 use super::Scrolls;

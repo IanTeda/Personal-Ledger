@@ -20,8 +20,8 @@ use lib_accounts::{
     Account, AccountInstitutions, AccountRepository, AccountUnits, AccountUsage, AccountsPorts,
 };
 use lib_core::AccountId;
+use lib_database::FakeStores;
 use lib_database::{AccountsStore, StoredAccountReads};
-use lib_ledger::Ledger;
 
 use crate::ledger_store::LedgerStore;
 use crate::write_count::WriteCount;
@@ -152,14 +152,12 @@ pub fn refresh(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: &mut App)
     }
 }
 
-/// `ledger`'s own Transactions and Budgets in memory, as the usage of its Accounts reads them, and
-/// the stub Units and Institutions, for a test that needs no storage.
-pub fn in_memory_reads(ledger: &Ledger) -> StoredAccountReads {
+/// `stub`'s Transactions and Budgets in memory, as the usage of its Accounts reads them, and the
+/// stub Units and Institutions, for a test that needs no storage.
+pub fn in_memory_reads(stub: &FakeStores) -> StoredAccountReads {
     StoredAccountReads {
-        transactions: Rc::new(RefCell::new(lib_transactions::fake::InMemoryTransactions {
-            transactions: ledger.transactions().to_vec(),
-        })),
-        budgets: crate::budgets::ports::in_memory(ledger),
+        transactions: Rc::new(RefCell::new(stub.transactions.clone())),
+        budgets: crate::budgets::ports::in_memory(stub),
         units: crate::bills::ports::in_memory_units(chrono::Utc::now()),
         institutions: crate::institutions::ports::in_memory_store(),
     }
@@ -173,12 +171,15 @@ mod tests {
 
     #[test]
     fn the_transactions_and_budgets_are_counted_in_their_stores_on_each_ask() {
-        let ledger = Ledger::stub();
-        let reads = in_memory_reads(&ledger);
+        let stub = FakeStores::stub(chrono::Local::now().date_naive());
+        let reads = in_memory_reads(&stub);
         let ports = LedgerBackedPorts::in_memory(reads.clone());
         let everyday = AccountId::seed(2);
         let expected = lib_accounts::AccountUse {
-            transactions: ledger.account_transactions(everyday),
+            transactions: lib_database::seed::account_transactions(
+                &stub.transactions.transactions,
+                everyday,
+            ),
             budgets: 2,
         };
 
@@ -209,7 +210,7 @@ mod tests {
             1,
             "read from the store on each ask"
         );
-        let mut booked = ledger.transactions()[0].clone();
+        let mut booked = stub.transactions.transactions[0].clone();
         booked.id = lib_core::TransactionId::seed(9_999);
         booked.account_id = everyday;
         reads.transactions.borrow_mut().upsert_transaction(booked);
@@ -224,8 +225,7 @@ mod tests {
 
     #[test]
     fn the_ports_offer_the_stores_institutions_units_and_base_unit() {
-        let ledger = Ledger::stub();
-        let reads = in_memory_reads(&ledger);
+        let reads = in_memory_reads(&FakeStores::stub(chrono::Local::now().date_naive()));
         let held = reads.units.borrow().units().units().len();
         let ports = LedgerBackedPorts::in_memory(reads);
         let ports = ports.borrow();
@@ -243,8 +243,9 @@ mod tests {
 
     #[test]
     fn a_write_through_the_ports_is_noted_once() {
-        let ledger = Ledger::stub();
-        let ports = LedgerBackedPorts::in_memory(in_memory_reads(&ledger));
+        let ports = LedgerBackedPorts::in_memory(in_memory_reads(&FakeStores::stub(
+            chrono::Local::now().date_naive(),
+        )));
         let mut held = ports.borrow_mut();
         assert!(!held.take_written());
 

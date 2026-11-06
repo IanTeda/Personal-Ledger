@@ -4,7 +4,7 @@
 //! it. `gpui`-free and I/O-free.
 //!
 //! It depends on `lib-accounts`, `lib-transactions` and `lib-bills`, the feature crates it writes,
-//! and none depends on it; the guardrail test in `lib-ledger` keeps it that way.
+//! and none depends on it; the guardrail test in `lib-database` keeps it that way.
 //!
 //! - `protocols`: the one atomic port, [`AccountDeletion`], which `lib-database` implements over
 //!   its Accounts, Transactions and Bills adapters, the [`DeletionReads`] the Dialog quotes, and

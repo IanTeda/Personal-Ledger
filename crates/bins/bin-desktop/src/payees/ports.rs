@@ -122,21 +122,18 @@ pub fn reload(ledger: &Entity<LedgerStore>, cx: &mut App) -> lib_database::Resul
 #[cfg(test)]
 mod tests {
     use lib_core::{CategoryId, PayeeId, TransactionId};
-    use lib_database::SharedTransactionsStore;
-    use lib_ledger::Ledger;
+    use lib_database::{FakeStores, SharedTransactionsStore};
 
     use super::*;
 
-    /// The ports on `ledger`'s Payees, reading its Transactions, Bill Plans and Categories in
+    /// The ports on `stub`'s Payees, reading its Transactions, Bill Plans and Categories in
     /// memory, with the Transactions store a test writes a Split to.
-    fn on(ledger: &Ledger) -> (DesktopPorts, SharedTransactionsStore) {
+    fn on(stub: &FakeStores) -> (DesktopPorts, SharedTransactionsStore) {
         let transactions: SharedTransactionsStore =
-            Rc::new(RefCell::new(lib_transactions::fake::InMemoryTransactions {
-                transactions: ledger.transactions().to_vec(),
-            }));
+            Rc::new(RefCell::new(stub.transactions.clone()));
         let reads = StoredPayeeReads {
             transactions: transactions.clone(),
-            bills: crate::bills::ports::in_memory_store(ledger),
+            bills: crate::bills::ports::in_memory_store(stub),
             categories: crate::categories::ports::in_memory(),
         };
         (LedgerBackedPorts::in_memory(reads), transactions)
@@ -144,8 +141,7 @@ mod tests {
 
     #[test]
     fn in_memory_ports_count_the_stores_use_and_offer_its_leaves() {
-        let ledger = Ledger::stub();
-        let (ports, _) = on(&ledger);
+        let (ports, _) = on(&FakeStores::stub(chrono::Local::now().date_naive()));
         let ports = ports.borrow();
 
         let woolworths = PayeesPorts::usage(&*ports)
@@ -166,14 +162,14 @@ mod tests {
 
     #[test]
     fn a_split_written_to_the_store_after_the_ports_are_built_is_counted() {
-        let ledger = Ledger::stub();
+        let stub = FakeStores::stub(chrono::Local::now().date_naive());
         let woolworths = PayeeId::seed(1);
-        let (ports, transactions) = on(&ledger);
+        let (ports, transactions) = on(&stub);
         let before = PayeesPorts::usage(&*ports.borrow())
             .payee_usage(woolworths)
             .expect("memory always counts");
 
-        let mut booked = ledger.transactions()[0].clone();
+        let mut booked = stub.transactions.transactions[0].clone();
         booked.id = TransactionId::seed(9_999);
         booked.splits.truncate(1);
         booked.splits[0].payee_id = Some(woolworths);

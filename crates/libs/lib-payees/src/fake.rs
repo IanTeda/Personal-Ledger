@@ -95,7 +95,7 @@ pub struct InMemoryPorts {
 
 impl InMemoryPorts {
     /// The stub seed: the stub Ledger's Payees (see [`default_payees`]) with nothing naming any,
-    /// and the stub Categories' leaves. Ids match `lib-ledger`'s stub, so its Splits and Bill
+    /// and the stub Categories' leaves. Ids match `lib-database`'s joined stub, so its Splits and Bill
     /// Plans still resolve their Payees.
     pub fn stub() -> Self {
         Self {

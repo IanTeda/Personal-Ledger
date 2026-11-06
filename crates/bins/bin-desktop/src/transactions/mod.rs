@@ -10,12 +10,12 @@
 //! - `ports.rs` answers the page's ports from the stores (#774).
 //!
 //! The stub seed is `lib_transactions::fake`'s, joined to the other stubs by
-//! `lib_ledger::default_transactions`.
+//! `lib_database::seed::default_transactions`.
 
 pub(crate) mod ports;
 pub(crate) mod router;
 pub(crate) mod view;
 
 #[cfg(test)]
-pub use lib_ledger::default_transactions;
+pub use lib_database::seed::default_transactions;
 pub use view::page::TransactionsPage;

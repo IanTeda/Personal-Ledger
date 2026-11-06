@@ -228,7 +228,7 @@ impl BillsPorts for InMemoryPorts {
 /// The Splits `stub`'s payments were paid by, then the unmatched Telstra debit yesterday (the 8d
 /// Match candidate), newest first, as `lib-transactions`' stub books them: each payment a
 /// Transaction in its Plan's Account of one Split of `-amount` carrying the Plan's Category and
-/// Payee. `lib-ledger` checks the two agree.
+/// Payee. `lib-database`'s seed tests check the two agree.
 fn book(
     stub: StubBills,
     accounts: &[BillAccount],

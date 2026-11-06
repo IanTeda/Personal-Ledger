@@ -24,7 +24,7 @@ pub struct InMemoryInventory {
 
 impl InMemoryInventory {
     /// The stub seed: the stub Ledger's Inventory as of `today` (see [`default_inventory`]). Ids
-    /// match `lib-ledger`'s stub, so its Document Links still resolve their Items.
+    /// match `lib-database`'s joined stub, so its Document Links still resolve their Items.
     pub fn stub(today: NaiveDate) -> Self {
         let Inventory { locations, items } = default_inventory(today);
         Self { locations, items }
@@ -81,7 +81,7 @@ pub struct InMemoryUnits {
 }
 
 impl InMemoryUnits {
-    /// Australian and US dollars, the first with the seed id `lib-ledger`'s stub gives AUD.
+    /// Australian and US dollars, the first with the seed id `lib-database`'s joined stub gives AUD.
     pub fn stub() -> Self {
         let unit = |id, code: &str, name: &str| UnitChoice {
             id,

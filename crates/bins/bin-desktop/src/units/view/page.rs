@@ -18,7 +18,7 @@ use gpui::{
     AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Pixels, Point, Subscription,
 };
 
-use lib_ledger::Domain;
+use crate::ledger_store::Domain;
 use lib_units::UnitId;
 use lib_units::presenter::{
     UnitPricesEvent, UnitPricesPresenter, UnitPricesViewModel, UnitsPageEvent, UnitsPagePresenter,

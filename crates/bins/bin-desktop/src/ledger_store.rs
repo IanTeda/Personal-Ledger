@@ -1,8 +1,9 @@
-//! The Desktop's one copy of the Ledger (ADR-0038). [`LedgerStore`] holds the only [`Ledger`],
-//! and writes no domain outside its `#[doc(hidden)]` test hooks (`*_for_test`): every domain is
-//! written by its module, through its ports or a cross-domain module's port, and the store brings its read copies in line and emits a
-//! [`LedgerChanged`] naming the domains that changed, which [`notify_on`] turns into a repaint for
-//! the Entities reading them.
+//! The Desktop's announcer of Ledger writes. [`LedgerStore`] holds no rows (#1056): every domain
+//! is written by its module, through its ports or a cross-domain module's port, and the store
+//! emits a [`LedgerChanged`] naming the [`Domain`]s that changed, which [`notify_on`] turns into a
+//! repaint for the Entities reading them. It writes no domain outside its `#[doc(hidden)]` test
+//! hooks (`*_for_test`), and still hands out the shared stores and the stored reads until they
+//! move to the Open Ledger (#1057).
 //!
 //! The Institutions, Accounts and Categories have no read copy (#1053, #1054, #1055): their
 //! modules announce their writes through [`LedgerStore::announce_institutions`],
@@ -12,10 +13,10 @@
 //! write their stores and announce the change through [`LedgerStore::announce_tags`],
 //! [`LedgerStore::announce_payees`], [`LedgerStore::announce_transactions`],
 //! [`LedgerStore::announce_bills`] and [`LedgerStore::announce_budgets`], which is the Dashboard's
-//! and the other pages' redraw trigger. The Ledger still holds the stub's rows for those domains,
-//! as seeded, which only the in-memory test stores are built from. The Documents and Document
-//! Types have no read copy (#968): their modules read the Documents store, and the other domains'
-//! rows through their stores ([`LedgerStore::document_reads`]).
+//! and the other pages' redraw trigger. The stub's rows are `lib_database::FakeStores::stub`'s,
+//! which the in-memory test stores are built from. The Documents and Document Types have no read
+//! copy (#968): their modules read the Documents store, and the other domains' rows through their
+//! stores ([`LedgerStore::document_reads`]).
 //!
 //! The store holds no commit: a module's writes are committed by the input they ran in
 //! (`crate::input::send`).
@@ -32,7 +33,6 @@ use lib_database::{
     StoredPayeeReads,
 };
 use lib_institutions::InstitutionsPorts as _;
-use lib_ledger::{Domain, Ledger};
 
 use crate::accounts::ports::DesktopPorts as DesktopAccountsPorts;
 use crate::bills::ports::{DesktopPorts as DesktopBillsPorts, LedgerBackedPorts};
@@ -64,17 +64,15 @@ pub struct LedgerSetup {
 }
 
 impl LedgerSetup {
-    /// The stub Ledger's Institutions, Accounts, Categories, Payees, Transactions and Bills as of
-    /// `today`, in memory, for a test that builds `Root` directly.
+    /// The stub's Institutions, Accounts, Categories, Payees, Transactions and Bills as of `today`
+    /// (`FakeStores::stub`), in memory, for a test that builds `Root` directly.
     #[cfg(test)]
     pub fn stub(today: chrono::NaiveDate) -> Self {
-        let ledger = Ledger::stub_on(today);
+        let stub = lib_database::FakeStores::stub(today);
         let (categories, categories_writes) = crate::categories::ports::in_memory_counted();
-        let budgets = crate::budgets::ports::in_memory(&ledger);
+        let budgets = crate::budgets::ports::in_memory(&stub);
         let transactions: SharedTransactionsStore =
-            Rc::new(RefCell::new(lib_transactions::fake::InMemoryTransactions {
-                transactions: ledger.transactions().to_vec(),
-            }));
+            Rc::new(RefCell::new(stub.transactions.clone()));
         // The Units' last prices are as of noon that day, as the stub Ledger's were.
         let units = crate::bills::ports::in_memory_units(
             today.and_time(chrono::NaiveTime::MIN).and_utc() + chrono::Duration::hours(12),
@@ -87,7 +85,7 @@ impl LedgerSetup {
                 units: units.clone(),
                 institutions: institutions_store.clone(),
             });
-        let bills_store = crate::bills::ports::in_memory_store(&ledger);
+        let bills_store = crate::bills::ports::in_memory_store(&stub);
         let payees = crate::payees::LedgerBackedPorts::in_memory(StoredPayeeReads {
             transactions: transactions.clone(),
             bills: bills_store.clone(),
@@ -103,10 +101,7 @@ impl LedgerSetup {
         );
         Self {
             budgets,
-            documents: Rc::new(RefCell::new(lib_documents::fake::InMemoryDocuments {
-                documents: ledger.stub_documents(today),
-                types: lib_documents::types::default_types(),
-            })),
+            documents: Rc::new(RefCell::new(stub.documents)),
             tags: crate::tags::ports::in_memory(),
             inventory: crate::inventory::ports::in_memory(today),
             institutions: crate::institutions::LedgerBackedPorts::shared(
@@ -126,6 +121,25 @@ impl LedgerSetup {
     }
 }
 
+/// A part of the Ledger a write can touch: what [`LedgerChanged`] carries when a module has
+/// written its store, so a reader can skip a change that isn't its own. Distinct from
+/// `lib_database`'s writer `Domain`, which names the adapters a failed write reloads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Domain {
+    Accounts,
+    Categories,
+    Payees,
+    Tags,
+    Transactions,
+    Bills,
+    Budgets,
+    Documents,
+    DocumentTypes,
+    Inventory,
+    Institutions,
+    Units,
+}
+
 /// Emitted after a write lands, naming every domain it touched.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LedgerChanged {
@@ -133,7 +147,6 @@ pub struct LedgerChanged {
 }
 
 pub struct LedgerStore {
-    ledger: Ledger,
     institutions: DesktopInstitutionsPorts,
     accounts: DesktopAccountsPorts,
     categories: SharedCategoriesStore,
@@ -160,21 +173,19 @@ pub struct LedgerStore {
 impl EventEmitter<LedgerChanged> for LedgerStore {}
 
 impl LedgerStore {
-    /// `ledger` with its own Institutions, Accounts, Categories, Payees, Transactions and Bills in
-    /// memory as the ports, for a test that needs no storage.
-    pub fn new(ledger: Ledger) -> Self {
+    /// `stub`'s Transactions, Bills and Budgets in memory as the ports, beside the stub's
+    /// Institutions, Accounts, Categories and Payees, for a test that needs no storage.
+    pub fn new(stub: &lib_database::FakeStores) -> Self {
         let transactions: SharedTransactionsStore =
-            Rc::new(RefCell::new(lib_transactions::fake::InMemoryTransactions {
-                transactions: ledger.transactions().to_vec(),
-            }));
+            Rc::new(RefCell::new(stub.transactions.clone()));
         let (categories, categories_writes) = crate::categories::ports::in_memory_counted();
-        let bills_store = crate::bills::ports::in_memory_store(&ledger);
+        let bills_store = crate::bills::ports::in_memory_store(stub);
         let payees = crate::payees::LedgerBackedPorts::in_memory(StoredPayeeReads {
             transactions: transactions.clone(),
             bills: bills_store.clone(),
             categories: categories.clone(),
         });
-        let budgets = crate::budgets::ports::in_memory(&ledger);
+        let budgets = crate::budgets::ports::in_memory(stub);
         let units = crate::bills::ports::in_memory_units(chrono::Utc::now());
         let institutions_store = crate::institutions::ports::in_memory_store();
         let accounts =
@@ -227,7 +238,6 @@ impl LedgerStore {
             documents,
             document_reads,
             inventory_reads,
-            ledger,
             payees,
             transactions,
             bills,
@@ -237,9 +247,9 @@ impl LedgerStore {
         }
     }
 
-    /// `ledger` with its Institutions, Accounts, Categories, Payees, Transactions and Bills read
-    /// from `setup`'s stores, which its writes then go to.
-    pub fn with_storage(ledger: Ledger, setup: LedgerSetup) -> Self {
+    /// The Institutions, Accounts, Categories, Payees, Transactions and Bills read from `setup`'s
+    /// stores, which their writes go to.
+    pub fn with_storage(setup: LedgerSetup) -> Self {
         let document_reads = StoredDocumentReads {
             transactions: setup.transactions.clone(),
             payees: setup.payees.clone(),
@@ -254,7 +264,6 @@ impl LedgerStore {
             documents: setup.documents.clone(),
         };
         Self {
-            ledger,
             institutions: setup.institutions,
             accounts: setup.accounts,
             categories: setup.categories,
@@ -272,10 +281,6 @@ impl LedgerStore {
             announced: false,
             announcements: 0,
         }
-    }
-
-    pub fn ledger(&self) -> &Ledger {
-        &self.ledger
     }
 
     /// The other domains' stores as `lib_inventory`' reads, which the Inventory Dialogs hold.
@@ -612,16 +617,6 @@ pub fn notify_on<T: 'static>(
     })
 }
 
-/// A `LedgerStore` over `parts`, for a test that needs only some collections.
-#[cfg(test)]
-pub(crate) fn test_ledger(
-    cx: &mut gpui::TestAppContext,
-    parts: lib_ledger::LedgerParts,
-) -> Entity<LedgerStore> {
-    use gpui::AppContext;
-    cx.new(|_| LedgerStore::new(Ledger::from_parts(parts)))
-}
-
 #[cfg(test)]
 mod tests {
     use std::{cell::RefCell, rc::Rc};
@@ -666,7 +661,6 @@ mod tests {
     /// [`on_storage`] with the ports the Bills, Bill Payments, Account Deletion and Category
     /// Deletion modules write.
     fn on_storage_with_bills(cx: &mut TestAppContext, storage: lib_database::Storage) -> OnStorage {
-        let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
         let pending = storage.pending;
         let (categories, categories_writes) =
             crate::categories::ports::counted(Box::new(storage.categories));
@@ -718,24 +712,21 @@ mod tests {
         )
         .deletion;
         let store = cx.new(|_| {
-            LedgerStore::with_storage(
-                Ledger::stub_on(today),
-                LedgerSetup {
-                    institutions,
-                    institutions_store,
-                    accounts,
-                    categories,
-                    categories_writes,
-                    tags: Rc::new(RefCell::new(storage.tags)),
-                    payees,
-                    transactions,
-                    bills: bills.clone(),
-                    budgets,
-                    inventory: Rc::new(RefCell::new(storage.inventory)),
-                    documents: Rc::new(RefCell::new(storage.documents)),
-                    units,
-                },
-            )
+            LedgerStore::with_storage(LedgerSetup {
+                institutions,
+                institutions_store,
+                accounts,
+                categories,
+                categories_writes,
+                tags: Rc::new(RefCell::new(storage.tags)),
+                payees,
+                transactions,
+                bills: bills.clone(),
+                budgets,
+                inventory: Rc::new(RefCell::new(storage.inventory)),
+                documents: Rc::new(RefCell::new(storage.documents)),
+                units,
+            })
         });
         OnStorage {
             store,

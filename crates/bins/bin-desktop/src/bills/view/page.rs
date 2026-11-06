@@ -10,6 +10,7 @@
 
 use crate::navigation::nav::NounLabel;
 
+use crate::ledger_store::Domain;
 use gpui::{
     AnyElement, App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, SharedString,
     Subscription, Window, div, prelude::*, px,
@@ -20,7 +21,6 @@ use lib_bills::presenter::{
     BillsPageEvent, BillsPagePresenter, BillsPageViewModel, BillsTab, FilterField, ScheduleEvent,
 };
 use lib_core::Clock;
-use lib_ledger::Domain;
 use lib_list_cursor::Step;
 use lib_viper::keymap::Keymap;
 use lib_viper::view::SelectView;

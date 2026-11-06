@@ -8,6 +8,7 @@ mod render;
 
 use std::collections::BTreeSet;
 
+use crate::ledger_store::Domain;
 use chrono::NaiveDate;
 use gpui::{AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Subscription};
 use lib_categories::presenter::{
@@ -15,7 +16,6 @@ use lib_categories::presenter::{
 };
 use lib_categories::{CategoriesOutcome, CategoryChange, SharedCategories};
 use lib_core::Clock;
-use lib_ledger::Domain;
 use lib_viper::keymap::Keymap;
 
 use lib_shell::Hint;

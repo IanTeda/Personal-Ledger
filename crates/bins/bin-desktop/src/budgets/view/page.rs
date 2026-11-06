@@ -10,6 +10,7 @@
 //! the Shell ([`BudgetsPage::key_ahead`]) and turns into a cell event; `esc` comes back as
 //! [`BudgetsPage::escape`].
 
+use crate::ledger_store::Domain;
 use gpui::{
     AnyElement, App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, SharedString,
     Subscription, Window, div, prelude::*, px,
@@ -20,7 +21,6 @@ use lib_budgets::presenter::{
 };
 use lib_budgets::{BudgetsOutcome, Span};
 use lib_core::{BudgetId, Clock, DateStyle};
-use lib_ledger::Domain;
 use lib_locale::format::upper;
 use lib_viper::keymap::Keymap;
 

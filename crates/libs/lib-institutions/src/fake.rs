@@ -25,7 +25,7 @@ pub struct InMemoryInstitutions {
 
 impl InMemoryInstitutions {
     /// The stub seed: the stub Ledger's Institutions (see [`default_institutions`]). Ids match
-    /// `lib-ledger`'s stub, so its Accounts still resolve their Institutions.
+    /// `lib-database`'s joined stub, so its Accounts still resolve their Institutions.
     pub fn stub() -> Self {
         Self {
             institutions: default_institutions(),

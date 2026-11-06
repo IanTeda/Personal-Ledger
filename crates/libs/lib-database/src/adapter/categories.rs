@@ -126,7 +126,7 @@ impl CategoryRepository for CategoriesAdapter {
 /// and a leaf by `lib-categories`' rules.
 /// `categories` as `lib-budgets`' `BudgetCategories` reads them, in tree order, each with its path
 /// and whether it is a leaf by the Categories' rules.
-pub(crate) fn budget_categories(categories: &[Category]) -> Vec<lib_budgets::BudgetCategory> {
+pub fn budget_categories(categories: &[Category]) -> Vec<lib_budgets::BudgetCategory> {
     lib_categories::paths_in_tree_order(categories)
         .into_iter()
         .filter_map(|(id, path)| {

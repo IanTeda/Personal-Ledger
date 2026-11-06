@@ -1,8 +1,8 @@
 //! The Documents seed tests that read the other domains' seeds, so they need more than one domain:
 //! the Documents seed's Links and Suggested Links over the stub Ledger's records, read through
-//! `lib-documents`' ports as the Desktop reads them. Lives here rather than in `lib_documents`,
-//! which depends on no other domain. The rest of the Documents model's tests live in
-//! `lib_documents`.
+//! `lib-documents`' ports as the Desktop reads them. Lives here, beside the joined stub, rather
+//! than in `lib_documents`, which depends on no other domain (moved from `lib-ledger`, #1056). The
+//! rest of the Documents model's tests live in `lib_documents`.
 
 use std::path::PathBuf;
 
@@ -12,7 +12,7 @@ use lib_core::{DocumentId, Money, TransactionId};
 use lib_documents::{types::DocumentTypeRow, *};
 use lib_inventory::Inventory;
 
-use crate::Ledger;
+use crate::seed::{stub_documents, stub_institutions, stub_inventory, stub_link_records};
 
 fn cents_money(cents: i64) -> Money {
     Money(BigDecimal::new(cents.into(), 2))
@@ -58,11 +58,11 @@ fn world() -> World {
 }
 
 fn world_on(today: NaiveDate) -> World {
-    let ledger = Ledger::stub_on(today);
+    let institutions = stub_institutions();
     World {
-        records: ledger.link_records(),
-        documents: ledger.stub_documents(today),
-        inventory: ledger.inventory().clone(),
+        records: stub_link_records(today, &institutions),
+        documents: stub_documents(today, &institutions),
+        inventory: stub_inventory(today),
     }
 }
 

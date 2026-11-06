@@ -3,7 +3,7 @@
 //! settles in one commit, and the Pay Dialog that offers it beside Match. `gpui`-free and I/O-free.
 //!
 //! It depends on `lib-bills` and `lib-transactions`, the feature crates it writes, and neither
-//! depends on it; the guardrail test in `lib-ledger` keeps it that way.
+//! depends on it; the guardrail test in `lib-database` keeps it that way.
 //!
 //! - `protocols`: the one atomic port, [`BillPayments`], which `lib-database` implements over its
 //!   Transactions and Bills adapters, and the Router the Dialog closes through.

@@ -425,11 +425,6 @@ impl Root {
         crate::navigation::nav::needs_ledger(noun) && self.refuse_without_ledger()
     }
 
-    /// The Ledger's read copy (ADR-0038), `None` with no Ledger open.
-    fn ledger<'a>(&self, cx: &'a App) -> Option<&'a lib_ledger::Ledger> {
-        Some(self.open.as_ref()?.ledger.read(cx).ledger())
-    }
-
     /// The Open Ledger, for the test support and snapshots, which a test reads only on a Shell
     /// built on a Ledger. Everything else asks `self.open` and has a no Ledger open path.
     #[expect(

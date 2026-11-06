@@ -364,7 +364,7 @@ pub(crate) fn paid_split(transactions: &[Transaction], split: SplitRef) -> Optio
 }
 
 /// `transaction`'s Splits as Bills reads them, each with its Transaction's date, Account and memo.
-fn bill_splits(transaction: &Transaction) -> impl Iterator<Item = BillSplit> + '_ {
+pub(crate) fn bill_splits(transaction: &Transaction) -> impl Iterator<Item = BillSplit> + '_ {
     transaction
         .splits
         .iter()
@@ -783,9 +783,7 @@ mod tests {
     }
 
     fn stub_transactions() -> Vec<Transaction> {
-        lib_ledger::Ledger::stub_on(NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date"))
-            .transactions()
-            .to_vec()
+        crate::seed::stub_transactions(NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date"))
     }
 
     /// Bills reads the stored Splits flattened as the in-memory store flattens its own, after a

@@ -1,7 +1,7 @@
 //! In-memory ports and the stub rows, for tests and UI-first work. [`InMemoryBudgets`] and
 //! [`InMemoryBudgetReads`] hold every row in a plain field so a test can set up state directly;
 //! [`stub_accounts`] and [`stub_categories`] are the Accounts and Categories stubs as Budgets reads
-//! them, which `lib-ledger`'s seed tests hold to the stubs themselves. [`InMemoryPorts`] holds both
+//! them, which `lib-database`'s seed tests hold to the stubs themselves. [`InMemoryPorts`] holds both
 //! as the Presenters share them, and [`RecordingRouter`] records what a Presenter asked for.
 
 use std::cell::RefCell;

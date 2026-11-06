@@ -40,10 +40,6 @@ lib_unit_deletion = { path = "../../../crates/libs/lib-unit-deletion" }
 lib_tag_removal = { path = "../../../crates/libs/lib-tag-removal" }
 lib_category_deletion = { path = "../../../crates/libs/lib-category-deletion" }
 lib_transaction_import = { path = "../../../crates/libs/lib-transaction-import" }
-## The first-launch and dev seeds write the stub Ledger's Transactions, which the Bills and
-## Documents stubs add to, and its Bills, so they take them from the joined stub (#774, removed
-## with the seed).
-lib_ledger = { path = "../../../crates/libs/lib-ledger" }
 
 ## -- Workspace Shared Dependencies --
 bigdecimal = { workspace = true }

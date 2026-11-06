@@ -7,8 +7,8 @@
 //! random ones are multi-Split, and a few hand-authored cases always exist.
 //!
 //! The other domains' stubs reach it as names ([`SeedNames`]) and plain account rows rather than as
-//! their crates, since the Categories, Payees and Tags crates depend on this one. `lib-ledger`
-//! joins it to their stubs (`default_transactions`).
+//! their crates, since the Categories, Payees and Tags crates depend on this one. `lib-database`'s
+//! seed joins it to their stubs (`default_transactions`).
 //!
 //! No transaction account in this seed is in a second Unit, so the mixed-Units rule (the running
 //! total blanks) is exercised by the filter engine's unit tests rather than visible in the app

@@ -6,8 +6,8 @@
 
 mod render;
 
+use crate::ledger_store::Domain;
 use gpui::{AnyElement, App, Context, Entity, EventEmitter, Subscription};
-use lib_ledger::Domain;
 use lib_tags::presenter::{TagsPageEvent, TagsPagePresenter, TagsPageViewModel};
 use lib_tags::{SharedPorts, TagChange, TagsOutcome};
 use lib_viper::keymap::Keymap;

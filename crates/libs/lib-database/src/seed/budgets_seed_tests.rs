@@ -1,7 +1,8 @@
 //! The Budgets seed tests that read the other domains' seeds, so they need more than one domain:
 //! the Budgets seed over the stub Accounts and Categories, its figures over the Transactions seed.
-//! Lives here rather than in `lib_budgets`, which depends on no other domain. The rest of the
-//! Budgets model's tests live in `lib_budgets`.
+//! Lives here, beside the joined stub, rather than in `lib_budgets`, which depends on no other
+//! domain (moved from `lib-ledger`, #1056). The rest of the Budgets model's tests live in
+//! `lib_budgets`.
 
 use std::collections::BTreeMap;
 
@@ -17,8 +18,13 @@ use lib_core::{BudgetId, CategoryId, Money, Period, UnitId};
 use lib_payees::default_payees;
 use lib_tags::default_tags;
 
+use lib_accounts::Account;
+use lib_categories::Category;
+use lib_transactions::Transaction;
+
+use crate::adapter::accounts::budget_accounts;
+use crate::adapter::categories::budget_categories;
 use crate::seed::default_transactions;
-use crate::{Ledger, LedgerParts, budget_accounts, budget_categories};
 
 fn date(y: i32, m: u32, d: u32) -> NaiveDate {
     NaiveDate::from_ymd_opt(y, m, d).unwrap_or_default()
@@ -38,22 +44,19 @@ fn money(text: &str) -> Money {
 
 /// The stub Accounts and Categories with the Transactions seed; no Bills.
 struct World {
-    ledger: Ledger,
+    accounts: Vec<Account>,
+    categories: Vec<Category>,
+    transactions: Vec<Transaction>,
 }
 
 impl World {
-    fn ledger(&self) -> &Ledger {
-        &self.ledger
-    }
-
-    /// The Budgets read ports over the Ledger's rows, as `lib-database`'s stores answer them.
+    /// The Budgets read ports over the stub's rows, as `lib-database`'s stores answer them.
     fn reads(&self) -> InMemoryBudgetReads {
         InMemoryBudgetReads {
-            categories: budget_categories(self.ledger.categories()),
-            accounts: budget_accounts(self.ledger.accounts()),
+            categories: budget_categories(&self.categories),
+            accounts: budget_accounts(&self.accounts),
             splits: self
-                .ledger
-                .transactions()
+                .transactions
                 .iter()
                 .flat_map(|transaction| {
                     transaction.splits.iter().map(|split| BudgetSplit {
@@ -70,7 +73,7 @@ impl World {
     }
 
     fn category(&self, name: &str) -> CategoryId {
-        categories::find_by_name(self.ledger.categories(), name).expect("a seeded Category")
+        categories::find_by_name(&self.categories, name).expect("a seeded Category")
     }
 }
 
@@ -104,18 +107,19 @@ fn seeded() -> (World, Budgets) {
         &default_tags(),
         today(),
     );
-    let ledger = Ledger::from_parts(LedgerParts {
-        accounts,
-        categories,
-        transactions,
-        ..LedgerParts::default()
-    });
     let budgets = default_budgets(
-        &budget_accounts(ledger.accounts()),
-        &budget_categories(ledger.categories()),
+        &budget_accounts(&accounts),
+        &budget_categories(&categories),
         today(),
     );
-    (World { ledger }, budgets)
+    (
+        World {
+            accounts,
+            categories,
+            transactions,
+        },
+        budgets,
+    )
 }
 
 #[test]
@@ -144,8 +148,8 @@ fn the_seed_has_a_default_personal_spending_and_an_overlapping_second_budget() {
 fn the_seed_only_budgets_valid_leaves_and_accounts_in_the_unit() {
     let (world, budgets) = seeded();
     let (categories, accounts) = (
-        budget_categories(world.ledger().categories()),
-        budget_accounts(world.ledger().accounts()),
+        budget_categories(&world.categories),
+        budget_accounts(&world.accounts),
     );
     for budget in budgets.all() {
         for id in budget.category_ids() {
@@ -182,4 +186,19 @@ fn dining_steps_up_next_month_in_the_seed() {
         .unwrap_or_default();
     assert_eq!(amount_in(&chain, sep()), Some(money("250.00")));
     assert_eq!(amount_in(&chain, sep().next()), Some(money("300.00")));
+}
+
+/// `lib-budgets`' fake stub stands in for these mappings, so its tests run on what the joined stub
+/// holds.
+#[test]
+fn the_budgets_fake_stub_is_the_ledgers() {
+    let stub = crate::FakeStores::stub(today());
+    assert_eq!(
+        budget_accounts(&stub.accounts.accounts.accounts),
+        lib_budgets::fake::stub_accounts()
+    );
+    assert_eq!(
+        budget_categories(&stub.categories.categories),
+        lib_budgets::fake::stub_categories()
+    );
 }

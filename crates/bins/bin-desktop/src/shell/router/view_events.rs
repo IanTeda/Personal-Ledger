@@ -162,7 +162,7 @@ mod tests {
         let _subscription = shell.update(cx, |_, cx| Root::view_event_subscription(&view, cx));
         // The stub seed's plans, which `FakeStores::stub` holds.
         let (id, last_plan) =
-            lib_bills::planner_order(lib_ledger::Ledger::stub_on(today).bill_plans())
+            lib_bills::planner_order(&lib_database::seed::stub_bills(today).plans)
                 .last()
                 .map(|plan| (plan.id, plan.name.clone()))
                 .expect("the seed has Bill Plans");

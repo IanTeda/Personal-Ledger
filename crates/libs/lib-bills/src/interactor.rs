@@ -74,7 +74,7 @@ pub(crate) mod test_support {
         NaiveDate::from_ymd_opt(y, m, d).expect("a real date")
     }
 
-    /// The day the stub is seeded on, as `lib-ledger`'s Bills tests use.
+    /// The day the stub is seeded on, as `lib-database`'s Bills seed tests use.
     pub fn today() -> NaiveDate {
         date(2026, 9, 19)
     }
