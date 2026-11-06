@@ -1,7 +1,6 @@
 //! The Units Settings page's View: the `lib-units` page Presenter in a gpui Entity. It looks up
 //! each key the Shell passes on, as chord text, in the Units keymap, turns clicks into events, draws the view model
-//! (`render.rs`, `pane.rs`), and keeps the Ledger read copy in line after every event
-//! ([`ports::refresh`]). Each key and click is one input (`crate::input::send`), which commits
+//! (`render.rs`, `pane.rs`), and announces what each event wrote ([`ports::announce`]). Each key and click is one input (`crate::input::send`), which commits
 //! what it wrote. The Settings View hosts it as any other page.
 //!
 //! A Unit's prices view (`prices.rs`) shows in place of the tables while it is open, on
@@ -95,11 +94,11 @@ impl UnitsPage {
         crate::input::send(cx, |cx| self.handle(event, cx));
     }
 
-    /// Hands `event` to the Presenter with the Desktop's Router, then brings the Ledger read copy
-    /// in line with whatever it wrote. Inside an input already, as [`Self::send`] or a Dialog's
+    /// Hands `event` to the Presenter with the Desktop's Router, then announces whatever it
+    /// wrote. Inside an input already, as [`Self::send`] or a Dialog's
     /// confirm.
     fn handle(&mut self, event: UnitsPageEvent, cx: &mut Context<'_, Self>) {
-        ports::refresh(&self.ports, &self.ledger, cx);
+        ports::announce(&self.ports, &self.ledger, cx);
         let mut router = PageRouter {
             ports: self.ports.clone(),
             deletion: self.deletion.clone(),
@@ -110,7 +109,7 @@ impl UnitsPage {
         self.presenter.handle(event, &mut router);
         let prices = router.prices;
         self.apply_prices(prices);
-        ports::refresh(&self.ports, &self.ledger, cx);
+        ports::announce(&self.ports, &self.ledger, cx);
         cx.notify();
     }
 
@@ -123,7 +122,7 @@ impl UnitsPage {
         let Some(presenter) = &mut self.prices else {
             return;
         };
-        ports::refresh(&self.ports, &self.ledger, cx);
+        ports::announce(&self.ports, &self.ledger, cx);
         let mut router = PageRouter {
             ports: self.ports.clone(),
             deletion: self.deletion.clone(),
@@ -134,7 +133,7 @@ impl UnitsPage {
         presenter.handle(event, &mut router);
         let prices = router.prices;
         self.apply_prices(prices);
-        ports::refresh(&self.ports, &self.ledger, cx);
+        ports::announce(&self.ports, &self.ledger, cx);
         cx.notify();
     }
 

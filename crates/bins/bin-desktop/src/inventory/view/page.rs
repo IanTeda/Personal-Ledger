@@ -16,7 +16,7 @@ use gpui::{
 use lib_inventory::presenter::{
     InventoryPageEvent, InventoryPagePresenter, InventoryPageViewModel, MenuAction,
 };
-use lib_inventory::{InventoryOutcome, InventoryRow, SharedInventory};
+use lib_inventory::{InventoryOutcome, InventoryRow, InventoryUnits as _, SharedInventory};
 use lib_ledger::Domain;
 use lib_viper::keymap::Keymap;
 
@@ -167,7 +167,7 @@ impl PageSnapshot for SettingsInventorySnapshot {
     fn read(page: &InventoryPage, cx: &App) -> Self {
         let inventory = page.inventory.borrow().inventory();
         let view = page.view_model();
-        let ledger = page.ledger.read(cx).ledger();
+        let units = page.ledger.read(cx).inventory_reads();
         SettingsInventorySnapshot {
             inventory_rows: view
                 .rows
@@ -205,7 +205,7 @@ impl PageSnapshot for SettingsInventorySnapshot {
                 .map(|p| {
                     (
                         p.name.clone(),
-                        ledger.unit_code(p.unit).to_string(),
+                        units.unit_code(p.unit).unwrap_or_default(),
                         p.cover.as_ref().map(|c| c.insurer.clone()),
                     )
                 })

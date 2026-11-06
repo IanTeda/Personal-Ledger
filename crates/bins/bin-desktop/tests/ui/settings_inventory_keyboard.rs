@@ -718,3 +718,30 @@ fn removing_a_location_lands_in_one_commit_and_drops_its_items_document_links(
     assert_eq!(page.selected_file.as_deref(), Some("aami-car-policy.pdf"));
     assert_eq!(page.selected_links, 2, "the Item's Link is gone");
 }
+
+#[gpui::test]
+fn a_unit_recoded_on_the_units_page_shows_by_its_new_code_on_a_location(app: &mut TestAppContext) {
+    let mut ui = in_inventory(app);
+    let unit = |ui: &mut Harness<'_>| {
+        ui.settings::<SettingsInventorySnapshot>()
+            .inventory_locations[0]
+            .1
+            .clone()
+    };
+    assert_eq!(unit(&mut ui), "aud");
+
+    // Recode aud, the Units page's first row, from its Edit unit Dialog.
+    ui.press("escape");
+    ui.press(&["k"; 7].join(" "));
+    assert_eq!(ui.settings_frame().page, "Units");
+    ui.press("l");
+    ui.press("e");
+    assert_eq!(ui.dialog_value("code").as_deref(), Some("aud"));
+    ui.press("backspace backspace backspace a u x enter");
+    assert_eq!(ui.dialog(), None);
+    ui.press("escape");
+    ui.press(&["j"; 7].join(" "));
+    assert_eq!(ui.settings_frame().page, "Inventory");
+
+    assert_eq!(unit(&mut ui), "aux");
+}

@@ -7,8 +7,8 @@
 //! - `view/dialog.rs` holds each Dialog's Presenter in an Entity in the Dialog host, one View per Dialog
 //!   in `view/dialog/`.
 //! - `router.rs` is the Router and the module's entry point ([`units_page`]).
-//! - `ports.rs` holds the halfway shims: usage and holdings answered from the Ledger, and the
-//!   Ledger read copy refreshed after each write (#746).
+//! - `ports.rs` holds the ports over the shared Units store, with usage and holdings read from the
+//!   other domains' stores, and the announcement of a Units write (#1052).
 //!
 //! Where the Units are kept, the SQLite adapter opened at start or memory, is `lib-database`'s
 //! `UnitsStore`.
@@ -18,7 +18,7 @@ mod router;
 mod view;
 
 use gpui::App;
-use lib_database::UnitsStore;
+use lib_database::SharedUnitsStore;
 pub use ports::{DesktopPorts, LedgerBackedPorts};
 pub use router::units_page;
 pub(crate) use view::dialog::{Landed, Router, help, refusal};
@@ -64,7 +64,7 @@ pub struct UnitsSetup {
 
 impl UnitsSetup {
     pub fn new(
-        ports: Box<dyn UnitsStore>,
+        ports: SharedUnitsStore,
         reads: lib_database::StoredUnitReads,
         institutions: &crate::institutions::ports::DesktopPorts,
         config: &lib_config::KeyBindingConfig,
@@ -78,13 +78,13 @@ impl UnitsSetup {
         }
     }
 
-    /// The stub seed in memory under the default keys, reading `storage`'s Accounts, Transactions,
+    /// `storage`'s Units store under the default keys, reading its Accounts, Transactions,
     /// Bills, Budgets, Inventory and Institutions and deleting beside its Institutions, for a test
     /// that builds `Root` directly.
     #[cfg(test)]
     pub fn stub(storage: &crate::ledger_store::LedgerSetup) -> Self {
         Self::new(
-            Box::new(lib_units::fake::InMemoryPorts::stub(chrono::Utc::now())),
+            storage.units.clone(),
             lib_database::StoredUnitReads {
                 accounts: storage.accounts.clone(),
                 transactions: storage.transactions.clone(),

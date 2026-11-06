@@ -432,6 +432,9 @@ mod tests {
                             .expect("the Transactions load"),
                     )),
                     budgets: self.budgets.clone(),
+                    units: Rc::new(RefCell::new(lib_units::fake::InMemoryPorts::stub(
+                        chrono::Utc::now(),
+                    ))),
                 },
             }
         }

@@ -23,7 +23,6 @@ lib_bills = { path = "../lib-bills" }
 lib_documents = { path = "../lib-documents" }
 lib_inventory = { path = "../lib-inventory" }
 lib_institutions = { path = "../lib-institutions" }
-lib_units = { path = "../lib-units" }
 
 ## -- Workspace Dependencies --
 bigdecimal = { workspace = true }

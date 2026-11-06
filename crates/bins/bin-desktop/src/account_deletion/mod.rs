@@ -20,10 +20,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use gpui::{App, Entity};
-use lib_account_deletion::{DeletionReads, SharedDeletion};
-use lib_accounts::{AccountUsage, AccountUse};
-use lib_core::{AccountId, UnitId};
-use lib_database::{AccountDeletionAdapter, SharedAccountsStore, SharedTransactionsStore};
+use lib_account_deletion::SharedDeletion;
+use lib_database::{
+    AccountDeletionAdapter, SharedAccountsStore, SharedTransactionsStore, StoredAccountReads,
+};
 
 use crate::bills::DesktopPorts;
 use crate::ledger_store::LedgerStore;
@@ -43,12 +43,15 @@ pub fn deletion(
     )))
 }
 
-/// What the Delete Dialog reads and writes through: the deletion port, and the Bills ports whose
-/// reads a confirm copies back.
+/// What the Delete Dialog reads and writes through: the deletion port, the Bills ports whose
+/// reads a confirm copies back, and the figures it quotes as it opens: the Transactions counted by
+/// the Transactions store, the Budgets by the Budgets store and the Unit codes read from the Units
+/// store (#952, #1052).
 #[derive(Clone)]
 pub struct DeletionStores {
     pub deletion: SharedDeletion,
     pub bills: DesktopPorts,
+    pub reads: StoredAccountReads,
 }
 
 impl DeletionStores {
@@ -62,25 +65,12 @@ impl DeletionStores {
                 &storage.bills,
             ),
             bills: storage.bills.clone(),
+            reads: StoredAccountReads {
+                transactions: storage.transactions.clone(),
+                budgets: storage.budgets.clone(),
+                units: storage.units.clone(),
+            },
         }
-    }
-}
-
-/// The figures the Delete Dialog quotes, read from the Ledger when it opens: the Transactions
-/// counted by the Accounts store and the Budgets by the Budgets store (#952), and
-/// the Unit codes from its Units read copy.
-pub(crate) struct LedgerReads<'a>(pub &'a LedgerStore);
-
-impl AccountUsage for LedgerReads<'_> {
-    fn account_usage(&self, id: AccountId) -> AccountUse {
-        self.0.account_usage(id)
-    }
-}
-
-impl DeletionReads for LedgerReads<'_> {
-    fn unit_code(&self, unit: UnitId) -> Option<String> {
-        let code = self.0.ledger().unit_code(unit);
-        (!code.is_empty()).then(|| code.to_string())
     }
 }
 

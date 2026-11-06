@@ -32,14 +32,14 @@ pub fn deletion(
     Rc::new(RefCell::new(UnitDeletionAdapter::new(units, institutions)))
 }
 
-/// Brings the Ledger's Units and Institutions read copies in line after a confirm, so the Units
-/// and Institutions pages, the Accounts and the Dashboard see the delete at once. The confirm's
-/// input commits it.
+/// Announces the Units and brings the Ledger's Institutions read copy in line after a confirm, so
+/// the Units and Institutions pages, the Accounts and the Dashboard see the delete at once. The
+/// confirm's input commits it.
 pub(crate) fn refresh(
     units: &crate::units::DesktopPorts,
     ledger: &Entity<LedgerStore>,
     cx: &mut App,
 ) {
-    crate::units::ports::refresh(units, ledger, cx);
+    crate::units::ports::announce(units, ledger, cx);
     crate::institutions::ports::refresh(ledger, cx);
 }

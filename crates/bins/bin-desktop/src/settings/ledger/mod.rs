@@ -53,8 +53,8 @@ impl LedgerKeys {
     }
 }
 
-/// The Ledger page: its Presenter, and the Units ports and read copy a base Unit change brings in
-/// line (`crate::units::ports::refresh`). The page itself reads neither.
+/// The Ledger page: its Presenter, and the Units ports whose base Unit change it announces
+/// (`crate::units::ports::announce`). The page itself reads neither.
 pub struct LedgerPage {
     presenter: LedgerPresenter,
     ports: DesktopPorts,

@@ -24,8 +24,6 @@ use std::collections::BTreeSet;
 use std::rc::Rc;
 
 use gpui::{Context, Entity, EventEmitter, Subscription};
-use lib_accounts::{AccountUsage as _, AccountUse};
-use lib_core::AccountId;
 use lib_database::{
     PayeesStore, SharedAccountsStore, SharedBudgetsStore, SharedCategoriesStore,
     SharedDocumentsStore, SharedInventoryStore, SharedTagsStore, SharedTransactionsStore,
@@ -54,8 +52,8 @@ pub struct LedgerSetup {
     pub budgets: SharedBudgetsStore,
     pub inventory: SharedInventoryStore,
     pub documents: SharedDocumentsStore,
-    /// The Units store the Bills and Tags reads take Unit codes from: the Units module's own on
-    /// a Ledger file, the Ledger's Units in memory in a test.
+    /// The Units store the Units ports share and the Accounts, Institutions, Bills, Tags and
+    /// Inventory reads take Units from: the Ledger file's, or the stub's in memory in a test.
     pub units: SharedUnitsStore,
 }
 
@@ -71,15 +69,19 @@ impl LedgerSetup {
             Rc::new(RefCell::new(lib_transactions::fake::InMemoryTransactions {
                 transactions: ledger.transactions().to_vec(),
             }));
+        // The Units' last prices are as of noon that day, as the stub Ledger's were.
+        let units = crate::bills::ports::in_memory_units(
+            today.and_time(chrono::NaiveTime::MIN).and_utc() + chrono::Duration::hours(12),
+        );
         let accounts = crate::accounts::LedgerBackedPorts::in_memory(
             &ledger,
             lib_database::StoredAccountReads {
                 transactions: transactions.clone(),
                 budgets: budgets.clone(),
+                units: units.clone(),
             },
         );
         let bills_store = crate::bills::ports::in_memory_store(&ledger);
-        let units = crate::bills::ports::in_memory_units(&ledger);
         let payees = crate::payees::LedgerBackedPorts::in_memory(StoredPayeeReads {
             transactions: transactions.clone(),
             bills: bills_store.clone(),
@@ -104,6 +106,7 @@ impl LedgerSetup {
             institutions: crate::institutions::LedgerBackedPorts::in_memory(
                 &ledger,
                 accounts.clone(),
+                units.clone(),
             ),
             bills,
             transactions,
@@ -161,11 +164,13 @@ impl LedgerStore {
             categories: categories.clone(),
         });
         let budgets = crate::budgets::ports::in_memory(&ledger);
+        let units = crate::bills::ports::in_memory_units(chrono::Utc::now());
         let accounts = crate::accounts::LedgerBackedPorts::in_memory(
             &ledger,
             lib_database::StoredAccountReads {
                 transactions: transactions.clone(),
                 budgets: budgets.clone(),
+                units: units.clone(),
             },
         );
         let bills = LedgerBackedPorts::shared(
@@ -174,10 +179,13 @@ impl LedgerStore {
             accounts.clone(),
             categories.clone(),
             transactions.clone(),
-            crate::bills::ports::in_memory_units(&ledger),
+            units.clone(),
         );
-        let institutions =
-            crate::institutions::LedgerBackedPorts::in_memory(&ledger, accounts.clone());
+        let institutions = crate::institutions::LedgerBackedPorts::in_memory(
+            &ledger,
+            accounts.clone(),
+            units.clone(),
+        );
         let inventory = crate::inventory::ports::in_memory(chrono::Local::now().date_naive());
         let documents: SharedDocumentsStore =
             Rc::new(RefCell::new(lib_documents::fake::InMemoryDocuments {
@@ -185,7 +193,7 @@ impl LedgerStore {
                 types: lib_documents::types::default_types(),
             }));
         let inventory_reads = StoredInventoryReads {
-            units: crate::bills::ports::in_memory_units(&ledger),
+            units,
             inventory: inventory.clone(),
             documents: documents.clone(),
         };
@@ -371,16 +379,6 @@ impl LedgerStore {
         self.refresh_institutions(cx);
     }
 
-    /// What names Account `id`, as its Edit and Delete Dialogs show: the Transactions counted by
-    /// the Transactions store, the Budgets by the Budgets store (#952, #993).
-    pub fn account_usage(&self, id: AccountId) -> AccountUse {
-        lib_database::StoredAccountReads {
-            transactions: self.transactions.clone(),
-            budgets: self.budgets.clone(),
-        }
-        .account_usage(id)
-    }
-
     /// The Budgets store, which the Categories Monthly budget writes and the usage counts read.
     pub fn budgets_store(&self) -> &SharedBudgetsStore {
         &self.budgets
@@ -416,18 +414,11 @@ impl LedgerStore {
         .budget_categories()
     }
 
-    /// Refreshes the Units read copy from the Units ports (#746's halfway shim), announcing
-    /// `Domain::Units` only when it changed.
-    pub fn refresh_units(
-        &mut self,
-        units: Vec<lib_units::UnitRow>,
-        base_unit: lib_core::UnitId,
-        price_sources: Vec<lib_units::PriceSourceRecord>,
-        cx: &mut Context<'_, Self>,
-    ) {
-        if self.ledger.refresh_units(units, base_unit, price_sources) {
-            self.announce(cx, BTreeSet::from([Domain::Units]));
-        }
+    /// Announces `Domain::Units`, after the Units module, Unit delete, the Ledger page's base
+    /// Unit or a rollback wrote the Units store, so the Accounts, Inventory, Bills, Budgets,
+    /// Transactions and the Dashboard redraw (#1052).
+    pub fn announce_units(&mut self, cx: &mut Context<'_, Self>) {
+        self.announce(cx, BTreeSet::from([Domain::Units]));
     }
 
     /// Puts the Institutions back as stored, after a write that named them failed, and overwrites
@@ -534,7 +525,6 @@ impl LedgerStore {
     /// Brings the Institutions read copy in line with the ports after the Institutions module wrote
     /// them, announcing `Domain::Institutions` only when it changed.
     pub fn refresh_institutions(&mut self, cx: &mut Context<'_, Self>) {
-        self.institutions.borrow_mut().copy_units(&self.ledger);
         if self.copy_institutions() {
             self.announce(cx, BTreeSet::from([Domain::Institutions]));
         }
@@ -715,17 +705,19 @@ mod tests {
             },
         );
         let budgets: SharedBudgetsStore = Rc::new(RefCell::new(storage.budgets));
+        let units: SharedUnitsStore = Rc::new(RefCell::new(storage.units));
         let accounts = crate::accounts::LedgerBackedPorts::shared(
             Box::new(storage.accounts),
             lib_database::StoredAccountReads {
                 transactions: transactions.clone(),
                 budgets: budgets.clone(),
+                units: units.clone(),
             },
         );
-        let units: SharedUnitsStore = Rc::new(RefCell::new(storage.units));
         let institutions = crate::institutions::LedgerBackedPorts::shared(
             Box::new(storage.institutions),
             accounts.clone(),
+            units.clone(),
         );
         let bills = LedgerBackedPorts::shared(
             bills_store,
@@ -779,7 +771,7 @@ mod tests {
     fn delete_account(
         cx: &mut TestAppContext,
         on: &OnStorage,
-        id: AccountId,
+        id: lib_core::AccountId,
     ) -> lib_account_deletion::Result<lib_account_deletion::AccountDeleted> {
         let deleted = lib_account_deletion::interactor::DeleteAccount { id }
             .run(&mut *on.deletion.borrow_mut());

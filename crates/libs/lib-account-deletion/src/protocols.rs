@@ -12,8 +12,8 @@
 //! modules share, so an Interactor given them all would borrow one twice (#779).
 //!
 //! What the Dialog only quotes, the counts and the Unit's code, it reads through
-//! [`DeletionReads`] when it opens: the Budgets count is the `Ledger`'s until Budgets persist
-//! (#811), which the port's adapter can't reach.
+//! [`DeletionReads`] when it opens, answered over the Transactions, Budgets and Units stores
+//! (#1052), which the port's adapter doesn't hold.
 
 use std::cell::RefCell;
 use std::rc::Rc;

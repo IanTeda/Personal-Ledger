@@ -50,7 +50,7 @@ pub(crate) type Landed = Box<dyn Fn(UnitsOutcome, &mut App)>;
 /// The open Units Dialog: its Presenter and its widget state.
 pub struct UnitsDialog {
     ports: DesktopPorts,
-    /// The Ledger read copy a confirm brings in line with what it wrote.
+    /// The Ledger a confirm announces what it wrote through.
     ledger: Entity<LedgerStore>,
     view: View,
     landed: Landed,
@@ -291,16 +291,16 @@ impl EventEmitter<DialogClosed> for UnitsDialog {}
 
 impl HostedDialog for UnitsDialog {
     /// Every input is the Presenter's to read: it holds every field and every open list. One
-    /// that may confirm (`select`, `submit`) has the Ledger read copy in line either side, as
+    /// that may confirm (`select`, `submit`) announces the Units' writes either side, as
     /// [`Self::confirm`] does.
     fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
         let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
         if may_confirm {
-            ports::refresh(&self.ports, &self.ledger, cx);
+            ports::announce(&self.ports, &self.ledger, cx);
         }
         let router = self.send_input(input);
         if may_confirm {
-            ports::refresh(&self.ports, &self.ledger, cx);
+            ports::announce(&self.ports, &self.ledger, cx);
         }
         self.closed(router, cx);
     }
@@ -315,12 +315,12 @@ impl HostedDialog for UnitsDialog {
         }
     }
 
-    /// Sends Confirm to the Presenter, which runs its Interactor, with the Ledger read copy in
-    /// line either side. A refusal stays on the Presenter's view model and keeps the Dialog open.
+    /// Sends Confirm to the Presenter, which runs its Interactor, announcing the Units' writes
+    /// either side. A refusal stays on the Presenter's view model and keeps the Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
-        ports::refresh(&self.ports, &self.ledger, cx);
+        ports::announce(&self.ports, &self.ledger, cx);
         let router = self.close_event(true);
-        ports::refresh(&self.ports, &self.ledger, cx);
+        ports::announce(&self.ports, &self.ledger, cx);
         self.closed(router, cx);
     }
 

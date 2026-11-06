@@ -7,14 +7,14 @@ use lib_account_deletion::AccountDeleted;
 use lib_account_deletion::presenter::DeleteAccountPresenter;
 use lib_core::AccountId;
 
-use super::{DeleteAccountDialog, DeletionStores, LedgerReads};
+use super::{DeleteAccountDialog, DeletionStores};
 use crate::ledger_store::LedgerStore;
 use crate::shell::view::dialog_entity::host_dialog;
 use crate::view::event::ViewEvent;
 
 /// Opens the Delete account Dialog on Account `id` over page `P`, whose `landed` runs with what
-/// was removed once a confirm lands, so the page redraws. Its figures are read from `ledger` as it
-/// opens. Returns whether it opened: an Account that has gone has no Dialog.
+/// was removed once a confirm lands, so the page redraws. Its figures are read from the stores as
+/// it opens. Returns whether it opened: an Account that has gone has no Dialog.
 pub fn open_delete<P: EventEmitter<ViewEvent> + 'static>(
     cx: &mut Context<'_, P>,
     stores: &DeletionStores,
@@ -22,8 +22,7 @@ pub fn open_delete<P: EventEmitter<ViewEvent> + 'static>(
     id: AccountId,
     landed: impl Fn(&mut P, AccountDeleted, &mut Context<'_, P>) + 'static,
 ) -> bool {
-    let Some(presenter) =
-        DeleteAccountPresenter::new(stores.deletion.clone(), &LedgerReads(ledger.read(cx)), id)
+    let Some(presenter) = DeleteAccountPresenter::new(stores.deletion.clone(), &stores.reads, id)
     else {
         return false;
     };

@@ -180,17 +180,24 @@ impl OpenLedger {
         // delete, the Accounts, Units and Categories usage counts and the Categories Monthly budget
         // (#952).
         let budgets: lib_database::SharedBudgetsStore = Rc::new(std::cell::RefCell::new(budgets));
+        // The Units store is shared by the Units ports and the Accounts' and Institutions' reads of
+        // the Units they may name (#1052). The Units ports count what names a Unit in the Accounts
+        // and Institutions ports, so those read the store itself, not the Units ports, or each
+        // would hold the other.
+        let units: lib_database::SharedUnitsStore = Rc::new(std::cell::RefCell::new(units));
         // The Accounts store is shared by the Accounts module, the Ledger's read copy and the Units and Bills reads
         // (#853), and the Institutions' reads of which Accounts name one (#876).
-        let accounts = crate::accounts::LedgerBackedPorts::shared(
-            accounts,
-            lib_database::StoredAccountReads {
-                transactions: transactions.clone(),
-                budgets: budgets.clone(),
-            },
+        let account_reads = lib_database::StoredAccountReads {
+            transactions: transactions.clone(),
+            budgets: budgets.clone(),
+            units: units.clone(),
+        };
+        let accounts = crate::accounts::LedgerBackedPorts::shared(accounts, account_reads.clone());
+        let institutions = crate::institutions::LedgerBackedPorts::shared(
+            institutions,
+            accounts.clone(),
+            units.clone(),
         );
-        let institutions =
-            crate::institutions::LedgerBackedPorts::shared(institutions, accounts.clone());
         let institutions_setup =
             crate::institutions::InstitutionsSetup::new(institutions.clone(), keybindings);
         // The Units ports count what names each Unit in the Accounts, Transactions, Bills,
@@ -249,6 +256,7 @@ impl OpenLedger {
                 &bills,
             ),
             bills: bills.clone(),
+            reads: account_reads,
         };
         let accounts_setup =
             crate::accounts::AccountsSetup::new(accounts.clone(), account_deletion, keybindings);
@@ -338,10 +346,8 @@ impl OpenLedger {
         // The Transactions, Bills and Budgets stores are the truth, with no read copy on the
         // Ledger: their writers announce through it (#1028).
         let ledger = cx.new(|_| LedgerStore::with_storage(Ledger::stub_on(today), storage));
-        // The Units ports are the truth; the Ledger keeps a read copy of them (#746).
-        crate::units::ports::refresh(&settings_setup.units.ports, &ledger, cx);
         let units_ports = settings_setup.units.ports.clone();
-        // The Dialogs read the Categories, Units and Institutions straight from the Ledger.
+        // The pages repaint when a domain they read is announced.
         let categories_subscription = notify_on(&ledger, lib_ledger::Domain::Categories, cx);
         let units_subscription = notify_on(&ledger, lib_ledger::Domain::Units, cx);
         let tags_subscription = notify_on(&ledger, lib_ledger::Domain::Tags, cx);

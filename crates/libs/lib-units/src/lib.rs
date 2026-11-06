@@ -4,8 +4,8 @@
 //! ports they reach storage through, with no UI toolkit and no I/O. `fake` holds in-memory ports
 //! and the stub seed for tests and UI-first work.
 //!
-//! The Desktop draws the Presenters' view models (`bin-desktop/src/units/`); `lib-ledger` keeps
-//! only a read copy of the Units for the domains not yet migrated (#746).
+//! The Desktop draws the Presenters' view models (`bin-desktop/src/units/`); the other domains read
+//! the Units through their own read ports, answered over the Units store (#1052).
 
 #[cfg(feature = "contract-tests")]
 #[expect(

@@ -15,27 +15,23 @@ mod document_reads;
 mod documents_seed_tests;
 mod institution_reads;
 pub mod seed;
-mod tag_reads;
 mod tag_usage;
-mod unit_usage;
 
 pub use budget_reads::{budget_accounts, budget_categories};
 pub use change::Domain;
 pub use seed::{DEFAULT_SEED, HISTORY_DAYS, default_transactions};
 pub use tag_usage::{TagRows, transaction_count};
 
-use chrono::{DateTime, Local, NaiveDate, NaiveTime, Utc};
+use chrono::{Local, NaiveDate};
 use lib_accounts::{Account, default_accounts};
 use lib_bills::{BillPlan, BillScheduleEntry};
 use lib_budgets::{Budgets, default_budgets};
 use lib_categories::{Category, default_categories};
-use lib_core::{PriceSourceId, UnitId, UnitKind};
 use lib_institutions::{Institution, default_institutions};
 use lib_inventory::{Inventory, default_inventory};
 use lib_payees::{Payee, default_payees};
 use lib_tags::{Tag, default_tags};
 use lib_transactions::Transaction;
-use lib_units::{PriceSource, PriceSourceRecord, UnitRow};
 
 /// Every domain collection the Clients read, owned in one place. Nothing writes it but the read
 /// copies' refreshes: every domain is written by its module, through its ports (#1006).
@@ -51,11 +47,6 @@ pub struct Ledger {
     budgets: Budgets,
     inventory: Inventory,
     institutions: Vec<Institution>,
-    units: Vec<UnitRow>,
-    /// The Ledger's one base Unit, which is also the default for new Accounts.
-    base_unit: UnitId,
-    /// Only the Price Sources a person changed: built-in overrides and Custom sources.
-    price_sources: Vec<PriceSourceRecord>,
 }
 
 /// Every collection a [`Ledger`] is built from. A test fills only the collections it reads and
@@ -72,14 +63,10 @@ pub struct LedgerParts {
     pub budgets: Budgets,
     pub inventory: Inventory,
     pub institutions: Vec<Institution>,
-    pub units: Vec<UnitRow>,
-    pub base_unit: UnitId,
-    pub price_sources: Vec<PriceSourceRecord>,
 }
 
 impl Default for LedgerParts {
-    /// Empty collections. `base_unit` is the stub's aud, which an empty `units` doesn't hold: a
-    /// test that reads the base Unit supplies its own `units`.
+    /// Empty collections.
     fn default() -> Self {
         Self {
             accounts: Vec::new(),
@@ -92,9 +79,6 @@ impl Default for LedgerParts {
             budgets: Budgets::default(),
             inventory: Inventory::default(),
             institutions: Vec::new(),
-            units: Vec::new(),
-            base_unit: UnitId::SEED_AUD,
-            price_sources: Vec::new(),
         }
     }
 }
@@ -113,9 +97,6 @@ impl Ledger {
             budgets,
             inventory,
             institutions,
-            units,
-            base_unit,
-            price_sources,
         } = parts;
         Self {
             accounts,
@@ -128,30 +109,19 @@ impl Ledger {
             budgets,
             inventory,
             institutions,
-            units,
-            base_unit,
-            price_sources,
         }
     }
 
     /// The stub Ledger, anchored to today: each domain's stub seed, the Bills naming the
     /// Transactions `lib-transactions`' stub books for them. The Documents aren't the Ledger's: the
-    /// stub's are [`Ledger::stub_documents`].
+    /// stub's are [`Ledger::stub_documents`]. Nor are the Units: the Units store is their one
+    /// home (#1052).
     pub fn stub() -> Self {
-        Self::stub_at(Local::now().date_naive(), Utc::now())
+        Self::stub_on(Local::now().date_naive())
     }
 
-    /// The stub Ledger anchored to `today`, so a test is not at the mercy of the wall clock. Its
-    /// "now", for the Units' last prices, is noon that day.
+    /// The stub Ledger anchored to `today`, so a test is not at the mercy of the wall clock.
     pub fn stub_on(today: NaiveDate) -> Self {
-        Self::stub_at(
-            today,
-            today.and_time(NaiveTime::MIN).and_utc() + chrono::Duration::hours(12),
-        )
-    }
-
-    fn stub_at(today: NaiveDate, now: DateTime<Utc>) -> Self {
-        let units = lib_units::fake::InMemoryPorts::stub(now);
         let accounts = default_accounts();
         let categories = default_categories();
         let payees = default_payees();
@@ -176,9 +146,6 @@ impl Ledger {
             budgets,
             inventory,
             institutions,
-            units: units.units.units,
-            base_unit: units.base_unit.0,
-            price_sources: Vec::new(),
         })
     }
 
@@ -220,69 +187,6 @@ impl Ledger {
 
     pub fn institutions(&self) -> &[Institution] {
         &self.institutions
-    }
-
-    pub fn units(&self) -> &[UnitRow] {
-        &self.units
-    }
-
-    /// The Ledger's base Unit, which new Accounts default to.
-    pub fn base_unit(&self) -> UnitId {
-        self.base_unit
-    }
-
-    /// The base Unit's row, or `None` when it has since been removed.
-    pub fn base_unit_row(&self) -> Option<&UnitRow> {
-        self.unit(self.base_unit)
-    }
-
-    /// The Unit `id`, if it exists: how an Account's Unit reference becomes a code to show.
-    pub fn unit(&self, id: UnitId) -> Option<&UnitRow> {
-        self.units.iter().find(|unit| unit.id == id)
-    }
-
-    /// The code of Unit `id` for display, empty when the Unit is gone.
-    pub fn unit_code(&self, id: UnitId) -> &str {
-        self.unit(id).map_or("", |unit| unit.code.as_str())
-    }
-
-    /// The Units sorted by code, ignoring case.
-    pub fn units_by_code(&self) -> Vec<&UnitRow> {
-        lib_units::units_by_code(&self.units)
-    }
-
-    /// The stored Price Source rows, as the Ledger holds them.
-    pub fn price_source_records(&self) -> &[PriceSourceRecord] {
-        &self.price_sources
-    }
-
-    /// Every Price Source, Manual entry and the built-ins included, sorted by current name
-    /// ignoring case. `manual_name` is Manual entry's name in the Client's Locale.
-    pub fn price_sources<'a>(&'a self, manual_name: &'a str) -> Vec<PriceSource<'a>> {
-        lib_units::price_sources(&self.price_sources, manual_name)
-    }
-
-    /// The Price Source `id`, if it exists.
-    pub fn price_source<'a>(
-        &'a self,
-        manual_name: &'a str,
-        id: PriceSourceId,
-    ) -> Option<PriceSource<'a>> {
-        lib_units::price_source(&self.price_sources, manual_name, id)
-    }
-
-    /// The Price Sources able to price a Unit of `kind`.
-    pub fn sources_for_kind<'a>(
-        &'a self,
-        manual_name: &'a str,
-        kind: UnitKind,
-    ) -> Vec<PriceSource<'a>> {
-        lib_units::sources_for_kind(&self.price_sources, manual_name, kind)
-    }
-
-    /// When Price Source `id` last fetched a price, or `None` when it has not fetched yet.
-    pub fn last_fetched(&self, id: PriceSourceId) -> Option<DateTime<Utc>> {
-        lib_units::last_fetched(&self.units, id)
     }
 }
 

@@ -2,7 +2,8 @@
 //! and the step that keeps the Ledger's read copy of the Institutions in line after an Institutions
 //! write. The write is committed by the input it was made in (`crate::input::send`), not here.
 //!
-//! The Usual unit's options are the Ledger's Units, copied when the Ledger read copy is refreshed.
+//! The Usual unit's options are read from the Units store, through `lib-database`'s
+//! [`StoredInstitutionReads`] (#1052).
 //!
 //! A delete reads what names an Institution from the Accounts store, which the Units and Bills
 //! reads share.
@@ -15,10 +16,11 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use gpui::{App, Entity};
-use lib_database::{InstitutionsStore, SharedAccountsStore, StoredInstitutionReads};
-use lib_institutions::fake::InMemoryInstitutionUnits;
+use lib_database::{
+    InstitutionsStore, SharedAccountsStore, SharedUnitsStore, StoredInstitutionReads,
+};
 use lib_institutions::{
-    InstitutionRepository, InstitutionUnit, InstitutionUnits, InstitutionUsage, InstitutionsPorts,
+    InstitutionRepository, InstitutionUnits, InstitutionUsage, InstitutionsPorts,
 };
 use lib_ledger::Ledger;
 
@@ -27,51 +29,39 @@ use crate::ledger_store::LedgerStore;
 /// The Institutions ports the Institutions module and the Ledger store share.
 pub type DesktopPorts = Rc<RefCell<LedgerBackedPorts>>;
 
-/// `store`'s Institutions, with the Accounts naming each read from the Accounts store.
+/// `store`'s Institutions, with the Accounts naming each and the Units a Usual unit may name read
+/// from the Accounts and Units stores.
 pub struct LedgerBackedPorts {
     store: Box<dyn InstitutionsStore>,
-    usage: StoredInstitutionReads,
-    /// The Units a Usual unit may name, copied from the Ledger (a halfway shim until Units answer
-    /// through their own port, as the Accounts' do).
-    units: InMemoryInstitutionUnits,
+    reads: StoredInstitutionReads,
 }
 
 impl LedgerBackedPorts {
     pub fn shared(
         store: Box<dyn InstitutionsStore>,
         accounts: SharedAccountsStore,
+        units: SharedUnitsStore,
     ) -> DesktopPorts {
         Rc::new(RefCell::new(Self {
             store,
-            usage: StoredInstitutionReads { accounts },
-            units: InMemoryInstitutionUnits::default(),
+            reads: StoredInstitutionReads { accounts, units },
         }))
     }
 
-    /// Copies `ledger`'s Units, for the next Dialog to offer as the Usual unit's options.
-    pub fn copy_units(&mut self, ledger: &Ledger) {
-        self.units.units = ledger
-            .units()
-            .iter()
-            .map(|unit| InstitutionUnit {
-                id: unit.id,
-                code: unit.code.clone(),
-                is_active: unit.is_active,
-            })
-            .collect();
-    }
-
-    /// `ledger`'s own Institutions in memory, with the Accounts naming them read from `accounts`,
-    /// for a test that needs no storage.
-    pub fn in_memory(ledger: &Ledger, accounts: SharedAccountsStore) -> DesktopPorts {
-        let ports = Self::shared(
+    /// `ledger`'s own Institutions in memory, with the Accounts naming them and the Units read
+    /// from `accounts` and `units`, for a test that needs no storage.
+    pub fn in_memory(
+        ledger: &Ledger,
+        accounts: SharedAccountsStore,
+        units: SharedUnitsStore,
+    ) -> DesktopPorts {
+        Self::shared(
             Box::new(lib_institutions::fake::InMemoryInstitutions {
                 institutions: ledger.institutions().to_vec(),
             }),
             accounts,
-        );
-        ports.borrow_mut().copy_units(ledger);
-        ports
+            units,
+        )
     }
 
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
@@ -93,11 +83,11 @@ impl InstitutionsPorts for LedgerBackedPorts {
     }
 
     fn usage(&self) -> &dyn InstitutionUsage {
-        &self.usage
+        &self.reads
     }
 
     fn units(&self) -> &dyn InstitutionUnits {
-        &self.units
+        &self.reads
     }
 }
 
@@ -137,7 +127,11 @@ mod tests {
             &ledger,
             crate::accounts::ports::in_memory_reads(&ledger),
         );
-        let ports = LedgerBackedPorts::in_memory(&ledger, accounts);
+        let ports = LedgerBackedPorts::in_memory(
+            &ledger,
+            accounts,
+            crate::bills::ports::in_memory_units(chrono::Utc::now()),
+        );
         let ports = ports.borrow();
 
         assert_eq!(
@@ -153,7 +147,11 @@ mod tests {
             &ledger,
             crate::accounts::ports::in_memory_reads(&ledger),
         );
-        let ports = LedgerBackedPorts::in_memory(&ledger, accounts);
+        let ports = LedgerBackedPorts::in_memory(
+            &ledger,
+            accounts,
+            crate::bills::ports::in_memory_units(chrono::Utc::now()),
+        );
         let ports = ports.borrow();
 
         let wallet: Vec<_> = ledger

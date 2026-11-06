@@ -118,8 +118,8 @@ impl Select<'_> {
     }
 }
 
-/// The open Delete unit Dialog: its Presenter, the Units ports and Ledger read copy its confirm
-/// brings in line, each select's open-list scroll window, and the Units page's landing.
+/// The open Delete unit Dialog: its Presenter, the Units ports and the Ledger its confirm
+/// announces through, each select's open-list scroll window, and the Units page's landing.
 pub struct DeleteUnitDialog {
     presenter: DeleteUnitPresenter,
     ports: DesktopPorts,
@@ -195,7 +195,7 @@ impl HostedDialog for DeleteUnitDialog {
     fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
         let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
         if may_confirm {
-            crate::units::ports::refresh(&self.ports, &self.ledger, cx);
+            crate::units::ports::announce(&self.ports, &self.ledger, cx);
         }
         let router = self.send(DeleteUnitEvent::Input(input));
         if may_confirm {
@@ -208,10 +208,10 @@ impl HostedDialog for DeleteUnitDialog {
         self.view().unit.frame.can_confirm
     }
 
-    /// Sends Confirm to the Presenter, which deletes or deactivates, with the Ledger's read copies
-    /// in line either side. A refusal stays on the view model and keeps the Dialog open.
+    /// Sends Confirm to the Presenter, which deletes or deactivates, announcing the Units' writes
+    /// and bringing the Ledger's Institutions read copy in line either side. A refusal stays on the view model and keeps the Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
-        crate::units::ports::refresh(&self.ports, &self.ledger, cx);
+        crate::units::ports::announce(&self.ports, &self.ledger, cx);
         let router = self.send(DeleteUnitEvent::Confirm);
         crate::unit_deletion::refresh(&self.ports, &self.ledger, cx);
         self.closed(router, cx);

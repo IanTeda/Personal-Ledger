@@ -575,6 +575,37 @@ fn parse_placement(text: &str) -> Result<KeyPlacement> {
     }
 }
 
+/// The Units as `lib-accounts`' `AccountUnits` reads them, in the Units' order.
+pub(crate) fn account_units(units: &[UnitRow]) -> Vec<lib_accounts::AccountUnit> {
+    units
+        .iter()
+        .map(|unit| lib_accounts::AccountUnit {
+            id: unit.id,
+            code: unit.code.clone(),
+            is_active: unit.is_active,
+            precision: unit.precision.get(),
+        })
+        .collect()
+}
+
+/// The Units as `lib-institutions`' `InstitutionUnits` reads them, in the Units' order.
+pub(crate) fn institution_units(units: &[UnitRow]) -> Vec<lib_institutions::InstitutionUnit> {
+    units
+        .iter()
+        .map(|unit| lib_institutions::InstitutionUnit {
+            id: unit.id,
+            code: unit.code.clone(),
+            is_active: unit.is_active,
+        })
+        .collect()
+}
+
+/// `base`, while `units` still holds it: a new Account defaults to no Unit rather than one that
+/// has gone.
+pub(crate) fn held_base_unit(units: &[UnitRow], base: UnitId) -> Option<UnitId> {
+    units.iter().any(|unit| unit.id == base).then_some(base)
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::mpsc;

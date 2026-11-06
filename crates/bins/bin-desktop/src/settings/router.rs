@@ -122,8 +122,8 @@ impl Notify for TracingRouter<'_, '_> {
     }
 }
 
-/// `impl lib_settings::LedgerRouter` for the Ledger page: the Units ports and the Ledger's read
-/// copy of them, lent beside its Presenter.
+/// `impl lib_settings::LedgerRouter` for the Ledger page: the Units ports and the Ledger that
+/// announces their writes, lent beside its Presenter.
 pub(super) struct LedgerRouter<'a, 'b> {
     pub ports: &'a DesktopPorts,
     pub ledger: &'a Entity<LedgerStore>,
@@ -131,9 +131,8 @@ pub(super) struct LedgerRouter<'a, 'b> {
 }
 
 impl lib_settings::LedgerRouter for LedgerRouter<'_, '_> {
-    /// Brings the Ledger's read copy in line, announcing `Domain::Units` so every view of the base
-    /// Unit follows at once.
+    /// Announces `Domain::Units`, so every view of the base Unit follows at once.
     fn base_unit_changed(&mut self) {
-        crate::units::ports::refresh(self.ports, self.ledger, self.cx);
+        crate::units::ports::announce(self.ports, self.ledger, self.cx);
     }
 }

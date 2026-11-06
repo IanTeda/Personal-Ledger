@@ -167,22 +167,11 @@ impl BillsPorts for LedgerBackedPorts {
     }
 }
 
-/// `ledger`'s own Units, base Unit and Price Sources in memory as the store Bills and Tags read
-/// Unit codes from, for a test that needs no storage and builds those reads before the Units
-/// module's. Built from the Ledger rather than the stub seed, so a test Ledger's own Unit resolves
-/// as it would in the app.
-pub fn in_memory_units(ledger: &Ledger) -> SharedUnitsStore {
-    Rc::new(RefCell::new(lib_units::fake::InMemoryPorts {
-        units: lib_units::fake::InMemoryUnits {
-            units: ledger.units().to_vec(),
-        },
-        price_sources: lib_units::fake::InMemoryPriceSources {
-            records: ledger.price_source_records().to_vec(),
-        },
-        base_unit: lib_units::fake::InMemoryBaseUnit(ledger.base_unit()),
-        usage: lib_units::fake::InMemoryUnitUsage::default(),
-        holdings: lib_units::fake::InMemoryHoldings::default(),
-    }))
+/// The stub Units, base Unit and Price Sources as of `now`, as an in-memory Units store, for a test
+/// that needs no storage: the store the Units ports share and the Bills, Tags, Accounts and
+/// Institutions read Units from.
+pub fn in_memory_units(now: chrono::DateTime<chrono::Utc>) -> SharedUnitsStore {
+    Rc::new(RefCell::new(lib_units::fake::InMemoryPorts::stub(now)))
 }
 
 /// `ledger`'s own Bill Plans and Bill Schedule as an in-memory store, for a test that needs no
@@ -247,7 +236,7 @@ mod tests {
             ),
             categories(&ledger),
             transactions(&ledger),
-            in_memory_units(&ledger),
+            in_memory_units(chrono::Utc::now()),
         );
         (ledger, ports)
     }
@@ -287,7 +276,7 @@ mod tests {
             ),
             categories(&ledger),
             transactions(&ledger),
-            in_memory_units(&ledger),
+            in_memory_units(chrono::Utc::now()),
         );
         let mut renamed = store.borrow().payees().payees()[0].clone();
         renamed.name = "Renamed in the store".into();
@@ -311,7 +300,7 @@ mod tests {
             store.clone(),
             categories(&ledger),
             transactions(&ledger),
-            in_memory_units(&ledger),
+            in_memory_units(chrono::Utc::now()),
         );
         let mut renamed = ledger.accounts()[1].clone();
         renamed.name = "Renamed in the store".into();
@@ -339,7 +328,7 @@ mod tests {
             ),
             store.clone(),
             transactions(&ledger),
-            in_memory_units(&ledger),
+            in_memory_units(chrono::Utc::now()),
         );
         let mut renamed = ledger.categories()[6].clone();
         renamed.name = "Renamed in the store".into();
@@ -367,7 +356,7 @@ mod tests {
             ),
             categories(&ledger),
             store.clone(),
-            in_memory_units(&ledger),
+            in_memory_units(chrono::Utc::now()),
         );
         let mut booked = ledger.transactions()[0].clone();
         booked.id = lib_core::TransactionId::new();
@@ -406,8 +395,8 @@ mod tests {
             ids,
             ledger.accounts().iter().map(|a| a.id).collect::<Vec<_>>()
         );
-        let base = ledger.base_unit_row().map(|unit| unit.id);
-        assert_eq!(ports.units().base_unit(), base);
+        let base = ports.units().base_unit();
+        assert_eq!(base, Some(lib_core::UnitId::SEED_AUD));
         assert_eq!(
             base.and_then(|id| ports.units().unit_code(id)).as_deref(),
             Some("aud")

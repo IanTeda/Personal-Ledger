@@ -346,6 +346,33 @@ fn a_deactivated_unit_is_missing_from_the_add_account_unit_picker(app: &mut Test
 }
 
 #[gpui::test]
+fn a_unit_recoded_on_the_units_page_is_offered_by_its_new_code(app: &mut TestAppContext) {
+    let mut ui = in_accounts(app);
+
+    // Recode btc from the Units page's Edit unit Dialog, whose first field is the Code.
+    ui.press("escape");
+    ui.press("k k");
+    assert_eq!(ui.settings_frame().page, "Units");
+    ui.press("l");
+    ui.press("j");
+    ui.press("e");
+    assert_eq!(ui.dialog_value("code").as_deref(), Some("btc"));
+    ui.press("backspace backspace backspace");
+    type_text(&mut ui, "xbt");
+    ui.press("enter");
+    assert_eq!(ui.dialog(), None);
+    ui.press("escape");
+    ui.press("j j");
+    assert_eq!(ui.settings_frame().page, "Accounts");
+    ui.press("l");
+    ui.press("n");
+
+    let offered = ui.dialog_value("unit_options").unwrap_or_default();
+    assert!(offered.split('|').any(|code| code == "xbt"), "{offered}");
+    assert!(!offered.split('|').any(|code| code == "btc"), "{offered}");
+}
+
+#[gpui::test]
 fn a_failed_write_puts_the_accounts_back_with_an_error_toast(app: &mut TestAppContext) {
     let mut ui = Harness::with_failing_accounts(app);
     ui.press("g s");

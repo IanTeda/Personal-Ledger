@@ -749,16 +749,23 @@ impl Root {
             .update(cx, |store, cx| store.name_usual_unit_for_test(id, unit, cx));
     }
 
-    /// The code of Institution `id`'s Usual unit, as the Ledger read copy has it: `None` for none.
+    /// The code of Institution `id`'s Usual unit, as the Ledger's Institutions read copy names it
+    /// and the Units store codes it: `None` for none.
     #[doc(hidden)]
     pub fn usual_unit_code(&self, id: lib_core::InstitutionId, cx: &App) -> Option<String> {
-        let ledger = self.open().ledger.read(cx).ledger();
-        let unit = ledger
+        let unit = self
+            .open()
+            .ledger
+            .read(cx)
+            .ledger()
             .institutions()
             .iter()
             .find(|institution| institution.id == id)?
             .usual_unit?;
-        Some(ledger.unit_code(unit).to_string())
+        Some(
+            lib_database::UnitsStore::unit_code(&*self.open().units.borrow(), unit)
+                .unwrap_or_default(),
+        )
     }
 
     /// The status line's flash message (e.g. "not yet built"), if one is showing.

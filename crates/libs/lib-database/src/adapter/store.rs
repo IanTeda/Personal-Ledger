@@ -47,7 +47,8 @@ use std::rc::Rc;
 use std::sync::mpsc;
 
 use chrono::NaiveDate;
-use lib_accounts::{AccountRepository, AccountUsage, AccountUse};
+use lib_account_deletion::DeletionReads;
+use lib_accounts::{AccountRepository, AccountUnit, AccountUnits, AccountUsage, AccountUse};
 use lib_bills::fake::InMemoryBills;
 use lib_bills::{
     BillAccount, BillAccounts, BillCategories, BillCategory, BillPayee, BillPayees,
@@ -77,7 +78,9 @@ use lib_documents::{
     DocumentTransactions,
 };
 use lib_institutions::fake::InMemoryInstitutions;
-use lib_institutions::{InstitutionRepository, InstitutionUsage, InstitutionUse};
+use lib_institutions::{
+    InstitutionRepository, InstitutionUnit, InstitutionUnits, InstitutionUsage, InstitutionUse,
+};
 use lib_inventory::fake::InMemoryInventory;
 use lib_inventory::{InventoryRepository, InventoryUnits, LocationUsage, LocationUse, UnitChoice};
 use lib_payees::{PayeeCategories, PayeeCategory, PayeeRepository, PayeeUsage, PayeeUse};
@@ -100,7 +103,7 @@ use lib_units::{
 use crate::adapter::payees::bill_payees;
 use crate::adapter::transactions::TaggedSplit;
 use crate::adapter::{
-    accounts, bills, categories, institutions, inventory, payees, tags, transactions,
+    accounts, bills, categories, institutions, inventory, payees, tags, transactions, units,
 };
 use crate::{
     AccountsAdapter, BillsAdapter, BudgetsAdapter, CategoriesAdapter, Commit, DocumentsAdapter,
@@ -1411,11 +1414,13 @@ impl ImportCategories for StoredImportReads {
     }
 }
 
-/// `lib-institutions`' `InstitutionUsage` answered by the Accounts store, borrowed for the one
-/// read (#994): the Accounts naming the Institution.
+/// `lib-institutions`' `InstitutionUsage` and `InstitutionUnits` answered by the Accounts and
+/// Units stores, each borrowed for the one read (#994, #1052): the Accounts naming the
+/// Institution, and the Units a Usual unit may name.
 #[derive(Clone)]
 pub struct StoredInstitutionReads {
     pub accounts: SharedAccountsStore,
+    pub units: SharedUnitsStore,
 }
 
 impl InstitutionUsage for StoredInstitutionReads {
@@ -1429,15 +1434,24 @@ impl InstitutionUsage for StoredInstitutionReads {
     }
 }
 
-/// `lib-accounts`' `AccountUsage` answered by the shared stores of the domains that name an
-/// Account, each borrowed for the one read (#993), as [`StoredPayeeReads`] answers Payees'. The
-/// same struct stands over [`Stores::fake`]'s in-memory stores and the adapters. The Transactions
-/// store counts the Transactions booked to the Account and the Budgets store the Budgets that
-/// count it.
+impl InstitutionUnits for StoredInstitutionReads {
+    fn institution_units(&self) -> Vec<InstitutionUnit> {
+        units::institution_units(&self.units.borrow().units().units())
+    }
+}
+
+/// `lib-accounts`' `AccountUsage` and `AccountUnits` answered by the shared stores of the domains
+/// an Account names or is named by, each borrowed for the one read (#993, #1052), as
+/// [`StoredPayeeReads`] answers Payees'. The same struct stands over [`Stores::fake`]'s in-memory
+/// stores and the adapters. The Transactions store counts the Transactions booked to the Account,
+/// the Budgets store the Budgets that count it, and the Units store holds the Units an Account
+/// may count in. It is also `lib-account-deletion`'s `DeletionReads`: the Delete account Dialog
+/// quotes the same counts and the Unit's code.
 #[derive(Clone)]
 pub struct StoredAccountReads {
     pub transactions: SharedTransactionsStore,
     pub budgets: SharedBudgetsStore,
+    pub units: SharedUnitsStore,
 }
 
 impl AccountUsage for StoredAccountReads {
@@ -1447,6 +1461,23 @@ impl AccountUsage for StoredAccountReads {
             transactions: counts.get(&id).copied().unwrap_or_default(),
             budgets: self.budgets.borrow().account_budgets(id),
         }
+    }
+}
+
+impl AccountUnits for StoredAccountReads {
+    fn account_units(&self) -> Vec<AccountUnit> {
+        units::account_units(&self.units.borrow().units().units())
+    }
+
+    fn base_unit(&self) -> Option<UnitId> {
+        let store = self.units.borrow();
+        units::held_base_unit(&store.units().units(), store.base_unit().base_unit())
+    }
+}
+
+impl DeletionReads for StoredAccountReads {
+    fn unit_code(&self, unit: UnitId) -> Option<String> {
+        self.units.borrow().unit_code(unit)
     }
 }
 
@@ -1913,6 +1944,7 @@ mod tests {
         let reads = StoredAccountReads {
             transactions: transactions.clone(),
             budgets,
+            units: stub_units(),
         };
         let everyday = AccountId::seed(2);
         let before = reads.account_usage(everyday);
@@ -1976,11 +2008,16 @@ mod tests {
         assert!(!import.import_categories().is_empty());
 
         let institution = stored_accounts[0].institution;
-        let named = StoredInstitutionReads { accounts }.institution_usage(institution);
+        let named = StoredInstitutionReads {
+            accounts,
+            units: stub_units(),
+        }
+        .institution_usage(institution);
         assert!(named.is_used());
         assert_eq!(
             StoredInstitutionReads {
                 accounts: Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts::default())),
+                units: stub_units(),
             }
             .institution_usage(institution),
             InstitutionUse::default()
@@ -1988,6 +2025,106 @@ mod tests {
 
         let tree = StoredBudgetCategories { categories }.budget_categories();
         assert_eq!(tree.len(), stored_categories.len());
+    }
+
+    /// The stub Units, base Unit and Price Sources as an in-memory Units store.
+    fn stub_units() -> SharedUnitsStore {
+        Rc::new(RefCell::new(InMemoryPorts::stub(chrono::Utc::now())))
+    }
+
+    /// The Accounts read their Unit choices from the Units store on each ask (#1052): each Unit's
+    /// code, active flag and Precision, and the base Unit while the store still holds it.
+    #[test]
+    fn stored_account_reads_answer_account_units_from_the_units_store() {
+        let (ledger, transactions, _) = in_memory_stub_stores();
+        let units = stub_units();
+        let reads = StoredAccountReads {
+            transactions,
+            budgets: Rc::new(RefCell::new(InMemoryBudgets {
+                budgets: ledger.budgets().all().to_vec(),
+            })),
+            units: units.clone(),
+        };
+
+        let choices = reads.account_units();
+        let codes: Vec<&str> = choices.iter().map(|unit| unit.code.as_str()).collect();
+        assert_eq!(codes, ["aud", "btc", "vas"], "in the Units' order");
+        let aud = choices
+            .iter()
+            .find(|unit| unit.id == UnitId::SEED_AUD)
+            .expect("the stub's aud");
+        assert!(aud.is_active);
+        assert_eq!(aud.precision, 2);
+        assert_eq!(AccountUnits::base_unit(&reads), Some(UnitId::SEED_AUD));
+
+        let mut btc = units
+            .borrow()
+            .units()
+            .units()
+            .into_iter()
+            .find(|unit| unit.id == UnitId::SEED_BTC)
+            .expect("the stub's btc");
+        btc.code = "xbt".into();
+        btc.is_active = false;
+        btc.precision = lib_units::Precision::new(6).expect("six places is within the most");
+        let unread = lib_units::fake::InMemoryUnitUsage::default();
+        let mut store = units.borrow_mut();
+        let ports = store.split_mut(&unread);
+        ports.units.upsert_unit(btc);
+        ports.base_unit.set_base_unit(UnitId::SEED_BTC);
+        drop(store);
+
+        let edited = reads
+            .account_units()
+            .into_iter()
+            .find(|unit| unit.id == UnitId::SEED_BTC)
+            .expect("btc is still a Unit");
+        assert_eq!(edited.code, "xbt", "written since the reads were built");
+        assert!(!edited.is_active);
+        assert_eq!(edited.precision, 6);
+        assert_eq!(AccountUnits::base_unit(&reads), Some(UnitId::SEED_BTC));
+
+        units
+            .borrow_mut()
+            .split_mut(&unread)
+            .base_unit
+            .set_base_unit(UnitId::new());
+        assert_eq!(
+            AccountUnits::base_unit(&reads),
+            None,
+            "a base Unit the store doesn't hold is none"
+        );
+    }
+
+    /// The Delete account Dialog reads a Unit's code from the Units store: a known Unit's code,
+    /// and none for a Unit that has gone (#1052).
+    #[test]
+    fn stored_account_reads_quote_the_delete_dialogs_unit_code() {
+        let (_, transactions, _) = in_memory_stub_stores();
+        let reads = StoredAccountReads {
+            transactions,
+            budgets: Rc::new(RefCell::new(InMemoryBudgets::default())),
+            units: stub_units(),
+        };
+
+        assert_eq!(
+            DeletionReads::unit_code(&reads, UnitId::SEED_AUD).as_deref(),
+            Some("aud")
+        );
+        assert_eq!(DeletionReads::unit_code(&reads, UnitId::new()), None);
+    }
+
+    /// The Institutions read the Units a Usual unit may name from the Units store.
+    #[test]
+    fn stored_institution_reads_answer_institution_units_from_the_units_store() {
+        let reads = StoredInstitutionReads {
+            accounts: Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts::default())),
+            units: stub_units(),
+        };
+        assert_eq!(
+            reads.institution_units(),
+            lib_institutions::fake::InMemoryInstitutionUnits::stub().units
+        );
     }
 
     /// A Unit's use and holdings are counted in the Accounts, Transactions, Bills and Budgets

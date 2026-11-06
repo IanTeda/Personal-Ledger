@@ -1,7 +1,6 @@
 //! `lib-tags`' [`TagUsage`] counted over rows (#861): a Tag's Transactions, total and last-used
-//! date from the Transactions themselves. The Tags adapter answers the port from the file (#862);
-//! this is what an in-memory Client counts with ([`Ledger::tag_uses`]) until the Transactions View
-//! reads its Splits through its own domain.
+//! date from the Transactions themselves, for a test that counts over in-memory rows. The Tags
+//! adapter answers the port from the file (#862).
 
 use std::collections::HashMap;
 
