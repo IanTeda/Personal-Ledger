@@ -15,7 +15,7 @@ use crate::shell::view::toast::history::ToastHistoryDialog;
 impl Root {
     /// Opens the session Toast history as a modal, which pauses the Toast timers.
     pub(super) fn open_toast_history(&mut self, cx: &mut Context<'_, Self>) {
-        self.state.palette = None;
+        self.presenter.close_palette();
         let presenter = ToastHistoryPresenter::open(self.presenter.toasts().history());
         let dialog = cx.new(|_| ToastHistoryDialog::new(presenter));
         self.host_dialog(DialogHandle::new(dialog), cx);

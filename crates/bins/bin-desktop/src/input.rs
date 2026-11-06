@@ -14,7 +14,8 @@
 //! Every key takes one route, [`route_key`], offered to each step in turn until one takes it:
 //!
 //! 1. An open Dialog takes every key.
-//! 2. A mode left in the bin: the palette, Search, a filter, the file explorer, or a mode the
+//! 2. A mode: the command palette, whose keys `lib-shell`'s palette Presenter resolves through the
+//!    Dialog keymap, or one left in the bin: Search, a filter, the file explorer, or a mode the
 //!    active View entered for something of its own. Whether the View or the Shell entered the
 //!    current mode is the Shell's: `lib-shell`'s `NavState` records it (`view_owns_mode`), set by
 //!    the View's `ViewEvent::EnterMode` and cleared on leaving any mode.
@@ -30,7 +31,7 @@
 //!
 //! Before any step, the Shell's Presenter hears the key arrive and clears the status message, so a
 //! message the key sets answers it alone. The Notices drain into the Presenter's Toast stack and
-//! status line. Halfway state: the palette, Search, filter and file explorer stay in the bin behind
+//! status line. Halfway state: Search, the filter and the file explorer stay in the bin behind
 //! `InputMode` until their own slice.
 
 use std::borrow::BorrowMut;

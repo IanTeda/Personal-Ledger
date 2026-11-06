@@ -1,7 +1,7 @@
 //! The floating "1e" file explorer behind `:open`
 //! (`docs/ux/desktop-mockups/01-shell/README.md`) -- browsing real directories to a `.pldb`
 //! ledger file. `Root` owns `Option<FileExplorer>`, `Some` only while the dialog is open,
-//! mirroring `crate::shell::view::palette::Palette`'s own split: pure, `gpui`-free state and unit tests
+//! mirroring the split the command palette had before its state moved into `lib-shell`: pure, `gpui`-free state and unit tests
 //! here, `render` the one method that touches `gpui`.
 //!
 //! Unlike `Dashboard`'s dummy data, the handoff's own Implementation note 11 is explicit that
@@ -430,7 +430,7 @@ pub type OnOpen = Rc<dyn Fn(&mut Window, &mut App)>;
 
 impl FileExplorer {
     /// The floating dialog itself: `position: absolute`, centred at [`TOP_OFFSET`] from the
-    /// window's top edge -- the same centring technique as `Palette::render`'s own doc explains
+    /// window's top edge -- the same centring technique as `shell::view::palette::render`'s own doc explains
     /// (`gpui` has no CSS-style transform to recentre a percentage position). Borrows `self`
     /// rather than consuming it, since `Root` keeps this state past the render call that draws
     /// it.

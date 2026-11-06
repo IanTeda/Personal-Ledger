@@ -34,7 +34,7 @@ desktop-palette-match-count = { $matches } of { $total }
 
 ## The footer hint strip. `$key` is the key token.
 
-desktop-palette-hint-select = { $key } select
+desktop-palette-hint-select = { $previous }/{ $next } select
 desktop-palette-hint-complete = { $key } complete
 desktop-palette-hint-run = { $key } run
 desktop-palette-hint-history = { $key } history

@@ -46,7 +46,7 @@ impl Render for Root {
         // window"), which stays meaningful precisely because it stays legible; only the
         // navigational frame the palette/explorer visually floats over goes dim.
         let content_opacity =
-            if self.state.palette.is_some() || self.file_explorer.is_some() || self.help_open() {
+            if self.presenter.palette_open() || self.file_explorer.is_some() || self.help_open() {
                 0.3
             } else {
                 1.0
@@ -269,12 +269,14 @@ impl Render for Root {
                     )
                     .on_hint(on_hint),
             )
-            .children(
-                self.state
-                    .palette
-                    .as_ref()
-                    .map(|palette| palette.render(window.viewport_size().width, cx)),
-            )
+            .children(self.presenter.palette().map(|palette| {
+                crate::shell::view::palette::render(
+                    &palette,
+                    &self.state.palette_scroll,
+                    window.viewport_size().width,
+                    cx,
+                )
+            }))
             .children(self.file_explorer.as_ref().map(|explorer| {
                 explorer.render(
                     on_explorer_entry_click,

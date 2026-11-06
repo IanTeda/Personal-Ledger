@@ -397,7 +397,7 @@ fn page_hint_strip(hints: &[Hint], cx: &App) -> impl IntoElement {
 
 /// The "1d" spec's COMMAND-mode echo: `:{query}` at weight 800, then the block caret --
 /// the status line's own smaller echo of the palette's input row, kept in sync by `Root`
-/// passing the same `Palette::input()` string to both.
+/// passing the same palette input string to both.
 fn command_query_echo(query: &str, cx: &App) -> impl IntoElement {
     div()
         .flex()

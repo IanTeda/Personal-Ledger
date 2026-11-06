@@ -12,8 +12,9 @@
 //! every Dialog's keys resolve through ([`dialog`]). It holds the global keymap and resolves each
 //! key the Client offers it ([`keymap`], [`ShellPresenter::key`]), with the `g` prefix the Client's
 //! timer ends ([`ShellInput::PrefixExpired`]), and owns the [`Noun`] and [`ActiveView`] the Client
-//! navigates by ([`navigation`]). A Notice from a View not yet a module and a failed write pass
-//! through it to the Router. It holds the rail's badge counts, read through [`ShellRailCounts`]
+//! navigates by ([`navigation`]). It holds the command palette ([`palette`]): its input, matching,
+//! selection and history, over the Commands the Client lists and runs. A Notice from a View not
+//! yet a module and a failed write pass through it to the Router. It holds the rail's badge counts, read through [`ShellRailCounts`]
 //! after each input while a Ledger is open. No module depends on it; only the bins and the adapter
 //! answering that port do.
 
@@ -23,6 +24,7 @@ pub mod help;
 pub mod keymap;
 pub mod nav;
 pub mod navigation;
+pub mod palette;
 pub mod presenter;
 pub mod protocols;
 pub mod rail;
@@ -34,6 +36,10 @@ pub use help::{HelpGroup, HelpPresenter, HelpViewModel};
 pub use keymap::{ShellCommand, global_keymap};
 pub use nav::{ContextSelection, FocusZone, InputMode, NavState};
 pub use navigation::{ActiveView, Noun};
+pub use palette::{
+    PaletteEntry, PaletteEntryRow, PaletteKeys, PaletteOutcome, PaletteRow, PaletteRun,
+    PaletteViewModel,
+};
 pub use presenter::{
     DialogInput, NavInput, ShellInput, ShellKey, ShellPresenter, ShellViewModel, ToastInput,
 };

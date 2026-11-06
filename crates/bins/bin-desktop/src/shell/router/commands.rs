@@ -9,22 +9,13 @@ use crate::shell::view::no_ledger::NoLedgerCommand;
 use crate::{
     accounts::AccountsPage,
     navigation::{
-        command::{self, AccountsVerb, CommandEffect, Entry, ModulePage},
+        command::{self, AccountsVerb, CommandEffect, ModulePage},
         explorer::FileExplorer,
         nav::{InputMode, Noun},
     },
     settings::SettingsPage,
-    shell::view::{page_clicks::PresenterPage, palette::Palette, window_size::WindowSize},
+    shell::view::{page_clicks::PresenterPage, window_size::WindowSize},
 };
-
-/// Records `name` as just-run in `history`, most-recent-first: drops any earlier occurrence
-/// first so re-running a command moves it to the top rather than piling up a duplicate. Free
-/// (rather than a `Palette` method) since `Root::command_history` outlives any one `Palette`
-/// instance -- see that field's own doc.
-pub(super) fn record_history(history: &mut Vec<String>, name: &str) {
-    history.retain(|entry| entry != name);
-    history.insert(0, name.to_string());
-}
 
 impl Root {
     /// Runs `command`'s effect -- one exhaustive match over [`CommandEffect`], the single
@@ -38,8 +29,8 @@ impl Root {
     /// [`CommandEffect::NotYetBuilt`] shows the same "not yet built" message
     /// `docs/ux/tui-mockups/navigation.md` describes for its own popup, reusing the status line's
     /// existing `status_message` slot (the "1d" spec's own COMMAND-mode status line has no
-    /// message slot of its own, and the palette has already closed by the time this runs -- see
-    /// the `enter` arm of [`Self::handle_palette_key`]).
+    /// message slot of its own, and the palette has already closed by the time this runs: its
+    /// Presenter closes on select and hands back the effect `name` runs, with `argument`).
     ///
     /// [`CommandEffect::OpenDialog`] (issues #165/#167) is the one variant that doesn't call
     /// `NavState::exit_mode` -- unlike every other effect, opening the dialog does *not* leave
@@ -52,26 +43,17 @@ impl Root {
     /// reads it); [`CommandEffect::Module`] opens its page and sends its event there.
     pub(super) fn run_command(
         &mut self,
-        command: &Entry,
+        name: &str,
+        effect: CommandEffect,
         argument: &str,
         window_size: WindowSize,
         cx: &mut Context<'_, Self>,
     ) {
-        // History keeps what was typed, argument and all, so `^r` recalls `accounts delete Home
-        // Loan` rather than just the bare command.
-        if argument.is_empty() {
-            record_history(&mut self.command_history, command.name);
-        } else {
-            record_history(
-                &mut self.command_history,
-                &format!("{} {argument}", command.name),
-            );
-        }
-        if command.effect.needs_ledger() && self.refuse_without_ledger() {
+        if effect.needs_ledger() && self.refuse_without_ledger() {
             self.navigate(NavInput::ExitMode);
             return;
         }
-        match command.effect {
+        match effect {
             CommandEffect::OpenDialog(mode) => {
                 self.file_explorer = Some(FileExplorer::open_at(
                     mode,
@@ -89,7 +71,7 @@ impl Root {
             }
             CommandEffect::Accounts(verb) => {
                 self.navigate(NavInput::ExitMode);
-                self.run_accounts_command(command.name, verb, argument, cx);
+                self.run_accounts_command(name, verb, argument, cx);
             }
             CommandEffect::Colour(colour) => {
                 self.navigate(NavInput::ExitMode);
@@ -118,11 +100,11 @@ impl Root {
             }
             CommandEffect::Module {
                 page,
-                command: name,
+                command: module_command,
             } => {
                 self.navigate(NavInput::ExitMode);
-                if !self.run_module_command(page, name, cx) {
-                    self.set_status(crate::msg::desktop_status_command_refused(command.name));
+                if !self.run_module_command(page, module_command, cx) {
+                    self.set_status(crate::msg::desktop_status_command_refused(name));
                 }
             }
             CommandEffect::Import => {
@@ -131,19 +113,15 @@ impl Root {
             }
             CommandEffect::NotYetBuilt => {
                 self.navigate(NavInput::ExitMode);
-                self.set_status(crate::msg::desktop_status_command_not_yet_built(
-                    command.name,
-                ));
+                self.set_status(crate::msg::desktop_status_command_not_yet_built(name));
             }
         }
     }
 
+    /// `:`: opens the palette in Command mode, its row list scrolled back to the top.
     pub(super) fn open_palette(&mut self) {
-        self.navigate(NavInput::EnterMode(InputMode::Command));
-        self.state.palette = Some(Palette::new(
-            self.palette_entries.clone(),
-            self.command_history.clone(),
-        ));
+        self.presenter.open_palette();
+        self.state.palette_scroll = gpui::ScrollHandle::new();
     }
 }
 
@@ -250,12 +228,12 @@ impl Root {
 impl PresenterPage<NoLedgerCommand> for Root {
     fn send(&mut self, event: NoLedgerCommand, cx: &mut Context<'_, Self>) {
         crate::input::send(cx, |cx| {
-            let Some(command) = command::find(event.name(), &self.palette_entries) else {
+            let Some(effect) = command::find(event.name()) else {
                 return;
             };
             self.navigate(NavInput::EnterMode(InputMode::Command));
             // `open` and `new` read no Window Size: only the rail toggle does.
-            self.run_command(&command, "", WindowSize::Large, cx);
+            self.run_command(event.name(), effect, "", WindowSize::Large, cx);
             cx.notify();
         });
     }

@@ -1,4 +1,4 @@
-//! The command registry driving `crate::shell::view::palette::Palette`
+//! The command registry driving `lib-shell`'s palette Presenter (`lib_shell::palette`)
 //! (`docs/ux/desktop-mockups/01-shell/README.md`'s "Command registry" section): "every rail
 //! item, every context-rail footer affordance, and every view action registers a command with:
 //! command string, description, kind ... optional binding, and a handler." Mirrors the shape of
@@ -34,7 +34,7 @@ use crate::navigation::nav::NounLabel;
 use lib_colour_theme::ColourAppearance;
 use lib_config::KeyBindingConfig;
 use lib_settings::ColourChoice;
-use lib_shell::ShellCommand;
+use lib_shell::{PaletteEntry, ShellCommand};
 use lib_viper::keymap::Keymap;
 
 use crate::{navigation::explorer::ExplorerMode, navigation::nav::Noun, settings::SettingsPage};
@@ -52,7 +52,7 @@ pub enum CommandEffect {
     /// `:close`: returns to the "1a" empty state, same as cold start.
     CloseLedger,
     /// An `accounts <verb> [<account name>]` command: `Root::run_command` jumps to the Accounts
-    /// page and opens the matching dialog, resolving the typed name (see [`split_input`]).
+    /// page and opens the matching dialog, resolving the typed name the palette split off.
     Accounts(AccountsVerb),
     /// Sets the `colour_theme` or `colour_appearance` Preference, the same as picking it in
     /// Settings' Colour Theme group.
@@ -100,8 +100,8 @@ impl CommandEffect {
     }
 
     /// Whether text typed after the command name is an argument (`accounts delete Home Loan`)
-    /// rather than more of the query. The one predicate [`split_input`] and the palette's Tab
-    /// completion both read; a keymap event can't carry an argument, so only the Accounts verbs do.
+    /// rather than more of the query, which the palette's Presenter reads from each entry. A
+    /// keymap event can't carry an argument, so only the Accounts verbs do.
     pub fn takes_argument(&self) -> bool {
         matches!(self, Self::Accounts(_))
     }
@@ -207,45 +207,15 @@ pub struct Command {
 
 impl Command {
     /// Whether text typed after the command name is an argument (`accounts delete Home Loan`)
-    /// rather than more of the query -- see [`split_input`].
+    /// rather than more of the query.
     pub fn takes_argument(&self) -> bool {
         self.effect.takes_argument()
     }
 }
 
-/// Splits palette input into the command query and its argument text: when the input starts with
-/// the full name of a command that takes an argument (case-insensitively, followed by a space or
-/// the end of the input), that name is the query and the rest, trimmed, is the argument; any
-/// other input is all query. The longest such name wins. Free text after the name may contain
-/// spaces (`accounts new Rainy Day`).
-pub fn split_input(input: &str) -> (&str, &str) {
-    let best = COMMANDS
-        .iter()
-        .filter(|command| command.takes_argument())
-        .filter(|command| {
-            input
-                .get(..command.name.len())
-                .is_some_and(|head| head.eq_ignore_ascii_case(command.name))
-                && input[command.name.len()..]
-                    .chars()
-                    .next()
-                    .is_none_or(|next| next == ' ')
-        })
-        .max_by_key(|command| command.name.len());
-    match best {
-        Some(command) => (
-            &input[..command.name.len()],
-            input[command.name.len()..].trim(),
-        ),
-        None => (input, ""),
-    }
-}
-
 /// The Commands no keymap has, which the palette lists beside the keymaps' ([`entries`]): the
 /// noun aliases with no `g` jump (`accounts`, `categories`, `payees`, `tags`), the three `accounts
-/// <verb>` commands, which take a typed account name a keymap event can't carry (see
-/// [`split_input`]), the
-/// file-level `open`/`new`/`close` trio, each `settings <page>`, the Colour Themes, and the Toast
+/// <verb>` commands, which take a typed account name a keymap event can't carry, the file-level `open`/`new`/`close` trio, each `settings <page>`, the Colour Themes, and the Toast
 /// commands `dismiss`, `toasts on|off` and `messages` (an alias of the `toasts` binding). A
 /// Command a keymap lists has no row here (`no_commands_row_is_a_command_a_keymap_lists`).
 pub const COMMANDS: &[Command] = &[
@@ -532,6 +502,21 @@ pub fn entries(config: &KeyBindingConfig) -> Vec<Entry> {
     entries
 }
 
+/// [`entries`] as the palette's Presenter lists them, each under its domain's header.
+pub fn palette_entries(config: &KeyBindingConfig) -> Vec<PaletteEntry<CommandEffect>> {
+    entries(config)
+        .into_iter()
+        .map(|entry| PaletteEntry {
+            name: entry.name,
+            description: entry.description,
+            domain: entry.domain.label(),
+            takes_argument: entry.takes_argument(),
+            key: entry.key,
+            effect: entry.effect,
+        })
+        .collect()
+}
+
 /// The Commands the Shell's global keymap lists, each under its noun's group, the Toasts', or
 /// Navigation's.
 fn global_entries(config: &KeyBindingConfig) -> Vec<Entry> {
@@ -677,14 +662,13 @@ fn key(chord: &str) -> Option<String> {
     (!chord.is_empty()).then(|| chord.to_string())
 }
 
-/// The [`COMMANDS`] row named `name` in `entries`, as the palette would run it: the empty
-/// state's `open` and `new` links, which no keymap binds.
-pub fn find(name: &str, entries: &[Entry]) -> Option<Entry> {
+/// What the [`COMMANDS`] row named `name` does: the empty state's `open` and `new` links, which
+/// no keymap binds.
+pub fn find(name: &str) -> Option<CommandEffect> {
     COMMANDS
         .iter()
         .find(|command| command.name == name)
-        .and_then(|command| entries.iter().find(|entry| entry.name == command.name))
-        .cloned()
+        .map(|command| command.effect)
 }
 
 #[cfg(test)]
@@ -935,7 +919,7 @@ mod tests {
     #[test]
     fn domains_are_contiguous_dashboard_first_then_alphabetical() {
         // Mirrors bin-tui's own `dashboard_is_first_and_the_rest_are_alphabetical` invariant --
-        // the palette's resting-state grouping (`Palette::rows`) assumes each domain's commands
+        // the palette's resting-state grouping (`lib_shell::palette`) assumes each domain's commands
         // sit together, never split across two separate runs.
         let mut order: Vec<Domain> = Vec::new();
         for entry in defaults() {
@@ -970,37 +954,6 @@ mod tests {
         }
         let accounts = COMMANDS.iter().find(|c| c.name == "accounts").unwrap();
         assert!(!accounts.takes_argument(), "the bare noun jump takes none");
-    }
-
-    #[test]
-    fn split_input_separates_the_argument_after_a_full_command_name() {
-        assert_eq!(
-            split_input("accounts new Rainy Day"),
-            ("accounts new", "Rainy Day")
-        );
-        assert_eq!(
-            split_input("accounts delete   Home Loan  "),
-            ("accounts delete", "Home Loan")
-        );
-        assert_eq!(split_input("accounts edit"), ("accounts edit", ""));
-        assert_eq!(split_input("accounts edit "), ("accounts edit", ""));
-    }
-
-    #[test]
-    fn split_input_matches_the_command_name_case_insensitively_keeping_the_arguments_case() {
-        assert_eq!(
-            split_input("Accounts New ANZ Offset"),
-            ("Accounts New", "ANZ Offset")
-        );
-    }
-
-    #[test]
-    fn split_input_leaves_everything_else_as_the_query() {
-        assert_eq!(split_input(""), ("", ""));
-        assert_eq!(split_input("accounts"), ("accounts", ""));
-        assert_eq!(split_input("accounts del"), ("accounts del", ""));
-        assert_eq!(split_input("accounts deleted"), ("accounts deleted", ""));
-        assert_eq!(split_input("open something"), ("open something", ""));
     }
 
     #[test]

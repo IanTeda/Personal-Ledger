@@ -49,8 +49,6 @@ mod view_events;
 mod write_failures;
 
 use crate::navigation::command;
-#[cfg(test)]
-use commands::record_history;
 pub use date_clock::{DATE_POLL, wall_clock};
 pub use key_dispatch::PENDING_G_TIMEOUT;
 pub use log_feed::LOG_COALESCE;
@@ -76,7 +74,7 @@ use std::time::Duration;
 use crate::persistence::PersistedState;
 
 /// The Shell's Presenter over the Desktop's Settings pages.
-type ShellPresenter = lib_shell::ShellPresenter<SettingsPage>;
+type ShellPresenter = lib_shell::ShellPresenter<SettingsPage, command::CommandEffect>;
 
 use gpui::{
     App, AppContext as _, Context, Entity, FocusHandle, Focusable, ScrollHandle, Subscription, Task,
@@ -187,26 +185,19 @@ pub struct Root {
     /// which sends the Presenter `PrefixExpired`. The executor's clock, not the wall clock, so a
     /// loaded test run can't lapse a `g` between two simulated keys.
     prefix_timer: Option<Task<()>>,
-    /// The Shell's own state (the palette, Dialog and rail tooltip), see [`ShellState`] and
+    /// The Shell's own state (the palette's scroll, the Dialog and the rail tooltip), see [`ShellState`] and
     /// ADR-0032. The status message and Toasts are the Presenter's.
     state: ShellState,
     /// Debug builds only: the Kind `F9` raises next, so each can be eyeballed.
     #[cfg(debug_assertions)]
     debug_toast_kind: usize,
-    /// Previously run palette command names, most-recent-first, deduplicated -- outlives any
-    /// one `Palette` (see [`record_history`]), cloned into a fresh `Palette` on every `:` open
-    /// so `^r` can reach commands run in an earlier palette session.
-    command_history: Vec<String>,
     /// The Ledger folder (`data`), where `:open` and `:new` start browsing; `None` until start-up
     /// sets this device's settings.
     ledger_folder: Option<std::path::PathBuf>,
     /// The `[keybindings]` in effect, which a Ledger opened at run time builds its keymaps from.
     keybindings: lib_config::KeyBindingConfig,
-    /// The palette's rows under the `[keybindings]` in effect, rebuilt by [`Self::set_keymaps`]
-    /// so opening the palette builds no keymap.
-    palette_entries: Vec<command::Entry>,
     /// The "1e" file explorer's own state -- `Some` only while `:open`'s dialog is on screen,
-    /// mirroring `Option<Palette>`. `NavState::mode` stays `InputMode::Command` for as long as
+    /// `NavState::mode` stays `InputMode::Command` for as long as
     /// this is `Some` (see [`Self::run_command`]'s own doc), so the two together -- rather than
     /// a third `InputMode` variant -- are what "the file explorer is open" means.
     file_explorer: Option<FileExplorer>,
@@ -260,7 +251,7 @@ impl Root {
             view_x_scroll_handle: ScrollHandle::new(),
             prefix_timer: None,
             state: ShellState {
-                palette: None,
+                palette_scroll: ScrollHandle::new(),
                 collapsed_rail_tooltip: None,
                 hover_generation: 0,
                 hosted: None,
@@ -268,10 +259,8 @@ impl Root {
             },
             #[cfg(debug_assertions)]
             debug_toast_kind: 0,
-            command_history: Vec::new(),
             keybindings: lib_config::KeyBindingConfig::default(),
             ledger_folder: None,
-            palette_entries: command::entries(&lib_config::KeyBindingConfig::default()),
             file_explorer: None,
             last_ledger_forgotten: false,
             documents_state: None,
@@ -279,7 +268,13 @@ impl Root {
             open: None,
             settings,
             _settings_subscriptions,
-            presenter: ShellPresenter::new(clock, nav),
+            presenter: {
+                let mut presenter = ShellPresenter::new(clock, nav);
+                presenter.set_palette_entries(command::palette_entries(
+                    &lib_config::KeyBindingConfig::default(),
+                ));
+                presenter
+            },
         }
     }
 
@@ -597,8 +592,9 @@ impl Root {
     /// module Dialog (#923).
     pub fn set_keymaps(&mut self, config: &lib_config::KeyBindingConfig, cx: &mut App) {
         self.keybindings = config.clone();
-        self.palette_entries = command::entries(config);
         self.presenter.set_keymap(config);
+        self.presenter
+            .set_palette_entries(command::palette_entries(config));
         self.settings
             .update(cx, |view, cx| view.set_keymaps(config, cx));
         let Some(open) = &self.open else {
@@ -740,7 +736,7 @@ impl Root {
     /// Previously run palette commands, most recent first.
     #[doc(hidden)]
     pub fn command_history(&self) -> &[String] {
-        &self.command_history
+        self.presenter.palette_history()
     }
 
     pub fn nav(&self) -> &NavState {
@@ -821,7 +817,6 @@ impl Focusable for Root {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::settings::hints::settings_plain_page_hints;
     use crate::transactions;
     use chrono::Local;
@@ -859,34 +854,6 @@ mod tests {
         crate::locale::init_for_tests();
         let text = lib_locale::msg::toast_category_deleted("Rent", 3);
         assert!(text.starts_with("Deleted category Rent · "), "{text}");
-    }
-
-    #[test]
-    fn record_history_pushes_a_new_entry_to_the_front() {
-        let mut history = vec!["accounts".to_string()];
-        record_history(&mut history, "dashboard");
-        assert_eq!(
-            history,
-            vec!["dashboard".to_string(), "accounts".to_string()]
-        );
-    }
-
-    #[test]
-    fn record_history_moves_a_repeated_entry_to_the_front_without_duplicating_it() {
-        let mut history = vec![
-            "accounts".to_string(),
-            "dashboard".to_string(),
-            "reports".to_string(),
-        ];
-        record_history(&mut history, "reports");
-        assert_eq!(
-            history,
-            vec![
-                "reports".to_string(),
-                "accounts".to_string(),
-                "dashboard".to_string(),
-            ]
-        );
     }
 
     #[test]

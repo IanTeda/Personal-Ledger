@@ -25,6 +25,10 @@ use crate::dialog::{DialogCommand, dialog_keymap};
 use crate::keymap::{HELP, OPEN_COMMAND_POPUP, SEARCH, ShellCommand, TOGGLE_RAIL, global_keymap};
 use crate::nav::{ContextSelection, FocusZone, InputMode, NavState};
 use crate::navigation::Noun;
+use crate::palette::{
+    PaletteCommand, PaletteEntry, PaletteOutcome, PalettePresenter, PaletteViewModel,
+    palette_keymap,
+};
 use crate::protocols::{RailCounts, ShellRailCounts, ShellRouter};
 use crate::rail::{RailMode, RailOverride};
 use crate::window_size::WindowSize;
@@ -149,8 +153,9 @@ const HINTS: [(&str, ShellCommand, Label); 4] = [
     ),
 ];
 
-/// The Shell's Presenter. `P` is the Client's Settings page, which the Back history steps between.
-pub struct ShellPresenter<P> {
+/// The Shell's Presenter. `P` is the Client's Settings page, which the Back history steps between,
+/// and `E` what running one of the palette's Commands does, which the Client acts on.
+pub struct ShellPresenter<P, E = ()> {
     clock: Clock,
     /// The calendar month the Shell last saw the Clock read.
     month: Period,
@@ -159,6 +164,10 @@ pub struct ShellPresenter<P> {
     /// The keys every module Dialog shares, under `[keybindings]`, which the Client's Dialogs read
     /// through [`ShellPresenter::dialog_keymap`].
     dialog_keymap: Keymap<DialogCommand>,
+    /// The palette's own key beside the Dialog keymap's, under `[keybindings]`.
+    palette_keymap: Keymap<PaletteCommand>,
+    /// The command palette, whose history outlives each time it opens.
+    palette: PalettePresenter<E>,
     /// The rail `b` last set, with the Window Size it was set at (ADR-0042).
     rail_override: Option<RailOverride>,
     /// The first key of a sequence typed so far, until the next key or [`ShellInput::PrefixExpired`].
@@ -175,7 +184,7 @@ pub struct ShellPresenter<P> {
     rail_counts: Option<(NaiveDate, RailCounts)>,
 }
 
-impl<P: Copy + Eq + Default> ShellPresenter<P> {
+impl<P: Copy + Eq + Default, E: Clone> ShellPresenter<P, E> {
     /// The Shell on the month `clock` reads now, which the Client generated the Schedule for as
     /// it started, and at `nav`, where the launch restored the person to.
     pub fn new(clock: Clock, nav: NavState<P>) -> Self {
@@ -186,6 +195,8 @@ impl<P: Copy + Eq + Default> ShellPresenter<P> {
             dialog_open: false,
             keymap: global_keymap(&KeyBindingConfig::default()),
             dialog_keymap: dialog_keymap(&KeyBindingConfig::default()),
+            palette_keymap: palette_keymap(&KeyBindingConfig::default()),
+            palette: PalettePresenter::default(),
             rail_override: None,
             prefix: None,
             nav,
@@ -202,10 +213,57 @@ impl<P: Copy + Eq + Default> ShellPresenter<P> {
         &self.clock
     }
 
-    /// Puts the global keymap and the Dialog keymap under `config`'s overrides.
+    /// Puts the global keymap, the Dialog keymap and the palette's key under `config`'s overrides.
+    /// The palette's entries carry their keys too, so the Client rebuilds them with it
+    /// ([`Self::set_palette_entries`]).
     pub fn set_keymap(&mut self, config: &KeyBindingConfig) {
         self.keymap = global_keymap(config);
         self.dialog_keymap = dialog_keymap(config);
+        self.palette_keymap = palette_keymap(config);
+    }
+
+    /// The Commands the palette lists, one per Command, under the `[keybindings]` in effect.
+    pub fn set_palette_entries(&mut self, entries: Vec<PaletteEntry<E>>) {
+        self.palette.set_entries(entries);
+    }
+
+    /// `:`: opens the palette in Command mode, on an empty input.
+    pub fn open_palette(&mut self) {
+        self.navigate(NavInput::EnterMode(InputMode::Command));
+        self.palette.open();
+    }
+
+    /// Drops the palette without leaving Command mode, for the Client leaving it some other way.
+    pub fn close_palette(&mut self) {
+        self.palette.close();
+    }
+
+    pub fn palette_open(&self) -> bool {
+        self.palette.is_open()
+    }
+
+    /// What the palette draws, `None` while it is closed.
+    pub fn palette(&self) -> Option<PaletteViewModel> {
+        self.palette
+            .view_model(&self.palette_keymap, &self.dialog_keymap)
+    }
+
+    /// The Commands run from the palette, as typed, newest first.
+    pub fn palette_history(&self) -> &[String] {
+        self.palette.history()
+    }
+
+    /// A key while the palette is open, `chord` as `[keybindings]` writes it and `typed` the
+    /// character it types, if any. Closing it leaves Command mode; a Command chosen to run leaves
+    /// the mode to the Client, which runs it.
+    pub fn palette_key(&mut self, chord: &str, typed: Option<char>) -> PaletteOutcome<E> {
+        let outcome = self
+            .palette
+            .key(chord, typed, &self.palette_keymap, &self.dialog_keymap);
+        if matches!(outcome, PaletteOutcome::Closed) {
+            self.navigate(NavInput::ExitMode);
+        }
+        outcome
     }
 
     /// The keys every module Dialog shares.

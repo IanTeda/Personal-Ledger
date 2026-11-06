@@ -4,7 +4,7 @@
 use std::time::Duration;
 
 use gpui::{Context, KeyDownEvent, Keystroke};
-use lib_shell::{DialogCommand, ShellCommand, ShellInput, ShellKey};
+use lib_shell::{DialogCommand, PaletteOutcome, ShellCommand, ShellInput, ShellKey};
 use lib_toast::ToastKind;
 
 use super::Root;
@@ -31,12 +31,13 @@ impl Root {
     /// The status line's own COMMAND-mode echo (`crate::shell::view::statusline::StatusLine`'s
     /// `command_echo`): the palette's live input while it's open, or -- once `:open` has been
     /// confirmed and the palette has closed in its favour -- the file explorer's frozen
-    /// `"open"` echo, each paired with its own "esc closes ..." hint text.
+    /// `"open"` echo, each paired with its own "esc closes ..." hint text, under the key `back` is
+    /// bound to now for the palette.
     pub(super) fn command_echo(&self) -> Option<(String, String)> {
-        if let Some(palette) = self.state.palette.as_ref() {
+        if let Some(palette) = self.presenter.palette() {
             Some((
-                palette.input().to_string(),
-                crate::msg::desktop_status_close_command_window("esc"),
+                palette.input,
+                crate::msg::desktop_status_close_command_window(&palette.keys.close),
             ))
         } else if let Some(explorer) = self.file_explorer.as_ref() {
             let name = match explorer.mode() {
@@ -127,7 +128,7 @@ impl Root {
     /// `Esc` in a mode, once the View has kept nothing open: closes the palette, the file explorer
     /// and any Dialog without applying it, and leaves the mode.
     fn close_popups_and_exit_mode(&mut self) {
-        self.state.palette = None;
+        self.presenter.close_palette();
         self.file_explorer = None;
         // The README's own Dialog lifecycle table: "`esc` closes any dialog without saving" --
         // discards whatever was typed, same as Cancel.
@@ -197,64 +198,34 @@ impl Root {
         }
     }
 
-    /// Routes a keystroke while the palette is open (step 2, "popup-owned keys" -- mirroring
-    /// `docs/ux/tui-mockups/navigation.md`): `Backspace` mutates the input buffer, `Up`/`Down` move the
-    /// selection, `Tab` completes to the selected result's full name, `Ctrl-r` cycles backward
-    /// through previously run commands, `Enter` runs the selected command (see
-    /// [`Self::run_command`]), and any other unmodified, printable key is typed into the query.
-    /// Everything else is swallowed here rather than falling through to the zone/movement
-    /// handling below -- keeping "the popup owns every keystroke" true even for a modified key
-    /// (e.g. a bare `Ctrl`) this palette gives no meaning to.
+    /// A key while the palette is open: its Presenter resolves it through the Dialog keymap and
+    /// its own `history_back`, and types any key neither binds. The palette takes every key, so a
+    /// key it gives no meaning to goes no further. A Command it closes on is run here, through
+    /// [`Self::run_command`]; otherwise the row list is kept scrolled onto the selected row.
     fn handle_palette_key(
         &mut self,
         keystroke: &Keystroke,
         window_size: WindowSize,
         cx: &mut Context<'_, Self>,
     ) -> bool {
-        let Some(palette) = self.state.palette.as_mut() else {
-            return false;
-        };
-
-        match keystroke.key.as_str() {
-            "backspace" => {
-                palette.backspace();
-                true
-            }
-            "up" => {
-                palette.move_up();
-                true
-            }
-            "down" => {
-                palette.move_down();
-                true
-            }
-            "tab" => {
-                palette.complete_selected();
-                true
-            }
-            "r" if keystroke.modifiers.control => {
-                palette.cycle_history_back();
-                true
-            }
-            "enter" => {
-                let command = palette.selected_command().cloned();
-                let argument = palette.argument().to_string();
-                self.state.palette = None;
-                match command {
-                    Some(command) => self.run_command(&command, &argument, window_size, cx),
-                    // No result to run (an empty registry match) -- there's nothing left for
-                    // `run_command` to do, so leave Command mode directly instead.
-                    None => self.navigate(NavInput::ExitMode),
+        let chord = chord(keystroke).unwrap_or_default();
+        match self.presenter.palette_key(&chord, typed_char(keystroke)) {
+            PaletteOutcome::Ignored => false,
+            PaletteOutcome::Changed => {
+                if let Some(row) = self
+                    .presenter
+                    .palette()
+                    .and_then(|model| model.selected_row)
+                {
+                    self.state.palette_scroll.scroll_to_item(row);
                 }
                 true
             }
-            _ => match typed_char(keystroke) {
-                Some(ch) => {
-                    palette.push_char(ch);
-                    true
-                }
-                None => false,
-            },
+            PaletteOutcome::Closed => true,
+            PaletteOutcome::Run(run) => {
+                self.run_command(run.name, run.effect, &run.argument, window_size, cx);
+                true
+            }
         }
     }
 
@@ -338,12 +309,16 @@ impl KeyRoute for Keys<'_, '_> {
     }
 
     /// The palette, Search, a filter, the file explorer or Insert takes every key. A mode the View
-    /// entered for something of its own reads them first, `Esc` included.
+    /// entered for something of its own reads them first, `Esc` included. The palette reads its
+    /// keys, `back` included, through its Presenter.
     fn mode(&mut self) -> Option<bool> {
         let shell = &mut *self.shell;
         let mode = shell.nav().mode();
         if mode == InputMode::Normal {
             return None;
+        }
+        if shell.presenter.palette_open() {
+            return Some(shell.handle_palette_key(self.keystroke, self.window_size, self.cx));
         }
         if self.keystroke.key == "escape" {
             if !(shell.view_owns_mode() && shell.active_view_entity(self.cx).escape(self.cx)) {
@@ -358,10 +333,7 @@ impl KeyRoute for Keys<'_, '_> {
             return Some(true);
         }
         let taken = match mode {
-            InputMode::Command => {
-                shell.handle_palette_key(self.keystroke, self.window_size, self.cx)
-                    || shell.handle_explorer_key(self.keystroke, self.cx)
-            }
+            InputMode::Command => shell.handle_explorer_key(self.keystroke, self.cx),
             InputMode::Search => shell.handle_search_key(self.keystroke, self.cx),
             // Only a View opens a filter popover, and it reads the popover's keys above; what it
             // leaves is swallowed, as is every key in Insert, which has no input surface yet.

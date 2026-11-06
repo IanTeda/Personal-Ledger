@@ -481,3 +481,59 @@ fn a_bare_settings_noun_opens_its_page_not_a_dialog(app: &mut TestAppContext) {
         assert_eq!(ui.dialog(), None, ":{noun} opens no Dialog");
     }
 }
+
+#[gpui::test]
+fn a_rebound_back_closes_the_palette_and_esc_no_longer_does(app: &mut TestAppContext) {
+    let mut ui = Harness::with_keybindings(app, common::overriding("back", "ctrl+g"));
+    open_palette(&mut ui);
+    ui.press("b u d");
+
+    ui.press("escape");
+    assert_eq!(
+        palette(&mut ui).expect("esc no longer closes it").input,
+        "bud"
+    );
+
+    ui.press("ctrl-g");
+    assert_eq!(palette(&mut ui), None);
+    assert_eq!(ui.read(|s| s.nav().mode()), InputMode::Normal);
+}
+
+#[gpui::test]
+fn rebound_dialog_keys_move_complete_and_run_in_the_palette(app: &mut TestAppContext) {
+    let mut config = common::overriding("select_next", "ctrl+j");
+    for (command, chord) in [("next_field", "ctrl+t"), ("select", "ctrl+y")] {
+        config
+            .bindings
+            .insert(command.to_string(), chord.to_string());
+    }
+    let mut ui = Harness::with_keybindings(app, config);
+    open_palette(&mut ui);
+    ui.press("b u d");
+    let names = palette(&mut ui).expect("open").matches;
+
+    ui.press("ctrl-j");
+    assert_eq!(palette(&mut ui).expect("open").selected, Some(names[1]));
+    ui.press("ctrl-t");
+    assert_eq!(palette(&mut ui).expect("open").input, names[1]);
+
+    ui.press("escape");
+    open_palette(&mut ui);
+    ui.press("b i l l s ctrl-y");
+    assert_eq!(ui.noun(), Noun::Bills);
+    assert_eq!(palette(&mut ui), None);
+}
+
+#[gpui::test]
+fn a_rebound_history_back_recalls_and_control_r_no_longer_does(app: &mut TestAppContext) {
+    let mut ui = Harness::with_keybindings(app, common::overriding("history_back", "ctrl+b"));
+    open_palette(&mut ui);
+    ui.press("b i l l s enter");
+    open_palette(&mut ui);
+
+    ui.press("ctrl-r");
+    assert_eq!(palette(&mut ui).expect("open").input, "");
+
+    ui.press("ctrl-b");
+    assert_eq!(palette(&mut ui).expect("open").input, "bills");
+}
