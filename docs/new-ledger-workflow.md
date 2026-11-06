@@ -31,20 +31,19 @@ If you've used KMyMoney, GnuCash or Microsoft Money, most of this will feel fami
 
 ## Step 1: Name your ledger
 
-Your ledger is everything you track in one place: your accounts, institutions, categories and transactions. Open **Settings** (press `g` then `s`) and choose **General**. Fill in:
+Your ledger is everything you track in one place: your accounts, institutions, categories and transactions. You create it with `:new`, which asks for a folder, a file name and its **base unit** (see [Getting around](getting-around.md#starting-a-new-ledger)). The base unit is the unit most of your money is held in, such as AUD, and the dialog prefills it from your Locale. The new ledger holds nothing else of yours. Then open **Settings** (press `g` then `s`) and choose **General**. Fill in:
 
 - **Ledger name:** anything that helps you recognise it, such as "Household".
 - **Owner:** your name.
 - **Financial year starts:** the month your financial year begins. In Australia this is normally July. Reports use it to group your figures.
-- **Base unit:** the unit most of your money is held in, such as AUD.
 
-All of these can be changed later.
+These can be changed later, and so can the base unit, in **Settings**, then **Ledger**, though not once an account uses the unit you want to move away from.
 
 ## Step 2: Choose your units
 
 A unit is what an account's amount is measured in: dollars, shares, bitcoin. Every account has exactly one unit, and **it can't be changed once the account exists**, so it pays to get this right.
 
-Open **Settings**, then **Units**. Check that your everyday currency is in the list and add anything else you need, such as a share ticker for a brokerage holding. Your base unit, the one you chose when you created the ledger, is already there and new accounts start on it. If most of your money is in another unit, make that the base unit in **Settings**, then **Ledger**.
+Open **Settings**, then **Units**. Check that your everyday currency is in the list and add anything else you need, such as a share ticker for a brokerage holding. Your base unit, the one you chose in the Create ledger dialog, is already there and new accounts start on it. If most of your money is in another unit, make that the base unit in **Settings**, then **Ledger**.
 
 If all your money is in one currency, you'll only ever need this step once.
 
@@ -122,8 +121,8 @@ If you use Personal Ledger on more than one computer, you can connect them throu
 
 You're ready for everyday use when:
 
-- [ ] Your ledger has a name, owner, financial year and base unit.
-- [ ] Your units are set, with the right base unit.
+- [ ] Your ledger is created, with the right base unit, and has a name, owner and financial year.
+- [ ] Your other units are added.
 - [ ] Your institutions are added.
 - [ ] Every account you use is added, with the right kind, unit and opening balance.
 - [ ] You have a starting set of categories.

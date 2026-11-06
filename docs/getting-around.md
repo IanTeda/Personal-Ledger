@@ -116,7 +116,13 @@ With no Ledger open the app sits on the Dashboard, which offers `:open` and `:ne
 
 In the desktop app, **`:new`** opens the file explorer in New mode. Browse to the folder you want, type a name in the **File name** field and press `Enter` or **Create**. You don't need to type `.pldb`: Create adds it if the name doesn't end in it. If a file of that name is already in the folder, the field says so and Create stays off until you pick another name. Nothing is ever overwritten.
 
-Create writes the new Ledger file and opens it on the Dashboard with a "Created ledger" Toast. If a Ledger was already open, its changes are saved and the new one takes its place. If the file can't be written, for example in a folder you can't write to, an error Toast says why and whatever was open stays open. Until the new-Ledger workflow is built, a new Ledger starts with the same sample data as a first launch.
+Choosing the folder and name opens the **Create ledger** dialog, which shows the file you are about to write and asks for the Ledger's base unit, the unit your accounts and totals are kept in. It can't be changed once an account uses it. The code, name and precision are prefilled from your Locale's currency (USD, GBP or AUD), and the type starts as Currency. Change any of them, for example to a share ticker or a coin, and the precision follows the type until you type your own. Create stays off while the code or name is blank or the precision isn't a whole number from 0 to 18. `Esc` or **Cancel** writes nothing, leaves no file and takes you back to the explorer.
+
+Create writes the new Ledger file and opens it on the Dashboard with a "Created ledger" Toast. If a Ledger was already open, its changes are saved and the new one takes its place. If the file can't be written, for example because one of that name has appeared since or the folder isn't writable, an error Toast says why, no file is left behind, the dialog stays open and whatever was open stays open.
+
+A new Ledger is empty apart from what every Ledger starts with: the Personal institution (with no usual unit), your base unit, an empty Personal spending budget in it and the default document types. There is no sample data, and no categories, payees or tags. Opening a file never creates or completes a Ledger: if a file has no base unit, for example because creating it was interrupted, an error Toast says it isn't a complete Ledger, and you can create it again.
+
+In the terminal app, `:new` creates the same Ledger without asking, with your Locale's currency as the base unit.
 
 ## Quitting
 

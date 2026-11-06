@@ -40,7 +40,7 @@ In `lib-budgets` (`crates/libs/lib-budgets/src/`), none in `lib-core`:
 
 An upsert writes a Budget whole: its row, then its Accounts and records replaced. `Budgets::changed_since` orders a write so the Budget losing the default goes before the one taking it. `lib_budgets::contract` (feature `contract-tests`) is the suite both the in-memory fake and the adapter pass.
 
-The first launch writes `seed::stub_budgets` (Personal spending and a second Budget). `open_storage` seeds an empty default Personal spending Budget (`PERSONAL_SPENDING_ID`) in the base Unit, counting every Account that takes Transactions, whenever the `budgets` table is empty. That is how a Ledger file made before Budgets persisted gets its Budget, so there is always one active Budget.
+`seed::stub_budgets` (Personal spending and a second Budget) is the stub's. Creating a Ledger writes an empty Personal spending Budget in the base Unit on no Accounts, and `open_storage` seeds an empty default Personal spending Budget (`PERSONAL_SPENDING_ID`) in the base Unit, counting every Account that takes Transactions, whenever the `budgets` table is empty. That is how a Ledger file made before Budgets persisted gets its Budget, so there is always one active Budget.
 
 The Figures read the other domains through the six read ports, which `lib-database`'s `StoredBudgetReads` answers from the shared Categories, Accounts, Transactions, Bills, Units and Payees stores. They return rows, not sums, so Spent, the Rollover carry and Known Costs stay one query in `lib-budgets`.
 
