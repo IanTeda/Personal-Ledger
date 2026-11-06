@@ -167,8 +167,7 @@ fn start_with(
     }
 }
 
-/// Opens the Ledger file at `path` as start-up and `:open` do, with the stub dated from `today`,
-/// then generates the Bill Schedule through the horizon and commits the new entries (ADR-0019).
+/// Opens the Ledger file at `path` as start-up and `:open` do, then generates the Bill Schedule through the horizon and commits the new entries (ADR-0019).
 /// Never creates a Ledger file: a missing or empty file, a folder, or one that isn't a Ledger is
 /// an [`OpenFailure`], written for the Toast that says so.
 pub fn open_ledger_file(
@@ -197,6 +196,7 @@ pub fn open_ledger_file(
                 }
                 lib_database::Error::LedgerOutOfDate(_) => msg::desktop_ledger_open_out_of_date(),
                 lib_database::Error::NotALedger => msg::desktop_ledger_open_not_a_ledger(),
+                lib_database::Error::IncompleteLedger => msg::desktop_ledger_open_incomplete(),
                 _ => msg::desktop_ledger_open_unreadable(),
             }))
         }
@@ -204,77 +204,36 @@ pub fn open_ledger_file(
 }
 
 /// Opens the Ledger file at `path` through `open_storage`, then generates the Bill Schedule
-/// through the horizon and commits the new entries (ADR-0019): what opening and creating share.
+/// through the horizon and commits the new entries (ADR-0019).
 fn open_and_generate(
     path: &std::path::Path,
     today: chrono::NaiveDate,
 ) -> lib_database::Result<Storage> {
-    let mut storage = open_storage(path, today, &lib_locale::msg::institution_personal())?;
+    let mut storage = open_storage(path)?;
     bills::ports::generate(&mut storage.bills, today);
     lib_database::Commit::commit(&storage.pending);
     Ok(storage)
 }
 
-/// Creates a Ledger file at `path` and opens it as [`open_ledger_file`] does, for `:new`. Until the
-/// new-Ledger workflow (#912) decides what a new Ledger starts with, it is the stub seed
-/// `open_storage` writes into a new file. Never touches a file already at `path`: claiming the
-/// name is the first write, and a file there by then is a failure. A Ledger that won't open once
-/// created is removed again, so a failed `:new` leaves nothing behind.
-pub fn create_ledger_file(
-    path: &std::path::Path,
-    today: chrono::NaiveDate,
-) -> std::result::Result<Storage, OpenFailure> {
-    let failed = |reason: String| OpenFailure {
+/// Creates a Ledger file at `path` for `:new`, with what every new Ledger starts with and the
+/// Locale's Currency as its base Unit, through `lib-ledger-creation` (ADR-0054). The Create ledger
+/// Dialog will ask for the base Unit (#1068); until then nothing is asked. Never touches a file
+/// already at `path`, and a create that fails leaves nothing there. A failure raises the Error
+/// Toast through `notify` and returns `false`; the caller opens the new Ledger.
+pub fn create_ledger_file(path: &std::path::Path, notify: &mut dyn lib_toast::Notify) -> bool {
+    lib_ledger_creation::interactor::CreateLedger {
         path: path.to_path_buf(),
-        reason,
-    };
-    // `create_new` claims the name atomically, so a file made after the explorer checked the name
-    // is refused rather than overwritten.
-    if let Err(error) = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(path)
-    {
-        tracing::warn!(%error, path = %path.display(), "Couldn't create the Ledger file");
-        return Err(failed(
-            if error.kind() == std::io::ErrorKind::AlreadyExists {
-                msg::desktop_ledger_create_exists()
-            } else {
-                msg::desktop_ledger_create_unwritable()
-            },
-        ));
+        base_unit: lib_ledger_creation::interactor::base_unit_for(lib_locale::locale().currency()),
+        personal: lib_locale::msg::institution_personal(),
     }
-    match open_and_generate(path, today) {
-        Ok(storage) => {
-            tracing::info!(path = %path.display(), "Created the Ledger file");
-            Ok(storage)
-        }
-        Err(error) => {
-            // Recovered: the Desktop keeps whatever Ledger was open, or none, and a Toast says why.
-            tracing::warn!(%error, path = %path.display(), "Failed to create the Ledger");
-            remove_ledger_file(path);
-            Err(failed(msg::desktop_ledger_create_unwritable()))
-        }
-    }
+    .run(&mut lib_database::LedgerCreationAdapter::new(), notify)
+    .is_ok()
 }
 
-/// Removes a Ledger file a failed `:new` made, with the journal files SQLite keeps beside it.
-fn remove_ledger_file(path: &std::path::Path) {
-    // The same files `:new`'s explorer refuses a name while any is there.
-    for file in lib_shell::explorer::ledger_files(path) {
-        match std::fs::remove_file(&file) {
-            Ok(()) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => {
-                tracing::warn!(%error, path = %file.display(), "Couldn't remove a failed Ledger file");
-            }
-        }
-    }
-}
-
-/// Why `path` can't be opened without creating a Ledger in it, or `None` if `open_storage` may
-/// open it. `open_storage` creates a missing file, and SQLite takes an empty one for a new database
-/// that it then migrates and seeds, so start-up refuses both rather than create a Ledger (#977).
+/// Why `path` can't be opened without writing to it, or `None` if `open_storage` may open it.
+/// `open_storage` makes a missing file, and SQLite takes an empty one for a new database that it
+/// then migrates, before refusing either as an incomplete Ledger, so start-up refuses both first
+/// and leaves them as they were (#977).
 fn unopenable(path: &std::path::Path) -> Option<String> {
     let reason = match std::fs::metadata(path) {
         Ok(metadata) if !metadata.is_file() => msg::desktop_ledger_open_not_a_file(),
@@ -686,9 +645,7 @@ mod tests {
         locale::init_for_tests();
         let data = tempfile::tempdir().expect("a temporary directory");
         let file = data.path().join("ledger.pldb");
-        let created = open_storage(&file, today(), "Personal").expect("a new Ledger");
-        quit(&created.writer);
-        drop(created);
+        lib_database::seed::stub_ledger(&file, today()).expect("a new Ledger");
         let started = start_with(
             &config_in(data.path(), Some(&file)),
             &PersistedState::default(),

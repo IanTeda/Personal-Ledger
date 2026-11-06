@@ -13,6 +13,7 @@ pub mod category_rows;
 pub mod documents;
 pub mod institutions;
 pub mod inventory;
+pub mod ledger_creation;
 pub mod payees;
 pub mod settings;
 pub mod tag_removal;

@@ -54,11 +54,7 @@ desktop-ledger-open-unreadable = it isn't a Ledger file, or can't be read
 desktop-ledger-open-out-of-date = it was made by an earlier version and can't be upgraded
 desktop-ledger-open-newer = it was made by a newer version; update Personal Ledger to open it
 desktop-ledger-open-not-a-ledger = it's a database, but not a Ledger file
-
-## Why `:new` couldn't create a Ledger file, the `$reason` of the Toast saying so.
-
-desktop-ledger-create-exists = a file of that name is already there
-desktop-ledger-create-unwritable = it can't be written there
+desktop-ledger-open-incomplete = it isn't a complete Ledger; create it again with :new
 
 ## The top bar. `$time` is the time of the last sync.
 

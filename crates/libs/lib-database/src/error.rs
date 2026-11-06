@@ -126,6 +126,21 @@ pub enum Error {
     #[error("The file is a database, but not a Ledger file")]
     NotALedger,
 
+    /// A Ledger file with no base Unit
+    ///
+    /// Every Ledger is created with its base Unit (ADR-0054), so a migrated file without one was
+    /// cut short by a failed or interrupted create, or made by hand. Opening it stops here rather
+    /// than completing it with a base Unit nobody chose.
+    #[error("The file is not a complete Ledger: it has no base Unit")]
+    IncompleteLedger,
+
+    /// A Ledger file that couldn't be created
+    ///
+    /// `lib-ledger-creation`'s port wrote no file: one was already there, or it couldn't be
+    /// written. Nothing is left at the path.
+    #[error("The Ledger file couldn't be created: {0}")]
+    LedgerCreation(#[from] lib_ledger_creation::CreationFailure),
+
     /// File system or thread error
     ///
     /// Occurs when the Ledger file's directory can't be made, or the writer's thread or runtime
@@ -174,6 +189,8 @@ impl PartialEq for Error {
             (Error::Io(a), Error::Io(b)) => a.kind() == b.kind(),
             (Error::WriterStopped, Error::WriterStopped) => true,
             (Error::NotALedger, Error::NotALedger) => true,
+            (Error::IncompleteLedger, Error::IncompleteLedger) => true,
+            (Error::LedgerCreation(a), Error::LedgerCreation(b)) => a == b,
             _ => false,
         }
     }

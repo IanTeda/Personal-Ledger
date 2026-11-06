@@ -5,7 +5,8 @@
 //! from `Root`. `:open`'s file explorer picks a file by mouse alone (01-shell's "Row click selects
 //! it"), so opening one is `ledger_file_mouse.rs`'s; here `:open` and `esc` run from the keys (#978).
 //! `:new` names its file in a focused File name field, so creating one runs from the keys here
-//! (#980): a fresh name is created seeded and opened, a name already in the folder is refused
+//! (#980): a fresh name is created with what every new Ledger starts with (#1067) and opened, a
+//! name already in the folder is refused
 //! inline, as is one whose SQLite journal is still there, and a folder it can't write keeps the
 //! Open Ledger. Start view (#983) chooses where it
 //! lands: each value with a Ledger open, and with none, where a noun lands on the Dashboard.
@@ -401,7 +402,12 @@ fn new_with_a_fresh_name_creates_the_ledger_file_and_opens_it(app: &mut TestAppC
     assert_eq!(ui.ledger_path(), Some(created));
     assert_eq!(ui.noun(), Noun::Dashboard);
     assert_eq!(ui.read(|shell| shell.nav().mode()), InputMode::Normal);
-    assert_eq!(ui.unit_codes(), ["aud", "btc", "vas"], "the stand-in seed");
+    assert_eq!(
+        ui.unit_codes(),
+        ["usd"],
+        "the Locale's Currency is the only Unit"
+    );
+    assert!(ui.dashboard_bills().is_empty(), "none of the stub rows");
     let toast = ui.toasts().visible.pop().expect("a Toast says so");
     assert_eq!(toast.kind, "Success");
     assert_eq!(toast.text, "Created ledger teda2027.pldb");

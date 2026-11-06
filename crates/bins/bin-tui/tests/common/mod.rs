@@ -57,9 +57,11 @@ pub fn shell_on(
     (shell, report)
 }
 
-/// A Ledger file at `path`, created and seeded as `:new` would, then changed by `edit` and saved.
+/// The stub Ledger in a file at `path` (`seed::stub_ledger`), then changed by `edit` and saved.
 pub fn ledger_file_with(path: &Path, edit: impl FnOnce(&mut lib_database::Storage)) {
-    let storage = lib_database::open_storage(path, chrono::Local::now().date_naive(), "Personal");
+    let created = lib_database::seed::stub_ledger(path, chrono::Local::now().date_naive());
+    assert!(created.is_ok(), "the stub Ledger is created: {created:?}");
+    let storage = lib_database::open_storage(path);
     assert!(storage.is_ok(), "a new Ledger opens");
     let Ok(mut storage) = storage else { return };
     edit(&mut storage);

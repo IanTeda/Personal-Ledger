@@ -64,6 +64,15 @@ const CROSS_DOMAIN: &[(&str, &[&str])] = &[
         "lib_transaction_import",
         &["lib_payees", "lib_transactions"],
     ),
+    (
+        "lib_ledger_creation",
+        &[
+            "lib_units",
+            "lib_institutions",
+            "lib_budgets",
+            "lib_documents",
+        ],
+    ),
 ];
 
 /// The Shell module, which hosts every other module: only the bins and `lib_database`, which

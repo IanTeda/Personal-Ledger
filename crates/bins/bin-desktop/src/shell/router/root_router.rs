@@ -266,11 +266,15 @@ impl ShellRouter for RootRouter<'_, '_> {
         }
     }
 
-    /// Creates a Ledger file at `path` and opens it in place of the Open Ledger, if any, as
-    /// [`Self::open_ledger`] does.
+    /// Creates a Ledger file at `path` with the Locale's Currency as its base Unit, then opens it
+    /// in place of the Open Ledger, if any, as [`Self::open_ledger`] does. A create that fails
+    /// raises its own Error Toast and leaves the Open Ledger as it was.
     fn create_ledger(&mut self, path: &Path) -> bool {
         self.flush();
-        match crate::create_ledger_file(path, self.clock.today()) {
+        if !crate::create_ledger_file(path, self) {
+            return false;
+        }
+        match crate::open_ledger_file(path, self.clock.today()) {
             Ok(storage) => {
                 self.swap_in_ledger(path, storage);
                 self.notify(Notice::Toast(
@@ -280,13 +284,7 @@ impl ShellRouter for RootRouter<'_, '_> {
                 true
             }
             Err(failure) => {
-                self.notify(Notice::Toast(
-                    ToastKind::Error,
-                    lib_locale::msg::toast_ledger_create_failed(
-                        &file_name(&failure.path),
-                        &failure.reason,
-                    ),
-                ));
+                self.notify(ledger_open_failed(&failure));
                 false
             }
         }

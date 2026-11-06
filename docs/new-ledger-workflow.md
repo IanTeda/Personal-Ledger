@@ -26,8 +26,8 @@ If you've used KMyMoney, GnuCash or Microsoft Money, most of this will feel fami
 
 - **No accounting jargon.** GnuCash starts you with a tree of assets, liabilities, equity, income and expenses, and gives your opening balances an "Opening Balances" equity account to balance against. Personal Ledger uses single-entry bookkeeping, so an account simply starts with a balance and you never deal with a balancing account.
 - **Institutions are their own step.** Like Microsoft Money, Personal Ledger knows which bank or broker each account lives with. Unlike Money, it does not link to your bank or download transactions, so your data stays on your own machines.
-- **Units instead of a single currency.** KMyMoney and Money ask for one base currency up front. Personal Ledger asks for a default unit, which can be a currency, but also a share ticker or a cryptocurrency, and each account has exactly one.
-- **Categories start nearly empty.** Instead of choosing a large template (GnuCash's "Common Accounts", Money's Home or Business lists), you start with just Income and Expenses and grow the list as you go.
+- **Units instead of a single currency.** KMyMoney and Money ask for one base currency up front. Personal Ledger asks for a base unit when you create the ledger, which can be a currency, but also a share ticker or a cryptocurrency, and each account has exactly one.
+- **Categories start nearly empty.** Instead of choosing a large template (GnuCash's "Common Accounts", Money's Home or Business lists), you start with no categories and grow the list as you go.
 
 ## Step 1: Name your ledger
 
@@ -44,7 +44,7 @@ All of these can be changed later.
 
 A unit is what an account's amount is measured in: dollars, shares, bitcoin. Every account has exactly one unit, and **it can't be changed once the account exists**, so it pays to get this right.
 
-Open **Settings**, then **Units**. Check that your everyday currency is in the list and add anything else you need, such as a share ticker for a brokerage holding. Then mark your everyday currency as the default, so new accounts start with it already chosen.
+Open **Settings**, then **Units**. Check that your everyday currency is in the list and add anything else you need, such as a share ticker for a brokerage holding. Your base unit, the one you chose when you created the ledger, is already there and new accounts start on it. If most of your money is in another unit, make that the base unit in **Settings**, then **Ledger**.
 
 If all your money is in one currency, you'll only ever need this step once.
 
@@ -62,7 +62,7 @@ Open **Accounts** (press `g` then `a`) and choose **Add account**. Each account 
 
 - **Name:** what you'll call it, such as "Everyday Account".
 - **Kind:** what sort of account it is (see below).
-- **Institution and unit:** picked from the lists you built in steps 2 and 3. The unit starts on the institution's usual unit when it has one, such as bitcoin for a crypto exchange, and on your default unit otherwise.
+- **Institution and unit:** picked from the lists you built in steps 2 and 3. The unit starts on the institution's usual unit when it has one, such as bitcoin for a crypto exchange, and on your base unit otherwise.
 - **Opening balance:** how much the account held the moment before your first transaction.
 - **Account number:** optional.
 
@@ -83,7 +83,7 @@ Two things are fixed once the account exists: its **unit** and its **opening bal
 
 ## Step 5: Set up your categories
 
-Categories answer "where does my money go?". Open **Categories** (press `g` then `c`). You'll find two starting points already there, **Income** and **Expenses**, which can't be removed. Everything else you add sits under one of them.
+Categories answer "where does my money go?". Open **Categories** (press `g` then `c`). A new ledger has none: each category you add is either an Expense or an Income category, and can sit under another of the same type.
 
 Don't try to design the perfect list. A dozen categories is enough to begin with, for example Salary and Interest under Income, and Groceries, Rent, Utilities, Transport, Dining out and Health under Expenses. You can add more the first time a transaction doesn't fit, and you can nest them, so Utilities can later hold Electricity and Water.
 
@@ -123,7 +123,7 @@ If you use Personal Ledger on more than one computer, you can connect them throu
 You're ready for everyday use when:
 
 - [ ] Your ledger has a name, owner, financial year and base unit.
-- [ ] Your units are set, with a default chosen.
+- [ ] Your units are set, with the right base unit.
 - [ ] Your institutions are added.
 - [ ] Every account you use is added, with the right kind, unit and opening balance.
 - [ ] You have a starting set of categories.

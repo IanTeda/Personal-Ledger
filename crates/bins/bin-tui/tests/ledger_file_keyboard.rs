@@ -75,8 +75,7 @@ fn the_status_line_names_the_mode_when_it_is_not_normal() {
 fn open_with_a_path_opens_that_ledger_file() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("household.pldb");
-    lib_database::open_storage(&path, chrono::Local::now().date_naive(), "Personal")
-        .expect("a Ledger file to open");
+    ledger_file(&path);
     let mut shell = cold_shell(None);
 
     run_command(&mut shell, &format!("open {}", path.display()));
@@ -95,8 +94,7 @@ fn open_with_a_path_opens_that_ledger_file() {
 fn a_bare_open_opens_the_configured_ledger_file() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("configured.pldb");
-    lib_database::open_storage(&path, chrono::Local::now().date_naive(), "Personal")
-        .expect("a Ledger file to open");
+    ledger_file(&path);
     let mut shell = cold_shell(Some(&path));
 
     run_command(&mut shell, "open");
@@ -168,6 +166,62 @@ fn new_creates_a_ledger_file_and_opens_it() {
         "{frame}"
     );
     assert!(path.exists(), "no Ledger file was created");
+}
+
+#[test]
+fn new_creates_the_ledger_on_the_locales_currency_with_none_of_the_stub_rows() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("business.pldb");
+    let mut shell = cold_shell(None);
+
+    run_command(&mut shell, &format!("new {}", path.display()));
+    press(&mut shell, "g u");
+    let frame = screen(&mut shell);
+
+    assert!(frame.contains("usd"), "en-US's Currency:\n{frame}");
+    assert!(frame.contains("US Dollar"), "{frame}");
+    for stub in ["aud", "btc", "vas"] {
+        assert!(!frame.contains(stub), "the stub's {stub}:\n{frame}");
+    }
+    let storage = lib_database::open_storage(&path).expect("the new Ledger opens");
+    let stores = lib_database::Stores::from(storage);
+    let institutions = stores.institutions.institutions().institutions();
+    assert_eq!(
+        institutions
+            .iter()
+            .map(|institution| (institution.name.as_str(), institution.usual_unit))
+            .collect::<Vec<_>>(),
+        [("Personal", None)],
+        "the Personal Institution alone, with no Usual unit"
+    );
+    assert!(stores.accounts.accounts().accounts().is_empty());
+    assert!(stores.categories.categories().categories().is_empty());
+    assert!(stores.payees.payees().payees().is_empty());
+    assert!(stores.tags.tags().tags().is_empty());
+}
+
+#[test]
+fn opening_a_file_that_is_not_a_complete_ledger_raises_an_error_toast_and_keeps_the_open_ledger() {
+    let directory = tempfile::tempdir().expect("a temporary directory");
+    let path = directory.path().join("household.pldb");
+    let cut_short = directory.path().join("cut-short.pldb");
+    let (writer, _) = lib_database::Writer::open_ledger(&cut_short).expect("a migrated file");
+    writer.close().expect("the writer is running");
+    drop(writer);
+    let mut shell = cold_shell(None);
+    run_command(&mut shell, &format!("new {}", path.display()));
+
+    run_command(&mut shell, &format!("open {}", cut_short.display()));
+    let frame = screen(&mut shell);
+
+    assert!(
+        frame.contains("\u{2717} Couldn't open ledger cut-short.pldb"),
+        "{frame}"
+    );
+    assert!(
+        hint_bar(&frame).trim_end().ends_with("household.pldb"),
+        "{frame}"
+    );
 }
 
 #[test]
@@ -265,10 +319,7 @@ fn a_unit_added_after_new_is_there_after_close_and_open() {
     let frame = screen(&mut shell);
 
     assert!(frame.contains("xau"), "{frame}");
-    assert!(
-        frame.contains("aud"),
-        "the seed isn't written twice:\n{frame}"
-    );
+    assert!(frame.contains("usd"), "the base Unit stays:\n{frame}");
 }
 
 #[test]
@@ -295,10 +346,10 @@ fn add_gold(shell: &mut bin_tui::Shell) {
     press(shell, "Enter");
 }
 
-/// A Ledger file at `path`, created and migrated as `:new` would.
+/// The stub Ledger in a file at `path` (`seed::stub_ledger`).
 fn ledger_file(path: &std::path::Path) {
     assert!(
-        lib_database::open_storage(path, chrono::Local::now().date_naive(), "Personal").is_ok(),
+        lib_database::seed::stub_ledger(path, chrono::Local::now().date_naive()).is_ok(),
         "a Ledger file to open"
     );
 }

@@ -72,7 +72,7 @@ impl InstitutionsAdapter {
         for institution in institutions {
             if institution.id == InstitutionId::SEED_PERSONAL {
                 // The person's own row once the Ledger exists: the name they gave it stays,
-                // however often the seed runs. `open_storage` writes it on a new Ledger.
+                // however often the seed runs. Creating a Ledger writes it (ADR-0054).
                 sqlx::query(
                     "INSERT INTO institutions (id, name, products, usual_unit_id)
                      VALUES (?, ?, ?, ?)

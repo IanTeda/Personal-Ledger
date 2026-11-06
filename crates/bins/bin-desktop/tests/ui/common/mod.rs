@@ -66,15 +66,12 @@ use std::time::Duration;
 /// The status line's refusal for anything that needs a Ledger with none open (#977).
 pub const NO_LEDGER: &str = "No Ledger open: :open or :new first";
 
-/// Creates a new Ledger file at `path`, as `:new` will (start-up never creates one), and returns the
-/// configuration `main` would hold, pointed at it, for a smoke test on the real start-up.
+/// Creates the stub Ledger in a file at `path` (`seed::stub_ledger`: start-up never creates one,
+/// and `:new` creates an empty one), and returns the configuration `main` would hold, pointed at
+/// it, for a smoke test on the real start-up.
 pub fn new_ledger(path: &std::path::Path) -> lib_config::Config {
     init_for_tests();
-    let storage =
-        lib_database::open_storage(path, today(), &lib_locale::msg::institution_personal())
-            .expect("a new Ledger file");
-    bin_desktop::quit(&storage.writer);
-    drop(storage);
+    lib_database::seed::stub_ledger(path, today()).expect("a new Ledger file");
     config_for(path)
 }
 

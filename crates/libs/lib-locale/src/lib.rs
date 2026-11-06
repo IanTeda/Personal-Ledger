@@ -21,6 +21,7 @@
 //! `lib_locale::init` explicitly rather than glob-importing both crates.
 
 mod catalogue;
+mod currency;
 mod error;
 pub mod format;
 mod locale;
@@ -29,6 +30,7 @@ mod rich;
 mod vocabulary;
 
 pub use catalogue::{init, init_with_layers, locale, with_locale};
+pub use currency::Currency;
 pub use error::{Error, Result};
 pub use locale::Locale;
 pub use rich::Segment;

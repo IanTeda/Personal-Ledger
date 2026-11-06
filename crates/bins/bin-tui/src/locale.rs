@@ -21,12 +21,19 @@ pub struct LocaleInfo {
 
 static INFO: OnceLock<LocaleInfo> = OnceLock::new();
 
-/// Sets the process-wide Locale (with this bin's own Message layer and the Units module's, whose
-/// Presenters read theirs) and remembers how it was
+/// Sets the process-wide Locale (with this bin's own Message layer, the Units module's, whose
+/// Presenters read theirs, and the Ledger Creation module's, whose Interactor reads its) and
+/// remembers how it was
 /// chosen. Call once, after configuration is parsed and before the terminal enters raw mode.
 pub fn init(requested: &str, source: LocaleSource) -> Locale {
-    let effective =
-        lib_locale::init_with_layers(requested, &[crate::msg::LAYER, lib_units::msg::LAYER]);
+    let effective = lib_locale::init_with_layers(
+        requested,
+        &[
+            crate::msg::LAYER,
+            lib_units::msg::LAYER,
+            lib_ledger_creation::msg::LAYER,
+        ],
+    );
     let _ = INFO.set(LocaleInfo {
         requested: requested.to_string(),
         effective,
@@ -38,7 +45,14 @@ pub fn init(requested: &str, source: LocaleSource) -> Locale {
 /// Loads this bin's Message layers for a test, since tests never run `main`. Safe to call
 /// from any test: an explicit `init` replaces the lazily built default loader.
 pub fn init_for_tests() {
-    lib_locale::init_with_layers("en-US", &[crate::msg::LAYER, lib_units::msg::LAYER]);
+    lib_locale::init_with_layers(
+        "en-US",
+        &[
+            crate::msg::LAYER,
+            lib_units::msg::LAYER,
+            lib_ledger_creation::msg::LAYER,
+        ],
+    );
 }
 
 /// The startup record, or the Locale in effect from the default if nothing was recorded (as in

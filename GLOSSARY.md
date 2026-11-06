@@ -45,7 +45,7 @@ Bill, deleting a Payee) is a change to the Ledger, not to one of its parts.
 _Avoid_: Book, journal.
 
 **Ledger file**:
-The local SQLite database a Client keeps its copy of one Ledger in; what opening, creating and closing a Ledger act on.
+The local SQLite database a Client keeps its copy of one Ledger in; what opening, creating and closing a Ledger act on. Creating a Ledger is the only way a Ledger file comes to be, and writes, all or nothing, what every new Ledger starts with: the Personal Institution, a base Unit the person chooses as they create it, an empty Personal spending Budget in that Unit, and the default Document Types. Opening a Ledger never creates or completes one: a file without these is refused, not a new Ledger.
 _Avoid_: database, book file.
 
 **Open Ledger**:

@@ -85,6 +85,7 @@ deny = [
   { crate = "lib_tag_removal", wrappers = ["bin_desktop", "lib_database"], reason = "cross-domain module: only the bins and its adapter may depend on it (VIPER Dependencies rule)" },
   { crate = "lib_category_deletion", wrappers = ["bin_desktop", "lib_database"], reason = "cross-domain module: only the bins and its adapter may depend on it (VIPER Dependencies rule)" },
   { crate = "lib_transaction_import", wrappers = ["bin_desktop", "lib_database"], reason = "cross-domain module: only the bins and its adapter may depend on it (VIPER Dependencies rule)" },
+  { crate = "lib_ledger_creation", wrappers = ["bin_desktop", "bin_tui", "lib_database"], reason = "cross-domain module: only the bins and its adapter may depend on it (VIPER Dependencies rule)" },
   { crate = "lib_bill_payments", wrappers = ["bin_desktop", "lib_database"], reason = "cross-domain module: only the bins and its adapter may depend on it (VIPER Dependencies rule)" },
   { crate = "lib_dashboard", wrappers = ["bin_desktop", "lib_database"], reason = "the Dashboard module: only the bins and the adapter answering its read ports may depend on it (VIPER Dependencies rule)" },
   { crate = "lib_settings", wrappers = ["bin_desktop", "lib_database"], reason = "the Settings module: only bin-desktop and the adapter answering its ports may depend on it (VIPER Dependencies rule)" },

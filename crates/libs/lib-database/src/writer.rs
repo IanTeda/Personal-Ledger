@@ -213,6 +213,19 @@ impl Writer {
         self.run(|_| async { Ok(()) })
     }
 
+    /// Closes the file's connection once every write already sent has landed, blocking until it
+    /// is released, so the file can be removed or opened afresh with nothing of this writer left
+    /// on it. Nothing more can be saved or loaded through this writer.
+    ///
+    /// # Errors
+    /// Returns [`Error::WriterStopped`] if the thread has stopped.
+    pub fn close(&self) -> Result<()> {
+        self.run(|pool| async move {
+            pool.close().await;
+            Ok(())
+        })
+    }
+
     /// Queues `batch` behind every write already sent. Never waits: a failure is reported on the
     /// failure channel.
     pub fn write(&self, batch: Batch) {

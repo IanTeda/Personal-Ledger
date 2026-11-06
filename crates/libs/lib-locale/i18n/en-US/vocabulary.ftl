@@ -39,6 +39,13 @@ budget-period-yearly = Yearly
 
 institution-personal = Personal
 
+## The names a new Ledger's base Unit is prefilled with, one per Locale's Currency (#912). Written
+## once, in the Locale the Ledger is made in, then Ledger data the person may rename.
+
+currency-usd = US Dollar
+currency-gbp = British Pound
+currency-aud = Australian Dollar
+
 ## Colour Theme names, shared by the desktop and the TUI. Brand names (Catppuccin, Gruvbox,
 ## Nord) are left untranslated.
 

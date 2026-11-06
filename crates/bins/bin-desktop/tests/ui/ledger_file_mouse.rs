@@ -317,6 +317,40 @@ fn a_file_that_will_not_open_keeps_the_open_ledger(app: &mut TestAppContext) {
     assert_eq!(folder.entries(), entries, ":open creates no file");
 }
 
+/// A migrated file with no base Unit, as an interrupted create leaves one, is refused, never
+/// completed (ADR-0054), and the Open Ledger stays.
+#[gpui::test]
+fn a_file_that_is_not_a_complete_ledger_keeps_the_open_ledger_and_says_so(
+    app: &mut TestAppContext,
+) {
+    let folder = Folder::new();
+    let mut ui = started_on(app, &folder, &folder.household());
+    ui.press("g w");
+    let cut_short = tempfile::tempdir().expect("a temporary directory");
+    let path = cut_short.path().join("cut-short.pldb");
+    let (writer, _) = lib_database::Writer::open_ledger(&path).expect("a migrated file");
+    writer.close().expect("the writer is running");
+    drop(writer);
+    ui.browse_from(cut_short.path());
+
+    ui.press(": o p e n enter");
+    ui.click("explorer-row-0");
+    ui.click("explorer-open");
+
+    assert_eq!(
+        ui.ledger_path(),
+        Some(folder.household()),
+        "the Open Ledger stays"
+    );
+    assert_eq!(ui.noun(), Noun::Bills, "stays where it was");
+    let toast = ui.toasts().visible.pop().expect("a Toast says why");
+    assert_eq!(toast.kind, "Error");
+    assert_eq!(
+        toast.text,
+        "Couldn't open ledger cut-short.pldb: it isn't a complete Ledger; create it again with :new"
+    );
+}
+
 #[gpui::test]
 fn clicking_create_makes_the_named_ledger_in_place_of_the_open_one(app: &mut TestAppContext) {
     let folder = Folder::new();
@@ -333,6 +367,12 @@ fn clicking_create_makes_the_named_ledger_in_place_of_the_open_one(app: &mut Tes
     assert_eq!(ui.noun(), Noun::Dashboard, "lands on the Dashboard");
     assert_eq!(last_toast(&mut ui), "Created ledger emma.pldb");
     assert!(created.is_file());
+    assert_eq!(
+        ui.unit_codes(),
+        ["usd"],
+        "the Locale's Currency is the only Unit"
+    );
+    assert!(tag_names(&mut ui).is_empty(), "none of the stub rows");
 }
 
 #[gpui::test]

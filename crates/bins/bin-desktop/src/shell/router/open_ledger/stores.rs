@@ -276,10 +276,14 @@ mod tests {
     use super::*;
     use lib_bills::BillsPorts as _;
 
-    /// The Desktop's start-up storage on a Ledger file in `dir`, as of `today`.
+    /// The Desktop's start-up storage on the Ledger file in `dir`, the stub Ledger as of `today`
+    /// when there is none yet.
     fn storage_in(dir: &std::path::Path, today: chrono::NaiveDate) -> lib_database::Storage {
-        lib_database::open_storage(&dir.join("ledger.pldb"), today, "Personal")
-            .expect("the Ledger opens")
+        let path = dir.join("ledger.pldb");
+        if !path.exists() {
+            lib_database::seed::stub_ledger(&path, today).expect("the stub Ledger is created");
+        }
+        lib_database::open_storage(&path).expect("the Ledger opens")
     }
 
     /// The stores on `storage`, as an Entity a test reads them through, with the pending writes

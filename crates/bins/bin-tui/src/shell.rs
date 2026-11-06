@@ -17,7 +17,7 @@ use lib_database::{Domain, Stores, WriteFailure, Writer};
 use lib_locale::format::upper;
 use lib_shell::WindowSize;
 use lib_shell::window_size::{MIN_COLUMNS, MIN_ROWS};
-use lib_toast::{Display, ToastKind, Toasts};
+use lib_toast::{Display, Notice, ToastKind, Toasts};
 use lib_tracing::{LOG_CAPACITY, LogBuffer};
 use ratatui::{
     Frame,
@@ -406,8 +406,10 @@ impl Shell {
         }
     }
 
-    /// `:new <path>`: creates and migrates a Ledger file at `path` and opens it. A path that
-    /// already exists is refused on the status line, and nothing is written to it.
+    /// `:new <path>`: creates a Ledger file at `path` with what every new Ledger starts with and
+    /// the Locale's Currency as its base Unit (ADR-0054), asking nothing (#758), and opens it. A
+    /// path that already exists is refused on the status line, and nothing is written to it; a
+    /// create that fails raises its Error Toast.
     fn new_ledger(&mut self, path: Option<PathBuf>) {
         self.command_popup = None;
         let Some(path) = path else {
@@ -421,6 +423,27 @@ impl Shell {
             ));
             return;
         }
+        let mut notices = Vec::new();
+        let created = lib_ledger_creation::interactor::CreateLedger {
+            path: path.clone(),
+            base_unit: lib_ledger_creation::interactor::base_unit_for(
+                lib_locale::locale().currency(),
+            ),
+            personal: lib_locale::msg::institution_personal(),
+        }
+        .run(
+            &mut lib_database::LedgerCreationAdapter::new(),
+            &mut notices,
+        );
+        for notice in notices {
+            match notice {
+                Notice::Toast(kind, text) => self.raise_toast(kind, text),
+                Notice::Status(text) => self.status_message = Some(text),
+            }
+        }
+        if created.is_err() {
+            return;
+        }
         if let Some(name) = self.open_ledger_file(path) {
             self.raise_toast(
                 ToastKind::Success,
@@ -429,18 +452,14 @@ impl Shell {
         }
     }
 
-    /// Opens the Ledger file at `path`, creating and migrating it if need be, in place of the Open
-    /// Ledger, and lands on the Dashboard. Returns the file's name, or `None` once the Error Toast
+    /// Opens the Ledger file at `path`, migrating it if need be, in place of the Open Ledger, and
+    /// lands on the Dashboard. Returns the file's name, or `None` once the Error Toast
     /// is raised for a file that won't open, which leaves the Open Ledger as it was.
     fn open_ledger_file(&mut self, path: PathBuf) -> Option<String> {
         let name = file_name(&path);
         // The Open Ledger's writes land first, so reopening its own file reads them back.
         self.flush_ledger();
-        match lib_database::open_storage(
-            &path,
-            Local::now().date_naive(),
-            &lib_locale::msg::institution_personal(),
-        ) {
+        match lib_database::open_storage(&path) {
             Ok(storage) => {
                 let writer = storage.writer.clone();
                 let ledger = self.open_ledger_on(path, Stores::from(storage), Some(writer));
@@ -456,6 +475,9 @@ impl Shell {
                 let reason = match error {
                     lib_database::Error::LedgerOutOfDate(_) => {
                         crate::msg::tui_ledger_file_out_of_date()
+                    }
+                    lib_database::Error::IncompleteLedger => {
+                        crate::msg::tui_ledger_file_incomplete()
                     }
                     _ => crate::msg::tui_ledger_file_unreadable(),
                 };

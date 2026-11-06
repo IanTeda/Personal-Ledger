@@ -2,7 +2,7 @@
 //! seed is the one seed for its domain, so a change to a persisted entity updates that seed and
 //! this follows. The joined stub lives here too: the stub Transactions joined to the stub Accounts
 //! and the Category, Payee and Tag names they book by, and the Bills, Budgets and Documents stubs
-//! fed the rows they name, which [`stub`], the first-launch seed and `FakeStores::stub` all read,
+//! fed the rows they name, which [`stub`], [`stub_ledger`] and `FakeStores::stub` all read,
 //! so the demo Ledger, `db-seed` and the in-memory test stores hold the same rows with the same ids
 //! (#1056). The cross-domain seed tests sit beside it.
 //!
@@ -70,6 +70,32 @@ use crate::writer::Writer;
 #[tracing::instrument(name = "Seed the stub", level = "debug", skip(writer), err)]
 pub fn stub(writer: &Writer, now: DateTime<Utc>) -> Result<()> {
     write_stub(writer, now, now.with_timezone(&Local).date_naive(), None)
+}
+
+/// Creates a Ledger file at `path` as `:new` does, on the stub's aud as its base Unit, then writes
+/// the stub seed on top, as [`stub`] adds to a migrated Ledger: the seeded file the Clients' tests
+/// open. Opening never seeds (ADR-0054), so this is how a test gets the stub Ledger in a file,
+/// until #817 decides the stub seed's future.
+///
+/// # Errors
+/// Returns [`crate::Error::LedgerCreation`] if the file can't be created, which leaves nothing at
+/// `path`, or the error of the stub's writes.
+#[tracing::instrument(name = "Create the stub Ledger", level = "debug", err)]
+pub fn stub_ledger(path: &std::path::Path, today: NaiveDate) -> Result<()> {
+    use lib_ledger_creation::LedgerCreation as _;
+
+    let now = Utc::now();
+    let aud = lib_units::default_units(now)
+        .into_iter()
+        .find(|unit| unit.id == UnitId::SEED_AUD)
+        .ok_or_else(|| crate::Error::NotFound("the stub's aud".into()))?;
+    let personal = lib_institutions::personal_institution("Personal").name;
+    crate::LedgerCreationAdapter::new()
+        .create_ledger(path, &lib_ledger_creation::NewLedger::new(aud, &personal))?;
+    let (writer, _failures) = Writer::open_ledger(path)?;
+    let written = write_stub(&writer, now, today, None);
+    writer.close()?;
+    written
 }
 
 /// Writes [`stub`]'s seed in one transaction, its Units' prices as of `now` and its Transactions,
