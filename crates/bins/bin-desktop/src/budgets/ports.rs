@@ -173,7 +173,7 @@ mod tests {
     fn a_monthly_limit_is_written_to_the_store_by_the_budgets_rule() {
         let ledger = Ledger::stub_on(today());
         let store = in_memory(&ledger);
-        let categories = lib_ledger::budget_categories(ledger.categories());
+        let categories = lib_ledger::budget_categories(&lib_categories::default_categories());
         let groceries = CategoryId::seed(7);
 
         let wrote = set_monthly_limit(

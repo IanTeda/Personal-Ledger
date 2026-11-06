@@ -1,6 +1,6 @@
 //! The Categories ports as the Desktop holds them (#858, #859): the store `shell::router::build` is
 //! given, shared by the Categories module, Category delete (`crate::category_deletion`, #1005), the
-//! Ledger's read copy, the Bills ports (`BillCategories`) and the Payees ports and the Import's
+//! Bills ports (`BillCategories`) and the Payees ports and the Import's
 //! Category select (`PayeeCategories`, `ImportCategories`). The writes are committed by the input
 //! they were made in (`crate::input::send`), not here.
 //!
@@ -11,7 +11,9 @@
 //! Budgets store (#952), and the handover of a leaf's rows to its first child, written to the
 //! Transactions, Bills and Payees stores ([`LedgerPorts`]'s `hand_over`). What names a Category,
 //! the holdings, the handover and the type-change blockers' Bill Plans, is `lib-database`'s
-//! `StoredCategoryRows`, the one selection Category delete reads too (#1034).
+//! `StoredCategoryRows`, the one selection Category delete reads too (#1034). The Ledger keeps no
+//! read copy of the Categories (#1055): each write to the store is counted, and
+//! [`refresh`] announces `Domain::Categories` once per counted write.
 
 use std::cell::RefCell;
 use std::collections::BTreeSet;
@@ -26,17 +28,71 @@ use lib_categories::{
     TypeChangeBlockers,
 };
 use lib_core::{CategoryId, Clock, Money};
-use lib_database::SharedCategoriesStore;
-use lib_ledger::{Domain, Ledger};
+use lib_database::{CategoriesStore, SharedCategoriesStore};
+use lib_ledger::Domain;
 
 use crate::budgets::PERSONAL_SPENDING_ID;
 use crate::ledger_store::LedgerStore;
+use crate::write_count::WriteCount;
 
-/// `ledger`'s own Categories in memory, for a test that needs no storage.
-pub fn in_memory(ledger: &Ledger) -> SharedCategoriesStore {
-    Rc::new(RefCell::new(lib_categories::fake::InMemoryCategories {
-        categories: ledger.categories().to_vec(),
+/// The Categories store with each write counted, whoever makes it (the Categories page, Category
+/// delete), so an input's announcement needs no copy to compare against.
+struct CountedCategories {
+    store: Box<dyn CategoriesStore>,
+    writes: WriteCount,
+}
+
+impl CategoryRepository for CountedCategories {
+    fn categories(&self) -> Vec<Category> {
+        self.store.categories().categories()
+    }
+
+    fn upsert_category(&mut self, category: Category) {
+        self.writes.bump();
+        self.store.categories_mut().upsert_category(category);
+    }
+}
+
+impl CategoriesStore for CountedCategories {
+    fn categories(&self) -> &dyn CategoryRepository {
+        self
+    }
+
+    fn categories_mut(&mut self) -> &mut dyn CategoryRepository {
+        self
+    }
+
+    fn delete_category(&mut self, id: CategoryId) {
+        self.writes.bump();
+        self.store.delete_category(id);
+    }
+
+    fn reload(&mut self) -> lib_database::Result<()> {
+        self.store.reload()
+    }
+}
+
+/// `store` shared, with the count of the writes made to it.
+pub fn counted(store: Box<dyn CategoriesStore>) -> (SharedCategoriesStore, WriteCount) {
+    let writes = WriteCount::default();
+    let shared = Rc::new(RefCell::new(CountedCategories {
+        store,
+        writes: writes.clone(),
+    }));
+    (shared, writes)
+}
+
+/// The stub Categories in memory, with the count of the writes made to them, for a test that
+/// needs no storage.
+pub fn in_memory_counted() -> (SharedCategoriesStore, WriteCount) {
+    counted(Box::new(lib_categories::fake::InMemoryCategories {
+        categories: lib_categories::default_categories(),
     }))
+}
+
+/// The stub Categories in memory, for a test that needs no storage and no count.
+pub fn in_memory() -> SharedCategoriesStore {
+    in_memory_counted().0
 }
 
 /// The shared store as the module's Presenters hold the repository, borrowed for each call: the
@@ -61,11 +117,23 @@ pub fn shared(store: &SharedCategoriesStore) -> SharedCategories {
     Rc::new(RefCell::new(StoreCategories(store.clone())))
 }
 
-/// Brings the Ledger read copy of the Categories in line with the store, announcing
-/// `Domain::Categories` when it changed. Run before and after every Categories event and Dialog
-/// confirm, so Transactions, Budgets, Import and the Dashboard see a write at once.
+/// Announces `Domain::Categories` when the store was written since the last announcement. Run
+/// before and after every Categories event and Dialog confirm, so Transactions, Budgets, Import and
+/// the Dashboard see a write at once.
 pub fn refresh(ledger: &Entity<LedgerStore>, cx: &mut App) {
     ledger.update(cx, |store, cx| store.refresh_categories(cx));
+}
+
+/// Puts the Categories back as stored, after a write that named them failed, and announces
+/// `Domain::Categories` so every reader redraws (ADR-0046).
+///
+/// # Errors
+/// Returns the error reading them back; the store is left as it was.
+pub fn reload(ledger: &Entity<LedgerStore>, cx: &mut App) -> lib_database::Result<()> {
+    let store = ledger.read(cx).categories_store().clone();
+    store.borrow_mut().reload()?;
+    ledger.update(cx, |store, cx| store.announce_categories(cx));
+    Ok(())
 }
 
 /// The Categories ports the Desktop answers from its Ledger, built for one call around its gpui
@@ -238,8 +306,26 @@ impl CategoryHandover for LedgerPorts<'_> {
 #[cfg(test)]
 mod tests {
     use gpui::{AppContext as _, TestAppContext};
+    use lib_ledger::Ledger;
 
     use super::*;
+
+    #[test]
+    fn a_write_to_the_store_is_counted_whoever_makes_it() {
+        let (store, writes) = in_memory_counted();
+        let before = writes.get();
+        let first = store.borrow().categories().categories()[0].clone();
+
+        store
+            .borrow_mut()
+            .categories_mut()
+            .upsert_category(first.clone());
+        assert_eq!(writes.get(), before + 1);
+
+        store.borrow_mut().delete_category(first.id);
+        assert_eq!(writes.get(), before + 2);
+        assert!(store.borrow().categories().category(first.id).is_none());
+    }
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 10, 11).expect("a real date")
@@ -248,7 +334,7 @@ mod tests {
     #[gpui::test]
     fn the_budget_port_checks_on_a_copy_and_saves_through_the_ledger(cx: &mut TestAppContext) {
         let ledger = cx.new(|_| LedgerStore::new(Ledger::stub_on(today())));
-        let categories = ledger.read_with(cx, |store, _| store.ledger().categories().to_vec());
+        let categories = lib_categories::default_categories();
         let groceries = lib_categories::find_by_name(&categories, "Groceries").expect("seeded");
         let salary = lib_categories::find_by_name(&categories, "Salary").expect("seeded");
         let amount: Money = "612".parse().expect("an amount");
@@ -286,7 +372,7 @@ mod tests {
     #[gpui::test]
     fn a_new_parent_is_stopped_in_every_active_budget_through_the_store(cx: &mut TestAppContext) {
         let ledger = cx.new(|_| LedgerStore::new(Ledger::stub_on(today())));
-        let categories = ledger.read_with(cx, |store, _| store.ledger().categories().to_vec());
+        let categories = lib_categories::default_categories();
         let groceries = lib_categories::find_by_name(&categories, "Groceries").expect("seeded");
 
         cx.update(|cx| {
@@ -318,7 +404,7 @@ mod tests {
     #[gpui::test]
     fn the_handover_port_moves_splits_to_the_new_child_through_the_stores(cx: &mut TestAppContext) {
         let ledger = cx.new(|_| LedgerStore::new(Ledger::stub_on(today())));
-        let categories = ledger.read_with(cx, |store, _| store.ledger().categories().to_vec());
+        let categories = lib_categories::default_categories();
         let groceries = lib_categories::find_by_name(&categories, "Groceries").expect("seeded");
         let child = lib_categories::find_by_name(&categories, "Dining")
             .expect("another seeded leaf stands in for a new child");
@@ -349,7 +435,7 @@ mod tests {
         cx: &mut TestAppContext,
     ) {
         let ledger = cx.new(|_| LedgerStore::new(Ledger::stub_on(today())));
-        let categories = ledger.read_with(cx, |store, _| store.ledger().categories().to_vec());
+        let categories = lib_categories::default_categories();
         let groceries = lib_categories::find_by_name(&categories, "Groceries").expect("seeded");
         let next_month = NaiveDate::from_ymd_opt(2026, 11, 1).expect("a real date");
         let (clock, day) = Clock::settable(today());

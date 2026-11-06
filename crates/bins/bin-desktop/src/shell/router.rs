@@ -92,7 +92,6 @@ use crate::{
     shell::state::ShellState,
     shell::view::{rail as rail_view, window_size::WindowSize},
 };
-use lib_categories::Category;
 use lib_settings::DisplayOutput;
 use std::rc::Rc;
 
@@ -441,11 +440,6 @@ impl Root {
         self.open
             .as_ref()
             .expect("a test reading Ledger state builds its Shell on a Ledger")
-    }
-
-    /// The Categories tree, read straight from the Ledger (ADR-0038); none with no Ledger open.
-    fn categories<'a>(&self, cx: &'a App) -> &'a [Category] {
-        self.ledger(cx).map_or(&[], lib_ledger::Ledger::categories)
     }
 
     /// Restores the Documents mode, Library scope and sort from the last run, onto the Open
@@ -859,6 +853,7 @@ mod tests {
     use crate::transactions;
     use chrono::Local;
     use lib_accounts::Account;
+    use lib_categories::Category;
     use lib_settings::keymap::settings_frame_keymap;
     use lib_transactions::Transaction;
     use lib_viper::keymap::KeyBindingConfig;

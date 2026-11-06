@@ -137,7 +137,7 @@ mod tests {
         let reads = StoredPayeeReads {
             transactions: transactions.clone(),
             bills: crate::bills::ports::in_memory_store(ledger),
-            categories: crate::categories::ports::in_memory(ledger),
+            categories: crate::categories::ports::in_memory(),
         };
         (LedgerBackedPorts::in_memory(reads), transactions)
     }

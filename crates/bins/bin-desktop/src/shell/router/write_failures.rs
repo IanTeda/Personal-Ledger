@@ -135,7 +135,7 @@ fn reload(
         },
         Domain::Categories => Reload {
             name: "Categories",
-            reloaded: ledger.update(cx, |store, cx| store.reload_categories(cx)),
+            reloaded: crate::categories::ports::reload(ledger, cx),
             restored: crate::msg::desktop_toast_write_failed_categories,
             unsaved: crate::msg::desktop_toast_write_failed_categories_unsaved,
         },

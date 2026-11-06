@@ -157,9 +157,9 @@ impl OpenLedger {
         // Payees counts what names a Payee in them (#992). The Payees ports are shared by the
         // Payees module, the cross-domain adapters, the Ledger and the Bills reads
         // (#831, #832). The Categories store is shared by the Categories module, Category delete,
-        // the Ledger's read copy and the Bills and Payees reads (#858, #859, #1005).
-        let categories: lib_database::SharedCategoriesStore =
-            Rc::new(std::cell::RefCell::new(categories));
+        // the Bills and Payees reads (#858, #859, #1005).
+        let (categories, categories_writes) =
+            crate::categories::ports::counted(Box::new(categories));
         let transactions: lib_database::SharedTransactionsStore =
             Rc::new(std::cell::RefCell::new(transactions));
         let bills: lib_database::SharedBillsStore = Rc::new(std::cell::RefCell::new(bills));
@@ -279,6 +279,7 @@ impl OpenLedger {
             institutions_store,
             accounts,
             categories,
+            categories_writes,
             tags,
             payees,
             transactions,

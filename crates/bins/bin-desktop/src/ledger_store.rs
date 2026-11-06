@@ -4,10 +4,10 @@
 //! [`LedgerChanged`] naming the domains that changed, which [`notify_on`] turns into a repaint for
 //! the Entities reading them.
 //!
-//! The Ledger's Categories are a read copy of their port (#850): their module writes the port and
-//! refreshes the copy from it ([`LedgerStore::refresh_categories`]), until #816. The Institutions
-//! and Accounts have none (#1053, #1054): their modules announce their writes through
-//! [`LedgerStore::announce_institutions`] and [`LedgerStore::announce_accounts`]. The Tags, Payees, Transactions, Bills and
+//! The Institutions, Accounts and Categories have no read copy (#1053, #1054, #1055): their
+//! modules announce their writes through [`LedgerStore::announce_institutions`],
+//! [`LedgerStore::announce_accounts`] and [`LedgerStore::refresh_categories`], which announces
+//! from the Categories store's write count. The Tags, Payees, Transactions, Bills and
 //! Budgets have no read copy (#1003, #1005, #1028): their modules and the cross-domain modules
 //! write their stores and announce the change through [`LedgerStore::announce_tags`],
 //! [`LedgerStore::announce_payees`], [`LedgerStore::announce_transactions`],
@@ -38,6 +38,7 @@ use crate::accounts::ports::DesktopPorts as DesktopAccountsPorts;
 use crate::bills::ports::{DesktopPorts as DesktopBillsPorts, LedgerBackedPorts};
 use crate::institutions::ports::DesktopPorts as DesktopInstitutionsPorts;
 use crate::payees::ports::DesktopPorts as DesktopPayeesPorts;
+use crate::write_count::WriteCount;
 
 /// What `shell::router::build` hands the Ledger: the stores and ports its modules and the
 /// cross-domain modules write, which the Ledger keeps read copies of, lends to the readers not yet
@@ -48,6 +49,8 @@ pub struct LedgerSetup {
     pub institutions_store: SharedInstitutionsStore,
     pub accounts: DesktopAccountsPorts,
     pub categories: SharedCategoriesStore,
+    /// The writes made to the Categories store, which the Ledger announces from.
+    pub categories_writes: WriteCount,
     pub tags: SharedTagsStore,
     pub payees: DesktopPayeesPorts,
     pub transactions: SharedTransactionsStore,
@@ -66,7 +69,7 @@ impl LedgerSetup {
     #[cfg(test)]
     pub fn stub(today: chrono::NaiveDate) -> Self {
         let ledger = Ledger::stub_on(today);
-        let categories = crate::categories::ports::in_memory(&ledger);
+        let (categories, categories_writes) = crate::categories::ports::in_memory_counted();
         let budgets = crate::budgets::ports::in_memory(&ledger);
         let transactions: SharedTransactionsStore =
             Rc::new(RefCell::new(lib_transactions::fake::InMemoryTransactions {
@@ -116,6 +119,7 @@ impl LedgerSetup {
             transactions,
             accounts,
             categories,
+            categories_writes,
             payees,
             units,
         }
@@ -133,6 +137,9 @@ pub struct LedgerStore {
     institutions: DesktopInstitutionsPorts,
     accounts: DesktopAccountsPorts,
     categories: SharedCategoriesStore,
+    /// The writes made to the Categories store, and the count the last announcement saw.
+    categories_writes: WriteCount,
+    categories_announced: u64,
     tags: SharedTagsStore,
     payees: DesktopPayeesPorts,
     transactions: SharedTransactionsStore,
@@ -160,7 +167,7 @@ impl LedgerStore {
             Rc::new(RefCell::new(lib_transactions::fake::InMemoryTransactions {
                 transactions: ledger.transactions().to_vec(),
             }));
-        let categories = crate::categories::ports::in_memory(&ledger);
+        let (categories, categories_writes) = crate::categories::ports::in_memory_counted();
         let bills_store = crate::bills::ports::in_memory_store(&ledger);
         let payees = crate::payees::LedgerBackedPorts::in_memory(StoredPayeeReads {
             transactions: transactions.clone(),
@@ -213,6 +220,8 @@ impl LedgerStore {
             institutions,
             accounts,
             categories,
+            categories_writes,
+            categories_announced: 0,
             tags: crate::tags::ports::in_memory(),
             inventory,
             documents,
@@ -244,11 +253,13 @@ impl LedgerStore {
             inventory: setup.inventory.clone(),
             documents: setup.documents.clone(),
         };
-        let mut store = Self {
+        Self {
             ledger,
             institutions: setup.institutions,
             accounts: setup.accounts,
             categories: setup.categories,
+            categories_writes: setup.categories_writes,
+            categories_announced: 0,
             tags: setup.tags,
             payees: setup.payees,
             transactions: setup.transactions,
@@ -260,9 +271,7 @@ impl LedgerStore {
             inventory_reads,
             announced: false,
             announcements: 0,
-        };
-        store.copy_categories();
-        store
+        }
     }
 
     pub fn ledger(&self) -> &Ledger {
@@ -445,16 +454,16 @@ impl LedgerStore {
         self.announce(cx, BTreeSet::from([Domain::Institutions]));
     }
 
-    /// Puts the Categories back as stored, after a write that named them failed, and overwrites
-    /// the read copy, announcing `Domain::Categories` so every reader redraws (ADR-0046).
-    ///
-    /// # Errors
-    /// Returns the error reading them back; the store and the read copy are left as they were.
-    pub fn reload_categories(&mut self, cx: &mut Context<'_, Self>) -> lib_database::Result<()> {
-        self.categories.borrow_mut().reload()?;
-        self.copy_categories();
+    /// The Categories store, for a write failure's rollback to reload (ADR-0046).
+    pub fn categories_store(&self) -> &SharedCategoriesStore {
+        &self.categories
+    }
+
+    /// Announces `Domain::Categories`, after a rollback reloaded the store, so every reader
+    /// redraws.
+    pub fn announce_categories(&mut self, cx: &mut Context<'_, Self>) {
+        self.categories_announced = self.categories_writes.get();
         self.announce(cx, BTreeSet::from([Domain::Categories]));
-        Ok(())
     }
 
     /// Puts the Transactions back as stored, after a write that named them failed, announcing
@@ -528,11 +537,11 @@ impl LedgerStore {
         self.announce(cx, BTreeSet::from([Domain::Payees]));
     }
 
-    /// Brings the Categories read copy in line with the store after the Categories module wrote
-    /// it, announcing `Domain::Categories` only when it changed.
+    /// Announces `Domain::Categories` when the Categories store was written since the last
+    /// announcement, after the Categories module or Category delete wrote it.
     pub fn refresh_categories(&mut self, cx: &mut Context<'_, Self>) {
-        if self.copy_categories() {
-            self.announce(cx, BTreeSet::from([Domain::Categories]));
+        if self.categories_writes.get() != self.categories_announced {
+            self.announce_categories(cx);
         }
     }
 
@@ -565,12 +574,6 @@ impl LedgerStore {
     /// Transactions, Bills, Budgets, Documents and Tags redraw (#1028).
     pub fn announce_transactions(&mut self, cx: &mut Context<'_, Self>) {
         self.announce(cx, BTreeSet::from([Domain::Transactions]));
-    }
-
-    /// Brings the Categories read copy in line with the store, returning whether it changed.
-    fn copy_categories(&mut self) -> bool {
-        let categories = self.categories.borrow().categories().categories();
-        self.ledger.refresh_categories(categories)
     }
 
     /// Tells every reader of `what` that it changed, in one event however many domains it names,
@@ -665,7 +668,8 @@ mod tests {
     fn on_storage_with_bills(cx: &mut TestAppContext, storage: lib_database::Storage) -> OnStorage {
         let today = chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date");
         let pending = storage.pending;
-        let categories: SharedCategoriesStore = Rc::new(RefCell::new(storage.categories));
+        let (categories, categories_writes) =
+            crate::categories::ports::counted(Box::new(storage.categories));
         let transactions: SharedTransactionsStore = Rc::new(RefCell::new(storage.transactions));
         let bills_store: lib_database::SharedBillsStore = Rc::new(RefCell::new(storage.bills));
         let payees = crate::payees::LedgerBackedPorts::shared(
@@ -721,6 +725,7 @@ mod tests {
                     institutions_store,
                     accounts,
                     categories,
+                    categories_writes,
                     tags: Rc::new(RefCell::new(storage.tags)),
                     payees,
                     transactions,
@@ -808,10 +813,8 @@ mod tests {
             ..
         } = on_storage_with_bills(cx, storage);
         let gone = store.read_with(cx, |store, _| {
-            let ledger = store.ledger();
             let payees = payees_of(store);
-            ledger
-                .categories()
+            categories_of(store)
                 .iter()
                 .map(|category| category.id)
                 .find(|&id| {
@@ -834,9 +837,9 @@ mod tests {
         let reopened = restart(cx, (store, pending), writer, dir.path(), today);
 
         reopened.read_with(cx, |store, _| {
-            let ledger = store.ledger();
-            assert!(ledger.categories().iter().all(|c| c.id != gone));
-            let home = lib_categories::find_by_name(ledger.categories(), "Uncategorised")
+            let categories = categories_of(store);
+            assert!(categories.iter().all(|c| c.id != gone));
+            let home = lib_categories::find_by_name(&categories, "Uncategorised")
                 .expect("the delete's Uncategorised is stored");
             let transactions = transactions_of(store);
             let splits = transactions.iter().flat_map(|t| &t.splits);
@@ -852,6 +855,11 @@ mod tests {
                     .all(|p| p.default_category != Some(gone))
             );
         });
+    }
+
+    /// The Categories as the Categories store holds them: the Ledger keeps no read copy (#1055).
+    fn categories_of(store: &LedgerStore) -> Vec<lib_categories::Category> {
+        store.categories_store().borrow().categories().categories()
     }
 
     /// The Payees as the Payees store holds them: the Ledger keeps no read copy (#1005).

@@ -7,7 +7,6 @@ mod bills_seed_tests;
 mod budget_reads;
 #[cfg(test)]
 mod budgets_seed_tests;
-mod category_reads;
 mod change;
 mod document_reads;
 #[cfg(test)]
@@ -151,7 +150,7 @@ impl Ledger {
         &self.accounts
     }
 
-    pub fn categories(&self) -> &[Category] {
+    pub(crate) fn categories(&self) -> &[Category] {
         &self.categories
     }
 

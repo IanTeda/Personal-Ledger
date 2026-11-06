@@ -233,15 +233,15 @@ mod tests {
             crate::accounts::LedgerBackedPorts::in_memory(crate::accounts::ports::in_memory_reads(
                 &ledger,
             )),
-            categories(&ledger),
+            categories(),
             transactions(&ledger),
             in_memory_units(chrono::Utc::now()),
         );
         (ledger, ports)
     }
 
-    fn categories(ledger: &Ledger) -> SharedCategoriesStore {
-        crate::categories::ports::in_memory(ledger)
+    fn categories() -> SharedCategoriesStore {
+        crate::categories::ports::in_memory()
     }
 
     fn transactions(ledger: &Ledger) -> SharedTransactionsStore {
@@ -254,7 +254,7 @@ mod tests {
         crate::payees::LedgerBackedPorts::in_memory(lib_database::StoredPayeeReads {
             transactions: transactions(ledger),
             bills: in_memory_store(ledger),
-            categories: categories(ledger),
+            categories: categories(),
         })
     }
 
@@ -272,7 +272,7 @@ mod tests {
             crate::accounts::LedgerBackedPorts::in_memory(crate::accounts::ports::in_memory_reads(
                 &ledger,
             )),
-            categories(&ledger),
+            categories(),
             transactions(&ledger),
             in_memory_units(chrono::Utc::now()),
         );
@@ -295,7 +295,7 @@ mod tests {
             &ledger,
             payees(&ledger),
             store.clone(),
-            categories(&ledger),
+            categories(),
             transactions(&ledger),
             in_memory_units(chrono::Utc::now()),
         );
@@ -313,8 +313,8 @@ mod tests {
 
     #[test]
     fn the_categories_are_read_from_the_categories_store_not_copied_from_the_ledger() {
-        let (mut ledger, _) = stub();
-        let store = categories(&ledger);
+        let (ledger, _) = stub();
+        let store = categories();
         let ports = LedgerBackedPorts::in_memory(
             &ledger,
             payees(&ledger),
@@ -325,13 +325,12 @@ mod tests {
             transactions(&ledger),
             in_memory_units(chrono::Utc::now()),
         );
-        let mut renamed = ledger.categories()[6].clone();
+        let mut renamed = store.borrow().categories().categories()[6].clone();
         renamed.name = "Renamed in the store".into();
         store
             .borrow_mut()
             .categories_mut()
             .upsert_category(renamed.clone());
-        ledger.refresh_categories(Vec::new());
 
         let read = ports.borrow().categories().bill_categories();
         assert_eq!(read.len(), store.borrow().categories().categories().len());
@@ -348,7 +347,7 @@ mod tests {
             crate::accounts::LedgerBackedPorts::in_memory(crate::accounts::ports::in_memory_reads(
                 &ledger,
             )),
-            categories(&ledger),
+            categories(),
             store.clone(),
             in_memory_units(chrono::Utc::now()),
         );
