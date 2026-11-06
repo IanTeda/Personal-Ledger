@@ -14,12 +14,12 @@
 //! Every key takes one route, [`route_key`], offered to each step in turn until one takes it:
 //!
 //! 1. An open Dialog takes every key.
-//! 2. A mode: the Shell's own command palette or file explorer, whose keys their `lib-shell`
-//!    Presenters resolve through the Dialog keymap, or else the bin hosts only a mode the active
-//!    View entered for something of its own: its Search, a filter popover or an edit in place.
-//!    Whether the View or the Shell entered the current mode is the Shell's: `lib-shell`'s
-//!    `NavState` records it (`view_owns_mode`), set by the View's `ViewEvent::EnterMode` and
-//!    cleared on leaving any mode.
+//! 2. A mode the active View entered for something of its own: its Search, a filter popover or
+//!    an edit in place. The View is offered the key first (`esc` closes what it opened, then
+//!    leaves the mode). The Shell's command palette and file explorer are modes too, but the
+//!    Shell's: their `lib-shell` Presenters resolve their keys through the Dialog keymap. Who
+//!    entered the current mode is recorded in `lib-shell`'s `NavState` (`view_owns_mode`), set by
+//!    the View's `ViewEvent::EnterMode` and cleared on leaving any mode.
 //! 3. `lib-shell`'s global keymap, which takes the keys the Shell keeps (`?`, `:`, `/`, the rail
 //!    toggle, `shift+tab`, `esc`, the Toast keys and the `g` jumps) and passes the rest on.
 //! 4. The focused module's keymap. In Settings that is the open page's, then the page's own keys
