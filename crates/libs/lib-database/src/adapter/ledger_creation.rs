@@ -109,7 +109,9 @@ fn write(path: &Path, ledger: NewLedger, fail_before_commit: bool) -> Result<()>
 }
 
 /// Removes the Ledger file a failed create claimed, with the journal files SQLite keeps beside it.
-fn remove_ledger_files(path: &Path) {
+/// A Client calls it too, for a Ledger it created but then couldn't open, so a create that ends
+/// in an error leaves no file whichever step failed.
+pub fn remove_ledger_files(path: &Path) {
     for file in lib_shell::explorer::ledger_files(path) {
         match std::fs::remove_file(&file) {
             Ok(()) => {}

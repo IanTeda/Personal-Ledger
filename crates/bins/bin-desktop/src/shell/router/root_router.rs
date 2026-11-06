@@ -287,10 +287,11 @@ impl ShellRouter for RootRouter<'_, '_> {
 impl RootRouter<'_, '_> {
     /// Opens the Ledger file the Create ledger Dialog has just written, in place of the Open
     /// Ledger, if any, as [`ShellRouter::open_ledger`] does, but saying it was created. The Open
-    /// Ledger's writes land first. Whether it opened; one that didn't says why.
+    /// Ledger's writes land first. Whether it opened; one that didn't says why and is removed, so
+    /// the failed create leaves no file.
     pub(super) fn open_created(&mut self, path: &Path) -> bool {
         self.flush();
-        match crate::open_ledger_file(path, self.clock.today()) {
+        match crate::open_created_ledger_file(path, self.clock.today()) {
             Ok(storage) => {
                 self.swap_in_ledger(path, storage);
                 self.notify(Notice::Toast(

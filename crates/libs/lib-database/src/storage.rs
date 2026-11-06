@@ -81,8 +81,7 @@ impl From<Storage> for Stores {
 /// Opening only opens (ADR-0054): a Ledger is created, with what every new one starts with, by
 /// `lib-ledger-creation`'s [`LedgerCreationAdapter`](crate::LedgerCreationAdapter), never here. A
 /// migrated file with no base Unit was cut short or made by hand, so it is refused rather than
-/// completed. `open_storage` still makes and migrates a file missing at `path`, which it then
-/// refuses the same way, so a Client checks the file is there first.
+/// completed. A path with no file is refused before anything is made there.
 ///
 /// A Ledger with no Budget, one written before Budgets persisted, is given an empty default
 /// Personal spending Budget in its base Unit on every Account in it that takes Transactions
@@ -92,10 +91,18 @@ impl From<Storage> for Stores {
 /// default types (ADR-0031) and no Documents, so there is always a Default type.
 ///
 /// # Errors
-/// Returns [`Error::IncompleteLedger`] for a file with no base Unit, or the error opening,
-/// migrating or reading the file.
+/// Returns an [`Error::Io`] of kind `NotFound` for a path with no file,
+/// [`Error::IncompleteLedger`] for a file with no base Unit, or the error opening, migrating or
+/// reading the file.
 #[tracing::instrument(name = "Open the Ledger's storage", level = "debug", err)]
 pub fn open_storage(path: &Path) -> Result<Storage> {
+    // Checked here rather than left to the Writer, whose open makes a missing file.
+    if !path.try_exists()? {
+        return Err(Error::Io(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("no Ledger file at {}", path.display()),
+        )));
+    }
     let (writer, failures) = Writer::open_ledger(path)?;
     let pending = PendingWrites::new(writer.clone());
     let units = match UnitsAdapter::load(pending.clone()) {
@@ -293,6 +300,21 @@ mod tests {
 
         assert_eq!(open_storage(&path).err(), Some(Error::IncompleteLedger));
         assert_eq!(rows(&path), 0, "nothing was written into it");
+    }
+
+    /// Opening only opens (ADR-0054): a path with no file is refused, and no file is made there.
+    #[test]
+    fn a_missing_file_is_refused_and_not_made() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let path = dir.path().join("ledger.pldb");
+
+        let error = open_storage(&path).err().expect("there is no file to open");
+
+        assert!(
+            matches!(&error, Error::Io(io) if io.kind() == std::io::ErrorKind::NotFound),
+            "refused as missing, got {error:?}"
+        );
+        assert!(!path.exists(), "no file was made");
     }
 
     /// A Ledger created as `:new` creates one opens with its starting rows.

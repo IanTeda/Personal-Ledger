@@ -216,10 +216,23 @@ fn open_and_generate(
     Ok(storage)
 }
 
+/// Opens the Ledger file `:new` has just created at `path`, as [`open_ledger_file`] does, and
+/// removes the file again if it won't open, so a create that ends in an error leaves no file
+/// behind whichever step failed, and the name stays free for another try.
+pub fn open_created_ledger_file(
+    path: &std::path::Path,
+    today: chrono::NaiveDate,
+) -> std::result::Result<Storage, OpenFailure> {
+    open_ledger_file(path, today).inspect_err(|_| {
+        tracing::warn!(path = %path.display(), "Removed a created Ledger file that wouldn't open");
+        lib_database::remove_ledger_files(path);
+    })
+}
+
 /// Why `path` can't be opened without writing to it, or `None` if `open_storage` may open it.
-/// `open_storage` makes a missing file, and SQLite takes an empty one for a new database that it
-/// then migrates, before refusing either as an incomplete Ledger, so start-up refuses both first
-/// and leaves them as they were (#977).
+/// SQLite takes an empty file for a new database that it then migrates, before `open_storage`
+/// refuses it as an incomplete Ledger, so start-up refuses an empty file first and leaves it as it
+/// was (#977), and a missing one with its own reason.
 fn unopenable(path: &std::path::Path) -> Option<String> {
     let reason = match std::fs::metadata(path) {
         Ok(metadata) if !metadata.is_file() => msg::desktop_ledger_open_not_a_file(),
@@ -710,5 +723,26 @@ mod tests {
             Some(Path::new("/x/open.pldb"))
         );
         assert_eq!(last_ledger_at_quit(None, None), None);
+    }
+
+    /// A Ledger `:new` created but that then won't open is removed, so no file is left behind
+    /// and the name can be tried again.
+    #[test]
+    fn a_created_ledger_that_will_not_open_is_removed() {
+        let data = tempfile::tempdir().expect("a temporary directory");
+        let path = data.path().join("teda.pldb");
+        // A migrated file with no base Unit, which `open_storage` refuses as incomplete.
+        let (writer, _) = lib_database::Writer::open_ledger(&path).expect("a migrated file");
+        writer.close().expect("the writer is running");
+        drop(writer);
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 11, 7).expect("a date");
+
+        assert!(open_created_ledger_file(&path, today).is_err());
+        assert!(
+            lib_shell::explorer::ledger_files(&path)
+                .iter()
+                .all(|file| !file.exists()),
+            "the file and its journals are gone"
+        );
     }
 }
