@@ -60,9 +60,15 @@ pub struct BuiltStores {
 }
 
 impl LedgerStores {
+    /// The Sample Ledger's stores for `today`, in memory, for a port test that reads the same
+    /// rows as the UI tests without building the whole Open Ledger.
+    #[cfg(test)]
+    pub fn sample(today: chrono::NaiveDate) -> Self {
+        Self::build(Stores::fake(lib_database::FakeStores::sample(today)).0).stores
+    }
+
     /// The shared stores and ports over `stores`, wired once: the one place a Ledger's stores are
-    /// shared out, for [`super::OpenLedger::build`] and for a test that builds a module on
-    /// `Stores::fake(FakeStores::sample(today))`.
+    /// shared out, for [`super::OpenLedger::build`] and the tests' `sample`.
     pub fn build(stores: Stores) -> BuiltStores {
         let Stores {
             units,

@@ -102,10 +102,7 @@ mod tests {
     fn usage_is_counted_from_the_ledgers_transactions() {
         let shared =
             lib_tags::find_by_name(&lib_tags::sample_tags(), "shared").expect("a sample Tag");
-        let setup = crate::shell::router::LedgerStores::build(
-            lib_database::Stores::fake(lib_database::FakeStores::sample(today())).0,
-        )
-        .stores;
+        let setup = crate::shell::router::LedgerStores::sample(today());
         let ports = StorePorts {
             store: in_memory(),
             usage: StoredTagReads {

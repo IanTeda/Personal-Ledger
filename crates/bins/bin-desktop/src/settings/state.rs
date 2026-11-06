@@ -690,10 +690,7 @@ mod tests {
     fn page_returns_the_page_for_every_settings_page(cx: &mut TestAppContext) {
         crate::locale::init_for_tests();
         let today = chrono::NaiveDate::from_ymd_opt(2026, 10, 30).expect("a valid date");
-        let storage = crate::shell::router::LedgerStores::build(
-            lib_database::Stores::fake(lib_database::FakeStores::sample(today)).0,
-        )
-        .stores;
+        let storage = crate::shell::router::LedgerStores::sample(today);
         let setup = SettingsSetup {
             units: crate::units::UnitsSetup::sample(&storage),
             institutions: crate::institutions::InstitutionsSetup::sample(&storage),

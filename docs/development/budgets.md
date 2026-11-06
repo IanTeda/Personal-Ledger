@@ -40,7 +40,7 @@ In `lib-budgets` (`crates/libs/lib-budgets/src/`), none in `lib-core`:
 
 An upsert writes a Budget whole: its row, then its Accounts and records replaced. `Budgets::changed_since` orders a write so the Budget losing the default goes before the one taking it. `lib_budgets::contract` (feature `contract-tests`) is the suite both the in-memory fake and the adapter pass.
 
-`seed::sample_budgets` (Personal spending and a second Budget) is the sample's. Creating a Ledger writes an empty Personal spending Budget in the base Unit on no Accounts, and `open_storage` seeds an empty default Personal spending Budget (`PERSONAL_SPENDING_ID`) in the base Unit, counting every Account that takes Transactions, whenever the `budgets` table is empty. That is how a Ledger file made before Budgets persisted gets its Budget, so there is always one active Budget.
+`seed::sample_budgets` (Personal spending and a second Budget) is the sample's. Creating a Ledger writes an empty Personal spending Budget in the base Unit on no Accounts. `open_storage` writes no Budget: it refuses a Ledger file with none as an incomplete Ledger (ADR-0054's 2026-11-07 amendment), so an open Ledger always has one active Budget.
 
 The Figures read the other domains through the six read ports, which `lib-database`'s `StoredBudgetReads` answers from the shared Categories, Accounts, Transactions, Bills, Units and Payees stores. They return rows, not sums, so Spent, the Rollover carry and Known Costs stay one query in `lib-budgets`.
 
@@ -81,7 +81,7 @@ Desktop locations for the ticked requirements. Paths are under `crates/libs/lib-
 | BUD-015 | `presenter/detail.rs` (`BudgetsOutcome::Transactions`), `BudgetsRouter::show_transactions` | `presenter/detail.rs`, desktop `tests/ui/budgets_mouse.rs` |
 | BUD-016 | `figures::dashboard_bars`, desktop `src/shell/view/rail/primary.rs` (`budget_over`) | `figures.rs`, desktop `tests/ui/dashboard_keyboard.rs` |
 | BUD-017 | `interactor::SetMonthlyLimit`, desktop `src/budgets/ports.rs::set_monthly_limit` | `interactor/set_monthly_limit.rs`, desktop Categories UI tests |
-| BUD-018 | `lib-database` `adapter/budgets.rs`, `open_storage` | `lib_budgets::contract`, desktop `tests/ui/smoke_budgets_persist.rs` |
+| BUD-018 | `lib-ledger-creation` `NewLedger`, `lib-database` `open_storage` (refuses a Ledger with no Budget) | `lib_budgets::contract`, desktop `tests/ui/smoke_budgets_persist.rs` |
 
 ## Decisions
 

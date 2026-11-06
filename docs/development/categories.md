@@ -4,7 +4,7 @@ End-user documentation: [Categories](../categories.md).
 
 ## Overview
 
-A Category is the required classification on every Split — what the money was for. `lib-categories` is a VIPER module (slice 5, #847): it owns the Entity, its tree rules (a leaf takes Splits, three levels at most, a child takes its parent's type, no cycles), the add, rename, move and edit Interactors, the `CategoryRepository` port and the Page, Add/Edit and Delete Presenters. It depends on no other feature crate. `lib-core` owns `CategoryId` and the `CategoryTypes` enum; `lib-database`'s Categories adapter persists the tree (#858). The Desktop's Categories page and Dialogs run on the Presenters (#859). Category delete re-points other domains' rows, so it is the cross-domain module `lib-category-deletion`'s (#1004, #1005), and the Monthly budget goes through a port answered from the Ledger's Budgets until they persist (#811). The TUI renders its own sample.
+A Category is the required classification on every Split — what the money was for. `lib-categories` is a VIPER module (slice 5, #847): it owns the Entity, its tree rules (a leaf takes Splits, three levels at most, a child takes its parent's type, no cycles), the add, rename, move and edit Interactors, the `CategoryRepository` port and the Page, Add/Edit and Delete Presenters. It depends on no other feature crate. `lib-core` owns `CategoryId` and the `CategoryTypes` enum; `lib-database`'s Categories adapter persists the tree (#858). The Desktop's Categories page and Dialogs run on the Presenters (#859). Category delete re-points other domains' rows, so it is the cross-domain module `lib-category-deletion`'s (#1004, #1005), and the Monthly budget goes through a port answered from the Ledger's Budgets until they persist (#811). The TUI renders its own fixture.
 
 ## Data model
 
@@ -35,7 +35,7 @@ Invariants the schema leaves to `lib-categories`: the three-level cap, a child t
 
 `lib-database`'s `adapter/categories.rs` (ADR-0041, ADR-0046): it loads every Category into memory and serves `CategoryRepository` from there, each write joining the one pending batch the input commits. `lib-categories`' contract suite runs on it under `sqlx::test`, failing adapter included, beside adapter tests for the foreign-key refusals. It also answers `lib-bills`' `BillCategories` and `lib-payees`' `PayeeCategories` from its rows by `lib-categories`' leaf rule. `CategoriesStore` in `adapter/store.rs` holds the adapter or the in-memory fake, with `delete_category`, the write `lib-database`'s `CategoryDeletionAdapter` sends Category delete's delete through (#1004).
 
-The sample seed is written after the Accounts and before the Payees, Transactions and Bills that name it, in the first-launch seed and `db-seed`. The old `src/categories/` module, and its FR.35 per-Category totals reader, went with the old table; nothing read them.
+The sample seed is written after the Accounts and before the Payees, Transactions and Bills that name it, in the Sample Ledger and `db-seed`. The old `src/categories/` module, and its FR.35 per-Category totals reader, went with the old table; nothing read them.
 
 ## Interactors and ports
 
@@ -53,12 +53,12 @@ The ports the Desktop answers over the stores (`CategoryUsage`, `CategoryBudget`
 
 ## UI
 
-The Desktop reads and writes Categories through `lib-database`; the TUI renders its own sample.
+The Desktop reads and writes Categories through `lib-database`; the TUI renders its own fixture.
 
 - **TUI** — `crates/bins/bin-tui/src/category/` holds a `CategoryStore` seam over an in-memory tree, with `fixture.rs` supplying the data. The seam exists precisely so the screen and popups can be moved onto real persistence later by adding a second `impl CategoryStore`, with no UI rewrite. The screen itself is `view/categories.rs`. State that changes (tree shape, fold state, form drafts) lives in the owning `View`/popup and is mutated in its own `handle_key`/`update`, never routed through `view::Action` — `Action` only carries a `RowID` when signalling a transition across the `Shell` boundary. `docs/ux/tui-mockups/03-categories/README.md` is the authority on the model: two fixed, non-deletable roots (income and expenses), kind inherited from the root and never stored per node, unlimited depth, and each node carrying both a direct amount and a computed rollup.
 - **Desktop** — `crates/bins/bin-desktop/src/categories/` (`ports.rs`, `router.rs`, `view/page.rs` with `page/render.rs`, and `view/dialog.rs` with `dialog/category_form.rs`) draws `lib-categories`' Presenters (#859), and `crates/bins/bin-desktop/src/category_deletion/` (`router.rs`, `view/dialog.rs` with `dialog/delete_category.rs`) draws `lib-category-deletion`'s Delete Dialog (#1005), built against `docs/ux/desktop-mockups/18-categories/`: the 5a landing page (tree, sections, folds), the 5b Add and 5c Edit Dialogs (one form: name, type, parent, Monthly budget, type-locking, usage notice) and the 5d Delete Dialog (typed-back name, destructive treatment). The page reads and writes the Categories store through the Interactors, committed with the input, and announces any Categories write before and after each event. The Parent category field is a working select, Enter no longer confirms a name a sibling already has (the message shows under Name as you type), and refusals show as Messages (`categories-` in `lib-categories`' catalogue) rather than `CategoryError`'s `Display`. The Monthly budget and the handover are `lib-categories` ports the Desktop answers from the stores the Open Ledger hands it (`ports::LedgerPorts` over `CategoryStores`). Category delete writes through `lib-category-deletion`'s port, `lib-database`'s `CategoryDeletionAdapter` over the shared Categories, Transactions, Bills, Payees and Budgets stores; the page's Router opens it through `category_deletion::router::open_delete`, and its `landed` callback announces the Transactions, Bills, Budgets and Payees it wrote. Only leaf Categories are assigned to Splits; a parent exists to roll up and to filter by.
 
-The two samples are independent and do not share a model. Desktop differs from TUI in depth (3 vs. unlimited), structure (flat keys vs. semantic roots), and data (12 fixed vs. dynamic fixture).
+The Desktop's sample and the TUI's fixture are independent and do not share a model. Desktop differs from TUI in depth (3 vs. unlimited), structure (flat keys vs. semantic roots), and data (12 fixed vs. dynamic fixture).
 
 > **Desktop navigation:** `Categories` is no longer a rail noun and has no `g` binding. The page is the Categories module's `categories/view/page.rs`, mounted by the paged Settings surface (`SettingsPage::Categories`); its Dialogs are Entities on the Dialog host (`categories/view/dialog.rs`). It is reached from the Settings index, `:settings categories` or the `:categories` alias, and a persisted `Noun` that no longer exists loads as its Settings page.
 
@@ -71,7 +71,7 @@ The two samples are independent and do not share a model. Desktop differs from T
 | CAT-003 | `lib_categories::EditCategory` | `settings_categories_keyboard.rs` |
 | CAT-004 | `lib_category_deletion::interactor::DeleteCategory`, `category_deletion/view/dialog/delete_category.rs` | `settings_categories_keyboard.rs`, `settings_categories_mouse.rs` |
 | CAT-005 | `lib_categories::insert_category`, `move_exceeds_depth` | `lib-categories` unit tests |
-| CAT-006 | `bin-tui/src/view/categories.rs` (the TUI's sample; the Desktop tree shows names and actions only) | |
+| CAT-006 | `bin-tui/src/view/categories.rs` (the TUI's fixture; the Desktop tree shows names and actions only) | |
 | CAT-008 | `lib-database`'s `adapter/categories.rs` | `smoke_categories_persist.rs` |
 | CAT-009 | `lib_category_deletion::interactor::DeleteCategory`, `lib-database`'s `CategoryDeletionAdapter` | `settings_categories_keyboard.rs`, `shell/router/open_ledger/stores.rs`' `a_deleted_categorys_rows_survive_a_restart` |
 | CAT-010 | `lib_categories::is_uncategorised`, `EditCategory`, `category_form.rs` | `settings_categories_keyboard.rs`, `settings_categories_mouse.rs`, `lib-categories` unit tests |
@@ -84,7 +84,7 @@ The two samples are independent and do not share a model. Desktop differs from T
 
 ## Open questions and known gaps
 
-- **The TUI isn't wired to `lib-database`.** Its sample disagrees with the Desktop's tree — two fixed roots and unlimited depth against 12 nodes three levels deep — until its redesign (#805).
+- **The TUI isn't wired to `lib-database`.** Its fixture disagrees with the Desktop's tree — two fixed roots and unlimited depth against 12 nodes three levels deep — until its redesign (#805).
 - **Per-Category totals (FR.35) have no reader.** The old module's `totals.rs` went with the old table.
 - **A Ledger file made before #858 can't migrate.** `create_categories_table.sql` was rewritten in place, so its checksum changed and an old file needs a fresh Ledger ([Schema](viper-architecture.md#schema)).
 - **Delete is a store write, not a port write.** `CategoryRepository` has no delete, so `CategoriesStore::delete_category` is a store-level method `CategoryDeletionAdapter` calls, after the Payees, Transactions and Bills writes whose foreign keys name the Category (#1004).
