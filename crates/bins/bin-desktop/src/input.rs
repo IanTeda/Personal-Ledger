@@ -15,7 +15,9 @@
 //!
 //! 1. An open Dialog takes every key.
 //! 2. A mode left in the bin: the palette, Search, a filter, the file explorer, or a mode the
-//!    active View entered for something of its own.
+//!    active View entered for something of its own. Whether the View or the Shell entered the
+//!    current mode is the Shell's: `lib-shell`'s `NavState` records it (`view_owns_mode`), set by
+//!    the View's `ViewEvent::EnterMode` and cleared on leaving any mode.
 //! 3. `lib-shell`'s global keymap, which takes the keys the Shell keeps (`?`, `:`, `/`, the rail
 //!    toggle, `shift+tab`, `esc`, the Toast keys and the `g` jumps) and passes the rest on.
 //! 4. The focused module's keymap. In Settings that is the open page's, then the page's own keys

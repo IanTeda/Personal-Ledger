@@ -68,6 +68,9 @@ pub struct NavState<P> {
     context: ContextSelection,
     focus: FocusZone,
     mode: InputMode,
+    /// Whether the active View entered `mode` for something of its own (its `EnterMode`), so its
+    /// keys are the View's. Set by `enter_view_mode`, cleared by any other entry and by leaving.
+    view_owns_mode: bool,
     /// Rule 6: the focus zone `exit_mode` restores -- `Some` only while `mode` isn't
     /// `Normal`, set once on the transition away from `Normal` and cleared on the way back.
     pre_mode_focus: Option<FocusZone>,
@@ -102,6 +105,7 @@ impl<P: Default> Default for NavState<P> {
             context: Noun::default().has_context_entities().then_some(0),
             focus: FocusZone::default(),
             mode: InputMode::default(),
+            view_owns_mode: false,
             pre_mode_focus: None,
             primary_highlight: Noun::default(),
             back: Vec::new(),
@@ -138,6 +142,11 @@ impl<P: Copy + Eq + Default> NavState<P> {
 
     pub fn mode(&self) -> InputMode {
         self.mode
+    }
+
+    /// Whether the current mode is one the active View entered for something of its own.
+    pub fn view_owns_mode(&self) -> bool {
+        self.view_owns_mode
     }
 
     pub fn primary_highlight(&self) -> Noun {
@@ -324,6 +333,15 @@ impl<P: Copy + Eq + Default> NavState<P> {
             self.pre_mode_focus = Some(self.focus);
         }
         self.mode = mode;
+        self.view_owns_mode = false;
+    }
+
+    /// As [`Self::enter_mode`], for a mode the active View opened something of its own for: its
+    /// Search box, a filter popover or an edit in place. The owner lives here rather than in the
+    /// bin so the Presenter that holds the mode can say whose keys it takes.
+    pub fn enter_view_mode(&mut self, mode: InputMode) {
+        self.enter_mode(mode);
+        self.view_owns_mode = true;
     }
 
     /// Rule 6 (exit half): `Esc`'s effect -- returns to `Normal` and restores the focus zone
@@ -331,6 +349,7 @@ impl<P: Copy + Eq + Default> NavState<P> {
     /// already in `Normal`.
     pub fn exit_mode(&mut self) {
         self.mode = InputMode::Normal;
+        self.view_owns_mode = false;
         if let Some(focus) = self.pre_mode_focus.take() {
             self.focus = focus;
         }
@@ -492,6 +511,48 @@ mod tests {
         nav.exit_mode();
 
         assert_eq!(nav.focus(), FocusZone::ContextRail);
+    }
+
+    #[test]
+    fn a_mode_the_view_entered_is_the_views() {
+        let mut nav = NavState::new();
+        assert!(!nav.view_owns_mode());
+
+        nav.enter_view_mode(InputMode::Filter);
+
+        assert_eq!(nav.mode(), InputMode::Filter);
+        assert!(nav.view_owns_mode());
+    }
+
+    #[test]
+    fn a_mode_the_shell_entered_is_not_the_views() {
+        let mut nav = NavState::new();
+
+        nav.enter_mode(InputMode::Search);
+
+        assert!(!nav.view_owns_mode());
+    }
+
+    #[test]
+    fn leaving_a_mode_clears_the_owner() {
+        let mut nav = NavState::new();
+        nav.enter_view_mode(InputMode::Insert);
+
+        nav.exit_mode();
+
+        assert_eq!(nav.mode(), InputMode::Normal);
+        assert!(!nav.view_owns_mode());
+    }
+
+    #[test]
+    fn a_mode_entered_over_the_views_is_the_shells() {
+        let mut nav = NavState::new();
+        nav.enter_view_mode(InputMode::Search);
+
+        // A Dialog opening over the View's Search.
+        nav.enter_mode(InputMode::Dialog);
+
+        assert!(!nav.view_owns_mode());
     }
 
     #[test]

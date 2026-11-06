@@ -49,15 +49,13 @@ impl Root {
             ViewEvent::SetStatus(None) => self.presenter.clear_status(),
             ViewEvent::Reveal(reveal) => self.reveal(reveal, cx),
             ViewEvent::EnterMode(mode) => {
-                self.navigate(NavInput::EnterMode(mode.input_mode()));
-                self.view_mode = Some(mode);
+                self.navigate(NavInput::EnterViewMode(mode.input_mode()));
             }
             // Only the View's own mode: a mode entered since (a Dialog) is left alone.
             ViewEvent::ExitMode => {
                 if self.view_owns_mode() {
                     self.navigate(NavInput::ExitMode);
                 }
-                self.view_mode = None;
             }
             ViewEvent::DisplayChanged(display) => self.push_display_preferences(display, cx),
             ViewEvent::ToastsChanged(on) => self.push_toasts_on(on),
@@ -73,8 +71,7 @@ impl Root {
 
     /// Whether the current mode is one the active View entered itself, so its keys are the View's.
     pub(super) fn view_owns_mode(&self) -> bool {
-        self.view_mode
-            .is_some_and(|mode| mode.input_mode() == self.nav().mode())
+        self.nav().view_owns_mode()
     }
 }
 

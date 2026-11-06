@@ -19,7 +19,7 @@ use crate::{
     },
     shell::view::dialog_entity::DialogKey,
     shell::view::window_size::WindowSize,
-    view::{active::ActiveViewEntity, event::ViewMode},
+    view::active::ActiveViewEntity,
 };
 use lib_shell::NavInput;
 
@@ -114,7 +114,6 @@ impl Root {
             }
             ShellCommand::Insert => {
                 self.navigate(NavInput::EnterMode(InputMode::Insert));
-                self.view_mode = None;
             }
             ShellCommand::Move(_) | ShellCommand::Select => {
                 if let Some(movement) = Movement::of(command) {
@@ -134,7 +133,6 @@ impl Root {
         // discards whatever was typed, same as Cancel.
         self.close_dialog();
         self.navigate(NavInput::ExitMode);
-        self.view_mode = None;
     }
 
     /// Starts the timer that ends a waiting prefix with [`ShellInput::PrefixExpired`]. The
@@ -179,8 +177,7 @@ impl Root {
         let view = self.active_view_entity(cx);
         if !matches!(view, ActiveViewEntity::Shell(_)) {
             if view.start_search(cx) {
-                self.navigate(NavInput::EnterMode(InputMode::Search));
-                self.view_mode = Some(ViewMode::Search);
+                self.navigate(NavInput::EnterViewMode(InputMode::Search));
             }
             return;
         }

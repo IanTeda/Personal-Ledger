@@ -85,7 +85,6 @@ use gpui::{
 use lib_shell::{NavInput, ToastInput};
 
 use crate::view::active::ActiveViewEntity;
-use crate::view::event::ViewMode;
 use crate::{
     documents::{DocumentsMode, LibraryScope, LibrarySort},
     navigation::active_view::ActiveView,
@@ -188,10 +187,6 @@ pub struct Root {
     /// which sends the Presenter `PrefixExpired`. The executor's clock, not the wall clock, so a
     /// loaded test run can't lapse a `g` between two simulated keys.
     prefix_timer: Option<Task<()>>,
-    /// The mode the active View entered itself (`ViewEvent::EnterMode`), so that mode's keys are
-    /// its to read. The Shell's own `a` enters an `Insert` no View asked for, which swallows every
-    /// key as before.
-    view_mode: Option<ViewMode>,
     /// The Shell's own state (the palette, Dialog and rail tooltip), see [`ShellState`] and
     /// ADR-0032. The status message and Toasts are the Presenter's.
     state: ShellState,
@@ -264,7 +259,6 @@ impl Root {
             focus_handle,
             view_x_scroll_handle: ScrollHandle::new(),
             prefix_timer: None,
-            view_mode: None,
             state: ShellState {
                 palette: None,
                 collapsed_rail_tooltip: None,

@@ -96,6 +96,8 @@ pub enum NavInput<P> {
     },
     Focus(FocusZone),
     EnterMode(InputMode),
+    /// Enters a mode for something the active View opened itself, so the View owns its keys.
+    EnterViewMode(InputMode),
     /// Leaves the mode, restoring the focus from before it.
     ExitMode,
 }
@@ -332,6 +334,10 @@ impl<P: Copy + Eq + Default> ShellPresenter<P> {
             NavInput::EnterMode(mode) => {
                 self.prefix = None;
                 nav.enter_mode(mode);
+            }
+            NavInput::EnterViewMode(mode) => {
+                self.prefix = None;
+                nav.enter_view_mode(mode);
             }
             NavInput::ExitMode => {
                 self.prefix = None;
