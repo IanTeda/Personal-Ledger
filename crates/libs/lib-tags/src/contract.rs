@@ -4,7 +4,7 @@
 //! Each check is a function generic over a [`PortsFactory`]: a consumer runs it from its own test,
 //! since an adapter's tests need their own set-up (a fresh database per test). Each writes through
 //! the Tags Interactors, as a Client does, reloads as a restart would, and expects the same rows
-//! back, in the same order. Remove and merge are `lib-ledger`'s writes, not Tags Interactors.
+//! back, in the same order. Remove and merge are `lib-tag-removal`'s writes, not Tags Interactors.
 
 use chrono::NaiveDate;
 use lib_core::{HexColor, Money, TagId, Total};

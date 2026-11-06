@@ -10,9 +10,9 @@
 //! view models (`bin-desktop/src/inventory/`).
 //!
 //! Documents depends on this module (a Document Link names an Item by id), never the reverse, so
-//! removing a Location reports the Items that went and leaves the Documents to drop their Links.
-//! That makes Remove Location a `lib-ledger` write, not an Interactor here; Remove Area only moves
-//! Items within the Inventory, so it is one.
+//! removing a Location reports the Items that went and leaves the Documents to drop their Links:
+//! the file's cascade drops them, and the Desktop reloads the Documents after the commit. Remove
+//! Area only moves Items within the Inventory.
 
 #[cfg(feature = "contract-tests")]
 #[expect(

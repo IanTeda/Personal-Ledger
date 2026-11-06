@@ -3,8 +3,8 @@
 //! write never fails here; a failed save is the adapter's to report. `fake` implements them in
 //! memory.
 //!
-//! The adapter's [`AccountUsage`] counts the Transactions; the Budgets count is `lib-ledger`'s until
-//! Budgets persist (#811). The Presenters reach every port together, through [`AccountsPorts`], and
+//! `lib-database`'s `StoredAccountReads` answers [`AccountUsage`], counting the Transactions and the
+//! Budgets from their stores. The Presenters reach every port together, through [`AccountsPorts`], and
 //! ask for navigation through [`AccountsRouter`], which each Client implements (#855).
 
 use std::cell::RefCell;

@@ -471,7 +471,7 @@ mod tests {
         assert_eq!(aliases.len(), count);
     }
 
-    /// That each default Category is a leaf is another domain's rule, checked in `lib-ledger`'s
+    /// That each default Category is a leaf is another domain's rule, checked in `lib-database`'s
     /// seed tests, which see both seeds.
     #[test]
     fn seeded_aliases_are_normalised() {

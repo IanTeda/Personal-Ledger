@@ -6,7 +6,7 @@ End-user documentation: [Tags](../tags.md).
 
 A Tag is a freeform, cross-cutting label attached many-to-many to Splits, independent of their Category and Payee. [ADR-0015](../adr/0015-tag-as-independent-transaction-label.md) settled the domain model and vocabulary. `lib-tags` is a VIPER module (slice 5, [#847](https://github.com/IanTeda/Personal-Ledger/issues/847)): it owns the Entity and its rules, the Interactors, the ports, the Presenters, the keymap and the Messages, toolkit-free and I/O-free, and it is a `FEATURE_CRATES` entry, so it depends on no other feature crate. Tags persist through `lib-database` ([#862](https://github.com/IanTeda/Personal-Ledger/issues/862)), and the Desktop's Tags page and Dialogs run on its Presenters ([#863](https://github.com/IanTeda/Personal-Ledger/issues/863)).
 
-Tag remove and merge rewrite Splits, another domain's rows, so they are the cross-domain module `lib-tag-removal` ([#1002](https://github.com/IanTeda/Personal-Ledger/issues/1002)), whose Remove tag and Merge tags Dialogs the Desktop hosts from `tag_removal/` ([#1003](https://github.com/IanTeda/Personal-Ledger/issues/1003)). No View reads the Tags from a `Ledger` read copy any more: the `Ledger`'s Tags are only the stub seed the Tags store is built from.
+Tag remove and merge rewrite Splits, another domain's rows, so they are the cross-domain module `lib-tag-removal` ([#1002](https://github.com/IanTeda/Personal-Ledger/issues/1002)), whose Remove tag and Merge tags Dialogs the Desktop hosts from `tag_removal/` ([#1003](https://github.com/IanTeda/Personal-Ledger/issues/1003)). No View reads the Tags from a read copy: every reader goes to the Tags store, which the stub seed fills.
 
 ## Data model
 

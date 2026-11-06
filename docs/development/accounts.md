@@ -93,7 +93,7 @@ Desktop locations for the ticked requirements. ACC-001 to ACC-003, ACC-006 and A
 
 ## Open questions and known gaps
 
-- **Halfway states.** `Ledger` keeps the stub's Accounts for the stub seed only, and the Institutions and Units come from their stores. The rest are rows in [During the transition](viper-architecture.md#during-the-transition).
+- **Halfway states.** The stub's Accounts are `lib-database`'s `seed`, and the Institutions and Units come from their stores. The rest are rows in [During the transition](viper-architecture.md#during-the-transition).
 - **Budgets may hold a deleted Account's id.** Account delete leaves a Budget's `account_ids` alone, and `lib-budgets` ignores an id with no Account (`Budget::counts`), so a Budget left with none compares nothing and its edit drops the id. Removed when Budgets persist with a cascading `budget_accounts` link ([#811](https://github.com/IanTeda/Personal-Ledger/issues/811)).
 - **No Account can be deleted while a Bill Plan pays from it.** In the stub, that is ANZ Everyday (6 Plans) and Amex (4). The person moves the Plans first; there is no "move them for me" step.
 - **A file from before #853 can't migrate.** Start a fresh Ledger.

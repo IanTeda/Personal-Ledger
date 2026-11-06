@@ -1,5 +1,7 @@
 # The Ledger persists through one store-wide repository fed by a change list
 
+> **Superseded by [ADR-0046](0046-per-domain-adapters-hold-rows-in-memory-behind-one-shared-writer.md)** ([#1050](https://github.com/IanTeda/Personal-Ledger/issues/1050)). Each `lib-database` adapter holds its domain's rows in memory behind the feature crate's own ports, and every write goes to one shared writer thread, committed once per input. `LedgerRepository`, `LedgerChange` and the stub adapter over `Ledger::stub()` are gone. The text below is kept as the record of the single-port decision, not as the current one.
+
 ADR-0038 kept `Ledger` in memory and left its persistence port to research (#597). The domain crates are I/O-free, and no adapter connects them to `lib-database`. Some writes span domains: paying a Bill writes Transactions, and deleting a Category re-points Splits. Decided in #634 on the [Deepen the domain libs and finish the View Entities](https://github.com/IanTeda/Personal-Ledger/issues/588) map; the research is `docs/research/persistence-seam.md` on the `research/persistence-seam` branch.
 
 ## Decision

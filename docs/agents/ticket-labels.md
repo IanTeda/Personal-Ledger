@@ -90,7 +90,7 @@ A gated ticket closes when you close it, or when you tell Claude it's approved.
 Tripwire paths for Personal Ledger:
 
 1. **Data:** anything under `migrations/` or `.sqlx/`.
-2. **Shared foundations:** `lib-core`, `lib-database`, `lib-ledger`, or the `lib-rpc` protos.
+2. **Shared foundations:** `lib-core`, `lib-database`, or the `lib-rpc` protos.
 3. **Security surface:** Sync Server auth, JWT handling, or `sync_users`.
 4. **Build and guardrails:** the root `Cargo.toml`, `deny.toml`, `mise.toml`, `.githooks/` or `.github/workflows/`.
 5. **Decisions:** `docs/adr/` or `GLOSSARY.md`.

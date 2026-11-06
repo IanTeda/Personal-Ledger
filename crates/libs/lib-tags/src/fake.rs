@@ -21,8 +21,8 @@ pub struct InMemoryTags {
 }
 
 impl InMemoryTags {
-    /// The stub seed: the stub Ledger's Tags (see [`default_tags`]). Ids match `lib-ledger`'s
-    /// stub, so its Splits still resolve their Tags.
+    /// The stub seed: the stub Ledger's Tags (see [`default_tags`]). Ids match `lib-database`'s
+    /// joined stub, so its Splits still resolve their Tags.
     pub fn stub() -> Self {
         Self {
             tags: default_tags(),
