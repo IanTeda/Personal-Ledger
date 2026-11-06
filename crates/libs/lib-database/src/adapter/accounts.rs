@@ -435,6 +435,9 @@ mod tests {
                     units: Rc::new(RefCell::new(lib_units::fake::InMemoryPorts::stub(
                         chrono::Utc::now(),
                     ))),
+                    institutions: Rc::new(RefCell::new(
+                        lib_institutions::fake::InMemoryInstitutions::stub(),
+                    )),
                 },
             }
         }

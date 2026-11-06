@@ -185,14 +185,21 @@ impl OpenLedger {
         // and Institutions ports, so those read the store itself, not the Units ports, or each
         // would hold the other.
         let units: lib_database::SharedUnitsStore = Rc::new(std::cell::RefCell::new(units));
+        // The Institutions store is shared by the Institutions ports and the Accounts' reads of the
+        // Institutions an Account may be at (#1053), for the same reason as the Units store: the
+        // Institutions ports read the Accounts ports, so owning it there would be a cycle.
+        let institutions: lib_database::SharedInstitutionsStore =
+            Rc::new(std::cell::RefCell::new(institutions));
         // The Accounts store is shared by the Accounts module, the Ledger's read copy and the Units and Bills reads
         // (#853), and the Institutions' reads of which Accounts name one (#876).
         let account_reads = lib_database::StoredAccountReads {
             transactions: transactions.clone(),
             budgets: budgets.clone(),
             units: units.clone(),
+            institutions: institutions.clone(),
         };
         let accounts = crate::accounts::LedgerBackedPorts::shared(accounts, account_reads.clone());
+        let institutions_store = institutions.clone();
         let institutions = crate::institutions::LedgerBackedPorts::shared(
             institutions,
             accounts.clone(),
@@ -269,6 +276,7 @@ impl OpenLedger {
             crate::document_types::DocumentTypesSetup::new(documents.clone(), keybindings);
         let storage = crate::ledger_store::LedgerSetup {
             institutions,
+            institutions_store,
             accounts,
             categories,
             tags,

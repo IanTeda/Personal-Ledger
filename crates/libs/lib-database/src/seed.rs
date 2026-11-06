@@ -468,7 +468,7 @@ mod tests {
             .expect("the Institutions load");
         assert_eq!(
             stored.institutions(),
-            lib_ledger::Ledger::stub().institutions()
+            lib_institutions::default_institutions()
         );
     }
 

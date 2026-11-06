@@ -373,6 +373,46 @@ fn a_unit_recoded_on_the_units_page_is_offered_by_its_new_code(app: &mut TestApp
 }
 
 #[gpui::test]
+fn an_institution_renamed_on_the_institutions_page_is_named_by_the_new_account_form(
+    app: &mut TestAppContext,
+) {
+    let mut ui = in_accounts(app);
+
+    // Rename the Institution a new Account starts at from the Institutions page's Edit institution Dialog.
+    ui.press("escape");
+    for _ in 0..8 {
+        if ui.settings_frame().page == "Institutions" {
+            break;
+        }
+        ui.press("k");
+    }
+    assert_eq!(ui.settings_frame().page, "Institutions");
+    ui.press("l");
+    ui.press("j");
+    ui.press("e");
+    let current = ui.dialog_value("name").unwrap_or_default();
+    assert_eq!(current, "ANZ Banking Group");
+    for _ in current.chars() {
+        ui.press("backspace");
+    }
+    ui.press("e d i t e d");
+    ui.press("enter");
+    assert_eq!(ui.dialog(), None);
+    ui.press("escape");
+    for _ in 0..8 {
+        if ui.settings_frame().page == "Accounts" {
+            break;
+        }
+        ui.press("j");
+    }
+    assert_eq!(ui.settings_frame().page, "Accounts");
+    ui.press("l");
+    ui.press("n");
+
+    assert_eq!(ui.dialog_value("institution").as_deref(), Some("edited"));
+}
+
+#[gpui::test]
 fn a_failed_write_puts_the_accounts_back_with_an_error_toast(app: &mut TestAppContext) {
     let mut ui = Harness::with_failing_accounts(app);
     ui.press("g s");

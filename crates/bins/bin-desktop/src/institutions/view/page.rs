@@ -1,6 +1,6 @@
 //! The Institutions Settings page's View: the `lib-institutions` page Presenter in a gpui Entity.
 //! It looks up each key the Shell passes on, as chord text, in the Institutions keymap, turns
-//! clicks into events, draws the view model (`render.rs`), and keeps the Ledger read copy in line
+//! clicks into events, draws the view model (`render.rs`), and announces its writes
 //! after every event ([`ports::refresh`]). Each key and click is one input (`crate::input::send`),
 //! which commits what it wrote. The Settings View hosts it as any other page.
 
@@ -79,18 +79,18 @@ impl InstitutionsPage {
         crate::input::send(cx, |cx| self.handle(event, cx));
     }
 
-    /// Hands `event` to the Presenter with the Desktop's Router, then brings the Ledger read copy
-    /// in line with whatever it wrote. Inside an input already, as [`Self::send`] or a Dialog's
+    /// Hands `event` to the Presenter with the Desktop's Router, then announces
+    /// whatever it wrote. Inside an input already, as [`Self::send`] or a Dialog's
     /// confirm.
     fn handle(&mut self, event: InstitutionsPageEvent, cx: &mut Context<'_, Self>) {
-        ports::refresh(&self.ledger, cx);
+        ports::refresh(&self.ports, &self.ledger, cx);
         let mut router = PageRouter {
             ports: self.ports.clone(),
             ledger: self.ledger.clone(),
             cx,
         };
         self.presenter.handle(event, &mut router);
-        ports::refresh(&self.ledger, cx);
+        ports::refresh(&self.ports, &self.ledger, cx);
         cx.notify();
     }
 

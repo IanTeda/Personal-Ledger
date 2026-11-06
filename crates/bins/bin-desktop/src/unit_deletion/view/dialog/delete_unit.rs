@@ -209,7 +209,7 @@ impl HostedDialog for DeleteUnitDialog {
     }
 
     /// Sends Confirm to the Presenter, which deletes or deactivates, announcing the Units' writes
-    /// and bringing the Ledger's Institutions read copy in line either side. A refusal stays on the view model and keeps the Dialog open.
+    /// and announcing the Institutions it reassigned either side. A refusal stays on the view model and keeps the Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
         crate::units::ports::announce(&self.ports, &self.ledger, cx);
         let router = self.send(DeleteUnitEvent::Confirm);

@@ -4,9 +4,10 @@
 //! [`LedgerChanged`] naming the domains that changed, which [`notify_on`] turns into a repaint for
 //! the Entities reading them.
 //!
-//! The Ledger's Institutions, Accounts and Categories are read copies of their ports (#774, #849,
-//! #850): their modules write the ports and refresh the copies from them
-//! ([`LedgerStore::refresh_institutions`], …), until #816. The Tags, Payees, Transactions, Bills and
+//! The Ledger's Accounts and Categories are read copies of their ports (#849, #850): their modules
+//! write the ports and refresh the copies from them ([`LedgerStore::refresh_accounts`], …), until
+//! #816. The Institutions have none (#1053): their module announces its writes through
+//! [`LedgerStore::announce_institutions`]. The Tags, Payees, Transactions, Bills and
 //! Budgets have no read copy (#1003, #1005, #1028): their modules and the cross-domain modules
 //! write their stores and announce the change through [`LedgerStore::announce_tags`],
 //! [`LedgerStore::announce_payees`], [`LedgerStore::announce_transactions`],
@@ -26,9 +27,9 @@ use std::rc::Rc;
 use gpui::{Context, Entity, EventEmitter, Subscription};
 use lib_database::{
     PayeesStore, SharedAccountsStore, SharedBudgetsStore, SharedCategoriesStore,
-    SharedDocumentsStore, SharedInventoryStore, SharedTagsStore, SharedTransactionsStore,
-    SharedUnitsStore, StoredCategoryRows, StoredDocumentReads, StoredInventoryReads,
-    StoredPayeeReads,
+    SharedDocumentsStore, SharedInstitutionsStore, SharedInventoryStore, SharedTagsStore,
+    SharedTransactionsStore, SharedUnitsStore, StoredCategoryRows, StoredDocumentReads,
+    StoredInventoryReads, StoredPayeeReads,
 };
 use lib_institutions::InstitutionsPorts as _;
 use lib_ledger::{Domain, Ledger};
@@ -43,6 +44,8 @@ use crate::payees::ports::DesktopPorts as DesktopPayeesPorts;
 /// on their own ports, and reloads after a failed write. It writes none of them (#1006).
 pub struct LedgerSetup {
     pub institutions: DesktopInstitutionsPorts,
+    /// The Institutions store under the Institutions ports, which the Accounts' reads hold too.
+    pub institutions_store: SharedInstitutionsStore,
     pub accounts: DesktopAccountsPorts,
     pub categories: SharedCategoriesStore,
     pub tags: SharedTagsStore,
@@ -73,12 +76,14 @@ impl LedgerSetup {
         let units = crate::bills::ports::in_memory_units(
             today.and_time(chrono::NaiveTime::MIN).and_utc() + chrono::Duration::hours(12),
         );
+        let institutions_store = crate::institutions::ports::in_memory_store();
         let accounts = crate::accounts::LedgerBackedPorts::in_memory(
             &ledger,
             lib_database::StoredAccountReads {
                 transactions: transactions.clone(),
                 budgets: budgets.clone(),
                 units: units.clone(),
+                institutions: institutions_store.clone(),
             },
         );
         let bills_store = crate::bills::ports::in_memory_store(&ledger);
@@ -103,11 +108,12 @@ impl LedgerSetup {
             })),
             tags: crate::tags::ports::in_memory(),
             inventory: crate::inventory::ports::in_memory(today),
-            institutions: crate::institutions::LedgerBackedPorts::in_memory(
-                &ledger,
+            institutions: crate::institutions::LedgerBackedPorts::shared(
+                institutions_store.clone(),
                 accounts.clone(),
                 units.clone(),
             ),
+            institutions_store,
             bills,
             transactions,
             accounts,
@@ -165,12 +171,14 @@ impl LedgerStore {
         });
         let budgets = crate::budgets::ports::in_memory(&ledger);
         let units = crate::bills::ports::in_memory_units(chrono::Utc::now());
+        let institutions_store = crate::institutions::ports::in_memory_store();
         let accounts = crate::accounts::LedgerBackedPorts::in_memory(
             &ledger,
             lib_database::StoredAccountReads {
                 transactions: transactions.clone(),
                 budgets: budgets.clone(),
                 units: units.clone(),
+                institutions: institutions_store.clone(),
             },
         );
         let bills = LedgerBackedPorts::shared(
@@ -181,8 +189,8 @@ impl LedgerStore {
             transactions.clone(),
             units.clone(),
         );
-        let institutions = crate::institutions::LedgerBackedPorts::in_memory(
-            &ledger,
+        let institutions = crate::institutions::LedgerBackedPorts::shared(
+            institutions_store,
             accounts.clone(),
             units.clone(),
         );
@@ -257,7 +265,6 @@ impl LedgerStore {
             announced: false,
             announcements: 0,
         };
-        store.copy_institutions();
         store.copy_accounts();
         store.copy_categories();
         store
@@ -376,7 +383,7 @@ impl LedgerStore {
             institution.usual_unit = Some(unit);
             ports.institutions_mut().upsert_institution(institution);
         }
-        self.refresh_institutions(cx);
+        self.announce_institutions(cx);
     }
 
     /// The Budgets store, which the Categories Monthly budget writes and the usage counts read.
@@ -421,16 +428,15 @@ impl LedgerStore {
         self.announce(cx, BTreeSet::from([Domain::Units]));
     }
 
-    /// Puts the Institutions back as stored, after a write that named them failed, and overwrites
-    /// the read copy, announcing `Domain::Institutions` so every reader redraws (ADR-0046).
-    ///
-    /// # Errors
-    /// Returns the error reading them back; the port and the read copy are left as they were.
-    pub fn reload_institutions(&mut self, cx: &mut Context<'_, Self>) -> lib_database::Result<()> {
-        self.institutions.borrow_mut().reload()?;
-        self.copy_institutions();
+    /// The Institutions ports, for a write failure's rollback to reload (ADR-0046).
+    pub fn institutions_ports(&self) -> &DesktopInstitutionsPorts {
+        &self.institutions
+    }
+
+    /// Announces `Domain::Institutions`, after the Institutions module, Unit delete or a rollback
+    /// wrote the Institutions store, so the Institutions and Accounts pages redraw (#1053).
+    pub fn announce_institutions(&mut self, cx: &mut Context<'_, Self>) {
         self.announce(cx, BTreeSet::from([Domain::Institutions]));
-        Ok(())
     }
 
     /// Puts the Accounts back as stored, after a write that named them failed, and overwrites the
@@ -522,14 +528,6 @@ impl LedgerStore {
         );
     }
 
-    /// Brings the Institutions read copy in line with the ports after the Institutions module wrote
-    /// them, announcing `Domain::Institutions` only when it changed.
-    pub fn refresh_institutions(&mut self, cx: &mut Context<'_, Self>) {
-        if self.copy_institutions() {
-            self.announce(cx, BTreeSet::from([Domain::Institutions]));
-        }
-    }
-
     /// Announces `Domain::Payees`, after the Payees module, Category delete, the Import or a
     /// rollback wrote the Payees store, so Transactions, Bills, Budgets and Documents redraw.
     pub fn announce_payees(&mut self, cx: &mut Context<'_, Self>) {
@@ -581,12 +579,6 @@ impl LedgerStore {
     /// Transactions, Bills, Budgets, Documents and Tags redraw (#1028).
     pub fn announce_transactions(&mut self, cx: &mut Context<'_, Self>) {
         self.announce(cx, BTreeSet::from([Domain::Transactions]));
-    }
-
-    /// Brings the Institutions read copy in line with the port, returning whether it changed.
-    fn copy_institutions(&mut self) -> bool {
-        let institutions = self.institutions.borrow().institutions().institutions();
-        self.ledger.refresh_institutions(institutions)
     }
 
     /// Brings the Accounts read copy in line with the store, returning whether it changed.
@@ -706,16 +698,19 @@ mod tests {
         );
         let budgets: SharedBudgetsStore = Rc::new(RefCell::new(storage.budgets));
         let units: SharedUnitsStore = Rc::new(RefCell::new(storage.units));
+        let institutions_store: SharedInstitutionsStore =
+            Rc::new(RefCell::new(storage.institutions));
         let accounts = crate::accounts::LedgerBackedPorts::shared(
             Box::new(storage.accounts),
             lib_database::StoredAccountReads {
                 transactions: transactions.clone(),
                 budgets: budgets.clone(),
                 units: units.clone(),
+                institutions: institutions_store.clone(),
             },
         );
         let institutions = crate::institutions::LedgerBackedPorts::shared(
-            Box::new(storage.institutions),
+            institutions_store.clone(),
             accounts.clone(),
             units.clone(),
         );
@@ -743,6 +738,7 @@ mod tests {
                 Ledger::stub_on(today),
                 LedgerSetup {
                     institutions,
+                    institutions_store,
                     accounts,
                     categories,
                     tags: Rc::new(RefCell::new(storage.tags)),

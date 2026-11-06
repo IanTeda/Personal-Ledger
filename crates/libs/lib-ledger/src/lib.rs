@@ -13,7 +13,6 @@ mod change;
 mod document_reads;
 #[cfg(test)]
 mod documents_seed_tests;
-mod institution_reads;
 pub mod seed;
 mod tag_usage;
 
@@ -183,10 +182,6 @@ impl Ledger {
 
     pub(crate) fn inventory(&self) -> &Inventory {
         &self.inventory
-    }
-
-    pub fn institutions(&self) -> &[Institution] {
-        &self.institutions
     }
 }
 

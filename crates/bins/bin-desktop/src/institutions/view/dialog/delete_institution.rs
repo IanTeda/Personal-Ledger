@@ -25,7 +25,8 @@ const WIDTH: gpui::Pixels = px(440.0);
 
 /// The open Delete institution Dialog: its Presenter.
 pub struct DeleteInstitutionDialog {
-    /// The Ledger read copy a confirm brings in line with what it wrote.
+    ports: DesktopPorts,
+    /// The Ledger a confirm announces its write through.
     ledger: gpui::Entity<LedgerStore>,
     presenter: DeleteInstitutionPresenter,
     landed: Landed,
@@ -41,6 +42,7 @@ impl DeleteInstitutionDialog {
         landed: Landed,
     ) -> Option<Self> {
         Some(Self {
+            ports: ports.clone(),
             ledger: ledger.clone(),
             presenter: DeleteInstitutionPresenter::new(ports.clone(), id)?,
             landed,
@@ -74,11 +76,11 @@ impl HostedDialog for DeleteInstitutionDialog {
     fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
         let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
         if may_confirm {
-            ports::refresh(&self.ledger, cx);
+            ports::refresh(&self.ports, &self.ledger, cx);
         }
         let router = self.send(DeleteInstitutionEvent::Input(input));
         if may_confirm {
-            ports::refresh(&self.ledger, cx);
+            ports::refresh(&self.ports, &self.ledger, cx);
         }
         self.closed(router, cx);
     }
@@ -87,12 +89,12 @@ impl HostedDialog for DeleteInstitutionDialog {
         self.presenter.view_model().frame.can_confirm
     }
 
-    /// Sends Confirm to the Presenter, which runs its Interactor, with the Ledger read copy in
-    /// line either side. A refusal turns the Dialog into the refusal and keeps it open.
+    /// Sends Confirm to the Presenter, which runs its Interactor, announcing the
+    /// Institutions written either side. A refusal turns the Dialog into the refusal and keeps it open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
-        ports::refresh(&self.ledger, cx);
+        ports::refresh(&self.ports, &self.ledger, cx);
         let router = self.send(DeleteInstitutionEvent::Confirm);
-        ports::refresh(&self.ledger, cx);
+        ports::refresh(&self.ports, &self.ledger, cx);
         self.closed(router, cx);
     }
 

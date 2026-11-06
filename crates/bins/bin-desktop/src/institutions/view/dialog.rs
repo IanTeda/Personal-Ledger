@@ -35,7 +35,7 @@ pub(crate) type Landed = Box<dyn Fn(InstitutionsOutcome, &mut App)>;
 /// The open Institutions Dialog: its Presenter.
 pub struct InstitutionsDialog {
     ports: DesktopPorts,
-    /// The Ledger read copy a confirm brings in line with what it wrote.
+    /// The Ledger a confirm announces its write through.
     ledger: Entity<LedgerStore>,
     presenter: InstitutionFormPresenter,
     /// The top row of the Usual unit list's window, which the View keeps between draws.
@@ -96,16 +96,16 @@ type Router = HostRouter<InstitutionsOutcome>;
 impl EventEmitter<DialogClosed> for InstitutionsDialog {}
 
 impl HostedDialog for InstitutionsDialog {
-    /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) runs with
-    /// the Ledger read copy in line before it and after it.
+    /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) announces
+    /// the Institutions written before it and after it.
     fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
         let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
         if may_confirm {
-            ports::refresh(&self.ledger, cx);
+            ports::refresh(&self.ports, &self.ledger, cx);
         }
         let router = self.send(InstitutionFormEvent::Input(input));
         if may_confirm {
-            ports::refresh(&self.ledger, cx);
+            ports::refresh(&self.ports, &self.ledger, cx);
         }
         self.closed(router, cx);
     }
@@ -114,12 +114,12 @@ impl HostedDialog for InstitutionsDialog {
         self.presenter.view_model().frame.can_confirm
     }
 
-    /// Sends Confirm to the Presenter, which runs its Interactor, with the Ledger read copy in
-    /// line either side. A refusal stays on the Presenter's view model and keeps the Dialog open.
+    /// Sends Confirm to the Presenter, which runs its Interactor, announcing the
+    /// Institutions written either side. A refusal stays on the Presenter's view model and keeps the Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
-        ports::refresh(&self.ledger, cx);
+        ports::refresh(&self.ports, &self.ledger, cx);
         let router = self.send(InstitutionFormEvent::Confirm);
-        ports::refresh(&self.ledger, cx);
+        ports::refresh(&self.ports, &self.ledger, cx);
         self.closed(router, cx);
     }
 

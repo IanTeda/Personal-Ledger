@@ -69,6 +69,7 @@ impl DeletionStores {
                 transactions: storage.transactions.clone(),
                 budgets: storage.budgets.clone(),
                 units: storage.units.clone(),
+                institutions: storage.institutions_store.clone(),
             },
         }
     }

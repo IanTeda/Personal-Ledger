@@ -123,7 +123,7 @@ fn reload(
         },
         Domain::Institutions => Reload {
             name: "Institutions",
-            reloaded: ledger.update(cx, |store, cx| store.reload_institutions(cx)),
+            reloaded: crate::institutions::ports::reload(ledger, cx),
             restored: crate::msg::desktop_toast_write_failed_institutions,
             unsaved: crate::msg::desktop_toast_write_failed_institutions_unsaved,
         },

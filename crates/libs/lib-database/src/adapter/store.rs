@@ -48,7 +48,10 @@ use std::sync::mpsc;
 
 use chrono::NaiveDate;
 use lib_account_deletion::DeletionReads;
-use lib_accounts::{AccountRepository, AccountUnit, AccountUnits, AccountUsage, AccountUse};
+use lib_accounts::{
+    AccountInstitution, AccountInstitutions, AccountRepository, AccountUnit, AccountUnits,
+    AccountUsage, AccountUse,
+};
 use lib_bills::fake::InMemoryBills;
 use lib_bills::{
     BillAccount, BillAccounts, BillCategories, BillCategory, BillPayee, BillPayees,
@@ -1440,18 +1443,20 @@ impl InstitutionUnits for StoredInstitutionReads {
     }
 }
 
-/// `lib-accounts`' `AccountUsage` and `AccountUnits` answered by the shared stores of the domains
+/// `lib-accounts`' `AccountUsage`, `AccountUnits` and `AccountInstitutions` answered by the shared stores of the domains
 /// an Account names or is named by, each borrowed for the one read (#993, #1052), as
 /// [`StoredPayeeReads`] answers Payees'. The same struct stands over [`Stores::fake`]'s in-memory
 /// stores and the adapters. The Transactions store counts the Transactions booked to the Account,
 /// the Budgets store the Budgets that count it, and the Units store holds the Units an Account
-/// may count in. It is also `lib-account-deletion`'s `DeletionReads`: the Delete account Dialog
+/// may count in, and the Institutions store the Institutions it may be at. It is also
+/// `lib-account-deletion`'s `DeletionReads`: the Delete account Dialog
 /// quotes the same counts and the Unit's code.
 #[derive(Clone)]
 pub struct StoredAccountReads {
     pub transactions: SharedTransactionsStore,
     pub budgets: SharedBudgetsStore,
     pub units: SharedUnitsStore,
+    pub institutions: SharedInstitutionsStore,
 }
 
 impl AccountUsage for StoredAccountReads {
@@ -1472,6 +1477,14 @@ impl AccountUnits for StoredAccountReads {
     fn base_unit(&self) -> Option<UnitId> {
         let store = self.units.borrow();
         units::held_base_unit(&store.units().units(), store.base_unit().base_unit())
+    }
+}
+
+impl AccountInstitutions for StoredAccountReads {
+    fn account_institutions(&self) -> Vec<AccountInstitution> {
+        institutions::account_institutions(
+            &self.institutions.borrow().institutions().institutions(),
+        )
     }
 }
 
@@ -1945,6 +1958,7 @@ mod tests {
             transactions: transactions.clone(),
             budgets,
             units: stub_units(),
+            institutions: stub_institutions(),
         };
         let everyday = AccountId::seed(2);
         let before = reads.account_usage(everyday);
@@ -2032,6 +2046,50 @@ mod tests {
         Rc::new(RefCell::new(InMemoryPorts::stub(chrono::Utc::now())))
     }
 
+    /// The stub Institutions as an in-memory Institutions store.
+    fn stub_institutions() -> SharedInstitutionsStore {
+        Rc::new(RefCell::new(InMemoryInstitutions::stub()))
+    }
+
+    /// The Accounts read their Institution choices from the Institutions store on each ask
+    /// (#1053): each Institution's id, name and Usual unit, in the Institutions' order.
+    #[test]
+    fn stored_account_reads_answer_account_institutions_from_the_institutions_store() {
+        let (_, transactions, _) = in_memory_stub_stores();
+        let institutions = stub_institutions();
+        let reads = StoredAccountReads {
+            transactions,
+            budgets: Rc::new(RefCell::new(InMemoryBudgets::default())),
+            units: stub_units(),
+            institutions: institutions.clone(),
+        };
+
+        let held = lib_institutions::default_institutions();
+        let offered = reads.account_institutions();
+        assert_eq!(
+            offered.iter().map(|row| row.id).collect::<Vec<_>>(),
+            held.iter().map(|row| row.id).collect::<Vec<_>>(),
+            "in the Institutions' order"
+        );
+        assert_eq!(offered[0].name, held[0].name);
+
+        let mut edited = held[0].clone();
+        edited.name = "Renamed".into();
+        edited.usual_unit = Some(UnitId::SEED_BTC);
+        institutions
+            .borrow_mut()
+            .institutions_mut()
+            .upsert_institution(edited);
+
+        let after = reads.account_institutions();
+        assert_eq!(
+            after[0].name, "Renamed",
+            "written since the reads were built"
+        );
+        assert_eq!(after[0].usual_unit, Some(UnitId::SEED_BTC));
+        assert_eq!(after.len(), held.len());
+    }
+
     /// The Accounts read their Unit choices from the Units store on each ask (#1052): each Unit's
     /// code, active flag and Precision, and the base Unit while the store still holds it.
     #[test]
@@ -2044,6 +2102,7 @@ mod tests {
                 budgets: ledger.budgets().all().to_vec(),
             })),
             units: units.clone(),
+            institutions: stub_institutions(),
         };
 
         let choices = reads.account_units();
@@ -2105,6 +2164,7 @@ mod tests {
             transactions,
             budgets: Rc::new(RefCell::new(InMemoryBudgets::default())),
             units: stub_units(),
+            institutions: stub_institutions(),
         };
 
         assert_eq!(

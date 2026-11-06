@@ -1,8 +1,7 @@
 //! The Accounts ports as the Desktop holds them: the store `shell::router::build` is given, with
-//! the Institutions copied from the Ledger read copy (a halfway shim until they answer the
-//! Accounts' select through their own port, #1053), and `AccountUsage` and `AccountUnits` read from
-//! the Transactions, Budgets and Units stores through `lib-database`'s [`StoredAccountReads`]
-//! (#993, #1052), and the step that keeps the Ledger's read copy of the Accounts in line after an
+//! `AccountUsage`, `AccountUnits` and `AccountInstitutions` read from the Transactions, Budgets,
+//! Units and Institutions stores through `lib-database`'s [`StoredAccountReads`] (#993, #1052,
+//! #1053), and the step that keeps the Ledger's read copy of the Accounts in line after an
 //! Accounts write. The write is committed by the input it was made in (`crate::input::send`), not
 //! here.
 //!
@@ -10,17 +9,15 @@
 //! them as [`AccountsPorts`], and the same value is the `AccountsStore` the Ledger's read copy,
 //! the Units and Bills reads and `lib-account-deletion`'s adapter hold.
 //!
-//! The usage is counted, and the Units read, in the stores on each ask, whether they are the
+//! The usage is counted, and the Units and Institutions read, in the stores on each ask, whether they are the
 //! adapters or `Stores::fake`'s in-memory ones, so nothing is recounted or copied from the Ledger.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use gpui::{App, Entity};
-use lib_accounts::fake::InMemoryAccountInstitutions;
 use lib_accounts::{
-    AccountInstitution, AccountInstitutions, AccountRepository, AccountUnits, AccountUsage,
-    AccountsPorts,
+    AccountInstitutions, AccountRepository, AccountUnits, AccountUsage, AccountsPorts,
 };
 use lib_database::{AccountsStore, StoredAccountReads};
 use lib_ledger::Ledger;
@@ -30,27 +27,22 @@ use crate::ledger_store::LedgerStore;
 /// The Accounts ports the Accounts module and the Ledger share.
 pub type DesktopPorts = Rc<RefCell<LedgerBackedPorts>>;
 
-/// `store`'s Accounts, with the Institutions an Account may name copied from the Ledger, and the
-/// Units it may count in and the Transactions and Budgets that name each read from `reads`.
+/// `store`'s Accounts, with the Institutions an Account may name, the Units it may count in and the
+/// Transactions and Budgets that name each read from `reads`.
 pub struct LedgerBackedPorts {
     store: Box<dyn AccountsStore>,
-    institutions: InMemoryAccountInstitutions,
     reads: StoredAccountReads,
 }
 
 impl LedgerBackedPorts {
     pub fn shared(store: Box<dyn AccountsStore>, reads: StoredAccountReads) -> DesktopPorts {
-        Rc::new(RefCell::new(Self {
-            store,
-            institutions: InMemoryAccountInstitutions::default(),
-            reads,
-        }))
+        Rc::new(RefCell::new(Self { store, reads }))
     }
 
     /// `ledger`'s own Accounts in memory, reading the other domains through `reads`, for a test
     /// that needs no storage.
     pub fn in_memory(ledger: &Ledger, reads: StoredAccountReads) -> DesktopPorts {
-        let ports = Self::shared(
+        Self::shared(
             Box::new(lib_accounts::fake::InMemoryPorts {
                 accounts: lib_accounts::fake::InMemoryAccounts {
                     accounts: ledger.accounts().to_vec(),
@@ -58,21 +50,7 @@ impl LedgerBackedPorts {
                 ..Default::default()
             }),
             reads,
-        );
-        ports.borrow_mut().copy_from_ledger(ledger);
-        ports
-    }
-
-    fn copy_from_ledger(&mut self, ledger: &Ledger) {
-        self.institutions.institutions = ledger
-            .institutions()
-            .iter()
-            .map(|institution| AccountInstitution {
-                id: institution.id,
-                name: institution.name.clone(),
-                usual_unit: institution.usual_unit,
-            })
-            .collect();
+        )
     }
 }
 
@@ -90,7 +68,7 @@ impl AccountsPorts for LedgerBackedPorts {
     }
 
     fn institutions(&self) -> &dyn AccountInstitutions {
-        &self.institutions
+        &self.reads
     }
 
     fn units(&self) -> &dyn AccountUnits {
@@ -114,23 +92,15 @@ impl AccountsStore for LedgerBackedPorts {
     }
 }
 
-/// Copies the Institutions from `ledger` into `ports`, for the next Accounts event and a view model
-/// drawn outside one.
-pub fn copy_from_ledger(ports: &DesktopPorts, ledger: &Ledger) {
-    ports.borrow_mut().copy_from_ledger(ledger);
-}
-
 /// Brings the Ledger read copy of the Accounts in line with the ports, announcing
-/// `Domain::Accounts` when it changed, and copies the Ledger's reads back for the next Accounts
-/// event. Run before and after every Accounts event and Dialog confirm, so the other Views see a
+/// `Domain::Accounts` when it changed. Run before and after every Accounts event and Dialog confirm, so the other Views see a
 /// write at once.
-pub fn refresh(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: &mut App) {
+pub fn refresh(ledger: &Entity<LedgerStore>, cx: &mut App) {
     ledger.update(cx, |store, cx| store.refresh_accounts(cx));
-    copy_from_ledger(ports, ledger.read(cx).ledger());
 }
 
 /// `ledger`'s own Transactions and Budgets in memory, as the usage of its Accounts reads them, and
-/// the stub Units, for a test that needs no storage.
+/// the stub Units and Institutions, for a test that needs no storage.
 pub fn in_memory_reads(ledger: &Ledger) -> StoredAccountReads {
     StoredAccountReads {
         transactions: Rc::new(RefCell::new(lib_transactions::fake::InMemoryTransactions {
@@ -138,6 +108,7 @@ pub fn in_memory_reads(ledger: &Ledger) -> StoredAccountReads {
         })),
         budgets: crate::budgets::ports::in_memory(ledger),
         units: crate::bills::ports::in_memory_units(chrono::Utc::now()),
+        institutions: crate::institutions::ports::in_memory_store(),
     }
 }
 
@@ -199,7 +170,7 @@ mod tests {
     }
 
     #[test]
-    fn the_ports_offer_the_ledgers_institutions_and_the_stores_units_and_base_unit() {
+    fn the_ports_offer_the_stores_institutions_units_and_base_unit() {
         let ledger = Ledger::stub();
         let reads = in_memory_reads(&ledger);
         let held = reads.units.borrow().units().units().len();
@@ -210,7 +181,7 @@ mod tests {
             AccountsPorts::institutions(&*ports)
                 .account_institutions()
                 .len(),
-            ledger.institutions().len()
+            lib_institutions::default_institutions().len()
         );
         let units = AccountsPorts::units(&*ports);
         assert_eq!(units.account_units().len(), held);

@@ -63,7 +63,6 @@ impl AccountsPage {
         keymap: Keymap<AccountsPageEvent>,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        ports::copy_from_ledger(&ports, ledger.read(cx).ledger());
         Self {
             presenter: AccountsPagePresenter::new(ports.clone(), keymap.clone()),
             ports,
@@ -87,7 +86,7 @@ impl AccountsPage {
     /// in line with whatever it wrote. Inside an input already, as [`Self::send`] or a Dialog's
     /// confirm.
     fn handle(&mut self, event: AccountsPageEvent, cx: &mut Context<'_, Self>) {
-        ports::refresh(&self.ports, &self.ledger, cx);
+        ports::refresh(&self.ledger, cx);
         let mut router = PageRouter {
             ports: self.ports.clone(),
             ledger: self.ledger.clone(),
@@ -96,7 +95,7 @@ impl AccountsPage {
             cx,
         };
         self.presenter.handle(event, &mut router);
-        ports::refresh(&self.ports, &self.ledger, cx);
+        ports::refresh(&self.ledger, cx);
         cx.notify();
     }
 
@@ -114,9 +113,8 @@ impl AccountsPage {
         self.handle(AccountsPageEvent::Deleted, cx);
     }
 
-    /// The page as drawn, with the Units, Institutions and Budgets as the Ledger has them now.
-    pub fn view_model(&self, cx: &App) -> AccountsPageViewModel {
-        ports::copy_from_ledger(&self.ports, self.ledger.read(cx).ledger());
+    /// The page as drawn, with the Units, Institutions and Budgets as the stores have them now.
+    pub fn view_model(&self, _cx: &App) -> AccountsPageViewModel {
         self.presenter.view_model()
     }
 

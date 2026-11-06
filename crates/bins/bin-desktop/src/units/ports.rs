@@ -226,11 +226,13 @@ pub fn reload(
 
 /// Announces `Domain::Units` when the ports were written since the last announcement, so the
 /// Accounts, Inventory, Bills, Budgets, Transactions and the Dashboard see a write at once. Run
-/// before and after every Units event and Dialog confirm.
-pub fn announce(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: &mut App) {
-    if ports.borrow().take_written() {
+/// before and after every Units event and Dialog confirm. Returns whether it announced.
+pub fn announce(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: &mut App) -> bool {
+    let written = ports.borrow().take_written();
+    if written {
         ledger.update(cx, |store, cx| store.announce_units(cx));
     }
+    written
 }
 
 #[cfg(test)]

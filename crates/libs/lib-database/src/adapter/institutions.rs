@@ -191,6 +191,20 @@ async fn read(conn: &mut SqliteConnection) -> Result<Vec<Institution>> {
     Ok(rows)
 }
 
+/// `institutions` as Accounts offers them in its Institution select: id, name and Usual unit.
+pub(crate) fn account_institutions(
+    institutions: &[Institution],
+) -> Vec<lib_accounts::AccountInstitution> {
+    institutions
+        .iter()
+        .map(|institution| lib_accounts::AccountInstitution {
+            id: institution.id,
+            name: institution.name.clone(),
+            usual_unit: institution.usual_unit,
+        })
+        .collect()
+}
+
 /// How many of `institutions` name `unit` as their Usual unit.
 pub fn unit_institutions(institutions: &[Institution], unit: UnitId) -> usize {
     institutions
