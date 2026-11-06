@@ -14,7 +14,6 @@
 
 mod category_form;
 
-use chrono::NaiveDate;
 use gpui::{App, Context, Entity, EventEmitter, IntoElement, Render, Window};
 use lib_categories::presenter::{CategoryFormEvent, CategoryFormPresenter};
 use lib_categories::{CategoriesDialog as Which, CategoriesOutcome, SharedCategories};
@@ -36,11 +35,10 @@ type Clicks = DialogClicks<CategoriesDialog>;
 pub(crate) type Landed = Box<dyn Fn(CategoriesOutcome, &mut App)>;
 
 /// What the Dialog's ports are built on for each call: the stores they read and write, the
-/// Announcer they announce through, the day the page was built and the Shell's Clock.
+/// Announcer they announce through, and the Shell's Clock, which the ports read the day from on each call.
 pub(crate) struct PortsOn {
     pub stores: CategoryStores,
     pub announcer: Entity<Announcer>,
-    pub today: NaiveDate,
     pub clock: Clock,
 }
 
@@ -50,7 +48,6 @@ impl PortsOn {
         LedgerPorts {
             stores: &self.stores,
             announcer: &self.announcer,
-            today: self.today,
             clock: self.clock.clone(),
             cx,
         }
@@ -74,7 +71,7 @@ pub struct CategoriesDialog {
 
 impl CategoriesDialog {
     /// `which`'s form Presenter on `categories`, its usage and Monthly budget read through `on`'s
-    /// stores as of its `today`, or `None` when the Category it edits is gone, or `which` is a delete, which is
+    /// stores as of the day its Clock reads, or `None` when the Category it edits is gone, or `which` is a delete, which is
     /// not this Dialog's. A confirm hands its outcome to `landed`.
     pub(crate) fn open(
         which: Which,

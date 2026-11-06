@@ -769,3 +769,38 @@ fn add_child_on_uncategorised_is_refused_on_the_status_line(app: &mut TestAppCon
         Some("Uncategorised is fixed, so it takes no subcategories")
     );
 }
+
+#[gpui::test]
+fn an_edit_confirmed_after_the_month_turns_starts_the_monthly_budget_in_the_new_month(
+    app: &mut TestAppContext,
+) {
+    let mut ui = in_categories(app);
+    assert!(select_category(&mut ui, "Groceries"));
+    let before = ui
+        .settings::<SettingsCategoriesSnapshot>()
+        .selected_budget_months;
+    assert!(
+        !before.is_empty() && before.iter().all(|&month| month <= (2026, 6)),
+        "Groceries is budgeted up to June: {before:?}"
+    );
+    ui.press("e");
+    assert_eq!(ui.dialog(), Some("EditCategory"));
+
+    ui.turn_date_to(common::date(2026, 7, 1));
+    ui.press("tab tab tab 7");
+    ui.press("enter");
+
+    assert_eq!(ui.dialog(), None);
+    let after = ui
+        .settings::<SettingsCategoriesSnapshot>()
+        .selected_budget_months;
+    assert!(
+        after.contains(&(2026, 7)),
+        "July starts a record: {after:?}"
+    );
+    assert_eq!(
+        after.iter().filter(|&&month| month < (2026, 7)).count(),
+        before.len(),
+        "June's and earlier records are untouched: {after:?}"
+    );
+}

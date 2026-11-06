@@ -38,6 +38,9 @@ pub struct SettingsCategoriesSnapshot {
     /// Each Category's name and type, in the same order.
     pub category_types: Vec<(String, CategoryTypes)>,
     pub selected_category: Option<String>,
+    /// The months, as `(year, month)`, in which the selected Category has a Budget Amount record
+    /// in the Personal spending Budget, so a test sees which month a save started in.
+    pub selected_budget_months: Vec<(i32, u32)>,
 }
 
 /// What `shell::router::build` hands the Categories module: the store it shares with the Bills

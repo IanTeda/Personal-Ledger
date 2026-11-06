@@ -20,7 +20,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use crate::announcer::Domain;
-use chrono::{Datelike as _, NaiveDate};
+use chrono::Datelike as _;
 use gpui::{App, Entity};
 use lib_budgets::{Budgets, Error};
 use lib_categories::{
@@ -191,15 +191,14 @@ impl CategoryStores {
 }
 
 /// The Categories ports the Desktop answers from its stores, built for one call around its gpui
-/// context: what names a Category, the Monthly budget in the Personal spending Budget as of
-/// `today` (the day the page was built), and the handover, each write announced through
+/// context: what names a Category, the Monthly budget in the Personal spending Budget as of the
+/// day `clock` reads when each call runs, and the handover, each write announced through
 /// `announcer`.
 pub struct LedgerPorts<'a> {
     pub stores: &'a CategoryStores,
     pub announcer: &'a Entity<Announcer>,
-    pub today: NaiveDate,
-    /// The Shell's Clock, read on each call by `type_change_blockers` so a month turn is seen.
-    /// #783 moves the calls reading `today` to it, and `today` goes.
+    /// The Shell's Clock, read on each call so a Desktop left running past a month turn writes
+    /// into the new month, never a closed one.
     pub clock: Clock,
     pub cx: &'a mut App,
 }
@@ -257,7 +256,7 @@ impl CategoryBudget for LedgerPorts<'_> {
                     PERSONAL_SPENDING_ID,
                     &lib_database::budget_categories(categories),
                     id,
-                    self.today,
+                    self.clock.today(),
                 )
             }),
             archived: budgets
@@ -281,7 +280,7 @@ impl CategoryBudget for LedgerPorts<'_> {
                 &lib_database::budget_categories(categories),
                 category,
                 amount.cloned(),
-                self.today,
+                self.clock.today(),
             )
             .map(|_| ())
             .map_err(budget_refusal)
@@ -301,17 +300,18 @@ impl CategoryBudget for LedgerPorts<'_> {
             PERSONAL_SPENDING_ID,
             category,
             amount,
-            self.today,
+            self.clock.today(),
         );
         self.announce(Domain::Budgets);
         saved.map(|_| ()).map_err(budget_refusal)
     }
 
     fn parent_stop(&self, category: CategoryId) -> Option<ParentStop> {
-        let budgets = self.budgets().budgeting(category, self.today);
+        let today = self.clock.today();
+        let budgets = self.budgets().budgeting(category, today);
         (budgets > 0).then_some(ParentStop {
             budgets,
-            month: self.today.month(),
+            month: today.month(),
         })
     }
 
@@ -321,7 +321,7 @@ impl CategoryBudget for LedgerPorts<'_> {
         crate::budgets::ports::stop_new_parent(
             &mut *self.stores.budgets.borrow_mut(),
             parent,
-            self.today,
+            self.clock.today(),
         );
         self.announce(Domain::Budgets);
     }
@@ -344,6 +344,7 @@ impl CategoryHandover for LedgerPorts<'_> {
 
 #[cfg(test)]
 mod tests {
+    use chrono::NaiveDate;
     use gpui::{AppContext as _, TestAppContext};
 
     use super::*;
@@ -383,7 +384,6 @@ mod tests {
             let mut ports = LedgerPorts {
                 stores: &stores,
                 announcer: &announcer,
-                today: today(),
                 clock: Clock::fixed(today()),
                 cx,
             };
@@ -411,6 +411,58 @@ mod tests {
     }
 
     #[gpui::test]
+    fn a_save_after_the_month_turns_starts_in_the_new_month(cx: &mut TestAppContext) {
+        let october = today();
+        let (clock, day) = Clock::settable(october);
+        let stores = crate::shell::router::LedgerStores::sample(october).category_stores();
+        let announcer = cx.new(|_| Announcer::default());
+        let categories = lib_categories::sample_categories();
+        let groceries = lib_categories::find_by_name(&categories, "Groceries").expect("seeded");
+        let months = |stores: &CategoryStores| -> Vec<(i32, u32)> {
+            stores
+                .budgets
+                .borrow()
+                .budgets()
+                .budget(PERSONAL_SPENDING_ID)
+                .expect("the Personal spending Budget")
+                .limits
+                .get(&groceries)
+                .map(|records| {
+                    records
+                        .iter()
+                        .map(|record| (record.month.year, record.month.month))
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        let before = months(&stores);
+
+        day.set(NaiveDate::from_ymd_opt(2026, 11, 2).expect("a real date"));
+        cx.update(|cx| {
+            let mut ports = LedgerPorts {
+                stores: &stores,
+                announcer: &announcer,
+                clock,
+                cx,
+            };
+            ports
+                .set_monthly_budget(groceries, Some("612".parse().expect("an amount")))
+                .expect("a leaf Expense");
+        });
+
+        let after = months(&stores);
+        assert!(
+            after.contains(&(2026, 11)),
+            "November starts a record: {after:?}"
+        );
+        assert_eq!(
+            after.iter().filter(|&&month| month < (2026, 11)).count(),
+            before.len(),
+            "October's and earlier records are untouched: {after:?}"
+        );
+    }
+
+    #[gpui::test]
     fn a_new_parent_is_stopped_in_every_active_budget_through_the_store(cx: &mut TestAppContext) {
         let stores = crate::shell::router::LedgerStores::sample(today()).category_stores();
         let announcer = cx.new(|_| Announcer::default());
@@ -421,7 +473,6 @@ mod tests {
             let mut ports = LedgerPorts {
                 stores: &stores,
                 announcer: &announcer,
-                today: today(),
                 clock: Clock::fixed(today()),
                 cx,
             };
@@ -457,7 +508,6 @@ mod tests {
             let mut ports = LedgerPorts {
                 stores: &stores,
                 announcer: &announcer,
-                today: today(),
                 clock: Clock::fixed(today()),
                 cx,
             };
@@ -491,17 +541,15 @@ mod tests {
             LedgerPorts {
                 stores: &stores,
                 announcer: &announcer,
-                today: next_month,
                 clock: Clock::fixed(next_month),
                 cx,
             }
             .stop_new_parent(groceries);
 
-            // The page was built in October and never rebuilt: only the Clock moves.
+            // Only the Clock moves; nothing is rebuilt.
             let ports = LedgerPorts {
                 stores: &stores,
                 announcer: &announcer,
-                today: today(),
                 clock,
                 cx,
             };

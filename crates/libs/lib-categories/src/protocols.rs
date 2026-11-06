@@ -111,9 +111,13 @@ pub struct ParentStop {
 /// The one Budget the Add and Edit Dialogs read and save a Category's Monthly budget in (the
 /// Desktop's Personal spending Budget), held by the Budgets domain. A save checks before it
 /// writes, so a refused budget leaves the Category unwritten too.
+///
+/// The port answers as of the day it is called. A Dialog reads its field when it opens and saves
+/// as of the day it is confirmed, so one left open across a month turn may show the month before
+/// while its save still starts in the new month, never in a closed one (ADR-0028).
 pub trait CategoryBudget {
     /// The field for `category` (`None` while adding) in `categories`: a parent's is the sum of its
-    /// leaves'.
+    /// leaves'. Read when the Dialog opens.
     fn monthly_budget(
         &self,
         categories: &[Category],

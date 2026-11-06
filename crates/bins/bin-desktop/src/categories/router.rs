@@ -4,7 +4,6 @@
 //! (`crate::notices`), which the input's `send` drains. The Delete category Dialog is the Category
 //! Deletion module's (`crate::category_deletion`, #1005), opened through its entry point.
 
-use chrono::NaiveDate;
 use gpui::{Context, Entity};
 use lib_categories::{CategoriesDialog as Which, CategoriesOutcome, CategoriesRouter};
 use lib_core::Clock;
@@ -23,7 +22,6 @@ pub(super) struct PageRouter<'a, 'b> {
     pub deletion: DeletionStores,
     pub stores: crate::categories::ports::CategoryStores,
     pub announcer: Entity<Announcer>,
-    pub today: NaiveDate,
     pub clock: Clock,
     pub cx: &'a mut Context<'b, CategoriesPage>,
 }
@@ -57,7 +55,6 @@ impl CategoriesRouter for PageRouter<'_, '_> {
             PortsOn {
                 stores: self.stores.clone(),
                 announcer: self.announcer.clone(),
-                today: self.today,
                 clock: self.clock.clone(),
             },
             landed,
@@ -78,7 +75,7 @@ impl Notify for PageRouter<'_, '_> {
 }
 
 /// The Categories module's entry point: its Settings page, built on `setup`'s store, with the
-/// Monthly budget read as of `clock`'s day, which the Settings View hosts as any other page.
+/// Monthly budget read as of the day `clock` reads on each call, which the Settings View hosts as any other page.
 pub fn categories_page(
     setup: CategoriesSetup,
     announcer: Entity<Announcer>,
@@ -86,6 +83,5 @@ pub fn categories_page(
     cx: &mut gpui::App,
 ) -> Entity<CategoriesPage> {
     use gpui::AppContext as _;
-    let today = clock.today();
-    cx.new(|cx| CategoriesPage::new(setup, announcer, today, clock.clone(), cx))
+    cx.new(|cx| CategoriesPage::new(setup, announcer, clock.clone(), cx))
 }

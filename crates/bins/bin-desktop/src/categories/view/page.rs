@@ -7,7 +7,6 @@
 mod render;
 
 use crate::announcer::Domain;
-use chrono::NaiveDate;
 use gpui::{AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Subscription};
 use lib_categories::presenter::{
     CategoriesPageEvent, CategoriesPagePresenter, CategoriesPageViewModel,
@@ -46,8 +45,6 @@ pub struct CategoriesPage {
     stores: ports::CategoryStores,
     announcer: Entity<Announcer>,
     keymap: Keymap<CategoriesPageEvent>,
-    /// "Today" for the Monthly budget a Dialog shows, read once when the Shell is built.
-    today: NaiveDate,
     clock: Clock,
     /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
     /// draws the page.
@@ -60,7 +57,6 @@ impl CategoriesPage {
     pub fn new(
         setup: CategoriesSetup,
         announcer: Entity<Announcer>,
-        today: NaiveDate,
         clock: Clock,
         cx: &mut Context<'_, Self>,
     ) -> Self {
@@ -73,7 +69,6 @@ impl CategoriesPage {
             _categories_changed: notify_on(&announcer, Domain::Categories, cx),
             announcer,
             keymap: setup.keymap,
-            today,
             clock,
             page_focused: false,
         }
@@ -103,7 +98,6 @@ impl CategoriesPage {
             deletion: self.deletion.clone(),
             stores: self.stores.clone(),
             announcer: self.announcer.clone(),
-            today: self.today,
             clock: self.clock.clone(),
             cx,
         };
@@ -159,7 +153,25 @@ impl PageSnapshot for SettingsCategoriesSnapshot {
     fn read(page: &CategoriesPage, _cx: &App) -> Self {
         let categories = page.categories.borrow().categories();
         let selected = page.view_model().selected;
+        let selected_budget_months = selected
+            .and_then(|id| {
+                let budget = page
+                    .stores
+                    .budgets
+                    .borrow()
+                    .budgets()
+                    .budget(crate::budgets::PERSONAL_SPENDING_ID)?;
+                let records = budget.limits.get(&id)?;
+                Some(
+                    records
+                        .iter()
+                        .map(|record| (record.month.year, record.month.month))
+                        .collect(),
+                )
+            })
+            .unwrap_or_default();
         SettingsCategoriesSnapshot {
+            selected_budget_months,
             selected_category: categories
                 .iter()
                 .find(|category| Some(category.id) == selected)

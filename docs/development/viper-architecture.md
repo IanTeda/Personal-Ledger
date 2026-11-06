@@ -327,15 +327,14 @@ A domain's tickets link here rather than restate these steps. The worked example
 
 ## During the transition
 
-What still stands in is the Categories page's built-on day ([#783](https://github.com/IanTeda/Personal-Ledger/issues/783)) and the TUI's own ([#805](https://github.com/IanTeda/Personal-Ledger/issues/805)), each removed when its condition is met.
+What still stands in is the TUI's own ([#805](https://github.com/IanTeda/Personal-Ledger/issues/805)), removed when its condition is met.
 
 | Stand-in | Why | Removed when |
 |---|---|---|
-| The Categories page and its ports keep the day they were built on (`LedgerPorts::today`) | The Monthly budget in the Personal spending Budget is read as of that day, so it doesn't follow a month turn | #783 anchors the Monthly budget on the Clock ([#783](https://github.com/IanTeda/Personal-Ledger/issues/783)) |
 | The TUI's Router turns a status into an Info Toast | The TUI has no `lib-shell` Presenter | The TUI's redesign ([#805](https://github.com/IanTeda/Personal-Ledger/issues/805)) |
 | The TUI's Units ports hold the commit and commit after each `handle` (`bin-tui/src/units/ports.rs`); it builds on `Stores` but has no `send` | The TUI's redesign and its own `input.rs` are their own ticket ([#805](https://github.com/IanTeda/Personal-Ledger/issues/805)) | The TUI's `input.rs` commits after each input |
 | The TUI's keys reach the Units keymap through `shell.rs`, and its Units View maps the arrows, Home/End and Page keys to `Move` itself | The TUI has no `input.rs` yet | The TUI's redesign gives it one ([#805](https://github.com/IanTeda/Personal-Ledger/issues/805)) |
 
-The slices left are on the transition map ([#747](https://github.com/IanTeda/Personal-Ledger/issues/747)): the Monthly budget anchored on the Clock ([#783](https://github.com/IanTeda/Personal-Ledger/issues/783)), and the TUI rows in its redesign ([#805](https://github.com/IanTeda/Personal-Ledger/issues/805)). Each slice removes the rows above whose condition it meets.
+The slice left is on the transition map ([#747](https://github.com/IanTeda/Personal-Ledger/issues/747)): the TUI rows in its redesign ([#805](https://github.com/IanTeda/Personal-Ledger/issues/805)). It removes the rows above whose condition it meets.
 
 The TUI waits for its redesign ([#805](https://github.com/IanTeda/Personal-Ledger/issues/805)), after the Desktop concept works. Until then it only keeps building, with the minimal edits a change to a shared trait forces, and nothing new moves on it.
