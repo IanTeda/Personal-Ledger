@@ -86,7 +86,7 @@ impl AccountsPage {
     /// in line with whatever it wrote. Inside an input already, as [`Self::send`] or a Dialog's
     /// confirm.
     fn handle(&mut self, event: AccountsPageEvent, cx: &mut Context<'_, Self>) {
-        ports::refresh(&self.ledger, cx);
+        ports::refresh(&self.ports, &self.ledger, cx);
         let mut router = PageRouter {
             ports: self.ports.clone(),
             ledger: self.ledger.clone(),
@@ -95,7 +95,7 @@ impl AccountsPage {
             cx,
         };
         self.presenter.handle(event, &mut router);
-        ports::refresh(&self.ledger, cx);
+        ports::refresh(&self.ports, &self.ledger, cx);
         cx.notify();
     }
 

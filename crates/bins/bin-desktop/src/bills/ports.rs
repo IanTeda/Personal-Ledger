@@ -230,10 +230,9 @@ mod tests {
         let ports = LedgerBackedPorts::in_memory(
             &ledger,
             payees(&ledger),
-            crate::accounts::LedgerBackedPorts::in_memory(
+            crate::accounts::LedgerBackedPorts::in_memory(crate::accounts::ports::in_memory_reads(
                 &ledger,
-                crate::accounts::ports::in_memory_reads(&ledger),
-            ),
+            )),
             categories(&ledger),
             transactions(&ledger),
             in_memory_units(chrono::Utc::now()),
@@ -270,10 +269,9 @@ mod tests {
         let ports = LedgerBackedPorts::in_memory(
             &ledger,
             store.clone(),
-            crate::accounts::LedgerBackedPorts::in_memory(
+            crate::accounts::LedgerBackedPorts::in_memory(crate::accounts::ports::in_memory_reads(
                 &ledger,
-                crate::accounts::ports::in_memory_reads(&ledger),
-            ),
+            )),
             categories(&ledger),
             transactions(&ledger),
             in_memory_units(chrono::Utc::now()),
@@ -289,9 +287,8 @@ mod tests {
 
     #[test]
     fn the_accounts_are_read_from_the_accounts_store_not_copied_from_the_ledger() {
-        let (mut ledger, _) = stub();
+        let (ledger, _) = stub();
         let store = crate::accounts::LedgerBackedPorts::in_memory(
-            &ledger,
             crate::accounts::ports::in_memory_reads(&ledger),
         );
         let ports = LedgerBackedPorts::in_memory(
@@ -302,13 +299,12 @@ mod tests {
             transactions(&ledger),
             in_memory_units(chrono::Utc::now()),
         );
-        let mut renamed = ledger.accounts()[1].clone();
+        let mut renamed = lib_accounts::default_accounts()[1].clone();
         renamed.name = "Renamed in the store".into();
         store
             .borrow_mut()
             .accounts_mut()
             .upsert_account(renamed.clone());
-        ledger.refresh_accounts(Vec::new());
 
         let read = ports.borrow().accounts().bill_accounts();
         assert_eq!(read.len(), store.borrow().accounts().accounts().len());
@@ -322,10 +318,9 @@ mod tests {
         let ports = LedgerBackedPorts::in_memory(
             &ledger,
             payees(&ledger),
-            crate::accounts::LedgerBackedPorts::in_memory(
+            crate::accounts::LedgerBackedPorts::in_memory(crate::accounts::ports::in_memory_reads(
                 &ledger,
-                crate::accounts::ports::in_memory_reads(&ledger),
-            ),
+            )),
             store.clone(),
             transactions(&ledger),
             in_memory_units(chrono::Utc::now()),
@@ -350,10 +345,9 @@ mod tests {
         let ports = LedgerBackedPorts::in_memory(
             &ledger,
             payees(&ledger),
-            crate::accounts::LedgerBackedPorts::in_memory(
+            crate::accounts::LedgerBackedPorts::in_memory(crate::accounts::ports::in_memory_reads(
                 &ledger,
-                crate::accounts::ports::in_memory_reads(&ledger),
-            ),
+            )),
             categories(&ledger),
             store.clone(),
             in_memory_units(chrono::Utc::now()),
@@ -383,7 +377,7 @@ mod tests {
 
     #[test]
     fn the_reads_are_the_ledgers() {
-        let (ledger, ports) = stub();
+        let (_ledger, ports) = stub();
         let ports = ports.borrow();
         let ids: Vec<_> = ports
             .accounts()
@@ -393,7 +387,10 @@ mod tests {
             .collect();
         assert_eq!(
             ids,
-            ledger.accounts().iter().map(|a| a.id).collect::<Vec<_>>()
+            lib_accounts::default_accounts()
+                .iter()
+                .map(|a| a.id)
+                .collect::<Vec<_>>()
         );
         let base = ports.units().base_unit();
         assert_eq!(base, Some(lib_core::UnitId::SEED_AUD));

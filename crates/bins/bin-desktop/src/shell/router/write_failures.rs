@@ -129,7 +129,7 @@ fn reload(
         },
         Domain::Accounts => Reload {
             name: "Accounts",
-            reloaded: ledger.update(cx, |store, cx| store.reload_accounts(cx)),
+            reloaded: crate::accounts::ports::reload(ledger, cx),
             restored: crate::msg::desktop_toast_write_failed_accounts,
             unsaved: crate::msg::desktop_toast_write_failed_accounts_unsaved,
         },

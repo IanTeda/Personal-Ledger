@@ -1,6 +1,5 @@
 //! The Ledger aggregate: every domain collection, joined into one stub dataset.
 
-mod account_reads;
 mod account_usage;
 mod bill_reads;
 #[cfg(test)]

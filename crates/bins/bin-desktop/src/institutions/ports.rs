@@ -170,7 +170,6 @@ mod tests {
 
     fn ports(ledger: &Ledger) -> DesktopPorts {
         let accounts = crate::accounts::LedgerBackedPorts::in_memory(
-            ledger,
             crate::accounts::ports::in_memory_reads(ledger),
         );
         LedgerBackedPorts::shared(

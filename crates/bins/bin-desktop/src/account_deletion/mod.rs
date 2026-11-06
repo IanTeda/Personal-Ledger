@@ -75,13 +75,11 @@ impl DeletionStores {
     }
 }
 
-/// Brings the Ledger's Accounts read copy in line after a confirm and announces the Transactions
-/// and the Bills, so the Accounts page, the Transactions View, the Dashboard and the Bills page
+/// Announces the Accounts when a confirm wrote them, and the Transactions and the Bills, so the Accounts page, the Transactions View, the Dashboard and the Bills page
 /// see the delete at once. The confirm's input commits it.
 pub(crate) fn refresh(ledger: &Entity<LedgerStore>, cx: &mut App) {
-    ledger.update(cx, |store, cx| {
-        store.refresh_accounts(cx);
-        store.announce_transactions(cx);
-    });
+    let accounts = ledger.read(cx).accounts_ports().clone();
+    crate::accounts::ports::refresh(&accounts, ledger, cx);
+    ledger.update(cx, |store, cx| store.announce_transactions(cx));
     crate::bills::ports::announce(ledger, cx);
 }
