@@ -592,7 +592,7 @@ mod tests {
     use super::*;
     use crate::fake::{InMemoryPorts, RecordingRouter, Routed};
     use crate::keymap::budgets_page_keymap;
-    use crate::presenter::test_support::{clock, date, stub, today};
+    use crate::presenter::test_support::{clock, date, sample, today};
     use crate::{Span, applied};
 
     pub(crate) struct Page {
@@ -604,7 +604,7 @@ mod tests {
 
     impl Page {
         pub fn new() -> Self {
-            let (ports, shared) = stub();
+            let (ports, shared) = sample();
             let (day, clock) = clock();
             let keymap = budgets_page_keymap(&KeyBindingConfig::default());
             Self {
@@ -933,7 +933,7 @@ mod tests {
 
     #[test]
     fn an_override_shows_in_the_legend() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut config = KeyBindingConfig::default();
         config
             .bindings

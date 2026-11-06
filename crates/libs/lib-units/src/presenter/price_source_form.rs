@@ -565,7 +565,7 @@ impl PriceSourceFormPresenter {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::{hints, pairs, stub};
+    use super::super::test_support::{hints, pairs, sample};
     use super::*;
     use crate::fake::{RecordingRouter, RouterCall};
     use crate::{BuiltInOverride, COINGECKO, CustomSource, MANUAL_ENTRY, PriceSourceRecord};
@@ -608,7 +608,7 @@ mod tests {
 
     #[test]
     fn a_custom_source_needs_its_name_address_request_and_price_path_and_saves_trimmed() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut form = PriceSourceFormPresenter::add(shared);
         assert!(!form.view_model().frame.can_confirm);
         assert_eq!(form.view_model().frame.title, "Add price source");
@@ -635,7 +635,7 @@ mod tests {
 
     #[test]
     fn api_key_authentication_shows_the_key_fields_and_needs_them_on_a_new_source() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut form = PriceSourceFormPresenter::add(shared);
         send(&mut form, filled());
         assert!(form.view_model().endpoint.unwrap().key_param.is_none());
@@ -673,7 +673,7 @@ mod tests {
 
     #[test]
     fn tab_skips_the_hidden_key_fields_and_choosing_none_moves_focus_off_them() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut form = PriceSourceFormPresenter::add(shared);
         send(
             &mut form,
@@ -698,7 +698,7 @@ mod tests {
 
     #[test]
     fn editing_a_built_in_saves_only_its_name_and_updates_and_shows_its_endpoint_read_only() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         ports.borrow_mut().units.units[1].link.source_id = COINGECKO;
         let mut form = PriceSourceFormPresenter::edit(shared, COINGECKO).unwrap();
         let view = form.view_model();
@@ -735,7 +735,7 @@ mod tests {
 
     #[test]
     fn editing_a_custom_source_prefills_all_but_the_key_and_needs_no_key_retyped() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut add = PriceSourceFormPresenter::add(shared.clone());
         let mut events = filled();
         events.extend([
@@ -776,7 +776,7 @@ mod tests {
 
     #[test]
     fn manual_entry_has_no_edit_form_and_a_source_removed_under_one_is_refused_as_text() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         assert!(PriceSourceFormPresenter::edit(shared.clone(), MANUAL_ENTRY).is_none());
 
         let mut add = PriceSourceFormPresenter::add(shared.clone());
@@ -796,7 +796,7 @@ mod tests {
 
     #[test]
     fn the_form_takes_next_field_choose_and_cancel() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let view = PriceSourceFormPresenter::add(shared).view_model();
 
         assert_eq!(
@@ -811,7 +811,7 @@ mod tests {
 
     #[test]
     fn dialog_input_types_into_a_text_field_and_left_right_step_updates_swallowing_typing() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut form = PriceSourceFormPresenter::add(shared);
         send(
             &mut form,
@@ -836,7 +836,7 @@ mod tests {
 
     #[test]
     fn a_typed_api_key_is_held_and_saved_but_never_shown() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut form = PriceSourceFormPresenter::add(shared);
         let mut events = filled();
         events.push(PriceSourceFormEvent::Auth(AuthChoice::ApiKey));

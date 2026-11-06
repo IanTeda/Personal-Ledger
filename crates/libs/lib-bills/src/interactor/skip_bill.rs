@@ -41,12 +41,12 @@ mod tests {
     use lib_core::BillPlanId;
 
     use super::*;
-    use crate::interactor::test_support::{cents, date, entry_of, stub, today};
+    use crate::interactor::test_support::{cents, date, entry_of, sample, today};
     use crate::{Resolution, entry};
 
     #[test]
     fn skipping_keeps_the_planned_amount_as_it_was() {
-        let mut ports = stub();
+        let mut ports = sample();
         let origin = entry_of(&ports, "Origin Energy", date(2026, 9, 24));
 
         SkipBill { entry: origin }
@@ -63,7 +63,7 @@ mod tests {
 
     #[test]
     fn a_settled_or_missing_entry_is_refused_and_nothing_is_written() {
-        let mut ports = stub();
+        let mut ports = sample();
         let origin = entry_of(&ports, "Origin Energy", date(2026, 9, 24));
         SkipBill { entry: origin }
             .run(&mut ports.bills)

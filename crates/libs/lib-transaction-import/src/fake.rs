@@ -68,13 +68,13 @@ impl ImportCategories for InMemoryImportReads {
     }
 }
 
-/// The stub Import's ports over one in-memory store, with the seeded statement dated back from
+/// The sample Import's ports over one in-memory store, with the seeded statement dated back from
 /// `today`, and that store, for a test to read what a commit wrote. The statement's Account is the
-/// stub's active "ANZ Everyday".
+/// sample's active "ANZ Everyday".
 pub fn stub_ports(today: NaiveDate) -> (ImportPorts, Rc<RefCell<InMemoryImport>>) {
     let store = Rc::new(RefCell::new(InMemoryImport {
         payees: InMemoryPayees {
-            payees: lib_payees::default_payees(),
+            payees: lib_payees::sample_payees(),
         },
         ..InMemoryImport::default()
     }));
@@ -83,7 +83,7 @@ pub fn stub_ports(today: NaiveDate) -> (ImportPorts, Rc<RefCell<InMemoryImport>>
             id: SeededStatement::STUB_ACCOUNT,
             is_active: true,
         }],
-        categories: lib_payees::fake::stub_categories(),
+        categories: lib_payees::fake::sample_categories(),
     });
     let ports = ImportPorts {
         import: store.clone(),
@@ -129,18 +129,18 @@ mod tests {
         };
         let reads = InMemoryImportReads {
             accounts: vec![everyday.clone()],
-            categories: lib_payees::fake::stub_categories(),
+            categories: lib_payees::fake::sample_categories(),
         };
         assert_eq!(reads.import_account(AccountId::seed(2)), Some(everyday));
         assert_eq!(reads.import_account(AccountId::seed(9)), None);
         assert_eq!(
             reads.import_categories(),
-            lib_payees::fake::stub_categories()
+            lib_payees::fake::sample_categories()
         );
 
         let import = InMemoryImport {
             payees: InMemoryPayees {
-                payees: lib_payees::default_payees(),
+                payees: lib_payees::sample_payees(),
             },
             ..InMemoryImport::default()
         };

@@ -33,13 +33,13 @@ mod tests {
     use crate::NameError;
     use crate::fake::InMemoryInventory;
 
-    fn stub() -> InMemoryInventory {
-        InMemoryInventory::stub(chrono::NaiveDate::from_ymd_opt(2026, 10, 2).expect("a date"))
+    fn sample() -> InMemoryInventory {
+        InMemoryInventory::sample(chrono::NaiveDate::from_ymd_opt(2026, 10, 2).expect("a date"))
     }
 
     #[test]
     fn an_area_lands_last_and_a_taken_name_is_refused() {
-        let mut inventory = stub();
+        let mut inventory = sample();
         let location = inventory.locations()[0].id;
         let id = AddArea {
             location,

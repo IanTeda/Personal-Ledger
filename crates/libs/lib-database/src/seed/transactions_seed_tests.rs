@@ -1,6 +1,6 @@
-//! The stub Transactions seed's tests that read the other domains' stubs: the generated history
-//! over the stub Accounts and the Category, Payee and Tag names it books by, the rows the Bills and
-//! Documents stubs name, and each Account's counted Transactions. Here, beside the joined Sample Ledger,
+//! The sample Transactions seed's tests that read the other domains' samples: the generated history
+//! over the sample Accounts and the Category, Payee and Tag names it books by, the rows the Bills and
+//! Documents samples name, and each Account's counted Transactions. Here, beside the joined Sample Ledger,
 //! since `lib-transactions` depends on no other domain (moved from `lib-ledger`, #1056).
 
 use bigdecimal::BigDecimal;
@@ -8,11 +8,11 @@ use chrono::Duration;
 use lib_core::{Money, TransactionStatus};
 use lib_transactions::Split;
 
-use lib_accounts::{Account, default_accounts};
-use lib_categories::{self as categories, Category, default_categories};
-use lib_payees::{self as payees, Payee, default_payees};
-use lib_tags::{self as tags, Tag, default_tags};
-use lib_transactions::fake::{FIRST_BOOKED, HISTORY_DAYS, stub_transaction_count};
+use lib_accounts::{Account, sample_accounts};
+use lib_categories::{self as categories, Category, sample_categories};
+use lib_payees::{self as payees, Payee, sample_payees};
+use lib_tags::{self as tags, Tag, sample_tags};
+use lib_transactions::fake::{FIRST_BOOKED, HISTORY_DAYS, sample_transaction_count};
 
 use super::*;
 
@@ -34,11 +34,11 @@ type Seed = (
 );
 
 fn seed() -> Seed {
-    let accounts = default_accounts();
-    let categories = default_categories();
-    let payees = default_payees();
-    let tags = default_tags();
-    let transactions = default_transactions(&accounts, &categories, &payees, &tags, today());
+    let accounts = sample_accounts();
+    let categories = sample_categories();
+    let payees = sample_payees();
+    let tags = sample_tags();
+    let transactions = sample_transaction_history(&accounts, &categories, &payees, &tags, today());
     (accounts, categories, payees, tags, transactions)
 }
 
@@ -49,8 +49,8 @@ fn count_for(transactions: &[Transaction], accounts: &[Account], name: &str) -> 
 
 #[test]
 fn every_payees_default_category_is_a_leaf() {
-    let categories = default_categories();
-    for payee in default_payees() {
+    let categories = sample_categories();
+    for payee in sample_payees() {
         if let Some(category) = payee.default_category {
             assert!(
                 lib_categories::is_leaf(&categories, category),
@@ -62,9 +62,9 @@ fn every_payees_default_category_is_a_leaf() {
 }
 
 #[test]
-fn every_stub_account_names_a_stub_institution() {
-    let institutions = lib_institutions::default_institutions();
-    for account in default_accounts() {
+fn every_sample_account_names_a_sample_institution() {
+    let institutions = lib_institutions::sample_institutions();
+    for account in sample_accounts() {
         assert!(
             lib_institutions::get(&institutions, account.institution).is_some(),
             "{} names an unknown Institution",
@@ -74,7 +74,7 @@ fn every_stub_account_names_a_stub_institution() {
 }
 
 #[test]
-fn per_account_counts_match_the_accounts_stub() {
+fn per_account_counts_match_the_accounts_sample() {
     let (accounts, _, _, _, transactions) = seed();
     assert_eq!(count_for(&transactions, &accounts, "Wallet"), 96);
     assert_eq!(count_for(&transactions, &accounts, "ANZ Everyday"), 312);
@@ -102,7 +102,7 @@ fn the_seed_is_deterministic() {
 fn a_different_today_shifts_the_dates_but_not_the_shape() {
     let (accounts, categories, payees, tags, first) = seed();
     let later = today() + Duration::days(10);
-    let second = default_transactions(&accounts, &categories, &payees, &tags, later);
+    let second = sample_transaction_history(&accounts, &categories, &payees, &tags, later);
     assert_eq!(first.len(), second.len());
     assert_eq!(first[0].date + Duration::days(10), second[0].date);
 }
@@ -301,17 +301,17 @@ fn wallet_amounts_are_scaled_down() {
 
 #[test]
 fn a_smaller_transaction_count_keeps_the_specials_first_and_the_total_exact() {
-    let accounts = default_accounts();
-    let categories = default_categories();
-    let payees = default_payees();
-    let tags = default_tags();
+    let accounts = sample_accounts();
+    let categories = sample_categories();
+    let payees = sample_payees();
+    let tags = sample_tags();
     let transactions = counted_transactions(
         &accounts,
         |id| {
             if id == AccountId::seed(2) {
                 3
             } else {
-                stub_transaction_count(id)
+                sample_transaction_count(id)
             }
         },
         &categories,
@@ -322,21 +322,21 @@ fn a_smaller_transaction_count_keeps_the_specials_first_and_the_total_exact() {
     assert_eq!(count_for(&transactions, &accounts, "ANZ Everyday"), 3);
 }
 
-/// `lib-transactions`' stub, as `lib-database` seeds it, holds every Transaction the other
+/// `lib-transactions`' sample, as `lib-database` seeds it, holds every Transaction the other
 /// domains' seeds name: each Paid entry's, which carries its Bill Plan's Account, Category,
 /// Payee and name, and each Document Link's.
 #[test]
-fn every_paid_entry_and_document_link_names_a_stub_transaction() {
-    let accounts = default_accounts();
-    let categories = default_categories();
-    let payees = default_payees();
+fn every_paid_entry_and_document_link_names_a_sample_transaction() {
+    let accounts = sample_accounts();
+    let categories = sample_categories();
+    let payees = sample_payees();
     let transactions = sample_transactions(today());
     let bills = sample_bills(today());
     assert_eq!(
         FIRST_BOOKED,
         TransactionId::seed(
-            default_transactions(&accounts, &categories, &payees, &default_tags(), today()).len()
-                as u32
+            sample_transaction_history(&accounts, &categories, &payees, &sample_tags(), today())
+                .len() as u32
                 + 1
         )
     );
@@ -357,7 +357,7 @@ fn every_paid_entry_and_document_link_names_a_stub_transaction() {
         assert_eq!(paid_by.payee_id, plan.payee_id, "{}", plan.name);
         assert_eq!(transaction.description.as_ref(), Some(&plan.name));
     }
-    assert_eq!(paid, 67, "the stub Bills' Paid entries");
+    assert_eq!(paid, 67, "the sample Bills' Paid entries");
 
     let links: Vec<_> = sample_documents(today(), &sample_institutions())
         .iter()
@@ -371,7 +371,7 @@ fn every_paid_entry_and_document_link_names_a_stub_transaction() {
     for id in links {
         assert!(
             named(id).is_some(),
-            "a Document links {id}, not in the stub"
+            "a Document links {id}, not in the sample"
         );
     }
 }
@@ -379,19 +379,19 @@ fn every_paid_entry_and_document_link_names_a_stub_transaction() {
 #[test]
 fn an_account_with_no_transaction_count_gets_none() {
     let transactions = counted_transactions(
-        &default_accounts(),
+        &sample_accounts(),
         |_| 0,
-        &default_categories(),
-        &default_payees(),
-        &default_tags(),
+        &sample_categories(),
+        &sample_payees(),
+        &sample_tags(),
         today(),
     );
     assert!(transactions.is_empty());
 }
 
-/// Every id a Transaction names must resolve in the stub, or a View would render a dangling row.
+/// Every id a Transaction names must resolve in the sample, or a View would render a dangling row.
 #[test]
-fn every_transaction_reference_resolves_in_the_stub() {
+fn every_transaction_reference_resolves_in_the_sample() {
     let (accounts, categories, payees, tags) = (
         sample_accounts(),
         sample_categories(),
@@ -413,7 +413,7 @@ fn every_transaction_reference_resolves_in_the_stub() {
 }
 
 #[test]
-fn the_stubs_accounts_count_their_transactions() {
+fn the_samples_accounts_count_their_transactions() {
     let transactions = sample_transactions(today());
     for account in sample_accounts() {
         let booked = transactions

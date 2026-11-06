@@ -34,8 +34,9 @@ mod tests {
 
     #[test]
     fn a_rename_keeps_the_id_and_the_items() {
-        let mut inventory =
-            InMemoryInventory::stub(chrono::NaiveDate::from_ymd_opt(2026, 10, 2).expect("a date"));
+        let mut inventory = InMemoryInventory::sample(
+            chrono::NaiveDate::from_ymd_opt(2026, 10, 2).expect("a date"),
+        );
         let area = inventory.locations()[0].areas[0].clone();
         let items = inventory.items();
 

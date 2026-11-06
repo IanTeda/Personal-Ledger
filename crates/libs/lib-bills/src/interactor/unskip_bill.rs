@@ -38,12 +38,12 @@ impl UnskipBill {
 mod tests {
     use super::*;
     use crate::interactor::SkipBill;
-    use crate::interactor::test_support::{date, entry_of, stub, today};
+    use crate::interactor::test_support::{date, entry_of, sample, today};
     use crate::{BillStatus, entry, status};
 
     #[test]
     fn unskipping_returns_the_entry_to_its_status() {
-        let mut ports = stub();
+        let mut ports = sample();
         let origin = entry_of(&ports, "Origin Energy", date(2026, 9, 24));
         SkipBill { entry: origin }
             .run(&mut ports.bills)
@@ -59,7 +59,7 @@ mod tests {
 
     #[test]
     fn an_entry_that_isnt_skipped_is_refused_and_nothing_is_written() {
-        let mut ports = stub();
+        let mut ports = sample();
         let origin = entry_of(&ports, "Origin Energy", date(2026, 9, 24));
         let before = ports.bills.clone();
 

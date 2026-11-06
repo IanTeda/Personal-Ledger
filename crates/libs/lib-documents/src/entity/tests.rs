@@ -53,7 +53,7 @@ fn payee(id: u32, name: &str, aliases: &[&str]) -> DocumentPayee {
     }
 }
 
-/// Woolworths and Cafe Vittoria as the Payees' stub seeds them, and an inactive Payee whose alias
+/// Woolworths and Cafe Vittoria as the Payees' sample seeds them, and an inactive Payee whose alias
 /// the ATO's merchant would match.
 fn payees() -> Vec<DocumentPayee> {
     let mut retired = payee(30, "Taxation", &["AUSTRALIAN TAXATION"]);

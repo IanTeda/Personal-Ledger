@@ -65,7 +65,7 @@ impl<Row, Reads> lib_transactions::contract::ReadsFactory<Row>
 pub(crate) fn store_sample_references(writer: &Writer) {
     crate::UnitsAdapter::seed_from(
         writer,
-        lib_units::fake::InMemoryPorts::stub(chrono::Utc::now()),
+        lib_units::fake::InMemoryPorts::sample(chrono::Utc::now()),
     )
     .expect("the sample Units are written");
     crate::InstitutionsAdapter::seed(writer, crate::seed::sample_institutions())
@@ -224,7 +224,7 @@ pub(crate) fn transaction_reads(pending: PendingWrites) -> crate::StoredTransact
         // The Units of a file with none stored are none, which only the Units check reads.
         units: match crate::UnitsAdapter::load(pending) {
             Ok(units) => Rc::new(RefCell::new(units)),
-            Err(_) => Rc::new(RefCell::new(lib_units::fake::InMemoryPorts::stub(
+            Err(_) => Rc::new(RefCell::new(lib_units::fake::InMemoryPorts::sample(
                 chrono::Utc::now(),
             ))),
         },

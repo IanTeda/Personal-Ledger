@@ -396,7 +396,7 @@ fn refusal_text(error: &InstitutionError) -> String {
 mod tests {
     use super::*;
     use crate::fake::{RecordingRouter, RouterCall};
-    use crate::presenter::test_support::stub;
+    use crate::presenter::test_support::sample;
 
     struct Form {
         presenter: InstitutionFormPresenter,
@@ -406,7 +406,7 @@ mod tests {
 
     impl Form {
         fn new() -> Self {
-            let (ports, shared) = stub();
+            let (ports, shared) = sample();
             Self {
                 presenter: InstitutionFormPresenter::add(shared),
                 ports,
@@ -486,7 +486,7 @@ mod tests {
             .map(InstitutionProduct::canonical)
             .collect();
 
-        for institution in crate::default_institutions() {
+        for institution in crate::sample_institutions() {
             for product in institution.products.split(" \u{b7} ") {
                 assert!(
                     labels.contains(&product),
@@ -568,9 +568,9 @@ mod tests {
     }
 
     fn edit_form(id: InstitutionId) -> Form {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         Form {
-            presenter: InstitutionFormPresenter::edit(shared, id).expect("a stub Institution"),
+            presenter: InstitutionFormPresenter::edit(shared, id).expect("a sample Institution"),
             ports,
             router: RecordingRouter::default(),
         }
@@ -599,7 +599,7 @@ mod tests {
 
     #[test]
     fn edit_keeps_a_part_that_is_no_chip_and_the_stored_order() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let id = InstitutionId::SEED_ANZ;
         ports
             .borrow_mut()
@@ -610,7 +610,7 @@ mod tests {
             .expect("the ANZ row")
             .products = "wealth \u{b7} offset \u{b7} savings".to_string();
         let mut form = Form {
-            presenter: InstitutionFormPresenter::edit(shared, id).expect("a stub Institution"),
+            presenter: InstitutionFormPresenter::edit(shared, id).expect("a sample Institution"),
             ports,
             router: RecordingRouter::default(),
         };
@@ -639,7 +639,7 @@ mod tests {
 
     #[test]
     fn edit_of_an_institution_that_is_gone_does_not_open() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
 
         assert!(InstitutionFormPresenter::edit(shared, InstitutionId::new()).is_none());
     }
@@ -872,11 +872,11 @@ mod tests {
 
     #[test]
     fn edit_keeps_listing_a_usual_unit_since_deactivated_but_add_does_not() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         ports.borrow_mut().units.units[1].is_active = false;
         let edit =
             InstitutionFormPresenter::edit(shared.clone(), InstitutionId::SEED_CRYPTO_EXCHANGE)
-                .expect("a stub Institution");
+                .expect("a sample Institution");
         let add = InstitutionFormPresenter::add(shared);
 
         let codes = |presenter: &InstitutionFormPresenter| -> Vec<String> {

@@ -441,7 +441,7 @@ fn step<T: Copy + PartialEq>(options: &[T], current: T, delta: isize) -> T {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::stub;
+    use super::super::test_support::sample;
     use super::*;
     use crate::fake::{RecordingRouter, RouterCall};
 
@@ -455,7 +455,7 @@ mod tests {
             Self,
             std::rc::Rc<std::cell::RefCell<crate::fake::InMemoryDocuments>>,
         ) {
-            let (documents, shared) = stub();
+            let (documents, shared) = sample();
             let form = Self {
                 presenter: TypeFormPresenter::add(shared),
                 router: RecordingRouter::default(),
@@ -469,7 +469,7 @@ mod tests {
             Self,
             std::rc::Rc<std::cell::RefCell<crate::fake::InMemoryDocuments>>,
         ) {
-            let (documents, shared) = stub();
+            let (documents, shared) = sample();
             let form = Self {
                 presenter: TypeFormPresenter::edit(shared, id).expect("a default type"),
                 router: RecordingRouter::default(),
@@ -774,7 +774,7 @@ mod tests {
 
     #[test]
     fn an_edit_of_a_gone_type_has_no_form() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
 
         assert!(TypeFormPresenter::edit(shared, DocumentTypeId::seed(999)).is_none());
     }

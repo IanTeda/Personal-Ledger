@@ -95,7 +95,7 @@ impl UnitsSetup {
     /// Bills, Budgets, Inventory and Institutions and deleting beside its Institutions, for a test
     /// that builds `Root` directly.
     #[cfg(test)]
-    pub fn stub(storage: &crate::shell::router::LedgerStores) -> Self {
+    pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
             storage.units.clone(),
             lib_database::StoredUnitReads {

@@ -70,7 +70,7 @@ mod tests {
 
     #[test]
     fn adding_a_child_writes_it_under_its_parent() {
-        let mut categories = InMemoryCategories::stub();
+        let mut categories = InMemoryCategories::sample();
         let food = CategoryId::seed(6);
 
         let added = add("Takeaway", Some(food), CategoryTypes::Expense)
@@ -84,7 +84,7 @@ mod tests {
 
     #[test]
     fn a_child_of_another_type_or_past_the_depth_cap_is_refused_and_nothing_is_written() {
-        let mut categories = InMemoryCategories::stub();
+        let mut categories = InMemoryCategories::sample();
         let before = categories.clone();
         let mut budget = InMemoryCategoryBudget::default();
         let salary = CategoryId::seed(11);
@@ -113,7 +113,7 @@ mod tests {
 
     #[test]
     fn a_monthly_budget_saves_with_the_category() {
-        let mut categories = InMemoryCategories::stub();
+        let mut categories = InMemoryCategories::sample();
         let mut budget = InMemoryCategoryBudget::default();
 
         let added = AddCategory {
@@ -128,7 +128,7 @@ mod tests {
 
     #[test]
     fn a_budget_the_budget_refuses_writes_no_category_either() {
-        let mut categories = InMemoryCategories::stub();
+        let mut categories = InMemoryCategories::sample();
         let before = categories.clone();
         let mut budget = InMemoryCategoryBudget::default();
 
@@ -146,7 +146,7 @@ mod tests {
 
     #[test]
     fn a_budgeted_leaf_that_gains_its_first_child_is_stopped() {
-        let mut categories = InMemoryCategories::stub();
+        let mut categories = InMemoryCategories::sample();
         let mut budget = InMemoryCategoryBudget::default();
         let transport = CategoryId::seed(9);
         budget.amounts.insert(transport, money("600"));
@@ -160,7 +160,7 @@ mod tests {
 
     #[test]
     fn a_parent_that_already_has_children_and_a_top_level_add_stop_nothing() {
-        let mut categories = InMemoryCategories::stub();
+        let mut categories = InMemoryCategories::sample();
         let mut budget = InMemoryCategoryBudget::default();
 
         add(
@@ -179,7 +179,7 @@ mod tests {
 
     #[test]
     fn a_refused_add_stops_nothing() {
-        let mut categories = InMemoryCategories::stub();
+        let mut categories = InMemoryCategories::sample();
         let mut budget = InMemoryCategoryBudget::default();
         let salary = CategoryId::seed(11);
         budget.amounts.insert(salary, money("1"));
@@ -204,7 +204,7 @@ mod tests {
 
     #[test]
     fn a_leaf_that_gains_its_first_child_hands_over_its_splits_bill_plans_and_payee_defaults() {
-        let mut categories = InMemoryCategories::stub();
+        let mut categories = InMemoryCategories::sample();
         let mut budget = InMemoryCategoryBudget::default();
         let transport = CategoryId::seed(9);
         budget.held.insert(transport, held(42, 1, 2));
@@ -220,7 +220,7 @@ mod tests {
 
     #[test]
     fn a_leaf_holding_nothing_and_a_parent_with_children_hand_over_nothing() {
-        let mut categories = InMemoryCategories::stub();
+        let mut categories = InMemoryCategories::sample();
         let mut budget = InMemoryCategoryBudget::default();
         budget.held.insert(CategoryId::seed(6), held(3, 0, 0));
 
@@ -240,7 +240,7 @@ mod tests {
 
     #[test]
     fn a_refused_add_hands_nothing_over() {
-        let mut categories = InMemoryCategories::stub();
+        let mut categories = InMemoryCategories::sample();
         let mut budget = InMemoryCategoryBudget::default();
         let salary = CategoryId::seed(11);
         budget.held.insert(salary, held(5, 0, 0));

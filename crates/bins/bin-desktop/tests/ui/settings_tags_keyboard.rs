@@ -81,7 +81,7 @@ fn enter_shows_the_selected_tags_transactions_in_one_commit(app: &mut TestAppCon
     let selected = ui
         .settings::<SettingsTagsSnapshot>()
         .selected_tag
-        .expect("a stub Tag is selected");
+        .expect("a sample Tag is selected");
 
     let before = ui.commits();
     ui.press("enter");

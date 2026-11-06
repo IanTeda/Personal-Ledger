@@ -36,7 +36,7 @@ mod tests {
 
     #[test]
     fn renaming_a_category_keeps_its_parent_and_type() {
-        let mut categories = InMemoryCategories::stub();
+        let mut categories = InMemoryCategories::sample();
         let before = categories
             .category(CategoryId::seed(8))
             .expect("Dining is seeded");
@@ -60,7 +60,7 @@ mod tests {
 
     #[test]
     fn renaming_a_category_that_isnt_there_is_refused_and_nothing_is_written() {
-        let mut categories = InMemoryCategories::stub();
+        let mut categories = InMemoryCategories::sample();
         let before = categories.clone();
 
         assert_eq!(

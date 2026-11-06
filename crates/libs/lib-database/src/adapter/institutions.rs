@@ -218,7 +218,7 @@ mod tests {
     use std::sync::mpsc;
 
     use lib_institutions::contract::{self, PortsFactory};
-    use lib_institutions::default_institutions;
+    use lib_institutions::sample_institutions;
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
     use super::*;
@@ -240,9 +240,9 @@ mod tests {
             // The Units a seeded Usual unit names.
             crate::UnitsAdapter::seed_from(
                 &writer,
-                lib_units::fake::InMemoryPorts::stub(chrono::Utc::now()),
+                lib_units::fake::InMemoryPorts::sample(chrono::Utc::now()),
             )
-            .expect("the stub Units are written");
+            .expect("the sample Units are written");
             Self {
                 pending: PendingWrites::new(writer.clone()),
                 writer,
@@ -322,7 +322,7 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        factory.create(default_institutions());
+        factory.create(sample_institutions());
 
         let deleted = factory.writer.run(|pool| async move {
             sqlx::query("DELETE FROM units WHERE id = ?")
@@ -410,7 +410,7 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        let mut institutions = factory.create(default_institutions());
+        let mut institutions = factory.create(sample_institutions());
         let stored = institutions.institutions();
 
         institutions.upsert_institution(Institution {

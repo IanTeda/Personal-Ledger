@@ -74,10 +74,10 @@ fn today() -> NaiveDate {
     NaiveDate::from_ymd_opt(2026, 9, 28).expect("a September day")
 }
 
-/// The Category every unresolved row is filed under: the stub's Household leaf.
+/// The Category every unresolved row is filed under: the sample's Household leaf.
 const HOUSEHOLD: CategoryId = CategoryId::seed(10);
 
-/// The stub Payees and one Transaction already stored.
+/// The sample Payees and one Transaction already stored.
 fn seed() -> (Vec<Payee>, Vec<Transaction>) {
     let groceries = Transaction {
         id: TransactionId::seed(1),
@@ -93,7 +93,7 @@ fn seed() -> (Vec<Payee>, Vec<Transaction>) {
             tag_ids: Vec::new(),
         }],
     };
-    (lib_payees::default_payees(), vec![groceries])
+    (lib_payees::sample_payees(), vec![groceries])
 }
 
 /// The seeded statement matched against `payees`, every row resolved, as one plan.

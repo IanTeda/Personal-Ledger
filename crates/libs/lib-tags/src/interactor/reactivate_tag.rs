@@ -35,10 +35,12 @@ mod tests {
 
     #[test]
     fn reactivate_sets_active_to_true_and_keeps_the_rest() {
-        let mut tags = InMemoryTags::stub();
-        let before = tags.tag(TagId::seed(8)).expect("a stub Tag");
+        let mut tags = InMemoryTags::sample();
+        let before = tags.tag(TagId::seed(8)).expect("a sample Tag");
 
-        let tag = ReactivateTag(before.id).run(&mut tags).expect("a stub Tag");
+        let tag = ReactivateTag(before.id)
+            .run(&mut tags)
+            .expect("a sample Tag");
 
         assert_eq!(
             tag,
@@ -52,7 +54,7 @@ mod tests {
 
     #[test]
     fn a_missing_tag_is_refused() {
-        let mut tags = InMemoryTags::stub();
+        let mut tags = InMemoryTags::sample();
         assert_eq!(
             ReactivateTag(TagId::seed(999)).run(&mut tags),
             Err(TagError::NotFound)

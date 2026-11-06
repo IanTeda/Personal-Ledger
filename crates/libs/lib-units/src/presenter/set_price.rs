@@ -253,7 +253,7 @@ fn today(clock: &Clock) -> NaiveDate {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::{clock, hints, now, pairs, stub};
+    use super::super::test_support::{clock, hints, now, pairs, sample};
     use super::*;
     use crate::fake::{RecordingRouter, RouterCall};
     use crate::protocols::UnitRepository as _;
@@ -276,7 +276,7 @@ mod tests {
 
     #[test]
     fn it_opens_on_today_with_its_week_and_the_close_in_the_quote_units_places() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let view = vas(shared).view_model();
 
         assert_eq!(view.frame.title, "Set price — vas");
@@ -292,7 +292,7 @@ mod tests {
 
     #[test]
     fn a_unit_on_a_fetching_source_or_gone_opens_no_dialog() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
 
         assert!(SetPricePresenter::new(shared.clone(), clock(), UnitId::SEED_BTC).is_none());
         assert!(SetPricePresenter::new(shared, clock(), UnitId::new()).is_none());
@@ -300,7 +300,7 @@ mod tests {
 
     #[test]
     fn confirming_writes_this_weeks_price_padded_and_closes_with_the_week() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut dialog = vas(shared);
 
         let calls = send(
@@ -328,7 +328,7 @@ mod tests {
 
     #[test]
     fn a_past_week_typed_in_iso_snaps_to_its_monday() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut dialog = vas(shared);
 
         send(
@@ -348,7 +348,7 @@ mod tests {
 
     #[test]
     fn a_future_week_is_refused_with_a_message_and_the_dialog_stays_open() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut dialog = vas(shared);
 
         let calls = send(
@@ -378,7 +378,7 @@ mod tests {
 
     #[test]
     fn an_unreadable_date_or_a_close_that_isnt_positive_cant_confirm() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut dialog = vas(shared);
 
         send(
@@ -406,7 +406,7 @@ mod tests {
 
     #[test]
     fn a_unit_moved_to_a_fetching_source_under_the_dialog_is_refused_as_text() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut dialog = vas(shared);
         ports.borrow_mut().units.units[2].link.source_id = crate::YAHOO_FINANCE;
 
@@ -423,7 +423,7 @@ mod tests {
 
     #[test]
     fn tab_moves_between_week_and_close_and_cancel_closes_with_nothing() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut dialog = vas(shared);
 
         send(&mut dialog, vec![SetPriceEvent::NextField]);
@@ -445,7 +445,7 @@ mod tests {
 
     #[test]
     fn dialog_input_types_into_the_focused_field_and_tab_wraps() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut dialog = vas(shared);
         let calls = send(
             &mut dialog,

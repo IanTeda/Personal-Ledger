@@ -1,4 +1,4 @@
-//! Pure Documents model, rules and stub seed (`docs/ux/desktop-mockups/04-documents/`): `gpui`-free and
+//! Pure Documents model, rules and sample seed (`docs/ux/desktop-mockups/04-documents/`): `gpui`-free and
 //! side-effect free, so every rule is unit-tested without a window. The other domains are read
 //! through [`protocols`]' read ports as `lib-documents`' own rows, and the file system through
 //! [`DocumentFiles`], so nothing here reads `lib_database` or the disk.

@@ -205,7 +205,7 @@ pub(crate) mod test_support {
         NaiveDate::from_ymd_opt(y, m, d).expect("a real date")
     }
 
-    /// The day the tests' stub is seeded on.
+    /// The day the tests' sample is seeded on.
     pub fn today() -> NaiveDate {
         date(2026, 6, 15)
     }
@@ -216,9 +216,9 @@ pub(crate) mod test_support {
         (day, clock)
     }
 
-    /// The stub seed, shared, with the handle the test reads it back through.
-    pub fn stub() -> (Rc<RefCell<InMemoryPorts>>, SharedPorts) {
+    /// The sample seed, shared, with the handle the test reads it back through.
+    pub fn sample() -> (Rc<RefCell<InMemoryPorts>>, SharedPorts) {
         locale();
-        InMemoryPorts::stub(today()).shared()
+        InMemoryPorts::sample(today()).shared()
     }
 }

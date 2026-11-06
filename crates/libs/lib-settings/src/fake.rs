@@ -116,7 +116,7 @@ impl LedgerRouter for RecordingRouter {
     }
 }
 
-/// The Units Settings › Ledger reads and the base Unit it writes, in memory: the stub's aud, btc
+/// The Units Settings › Ledger reads and the base Unit it writes, in memory: the sample's aud, btc
 /// and vas with aud the base. Clones share the rows, so a Presenter's write reads back.
 #[derive(Debug, Clone)]
 pub struct InMemoryLedgerUnits {
@@ -132,7 +132,7 @@ struct LedgerRows {
 
 impl InMemoryLedgerUnits {
     /// aud, btc and vas, all active, with aud the base.
-    pub fn stub() -> Self {
+    pub fn sample() -> Self {
         let unit = |id, code: &str, name: &str| {
             (
                 UnitChoice {

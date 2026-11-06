@@ -36,26 +36,26 @@ mod tests {
 
     #[test]
     fn deactivating_then_reactivating_puts_the_payee_back_as_it_was() {
-        let mut ports = InMemoryPorts::stub();
+        let mut ports = InMemoryPorts::sample();
         let before = ports.clone();
         let woolworths = PayeeId::seed(1);
 
         let inactive = DeactivatePayee(woolworths)
             .run(&mut ports.payees)
-            .expect("a stub Payee");
+            .expect("a sample Payee");
         assert!(!inactive.is_active);
         assert_eq!(ports.payees.payee(woolworths), Some(inactive));
 
         let active = ReactivatePayee(woolworths)
             .run(&mut ports.payees)
-            .expect("a stub Payee");
+            .expect("a sample Payee");
         assert!(active.is_active);
         assert_eq!(ports, before);
     }
 
     #[test]
     fn a_payee_that_is_gone_is_refused_and_nothing_is_written() {
-        let mut ports = InMemoryPorts::stub();
+        let mut ports = InMemoryPorts::sample();
         let before = ports.clone();
 
         assert_eq!(

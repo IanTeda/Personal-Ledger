@@ -478,7 +478,7 @@ fn at_x_large_the_pane_draws_a_units_accounts(app: &mut TestAppContext) {
             _ => None,
         })
         .expect("an ACCOUNTS group");
-    assert!(!accounts.rows.is_empty(), "btc's stub Accounts");
+    assert!(!accounts.rows.is_empty(), "btc's sample Accounts");
     assert!(accounts.rows.iter().all(|row| {
         row.value
             .as_deref()

@@ -37,17 +37,17 @@ impl UnmatchBill {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::interactor::test_support::{date, entry_of, stub, today};
+    use crate::interactor::test_support::{date, entry_of, sample, today};
     use crate::{BillStatus, Resolution, entry, status};
 
     #[test]
     fn unmatching_returns_the_entry_to_its_status_and_keeps_the_transaction() {
-        let mut ports = stub();
+        let mut ports = sample();
         let streaming = entry_of(&ports, "Streaming Bundle", date(2026, 9, 5));
         let Some(Resolution::Paid(split)) =
             entry(&ports.bills.entries, streaming).map(|e| e.resolution.clone())
         else {
-            panic!("the stub pays Streaming Bundle this month");
+            panic!("the sample pays Streaming Bundle this month");
         };
         let splits = ports.reads.splits.clone();
 
@@ -63,7 +63,7 @@ mod tests {
 
     #[test]
     fn an_entry_that_isnt_paid_is_refused_and_nothing_is_written() {
-        let mut ports = stub();
+        let mut ports = sample();
         let telstra = entry_of(&ports, "Telstra Internet", date(2026, 9, 22));
         let before = ports.bills.clone();
 

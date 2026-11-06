@@ -7,7 +7,7 @@
 
 #![expect(
     clippy::expect_used,
-    reason = "test support: a stub row or count the test relies on missing should fail it loudly"
+    reason = "test support: a sample row or count the test relies on missing should fail it loudly"
 )]
 
 use std::time::Duration;
@@ -473,15 +473,15 @@ fn the_rail_counts_the_sample_ledger_and_holds_none_once_it_closes(app: &mut Tes
     let counts = badges(&mut ui);
     assert!(
         counts.bills_attention > 0,
-        "the stub has Bills needing attention"
+        "the sample has Bills needing attention"
     );
     assert!(
         counts.budgets_over > 0,
-        "the stub's default Budget is over somewhere"
+        "the sample's default Budget is over somewhere"
     );
     assert!(
         counts.documents_inbox > 0,
-        "the stub has Documents in the Inbox"
+        "the sample has Documents in the Inbox"
     );
 
     ui.press(": c l o s e enter");

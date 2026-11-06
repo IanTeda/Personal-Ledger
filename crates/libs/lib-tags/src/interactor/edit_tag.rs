@@ -45,7 +45,7 @@ mod tests {
 
     #[test]
     fn editing_a_tag_writes_the_name_and_colour_and_keeps_active() {
-        let mut tags = InMemoryTags::stub();
+        let mut tags = InMemoryTags::sample();
         let before = tags.tag(TagId::seed(8)).expect("Bali 2025 is seeded");
         assert!(!before.is_active);
 
@@ -65,7 +65,7 @@ mod tests {
 
     #[test]
     fn a_missing_tag_or_a_taken_name_is_refused_and_nothing_is_written() {
-        let mut tags = InMemoryTags::stub();
+        let mut tags = InMemoryTags::sample();
         let before = tags.clone();
 
         assert_eq!(

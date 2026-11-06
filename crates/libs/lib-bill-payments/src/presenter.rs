@@ -491,9 +491,9 @@ mod tests {
 
     use super::*;
     use crate::fake::{PortsPayments, RecordingRouter};
-    use crate::interactor::test_support::{date, entry_of, stub, today};
+    use crate::interactor::test_support::{date, entry_of, sample, today};
 
-    /// The Dialog on the stub's Telstra Internet entry due on the 22nd, which has Match
+    /// The Dialog on the sample's Telstra Internet entry due on the 22nd, which has Match
     /// candidates and a Payee match to pre-select.
     struct Dialog {
         ports: Rc<RefCell<InMemoryPorts>>,
@@ -510,7 +510,7 @@ mod tests {
         /// The Dialog on a request `change` has altered, e.g. to offer no candidates.
         fn open_with(change: impl FnOnce(PayRequest) -> PayRequest) -> Self {
             lib_locale::init_with_layers("en-US", &[msg::LAYER]);
-            let ports = stub();
+            let ports = sample();
             let entry = entry_of(&ports, "Telstra Internet", date(2026, 9, 22));
             let (candidates, preselected) = {
                 let ports = ports.borrow();
@@ -804,7 +804,7 @@ mod tests {
     #[test]
     fn a_plan_gone_opens_no_dialog() {
         lib_locale::init_with_layers("en-US", &[msg::LAYER]);
-        let ports = stub();
+        let ports = sample();
         let shared: SharedPorts = ports.clone();
         let request = PayRequest {
             entry: EntryId {

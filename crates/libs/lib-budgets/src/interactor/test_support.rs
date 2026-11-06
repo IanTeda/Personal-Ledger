@@ -1,4 +1,4 @@
-//! The fixtures the Interactors' tests share: the stub Budgets and reads, as of 21 September 2026.
+//! The fixtures the Interactors' tests share: the sample Budgets and reads, as of 21 September 2026.
 
 pub(crate) use chrono::NaiveDate;
 pub(crate) use lib_core::{AccountId, BudgetId, CategoryId, Money, Period, UnitId};
@@ -21,11 +21,11 @@ pub(crate) fn current() -> Period {
 }
 
 pub(crate) fn repo() -> InMemoryBudgets {
-    InMemoryBudgets::stub(today())
+    InMemoryBudgets::sample(today())
 }
 
 pub(crate) fn reads() -> InMemoryBudgetReads {
-    InMemoryBudgetReads::stub()
+    InMemoryBudgetReads::sample()
 }
 
 pub(crate) fn budget(repo: &InMemoryBudgets, id: BudgetId) -> Budget {

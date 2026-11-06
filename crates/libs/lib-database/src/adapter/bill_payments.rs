@@ -64,7 +64,7 @@ mod tests {
     use crate::{BillsAdapter, PayeesAdapter, PendingWrites, TransactionsAdapter, Writer};
 
     /// Both adapters on one test database and one pending batch, as start-up opens them. The
-    /// stub's Units, Accounts and Payees are stored first, which a Bill Plan and a Split name.
+    /// sample's Units, Accounts and Payees are stored first, which a Bill Plan and a Split name.
     struct AdapterFactory {
         writer: Writer,
         pending: PendingWrites,
@@ -76,7 +76,7 @@ mod tests {
             let (writer, failures) = Writer::spawn(options).expect("the test database opens");
             crate::test_support::store_sample_references(&writer);
             PayeesAdapter::seed(&writer, crate::seed::sample_payees())
-                .expect("the stub Payees are written");
+                .expect("the sample Payees are written");
             Self {
                 pending: PendingWrites::new(writer.clone()),
                 writer,

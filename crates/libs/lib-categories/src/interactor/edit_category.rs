@@ -154,7 +154,7 @@ mod tests {
 
     #[test]
     fn a_rename_and_move_land_together() {
-        let mut categories = InMemoryCategories::stub();
+        let mut categories = InMemoryCategories::sample();
 
         let edited = run(
             edit(TRANSPORT, "Getting around", Some(FOOD)),
@@ -169,7 +169,7 @@ mod tests {
 
     #[test]
     fn a_top_level_type_change_cascades_to_its_subtree() {
-        let mut categories = InMemoryCategories::stub();
+        let mut categories = InMemoryCategories::sample();
 
         run(
             EditCategory {
@@ -194,7 +194,7 @@ mod tests {
 
     #[test]
     fn under_a_parent_the_type_asked_for_is_ignored() {
-        let mut categories = InMemoryCategories::stub();
+        let mut categories = InMemoryCategories::sample();
 
         let edited = run(
             EditCategory {
@@ -210,7 +210,7 @@ mod tests {
 
     #[test]
     fn a_refused_move_leaves_the_rename_unwritten() {
-        let mut categories = InMemoryCategories::stub();
+        let mut categories = InMemoryCategories::sample();
         let before = categories.clone();
 
         assert_eq!(
@@ -233,7 +233,7 @@ mod tests {
 
     #[test]
     fn a_refused_budget_leaves_the_edit_unwritten_and_a_stop_clears_it() {
-        let mut categories = InMemoryCategories::stub();
+        let mut categories = InMemoryCategories::sample();
         let before = categories.clone();
         let mut budget = InMemoryCategoryBudget::default();
         let forty: Money = "40".parse().expect("an amount");
@@ -261,7 +261,7 @@ mod tests {
 
     #[test]
     fn moving_under_a_budgeted_leaf_stops_it_and_under_a_parent_stops_nothing() {
-        let mut categories = InMemoryCategories::stub();
+        let mut categories = InMemoryCategories::sample();
         let mut budget = InMemoryCategoryBudget::default();
         budget.amounts.insert(FOOD, "1".parse().expect("an amount"));
 
@@ -282,7 +282,7 @@ mod tests {
 
     #[test]
     fn a_refused_move_stops_nothing() {
-        let mut categories = InMemoryCategories::stub();
+        let mut categories = InMemoryCategories::sample();
         let mut budget = InMemoryCategoryBudget::default();
         budget
             .amounts
@@ -298,7 +298,7 @@ mod tests {
 
     #[test]
     fn a_parent_moved_under_a_leaf_with_rows_is_refused_and_writes_nothing() {
-        let mut categories = InMemoryCategories::stub();
+        let mut categories = InMemoryCategories::sample();
         let before = categories.clone();
         let mut budget = InMemoryCategoryBudget::default();
         budget.held.insert(TRANSPORT, held(0, 0, 1));
@@ -323,7 +323,7 @@ mod tests {
 
     #[test]
     fn a_parent_moved_under_an_empty_leaf_or_a_leaf_moved_under_one_with_rows_is_allowed() {
-        let mut categories = InMemoryCategories::stub();
+        let mut categories = InMemoryCategories::sample();
         let mut budget = InMemoryCategoryBudget::default();
         let household = CategoryId::seed(10);
         budget.held.insert(TRANSPORT, held(2, 0, 0));
@@ -358,7 +358,7 @@ mod tests {
     #[test]
     fn a_type_change_is_refused_for_a_used_leaf_in_the_subtree_and_writes_nothing() {
         for used in [blocked(1, 0), blocked(0, 1), blocked(2, 1)] {
-            let mut categories = InMemoryCategories::stub();
+            let mut categories = InMemoryCategories::sample();
             let before = categories.clone();
             let mut ports = InMemoryCategoryBudget::default();
             // Groceries is a leaf under Food.
@@ -380,7 +380,7 @@ mod tests {
 
     #[test]
     fn a_type_change_is_allowed_for_an_unused_subtree_and_a_use_outside_it() {
-        let mut categories = InMemoryCategories::stub();
+        let mut categories = InMemoryCategories::sample();
         let mut ports = InMemoryCategoryBudget::default();
         // Nothing in Food's subtree is used (a chain Stopped before this month, or an archived
         // Budget, counts as no use): only Transport is.
@@ -398,7 +398,7 @@ mod tests {
 
     #[test]
     fn an_unchanged_type_is_not_checked_against_usage() {
-        let mut categories = InMemoryCategories::stub();
+        let mut categories = InMemoryCategories::sample();
         let mut ports = InMemoryCategoryBudget::default();
         ports.blockers.insert(GROCERIES, blocked(1, 1));
 
@@ -420,7 +420,7 @@ mod tests {
 
     #[test]
     fn moving_under_a_leaf_hands_its_rows_to_the_moved_category() {
-        let mut categories = InMemoryCategories::stub();
+        let mut categories = InMemoryCategories::sample();
         let mut budget = InMemoryCategoryBudget::default();
         budget.held.insert(SALARY, held(4, 1, 1));
         let moved = CategoryId::seed(12);
@@ -434,7 +434,7 @@ mod tests {
 
     #[test]
     fn moving_under_an_existing_parent_or_a_refused_move_hands_nothing_over() {
-        let mut categories = InMemoryCategories::stub();
+        let mut categories = InMemoryCategories::sample();
         let mut budget = InMemoryCategoryBudget::default();
         budget.held.insert(FOOD, held(4, 0, 0));
         budget.held.insert(SALARY, held(4, 0, 0));

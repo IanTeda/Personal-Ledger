@@ -378,7 +378,7 @@ fn clicking_create_makes_the_named_ledger_in_place_of_the_open_one(app: &mut Tes
         ["usd"],
         "the Locale's Currency is the only Unit"
     );
-    assert!(tag_names(&mut ui).is_empty(), "none of the stub rows");
+    assert!(tag_names(&mut ui).is_empty(), "none of the sample rows");
 }
 
 #[gpui::test]

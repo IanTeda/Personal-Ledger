@@ -309,14 +309,14 @@ pub(crate) mod test_support {
             .collect()
     }
 
-    /// The stub seed, shared, with the handle the test reads it back through.
-    pub fn stub() -> (Rc<RefCell<InMemoryPorts>>, SharedPorts) {
+    /// The sample seed, shared, with the handle the test reads it back through.
+    pub fn sample() -> (Rc<RefCell<InMemoryPorts>>, SharedPorts) {
         locale();
-        InMemoryPorts::stub(now()).shared()
+        InMemoryPorts::sample(now()).shared()
     }
 
-    /// Prices every other stub Unit in itself, so nothing is quoted in aud and the base can be
-    /// deleted; the stub's btc and vas are quoted in aud, which a delete refuses.
+    /// Prices every other sample Unit in itself, so nothing is quoted in aud and the base can be
+    /// deleted; the sample's btc and vas are quoted in aud, which a delete refuses.
     pub fn unquote_aud(ports: &mut InMemoryPorts) {
         for unit in &mut ports.units.units {
             if unit.link.quote == crate::UnitId::SEED_AUD {

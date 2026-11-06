@@ -104,10 +104,10 @@ impl CategoryDeletionReads for InMemoryCategoryDeletion {
 }
 
 /// The small Ledger the tests and the contract delete from, as of 11 September 2026: `lib-
-/// categories`' stub Categories and an Income Uncategorised; five Transactions on the stub's ANZ
+/// categories`' sample Categories and an Income Uncategorised; five Transactions on the sample's ANZ
 /// Everyday, three with Splits on Groceries, Dining or Rent, one on Salary and one on the Income
-/// Uncategorised; two Bill Plans, on Groceries and Rent; `lib-payees`' stub Payees, three of which
-/// default to Groceries; and `lib-budgets`' stub Budgets, two of which hold Groceries Limits. No Expense
+/// Uncategorised; two Bill Plans, on Groceries and Rent; `lib-payees`' sample Payees, three of which
+/// default to Groceries; and `lib-budgets`' sample Budgets, two of which hold Groceries Limits. No Expense
 /// Uncategorised is held, so moving an Expense Category's rows makes one.
 pub mod world {
     use bigdecimal::BigDecimal;
@@ -156,10 +156,10 @@ pub mod world {
     /// On Rent.
     pub const LEASE: BillPlanId = BillPlanId::seed(2);
 
-    /// The stub's ANZ Everyday, which the file's foreign keys need.
+    /// The sample's ANZ Everyday, which the file's foreign keys need.
     const EVERYDAY: AccountId = AccountId::seed(2);
 
-    /// The day the stub Budgets are seeded as of.
+    /// The day the sample Budgets are seeded as of.
     pub fn today() -> NaiveDate {
         date(11)
     }
@@ -214,7 +214,7 @@ pub mod world {
 
     /// The rows described above.
     pub fn world() -> InMemoryCategoryDeletion {
-        let mut categories = InMemoryCategories::stub();
+        let mut categories = InMemoryCategories::sample();
         categories.categories.push(Category {
             id: UNCATEGORISED_INCOME,
             name: lib_categories::UNCATEGORISED_NAME.to_string(),
@@ -248,9 +248,9 @@ pub mod world {
                 entries: Vec::new(),
             },
             payees: InMemoryPayees {
-                payees: lib_payees::default_payees(),
+                payees: lib_payees::sample_payees(),
             },
-            budgets: InMemoryBudgets::stub(today()),
+            budgets: InMemoryBudgets::sample(today()),
         }
     }
 }

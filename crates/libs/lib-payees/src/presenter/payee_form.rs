@@ -413,7 +413,7 @@ impl PayeeFormPresenter {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::stub;
+    use super::super::test_support::sample;
     use super::*;
     use crate::fake::{RecordingRouter, RouterCall};
     use crate::{PayeeRepository as _, PayeeUse};
@@ -455,7 +455,7 @@ mod tests {
 
     #[test]
     fn a_taken_name_shows_under_the_field_and_a_blank_one_only_waits() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut form = PayeeFormPresenter::add(shared);
         let view = form.view_model();
         assert_eq!(view.frame.title, "Add payee");
@@ -477,7 +477,7 @@ mod tests {
 
     #[test]
     fn rules_are_normalised_deduped_and_another_payees_is_refused_in_the_input() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut form = PayeeFormPresenter::add(shared);
 
         send(
@@ -516,7 +516,7 @@ mod tests {
 
     #[test]
     fn an_add_saves_the_draft_and_closes_with_the_new_payee() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut form = PayeeFormPresenter::add(shared);
         let groceries = Some(CategoryId::seed(7));
 
@@ -543,7 +543,7 @@ mod tests {
 
     #[test]
     fn the_default_category_offers_none_then_every_leaf_and_ignores_others() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut form = PayeeFormPresenter::add(shared);
         let view = form.view_model().default_category;
 
@@ -566,7 +566,7 @@ mod tests {
 
     #[test]
     fn edit_prefills_the_payee_and_warns_while_splits_carry_it() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         ports.borrow_mut().usage.uses.insert(
             PayeeId::seed(1),
             PayeeUse {
@@ -574,7 +574,7 @@ mod tests {
                 bill_plans: 0,
             },
         );
-        let mut form = PayeeFormPresenter::edit(shared.clone(), PayeeId::seed(1)).expect("stub");
+        let mut form = PayeeFormPresenter::edit(shared.clone(), PayeeId::seed(1)).expect("sample");
         let view = form.view_model();
         assert_eq!(view.frame.title, "Edit payee — Woolworths");
         assert_eq!(view.name.text, "Woolworths");
@@ -603,8 +603,8 @@ mod tests {
 
     #[test]
     fn a_payee_gone_under_the_edit_is_refused_onto_the_form() {
-        let (ports, shared) = stub();
-        let mut form = PayeeFormPresenter::edit(shared, PayeeId::seed(8)).expect("stub");
+        let (ports, shared) = sample();
+        let mut form = PayeeFormPresenter::edit(shared, PayeeId::seed(8)).expect("sample");
         ports.borrow_mut().payees.delete_payee(PayeeId::seed(8));
 
         assert_eq!(send(&mut form, vec![PayeeFormEvent::Confirm]), []);
@@ -616,7 +616,7 @@ mod tests {
 
     #[test]
     fn next_and_previous_field_move_focus_both_ways_and_cancel_closes() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let before = ports.borrow().clone();
         let mut form = PayeeFormPresenter::add(shared);
         let focused = |form: &PayeeFormPresenter| form.view_model().focused;
@@ -649,7 +649,7 @@ mod tests {
 
     #[test]
     fn typing_edits_the_focused_field_and_backspace_takes_a_character_back() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut form = PayeeFormPresenter::add(shared);
 
         send(&mut form, typing("Zoox"));
@@ -664,7 +664,7 @@ mod tests {
 
     #[test]
     fn select_opens_the_default_category_the_arrows_move_and_select_picks() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut form = PayeeFormPresenter::add(shared);
 
         send(&mut form, vec![TAB, DOWN]);
@@ -697,7 +697,7 @@ mod tests {
 
     #[test]
     fn leaving_the_select_commits_its_highlight_and_close_categories_drops_it() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut form = PayeeFormPresenter::add(shared);
 
         send(&mut form, vec![TAB, SELECT, DOWN, TAB]);
@@ -725,7 +725,7 @@ mod tests {
 
     #[test]
     fn select_confirms_only_a_valid_form_and_adds_a_rule_from_a_rule_input_holding_text() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut form = PayeeFormPresenter::add(shared);
 
         assert_eq!(send(&mut form, vec![SELECT]), [], "a blank name waits");
@@ -747,7 +747,7 @@ mod tests {
     #[test]
     fn submit_confirms_a_valid_form_from_any_field() {
         for field in 0..3 {
-            let (_, shared) = stub();
+            let (_, shared) = sample();
             let mut form = PayeeFormPresenter::add(shared);
             assert_eq!(send(&mut form, vec![SUBMIT]), [], "a blank name waits");
             send(&mut form, typing("Zoo"));

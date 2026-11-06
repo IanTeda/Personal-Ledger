@@ -113,9 +113,9 @@ pub fn announce_written(ports: &DesktopPorts, announcer: &Entity<Announcer>, cx:
     }
 }
 
-/// `stub`'s Budgets in memory, for a test that needs no storage.
-pub fn in_memory(stub: &FakeStores) -> SharedBudgetsStore {
-    Rc::new(RefCell::new(stub.budgets.clone()))
+/// `sample`'s Budgets in memory, for a test that needs no storage.
+pub fn in_memory(sample: &FakeStores) -> SharedBudgetsStore {
+    Rc::new(RefCell::new(sample.budgets.clone()))
 }
 
 /// Budget `id`'s Monthly budget for Category `category`, as `lib-budgets`' `SetMonthlyLimit`
@@ -170,7 +170,7 @@ mod tests {
     #[test]
     fn a_monthly_limit_is_written_to_the_store_by_the_budgets_rule() {
         let store = in_memory(&FakeStores::sample(today()));
-        let categories = lib_database::budget_categories(&lib_categories::default_categories());
+        let categories = lib_database::budget_categories(&lib_categories::sample_categories());
         let groceries = CategoryId::seed(7);
 
         let wrote = set_monthly_limit(
@@ -187,7 +187,7 @@ mod tests {
             .borrow()
             .budgets()
             .budget(PERSONAL_SPENDING_ID)
-            .expect("the stub's default");
+            .expect("the sample's default");
         assert_eq!(
             applied(personal.chain(groceries), Period::of(today())).map(|found| found.amount),
             Some(lib_budgets::cents_money(61_000))

@@ -6,7 +6,7 @@ End-user documentation: [Tags](../tags.md).
 
 A Tag is a freeform, cross-cutting label attached many-to-many to Splits, independent of their Category and Payee. [ADR-0015](../adr/0015-tag-as-independent-transaction-label.md) settled the domain model and vocabulary. `lib-tags` is a VIPER module (slice 5, [#847](https://github.com/IanTeda/Personal-Ledger/issues/847)): it owns the Entity and its rules, the Interactors, the ports, the Presenters, the keymap and the Messages, toolkit-free and I/O-free, and it is a `FEATURE_CRATES` entry, so it depends on no other feature crate. Tags persist through `lib-database` ([#862](https://github.com/IanTeda/Personal-Ledger/issues/862)), and the Desktop's Tags page and Dialogs run on its Presenters ([#863](https://github.com/IanTeda/Personal-Ledger/issues/863)).
 
-Tag remove and merge rewrite Splits, another domain's rows, so they are the cross-domain module `lib-tag-removal` ([#1002](https://github.com/IanTeda/Personal-Ledger/issues/1002)), whose Remove tag and Merge tags Dialogs the Desktop hosts from `tag_removal/` ([#1003](https://github.com/IanTeda/Personal-Ledger/issues/1003)). No View reads the Tags from a read copy: every reader goes to the Tags store, which the stub seed fills.
+Tag remove and merge rewrite Splits, another domain's rows, so they are the cross-domain module `lib-tag-removal` ([#1002](https://github.com/IanTeda/Personal-Ledger/issues/1002)), whose Remove tag and Merge tags Dialogs the Desktop hosts from `tag_removal/` ([#1003](https://github.com/IanTeda/Personal-Ledger/issues/1003)). No View reads the Tags from a read copy: every reader goes to the Tags store, which the sample seed fills.
 
 ## Data model
 
@@ -28,7 +28,7 @@ A Ledger file made before #862 needs a fresh Ledger: `create_split_tags_table.sq
 
 Invariants the schema leaves to `lib-tags`:
 
-- **Unique by normalised name** (ADR-0015's #354 amendment): Unicode lower-cased, letters and digits only, and at least one must remain (`lib_tags::name_error`). The stub seed holds `work-trip` and `Work Trip` on purpose, so the duplicate flag and merge have something to show.
+- **Unique by normalised name** (ADR-0015's #354 amendment): Unicode lower-cased, letters and digits only, and at least one must remain (`lib_tags::name_error`). The sample seed holds `work-trip` and `Work Trip` on purpose, so the duplicate flag and merge have something to show.
 - **`is_active` is a toggle, not the delete path** (#353): removing a Tag always hard-deletes it and its join rows, used or not. An inactive Tag's name stays taken.
 - **Merge** (#354): each Split with the source gains the target if absent and loses the source, then the source is deleted, in one transaction.
 - **No rename aliases**, unlike Payee. Nothing auto-creates a Tag from parsed import text that a rename would need to reconcile, so a plain in-place rename is enough.
@@ -36,7 +36,7 @@ Invariants the schema leaves to `lib-tags`:
 
 ## Domain types
 
-- `lib_tags::Tag` — `id`, `name`, `color: Option<HexColor>` and `is_active`; `default_tags()` is the stub seed. `normalise`, `name_error`, `resolve_split_tag` (reuse an exact case-insensitive match, else create), `sorted_by_usage` and `duplicate_groups`/`duplicate_of` (the safety-net flag and suggested target) are the rules.
+- `lib_tags::Tag` — `id`, `name`, `color: Option<HexColor>` and `is_active`; `sample_tags()` is the sample seed. `normalise`, `name_error`, `resolve_split_tag` (reuse an exact case-insensitive match, else create), `sorted_by_usage` and `duplicate_groups`/`duplicate_of` (the safety-net flag and suggested target) are the rules.
 - `lib_tags::TagUse` — `transactions`, `total` and `last_used`, what a Tag's carrying Splits add up to. Its `Default` is hand-written, since `Total` has none.
 - `lib_core::TagId` — the `RowID` newtype a Tag is keyed by (ADR-0040), and `lib_core::HexColor`.
 
@@ -48,7 +48,7 @@ A Tag's name is user data, not a translated Message, so there is no `Label` impl
 
 `TagUsage` is answered by `lib_database::StoredTagReads` over the Transactions, Accounts and Units stores: the Transactions store gives the carrying Splits (`TaggedSplit`, read from `split_tags`, `splits` and `transactions` in the file, or from memory for the in-memory store), and the reads map each Split's Account to its Unit code and sum in Rust (`amount` is a decimal string). A Split listing a Tag twice counts once. The read is infallible, so a failed one is logged and answered as unused. It is a blocking read per Tag per render, as Payees' is; a grouped query or cache is worth doing if it shows.
 
-The stub seed is written after the Categories and before the Payees and Transactions whose Splits carry it, in the first-launch seed and `db-seed`: Units, Institutions, Accounts, Categories, Tags, Payees, Transactions, Bills. Every adapter test factory that writes Split Tags stores the stub Tags first (`test_support::store_stub_references`).
+The sample seed is written after the Categories and before the Payees and Transactions whose Splits carry it, in the first-launch seed and `db-seed`: Units, Institutions, Accounts, Categories, Tags, Payees, Transactions, Bills. Every adapter test factory that writes Split Tags stores the sample Tags first (`test_support::store_sample_references`).
 
 ## Interactors and ports
 
@@ -63,7 +63,7 @@ The Desktop builds `tag_removal::RemovalStores` (`TagRemovalAdapter` and `Stored
 
 ## UI
 
-The Desktop reads and writes Tags through `lib-database`; the TUI renders its own stub.
+The Desktop reads and writes Tags through `lib-database`; the TUI renders its own sample.
 
 - **TUI** — `crates/bins/bin-tui/src/tag/` (`mod.rs`, `fixture.rs`) holds the model and data; the screen is `view/tags.rs`. The left pane is a flat, alphabetical list, because a Tag has no classification dimension to group by. The right pane (`docs/ux/tui-mockups/06-tags/README.md`, `9a`) has **Tagged spend** (a monthly sparkline), **Where it lands** (a category breakdown) and a summary box for the selected Tag. It runs on fixtures and `lib-tags` isn't wired in.
 - **Desktop** — `crates/bins/bin-desktop/src/tags/` (`ports.rs`, `router.rs`, `view/page.rs` with `page/render.rs`, and `view/dialog.rs` with `dialog/tag_form.rs`) draws `lib-tags`' Presenters (`TagsPageViewModel`, `TagFormPresenter`), and `crates/bins/bin-desktop/src/tag_removal/` (`router.rs`'s `open_remove` and `open_merge`, and `view/dialog.rs` with `dialog/remove_tag.rs` and `dialog/merge_tags.rs`) draws `lib-tag-removal`'s (`RemoveTagPresenter`, `MergeTagsPresenter`), built against `docs/ux/desktop-mockups/19-tags/` (7a–7e, map [#351](https://github.com/IanTeda/Personal-Ledger/issues/351)). The keymap (`keymap.rs`) is the flat `new` and `edit` plus the module's own `tags.remove` (`x`) and `tags.merge` (`m`). Remove stays `x`, not the flat `delete`, because `lib-config` defaults `delete` to `d` and an override on `x` would move the page's key. Messages are in `lib-tags/i18n/en-US/tags.ftl`, the Remove and Merge Dialogs' in `lib-tag-removal/i18n/en-US/tag-removal.ftl`.
@@ -107,4 +107,4 @@ Desktop locations for the ticked requirements. The TUI's Tags code lives in `cra
 - **No transaction form on the desktop**, so `resolve_split_tag` has no UI call site and inactive Tags' exclusion from tagging is untested in practice.
 - **The 4b filter builder shows no swatch** yet, though #352 asks for one.
 - **The TUI doesn't manage Tags** the desktop way; it shows and sets the optional colour (#363) on fixtures only.
-- **The two Clients' stubs are independent** and share no model.
+- **The two Clients' samples are independent** and share no model.

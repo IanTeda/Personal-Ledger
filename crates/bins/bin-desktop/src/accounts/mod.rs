@@ -65,10 +65,10 @@ impl AccountsSetup {
 
     /// `storage`'s Accounts ports under the default keys, for a test that builds `Root` directly.
     #[cfg(test)]
-    pub fn stub(storage: &crate::shell::router::LedgerStores) -> Self {
+    pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
             storage.accounts.clone(),
-            crate::account_deletion::DeletionStores::stub(storage),
+            crate::account_deletion::DeletionStores::sample(storage),
             &lib_config::KeyBindingConfig::default(),
         )
     }
@@ -81,7 +81,7 @@ mod tests {
     #[test]
     fn institution_label_names_an_institution_by_its_id() {
         lib_locale::with_locale(lib_locale::Locale::EnUs, || {
-            let institutions = lib_institutions::default_institutions();
+            let institutions = lib_institutions::sample_institutions();
             assert_eq!(
                 institution_label(InstitutionId::SEED_PERSONAL, &institutions),
                 "Personal"

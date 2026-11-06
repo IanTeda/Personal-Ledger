@@ -43,7 +43,7 @@ impl UnitDeletion for InMemoryUnitDeletion {
     }
 }
 
-/// The small Ledger the tests and the contract delete from: the stub's aud, btc and vas, aud the
+/// The small Ledger the tests and the contract delete from: the sample's aud, btc and vas, aud the
 /// base, with nothing quoted in aud so it can go; Westpac names aud as its Usual unit, two crypto
 /// exchanges name btc, ANZ names none, and nothing names vas.
 pub mod world {
@@ -84,9 +84,9 @@ pub mod world {
 
     /// The Units and Institutions described above.
     pub fn world() -> InMemoryUnitDeletion {
-        let mut units = lib_units::default_units(now());
+        let mut units = lib_units::sample_units(now());
         // Each Unit quoted in aud is priced in itself instead, so the base can be deleted: the
-        // stub quotes btc and vas in aud, which a delete refuses.
+        // sample quotes btc and vas in aud, which a delete refuses.
         for unit in &mut units {
             if unit.link.quote == AUD {
                 unit.link.quote = unit.id;

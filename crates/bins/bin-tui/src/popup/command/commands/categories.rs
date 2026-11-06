@@ -16,7 +16,7 @@
 //! `<cat>`/`<parent>`/`<name>`. `category new`/`category edit`/`category move` open their popup
 //! prefilled from the selection; `category archive` applies immediately, also to the selection.
 //! `category rename` (needs a typed new name), `category merge` (not yet designed at all —
-//! matches the edit popup's own `X` stub) and `category tree` (needs a results surface to
+//! matches the edit popup's own `X` sample) and `category tree` (needs a results surface to
 //! print to, which doesn't exist) have no path to real dispatch yet and fall through to the
 //! existing "not yet built" message — genuinely not buildable from this ticket alone, not an
 //! oversight.

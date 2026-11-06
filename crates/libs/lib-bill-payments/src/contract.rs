@@ -53,7 +53,7 @@ pub trait PaymentsFactory {
     type Ports: BillPayments;
 
     /// Ports holding `bills`' Bill Plans and entries beside `transactions`, as if stored and
-    /// loaded. Every Plan's Unit is the stub's aud.
+    /// loaded. Every Plan's Unit is the sample's aud.
     fn create(&mut self, bills: InMemoryBills, transactions: Vec<Transaction>) -> Self::Ports;
 
     /// Ends the writes made on `ports`, then reads back what is stored, as a restart would.

@@ -36,7 +36,7 @@ mod tests {
 
     #[test]
     fn adding_a_custom_source_stores_it_for_every_unit_kind() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         let endpoint = Endpoint {
             address: "https://broker.example".to_string().into(),
             request: "/price?id={symbol}".to_string().into(),

@@ -1,7 +1,7 @@
 //! The in-memory Bills ports, for tests and UI-first work. Each holds its rows in plain fields so a
-//! test can set up or read state directly. The stub seed is `seed`'s [`default_bills`](crate::default_bills),
-//! joined in [`InMemoryPorts::stub`] with fixed Accounts, Categories and Payees ([`stub_accounts`],
-//! [`stub_categories`], [`stub_payees`]) that carry the stub's ids and names, so this crate needs
+//! test can set up or read state directly. The sample seed is `seed`'s [`sample_bills`](crate::sample_bills),
+//! joined in [`InMemoryPorts::sample`] with fixed Accounts, Categories and Payees ([`sample_accounts`],
+//! [`sample_categories`], [`sample_payees`]) that carry the sample's ids and names, so this crate needs
 //! none of those domains. [`RecordingRouter`] records what a Presenter asked for.
 
 use std::cell::RefCell;
@@ -20,7 +20,7 @@ use crate::protocols::{
 use crate::{
     BillAccount, BillAccounts, BillCategories, BillCategory, BillPayee, BillPayees, BillPlan,
     BillPlanRepository, BillScheduleEntry, BillScheduleRepository, BillSplit, BillTransactions,
-    BillsSeed, EntryId, SplitRef, StubBills,
+    BillsSeed, EntryId, SampleBills, SplitRef,
 };
 
 /// The Bill Plans and the Bill Schedule, stored in memory.
@@ -115,8 +115,8 @@ pub struct InMemoryBillUnits {
 }
 
 impl InMemoryBillUnits {
-    /// The stub's Units, aud the base.
-    pub fn stub() -> Self {
+    /// The sample's Units, aud the base.
+    pub fn sample() -> Self {
         Self {
             codes: vec![
                 (UnitId::SEED_AUD, "aud".to_string()),
@@ -150,15 +150,15 @@ pub struct InMemoryPorts {
 }
 
 impl InMemoryPorts {
-    /// The stub Bill Plans and their Schedule as of `today`, with the fixed Accounts, Categories
+    /// The sample Bill Plans and their Schedule as of `today`, with the fixed Accounts, Categories
     /// and Payees they name and the Splits their Paid entries were paid by: the Sample Ledger's
-    /// Bills, with the Transactions numbered from 1 rather than after the other stubs'.
-    pub fn stub(today: NaiveDate) -> Self {
-        let accounts = stub_accounts();
-        let categories = stub_categories();
-        let payees = stub_payees();
+    /// Bills, with the Transactions numbered from 1 rather than after the other samples'.
+    pub fn sample(today: NaiveDate) -> Self {
+        let accounts = sample_accounts();
+        let categories = sample_categories();
+        let payees = sample_payees();
         let (seed, splits) = book(
-            crate::default_bills(
+            crate::sample_bills(
                 &accounts,
                 &categories,
                 &payees,
@@ -178,7 +178,7 @@ impl InMemoryPorts {
                 payees,
                 splits,
             },
-            units: InMemoryBillUnits::stub(),
+            units: InMemoryBillUnits::sample(),
         }
     }
 
@@ -225,18 +225,18 @@ impl BillsPorts for InMemoryPorts {
     }
 }
 
-/// The Splits `stub`'s payments were paid by, then the unmatched Telstra debit yesterday (the 8d
-/// Match candidate), newest first, as `lib-transactions`' stub books them: each payment a
+/// The Splits `sample`'s payments were paid by, then the unmatched Telstra debit yesterday (the 8d
+/// Match candidate), newest first, as `lib-transactions`' sample books them: each payment a
 /// Transaction in its Plan's Account of one Split of `-amount` carrying the Plan's Category and
 /// Payee. `lib-database`'s seed tests check the two agree.
 fn book(
-    stub: StubBills,
+    sample: SampleBills,
     accounts: &[BillAccount],
     categories: &[BillCategory],
     payees: &[BillPayee],
     today: NaiveDate,
 ) -> (BillsSeed, Vec<BillSplit>) {
-    let StubBills { seed, payments } = stub;
+    let SampleBills { seed, payments } = sample;
     let mut splits = Vec::new();
     let mut next = 1;
     for payment in payments {
@@ -291,9 +291,9 @@ fn insert_newest_first(splits: &mut Vec<BillSplit>, split: BillSplit) {
     splits.insert(at, split);
 }
 
-/// The stub Accounts as Bills reads them: the Accounts stub's ids, names, Units and whether each
+/// The sample Accounts as Bills reads them: the Accounts sample's ids, names, Units and whether each
 /// takes Transactions.
-pub fn stub_accounts() -> Vec<BillAccount> {
+pub fn sample_accounts() -> Vec<BillAccount> {
     let account = |n, name: &str, unit, takes_transactions| BillAccount {
         id: AccountId::seed(n),
         name: name.to_string(),
@@ -311,8 +311,8 @@ pub fn stub_accounts() -> Vec<BillAccount> {
     ]
 }
 
-/// The stub Categories as Bills reads them, the Categories stub's tree flattened to paths.
-pub fn stub_categories() -> Vec<BillCategory> {
+/// The sample Categories as Bills reads them, the Categories sample's tree flattened to paths.
+pub fn sample_categories() -> Vec<BillCategory> {
     let category = |n, name: &str, path: &str, is_expense, is_leaf| BillCategory {
         id: CategoryId::seed(n),
         name: name.to_string(),
@@ -348,9 +348,9 @@ pub fn stub_categories() -> Vec<BillCategory> {
     ]
 }
 
-/// The stub Payees Bills' seed and tests name, with the Payees stub's ids, and its one inactive
+/// The sample Payees Bills' seed and tests name, with the Payees sample's ids, and its one inactive
 /// Payee.
-pub fn stub_payees() -> Vec<BillPayee> {
+pub fn sample_payees() -> Vec<BillPayee> {
     let payee = |n, name: &str, is_active| BillPayee {
         id: PayeeId::seed(n),
         name: name.to_string(),

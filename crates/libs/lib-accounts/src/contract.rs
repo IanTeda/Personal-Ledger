@@ -14,7 +14,7 @@ use crate::fake::InMemoryPorts;
 use crate::interactor::{AddAccount, EditAccount};
 use crate::{
     Account, AccountDraft, AccountError, AccountRepository, AccountUsage, AccountUse, NewAccount,
-    default_accounts,
+    sample_accounts,
 };
 
 /// A stored set of the Accounts ports.
@@ -148,7 +148,7 @@ fn ids(ports: &mut impl StoredPorts) -> Vec<AccountId> {
 /// An added Account reloads with its id, Institution, Account Type, Unit, opening balance,
 /// opened date and account number.
 pub fn an_added_account_reloads_the_same<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_accounts());
+    let mut ports = factory.create(sample_accounts());
 
     let added = AddAccount(new_account("Holiday Fund")).run(ports.accounts());
     factory.commit(&mut ports);
@@ -175,7 +175,7 @@ pub fn an_added_account_reloads_the_same<F: PortsFactory>(factory: &mut F) {
 /// were; clearing the account number reloads it cleared. Editing an Account that isn't there is
 /// refused and writes nothing.
 pub fn an_edited_account_reloads_the_same<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_accounts());
+    let mut ports = factory.create(sample_accounts());
     let before = ports
         .accounts()
         .account(AccountId::seed(2))
@@ -209,17 +209,17 @@ pub fn an_edited_account_reloads_the_same<F: PortsFactory>(factory: &mut F) {
         (&edited.unit, &edited.balance, edited.opened_at),
         (&before.unit, &before.balance, before.opened_at)
     );
-    assert_eq!(ports.accounts().accounts().len(), default_accounts().len());
+    assert_eq!(ports.accounts().accounts().len(), sample_accounts().len());
 }
 
 /// A deleted Account is gone after a reload, and the others keep their order.
 pub fn a_deleted_account_stays_deleted<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_accounts());
+    let mut ports = factory.create(sample_accounts());
 
     ports.accounts().delete_account(AccountId::seed(3));
     factory.commit(&mut ports);
 
-    let expected: Vec<_> = default_accounts()
+    let expected: Vec<_> = sample_accounts()
         .into_iter()
         .map(|account| account.id)
         .filter(|id| *id != AccountId::seed(3))
@@ -230,14 +230,14 @@ pub fn a_deleted_account_stays_deleted<F: PortsFactory>(factory: &mut F) {
 
 /// Accounts list in the order they were added, the seed's first, before and after a reload.
 pub fn accounts_list_in_the_order_added<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_accounts());
+    let mut ports = factory.create(sample_accounts());
 
     let zeta = AddAccount(new_account("Zeta Savings")).run(ports.accounts());
     factory.commit(&mut ports);
     let alpha = AddAccount(new_account("Alpha Card")).run(ports.accounts());
     factory.commit(&mut ports);
 
-    let mut expected: Vec<_> = default_accounts()
+    let mut expected: Vec<_> = sample_accounts()
         .into_iter()
         .map(|account| account.id)
         .collect();
@@ -251,7 +251,7 @@ pub fn accounts_list_in_the_order_added<F: PortsFactory>(factory: &mut F) {
 /// reload; an Account nothing names, or one that isn't there, has none. Nothing is written to the
 /// Account for it.
 pub fn usage_counts_the_rows_naming_an_account<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_accounts());
+    let mut ports = factory.create(sample_accounts());
     let everyday = AccountId::seed(2);
     let amex = AccountId::seed(4);
     let stored = ports.accounts().accounts();
@@ -318,7 +318,7 @@ pub fn usage_counts_the_rows_naming_an_account<F: PortsFactory>(factory: &mut F)
 /// A write that fails is reported once, naming the Accounts domain, and the ports go back to the
 /// last committed rows rather than keeping the change the store refused.
 pub fn a_failed_write_reloads_and_reports<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_accounts());
+    let mut ports = factory.create(sample_accounts());
     let stored = ports.accounts().accounts();
 
     factory.break_writes(&mut ports);

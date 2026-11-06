@@ -18,7 +18,7 @@ struct Counts {
     in_btc: usize,
 }
 
-/// A Ledger file at `path` whose every count differs from the stub's: one Unit, Account and
+/// A Ledger file at `path` whose every count differs from the sample's: one Unit, Account and
 /// Institution more, the Account in btc, and one Transaction fewer. `None` when the seed has no
 /// btc to copy.
 fn differing_file(path: &Path) -> Option<Counts> {

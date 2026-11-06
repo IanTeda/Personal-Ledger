@@ -212,7 +212,7 @@ mod tests {
 
     #[test]
     fn the_select_lists_the_active_units_and_checks_the_base() {
-        let units = InMemoryLedgerUnits::stub();
+        let units = InMemoryLedgerUnits::sample();
         units.deactivate(UnitId::SEED_VAS);
 
         let view = presenter(&units).view_model().base_unit;
@@ -225,7 +225,7 @@ mod tests {
 
     #[test]
     fn steps_set_the_base_and_stop_at_the_ends() {
-        let units = InMemoryLedgerUnits::stub();
+        let units = InMemoryLedgerUnits::sample();
         let mut presenter = presenter(&units);
         let mut router = RecordingRouter::default();
 
@@ -245,7 +245,7 @@ mod tests {
 
     #[test]
     fn a_step_is_left_to_the_frame_while_the_index_has_the_keyboard() {
-        let units = InMemoryLedgerUnits::stub();
+        let units = InMemoryLedgerUnits::sample();
         let mut presenter = presenter(&units);
         presenter.set_page_focused(false);
         let mut router = RecordingRouter::default();
@@ -258,7 +258,7 @@ mod tests {
 
     #[test]
     fn clicking_a_unit_makes_it_the_base_and_a_gone_unit_is_ignored() {
-        let units = InMemoryLedgerUnits::stub();
+        let units = InMemoryLedgerUnits::sample();
         let mut presenter = presenter(&units);
         let mut router = RecordingRouter::default();
 
@@ -272,7 +272,7 @@ mod tests {
 
     #[test]
     fn the_legend_names_the_steps_and_the_back_chord() {
-        let units = InMemoryLedgerUnits::stub();
+        let units = InMemoryLedgerUnits::sample();
         let hints = presenter(&units).view_model().hints;
 
         let chords: Vec<_> = hints.iter().map(|h| h.chord.as_str()).collect();

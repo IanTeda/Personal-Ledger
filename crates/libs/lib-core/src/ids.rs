@@ -4,7 +4,7 @@
 
 use crate::RowID;
 
-/// Declares a Ledger id: a `Copy` newtype over [`RowID`]. `$tag` keeps the stub seeds of different
+/// Declares a Ledger id: a `Copy` newtype over [`RowID`]. `$tag` keeps the sample seeds of different
 /// kinds apart (`PayeeId::seed(1)` is not `TagId::seed(1)`), which makes a crossed-wires bug in a
 /// seed show up as a miss rather than as the wrong row.
 macro_rules! ledger_id {
@@ -39,7 +39,7 @@ macro_rules! ledger_id {
                 Self(RowID::from_uuid(uuid))
             }
 
-            /// The `n`th id of the stub seeds, which are fixed so the headless UI tests stay
+            /// The `n`th id of the sample seeds, which are fixed so the headless UI tests stay
             /// deterministic. `n` is the row's place in its seed, not a number to allocate from.
             pub const fn seed(n: u32) -> Self {
                 Self::from_uuid(uuid::Uuid::from_u128(
@@ -191,7 +191,7 @@ ledger_id!(
 );
 
 impl UnitId {
-    /// The stub seed's fixed ids. They live here, not in `lib_units`, because `lib_accounts`' seed
+    /// The sample seed's fixed ids. They live here, not in `lib_units`, because `lib_accounts`' seed
     /// points at them and the domain crates never depend on each other.
     pub const SEED_AUD: Self = Self::seed(1);
     pub const SEED_BTC: Self = Self::seed(2);
@@ -200,10 +200,10 @@ impl UnitId {
 
 impl InstitutionId {
     /// The Personal Institution (`GLOSSARY.md`, ADR-0049), first in `lib_institutions`' seed but
-    /// not only a stub id: `lib_ledger_creation` writes it into every new Ledger, and the
-    /// Account form defaults a Cash Account to it, so it stays when the stub seed goes.
+    /// not only a sample id: `lib_ledger_creation` writes it into every new Ledger, and the
+    /// Account form defaults a Cash Account to it, so it stays when the sample seed goes.
     pub const SEED_PERSONAL: Self = Self::seed(0);
-    /// The stub seed's fixed ids, in `lib_institutions`' seed order. They live here, not in
+    /// The sample seed's fixed ids, in `lib_institutions`' seed order. They live here, not in
     /// `lib_institutions`, because `lib_accounts`' seed points at them and the domain crates never
     /// depend on each other.
     pub const SEED_ANZ: Self = Self::seed(1);

@@ -35,12 +35,15 @@ mod tests {
 
     #[test]
     fn deactivating_keeps_the_payee_and_its_aliases_and_only_clears_active() {
-        let mut ports = InMemoryPorts::stub();
-        let before = ports.payees.payee(PayeeId::seed(1)).expect("a stub Payee");
+        let mut ports = InMemoryPorts::sample();
+        let before = ports
+            .payees
+            .payee(PayeeId::seed(1))
+            .expect("a sample Payee");
 
         let payee = DeactivatePayee(before.id)
             .run(&mut ports.payees)
-            .expect("a stub Payee");
+            .expect("a sample Payee");
 
         assert_eq!(
             payee,

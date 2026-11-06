@@ -745,7 +745,7 @@ impl UnitsPagePresenter {
 mod tests {
     use lib_config::KeyBindingConfig;
 
-    use super::super::test_support::{self, clock, stub};
+    use super::super::test_support::{self, clock, sample};
     use super::*;
     use crate::fake::{InMemoryPorts, RecordingRouter, RouterCall};
     use crate::keymap::units_page_keymap;
@@ -764,7 +764,7 @@ mod tests {
         }
 
         fn with(config: KeyBindingConfig) -> Self {
-            let (ports, shared) = stub();
+            let (ports, shared) = sample();
             Self {
                 ports,
                 presenter: UnitsPagePresenter::new(shared, clock(), units_page_keymap(&config)),
@@ -1544,7 +1544,7 @@ mod tests {
                 .units
                 .iter_mut()
                 .find(|unit| unit.id == UnitId::SEED_VAS)
-                .expect("the stub's vas");
+                .expect("the sample's vas");
             vas.prices = vec![
                 // 53 weeks before the newest: out of the range.
                 price(week(2025, 10, 20), "50", None),

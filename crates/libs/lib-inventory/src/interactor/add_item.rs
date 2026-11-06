@@ -36,8 +36,9 @@ mod tests {
 
     #[test]
     fn an_item_lands_in_its_area_and_one_for_another_locations_area_is_refused() {
-        let mut inventory =
-            InMemoryInventory::stub(chrono::NaiveDate::from_ymd_opt(2026, 10, 2).expect("a date"));
+        let mut inventory = InMemoryInventory::sample(
+            chrono::NaiveDate::from_ymd_opt(2026, 10, 2).expect("a date"),
+        );
         let locations = inventory.locations();
         let (elm, storage) = (&locations[0], &locations[1]);
         let draft = ItemDraft {

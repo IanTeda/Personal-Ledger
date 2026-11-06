@@ -17,7 +17,7 @@ use crate::interactor::{
 };
 use crate::{
     AreaError, CoverDraft, Inventory, InventoryRepository, InventoryUnits, ItemDraft,
-    LocationDraft, LocationError, LocationUsage, LocationUse, NameError, default_inventory,
+    LocationDraft, LocationError, LocationUsage, LocationUse, NameError, sample_inventory,
 };
 
 /// Builds the port a contract check runs on.
@@ -47,7 +47,7 @@ pub trait PortsFactory {
 pub trait ReadsFactory {
     type Reads: InventoryUnits + LocationUsage;
 
-    /// The reads over the stub Units, `inventory`, and one Document for each entry of `documents`,
+    /// The reads over the sample Units, `inventory`, and one Document for each entry of `documents`,
     /// Linked to the Items it lists.
     fn create(&mut self, inventory: Inventory, documents: Vec<Vec<ItemId>>) -> Self::Reads;
 }
@@ -100,8 +100,8 @@ fn today() -> NaiveDate {
     NaiveDate::from_ymd_opt(2026, 10, 2).expect("a real date")
 }
 
-fn stub() -> Inventory {
-    default_inventory(today())
+fn sample() -> Inventory {
+    sample_inventory(today())
 }
 
 fn dollars(amount: i64) -> Money {
@@ -129,7 +129,7 @@ fn cover() -> CoverDraft {
 /// A Location added with a cover reloads with its Unit, address and every cover field; one with
 /// no insurer reloads with none.
 pub fn a_location_with_cover_reloads_the_same<F: PortsFactory>(factory: &mut F) {
-    let mut port = factory.create(stub());
+    let mut port = factory.create(sample());
 
     let covered = AddLocation {
         draft: draft("Cabin", cover()),
@@ -166,7 +166,7 @@ pub fn a_location_with_cover_reloads_the_same<F: PortsFactory>(factory: &mut F) 
 /// An edit reloads with the details written and the Unit and Areas as they were; setting and
 /// clearing the cover reload as written. Editing a Location that isn't there is refused.
 pub fn an_edited_location_reloads_the_same<F: PortsFactory>(factory: &mut F) {
-    let mut port = factory.create(stub());
+    let mut port = factory.create(sample());
     let before = port.locations()[0].clone();
 
     EditLocation {
@@ -212,7 +212,7 @@ pub fn an_edited_location_reloads_the_same<F: PortsFactory>(factory: &mut F) {
 
 /// Areas reload in tab order: added ones last, a rename keeping the id, and a move swapping two.
 pub fn areas_reload_in_order<F: PortsFactory>(factory: &mut F) {
-    let mut port = factory.create(stub());
+    let mut port = factory.create(sample());
     let location = port.locations()[2].id;
     let first = AddArea {
         location,
@@ -278,7 +278,7 @@ pub fn areas_reload_in_order<F: PortsFactory>(factory: &mut F) {
 
 /// An Item added, edited and removed reloads as written, in the Area it was put in.
 pub fn items_reload_the_same<F: PortsFactory>(factory: &mut F) {
-    let mut port = factory.create(stub());
+    let mut port = factory.create(sample());
     let storage = port.locations()[1].clone();
     let area = storage.areas[0].id;
     let seeded = port.items().len();
@@ -331,7 +331,7 @@ pub fn items_reload_the_same<F: PortsFactory>(factory: &mut F) {
 /// Remove Area moves its Items to the destination and drops the Area, and both reload; an Area
 /// holding Items with nowhere to put them is refused and writes nothing.
 pub fn remove_area_moves_its_items<F: PortsFactory>(factory: &mut F) {
-    let mut port = factory.create(stub());
+    let mut port = factory.create(sample());
     let elm = port.locations()[0].clone();
     let (from, to) = (elm.areas[0].id, elm.areas[1].id);
     let held: Vec<_> = port
@@ -384,7 +384,7 @@ pub fn remove_area_moves_its_items<F: PortsFactory>(factory: &mut F) {
 
 /// An empty Area just goes, taking no Item with it.
 pub fn an_empty_area_is_removed_alone<F: PortsFactory>(factory: &mut F) {
-    let mut port = factory.create(stub());
+    let mut port = factory.create(sample());
     let location = port.locations()[2].id;
     let area = AddArea {
         location,
@@ -418,7 +418,7 @@ pub fn an_empty_area_is_removed_alone<F: PortsFactory>(factory: &mut F) {
 /// Remove Location takes its Areas and Items with it and leaves the other Locations as they were,
 /// and all of it reloads.
 pub fn removing_a_location_takes_its_areas_and_items<F: PortsFactory>(factory: &mut F) {
-    let mut port = factory.create(stub());
+    let mut port = factory.create(sample());
     let before = port.inventory();
     let elm = before.locations[0].id;
     assert!(before.location_items(elm) > 0);
@@ -445,7 +445,7 @@ pub fn removing_a_location_takes_its_areas_and_items<F: PortsFactory>(factory: &
 
 /// An unknown Location is refused and nothing is written.
 pub fn removing_an_unknown_location_writes_nothing<F: PortsFactory>(factory: &mut F) {
-    let mut port = factory.create(stub());
+    let mut port = factory.create(sample());
     let before = port.inventory();
 
     assert_eq!(
@@ -460,7 +460,7 @@ pub fn removing_an_unknown_location_writes_nothing<F: PortsFactory>(factory: &mu
 
 /// A write the store refuses is reported, and the rows fall back to the last committed ones.
 pub fn a_failed_write_is_reported_and_rolls_back<F: PortsFactory>(factory: &mut F) {
-    let mut port = factory.create(stub());
+    let mut port = factory.create(sample());
     let before = port.inventory();
     factory.break_writes(&mut port);
 
@@ -477,10 +477,10 @@ pub fn a_failed_write_is_reported_and_rolls_back<F: PortsFactory>(factory: &mut 
     assert_eq!(port.inventory(), before);
 }
 
-/// The Units a Location can be kept in are the stub's fiat ones, and a code is found for any
+/// The Units a Location can be kept in are the sample's fiat ones, and a code is found for any
 /// Unit, fiat or not, and for none that isn't there.
 pub fn the_currencies_are_the_fiat_units<F: ReadsFactory>(factory: &mut F) {
-    let reads = factory.create(stub(), Vec::new());
+    let reads = factory.create(sample(), Vec::new());
 
     let currencies = reads.currencies();
     assert!(currencies.iter().any(|unit| unit.id == UnitId::SEED_AUD));
@@ -500,7 +500,7 @@ pub fn the_currencies_are_the_fiat_units<F: ReadsFactory>(factory: &mut F) {
 /// A Location's usage is the Documents Linking any of its Items, each counted once however many
 /// Items it Links; a Location nothing Links, and one that isn't there, are used by none.
 pub fn a_locations_usage_counts_the_documents_linking_its_items<F: ReadsFactory>(factory: &mut F) {
-    let inventory = stub();
+    let inventory = sample();
     let items = |location: usize| -> Vec<ItemId> {
         inventory
             .items

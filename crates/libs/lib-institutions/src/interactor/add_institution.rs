@@ -47,7 +47,7 @@ mod tests {
 
     #[test]
     fn adding_an_institution_writes_it_trimmed_after_the_others() {
-        let mut institutions = InMemoryInstitutions::stub();
+        let mut institutions = InMemoryInstitutions::sample();
 
         let added = AddInstitution(draft(" Bank X "))
             .run(&mut institutions)
@@ -61,7 +61,7 @@ mod tests {
 
     #[test]
     fn a_blank_or_taken_name_is_refused_and_nothing_is_written() {
-        let mut institutions = InMemoryInstitutions::stub();
+        let mut institutions = InMemoryInstitutions::sample();
         let before = institutions.clone();
 
         assert_eq!(

@@ -46,7 +46,7 @@ fn a_location_with_items_and_an_added_one_are_there_after_a_restart(app: &mut Te
         let writer = storage.writer.clone();
         let mut ui = Harness::with_storage(app, storage);
         in_inventory(&mut ui);
-        // 12 Elm St, the first Location, holds the stub's Items.
+        // 12 Elm St, the first Location, holds the sample's Items.
         ui.press("e x enter");
         assert_eq!(ui.dialog(), None, "the Edit Dialog confirmed");
         ui.press("n c a b i n enter");
@@ -84,7 +84,7 @@ fn a_location_with_items_and_an_added_one_are_there_after_a_restart(app: &mut Te
         "the renamed Location's Areas still hold its Items"
     );
 
-    // The stub Documents link the Fridge, an Item of 12 Elm St, by id: the Link still resolves to
+    // The sample Documents link the Fridge, an Item of 12 Elm St, by id: the Link still resolves to
     // the stored Item.
     ui.press("g f");
     let rows = ui.documents().library_rows;

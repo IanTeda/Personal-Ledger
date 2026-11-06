@@ -682,7 +682,7 @@ fn refusal_text(error: AccountError) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::stub;
+    use super::super::test_support::sample;
     use super::*;
     use crate::fake::{RecordingRouter, RouterCall};
     use crate::{AccountRepository as _, AccountUse};
@@ -728,7 +728,7 @@ mod tests {
 
     #[test]
     fn a_fresh_form_starts_on_bank_with_the_first_institution_and_the_base_unit() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let view = add(shared).view_model();
 
         assert_eq!(view.frame.title, "Add account");
@@ -749,7 +749,7 @@ mod tests {
 
     #[test]
     fn a_base_unit_that_is_not_an_option_falls_back_to_the_first_and_inactive_units_are_left_out() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         ports.borrow_mut().units.base = None;
         ports.borrow_mut().units.units[0].is_active = false;
         let view = add(shared).view_model();
@@ -766,7 +766,7 @@ mod tests {
 
     #[test]
     fn a_typed_new_prefills_the_name() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let form = AccountFormPresenter::add(shared, " Rainy Day ", today());
 
         assert_eq!(form.view_model().name.text, "Rainy Day");
@@ -775,7 +775,7 @@ mod tests {
 
     #[test]
     fn typing_edits_the_text_fields_and_goes_nowhere_on_a_select() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut form = add(shared);
 
         press(&mut form, &keys("Holidax"));
@@ -801,7 +801,7 @@ mod tests {
 
     #[test]
     fn a_select_opens_moves_and_picks_and_leaving_it_commits_the_highlight() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut form = add(shared);
         press(&mut form, &[DialogInput::NextField, DialogInput::NextField]);
         assert_eq!(form.view_model().focused, AccountField::Type);
@@ -836,7 +836,7 @@ mod tests {
 
     #[test]
     fn a_click_toggles_one_list_at_a_time_and_back_or_a_focus_click_closes_it() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut form = add(shared);
 
         send(
@@ -866,7 +866,7 @@ mod tests {
 
     #[test]
     fn select_confirms_on_a_text_field_and_submit_confirms_from_a_select() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut form = add(shared);
         press(&mut form, &keys("Rainy Day"));
         press(&mut form, &[DialogInput::NextField]);
@@ -877,7 +877,7 @@ mod tests {
             [RouterCall::CloseDialog(Some(_))]
         ));
 
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut form = add(shared);
         press(&mut form, &keys("Float"));
         let calls = press(&mut form, &[DialogInput::Select]);
@@ -889,7 +889,7 @@ mod tests {
 
     #[test]
     fn tab_walks_the_fields_in_reading_order_and_wraps_both_ways() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut form = add(shared);
         let mut seen = vec![form.view_model().focused];
         for _ in 0..6 {
@@ -914,7 +914,7 @@ mod tests {
 
     #[test]
     fn cash_starts_on_the_personal_institution_and_another_type_on_the_first_other_one() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut form = add(shared);
         send(
             &mut form,
@@ -953,7 +953,7 @@ mod tests {
 
     #[test]
     fn a_cash_account_may_name_any_institution_and_a_pick_stays_through_a_change_of_type() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut form = add(shared);
         send(
             &mut form,
@@ -990,7 +990,7 @@ mod tests {
 
     #[test]
     fn a_new_account_starts_on_its_institutions_usual_unit() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         give_usual_unit(&ports, InstitutionId::SEED_ANZ, UnitId::SEED_BTC);
 
         let view = add(shared).view_model();
@@ -1001,7 +1001,7 @@ mod tests {
 
     #[test]
     fn with_no_usual_unit_the_unit_starts_on_the_base_unit() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut form = add(shared);
         send(
             &mut form,
@@ -1013,7 +1013,7 @@ mod tests {
 
     #[test]
     fn a_deactivated_usual_unit_falls_back_to_the_base_unit_until_it_is_active_again() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         give_usual_unit(&ports, InstitutionId::SEED_ANZ, UnitId::SEED_BTC);
         ports.borrow_mut().units.units[2].is_active = false;
         assert_eq!(
@@ -1027,7 +1027,7 @@ mod tests {
 
     #[test]
     fn the_unit_follows_each_institution_picked_until_a_unit_is_picked() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         give_usual_unit(&ports, InstitutionId::SEED_ANZ, UnitId::SEED_BTC);
         give_usual_unit(&ports, InstitutionId::SEED_VANGUARD, UnitId::SEED_VAS);
         let mut form = add(shared);
@@ -1056,7 +1056,7 @@ mod tests {
 
     #[test]
     fn a_change_of_type_that_moves_the_institution_moves_the_unit_too() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         give_usual_unit(&ports, InstitutionId::SEED_PERSONAL, UnitId::SEED_VAS);
         let mut form = add(shared);
 
@@ -1067,10 +1067,10 @@ mod tests {
 
     #[test]
     fn edit_leaves_the_accounts_own_unit_alone() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         give_usual_unit(&ports, InstitutionId::SEED_AMEX, UnitId::SEED_BTC);
         let mut form =
-            AccountFormPresenter::edit(shared, AccountId::seed(6), today()).expect("stub");
+            AccountFormPresenter::edit(shared, AccountId::seed(6), today()).expect("sample");
         let before = form.view_model().unit.chosen;
 
         send(
@@ -1084,7 +1084,7 @@ mod tests {
 
     #[test]
     fn with_no_personal_institution_a_cash_account_starts_on_no_choice() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         ports
             .borrow_mut()
             .institutions
@@ -1108,7 +1108,7 @@ mod tests {
 
     #[test]
     fn a_form_confirms_only_with_a_name_a_unit_and_a_parseable_balance() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut form = add(shared);
         assert!(!form.view_model().frame.can_confirm);
         send(&mut form, vec![name("   ")]);
@@ -1130,7 +1130,7 @@ mod tests {
 
     #[test]
     fn the_opening_balance_only_takes_what_can_be_part_of_a_decimal_amount() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut form = add(shared);
         for text in ["1a", "1.2.3", "1-", "--1", "x"] {
             send(&mut form, vec![balance("12"), balance(text)]);
@@ -1166,7 +1166,7 @@ mod tests {
 
     #[test]
     fn an_add_stores_what_was_typed_with_its_number_and_opened_today() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut form = add(shared);
         let calls = send(
             &mut form,
@@ -1191,7 +1191,7 @@ mod tests {
 
     #[test]
     fn an_add_pads_the_balance_to_its_units_precision_and_keeps_finer_places_as_typed() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
 
         assert_eq!(
             added_balance(&shared, "Coins", UnitId::SEED_BTC, "0.4"),
@@ -1211,7 +1211,7 @@ mod tests {
 
     #[test]
     fn edit_prefills_the_account_fixes_the_unit_and_balance_and_quotes_its_use() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         ports.borrow_mut().usage.uses.insert(
             AccountId::seed(2),
             AccountUse {
@@ -1219,8 +1219,8 @@ mod tests {
                 budgets: 3,
             },
         );
-        let mut form =
-            AccountFormPresenter::edit(shared.clone(), AccountId::seed(2), today()).expect("stub");
+        let mut form = AccountFormPresenter::edit(shared.clone(), AccountId::seed(2), today())
+            .expect("sample");
         let view = form.view_model();
 
         assert_eq!(view.frame.title, "Edit account");
@@ -1272,9 +1272,9 @@ mod tests {
 
     #[test]
     fn edit_shows_the_balance_at_its_units_precision() {
-        let (ports, shared) = stub();
-        let bitcoin =
-            AccountFormPresenter::edit(shared.clone(), AccountId::seed(7), today()).expect("stub");
+        let (ports, shared) = sample();
+        let bitcoin = AccountFormPresenter::edit(shared.clone(), AccountId::seed(7), today())
+            .expect("sample");
         assert_eq!(
             bitcoin.view_model().balance_read_only.as_deref(),
             Some("0.41200000")
@@ -1286,7 +1286,7 @@ mod tests {
             }
         }
         let everyday =
-            AccountFormPresenter::edit(shared, AccountId::seed(2), today()).expect("stub");
+            AccountFormPresenter::edit(shared, AccountId::seed(2), today()).expect("sample");
         assert_eq!(
             everyday.view_model().balance_read_only.as_deref(),
             Some("4,183")
@@ -1295,10 +1295,10 @@ mod tests {
 
     #[test]
     fn edit_keeps_an_accounts_deactivated_unit_among_the_choices() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         ports.borrow_mut().units.units[1].is_active = false;
         let view = AccountFormPresenter::edit(shared, AccountId::seed(6), today())
-            .expect("stub")
+            .expect("sample")
             .view_model();
 
         assert_eq!(view.unit.chosen, Some(UnitId::SEED_VAS));
@@ -1308,9 +1308,9 @@ mod tests {
 
     #[test]
     fn edit_of_a_cash_account_shows_its_institution_and_a_change_of_type_keeps_it() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut form =
-            AccountFormPresenter::edit(shared, AccountId::seed(1), today()).expect("stub");
+            AccountFormPresenter::edit(shared, AccountId::seed(1), today()).expect("sample");
         assert_eq!(
             form.view_model().institution.chosen,
             Some(InstitutionId::SEED_PERSONAL)
@@ -1325,26 +1325,26 @@ mod tests {
 
     #[test]
     fn edit_of_an_account_whose_institution_is_gone_opens_on_no_choice_until_one_is_picked() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         ports
             .borrow_mut()
             .institutions
             .institutions
             .retain(|row| row.id != InstitutionId::SEED_PERSONAL);
         let view = AccountFormPresenter::edit(shared, AccountId::seed(1), today())
-            .expect("stub")
+            .expect("sample")
             .view_model();
 
         assert_eq!(view.institution.chosen, None);
         assert!(!view.frame.can_confirm, "an Institution is required");
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         ports
             .borrow_mut()
             .institutions
             .institutions
             .retain(|row| row.id != InstitutionId::SEED_AMEX);
         let mut form =
-            AccountFormPresenter::edit(shared, AccountId::seed(4), today()).expect("stub");
+            AccountFormPresenter::edit(shared, AccountId::seed(4), today()).expect("sample");
         let view = form.view_model();
         assert_eq!(view.institution.chosen, None, "not the Type's default");
         assert!(!view.frame.can_confirm);
@@ -1359,9 +1359,9 @@ mod tests {
 
     #[test]
     fn an_account_gone_under_the_edit_is_refused_onto_the_form() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut form =
-            AccountFormPresenter::edit(shared, AccountId::seed(3), today()).expect("stub");
+            AccountFormPresenter::edit(shared, AccountId::seed(3), today()).expect("sample");
         ports
             .borrow_mut()
             .accounts
@@ -1378,7 +1378,7 @@ mod tests {
 
     #[test]
     fn cancel_closes_with_nothing_and_writes_nothing() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let before = ports.borrow().clone();
         let mut form = add(shared);
 

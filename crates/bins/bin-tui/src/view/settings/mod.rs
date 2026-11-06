@@ -1213,9 +1213,9 @@ mod tests {
         }
     }
 
-    /// The stub seed's Units on the Sample Ledger, as an Open Ledger holds them.
-    pub(super) fn stub_units() -> UnitsSetup {
-        UnitsSetup::stub(&lib_config::KeyBindingConfig::default())
+    /// The sample seed's Units on the Sample Ledger, as an Open Ledger holds them.
+    pub(super) fn sample_units() -> UnitsSetup {
+        UnitsSetup::sample(&lib_config::KeyBindingConfig::default())
     }
 
     pub(super) fn render_at(view: &SettingsView, width: u16, height: u16) -> String {

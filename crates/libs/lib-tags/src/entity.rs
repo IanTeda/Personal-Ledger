@@ -1,6 +1,6 @@
-//! The Tag entity, its stub seed and the rules over rows, shared by the Desktop and TUI.
+//! The Tag entity, its sample seed and the rules over rows, shared by the Desktop and TUI.
 //!
-//! The stub Tags are seeded from the Tags handoff's sample list (`docs/ux/desktop-mockups/19-tags/`)
+//! The sample Tags are seeded from the Tags handoff's sample list (`docs/ux/desktop-mockups/19-tags/`)
 //! plus the names the Transactions seed draws on. `gpui`-free and side-effect free, so every rule
 //! is unit-tested without a window.
 //!
@@ -53,7 +53,7 @@ pub fn swatches() -> [HexColor; 6] {
 /// receipt's "Japan Trip 2026", one inactive Tag and `Work Trip`: a likely duplicate of
 /// `work-trip` that bypasses the uniqueness rule on purpose, so 7a's flag and 7e's merge have
 /// something to show.
-pub fn default_tags() -> Vec<Tag> {
+pub fn sample_tags() -> Vec<Tag> {
     let [red, sage, ochre, blue, violet, _grey] = swatches();
     [
         ("Japan Trip 2026", Some(red.clone()), true),

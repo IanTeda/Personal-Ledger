@@ -20,7 +20,7 @@
 //! **Delete is lightweight, not a popup**: `d` arms `pending_delete`; the list's own heading
 //! row (which normally just states the visible/total count) is replaced by the confirm line
 //! while armed — the same "a transient state temporarily replaces part of the normal render"
-//! trick `view::categories`'s own `merge_hint` already uses for its `X` stub. Any key other
+//! trick `view::categories`'s own `merge_hint` already uses for its `X` sample. Any key other
 //! than `y` aborts the arm with no mutation; `y` calls `TagStore::delete` unconditionally (it's
 //! never refused, per the map's own decision that removing a Tag is harmless and reversible).
 //!

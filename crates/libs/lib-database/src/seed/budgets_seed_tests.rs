@@ -1,5 +1,5 @@
 //! The Budgets seed tests that read the other domains' seeds, so they need more than one domain:
-//! the Budgets seed over the stub Accounts and Categories, its figures over the Transactions seed.
+//! the Budgets seed over the sample Accounts and Categories, its figures over the Transactions seed.
 //! Lives here, beside the joined Sample Ledger, rather than in `lib_budgets`, which depends on no other
 //! domain (moved from `lib-ledger`, #1056). The rest of the Budgets model's tests live in
 //! `lib_budgets`.
@@ -7,16 +7,16 @@
 use std::collections::BTreeMap;
 
 use chrono::NaiveDate;
-use lib_accounts::default_accounts;
+use lib_accounts::sample_accounts;
 use lib_budgets::fake::InMemoryBudgetReads;
 use lib_budgets::{
     Budget, BudgetSplit, Budgets, CategoryFigures, LimitRecord, Method, PERSONAL_SPENDING_ID,
-    PeriodFigures, applied, check_accounts, check_leaf, default_budgets, period_figures, zero,
+    PeriodFigures, applied, check_accounts, check_leaf, period_figures, sample_budgets, zero,
 };
-use lib_categories::{self as categories, default_categories};
+use lib_categories::{self as categories, sample_categories};
 use lib_core::{BudgetId, CategoryId, Money, Period, UnitId};
-use lib_payees::default_payees;
-use lib_tags::default_tags;
+use lib_payees::sample_payees;
+use lib_tags::sample_tags;
 
 use lib_accounts::Account;
 use lib_categories::Category;
@@ -24,7 +24,7 @@ use lib_transactions::Transaction;
 
 use crate::adapter::accounts::budget_accounts;
 use crate::adapter::categories::budget_categories;
-use crate::seed::default_transactions;
+use crate::seed::sample_transaction_history;
 
 fn date(y: i32, m: u32, d: u32) -> NaiveDate {
     NaiveDate::from_ymd_opt(y, m, d).unwrap_or_default()
@@ -42,7 +42,7 @@ fn money(text: &str) -> Money {
     text.parse().expect("a valid test amount")
 }
 
-/// The stub Accounts and Categories with the Transactions seed; no Bills.
+/// The sample Accounts and Categories with the Transactions seed; no Bills.
 struct World {
     accounts: Vec<Account>,
     categories: Vec<Category>,
@@ -50,7 +50,7 @@ struct World {
 }
 
 impl World {
-    /// The Budgets read ports over the stub's rows, as `lib-database`'s stores answer them.
+    /// The Budgets read ports over the sample's rows, as `lib-database`'s stores answer them.
     fn reads(&self) -> InMemoryBudgetReads {
         InMemoryBudgetReads {
             categories: budget_categories(&self.categories),
@@ -99,15 +99,15 @@ fn unreachable_budget() -> Budget {
 }
 
 fn seeded() -> (World, Budgets) {
-    let (accounts, categories) = (default_accounts(), default_categories());
-    let transactions = default_transactions(
+    let (accounts, categories) = (sample_accounts(), sample_categories());
+    let transactions = sample_transaction_history(
         &accounts,
         &categories,
-        &default_payees(),
-        &default_tags(),
+        &sample_payees(),
+        &sample_tags(),
         today(),
     );
-    let budgets = default_budgets(
+    let budgets = sample_budgets(
         &budget_accounts(&accounts),
         &budget_categories(&categories),
         today(),
@@ -188,17 +188,17 @@ fn dining_steps_up_next_month_in_the_seed() {
     assert_eq!(amount_in(&chain, sep().next()), Some(money("300.00")));
 }
 
-/// `lib-budgets`' fake stub stands in for these mappings, so its tests run on what the joined Sample Ledger
+/// `lib-budgets`' fake sample stands in for these mappings, so its tests run on what the joined Sample Ledger
 /// holds.
 #[test]
-fn the_budgets_fake_stub_is_the_ledgers() {
-    let stub = crate::FakeStores::sample(today());
+fn the_budgets_fake_sample_is_the_ledgers() {
+    let sample = crate::FakeStores::sample(today());
     assert_eq!(
-        budget_accounts(&stub.accounts.accounts.accounts),
-        lib_budgets::fake::stub_accounts()
+        budget_accounts(&sample.accounts.accounts.accounts),
+        lib_budgets::fake::sample_accounts()
     );
     assert_eq!(
-        budget_categories(&stub.categories.categories),
-        lib_budgets::fake::stub_categories()
+        budget_categories(&sample.categories.categories),
+        lib_budgets::fake::sample_categories()
     );
 }

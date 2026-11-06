@@ -38,8 +38,11 @@ mod tests {
 
     #[test]
     fn a_rename_keeps_the_old_name_as_an_alias() {
-        let mut ports = InMemoryPorts::stub();
-        let coles = ports.payees.payee(PayeeId::seed(2)).expect("a stub Payee");
+        let mut ports = InMemoryPorts::sample();
+        let coles = ports
+            .payees
+            .payee(PayeeId::seed(2))
+            .expect("a sample Payee");
 
         let payee = EditPayee {
             id: coles.id,
@@ -60,7 +63,7 @@ mod tests {
 
     #[test]
     fn editing_a_payee_that_is_gone_is_refused_and_nothing_is_written() {
-        let mut ports = InMemoryPorts::stub();
+        let mut ports = InMemoryPorts::sample();
         let before = ports.clone();
 
         let refused = EditPayee {

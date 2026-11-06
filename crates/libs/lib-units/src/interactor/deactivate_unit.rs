@@ -48,7 +48,7 @@ mod tests {
 
     #[test]
     fn deactivating_a_unit_writes_it_deactivated_and_leaves_the_rest_alone() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
 
         let unit = DeactivateUnit(UnitId::SEED_BTC)
             .run(&mut ports.units, &ports.base_unit)
@@ -62,7 +62,7 @@ mod tests {
 
     #[test]
     fn deactivating_the_base_unit_is_refused_and_nothing_is_written() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         let before = ports.clone();
 
         assert_eq!(
@@ -74,7 +74,7 @@ mod tests {
 
     #[test]
     fn deactivating_a_unit_that_is_gone_is_refused_and_nothing_is_written() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         let before = ports.clone();
 
         assert_eq!(

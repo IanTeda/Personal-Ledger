@@ -33,13 +33,13 @@ mod tests {
     use crate::CoverError;
     use crate::fake::InMemoryInventory;
 
-    fn stub() -> InMemoryInventory {
-        InMemoryInventory::stub(chrono::NaiveDate::from_ymd_opt(2026, 10, 2).expect("a date"))
+    fn sample() -> InMemoryInventory {
+        InMemoryInventory::sample(chrono::NaiveDate::from_ymd_opt(2026, 10, 2).expect("a date"))
     }
 
     #[test]
     fn an_empty_insurer_clears_the_cover_and_a_bad_one_is_refused() {
-        let mut inventory = stub();
+        let mut inventory = sample();
         let id = inventory.locations()[0].id;
         assert!(inventory.location(id).expect("seeded").cover.is_some());
 

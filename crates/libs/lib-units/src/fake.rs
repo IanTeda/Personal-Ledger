@@ -1,4 +1,4 @@
-//! In-memory ports and the stub seed, for tests and UI-first work. Each holds its rows in a plain
+//! In-memory ports and the sample seed, for tests and UI-first work. Each holds its rows in a plain
 //! field so a test can set up or read state directly. [`RecordingRouter`] is a Router that only
 //! records what it was asked.
 
@@ -14,7 +14,7 @@ use lib_viper::dialog::DialogRouter;
 use crate::protocols::{PortsMut, SharedPorts, UnitsDialog, UnitsOutcome, UnitsPorts, UnitsRouter};
 use crate::{
     BaseUnitRepository, Holding, PriceSourceRecord, PriceSourceRepository, UnitHoldings,
-    UnitRepository, UnitRow, UnitUsage, UnitUse, default_units,
+    UnitRepository, UnitRow, UnitUsage, UnitUse, sample_units,
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -109,13 +109,13 @@ pub struct InMemoryPorts {
 }
 
 impl InMemoryPorts {
-    /// The stub seed: the Sample Ledger's Units (see [`default_units`]) with aud as the base, no
+    /// The sample seed: the Sample Ledger's Units (see [`sample_units`]) with aud as the base, no
     /// stored Price Source rows, and nothing using any Unit. Ids match `lib-database`'s joined Sample Ledger, so its
     /// Accounts, Bill Plans and Budgets still resolve their Units.
-    pub fn stub(now: DateTime<Utc>) -> Self {
+    pub fn sample(now: DateTime<Utc>) -> Self {
         Self {
             units: InMemoryUnits {
-                units: default_units(now),
+                units: sample_units(now),
             },
             price_sources: InMemoryPriceSources::default(),
             base_unit: InMemoryBaseUnit(UnitId::SEED_AUD),
@@ -222,8 +222,8 @@ mod tests {
     use crate::{BuiltInOverride, COINGECKO, Precision, PriceLink, UnitKind, Updates};
 
     #[test]
-    fn the_stub_seed_holds_aud_btc_and_vas_with_aud_as_base() {
-        let ports = InMemoryPorts::stub(Utc::now());
+    fn the_sample_seed_holds_aud_btc_and_vas_with_aud_as_base() {
+        let ports = InMemoryPorts::sample(Utc::now());
         let codes: Vec<_> = ports
             .units
             .units()
@@ -238,7 +238,7 @@ mod tests {
 
     #[test]
     fn upserting_a_unit_replaces_the_row_with_its_id_or_appends_it() {
-        let mut units = InMemoryPorts::stub(Utc::now()).units;
+        let mut units = InMemoryPorts::sample(Utc::now()).units;
         let mut btc = units.unit(UnitId::SEED_BTC).unwrap();
         btc.name = "Bitcoin core".into();
         units.upsert_unit(btc.clone());

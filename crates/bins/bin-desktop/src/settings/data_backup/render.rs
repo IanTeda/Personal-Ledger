@@ -6,7 +6,7 @@
 //!
 //! Both buttons are permanently out of scope for this map (the map's own Out-of-scope: stand-in
 //! handlers with no real effect) rather than "not yet built" behind a future ticket -- so, like
-//! `sync_server::sync_now_button`, their stub status-line messages name no issue.
+//! `sync_server::sync_now_button`, their sample status-line messages name no issue.
 
 use gpui::{App, Context, Window, div, prelude::*, px};
 use lib_settings::{DataBackupEvent, DataBackupRow};

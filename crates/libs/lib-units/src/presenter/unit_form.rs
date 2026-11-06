@@ -647,7 +647,7 @@ fn pick<T: Clone + PartialEq>(
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::{hints, pairs, stub};
+    use super::super::test_support::{hints, pairs, sample};
     use super::*;
     use crate::fake::{RecordingRouter, RouterCall};
     use crate::{COINGECKO, FRANKFURTER, YAHOO_FINANCE};
@@ -671,7 +671,7 @@ mod tests {
 
     #[test]
     fn a_new_form_is_on_manual_entry_quoted_in_the_base_unit_and_hides_symbol_and_quote() {
-        let (_, ports) = stub();
+        let (_, ports) = sample();
         let form = UnitFormPresenter::add(ports);
         let view = form.view_model();
 
@@ -694,7 +694,7 @@ mod tests {
 
     #[test]
     fn the_source_list_holds_only_sources_that_price_the_kind() {
-        let (_, ports) = stub();
+        let (_, ports) = sample();
         let mut form = UnitFormPresenter::add(ports);
 
         send(&mut form, vec![UnitFormEvent::Kind(UnitKind::Crypto)]);
@@ -711,7 +711,7 @@ mod tests {
 
     #[test]
     fn a_fetching_source_shows_symbol_and_quote_and_changing_type_falls_back_to_manual_entry() {
-        let (_, ports) = stub();
+        let (_, ports) = sample();
         let mut form = UnitFormPresenter::add(ports);
         send(
             &mut form,
@@ -744,7 +744,7 @@ mod tests {
 
     #[test]
     fn tab_skips_fields_manual_entry_hides_and_wraps() {
-        let (_, ports) = stub();
+        let (_, ports) = sample();
         let mut form = UnitFormPresenter::add(ports);
         send(&mut form, vec![UnitFormEvent::Focus(UnitField::Symbol)]);
         assert!(
@@ -766,7 +766,7 @@ mod tests {
 
     #[test]
     fn adding_a_unit_saves_its_link_and_closes_with_its_code() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut form = UnitFormPresenter::add(shared);
 
         let calls = send(
@@ -802,7 +802,7 @@ mod tests {
 
     #[test]
     fn an_invalid_form_does_not_confirm() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut form = UnitFormPresenter::add(shared);
 
         let calls = send(
@@ -820,7 +820,7 @@ mod tests {
 
     #[test]
     fn editing_shows_the_real_usage_counts_and_adding_shows_none() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let form = UnitFormPresenter::edit(shared.clone(), UnitId::SEED_BTC).unwrap();
         assert_eq!(
             form.view_model().usage.as_deref(),
@@ -845,7 +845,7 @@ mod tests {
 
     #[test]
     fn editing_prefills_the_row_keeps_an_unfitting_stored_source_and_saves_under_its_id() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         ports.borrow_mut().units.units[1].kind = UnitKind::Currency;
         let mut form = UnitFormPresenter::edit(shared, UnitId::SEED_BTC).expect("btc is seeded");
         let view = form.view_model();
@@ -878,7 +878,7 @@ mod tests {
 
     #[test]
     fn a_unit_or_source_removed_under_the_dialog_is_refused_as_text_and_it_stays_open() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut edit = UnitFormPresenter::edit(shared.clone(), UnitId::SEED_VAS).unwrap();
         ports.borrow_mut().units.units.remove(2);
         assert_eq!(send(&mut edit, vec![UnitFormEvent::Confirm]), []);
@@ -912,7 +912,7 @@ mod tests {
 
     #[test]
     fn a_fetching_source_needs_a_quote_unit_to_be_valid() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         ports.borrow_mut().units.units.clear();
         let mut form = UnitFormPresenter::add(shared);
         send(
@@ -934,7 +934,7 @@ mod tests {
 
     #[test]
     fn a_quote_unit_removed_under_the_dialog_is_refused_as_text_and_nothing_is_written() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut add = UnitFormPresenter::add(shared.clone());
         send(
             &mut add,
@@ -960,7 +960,7 @@ mod tests {
 
     #[test]
     fn the_first_unit_on_an_empty_ledger_is_quoted_in_itself() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         ports.borrow_mut().units.units.clear();
         let mut form = UnitFormPresenter::add(shared);
         send(
@@ -979,7 +979,7 @@ mod tests {
 
     #[test]
     fn a_new_units_precision_follows_its_type_until_one_is_typed() {
-        let (_, ports) = stub();
+        let (_, ports) = sample();
         let mut form = UnitFormPresenter::add(ports);
         assert_eq!(form.view_model().precision.text, "2", "Currency's");
 
@@ -1002,7 +1002,7 @@ mod tests {
 
     #[test]
     fn editing_prefills_the_precision_and_a_type_change_keeps_it() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut form = UnitFormPresenter::edit(shared, UnitId::SEED_AUD).expect("aud is seeded");
         assert_eq!(form.view_model().precision.text, "2");
 
@@ -1013,7 +1013,7 @@ mod tests {
 
     #[test]
     fn precision_sits_after_name_in_tab_order() {
-        let (_, ports) = stub();
+        let (_, ports) = sample();
         let mut form = UnitFormPresenter::add(ports);
         send(
             &mut form,
@@ -1038,7 +1038,7 @@ mod tests {
 
     #[test]
     fn a_precision_outside_0_to_18_does_not_confirm_and_one_inside_is_saved() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut form = UnitFormPresenter::edit(shared, UnitId::SEED_BTC).expect("btc is seeded");
 
         for refused in ["", "19", "2.5"] {
@@ -1068,7 +1068,7 @@ mod tests {
 
     #[test]
     fn cancel_closes_with_no_outcome() {
-        let (_, ports) = stub();
+        let (_, ports) = sample();
         let mut form = UnitFormPresenter::add(ports);
         assert_eq!(
             send(&mut form, vec![UnitFormEvent::Cancel]),
@@ -1078,7 +1078,7 @@ mod tests {
 
     #[test]
     fn the_form_takes_next_field_choose_and_cancel() {
-        let (_, ports) = stub();
+        let (_, ports) = sample();
         let view = UnitFormPresenter::add(ports).view_model();
 
         assert_eq!(
@@ -1093,7 +1093,7 @@ mod tests {
 
     #[test]
     fn dialog_input_types_into_the_focused_field_and_tab_leaving_a_select_closes_its_list() {
-        let (_, ports) = stub();
+        let (_, ports) = sample();
         let mut form = UnitFormPresenter::add(ports);
         send(
             &mut form,
@@ -1123,7 +1123,7 @@ mod tests {
 
     #[test]
     fn dialog_input_steps_an_open_list_and_select_commits_it_rather_than_confirming() {
-        let (_, ports) = stub();
+        let (_, ports) = sample();
         let mut form = UnitFormPresenter::add(ports);
         let before = form.view_model().kind.chosen;
         let calls = send(

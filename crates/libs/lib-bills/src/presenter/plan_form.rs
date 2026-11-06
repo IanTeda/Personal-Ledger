@@ -902,7 +902,7 @@ mod tests {
 
     use super::*;
     use crate::fake::{InMemoryPorts, RecordingRouter, Routed};
-    use crate::presenter::test_support::{stub, today};
+    use crate::presenter::test_support::{sample, today};
 
     const TAB: PlanFormEvent = PlanFormEvent::Input(DialogInput::NextField);
     const SHIFT_TAB: PlanFormEvent = PlanFormEvent::Input(DialogInput::PreviousField);
@@ -927,7 +927,7 @@ mod tests {
 
     impl Form {
         fn add() -> Self {
-            let (ports, shared) = stub();
+            let (ports, shared) = sample();
             Self {
                 ports,
                 presenter: PlanFormPresenter::add(shared, Clock::fixed(today()), None),
@@ -936,7 +936,7 @@ mod tests {
         }
 
         fn edit(name: &str) -> Self {
-            let (ports, shared) = stub();
+            let (ports, shared) = sample();
             let id = ports
                 .borrow()
                 .bills
@@ -944,7 +944,7 @@ mod tests {
                 .iter()
                 .find(|plan| plan.name == name)
                 .map(|plan| plan.id)
-                .expect("a stub Plan");
+                .expect("a sample Plan");
             Self {
                 ports,
                 presenter: PlanFormPresenter::edit(shared, id, Clock::fixed(today()), None)
@@ -1219,7 +1219,7 @@ mod tests {
         assert!(form.view().category.focused);
         let first = form.view().category.chosen;
         let options = form.view().category.options.clone();
-        assert!(options.len() > 2, "the stub has several expense leaves");
+        assert!(options.len() > 2, "the sample has several expense leaves");
 
         form.send(SELECT);
         assert_eq!(form.view().list.highlight(), Some(0));

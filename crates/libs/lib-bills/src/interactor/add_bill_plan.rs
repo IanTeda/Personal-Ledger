@@ -60,7 +60,7 @@ mod tests {
 
     use super::*;
     use crate::Recurrence;
-    use crate::interactor::test_support::{draft, dues, stub, today};
+    use crate::interactor::test_support::{draft, dues, sample, today};
 
     fn add(
         ports: &mut crate::fake::InMemoryPorts,
@@ -76,7 +76,7 @@ mod tests {
 
     #[test]
     fn adding_writes_the_plan_and_its_schedule() {
-        let mut ports = stub();
+        let mut ports = sample();
         let before = ports.bills.plans.len();
 
         let id = add(&mut ports, draft(Recurrence::Monthly, today())).expect("a valid draft");
@@ -94,7 +94,7 @@ mod tests {
 
     #[test]
     fn a_refused_draft_writes_nothing() {
-        let mut ports = stub();
+        let mut ports = sample();
         let before = ports.bills.clone();
 
         let refused = add(

@@ -255,9 +255,9 @@ pub fn seed_weekly_prices(
         .collect()
 }
 
-/// The stub seed's three Units: aud and vas on Manual entry, btc on CoinGecko with a year of
+/// The sample seed's three Units: aud and vas on Manual entry, btc on CoinGecko with a year of
 /// Weekly Prices, the newest written five minutes before `now`.
-pub fn default_units(now: DateTime<Utc>) -> Vec<UnitRow> {
+pub fn sample_units(now: DateTime<Utc>) -> Vec<UnitRow> {
     vec![
         UnitRow {
             id: UnitId::SEED_AUD,
@@ -351,7 +351,7 @@ mod tests {
     use super::*;
 
     fn seed() -> Vec<UnitRow> {
-        default_units(Utc::now())
+        sample_units(Utc::now())
     }
 
     fn day(y: i32, m: u32, d: u32) -> NaiveDate {
@@ -461,7 +461,7 @@ mod tests {
     #[test]
     fn the_seed_gives_btc_52_weeks_ending_on_the_current_week_and_the_rest_none() {
         let now = at(2026, 10, 29);
-        let units = default_units(now);
+        let units = sample_units(now);
         let btc = &units[1];
 
         let weeks: Vec<_> = btc.prices.iter().map(|price| price.week).collect();
@@ -483,7 +483,7 @@ mod tests {
             assert!(high >= open && high >= &price.close, "{price:?}");
             assert!(low <= open && low <= &price.close, "{price:?}");
         }
-        assert_eq!(default_units(now), units, "the seed is deterministic");
+        assert_eq!(sample_units(now), units, "the seed is deterministic");
         assert!(units[0].prices.is_empty() && units[2].prices.is_empty());
     }
 
@@ -544,7 +544,7 @@ mod tests {
     #[test]
     fn the_seed_links_btc_to_coingecko_in_aud_and_the_rest_to_manual_entry() {
         let now = Utc::now();
-        let units = default_units(now);
+        let units = sample_units(now);
         let btc = &units[1];
         assert_eq!(
             btc.link,

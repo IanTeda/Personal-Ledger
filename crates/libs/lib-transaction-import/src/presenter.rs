@@ -792,7 +792,7 @@ mod tests {
         let (mut ports, store) = stub_ports(today());
         ports.accounts = Rc::new(InMemoryImportReads {
             accounts,
-            categories: lib_payees::fake::stub_categories(),
+            categories: lib_payees::fake::sample_categories(),
         });
         let mut step = Harness::on(ports, store);
         step.review_every_row();
@@ -815,7 +815,7 @@ mod tests {
         assert!(step.store.borrow().transactions.transactions.is_empty());
         assert_eq!(
             step.store.borrow().payees.payees,
-            lib_payees::default_payees()
+            lib_payees::sample_payees()
         );
     }
 

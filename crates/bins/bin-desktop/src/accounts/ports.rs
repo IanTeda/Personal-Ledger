@@ -78,13 +78,13 @@ impl LedgerBackedPorts {
         writes != self.announced.replace(writes)
     }
 
-    /// The stub Accounts in memory, reading the other domains through `reads`, for a test that
+    /// The sample Accounts in memory, reading the other domains through `reads`, for a test that
     /// needs no storage.
     pub fn in_memory(reads: StoredAccountReads) -> DesktopPorts {
         Self::shared(
             Box::new(lib_accounts::fake::InMemoryPorts {
                 accounts: lib_accounts::fake::InMemoryAccounts {
-                    accounts: lib_accounts::default_accounts(),
+                    accounts: lib_accounts::sample_accounts(),
                 },
                 ..Default::default()
             }),
@@ -160,12 +160,12 @@ pub fn refresh(ports: &DesktopPorts, announcer: &Entity<Announcer>, cx: &mut App
     }
 }
 
-/// `stub`'s Transactions and Budgets in memory, as the usage of its Accounts reads them, and the
-/// stub Units and Institutions, for a test that needs no storage.
-pub fn in_memory_reads(stub: &FakeStores) -> StoredAccountReads {
+/// `sample`'s Transactions and Budgets in memory, as the usage of its Accounts reads them, and the
+/// sample Units and Institutions, for a test that needs no storage.
+pub fn in_memory_reads(sample: &FakeStores) -> StoredAccountReads {
     StoredAccountReads {
-        transactions: Rc::new(RefCell::new(stub.transactions.clone())),
-        budgets: crate::budgets::ports::in_memory(stub),
+        transactions: Rc::new(RefCell::new(sample.transactions.clone())),
+        budgets: crate::budgets::ports::in_memory(sample),
         units: crate::bills::ports::in_memory_units(chrono::Utc::now()),
         institutions: crate::institutions::ports::in_memory_store(),
     }
@@ -179,13 +179,13 @@ mod tests {
 
     #[test]
     fn the_transactions_and_budgets_are_counted_in_their_stores_on_each_ask() {
-        let stub = FakeStores::sample(chrono::Local::now().date_naive());
-        let reads = in_memory_reads(&stub);
+        let sample = FakeStores::sample(chrono::Local::now().date_naive());
+        let reads = in_memory_reads(&sample);
         let ports = LedgerBackedPorts::in_memory(reads.clone());
         let everyday = AccountId::seed(2);
         let expected = lib_accounts::AccountUse {
             transactions: lib_database::seed::account_transactions(
-                &stub.transactions.transactions,
+                &sample.transactions.transactions,
                 everyday,
             ),
             budgets: 2,
@@ -204,7 +204,7 @@ mod tests {
             .budgets()
             .into_iter()
             .find(|budget| budget.account_ids.contains(&everyday))
-            .expect("a stub Budget counts the Account");
+            .expect("a sample Budget counts the Account");
         budget.account_ids.retain(|id| *id != everyday);
         reads
             .budgets
@@ -218,7 +218,7 @@ mod tests {
             1,
             "read from the store on each ask"
         );
-        let mut booked = stub.transactions.transactions[0].clone();
+        let mut booked = sample.transactions.transactions[0].clone();
         booked.id = lib_core::TransactionId::seed(9_999);
         booked.account_id = everyday;
         reads.transactions.borrow_mut().upsert_transaction(booked);
@@ -242,7 +242,7 @@ mod tests {
             AccountsPorts::institutions(&*ports)
                 .account_institutions()
                 .len(),
-            lib_institutions::default_institutions().len()
+            lib_institutions::sample_institutions().len()
         );
         let units = AccountsPorts::units(&*ports);
         assert_eq!(units.account_units().len(), held);

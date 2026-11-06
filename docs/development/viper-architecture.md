@@ -78,7 +78,7 @@ Personal-Ledger/
                 ├── keymap.rs          # Default keys: command name + chord -> event
                 ├── msg.rs             # This module's msg:: accessors, generated from i18n/
                 ├── contract.rs        # Port contract suite, behind the contract-tests feature
-                └── fake.rs            # In-memory port impls and stub seed, for tests and UI-first work
+                └── fake.rs            # In-memory port impls and sample seed, for tests and UI-first work
 ```
 
 ## Rules
@@ -90,7 +90,7 @@ These are the rules Claude follows and a review checks against.
 - A feature crate never depends on a UI toolkit (gpui, gpui-component, ratatui, crossterm), on `lib-database`, or on another feature crate, dev-dependencies included. `deny.toml`'s bans and the `cargo metadata` test (`lib-database/tests/viper_dependencies.rs`) check this for each migrated crate.
 - A feature crate may depend on `lib-core` and the shared toolkit-free libs: `lib-colour-theme`, `lib-config` (for `[keybindings]`), `lib-locale`, `lib-list-cursor`, `lib-toast` (a Router sends the Shell `Notice`s) and `lib-viper`, and on `tracing` for its Interactors' events (ADR-0047).
 - A feature crate does no I/O. It reaches the disk through a port of its own with an in-memory fake, implemented in the bin (`lib-documents`' `DocumentFiles`, [#960](https://github.com/IanTeda/Personal-Ledger/issues/960)).
-- Value types shared across domains, like `RowID` and `Money`, live in `lib-core`, and so do the seed ids another domain's stub names (`InstitutionId::SEED_ANZ`) and a constant two domains read (the Financial Year start), rather than one feature crate depending on another.
+- Value types shared across domains, like `RowID` and `Money`, live in `lib-core`, and so do the seed ids another domain's sample names (`InstitutionId::SEED_ANZ`) and a constant two domains read (the Financial Year start), rather than one feature crate depending on another.
 - Generic types every module's Presenters and keymap use live in `lib-viper`, not in the first feature crate that needed them ([#760](https://github.com/IanTeda/Personal-Ledger/issues/760)): `keymap` holds `Keymap`, `Binding` and the flat command names modules share, `view` a form's `TextFieldView`, `SelectView`, `SelectList` and `Choice`, a Dialog's `DialogFrame` and the status line's `Hint`, and `dialog` a module Dialog's `DialogInput` and `DialogRouter`. It is not a feature crate and holds no domain; it keeps the feature crates' bans.
 - Operations that write more than one domain live in a cross-domain module, one per user workflow (see [Persistence](#persistence)). It may depend on the feature crates it writes; feature crates never depend on it.
 - `lib-database` depends on the feature crates and the cross-domain modules and implements their ports, a cross-domain module's atomic port included (`BillPaymentsAdapter` implements `lib-bill-payments`' `BillPayments`). Dependencies point inward, toward the Entities. Only bins depend on `lib-database`. `lib-database` may depend on `lib-shell` only to answer its read port, the one module port the Shell declares.

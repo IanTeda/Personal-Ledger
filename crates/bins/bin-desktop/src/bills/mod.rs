@@ -49,7 +49,7 @@ impl BillsSetup {
     /// `storage`'s Bills ports and payments under the default keys, for a test that builds
     /// `Root` directly.
     #[cfg(test)]
-    pub fn stub(storage: &crate::shell::router::LedgerStores) -> Self {
+    pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
             storage.bills.clone(),
             crate::bill_payments::payments(storage.transactions.clone(), &storage.bills),

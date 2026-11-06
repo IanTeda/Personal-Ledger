@@ -93,10 +93,10 @@ impl LedgerBackedPorts {
         }))
     }
 
-    /// `stub`'s Bill Plans and Bill Schedule in memory, reading `payees`, `accounts`,
+    /// `sample`'s Bill Plans and Bill Schedule in memory, reading `payees`, `accounts`,
     /// `categories`, `transactions` and `units`, for a test that needs no storage.
     pub fn in_memory(
-        stub: &FakeStores,
+        sample: &FakeStores,
         payees: SharedPayeesStore,
         accounts: SharedAccountsStore,
         categories: SharedCategoriesStore,
@@ -104,7 +104,7 @@ impl LedgerBackedPorts {
         units: SharedUnitsStore,
     ) -> DesktopPorts {
         Self::shared(
-            in_memory_store(stub),
+            in_memory_store(sample),
             payees,
             accounts,
             categories,
@@ -167,17 +167,17 @@ impl BillsPorts for LedgerBackedPorts {
     }
 }
 
-/// The stub Units, base Unit and Price Sources as of `now`, as an in-memory Units store, for a test
+/// The sample Units, base Unit and Price Sources as of `now`, as an in-memory Units store, for a test
 /// that needs no storage: the store the Units ports share and the Bills, Tags, Accounts and
 /// Institutions read Units from.
 pub fn in_memory_units(now: chrono::DateTime<chrono::Utc>) -> SharedUnitsStore {
-    Rc::new(RefCell::new(lib_units::fake::InMemoryPorts::stub(now)))
+    Rc::new(RefCell::new(lib_units::fake::InMemoryPorts::sample(now)))
 }
 
-/// `stub`'s Bill Plans and Bill Schedule as an in-memory store, for a test that needs no storage
+/// `sample`'s Bill Plans and Bill Schedule as an in-memory store, for a test that needs no storage
 /// and builds the readers of the store before its ports.
-pub fn in_memory_store(stub: &FakeStores) -> SharedBillsStore {
-    Rc::new(RefCell::new(stub.bills.clone()))
+pub fn in_memory_store(sample: &FakeStores) -> SharedBillsStore {
+    Rc::new(RefCell::new(sample.bills.clone()))
 }
 
 /// Brings the stored Bill Schedule up to the horizon as of `today` (ADR-0019's "on Client start"),
@@ -222,7 +222,7 @@ mod tests {
 
     use super::*;
 
-    fn stub() -> (FakeStores, DesktopPorts) {
+    fn sample() -> (FakeStores, DesktopPorts) {
         let fakes = FakeStores::sample(NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date"));
         let ports = LedgerBackedPorts::in_memory(
             &fakes,
@@ -259,7 +259,7 @@ mod tests {
 
     #[test]
     fn the_payees_are_read_from_the_payees_store_not_copied_from_the_ledger() {
-        let (fakes, _) = stub();
+        let (fakes, _) = sample();
         let store = payees(&fakes);
         let ports = LedgerBackedPorts::in_memory(
             &fakes,
@@ -282,7 +282,7 @@ mod tests {
 
     #[test]
     fn the_accounts_are_read_from_the_accounts_store_not_copied_from_the_ledger() {
-        let (fakes, _) = stub();
+        let (fakes, _) = sample();
         let store = crate::accounts::LedgerBackedPorts::in_memory(
             crate::accounts::ports::in_memory_reads(&fakes),
         );
@@ -294,7 +294,7 @@ mod tests {
             transactions(&fakes),
             in_memory_units(chrono::Utc::now()),
         );
-        let mut renamed = lib_accounts::default_accounts()[1].clone();
+        let mut renamed = lib_accounts::sample_accounts()[1].clone();
         renamed.name = "Renamed in the store".into();
         store
             .borrow_mut()
@@ -308,7 +308,7 @@ mod tests {
 
     #[test]
     fn the_categories_are_read_from_the_categories_store_not_copied_from_the_ledger() {
-        let (fakes, _) = stub();
+        let (fakes, _) = sample();
         let store = categories();
         let ports = LedgerBackedPorts::in_memory(
             &fakes,
@@ -334,7 +334,7 @@ mod tests {
 
     #[test]
     fn the_splits_are_read_from_the_transactions_store_not_copied_from_the_ledger() {
-        let (fakes, _) = stub();
+        let (fakes, _) = sample();
         let store = transactions(&fakes);
         let ports = LedgerBackedPorts::in_memory(
             &fakes,
@@ -371,7 +371,7 @@ mod tests {
 
     #[test]
     fn the_reads_are_the_ledgers() {
-        let (_fakes, ports) = stub();
+        let (_fakes, ports) = sample();
         let ports = ports.borrow();
         let ids: Vec<_> = ports
             .accounts()
@@ -381,7 +381,7 @@ mod tests {
             .collect();
         assert_eq!(
             ids,
-            lib_accounts::default_accounts()
+            lib_accounts::sample_accounts()
                 .iter()
                 .map(|a| a.id)
                 .collect::<Vec<_>>()

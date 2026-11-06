@@ -296,7 +296,7 @@ impl PayeeChoices {
 
 #[cfg(test)]
 mod tests {
-    use lib_payees::default_payees;
+    use lib_payees::sample_payees;
 
     use super::*;
     use crate::statement::SeededStatement;
@@ -371,7 +371,7 @@ mod tests {
 
     #[test]
     fn the_seeded_statement_has_14_rule_matches_and_4_rows_to_review() {
-        let summary = summary(&rows(&default_payees()));
+        let summary = summary(&rows(&sample_payees()));
         assert_eq!(summary.rows, 18);
         assert_eq!(summary.rule_matched, 14);
         assert_eq!(summary.new_payees, 3);
@@ -380,14 +380,14 @@ mod tests {
 
     #[test]
     fn a_rule_match_takes_the_payee_and_its_default_category() {
-        let payees = default_payees();
+        let payees = sample_payees();
         let row = &rows(&payees)[0];
-        let woolworths = lib_payees::find_by_name(&payees, "Woolworths").expect("a stub Payee");
+        let woolworths = lib_payees::find_by_name(&payees, "Woolworths").expect("a sample Payee");
         assert_eq!(row.payee, Some(RowPayee::Rule(woolworths)));
         assert_eq!(
             row.category,
             lib_payees::get(&payees, woolworths)
-                .expect("a stub Payee")
+                .expect("a sample Payee")
                 .default_category
         );
         assert_eq!(row.status(), RowStatus::RuleMatch);
@@ -395,7 +395,7 @@ mod tests {
 
     #[test]
     fn an_unmatched_row_suggests_creating_its_cleaned_name() {
-        let row = match_line(&default_payees(), &line("SP AUSSIE CANDLE CO"));
+        let row = match_line(&sample_payees(), &line("SP AUSSIE CANDLE CO"));
         assert_eq!(
             row.payee,
             Some(RowPayee::Create("Aussie Candle Co".to_string()))
@@ -406,9 +406,9 @@ mod tests {
 
     #[test]
     fn a_cleaned_name_equal_to_an_active_payee_picks_that_payee() {
-        let payees = default_payees();
+        let payees = sample_payees();
         let row = match_line(&payees, &line("TFR TO J SMITH REF PAYMENT"));
-        let j_smith = lib_payees::find_by_name(&payees, "J Smith").expect("a stub Payee");
+        let j_smith = lib_payees::find_by_name(&payees, "J Smith").expect("a sample Payee");
         assert_eq!(row.payee, Some(RowPayee::Existing(j_smith)));
         // J Smith has no default Category, so it still needs review.
         assert!(row.needs_review());
@@ -433,8 +433,8 @@ mod tests {
 
     #[test]
     fn inactive_payees_neither_match_nor_are_offered() {
-        let mut payees = default_payees();
-        lib_payees::set_active(&mut payees, PayeeId::seed(1), false).expect("a stub Payee");
+        let mut payees = sample_payees();
+        lib_payees::set_active(&mut payees, PayeeId::seed(1), false).expect("a sample Payee");
         let row = match_line(&payees, &line("WOOLWORTHS 99"));
         assert_eq!(row.payee, None);
         let offered = choices(&payees, "WOOLWORTHS 99");
@@ -445,7 +445,7 @@ mod tests {
 
     #[test]
     fn payee_choices_put_create_first_then_active_payees_alphabetically() {
-        let payees = default_payees();
+        let payees = sample_payees();
         let offered = choices(&payees, "SP AUSSIE CANDLE CO");
         assert_eq!(offered.labels[0], "+ create \"Aussie Candle Co\"");
         assert_eq!(
@@ -460,7 +460,7 @@ mod tests {
 
     #[test]
     fn payee_choices_label_a_rule_match_by_its_payee_and_find_a_choice_by_label() {
-        let payees = default_payees();
+        let payees = sample_payees();
         let offered = choices(&payees, "SP AUSSIE CANDLE CO");
         assert_eq!(
             offered.label_for(&RowPayee::Rule(PayeeId::seed(2))),
@@ -475,7 +475,7 @@ mod tests {
 
     #[test]
     fn rows_sharing_a_new_name_count_as_one_new_payee() {
-        let payees = default_payees();
+        let payees = sample_payees();
         let rows: Vec<ImportRow> = ["SP AUSSIE CANDLE CO", "SP AUSSIE CANDLE CO 2"]
             .iter()
             .map(|raw| match_line(&payees, &line(raw)))

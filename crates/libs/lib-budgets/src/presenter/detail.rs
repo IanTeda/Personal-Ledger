@@ -352,7 +352,7 @@ mod tests {
     use super::*;
     use crate::PERSONAL_SPENDING_ID;
     use crate::fake::{RecordingRouter, Routed};
-    use crate::presenter::test_support::{stub, today};
+    use crate::presenter::test_support::{sample, today};
 
     const GROCERIES: CategoryId = CategoryId::seed(7);
     const FOOD: CategoryId = CategoryId::seed(6);
@@ -362,7 +362,7 @@ mod tests {
     }
 
     fn detail(category: CategoryId) -> Option<DetailPresenter> {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         DetailPresenter::new(
             &shared,
             Clock::fixed(today()),

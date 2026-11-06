@@ -1,4 +1,4 @@
-//! In-memory ports and the stub seed, for tests and UI-first work. Each holds its rows in a plain
+//! In-memory ports and the sample seed, for tests and UI-first work. Each holds its rows in a plain
 //! field so a test can set up or read state directly. [`RecordingRouter`] is a Router that only
 //! records what it was asked.
 
@@ -14,7 +14,7 @@ use crate::protocols::{
     PayeeCategories, PayeeCategory, PayeesDialog, PayeesOutcome, PayeesPorts, PayeesRouter,
     PortsMut, SharedPorts,
 };
-use crate::{Payee, PayeeRepository, PayeeUsage, PayeeUse, default_payees};
+use crate::{Payee, PayeeRepository, PayeeUsage, PayeeUse, sample_payees};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct InMemoryPayees {
@@ -64,8 +64,8 @@ impl PayeeCategories for InMemoryPayeeCategories {
     }
 }
 
-/// The stub Categories' leaves, with their ids, as a Payee's Default category reads them.
-pub fn stub_categories() -> Vec<PayeeCategory> {
+/// The sample Categories' leaves, with their ids, as a Payee's Default category reads them.
+pub fn sample_categories() -> Vec<PayeeCategory> {
     [
         (2, "Rent"),
         (4, "Electricity"),
@@ -94,17 +94,17 @@ pub struct InMemoryPorts {
 }
 
 impl InMemoryPorts {
-    /// The stub seed: the Sample Ledger's Payees (see [`default_payees`]) with nothing naming any,
-    /// and the stub Categories' leaves. Ids match `lib-database`'s joined Sample Ledger, so its Splits and Bill
+    /// The sample seed: the Sample Ledger's Payees (see [`sample_payees`]) with nothing naming any,
+    /// and the sample Categories' leaves. Ids match `lib-database`'s joined Sample Ledger, so its Splits and Bill
     /// Plans still resolve their Payees.
-    pub fn stub() -> Self {
+    pub fn sample() -> Self {
         Self {
             payees: InMemoryPayees {
-                payees: default_payees(),
+                payees: sample_payees(),
             },
             usage: InMemoryPayeeUsage::default(),
             categories: InMemoryPayeeCategories {
-                categories: stub_categories(),
+                categories: sample_categories(),
             },
         }
     }
@@ -196,7 +196,7 @@ mod tests {
 
     #[test]
     fn upserting_a_payee_replaces_the_row_with_its_id_or_appends_it() {
-        let mut ports = InMemoryPorts::stub();
+        let mut ports = InMemoryPorts::sample();
         let seeded = ports.payees.payees().len();
         let mut coles = ports.payees.payee(PayeeId::seed(2)).unwrap();
         coles.aliases.push("COLES EXPRESS".into());
@@ -217,7 +217,7 @@ mod tests {
 
     #[test]
     fn a_payee_no_test_names_is_unused() {
-        let ports = InMemoryPorts::stub();
+        let ports = InMemoryPorts::sample();
         assert_eq!(
             ports.usage.payee_usage(PayeeId::seed(1)),
             Some(PayeeUse::default())

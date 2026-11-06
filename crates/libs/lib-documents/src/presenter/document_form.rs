@@ -626,7 +626,7 @@ mod tests {
     /// A Filed Document with a Key Date.
     const POLICY: &str = "aami-car-policy.pdf";
 
-    /// The Dialog over the stub Documents, with a disk holding `/tmp/policy.pdf` and a text file.
+    /// The Dialog over the sample Documents, with a disk holding `/tmp/policy.pdf` and a text file.
     struct Form {
         presenter: DocumentFormPresenter,
         ports: DialogPorts,

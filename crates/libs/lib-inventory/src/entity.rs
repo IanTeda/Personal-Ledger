@@ -1,6 +1,6 @@
 //! The Entity: Locations, their Areas and the Items in them (`GLOSSARY.md`'s Location, Area and
-//! Inventory Item), the rules over them and the stub seed. Amounts are in the owning Location's
-//! Unit, at two decimal places like the Transaction stubs.
+//! Inventory Item), the rules over them and the sample seed. Amounts are in the owning Location's
+//! Unit, at two decimal places like the Transaction samples.
 
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
@@ -754,10 +754,10 @@ fn seed_location(
     inventory.locations.push(location);
 }
 
-/// The three stub Locations (`16q`'s 12 Elm St contents, Storage unit and Hilux) with their 14
+/// The three sample Locations (`16q`'s 12 Elm St contents, Storage unit and Hilux) with their 14
 /// Areas and 241 Items. 12 Elm St holds 214 Items worth 163,480; the Storage unit 18, worth 6,200,
 /// under its own copy of the NRMA policy number; the Hilux, a vehicle with no cover, 9 worth 6,850.
-pub fn default_inventory(today: NaiveDate) -> Inventory {
+pub fn sample_inventory(today: NaiveDate) -> Inventory {
     let mut inventory = Inventory::default();
     let mut next_filler_id = FILLER_ID_START;
     let renews = today + chrono::Duration::days(45);
@@ -809,7 +809,7 @@ mod tests {
     }
 
     fn seed() -> Inventory {
-        default_inventory(today())
+        sample_inventory(today())
     }
 
     fn area_id(inv: &Inventory, location: &str, area: &str) -> AreaId {
@@ -992,7 +992,7 @@ mod tests {
     }
 
     #[test]
-    fn seed_keeps_the_stub_ids_and_drops_the_blob_item() {
+    fn seed_keeps_the_sample_ids_and_drops_the_blob_item() {
         let inv = seed();
         let named = [
             (2, "Sony A7 IV", "Office"),

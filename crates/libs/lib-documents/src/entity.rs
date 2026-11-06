@@ -1,6 +1,6 @@
 //! The Documents Entity: the Document and its rules, split by what a change touches. `document` is
 //! the model, `library` the Library's index and rows, `suggestion` the Inbox's Suggested Link,
-//! `filing` the Inbox's actions, `import` adding and importing, and `seed` the stub Documents.
+//! `filing` the Inbox's actions, `import` adding and importing, and `seed` the sample Documents.
 
 mod document;
 mod filing;

@@ -37,7 +37,7 @@ mod tests {
 
     #[test]
     fn moving_a_category_writes_its_new_parent() {
-        let mut categories = InMemoryCategories::stub();
+        let mut categories = InMemoryCategories::sample();
         let transport = CategoryId::seed(9);
         let food = CategoryId::seed(6);
 
@@ -54,7 +54,7 @@ mod tests {
 
     #[test]
     fn a_move_into_its_own_subtree_or_under_another_type_is_refused_and_nothing_is_written() {
-        let mut categories = InMemoryCategories::stub();
+        let mut categories = InMemoryCategories::sample();
         let before = categories.clone();
         let food = CategoryId::seed(6);
 
@@ -79,7 +79,7 @@ mod tests {
 
     #[test]
     fn a_move_that_nests_the_subtree_past_three_levels_is_refused_and_nothing_is_written() {
-        let mut categories = InMemoryCategories::stub();
+        let mut categories = InMemoryCategories::sample();
         let before = categories.clone();
 
         assert_eq!(

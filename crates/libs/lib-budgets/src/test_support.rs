@@ -1,4 +1,4 @@
-//! The fixtures the Budgets model's tests share: a small hand-built Ledger over the stub Accounts
+//! The fixtures the Budgets model's tests share: a small hand-built Ledger over the sample Accounts
 //! and Categories (`World`), so figures are exact, as of 21 September 2026, and the chain and
 //! Budget builders the tests across the Entity and the calculation modules use.
 
@@ -30,7 +30,7 @@ pub(crate) fn category_id(categories: &[BudgetCategory], name: &str) -> Category
     tree::find_by_name(categories, name).expect("a seeded Category")
 }
 
-/// A tiny hand-built Ledger over the stub Accounts and Categories, so figures are exact rather
+/// A tiny hand-built Ledger over the sample Accounts and Categories, so figures are exact rather
 /// than random.
 pub(crate) struct World {
     pub(crate) reads: InMemoryBudgetReads,
@@ -39,7 +39,7 @@ pub(crate) struct World {
 impl World {
     pub(crate) fn new() -> Self {
         Self {
-            reads: InMemoryBudgetReads::stub(),
+            reads: InMemoryBudgetReads::sample(),
         }
     }
 

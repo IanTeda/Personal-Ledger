@@ -1807,7 +1807,7 @@ impl FakeStores {
         let budgets = InMemoryBudgets { budgets };
         let mut accounts = lib_accounts::fake::InMemoryPorts {
             accounts: lib_accounts::fake::InMemoryAccounts { accounts },
-            ..lib_accounts::fake::InMemoryPorts::stub()
+            ..lib_accounts::fake::InMemoryPorts::sample()
         };
         accounts.usage.uses = accounts
             .accounts
@@ -1828,11 +1828,11 @@ impl FakeStores {
             categories: InMemoryCategories { categories },
             tags: lib_tags::fake::InMemoryPorts {
                 tags: lib_tags::fake::InMemoryTags { tags },
-                ..lib_tags::fake::InMemoryPorts::stub()
+                ..lib_tags::fake::InMemoryPorts::sample()
             },
             payees: lib_payees::fake::InMemoryPorts {
                 payees: lib_payees::fake::InMemoryPayees { payees },
-                ..lib_payees::fake::InMemoryPorts::stub()
+                ..lib_payees::fake::InMemoryPorts::sample()
             },
             documents: InMemoryDocuments {
                 documents,
@@ -1897,12 +1897,12 @@ mod tests {
     #[test]
     fn the_fake_counts_every_commit_including_one_with_nothing_written() {
         let (stores, count) = Stores::fake(FakeStores {
-            units: InMemoryPorts::stub(chrono::Utc::now()),
-            institutions: InMemoryInstitutions::stub(),
-            accounts: lib_accounts::fake::InMemoryPorts::stub(),
-            categories: InMemoryCategories::stub(),
-            tags: lib_tags::fake::InMemoryPorts::stub(),
-            payees: lib_payees::fake::InMemoryPorts::stub(),
+            units: InMemoryPorts::sample(chrono::Utc::now()),
+            institutions: InMemoryInstitutions::sample(),
+            accounts: lib_accounts::fake::InMemoryPorts::sample(),
+            categories: InMemoryCategories::sample(),
+            tags: lib_tags::fake::InMemoryPorts::sample(),
+            payees: lib_payees::fake::InMemoryPorts::sample(),
             transactions: InMemoryTransactions::default(),
             bills: InMemoryBills::default(),
             budgets: InMemoryBudgets::default(),
@@ -1920,27 +1920,27 @@ mod tests {
     /// Split written to the Transactions store after the reads were built included.
     #[test]
     fn stored_payee_reads_count_the_in_memory_stores_rows() {
-        let stub = FakeStores::sample(chrono::Local::now().date_naive());
+        let sample = FakeStores::sample(chrono::Local::now().date_naive());
         let transactions: SharedTransactionsStore = Rc::new(RefCell::new(InMemoryTransactions {
-            transactions: stub.transactions.transactions.clone(),
+            transactions: sample.transactions.transactions.clone(),
         }));
         let reads = StoredPayeeReads {
             transactions: transactions.clone(),
             bills: Rc::new(RefCell::new(InMemoryBills {
-                plans: stub.bills.plans.clone(),
+                plans: sample.bills.plans.clone(),
                 entries: Vec::new(),
             })),
-            categories: Rc::new(RefCell::new(InMemoryCategories::stub())),
+            categories: Rc::new(RefCell::new(InMemoryCategories::sample())),
         };
         let (woolworths, telstra) = (PayeeId::seed(1), PayeeId::seed(20));
         let before = reads.payee_usage(woolworths).expect("memory always counts");
-        assert!(before.splits > 0, "the stub's groceries name Woolworths");
+        assert!(before.splits > 0, "the sample's groceries name Woolworths");
         assert_eq!(
             reads.payee_usage(telstra).map(|uses| uses.bill_plans),
             Some(1)
         );
 
-        let mut booked = stub.transactions.transactions[0].clone();
+        let mut booked = sample.transactions.transactions[0].clone();
         booked.id = TransactionId::seed(9_999);
         booked.splits.truncate(1);
         booked.splits[0].payee_id = Some(woolworths);
@@ -1959,30 +1959,30 @@ mod tests {
         );
     }
 
-    fn in_memory_stub_stores() -> (FakeStores, SharedTransactionsStore, SharedBillsStore) {
-        let stub = FakeStores::sample(chrono::Local::now().date_naive());
+    fn in_memory_sample_stores() -> (FakeStores, SharedTransactionsStore, SharedBillsStore) {
+        let sample = FakeStores::sample(chrono::Local::now().date_naive());
         let transactions: SharedTransactionsStore = Rc::new(RefCell::new(InMemoryTransactions {
-            transactions: stub.transactions.transactions.clone(),
+            transactions: sample.transactions.transactions.clone(),
         }));
         let bills: SharedBillsStore = Rc::new(RefCell::new(InMemoryBills {
-            plans: stub.bills.plans.clone(),
-            entries: stub.bills.entries.clone(),
+            plans: sample.bills.plans.clone(),
+            entries: sample.bills.entries.clone(),
         }));
-        (stub, transactions, bills)
+        (sample, transactions, bills)
     }
 
     /// An Account's use is counted in the Transactions and Budgets stores on each ask.
     #[test]
     fn stored_account_reads_count_the_in_memory_stores_rows() {
-        let (stub, transactions, _) = in_memory_stub_stores();
+        let (sample, transactions, _) = in_memory_sample_stores();
         let budgets: SharedBudgetsStore = Rc::new(RefCell::new(InMemoryBudgets {
-            budgets: stub.budgets.budgets.clone(),
+            budgets: sample.budgets.budgets.clone(),
         }));
         let reads = StoredAccountReads {
             transactions: transactions.clone(),
             budgets,
-            units: stub_units(),
-            institutions: stub_institutions(),
+            units: sample_units(),
+            institutions: sample_institutions(),
         };
         let everyday = AccountId::seed(2);
         let before = reads.account_usage(everyday);
@@ -1990,7 +1990,7 @@ mod tests {
         assert_eq!(before.budgets, 2);
         assert_eq!(reads.account_usage(AccountId::new()), AccountUse::default());
 
-        let mut booked = stub.transactions.transactions[0].clone();
+        let mut booked = sample.transactions.transactions[0].clone();
         booked.id = TransactionId::seed(9_999);
         booked.account_id = everyday;
         transactions.borrow_mut().upsert_transaction(booked);
@@ -2005,12 +2005,12 @@ mod tests {
     /// the reading module's terms, on each ask (#994).
     #[test]
     fn the_bill_import_and_institution_reads_map_the_in_memory_stores_rows() {
-        let (stub, transactions, _) = in_memory_stub_stores();
+        let (sample, transactions, _) = in_memory_sample_stores();
         let accounts: SharedAccountsStore =
-            Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts::stub()));
-        let categories: SharedCategoriesStore = Rc::new(RefCell::new(InMemoryCategories::stub()));
+            Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts::sample()));
+        let categories: SharedCategoriesStore = Rc::new(RefCell::new(InMemoryCategories::sample()));
         let payees: SharedPayeesStore =
-            Rc::new(RefCell::new(lib_payees::fake::InMemoryPorts::stub()));
+            Rc::new(RefCell::new(lib_payees::fake::InMemoryPorts::sample()));
         let stored_accounts = accounts.borrow().accounts().accounts();
         let stored_categories = categories.borrow().categories().categories();
 
@@ -2029,7 +2029,8 @@ mod tests {
         let (from, to) = (NaiveDate::MIN, NaiveDate::MAX);
         assert_eq!(
             bills.splits_between(from, to).len(),
-            stub.transactions
+            sample
+                .transactions
                 .transactions
                 .iter()
                 .map(|transaction| transaction.splits.len())
@@ -2048,14 +2049,14 @@ mod tests {
         let institution = stored_accounts[0].institution;
         let named = StoredInstitutionReads {
             accounts,
-            units: stub_units(),
+            units: sample_units(),
         }
         .institution_usage(institution);
         assert!(named.is_used());
         assert_eq!(
             StoredInstitutionReads {
                 accounts: Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts::default())),
-                units: stub_units(),
+                units: sample_units(),
             }
             .institution_usage(institution),
             InstitutionUse::default()
@@ -2065,30 +2066,30 @@ mod tests {
         assert_eq!(tree.len(), stored_categories.len());
     }
 
-    /// The stub Units, base Unit and Price Sources as an in-memory Units store.
-    fn stub_units() -> SharedUnitsStore {
-        Rc::new(RefCell::new(InMemoryPorts::stub(chrono::Utc::now())))
+    /// The sample Units, base Unit and Price Sources as an in-memory Units store.
+    fn sample_units() -> SharedUnitsStore {
+        Rc::new(RefCell::new(InMemoryPorts::sample(chrono::Utc::now())))
     }
 
-    /// The stub Institutions as an in-memory Institutions store.
-    fn stub_institutions() -> SharedInstitutionsStore {
-        Rc::new(RefCell::new(InMemoryInstitutions::stub()))
+    /// The sample Institutions as an in-memory Institutions store.
+    fn sample_institutions() -> SharedInstitutionsStore {
+        Rc::new(RefCell::new(InMemoryInstitutions::sample()))
     }
 
     /// The Accounts read their Institution choices from the Institutions store on each ask
     /// (#1053): each Institution's id, name and Usual unit, in the Institutions' order.
     #[test]
     fn stored_account_reads_answer_account_institutions_from_the_institutions_store() {
-        let (_, transactions, _) = in_memory_stub_stores();
-        let institutions = stub_institutions();
+        let (_, transactions, _) = in_memory_sample_stores();
+        let institutions = sample_institutions();
         let reads = StoredAccountReads {
             transactions,
             budgets: Rc::new(RefCell::new(InMemoryBudgets::default())),
-            units: stub_units(),
+            units: sample_units(),
             institutions: institutions.clone(),
         };
 
-        let held = lib_institutions::default_institutions();
+        let held = lib_institutions::sample_institutions();
         let offered = reads.account_institutions();
         assert_eq!(
             offered.iter().map(|row| row.id).collect::<Vec<_>>(),
@@ -2118,15 +2119,15 @@ mod tests {
     /// code, active flag and Precision, and the base Unit while the store still holds it.
     #[test]
     fn stored_account_reads_answer_account_units_from_the_units_store() {
-        let (stub, transactions, _) = in_memory_stub_stores();
-        let units = stub_units();
+        let (sample, transactions, _) = in_memory_sample_stores();
+        let units = sample_units();
         let reads = StoredAccountReads {
             transactions,
             budgets: Rc::new(RefCell::new(InMemoryBudgets {
-                budgets: stub.budgets.budgets.clone(),
+                budgets: sample.budgets.budgets.clone(),
             })),
             units: units.clone(),
-            institutions: stub_institutions(),
+            institutions: sample_institutions(),
         };
 
         let choices = reads.account_units();
@@ -2135,7 +2136,7 @@ mod tests {
         let aud = choices
             .iter()
             .find(|unit| unit.id == UnitId::SEED_AUD)
-            .expect("the stub's aud");
+            .expect("the sample's aud");
         assert!(aud.is_active);
         assert_eq!(aud.precision, 2);
         assert_eq!(AccountUnits::base_unit(&reads), Some(UnitId::SEED_AUD));
@@ -2146,7 +2147,7 @@ mod tests {
             .units()
             .into_iter()
             .find(|unit| unit.id == UnitId::SEED_BTC)
-            .expect("the stub's btc");
+            .expect("the sample's btc");
         btc.code = "xbt".into();
         btc.is_active = false;
         btc.precision = lib_units::Precision::new(6).expect("six places is within the most");
@@ -2183,12 +2184,12 @@ mod tests {
     /// and none for a Unit that has gone (#1052).
     #[test]
     fn stored_account_reads_quote_the_delete_dialogs_unit_code() {
-        let (_, transactions, _) = in_memory_stub_stores();
+        let (_, transactions, _) = in_memory_sample_stores();
         let reads = StoredAccountReads {
             transactions,
             budgets: Rc::new(RefCell::new(InMemoryBudgets::default())),
-            units: stub_units(),
-            institutions: stub_institutions(),
+            units: sample_units(),
+            institutions: sample_institutions(),
         };
 
         assert_eq!(
@@ -2203,11 +2204,11 @@ mod tests {
     fn stored_institution_reads_answer_institution_units_from_the_units_store() {
         let reads = StoredInstitutionReads {
             accounts: Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts::default())),
-            units: stub_units(),
+            units: sample_units(),
         };
         assert_eq!(
             reads.institution_units(),
-            lib_institutions::fake::InMemoryInstitutionUnits::stub().units
+            lib_institutions::fake::InMemoryInstitutionUnits::sample().units
         );
     }
 
@@ -2215,11 +2216,11 @@ mod tests {
     /// stores.
     #[test]
     fn stored_unit_reads_count_the_in_memory_stores_rows() {
-        let (stub, transactions, bills) = in_memory_stub_stores();
+        let (sample, transactions, bills) = in_memory_sample_stores();
         let accounts: SharedAccountsStore =
             Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts {
                 accounts: lib_accounts::fake::InMemoryAccounts {
-                    accounts: stub.accounts.accounts.accounts.clone(),
+                    accounts: sample.accounts.accounts.accounts.clone(),
                 },
                 ..Default::default()
             }));
@@ -2228,17 +2229,18 @@ mod tests {
             transactions,
             bills,
             budgets: Rc::new(RefCell::new(InMemoryBudgets {
-                budgets: stub.budgets.budgets.clone(),
+                budgets: sample.budgets.budgets.clone(),
             })),
             inventory: Rc::new(RefCell::new(InMemoryInventory::default())),
-            institutions: Rc::new(RefCell::new(InMemoryInstitutions::stub())),
+            institutions: Rc::new(RefCell::new(InMemoryInstitutions::sample())),
         };
         let aud = UnitId::SEED_AUD;
 
         let usage = reads.unit_usage(aud);
         assert_eq!(
             usage.accounts,
-            stub.accounts
+            sample
+                .accounts
                 .accounts
                 .accounts
                 .iter()
@@ -2247,7 +2249,7 @@ mod tests {
         );
         assert_eq!(
             usage.bill_plans,
-            stub.bills.plans.iter().filter(|p| p.unit == aud).count()
+            sample.bills.plans.iter().filter(|p| p.unit == aud).count()
         );
         assert_eq!(usage.locations, 0);
         assert_eq!(reads.unit_usage(UnitId::new()), UnitUse::default());
@@ -2261,7 +2263,8 @@ mod tests {
         assert_eq!(
             usize::try_from(everyday.transactions).ok(),
             Some(
-                stub.transactions
+                sample
+                    .transactions
                     .transactions
                     .iter()
                     .filter(|t| t.account_id == AccountId::seed(2))
@@ -2334,7 +2337,7 @@ mod tests {
     #[test]
     fn stored_bill_units_read_the_units_store() {
         let units: SharedUnitsStore =
-            Rc::new(RefCell::new(InMemoryPorts::stub(chrono::Utc::now())));
+            Rc::new(RefCell::new(InMemoryPorts::sample(chrono::Utc::now())));
         let reads = StoredBillUnits { units };
         assert_eq!(reads.unit_code(UnitId::SEED_AUD).as_deref(), Some("aud"));
         assert_eq!(reads.unit_code(UnitId::new()), None);
@@ -2344,19 +2347,19 @@ mod tests {
     /// The six Budgets read ports are answered by their stores, as the Ledger once answered them.
     #[test]
     fn stored_budget_reads_answer_each_port_from_its_store() {
-        let (stub, transactions, bills) = in_memory_stub_stores();
+        let (sample, transactions, bills) = in_memory_sample_stores();
         let reads = StoredBudgetReads {
-            categories: Rc::new(RefCell::new(InMemoryCategories::stub())),
-            accounts: Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts::stub())),
+            categories: Rc::new(RefCell::new(InMemoryCategories::sample())),
+            accounts: Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts::sample())),
             transactions,
             bills,
-            units: Rc::new(RefCell::new(InMemoryPorts::stub(chrono::Utc::now()))),
-            payees: Rc::new(RefCell::new(lib_payees::fake::InMemoryPorts::stub())),
+            units: Rc::new(RefCell::new(InMemoryPorts::sample(chrono::Utc::now()))),
+            payees: Rc::new(RefCell::new(lib_payees::fake::InMemoryPorts::sample())),
         };
         let month = lib_core::Period::of(NaiveDate::from_ymd_opt(2026, 9, 21).expect("a date"));
 
         let splits = reads.budget_splits(month.first_day(), month.last_day());
-        let expected: usize = stub
+        let expected: usize = sample
             .transactions
             .transactions
             .iter()
@@ -2367,7 +2370,7 @@ mod tests {
         assert_eq!(splits.len(), expected);
         assert!(splits.iter().all(|split| month.contains(split.date)));
 
-        let open = stub
+        let open = sample
             .bills
             .entries
             .iter()
@@ -2378,7 +2381,7 @@ mod tests {
         assert!(!reads.budget_accounts().is_empty());
         assert_eq!(reads.unit_code(UnitId::SEED_AUD).as_deref(), Some("aud"));
         assert!(reads.payee_name(PayeeId::seed(1)).is_some());
-        assert!(reads.active_bill_plans().len() <= stub.bills.plans.len());
+        assert!(reads.active_bill_plans().len() <= sample.bills.plans.len());
     }
 }
 
@@ -2403,7 +2406,7 @@ mod dashboard_reads_tests {
 
     /// The Sample Ledger's rows in memory: the same rows the seed writes to the file.
     fn in_memory(with_default_budget: bool) -> StoredDashboardReads {
-        let stub = crate::seed::sample_bills(today());
+        let sample = crate::seed::sample_bills(today());
         let budgets = if with_default_budget {
             crate::seed::sample_budgets(today())
         } else {
@@ -2413,16 +2416,16 @@ mod dashboard_reads_tests {
             budgets: Rc::new(RefCell::new(InMemoryBudgets { budgets })),
             budget_reads: StoredBudgetReads {
                 bills: Rc::new(RefCell::new(InMemoryBills {
-                    plans: stub.plans,
-                    entries: stub.entries,
+                    plans: sample.plans,
+                    entries: sample.entries,
                 })),
-                categories: Rc::new(RefCell::new(InMemoryCategories::stub())),
-                units: Rc::new(RefCell::new(InMemoryPorts::stub(now()))),
-                accounts: Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts::stub())),
+                categories: Rc::new(RefCell::new(InMemoryCategories::sample())),
+                units: Rc::new(RefCell::new(InMemoryPorts::sample(now()))),
+                accounts: Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts::sample())),
                 transactions: Rc::new(RefCell::new(InMemoryTransactions {
                     transactions: crate::seed::sample_transactions(today()),
                 })),
-                payees: Rc::new(RefCell::new(lib_payees::fake::InMemoryPorts::stub())),
+                payees: Rc::new(RefCell::new(lib_payees::fake::InMemoryPorts::sample())),
             },
         }
     }
@@ -2469,9 +2472,12 @@ mod dashboard_reads_tests {
     /// Needs Attention rows come in `attention_entries` order with their Plan's name, Unit code and
     /// overdue mark.
     fn needs_attention_rows_follow_the_bills_rule(reads: &StoredDashboardReads) {
-        let stub = crate::seed::sample_bills(today());
-        let expected = lib_bills::attention_entries(&stub.plans, &stub.entries, today());
-        assert!(!expected.is_empty(), "the stub has Bills needing attention");
+        let sample = crate::seed::sample_bills(today());
+        let expected = lib_bills::attention_entries(&sample.plans, &sample.entries, today());
+        assert!(
+            !expected.is_empty(),
+            "the sample has Bills needing attention"
+        );
 
         let rows = reads.attention_bills(today());
         let ids: Vec<_> = rows
@@ -2481,7 +2487,7 @@ mod dashboard_reads_tests {
         let expected_ids: Vec<_> = expected.iter().map(|id| (id.plan_id, id.due)).collect();
         assert_eq!(ids, expected_ids);
         for row in &rows {
-            let plan = lib_bills::get(&stub.plans, row.id.plan_id).expect("the Plan is stored");
+            let plan = lib_bills::get(&sample.plans, row.id.plan_id).expect("the Plan is stored");
             assert_eq!(row.plan, plan.name);
             assert_eq!(row.amount, plan.planned_amount);
             assert_eq!(row.overdue, row.id.due < today());
@@ -2582,7 +2588,7 @@ mod shell_reads_tests {
 
     /// The Sample Ledger's rows in memory: the same rows the seed writes to the file.
     fn in_memory(with_default_budget: bool) -> StoredShellReads {
-        let stub = crate::seed::sample_bills(today());
+        let sample = crate::seed::sample_bills(today());
         let budgets = if with_default_budget {
             crate::seed::sample_budgets(today())
         } else {
@@ -2596,16 +2602,16 @@ mod shell_reads_tests {
             })),
             budget_reads: StoredBudgetReads {
                 bills: Rc::new(RefCell::new(InMemoryBills {
-                    plans: stub.plans,
-                    entries: stub.entries,
+                    plans: sample.plans,
+                    entries: sample.entries,
                 })),
-                categories: Rc::new(RefCell::new(InMemoryCategories::stub())),
-                accounts: Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts::stub())),
+                categories: Rc::new(RefCell::new(InMemoryCategories::sample())),
+                accounts: Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts::sample())),
                 transactions: Rc::new(RefCell::new(InMemoryTransactions {
                     transactions: crate::seed::sample_transactions(today()),
                 })),
-                units: Rc::new(RefCell::new(InMemoryPorts::stub(now()))),
-                payees: Rc::new(RefCell::new(lib_payees::fake::InMemoryPorts::stub())),
+                units: Rc::new(RefCell::new(InMemoryPorts::sample(now()))),
+                payees: Rc::new(RefCell::new(lib_payees::fake::InMemoryPorts::sample())),
             },
         }
     }
@@ -2649,22 +2655,22 @@ mod shell_reads_tests {
         }
     }
 
-    /// Each count is its domain's rule over the stub: Needs Attention, the default Budget's
+    /// Each count is its domain's rule over the sample: Needs Attention, the default Budget's
     /// over-budget Categories this month and the Unfiled Documents.
     fn each_count_is_its_domains_rule(reads: &StoredShellReads) {
-        let stub = crate::seed::sample_bills(today());
-        let attention = lib_bills::attention_entries(&stub.plans, &stub.entries, today()).len();
-        assert!(attention > 0, "the stub has Bills needing attention");
+        let sample = crate::seed::sample_bills(today());
+        let attention = lib_bills::attention_entries(&sample.plans, &sample.entries, today()).len();
+        assert!(attention > 0, "the sample has Bills needing attention");
         let inbox = lib_documents::inbox_count(&crate::seed::sample_documents(today(), &[]));
-        assert!(inbox > 0, "the stub has Documents in the Inbox");
+        assert!(inbox > 0, "the sample has Documents in the Inbox");
         let budgets = Budgets::from_stored(crate::seed::sample_budgets(today()));
         let budget = budgets
             .default_budget()
-            .expect("a stub Budget is the default");
+            .expect("a sample Budget is the default");
         let over =
             lib_budgets::period_figures(budget, &reads.budget_reads, Period::of(today()), today())
                 .over_count;
-        assert!(over > 0, "the stub's default Budget is over somewhere");
+        assert!(over > 0, "the sample's default Budget is over somewhere");
 
         assert_eq!(
             reads.rail_counts(today()),

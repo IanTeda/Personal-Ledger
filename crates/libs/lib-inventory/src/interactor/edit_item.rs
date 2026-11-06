@@ -35,8 +35,9 @@ mod tests {
 
     #[test]
     fn an_edit_changes_the_name_and_value_and_keeps_the_area() {
-        let mut inventory =
-            InMemoryInventory::stub(chrono::NaiveDate::from_ymd_opt(2026, 10, 2).expect("a date"));
+        let mut inventory = InMemoryInventory::sample(
+            chrono::NaiveDate::from_ymd_opt(2026, 10, 2).expect("a date"),
+        );
         let before = inventory.items()[0].clone();
 
         EditItem {

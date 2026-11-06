@@ -295,7 +295,7 @@ mod tests {
     use super::*;
     use crate::fake::{RecordingRouter, Routed};
     use crate::interactor::SetAmount;
-    use crate::presenter::test_support::{stub, today};
+    use crate::presenter::test_support::{sample, today};
     use crate::protocols::BudgetRepository as _;
     use crate::{PERSONAL_SPENDING_ID, Span, applied, cents_money};
 
@@ -309,7 +309,7 @@ mod tests {
         std::rc::Rc<std::cell::RefCell<crate::fake::InMemoryPorts>>,
         FillPresenter,
     ) {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         // This month's own amount, so next month's plan differs from "as budgeted".
         {
             let mut held = ports.borrow_mut();
@@ -365,7 +365,7 @@ mod tests {
         let mut router = RecordingRouter::default();
         assert!(
             presenter.view_model().frame.can_confirm,
-            "the stub has a diff"
+            "the sample has a diff"
         );
 
         presenter.confirm(&mut router);
@@ -381,7 +381,7 @@ mod tests {
             .borrow()
             .budgets
             .budget(PERSONAL_SPENDING_ID)
-            .expect("the stub's default");
+            .expect("the sample's default");
         assert!(applied(budget.chain(GROCERIES), next()).is_some());
     }
 
@@ -407,7 +407,7 @@ mod tests {
 
     #[test]
     fn it_does_not_open_on_an_archived_budget() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         ports
             .borrow_mut()
             .budgets
@@ -456,7 +456,7 @@ mod tests {
         presenter.handle(FillEvent::Input(DialogInput::Submit), &mut router);
         assert!(router.routed.contains(&Routed::Closed(None)));
 
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut empty = FillPresenter::new(
             &shared,
             Clock::fixed(today()),

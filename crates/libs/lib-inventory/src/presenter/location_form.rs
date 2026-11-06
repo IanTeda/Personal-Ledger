@@ -416,7 +416,7 @@ impl LocationFormPresenter {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::stub;
+    use super::super::test_support::sample;
     use super::*;
     use crate::fake::{InMemoryInventory, InMemoryUnits, RecordingRouter, RouterCall};
     use crate::protocols::InventoryRepository as _;
@@ -429,11 +429,11 @@ mod tests {
 
     impl Form {
         fn add() -> Self {
-            Self::add_with(&InMemoryUnits::stub(), None)
+            Self::add_with(&InMemoryUnits::sample(), None)
         }
 
         fn add_with(units: &InMemoryUnits, preferred: Option<UnitId>) -> Self {
-            let (inventory, shared) = stub();
+            let (inventory, shared) = sample();
             Self {
                 presenter: LocationFormPresenter::add(&shared, units, preferred),
                 router: RecordingRouter::default(),
@@ -442,10 +442,10 @@ mod tests {
         }
 
         fn edit() -> Self {
-            let (inventory, shared) = stub();
+            let (inventory, shared) = sample();
             let id = inventory.borrow().locations()[0].id;
             Self {
-                presenter: LocationFormPresenter::edit(&shared, &InMemoryUnits::stub(), id)
+                presenter: LocationFormPresenter::edit(&shared, &InMemoryUnits::sample(), id)
                     .expect("seeded"),
                 router: RecordingRouter::default(),
                 inventory,
@@ -567,7 +567,7 @@ mod tests {
     #[test]
     fn add_preselects_the_preferred_unit_only_when_it_is_a_fiat_one() {
         let usd = UnitId::seed(20);
-        let units = InMemoryUnits::stub();
+        let units = InMemoryUnits::sample();
 
         assert_eq!(
             Form::add_with(&units, Some(usd)).view().unit.select.chosen,
@@ -729,9 +729,9 @@ mod tests {
             [RouterCall::CloseDialog(None)]
         );
 
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         assert!(
-            LocationFormPresenter::edit(&shared, &InMemoryUnits::stub(), LocationId::seed(9_999))
+            LocationFormPresenter::edit(&shared, &InMemoryUnits::sample(), LocationId::seed(9_999))
                 .is_none()
         );
     }

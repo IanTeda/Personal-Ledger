@@ -1,4 +1,4 @@
-//! The Category Entity: the tree, its rules over rows and the stub seed, seeded from the sample
+//! The Category Entity: the tree, its rules over rows and the sample seed, seeded from the sample
 //! tree in `docs/ux/desktop-mockups/18-categories/` (Housing, Food, Transport, Household, Salary,
 //! Interest and their children: 12 categories, three levels deep).
 //!
@@ -36,7 +36,7 @@ fn category(
 
 /// The Categories bundle's sample tree, parents before their children so the vector's own order is
 /// already tree order.
-pub fn default_categories() -> Vec<Category> {
+pub fn sample_categories() -> Vec<Category> {
     use CategoryTypes::{Expense, Income};
     vec![
         category(CategoryId::seed(1), "Housing", None, Expense),
@@ -509,7 +509,7 @@ mod tests {
 
     #[test]
     fn the_seed_matches_the_categories_bundles_twelve_category_tree() {
-        let categories = default_categories();
+        let categories = sample_categories();
         assert_eq!(categories.len(), 12);
         let mut ids: Vec<_> = categories.iter().map(|c| c.id).collect();
         ids.sort_unstable();
@@ -528,7 +528,7 @@ mod tests {
 
     #[test]
     fn paths_join_ancestors_with_the_separator() {
-        let categories = default_categories();
+        let categories = sample_categories();
         let electricity = find_by_name(&categories, "Electricity").unwrap();
         assert_eq!(
             path(&categories, electricity).as_deref(),
@@ -546,7 +546,7 @@ mod tests {
 
     #[test]
     fn leaves_are_categories_with_no_children() {
-        let categories = default_categories();
+        let categories = sample_categories();
         let leaf = |name: &str| is_leaf(&categories, find_by_name(&categories, name).unwrap());
         assert!(leaf("Groceries"));
         assert!(leaf("Electricity"));
@@ -561,7 +561,7 @@ mod tests {
 
     #[test]
     fn descendants_include_the_category_and_everything_nested_at_any_depth() {
-        let categories = default_categories();
+        let categories = sample_categories();
         let id = |name: &str| find_by_name(&categories, name).unwrap();
         let mut housing = descendants_inclusive(&categories, id("Housing"));
         housing.sort_unstable();
@@ -582,7 +582,7 @@ mod tests {
 
     #[test]
     fn paths_in_tree_order_lists_parents_before_their_children() {
-        let categories = default_categories();
+        let categories = sample_categories();
         let labels: Vec<_> = paths_in_tree_order(&categories)
             .into_iter()
             .map(|(_, label)| label)
@@ -597,7 +597,7 @@ mod tests {
 
     #[test]
     fn tree_order_lists_each_parent_before_its_children_and_siblings_in_row_order() {
-        let mut categories = default_categories();
+        let mut categories = sample_categories();
         // Food moved under Transport, which comes after it in the rows.
         let food = find_by_name(&categories, "Food").unwrap();
         let transport = find_by_name(&categories, "Transport").unwrap();
@@ -628,7 +628,7 @@ mod tests {
 
     #[test]
     fn income_and_expense_types_are_set() {
-        let categories = default_categories();
+        let categories = sample_categories();
         let salary = find_by_name(&categories, "Salary").unwrap();
         assert_eq!(
             get(&categories, salary).unwrap().category_type,
@@ -643,14 +643,14 @@ mod tests {
 
     #[test]
     fn depth_is_zero_for_top_level() {
-        let categories = default_categories();
+        let categories = sample_categories();
         let housing = find_by_name(&categories, "Housing").unwrap();
         assert_eq!(depth(&categories, housing), 0);
     }
 
     #[test]
     fn depth_increases_for_nested_categories() {
-        let categories = default_categories();
+        let categories = sample_categories();
         let utilities = find_by_name(&categories, "Utilities").unwrap();
         let electricity = find_by_name(&categories, "Electricity").unwrap();
         assert_eq!(depth(&categories, utilities), 1);
@@ -659,7 +659,7 @@ mod tests {
 
     #[test]
     fn get_or_create_uncategorised_creates_one_per_type() {
-        let mut categories = default_categories();
+        let mut categories = sample_categories();
         let original_count = categories.len();
 
         let uncategorised_expense =
@@ -697,7 +697,7 @@ mod tests {
 
     #[test]
     fn insert_category_succeeds_with_valid_parent() {
-        let mut categories = default_categories();
+        let mut categories = sample_categories();
         let food = find_by_name(&categories, "Food").unwrap();
         let result = insert_category(
             &mut categories,
@@ -714,7 +714,7 @@ mod tests {
 
     #[test]
     fn insert_category_rejects_mismatched_type() {
-        let mut categories = default_categories();
+        let mut categories = sample_categories();
         let salary = find_by_name(&categories, "Salary").unwrap();
         let result = insert_category(
             &mut categories,
@@ -727,7 +727,7 @@ mod tests {
 
     #[test]
     fn insert_category_rejects_nonexistent_parent() {
-        let mut categories = default_categories();
+        let mut categories = sample_categories();
         let result = insert_category(
             &mut categories,
             "Invalid".to_string(),
@@ -739,7 +739,7 @@ mod tests {
 
     #[test]
     fn insert_category_rejects_depth_exceeded() {
-        let mut categories = default_categories();
+        let mut categories = sample_categories();
         let electricity = find_by_name(&categories, "Electricity").unwrap();
         // Electricity is at depth 2, can't add a child
         let result = insert_category(
@@ -753,7 +753,7 @@ mod tests {
 
     #[test]
     fn move_category_succeeds_with_valid_parent() {
-        let mut categories = default_categories();
+        let mut categories = sample_categories();
         let transport = find_by_name(&categories, "Transport").unwrap();
         let food = find_by_name(&categories, "Food").unwrap();
 
@@ -765,7 +765,7 @@ mod tests {
 
     #[test]
     fn move_category_rejects_a_subtree_that_would_pass_three_levels() {
-        let mut categories = default_categories();
+        let mut categories = sample_categories();
         let housing = find_by_name(&categories, "Housing").unwrap();
         let transport = find_by_name(&categories, "Transport").unwrap();
         let utilities = find_by_name(&categories, "Utilities").unwrap();
@@ -783,7 +783,7 @@ mod tests {
 
     #[test]
     fn move_category_rejects_cycle() {
-        let mut categories = default_categories();
+        let mut categories = sample_categories();
         let food = find_by_name(&categories, "Food").unwrap();
         let groceries = find_by_name(&categories, "Groceries").unwrap();
 
@@ -794,7 +794,7 @@ mod tests {
 
     #[test]
     fn move_category_rejects_type_mismatch() {
-        let mut categories = default_categories();
+        let mut categories = sample_categories();
         let transport = find_by_name(&categories, "Transport").unwrap();
         let salary = find_by_name(&categories, "Salary").unwrap();
 
@@ -805,7 +805,7 @@ mod tests {
 
     #[test]
     fn edit_category_succeeds() {
-        let mut categories = default_categories();
+        let mut categories = sample_categories();
         let housing = find_by_name(&categories, "Housing").unwrap();
         let result = edit_category(&mut categories, housing, "Real Estate".to_string());
         assert!(result.is_ok());
@@ -814,7 +814,7 @@ mod tests {
 
     #[test]
     fn tree_rows_includes_all_when_all_expanded() {
-        let categories = default_categories();
+        let categories = sample_categories();
         let expanded = vec![
             CategoryId::seed(1),
             CategoryId::seed(3),
@@ -834,7 +834,7 @@ mod tests {
 
     #[test]
     fn tree_rows_respects_collapsed_state() {
-        let categories = default_categories();
+        let categories = sample_categories();
         let expanded = vec![CategoryId::seed(1)]; // Only Housing expanded, not Food
         let rows = tree_rows(&categories, &expanded);
 
@@ -848,7 +848,7 @@ mod tests {
 
     #[test]
     fn tree_rows_depth_increases_for_nested() {
-        let categories = default_categories();
+        let categories = sample_categories();
         let expanded = vec![
             CategoryId::seed(1),
             CategoryId::seed(3),
@@ -868,7 +868,7 @@ mod tests {
     #[test]
     fn toggle_expanded_adds_and_removes() {
         let mut expanded = vec![CategoryId::seed(1)];
-        let food = find_by_name(&default_categories(), "Food").unwrap();
+        let food = find_by_name(&sample_categories(), "Food").unwrap();
 
         toggle_expanded(&mut expanded, food, false);
         assert!(expanded.contains(&food));
@@ -880,7 +880,7 @@ mod tests {
     #[test]
     fn toggle_expanded_ignores_leaves() {
         let mut expanded = vec![];
-        let groceries = find_by_name(&default_categories(), "Groceries").unwrap();
+        let groceries = find_by_name(&sample_categories(), "Groceries").unwrap();
 
         toggle_expanded(&mut expanded, groceries, true);
         assert!(
@@ -891,7 +891,7 @@ mod tests {
 
     #[test]
     fn settings_rows_list_expense_before_income_and_skip_collapsed_children() {
-        let categories = default_categories();
+        let categories = sample_categories();
         let names = |expanded: &[CategoryId]| -> Vec<String> {
             settings_rows(&categories, expanded)
                 .into_iter()
@@ -928,16 +928,16 @@ mod tests {
 
     #[test]
     fn the_seed_is_three_levels_deep_and_housing_has_two_children() {
-        let categories = default_categories();
+        let categories = sample_categories();
         assert_eq!(levels_deep(&categories), 3);
         assert_eq!(levels_deep(&[]), 0);
         assert_eq!(child_count(&categories, CategoryId::seed(1)), 2);
         assert_eq!(child_count(&categories, CategoryId::seed(2)), 0);
     }
 
-    /// The stub tree with an Expense Uncategorised added, and its id.
+    /// The sample tree with an Expense Uncategorised added, and its id.
     fn with_uncategorised() -> (Vec<Category>, CategoryId) {
-        let mut categories = default_categories();
+        let mut categories = sample_categories();
         let id = get_or_create_uncategorised(&mut categories, CategoryTypes::Expense);
         (categories, id)
     }

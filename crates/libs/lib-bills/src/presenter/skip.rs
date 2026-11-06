@@ -85,12 +85,12 @@ mod tests {
     use super::*;
     use crate::fake::{RecordingRouter, Routed};
     use crate::interactor::test_support::entry_of;
-    use crate::presenter::test_support::{date, stub};
+    use crate::presenter::test_support::{date, sample};
     use crate::{Resolution, entry};
 
     #[test]
     fn confirm_skips_the_entry_and_closes() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let origin = entry_of(&ports.borrow(), "Origin Energy", date(2026, 9, 24));
         let mut skip = SkipPresenter::new(shared, origin).expect("the Plan is there");
         let view = skip.view_model();
@@ -117,7 +117,7 @@ mod tests {
             (DialogInput::Char('x'), false),
             (DialogInput::Backspace, false),
         ] {
-            let (_ports, shared) = stub();
+            let (_ports, shared) = sample();
             let origin = entry_of(&_ports.borrow(), "Origin Energy", date(2026, 9, 24));
             let mut skip = SkipPresenter::new(shared, origin).expect("the Plan is there");
             let mut router = RecordingRouter::default();
@@ -138,7 +138,7 @@ mod tests {
 
     #[test]
     fn an_entry_settled_underneath_closes_with_the_refusal() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let origin = entry_of(&ports.borrow(), "Origin Energy", date(2026, 9, 24));
         let mut skip = SkipPresenter::new(shared, origin).expect("the Plan is there");
         SkipBill { entry: origin }
@@ -156,7 +156,7 @@ mod tests {
 
     #[test]
     fn a_one_shot_says_the_bill_is_cancelled() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let id = ports.borrow().bills.plans[0].id;
         ports.borrow_mut().bills.plans[0].recurrence = Recurrence::OneShot;
         let skip = SkipPresenter::new(

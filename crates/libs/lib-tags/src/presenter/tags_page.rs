@@ -286,7 +286,7 @@ fn scope(tags: &[Tag], groups: &[DuplicateGroup]) -> (Vec<Segment>, String) {
 mod tests {
     use lib_config::KeyBindingConfig;
 
-    use super::super::test_support::stub;
+    use super::super::test_support::sample;
     use super::*;
     use crate::fake::{RecordingRouter, RouterCall};
     use crate::keymap::tags_page_keymap;
@@ -340,11 +340,11 @@ mod tests {
 
     #[test]
     fn open_transactions_asks_the_router_for_the_selected_rows_transactions() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
 
         page.send(TagsPageEvent::Move(Step::Last));
-        let selected = page.presenter.selected().expect("a stub row is selected");
+        let selected = page.presenter.selected().expect("a sample row is selected");
         assert_eq!(
             page.send(TagsPageEvent::OpenTransactions),
             [RouterCall::OpenTransactions(selected)]
@@ -353,7 +353,7 @@ mod tests {
 
     #[test]
     fn the_rows_run_a_to_z_with_the_flagged_duplicate_naming_its_target() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let view = Page::new(shared).view();
 
         let names: Vec<&str> = view.rows.iter().map(|row| row.name.as_str()).collect();
@@ -375,7 +375,7 @@ mod tests {
 
     #[test]
     fn the_scope_counts_active_tags_and_flags_the_duplicates() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let view = Page::new(shared).view();
 
         assert_eq!(view.status, "8 tags \u{b7} 1 likely duplicate");
@@ -391,7 +391,7 @@ mod tests {
 
     #[test]
     fn with_nothing_flagged_the_scope_is_the_count_alone() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         ports
             .borrow_mut()
             .tags
@@ -406,7 +406,7 @@ mod tests {
 
     #[test]
     fn the_empty_page_names_the_key_that_adds() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         ports.borrow_mut().tags.tags.clear();
 
         let view = Page::new(shared).view();
@@ -420,7 +420,7 @@ mod tests {
 
     #[test]
     fn movement_walks_the_rows_and_stops_at_the_ends() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
         let names: Vec<String> = page.view().rows.into_iter().map(|row| row.name).collect();
 
@@ -437,7 +437,7 @@ mod tests {
 
     #[test]
     fn new_edit_and_remove_ask_the_router_for_their_dialogs() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
         page.send(TagsPageEvent::Select(SHARED));
 
@@ -462,7 +462,7 @@ mod tests {
 
     #[test]
     fn a_row_action_selects_its_row_before_opening() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
 
         let calls = page.send(TagsPageEvent::EditRow(SHARED));
@@ -478,7 +478,7 @@ mod tests {
 
     #[test]
     fn merge_on_a_flagged_tag_brings_its_target_and_on_any_other_only_the_source() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
 
         assert_eq!(
@@ -500,7 +500,7 @@ mod tests {
 
     #[test]
     fn the_suggested_target_follows_the_usage() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut page = Page::new(shared);
         // The more-used of the pair is the one to keep.
         ports.borrow_mut().usage.uses.insert(
@@ -536,7 +536,7 @@ mod tests {
                 self.0.open_transactions(id);
             }
         }
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut presenter =
             TagsPagePresenter::new(shared, tags_page_keymap(&KeyBindingConfig::default()));
 
@@ -550,7 +550,7 @@ mod tests {
 
     #[test]
     fn a_saved_tag_is_selected_when_its_dialog_closes_and_a_remove_falls_to_the_first_row() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
         let outcome = |change, id| {
             Some(TagsOutcome {
@@ -582,7 +582,7 @@ mod tests {
 
     #[test]
     fn the_selection_falls_to_the_first_row_when_its_tag_goes() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut page = Page::new(shared);
         page.send(TagsPageEvent::Select(SHARED));
         ports.borrow_mut().tags.tags.retain(|tag| tag.id != SHARED);
@@ -594,7 +594,7 @@ mod tests {
 
     #[test]
     fn the_legend_follows_the_keymap() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let hints = |config: &KeyBindingConfig| {
             Page::with_keys(shared.clone(), config)
                 .view()

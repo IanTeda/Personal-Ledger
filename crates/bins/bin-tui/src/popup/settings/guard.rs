@@ -348,8 +348,8 @@ mod tests {
 
     use super::*;
 
-    fn stub() -> TuiPorts {
-        crate::units::UnitsSetup::stub(&lib_config::KeyBindingConfig::default()).ports
+    fn sample() -> TuiPorts {
+        crate::units::UnitsSetup::sample(&lib_config::KeyBindingConfig::default()).ports
     }
 
     fn render(guard: &BaseUnitGuardPopup) -> String {
@@ -371,7 +371,7 @@ mod tests {
 
     #[test]
     fn it_opens_only_on_a_new_base_the_presenter_offers() {
-        let ports = stub();
+        let ports = sample();
         assert!(
             BaseUnitGuardPopup::open(&ports, "aud").is_none(),
             "already the base"
@@ -385,7 +385,7 @@ mod tests {
 
     #[test]
     fn enter_does_nothing_until_the_typed_code_matches_then_sets_the_base() {
-        let ports = stub();
+        let ports = sample();
         let mut guard = BaseUnitGuardPopup::open(&ports, "btc").expect("btc can be the base");
         guard.push('b');
         guard.push('t');
@@ -421,7 +421,7 @@ mod tests {
                 .expect("the keys row is drawn");
             buffer[(u16::try_from(x).unwrap_or_default(), y)].style()
         };
-        let mut guard = BaseUnitGuardPopup::open(&stub(), "btc").expect("btc can be the base");
+        let mut guard = BaseUnitGuardPopup::open(&sample(), "btc").expect("btc can be the base");
         guard.push('b');
         assert_eq!(enter_style(&guard).fg, c.muted().fg);
         guard.push('t');
@@ -432,7 +432,7 @@ mod tests {
     #[test]
     fn it_states_the_change_and_names_the_code_to_type() {
         crate::locale::init_for_tests();
-        let guard = BaseUnitGuardPopup::open(&stub(), "btc").expect("btc can be the base");
+        let guard = BaseUnitGuardPopup::open(&sample(), "btc").expect("btc can be the base");
         let text = render(&guard);
         for needle in [
             "base unit  aud → btc",

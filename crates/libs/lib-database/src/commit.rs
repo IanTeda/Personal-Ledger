@@ -135,7 +135,7 @@ mod tests {
                     Ok(())
                 })
                 .expect("the notes table is made");
-            UnitsAdapter::seed_from(&writer, InMemoryPorts::stub(Utc::now()))
+            UnitsAdapter::seed_from(&writer, InMemoryPorts::sample(Utc::now()))
                 .expect("the seed is written");
             let pending = PendingWrites::new(writer);
             let units = UnitsAdapter::load(pending.clone()).expect("the seed loads");

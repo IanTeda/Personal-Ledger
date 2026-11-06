@@ -29,8 +29,9 @@ mod tests {
 
     #[test]
     fn removing_deletes_the_row_and_an_unknown_item_is_refused() {
-        let mut inventory =
-            InMemoryInventory::stub(chrono::NaiveDate::from_ymd_opt(2026, 10, 2).expect("a date"));
+        let mut inventory = InMemoryInventory::sample(
+            chrono::NaiveDate::from_ymd_opt(2026, 10, 2).expect("a date"),
+        );
         let id = inventory.items()[0].id;
         let before = inventory.items().len();
 

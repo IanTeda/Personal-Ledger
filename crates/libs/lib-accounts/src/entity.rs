@@ -1,5 +1,5 @@
 //! The Account Entity: what an Account holds, the rules over a list of them (add, edit, remove,
-//! grouping, the net figure, finding one by name) and the stub seed. The rules work over rows, not
+//! grouping, the net figure, finding one by name) and the sample seed. The rules work over rows, not
 //! the repository, so a caller holding a list of Accounts, such as the TUI or a read copy, can run
 //! them.
 
@@ -257,7 +257,7 @@ const fn date(year: i32, month: u32) -> NaiveDate {
 /// hard-coded: ANZ Offset is 463,203.10 (not 61,204.10), and Wallet is 240.00. The mockup's own
 /// aud rows sum to a large negative (the loan dwarfs the deposits) and its printed 83,995.87
 /// matches no sum of them; with these two changes the aud rows sum to exactly 83,995.87.
-pub fn default_accounts() -> Vec<Account> {
+pub fn sample_accounts() -> Vec<Account> {
     vec![
         Account {
             id: AccountId::seed(1),
@@ -403,7 +403,7 @@ mod tests {
 
     #[test]
     fn display_order_visits_every_account_exactly_once() {
-        let accounts = default_accounts();
+        let accounts = sample_accounts();
         let mut order = display_order(&accounts);
         assert_eq!(order.len(), accounts.len());
         order.sort_unstable();
@@ -413,12 +413,12 @@ mod tests {
 
     #[test]
     fn seed_covers_all_five_groups() {
-        assert_eq!(group_accounts(&default_accounts()).len(), 5);
+        assert_eq!(group_accounts(&sample_accounts()).len(), 5);
     }
 
     #[test]
     fn net_worth_sums_base_unit_only_and_names_the_rest() {
-        let net = net_worth(&default_accounts(), Some(UnitId::SEED_AUD));
+        let net = net_worth(&sample_accounts(), Some(UnitId::SEED_AUD));
         assert_eq!(net.account_count, 7);
         assert_eq!(net.base_net, money("83995.87"));
         assert_eq!(
@@ -440,7 +440,7 @@ mod tests {
 
     #[test]
     fn net_worth_with_no_base_unit_sums_nothing() {
-        let net = net_worth(&default_accounts(), None);
+        let net = net_worth(&sample_accounts(), None);
         assert_eq!(net.base_net, money("0"));
         assert_eq!(net.base_unit, None);
         assert_eq!(net.held_separately.len(), 3);
@@ -448,7 +448,7 @@ mod tests {
 
     #[test]
     fn group_position_finds_the_block_holding_an_account() {
-        let accounts = default_accounts();
+        let accounts = sample_accounts();
         // Wallet (Cash) is the first block; Bitcoin (Investment) is the last of five.
         assert_eq!(group_position(&accounts, 0), Some(0));
         assert_eq!(group_position(&accounts, 6), Some(4));
@@ -457,7 +457,7 @@ mod tests {
 
     #[test]
     fn find_by_name_prefers_an_exact_name_case_insensitively() {
-        let accounts = default_accounts();
+        let accounts = sample_accounts();
         assert_eq!(find_by_name(&accounts, "home loan"), NameLookup::Found(4));
         assert_eq!(
             find_by_name(&accounts, "  HOME LOAN "),
@@ -467,7 +467,7 @@ mod tests {
 
     #[test]
     fn find_by_name_falls_back_to_a_unique_prefix_then_a_unique_substring() {
-        let accounts = default_accounts();
+        let accounts = sample_accounts();
         assert_eq!(find_by_name(&accounts, "amex"), NameLookup::Found(3));
         assert_eq!(find_by_name(&accounts, "platinum"), NameLookup::Found(3));
         assert_eq!(find_by_name(&accounts, "bitc"), NameLookup::Found(6));
@@ -475,7 +475,7 @@ mod tests {
 
     #[test]
     fn find_by_name_reports_ambiguity_instead_of_guessing() {
-        let accounts = default_accounts();
+        let accounts = sample_accounts();
         assert_eq!(
             find_by_name(&accounts, "anz"),
             NameLookup::Ambiguous(vec!["ANZ Everyday".to_string(), "ANZ Offset".to_string()])
@@ -484,7 +484,7 @@ mod tests {
 
     #[test]
     fn an_exact_name_wins_over_longer_names_that_contain_it() {
-        let mut accounts = default_accounts();
+        let mut accounts = sample_accounts();
         accounts.push(Account {
             name: "ANZ".to_string(),
             ..account(AccountId::seed(20), "ANZ", AccountType::Bank)
@@ -506,7 +506,7 @@ mod tests {
 
     #[test]
     fn find_by_name_finds_nothing_for_an_unknown_or_empty_name() {
-        let accounts = default_accounts();
+        let accounts = sample_accounts();
         assert_eq!(find_by_name(&accounts, "zzz"), NameLookup::NotFound);
         assert_eq!(find_by_name(&accounts, "   "), NameLookup::NotFound);
         assert_eq!(find_by_name(&[], "wallet"), NameLookup::NotFound);

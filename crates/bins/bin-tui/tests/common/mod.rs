@@ -2,7 +2,7 @@
 //! hermetic `Shell`, feeds it key sequences the way the terminal would, and reads the drawn
 //! screen back from ratatui's `TestBackend`. Nothing here touches the terminal or the user's
 //! config, and only a test that runs `:open` or `:new` touches a Ledger file: [`shell`]'s Units sit
-//! on `lib-units`' in-memory ports, beside the other domains' in-memory stub stores. What a test may assert on (screen text, Colour Roles, and when a
+//! on `lib-units`' in-memory ports, beside the other domains' in-memory sample stores. What a test may assert on (screen text, Colour Roles, and when a
 //! `#[doc(hidden)]` accessor is allowed) is set out in ADR-0035.
 
 #![expect(
@@ -26,7 +26,7 @@ pub const WIDTH: u16 = 96;
 pub const HEIGHT: u16 = 30;
 
 /// A `Shell` on the default key bindings and Colours, with the Locale pinned to `en-US` and a
-/// Ledger open on the stub seed's Units in memory.
+/// Ledger open on the sample seed's Units in memory.
 pub fn shell() -> Shell {
     shell_with_failures().0
 }
@@ -34,24 +34,24 @@ pub fn shell() -> Shell {
 /// [`shell`], with the sender of its writer failure channel, so a test can report a failed write.
 pub fn shell_with_failures() -> (Shell, mpsc::Sender<WriteFailure>) {
     shell_on(
-        Box::new(InMemoryPorts::stub(chrono::Utc::now())),
+        Box::new(InMemoryPorts::sample(chrono::Utc::now())),
         Rc::new(InMemoryCommit),
     )
 }
 
 /// A `Shell` with a Ledger open whose Units are kept in `units`, committed through `commit`, and
-/// every other domain's stub seed beside them, so the stub's Accounts and Locations use its Units.
+/// every other domain's sample seed beside them, so the sample's Accounts and Locations use its Units.
 pub fn shell_on(
     units: Box<dyn UnitsStore>,
     commit: Rc<dyn Commit>,
 ) -> (Shell, mpsc::Sender<WriteFailure>) {
     let (report, failures) = mpsc::channel();
-    let (stub, _) = Stores::fake(FakeStores::sample(chrono::Local::now().date_naive()));
+    let (sample, _) = Stores::fake(FakeStores::sample(chrono::Local::now().date_naive()));
     let stores = Stores {
         units,
         commit,
         failures,
-        ..stub
+        ..sample
     };
     let shell = cold_shell(None).with_open_ledger("test.pldb", stores);
     (shell, report)

@@ -155,7 +155,7 @@ fn add_unit(ports: PortsMut<'_>, code: &str, kind: UnitKind, link: PriceLink) ->
 /// edited and deactivated Units, a moved base, a Custom source and a built-in's override.
 pub fn written_rows_reload_the_same<F: PortsFactory>(factory: &mut F) {
     let usage = InMemoryUnitUsage::default();
-    let mut ports = factory.create(InMemoryPorts::stub(Utc::now()));
+    let mut ports = factory.create(InMemoryPorts::sample(Utc::now()));
 
     let source = custom_source("Example prices").run(ports.split_mut(&usage).price_sources);
     let eur = add_unit(
@@ -179,7 +179,7 @@ pub fn written_rows_reload_the_same<F: PortsFactory>(factory: &mut F) {
         link: PriceLink::manual(eur.id),
     }
     .run(split.units, split.price_sources)
-    .expect("vas is on the stub");
+    .expect("vas is on the sample");
     let split = ports.split_mut(&usage);
     DeactivateUnit(UnitId::SEED_BTC)
         .run(split.units, split.base_unit)
@@ -212,7 +212,7 @@ pub fn written_rows_reload_the_same<F: PortsFactory>(factory: &mut F) {
 /// accepts the delete.
 pub fn deleting_the_base_unit_with_a_move_lands_in_order<F: PortsFactory>(factory: &mut F) {
     let usage = InMemoryUnitUsage::default();
-    let mut ports = factory.create(InMemoryPorts::stub(Utc::now()));
+    let mut ports = factory.create(InMemoryPorts::sample(Utc::now()));
     // A base nothing quotes, so the delete only has the base to move.
     let usd = add_unit(
         ports.split_mut(&usage),
@@ -243,10 +243,10 @@ pub fn deleting_the_base_unit_with_a_move_lands_in_order<F: PortsFactory>(factor
 }
 
 /// Deleting a Unit other Units are quoted in is refused with how many, before any write reaches
-/// storage, whose foreign key would refuse it: the stub's btc and vas are quoted in aud, the base.
+/// storage, whose foreign key would refuse it: the sample's btc and vas are quoted in aud, the base.
 pub fn deleting_a_quoted_unit_is_refused_and_writes_nothing<F: PortsFactory>(factory: &mut F) {
     let usage = InMemoryUnitUsage::default();
-    let mut ports = factory.create(InMemoryPorts::stub(Utc::now()));
+    let mut ports = factory.create(InMemoryPorts::sample(Utc::now()));
     let before = snapshot(&mut ports);
 
     let split = ports.split_mut(&usage);
@@ -272,7 +272,7 @@ pub fn deleting_a_quoted_unit_is_refused_and_writes_nothing<F: PortsFactory>(fac
 /// reaches storage, whose foreign key would refuse it; a new Unit quoted in itself is added.
 pub fn a_gone_quote_unit_is_refused_and_writes_nothing<F: PortsFactory>(factory: &mut F) {
     let usage = InMemoryUnitUsage::default();
-    let mut ports = factory.create(InMemoryPorts::stub(Utc::now()));
+    let mut ports = factory.create(InMemoryPorts::sample(Utc::now()));
     let before = snapshot(&mut ports);
     let gone = PriceLink::manual(UnitId::new());
 
@@ -332,7 +332,7 @@ pub fn a_gone_quote_unit_is_refused_and_writes_nothing<F: PortsFactory>(factory:
 /// Deleting a Custom source moves its Units to Manual entry, and they stay there after a reload.
 pub fn deleting_a_custom_source_moves_its_units_to_manual_entry<F: PortsFactory>(factory: &mut F) {
     let usage = InMemoryUnitUsage::default();
-    let mut ports = factory.create(InMemoryPorts::stub(Utc::now()));
+    let mut ports = factory.create(InMemoryPorts::sample(Utc::now()));
     let source = custom_source("Doomed prices").run(ports.split_mut(&usage).price_sources);
     let gold = add_unit(
         ports.split_mut(&usage),
@@ -370,7 +370,7 @@ pub fn deleting_a_custom_source_moves_its_units_to_manual_entry<F: PortsFactory>
 /// keeps them in storage, a quote change clears them there, and a priced Unit deletes with them.
 pub fn weekly_prices_reload_and_a_quote_change_clears_them<F: PortsFactory>(factory: &mut F) {
     let usage = InMemoryUnitUsage::default();
-    let mut ports = factory.create(InMemoryPorts::stub(Utc::now()));
+    let mut ports = factory.create(InMemoryPorts::sample(Utc::now()));
     let eth = add_unit(
         ports.split_mut(&usage),
         "eth",
@@ -403,7 +403,7 @@ pub fn weekly_prices_reload_and_a_quote_change_clears_them<F: PortsFactory>(fact
             link: PriceLink::manual(quote),
         }
         .run(split.units, split.price_sources)
-        .expect("btc is on the stub")
+        .expect("btc is on the sample")
     };
     let kept = edit(&mut ports, UnitId::SEED_AUD);
     assert_eq!(kept.prices.len(), 52, "a source change keeps them");
@@ -448,7 +448,7 @@ fn unit(ports: &mut impl StoredPorts, id: UnitId) -> UnitRow {
 /// committed rows rather than keeping the change the store refused.
 pub fn a_failed_write_reloads_and_reports<F: PortsFactory>(factory: &mut F) {
     let usage = InMemoryUnitUsage::default();
-    let mut ports = factory.create(InMemoryPorts::stub(Utc::now()));
+    let mut ports = factory.create(InMemoryPorts::sample(Utc::now()));
     let stored = snapshot(&mut ports);
 
     factory.break_writes(&mut ports);

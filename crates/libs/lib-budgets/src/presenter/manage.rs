@@ -337,14 +337,14 @@ mod tests {
     use super::*;
     use crate::PERSONAL_SPENDING_ID;
     use crate::fake::{RecordingRouter, Routed};
-    use crate::presenter::test_support::{stub, today};
+    use crate::presenter::test_support::{sample, today};
 
     fn manage() -> (
         std::rc::Rc<std::cell::RefCell<crate::fake::InMemoryPorts>>,
         ManagePresenter,
         RecordingRouter,
     ) {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         (
             ports,
             ManagePresenter::new(shared, PERSONAL_SPENDING_ID, Clock::fixed(today())),

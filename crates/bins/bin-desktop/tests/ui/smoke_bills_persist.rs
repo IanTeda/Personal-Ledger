@@ -5,7 +5,7 @@
 
 #![expect(
     clippy::expect_used,
-    reason = "test support: a Telstra Internet row the stub doesn't seed should fail the test loudly"
+    reason = "test support: a Telstra Internet row the sample doesn't seed should fail the test loudly"
 )]
 
 use super::common;

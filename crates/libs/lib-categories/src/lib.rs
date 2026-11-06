@@ -3,9 +3,9 @@
 //! Depth is capped at three levels, and a child is its parent's type.
 //!
 //! A VIPER module (`docs/development/viper-architecture.md`, #847, #859): the Entity with its tree
-//! rules and stub seed (`entity`), one Interactor per intent (`interactor`), one Presenter per
+//! rules and sample seed (`entity`), one Interactor per intent (`interactor`), one Presenter per
 //! View and Dialog (`presenter`), the ports and the `CategoriesRouter` (`protocols`), the page's
-//! default keys (`keymap`) and its Messages (`msg`). `fake` holds the in-memory ports, the stub
+//! default keys (`keymap`) and its Messages (`msg`). `fake` holds the in-memory ports, the sample
 //! seed and a recording Router; `contract` the checks both they and `lib-database`'s adapter keep
 //! (#858). Delete re-points other domains' rows, so it and its Dialog are
 //! `lib-category-deletion`'s (#1004, #1005); the page only asks its Router to open that Dialog.

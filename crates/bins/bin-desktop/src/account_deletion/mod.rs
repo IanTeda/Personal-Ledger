@@ -60,7 +60,7 @@ pub struct DeletionStores {
 impl DeletionStores {
     /// The deletion port over `storage`'s stores, for a test that builds `Root` directly.
     #[cfg(test)]
-    pub fn stub(storage: &crate::shell::router::LedgerStores) -> Self {
+    pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
         Self {
             deletion: deletion(
                 storage.accounts.clone(),

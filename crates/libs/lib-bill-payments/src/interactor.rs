@@ -30,7 +30,7 @@ impl PayBill {
         self.run_as(TransactionId::new(), payments)
     }
 
-    /// [`Self::run`] under a given Transaction id, for the stub seed, whose ids are fixed.
+    /// [`Self::run`] under a given Transaction id, for the sample seed, whose ids are fixed.
     ///
     /// # Errors
     /// As [`Self::run`].
@@ -117,7 +117,7 @@ pub(crate) mod test_support {
         NaiveDate::from_ymd_opt(y, m, d).expect("a real date")
     }
 
-    /// The day the stub is seeded on, as `lib-bills`' tests use.
+    /// The day the sample is seeded on, as `lib-bills`' tests use.
     pub fn today() -> NaiveDate {
         date(2026, 9, 19)
     }
@@ -126,12 +126,12 @@ pub(crate) mod test_support {
         Money(BigDecimal::new(cents.into(), 2))
     }
 
-    /// The Bills stub seed as of [`today`], shared.
-    pub fn stub() -> Rc<RefCell<InMemoryPorts>> {
-        Rc::new(RefCell::new(InMemoryPorts::stub(today())))
+    /// The Bills sample seed as of [`today`], shared.
+    pub fn sample() -> Rc<RefCell<InMemoryPorts>> {
+        Rc::new(RefCell::new(InMemoryPorts::sample(today())))
     }
 
-    /// The stub Plan named `name`'s entry due on `due`.
+    /// The sample Plan named `name`'s entry due on `due`.
     pub fn entry_of(ports: &Rc<RefCell<InMemoryPorts>>, name: &str, due: NaiveDate) -> EntryId {
         let plan = ports
             .borrow()
@@ -140,7 +140,7 @@ pub(crate) mod test_support {
             .iter()
             .find(|plan| plan.name == name)
             .map(|plan| plan.id)
-            .unwrap_or_else(|| panic!("the stub has {name}"));
+            .unwrap_or_else(|| panic!("the sample has {name}"));
         EntryId { plan_id: plan, due }
     }
 }
@@ -152,13 +152,13 @@ mod tests {
     };
     use lib_core::{AccountId, BillPlanId};
 
-    use super::test_support::{cents, date, entry_of, stub, today};
+    use super::test_support::{cents, date, entry_of, sample, today};
     use super::*;
     use crate::fake::{InMemoryPayments, PortsPayments};
 
     #[test]
     fn paying_books_an_open_transaction_and_matches_its_split() {
-        let ports = stub();
+        let ports = sample();
         let due = entry_of(&ports, "Telstra Internet", date(2026, 9, 22));
         let mut payments = InMemoryPayments {
             bills: ports.borrow().bills.clone(),
@@ -197,7 +197,7 @@ mod tests {
     /// The Bills page reads the payment at once, through the Splits it reads.
     #[test]
     fn a_payment_is_read_back_as_its_split() {
-        let ports = stub();
+        let ports = sample();
         let due = entry_of(&ports, "Telstra Internet", date(2026, 9, 22));
         let before = ports.borrow().reads.splits.len();
 
@@ -219,7 +219,7 @@ mod tests {
 
     #[test]
     fn a_refused_pay_writes_nothing() {
-        let ports = stub();
+        let ports = sample();
         let due = entry_of(&ports, "Telstra Internet", date(2026, 9, 22));
         let before = ports.borrow().clone();
         let pay = |entry, amount| {
@@ -243,7 +243,7 @@ mod tests {
 
     #[test]
     fn a_settled_entry_cannot_be_paid_again() {
-        let ports = stub();
+        let ports = sample();
         let due = entry_of(&ports, "Telstra Internet", date(2026, 9, 22));
         let pay = || {
             PayBill {

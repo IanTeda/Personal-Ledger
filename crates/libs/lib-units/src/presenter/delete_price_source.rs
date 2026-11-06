@@ -135,7 +135,7 @@ impl DeletePriceSourcePresenter {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::{hints, pairs, stub};
+    use super::super::test_support::{hints, pairs, sample};
     use super::*;
     use crate::fake::{RecordingRouter, RouterCall};
     use crate::interactor::AddPriceSource;
@@ -161,7 +161,7 @@ mod tests {
 
     #[test]
     fn deleting_a_custom_source_moves_its_units_to_manual_entry_and_closes_with_the_count() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let source = AddPriceSource {
             name: "Broker".into(),
             endpoint: crate::built_in(COINGECKO).unwrap().endpoint.clone(),
@@ -200,7 +200,7 @@ mod tests {
 
     #[test]
     fn a_built_in_or_a_gone_source_is_refused_as_text() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut built_in = DeletePriceSourcePresenter::new(shared.clone(), COINGECKO).unwrap();
         assert_eq!(send(&mut built_in, typed("CoinGecko")), []);
         assert_eq!(
@@ -225,7 +225,7 @@ mod tests {
 
     #[test]
     fn deleting_takes_no_field_keys() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let view = DeletePriceSourcePresenter::new(shared, COINGECKO)
             .unwrap()
             .view_model();
@@ -235,7 +235,7 @@ mod tests {
 
     #[test]
     fn dialog_input_types_the_name_back_and_select_deletes() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let source = AddPriceSource {
             name: "Fx".into(),
             endpoint: crate::built_in(COINGECKO).unwrap().endpoint.clone(),

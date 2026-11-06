@@ -271,7 +271,7 @@ mod tests {
             .borrow()
             .units()
             .unit(UnitId::SEED_AUD)
-            .expect("the stub's aud");
+            .expect("the sample's aud");
         aud.code = "aud2".into();
         UnitsPorts::split_mut(&mut *ports.borrow_mut())
             .units

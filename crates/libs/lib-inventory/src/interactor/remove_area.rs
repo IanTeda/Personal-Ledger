@@ -46,13 +46,13 @@ mod tests {
     use super::*;
     use crate::fake::InMemoryInventory;
 
-    fn stub() -> InMemoryInventory {
-        InMemoryInventory::stub(chrono::NaiveDate::from_ymd_opt(2026, 10, 2).expect("a date"))
+    fn sample() -> InMemoryInventory {
+        InMemoryInventory::sample(chrono::NaiveDate::from_ymd_opt(2026, 10, 2).expect("a date"))
     }
 
     #[test]
     fn an_areas_items_move_to_the_destination_before_it_goes() {
-        let mut inventory = stub();
+        let mut inventory = sample();
         let areas = inventory.locations()[0].areas.clone();
         let (from, to) = (areas[0].id, areas[1].id);
         let held = inventory.items().iter().filter(|i| i.area == from).count();
@@ -77,7 +77,7 @@ mod tests {
 
     #[test]
     fn an_area_with_items_and_no_destination_is_refused_and_nothing_is_written() {
-        let mut inventory = stub();
+        let mut inventory = sample();
         let before = inventory.clone();
         let from = inventory.locations()[0].areas[0].id;
 

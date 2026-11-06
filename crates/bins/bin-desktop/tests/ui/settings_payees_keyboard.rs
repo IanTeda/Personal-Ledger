@@ -174,7 +174,7 @@ fn on_payee(ui: &mut Harness<'_>, name: &str) {
         .payee_names
         .iter()
         .position(|payee| payee == name)
-        // A name the stub doesn't seed selects the first row, which the assert below refuses.
+        // A name the sample doesn't seed selects the first row, which the assert below refuses.
         .unwrap_or_default();
     ui.press("g g");
     for _ in 0..row {
@@ -206,7 +206,7 @@ fn a_delete_the_files_foreign_keys_refuse_puts_the_payee_back_with_an_error_toas
     assert_eq!(
         ui.dialog_value("action").as_deref(),
         Some("Delete"),
-        "the miscount offers Delete for a Payee the stub's Splits name"
+        "the miscount offers Delete for a Payee the sample's Splits name"
     );
     ui.press("W o o l w o r t h s enter");
     assert_eq!(ui.dialog(), None);
@@ -285,7 +285,7 @@ fn the_splits_a_category_reassign_rewrites_are_counted_on_the_payees_page(
         before
             .as_deref()
             .is_some_and(|warning| warning.contains("transactions")),
-        "the stub's groceries name Woolworths: {before:?}"
+        "the sample's groceries name Woolworths: {before:?}"
     );
 
     // Deleting Groceries re-points its Splits, Woolworths' among them, to Uncategorised: the
@@ -375,7 +375,7 @@ fn enter_shows_the_selected_payees_transactions_in_one_commit(app: &mut TestAppC
     let selected = ui
         .settings::<SettingsPayeesSnapshot>()
         .selected_payee
-        .expect("a stub Payee is selected");
+        .expect("a sample Payee is selected");
 
     let before = ui.commits();
     ui.press("enter");
@@ -385,7 +385,7 @@ fn enter_shows_the_selected_payees_transactions_in_one_commit(app: &mut TestAppC
     let page = ui.transactions();
     assert_eq!(page.selected, 0);
     assert!(page.filters_changed, "the list is filtered to the Payee");
-    assert!(page.visible > 0, "the stub books to {selected}");
+    assert!(page.visible > 0, "the sample books to {selected}");
     // A split Transaction shows its first Payee and a `+n`, so the rows aren't all the one name.
     assert!(
         page.payees.contains(&selected),

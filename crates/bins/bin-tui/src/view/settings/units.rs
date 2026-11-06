@@ -265,16 +265,16 @@ mod tests {
     use crossterm::event::KeyModifiers;
 
     use super::*;
-    use crate::view::settings::tests::{render_at, stub_units};
+    use crate::view::settings::tests::{render_at, sample_units};
     use crate::view::settings::{SettingsPage, SettingsView};
 
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
     }
 
-    /// Settings › Units on the stub seed, with the Shell's draw at `width` told it.
+    /// Settings › Units on the sample seed, with the Shell's draw at `width` told it.
     fn units_page(width: u16) -> SettingsView {
-        let mut view = SettingsView::with_units(&stub_units());
+        let mut view = SettingsView::with_units(&sample_units());
         view.update(&Action::OpenSettingsPage(SettingsPage::Units));
         view.set_window_size(WindowSize::from_columns(width));
         view

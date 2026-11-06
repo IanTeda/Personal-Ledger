@@ -28,7 +28,7 @@ mod tests {
 
     #[test]
     fn adding_an_account_writes_it_after_the_others_under_a_fresh_id() {
-        let mut accounts = InMemoryAccounts::stub();
+        let mut accounts = InMemoryAccounts::sample();
         let seeded = accounts.accounts().len();
 
         let added = AddAccount(NewAccount {

@@ -14,7 +14,7 @@ use crate::interactor::{
 };
 use crate::{
     Institution, InstitutionDraft, InstitutionError, InstitutionRepository, InstitutionUnits,
-    InstitutionUsage, InstitutionUse, InstitutionsPorts, default_institutions,
+    InstitutionUsage, InstitutionUse, InstitutionsPorts, sample_institutions,
 };
 
 /// Builds the port a contract check runs on.
@@ -95,7 +95,7 @@ fn add(ports: &mut dyn InstitutionRepository, draft: InstitutionDraft) -> Instit
 
 /// An added Institution reloads with its id, trimmed name and joined Products label.
 pub fn an_added_institution_reloads_the_same<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_institutions());
+    let mut ports = factory.create(sample_institutions());
 
     let added = add(&mut ports, draft("  Bank X ", "savings \u{b7} offset"));
     factory.commit(&mut ports);
@@ -116,7 +116,7 @@ pub fn an_added_institution_reloads_the_same<F: PortsFactory>(factory: &mut F) {
 
 /// A Usual unit reloads with its Institution, and an edit back to none reloads as none.
 pub fn a_usual_unit_reloads_and_clears<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_institutions());
+    let mut ports = factory.create(sample_institutions());
     let named = add(
         &mut ports,
         InstitutionDraft {
@@ -155,14 +155,14 @@ pub fn a_usual_unit_reloads_and_clears<F: PortsFactory>(factory: &mut F) {
 
 /// Institutions list in the order they were added, the seed's first, before and after a reload.
 pub fn institutions_list_in_the_order_added<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_institutions());
+    let mut ports = factory.create(sample_institutions());
 
     let zeta = add(&mut ports, draft("Zeta Credit Union", "savings"));
     factory.commit(&mut ports);
     let alpha = add(&mut ports, draft("Alpha Bank", "loan"));
     factory.commit(&mut ports);
 
-    let mut expected: Vec<_> = default_institutions()
+    let mut expected: Vec<_> = sample_institutions()
         .into_iter()
         .map(|institution| institution.id)
         .collect();
@@ -182,7 +182,7 @@ pub fn institutions_list_in_the_order_added<F: PortsFactory>(factory: &mut F) {
 /// A blank name, or one another Institution holds in any case, is refused before any write
 /// reaches storage, whose unique name would refuse it.
 pub fn a_blank_or_taken_name_is_refused_and_writes_nothing<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_institutions());
+    let mut ports = factory.create(sample_institutions());
     let before = ports.institutions();
 
     assert_eq!(
@@ -206,7 +206,7 @@ pub fn a_blank_or_taken_name_is_refused_and_writes_nothing<F: PortsFactory>(fact
 
 /// An edited Institution reloads with its new name and Products, in the place it held.
 pub fn an_edited_institution_reloads_the_same<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_institutions());
+    let mut ports = factory.create(sample_institutions());
 
     let edited = EditInstitution {
         id: InstitutionId::SEED_AMEX,
@@ -220,14 +220,14 @@ pub fn an_edited_institution_reloads_the_same<F: PortsFactory>(factory: &mut F) 
     assert_eq!(before[2], edited);
     let ports = factory.reload(ports);
     assert_eq!(ports.institutions(), before);
-    assert_eq!(ports.institutions().len(), default_institutions().len());
+    assert_eq!(ports.institutions().len(), sample_institutions().len());
     assert_eq!(ports.institution(edited.id), Some(edited));
 }
 
 /// A rename to a name another Institution holds, in any case, is refused and writes nothing; a
 /// blank name is too.
 pub fn a_clashing_rename_is_refused_and_writes_nothing<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_institutions());
+    let mut ports = factory.create(sample_institutions());
     let before = ports.institutions();
 
     assert_eq!(
@@ -259,7 +259,7 @@ pub fn a_clashing_rename_is_refused_and_writes_nothing<F: PortsFactory>(factory:
 
 /// A rename that changes only the capitals of the Institution's own name is accepted.
 pub fn a_case_only_rename_is_accepted<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_institutions());
+    let mut ports = factory.create(sample_institutions());
 
     EditInstitution {
         id: InstitutionId::SEED_WESTPAC,
@@ -306,7 +306,7 @@ impl<R: InstitutionRepository> InstitutionsPorts for WithUsage<'_, R> {
 
 /// A deleted Institution is gone after a reload, the rows after it keeping their order.
 pub fn a_deleted_institution_is_gone_after_a_reload<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_institutions());
+    let mut ports = factory.create(sample_institutions());
 
     let deleted = DeleteInstitution {
         id: InstitutionId::SEED_AMEX,
@@ -320,7 +320,7 @@ pub fn a_deleted_institution_is_gone_after_a_reload<F: PortsFactory>(factory: &m
     factory.commit(&mut ports);
 
     assert_eq!(deleted.name, "American Express");
-    let expected: Vec<_> = default_institutions()
+    let expected: Vec<_> = sample_institutions()
         .into_iter()
         .filter(|institution| institution.id != InstitutionId::SEED_AMEX)
         .collect();
@@ -333,7 +333,7 @@ pub fn a_deleted_institution_is_gone_after_a_reload<F: PortsFactory>(factory: &m
 /// An Institution Accounts name is refused with the Accounts' names, in their order, and writes
 /// nothing: the rows are the same after a reload. The Institutions beside it can still go.
 pub fn deleting_one_in_use_is_refused_and_writes_nothing<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_institutions());
+    let mut ports = factory.create(sample_institutions());
     let before = ports.institutions();
     let usage = InMemoryInstitutionUsage {
         accounts: [(
@@ -378,7 +378,7 @@ pub fn deleting_one_in_use_is_refused_and_writes_nothing<F: PortsFactory>(factor
 /// A write that fails is reported once, naming the Institutions domain, and the port goes back to
 /// the last committed rows rather than keeping the change the store refused.
 pub fn a_failed_write_reloads_and_reports<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_institutions());
+    let mut ports = factory.create(sample_institutions());
     let stored = ports.institutions();
 
     factory.break_writes(&mut ports);

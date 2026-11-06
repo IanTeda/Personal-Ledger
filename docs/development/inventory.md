@@ -50,7 +50,7 @@ Invariants the schema leaves to `lib-inventory`:
 
 ## Domain types
 
-- `lib_inventory::Inventory` — the `locations` and `items`, with the rules as methods (`add_location`, `edit_location`, `remove_location`, `add_area`, `edit_area`, `remove_area`, `move_area`, `set_cover`, `add_item`, `edit_item`, `remove_item`) and the counts and sums the page shows. `default_inventory(today)` is the stub seed.
+- `lib_inventory::Inventory` — the `locations` and `items`, with the rules as methods (`add_location`, `edit_location`, `remove_location`, `add_area`, `edit_area`, `remove_area`, `move_area`, `set_cover`, `add_item`, `edit_item`, `remove_item`) and the counts and sums the page shows. `sample_inventory(today)` is the sample seed.
 - `Location` (`id`, `name`, `address`, `unit: UnitId`, `cover: Option<Cover>`, `areas`), `Area`, `Item` and `Cover`, with their drafts (`LocationDraft`, `CoverDraft`, `ItemDraft`) and refusal types (`LocationError`, `AreaError`, `ItemError`, `NameError`, `CoverError`).
 - `lib_core::LocationId`, `AreaId`, `ItemId` — the `RowID` newtypes (ADR-0040).
 
@@ -62,9 +62,9 @@ Invariants the schema leaves to `lib-inventory`:
 
 `InventoryRepository::delete_location` is a port write that the `RemoveLocation` Interactor calls after checking the Location exists. The adapter queues each Item's delete, then the Location's, which takes its Areas, in the keys' order; both cascade to the Document Links naming the Items, so their changes report the Documents for reload (`cascades_to`).
 
-The stub seed is written last, after the Transactions and Bills: Units, Institutions, Accounts, Categories, Tags, Payees, Transactions, Bills, Inventory, in the first-launch seed and `db-seed`. Inventory names only the Units, but the stub Documents name its Items. `seed::fake` writes no Inventory.
+The sample seed is written last, after the Transactions and Bills: Units, Institutions, Accounts, Categories, Tags, Payees, Transactions, Bills, Inventory, in the first-launch seed and `db-seed`. Inventory names only the Units, but the sample Documents name its Items. `seed::fake` writes no Inventory.
 
-`db-seed` re-seeds each stub Location's Areas as the stub has them, so an Area someone added by hand to a stub Location in the dev DB, holding Items, would make it fail on the `items` key. The stock `db-fresh` then `db-seed` is unaffected.
+`db-seed` re-seeds each sample Location's Areas as the sample has them, so an Area someone added by hand to a sample Location in the dev DB, holding Items, would make it fail on the `items` key. The stock `db-fresh` then `db-seed` is unaffected.
 
 ## Interactors and ports
 

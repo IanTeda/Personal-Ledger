@@ -239,7 +239,7 @@ impl RemoveAreaPresenter {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::stub;
+    use super::super::test_support::sample;
     use super::*;
     use crate::fake::{InMemoryInventory, RecordingRouter, RouterCall};
     use crate::protocols::InventoryRepository as _;
@@ -253,7 +253,7 @@ mod tests {
     impl Dialog {
         /// The Dialog on Elm St's Area `index`.
         fn on(index: usize) -> Self {
-            let (inventory, shared) = stub();
+            let (inventory, shared) = sample();
             let area = inventory.borrow().locations()[0].areas[index].id;
             Self {
                 presenter: RemoveAreaPresenter::new(&shared, area).expect("seeded"),
@@ -407,7 +407,7 @@ mod tests {
             .handle(RemoveAreaEvent::Cancel, &mut dialog.router);
         assert_eq!(dialog.router.take(), [RouterCall::CloseDialog(None)]);
 
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         assert!(RemoveAreaPresenter::new(&shared, AreaId::seed(9_999)).is_none());
     }
 

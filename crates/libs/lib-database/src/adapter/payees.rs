@@ -279,7 +279,7 @@ mod tests {
     use std::rc::Rc;
 
     use lib_payees::contract::{self, PortsFactory, StoredPorts};
-    use lib_payees::{PayeeUsage, PayeeUse, PortsMut, default_payees};
+    use lib_payees::{PayeeUsage, PayeeUse, PortsMut, sample_payees};
     use lib_transactions::{Split, Transaction};
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
@@ -305,7 +305,7 @@ mod tests {
         }
     }
 
-    /// The adapter on one test database, with its pending batch. The stub's Units, Accounts and
+    /// The adapter on one test database, with its pending batch. The sample's Units, Accounts and
     /// Categories are stored first, which a Bill Plan, a Split or a Payee's default names too. A reload commits, loads
     /// afresh, and fails the check if the writer reported a failure, so a write SQLite refuses
     /// can't pass unseen.
@@ -526,7 +526,7 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        let mut ports = factory.create(default_payees());
+        let mut ports = factory.create(sample_payees());
         let (by_split, by_plan) = (PayeeId::seed(1), PayeeId::seed(2));
         factory.name_payee(
             &mut ports,
@@ -565,7 +565,7 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        let mut ports = factory.create(default_payees());
+        let mut ports = factory.create(sample_payees());
         let netflix = PayeeId::seed(3);
         let rename = |table: &'static str| {
             factory
@@ -622,18 +622,18 @@ mod tests {
     #[sqlx::test(migrations = "migrations/client")]
     async fn bills_read_the_payees_rows(_: SqlitePoolOptions, options: SqliteConnectOptions) {
         let mut factory = AdapterFactory::new(options);
-        let mut ports = factory.create(default_payees());
+        let mut ports = factory.create(sample_payees());
         let mut hudson = ports
             .payees
             .payees()
             .payee(PayeeId::seed(17))
-            .expect("a stub Payee");
+            .expect("a sample Payee");
         hudson.is_active = false;
         ports.payees.payees_mut().upsert_payee(hudson);
         let ports = factory.reload(ports);
 
         let read = bill_payees(&ports.payees.payees.rows);
-        assert_eq!(read.len(), default_payees().len());
+        assert_eq!(read.len(), sample_payees().len());
         let hudson = read
             .iter()
             .find(|payee| payee.id == PayeeId::seed(17))

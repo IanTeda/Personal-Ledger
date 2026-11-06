@@ -57,7 +57,7 @@ mod tests {
 
     #[test]
     fn an_edit_writes_the_row_where_it_was() {
-        let mut institutions = InMemoryInstitutions::stub();
+        let mut institutions = InMemoryInstitutions::sample();
 
         let edited = EditInstitution {
             id: InstitutionId::SEED_AMEX,
@@ -73,7 +73,7 @@ mod tests {
 
     #[test]
     fn a_refused_edit_writes_nothing() {
-        let mut institutions = InMemoryInstitutions::stub();
+        let mut institutions = InMemoryInstitutions::sample();
         let before = institutions.clone();
 
         let refused = EditInstitution {

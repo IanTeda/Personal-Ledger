@@ -13,7 +13,7 @@ use crate::fake::InMemoryPorts;
 use crate::interactor::{AddPayee, DeactivatePayee, DeletePayee, EditPayee};
 use crate::protocols::PortsMut;
 use crate::{
-    DeletePayeeRefusal, Payee, PayeeDraft, PayeeError, PayeeUse, default_payees, find_by_name, get,
+    DeletePayeeRefusal, Payee, PayeeDraft, PayeeError, PayeeUse, find_by_name, get, sample_payees,
 };
 
 /// A stored set of the Payees ports, lent out together for one write.
@@ -155,14 +155,14 @@ fn deactivate(ports: PortsMut<'_>, id: PayeeId) {
 }
 
 fn id_of(ports: &mut impl StoredPorts, name: &str) -> PayeeId {
-    find_by_name(&ports.split_mut().payees.payees(), name).expect("a stub Payee")
+    find_by_name(&ports.split_mut().payees.payees(), name).expect("a sample Payee")
 }
 
 /// Writes every kind of change through the Interactors, reloads, and gets the same rows: an added
 /// Payee with aliases and a default Category, a rename that keeps the old name as an alias, and a
 /// deactivation.
 pub fn written_rows_reload_the_same<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_payees());
+    let mut ports = factory.create(sample_payees());
 
     let mut candles = draft("Aussie Candle Co", &["aussie candle", "SP AUSSIE CANDLE"]);
     candles.default_category = Some(CategoryId::seed(10));
@@ -201,7 +201,7 @@ pub fn written_rows_reload_the_same<F: PortsFactory>(factory: &mut F) {
 /// An alias another Payee owns, typed or taken by a rename, is refused before any write reaches
 /// storage, whose unique alias would refuse it.
 pub fn an_alias_another_payee_owns_is_refused_and_writes_nothing<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_payees());
+    let mut ports = factory.create(sample_payees());
     let before = snapshot(&mut ports);
     let woolworths_owns = PayeeError::AliasTaken {
         alias: "WOOLIES".into(),
@@ -229,7 +229,7 @@ pub fn an_alias_another_payee_owns_is_refused_and_writes_nothing<F: PortsFactory
 
 /// Deleting a Payee takes its aliases with it, so another Payee can take one after a reload.
 pub fn a_delete_takes_its_aliases<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_payees());
+    let mut ports = factory.create(sample_payees());
     let corner = add(
         ports.split_mut(),
         &draft("Corner Shop", &["CORNER", "CNR SHOP"]),
@@ -262,7 +262,7 @@ pub fn a_delete_takes_its_aliases<F: PortsFactory>(factory: &mut F) {
 /// reload, and a delete it counts against is refused with those counts and writes nothing, while
 /// deactivating the Payee lands.
 pub fn payee_usage_counts_and_refuses_the_delete<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_payees());
+    let mut ports = factory.create(sample_payees());
     let woolworths = id_of(&mut ports, "Woolworths");
     let coles = id_of(&mut ports, "Coles");
     let telstra = id_of(&mut ports, "Telstra");
@@ -323,7 +323,7 @@ pub fn payee_usage_counts_and_refuses_the_delete<F: PortsFactory>(factory: &mut 
 /// A write that fails is reported once, naming the Payees domain, and the ports go back to the
 /// last committed rows rather than keeping the change the store refused.
 pub fn a_failed_write_reloads_and_reports<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_payees());
+    let mut ports = factory.create(sample_payees());
     let stored = snapshot(&mut ports);
 
     factory.break_writes(&mut ports);

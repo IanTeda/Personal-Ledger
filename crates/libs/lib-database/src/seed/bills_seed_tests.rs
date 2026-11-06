@@ -1,7 +1,7 @@
 //! `lib-bills`' rules over the Sample Ledger's Bills, against the handoff's 8a: generation,
-//! settlement, the Schedule's rows and figures, and the mappings the stub Bills seed reads the
-//! other stubs through. Here rather than in `lib-bills`, since the stub joins the Bills seed to the
-//! other domains' stubs, its Paid entries naming the payments `lib-transactions`' stub books
+//! settlement, the Schedule's rows and figures, and the mappings the sample Bills seed reads the
+//! other samples through. Here rather than in `lib-bills`, since the sample joins the Bills seed to the
+//! other domains' samples, its Paid entries naming the payments `lib-transactions`' sample books
 //! (moved from `lib-ledger`, #1056).
 
 use bigdecimal::{BigDecimal, Signed};
@@ -38,8 +38,8 @@ struct World {
 fn world() -> World {
     let bills = sample_bills(today());
     World {
-        accounts: bill_accounts(&lib_accounts::default_accounts()),
-        categories: bill_categories(&lib_categories::default_categories()),
+        accounts: bill_accounts(&lib_accounts::sample_accounts()),
+        categories: bill_categories(&lib_categories::sample_categories()),
         splits: bill_splits(&sample_transactions(today())),
         plans: bills.plans,
         entries: bills.entries,
@@ -542,11 +542,12 @@ fn a_plan_never_paid_shows_dashes() {
 
 #[test]
 fn the_read_ports_answer_every_row_flagged_by_its_domains_rules() {
-    let stub = crate::FakeStores::sample(today());
+    let sample = crate::FakeStores::sample(today());
     let ids = |accounts: Vec<BillAccount>| accounts.iter().map(|a| a.id).collect::<Vec<_>>();
     assert_eq!(
-        ids(bill_accounts(&stub.accounts.accounts.accounts)),
-        stub.accounts
+        ids(bill_accounts(&sample.accounts.accounts.accounts)),
+        sample
+            .accounts
             .accounts
             .accounts
             .iter()
@@ -554,27 +555,27 @@ fn the_read_ports_answer_every_row_flagged_by_its_domains_rules() {
             .collect::<Vec<_>>()
     );
     assert_eq!(
-        bill_categories(&stub.categories.categories).len(),
-        stub.categories.categories.len()
+        bill_categories(&sample.categories.categories).len(),
+        sample.categories.categories.len()
     );
     assert_eq!(
-        bill_payees(&stub.payees.payees.payees).len(),
-        stub.payees.payees.payees.len()
+        bill_payees(&sample.payees.payees.payees).len(),
+        sample.payees.payees.payees.len()
     );
-    let splits: usize = stub
+    let splits: usize = sample
         .transactions
         .transactions
         .iter()
         .map(|t| t.splits.len())
         .sum();
-    assert_eq!(bill_splits(&stub.transactions.transactions).len(), splits);
-    let split = stub
+    assert_eq!(bill_splits(&sample.transactions.transactions).len(), splits);
+    let split = sample
         .transactions
         .transactions
         .iter()
         .find(|t| t.is_split())
-        .expect("the stub has a split Transaction");
-    let second = bill_splits(&stub.transactions.transactions)
+        .expect("the sample has a split Transaction");
+    let second = bill_splits(&sample.transactions.transactions)
         .into_iter()
         .find(|s| s.split.transaction_id == split.id && s.split.split_index == 1)
         .expect("its second Split is read");
@@ -586,58 +587,58 @@ fn the_read_ports_answer_every_row_flagged_by_its_domains_rules() {
     assert_eq!(second.category_id, split.splits[1].category_id);
     assert_eq!(second.payee_id, split.splits[1].payee_id);
 
-    let home_loan = bill_accounts(&stub.accounts.accounts.accounts)
+    let home_loan = bill_accounts(&sample.accounts.accounts.accounts)
         .into_iter()
         .find(|a| a.name == "Home Loan")
-        .expect("the stub has a Home Loan");
+        .expect("the sample has a Home Loan");
     assert!(!home_loan.takes_transactions);
-    let water = bill_categories(&stub.categories.categories)
+    let water = bill_categories(&sample.categories.categories)
         .into_iter()
         .find(|c| c.name == "Water")
-        .expect("the stub has Water");
+        .expect("the sample has Water");
     assert_eq!(water.path, "Housing \u{203a} Utilities \u{203a} Water");
     assert!(water.is_expense && water.is_leaf);
-    let utilities = bill_categories(&stub.categories.categories)
+    let utilities = bill_categories(&sample.categories.categories)
         .into_iter()
         .find(|c| c.name == "Utilities")
-        .expect("the stub has Utilities");
+        .expect("the sample has Utilities");
     assert!(!utilities.is_leaf);
     assert!(
-        bill_payees(&stub.payees.payees.payees)
+        bill_payees(&sample.payees.payees.payees)
             .iter()
             .any(|p| !p.is_active)
     );
 }
 
-/// `lib-bills`' fake stub stands in for these mappings and for `lib-transactions`' booked
+/// `lib-bills`' fake sample stands in for these mappings and for `lib-transactions`' booked
 /// payments, so its tests run on what the joined Sample Ledger holds.
 #[test]
-fn the_bills_fake_stub_is_the_ledgers() {
-    let stub = crate::FakeStores::sample(today());
+fn the_bills_fake_sample_is_the_ledgers() {
+    let sample = crate::FakeStores::sample(today());
     assert_eq!(
-        bill_accounts(&stub.accounts.accounts.accounts),
-        fake::stub_accounts()
+        bill_accounts(&sample.accounts.accounts.accounts),
+        fake::sample_accounts()
     );
     assert_eq!(
-        bill_categories(&stub.categories.categories),
-        fake::stub_categories()
+        bill_categories(&sample.categories.categories),
+        fake::sample_categories()
     );
-    let payees = bill_payees(&stub.payees.payees.payees);
-    for payee in fake::stub_payees() {
+    let payees = bill_payees(&sample.payees.payees.payees);
+    for payee in fake::sample_payees() {
         assert!(payees.contains(&payee), "{payee:?}");
     }
 
     // The fake numbers the Bills' Transactions from 1 rather than after the generated history.
-    let fake = fake::InMemoryPorts::stub(today());
+    let fake = fake::InMemoryPorts::sample(today());
     let first = TransactionId::seed(1);
-    let bills = default_bills(
-        &bill_accounts(&stub.accounts.accounts.accounts),
-        &bill_categories(&stub.categories.categories),
+    let bills = lib_bills::sample_bills(
+        &bill_accounts(&sample.accounts.accounts.accounts),
+        &bill_categories(&sample.categories.categories),
         &payees,
         first,
         today(),
     );
-    let accounts: Vec<_> = stub
+    let accounts: Vec<_> = sample
         .accounts
         .accounts
         .accounts
@@ -652,9 +653,9 @@ fn the_bills_fake_stub_is_the_ledgers() {
     let mut transactions = lib_transactions::fake::bill_transactions(
         &accounts,
         &SampleNames {
-            categories: &stub.categories.categories,
-            payees: &stub.payees.payees.payees,
-            tags: &stub.tags.tags.tags,
+            categories: &sample.categories.categories,
+            payees: &sample.payees.payees.payees,
+            tags: &sample.tags.tags.tags,
         },
         first,
         today(),
@@ -666,7 +667,7 @@ fn the_bills_fake_stub_is_the_ledgers() {
 }
 
 #[test]
-fn stub_entry_ids_follow_their_plan_and_due_date_whatever_the_day() {
+fn sample_entry_ids_follow_their_plan_and_due_date_whatever_the_day() {
     let a = sample_bills(today());
     let b = sample_bills(today().succ_opt().expect("a real date"));
     let shared: Vec<_> = a

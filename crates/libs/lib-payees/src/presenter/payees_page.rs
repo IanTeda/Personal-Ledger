@@ -263,7 +263,7 @@ impl PayeesPagePresenter {
 mod tests {
     use lib_config::KeyBindingConfig;
 
-    use super::super::test_support::stub;
+    use super::super::test_support::sample;
     use super::*;
     use crate::PayeeRepository as _;
     use crate::fake::{RecordingRouter, RouterCall};
@@ -310,11 +310,11 @@ mod tests {
 
     #[test]
     fn open_transactions_asks_the_router_for_the_selected_rows_transactions() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
 
         page.send(PayeesPageEvent::Move(Step::Last));
-        let selected = page.presenter.selected().expect("a stub row is selected");
+        let selected = page.presenter.selected().expect("a sample row is selected");
         assert_eq!(
             page.send(PayeesPageEvent::OpenTransactions),
             [RouterCall::OpenTransactions(selected)]
@@ -323,7 +323,7 @@ mod tests {
 
     #[test]
     fn the_rows_run_a_to_z_ignoring_case_with_their_category_and_rules() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let page = Page::new(shared);
         let view = page.view();
 
@@ -339,7 +339,7 @@ mod tests {
             .rows
             .iter()
             .find(|row| row.name == "Woolworths")
-            .expect("a stub Payee");
+            .expect("a sample Payee");
         assert_eq!(woolworths.default_category.as_deref(), Some("Groceries"));
         assert_eq!(woolworths.rules, "3 rules");
         let j_smith = view.rows.iter().find(|row| row.name == "J Smith");
@@ -356,7 +356,7 @@ mod tests {
 
     #[test]
     fn the_scope_counts_active_payees_and_those_without_a_default() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let view = Page::new(shared).view();
 
         assert_eq!(view.status, "22 payees \u{b7} 2 without default category");
@@ -371,7 +371,7 @@ mod tests {
 
     #[test]
     fn movement_walks_the_rows_and_the_first_is_selected_to_start() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
         let names: Vec<String> = page.view().rows.into_iter().map(|row| row.name).collect();
 
@@ -386,7 +386,7 @@ mod tests {
 
     #[test]
     fn reveal_selects_the_payee_and_ignores_one_that_is_gone() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
 
         assert_eq!(page.send(PayeesPageEvent::Reveal(PayeeId::seed(22))), []);
@@ -397,7 +397,7 @@ mod tests {
 
     #[test]
     fn new_edit_and_delete_open_their_dialogs_on_the_selected_payee() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
         page.send(PayeesPageEvent::Select(PayeeId::seed(8)));
 
@@ -425,7 +425,7 @@ mod tests {
 
     #[test]
     fn a_save_selects_its_payee_and_a_deleted_selection_falls_to_the_first_row() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut page = Page::new(shared);
         let first = page.selected_name();
         page.send(PayeesPageEvent::Select(PayeeId::seed(3)));
@@ -443,7 +443,7 @@ mod tests {
 
     #[test]
     fn an_empty_ledger_says_how_to_add_one_with_the_bound_chord() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         ports.borrow_mut().payees.payees.clear();
         let mut config = KeyBindingConfig::default();
         config.bindings.insert("new".into(), "a".into());

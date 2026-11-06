@@ -90,7 +90,7 @@ mod tests {
 
     #[test]
     fn setting_this_weeks_price_writes_it_provisionally_and_it_becomes_the_last_price() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
 
         set(UnitId::SEED_VAS, today(), "101.20")
             .run(&mut ports.units, today(), at(2026, 10, 29))
@@ -118,7 +118,7 @@ mod tests {
 
     #[test]
     fn a_past_weeks_price_is_written_as_final_replacing_any_entry_it_had() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         let earlier = day(2026, 9, 9);
         set(UnitId::SEED_VAS, earlier, "95.00")
             .run(&mut ports.units, today(), at(2026, 10, 27))
@@ -143,7 +143,7 @@ mod tests {
 
     #[test]
     fn a_past_week_keeps_the_weeks_in_order_and_the_last_price_the_newest_weeks() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         set(UnitId::SEED_VAS, today(), "101.20")
             .run(&mut ports.units, today(), at(2026, 10, 29))
             .unwrap();
@@ -160,7 +160,7 @@ mod tests {
 
     #[test]
     fn a_future_week_a_fetched_unit_and_a_gone_unit_are_refused_and_nothing_is_written() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         let before = ports.clone();
 
         for (request, refusal) in [
@@ -182,7 +182,7 @@ mod tests {
 
     #[test]
     fn a_later_day_of_the_current_week_is_not_a_future_week() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
 
         // Sunday 1 November ends the current week.
         let unit = set(UnitId::SEED_VAS, day(2026, 11, 1), "100")

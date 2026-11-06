@@ -718,7 +718,7 @@ mod tests {
     use crate::commit::Commit;
     use crate::writer::WriteFailure;
 
-    /// The adapter on one test database, with its pending batch. The stub's every other domain is
+    /// The adapter on one test database, with its pending batch. The sample's every other domain is
     /// stored first, which a Link names. A reload commits, loads afresh, and fails the check if the
     /// writer reported a failure, so a write SQLite refuses can't pass unseen.
     struct AdapterFactory {
@@ -758,7 +758,7 @@ mod tests {
     impl PortsFactory for AdapterFactory {
         type Ports = DocumentsAdapter;
 
-        /// The stored stub's records, read as the stores answer them.
+        /// The stored sample's records, read as the stores answer them.
         fn records(&self) -> LinkRecords {
             crate::test_support::stored_link_records(&self.pending)
         }
@@ -802,8 +802,8 @@ mod tests {
             (ports, failures)
         }
 
-        /// The stub's last Transaction and last Item, which only Links name, and a new Account and
-        /// Payee, since the stub's are each named by a Transaction or a Bill Plan.
+        /// The sample's last Transaction and last Item, which only Links name, and a new Account and
+        /// Payee, since the sample's are each named by a Transaction or a Bill Plan.
         fn deletable(&mut self) -> Vec<DocumentLink> {
             let records = self.records();
             let account = AccountId::new();

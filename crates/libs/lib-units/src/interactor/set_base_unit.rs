@@ -46,7 +46,7 @@ mod tests {
 
     #[test]
     fn setting_the_base_unit_moves_it_and_leaves_the_units_alone() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         let units = ports.units.clone();
 
         SetBaseUnit(UnitId::SEED_BTC)
@@ -59,7 +59,7 @@ mod tests {
 
     #[test]
     fn setting_a_unit_that_is_gone_as_base_is_refused_and_nothing_is_written() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
 
         assert_eq!(
             SetBaseUnit(UnitId::new()).run(&ports.units, &mut ports.base_unit),
@@ -70,7 +70,7 @@ mod tests {
 
     #[test]
     fn setting_a_deactivated_unit_as_base_is_refused_and_nothing_is_written() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         ports.units.units[1].is_active = false;
 
         assert_eq!(

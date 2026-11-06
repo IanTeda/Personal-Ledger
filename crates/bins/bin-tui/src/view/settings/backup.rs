@@ -7,7 +7,7 @@
 //!
 //! A wireframe: there is no backup or Git Backup writer yet, so the facts are fixed values, `b`,
 //! `X`, `P` and the overlay's Save flash the Shell's "not yet built", and the overlay tests on a
-//! stub.
+//! sample.
 
 use chrono::{NaiveDate, NaiveTime};
 use crossterm::event::KeyEvent;

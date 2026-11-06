@@ -705,7 +705,7 @@ mod tests {
     }
 
     /// Four Transactions this year and one last year, in no particular order, as a port lists them.
-    fn stub() -> InMemoryPorts {
+    fn sample() -> InMemoryPorts {
         let mut reads = reads();
         reads.units = vec![TransactionUnit {
             id: UnitId::SEED_AUD,
@@ -775,7 +775,7 @@ mod tests {
 
         fn with_keys(config: &KeyBindingConfig) -> Self {
             locale();
-            let (ports, shared) = stub().shared();
+            let (ports, shared) = sample().shared();
             let presenter = TransactionsPagePresenter::new(
                 shared,
                 Clock::fixed(today()),

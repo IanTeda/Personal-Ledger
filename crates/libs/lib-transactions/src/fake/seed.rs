@@ -1,4 +1,4 @@
-//! The stub Transactions generator (`docs/ux/desktop-mockups/03-transactions/README.md`): every
+//! The sample Transactions generator (`docs/ux/desktop-mockups/03-transactions/README.md`): every
 //! rule the Transactions table and filters must handle has a row to exercise it.
 //!
 //! It is deterministic (fixed seed, injectable `today`): per-account counts equal each
@@ -6,14 +6,14 @@
 //! Credit Card; Loan and Investment accounts take Repayments and Trades instead), about 8% of the
 //! random ones are multi-Split, and a few hand-authored cases always exist.
 //!
-//! The other domains' stubs reach it as names ([`SeedNames`]) and plain account rows rather than as
+//! The other domains' samples reach it as names ([`SeedNames`]) and plain account rows rather than as
 //! their crates, since the Categories, Payees and Tags crates depend on this one. `lib-database`'s
-//! seed joins it to their stubs (`default_transactions`).
+//! seed joins it to their samples (`sample_transaction_history`).
 //!
 //! No transaction account in this seed is in a second Unit, so the mixed-Units rule (the running
 //! total blanks) is exercised by the filter engine's unit tests rather than visible in the app
 //! until an account in another Unit holds transactions; seeding one would mean changing the
-//! Accounts and Settings stubs the earlier maps reconciled to their mockups.
+//! Accounts and Settings samples the earlier maps reconciled to their mockups.
 
 use bigdecimal::BigDecimal;
 use chrono::{Duration, NaiveDate};
@@ -25,7 +25,7 @@ use crate::{Split, Transaction, takes_transactions};
 
 pub const HISTORY_DAYS: i64 = 600;
 
-/// The seed for [`default_transactions`]; each account derives its own stream from it.
+/// The seed for [`sample_transaction_history`]; each account derives its own stream from it.
 pub const DEFAULT_SEED: u64 = 0x5EED_1EDE_CAFE_0001;
 
 /// The share of random transactions (in percent) that are multi-Split, before the hand-authored
@@ -63,8 +63,8 @@ impl Rng {
     }
 }
 
-/// The other domains' stub rows the seed names, looked up by name so it reads in names rather
-/// than ids. `None` for a name the stub doesn't have.
+/// The other domains' sample rows the seed names, looked up by name so it reads in names rather
+/// than ids. `None` for a name the sample doesn't have.
 pub trait SeedNames {
     fn category(&self, name: &str) -> Option<CategoryId>;
 
@@ -73,7 +73,7 @@ pub trait SeedNames {
     fn tag(&self, name: &str) -> Option<TagId>;
 }
 
-/// One stub Account, as much of it as the seed reads.
+/// One sample Account, as much of it as the seed reads.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SeedAccount {
     pub id: AccountId,
@@ -533,10 +533,10 @@ fn specials(lookup: &Lookup<'_>, today: NaiveDate) -> Vec<(&'static str, Transac
     .collect()
 }
 
-/// The stub Transactions: newest first, ids assigned oldest-first (a higher id is newer). Per-account
+/// The sample Transactions: newest first, ids assigned oldest-first (a higher id is newer). Per-account
 /// counts equal each account's `transaction_count`; accounts that take no Transactions, and any
 /// account the seed has no profile for, get none.
-pub fn stub_transactions(
+pub fn sample_transactions(
     accounts: &[SeedAccount],
     names: &dyn SeedNames,
     today: NaiveDate,
@@ -573,7 +573,7 @@ pub fn stub_transactions(
             };
             match random_transaction(&mut rng, &lookup, template, scale, account.id, today) {
                 Some(transaction) => mine.push(transaction),
-                // A category or payee the stubs don't have: nothing more can be generated.
+                // A category or payee the samples don't have: nothing more can be generated.
                 None => break,
             }
         }

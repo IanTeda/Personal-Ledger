@@ -40,7 +40,7 @@ mod tests {
 
     #[test]
     fn adding_a_payee_writes_it_active_with_its_aliases_normalised() {
-        let mut ports = InMemoryPorts::stub();
+        let mut ports = InMemoryPorts::sample();
 
         let payee = AddPayee(draft(" Corner Shop ", &["corner", " CORNER "]))
             .run(&mut ports.payees)
@@ -54,7 +54,7 @@ mod tests {
 
     #[test]
     fn a_taken_name_or_alias_is_refused_and_nothing_is_written() {
-        let mut ports = InMemoryPorts::stub();
+        let mut ports = InMemoryPorts::sample();
         let before = ports.clone();
 
         assert_eq!(

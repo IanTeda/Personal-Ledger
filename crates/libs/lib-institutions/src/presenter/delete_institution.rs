@@ -222,7 +222,7 @@ mod tests {
     use super::*;
     use crate::InstitutionRepository as _;
     use crate::fake::{InMemoryPorts, RecordingRouter, RouterCall};
-    use crate::presenter::test_support::stub;
+    use crate::presenter::test_support::sample;
 
     struct Dialog {
         ports: Rc<RefCell<InMemoryPorts>>,
@@ -232,14 +232,14 @@ mod tests {
 
     impl Dialog {
         fn open(id: InstitutionId) -> Self {
-            let (ports, shared) = stub();
+            let (ports, shared) = sample();
             Self::on(ports, shared, id)
         }
 
         fn on(ports: Rc<RefCell<InMemoryPorts>>, shared: SharedPorts, id: InstitutionId) -> Self {
             Self {
                 ports,
-                presenter: DeleteInstitutionPresenter::new(shared, id).expect("a stub row"),
+                presenter: DeleteInstitutionPresenter::new(shared, id).expect("a sample row"),
                 router: RecordingRouter::default(),
             }
         }
@@ -296,7 +296,7 @@ mod tests {
 
     #[test]
     fn in_a_refusal_select_closes_and_nothing_types_or_submits() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         ports
             .borrow_mut()
             .usage
@@ -414,7 +414,7 @@ mod tests {
 
     #[test]
     fn an_institution_in_use_opens_refused_with_up_to_five_names_then_and_n_more() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let names = [
             "Everyday",
             "Savings",
@@ -443,7 +443,7 @@ mod tests {
 
     #[test]
     fn a_refusal_lists_five_or_fewer_names_without_a_more_line() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         ports.borrow_mut().usage.accounts.insert(
             InstitutionId::SEED_ANZ,
             ["Everyday", "Savings", "Offset", "Holiday", "Emergency"]
@@ -466,7 +466,7 @@ mod tests {
 
     #[test]
     fn a_refusal_ignores_typing_and_close_leaves_everything_as_it_was() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         ports
             .borrow_mut()
             .usage
@@ -524,7 +524,7 @@ mod tests {
 
     #[test]
     fn a_missing_institution_opens_no_dialog() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
 
         assert!(DeleteInstitutionPresenter::new(shared, InstitutionId::new()).is_none());
     }

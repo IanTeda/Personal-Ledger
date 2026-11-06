@@ -698,7 +698,7 @@ mod tests {
     use super::*;
     use crate::PERSONAL_SPENDING_ID;
     use crate::fake::{RecordingRouter, Routed};
-    use crate::presenter::test_support::{stub, today};
+    use crate::presenter::test_support::{sample, today};
 
     struct Form {
         ports: std::rc::Rc<std::cell::RefCell<crate::fake::InMemoryPorts>>,
@@ -708,7 +708,7 @@ mod tests {
 
     impl Form {
         fn new() -> Self {
-            let (ports, shared) = stub();
+            let (ports, shared) = sample();
             Self {
                 presenter: BudgetFormPresenter::new_budget(
                     &shared,
@@ -721,7 +721,7 @@ mod tests {
         }
 
         fn edit() -> Self {
-            let (ports, shared) = stub();
+            let (ports, shared) = sample();
             Self {
                 presenter: BudgetFormPresenter::edit(
                     &shared,

@@ -138,7 +138,7 @@ fn type_named(types: &[DocumentTypeRow], name: &str) -> Option<DocumentType> {
     types::id_by_name(types, name).map(DocumentType)
 }
 
-/// The stub catalogue: files whose "extracted" facts the Inbox can show, in place of reading the
+/// The sample catalogue: files whose "extracted" facts the Inbox can show, in place of reading the
 /// file. Matched by file name, so an `Import…` of one of these arrives readable.
 pub fn catalogue_facts(
     types: &[DocumentTypeRow],
@@ -164,7 +164,7 @@ pub fn catalogue_facts(
 }
 
 /// `Import…` and a file dropped on the window: one Unfiled Document of `bytes`, from `source`. It
-/// is readable only when the path is in the stub catalogue; otherwise it carries no facts and is
+/// is readable only when the path is in the sample catalogue; otherwise it carries no facts and is
 /// filed by hand.
 pub fn import_path(
     types: &[DocumentTypeRow],

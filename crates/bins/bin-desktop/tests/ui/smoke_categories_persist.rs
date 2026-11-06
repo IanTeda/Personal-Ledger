@@ -5,7 +5,7 @@
 
 #![expect(
     clippy::expect_used,
-    reason = "test support: a stub row the handover reads should fail the test loudly"
+    reason = "test support: a sample row the handover reads should fail the test loudly"
 )]
 
 use super::common;
@@ -195,7 +195,7 @@ fn a_leafs_first_child_keeps_its_splits_bill_plans_and_payee_defaults_after_a_re
             .storage()
             .expect("a new Ledger starts");
         let writer = storage.writer.clone();
-        // The stub files no Bill Plan under Groceries, so file one: the Telstra Internet plan.
+        // The sample files no Bill Plan under Groceries, so file one: the Telstra Internet plan.
         let groceries = category_id(&storage, "Groceries");
         let mut plan = storage
             .bills
@@ -203,7 +203,7 @@ fn a_leafs_first_child_keeps_its_splits_bill_plans_and_payee_defaults_after_a_re
             .bill_plans()
             .into_iter()
             .find(|plan| plan.name == "Telstra Internet")
-            .expect("the stub's Telstra Internet plan");
+            .expect("the sample's Telstra Internet plan");
         plan.category_id = groceries;
         storage.bills.plans_mut().upsert_bill_plan(plan);
         storage.pending.commit();

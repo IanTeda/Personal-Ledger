@@ -423,7 +423,7 @@ fn new_with_a_fresh_name_creates_the_ledger_file_and_opens_it(app: &mut TestAppC
         ["usd"],
         "the Locale's Currency is the only Unit"
     );
-    assert!(ui.dashboard_bills().is_empty(), "none of the stub rows");
+    assert!(ui.dashboard_bills().is_empty(), "none of the sample rows");
     let toast = ui.toasts().visible.pop().expect("a Toast says so");
     assert_eq!(toast.kind, "Success");
     assert_eq!(toast.text, "Created ledger teda2027.pldb");

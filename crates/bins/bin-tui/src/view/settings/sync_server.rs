@@ -3,7 +3,7 @@
 //! page and which takes every key while open.
 //!
 //! A wireframe: the Client can't call the Sync Server yet, so the facts are fixed values, `s` and
-//! the overlay's Save flash the Shell's "not yet built", and the overlay tests on a stub.
+//! the overlay's Save flash the Shell's "not yet built", and the overlay tests on a sample.
 
 use chrono::NaiveDate;
 use crossterm::event::KeyEvent;

@@ -218,10 +218,10 @@ mod tests {
     use chrono::NaiveDate;
 
     use bigdecimal::BigDecimal;
-    use lib_accounts::default_accounts;
+    use lib_accounts::sample_accounts;
     use lib_core::{AccountId, CategoryId, Money, Total, TransactionId, TransactionStatus, UnitId};
     use lib_tags::contract::{self, PortsFactory, StoredPorts};
-    use lib_tags::default_tags;
+    use lib_tags::sample_tags;
     use lib_tags::{TagUsage, TagUse};
     use lib_transactions::{Split, Transaction};
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
@@ -249,8 +249,8 @@ mod tests {
         }
     }
 
-    /// The adapter on one test database, with its pending batch. The stub's Units, Accounts and
-    /// Categories are stored first, which a carrying Transaction names, and the stub Tags a
+    /// The adapter on one test database, with its pending batch. The sample's Units, Accounts and
+    /// Categories are stored first, which a carrying Transaction names, and the sample Tags a
     /// Split's tags name. A reload commits, loads afresh, and fails the check if the writer
     /// reported a failure, so a write SQLite refuses can't pass unseen.
     struct AdapterFactory {
@@ -329,12 +329,12 @@ mod tests {
         NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date")
     }
 
-    /// An Account in the stub holding `unit`.
+    /// An Account in the sample holding `unit`.
     fn account_in(unit: UnitId) -> AccountId {
-        default_accounts()
+        sample_accounts()
             .into_iter()
             .find(|account| account.unit == unit)
-            .expect("the stub has an Account in the Unit")
+            .expect("the sample has an Account in the Unit")
             .id
     }
 
@@ -506,7 +506,7 @@ mod tests {
             "no such Tag"
         );
 
-        let mut ports = factory.create(default_tags());
+        let mut ports = factory.create(sample_tags());
         let carried = TagId::seed(2);
         TransactionsAdapter::seed(
             &factory.writer,
@@ -537,7 +537,7 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        let ports = factory.create(default_tags());
+        let ports = factory.create(sample_tags());
         let tags = &ports.reads;
         let shared = TagId::seed(2);
         TransactionsAdapter::seed(

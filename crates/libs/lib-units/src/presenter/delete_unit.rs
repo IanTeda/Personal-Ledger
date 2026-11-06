@@ -293,7 +293,7 @@ pub fn delete_refusal(refusal: Error, code: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::{hints, pairs, stub, unquote_aud};
+    use super::super::test_support::{hints, pairs, sample, unquote_aud};
     use super::*;
     use crate::UnitRepository as _;
     use crate::fake::{RecordingRouter, RouterCall};
@@ -308,7 +308,7 @@ mod tests {
 
     #[test]
     fn deleting_needs_the_exact_code_typed_and_closes_with_it() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut dialog = DeleteUnitPresenter::new(shared, UnitId::SEED_BTC).unwrap();
         let view = dialog.view_model();
         assert_eq!(view.frame.title, "Delete unit — btc");
@@ -352,7 +352,7 @@ mod tests {
 
     #[test]
     fn deleting_the_base_unit_moves_the_base_to_the_chosen_active_unit() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         unquote_aud(&mut ports.borrow_mut());
         ports.borrow_mut().units.units[1].is_active = false;
         let mut dialog = DeleteUnitPresenter::new(shared, UnitId::SEED_AUD).unwrap();
@@ -387,7 +387,7 @@ mod tests {
 
     #[test]
     fn deleting_a_unit_other_units_quote_is_refused_as_text_with_the_count() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let before = ports.borrow().clone();
         let mut dialog = DeleteUnitPresenter::new(shared.clone(), UnitId::SEED_AUD).unwrap();
         send(
@@ -427,7 +427,7 @@ mod tests {
 
     #[test]
     fn a_unit_in_use_opens_offering_deactivate_with_its_counts() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         ports.borrow_mut().usage.uses.insert(
             UnitId::SEED_BTC,
             UnitUse {
@@ -464,7 +464,7 @@ mod tests {
 
     #[test]
     fn a_unit_unused_when_opened_but_used_by_confirm_still_turns_into_deactivate() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut dialog = DeleteUnitPresenter::new(shared, UnitId::SEED_BTC).unwrap();
         assert!(dialog.view_model().in_use.is_none());
         ports.borrow_mut().usage.uses.insert(
@@ -489,7 +489,7 @@ mod tests {
 
     #[test]
     fn the_base_unit_in_use_opens_with_deactivate_disabled_and_its_reason() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         ports.borrow_mut().usage.uses.insert(
             UnitId::SEED_AUD,
             UnitUse {
@@ -530,7 +530,7 @@ mod tests {
 
     #[test]
     fn deleting_the_only_unit_or_a_base_with_no_active_successor_is_refused_as_text() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         ports.borrow_mut().units.units.truncate(1);
         let mut only = DeleteUnitPresenter::new(shared.clone(), UnitId::SEED_AUD).unwrap();
         send(
@@ -545,7 +545,7 @@ mod tests {
             Some("aud is the only unit, so it can't be deleted.")
         );
 
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         for unit in &mut ports.borrow_mut().units.units[1..] {
             unit.is_active = false;
         }
@@ -566,7 +566,7 @@ mod tests {
 
     #[test]
     fn a_unit_or_new_base_removed_under_the_dialog_is_refused_as_text() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut dialog = DeleteUnitPresenter::new(shared.clone(), UnitId::SEED_VAS).unwrap();
         ports.borrow_mut().units.units.remove(2);
         send(
@@ -581,7 +581,7 @@ mod tests {
             Some("This unit was removed while the dialog was open.")
         );
 
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut base = DeleteUnitPresenter::new(shared, UnitId::SEED_AUD).unwrap();
         send(&mut base, vec![DeleteUnitEvent::NewBase(UnitId::SEED_VAS)]);
         ports.borrow_mut().units.units.remove(2);
@@ -597,7 +597,7 @@ mod tests {
             Some("The unit chosen as the new base unit is gone.")
         );
 
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut inactive = DeleteUnitPresenter::new(shared, UnitId::SEED_AUD).unwrap();
         ports.borrow_mut().units.units[1].is_active = false;
         send(
@@ -615,7 +615,7 @@ mod tests {
 
     #[test]
     fn deleting_or_deactivating_takes_no_field_keys_but_the_new_base_select_takes_choose() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let view = DeleteUnitPresenter::new(shared.clone(), UnitId::SEED_BTC)
             .unwrap()
             .view_model();

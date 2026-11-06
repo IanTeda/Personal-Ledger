@@ -73,7 +73,7 @@ mod tests {
 
     #[test]
     fn adding_a_unit_stores_it_active_with_its_link_and_no_price() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         let link = PriceLink {
             source_id: COINGECKO,
             symbol: "ethereum".into(),
@@ -97,7 +97,7 @@ mod tests {
 
     #[test]
     fn a_link_to_a_price_source_that_is_gone_is_refused_and_nothing_is_written() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         let before = ports.clone();
         let gone = PriceLink {
             source_id: PriceSourceId::new(),
@@ -114,7 +114,7 @@ mod tests {
 
     #[test]
     fn a_quote_unit_that_is_gone_is_refused_and_nothing_is_written() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         let before = ports.clone();
 
         assert_eq!(
@@ -126,7 +126,7 @@ mod tests {
 
     #[test]
     fn a_unit_quoted_in_itself_is_added() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         ports.units.units.clear();
         let id = UnitId::new();
 

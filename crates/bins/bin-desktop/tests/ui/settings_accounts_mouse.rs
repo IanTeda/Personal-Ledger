@@ -133,7 +133,7 @@ fn a_cash_account_added_by_click_names_the_personal_institution(app: &mut TestAp
         Some("tin")
     );
 
-    // The stub's Cash Account, the Wallet, names it too.
+    // The sample's Cash Account, the Wallet, names it too.
     ui.click(&format!("settings-accounts-edit-{}", AccountId::seed(1)));
     assert_eq!(ui.dialog_value("name").as_deref(), Some("Wallet"));
     assert_eq!(ui.dialog_value("institution").as_deref(), Some("Personal"));

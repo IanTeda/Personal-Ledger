@@ -213,7 +213,7 @@ impl RemoveTypePresenter {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::stub;
+    use super::super::test_support::sample;
     use super::*;
     use crate::fake::{InMemoryDocuments, RecordingRouter, RouterCall};
 
@@ -221,7 +221,7 @@ mod tests {
     use std::rc::Rc;
 
     fn open(id: u32) -> (RemoveTypePresenter, Rc<RefCell<InMemoryDocuments>>) {
-        let (documents, shared) = stub();
+        let (documents, shared) = sample();
         let presenter =
             RemoveTypePresenter::new(shared, DocumentTypeId::seed(id)).expect("a default type");
         (presenter, documents)
@@ -251,7 +251,7 @@ mod tests {
 
     #[test]
     fn a_type_with_no_files_is_a_plain_confirm() {
-        let (documents, shared) = stub();
+        let (documents, shared) = sample();
         documents.borrow_mut().types[2].files = 0;
         let presenter =
             RemoveTypePresenter::new(shared, DocumentTypeId::seed(3)).expect("a default type");
@@ -336,7 +336,7 @@ mod tests {
 
     #[test]
     fn a_refusal_stays_open_with_its_text_and_writes_nothing() {
-        let (documents, shared) = stub();
+        let (documents, shared) = sample();
         let mut presenter =
             RemoveTypePresenter::new(shared, DocumentTypeId::seed(3)).expect("a default type");
         // The type is removed while the Dialog is open: the form is valid, the domain refuses.
@@ -369,7 +369,7 @@ mod tests {
 
     #[test]
     fn a_gone_type_has_no_dialog() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
 
         assert!(RemoveTypePresenter::new(shared, DocumentTypeId::seed(999)).is_none());
     }

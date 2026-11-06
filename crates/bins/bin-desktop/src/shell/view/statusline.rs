@@ -82,7 +82,7 @@ pub struct StatusLine {
     mode_label: Option<String>,
     /// Whether a Ledger is open: the right-hand side names its file, or says none is open.
     ledger_open: bool,
-    /// The Open Ledger's file, `None` on a test's in-memory stores, which show the stub's.
+    /// The Open Ledger's file, `None` on a test's in-memory stores, which show the sample's.
     ledger_file: Option<PathBuf>,
 }
 
@@ -425,7 +425,7 @@ fn right_side(
 
 /// What the status line says of the Open Ledger: its file's path with `home` as `~`, shortened to
 /// its file name at Medium (DESKTOP-116), or "No ledger open…" with none open. A test's in-memory
-/// stores have no file, so show the stub's.
+/// stores have no file, so show the sample's.
 pub fn ledger_label(
     open: bool,
     file: Option<&Path>,

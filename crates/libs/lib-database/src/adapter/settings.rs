@@ -77,8 +77,8 @@ mod tests {
     use crate::writer::WriteFailure;
     use crate::{PendingWrites, UnitsAdapter, Writer};
 
-    fn stub_units(deactivated: &[UnitId]) -> InMemoryPorts {
-        let mut ports = InMemoryPorts::stub(chrono::Utc::now());
+    fn sample_units(deactivated: &[UnitId]) -> InMemoryPorts {
+        let mut ports = InMemoryPorts::sample(chrono::Utc::now());
         for unit in &mut ports.units.units {
             if deactivated.contains(&unit.id) {
                 unit.is_active = false;
@@ -104,7 +104,7 @@ mod tests {
         type Writes = LedgerPreferencesAdapter;
 
         fn create(&mut self, deactivated: &[UnitId]) -> (Self::Reads, Self::Writes) {
-            pair(Rc::new(RefCell::new(stub_units(deactivated))))
+            pair(Rc::new(RefCell::new(sample_units(deactivated))))
         }
     }
 
@@ -136,7 +136,7 @@ mod tests {
         type Writes = LedgerPreferencesAdapter;
 
         fn create(&mut self, deactivated: &[UnitId]) -> (Self::Reads, Self::Writes) {
-            UnitsAdapter::seed_from(&self.writer, stub_units(deactivated))
+            UnitsAdapter::seed_from(&self.writer, sample_units(deactivated))
                 .expect("the Units are written");
             let units = UnitsAdapter::load(self.pending.clone()).expect("the Units load");
             pair(Rc::new(RefCell::new(units)))

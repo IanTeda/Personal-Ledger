@@ -21,12 +21,12 @@ use lib_tags::{SharedPorts, Tag, TagRepository, TagUsage, TagUse};
 use crate::announcer::{Announcer, Domain};
 use crate::write_count::WriteCount;
 
-/// The stub Tags in memory, for a test that needs no storage. What carries them is read through
+/// The sample Tags in memory, for a test that needs no storage. What carries them is read through
 /// [`StoredTagReads`].
 pub fn in_memory() -> SharedTagsStore {
     Rc::new(RefCell::new(InMemoryPorts {
         tags: InMemoryTags {
-            tags: lib_tags::default_tags(),
+            tags: lib_tags::sample_tags(),
         },
         usage: InMemoryTagUsage::default(),
     }))
@@ -101,7 +101,7 @@ mod tests {
     #[test]
     fn usage_is_counted_from_the_ledgers_transactions() {
         let shared =
-            lib_tags::find_by_name(&lib_tags::default_tags(), "shared").expect("a stub Tag");
+            lib_tags::find_by_name(&lib_tags::sample_tags(), "shared").expect("a sample Tag");
         let setup = crate::shell::router::LedgerStores::build(
             lib_database::Stores::fake(lib_database::FakeStores::sample(today())).0,
         )
@@ -118,7 +118,7 @@ mod tests {
 
         let used = ports.tag_usage(shared);
 
-        assert!(used.transactions > 0, "the stub's Splits carry it");
+        assert!(used.transactions > 0, "the sample's Splits carry it");
         assert_eq!(ports.tag_usage(TagId::seed(999)), TagUse::default());
     }
 

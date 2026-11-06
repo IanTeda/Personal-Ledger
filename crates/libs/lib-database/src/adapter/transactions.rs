@@ -9,7 +9,7 @@
 //! A Transaction is saved whole: its row, then its Splits and their Tags written afresh, so an
 //! edit that drops a Split leaves none behind. A Split's Match to a Bill Schedule entry is the
 //! Bills adapter's to write, so a rewrite keeps it on the Split at the same position. Rows load in the order first written, which keeps
-//! the stub's newest-first order and puts an import after it, as the Ledger read copy has them.
+//! the sample's newest-first order and puts an import after it, as the Ledger read copy has them.
 
 use std::collections::HashMap;
 
@@ -655,7 +655,7 @@ mod tests {
     use crate::commit::Commit;
     use crate::writer::WriteFailure;
 
-    /// The adapter on one test database, with its pending batch. The stub's Accounts and Payees are
+    /// The adapter on one test database, with its pending batch. The sample's Accounts and Payees are
     /// stored first, which a Transaction and a Split name. A reload commits, loads afresh, and
     /// fails the check if the writer reported a failure, so a write SQLite refuses can't pass
     /// unseen.
@@ -670,7 +670,7 @@ mod tests {
             let (writer, failures) = Writer::spawn(options).expect("the test database opens");
             crate::test_support::store_sample_references(&writer);
             PayeesAdapter::seed(&writer, crate::seed::sample_payees())
-                .expect("the stub Payees are written");
+                .expect("the sample Payees are written");
             Self {
                 pending: PendingWrites::new(writer.clone()),
                 writer,
@@ -757,11 +757,11 @@ mod tests {
     ) {
         let mut factory = AdapterFactory::new(options);
         let mut adapter = factory.create(InMemoryTransactions::default());
-        let seeded = stub_transactions();
+        let seeded = sample_transactions();
         let tagged = seeded
             .iter()
             .find(|transaction| transaction.splits.iter().any(|s| !s.tag_ids.is_empty()))
-            .expect("the stub tags a Split")
+            .expect("the sample tags a Split")
             .clone();
         adapter.upsert_transaction(tagged.clone());
         factory.commit(&mut adapter);
@@ -782,7 +782,7 @@ mod tests {
         assert_eq!(left, (0, 0));
     }
 
-    fn stub_transactions() -> Vec<Transaction> {
+    fn sample_transactions() -> Vec<Transaction> {
         crate::seed::sample_transactions(NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date"))
     }
 
@@ -794,7 +794,7 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        let seeded = stub_transactions();
+        let seeded = sample_transactions();
         let memory = InMemoryTransactions {
             transactions: seeded.clone(),
         };
@@ -812,7 +812,7 @@ mod tests {
         let split = seeded
             .iter()
             .find(|transaction| transaction.is_split())
-            .expect("the stub has a split Transaction");
+            .expect("the sample has a split Transaction");
         let window = splits_between(&adapter.rows, split.date, split.date);
         assert!(window.iter().all(|read| read.date == split.date));
         assert!(
@@ -854,14 +854,14 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        let seeded = stub_transactions();
+        let seeded = sample_transactions();
         let mut memory = InMemoryTransactions {
             transactions: seeded.clone(),
         };
         let mut adapter = factory.create(memory.clone());
         let category = seeded[0].splits[0].category_id;
         let before = adapter.category_splits(category);
-        assert!(before > 0, "the stub files a Split under it");
+        assert!(before > 0, "the sample files a Split under it");
         assert_eq!(
             before,
             crate::TransactionsStore::category_splits(&memory, category)

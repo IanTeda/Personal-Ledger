@@ -63,7 +63,7 @@ pub trait DeletionFactory {
     type Ports: AccountDeletion;
 
     /// Ports holding `rows`' Accounts, Transactions, Bill Plans and entries, as if stored and
-    /// loaded. Every Account and Plan's Unit is the stub's aud, and no Split names a Payee.
+    /// loaded. Every Account and Plan's Unit is the sample's aud, and no Split names a Payee.
     fn create(&mut self, rows: InMemoryDeletion) -> Self::Ports;
 
     /// Ends the writes made on `ports`, then reads back what is stored, as a restart would.

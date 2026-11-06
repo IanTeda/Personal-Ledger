@@ -36,7 +36,7 @@ mod tests {
 
     #[test]
     fn an_unused_payee_is_deleted_and_returned() {
-        let mut ports = InMemoryPorts::stub();
+        let mut ports = InMemoryPorts::sample();
         let netflix = PayeeId::seed(3);
 
         let payee = DeletePayee(netflix)
@@ -49,7 +49,7 @@ mod tests {
 
     #[test]
     fn a_used_missing_or_uncounted_payee_is_refused_and_nothing_is_written() {
-        let mut ports = InMemoryPorts::stub();
+        let mut ports = InMemoryPorts::sample();
         let woolworths = PayeeId::seed(1);
         let used = PayeeUse {
             splits: 2,

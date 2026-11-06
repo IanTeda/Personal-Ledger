@@ -100,15 +100,15 @@ pub fn counted(store: Box<dyn CategoriesStore>) -> (SharedCategoriesStore, Categ
     (shared, writes)
 }
 
-/// The stub Categories in memory, with the count of the writes made to them, for a test that
+/// The sample Categories in memory, with the count of the writes made to them, for a test that
 /// needs no storage.
 pub fn in_memory_counted() -> (SharedCategoriesStore, CategoriesWrites) {
     counted(Box::new(lib_categories::fake::InMemoryCategories {
-        categories: lib_categories::default_categories(),
+        categories: lib_categories::sample_categories(),
     }))
 }
 
-/// The stub Categories in memory, for a test that needs no storage and no count.
+/// The sample Categories in memory, for a test that needs no storage and no count.
 pub fn in_memory() -> SharedCategoriesStore {
     in_memory_counted().0
 }
@@ -378,7 +378,7 @@ mod tests {
         .stores
         .category_stores();
         let announcer = cx.new(|_| Announcer::default());
-        let categories = lib_categories::default_categories();
+        let categories = lib_categories::sample_categories();
         let groceries = lib_categories::find_by_name(&categories, "Groceries").expect("seeded");
         let salary = lib_categories::find_by_name(&categories, "Salary").expect("seeded");
         let amount: Money = "612".parse().expect("an amount");
@@ -422,7 +422,7 @@ mod tests {
         .stores
         .category_stores();
         let announcer = cx.new(|_| Announcer::default());
-        let categories = lib_categories::default_categories();
+        let categories = lib_categories::sample_categories();
         let groceries = lib_categories::find_by_name(&categories, "Groceries").expect("seeded");
 
         cx.update(|cx| {
@@ -460,7 +460,7 @@ mod tests {
         .stores
         .category_stores();
         let announcer = cx.new(|_| Announcer::default());
-        let categories = lib_categories::default_categories();
+        let categories = lib_categories::sample_categories();
         let groceries = lib_categories::find_by_name(&categories, "Groceries").expect("seeded");
         let child = lib_categories::find_by_name(&categories, "Dining")
             .expect("another seeded leaf stands in for a new child");
@@ -474,7 +474,7 @@ mod tests {
                 cx,
             };
             let held = ports.holdings(groceries);
-            assert!(held.splits > 0, "the stub buys groceries");
+            assert!(held.splits > 0, "the sample buys groceries");
             let child_before = ports.holdings(child);
 
             ports.hand_over(groceries, child);
@@ -497,7 +497,7 @@ mod tests {
         .stores
         .category_stores();
         let announcer = cx.new(|_| Announcer::default());
-        let categories = lib_categories::default_categories();
+        let categories = lib_categories::sample_categories();
         let groceries = lib_categories::find_by_name(&categories, "Groceries").expect("seeded");
         let next_month = NaiveDate::from_ymd_opt(2026, 11, 1).expect("a real date");
         let (clock, day) = Clock::settable(today());

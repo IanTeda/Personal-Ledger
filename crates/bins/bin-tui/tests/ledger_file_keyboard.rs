@@ -169,7 +169,7 @@ fn new_creates_a_ledger_file_and_opens_it() {
 }
 
 #[test]
-fn new_creates_the_ledger_on_the_locales_currency_with_none_of_the_stub_rows() {
+fn new_creates_the_ledger_on_the_locales_currency_with_none_of_the_sample_rows() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("business.pldb");
     let mut shell = cold_shell(None);
@@ -180,8 +180,8 @@ fn new_creates_the_ledger_on_the_locales_currency_with_none_of_the_stub_rows() {
 
     assert!(frame.contains("usd"), "en-US's Currency:\n{frame}");
     assert!(frame.contains("US Dollar"), "{frame}");
-    for stub in ["aud", "btc", "vas"] {
-        assert!(!frame.contains(stub), "the stub's {stub}:\n{frame}");
+    for sample in ["aud", "btc", "vas"] {
+        assert!(!frame.contains(sample), "the sample's {sample}:\n{frame}");
     }
     let storage = lib_database::open_storage(&path).expect("the new Ledger opens");
     let stores = lib_database::Stores::from(storage);

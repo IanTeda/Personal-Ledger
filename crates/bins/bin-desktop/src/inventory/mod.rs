@@ -2,7 +2,7 @@
 //! for the Inventory Settings page and its Location, Area and Remove Dialogs, and `impl
 //! InventoryRouter`. Every rule, every piece of text and the keymap are `lib-inventory`'; this
 //! folder turns gpui keys and clicks into Presenter events and draws the view models. The
-//! `gpui`-free model, rules and stub seed are re-exported from `lib_inventory` so every
+//! `gpui`-free model, rules and sample seed are re-exported from `lib_inventory` so every
 //! `inventory::X` path keeps working.
 //!
 //! - `view/page.rs` wraps the page Presenter in an Entity, which the Settings View hosts.
@@ -67,7 +67,7 @@ impl InventorySetup {
 
     /// `storage`'s Inventory store under the default keys, for a test that builds `Root` directly.
     #[cfg(test)]
-    pub fn stub(storage: &crate::shell::router::LedgerStores) -> Self {
+    pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
             storage.inventory.clone(),
             storage.inventory_reads(),

@@ -132,7 +132,7 @@ impl Started {
 }
 
 /// The Desktop's start-up before any window: opens the Ledger file [`ledger_path`] names, with the
-/// stub dated from today, then generates the Bill Schedule through the horizon and commits the new
+/// sample dated from today, then generates the Bill Schedule through the horizon and commits the new
 /// entries before the Shell is built (ADR-0019). Start-up never creates a Ledger file: with none
 /// named it opens nothing, and a named file that is missing or won't open leaves no Ledger open,
 /// which the Shell then says (#977). Only `:new` creates one. `main` starts here. The Locale is set

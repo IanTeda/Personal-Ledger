@@ -107,7 +107,7 @@ pub fn sample_priced_at(today: NaiveDate) -> DateTime<Utc> {
 /// `lib-units`' sample as of `today`: the sample Units, priced at [`sample_priced_at`], with aud
 /// as the base, and the ids the joined sample's Accounts, Bill Plans and Budgets name.
 pub fn sample_units(today: NaiveDate) -> InMemoryPorts {
-    InMemoryPorts::stub(sample_priced_at(today))
+    InMemoryPorts::sample(sample_priced_at(today))
 }
 
 /// What `:new` writes for the Sample Ledger: the sample's aud as the base Unit, and the Personal
@@ -245,19 +245,19 @@ pub(crate) fn write_sample_rows(writer: &Writer, today: NaiveDate, documents: bo
 
 /// `lib-institutions`' sample, the Sample Ledger's Institutions, with the ids its Accounts name.
 pub fn sample_institutions() -> Vec<lib_institutions::Institution> {
-    lib_institutions::fake::InMemoryInstitutions::stub().institutions
+    lib_institutions::fake::InMemoryInstitutions::sample().institutions
 }
 
 /// `lib-accounts`' sample, the Sample Ledger's Accounts, with the ids its Transactions, Bill Plans
 /// and Budgets name.
 pub fn sample_accounts() -> Vec<lib_accounts::Account> {
-    lib_accounts::fake::InMemoryAccounts::stub().accounts
+    lib_accounts::fake::InMemoryAccounts::sample().accounts
 }
 
 /// `lib-categories`' sample, the Sample Ledger's Categories, with the ids its Splits, Bill Plans,
 /// Payees and Budgets name.
 pub fn sample_categories() -> Vec<lib_categories::Category> {
-    lib_categories::fake::InMemoryCategories::stub().categories
+    lib_categories::fake::InMemoryCategories::sample().categories
 }
 
 /// `lib-budgets`' sample as of `today`, the Sample Ledger's Budgets, fed the sample Accounts and
@@ -267,7 +267,7 @@ pub fn sample_budgets(today: NaiveDate) -> Vec<lib_budgets::Budget> {
     let accounts = crate::adapter::accounts::budget_accounts(&sample_accounts());
     let categories = crate::adapter::categories::budget_categories(&sample_categories());
     let personal = sample_new_ledger(today).budget;
-    lib_budgets::default_budgets(&accounts, &categories, today)
+    lib_budgets::sample_budgets(&accounts, &categories, today)
         .all()
         .iter()
         .map(|budget| {
@@ -286,20 +286,20 @@ pub fn sample_budgets(today: NaiveDate) -> Vec<lib_budgets::Budget> {
 
 /// `lib-tags`' sample, the Sample Ledger's Tags, with the ids its Splits carry.
 pub fn sample_tags() -> Vec<lib_tags::Tag> {
-    lib_tags::fake::InMemoryTags::stub().tags
+    lib_tags::fake::InMemoryTags::sample().tags
 }
 
 /// `lib-inventory`'s sample as of `today`, the Sample Ledger's Inventory, with the Item ids its
 /// Documents link.
 pub fn sample_inventory(today: NaiveDate) -> lib_inventory::Inventory {
     let lib_inventory::fake::InMemoryInventory { locations, items } =
-        lib_inventory::fake::InMemoryInventory::stub(today);
+        lib_inventory::fake::InMemoryInventory::sample(today);
     lib_inventory::Inventory { locations, items }
 }
 
 /// `lib-payees`' sample, the Sample Ledger's Payees, with the ids its Splits and Bill Plans name.
 pub fn sample_payees() -> Vec<lib_payees::Payee> {
-    lib_payees::fake::InMemoryPorts::stub().payees.payees
+    lib_payees::fake::InMemoryPorts::sample().payees.payees
 }
 
 /// The names `lib_transactions::fake`'s sample books by, looked up in the sample collections given.
@@ -327,7 +327,7 @@ impl lib_transactions::fake::SeedNames for SampleNames<'_> {
 /// samples name: newest first, ids assigned oldest-first (a higher id is newer). Each sample Account
 /// gets its sample count; accounts that take no Transactions, any account the seed has no profile
 /// for, and any Account not in the sample get none.
-pub fn default_transactions(
+pub fn sample_transaction_history(
     accounts: &[lib_accounts::Account],
     categories: &[lib_categories::Category],
     payees: &[lib_payees::Payee],
@@ -336,7 +336,7 @@ pub fn default_transactions(
 ) -> Vec<Transaction> {
     counted_transactions(
         accounts,
-        lib_transactions::fake::stub_transaction_count,
+        lib_transactions::fake::sample_transaction_count,
         categories,
         payees,
         tags,
@@ -361,7 +361,7 @@ fn seed_accounts(
         .collect()
 }
 
-/// [`default_transactions`] with `count` giving each Account's number of Transactions.
+/// [`sample_transaction_history`] with `count` giving each Account's number of Transactions.
 fn counted_transactions(
     accounts: &[lib_accounts::Account],
     count: impl Fn(AccountId) -> u32,
@@ -375,7 +375,7 @@ fn counted_transactions(
         payees,
         tags,
     };
-    lib_transactions::fake::stub_transactions(&seed_accounts(accounts, count), &names, today)
+    lib_transactions::fake::sample_transactions(&seed_accounts(accounts, count), &names, today)
 }
 
 /// `lib_transactions::fake`'s booked sample as of `today` over the per-domain samples: the generated
@@ -389,10 +389,10 @@ pub fn sample_transactions(today: NaiveDate) -> Vec<Transaction> {
         payees: &payees,
         tags: &tags,
     };
-    lib_transactions::fake::booked_stub_transactions(
+    lib_transactions::fake::booked_sample_transactions(
         &seed_accounts(
             &sample_accounts(),
-            lib_transactions::fake::stub_transaction_count,
+            lib_transactions::fake::sample_transaction_count,
         ),
         &names,
         today,
@@ -420,7 +420,7 @@ pub fn bill_splits(transactions: &[Transaction]) -> Vec<lib_bills::BillSplit> {
 /// `lib-bills`' sample Bill Plans and Bill Schedule as of `today`, fed the sample Accounts, Categories
 /// and Payees as Bills reads them, whose Paid entries name [`sample_transactions`]' payments.
 pub fn sample_bills(today: NaiveDate) -> BillsSeed {
-    lib_bills::default_bills(
+    lib_bills::sample_bills(
         &crate::adapter::accounts::bill_accounts(&sample_accounts()),
         &crate::adapter::categories::bill_categories(&sample_categories()),
         &crate::adapter::payees::bill_payees(&sample_payees()),
@@ -453,7 +453,7 @@ pub fn sample_documents(
     today: NaiveDate,
     institutions: &[lib_institutions::Institution],
 ) -> Vec<lib_documents::Document> {
-    lib_documents::default_documents(&sample_link_records(today, institutions), today).documents
+    lib_documents::sample_documents(&sample_link_records(today, institutions), today).documents
 }
 
 /// Fixed so the generated rows are the same on every run, which keeps `fake` seeding idempotent.
@@ -670,7 +670,7 @@ mod tests {
             .expect("the Institutions load");
         assert_eq!(
             stored.institutions(),
-            lib_institutions::default_institutions()
+            lib_institutions::sample_institutions()
         );
     }
 
@@ -721,7 +721,7 @@ mod tests {
             AccountsAdapter::load(PendingWrites::new(writer.clone())).expect("the Accounts load");
         assert_eq!(
             stored.accounts().accounts(),
-            lib_accounts::default_accounts()
+            lib_accounts::sample_accounts()
         );
     }
 
@@ -735,7 +735,7 @@ mod tests {
         sample(&writer, now).expect("the second seed lands");
 
         let stored = TagsAdapter::load(PendingWrites::new(writer.clone())).expect("the Tags load");
-        assert_eq!(stored.tags().tags(), lib_tags::default_tags());
+        assert_eq!(stored.tags().tags(), lib_tags::sample_tags());
     }
 
     /// The Inventory is the Sample Ledger's as of the seed's day, by id, so the sample Documents' Links
@@ -753,7 +753,7 @@ mod tests {
         let today = now.with_timezone(&Local).date_naive();
         assert_eq!(
             stored.inventory().inventory(),
-            lib_inventory::default_inventory(today)
+            lib_inventory::sample_inventory(today)
         );
     }
 
@@ -981,7 +981,7 @@ mod tests {
     fn the_sample_seed_writes_the_sample_ledgers_payees_twice_over_the_same_rows() {
         let (_dir, writer) = temp_writer();
         let now = Utc::now();
-        let mut expected = lib_payees::default_payees();
+        let mut expected = lib_payees::sample_payees();
         expected.sort_by_key(|payee| payee.id);
         for payee in &mut expected {
             payee.aliases.sort();

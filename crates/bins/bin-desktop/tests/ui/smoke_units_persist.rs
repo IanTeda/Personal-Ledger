@@ -41,7 +41,7 @@ fn a_unit_added_on_a_new_ledger_is_there_after_a_restart(app: &mut TestAppContex
         assert_eq!(
             ui.unit_codes(),
             ["aud", "btc", "vas"],
-            "a new Ledger starts with the stub's Units"
+            "a new Ledger starts with the sample's Units"
         );
         assert_eq!(ui.base_unit_code().as_deref(), Some("aud"));
 

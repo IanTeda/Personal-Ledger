@@ -425,7 +425,7 @@ impl TagFormPresenter {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::stub;
+    use super::super::test_support::sample;
     use super::*;
     use crate::TagRepository as _;
     use crate::fake::{RecordingRouter, RouterCall};
@@ -466,7 +466,7 @@ mod tests {
 
     #[test]
     fn a_new_form_has_no_name_no_colour_and_cannot_confirm() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let view = TagFormPresenter::add(shared).view_model();
 
         assert_eq!(view.frame.title, "Add tag");
@@ -483,7 +483,7 @@ mod tests {
 
     #[test]
     fn the_name_rule_is_a_form_error_checked_live() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut form = TagFormPresenter::add(shared);
         let error = |form: &TagFormPresenter| form.view_model().name_error;
 
@@ -512,7 +512,7 @@ mod tests {
 
     #[test]
     fn a_swatch_fills_the_hex_box_and_none_empties_it() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut form = TagFormPresenter::add(shared);
 
         send(&mut form, vec![TagFormEvent::Pick(4)]);
@@ -528,7 +528,7 @@ mod tests {
 
     #[test]
     fn stepping_the_pick_stops_at_either_end_and_restarts_from_a_custom_colour() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut form = TagFormPresenter::add(shared);
         let step = |form: &mut TagFormPresenter, forward| {
             let arrow = if forward {
@@ -553,7 +553,7 @@ mod tests {
 
     #[test]
     fn typing_edits_the_focused_text_field_and_backspace_removes() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut form = TagFormPresenter::add(shared);
 
         type_text(&mut form, "holidxx");
@@ -568,7 +568,7 @@ mod tests {
 
     #[test]
     fn typing_on_the_swatches_goes_nowhere_and_the_arrows_step_the_pick() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut form = TagFormPresenter::add(shared);
         input(&mut form, &[DialogInput::NextField]);
 
@@ -590,8 +590,8 @@ mod tests {
 
     #[test]
     fn space_toggles_active_on_an_edit_and_nothing_else_types_there() {
-        let (_, shared) = stub();
-        let mut form = TagFormPresenter::edit(shared, SHARED).expect("a stub Tag");
+        let (_, shared) = sample();
+        let mut form = TagFormPresenter::edit(shared, SHARED).expect("a sample Tag");
         send(&mut form, vec![TagFormEvent::Focus(TagField::Active)]);
 
         type_text(&mut form, "x");
@@ -603,7 +603,7 @@ mod tests {
 
     #[test]
     fn select_and_submit_confirm_a_valid_form_from_any_field_and_only_that() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut form = TagFormPresenter::add(shared);
 
         assert_eq!(input(&mut form, &[DialogInput::Select]), [], "no name yet");
@@ -628,7 +628,7 @@ mod tests {
 
     #[test]
     fn a_typed_hex_is_any_colour_and_an_unfinished_one_blocks_confirming() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut form = TagFormPresenter::add(shared);
         send(&mut form, vec![name("camping")]);
 
@@ -654,9 +654,9 @@ mod tests {
 
     #[test]
     fn tab_cycles_the_fields_and_only_edit_reaches_active() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut add = TagFormPresenter::add(shared.clone());
-        let mut edit = TagFormPresenter::edit(shared, SHARED).expect("a stub Tag");
+        let mut edit = TagFormPresenter::edit(shared, SHARED).expect("a sample Tag");
         let walk = |form: &mut TagFormPresenter, event: TagFormEvent, times| {
             let mut seen = Vec::new();
             for _ in 0..times {
@@ -704,7 +704,7 @@ mod tests {
 
     #[test]
     fn an_edit_is_pre_filled_and_may_keep_its_own_name_but_not_take_anothers() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         ports.borrow_mut().usage.uses.insert(
             SHARED,
             crate::TagUse {
@@ -712,7 +712,7 @@ mod tests {
                 ..crate::TagUse::default()
             },
         );
-        let mut form = TagFormPresenter::edit(shared.clone(), SHARED).expect("a stub Tag");
+        let mut form = TagFormPresenter::edit(shared.clone(), SHARED).expect("a sample Tag");
 
         let view = form.view_model();
         assert_eq!(view.frame.title, "Edit tag \u{2014} shared");
@@ -743,7 +743,7 @@ mod tests {
 
     #[test]
     fn confirming_an_add_writes_the_tag_active_and_closes_with_it() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut form = TagFormPresenter::add(shared);
         send(
             &mut form,
@@ -778,7 +778,7 @@ mod tests {
 
     #[test]
     fn a_form_that_cannot_confirm_writes_nothing() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let before = ports.borrow().tags.clone();
         let mut form = TagFormPresenter::add(shared);
 
@@ -793,8 +793,8 @@ mod tests {
 
     #[test]
     fn confirming_an_edit_renames_recolours_and_deactivates_together() {
-        let (ports, shared) = stub();
-        let mut form = TagFormPresenter::edit(shared, SHARED).expect("a stub Tag");
+        let (ports, shared) = sample();
+        let mut form = TagFormPresenter::edit(shared, SHARED).expect("a sample Tag");
         send(
             &mut form,
             vec![
@@ -823,8 +823,8 @@ mod tests {
 
     #[test]
     fn an_edit_reactivates_an_inactive_tag() {
-        let (ports, shared) = stub();
-        let mut form = TagFormPresenter::edit(shared, BALI).expect("a stub Tag");
+        let (ports, shared) = sample();
+        let mut form = TagFormPresenter::edit(shared, BALI).expect("a sample Tag");
         assert!(
             !form
                 .view_model()
@@ -846,8 +846,8 @@ mod tests {
 
     #[test]
     fn a_tag_gone_under_the_dialog_is_refused_and_cancel_closes() {
-        let (ports, shared) = stub();
-        let mut form = TagFormPresenter::edit(shared, SHARED).expect("a stub Tag");
+        let (ports, shared) = sample();
+        let mut form = TagFormPresenter::edit(shared, SHARED).expect("a sample Tag");
         ports.borrow_mut().tags.tags.retain(|tag| tag.id != SHARED);
 
         assert_eq!(confirm(&mut form), []);

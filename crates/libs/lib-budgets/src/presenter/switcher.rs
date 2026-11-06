@@ -267,10 +267,10 @@ mod tests {
     use super::*;
     use crate::PERSONAL_SPENDING_ID;
     use crate::fake::{RecordingRouter, Routed};
-    use crate::presenter::test_support::{stub, today};
+    use crate::presenter::test_support::{sample, today};
 
     fn switcher() -> (SwitcherPresenter, RecordingRouter) {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         (
             SwitcherPresenter::new(shared, PERSONAL_SPENDING_ID, Clock::fixed(today()), None),
             RecordingRouter::default(),

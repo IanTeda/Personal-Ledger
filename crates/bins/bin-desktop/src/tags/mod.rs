@@ -63,7 +63,7 @@ impl TagsSetup {
 
     /// `storage`'s Tags store under the default keys, for a test that builds `Root` directly.
     #[cfg(test)]
-    pub fn stub(storage: &crate::shell::router::LedgerStores) -> Self {
+    pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
             storage.tags.clone(),
             StoredTagReads {

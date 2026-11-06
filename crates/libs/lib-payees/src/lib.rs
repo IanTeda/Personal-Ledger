@@ -1,9 +1,9 @@
 //! Payees: who a Ledger pays and is paid by (`GLOSSARY.md`'s Payee), each with the Payee Aliases
 //! that match it on import. A VIPER module (`docs/development/viper-architecture.md`, #832): the
-//! Entity (`entity`, with the stub seed from the Payees handoff's sample list,
+//! Entity (`entity`, with the sample seed from the Payees handoff's sample list,
 //! `docs/ux/desktop-mockups/20-payees/`), one Interactor per intent (`interactor`), one Presenter
 //! per View and Dialog (`presenter`), the ports and the `PayeesRouter` (`protocols`), the page's
-//! default keys (`keymap`) and its Messages (`msg`). `fake` holds the in-memory ports, the stub
+//! default keys (`keymap`) and its Messages (`msg`). `fake` holds the in-memory ports, the sample
 //! seed and a recording Router; `contract` the checks both they and `lib-database`'s adapter keep.
 //! No UI toolkit and no I/O; the Desktop draws the view models (`bin-desktop/src/payees/`).
 //!

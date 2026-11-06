@@ -1,4 +1,4 @@
-//! In-memory ports and the stub seed, for tests and UI-first work. Each holds its rows in a plain
+//! In-memory ports and the sample seed, for tests and UI-first work. Each holds its rows in a plain
 //! field so a test can set up or read state directly. [`RecordingRouter`] is a Router that only
 //! records what it was asked.
 
@@ -13,7 +13,7 @@ use lib_viper::dialog::DialogRouter;
 use crate::protocols::{
     SharedPorts, TagRepository, TagUsage, TagUse, TagsDialog, TagsOutcome, TagsRouter,
 };
-use crate::{Tag, default_tags};
+use crate::{Tag, sample_tags};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct InMemoryTags {
@@ -21,11 +21,11 @@ pub struct InMemoryTags {
 }
 
 impl InMemoryTags {
-    /// The stub seed: the Sample Ledger's Tags (see [`default_tags`]). Ids match `lib-database`'s
+    /// The sample seed: the Sample Ledger's Tags (see [`sample_tags`]). Ids match `lib-database`'s
     /// joined Sample Ledger, so its Splits still resolve their Tags.
-    pub fn stub() -> Self {
+    pub fn sample() -> Self {
         Self {
-            tags: default_tags(),
+            tags: sample_tags(),
         }
     }
 }
@@ -69,10 +69,10 @@ pub struct InMemoryPorts {
 }
 
 impl InMemoryPorts {
-    /// The stub Tags with nothing carrying any of them.
-    pub fn stub() -> Self {
+    /// The sample Tags with nothing carrying any of them.
+    pub fn sample() -> Self {
         Self {
-            tags: InMemoryTags::stub(),
+            tags: InMemoryTags::sample(),
             usage: InMemoryTagUsage::default(),
         }
     }
@@ -160,7 +160,7 @@ mod tests {
 
     #[test]
     fn upserting_a_tag_replaces_the_row_with_its_id_or_appends_it() {
-        let mut tags = InMemoryTags::stub();
+        let mut tags = InMemoryTags::sample();
         let seeded = tags.tags().len();
         let mut shared = tags.tag(TagId::seed(2)).expect("seeded");
         shared.name = "split".into();
@@ -178,7 +178,7 @@ mod tests {
 
     #[test]
     fn a_tag_no_test_names_is_unused() {
-        let ports = InMemoryPorts::stub();
+        let ports = InMemoryPorts::sample();
         assert_eq!(ports.usage.tag_usage(TagId::seed(1)), TagUse::default());
     }
 }

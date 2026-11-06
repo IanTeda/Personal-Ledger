@@ -1,4 +1,4 @@
-//! The Payee Entity: a Payee with its Payee Aliases, the stub seed, and the rules every Payees
+//! The Payee Entity: a Payee with its Payee Aliases, the sample seed, and the rules every Payees
 //! write and read keeps (the crate root lists them). Plain functions over a slice of Payees, so
 //! the Interactors run them on the rows a port returns, and a Client not yet migrated (the TUI,
 //! Import) on its own copy.
@@ -31,8 +31,8 @@ fn payee(id: PayeeId, name: &str, default_category: Option<CategoryId>, aliases:
 }
 
 /// The handoff's sample Payees first (J Smith with no default Category), then the rest of the
-/// names the Transactions seed draws on. Category ids are `categories::default_categories`' leaves.
-pub fn default_payees() -> Vec<Payee> {
+/// names the Transactions seed draws on. Category ids are `categories::sample_categories`' leaves.
+pub fn sample_payees() -> Vec<Payee> {
     const RENT: CategoryId = CategoryId::seed(2);
     const ELECTRICITY: CategoryId = CategoryId::seed(4);
     const WATER: CategoryId = CategoryId::seed(5);
@@ -375,7 +375,7 @@ mod tests {
 
     #[test]
     fn delete_returns_the_removed_row_and_refuses_an_unknown_id() {
-        let mut payees = default_payees();
+        let mut payees = sample_payees();
         let seeded = payees.len();
         let unused = InMemoryPayeeUsage::default();
 
@@ -391,7 +391,7 @@ mod tests {
 
     #[test]
     fn a_payee_a_split_or_bill_plan_names_is_refused_and_left_in_place() {
-        let mut payees = default_payees();
+        let mut payees = sample_payees();
         let before = payees.clone();
         let mut usage = InMemoryPayeeUsage::default();
         let by_splits = PayeeUse {
@@ -427,7 +427,7 @@ mod tests {
 
     #[test]
     fn refused_writes_leave_the_rows_untouched() {
-        let mut payees = default_payees();
+        let mut payees = sample_payees();
         let before = payees.clone();
         let draft = PayeeDraft {
             name: before[0].name.clone(),
@@ -455,7 +455,7 @@ mod tests {
 
     #[test]
     fn ids_names_and_aliases_are_unique() {
-        let payees = default_payees();
+        let payees = sample_payees();
         let mut ids: Vec<_> = payees.iter().map(|p| p.id).collect();
         ids.sort_unstable();
         ids.dedup();
@@ -475,7 +475,7 @@ mod tests {
     /// seed tests, which see both seeds.
     #[test]
     fn seeded_aliases_are_normalised() {
-        for payee in default_payees() {
+        for payee in sample_payees() {
             for alias in &payee.aliases {
                 assert_eq!(normalise_alias(alias).as_ref(), Some(alias));
             }
@@ -484,7 +484,7 @@ mod tests {
 
     #[test]
     fn find_by_name_is_exact_and_aliases_are_not_names() {
-        let payees = default_payees();
+        let payees = sample_payees();
         assert_eq!(find_by_name(&payees, "Woolworths"), Some(PayeeId::seed(1)));
         assert_eq!(find_by_name(&payees, "WOOLIES"), None);
         assert!(payees[0].aliases.contains(&"WOOLIES".to_string()));
@@ -499,14 +499,14 @@ mod tests {
 
     #[test]
     fn insert_normalises_and_dedupes_aliases_and_assigns_a_fresh_id() {
-        let mut payees = default_payees();
+        let mut payees = sample_payees();
         let mut new = draft(
             " Aussie Candle Co ",
             &["aussie candle", "AUSSIE CANDLE ", " ", ""],
         );
         new.default_category = Some(CategoryId::seed(10));
         let id = insert_payee(&mut payees, &new).unwrap();
-        assert!(!default_payees().iter().any(|p| p.id == id));
+        assert!(!sample_payees().iter().any(|p| p.id == id));
         let payee = get(&payees, id).unwrap();
         assert_eq!(payee.name, "Aussie Candle Co");
         assert_eq!(payee.aliases, vec!["AUSSIE CANDLE".to_string()]);
@@ -516,7 +516,7 @@ mod tests {
 
     #[test]
     fn insert_requires_a_name_unique_case_insensitively() {
-        let mut payees = default_payees();
+        let mut payees = sample_payees();
         assert_eq!(
             insert_payee(&mut payees, &draft("  ", &[])),
             Err(PayeeError::NameRequired)
@@ -529,7 +529,7 @@ mod tests {
 
     #[test]
     fn an_alias_another_payee_owns_is_rejected_naming_the_owner() {
-        let mut payees = default_payees();
+        let mut payees = sample_payees();
         assert_eq!(
             insert_payee(&mut payees, &draft("Woolies Metro", &["woolies"])),
             Err(PayeeError::AliasTaken {
@@ -541,7 +541,7 @@ mod tests {
 
     #[test]
     fn a_name_equal_to_another_payees_alias_is_rejected() {
-        let mut payees = default_payees();
+        let mut payees = sample_payees();
         assert_eq!(
             insert_payee(&mut payees, &draft("Woolies", &[])),
             Err(PayeeError::AliasTaken {
@@ -553,7 +553,7 @@ mod tests {
 
     #[test]
     fn edit_replaces_category_and_aliases() {
-        let mut payees = default_payees();
+        let mut payees = sample_payees();
         let coles = id_of(&payees, "Coles");
         let mut change = draft("Coles", &["coles express"]);
         change.default_category = Some(CategoryId::seed(10));
@@ -565,7 +565,7 @@ mod tests {
 
     #[test]
     fn a_rename_keeps_the_old_name_as_an_alias() {
-        let mut payees = default_payees();
+        let mut payees = sample_payees();
         let kmart = id_of(&payees, "Kmart");
         edit_payee(&mut payees, kmart, &draft("Kmart AU", &["KMART"])).unwrap();
         let payee = get(&payees, kmart).unwrap();
@@ -583,7 +583,7 @@ mod tests {
 
     #[test]
     fn renaming_to_an_own_alias_drops_that_alias() {
-        let mut payees = default_payees();
+        let mut payees = sample_payees();
         let woolworths = id_of(&payees, "Woolworths");
         let aliases: Vec<&str> = vec!["WOOLWORTHS", "WW SUPERMARKET", "WOOLIES"];
         edit_payee(&mut payees, woolworths, &draft("Woolies", &aliases)).unwrap();
@@ -597,7 +597,7 @@ mod tests {
 
     #[test]
     fn renaming_to_another_payees_name_or_alias_is_rejected() {
-        let mut payees = default_payees();
+        let mut payees = sample_payees();
         let coles = id_of(&payees, "Coles");
         assert_eq!(
             edit_payee(&mut payees, coles, &draft("bp", &[])),
@@ -615,7 +615,7 @@ mod tests {
 
     #[test]
     fn editing_keeping_the_same_name_in_another_case_is_allowed() {
-        let mut payees = default_payees();
+        let mut payees = sample_payees();
         let bp = id_of(&payees, "BP");
         edit_payee(&mut payees, bp, &draft("Bp", &[])).unwrap();
         // A change of case only is not a rename: the old name would equal the new one's alias.
@@ -626,7 +626,7 @@ mod tests {
 
     #[test]
     fn set_active_toggles_and_counts_leave_inactive_payees_out() {
-        let mut payees = default_payees();
+        let mut payees = sample_payees();
         let active = active_count(&payees);
         let without = without_default_category_count(&payees);
         assert_eq!(active, payees.len() - 1);
@@ -646,7 +646,7 @@ mod tests {
 
     #[test]
     fn match_alias_is_a_case_insensitive_contains() {
-        let payees = default_payees();
+        let payees = sample_payees();
         assert_eq!(
             match_alias(&payees, "woolworths 2137 sydney au"),
             Some(id_of(&payees, "Woolworths"))
@@ -660,7 +660,7 @@ mod tests {
 
     #[test]
     fn the_longest_alias_wins_then_the_name_alphabetically() {
-        let mut payees = default_payees();
+        let mut payees = sample_payees();
         // "BP SERVICE STN" beats a shorter alias another Payee holds.
         insert_payee(&mut payees, &draft("Bpay Biller", &["BP SERV"])).unwrap();
         assert_eq!(
@@ -678,7 +678,7 @@ mod tests {
 
     #[test]
     fn inactive_payees_do_not_match() {
-        let mut payees = default_payees();
+        let mut payees = sample_payees();
         let bp = id_of(&payees, "BP");
         set_active(&mut payees, bp, false).unwrap();
         assert_eq!(match_alias(&payees, "BP SERVICE STN 4471"), None);

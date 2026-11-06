@@ -1,4 +1,4 @@
-//! Pure Budgets domain types and the stub dataset behind them (`docs/ux/desktop-mockups/14-budgets-v2/`,
+//! Pure Budgets domain types and the sample dataset behind them (`docs/ux/desktop-mockups/14-budgets-v2/`,
 //! ADR-0028 and ADR-0029) -- `gpui`-free and in-memory, the same "pure state, chrome renders it"
 //! split `bills/` uses. Nothing here reads `lib_database`.
 //!
@@ -25,7 +25,7 @@
 //! feature crate.
 //!
 //! A VIPER module (`docs/development/viper-architecture.md`): the Entity (`entity`: the Budget and
-//! its chain, the chain's edits, the Budgets set and the stub seed), one Interactor per intent
+//! its chain, the chain's edits, the Budgets set and the sample seed), one Interactor per intent
 //! (`interactor`), one Presenter per View and Dialog (`presenter`), the ports and the Router
 //! (`protocols`), the default keys (`keymap`) and the Messages (`msg`). Each surface's figures sit
 //! in their own calculation module (`figures`, `plan`, `history`, `detail`), re-exported here. The Budgets are kept behind [`BudgetRepository`], which

@@ -11,7 +11,7 @@ use lib_core::{HexColor, Money, TagId, Total};
 
 use crate::fake::InMemoryPorts;
 use crate::interactor::{AddTag, DeactivateTag, EditTag, ReactivateTag};
-use crate::{Tag, TagDraft, TagError, TagRepository, TagUsage, TagUse, default_tags, swatches};
+use crate::{Tag, TagDraft, TagError, TagRepository, TagUsage, TagUse, sample_tags, swatches};
 
 /// A stored set of the Tags ports.
 pub trait StoredPorts {
@@ -121,7 +121,7 @@ fn ids(ports: &mut impl StoredPorts) -> Vec<TagId> {
 
 /// An added Tag reloads with its id, trimmed name, colour and Active flag, after the others.
 pub fn an_added_tag_reloads_the_same<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_tags());
+    let mut ports = factory.create(sample_tags());
     let [red, ..] = swatches();
 
     let added = AddTag(draft(" Holiday ", Some(red.clone())))
@@ -147,7 +147,7 @@ pub fn an_added_tag_reloads_the_same<F: PortsFactory>(factory: &mut F) {
 /// An edit reloads with the name and colour written and the Active flag as it was; clearing the
 /// colour reloads it cleared. Editing a Tag that isn't there is refused and writes nothing.
 pub fn an_edited_tag_reloads_the_same<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_tags());
+    let mut ports = factory.create(sample_tags());
     let before = ports
         .tags()
         .tag(TagId::seed(8))
@@ -174,12 +174,12 @@ pub fn an_edited_tag_reloads_the_same<F: PortsFactory>(factory: &mut F) {
     assert_eq!(ports.tags().tag(before.id), Some(edited.clone()));
     assert_eq!(edited.color, None);
     assert!(!edited.is_active, "an edit leaves the Active flag");
-    assert_eq!(ports.tags().tags().len(), default_tags().len());
+    assert_eq!(ports.tags().tags().len(), sample_tags().len());
 }
 
 /// Deactivating and reactivating reload as written and touch nothing else of the Tag.
 pub fn deactivating_and_reactivating_reload_the_same<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_tags());
+    let mut ports = factory.create(sample_tags());
     let shared = ports.tags().tag(TagId::seed(2)).expect("seeded");
     let bali = ports.tags().tag(TagId::seed(8)).expect("seeded");
 
@@ -216,7 +216,7 @@ pub fn deactivating_and_reactivating_reload_the_same<F: PortsFactory>(factory: &
 /// Tag keeps its name taken; a name with no letter or digit, or none, is refused. A refusal
 /// writes nothing, before or after a reload.
 pub fn a_name_is_unique_once_normalised<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_tags());
+    let mut ports = factory.create(sample_tags());
     let stored = ports.tags().tags();
 
     assert_eq!(
@@ -265,14 +265,14 @@ pub fn a_name_is_unique_once_normalised<F: PortsFactory>(factory: &mut F) {
 
 /// Tags list in the order they were added, the seed's first, before and after a reload.
 pub fn tags_list_in_the_order_added<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_tags());
+    let mut ports = factory.create(sample_tags());
 
     let zeta = AddTag(draft("zeta", None)).run(ports.tags()).expect("new");
     factory.commit(&mut ports);
     let alpha = AddTag(draft("alpha", None)).run(ports.tags()).expect("new");
     factory.commit(&mut ports);
 
-    let mut expected: Vec<_> = default_tags().into_iter().map(|tag| tag.id).collect();
+    let mut expected: Vec<_> = sample_tags().into_iter().map(|tag| tag.id).collect();
     expected.extend([zeta.id, alpha.id]);
     assert_eq!(ids(&mut ports), expected);
     let mut ports = factory.reload(ports);
@@ -283,7 +283,7 @@ pub fn tags_list_in_the_order_added<F: PortsFactory>(factory: &mut F) {
 /// after a reload; a Tag nothing carries, or one that isn't there, has none. Nothing is written to
 /// the Tag for it.
 pub fn usage_answers_the_figures_for_a_tag<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_tags());
+    let mut ports = factory.create(sample_tags());
     let shared = TagId::seed(2);
     let gift = TagId::seed(6);
     let stored = ports.tags().tags();
@@ -326,7 +326,7 @@ pub fn usage_answers_the_figures_for_a_tag<F: PortsFactory>(factory: &mut F) {
 /// A write that fails is reported once, naming the Tags domain, and the ports go back to the last
 /// committed rows rather than keeping the change the store refused.
 pub fn a_failed_write_reloads_and_reports<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_tags());
+    let mut ports = factory.create(sample_tags());
     let stored = ports.tags().tags();
 
     factory.break_writes(&mut ports);

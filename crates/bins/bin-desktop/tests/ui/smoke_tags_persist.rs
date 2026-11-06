@@ -80,7 +80,7 @@ fn an_added_tag_and_a_removed_used_tag_are_there_after_a_restart(app: &mut TestA
     in_tags(&mut ui);
     assert_eq!(ui.settings::<SettingsTagsSnapshot>().tag_names, names);
 
-    // A Tag the stub's Splits still carry asks for its name: its usage is the adapter's count.
+    // A Tag the sample's Splits still carry asks for its name: its usage is the adapter's count.
     select(&mut ui, "reimbursable");
     ui.press("x");
     assert_eq!(ui.dialog(), Some("RemoveTag"));

@@ -230,7 +230,7 @@ fn a_blocked_type_shows_its_notice_on_click_and_the_confirm_is_refused_with_the_
     let mut ui = on_categories(app);
     let before = ui.settings::<SettingsCategoriesSnapshot>().category_types;
 
-    // Food's Groceries is budgeted and named by a Bill Plan in the stub.
+    // Food's Groceries is budgeted and named by a Bill Plan in the sample.
     ui.click(&format!("settings-categories-edit-{}", CategoryId::seed(6)));
     ui.click("edit-type-income");
     let notice = ui.dialog_value("notice").expect("a notice");

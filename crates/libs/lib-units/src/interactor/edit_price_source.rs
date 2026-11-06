@@ -100,7 +100,7 @@ mod tests {
 
     #[test]
     fn editing_a_custom_source_rewrites_its_name_updates_and_endpoint() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         let added = AddPriceSource {
             name: "Broker".into(),
             endpoint: endpoint("https://broker.example"),
@@ -124,7 +124,7 @@ mod tests {
 
     #[test]
     fn editing_a_custom_source_without_an_endpoint_keeps_its_endpoint() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         let added = AddPriceSource {
             name: "Broker".into(),
             endpoint: endpoint("https://broker.example"),
@@ -141,7 +141,7 @@ mod tests {
 
     #[test]
     fn editing_a_built_in_stores_only_its_name_and_updates() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
 
         let written = edit(COINGECKO, None).run(&mut ports.price_sources).unwrap();
 
@@ -162,7 +162,7 @@ mod tests {
 
     #[test]
     fn a_built_ins_endpoint_manual_entry_and_a_gone_source_are_refused_and_nothing_is_written() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         let before = ports.clone();
 
         for (request, refusal) in [

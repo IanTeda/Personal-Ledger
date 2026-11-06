@@ -225,7 +225,7 @@ impl AreaFormPresenter {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::stub;
+    use super::super::test_support::sample;
     use super::*;
     use crate::fake::{RecordingRouter, RouterCall};
     use crate::protocols::InventoryRepository as _;
@@ -238,7 +238,7 @@ mod tests {
 
     impl Form {
         fn add() -> Self {
-            let (inventory, shared) = stub();
+            let (inventory, shared) = sample();
             let location = inventory.borrow().locations()[0].id;
             Self {
                 presenter: AreaFormPresenter::add(&shared, location).expect("seeded"),
@@ -248,7 +248,7 @@ mod tests {
         }
 
         fn edit() -> Self {
-            let (inventory, shared) = stub();
+            let (inventory, shared) = sample();
             let area = inventory.borrow().locations()[0].areas[0].id;
             Self {
                 presenter: AreaFormPresenter::edit(&shared, area).expect("seeded"),
@@ -406,7 +406,7 @@ mod tests {
 
     #[test]
     fn the_dialog_for_a_gone_row_is_not_built() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
 
         assert!(AreaFormPresenter::add(&shared, LocationId::seed(9_999)).is_none());
         assert!(AreaFormPresenter::edit(&shared, AreaId::seed(9_999)).is_none());

@@ -688,7 +688,7 @@ fn type_label(category_type: &CategoryTypes) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::stub;
+    use super::super::test_support::sample;
     use super::*;
     use crate::CategoryError;
     use crate::CategoryRepository as _;
@@ -752,7 +752,7 @@ mod tests {
 
     #[test]
     fn add_needs_a_name_unique_among_its_siblings_then_saves_and_closes() {
-        let (categories, shared) = stub();
+        let (categories, shared) = sample();
         let mut budget = InMemoryCategoryBudget::default();
         let mut form = CategoryFormPresenter::add(shared, &budget, Some(FOOD));
         assert!(!form.view_model().frame.can_confirm);
@@ -788,7 +788,7 @@ mod tests {
 
     #[test]
     fn a_parent_sets_and_locks_the_type_and_says_so() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let budget = InMemoryCategoryBudget::default();
         let mut form = CategoryFormPresenter::add(shared, &budget, None);
         let view = form.view_model();
@@ -823,7 +823,7 @@ mod tests {
 
     #[test]
     fn tab_walks_the_fields_and_the_budget_keeps_only_an_amonts_characters() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let budget = InMemoryCategoryBudget::default();
         let mut form = CategoryFormPresenter::add(shared, &budget, None);
 
@@ -846,7 +846,7 @@ mod tests {
 
     #[test]
     fn typing_edits_name_and_budget_and_goes_nowhere_on_parent_or_type() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut budget = InMemoryCategoryBudget::default();
         let mut form = CategoryFormPresenter::add(shared, &budget, None);
 
@@ -871,7 +871,7 @@ mod tests {
 
     #[test]
     fn the_arrows_switch_an_unlocked_type_and_leave_a_locked_one() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut budget = InMemoryCategoryBudget::default();
         let mut form = CategoryFormPresenter::add(shared.clone(), &budget, None);
         form.handle(
@@ -904,7 +904,7 @@ mod tests {
 
     #[test]
     fn the_parent_select_opens_moves_and_picks_and_leaving_it_commits_the_highlight() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut budget = InMemoryCategoryBudget::default();
         let mut form = CategoryFormPresenter::add(shared, &budget, None);
         press(&mut form, &mut budget, &[DialogInput::NextField]);
@@ -944,7 +944,7 @@ mod tests {
 
     #[test]
     fn a_click_toggles_the_parent_list_and_back_or_a_focus_click_closes_it() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let budget = InMemoryCategoryBudget::default();
         let mut form = CategoryFormPresenter::add(shared, &budget, None);
 
@@ -974,7 +974,7 @@ mod tests {
 
     #[test]
     fn select_confirms_off_the_select_and_submit_confirms_from_it() {
-        let (categories, shared) = stub();
+        let (categories, shared) = sample();
         let mut budget = InMemoryCategoryBudget::default();
         let mut form = CategoryFormPresenter::add(shared, &budget, None);
         assert_eq!(
@@ -999,7 +999,7 @@ mod tests {
                 .any(|c| c.name == "Pets")
         );
 
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut form = CategoryFormPresenter::add(shared, &budget, None);
         press(&mut form, &mut budget, &keys("Gifts"));
         let calls = press(&mut form, &mut budget, &[DialogInput::Select]);
@@ -1011,7 +1011,7 @@ mod tests {
 
     #[test]
     fn edit_offers_no_parent_in_its_subtree_or_past_the_depth_cap() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let budget = InMemoryCategoryBudget::default();
         let usage = InMemoryCategoryUsage::default();
 
@@ -1032,7 +1032,7 @@ mod tests {
 
     #[test]
     fn edit_quotes_the_subtrees_transactions_and_its_type_change_cascades_on_save() {
-        let (categories, shared) = stub();
+        let (categories, shared) = sample();
         let mut budget = InMemoryCategoryBudget::default();
         let mut usage = InMemoryCategoryUsage::default();
         usage.uses.insert(
@@ -1072,7 +1072,7 @@ mod tests {
 
     #[test]
     fn a_type_blocked_by_one_use_reads_in_the_singular() {
-        let (_categories, shared) = stub();
+        let (_categories, shared) = sample();
         let budget = InMemoryCategoryBudget::default();
         let mut usage = InMemoryCategoryUsage::default();
         usage.blockers.insert(
@@ -1097,7 +1097,7 @@ mod tests {
 
     #[test]
     fn a_blocked_type_shows_its_notice_on_pick_and_the_save_is_refused_with_the_same_text() {
-        let (categories, shared) = stub();
+        let (categories, shared) = sample();
         let mut budget = InMemoryCategoryBudget::default();
         let used = TypeChangeBlockers {
             budgets: 2,
@@ -1135,7 +1135,7 @@ mod tests {
 
     #[test]
     fn an_unused_subtree_shows_no_type_notice() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let budget = InMemoryCategoryBudget::default();
         let usage = InMemoryCategoryUsage::default();
         let mut form = CategoryFormPresenter::edit(shared, &budget, &usage, FOOD).expect("seeded");
@@ -1150,7 +1150,7 @@ mod tests {
 
     #[test]
     fn a_childs_type_is_locked_on_edit() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut form = CategoryFormPresenter::edit(
             shared,
             &InMemoryCategoryBudget::default(),
@@ -1165,7 +1165,7 @@ mod tests {
 
     #[test]
     fn the_monthly_budget_opens_with_this_months_amount_and_a_parent_shows_its_rollup() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut budget = InMemoryCategoryBudget::default();
         budget.amounts.insert(GROCERIES, money("600"));
         budget.amounts.insert(CategoryId::seed(8), money("150"));
@@ -1190,7 +1190,7 @@ mod tests {
 
     #[test]
     fn an_archived_budget_is_read_only_and_a_save_leaves_it() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut budget = InMemoryCategoryBudget {
             archived: Some("Personal spending".into()),
             ..Default::default()
@@ -1215,7 +1215,7 @@ mod tests {
 
     #[test]
     fn a_budget_on_an_income_category_is_refused_and_writes_nothing() {
-        let (categories, shared) = stub();
+        let (categories, shared) = sample();
         let mut budget = InMemoryCategoryBudget::default();
         let before = categories.borrow().clone();
         let mut form = CategoryFormPresenter::add(shared, &budget, None);
@@ -1243,7 +1243,7 @@ mod tests {
 
     #[test]
     fn a_blank_budget_on_edit_stops_the_amount() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut budget = InMemoryCategoryBudget::default();
         budget.amounts.insert(GROCERIES, money("600"));
         let mut form = CategoryFormPresenter::edit(
@@ -1262,7 +1262,7 @@ mod tests {
 
     #[test]
     fn a_budgeted_parent_chosen_warns_its_budget_stops() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut budget = InMemoryCategoryBudget {
             other_budgets: 1,
             ..Default::default()
@@ -1295,7 +1295,7 @@ mod tests {
 
     #[test]
     fn the_stop_notice_shows_on_edit_when_moving_under_a_budgeted_leaf() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut budget = InMemoryCategoryBudget::default();
         budget.amounts.insert(TRANSPORT, money("600"));
         let usage = InMemoryCategoryUsage::default();
@@ -1321,7 +1321,7 @@ mod tests {
 
     #[test]
     fn the_handover_notice_names_what_a_leaf_parent_holds_and_the_child() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut budget = InMemoryCategoryBudget::default();
         budget.held.insert(TRANSPORT, held(42, 1, 0));
         let mut form = CategoryFormPresenter::add(shared, &budget, Some(TRANSPORT));
@@ -1335,7 +1335,7 @@ mod tests {
 
     #[test]
     fn the_handover_notice_lists_all_three_and_shows_beside_the_stop_notice() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut budget = InMemoryCategoryBudget::default();
         budget.held.insert(TRANSPORT, held(2, 3, 1));
         budget.amounts.insert(TRANSPORT, money("600"));
@@ -1352,7 +1352,7 @@ mod tests {
 
     #[test]
     fn no_handover_notice_for_an_empty_leaf_a_parent_with_children_or_a_top_level_add() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut budget = InMemoryCategoryBudget::default();
         budget.held.insert(FOOD, held(9, 0, 0));
         let empty = CategoryFormPresenter::add(shared.clone(), &budget, Some(TRANSPORT));
@@ -1366,7 +1366,7 @@ mod tests {
 
     #[test]
     fn the_handover_notice_shows_on_edit_when_moving_under_a_leaf_holding_rows() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut budget = InMemoryCategoryBudget::default();
         budget.held.insert(TRANSPORT, held(0, 0, 2));
         let usage = InMemoryCategoryUsage::default();
@@ -1381,9 +1381,9 @@ mod tests {
         );
     }
 
-    /// The stub tree with an Expense Uncategorised added, and its id.
-    fn stub_with_uncategorised() -> (CategoryId, SharedCategories) {
-        let (categories, shared) = stub();
+    /// The sample tree with an Expense Uncategorised added, and its id.
+    fn sample_with_uncategorised() -> (CategoryId, SharedCategories) {
+        let (categories, shared) = sample();
         let id = crate::get_or_create_uncategorised(
             &mut categories.borrow_mut().categories,
             CategoryTypes::Expense,
@@ -1393,7 +1393,7 @@ mod tests {
 
     #[test]
     fn add_never_offers_uncategorised_as_a_parent() {
-        let (uncategorised, shared) = stub_with_uncategorised();
+        let (uncategorised, shared) = sample_with_uncategorised();
         let budget = InMemoryCategoryBudget::default();
 
         let form = CategoryFormPresenter::add(shared.clone(), &budget, None);
@@ -1408,7 +1408,7 @@ mod tests {
 
     #[test]
     fn edit_never_offers_uncategorised_as_a_parent() {
-        let (_, shared) = stub_with_uncategorised();
+        let (_, shared) = sample_with_uncategorised();
         let budget = InMemoryCategoryBudget::default();
         let usage = InMemoryCategoryUsage::default();
 
@@ -1419,7 +1419,7 @@ mod tests {
 
     #[test]
     fn uncategorised_opens_with_name_parent_and_type_read_only_and_the_budget_settable() {
-        let (uncategorised, shared) = stub_with_uncategorised();
+        let (uncategorised, shared) = sample_with_uncategorised();
         let mut budget = InMemoryCategoryBudget::default();
         let usage = InMemoryCategoryUsage::default();
         let mut form = CategoryFormPresenter::edit(shared.clone(), &budget, &usage, uncategorised)
@@ -1463,7 +1463,7 @@ mod tests {
 
     #[test]
     fn a_save_that_moves_a_parent_under_a_leaf_with_rows_says_so_and_stays_open() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut budget = InMemoryCategoryBudget::default();
         budget.held.insert(TRANSPORT, held(2, 1, 0));
         let usage = InMemoryCategoryUsage::default();
@@ -1481,7 +1481,7 @@ mod tests {
 
     #[test]
     fn uncategorised_fixed_has_its_own_refusal_text() {
-        stub();
+        sample();
         assert_eq!(
             save_refusal_text(&CategoryError::UncategorisedFixed.into()),
             "Uncategorised is fixed: it can't be renamed, moved, retyped or given subcategories."

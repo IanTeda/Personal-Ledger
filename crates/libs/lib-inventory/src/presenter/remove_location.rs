@@ -177,7 +177,7 @@ impl RemoveLocationPresenter {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::stub;
+    use super::super::test_support::sample;
     use super::*;
     use crate::fake::{InMemoryInventory, InMemoryUsage, RecordingRouter, RouterCall};
     use crate::protocols::{InventoryRepository as _, LocationUse};
@@ -194,7 +194,7 @@ mod tests {
         }
 
         fn with_documents(index: usize, documents: usize) -> Self {
-            let (inventory, shared) = stub();
+            let (inventory, shared) = sample();
             let id = inventory.borrow().locations()[index].id;
             let mut usage = InMemoryUsage::default();
             usage.uses.insert(id, LocationUse { documents });
@@ -223,7 +223,7 @@ mod tests {
 
         /// Location `index` emptied of its Areas and Items.
         fn emptied(index: usize) -> Self {
-            let (inventory, shared) = stub();
+            let (inventory, shared) = sample();
             {
                 let mut rows = inventory.borrow_mut();
                 let id = rows.locations[index].id;
@@ -346,7 +346,7 @@ mod tests {
             .handle(RemoveLocationEvent::Cancel, &mut dialog.router);
         assert_eq!(dialog.router.take(), [RouterCall::CloseDialog(None)]);
 
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         assert!(
             RemoveLocationPresenter::new(
                 &shared,

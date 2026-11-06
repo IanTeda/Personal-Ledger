@@ -279,7 +279,7 @@ mod tests {
     use bigdecimal::BigDecimal;
     use chrono::NaiveDate;
     use lib_categories::contract::{self, PortsFactory, StoredPorts};
-    use lib_categories::default_categories;
+    use lib_categories::sample_categories;
     use lib_core::{AccountId, Money, PayeeId, TransactionId, TransactionStatus};
     use lib_transactions::{Split, Transaction};
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
@@ -417,17 +417,14 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        let mut categories = factory.create(default_categories());
+        let mut categories = factory.create(sample_categories());
         let dining = CategoryId::seed(8);
 
         categories.delete_category(dining);
         let categories = factory.reload(categories);
 
         assert!(categories.category(dining).is_none());
-        assert_eq!(
-            categories.categories().len(),
-            default_categories().len() - 1
-        );
+        assert_eq!(categories.categories().len(), sample_categories().len() - 1);
     }
 
     /// The Interactor's leaf rule is the person-facing refusal; `parent_id`'s key backs it, so a
@@ -438,7 +435,7 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        let mut categories = factory.create(default_categories());
+        let mut categories = factory.create(sample_categories());
         let stored = categories.categories();
 
         categories.delete_category(CategoryId::seed(6));
@@ -561,34 +558,34 @@ mod tests {
         assert!(crate::BillsAdapter::seed(&factory.writer, vec![plan], Vec::new()).is_err());
     }
 
-    /// The adapter answers Bills, Payees and the Import from its rows by `lib-categories`' rules, as the stub
-    /// Ledger's own reads did: the fakes both modules test on are the stub's.
+    /// The adapter answers Bills, Payees and the Import from its rows by `lib-categories`' rules, as the sample
+    /// Ledger's own reads did: the fakes both modules test on are the sample's.
     #[sqlx::test(migrations = "migrations/client")]
     async fn the_reads_match_the_fakes_bills_payees_and_the_import_test_on(
         _: SqlitePoolOptions,
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        let categories = factory.create(default_categories());
+        let categories = factory.create(sample_categories());
 
         assert_eq!(
             bill_categories(&categories.categories()),
-            lib_bills::fake::stub_categories()
+            lib_bills::fake::sample_categories()
         );
         assert_eq!(
             payee_categories(&categories.categories()),
-            lib_payees::fake::stub_categories()
+            lib_payees::fake::sample_categories()
         );
         assert_eq!(
             payee_categories(&categories.categories()),
-            lib_payees::fake::stub_categories(),
+            lib_payees::fake::sample_categories(),
             "an Import files rows under the leaves a Payee's Default category is chosen from"
         );
     }
 
     #[test]
     fn a_leaf_whose_name_another_leaf_shares_is_labelled_under_its_parent() {
-        let mut categories = default_categories();
+        let mut categories = sample_categories();
         categories.push(Category {
             id: CategoryId::new(),
             name: "Groceries".into(),

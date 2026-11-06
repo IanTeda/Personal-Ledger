@@ -293,7 +293,7 @@ mod tests {
     use lib_config::KeyBindingConfig;
     use lib_toast::Notice;
 
-    use super::super::test_support::stub;
+    use super::super::test_support::sample;
     use super::*;
     use crate::fake::{RecordingRouter, RouterCall};
     use crate::keymap::document_types_page_keymap;
@@ -346,7 +346,7 @@ mod tests {
 
     #[test]
     fn the_rows_run_in_the_users_order_with_their_cells() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let view = Page::new(shared).view();
 
         assert_eq!(view.rows.len(), 9);
@@ -361,7 +361,7 @@ mod tests {
             .rows
             .iter()
             .find(|row| row.tracks_date.is_some())
-            .expect("a dated stub type");
+            .expect("a dated sample type");
         assert!(dated.tracks_date.is_some());
         assert_eq!(view.columns.type_name, "Type");
         assert_eq!(view.columns.actions, "Actions");
@@ -371,7 +371,7 @@ mod tests {
 
     #[test]
     fn a_reminder_reads_in_days_or_months_and_only_where_a_date_is_tracked() {
-        let (documents, shared) = stub();
+        let (documents, shared) = sample();
         {
             let mut held = documents.borrow_mut();
             held.types[0].tracks_date = Some(crate::types::TracksDate::Ends);
@@ -387,7 +387,7 @@ mod tests {
 
     #[test]
     fn the_scope_counts_the_types_and_the_files_typed() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
 
         assert_eq!(
             Page::new(shared).view().scope,
@@ -397,7 +397,7 @@ mod tests {
 
     #[test]
     fn a_single_type_reads_singular() {
-        let (documents, shared) = stub();
+        let (documents, shared) = sample();
         documents.borrow_mut().types.truncate(1);
 
         assert!(Page::new(shared).view().scope.starts_with("1 type \u{b7} "));
@@ -405,7 +405,7 @@ mod tests {
 
     #[test]
     fn movement_walks_the_rows_and_the_first_is_selected_to_start() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
         let names = page.names();
 
@@ -422,7 +422,7 @@ mod tests {
 
     #[test]
     fn reorder_moves_the_selected_type_a_place_and_it_stays_selected() {
-        let (documents, shared) = stub();
+        let (documents, shared) = sample();
         let mut page = Page::new(shared);
 
         page.send(DocumentTypesPageEvent::Reorder(1));
@@ -438,7 +438,7 @@ mod tests {
 
     #[test]
     fn other_reorders_like_any_row() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
         page.send(DocumentTypesPageEvent::Move(Step::Last));
 
@@ -450,7 +450,7 @@ mod tests {
 
     #[test]
     fn new_edit_and_remove_open_their_dialogs_on_the_selected_type() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
         page.send(DocumentTypesPageEvent::Select(DocumentTypeId::seed(3)));
 
@@ -483,7 +483,7 @@ mod tests {
 
     #[test]
     fn remove_on_other_says_why_and_opens_the_notice() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
         page.send(DocumentTypesPageEvent::Move(Step::Last));
 
@@ -509,7 +509,7 @@ mod tests {
                 false
             }
         }
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut presenter = DocumentTypesPagePresenter::new(
             shared,
             document_types_page_keymap(&KeyBindingConfig::default()),
@@ -525,7 +525,7 @@ mod tests {
 
     #[test]
     fn a_save_or_a_removal_selects_the_type_the_dialog_named() {
-        let (documents, shared) = stub();
+        let (documents, shared) = sample();
         let mut page = Page::new(shared);
 
         page.send(DocumentTypesPageEvent::DialogClosed(Some(
@@ -556,7 +556,7 @@ mod tests {
 
     #[test]
     fn selecting_a_type_that_is_gone_changes_nothing() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
         page.send(DocumentTypesPageEvent::Select(DocumentTypeId::seed(4)));
 
@@ -567,7 +567,7 @@ mod tests {
 
     #[test]
     fn the_hints_read_the_keys_bound_now() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let chords = |page: &Page| -> Vec<String> {
             page.view()
                 .hints

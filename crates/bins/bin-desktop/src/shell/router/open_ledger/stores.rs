@@ -486,10 +486,10 @@ mod tests {
         let writer = storage.writer.clone();
         let on = on_storage_with_bills(cx, storage);
         let store = on.store.clone();
-        let wallet = lib_accounts::default_accounts()
+        let wallet = lib_accounts::sample_accounts()
             .into_iter()
             .find(|account| account.name == "Wallet")
-            .expect("a stub Account")
+            .expect("a sample Account")
             .id;
 
         delete_account(cx, &on, wallet).expect("nothing pays from the Wallet");
@@ -542,7 +542,7 @@ mod tests {
                             .iter()
                             .any(|t| t.splits.iter().any(|s| s.category_id == id))
                 })
-                .expect("a stub Category with Splits, a Bill Plan and a Payee default")
+                .expect("a sample Category with Splits, a Bill Plan and a Payee default")
         });
 
         let deleted = lib_category_deletion::interactor::DeleteCategory { id: gone }
@@ -686,7 +686,7 @@ mod tests {
                     .first()
                     .map(|split| (entry.id(), *split))
                 })
-                .expect("the stub leaves an entry with a Match candidate")
+                .expect("the sample leaves an entry with a Match candidate")
         });
         let mut open = entries
             .iter()
@@ -796,7 +796,7 @@ mod tests {
                         .map(|t| (entry.id(), t.account_id)),
                     _ => None,
                 })
-                .expect("the stub pays an entry")
+                .expect("the sample pays an entry")
         });
         let resolution = |cx: &mut TestAppContext, store: &Entity<LedgerStores>| {
             store.read_with(cx, |store, _| {
@@ -826,7 +826,7 @@ mod tests {
         let budgets = on.store.read_with(cx, |store, _| budgets_of(store));
         assert!(
             budgets.iter().any(|b| b.account_ids.contains(&account)),
-            "a stub Budget counts the Account"
+            "a sample Budget counts the Account"
         );
 
         delete_account(cx, &on, account).expect("no Plan pays from it now");
@@ -881,7 +881,7 @@ mod tests {
                 .count();
             (account, plans, booked)
         });
-        assert!(booked > 0, "the stub books to a Bill Plan's Account");
+        assert!(booked > 0, "the sample books to a Bill Plan's Account");
 
         assert_eq!(
             delete_account(cx, &on, account),

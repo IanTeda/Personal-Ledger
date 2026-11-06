@@ -76,7 +76,7 @@ impl UnitsAdapter {
     /// an empty database, before the first [`Self::load`]. A Ledger that already has a base Unit
     /// keeps it, so seeding again never resets the person's choice.
     ///
-    /// [`Self::seed`] with the rows of an in-memory set, the stub's or a test's.
+    /// [`Self::seed`] with the rows of an in-memory set, the sample's or a test's.
     ///
     /// # Errors
     /// Returns the error of the write; nothing is written then.
@@ -648,17 +648,17 @@ mod tests {
         }
     }
 
-    /// `lib-transactions`' read check: each Unit is stored like the stub's first, with no price
+    /// `lib-transactions`' read check: each Unit is stored like the sample's first, with no price
     /// history and priced by Manual entry, and the first is the base Unit, which each is quoted in.
     #[sqlx::test(migrations = "migrations/client")]
     async fn transactions_read_the_units_rows(_: SqlitePoolOptions, options: SqliteConnectOptions) {
         fn store(writer: &Writer, rows: Vec<lib_transactions::TransactionUnit>) {
-            let template = InMemoryPorts::stub(Utc::now())
+            let template = InMemoryPorts::sample(Utc::now())
                 .units
                 .units
                 .into_iter()
                 .next()
-                .expect("the stub has a Unit");
+                .expect("the sample has a Unit");
             let base = rows.first().expect("a Unit to store").id;
             let units = rows
                 .into_iter()
@@ -799,7 +799,7 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        let mut adapter = factory.create(InMemoryPorts::stub(Utc::now()));
+        let mut adapter = factory.create(InMemoryPorts::sample(Utc::now()));
         let stored = snapshot(&mut adapter);
         let pending = factory.pending.clone();
         let add = |adapter: &mut UnitsAdapter, code: &str| {

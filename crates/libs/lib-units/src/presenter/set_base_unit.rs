@@ -157,7 +157,7 @@ impl SetBaseUnitPresenter {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::{hints, pairs, stub};
+    use super::super::test_support::{hints, pairs, sample};
     use super::*;
     use crate::fake::{RecordingRouter, RouterCall};
 
@@ -171,7 +171,7 @@ mod tests {
 
     #[test]
     fn the_select_offers_the_active_units_by_code_starting_on_the_base() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         ports.borrow_mut().units.units[2].is_active = false;
         let view = SetBaseUnitPresenter::new(shared).view_model();
 
@@ -182,7 +182,7 @@ mod tests {
 
     #[test]
     fn confirming_moves_the_base_and_closes_with_its_code() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut dialog = SetBaseUnitPresenter::new(shared);
 
         let calls = send(
@@ -205,7 +205,7 @@ mod tests {
 
     #[test]
     fn a_unit_deactivated_or_removed_under_the_dialog_is_refused_as_text() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut dialog = SetBaseUnitPresenter::new(shared);
         send(
             &mut dialog,
@@ -230,7 +230,7 @@ mod tests {
 
     #[test]
     fn its_one_select_takes_choose_and_cancel_and_no_next_field() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let view = SetBaseUnitPresenter::new(shared).view_model();
 
         assert_eq!(
@@ -244,7 +244,7 @@ mod tests {
 
     #[test]
     fn dialog_input_opens_steps_and_commits_the_list_then_select_confirms() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut dialog = SetBaseUnitPresenter::new(shared);
         let calls = send(
             &mut dialog,
@@ -271,7 +271,7 @@ mod tests {
 
     #[test]
     fn a_click_toggles_the_list_and_back_closes_it_without_picking() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut dialog = SetBaseUnitPresenter::new(shared);
         send(&mut dialog, vec![SetBaseUnitEvent::ToggleList]);
         assert!(dialog.view_model().list.is_open());

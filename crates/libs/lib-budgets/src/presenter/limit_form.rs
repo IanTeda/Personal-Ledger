@@ -668,7 +668,7 @@ impl LimitFormPresenter {
 mod tests {
     use super::*;
     use crate::fake::{RecordingRouter, Routed};
-    use crate::presenter::test_support::{stub, today};
+    use crate::presenter::test_support::{sample, today};
     use crate::protocols::BudgetRepository as _;
     use crate::{PERSONAL_SPENDING_ID, cents_money};
 
@@ -686,7 +686,7 @@ mod tests {
 
     impl Form {
         fn edit() -> Self {
-            let (ports, shared) = stub();
+            let (ports, shared) = sample();
             Self {
                 presenter: LimitFormPresenter::edit(
                     &shared,
@@ -702,7 +702,7 @@ mod tests {
         }
 
         fn picker() -> Self {
-            let (ports, shared) = stub();
+            let (ports, shared) = sample();
             // Groceries stops this month, so the picker has a leaf to offer.
             {
                 let mut held = ports.borrow_mut();
@@ -879,7 +879,7 @@ mod tests {
             .borrow()
             .budgets
             .budget(PERSONAL_SPENDING_ID)
-            .expect("the stub's default");
+            .expect("the sample's default");
         assert_eq!(
             applied(budget.chain(GROCERIES), current()).map(|found| found.amount),
             Some(cents_money(70_046)),
@@ -908,7 +908,7 @@ mod tests {
 
     #[test]
     fn it_does_not_open_on_a_parent_an_archived_budget_or_a_category_that_cannot_be_budgeted() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let open = |category| {
             LimitFormPresenter::edit(
                 &shared,

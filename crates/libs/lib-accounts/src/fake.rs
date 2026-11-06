@@ -1,4 +1,4 @@
-//! In-memory ports and the stub seed, for tests and UI-first work. Each holds its rows in a plain
+//! In-memory ports and the sample seed, for tests and UI-first work. Each holds its rows in a plain
 //! field so a test can set up or read state directly.
 
 use std::cell::RefCell;
@@ -13,7 +13,7 @@ use crate::protocols::{
     AccountInstitution, AccountInstitutions, AccountUnit, AccountUnits, AccountsDialog,
     AccountsOutcome, AccountsPorts, AccountsRouter, SharedPorts,
 };
-use crate::{Account, AccountRepository, AccountUsage, AccountUse, default_accounts};
+use crate::{Account, AccountRepository, AccountUsage, AccountUse, sample_accounts};
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct InMemoryAccounts {
@@ -21,11 +21,11 @@ pub struct InMemoryAccounts {
 }
 
 impl InMemoryAccounts {
-    /// The stub seed: the Sample Ledger's Accounts (see [`default_accounts`]). Ids match
+    /// The sample seed: the Sample Ledger's Accounts (see [`sample_accounts`]). Ids match
     /// `lib-database`'s joined Sample Ledger, so its Transactions and Budgets still resolve their Accounts.
-    pub fn stub() -> Self {
+    pub fn sample() -> Self {
         Self {
-            accounts: default_accounts(),
+            accounts: sample_accounts(),
         }
     }
 }
@@ -88,9 +88,9 @@ impl AccountUnits for InMemoryAccountUnits {
     }
 }
 
-/// The stub Institutions the stub Accounts name, with their seed ids, in the Institutions' order:
+/// The sample Institutions the sample Accounts name, with their seed ids, in the Institutions' order:
 /// the Personal Institution, ANZ, Amex, Vanguard, Westpac and the crypto exchange.
-pub fn stub_institutions() -> Vec<AccountInstitution> {
+pub fn sample_institutions() -> Vec<AccountInstitution> {
     [
         (InstitutionId::SEED_PERSONAL, "Personal"),
         (InstitutionId::SEED_ANZ, "ANZ Banking Group"),
@@ -111,8 +111,8 @@ pub fn stub_institutions() -> Vec<AccountInstitution> {
     .collect()
 }
 
-/// The stub Units the stub Accounts count in: aud (the base), the vas fund and btc.
-pub fn stub_units() -> Vec<AccountUnit> {
+/// The sample Units the sample Accounts count in: aud (the base), the vas fund and btc.
+pub fn sample_units() -> Vec<AccountUnit> {
     [
         (UnitId::SEED_AUD, "aud", 2),
         (UnitId::SEED_VAS, "vas", 2),
@@ -138,17 +138,17 @@ pub struct InMemoryPorts {
 }
 
 impl InMemoryPorts {
-    /// The stub Accounts with nothing naming any of them, the stub Institutions and Units they
+    /// The sample Accounts with nothing naming any of them, the sample Institutions and Units they
     /// name, and aud as the base Unit.
-    pub fn stub() -> Self {
+    pub fn sample() -> Self {
         Self {
-            accounts: InMemoryAccounts::stub(),
+            accounts: InMemoryAccounts::sample(),
             usage: InMemoryAccountUsage::default(),
             institutions: InMemoryAccountInstitutions {
-                institutions: stub_institutions(),
+                institutions: sample_institutions(),
             },
             units: InMemoryAccountUnits {
-                units: stub_units(),
+                units: sample_units(),
                 base: Some(UnitId::SEED_AUD),
             },
         }
@@ -243,7 +243,7 @@ mod tests {
 
     #[test]
     fn upserting_an_account_replaces_the_row_with_its_id_or_appends_it() {
-        let mut ports = InMemoryPorts::stub();
+        let mut ports = InMemoryPorts::sample();
         let seeded = ports.accounts.accounts().len();
         let mut wallet = ports.accounts.account(AccountId::seed(1)).expect("seeded");
         wallet.name = "Purse".into();
@@ -264,7 +264,7 @@ mod tests {
 
     #[test]
     fn an_account_no_test_names_is_unused() {
-        let ports = InMemoryPorts::stub();
+        let ports = InMemoryPorts::sample();
         assert_eq!(
             ports.usage.account_usage(AccountId::seed(1)),
             AccountUse::default()

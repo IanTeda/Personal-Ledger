@@ -95,7 +95,7 @@ mod tests {
 
     #[test]
     fn deleting_a_custom_source_moves_its_units_to_manual_entry_with_their_weekly_prices() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         let source = add_custom(&mut ports);
         ports.units.units[1].link.source_id = source.id;
         let btc = ports.units.units[1].clone();
@@ -115,7 +115,7 @@ mod tests {
 
     #[test]
     fn deleting_a_custom_source_no_unit_uses_moves_nothing() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         let units = ports.units.clone();
         let source = add_custom(&mut ports);
 
@@ -129,7 +129,7 @@ mod tests {
 
     #[test]
     fn deleting_a_built_in_manual_entry_or_a_gone_source_is_refused_and_nothing_is_written() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         EditPriceSource {
             id: COINGECKO,
             name: "Coins".into(),

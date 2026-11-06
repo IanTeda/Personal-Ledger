@@ -513,7 +513,7 @@ mod tests {
     use crate::writer::WriteFailure;
     use crate::{PayeesAdapter, TransactionsAdapter};
 
-    /// The adapter on one test database, with its pending batch. The stub's Units, Accounts,
+    /// The adapter on one test database, with its pending batch. The sample's Units, Accounts,
     /// Categories and Payees are stored first, which a Bill Plan and a Split name. A reload commits, loads afresh,
     /// and fails the check if the writer reported a failure, so a write SQLite refuses can't pass
     /// unseen.
@@ -528,7 +528,7 @@ mod tests {
             let (writer, failures) = Writer::spawn(options).expect("the test database opens");
             crate::test_support::store_sample_references(&writer);
             PayeesAdapter::seed(&writer, crate::seed::sample_payees())
-                .expect("the stub Payees are written");
+                .expect("the sample Payees are written");
             Self {
                 pending: PendingWrites::new(writer.clone()),
                 writer,
@@ -688,12 +688,12 @@ mod tests {
     }
 
     /// The Sample Ledger's Bills and the Splits their Paid entries name, as of a fixed day.
-    fn stub() -> (Vec<BillSplit>, InMemoryBills) {
-        let stub =
+    fn sample() -> (Vec<BillSplit>, InMemoryBills) {
+        let sample =
             crate::FakeStores::sample(NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date"));
         (
-            crate::seed::bill_splits(&stub.transactions.transactions),
-            stub.bills,
+            crate::seed::bill_splits(&sample.transactions.transactions),
+            sample.bills,
         )
     }
 
@@ -702,7 +702,7 @@ mod tests {
             .entries()
             .into_iter()
             .find(|entry| matches!(entry.resolution, Resolution::Paid(_)))
-            .expect("the stub pays an entry")
+            .expect("the sample pays an entry")
     }
 
     fn paid_by(entry: &BillScheduleEntry) -> TransactionId {
@@ -719,13 +719,13 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        let (splits, seed) = stub();
+        let (splits, seed) = sample();
         let mut bills = factory.create(seed, splits);
         let open = bills
             .entries()
             .into_iter()
             .find(BillScheduleEntry::is_open)
-            .expect("the stub leaves an entry open");
+            .expect("the sample leaves an entry open");
 
         bills.upsert_entry(BillScheduleEntry {
             resolution: Resolution::Paid(SplitRef {
@@ -750,7 +750,7 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        let (splits, seed) = stub();
+        let (splits, seed) = sample();
         let bills = factory.create(seed, splits);
         let mut ledger_transactions = factory.transactions();
         let rewritten = paid_entry(&bills);

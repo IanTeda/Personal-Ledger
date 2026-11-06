@@ -48,13 +48,13 @@ impl LedgerBackedPorts {
         self.writes.get()
     }
 
-    /// The stub Payees in memory, reading the other domains through `reads`, for a test that needs
+    /// The sample Payees in memory, reading the other domains through `reads`, for a test that needs
     /// no storage.
     pub fn in_memory(reads: StoredPayeeReads) -> DesktopPorts {
         Self::shared(
             Box::new(lib_payees::fake::InMemoryPorts {
                 payees: lib_payees::fake::InMemoryPayees {
-                    payees: lib_payees::default_payees(),
+                    payees: lib_payees::sample_payees(),
                 },
                 ..Default::default()
             }),
@@ -129,14 +129,14 @@ mod tests {
 
     use super::*;
 
-    /// The ports on `stub`'s Payees, reading its Transactions, Bill Plans and Categories in
+    /// The ports on `sample`'s Payees, reading its Transactions, Bill Plans and Categories in
     /// memory, with the Transactions store a test writes a Split to.
-    fn on(stub: &FakeStores) -> (DesktopPorts, SharedTransactionsStore) {
+    fn on(sample: &FakeStores) -> (DesktopPorts, SharedTransactionsStore) {
         let transactions: SharedTransactionsStore =
-            Rc::new(RefCell::new(stub.transactions.clone()));
+            Rc::new(RefCell::new(sample.transactions.clone()));
         let reads = StoredPayeeReads {
             transactions: transactions.clone(),
-            bills: crate::bills::ports::in_memory_store(stub),
+            bills: crate::bills::ports::in_memory_store(sample),
             categories: crate::categories::ports::in_memory(),
         };
         (LedgerBackedPorts::in_memory(reads), transactions)
@@ -152,7 +152,7 @@ mod tests {
             .expect("memory always counts");
         assert!(
             woolworths.splits > 0,
-            "the stub's groceries name Woolworths"
+            "the sample's groceries name Woolworths"
         );
         let telstra = PayeesPorts::usage(&*ports)
             .payee_usage(PayeeId::seed(20))
@@ -165,14 +165,14 @@ mod tests {
 
     #[test]
     fn a_split_written_to_the_store_after_the_ports_are_built_is_counted() {
-        let stub = FakeStores::sample(chrono::Local::now().date_naive());
+        let sample = FakeStores::sample(chrono::Local::now().date_naive());
         let woolworths = PayeeId::seed(1);
-        let (ports, transactions) = on(&stub);
+        let (ports, transactions) = on(&sample);
         let before = PayeesPorts::usage(&*ports.borrow())
             .payee_usage(woolworths)
             .expect("memory always counts");
 
-        let mut booked = stub.transactions.transactions[0].clone();
+        let mut booked = sample.transactions.transactions[0].clone();
         booked.id = TransactionId::seed(9_999);
         booked.splits.truncate(1);
         booked.splits[0].payee_id = Some(woolworths);

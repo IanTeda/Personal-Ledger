@@ -695,14 +695,14 @@ mod tests {
         )
         .stores;
         let setup = SettingsSetup {
-            units: crate::units::UnitsSetup::stub(&storage),
-            institutions: crate::institutions::InstitutionsSetup::stub(&storage),
-            payees: crate::payees::PayeesSetup::stub(&storage),
-            document_types: crate::document_types::DocumentTypesSetup::stub(&storage),
-            accounts: crate::accounts::AccountsSetup::stub(&storage),
-            categories: crate::categories::CategoriesSetup::stub(&storage),
-            tags: crate::tags::TagsSetup::stub(&storage),
-            inventory: crate::inventory::InventorySetup::stub(&storage),
+            units: crate::units::UnitsSetup::sample(&storage),
+            institutions: crate::institutions::InstitutionsSetup::sample(&storage),
+            payees: crate::payees::PayeesSetup::sample(&storage),
+            document_types: crate::document_types::DocumentTypesSetup::sample(&storage),
+            accounts: crate::accounts::AccountsSetup::sample(&storage),
+            categories: crate::categories::CategoriesSetup::sample(&storage),
+            tags: crate::tags::TagsSetup::sample(&storage),
+            inventory: crate::inventory::InventorySetup::sample(&storage),
             ledger: crate::settings::ledger::LedgerKeys::new(&KeyBindingConfig::default()),
         };
         let announcer = cx.new(|_| Announcer::default());

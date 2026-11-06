@@ -1,5 +1,5 @@
 //! The pure engine behind the Transactions table (`docs/ux/desktop-mockups/03-transactions/README.md`):
-//! applies a [`TransactionFilters`] value and a search string to the stub data and returns the
+//! applies a [`TransactionFilters`] value and a search string to the sample data and returns the
 //! visible rows newest-first with each row's amount, its running total and the footer figure.
 //! `gpui`-free and side-effect free, so every rule is unit-tested without a window.
 //!
@@ -451,14 +451,14 @@ mod tests {
     use lib_core::AccountType;
 
     use super::*;
-    use crate::fake::{InMemoryTransactionReads, SeedAccount, SeedNames, stub_transactions};
+    use crate::fake::{InMemoryTransactionReads, SeedAccount, SeedNames, sample_transactions};
     use crate::{TransactionAccount, TransactionUnit};
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 19).unwrap()
     }
 
-    /// Answers the seed's names with rows it makes as they are asked for, so the stub Transactions
+    /// Answers the seed's names with rows it makes as they are asked for, so the sample Transactions
     /// can be generated here without the other domains' crates.
     struct Mint(RefCell<InMemoryTransactionReads>);
 
@@ -512,15 +512,15 @@ mod tests {
     }
 
     impl World {
-        /// The stub Accounts that take Transactions and the stub's counts for them.
+        /// The sample Accounts that take Transactions and the sample's counts for them.
         fn seeded() -> Self {
-            let stub = [
+            let sample = [
                 (1, "Wallet", AccountType::Cash, 96),
                 (2, "ANZ Everyday", AccountType::Bank, 312),
                 (3, "ANZ Offset", AccountType::Bank, 88),
                 (4, "Amex Platinum", AccountType::CreditCard, 204),
             ];
-            let seed_accounts: Vec<SeedAccount> = stub
+            let seed_accounts: Vec<SeedAccount> = sample
                 .iter()
                 .map(|(id, name, account_type, count)| SeedAccount {
                     id: AccountId::seed(*id),
@@ -530,7 +530,7 @@ mod tests {
                 })
                 .collect();
             let mint = Mint(RefCell::new(InMemoryTransactionReads::default()));
-            let transactions = stub_transactions(&seed_accounts, &mint, today());
+            let transactions = sample_transactions(&seed_accounts, &mint, today());
             // The one tree the rules read: Groceries and Dining sit under Food.
             let food = mint.category("Food").unwrap();
             let mut reads = mint.0.into_inner();

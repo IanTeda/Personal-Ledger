@@ -1173,7 +1173,7 @@ impl Shell {
                         }
                     })
                 }
-                // `X` (no `Ctrl`, matching the handoff's own bare key) — merge stub.
+                // `X` (no `Ctrl`, matching the handoff's own bare key) — merge sample.
                 KeyCode::Char('X') if !ctrl => Some(Action::CategoryMerge),
                 KeyCode::Char(c) if !ctrl => Some(Action::CategoryEditPopupInput(c)),
                 _ => None,
@@ -2944,7 +2944,7 @@ mod tests {
 
     use super::*;
 
-    /// A `Shell` with a Ledger open on the stub seed's Units in memory, as most tests need.
+    /// A `Shell` with a Ledger open on the sample seed's Units in memory, as most tests need.
     fn opened() -> Shell {
         opened_with(KeyBindingConfig::default())
     }

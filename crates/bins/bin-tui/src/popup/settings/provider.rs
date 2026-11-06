@@ -2,7 +2,7 @@
 //! Server's Edit (TUI-035): the provider, its model and its API key, a test, and Save, which stays
 //! dim until a test passes.
 //!
-//! A wireframe: the Client can't call a provider yet, so the test runs on a stub, [`check`], and
+//! A wireframe: the Client can't call a provider yet, so the test runs on a sample, [`check`], and
 //! Save only flashes "not yet built". The API key is a [`SecretString`], drawn masked, never
 //! logged, and never shown again: editing a provider asks for the key anew.
 
@@ -21,7 +21,7 @@ pub const PROVIDERS: [&str; 3] = ["Claude", "OpenAI", "Ollama (local)"];
 /// The provider that runs on this device and needs no key.
 const LOCAL: usize = 2;
 
-/// wireframe: keys the stub accepts start with this.
+/// wireframe: keys the sample accepts start with this.
 const KEY_PREFIX: &str = "sk-";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -111,7 +111,7 @@ impl ProviderPopup {
         }
     }
 
-    /// wireframe: the stub test. It checks what the Client can check alone, a model and, away
+    /// wireframe: the sample test. It checks what the Client can check alone, a model and, away
     /// from a local provider, a key, then accepts keys that start with [`KEY_PREFIX`].
     fn check(&self) -> Tested {
         let provider = PROVIDERS[self.provider];

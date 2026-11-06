@@ -280,12 +280,12 @@ pub trait LedgerFactory {
     type Reads: LedgerUnits;
     type Writes: LedgerPreferences;
 
-    /// The stub Units (aud, btc, vas, aud the base) with those of `deactivated` made inactive,
+    /// The sample Units (aud, btc, vas, aud the base) with those of `deactivated` made inactive,
     /// read and written through ports on one store.
     fn create(&mut self, deactivated: &[UnitId]) -> (Self::Reads, Self::Writes);
 }
 
-/// The choices are the active Units by code, and the base is the stub's.
+/// The choices are the active Units by code, and the base is the sample's.
 pub fn the_choices_are_the_active_units_by_code(factory: &mut impl LedgerFactory) {
     let (reads, _) = factory.create(&[UnitId::SEED_BTC]);
 
@@ -357,7 +357,7 @@ mod tests {
         type Writes = InMemoryLedgerUnits;
 
         fn create(&mut self, deactivated: &[UnitId]) -> (InMemoryLedgerUnits, InMemoryLedgerUnits) {
-            let units = InMemoryLedgerUnits::stub();
+            let units = InMemoryLedgerUnits::sample();
             for id in deactivated {
                 units.deactivate(*id);
             }

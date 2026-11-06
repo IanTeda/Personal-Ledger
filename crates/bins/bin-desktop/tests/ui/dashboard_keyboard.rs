@@ -18,7 +18,10 @@ fn the_dashboard_is_the_start_page_and_lists_bills_needing_attention(app: &mut T
     assert_eq!(ui.noun(), Noun::Dashboard);
 
     let bills = ui.dashboard_bills();
-    assert!(!bills.is_empty(), "the stub ledger has Bills to attend to");
+    assert!(
+        !bills.is_empty(),
+        "the sample ledger has Bills to attend to"
+    );
     assert!(bills.iter().all(|bill| !bill.plan.is_empty()));
 }
 
@@ -63,7 +66,7 @@ fn attention_due_in(ui: &mut Harness<'_>, month: &str) -> Vec<String> {
         .collect()
 }
 
-/// The one August entry the stub stores before August is generated: a long Recurrence keeps one
+/// The one August entry the sample stores before August is generated: a long Recurrence keeps one
 /// future entry past the horizon.
 const STORED_IN_AUGUST: &str = "Council Rates";
 

@@ -479,7 +479,7 @@ fn deleting_an_account_quotes_its_counts_and_commits_once(app: &mut TestAppConte
         .dialog_value("transactions")
         .and_then(|count| count.parse().ok())
         .expect("the Dialog quotes a count");
-    assert!(transactions > 0, "the stub books to {name}");
+    assert!(transactions > 0, "the sample books to {name}");
     assert_eq!(
         ui.dialog_value("title").as_deref(),
         Some(format!("Delete account \u{2014} {name}").as_str())

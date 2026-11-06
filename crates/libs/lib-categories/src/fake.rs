@@ -1,4 +1,4 @@
-//! The in-memory ports and the stub seed, for tests and UI-first work. Each holds its rows in a
+//! The in-memory ports and the sample seed, for tests and UI-first work. Each holds its rows in a
 //! plain field, in the order they were added, so a test can set up or read state directly.
 //! [`RecordingRouter`] is a Router that only records what it was asked.
 
@@ -16,7 +16,7 @@ use crate::protocols::{
     SharedCategories, TypeChangeBlockers,
 };
 use crate::{
-    Category, CategoryRepository, default_categories, descendants_inclusive, get, is_leaf,
+    Category, CategoryRepository, descendants_inclusive, get, is_leaf, sample_categories,
     tree_order,
 };
 
@@ -28,11 +28,11 @@ pub struct InMemoryCategories {
 }
 
 impl InMemoryCategories {
-    /// The stub seed: the Sample Ledger's Categories (see [`default_categories`]). Ids match
+    /// The sample seed: the Sample Ledger's Categories (see [`sample_categories`]). Ids match
     /// `lib-database`'s joined Sample Ledger, so its Splits, Bill Plans, Payees and Budgets still resolve theirs.
-    pub fn stub() -> Self {
+    pub fn sample() -> Self {
         Self {
-            categories: default_categories(),
+            categories: sample_categories(),
         }
     }
 

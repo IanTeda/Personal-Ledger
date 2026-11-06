@@ -1,4 +1,4 @@
-//! The stub dataset: the seeded Budgets and their Category Limits.
+//! The sample dataset: the seeded Budgets and their Category Limits.
 
 use std::collections::BTreeMap;
 
@@ -104,7 +104,7 @@ fn seeded_limits(
 /// The one Budget an existing Ledger with none is given (#952): **Personal spending**, the default,
 /// in `unit` (the base Unit) on every Account in it that takes Transactions, with no amounts, so
 /// there is always an active Budget for the Dashboard, the rail badge and the Categories Monthly
-/// budget field. It carries [`PERSONAL_SPENDING_ID`], as the stub's does.
+/// budget field. It carries [`PERSONAL_SPENDING_ID`], as the sample's does.
 pub fn personal_spending(unit: UnitId, accounts: &[BudgetAccount]) -> Budget {
     Budget {
         id: PERSONAL_SPENDING_ID,
@@ -124,9 +124,9 @@ pub fn personal_spending(unit: UnitId, accounts: &[BudgetAccount]) -> Budget {
 
 /// The seeded Budgets: **Personal spending** (migrated, the default, on every AUD Account that
 /// takes Transactions) and **Joint household**, a second Limits Budget over two of the same
-/// Accounts and some of the same Categories, so the two overlap. A Category or Account the stubs
+/// Accounts and some of the same Categories, so the two overlap. A Category or Account the samples
 /// lack is left out.
-pub fn default_budgets(
+pub fn sample_budgets(
     accounts: &[BudgetAccount],
     categories: &[BudgetCategory],
     today: NaiveDate,
@@ -171,7 +171,7 @@ mod tests {
     #[test]
     fn personal_spending_is_an_empty_default_on_every_account_in_its_unit_that_takes_transactions()
     {
-        let budget = personal_spending(UnitId::SEED_AUD, &fake::stub_accounts());
+        let budget = personal_spending(UnitId::SEED_AUD, &fake::sample_accounts());
         assert_eq!(budget.id, PERSONAL_SPENDING_ID);
         assert!(budget.is_default);
         assert!(!budget.is_archived());

@@ -115,7 +115,7 @@ pub struct ShellLogs {
 }
 
 /// Builds `Root` from persisted state the way the app does, so tests construct it identically.
-/// `clock` is a parameter so tests can pin, and move, the date the seeded stub data and scopes hang
+/// `clock` is a parameter so tests can pin, and move, the date the seeded sample data and scopes hang
 /// off. `ledger` is the Ledger file start-up opened (the app's SQLite adapters or a test's
 /// in-memory ports), which the Shell opens as its Open Ledger through [`OpenLedger::build`]; `None`
 /// starts with no Ledger open. `start_view` is where it lands (ADR-0053,
@@ -215,7 +215,7 @@ pub struct Root {
 }
 
 impl Root {
-    /// Builds the Shell on `clock`, which dates the seeded stub data from the day it reads now, so
+    /// Builds the Shell on `clock`, which dates the seeded sample data from the day it reads now, so
     /// tests pin it rather than live at the mercy of the wall clock. Builds no Ledger: that is
     /// [`Self::open_ledger`]'s. Settings comes up with its This device pages.
     pub fn with_clock(
@@ -705,13 +705,13 @@ mod tests {
     use lib_viper::keymap::KeyBindingConfig;
 
     fn seeded_ledger() -> (Vec<Account>, Vec<Category>, Vec<Transaction>) {
-        let accounts = lib_accounts::default_accounts();
-        let categories = lib_categories::default_categories();
-        let transactions = transactions::default_transactions(
+        let accounts = lib_accounts::sample_accounts();
+        let categories = lib_categories::sample_categories();
+        let transactions = transactions::sample_transaction_history(
             &accounts,
             &categories,
-            &lib_payees::default_payees(),
-            &lib_tags::default_tags(),
+            &lib_payees::sample_payees(),
+            &lib_tags::sample_tags(),
             Local::now().date_naive(),
         );
         (accounts, categories, transactions)

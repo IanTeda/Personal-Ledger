@@ -451,7 +451,7 @@ mod tests {
         }
     }
 
-    /// The adapter on one test database, with its pending batch. The stub's Units are stored
+    /// The adapter on one test database, with its pending batch. The sample's Units are stored
     /// first, which a Location names. A reload commits, loads afresh, and fails the check if the
     /// writer reported a failure, so a write SQLite refuses can't pass unseen.
     struct AdapterFactory {
@@ -538,7 +538,7 @@ mod tests {
     }
 
     /// The Units, Inventory and Documents adapters loaded on one test database, behind
-    /// [`crate::StoredInventoryReads`] (#1014). The Documents are the stub's first, one copy for
+    /// [`crate::StoredInventoryReads`] (#1014). The Documents are the sample's first, one copy for
     /// each list of Items, Linked to those Items alone.
     struct ReadsAdapters {
         writer: Writer,
@@ -571,7 +571,7 @@ mod tests {
                 crate::seed::sample_documents(today(), &crate::seed::sample_institutions())
                     .into_iter()
                     .next()
-                    .expect("the stub has a Document");
+                    .expect("the sample has a Document");
             let documents = documents
                 .into_iter()
                 .enumerate()
@@ -634,7 +634,7 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         const ITEMS: u32 = 20_000;
-        let mut seed = lib_inventory::default_inventory(today());
+        let mut seed = lib_inventory::sample_inventory(today());
         let template = seed.items[0].clone();
         seed.items.extend((0..ITEMS).map(|n| Item {
             id: ItemId::seed(100_000 + n),
@@ -716,9 +716,9 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        let mut port = factory.create(lib_inventory::default_inventory(today()));
-        let stub = port.inventory().inventory();
-        let (elm, storage) = (stub.locations[0].clone(), stub.locations[1].clone());
+        let mut port = factory.create(lib_inventory::sample_inventory(today()));
+        let sample = port.inventory().inventory();
+        let (elm, storage) = (sample.locations[0].clone(), sample.locations[1].clone());
 
         port.upsert_location(Location {
             id: LocationId::new(),
@@ -729,8 +729,8 @@ mod tests {
         assert_eq!(factory.commit_and_count_failures(), 1, "no such Unit");
         port.reload().expect("the rows load");
 
-        let item = stub.items.iter().find(|i| i.location == elm.id).cloned();
-        let item = item.expect("the stub's Elm St holds Items");
+        let item = sample.items.iter().find(|i| i.location == elm.id).cloned();
+        let item = item.expect("the sample's Elm St holds Items");
         port.upsert_item(Item {
             area: storage.areas[0].id,
             ..item.clone()
@@ -764,7 +764,7 @@ mod tests {
         port.reload().expect("the rows load");
         assert_eq!(
             port.inventory().inventory(),
-            stub,
+            sample,
             "every refusal rolled back"
         );
     }

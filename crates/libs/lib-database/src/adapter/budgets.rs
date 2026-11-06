@@ -327,14 +327,14 @@ async fn read(conn: &mut SqliteConnection) -> Result<Vec<Budget>> {
 mod tests {
     use std::sync::mpsc;
 
-    use lib_budgets::contract::{self, PortsFactory, stub_budgets};
+    use lib_budgets::contract::{self, PortsFactory, sample_budgets};
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
     use super::*;
     use crate::commit::Commit;
     use crate::writer::WriteFailure;
 
-    /// The adapter on one test database, with its pending batch. The stub's Units, Accounts and
+    /// The adapter on one test database, with its pending batch. The sample's Units, Accounts and
     /// Categories are stored first, which a Budget names. A reload commits, loads afresh, and fails
     /// the check if the writer reported a failure, so a write SQLite refuses can't pass unseen.
     struct AdapterFactory {
@@ -480,8 +480,8 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        let mut budgets = factory.create(stub_budgets());
-        let mut joint = budgets.budget(BudgetId::seed(2)).expect("a stub Budget");
+        let mut budgets = factory.create(sample_budgets());
+        let mut joint = budgets.budget(BudgetId::seed(2)).expect("a sample Budget");
         joint.is_default = true;
 
         budgets.upsert_budget(&joint);
@@ -490,7 +490,7 @@ mod tests {
         assert_eq!(failures.len(), 1, "the second default is refused");
         assert_eq!(failures[0].domains, [Domain::Budgets]);
         budgets.reload().expect("the rows load");
-        assert_eq!(budgets.budgets(), stub_budgets());
+        assert_eq!(budgets.budgets(), sample_budgets());
     }
 
     /// A Budget still holding a deleted Account's id, as one in memory does until it reloads, writes
@@ -501,17 +501,17 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        let mut budgets = factory.create(stub_budgets());
+        let mut budgets = factory.create(sample_budgets());
         let gone = AccountId::seed(2);
         factory.delete_account(&mut budgets, gone);
-        let mut joint = budgets.budget(BudgetId::seed(2)).expect("a stub Budget");
+        let mut joint = budgets.budget(BudgetId::seed(2)).expect("a sample Budget");
         assert!(joint.account_ids.contains(&gone), "memory keeps the id");
 
         joint.name = "Shared house".into();
         budgets.upsert_budget(&joint);
         let budgets = factory.reload(budgets);
 
-        let joint = budgets.budget(BudgetId::seed(2)).expect("a stub Budget");
+        let joint = budgets.budget(BudgetId::seed(2)).expect("a sample Budget");
         assert_eq!(joint.name, "Shared house");
         assert!(!joint.account_ids.contains(&gone));
     }
@@ -528,8 +528,8 @@ mod tests {
         let unit_id = unit.id;
         crate::UnitsAdapter::seed(&factory.writer, vec![unit], Vec::new(), UnitId::SEED_AUD)
             .expect("the Unit is written");
-        let mut budgets = factory.create(stub_budgets());
-        let mut joint = budgets.budget(BudgetId::seed(2)).expect("a stub Budget");
+        let mut budgets = factory.create(sample_budgets());
+        let mut joint = budgets.budget(BudgetId::seed(2)).expect("a sample Budget");
         joint.unit = unit_id;
         joint.account_ids.clear();
         budgets.upsert_budget(&joint);

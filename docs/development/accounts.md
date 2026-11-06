@@ -4,7 +4,7 @@ End-user documentation: [Accounts](../accounts.md).
 
 ## Overview
 
-An Account is a place where value is held or owed, at one Institution and in one Unit. `lib-accounts` is the Accounts VIPER module, toolkit-free and I/O-free: the Entity with its rules and stub seed, the Add and Edit Interactors, the page and form Presenters, the ports, the keymap and its Messages. `lib-account-deletion` is the cross-domain module for Account delete, since deleting writes the Accounts, Transactions and Bills. `lib-database` owns the `accounts` table, the Accounts adapter (`adapter/accounts.rs`) and the deletion adapter (`adapter/account_deletion.rs`). The Desktop's halves are `bin-desktop/src/accounts/` and `bin-desktop/src/account_deletion/`. Accounts were the second domain of slice 5 of the VIPER transition ([#847](https://github.com/IanTeda/Personal-Ledger/issues/847)), following the [Migrating a domain](viper-architecture.md#migrating-a-domain) checklist Payees set. The design of the four Account Kinds is at the end of this page.
+An Account is a place where value is held or owed, at one Institution and in one Unit. `lib-accounts` is the Accounts VIPER module, toolkit-free and I/O-free: the Entity with its rules and sample seed, the Add and Edit Interactors, the page and form Presenters, the ports, the keymap and its Messages. `lib-account-deletion` is the cross-domain module for Account delete, since deleting writes the Accounts, Transactions and Bills. `lib-database` owns the `accounts` table, the Accounts adapter (`adapter/accounts.rs`) and the deletion adapter (`adapter/account_deletion.rs`). The Desktop's halves are `bin-desktop/src/accounts/` and `bin-desktop/src/account_deletion/`. Accounts were the second domain of slice 5 of the VIPER transition ([#847](https://github.com/IanTeda/Personal-Ledger/issues/847)), following the [Migrating a domain](viper-architecture.md#migrating-a-domain) checklist Payees set. The design of the four Account Kinds is at the end of this page.
 
 ## Data model
 
@@ -45,7 +45,7 @@ Invariants and deliberate omissions:
 
 ## Domain types
 
-`AccountId` is in `lib-core`. `lib_accounts::Account` is the domain type (`id`, `name`, `institution`, `account_type`, `unit`, `balance`, `account_number`, `opened_at`); `AccountDraft` is what Edit can change and `NewAccount` is the draft plus what is fixed at creation. `AccountError` (`NotFound`, `Incomplete`) is the refusal. Beside them in `entity.rs` are `insert_account`, `edit_account`, `remove_account`, `get`, `group_accounts` and `display_order` (the page's grouping), `net_worth`, `find_by_name` (the `:accounts <name>` lookup) and `default_accounts`, the stub seed.
+`AccountId` is in `lib-core`. `lib_accounts::Account` is the domain type (`id`, `name`, `institution`, `account_type`, `unit`, `balance`, `account_number`, `opened_at`); `AccountDraft` is what Edit can change and `NewAccount` is the draft plus what is fixed at creation. `AccountError` (`NotFound`, `Incomplete`) is the refusal. Beside them in `entity.rs` are `insert_account`, `edit_account`, `remove_account`, `get`, `group_accounts` and `display_order` (the page's grouping), `net_worth`, `find_by_name` (the `:accounts <name>` lookup) and `sample_accounts`, the sample seed.
 
 The Account's `institution` and `unit` are ids, so it stays on them whatever they are renamed. Names are looked up when shown.
 
@@ -53,7 +53,7 @@ The Account's `institution` and `unit` are ids, so it stays on them whatever the
 
 ## Persistence
 
-`crates/libs/lib-database/src/adapter/accounts.rs` is the Accounts adapter (ADR-0041, ADR-0046): it loads every Account at start-up and serves `lib-accounts`' `AccountRepository` from memory, each write joining the one pending batch the Desktop commits once per input. A write is an upsert (`ON CONFLICT (id) DO UPDATE`). `AccountsStore` (`adapter/store.rs`) is what `Stores` holds it by, with `lib_accounts::fake::InMemoryAccounts` as the in-memory store, and `lib-accounts`' contract suite runs against both. `FakeStores::sample` fills it with the stub seed, each Account's usage counted from the stub Transactions, for the TUI's in-memory Shell and test fixture.
+`crates/libs/lib-database/src/adapter/accounts.rs` is the Accounts adapter (ADR-0041, ADR-0046): it loads every Account at start-up and serves `lib-accounts`' `AccountRepository` from memory, each write joining the one pending batch the Desktop commits once per input. A write is an upsert (`ON CONFLICT (id) DO UPDATE`). `AccountsStore` (`adapter/store.rs`) is what `Stores` holds it by, with `lib_accounts::fake::InMemoryAccounts` as the in-memory store, and `lib-accounts`' contract suite runs against both. `FakeStores::sample` fills it with the sample seed, each Account's usage counted from the sample Transactions, for the TUI's in-memory Shell and test fixture.
 
 - **`AccountUsage` counts in the other domains' stores.** `lib-database`'s `StoredAccountReads` answers it from the Transactions store (`account_transaction_counts`, one `GROUP BY` over `transactions` in the file, or the rows an in-memory store holds) and the Budgets store ([#993](https://github.com/IanTeda/Personal-Ledger/issues/993)), and `AccountUnits` (each Unit's code, active flag and Precision, and the base Unit while it exists) and the Delete account Dialog's `DeletionReads::unit_code` from the Units store ([#1052](https://github.com/IanTeda/Personal-Ledger/issues/1052)); `StoredUnitReads` uses the same Transactions counts for `UnitHoldings`, so a Units event costs one query per Unit. The count is what the last commit left, never a pending write. It returns a plain `AccountUse`, not an `Option`: it only feeds a figure, never a refusal, so a failed count is logged and answered as 0.
 - **The adapter also answers other modules' reads.** Bills reads `BillAccounts` and the Units page reads its holdings from the Accounts store, through a small wrapper in the bin (the orphan rule, checklist step 4).
@@ -93,9 +93,9 @@ Desktop locations for the ticked requirements. ACC-001 to ACC-003, ACC-006 and A
 
 ## Open questions and known gaps
 
-- **Halfway states.** The stub's Accounts are `lib-database`'s `seed`, and the Institutions and Units come from their stores. The rest are rows in [During the transition](viper-architecture.md#during-the-transition).
+- **Halfway states.** The sample's Accounts are `lib-database`'s `seed`, and the Institutions and Units come from their stores. The rest are rows in [During the transition](viper-architecture.md#during-the-transition).
 - **Budgets may hold a deleted Account's id.** Account delete leaves a Budget's `account_ids` alone, and `lib-budgets` ignores an id with no Account (`Budget::counts`), so a Budget left with none compares nothing and its edit drops the id. Removed when Budgets persist with a cascading `budget_accounts` link ([#811](https://github.com/IanTeda/Personal-Ledger/issues/811)).
-- **No Account can be deleted while a Bill Plan pays from it.** In the stub, that is ANZ Everyday (6 Plans) and Amex (4). The person moves the Plans first; there is no "move them for me" step.
+- **No Account can be deleted while a Bill Plan pays from it.** In the sample, that is ANZ Everyday (6 Plans) and Amex (4). The person moves the Plans first; there is no "move them for me" step.
 - **A file from before #853 can't migrate.** Start a fresh Ledger.
 - **The TUI doesn't persist Accounts.** It draws fixtures until its redesign ([#805](https://github.com/IanTeda/Personal-Ledger/issues/805)).
 - **No Change Set emission**, so Account writes do not sync.

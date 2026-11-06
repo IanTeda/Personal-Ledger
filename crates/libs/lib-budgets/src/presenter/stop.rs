@@ -245,7 +245,7 @@ impl StopPresenter {
 mod tests {
     use super::*;
     use crate::fake::{RecordingRouter, Routed};
-    use crate::presenter::test_support::{stub, today};
+    use crate::presenter::test_support::{sample, today};
     use crate::protocols::BudgetRepository as _;
     use crate::{PERSONAL_SPENDING_ID, applied};
 
@@ -257,7 +257,7 @@ mod tests {
     }
 
     fn stop(category: CategoryId, month: Period) -> Option<StopPresenter> {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         StopPresenter::new(
             &shared,
             Clock::fixed(today()),
@@ -297,7 +297,7 @@ mod tests {
         assert!(stop(FOOD, current()).is_none(), "a parent only rolls up");
         assert!(stop(CategoryId::seed(9999), current()).is_none());
 
-        let (shared_ports, shared) = stub();
+        let (shared_ports, shared) = sample();
         shared_ports
             .borrow_mut()
             .budgets
@@ -322,7 +322,7 @@ mod tests {
 
     #[test]
     fn confirming_stops_the_category_from_the_chosen_month_raises_the_toast_then_closes() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut presenter = StopPresenter::new(
             &shared,
             Clock::fixed(today()),
@@ -350,14 +350,14 @@ mod tests {
             .borrow()
             .budgets
             .budget(PERSONAL_SPENDING_ID)
-            .expect("the stub's default");
+            .expect("the sample's default");
         assert!(applied(budget.chain(GROCERIES), current()).is_some());
         assert!(applied(budget.chain(GROCERIES), current().next()).is_none());
     }
 
     #[test]
     fn cancelling_closes_having_written_nothing() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let before = ports.borrow().budgets.clone();
         let mut presenter = StopPresenter::new(
             &shared,

@@ -311,7 +311,7 @@ mod tests {
     use super::*;
     use crate::fake::{InMemoryPorts, RecordingRouter, Routed};
     use crate::keymap::bills_page_keymap;
-    use crate::presenter::test_support::{clock, date, stub, today};
+    use crate::presenter::test_support::{clock, date, sample, today};
     use crate::presenter::{FilterChoice, FilterField, LineActions};
     use crate::{BillStatus, Resolution, SplitRef};
 
@@ -324,7 +324,7 @@ mod tests {
 
     impl Page {
         fn new() -> Self {
-            let (ports, shared) = stub();
+            let (ports, shared) = sample();
             let (day, clock) = clock();
             let keymap = bills_page_keymap(&KeyBindingConfig::default());
             Self {
@@ -558,7 +558,7 @@ mod tests {
         let Some(Resolution::Paid(split)) =
             crate::entry(&page.ports.borrow().bills.entries, paid).map(|e| e.resolution.clone())
         else {
-            panic!("the stub pays Streaming Bundle");
+            panic!("the sample pays Streaming Bundle");
         };
         assert_eq!(
             page.router.routed,
@@ -684,7 +684,7 @@ mod tests {
             .map(|s| s.text.as_str())
             .collect();
         assert_eq!(inactive, "1 inactive");
-        let last = view.rows.last().expect("the stub has Plans");
+        let last = view.rows.last().expect("the sample has Plans");
         assert_eq!(last.name, "Basic Fitness (closed)");
         assert!(last.inactive);
         assert_eq!(last.active, "no");
@@ -767,7 +767,7 @@ mod tests {
     /// A pass that straddles midnight must not mix two days, so each reads the clock once.
     #[test]
     fn the_schedule_reads_the_day_once_per_pass() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let reads = Rc::new(std::cell::Cell::new(0));
         let counted = reads.clone();
         let clock = Clock::new(move || {

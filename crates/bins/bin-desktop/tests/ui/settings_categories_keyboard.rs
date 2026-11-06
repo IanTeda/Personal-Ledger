@@ -358,7 +358,7 @@ fn a_blocked_type_shows_its_notice_on_pick_and_enter_is_refused_with_the_same_te
     let mut ui = in_categories(app);
     let before = ui.settings::<SettingsCategoriesSnapshot>().category_types;
 
-    // The first row is Housing, whose Rent the stub Budgets and Bill Plans use.
+    // The first row is Housing, whose Rent the sample Budgets and Bill Plans use.
     ui.press("j e");
     assert_eq!(ui.dialog_value("name").as_deref(), Some("Housing"));
     let opened = ui.dialog_value("notice").unwrap_or_default();
@@ -618,7 +618,7 @@ fn adding_a_child_under_a_leaf_with_splits_warns_then_hands_them_over(app: &mut 
         .count();
     assert!(
         groceries_splits > 0,
-        "the stub files Splits under Groceries"
+        "the sample files Splits under Groceries"
     );
     ui.press("g s");
     assert_eq!(ui.settings_frame().page, "Categories");

@@ -33,13 +33,13 @@ mod tests {
     use crate::fake::InMemoryInventory;
     use crate::{CoverDraft, CoverError};
 
-    fn stub() -> InMemoryInventory {
-        InMemoryInventory::stub(chrono::NaiveDate::from_ymd_opt(2026, 10, 2).expect("a date"))
+    fn sample() -> InMemoryInventory {
+        InMemoryInventory::sample(chrono::NaiveDate::from_ymd_opt(2026, 10, 2).expect("a date"))
     }
 
     #[test]
     fn an_edit_keeps_the_unit_and_the_areas() {
-        let mut inventory = stub();
+        let mut inventory = sample();
         let before = inventory.locations()[0].clone();
         let mut draft = LocationDraft::from(&before);
         draft.name = "Elm".into();
@@ -58,7 +58,7 @@ mod tests {
 
     #[test]
     fn a_bad_cover_is_refused_and_nothing_is_written() {
-        let mut inventory = stub();
+        let mut inventory = sample();
         let before = inventory.clone();
         let id = inventory.locations()[0].id;
         let draft = LocationDraft {

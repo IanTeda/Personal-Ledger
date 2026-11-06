@@ -131,7 +131,7 @@ mod tests {
 
     #[test]
     fn deleting_a_unit_removes_it_and_returns_it() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
 
         let removed = delete(&mut ports, UnitId::SEED_BTC, None).unwrap();
 
@@ -143,7 +143,7 @@ mod tests {
 
     #[test]
     fn a_new_base_is_ignored_when_the_deleted_unit_is_not_the_base() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
 
         delete(&mut ports, UnitId::SEED_BTC, Some(UnitId::SEED_VAS)).unwrap();
 
@@ -152,7 +152,7 @@ mod tests {
 
     #[test]
     fn deleting_the_base_unit_moves_the_base_to_the_new_base() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         unquote_aud(&mut ports);
 
         let removed = delete(&mut ports, UnitId::SEED_AUD, Some(UnitId::SEED_BTC)).unwrap();
@@ -164,13 +164,13 @@ mod tests {
 
     #[test]
     fn deleting_a_unit_that_is_gone_is_refused() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         assert_eq!(refused(&mut ports, UnitId::new(), None), Error::UnitGone);
     }
 
     #[test]
     fn deleting_the_only_unit_is_refused() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         ports.units = InMemoryUnits {
             units: vec![ports.units.unit(UnitId::SEED_AUD).unwrap()],
         };
@@ -202,7 +202,7 @@ mod tests {
                 ..UnitUse::default()
             },
         ] {
-            let mut ports = InMemoryPorts::stub(Utc::now());
+            let mut ports = InMemoryPorts::sample(Utc::now());
             ports.usage.uses.insert(UnitId::SEED_BTC, uses);
             assert_eq!(
                 refused(&mut ports, UnitId::SEED_BTC, None),
@@ -213,7 +213,7 @@ mod tests {
 
     #[test]
     fn deleting_a_unit_other_units_quote_is_refused_with_how_many() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         assert_eq!(
             refused(&mut ports, UnitId::SEED_AUD, Some(UnitId::SEED_BTC)),
             Error::QuotedBy(2),
@@ -234,7 +234,7 @@ mod tests {
 
     #[test]
     fn a_unit_quoted_only_by_itself_can_be_deleted() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         ports.units.units[1].link.quote = UnitId::SEED_BTC;
 
         delete(&mut ports, UnitId::SEED_BTC, None).expect("only btc quotes btc");
@@ -242,7 +242,7 @@ mod tests {
 
     #[test]
     fn deleting_the_base_unit_without_a_new_base_is_refused() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         assert_eq!(
             refused(&mut ports, UnitId::SEED_AUD, None),
             Error::BaseUnitNeeded
@@ -251,7 +251,7 @@ mod tests {
 
     #[test]
     fn a_new_base_that_is_the_deleted_unit_or_unknown_is_refused() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         for new_base in [UnitId::SEED_AUD, UnitId::new()] {
             assert_eq!(
                 refused(&mut ports, UnitId::SEED_AUD, Some(new_base)),
@@ -262,7 +262,7 @@ mod tests {
 
     #[test]
     fn a_deactivated_new_base_is_refused() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         ports.units.units[1].is_active = false;
         assert_eq!(
             refused(&mut ports, UnitId::SEED_AUD, Some(UnitId::SEED_BTC)),

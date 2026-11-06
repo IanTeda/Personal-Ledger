@@ -295,7 +295,7 @@ mod tests {
     use super::*;
     use crate::fake::{InMemoryPorts, RecordingRouter, RouterCall};
     use crate::keymap::institutions_page_keymap;
-    use crate::presenter::test_support::stub;
+    use crate::presenter::test_support::sample;
     use std::cell::RefCell;
     use std::rc::Rc;
 
@@ -336,7 +336,7 @@ mod tests {
 
     #[test]
     fn rows_run_in_the_order_added_with_the_first_selected() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let page = Page::new(shared);
         let view = page.view();
 
@@ -351,7 +351,7 @@ mod tests {
 
     #[test]
     fn movement_walks_the_rows_and_stops_at_the_ends() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
 
         page.send(InstitutionsPageEvent::Move(Step::Next));
@@ -366,7 +366,7 @@ mod tests {
 
     #[test]
     fn new_opens_the_add_dialog_until_it_closes() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
 
         assert_eq!(
@@ -383,7 +383,7 @@ mod tests {
 
     #[test]
     fn edit_opens_the_form_on_the_selected_row_or_a_clicked_one() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
         let personal = page.view().rows[0].id;
         let amex = page.view().rows[2].id;
@@ -410,7 +410,7 @@ mod tests {
 
     #[test]
     fn delete_opens_the_delete_dialog_on_the_selected_row_or_a_clicked_one() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
         let personal = page.view().rows[0].id;
         let amex = page.view().rows[2].id;
@@ -456,7 +456,7 @@ mod tests {
 
     #[test]
     fn a_delete_selects_the_next_row_or_the_previous_when_it_was_last() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut page = Page::new(shared);
 
         delete(&mut page, &ports, 2);
@@ -476,7 +476,7 @@ mod tests {
 
     #[test]
     fn a_cancelled_delete_keeps_the_selection_on_the_row() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
         let amex = page.view().rows[2].id;
 
@@ -488,7 +488,7 @@ mod tests {
 
     #[test]
     fn a_right_click_selects_the_row_and_opens_its_menu_whose_entry_runs_on_it() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
         let amex = page.view().rows[2].id;
 
@@ -520,7 +520,7 @@ mod tests {
 
     #[test]
     fn the_menus_delete_opens_the_delete_dialog_and_any_other_event_closes_the_menu() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
         let amex = page.view().rows[2].id;
 
@@ -543,7 +543,7 @@ mod tests {
 
     #[test]
     fn a_save_selects_its_institution_and_a_missing_selection_falls_to_the_first_row() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut page = Page::new(shared);
         let westpac = page.view().rows[4].id;
 
@@ -562,7 +562,7 @@ mod tests {
 
     #[test]
     fn the_legend_shows_the_bound_chords() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut config = KeyBindingConfig::default();
         config.bindings.insert("new".into(), "a".into());
         let page = Page::with_keys(shared, &config);

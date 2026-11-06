@@ -1,7 +1,7 @@
-//! In-memory ports and the stub rows, for tests and UI-first work. [`InMemoryBudgets`] and
+//! In-memory ports and the sample rows, for tests and UI-first work. [`InMemoryBudgets`] and
 //! [`InMemoryBudgetReads`] hold every row in a plain field so a test can set up state directly;
-//! [`stub_accounts`] and [`stub_categories`] are the Accounts and Categories stubs as Budgets reads
-//! them, which `lib-database`'s seed tests hold to the stubs themselves. [`InMemoryPorts`] holds both
+//! [`sample_accounts`] and [`sample_categories`] are the Accounts and Categories samples as Budgets reads
+//! them, which `lib-database`'s seed tests hold to the samples themselves. [`InMemoryPorts`] holds both
 //! as the Presenters share them, and [`RecordingRouter`] records what a Presenter asked for.
 
 use std::cell::RefCell;
@@ -18,7 +18,7 @@ use crate::protocols::{
     BudgetCategory, BudgetPayees, BudgetReads, BudgetRepository, BudgetSplit, BudgetSplits,
     BudgetUnits, BudgetsOutcome, BudgetsPorts, BudgetsRouter, ExportHistory, PortsMut, SharedPorts,
 };
-use crate::{Budget, default_budgets};
+use crate::{Budget, sample_budgets};
 
 /// The Budgets repository over a plain list, in creation order.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -27,10 +27,10 @@ pub struct InMemoryBudgets {
 }
 
 impl InMemoryBudgets {
-    /// The stub Budgets as of `today`, over the stub Accounts and Categories.
-    pub fn stub(today: NaiveDate) -> Self {
+    /// The sample Budgets as of `today`, over the sample Accounts and Categories.
+    pub fn sample(today: NaiveDate) -> Self {
         Self {
-            budgets: default_budgets(&stub_accounts(), &stub_categories(), today)
+            budgets: sample_budgets(&sample_accounts(), &sample_categories(), today)
                 .all()
                 .to_vec(),
         }
@@ -65,11 +65,11 @@ pub struct InMemoryBudgetReads {
 }
 
 impl InMemoryBudgetReads {
-    /// The stub Accounts, Categories and Unit codes, with no Splits or Bills.
-    pub fn stub() -> Self {
+    /// The sample Accounts, Categories and Unit codes, with no Splits or Bills.
+    pub fn sample() -> Self {
         Self {
-            categories: stub_categories(),
-            accounts: stub_accounts(),
+            categories: sample_categories(),
+            accounts: sample_accounts(),
             unit_codes: HashMap::from([
                 (UnitId::SEED_AUD, "aud".to_string()),
                 (UnitId::SEED_VAS, "vas".to_string()),
@@ -132,11 +132,11 @@ pub struct InMemoryPorts {
 }
 
 impl InMemoryPorts {
-    /// The stub Budgets as of `today`, over the stub reads.
-    pub fn stub(today: NaiveDate) -> Self {
+    /// The sample Budgets as of `today`, over the sample reads.
+    pub fn sample(today: NaiveDate) -> Self {
         Self {
-            budgets: InMemoryBudgets::stub(today),
-            reads: InMemoryBudgetReads::stub(),
+            budgets: InMemoryBudgets::sample(today),
+            reads: InMemoryBudgetReads::sample(),
         }
     }
 
@@ -272,9 +272,9 @@ impl Notify for RecordingRouter {
     }
 }
 
-/// The stub Accounts as Budgets reads them: the Accounts stub's ids, names, Units and whether each
+/// The sample Accounts as Budgets reads them: the Accounts sample's ids, names, Units and whether each
 /// takes Transactions.
-pub fn stub_accounts() -> Vec<BudgetAccount> {
+pub fn sample_accounts() -> Vec<BudgetAccount> {
     let account = |n, name: &str, unit, takes_transactions| BudgetAccount {
         id: AccountId::seed(n),
         name: name.to_string(),
@@ -292,8 +292,8 @@ pub fn stub_accounts() -> Vec<BudgetAccount> {
     ]
 }
 
-/// The stub Categories as Budgets reads them, in tree order.
-pub fn stub_categories() -> Vec<BudgetCategory> {
+/// The sample Categories as Budgets reads them, in tree order.
+pub fn sample_categories() -> Vec<BudgetCategory> {
     let category =
         |n, name: &str, path: &str, parent: Option<u32>, is_expense, is_leaf| BudgetCategory {
             id: CategoryId::seed(n),

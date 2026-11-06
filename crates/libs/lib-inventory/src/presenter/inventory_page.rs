@@ -574,7 +574,7 @@ fn location_note(inventory: &Inventory, location: &Location) -> String {
 mod tests {
     use lib_config::KeyBindingConfig;
 
-    use super::super::test_support::stub;
+    use super::super::test_support::sample;
     use super::*;
     use crate::fake::{InMemoryInventory, RecordingRouter, RouterCall};
     use crate::keymap::inventory_page_keymap;
@@ -592,7 +592,7 @@ mod tests {
         }
 
         fn with_keys(config: &KeyBindingConfig) -> Self {
-            let (inventory, shared) = stub();
+            let (inventory, shared) = sample();
             Self {
                 presenter: InventoryPagePresenter::new(shared, inventory_page_keymap(config)),
                 router: RecordingRouter::default(),

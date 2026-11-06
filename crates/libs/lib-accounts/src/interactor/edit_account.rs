@@ -46,7 +46,7 @@ mod tests {
 
     #[test]
     fn editing_an_account_writes_the_draft_and_keeps_the_fixed_fields() {
-        let mut accounts = InMemoryAccounts::stub();
+        let mut accounts = InMemoryAccounts::sample();
         let before = accounts.account(AccountId::seed(2)).expect("seeded");
 
         let edited = EditAccount {
@@ -66,7 +66,7 @@ mod tests {
 
     #[test]
     fn a_missing_account_is_refused_and_nothing_is_written() {
-        let mut accounts = InMemoryAccounts::stub();
+        let mut accounts = InMemoryAccounts::sample();
         let before = accounts.clone();
 
         assert_eq!(

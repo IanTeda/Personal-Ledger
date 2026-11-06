@@ -63,7 +63,7 @@ mod tests {
 
     #[test]
     fn an_unused_institution_is_removed_and_returned() {
-        let mut ports = InMemoryPorts::stub();
+        let mut ports = InMemoryPorts::sample();
 
         let deleted = DeleteInstitution {
             id: InstitutionId::SEED_AMEX,
@@ -78,7 +78,7 @@ mod tests {
 
     #[test]
     fn an_institution_in_use_is_refused_with_its_accounts_and_nothing_is_written() {
-        let mut ports = InMemoryPorts::stub();
+        let mut ports = InMemoryPorts::sample();
         ports.usage.accounts.insert(
             InstitutionId::SEED_AMEX,
             vec!["Amex Platinum".into(), "Amex Gold".into()],
@@ -101,7 +101,7 @@ mod tests {
 
     #[test]
     fn a_missing_institution_is_refused() {
-        let mut ports = InMemoryPorts::stub();
+        let mut ports = InMemoryPorts::sample();
         let before = ports.clone();
 
         assert_eq!(

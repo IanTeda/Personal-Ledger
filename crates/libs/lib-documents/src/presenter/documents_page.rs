@@ -1227,7 +1227,7 @@ mod tests {
     use crate::keymap::documents_page_keymap;
     use crate::presenter::test_support::{locale, records, today};
     use crate::types::default_types;
-    use crate::{KeyDate, KeyDateKind, YearFacet, default_documents};
+    use crate::{KeyDate, KeyDateKind, YearFacet, sample_documents};
 
     const STRONG: &str = "IMG_4471.jpg";
 
@@ -1242,7 +1242,7 @@ mod tests {
         locale();
         let records = records(today());
         let store = Rc::new(RefCell::new(InMemoryDocuments {
-            documents: default_documents(&records, today()).documents,
+            documents: sample_documents(&records, today()).documents,
             types: default_types(),
         }));
         let (clock, day) = Clock::settable(today());
@@ -1618,9 +1618,7 @@ mod tests {
         assert!(page.presenter.takes(&DocumentsPageEvent::Delete));
         assert_eq!(
             page.store.borrow().documents.len(),
-            default_documents(&records(today()), today())
-                .documents
-                .len(),
+            sample_documents(&records(today()), today()).documents.len(),
             "opening the confirm deletes nothing"
         );
     }

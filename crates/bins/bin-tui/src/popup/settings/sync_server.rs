@@ -1,7 +1,7 @@
 //! Settings › Sync Server's Edit overlay (TUI-035): the server URL and its access token, a test,
 //! and Save, which stays dim until a test passes, so a bad address can't silently break sync.
 //!
-//! A wireframe: the Client can't call the Sync Server yet, so the test runs on a stub,
+//! A wireframe: the Client can't call the Sync Server yet, so the test runs on a sample,
 //! [`check`], and Save only flashes "not yet built". The token is a [`SecretString`], drawn
 //! masked and never logged.
 
@@ -14,7 +14,7 @@ use crate::colours::Colours;
 use crate::msg;
 use crate::units::view::dialog::edited;
 
-/// wireframe: the one server the stub answers for, until the Client can reach a real one.
+/// wireframe: the one server the sample answers for, until the Client can reach a real one.
 const ANSWERING_HOST: &str = "sync.ledger.localhost";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -105,7 +105,7 @@ fn host(url: &str) -> &str {
     rest.split('/').next().unwrap_or_default()
 }
 
-/// wireframe: the stub test. It checks what the Client can check alone, `https://` and a token,
+/// wireframe: the sample test. It checks what the Client can check alone, `https://` and a token,
 /// then answers as [`ANSWERING_HOST`] would and refuses everywhere else.
 fn check(url: &str, token: &SecretString) -> Tested {
     let url = url.trim();

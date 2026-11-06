@@ -797,7 +797,7 @@ mod tests {
 
     fn units_view() -> UnitsView {
         crate::locale::init_for_tests();
-        UnitsView::new(&UnitsSetup::stub(&KeyBindingConfig::default()))
+        UnitsView::new(&UnitsSetup::sample(&KeyBindingConfig::default()))
     }
 
     /// The Units view reading now as the moment the Sample Ledger priced its Units, so a price's
@@ -806,7 +806,7 @@ mod tests {
         crate::locale::init_for_tests();
         let at = lib_database::seed::sample_priced_at(chrono::Local::now().date_naive());
         UnitsView::with_now(
-            &UnitsSetup::stub(&KeyBindingConfig::default()),
+            &UnitsSetup::sample(&KeyBindingConfig::default()),
             std::rc::Rc::new(move || at),
         )
     }
@@ -867,7 +867,7 @@ mod tests {
         config
             .bindings
             .insert(command.to_string(), chord.to_string());
-        UnitsView::new(&UnitsSetup::stub(&config))
+        UnitsView::new(&UnitsSetup::sample(&config))
     }
 
     #[test]

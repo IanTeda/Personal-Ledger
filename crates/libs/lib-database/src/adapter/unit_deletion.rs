@@ -130,7 +130,7 @@ mod tests {
             let units = lib_units::fake::InMemoryPorts {
                 units: rows.units,
                 base_unit: rows.base_unit,
-                ..lib_units::fake::InMemoryPorts::stub(lib_unit_deletion::fake::world::now())
+                ..lib_units::fake::InMemoryPorts::sample(lib_unit_deletion::fake::world::now())
             };
             UnitsAdapter::seed_from(&self.writer, units).expect("the Units are written");
             InstitutionsAdapter::seed(&self.writer, rows.institutions.institutions)

@@ -13,7 +13,7 @@ fn clicking_a_dashboard_bill_opens_it_on_the_bills_schedule(app: &mut TestAppCon
     let bills = ui.dashboard_bills();
     let first = bills
         .first()
-        .expect("the stub ledger has a Bill to attend to");
+        .expect("the sample ledger has a Bill to attend to");
 
     ui.click(&first.selector);
     assert_eq!(ui.noun(), Noun::Bills);

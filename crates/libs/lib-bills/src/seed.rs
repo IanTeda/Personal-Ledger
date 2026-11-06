@@ -1,10 +1,10 @@
-//! The stub Bills seed: the handoff's Bill Plans laid out against the Accounts, Categories and
+//! The sample Bills seed: the handoff's Bill Plans laid out against the Accounts, Categories and
 //! Payees Bills reads, with the payments that settle their earlier cycles. Deterministic (no
 //! randomness; `today` is injected) and `gpui`-free, so both Clients can build the same Ledger.
 //!
-//! A payment is a Transaction too, which `lib-transactions`' stub holds: the seed names each by
-//! the id it is booked under there and lists what it paid ([`StubBills::payments`]), so `fake`'s
-//! stub can answer the Splits.
+//! A payment is a Transaction too, which `lib-transactions`' sample holds: the seed names each by
+//! the id it is booked under there and lists what it paid ([`SampleBills::payments`]), so `fake`'s
+//! sample can answer the Splits.
 
 use bigdecimal::BigDecimal;
 use chrono::{Datelike, Duration, NaiveDate};
@@ -16,7 +16,7 @@ use crate::{
 };
 
 // ---------------------------------------------------------------------------------------------
-// The stub dataset
+// The sample dataset
 // ---------------------------------------------------------------------------------------------
 
 /// The seeded Bills: Plans and their Schedule.
@@ -26,15 +26,15 @@ pub struct BillsSeed {
     pub entries: Vec<BillScheduleEntry>,
 }
 
-/// The stub Bills, their Paid entries naming the Transactions [`Self::payments`] lists.
+/// The sample Bills, their Paid entries naming the Transactions [`Self::payments`] lists.
 #[derive(Debug, Clone, PartialEq)]
-pub struct StubBills {
+pub struct SampleBills {
     pub seed: BillsSeed,
     /// In the order of their ids.
     pub payments: Vec<SeedPayment>,
 }
 
-/// One earlier cycle paid directly: the Transaction `lib-transactions`' stub books it under, of
+/// One earlier cycle paid directly: the Transaction `lib-transactions`' sample books it under, of
 /// one Split of `-amount` in its Plan's Account, Category and Payee.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SeedPayment {
@@ -267,16 +267,16 @@ fn paid_cents(seed: &PlanSeed, index: u32, cycles: u32) -> i64 {
 /// Seeds the handoff's Bill Plans against `accounts`, `categories` and `payees` and lays out their
 /// history: every earlier-month cycle is Paid by a [`SeedPayment`] (dated a day either side of the
 /// due date) unless its Plan skipped it, and this month's is left as the handoff shows it. The
-/// payments name the stub Transactions numbered from `first_payment`, in order, as
-/// `lib-transactions`' stub books them. A Plan whose Account, Category or Payee is missing is left
+/// payments name the sample Transactions numbered from `first_payment`, in order, as
+/// `lib-transactions`' sample books them. A Plan whose Account, Category or Payee is missing is left
 /// out.
-pub fn default_bills(
+pub fn sample_bills(
     accounts: &[BillAccount],
     categories: &[BillCategory],
     payees: &[BillPayee],
     first_payment: TransactionId,
     today: NaiveDate,
-) -> StubBills {
+) -> SampleBills {
     let mut plans: Vec<BillPlan> = Vec::new();
     let mut entries: Vec<BillScheduleEntry> = Vec::new();
     let mut payments: Vec<SeedPayment> = Vec::new();
@@ -374,7 +374,7 @@ pub fn default_bills(
         entry.row_id = seed_entry_id(entry.plan_id, entry.due);
     }
     entries.sort_by_key(|entry| (entry.due, entry.plan_id));
-    StubBills {
+    SampleBills {
         seed: BillsSeed { plans, entries },
         payments,
     }

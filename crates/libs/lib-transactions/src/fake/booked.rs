@@ -1,9 +1,9 @@
-//! The stub Transactions the other domains' seeds name by id, booked after the generated history:
-//! the payments that settle the stub Bills' earlier cycles and the unmatched Telstra debit the
+//! The sample Transactions the other domains' seeds name by id, booked after the generated history:
+//! the payments that settle the sample Bills' earlier cycles and the unmatched Telstra debit the
 //! Bills' Match offers, then the Documents' sample purchases. Each set is numbered from the id it
 //! is given, in the order listed, so the Bills and Documents seeds can name them.
 //!
-//! The payments follow `lib-bills`' stub Bill Plans (`PLAN_SEEDS` in its `seed.rs`), which this
+//! The payments follow `lib-bills`' sample Bill Plans (`PLAN_SEEDS` in its `seed.rs`), which this
 //! crate can't reach: [`PAID_BILLS`] repeats what a payment reads of each Plan, and `lib-database`'s
 //! seed tests check the two agree.
 
@@ -11,13 +11,13 @@ use chrono::{Datelike, Duration, Months, NaiveDate};
 use lib_core::{AccountId, Period, TransactionId, TransactionStatus};
 
 use super::seed::Lookup;
-use super::{SeedAccount, SeedNames, stub_transactions};
+use super::{SeedAccount, SeedNames, sample_transactions};
 use crate::Transaction;
 
-/// How many Transactions the stub books to each stub Account that takes them. These were the
-/// Accounts' own stub counts until the Edit and Delete Dialogs counted the Transactions themselves
+/// How many Transactions the sample books to each sample Account that takes them. These were the
+/// Accounts' own sample counts until the Edit and Delete Dialogs counted the Transactions themselves
 /// (#852); Loan and Investment Accounts take none, so they aren't listed.
-const STUB_TRANSACTION_COUNTS: [(AccountId, u32); 4] = [
+const SAMPLE_TRANSACTION_COUNTS: [(AccountId, u32); 4] = [
     (AccountId::seed(1), 96),
     (AccountId::seed(2), 312),
     (AccountId::seed(3), 88),
@@ -25,38 +25,38 @@ const STUB_TRANSACTION_COUNTS: [(AccountId, u32); 4] = [
 ];
 
 /// The first booked Transaction's id, numbered on from the generated history, which holds the sum
-/// of the stub's per-Account counts: the Bills' payments take the ids from here, then the
+/// of the sample's per-Account counts: the Bills' payments take the ids from here, then the
 /// Documents' purchases.
 pub const FIRST_BOOKED: TransactionId = TransactionId::seed(history_count() + 1);
 
 const fn history_count() -> u32 {
     let mut total = 0;
     let mut index = 0;
-    while index < STUB_TRANSACTION_COUNTS.len() {
-        total += STUB_TRANSACTION_COUNTS[index].1;
+    while index < SAMPLE_TRANSACTION_COUNTS.len() {
+        total += SAMPLE_TRANSACTION_COUNTS[index].1;
         index += 1;
     }
     total
 }
 
-/// How many Transactions the stub gives Account `id`: none for an Account it has no count for.
-pub fn stub_transaction_count(id: AccountId) -> u32 {
-    STUB_TRANSACTION_COUNTS
+/// How many Transactions the sample gives Account `id`: none for an Account it has no count for.
+pub fn sample_transaction_count(id: AccountId) -> u32 {
+    SAMPLE_TRANSACTION_COUNTS
         .iter()
         .find_map(|(account, count)| (*account == id).then_some(*count))
         .unwrap_or(0)
 }
 
-/// The Sample Ledger's Transactions: [`stub_transactions`]' history, then the Bills' payments and
+/// The Sample Ledger's Transactions: [`sample_transactions`]' history, then the Bills' payments and
 /// Match candidate and the Documents' purchases, numbered on from [`FIRST_BOOKED`] and each placed
-/// newest first, after any already on its date. `accounts` carry [`stub_transaction_count`]'s
-/// counts. Every Client's stub seed is this one, whoever looks the names up.
-pub fn booked_stub_transactions(
+/// newest first, after any already on its date. `accounts` carry [`sample_transaction_count`]'s
+/// counts. Every Client's sample seed is this one, whoever looks the names up.
+pub fn booked_sample_transactions(
     accounts: &[SeedAccount],
     names: &dyn SeedNames,
     today: NaiveDate,
 ) -> Vec<Transaction> {
-    let mut all = stub_transactions(accounts, names, today);
+    let mut all = sample_transactions(accounts, names, today);
     let bills = bill_transactions(accounts, names, FIRST_BOOKED, today);
     let first_purchase = TransactionId::seed(
         FIRST_BOOKED.seed_number() + u32::try_from(bills.len()).unwrap_or_default(),
@@ -72,7 +72,7 @@ pub fn booked_stub_transactions(
     all
 }
 
-/// What a payment reads of one stub Bill Plan that has earlier cycles to pay. Rent and Council
+/// What a payment reads of one sample Bill Plan that has earlier cycles to pay. Rent and Council
 /// Rates are first due after this month, so they have none and aren't listed.
 struct PaidBill {
     /// The Plan's name, which its payments carry as their description.
@@ -259,7 +259,7 @@ fn numbered_from(first: TransactionId, transactions: Vec<Transaction>) -> Vec<Tr
         .collect()
 }
 
-/// The payments of the stub Bills' earlier cycles, Plan by Plan and cycle by cycle, then the
+/// The payments of the sample Bills' earlier cycles, Plan by Plan and cycle by cycle, then the
 /// unmatched Telstra debit yesterday, numbered from `first`. A cycle is paid a day either side of
 /// its due date (never after `today`), Reconciled before this month and Cleared in it.
 pub fn bill_transactions(
@@ -325,7 +325,7 @@ pub fn bill_transactions(
 
 /// The Documents' sample purchases, numbered from `first`: the Camera House receipt's, then the
 /// Inbox's Strong pair (Woolworths, Bunnings) and its Likely Sonos order, which has no Sonos Payee
-/// so only amount and date agree. A Payee the stubs lack is left off rather than the purchase.
+/// so only amount and date agree. A Payee the samples lack is left off rather than the purchase.
 pub fn document_transactions(
     accounts: &[SeedAccount],
     names: &dyn SeedNames,

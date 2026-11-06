@@ -1,4 +1,4 @@
-//! The stub Documents.
+//! The sample Documents.
 
 use std::path::PathBuf;
 
@@ -14,7 +14,7 @@ use super::document::{
 };
 use crate::protocols::{DocumentTransaction, LinkRecords};
 
-/// The stub Documents. Their Inventory Links name Items the Inventory seeds.
+/// The sample Documents. Their Inventory Links name Items the Inventory seeds.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DocumentsSeed {
     pub documents: Vec<Document>,
@@ -24,7 +24,7 @@ pub(super) fn cents_money(cents: i64) -> Money {
     Money(BigDecimal::new(cents.into(), 2))
 }
 
-/// Name lookups into the shared stubs' records, so the seed reads in names rather than ids.
+/// Name lookups into the shared samples' records, so the seed reads in names rather than ids.
 struct Lookup<'a> {
     records: &'a LinkRecords,
 }
@@ -147,7 +147,7 @@ impl Draft {
             doc_type: self.doc_type,
             date: self.date,
             key_date: self.key_date,
-            // A record the stubs lack is dropped rather than leaving a dangling Link.
+            // A record the samples lack is dropped rather than leaving a dangling Link.
             links: self.links.into_iter().flatten().collect(),
             extracted_text: self.text.map(str::to_string),
             filing: if self.intake.is_some() {
@@ -160,18 +160,18 @@ impl Draft {
     }
 }
 
-/// Seeds the handoff's sample Library and Inbox rows against the shared stubs, plus filler
+/// Seeds the handoff's sample Library and Inbox rows against the shared samples, plus filler
 /// statements and receipts so the facets have weight.
 ///
-/// The handoff's own records that the stubs lack are swapped for ones they have (sample data is
+/// The handoff's own records that the samples lack are swapped for ones they have (sample data is
 /// not final copy): Amex Platinum for "ANZ Platinum", Westpac's Home Loan for Macquarie's, Vanguard
 /// VAS for CMC Markets and Brisbane City Council for "City Council" (plus a lease, so no Type facet is empty), while the NRMA policy's
 /// Payee and Bill links move to an AAMI car policy whose Payee and Bill Plan exist. The sample
-/// purchases (Camera House, Woolworths, Bunnings, Sonos) are `lib-transactions`' stub's, read from
+/// purchases (Camera House, Woolworths, Bunnings, Sonos) are `lib-transactions`' sample's, read from
 /// `records` with the rest of its rows: the Camera House receipt links its purchase, and the
 /// filler receipts link older ones. Key Dates sit so three Library rows Need Review on any
 /// `today`.
-pub fn default_documents(records: &LinkRecords, today: NaiveDate) -> DocumentsSeed {
+pub fn sample_documents(records: &LinkRecords, today: NaiveDate) -> DocumentsSeed {
     let lookup = Lookup { records };
     let transactions = &records.transactions;
     let day = |offset: i64| today + Duration::days(offset);
@@ -301,7 +301,7 @@ pub fn default_documents(records: &LinkRecords, today: NaiveDate) -> DocumentsSe
         )
         .size(1, 1_800_000)
         .key(Expires, day(2_040), false),
-        // The Inbox's sample rows: two Strong, a Likely, a Likely and a Weak from the stubs' own
+        // The Inbox's sample rows: two Strong, a Likely, a Likely and a Weak from the samples' own
         // Transactions, one readable with nothing to suggest, and one Unreadable.
         Draft::unfiled(
             "IMG_4471.jpg",

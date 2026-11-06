@@ -136,7 +136,7 @@ mod tests {
         let filed = filed.expect("a linked Filed Document").id;
         let unfiled = held.iter().find(|d| d.is_unfiled()).expect("Unfiled").id;
         let presenter =
-            DeleteDocumentPresenter::new(ports.clone(), filed).expect("a stub Document");
+            DeleteDocumentPresenter::new(ports.clone(), filed).expect("a sample Document");
         (presenter, ports, filed, unfiled)
     }
 

@@ -72,7 +72,7 @@ mod tests {
     };
 
     /// The two adapters on one test database and one pending batch, as start-up opens them. The
-    /// stub's Units, Institutions, Categories and Accounts are stored first, which the world's
+    /// sample's Units, Institutions, Categories and Accounts are stored first, which the world's
     /// Transactions name.
     struct AdapterFactory {
         writer: Writer,
@@ -85,15 +85,15 @@ mod tests {
             let (writer, failures) = Writer::spawn(options).expect("the test database opens");
             crate::UnitsAdapter::seed_from(
                 &writer,
-                lib_units::fake::InMemoryPorts::stub(chrono::Utc::now()),
+                lib_units::fake::InMemoryPorts::sample(chrono::Utc::now()),
             )
-            .expect("the stub Units are written");
+            .expect("the sample Units are written");
             crate::InstitutionsAdapter::seed(&writer, crate::seed::sample_institutions())
-                .expect("the stub Institutions are written");
+                .expect("the sample Institutions are written");
             crate::CategoriesAdapter::seed(&writer, crate::seed::sample_categories())
-                .expect("the stub Categories are written");
+                .expect("the sample Categories are written");
             AccountsAdapter::seed(&writer, crate::seed::sample_accounts())
-                .expect("the stub Accounts are written");
+                .expect("the sample Accounts are written");
             Self {
                 pending: PendingWrites::new(writer.clone()),
                 writer,

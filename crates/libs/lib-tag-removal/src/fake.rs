@@ -84,8 +84,8 @@ impl TagRemovalReads for InMemoryTagRemoval {
     }
 }
 
-/// The small Ledger the tests and the contract remove from: `lib-tags`' stub Tags and five
-/// Transactions on the stub's ANZ Everyday. Two carry shared, two Work Trip and two work-trip (one
+/// The small Ledger the tests and the contract remove from: `lib-tags`' sample Tags and five
+/// Transactions on the sample's ANZ Everyday. Two carry shared, two Work Trip and two work-trip (one
 /// Split carrying both, the case a merge must not double), one gift and one Bali 2025; nothing
 /// carries the other four, and the fifth Transaction carries no Tag.
 pub mod world {
@@ -119,7 +119,7 @@ pub mod world {
     /// Carries no Tag.
     pub const UNTAGGED: TransactionId = TransactionId::seed(5);
 
-    /// The stub's ANZ Everyday and Groceries, which the file's foreign keys need.
+    /// The sample's ANZ Everyday and Groceries, which the file's foreign keys need.
     const EVERYDAY: AccountId = AccountId::seed(2);
     const GROCERIES: CategoryId = CategoryId::seed(7);
 
@@ -151,7 +151,7 @@ pub mod world {
     /// The Tags and Transactions described above.
     pub fn world() -> InMemoryTagRemoval {
         InMemoryTagRemoval {
-            tags: InMemoryTags::stub(),
+            tags: InMemoryTags::sample(),
             transactions: InMemoryTransactions {
                 transactions: vec![
                     transaction(SHARED_ONLY, 1, vec![split(-4_250, &[SHARED])]),
@@ -193,7 +193,7 @@ mod tests {
             .map(|count| (count.tag.id, count.transactions))
             .collect();
 
-        assert_eq!(ranked.len(), lib_tags::default_tags().len());
+        assert_eq!(ranked.len(), lib_tags::sample_tags().len());
         assert_eq!(
             ranked[..4],
             [

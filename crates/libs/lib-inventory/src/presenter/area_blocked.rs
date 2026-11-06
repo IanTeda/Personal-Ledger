@@ -80,14 +80,14 @@ impl AreaBlockedPresenter {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::stub;
+    use super::super::test_support::sample;
     use super::*;
     use crate::fake::{RecordingRouter, RouterCall};
     use crate::protocols::InventoryRepository as _;
 
     #[test]
     fn it_names_the_area_its_location_and_items_and_closes_changing_nothing() {
-        let (inventory, shared) = stub();
+        let (inventory, shared) = sample();
         let storage = inventory.borrow().locations()[1].clone();
         let mut notice = AreaBlockedPresenter::new(&shared, storage.areas[0].id).expect("seeded");
         let mut router = RecordingRouter::default();

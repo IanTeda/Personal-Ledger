@@ -10,7 +10,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use lib_database::{Domain, WriteFailure};
 
 #[test]
-fn g_u_draws_the_stub_units_and_price_sources() {
+fn g_u_draws_the_sample_units_and_price_sources() {
     let mut shell = shell();
 
     press(&mut shell, "g u");
@@ -243,7 +243,7 @@ fn p_on_a_unit_its_source_prices_opens_nothing() {
 fn deleting_a_unit_an_account_in_the_opened_file_uses_is_refused() {
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("household.pldb");
-    // xau, which nothing in the stub uses, with an Account in it in the file.
+    // xau, which nothing in the sample uses, with an Account in it in the file.
     common::ledger_file_with(&path, |storage| {
         let mut xau = storage
             .units
@@ -283,7 +283,7 @@ fn deleting_a_unit_a_budget_in_the_opened_file_uses_is_refused() {
 
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("household.pldb");
-    // xau, which nothing in the stub uses, with only a Budget in it in the file (#952).
+    // xau, which nothing in the sample uses, with only a Budget in it in the file (#952).
     common::ledger_file_with(&path, |storage| {
         let mut xau = storage
             .units
@@ -324,12 +324,12 @@ fn deleting_a_unit_a_budget_in_the_opened_file_uses_is_refused() {
 }
 
 #[test]
-fn a_unit_only_the_stub_uses_can_be_deleted_from_the_opened_file() {
+fn a_unit_only_the_sample_uses_can_be_deleted_from_the_opened_file() {
     use lib_database::InstitutionsStore;
 
     let directory = tempfile::tempdir().expect("a temporary directory");
     let path = directory.path().join("household.pldb");
-    // The stub's btc Accounts are in aud in the file, and its Institution has no Usual unit, so
+    // The sample's btc Accounts are in aud in the file, and its Institution has no Usual unit, so
     // nothing in the file uses btc.
     common::ledger_file_with(&path, |storage| {
         for mut account in storage.accounts.accounts().accounts() {
@@ -355,7 +355,7 @@ fn a_unit_only_the_stub_uses_can_be_deleted_from_the_opened_file() {
     let dialog = screen(&mut shell);
     assert!(
         !dialog.contains(&lib_units::msg::units_deactivate_title("btc")),
-        "the stub's usage doesn't count:\n{dialog}"
+        "the sample's usage doesn't count:\n{dialog}"
     );
     type_text(&mut shell, "btc");
     press(&mut shell, "Enter");

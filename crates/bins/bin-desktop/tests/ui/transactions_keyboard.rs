@@ -399,7 +399,7 @@ fn a_bills_paid_row_reveal_clears_the_search(app: &mut TestAppContext) {
 /// returns to the Transactions page.
 #[expect(
     clippy::expect_used,
-    reason = "test support: a stub with no Accounts should fail the test loudly"
+    reason = "test support: a sample with no Accounts should fail the test loudly"
 )]
 fn delete_the_first_account(ui: &mut Harness<'_>) {
     ui.press("g s j j j j j j j l");

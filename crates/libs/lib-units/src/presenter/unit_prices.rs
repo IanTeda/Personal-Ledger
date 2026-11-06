@@ -422,7 +422,7 @@ mod tests {
     use chrono::NaiveDate;
     use lib_config::KeyBindingConfig;
 
-    use super::super::test_support::{clock, stub};
+    use super::super::test_support::{clock, sample};
     use super::*;
     use crate::fake::{InMemoryPorts, RecordingRouter, RouterCall};
     use crate::keymap::unit_prices_keymap;
@@ -436,7 +436,7 @@ mod tests {
 
     impl View {
         fn of(unit: UnitId) -> Self {
-            let (ports, shared) = stub();
+            let (ports, shared) = sample();
             Self {
                 ports,
                 presenter: UnitPricesPresenter::new(
@@ -550,7 +550,7 @@ mod tests {
 
     #[test]
     fn earlier_then_later_from_a_months_last_day_lands_back_on_the_current_week() {
-        let (_ports, shared) = stub();
+        let (_ports, shared) = sample();
         // Wednesday 31 Mar 2027: a month back is 28 Feb, and a month on from that is 28 Mar.
         let clock: Clock = std::rc::Rc::new(|| {
             chrono::TimeZone::with_ymd_and_hms(&Utc, 2027, 3, 31, 9, 30, 0)

@@ -13,7 +13,7 @@ use lib_core::{PriceSourceId, UnitKind};
 
 use crate::UnitRow;
 
-/// Manual entry's id. These ids are fixed for good, not stub seeds: a Ledger refers to Manual
+/// Manual entry's id. These ids are fixed for good, not sample seeds: a Ledger refers to Manual
 /// entry and the built-ins by them.
 pub const MANUAL_ENTRY: PriceSourceId = PriceSourceId::seed(0);
 pub const COINGECKO: PriceSourceId = PriceSourceId::seed(1);
@@ -358,7 +358,7 @@ pub fn move_units_to_manual(units: &mut [UnitRow], id: PriceSourceId) -> Vec<Uni
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::default_units;
+    use crate::sample_units;
 
     const MANUAL: &str = "Manual entry";
 
@@ -495,7 +495,7 @@ mod tests {
     #[test]
     fn last_fetched_is_the_newest_price_among_a_sources_units() {
         let now = Utc::now();
-        let units = default_units(now);
+        let units = sample_units(now);
         assert_eq!(
             last_fetched(&units, COINGECKO),
             Some(now - chrono::Duration::minutes(5))
@@ -536,7 +536,7 @@ mod tests {
 
     #[test]
     fn moving_units_to_manual_keeps_their_weekly_prices() {
-        let mut units = default_units(Utc::now());
+        let mut units = sample_units(Utc::now());
         let before = units[1].prices.clone();
         let moved = move_units_to_manual(&mut units, COINGECKO);
         assert_eq!(moved.len(), 1);

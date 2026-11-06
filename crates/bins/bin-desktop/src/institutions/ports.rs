@@ -133,10 +133,10 @@ impl InstitutionsStore for LedgerBackedPorts {
     }
 }
 
-/// The stub Institutions as an in-memory store, for a test that needs no storage.
+/// The sample Institutions as an in-memory store, for a test that needs no storage.
 pub fn in_memory_store() -> SharedInstitutionsStore {
     Rc::new(RefCell::new(
-        lib_institutions::fake::InMemoryInstitutions::stub(),
+        lib_institutions::fake::InMemoryInstitutions::sample(),
     ))
 }
 
@@ -178,13 +178,13 @@ mod tests {
 
     use super::*;
 
-    fn stub() -> FakeStores {
+    fn sample() -> FakeStores {
         FakeStores::sample(chrono::Local::now().date_naive())
     }
 
-    fn ports(stub: &FakeStores) -> DesktopPorts {
+    fn ports(sample: &FakeStores) -> DesktopPorts {
         let accounts = crate::accounts::LedgerBackedPorts::in_memory(
-            crate::accounts::ports::in_memory_reads(stub),
+            crate::accounts::ports::in_memory_reads(sample),
         );
         LedgerBackedPorts::shared(
             in_memory_store(),
@@ -194,25 +194,25 @@ mod tests {
     }
 
     #[test]
-    fn in_memory_ports_hold_the_stub_institutions() {
-        let ports = ports(&stub());
+    fn in_memory_ports_hold_the_sample_institutions() {
+        let ports = ports(&sample());
         let ports = ports.borrow();
 
         assert_eq!(
             InstitutionsPorts::institutions(&*ports).institutions(),
-            lib_institutions::default_institutions()
+            lib_institutions::sample_institutions()
         );
     }
 
     #[test]
     fn a_write_through_the_ports_lands_in_the_shared_store_and_is_noted_once() {
-        let ports = ports(&stub());
+        let ports = ports(&sample());
         let mut held = ports.borrow_mut();
         assert!(!held.take_written());
 
         let mut personal = InstitutionsPorts::institutions(&*held)
             .institution(InstitutionId::SEED_PERSONAL)
-            .expect("the stub's Personal Institution");
+            .expect("the sample's Personal Institution");
         personal.name = "Renamed".into();
         InstitutionsPorts::institutions_mut(&mut *held).upsert_institution(personal);
 
@@ -230,11 +230,11 @@ mod tests {
 
     #[test]
     fn usage_is_the_accounts_naming_the_institution() {
-        let stub = stub();
-        let ports = ports(&stub);
+        let sample = sample();
+        let ports = ports(&sample);
         let ports = ports.borrow();
 
-        let wallet: Vec<_> = stub
+        let wallet: Vec<_> = sample
             .accounts
             .accounts
             .accounts

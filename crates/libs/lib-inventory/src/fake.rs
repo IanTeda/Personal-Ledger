@@ -1,4 +1,4 @@
-//! The in-memory port and the stub seed, for tests and UI-first work. It holds its rows in plain
+//! The in-memory port and the sample seed, for tests and UI-first work. It holds its rows in plain
 //! fields so a test can set up or read state directly.
 
 use std::cell::RefCell;
@@ -14,7 +14,7 @@ use crate::protocols::{
     InventoryDialog, InventoryOutcome, InventoryRepository, InventoryRouter, InventoryUnits,
     LocationUsage, LocationUse, SharedInventory, UnitChoice,
 };
-use crate::{Inventory, Item, Location, default_inventory};
+use crate::{Inventory, Item, Location, sample_inventory};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct InMemoryInventory {
@@ -23,10 +23,10 @@ pub struct InMemoryInventory {
 }
 
 impl InMemoryInventory {
-    /// The stub seed: the Sample Ledger's Inventory as of `today` (see [`default_inventory`]). Ids
+    /// The sample seed: the Sample Ledger's Inventory as of `today` (see [`sample_inventory`]). Ids
     /// match `lib-database`'s joined Sample Ledger, so its Document Links still resolve their Items.
-    pub fn stub(today: NaiveDate) -> Self {
-        let Inventory { locations, items } = default_inventory(today);
+    pub fn sample(today: NaiveDate) -> Self {
+        let Inventory { locations, items } = sample_inventory(today);
         Self { locations, items }
     }
 }
@@ -82,7 +82,7 @@ pub struct InMemoryUnits {
 
 impl InMemoryUnits {
     /// Australian and US dollars, the first with the seed id `lib-database`'s joined Sample Ledger gives AUD.
-    pub fn stub() -> Self {
+    pub fn sample() -> Self {
         let unit = |id, code: &str, name: &str| UnitChoice {
             id,
             code: code.into(),
@@ -173,7 +173,7 @@ mod tests {
 
     #[test]
     fn upserting_replaces_the_row_with_its_id_or_appends_it() {
-        let mut inventory = InMemoryInventory::stub(today());
+        let mut inventory = InMemoryInventory::sample(today());
         let seeded = inventory.locations().len();
         let mut elm = inventory.locations()[0].clone();
         elm.name = "Elm".into();
@@ -191,7 +191,7 @@ mod tests {
 
     #[test]
     fn deleting_an_item_drops_only_that_row() {
-        let mut inventory = InMemoryInventory::stub(today());
+        let mut inventory = InMemoryInventory::sample(today());
         let before = inventory.items().len();
         let id = inventory.items()[0].id;
         inventory.delete_item(id);

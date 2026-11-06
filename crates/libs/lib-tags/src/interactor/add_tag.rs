@@ -39,7 +39,7 @@ mod tests {
 
     #[test]
     fn adding_a_tag_writes_it_active_after_the_others() {
-        let mut tags = InMemoryTags::stub();
+        let mut tags = InMemoryTags::sample();
         let seeded = tags.tags().len();
 
         let added = AddTag(draft(" holiday "))
@@ -53,7 +53,7 @@ mod tests {
 
     #[test]
     fn a_name_taken_once_normalised_is_refused_and_nothing_is_written() {
-        let mut tags = InMemoryTags::stub();
+        let mut tags = InMemoryTags::sample();
         let before = tags.clone();
 
         assert_eq!(

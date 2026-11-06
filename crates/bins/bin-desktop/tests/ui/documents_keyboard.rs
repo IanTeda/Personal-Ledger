@@ -707,7 +707,7 @@ fn o_on_a_file_that_is_missing_says_so_instead_of_opening_it(app: &mut TestAppCo
     let mut ui = on_documents(app);
     let before = ui.documents().toasts.len();
 
-    // The stub Documents name files that are not on this machine; the OS hand-off (an event the
+    // The sample Documents name files that are not on this machine; the OS hand-off (an event the
     // test platform cannot service) is only raised for a file that exists.
     ui.press("o");
 
@@ -964,7 +964,7 @@ fn accept_all_files_the_count_it_quotes_and_u_undoes_them_all(app: &mut TestAppC
     let filed = ui.documents();
     assert_eq!(filed.dialog, None);
     let count = before - filed.inbox_rows;
-    assert!(count > 0, "the stub has strong matches");
+    assert!(count > 0, "the sample has strong matches");
     assert!(
         body.contains(&count.to_string()),
         "the confirm quotes the count it files: {body}"

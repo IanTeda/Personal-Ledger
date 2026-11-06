@@ -29,8 +29,9 @@ mod tests {
 
     #[test]
     fn an_area_swaps_with_its_neighbour_and_stops_at_the_ends() {
-        let mut inventory =
-            InMemoryInventory::stub(chrono::NaiveDate::from_ymd_opt(2026, 10, 2).expect("a date"));
+        let mut inventory = InMemoryInventory::sample(
+            chrono::NaiveDate::from_ymd_opt(2026, 10, 2).expect("a date"),
+        );
         let areas: Vec<_> = inventory.locations()[0]
             .areas
             .iter()

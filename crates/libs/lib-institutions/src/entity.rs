@@ -1,4 +1,4 @@
-//! The Institution Entity, its add rule and the stub seed.
+//! The Institution Entity, its add rule and the sample seed.
 
 use lib_core::{InstitutionId, UnitId};
 
@@ -61,9 +61,9 @@ pub fn personal_institution(name: &str) -> Institution {
 }
 
 /// The Personal Institution, then the mockup's own six seeded rows in its own order, each with its
-/// fixed id: seven, as the mockup's scope note counts. Ids match `lib-accounts`' stub, whose
+/// fixed id: seven, as the mockup's scope note counts. Ids match `lib-accounts`' sample, whose
 /// Accounts name these Institutions.
-pub fn default_institutions() -> Vec<Institution> {
+pub fn sample_institutions() -> Vec<Institution> {
     std::iter::once(personal_institution("Personal"))
         .chain(
             [
@@ -190,8 +190,8 @@ mod tests {
     }
 
     #[test]
-    fn default_institutions_is_the_personal_institution_then_the_mockups_six_rows() {
-        let names: Vec<_> = default_institutions()
+    fn sample_institutions_is_the_personal_institution_then_the_mockups_six_rows() {
+        let names: Vec<_> = sample_institutions()
             .into_iter()
             .map(|institution| institution.name)
             .collect();
@@ -211,8 +211,8 @@ mod tests {
 
     #[test]
     fn each_seeded_institution_has_its_own_fixed_id() {
-        let seeded = default_institutions();
-        assert_eq!(seeded, default_institutions(), "the seed is deterministic");
+        let seeded = sample_institutions();
+        assert_eq!(seeded, sample_institutions(), "the seed is deterministic");
         let mut ids: Vec<_> = seeded.iter().map(|institution| institution.id).collect();
         ids.sort_unstable();
         ids.dedup();
@@ -224,8 +224,8 @@ mod tests {
     }
 
     #[test]
-    fn the_stub_gives_one_institution_a_usual_unit_and_the_rest_none() {
-        let named: Vec<_> = default_institutions()
+    fn the_sample_gives_one_institution_a_usual_unit_and_the_rest_none() {
+        let named: Vec<_> = sample_institutions()
             .into_iter()
             .filter_map(|institution| institution.usual_unit.map(|unit| (institution.id, unit)))
             .collect();
@@ -237,7 +237,7 @@ mod tests {
 
     #[test]
     fn an_add_and_an_edit_carry_the_usual_unit_and_an_edit_can_clear_it() {
-        let mut institutions = default_institutions();
+        let mut institutions = sample_institutions();
         let with_unit = InstitutionDraft {
             usual_unit: Some(UnitId::SEED_VAS),
             ..draft("Bank X")
@@ -259,12 +259,12 @@ mod tests {
         assert_eq!(personal.id, InstitutionId::SEED_PERSONAL);
         assert_eq!(personal.name, "Persönlich");
         assert_eq!(personal.products, "cash");
-        assert_eq!(default_institutions()[0].id, InstitutionId::SEED_PERSONAL);
+        assert_eq!(sample_institutions()[0].id, InstitutionId::SEED_PERSONAL);
     }
 
     #[test]
     fn an_added_institution_is_appended_trimmed_with_its_joined_products() {
-        let mut institutions = default_institutions();
+        let mut institutions = sample_institutions();
         let before = institutions.len();
         let added =
             insert_institution(&mut institutions, &draft("  Bank X ")).expect("a free name");
@@ -276,7 +276,7 @@ mod tests {
 
     #[test]
     fn a_blank_or_taken_name_is_refused_and_nothing_is_added() {
-        let mut institutions = default_institutions();
+        let mut institutions = sample_institutions();
         let before = institutions.clone();
         assert_eq!(
             insert_institution(&mut institutions, &draft("   ")),
@@ -291,7 +291,7 @@ mod tests {
 
     #[test]
     fn an_edit_rewrites_the_row_in_place_and_a_change_of_capitals_is_accepted() {
-        let mut institutions = default_institutions();
+        let mut institutions = sample_institutions();
 
         edit_institution(
             &mut institutions,
@@ -307,7 +307,7 @@ mod tests {
 
     #[test]
     fn an_edit_refuses_a_blank_name_another_holds_or_a_missing_row_and_changes_nothing() {
-        let mut institutions = default_institutions();
+        let mut institutions = sample_institutions();
         let before = institutions.clone();
 
         assert_eq!(

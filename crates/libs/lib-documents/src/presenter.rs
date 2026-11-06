@@ -98,7 +98,7 @@ pub(crate) mod test_support {
         LinkRecords, SharedRepository,
     };
     use crate::types::{DocumentTypeRow, default_types};
-    use crate::{Document, default_documents};
+    use crate::{Document, sample_documents};
 
     /// Composes this crate's layer into the process Locale, which every test that reads text
     /// needs: the first explicit `init` wins, so each test calls it before reading any.
@@ -111,7 +111,7 @@ pub(crate) mod test_support {
         NaiveDate::from_ymd_opt(2026, 10, 2).expect("a real date")
     }
 
-    /// The records the stub Documents name, as the other domains' stubs hold them: enough of each
+    /// The records the sample Documents name, as the other domains' samples hold them: enough of each
     /// for the seed's Links to land, and the Woolworths purchase the Inbox's strongest row matches.
     pub fn records(today: NaiveDate) -> LinkRecords {
         let day = |offset: i64| today + chrono::Duration::days(offset);
@@ -182,7 +182,7 @@ pub(crate) mod test_support {
         }
     }
 
-    /// The stub Documents over [`records`], as the page's builders read them.
+    /// The sample Documents over [`records`], as the page's builders read them.
     pub struct World {
         pub types: Vec<DocumentTypeRow>,
         pub records: LinkRecords,
@@ -196,7 +196,7 @@ pub(crate) mod test_support {
         let records = records(today);
         World {
             types: default_types(),
-            documents: default_documents(&records, today).documents,
+            documents: sample_documents(&records, today).documents,
             records,
             today,
         }
@@ -229,7 +229,7 @@ pub(crate) mod test_support {
         }
     }
 
-    /// A Dialog's ports over the stub Documents and [`records`], on [`today`], with `files` for the
+    /// A Dialog's ports over the sample Documents and [`records`], on [`today`], with `files` for the
     /// disk.
     pub fn dialog_ports(files: crate::fake::InMemoryFiles) -> super::DialogPorts {
         let world = world();
@@ -247,7 +247,7 @@ pub(crate) mod test_support {
     }
 
     /// The nine default types, shared, with the handle the test reads them back through.
-    pub fn stub() -> (Rc<RefCell<InMemoryDocuments>>, SharedRepository) {
+    pub fn sample() -> (Rc<RefCell<InMemoryDocuments>>, SharedRepository) {
         locale();
         let documents = Rc::new(RefCell::new(InMemoryDocuments {
             documents: Vec::new(),

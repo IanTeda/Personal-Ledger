@@ -5,7 +5,7 @@
 
 #![expect(
     clippy::expect_used,
-    reason = "test support: a Telstra row the stub doesn't seed should fail the test loudly"
+    reason = "test support: a Telstra row the sample doesn't seed should fail the test loudly"
 )]
 
 use super::common;
@@ -30,7 +30,7 @@ fn select(ui: &mut Harness<'_>, name: &str) {
         .payee_names
         .iter()
         .position(|payee| payee == name)
-        .expect("the stub seeds the Payee");
+        .expect("the sample seeds the Payee");
     ui.press("g g");
     for _ in 0..row {
         ui.press("j");
@@ -53,7 +53,7 @@ fn telstra_internet_payee(ui: &mut Harness<'_>) -> String {
         .plans
         .iter()
         .position(|plan| plan == "Telstra Internet")
-        .expect("the stub seeds Telstra Internet");
+        .expect("the sample seeds Telstra Internet");
     ui.press("g g");
     for _ in 0..row {
         ui.press("j");

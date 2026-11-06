@@ -460,7 +460,7 @@ mod tests {
 
         fn open_on(rows: InMemoryUnitDeletion, id: UnitId, uses: UnitUse) -> Self {
             lib_locale::init_with_layers("en-US", &[msg::LAYER, lib_units::msg::LAYER]);
-            let mut ports = InMemoryPorts::stub(now());
+            let mut ports = InMemoryPorts::sample(now());
             ports.units = rows.units.clone();
             ports.base_unit = rows.base_unit;
             ports.usage.uses.insert(id, uses);
@@ -723,7 +723,7 @@ mod tests {
     #[test]
     fn a_unit_gone_opens_no_dialog() {
         lib_locale::init_with_layers("en-US", &[msg::LAYER, lib_units::msg::LAYER]);
-        let (_, shared) = InMemoryPorts::stub(now()).shared();
+        let (_, shared) = InMemoryPorts::sample(now()).shared();
         let port: SharedUnitDeletion = Rc::new(RefCell::new(world()));
         assert!(DeleteUnitPresenter::new(shared, port, UnitId::new()).is_none());
     }

@@ -390,7 +390,7 @@ fn scope_note(accounts: &[Account], units: &[AccountUnit], base: Option<UnitId>)
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::stub;
+    use super::super::test_support::sample;
     use super::*;
     use crate::AccountRepository as _;
     use crate::fake::{RecordingRouter, RouterCall};
@@ -447,7 +447,7 @@ mod tests {
 
     #[test]
     fn the_rows_are_grouped_by_type_in_the_fixed_order_with_their_institution_and_unit() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let view = Page::new(shared).view();
 
         let labels: Vec<&str> = view
@@ -472,7 +472,7 @@ mod tests {
 
     #[test]
     fn the_scope_reads_count_net_worth_in_the_base_unit_and_the_units_held_separately() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let page = Page::new(shared);
 
         assert_eq!(
@@ -489,7 +489,7 @@ mod tests {
 
     #[test]
     fn the_net_worth_shows_at_the_base_units_precision() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         for unit in &mut ports.borrow_mut().units.units {
             if unit.id == UnitId::SEED_AUD {
                 unit.precision = 0;
@@ -504,7 +504,7 @@ mod tests {
 
     #[test]
     fn a_negative_net_worth_is_signed_and_no_accounts_say_so() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let page = Page::new(shared);
         ports.borrow_mut().accounts.accounts.retain(|account| {
             matches!(
@@ -522,7 +522,7 @@ mod tests {
 
     #[test]
     fn movement_walks_the_rows_in_the_order_they_are_listed_and_the_first_is_selected_to_start() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
 
         assert_eq!(page.selected_name().as_deref(), Some("Wallet"));
@@ -536,7 +536,7 @@ mod tests {
 
     #[test]
     fn enter_and_a_row_click_open_the_ledger_and_a_click_selects_the_row() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
         page.send(AccountsPageEvent::Move(Step::Next));
 
@@ -553,7 +553,7 @@ mod tests {
 
     #[test]
     fn reveal_selects_the_account_and_ignores_one_that_is_gone() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
 
         assert_eq!(page.send(AccountsPageEvent::Reveal(AccountId::seed(6))), []);
@@ -564,7 +564,7 @@ mod tests {
 
     #[test]
     fn new_edit_and_delete_ask_the_router_on_the_selected_account() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
         page.send(AccountsPageEvent::Move(Step::Next));
         let everyday = AccountId::seed(2);
@@ -596,7 +596,7 @@ mod tests {
 
     #[test]
     fn a_save_selects_its_account_and_a_deleted_one_leaves_the_row_that_slid_into_its_place() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut page = Page::new(shared);
         page.send(AccountsPageEvent::DialogClosed(Some(AccountsOutcome {
             id: AccountId::seed(6),
@@ -626,7 +626,7 @@ mod tests {
 
     #[test]
     fn a_typed_new_opens_add_with_the_name_and_the_others_resolve_by_name() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
 
         assert_eq!(
@@ -654,7 +654,7 @@ mod tests {
 
     #[test]
     fn a_name_that_fits_nothing_or_several_accounts_is_a_status_message_not_a_guess() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let mut page = Page::new(shared);
         let status = |text: &str| vec![RouterCall::Notice(Notice::Status(text.into()))];
 
@@ -675,7 +675,7 @@ mod tests {
 
     #[test]
     fn an_empty_ledger_says_how_to_add_one_with_the_bound_chord_and_the_legend_follows_the_keys() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         ports.borrow_mut().accounts.accounts.clear();
         let mut config = KeyBindingConfig::default();
         config.bindings.insert("new".into(), "a".into());

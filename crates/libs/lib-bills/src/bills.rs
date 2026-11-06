@@ -84,7 +84,7 @@ pub fn insert_plan(
     )
 }
 
-/// [`insert_plan`] under a given id, for the stub seed, whose ids are fixed.
+/// [`insert_plan`] under a given id, for the sample seed, whose ids are fixed.
 pub(crate) fn insert_plan_as(
     id: BillPlanId,
     plans: &mut Vec<BillPlan>,
@@ -552,7 +552,7 @@ pub fn period_summary(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fake::{stub_accounts, stub_categories};
+    use crate::fake::{sample_accounts, sample_categories};
 
     fn date(y: i32, m: u32, d: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(y, m, d).unwrap()
@@ -572,8 +572,8 @@ mod tests {
 
     fn empty() -> World {
         World {
-            accounts: stub_accounts(),
-            categories: stub_categories(),
+            accounts: sample_accounts(),
+            categories: sample_categories(),
             splits: Vec::new(),
             plans: Vec::new(),
             entries: Vec::new(),

@@ -8,7 +8,7 @@
 //!
 //! "Sync now" is permanently out of scope for this map (its own Destination/Out-of-scope: a
 //! stand-in with no real effect) rather than "not yet built" behind a future ticket -- so its
-//! stub status-line message, unlike Units'/Institutions' "+ Add" buttons, names no issue.
+//! sample status-line message, unlike Units'/Institutions' "+ Add" buttons, names no issue.
 
 use gpui::{App, Context, Window, div, prelude::*, px};
 use lib_settings::{SyncServerEvent, SyncServerViewModel};

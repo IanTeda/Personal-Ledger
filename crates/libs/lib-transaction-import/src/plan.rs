@@ -132,7 +132,7 @@ impl ImportPlan {
 #[cfg(test)]
 mod tests {
     use chrono::NaiveDate;
-    use lib_payees::default_payees;
+    use lib_payees::sample_payees;
 
     use super::*;
     use crate::entity::match_line;
@@ -164,13 +164,13 @@ mod tests {
             SeededStatement::STUB_ACCOUNT,
             rows,
             remember,
-            &default_payees(),
+            &sample_payees(),
         )
     }
 
     #[test]
     fn a_plan_is_refused_while_rows_need_review() {
-        let payees = default_payees();
+        let payees = sample_payees();
         let rows: Vec<ImportRow> = SeededStatement::stub(today())
             .statement()
             .lines
@@ -182,7 +182,7 @@ mod tests {
 
     #[test]
     fn a_plan_creates_new_payees_with_remembered_aliases_and_books_every_row() {
-        let payees = default_payees();
+        let payees = sample_payees();
         let plan = resolve(&resolved_rows(&payees), true).expect("every row is resolved");
 
         assert_eq!(plan.transactions.len(), 18);
@@ -227,13 +227,13 @@ mod tests {
 
     #[test]
     fn a_plan_without_remember_adds_no_aliases() {
-        let plan = resolve(&resolved_rows(&default_payees()), false).expect("resolved");
+        let plan = resolve(&resolved_rows(&sample_payees()), false).expect("resolved");
         assert!(plan.payees.iter().all(|payee| payee.aliases.is_empty()));
     }
 
     #[test]
     fn rows_sharing_a_new_name_create_one_payee() {
-        let payees = default_payees();
+        let payees = sample_payees();
         let rows: Vec<ImportRow> = ["SP AUSSIE CANDLE CO", "SP AUSSIE CANDLE CO 2"]
             .iter()
             .map(|raw| ImportRow {
@@ -257,11 +257,11 @@ mod tests {
 
     #[test]
     fn an_alias_another_payee_owns_is_not_remembered() {
-        let payees = default_payees();
+        let payees = sample_payees();
         let owned = payees
             .iter()
             .find_map(|payee| payee.aliases.first())
-            .expect("a stub Payee has an alias")
+            .expect("a sample Payee has an alias")
             .clone();
         assert_eq!(cleaned_token(&owned).as_ref(), Some(&owned));
         let rows = [ImportRow {
@@ -277,7 +277,7 @@ mod tests {
 
     #[test]
     fn check_refuses_a_taken_name_or_alias() {
-        let payees = default_payees();
+        let payees = sample_payees();
         let new_payee = |name: &str, aliases: &[&str]| Payee {
             id: PayeeId::new(),
             name: name.to_string(),

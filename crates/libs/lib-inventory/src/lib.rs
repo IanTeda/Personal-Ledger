@@ -1,6 +1,6 @@
 //! The Ledger's Inventory: Locations, their Areas and the Items in them (`GLOSSARY.md`'s Location,
 //! Area and Inventory Item). A VIPER module (`docs/development/viper-architecture.md`, #847, #865):
-//! the Entity with its rules and stub seed (`entity`), one Interactor per intent (`interactor`)
+//! the Entity with its rules and sample seed (`entity`), one Interactor per intent (`interactor`)
 //! and the repository port (`protocols`). `fake` holds the in-memory port; `contract` the checks
 //! both it and a stored adapter keep. No UI toolkit and no I/O.
 //!

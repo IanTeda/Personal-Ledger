@@ -25,7 +25,7 @@
 //! The Bills VIPER module (`docs/development/viper-architecture.md`, #778): the rules above as
 //! Entities, one Interactor per intent (`interactor`), one Presenter per View and Dialog
 //! (`presenter`), the ports and the `BillsRouter` (`protocols`), the page's default keys
-//! (`keymap`) and its Messages (`msg`). `fake` holds the in-memory ports, the stub seed and a
+//! (`keymap`) and its Messages (`msg`). `fake` holds the in-memory ports, the sample seed and a
 //! recording Router; `contract` the checks both they and `lib-database`'s adapter keep. The
 //! Desktop draws the view models (`bin-desktop/src/bills/`). The Pay Dialog the page opens is
 //! `lib-bill-payments`', since Pay it directly writes a Transaction too.

@@ -1,4 +1,4 @@
-//! The in-memory ports and the stub seed, for tests and UI-first work. Each holds its rows in a
+//! The in-memory ports and the sample seed, for tests and UI-first work. Each holds its rows in a
 //! plain field so a test can set up or read state directly. [`RecordingRouter`] is a Router that
 //! only records what it was asked.
 
@@ -15,7 +15,7 @@ use crate::protocols::{
 };
 use crate::{
     Institution, InstitutionRepository, InstitutionUnit, InstitutionUnits, InstitutionUsage,
-    InstitutionUse, default_institutions,
+    InstitutionUse, sample_institutions,
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -24,11 +24,11 @@ pub struct InMemoryInstitutions {
 }
 
 impl InMemoryInstitutions {
-    /// The stub seed: the Sample Ledger's Institutions (see [`default_institutions`]). Ids match
+    /// The sample seed: the Sample Ledger's Institutions (see [`sample_institutions`]). Ids match
     /// `lib-database`'s joined Sample Ledger, so its Accounts still resolve their Institutions.
-    pub fn stub() -> Self {
+    pub fn sample() -> Self {
         Self {
-            institutions: default_institutions(),
+            institutions: sample_institutions(),
         }
     }
 }
@@ -77,7 +77,7 @@ pub struct InMemoryInstitutionUnits {
 
 impl InMemoryInstitutionUnits {
     /// The Sample Ledger's three Units (see `lib-units`' seed), all active.
-    pub fn stub() -> Self {
+    pub fn sample() -> Self {
         let unit = |id, code: &str| InstitutionUnit {
             id,
             code: code.to_string(),
@@ -108,12 +108,12 @@ pub struct InMemoryPorts {
 }
 
 impl InMemoryPorts {
-    /// The stub Institutions.
-    pub fn stub() -> Self {
+    /// The sample Institutions.
+    pub fn sample() -> Self {
         Self {
-            institutions: InMemoryInstitutions::stub(),
+            institutions: InMemoryInstitutions::sample(),
             usage: InMemoryInstitutionUsage::default(),
-            units: InMemoryInstitutionUnits::stub(),
+            units: InMemoryInstitutionUnits::sample(),
         }
     }
 

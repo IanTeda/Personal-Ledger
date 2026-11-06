@@ -120,7 +120,7 @@ mod tests {
 
     use super::*;
     use crate::fake::InMemoryPorts;
-    use crate::interactor::test_support::{cents, date, entry_of, stub};
+    use crate::interactor::test_support::{cents, date, entry_of, sample};
     use crate::{Resolution, entry};
 
     /// The one Split of an expense on `day` of September in ANZ Everyday.
@@ -139,9 +139,9 @@ mod tests {
         }
     }
 
-    /// The stub with two expenses near Telstra Internet's 22 Sep entry: one to its Payee.
+    /// The sample with two expenses near Telstra Internet's 22 Sep entry: one to its Payee.
     fn with_candidates() -> (InMemoryPorts, EntryId, PayeeId) {
-        let mut ports = stub();
+        let mut ports = sample();
         let telstra = entry_of(&ports, "Telstra Internet", date(2026, 9, 22));
         let payee = ports
             .bills
@@ -182,7 +182,7 @@ mod tests {
 
     #[test]
     fn without_a_payee_match_nothing_is_preselected() {
-        let mut ports = stub();
+        let mut ports = sample();
         let origin = entry_of(&ports, "Origin Energy", date(2026, 9, 24));
         let before = candidates(&ports, origin).0.len();
         ports.reads.splits.push(spend(1, 20, None, 15_000));

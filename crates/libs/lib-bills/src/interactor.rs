@@ -74,7 +74,7 @@ pub(crate) mod test_support {
         NaiveDate::from_ymd_opt(y, m, d).expect("a real date")
     }
 
-    /// The day the stub is seeded on, as `lib-database`'s Bills seed tests use.
+    /// The day the sample is seeded on, as `lib-database`'s Bills seed tests use.
     pub fn today() -> NaiveDate {
         date(2026, 9, 19)
     }
@@ -83,9 +83,9 @@ pub(crate) mod test_support {
         Money(BigDecimal::new(cents.into(), 2))
     }
 
-    /// The stub seed as of [`today`].
-    pub fn stub() -> InMemoryPorts {
-        InMemoryPorts::stub(today())
+    /// The sample seed as of [`today`].
+    pub fn sample() -> InMemoryPorts {
+        InMemoryPorts::sample(today())
     }
 
     /// Water, a Monthly Plan in aud paid from ANZ Everyday.
@@ -105,14 +105,14 @@ pub(crate) mod test_support {
         }
     }
 
-    /// The stub Plan named `name`'s entry due on `due`.
+    /// The sample Plan named `name`'s entry due on `due`.
     pub fn entry_of(ports: &InMemoryPorts, name: &str, due: NaiveDate) -> EntryId {
         let plan = ports
             .bills
             .plans
             .iter()
             .find(|plan| plan.name == name)
-            .unwrap_or_else(|| panic!("the stub has {name}"));
+            .unwrap_or_else(|| panic!("the sample has {name}"));
         EntryId {
             plan_id: plan.id,
             due,

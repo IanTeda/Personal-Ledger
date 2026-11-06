@@ -51,7 +51,7 @@ impl PayeesSetup {
 
     /// `storage`'s Payees ports under the default keys, for a test that builds `Root` directly.
     #[cfg(test)]
-    pub fn stub(storage: &crate::shell::router::LedgerStores) -> Self {
+    pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
             storage.payees.clone(),
             &lib_config::KeyBindingConfig::default(),

@@ -39,13 +39,13 @@ mod tests {
     use super::*;
     use crate::fake::InMemoryInventory;
 
-    fn stub() -> InMemoryInventory {
-        InMemoryInventory::stub(chrono::NaiveDate::from_ymd_opt(2026, 10, 15).expect("a date"))
+    fn sample() -> InMemoryInventory {
+        InMemoryInventory::sample(chrono::NaiveDate::from_ymd_opt(2026, 10, 15).expect("a date"))
     }
 
     #[test]
     fn a_location_goes_with_its_areas_and_items_and_reports_each() {
-        let mut inventory = stub();
+        let mut inventory = sample();
         let id = inventory.locations()[0].id;
         let areas: Vec<AreaId> = inventory.locations()[0]
             .areas
@@ -72,7 +72,7 @@ mod tests {
 
     #[test]
     fn an_unknown_location_is_refused_and_nothing_is_written() {
-        let mut inventory = stub();
+        let mut inventory = sample();
         let before = inventory.clone();
 
         assert_eq!(
@@ -84,7 +84,7 @@ mod tests {
 
     #[test]
     fn the_last_location_can_go() {
-        let mut inventory = stub();
+        let mut inventory = sample();
         let ids: Vec<_> = inventory.locations().iter().map(|l| l.id).collect();
         for id in ids {
             RemoveLocation(id).run(&mut inventory).expect("it exists");

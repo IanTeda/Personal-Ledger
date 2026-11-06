@@ -5,7 +5,7 @@
 //! Each check is a function generic over a [`PortsFactory`]: a consumer runs it from its own test,
 //! since an adapter's tests need their own set-up (a fresh database per test). Each writes through
 //! the Budgets Interactors, as a Client does, reloads as a restart would, and expects the same rows back.
-//! The other domains' rows the rules read are the stub's ([`InMemoryBudgetReads::stub`]).
+//! The other domains' rows the rules read are the sample's ([`InMemoryBudgetReads::sample`]).
 
 use chrono::NaiveDate;
 use lib_core::{AccountId, BudgetId, CategoryId, Period, UnitId};
@@ -28,16 +28,16 @@ pub fn today() -> NaiveDate {
     NaiveDate::from_ymd_opt(2026, 9, 21).expect("a real date")
 }
 
-/// The stub Budgets as of [`today`], which every check starts from.
-pub fn stub_budgets() -> Vec<Budget> {
-    InMemoryBudgets::stub(today()).budgets
+/// The sample Budgets as of [`today`], which every check starts from.
+pub fn sample_budgets() -> Vec<Budget> {
+    InMemoryBudgets::sample(today()).budgets
 }
 
 /// Builds the repository a contract check runs on.
 pub trait PortsFactory {
     type Ports: BudgetRepository;
 
-    /// A repository holding `seed`'s Budgets, as if stored and loaded, over the stub's Units,
+    /// A repository holding `seed`'s Budgets, as if stored and loaded, over the sample's Units,
     /// Accounts and Categories.
     fn create(&mut self, seed: Vec<Budget>) -> Self::Ports;
 
@@ -159,9 +159,9 @@ fn current() -> Period {
 /// copied from another, a Month-only amount with a Rollover, a Stop, a cycled Rollover and an
 /// archived Budget.
 pub fn written_rows_reload_the_same<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(stub_budgets());
+    let mut ports = factory.create(sample_budgets());
 
-    let reads = InMemoryBudgetReads::stub();
+    let reads = InMemoryBudgetReads::sample();
     let holiday = CreateBudget {
         new: NewBudget {
             name: "Holiday".into(),
@@ -248,7 +248,7 @@ pub fn written_rows_reload_the_same<F: PortsFactory>(factory: &mut F) {
 /// A write replaces a Budget's chains whole: a record or a chain it no longer holds is gone after a
 /// reload.
 pub fn a_chain_is_replaced_whole<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(stub_budgets());
+    let mut ports = factory.create(sample_budgets());
     let mut personal = budget(&ports, PERSONAL_SPENDING_ID);
     let records = [
         (
@@ -298,7 +298,7 @@ pub fn a_chain_is_replaced_whole<F: PortsFactory>(factory: &mut F) {
 
 /// Storage holds one default: moving it to another Budget and back leaves exactly one each time.
 pub fn one_budget_is_the_default<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(stub_budgets());
+    let mut ports = factory.create(sample_budgets());
     assert_eq!(defaults(&ports), [PERSONAL_SPENDING_ID]);
 
     SetDefaultBudget(JOINT_HOUSEHOLD)
@@ -317,13 +317,13 @@ pub fn one_budget_is_the_default<F: PortsFactory>(factory: &mut F) {
 /// Deleting an Account takes it from every Budget that counted it, once the Budgets reload; the
 /// rest of each Budget stays.
 pub fn a_deleted_account_leaves_every_budget<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(stub_budgets());
+    let mut ports = factory.create(sample_budgets());
     let before = snapshot(&ports);
     assert!(
         before
             .iter()
             .all(|budget| budget.account_ids.contains(&ANZ_EVERYDAY)),
-        "every stub Budget counts ANZ Everyday"
+        "every sample Budget counts ANZ Everyday"
     );
 
     factory.delete_account(&mut ports, ANZ_EVERYDAY);
@@ -338,10 +338,10 @@ pub fn a_deleted_account_leaves_every_budget<F: PortsFactory>(factory: &mut F) {
 
 /// A Category a chain names can't be deleted from storage; once no chain names it, it can.
 pub fn a_category_a_chain_names_cannot_be_deleted<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(stub_budgets());
+    let mut ports = factory.create(sample_budgets());
     assert!(
         !factory.delete_category(&mut ports, GROCERIES),
-        "both stub Budgets budget Groceries"
+        "both sample Budgets budget Groceries"
     );
 
     // Category reassign's clear, which is the Categories' write and not an intent here.
@@ -363,7 +363,7 @@ pub fn a_category_a_chain_names_cannot_be_deleted<F: PortsFactory>(factory: &mut
 
 /// A write storage refuses is reported and reloads to the last committed rows.
 pub fn a_failed_write_reloads_and_reports<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(stub_budgets());
+    let mut ports = factory.create(sample_budgets());
     let before = snapshot(&ports);
 
     factory.break_writes(&mut ports);
@@ -372,7 +372,7 @@ pub fn a_failed_write_reloads_and_reports<F: PortsFactory>(factory: &mut F) {
         name: "Shared house".into(),
         account_ids: vec![ANZ_EVERYDAY],
     }
-    .run(&InMemoryBudgetReads::stub(), &mut ports)
+    .run(&InMemoryBudgetReads::sample(), &mut ports)
     .expect("the rules allow it");
     assert_eq!(budget(&ports, JOINT_HOUSEHOLD).name, "Shared house");
     factory.commit(&mut ports);

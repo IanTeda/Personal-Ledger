@@ -34,7 +34,7 @@ mod tests {
 
     use super::*;
     use crate::fake::InMemoryBills;
-    use crate::interactor::test_support::{cents, date, stub, today};
+    use crate::interactor::test_support::{cents, date, sample, today};
     use crate::{AmountKind, BillPlan, BillScheduleEntry, Recurrence, Resolution};
 
     fn rent() -> BillPlan {
@@ -80,20 +80,20 @@ mod tests {
     }
 
     #[test]
-    fn the_stub_is_already_generated() {
-        let mut ports = stub();
+    fn the_sample_is_already_generated() {
+        let mut ports = sample();
         assert_eq!(PopulateSchedule { today: today() }.run(&mut ports.bills), 0);
     }
 
     #[test]
     fn a_new_month_generates_the_month_after_it() {
-        let mut ports = stub();
+        let mut ports = sample();
         let rent = ports
             .bills
             .plans
             .iter()
             .find(|plan| plan.name == "Rent")
-            .expect("the stub has Rent")
+            .expect("the sample has Rent")
             .id;
         let november = |ports: &crate::fake::InMemoryPorts| {
             ports

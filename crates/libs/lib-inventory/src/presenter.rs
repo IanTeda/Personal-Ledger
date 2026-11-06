@@ -80,10 +80,12 @@ pub(crate) mod test_support {
         lib_locale::init_with_layers("en-US", &[crate::msg::LAYER]);
     }
 
-    /// The stub seed, shared, with the handle the test reads it back through.
-    pub fn stub() -> (Rc<RefCell<InMemoryInventory>>, SharedInventory) {
+    /// The sample seed, shared, with the handle the test reads it back through.
+    pub fn sample() -> (Rc<RefCell<InMemoryInventory>>, SharedInventory) {
         locale();
-        InMemoryInventory::stub(chrono::NaiveDate::from_ymd_opt(2026, 10, 2).expect("a real date"))
-            .shared()
+        InMemoryInventory::sample(
+            chrono::NaiveDate::from_ymd_opt(2026, 10, 2).expect("a real date"),
+        )
+        .shared()
     }
 }

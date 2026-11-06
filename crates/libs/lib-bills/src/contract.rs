@@ -24,7 +24,7 @@ pub trait PortsFactory {
     type Reads: BillTransactions;
 
     /// Ports holding `seed`'s Bill Plans and entries, as if stored and loaded, beside `splits`,
-    /// which a Paid entry may name. Every Plan's Unit is the stub's aud, and the Splits of one
+    /// which a Paid entry may name. Every Plan's Unit is the sample's aud, and the Splits of one
     /// Transaction share its date, Account and memo.
     fn create(&mut self, seed: InMemoryBills, splits: Vec<BillSplit>) -> Self::Ports;
 

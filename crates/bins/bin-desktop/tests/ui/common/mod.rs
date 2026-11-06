@@ -844,7 +844,7 @@ impl<'a> Harness<'a> {
     /// with `reload_fails`, so does the reload after it. [`Harness::settle_writes`] lets the
     /// Shell hear of the failure.
     pub fn with_failing_units(app: &'a mut TestAppContext, reload_fails: bool) -> Self {
-        let stub = FakeStores::sample(today());
+        let sample = FakeStores::sample(today());
         let (report, failures) = mpsc::channel();
         let written = Rc::new(Cell::new(false));
         Self::build(
@@ -853,20 +853,20 @@ impl<'a> Harness<'a> {
             None,
             counted(Stores {
                 units: Box::new(FailingUnits::new(
-                    InMemoryPorts::stub(chrono::Utc::now()),
+                    InMemoryPorts::sample(chrono::Utc::now()),
                     &written,
                     reload_fails,
                 )),
-                institutions: Box::new(InMemoryInstitutions::stub()),
-                accounts: Box::new(lib_accounts::fake::InMemoryPorts::stub()),
-                categories: Box::new(InMemoryCategories::stub()),
-                tags: Box::new(lib_tags::fake::InMemoryPorts::stub()),
-                payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
-                transactions: Box::new(stub.transactions),
-                bills: Box::new(stub.bills),
-                budgets: Box::new(stub.budgets),
-                inventory: Box::new(stub.inventory),
-                documents: Box::new(stub.documents),
+                institutions: Box::new(InMemoryInstitutions::sample()),
+                accounts: Box::new(lib_accounts::fake::InMemoryPorts::sample()),
+                categories: Box::new(InMemoryCategories::sample()),
+                tags: Box::new(lib_tags::fake::InMemoryPorts::sample()),
+                payees: Box::new(lib_payees::fake::InMemoryPorts::sample()),
+                transactions: Box::new(sample.transactions),
+                bills: Box::new(sample.bills),
+                budgets: Box::new(sample.budgets),
+                inventory: Box::new(sample.inventory),
+                documents: Box::new(sample.documents),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Units],
                     written,
@@ -881,16 +881,16 @@ impl<'a> Harness<'a> {
     /// would; the reload after it puts the stored rows back. [`Harness::settle_writes`] lets the
     /// Shell hear of the failure.
     pub fn with_failing_institutions(app: &'a mut TestAppContext) -> Self {
-        let stub = FakeStores::sample(today());
+        let sample = FakeStores::sample(today());
         let (report, failures) = mpsc::channel();
         let written = Rc::new(Cell::new(false));
-        let stored = InMemoryInstitutions::stub();
+        let stored = InMemoryInstitutions::sample();
         Self::build(
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
             counted(Stores {
-                units: Box::new(InMemoryPorts::stub(chrono::Utc::now())),
+                units: Box::new(InMemoryPorts::sample(chrono::Utc::now())),
                 institutions: Box::new(FailingInstitutions {
                     institutions: Marked {
                         inner: stored.clone(),
@@ -898,15 +898,15 @@ impl<'a> Harness<'a> {
                     },
                     stored,
                 }),
-                accounts: Box::new(lib_accounts::fake::InMemoryPorts::stub()),
-                categories: Box::new(InMemoryCategories::stub()),
-                tags: Box::new(lib_tags::fake::InMemoryPorts::stub()),
-                payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
-                transactions: Box::new(stub.transactions),
-                bills: Box::new(stub.bills),
-                budgets: Box::new(stub.budgets),
-                inventory: Box::new(stub.inventory),
-                documents: Box::new(stub.documents),
+                accounts: Box::new(lib_accounts::fake::InMemoryPorts::sample()),
+                categories: Box::new(InMemoryCategories::sample()),
+                tags: Box::new(lib_tags::fake::InMemoryPorts::sample()),
+                payees: Box::new(lib_payees::fake::InMemoryPorts::sample()),
+                transactions: Box::new(sample.transactions),
+                bills: Box::new(sample.bills),
+                budgets: Box::new(sample.budgets),
+                inventory: Box::new(sample.inventory),
+                documents: Box::new(sample.documents),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Institutions],
                     written,
@@ -921,17 +921,17 @@ impl<'a> Harness<'a> {
     /// would; the reload after it puts the stored rows back. [`Harness::settle_writes`] lets the
     /// Shell hear of the failure.
     pub fn with_failing_accounts(app: &'a mut TestAppContext) -> Self {
-        let stub = FakeStores::sample(today());
+        let sample = FakeStores::sample(today());
         let (report, failures) = mpsc::channel();
         let written = Rc::new(Cell::new(false));
-        let stored = InMemoryAccounts::stub();
+        let stored = InMemoryAccounts::sample();
         Self::build(
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
             counted(Stores {
-                units: Box::new(InMemoryPorts::stub(chrono::Utc::now())),
-                institutions: Box::new(InMemoryInstitutions::stub()),
+                units: Box::new(InMemoryPorts::sample(chrono::Utc::now())),
+                institutions: Box::new(InMemoryInstitutions::sample()),
                 accounts: Box::new(FailingAccounts {
                     accounts: Marked {
                         inner: stored.clone(),
@@ -939,14 +939,14 @@ impl<'a> Harness<'a> {
                     },
                     stored,
                 }),
-                categories: Box::new(InMemoryCategories::stub()),
-                tags: Box::new(lib_tags::fake::InMemoryPorts::stub()),
-                payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
-                transactions: Box::new(stub.transactions),
-                bills: Box::new(stub.bills),
-                budgets: Box::new(stub.budgets),
-                inventory: Box::new(stub.inventory),
-                documents: Box::new(stub.documents),
+                categories: Box::new(InMemoryCategories::sample()),
+                tags: Box::new(lib_tags::fake::InMemoryPorts::sample()),
+                payees: Box::new(lib_payees::fake::InMemoryPorts::sample()),
+                transactions: Box::new(sample.transactions),
+                bills: Box::new(sample.bills),
+                budgets: Box::new(sample.budgets),
+                inventory: Box::new(sample.inventory),
+                documents: Box::new(sample.documents),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Accounts],
                     written,
@@ -961,18 +961,18 @@ impl<'a> Harness<'a> {
     /// would; the reload after it puts the stored rows back. [`Harness::settle_writes`] lets the
     /// Shell hear of the failure.
     pub fn with_failing_categories(app: &'a mut TestAppContext) -> Self {
-        let stub = FakeStores::sample(today());
+        let sample = FakeStores::sample(today());
         let (report, failures) = mpsc::channel();
         let written = Rc::new(Cell::new(false));
-        let stored = InMemoryCategories::stub();
+        let stored = InMemoryCategories::sample();
         Self::build(
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
             counted(Stores {
-                units: Box::new(InMemoryPorts::stub(chrono::Utc::now())),
-                institutions: Box::new(InMemoryInstitutions::stub()),
-                accounts: Box::new(lib_accounts::fake::InMemoryPorts::stub()),
+                units: Box::new(InMemoryPorts::sample(chrono::Utc::now())),
+                institutions: Box::new(InMemoryInstitutions::sample()),
+                accounts: Box::new(lib_accounts::fake::InMemoryPorts::sample()),
                 categories: Box::new(FailingCategories {
                     categories: Marked {
                         inner: stored.clone(),
@@ -980,13 +980,13 @@ impl<'a> Harness<'a> {
                     },
                     stored,
                 }),
-                tags: Box::new(lib_tags::fake::InMemoryPorts::stub()),
-                payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
-                transactions: Box::new(stub.transactions),
-                bills: Box::new(stub.bills),
-                budgets: Box::new(stub.budgets),
-                inventory: Box::new(stub.inventory),
-                documents: Box::new(stub.documents),
+                tags: Box::new(lib_tags::fake::InMemoryPorts::sample()),
+                payees: Box::new(lib_payees::fake::InMemoryPorts::sample()),
+                transactions: Box::new(sample.transactions),
+                bills: Box::new(sample.bills),
+                budgets: Box::new(sample.budgets),
+                inventory: Box::new(sample.inventory),
+                documents: Box::new(sample.documents),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Categories],
                     written,
@@ -1001,19 +1001,19 @@ impl<'a> Harness<'a> {
     /// the reload after it puts the stored rows back. [`Harness::settle_writes`] lets the Shell
     /// hear of the failure.
     pub fn with_failing_tags(app: &'a mut TestAppContext) -> Self {
-        let stub = FakeStores::sample(today());
+        let sample = FakeStores::sample(today());
         let (report, failures) = mpsc::channel();
         let written = Rc::new(Cell::new(false));
-        let stored = lib_tags::fake::InMemoryTags::stub();
+        let stored = lib_tags::fake::InMemoryTags::sample();
         Self::build(
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
             counted(Stores {
-                units: Box::new(InMemoryPorts::stub(chrono::Utc::now())),
-                institutions: Box::new(InMemoryInstitutions::stub()),
-                accounts: Box::new(lib_accounts::fake::InMemoryPorts::stub()),
-                categories: Box::new(InMemoryCategories::stub()),
+                units: Box::new(InMemoryPorts::sample(chrono::Utc::now())),
+                institutions: Box::new(InMemoryInstitutions::sample()),
+                accounts: Box::new(lib_accounts::fake::InMemoryPorts::sample()),
+                categories: Box::new(InMemoryCategories::sample()),
                 tags: Box::new(FailingTags {
                     tags: Marked {
                         inner: stored.clone(),
@@ -1021,12 +1021,12 @@ impl<'a> Harness<'a> {
                     },
                     stored,
                 }),
-                payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
-                transactions: Box::new(stub.transactions),
-                bills: Box::new(stub.bills),
-                budgets: Box::new(stub.budgets),
-                inventory: Box::new(stub.inventory),
-                documents: Box::new(stub.documents),
+                payees: Box::new(lib_payees::fake::InMemoryPorts::sample()),
+                transactions: Box::new(sample.transactions),
+                bills: Box::new(sample.bills),
+                budgets: Box::new(sample.budgets),
+                inventory: Box::new(sample.inventory),
+                documents: Box::new(sample.documents),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Tags],
                     written,
@@ -1071,20 +1071,20 @@ impl<'a> Harness<'a> {
     /// the reload after it puts the stored rows back. [`Harness::settle_writes`] lets the Shell
     /// hear of the failure.
     pub fn with_failing_payees(app: &'a mut TestAppContext) -> Self {
-        let stub = FakeStores::sample(today());
+        let sample = FakeStores::sample(today());
         let (report, failures) = mpsc::channel();
         let written = Rc::new(Cell::new(false));
-        let stored = lib_payees::fake::InMemoryPorts::stub().payees;
+        let stored = lib_payees::fake::InMemoryPorts::sample().payees;
         Self::build(
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
             counted(Stores {
-                units: Box::new(InMemoryPorts::stub(chrono::Utc::now())),
-                institutions: Box::new(InMemoryInstitutions::stub()),
-                accounts: Box::new(lib_accounts::fake::InMemoryPorts::stub()),
-                categories: Box::new(InMemoryCategories::stub()),
-                tags: Box::new(lib_tags::fake::InMemoryPorts::stub()),
+                units: Box::new(InMemoryPorts::sample(chrono::Utc::now())),
+                institutions: Box::new(InMemoryInstitutions::sample()),
+                accounts: Box::new(lib_accounts::fake::InMemoryPorts::sample()),
+                categories: Box::new(InMemoryCategories::sample()),
+                tags: Box::new(lib_tags::fake::InMemoryPorts::sample()),
                 payees: Box::new(FailingPayees {
                     payees: Marked {
                         inner: stored.clone(),
@@ -1092,11 +1092,11 @@ impl<'a> Harness<'a> {
                     },
                     stored,
                 }),
-                transactions: Box::new(stub.transactions),
-                bills: Box::new(stub.bills),
-                budgets: Box::new(stub.budgets),
-                inventory: Box::new(stub.inventory),
-                documents: Box::new(stub.documents),
+                transactions: Box::new(sample.transactions),
+                bills: Box::new(sample.bills),
+                budgets: Box::new(sample.budgets),
+                inventory: Box::new(sample.inventory),
+                documents: Box::new(sample.documents),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Payees],
                     written,
@@ -1111,21 +1111,21 @@ impl<'a> Harness<'a> {
     /// would; the reload after it puts the stored rows back. [`Harness::settle_writes`] lets the
     /// Shell hear of the failure.
     pub fn with_failing_transactions(app: &'a mut TestAppContext) -> Self {
-        let stub = FakeStores::sample(today());
+        let sample = FakeStores::sample(today());
         let (report, failures) = mpsc::channel();
         let written = Rc::new(Cell::new(false));
-        let stored = stub.transactions;
+        let stored = sample.transactions;
         Self::build(
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
             counted(Stores {
-                units: Box::new(InMemoryPorts::stub(chrono::Utc::now())),
-                institutions: Box::new(InMemoryInstitutions::stub()),
-                accounts: Box::new(lib_accounts::fake::InMemoryPorts::stub()),
-                categories: Box::new(InMemoryCategories::stub()),
-                tags: Box::new(lib_tags::fake::InMemoryPorts::stub()),
-                payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
+                units: Box::new(InMemoryPorts::sample(chrono::Utc::now())),
+                institutions: Box::new(InMemoryInstitutions::sample()),
+                accounts: Box::new(lib_accounts::fake::InMemoryPorts::sample()),
+                categories: Box::new(InMemoryCategories::sample()),
+                tags: Box::new(lib_tags::fake::InMemoryPorts::sample()),
+                payees: Box::new(lib_payees::fake::InMemoryPorts::sample()),
                 transactions: Box::new(FailingTransactions {
                     transactions: Marked {
                         inner: stored.clone(),
@@ -1133,10 +1133,10 @@ impl<'a> Harness<'a> {
                     },
                     stored,
                 }),
-                bills: Box::new(stub.bills),
-                budgets: Box::new(stub.budgets),
-                inventory: Box::new(stub.inventory),
-                documents: Box::new(stub.documents),
+                bills: Box::new(sample.bills),
+                budgets: Box::new(sample.budgets),
+                inventory: Box::new(sample.inventory),
+                documents: Box::new(sample.documents),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Transactions],
                     written,
@@ -1151,22 +1151,22 @@ impl<'a> Harness<'a> {
     /// the reload after it puts the stored rows back. [`Harness::settle_writes`] lets the Shell
     /// hear of the failure.
     pub fn with_failing_bills(app: &'a mut TestAppContext) -> Self {
-        let stub = FakeStores::sample(today());
+        let sample = FakeStores::sample(today());
         let (report, failures) = mpsc::channel();
         let written = Rc::new(Cell::new(false));
-        let stored = stub.bills;
+        let stored = sample.bills;
         Self::build(
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
             counted(Stores {
-                units: Box::new(InMemoryPorts::stub(chrono::Utc::now())),
-                institutions: Box::new(InMemoryInstitutions::stub()),
-                accounts: Box::new(lib_accounts::fake::InMemoryPorts::stub()),
-                categories: Box::new(InMemoryCategories::stub()),
-                tags: Box::new(lib_tags::fake::InMemoryPorts::stub()),
-                payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
-                transactions: Box::new(stub.transactions),
+                units: Box::new(InMemoryPorts::sample(chrono::Utc::now())),
+                institutions: Box::new(InMemoryInstitutions::sample()),
+                accounts: Box::new(lib_accounts::fake::InMemoryPorts::sample()),
+                categories: Box::new(InMemoryCategories::sample()),
+                tags: Box::new(lib_tags::fake::InMemoryPorts::sample()),
+                payees: Box::new(lib_payees::fake::InMemoryPorts::sample()),
+                transactions: Box::new(sample.transactions),
                 bills: Box::new(FailingBills {
                     bills: Marked {
                         inner: stored.clone(),
@@ -1174,9 +1174,9 @@ impl<'a> Harness<'a> {
                     },
                     stored,
                 }),
-                budgets: Box::new(stub.budgets),
-                inventory: Box::new(stub.inventory),
-                documents: Box::new(stub.documents),
+                budgets: Box::new(sample.budgets),
+                inventory: Box::new(sample.inventory),
+                documents: Box::new(sample.documents),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Bills],
                     written,
@@ -1271,21 +1271,21 @@ impl<'a> Harness<'a> {
     /// commit naming both, as SQLite refusing a payment would; the reloads after it put the stored
     /// rows back. [`Harness::settle_writes`] lets the Shell hear of the failure.
     pub fn with_failing_payments(app: &'a mut TestAppContext) -> Self {
-        let stub = FakeStores::sample(today());
+        let sample = FakeStores::sample(today());
         let (report, failures) = mpsc::channel();
         let written = Rc::new(Cell::new(false));
-        let (transactions, bills) = (stub.transactions, stub.bills);
+        let (transactions, bills) = (sample.transactions, sample.bills);
         Self::build(
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
             counted(Stores {
-                units: Box::new(InMemoryPorts::stub(chrono::Utc::now())),
-                institutions: Box::new(InMemoryInstitutions::stub()),
-                accounts: Box::new(lib_accounts::fake::InMemoryPorts::stub()),
-                categories: Box::new(InMemoryCategories::stub()),
-                tags: Box::new(lib_tags::fake::InMemoryPorts::stub()),
-                payees: Box::new(lib_payees::fake::InMemoryPorts::stub()),
+                units: Box::new(InMemoryPorts::sample(chrono::Utc::now())),
+                institutions: Box::new(InMemoryInstitutions::sample()),
+                accounts: Box::new(lib_accounts::fake::InMemoryPorts::sample()),
+                categories: Box::new(InMemoryCategories::sample()),
+                tags: Box::new(lib_tags::fake::InMemoryPorts::sample()),
+                payees: Box::new(lib_payees::fake::InMemoryPorts::sample()),
                 transactions: Box::new(FailingTransactions {
                     transactions: Marked {
                         inner: transactions.clone(),
@@ -1300,9 +1300,9 @@ impl<'a> Harness<'a> {
                     },
                     stored: bills,
                 }),
-                budgets: Box::new(stub.budgets),
-                inventory: Box::new(stub.inventory),
-                documents: Box::new(stub.documents),
+                budgets: Box::new(sample.budgets),
+                inventory: Box::new(sample.inventory),
+                documents: Box::new(sample.documents),
                 commit: Rc::new(FailingCommit {
                     domains: vec![Domain::Transactions, Domain::Bills],
                     written,

@@ -344,7 +344,7 @@ mod tests {
 
     use bigdecimal::BigDecimal;
     use lib_accounts::contract::{self, PortsFactory, StoredPorts};
-    use lib_accounts::{AccountUsage, AccountUse, default_accounts};
+    use lib_accounts::{AccountUsage, AccountUse, sample_accounts};
     use lib_bills::{AmountKind, BillPlan, Recurrence};
     use lib_budgets::fake::InMemoryBudgets;
     use lib_core::{BillPlanId, CategoryId, TransactionId, TransactionStatus};
@@ -389,8 +389,8 @@ mod tests {
         })
     }
 
-    /// The adapter on one test database, with its pending batch. The stub's Units,
-    /// Institutions and Categories are stored first, which the stub Accounts and a test's Splits
+    /// The adapter on one test database, with its pending batch. The sample's Units,
+    /// Institutions and Categories are stored first, which the sample Accounts and a test's Splits
     /// and Bill Plans name. A reload commits, loads
     /// afresh, and fails the check if the writer reported a failure, so a write SQLite refuses
     /// can't pass unseen.
@@ -406,15 +406,15 @@ mod tests {
             let (writer, failures) = Writer::spawn(options).expect("the test database opens");
             UnitsAdapter::seed_from(
                 &writer,
-                lib_units::fake::InMemoryPorts::stub(chrono::Utc::now()),
+                lib_units::fake::InMemoryPorts::sample(chrono::Utc::now()),
             )
-            .expect("the stub Units are written");
+            .expect("the sample Units are written");
             InstitutionsAdapter::seed(&writer, crate::seed::sample_institutions())
-                .expect("the stub Institutions are written");
+                .expect("the sample Institutions are written");
             crate::CategoriesAdapter::seed(&writer, crate::seed::sample_categories())
-                .expect("the stub Categories are written");
+                .expect("the sample Categories are written");
             crate::TagsAdapter::seed(&writer, crate::seed::sample_tags())
-                .expect("the stub Tags are written");
+                .expect("the sample Tags are written");
             Self {
                 pending: PendingWrites::new(writer.clone()),
                 writer,
@@ -432,11 +432,11 @@ mod tests {
                             .expect("the Transactions load"),
                     )),
                     budgets: self.budgets.clone(),
-                    units: Rc::new(RefCell::new(lib_units::fake::InMemoryPorts::stub(
+                    units: Rc::new(RefCell::new(lib_units::fake::InMemoryPorts::sample(
                         chrono::Utc::now(),
                     ))),
                     institutions: Rc::new(RefCell::new(
-                        lib_institutions::fake::InMemoryInstitutions::stub(),
+                        lib_institutions::fake::InMemoryInstitutions::sample(),
                     )),
                 },
             }
@@ -609,7 +609,7 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        factory.create(default_accounts());
+        factory.create(sample_accounts());
         let wallet = AccountId::seed(1);
 
         let reloaded = factory.ports().adapter.accounts().account(wallet);
@@ -649,9 +649,9 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        factory.create(default_accounts());
+        factory.create(sample_accounts());
         let missing = AccountId::new();
-        let mut orphan = default_accounts()[1].clone();
+        let mut orphan = sample_accounts()[1].clone();
         orphan.id = AccountId::new();
         orphan.institution = InstitutionId::new();
 
@@ -673,7 +673,7 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        let mut ports = factory.create(default_accounts());
+        let mut ports = factory.create(sample_accounts());
         let (by_transaction, by_plan, checked) =
             (AccountId::seed(2), AccountId::seed(4), AccountId::seed(3));
         TransactionsAdapter::seed(&factory.writer, vec![transaction_on(by_transaction)])
@@ -732,7 +732,7 @@ mod tests {
     }
 
     /// `lib-transactions`' read check: each Account is stored as a Cash Account at the Personal
-    /// Institution, the stub's Units and Institutions stored first.
+    /// Institution, the sample's Units and Institutions stored first.
     #[sqlx::test(migrations = "migrations/client")]
     async fn transactions_read_the_accounts_rows(
         _: SqlitePoolOptions,
@@ -741,15 +741,15 @@ mod tests {
         fn store(writer: &Writer, rows: Vec<TransactionAccount>) {
             UnitsAdapter::seed_from(
                 writer,
-                lib_units::fake::InMemoryPorts::stub(chrono::Utc::now()),
+                lib_units::fake::InMemoryPorts::sample(chrono::Utc::now()),
             )
-            .expect("the stub Units are written");
+            .expect("the sample Units are written");
             InstitutionsAdapter::seed(writer, crate::seed::sample_institutions())
-                .expect("the stub Institutions are written");
-            let template = default_accounts()
+                .expect("the sample Institutions are written");
+            let template = sample_accounts()
                 .into_iter()
                 .next()
-                .expect("the stub has an Account");
+                .expect("the sample has an Account");
             let accounts = rows
                 .into_iter()
                 .map(|row| Account {
@@ -776,7 +776,7 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        let mut ports = factory.create(default_accounts());
+        let mut ports = factory.create(sample_accounts());
         let everyday = AccountId::seed(2);
         factory.name_account(
             &mut ports,
@@ -789,7 +789,7 @@ mod tests {
         let adapter = &ports.adapter;
         let holdings = holdings(&ports, UnitId::SEED_AUD);
 
-        let aud: Vec<_> = default_accounts()
+        let aud: Vec<_> = sample_accounts()
             .into_iter()
             .filter(|account| account.unit == UnitId::SEED_AUD)
             .collect();
@@ -808,7 +808,7 @@ mod tests {
         );
         assert_eq!(unit_accounts(&adapter.accounts.rows, UnitId::new()), 0);
         let bills = bill_accounts(&adapter.accounts.rows);
-        assert_eq!(bills.len(), default_accounts().len());
+        assert_eq!(bills.len(), sample_accounts().len());
         assert_eq!(bills[1].id, everyday);
         assert!(bills[1].takes_transactions);
     }
@@ -820,7 +820,7 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        let ports = factory.create(default_accounts());
+        let ports = factory.create(sample_accounts());
         let adapter = &ports.adapter;
 
         let everyday = AccountId::seed(2);
@@ -831,10 +831,10 @@ mod tests {
                 is_active: true,
             })
         );
-        let held = default_accounts()
+        let held = sample_accounts()
             .into_iter()
             .find(|account| !lib_transactions::takes_transactions(&account.account_type))
-            .expect("a stub Account takes no Transactions");
+            .expect("a sample Account takes no Transactions");
         assert_eq!(
             import_account(&adapter.accounts.rows, held.id).map(|account| account.is_active),
             Some(false)
@@ -852,16 +852,16 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        let mut ports = factory.create(default_accounts());
-        let accounts = default_accounts();
+        let mut ports = factory.create(sample_accounts());
+        let accounts = sample_accounts();
         let aud = accounts
             .iter()
             .find(|account| account.unit == UnitId::SEED_AUD)
-            .expect("the stub has an aud Account");
+            .expect("the sample has an aud Account");
         let other = accounts
             .iter()
             .find(|account| account.unit != UnitId::SEED_AUD)
-            .expect("the stub has an Account in another Unit");
+            .expect("the sample has an Account in another Unit");
         let uses = |transactions| AccountUse {
             transactions,
             budgets: 0,
@@ -894,18 +894,18 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        let ports = factory.create(default_accounts());
+        let ports = factory.create(sample_accounts());
         let adapter = &ports.adapter;
 
         let named_by = |institution| -> Vec<String> {
-            default_accounts()
+            sample_accounts()
                 .into_iter()
                 .filter(|account| account.institution == institution)
                 .map(|account| account.name)
                 .collect()
         };
         let anz = named_by(InstitutionId::SEED_ANZ);
-        assert!(anz.len() > 1, "the stub has more than one ANZ Account");
+        assert!(anz.len() > 1, "the sample has more than one ANZ Account");
         assert_eq!(
             institution_accounts(&adapter.accounts.rows, InstitutionId::SEED_ANZ),
             anz
@@ -934,7 +934,7 @@ mod tests {
         use lib_institutions::InstitutionRepository as _;
 
         let mut factory = AdapterFactory::new(options);
-        factory.create(default_accounts());
+        factory.create(sample_accounts());
         let mut institutions =
             InstitutionsAdapter::load(factory.pending.clone()).expect("the Institutions load");
 

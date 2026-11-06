@@ -11,7 +11,7 @@ use lib_core::{CategoryId, CategoryTypes};
 
 use crate::fake::{InMemoryCategories, InMemoryCategoryBudget};
 use crate::interactor::{AddCategory, BudgetChange, MoveCategory, RenameCategory};
-use crate::{Category, CategoryError, CategoryRepository, default_categories};
+use crate::{Category, CategoryError, CategoryRepository, sample_categories};
 
 /// A stored Categories port.
 pub trait StoredPorts {
@@ -117,7 +117,7 @@ fn names(ports: &mut impl StoredPorts) -> Vec<String> {
 /// Added Categories reload with their ids, names, parents and types: a top-level Income Category,
 /// a child under it, and a grandchild at the depth cap under an Expense parent.
 pub fn added_categories_reload_the_same<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_categories());
+    let mut ports = factory.create(sample_categories());
 
     let dividends = add("Dividends", None, CategoryTypes::Income)
         .run(ports.categories(), &mut InMemoryCategoryBudget::default())
@@ -166,7 +166,7 @@ pub fn added_categories_reload_the_same<F: PortsFactory>(factory: &mut F) {
 
 /// A rename reloads with the new name and the parent and type as they were.
 pub fn a_renamed_category_reloads_the_same<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_categories());
+    let mut ports = factory.create(sample_categories());
     let before = ports
         .categories()
         .category(GROCERIES)
@@ -190,14 +190,14 @@ pub fn a_renamed_category_reloads_the_same<F: PortsFactory>(factory: &mut F) {
     );
     assert_eq!(
         ports.categories().categories().len(),
-        default_categories().len()
+        sample_categories().len()
     );
 }
 
 /// A move reloads under its new parent, its children still under it; a move to top level reloads
 /// with no parent.
 pub fn a_moved_category_reloads_under_its_new_parent<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_categories());
+    let mut ports = factory.create(sample_categories());
 
     MoveCategory {
         id: FOOD,
@@ -232,7 +232,7 @@ pub fn a_moved_category_reloads_under_its_new_parent<F: PortsFactory>(factory: &
 /// before and after a reload: a child added under an early parent lists among its siblings, not
 /// last, and a Category moved under a parent added after it lists after that parent.
 pub fn categories_list_in_tree_order<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_categories());
+    let mut ports = factory.create(sample_categories());
 
     add("Insurance", Some(HOUSING), CategoryTypes::Expense)
         .run(ports.categories(), &mut InMemoryCategoryBudget::default())
@@ -270,7 +270,7 @@ pub fn categories_list_in_tree_order<F: PortsFactory>(factory: &mut F) {
 /// child past the three-level cap, a child or a move under another type, and a move into the
 /// Category's own subtree.
 pub fn a_refused_write_leaves_the_tree_as_it_was<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_categories());
+    let mut ports = factory.create(sample_categories());
     let stored = ports.categories().categories();
 
     assert_eq!(
@@ -332,7 +332,7 @@ pub fn a_refused_write_leaves_the_tree_as_it_was<F: PortsFactory>(factory: &mut 
 /// A write that fails is reported once, naming the Categories domain, and the port goes back to
 /// the last committed rows rather than keeping the change the store refused.
 pub fn a_failed_write_reloads_and_reports<F: PortsFactory>(factory: &mut F) {
-    let mut ports = factory.create(default_categories());
+    let mut ports = factory.create(sample_categories());
     let stored = ports.categories().categories();
 
     factory.break_writes(&mut ports);

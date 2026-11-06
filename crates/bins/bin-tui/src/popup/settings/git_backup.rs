@@ -5,7 +5,7 @@
 //! Git Backup pushes a text dump of the Ledger, plus its Documents through LFS, only to a private
 //! repository (ADR-0033), so the test is a dry-run push that also checks the repository is
 //! private and supports LFS. A wireframe: there is no Git Backup writer yet, so the test runs on a
-//! stub, [`check`], and Save only flashes "not yet built". An access token is a [`SecretString`],
+//! sample, [`check`], and Save only flashes "not yet built". An access token is a [`SecretString`],
 //! drawn masked and never logged.
 
 use crossterm::event::KeyEvent;
@@ -28,14 +28,14 @@ enum Reply {
     NoLfs,
 }
 
-/// wireframe: the remotes the stub answers for, and what each reports; any other is unreachable.
+/// wireframe: the remotes the sample answers for, and what each reports; any other is unreachable.
 const REMOTES: [(&str, Reply); 3] = [
     ("git@github.com:teda/ledger-backup.git", Reply::Ready),
     ("git@github.com:teda/ledger-public.git", Reply::Public),
     ("git@git.home.lan:ledger.git", Reply::NoLfs),
 ];
 
-/// wireframe: the account the stub authenticates as.
+/// wireframe: the account the sample authenticates as.
 const USER: &str = "teda";
 
 /// The fields, top to bottom; the fourth is the SSH key or the access token, by authentication.
@@ -212,7 +212,7 @@ impl GitBackupPopup {
         edited(text, key).map(|edited| *text = edited).is_some()
     }
 
-    /// wireframe: the stub test. It checks what the Client can check alone, a remote, a branch
+    /// wireframe: the sample test. It checks what the Client can check alone, a remote, a branch
     /// and a token, then answers as [`REMOTES`] say: a public repository or one without LFS is
     /// refused, and any other remote is unreachable.
     fn check(&self) -> Tested {

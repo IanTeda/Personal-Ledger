@@ -157,7 +157,7 @@ mod tests {
         let view = cx.new(|_| StandInView);
         // A Toast or status arrives as one input, which drains into the Shell through the door.
         let _subscription = shell.update(cx, |_, cx| Root::view_event_subscription(&view, cx));
-        // The stub seed's plans, which `FakeStores::sample` holds.
+        // The sample seed's plans, which `FakeStores::sample` holds.
         let (id, last_plan) =
             lib_bills::planner_order(&lib_database::seed::sample_bills(today).plans)
                 .last()

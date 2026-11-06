@@ -91,7 +91,7 @@ pub trait ReadsFactory<Row> {
 
     /// A read port over `rows`, stored in the order given as their own domain stores them, and
     /// loaded. Each Category comes after its parent, with its path, and every Account names one
-    /// of the stub's Units (aud, btc or vas).
+    /// of the sample's Units (aud, btc or vas).
     fn create(&mut self, rows: Vec<Row>) -> Self::Reads;
 
     /// Loads a fresh read port from wherever [`Self::create`] stored the rows, as a restart would.

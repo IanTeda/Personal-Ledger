@@ -21,7 +21,7 @@ use crate::{
     settings_rows, toggle_expanded,
 };
 
-/// The parents open when the page is first drawn: the stub tree's Housing, Utilities and Food, as
+/// The parents open when the page is first drawn: the sample tree's Housing, Utilities and Food, as
 /// the handoff draws it.
 const OPEN_AT_START: [CategoryId; 3] = [
     CategoryId::seed(1),
@@ -358,7 +358,7 @@ fn line(categories: &[Category], row: &TreeNode) -> CategoryLine {
 mod tests {
     use lib_config::KeyBindingConfig;
 
-    use super::super::test_support::stub;
+    use super::super::test_support::sample;
     use super::*;
     use crate::fake::{RecordingRouter, RouterCall};
     use crate::keymap::categories_page_keymap;
@@ -413,7 +413,7 @@ mod tests {
 
     #[test]
     fn the_trees_run_expense_then_income_under_their_kickers_and_the_scope() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let view = Page::new(shared).view();
 
         assert_eq!(view.scope, "12 categories \u{b7} 3 levels deep");
@@ -455,7 +455,7 @@ mod tests {
 
     #[test]
     fn movement_walks_the_shown_rows_and_the_folds_open_and_close() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
 
         page.send(CategoriesPageEvent::Move(Step::Next));
@@ -500,7 +500,7 @@ mod tests {
 
     #[test]
     fn new_edit_and_delete_open_their_dialogs_on_the_selected_category() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
 
         assert_eq!(page.send(CategoriesPageEvent::Edit), []);
@@ -539,7 +539,7 @@ mod tests {
 
     #[test]
     fn delete_on_a_parent_says_why_on_the_status_line_and_opens_nothing() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut page = Page::new(shared);
         page.send(CategoriesPageEvent::Select(HOUSING));
 
@@ -554,7 +554,7 @@ mod tests {
 
     #[test]
     fn a_deleted_selection_leaves_nothing_selected() {
-        let (categories, shared) = stub();
+        let (categories, shared) = sample();
         let mut page = Page::new(shared);
         page.send(CategoriesPageEvent::Select(RENT));
 
@@ -571,7 +571,7 @@ mod tests {
 
     #[test]
     fn the_legend_shows_the_chords_the_keymap_binds() {
-        let (_, shared) = stub();
+        let (_, shared) = sample();
         let mut config = KeyBindingConfig::default();
         config
             .bindings
@@ -584,7 +584,7 @@ mod tests {
 
     #[test]
     fn add_child_on_uncategorised_says_why_on_the_status_line_and_opens_nothing() {
-        let (categories, shared) = stub();
+        let (categories, shared) = sample();
         let uncategorised = crate::get_or_create_uncategorised(
             &mut categories.borrow_mut().categories,
             CategoryTypes::Expense,

@@ -63,7 +63,7 @@ impl DeletionStores {
 
     /// The port and reads over `storage`'s stores, for a test that builds `Root` directly.
     #[cfg(test)]
-    pub fn stub(storage: &crate::shell::router::LedgerStores) -> Self {
+    pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
             storage.categories.clone(),
             storage.transactions.clone(),

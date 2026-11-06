@@ -75,7 +75,7 @@ mod tests {
     use super::*;
     use crate::fake::InMemoryPorts;
     use crate::interactor::AddBillPlan;
-    use crate::interactor::test_support::{date, draft, dues, stub, today};
+    use crate::interactor::test_support::{date, draft, dues, sample, today};
     use crate::{BillPlan, Recurrence};
 
     fn add(ports: &mut InMemoryPorts, draft: BillPlanDraft) -> BillPlanId {
@@ -114,7 +114,7 @@ mod tests {
 
     #[test]
     fn a_new_recurrence_supersedes_future_open_entries_only() {
-        let mut ports = stub();
+        let mut ports = sample();
         let id = add(&mut ports, draft(Recurrence::Monthly, date(2026, 8, 25)));
 
         edit(
@@ -142,7 +142,7 @@ mod tests {
 
     #[test]
     fn a_plain_edit_saves_the_plan_and_leaves_the_schedule() {
-        let mut ports = stub();
+        let mut ports = sample();
         let id = add(&mut ports, draft(Recurrence::Monthly, date(2026, 9, 25)));
         let entries = ports.bills.entries.clone();
 
@@ -163,7 +163,7 @@ mod tests {
 
     #[test]
     fn deactivating_supersedes_and_reactivating_regenerates_without_backfill() {
-        let mut ports = stub();
+        let mut ports = sample();
         let id = add(&mut ports, draft(Recurrence::Weekly, date(2026, 9, 12)));
 
         edit(
@@ -180,7 +180,7 @@ mod tests {
 
     #[test]
     fn the_unit_is_locked_and_a_refusal_writes_nothing() {
-        let mut ports = stub();
+        let mut ports = sample();
         let id = add(&mut ports, draft(Recurrence::Monthly, today()));
         let before = ports.bills.clone();
 

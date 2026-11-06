@@ -12,7 +12,7 @@ use crate::protocols::StatementSource;
 /// The seeded statement's file name, which the step names.
 pub const STATEMENT_FILE: &str = "statement.csv";
 
-/// The handoff's seven visible lines plus eleven more, 18 in all -- against the stub Payees, 14
+/// The handoff's seven visible lines plus eleven more, 18 in all -- against the sample Payees, 14
 /// an alias matches and 4 that need a Payee (`(raw description, amount in cents, days ago)`).
 const STATEMENT: [(&str, i64, i64); 18] = [
     ("WOOLWORTHS 2137 SYDNEY AU", -8_640, 1),
@@ -43,7 +43,7 @@ pub struct SeededStatement {
 }
 
 impl SeededStatement {
-    /// The stub Accounts' "ANZ Everyday", which the seeded statement has always belonged to.
+    /// The sample Accounts' "ANZ Everyday", which the seeded statement has always belonged to.
     pub const STUB_ACCOUNT: AccountId = AccountId::seed(2);
 
     /// The seeded statement for the Sample Ledger's Account, dated back from `today`.

@@ -73,7 +73,7 @@ mod tests {
 
     #[test]
     fn editing_a_unit_writes_its_fields_and_keeps_its_id_and_price_in_the_same_quote() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         let btc = ports.units.unit(UnitId::SEED_BTC).unwrap();
 
         let edited = edit(UnitId::SEED_BTC, btc.link.clone())
@@ -92,7 +92,7 @@ mod tests {
 
     #[test]
     fn changing_the_quote_unit_clears_the_weekly_prices() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         let mut link = ports.units.unit(UnitId::SEED_BTC).unwrap().link;
         link.quote = UnitId::SEED_VAS;
 
@@ -105,7 +105,7 @@ mod tests {
 
     #[test]
     fn editing_a_deactivated_unit_keeps_it_deactivated() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         DeactivateUnit(UnitId::SEED_BTC)
             .run(&mut ports.units, &ports.base_unit)
             .unwrap();
@@ -120,7 +120,7 @@ mod tests {
 
     #[test]
     fn editing_a_unit_that_is_gone_is_refused_and_nothing_is_written() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         let before = ports.clone();
 
         assert_eq!(
@@ -133,7 +133,7 @@ mod tests {
 
     #[test]
     fn a_link_to_a_price_source_that_is_gone_is_refused_and_nothing_is_written() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         let before = ports.clone();
         let gone = PriceLink {
             source_id: PriceSourceId::new(),
@@ -150,7 +150,7 @@ mod tests {
 
     #[test]
     fn a_quote_unit_that_is_gone_is_refused_and_nothing_is_written() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
         let before = ports.clone();
         let mut link = ports.units.unit(UnitId::SEED_BTC).unwrap().link;
         link.quote = UnitId::new();
@@ -164,7 +164,7 @@ mod tests {
 
     #[test]
     fn a_unit_can_be_quoted_in_itself() {
-        let mut ports = InMemoryPorts::stub(Utc::now());
+        let mut ports = InMemoryPorts::sample(Utc::now());
 
         let edited = edit(UnitId::SEED_BTC, PriceLink::manual(UnitId::SEED_BTC))
             .run(&mut ports.units, &ports.price_sources)

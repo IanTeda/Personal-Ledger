@@ -248,7 +248,7 @@ enum Refused {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::stub;
+    use super::super::test_support::sample;
     use super::*;
     use crate::PayeeRepository as _;
     use crate::fake::{RecordingRouter, RouterCall};
@@ -286,12 +286,12 @@ mod tests {
 
     #[test]
     fn the_three_outcomes_are_chosen_from_the_payees_use_when_it_opens() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         ports.borrow_mut().usage.uses.insert(WOOLWORTHS, used(4));
         ports.borrow_mut().usage.uses.insert(DON_QUIJOTE, used(1));
         let open = |id| {
             DeletePayeePresenter::new(shared.clone(), id)
-                .expect("a stub Payee")
+                .expect("a sample Payee")
                 .view_model()
         };
 
@@ -323,8 +323,8 @@ mod tests {
 
     #[test]
     fn delete_waits_for_the_exact_name_then_deletes_and_raises_its_toast() {
-        let (ports, shared) = stub();
-        let mut dialog = DeletePayeePresenter::new(shared, NETFLIX).expect("a stub Payee");
+        let (ports, shared) = sample();
+        let mut dialog = DeletePayeePresenter::new(shared, NETFLIX).expect("a sample Payee");
 
         assert_eq!(
             send(
@@ -356,9 +356,9 @@ mod tests {
 
     #[test]
     fn deactivate_and_reactivate_keep_the_payee_and_raise_their_toasts() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         ports.borrow_mut().usage.uses.insert(WOOLWORTHS, used(4));
-        let mut deactivate = DeletePayeePresenter::new(shared.clone(), WOOLWORTHS).expect("stub");
+        let mut deactivate = DeletePayeePresenter::new(shared.clone(), WOOLWORTHS).expect("sample");
 
         let calls = send(
             &mut deactivate,
@@ -373,7 +373,7 @@ mod tests {
                 .is_some_and(|payee| payee.is_active)
         );
 
-        let mut reactivate = DeletePayeePresenter::new(shared, WOOLWORTHS).expect("stub");
+        let mut reactivate = DeletePayeePresenter::new(shared, WOOLWORTHS).expect("sample");
         let calls = send(&mut reactivate, vec![DeletePayeeEvent::Confirm]);
         assert_eq!(calls[0], toast("Reactivated payee Woolworths"));
         assert!(
@@ -387,8 +387,8 @@ mod tests {
 
     #[test]
     fn a_payee_that_came_into_use_under_the_dialog_turns_it_into_deactivate() {
-        let (ports, shared) = stub();
-        let mut dialog = DeletePayeePresenter::new(shared, NETFLIX).expect("a stub Payee");
+        let (ports, shared) = sample();
+        let mut dialog = DeletePayeePresenter::new(shared, NETFLIX).expect("a sample Payee");
         ports.borrow_mut().usage.uses.insert(NETFLIX, used(2));
 
         assert_eq!(
@@ -414,11 +414,11 @@ mod tests {
 
     #[test]
     fn the_warnings_count_what_names_the_payee() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         let warnings = |id, uses| {
             ports.borrow_mut().usage.uses.insert(id, uses);
             let view = DeletePayeePresenter::new(shared.clone(), id)
-                .expect("a stub Payee")
+                .expect("a sample Payee")
                 .view_model();
             plain(&view.warning)
         };
@@ -451,11 +451,11 @@ mod tests {
 
     #[test]
     fn a_use_that_cant_be_counted_offers_no_delete_and_says_why() {
-        let (ports, shared) = stub();
+        let (ports, shared) = sample();
         ports.borrow_mut().usage.unreadable = true;
         let open = |id| {
             DeletePayeePresenter::new(shared.clone(), id)
-                .expect("a stub Payee")
+                .expect("a sample Payee")
                 .view_model()
         };
 
@@ -475,8 +475,8 @@ mod tests {
 
     #[test]
     fn a_count_that_fails_under_the_dialog_turns_it_into_deactivate() {
-        let (ports, shared) = stub();
-        let mut dialog = DeletePayeePresenter::new(shared, NETFLIX).expect("a stub Payee");
+        let (ports, shared) = sample();
+        let mut dialog = DeletePayeePresenter::new(shared, NETFLIX).expect("a sample Payee");
         ports.borrow_mut().usage.unreadable = true;
 
         assert_eq!(
@@ -495,8 +495,8 @@ mod tests {
 
     #[test]
     fn a_payee_gone_under_the_dialog_is_refused_and_cancel_closes() {
-        let (ports, shared) = stub();
-        let mut dialog = DeletePayeePresenter::new(shared, NETFLIX).expect("a stub Payee");
+        let (ports, shared) = sample();
+        let mut dialog = DeletePayeePresenter::new(shared, NETFLIX).expect("a sample Payee");
         ports.borrow_mut().payees.delete_payee(NETFLIX);
 
         assert_eq!(
@@ -524,8 +524,8 @@ mod tests {
 
     #[test]
     fn typing_fills_the_typed_back_name_and_select_or_submit_confirms_once_it_matches() {
-        let (ports, shared) = stub();
-        let mut dialog = DeletePayeePresenter::new(shared.clone(), NETFLIX).expect("stub");
+        let (ports, shared) = sample();
+        let mut dialog = DeletePayeePresenter::new(shared.clone(), NETFLIX).expect("sample");
         let select = DeletePayeeEvent::Input(DialogInput::Select);
         let submit = DeletePayeeEvent::Input(DialogInput::Submit);
 
@@ -553,7 +553,7 @@ mod tests {
         assert_eq!(ports.borrow().payees.payee(NETFLIX), None);
 
         ports.borrow_mut().usage.uses.insert(DON_QUIJOTE, used(1));
-        let mut reactivate = DeletePayeePresenter::new(shared, DON_QUIJOTE).expect("stub");
+        let mut reactivate = DeletePayeePresenter::new(shared, DON_QUIJOTE).expect("sample");
         send(&mut reactivate, keys("x"));
         assert!(
             reactivate.view_model().frame.can_confirm,

@@ -72,7 +72,7 @@ mod tests {
     use crate::{PayeesAdapter, PendingWrites, TransactionsAdapter, Writer};
 
     /// Both adapters on one test database and one pending batch, as start-up opens them. The
-    /// stub's Units, Accounts and Categories are stored first, which a Payee and a Split name.
+    /// sample's Units, Accounts and Categories are stored first, which a Payee and a Split name.
     struct AdapterFactory {
         writer: Writer,
         pending: PendingWrites,
@@ -182,7 +182,7 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let mut factory = AdapterFactory::new(options);
-        let mut payees = lib_payees::default_payees();
+        let mut payees = lib_payees::sample_payees();
         payees[0].is_active = false;
         let import = factory.create(payees.clone(), Vec::new());
 
