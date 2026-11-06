@@ -128,17 +128,18 @@ At Medium, Settings is a drill-down with the page picker in a breadcrumb page he
 ### Large and X-Large (turn 2)
 
 - **DESKTOP-106 · Large:** today's Chrome, unchanged.
-- **DESKTOP-107 · X-Large:** the same Chrome as Large. The Settings page caps its content at 840px and leaves the rest of the View empty.
+- **DESKTOP-107 · X-Large:** the same Chrome as Large. The Settings page spans the View's full width.
 
 ### Chrome at each Window Size (turn 3)
 
 - **Primary rail:** icons (52px) at Medium, expanded (206px) at Large and X-Large. The icon rail separates the LEDGER, NET WORTH and PLAN groups with a short rule and keeps Settings pinned to the bottom. `b` overrides the rail until the window crosses a Breakpoint, which resets it to that Window Size's default. Settings › Display's "start with the rail hidden" applies at Large and X-Large.
-- **Content width:** forms and Settings pages cap their content at 840px at every Window Size. Below that, a two-column page (the Display form and its preview) stacks into one column once the page is narrower than about 700px.
+- **Content width:** forms and Settings pages span the View's full width at Medium, Large and X-Large, up to a docked detail pane where there is one: tables, lists, summaries and previews flex to fill it, while fields, segmented controls and help prose keep their own widths. They no longer cap their content at 840px. When the View is narrow, a two-column page (the Display form and its preview) stacks into one column once the page is narrower than about 700px.
 - **Header:** the wordmark alone on every View, with no breadcrumb or View suffix: the View's own heading says where the user is (DESKTOP-116). Back and Forward sit before the wordmark and Undo with its recent-actions caret after it (DESKTOP-122). The wordmark, history buttons, sync status and window controls never shrink.
 - **Status line:** keeps the mode chip and the ledger path, shortened to `…/teda.pldb` at Medium. Key hints drop from the end, whole hints at a time, until the rest fits (DESKTOP-116).
 - **Dialogs:** stay 420px wide at every Window Size.
 - **Command palette:** 820px, or the window width minus 16px each side when that is narrower (688px at 720, DESKTOP-117). It stays 96px from the top. Inside a row the description truncates before the command.
 - **Toasts:** at most 420px, or the window width minus 16px each side when that is narrower. At the 720px floor that is 688px, so a toast never actually shrinks; the rule only guards against a smaller minimum later (DESKTOP-116).
+- **Vertical scroll:** a View whose content is taller than the space the Chrome leaves it shows a vertical scroll bar at the View's right edge (6px `#d7d3d3` track, `#605d5d` thumb sized to the share in view) and scrolls inside the View; the heading scrolls with it. A View that fits shows none.
 - **Horizontal scroll:** a View whose content is wider than the space the Chrome leaves it shows a horizontal scroll bar at the View's bottom edge and scrolls inside the View. The page title, header, rails and status line never scroll sideways (DESKTOP-118).
 - **X-Large:** a View may dock a detail pane and decides that per View. Settings pages dock none, except Units, which docks a 400px pane whose ACTIVITY list takes its outcomes in place of Toasts (DESKTOP-125).
 
