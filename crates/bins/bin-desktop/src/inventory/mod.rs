@@ -45,25 +45,32 @@ pub struct SettingsInventorySnapshot {
 }
 
 /// What `shell::router::build` hands the Inventory module: the store it shares with the Documents
-/// reads, and its keymap under `[keybindings]`.
+/// reads, the Units and Documents its Dialogs quote, and its keymap under `[keybindings]`.
 pub struct InventorySetup {
     pub store: SharedInventoryStore,
+    pub reads: lib_database::StoredInventoryReads,
     pub keymap: lib_viper::keymap::Keymap<InventoryPageEvent>,
 }
 
 impl InventorySetup {
-    pub fn new(store: SharedInventoryStore, config: &lib_config::KeyBindingConfig) -> Self {
+    pub fn new(
+        store: SharedInventoryStore,
+        reads: lib_database::StoredInventoryReads,
+        config: &lib_config::KeyBindingConfig,
+    ) -> Self {
         Self {
             store,
+            reads,
             keymap: keymap::inventory_page_keymap(config),
         }
     }
 
     /// `storage`'s Inventory store under the default keys, for a test that builds `Root` directly.
     #[cfg(test)]
-    pub fn stub(storage: &crate::ledger_store::LedgerSetup) -> Self {
+    pub fn stub(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
             storage.inventory.clone(),
+            storage.inventory_reads(),
             &lib_config::KeyBindingConfig::default(),
         )
     }

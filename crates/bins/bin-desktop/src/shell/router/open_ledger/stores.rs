@@ -1,56 +1,43 @@
-//! The Desktop's announcer of Ledger writes. [`LedgerStore`] holds no rows (#1056): every domain
-//! is written by its module, through its ports or a cross-domain module's port, and the store
-//! emits a [`LedgerChanged`] naming the [`Domain`]s that changed, which [`notify_on`] turns into a
-//! repaint for the Entities reading them. It writes no domain outside its `#[doc(hidden)]` test
-//! hooks (`*_for_test`), and still hands out the shared stores and the stored reads until they
-//! move to the Open Ledger (#1057).
-//!
-//! The Institutions, Accounts and Categories have no read copy (#1053, #1054, #1055): their
-//! modules announce their writes through [`LedgerStore::announce_institutions`],
-//! [`LedgerStore::announce_accounts`] and [`LedgerStore::refresh_categories`], which announces
-//! from the Categories store's write count. The Tags, Payees, Transactions, Bills and
-//! Budgets have no read copy (#1003, #1005, #1028): their modules and the cross-domain modules
-//! write their stores and announce the change through [`LedgerStore::announce_tags`],
-//! [`LedgerStore::announce_payees`], [`LedgerStore::announce_transactions`],
-//! [`LedgerStore::announce_bills`] and [`LedgerStore::announce_budgets`], which is the Dashboard's
-//! and the other pages' redraw trigger. The stub's rows are `lib_database::FakeStores::stub`'s,
-//! which the in-memory test stores are built from. The Documents and Document Types have no read
-//! copy (#968): their modules read the Documents store, and the other domains' rows through their
-//! stores ([`LedgerStore::document_reads`]).
-//!
-//! The store holds no commit: a module's writes are committed by the input they ran in
-//! (`crate::input::send`).
+//! The stores an Open Ledger's modules share, and the stored reads built over them (#1057): what
+//! [`super::OpenLedger::build`] assembles once from the `Stores` it is given and hands each page,
+//! so no page reaches through an Entity for its data. The Open Ledger keeps them for what runs
+//! after it is built: a failed write's reload (`write_failures.rs`), a new month's Bill Schedule
+//! and the `*_for_test` hooks `Root`'s test support calls.
 
+#[cfg(test)]
 use std::cell::RefCell;
-use std::collections::BTreeSet;
+#[cfg(test)]
 use std::rc::Rc;
 
-use gpui::{Context, Entity, EventEmitter, Subscription};
+use gpui::{App, Entity};
 use lib_database::{
     PayeesStore, SharedBudgetsStore, SharedCategoriesStore, SharedDocumentsStore,
     SharedInstitutionsStore, SharedInventoryStore, SharedTagsStore, SharedTransactionsStore,
-    SharedUnitsStore, StoredCategoryRows, StoredDocumentReads, StoredInventoryReads,
-    StoredPayeeReads,
+    SharedUnitsStore, StoredAccountReads, StoredCategoryRows, StoredDocumentReads,
+    StoredInventoryReads,
 };
 use lib_institutions::InstitutionsPorts as _;
 
 use crate::accounts::ports::DesktopPorts as DesktopAccountsPorts;
-use crate::bills::ports::{DesktopPorts as DesktopBillsPorts, LedgerBackedPorts};
+use crate::announcer::{Announcer, Domain};
+use crate::bills::ports::DesktopPorts as DesktopBillsPorts;
+use crate::categories::ports::{CategoriesWrites, CategoryStores};
 use crate::institutions::ports::DesktopPorts as DesktopInstitutionsPorts;
 use crate::payees::ports::DesktopPorts as DesktopPayeesPorts;
-use crate::write_count::WriteCount;
 
-/// What `shell::router::build` hands the Ledger: the stores and ports its modules and the
-/// cross-domain modules write, which the Ledger keeps read copies of, lends to the readers not yet
-/// on their own ports, and reloads after a failed write. It writes none of them (#1006).
-pub struct LedgerSetup {
+/// The shared stores and ports a Ledger's modules and the cross-domain modules write, each one
+/// value however many hold it.
+pub struct LedgerStores {
     pub institutions: DesktopInstitutionsPorts,
     /// The Institutions store under the Institutions ports, which the Accounts' reads hold too.
     pub institutions_store: SharedInstitutionsStore,
     pub accounts: DesktopAccountsPorts,
+    /// The usage of the Accounts and the Units and Institutions they may name, over the stores
+    /// (#993, #1052, #1053): the Accounts ports' reads and Account delete's.
+    pub account_reads: StoredAccountReads,
     pub categories: SharedCategoriesStore,
-    /// The writes made to the Categories store, which the Ledger announces from.
-    pub categories_writes: WriteCount,
+    /// The writes made to the Categories store, which the Categories announce from.
+    pub categories_writes: CategoriesWrites,
     pub tags: SharedTagsStore,
     pub payees: DesktopPayeesPorts,
     pub transactions: SharedTransactionsStore,
@@ -63,9 +50,9 @@ pub struct LedgerSetup {
     pub units: SharedUnitsStore,
 }
 
-impl LedgerSetup {
-    /// The stub's Institutions, Accounts, Categories, Payees, Transactions and Bills as of `today`
-    /// (`FakeStores::stub`), in memory, for a test that builds `Root` directly.
+impl LedgerStores {
+    /// The stub's stores as of `today` (`FakeStores::stub`), in memory, for a test that builds
+    /// `Root` or a module directly.
     #[cfg(test)]
     pub fn stub(today: chrono::NaiveDate) -> Self {
         let stub = lib_database::FakeStores::stub(today);
@@ -78,20 +65,20 @@ impl LedgerSetup {
             today.and_time(chrono::NaiveTime::MIN).and_utc() + chrono::Duration::hours(12),
         );
         let institutions_store = crate::institutions::ports::in_memory_store();
-        let accounts =
-            crate::accounts::LedgerBackedPorts::in_memory(lib_database::StoredAccountReads {
-                transactions: transactions.clone(),
-                budgets: budgets.clone(),
-                units: units.clone(),
-                institutions: institutions_store.clone(),
-            });
+        let account_reads = StoredAccountReads {
+            transactions: transactions.clone(),
+            budgets: budgets.clone(),
+            units: units.clone(),
+            institutions: institutions_store.clone(),
+        };
+        let accounts = crate::accounts::LedgerBackedPorts::in_memory(account_reads.clone());
         let bills_store = crate::bills::ports::in_memory_store(&stub);
-        let payees = crate::payees::LedgerBackedPorts::in_memory(StoredPayeeReads {
+        let payees = crate::payees::LedgerBackedPorts::in_memory(lib_database::StoredPayeeReads {
             transactions: transactions.clone(),
             bills: bills_store.clone(),
             categories: categories.clone(),
         });
-        let bills = LedgerBackedPorts::shared(
+        let bills = crate::bills::ports::LedgerBackedPorts::shared(
             bills_store,
             payees.clone(),
             accounts.clone(),
@@ -113,185 +100,35 @@ impl LedgerSetup {
             bills,
             transactions,
             accounts,
+            account_reads,
             categories,
             categories_writes,
             payees,
             units,
         }
     }
-}
 
-/// A part of the Ledger a write can touch: what [`LedgerChanged`] carries when a module has
-/// written its store, so a reader can skip a change that isn't its own. Distinct from
-/// `lib_database`'s writer `Domain`, which names the adapters a failed write reloads.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Domain {
-    Accounts,
-    Categories,
-    Payees,
-    Tags,
-    Transactions,
-    Bills,
-    Budgets,
-    Documents,
-    DocumentTypes,
-    Inventory,
-    Institutions,
-    Units,
-}
-
-/// Emitted after a write lands, naming every domain it touched.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LedgerChanged {
-    pub what: BTreeSet<Domain>,
-}
-
-pub struct LedgerStore {
-    institutions: DesktopInstitutionsPorts,
-    accounts: DesktopAccountsPorts,
-    categories: SharedCategoriesStore,
-    /// The writes made to the Categories store, and the count the last announcement saw.
-    categories_writes: WriteCount,
-    categories_announced: u64,
-    tags: SharedTagsStore,
-    payees: DesktopPayeesPorts,
-    transactions: SharedTransactionsStore,
-    bills: DesktopBillsPorts,
-    budgets: SharedBudgetsStore,
-    inventory: SharedInventoryStore,
-    documents: SharedDocumentsStore,
-    /// The other domains as Documents reads them, through the stores above (#963).
-    document_reads: StoredDocumentReads,
-    /// The Units and Documents the Inventory Dialogs quote (#1014).
-    inventory_reads: StoredInventoryReads,
-    /// Whether a change was announced since the Shell last read the rail's counts.
-    announced: bool,
-    /// How many changes were announced, for a test that asserts a keystroke announced none.
-    announcements: usize,
-}
-
-impl EventEmitter<LedgerChanged> for LedgerStore {}
-
-impl LedgerStore {
-    /// `stub`'s Transactions, Bills and Budgets in memory as the ports, beside the stub's
-    /// Institutions, Accounts, Categories and Payees, for a test that needs no storage.
-    pub fn new(stub: &lib_database::FakeStores) -> Self {
-        let transactions: SharedTransactionsStore =
-            Rc::new(RefCell::new(stub.transactions.clone()));
-        let (categories, categories_writes) = crate::categories::ports::in_memory_counted();
-        let bills_store = crate::bills::ports::in_memory_store(stub);
-        let payees = crate::payees::LedgerBackedPorts::in_memory(StoredPayeeReads {
-            transactions: transactions.clone(),
-            bills: bills_store.clone(),
-            categories: categories.clone(),
-        });
-        let budgets = crate::budgets::ports::in_memory(stub);
-        let units = crate::bills::ports::in_memory_units(chrono::Utc::now());
-        let institutions_store = crate::institutions::ports::in_memory_store();
-        let accounts =
-            crate::accounts::LedgerBackedPorts::in_memory(lib_database::StoredAccountReads {
-                transactions: transactions.clone(),
-                budgets: budgets.clone(),
-                units: units.clone(),
-                institutions: institutions_store.clone(),
-            });
-        let bills = LedgerBackedPorts::shared(
-            bills_store,
-            payees.clone(),
-            accounts.clone(),
-            categories.clone(),
-            transactions.clone(),
-            units.clone(),
-        );
-        let institutions = crate::institutions::LedgerBackedPorts::shared(
-            institutions_store,
-            accounts.clone(),
-            units.clone(),
-        );
-        let inventory = crate::inventory::ports::in_memory(chrono::Local::now().date_naive());
-        let documents: SharedDocumentsStore =
-            Rc::new(RefCell::new(lib_documents::fake::InMemoryDocuments {
-                documents: Vec::new(),
-                types: lib_documents::types::default_types(),
-            }));
-        let inventory_reads = StoredInventoryReads {
-            units,
-            inventory: inventory.clone(),
-            documents: documents.clone(),
-        };
-        let document_reads = StoredDocumentReads {
-            transactions: transactions.clone(),
-            payees: payees.clone(),
-            accounts: accounts.clone(),
-            institutions: institutions.clone(),
-            bills: bills.borrow().store(),
-            inventory: inventory.clone(),
-        };
-        Self {
-            institutions,
-            accounts,
-            categories,
-            categories_writes,
-            categories_announced: 0,
-            tags: crate::tags::ports::in_memory(),
-            inventory,
-            documents,
-            document_reads,
-            inventory_reads,
-            payees,
-            transactions,
-            bills,
-            budgets,
-            announced: false,
-            announcements: 0,
-        }
-    }
-
-    /// The Institutions, Accounts, Categories, Payees, Transactions and Bills read from `setup`'s
-    /// stores, which their writes go to.
-    pub fn with_storage(setup: LedgerSetup) -> Self {
-        let document_reads = StoredDocumentReads {
-            transactions: setup.transactions.clone(),
-            payees: setup.payees.clone(),
-            accounts: setup.accounts.clone(),
-            institutions: setup.institutions.clone(),
-            bills: setup.bills.borrow().store(),
-            inventory: setup.inventory.clone(),
-        };
-        let inventory_reads = StoredInventoryReads {
-            units: setup.units.clone(),
-            inventory: setup.inventory.clone(),
-            documents: setup.documents.clone(),
-        };
-        Self {
-            institutions: setup.institutions,
-            accounts: setup.accounts,
-            categories: setup.categories,
-            categories_writes: setup.categories_writes,
-            categories_announced: 0,
-            tags: setup.tags,
-            payees: setup.payees,
-            transactions: setup.transactions,
-            bills: setup.bills,
-            budgets: setup.budgets,
-            inventory: setup.inventory,
-            documents: setup.documents,
-            document_reads,
-            inventory_reads,
-            announced: false,
-            announcements: 0,
-        }
-    }
-
-    /// The other domains' stores as `lib_inventory`' reads, which the Inventory Dialogs hold.
+    /// The other domains' stores as `lib_inventory`'s reads, which the Inventory page and its
+    /// Dialogs hold (#1014).
     pub fn inventory_reads(&self) -> StoredInventoryReads {
-        self.inventory_reads.clone()
+        StoredInventoryReads {
+            units: self.units.clone(),
+            inventory: self.inventory.clone(),
+            documents: self.documents.clone(),
+        }
     }
 
     /// The other domains' stores as `lib_documents`' reads, which the Documents page's Presenter
-    /// holds.
+    /// holds (#963).
     pub fn document_reads(&self) -> StoredDocumentReads {
-        self.document_reads.clone()
+        StoredDocumentReads {
+            transactions: self.transactions.clone(),
+            payees: self.payees.clone(),
+            accounts: self.accounts.clone(),
+            institutions: self.institutions.clone(),
+            bills: self.bills.borrow().store(),
+            inventory: self.inventory.clone(),
+        }
     }
 
     /// The rows naming a Category in the Transactions, Bills and Payees stores, which the
@@ -305,10 +142,26 @@ impl LedgerStore {
         }
     }
 
+    /// What the Categories ports read and write beyond the Categories themselves: the Budgets
+    /// store and the rows naming a Category.
+    pub fn category_stores(&self) -> CategoryStores {
+        CategoryStores {
+            categories: self.categories.clone(),
+            writes: self.categories_writes.clone(),
+            budgets: self.budgets.clone(),
+            rows: self.category_rows(),
+        }
+    }
+
     /// Adds a Location priced in `unit` to the Inventory store, so a test can delete a Unit one
     /// names (#885).
     #[doc(hidden)]
-    pub fn add_location_in_for_test(&mut self, unit: lib_core::UnitId, cx: &mut Context<'_, Self>) {
+    pub fn add_location_in_for_test(
+        &self,
+        unit: lib_core::UnitId,
+        announcer: &Entity<Announcer>,
+        cx: &mut App,
+    ) {
         let mut scratch = lib_inventory::Inventory::default();
         let draft = lib_inventory::LocationDraft {
             name: "Beach shack".to_string(),
@@ -324,13 +177,16 @@ impl LedgerStore {
             .borrow_mut()
             .inventory_mut()
             .upsert_location(location);
-        self.announce(cx, BTreeSet::from([Domain::Units, Domain::Inventory]));
+        announcer.update(cx, |announcer, cx| {
+            announcer.announce(Domain::Units, cx);
+            announcer.announce(Domain::Inventory, cx);
+        });
     }
 
     /// Removes every Location from the Inventory store through the Interactor, as the Remove
     /// location Dialog does.
     #[doc(hidden)]
-    pub fn empty_inventory_for_test(&mut self, cx: &mut Context<'_, Self>) {
+    pub fn empty_inventory_for_test(&self, announcer: &Entity<Announcer>, cx: &mut App) {
         let ids: Vec<lib_core::LocationId> = self
             .inventory
             .borrow()
@@ -347,25 +203,35 @@ impl LedgerStore {
                 "a Location listed a moment ago must still be removable"
             );
         }
-        self.announce_inventory(cx);
+        announcer.update(cx, |announcer, cx| {
+            announcer.announce(Domain::Inventory, cx)
+        });
     }
 
     /// Writes an empty default Budget in `unit` straight to the Budgets store, which then names
     /// the Unit.
     #[doc(hidden)]
-    pub fn add_budget_in_for_test(&mut self, unit: lib_core::UnitId, cx: &mut Context<'_, Self>) {
+    pub fn add_budget_in_for_test(
+        &self,
+        unit: lib_core::UnitId,
+        announcer: &Entity<Announcer>,
+        cx: &mut App,
+    ) {
         let budget = lib_budgets::personal_spending(unit, &[]);
         self.budgets
             .borrow_mut()
             .budgets_mut()
             .upsert_budget(&budget);
-        self.announce(cx, BTreeSet::from([Domain::Units, Domain::Budgets]));
+        announcer.update(cx, |announcer, cx| {
+            announcer.announce(Domain::Units, cx);
+            announcer.announce(Domain::Budgets, cx);
+        });
     }
 
     /// Writes a Payee called `name` straight to the Payees store, so a test can meet the refusal
     /// of an Import that creates the same name.
     #[doc(hidden)]
-    pub fn add_payee_for_test(&mut self, name: &str, cx: &mut Context<'_, Self>) {
+    pub fn add_payee_for_test(&self, name: &str, announcer: &Entity<Announcer>, cx: &mut App) {
         PayeesStore::payees_mut(&mut *self.payees.borrow_mut()).upsert_payee(lib_payees::Payee {
             id: lib_core::PayeeId::new(),
             name: name.to_owned(),
@@ -373,16 +239,18 @@ impl LedgerStore {
             default_category: None,
             is_active: true,
         });
-        self.announce_payees(cx);
+        announcer.update(cx, |announcer, cx| announcer.announce(Domain::Payees, cx));
     }
 
     /// Gives Institution `id` Unit `unit` as its Usual unit, so a test can delete a Unit an
     /// Institution names.
+    #[doc(hidden)]
     pub fn name_usual_unit_for_test(
-        &mut self,
+        &self,
         id: lib_core::InstitutionId,
         unit: lib_core::UnitId,
-        cx: &mut Context<'_, Self>,
+        announcer: &Entity<Announcer>,
+        cx: &mut App,
     ) {
         {
             let mut ports = self.institutions.borrow_mut();
@@ -392,229 +260,10 @@ impl LedgerStore {
             institution.usual_unit = Some(unit);
             ports.institutions_mut().upsert_institution(institution);
         }
-        self.announce_institutions(cx);
+        announcer.update(cx, |announcer, cx| {
+            announcer.announce(Domain::Institutions, cx);
+        });
     }
-
-    /// The Budgets store, which the Categories Monthly budget writes and the usage counts read.
-    pub fn budgets_store(&self) -> &SharedBudgetsStore {
-        &self.budgets
-    }
-
-    /// The Payees ports, for a write failure's rollback to read back (ADR-0046).
-    pub fn payees_ports(&self) -> &DesktopPayeesPorts {
-        &self.payees
-    }
-
-    /// The Tags store, for a write failure's rollback to read back (ADR-0046).
-    pub fn tags_store(&self) -> &SharedTagsStore {
-        &self.tags
-    }
-
-    /// The Transactions store, which the Categories handover and a test helper write.
-    pub fn transactions_store(&self) -> &SharedTransactionsStore {
-        &self.transactions
-    }
-
-    /// The Bills store under the Bills ports, which the Categories handover writes.
-    pub fn bills_store(&self) -> lib_database::SharedBillsStore {
-        self.bills.borrow().store()
-    }
-
-    /// The Categories store's tree as the Budgets rules read it, for the Categories Monthly budget's
-    /// save.
-    pub fn budget_categories(&self) -> Vec<lib_budgets::BudgetCategory> {
-        use lib_budgets::BudgetCategories as _;
-        lib_database::StoredBudgetCategories {
-            categories: self.categories.clone(),
-        }
-        .budget_categories()
-    }
-
-    /// Announces `Domain::Units`, after the Units module, Unit delete, the Ledger page's base
-    /// Unit or a rollback wrote the Units store, so the Accounts, Inventory, Bills, Budgets,
-    /// Transactions and the Dashboard redraw (#1052).
-    pub fn announce_units(&mut self, cx: &mut Context<'_, Self>) {
-        self.announce(cx, BTreeSet::from([Domain::Units]));
-    }
-
-    /// The Accounts ports, for a write failure's rollback to reload (ADR-0046).
-    pub fn accounts_ports(&self) -> &DesktopAccountsPorts {
-        &self.accounts
-    }
-
-    /// Announces `Domain::Accounts`, after the Accounts page or Account delete wrote the Accounts
-    /// store, or a rollback reloaded it, so every reader redraws (#1054).
-    pub fn announce_accounts(&mut self, cx: &mut Context<'_, Self>) {
-        self.announce(cx, BTreeSet::from([Domain::Accounts]));
-    }
-
-    /// The Institutions ports, for a write failure's rollback to reload (ADR-0046).
-    pub fn institutions_ports(&self) -> &DesktopInstitutionsPorts {
-        &self.institutions
-    }
-
-    /// Announces `Domain::Institutions`, after the Institutions module, Unit delete or a rollback
-    /// wrote the Institutions store, so the Institutions and Accounts pages redraw (#1053).
-    pub fn announce_institutions(&mut self, cx: &mut Context<'_, Self>) {
-        self.announce(cx, BTreeSet::from([Domain::Institutions]));
-    }
-
-    /// The Categories store, for a write failure's rollback to reload (ADR-0046).
-    pub fn categories_store(&self) -> &SharedCategoriesStore {
-        &self.categories
-    }
-
-    /// Announces `Domain::Categories`, after a rollback reloaded the store, so every reader
-    /// redraws.
-    pub fn announce_categories(&mut self, cx: &mut Context<'_, Self>) {
-        self.categories_announced = self.categories_writes.get();
-        self.announce(cx, BTreeSet::from([Domain::Categories]));
-    }
-
-    /// Puts the Transactions back as stored, after a write that named them failed, announcing
-    /// `Domain::Transactions` so every reader redraws (ADR-0046).
-    ///
-    /// # Errors
-    /// Returns the error reading them back; the store is left as it was.
-    pub fn reload_transactions(&mut self, cx: &mut Context<'_, Self>) -> lib_database::Result<()> {
-        self.transactions.borrow_mut().reload()?;
-        self.announce(cx, BTreeSet::from([Domain::Transactions]));
-        Ok(())
-    }
-
-    /// Puts the Bill Plans and the Bill Schedule back as stored, after a write that named them
-    /// failed, announcing `Domain::Bills` so every reader redraws (ADR-0046).
-    ///
-    /// # Errors
-    /// Returns the error reading them back; the ports are left as they were.
-    pub fn reload_bills(&mut self, cx: &mut Context<'_, Self>) -> lib_database::Result<()> {
-        self.bills.borrow_mut().reload()?;
-        self.announce(cx, BTreeSet::from([Domain::Bills]));
-        Ok(())
-    }
-
-    /// Puts the Budgets back as stored, after a write that named them failed, announcing
-    /// `Domain::Budgets` so every reader redraws (ADR-0046).
-    ///
-    /// # Errors
-    /// Returns the error reading them back; the store is left as it was.
-    pub fn reload_budgets(&mut self, cx: &mut Context<'_, Self>) -> lib_database::Result<()> {
-        self.budgets.borrow_mut().reload()?;
-        self.announce(cx, BTreeSet::from([Domain::Budgets]));
-        Ok(())
-    }
-
-    /// Puts the Inventory back as stored, after a write that named it failed, announcing
-    /// `Domain::Inventory` so every reader redraws (ADR-0046).
-    ///
-    /// # Errors
-    /// Returns the error reading it back; the store is left as it was.
-    pub fn reload_inventory(&mut self, cx: &mut Context<'_, Self>) -> lib_database::Result<()> {
-        self.inventory.borrow_mut().reload()?;
-        self.announce(cx, BTreeSet::from([Domain::Inventory]));
-        Ok(())
-    }
-
-    /// Puts the Documents and Document Types back as stored, after a write that named them failed,
-    /// announcing `Domain::Documents` and `Domain::DocumentTypes` so every reader redraws
-    /// (ADR-0046).
-    ///
-    /// # Errors
-    /// Returns the error reading them back; the store is left as it was.
-    pub fn reload_documents(&mut self, cx: &mut Context<'_, Self>) -> lib_database::Result<()> {
-        self.documents.borrow_mut().reload()?;
-        self.announce_documents(cx);
-        Ok(())
-    }
-
-    /// Announces `Domain::Documents` and `Domain::DocumentTypes`, after the Document Types module
-    /// wrote the store, so the Documents View redraws.
-    pub fn announce_documents(&mut self, cx: &mut Context<'_, Self>) {
-        self.announce(
-            cx,
-            BTreeSet::from([Domain::Documents, Domain::DocumentTypes]),
-        );
-    }
-
-    /// Announces `Domain::Payees`, after the Payees module, Category delete, the Import or a
-    /// rollback wrote the Payees store, so Transactions, Bills, Budgets and Documents redraw.
-    pub fn announce_payees(&mut self, cx: &mut Context<'_, Self>) {
-        self.announce(cx, BTreeSet::from([Domain::Payees]));
-    }
-
-    /// Announces `Domain::Categories` when the Categories store was written since the last
-    /// announcement, after the Categories module or Category delete wrote it.
-    pub fn refresh_categories(&mut self, cx: &mut Context<'_, Self>) {
-        if self.categories_writes.get() != self.categories_announced {
-            self.announce_categories(cx);
-        }
-    }
-
-    /// Announces `Domain::Tags`, after the Tags page, Tag remove or merge, or a rollback wrote the
-    /// Tags store, so the Tags page, the Transactions and the Shell redraw.
-    pub fn announce_tags(&mut self, cx: &mut Context<'_, Self>) {
-        self.announce(cx, BTreeSet::from([Domain::Tags]));
-    }
-
-    /// Announces `Domain::Inventory`, after the Inventory page wrote the store, so the Documents
-    /// and the Inventory page redraw.
-    pub fn announce_inventory(&mut self, cx: &mut Context<'_, Self>) {
-        self.announce(cx, BTreeSet::from([Domain::Inventory]));
-    }
-
-    /// Announces `Domain::Bills`, after the Bills module, Bill Payments or Account delete wrote
-    /// the Bills store, so the Dashboard, Bills, Budgets and Documents redraw (#1028).
-    pub fn announce_bills(&mut self, cx: &mut Context<'_, Self>) {
-        self.announce(cx, BTreeSet::from([Domain::Bills]));
-    }
-
-    /// Announces `Domain::Budgets`, after the Budgets module or the Categories Monthly budget
-    /// wrote the Budgets store, so the Dashboard and Budgets redraw (#1028).
-    pub fn announce_budgets(&mut self, cx: &mut Context<'_, Self>) {
-        self.announce(cx, BTreeSet::from([Domain::Budgets]));
-    }
-
-    /// Announces `Domain::Transactions`, after Bill Payments, Account delete, the Import, Tag
-    /// remove or merge, or Category delete wrote the Transactions store, so the Dashboard, the
-    /// Transactions, Bills, Budgets, Documents and Tags redraw (#1028).
-    pub fn announce_transactions(&mut self, cx: &mut Context<'_, Self>) {
-        self.announce(cx, BTreeSet::from([Domain::Transactions]));
-    }
-
-    /// Tells every reader of `what` that it changed, in one event however many domains it names,
-    /// and marks the rail's counts as needing a fresh read ([`Self::take_announced`]).
-    pub(crate) fn announce(&mut self, cx: &mut Context<'_, Self>, what: BTreeSet<Domain>) {
-        self.announced = true;
-        self.announcements += 1;
-        cx.emit(LedgerChanged { what });
-        cx.notify();
-    }
-
-    /// Whether anything was announced since the last ask, so the Shell reads the rail's counts
-    /// afresh only after a change rather than after every input.
-    /// How many changes were announced so far, for a test.
-    #[doc(hidden)]
-    pub fn announcements(&self) -> usize {
-        self.announcements
-    }
-
-    pub(crate) fn take_announced(&mut self) -> bool {
-        std::mem::take(&mut self.announced)
-    }
-}
-
-/// Repaints the subscribing Entity whenever a landed write touches `domain`: how an Entity that
-/// reads the Ledger straight from `ledger` follows the rows it shows (ADR-0038).
-pub fn notify_on<T: 'static>(
-    ledger: &Entity<LedgerStore>,
-    domain: Domain,
-    cx: &mut Context<'_, T>,
-) -> Subscription {
-    cx.subscribe(ledger, move |_, _, event: &LedgerChanged, cx| {
-        if event.what.contains(&domain) {
-            cx.notify();
-        }
-    })
 }
 
 #[cfg(test)]
@@ -622,7 +271,7 @@ mod tests {
     use std::{cell::RefCell, rc::Rc};
 
     use gpui::{AppContext, Entity, TestAppContext};
-    use lib_database::{Commit, PendingWrites};
+    use lib_database::{Commit, PendingWrites, StoredPayeeReads};
 
     use super::*;
     use lib_bills::BillsPorts as _;
@@ -633,18 +282,23 @@ mod tests {
             .expect("the Ledger opens")
     }
 
-    /// A store on `storage`, with the pending writes the test commits, as an input's `send` would.
+    /// The stores on `storage`, as an Entity a test reads them through, with the pending writes
+    /// the test commits, as an input's `send` would.
     fn on_storage(
         cx: &mut TestAppContext,
         storage: lib_database::Storage,
-    ) -> (Entity<LedgerStore>, PendingWrites) {
+    ) -> (Entity<LedgerStores>, PendingWrites) {
         let on = on_storage_with_bills(cx, storage);
         (on.store, on.pending)
     }
 
-    /// A store on the Ledger file, with the ports the modules that write beside it hold.
+    /// The stores on the Ledger file, with the ports the modules that write beside them hold.
     struct OnStorage {
-        store: Entity<LedgerStore>,
+        store: Entity<LedgerStores>,
+        /// The Accounts ports the stores share, which Account delete announces from.
+        accounts: DesktopAccountsPorts,
+        /// What the modules announce their writes through.
+        announcer: Entity<Announcer>,
         /// The Bills ports the store shares, which the Bills module writes.
         bills: DesktopBillsPorts,
         /// The payments port over the Transactions and Bills stores, the Bill Payments module's.
@@ -678,21 +332,22 @@ mod tests {
         let units: SharedUnitsStore = Rc::new(RefCell::new(storage.units));
         let institutions_store: SharedInstitutionsStore =
             Rc::new(RefCell::new(storage.institutions));
+        let account_reads = StoredAccountReads {
+            transactions: transactions.clone(),
+            budgets: budgets.clone(),
+            units: units.clone(),
+            institutions: institutions_store.clone(),
+        };
         let accounts = crate::accounts::LedgerBackedPorts::shared(
             Box::new(storage.accounts),
-            lib_database::StoredAccountReads {
-                transactions: transactions.clone(),
-                budgets: budgets.clone(),
-                units: units.clone(),
-                institutions: institutions_store.clone(),
-            },
+            account_reads.clone(),
         );
         let institutions = crate::institutions::LedgerBackedPorts::shared(
             institutions_store.clone(),
             accounts.clone(),
             units.clone(),
         );
-        let bills = LedgerBackedPorts::shared(
+        let bills = crate::bills::ports::LedgerBackedPorts::shared(
             bills_store,
             payees.clone(),
             accounts.clone(),
@@ -711,25 +366,26 @@ mod tests {
             budgets.clone(),
         )
         .deletion;
-        let store = cx.new(|_| {
-            LedgerStore::with_storage(LedgerSetup {
-                institutions,
-                institutions_store,
-                accounts,
-                categories,
-                categories_writes,
-                tags: Rc::new(RefCell::new(storage.tags)),
-                payees,
-                transactions,
-                bills: bills.clone(),
-                budgets,
-                inventory: Rc::new(RefCell::new(storage.inventory)),
-                documents: Rc::new(RefCell::new(storage.documents)),
-                units,
-            })
+        let store = cx.new(|_| LedgerStores {
+            institutions,
+            institutions_store,
+            accounts: accounts.clone(),
+            account_reads,
+            categories,
+            categories_writes,
+            tags: Rc::new(RefCell::new(storage.tags)),
+            payees,
+            transactions,
+            bills: bills.clone(),
+            budgets,
+            inventory: Rc::new(RefCell::new(storage.inventory)),
+            documents: Rc::new(RefCell::new(storage.documents)),
+            units,
         });
         OnStorage {
             store,
+            accounts,
+            announcer: cx.new(|_| Announcer::default()),
             bills,
             payments,
             deletion,
@@ -738,8 +394,8 @@ mod tests {
         }
     }
 
-    /// Deletes Account `id` through the Account Deletion module's port, then brings the read
-    /// copies in line, as its Dialog's confirm does.
+    /// Deletes Account `id` through the Account Deletion module's port, then announces it,
+    /// as its Dialog's confirm does.
     fn delete_account(
         cx: &mut TestAppContext,
         on: &OnStorage,
@@ -747,7 +403,7 @@ mod tests {
     ) -> lib_account_deletion::Result<lib_account_deletion::AccountDeleted> {
         let deleted = lib_account_deletion::interactor::DeleteAccount { id }
             .run(&mut *on.deletion.borrow_mut());
-        cx.update(|cx| crate::account_deletion::refresh(&on.store, cx));
+        cx.update(|cx| crate::account_deletion::refresh(&on.accounts, &on.announcer, cx));
         deleted
     }
 
@@ -848,52 +504,52 @@ mod tests {
         });
     }
 
-    /// The Categories as the Categories store holds them: the Ledger keeps no read copy (#1055).
-    fn categories_of(store: &LedgerStore) -> Vec<lib_categories::Category> {
-        store.categories_store().borrow().categories().categories()
+    /// The Categories as the Categories store holds them.
+    fn categories_of(store: &LedgerStores) -> Vec<lib_categories::Category> {
+        store.categories.borrow().categories().categories()
     }
 
-    /// The Payees as the Payees store holds them: the Ledger keeps no read copy (#1005).
-    fn payees_of(store: &LedgerStore) -> Vec<lib_payees::Payee> {
-        PayeesStore::payees(&*store.payees_ports().borrow()).payees()
+    /// The Payees as the Payees store holds them.
+    fn payees_of(store: &LedgerStores) -> Vec<lib_payees::Payee> {
+        PayeesStore::payees(&*store.payees.borrow()).payees()
     }
 
     /// The Bill Plans and the Bill Schedule as the Bills ports hold them, the entries by due date
     /// and then Plan, since a port lists them in no particular order.
     fn bills_of(
         cx: &mut TestAppContext,
-        store: &Entity<LedgerStore>,
+        store: &Entity<LedgerStores>,
     ) -> (Vec<lib_bills::BillPlan>, Vec<lib_bills::BillScheduleEntry>) {
         store.read_with(cx, |store, _| (plans_of(store), entries_of(store)))
     }
 
     /// The Transactions as the Transactions store holds them, newest first, since a store lists
-    /// them in no particular order: the Ledger keeps no read copy (#1028).
-    fn transactions_of(store: &LedgerStore) -> Vec<lib_transactions::Transaction> {
-        let mut transactions = store.transactions_store().borrow().all_transactions();
+    /// them in no particular order.
+    fn transactions_of(store: &LedgerStores) -> Vec<lib_transactions::Transaction> {
+        let mut transactions = store.transactions.borrow().all_transactions();
         transactions.sort_by(|a, b| b.date.cmp(&a.date).then(b.id.cmp(&a.id)));
         transactions
     }
 
-    /// The Accounts as the Accounts ports hold them: the Ledger keeps no read copy (#1054).
-    fn accounts_of(store: &LedgerStore) -> Vec<lib_accounts::Account> {
-        lib_accounts::AccountsPorts::accounts(&*store.accounts_ports().borrow()).accounts()
+    /// The Accounts as the Accounts ports hold them.
+    fn accounts_of(store: &LedgerStores) -> Vec<lib_accounts::Account> {
+        lib_accounts::AccountsPorts::accounts(&*store.accounts.borrow()).accounts()
     }
 
-    /// The Bill Plans as the Bills ports hold them: the Ledger keeps no read copy (#1028).
-    fn plans_of(store: &LedgerStore) -> Vec<lib_bills::BillPlan> {
+    /// The Bill Plans as the Bills ports hold them.
+    fn plans_of(store: &LedgerStores) -> Vec<lib_bills::BillPlan> {
         store.bills.borrow().bills().bill_plans()
     }
 
     /// The Bill Schedule as the Bills ports hold it, by due date and then Plan.
-    fn entries_of(store: &LedgerStore) -> Vec<lib_bills::BillScheduleEntry> {
+    fn entries_of(store: &LedgerStores) -> Vec<lib_bills::BillScheduleEntry> {
         let mut entries = store.bills.borrow().bills().entries();
         entries.sort_by_key(|entry| (entry.due, entry.plan_id));
         entries
     }
 
     /// Every Split as the Bills ports read them from the Transactions store.
-    fn splits_of(store: &LedgerStore) -> Vec<lib_bills::BillSplit> {
+    fn splits_of(store: &LedgerStores) -> Vec<lib_bills::BillSplit> {
         store
             .bills
             .borrow()
@@ -901,20 +557,20 @@ mod tests {
             .splits_between(chrono::NaiveDate::MIN, chrono::NaiveDate::MAX)
     }
 
-    /// The Budgets as the Budgets store holds them: the Ledger keeps no read copy (#1028).
-    fn budgets_of(store: &LedgerStore) -> Vec<lib_budgets::Budget> {
-        store.budgets_store().borrow().budgets().budgets()
+    /// The Budgets as the Budgets store holds them.
+    fn budgets_of(store: &LedgerStores) -> Vec<lib_budgets::Budget> {
+        store.budgets.borrow().budgets().budgets()
     }
 
     /// Commits what was written, as the input's `send` would, then opens the Ledger in `dir`
     /// again a day later, so a re-seed would show as shifted dates.
     fn restart(
         cx: &mut TestAppContext,
-        (store, pending): (Entity<LedgerStore>, PendingWrites),
+        (store, pending): (Entity<LedgerStores>, PendingWrites),
         writer: lib_database::Writer,
         dir: &std::path::Path,
         today: chrono::NaiveDate,
-    ) -> Entity<LedgerStore> {
+    ) -> Entity<LedgerStores> {
         pending.commit();
         crate::quit(&writer);
         drop(store);
@@ -936,6 +592,7 @@ mod tests {
             store,
             bills,
             payments,
+            announcer,
             pending,
             ..
         } = on_storage_with_bills(cx, storage);
@@ -1017,7 +674,7 @@ mod tests {
             .run(ports.bills, ports.accounts, ports.categories)
             .expect("the plan is edited");
         }
-        cx.update(|cx| crate::bill_payments::announce(&store, cx));
+        cx.update(|cx| crate::bill_payments::announce(&announcer, cx));
         let before = bills_of(cx, &store);
         let transactions = store.read_with(cx, |store, _| transactions_of(store));
 
@@ -1070,7 +727,7 @@ mod tests {
                 })
                 .expect("the stub pays an entry")
         });
-        let resolution = |cx: &mut TestAppContext, store: &Entity<LedgerStore>| {
+        let resolution = |cx: &mut TestAppContext, store: &Entity<LedgerStores>| {
             store.read_with(cx, |store, _| {
                 lib_bills::entry(&entries_of(store), entry).map(|entry| entry.resolution.clone())
             })
@@ -1093,7 +750,7 @@ mod tests {
                 ports.split_mut().bills.upsert_bill_plan(plan);
             }
         }
-        cx.update(|cx| crate::bills::ports::announce(&on.store, cx));
+        cx.update(|cx| crate::bills::ports::announce(&on.announcer, cx));
         on.pending.commit();
         let budgets = on.store.read_with(cx, |store, _| budgets_of(store));
         assert!(

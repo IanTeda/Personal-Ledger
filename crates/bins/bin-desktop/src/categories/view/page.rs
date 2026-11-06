@@ -1,14 +1,12 @@
 //! The Categories Settings page's View: the `lib-categories` page Presenter in a gpui Entity. It
 //! looks up each key the Shell passes on, as chord text, in the Categories keymap, turns clicks
-//! into events, draws the view model (`render.rs`), and keeps the Ledger read copy in line after
+//! into events, draws the view model (`render.rs`), and announces any Categories write after
 //! every event ([`ports::refresh`]). Each key and click is one input (`crate::input::send`), which
 //! commits what it wrote. The Settings View hosts it as any other page.
 
 mod render;
 
-use std::collections::BTreeSet;
-
-use crate::ledger_store::Domain;
+use crate::announcer::Domain;
 use chrono::NaiveDate;
 use gpui::{AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Subscription};
 use lib_categories::presenter::{
@@ -26,7 +24,7 @@ use crate::categories::{CategoriesSetup, SettingsCategoriesSnapshot};
 use crate::category_deletion::DeletionStores;
 use crate::settings::snapshot::PageSnapshot;
 use crate::{
-    ledger_store::{LedgerStore, notify_on},
+    announcer::{Announcer, notify_on},
     navigation::movement::Movement,
     settings::{
         SettingsPage,
@@ -44,7 +42,9 @@ pub struct CategoriesPage {
     categories: SharedCategories,
     /// Category delete's port and reads, which the Delete category Dialog opens on.
     deletion: DeletionStores,
-    ledger: Entity<LedgerStore>,
+    /// The stores the page's Dialogs read and write beyond the Categories, and the write count.
+    stores: ports::CategoryStores,
+    announcer: Entity<Announcer>,
     keymap: Keymap<CategoriesPageEvent>,
     /// "Today" for the Monthly budget a Dialog shows, read once when the Shell is built.
     today: NaiveDate,
@@ -59,18 +59,19 @@ pub struct CategoriesPage {
 impl CategoriesPage {
     pub fn new(
         setup: CategoriesSetup,
-        ledger: Entity<LedgerStore>,
+        announcer: Entity<Announcer>,
         today: NaiveDate,
         clock: Clock,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        let categories = ports::shared(&setup.store);
+        let categories = ports::shared(&setup.stores.categories);
         Self {
             presenter: CategoriesPagePresenter::new(categories.clone(), setup.keymap.clone()),
             categories,
             deletion: setup.deletion,
-            _categories_changed: notify_on(&ledger, Domain::Categories, cx),
-            ledger,
+            stores: setup.stores,
+            _categories_changed: notify_on(&announcer, Domain::Categories, cx),
+            announcer,
             keymap: setup.keymap,
             today,
             clock,
@@ -92,21 +93,22 @@ impl CategoriesPage {
         crate::input::send(cx, |cx| self.handle(event, cx));
     }
 
-    /// Hands `event` to the Presenter with the Desktop's Router, then brings the Ledger read copy
-    /// in line with whatever it wrote. Inside an input already, as [`Self::send`] or a Dialog's
+    /// Hands `event` to the Presenter with the Desktop's Router, then announces whatever it
+    /// wrote. Inside an input already, as [`Self::send`] or a Dialog's
     /// confirm.
     fn handle(&mut self, event: CategoriesPageEvent, cx: &mut Context<'_, Self>) {
-        ports::refresh(&self.ledger, cx);
+        ports::refresh(&self.stores.writes, &self.announcer, cx);
         let mut router = PageRouter {
             categories: self.categories.clone(),
             deletion: self.deletion.clone(),
-            ledger: self.ledger.clone(),
+            stores: self.stores.clone(),
+            announcer: self.announcer.clone(),
             today: self.today,
             clock: self.clock.clone(),
             cx,
         };
         self.presenter.handle(event, &mut router);
-        ports::refresh(&self.ledger, cx);
+        ports::refresh(&self.stores.writes, &self.announcer, cx);
         cx.notify();
     }
 
@@ -119,16 +121,15 @@ impl CategoriesPage {
         cx: &mut Context<'_, Self>,
     ) {
         if outcome.change == CategoryChange::Deleted {
-            self.ledger.update(cx, |store, cx| {
-                store.announce(
-                    cx,
-                    BTreeSet::from([
-                        Domain::Transactions,
-                        Domain::Bills,
-                        Domain::Budgets,
-                        Domain::Payees,
-                    ]),
-                );
+            self.announcer.update(cx, |announcer, cx| {
+                for domain in [
+                    Domain::Transactions,
+                    Domain::Bills,
+                    Domain::Budgets,
+                    Domain::Payees,
+                ] {
+                    announcer.announce(domain, cx);
+                }
             });
         }
         self.handle(CategoriesPageEvent::DialogClosed(Some(outcome)), cx);

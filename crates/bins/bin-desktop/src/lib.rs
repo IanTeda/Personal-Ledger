@@ -7,6 +7,7 @@
 
 mod account_deletion;
 mod accounts;
+mod announcer;
 mod assets;
 mod bill_payments;
 mod bills;
@@ -23,7 +24,6 @@ mod help;
 mod input;
 mod institutions;
 mod inventory;
-mod ledger_store;
 pub mod locale;
 pub mod navigation;
 #[doc(hidden)]

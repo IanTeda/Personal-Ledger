@@ -10,7 +10,7 @@
 //! Remove and merge write through [`RemovalStores`]' port, `lib-database`'s adapter over the Tags
 //! and Transactions stores the Tags and Transactions modules share, so the rewritten Splits and the
 //! Tag's delete join the one pending batch and land in the one commit of the confirm's input.
-//! Nothing here reads `LedgerStore`: the Tags page hears of a confirm through its `landed`
+//! Nothing here reads the `Announcer`: the Tags page hears of a confirm through its `landed`
 //! callback and brings what else reads the two domains in line.
 
 pub mod router;

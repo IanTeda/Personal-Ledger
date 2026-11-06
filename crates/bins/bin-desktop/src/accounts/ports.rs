@@ -23,7 +23,7 @@ use lib_core::AccountId;
 use lib_database::FakeStores;
 use lib_database::{AccountsStore, StoredAccountReads};
 
-use crate::ledger_store::LedgerStore;
+use crate::announcer::{Announcer, Domain};
 use crate::write_count::WriteCount;
 
 /// The Accounts ports the Accounts module and the Ledger share.
@@ -136,19 +136,27 @@ impl AccountsStore for LedgerBackedPorts {
 ///
 /// # Errors
 /// Returns the error reading them back; the ports are left as they were.
-pub fn reload(ledger: &Entity<LedgerStore>, cx: &mut App) -> lib_database::Result<()> {
-    let ports = ledger.read(cx).accounts_ports().clone();
+pub fn reload(
+    ports: &DesktopPorts,
+    announcer: &Entity<Announcer>,
+    cx: &mut App,
+) -> lib_database::Result<()> {
     AccountsStore::reload(&mut *ports.borrow_mut())?;
-    ledger.update(cx, |store, cx| store.announce_accounts(cx));
+    announce(announcer, cx);
     Ok(())
+}
+
+/// Announces `Domain::Accounts`, so every reader redraws (#1054).
+fn announce(announcer: &Entity<Announcer>, cx: &mut App) {
+    announcer.update(cx, |announcer, cx| announcer.announce(Domain::Accounts, cx));
 }
 
 /// Announces `Domain::Accounts` when the ports were written since the last announcement, so the
 /// other Views see a write at once. Run before and after every Accounts event and Dialog confirm,
 /// and after Account delete.
-pub fn refresh(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: &mut App) {
+pub fn refresh(ports: &DesktopPorts, announcer: &Entity<Announcer>, cx: &mut App) {
     if ports.borrow().take_written() {
-        ledger.update(cx, |store, cx| store.announce_accounts(cx));
+        announce(announcer, cx);
     }
 }
 

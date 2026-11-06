@@ -54,6 +54,9 @@ use commands::record_history;
 pub use date_clock::{DATE_POLL, wall_clock};
 pub use key_dispatch::PENDING_G_TIMEOUT;
 pub use log_feed::LOG_COALESCE;
+/// The stores a test builds the module Setups on, as the Open Ledger does.
+#[cfg(test)]
+pub(crate) use open_ledger::LedgerStores;
 pub use open_ledger::{LedgerFile, OpenLedger};
 #[doc(hidden)]
 pub use snapshots::{
@@ -325,10 +328,10 @@ impl Root {
     /// read again only when the Ledger announced a change since the last read (or the day moved),
     /// so a cursor move costs no read.
     pub(crate) fn refresh_rail_counts(&mut self, changed: bool, cx: &mut App) {
-        let announced = self
-            .open
-            .as_ref()
-            .is_some_and(|open| open.ledger.update(cx, |store, _| store.take_announced()));
+        let announced = self.open.as_ref().is_some_and(|open| {
+            let announcements = open.announcer.read(cx).announcements();
+            open.rail_counted_at.replace(announcements) != announcements
+        });
         let reads = self
             .open
             .as_ref()
@@ -577,7 +580,7 @@ impl Root {
     pub fn ledger_announcements(&self, cx: &App) -> usize {
         self.open
             .as_ref()
-            .map_or(0, |open| open.ledger.read(cx).announcements())
+            .map_or(0, |open| open.announcer.read(cx).announcements())
     }
 
     /// The rail's badge counts the Shell's Presenter holds, which the rail draws; `None` with no
@@ -637,23 +640,16 @@ impl Root {
     /// a test can reach the Inventory page's empty state.
     #[doc(hidden)]
     pub fn empty_inventory_for_test(&mut self, cx: &mut App) {
-        self.open()
-            .ledger
-            .update(cx, |store, cx| store.empty_inventory_for_test(cx));
+        let open = self.open();
+        open.stores.empty_inventory_for_test(&open.announcer, cx);
     }
 
     /// Removes every Tag through `lib-tag-removal`'s Interactor over the Tags and Transactions
     /// stores, so a test can reach the Tags page with nothing to select.
     #[doc(hidden)]
     pub fn empty_tags_for_test(&mut self, cx: &mut App) {
-        let ledger = self.open().ledger.clone();
-        let (tags, transactions) = {
-            let store = ledger.read(cx);
-            (
-                store.tags_store().clone(),
-                store.transactions_store().clone(),
-            )
-        };
+        let open = self.open();
+        let (tags, transactions) = (open.stores.tags.clone(), open.stores.transactions.clone());
         let ids: Vec<_> = tags
             .borrow()
             .tags()
@@ -670,34 +666,33 @@ impl Root {
                 "a Tag listed a moment ago must still be removable"
             );
         }
-        ledger.update(cx, |store, cx| {
-            store.announce_transactions(cx);
-            store.announce_tags(cx);
+        open.announcer.update(cx, |announcer, cx| {
+            announcer.announce(crate::announcer::Domain::Transactions, cx);
+            announcer.announce(crate::announcer::Domain::Tags, cx);
         });
     }
 
     /// Adds a Location priced in `unit`, which then names it.
     #[doc(hidden)]
     pub fn add_location_in_for_test(&mut self, unit: lib_core::UnitId, cx: &mut App) {
-        self.open()
-            .ledger
-            .update(cx, |store, cx| store.add_location_in_for_test(unit, cx));
+        let open = self.open();
+        open.stores
+            .add_location_in_for_test(unit, &open.announcer, cx);
     }
 
     /// Adds a Budget in `unit`, which then names it.
     #[doc(hidden)]
     pub fn add_budget_in_for_test(&mut self, unit: lib_core::UnitId, cx: &mut App) {
-        self.open()
-            .ledger
-            .update(cx, |store, cx| store.add_budget_in_for_test(unit, cx));
+        let open = self.open();
+        open.stores
+            .add_budget_in_for_test(unit, &open.announcer, cx);
     }
 
     /// Adds a Payee called `name`, so an Import that creates it is refused.
     #[doc(hidden)]
     pub fn add_payee_for_test(&mut self, name: &str, cx: &mut App) {
-        self.open()
-            .ledger
-            .update(cx, |store, cx| store.add_payee_for_test(name, cx));
+        let open = self.open();
+        open.stores.add_payee_for_test(name, &open.announcer, cx);
     }
 
     /// Moves every Bill Plan to pay from Account `to`, so a test can delete the Account another Plan
@@ -705,7 +700,7 @@ impl Root {
     #[doc(hidden)]
     pub fn move_bill_plans_for_test(&mut self, to: lib_core::AccountId, cx: &mut App) {
         {
-            let mut ports = self.open().bills.borrow_mut();
+            let mut ports = self.open().stores.bills.borrow_mut();
             for mut plan in lib_bills::BillsPorts::bills(&*ports).bill_plans() {
                 plan.account_id = to;
                 lib_bills::BillsPorts::split_mut(&mut *ports)
@@ -714,14 +709,15 @@ impl Root {
             }
         }
         let open = self.open();
-        crate::bills::ports::announce(&open.ledger, cx);
+        crate::bills::ports::announce(&open.announcer, cx);
     }
 
     /// Leaves no Unit quoted in another, so a test can delete a seeded Unit instead of meeting the
     /// quoted refusal.
     #[doc(hidden)]
     pub fn unquote_units_for_test(&mut self, cx: &mut App) {
-        crate::units::ports::unquote_for_test(&self.open().units, &self.open().ledger, cx);
+        let open = self.open();
+        crate::units::ports::unquote_for_test(&open.units, &open.announcer, cx);
     }
 
     /// Gives Institution `id` Unit `unit` as its Usual unit, so a test can delete a Unit an
@@ -733,17 +729,17 @@ impl Root {
         unit: lib_core::UnitId,
         cx: &mut App,
     ) {
-        self.open()
-            .ledger
-            .update(cx, |store, cx| store.name_usual_unit_for_test(id, unit, cx));
+        let open = self.open();
+        open.stores
+            .name_usual_unit_for_test(id, unit, &open.announcer, cx);
     }
 
     /// The code of Institution `id`'s Usual unit, as the Institutions store names it and the Units
     /// store codes it: `None` for none.
     #[doc(hidden)]
-    pub fn usual_unit_code(&self, id: lib_core::InstitutionId, cx: &App) -> Option<String> {
+    pub fn usual_unit_code(&self, id: lib_core::InstitutionId, _cx: &App) -> Option<String> {
         let unit = lib_institutions::InstitutionsPorts::institutions(
-            &*self.open().ledger.read(cx).institutions_ports().borrow(),
+            &*self.open().stores.institutions.borrow(),
         )
         .institution(id)?
         .usual_unit?;

@@ -17,9 +17,9 @@ use lib_shell::DialogCommand;
 use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
 
+use crate::announcer::Announcer;
 use crate::bills::ports::{self, DesktopPorts};
 use crate::dialog;
-use crate::ledger_store::LedgerStore;
 use crate::shell::view::dialog_entity::DialogReadback;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
 use lib_shell::Hint;
@@ -34,7 +34,7 @@ pub(crate) type Landed = Box<dyn Fn(BillsOutcome, &mut App)>;
 pub struct BillsDialog {
     ports: DesktopPorts,
     /// The Ledger a confirm reads from and announces what it wrote through.
-    ledger: Entity<LedgerStore>,
+    announcer: Entity<Announcer>,
     view: View,
     landed: Landed,
 }
@@ -57,18 +57,18 @@ impl View {
 }
 
 impl BillsDialog {
-    /// The Add or Edit bill plan Dialog on `presenter`. A confirm reads and refreshes `ledger` and
-    /// hands its outcome to `landed`.
+    /// The Add or Edit bill plan Dialog on `presenter`. A confirm announces what it wrote
+    /// and hands its outcome to `landed`.
     pub(crate) fn plan_form(
         presenter: PlanFormPresenter,
         ports: &DesktopPorts,
-        ledger: &Entity<LedgerStore>,
+        announcer: &Entity<Announcer>,
         landed: Landed,
     ) -> Self {
         Self::new(
             View::PlanForm(Box::new(presenter), 0),
             ports,
-            ledger,
+            announcer,
             landed,
         )
     }
@@ -77,16 +77,21 @@ impl BillsDialog {
     pub(crate) fn skip(
         presenter: SkipPresenter,
         ports: &DesktopPorts,
-        ledger: &Entity<LedgerStore>,
+        announcer: &Entity<Announcer>,
         landed: Landed,
     ) -> Self {
-        Self::new(View::Skip(presenter), ports, ledger, landed)
+        Self::new(View::Skip(presenter), ports, announcer, landed)
     }
 
-    fn new(view: View, ports: &DesktopPorts, ledger: &Entity<LedgerStore>, landed: Landed) -> Self {
+    fn new(
+        view: View,
+        ports: &DesktopPorts,
+        announcer: &Entity<Announcer>,
+        landed: Landed,
+    ) -> Self {
         Self {
             ports: ports.clone(),
-            ledger: ledger.clone(),
+            announcer: announcer.clone(),
             view,
             landed,
         }
@@ -174,7 +179,7 @@ impl HostedDialog for BillsDialog {
     /// Every input is the Presenter's to read, and announces the Bills after it if it wrote them.
     fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
         let router = self.input_event(input);
-        ports::announce_written(&self.ports, &self.ledger, cx);
+        ports::announce_written(&self.ports, &self.announcer, cx);
         self.closed(router, cx);
     }
 
@@ -189,7 +194,7 @@ impl HostedDialog for BillsDialog {
     /// Presenter's view model and keeps the Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
         let router = self.close_event(true);
-        ports::announce_written(&self.ports, &self.ledger, cx);
+        ports::announce_written(&self.ports, &self.announcer, cx);
         self.closed(router, cx);
     }
 

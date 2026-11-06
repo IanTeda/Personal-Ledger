@@ -7,8 +7,8 @@
 //! - `view/dialog.rs` holds the Add and Edit Dialog's Presenter in an Entity in the Dialog host.
 //! - `router.rs` is the Router and the module's entry point ([`accounts_page`]). It opens
 //!   `lib-account-deletion`'s Delete Dialog through that module's entry point.
-//! - `ports.rs` holds the halfway shims: the Institutions, Units and Budgets copied from the
-//!   Ledger, and the Ledger read copy refreshed after each write (#855).
+//! - `ports.rs` holds the store with its reads of the other domains' stores, and the
+//!   announcement after each write (#855, #1054).
 //!
 //! Where the Accounts are kept, the SQLite adapter opened at start or memory, is `lib-database`'s
 //! `AccountsStore`.
@@ -65,7 +65,7 @@ impl AccountsSetup {
 
     /// `storage`'s Accounts ports under the default keys, for a test that builds `Root` directly.
     #[cfg(test)]
-    pub fn stub(storage: &crate::ledger_store::LedgerSetup) -> Self {
+    pub fn stub(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
             storage.accounts.clone(),
             crate::account_deletion::DeletionStores::stub(storage),

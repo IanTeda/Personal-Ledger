@@ -22,7 +22,7 @@ use lib_shell::DialogCommand;
 use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
 
-use crate::ledger_store::LedgerStore;
+use crate::announcer::Announcer;
 use crate::payees::ports::{self, DesktopPorts};
 use crate::shell::view::dialog_entity::DialogReadback;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
@@ -37,8 +37,8 @@ pub(crate) type Landed = Box<dyn Fn(PayeesOutcome, &mut App)>;
 /// The open Payees Dialog: its Presenter and its widget state.
 pub struct PayeesDialog {
     ports: DesktopPorts,
-    /// The Ledger read copy a confirm brings in line with what it wrote.
-    ledger: Entity<LedgerStore>,
+    /// What a confirm announces its write through.
+    announcer: Entity<Announcer>,
     view: View,
     landed: Landed,
 }
@@ -61,12 +61,12 @@ impl View {
 }
 
 impl PayeesDialog {
-    /// `which`'s Presenter on `ports`, or `None` when the Payee it names is gone. A confirm brings
-    /// `ledger` in line and hands its outcome to `landed`.
+    /// `which`'s Presenter on `ports`, or `None` when the Payee it names is gone. A confirm
+    /// announces what it wrote and hands its outcome to `landed`.
     pub(crate) fn open(
         which: Which,
         ports: &DesktopPorts,
-        ledger: &Entity<LedgerStore>,
+        announcer: &Entity<Announcer>,
         landed: Landed,
     ) -> Option<Self> {
         let shared = ports.clone();
@@ -77,7 +77,7 @@ impl PayeesDialog {
         };
         Some(Self {
             ports: ports.clone(),
-            ledger: ledger.clone(),
+            announcer: announcer.clone(),
             view,
             landed,
         })
@@ -129,7 +129,7 @@ impl PayeesDialog {
             return;
         };
         if let Some(outcome) = outcome {
-            ports::announce(&self.ledger, cx);
+            ports::announce(&self.announcer, cx);
             (self.landed)(outcome, cx);
         }
         cx.emit(DialogClosed);

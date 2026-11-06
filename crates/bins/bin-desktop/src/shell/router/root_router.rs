@@ -49,7 +49,7 @@ impl ShellRouter for RootRouter<'_, '_> {
         let Some(open) = self.open else {
             return;
         };
-        crate::bills::ports::new_month(&open.bills, &open.ledger, today, self.cx);
+        crate::bills::ports::new_month(&open.stores.bills, &open.announcer, today, self.cx);
         open.views
             .budgets
             .update(self.cx, |budgets, cx| budgets.month_turned(cx));
@@ -64,8 +64,7 @@ impl ShellRouter for RootRouter<'_, '_> {
         let Some(open) = self.open else {
             return;
         };
-        for notice in super::write_failures::roll_back(&failure, &open.units, &open.ledger, self.cx)
-        {
+        for notice in super::write_failures::roll_back(&failure, open, self.cx) {
             self.notify(notice);
         }
     }

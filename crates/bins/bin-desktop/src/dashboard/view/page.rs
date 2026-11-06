@@ -5,7 +5,7 @@
 //! of the View interface is a no-op. Each click is one input (`crate::input::send`), whose commit
 //! writes nothing, since the Dashboard writes nothing.
 
-use crate::ledger_store::Domain;
+use crate::announcer::Domain;
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, Subscription, Window};
 use gpui::{div, prelude::*, px};
 use lib_core::{Clock, DateStyle};
@@ -13,8 +13,8 @@ use lib_dashboard::{DashboardEvent, DashboardPresenter, DashboardReads, Dashboar
 use lib_viper::display::StatusGlyphs;
 
 use super::content;
+use crate::announcer::{Announcer, LedgerChanged};
 use crate::dashboard::router::PageRouter;
-use crate::ledger_store::{LedgerChanged, LedgerStore};
 use crate::navigation::movement::Movement;
 use crate::shell::view::page_clicks::{PageClicks, PresenterPage};
 use crate::shell::view::statusline::PageStatus;
@@ -50,11 +50,11 @@ impl DashboardPage {
     /// the Accounts and Payees as well as the Bills, Transactions, Categories and Units.
     pub fn new(
         reads: std::rc::Rc<dyn DashboardReads>,
-        ledger: &Entity<LedgerStore>,
+        announcer: &Entity<Announcer>,
         clock: Clock,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        let _ledger_changed = cx.subscribe(ledger, |this, _, event: &LedgerChanged, cx| {
+        let _ledger_changed = cx.subscribe(announcer, |this, _, event: &LedgerChanged, cx| {
             let reads = [
                 Domain::Bills,
                 Domain::Budgets,

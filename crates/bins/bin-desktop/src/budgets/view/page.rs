@@ -10,7 +10,7 @@
 //! the Shell ([`BudgetsPage::key_ahead`]) and turns into a cell event; `esc` comes back as
 //! [`BudgetsPage::escape`].
 
-use crate::ledger_store::Domain;
+use crate::announcer::Domain;
 use gpui::{
     AnyElement, App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, SharedString,
     Subscription, Window, div, prelude::*, px,
@@ -25,9 +25,9 @@ use lib_locale::format::upper;
 use lib_viper::keymap::Keymap;
 
 use super::{history, plan, progress};
+use crate::announcer::{Announcer, LedgerChanged};
 use crate::budgets::ports::{self, DesktopPorts};
 use crate::budgets::router::PageRouter;
-use crate::ledger_store::{LedgerChanged, LedgerStore};
 use crate::navigation::movement::Movement;
 use crate::navigation::nav::Noun;
 use crate::shell::view::page_clicks::{PageClicks, PresenterPage};
@@ -42,7 +42,7 @@ impl EventEmitter<ViewEvent> for BudgetsPage {}
 pub struct BudgetsPage {
     presenter: BudgetsPagePresenter,
     ports: DesktopPorts,
-    ledger: Entity<LedgerStore>,
+    announcer: Entity<Announcer>,
     clock: Clock,
     keymap: Keymap<BudgetsPageEvent>,
     /// The page's own scroll, reset as it becomes the destination, as its tab changes and as
@@ -54,7 +54,7 @@ pub struct BudgetsPage {
 impl BudgetsPage {
     pub fn new(
         ports: DesktopPorts,
-        ledger: Entity<LedgerStore>,
+        announcer: Entity<Announcer>,
         keymap: Keymap<BudgetsPageEvent>,
         clock: Clock,
         cx: &mut Context<'_, Self>,
@@ -62,7 +62,7 @@ impl BudgetsPage {
         let presenter = BudgetsPagePresenter::new(ports.presenter(), clock.clone(), keymap.clone());
         // The figures read every domain Budgets counts, so a change the Ledger announces in any of
         // them is redrawn.
-        let _ledger_changed = cx.subscribe(&ledger, |_, _, event: &LedgerChanged, cx| {
+        let _ledger_changed = cx.subscribe(&announcer, |_, _, event: &LedgerChanged, cx| {
             let reads = [
                 Domain::Accounts,
                 Domain::Bills,
@@ -79,7 +79,7 @@ impl BudgetsPage {
         Self {
             presenter,
             ports,
-            ledger,
+            announcer,
             clock,
             keymap,
             scroll: ScrollHandle::new(),
@@ -131,13 +131,13 @@ impl BudgetsPage {
         let was_editing = self.presenter.editing() && cell_event;
         let mut router = PageRouter {
             ports: self.ports.clone(),
-            ledger: self.ledger.clone(),
+            announcer: self.announcer.clone(),
             clock: self.clock.clone(),
             date_style: self.presenter.date_style(),
             cx,
         };
         self.presenter.handle(event, &mut router);
-        ports::announce_written(&self.ports, &self.ledger, cx);
+        ports::announce_written(&self.ports, &self.announcer, cx);
         match (was_editing, self.presenter.editing()) {
             (false, true) => cx.emit(ViewEvent::EnterMode(ViewMode::Insert)),
             (true, false) => cx.emit(ViewEvent::ExitMode),

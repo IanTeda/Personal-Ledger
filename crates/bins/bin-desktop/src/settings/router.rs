@@ -17,7 +17,7 @@ use lib_toast::{Notice, Notify};
 use super::ledger::LedgerPage;
 use super::state::SettingsView;
 use super::tracing::{TracingPage, apply_change, dialogs::clear_logs::ClearLogsDialog, scroll};
-use crate::ledger_store::LedgerStore;
+use crate::announcer::Announcer;
 use crate::units::DesktopPorts;
 use crate::view::event::{ViewEvent, ViewMode};
 
@@ -126,13 +126,13 @@ impl Notify for TracingRouter<'_, '_> {
 /// announces their writes, lent beside its Presenter.
 pub(super) struct LedgerRouter<'a, 'b> {
     pub ports: &'a DesktopPorts,
-    pub ledger: &'a Entity<LedgerStore>,
+    pub announcer: &'a Entity<Announcer>,
     pub cx: &'a mut Context<'b, LedgerPage>,
 }
 
 impl lib_settings::LedgerRouter for LedgerRouter<'_, '_> {
     /// Announces `Domain::Units`, so every view of the base Unit follows at once.
     fn base_unit_changed(&mut self) {
-        crate::units::ports::announce(self.ports, self.ledger, self.cx);
+        crate::units::ports::announce(self.ports, self.announcer, self.cx);
     }
 }

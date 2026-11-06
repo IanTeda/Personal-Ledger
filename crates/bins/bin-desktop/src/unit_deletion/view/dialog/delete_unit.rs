@@ -24,12 +24,12 @@ use lib_units::presenter::NewBaseView;
 use lib_viper::dialog::DialogInput;
 use lib_viper::view::SelectList;
 
+use crate::announcer::Announcer;
 use crate::dialog;
 use crate::form::fields::text_field;
 use crate::form::select::SelectState;
 use crate::form::select_field::{self, SelectFieldProps};
 use crate::form::viper::{chosen_label, drawn, labels};
-use crate::ledger_store::LedgerStore;
 use crate::shell::view::dialog_entity::DialogReadback;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostedDialog};
 use crate::theme::color;
@@ -123,7 +123,7 @@ impl Select<'_> {
 pub struct DeleteUnitDialog {
     presenter: DeleteUnitPresenter,
     ports: DesktopPorts,
-    ledger: Entity<LedgerStore>,
+    announcer: Entity<Announcer>,
     /// Each select's open-list scroll window by position, a position in [`select`].
     scrolls: Vec<usize>,
     landed: Landed,
@@ -136,7 +136,7 @@ impl DeleteUnitDialog {
         id: UnitId,
         ports: &DesktopPorts,
         deletion: &SharedUnitDeletion,
-        ledger: &Entity<LedgerStore>,
+        announcer: &Entity<Announcer>,
         landed: Landed,
         _cx: &App,
     ) -> Option<Self> {
@@ -144,7 +144,7 @@ impl DeleteUnitDialog {
         Some(Self {
             presenter,
             ports: ports.clone(),
-            ledger: ledger.clone(),
+            announcer: announcer.clone(),
             scrolls: Vec::new(),
             landed,
         })
@@ -190,16 +190,16 @@ impl DeleteUnitDialog {
 impl EventEmitter<DialogClosed> for DeleteUnitDialog {}
 
 impl HostedDialog for DeleteUnitDialog {
-    /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) has the
-    /// Ledger's read copies in line either side, as [`Self::confirm`] does.
+    /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) announces
+    /// any write either side, as [`Self::confirm`] does.
     fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
         let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
         if may_confirm {
-            crate::units::ports::announce(&self.ports, &self.ledger, cx);
+            crate::units::ports::announce(&self.ports, &self.announcer, cx);
         }
         let router = self.send(DeleteUnitEvent::Input(input));
         if may_confirm {
-            crate::unit_deletion::refresh(&self.ports, &self.ledger, cx);
+            crate::unit_deletion::refresh(&self.ports, &self.announcer, cx);
         }
         self.closed(router, cx);
     }
@@ -211,9 +211,9 @@ impl HostedDialog for DeleteUnitDialog {
     /// Sends Confirm to the Presenter, which deletes or deactivates, announcing the Units' writes
     /// and announcing the Institutions it reassigned either side. A refusal stays on the view model and keeps the Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
-        crate::units::ports::announce(&self.ports, &self.ledger, cx);
+        crate::units::ports::announce(&self.ports, &self.announcer, cx);
         let router = self.send(DeleteUnitEvent::Confirm);
-        crate::unit_deletion::refresh(&self.ports, &self.ledger, cx);
+        crate::unit_deletion::refresh(&self.ports, &self.announcer, cx);
         self.closed(router, cx);
     }
 

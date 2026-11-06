@@ -30,7 +30,7 @@ use lib_institutions::{
     Institution, InstitutionRepository, InstitutionUnits, InstitutionUsage, InstitutionsPorts,
 };
 
-use crate::ledger_store::LedgerStore;
+use crate::announcer::{Announcer, Domain};
 use crate::write_count::WriteCount;
 
 /// The Institutions ports the Institutions module and the Ledger store share.
@@ -145,19 +145,29 @@ pub fn in_memory_store() -> SharedInstitutionsStore {
 ///
 /// # Errors
 /// Returns the error reading them back; the ports are left as they were.
-pub fn reload(ledger: &Entity<LedgerStore>, cx: &mut App) -> lib_database::Result<()> {
-    let ports = ledger.read(cx).institutions_ports().clone();
+pub fn reload(
+    ports: &DesktopPorts,
+    announcer: &Entity<Announcer>,
+    cx: &mut App,
+) -> lib_database::Result<()> {
     InstitutionsStore::reload(&mut *ports.borrow_mut())?;
-    ledger.update(cx, |store, cx| store.announce_institutions(cx));
+    announce(announcer, cx);
     Ok(())
+}
+
+/// Announces `Domain::Institutions`, so the Institutions and Accounts pages redraw (#1053).
+pub fn announce(announcer: &Entity<Announcer>, cx: &mut App) {
+    announcer.update(cx, |announcer, cx| {
+        announcer.announce(Domain::Institutions, cx);
+    });
 }
 
 /// Announces `Domain::Institutions` when the ports were written since the last announcement, so
 /// the Accounts page sees a write at once. Run before and after every Institutions event and
 /// Dialog confirm.
-pub fn refresh(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: &mut App) {
+pub fn refresh(ports: &DesktopPorts, announcer: &Entity<Announcer>, cx: &mut App) {
     if ports.borrow().take_written() {
-        ledger.update(cx, |store, cx| store.announce_institutions(cx));
+        announce(announcer, cx);
     }
 }
 

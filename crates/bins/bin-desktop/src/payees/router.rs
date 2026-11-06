@@ -12,13 +12,13 @@ use lib_transactions::query::TransactionFilters;
 use super::ports::DesktopPorts;
 use super::view::dialog::PayeesDialog;
 use super::view::page::PayeesPage;
-use crate::ledger_store::LedgerStore;
+use crate::announcer::Announcer;
 use crate::notices::Queue;
 use crate::shell::view::dialog_entity::host_dialog;
 
 pub(super) struct PageRouter<'a, 'b> {
     pub ports: DesktopPorts,
-    pub ledger: gpui::Entity<LedgerStore>,
+    pub announcer: gpui::Entity<Announcer>,
     pub clock: lib_core::Clock,
     pub cx: &'a mut Context<'b, PayeesPage>,
 }
@@ -32,7 +32,7 @@ impl PayeesRouter for PageRouter<'_, '_> {
             // A page that has gone has nothing to land on.
             let _ = page.update(cx, |page, cx| page.dialog_landed(outcome, cx));
         });
-        let Some(dialog) = PayeesDialog::open(dialog, &self.ports, &self.ledger, landed) else {
+        let Some(dialog) = PayeesDialog::open(dialog, &self.ports, &self.announcer, landed) else {
             return false;
         };
         host_dialog(self.cx, |_| dialog);
@@ -58,11 +58,11 @@ impl Notify for PageRouter<'_, '_> {
 /// hosts as any other page.
 pub fn payees_page(
     ports: DesktopPorts,
-    ledger: gpui::Entity<LedgerStore>,
+    announcer: gpui::Entity<Announcer>,
     clock: lib_core::Clock,
     keymap: lib_viper::keymap::Keymap<PayeesPageEvent>,
     cx: &mut gpui::App,
 ) -> gpui::Entity<PayeesPage> {
     use gpui::AppContext as _;
-    cx.new(|cx| PayeesPage::new(ports, ledger, clock, keymap, cx))
+    cx.new(|cx| PayeesPage::new(ports, announcer, clock, keymap, cx))
 }

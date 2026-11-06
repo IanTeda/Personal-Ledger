@@ -11,7 +11,7 @@ use lib_toast::{Notice, Notify};
 use super::InventorySetup;
 use super::view::dialog::InventoryDialog;
 use super::view::page::InventoryPage;
-use crate::ledger_store::LedgerStore;
+use crate::announcer::Announcer;
 use crate::notices::Queue;
 use crate::shell::view::dialog_entity::host_dialog;
 
@@ -51,9 +51,9 @@ impl Notify for PageRouter<'_, '_> {
 /// Settings View hosts as any other page.
 pub fn inventory_page(
     setup: InventorySetup,
-    ledger: Entity<LedgerStore>,
+    announcer: Entity<Announcer>,
     cx: &mut gpui::App,
 ) -> Entity<InventoryPage> {
     use gpui::AppContext as _;
-    cx.new(|cx| InventoryPage::new(setup, ledger, cx))
+    cx.new(|cx| InventoryPage::new(setup, announcer, cx))
 }

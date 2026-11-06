@@ -20,10 +20,10 @@ use lib_bill_payments::presenter::{
     MatchChoice, PayEvent, PayField, PayMode, PayPresenter, PayViewModel,
 };
 
+use crate::announcer::Announcer;
 use crate::bills::DesktopPorts;
 use crate::dialog;
 use crate::form::dialog_fields::{label, text_field, two_up};
-use crate::ledger_store::LedgerStore;
 use crate::shell::view::dialog_entity::DialogReadback;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
 use crate::theme::color;
@@ -49,7 +49,7 @@ pub(crate) type Landed = Box<dyn Fn(PayOutcome, &mut App)>;
 pub struct PayDialog {
     presenter: PayPresenter,
     ports: DesktopPorts,
-    ledger: Entity<LedgerStore>,
+    announcer: Entity<Announcer>,
     landed: Landed,
     /// The body's scroll, which `j`/`k` move to keep the chosen Match row in view.
     scroll: ScrollHandle,
@@ -59,13 +59,13 @@ impl PayDialog {
     pub(crate) fn new(
         presenter: PayPresenter,
         ports: &DesktopPorts,
-        ledger: &Entity<LedgerStore>,
+        announcer: &Entity<Announcer>,
         landed: Landed,
     ) -> Self {
         Self {
             presenter,
             ports: ports.clone(),
-            ledger: ledger.clone(),
+            announcer: announcer.clone(),
             landed,
             scroll: ScrollHandle::new(),
         }
@@ -115,7 +115,7 @@ impl HostedDialog for PayDialog {
         let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
         let router = self.send(PayEvent::Input(input));
         if may_confirm {
-            crate::bill_payments::announce(&self.ledger, cx);
+            crate::bill_payments::announce(&self.announcer, cx);
         }
         let steps = matches!(input, DialogInput::SelectNext | DialogInput::SelectPrevious);
         let view = self.view();
@@ -136,7 +136,7 @@ impl HostedDialog for PayDialog {
     /// the Bills. A refusal stays on the view model and keeps the Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
         let router = self.send(PayEvent::Confirm);
-        crate::bill_payments::announce(&self.ledger, cx);
+        crate::bill_payments::announce(&self.announcer, cx);
         self.closed(router, cx);
     }
 

@@ -19,7 +19,7 @@ use gpui::{App, Entity};
 use lib_database::{PayeesStore, StoredPayeeReads};
 use lib_payees::{PayeeCategories, PayeeRepository, PayeeUsage, PayeesPorts, PortsMut};
 
-use crate::ledger_store::LedgerStore;
+use crate::announcer::{Announcer, Domain};
 use crate::write_count::WriteCount;
 
 /// The Payees ports the Payees module, Category delete, the Import and the Bills reads share.
@@ -103,8 +103,8 @@ impl PayeesStore for LedgerBackedPorts {
 
 /// Announces `Domain::Payees`, after a write to the Payees store, so Transactions, Bills, Budgets
 /// and Documents redraw.
-pub fn announce(ledger: &Entity<LedgerStore>, cx: &mut App) {
-    ledger.update(cx, |store, cx| store.announce_payees(cx));
+pub fn announce(announcer: &Entity<Announcer>, cx: &mut App) {
+    announcer.update(cx, |announcer, cx| announcer.announce(Domain::Payees, cx));
 }
 
 /// Puts the Payees back as stored, after a write that named them failed, and announces them so
@@ -112,10 +112,13 @@ pub fn announce(ledger: &Entity<LedgerStore>, cx: &mut App) {
 ///
 /// # Errors
 /// Returns the error reading them back; the store is left as it was.
-pub fn reload(ledger: &Entity<LedgerStore>, cx: &mut App) -> lib_database::Result<()> {
-    let ports = ledger.read(cx).payees_ports().clone();
+pub fn reload(
+    ports: &DesktopPorts,
+    announcer: &Entity<Announcer>,
+    cx: &mut App,
+) -> lib_database::Result<()> {
     PayeesStore::reload(&mut *ports.borrow_mut())?;
-    announce(ledger, cx);
+    announce(announcer, cx);
     Ok(())
 }
 

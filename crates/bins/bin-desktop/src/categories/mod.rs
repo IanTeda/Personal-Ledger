@@ -9,7 +9,7 @@
 //!   Delete category Dialog through the Category Deletion module (`crate::category_deletion`,
 //!   #1005).
 //! - `ports.rs` holds the store as the Presenters share it, and the ports answered from the
-//!   Ledger: the usage, the Monthly budget and the handover (#859).
+//!   stores the Open Ledger hands it: the usage, the Monthly budget and the handover (#859).
 //!
 //! Where the Categories are kept, the SQLite adapter opened at start or memory, is
 //! `lib-database`'s `CategoriesStore`.
@@ -23,9 +23,9 @@ pub use view::page::CategoriesPage;
 
 use lib_categories::presenter::CategoriesPageEvent;
 use lib_core::{CategoryId, CategoryTypes};
-use lib_database::SharedCategoriesStore;
 
 use crate::category_deletion::DeletionStores;
+use ports::CategoryStores;
 
 /// The Categories page as the UI tests read it: names and types in the store's tree order, and the
 /// selected row's name (ADR-0030).
@@ -40,11 +40,11 @@ pub struct SettingsCategoriesSnapshot {
     pub selected_category: Option<String>,
 }
 
-/// What `shell::router::build` hands the Categories module: the store it shares with the Ledger
-/// and the Bills and Payees reads, Category delete's port and reads, and its keymap under
-/// `[keybindings]`.
+/// What `shell::router::build` hands the Categories module: the store it shares with the Bills
+/// and Payees reads, with its write count, the Budgets store and the rows naming a Category,
+/// Category delete's port and reads, and its keymap under `[keybindings]`.
 pub struct CategoriesSetup {
-    pub store: SharedCategoriesStore,
+    pub stores: CategoryStores,
     /// Category delete's port and reads, over the Categories store and the stores it re-points.
     pub deletion: DeletionStores,
     pub keymap: lib_viper::keymap::Keymap<CategoriesPageEvent>,
@@ -52,12 +52,12 @@ pub struct CategoriesSetup {
 
 impl CategoriesSetup {
     pub fn new(
-        store: SharedCategoriesStore,
+        stores: CategoryStores,
         deletion: DeletionStores,
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
-            store,
+            stores,
             deletion,
             keymap: lib_categories::keymap::categories_page_keymap(config),
         }
@@ -66,9 +66,9 @@ impl CategoriesSetup {
     /// `storage`'s Categories store under the default keys, for a test that builds `Root`
     /// directly.
     #[cfg(test)]
-    pub fn stub(storage: &crate::ledger_store::LedgerSetup) -> Self {
+    pub fn stub(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
-            storage.categories.clone(),
+            storage.category_stores(),
             DeletionStores::stub(storage),
             &lib_config::KeyBindingConfig::default(),
         )

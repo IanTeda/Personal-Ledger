@@ -6,7 +6,7 @@
 
 mod render;
 
-use crate::ledger_store::Domain;
+use crate::announcer::Domain;
 use gpui::{AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Subscription};
 use lib_documents::presenter::{
     DocumentTypesPageEvent, DocumentTypesPagePresenter, DocumentTypesPageViewModel,
@@ -19,7 +19,7 @@ use crate::document_types::router::PageRouter;
 use crate::document_types::{DocumentTypesSetup, SettingsDocumentTypesSnapshot, ports};
 use crate::settings::snapshot::PageSnapshot;
 use crate::{
-    ledger_store::{LedgerStore, notify_on},
+    announcer::{Announcer, notify_on},
     navigation::movement::Movement,
     settings::{
         SettingsPage,
@@ -35,7 +35,7 @@ impl EventEmitter<PageRowClicked> for DocumentTypesPage {}
 pub struct DocumentTypesPage {
     presenter: DocumentTypesPagePresenter,
     documents: SharedRepository,
-    ledger: Entity<LedgerStore>,
+    announcer: Entity<Announcer>,
     keymap: Keymap<DocumentTypesPageEvent>,
     /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
     /// draws the page.
@@ -47,7 +47,7 @@ pub struct DocumentTypesPage {
 impl DocumentTypesPage {
     pub fn new(
         setup: DocumentTypesSetup,
-        ledger: Entity<LedgerStore>,
+        announcer: Entity<Announcer>,
         cx: &mut Context<'_, Self>,
     ) -> Self {
         // Settings › Documents announces after each event itself, so its writes go unnoted.
@@ -55,8 +55,8 @@ impl DocumentTypesPage {
         Self {
             presenter: DocumentTypesPagePresenter::new(documents.clone(), setup.keymap.clone()),
             documents,
-            _types_changed: notify_on(&ledger, Domain::DocumentTypes, cx),
-            ledger,
+            _types_changed: notify_on(&announcer, Domain::DocumentTypes, cx),
+            announcer,
             keymap: setup.keymap,
             page_focused: false,
         }
@@ -80,11 +80,11 @@ impl DocumentTypesPage {
     fn handle(&mut self, event: DocumentTypesPageEvent, cx: &mut Context<'_, Self>) {
         let mut router = PageRouter {
             documents: self.documents.clone(),
-            ledger: self.ledger.clone(),
+            announcer: self.announcer.clone(),
             cx,
         };
         self.presenter.handle(event, &mut router);
-        ports::announce(&self.ledger, cx);
+        ports::announce(&self.announcer, cx);
         cx.notify();
     }
 

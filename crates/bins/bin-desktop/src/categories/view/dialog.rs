@@ -7,7 +7,7 @@
 //! (`crate::category_deletion`, #1005).
 //!
 //! The Presenter closes its Dialog through the host's [`HostRouter`]. An input and a confirm are
-//! lent the ports the Desktop answers from its Ledger ([`LedgerPorts`]), built around the
+//! lent the ports the Desktop answers from its stores ([`LedgerPorts`]), built around the
 //! confirm's gpui context: the usage, the Monthly budget and the handover. A confirmed outcome is
 //! handed to the page, and the host closes on [`DialogClosed`]. A Toast the Presenter raises goes
 //! onto the bin's queue, which the input's `send` drains.
@@ -23,8 +23,8 @@ use lib_shell::DialogCommand;
 use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
 
-use crate::categories::ports::{self, LedgerPorts};
-use crate::ledger_store::LedgerStore;
+use crate::announcer::Announcer;
+use crate::categories::ports::{self, CategoryStores, LedgerPorts};
 use crate::shell::view::dialog_entity::DialogReadback;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
 use lib_shell::Hint;
@@ -35,12 +35,37 @@ type Clicks = DialogClicks<CategoriesDialog>;
 /// What a confirmed Categories Dialog hands the page that opened it.
 pub(crate) type Landed = Box<dyn Fn(CategoriesOutcome, &mut App)>;
 
+/// What the Dialog's ports are built on for each call: the stores they read and write, the
+/// Announcer they announce through, the day the page was built and the Shell's Clock.
+pub(crate) struct PortsOn {
+    pub stores: CategoryStores,
+    pub announcer: Entity<Announcer>,
+    pub today: NaiveDate,
+    pub clock: Clock,
+}
+
+impl PortsOn {
+    /// The ports for one call around `cx`.
+    fn ports<'a>(&'a self, cx: &'a mut App) -> LedgerPorts<'a> {
+        LedgerPorts {
+            stores: &self.stores,
+            announcer: &self.announcer,
+            today: self.today,
+            clock: self.clock.clone(),
+            cx,
+        }
+    }
+
+    /// Announces any Categories write not yet announced.
+    fn refresh(&self, cx: &mut App) {
+        ports::refresh(&self.stores.writes, &self.announcer, cx);
+    }
+}
+
 /// The open Add or Edit category Dialog: its Presenter and its widget state.
 pub struct CategoriesDialog {
-    /// The Ledger the confirm's ports read and write, and whose read copy it brings in line.
-    ledger: Entity<LedgerStore>,
-    today: NaiveDate,
-    clock: Clock,
+    /// What the confirm's ports are built on.
+    on: PortsOn,
     presenter: CategoryFormPresenter,
     /// The top row of the Parent category list's window.
     scroll: usize,
@@ -48,24 +73,17 @@ pub struct CategoriesDialog {
 }
 
 impl CategoriesDialog {
-    /// `which`'s form Presenter on `categories`, its usage and Monthly budget read from `ledger` as
-    /// of `today`, or `None` when the Category it edits is gone, or `which` is a delete, which is
+    /// `which`'s form Presenter on `categories`, its usage and Monthly budget read through `on`'s
+    /// stores as of its `today`, or `None` when the Category it edits is gone, or `which` is a delete, which is
     /// not this Dialog's. A confirm hands its outcome to `landed`.
     pub(crate) fn open(
         which: Which,
         categories: &SharedCategories,
-        ledger: &Entity<LedgerStore>,
-        today: NaiveDate,
-        clock: &Clock,
+        on: PortsOn,
         landed: Landed,
         cx: &mut App,
     ) -> Option<Self> {
-        let reads = LedgerPorts {
-            ledger,
-            today,
-            clock: clock.clone(),
-            cx,
-        };
+        let reads = on.ports(cx);
         let shared = categories.clone();
         let presenter = match which {
             Which::AddCategory { parent } => CategoryFormPresenter::add(shared, &reads, parent),
@@ -73,9 +91,7 @@ impl CategoriesDialog {
             Which::DeleteCategory(_) => return None,
         };
         Some(Self {
-            ledger: ledger.clone(),
-            today,
-            clock: clock.clone(),
+            on,
             presenter,
             scroll: 0,
             landed,
@@ -112,23 +128,18 @@ fn send<P, E>(
 impl EventEmitter<DialogClosed> for CategoriesDialog {}
 
 impl HostedDialog for CategoriesDialog {
-    /// Every input is the Presenter's to read, lent the Ledger's ports. One that may confirm
-    /// (`select`, `submit`) runs with the Ledger read copy in line before it and after it.
+    /// Every input is the Presenter's to read, lent the stores' ports. One that may confirm
+    /// (`select`, `submit`) announces any Categories write before it and after it.
     fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
         let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
         if may_confirm {
-            ports::refresh(&self.ledger, cx);
+            self.on.refresh(cx);
         }
         let mut router = Router::default();
-        let mut ports = LedgerPorts {
-            ledger: &self.ledger,
-            today: self.today,
-            clock: self.clock.clone(),
-            cx,
-        };
+        let mut ports = self.on.ports(cx);
         self.presenter.input(input, &mut ports, &mut router);
         if may_confirm {
-            ports::refresh(&self.ledger, cx);
+            self.on.refresh(cx);
         }
         self.closed(router, cx);
     }
@@ -137,19 +148,14 @@ impl HostedDialog for CategoriesDialog {
         self.presenter.view_model().frame.can_confirm
     }
 
-    /// Sends Confirm to the Presenter, lent the Ledger's ports, with the Ledger read copy in line
+    /// Sends Confirm to the Presenter, lent the stores' ports, announcing any Categories write
     /// either side. A refusal stays on the Presenter's view model and keeps the Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
-        ports::refresh(&self.ledger, cx);
+        self.on.refresh(cx);
         let mut router = Router::default();
-        let mut ports = LedgerPorts {
-            ledger: &self.ledger,
-            today: self.today,
-            clock: self.clock.clone(),
-            cx,
-        };
+        let mut ports = self.on.ports(cx);
         self.presenter.confirm(&mut ports, &mut router);
-        ports::refresh(&self.ledger, cx);
+        self.on.refresh(cx);
         self.closed(router, cx);
     }
 

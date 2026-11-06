@@ -18,7 +18,7 @@ use lib_database::{SharedTagsStore, StoredTagReads};
 use lib_tags::fake::{InMemoryPorts, InMemoryTagUsage, InMemoryTags};
 use lib_tags::{SharedPorts, Tag, TagRepository, TagUsage, TagUse};
 
-use crate::ledger_store::LedgerStore;
+use crate::announcer::{Announcer, Domain};
 use crate::write_count::WriteCount;
 
 /// The stub Tags in memory, for a test that needs no storage. What carries them is read through
@@ -75,8 +75,8 @@ pub fn shared(store: &SharedTagsStore, usage: StoredTagReads, writes: &WriteCoun
 
 /// Announces `Domain::Tags`, after a write to the Tags store, so the Tags page, the Transactions
 /// and the Shell redraw.
-pub fn announce(ledger: &Entity<LedgerStore>, cx: &mut App) {
-    ledger.update(cx, |store, cx| store.announce_tags(cx));
+pub fn announce(announcer: &Entity<Announcer>, cx: &mut App) {
+    announcer.update(cx, |announcer, cx| announcer.announce(Domain::Tags, cx));
 }
 
 /// Puts the Tags back as stored, after a write that named them failed, and announces them so
@@ -84,10 +84,13 @@ pub fn announce(ledger: &Entity<LedgerStore>, cx: &mut App) {
 ///
 /// # Errors
 /// Returns the error reading them back; the store is left as it was.
-pub fn reload(ledger: &Entity<LedgerStore>, cx: &mut App) -> lib_database::Result<()> {
-    let store = ledger.read(cx).tags_store().clone();
+pub fn reload(
+    store: &SharedTagsStore,
+    announcer: &Entity<Announcer>,
+    cx: &mut App,
+) -> lib_database::Result<()> {
     store.borrow_mut().reload()?;
-    announce(ledger, cx);
+    announce(announcer, cx);
     Ok(())
 }
 
@@ -99,7 +102,7 @@ mod tests {
     fn usage_is_counted_from_the_ledgers_transactions() {
         let shared =
             lib_tags::find_by_name(&lib_tags::default_tags(), "shared").expect("a stub Tag");
-        let setup = crate::ledger_store::LedgerSetup::stub(today());
+        let setup = crate::shell::router::LedgerStores::stub(today());
         let ports = StorePorts {
             store: in_memory(),
             usage: StoredTagReads {

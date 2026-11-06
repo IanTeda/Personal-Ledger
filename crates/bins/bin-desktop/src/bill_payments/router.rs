@@ -8,8 +8,8 @@ use lib_bills::PayRequest;
 use lib_core::{Clock, DateStyle};
 
 use super::PayDialog;
+use crate::announcer::Announcer;
 use crate::bills::DesktopPorts;
-use crate::ledger_store::LedgerStore;
 use crate::shell::view::dialog_entity::host_dialog;
 use crate::view::event::ViewEvent;
 
@@ -18,7 +18,7 @@ use crate::view::event::ViewEvent;
 pub struct PayStores<'a> {
     pub bills: &'a DesktopPorts,
     pub payments: &'a SharedPayments,
-    pub ledger: &'a gpui::Entity<LedgerStore>,
+    pub announcer: &'a gpui::Entity<Announcer>,
 }
 
 /// Opens the Pay Dialog on `request`'s entry over page `P`, whose `landed` runs with the outcome
@@ -36,7 +36,7 @@ pub fn open_pay<P: EventEmitter<ViewEvent> + 'static>(
     let PayStores {
         bills,
         payments,
-        ledger,
+        announcer,
     } = stores;
     let Some(presenter) =
         PayPresenter::new(bills.clone(), payments.clone(), request, clock, date_style)
@@ -48,7 +48,7 @@ pub fn open_pay<P: EventEmitter<ViewEvent> + 'static>(
         // A page that has gone has nothing to land on.
         let _ = page.update(cx, |page, cx| landed(page, outcome, cx));
     });
-    let dialog = PayDialog::new(presenter, bills, ledger, landed);
+    let dialog = PayDialog::new(presenter, bills, announcer, landed);
     host_dialog(cx, |_| dialog);
     true
 }

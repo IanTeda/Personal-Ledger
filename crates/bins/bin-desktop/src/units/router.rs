@@ -11,7 +11,7 @@ use lib_units::{UnitId, UnitsDialog as Which, UnitsRouter};
 use super::ports::DesktopPorts;
 use super::view::dialog::UnitsDialog;
 use super::view::page::UnitsPage;
-use crate::ledger_store::LedgerStore;
+use crate::announcer::Announcer;
 use crate::notices::Queue;
 use crate::shell::view::dialog_entity::host_dialog;
 use crate::unit_deletion::DeleteUnitDialog;
@@ -19,7 +19,7 @@ use crate::unit_deletion::DeleteUnitDialog;
 pub(super) struct PageRouter<'a, 'b> {
     pub ports: DesktopPorts,
     pub deletion: lib_unit_deletion::SharedUnitDeletion,
-    pub ledger: gpui::Entity<LedgerStore>,
+    pub announcer: gpui::Entity<Announcer>,
     pub cx: &'a mut Context<'b, UnitsPage>,
     /// Set once a Presenter asked to show a Unit's prices view (`Some`) or close it (`None`).
     pub prices: Option<Option<UnitId>>,
@@ -40,7 +40,7 @@ impl UnitsRouter for PageRouter<'_, '_> {
                 id,
                 &self.ports,
                 &self.deletion,
-                &self.ledger,
+                &self.announcer,
                 landed,
                 self.cx,
             ) else {
@@ -49,7 +49,7 @@ impl UnitsRouter for PageRouter<'_, '_> {
             host_dialog(self.cx, |_| dialog);
             return true;
         }
-        let Some(dialog) = UnitsDialog::open(dialog, &self.ports, &self.ledger, landed) else {
+        let Some(dialog) = UnitsDialog::open(dialog, &self.ports, &self.announcer, landed) else {
             return false;
         };
         host_dialog(self.cx, |_| dialog);
@@ -77,11 +77,11 @@ impl Notify for PageRouter<'_, '_> {
 pub fn units_page(
     ports: DesktopPorts,
     deletion: lib_unit_deletion::SharedUnitDeletion,
-    ledger: gpui::Entity<LedgerStore>,
+    announcer: gpui::Entity<Announcer>,
     keymap: lib_viper::keymap::Keymap<lib_units::presenter::UnitsPageEvent>,
     prices_keymap: lib_viper::keymap::Keymap<lib_units::presenter::UnitPricesEvent>,
     cx: &mut gpui::App,
 ) -> gpui::Entity<UnitsPage> {
     use gpui::AppContext as _;
-    cx.new(|cx| UnitsPage::new(ports, deletion, ledger, keymap, prices_keymap, cx))
+    cx.new(|cx| UnitsPage::new(ports, deletion, announcer, keymap, prices_keymap, cx))
 }

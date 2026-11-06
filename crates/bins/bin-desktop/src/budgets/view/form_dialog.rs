@@ -32,9 +32,9 @@ use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::Keymap;
 
 use super::dialog::Landed;
+use crate::announcer::Announcer;
 use crate::budgets::ports::{self, DesktopPorts};
 use crate::dialog;
-use crate::ledger_store::LedgerStore;
 use crate::shell::view::dialog_entity::DialogReadback;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
 use crate::theme::color;
@@ -60,7 +60,7 @@ pub(crate) enum Form {
 pub struct FormDialog {
     /// The ports the Presenter writes through, asked after each event whether it wrote.
     ports: DesktopPorts,
-    ledger: gpui::Entity<LedgerStore>,
+    announcer: gpui::Entity<Announcer>,
     view: Form,
     landed: Landed,
 }
@@ -71,12 +71,12 @@ impl FormDialog {
     pub(crate) fn new(
         view: Form,
         ports: DesktopPorts,
-        ledger: &gpui::Entity<LedgerStore>,
+        announcer: &gpui::Entity<Announcer>,
         landed: Landed,
     ) -> Self {
         Self {
             ports,
-            ledger: ledger.clone(),
+            announcer: announcer.clone(),
             view,
             landed,
         }
@@ -134,7 +134,7 @@ impl FormDialog {
     ) {
         let mut router = Router::default();
         handle(&mut self.view, &mut router);
-        ports::announce_written(&self.ports, &self.ledger, cx);
+        ports::announce_written(&self.ports, &self.announcer, cx);
         if let Some(outcome) = router.closed() {
             (self.landed)(outcome, cx);
             cx.emit(DialogClosed);

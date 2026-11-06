@@ -23,7 +23,7 @@ use lib_core::Clock;
 use lib_database::{SharedCategoriesStore, SharedTransactionsStore, TransactionImportAdapter};
 use lib_transaction_import::{ImportPorts, SeededStatement};
 
-use crate::ledger_store::LedgerStore;
+use crate::announcer::{Announcer, Domain};
 
 pub use view::page::ImportPage;
 
@@ -62,9 +62,9 @@ impl ImportStores {
 /// Announces the Transactions and the Payees after a commit, so
 /// the Transactions list, the Dashboard and the Views reading the Payees see the Import at once.
 /// The continuing input commits it.
-pub(crate) fn announce(ledger: &Entity<LedgerStore>, cx: &mut App) {
-    ledger.update(cx, |store, cx| {
-        store.announce_transactions(cx);
-        store.announce_payees(cx);
+pub(crate) fn announce(announcer: &Entity<Announcer>, cx: &mut App) {
+    announcer.update(cx, |announcer, cx| {
+        announcer.announce(Domain::Transactions, cx);
+        announcer.announce(Domain::Payees, cx);
     });
 }

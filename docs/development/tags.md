@@ -59,7 +59,7 @@ The stub seed is written after the Categories and before the Payees and Transact
 - **`TagUsage`** — a Tag's `TagUse`, infallible. `TagsPorts` is `TagRepository + TagUsage`, as owned reads, so a store behind `Rc<RefCell<dyn TagsStore>>` can implement it by borrowing per call (`tags::ports::StorePorts`).
 - **Remove and merge** — `lib-tag-removal`'s `RemoveTag` and `MergeTags` Interactors, through its one atomic port, `TagRemoval`, and its read port, `TagRemovalReads`. Both rewrite Splits, so neither is a `lib-tags` Interactor. Their Dialogs close with `lib-tags`' `TagsOutcome`, so the page hears of them as of its own.
 
-The Desktop builds `tag_removal::RemovalStores` (`TagRemovalAdapter` and `StoredTagRemovalReads`) from the shared Tags and Transactions stores in `TagsSetup`, never from `LedgerStore`. The adapter sends the rewritten Transactions first and `TagsStore::delete_tag` after them, in the input's one commit, so a Tag's Splits are untagged or retagged before it goes. The Tags page announces `Domain::Tags` after a write (`tags::ports::announce`), and after a remove or merge lands announces `Domain::Transactions` (`LedgerStore::announce_transactions`) for the Views reading them.
+The Desktop builds `tag_removal::RemovalStores` (`TagRemovalAdapter` and `StoredTagRemovalReads`) from the shared Tags and Transactions stores in `TagsSetup`. The adapter sends the rewritten Transactions first and `TagsStore::delete_tag` after them, in the input's one commit, so a Tag's Splits are untagged or retagged before it goes. The Tags page announces `Domain::Tags` after a write (`tags::ports::announce`), and after a remove or merge lands announces `Domain::Transactions` (through the `Announcer`) for the Views reading them.
 
 ## UI
 

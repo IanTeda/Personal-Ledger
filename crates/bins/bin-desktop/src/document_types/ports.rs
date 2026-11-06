@@ -11,7 +11,7 @@ use lib_database::{DocumentsStore, SharedDocumentsStore};
 use lib_documents::types::DocumentTypeRow;
 use lib_documents::{Document, DocumentRepository, SharedRepository};
 
-use crate::ledger_store::LedgerStore;
+use crate::announcer::{Announcer, Domain};
 
 /// Whether a write went through a [`StoreDocuments`] since the last ask, so the Documents page
 /// announces the Documents only after an event that wrote them. A clone shares the one flag.
@@ -83,8 +83,11 @@ pub fn shared(store: &SharedDocumentsStore, written: &Written) -> SharedReposito
 /// Announces `Domain::Documents` and `Domain::DocumentTypes` after a Document Types event or Dialog
 /// confirm, so the Documents View redraws what the store now holds: a removal moves Documents, and
 /// a reorder or a new type reaches its type filter.
-pub fn announce(ledger: &Entity<LedgerStore>, cx: &mut App) {
-    ledger.update(cx, |store, cx| store.announce_documents(cx));
+pub fn announce(announcer: &Entity<Announcer>, cx: &mut App) {
+    announcer.update(cx, |announcer, cx| {
+        announcer.announce(Domain::Documents, cx);
+        announcer.announce(Domain::DocumentTypes, cx);
+    });
 }
 
 #[cfg(test)]

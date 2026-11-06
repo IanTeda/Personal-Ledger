@@ -11,7 +11,7 @@ mod render;
 
 use std::rc::Rc;
 
-use crate::ledger_store::Domain;
+use crate::announcer::Domain;
 use gpui::{App, Context, Entity, EventEmitter, Subscription};
 use lib_database::{LedgerPreferencesAdapter, SharedUnitsStore, StoredSettingsReads};
 use lib_settings::keymap::ledger_keymap;
@@ -21,7 +21,7 @@ use lib_viper::keymap::{KeyBindingConfig, Keymap};
 
 use crate::settings::snapshot::PageSnapshot;
 use crate::{
-    ledger_store::{LedgerStore, notify_on},
+    announcer::{Announcer, notify_on},
     settings::{
         SettingsPage,
         pages::{Page, PageRowClicked},
@@ -58,19 +58,19 @@ impl LedgerKeys {
 pub struct LedgerPage {
     presenter: LedgerPresenter,
     ports: DesktopPorts,
-    ledger: Entity<LedgerStore>,
+    announcer: Entity<Announcer>,
     _units_changed: Subscription,
 }
 
 impl LedgerPage {
     pub fn new(
-        ledger: Entity<LedgerStore>,
+        announcer: Entity<Announcer>,
         ports: DesktopPorts,
         keys: LedgerKeys,
         cx: &mut Context<'_, Self>,
     ) -> Self {
         // The Presenter reads the Units on each draw, so a write anywhere repaints the page.
-        let units_changed = notify_on(&ledger, Domain::Units, cx);
+        let units_changed = notify_on(&announcer, Domain::Units, cx);
         let store: SharedUnitsStore = ports.clone();
         let presenter = LedgerPresenter::new(LedgerSetup {
             units: Rc::new(StoredSettingsReads {
@@ -83,7 +83,7 @@ impl LedgerPage {
         Self {
             presenter,
             ports,
-            ledger,
+            announcer,
             _units_changed: units_changed,
         }
     }
@@ -105,7 +105,7 @@ impl LedgerPage {
     fn handle(&mut self, event: LedgerEvent, cx: &mut Context<'_, Self>) {
         let mut router = LedgerRouter {
             ports: &self.ports,
-            ledger: &self.ledger,
+            announcer: &self.announcer,
             cx,
         };
         self.presenter.handle(event, &mut router);

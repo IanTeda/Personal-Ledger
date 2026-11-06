@@ -21,7 +21,7 @@ use super::ports::DesktopPorts;
 use super::view::dialog::ListDialog;
 use super::view::form_dialog::{Form, FormDialog};
 use super::view::page::BudgetsPage;
-use crate::ledger_store::LedgerStore;
+use crate::announcer::Announcer;
 use crate::notices::Queue;
 use crate::shell::view::dialog_entity::host_dialog;
 use crate::view::event::{Reveal, ViewEvent};
@@ -31,7 +31,7 @@ const BUDGET_HISTORY_FILE: &str = "budget-history.csv";
 
 pub(super) struct PageRouter<'a, 'b> {
     pub ports: DesktopPorts,
-    pub ledger: Entity<LedgerStore>,
+    pub announcer: Entity<Announcer>,
     /// The day the page's Dialogs are opened on, and the date style the Switcher writes in.
     pub clock: Clock,
     pub date_style: Option<DateStyle>,
@@ -41,7 +41,7 @@ pub(super) struct PageRouter<'a, 'b> {
 impl PageRouter<'_, '_> {
     /// Hosts the Dialog `form` opens, which hands its outcome back to the page.
     fn host(&mut self, form: Form) -> bool {
-        let dialog = FormDialog::new(form, self.ports.clone(), &self.ledger, self.landed());
+        let dialog = FormDialog::new(form, self.ports.clone(), &self.announcer, self.landed());
         host_dialog(self.cx, |_| dialog);
         true
     }
@@ -65,15 +65,24 @@ impl BudgetsRouter for PageRouter<'_, '_> {
             self.clock.clone(),
             self.date_style,
         );
-        let dialog =
-            ListDialog::switcher(presenter, self.ports.clone(), &self.ledger, self.landed());
+        let dialog = ListDialog::switcher(
+            presenter,
+            self.ports.clone(),
+            &self.announcer,
+            self.landed(),
+        );
         host_dialog(self.cx, |_| dialog);
         true
     }
 
     fn open_manage(&mut self, current: BudgetId) -> bool {
         let presenter = ManagePresenter::new(self.ports.presenter(), current, self.clock.clone());
-        let dialog = ListDialog::manage(presenter, self.ports.clone(), &self.ledger, self.landed());
+        let dialog = ListDialog::manage(
+            presenter,
+            self.ports.clone(),
+            &self.announcer,
+            self.landed(),
+        );
         host_dialog(self.cx, |_| dialog);
         true
     }
@@ -212,10 +221,10 @@ impl Notify for PageRouter<'_, '_> {
 /// Budgets destination. `clock` reads the calendar day the figures are worked out on.
 pub fn budgets_page(
     ports: DesktopPorts,
-    ledger: Entity<LedgerStore>,
+    announcer: Entity<Announcer>,
     keymap: lib_viper::keymap::Keymap<BudgetsPageEvent>,
     clock: Clock,
     cx: &mut gpui::App,
 ) -> Entity<BudgetsPage> {
-    cx.new(|cx| BudgetsPage::new(ports, ledger, keymap, clock, cx))
+    cx.new(|cx| BudgetsPage::new(ports, announcer, keymap, clock, cx))
 }

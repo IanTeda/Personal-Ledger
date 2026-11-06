@@ -7,7 +7,7 @@
 //! - `router.rs` is the module's entry point ([`router::open_pay`]), which the Bills Router calls.
 //!
 //! Pay it directly writes through [`payments`], `lib-database`'s adapter over the Transactions
-//! store `LedgerStore` holds and the Bills store the Bills ports hold, so its Transaction and entry
+//! store the Open Ledger holds and the Bills store the Bills ports hold, so its Transaction and entry
 //! join the one pending batch and land in one commit.
 
 pub mod router;
@@ -20,8 +20,8 @@ use gpui::{App, Entity};
 use lib_bill_payments::SharedPayments;
 use lib_database::{BillPaymentsAdapter, SharedTransactionsStore};
 
+use crate::announcer::{Announcer, Domain};
 use crate::bills::DesktopPorts;
-use crate::ledger_store::LedgerStore;
 
 pub use view::dialog::pay::PayDialog;
 
@@ -36,7 +36,9 @@ pub fn payments(transactions: SharedTransactionsStore, bills: &DesktopPorts) -> 
 /// Announces the Transactions and the Bills after a confirm, so the Transactions View, the
 /// Dashboard and the Bills page see the payment at once (#1028). The confirm's
 /// input commits it.
-pub(crate) fn announce(ledger: &Entity<LedgerStore>, cx: &mut App) {
-    ledger.update(cx, |store, cx| store.announce_transactions(cx));
-    crate::bills::ports::announce(ledger, cx);
+pub(crate) fn announce(announcer: &Entity<Announcer>, cx: &mut App) {
+    announcer.update(cx, |announcer, cx| {
+        announcer.announce(Domain::Transactions, cx);
+    });
+    crate::bills::ports::announce(announcer, cx);
 }

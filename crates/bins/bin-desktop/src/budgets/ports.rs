@@ -1,5 +1,5 @@
 //! The Budgets store as the Desktop holds it (#952): the store `shell::router::build` is given,
-//! shared by `LedgerStore`, Category delete, the Accounts, Units and Categories usage
+//! shared by the Open Ledger, Category delete, the Accounts, Units and Categories usage
 //! counts and the Categories Monthly budget, and the Budgets read ports the Budgets View reads the
 //! other domains through. The writes are committed by the input they were made in
 //! (`crate::input::send`), not here.
@@ -23,7 +23,7 @@ use lib_core::{BudgetId, CategoryId, Money};
 use lib_database::FakeStores;
 use lib_database::{BudgetsStore, SharedBudgetsStore, StoredBudgetReads};
 
-use crate::ledger_store::LedgerStore;
+use crate::announcer::{Announcer, Domain};
 
 /// The Budgets store as the repository an Interactor writes through. It forwards rather than
 /// lending the store's own: the store is shared behind a `RefCell` whose guard can't be lent out
@@ -49,7 +49,7 @@ impl BudgetRepository for Store {
     }
 }
 
-/// The Budgets ports as the Desktop holds them: the store `LedgerStore` shares, and the other
+/// The Budgets ports as the Desktop holds them: the store the Open Ledger shares, and the other
 /// domains read through their stores (#952).
 pub struct StoredPorts {
     pub budgets: Store,
@@ -106,10 +106,10 @@ impl DesktopPorts {
 /// Announces `Domain::Budgets` after a Budgets event or Dialog input, but only when it wrote
 /// through `ports`, so the Dashboard and Budgets redraw on a write (#1028) and not on a cursor
 /// move or a keystroke into a cell.
-pub fn announce_written(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: &mut App) {
+pub fn announce_written(ports: &DesktopPorts, announcer: &Entity<Announcer>, cx: &mut App) {
     let wrote = std::mem::take(&mut ports.shared.borrow_mut().budgets.wrote);
     if wrote {
-        ledger.update(cx, |store, cx| store.announce_budgets(cx));
+        announcer.update(cx, |announcer, cx| announcer.announce(Domain::Budgets, cx));
     }
 }
 

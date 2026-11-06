@@ -27,8 +27,8 @@ use lib_units::presenter::{
 use lib_viper::dialog::{DialogInput, DialogRouter};
 
 use self::unit_form::UnitSelects;
+use crate::announcer::Announcer;
 use crate::form::viper::{chosen_label, drawn, labels};
-use crate::ledger_store::LedgerStore;
 use crate::units::ports::{self, DesktopPorts};
 use crate::{
     dialog,
@@ -51,7 +51,7 @@ pub(crate) type Landed = Box<dyn Fn(UnitsOutcome, &mut App)>;
 pub struct UnitsDialog {
     ports: DesktopPorts,
     /// The Ledger a confirm announces what it wrote through.
-    ledger: Entity<LedgerStore>,
+    announcer: Entity<Announcer>,
     view: View,
     landed: Landed,
 }
@@ -88,12 +88,12 @@ impl View {
 }
 
 impl UnitsDialog {
-    /// `which`'s Presenter on `ports`, or `None` when the row it names is gone. A confirm brings
-    /// `ledger` in line and hands its outcome to `landed`.
+    /// `which`'s Presenter on `ports`, or `None` when the row it names is gone. A confirm
+    /// announces what it wrote and hands its outcome to `landed`.
     pub(crate) fn open(
         which: Which,
         ports: &DesktopPorts,
-        ledger: &Entity<LedgerStore>,
+        announcer: &Entity<Announcer>,
         landed: Landed,
     ) -> Option<Self> {
         let shared = ports.clone();
@@ -118,7 +118,7 @@ impl UnitsDialog {
         };
         Some(Self {
             ports: ports.clone(),
-            ledger: ledger.clone(),
+            announcer: announcer.clone(),
             view,
             landed,
         })
@@ -296,11 +296,11 @@ impl HostedDialog for UnitsDialog {
     fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
         let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
         if may_confirm {
-            ports::announce(&self.ports, &self.ledger, cx);
+            ports::announce(&self.ports, &self.announcer, cx);
         }
         let router = self.send_input(input);
         if may_confirm {
-            ports::announce(&self.ports, &self.ledger, cx);
+            ports::announce(&self.ports, &self.announcer, cx);
         }
         self.closed(router, cx);
     }
@@ -318,9 +318,9 @@ impl HostedDialog for UnitsDialog {
     /// Sends Confirm to the Presenter, which runs its Interactor, announcing the Units' writes
     /// either side. A refusal stays on the Presenter's view model and keeps the Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
-        ports::announce(&self.ports, &self.ledger, cx);
+        ports::announce(&self.ports, &self.announcer, cx);
         let router = self.close_event(true);
-        ports::announce(&self.ports, &self.ledger, cx);
+        ports::announce(&self.ports, &self.announcer, cx);
         self.closed(router, cx);
     }
 

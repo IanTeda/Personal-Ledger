@@ -1,6 +1,6 @@
 //! The Inventory Settings page's View: the `lib-inventory` page Presenter in a gpui Entity. It
 //! looks up each key the Shell passes on, as chord text, in the Inventory keymap, turns clicks into
-//! events, draws the view model (`render.rs`), and keeps the Ledger read copy in line after every
+//! events, draws the view model (`render.rs`), and announces any Inventory write after every
 //! event. Each key and click is one input (`crate::input::send`), which
 //! commits what it wrote. The Settings View hosts it as any other page.
 //!
@@ -9,11 +9,12 @@
 
 mod render;
 
-use crate::ledger_store::Domain;
+use crate::announcer::Domain;
 use gpui::{
     AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Keystroke, Pixels, Point,
     Subscription,
 };
+use lib_database::StoredInventoryReads;
 use lib_inventory::presenter::{
     InventoryPageEvent, InventoryPagePresenter, InventoryPageViewModel, MenuAction,
 };
@@ -28,7 +29,7 @@ use crate::inventory::{InventorySetup, SettingsInventorySnapshot};
 use crate::settings::snapshot::PageSnapshot;
 use crate::write_count::WriteCount;
 use crate::{
-    ledger_store::{LedgerStore, notify_on},
+    announcer::{Announcer, notify_on},
     navigation::movement::Movement,
     settings::{
         SettingsPage,
@@ -46,7 +47,9 @@ pub struct InventoryPage {
     inventory: SharedInventory,
     /// The writes the page's ports have made, read around an input to tell whether it wrote.
     writes: WriteCount,
-    ledger: Entity<LedgerStore>,
+    /// The Units and Documents the Dialogs quote, over the stores (#1014).
+    reads: StoredInventoryReads,
+    announcer: Entity<Announcer>,
     keymap: Keymap<InventoryPageEvent>,
     /// Where the open row menu was asked for, in window coordinates.
     menu_at: Point<Pixels>,
@@ -62,7 +65,7 @@ pub struct InventoryPage {
 impl InventoryPage {
     pub fn new(
         setup: InventorySetup,
-        ledger: Entity<LedgerStore>,
+        announcer: Entity<Announcer>,
         cx: &mut Context<'_, Self>,
     ) -> Self {
         let writes = WriteCount::default();
@@ -71,9 +74,10 @@ impl InventoryPage {
             presenter: InventoryPagePresenter::new(inventory.clone(), setup.keymap.clone()),
             inventory,
             writes,
-            _inventory_changed: notify_on(&ledger, Domain::Inventory, cx),
-            _units_changed: notify_on(&ledger, Domain::Units, cx),
-            ledger,
+            reads: setup.reads,
+            _inventory_changed: notify_on(&announcer, Domain::Inventory, cx),
+            _units_changed: notify_on(&announcer, Domain::Units, cx),
+            announcer,
             keymap: setup.keymap,
             menu_at: Point::default(),
             page_focused: false,
@@ -102,13 +106,14 @@ impl InventoryPage {
         let landed = matches!(event, InventoryPageEvent::DialogClosed(Some(_)));
         let mut router = PageRouter {
             inventory: self.inventory.clone(),
-            reads: self.ledger.read(cx).inventory_reads(),
+            reads: self.reads.clone(),
             cx,
         };
         self.presenter.handle(event, &mut router);
         if landed || self.writes.get() != before {
-            self.ledger
-                .update(cx, |store, cx| store.announce_inventory(cx));
+            self.announcer.update(cx, |announcer, cx| {
+                announcer.announce(Domain::Inventory, cx);
+            });
         }
         cx.notify();
     }
@@ -164,10 +169,10 @@ impl PageSnapshot for SettingsInventorySnapshot {
 
     /// The visible rows and the selected one, each Location's Areas, Units and insurers, and each
     /// Area's Item count.
-    fn read(page: &InventoryPage, cx: &App) -> Self {
+    fn read(page: &InventoryPage, _cx: &App) -> Self {
         let inventory = page.inventory.borrow().inventory();
         let view = page.view_model();
-        let units = page.ledger.read(cx).inventory_reads();
+        let units = &page.reads;
         SettingsInventorySnapshot {
             inventory_rows: view
                 .rows

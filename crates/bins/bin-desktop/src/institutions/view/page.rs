@@ -6,7 +6,7 @@
 
 mod render;
 
-use crate::ledger_store::Domain;
+use crate::announcer::Domain;
 use gpui::{
     AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Pixels, Point, Subscription,
 };
@@ -23,7 +23,7 @@ use crate::institutions::ports::{self, DesktopPorts};
 use crate::institutions::router::PageRouter;
 use crate::settings::snapshot::PageSnapshot;
 use crate::{
-    ledger_store::{LedgerStore, notify_on},
+    announcer::{Announcer, notify_on},
     navigation::movement::Movement,
     settings::{
         SettingsPage,
@@ -39,7 +39,7 @@ impl EventEmitter<PageRowClicked> for InstitutionsPage {}
 pub struct InstitutionsPage {
     presenter: InstitutionsPagePresenter,
     ports: DesktopPorts,
-    ledger: Entity<LedgerStore>,
+    announcer: Entity<Announcer>,
     keymap: Keymap<InstitutionsPageEvent>,
     /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
     /// draws the page.
@@ -53,15 +53,15 @@ pub struct InstitutionsPage {
 impl InstitutionsPage {
     pub fn new(
         ports: DesktopPorts,
-        ledger: Entity<LedgerStore>,
+        announcer: Entity<Announcer>,
         keymap: Keymap<InstitutionsPageEvent>,
         cx: &mut Context<'_, Self>,
     ) -> Self {
         Self {
             presenter: InstitutionsPagePresenter::new(ports.clone(), keymap.clone()),
             ports,
-            _institutions_changed: notify_on(&ledger, Domain::Institutions, cx),
-            ledger,
+            _institutions_changed: notify_on(&announcer, Domain::Institutions, cx),
+            announcer,
             keymap,
             page_focused: false,
             menu_at: Point::default(),
@@ -83,14 +83,14 @@ impl InstitutionsPage {
     /// whatever it wrote. Inside an input already, as [`Self::send`] or a Dialog's
     /// confirm.
     fn handle(&mut self, event: InstitutionsPageEvent, cx: &mut Context<'_, Self>) {
-        ports::refresh(&self.ports, &self.ledger, cx);
+        ports::refresh(&self.ports, &self.announcer, cx);
         let mut router = PageRouter {
             ports: self.ports.clone(),
-            ledger: self.ledger.clone(),
+            announcer: self.announcer.clone(),
             cx,
         };
         self.presenter.handle(event, &mut router);
-        ports::refresh(&self.ports, &self.ledger, cx);
+        ports::refresh(&self.ports, &self.announcer, cx);
         cx.notify();
     }
 

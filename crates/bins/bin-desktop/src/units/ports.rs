@@ -23,7 +23,7 @@ use lib_units::{
     UnitRepository, UnitRow, UnitUsage, UnitsPorts,
 };
 
-use crate::ledger_store::LedgerStore;
+use crate::announcer::{Announcer, Domain};
 use crate::write_count::WriteCount;
 
 /// The Units ports the Units module and the General page share.
@@ -195,7 +195,7 @@ impl lib_database::UnitsStore for LedgerBackedPorts {
 /// Prices every Unit in itself, so none is quoted in another and any can be deleted; for a UI test
 /// that deletes a seeded Unit.
 #[doc(hidden)]
-pub fn unquote_for_test(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: &mut App) {
+pub fn unquote_for_test(ports: &DesktopPorts, announcer: &Entity<Announcer>, cx: &mut App) {
     {
         let mut ports = ports.borrow_mut();
         let units = UnitsPorts::units(&*ports).units();
@@ -206,7 +206,7 @@ pub fn unquote_for_test(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: 
             }
         }
     }
-    announce(ports, ledger, cx);
+    announce(ports, announcer, cx);
 }
 
 /// Puts the ports back to the rows as stored, after a write that named the Units failed,
@@ -216,21 +216,21 @@ pub fn unquote_for_test(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: 
 /// Returns the error reading the rows back; the ports are left as they were.
 pub fn reload(
     ports: &DesktopPorts,
-    ledger: &Entity<LedgerStore>,
+    announcer: &Entity<Announcer>,
     cx: &mut App,
 ) -> lib_database::Result<()> {
     lib_database::UnitsStore::reload(&mut *ports.borrow_mut())?;
-    ledger.update(cx, |store, cx| store.announce_units(cx));
+    announcer.update(cx, |announcer, cx| announcer.announce(Domain::Units, cx));
     Ok(())
 }
 
 /// Announces `Domain::Units` when the ports were written since the last announcement, so the
 /// Accounts, Inventory, Bills, Budgets, Transactions and the Dashboard see a write at once. Run
 /// before and after every Units event and Dialog confirm. Returns whether it announced.
-pub fn announce(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: &mut App) -> bool {
+pub fn announce(ports: &DesktopPorts, announcer: &Entity<Announcer>, cx: &mut App) -> bool {
     let written = ports.borrow().take_written();
     if written {
-        ledger.update(cx, |store, cx| store.announce_units(cx));
+        announcer.update(cx, |announcer, cx| announcer.announce(Domain::Units, cx));
     }
     written
 }
@@ -240,7 +240,7 @@ mod tests {
     use super::*;
 
     fn ports() -> (SharedUnitsStore, DesktopPorts) {
-        let storage = crate::ledger_store::LedgerSetup::stub(
+        let storage = crate::shell::router::LedgerStores::stub(
             chrono::NaiveDate::from_ymd_opt(2026, 10, 30).expect("a valid date"),
         );
         let store = storage.units.clone();

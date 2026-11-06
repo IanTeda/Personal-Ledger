@@ -17,8 +17,8 @@ use lib_transaction_import::presenter::{ImportEvent, ImportPresenter, ImportView
 use lib_viper::keymap::Keymap;
 use lib_viper::view::legend;
 
+use crate::announcer::Announcer;
 use crate::form::select::MAX_VISIBLE_ROWS;
-use crate::ledger_store::LedgerStore;
 use crate::shell::view::page_clicks::PresenterPage;
 use crate::shell::view::statusline::PageStatus;
 use crate::transaction_import::ImportStores;
@@ -27,7 +27,7 @@ use crate::transaction_import::router::PageRouter;
 /// The Import step's Entity.
 pub struct ImportPage {
     stores: ImportStores,
-    ledger: Entity<LedgerStore>,
+    announcer: Entity<Announcer>,
     clock: Clock,
     /// The step's Presenter, `Some` while it shows in place of the Transactions list (`:import`).
     presenter: Option<ImportPresenter>,
@@ -43,11 +43,11 @@ pub struct ImportPage {
 impl ImportPage {
     /// The step, closed, over `stores`, under the default keys until `Root` pushes
     /// `[keybindings]`. `clock` dates the statement as the step opens.
-    pub fn new(stores: ImportStores, ledger: Entity<LedgerStore>, clock: Clock) -> Self {
+    pub fn new(stores: ImportStores, announcer: Entity<Announcer>, clock: Clock) -> Self {
         let config = lib_config::KeyBindingConfig::default();
         Self {
             stores,
-            ledger,
+            announcer,
             clock,
             presenter: None,
             keymap: import_keymap(&config),
@@ -149,7 +149,7 @@ impl ImportPage {
             Some(committed) => {
                 self.close();
                 if committed.is_some() {
-                    super::super::announce(&self.ledger, cx);
+                    super::super::announce(&self.announcer, cx);
                     crate::transactions::router::first_row(cx);
                 }
             }

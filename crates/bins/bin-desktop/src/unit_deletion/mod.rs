@@ -18,7 +18,7 @@ use gpui::{App, Entity};
 use lib_database::{SharedInstitutionsStore, SharedUnitsStore, UnitDeletionAdapter};
 use lib_unit_deletion::SharedUnitDeletion;
 
-use crate::ledger_store::LedgerStore;
+use crate::announcer::Announcer;
 
 pub use view::dialog::delete_unit::DeleteUnitDialog;
 
@@ -39,10 +39,10 @@ pub fn deletion(
 /// input commits it.
 pub(crate) fn refresh(
     units: &crate::units::DesktopPorts,
-    ledger: &Entity<LedgerStore>,
+    announcer: &Entity<Announcer>,
     cx: &mut App,
 ) {
-    if crate::units::ports::announce(units, ledger, cx) {
-        ledger.update(cx, |store, cx| store.announce_institutions(cx));
+    if crate::units::ports::announce(units, announcer, cx) {
+        crate::institutions::ports::announce(announcer, cx);
     }
 }

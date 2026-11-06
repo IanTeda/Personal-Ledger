@@ -14,13 +14,13 @@ use super::ports::DesktopPorts;
 use super::view::dialog::AccountsDialog;
 use super::view::page::AccountsPage;
 use crate::account_deletion::DeletionStores;
-use crate::ledger_store::LedgerStore;
+use crate::announcer::Announcer;
 use crate::notices::Queue;
 use crate::shell::view::dialog_entity::host_dialog;
 
 pub(super) struct PageRouter<'a, 'b> {
     pub ports: DesktopPorts,
-    pub ledger: gpui::Entity<LedgerStore>,
+    pub announcer: gpui::Entity<Announcer>,
     pub deletion: DeletionStores,
     pub clock: lib_core::Clock,
     pub cx: &'a mut Context<'b, AccountsPage>,
@@ -38,7 +38,7 @@ impl AccountsRouter for PageRouter<'_, '_> {
         let Some(dialog) = AccountsDialog::open(
             dialog,
             &self.ports,
-            &self.ledger,
+            &self.announcer,
             self.clock.today(),
             landed,
         ) else {
@@ -54,7 +54,7 @@ impl AccountsRouter for PageRouter<'_, '_> {
         crate::account_deletion::router::open_delete(
             self.cx,
             &self.deletion,
-            &self.ledger,
+            &self.announcer,
             id,
             |page: &mut AccountsPage, _deleted, cx| page.deleted(cx),
         )
@@ -80,7 +80,7 @@ impl Notify for PageRouter<'_, '_> {
 /// hosts as any other page.
 pub fn accounts_page(
     setup: super::AccountsSetup,
-    ledger: gpui::Entity<LedgerStore>,
+    announcer: gpui::Entity<Announcer>,
     clock: lib_core::Clock,
     cx: &mut gpui::App,
 ) -> gpui::Entity<AccountsPage> {
@@ -90,7 +90,7 @@ pub fn accounts_page(
         deletion,
         keymap,
     } = setup;
-    cx.new(|cx| AccountsPage::new(ports, deletion, ledger, clock, keymap, cx))
+    cx.new(|cx| AccountsPage::new(ports, deletion, announcer, clock, keymap, cx))
 }
 
 /// `accounts new|edit|delete [<account name>]` on the Accounts page, once `Root` has opened it: the

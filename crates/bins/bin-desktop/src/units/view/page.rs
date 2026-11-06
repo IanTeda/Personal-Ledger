@@ -18,7 +18,7 @@ use gpui::{
     AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Pixels, Point, Subscription,
 };
 
-use crate::ledger_store::Domain;
+use crate::announcer::Domain;
 use lib_units::UnitId;
 use lib_units::presenter::{
     UnitPricesEvent, UnitPricesPresenter, UnitPricesViewModel, UnitsPageEvent, UnitsPagePresenter,
@@ -31,7 +31,7 @@ use lib_shell::Hint;
 use crate::units::ports::{self, DesktopPorts};
 use crate::units::router::PageRouter;
 use crate::{
-    ledger_store::{LedgerStore, notify_on},
+    announcer::{Announcer, notify_on},
     navigation::movement::Movement,
     settings::{
         SettingsPage,
@@ -53,7 +53,7 @@ pub struct UnitsPage {
     presenter: UnitsPagePresenter,
     ports: DesktopPorts,
     deletion: lib_unit_deletion::SharedUnitDeletion,
-    ledger: Entity<LedgerStore>,
+    announcer: Entity<Announcer>,
     keymap: Keymap<UnitsPageEvent>,
     prices_keymap: Keymap<UnitPricesEvent>,
     /// The Unit prices view, while it shows in place of the tables.
@@ -68,7 +68,7 @@ impl UnitsPage {
     pub fn new(
         ports: DesktopPorts,
         deletion: lib_unit_deletion::SharedUnitDeletion,
-        ledger: Entity<LedgerStore>,
+        announcer: Entity<Announcer>,
         keymap: Keymap<UnitsPageEvent>,
         prices_keymap: Keymap<UnitPricesEvent>,
         cx: &mut Context<'_, Self>,
@@ -78,10 +78,10 @@ impl UnitsPage {
             presenter,
             ports,
             deletion,
-            _units_changed: notify_on(&ledger, Domain::Units, cx),
+            _units_changed: notify_on(&announcer, Domain::Units, cx),
             // The pane's ACCOUNTS group reads the Ledger's Accounts.
-            _accounts_changed: notify_on(&ledger, Domain::Accounts, cx),
-            ledger,
+            _accounts_changed: notify_on(&announcer, Domain::Accounts, cx),
+            announcer,
             keymap,
             prices_keymap,
             prices: None,
@@ -98,18 +98,18 @@ impl UnitsPage {
     /// wrote. Inside an input already, as [`Self::send`] or a Dialog's
     /// confirm.
     fn handle(&mut self, event: UnitsPageEvent, cx: &mut Context<'_, Self>) {
-        ports::announce(&self.ports, &self.ledger, cx);
+        ports::announce(&self.ports, &self.announcer, cx);
         let mut router = PageRouter {
             ports: self.ports.clone(),
             deletion: self.deletion.clone(),
-            ledger: self.ledger.clone(),
+            announcer: self.announcer.clone(),
             cx,
             prices: None,
         };
         self.presenter.handle(event, &mut router);
         let prices = router.prices;
         self.apply_prices(prices);
-        ports::announce(&self.ports, &self.ledger, cx);
+        ports::announce(&self.ports, &self.announcer, cx);
         cx.notify();
     }
 
@@ -122,18 +122,18 @@ impl UnitsPage {
         let Some(presenter) = &mut self.prices else {
             return;
         };
-        ports::announce(&self.ports, &self.ledger, cx);
+        ports::announce(&self.ports, &self.announcer, cx);
         let mut router = PageRouter {
             ports: self.ports.clone(),
             deletion: self.deletion.clone(),
-            ledger: self.ledger.clone(),
+            announcer: self.announcer.clone(),
             cx,
             prices: None,
         };
         presenter.handle(event, &mut router);
         let prices = router.prices;
         self.apply_prices(prices);
-        ports::announce(&self.ports, &self.ledger, cx);
+        ports::announce(&self.ports, &self.announcer, cx);
         cx.notify();
     }
 

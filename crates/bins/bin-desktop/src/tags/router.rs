@@ -12,7 +12,7 @@ use lib_transactions::query::TransactionFilters;
 use super::TagsSetup;
 use super::view::dialog::TagsDialog;
 use super::view::page::TagsPage;
-use crate::ledger_store::LedgerStore;
+use crate::announcer::Announcer;
 use crate::notices::Queue;
 use crate::shell::view::dialog_entity::host_dialog;
 use crate::tag_removal::RemovalStores;
@@ -81,10 +81,10 @@ impl Notify for PageRouter<'_, '_> {
 /// View hosts as any other page.
 pub fn tags_page(
     setup: TagsSetup,
-    ledger: Entity<LedgerStore>,
+    announcer: Entity<Announcer>,
     clock: lib_core::Clock,
     cx: &mut gpui::App,
 ) -> Entity<TagsPage> {
     use gpui::AppContext as _;
-    cx.new(|cx| TagsPage::new(setup, ledger, clock, cx))
+    cx.new(|cx| TagsPage::new(setup, announcer, clock, cx))
 }

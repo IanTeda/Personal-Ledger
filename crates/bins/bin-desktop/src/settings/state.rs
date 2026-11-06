@@ -12,7 +12,7 @@
 
 use super::router::{FrameRouter, PageChanged};
 use crate::{
-    ledger_store::LedgerStore,
+    announcer::Announcer,
     navigation::{chord::chord, movement::Movement},
     settings::pages::{LedgerPages, Page, PageFrame, PageHandle, SettingsPages, SettingsSetup},
     settings::{SettingsFocus, SettingsPage},
@@ -141,16 +141,16 @@ impl SettingsView {
         self.pages.tracing.update(cx, |page, cx| page.appended(cx));
     }
 
-    /// Builds the This Ledger pages on the Open Ledger's `ledger`, so they can be shown, in place
-    /// of any built on a Ledger opened before.
+    /// Builds the This Ledger pages on the Open Ledger's stores in `setup`, announcing through
+    /// `announcer`, so they can be shown, in place of any built on a Ledger opened before.
     pub fn open_ledger(
         &mut self,
-        ledger: &Entity<LedgerStore>,
+        announcer: &Entity<Announcer>,
         clock: &lib_core::Clock,
         setup: SettingsSetup,
         cx: &mut Context<'_, Self>,
     ) {
-        let pages = LedgerPages::new(ledger, clock, setup, self.frame.keymap(), cx);
+        let pages = LedgerPages::new(announcer, clock, setup, self.frame.keymap(), cx);
         self.pages.ledger = Some(pages);
         // Subscribed afresh, so a swapped-out Ledger's pages leave no subscription behind.
         self._page_subscriptions = self
@@ -690,7 +690,7 @@ mod tests {
     fn page_returns_the_page_for_every_settings_page(cx: &mut TestAppContext) {
         crate::locale::init_for_tests();
         let today = chrono::NaiveDate::from_ymd_opt(2026, 10, 30).expect("a valid date");
-        let storage = crate::ledger_store::LedgerSetup::stub(today);
+        let storage = crate::shell::router::LedgerStores::stub(today);
         let setup = SettingsSetup {
             units: crate::units::UnitsSetup::stub(&storage),
             institutions: crate::institutions::InstitutionsSetup::stub(&storage),
@@ -702,7 +702,7 @@ mod tests {
             inventory: crate::inventory::InventorySetup::stub(&storage),
             ledger: crate::settings::ledger::LedgerKeys::new(&KeyBindingConfig::default()),
         };
-        let ledger = cx.new(|_| LedgerStore::with_storage(storage));
+        let announcer = cx.new(|_| Announcer::default());
         let clock = lib_core::Clock::fixed(today);
         let view = cx.new(SettingsView::new);
         view.update(cx, |view, cx| {
@@ -713,7 +713,7 @@ mod tests {
                     "with no Ledger open only the This device pages are built"
                 );
             }
-            view.open_ledger(&ledger, &clock, setup, cx);
+            view.open_ledger(&announcer, &clock, setup, cx);
         });
 
         view.read_with(cx, |view, _| {

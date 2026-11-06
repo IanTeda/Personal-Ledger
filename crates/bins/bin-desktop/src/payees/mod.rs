@@ -7,9 +7,8 @@
 //! - `view/dialog.rs` holds each Dialog's Presenter in an Entity in the Dialog host, one View per
 //!   Dialog in `view/dialog/`.
 //! - `router.rs` is the Router and the module's entry point ([`payees_page`]).
-//! - `ports.rs` holds the halfway shims: the Categories copied from the Ledger, the forwarding
-//!   shim the Payees writers not yet migrated go through, and the Ledger read copy refreshed after
-//!   each write (#832).
+//! - `ports.rs` holds the store with its reads of the other domains' stores, and the
+//!   announcement after each write (#832, #1005).
 //!
 //! Where the Payees are kept, the SQLite adapter opened at start or memory, is `lib-database`'s
 //! `PayeesStore`.
@@ -52,7 +51,7 @@ impl PayeesSetup {
 
     /// `storage`'s Payees ports under the default keys, for a test that builds `Root` directly.
     #[cfg(test)]
-    pub fn stub(storage: &crate::ledger_store::LedgerSetup) -> Self {
+    pub fn stub(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
             storage.payees.clone(),
             &lib_config::KeyBindingConfig::default(),

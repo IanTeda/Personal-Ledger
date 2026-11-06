@@ -10,7 +10,7 @@
 //! Delete writes through [`DeletionStores`]' port, `lib-database`'s adapter over the Categories,
 //! Transactions, Bills, Payees and Budgets stores their modules share, so the Uncategorised it may
 //! make, the re-pointed rows and the Category's delete join the one pending batch and land in the
-//! one commit of the confirm's input. Nothing here reads `LedgerStore`: the Categories page hears
+//! one commit of the confirm's input. Nothing here reads the `Announcer`: the Categories page hears
 //! of a confirm through its `landed` callback and brings what else reads those domains in line.
 
 pub mod router;
@@ -63,7 +63,7 @@ impl DeletionStores {
 
     /// The port and reads over `storage`'s stores, for a test that builds `Root` directly.
     #[cfg(test)]
-    pub fn stub(storage: &crate::ledger_store::LedgerSetup) -> Self {
+    pub fn stub(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
             storage.categories.clone(),
             storage.transactions.clone(),

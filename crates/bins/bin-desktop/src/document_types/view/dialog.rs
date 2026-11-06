@@ -23,8 +23,8 @@ use lib_shell::{DialogCommand, Hint};
 use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
 
+use crate::announcer::Announcer;
 use crate::document_types::ports;
-use crate::ledger_store::LedgerStore;
 use crate::shell::view::dialog_entity::DialogReadback;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
 
@@ -37,7 +37,7 @@ pub(crate) type Landed = Box<dyn Fn(DocumentTypesOutcome, &mut App)>;
 /// The open Document Types Dialog: its Presenter and its widget state.
 pub struct DocumentTypesDialog {
     /// The Ledger store a confirm announces what it wrote through.
-    ledger: Entity<LedgerStore>,
+    announcer: Entity<Announcer>,
     view: View,
     landed: Landed,
 }
@@ -65,11 +65,11 @@ impl View {
 
 impl DocumentTypesDialog {
     /// `which`'s Presenter on `documents`, or `None` when the type it names is gone. A confirm
-    /// brings `ledger` in line and hands its outcome to `landed`.
+    /// announces what it wrote and hands its outcome to `landed`.
     pub(crate) fn open(
         which: Which,
         documents: &SharedRepository,
-        ledger: &Entity<LedgerStore>,
+        announcer: &Entity<Announcer>,
         landed: Landed,
     ) -> Option<Self> {
         let shared = documents.clone();
@@ -80,7 +80,7 @@ impl DocumentTypesDialog {
             Which::DefaultNotice => View::Notice(DefaultNoticePresenter),
         };
         Some(Self {
-            ledger: ledger.clone(),
+            announcer: announcer.clone(),
             view,
             landed,
         })
@@ -167,7 +167,7 @@ impl HostedDialog for DocumentTypesDialog {
             ),
         };
         if matches!(input, DialogInput::Select | DialogInput::Submit) {
-            ports::announce(&self.ledger, cx);
+            ports::announce(&self.announcer, cx);
         }
         self.closed(router, cx);
     }
@@ -184,7 +184,7 @@ impl HostedDialog for DocumentTypesDialog {
     /// refusal stays on the Presenter's view model and keeps the Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
         let router = self.close_event(true);
-        ports::announce(&self.ledger, cx);
+        ports::announce(&self.announcer, cx);
         self.closed(router, cx);
     }
 

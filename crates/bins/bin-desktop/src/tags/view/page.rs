@@ -6,7 +6,7 @@
 
 mod render;
 
-use crate::ledger_store::Domain;
+use crate::announcer::Domain;
 use gpui::{AnyElement, App, Context, Entity, EventEmitter, Subscription};
 use lib_tags::presenter::{TagsPageEvent, TagsPagePresenter, TagsPageViewModel};
 use lib_tags::{SharedPorts, TagChange, TagsOutcome};
@@ -20,7 +20,7 @@ use crate::tags::router::PageRouter;
 use crate::tags::{SettingsTagsSnapshot, TagsSetup, ports};
 use crate::write_count::WriteCount;
 use crate::{
-    ledger_store::{LedgerStore, notify_on},
+    announcer::{Announcer, notify_on},
     navigation::movement::Movement,
     settings::{
         SettingsPage,
@@ -41,7 +41,7 @@ pub struct TagsPage {
     /// Tag remove and merge's port and reads, which their Dialogs open on.
     removal: RemovalStores,
     /// What hears of a Tags write: the Tags page itself, the Transactions and the Shell.
-    ledger: Entity<LedgerStore>,
+    announcer: Entity<Announcer>,
     clock: lib_core::Clock,
     keymap: Keymap<TagsPageEvent>,
     /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
@@ -56,7 +56,7 @@ pub struct TagsPage {
 impl TagsPage {
     pub fn new(
         setup: TagsSetup,
-        ledger: Entity<LedgerStore>,
+        announcer: Entity<Announcer>,
         clock: lib_core::Clock,
         cx: &mut Context<'_, Self>,
     ) -> Self {
@@ -67,9 +67,9 @@ impl TagsPage {
             ports,
             writes,
             removal: setup.removal,
-            _tags_changed: notify_on(&ledger, Domain::Tags, cx),
-            _transactions_changed: notify_on(&ledger, Domain::Transactions, cx),
-            ledger,
+            _tags_changed: notify_on(&announcer, Domain::Tags, cx),
+            _transactions_changed: notify_on(&announcer, Domain::Transactions, cx),
+            announcer,
             clock,
             keymap: setup.keymap,
             page_focused: false,
@@ -102,7 +102,7 @@ impl TagsPage {
         };
         self.presenter.handle(event, &mut router);
         if self.writes.get() != before {
-            ports::announce(&self.ledger, cx);
+            ports::announce(&self.announcer, cx);
         }
         cx.notify();
     }
@@ -112,10 +112,11 @@ impl TagsPage {
     /// so the Transactions are announced for the Views reading them.
     pub(crate) fn dialog_landed(&mut self, outcome: TagsOutcome, cx: &mut Context<'_, Self>) {
         if matches!(outcome.change, TagChange::Removed | TagChange::Merged) {
-            self.ledger
-                .update(cx, |store, cx| store.announce_transactions(cx));
+            self.announcer.update(cx, |announcer, cx| {
+                announcer.announce(Domain::Transactions, cx);
+            });
         }
-        ports::announce(&self.ledger, cx);
+        ports::announce(&self.announcer, cx);
         self.handle(TagsPageEvent::DialogClosed(Some(outcome)), cx);
     }
 

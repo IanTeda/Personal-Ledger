@@ -14,7 +14,7 @@ use lib_toast::{Notice, Notify};
 use super::ports::DesktopPorts;
 use super::view::dialog::BillsDialog;
 use super::view::page::BillsPage;
-use crate::ledger_store::LedgerStore;
+use crate::announcer::Announcer;
 use crate::notices::Queue;
 use crate::shell::view::dialog_entity::host_dialog;
 
@@ -26,7 +26,7 @@ pub(super) struct PageRouter<'a, 'b> {
     pub clock: Clock,
     pub date_style: Option<DateStyle>,
     /// The Ledger the page's Dialogs read from and announce their writes through.
-    pub ledger: Entity<LedgerStore>,
+    pub announcer: Entity<Announcer>,
     pub cx: &'a mut Context<'b, BillsPage>,
 }
 
@@ -62,14 +62,14 @@ impl BillsRouter for PageRouter<'_, '_> {
             Some(id) => PlanFormPresenter::edit(ports, id, self.clock.clone(), self.date_style),
         };
         let dialog = presenter.map(|presenter| {
-            BillsDialog::plan_form(presenter, &self.ports, &self.ledger, self.landed())
+            BillsDialog::plan_form(presenter, &self.ports, &self.announcer, self.landed())
         });
         self.host(dialog)
     }
 
     fn open_skip(&mut self, entry: EntryId) -> bool {
         let dialog = SkipPresenter::new(self.ports.clone(), entry).map(|presenter| {
-            BillsDialog::skip(presenter, &self.ports, &self.ledger, self.landed())
+            BillsDialog::skip(presenter, &self.ports, &self.announcer, self.landed())
         });
         self.host(dialog)
     }
@@ -81,7 +81,7 @@ impl BillsRouter for PageRouter<'_, '_> {
             crate::bill_payments::router::PayStores {
                 bills: &self.ports,
                 payments: &self.payments,
-                ledger: &self.ledger,
+                announcer: &self.announcer,
             },
             request,
             self.clock.clone(),
@@ -108,11 +108,11 @@ impl Notify for PageRouter<'_, '_> {
 pub fn bills_page(
     ports: DesktopPorts,
     payments: SharedPayments,
-    ledger: Entity<LedgerStore>,
+    announcer: Entity<Announcer>,
     keymap: lib_viper::keymap::Keymap<BillsPageEvent>,
     clock: Clock,
     cx: &mut gpui::App,
 ) -> Entity<BillsPage> {
     use gpui::AppContext as _;
-    cx.new(|cx| BillsPage::new(ports, payments, ledger, keymap, clock, cx))
+    cx.new(|cx| BillsPage::new(ports, payments, announcer, keymap, clock, cx))
 }

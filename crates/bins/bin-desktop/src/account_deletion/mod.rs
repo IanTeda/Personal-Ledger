@@ -9,7 +9,7 @@
 //!   page calls until the Accounts page is a module (#855).
 //!
 //! Account delete writes through [`deletion`], `lib-database`'s adapter over the Accounts and
-//! Transactions stores `LedgerStore` holds and the Bills store the Bills ports hold, so the
+//! Transactions stores the Open Ledger holds and the Bills store the Bills ports hold, so the
 //! Account, its Transactions and the Unmatch of the entries they paid join the one pending batch
 //! and land in one commit.
 
@@ -25,8 +25,8 @@ use lib_database::{
     AccountDeletionAdapter, SharedAccountsStore, SharedTransactionsStore, StoredAccountReads,
 };
 
+use crate::announcer::{Announcer, Domain};
 use crate::bills::DesktopPorts;
-use crate::ledger_store::LedgerStore;
 
 pub use view::dialog::delete_account::DeleteAccountDialog;
 
@@ -50,6 +50,9 @@ pub fn deletion(
 #[derive(Clone)]
 pub struct DeletionStores {
     pub deletion: SharedDeletion,
+    /// The Accounts ports the deletion port writes through, whose write count the confirm
+    /// announces from.
+    pub accounts: crate::accounts::DesktopPorts,
     pub bills: DesktopPorts,
     pub reads: StoredAccountReads,
 }
@@ -57,29 +60,31 @@ pub struct DeletionStores {
 impl DeletionStores {
     /// The deletion port over `storage`'s stores, for a test that builds `Root` directly.
     #[cfg(test)]
-    pub fn stub(storage: &crate::ledger_store::LedgerSetup) -> Self {
+    pub fn stub(storage: &crate::shell::router::LedgerStores) -> Self {
         Self {
             deletion: deletion(
                 storage.accounts.clone(),
                 storage.transactions.clone(),
                 &storage.bills,
             ),
+            accounts: storage.accounts.clone(),
             bills: storage.bills.clone(),
-            reads: StoredAccountReads {
-                transactions: storage.transactions.clone(),
-                budgets: storage.budgets.clone(),
-                units: storage.units.clone(),
-                institutions: storage.institutions_store.clone(),
-            },
+            reads: storage.account_reads.clone(),
         }
     }
 }
 
-/// Announces the Accounts when a confirm wrote them, and the Transactions and the Bills, so the Accounts page, the Transactions View, the Dashboard and the Bills page
-/// see the delete at once. The confirm's input commits it.
-pub(crate) fn refresh(ledger: &Entity<LedgerStore>, cx: &mut App) {
-    let accounts = ledger.read(cx).accounts_ports().clone();
-    crate::accounts::ports::refresh(&accounts, ledger, cx);
-    ledger.update(cx, |store, cx| store.announce_transactions(cx));
-    crate::bills::ports::announce(ledger, cx);
+/// Announces the Accounts when a confirm wrote them through `accounts`, and the Transactions and
+/// the Bills, so the Accounts page, the Transactions View, the Dashboard and the Bills page see
+/// the delete at once. The confirm's input commits it.
+pub(crate) fn refresh(
+    accounts: &crate::accounts::DesktopPorts,
+    announcer: &Entity<Announcer>,
+    cx: &mut App,
+) {
+    crate::accounts::ports::refresh(accounts, announcer, cx);
+    announcer.update(cx, |announcer, cx| {
+        announcer.announce(Domain::Transactions, cx);
+    });
+    crate::bills::ports::announce(announcer, cx);
 }

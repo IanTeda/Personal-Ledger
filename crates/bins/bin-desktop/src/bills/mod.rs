@@ -9,7 +9,7 @@
 //!   per Dialog in `view/dialog/`.
 //! - `router.rs` is the Router and the module's entry point ([`bills_page`]). It opens the Pay
 //!   Dialog through the Bill Payments module's entry point (`crate::bill_payments`).
-//! - `ports.rs` holds the halfway shims: the store shared with `LedgerStore`, and the
+//! - `ports.rs` holds the halfway shims: the store shared with the Open Ledger, and the
 //!   announcement of each write (#778, #1028).
 
 pub mod ports;
@@ -25,7 +25,7 @@ pub use view::snapshot::{BillRowSnapshot, BillsSnapshot};
 
 use lib_bills::presenter::BillsPageEvent;
 
-/// What `shell::router::build` hands the Bills module: its ports, shared with `LedgerStore`, the payments
+/// What `shell::router::build` hands the Bills module: its ports, shared with the Open Ledger, the payments
 /// port the Pay Dialog it opens writes through, and its keymap under `[keybindings]`.
 pub struct BillsSetup {
     pub ports: DesktopPorts,
@@ -49,7 +49,7 @@ impl BillsSetup {
     /// `storage`'s Bills ports and payments under the default keys, for a test that builds
     /// `Root` directly.
     #[cfg(test)]
-    pub fn stub(storage: &crate::ledger_store::LedgerSetup) -> Self {
+    pub fn stub(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
             storage.bills.clone(),
             crate::bill_payments::payments(storage.transactions.clone(), &storage.bills),

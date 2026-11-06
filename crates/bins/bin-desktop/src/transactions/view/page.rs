@@ -15,13 +15,13 @@
 //! enters and leaves them through [`ViewEvent`] as the Presenter opens and closes them.
 //!
 //! The rows name Accounts, Categories, Payees, Tags and Units, read through the stores. A module
-//! that writes any of them (an Import commit, a Tag merge) announces it through `LedgerStore`, so
+//! that writes any of them (an Import commit, a Tag merge) announces it through the `Announcer`, so
 //! the page redraws on every `LedgerChanged` naming any of them.
 
 use gpui::UniformListScrollHandle;
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollStrategy, Subscription};
 
-use crate::ledger_store::Domain;
+use crate::announcer::Domain;
 use lib_core::{Clock, DateStyle, TransactionId};
 use lib_list_cursor::Step;
 use lib_shell::DialogCommand;
@@ -35,9 +35,9 @@ use lib_viper::keymap::Keymap;
 
 use super::header::ChipBounds;
 use crate::{
+    announcer::{Announcer, LedgerChanged},
     form::select::SelectState,
     form::viper::{chosen_label, labels},
-    ledger_store::{LedgerChanged, LedgerStore},
     navigation::{chord::chord, movement::Movement, nav::Noun},
     notices::Queue,
     shell::view::{page_clicks::PresenterPage, statusline::PageStatus},
@@ -84,7 +84,7 @@ impl TransactionsPage {
     /// `Root` pushes `[keybindings]`.
     pub fn new(
         ports: SharedPorts,
-        ledger: &Entity<LedgerStore>,
+        announcer: &Entity<Announcer>,
         clock: Clock,
         cx: &mut Context<'_, Self>,
     ) -> Self {
@@ -97,7 +97,7 @@ impl TransactionsPage {
             lib_transactions::keymap::transactions_filter_keymap(&config),
             search_chord(&config),
         );
-        let _ledger_changed = cx.subscribe(ledger, |_page, _, event: &LedgerChanged, cx| {
+        let _ledger_changed = cx.subscribe(announcer, |_page, _, event: &LedgerChanged, cx| {
             if READS.iter().any(|domain| event.what.contains(domain)) {
                 cx.notify();
             }

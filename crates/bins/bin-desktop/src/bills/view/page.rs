@@ -10,7 +10,7 @@
 
 use crate::navigation::nav::NounLabel;
 
-use crate::ledger_store::Domain;
+use crate::announcer::Domain;
 use gpui::{
     AnyElement, App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, SharedString,
     Subscription, Window, div, prelude::*, px,
@@ -26,11 +26,11 @@ use lib_viper::keymap::Keymap;
 use lib_viper::view::SelectView;
 
 use super::{planner, schedule};
+use crate::announcer::{Announcer, LedgerChanged};
 use crate::bills::ports::{self, DesktopPorts};
 use crate::bills::router::PageRouter;
 use crate::form::select::SelectState;
 use crate::form::viper::{choose_option, select_key, synced, toggle_select};
-use crate::ledger_store::{LedgerChanged, LedgerStore};
 use crate::navigation::{movement::Movement, nav::Noun};
 use crate::shell::view::dialog_entity::DialogKey;
 use crate::shell::view::page_clicks::{PageClicks, PresenterPage};
@@ -51,7 +51,7 @@ pub struct BillsPage {
     ports: DesktopPorts,
     /// What the Pay Dialog the page opens writes Pay it directly through.
     payments: SharedPayments,
-    ledger: Entity<LedgerStore>,
+    announcer: Entity<Announcer>,
     keymap: Keymap<BillsPageEvent>,
     /// The page's own scroll, reset as it becomes the destination and as its tab changes.
     scroll: ScrollHandle,
@@ -64,7 +64,7 @@ impl BillsPage {
     pub fn new(
         ports: DesktopPorts,
         payments: SharedPayments,
-        ledger: Entity<LedgerStore>,
+        announcer: Entity<Announcer>,
         keymap: Keymap<BillsPageEvent>,
         clock: Clock,
         cx: &mut Context<'_, Self>,
@@ -72,8 +72,8 @@ impl BillsPage {
         let presenter = BillsPagePresenter::new(ports.clone(), clock.clone(), keymap.clone());
         // The rows name Accounts, Categories, Payees, Transactions and Units, which the ports read
         // from their stores on each ask: a change to any is redrawn, as is a Bills write
-        // `LedgerStore` made (Account delete's Unmatch).
-        let _ledger_changed = cx.subscribe(&ledger, |_, _, event: &LedgerChanged, cx| {
+        // another module made (Account delete's Unmatch).
+        let _ledger_changed = cx.subscribe(&announcer, |_, _, event: &LedgerChanged, cx| {
             let reads = [
                 Domain::Accounts,
                 Domain::Categories,
@@ -92,7 +92,7 @@ impl BillsPage {
             clock,
             ports,
             payments,
-            ledger,
+            announcer,
             keymap,
             scroll: ScrollHandle::new(),
             filter_select: None,
@@ -115,11 +115,11 @@ impl BillsPage {
             payments: self.payments.clone(),
             clock: self.clock.clone(),
             date_style: self.presenter.date_style(),
-            ledger: self.ledger.clone(),
+            announcer: self.announcer.clone(),
             cx,
         };
         self.presenter.handle(event, &mut router);
-        ports::announce_written(&self.ports, &self.ledger, cx);
+        ports::announce_written(&self.ports, &self.announcer, cx);
         if self.presenter.tab() != tab {
             self.scroll.set_offset(gpui::Point::default());
         }

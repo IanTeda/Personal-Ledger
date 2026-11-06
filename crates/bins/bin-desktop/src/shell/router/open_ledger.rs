@@ -7,6 +7,14 @@
 //! With no Ledger open there is none: start-up builds one only on a Ledger file it opened (#977).
 //! The Settings View stands outside it, since its This device pages work with no Ledger open;
 //! building the Open Ledger hands that View its This Ledger pages.
+//!
+//! It is the one place a Ledger's stores and stored reads are assembled ([`LedgerStores`], #1057):
+//! `build` hands each page the reads it needs, and keeps the stores for a failed write's reload, a
+//! new month and the test hooks. Writes are announced through its [`Announcer`].
+
+mod stores;
+
+pub use stores::LedgerStores;
 
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -15,8 +23,8 @@ use gpui::{AppContext, Context, Entity, Subscription, Task};
 use lib_database::{Storage, Stores, Writer};
 
 use super::Root;
+use crate::announcer::{Announcer, notify_on};
 use crate::dashboard::DashboardPage;
-use crate::ledger_store::{LedgerStore, notify_on};
 use crate::settings::state::SettingsView;
 use crate::transaction_import::{ImportPage, ImportStores};
 use crate::transactions::TransactionsPage;
@@ -85,19 +93,23 @@ impl lib_shell::ShellRailCounts for CountedRailReads {
     }
 }
 
-/// Everything built on one Ledger file: its stores (through the Ledger's read copy and the ports
-/// kept here), the Views that read them, and the listener for its writer's failures. Its commit is
-/// installed in `input.rs`'s door as it is built, since `send` can't reach `Root` mid-update.
+/// Everything built on one Ledger file: its stores and the ports over them, the Views that read
+/// them, the Announcer their writes are announced through, and the listener for its writer's
+/// failures. Its commit is installed in `input.rs`'s door as it is built, since `send` can't reach
+/// `Root` mid-update.
 pub struct OpenLedger {
-    /// The only copy of the Ledger (ADR-0038). Every page below reads through it and holds no rows
-    /// of its own.
-    pub(super) ledger: Entity<LedgerStore>,
+    /// What every module announces its writes through, which the pages repaint on. It holds no
+    /// rows: every page reads the stores below.
+    pub(super) announcer: Entity<Announcer>,
+    /// The shared stores, reloaded here when a write to them fails, and which a new month's Bill
+    /// Schedule is generated through.
+    pub(super) stores: LedgerStores,
     /// The Units ports the Units page and the General page share, reloaded here when a write to
     /// them fails.
     pub(super) units: crate::units::DesktopPorts,
-    /// The Bills ports the Bills module and `LedgerStore` share, which a new month's Bill
-    /// Schedule is generated through.
-    pub(super) bills: crate::bills::DesktopPorts,
+    /// The Announcer's count when the rail's counts were last read, so the Shell reads them afresh
+    /// only after a change rather than after every input.
+    pub(super) rail_counted_at: std::cell::Cell<usize>,
     /// The rail's badge counts over the stores, which the Shell's Presenter reads after each input.
     pub(super) rail_reads: CountedRailReads,
     /// The Views that render themselves and handle their own input (ADR-0037): the Dashboard,
@@ -120,7 +132,7 @@ pub struct OpenLedger {
 impl OpenLedger {
     /// Builds everything on `stores` under `keybindings`, dated by `clock`, and installs the stores'
     /// commit as the one every input ends in. Wires the shared ports first, then the module Setups,
-    /// the Ledger's read copy and the Views, and gives `settings` its This Ledger pages.
+    /// the Announcer and the Views, and gives `settings` its This Ledger pages.
     pub fn build(
         file: LedgerFile,
         keybindings: &lib_config::KeyBindingConfig,
@@ -153,7 +165,7 @@ impl OpenLedger {
 
         // The Transactions and Bills stores are shared: Pay it directly writes both (#779), and
         // Payees counts what names a Payee in them (#992). The Payees ports are shared by the
-        // Payees module, the cross-domain adapters, the Ledger and the Bills reads
+        // Payees module, the cross-domain adapters, the Documents and the Bills reads
         // (#831, #832). The Categories store is shared by the Categories module, Category delete,
         // the Bills and Payees reads (#858, #859, #1005).
         let (categories, categories_writes) =
@@ -174,7 +186,7 @@ impl OpenLedger {
         // The Inventory store is shared by the Inventory page and the Documents reads (#866, #867).
         let inventory: lib_database::SharedInventoryStore =
             Rc::new(std::cell::RefCell::new(inventory));
-        // The Budgets store is shared by the Budgets module, the Ledger, Category
+        // The Budgets store is shared by the Budgets module, Category
         // delete, the Accounts, Units and Categories usage counts and the Categories Monthly budget
         // (#952).
         let budgets: lib_database::SharedBudgetsStore = Rc::new(std::cell::RefCell::new(budgets));
@@ -188,7 +200,7 @@ impl OpenLedger {
         // Institutions ports read the Accounts ports, so owning it there would be a cycle.
         let institutions: lib_database::SharedInstitutionsStore =
             Rc::new(std::cell::RefCell::new(institutions));
-        // The Accounts store is shared by the Accounts module, the Ledger's read copy and the Units and Bills reads
+        // The Accounts store is shared by the Accounts module, the Units, Bills and Documents reads
         // (#853), and the Institutions' reads of which Accounts name one (#876).
         let account_reads = lib_database::StoredAccountReads {
             transactions: transactions.clone(),
@@ -238,20 +250,6 @@ impl OpenLedger {
             },
             keybindings,
         );
-        let inventory_setup = crate::inventory::InventorySetup::new(inventory.clone(), keybindings);
-        // Category delete writes the Categories, Transactions, Bills, Payees and Budgets stores
-        // together (#1005).
-        let categories_setup = crate::categories::CategoriesSetup::new(
-            categories.clone(),
-            crate::category_deletion::DeletionStores::new(
-                categories.clone(),
-                transactions.clone(),
-                &bills,
-                payees.clone(),
-                budgets.clone(),
-            ),
-            keybindings,
-        );
         let payments = crate::bill_payments::payments(transactions.clone(), &bills);
         // Account delete writes the Accounts, Transactions and Bills stores together (#854).
         let account_deletion = crate::account_deletion::DeletionStores {
@@ -260,22 +258,24 @@ impl OpenLedger {
                 transactions.clone(),
                 &bills,
             ),
+            accounts: accounts.clone(),
             bills: bills.clone(),
-            reads: account_reads,
+            reads: account_reads.clone(),
         };
         let accounts_setup =
             crate::accounts::AccountsSetup::new(accounts.clone(), account_deletion, keybindings);
         // The Documents store is shared by the Documents page, the Document Types page and the
-        // Ledger's Documents reads (#963, #966).
+        // Inventory's Documents reads (#963, #966, #1014).
         let documents: lib_database::SharedDocumentsStore =
             Rc::new(std::cell::RefCell::new(documents));
         let payees_setup = crate::payees::PayeesSetup::new(payees.clone(), keybindings);
         let document_types_setup =
             crate::document_types::DocumentTypesSetup::new(documents.clone(), keybindings);
-        let storage = crate::ledger_store::LedgerSetup {
+        let storage = LedgerStores {
             institutions,
             institutions_store,
             accounts,
+            account_reads,
             categories,
             categories_writes,
             tags,
@@ -287,6 +287,24 @@ impl OpenLedger {
             documents,
             units: units.ports.clone(),
         };
+        // Category delete writes the Categories, Transactions, Bills, Payees and Budgets stores
+        // together (#1005).
+        let categories_setup = crate::categories::CategoriesSetup::new(
+            storage.category_stores(),
+            crate::category_deletion::DeletionStores::new(
+                storage.categories.clone(),
+                storage.transactions.clone(),
+                &storage.bills,
+                storage.payees.clone(),
+                storage.budgets.clone(),
+            ),
+            keybindings,
+        );
+        let inventory_setup = crate::inventory::InventorySetup::new(
+            storage.inventory.clone(),
+            storage.inventory_reads(),
+            keybindings,
+        );
         let bills = crate::bills::BillsSetup::new(bills, payments, keybindings);
         let settings_setup = crate::settings::pages::SettingsSetup {
             units,
@@ -300,7 +318,7 @@ impl OpenLedger {
             ledger: crate::settings::ledger::LedgerKeys::new(keybindings),
         };
 
-        // The Transactions page reads the stores, not the Ledger's read copies (#923).
+        // The Transactions page reads the stores (#923).
         let transactions_ports = crate::transactions::ports::DesktopPorts::shared(
             storage.transactions.clone(),
             lib_database::StoredTransactionReads {
@@ -319,8 +337,7 @@ impl OpenLedger {
             accounts: storage.accounts.clone(),
             categories: storage.categories.clone(),
         };
-        // The Budgets page reads the other domains through their stores, not the Ledger's read
-        // copies (#952).
+        // The Budgets page reads the other domains through their stores (#952).
         let budget_reads = Rc::new(lib_database::StoredBudgetReads {
             categories: storage.categories.clone(),
             accounts: storage.accounts.clone(),
@@ -329,8 +346,7 @@ impl OpenLedger {
             units: settings_setup.units.ports.clone(),
             payees: storage.payees.clone(),
         });
-        // The Dashboard reads its Bills and Budgets through the stores too, not the Ledger's read
-        // copies (#1024).
+        // The Dashboard reads its Bills and Budgets through the stores too (#1024).
         let dashboard_reads = Rc::new(lib_database::StoredDashboardReads {
             budgets: storage.budgets.clone(),
             budget_reads: (*budget_reads).clone(),
@@ -344,42 +360,37 @@ impl OpenLedger {
         });
         let budgets_ports =
             crate::budgets::ports::DesktopPorts::new(storage.budgets.clone(), budget_reads);
-        // The Documents page writes the store through its Interactors, and reads the other
-        // domains through their stores (#967). It announces the Documents after an event that
-        // wrote them, so the rail's Inbox count follows a filing.
-        let documents_written = crate::document_types::ports::Written::default();
-        let documents_store =
-            crate::document_types::ports::shared(&storage.documents, &documents_written);
-        // The Transactions, Bills and Budgets stores are the truth, with no read copy on the
-        // Ledger: their writers announce through it (#1028).
-        let ledger = cx.new(|_| LedgerStore::with_storage(storage));
+        // The stores are the truth: their writers announce through the Announcer, which holds no
+        // rows (#1028, #1057).
+        let announcer = cx.new(|_| Announcer::default());
         let units_ports = settings_setup.units.ports.clone();
         // The pages repaint when a domain they read is announced.
         let categories_subscription =
-            notify_on(&ledger, crate::ledger_store::Domain::Categories, cx);
-        let units_subscription = notify_on(&ledger, crate::ledger_store::Domain::Units, cx);
-        let tags_subscription = notify_on(&ledger, crate::ledger_store::Domain::Tags, cx);
+            notify_on(&announcer, crate::announcer::Domain::Categories, cx);
+        let units_subscription = notify_on(&announcer, crate::announcer::Domain::Units, cx);
+        let tags_subscription = notify_on(&announcer, crate::announcer::Domain::Tags, cx);
         let institutions_subscription =
-            notify_on(&ledger, crate::ledger_store::Domain::Institutions, cx);
-        let accounts_changed = notify_on(&ledger, crate::ledger_store::Domain::Accounts, cx);
-        let payees_changed = notify_on(&ledger, crate::ledger_store::Domain::Payees, cx);
+            notify_on(&announcer, crate::announcer::Domain::Institutions, cx);
+        let accounts_changed = notify_on(&announcer, crate::announcer::Domain::Accounts, cx);
+        let payees_changed = notify_on(&announcer, crate::announcer::Domain::Payees, cx);
         // Documents resolve their Links against the Inventory.
-        let inventory_changed = notify_on(&ledger, crate::ledger_store::Domain::Inventory, cx);
+        let inventory_changed = notify_on(&announcer, crate::announcer::Domain::Inventory, cx);
         settings.update(cx, |view, cx| {
-            view.open_ledger(&ledger, clock, settings_setup, cx)
+            view.open_ledger(&announcer, clock, settings_setup, cx)
         });
         let transactions_view =
-            cx.new(|cx| TransactionsPage::new(transactions_ports, &ledger, clock.clone(), cx));
+            cx.new(|cx| TransactionsPage::new(transactions_ports, &announcer, clock.clone(), cx));
         crate::transactions::router::install(&transactions_view, cx);
         let transactions_subscription = Root::view_event_subscription(&transactions_view, cx);
         // The status line reads the page's state, so a change in it repaints `Root` too.
         let transactions_view_observer = cx.observe(&transactions_view, |_, _, cx| cx.notify());
-        let import_view = cx.new(|_| ImportPage::new(import_stores, ledger.clone(), clock.clone()));
+        let import_view =
+            cx.new(|_| ImportPage::new(import_stores, announcer.clone(), clock.clone()));
         // The status line reads the step's state, and which View shows turns on it being open.
         let import_view_observer = cx.observe(&import_view, |_, _, cx| cx.notify());
         let budgets_view = crate::budgets::router::budgets_page(
             budgets_ports,
-            ledger.clone(),
+            announcer.clone(),
             lib_budgets::keymap::budgets_page_keymap(keybindings),
             clock.clone(),
             cx,
@@ -388,14 +399,13 @@ impl OpenLedger {
         // The status line reads the page's state, so a change in it repaints `Root` too.
         let budgets_view_observer = cx.observe(&budgets_view, |_, _, cx| cx.notify());
         let dashboard_view =
-            cx.new(|cx| DashboardPage::new(dashboard_reads, &ledger, clock.clone(), cx));
+            cx.new(|cx| DashboardPage::new(dashboard_reads, &announcer, clock.clone(), cx));
         let dashboard_subscription = Root::view_event_subscription(&dashboard_view, cx);
         let dashboard_view_observer = cx.observe(&dashboard_view, |_, _, cx| cx.notify());
-        let bills_ports = bills.ports.clone();
         let bills_view = crate::bills::bills_page(
             bills.ports,
             bills.payments,
-            ledger.clone(),
+            announcer.clone(),
             bills.keymap,
             clock.clone(),
             cx,
@@ -403,11 +413,13 @@ impl OpenLedger {
         let bills_subscription = Root::view_event_subscription(&bills_view, cx);
         // The status line reads the page's state, so a change in it repaints `Root` too.
         let bills_view_observer = cx.observe(&bills_view, |_, _, cx| cx.notify());
+        // The Documents page writes the store through its Interactors, and reads the other
+        // domains through their stores (#967).
         let documents_view = crate::documents::view::page::documents_page(
-            documents_store,
-            documents_written,
+            &storage.documents,
             Rc::new(crate::documents::files::DiskFiles),
-            ledger.clone(),
+            storage.document_reads(),
+            announcer.clone(),
             lib_documents::keymap::documents_page_keymap(keybindings),
             clock.clone(),
             cx,
@@ -416,9 +428,10 @@ impl OpenLedger {
         // The status line reads the page's state, so a change in it repaints `Root` too.
         let documents_view_observer = cx.observe(&documents_view, |_, _, cx| cx.notify());
         Self {
-            ledger,
+            announcer,
+            stores: storage,
             units: units_ports,
-            bills: bills_ports,
+            rail_counted_at: std::cell::Cell::new(0),
             rail_reads,
             views: ViewEntities {
                 dashboard: dashboard_view,

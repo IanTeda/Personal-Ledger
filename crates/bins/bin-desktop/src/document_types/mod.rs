@@ -7,11 +7,10 @@
 //! - `view/dialog.rs` holds each Dialog's Presenter in an Entity in the Dialog host, one View per
 //!   Dialog in `view/dialog/`.
 //! - `router.rs` is the Router and the module's entry point ([`document_types_page`]).
-//! - `ports.rs` holds the Documents store as the Presenters share it, and the step that keeps the
-//!   Ledger read copy in line after a write.
+//! - `ports.rs` holds the Documents store as the Presenters share it, and the announcement after a
+//!   write.
 //!
-//! The Documents destination (`src/documents/`, `src/view/documents/`) is not part of the module
-//! yet (#967): it reads the types through the Ledger's read copy. Where the Documents are kept,
+//! The Documents destination (`src/documents/`) reads the types through the same store. Where the Documents are kept,
 //! the SQLite adapter opened at start or memory, is `lib-database`'s `DocumentsStore`.
 
 pub mod ports;
@@ -54,7 +53,7 @@ impl DocumentTypesSetup {
 
     /// `storage`'s Documents store under the default keys, for a test that builds `Root` directly.
     #[cfg(test)]
-    pub fn stub(storage: &crate::ledger_store::LedgerSetup) -> Self {
+    pub fn stub(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
             storage.documents.clone(),
             &lib_config::KeyBindingConfig::default(),

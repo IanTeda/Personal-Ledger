@@ -11,13 +11,13 @@ use lib_toast::{Notice, Notify};
 use super::ports::DesktopPorts;
 use super::view::dialog::{DeleteInstitutionDialog, InstitutionsDialog};
 use super::view::page::InstitutionsPage;
-use crate::ledger_store::LedgerStore;
+use crate::announcer::Announcer;
 use crate::notices::Queue;
 use crate::shell::view::dialog_entity::host_dialog;
 
 pub(super) struct PageRouter<'a, 'b> {
     pub ports: DesktopPorts,
-    pub ledger: gpui::Entity<LedgerStore>,
+    pub announcer: gpui::Entity<Announcer>,
     pub cx: &'a mut Context<'b, InstitutionsPage>,
 }
 
@@ -31,14 +31,15 @@ impl InstitutionsRouter for PageRouter<'_, '_> {
             let _ = page.update(cx, |page, cx| page.dialog_landed(outcome, cx));
         });
         if let Which::DeleteInstitution(id) = dialog {
-            let Some(dialog) = DeleteInstitutionDialog::open(id, &self.ports, &self.ledger, landed)
+            let Some(dialog) =
+                DeleteInstitutionDialog::open(id, &self.ports, &self.announcer, landed)
             else {
                 return false;
             };
             host_dialog(self.cx, |_| dialog);
             return true;
         }
-        let Some(dialog) = InstitutionsDialog::open(dialog, &self.ports, &self.ledger, landed)
+        let Some(dialog) = InstitutionsDialog::open(dialog, &self.ports, &self.announcer, landed)
         else {
             return false;
         };
@@ -58,10 +59,10 @@ impl Notify for PageRouter<'_, '_> {
 /// View hosts as any other page.
 pub fn institutions_page(
     ports: DesktopPorts,
-    ledger: gpui::Entity<LedgerStore>,
+    announcer: gpui::Entity<Announcer>,
     keymap: lib_viper::keymap::Keymap<InstitutionsPageEvent>,
     cx: &mut gpui::App,
 ) -> gpui::Entity<InstitutionsPage> {
     use gpui::AppContext as _;
-    cx.new(|cx| InstitutionsPage::new(ports, ledger, keymap, cx))
+    cx.new(|cx| InstitutionsPage::new(ports, announcer, keymap, cx))
 }

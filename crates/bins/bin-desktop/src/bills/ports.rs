@@ -1,5 +1,5 @@
 //! The Bills ports as the Desktop holds them: the store `shell::router::build` is given, shared by
-//! the Bills module and `LedgerStore`, the Payees store Bills reads its Payees from (#831), the
+//! the Bills module and the Open Ledger, the Payees store Bills reads its Payees from (#831), the
 //! Accounts store it reads its Accounts from (#853), the Categories store it reads its
 //! Categories from (#858), the Transactions store it reads its Splits from (#926) and the Units
 //! store it reads its Unit codes from (#993), and the announcement of a Bills write (#1028). The
@@ -25,9 +25,9 @@ use lib_database::{
     SharedTransactionsStore, SharedUnitsStore, StoredBillReads, StoredBillUnits,
 };
 
-use crate::ledger_store::LedgerStore;
+use crate::announcer::{Announcer, Domain};
 
-/// The Bills ports the Bills module and `LedgerStore` share.
+/// The Bills ports the Bills module and the Open Ledger share.
 pub type DesktopPorts = Rc<RefCell<LedgerBackedPorts>>;
 
 /// The store's two repositories as the one a Bills Interactor writes through. It forwards rather
@@ -192,25 +192,25 @@ pub fn generate(store: &mut dyn BillsRepository, today: chrono::NaiveDate) {
 /// one write, and a failed save rolls back like any Bills write.
 pub fn new_month(
     ports: &DesktopPorts,
-    ledger: &Entity<LedgerStore>,
+    announcer: &Entity<Announcer>,
     today: chrono::NaiveDate,
     cx: &mut App,
 ) {
     PopulateSchedule { today }.run(ports.borrow_mut().split_mut().bills);
-    announce_written(ports, ledger, cx);
+    announce_written(ports, announcer, cx);
 }
 
 /// Announces `Domain::Bills`, so the Dashboard, Bills, Budgets and Documents redraw on a write at
 /// once (#1028): for a module that wrote the Bills store directly, such as Bill Payments.
-pub fn announce(ledger: &Entity<LedgerStore>, cx: &mut App) {
-    ledger.update(cx, |store, cx| store.announce_bills(cx));
+pub fn announce(announcer: &Entity<Announcer>, cx: &mut App) {
+    announcer.update(cx, |announcer, cx| announcer.announce(Domain::Bills, cx));
 }
 
 /// Announces `Domain::Bills` after a Bills event or Dialog input, but only when it wrote through
 /// `ports`, so a cursor move or a keystroke into a field redraws no other View.
-pub fn announce_written(ports: &DesktopPorts, ledger: &Entity<LedgerStore>, cx: &mut App) {
+pub fn announce_written(ports: &DesktopPorts, announcer: &Entity<Announcer>, cx: &mut App) {
     if ports.borrow_mut().take_wrote() {
-        announce(ledger, cx);
+        announce(announcer, cx);
     }
 }
 

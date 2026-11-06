@@ -6,7 +6,7 @@
 
 mod render;
 
-use crate::ledger_store::Domain;
+use crate::announcer::Domain;
 use gpui::{AnyElement, App, Context, Entity, EventEmitter, Subscription};
 use lib_payees::PayeesOutcome;
 use lib_payees::presenter::{PayeesPageEvent, PayeesPagePresenter, PayeesPageViewModel};
@@ -19,7 +19,7 @@ use crate::payees::ports::{self, DesktopPorts};
 use crate::payees::router::PageRouter;
 use crate::settings::snapshot::PageSnapshot;
 use crate::{
-    ledger_store::{LedgerStore, notify_on},
+    announcer::{Announcer, notify_on},
     navigation::movement::Movement,
     settings::{
         SettingsPage,
@@ -35,7 +35,7 @@ impl EventEmitter<PageRowClicked> for PayeesPage {}
 pub struct PayeesPage {
     presenter: PayeesPagePresenter,
     ports: DesktopPorts,
-    ledger: Entity<LedgerStore>,
+    announcer: Entity<Announcer>,
     clock: lib_core::Clock,
     keymap: Keymap<PayeesPageEvent>,
     /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
@@ -50,7 +50,7 @@ pub struct PayeesPage {
 impl PayeesPage {
     pub fn new(
         ports: DesktopPorts,
-        ledger: Entity<LedgerStore>,
+        announcer: Entity<Announcer>,
         clock: lib_core::Clock,
         keymap: Keymap<PayeesPageEvent>,
         cx: &mut Context<'_, Self>,
@@ -58,9 +58,9 @@ impl PayeesPage {
         Self {
             presenter: PayeesPagePresenter::new(ports.clone(), keymap.clone()),
             ports,
-            _payees_changed: notify_on(&ledger, Domain::Payees, cx),
-            _categories_changed: notify_on(&ledger, Domain::Categories, cx),
-            ledger,
+            _payees_changed: notify_on(&announcer, Domain::Payees, cx),
+            _categories_changed: notify_on(&announcer, Domain::Categories, cx),
+            announcer,
             clock,
             keymap,
             page_focused: false,
@@ -84,13 +84,13 @@ impl PayeesPage {
         let before = self.ports.borrow().writes();
         let mut router = PageRouter {
             ports: self.ports.clone(),
-            ledger: self.ledger.clone(),
+            announcer: self.announcer.clone(),
             clock: self.clock.clone(),
             cx,
         };
         self.presenter.handle(event, &mut router);
         if self.ports.borrow().writes() != before {
-            ports::announce(&self.ledger, cx);
+            ports::announce(&self.announcer, cx);
         }
         cx.notify();
     }

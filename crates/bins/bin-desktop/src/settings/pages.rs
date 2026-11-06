@@ -16,11 +16,11 @@ use lib_viper::keymap::{KeyBindingConfig, Keymap};
 
 use crate::{
     accounts::{AccountsPage, AccountsSetup, accounts_page},
+    announcer::Announcer,
     categories::{CategoriesPage, CategoriesSetup, categories_page},
     document_types::{DocumentTypesPage, DocumentTypesSetup, document_types_page},
     institutions::{InstitutionsPage, InstitutionsSetup, institutions_page},
     inventory::{InventoryPage, InventorySetup, inventory_page},
-    ledger_store::LedgerStore,
     navigation::movement::Movement,
     payees::{PayeesPage, PayeesSetup, payees_page},
     settings::{
@@ -311,7 +311,7 @@ impl LedgerPages {
     /// The This Ledger pages. `frame_keys` is the frame's keymap, which the Sync server and Data &
     /// backup legends read their chords from.
     pub fn new(
-        ledger: &Entity<LedgerStore>,
+        announcer: &Entity<Announcer>,
         clock: &lib_core::Clock,
         setup: SettingsSetup,
         frame_keys: &Keymap<SettingsFrameEvent>,
@@ -330,33 +330,33 @@ impl LedgerPages {
         } = setup;
         Self {
             ledger: cx
-                .new(|cx| LedgerPage::new(ledger.clone(), units.ports.clone(), ledger_keys, cx)),
+                .new(|cx| LedgerPage::new(announcer.clone(), units.ports.clone(), ledger_keys, cx)),
             units: units_page(
                 units.ports,
                 units.deletion,
-                ledger.clone(),
+                announcer.clone(),
                 units.keymap,
                 units.prices_keymap,
                 cx,
             ),
             institutions: institutions_page(
                 institutions.ports,
-                ledger.clone(),
+                announcer.clone(),
                 institutions.keymap,
                 cx,
             ),
-            accounts: accounts_page(accounts, ledger.clone(), clock.clone(), cx),
-            categories: categories_page(categories, ledger.clone(), clock, cx),
-            tags: tags_page(tags, ledger.clone(), clock.clone(), cx),
+            accounts: accounts_page(accounts, announcer.clone(), clock.clone(), cx),
+            categories: categories_page(categories, announcer.clone(), clock, cx),
+            tags: tags_page(tags, announcer.clone(), clock.clone(), cx),
             payees: payees_page(
                 payees.ports,
-                ledger.clone(),
+                announcer.clone(),
                 clock.clone(),
                 payees.keymap,
                 cx,
             ),
-            documents: document_types_page(document_types, ledger.clone(), cx),
-            inventory: inventory_page(inventory, ledger.clone(), cx),
+            documents: document_types_page(document_types, announcer.clone(), cx),
+            inventory: inventory_page(inventory, announcer.clone(), cx),
             sync_server: cx.new(|_| SyncServerPage::new(frame_keys.clone())),
             data_backup: cx.new(|_| DataBackupPage::new(frame_keys.clone())),
         }
