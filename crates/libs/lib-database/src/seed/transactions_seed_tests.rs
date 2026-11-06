@@ -1,6 +1,6 @@
 //! The stub Transactions seed's tests that read the other domains' stubs: the generated history
 //! over the stub Accounts and the Category, Payee and Tag names it books by, the rows the Bills and
-//! Documents stubs name, and each Account's counted Transactions. Here, beside the joined stub,
+//! Documents stubs name, and each Account's counted Transactions. Here, beside the joined Sample Ledger,
 //! since `lib-transactions` depends on no other domain (moved from `lib-ledger`, #1056).
 
 use bigdecimal::BigDecimal;
@@ -330,8 +330,8 @@ fn every_paid_entry_and_document_link_names_a_stub_transaction() {
     let accounts = default_accounts();
     let categories = default_categories();
     let payees = default_payees();
-    let transactions = stub_transactions(today());
-    let bills = stub_bills(today());
+    let transactions = sample_transactions(today());
+    let bills = sample_bills(today());
     assert_eq!(
         FIRST_BOOKED,
         TransactionId::seed(
@@ -359,7 +359,7 @@ fn every_paid_entry_and_document_link_names_a_stub_transaction() {
     }
     assert_eq!(paid, 67, "the stub Bills' Paid entries");
 
-    let links: Vec<_> = stub_documents(today(), &stub_institutions())
+    let links: Vec<_> = sample_documents(today(), &sample_institutions())
         .iter()
         .flat_map(|document| &document.links)
         .filter_map(|link| match link {
@@ -393,12 +393,12 @@ fn an_account_with_no_transaction_count_gets_none() {
 #[test]
 fn every_transaction_reference_resolves_in_the_stub() {
     let (accounts, categories, payees, tags) = (
-        stub_accounts(),
-        stub_categories(),
-        stub_payees(),
-        stub_tags(),
+        sample_accounts(),
+        sample_categories(),
+        sample_payees(),
+        sample_tags(),
     );
-    for transaction in stub_transactions(today()) {
+    for transaction in sample_transactions(today()) {
         assert!(accounts.iter().any(|a| a.id == transaction.account_id));
         for split in &transaction.splits {
             assert!(categories.iter().any(|c| c.id == split.category_id));
@@ -414,8 +414,8 @@ fn every_transaction_reference_resolves_in_the_stub() {
 
 #[test]
 fn the_stubs_accounts_count_their_transactions() {
-    let transactions = stub_transactions(today());
-    for account in stub_accounts() {
+    let transactions = sample_transactions(today());
+    for account in sample_accounts() {
         let booked = transactions
             .iter()
             .filter(|t| t.account_id == account.id)
@@ -436,8 +436,8 @@ fn a_new_account_has_no_transactions_until_one_is_booked_to_it() {
     use lib_accounts::{AccountDraft, NewAccount};
     use lib_core::{AccountType, InstitutionId, UnitId};
 
-    let mut accounts = stub_accounts();
-    let mut transactions = stub_transactions(today());
+    let mut accounts = sample_accounts();
+    let mut transactions = sample_transactions(today());
     let id = lib_accounts::insert_account(
         &mut accounts,
         NewAccount {

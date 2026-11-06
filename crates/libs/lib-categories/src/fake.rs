@@ -28,8 +28,8 @@ pub struct InMemoryCategories {
 }
 
 impl InMemoryCategories {
-    /// The stub seed: the stub Ledger's Categories (see [`default_categories`]). Ids match
-    /// `lib-database`'s joined stub, so its Splits, Bill Plans, Payees and Budgets still resolve theirs.
+    /// The stub seed: the Sample Ledger's Categories (see [`default_categories`]). Ids match
+    /// `lib-database`'s joined Sample Ledger, so its Splits, Bill Plans, Payees and Budgets still resolve theirs.
     pub fn stub() -> Self {
         Self {
             categories: default_categories(),

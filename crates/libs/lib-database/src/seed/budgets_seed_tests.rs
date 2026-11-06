@@ -1,6 +1,6 @@
 //! The Budgets seed tests that read the other domains' seeds, so they need more than one domain:
 //! the Budgets seed over the stub Accounts and Categories, its figures over the Transactions seed.
-//! Lives here, beside the joined stub, rather than in `lib_budgets`, which depends on no other
+//! Lives here, beside the joined Sample Ledger, rather than in `lib_budgets`, which depends on no other
 //! domain (moved from `lib-ledger`, #1056). The rest of the Budgets model's tests live in
 //! `lib_budgets`.
 
@@ -188,11 +188,11 @@ fn dining_steps_up_next_month_in_the_seed() {
     assert_eq!(amount_in(&chain, sep().next()), Some(money("300.00")));
 }
 
-/// `lib-budgets`' fake stub stands in for these mappings, so its tests run on what the joined stub
+/// `lib-budgets`' fake stub stands in for these mappings, so its tests run on what the joined Sample Ledger
 /// holds.
 #[test]
 fn the_budgets_fake_stub_is_the_ledgers() {
-    let stub = crate::FakeStores::stub(today());
+    let stub = crate::FakeStores::sample(today());
     assert_eq!(
         budget_accounts(&stub.accounts.accounts.accounts),
         lib_budgets::fake::stub_accounts()

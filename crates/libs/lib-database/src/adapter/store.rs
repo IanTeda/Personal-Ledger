@@ -1786,16 +1786,29 @@ pub struct FakeStores {
 }
 
 impl FakeStores {
-    /// Every domain's stub seed as of `today`: the joined stub `crate::seed` writes to a Ledger
-    /// file, with each Account's usage counted from its Transactions and Budgets. The one way a
-    /// test or a Client that runs without a Ledger file reaches the stub (#1056).
-    pub fn stub(today: NaiveDate) -> Self {
-        let transactions = crate::seed::stub_transactions(today);
-        let bills = crate::seed::stub_bills(today);
-        let budgets = InMemoryBudgets {
-            budgets: crate::seed::stub_budgets(today),
+    /// The Sample Ledger as of `today` (`crate::seed::SampleLedger`), the rows `crate::seed`
+    /// writes to a Ledger file, with each Account's usage counted from its Transactions and
+    /// Budgets. The one way a test or a Client that runs without a Ledger file reaches it (#1056).
+    pub fn sample(today: NaiveDate) -> Self {
+        let crate::seed::SampleLedger {
+            units,
+            institutions,
+            accounts,
+            categories,
+            tags,
+            payees,
+            transactions,
+            bills,
+            budgets,
+            inventory,
+            document_types,
+            documents,
+        } = crate::seed::SampleLedger::new(today);
+        let budgets = InMemoryBudgets { budgets };
+        let mut accounts = lib_accounts::fake::InMemoryPorts {
+            accounts: lib_accounts::fake::InMemoryAccounts { accounts },
+            ..lib_accounts::fake::InMemoryPorts::stub()
         };
-        let mut accounts = lib_accounts::fake::InMemoryPorts::stub();
         accounts.usage.uses = accounts
             .accounts
             .accounts
@@ -1809,15 +1822,21 @@ impl FakeStores {
             })
             .collect();
         Self {
-            units: InMemoryPorts::stub(chrono::Utc::now()),
-            institutions: InMemoryInstitutions::stub(),
+            units,
+            institutions: InMemoryInstitutions { institutions },
             accounts,
-            categories: InMemoryCategories::stub(),
-            tags: lib_tags::fake::InMemoryPorts::stub(),
-            payees: lib_payees::fake::InMemoryPorts::stub(),
+            categories: InMemoryCategories { categories },
+            tags: lib_tags::fake::InMemoryPorts {
+                tags: lib_tags::fake::InMemoryTags { tags },
+                ..lib_tags::fake::InMemoryPorts::stub()
+            },
+            payees: lib_payees::fake::InMemoryPorts {
+                payees: lib_payees::fake::InMemoryPayees { payees },
+                ..lib_payees::fake::InMemoryPorts::stub()
+            },
             documents: InMemoryDocuments {
-                documents: crate::seed::stub_documents(today, &crate::seed::stub_institutions()),
-                types: lib_documents::types::default_types(),
+                documents,
+                types: document_types,
             },
             transactions: InMemoryTransactions { transactions },
             bills: InMemoryBills {
@@ -1825,7 +1844,10 @@ impl FakeStores {
                 entries: bills.entries,
             },
             budgets,
-            inventory: InMemoryInventory::stub(today),
+            inventory: InMemoryInventory {
+                locations: inventory.locations,
+                items: inventory.items,
+            },
         }
     }
 }
@@ -1898,7 +1920,7 @@ mod tests {
     /// Split written to the Transactions store after the reads were built included.
     #[test]
     fn stored_payee_reads_count_the_in_memory_stores_rows() {
-        let stub = FakeStores::stub(chrono::Local::now().date_naive());
+        let stub = FakeStores::sample(chrono::Local::now().date_naive());
         let transactions: SharedTransactionsStore = Rc::new(RefCell::new(InMemoryTransactions {
             transactions: stub.transactions.transactions.clone(),
         }));
@@ -1938,7 +1960,7 @@ mod tests {
     }
 
     fn in_memory_stub_stores() -> (FakeStores, SharedTransactionsStore, SharedBillsStore) {
-        let stub = FakeStores::stub(chrono::Local::now().date_naive());
+        let stub = FakeStores::sample(chrono::Local::now().date_naive());
         let transactions: SharedTransactionsStore = Rc::new(RefCell::new(InMemoryTransactions {
             transactions: stub.transactions.transactions.clone(),
         }));
@@ -2379,11 +2401,11 @@ mod dashboard_reads_tests {
         chrono::Utc.from_utc_datetime(&today().and_hms_opt(12, 0, 0).expect("a real time"))
     }
 
-    /// The stub's rows in memory: the same rows the stub seed writes to the file.
+    /// The Sample Ledger's rows in memory: the same rows the seed writes to the file.
     fn in_memory(with_default_budget: bool) -> StoredDashboardReads {
-        let stub = crate::seed::stub_bills(today());
+        let stub = crate::seed::sample_bills(today());
         let budgets = if with_default_budget {
-            crate::seed::stub_budgets(today())
+            crate::seed::sample_budgets(today())
         } else {
             Vec::new()
         };
@@ -2398,21 +2420,20 @@ mod dashboard_reads_tests {
                 units: Rc::new(RefCell::new(InMemoryPorts::stub(now()))),
                 accounts: Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts::stub())),
                 transactions: Rc::new(RefCell::new(InMemoryTransactions {
-                    transactions: crate::seed::stub_transactions(today()),
+                    transactions: crate::seed::sample_transactions(today()),
                 })),
                 payees: Rc::new(RefCell::new(lib_payees::fake::InMemoryPorts::stub())),
             },
         }
     }
 
-    /// The stub seeded into a test database, then loaded with fresh adapters as start-up does.
+    /// The Sample Ledger seeded into a test database, then loaded with fresh adapters as start-up does.
     fn on_adapters(
         options: SqliteConnectOptions,
         with_default_budget: bool,
     ) -> StoredDashboardReads {
         let (writer, _failures) = Writer::spawn(options).expect("the test database opens");
-        crate::seed::write_stub_rows(&writer, now(), today(), None, false)
-            .expect("the stub is written");
+        crate::seed::write_sample_rows(&writer, today(), false).expect("the sample is written");
         if !with_default_budget {
             writer
                 .run(|pool| async move {
@@ -2448,7 +2469,7 @@ mod dashboard_reads_tests {
     /// Needs Attention rows come in `attention_entries` order with their Plan's name, Unit code and
     /// overdue mark.
     fn needs_attention_rows_follow_the_bills_rule(reads: &StoredDashboardReads) {
-        let stub = crate::seed::stub_bills(today());
+        let stub = crate::seed::sample_bills(today());
         let expected = lib_bills::attention_entries(&stub.plans, &stub.entries, today());
         assert!(!expected.is_empty(), "the stub has Bills needing attention");
 
@@ -2559,18 +2580,18 @@ mod shell_reads_tests {
         chrono::Utc.from_utc_datetime(&today().and_hms_opt(12, 0, 0).expect("a real time"))
     }
 
-    /// The stub's rows in memory: the same rows the stub seed writes to the file.
+    /// The Sample Ledger's rows in memory: the same rows the seed writes to the file.
     fn in_memory(with_default_budget: bool) -> StoredShellReads {
-        let stub = crate::seed::stub_bills(today());
+        let stub = crate::seed::sample_bills(today());
         let budgets = if with_default_budget {
-            crate::seed::stub_budgets(today())
+            crate::seed::sample_budgets(today())
         } else {
             Vec::new()
         };
         StoredShellReads {
             budgets: Rc::new(RefCell::new(InMemoryBudgets { budgets })),
             documents: Rc::new(RefCell::new(InMemoryDocuments {
-                documents: crate::seed::stub_documents(today(), &[]),
+                documents: crate::seed::sample_documents(today(), &[]),
                 types: lib_documents::types::default_types(),
             })),
             budget_reads: StoredBudgetReads {
@@ -2581,7 +2602,7 @@ mod shell_reads_tests {
                 categories: Rc::new(RefCell::new(InMemoryCategories::stub())),
                 accounts: Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts::stub())),
                 transactions: Rc::new(RefCell::new(InMemoryTransactions {
-                    transactions: crate::seed::stub_transactions(today()),
+                    transactions: crate::seed::sample_transactions(today()),
                 })),
                 units: Rc::new(RefCell::new(InMemoryPorts::stub(now()))),
                 payees: Rc::new(RefCell::new(lib_payees::fake::InMemoryPorts::stub())),
@@ -2589,12 +2610,11 @@ mod shell_reads_tests {
         }
     }
 
-    /// The stub seeded into a test database, Documents included, then loaded with fresh adapters as
+    /// The Sample Ledger seeded into a test database, Documents included, then loaded with fresh adapters as
     /// start-up does.
     fn on_adapters(options: SqliteConnectOptions, with_default_budget: bool) -> StoredShellReads {
         let (writer, _failures) = Writer::spawn(options).expect("the test database opens");
-        crate::seed::write_stub_rows(&writer, now(), today(), None, true)
-            .expect("the stub is written");
+        crate::seed::write_sample_rows(&writer, today(), true).expect("the sample is written");
         if !with_default_budget {
             writer
                 .run(|pool| async move {
@@ -2632,12 +2652,12 @@ mod shell_reads_tests {
     /// Each count is its domain's rule over the stub: Needs Attention, the default Budget's
     /// over-budget Categories this month and the Unfiled Documents.
     fn each_count_is_its_domains_rule(reads: &StoredShellReads) {
-        let stub = crate::seed::stub_bills(today());
+        let stub = crate::seed::sample_bills(today());
         let attention = lib_bills::attention_entries(&stub.plans, &stub.entries, today()).len();
         assert!(attention > 0, "the stub has Bills needing attention");
-        let inbox = lib_documents::inbox_count(&crate::seed::stub_documents(today(), &[]));
+        let inbox = lib_documents::inbox_count(&crate::seed::sample_documents(today(), &[]));
         assert!(inbox > 0, "the stub has Documents in the Inbox");
-        let budgets = Budgets::from_stored(crate::seed::stub_budgets(today()));
+        let budgets = Budgets::from_stored(crate::seed::sample_budgets(today()));
         let budget = budgets
             .default_budget()
             .expect("a stub Budget is the default");

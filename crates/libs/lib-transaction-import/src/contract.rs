@@ -44,7 +44,7 @@ pub trait ImportFactory {
     type Ports: TransactionImport;
 
     /// Ports holding `payees` with their aliases beside `transactions`, as if stored and loaded.
-    /// Every row names the stub Ledger's Accounts and Categories.
+    /// Every row names the Sample Ledger's Accounts and Categories.
     fn create(&mut self, payees: Vec<Payee>, transactions: Vec<Transaction>) -> Self::Ports;
 
     /// Ends the writes made on `ports`, then reads back what is stored, as a restart would.

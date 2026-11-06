@@ -46,7 +46,7 @@ pub fn shell_on(
     commit: Rc<dyn Commit>,
 ) -> (Shell, mpsc::Sender<WriteFailure>) {
     let (report, failures) = mpsc::channel();
-    let (stub, _) = Stores::fake(FakeStores::stub(chrono::Local::now().date_naive()));
+    let (stub, _) = Stores::fake(FakeStores::sample(chrono::Local::now().date_naive()));
     let stores = Stores {
         units,
         commit,
@@ -57,10 +57,10 @@ pub fn shell_on(
     (shell, report)
 }
 
-/// The stub Ledger in a file at `path` (`seed::stub_ledger`), then changed by `edit` and saved.
+/// The Sample Ledger in a file at `path` (`seed::sample_ledger`), then changed by `edit` and saved.
 pub fn ledger_file_with(path: &Path, edit: impl FnOnce(&mut lib_database::Storage)) {
-    let created = lib_database::seed::stub_ledger(path, chrono::Local::now().date_naive());
-    assert!(created.is_ok(), "the stub Ledger is created: {created:?}");
+    let created = lib_database::seed::sample_ledger(path, chrono::Local::now().date_naive());
+    assert!(created.is_ok(), "the Sample Ledger is created: {created:?}");
     let storage = lib_database::open_storage(path);
     assert!(storage.is_ok(), "a new Ledger opens");
     let Ok(mut storage) = storage else { return };

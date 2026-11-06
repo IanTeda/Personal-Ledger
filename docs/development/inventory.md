@@ -117,5 +117,5 @@ Desktop locations for the ticked requirements.
 
 - **The register isn't built**: no Item or Cover Dialog, so `AddItem`, `EditItem`, `RemoveItem` and `SetCover` have no Client caller, and nothing on the Desktop adds an Item. The smoke test works around it by renaming a Location that already holds Items.
 - **Duplicated conversion and `retain`s.** `InMemoryInventory` ↔ `Inventory` is written out in three places, and the Location delete's two `retain`s appear in both the adapter and the in-memory store. An `Inventory::remove_location_rows` or a `From` impl would fold them.
-- **`Stores::fake` still lists every store** in the older `with_failing_*` constructors; `with_failing_inventory` overrides one store on `Stores::fake(stub_fakes())` and the others could follow it.
+- **`Stores::fake` still lists every store** in the older `with_failing_*` constructors; `with_failing_inventory` overrides one store on `Stores::fake(FakeStores::sample(today))` and the others could follow it.
 - **No Inventory on the TUI.**

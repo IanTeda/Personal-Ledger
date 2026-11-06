@@ -102,7 +102,7 @@ pub use adapter::units::UnitsAdapter;
 pub mod storage;
 pub use storage::{Storage, Stores, open_storage};
 
-/// The dev seed: each persisted domain's stub seed, written through its adapter.
+/// The Sample Ledger, one fixed Ledger for development and tests, and the dev seed that writes it.
 pub mod seed;
 
 /// The writes every adapter makes in one Interactor call, committed together (ADR-0046).

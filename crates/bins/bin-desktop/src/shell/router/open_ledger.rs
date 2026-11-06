@@ -14,7 +14,7 @@
 
 mod stores;
 
-pub use stores::LedgerStores;
+pub use stores::{BuiltStores, LedgerStores};
 
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -145,148 +145,46 @@ impl OpenLedger {
             path,
             writer,
         } = file;
-        let Stores {
+        let BuiltStores {
+            stores: storage,
             units,
-            institutions,
-            accounts,
-            categories,
-            tags,
-            payees,
-            transactions,
-            bills,
-            budgets,
-            inventory,
-            documents,
             commit,
             failures,
-        } = stores;
+        } = LedgerStores::build(stores);
         crate::input::open_ledger(commit, cx);
         let failures = Rc::new(failures);
-
-        // The Transactions and Bills stores are shared: Pay it directly writes both (#779), and
-        // Payees counts what names a Payee in them (#992). The Payees ports are shared by the
-        // Payees module, the cross-domain adapters, the Documents and the Bills reads
-        // (#831, #832). The Categories store is shared by the Categories module, Category delete,
-        // the Bills and Payees reads (#858, #859, #1005).
-        let (categories, categories_writes) =
-            crate::categories::ports::counted(Box::new(categories));
-        let transactions: lib_database::SharedTransactionsStore =
-            Rc::new(std::cell::RefCell::new(transactions));
-        let bills: lib_database::SharedBillsStore = Rc::new(std::cell::RefCell::new(bills));
-        let payees = crate::payees::LedgerBackedPorts::shared(
-            payees,
-            lib_database::StoredPayeeReads {
-                transactions: transactions.clone(),
-                bills: bills.clone(),
-                categories: categories.clone(),
-            },
-        );
-        // The Tags store is shared by the Tags page and Tag remove and merge (#862, #1003).
-        let tags: lib_database::SharedTagsStore = Rc::new(std::cell::RefCell::new(tags));
-        // The Inventory store is shared by the Inventory page and the Documents reads (#866, #867).
-        let inventory: lib_database::SharedInventoryStore =
-            Rc::new(std::cell::RefCell::new(inventory));
-        // The Budgets store is shared by the Budgets module, Category
-        // delete, the Accounts, Units and Categories usage counts and the Categories Monthly budget
-        // (#952).
-        let budgets: lib_database::SharedBudgetsStore = Rc::new(std::cell::RefCell::new(budgets));
-        // The Units store is shared by the Units ports and the Accounts' and Institutions' reads of
-        // the Units they may name (#1052). The Units ports count what names a Unit in the Accounts
-        // and Institutions ports, so those read the store itself, not the Units ports, or each
-        // would hold the other.
-        let units: lib_database::SharedUnitsStore = Rc::new(std::cell::RefCell::new(units));
-        // The Institutions store is shared by the Institutions ports and the Accounts' reads of the
-        // Institutions an Account may be at (#1053), for the same reason as the Units store: the
-        // Institutions ports read the Accounts ports, so owning it there would be a cycle.
-        let institutions: lib_database::SharedInstitutionsStore =
-            Rc::new(std::cell::RefCell::new(institutions));
-        // The Accounts store is shared by the Accounts module, the Units, Bills and Documents reads
-        // (#853), and the Institutions' reads of which Accounts name one (#876).
-        let account_reads = lib_database::StoredAccountReads {
-            transactions: transactions.clone(),
-            budgets: budgets.clone(),
-            units: units.clone(),
-            institutions: institutions.clone(),
-        };
-        let accounts = crate::accounts::LedgerBackedPorts::shared(accounts, account_reads.clone());
-        let institutions_store = institutions.clone();
-        let institutions = crate::institutions::LedgerBackedPorts::shared(
-            institutions,
-            accounts.clone(),
-            units.clone(),
-        );
         let institutions_setup =
-            crate::institutions::InstitutionsSetup::new(institutions.clone(), keybindings);
-        // The Units ports count what names each Unit in the Accounts, Transactions, Bills,
-        // Budgets, Inventory and Institutions stores, and answer the Bills reads of the Unit codes
-        // (#993), so they are built before the Bills ports.
-        let units = crate::units::UnitsSetup::new(
-            units,
-            lib_database::StoredUnitReads {
-                accounts: accounts.clone(),
-                transactions: transactions.clone(),
-                bills: bills.clone(),
-                budgets: budgets.clone(),
-                inventory: inventory.clone(),
-                institutions: institutions.clone(),
-            },
-            &institutions,
-            keybindings,
-        );
-        let bills = crate::bills::LedgerBackedPorts::shared(
-            bills,
-            payees.clone(),
-            accounts.clone(),
-            categories.clone(),
-            transactions.clone(),
-            units.ports.clone(),
-        );
+            crate::institutions::InstitutionsSetup::new(storage.institutions.clone(), keybindings);
+        let units = crate::units::UnitsSetup::on(units, &storage.institutions, keybindings);
         let tags_setup = crate::tags::TagsSetup::new(
-            tags.clone(),
+            storage.tags.clone(),
             lib_database::StoredTagReads {
-                transactions: transactions.clone(),
-                accounts: accounts.clone(),
+                transactions: storage.transactions.clone(),
+                accounts: storage.accounts.clone(),
                 units: units.ports.clone(),
             },
             keybindings,
         );
-        let payments = crate::bill_payments::payments(transactions.clone(), &bills);
+        let payments = crate::bill_payments::payments(storage.transactions.clone(), &storage.bills);
         // Account delete writes the Accounts, Transactions and Bills stores together (#854).
         let account_deletion = crate::account_deletion::DeletionStores {
             deletion: crate::account_deletion::deletion(
-                accounts.clone(),
-                transactions.clone(),
-                &bills,
+                storage.accounts.clone(),
+                storage.transactions.clone(),
+                &storage.bills,
             ),
-            accounts: accounts.clone(),
-            bills: bills.clone(),
-            reads: account_reads.clone(),
+            accounts: storage.accounts.clone(),
+            bills: storage.bills.clone(),
+            reads: storage.account_reads.clone(),
         };
-        let accounts_setup =
-            crate::accounts::AccountsSetup::new(accounts.clone(), account_deletion, keybindings);
-        // The Documents store is shared by the Documents page, the Document Types page and the
-        // Inventory's Documents reads (#963, #966, #1014).
-        let documents: lib_database::SharedDocumentsStore =
-            Rc::new(std::cell::RefCell::new(documents));
-        let payees_setup = crate::payees::PayeesSetup::new(payees.clone(), keybindings);
+        let accounts_setup = crate::accounts::AccountsSetup::new(
+            storage.accounts.clone(),
+            account_deletion,
+            keybindings,
+        );
+        let payees_setup = crate::payees::PayeesSetup::new(storage.payees.clone(), keybindings);
         let document_types_setup =
-            crate::document_types::DocumentTypesSetup::new(documents.clone(), keybindings);
-        let storage = LedgerStores {
-            institutions,
-            institutions_store,
-            accounts,
-            account_reads,
-            categories,
-            categories_writes,
-            tags,
-            payees,
-            transactions,
-            bills: bills.clone(),
-            budgets,
-            inventory,
-            documents,
-            units: units.ports.clone(),
-        };
+            crate::document_types::DocumentTypesSetup::new(storage.documents.clone(), keybindings);
         // Category delete writes the Categories, Transactions, Bills, Payees and Budgets stores
         // together (#1005).
         let categories_setup = crate::categories::CategoriesSetup::new(
@@ -305,7 +203,7 @@ impl OpenLedger {
             storage.inventory_reads(),
             keybindings,
         );
-        let bills = crate::bills::BillsSetup::new(bills, payments, keybindings);
+        let bills = crate::bills::BillsSetup::new(storage.bills.clone(), payments, keybindings);
         let settings_setup = crate::settings::pages::SettingsSetup {
             units,
             institutions: institutions_setup,

@@ -1,24 +1,49 @@
 //! # Clock
 //!
-//! [`Clock`] is where a Client reads the calendar day from. A Client builds it on the local date
-//! (each bin's `wall_clock`, since reading the time is I/O), a test on a day it sets, so every
-//! View and module dates its rows from one source and only the Shell notices a new month.
+//! [`Clock`] is where a Client reads the calendar day, and the moment now, from. A Client builds
+//! it on the local date and the real time (each bin's `wall_clock`, since reading the time is
+//! I/O), a test on a day it sets, so every View and module dates its rows from one source and
+//! only the Shell notices a new month.
 
 use std::cell::Cell;
 use std::fmt;
 use std::rc::Rc;
 
-use chrono::NaiveDate;
+use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 
-/// The calendar day as a Client reads it. Cheap to clone: every clone reads the same source.
-/// Dated by the day alone, so it reads no time.
+/// The calendar day, and the moment now, as a Client reads them. Cheap to clone: every clone reads
+/// the same source.
 #[derive(Clone)]
-pub struct Clock(Rc<dyn Fn() -> NaiveDate>);
+pub struct Clock {
+    day: Rc<dyn Fn() -> NaiveDate>,
+    now: Rc<dyn Fn() -> DateTime<Utc>>,
+}
 
 impl Clock {
-    /// A Clock reading the day from `read`, which a bin points at the local date.
+    /// A Clock reading the day from `read`, and now as midday UTC on that day: the moment the
+    /// Sample Ledger prices its Units at, so a test that sets the day reads the same ages on every
+    /// run. A Client reads the real time through [`Clock::with_time`].
     pub fn new(read: impl Fn() -> NaiveDate + 'static) -> Self {
-        Self(Rc::new(read))
+        let day: Rc<dyn Fn() -> NaiveDate> = Rc::new(read);
+        let read_day = day.clone();
+        Self {
+            day,
+            now: Rc::new(move || {
+                read_day().and_time(NaiveTime::MIN).and_utc() + chrono::Duration::hours(12)
+            }),
+        }
+    }
+
+    /// A Clock reading the day from `day` and now from `now`, which a bin points at the local date
+    /// and the real time.
+    pub fn with_time(
+        day: impl Fn() -> NaiveDate + 'static,
+        now: impl Fn() -> DateTime<Utc> + 'static,
+    ) -> Self {
+        Self {
+            day: Rc::new(day),
+            now: Rc::new(now),
+        }
     }
 
     /// A Clock that reads `day` until the returned handle moves it, so a test can cross a month.
@@ -35,7 +60,12 @@ impl Clock {
 
     /// The calendar day now.
     pub fn today(&self) -> NaiveDate {
-        (self.0)()
+        (self.day)()
+    }
+
+    /// The moment now, which a price's age is measured from.
+    pub fn now(&self) -> DateTime<Utc> {
+        (self.now)()
     }
 }
 
@@ -63,6 +93,32 @@ mod tests {
 
         assert_eq!(clock.today(), date(2026, 10, 1));
         assert_eq!(other.today(), date(2026, 10, 1));
+    }
+
+    #[test]
+    fn a_clock_on_a_day_alone_reads_midday_utc_on_that_day_as_now() {
+        let (clock, day) = Clock::settable(date(2026, 6, 15));
+        let midday = |d: NaiveDate| d.and_hms_opt(12, 0, 0).expect("a real time").and_utc();
+        assert_eq!(clock.now(), midday(date(2026, 6, 15)));
+
+        day.set(date(2026, 7, 1));
+
+        assert_eq!(clock.now(), midday(date(2026, 7, 1)));
+        assert_eq!(
+            Clock::fixed(date(2026, 6, 15)).now(),
+            midday(date(2026, 6, 15))
+        );
+    }
+
+    #[test]
+    fn a_clock_with_a_time_reads_now_from_it() {
+        let at = date(2026, 6, 15)
+            .and_hms_opt(8, 30, 0)
+            .expect("a real time")
+            .and_utc();
+        let clock = Clock::with_time(|| date(2026, 6, 15), move || at);
+        assert_eq!(clock.now(), at);
+        assert_eq!(clock.today(), date(2026, 6, 15));
     }
 
     #[test]

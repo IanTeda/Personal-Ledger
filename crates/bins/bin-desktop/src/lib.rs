@@ -644,7 +644,7 @@ mod tests {
         locale::init_for_tests();
         let data = tempfile::tempdir().expect("a temporary directory");
         let file = data.path().join("ledger.pldb");
-        lib_database::seed::stub_ledger(&file, today()).expect("a new Ledger");
+        lib_database::seed::sample_ledger(&file, today()).expect("a new Ledger");
         let started = start_with(
             &config_in(data.path(), Some(&file)),
             &PersistedState::default(),

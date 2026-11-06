@@ -240,9 +240,13 @@ mod tests {
     use super::*;
 
     fn ports() -> (SharedUnitsStore, DesktopPorts) {
-        let storage = crate::shell::router::LedgerStores::stub(
-            chrono::NaiveDate::from_ymd_opt(2026, 10, 30).expect("a valid date"),
-        );
+        let storage = crate::shell::router::LedgerStores::build(
+            lib_database::Stores::fake(lib_database::FakeStores::sample(
+                chrono::NaiveDate::from_ymd_opt(2026, 10, 30).expect("a valid date"),
+            ))
+            .0,
+        )
+        .stores;
         let store = storage.units.clone();
         let ports = LedgerBackedPorts::shared(
             store.clone(),

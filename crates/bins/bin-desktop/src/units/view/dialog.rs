@@ -94,6 +94,7 @@ impl UnitsDialog {
         which: Which,
         ports: &DesktopPorts,
         announcer: &Entity<Announcer>,
+        clock: &lib_core::Clock,
         landed: Landed,
     ) -> Option<Self> {
         let shared = ports.clone();
@@ -105,7 +106,7 @@ impl UnitsDialog {
             Which::SetBaseUnit => View::SetBaseUnit(SetBaseUnitPresenter::new(shared), 0),
             Which::SetPrice(id) => View::SetPrice(SetPricePresenter::new(
                 shared,
-                std::rc::Rc::new(chrono::Utc::now),
+                crate::units::view::page::now_of(clock),
                 id,
             )?),
             Which::AddPriceSource => View::PriceSourceForm(PriceSourceFormPresenter::add(shared)),

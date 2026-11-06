@@ -55,7 +55,7 @@ impl UnitsSetup {
 
     /// The stub seed in memory, for a `Shell` built without storage.
     pub fn stub(config: &KeyBindingConfig) -> Self {
-        let (stores, _) = Stores::fake(FakeStores::stub(chrono::Local::now().date_naive()));
+        let (stores, _) = Stores::fake(FakeStores::sample(chrono::Local::now().date_naive()));
         Self::on(stores, config).0
     }
 

@@ -169,7 +169,7 @@ mod tests {
 
     #[test]
     fn a_monthly_limit_is_written_to_the_store_by_the_budgets_rule() {
-        let store = in_memory(&FakeStores::stub(today()));
+        let store = in_memory(&FakeStores::sample(today()));
         let categories = lib_database::budget_categories(&lib_categories::default_categories());
         let groceries = CategoryId::seed(7);
 

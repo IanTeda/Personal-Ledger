@@ -1,4 +1,4 @@
-//! `lib-bills`' rules over the stub Ledger's Bills, against the handoff's 8a: generation,
+//! `lib-bills`' rules over the Sample Ledger's Bills, against the handoff's 8a: generation,
 //! settlement, the Schedule's rows and figures, and the mappings the stub Bills seed reads the
 //! other stubs through. Here rather than in `lib-bills`, since the stub joins the Bills seed to the
 //! other domains' stubs, its Paid entries naming the payments `lib-transactions`' stub books
@@ -13,7 +13,7 @@ use lib_core::{Money, Total, TransactionId, UnitId};
 use crate::adapter::accounts::bill_accounts;
 use crate::adapter::categories::bill_categories;
 use crate::adapter::payees::bill_payees;
-use crate::seed::{StubNames, bill_splits, stub_bills, stub_transactions};
+use crate::seed::{SampleNames, bill_splits, sample_bills, sample_transactions};
 
 fn cents_money(cents: i64) -> Money {
     Money(BigDecimal::new(cents.into(), 2))
@@ -36,11 +36,11 @@ struct World {
 }
 
 fn world() -> World {
-    let bills = stub_bills(today());
+    let bills = sample_bills(today());
     World {
         accounts: bill_accounts(&lib_accounts::default_accounts()),
         categories: bill_categories(&lib_categories::default_categories()),
-        splits: bill_splits(&stub_transactions(today())),
+        splits: bill_splits(&sample_transactions(today())),
         plans: bills.plans,
         entries: bills.entries,
     }
@@ -542,7 +542,7 @@ fn a_plan_never_paid_shows_dashes() {
 
 #[test]
 fn the_read_ports_answer_every_row_flagged_by_its_domains_rules() {
-    let stub = crate::FakeStores::stub(today());
+    let stub = crate::FakeStores::sample(today());
     let ids = |accounts: Vec<BillAccount>| accounts.iter().map(|a| a.id).collect::<Vec<_>>();
     assert_eq!(
         ids(bill_accounts(&stub.accounts.accounts.accounts)),
@@ -610,10 +610,10 @@ fn the_read_ports_answer_every_row_flagged_by_its_domains_rules() {
 }
 
 /// `lib-bills`' fake stub stands in for these mappings and for `lib-transactions`' booked
-/// payments, so its tests run on what the joined stub holds.
+/// payments, so its tests run on what the joined Sample Ledger holds.
 #[test]
 fn the_bills_fake_stub_is_the_ledgers() {
-    let stub = crate::FakeStores::stub(today());
+    let stub = crate::FakeStores::sample(today());
     assert_eq!(
         bill_accounts(&stub.accounts.accounts.accounts),
         fake::stub_accounts()
@@ -651,7 +651,7 @@ fn the_bills_fake_stub_is_the_ledgers() {
         .collect();
     let mut transactions = lib_transactions::fake::bill_transactions(
         &accounts,
-        &StubNames {
+        &SampleNames {
             categories: &stub.categories.categories,
             payees: &stub.payees.payees.payees,
             tags: &stub.tags.tags.tags,
@@ -667,8 +667,8 @@ fn the_bills_fake_stub_is_the_ledgers() {
 
 #[test]
 fn stub_entry_ids_follow_their_plan_and_due_date_whatever_the_day() {
-    let a = stub_bills(today());
-    let b = stub_bills(today().succ_opt().expect("a real date"));
+    let a = sample_bills(today());
+    let b = sample_bills(today().succ_opt().expect("a real date"));
     let shared: Vec<_> = a
         .entries
         .iter()

@@ -223,7 +223,7 @@ mod tests {
     use super::*;
 
     fn stub() -> (FakeStores, DesktopPorts) {
-        let fakes = FakeStores::stub(NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date"));
+        let fakes = FakeStores::sample(NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date"));
         let ports = LedgerBackedPorts::in_memory(
             &fakes,
             payees(&fakes),

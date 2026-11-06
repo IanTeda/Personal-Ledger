@@ -3015,7 +3015,7 @@ mod tests {
 
     /// [`opened`], reading the global keys from `keybindings`.
     fn opened_with(keybindings: KeyBindingConfig) -> Shell {
-        let (stores, _) = Stores::fake(lib_database::FakeStores::stub(Local::now().date_naive()));
+        let (stores, _) = Stores::fake(lib_database::FakeStores::sample(Local::now().date_naive()));
         Shell::with_keybindings(keybindings).with_open_ledger("test.pldb", stores)
     }
 

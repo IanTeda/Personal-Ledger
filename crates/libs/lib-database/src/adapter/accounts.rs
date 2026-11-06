@@ -409,11 +409,11 @@ mod tests {
                 lib_units::fake::InMemoryPorts::stub(chrono::Utc::now()),
             )
             .expect("the stub Units are written");
-            InstitutionsAdapter::seed(&writer, crate::seed::stub_institutions())
+            InstitutionsAdapter::seed(&writer, crate::seed::sample_institutions())
                 .expect("the stub Institutions are written");
-            crate::CategoriesAdapter::seed(&writer, crate::seed::stub_categories())
+            crate::CategoriesAdapter::seed(&writer, crate::seed::sample_categories())
                 .expect("the stub Categories are written");
-            crate::TagsAdapter::seed(&writer, crate::seed::stub_tags())
+            crate::TagsAdapter::seed(&writer, crate::seed::sample_tags())
                 .expect("the stub Tags are written");
             Self {
                 pending: PendingWrites::new(writer.clone()),
@@ -744,7 +744,7 @@ mod tests {
                 lib_units::fake::InMemoryPorts::stub(chrono::Utc::now()),
             )
             .expect("the stub Units are written");
-            InstitutionsAdapter::seed(writer, crate::seed::stub_institutions())
+            InstitutionsAdapter::seed(writer, crate::seed::sample_institutions())
                 .expect("the stub Institutions are written");
             let template = default_accounts()
                 .into_iter()

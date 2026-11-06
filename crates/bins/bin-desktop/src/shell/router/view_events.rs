@@ -100,7 +100,7 @@ mod tests {
                 lib_core::Clock::fixed(today),
                 cx,
             );
-            let (stores, _) = lib_database::Stores::fake(lib_database::FakeStores::stub(today));
+            let (stores, _) = lib_database::Stores::fake(lib_database::FakeStores::sample(today));
             shell.open_ledger(crate::shell::router::LedgerFile::in_memory(stores), cx);
             shell
         });
@@ -150,16 +150,16 @@ mod tests {
                 lib_core::Clock::fixed(today),
                 cx,
             );
-            let (stores, _) = lib_database::Stores::fake(lib_database::FakeStores::stub(today));
+            let (stores, _) = lib_database::Stores::fake(lib_database::FakeStores::sample(today));
             shell.open_ledger(crate::shell::router::LedgerFile::in_memory(stores), cx);
             shell
         });
         let view = cx.new(|_| StandInView);
         // A Toast or status arrives as one input, which drains into the Shell through the door.
         let _subscription = shell.update(cx, |_, cx| Root::view_event_subscription(&view, cx));
-        // The stub seed's plans, which `FakeStores::stub` holds.
+        // The stub seed's plans, which `FakeStores::sample` holds.
         let (id, last_plan) =
-            lib_bills::planner_order(&lib_database::seed::stub_bills(today).plans)
+            lib_bills::planner_order(&lib_database::seed::sample_bills(today).plans)
                 .last()
                 .map(|plan| (plan.id, plan.name.clone()))
                 .expect("the seed has Bill Plans");

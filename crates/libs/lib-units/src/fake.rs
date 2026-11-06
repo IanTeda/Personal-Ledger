@@ -109,8 +109,8 @@ pub struct InMemoryPorts {
 }
 
 impl InMemoryPorts {
-    /// The stub seed: the stub Ledger's Units (see [`default_units`]) with aud as the base, no
-    /// stored Price Source rows, and nothing using any Unit. Ids match `lib-database`'s joined stub, so its
+    /// The stub seed: the Sample Ledger's Units (see [`default_units`]) with aud as the base, no
+    /// stored Price Source rows, and nothing using any Unit. Ids match `lib-database`'s joined Sample Ledger, so its
     /// Accounts, Bill Plans and Budgets still resolve their Units.
     pub fn stub(now: DateTime<Utc>) -> Self {
         Self {

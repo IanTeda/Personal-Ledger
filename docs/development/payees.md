@@ -48,7 +48,7 @@ None in `lib-core` beyond `PayeeId`. `lib_payees::Payee` is the domain type: `id
 
 `PayeesStore` (`adapter/store.rs`) is what `Stores` holds it by, with `lib_payees::fake::InMemoryPorts` as the in-memory store. `lib-payees`' contract suite (`contract.rs`, feature `contract-tests`, which `lib-database`'s dev-dependencies enable) runs against both, with `PortsFactory::name_payee` writing the Splits and Bill Plans that make a Payee used.
 
-A new Ledger, and `mise run db-seed`, write `lib_payees::fake::InMemoryPorts::stub`'s Payees (`seed::stub_payees`) after the Units and before the Transactions and Bills, so the foreign keys hold. The seed is upsert-idempotent only over stub data: aliases are unique across Payees, so a dev database where another Payee owns one of the stub's patterns fails the Payees seed.
+A new Ledger, and `mise run db-seed`, write `lib_payees::fake::InMemoryPorts::stub`'s Payees (`seed::sample_payees`) after the Units and before the Transactions and Bills, so the foreign keys hold. The seed is upsert-idempotent only over stub data: aliases are unique across Payees, so a dev database where another Payee owns one of the stub's patterns fails the Payees seed.
 
 The older per-entity modules, `crates/libs/lib-database/src/payees/`, predate the adapter and no Client calls them:
 
@@ -94,7 +94,7 @@ Desktop locations for the ticked requirements. The TUI's PAY-001 to PAY-004 live
 | PAY-008 | `payees/view/dialog/rules_field.rs`, `lib_payees::match_alias` | `lib_payees::presenter::payee_form::tests::rules_are_normalised_deduped_and_another_payees_is_refused_in_the_input`, `settings_payees_keyboard::enter_in_the_rule_input_adds_a_chip_and_backspace_takes_it_back` |
 | PAY-009 | `lib_payees::delete_payee`, `lib_payees::interactor::DeletePayee`, `lib_payees::presenter::DeleteAction` | `lib_payees::presenter::delete_payee::tests::the_three_outcomes_are_chosen_from_the_payees_use_when_it_opens`, `settings_payees_keyboard::d_deletes_an_unused_payee_once_its_name_is_typed`, `settings_payees_keyboard::d_on_a_payee_whose_use_cant_be_counted_offers_only_deactivate` |
 | PAY-010 | `lib_transaction_import` (`entity.rs`, `plan.rs`, `presenter.rs`), `transaction_import/` | `lib_transaction_import::plan::tests::a_plan_creates_new_payees_with_remembered_aliases_and_books_every_row`, `import_keyboard::a_committed_new_payee_shows_on_the_payees_page_with_its_remembered_rule` |
-| PAY-011 | `lib_database::adapter::payees`, `seed::stub_payees` | `lib_database::adapter::payees::tests::written_rows_reload_the_same`, `smoke_payees_persist::an_added_and_a_renamed_payee_are_there_after_a_restart` |
+| PAY-011 | `lib_database::adapter::payees`, `seed::sample_payees` | `lib_database::adapter::payees::tests::written_rows_reload_the_same`, `smoke_payees_persist::an_added_and_a_renamed_payee_are_there_after_a_restart` |
 
 ## Decisions
 

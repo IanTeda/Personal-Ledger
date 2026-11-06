@@ -526,8 +526,8 @@ mod tests {
     impl AdapterFactory {
         fn new(options: SqliteConnectOptions) -> Self {
             let (writer, failures) = Writer::spawn(options).expect("the test database opens");
-            crate::test_support::store_stub_references(&writer);
-            PayeesAdapter::seed(&writer, crate::seed::stub_payees())
+            crate::test_support::store_sample_references(&writer);
+            PayeesAdapter::seed(&writer, crate::seed::sample_payees())
                 .expect("the stub Payees are written");
             Self {
                 pending: PendingWrites::new(writer.clone()),
@@ -687,10 +687,10 @@ mod tests {
         contract::a_failed_write_reloads_and_reports(&mut AdapterFactory::new(options));
     }
 
-    /// The stub Ledger's Bills and the Splits their Paid entries name, as of a fixed day.
+    /// The Sample Ledger's Bills and the Splits their Paid entries name, as of a fixed day.
     fn stub() -> (Vec<BillSplit>, InMemoryBills) {
         let stub =
-            crate::FakeStores::stub(NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date"));
+            crate::FakeStores::sample(NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date"));
         (
             crate::seed::bill_splits(&stub.transactions.transactions),
             stub.bills,

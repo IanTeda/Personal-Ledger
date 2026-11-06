@@ -151,7 +151,7 @@ pub struct InMemoryPorts {
 
 impl InMemoryPorts {
     /// The stub Bill Plans and their Schedule as of `today`, with the fixed Accounts, Categories
-    /// and Payees they name and the Splits their Paid entries were paid by: the stub Ledger's
+    /// and Payees they name and the Splits their Paid entries were paid by: the Sample Ledger's
     /// Bills, with the Transactions numbered from 1 rather than after the other stubs'.
     pub fn stub(today: NaiveDate) -> Self {
         let accounts = stub_accounts();

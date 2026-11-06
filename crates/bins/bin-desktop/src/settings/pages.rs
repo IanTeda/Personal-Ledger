@@ -337,6 +337,7 @@ impl LedgerPages {
                 announcer.clone(),
                 units.keymap,
                 units.prices_keymap,
+                clock.clone(),
                 cx,
             ),
             institutions: institutions_page(

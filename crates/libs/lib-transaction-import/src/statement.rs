@@ -46,7 +46,7 @@ impl SeededStatement {
     /// The stub Accounts' "ANZ Everyday", which the seeded statement has always belonged to.
     pub const STUB_ACCOUNT: AccountId = AccountId::seed(2);
 
-    /// The seeded statement for the stub Ledger's Account, dated back from `today`.
+    /// The seeded statement for the Sample Ledger's Account, dated back from `today`.
     pub fn stub(today: NaiveDate) -> Self {
         Self {
             account_id: Self::STUB_ACCOUNT,

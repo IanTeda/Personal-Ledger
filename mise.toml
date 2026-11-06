@@ -276,12 +276,12 @@ run = "mise run db-drop && mise run db-create && mise run db-migrate"
 description = "Reset the dev database: fresh, then refresh the sqlx query cache"
 run = "mise run db-fresh && mise run db-prepare-generate && mise run db-prepare-check"
 
-# Dev data for local runs during the VIPER transition: writes each persisted domain's stub seed,
-# so ids match the stub Ledger, then generated rows on top. Run it on a migrated database (`db-fresh`
-# for a clean one). Idempotent: the rows are upserts, so running it again changes nothing but
+# Dev data for local runs: writes the Sample Ledger (`seed::sample`), so ids match the Ledger the
+# tests run on, then generated rows on top. Run it on a migrated database (`db-fresh` for a clean
+# one). Idempotent: the rows are upserts, so running it again changes nothing but
 # timestamps. Point a Client at the file (`[Personal-Ledger] file`) to see the rows.
 [tasks.db-seed]
-description = "Add each persisted domain's stub seed, and generated rows, to the dev database"
+description = "Add the Sample Ledger, and generated rows, to the dev database"
 run = """
 set -eu
 # `sqlx` reads .env itself, but the shell doesn't.

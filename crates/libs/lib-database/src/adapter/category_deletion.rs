@@ -166,11 +166,11 @@ mod tests {
                 lib_units::fake::InMemoryPorts::stub(chrono::Utc::now()),
             )
             .expect("the stub Units are written");
-            crate::InstitutionsAdapter::seed(&writer, crate::seed::stub_institutions())
+            crate::InstitutionsAdapter::seed(&writer, crate::seed::sample_institutions())
                 .expect("the stub Institutions are written");
-            CategoriesAdapter::seed(&writer, crate::seed::stub_categories())
+            CategoriesAdapter::seed(&writer, crate::seed::sample_categories())
                 .expect("the stub Categories are written");
-            AccountsAdapter::seed(&writer, crate::seed::stub_accounts())
+            AccountsAdapter::seed(&writer, crate::seed::sample_accounts())
                 .expect("the stub Accounts are written");
             Self {
                 pending: PendingWrites::new(writer.clone()),

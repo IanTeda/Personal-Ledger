@@ -1,6 +1,6 @@
 //! The Documents seed tests that read the other domains' seeds, so they need more than one domain:
-//! the Documents seed's Links and Suggested Links over the stub Ledger's records, read through
-//! `lib-documents`' ports as the Desktop reads them. Lives here, beside the joined stub, rather
+//! the Documents seed's Links and Suggested Links over the Sample Ledger's records, read through
+//! `lib-documents`' ports as the Desktop reads them. Lives here, beside the joined Sample Ledger, rather
 //! than in `lib_documents`, which depends on no other domain (moved from `lib-ledger`, #1056). The
 //! rest of the Documents model's tests live in `lib_documents`.
 
@@ -12,7 +12,7 @@ use lib_core::{DocumentId, Money, TransactionId};
 use lib_documents::{types::DocumentTypeRow, *};
 use lib_inventory::Inventory;
 
-use crate::seed::{stub_documents, stub_institutions, stub_inventory, stub_link_records};
+use crate::seed::{sample_documents, sample_institutions, sample_inventory, sample_link_records};
 
 fn cents_money(cents: i64) -> Money {
     Money(BigDecimal::new(cents.into(), 2))
@@ -51,18 +51,18 @@ struct World {
     inventory: Inventory,
 }
 
-/// The stub Ledger's, seeded as the app does: Transactions, then Bills' payments, then
+/// The Sample Ledger's, seeded as the app does: Transactions, then Bills' payments, then
 /// Documents' purchases.
 fn world() -> World {
     world_on(today())
 }
 
 fn world_on(today: NaiveDate) -> World {
-    let institutions = stub_institutions();
+    let institutions = sample_institutions();
     World {
-        records: stub_link_records(today, &institutions),
-        documents: stub_documents(today, &institutions),
-        inventory: stub_inventory(today),
+        records: sample_link_records(today, &institutions),
+        documents: sample_documents(today, &institutions),
+        inventory: sample_inventory(today),
     }
 }
 

@@ -453,7 +453,7 @@ pub fn ledger_label(
 /// The home directory the Ledger's path is shown under, read once rather than on every frame.
 static HOME: std::sync::LazyLock<Option<PathBuf>> = std::sync::LazyLock::new(dirs::home_dir);
 
-/// The stub Ledger's file name, shared with the Documents status line's "stored beside" note until
+/// The Sample Ledger's file name, shared with the Documents status line's "stored beside" note until
 /// a real open-file path exists.
 pub const STUB_LEDGER_FILE: &str = "My-Personal-Ledger.pldb";
 

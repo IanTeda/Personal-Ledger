@@ -21,8 +21,8 @@ pub struct InMemoryAccounts {
 }
 
 impl InMemoryAccounts {
-    /// The stub seed: the stub Ledger's Accounts (see [`default_accounts`]). Ids match
-    /// `lib-database`'s joined stub, so its Transactions and Budgets still resolve their Accounts.
+    /// The stub seed: the Sample Ledger's Accounts (see [`default_accounts`]). Ids match
+    /// `lib-database`'s joined Sample Ledger, so its Transactions and Budgets still resolve their Accounts.
     pub fn stub() -> Self {
         Self {
             accounts: default_accounts(),

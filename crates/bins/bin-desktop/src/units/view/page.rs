@@ -13,7 +13,6 @@ mod render;
 
 use std::rc::Rc;
 
-use chrono::Utc;
 use gpui::{
     AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Pixels, Point, Subscription,
 };
@@ -60,8 +59,16 @@ pub struct UnitsPage {
     prices: Option<UnitPricesPresenter>,
     /// Where the open row menu is drawn: the pointer that opened it, in window coordinates.
     menu_at: Point<Pixels>,
+    /// Where the Presenters read now from, so a price's age is the Shell's, which a test sets.
+    clock: lib_core::Clock,
     _units_changed: Subscription,
     _accounts_changed: Subscription,
+}
+
+/// `clock`'s now, as the Units Presenters read the time.
+pub(crate) fn now_of(clock: &lib_core::Clock) -> Rc<dyn Fn() -> chrono::DateTime<chrono::Utc>> {
+    let clock = clock.clone();
+    Rc::new(move || clock.now())
 }
 
 impl UnitsPage {
@@ -71,11 +78,13 @@ impl UnitsPage {
         announcer: Entity<Announcer>,
         keymap: Keymap<UnitsPageEvent>,
         prices_keymap: Keymap<UnitPricesEvent>,
+        clock: lib_core::Clock,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        let presenter = UnitsPagePresenter::new(ports.clone(), Rc::new(Utc::now), keymap.clone());
+        let presenter = UnitsPagePresenter::new(ports.clone(), now_of(&clock), keymap.clone());
         Self {
             presenter,
+            clock,
             ports,
             deletion,
             _units_changed: notify_on(&announcer, Domain::Units, cx),
@@ -103,6 +112,7 @@ impl UnitsPage {
             ports: self.ports.clone(),
             deletion: self.deletion.clone(),
             announcer: self.announcer.clone(),
+            clock: self.clock.clone(),
             cx,
             prices: None,
         };
@@ -127,6 +137,7 @@ impl UnitsPage {
             ports: self.ports.clone(),
             deletion: self.deletion.clone(),
             announcer: self.announcer.clone(),
+            clock: self.clock.clone(),
             cx,
             prices: None,
         };
@@ -143,7 +154,7 @@ impl UnitsPage {
             Some(Some(unit)) => {
                 self.prices = Some(UnitPricesPresenter::new(
                     self.ports.clone(),
-                    Rc::new(Utc::now),
+                    now_of(&self.clock),
                     self.prices_keymap.clone(),
                     unit,
                 ));

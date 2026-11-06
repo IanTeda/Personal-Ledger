@@ -179,7 +179,7 @@ mod tests {
 
     #[test]
     fn the_transactions_and_budgets_are_counted_in_their_stores_on_each_ask() {
-        let stub = FakeStores::stub(chrono::Local::now().date_naive());
+        let stub = FakeStores::sample(chrono::Local::now().date_naive());
         let reads = in_memory_reads(&stub);
         let ports = LedgerBackedPorts::in_memory(reads.clone());
         let everyday = AccountId::seed(2);
@@ -233,7 +233,7 @@ mod tests {
 
     #[test]
     fn the_ports_offer_the_stores_institutions_units_and_base_unit() {
-        let reads = in_memory_reads(&FakeStores::stub(chrono::Local::now().date_naive()));
+        let reads = in_memory_reads(&FakeStores::sample(chrono::Local::now().date_naive()));
         let held = reads.units.borrow().units().units().len();
         let ports = LedgerBackedPorts::in_memory(reads);
         let ports = ports.borrow();
@@ -251,7 +251,7 @@ mod tests {
 
     #[test]
     fn a_write_through_the_ports_is_noted_once() {
-        let ports = LedgerBackedPorts::in_memory(in_memory_reads(&FakeStores::stub(
+        let ports = LedgerBackedPorts::in_memory(in_memory_reads(&FakeStores::sample(
             chrono::Local::now().date_naive(),
         )));
         let mut held = ports.borrow_mut();

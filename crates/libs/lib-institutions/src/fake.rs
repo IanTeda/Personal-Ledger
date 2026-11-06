@@ -24,8 +24,8 @@ pub struct InMemoryInstitutions {
 }
 
 impl InMemoryInstitutions {
-    /// The stub seed: the stub Ledger's Institutions (see [`default_institutions`]). Ids match
-    /// `lib-database`'s joined stub, so its Accounts still resolve their Institutions.
+    /// The stub seed: the Sample Ledger's Institutions (see [`default_institutions`]). Ids match
+    /// `lib-database`'s joined Sample Ledger, so its Accounts still resolve their Institutions.
     pub fn stub() -> Self {
         Self {
             institutions: default_institutions(),
@@ -76,7 +76,7 @@ pub struct InMemoryInstitutionUnits {
 }
 
 impl InMemoryInstitutionUnits {
-    /// The stub Ledger's three Units (see `lib-units`' seed), all active.
+    /// The Sample Ledger's three Units (see `lib-units`' seed), all active.
     pub fn stub() -> Self {
         let unit = |id, code: &str| InstitutionUnit {
             id,

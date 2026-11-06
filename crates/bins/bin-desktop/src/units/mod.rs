@@ -69,7 +69,20 @@ impl UnitsSetup {
         institutions: &crate::institutions::ports::DesktopPorts,
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
-        let ports = LedgerBackedPorts::shared(ports, reads);
+        Self::on(
+            LedgerBackedPorts::shared(ports, reads),
+            institutions,
+            config,
+        )
+    }
+
+    /// The Units Setup on `ports` already built over the stores, as `LedgerStores::build` builds
+    /// them.
+    pub fn on(
+        ports: DesktopPorts,
+        institutions: &crate::institutions::ports::DesktopPorts,
+        config: &lib_config::KeyBindingConfig,
+    ) -> Self {
         Self {
             deletion: crate::unit_deletion::deletion(&ports, institutions),
             ports,

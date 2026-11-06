@@ -144,7 +144,7 @@ mod tests {
 
     #[test]
     fn in_memory_ports_count_the_stores_use_and_offer_its_leaves() {
-        let (ports, _) = on(&FakeStores::stub(chrono::Local::now().date_naive()));
+        let (ports, _) = on(&FakeStores::sample(chrono::Local::now().date_naive()));
         let ports = ports.borrow();
 
         let woolworths = PayeesPorts::usage(&*ports)
@@ -165,7 +165,7 @@ mod tests {
 
     #[test]
     fn a_split_written_to_the_store_after_the_ports_are_built_is_counted() {
-        let stub = FakeStores::stub(chrono::Local::now().date_naive());
+        let stub = FakeStores::sample(chrono::Local::now().date_naive());
         let woolworths = PayeeId::seed(1);
         let (ports, transactions) = on(&stub);
         let before = PayeesPorts::usage(&*ports.borrow())

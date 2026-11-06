@@ -152,9 +152,9 @@ mod tests {
         NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date")
     }
 
-    /// The stub Ledger created at `path` as of [`today`], opened.
+    /// The Sample Ledger created at `path` as of [`today`], opened.
     fn seeded(path: &Path) -> Storage {
-        seed::stub_ledger(path, today()).expect("the stub Ledger is created");
+        seed::sample_ledger(path, today()).expect("the Sample Ledger is created");
         open_storage(path).expect("a new Ledger opens")
     }
 
@@ -165,7 +165,7 @@ mod tests {
 
         let mut storage = seeded(&path);
         let seeded = storage.transactions.transactions();
-        assert_eq!(seeded, seed::stub_transactions(today()));
+        assert_eq!(seeded, seed::sample_transactions(today()));
         let gone = seeded[0].id;
         storage.transactions.delete_transaction(gone);
         storage.pending.commit();
@@ -181,17 +181,17 @@ mod tests {
     }
 
     #[test]
-    fn a_new_ledger_opens_with_the_stub_budgets_and_an_edit_survives_a_restart() {
+    fn a_new_ledger_opens_with_the_sample_budgets_and_an_edit_survives_a_restart() {
         use lib_budgets::BudgetRepository as _;
 
         let dir = tempfile::tempdir().expect("a temporary directory");
         let path = dir.path().join("ledger.pldb");
         let mut storage = seeded(&path);
-        assert_eq!(storage.budgets.budgets(), seed::stub_budgets(today()));
+        assert_eq!(storage.budgets.budgets(), seed::sample_budgets(today()));
         let mut joint = storage
             .budgets
             .budget(lib_core::BudgetId::seed(2))
-            .expect("a stub Budget");
+            .expect("a sample Budget");
         joint.name = "Shared house".into();
         storage.budgets.upsert_budget(&joint);
         storage.pending.commit();
@@ -199,7 +199,7 @@ mod tests {
         drop(storage);
 
         let reopened = open_storage(&path).expect("the Ledger opens again");
-        let mut expected = seed::stub_budgets(today());
+        let mut expected = seed::sample_budgets(today());
         expected[1] = joint;
         assert_eq!(reopened.budgets.budgets(), expected);
     }
@@ -335,7 +335,7 @@ mod tests {
     }
 
     #[test]
-    fn a_new_ledger_opens_with_the_stub_institutions_and_an_added_one_survives_a_restart() {
+    fn a_new_ledger_opens_with_the_sample_institutions_and_an_added_one_survives_a_restart() {
         use lib_institutions::{Institution, InstitutionRepository};
 
         let dir = tempfile::tempdir().expect("a temporary directory");
@@ -343,7 +343,7 @@ mod tests {
         let mut storage = seeded(&path);
         assert_eq!(
             storage.institutions.institutions(),
-            seed::stub_institutions()
+            seed::sample_institutions()
         );
         let bank = Institution {
             id: lib_core::InstitutionId::new(),
@@ -358,13 +358,13 @@ mod tests {
         drop(storage);
         let reopened = open_storage(&path).expect("the Ledger opens again");
 
-        let mut expected = seed::stub_institutions();
+        let mut expected = seed::sample_institutions();
         expected.push(bank);
         assert_eq!(reopened.institutions.institutions(), expected);
     }
 
     #[test]
-    fn a_new_ledger_opens_with_the_stub_accounts_and_an_added_one_survives_a_restart() {
+    fn a_new_ledger_opens_with_the_sample_accounts_and_an_added_one_survives_a_restart() {
         use lib_accounts::Account;
 
         let dir = tempfile::tempdir().expect("a temporary directory");
@@ -372,12 +372,12 @@ mod tests {
         let mut storage = seeded(&path);
         assert_eq!(
             storage.accounts.accounts().accounts(),
-            seed::stub_accounts()
+            seed::sample_accounts()
         );
         let savings = Account {
             id: lib_core::AccountId::new(),
             name: "Holiday Fund".into(),
-            ..seed::stub_accounts()[1].clone()
+            ..seed::sample_accounts()[1].clone()
         };
 
         storage
@@ -389,19 +389,19 @@ mod tests {
         drop(storage);
         let reopened = open_storage(&path).expect("the Ledger opens again");
 
-        let mut expected = seed::stub_accounts();
+        let mut expected = seed::sample_accounts();
         expected.push(savings);
         assert_eq!(reopened.accounts.accounts().accounts(), expected);
     }
 
     #[test]
-    fn a_new_ledger_opens_with_the_stub_categories_and_an_added_one_survives_a_restart() {
+    fn a_new_ledger_opens_with_the_sample_categories_and_an_added_one_survives_a_restart() {
         use lib_categories::{Category, CategoryRepository};
 
         let dir = tempfile::tempdir().expect("a temporary directory");
         let path = dir.path().join("ledger.pldb");
         let mut storage = seeded(&path);
-        assert_eq!(storage.categories.categories(), seed::stub_categories());
+        assert_eq!(storage.categories.categories(), seed::sample_categories());
         let gas = Category {
             id: lib_core::CategoryId::new(),
             name: "Gas".into(),
@@ -418,18 +418,18 @@ mod tests {
         assert_eq!(reopened.categories.category(gas.id), Some(gas));
         assert_eq!(
             reopened.categories.categories().len(),
-            seed::stub_categories().len() + 1
+            seed::sample_categories().len() + 1
         );
     }
 
     #[test]
-    fn a_new_ledger_opens_with_the_stub_tags_and_an_added_one_survives_a_restart() {
+    fn a_new_ledger_opens_with_the_sample_tags_and_an_added_one_survives_a_restart() {
         use lib_tags::Tag;
 
         let dir = tempfile::tempdir().expect("a temporary directory");
         let path = dir.path().join("ledger.pldb");
         let mut storage = seeded(&path);
-        assert_eq!(storage.tags.tags().tags(), seed::stub_tags());
+        assert_eq!(storage.tags.tags().tags(), seed::sample_tags());
         let holiday = Tag {
             id: lib_core::TagId::new(),
             name: "Holiday".into(),
@@ -446,12 +446,12 @@ mod tests {
         assert_eq!(reopened.tags.tags().tag(holiday.id), Some(holiday));
         assert_eq!(
             reopened.tags.tags().tags().len(),
-            seed::stub_tags().len() + 1
+            seed::sample_tags().len() + 1
         );
     }
 
     #[test]
-    fn a_new_ledger_opens_with_the_stub_inventory_and_an_added_location_survives_a_restart() {
+    fn a_new_ledger_opens_with_the_sample_inventory_and_an_added_location_survives_a_restart() {
         use lib_inventory::interactor::{AddArea, AddItem, AddLocation};
         use lib_inventory::{ItemDraft, LocationDraft};
 
@@ -460,7 +460,7 @@ mod tests {
         let mut storage = seeded(&path);
         assert_eq!(
             storage.inventory.inventory().inventory(),
-            seed::stub_inventory(today())
+            seed::sample_inventory(today())
         );
 
         let port = storage.inventory.inventory_mut();
@@ -502,13 +502,13 @@ mod tests {
     }
 
     #[test]
-    fn a_new_ledger_opens_with_the_stub_payees_and_an_added_one_survives_a_restart() {
+    fn a_new_ledger_opens_with_the_sample_payees_and_an_added_one_survives_a_restart() {
         use lib_payees::Payee;
 
         let dir = tempfile::tempdir().expect("a temporary directory");
         let path = dir.path().join("ledger.pldb");
         let mut storage = seeded(&path);
-        assert_eq!(storage.payees.payees().payees(), seed::stub_payees());
+        assert_eq!(storage.payees.payees().payees(), seed::sample_payees());
         let corner = Payee {
             id: lib_core::PayeeId::new(),
             name: "Corner Shop".into(),
@@ -527,12 +527,12 @@ mod tests {
     }
 
     #[test]
-    fn a_new_ledger_opens_with_the_stub_bills_and_their_paid_entries() {
+    fn a_new_ledger_opens_with_the_sample_bills_and_their_paid_entries() {
         let dir = tempfile::tempdir().expect("a temporary directory");
 
         let storage = seeded(&dir.path().join("ledger.pldb"));
 
-        let expected = seed::stub_bills(today());
+        let expected = seed::sample_bills(today());
         assert_eq!(
             lib_bills::contract::snapshot(&storage.bills),
             (
@@ -554,7 +554,7 @@ mod tests {
                 .entries()
                 .iter()
                 .any(|entry| matches!(entry.resolution, Resolution::Paid(_))),
-            "the stub's Paid entries keep their Transactions"
+            "the sample's Paid entries keep their Transactions"
         );
     }
 }

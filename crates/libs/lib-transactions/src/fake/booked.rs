@@ -47,7 +47,7 @@ pub fn stub_transaction_count(id: AccountId) -> u32 {
         .unwrap_or(0)
 }
 
-/// The stub Ledger's Transactions: [`stub_transactions`]' history, then the Bills' payments and
+/// The Sample Ledger's Transactions: [`stub_transactions`]' history, then the Bills' payments and
 /// Match candidate and the Documents' purchases, numbered on from [`FIRST_BOOKED`] and each placed
 /// newest first, after any already on its date. `accounts` carry [`stub_transaction_count`]'s
 /// counts. Every Client's stub seed is this one, whoever looks the names up.

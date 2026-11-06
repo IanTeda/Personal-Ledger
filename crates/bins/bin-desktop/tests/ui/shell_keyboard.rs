@@ -468,7 +468,7 @@ fn badges(ui: &mut Harness<'_>) -> RailCounts {
 }
 
 #[gpui::test]
-fn the_rail_counts_the_stub_ledger_and_holds_none_once_it_closes(app: &mut TestAppContext) {
+fn the_rail_counts_the_sample_ledger_and_holds_none_once_it_closes(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
     let counts = badges(&mut ui);
     assert!(

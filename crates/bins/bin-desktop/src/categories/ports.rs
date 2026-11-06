@@ -372,7 +372,11 @@ mod tests {
 
     #[gpui::test]
     fn the_budget_port_checks_on_a_copy_and_saves_through_the_ledger(cx: &mut TestAppContext) {
-        let stores = crate::shell::router::LedgerStores::stub(today()).category_stores();
+        let stores = crate::shell::router::LedgerStores::build(
+            lib_database::Stores::fake(lib_database::FakeStores::sample(today())).0,
+        )
+        .stores
+        .category_stores();
         let announcer = cx.new(|_| Announcer::default());
         let categories = lib_categories::default_categories();
         let groceries = lib_categories::find_by_name(&categories, "Groceries").expect("seeded");
@@ -412,7 +416,11 @@ mod tests {
 
     #[gpui::test]
     fn a_new_parent_is_stopped_in_every_active_budget_through_the_store(cx: &mut TestAppContext) {
-        let stores = crate::shell::router::LedgerStores::stub(today()).category_stores();
+        let stores = crate::shell::router::LedgerStores::build(
+            lib_database::Stores::fake(lib_database::FakeStores::sample(today())).0,
+        )
+        .stores
+        .category_stores();
         let announcer = cx.new(|_| Announcer::default());
         let categories = lib_categories::default_categories();
         let groceries = lib_categories::find_by_name(&categories, "Groceries").expect("seeded");
@@ -446,7 +454,11 @@ mod tests {
 
     #[gpui::test]
     fn the_handover_port_moves_splits_to_the_new_child_through_the_stores(cx: &mut TestAppContext) {
-        let stores = crate::shell::router::LedgerStores::stub(today()).category_stores();
+        let stores = crate::shell::router::LedgerStores::build(
+            lib_database::Stores::fake(lib_database::FakeStores::sample(today())).0,
+        )
+        .stores
+        .category_stores();
         let announcer = cx.new(|_| Announcer::default());
         let categories = lib_categories::default_categories();
         let groceries = lib_categories::find_by_name(&categories, "Groceries").expect("seeded");
@@ -479,7 +491,11 @@ mod tests {
     fn type_change_blockers_judge_the_budgets_by_the_clock_after_a_month_turn(
         cx: &mut TestAppContext,
     ) {
-        let stores = crate::shell::router::LedgerStores::stub(today()).category_stores();
+        let stores = crate::shell::router::LedgerStores::build(
+            lib_database::Stores::fake(lib_database::FakeStores::sample(today())).0,
+        )
+        .stores
+        .category_stores();
         let announcer = cx.new(|_| Announcer::default());
         let categories = lib_categories::default_categories();
         let groceries = lib_categories::find_by_name(&categories, "Groceries").expect("seeded");

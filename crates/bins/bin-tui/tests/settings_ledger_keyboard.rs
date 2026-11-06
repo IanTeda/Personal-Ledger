@@ -1,5 +1,5 @@
 //! Keyboard tests for Settings › Ledger on an opened Ledger file (#922): THIS LEDGER's counts and
-//! the base Unit guard's figures are the file's rows, not the stub Ledger's.
+//! the base Unit guard's figures are the file's rows, not the Sample Ledger's.
 
 mod common;
 

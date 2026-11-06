@@ -1213,7 +1213,7 @@ mod tests {
         }
     }
 
-    /// The stub seed's Units on the stub Ledger, as an Open Ledger holds them.
+    /// The stub seed's Units on the Sample Ledger, as an Open Ledger holds them.
     pub(super) fn stub_units() -> UnitsSetup {
         UnitsSetup::stub(&lib_config::KeyBindingConfig::default())
     }

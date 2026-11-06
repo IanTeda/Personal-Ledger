@@ -463,7 +463,7 @@ mod tests {
     impl AdapterFactory {
         fn new(options: SqliteConnectOptions) -> Self {
             let (writer, failures) = Writer::spawn(options).expect("the test database opens");
-            crate::test_support::store_stub_references(&writer);
+            crate::test_support::store_sample_references(&writer);
             Self {
                 pending: PendingWrites::new(writer.clone()),
                 writer,
@@ -548,7 +548,7 @@ mod tests {
     impl ReadsAdapters {
         fn new(options: SqliteConnectOptions) -> Self {
             let (writer, _failures) = Writer::spawn(options).expect("the test database opens");
-            crate::test_support::store_stub_references(&writer);
+            crate::test_support::store_sample_references(&writer);
             Self {
                 pending: PendingWrites::new(writer.clone()),
                 writer,
@@ -567,10 +567,11 @@ mod tests {
             use std::cell::RefCell;
             use std::rc::Rc;
 
-            let template = crate::seed::stub_documents(today(), &crate::seed::stub_institutions())
-                .into_iter()
-                .next()
-                .expect("the stub has a Document");
+            let template =
+                crate::seed::sample_documents(today(), &crate::seed::sample_institutions())
+                    .into_iter()
+                    .next()
+                    .expect("the stub has a Document");
             let documents = documents
                 .into_iter()
                 .enumerate()

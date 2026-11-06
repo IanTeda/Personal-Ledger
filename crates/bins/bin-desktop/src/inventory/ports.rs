@@ -13,14 +13,7 @@ use std::rc::Rc;
 use crate::write_count::WriteCount;
 use lib_core::{ItemId, LocationId};
 use lib_database::SharedInventoryStore;
-use lib_inventory::fake::InMemoryInventory;
-use lib_inventory::{Inventory, InventoryRepository, Item, Location, SharedInventory};
-
-/// The stub Inventory as of `today` in memory, for a test that needs no storage.
-pub fn in_memory(today: chrono::NaiveDate) -> SharedInventoryStore {
-    let Inventory { locations, items } = lib_inventory::default_inventory(today);
-    Rc::new(RefCell::new(InMemoryInventory { locations, items }))
-}
+use lib_inventory::{InventoryRepository, Item, Location, SharedInventory};
 
 /// The shared store as the module's Presenters hold the repository, borrowed for each call: the
 /// store is shared behind a `RefCell` whose guard can't be lent out of it.

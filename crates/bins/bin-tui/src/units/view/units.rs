@@ -99,6 +99,8 @@ pub struct UnitsView {
     dialog: Option<Dialog>,
     /// The Unit prices view, while it shows in place of the page.
     prices: Option<UnitPricesPresenter>,
+    /// Where the Presenters read the time from.
+    now: lib_units::presenter::Clock,
     /// Raised by the Presenters since `Shell` last took them.
     toasts: Vec<(ToastKind, String)>,
     /// Whether the page was last told it is docked: the one place the Window Size is remembered,
@@ -108,13 +110,16 @@ pub struct UnitsView {
 
 impl UnitsView {
     pub fn new(setup: &UnitsSetup) -> Self {
+        Self::with_now(setup, std::rc::Rc::new(chrono::Utc::now))
+    }
+
+    /// The View with its Presenters reading the time from `now`, which a test fixes so a price's
+    /// age is the same on every run.
+    pub fn with_now(setup: &UnitsSetup, now: lib_units::presenter::Clock) -> Self {
         let shared: SharedPorts = setup.ports.clone();
         Self {
-            presenter: UnitsPagePresenter::new(
-                shared,
-                std::rc::Rc::new(chrono::Utc::now),
-                setup.keymap.clone(),
-            ),
+            presenter: UnitsPagePresenter::new(shared, now.clone(), setup.keymap.clone()),
+            now,
             ports: setup.ports.clone(),
             keymap: setup.keymap.clone(),
             prices_keymap: setup.prices_keymap.clone(),
@@ -144,7 +149,7 @@ impl UnitsView {
     /// Sends `event` to the page Presenter, opens any Dialog or prices view it asked for, and
     /// commits whatever it wrote as one transaction.
     fn send(&mut self, event: UnitsPageEvent) {
-        let mut router = Router::new(self.ports.clone(), &mut self.toasts);
+        let mut router = Router::with_now(self.ports.clone(), &mut self.toasts, self.now.clone());
         self.presenter.handle(event, &mut router);
         let (opened, prices) = (router.opened.take(), router.prices.take());
         self.ports.borrow_mut().commit();
@@ -156,7 +161,7 @@ impl UnitsView {
         let Some(presenter) = &mut self.prices else {
             return;
         };
-        let mut router = Router::new(self.ports.clone(), &mut self.toasts);
+        let mut router = Router::with_now(self.ports.clone(), &mut self.toasts, self.now.clone());
         presenter.handle(event, &mut router);
         let (opened, prices) = (router.opened.take(), router.prices.take());
         self.ports.borrow_mut().commit();
@@ -172,7 +177,7 @@ impl UnitsView {
             Some(Some(unit)) => {
                 self.prices = Some(UnitPricesPresenter::new(
                     self.ports.clone(),
-                    std::rc::Rc::new(chrono::Utc::now),
+                    self.now.clone(),
                     self.prices_keymap.clone(),
                     unit,
                 ));
@@ -203,7 +208,7 @@ impl UnitsView {
         let Some(dialog) = &mut self.dialog else {
             return;
         };
-        let mut router = Router::new(self.ports.clone(), &mut self.toasts);
+        let mut router = Router::with_now(self.ports.clone(), &mut self.toasts, self.now.clone());
         dialog.handle_key(key, &self.dialog_keymap, &mut router);
         let closed = router.closed.take();
         self.ports.borrow_mut().commit();
@@ -795,6 +800,17 @@ mod tests {
         UnitsView::new(&UnitsSetup::stub(&KeyBindingConfig::default()))
     }
 
+    /// The Units view reading now as the moment the Sample Ledger priced its Units, so a price's
+    /// age is the same on every run.
+    fn units_view_at_the_samples_pricing() -> UnitsView {
+        crate::locale::init_for_tests();
+        let at = lib_database::seed::sample_priced_at(chrono::Local::now().date_naive());
+        UnitsView::with_now(
+            &UnitsSetup::stub(&KeyBindingConfig::default()),
+            std::rc::Rc::new(move || at),
+        )
+    }
+
     fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
     }
@@ -968,7 +984,7 @@ mod tests {
 
     #[test]
     fn last_draws_each_units_last_price_and_the_summary_its_age() {
-        let mut view = units_view();
+        let mut view = units_view_at_the_samples_pricing();
         let row = |text: &str, code: &str| {
             text.lines()
                 .find(|line| line.trim_start().starts_with(code))

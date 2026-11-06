@@ -318,7 +318,7 @@ mod tests {
     impl AdapterFactory {
         fn new(options: SqliteConnectOptions) -> Self {
             let (writer, failures) = Writer::spawn(options).expect("the test database opens");
-            crate::test_support::store_stub_references(&writer);
+            crate::test_support::store_sample_references(&writer);
             Self {
                 pending: PendingWrites::new(writer.clone()),
                 writer,

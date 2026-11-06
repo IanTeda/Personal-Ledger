@@ -60,28 +60,28 @@ impl<Row, Reads> lib_transactions::contract::ReadsFactory<Row>
     }
 }
 
-/// Stores the stub's Units, Institutions, Accounts, Categories and Tags, which an adapter test's
+/// Stores the Sample Ledger's Units, Institutions, Accounts, Categories and Tags, which an adapter test's
 /// Transactions, Bill Plans and Payees name by foreign key (#853, #858, #862).
-pub(crate) fn store_stub_references(writer: &Writer) {
+pub(crate) fn store_sample_references(writer: &Writer) {
     crate::UnitsAdapter::seed_from(
         writer,
         lib_units::fake::InMemoryPorts::stub(chrono::Utc::now()),
     )
-    .expect("the stub Units are written");
-    crate::InstitutionsAdapter::seed(writer, crate::seed::stub_institutions())
-        .expect("the stub Institutions are written");
-    crate::AccountsAdapter::seed(writer, crate::seed::stub_accounts())
-        .expect("the stub Accounts are written");
-    crate::CategoriesAdapter::seed(writer, crate::seed::stub_categories())
-        .expect("the stub Categories are written");
-    crate::TagsAdapter::seed(writer, crate::seed::stub_tags()).expect("the stub Tags are written");
+    .expect("the sample Units are written");
+    crate::InstitutionsAdapter::seed(writer, crate::seed::sample_institutions())
+        .expect("the sample Institutions are written");
+    crate::AccountsAdapter::seed(writer, crate::seed::sample_accounts())
+        .expect("the sample Accounts are written");
+    crate::CategoriesAdapter::seed(writer, crate::seed::sample_categories())
+        .expect("the sample Categories are written");
+    crate::TagsAdapter::seed(writer, crate::seed::sample_tags())
+        .expect("the sample Tags are written");
 }
 
-/// Stores the whole stub seed as of `today` but the Documents, which a Documents adapter test
+/// Stores the whole Sample Ledger as of `today` but the Documents, which a Documents adapter test
 /// writes itself over the records its Links name (#963).
-pub(crate) fn store_stub_but_documents(writer: &Writer, today: chrono::NaiveDate) {
-    crate::seed::write_stub_rows(writer, chrono::Utc::now(), today, None, false)
-        .expect("the stub is written");
+pub(crate) fn store_sample_but_documents(writer: &Writer, today: chrono::NaiveDate) {
+    crate::seed::write_sample_rows(writer, today, false).expect("the sample is written");
 }
 
 /// The records a Link may name, read from the stores loaded on `pending`'s file as the Desktop's

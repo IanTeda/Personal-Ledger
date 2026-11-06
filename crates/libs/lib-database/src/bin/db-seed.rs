@@ -1,4 +1,4 @@
-//! `mise run db-seed`: adds the stub seed (Units, then Institutions, then Accounts, then Categories, then Tags, then Payees, then Transactions and Bills, then Budgets, then the Inventory, then the Document Types and Documents), and generated Units, Transactions and Bill Plans on top, to the already-migrated dev database named by the
+//! `mise run db-seed`: adds the Sample Ledger (`seed::sample`: Units, then Institutions, then Accounts, then Categories, then Tags, then Payees, then Transactions and Bills, then Budgets, then the Inventory, then the Document Types and Documents), and generated Units, Transactions and Bill Plans on top, to the already-migrated dev database named by the
 //! path in argument one. It never drops or migrates the database, and it is idempotent: running it again leaves the same rows.
 
 use std::process::ExitCode;
@@ -7,7 +7,7 @@ use chrono::Utc;
 use lib_database::Writer;
 use sqlx::sqlite::SqliteConnectOptions;
 
-/// How many generated Units, and how many generated Transactions, go on top of the stub's.
+/// How many generated Units, and how many generated Transactions, go on top of the Sample Ledger's.
 const FAKE_ROWS: u32 = 25;
 
 fn main() -> ExitCode {
@@ -18,14 +18,14 @@ fn main() -> ExitCode {
     let result = Writer::spawn(SqliteConnectOptions::new().filename(&path)).and_then(
         |(writer, _failures)| {
             let now = Utc::now();
-            lib_database::seed::stub(&writer, now)?;
+            lib_database::seed::sample(&writer, now)?;
             lib_database::seed::fake(&writer, now, FAKE_ROWS)
         },
     );
     match result {
         Ok(()) => {
             println!(
-                "Seeded {path} with the stub (Institutions, Accounts, Categories, Tags, Payees, Budgets, Inventory and Documents included), {FAKE_ROWS} generated Units and Transactions, and generated Bill Plans"
+                "Seeded {path} with the Sample Ledger (Institutions, Accounts, Categories, Tags, Payees, Budgets, Inventory and Documents included), {FAKE_ROWS} generated Units and Transactions, and generated Bill Plans"
             );
             ExitCode::SUCCESS
         }

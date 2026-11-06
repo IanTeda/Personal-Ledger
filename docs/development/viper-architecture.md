@@ -205,7 +205,7 @@ These are the rules Claude follows and a review checks against.
 - An adapter test pins each refusal the file makes, a foreign key or a composite key, so a rollback the in-memory ports don't model is caught.
 - Each View still has `<view>_keyboard.rs` and `<view>_mouse.rs` in the bin's `tests/ui/`, but they check wiring and drawing (the key reaches the Presenter, the view model is drawn), not behaviour the Presenter tests already cover. They run on the `fake.rs` ports, which the Desktop's `shell::router::build` takes as parameters, so they never open SQLite.
 - The UI tests add a test for each hand-off into a page (a Document's Payee link) and each writer from another module reaching it, asserting one commit for the input. The keyboard test opens `?` and checks it lists the status line's keys under the page's heading (`Harness::assert_cheat_sheet_matches_status`).
-- `Stores::fake` takes one `FakeStores` with a field per domain, and the UI harness's `stub_fakes()` fills every one, so a test overrides only the store it changes. `Harness::with_failing_<domain>` runs on a `Failing<Domain>` store, and a test of a file cascade runs on a Ledger file (`Harness::with_storage`).
+- `Stores::fake` takes one `FakeStores` with a field per domain, and the UI harness fills every one from `FakeStores::sample(today)`, the Sample Ledger in memory, so a test overrides only the store it changes. `Harness::with_failing_<domain>` runs on a `Failing<Domain>` store, and a test of a file cascade runs on a Ledger file (`Harness::with_storage`).
 - A test helper writes a store directly (`add_payee_for_test`) rather than through a command that's gone, and a restart test the adapter's contract already covers is dropped.
 - An end-to-end smoke test per module runs the real app on a temporary SQLite file: start, change a row, restart, see it, its readers seeing it from the adapter. Where the Desktop can't add a row yet, it reads back one that exists and the adapter's test covers the add. It runs when a parent ticket closes and before a merge to `main`.
 
@@ -263,10 +263,10 @@ Ports are synchronous, and `sqlx` is async ([ADR-0046](../adr/0046-per-domain-ad
 
 ### Seeds
 
-- A domain's stub seed is its one seed, with ids that match the stub Ledger, written through `lib-database`'s `seed::stub` (`db-seed`) and `seed::stub_ledger`, ahead of every domain whose rows reference it ([database.md](database.md#the-stub-ledgers-order)). `open_storage` never seeds.
-- A stub names another domain's rows only by id: the sample purchases a Document names belong in the booked domain's own stub (`lib-transactions`), not the Documents seed ([#961](https://github.com/IanTeda/Personal-Ledger/issues/961)).
-- A row a foreign key needs on every Ledger (the Personal Institution) is written by creating the Ledger (`lib-ledger-creation`), apart from the stub seed (#849, #875, ADR-0054).
-- `open_storage` only opens: a migrated file with no base Unit is refused (`Error::IncompleteLedger`, an error Toast in both Clients). A domain whose older Ledgers need a row seeds its empty table on open instead (an empty default Budget, the default Document Types).
+- A domain's sample rows, in its own `fake` module, are its one seed, with ids that match the Sample Ledger (`GLOSSARY.md`), which is `NewLedger`'s rows with every domain's sample on top. `lib-database`'s `seed::SampleLedger` is its one definition: `seed::sample` (`db-seed`) and `seed::sample_ledger` write it, each domain ahead of every domain whose rows reference it ([database.md](database.md#the-sample-ledgers-order)), and `FakeStores::sample` holds it in memory. `open_storage` never seeds.
+- A domain's sample names another domain's rows only by id: the sample purchases a Document names belong in the booked domain's own sample (`lib-transactions`), not the Documents seed ([#961](https://github.com/IanTeda/Personal-Ledger/issues/961)).
+- A row a foreign key needs on every Ledger (the Personal Institution) is written by creating the Ledger (`lib-ledger-creation`), and the Sample Ledger holds it as `NewLedger` describes it (#849, #875, ADR-0054).
+- `open_storage` only opens: a migrated file with no base Unit, Budget or Document Type is refused (`Error::IncompleteLedger`, an error Toast in both Clients) and left as it was.
 
 ### Cross-domain modules
 
@@ -298,17 +298,17 @@ Units and Price Sources are one domain, `lib-units`, since they only change toge
 A domain's tickets link here rather than restate these steps. The worked examples are Payees for a Settings page ([Payees (development)](payees.md), [#829](https://github.com/IanTeda/Personal-Ledger/issues/829)), the Transactions View for a destination ([#923](https://github.com/IanTeda/Personal-Ledger/issues/923)), the Import for a cross-domain module with a View ([#943](https://github.com/IanTeda/Personal-Ledger/issues/943)), Budgets for a View with Dialogs ([#950](https://github.com/IanTeda/Personal-Ledger/issues/950)), Documents for a View that reads other domains and the disk ([#960](https://github.com/IanTeda/Personal-Ledger/issues/960)), the Dashboard for a View read only through its own ports ([#1021](https://github.com/IanTeda/Personal-Ledger/issues/1021)) and Settings for a frame of pages that write Configuration through a port the bin implements (`lib-settings`' `DeviceConfiguration`, [#1036](https://github.com/IanTeda/Personal-Ledger/issues/1036)). A slice is usually a straight chain: a prefactor, persistence, the Interactors, the page, the Dialogs and the docs.
 
 1. **Lay out the crate** as [Layout](#layout) shows, after `lib-units`, and grep the bins as well as the crates before calling a function dead.
-2. **Move seeds first.** Move a stub row that belongs to another domain into that domain's stub, and a seed check or seed count that needs another domain's seed into `lib-database`'s `seed`, beside `seed::stub`.
+2. **Move seeds first.** Move a sample row that belongs to another domain into that domain's sample, and a seed check or seed count that needs another domain's seed into `lib-database`'s `seed`, beside `seed::SampleLedger`.
 3. **Replace borrowed rows with read ports** by [Read ports](#read-ports), answered in `lib-database` by the reading module's stored reads struct, filled in every in-memory store.
 4. **Write a rule over rows and a read port** (`delete_payee(&mut Vec<Payee>, &dyn PayeeUsage, id)`), not the repository, so the Interactor and the in-memory fakes run the same rule.
 5. **Move, don't copy.** A rule or query engine that leaves the bin or another crate is deleted there and its rule tests move with it.
 6. **Add the crate to `FEATURE_CRATES`** in `lib-database/tests/viper_dependencies.rs`, so it keeps the dependency rule from its first commit; `deny.toml` needs no edit.
 7. **Edit the schema** by [Schema](#schema): the table's file, the foreign keys the referencing tables gain, and the refusal each key without a cascade backs.
 8. **Grep what writes the old schema:** every `::seed(` and adapter test factory that writes a referencing table, the older per-entity `sqlx::test`s, and `bin-sync-server/tests`.
-9. **Write the adapter** after `adapter/units.rs`, with its `<Domain>Store` trait and fake, and its field in `Stores`, `Stores::fake` and `FakeStores::stub`.
+9. **Write the adapter** after `adapter/units.rs`, with its `<Domain>Store` trait and fake, and its field in `Stores`, `Stores::fake` and `FakeStores::sample`.
 10. **Wire write failures:** a `Failing<Domain>` store, `Harness::with_failing_<domain>`, an arm in `roll_back` (`shell/router/write_failures.rs`) and two `desktop-toast-write-failed-<domain>` Messages.
 11. **Write the contract suite** by [Tests](#tests), with a `PortsFactory` hook for the other domains' rows it names.
-12. **Seed it** through `seed::stub` and `open_storage`, ahead of the domains that reference it ([Seeds](#seeds)).
+12. **Seed it** through `seed::SampleLedger`, ahead of the domains that reference it ([Seeds](#seeds)), and, if every new Ledger needs a row of it, through `NewLedger`.
 13. **Keep a read copy** for the Views that aren't modules, refreshed after each of the module's writes, and say which rows stay. The Categories no longer do (#1055): their store counts each write and `categories::ports::refresh` announces from the count, which the Categories ports keep (`CategoriesWrites`).
 14. **Announce once nothing reads the copy:** the store announces the domain after each write and a rollback reloads and announces (`Announcer::announce`, from `document_types::ports::announce`), and the copy goes.
 15. **Move the module's readers to the store** in the same slice: the adapter counts in the file and the in-memory store recounts from its rows. Say in the findings when a reader of the old copy goes.
@@ -327,16 +327,15 @@ A domain's tickets link here rather than restate these steps. The worked example
 
 ## During the transition
 
-What still stands in is the stub seed, which only `db-seed`, `FakeStores::stub` and `seed::stub_ledger` use ([#817](https://github.com/IanTeda/Personal-Ledger/issues/817)), the Categories page's built-on day ([#783](https://github.com/IanTeda/Personal-Ledger/issues/783)) and the TUI's own ([#805](https://github.com/IanTeda/Personal-Ledger/issues/805)), each removed when its condition is met.
+What still stands in is the Categories page's built-on day ([#783](https://github.com/IanTeda/Personal-Ledger/issues/783)) and the TUI's own ([#805](https://github.com/IanTeda/Personal-Ledger/issues/805)), each removed when its condition is met.
 
 | Stand-in | Why | Removed when |
 |---|---|---|
-| The stub seed: `seed::stub` (`db-seed`), `FakeStores::stub` and `seed::stub_ledger` write each domain's stub ([database.md](database.md#the-stub-ledgers-order)) | The stubs name each other's rows by foreign key, and tests need a seeded file | Every domain persists; the stub is then removed ([#817](https://github.com/IanTeda/Personal-Ledger/issues/817)) |
 | The Categories page and its ports keep the day they were built on (`LedgerPorts::today`) | The Monthly budget in the Personal spending Budget is read as of that day, so it doesn't follow a month turn | #783 anchors the Monthly budget on the Clock ([#783](https://github.com/IanTeda/Personal-Ledger/issues/783)) |
 | The TUI's Router turns a status into an Info Toast | The TUI has no `lib-shell` Presenter | The TUI's redesign ([#805](https://github.com/IanTeda/Personal-Ledger/issues/805)) |
 | The TUI's Units ports hold the commit and commit after each `handle` (`bin-tui/src/units/ports.rs`); it builds on `Stores` but has no `send` | The TUI's redesign and its own `input.rs` are their own ticket ([#805](https://github.com/IanTeda/Personal-Ledger/issues/805)) | The TUI's `input.rs` commits after each input |
 | The TUI's keys reach the Units keymap through `shell.rs`, and its Units View maps the arrows, Home/End and Page keys to `Move` itself | The TUI has no `input.rs` yet | The TUI's redesign gives it one ([#805](https://github.com/IanTeda/Personal-Ledger/issues/805)) |
 
-The slices left are on the transition map ([#747](https://github.com/IanTeda/Personal-Ledger/issues/747)): the stub seed's removal ([#817](https://github.com/IanTeda/Personal-Ledger/issues/817)), the Monthly budget anchored on the Clock ([#783](https://github.com/IanTeda/Personal-Ledger/issues/783)), and the TUI rows in its redesign ([#805](https://github.com/IanTeda/Personal-Ledger/issues/805)). Each slice removes the rows above whose condition it meets.
+The slices left are on the transition map ([#747](https://github.com/IanTeda/Personal-Ledger/issues/747)): the Monthly budget anchored on the Clock ([#783](https://github.com/IanTeda/Personal-Ledger/issues/783)), and the TUI rows in its redesign ([#805](https://github.com/IanTeda/Personal-Ledger/issues/805)). Each slice removes the rows above whose condition it meets.
 
 The TUI waits for its redesign ([#805](https://github.com/IanTeda/Personal-Ledger/issues/805)), after the Desktop concept works. Until then it only keeps building, with the minimal edits a change to a shared trait forces, and nothing new moves on it.

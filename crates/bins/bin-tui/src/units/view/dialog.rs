@@ -70,18 +70,18 @@ enum Item {
 
 impl Dialog {
     /// `which`'s Presenter on `ports`, or `None` when the row it names is gone.
-    pub fn open(which: Which, ports: &SharedPorts) -> Option<Self> {
+    pub fn open(
+        which: Which,
+        ports: &SharedPorts,
+        now: &lib_units::presenter::Clock,
+    ) -> Option<Self> {
         let ports = ports.clone();
         Some(match which {
             Which::AddUnit => Self::UnitForm(UnitFormPresenter::add(ports)),
             Which::EditUnit(id) => Self::UnitForm(UnitFormPresenter::edit(ports, id)?),
             Which::DeleteUnit(id) => Self::DeleteUnit(DeleteUnitPresenter::new(ports, id)?),
             Which::SetBaseUnit => Self::SetBaseUnit(SetBaseUnitPresenter::new(ports)),
-            Which::SetPrice(id) => Self::SetPrice(SetPricePresenter::new(
-                ports,
-                std::rc::Rc::new(chrono::Utc::now),
-                id,
-            )?),
+            Which::SetPrice(id) => Self::SetPrice(SetPricePresenter::new(ports, now.clone(), id)?),
             Which::AddPriceSource => Self::PriceSourceForm(
                 PriceSourceFormPresenter::add(ports),
                 SecretString::from(String::new()),

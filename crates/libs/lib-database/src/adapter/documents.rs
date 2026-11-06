@@ -730,7 +730,7 @@ mod tests {
     impl AdapterFactory {
         fn new(options: SqliteConnectOptions) -> Self {
             let (writer, failures) = Writer::spawn(options).expect("the test database opens");
-            crate::test_support::store_stub_but_documents(&writer, contract::today());
+            crate::test_support::store_sample_but_documents(&writer, contract::today());
             Self {
                 pending: PendingWrites::new(writer.clone()),
                 writer,

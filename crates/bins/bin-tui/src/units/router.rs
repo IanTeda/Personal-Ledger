@@ -13,6 +13,8 @@ use super::view::dialog::Dialog;
 
 pub struct Router<'a> {
     ports: SharedPorts,
+    /// Where the set price Dialog reads the time from.
+    now: lib_units::presenter::Clock,
     toasts: &'a mut Vec<(ToastKind, String)>,
     /// The Dialog the page asked to open, built on the shared ports.
     pub opened: Option<Dialog>,
@@ -24,8 +26,18 @@ pub struct Router<'a> {
 
 impl<'a> Router<'a> {
     pub fn new(ports: SharedPorts, toasts: &'a mut Vec<(ToastKind, String)>) -> Self {
+        Self::with_now(ports, toasts, std::rc::Rc::new(chrono::Utc::now))
+    }
+
+    /// A Router whose Dialogs read the time from `now`, as the Units View it runs in does.
+    pub fn with_now(
+        ports: SharedPorts,
+        toasts: &'a mut Vec<(ToastKind, String)>,
+        now: lib_units::presenter::Clock,
+    ) -> Self {
         Self {
             ports,
+            now,
             toasts,
             opened: None,
             closed: None,
@@ -36,7 +48,7 @@ impl<'a> Router<'a> {
 
 impl UnitsRouter for Router<'_> {
     fn open_dialog(&mut self, dialog: Which) -> bool {
-        self.opened = Dialog::open(dialog, &self.ports);
+        self.opened = Dialog::open(dialog, &self.ports, &self.now);
         self.opened.is_some()
     }
 

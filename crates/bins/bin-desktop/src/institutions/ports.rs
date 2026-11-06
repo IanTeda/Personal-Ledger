@@ -179,7 +179,7 @@ mod tests {
     use super::*;
 
     fn stub() -> FakeStores {
-        FakeStores::stub(chrono::Local::now().date_naive())
+        FakeStores::sample(chrono::Local::now().date_naive())
     }
 
     fn ports(stub: &FakeStores) -> DesktopPorts {

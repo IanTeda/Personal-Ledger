@@ -508,7 +508,7 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let factory = AdapterFactory::new(options);
-        crate::test_support::store_stub_references(&factory.writer);
+        crate::test_support::store_sample_references(&factory.writer);
         let mut categories = CategoriesAdapter::load(factory.pending.clone()).expect("rows load");
         let groceries = CategoryId::seed(7);
         TransactionsAdapter::seed(&factory.writer, vec![filed_under(groceries)])
@@ -533,7 +533,7 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let factory = AdapterFactory::new(options);
-        crate::test_support::store_stub_references(&factory.writer);
+        crate::test_support::store_sample_references(&factory.writer);
         let payee = lib_payees::Payee {
             id: PayeeId::new(),
             name: "Corner Shop".into(),
@@ -552,8 +552,8 @@ mod tests {
         options: SqliteConnectOptions,
     ) {
         let factory = AdapterFactory::new(options);
-        crate::test_support::store_stub_references(&factory.writer);
-        let mut plan = crate::seed::stub_bills(day()).plans[0].clone();
+        crate::test_support::store_sample_references(&factory.writer);
+        let mut plan = crate::seed::sample_bills(day()).plans[0].clone();
         plan.id = lib_core::BillPlanId::new();
         plan.payee_id = None;
         plan.category_id = CategoryId::new();

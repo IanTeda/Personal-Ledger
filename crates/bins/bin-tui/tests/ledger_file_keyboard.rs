@@ -346,10 +346,10 @@ fn add_gold(shell: &mut bin_tui::Shell) {
     press(shell, "Enter");
 }
 
-/// The stub Ledger in a file at `path` (`seed::stub_ledger`).
+/// The Sample Ledger in a file at `path` (`seed::sample_ledger`).
 fn ledger_file(path: &std::path::Path) {
     assert!(
-        lib_database::seed::stub_ledger(path, chrono::Local::now().date_naive()).is_ok(),
+        lib_database::seed::sample_ledger(path, chrono::Local::now().date_naive()).is_ok(),
         "a Ledger file to open"
     );
 }

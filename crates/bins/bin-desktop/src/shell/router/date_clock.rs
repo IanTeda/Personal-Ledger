@@ -18,10 +18,14 @@ use super::Root;
 #[doc(hidden)]
 pub const DATE_POLL: Duration = Duration::from_secs(60);
 
-/// `today` moving on with the local clock, so a Desktop left running crosses into a new month.
+/// `today` moving on with the local clock, so a Desktop left running crosses into a new month,
+/// and now the real time.
 pub fn wall_clock(today: NaiveDate) -> Clock {
     let started = chrono::Local::now().date_naive();
-    Clock::new(move || today + (chrono::Local::now().date_naive() - started))
+    Clock::with_time(
+        move || today + (chrono::Local::now().date_naive() - started),
+        chrono::Utc::now,
+    )
 }
 
 impl Root {

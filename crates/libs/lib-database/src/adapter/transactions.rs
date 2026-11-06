@@ -668,8 +668,8 @@ mod tests {
     impl AdapterFactory {
         fn new(options: SqliteConnectOptions) -> Self {
             let (writer, failures) = Writer::spawn(options).expect("the test database opens");
-            crate::test_support::store_stub_references(&writer);
-            PayeesAdapter::seed(&writer, crate::seed::stub_payees())
+            crate::test_support::store_sample_references(&writer);
+            PayeesAdapter::seed(&writer, crate::seed::sample_payees())
                 .expect("the stub Payees are written");
             Self {
                 pending: PendingWrites::new(writer.clone()),
@@ -783,7 +783,7 @@ mod tests {
     }
 
     fn stub_transactions() -> Vec<Transaction> {
-        crate::seed::stub_transactions(NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date"))
+        crate::seed::sample_transactions(NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date"))
     }
 
     /// Bills reads the stored Splits flattened as the in-memory store flattens its own, after a

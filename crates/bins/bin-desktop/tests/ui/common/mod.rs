@@ -1,5 +1,5 @@
 //! Headless harness for the Desktop UI: repeats `lib::run`'s app-level setup, builds `Root`
-//! through the lib's `shell::router::build` with a fixed date and the deterministic stub seed, and offers
+//! through the lib's `shell::router::build` with a fixed date and the Sample Ledger (`FakeStores::sample`), and offers
 //! key presses, selector clicks and read helpers. Nothing here opens a real window or touches
 //! `persistence`, so it runs in a sandbox with no GPU.
 
@@ -66,12 +66,12 @@ use std::time::Duration;
 /// The status line's refusal for anything that needs a Ledger with none open (#977).
 pub const NO_LEDGER: &str = "No Ledger open: :open or :new first";
 
-/// Creates the stub Ledger in a file at `path` (`seed::stub_ledger`: start-up never creates one,
+/// Creates the Sample Ledger in a file at `path` (`seed::sample_ledger`: start-up never creates one,
 /// and `:new` creates an empty one), and returns the configuration `main` would hold, pointed at
 /// it, for a smoke test on the real start-up.
 pub fn new_ledger(path: &std::path::Path) -> lib_config::Config {
     init_for_tests();
-    lib_database::seed::stub_ledger(path, today()).expect("a new Ledger file");
+    lib_database::seed::sample_ledger(path, today()).expect("a new Ledger file");
     config_for(path)
 }
 
@@ -756,14 +756,14 @@ impl<'a> Harness<'a> {
             app,
             logs,
             configured_level,
-            Stores::fake(FakeStores::stub(today())),
+            Stores::fake(FakeStores::sample(today())),
         )
     }
 
     /// As [`Harness::new`], on stores that leave no Unit in use, so a seeded Unit can be deleted
     /// rather than deactivated: no Account, Bill Plan, Budget or Location names one.
     pub fn without_unit_users(app: &'a mut TestAppContext) -> Self {
-        let mut fakes = FakeStores::stub(today());
+        let mut fakes = FakeStores::sample(today());
         fakes.accounts.accounts.accounts.clear();
         fakes.bills.plans.clear();
         fakes.bills.entries.clear();
@@ -787,7 +787,7 @@ impl<'a> Harness<'a> {
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
-            Stores::fake(FakeStores::stub(today())),
+            Stores::fake(FakeStores::sample(today())),
             keybindings,
         )
     }
@@ -806,7 +806,7 @@ impl<'a> Harness<'a> {
     /// As [`Harness::new`], on a Transactions store whose count of the Splits naming a Payee
     /// fails, as a Ledger file that can't be read would.
     pub fn with_unreadable_payee_usage(app: &'a mut TestAppContext) -> Self {
-        let (mut stores, count) = Stores::fake(FakeStores::stub(today()));
+        let (mut stores, count) = Stores::fake(FakeStores::sample(today()));
         stores.transactions = Box::new(MiscountedTransactions {
             inner: stores.transactions,
             payee_splits: None,
@@ -844,7 +844,7 @@ impl<'a> Harness<'a> {
     /// with `reload_fails`, so does the reload after it. [`Harness::settle_writes`] lets the
     /// Shell hear of the failure.
     pub fn with_failing_units(app: &'a mut TestAppContext, reload_fails: bool) -> Self {
-        let stub = FakeStores::stub(today());
+        let stub = FakeStores::sample(today());
         let (report, failures) = mpsc::channel();
         let written = Rc::new(Cell::new(false));
         Self::build(
@@ -881,7 +881,7 @@ impl<'a> Harness<'a> {
     /// would; the reload after it puts the stored rows back. [`Harness::settle_writes`] lets the
     /// Shell hear of the failure.
     pub fn with_failing_institutions(app: &'a mut TestAppContext) -> Self {
-        let stub = FakeStores::stub(today());
+        let stub = FakeStores::sample(today());
         let (report, failures) = mpsc::channel();
         let written = Rc::new(Cell::new(false));
         let stored = InMemoryInstitutions::stub();
@@ -921,7 +921,7 @@ impl<'a> Harness<'a> {
     /// would; the reload after it puts the stored rows back. [`Harness::settle_writes`] lets the
     /// Shell hear of the failure.
     pub fn with_failing_accounts(app: &'a mut TestAppContext) -> Self {
-        let stub = FakeStores::stub(today());
+        let stub = FakeStores::sample(today());
         let (report, failures) = mpsc::channel();
         let written = Rc::new(Cell::new(false));
         let stored = InMemoryAccounts::stub();
@@ -961,7 +961,7 @@ impl<'a> Harness<'a> {
     /// would; the reload after it puts the stored rows back. [`Harness::settle_writes`] lets the
     /// Shell hear of the failure.
     pub fn with_failing_categories(app: &'a mut TestAppContext) -> Self {
-        let stub = FakeStores::stub(today());
+        let stub = FakeStores::sample(today());
         let (report, failures) = mpsc::channel();
         let written = Rc::new(Cell::new(false));
         let stored = InMemoryCategories::stub();
@@ -1001,7 +1001,7 @@ impl<'a> Harness<'a> {
     /// the reload after it puts the stored rows back. [`Harness::settle_writes`] lets the Shell
     /// hear of the failure.
     pub fn with_failing_tags(app: &'a mut TestAppContext) -> Self {
-        let stub = FakeStores::stub(today());
+        let stub = FakeStores::sample(today());
         let (report, failures) = mpsc::channel();
         let written = Rc::new(Cell::new(false));
         let stored = lib_tags::fake::InMemoryTags::stub();
@@ -1043,7 +1043,7 @@ impl<'a> Harness<'a> {
     pub fn with_failing_inventory(app: &'a mut TestAppContext) -> Self {
         let (report, failures) = mpsc::channel();
         let written = Rc::new(Cell::new(false));
-        let fakes = FakeStores::stub(today());
+        let fakes = FakeStores::sample(today());
         let stored = fakes.inventory.clone();
         let (mut stores, _) = Stores::fake(fakes);
         stores.inventory = Box::new(FailingInventory {
@@ -1071,7 +1071,7 @@ impl<'a> Harness<'a> {
     /// the reload after it puts the stored rows back. [`Harness::settle_writes`] lets the Shell
     /// hear of the failure.
     pub fn with_failing_payees(app: &'a mut TestAppContext) -> Self {
-        let stub = FakeStores::stub(today());
+        let stub = FakeStores::sample(today());
         let (report, failures) = mpsc::channel();
         let written = Rc::new(Cell::new(false));
         let stored = lib_payees::fake::InMemoryPorts::stub().payees;
@@ -1111,7 +1111,7 @@ impl<'a> Harness<'a> {
     /// would; the reload after it puts the stored rows back. [`Harness::settle_writes`] lets the
     /// Shell hear of the failure.
     pub fn with_failing_transactions(app: &'a mut TestAppContext) -> Self {
-        let stub = FakeStores::stub(today());
+        let stub = FakeStores::sample(today());
         let (report, failures) = mpsc::channel();
         let written = Rc::new(Cell::new(false));
         let stored = stub.transactions;
@@ -1151,7 +1151,7 @@ impl<'a> Harness<'a> {
     /// the reload after it puts the stored rows back. [`Harness::settle_writes`] lets the Shell
     /// hear of the failure.
     pub fn with_failing_bills(app: &'a mut TestAppContext) -> Self {
-        let stub = FakeStores::stub(today());
+        let stub = FakeStores::sample(today());
         let (report, failures) = mpsc::channel();
         let written = Rc::new(Cell::new(false));
         let stored = stub.bills;
@@ -1193,7 +1193,7 @@ impl<'a> Harness<'a> {
     pub fn with_failing_budgets(app: &'a mut TestAppContext) -> Self {
         let (report, failures) = mpsc::channel();
         let written = Rc::new(Cell::new(false));
-        let mut fakes = FakeStores::stub(today());
+        let mut fakes = FakeStores::sample(today());
         let stored = std::mem::take(&mut fakes.budgets);
         Self::build(
             app,
@@ -1233,7 +1233,7 @@ impl<'a> Harness<'a> {
     pub fn with_failing_documents(app: &'a mut TestAppContext) -> Self {
         let (report, failures) = mpsc::channel();
         let written = Rc::new(Cell::new(false));
-        let mut fakes = FakeStores::stub(today());
+        let mut fakes = FakeStores::sample(today());
         let stored = std::mem::take(&mut fakes.documents);
         Self::build(
             app,
@@ -1271,7 +1271,7 @@ impl<'a> Harness<'a> {
     /// commit naming both, as SQLite refusing a payment would; the reloads after it put the stored
     /// rows back. [`Harness::settle_writes`] lets the Shell hear of the failure.
     pub fn with_failing_payments(app: &'a mut TestAppContext) -> Self {
-        let stub = FakeStores::stub(today());
+        let stub = FakeStores::sample(today());
         let (report, failures) = mpsc::channel();
         let written = Rc::new(Cell::new(false));
         let (transactions, bills) = (stub.transactions, stub.bills);

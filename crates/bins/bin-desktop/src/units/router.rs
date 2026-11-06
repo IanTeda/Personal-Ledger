@@ -20,6 +20,8 @@ pub(super) struct PageRouter<'a, 'b> {
     pub ports: DesktopPorts,
     pub deletion: lib_unit_deletion::SharedUnitDeletion,
     pub announcer: gpui::Entity<Announcer>,
+    /// The Clock the set price Dialog reads now from.
+    pub clock: lib_core::Clock,
     pub cx: &'a mut Context<'b, UnitsPage>,
     /// Set once a Presenter asked to show a Unit's prices view (`Some`) or close it (`None`).
     pub prices: Option<Option<UnitId>>,
@@ -49,7 +51,9 @@ impl UnitsRouter for PageRouter<'_, '_> {
             host_dialog(self.cx, |_| dialog);
             return true;
         }
-        let Some(dialog) = UnitsDialog::open(dialog, &self.ports, &self.announcer, landed) else {
+        let Some(dialog) =
+            UnitsDialog::open(dialog, &self.ports, &self.announcer, &self.clock, landed)
+        else {
             return false;
         };
         host_dialog(self.cx, |_| dialog);
@@ -80,8 +84,9 @@ pub fn units_page(
     announcer: gpui::Entity<Announcer>,
     keymap: lib_viper::keymap::Keymap<lib_units::presenter::UnitsPageEvent>,
     prices_keymap: lib_viper::keymap::Keymap<lib_units::presenter::UnitPricesEvent>,
+    clock: lib_core::Clock,
     cx: &mut gpui::App,
 ) -> gpui::Entity<UnitsPage> {
     use gpui::AppContext as _;
-    cx.new(|cx| UnitsPage::new(ports, deletion, announcer, keymap, prices_keymap, cx))
+    cx.new(|cx| UnitsPage::new(ports, deletion, announcer, keymap, prices_keymap, clock, cx))
 }
