@@ -103,7 +103,7 @@ impl BillsPage {
     /// A key or click on the page, or the page being entered: `event` as one input, committed
     /// once it is handled.
     fn send(&mut self, event: BillsPageEvent, cx: &mut Context<'_, Self>) {
-        crate::input::send(cx, |cx| self.handle(event, cx));
+        crate::input::join_or_send(cx, |cx| self.handle(event, cx));
     }
 
     /// Hands `event` to the Presenter with the Desktop's Router, then announces the Bills if it
@@ -266,7 +266,7 @@ impl BillsPage {
             return false;
         };
         let other_tab = event.tab().filter(|tab| *tab != self.presenter.tab());
-        crate::input::send(cx, |cx| {
+        crate::input::join_or_send(cx, |cx| {
             if let Some(tab) = other_tab {
                 self.handle(BillsPageEvent::ShowTab(tab), cx);
             }
@@ -341,7 +341,7 @@ impl BillsPage {
         glyphs: StatusGlyphs,
         cx: &mut Context<'_, Self>,
     ) {
-        crate::input::send(cx, |cx| {
+        crate::input::join_or_send(cx, |cx| {
             self.handle(BillsPageEvent::DisplayChanged { glyphs }, cx);
             self.handle(BillsPageEvent::SetDateStyle(date_style), cx);
         });

@@ -3,7 +3,53 @@
 //! (#820, Q5); the Clients keep what holds a toolkit's Entities and every display name, which is a
 //! Message.
 
+use lib_list_cursor::Step;
 use serde::{Deserialize, Serialize};
+
+use crate::keymap::ShellCommand;
+
+/// One movement through whichever zone has focus: a rail or the View. The same keys mean different
+/// things per zone, but the keys-to-intent mapping itself doesn't vary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Movement {
+    Next,
+    Prev,
+    First,
+    Last,
+    HalfPageDown,
+    HalfPageUp,
+    Enter,
+}
+
+impl Movement {
+    /// The movement a global command makes, `None` for one that isn't a movement.
+    pub fn of(command: ShellCommand) -> Option<Self> {
+        Some(match command {
+            ShellCommand::Move(Step::Next) => Self::Next,
+            ShellCommand::Move(Step::Prev) => Self::Prev,
+            ShellCommand::Move(Step::First) => Self::First,
+            ShellCommand::Move(Step::Last) => Self::Last,
+            ShellCommand::Move(Step::HalfPageDown) => Self::HalfPageDown,
+            ShellCommand::Move(Step::HalfPageUp) => Self::HalfPageUp,
+            ShellCommand::Select => Self::Enter,
+            _ => return None,
+        })
+    }
+
+    /// The List Cursor step this movement makes, or `None` for `Enter`, which each list handles
+    /// itself.
+    pub fn step(self) -> Option<Step> {
+        Some(match self {
+            Self::Next => Step::Next,
+            Self::Prev => Step::Prev,
+            Self::First => Step::First,
+            Self::Last => Step::Last,
+            Self::HalfPageDown => Step::HalfPageDown,
+            Self::HalfPageUp => Step::HalfPageUp,
+            Self::Enter => return None,
+        })
+    }
+}
 
 /// The thirteen places the primary rail can select. `Noun::default()` is `Dashboard`, the app's
 /// one home noun. Serializable, since the Desktop keeps the noun across a restart. Its display name is a
@@ -99,6 +145,13 @@ impl Noun {
         )
     }
 
+    /// Whether showing this noun needs a Ledger open (#977): every noun but the Dashboard, whose
+    /// no Ledger open content offers `:open` and `:new`, and Settings, for its This device pages.
+    /// Every way onto such a noun is refused with none open.
+    pub fn needs_ledger(self) -> bool {
+        !matches!(self, Noun::Dashboard | Noun::Settings)
+    }
+
     /// Whether this noun is a "not yet built" placeholder view (#420): the rail row and its `g`
     /// binding are live, but the surface itself is a later map's work.
     pub fn is_placeholder(self) -> bool {
@@ -177,6 +230,32 @@ mod tests {
     enum Page {
         General,
         Units,
+    }
+
+    #[test]
+    fn each_move_command_is_its_movement_and_the_step_comes_back() {
+        for step in [
+            Step::Next,
+            Step::Prev,
+            Step::First,
+            Step::Last,
+            Step::HalfPageDown,
+            Step::HalfPageUp,
+        ] {
+            let movement = Movement::of(ShellCommand::Move(step));
+            assert_eq!(movement.and_then(Movement::step), Some(step));
+        }
+        assert_eq!(Movement::of(ShellCommand::Select), Some(Movement::Enter));
+        assert_eq!(Movement::of(ShellCommand::Help), None);
+    }
+
+    #[test]
+    fn only_the_dashboard_and_settings_stand_without_a_ledger() {
+        let standing: Vec<Noun> = Noun::ALL
+            .into_iter()
+            .filter(|noun| !noun.needs_ledger())
+            .collect();
+        assert_eq!(standing, [Noun::Dashboard, Noun::Settings]);
     }
 
     #[test]

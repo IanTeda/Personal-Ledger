@@ -90,7 +90,7 @@ impl CategoriesPage {
 
     /// A key or click on the page: `event` as one input, committed once it is handled.
     fn send(&mut self, event: CategoriesPageEvent, cx: &mut Context<'_, Self>) {
-        crate::input::send(cx, |cx| self.handle(event, cx));
+        crate::input::join_or_send(cx, |cx| self.handle(event, cx));
     }
 
     /// Hands `event` to the Presenter with the Desktop's Router, then announces whatever it

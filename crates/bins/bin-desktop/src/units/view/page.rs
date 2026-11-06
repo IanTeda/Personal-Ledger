@@ -91,7 +91,7 @@ impl UnitsPage {
 
     /// A key or click on the page: `event` as one input, committed once it is handled.
     fn send(&mut self, event: UnitsPageEvent, cx: &mut Context<'_, Self>) {
-        crate::input::send(cx, |cx| self.handle(event, cx));
+        crate::input::join_or_send(cx, |cx| self.handle(event, cx));
     }
 
     /// Hands `event` to the Presenter with the Desktop's Router, then announces whatever it
@@ -115,7 +115,7 @@ impl UnitsPage {
 
     /// A key or click on the prices view: `event` as one input, as [`Self::send`].
     fn send_prices(&mut self, event: UnitPricesEvent, cx: &mut Context<'_, Self>) {
-        crate::input::send(cx, |cx| self.handle_prices(event, cx));
+        crate::input::join_or_send(cx, |cx| self.handle_prices(event, cx));
     }
 
     fn handle_prices(&mut self, event: UnitPricesEvent, cx: &mut Context<'_, Self>) {
@@ -226,7 +226,7 @@ impl Page for UnitsPage {
         let Some(event) = self.keymap.event_for(command) else {
             return false;
         };
-        crate::input::send(cx, |cx| {
+        crate::input::join_or_send(cx, |cx| {
             if self.prices.is_some() {
                 self.handle_prices(UnitPricesEvent::Back, cx);
             }

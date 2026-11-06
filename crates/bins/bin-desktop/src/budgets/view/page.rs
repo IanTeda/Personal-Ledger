@@ -109,7 +109,7 @@ impl BudgetsPage {
     /// A key or click on the page, or the Shell telling it something: `event` as one input,
     /// committed once it is handled.
     fn send(&mut self, event: BudgetsPageEvent, cx: &mut Context<'_, Self>) {
-        crate::input::send(cx, |cx| self.handle(event, cx));
+        crate::input::join_or_send(cx, |cx| self.handle(event, cx));
     }
 
     /// Hands `event` to the Presenter with the Desktop's Router, then announces the Budgets, as
@@ -191,7 +191,7 @@ impl BudgetsPage {
             return false;
         };
         let other_tab = event.tab().filter(|tab| *tab != self.presenter.tab());
-        crate::input::send(cx, |cx| {
+        crate::input::join_or_send(cx, |cx| {
             if let Some(tab) = other_tab {
                 self.handle(BudgetsPageEvent::ShowTab(tab), cx);
             }

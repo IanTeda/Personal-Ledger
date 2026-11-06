@@ -3,24 +3,14 @@
 //! its drawing (`shell::view::toast`).
 
 use chrono::Local;
-use gpui::{App, AppContext as _, Context};
+use gpui::{App, Context};
 use lib_toast::{Notice, ToastKind};
 
 use super::Root;
-use lib_shell::ToastHistoryPresenter;
 
-use crate::shell::view::dialog_entity::DialogHandle;
 use crate::shell::view::toast::history::ToastHistoryDialog;
 
 impl Root {
-    /// Opens the session Toast history as a modal, which pauses the Toast timers.
-    pub(super) fn open_toast_history(&mut self, cx: &mut Context<'_, Self>) {
-        self.presenter.close_palette();
-        let presenter = ToastHistoryPresenter::open(self.presenter.toasts().history());
-        let dialog = cx.new(|_| ToastHistoryDialog::new(presenter));
-        self.host_dialog(DialogHandle::new(dialog), cx);
-    }
-
     /// Shows every Notice the Routers queued since the last drain (`crate::notices`) on the Shell's
     /// Presenter, stamped with the local time for the Toast history. Each input's `send` runs it
     /// once the input is handled and committed (`crate::input`). An open Toast history card reads
@@ -46,12 +36,9 @@ impl Root {
     /// Says a Ledger file start-up or `:open` was told to open couldn't be, as an Error Toast naming
     /// it and why (#977). The Shell keeps whatever Ledger was open, or none.
     pub fn ledger_open_failed(&mut self, failure: &crate::OpenFailure) {
-        self.raise_toast(
-            ToastKind::Error,
-            lib_locale::msg::toast_ledger_open_failed(
-                &super::explorer::file_name(&failure.path),
-                &failure.reason,
-            ),
+        self.presenter.show(
+            super::root_router::ledger_open_failed(failure),
+            Local::now(),
         );
     }
 

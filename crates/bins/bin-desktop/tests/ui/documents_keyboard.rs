@@ -1057,3 +1057,29 @@ fn d_on_an_unfiled_inbox_row_deletes_it(app: &mut TestAppContext) {
     assert_eq!(page.inbox_rows, before - 1);
     assert_ne!(page.selected_file.as_deref(), Some(STRONG_RECEIPT));
 }
+
+/// `/` reaches the Library's Search through the root Router, inside the key's one input, so it
+/// commits once and opens no input of its own.
+#[gpui::test]
+fn slash_opens_the_search_in_one_input_committed_once(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+
+    let before = ui.commits();
+    ui.press("/");
+
+    assert_eq!(mode(&mut ui), InputMode::Search);
+    assert_eq!(ui.commits(), before + 1);
+}
+
+/// `esc` backs the list out to the index through the root Router, inside the key's one input.
+#[gpui::test]
+fn esc_on_the_list_is_one_input_committed_once(app: &mut TestAppContext) {
+    let mut ui = on_documents(app);
+    assert!(!ui.documents().index_focused);
+
+    let before = ui.commits();
+    ui.press("escape");
+
+    assert!(ui.documents().index_focused, "`esc` backs out to the index");
+    assert_eq!(ui.commits(), before + 1);
+}

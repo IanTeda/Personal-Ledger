@@ -12,8 +12,11 @@
 //! every Dialog's keys resolve through ([`dialog`]). It holds the global keymap and resolves each
 //! key the Client offers it ([`keymap`], [`ShellPresenter::key`]), with the `g` prefix the Client's
 //! timer ends ([`ShellInput::PrefixExpired`]), and owns the [`Noun`] and [`ActiveView`] the Client
-//! navigates by ([`navigation`]). It holds the command palette ([`palette`]): its input, matching,
-//! selection and history, over the Commands the Client lists and runs. It holds the file explorer
+//! navigates by ([`navigation`]). It runs each global command itself, inside the input the Client is
+//! handling, and reaches a View or the frame through [`ShellRouter`]'s typed methods
+//! ([`ShellPresenter::command`]). It holds the command palette ([`palette`]): its input, matching,
+//! selection and history, over the Commands the Client lists, running its own and handing the
+//! Client's to the Router ([`PaletteEffect`]). It holds the file explorer
 //! behind `:open` and `:new` ([`explorer`]), reading folders through [`LedgerFolders`]. A Notice from a View not
 //! yet a module and a failed write pass through it to the Router. It holds the rail's badge counts, read through [`ShellRailCounts`]
 //! after each input while a Ledger is open. No module depends on it; only the bins and the adapter
@@ -41,15 +44,15 @@ pub use explorer::{
 pub use help::{HelpGroup, HelpPresenter, HelpViewModel};
 pub use keymap::{ShellCommand, global_keymap};
 pub use nav::{ContextSelection, FocusZone, InputMode, NavState};
-pub use navigation::{ActiveView, Noun};
+pub use navigation::{ActiveView, Movement, Noun};
 pub use palette::{
-    PaletteEntry, PaletteEntryRow, PaletteKeys, PaletteOutcome, PaletteRow, PaletteRun,
-    PaletteViewModel,
+    Destination, PaletteEffect, PaletteEntry, PaletteEntryRow, PaletteKeys, PaletteOutcome,
+    PaletteRow, PaletteRun, PaletteViewModel,
 };
 pub use presenter::{
     DialogInput, NavInput, ShellInput, ShellKey, ShellPresenter, ShellViewModel, ToastInput,
 };
-pub use protocols::{RailCounts, ShellRailCounts, ShellRouter};
+pub use protocols::{RailCounts, ShellDialog, ShellRailCounts, ShellRouter};
 pub use rail::RailMode;
 pub use toast_history::{ToastHistoryPresenter, ToastHistoryRow, ToastHistoryViewModel};
 pub use window_size::WindowSize;

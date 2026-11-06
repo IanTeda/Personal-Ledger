@@ -49,6 +49,7 @@ mod view_events;
 mod write_failures;
 
 use crate::navigation::command;
+use crate::navigation::nav::NounLabel;
 pub use date_clock::{DATE_POLL, wall_clock};
 pub use key_dispatch::PENDING_G_TIMEOUT;
 pub use log_feed::LOG_COALESCE;
@@ -257,6 +258,7 @@ impl Root {
             _settings_subscriptions,
             presenter: {
                 let mut presenter = ShellPresenter::new(clock, nav);
+                presenter.set_noun_label(NounLabel::label);
                 presenter.set_palette_entries(command::palette_entries(
                     &lib_config::KeyBindingConfig::default(),
                 ));
@@ -270,26 +272,14 @@ impl Root {
     /// Opens `ledger` as the Open Ledger, building everything on it under the `[keybindings]` in
     /// effect, in place of any Ledger open before, which is dropped once the new one is built.
     /// Start-up calls it on the file it opened; `:open` on the file picked, once it opened.
+    /// The root Router does it inside the input of `:open` or `:new`; a Toast this raises (a
+    /// replaced Ledger's lost write) shows at once.
     pub fn open_ledger(&mut self, ledger: LedgerFile, cx: &mut Context<'_, Self>) {
-        let clock = self.presenter.clock().clone();
-        let keybindings = self.keybindings.clone();
-        let opened = OpenLedger::build(ledger, &keybindings, &clock, &self.settings, cx);
-        self.remember_documents_state(cx);
-        if let Some(replaced) = self.open.replace(opened) {
-            // Reported before it drops, as `:close` does, so a write it lost is never silent.
-            self.report_failures_on_close(&replaced);
-        }
-        if let Some((mode, scope, sort)) = self.documents_state {
-            self.set_documents_state(mode, scope, sort, cx);
-        }
-        self.last_ledger_forgotten = false;
-        // The Views that read their keys and Display Preferences after construction take
-        // `[keybindings]` and the Preferences here, so the Open Ledger comes up under them whoever
-        // opens it.
-        self.set_keymaps(&keybindings, cx);
-        let display = self.display_output(cx);
-        self.push_display_preferences(display, cx);
+        self.with_router(WindowSize::Large, cx, |_, router| {
+            router.install_ledger(ledger);
+        });
         self.refresh_rail_counts(true, cx);
+        self.drain_notices(cx);
     }
 
     /// Reads the rail's badge counts into the Shell's Presenter from the Open Ledger's stores, or
@@ -308,52 +298,6 @@ impl Root {
             .map(|open| &open.rail_reads as &dyn lib_shell::ShellRailCounts);
         self.presenter
             .refresh_rail_counts(reads, changed || announced);
-    }
-
-    /// Closes the Open Ledger (`:close`): flushes its writes, drops everything built on it and
-    /// lands on the Dashboard's no Ledger open content. A write that failed since the last poll
-    /// raises one Error Toast, since there is nothing left to put back. The remembered last Ledger
-    /// is cleared, so the next run starts with none.
-    pub(super) fn close_ledger(&mut self, cx: &mut Context<'_, Self>) {
-        let Some(open) = self.open.take() else {
-            return;
-        };
-        self.documents_state = Some(open.views.documents.read(cx).persisted());
-        self.report_failures_on_close(&open);
-        crate::input::close_ledger(cx);
-        // Dropped here, once the failures are read: the writer flushes again, which finds nothing.
-        drop(open);
-        self.last_ledger_forgotten = true;
-        self.settings.update(cx, |view, cx| view.close_ledger(cx));
-        self.set_last_ledger(None, cx);
-        self.show_noun(Noun::Dashboard, cx);
-        // Every place in the history was on the closed Ledger, so Back and Forward must not reach
-        // one with none open.
-        self.presenter.forget_history();
-        self.refresh_rail_counts(true, cx);
-        cx.notify();
-    }
-
-    /// Flushes the closing Ledger `open` and reports a write that failed since the last poll: each
-    /// is logged, and one Error Toast names the file, since there is nothing left to put back.
-    /// `:close` calls it, and `:open` or `:new` on the Ledger they replace.
-    fn report_failures_on_close(&mut self, open: &OpenLedger) {
-        let failures = open.flush_and_take_failures();
-        for failure in &failures {
-            tracing::error!(
-                error = %failure.error,
-                domains = ?failure.domains,
-                "A write failed as the Ledger closed"
-            );
-        }
-        tracing::info!(path = ?open.path(), "Closed the Ledger file");
-        if !failures.is_empty() {
-            let name = open.path().map(explorer::file_name).unwrap_or_default();
-            self.raise_toast(
-                lib_toast::ToastKind::Error,
-                crate::msg::desktop_toast_write_failed_on_close(&name),
-            );
-        }
     }
 
     /// Whether a Ledger is open: whether `Root` holds an Open Ledger.
@@ -393,9 +337,9 @@ impl Root {
     }
 
     /// Refuses showing `noun` while no Ledger is open, unless it stands without one
-    /// ([`crate::navigation::nav::needs_ledger`]). Whether it refused.
+    /// ([`Noun::needs_ledger`]). Whether it refused.
     fn refuse_noun_without_ledger(&mut self, noun: Noun) -> bool {
-        crate::navigation::nav::needs_ledger(noun) && self.refuse_without_ledger()
+        noun.needs_ledger() && self.refuse_without_ledger()
     }
 
     /// The Open Ledger, for the test support and snapshots, which a test reads only on a Shell
@@ -424,13 +368,6 @@ impl Root {
             open.views
                 .documents
                 .update(cx, |page, cx| page.set_persisted(mode, scope, sort, cx));
-        }
-    }
-
-    /// Keeps the Open Ledger's Documents mode, scope and sort for the Ledger opened next.
-    fn remember_documents_state(&mut self, cx: &App) {
-        if let Some(open) = &self.open {
-            self.documents_state = Some(open.views.documents.read(cx).persisted());
         }
     }
 
@@ -566,43 +503,19 @@ impl Root {
             .set_explorer_start(Some(folder), dirs::home_dir());
     }
 
-    /// Tells the General page which Ledger file the state file will remember at quit.
-    fn set_last_ledger(&mut self, last_ledger: Option<std::path::PathBuf>, cx: &mut App) {
-        self.settings
-            .update(cx, |view, cx| view.set_last_ledger(last_ledger, cx));
-    }
-
     /// The Display output, which Settings › Display's Presenter holds.
     fn display_output(&self, cx: &App) -> DisplayOutput {
         self.settings.read(cx).display_output(cx)
     }
 
     /// The global keys and the keys every module Dialog shares, under `config`'s overrides, which
-    /// the palette's key column reads too.
-    /// The Transactions filter popover reads its keys through the Dialog keymap too, until it is a
-    /// module Dialog (#923).
+    /// the palette's key column reads too, and the keys of Settings and the Open Ledger's Views.
     pub fn set_keymaps(&mut self, config: &lib_config::KeyBindingConfig, cx: &mut App) {
         self.keybindings = config.clone();
         self.presenter.set_keymap(config);
         self.presenter
             .set_palette_entries(command::palette_entries(config));
-        self.settings
-            .update(cx, |view, cx| view.set_keymaps(config, cx));
-        let Some(open) = &self.open else {
-            return;
-        };
-        open.views
-            .transactions
-            .update(cx, |view, _| view.set_keymaps(config));
-        open.views
-            .import
-            .update(cx, |view, _| view.set_keymaps(config));
-        open.views
-            .budgets
-            .update(cx, |page, _| page.set_keymaps(config));
-        open.views
-            .documents
-            .update(cx, |page, _| page.set_keymaps(config));
+        root_router::set_view_keymaps(&self.settings, self.open.as_ref(), config, cx);
     }
 
     /// Empties the Inventory by removing every Location through `lib-inventory`'s Interactor, so
@@ -757,11 +670,7 @@ impl Root {
     /// The active View as `Root` forwards to it (ADR-0037): with no Ledger open, Settings or the
     /// no Ledger open content.
     fn active_view_entity(&self, cx: &App) -> ActiveViewEntity {
-        ActiveViewEntity::new(
-            self.active_view(cx),
-            self.open.as_ref().map(|open| &open.views),
-            &self.settings,
-        )
+        root_router::active_view_entity(self.nav().noun(), &self.settings, self.open.as_ref(), cx)
     }
 
     /// Hands the Toasts Preference to the Toasts, after a change on Settings › General or
@@ -774,29 +683,7 @@ impl Root {
     /// Hands the Display output to the Views that read it, after a Settings change; with no Ledger
     /// open there are none, and opening one hands it over.
     fn push_display_preferences(&mut self, display: DisplayOutput, cx: &mut App) {
-        let Some(open) = &self.open else {
-            return;
-        };
-        let (date_style, glyphs, density) = (
-            display.date_style,
-            display.status_glyphs,
-            display.row_density,
-        );
-        open.views
-            .dashboard
-            .update(cx, |view, cx| view.set_display(date_style, glyphs, cx));
-        open.views
-            .bills
-            .update(cx, |view, cx| view.set_display(date_style, glyphs, cx));
-        open.views.transactions.update(cx, |view, cx| {
-            view.set_display(date_style, glyphs, density, cx)
-        });
-        open.views
-            .documents
-            .update(cx, |view, cx| view.set_display(date_style, cx));
-        open.views
-            .budgets
-            .update(cx, |page, cx| page.set_display(date_style, cx));
+        root_router::push_display_preferences(self.open.as_ref(), display, cx);
     }
 }
 

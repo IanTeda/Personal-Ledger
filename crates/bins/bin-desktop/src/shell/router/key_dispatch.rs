@@ -4,7 +4,7 @@
 use std::time::Duration;
 
 use gpui::{Context, KeyDownEvent, Keystroke};
-use lib_shell::{DialogCommand, PaletteOutcome, ShellCommand, ShellInput, ShellKey};
+use lib_shell::{DialogCommand, ExplorerOutcome, ShellCommand, ShellInput, ShellKey};
 use lib_toast::ToastKind;
 
 use super::Root;
@@ -12,11 +12,7 @@ use crate::input::{self, KeyRoute, Offered};
 use crate::navigation::chord::chord;
 use crate::shell::view::dialog_entity::DialogHandle;
 use crate::{
-    navigation::{
-        explorer::FsLedgerFolders,
-        movement::Movement,
-        nav::{FocusZone, InputMode},
-    },
+    navigation::nav::{FocusZone, InputMode},
     shell::view::dialog_entity::DialogKey,
     shell::view::window_size::WindowSize,
     view::active::ActiveViewEntity,
@@ -74,53 +70,6 @@ impl Root {
         redraw || cleared
     }
 
-    /// Acts on a global command, one the Shell keeps or one it fell back on. Returns whether the
-    /// window needs redrawing.
-    pub(super) fn run_global(
-        &mut self,
-        command: ShellCommand,
-        window_size: WindowSize,
-        cx: &mut Context<'_, Self>,
-    ) -> bool {
-        match command {
-            ShellCommand::Help => self.open_help(cx),
-            ShellCommand::Command => self.open_palette(),
-            ShellCommand::Search => self.start_search(cx),
-            // Mirrors the TopBar's own rail-toggle button (`Root::handle_toggle_rail`).
-            ShellCommand::ToggleRail => self.toggle_rail(window_size, cx),
-            ShellCommand::FocusPrevious => self.navigate(NavInput::FocusPrevious {
-                ledger_open: self.ledger_open(),
-            }),
-            ShellCommand::FocusNext => self.navigate(NavInput::FocusNext {
-                ledger_open: self.ledger_open(),
-            }),
-            // `Esc` asks the View, since only it knows what of its own is open.
-            ShellCommand::Back => {
-                return (self.view_owns_mode() || self.view_has_keys())
-                    && self.active_view_entity(cx).escape(cx);
-            }
-            // The Presenter clears its own Toasts, so the command never reaches here.
-            ShellCommand::DismissToasts => return false,
-            ShellCommand::ToastHistory => self.open_toast_history(cx),
-            ShellCommand::Jump(noun) => {
-                if self.refuse_noun_without_ledger(noun) {
-                    return true;
-                }
-                self.navigate(NavInput::Show(noun));
-                self.reset_view_scroll(cx);
-            }
-            ShellCommand::Insert => {
-                self.navigate(NavInput::EnterMode(InputMode::Insert));
-            }
-            ShellCommand::Move(_) | ShellCommand::Select => {
-                if let Some(movement) = Movement::of(command) {
-                    self.apply_movement(movement, cx);
-                }
-            }
-        }
-        true
-    }
-
     /// `Esc` in a mode, once the View has kept nothing open: closes the palette, the file explorer
     /// and any Dialog without applying it, and leaves the mode.
     fn close_popups_and_exit_mode(&mut self) {
@@ -168,19 +117,6 @@ impl Root {
             || self.view_takes_key(keystroke)
     }
 
-    /// `/` (or the hint strip's `/ search`): the active View's Search, when it has one. A View
-    /// with no Search leaves `/` inert rather than opening a mode with no box.
-    pub(super) fn start_search(&mut self, cx: &mut Context<'_, Self>) {
-        let view = self.active_view_entity(cx);
-        if !matches!(view, ActiveViewEntity::Shell(_)) {
-            if view.start_search(cx) {
-                self.navigate(NavInput::EnterViewMode(InputMode::Search));
-            }
-            return;
-        }
-        self.navigate(NavInput::EnterMode(InputMode::Search));
-    }
-
     /// The active View's own keys, taken ahead of the Shell's fallback.
     fn handle_view_key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
         match self.active_view_entity(cx) {
@@ -194,10 +130,10 @@ impl Root {
         }
     }
 
-    /// A key while the palette is open: its Presenter resolves it through the Dialog keymap and
-    /// its own `history_back`, and types any key neither binds. The palette takes every key, so a
-    /// key it gives no meaning to goes no further. A Command it closes on is run here, through
-    /// [`Self::run_command`]; otherwise the row list is kept scrolled onto the selected row.
+    /// A key while the palette is open, as one input: its Presenter resolves it through the
+    /// Dialog keymap and its own `history_back`, types any key neither binds, and runs the Command
+    /// it closes on through the root Router. The palette takes every key, so a key it gives no
+    /// meaning to goes no further. The row list is kept scrolled onto the selected row.
     fn handle_palette_key(
         &mut self,
         keystroke: &Keystroke,
@@ -205,36 +141,37 @@ impl Root {
         cx: &mut Context<'_, Self>,
     ) -> bool {
         let chord = chord(keystroke).unwrap_or_default();
-        match self.presenter.palette_key(&chord, typed_char(keystroke)) {
-            PaletteOutcome::Ignored => false,
-            PaletteOutcome::Changed => {
-                if let Some(row) = self
-                    .presenter
-                    .palette()
-                    .and_then(|model| model.selected_row)
-                {
-                    self.state.palette_scroll.scroll_to_item(row);
-                }
-                true
-            }
-            PaletteOutcome::Closed => true,
-            PaletteOutcome::Run(run) => {
-                self.run_command(run.name, run.effect, &run.argument, window_size, cx);
-                true
-            }
+        let typed = typed_char(keystroke);
+        let changed = self.send_with_router(window_size, cx, |presenter, router| {
+            presenter.palette_key(&chord, typed, router)
+        });
+        if let Some(row) = self
+            .presenter
+            .palette()
+            .and_then(|model| model.selected_row)
+        {
+            self.state.palette_scroll.scroll_to_item(row);
         }
+        changed
     }
 
-    /// A key while the file explorer is open: its Presenter resolves it through the Dialog keymap,
-    /// `back` closing it, and in `:new` types any key the keymap doesn't bind into the File name,
-    /// select creating the file, as Create does. `:open`'s explorer picks a file by mouse alone.
-    /// The explorer takes every key, so a key it gives no meaning to goes no further.
-    fn handle_explorer_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+    /// A key while the file explorer is open, as one input: its Presenter resolves it through the
+    /// Dialog keymap, `back` closing it, and in `:new` types any key the keymap doesn't bind into
+    /// the File name, select creating the file through the root Router, as Create does. `:open`'s
+    /// explorer picks a file by mouse alone. The explorer takes every key, so a key it gives no
+    /// meaning to goes no further.
+    fn handle_explorer_key(
+        &mut self,
+        keystroke: &Keystroke,
+        window_size: WindowSize,
+        cx: &mut Context<'_, Self>,
+    ) -> bool {
         let chord = chord(keystroke).unwrap_or_default();
-        let outcome = self
-            .presenter
-            .explorer_key(&chord, typed_char(keystroke), &FsLedgerFolders);
-        self.explorer_outcome(outcome, cx)
+        let typed = typed_char(keystroke);
+        let outcome = self.send_with_router(window_size, cx, |presenter, router| {
+            presenter.explorer_key(&chord, typed, router)
+        });
+        outcome != ExplorerOutcome::Ignored
     }
 
     /// Routes a keystroke while `InputMode::Search` is active (step 2, mirroring
@@ -307,7 +244,7 @@ impl KeyRoute for Keys<'_, '_> {
             return Some(shell.handle_palette_key(self.keystroke, self.window_size, self.cx));
         }
         if shell.presenter.explorer_open() {
-            return Some(shell.handle_explorer_key(self.keystroke, self.cx));
+            return Some(shell.handle_explorer_key(self.keystroke, self.window_size, self.cx));
         }
         if self.keystroke.key == "escape" {
             if !(shell.view_owns_mode() && shell.active_view_entity(self.cx).escape(self.cx)) {
@@ -335,8 +272,8 @@ impl KeyRoute for Keys<'_, '_> {
         Some(taken)
     }
 
-    /// The Shell's Presenter resolves the key through the global keymap, as one input; the root
-    /// Router hands back the commands it kept, which the Shell then acts on.
+    /// The Shell's Presenter resolves the key through the global keymap and runs a command it
+    /// keeps through the root Router, inside the key's one input.
     fn global(&mut self) -> Offered {
         let shell = &mut *self.shell;
         // Debug builds only: F9 raises each Kind in turn, to eyeball the layer before real call
@@ -356,15 +293,8 @@ impl KeyRoute for Keys<'_, '_> {
         };
         // Dropping the timer cancels it, so it can't end a prefix begun by this key.
         shell.prefix_timer = None;
-        let (answer, ran) = shell.resolve_key(&chord, self.cx);
-        match answer {
-            ShellKey::Taken => {
-                let mut redraw = true;
-                for command in ran {
-                    redraw = shell.run_global(command, self.window_size, self.cx);
-                }
-                Offered::Took(redraw)
-            }
+        match shell.resolve_key(&chord, self.window_size, self.cx) {
+            ShellKey::Taken => Offered::Took(true),
             ShellKey::Prefixed => {
                 shell.start_prefix_timer(self.cx);
                 Offered::Took(false)
@@ -389,8 +319,11 @@ impl KeyRoute for Keys<'_, '_> {
 
     fn fall_back(&mut self, fallback: Option<ShellCommand>, sequence: bool) -> bool {
         let shell = &mut *self.shell;
+        // The Shell's Presenter runs the command it falls back on, as one input.
         if let Some(command) = fallback {
-            return shell.run_global(command, self.window_size, self.cx);
+            return shell.send_with_router(self.window_size, self.cx, |presenter, router| {
+                presenter.command(command, router)
+            });
         }
         !sequence
             && match shell.active_view_entity(self.cx) {

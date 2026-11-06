@@ -10,22 +10,64 @@ use chrono::NaiveDate;
 use lib_toast::{Notice, Notify};
 
 use crate::explorer::{EntryKind, FolderEntry, FolderUnreadable, LedgerFolders};
-use crate::keymap::ShellCommand;
-use crate::protocols::{RailCounts, ShellRailCounts, ShellRouter};
+use crate::help::HelpGroup;
+use crate::navigation::{Movement, Noun};
+use crate::palette::PaletteRun;
+use crate::protocols::{RailCounts, ShellDialog, ShellRailCounts, ShellRouter};
+use crate::window_size::WindowSize;
 
-/// One call the Presenter made on its Router, in order.
+/// One call the Presenter made on its Router, in order. The Router's questions (whether a Ledger
+/// is open, the context rail's count, the folders) aren't calls.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Routed {
     MonthTurned(NaiveDate),
     Notice(Notice),
     WriteFailed(String),
-    Ran(ShellCommand),
     NotAJump(String),
+    RefusedWithoutLedger,
+    ToggledRail,
+    StartedSearch(Noun),
+    ViewBack(Noun),
+    Moved(Noun, Movement),
+    ViewScrollReset(Noun),
+    HelpGroup(Noun),
+    Hosted(ShellDialog),
+    ClosedLedger,
+    RanEffect(PaletteRun<&'static str>),
+    OpenedLedger(PathBuf),
+    CreatedLedger(PathBuf),
 }
 
-#[derive(Debug, Default)]
+/// A root Router that records each call and answers as a test set it: by default a Ledger is
+/// open, every View has a Search and takes `esc`, and every file opens.
+#[derive(Debug)]
 pub struct RecordingRouter {
     pub routed: Vec<Routed>,
+    pub ledger_open: bool,
+    pub has_search: bool,
+    pub takes_back: bool,
+    pub context_rows: usize,
+    pub help_group: Option<HelpGroup>,
+    /// What [`ShellRouter::toggle_rail`] says the frame draws at.
+    pub drawn_at: (WindowSize, bool),
+    pub opens: bool,
+    pub folders: FakeLedgerFolders,
+}
+
+impl Default for RecordingRouter {
+    fn default() -> Self {
+        Self {
+            routed: Vec::new(),
+            ledger_open: true,
+            has_search: true,
+            takes_back: true,
+            context_rows: 0,
+            help_group: None,
+            drawn_at: (WindowSize::Large, false),
+            opens: true,
+            folders: FakeLedgerFolders::default(),
+        }
+    }
 }
 
 impl Notify for RecordingRouter {
@@ -37,6 +79,8 @@ impl Notify for RecordingRouter {
 impl ShellRouter for RecordingRouter {
     /// A test's failure is its description.
     type Failure = String;
+    /// A test's Client effect is its name.
+    type Effect = &'static str;
 
     fn month_turned(&mut self, today: NaiveDate) {
         self.routed.push(Routed::MonthTurned(today));
@@ -46,12 +90,74 @@ impl ShellRouter for RecordingRouter {
         self.routed.push(Routed::WriteFailed(failure));
     }
 
-    fn run(&mut self, command: ShellCommand) {
-        self.routed.push(Routed::Ran(command));
-    }
-
     fn not_a_jump(&mut self, sequence: String) {
         self.routed.push(Routed::NotAJump(sequence));
+    }
+
+    fn ledger_open(&self) -> bool {
+        self.ledger_open
+    }
+
+    fn refused_without_ledger(&mut self) {
+        self.routed.push(Routed::RefusedWithoutLedger);
+    }
+
+    fn toggle_rail(&mut self) -> (WindowSize, bool) {
+        self.routed.push(Routed::ToggledRail);
+        self.drawn_at
+    }
+
+    fn start_search(&mut self, noun: Noun) -> bool {
+        self.routed.push(Routed::StartedSearch(noun));
+        self.has_search
+    }
+
+    fn view_back(&mut self, noun: Noun) -> bool {
+        self.routed.push(Routed::ViewBack(noun));
+        self.takes_back
+    }
+
+    fn move_selection(&mut self, noun: Noun, movement: Movement) {
+        self.routed.push(Routed::Moved(noun, movement));
+    }
+
+    fn context_rail_count(&self, _noun: Noun) -> usize {
+        self.context_rows
+    }
+
+    fn reset_view_scroll(&mut self, noun: Noun) {
+        self.routed.push(Routed::ViewScrollReset(noun));
+    }
+
+    fn help_group(&mut self, noun: Noun) -> Option<HelpGroup> {
+        self.routed.push(Routed::HelpGroup(noun));
+        self.help_group.clone()
+    }
+
+    fn host_dialog(&mut self, dialog: ShellDialog) {
+        self.routed.push(Routed::Hosted(dialog));
+    }
+
+    fn close_ledger(&mut self) {
+        self.routed.push(Routed::ClosedLedger);
+    }
+
+    fn run_effect(&mut self, run: PaletteRun<&'static str>) {
+        self.routed.push(Routed::RanEffect(run));
+    }
+
+    fn folders(&self) -> &dyn LedgerFolders {
+        &self.folders
+    }
+
+    fn open_ledger(&mut self, path: &Path) -> bool {
+        self.routed.push(Routed::OpenedLedger(path.to_path_buf()));
+        self.opens
+    }
+
+    fn create_ledger(&mut self, path: &Path) -> bool {
+        self.routed.push(Routed::CreatedLedger(path.to_path_buf()));
+        self.opens
     }
 }
 

@@ -13,7 +13,7 @@ pub type NavState = lib_shell::NavState<SettingsPage>;
 /// open content offers `:open` and `:new`, and Settings, for its This device pages. The rail draws
 /// such a noun muted with none open, and every way onto it is refused.
 pub fn needs_ledger(noun: Noun) -> bool {
-    !matches!(noun, Noun::Dashboard | Noun::Settings)
+    noun.needs_ledger()
 }
 
 /// A [`Noun`]'s name as the Desktop shows it, a Message: the Noun itself is `lib-shell`'s.

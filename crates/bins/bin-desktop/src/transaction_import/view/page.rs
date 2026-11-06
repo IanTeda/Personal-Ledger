@@ -129,7 +129,7 @@ impl ImportPage {
 
     /// A key or click as one input, committed once it is handled.
     fn send(&mut self, event: ImportEvent, cx: &mut Context<'_, Self>) {
-        crate::input::send(cx, |cx| self.handle(event, cx));
+        crate::input::join_or_send(cx, |cx| self.handle(event, cx));
     }
 
     /// Hands `event` to the Presenter, then follows what it did: the selected row into view, the

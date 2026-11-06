@@ -32,8 +32,12 @@
 //!
 //! Before any step, the Shell's Presenter hears the key arrive and clears the status message, so a
 //! message the key sets answers it alone. The Notices drain into the Presenter's Toast stack and
-//! status line. Halfway state: the file a palette Command or the file explorer chooses is still
-//! `Root`'s to act on, until the root Router acts on each command itself (#1065).
+//! status line.
+//!
+//! The Shell's own commands act inside the key's one input too: the root Router acts on each global
+//! command, a palette Command and the file the explorer chose from inside the `send` (or, for the
+//! global keymap, the [`offer`]) the key arrived in, so a View or module it reaches joins that
+//! input rather than sending its own (#1065).
 
 use std::borrow::BorrowMut;
 use std::rc::Rc;
@@ -113,8 +117,19 @@ pub(crate) fn join_or_send<C: BorrowMut<App>, R>(
 /// end, since the Shell may be the Entity handling the input. Without a door (a unit test that
 /// builds a part with no Shell), it only runs `handle`.
 pub(crate) fn send<C: BorrowMut<App>, R>(cx: &mut C, handle: impl FnOnce(&mut C) -> R) -> R {
+    offer(cx, |cx| (handle(cx), true))
+}
+
+/// Delivers an input that may decline, as [`send`] does: `handle` says whether it took the input.
+/// One it took commits once and drains; one it declined commits nothing and drains nothing, so the
+/// step of the key route that takes the key next is its one input. The Shell's global keymap
+/// offers each key this way, passing on most keys without a Router call.
+pub(crate) fn offer<C: BorrowMut<App>, R>(
+    cx: &mut C,
+    handle: impl FnOnce(&mut C) -> (R, bool),
+) -> R {
     if !cx.borrow_mut().has_global::<Door>() {
-        return handle(cx);
+        return handle(cx).0;
     }
     let door = cx.borrow_mut().global_mut::<Door>();
     debug_assert!(
@@ -125,13 +140,16 @@ pub(crate) fn send<C: BorrowMut<App>, R>(cx: &mut C, handle: impl FnOnce(&mut C)
         // Release builds get past the assert: run inside the outer send, whose one commit and
         // drain cover this input's writes and Notices too, and log the bug for the report.
         tracing::error!("An input was sent inside another; it ran in the outer send");
-        return handle(cx);
+        return handle(cx).0;
     }
     door.open = true;
-    let handled = handle(cx);
+    let (handled, taken) = handle(cx);
     let app: &mut App = cx.borrow_mut();
     let door = app.global_mut::<Door>();
     door.open = false;
+    if !taken {
+        return handled;
+    }
     let cascades = door
         .commit
         .as_ref()
@@ -439,6 +457,18 @@ mod tests {
         });
 
         assert_eq!(seen, 0, "the commit comes after handle");
+        assert_eq!(count.get(), 1);
+        assert!(!cx.update(|cx| sending(cx)));
+    }
+
+    #[gpui::test]
+    fn an_offer_declined_commits_nothing_and_one_taken_commits_once(cx: &mut TestAppContext) {
+        let count = door(cx);
+
+        cx.update(|cx| offer(cx, |_| ((), false)));
+        assert_eq!(count.get(), 0, "a declined input leaves no trace");
+
+        cx.update(|cx| offer(cx, |_| ((), true)));
         assert_eq!(count.get(), 1);
         assert!(!cx.update(|cx| sending(cx)));
     }

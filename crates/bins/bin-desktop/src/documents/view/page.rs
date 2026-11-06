@@ -100,7 +100,7 @@ impl DocumentsPage {
     /// A key or click on the page, or the Shell telling it something: `event` as one input,
     /// committed once it is handled.
     fn send(&mut self, event: DocumentsPageEvent, cx: &mut Context<'_, Self>) {
-        crate::input::send(cx, |cx| self.handle(event, cx));
+        crate::input::join_or_send(cx, |cx| self.handle(event, cx));
     }
 
     /// Hands `event` to the Presenter with the Desktop's Router, then brings the Shell's Search
@@ -233,7 +233,7 @@ impl DocumentsPage {
                 DocumentsMode::Inbox => DocumentsPageEvent::ShowInbox,
                 DocumentsMode::Library => DocumentsPageEvent::ShowLibrary,
             });
-        crate::input::send(cx, |cx| {
+        crate::input::join_or_send(cx, |cx| {
             if let Some(switch) = switch {
                 self.handle(switch, cx);
             }
@@ -266,11 +266,10 @@ impl DocumentsPage {
     }
 
     /// The Library's `/`: the Search, from either zone. Inert in the Inbox, which has none. The
-    /// Shell enters Search mode on `true`.
+    /// Shell enters Search mode on `true`. Not an input of its own: the root Router calls it inside
+    /// the input `/` arrived in, which commits it.
     pub fn start_search(&mut self, cx: &mut Context<'_, Self>) -> bool {
-        crate::input::send(cx, |cx| {
-            self.handle_quietly(DocumentsPageEvent::StartSearch, cx)
-        });
+        self.handle_quietly(DocumentsPageEvent::StartSearch, cx);
         self.presenter.searching()
     }
 

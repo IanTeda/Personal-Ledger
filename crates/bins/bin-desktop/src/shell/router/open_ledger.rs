@@ -431,7 +431,8 @@ impl OpenLedger {
             announcer,
             stores: storage,
             units: units_ports,
-            rail_counted_at: std::cell::Cell::new(0),
+            // No count read yet, so the first refresh after the Ledger opens reads its counts.
+            rail_counted_at: std::cell::Cell::new(usize::MAX),
             rail_reads,
             views: ViewEntities {
                 dashboard: dashboard_view,

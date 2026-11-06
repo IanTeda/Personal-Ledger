@@ -34,7 +34,7 @@ use crate::navigation::nav::NounLabel;
 use lib_colour_theme::ColourAppearance;
 use lib_config::KeyBindingConfig;
 use lib_settings::ColourChoice;
-use lib_shell::{PaletteEntry, ShellCommand};
+use lib_shell::{Destination, PaletteEffect, PaletteEntry, ShellCommand};
 use lib_viper::keymap::Keymap;
 
 use crate::{navigation::nav::Noun, settings::SettingsPage};
@@ -100,6 +100,28 @@ impl CommandEffect {
         }
     }
 
+    /// The effect as the Shell's Presenter runs it: the Shell's own (a global key's Command, the
+    /// file explorer, `:dismiss`, `:close`) it runs itself, and the rest it hands back to the root
+    /// Router once their destination shows, as their key would.
+    pub fn palette_effect(self) -> PaletteEffect<SettingsPage, Self> {
+        let destination = match self {
+            Self::Shell(command) => return PaletteEffect::Shell(command),
+            Self::OpenDialog(mode) => return PaletteEffect::OpenExplorer(mode),
+            Self::DismissToast => return PaletteEffect::DismissNewestToast,
+            Self::CloseLedger => return PaletteEffect::CloseLedger,
+            Self::OpenSettingsPage(section) => Some(Destination::Settings(section)),
+            Self::Accounts(_) => Some(Destination::Settings(SettingsPage::Accounts)),
+            Self::Import => Some(Destination::Noun(Noun::Transactions)),
+            Self::Module { page, .. } => Some(page.destination()),
+            Self::Colour(_) | Self::SetToasts(_) | Self::NotYetBuilt => None,
+        };
+        PaletteEffect::Client {
+            destination,
+            needs_ledger: self.needs_ledger(),
+            effect: self,
+        }
+    }
+
     /// Whether text typed after the command name is an argument (`accounts delete Home Loan`)
     /// rather than more of the query, which the palette's Presenter reads from each entry. A
     /// keymap event can't carry an argument, so only the Accounts verbs do.
@@ -117,6 +139,19 @@ pub enum ModulePage {
     Budgets,
     Documents,
     Transactions,
+}
+
+impl ModulePage {
+    /// Where the page shows, which the Shell shows before the page takes the Command.
+    pub fn destination(self) -> Destination<SettingsPage> {
+        match self {
+            Self::Settings(section) => Destination::Settings(section),
+            Self::Bills => Destination::Noun(Noun::Bills),
+            Self::Budgets => Destination::Noun(Noun::Budgets),
+            Self::Documents => Destination::Noun(Noun::Documents),
+            Self::Transactions => Destination::Noun(Noun::Transactions),
+        }
+    }
 }
 
 /// The Accounts verbs the palette understands -- the same three the page's `n`/`e`/`d` keys and
@@ -504,7 +539,9 @@ pub fn entries(config: &KeyBindingConfig) -> Vec<Entry> {
 }
 
 /// [`entries`] as the palette's Presenter lists them, each under its domain's header.
-pub fn palette_entries(config: &KeyBindingConfig) -> Vec<PaletteEntry<CommandEffect>> {
+pub fn palette_entries(
+    config: &KeyBindingConfig,
+) -> Vec<PaletteEntry<PaletteEffect<SettingsPage, CommandEffect>>> {
     entries(config)
         .into_iter()
         .map(|entry| PaletteEntry {
@@ -513,7 +550,7 @@ pub fn palette_entries(config: &KeyBindingConfig) -> Vec<PaletteEntry<CommandEff
             domain: entry.domain.label(),
             takes_argument: entry.takes_argument(),
             key: entry.key,
-            effect: entry.effect,
+            effect: entry.effect.palette_effect(),
         })
         .collect()
 }

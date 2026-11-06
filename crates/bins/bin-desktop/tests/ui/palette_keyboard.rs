@@ -537,3 +537,24 @@ fn a_rebound_history_back_recalls_and_control_r_no_longer_does(app: &mut TestApp
     ui.press("ctrl-b");
     assert_eq!(palette(&mut ui).expect("open").input, "bills");
 }
+
+/// A palette Command that writes runs on its page through the root Router, inside the `enter`'s
+/// one input: the copied Budget lands in that one commit.
+#[gpui::test]
+fn budgets_duplicate_writes_on_the_budgets_page_in_one_input(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    open_palette(&mut ui);
+    type_text(&mut ui, "budgets duplicate");
+    let before = ui.read_app(|s, cx| s.ledger_announcements(cx));
+    let commits = ui.commits();
+
+    ui.press("enter");
+
+    assert_eq!(ui.noun(), Noun::Budgets);
+    assert!(ui.dialog().is_some(), "the copy opens to be renamed");
+    assert!(
+        ui.read_app(|s, cx| s.ledger_announcements(cx)) > before,
+        "the copy was written"
+    );
+    assert_eq!(ui.commits() - commits, 1, "the write commits once");
+}

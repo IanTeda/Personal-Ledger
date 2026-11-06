@@ -2,6 +2,7 @@
 //! concern, not the status line itself (`shell::view::statusline`).
 
 use gpui::Context;
+use lib_shell::ShellCommand;
 
 use super::Root;
 use crate::view::active::ActiveViewEntity;
@@ -20,8 +21,9 @@ impl Root {
         }
     }
 
-    /// A click on the status line's hint strip: the same action as the matching `Normal`-mode key,
-    /// and ignored in any other mode (where those keys aren't live either).
+    /// A click on the status line's hint strip: the same command as the matching `Normal`-mode
+    /// key, run by the Shell's Presenter as one input, and ignored in any other mode (where those
+    /// keys aren't live either).
     pub(super) fn handle_hint_click(
         &mut self,
         action: HintAction,
@@ -35,12 +37,15 @@ impl Root {
         if self.prefix_timer.take().is_some() {
             self.send_shell(lib_shell::ShellInput::PrefixExpired, cx);
         }
-        match action {
-            HintAction::Command => self.open_palette(),
-            HintAction::Search => self.start_search(cx),
-            HintAction::Help => self.open_help(cx),
-            HintAction::ToggleRail => self.toggle_rail(window_size, cx),
-        }
+        let command = match action {
+            HintAction::Command => ShellCommand::Command,
+            HintAction::Search => ShellCommand::Search,
+            HintAction::Help => ShellCommand::Help,
+            HintAction::ToggleRail => ShellCommand::ToggleRail,
+        };
+        self.send_with_router(window_size, cx, |presenter, router| {
+            presenter.command(command, router)
+        });
         cx.notify();
     }
 

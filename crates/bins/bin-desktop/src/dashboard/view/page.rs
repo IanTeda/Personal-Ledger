@@ -82,7 +82,7 @@ impl DashboardPage {
     /// A click on the page, or the Shell telling it something: `event` as one input, committed once
     /// it is handled.
     fn send(&mut self, event: DashboardEvent, cx: &mut Context<'_, Self>) {
-        crate::input::send(cx, |cx| {
+        crate::input::join_or_send(cx, |cx| {
             self.presenter.handle(event, &mut PageRouter { cx });
             cx.notify();
         });

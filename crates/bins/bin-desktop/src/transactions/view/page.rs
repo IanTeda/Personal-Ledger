@@ -134,7 +134,7 @@ impl TransactionsPage {
     /// A key or click on the page, a hand-off, or the page being entered: `event` as one input,
     /// committed once it is handled.
     fn send(&mut self, event: TransactionsPageEvent, cx: &mut Context<'_, Self>) {
-        crate::input::send(cx, |cx| self.handle(event, cx));
+        crate::input::join_or_send(cx, |cx| self.handle(event, cx));
     }
 
     /// Hands `event` to the Presenter, then follows what it opened or closed: the popover's and
@@ -238,7 +238,7 @@ impl TransactionsPage {
     /// the Search (its text cleared).
     pub fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
         if self.presenter.is_filtering() {
-            crate::input::send(cx, |cx| self.filter_back(cx));
+            crate::input::join_or_send(cx, |cx| self.filter_back(cx));
             return true;
         }
         if self.presenter.is_searching() {
@@ -329,7 +329,7 @@ impl TransactionsPage {
             self.scroll
                 .scroll_to_item_strict(self.presenter.selected(), ScrollStrategy::Center);
         }
-        crate::input::send(cx, |cx| {
+        crate::input::join_or_send(cx, |cx| {
             self.handle(TransactionsPageEvent::SetDateStyle(date_style), cx);
             self.handle(
                 TransactionsPageEvent::DisplayChanged { glyphs, density },

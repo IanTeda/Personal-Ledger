@@ -2,34 +2,20 @@
 //! block, not the Dialog host itself (`shell::view::dialog_entity`).
 
 use super::Root;
-use crate::navigation::nav::NounLabel;
+use crate::shell::state::ShellState;
 use crate::shell::view::dialog_entity::DialogReadback;
 use crate::view::help::{HelpDialog, HelpGroup};
-use gpui::{AppContext as _, Context};
+use gpui::Context;
 use lib_shell::DialogInput;
-use lib_shell::HelpPresenter;
 
 use crate::shell::view::dialog_entity::DialogHandle;
 
 impl Root {
-    /// Opens a module's Dialog Entity, closing the host once its Presenter closes it.
+    /// Opens a module's Dialog Entity in place of any open, closing the host once its Presenter
+    /// closes it.
     pub(super) fn host_dialog(&mut self, dialog: DialogHandle, cx: &mut Context<'_, Self>) {
         self.close_dialog();
-        let shell = cx.weak_entity();
-        let id = dialog.id();
-        let closed = dialog.on_closed(
-            move |cx| {
-                // A Shell gone with its window has no Dialog left to close.
-                let _ = shell.update(cx, |shell, cx| {
-                    if shell.hosted_dialog().is_some_and(|open| open.id() == id) {
-                        shell.close_dialog();
-                        cx.notify();
-                    }
-                });
-            },
-            cx,
-        );
-        self.state.hosted = Some((dialog, closed));
+        host(&mut self.state, dialog, cx);
         self.presenter.dialog(DialogInput::Opened);
     }
 
@@ -43,15 +29,6 @@ impl Root {
     #[doc(hidden)]
     pub fn dialog_readback(&self, cx: &gpui::App) -> Option<DialogReadback> {
         Some(self.hosted_dialog()?.readback(cx))
-    }
-
-    /// Opens the Help Dialog over the active View, carrying the page group that View adds to the
-    /// global shortcuts.
-    pub(super) fn open_help(&mut self, cx: &mut Context<'_, Self>) {
-        let group = self.active_view_entity(cx).help_group(cx);
-        let presenter = HelpPresenter::open(self.presenter.keymap(), NounLabel::label, group);
-        let dialog = cx.new(|_| HelpDialog::new(presenter));
-        self.host_dialog(DialogHandle::new(dialog), cx);
     }
 
     /// Whether the Help Dialog is the open Dialog.
@@ -77,4 +54,25 @@ impl Root {
             self.presenter.dialog(DialogInput::Closed);
         }
     }
+}
+
+/// Hosts `dialog` in the Shell's state, closing the host once its Presenter closes it. The Shell's
+/// Presenter enters `Dialog` mode for it: [`Root::host_dialog`] tells it, and the root Router's
+/// Help and Toast history are its own.
+pub(super) fn host(state: &mut ShellState, dialog: DialogHandle, cx: &mut Context<'_, Root>) {
+    let shell = cx.weak_entity();
+    let id = dialog.id();
+    let closed = dialog.on_closed(
+        move |cx| {
+            // A Shell gone with its window has no Dialog left to close.
+            let _ = shell.update(cx, |shell, cx| {
+                if shell.hosted_dialog().is_some_and(|open| open.id() == id) {
+                    shell.close_dialog();
+                    cx.notify();
+                }
+            });
+        },
+        cx,
+    );
+    state.hosted = Some((dialog, closed));
 }

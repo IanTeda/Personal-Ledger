@@ -3,10 +3,11 @@
 //! resting list, completion and the history with its walk. The history outlives each palette
 //! session, so the Presenter lives as long as the Shell and only the session opens and closes.
 //!
-//! What each Command does is the Client's: it hands the Presenter one [`PaletteEntry`] per
-//! Command, its effect `E` included, rebuilt when `[keybindings]` change, and runs the effect the
-//! Presenter returns on select ([`PaletteRun`]). The registry names the Client's pages and
-//! modules, which the Shell may not depend on.
+//! The Client hands the Presenter one [`PaletteEntry`] per Command, its effect included, rebuilt
+//! when `[keybindings]` change, and the Presenter returns the one chosen on select ([`PaletteRun`]).
+//! The Shell's Presenter runs it: its own effects itself, and a Client's ([`PaletteEffect::Client`])
+//! through the root Router, since the registry names the Client's pages and modules, which the
+//! Shell may not depend on.
 //!
 //! Its keys are the Dialog keymap's, though the palette is not a Dialog: select next and previous
 //! move the selection, next field completes the selected name, select runs it and back closes.
@@ -20,6 +21,9 @@ use lib_config::KeyBindingConfig;
 use lib_viper::keymap::{BACK, Binding, Keymap, NEXT_FIELD, SELECT, SELECT_NEXT, SELECT_PREVIOUS};
 
 use crate::dialog::DialogCommand;
+use crate::explorer::ExplorerMode;
+use crate::keymap::ShellCommand;
+use crate::navigation::Noun;
 
 /// Walks back through the Commands run before, newest first.
 pub const HISTORY_BACK: &str = "history_back";
@@ -103,6 +107,46 @@ pub struct PaletteViewModel {
     pub match_count: usize,
     pub total: usize,
     pub keys: PaletteKeys,
+}
+
+/// Where a Client's Command acts: a Noun, or a Settings page `P`, which the Shell shows before the
+/// Router acts there, as the Command's key would.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Destination<P> {
+    Noun(Noun),
+    Settings(P),
+}
+
+/// What a palette Command does, as the Shell's Presenter runs it. The Shell runs its own; a
+/// Client's goes to the root Router ([`crate::ShellRouter::run_effect`]) once the Shell has shown
+/// its destination. `P` is the Client's Settings page and `E` its own effect.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PaletteEffect<P, E> {
+    /// A Command the global keymap lists: runs as its key does.
+    Shell(ShellCommand),
+    /// `:open` or `:new`: the file explorer.
+    OpenExplorer(ExplorerMode),
+    /// `:dismiss`: removes the newest Toast.
+    DismissNewestToast,
+    /// `:close`: closes the Open Ledger and lands on the Dashboard with no history.
+    CloseLedger,
+    /// The Client's own. `needs_ledger` refuses it with no Ledger open.
+    Client {
+        destination: Option<Destination<P>>,
+        needs_ledger: bool,
+        effect: E,
+    },
+}
+
+impl<P, E> PaletteEffect<P, E> {
+    /// Whether the Command is refused with no Ledger open. A jump's refusal is the jump's own.
+    pub fn needs_ledger(&self) -> bool {
+        match self {
+            Self::CloseLedger => true,
+            Self::Client { needs_ledger, .. } => *needs_ledger,
+            Self::Shell(_) | Self::OpenExplorer(_) | Self::DismissNewestToast => false,
+        }
+    }
 }
 
 /// A Command chosen on select, for the Client to run.
@@ -446,6 +490,7 @@ mod tests {
     use lib_core::Clock;
 
     use super::*;
+    use crate::fake::{RecordingRouter, Routed};
     use crate::nav::{InputMode, NavState};
     use crate::presenter::ShellPresenter;
 
@@ -457,14 +502,18 @@ mod tests {
         domain: &str,
         description: fn() -> String,
         takes_argument: bool,
-    ) -> PaletteEntry<&'static str> {
+    ) -> PaletteEntry<PaletteEffect<(), &'static str>> {
         PaletteEntry {
             name,
             description,
             domain: domain.to_string(),
             key: None,
             takes_argument,
-            effect: name,
+            effect: PaletteEffect::Client {
+                destination: None,
+                needs_ledger: false,
+                effect: name,
+            },
         }
     }
 
@@ -477,7 +526,7 @@ mod tests {
     }
 
     /// A registry in the Client's shape: grouped by domain, a noun before its verbs.
-    fn entries() -> Vec<PaletteEntry<&'static str>> {
+    fn entries() -> Vec<PaletteEntry<PaletteEffect<(), &'static str>>> {
         let mut dashboard = entry("dashboard", "Dashboard", plain, false);
         dashboard.key = Some("g d".to_string());
         vec![
@@ -516,7 +565,9 @@ mod tests {
         config
     }
 
-    /// Presses each space-separated chord, a single character typing itself.
+    /// Presses each space-separated chord, a single character typing itself. Returns what the
+    /// last did to the palette, read back from what the Shell ran: a Command it ran through the
+    /// Router, or else whether the palette changed and is still open.
     fn press(shell: &mut Shell, chords: &str) -> PaletteOutcome<&'static str> {
         let mut outcome = PaletteOutcome::Ignored;
         for chord in chords.split(' ') {
@@ -525,7 +576,14 @@ mod tests {
                 _ if chord.chars().count() == 1 => chord.chars().next(),
                 _ => None,
             };
-            outcome = shell.palette_key(chord, typed);
+            let mut router = RecordingRouter::default();
+            let changed = shell.palette_key(chord, typed, &mut router);
+            outcome = match router.routed.pop() {
+                Some(Routed::RanEffect(run)) => PaletteOutcome::Run(run),
+                _ if !changed => PaletteOutcome::Ignored,
+                _ if !shell.palette_open() => PaletteOutcome::Closed,
+                _ => PaletteOutcome::Changed,
+            };
         }
         outcome
     }
@@ -538,7 +596,7 @@ mod tests {
             } else {
                 ch.to_string()
             };
-            shell.palette_key(&chord, Some(ch));
+            shell.palette_key(&chord, Some(ch), &mut RecordingRouter::default());
         }
     }
 
@@ -822,7 +880,7 @@ mod tests {
     }
 
     #[test]
-    fn select_closes_the_palette_and_returns_the_effect_still_in_command_mode() {
+    fn select_closes_the_palette_and_runs_a_client_effect_out_of_command_mode() {
         let mut shell = typed("budg");
 
         assert_eq!(
@@ -834,11 +892,7 @@ mod tests {
             })
         );
         assert!(!shell.palette_open());
-        assert_eq!(
-            shell.nav().mode(),
-            InputMode::Command,
-            "the Client leaves it"
-        );
+        assert_eq!(shell.nav().mode(), InputMode::Normal);
     }
 
     #[test]

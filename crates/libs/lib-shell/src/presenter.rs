@@ -28,15 +28,17 @@ use crate::explorer::{
     ExplorerFilter, ExplorerFilters, ExplorerMode, ExplorerOutcome, ExplorerPresenter,
     ExplorerViewModel, LedgerFolders,
 };
+use crate::help::HelpPresenter;
 use crate::keymap::{HELP, OPEN_COMMAND_POPUP, SEARCH, ShellCommand, TOGGLE_RAIL, global_keymap};
 use crate::nav::{ContextSelection, FocusZone, InputMode, NavState};
-use crate::navigation::Noun;
+use crate::navigation::{Movement, Noun};
 use crate::palette::{
-    PaletteCommand, PaletteEntry, PaletteOutcome, PalettePresenter, PaletteViewModel,
-    palette_keymap,
+    Destination, PaletteCommand, PaletteEffect, PaletteEntry, PaletteOutcome, PalettePresenter,
+    PaletteRun, PaletteViewModel, palette_keymap,
 };
-use crate::protocols::{RailCounts, ShellRailCounts, ShellRouter};
+use crate::protocols::{RailCounts, ShellDialog, ShellRailCounts, ShellRouter};
 use crate::rail::{RailMode, RailOverride};
+use crate::toast_history::ToastHistoryPresenter;
 use crate::window_size::WindowSize;
 
 /// What the Client delivers to the Shell, each through its one `send`. `F` is the Client's write
@@ -57,7 +59,7 @@ pub enum ShellInput<F> {
 /// What the Shell made of a key the Client offered it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ShellKey {
-    /// The Shell took the key: it handed its Router a command, or finished or dropped a prefix.
+    /// The Shell took the key: it ran a command, or finished or dropped a prefix.
     Taken,
     /// The key began a sequence. The Client starts the timer that ends the wait with
     /// [`ShellInput::PrefixExpired`].
@@ -160,7 +162,7 @@ const HINTS: [(&str, ShellCommand, Label); 4] = [
 ];
 
 /// The Shell's Presenter. `P` is the Client's Settings page, which the Back history steps between,
-/// and `E` what running one of the palette's Commands does, which the Client acts on.
+/// and `E` what one of the Client's own palette Commands does, which its Router acts on.
 pub struct ShellPresenter<P, E = ()> {
     clock: Clock,
     /// The calendar month the Shell last saw the Clock read.
@@ -173,7 +175,10 @@ pub struct ShellPresenter<P, E = ()> {
     /// The palette's own key beside the Dialog keymap's, under `[keybindings]`.
     palette_keymap: Keymap<PaletteCommand>,
     /// The command palette, whose history outlives each time it opens.
-    palette: PalettePresenter<E>,
+    palette: PalettePresenter<PaletteEffect<P, E>>,
+    /// The Client's name for a Noun, a Message the Shell doesn't own, which the Help Dialog lists
+    /// the jumps under.
+    noun_label: fn(Noun) -> String,
     /// The file explorer behind `:open` and `:new`, whose filters and start outlive each opening.
     explorer: ExplorerPresenter,
     /// The rail `b` last set, with the Window Size it was set at (ADR-0042).
@@ -205,6 +210,7 @@ impl<P: Copy + Eq + Default, E: Clone> ShellPresenter<P, E> {
             dialog_keymap: dialog_keymap(&KeyBindingConfig::default()),
             palette_keymap: palette_keymap(&KeyBindingConfig::default()),
             palette: PalettePresenter::default(),
+            noun_label: |noun| format!("{noun:?}"),
             explorer: ExplorerPresenter::default(),
             rail_override: None,
             prefix: None,
@@ -232,8 +238,13 @@ impl<P: Copy + Eq + Default, E: Clone> ShellPresenter<P, E> {
     }
 
     /// The Commands the palette lists, one per Command, under the `[keybindings]` in effect.
-    pub fn set_palette_entries(&mut self, entries: Vec<PaletteEntry<E>>) {
+    pub fn set_palette_entries(&mut self, entries: Vec<PaletteEntry<PaletteEffect<P, E>>>) {
         self.palette.set_entries(entries);
+    }
+
+    /// The Client's name for each Noun, which the Help Dialog lists the jumps under.
+    pub fn set_noun_label(&mut self, noun_label: fn(Noun) -> String) {
+        self.noun_label = noun_label;
     }
 
     /// `:`: opens the palette in Command mode, on an empty input.
@@ -263,16 +274,117 @@ impl<P: Copy + Eq + Default, E: Clone> ShellPresenter<P, E> {
     }
 
     /// A key while the palette is open, `chord` as `[keybindings]` writes it and `typed` the
-    /// character it types, if any. Closing it leaves Command mode; a Command chosen to run leaves
-    /// the mode to the Client, which runs it.
-    pub fn palette_key(&mut self, chord: &str, typed: Option<char>) -> PaletteOutcome<E> {
-        let outcome = self
+    /// character it types, if any. Closing it leaves Command mode; a Command chosen is run
+    /// ([`Self::run_palette`]). Whether it changed anything.
+    pub fn palette_key<R: ShellRouter<Effect = E> + ?Sized>(
+        &mut self,
+        chord: &str,
+        typed: Option<char>,
+        router: &mut R,
+    ) -> bool {
+        match self
             .palette
-            .key(chord, typed, &self.palette_keymap, &self.dialog_keymap);
-        if matches!(outcome, PaletteOutcome::Closed) {
-            self.navigate(NavInput::ExitMode);
+            .key(chord, typed, &self.palette_keymap, &self.dialog_keymap)
+        {
+            PaletteOutcome::Ignored => false,
+            PaletteOutcome::Changed => true,
+            PaletteOutcome::Closed => {
+                self.navigate(NavInput::ExitMode);
+                true
+            }
+            PaletteOutcome::Run(run) => {
+                self.run_palette(run, router);
+                true
+            }
         }
-        outcome
+    }
+
+    /// Runs a palette Command, chosen in the palette or clicked elsewhere (the no Ledger open
+    /// content's `:open`), in Command mode. One needing a Ledger is refused with none open. The
+    /// file explorer stays in Command mode while it is open; every other Command leaves it first,
+    /// then runs: the Shell's own here, and a Client's through the Router once its destination
+    /// shows, as its key would.
+    pub fn run_palette<R: ShellRouter<Effect = E> + ?Sized>(
+        &mut self,
+        run: PaletteRun<PaletteEffect<P, E>>,
+        router: &mut R,
+    ) {
+        if run.effect.needs_ledger() && !router.ledger_open() {
+            router.refused_without_ledger();
+            self.navigate(NavInput::ExitMode);
+            return;
+        }
+        if let PaletteEffect::OpenExplorer(mode) = run.effect {
+            self.explorer.open(mode, router.folders());
+            return;
+        }
+        self.navigate(NavInput::ExitMode);
+        match run.effect {
+            PaletteEffect::OpenExplorer(_) => {}
+            // A noun's Command resets the View's scroll only when it lands on another noun, as
+            // the rail's `enter` does.
+            PaletteEffect::Shell(ShellCommand::Jump(noun)) => self.jump(noun, false, router),
+            PaletteEffect::Shell(command) => {
+                self.command(command, router);
+            }
+            PaletteEffect::DismissNewestToast => {
+                self.toasts.dismiss_newest();
+            }
+            PaletteEffect::CloseLedger => {
+                router.close_ledger();
+                self.show_noun(Noun::Dashboard, router);
+                // Every place in the history was on the closed Ledger, so Back and Forward must
+                // not reach one with none open.
+                self.nav.forget_history();
+            }
+            PaletteEffect::Client {
+                destination,
+                effect,
+                ..
+            } => {
+                match destination {
+                    Some(Destination::Noun(noun)) => self.show_noun(noun, router),
+                    Some(Destination::Settings(page)) => {
+                        let before = self.nav.noun();
+                        self.nav.record_settings_page(page);
+                        self.nav.set_noun(Noun::Settings);
+                        if before != Noun::Settings {
+                            router.reset_view_scroll(Noun::Settings);
+                        }
+                    }
+                    None => {}
+                }
+                router.run_effect(PaletteRun {
+                    name: run.name,
+                    effect,
+                    argument: run.argument,
+                });
+            }
+        }
+    }
+
+    /// Shows `noun`, its scroll reset when it wasn't already showing.
+    fn show_noun<R: ShellRouter + ?Sized>(&mut self, noun: Noun, router: &mut R) {
+        let before = self.nav.noun();
+        self.nav.set_noun(noun);
+        if self.nav.noun() != before {
+            router.reset_view_scroll(noun);
+        }
+    }
+
+    /// A `g` jump onto `noun`, refused with no Ledger open for a noun that needs one. A jump key
+    /// always resets the View's scroll; the palette's only when it lands on another noun.
+    fn jump<R: ShellRouter + ?Sized>(&mut self, noun: Noun, always_reset: bool, router: &mut R) {
+        if noun.needs_ledger() && !router.ledger_open() {
+            router.refused_without_ledger();
+            return;
+        }
+        if always_reset {
+            self.nav.set_noun(noun);
+            router.reset_view_scroll(noun);
+        } else {
+            self.show_noun(noun, router);
+        }
     }
 
     /// `:open` or `:new`: opens the file explorer in `mode`, in Command mode, which it stays in
@@ -297,40 +409,62 @@ impl<P: Copy + Eq + Default, E: Clone> ShellPresenter<P, E> {
     }
 
     /// A key while the explorer is open, as [`Self::palette_key`] takes one. Closing it leaves
-    /// Command mode; a file it chooses leaves it open for the Client to act on
+    /// Command mode; a file it chooses is opened or created through the Router
     /// ([`Self::explorer_chosen`]).
-    pub fn explorer_key(
+    pub fn explorer_key<R: ShellRouter + ?Sized>(
         &mut self,
         chord: &str,
         typed: Option<char>,
-        folders: &dyn LedgerFolders,
+        router: &mut R,
     ) -> ExplorerOutcome {
         let outcome = self
             .explorer
-            .key(chord, typed, &self.dialog_keymap, folders);
-        if outcome == ExplorerOutcome::Closed {
-            self.navigate(NavInput::ExitMode);
-        }
-        outcome
+            .key(chord, typed, &self.dialog_keymap, router.folders());
+        self.explorer_outcome(outcome, router)
     }
 
     /// A click on one of the explorer's rows, `click_count` `2` for a double-click.
-    pub fn explorer_click(
+    pub fn explorer_click<R: ShellRouter + ?Sized>(
         &mut self,
         path: &Path,
         click_count: usize,
-        folders: &dyn LedgerFolders,
+        router: &mut R,
     ) -> ExplorerOutcome {
-        self.explorer.click_entry(path, click_count, folders)
+        let outcome = self
+            .explorer
+            .click_entry(path, click_count, router.folders());
+        self.explorer_outcome(outcome, router)
     }
 
     /// A click on one of the explorer's breadcrumbs, browsing `folder`.
-    pub fn explorer_browse(
+    pub fn explorer_browse<R: ShellRouter + ?Sized>(
         &mut self,
         folder: PathBuf,
-        folders: &dyn LedgerFolders,
+        router: &mut R,
     ) -> ExplorerOutcome {
-        self.explorer.navigate_to(folder, folders)
+        let outcome = self.explorer.navigate_to(folder, router.folders());
+        self.explorer_outcome(outcome, router)
+    }
+
+    /// Follows what an input did to the explorer: closing it leaves Command mode, and a file it
+    /// chose is opened or created through the Router.
+    fn explorer_outcome<R: ShellRouter + ?Sized>(
+        &mut self,
+        outcome: ExplorerOutcome,
+        router: &mut R,
+    ) -> ExplorerOutcome {
+        match &outcome {
+            ExplorerOutcome::Closed => self.navigate(NavInput::ExitMode),
+            ExplorerOutcome::Chosen(choice) => {
+                let opened = match choice.mode {
+                    ExplorerMode::Open => router.open_ledger(&choice.path),
+                    ExplorerMode::New => router.create_ledger(&choice.path),
+                };
+                self.explorer_chosen(opened, router);
+            }
+            ExplorerOutcome::Ignored | ExplorerOutcome::Changed => {}
+        }
+        outcome
     }
 
     /// A click on one of the explorer's footer checkboxes.
@@ -339,16 +473,18 @@ impl<P: Copy + Eq + Default, E: Clone> ShellPresenter<P, E> {
     }
 
     /// The explorer's Open or Create button.
-    pub fn explorer_confirm(&self) -> ExplorerOutcome {
-        self.explorer.confirm()
+    pub fn explorer_confirm<R: ShellRouter + ?Sized>(&mut self, router: &mut R) -> ExplorerOutcome {
+        let outcome = self.explorer.confirm();
+        self.explorer_outcome(outcome, router)
     }
 
-    /// The Client's word on the file the explorer chose: one that opened closes it and leaves
-    /// Command mode; one that failed leaves it open for another pick.
-    pub fn explorer_chosen(&mut self, succeeded: bool) {
-        self.explorer.chosen(succeeded);
-        if succeeded {
+    /// How the file the explorer chose went: one that opened closes it, leaves Command mode and
+    /// lands on the new Ledger's Dashboard; one that failed leaves it open for another pick.
+    fn explorer_chosen<R: ShellRouter + ?Sized>(&mut self, opened: bool, router: &mut R) {
+        self.explorer.chosen(opened);
+        if opened {
             self.navigate(NavInput::ExitMode);
+            self.show_noun(Noun::Dashboard, router);
         }
     }
 
@@ -574,18 +710,118 @@ impl<P: Copy + Eq + Default, E: Clone> ShellPresenter<P, E> {
         self.resolve(chord.to_string(), router)
     }
 
-    /// Runs a kept command: the Toast keys on the Shell's own stack, the rest by the Router.
+    /// Runs a kept command, or passes the key on with the command the Shell falls back on.
     fn resolve<R: ShellRouter + ?Sized>(&mut self, chord: String, router: &mut R) -> ShellKey {
         match self.keymap.event(&chord) {
-            Some(ShellCommand::DismissToasts) => {
-                self.toasts.dismiss_all();
-                ShellKey::Taken
-            }
             Some(command) if !command.falls_back() => {
-                router.run(command);
+                self.command(command, router);
                 ShellKey::Taken
             }
             fallback => ShellKey::Passed { chord, fallback },
+        }
+    }
+
+    /// Runs a global command, from its key, the key route's fallback once the focused View has
+    /// declined the key, or a click on its status-line hint. The commands that change only the
+    /// Shell's own state run here; the rest reach the View or the frame through the Router's typed
+    /// methods. Whether what the window draws may have changed.
+    pub fn command<R: ShellRouter + ?Sized>(
+        &mut self,
+        command: ShellCommand,
+        router: &mut R,
+    ) -> bool {
+        let noun = self.nav.noun();
+        match command {
+            ShellCommand::Help => {
+                let group = router.help_group(noun);
+                let help = HelpPresenter::open(&self.keymap, self.noun_label, group);
+                self.host(ShellDialog::Help(help), router);
+            }
+            ShellCommand::Command => self.open_palette(),
+            ShellCommand::Search => {
+                if router.start_search(noun) {
+                    self.navigate(NavInput::EnterViewMode(InputMode::Search));
+                }
+            }
+            ShellCommand::ToggleRail => {
+                let (window_size, start_hidden) = router.toggle_rail();
+                self.toggle_rail(window_size, start_hidden);
+            }
+            ShellCommand::FocusPrevious => self.navigate(NavInput::FocusPrevious {
+                ledger_open: router.ledger_open(),
+            }),
+            ShellCommand::FocusNext => self.navigate(NavInput::FocusNext {
+                ledger_open: router.ledger_open(),
+            }),
+            // Only the View knows what of its own is open, and it holds `esc` only while it has
+            // the keys or entered the mode itself.
+            ShellCommand::Back => {
+                let view_has_keys =
+                    self.nav.focus() == FocusZone::View && self.nav.mode() == InputMode::Normal;
+                return (self.nav.view_owns_mode() || view_has_keys) && router.view_back(noun);
+            }
+            ShellCommand::DismissToasts => self.toasts.dismiss_all(),
+            ShellCommand::ToastHistory => {
+                let history = ToastHistoryPresenter::open(self.toasts.history());
+                self.host(ShellDialog::ToastHistory(history), router);
+            }
+            ShellCommand::Jump(noun) => self.jump(noun, true, router),
+            ShellCommand::Insert => self.navigate(NavInput::EnterMode(InputMode::Insert)),
+            ShellCommand::Move(_) | ShellCommand::Select => {
+                if let Some(movement) = Movement::of(command) {
+                    self.movement(movement, router);
+                }
+            }
+        }
+        true
+    }
+
+    /// Hosts one of the Shell's own Dialogs, over a closed palette, in `Dialog` mode.
+    fn host<R: ShellRouter + ?Sized>(&mut self, dialog: ShellDialog, router: &mut R) {
+        self.palette.close();
+        router.host_dialog(dialog);
+        self.dialog(DialogInput::Opened);
+    }
+
+    /// A movement through the focused zone: the rails' rows are the Shell's, the View's are its
+    /// own. Landing on another noun resets its scroll.
+    fn movement<R: ShellRouter + ?Sized>(&mut self, movement: Movement, router: &mut R) {
+        let before = self.nav.noun();
+        match self.nav.focus() {
+            FocusZone::PrimaryRail => {
+                // Moving the highlight browses every row; committing it to a noun that needs a
+                // Ledger is refused with none open.
+                if movement == Movement::Enter
+                    && self.nav.primary_highlight().needs_ledger()
+                    && !router.ledger_open()
+                {
+                    router.refused_without_ledger();
+                    return;
+                }
+                let input = match movement.step() {
+                    Some(step) => NavInput::MoveHighlight(step),
+                    None => NavInput::CommitHighlight,
+                };
+                self.navigate(input);
+            }
+            FocusZone::ContextRail => {
+                let count = router.context_rail_count(before);
+                // A noun with nothing in its context rail has nowhere to move.
+                if count == 0 {
+                    return;
+                }
+                let current = self.nav.context().unwrap_or(0);
+                // `enter` selects the row and leaves focus where it is: the movement already set
+                // it, and there is no per-row detail to open yet.
+                let next = movement.step().map_or(current, |step| {
+                    lib_list_cursor::step_by(current, count, step, (count / 2).max(1))
+                });
+                self.navigate(NavInput::Context(Some(next)));
+            }
+            FocusZone::View => router.move_selection(before, movement),
+        }
+        if self.nav.noun() != before {
+            router.reset_view_scroll(self.nav.noun());
         }
     }
 
@@ -599,7 +835,7 @@ impl<P: Copy + Eq + Default, E: Clone> ShellPresenter<P, E> {
     pub fn dialog(&mut self, input: DialogInput) {
         self.prefix = None;
         match input {
-            DialogInput::Opened => {
+            DialogInput::Opened if !self.dialog_open => {
                 self.dialog_open = true;
                 self.nav.enter_mode(InputMode::Dialog);
             }
@@ -607,7 +843,7 @@ impl<P: Copy + Eq + Default, E: Clone> ShellPresenter<P, E> {
                 self.dialog_open = false;
                 self.nav.exit_mode();
             }
-            DialogInput::Closed => {}
+            DialogInput::Opened | DialogInput::Closed => {}
         }
     }
 
@@ -690,7 +926,7 @@ mod tests {
     }
 
     /// A Client with no Settings pages to step between.
-    type Shell = ShellPresenter<()>;
+    type Shell = ShellPresenter<(), &'static str>;
 
     fn presenter(clock: Clock) -> Shell {
         ShellPresenter::new(clock, NavState::new())
@@ -789,18 +1025,22 @@ mod tests {
         );
     }
 
-    /// The Shell with `:open` or `:new`'s explorer open on an empty `/ledgers`.
-    fn exploring(mode: ExplorerMode) -> (Shell, crate::fake::FakeLedgerFolders) {
-        let folders = crate::fake::FakeLedgerFolders::default().folder(PathBuf::from("/ledgers"));
+    /// The Shell with `:open` or `:new`'s explorer open on an empty `/ledgers`, and a Router
+    /// reading those folders.
+    fn exploring(mode: ExplorerMode) -> (Shell, RecordingRouter) {
+        let router = RecordingRouter {
+            folders: crate::fake::FakeLedgerFolders::default().folder(PathBuf::from("/ledgers")),
+            ..RecordingRouter::default()
+        };
         let mut shell = shell();
         shell.set_explorer_start(Some(PathBuf::from("/ledgers")), None);
-        shell.open_explorer(mode, &folders);
-        (shell, folders)
+        shell.open_explorer(mode, &router.folders);
+        (shell, router)
     }
 
     #[test]
     fn the_explorer_stays_in_command_mode_while_open_and_back_leaves_it() {
-        let (mut shell, folders) = exploring(ExplorerMode::Open);
+        let (mut shell, mut router) = exploring(ExplorerMode::Open);
         assert_eq!(shell.nav().mode(), InputMode::Command);
         assert_eq!(
             shell.explorer().map(|explorer| explorer.mode),
@@ -808,7 +1048,7 @@ mod tests {
         );
 
         assert_eq!(
-            shell.explorer_key("esc", None, &folders),
+            shell.explorer_key("esc", None, &mut router),
             ExplorerOutcome::Closed
         );
 
@@ -816,33 +1056,58 @@ mod tests {
         assert_eq!(shell.nav().mode(), InputMode::Normal);
     }
 
-    #[test]
-    fn a_chosen_file_that_opened_closes_the_explorer_and_one_that_failed_keeps_it() {
-        let (mut shell, folders) = exploring(ExplorerMode::New);
+    /// `:new`'s explorer with `teda` typed, chosen with `enter` on a Router whose files `open`.
+    fn create_teda(opens: bool) -> (Shell, RecordingRouter) {
+        let (mut shell, mut router) = exploring(ExplorerMode::New);
+        shell.navigate(NavInput::Show(Noun::Settings));
         for ch in "teda".chars() {
-            shell.explorer_key("", Some(ch), &folders);
+            shell.explorer_key("", Some(ch), &mut router);
         }
+        router.opens = opens;
+        router.routed.clear();
         assert!(matches!(
-            shell.explorer_key("enter", None, &folders),
+            shell.explorer_key("enter", None, &mut router),
             ExplorerOutcome::Chosen(_)
         ));
+        (shell, router)
+    }
 
-        shell.explorer_chosen(false);
-        assert!(shell.explorer_open(), "stays open for another pick");
-        assert_eq!(shell.nav().mode(), InputMode::Command);
+    #[test]
+    fn a_created_file_that_opened_closes_the_explorer_on_the_dashboard() {
+        let (shell, router) = create_teda(true);
 
-        shell.explorer_chosen(true);
+        assert_eq!(
+            router.routed,
+            [
+                Routed::CreatedLedger(PathBuf::from("/ledgers/teda.pldb")),
+                Routed::ViewScrollReset(Noun::Dashboard),
+            ]
+        );
         assert!(!shell.explorer_open());
         assert_eq!(shell.nav().mode(), InputMode::Normal);
+        assert_eq!(shell.nav().noun(), Noun::Dashboard);
+    }
+
+    #[test]
+    fn a_file_that_failed_to_open_keeps_the_explorer_for_another_pick() {
+        let (shell, router) = create_teda(false);
+
+        assert_eq!(
+            router.routed,
+            [Routed::CreatedLedger(PathBuf::from("/ledgers/teda.pldb"))]
+        );
+        assert!(shell.explorer_open());
+        assert_eq!(shell.nav().mode(), InputMode::Command);
+        assert_eq!(shell.nav().noun(), Noun::Settings);
     }
 
     #[test]
     fn the_explorers_filters_outlive_each_opening() {
-        let (mut shell, folders) = exploring(ExplorerMode::Open);
+        let (mut shell, mut router) = exploring(ExplorerMode::Open);
         shell.explorer_toggle_filter(ExplorerFilter::PldbOnly);
-        shell.explorer_key("esc", None, &folders);
+        shell.explorer_key("esc", None, &mut router);
 
-        shell.open_explorer(ExplorerMode::Open, &folders);
+        shell.open_explorer(ExplorerMode::Open, &router.folders);
 
         assert!(!shell.explorer_filters().pldb_only);
     }
@@ -960,25 +1225,388 @@ mod tests {
     }
 
     #[test]
-    fn each_kept_command_runs_on_its_default_chord() {
+    fn each_kept_command_is_taken_on_its_default_chord() {
         for binding in GLOBAL_BINDINGS {
-            // The Shell clears its own Toasts.
-            if binding.event.falls_back()
-                || binding.chord.is_empty()
-                || binding.event == ShellCommand::DismissToasts
-            {
+            if binding.event.falls_back() || binding.chord.is_empty() {
                 continue;
             }
             let chords: Vec<&str> = binding.chord.split(' ').collect();
-            let (answer, routed) = press(&mut shell(), &chords);
+            let (answer, _) = press(&mut shell(), &chords);
             assert_eq!(answer, ShellKey::Taken, "{}", binding.command);
-            assert_eq!(
-                routed,
-                vec![Routed::Ran(binding.event)],
-                "{}",
-                binding.command
-            );
         }
+    }
+
+    #[test]
+    fn help_hosts_the_help_dialog_with_the_views_keys_in_dialog_mode() {
+        let mut shell = shell();
+        shell.set_noun_label(|noun| format!("the {noun:?}"));
+        let group = crate::help::HelpGroup {
+            heading: "Bills".to_string(),
+            keys: vec![("pay".to_string(), "p".to_string())],
+        };
+        let mut router = RecordingRouter {
+            help_group: Some(group.clone()),
+            ..RecordingRouter::default()
+        };
+
+        shell.key("?", &mut router);
+
+        let [
+            Routed::HelpGroup(Noun::Dashboard),
+            Routed::Hosted(ShellDialog::Help(help)),
+        ] = router.routed.as_slice()
+        else {
+            panic!("asked for the group, then hosted Help: {:?}", router.routed);
+        };
+        assert_eq!(help.view_model().group, Some(group));
+        assert!(
+            help.view_model()
+                .jumps
+                .iter()
+                .any(|(action, _)| action == "the Dashboard")
+        );
+        assert!(shell.dialog_open());
+        assert_eq!(shell.nav().mode(), InputMode::Dialog);
+    }
+
+    #[test]
+    fn the_toast_history_hosts_the_toasts_raised_so_far() {
+        let mut shell = shell();
+        shell.show(toast(ToastKind::Info, "Synced"), local(0));
+        let mut router = RecordingRouter::default();
+
+        shell.command(ShellCommand::ToastHistory, &mut router);
+
+        let [Routed::Hosted(ShellDialog::ToastHistory(history))] = router.routed.as_slice() else {
+            panic!("hosted the Toast history: {:?}", router.routed);
+        };
+        assert_eq!(history.view_model().rows.len(), 1);
+        assert_eq!(shell.nav().mode(), InputMode::Dialog);
+    }
+
+    #[test]
+    fn the_palette_key_opens_the_palette_in_command_mode_on_the_shell_alone() {
+        let mut shell = shell();
+
+        assert_eq!(press(&mut shell, &[":"]), (ShellKey::Taken, vec![]));
+        assert!(shell.palette_open());
+        assert_eq!(shell.nav().mode(), InputMode::Command);
+    }
+
+    #[test]
+    fn search_enters_search_mode_only_when_the_view_has_a_search() {
+        let mut shell = shell();
+        let mut router = RecordingRouter {
+            has_search: false,
+            ..RecordingRouter::default()
+        };
+        shell.key("/", &mut router);
+        assert_eq!(router.routed, [Routed::StartedSearch(Noun::Dashboard)]);
+        assert_eq!(shell.nav().mode(), InputMode::Normal, "`/` is inert");
+
+        assert_eq!(
+            press(&mut shell, &["/"]).1,
+            [Routed::StartedSearch(Noun::Dashboard)]
+        );
+        assert_eq!(shell.nav().mode(), InputMode::Search);
+        assert!(shell.nav().view_owns_mode(), "the View reads its keys");
+    }
+
+    #[test]
+    fn the_rail_toggle_flips_the_rail_where_the_frame_draws_it() {
+        let mut shell = shell();
+        let mut router = RecordingRouter {
+            drawn_at: (WindowSize::Medium, false),
+            ..RecordingRouter::default()
+        };
+
+        shell.key("b", &mut router);
+
+        assert_eq!(router.routed, [Routed::ToggledRail]);
+        assert_eq!(
+            shell.rail_mode(WindowSize::Medium, false),
+            RailMode::Expanded
+        );
+    }
+
+    #[test]
+    fn shift_tab_cycles_focus_on_the_shell_alone_with_the_context_rail_only_with_a_ledger() {
+        let mut shell = shell();
+        assert_eq!(press(&mut shell, &["shift+tab"]), (ShellKey::Taken, vec![]));
+        assert_eq!(shell.nav().focus(), FocusZone::ContextRail);
+
+        let mut shell = self::shell();
+        let mut router = RecordingRouter {
+            ledger_open: false,
+            ..RecordingRouter::default()
+        };
+        shell.key("shift+tab", &mut router);
+        assert_eq!(shell.nav().focus(), FocusZone::PrimaryRail);
+    }
+
+    #[test]
+    fn esc_asks_the_view_only_while_it_has_the_keys_or_owns_the_mode() {
+        let mut shell = shell();
+        assert_eq!(
+            press(&mut shell, &["esc"]).1,
+            [Routed::ViewBack(Noun::Dashboard)]
+        );
+
+        shell.navigate(NavInput::Focus(FocusZone::PrimaryRail));
+        assert_eq!(press(&mut shell, &["esc"]).1, []);
+
+        let mut router = RecordingRouter::default();
+        shell.navigate(NavInput::EnterViewMode(InputMode::Filter));
+        assert!(shell.command(ShellCommand::Back, &mut router));
+        assert_eq!(router.routed, [Routed::ViewBack(Noun::Dashboard)]);
+
+        router.takes_back = false;
+        assert!(
+            !shell.command(ShellCommand::Back, &mut router),
+            "nothing to redraw"
+        );
+    }
+
+    #[test]
+    fn a_jump_shows_its_noun_and_resets_its_scroll() {
+        let mut shell = shell();
+
+        assert_eq!(
+            press(&mut shell, &["g", "w"]),
+            (ShellKey::Taken, vec![Routed::ViewScrollReset(Noun::Bills)])
+        );
+        assert_eq!(shell.nav().noun(), Noun::Bills);
+        assert_eq!(
+            press(&mut shell, &["g", "w"]).1,
+            [Routed::ViewScrollReset(Noun::Bills)],
+            "a jump key resets even onto the noun showing"
+        );
+    }
+
+    #[test]
+    fn a_jump_needing_a_ledger_is_refused_with_none_open() {
+        let mut shell = shell();
+        let mut router = RecordingRouter {
+            ledger_open: false,
+            ..RecordingRouter::default()
+        };
+
+        shell.key("g", &mut router);
+        shell.key("w", &mut router);
+        assert_eq!(router.routed, [Routed::RefusedWithoutLedger]);
+        assert_eq!(shell.nav().noun(), Noun::Dashboard);
+
+        router.routed.clear();
+        shell.key("g", &mut router);
+        shell.key("s", &mut router);
+        assert_eq!(router.routed, [Routed::ViewScrollReset(Noun::Settings)]);
+    }
+
+    #[test]
+    fn insert_and_focus_next_change_the_shells_own_state() {
+        let mut shell = shell();
+        let mut router = RecordingRouter::default();
+
+        shell.command(ShellCommand::Insert, &mut router);
+        assert_eq!(shell.nav().mode(), InputMode::Insert);
+        shell.navigate(NavInput::ExitMode);
+        shell.command(ShellCommand::FocusNext, &mut router);
+        assert_eq!(shell.nav().focus(), FocusZone::PrimaryRail);
+
+        assert!(router.routed.is_empty());
+    }
+
+    #[test]
+    fn a_movement_in_the_view_is_the_views() {
+        let mut shell = shell();
+        let mut router = RecordingRouter::default();
+
+        shell.command(ShellCommand::Move(Step::Next), &mut router);
+        shell.command(ShellCommand::Select, &mut router);
+
+        assert_eq!(
+            router.routed,
+            [
+                Routed::Moved(Noun::Dashboard, Movement::Next),
+                Routed::Moved(Noun::Dashboard, Movement::Enter),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_movement_on_the_primary_rail_browses_and_enter_shows_the_row() {
+        let mut shell = shell();
+        shell.navigate(NavInput::Focus(FocusZone::PrimaryRail));
+        let mut router = RecordingRouter::default();
+
+        shell.command(ShellCommand::Move(Step::Next), &mut router);
+        assert_eq!(shell.nav().noun(), Noun::Dashboard, "browsing only");
+        assert!(router.routed.is_empty());
+
+        shell.command(ShellCommand::Select, &mut router);
+        assert_eq!(shell.nav().noun(), Noun::Transactions);
+        assert_eq!(router.routed, [Routed::ViewScrollReset(Noun::Transactions)]);
+    }
+
+    #[test]
+    fn enter_on_a_rail_row_needing_a_ledger_is_refused_with_none_open() {
+        let mut shell = shell();
+        shell.navigate(NavInput::Focus(FocusZone::PrimaryRail));
+        let mut router = RecordingRouter {
+            ledger_open: false,
+            ..RecordingRouter::default()
+        };
+
+        shell.command(ShellCommand::Move(Step::Next), &mut router);
+        shell.command(ShellCommand::Select, &mut router);
+
+        assert_eq!(router.routed, [Routed::RefusedWithoutLedger]);
+        assert_eq!(shell.nav().noun(), Noun::Dashboard);
+    }
+
+    #[test]
+    fn a_movement_on_the_context_rail_steps_through_its_rows() {
+        let mut shell = shell();
+        shell.navigate(NavInput::Focus(FocusZone::ContextRail));
+        let mut router = RecordingRouter {
+            context_rows: 3,
+            ..RecordingRouter::default()
+        };
+
+        shell.command(ShellCommand::Move(Step::Last), &mut router);
+        assert_eq!(shell.nav().context(), Some(2));
+        shell.command(ShellCommand::Move(Step::Next), &mut router);
+        assert_eq!(shell.nav().context(), Some(2), "clamped");
+
+        router.context_rows = 0;
+        shell.command(ShellCommand::Move(Step::First), &mut router);
+        assert_eq!(shell.nav().context(), Some(2), "nothing to move through");
+        assert!(router.routed.is_empty());
+    }
+
+    /// The Shell with the palette open on `effect`, a Command called `run`.
+    fn palette_on(effect: PaletteEffect<(), &'static str>) -> Shell {
+        let mut shell = shell();
+        shell.set_palette_entries(vec![PaletteEntry {
+            name: "run",
+            description: String::new,
+            domain: "Tests".to_string(),
+            key: None,
+            takes_argument: false,
+            effect,
+        }]);
+        shell.command(ShellCommand::Command, &mut RecordingRouter::default());
+        shell
+    }
+
+    /// Runs the palette's one Command with `enter`.
+    fn run_on(shell: &mut Shell, router: &mut RecordingRouter) {
+        assert!(shell.palette_key("enter", None, router));
+        assert!(!shell.palette_open());
+    }
+
+    #[test]
+    fn a_client_command_shows_its_settings_page_then_runs_through_the_router() {
+        let mut shell = palette_on(PaletteEffect::Client {
+            destination: Some(Destination::Settings(())),
+            needs_ledger: true,
+            effect: "units set-base",
+        });
+        let mut router = RecordingRouter::default();
+
+        run_on(&mut shell, &mut router);
+
+        assert_eq!(
+            router.routed,
+            [
+                Routed::ViewScrollReset(Noun::Settings),
+                Routed::RanEffect(PaletteRun {
+                    name: "run",
+                    effect: "units set-base",
+                    argument: String::new(),
+                }),
+            ]
+        );
+        assert_eq!(shell.nav().noun(), Noun::Settings);
+        assert_eq!(shell.nav().mode(), InputMode::Normal);
+    }
+
+    #[test]
+    fn a_command_needing_a_ledger_is_refused_with_none_open_and_leaves_command_mode() {
+        let mut shell = palette_on(PaletteEffect::CloseLedger);
+        let mut router = RecordingRouter {
+            ledger_open: false,
+            ..RecordingRouter::default()
+        };
+
+        run_on(&mut shell, &mut router);
+
+        assert_eq!(router.routed, [Routed::RefusedWithoutLedger]);
+        assert_eq!(shell.nav().mode(), InputMode::Normal);
+    }
+
+    #[test]
+    fn close_lands_on_the_dashboard_with_no_history() {
+        let mut shell = palette_on(PaletteEffect::CloseLedger);
+        shell.navigate(NavInput::Show(Noun::Bills));
+        let mut router = RecordingRouter::default();
+
+        run_on(&mut shell, &mut router);
+
+        assert_eq!(
+            router.routed,
+            [
+                Routed::ClosedLedger,
+                Routed::ViewScrollReset(Noun::Dashboard)
+            ]
+        );
+        assert_eq!(shell.nav().noun(), Noun::Dashboard);
+        assert!(!shell.nav().can_go_back());
+    }
+
+    #[test]
+    fn open_from_the_palette_opens_the_explorer_still_in_command_mode() {
+        let mut shell = palette_on(PaletteEffect::OpenExplorer(ExplorerMode::Open));
+        let mut router = RecordingRouter::default();
+
+        run_on(&mut shell, &mut router);
+
+        assert!(shell.explorer_open());
+        assert_eq!(shell.nav().mode(), InputMode::Command);
+        assert!(router.routed.is_empty());
+    }
+
+    #[test]
+    fn a_palette_jump_resets_the_scroll_only_onto_another_noun() {
+        let mut shell = palette_on(PaletteEffect::Shell(ShellCommand::Jump(Noun::Dashboard)));
+        let mut router = RecordingRouter::default();
+
+        run_on(&mut shell, &mut router);
+
+        assert!(router.routed.is_empty());
+        assert_eq!(shell.nav().mode(), InputMode::Normal);
+    }
+
+    #[test]
+    fn a_palette_shell_command_runs_as_its_key_does() {
+        let mut shell = palette_on(PaletteEffect::Shell(ShellCommand::Search));
+        let mut router = RecordingRouter::default();
+
+        run_on(&mut shell, &mut router);
+
+        assert_eq!(router.routed, [Routed::StartedSearch(Noun::Dashboard)]);
+        assert_eq!(shell.nav().mode(), InputMode::Search);
+    }
+
+    #[test]
+    fn dismiss_removes_the_newest_toast() {
+        let mut shell = palette_on(PaletteEffect::DismissNewestToast);
+        shell.show(toast(ToastKind::Error, "first"), local(0));
+        shell.show(toast(ToastKind::Error, "second"), local(1));
+
+        run_on(&mut shell, &mut RecordingRouter::default());
+
+        assert_eq!(texts(&shell), ["first"]);
     }
 
     #[test]
@@ -1010,10 +1638,7 @@ mod tests {
             .insert(TOGGLE_RAIL.to_string(), "ctrl+b".to_string());
         shell.set_keymap(&config);
 
-        assert_eq!(
-            press(&mut shell, &["ctrl+b"]).1,
-            vec![Routed::Ran(ShellCommand::ToggleRail)]
-        );
+        assert_eq!(press(&mut shell, &["ctrl+b"]).1, vec![Routed::ToggledRail]);
         assert_eq!(press(&mut shell, &["b"]), (passed("b", None), vec![]));
     }
 
@@ -1026,7 +1651,7 @@ mod tests {
             press(&mut shell, &["s"]),
             (
                 ShellKey::Taken,
-                vec![Routed::Ran(ShellCommand::Jump(Noun::Settings))]
+                vec![Routed::ViewScrollReset(Noun::Settings)]
             )
         );
         assert_eq!(
