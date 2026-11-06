@@ -48,6 +48,10 @@ _Avoid_: Book, journal.
 The local SQLite database a Client keeps its copy of one Ledger in; what opening, creating and closing a Ledger act on. Creating a Ledger is the only way a Ledger file comes to be, and writes, all or nothing, what every new Ledger starts with: the Personal Institution, a base Unit the person chooses as they create it, an empty Personal spending Budget in that Unit, and the default Document Types. Opening a Ledger never creates or completes one: a file without these is refused, not a new Ledger.
 _Avoid_: database, book file.
 
+**Sample Ledger**:
+A fixed, known Ledger used only to develop and test Personal Ledger: a new Ledger with sample rows of every kind on top, the same rows whether written to a Ledger file or held in memory. No person using Personal Ledger is ever offered it.
+_Avoid_: stub Ledger, stub seed, demo Ledger, fixture.
+
 **Open Ledger**:
 The Ledger a Client currently has open, at most one at a time. With no Open Ledger the Shell offers only opening a Ledger, creating one, help, and the Settings pages for this device; everything else is shown but refused. "No Ledger open" names that state, not "empty state", which means a View with no rows. A Client with no Ledger open needs nothing from any Ledger file: it runs on its Configuration and built-in defaults alone. Starting never creates a Ledger file; only creating a Ledger does. Which Ledger, if any, a Client opens as it starts is its On start Configuration.
 _Avoid_: loaded ledger, active ledger, current ledger; load (as the verb).
