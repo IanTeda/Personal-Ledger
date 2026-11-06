@@ -5,10 +5,7 @@ use gpui::{Context, Timer};
 use lib_shell::NavInput;
 
 use super::{Root, TOOLTIP_REVEAL_DELAY};
-use crate::{
-    navigation::nav::Noun,
-    shell::view::{rail as rail_view, window_size::WindowSize},
-};
+use crate::{navigation::nav::Noun, shell::view::window_size::WindowSize};
 
 impl Root {
     /// The TopBar's own rail-toggle button (`Root::render`'s `on_rail_toggle` closure) --
@@ -26,11 +23,8 @@ impl Root {
     /// Size until the window crosses a Breakpoint. Clears any settled collapsed-rail tooltip, which
     /// is meaningless once the rail that anchors it changes shape.
     pub(super) fn toggle_rail(&mut self, window_size: WindowSize, cx: &gpui::App) {
-        self.state.rail_override = Some(rail_view::toggled(
-            window_size,
-            self.start_sidebar_minimised(cx),
-            self.state.rail_override,
-        ));
+        let start_hidden = self.start_sidebar_minimised(cx);
+        self.presenter.toggle_rail(window_size, start_hidden);
         self.state.collapsed_rail_tooltip = None;
     }
 

@@ -1,26 +1,26 @@
-//! The Shell's state the bin keeps: the command palette, the open Dialog, the rail's `b` override
-//! and the collapsed rail's hover tooltip. `Root` owns one of these as its `state` field; none of
-//! it is View state, so it does not become an Entity (ADR-0032). The status message, the Toasts,
-//! focus and modes are the Shell's Presenter's (`lib_shell`).
+//! The Shell's gpui View state, which `Root` owns as its `state` field: the hosted Dialog Entity
+//! and its Subscription, the collapsed rail's hover tooltip and its generation, and whether the top
+//! bar's recent-actions list is open. These are gpui View state, not a stand-in for Presenter
+//! state, so they do not move into `lib_shell` and do not become Entities (ADR-0032). The status
+//! message, the Toasts, focus, modes, the rail's `b` override and the Dialog keymap are the Shell's
+//! Presenter's (`lib_shell`). The command palette is `Root`'s own until its slice (#1063).
 
 use crate::{
     navigation::nav::Noun,
-    shell::view::{dialog_entity::DialogHandle, palette::Palette, rail::RailOverride},
+    shell::view::{dialog_entity::DialogHandle, palette::Palette},
 };
 
 pub(crate) struct ShellState {
     /// The command palette's own input/selection state -- `Some` only while
     /// `NavState::mode` is `InputMode::Command`, mirroring `bin-tui`'s own
     /// `Shell`'s `Option<popup::command::CommandPopup>` (`docs/ux/desktop-mockups/README.md`'s Notes).
+    /// Not View state: it moves into the Presenter with #1063.
     pub(crate) palette: Option<Palette>,
     /// The collapsed primary rail's row whose hover has settled past
     /// `TOOLTIP_REVEAL_DELAY` -- `None` while nothing's hovered, the delay hasn't elapsed
     /// yet, or the rail isn't collapsed (see `shell::view::rail::primary::PrimaryRail`, which only wires
     /// hover at all in its collapsed rendering).
     pub(crate) collapsed_rail_tooltip: Option<Noun>,
-    /// The rail `b` last set, with the Window Size it was set at; `Root::render` drops it once
-    /// the window is drawn at another (ADR-0042).
-    pub(crate) rail_override: Option<RailOverride>,
     /// Bumped on every hover transition; a pending reveal timer checks this against the value
     /// it captured before applying, so hovering a second row (or leaving the rail entirely)
     /// before the first row's delay elapses can't reveal the wrong tooltip.
@@ -30,8 +30,6 @@ pub(crate) struct ShellState {
     /// `Root::close_dialog` change it, so `NavState::mode` is `InputMode::Dialog` for exactly as
     /// long as this is `Some`.
     pub(crate) hosted: Option<(DialogHandle, gpui::Subscription)>,
-    /// The keys every module Dialog shares, under `[keybindings]` (`lib_shell::dialog`).
-    pub(crate) dialog_keymap: lib_viper::keymap::Keymap<lib_shell::DialogCommand>,
     /// The top bar's recent-actions list below Undo is open.
     pub(crate) undo_menu_open: bool,
 }

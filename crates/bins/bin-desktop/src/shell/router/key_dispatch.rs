@@ -301,7 +301,8 @@ impl Root {
         keystroke: &Keystroke,
         cx: &mut Context<'_, Self>,
     ) {
-        let command = chord(keystroke).and_then(|chord| self.state.dialog_keymap.event(&chord));
+        let command =
+            chord(keystroke).and_then(|chord| self.presenter.dialog_keymap().event(&chord));
         input::send(cx, |cx| match command {
             Some(DialogCommand::Back) => {
                 if !dialog.close_open_select(cx) {

@@ -25,6 +25,7 @@ pub mod nav;
 pub mod navigation;
 pub mod presenter;
 pub mod protocols;
+pub mod rail;
 pub mod toast_history;
 pub mod window_size;
 
@@ -37,6 +38,7 @@ pub use presenter::{
     DialogInput, NavInput, ShellInput, ShellKey, ShellPresenter, ShellViewModel, ToastInput,
 };
 pub use protocols::{RailCounts, ShellRailCounts, ShellRouter};
+pub use rail::RailMode;
 pub use toast_history::{ToastHistoryPresenter, ToastHistoryRow, ToastHistoryViewModel};
 pub use window_size::WindowSize;
 

@@ -92,7 +92,7 @@ use crate::{
     navigation::nav::{NavState, Noun, RailMode},
     settings::{SettingsPage, device::DeviceConfigFile, router::PageChanged, state::SettingsView},
     shell::state::ShellState,
-    shell::view::{rail as rail_view, window_size::WindowSize},
+    shell::view::window_size::WindowSize,
 };
 use lib_settings::DisplayOutput;
 use std::rc::Rc;
@@ -262,10 +262,8 @@ impl Root {
             state: ShellState {
                 palette: None,
                 collapsed_rail_tooltip: None,
-                rail_override: None,
                 hover_generation: 0,
                 hosted: None,
-                dialog_keymap: lib_shell::dialog_keymap(&lib_config::KeyBindingConfig::default()),
                 undo_menu_open: false,
             },
             #[cfg(debug_assertions)]
@@ -501,11 +499,8 @@ impl Root {
     /// The primary rail drawn at `window_size`: a `b` override made at that Window Size, or the
     /// Window Size's own default.
     pub fn primary_rail(&self, window_size: WindowSize, cx: &App) -> RailMode {
-        rail_view::rail_mode(
-            window_size,
-            self.start_sidebar_minimised(cx),
-            self.state.rail_override,
-        )
+        self.presenter
+            .rail_mode(window_size, self.start_sidebar_minimised(cx))
     }
 
     pub fn start_sidebar_minimised(&self, cx: &App) -> bool {
@@ -604,7 +599,6 @@ impl Root {
         self.keybindings = config.clone();
         self.palette_entries = command::entries(config);
         self.presenter.set_keymap(config);
-        self.state.dialog_keymap = lib_shell::dialog_keymap(config);
         self.settings
             .update(cx, |view, cx| view.set_keymaps(config, cx));
         let Some(open) = &self.open else {

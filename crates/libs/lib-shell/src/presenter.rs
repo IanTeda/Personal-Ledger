@@ -21,10 +21,13 @@ use lib_toast::{Display, Notice, Toasts};
 use lib_viper::keymap::Keymap;
 use lib_viper::view::Hint;
 
+use crate::dialog::{DialogCommand, dialog_keymap};
 use crate::keymap::{HELP, OPEN_COMMAND_POPUP, SEARCH, ShellCommand, TOGGLE_RAIL, global_keymap};
 use crate::nav::{ContextSelection, FocusZone, InputMode, NavState};
 use crate::navigation::Noun;
 use crate::protocols::{RailCounts, ShellRailCounts, ShellRouter};
+use crate::rail::{RailMode, RailOverride};
+use crate::window_size::WindowSize;
 
 /// What the Client delivers to the Shell, each through its one `send`. `F` is the Client's write
 /// failure ([`ShellRouter::Failure`]).
@@ -153,6 +156,11 @@ pub struct ShellPresenter<P> {
     month: Period,
     dialog_open: bool,
     keymap: Keymap<ShellCommand>,
+    /// The keys every module Dialog shares, under `[keybindings]`, which the Client's Dialogs read
+    /// through [`ShellPresenter::dialog_keymap`].
+    dialog_keymap: Keymap<DialogCommand>,
+    /// The rail `b` last set, with the Window Size it was set at (ADR-0042).
+    rail_override: Option<RailOverride>,
     /// The first key of a sequence typed so far, until the next key or [`ShellInput::PrefixExpired`].
     prefix: Option<String>,
     nav: NavState<P>,
@@ -177,6 +185,8 @@ impl<P: Copy + Eq + Default> ShellPresenter<P> {
             month,
             dialog_open: false,
             keymap: global_keymap(&KeyBindingConfig::default()),
+            dialog_keymap: dialog_keymap(&KeyBindingConfig::default()),
+            rail_override: None,
             prefix: None,
             nav,
             status: None,
@@ -192,9 +202,42 @@ impl<P: Copy + Eq + Default> ShellPresenter<P> {
         &self.clock
     }
 
-    /// Puts the global keymap under `config`'s overrides.
+    /// Puts the global keymap and the Dialog keymap under `config`'s overrides.
     pub fn set_keymap(&mut self, config: &KeyBindingConfig) {
         self.keymap = global_keymap(config);
+        self.dialog_keymap = dialog_keymap(config);
+    }
+
+    /// The keys every module Dialog shares.
+    pub fn dialog_keymap(&self) -> &Keymap<DialogCommand> {
+        &self.dialog_keymap
+    }
+
+    /// The primary rail drawn at `window_size`: the `b` override while the window is still at the
+    /// Window Size it was set at, otherwise that size's default. `start_hidden` is Settings ›
+    /// Display's "start with the rail hidden".
+    pub fn rail_mode(&self, window_size: WindowSize, start_hidden: bool) -> RailMode {
+        crate::rail::rail_mode(window_size, start_hidden, self.rail_override)
+    }
+
+    /// `b`: flips the rail drawn at `window_size`, which holds until the window is drawn at another.
+    pub fn toggle_rail(&mut self, window_size: WindowSize, start_hidden: bool) {
+        self.rail_override = Some(crate::rail::toggled(
+            window_size,
+            start_hidden,
+            self.rail_override,
+        ));
+    }
+
+    /// The Client drew the window at `window_size`. An override set at another size is dropped for
+    /// good, so coming back to that size draws its default (ADR-0042).
+    pub fn window_drawn_at(&mut self, window_size: WindowSize) {
+        if self
+            .rail_override
+            .is_some_and(|rail_override| rail_override.set_at != window_size)
+        {
+            self.rail_override = None;
+        }
     }
 
     pub fn keymap(&self) -> &Keymap<ShellCommand> {
@@ -488,6 +531,120 @@ mod tests {
 
     fn presenter(clock: Clock) -> Shell {
         ShellPresenter::new(clock, NavState::new())
+    }
+
+    #[test]
+    fn the_rail_defaults_by_window_size_and_start_hidden() {
+        let shell = presenter(Clock::fixed(date(2026, 9, 19)));
+
+        assert_eq!(
+            shell.rail_mode(WindowSize::Medium, false),
+            RailMode::Collapsed
+        );
+        assert_eq!(
+            shell.rail_mode(WindowSize::Large, false),
+            RailMode::Expanded
+        );
+        assert_eq!(
+            shell.rail_mode(WindowSize::XLarge, false),
+            RailMode::Expanded
+        );
+        assert_eq!(
+            shell.rail_mode(WindowSize::Medium, true),
+            RailMode::Collapsed
+        );
+        assert_eq!(
+            shell.rail_mode(WindowSize::Large, true),
+            RailMode::Collapsed
+        );
+        assert_eq!(
+            shell.rail_mode(WindowSize::XLarge, true),
+            RailMode::Collapsed
+        );
+    }
+
+    #[test]
+    fn toggling_the_rail_flips_what_is_drawn_at_that_window_size() {
+        let mut shell = presenter(Clock::fixed(date(2026, 9, 19)));
+
+        shell.toggle_rail(WindowSize::Medium, false);
+
+        assert_eq!(
+            shell.rail_mode(WindowSize::Medium, false),
+            RailMode::Expanded
+        );
+    }
+
+    #[test]
+    fn toggling_the_rail_twice_comes_back_to_the_default() {
+        let mut shell = presenter(Clock::fixed(date(2026, 9, 19)));
+
+        shell.toggle_rail(WindowSize::Large, false);
+        shell.toggle_rail(WindowSize::Large, false);
+
+        assert_eq!(
+            shell.rail_mode(WindowSize::Large, false),
+            RailMode::Expanded
+        );
+    }
+
+    #[test]
+    fn a_rail_override_does_not_apply_at_another_window_size() {
+        let mut shell = presenter(Clock::fixed(date(2026, 9, 19)));
+        shell.toggle_rail(WindowSize::Medium, false);
+
+        assert_eq!(
+            shell.rail_mode(WindowSize::Large, false),
+            RailMode::Expanded
+        );
+    }
+
+    #[test]
+    fn drawing_the_window_at_another_size_drops_the_rail_override_for_good() {
+        let mut shell = presenter(Clock::fixed(date(2026, 9, 19)));
+        shell.toggle_rail(WindowSize::Medium, false);
+
+        shell.window_drawn_at(WindowSize::Large);
+        shell.window_drawn_at(WindowSize::Medium);
+
+        assert_eq!(
+            shell.rail_mode(WindowSize::Medium, false),
+            RailMode::Collapsed
+        );
+    }
+
+    #[test]
+    fn drawing_the_window_at_the_same_size_keeps_the_rail_override() {
+        let mut shell = presenter(Clock::fixed(date(2026, 9, 19)));
+        shell.toggle_rail(WindowSize::Medium, false);
+
+        shell.window_drawn_at(WindowSize::Medium);
+
+        assert_eq!(
+            shell.rail_mode(WindowSize::Medium, false),
+            RailMode::Expanded
+        );
+    }
+
+    #[test]
+    fn the_dialog_keymap_follows_the_keybindings_the_shell_is_given() {
+        let mut shell = presenter(Clock::fixed(date(2026, 9, 19)));
+        assert_eq!(
+            shell.dialog_keymap().event("enter"),
+            Some(DialogCommand::Select)
+        );
+
+        let mut config = KeyBindingConfig::default();
+        config
+            .bindings
+            .insert(lib_viper::keymap::SELECT.to_string(), "ctrl+y".to_string());
+        shell.set_keymap(&config);
+
+        assert_eq!(
+            shell.dialog_keymap().event("ctrl+y"),
+            Some(DialogCommand::Select)
+        );
+        assert_eq!(shell.dialog_keymap().event("enter"), None);
     }
 
     #[test]

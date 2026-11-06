@@ -34,13 +34,7 @@ impl Render for Root {
         let window_size = WindowSize::of(window);
         // A `b` override lasts only until the window crosses a Breakpoint (ADR-0042); dropped
         // here, so coming back to the Window Size it was set at draws that size's default.
-        if self
-            .state
-            .rail_override
-            .is_some_and(|rail_override| rail_override.set_at != window_size)
-        {
-            self.state.rail_override = None;
-        }
+        self.presenter.window_drawn_at(window_size);
         let rail_mode = self.primary_rail(window_size, cx);
         self.place_budgets_switcher(rail_mode, cx);
         let focus = self.nav().focus();

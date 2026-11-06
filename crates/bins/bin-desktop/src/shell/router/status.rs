@@ -54,7 +54,7 @@ impl Root {
         };
         let hints = self
             .hosted_dialog()
-            .and_then(|dialog| dialog.hints(&self.state.dialog_keymap, cx));
+            .and_then(|dialog| dialog.hints(self.presenter.dialog_keymap(), cx));
         match hints {
             Some(hints) => Some(PageStatus {
                 hints,
