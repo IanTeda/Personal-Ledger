@@ -75,7 +75,7 @@ impl BudgetsAdapter {
         Ok(())
     }
 
-    /// Whether the file holds no Budget, blocking: what [`crate::open_storage`] seeds.
+    /// Whether the file holds no Budget, blocking: one [`crate::open_storage`] refuses.
     ///
     /// # Errors
     /// Returns the error of the read.

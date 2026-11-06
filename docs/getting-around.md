@@ -120,7 +120,7 @@ Choosing the folder and name opens the **Create ledger** dialog, which shows the
 
 Create writes the new Ledger file and opens it on the Dashboard with a "Created ledger" Toast. If a Ledger was already open, its changes are saved and the new one takes its place. If the file can't be written, for example because one of that name has appeared since or the folder isn't writable, an error Toast says why, no file is left behind, the dialog stays open and whatever was open stays open.
 
-A new Ledger is empty apart from what every Ledger starts with: the Personal institution (with no usual unit), your base unit, an empty Personal spending budget in it and the default document types. There is no sample data, and no categories, payees or tags. Opening a file never creates or completes a Ledger: if a file has no base unit, for example because creating it was interrupted, an error Toast says it isn't a complete Ledger, and you can create it again.
+A new Ledger is empty apart from what every Ledger starts with: the Personal institution (with no usual unit), your base unit, an empty Personal spending budget in it and the default document types. There is no sample data, and no categories, payees or tags. Opening a file never creates or completes a Ledger: if a file has no base unit, budget or document type, for example because creating it was interrupted, an error Toast says it isn't a complete Ledger, and you can create it again.
 
 In the terminal app, `:new` creates the same Ledger without asking, with your Locale's currency as the base unit.
 

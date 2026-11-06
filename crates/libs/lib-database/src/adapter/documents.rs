@@ -112,7 +112,7 @@ impl DocumentsAdapter {
         Ok(())
     }
 
-    /// Whether the file holds no Document Type, blocking: what [`crate::open_storage`] seeds.
+    /// Whether the file holds no Document Type, blocking: one [`crate::open_storage`] refuses.
     ///
     /// # Errors
     /// Returns the error of the read.

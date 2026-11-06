@@ -78,22 +78,18 @@ impl From<Storage> for Stores {
 
 /// Opens the Ledger at `path`, migrating it if need be, and loads every adapter, blocking.
 ///
-/// Opening only opens (ADR-0054): a Ledger is created, with what every new one starts with, by
-/// `lib-ledger-creation`'s [`LedgerCreationAdapter`](crate::LedgerCreationAdapter), never here. A
-/// migrated file with no base Unit was cut short or made by hand, so it is refused rather than
-/// completed. A path with no file is refused before anything is made there.
-///
-/// A Ledger with no Budget, one written before Budgets persisted, is given an empty default
-/// Personal spending Budget in its base Unit on every Account in it that takes Transactions
-/// (`lib_budgets::personal_spending`), so there is always an active Budget.
-///
-/// A Ledger with no Document Type, one written before Documents persisted, is given the nine
-/// default types (ADR-0031) and no Documents, so there is always a Default type.
+/// Opening only opens and writes nothing (ADR-0054): a Ledger is created, with what every new one
+/// starts with, by `lib-ledger-creation`'s [`LedgerCreationAdapter`](crate::LedgerCreationAdapter),
+/// never here. A migrated file with no base Unit, no Budget or no Document Type is missing what
+/// every new Ledger starts with, so it was cut short, made by hand or made before Budgets or
+/// Documents persisted, and it is refused rather than completed. The Personal Institution isn't
+/// checked, because a person may delete it. A path with no file is refused before anything is
+/// made there.
 ///
 /// # Errors
 /// Returns an [`Error::Io`] of kind `NotFound` for a path with no file,
-/// [`Error::IncompleteLedger`] for a file with no base Unit, or the error opening, migrating or
-/// reading the file.
+/// [`Error::IncompleteLedger`] for a file with no base Unit, Budget or Document Type, or the error
+/// opening, migrating or reading the file.
 #[tracing::instrument(name = "Open the Ledger's storage", level = "debug", err)]
 pub fn open_storage(path: &Path) -> Result<Storage> {
     // Checked here rather than left to the Writer, whose open makes a missing file.
@@ -109,6 +105,9 @@ pub fn open_storage(path: &Path) -> Result<Storage> {
         Err(Error::NotFound(_)) => return Err(Error::IncompleteLedger),
         loaded => loaded?,
     };
+    if BudgetsAdapter::is_empty(&writer)? || DocumentsAdapter::has_no_types(&writer)? {
+        return Err(Error::IncompleteLedger);
+    }
     let institutions = InstitutionsAdapter::load(pending.clone())?;
     let accounts = AccountsAdapter::load(pending.clone())?;
     let categories = CategoriesAdapter::load(pending.clone())?;
@@ -116,21 +115,8 @@ pub fn open_storage(path: &Path) -> Result<Storage> {
     let payees = PayeesAdapter::load(pending.clone())?;
     let transactions = TransactionsAdapter::load(pending.clone())?;
     let bills = BillsAdapter::load(pending.clone())?;
-    if BudgetsAdapter::is_empty(&writer)? {
-        let base = units.base_unit().base_unit();
-        let accounts = crate::adapter::accounts::budget_accounts(&accounts.accounts().accounts());
-        BudgetsAdapter::seed(
-            &writer,
-            vec![lib_budgets::personal_spending(base, &accounts)],
-        )?;
-        tracing::info!(path = %path.display(), "Gave a Ledger with no Budget a default one");
-    }
     let budgets = BudgetsAdapter::load(pending.clone())?;
     let inventory = InventoryAdapter::load(pending.clone())?;
-    if DocumentsAdapter::has_no_types(&writer)? {
-        DocumentsAdapter::seed(&writer, lib_documents::types::default_types(), Vec::new())?;
-        tracing::info!(path = %path.display(), "Gave a Ledger with no Document Type the defaults");
-    }
     let documents = DocumentsAdapter::load(pending.clone())?;
     Ok(Storage {
         units,
@@ -218,74 +204,62 @@ mod tests {
         assert_eq!(reopened.budgets.budgets(), expected);
     }
 
-    /// A Ledger written before Budgets persisted has none, so it opens with an empty default
-    /// Personal spending Budget, once.
-    #[test]
-    fn an_existing_ledger_with_no_budget_opens_with_an_empty_default_one() {
-        use lib_budgets::BudgetRepository as _;
+    /// A Ledger made as `:new` makes one at `path`, then `sql` run on it and the file closed, as
+    /// a hand edit or an older build would leave it.
+    fn created_then(path: &Path, sql: &'static [&'static str]) {
+        use lib_ledger_creation::LedgerCreation as _;
 
-        let dir = tempfile::tempdir().expect("a temporary directory");
-        let path = dir.path().join("ledger.pldb");
-        let storage = seeded(&path);
-        storage
-            .writer
-            .run(|pool| async move {
-                sqlx::query("DELETE FROM budgets").execute(&pool).await?;
+        crate::LedgerCreationAdapter::new()
+            .create_ledger(path, &lib_ledger_creation::contract::usd_ledger())
+            .expect("nothing is at the path");
+        let (writer, _) = Writer::open_ledger(path).expect("the Ledger opens");
+        writer
+            .run(move |pool| async move {
+                for statement in sql {
+                    sqlx::query(statement).execute(&pool).await?;
+                }
                 Ok(())
             })
-            .expect("the Budgets are cleared");
-        drop(storage);
-
-        let reopened = open_storage(&path).expect("the Ledger opens again");
-        let accounts = crate::adapter::accounts::budget_accounts(&seed::stub_accounts());
-        let personal = lib_budgets::personal_spending(lib_core::UnitId::SEED_AUD, &accounts);
-        assert!(personal.limits.is_empty() && personal.is_default);
-        assert_eq!(reopened.budgets.budgets(), std::slice::from_ref(&personal));
-        reopened.writer.flush().expect("the writer is running");
-        drop(reopened);
-
-        let again = open_storage(&path).expect("the Ledger opens again");
-        assert_eq!(again.budgets.budgets(), [personal], "seeded once");
+            .expect("the edit is written");
+        writer.close().expect("the writer is running");
     }
 
-    /// A Ledger written before Documents persisted has no Document Type, so it opens with the
-    /// defaults, once.
+    /// Every new Ledger starts with a Budget, so a file with none is refused rather than given
+    /// one, and opening it changes nothing in it.
     #[test]
-    fn an_existing_ledger_with_no_document_type_opens_with_the_defaults() {
-        use lib_documents::DocumentRepository as _;
-
+    fn a_migrated_file_with_no_budget_is_refused_as_incomplete_and_left_as_it_was() {
         let dir = tempfile::tempdir().expect("a temporary directory");
         let path = dir.path().join("ledger.pldb");
-        let storage = seeded(&path);
-        storage
-            .writer
-            .run(|pool| async move {
-                sqlx::query("DELETE FROM document_links")
-                    .execute(&pool)
-                    .await?;
-                sqlx::query("DELETE FROM documents").execute(&pool).await?;
-                sqlx::query("DELETE FROM document_types")
-                    .execute(&pool)
-                    .await?;
-                Ok(())
-            })
-            .expect("the Documents and their Types are cleared");
-        drop(storage);
+        created_then(&path, &["DELETE FROM budgets"]);
+        let before = std::fs::read(&path).expect("the file reads");
 
-        let reopened = open_storage(&path).expect("the Ledger opens again");
-        assert_eq!(
-            reopened.documents.document_types(),
-            lib_documents::types::default_types()
-        );
-        reopened.writer.flush().expect("the writer is running");
-        drop(reopened);
+        assert_eq!(open_storage(&path).err(), Some(Error::IncompleteLedger));
+        assert_eq!(std::fs::read(&path).expect("the file reads"), before);
+    }
 
-        let again = open_storage(&path).expect("the Ledger opens again");
-        assert_eq!(
-            again.documents.document_types().len(),
-            lib_documents::types::default_types().len(),
-            "seeded once"
-        );
+    /// Every new Ledger starts with the default Document Types, so a file with none is refused
+    /// rather than given them, and opening it changes nothing in it.
+    #[test]
+    fn a_migrated_file_with_no_document_type_is_refused_as_incomplete_and_left_as_it_was() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let path = dir.path().join("ledger.pldb");
+        created_then(&path, &["DELETE FROM document_types"]);
+        let before = std::fs::read(&path).expect("the file reads");
+
+        assert_eq!(open_storage(&path).err(), Some(Error::IncompleteLedger));
+        assert_eq!(std::fs::read(&path).expect("the file reads"), before);
+    }
+
+    /// A person may delete the Personal Institution, so a Ledger without it still opens.
+    #[test]
+    fn a_ledger_with_its_personal_institution_deleted_opens() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let path = dir.path().join("ledger.pldb");
+        created_then(&path, &["DELETE FROM institutions"]);
+
+        let storage = open_storage(&path).expect("the Ledger opens");
+
+        assert!(storage.institutions.institutions().is_empty());
     }
 
     /// A migrated file with no base Unit, as an interrupted create or an older build's cut-short
