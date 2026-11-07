@@ -7,28 +7,17 @@
 //!
 //! [`Stores::new`] wraps each store once in a [`Recorded`], which notes the store's
 //! [`Domain`](crate::Domain) in the [`Written`](crate::Written) set the commit drains on every
-//! write, so [`Committed`](crate::Committed) says what an input wrote and no module counts its own
+//! mutable access, so [`Committed`](crate::Committed) says what an input wrote and no module counts its own
 //! writes (#1081). [`SharedStores::reload`] reloads one domain's store by its `Domain`.
 //!
-//! The Accounts store is shared as well ([`SharedAccountsStore`]): the Desktop's Ledger forwards
-//! the Accounts writers to it, and the Units and Bills read its rows (#853). So is the Categories
-//! store ([`SharedCategoriesStore`]): the Desktop's Ledger forwards the Categories writers to it,
-//! and the Bills and Payees read its rows (#858). So is the Tags store ([`SharedTagsStore`]):
-//! [`StoredTagsPorts`](crate::StoredTagsPorts) writes it, and the Tag Removal adapter and the
-//! Transactions' reads hold it (#862, #1082). So is the Inventory store ([`SharedInventoryStore`]): the Desktop's Ledger
-//! forwards the Inventory writers to it and keeps a read copy of it for Documents (#866).
-//!
-//! A cross-domain module writes two stores another module also holds, so the Transactions and
-//! Bills stores can be shared ([`SharedTransactionsStore`], [`SharedBillsStore`]), as
-//! [`BillPaymentsAdapter`](crate::BillPaymentsAdapter) holds them. The Payees store is shared too
-//! ([`SharedPayeesStore`]): Bills reads its rows, the Desktop's Ledger forwards the Payees writers
-//! not yet migrated to it, and [`TransactionImportAdapter`](crate::TransactionImportAdapter)
-//! writes it beside the Transactions store. A cross-domain adapter holds only the shared stores,
-//! so over [`Stores::fake`]'s in-memory stores it is its own in-memory counterpart.
-//!
-//! The Documents store is shared too ([`SharedDocumentsStore`]): the Desktop's Documents module
-//! writes it through `lib-documents`' Interactors and reads the other domains through
-//! [`StoredDocumentReads`] (#963, #968).
+//! Every store is shared once, as a `Shared<Domain>Store` in [`SharedStores`], which
+//! [`LedgerPorts`](crate::LedgerPorts) builds every port, read and cross-domain adapter over: the
+//! domain's `Stored<Domain>Ports` writes it, other modules' stored reads read it, and a
+//! cross-domain adapter ([`BillPaymentsAdapter`](crate::BillPaymentsAdapter) over the Transactions
+//! and Bills stores, [`TransactionImportAdapter`](crate::TransactionImportAdapter) over the Payees
+//! and Transactions) writes it beside another domain's in one commit. A cross-domain adapter holds
+//! only the shared stores, so over [`Stores::fake`]'s in-memory stores it is its own in-memory
+//! counterpart.
 //!
 //! A module reads another domain's rows through one stored reads struct ([`StoredPayeeReads`],
 //! [`StoredDocumentReads`], [`StoredBudgetReads`], [`StoredDashboardReads`]): it holds the shared stores of the domains it
@@ -42,9 +31,6 @@
 //!
 //! [`Stores::fake`] takes its in-memory stores as one [`FakeStores`], so a domain joining the
 //! bundle adds a field rather than an argument (#866).
-//!
-//! [`Stores::with_units`] fills every store but the Units with an empty in-memory one, for a Client
-//! test that drives only the Units: a domain joining the bundle then needs no edit there (#849).
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;

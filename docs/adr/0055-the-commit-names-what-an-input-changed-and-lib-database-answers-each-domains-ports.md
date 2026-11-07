@@ -1,0 +1,26 @@
+# The commit names what an input changed, and `lib-database` answers each domain's ports
+
+Under ADR-0046 every write joins one pending batch and the Desktop's `send` commits it once per input. The batch knew which domains it wrote, yet the commit returned only the domains a delete cascaded into, so each Desktop module counted its own writes (`WriteCount` and `take_written`) and announced them, and pages hard-coded the domains a cross-domain write touched (the Tags page announced Transactions on Remove or Merge). Between a domain crate's port and its adapter a write passed through four layers: the bin's shared ports, a bin re-implementation of the port with a write bump (`LedgerBackedPorts` and the per-domain `ports.rs`), a `Box<T>` forwarding impl and the `<Domain>Store` trait. The TUI adapted the Units store again. Every new domain copied all of it. Decided in the [#1076](https://github.com/IanTeda/Personal-Ledger/issues/1076) grilling and built in [#1081](https://github.com/IanTeda/Personal-Ledger/issues/1081)–[#1085](https://github.com/IanTeda/Personal-Ledger/issues/1085).
+
+## Decision
+
+- **The commit says what the input changed.** `Commit::commit` returns `Committed { wrote, cascaded }`, each domain once, in the order first written: `wrote` every domain written since the last commit, `cascaded` every domain a queued `Change::cascades_to` names. The Ledger file's commit and the in-memory commit both return it, and `CountingCommit` passes it through.
+- **Writes are recorded where the stores are built.** `Stores::new` wraps each store, adapter or fake, once in a `Recorded`, which notes its `Domain` in a `Written` set the commit drains, on each mutable access, and forwards the call. The Documents store notes per write method instead, `Documents` or `DocumentTypes`, since it holds both. On the file, `wrote` also takes in the batch's own `Change` domains, so a write queued by an adapter no recorder wraps still counts.
+- **One `Domain`.** `lib_database::Domain` is the only enum naming a domain, for the writer, the failure channel, the reload and the announcement. Document Types are a `Domain` of their own, so their page hears only their writes. `SharedStores::reload(domain)` (and `LedgerPorts::reload`) reloads any domain's store and drops its pending writes.
+- **The input door announces, once.** The Desktop's `send` commits, then, after the update, reloads `cascaded` and emits one `LedgerChanged { what }` naming the domains written, cascaded into or reloaded by a failed write's rollback, or nothing when that set is empty. The `Announcer` is called from nowhere else. The bin keeps only the match from a `Domain` to its two failure Toast Messages.
+- **`lib-database` answers each domain's ports.** One `Stored<Domain>Ports` per domain implements that domain crate's own ports trait over its store and the `Stored<Domain>Reads` it needs, and is handed out as the crate's `SharedPorts`. `LedgerPorts::new(stores, clock)` builds every one, the cross-domain adapters, the module reads, the commit and the failure channel, so opening a Ledger is one call for either Client. A write passes through two layers: the `Stored<Domain>Ports`, then the recorded store.
+- **The cycle invariant.** `Stored*Reads` and cross-domain adapters hold only stores; no store holds anything; a `Stored<Domain>Ports` is held only by Clients. Every `Rc` points down a layer, so no build order has to guard against a cycle. `lib-database`'s `ports.rs` module doc states it.
+- **A new domain adds** its store, its `Stored<Domain>Ports` and a `Domain` variant, and the Clients gain it with no ports, counting or announcing code of their own.
+
+## Considered Options
+
+- **Each module announces its own writes**, as before. Rejected: the batch already knew what it wrote, and the hand count was copied into every domain, could be forgotten or duplicated, and named another domain's writes by hand wherever a cross-domain module wrote them.
+- **Each Client adapts the stores to the domain ports**, as the Desktop's `LedgerBackedPorts` and the TUI's Units ports did. Rejected: two Clients wrote the same adapter twice over the same stores, with a build order to avoid `Rc` cycles and stand-in usage values to split the Units store.
+- **Recording per write method rather than per mutable access.** Not taken except for the Documents store: a mutable borrow that writes nothing costs one extra repaint, and per-access recording is one line per accessor.
+
+## Consequences
+
+- No module counts or announces a write, so a cross-domain write is announced from what its adapter wrote, and the UI tests on `Stores::fake` see the same announcements as the app.
+- A Client keeps only what is its own: Presenters, Routers, Views, input routing, the Announcer, its Messages, and adapters that aren't domain ports (`FsLedgerFolders`, `DeviceConfiguration`, `TracingLog`).
+- `LedgerPorts` is one struct every domain adds a field to, and the Categories hold two values over the same stores (`categories` for the page, `category_save` for the Dialogs), so a Presenter holding one never borrows it while a Dialog writes through the other.
+- The writer thread, one commit per input and the cascade reload stay as ADR-0046 has them.

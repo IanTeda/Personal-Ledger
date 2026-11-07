@@ -1,7 +1,9 @@
 //! What a Client holds a Ledger by (#1076): [`LedgerPorts`], built once from [`Stores`], with one
 //! `Stored<Domain>Ports` per domain implementing that domain crate's own ports trait, the
 //! cross-domain adapters, the module reads, the commit and the failure channel. A Client hands a
-//! Presenter the domain crate's shared ports straight from here, with no adapter of its own.
+//! Presenter the domain crate's shared ports straight from here, with no adapter of its own. The
+//! module reads come from here too: the Dashboard's, the Shell rail's, the Inventory's, the
+//! Documents' and Settings › Ledger's (#1085). The decision is ADR-0055.
 //!
 //! There are two layers. The bottom is one shared store per domain ([`SharedStores`]), the
 //! adapter or the fake wrapped in its recorder. The top is the `Stored<Domain>Ports`, each holding
@@ -12,9 +14,10 @@
 //! adapter or another `Stored<Domain>Ports`. So every `Rc` points down a layer, no `Rc` cycle can
 //! be built, and no build order has to guard against one.
 //!
-//! A domain joining it adds its `Stored<Domain>Ports` in a file of its own under `ports/`, a field
-//! here holding it as the domain crate's `SharedPorts`, and a line in [`LedgerPorts::new`] building
-//! it over [`SharedStores`].
+//! A domain joining it adds its store (wrapped in its recorder by [`Stores::new`]), its
+//! `Stored<Domain>Ports` in a file of its own under `ports/`, a field here holding it as the domain
+//! crate's `SharedPorts` with a line in [`LedgerPorts::new`] building it over [`SharedStores`], and
+//! a [`Domain`] variant.
 
 mod accounts;
 mod bills;

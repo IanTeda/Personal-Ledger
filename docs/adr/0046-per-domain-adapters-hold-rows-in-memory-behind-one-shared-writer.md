@@ -8,7 +8,7 @@
 - **Each `lib-database` adapter holds its domain's rows in memory.** It loads them, blocking, when the Client starts. Reads are served from memory and never wait on SQLite.
 - **One writer thread for all domains.** A write changes the adapter's memory at once and is sent to a single `lib-database` writer thread that owns a current-thread `tokio` runtime and runs the `sqlx` calls in order. One thread, not one per domain, keeps writes ordered across domains and leaves one connection writing.
 - **One transaction per Interactor call,** with `PRAGMA foreign_keys = ON`, as ADR-0044 had per command.
-- **Optimistic, with rollback by reload.** When a write fails, the writer drops the writes queued behind it, the adapter reloads its rows from SQLite, and the failure is reported on a channel the bin listens on. The bin rebuilds the affected view models, refreshes any read copy in `Ledger` and shows an error Toast. Ports know nothing about the channel.
+- **Optimistic, with rollback by reload.** When a write fails, the writer drops the writes queued behind it, the adapter reloads its rows from SQLite, and the failure is reported on a channel the bin listens on. The bin rebuilds the affected view models, refreshes any read copy in `Ledger` and shows an error Toast. Ports know nothing about the channel. Since [ADR-0055](0055-the-commit-names-what-an-input-changed-and-lib-database-answers-each-domains-ports.md) the bin reloads a domain by its `Domain` in one call and announces what the commit names, rather than each module counting its writes.
 - **The Sync Server calls Interactors through `spawn_blocking`,** since it is async and the ports are not.
 
 ## Considered Options
@@ -29,6 +29,6 @@ Persisting Documents ([#812](https://github.com/IanTeda/Personal-Ledger/issues/8
 
 - **The schema is the source of truth for a cascade.** A delete in another domain never writes Documents itself, so Payee delete, Transaction delete and Account delete stay single-domain or keep the stores they have.
 - **A commit that deleted a linkable row reloads the Documents adapter's Links.** The pending batch knows which deletes it holds, and the Desktop's `input.rs` `send` asks for the reload after it commits. The reload goes through the writer like every load, queued behind the commit, so it sees the cascade.
-- **A later cascade follows the same rule.** A new table whose rows a cascade can change is reloaded the same way, by the commit that deleted the parent.
+- **A later cascade follows the same rule.** A new table whose rows a cascade can change is reloaded the same way, by the commit that deleted the parent. The commit returns the cascaded domains as `Committed::cascaded`, beside the domains it wrote ([ADR-0055](0055-the-commit-names-what-an-input-changed-and-lib-database-answers-each-domains-ports.md)).
 
 Considered and rejected: each deleting Interactor also dropping the Links through a Documents port, which would make every delete of a linkable record a cross-domain write and give `AccountDeletionAdapter` a fourth store; and the Documents adapter filtering dead Links on upsert, which needs reads into every linked domain's store.
