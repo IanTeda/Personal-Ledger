@@ -141,7 +141,8 @@ fn a_new_months_generation_that_fails_to_save_rolls_back_with_an_error_toast(
 }
 
 /// Presses `confirm` and says whether the Dashboard asked to redraw for it, though another page
-/// shows: the write's module announces its domain, with no Ledger read copy in between (#1028).
+/// shows: the input door announces the domains the commit says it wrote, with no Ledger read copy
+/// in between (#1028, #1081).
 fn redraws_on(ui: &mut Harness<'_>, confirm: &str) -> bool {
     let redraws = ui.count_dashboard_redraws();
     ui.press(confirm);

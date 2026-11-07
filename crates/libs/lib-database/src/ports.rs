@@ -130,7 +130,9 @@ pub struct LedgerPorts {
     pub dashboard_reads: Rc<StoredDashboardReads>,
     /// The Shell's rail-count reads ([`StoredShellReads`]).
     pub shell_reads: StoredShellReads,
+    /// The one commit every input ends with, returning what it wrote ([`Committed`](crate::Committed)).
     pub commit: Rc<dyn Commit>,
+    /// The writer's failed writes, for the Client to reload and announce.
     pub failures: mpsc::Receiver<WriteFailure>,
 }
 
