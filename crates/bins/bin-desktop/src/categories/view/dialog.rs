@@ -7,8 +7,7 @@
 //! (`crate::category_deletion`, #1005).
 //!
 //! The Presenter closes its Dialog through the host's [`HostRouter`]. An input and a confirm are
-//! lent the ports the Desktop answers from its stores ([`LedgerPorts`]), built around the
-//! confirm's gpui context: the usage, the Monthly budget and the handover. A confirmed outcome is
+//! lent `lib-database`'s Categories ports ([`StoredCategoriesPorts`]): the usage, the Monthly budget and the handover. A confirmed outcome is
 //! handed to the page, and the host closes on [`DialogClosed`]. A Toast the Presenter raises goes
 //! onto the bin's queue, which the input's `send` drains.
 
@@ -17,12 +16,11 @@ mod category_form;
 use gpui::{App, Context, EventEmitter, IntoElement, Render, Window};
 use lib_categories::presenter::{CategoryFormEvent, CategoryFormPresenter};
 use lib_categories::{CategoriesDialog as Which, CategoriesOutcome, SharedCategories};
-use lib_core::Clock;
+use lib_database::StoredCategoriesPorts;
 use lib_shell::DialogCommand;
 use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
 
-use crate::categories::ports::{CategoryStores, LedgerPorts};
 use crate::shell::view::dialog_entity::DialogReadback;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
 use lib_shell::Hint;
@@ -33,27 +31,10 @@ type Clicks = DialogClicks<CategoriesDialog>;
 /// What a confirmed Categories Dialog hands the page that opened it.
 pub(crate) type Landed = Box<dyn Fn(CategoriesOutcome, &mut App)>;
 
-/// What the Dialog's ports are built on for each call: the stores they read and write, and the
-/// Shell's Clock, which the ports read the day from on each call.
-pub(crate) struct PortsOn {
-    pub stores: CategoryStores,
-    pub clock: Clock,
-}
-
-impl PortsOn {
-    /// The ports for one call.
-    fn ports(&self) -> LedgerPorts<'_> {
-        LedgerPorts {
-            stores: &self.stores,
-            clock: self.clock.clone(),
-        }
-    }
-}
-
 /// The open Add or Edit category Dialog: its Presenter and its widget state.
 pub struct CategoriesDialog {
-    /// What the confirm's ports are built on.
-    on: PortsOn,
+    /// The ports the form reads and the confirm writes through.
+    ports: StoredCategoriesPorts,
     presenter: CategoryFormPresenter,
     /// The top row of the Parent category list's window.
     scroll: usize,
@@ -67,18 +48,18 @@ impl CategoriesDialog {
     pub(crate) fn open(
         which: Which,
         categories: &SharedCategories,
-        on: PortsOn,
+        ports: StoredCategoriesPorts,
         landed: Landed,
     ) -> Option<Self> {
-        let reads = on.ports();
+        let reads = &ports;
         let shared = categories.clone();
         let presenter = match which {
-            Which::AddCategory { parent } => CategoryFormPresenter::add(shared, &reads, parent),
-            Which::EditCategory(id) => CategoryFormPresenter::edit(shared, &reads, &reads, id)?,
+            Which::AddCategory { parent } => CategoryFormPresenter::add(shared, reads, parent),
+            Which::EditCategory(id) => CategoryFormPresenter::edit(shared, reads, reads, id)?,
             Which::DeleteCategory(_) => return None,
         };
         Some(Self {
-            on,
+            ports,
             presenter,
             scroll: 0,
             landed,
@@ -118,8 +99,7 @@ impl HostedDialog for CategoriesDialog {
     /// Every input is the Presenter's to read, lent the stores' ports.
     fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
         let mut router = Router::default();
-        let mut ports = self.on.ports();
-        self.presenter.input(input, &mut ports, &mut router);
+        self.presenter.input(input, &mut self.ports, &mut router);
         self.closed(router, cx);
     }
 
@@ -131,8 +111,7 @@ impl HostedDialog for CategoriesDialog {
     /// view model and keeps the Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
         let mut router = Router::default();
-        let mut ports = self.on.ports();
-        self.presenter.confirm(&mut ports, &mut router);
+        self.presenter.confirm(&mut self.ports, &mut router);
         self.closed(router, cx);
     }
 

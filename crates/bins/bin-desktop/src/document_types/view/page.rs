@@ -15,7 +15,7 @@ use lib_shell::Hint;
 use lib_viper::keymap::Keymap;
 
 use crate::document_types::router::PageRouter;
-use crate::document_types::{DocumentTypesSetup, SettingsDocumentTypesSnapshot, ports};
+use crate::document_types::{DocumentTypesSetup, SettingsDocumentTypesSnapshot};
 use crate::settings::snapshot::PageSnapshot;
 use crate::{
     announcer::{Announcer, notify_on},
@@ -48,7 +48,7 @@ impl DocumentTypesPage {
         announcer: Entity<Announcer>,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        let documents = ports::shared(&setup.store);
+        let documents = setup.documents;
         Self {
             presenter: DocumentTypesPagePresenter::new(documents.clone(), setup.keymap.clone()),
             documents,

@@ -25,7 +25,6 @@ use lib_categories::presenter::CategoriesPageEvent;
 use lib_core::{CategoryId, CategoryTypes};
 
 use crate::category_deletion::DeletionStores;
-use ports::CategoryStores;
 
 /// The Categories page as the UI tests read it: names and types in the store's tree order, and the
 /// selected row's name (ADR-0030).
@@ -43,11 +42,14 @@ pub struct SettingsCategoriesSnapshot {
     pub selected_budget_months: Vec<(i32, u32)>,
 }
 
-/// What `shell::router::build` hands the Categories module: the store it shares with the Bills
-/// and Payees reads, with its write count, the Budgets store and the rows naming a Category,
+/// What the Open Ledger hands the Categories module: `lib-database`'s Categories ports, as the
+/// page's repository and as the Dialogs' save ports, the Budgets store the page's snapshot reads,
 /// Category delete's port and reads, and its keymap under `[keybindings]`.
 pub struct CategoriesSetup {
-    pub stores: CategoryStores,
+    pub categories: lib_categories::SharedCategories,
+    pub save: lib_database::StoredCategoriesPorts,
+    /// The Budgets store, which the page's snapshot reads the selected Category's records from.
+    pub budgets: lib_database::SharedBudgetsStore,
     /// Category delete's port and reads, over the Categories store and the stores it re-points.
     pub deletion: DeletionStores,
     pub keymap: lib_viper::keymap::Keymap<CategoriesPageEvent>,
@@ -55,12 +57,16 @@ pub struct CategoriesSetup {
 
 impl CategoriesSetup {
     pub fn new(
-        stores: CategoryStores,
+        categories: lib_categories::SharedCategories,
+        save: lib_database::StoredCategoriesPorts,
+        budgets: lib_database::SharedBudgetsStore,
         deletion: DeletionStores,
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
-            stores,
+            categories,
+            save,
+            budgets,
             deletion,
             keymap: lib_categories::keymap::categories_page_keymap(config),
         }
@@ -71,8 +77,10 @@ impl CategoriesSetup {
     #[cfg(test)]
     pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
-            storage.category_stores(),
-            DeletionStores::sample(storage),
+            storage.category_ports.clone(),
+            storage.category_save.clone(),
+            storage.budgets.clone(),
+            storage.category_deletion.clone(),
             &lib_config::KeyBindingConfig::default(),
         )
     }

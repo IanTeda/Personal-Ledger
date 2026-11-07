@@ -10,14 +10,13 @@ use std::sync::mpsc;
 use lib_database::{
     LedgerPorts, PayeesStore, SharedBudgetsStore, SharedCategoriesStore, SharedDocumentsStore,
     SharedInstitutionsStore, SharedInventoryStore, SharedStores, SharedTagsStore,
-    SharedTransactionsStore, SharedUnitsStore, StoredAccountReads, StoredCategoryRows,
+    SharedTransactionsStore, SharedUnitsStore, StoredAccountReads, StoredCategoriesPorts,
     StoredDocumentReads, StoredInventoryReads,
 };
 use lib_institutions::InstitutionsPorts as _;
 
 use crate::accounts::ports::DesktopPorts as DesktopAccountsPorts;
 use crate::bills::ports::DesktopPorts as DesktopBillsPorts;
-use crate::categories::ports::CategoryStores;
 use crate::institutions::ports::DesktopPorts as DesktopInstitutionsPorts;
 use crate::payees::ports::DesktopPorts as DesktopPayeesPorts;
 
@@ -32,6 +31,12 @@ pub struct LedgerStores {
     /// (#993, #1052, #1053): the Accounts ports' reads and Account delete's.
     pub account_reads: StoredAccountReads,
     pub categories: SharedCategoriesStore,
+    /// `lib-database`'s Categories ports as the Categories page's repository, and as the Add and
+    /// Edit Dialogs' save ports over the same stores (#1083).
+    pub category_ports: lib_categories::SharedCategories,
+    pub category_save: StoredCategoriesPorts,
+    /// Category delete's port and reads, built by `lib-database`.
+    pub category_deletion: crate::category_deletion::DeletionStores,
     /// The Tags store under the Tags ports, which the Transactions' reads hold too.
     pub tags: SharedTagsStore,
     /// `lib-database`'s Tags ports, which the Tags page and its Add and Edit Dialogs share (#1082).
@@ -40,10 +45,22 @@ pub struct LedgerStores {
     pub tag_removal: crate::tag_removal::RemovalStores,
     pub payees: DesktopPayeesPorts,
     pub transactions: SharedTransactionsStore,
+    /// The Transactions page's ports, built by `lib-database`.
+    pub transaction_ports: lib_transactions::SharedPorts,
+    /// The Import step's port and reads, built by `lib-database`.
+    pub import: crate::transaction_import::ImportStores,
+    /// Pay it directly's port over the Transactions and Bills stores, built by `lib-database`.
+    pub payments: lib_bill_payments::SharedPayments,
     pub bills: DesktopBillsPorts,
     pub budgets: SharedBudgetsStore,
+    /// The Budgets page's and its Dialogs' ports, built by `lib-database`.
+    pub budget_ports: lib_budgets::SharedPorts,
     pub inventory: SharedInventoryStore,
+    /// The Inventory page's repository, built by `lib-database`.
+    pub inventory_ports: lib_inventory::SharedInventory,
     pub documents: SharedDocumentsStore,
+    /// The Documents and Document Types pages' repository, built by `lib-database`.
+    pub document_ports: lib_documents::SharedRepository,
     /// The Units store the Units ports share and the Accounts, Institutions, Bills, Tags and
     /// Inventory reads take Units from: the Ledger file's, or the Sample Ledger's in memory in a
     /// test.
@@ -66,19 +83,30 @@ impl LedgerStores {
     pub fn sample(today: chrono::NaiveDate) -> Self {
         Self::build(LedgerPorts::new(
             lib_database::Stores::fake(lib_database::FakeStores::sample(today)).0,
+            lib_core::Clock::fixed(today),
         ))
         .stores
     }
 
     /// The ports `lib-database` built and the Desktop's own ports over its shared stores, wired
     /// once: the one place a Ledger's stores are shared out, for [`super::OpenLedger::build`] and
-    /// the tests' `sample`. The Tags come from `ports` whole (#1082); the other domains are built
-    /// here over `ports`' stores until theirs move into `LedgerPorts` too (#1083, #1084).
+    /// the tests' `sample`. The Tags, Categories, Transactions, Budgets, Inventory and Documents
+    /// come from `ports` whole (#1082, #1083); the other domains are built here over `ports`'
+    /// stores until theirs move into `LedgerPorts` too (#1084).
     pub fn build(ports: LedgerPorts) -> BuiltStores {
         let tag_removal = crate::tag_removal::RemovalStores::of(&ports);
+        let category_deletion = crate::category_deletion::DeletionStores::of(&ports);
+        let import = crate::transaction_import::ImportStores::of(&ports);
         let LedgerPorts {
             stores,
             tags: tag_ports,
+            categories: category_ports,
+            category_save,
+            transactions: transaction_ports,
+            bill_payments: payments,
+            budgets: budget_ports,
+            inventory: inventory_ports,
+            documents: document_ports,
             commit,
             failures,
             ..
@@ -152,15 +180,24 @@ impl LedgerStores {
                 accounts,
                 account_reads,
                 categories,
+                category_ports,
+                category_save,
+                category_deletion,
                 tags,
                 tag_ports,
                 tag_removal,
                 payees,
                 transactions,
+                transaction_ports,
+                import,
+                payments,
                 bills,
                 budgets,
+                budget_ports,
                 inventory,
+                inventory_ports,
                 documents,
+                document_ports,
                 units: units.clone(),
             },
             units,
@@ -207,27 +244,6 @@ impl LedgerStores {
             institutions: self.institutions.clone(),
             bills: self.bills.borrow().store(),
             inventory: self.inventory.clone(),
-        }
-    }
-
-    /// The rows naming a Category in the Transactions, Bills and Payees stores, which the
-    /// Categories ports count and hand over through (#1034): the one selection Category delete
-    /// reads too.
-    pub fn category_rows(&self) -> StoredCategoryRows {
-        StoredCategoryRows {
-            transactions: self.transactions.clone(),
-            bills: self.bills.borrow().store(),
-            payees: self.payees.clone(),
-        }
-    }
-
-    /// What the Categories ports read and write beyond the Categories themselves: the Budgets
-    /// store and the rows naming a Category.
-    pub fn category_stores(&self) -> CategoryStores {
-        CategoryStores {
-            categories: self.categories.clone(),
-            budgets: self.budgets.clone(),
-            rows: self.category_rows(),
         }
     }
 
@@ -360,22 +376,19 @@ mod tests {
     /// Deletion modules write.
     fn on_storage_with_bills(cx: &mut TestAppContext, storage: lib_database::Storage) -> OnStorage {
         let pending = storage.pending.clone();
-        let built = LedgerStores::build(LedgerPorts::new(Stores::from(storage))).stores;
+        let built = LedgerStores::build(LedgerPorts::new(
+            Stores::from(storage),
+            lib_core::Clock::fixed(chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a date")),
+        ))
+        .stores;
         let bills = built.bills.clone();
-        let payments = crate::bill_payments::payments(built.transactions.clone(), &bills);
+        let payments = built.payments.clone();
         let deletion = crate::account_deletion::deletion(
             built.accounts.clone(),
             built.transactions.clone(),
             &bills,
         );
-        let category_deletion = crate::category_deletion::DeletionStores::new(
-            built.categories.clone(),
-            built.transactions.clone(),
-            &bills,
-            built.payees.clone(),
-            built.budgets.clone(),
-        )
-        .deletion;
+        let category_deletion = built.category_deletion.deletion.clone();
         OnStorage {
             store: cx.new(|_| built),
             bills,

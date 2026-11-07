@@ -6,11 +6,10 @@
 
 use gpui::{Context, Entity};
 use lib_categories::{CategoriesDialog as Which, CategoriesOutcome, CategoriesRouter};
-use lib_core::Clock;
 use lib_toast::{Notice, Notify};
 
 use super::CategoriesSetup;
-use super::view::dialog::{CategoriesDialog, PortsOn};
+use super::view::dialog::CategoriesDialog;
 use super::view::page::CategoriesPage;
 use crate::announcer::Announcer;
 use crate::category_deletion::DeletionStores;
@@ -20,8 +19,7 @@ use crate::shell::view::dialog_entity::host_dialog;
 pub(super) struct PageRouter<'a, 'b> {
     pub categories: lib_categories::SharedCategories,
     pub deletion: DeletionStores,
-    pub stores: crate::categories::ports::CategoryStores,
-    pub clock: Clock,
+    pub save: lib_database::StoredCategoriesPorts,
     pub cx: &'a mut Context<'b, CategoriesPage>,
 }
 
@@ -48,15 +46,9 @@ impl CategoriesRouter for PageRouter<'_, '_> {
             // A page that has gone has nothing to land on.
             let _ = page.update(cx, |page, cx| page.dialog_landed(outcome, cx));
         });
-        let Some(dialog) = CategoriesDialog::open(
-            dialog,
-            &self.categories,
-            PortsOn {
-                stores: self.stores.clone(),
-                clock: self.clock.clone(),
-            },
-            landed,
-        ) else {
+        let Some(dialog) =
+            CategoriesDialog::open(dialog, &self.categories, self.save.clone(), landed)
+        else {
             return false;
         };
         host_dialog(self.cx, |_| dialog);
@@ -71,14 +63,13 @@ impl Notify for PageRouter<'_, '_> {
     }
 }
 
-/// The Categories module's entry point: its Settings page, built on `setup`'s store, with the
-/// Monthly budget read as of the day `clock` reads on each call, which the Settings View hosts as any other page.
+/// The Categories module's entry point: its Settings page, built on `setup`'s ports, which the
+/// Settings View hosts as any other page.
 pub fn categories_page(
     setup: CategoriesSetup,
     announcer: Entity<Announcer>,
-    clock: &Clock,
     cx: &mut gpui::App,
 ) -> Entity<CategoriesPage> {
     use gpui::AppContext as _;
-    cx.new(|cx| CategoriesPage::new(setup, announcer, clock.clone(), cx))
+    cx.new(|cx| CategoriesPage::new(setup, announcer, cx))
 }

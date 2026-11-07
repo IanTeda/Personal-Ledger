@@ -25,7 +25,6 @@ use lib_viper::keymap::Keymap;
 
 use super::{history, plan, progress};
 use crate::announcer::{Announcer, LedgerChanged};
-use crate::budgets::ports::DesktopPorts;
 use crate::budgets::router::PageRouter;
 use crate::navigation::movement::Movement;
 use crate::navigation::nav::Noun;
@@ -35,12 +34,13 @@ use crate::theme::color;
 use crate::view::event::{Reveal, ViewEvent, ViewMode};
 use crate::view::help::HelpGroup;
 use crate::view::placeholder;
+use lib_budgets::SharedPorts;
 
 impl EventEmitter<ViewEvent> for BudgetsPage {}
 
 pub struct BudgetsPage {
     presenter: BudgetsPagePresenter,
-    ports: DesktopPorts,
+    ports: SharedPorts,
     clock: Clock,
     keymap: Keymap<BudgetsPageEvent>,
     /// The page's own scroll, reset as it becomes the destination, as its tab changes and as
@@ -51,13 +51,13 @@ pub struct BudgetsPage {
 
 impl BudgetsPage {
     pub fn new(
-        ports: DesktopPorts,
+        ports: SharedPorts,
         announcer: Entity<Announcer>,
         keymap: Keymap<BudgetsPageEvent>,
         clock: Clock,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        let presenter = BudgetsPagePresenter::new(ports.presenter(), clock.clone(), keymap.clone());
+        let presenter = BudgetsPagePresenter::new(ports.clone(), clock.clone(), keymap.clone());
         // The figures read every domain Budgets counts, so a change the Ledger announces in any of
         // them is redrawn.
         let _ledger_changed = cx.subscribe(&announcer, |_, _, event: &LedgerChanged, cx| {
@@ -90,7 +90,7 @@ impl BudgetsPage {
     }
 
     /// The ports the page reads, which its snapshot reads too.
-    pub fn ports(&self) -> &DesktopPorts {
+    pub fn ports(&self) -> &SharedPorts {
         &self.ports
     }
 

@@ -27,7 +27,7 @@ use super::Root;
 use crate::announcer::{Announcer, notify_on};
 use crate::dashboard::DashboardPage;
 use crate::settings::state::SettingsView;
-use crate::transaction_import::{ImportPage, ImportStores};
+use crate::transaction_import::ImportPage;
 use crate::transactions::TransactionsPage;
 use crate::view::active::ViewEntities;
 
@@ -151,7 +151,7 @@ impl OpenLedger {
             units,
             commit,
             failures,
-        } = LedgerStores::build(lib_database::LedgerPorts::new(stores));
+        } = LedgerStores::build(lib_database::LedgerPorts::new(stores, clock.clone()));
         // The stores are the truth: the input door announces what each input wrote through the
         // Announcer, which holds no rows (#1028, #1057, #1081).
         let announcer = cx.new(|_| Announcer::default());
@@ -165,7 +165,7 @@ impl OpenLedger {
             storage.tag_removal.clone(),
             keybindings,
         );
-        let payments = crate::bill_payments::payments(storage.transactions.clone(), &storage.bills);
+        let payments = storage.payments.clone();
         // Account delete writes the Accounts, Transactions and Bills stores together (#854).
         let account_deletion = crate::account_deletion::DeletionStores {
             deletion: crate::account_deletion::deletion(
@@ -183,23 +183,21 @@ impl OpenLedger {
             keybindings,
         );
         let payees_setup = crate::payees::PayeesSetup::new(storage.payees.clone(), keybindings);
-        let document_types_setup =
-            crate::document_types::DocumentTypesSetup::new(storage.documents.clone(), keybindings);
+        let document_types_setup = crate::document_types::DocumentTypesSetup::new(
+            storage.document_ports.clone(),
+            keybindings,
+        );
         // Category delete writes the Categories, Transactions, Bills, Payees and Budgets stores
         // together (#1005).
         let categories_setup = crate::categories::CategoriesSetup::new(
-            storage.category_stores(),
-            crate::category_deletion::DeletionStores::new(
-                storage.categories.clone(),
-                storage.transactions.clone(),
-                &storage.bills,
-                storage.payees.clone(),
-                storage.budgets.clone(),
-            ),
+            storage.category_ports.clone(),
+            storage.category_save.clone(),
+            storage.budgets.clone(),
+            storage.category_deletion.clone(),
             keybindings,
         );
         let inventory_setup = crate::inventory::InventorySetup::new(
-            storage.inventory.clone(),
+            storage.inventory_ports.clone(),
             storage.inventory_reads(),
             keybindings,
         );
@@ -216,25 +214,9 @@ impl OpenLedger {
             ledger: crate::settings::ledger::LedgerKeys::new(keybindings),
         };
 
-        // The Transactions page reads the stores (#923).
-        let transactions_ports = crate::transactions::ports::DesktopPorts::shared(
-            storage.transactions.clone(),
-            lib_database::StoredTransactionReads {
-                accounts: storage.accounts.clone(),
-                categories: storage.categories.clone(),
-                payees: storage.payees.clone(),
-                tags: storage.tags.clone(),
-                units: settings_setup.units.ports.clone(),
-            },
-        );
-        // The Import writes the Payees and Transactions stores and reads the Accounts and
-        // Categories, as their modules hold them.
-        let import_stores = ImportStores {
-            payees: storage.payees.clone(),
-            transactions: storage.transactions.clone(),
-            accounts: storage.accounts.clone(),
-            categories: storage.categories.clone(),
-        };
+        // The Transactions page and the Import step come from `lib-database`'s `LedgerPorts`.
+        let transactions_ports = storage.transaction_ports.clone();
+        let import_stores = storage.import.clone();
         // The Budgets page reads the other domains through their stores (#952).
         let budget_reads = Rc::new(lib_database::StoredBudgetReads {
             categories: storage.categories.clone(),
@@ -256,8 +238,7 @@ impl OpenLedger {
             documents: storage.documents.clone(),
             budget_reads: (*budget_reads).clone(),
         });
-        let budgets_ports =
-            crate::budgets::ports::DesktopPorts::new(storage.budgets.clone(), budget_reads);
+        let budgets_ports = storage.budget_ports.clone();
         let units_ports = settings_setup.units.ports.clone();
         // The pages repaint when a domain they read is announced.
         let categories_subscription = notify_on(&announcer, lib_database::Domain::Categories, cx);
@@ -309,7 +290,7 @@ impl OpenLedger {
         // The Documents page writes the store through its Interactors, and reads the other
         // domains through their stores (#967).
         let documents_view = crate::documents::view::page::documents_page(
-            &storage.documents,
+            &storage.document_ports,
             Rc::new(crate::documents::files::DiskFiles),
             storage.document_reads(),
             announcer.clone(),

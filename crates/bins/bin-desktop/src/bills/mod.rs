@@ -51,7 +51,7 @@ impl BillsSetup {
     pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
             storage.bills.clone(),
-            crate::bill_payments::payments(storage.transactions.clone(), &storage.bills),
+            storage.payments.clone(),
             &lib_config::KeyBindingConfig::default(),
         )
     }

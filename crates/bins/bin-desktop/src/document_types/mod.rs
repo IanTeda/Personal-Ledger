@@ -7,12 +7,10 @@
 //! - `view/dialog.rs` holds each Dialog's Presenter in an Entity in the Dialog host, one View per
 //!   Dialog in `view/dialog/`.
 //! - `router.rs` is the Router and the module's entry point ([`document_types_page`]).
-//! - `ports.rs` holds the Documents store as the Presenters share it.
 //!
 //! The Documents destination (`src/documents/`) reads the types through the same store. Where the Documents are kept,
 //! the SQLite adapter opened at start or memory, is `lib-database`'s `DocumentsStore`.
 
-pub mod ports;
 mod router;
 mod view;
 
@@ -20,7 +18,6 @@ pub use router::document_types_page;
 pub use view::page::DocumentTypesPage;
 
 use lib_core::DocumentTypeId;
-use lib_database::SharedDocumentsStore;
 use lib_documents::presenter::DocumentTypesPageEvent;
 
 /// The Document Types page as the UI tests read it (ADR-0030): the type names in order, the
@@ -35,17 +32,20 @@ pub struct SettingsDocumentTypesSnapshot {
     pub document_type_files: Vec<u32>,
 }
 
-/// What `shell::router::build` hands the Document Types module: the Documents store it shares with
-/// the Documents page, and its keymap under `[keybindings]`.
+/// What the Open Ledger hands the Document Types module: `lib-database`'s Documents repository,
+/// which it shares with the Documents page, and its keymap under `[keybindings]`.
 pub struct DocumentTypesSetup {
-    pub store: SharedDocumentsStore,
+    pub documents: lib_documents::SharedRepository,
     pub keymap: lib_viper::keymap::Keymap<DocumentTypesPageEvent>,
 }
 
 impl DocumentTypesSetup {
-    pub fn new(store: SharedDocumentsStore, config: &lib_config::KeyBindingConfig) -> Self {
+    pub fn new(
+        documents: lib_documents::SharedRepository,
+        config: &lib_config::KeyBindingConfig,
+    ) -> Self {
         Self {
-            store,
+            documents,
             keymap: lib_documents::keymap::document_types_page_keymap(config),
         }
     }
@@ -54,7 +54,7 @@ impl DocumentTypesSetup {
     #[cfg(test)]
     pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
-            storage.documents.clone(),
+            storage.document_ports.clone(),
             &lib_config::KeyBindingConfig::default(),
         )
     }

@@ -15,18 +15,36 @@
 //! A domain joining it adds its `Stored<Domain>Ports` in a file of its own under `ports/`, a field
 //! here holding it as the domain crate's `SharedPorts`, and a line in [`LedgerPorts::new`] building
 //! it over [`SharedStores`]. The domains not yet migrated are built by the Clients from
-//! [`LedgerPorts::stores`] (#1083, #1084).
+//! [`LedgerPorts::stores`] (#1084).
 
+mod budgets;
+mod categories;
+mod documents;
+mod inventory;
 mod tags;
+mod transactions;
 
+pub use budgets::StoredBudgetsPorts;
+pub use categories::StoredCategoriesPorts;
+pub use documents::StoredDocumentsPorts;
+pub use inventory::StoredInventoryPorts;
 pub use tags::StoredTagsPorts;
+pub use transactions::StoredTransactionsPorts;
 
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::mpsc;
 
-use crate::adapter::store::{SharedStores, StoredTagReads, StoredTagRemovalReads};
-use crate::{Commit, Domain, Result, Stores, TagRemovalAdapter, WriteFailure};
+use lib_core::Clock;
+
+use crate::adapter::store::{
+    SharedStores, StoredBudgetReads, StoredCategoryDeletionReads, StoredImportReads,
+    StoredTagReads, StoredTagRemovalReads, StoredTransactionReads,
+};
+use crate::{
+    BillPaymentsAdapter, CategoryDeletionAdapter, Commit, Domain, Result, StoredCategoryRows,
+    Stores, TagRemovalAdapter, TransactionImportAdapter, WriteFailure,
+};
 
 /// A Ledger as a Client holds it: every domain's ports over the shared stores, the cross-domain
 /// adapters, the commit every input ends in and the channel a failed commit is reported on.
@@ -40,14 +58,41 @@ pub struct LedgerPorts {
     pub tag_removal: lib_tag_removal::SharedTagRemoval,
     /// What the Remove tag and Merge tags Dialogs show when they open.
     pub tag_removal_reads: StoredTagRemovalReads,
+    /// The Categories page's repository ([`StoredCategoriesPorts`]).
+    pub categories: lib_categories::SharedCategories,
+    /// The same ports for the Add and Edit category Dialogs' save: the usage, the Monthly budget
+    /// and the handover. A value of its own over the same stores, so a Presenter holding the
+    /// repository above never borrows it while the Dialog writes through this.
+    pub category_save: StoredCategoriesPorts,
+    /// Category delete's atomic port over the Categories, Transactions, Bills, Payees and Budgets
+    /// stores ([`CategoryDeletionAdapter`]).
+    pub category_deletion: lib_category_deletion::SharedCategoryDeletion,
+    /// What the Delete category Dialog shows when it opens.
+    pub category_deletion_reads: StoredCategoryDeletionReads,
+    /// The Transactions page's ports ([`StoredTransactionsPorts`]).
+    pub transactions: lib_transactions::SharedPorts,
+    /// The Import's atomic port over the Payees and Transactions stores, which is also its Payees
+    /// read ([`TransactionImportAdapter`]).
+    pub transaction_import: Rc<RefCell<TransactionImportAdapter>>,
+    /// The Accounts and Categories the Import's step offers.
+    pub import_reads: Rc<StoredImportReads>,
+    /// Pay it directly's atomic port over the Transactions and Bills stores
+    /// ([`BillPaymentsAdapter`]).
+    pub bill_payments: lib_bill_payments::SharedPayments,
+    /// The Budgets page's and its Dialogs' ports ([`StoredBudgetsPorts`]).
+    pub budgets: lib_budgets::SharedPorts,
+    /// The Inventory page's and its Dialogs' repository ([`StoredInventoryPorts`]).
+    pub inventory: lib_inventory::SharedInventory,
+    /// The Documents and Document Types pages' repository ([`StoredDocumentsPorts`]).
+    pub documents: lib_documents::SharedRepository,
     pub commit: Rc<dyn Commit>,
     pub failures: mpsc::Receiver<WriteFailure>,
 }
 
 impl LedgerPorts {
     /// Shares out each of `stores` once and builds every domain's ports and the cross-domain
-    /// adapters over them.
-    pub fn new(stores: Stores) -> Self {
+    /// adapters over them. `clock` is what the Categories ports read the day from on each call.
+    pub fn new(stores: Stores, clock: Clock) -> Self {
         let Stores {
             units,
             institutions,
@@ -76,7 +121,72 @@ impl LedgerPorts {
             inventory: Rc::new(RefCell::new(inventory)),
             documents: Rc::new(RefCell::new(documents)),
         };
+        let category_save = StoredCategoriesPorts::new(
+            stores.categories.clone(),
+            stores.budgets.clone(),
+            StoredCategoryRows {
+                transactions: stores.transactions.clone(),
+                bills: stores.bills.clone(),
+                payees: stores.payees.clone(),
+            },
+            clock,
+        );
+        let transaction_import = Rc::new(RefCell::new(TransactionImportAdapter::new(
+            stores.payees.clone(),
+            stores.transactions.clone(),
+        )));
+        let budget_reads = Rc::new(StoredBudgetReads {
+            categories: stores.categories.clone(),
+            accounts: stores.accounts.clone(),
+            transactions: stores.transactions.clone(),
+            bills: stores.bills.clone(),
+            units: stores.units.clone(),
+            payees: stores.payees.clone(),
+        });
         Self {
+            categories: Rc::new(RefCell::new(category_save.clone())),
+            category_save,
+            category_deletion: Rc::new(RefCell::new(CategoryDeletionAdapter::new(
+                stores.categories.clone(),
+                stores.transactions.clone(),
+                stores.bills.clone(),
+                stores.payees.clone(),
+                stores.budgets.clone(),
+            ))),
+            category_deletion_reads: StoredCategoryDeletionReads {
+                categories: stores.categories.clone(),
+                transactions: stores.transactions.clone(),
+                budgets: stores.budgets.clone(),
+            },
+            transactions: Rc::new(RefCell::new(StoredTransactionsPorts::new(
+                stores.transactions.clone(),
+                StoredTransactionReads {
+                    accounts: stores.accounts.clone(),
+                    categories: stores.categories.clone(),
+                    payees: stores.payees.clone(),
+                    tags: stores.tags.clone(),
+                    units: stores.units.clone(),
+                },
+            ))),
+            transaction_import,
+            import_reads: Rc::new(StoredImportReads {
+                accounts: stores.accounts.clone(),
+                categories: stores.categories.clone(),
+            }),
+            bill_payments: Rc::new(RefCell::new(BillPaymentsAdapter::new(
+                stores.transactions.clone(),
+                stores.bills.clone(),
+            ))),
+            budgets: Rc::new(RefCell::new(StoredBudgetsPorts::new(
+                stores.budgets.clone(),
+                budget_reads,
+            ))),
+            inventory: Rc::new(RefCell::new(StoredInventoryPorts::new(
+                stores.inventory.clone(),
+            ))),
+            documents: Rc::new(RefCell::new(StoredDocumentsPorts::new(
+                stores.documents.clone(),
+            ))),
             tags: Rc::new(RefCell::new(StoredTagsPorts::new(
                 stores.tags.clone(),
                 StoredTagReads {
@@ -109,18 +219,13 @@ impl LedgerPorts {
     }
 }
 
-impl From<Stores> for LedgerPorts {
-    fn from(stores: Stores) -> Self {
-        Self::new(stores)
-    }
-}
-
 /// The Sample Ledger as a test's [`LedgerPorts`]: in memory, and as a Ledger file.
 #[cfg(test)]
 pub(crate) mod test_support {
     use std::path::Path;
 
     use chrono::NaiveDate;
+    use lib_core::Clock;
 
     use crate::{FakeStores, LedgerPorts, Stores, open_storage, seed};
 
@@ -130,13 +235,19 @@ pub(crate) mod test_support {
 
     /// The Sample Ledger in memory, as the UI tests build the Client on it.
     pub fn fakes() -> LedgerPorts {
-        LedgerPorts::new(Stores::fake(FakeStores::sample(today())).0)
+        LedgerPorts::new(
+            Stores::fake(FakeStores::sample(today())).0,
+            Clock::fixed(today()),
+        )
     }
 
     /// The Sample Ledger created as a Ledger file in `dir`, opened as a Client opens it.
     pub fn file(dir: &Path) -> LedgerPorts {
         let path = dir.join("ledger.pldb");
         seed::sample_ledger(&path, today()).expect("the Sample Ledger is created");
-        LedgerPorts::new(Stores::from(open_storage(&path).expect("the Ledger opens")))
+        LedgerPorts::new(
+            Stores::from(open_storage(&path).expect("the Ledger opens")),
+            Clock::fixed(today()),
+        )
     }
 }

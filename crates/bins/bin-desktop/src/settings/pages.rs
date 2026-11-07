@@ -347,7 +347,7 @@ impl LedgerPages {
                 cx,
             ),
             accounts: accounts_page(accounts, announcer.clone(), clock.clone(), cx),
-            categories: categories_page(categories, announcer.clone(), clock, cx),
+            categories: categories_page(categories, announcer.clone(), cx),
             tags: tags_page(tags, announcer.clone(), clock.clone(), cx),
             payees: payees_page(
                 payees.ports,

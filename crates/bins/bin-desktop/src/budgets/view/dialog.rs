@@ -17,11 +17,11 @@ use lib_shell::{DialogCommand, Hint};
 use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::Keymap;
 
-use crate::budgets::ports::DesktopPorts;
 use crate::budgets::view::snapshot::ManageRowSnapshot;
 use crate::dialog::OnClick;
 use crate::shell::view::dialog_entity::DialogReadback;
 use crate::shell::view::dialog_entity::{DialogClosed, HostRouter, HostedDialog};
+use lib_budgets::SharedPorts;
 
 /// What a closed Switcher or Manage budgets hands the page: its outcome, or `None` on a cancel.
 pub type Landed = Box<dyn Fn(Option<BudgetsOutcome>, &mut App)>;
@@ -38,7 +38,7 @@ pub(crate) enum List {
 pub struct ListDialog {
     pub(crate) list: List,
     /// The ports the Presenter writes through, asked after each event whether it wrote.
-    ports: DesktopPorts,
+    ports: SharedPorts,
     landed: Landed,
     /// The Switcher card's left edge: the page's, which the Shell sets as it draws the rails.
     pub(in crate::budgets) left: Pixels,
@@ -50,15 +50,15 @@ impl EventEmitter<DialogClosed> for ListDialog {}
 type Router = HostRouter<BudgetsOutcome>;
 
 impl ListDialog {
-    pub fn switcher(presenter: SwitcherPresenter, ports: DesktopPorts, landed: Landed) -> Self {
+    pub fn switcher(presenter: SwitcherPresenter, ports: SharedPorts, landed: Landed) -> Self {
         Self::new(List::Switcher(presenter), ports, landed)
     }
 
-    pub fn manage(presenter: ManagePresenter, ports: DesktopPorts, landed: Landed) -> Self {
+    pub fn manage(presenter: ManagePresenter, ports: SharedPorts, landed: Landed) -> Self {
         Self::new(List::Manage(presenter), ports, landed)
     }
 
-    fn new(list: List, ports: DesktopPorts, landed: Landed) -> Self {
+    fn new(list: List, ports: SharedPorts, landed: Landed) -> Self {
         Self {
             list,
             ports,

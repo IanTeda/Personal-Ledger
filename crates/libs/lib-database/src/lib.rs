@@ -106,7 +106,10 @@ pub use storage::{Storage, StoreParts, Stores, open_storage};
 /// cross-domain adapters over the shared stores. Its module doc states the invariant that keeps
 /// every `Rc` pointing down a layer, so no build order guards against a cycle.
 pub mod ports;
-pub use ports::{LedgerPorts, StoredTagsPorts};
+pub use ports::{
+    LedgerPorts, StoredBudgetsPorts, StoredCategoriesPorts, StoredDocumentsPorts,
+    StoredInventoryPorts, StoredTagsPorts, StoredTransactionsPorts,
+};
 
 /// The Sample Ledger, one fixed Ledger for development and tests, and the dev seed that writes it.
 pub mod seed;

@@ -9,14 +9,14 @@
 //! - `view/dialog.rs` holds each Dialog's Presenter in an Entity in the Dialog host, one View per
 //!   Dialog in `view/dialog/`.
 //! - `router.rs` is the Router and the module's entry point ([`inventory_page`]).
-//! - `ports.rs` holds the store as the Presenters share it, and the reads answered from the
-//!   Ledger: the Units and the Documents (#867, #1001).
+//!
+//! The Inventory repository is `lib-database`'s `StoredInventoryPorts`; the Units and Documents its
+//! Dialogs quote are read through `StoredInventoryReads` (#867, #1001, #1083).
 //!
 //! The Inventory destination (`Noun::Inventory`) is a placeholder that shares nothing with the
 //! page. Where the Inventory is kept, the SQLite adapter opened at start or memory, is
 //! `lib-database`'s `InventoryStore`.
 
-pub mod ports;
 mod router;
 mod view;
 
@@ -24,7 +24,6 @@ pub use lib_inventory::*;
 pub use router::inventory_page;
 pub use view::page::InventoryPage;
 
-use lib_database::SharedInventoryStore;
 use lib_inventory::presenter::InventoryPageEvent;
 
 /// The Inventory page as the UI tests read it (ADR-0030): the visible rows and the selected one,
@@ -44,22 +43,21 @@ pub struct SettingsInventorySnapshot {
     pub inventory_area_items: Vec<(String, usize)>,
 }
 
-/// What `shell::router::build` hands the Inventory module: the store it shares with the Documents
-/// reads, the Units and Documents its Dialogs quote, and its keymap under `[keybindings]`.
+/// What the Open Ledger hands the Inventory module: `lib-database`'s Inventory repository, the Units and Documents its Dialogs quote, and its keymap under `[keybindings]`.
 pub struct InventorySetup {
-    pub store: SharedInventoryStore,
+    pub inventory: SharedInventory,
     pub reads: lib_database::StoredInventoryReads,
     pub keymap: lib_viper::keymap::Keymap<InventoryPageEvent>,
 }
 
 impl InventorySetup {
     pub fn new(
-        store: SharedInventoryStore,
+        inventory: SharedInventory,
         reads: lib_database::StoredInventoryReads,
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
-            store,
+            inventory,
             reads,
             keymap: keymap::inventory_page_keymap(config),
         }
@@ -69,7 +67,7 @@ impl InventorySetup {
     #[cfg(test)]
     pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
-            storage.inventory.clone(),
+            storage.inventory_ports.clone(),
             storage.inventory_reads(),
             &lib_config::KeyBindingConfig::default(),
         )

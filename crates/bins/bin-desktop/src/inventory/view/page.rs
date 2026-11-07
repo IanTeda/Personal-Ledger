@@ -22,7 +22,6 @@ use lib_viper::keymap::Keymap;
 
 use lib_shell::Hint;
 
-use crate::inventory::ports;
 use crate::inventory::router::PageRouter;
 use crate::inventory::{InventorySetup, SettingsInventorySnapshot};
 use crate::settings::snapshot::PageSnapshot;
@@ -63,7 +62,7 @@ impl InventoryPage {
         announcer: Entity<Announcer>,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        let inventory = ports::shared(&setup.store);
+        let inventory = setup.inventory;
         Self {
             presenter: InventoryPagePresenter::new(inventory.clone(), setup.keymap.clone()),
             inventory,

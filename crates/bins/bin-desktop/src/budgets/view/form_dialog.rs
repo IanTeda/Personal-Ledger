@@ -32,11 +32,11 @@ use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::Keymap;
 
 use super::dialog::Landed;
-use crate::budgets::ports::DesktopPorts;
 use crate::dialog;
 use crate::shell::view::dialog_entity::DialogReadback;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
 use crate::theme::color;
+use lib_budgets::SharedPorts;
 
 /// The open Dialog's clicks.
 type Clicks = DialogClicks<FormDialog>;
@@ -58,7 +58,7 @@ pub(crate) enum Form {
 
 pub struct FormDialog {
     /// The ports the Presenter writes through, asked after each event whether it wrote.
-    ports: DesktopPorts,
+    ports: SharedPorts,
     view: Form,
     landed: Landed,
 }
@@ -66,7 +66,7 @@ pub struct FormDialog {
 impl EventEmitter<DialogClosed> for FormDialog {}
 
 impl FormDialog {
-    pub(crate) fn new(view: Form, ports: DesktopPorts, landed: Landed) -> Self {
+    pub(crate) fn new(view: Form, ports: SharedPorts, landed: Landed) -> Self {
         Self {
             ports,
             view,

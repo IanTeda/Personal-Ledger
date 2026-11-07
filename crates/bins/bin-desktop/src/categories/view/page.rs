@@ -10,13 +10,11 @@ use lib_categories::presenter::{
     CategoriesPageEvent, CategoriesPagePresenter, CategoriesPageViewModel,
 };
 use lib_categories::{CategoriesOutcome, SharedCategories};
-use lib_core::Clock;
 use lib_database::Domain;
 use lib_viper::keymap::Keymap;
 
 use lib_shell::Hint;
 
-use crate::categories::ports;
 use crate::categories::router::PageRouter;
 use crate::categories::{CategoriesSetup, SettingsCategoriesSnapshot};
 use crate::category_deletion::DeletionStores;
@@ -40,10 +38,11 @@ pub struct CategoriesPage {
     categories: SharedCategories,
     /// Category delete's port and reads, which the Delete category Dialog opens on.
     deletion: DeletionStores,
-    /// The stores the page's Dialogs read and write beyond the Categories, and the write count.
-    stores: ports::CategoryStores,
+    /// The ports the page's Dialogs read and write beyond the Categories.
+    save: lib_database::StoredCategoriesPorts,
+    /// The Budgets store, which the snapshot reads.
+    budgets: lib_database::SharedBudgetsStore,
     keymap: Keymap<CategoriesPageEvent>,
-    clock: Clock,
     /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
     /// draws the page.
     page_focused: bool,
@@ -55,18 +54,17 @@ impl CategoriesPage {
     pub fn new(
         setup: CategoriesSetup,
         announcer: Entity<Announcer>,
-        clock: Clock,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        let categories = ports::shared(&setup.stores.categories);
+        let categories = setup.categories;
         Self {
             presenter: CategoriesPagePresenter::new(categories.clone(), setup.keymap.clone()),
             categories,
             deletion: setup.deletion,
-            stores: setup.stores,
+            save: setup.save,
+            budgets: setup.budgets,
             _categories_changed: notify_on(&announcer, Domain::Categories, cx),
             keymap: setup.keymap,
-            clock,
             page_focused: false,
         }
     }
@@ -91,8 +89,7 @@ impl CategoriesPage {
         let mut router = PageRouter {
             categories: self.categories.clone(),
             deletion: self.deletion.clone(),
-            stores: self.stores.clone(),
-            clock: self.clock.clone(),
+            save: self.save.clone(),
             cx,
         };
         self.presenter.handle(event, &mut router);
@@ -137,7 +134,6 @@ impl PageSnapshot for SettingsCategoriesSnapshot {
         let selected_budget_months = selected
             .and_then(|id| {
                 let budget = page
-                    .stores
                     .budgets
                     .borrow()
                     .budgets()

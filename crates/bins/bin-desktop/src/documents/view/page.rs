@@ -321,13 +321,13 @@ impl DocumentsPage {
     }
 }
 
-/// The Documents module's entry point: its page, on the Documents store (`store`), the other
+/// The Documents module's entry point: its page, on the Documents repository (`documents`), the other
 /// domains' reads over their stores (`reads`) and the disk (`files`), which the Shell hosts as the
 /// Documents destination. `clock` reads the day the Key Dates are banded against. The page writes
 /// the store through its Interactors; the input that wrote announces the Documents, so the rail's
 /// Inbox count follows a filing.
 pub fn documents_page(
-    store: &lib_database::SharedDocumentsStore,
+    documents: &SharedRepository,
     files: SharedFiles,
     reads: lib_database::StoredDocumentReads,
     announcer: Entity<Announcer>,
@@ -335,7 +335,7 @@ pub fn documents_page(
     clock: Clock,
     cx: &mut App,
 ) -> Entity<DocumentsPage> {
-    let documents: SharedRepository = crate::document_types::ports::shared(store);
+    let documents = documents.clone();
     let reads = Rc::new(reads);
     let presenter = DocumentsPagePresenter::new(
         documents,
