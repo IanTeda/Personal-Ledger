@@ -10,14 +10,16 @@
 //! The usage is read when the Dialog opens, as it is modal. Its confirm runs [`MergeTags`] through
 //! the removal port, which retags the Splits and deletes the source in the one commit of the
 //! input; a refusal stays in the Dialog. It raises its own Toast on landing, so the page only
-//! learns what it did.
+//! learns what it did. Its hints are built from the [`DialogKeys`] it is handed at open.
 
 use lib_core::TagId;
 use lib_locale::Segment;
 use lib_tags::{Tag, TagChange, TagsOutcome};
 use lib_toast::{Notice, ToastKind};
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::view::{Choice, DialogFrame, SelectList, SelectMove, SelectView, count};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::{BACK, NEXT_FIELD, SELECT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
+use lib_viper::view::{Choice, DialogFrame, Hint, SelectList, SelectMove, SelectView, count};
 
 use super::refusal_text;
 use crate::interactor::MergeTags;
@@ -34,6 +36,12 @@ pub enum MergeField {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MergeTagsEvent {
+    /// A Dialog command or typed key for the focused select. `submit` merges a pair, as does
+    /// `select` while the list is closed; `select` or `space` opens a closed list and picks from
+    /// an open one, the arrows step a closed select's value or move an open list's highlight, and
+    /// the field keys move to the other select, first committing an open list's highlight. Typing
+    /// goes nowhere.
+    Input(DialogInput),
     /// A pick for the source, closing the lists.
     Source(TagId),
     /// A pick for the target, closing the lists.
@@ -45,6 +53,8 @@ pub enum MergeTagsEvent {
     Focus(MergeField),
     /// Closes an open list without picking: the host's `back`.
     CloseLists,
+    /// Merges the pair; a Dialog without one does nothing, and a refusal stays in the Dialog.
+    Confirm,
     Cancel,
 }
 
@@ -68,6 +78,8 @@ pub struct MergeTagsViewModel {
     pub source_list: SelectList,
     /// The target's list: open, and its highlight.
     pub target_list: SelectList,
+    /// The status line's legend while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 /// A Tag a select offers, with its Transactions read when the Dialog opened.
@@ -79,6 +91,7 @@ struct Offered {
 
 pub struct MergeTagsPresenter {
     removal: SharedTagRemoval,
+    keys: DialogKeys,
     /// Every Tag in usage order.
     options: Vec<Offered>,
     source: Option<TagId>,
@@ -91,12 +104,14 @@ pub struct MergeTagsPresenter {
 
 impl MergeTagsPresenter {
     /// The Dialog opened on `source` and `target` (the target ignored if equal to it), focusing
-    /// the first select still empty, its options read from `reads` when it opens.
+    /// the first select still empty, its options read from `reads` when it opens. `keys` are the
+    /// Dialog keymap's chords, which its hints show.
     pub fn new(
         removal: SharedTagRemoval,
         reads: &dyn TagRemovalReads,
         source: Option<TagId>,
         target: Option<TagId>,
+        keys: DialogKeys,
     ) -> Self {
         let options: Vec<Offered> = reads
             .tags_by_usage()
@@ -113,6 +128,7 @@ impl MergeTagsPresenter {
             .filter(|target| Some(*target) != source);
         Self {
             removal,
+            keys,
             focused: if source.is_some() && target.is_none() {
                 MergeField::Target
             } else {
@@ -126,9 +142,16 @@ impl MergeTagsPresenter {
             refusal: None,
         }
     }
+}
 
-    pub fn handle(&mut self, event: MergeTagsEvent, router: &mut dyn DialogRouter<TagsOutcome>) {
+impl Presenter for MergeTagsPresenter {
+    type Event = MergeTagsEvent;
+    type ViewModel = MergeTagsViewModel;
+    type Router<'r> = dyn DialogRouter<TagsOutcome> + 'r;
+
+    fn handle(&mut self, event: MergeTagsEvent, router: &mut Self::Router<'_>) {
         match event {
+            MergeTagsEvent::Input(input) => self.input(input, router),
             MergeTagsEvent::Source(id) => self.pick(MergeField::Source, id),
             MergeTagsEvent::Target(id) => self.pick(MergeField::Target, id),
             MergeTagsEvent::Toggle(field) => {
@@ -147,19 +170,103 @@ impl MergeTagsPresenter {
                 self.focused = field;
             }
             MergeTagsEvent::CloseLists => self.close_lists(),
+            MergeTagsEvent::Confirm => self.merge(router),
             MergeTagsEvent::Cancel => router.close(None),
         }
     }
 
-    /// Reads `input` for the focused select. `submit` merges a pair, as does `select` while the
-    /// list is closed; `select` or `space` opens a closed list and picks from an open one, the
-    /// arrows step a closed select's value or move an open list's highlight, and the field keys
-    /// move to the other select, first committing an open list's highlight. Typing goes nowhere.
-    pub fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<TagsOutcome>) {
+    fn view_model(&self) -> MergeTagsViewModel {
+        let pair = self.source_tag().zip(self.target_tag());
+        let callout = match &pair {
+            Some((source, target)) => {
+                let transactions = count(self.transactions_of(source.id));
+                if target.color.is_some() {
+                    msg::tags_merge_callout(transactions, &source.name, &target.name)
+                } else {
+                    msg::tags_merge_callout_no_colour(transactions, &source.name, &target.name)
+                }
+            }
+            None => vec![Segment {
+                text: msg::tags_merge_choose(),
+                tag: None,
+                token: None,
+            }],
+        };
+        MergeTagsViewModel {
+            frame: DialogFrame {
+                title: msg::tags_merge_title(),
+                submit: self
+                    .target_tag()
+                    .map_or_else(msg::tags_merge_submit_empty, |target| {
+                        msg::tags_merge_submit(&target.name)
+                    }),
+                can_confirm: self.can_confirm(),
+                destructive: false,
+                hints: Vec::new(),
+            },
+            source: self.select(
+                msg::tags_merge_source_label(),
+                self.source,
+                MergeField::Source,
+            ),
+            target: self.select(
+                msg::tags_merge_target_label(),
+                self.target,
+                MergeField::Target,
+            ),
+            source_name: self.source_tag().map(|tag| tag.name.clone()),
+            target_name: self.target_tag().map(|tag| tag.name.clone()),
+            callout,
+            choosing: pair.is_none(),
+            refusal: self.refusal.clone(),
+            focused: self.focused,
+            source_list: self.source_list,
+            target_list: self.target_list,
+            hints: vec![
+                self.keys.hint(BACK, lib_locale::msg::dialog_hint_cancel()),
+                self.keys
+                    .hint(SELECT, lib_locale::msg::dialog_hint_confirm()),
+                self.keys
+                    .hint(NEXT_FIELD, lib_locale::msg::dialog_hint_next_field()),
+                Hint::new("\u{2191}/\u{2193}", lib_locale::msg::dialog_hint_choose()),
+            ],
+        }
+    }
+}
+
+impl DialogPresenter for MergeTagsPresenter {
+    type Outcome = TagsOutcome;
+
+    fn input_event(input: DialogInput) -> MergeTagsEvent {
+        MergeTagsEvent::Input(input)
+    }
+
+    fn confirm_event() -> MergeTagsEvent {
+        MergeTagsEvent::Confirm
+    }
+
+    fn cancel_event() -> MergeTagsEvent {
+        MergeTagsEvent::Cancel
+    }
+
+    /// Once both Tags are chosen.
+    fn can_confirm(&self) -> bool {
+        self.pair().is_some()
+    }
+
+    fn close_open_select(&mut self) -> bool {
+        let open = self.source_list.is_open() || self.target_list.is_open();
+        self.close_lists();
+        open
+    }
+}
+
+impl MergeTagsPresenter {
+    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<TagsOutcome>) {
         let field = self.focused;
         match input {
-            DialogInput::Submit => self.confirm(router),
-            DialogInput::Select if !self.list(field).is_open() => self.confirm(router),
+            DialogInput::Submit => self.merge(router),
+            DialogInput::Select if !self.list(field).is_open() => self.merge(router),
             DialogInput::NextField | DialogInput::PreviousField => {
                 let choices = self.choices(field);
                 if let Some(id) = self.list_mut(field).commit(&choices) {
@@ -238,7 +345,7 @@ impl MergeTagsPresenter {
 
     /// Merges the pair, raises the Toast and closes the Dialog; a refusal stays in the Dialog. A
     /// Dialog without a pair does nothing.
-    pub fn confirm(&mut self, router: &mut dyn DialogRouter<TagsOutcome>) {
+    fn merge(&mut self, router: &mut dyn DialogRouter<TagsOutcome>) {
         let Some((source, target)) = self.pair() else {
             return;
         };
@@ -260,56 +367,6 @@ impl MergeTagsPresenter {
                 }));
             }
             Err(refusal) => self.refusal = Some(refusal_text(refusal)),
-        }
-    }
-
-    pub fn view_model(&self) -> MergeTagsViewModel {
-        let pair = self.source_tag().zip(self.target_tag());
-        let callout = match &pair {
-            Some((source, target)) => {
-                let transactions = count(self.transactions_of(source.id));
-                if target.color.is_some() {
-                    msg::tags_merge_callout(transactions, &source.name, &target.name)
-                } else {
-                    msg::tags_merge_callout_no_colour(transactions, &source.name, &target.name)
-                }
-            }
-            None => vec![Segment {
-                text: msg::tags_merge_choose(),
-                tag: None,
-                token: None,
-            }],
-        };
-        MergeTagsViewModel {
-            frame: DialogFrame {
-                title: msg::tags_merge_title(),
-                submit: self
-                    .target_tag()
-                    .map_or_else(msg::tags_merge_submit_empty, |target| {
-                        msg::tags_merge_submit(&target.name)
-                    }),
-                can_confirm: pair.is_some(),
-                destructive: false,
-                hints: Vec::new(),
-            },
-            source: self.select(
-                msg::tags_merge_source_label(),
-                self.source,
-                MergeField::Source,
-            ),
-            target: self.select(
-                msg::tags_merge_target_label(),
-                self.target,
-                MergeField::Target,
-            ),
-            source_name: self.source_tag().map(|tag| tag.name.clone()),
-            target_name: self.target_tag().map(|tag| tag.name.clone()),
-            callout,
-            choosing: pair.is_none(),
-            refusal: self.refusal.clone(),
-            focused: self.focused,
-            source_list: self.source_list,
-            target_list: self.target_list,
         }
     }
 
@@ -372,7 +429,7 @@ mod tests {
     use lib_tags::fake::{RecordingRouter, RouterCall};
     use lib_viper::dialog::DialogInput;
 
-    use super::super::test_support::shared_world;
+    use super::super::test_support::{dialog_keys, shared_world};
     use super::*;
     use crate::fake::InMemoryTagRemoval;
     use crate::fake::world::{GIFT, SHARED, WORK_TRIP, WORK_TRIP_DUPLICATE};
@@ -382,7 +439,13 @@ mod tests {
     /// The Dialog over the world, opened on `source` and `target`, with the rows it writes.
     fn open(source: Option<TagId>, target: Option<TagId>) -> (Rows, MergeTagsPresenter) {
         let (rows, removal) = shared_world();
-        let dialog = MergeTagsPresenter::new(removal, &*rows.borrow(), source, target);
+        let dialog = MergeTagsPresenter::new(
+            removal,
+            &*rows.borrow(),
+            source,
+            target,
+            DialogKeys::default(),
+        );
         (rows, dialog)
     }
 
@@ -397,7 +460,7 @@ mod tests {
     fn press(dialog: &mut MergeTagsPresenter, inputs: &[DialogInput]) -> Vec<RouterCall> {
         let mut router = RecordingRouter::default();
         for input in inputs {
-            dialog.input(*input, &mut router);
+            dialog.handle(MergeTagsEvent::Input(*input), &mut router);
         }
         router.calls
     }
@@ -612,7 +675,7 @@ mod tests {
         let (rows, mut dialog) = open(Some(WORK_TRIP_DUPLICATE), Some(WORK_TRIP));
         let mut router = RecordingRouter::default();
 
-        dialog.confirm(&mut router);
+        dialog.handle(MergeTagsEvent::Confirm, &mut router);
 
         assert_eq!(
             router.take(),
@@ -637,12 +700,12 @@ mod tests {
         let mut router = RecordingRouter::default();
         let (_, mut empty) = open(Some(SHARED), None);
 
-        empty.confirm(&mut router);
+        empty.handle(MergeTagsEvent::Confirm, &mut router);
         assert_eq!(router.take(), []);
 
         let (rows, mut dialog) = open(Some(SHARED), Some(GIFT));
         rows.borrow_mut().tags.tags.retain(|tag| tag.id != GIFT);
-        dialog.confirm(&mut router);
+        dialog.handle(MergeTagsEvent::Confirm, &mut router);
         assert_eq!(router.take(), []);
         assert_eq!(
             dialog.view_model().refusal.as_deref(),
@@ -651,6 +714,36 @@ mod tests {
         assert_eq!(
             send(&mut dialog, vec![MergeTagsEvent::Cancel]),
             [RouterCall::CloseDialog(None)]
+        );
+    }
+
+    #[test]
+    fn closing_an_open_select_says_whether_one_was_open() {
+        let (_, mut dialog) = open(None, None);
+
+        assert!(!dialog.close_open_select(), "no list is open yet");
+        send(
+            &mut dialog,
+            vec![MergeTagsEvent::Toggle(MergeField::Target)],
+        );
+        assert!(dialog.view_model().target_list.is_open());
+        assert!(dialog.close_open_select());
+        assert!(!dialog.view_model().target_list.is_open());
+    }
+
+    #[test]
+    fn the_legend_reads_the_dialog_keys() {
+        let (rows, removal) = shared_world();
+        let dialog = MergeTagsPresenter::new(removal, &*rows.borrow(), None, None, dialog_keys());
+
+        assert_eq!(
+            dialog.view_model().hints,
+            [
+                Hint::new("esc", "cancel"),
+                Hint::new("enter", "confirm"),
+                Hint::new("tab", "next field"),
+                Hint::new("\u{2191}/\u{2193}", "choose"),
+            ]
         );
     }
 }

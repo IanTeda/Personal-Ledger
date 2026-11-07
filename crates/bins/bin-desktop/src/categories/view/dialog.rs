@@ -141,9 +141,9 @@ impl HostedDialog for CategoriesDialog {
     fn hints(&self, keymap: &Keymap<DialogCommand>) -> Option<Vec<Hint>> {
         let key = |command| keymap.chord(command).unwrap_or_default().to_string();
         Some(vec![
-            Hint::new(key(BACK), crate::msg::desktop_hint_cancel()),
-            Hint::new(key(SELECT), crate::msg::desktop_hint_confirm()),
-            Hint::new(key(NEXT_FIELD), crate::msg::desktop_hint_next_field()),
+            Hint::new(key(BACK), lib_locale::msg::dialog_hint_cancel()),
+            Hint::new(key(SELECT), lib_locale::msg::dialog_hint_confirm()),
+            Hint::new(key(NEXT_FIELD), lib_locale::msg::dialog_hint_next_field()),
         ])
     }
 

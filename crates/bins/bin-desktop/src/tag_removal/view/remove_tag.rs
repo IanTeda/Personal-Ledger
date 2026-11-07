@@ -2,18 +2,52 @@
 //! `crate::dialog` frame at the handoff's 400px. Removing always deletes the Tag (#353) and keeps
 //! the neutral (not red) styling: nothing but a label is lost. A used Tag sits behind the
 //! typed-back name, which holds every typed key; an unused one has no field.
+//!
+//! The `lib-tag-removal` Presenter's [`DialogView`], hosted in a `ModuleDialog` (ADR-0056): its
+//! confirm writes through the removal port it holds, and its outcome lands on the Tags page.
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
-use lib_tag_removal::presenter::RemoveTagViewModel;
+use lib_shell::Hint;
+use lib_tag_removal::presenter::{RemoveTagPresenter, RemoveTagViewModel};
 
-use super::Clicks;
 use crate::form::colour_field::error_line;
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 use crate::{dialog, theme::color};
 
 /// The Dialog's width: the handoff's 7d.
 const WIDTH: gpui::Pixels = px(400.0);
 
-pub(super) fn render(view: &RemoveTagViewModel, actions: &Clicks, cx: &App) -> AnyElement {
+impl DialogView for RemoveTagPresenter {
+    type Widgets = ();
+
+    fn kind(_view: &RemoveTagViewModel) -> &'static str {
+        "RemoveTag"
+    }
+
+    fn render(
+        view: &RemoveTagViewModel,
+        _widgets: &mut (),
+        clicks: &ModuleDialogClicks<Self>,
+        cx: &App,
+    ) -> AnyElement {
+        render(view, clicks, cx)
+    }
+
+    /// The typed-back name and any refusal, between the title and whether it would confirm.
+    fn readback(view: &RemoveTagViewModel) -> Vec<(&'static str, String)> {
+        framed(&view.frame, readback(view))
+    }
+
+    fn hints(view: &RemoveTagViewModel) -> Vec<Hint> {
+        view.hints.clone()
+    }
+}
+
+fn render(
+    view: &RemoveTagViewModel,
+    actions: &ModuleDialogClicks<RemoveTagPresenter>,
+    cx: &App,
+) -> AnyElement {
     let mut fields = vec![warning(view)];
     fields.extend(
         view.confirm
@@ -84,7 +118,7 @@ fn confirm_field(label: &str, text: &str, placeholder: &str, cx: &App) -> AnyEle
 }
 
 /// The typed-back name, for a test: empty when the Tag is unused and asks for none.
-pub(super) fn readback(view: &RemoveTagViewModel) -> Vec<(&'static str, String)> {
+fn readback(view: &RemoveTagViewModel) -> Vec<(&'static str, String)> {
     vec![
         (
             "confirm",

@@ -11,11 +11,14 @@
 //!   not reported, only kept from confirming.
 //!
 //! The Tag's usage is read when an Edit opens, as the Dialog is modal. Saving raises no Toast: the
-//! page selects the Tag instead.
+//! page selects the Tag instead. Its hints are built from the [`DialogKeys`] it is handed at open,
+//! so they follow `[keybindings]`.
 
 use lib_core::{HexColor, TagId};
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::view::{DialogFrame, TextFieldView, count};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::{BACK, NEXT_FIELD, SELECT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
+use lib_viper::view::{DialogFrame, Hint, TextFieldView, count};
 
 use super::name_error_text;
 use crate::interactor::{AddTag, DeactivateTag, EditTag, ReactivateTag};
@@ -63,6 +66,8 @@ pub enum TagFormEvent {
     ToggleActive,
     /// A click on a field.
     Focus(TagField),
+    /// Saves a valid form and closes the Dialog; a refusal stays on the form.
+    Confirm,
     Cancel,
 }
 
@@ -82,6 +87,8 @@ pub struct TagFormViewModel {
     /// Edit, rather than Add.
     pub editing: bool,
     pub focused: TagField,
+    /// The status line's legend while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 /// The Colour field as drawn: a "none" chip, the preset swatches and the hex box.
@@ -125,6 +132,7 @@ struct Editing {
 
 pub struct TagFormPresenter {
     ports: SharedPorts,
+    keys: DialogKeys,
     editing: Option<Editing>,
     name: String,
     hex: String,
@@ -134,10 +142,12 @@ pub struct TagFormPresenter {
 }
 
 impl TagFormPresenter {
-    /// A fresh Add form: no name and no colour (#352: a new Tag has none).
-    pub fn add(ports: SharedPorts) -> Self {
+    /// A fresh Add form: no name and no colour (#352: a new Tag has none). `keys` are the Dialog
+    /// keymap's chords, which its hints show.
+    pub fn add(ports: SharedPorts, keys: DialogKeys) -> Self {
         Self {
             ports,
+            keys,
             editing: None,
             name: String::new(),
             hex: String::new(),
@@ -148,13 +158,14 @@ impl TagFormPresenter {
     }
 
     /// The Edit form pre-filled from Tag `id`, or `None` when it is gone.
-    pub fn edit(ports: SharedPorts, id: TagId) -> Option<Self> {
+    pub fn edit(ports: SharedPorts, id: TagId, keys: DialogKeys) -> Option<Self> {
         let (tag, transactions) = {
             let ports = ports.borrow();
             (ports.tag(id)?, ports.tag_usage(id).transactions)
         };
         Some(Self {
             ports,
+            keys,
             editing: Some(Editing { id, transactions }),
             name: tag.name,
             hex: tag
@@ -166,8 +177,14 @@ impl TagFormPresenter {
             refusal: None,
         })
     }
+}
 
-    pub fn handle(&mut self, event: TagFormEvent, router: &mut dyn DialogRouter<TagsOutcome>) {
+impl Presenter for TagFormPresenter {
+    type Event = TagFormEvent;
+    type ViewModel = TagFormViewModel;
+    type Router<'r> = dyn DialogRouter<TagsOutcome> + 'r;
+
+    fn handle(&mut self, event: TagFormEvent, router: &mut Self::Router<'_>) {
         match event {
             TagFormEvent::Input(input) => self.input(input, router),
             TagFormEvent::Name(text) => {
@@ -186,91 +203,12 @@ impl TagFormPresenter {
                     self.focused = field;
                 }
             }
+            TagFormEvent::Confirm => self.save(router),
             TagFormEvent::Cancel => router.close(None),
         }
     }
 
-    /// Reads `input` for the focused field.
-    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<TagsOutcome>) {
-        match input {
-            DialogInput::NextField => self.cycle(false),
-            DialogInput::PreviousField => self.cycle(true),
-            DialogInput::Select | DialogInput::Submit => self.confirm(router),
-            DialogInput::SelectNext | DialogInput::SelectPrevious => {}
-            DialogInput::Left | DialogInput::Right => {
-                if self.focused == TagField::Swatches {
-                    self.step_pick(input == DialogInput::Right);
-                }
-            }
-            DialogInput::Char(' ') if self.focused == TagField::Active => {
-                self.is_active = !self.is_active;
-            }
-            DialogInput::Char(ch) => self.edit_text(|text| text.push(ch)),
-            DialogInput::Backspace => self.edit_text(|text| {
-                text.pop();
-            }),
-        }
-    }
-
-    /// Edits the focused text field; the swatch row and Active take no text.
-    fn edit_text(&mut self, edit: impl FnOnce(&mut String)) {
-        match self.focused {
-            TagField::Name => {
-                edit(&mut self.name);
-                self.refusal = None;
-            }
-            TagField::Hex => {
-                edit(&mut self.hex);
-                self.hex = self.hex.chars().take(HEX_LEN).collect();
-            }
-            TagField::Swatches | TagField::Active => {}
-        }
-    }
-
-    /// Steps the pick one along, stopping at either end; from a custom colour it starts at "none".
-    fn step_pick(&mut self, forward: bool) {
-        let next = match (self.picked(), forward) {
-            (None, _) => 0,
-            (Some(index), true) => (index + 1).min(PICKS - 1),
-            (Some(index), false) => index.saturating_sub(1),
-        };
-        self.pick(next);
-    }
-
-    /// Saves the form through the Interactors and closes the Dialog; a refusal stays on the form.
-    /// A form that can't confirm does nothing.
-    pub fn confirm(&mut self, router: &mut dyn DialogRouter<TagsOutcome>) {
-        let Some(draft) = self.draft().filter(|_| self.can_confirm()) else {
-            return;
-        };
-        let saved = {
-            let mut ports = self.ports.borrow_mut();
-            let tags: &mut dyn crate::TagRepository = &mut *ports;
-            match &self.editing {
-                Some(editing) => EditTag {
-                    id: editing.id,
-                    draft,
-                }
-                .run(&mut *tags)
-                .and_then(|tag| match (tag.is_active, self.is_active) {
-                    (true, false) => DeactivateTag(tag.id).run(&mut *tags),
-                    (false, true) => ReactivateTag(tag.id).run(&mut *tags),
-                    _ => Ok(tag),
-                }),
-                None => AddTag(draft).run(&mut *tags),
-            }
-        };
-        match saved {
-            Ok(tag) => router.close(Some(TagsOutcome {
-                change: TagChange::Saved,
-                id: tag.id,
-                name: tag.name,
-            })),
-            Err(refusal) => self.refusal = Some(name_error_text(&refusal)),
-        }
-    }
-
-    pub fn view_model(&self) -> TagFormViewModel {
+    fn view_model(&self) -> TagFormViewModel {
         let editing = self.editing.is_some();
         let (title, submit) = match &self.editing {
             Some(_) => (
@@ -327,6 +265,109 @@ impl TagFormPresenter {
             refusal: self.refusal.clone(),
             editing,
             focused: self.focused,
+            hints: self.hints(),
+        }
+    }
+}
+
+impl DialogPresenter for TagFormPresenter {
+    type Outcome = TagsOutcome;
+
+    fn input_event(input: DialogInput) -> TagFormEvent {
+        TagFormEvent::Input(input)
+    }
+
+    fn confirm_event() -> TagFormEvent {
+        TagFormEvent::Confirm
+    }
+
+    fn cancel_event() -> TagFormEvent {
+        TagFormEvent::Cancel
+    }
+
+    fn can_confirm(&self) -> bool {
+        self.problem().is_none() && self.colour().is_ok()
+    }
+}
+
+impl TagFormPresenter {
+    /// Reads `input` for the focused field.
+    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<TagsOutcome>) {
+        match input {
+            DialogInput::NextField => self.cycle(false),
+            DialogInput::PreviousField => self.cycle(true),
+            DialogInput::Select | DialogInput::Submit => self.save(router),
+            DialogInput::SelectNext | DialogInput::SelectPrevious => {}
+            DialogInput::Left | DialogInput::Right => {
+                if self.focused == TagField::Swatches {
+                    self.step_pick(input == DialogInput::Right);
+                }
+            }
+            DialogInput::Char(' ') if self.focused == TagField::Active => {
+                self.is_active = !self.is_active;
+            }
+            DialogInput::Char(ch) => self.edit_text(|text| text.push(ch)),
+            DialogInput::Backspace => self.edit_text(|text| {
+                text.pop();
+            }),
+        }
+    }
+
+    /// Edits the focused text field; the swatch row and Active take no text.
+    fn edit_text(&mut self, edit: impl FnOnce(&mut String)) {
+        match self.focused {
+            TagField::Name => {
+                edit(&mut self.name);
+                self.refusal = None;
+            }
+            TagField::Hex => {
+                edit(&mut self.hex);
+                self.hex = self.hex.chars().take(HEX_LEN).collect();
+            }
+            TagField::Swatches | TagField::Active => {}
+        }
+    }
+
+    /// Steps the pick one along, stopping at either end; from a custom colour it starts at "none".
+    fn step_pick(&mut self, forward: bool) {
+        let next = match (self.picked(), forward) {
+            (None, _) => 0,
+            (Some(index), true) => (index + 1).min(PICKS - 1),
+            (Some(index), false) => index.saturating_sub(1),
+        };
+        self.pick(next);
+    }
+
+    /// Saves the form through the Interactors and closes the Dialog; a refusal stays on the form.
+    /// A form that can't confirm does nothing.
+    fn save(&mut self, router: &mut dyn DialogRouter<TagsOutcome>) {
+        let Some(draft) = self.draft().filter(|_| self.can_confirm()) else {
+            return;
+        };
+        let saved = {
+            let mut ports = self.ports.borrow_mut();
+            let tags: &mut dyn crate::TagRepository = &mut *ports;
+            match &self.editing {
+                Some(editing) => EditTag {
+                    id: editing.id,
+                    draft,
+                }
+                .run(&mut *tags)
+                .and_then(|tag| match (tag.is_active, self.is_active) {
+                    (true, false) => DeactivateTag(tag.id).run(&mut *tags),
+                    (false, true) => ReactivateTag(tag.id).run(&mut *tags),
+                    _ => Ok(tag),
+                }),
+                None => AddTag(draft).run(&mut *tags),
+            }
+        };
+        match saved {
+            Ok(tag) => router.close(Some(TagsOutcome {
+                change: TagChange::Saved,
+                id: tag.id,
+                name: tag.name,
+            })),
+            Err(refusal) => self.refusal = Some(name_error_text(&refusal)),
         }
     }
 
@@ -418,14 +459,28 @@ impl TagFormPresenter {
         self.problem()
     }
 
-    fn can_confirm(&self) -> bool {
-        self.problem().is_none() && self.colour().is_ok()
+    /// Cancel and confirm, then the keys the form adds: the next field, the swatch row and, on
+    /// Edit, Active. The swatch row's arrows and Active's `space` are no Dialog command, so their
+    /// chords are the keys themselves.
+    fn hints(&self) -> Vec<Hint> {
+        let mut hints = vec![
+            self.keys.hint(BACK, lib_locale::msg::dialog_hint_cancel()),
+            self.keys
+                .hint(SELECT, lib_locale::msg::dialog_hint_confirm()),
+            self.keys
+                .hint(NEXT_FIELD, lib_locale::msg::dialog_hint_next_field()),
+            Hint::new("\u{2190}/\u{2192}", msg::tags_hint_colour()),
+        ];
+        if self.editing.is_some() {
+            hints.push(Hint::new("space", msg::tags_hint_toggle_active()));
+        }
+        hints
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::sample;
+    use super::super::test_support::{dialog_keys, sample};
     use super::*;
     use crate::TagRepository as _;
     use crate::fake::{RecordingRouter, RouterCall};
@@ -459,15 +514,13 @@ mod tests {
     }
 
     fn confirm(form: &mut TagFormPresenter) -> Vec<RouterCall> {
-        let mut router = RecordingRouter::default();
-        form.confirm(&mut router);
-        router.calls
+        send(form, vec![TagFormPresenter::confirm_event()])
     }
 
     #[test]
     fn a_new_form_has_no_name_no_colour_and_cannot_confirm() {
         let (_, shared) = sample();
-        let view = TagFormPresenter::add(shared).view_model();
+        let view = TagFormPresenter::add(shared, DialogKeys::default()).view_model();
 
         assert_eq!(view.frame.title, "Add tag");
         assert_eq!(view.frame.submit, "Add tag");
@@ -484,7 +537,7 @@ mod tests {
     #[test]
     fn the_name_rule_is_a_form_error_checked_live() {
         let (_, shared) = sample();
-        let mut form = TagFormPresenter::add(shared);
+        let mut form = TagFormPresenter::add(shared, DialogKeys::default());
         let error = |form: &TagFormPresenter| form.view_model().name_error;
 
         send(&mut form, vec![name("Tax Deductible")]);
@@ -513,7 +566,7 @@ mod tests {
     #[test]
     fn a_swatch_fills_the_hex_box_and_none_empties_it() {
         let (_, shared) = sample();
-        let mut form = TagFormPresenter::add(shared);
+        let mut form = TagFormPresenter::add(shared, DialogKeys::default());
 
         send(&mut form, vec![TagFormEvent::Pick(4)]);
         let view = form.view_model();
@@ -529,7 +582,7 @@ mod tests {
     #[test]
     fn stepping_the_pick_stops_at_either_end_and_restarts_from_a_custom_colour() {
         let (_, shared) = sample();
-        let mut form = TagFormPresenter::add(shared);
+        let mut form = TagFormPresenter::add(shared, DialogKeys::default());
         let step = |form: &mut TagFormPresenter, forward| {
             let arrow = if forward {
                 DialogInput::Right
@@ -554,7 +607,7 @@ mod tests {
     #[test]
     fn typing_edits_the_focused_text_field_and_backspace_removes() {
         let (_, shared) = sample();
-        let mut form = TagFormPresenter::add(shared);
+        let mut form = TagFormPresenter::add(shared, DialogKeys::default());
 
         type_text(&mut form, "holidxx");
         input(&mut form, &[DialogInput::Backspace, DialogInput::Backspace]);
@@ -569,7 +622,7 @@ mod tests {
     #[test]
     fn typing_on_the_swatches_goes_nowhere_and_the_arrows_step_the_pick() {
         let (_, shared) = sample();
-        let mut form = TagFormPresenter::add(shared);
+        let mut form = TagFormPresenter::add(shared, DialogKeys::default());
         input(&mut form, &[DialogInput::NextField]);
 
         type_text(&mut form, "xyz");
@@ -591,7 +644,8 @@ mod tests {
     #[test]
     fn space_toggles_active_on_an_edit_and_nothing_else_types_there() {
         let (_, shared) = sample();
-        let mut form = TagFormPresenter::edit(shared, SHARED).expect("a sample Tag");
+        let mut form =
+            TagFormPresenter::edit(shared, SHARED, DialogKeys::default()).expect("a sample Tag");
         send(&mut form, vec![TagFormEvent::Focus(TagField::Active)]);
 
         type_text(&mut form, "x");
@@ -604,7 +658,7 @@ mod tests {
     #[test]
     fn select_and_submit_confirm_a_valid_form_from_any_field_and_only_that() {
         let (ports, shared) = sample();
-        let mut form = TagFormPresenter::add(shared);
+        let mut form = TagFormPresenter::add(shared, DialogKeys::default());
 
         assert_eq!(input(&mut form, &[DialogInput::Select]), [], "no name yet");
         assert_eq!(input(&mut form, &[DialogInput::Submit]), []);
@@ -629,7 +683,7 @@ mod tests {
     #[test]
     fn a_typed_hex_is_any_colour_and_an_unfinished_one_blocks_confirming() {
         let (_, shared) = sample();
-        let mut form = TagFormPresenter::add(shared);
+        let mut form = TagFormPresenter::add(shared, DialogKeys::default());
         send(&mut form, vec![name("camping")]);
 
         send(&mut form, vec![TagFormEvent::Hex("#12".into())]);
@@ -655,8 +709,9 @@ mod tests {
     #[test]
     fn tab_cycles_the_fields_and_only_edit_reaches_active() {
         let (_, shared) = sample();
-        let mut add = TagFormPresenter::add(shared.clone());
-        let mut edit = TagFormPresenter::edit(shared, SHARED).expect("a sample Tag");
+        let mut add = TagFormPresenter::add(shared.clone(), DialogKeys::default());
+        let mut edit =
+            TagFormPresenter::edit(shared, SHARED, DialogKeys::default()).expect("a sample Tag");
         let walk = |form: &mut TagFormPresenter, event: TagFormEvent, times| {
             let mut seen = Vec::new();
             for _ in 0..times {
@@ -712,7 +767,8 @@ mod tests {
                 ..crate::TagUse::default()
             },
         );
-        let mut form = TagFormPresenter::edit(shared.clone(), SHARED).expect("a sample Tag");
+        let mut form = TagFormPresenter::edit(shared.clone(), SHARED, DialogKeys::default())
+            .expect("a sample Tag");
 
         let view = form.view_model();
         assert_eq!(view.frame.title, "Edit tag \u{2014} shared");
@@ -738,13 +794,13 @@ mod tests {
             form.view_model().name_error.as_deref(),
             Some("gift already exists")
         );
-        assert!(TagFormPresenter::edit(shared, TagId::seed(999)).is_none());
+        assert!(TagFormPresenter::edit(shared, TagId::seed(999), DialogKeys::default()).is_none());
     }
 
     #[test]
     fn confirming_an_add_writes_the_tag_active_and_closes_with_it() {
         let (ports, shared) = sample();
-        let mut form = TagFormPresenter::add(shared);
+        let mut form = TagFormPresenter::add(shared, DialogKeys::default());
         send(
             &mut form,
             vec![
@@ -780,7 +836,7 @@ mod tests {
     fn a_form_that_cannot_confirm_writes_nothing() {
         let (ports, shared) = sample();
         let before = ports.borrow().tags.clone();
-        let mut form = TagFormPresenter::add(shared);
+        let mut form = TagFormPresenter::add(shared, DialogKeys::default());
 
         assert_eq!(confirm(&mut form), []);
         send(
@@ -794,7 +850,8 @@ mod tests {
     #[test]
     fn confirming_an_edit_renames_recolours_and_deactivates_together() {
         let (ports, shared) = sample();
-        let mut form = TagFormPresenter::edit(shared, SHARED).expect("a sample Tag");
+        let mut form =
+            TagFormPresenter::edit(shared, SHARED, DialogKeys::default()).expect("a sample Tag");
         send(
             &mut form,
             vec![
@@ -824,7 +881,8 @@ mod tests {
     #[test]
     fn an_edit_reactivates_an_inactive_tag() {
         let (ports, shared) = sample();
-        let mut form = TagFormPresenter::edit(shared, BALI).expect("a sample Tag");
+        let mut form =
+            TagFormPresenter::edit(shared, BALI, DialogKeys::default()).expect("a sample Tag");
         assert!(
             !form
                 .view_model()
@@ -847,7 +905,8 @@ mod tests {
     #[test]
     fn a_tag_gone_under_the_dialog_is_refused_and_cancel_closes() {
         let (ports, shared) = sample();
-        let mut form = TagFormPresenter::edit(shared, SHARED).expect("a sample Tag");
+        let mut form =
+            TagFormPresenter::edit(shared, SHARED, DialogKeys::default()).expect("a sample Tag");
         ports.borrow_mut().tags.tags.retain(|tag| tag.id != SHARED);
 
         assert_eq!(confirm(&mut form), []);
@@ -858,6 +917,33 @@ mod tests {
         assert_eq!(
             send(&mut form, vec![TagFormEvent::Cancel]),
             [RouterCall::CloseDialog(None)]
+        );
+    }
+
+    #[test]
+    fn the_legend_reads_the_dialog_keys_and_only_edit_offers_active() {
+        let (_, shared) = sample();
+        let legend = |form: TagFormPresenter| {
+            form.view_model()
+                .hints
+                .into_iter()
+                .map(|hint| format!("{} {}", hint.chord, hint.action))
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(
+            legend(TagFormPresenter::add(shared.clone(), dialog_keys())),
+            [
+                "esc cancel",
+                "enter confirm",
+                "tab next field",
+                "\u{2190}/\u{2192} colour"
+            ]
+        );
+        let edit = TagFormPresenter::edit(shared, SHARED, dialog_keys()).expect("a sample Tag");
+        assert_eq!(
+            legend(edit).last().map(String::as_str),
+            Some("space toggle active")
         );
     }
 }

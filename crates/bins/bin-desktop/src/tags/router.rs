@@ -1,71 +1,70 @@
 //! `impl TagsRouter` for the Desktop: where the Tags page's Presenter asks to go. A Dialog opens as
-//! an Entity in the Dialog host through the page's gpui context, which is why the Router is built
-//! for each `handle` call, and a Notice goes onto the bin's queue (`crate::notices`), which the
-//! input's `send` drains. The Remove tag and Merge tags Dialogs are the Tag Removal module's
-//! (`crate::tag_removal`, #1003), opened through its entry points.
+//! a `ModuleDialog` in the Dialog host through the page's gpui context, which is why the Router is
+//! built for each `handle` call (`PageView::with_router`), and a Notice goes onto the bin's queue
+//! (`crate::notices`), which the input's `send` drains. The Remove tag and Merge tags Dialogs are
+//! the Tag Removal module's (`crate::tag_removal`, #1003), opened through its entry points.
 
-use gpui::{Context, Entity};
-use lib_tags::{SharedPorts, TagsDialog as Which, TagsOutcome, TagsRouter};
+use gpui::{AppContext as _, Context, Entity};
+use lib_tags::presenter::TagFormPresenter;
+use lib_tags::{TagsDialog as Which, TagsRouter};
 use lib_toast::{Notice, Notify};
 use lib_transactions::query::TransactionFilters;
 
-use super::TagsSetup;
-use super::view::dialog::TagsDialog;
-use super::view::page::TagsPage;
+use super::{TagsPage, TagsRoutes, TagsSetup};
 use crate::announcer::Announcer;
 use crate::notices::Queue;
-use crate::shell::view::dialog_entity::host_dialog;
-use crate::tag_removal::RemovalStores;
+use crate::shell::view::dialog_entity::ModuleDialog;
+use crate::shell::view::module_page::ModulePage;
 
 pub(super) struct PageRouter<'a, 'b> {
-    pub ports: SharedPorts,
-    pub removal: RemovalStores,
-    pub clock: lib_core::Clock,
+    pub routes: &'a TagsRoutes,
     pub cx: &'a mut Context<'b, TagsPage>,
 }
 
 impl TagsRouter for PageRouter<'_, '_> {
-    /// Builds `dialog`'s Presenter and hosts its View: Add and Edit on the shared ports, Remove
-    /// and Merge on the Tag Removal module's port. Its confirmed outcome comes back to the page
-    /// through [`TagsPage::dialog_landed`].
+    /// Builds `dialog`'s Presenter and hosts it: Add and Edit on the shared ports, Remove and
+    /// Merge on the Tag Removal module's port, each handed the Dialog keys. Its confirmed outcome
+    /// comes back to the page through [`ModulePage::landing`].
     fn open_dialog(&mut self, dialog: Which) -> bool {
-        let landed = |page: &mut TagsPage, outcome: TagsOutcome, cx: &mut Context<'_, TagsPage>| {
-            page.dialog_landed(outcome, cx);
-        };
-        let page = self.cx.weak_entity();
-        let form_landed = Box::new(move |outcome, cx: &mut gpui::App| {
-            // A page that has gone has nothing to land on.
-            let _ = page.update(cx, |page, cx| page.dialog_landed(outcome, cx));
-        });
-        let dialog = match dialog {
+        let routes = self.routes;
+        let landed = TagsPage::landing(self.cx);
+        let keys = routes.dialog_keys.clone();
+        let form = match dialog {
             Which::RemoveTag(id) => {
-                return crate::tag_removal::router::open_remove(self.cx, &self.removal, id, landed);
+                return crate::tag_removal::router::open_remove(
+                    self.cx,
+                    &routes.removal,
+                    id,
+                    keys,
+                    landed,
+                );
             }
             Which::MergeTags { source, target } => {
                 return crate::tag_removal::router::open_merge(
                     self.cx,
-                    &self.removal,
+                    &routes.removal,
                     source,
                     target,
+                    keys,
                     landed,
                 );
             }
-            Which::AddTag => TagsDialog::add(&self.ports, form_landed),
+            Which::AddTag => TagFormPresenter::add(routes.ports.clone(), keys),
             Which::EditTag(id) => {
-                let Some(dialog) = TagsDialog::edit(&self.ports, id, form_landed) else {
+                let Some(form) = TagFormPresenter::edit(routes.ports.clone(), id, keys) else {
                     return false;
                 };
-                dialog
+                form
             }
         };
-        host_dialog(self.cx, |_| dialog);
+        ModuleDialog::open(self.cx, form, landed);
         true
     }
 
     /// Shows the Tag's Transactions through the Transactions entry point: the page
     /// filtered to it, from its first row.
     fn open_transactions(&mut self, id: lib_core::TagId) {
-        let filters = TransactionFilters::for_tag(self.clock.today(), id);
+        let filters = TransactionFilters::for_tag(self.routes.clock.today(), id);
         crate::transactions::router::show_filtered(self.cx, filters);
     }
 }
@@ -77,14 +76,25 @@ impl Notify for PageRouter<'_, '_> {
     }
 }
 
-/// The Tags module's entry point: its Settings page, built on `setup`'s store, which the Settings
-/// View hosts as any other page.
+/// The Tags module's entry point: its Settings page, built on `setup`'s ports and dated by
+/// `clock`, which the Settings View hosts as any other page.
 pub fn tags_page(
     setup: TagsSetup,
     announcer: Entity<Announcer>,
     clock: lib_core::Clock,
     cx: &mut gpui::App,
 ) -> Entity<TagsPage> {
-    use gpui::AppContext as _;
-    cx.new(|cx| TagsPage::new(setup, announcer, clock, cx))
+    let TagsSetup {
+        presenter,
+        ports,
+        removal,
+        dialog_keys,
+    } = setup;
+    let routes = TagsRoutes {
+        ports,
+        removal,
+        dialog_keys,
+        clock,
+    };
+    cx.new(|cx| ModulePage::new(presenter, routes, &announcer, cx))
 }

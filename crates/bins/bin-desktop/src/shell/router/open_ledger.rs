@@ -22,6 +22,7 @@ use std::rc::Rc;
 
 use gpui::{AppContext, Context, Entity, Subscription, Task};
 use lib_database::{Storage, Stores, Writer};
+use lib_viper::dialog::DialogKeys;
 
 use super::Root;
 use crate::announcer::{Announcer, notify_on};
@@ -165,9 +166,12 @@ impl OpenLedger {
             storage.ports.unit_deletion.clone(),
             keybindings,
         );
+        // The Dialog keymap's chords, built once, which every module Dialog's hints read.
+        let dialog_keys = DialogKeys::of(&lib_shell::dialog_keymap(keybindings));
         let tags_setup = crate::tags::TagsSetup::new(
             storage.ports.tags.clone(),
             crate::tag_removal::RemovalStores::of(&storage.ports),
+            dialog_keys,
             keybindings,
         );
         let payments = storage.ports.bill_payments.clone();

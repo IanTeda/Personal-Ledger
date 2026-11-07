@@ -196,13 +196,13 @@ impl HostedDialog for DocumentTypesDialog {
     fn hints(&self, keymap: &Keymap<DialogCommand>) -> Option<Vec<Hint>> {
         let key = |command| keymap.chord(command).unwrap_or_default().to_string();
         let mut hints = vec![
-            Hint::new(key(BACK), crate::msg::desktop_hint_cancel()),
-            Hint::new(key(SELECT), crate::msg::desktop_hint_confirm()),
+            Hint::new(key(BACK), lib_locale::msg::dialog_hint_cancel()),
+            Hint::new(key(SELECT), lib_locale::msg::dialog_hint_confirm()),
         ];
         if matches!(self.view, View::Form(_)) {
             hints.push(Hint::new(
                 key(NEXT_FIELD),
-                crate::msg::desktop_hint_next_field(),
+                lib_locale::msg::dialog_hint_next_field(),
             ));
         }
         Some(hints)

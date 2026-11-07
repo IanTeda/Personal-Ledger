@@ -14,16 +14,23 @@
 //! A Dialog's Presenter closes it through its Router. The Dialog then hands a confirm's outcome to
 //! the page that opened it and emits [`DialogClosed`], which the Shell closes the host on, so a
 //! key and a click close it the same way.
+//!
+//! [`ModuleDialog`] hosts any `lib-viper` `DialogPresenter` (ADR-0056): a domain writes a
+//! [`DialogView`] on its Presenter (how it draws, reads back and is named) and no Entity of its
+//! own. The hand-written Dialogs still implement [`HostedDialog`] themselves until each moves onto
+//! it (#1077); `ModuleDialog` is one more implementation, so the host and `route_key` don't change.
 
 use std::fmt;
 use std::rc::Rc;
 
-use gpui::{AnyEntity, AnyView, App, AppContext as _, Context, Entity, EventEmitter, Render};
-use gpui::{EntityId, Subscription, WeakEntity, Window};
+use gpui::{AnyElement, AnyEntity, AnyView, App, AppContext as _, Context, Entity, EventEmitter};
+use gpui::{EntityId, IntoElement, Render, Subscription, WeakEntity, Window};
 use lib_shell::DialogCommand;
 use lib_toast::{Notice, Notify};
 use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::Keymap;
+use lib_viper::presenter::DialogPresenter;
+use lib_viper::view::DialogFrame;
 
 use crate::dialog::OnClick;
 use crate::form::select_field::OnOptionClick;
@@ -403,4 +410,219 @@ fn run<D: HostedDialog>(
             });
         });
     })
+}
+
+/// The bin's half of a Dialog's Presenter: how [`ModuleDialog`] draws it, names it and reads it
+/// back, each from the view model the host builds once per call. Implemented on the Presenter type
+/// itself, so a module has no Dialog Entity of its own.
+pub trait DialogView: DialogPresenter + Sized + 'static {
+    /// The widget state that is gpui's to keep beside the Presenter, which the Presenter never
+    /// sees: a select's list window, a scroll handle. `()` for a Dialog with none.
+    type Widgets: Default + 'static;
+
+    /// Which Dialog is open, as the UI tests name it (`AddTag`).
+    fn kind(view: &Self::ViewModel) -> &'static str;
+
+    /// Draws the Dialog from `view`. Every click goes through `clicks`, as one input.
+    fn render(
+        view: &Self::ViewModel,
+        widgets: &mut Self::Widgets,
+        clicks: &ModuleDialogClicks<Self>,
+        cx: &App,
+    ) -> AnyElement;
+
+    /// The Dialog's labelled values for the UI tests ([`DialogReadback`]), [`framed`] by its title
+    /// and whether it would confirm.
+    fn readback(view: &Self::ViewModel) -> Vec<(&'static str, String)>;
+
+    /// The status line's hints while the Dialog is open: its view model's, which its Presenter
+    /// built from the `DialogKeys` it was handed at open.
+    fn hints(view: &Self::ViewModel) -> Vec<Hint>;
+}
+
+/// `values` between the Dialog's title and whether it would confirm, as every Dialog reads back.
+pub fn framed(
+    frame: &DialogFrame,
+    mut values: Vec<(&'static str, String)>,
+) -> Vec<(&'static str, String)> {
+    values.insert(0, ("title", frame.title.clone()));
+    values.push(("can_confirm", frame.can_confirm.to_string()));
+    values
+}
+
+/// What a confirmed Dialog hands the page that opened it, inside the confirm's input.
+type Landed<O> = Box<dyn Fn(O, &mut App)>;
+
+/// The open Dialog of any module: one Dialog Presenter, the widget state its [`DialogView`] keeps
+/// beside it, and where a confirm's outcome lands. Every input, key or click, is one
+/// [`Presenter::handle`](lib_viper::presenter::Presenter::handle) call through a fresh
+/// [`HostRouter`], after which the Dialog acts on a close.
+pub struct ModuleDialog<P: DialogView> {
+    presenter: P,
+    widgets: P::Widgets,
+    landed: Landed<P::Outcome>,
+}
+
+impl<P: DialogView> ModuleDialog<P> {
+    /// Opens `presenter`'s Dialog in the host over page `Page`, whose confirm hands its outcome to
+    /// `landed` (the page's `ModulePage::landing`).
+    pub fn open<Page: EventEmitter<ViewEvent> + 'static>(
+        cx: &mut Context<'_, Page>,
+        presenter: P,
+        landed: impl Fn(P::Outcome, &mut App) + 'static,
+    ) {
+        host_dialog(cx, |_| Self {
+            presenter,
+            widgets: P::Widgets::default(),
+            landed: Box::new(landed),
+        });
+    }
+
+    /// Hands `event` to the Presenter. Once it has closed the Dialog, hands a confirm's outcome
+    /// to the page and tells the host, returning `true`.
+    fn handle(&mut self, event: P::Event, cx: &mut Context<'_, Self>) -> bool {
+        let mut router = HostRouter::default();
+        self.presenter.handle(event, &mut router);
+        let Some(outcome) = router.closed() else {
+            return false;
+        };
+        if let Some(outcome) = outcome {
+            (self.landed)(outcome, cx);
+        }
+        cx.emit(DialogClosed);
+        true
+    }
+}
+
+impl<P: DialogView> EventEmitter<DialogClosed> for ModuleDialog<P> {}
+
+impl<P: DialogView> HostedDialog for ModuleDialog<P> {
+    /// Every input is the Presenter's to read.
+    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
+        self.handle(P::input_event(input), cx);
+    }
+
+    fn can_confirm(&self) -> bool {
+        self.presenter.can_confirm()
+    }
+
+    /// A refusal stays on the Presenter's view model and keeps the Dialog open.
+    fn confirm(&mut self, cx: &mut Context<'_, Self>) {
+        self.handle(P::confirm_event(), cx);
+    }
+
+    /// A cancelled Dialog has written nothing.
+    fn cancel(&mut self, cx: &mut Context<'_, Self>) {
+        self.handle(P::cancel_event(), cx);
+    }
+
+    fn close_open_select(&mut self) -> bool {
+        self.presenter.close_open_select()
+    }
+
+    fn steps_list(&self) -> bool {
+        self.presenter.steps_list()
+    }
+
+    /// The view model's hints: their chords are already the Dialog keymap's, so `keymap` is not
+    /// read.
+    fn hints(&self, _keymap: &Keymap<DialogCommand>) -> Option<Vec<Hint>> {
+        Some(P::hints(&self.presenter.view_model()))
+    }
+
+    fn readback(&self, _cx: &App) -> DialogReadback {
+        let view = self.presenter.view_model();
+        DialogReadback {
+            kind: P::kind(&view),
+            values: P::readback(&view),
+        }
+    }
+}
+
+impl<P: DialogView> Render for ModuleDialog<P> {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
+        let clicks = ModuleDialogClicks::new(cx);
+        P::render(&self.presenter.view_model(), &mut self.widgets, &clicks, cx)
+    }
+}
+
+/// A [`ModuleDialog`]'s clicks, each a list of its Presenter's events sent as one input
+/// (`crate::input::send`) and stopping at the one that closes the Dialog: the cancel and confirm
+/// buttons, and whatever its fields and lists send. The twin of `PageClicks` for a Dialog.
+pub struct ModuleDialogClicks<P: DialogView> {
+    this: WeakEntity<ModuleDialog<P>>,
+    pub cancel: OnClick,
+    /// Sends the confirm only while the form would confirm, as the button is drawn disabled.
+    pub confirm: OnClick,
+}
+
+impl<P: DialogView> ModuleDialogClicks<P> {
+    fn new(cx: &Context<'_, ModuleDialog<P>>) -> Self {
+        let this = cx.weak_entity();
+        Self {
+            cancel: on_click(this.clone(), |_| vec![P::cancel_event()]),
+            confirm: on_click(this.clone(), |dialog| {
+                if dialog.presenter.can_confirm() {
+                    vec![P::confirm_event()]
+                } else {
+                    Vec::new()
+                }
+            }),
+            this,
+        }
+    }
+
+    /// A click sending `event`.
+    pub fn send(&self, event: P::Event) -> OnClick
+    where
+        P::Event: Clone,
+    {
+        self.send_all(vec![event])
+    }
+
+    /// A click sending `events` in order, as one input: a click that focuses a field, then acts.
+    pub fn send_all(&self, events: Vec<P::Event>) -> OnClick
+    where
+        P::Event: Clone,
+    {
+        on_click(self.this.clone(), move |_| events.clone())
+    }
+
+    /// A click on row `index` of a list (an open select, a swatch row), sending the events
+    /// `events` builds from it.
+    pub fn option(&self, events: impl Fn(usize) -> Vec<P::Event> + 'static) -> OnOptionClick {
+        let this = self.this.clone();
+        Rc::new(move |index, _window: &mut Window, cx: &mut App| {
+            deliver(&this, events(index), cx);
+        })
+    }
+}
+
+/// A click sending the events `events` reads off the Dialog as it is clicked.
+fn on_click<P: DialogView>(
+    this: WeakEntity<ModuleDialog<P>>,
+    events: impl Fn(&ModuleDialog<P>) -> Vec<P::Event> + 'static,
+) -> OnClick {
+    Rc::new(move |_window: &mut Window, cx: &mut App| {
+        // A Dialog that has closed takes no click.
+        let Ok(events) = this.read_with(cx, |dialog, _| events(dialog)) else {
+            return;
+        };
+        deliver(&this, events, cx);
+    })
+}
+
+/// Sends `events` to the Dialog as one input, stopping once one closes it, then redraws it.
+fn deliver<P: DialogView>(this: &WeakEntity<ModuleDialog<P>>, events: Vec<P::Event>, cx: &mut App) {
+    crate::input::send(cx, |cx| {
+        // A Dialog that has closed takes no click.
+        let _ = this.update(cx, |dialog, cx| {
+            for event in events {
+                if dialog.handle(event, cx) {
+                    break;
+                }
+            }
+            cx.notify();
+        });
+    });
 }

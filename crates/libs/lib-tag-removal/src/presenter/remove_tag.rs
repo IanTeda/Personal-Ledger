@@ -6,14 +6,17 @@
 //!
 //! Its confirm runs [`RemoveTag`] through the removal port, which untags the Splits carrying the
 //! Tag and deletes it in the one commit of the input; a refusal stays in the Dialog. It raises its
-//! own Toast on landing, so the page only learns what it did.
+//! own Toast on landing, so the page only learns what it did. Its hints are built from the
+//! [`DialogKeys`] it is handed at open.
 
 use lib_core::TagId;
 use lib_locale::Segment;
 use lib_tags::{TagChange, TagsOutcome};
 use lib_toast::{Notice, ToastKind};
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::view::{DialogFrame, TextFieldView, count};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::{BACK, SELECT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
+use lib_viper::view::{DialogFrame, Hint, TextFieldView, count};
 
 use super::refusal_text;
 use crate::interactor::RemoveTag;
@@ -22,8 +25,13 @@ use crate::protocols::{SharedTagRemoval, TagRemovalReads};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RemoveTagEvent {
+    /// A Dialog command or typed key: `select` and `submit` confirm once the Dialog allows it,
+    /// and typing goes to the typed-back name, the only field, which an unused Tag doesn't have.
+    Input(DialogInput),
     /// The confirmation field's whole new text.
     ConfirmText(String),
+    /// Removes the Tag once the Dialog allows it; a refusal stays in the Dialog.
+    Confirm,
     Cancel,
 }
 
@@ -36,10 +44,13 @@ pub struct RemoveTagViewModel {
     pub confirm: Option<TextFieldView>,
     /// Why the last confirm was refused.
     pub refusal: Option<String>,
+    /// The status line's legend while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 pub struct RemoveTagPresenter {
     removal: SharedTagRemoval,
+    keys: DialogKeys,
     id: TagId,
     name: String,
     /// The Transactions carrying the Tag, read when the Dialog opens.
@@ -50,11 +61,17 @@ pub struct RemoveTagPresenter {
 
 impl RemoveTagPresenter {
     /// The Dialog for Tag `id`, its usage read from `reads` when it opens, or `None` when it is
-    /// gone.
-    pub fn new(removal: SharedTagRemoval, reads: &dyn TagRemovalReads, id: TagId) -> Option<Self> {
+    /// gone. `keys` are the Dialog keymap's chords, which its hints show.
+    pub fn new(
+        removal: SharedTagRemoval,
+        reads: &dyn TagRemovalReads,
+        id: TagId,
+        keys: DialogKeys,
+    ) -> Option<Self> {
         let offered = reads.tag_count(id)?;
         Some(Self {
             removal,
+            keys,
             id,
             name: offered.tag.name,
             transactions: offered.transactions,
@@ -62,51 +79,23 @@ impl RemoveTagPresenter {
             refusal: None,
         })
     }
+}
 
-    pub fn handle(&mut self, event: RemoveTagEvent, router: &mut dyn DialogRouter<TagsOutcome>) {
+impl Presenter for RemoveTagPresenter {
+    type Event = RemoveTagEvent;
+    type ViewModel = RemoveTagViewModel;
+    type Router<'r> = dyn DialogRouter<TagsOutcome> + 'r;
+
+    fn handle(&mut self, event: RemoveTagEvent, router: &mut Self::Router<'_>) {
         match event {
+            RemoveTagEvent::Input(input) => self.input(input, router),
             RemoveTagEvent::ConfirmText(text) => self.confirm_text = text,
+            RemoveTagEvent::Confirm => self.remove(router),
             RemoveTagEvent::Cancel => router.close(None),
         }
     }
 
-    /// Reads `input`: `select` and `submit` confirm once the Dialog allows it, and typing goes to
-    /// the typed-back name, the only field, which an unused Tag doesn't have.
-    pub fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<TagsOutcome>) {
-        match input {
-            DialogInput::Select | DialogInput::Submit => self.confirm(router),
-            DialogInput::Char(ch) if self.transactions > 0 => self.confirm_text.push(ch),
-            DialogInput::Backspace if self.transactions > 0 => {
-                self.confirm_text.pop();
-            }
-            _ => {}
-        }
-    }
-
-    /// Removes the Tag once the Dialog allows it, raises the Toast and closes the Dialog; a
-    /// refusal stays in the Dialog.
-    pub fn confirm(&mut self, router: &mut dyn DialogRouter<TagsOutcome>) {
-        if !self.can_confirm() {
-            return;
-        }
-        let outcome = RemoveTag { id: self.id }.run(&mut *self.removal.borrow_mut());
-        match outcome {
-            Ok(removed) => {
-                router.notify(Notice::Toast(
-                    ToastKind::Success,
-                    lib_locale::msg::toast_tag_deleted(&removed.name),
-                ));
-                router.close(Some(TagsOutcome {
-                    change: TagChange::Removed,
-                    id: removed.id,
-                    name: removed.name,
-                }));
-            }
-            Err(refusal) => self.refusal = Some(refusal_text(refusal)),
-        }
-    }
-
-    pub fn view_model(&self) -> RemoveTagViewModel {
+    fn view_model(&self) -> RemoveTagViewModel {
         let name = self.name.as_str();
         RemoveTagViewModel {
             frame: DialogFrame {
@@ -128,7 +117,28 @@ impl RemoveTagPresenter {
                 focused: true,
             }),
             refusal: self.refusal.clone(),
+            hints: vec![
+                self.keys.hint(BACK, lib_locale::msg::dialog_hint_cancel()),
+                self.keys
+                    .hint(SELECT, lib_locale::msg::dialog_hint_confirm()),
+            ],
         }
+    }
+}
+
+impl DialogPresenter for RemoveTagPresenter {
+    type Outcome = TagsOutcome;
+
+    fn input_event(input: DialogInput) -> RemoveTagEvent {
+        RemoveTagEvent::Input(input)
+    }
+
+    fn confirm_event() -> RemoveTagEvent {
+        RemoveTagEvent::Confirm
+    }
+
+    fn cancel_event() -> RemoveTagEvent {
+        RemoveTagEvent::Cancel
     }
 
     /// Always for an unused Tag, else once the name is typed exactly (case-sensitive, as the
@@ -138,12 +148,48 @@ impl RemoveTagPresenter {
     }
 }
 
+impl RemoveTagPresenter {
+    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<TagsOutcome>) {
+        match input {
+            DialogInput::Select | DialogInput::Submit => self.remove(router),
+            DialogInput::Char(ch) if self.transactions > 0 => self.confirm_text.push(ch),
+            DialogInput::Backspace if self.transactions > 0 => {
+                self.confirm_text.pop();
+            }
+            _ => {}
+        }
+    }
+
+    /// Removes the Tag once the Dialog allows it, raises the Toast and closes the Dialog; a
+    /// refusal stays in the Dialog.
+    fn remove(&mut self, router: &mut dyn DialogRouter<TagsOutcome>) {
+        if !self.can_confirm() {
+            return;
+        }
+        let outcome = RemoveTag { id: self.id }.run(&mut *self.removal.borrow_mut());
+        match outcome {
+            Ok(removed) => {
+                router.notify(Notice::Toast(
+                    ToastKind::Success,
+                    lib_locale::msg::toast_tag_deleted(&removed.name),
+                ));
+                router.close(Some(TagsOutcome {
+                    change: TagChange::Removed,
+                    id: removed.id,
+                    name: removed.name,
+                }));
+            }
+            Err(refusal) => self.refusal = Some(refusal_text(refusal)),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use lib_tags::TagRepository as _;
     use lib_tags::fake::{RecordingRouter, RouterCall};
 
-    use super::super::test_support::shared_world;
+    use super::super::test_support::{dialog_keys, shared_world};
     use super::*;
     use crate::fake::world::{ONE_OFF, SHARED};
     use crate::protocols::TagRemoval as _;
@@ -166,9 +212,14 @@ mod tests {
     #[test]
     fn a_used_tag_quotes_its_transactions_and_asks_for_its_name() {
         let (rows, removal) = shared_world();
-        let view = RemoveTagPresenter::new(removal.clone(), &*rows.borrow(), SHARED)
-            .expect("a world Tag")
-            .view_model();
+        let view = RemoveTagPresenter::new(
+            removal.clone(),
+            &*rows.borrow(),
+            SHARED,
+            DialogKeys::default(),
+        )
+        .expect("a world Tag")
+        .view_model();
 
         assert_eq!(view.frame.title, "Remove tag \u{2014} shared");
         assert_eq!(view.frame.submit, "Remove tag");
@@ -178,15 +229,24 @@ mod tests {
         let confirm = view.confirm.expect("a used Tag asks for its name");
         assert_eq!(confirm.label, "Type shared to confirm");
         assert_eq!(confirm.placeholder, "shared");
-        assert!(RemoveTagPresenter::new(removal, &*rows.borrow(), TagId::seed(999)).is_none());
+        assert!(
+            RemoveTagPresenter::new(
+                removal,
+                &*rows.borrow(),
+                TagId::seed(999),
+                DialogKeys::default()
+            )
+            .is_none()
+        );
     }
 
     #[test]
     fn an_unused_tag_needs_no_typed_name() {
         let (rows, removal) = shared_world();
-        let view = RemoveTagPresenter::new(removal, &*rows.borrow(), ONE_OFF)
-            .expect("a world Tag")
-            .view_model();
+        let view =
+            RemoveTagPresenter::new(removal, &*rows.borrow(), ONE_OFF, DialogKeys::default())
+                .expect("a world Tag")
+                .view_model();
 
         assert!(view.frame.can_confirm);
         assert_eq!(view.confirm, None);
@@ -197,16 +257,17 @@ mod tests {
     fn confirm_waits_for_the_exact_name_then_removes_and_raises_its_toast() {
         let (rows, removal) = shared_world();
         let mut dialog =
-            RemoveTagPresenter::new(removal, &*rows.borrow(), SHARED).expect("a world Tag");
+            RemoveTagPresenter::new(removal, &*rows.borrow(), SHARED, DialogKeys::default())
+                .expect("a world Tag");
         let mut router = RecordingRouter::default();
 
         typed(&mut dialog, "Shared");
-        dialog.confirm(&mut router);
+        dialog.handle(RemoveTagEvent::Confirm, &mut router);
         assert_eq!(router.take(), []);
         assert!(rows.borrow().tags.tag(SHARED).is_some());
 
         typed(&mut dialog, "shared");
-        dialog.confirm(&mut router);
+        dialog.handle(RemoveTagEvent::Confirm, &mut router);
 
         assert_eq!(
             router.take(),
@@ -233,10 +294,11 @@ mod tests {
     fn typing_builds_the_name_and_select_removes_only_once_it_is_exact() {
         let (rows, removal) = shared_world();
         let mut dialog =
-            RemoveTagPresenter::new(removal, &*rows.borrow(), SHARED).expect("a world Tag");
+            RemoveTagPresenter::new(removal, &*rows.borrow(), SHARED, DialogKeys::default())
+                .expect("a world Tag");
         let mut router = RecordingRouter::default();
         let mut press = |dialog: &mut RemoveTagPresenter, input| {
-            dialog.input(input, &mut router);
+            dialog.handle(RemoveTagEvent::Input(input), &mut router);
         };
 
         for ch in "shareX".chars() {
@@ -268,12 +330,13 @@ mod tests {
     fn an_unused_tag_takes_no_typing_and_select_removes_it() {
         let (rows, removal) = shared_world();
         let mut dialog =
-            RemoveTagPresenter::new(removal, &*rows.borrow(), ONE_OFF).expect("a world Tag");
+            RemoveTagPresenter::new(removal, &*rows.borrow(), ONE_OFF, DialogKeys::default())
+                .expect("a world Tag");
         let mut router = RecordingRouter::default();
 
-        dialog.input(DialogInput::Char('x'), &mut router);
+        dialog.handle(RemoveTagEvent::Input(DialogInput::Char('x')), &mut router);
         assert_eq!(dialog.view_model().confirm, None);
-        dialog.input(DialogInput::Select, &mut router);
+        dialog.handle(RemoveTagEvent::Input(DialogInput::Select), &mut router);
 
         assert!(rows.borrow().tags.tag(ONE_OFF).is_none());
     }
@@ -282,9 +345,10 @@ mod tests {
     fn an_unused_tag_is_removed_on_confirm_alone() {
         let (rows, removal) = shared_world();
         let mut dialog =
-            RemoveTagPresenter::new(removal, &*rows.borrow(), ONE_OFF).expect("a world Tag");
+            RemoveTagPresenter::new(removal, &*rows.borrow(), ONE_OFF, DialogKeys::default())
+                .expect("a world Tag");
 
-        dialog.confirm(&mut RecordingRouter::default());
+        dialog.handle(RemoveTagEvent::Confirm, &mut RecordingRouter::default());
 
         assert!(rows.borrow().tags.tag(ONE_OFF).is_none());
     }
@@ -293,11 +357,12 @@ mod tests {
     fn a_tag_gone_under_the_dialog_is_refused_and_cancel_closes() {
         let (rows, removal) = shared_world();
         let mut dialog =
-            RemoveTagPresenter::new(removal, &*rows.borrow(), ONE_OFF).expect("a world Tag");
+            RemoveTagPresenter::new(removal, &*rows.borrow(), ONE_OFF, DialogKeys::default())
+                .expect("a world Tag");
         rows.borrow_mut().tags.tags.retain(|tag| tag.id != ONE_OFF);
         let mut router = RecordingRouter::default();
 
-        dialog.confirm(&mut router);
+        dialog.handle(RemoveTagEvent::Confirm, &mut router);
 
         assert_eq!(router.take(), []);
         assert_eq!(
@@ -306,5 +371,17 @@ mod tests {
         );
         dialog.handle(RemoveTagEvent::Cancel, &mut router);
         assert_eq!(router.take(), [RouterCall::CloseDialog(None)]);
+    }
+
+    #[test]
+    fn the_legend_reads_the_dialog_keys() {
+        let (rows, removal) = shared_world();
+        let dialog = RemoveTagPresenter::new(removal, &*rows.borrow(), SHARED, dialog_keys())
+            .expect("a world Tag");
+
+        assert_eq!(
+            dialog.view_model().hints,
+            [Hint::new("esc", "cancel"), Hint::new("enter", "confirm")]
+        );
     }
 }

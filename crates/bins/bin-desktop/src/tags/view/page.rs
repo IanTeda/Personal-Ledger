@@ -1,119 +1,61 @@
-//! The Tags Settings page's View: the `lib-tags` page Presenter in a gpui Entity. It looks up each
-//! key the Shell passes on, as chord text, in the Tags keymap, turns clicks into events, draws the
-//! view model (`render.rs`). Each key and click is one input (`crate::input::send`), which
-//! commits what it wrote. The Settings View hosts it as any other page.
+//! The Tags Settings page's View: the `lib-tags` page Presenter's [`PageView`], which the generic
+//! `ModulePage` hosts (ADR-0056). It names the page's Router, the domains it repaints on, and how
+//! it draws the view model (`render.rs`); the keymap, the take, send and handle path and the
+//! Dialogs' landing are the generic page's.
 
 mod render;
 
-use gpui::{AnyElement, App, Context, Entity, EventEmitter, Subscription};
+use gpui::{AnyElement, App, Context, Window};
 use lib_database::Domain;
-use lib_tags::presenter::{TagsPageEvent, TagsPagePresenter, TagsPageViewModel};
-use lib_tags::{SharedPorts, TagsOutcome};
-use lib_viper::keymap::Keymap;
+use lib_tags::presenter::{TagsPagePresenter, TagsPageViewModel};
 
-use lib_shell::Hint;
-
+use crate::settings::SettingsPage;
 use crate::settings::snapshot::PageSnapshot;
-use crate::tag_removal::RemovalStores;
+use crate::shell::view::module_page::{PageDraw, PageView, SettingsPageView};
+use crate::shell::view::statusline::PageStatus;
 use crate::tags::router::PageRouter;
-use crate::tags::{SettingsTagsSnapshot, TagsSetup};
-use crate::{
-    announcer::{Announcer, notify_on},
-    navigation::movement::Movement,
-    settings::{
-        SettingsPage,
-        pages::{Page, PageRowClicked},
-    },
-    shell::view::page_clicks::PresenterPage,
-    view::event::ViewEvent,
-};
+use crate::tags::{SettingsTagsSnapshot, TagsPage, TagsRoutes};
 
-impl EventEmitter<ViewEvent> for TagsPage {}
-impl EventEmitter<PageRowClicked> for TagsPage {}
+impl PageView for TagsPagePresenter {
+    type Setup = TagsRoutes;
+    type Widgets = ();
 
-pub struct TagsPage {
-    presenter: TagsPagePresenter,
-    ports: SharedPorts,
-    /// Tag remove and merge's port and reads, which their Dialogs open on.
-    removal: RemovalStores,
-    clock: lib_core::Clock,
-    keymap: Keymap<TagsPageEvent>,
-    /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
-    /// draws the page.
-    page_focused: bool,
-    /// Repaints the page when the Tags change: a Tags write, a remove or merge, a rollback.
-    _tags_changed: Subscription,
-    /// Usage drives the likely duplicates and the merge counts, so a Transaction repaints too.
-    _transactions_changed: Subscription,
-}
+    /// A Tags write, a remove or merge, a rollback; and a Transaction, since usage drives the
+    /// likely duplicates and the merge counts.
+    const REPAINTS: &'static [Domain] = &[Domain::Tags, Domain::Transactions];
 
-impl TagsPage {
-    pub fn new(
-        setup: TagsSetup,
-        announcer: Entity<Announcer>,
-        clock: lib_core::Clock,
-        cx: &mut Context<'_, Self>,
-    ) -> Self {
-        Self {
-            presenter: TagsPagePresenter::new(setup.ports.clone(), setup.keymap.clone()),
-            ports: setup.ports,
-            removal: setup.removal,
-            _tags_changed: notify_on(&announcer, Domain::Tags, cx),
-            _transactions_changed: notify_on(&announcer, Domain::Transactions, cx),
-            clock,
-            keymap: setup.keymap,
-            page_focused: false,
+    fn with_router<R>(
+        setup: &TagsRoutes,
+        cx: &mut Context<'_, TagsPage>,
+        handle: impl FnOnce(&mut Self::Router<'_>) -> R,
+    ) -> R {
+        handle(&mut PageRouter { routes: setup, cx })
+    }
+
+    fn render(
+        view: &TagsPageViewModel,
+        page: PageDraw<'_, Self>,
+        _window: &mut Window,
+        cx: &mut Context<'_, TagsPage>,
+    ) -> AnyElement {
+        render::page(view, page.clicks, page.focused, cx)
+    }
+
+    /// The Presenter's legend, rebound keys included, and its count of Tags and likely duplicates.
+    fn status(view: &TagsPageViewModel) -> PageStatus {
+        PageStatus {
+            hints: view.hints.clone(),
+            right: view.status.clone(),
         }
     }
 
-    /// The one dispatch a keymap event takes into the page, from a key ([`Self::module_key`]) or a palette Command ([`Self::module_command`]): sent as one input, unless the page doesn't take it now.
-    fn take(&mut self, event: TagsPageEvent, cx: &mut Context<'_, Self>) -> bool {
-        if !self.presenter.takes(&event) {
-            return false;
-        }
-        self.send(event, cx);
-        true
-    }
-
-    /// A key or click on the page: `event` as one input, committed once it is handled.
-    fn send(&mut self, event: TagsPageEvent, cx: &mut Context<'_, Self>) {
-        crate::input::join_or_send(cx, |cx| self.handle(event, cx));
-    }
-
-    /// Hands `event` to the Presenter with the Desktop's Router. Inside an input already, as
-    /// [`Self::send`] or a Dialog's confirm.
-    fn handle(&mut self, event: TagsPageEvent, cx: &mut Context<'_, Self>) {
-        let mut router = PageRouter {
-            ports: self.ports.clone(),
-            removal: self.removal.clone(),
-            clock: self.clock.clone(),
-            cx,
-        };
-        self.presenter.handle(event, &mut router);
-        cx.notify();
-    }
-
-    /// A confirmed Dialog's outcome, handed back by the Dialog host inside the confirm's input,
-    /// whose commit names what the confirm wrote: a remove or merge's Splits as well as the Tags.
-    pub(crate) fn dialog_landed(&mut self, outcome: TagsOutcome, cx: &mut Context<'_, Self>) {
-        self.handle(TagsPageEvent::DialogClosed(Some(outcome)), cx);
-    }
-
-    pub fn view_model(&self) -> TagsPageViewModel {
-        self.presenter.view_model()
+    fn heading_meta(view: &TagsPageViewModel, cx: &App) -> Option<AnyElement> {
+        Some(render::scope_note(&view.scope, cx))
     }
 }
 
-/// The page's clicks on its rows and buttons.
-impl PresenterPage<TagsPageEvent> for TagsPage {
-    fn send(&mut self, event: TagsPageEvent, cx: &mut Context<'_, Self>) {
-        TagsPage::send(self, event, cx);
-    }
-
-    /// A click on a row hands the page focus.
-    fn row_clicked(&mut self, cx: &mut Context<'_, Self>) {
-        cx.emit(PageRowClicked);
-    }
+impl SettingsPageView for TagsPagePresenter {
+    const PAGE: SettingsPage = SettingsPage::Tags;
 }
 
 impl PageSnapshot for SettingsTagsSnapshot {
@@ -131,49 +73,5 @@ impl PageSnapshot for SettingsTagsSnapshot {
             tag_ids: view.rows.iter().map(|row| row.id).collect(),
             tag_names: view.rows.into_iter().map(|row| row.name).collect(),
         }
-    }
-}
-
-impl Page for TagsPage {
-    const PAGE: SettingsPage = SettingsPage::Tags;
-
-    /// Every chord the Tags keymap binds, the arrows and `g g` among them. The Shell has already
-    /// taken its own keys.
-    fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {
-        let Some(event) = self.keymap.event(chord) else {
-            return false;
-        };
-        self.take(event, cx)
-    }
-
-    /// A palette Command, by its keymap `command` name: the event its key sends.
-    fn module_command(&mut self, command: &str, cx: &mut Context<'_, Self>) -> bool {
-        let Some(event) = self.keymap.event_for(command) else {
-            return false;
-        };
-        self.take(event, cx)
-    }
-
-    /// A movement the keymap doesn't bind (`enter`) does nothing on the page, and Settings leaves
-    /// the page where it is: there is no hand-off from a Tag.
-    fn apply_movement(&mut self, _movement: Movement, _cx: &mut Context<'_, Self>) -> bool {
-        true
-    }
-
-    /// The Presenter's legend, rebound keys included, which the `?` cheat sheet reads.
-    fn hints(&self, _cx: &App) -> Vec<Hint> {
-        self.view_model().hints
-    }
-
-    fn status_note(&self, _cx: &App) -> String {
-        self.view_model().status
-    }
-
-    fn set_page_focused(&mut self, focused: bool, _cx: &mut Context<'_, Self>) {
-        self.page_focused = focused;
-    }
-
-    fn heading_meta(&self, cx: &App) -> AnyElement {
-        render::scope_note(&self.view_model().scope, cx)
     }
 }

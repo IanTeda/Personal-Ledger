@@ -1,7 +1,7 @@
-//! The Remove tag and Merge tags Dialogs' Presenters, moved from `lib-tags` (#1002). Each takes
-//! `lib-viper`'s `DialogInput`s and its own events, builds a plain-data view model with its text
-//! already localised from [`crate::msg`], and closes through the generic `DialogRouter` with
-//! `lib-tags`' `TagsOutcome`. Each holds the shared removal port its confirm runs the Interactor
+//! The Remove tag and Merge tags Dialogs' Presenters, moved from `lib-tags` (#1002). Each is a
+//! `lib-viper` `DialogPresenter` (ADR-0056): it takes `DialogInput`s and its own events, builds a
+//! plain-data view model with its text and hints already localised from [`crate::msg`], and closes
+//! through the generic `DialogRouter` with `lib-tags`' `TagsOutcome`. Each holds the shared removal port its confirm runs the Interactor
 //! through, and is lent the reads once, when it opens.
 
 mod merge_tags;
@@ -25,6 +25,9 @@ pub(crate) mod test_support {
     use std::cell::RefCell;
     use std::rc::Rc;
 
+    use lib_viper::dialog::DialogKeys;
+    use lib_viper::keymap::{BACK, Binding, KeyBindingConfig, Keymap, NEXT_FIELD, SELECT};
+
     use crate::fake::InMemoryTagRemoval;
     use crate::fake::world::world;
     use crate::protocols::SharedTagRemoval;
@@ -39,5 +42,15 @@ pub(crate) mod test_support {
     pub fn shared_world() -> (Rc<RefCell<InMemoryTagRemoval>>, SharedTagRemoval) {
         locale();
         world().shared()
+    }
+
+    /// The Dialog keys a Dialog's legend reads, bound as `lib-shell`'s defaults bind them.
+    pub fn dialog_keys() -> DialogKeys {
+        const BINDINGS: &[Binding<()>] = &[
+            Binding::hidden(BACK, "esc", ()),
+            Binding::hidden(SELECT, "enter", ()),
+            Binding::hidden(NEXT_FIELD, "tab", ()),
+        ];
+        DialogKeys::of(&Keymap::new(BINDINGS, &KeyBindingConfig::default()))
     }
 }

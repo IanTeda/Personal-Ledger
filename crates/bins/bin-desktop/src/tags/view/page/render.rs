@@ -8,13 +8,12 @@
 //! reach the same handlers.
 
 use gpui::{
-    AnyElement, App, ClickEvent, Context, FontWeight, Render, Rgba, SharedString, Window, div,
-    prelude::*, px,
+    AnyElement, App, ClickEvent, FontWeight, Rgba, SharedString, Window, div, prelude::*, px,
 };
 use lib_locale::{Segment, format::upper};
 use lib_tags::presenter::{TagLine, TagsPageEvent, TagsPageViewModel};
 
-use super::TagsPage;
+use crate::tags::TagsPage;
 use crate::{
     form::swatch::{SWATCH_SIZE, swatch},
     shell::view::page_clicks::PageClicks,
@@ -47,53 +46,55 @@ pub(super) fn scope_note(scope: &[Segment], cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-impl Render for TagsPage {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let clicks = PageClicks::new(cx);
-        let view = self.view_model();
-        let focused = self.page_focused;
-        let last = view.rows.len().saturating_sub(1);
-        let cx: &App = cx;
-        div()
-            .flex()
-            .flex_col()
-            .child(kicker_row(&view, &clicks, cx))
-            .children(view.empty.clone().map(|empty| {
+/// The page: the kicker and **+ Add tag**, the table, or the empty note, and the footnote. The
+/// selected row is inverted only while the page has `focused`.
+pub(super) fn page(
+    view: &TagsPageViewModel,
+    clicks: &PageClicks<TagsPage>,
+    focused: bool,
+    cx: &App,
+) -> AnyElement {
+    let last = view.rows.len().saturating_sub(1);
+    div()
+        .flex()
+        .flex_col()
+        .child(kicker_row(view, clicks, cx))
+        .children(view.empty.clone().map(|empty| {
+            div()
+                .text_color(color::muted(cx))
+                .child(empty)
+                .into_any_element()
+        }))
+        .when(!view.rows.is_empty(), |this| {
+            this.child(
                 div()
-                    .text_color(color::muted(cx))
-                    .child(empty)
-                    .into_any_element()
-            }))
-            .when(!view.rows.is_empty(), |this| {
-                this.child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .border_1()
-                        .border_color(color::border(cx))
-                        .mb(px(18.0))
-                        .child(table_header(&view, cx))
-                        .children(view.rows.iter().enumerate().map(|(position, tag)| {
-                            row(
-                                &view,
-                                &clicks,
-                                tag,
-                                position == last,
-                                view.selected == Some(tag.id),
-                                focused,
-                                cx,
-                            )
-                        })),
-                )
-            })
-            .child(
-                div()
-                    .max_w(px(620.0))
-                    .text_size(px(11.5))
-                    .text_color(color::muted(cx))
-                    .child(view.footnote.clone()),
+                    .flex()
+                    .flex_col()
+                    .border_1()
+                    .border_color(color::border(cx))
+                    .mb(px(18.0))
+                    .child(table_header(view, cx))
+                    .children(view.rows.iter().enumerate().map(|(position, tag)| {
+                        row(
+                            view,
+                            clicks,
+                            tag,
+                            position == last,
+                            view.selected == Some(tag.id),
+                            focused,
+                            cx,
+                        )
+                    })),
             )
-    }
+        })
+        .child(
+            div()
+                .max_w(px(620.0))
+                .text_size(px(11.5))
+                .text_color(color::muted(cx))
+                .child(view.footnote.clone()),
+        )
+        .into_any_element()
 }
 
 /// The page's `+ Add tag` button, which opens the Add dialog as `n` does.

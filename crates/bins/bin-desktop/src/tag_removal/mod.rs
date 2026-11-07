@@ -3,8 +3,8 @@
 //! through. Every rule, every piece of text and the Presenters are `lib-tag-removal`'s; this folder
 //! turns gpui keys and clicks into Presenter events and draws the view models.
 //!
-//! - `view/dialog.rs` holds either Presenter in an Entity in the Dialog host, one View per Dialog
-//!   in `view/dialog/`.
+//! - `view/` holds each Presenter's `DialogView`, the generic `ModuleDialog` hosting each in the
+//!   Dialog host (ADR-0056).
 //! - `router.rs` is the module's entry point ([`router::open_remove`], [`router::open_merge`]).
 //!
 //! Remove and merge write through [`RemovalStores`]' port, `lib-database`'s adapter over the Tags
@@ -19,8 +19,6 @@ pub(crate) mod view;
 
 use lib_database::{LedgerPorts, StoredTagRemovalReads};
 use lib_tag_removal::SharedTagRemoval;
-
-pub use view::dialog::TagRemovalDialog;
 
 /// What the Remove tag and Merge tags Dialogs write and read through: the removal port, and the
 /// reads they show when they open, both over the shared Tags and Transactions stores.

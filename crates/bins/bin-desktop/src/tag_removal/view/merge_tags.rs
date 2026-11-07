@@ -5,72 +5,91 @@
 //!
 //! The Presenter reads the keys: the selects take the arrows and `Space`, `Enter` commits an open
 //! list, else merges, and typing goes nowhere, rather than reaching the Shell.
+//!
+//! The `lib-tag-removal` Presenter's [`DialogView`], hosted in a `ModuleDialog` (ADR-0056). The
+//! selects' scroll windows are the View's widget state ([`ListWindows`]), which the Presenter
+//! never sees; their open lists and highlights are the Presenter's.
 
 use gpui::{AnyElement, App, div, prelude::*, px};
+use lib_shell::Hint;
 use lib_tag_removal::presenter::{
     MergeField, MergeTagsEvent, MergeTagsPresenter, MergeTagsViewModel,
 };
 use lib_viper::view::SelectView;
 
-use super::{Clicks, TagRemovalDialog, View};
 use crate::form::colour_field::error_line;
 use crate::form::select::SelectState;
 use crate::form::select_field::{self, SelectFieldProps};
 use crate::form::viper::{drawn, labels};
-use crate::{dialog, shell::view::dialog_entity::HostRouter, theme::color};
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
+use crate::{dialog, theme::color};
 
 /// The Dialog's width: the handoff's 7e.
 const WIDTH: gpui::Pixels = px(460.0);
 
-fn handle(presenter: &mut MergeTagsPresenter, event: MergeTagsEvent) {
-    presenter.handle(event, &mut HostRouter::default());
+/// The open Dialog's clicks.
+type Clicks = ModuleDialogClicks<MergeTagsPresenter>;
+
+/// The top row of the source's and of the target's list window.
+#[derive(Debug, Default)]
+pub struct ListWindows {
+    source: usize,
+    target: usize,
 }
 
-fn merge(dialog: &mut TagRemovalDialog) -> Option<&mut MergeTagsPresenter> {
-    match &mut dialog.view {
-        View::Merge(presenter, ..) => Some(presenter),
-        View::Remove(_) => None,
+impl DialogView for MergeTagsPresenter {
+    type Widgets = ListWindows;
+
+    fn kind(_view: &MergeTagsViewModel) -> &'static str {
+        "MergeTags"
+    }
+
+    fn render(
+        view: &MergeTagsViewModel,
+        windows: &mut ListWindows,
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        render(view, windows, clicks, cx)
+    }
+
+    /// The chosen Tags' names and any refusal, between the title and whether it would confirm.
+    fn readback(view: &MergeTagsViewModel) -> Vec<(&'static str, String)> {
+        framed(&view.frame, readback(view))
+    }
+
+    fn hints(view: &MergeTagsViewModel) -> Vec<Hint> {
+        view.hints.clone()
     }
 }
 
-/// A click on a select's closed field focuses it and toggles its list, closing the other.
-fn click_field(dialog: &mut TagRemovalDialog, field: MergeField) {
-    if let Some(presenter) = merge(dialog) {
-        handle(presenter, MergeTagsEvent::Toggle(field));
-    }
+/// A click on row `index` of `field`'s open list focuses it and picks that row's Tag, read from
+/// `select`'s options as drawn.
+fn click_option(
+    select: &SelectView<lib_core::TagId>,
+    field: MergeField,
+    actions: &Clicks,
+) -> select_field::OnOptionClick {
+    let tags: Vec<lib_core::TagId> = select.options.iter().map(|choice| choice.value).collect();
+    actions.option(move |index| {
+        let mut events = vec![MergeTagsEvent::Focus(field)];
+        events.extend(tags.get(index).map(|tag| match field {
+            MergeField::Source => MergeTagsEvent::Source(*tag),
+            MergeField::Target => MergeTagsEvent::Target(*tag),
+        }));
+        events
+    })
 }
 
-/// A click on row `index` of a select's open list picks that Tag.
-fn click_option(dialog: &mut TagRemovalDialog, field: MergeField, index: usize) {
-    if let Some(presenter) = merge(dialog) {
-        handle(presenter, MergeTagsEvent::Focus(field));
-        let view = presenter.view_model();
-        let select = match field {
-            MergeField::Source => &view.source,
-            MergeField::Target => &view.target,
-        };
-        let Some(choice) = select.options.get(index) else {
-            return;
-        };
-        handle(
-            presenter,
-            match field {
-                MergeField::Source => MergeTagsEvent::Source(choice.value),
-                MergeField::Target => MergeTagsEvent::Target(choice.value),
-            },
-        );
-    }
-}
-
-pub(super) fn render(
+fn render(
     view: &MergeTagsViewModel,
-    scrolls: (&mut usize, &mut usize),
+    windows: &mut ListWindows,
     actions: &Clicks,
     cx: &App,
 ) -> AnyElement {
     let (source, target) = (
-        drawn(&view.source, view.source_list, scrolls.0),
-        drawn(&view.target, view.target_list, scrolls.1),
+        drawn(&view.source, view.source_list, &mut windows.source),
+        drawn(&view.target, view.target_list, &mut windows.target),
     );
     let select = |id: &'static str,
                   select_view: &SelectView<lib_core::TagId>,
@@ -87,10 +106,9 @@ pub(super) fn render(
                 focused: select_view.focused,
                 accent,
                 read_only: None,
-                on_field_click: actions.click(move |dialog| click_field(dialog, field)),
-                on_option_click: actions.option(move |dialog, index| {
-                    click_option(dialog, field, index);
-                }),
+                // A click on a closed field focuses it and toggles its list, closing the other.
+                on_field_click: actions.send(MergeTagsEvent::Toggle(field)),
+                on_option_click: click_option(select_view, field, actions),
             },
             cx,
         )
@@ -178,7 +196,7 @@ fn callout(view: &MergeTagsViewModel, cx: &App) -> AnyElement {
 }
 
 /// The names of the Tags chosen, for a test.
-pub(super) fn readback(view: &MergeTagsViewModel) -> Vec<(&'static str, String)> {
+fn readback(view: &MergeTagsViewModel) -> Vec<(&'static str, String)> {
     [
         ("source", view.source_name.clone()),
         ("target", view.target_name.clone()),

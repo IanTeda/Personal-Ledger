@@ -16,14 +16,9 @@ desktop-mode-import = Import
 desktop-hint-row = row
 desktop-hint-open = open
 desktop-hint-edit = edit
-desktop-hint-confirm = confirm
 desktop-hint-add = add
 desktop-hint-filter = filter
-desktop-hint-next-field = next field
-desktop-hint-cancel = cancel
-desktop-hint-colour = colour
 desktop-hint-choose = choose
-desktop-hint-toggle-active = toggle active
 desktop-hint-scroll = scroll
 desktop-hint-index = index
 

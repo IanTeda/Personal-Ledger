@@ -1,31 +1,24 @@
 //! The Add tag and Edit tag Dialogs (`docs/ux/desktop-mockups/19-tags/README.md`'s 7b and 7c) on
 //! the shared `crate::dialog` frame: Name with its live inline error, the shared Colour field, the
 //! Edit Dialog's Active checkbox and a callout on how names are matched. The swatch row and the
-//! checkbox take no text, and Backspace goes nowhere on them. The Presenter reads every key.
+//! checkbox take no text, and Backspace goes nowhere on them. The Presenter reads every key, and
+//! every click sends its events.
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use lib_tags::presenter::{
     ActiveField, TagField, TagFormEvent, TagFormPresenter, TagFormViewModel,
 };
 
-use super::{Clicks, TagsDialog};
 use crate::{
     dialog,
     form::colour_field::{self, ColourFieldProps, error_line},
     form::dialog_fields::{label, text_field},
-    shell::view::dialog_entity::HostRouter,
+    shell::view::dialog_entity::ModuleDialogClicks,
     theme::color,
 };
 
-fn handle(presenter: &mut TagFormPresenter, event: TagFormEvent) {
-    presenter.handle(event, &mut HostRouter::default());
-}
-
-fn send(dialog: &mut TagsDialog, events: Vec<TagFormEvent>) {
-    for event in events {
-        handle(&mut dialog.presenter, event);
-    }
-}
+/// The open form's clicks.
+type Clicks = ModuleDialogClicks<TagFormPresenter>;
 
 pub(super) fn render(view: &TagFormViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     // `text_field` and the buttons take a `'static` id, so these are spelt out.
@@ -34,17 +27,12 @@ pub(super) fn render(view: &TagFormViewModel, actions: &Clicks, cx: &App) -> Any
     } else {
         ("add-tag", "add-tag-name")
     };
-    let click = |field: TagField| {
-        actions.click(move |dialog| send(dialog, vec![TagFormEvent::Focus(field)]))
-    };
-    let on_pick = actions.option(|dialog, index| {
-        send(
-            dialog,
-            vec![
-                TagFormEvent::Focus(TagField::Swatches),
-                TagFormEvent::Pick(index),
-            ],
-        );
+    let click = |field: TagField| actions.send(TagFormEvent::Focus(field));
+    let on_pick = actions.option(|index| {
+        vec![
+            TagFormEvent::Focus(TagField::Swatches),
+            TagFormEvent::Pick(index),
+        ]
     });
     let mut fields = vec![
         div()
@@ -107,15 +95,10 @@ pub(super) fn render(view: &TagFormViewModel, actions: &Clicks, cx: &App) -> Any
 /// The Active checkbox, drawn like the Import footer's: a 12px box, filled with a tick when on,
 /// underlined while it has keyboard focus.
 fn active_checkbox(active: &ActiveField, actions: &Clicks, cx: &App) -> AnyElement {
-    let on_toggle = actions.click(|dialog| {
-        send(
-            dialog,
-            vec![
-                TagFormEvent::Focus(TagField::Active),
-                TagFormEvent::ToggleActive,
-            ],
-        );
-    });
+    let on_toggle = actions.send_all(vec![
+        TagFormEvent::Focus(TagField::Active),
+        TagFormEvent::ToggleActive,
+    ]);
     div()
         .flex()
         .flex_col()

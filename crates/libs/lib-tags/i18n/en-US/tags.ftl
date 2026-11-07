@@ -44,6 +44,12 @@ tags-hint-remove = remove
 tags-hint-merge = merge
 tags-hint-new = new
 
+## The Add and Edit tag dialogs' own keys in the status-line legend, after the shared cancel,
+## confirm and next field.
+
+tags-hint-colour = colour
+tags-hint-toggle-active = toggle active
+
 ## The Add tag dialog (7b), and the name, colour and hex fields the Edit dialog shares. `$name` is
 ## the Tag already holding the name once case, spaces and punctuation are ignored.
 

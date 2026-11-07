@@ -4,7 +4,9 @@
 //! one set of ports ([`SharedPorts`](crate::protocols::SharedPorts)) and ask for navigation
 //! through the [`TagsRouter`](crate::protocols::TagsRouter) the Client passes in. A Dialog's
 //! Presenter instead takes `lib-viper`'s `DialogInput`s, reads the keys itself and closes through
-//! the generic `DialogRouter` (#989). The Remove tag and Merge tags Dialogs are `lib-tag-removal`'s
+//! the generic `DialogRouter` (#989). Each keeps `lib-viper`'s Presenter contract (ADR-0056): the
+//! page is a `PagePresenter` and the form a `DialogPresenter`, with no `handle` or `view_model`
+//! of its own besides. The Remove tag and Merge tags Dialogs are `lib-tag-removal`'s
 //! (#1002), which closes them with this crate's `TagsOutcome`.
 
 mod tag_form;
@@ -39,6 +41,9 @@ pub(crate) mod test_support {
     use std::cell::RefCell;
     use std::rc::Rc;
 
+    use lib_viper::dialog::DialogKeys;
+    use lib_viper::keymap::{BACK, Binding, KeyBindingConfig, Keymap, NEXT_FIELD, SELECT};
+
     use crate::fake::InMemoryPorts;
     use crate::protocols::SharedPorts;
 
@@ -52,5 +57,15 @@ pub(crate) mod test_support {
     pub fn sample() -> (Rc<RefCell<InMemoryPorts>>, SharedPorts) {
         locale();
         InMemoryPorts::sample().shared()
+    }
+
+    /// The Dialog keys a Dialog's legend reads, bound as `lib-shell`'s defaults bind them.
+    pub fn dialog_keys() -> DialogKeys {
+        const BINDINGS: &[Binding<()>] = &[
+            Binding::hidden(BACK, "esc", ()),
+            Binding::hidden(SELECT, "enter", ()),
+            Binding::hidden(NEXT_FIELD, "tab", ()),
+        ];
+        DialogKeys::of(&Keymap::new(BINDINGS, &KeyBindingConfig::default()))
     }
 }

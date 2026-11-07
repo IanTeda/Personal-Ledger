@@ -12,6 +12,7 @@ use lib_core::{HexColor, TagId};
 use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::Segment;
 use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW, SELECT};
+use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Hint, count};
 
 use crate::keymap::{MERGE, REMOVE};
@@ -97,17 +98,23 @@ impl TagsPagePresenter {
             open_dialog: None,
         }
     }
+}
+
+impl Presenter for TagsPagePresenter {
+    type Event = TagsPageEvent;
+    type ViewModel = TagsPageViewModel;
+    type Router<'r> = dyn TagsRouter + 'r;
 
     /// Whether the page takes `event` now: Edit, Remove and Merge act on the selected Tag, so with
     /// no Tag to act on the page refuses them rather than ignoring them.
-    pub fn takes(&self, event: &TagsPageEvent) -> bool {
+    fn takes(&self, event: &TagsPageEvent) -> bool {
         !matches!(
             event,
             TagsPageEvent::Edit | TagsPageEvent::Remove | TagsPageEvent::Merge
         ) || self.selected().is_some()
     }
 
-    pub fn handle(&mut self, event: TagsPageEvent, router: &mut dyn TagsRouter) {
+    fn handle(&mut self, event: TagsPageEvent, router: &mut Self::Router<'_>) {
         match event {
             TagsPageEvent::Move(step) => {
                 self.selected = step_id(&self.ids(), self.selected(), step)
@@ -162,7 +169,7 @@ impl TagsPagePresenter {
         }
     }
 
-    pub fn view_model(&self) -> TagsPageViewModel {
+    fn view_model(&self) -> TagsPageViewModel {
         let ports = self.ports.borrow();
         let tags = ports.tags();
         let groups = duplicate_groups(&tags, &*ports);
@@ -199,7 +206,21 @@ impl TagsPagePresenter {
             open_dialog: self.open_dialog,
         }
     }
+}
 
+impl PagePresenter for TagsPagePresenter {
+    type Outcome = TagsOutcome;
+
+    fn dialog_closed(outcome: Option<TagsOutcome>) -> TagsPageEvent {
+        TagsPageEvent::DialogClosed(outcome)
+    }
+
+    fn keymap(&self) -> &Keymap<TagsPageEvent> {
+        &self.keymap
+    }
+}
+
+impl TagsPagePresenter {
     /// The Tag ids A–Z, as the rows run.
     fn ids(&self) -> Vec<TagId> {
         let tags = self.ports.borrow().tags();
@@ -553,31 +574,22 @@ mod tests {
         let (_, shared) = sample();
         let mut page = Page::new(shared);
         let outcome = |change, id| {
-            Some(TagsOutcome {
+            TagsPagePresenter::dialog_closed(Some(TagsOutcome {
                 change,
                 id,
                 name: String::new(),
-            })
+            }))
         };
 
         page.send(TagsPageEvent::New);
-        page.send(TagsPageEvent::DialogClosed(outcome(
-            TagChange::Saved,
-            SHARED,
-        )));
+        page.send(outcome(TagChange::Saved, SHARED));
         assert_eq!(page.selected_name().as_deref(), Some("shared"));
         assert_eq!(page.view().open_dialog, None);
-        page.send(TagsPageEvent::DialogClosed(outcome(
-            TagChange::Merged,
-            WORK_TRIP,
-        )));
+        page.send(outcome(TagChange::Merged, WORK_TRIP));
         assert_eq!(page.selected_name().as_deref(), Some("work-trip"));
-        page.send(TagsPageEvent::DialogClosed(outcome(
-            TagChange::Removed,
-            WORK_TRIP,
-        )));
+        page.send(outcome(TagChange::Removed, WORK_TRIP));
         assert_eq!(page.selected_name().as_deref(), Some("work-trip"));
-        page.send(TagsPageEvent::DialogClosed(None));
+        page.send(TagsPagePresenter::dialog_closed(None));
     }
 
     #[test]
@@ -590,6 +602,18 @@ mod tests {
         let view = page.view();
 
         assert_eq!(view.selected, view.rows.first().map(|row| row.id));
+    }
+
+    #[test]
+    fn the_page_owns_its_keymap() {
+        let (_, shared) = sample();
+        let page = Page::new(shared);
+
+        assert_eq!(page.presenter.keymap().event("n"), Some(TagsPageEvent::New));
+        assert_eq!(
+            page.presenter.keymap().event_for(MERGE),
+            Some(TagsPageEvent::Merge)
+        );
     }
 
     #[test]
