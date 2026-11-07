@@ -12,6 +12,7 @@ use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::Segment;
 use lib_toast::Notice;
 use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
+use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Hint, count};
 
 use super::tracks_label;
@@ -107,8 +108,14 @@ impl DocumentTypesPagePresenter {
             open_dialog: None,
         }
     }
+}
 
-    pub fn handle(&mut self, event: DocumentTypesPageEvent, router: &mut dyn DocumentTypesRouter) {
+impl Presenter for DocumentTypesPagePresenter {
+    type Event = DocumentTypesPageEvent;
+    type ViewModel = DocumentTypesPageViewModel;
+    type Router<'r> = dyn DocumentTypesRouter + 'r;
+
+    fn handle(&mut self, event: DocumentTypesPageEvent, router: &mut Self::Router<'_>) {
         match event {
             DocumentTypesPageEvent::Move(step) => {
                 self.selected = step_id(&self.ids(), self.selected(), step);
@@ -153,7 +160,7 @@ impl DocumentTypesPagePresenter {
         }
     }
 
-    pub fn view_model(&self) -> DocumentTypesPageViewModel {
+    fn view_model(&self) -> DocumentTypesPageViewModel {
         let types = self.ports.borrow().document_types();
         let none = msg::documents_types_none();
         let rows: Vec<TypeLine> = types
@@ -200,7 +207,21 @@ impl DocumentTypesPagePresenter {
             open_dialog: self.open_dialog,
         }
     }
+}
 
+impl PagePresenter for DocumentTypesPagePresenter {
+    type Outcome = DocumentTypesOutcome;
+
+    fn dialog_closed(outcome: Option<DocumentTypesOutcome>) -> DocumentTypesPageEvent {
+        DocumentTypesPageEvent::DialogClosed(outcome)
+    }
+
+    fn keymap(&self) -> &Keymap<DocumentTypesPageEvent> {
+        &self.keymap
+    }
+}
+
+impl DocumentTypesPagePresenter {
     /// The type ids in the user's order.
     fn ids(&self) -> Vec<DocumentTypeId> {
         self.ports

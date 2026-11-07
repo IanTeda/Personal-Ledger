@@ -10,32 +10,50 @@ use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use lib_documents::presenter::{
     DocumentTypeField, NAME_MAX, TypeFormEvent, TypeFormPresenter, TypeFormViewModel,
 };
+use lib_shell::Hint;
 use lib_viper::view::SelectView;
 
-use super::{Clicks, DocumentTypesDialog, View, send};
 use crate::form::fields::{field_label, segmented_labelled, text_field};
 use crate::form::viper::chosen_label;
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 use crate::{dialog, theme::color};
 
-fn handle(presenter: &mut TypeFormPresenter, event: TypeFormEvent) {
-    send(presenter, event, TypeFormPresenter::handle);
-}
+/// The open form's clicks.
+type Clicks = ModuleDialogClicks<TypeFormPresenter>;
 
-fn form(dialog: &mut DocumentTypesDialog) -> Option<&mut TypeFormPresenter> {
-    match &mut dialog.view {
-        View::Form(presenter) => Some(presenter),
-        View::Remove(..) | View::Notice(_) => None,
+/// The `lib-documents` Type form Presenter's [`DialogView`], hosted in a `ModuleDialog`
+/// (ADR-0056).
+impl DialogView for TypeFormPresenter {
+    type Widgets = ();
+
+    fn kind(view: &TypeFormViewModel) -> &'static str {
+        if view.editing {
+            "EditDocumentType"
+        } else {
+            "AddDocumentType"
+        }
+    }
+
+    fn render(
+        view: &TypeFormViewModel,
+        _widgets: &mut (),
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        render(view, clicks, cx)
+    }
+
+    /// The fields the form draws, between its title and whether it would confirm.
+    fn readback(view: &TypeFormViewModel) -> Vec<(&'static str, String)> {
+        framed(&view.frame, readback(view))
+    }
+
+    fn hints(view: &TypeFormViewModel) -> Vec<Hint> {
+        view.hints.clone()
     }
 }
 
-/// A click on the form sends `event`.
-fn click(dialog: &mut DocumentTypesDialog, event: TypeFormEvent) {
-    if let Some(presenter) = form(dialog) {
-        handle(presenter, event);
-    }
-}
-
-pub(super) fn render(view: &TypeFormViewModel, actions: &Clicks, cx: &App) -> AnyElement {
+fn render(view: &TypeFormViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     let (prefix, name_id) = if view.editing {
         ("edit-document-type", "document-type-name")
     } else {
@@ -53,8 +71,7 @@ pub(super) fn render(view: &TypeFormViewModel, actions: &Clicks, cx: &App) -> An
                 &view.name.text,
                 &view.name.placeholder,
                 view.name.focused,
-                actions
-                    .click(|dialog| click(dialog, TypeFormEvent::Focus(DocumentTypeField::Name))),
+                actions.send(TypeFormEvent::Focus(DocumentTypeField::Name)),
                 cx,
             ))
             .child(match &view.name_error {
@@ -75,7 +92,7 @@ pub(super) fn render(view: &TypeFormViewModel, actions: &Clicks, cx: &App) -> An
                 "document-type-tracks",
                 options(&view.tracks_date),
                 view.tracks_date.chosen.flatten(),
-                actions.choose(|dialog, option| click(dialog, TypeFormEvent::TracksDate(option))),
+                actions.choose(|option| vec![TypeFormEvent::TracksDate(option)]),
                 None,
                 cx,
             ))
@@ -90,7 +107,7 @@ pub(super) fn render(view: &TypeFormViewModel, actions: &Clicks, cx: &App) -> An
                 "document-type-remind",
                 options(&view.remind),
                 view.remind.chosen.flatten(),
-                actions.choose(|dialog, option| click(dialog, TypeFormEvent::Remind(option))),
+                actions.choose(|option| vec![TypeFormEvent::Remind(option)]),
                 None,
                 cx,
             ))
@@ -102,7 +119,7 @@ pub(super) fn render(view: &TypeFormViewModel, actions: &Clicks, cx: &App) -> An
             .child(field_label(view.financial_year_label.clone()))
             .child(financial_year_chip(
                 view,
-                actions.click(|dialog| click(dialog, TypeFormEvent::ToggleFinancialYear)),
+                actions.send(TypeFormEvent::ToggleFinancialYear),
                 cx,
             ))
             .child(hint(view.financial_year_hint.clone(), cx))
@@ -188,7 +205,7 @@ fn financial_year_chip(
 }
 
 /// The form's fields, for a test.
-pub(super) fn readback(view: &TypeFormViewModel) -> Vec<(&'static str, String)> {
+fn readback(view: &TypeFormViewModel) -> Vec<(&'static str, String)> {
     vec![
         ("field", format!("{:?}", view.focused)),
         ("name", view.name.text.clone()),

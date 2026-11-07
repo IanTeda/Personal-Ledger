@@ -1,4 +1,5 @@
-//! The Document Types module's Views: the Settings page and its Dialogs.
+//! The Document Types module's Views: the page's `PageView` and each Dialog Presenter's
+//! `DialogView`, with their render code.
 
-pub mod dialog;
+mod dialog;
 pub mod page;

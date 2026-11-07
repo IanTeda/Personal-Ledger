@@ -15,8 +15,10 @@
 use lib_core::PayeeId;
 use lib_locale::Segment;
 use lib_toast::{Notice, ToastKind};
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::view::{DialogFrame, TextFieldView, count};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::{BACK, SELECT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
+use lib_viper::view::{DialogFrame, Hint, TextFieldView, count};
 
 use super::refusal_text;
 use crate::interactor::{DeactivatePayee, DeletePayee, ReactivatePayee};
@@ -71,10 +73,13 @@ pub struct DeletePayeeViewModel {
     pub confirm: Option<TextFieldView>,
     /// Why the last confirm was refused.
     pub refusal: Option<String>,
+    /// The status line's legend while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 pub struct DeletePayeePresenter {
     ports: SharedPorts,
+    keys: DialogKeys,
     id: PayeeId,
     name: String,
     rules: usize,
@@ -86,14 +91,16 @@ pub struct DeletePayeePresenter {
 }
 
 impl DeletePayeePresenter {
-    /// The Dialog for Payee `id`, or `None` when it is gone.
-    pub fn new(ports: SharedPorts, id: PayeeId) -> Option<Self> {
+    /// The Dialog for Payee `id`, or `None` when it is gone. `keys` are the Dialog keymap's chords,
+    /// which its hints show.
+    pub fn new(ports: SharedPorts, id: PayeeId, keys: DialogKeys) -> Option<Self> {
         let (payee, uses) = {
             let ports = ports.borrow();
             (ports.payees().payee(id)?, ports.usage().payee_usage(id))
         };
         Some(Self {
             ports,
+            keys,
             id,
             action: DeleteAction::for_payee(payee.is_active, uses),
             name: payee.name,
@@ -103,15 +110,17 @@ impl DeletePayeePresenter {
             refusal: None,
         })
     }
+}
 
-    pub fn handle(
-        &mut self,
-        event: DeletePayeeEvent,
-        router: &mut dyn DialogRouter<PayeesOutcome>,
-    ) {
+impl Presenter for DeletePayeePresenter {
+    type Event = DeletePayeeEvent;
+    type ViewModel = DeletePayeeViewModel;
+    type Router<'r> = dyn DialogRouter<PayeesOutcome> + 'r;
+
+    fn handle(&mut self, event: DeletePayeeEvent, router: &mut Self::Router<'_>) {
         match event {
             DeletePayeeEvent::Input(DialogInput::Select | DialogInput::Submit)
-            | DeletePayeeEvent::Confirm => self.confirm(router),
+            | DeletePayeeEvent::Confirm => self.save(router),
             // Reactivating has no typed-back name to type into.
             DeletePayeeEvent::Input(DialogInput::Char(ch)) if self.action.is_destructive() => {
                 self.confirm_text.push(ch);
@@ -126,7 +135,7 @@ impl DeletePayeePresenter {
         }
     }
 
-    pub fn view_model(&self) -> DeletePayeeViewModel {
+    fn view_model(&self) -> DeletePayeeViewModel {
         let name = self.name.as_str();
         let (title, submit, warning, callout) = match self.action {
             DeleteAction::Delete => (
@@ -173,16 +182,44 @@ impl DeletePayeePresenter {
                 focused: true,
             }),
             refusal: self.refusal.clone(),
+            hints: self.hints(),
         }
+    }
+}
+
+impl DialogPresenter for DeletePayeePresenter {
+    type Outcome = PayeesOutcome;
+
+    fn input_event(input: DialogInput) -> DeletePayeeEvent {
+        DeletePayeeEvent::Input(input)
+    }
+
+    fn confirm_event() -> DeletePayeeEvent {
+        DeletePayeeEvent::Confirm
+    }
+
+    fn cancel_event() -> DeletePayeeEvent {
+        DeletePayeeEvent::Cancel
     }
 
     /// The typed name must match exactly, case and all, for a destructive action: the view
     /// model's `frame.can_confirm`, without building the rest of it.
-    pub fn can_confirm(&self) -> bool {
+    fn can_confirm(&self) -> bool {
         !self.action.is_destructive() || self.confirm_text == self.name
     }
+}
 
-    fn confirm(&mut self, router: &mut dyn DialogRouter<PayeesOutcome>) {
+impl DeletePayeePresenter {
+    /// Cancel and confirm, from the Dialog keys.
+    fn hints(&self) -> Vec<Hint> {
+        vec![
+            self.keys.hint(BACK, lib_locale::msg::dialog_hint_cancel()),
+            self.keys
+                .hint(SELECT, lib_locale::msg::dialog_hint_confirm()),
+        ]
+    }
+
+    fn save(&mut self, router: &mut dyn DialogRouter<PayeesOutcome>) {
         if !self.can_confirm() {
             return;
         }
@@ -290,7 +327,7 @@ mod tests {
         ports.borrow_mut().usage.uses.insert(WOOLWORTHS, used(4));
         ports.borrow_mut().usage.uses.insert(DON_QUIJOTE, used(1));
         let open = |id| {
-            DeletePayeePresenter::new(shared.clone(), id)
+            DeletePayeePresenter::new(shared.clone(), id, DialogKeys::default())
                 .expect("a sample Payee")
                 .view_model()
         };
@@ -318,13 +355,14 @@ mod tests {
             reactivate.frame.can_confirm,
             "reactivating needs no typed name"
         );
-        assert!(DeletePayeePresenter::new(shared, PayeeId::new()).is_none());
+        assert!(DeletePayeePresenter::new(shared, PayeeId::new(), DialogKeys::default()).is_none());
     }
 
     #[test]
     fn delete_waits_for_the_exact_name_then_deletes_and_raises_its_toast() {
         let (ports, shared) = sample();
-        let mut dialog = DeletePayeePresenter::new(shared, NETFLIX).expect("a sample Payee");
+        let mut dialog = DeletePayeePresenter::new(shared, NETFLIX, DialogKeys::default())
+            .expect("a sample Payee");
 
         assert_eq!(
             send(
@@ -358,7 +396,9 @@ mod tests {
     fn deactivate_and_reactivate_keep_the_payee_and_raise_their_toasts() {
         let (ports, shared) = sample();
         ports.borrow_mut().usage.uses.insert(WOOLWORTHS, used(4));
-        let mut deactivate = DeletePayeePresenter::new(shared.clone(), WOOLWORTHS).expect("sample");
+        let mut deactivate =
+            DeletePayeePresenter::new(shared.clone(), WOOLWORTHS, DialogKeys::default())
+                .expect("sample");
 
         let calls = send(
             &mut deactivate,
@@ -373,7 +413,8 @@ mod tests {
                 .is_some_and(|payee| payee.is_active)
         );
 
-        let mut reactivate = DeletePayeePresenter::new(shared, WOOLWORTHS).expect("sample");
+        let mut reactivate =
+            DeletePayeePresenter::new(shared, WOOLWORTHS, DialogKeys::default()).expect("sample");
         let calls = send(&mut reactivate, vec![DeletePayeeEvent::Confirm]);
         assert_eq!(calls[0], toast("Reactivated payee Woolworths"));
         assert!(
@@ -388,7 +429,8 @@ mod tests {
     #[test]
     fn a_payee_that_came_into_use_under_the_dialog_turns_it_into_deactivate() {
         let (ports, shared) = sample();
-        let mut dialog = DeletePayeePresenter::new(shared, NETFLIX).expect("a sample Payee");
+        let mut dialog = DeletePayeePresenter::new(shared, NETFLIX, DialogKeys::default())
+            .expect("a sample Payee");
         ports.borrow_mut().usage.uses.insert(NETFLIX, used(2));
 
         assert_eq!(
@@ -417,7 +459,7 @@ mod tests {
         let (ports, shared) = sample();
         let warnings = |id, uses| {
             ports.borrow_mut().usage.uses.insert(id, uses);
-            let view = DeletePayeePresenter::new(shared.clone(), id)
+            let view = DeletePayeePresenter::new(shared.clone(), id, DialogKeys::default())
                 .expect("a sample Payee")
                 .view_model();
             plain(&view.warning)
@@ -454,7 +496,7 @@ mod tests {
         let (ports, shared) = sample();
         ports.borrow_mut().usage.unreadable = true;
         let open = |id| {
-            DeletePayeePresenter::new(shared.clone(), id)
+            DeletePayeePresenter::new(shared.clone(), id, DialogKeys::default())
                 .expect("a sample Payee")
                 .view_model()
         };
@@ -476,7 +518,8 @@ mod tests {
     #[test]
     fn a_count_that_fails_under_the_dialog_turns_it_into_deactivate() {
         let (ports, shared) = sample();
-        let mut dialog = DeletePayeePresenter::new(shared, NETFLIX).expect("a sample Payee");
+        let mut dialog = DeletePayeePresenter::new(shared, NETFLIX, DialogKeys::default())
+            .expect("a sample Payee");
         ports.borrow_mut().usage.unreadable = true;
 
         assert_eq!(
@@ -496,7 +539,8 @@ mod tests {
     #[test]
     fn a_payee_gone_under_the_dialog_is_refused_and_cancel_closes() {
         let (ports, shared) = sample();
-        let mut dialog = DeletePayeePresenter::new(shared, NETFLIX).expect("a sample Payee");
+        let mut dialog = DeletePayeePresenter::new(shared, NETFLIX, DialogKeys::default())
+            .expect("a sample Payee");
         ports.borrow_mut().payees.delete_payee(NETFLIX);
 
         assert_eq!(
@@ -525,7 +569,8 @@ mod tests {
     #[test]
     fn typing_fills_the_typed_back_name_and_select_or_submit_confirms_once_it_matches() {
         let (ports, shared) = sample();
-        let mut dialog = DeletePayeePresenter::new(shared.clone(), NETFLIX).expect("sample");
+        let mut dialog = DeletePayeePresenter::new(shared.clone(), NETFLIX, DialogKeys::default())
+            .expect("sample");
         let select = DeletePayeeEvent::Input(DialogInput::Select);
         let submit = DeletePayeeEvent::Input(DialogInput::Submit);
 
@@ -553,7 +598,8 @@ mod tests {
         assert_eq!(ports.borrow().payees.payee(NETFLIX), None);
 
         ports.borrow_mut().usage.uses.insert(DON_QUIJOTE, used(1));
-        let mut reactivate = DeletePayeePresenter::new(shared, DON_QUIJOTE).expect("sample");
+        let mut reactivate =
+            DeletePayeePresenter::new(shared, DON_QUIJOTE, DialogKeys::default()).expect("sample");
         send(&mut reactivate, keys("x"));
         assert!(
             reactivate.view_model().frame.can_confirm,
@@ -563,5 +609,21 @@ mod tests {
             send(&mut reactivate, vec![submit])[0],
             toast("Reactivated payee Don Quijote")
         );
+    }
+
+    #[test]
+    fn the_legend_reads_the_dialog_keys() {
+        let (_, shared) = sample();
+        let dialog =
+            DeletePayeePresenter::new(shared, NETFLIX, super::super::test_support::dialog_keys())
+                .expect("a sample Payee");
+
+        let legend: Vec<String> = dialog
+            .view_model()
+            .hints
+            .into_iter()
+            .map(|hint| format!("{} {}", hint.chord, hint.action))
+            .collect();
+        assert_eq!(legend, ["esc cancel", "enter confirm"]);
     }
 }

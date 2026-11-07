@@ -1,123 +1,77 @@
-//! The Payees Settings page's View: the `lib-payees` page Presenter in a gpui Entity. It looks up
-//! each key the Shell passes on, as chord text, in the Payees keymap, turns clicks into events,
-//! draws the view model (`render.rs`). Each key and click is one input (`crate::input::send`), which
-//! commits what it wrote. The Settings View hosts it as any other page.
+//! The Payees Settings page's View: the `lib-payees` page Presenter's [`PageView`], which the
+//! generic `ModulePage` hosts (ADR-0056). It names the page's Router, the domains it repaints on,
+//! and how it draws the view model (`render.rs`); the keymap, the take, send and handle path and
+//! the Dialogs' landing are the generic page's.
 
 mod render;
 
-use gpui::{AnyElement, App, Context, Entity, EventEmitter, Subscription};
+use gpui::{AnyElement, App, Context, Window};
 use lib_database::Domain;
-use lib_payees::PayeesOutcome;
 use lib_payees::presenter::{PayeesPageEvent, PayeesPagePresenter, PayeesPageViewModel};
-use lib_viper::keymap::Keymap;
 
-use lib_shell::Hint;
-
-use crate::payees::SettingsPayeesSnapshot;
 use crate::payees::router::PageRouter;
+use crate::payees::{PayeesPage, PayeesRoutes, SettingsPayeesSnapshot};
+use crate::settings::SettingsPage;
 use crate::settings::snapshot::PageSnapshot;
-use crate::{
-    announcer::{Announcer, notify_on},
-    navigation::movement::Movement,
-    settings::{
-        SettingsPage,
-        pages::{Page, PageRowClicked},
-    },
-    shell::view::page_clicks::PresenterPage,
-    view::event::{Reveal, ViewEvent},
-};
+use crate::shell::view::module_page::{PageDraw, PageView, SettingsPageView};
+use crate::shell::view::statusline::PageStatus;
+use crate::view::event::Reveal;
 
-impl EventEmitter<ViewEvent> for PayeesPage {}
-impl EventEmitter<PageRowClicked> for PayeesPage {}
+impl PageView for PayeesPagePresenter {
+    type Setup = PayeesRoutes;
+    type Widgets = ();
 
-pub struct PayeesPage {
-    presenter: PayeesPagePresenter,
-    ports: lib_payees::SharedPorts,
-    clock: lib_core::Clock,
-    keymap: Keymap<PayeesPageEvent>,
-    /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
-    /// draws the page.
-    page_focused: bool,
-    /// Repaints the page when its rows change: a Payees write, Import's new Payees, a rollback.
-    _payees_changed: Subscription,
-    /// The Default category labels are the Ledger's Categories'.
-    _categories_changed: Subscription,
-}
+    /// A Payees write, Import's new Payees, a rollback; and the Categories whose labels the Default
+    /// category cells show.
+    const REPAINTS: &'static [Domain] = &[Domain::Payees, Domain::Categories];
 
-impl PayeesPage {
-    pub fn new(
-        ports: lib_payees::SharedPorts,
-        announcer: Entity<Announcer>,
-        clock: lib_core::Clock,
-        keymap: Keymap<PayeesPageEvent>,
-        cx: &mut Context<'_, Self>,
-    ) -> Self {
-        Self {
-            presenter: PayeesPagePresenter::new(ports.clone(), keymap.clone()),
-            ports,
-            _payees_changed: notify_on(&announcer, Domain::Payees, cx),
-            _categories_changed: notify_on(&announcer, Domain::Categories, cx),
-            clock,
-            keymap,
-            page_focused: false,
+    fn with_router<R>(
+        setup: &PayeesRoutes,
+        cx: &mut Context<'_, PayeesPage>,
+        handle: impl FnOnce(&mut Self::Router<'_>) -> R,
+    ) -> R {
+        handle(&mut PageRouter { routes: setup, cx })
+    }
+
+    fn render(
+        view: &PayeesPageViewModel,
+        page: PageDraw<'_, Self>,
+        _window: &mut Window,
+        cx: &mut Context<'_, PayeesPage>,
+    ) -> AnyElement {
+        render::page(view, page.clicks, page.focused, cx)
+    }
+
+    /// The Presenter's legend, rebound keys included, and its count of Payees.
+    fn status(view: &PayeesPageViewModel) -> PageStatus {
+        PageStatus {
+            hints: view.hints.clone(),
+            right: view.status.clone(),
         }
     }
 
-    /// The one dispatch a keymap event takes into the page, from a key ([`Self::module_key`]) or a palette Command ([`Self::module_command`]): sent as one input.
-    fn take(&mut self, event: PayeesPageEvent, cx: &mut Context<'_, Self>) -> bool {
-        self.send(event, cx);
-        true
+    fn heading_meta(view: &PayeesPageViewModel, cx: &App) -> Option<AnyElement> {
+        Some(render::scope_note(&view.scope, cx))
     }
 
-    /// A key or click on the page: `event` as one input, committed once it is handled.
-    fn send(&mut self, event: PayeesPageEvent, cx: &mut Context<'_, Self>) {
-        crate::input::join_or_send(cx, |cx| self.handle(event, cx));
-    }
-
-    /// Hands `event` to the Presenter with the Desktop's Router. Inside an input already, as
-    /// [`Self::send`] or a Dialog's confirm.
-    fn handle(&mut self, event: PayeesPageEvent, cx: &mut Context<'_, Self>) {
-        let mut router = PageRouter {
-            ports: self.ports.clone(),
-            clock: self.clock.clone(),
-            cx,
-        };
-        self.presenter.handle(event, &mut router);
-        cx.notify();
-    }
-
-    /// A confirmed Dialog's outcome, handed back by the Dialog host inside the confirm's input.
-    pub(in crate::payees) fn dialog_landed(
-        &mut self,
-        outcome: PayeesOutcome,
-        cx: &mut Context<'_, Self>,
-    ) {
-        self.handle(PayeesPageEvent::DialogClosed(Some(outcome)), cx);
-    }
-
-    /// The page as drawn, with each Payee's use as the stores count it now.
-    pub fn view_model(&self, _cx: &App) -> PayeesPageViewModel {
-        self.presenter.view_model()
+    /// A Documents Payee link (the root Router's `Reveal::Payee`) selects its Payee.
+    fn reveal(reveal: Reveal) -> Option<PayeesPageEvent> {
+        match reveal {
+            Reveal::Payee(id) => Some(PayeesPageEvent::Reveal(id)),
+            _ => None,
+        }
     }
 }
 
-/// The page's clicks on its rows and buttons.
-impl PresenterPage<PayeesPageEvent> for PayeesPage {
-    fn send(&mut self, event: PayeesPageEvent, cx: &mut Context<'_, Self>) {
-        PayeesPage::send(self, event, cx);
-    }
-
-    /// A click on a row hands the page focus.
-    fn row_clicked(&mut self, cx: &mut Context<'_, Self>) {
-        cx.emit(PageRowClicked);
-    }
+impl SettingsPageView for PayeesPagePresenter {
+    const PAGE: SettingsPage = SettingsPage::Payees;
 }
 
 impl PageSnapshot for SettingsPayeesSnapshot {
     type Page = PayeesPage;
 
-    fn read(page: &PayeesPage, cx: &App) -> Self {
-        let view = page.view_model(cx);
+    fn read(page: &PayeesPage, _cx: &App) -> Self {
+        let view = page.view_model();
         SettingsPayeesSnapshot {
             selected_payee: view
                 .rows
@@ -127,56 +81,5 @@ impl PageSnapshot for SettingsPayeesSnapshot {
             payee_rules: view.rows.iter().map(|row| row.rules.clone()).collect(),
             payee_names: view.rows.into_iter().map(|row| row.name).collect(),
         }
-    }
-}
-
-impl Page for PayeesPage {
-    const PAGE: SettingsPage = SettingsPage::Payees;
-
-    /// Every chord the Payees keymap binds, the arrows and `g g` among them. The Shell has already
-    /// taken its own keys.
-    fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {
-        let Some(event) = self.keymap.event(chord) else {
-            return false;
-        };
-        self.take(event, cx)
-    }
-
-    /// A palette Command, by its keymap `command` name: the event its key sends.
-    fn module_command(&mut self, command: &str, cx: &mut Context<'_, Self>) -> bool {
-        let Some(event) = self.keymap.event_for(command) else {
-            return false;
-        };
-        self.take(event, cx)
-    }
-
-    /// A movement the keymap doesn't bind (`enter`) does nothing on the page, and Settings leaves
-    /// the page where it is: there is no hand-off from a Payee.
-    fn apply_movement(&mut self, _movement: Movement, _cx: &mut Context<'_, Self>) -> bool {
-        true
-    }
-
-    /// A Documents Payee link (the root Router's `Reveal::Payee`) selects its Payee.
-    fn reveal(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
-        if let Reveal::Payee(id) = reveal {
-            self.send(PayeesPageEvent::Reveal(id), cx);
-        }
-    }
-
-    /// The Presenter's legend, rebound keys included, which the `?` cheat sheet reads.
-    fn hints(&self, cx: &App) -> Vec<Hint> {
-        self.view_model(cx).hints
-    }
-
-    fn status_note(&self, cx: &App) -> String {
-        self.view_model(cx).status
-    }
-
-    fn set_page_focused(&mut self, focused: bool, _cx: &mut Context<'_, Self>) {
-        self.page_focused = focused;
-    }
-
-    fn heading_meta(&self, cx: &App) -> AnyElement {
-        render::scope_note(&self.view_model(cx).scope, cx)
     }
 }

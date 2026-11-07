@@ -4,15 +4,15 @@
 //! Presenter the event its key does; a row click only selects.
 
 use gpui::{
-    AnyElement, App, BoxShadow, ClickEvent, Context, MouseButton, MouseDownEvent, Pixels, Point,
-    Rgba, SharedString, Window, div, point, prelude::*, px,
+    AnyElement, App, BoxShadow, ClickEvent, MouseButton, MouseDownEvent, Pixels, Point, Rgba,
+    SharedString, Window, div, point, prelude::*, px,
 };
 use lib_institutions::presenter::{
     InstitutionLine, InstitutionsPageEvent, InstitutionsPageViewModel, MenuEntry, RowMenu,
 };
 use lib_locale::format::upper;
 
-use super::InstitutionsPage;
+use crate::institutions::InstitutionsPage;
 use crate::{shell::view::page_clicks::PageClicks, theme::color};
 
 /// The context menu's width (`width:190px`), as Units' is.
@@ -20,42 +20,46 @@ const MENU_WIDTH: f32 = 190.0;
 const PRODUCTS_WIDTH: Pixels = px(140.0);
 const ACTIONS_WIDTH: Pixels = px(120.0);
 
-impl Render for InstitutionsPage {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let clicks = PageClicks::new(cx);
-        let view = self.view_model(cx);
-        let focused = self.page_focused;
-        let menu_at = self.menu_at;
-        let menu = view.menu.clone();
-        div()
-            .flex()
-            .flex_col()
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .border_1()
-                    .border_color(color::border(cx))
-                    .child(table_header(&view, cx))
-                    .children(view.rows.iter().enumerate().map(|(index, line)| {
-                        row(
-                            line,
-                            &view,
-                            index,
-                            view.selected == Some(line.id),
-                            focused,
-                            &clicks,
-                            cx,
-                        )
-                    })),
-            )
-            .child(add_button(
-                &view,
-                clicks.send(InstitutionsPageEvent::New),
-                cx,
-            ))
-            .children(menu.map(|menu| row_menu(menu, menu_at, &clicks, cx)))
-    }
+/// The page: the table, **+ Add institution** and, while a row's menu is open, the menu drawn at
+/// `menu_at`, where the pointer opened it. The selected row is inverted only while the page has
+/// `focused`.
+pub(super) fn page(
+    view: &InstitutionsPageViewModel,
+    clicks: &PageClicks<InstitutionsPage>,
+    focused: bool,
+    menu_at: Point<Pixels>,
+    cx: &App,
+) -> AnyElement {
+    let menu = view.menu.clone();
+    div()
+        .flex()
+        .flex_col()
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .border_1()
+                .border_color(color::border(cx))
+                .child(table_header(view, cx))
+                .children(view.rows.iter().enumerate().map(|(index, line)| {
+                    row(
+                        line,
+                        view,
+                        index,
+                        view.selected == Some(line.id),
+                        focused,
+                        clicks,
+                        cx,
+                    )
+                })),
+        )
+        .child(add_button(
+            view,
+            clicks.send(InstitutionsPageEvent::New),
+            cx,
+        ))
+        .children(menu.map(|menu| row_menu(menu, menu_at, clicks, cx)))
+        .into_any_element()
 }
 
 fn table_header(view: &InstitutionsPageViewModel, cx: &App) -> impl IntoElement {

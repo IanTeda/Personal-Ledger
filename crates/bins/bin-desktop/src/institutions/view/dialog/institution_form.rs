@@ -14,11 +14,12 @@
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use lib_institutions::presenter::{
-    InstitutionField, InstitutionFormEvent, InstitutionFormViewModel, InstitutionProduct,
+    InstitutionField, InstitutionFormEvent, InstitutionFormPresenter, InstitutionFormViewModel,
 };
+use lib_shell::Hint;
 
-use super::{Clicks, InstitutionsDialog};
 use crate::form::viper::{chosen_label, drawn, labels};
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 use crate::{
     dialog,
     form::colour_field::error_line,
@@ -29,29 +30,44 @@ use crate::{
 
 const WIDTH: gpui::Pixels = px(460.0);
 
-/// A click on the name focuses it, closing the list.
-fn click_name(dialog: &mut InstitutionsDialog) {
-    dialog.send(InstitutionFormEvent::Focus(InstitutionField::Name));
-}
+/// The open form's clicks.
+type Clicks = ModuleDialogClicks<InstitutionFormPresenter>;
 
-/// A click on the Usual unit's closed field focuses it and toggles its list.
-fn click_usual_unit(dialog: &mut InstitutionsDialog) {
-    dialog.send(InstitutionFormEvent::ToggleUnits);
-}
+/// The `lib-institutions` form Presenter's [`DialogView`], hosted in a `ModuleDialog` (ADR-0056).
+/// Its widget state is the top row of the Usual unit list's window, which the View keeps between
+/// draws.
+impl DialogView for InstitutionFormPresenter {
+    type Widgets = usize;
 
-/// A click on row `index` of the open list.
-fn click_option(dialog: &mut InstitutionsDialog, index: usize) {
-    let view = dialog.presenter.view_model();
-    if let Some(choice) = view.usual_unit.options.get(index) {
-        dialog.send(InstitutionFormEvent::UsualUnit(choice.value));
+    fn kind(view: &InstitutionFormViewModel) -> &'static str {
+        if view.editing {
+            "EditInstitution"
+        } else {
+            "AddInstitution"
+        }
+    }
+
+    fn render(
+        view: &InstitutionFormViewModel,
+        scroll: &mut usize,
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        render(view, scroll, clicks, cx)
+    }
+
+    /// The Name draft, the checked products (comma-joined variant names) and the chosen Usual
+    /// unit, between the title and whether it would confirm.
+    fn readback(view: &InstitutionFormViewModel) -> Vec<(&'static str, String)> {
+        framed(&view.frame, readback(view))
+    }
+
+    fn hints(view: &InstitutionFormViewModel) -> Vec<Hint> {
+        view.hints.clone()
     }
 }
 
-fn click_product(dialog: &mut InstitutionsDialog, product: InstitutionProduct) {
-    dialog.send(InstitutionFormEvent::ToggleProduct(product));
-}
-
-pub(super) fn render(
+fn render(
     view: &InstitutionFormViewModel,
     scroll: &mut usize,
     actions: &Clicks,
@@ -59,6 +75,20 @@ pub(super) fn render(
 ) -> AnyElement {
     let unit_options = labels(&view.usual_unit);
     let unit_state = drawn(&view.usual_unit, view.usual_unit_list, scroll);
+    // A click on row `index` of the open list picks its Unit.
+    let units: Vec<_> = view
+        .usual_unit
+        .options
+        .iter()
+        .map(|choice| choice.value)
+        .collect();
+    let on_unit = actions.option(move |index| {
+        units
+            .get(index)
+            .map(|unit| InstitutionFormEvent::UsualUnit(*unit))
+            .into_iter()
+            .collect()
+    });
     let card = div()
         .flex()
         .flex_col()
@@ -72,14 +102,15 @@ pub(super) fn render(
                         &view.name.text,
                         &view.name.placeholder,
                         view.name.focused,
-                        actions.click(click_name),
+                        // A click on the name focuses it, closing the list.
+                        actions.send(InstitutionFormEvent::Focus(InstitutionField::Name)),
                         cx,
                     )
                     .into_any_element(),
                 )
                 .children(view.name_error.clone().map(|error| error_line(error, cx)))
                 .into_any_element(),
-            products_field(view, actions.choose(click_product), cx).into_any_element(),
+            products_field(view, actions, cx).into_any_element(),
             select_field::render(
                 SelectFieldProps {
                     id: "institution-usual-unit".into(),
@@ -89,8 +120,9 @@ pub(super) fn render(
                     focused: view.usual_unit.focused,
                     accent: false,
                     read_only: None,
-                    on_field_click: actions.click(click_usual_unit),
-                    on_option_click: actions.option(click_option),
+                    // A click on the closed field focuses it and toggles its list.
+                    on_field_click: actions.send(InstitutionFormEvent::ToggleUnits),
+                    on_option_click: on_unit,
                 },
                 cx,
             ),
@@ -117,11 +149,7 @@ pub(super) fn render(
 /// The `.chip` multi-select row (`docs/ux/desktop-mockups/16-settings/README.md`'s Dialog
 /// components: `display:flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid
 /// rgba(32,30,29,.30); font-size:12px; cursor:pointer`, selected takes the dark treatment).
-fn products_field(
-    view: &InstitutionFormViewModel,
-    on_click: crate::shell::view::dialog_entity::OnChoose<InstitutionProduct>,
-    cx: &App,
-) -> impl IntoElement {
+fn products_field(view: &InstitutionFormViewModel, actions: &Clicks, cx: &App) -> impl IntoElement {
     div().child(field_label(view.products_label.clone())).child(
         div()
             .flex()
@@ -134,7 +162,7 @@ fn products_field(
                     "add-institution-chip-{}",
                     format!("{product:?}").to_lowercase()
                 ));
-                let on_click = on_click.clone();
+                let on_click = actions.send(InstitutionFormEvent::ToggleProduct(product));
                 div()
                     .debug_selector({
                         let id = id.clone();
@@ -154,7 +182,7 @@ fn products_field(
                         this.bg(color::selection_background(cx))
                             .text_color(color::selection_text(cx))
                     })
-                    .on_click(move |_event, window, cx| on_click(product, window, cx))
+                    .on_click(move |_event, window, cx| on_click(window, cx))
                     .child(chip.label.clone())
             })),
     )
@@ -162,7 +190,7 @@ fn products_field(
 
 /// The form's fields, for a test: the Name draft and the checked products (comma-joined variant
 /// names).
-pub(super) fn readback(view: &InstitutionFormViewModel) -> Vec<(&'static str, String)> {
+fn readback(view: &InstitutionFormViewModel) -> Vec<(&'static str, String)> {
     vec![
         ("name", view.name.text.clone()),
         (

@@ -9,6 +9,7 @@ use lib_core::PayeeId;
 use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::Segment;
 use lib_viper::keymap::{DELETE, EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW, SELECT};
+use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Hint, count};
 
 use crate::protocols::{PayeeChange, PayeesDialog, PayeesOutcome, PayeesRouter, SharedPorts};
@@ -101,8 +102,14 @@ impl PayeesPagePresenter {
             open_dialog: None,
         }
     }
+}
 
-    pub fn handle(&mut self, event: PayeesPageEvent, router: &mut dyn PayeesRouter) {
+impl Presenter for PayeesPagePresenter {
+    type Event = PayeesPageEvent;
+    type ViewModel = PayeesPageViewModel;
+    type Router<'r> = dyn PayeesRouter + 'r;
+
+    fn handle(&mut self, event: PayeesPageEvent, router: &mut Self::Router<'_>) {
         match event {
             PayeesPageEvent::Move(step) => {
                 self.selected = step_id(&self.ids(), self.selected(), step);
@@ -147,7 +154,7 @@ impl PayeesPagePresenter {
         }
     }
 
-    pub fn view_model(&self) -> PayeesPageViewModel {
+    fn view_model(&self) -> PayeesPageViewModel {
         let ports = self.ports.borrow();
         let payees = ports.payees().payees();
         let categories = ports.categories().payee_categories();
@@ -209,7 +216,21 @@ impl PayeesPagePresenter {
             open_dialog: self.open_dialog,
         }
     }
+}
 
+impl PagePresenter for PayeesPagePresenter {
+    type Outcome = PayeesOutcome;
+
+    fn dialog_closed(outcome: Option<PayeesOutcome>) -> PayeesPageEvent {
+        PayeesPageEvent::DialogClosed(outcome)
+    }
+
+    fn keymap(&self) -> &Keymap<PayeesPageEvent> {
+        &self.keymap
+    }
+}
+
+impl PayeesPagePresenter {
     /// The Payee ids A–Z, as the rows run.
     fn ids(&self) -> Vec<PayeeId> {
         let payees = self.ports.borrow().payees().payees();

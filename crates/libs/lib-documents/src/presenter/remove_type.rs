@@ -6,8 +6,10 @@
 //! under it.
 
 use lib_core::DocumentTypeId;
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::view::{Choice, DialogFrame, SelectList, SelectMove, SelectView};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::{BACK, SELECT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
+use lib_viper::view::{Choice, DialogFrame, Hint, SelectList, SelectMove, SelectView};
 
 use crate::interactor::RemoveDocumentType;
 use crate::msg;
@@ -45,10 +47,13 @@ pub struct RemoveTypeViewModel {
     pub refusal: Option<String>,
     /// How many Filed files the type has.
     pub files: u32,
+    /// The status line's legend while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 pub struct RemoveTypePresenter {
     ports: SharedRepository,
+    keys: DialogKeys,
     id: DocumentTypeId,
     name: String,
     files: u32,
@@ -60,8 +65,9 @@ pub struct RemoveTypePresenter {
 }
 
 impl RemoveTypePresenter {
-    /// The Dialog for removing type `id`, or `None` when it is gone.
-    pub fn new(ports: SharedRepository, id: DocumentTypeId) -> Option<Self> {
+    /// The Dialog for removing type `id`, or `None` when it is gone. `keys` are the Dialog keymap's
+    /// chords, which its hints show.
+    pub fn new(ports: SharedRepository, id: DocumentTypeId, keys: DialogKeys) -> Option<Self> {
         let types = ports.borrow().document_types();
         let row = get(&types, id)?;
         let destinations = types
@@ -77,6 +83,7 @@ impl RemoveTypePresenter {
         drop(types);
         Some(Self {
             ports,
+            keys,
             id,
             name,
             files,
@@ -86,12 +93,14 @@ impl RemoveTypePresenter {
             error: None,
         })
     }
+}
 
-    pub fn handle(
-        &mut self,
-        event: RemoveTypeEvent,
-        router: &mut dyn DialogRouter<DocumentTypesOutcome>,
-    ) {
+impl Presenter for RemoveTypePresenter {
+    type Event = RemoveTypeEvent;
+    type ViewModel = RemoveTypeViewModel;
+    type Router<'r> = dyn DialogRouter<DocumentTypesOutcome> + 'r;
+
+    fn handle(&mut self, event: RemoveTypeEvent, router: &mut Self::Router<'_>) {
         match event {
             RemoveTypeEvent::Input(input) => self.input(input, router),
             RemoveTypeEvent::Destination(name) => {
@@ -107,16 +116,90 @@ impl RemoveTypePresenter {
             RemoveTypeEvent::CloseDestinations => {
                 self.list.close();
             }
-            RemoveTypeEvent::Confirm => self.confirm(router),
+            RemoveTypeEvent::Confirm => self.save(router),
             RemoveTypeEvent::Cancel => router.close(None),
         }
+    }
+
+    fn view_model(&self) -> RemoveTypeViewModel {
+        let has_files = self.files > 0;
+        let files = i64::from(self.files);
+        RemoveTypeViewModel {
+            frame: DialogFrame {
+                title: msg::documents_types_dialog_remove_title(),
+                submit: if has_files {
+                    msg::documents_types_remove_confirm_move(files)
+                } else {
+                    msg::documents_types_remove_confirm()
+                },
+                can_confirm: self.can_confirm(),
+                destructive: has_files,
+                hints: Vec::new(),
+            },
+            message: if has_files {
+                msg::documents_types_remove_with_files(&self.name, files)
+            } else {
+                msg::documents_types_remove_no_files(&self.name)
+            },
+            destination: has_files.then(|| SelectView {
+                label: msg::documents_types_remove_destination(),
+                options: self.options(),
+                chosen: self.destination.clone(),
+                focused: true,
+            }),
+            destination_list: self.list,
+            moved_note: has_files.then(msg::documents_types_remove_moved_note),
+            refusal: self.error.map(|_| msg::documents_types_remove_refused()),
+            files: self.files,
+            hints: self.hints(),
+        }
+    }
+}
+
+impl DialogPresenter for RemoveTypePresenter {
+    type Outcome = DocumentTypesOutcome;
+
+    fn input_event(input: DialogInput) -> RemoveTypeEvent {
+        RemoveTypeEvent::Input(input)
+    }
+
+    fn confirm_event() -> RemoveTypeEvent {
+        RemoveTypeEvent::Confirm
+    }
+
+    fn cancel_event() -> RemoveTypeEvent {
+        RemoveTypeEvent::Cancel
+    }
+
+    fn can_confirm(&self) -> bool {
+        self.files == 0 || self.destination.is_some()
+    }
+
+    /// Closes the destination's open list without picking: the host's `back`.
+    fn close_open_select(&mut self) -> bool {
+        let open = self.list.is_open();
+        if open {
+            self.list.close();
+        }
+        open
+    }
+}
+
+impl RemoveTypePresenter {
+    /// Cancel and confirm, from the Dialog keys.
+    fn hints(&self) -> Vec<Hint> {
+        vec![
+            self.keys.hint(BACK, lib_locale::msg::dialog_hint_cancel()),
+            self.keys
+                .hint(SELECT, lib_locale::msg::dialog_hint_confirm()),
+        ]
     }
 
     /// Reads `input`: the destination, when the type has files, is the only field.
     fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<DocumentTypesOutcome>) {
         match input {
-            DialogInput::Submit => self.confirm(router),
-            DialogInput::Select if !self.list.is_open() => self.confirm(router),
+            DialogInput::Submit => self.save(router),
+            DialogInput::Select if !self.list.is_open() => self.save(router),
             _ if self.files > 0 => {
                 let options = self.options();
                 if let SelectMove::Chose(name) =
@@ -147,44 +230,7 @@ impl RemoveTypePresenter {
             .collect()
     }
 
-    pub fn view_model(&self) -> RemoveTypeViewModel {
-        let has_files = self.files > 0;
-        let files = i64::from(self.files);
-        RemoveTypeViewModel {
-            frame: DialogFrame {
-                title: msg::documents_types_dialog_remove_title(),
-                submit: if has_files {
-                    msg::documents_types_remove_confirm_move(files)
-                } else {
-                    msg::documents_types_remove_confirm()
-                },
-                can_confirm: self.can_confirm(),
-                destructive: has_files,
-                hints: Vec::new(),
-            },
-            message: if has_files {
-                msg::documents_types_remove_with_files(&self.name, files)
-            } else {
-                msg::documents_types_remove_no_files(&self.name)
-            },
-            destination: has_files.then(|| SelectView {
-                label: msg::documents_types_remove_destination(),
-                options: self.options(),
-                chosen: self.destination.clone(),
-                focused: true,
-            }),
-            destination_list: self.list,
-            moved_note: has_files.then(msg::documents_types_remove_moved_note),
-            refusal: self.error.map(|_| msg::documents_types_remove_refused()),
-            files: self.files,
-        }
-    }
-
-    fn can_confirm(&self) -> bool {
-        self.files == 0 || self.destination.is_some()
-    }
-
-    fn confirm(&mut self, router: &mut dyn DialogRouter<DocumentTypesOutcome>) {
+    fn save(&mut self, router: &mut dyn DialogRouter<DocumentTypesOutcome>) {
         if !self.can_confirm() {
             return;
         }
@@ -223,7 +269,8 @@ mod tests {
     fn open(id: u32) -> (RemoveTypePresenter, Rc<RefCell<InMemoryDocuments>>) {
         let (documents, shared) = sample();
         let presenter =
-            RemoveTypePresenter::new(shared, DocumentTypeId::seed(id)).expect("a default type");
+            RemoveTypePresenter::new(shared, DocumentTypeId::seed(id), DialogKeys::default())
+                .expect("a default type");
         (presenter, documents)
     }
 
@@ -254,7 +301,8 @@ mod tests {
         let (documents, shared) = sample();
         documents.borrow_mut().types[2].files = 0;
         let presenter =
-            RemoveTypePresenter::new(shared, DocumentTypeId::seed(3)).expect("a default type");
+            RemoveTypePresenter::new(shared, DocumentTypeId::seed(3), DialogKeys::default())
+                .expect("a default type");
         let view = presenter.view_model();
 
         assert_eq!(view.frame.submit, "Remove type");
@@ -338,7 +386,8 @@ mod tests {
     fn a_refusal_stays_open_with_its_text_and_writes_nothing() {
         let (documents, shared) = sample();
         let mut presenter =
-            RemoveTypePresenter::new(shared, DocumentTypeId::seed(3)).expect("a default type");
+            RemoveTypePresenter::new(shared, DocumentTypeId::seed(3), DialogKeys::default())
+                .expect("a default type");
         // The type is removed while the Dialog is open: the form is valid, the domain refuses.
         documents
             .borrow_mut()
@@ -371,7 +420,10 @@ mod tests {
     fn a_gone_type_has_no_dialog() {
         let (_, shared) = sample();
 
-        assert!(RemoveTypePresenter::new(shared, DocumentTypeId::seed(999)).is_none());
+        assert!(
+            RemoveTypePresenter::new(shared, DocumentTypeId::seed(999), DialogKeys::default())
+                .is_none()
+        );
     }
 
     #[test]
@@ -423,5 +475,24 @@ mod tests {
             view.destination.and_then(|select| select.chosen).as_deref(),
             Some("Receipts")
         );
+    }
+
+    #[test]
+    fn the_legend_reads_the_dialog_keys() {
+        let (_, shared) = sample();
+        let presenter = RemoveTypePresenter::new(
+            shared,
+            DocumentTypeId::seed(3),
+            super::super::test_support::dialog_keys(),
+        )
+        .expect("a default type");
+
+        let legend: Vec<String> = presenter
+            .view_model()
+            .hints
+            .into_iter()
+            .map(|hint| format!("{} {}", hint.chord, hint.action))
+            .collect();
+        assert_eq!(legend, ["esc cancel", "enter confirm"]);
     }
 }

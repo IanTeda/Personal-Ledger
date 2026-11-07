@@ -9,8 +9,10 @@
 
 use lib_core::InstitutionId;
 use lib_toast::{Notice, ToastKind};
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::view::{DialogFrame, TextFieldView, count};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::{BACK, SELECT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
+use lib_viper::view::{DialogFrame, Hint, TextFieldView, count};
 
 use crate::interactor::{DeleteInstitution, DeleteInstitutionRefusal};
 use crate::msg;
@@ -48,6 +50,8 @@ pub struct DeleteInstitutionViewModel {
     pub hint: Option<String>,
     /// The typed-back name; `None` once the Dialog is a refusal, which has nothing to type.
     pub confirm: Option<TextFieldView>,
+    /// The status line's legend while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 enum State {
@@ -61,6 +65,7 @@ enum State {
 
 pub struct DeleteInstitutionPresenter {
     ports: SharedPorts,
+    keys: DialogKeys,
     id: InstitutionId,
     name: String,
     state: State,
@@ -69,8 +74,8 @@ pub struct DeleteInstitutionPresenter {
 
 impl DeleteInstitutionPresenter {
     /// The Dialog for Institution `id`, refused from the start when Accounts name it, or `None`
-    /// when it is gone.
-    pub fn new(ports: SharedPorts, id: InstitutionId) -> Option<Self> {
+    /// when it is gone. `keys` are the Dialog keymap's chords, which its hints show.
+    pub fn new(ports: SharedPorts, id: InstitutionId, keys: DialogKeys) -> Option<Self> {
         let (name, uses) = {
             let ports = ports.borrow();
             (
@@ -80,6 +85,7 @@ impl DeleteInstitutionPresenter {
         };
         Some(Self {
             ports,
+            keys,
             id,
             name,
             state: if uses.is_used() {
@@ -90,12 +96,14 @@ impl DeleteInstitutionPresenter {
             confirm_text: String::new(),
         })
     }
+}
 
-    pub fn handle(
-        &mut self,
-        event: DeleteInstitutionEvent,
-        router: &mut dyn DialogRouter<InstitutionsOutcome>,
-    ) {
+impl Presenter for DeleteInstitutionPresenter {
+    type Event = DeleteInstitutionEvent;
+    type ViewModel = DeleteInstitutionViewModel;
+    type Router<'r> = dyn DialogRouter<InstitutionsOutcome> + 'r;
+
+    fn handle(&mut self, event: DeleteInstitutionEvent, router: &mut Self::Router<'_>) {
         match event {
             DeleteInstitutionEvent::Input(input) => self.input(input, router),
             DeleteInstitutionEvent::ConfirmText(text) => {
@@ -103,27 +111,12 @@ impl DeleteInstitutionPresenter {
                     self.confirm_text = text;
                 }
             }
-            DeleteInstitutionEvent::Confirm => self.confirm(router),
+            DeleteInstitutionEvent::Confirm => self.save(router),
             DeleteInstitutionEvent::Cancel => router.close(None),
         }
     }
 
-    /// Reads `input`: the typed-back name is the only field.
-    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<InstitutionsOutcome>) {
-        match input {
-            DialogInput::Select => self.confirm(router),
-            DialogInput::Submit if self.can_confirm() => self.confirm(router),
-            DialogInput::Char(ch) if matches!(self.state, State::Unused) => {
-                self.confirm_text.push(ch);
-            }
-            DialogInput::Backspace if matches!(self.state, State::Unused) => {
-                self.confirm_text.pop();
-            }
-            _ => {}
-        }
-    }
-
-    pub fn view_model(&self) -> DeleteInstitutionViewModel {
+    fn view_model(&self) -> DeleteInstitutionViewModel {
         let refused = !matches!(self.state, State::Unused);
         let (notice, accounts, more, hint) = match &self.state {
             State::Unused => (msg::institutions_delete_warning(), Vec::new(), None, None),
@@ -161,6 +154,57 @@ impl DeleteInstitutionPresenter {
                 placeholder: self.name.clone(),
                 focused: true,
             }),
+            hints: self.hints(),
+        }
+    }
+}
+
+impl DialogPresenter for DeleteInstitutionPresenter {
+    type Outcome = InstitutionsOutcome;
+
+    fn input_event(input: DialogInput) -> DeleteInstitutionEvent {
+        DeleteInstitutionEvent::Input(input)
+    }
+
+    fn confirm_event() -> DeleteInstitutionEvent {
+        DeleteInstitutionEvent::Confirm
+    }
+
+    fn cancel_event() -> DeleteInstitutionEvent {
+        DeleteInstitutionEvent::Cancel
+    }
+
+    /// The typed name must match exactly, case and all; a refusal never confirms.
+    fn can_confirm(&self) -> bool {
+        matches!(self.state, State::Unused) && self.confirm_text == self.name
+    }
+}
+
+impl DeleteInstitutionPresenter {
+    /// Cancel, and confirm while the name can be typed back.
+    fn hints(&self) -> Vec<Hint> {
+        let mut hints = vec![self.keys.hint(BACK, lib_locale::msg::dialog_hint_cancel())];
+        if matches!(self.state, State::Unused) {
+            hints.push(
+                self.keys
+                    .hint(SELECT, lib_locale::msg::dialog_hint_confirm()),
+            );
+        }
+        hints
+    }
+
+    /// Reads `input`: the typed-back name is the only field.
+    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<InstitutionsOutcome>) {
+        match input {
+            DialogInput::Select => self.save(router),
+            DialogInput::Submit if self.can_confirm() => self.save(router),
+            DialogInput::Char(ch) if matches!(self.state, State::Unused) => {
+                self.confirm_text.push(ch);
+            }
+            DialogInput::Backspace if matches!(self.state, State::Unused) => {
+                self.confirm_text.pop();
+            }
+            _ => {}
         }
     }
 
@@ -180,12 +224,7 @@ impl DeleteInstitutionPresenter {
             .copied()
     }
 
-    /// The typed name must match exactly, case and all; a refusal never confirms.
-    fn can_confirm(&self) -> bool {
-        matches!(self.state, State::Unused) && self.confirm_text == self.name
-    }
-
-    fn confirm(&mut self, router: &mut dyn DialogRouter<InstitutionsOutcome>) {
+    fn save(&mut self, router: &mut dyn DialogRouter<InstitutionsOutcome>) {
         if !matches!(self.state, State::Unused) {
             router.close(None);
             return;
@@ -239,7 +278,8 @@ mod tests {
         fn on(ports: Rc<RefCell<InMemoryPorts>>, shared: SharedPorts, id: InstitutionId) -> Self {
             Self {
                 ports,
-                presenter: DeleteInstitutionPresenter::new(shared, id).expect("a sample row"),
+                presenter: DeleteInstitutionPresenter::new(shared, id, DialogKeys::default())
+                    .expect("a sample row"),
                 router: RecordingRouter::default(),
             }
         }
@@ -526,6 +566,38 @@ mod tests {
     fn a_missing_institution_opens_no_dialog() {
         let (_, shared) = sample();
 
-        assert!(DeleteInstitutionPresenter::new(shared, InstitutionId::new()).is_none());
+        assert!(
+            DeleteInstitutionPresenter::new(shared, InstitutionId::new(), DialogKeys::default())
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn the_legend_reads_the_dialog_keys_and_a_refusal_offers_no_confirm() {
+        let (ports, shared) = sample();
+        ports
+            .borrow_mut()
+            .usage
+            .accounts
+            .insert(InstitutionId::SEED_AMEX, vec!["Visa".to_string()]);
+        let legend = |id| {
+            DeleteInstitutionPresenter::new(
+                shared.clone(),
+                id,
+                super::super::test_support::dialog_keys(),
+            )
+            .expect("a sample row")
+            .view_model()
+            .hints
+            .into_iter()
+            .map(|hint| format!("{} {}", hint.chord, hint.action))
+            .collect::<Vec<_>>()
+        };
+
+        assert_eq!(
+            legend(InstitutionId::SEED_VANGUARD),
+            ["esc cancel", "enter confirm"]
+        );
+        assert_eq!(legend(InstitutionId::SEED_AMEX), ["esc cancel"]);
     }
 }

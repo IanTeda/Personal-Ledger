@@ -3,8 +3,10 @@
 //! rule, every piece of text and the keymap are `lib-institutions`'; this folder turns gpui keys
 //! and clicks into Presenter events and draws the view models.
 //!
-//! - `view/page.rs` wraps the page Presenter in an Entity, which the Settings View hosts.
-//! - `view/dialog.rs` holds the Add Dialog's Presenter in an Entity in the Dialog host.
+//! - `view/page.rs` is the page Presenter's `PageView`: the generic `ModulePage` hosts it
+//!   ([`InstitutionsPage`]), which the Settings View hosts as any other page (ADR-0056).
+//! - `view/dialog.rs` and `view/dialog/` are each Dialog Presenter's `DialogView`, hosted in a
+//!   `ModuleDialog`.
 //! - `router.rs` is the Router and the module's entry point ([`institutions_page`]).
 //!
 //! The ports are `lib-database`'s `StoredInstitutionsPorts`, which `LedgerPorts` hands the page and
@@ -14,9 +16,14 @@ mod router;
 mod view;
 
 pub use router::institutions_page;
-pub use view::page::InstitutionsPage;
 
-use lib_institutions::presenter::InstitutionsPageEvent;
+use lib_institutions::presenter::InstitutionsPagePresenter;
+use lib_viper::dialog::DialogKeys;
+
+use crate::shell::view::module_page::ModulePage;
+
+/// The Institutions Settings page: the page Presenter in the generic page Entity.
+pub type InstitutionsPage = ModulePage<InstitutionsPagePresenter>;
 
 /// The Institutions page: `(name, products)` rows in table order, and the selected row's name
 /// (ADR-0030).
@@ -29,21 +36,28 @@ pub struct SettingsInstitutionsSnapshot {
     pub menu: Option<Vec<&'static str>>,
 }
 
-/// What `shell::router::build` hands the Institutions module: its ports, shared with the Ledger
-/// store, and its keymap under `[keybindings]`.
+/// What the Open Ledger hands the Institutions module: the page's Presenter, which owns the
+/// Institutions keymap under `[keybindings]`, its ports, shared with the Ledger store, and the
+/// Dialog keys every Institutions Dialog's hints read.
 pub struct InstitutionsSetup {
+    pub presenter: InstitutionsPagePresenter,
     pub ports: lib_institutions::SharedPorts,
-    pub keymap: lib_viper::keymap::Keymap<InstitutionsPageEvent>,
+    pub dialog_keys: DialogKeys,
 }
 
 impl InstitutionsSetup {
     pub fn new(
         ports: lib_institutions::SharedPorts,
+        dialog_keys: DialogKeys,
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
+            presenter: InstitutionsPagePresenter::new(
+                ports.clone(),
+                lib_institutions::keymap::institutions_page_keymap(config),
+            ),
             ports,
-            keymap: lib_institutions::keymap::institutions_page_keymap(config),
+            dialog_keys,
         }
     }
 
@@ -51,9 +65,18 @@ impl InstitutionsSetup {
     /// directly.
     #[cfg(test)]
     pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
+        let config = lib_config::KeyBindingConfig::default();
         Self::new(
             storage.ports.institutions.clone(),
-            &lib_config::KeyBindingConfig::default(),
+            DialogKeys::of(&lib_shell::dialog_keymap(&config)),
+            &config,
         )
     }
+}
+
+/// What the Institutions page's Router is built from for each call (its `PageView::Setup`): the
+/// ports and Dialog keys its Dialogs open on.
+pub struct InstitutionsRoutes {
+    pub ports: lib_institutions::SharedPorts,
+    pub dialog_keys: DialogKeys,
 }

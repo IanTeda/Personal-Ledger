@@ -5,54 +5,57 @@
 //!
 //! Every click sends the Presenter the event its key does: a row click only selects.
 
-use gpui::{App, ClickEvent, Context, Render, Rgba, SharedString, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, ClickEvent, Rgba, SharedString, Window, div, prelude::*, px};
 use lib_documents::presenter::{DocumentTypesPageEvent, DocumentTypesPageViewModel, TypeLine};
 use lib_locale::format::upper;
 
-use super::DocumentTypesPage;
+use crate::document_types::DocumentTypesPage;
 use crate::{shell::view::page_clicks::PageClicks, theme::color};
 
-impl Render for DocumentTypesPage {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let clicks = PageClicks::new(cx);
-        let view = self.view_model();
-        let focused = self.page_focused;
-        let last = view.rows.len().saturating_sub(1);
-        div()
-            .flex()
-            .flex_col()
-            .child(kicker_row(&view, &clicks, cx))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .border_1()
-                    .border_color(color::border(cx))
-                    .mb(px(16.0))
-                    .child(table_header(&view, cx))
-                    .children(view.rows.iter().enumerate().map(|(position, line)| {
-                        row(
-                            &clicks,
-                            line,
-                            &view,
-                            position == last,
-                            view.selected == Some(line.id),
-                            focused,
-                            cx,
-                        )
-                    })),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(6.0))
-                    .max_w(px(640.0))
-                    .text_size(px(12.0))
-                    .text_color(color::muted(cx))
-                    .children(view.notes.iter().cloned().map(|note| note_line(note, cx))),
-            )
-    }
+/// The page: the kicker and **+ Add document type**, the table and the notes. The selected row is
+/// inverted only while the page has `focused`.
+pub(super) fn page(
+    view: &DocumentTypesPageViewModel,
+    clicks: &PageClicks<DocumentTypesPage>,
+    focused: bool,
+    cx: &App,
+) -> AnyElement {
+    let last = view.rows.len().saturating_sub(1);
+    div()
+        .flex()
+        .flex_col()
+        .child(kicker_row(view, clicks, cx))
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .border_1()
+                .border_color(color::border(cx))
+                .mb(px(16.0))
+                .child(table_header(view, cx))
+                .children(view.rows.iter().enumerate().map(|(position, line)| {
+                    row(
+                        clicks,
+                        line,
+                        view,
+                        position == last,
+                        view.selected == Some(line.id),
+                        focused,
+                        cx,
+                    )
+                })),
+        )
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(6.0))
+                .max_w(px(640.0))
+                .text_size(px(12.0))
+                .text_color(color::muted(cx))
+                .children(view.notes.iter().cloned().map(|note| note_line(note, cx))),
+        )
+        .into_any_element()
 }
 
 /// One note: its `<strong>` lead in the foreground colour, the rest muted.

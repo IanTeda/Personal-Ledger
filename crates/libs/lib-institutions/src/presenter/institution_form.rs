@@ -12,8 +12,12 @@
 //! - A confirm raises its own Toast before it closes the Dialog.
 
 use lib_toast::{Notice, ToastKind};
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::view::{Choice, DialogFrame, SelectList, SelectMove, SelectView, TextFieldView};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::{BACK, NEXT_FIELD, SELECT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
+use lib_viper::view::{
+    Choice, DialogFrame, Hint, SelectList, SelectMove, SelectView, TextFieldView,
+};
 
 use lib_core::{InstitutionId, UnitId};
 
@@ -129,10 +133,15 @@ pub struct InstitutionFormViewModel {
     pub name_error: Option<String>,
     pub products_label: String,
     pub products: Vec<ProductChip>,
+    /// Edit, rather than Add.
+    pub editing: bool,
+    /// The status line's legend while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 pub struct InstitutionFormPresenter {
     ports: SharedPorts,
+    keys: DialogKeys,
     /// The Institution being edited, `None` when adding.
     editing: Option<InstitutionId>,
     name: String,
@@ -150,11 +159,13 @@ pub struct InstitutionFormPresenter {
 }
 
 impl InstitutionFormPresenter {
-    /// A fresh Add form: no name and Savings checked.
-    pub fn add(ports: SharedPorts) -> Self {
+    /// A fresh Add form: no name and Savings checked. `keys` are the Dialog keymap's chords, which
+    /// its hints show.
+    pub fn add(ports: SharedPorts, keys: DialogKeys) -> Self {
         let units = unit_choices(&ports, None);
         Self {
             ports,
+            keys,
             editing: None,
             name: String::new(),
             products: vec![InstitutionProduct::Savings.canonical().to_string()],
@@ -168,7 +179,7 @@ impl InstitutionFormPresenter {
 
     /// An Edit form on Institution `id`, filled with its name and Products. `None` when it is no
     /// longer on the Ledger.
-    pub fn edit(ports: SharedPorts, id: InstitutionId) -> Option<Self> {
+    pub fn edit(ports: SharedPorts, id: InstitutionId, keys: DialogKeys) -> Option<Self> {
         let institution = ports.borrow().institutions().institution(id)?;
         let products = institution
             .products
@@ -179,6 +190,7 @@ impl InstitutionFormPresenter {
         let units = unit_choices(&ports, institution.usual_unit);
         Some(Self {
             ports,
+            keys,
             editing: Some(id),
             name: institution.name,
             products,
@@ -189,12 +201,14 @@ impl InstitutionFormPresenter {
             refusal: None,
         })
     }
+}
 
-    pub fn handle(
-        &mut self,
-        event: InstitutionFormEvent,
-        router: &mut dyn DialogRouter<InstitutionsOutcome>,
-    ) {
+impl Presenter for InstitutionFormPresenter {
+    type Event = InstitutionFormEvent;
+    type ViewModel = InstitutionFormViewModel;
+    type Router<'r> = dyn DialogRouter<InstitutionsOutcome> + 'r;
+
+    fn handle(&mut self, event: InstitutionFormEvent, router: &mut Self::Router<'_>) {
         match event {
             InstitutionFormEvent::Input(input) => self.input(input, router),
             InstitutionFormEvent::Name(text) => self.name = text,
@@ -225,52 +239,12 @@ impl InstitutionFormPresenter {
                     None => self.products.push(product.canonical().to_string()),
                 }
             }
-            InstitutionFormEvent::Confirm => self.confirm(router),
+            InstitutionFormEvent::Confirm => self.save(router),
             InstitutionFormEvent::Cancel => router.close(None),
         }
     }
 
-    /// Reads `input` for the focused field.
-    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<InstitutionsOutcome>) {
-        match (input, self.focused) {
-            (DialogInput::NextField | DialogInput::PreviousField, _) => {
-                // Leaving the select commits an open list's highlight, as a click elsewhere would.
-                if let Some(unit) = self.unit_list.commit(&self.units) {
-                    self.pick(unit);
-                }
-                self.focused = match self.focused {
-                    InstitutionField::Name => InstitutionField::UsualUnit,
-                    InstitutionField::UsualUnit => InstitutionField::Name,
-                };
-            }
-            (DialogInput::Submit, _) | (DialogInput::Select, InstitutionField::Name) => {
-                self.confirm(router);
-            }
-            (_, InstitutionField::UsualUnit) => {
-                // A select swallows typing, so it never reaches the name.
-                if let SelectMove::Chose(unit) =
-                    self.unit_list
-                        .input(input, &self.units, Some(&self.usual_unit))
-                {
-                    self.pick(unit);
-                }
-            }
-            (DialogInput::Char(ch), InstitutionField::Name) => self.name.push(ch),
-            (DialogInput::Backspace, InstitutionField::Name) => {
-                self.name.pop();
-            }
-            (_, InstitutionField::Name) => {}
-        }
-    }
-
-    /// Sets the Usual unit, ignoring a Unit that is not an option.
-    fn pick(&mut self, unit: Option<UnitId>) {
-        if self.units.iter().any(|choice| choice.value == unit) {
-            self.usual_unit = unit;
-        }
-    }
-
-    pub fn view_model(&self) -> InstitutionFormViewModel {
+    fn view_model(&self) -> InstitutionFormViewModel {
         InstitutionFormViewModel {
             frame: DialogFrame {
                 title: if self.editing.is_some() {
@@ -283,7 +257,7 @@ impl InstitutionFormPresenter {
                 } else {
                     msg::institutions_add_submit()
                 },
-                can_confirm: self.is_valid(),
+                can_confirm: self.can_confirm(),
                 destructive: false,
                 hints: Vec::new(),
             },
@@ -315,16 +289,96 @@ impl InstitutionFormPresenter {
                     checked: self.products.iter().any(|part| part == product.canonical()),
                 })
                 .collect(),
+            editing: self.editing.is_some(),
+            hints: self.hints(),
         }
+    }
+}
+
+impl DialogPresenter for InstitutionFormPresenter {
+    type Outcome = InstitutionsOutcome;
+
+    fn input_event(input: DialogInput) -> InstitutionFormEvent {
+        InstitutionFormEvent::Input(input)
+    }
+
+    fn confirm_event() -> InstitutionFormEvent {
+        InstitutionFormEvent::Confirm
+    }
+
+    fn cancel_event() -> InstitutionFormEvent {
+        InstitutionFormEvent::Cancel
     }
 
     /// A name and at least one Product: both required.
-    fn is_valid(&self) -> bool {
+    fn can_confirm(&self) -> bool {
         !self.name.trim().is_empty() && !self.products.is_empty()
     }
 
-    fn confirm(&mut self, router: &mut dyn DialogRouter<InstitutionsOutcome>) {
-        if !self.is_valid() {
+    /// Closes the Usual unit's open list without picking: the host's `back`.
+    fn close_open_select(&mut self) -> bool {
+        let open = self.unit_list.is_open();
+        if open {
+            self.unit_list.close();
+        }
+        open
+    }
+}
+
+impl InstitutionFormPresenter {
+    /// Cancel, confirm and the next field, from the Dialog keys.
+    fn hints(&self) -> Vec<Hint> {
+        vec![
+            self.keys.hint(BACK, lib_locale::msg::dialog_hint_cancel()),
+            self.keys
+                .hint(SELECT, lib_locale::msg::dialog_hint_confirm()),
+            self.keys
+                .hint(NEXT_FIELD, lib_locale::msg::dialog_hint_next_field()),
+        ]
+    }
+
+    /// Reads `input` for the focused field.
+    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<InstitutionsOutcome>) {
+        match (input, self.focused) {
+            (DialogInput::NextField | DialogInput::PreviousField, _) => {
+                // Leaving the select commits an open list's highlight, as a click elsewhere would.
+                if let Some(unit) = self.unit_list.commit(&self.units) {
+                    self.pick(unit);
+                }
+                self.focused = match self.focused {
+                    InstitutionField::Name => InstitutionField::UsualUnit,
+                    InstitutionField::UsualUnit => InstitutionField::Name,
+                };
+            }
+            (DialogInput::Submit, _) | (DialogInput::Select, InstitutionField::Name) => {
+                self.save(router);
+            }
+            (_, InstitutionField::UsualUnit) => {
+                // A select swallows typing, so it never reaches the name.
+                if let SelectMove::Chose(unit) =
+                    self.unit_list
+                        .input(input, &self.units, Some(&self.usual_unit))
+                {
+                    self.pick(unit);
+                }
+            }
+            (DialogInput::Char(ch), InstitutionField::Name) => self.name.push(ch),
+            (DialogInput::Backspace, InstitutionField::Name) => {
+                self.name.pop();
+            }
+            (_, InstitutionField::Name) => {}
+        }
+    }
+
+    /// Sets the Usual unit, ignoring a Unit that is not an option.
+    fn pick(&mut self, unit: Option<UnitId>) {
+        if self.units.iter().any(|choice| choice.value == unit) {
+            self.usual_unit = unit;
+        }
+    }
+
+    fn save(&mut self, router: &mut dyn DialogRouter<InstitutionsOutcome>) {
+        if !self.can_confirm() {
             return;
         }
         let draft = InstitutionDraft {
@@ -408,7 +462,7 @@ mod tests {
         fn new() -> Self {
             let (ports, shared) = sample();
             Self {
-                presenter: InstitutionFormPresenter::add(shared),
+                presenter: InstitutionFormPresenter::add(shared, DialogKeys::default()),
                 ports,
                 router: RecordingRouter::default(),
             }
@@ -570,7 +624,8 @@ mod tests {
     fn edit_form(id: InstitutionId) -> Form {
         let (ports, shared) = sample();
         Form {
-            presenter: InstitutionFormPresenter::edit(shared, id).expect("a sample Institution"),
+            presenter: InstitutionFormPresenter::edit(shared, id, DialogKeys::default())
+                .expect("a sample Institution"),
             ports,
             router: RecordingRouter::default(),
         }
@@ -610,7 +665,8 @@ mod tests {
             .expect("the ANZ row")
             .products = "wealth \u{b7} offset \u{b7} savings".to_string();
         let mut form = Form {
-            presenter: InstitutionFormPresenter::edit(shared, id).expect("a sample Institution"),
+            presenter: InstitutionFormPresenter::edit(shared, id, DialogKeys::default())
+                .expect("a sample Institution"),
             ports,
             router: RecordingRouter::default(),
         };
@@ -641,7 +697,10 @@ mod tests {
     fn edit_of_an_institution_that_is_gone_does_not_open() {
         let (_, shared) = sample();
 
-        assert!(InstitutionFormPresenter::edit(shared, InstitutionId::new()).is_none());
+        assert!(
+            InstitutionFormPresenter::edit(shared, InstitutionId::new(), DialogKeys::default())
+                .is_none()
+        );
     }
 
     #[test]
@@ -722,7 +781,7 @@ mod tests {
         let form = Form::new();
         form.ports.borrow_mut().units.units[1].is_active = false;
         let form = Form {
-            presenter: InstitutionFormPresenter::add(form.ports.clone()),
+            presenter: InstitutionFormPresenter::add(form.ports.clone(), DialogKeys::default()),
             ..form
         };
 
@@ -874,10 +933,13 @@ mod tests {
     fn edit_keeps_listing_a_usual_unit_since_deactivated_but_add_does_not() {
         let (ports, shared) = sample();
         ports.borrow_mut().units.units[1].is_active = false;
-        let edit =
-            InstitutionFormPresenter::edit(shared.clone(), InstitutionId::SEED_CRYPTO_EXCHANGE)
-                .expect("a sample Institution");
-        let add = InstitutionFormPresenter::add(shared);
+        let edit = InstitutionFormPresenter::edit(
+            shared.clone(),
+            InstitutionId::SEED_CRYPTO_EXCHANGE,
+            DialogKeys::default(),
+        )
+        .expect("a sample Institution");
+        let add = InstitutionFormPresenter::add(shared, DialogKeys::default());
 
         let codes = |presenter: &InstitutionFormPresenter| -> Vec<String> {
             presenter
@@ -902,5 +964,19 @@ mod tests {
             vec![RouterCall::CloseDialog(None)]
         );
         assert_eq!(form.ports.borrow().institutions.institutions.len(), 7);
+    }
+
+    #[test]
+    fn the_legend_reads_the_dialog_keys() {
+        let (_, shared) = sample();
+        let form = InstitutionFormPresenter::add(shared, super::super::test_support::dialog_keys());
+
+        let legend: Vec<String> = form
+            .view_model()
+            .hints
+            .into_iter()
+            .map(|hint| format!("{} {}", hint.chord, hint.action))
+            .collect();
+        assert_eq!(legend, ["esc cancel", "enter confirm", "tab next field"]);
     }
 }

@@ -4,16 +4,47 @@
 //! red frame.
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
-use lib_payees::presenter::DeletePayeeViewModel;
+use lib_payees::presenter::{DeletePayeePresenter, DeletePayeeViewModel};
+use lib_shell::Hint;
 
-use super::Clicks;
 use super::rules_field::error_line;
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 use crate::{dialog, theme::color};
 
 /// The Dialog's width: the handoff's 6d.
 const WIDTH: gpui::Pixels = px(440.0);
 
-pub(super) fn render(view: &DeletePayeeViewModel, actions: &Clicks, cx: &App) -> AnyElement {
+/// The open Dialog's clicks.
+type Clicks = ModuleDialogClicks<DeletePayeePresenter>;
+
+/// The `lib-payees` Delete Presenter's [`DialogView`], hosted in a `ModuleDialog` (ADR-0056).
+impl DialogView for DeletePayeePresenter {
+    type Widgets = ();
+
+    fn kind(_view: &DeletePayeeViewModel) -> &'static str {
+        "DeletePayee"
+    }
+
+    fn render(
+        view: &DeletePayeeViewModel,
+        _widgets: &mut (),
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        render(view, clicks, cx)
+    }
+
+    /// The typed-back name and the action, between the title and whether it would confirm.
+    fn readback(view: &DeletePayeeViewModel) -> Vec<(&'static str, String)> {
+        framed(&view.frame, readback(view))
+    }
+
+    fn hints(view: &DeletePayeeViewModel) -> Vec<Hint> {
+        view.hints.clone()
+    }
+}
+
+fn render(view: &DeletePayeeViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     let destructive = view.frame.destructive;
     let mut fields = vec![warning(view), callout(view, cx)];
     fields.extend(
@@ -112,7 +143,7 @@ fn confirm_field(label: &str, text: &str, placeholder: &str, cx: &App) -> AnyEle
 }
 
 /// The typed-back name and the action, for a test.
-pub(super) fn readback(view: &DeletePayeeViewModel) -> Vec<(&'static str, String)> {
+fn readback(view: &DeletePayeeViewModel) -> Vec<(&'static str, String)> {
     vec![
         (
             "confirm",

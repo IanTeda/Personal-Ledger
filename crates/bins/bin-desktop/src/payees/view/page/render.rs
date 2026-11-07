@@ -3,12 +3,12 @@
 //! and match rules, with `edit · delete` per row. Every click sends the Presenter the event its key
 //! does; a row click only selects.
 
-use gpui::{AnyElement, App, ClickEvent, Context, Rgba, SharedString, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, ClickEvent, Rgba, SharedString, Window, div, prelude::*, px};
 use lib_locale::Segment;
 use lib_locale::format::upper;
 use lib_payees::presenter::{PayeeLine, PayeesPageEvent, PayeesPageViewModel};
 
-use super::PayeesPage;
+use crate::payees::PayeesPage;
 use crate::{shell::view::page_clicks::PageClicks, theme::color};
 
 /// The NAME column's floor, so the fixed columns never squeeze it to nothing.
@@ -42,52 +42,55 @@ pub(super) fn scope_note(scope: &[Segment], cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-impl Render for PayeesPage {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let clicks = PageClicks::new(cx);
-        let view = self.view_model(cx);
-        let focused = self.page_focused;
-        let last = view.rows.len().saturating_sub(1);
-        div()
-            .flex()
-            .flex_col()
-            .child(kicker_row(&view, &clicks, cx))
-            .children(view.empty.clone().map(|empty| {
+/// The page: the kicker and **+ Add payee**, the list, or the empty note, and the footnote. The
+/// selected row is inverted only while the page has `focused`.
+pub(super) fn page(
+    view: &PayeesPageViewModel,
+    clicks: &PageClicks<PayeesPage>,
+    focused: bool,
+    cx: &App,
+) -> AnyElement {
+    let last = view.rows.len().saturating_sub(1);
+    div()
+        .flex()
+        .flex_col()
+        .child(kicker_row(view, clicks, cx))
+        .children(view.empty.clone().map(|empty| {
+            div()
+                .text_color(color::muted(cx))
+                .child(empty)
+                .into_any_element()
+        }))
+        .when(!view.rows.is_empty(), |this| {
+            this.child(
                 div()
-                    .text_color(color::muted(cx))
-                    .child(empty)
-                    .into_any_element()
-            }))
-            .when(!view.rows.is_empty(), |this| {
-                this.child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .border_1()
-                        .border_color(color::border(cx))
-                        .mb(px(18.0))
-                        .child(table_header(&view, cx))
-                        .children(view.rows.iter().enumerate().map(|(position, line)| {
-                            row(
-                                line,
-                                &view,
-                                position == last,
-                                view.selected == Some(line.id),
-                                focused,
-                                &clicks,
-                                cx,
-                            )
-                        })),
-                )
-            })
-            .child(
-                div()
-                    .max_w(px(620.0))
-                    .text_size(px(11.5))
-                    .text_color(color::muted(cx))
-                    .child(view.footnote.clone()),
+                    .flex()
+                    .flex_col()
+                    .border_1()
+                    .border_color(color::border(cx))
+                    .mb(px(18.0))
+                    .child(table_header(view, cx))
+                    .children(view.rows.iter().enumerate().map(|(position, line)| {
+                        row(
+                            line,
+                            view,
+                            position == last,
+                            view.selected == Some(line.id),
+                            focused,
+                            clicks,
+                            cx,
+                        )
+                    })),
             )
-    }
+        })
+        .child(
+            div()
+                .max_w(px(620.0))
+                .text_size(px(11.5))
+                .text_color(color::muted(cx))
+                .child(view.footnote.clone()),
+        )
+        .into_any_element()
 }
 
 fn kicker_row(

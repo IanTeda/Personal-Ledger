@@ -12,8 +12,10 @@
 //! under it.
 
 use lib_core::DocumentTypeId;
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView, count};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::{BACK, NEXT_FIELD, SELECT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
+use lib_viper::view::{Choice, DialogFrame, Hint, SelectView, TextFieldView, count};
 
 use super::tracks_label;
 use crate::interactor::{AddDocumentType, EditDocumentType};
@@ -117,6 +119,8 @@ pub struct TypeFormViewModel {
     /// Edit, rather than Add.
     pub editing: bool,
     pub focused: DocumentTypeField,
+    /// The status line's legend while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 /// The type an Edit saves, and how many Filed files it has, for the usage note.
@@ -127,6 +131,7 @@ struct Editing {
 
 pub struct TypeFormPresenter {
     ports: SharedRepository,
+    keys: DialogKeys,
     editing: Option<Editing>,
     name: String,
     tracks_date: Option<TracksDate>,
@@ -141,11 +146,13 @@ pub struct TypeFormPresenter {
 }
 
 impl TypeFormPresenter {
-    /// A blank Add form among the types now held.
-    pub fn add(ports: SharedRepository) -> Self {
+    /// A blank Add form among the types now held. `keys` are the Dialog keymap's chords, which its
+    /// hints show.
+    pub fn add(ports: SharedRepository, keys: DialogKeys) -> Self {
         let types = ports.borrow().document_types();
         Self {
             ports,
+            keys,
             editing: None,
             name: String::new(),
             tracks_date: None,
@@ -159,10 +166,10 @@ impl TypeFormPresenter {
     }
 
     /// The Edit form pre-filled from type `id`, or `None` when it is gone.
-    pub fn edit(ports: SharedRepository, id: DocumentTypeId) -> Option<Self> {
+    pub fn edit(ports: SharedRepository, id: DocumentTypeId, keys: DialogKeys) -> Option<Self> {
         let types = ports.borrow().document_types();
         let row = get(&types, id)?;
-        let mut form = Self::add(ports);
+        let mut form = Self::add(ports, keys);
         form.name = row.name.clone();
         form.tracks_date = row.tracks_date;
         form.remind = row.remind;
@@ -179,12 +186,14 @@ impl TypeFormPresenter {
         });
         Some(form)
     }
+}
 
-    pub fn handle(
-        &mut self,
-        event: TypeFormEvent,
-        router: &mut dyn DialogRouter<DocumentTypesOutcome>,
-    ) {
+impl Presenter for TypeFormPresenter {
+    type Event = TypeFormEvent;
+    type ViewModel = TypeFormViewModel;
+    type Router<'r> = dyn DialogRouter<DocumentTypesOutcome> + 'r;
+
+    fn handle(&mut self, event: TypeFormEvent, router: &mut Self::Router<'_>) {
         match event {
             TypeFormEvent::Input(input) => self.input(input, router),
             TypeFormEvent::Name(text) => {
@@ -206,37 +215,12 @@ impl TypeFormPresenter {
                 self.financial_year = !self.financial_year;
             }
             TypeFormEvent::Focus(field) => self.focused = field,
-            TypeFormEvent::Confirm => self.confirm(router),
+            TypeFormEvent::Confirm => self.save(router),
             TypeFormEvent::Cancel => router.close(None),
         }
     }
 
-    /// Reads `input` for the focused field.
-    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<DocumentTypesOutcome>) {
-        let on_name = self.focused == DocumentTypeField::Name;
-        match input {
-            DialogInput::NextField => self.cycle_focus(false),
-            DialogInput::PreviousField => self.cycle_focus(true),
-            DialogInput::Select | DialogInput::Submit => self.confirm(router),
-            DialogInput::Left => self.step_focused(-1),
-            DialogInput::Right => self.step_focused(1),
-            DialogInput::Char(' ') if self.focused == DocumentTypeField::FinancialYear => {
-                self.financial_year = !self.financial_year;
-            }
-            DialogInput::Char(ch) if on_name => {
-                self.name.push(ch);
-                self.touched = true;
-            }
-            DialogInput::Backspace if on_name => {
-                self.name.pop();
-                self.touched = true;
-            }
-            // A control swallows typing, and the arrows step nothing here.
-            _ => {}
-        }
-    }
-
-    pub fn view_model(&self) -> TypeFormViewModel {
+    fn view_model(&self) -> TypeFormViewModel {
         let (title, submit) = if self.editing.is_some() {
             (
                 msg::documents_types_dialog_edit_title(),
@@ -253,7 +237,7 @@ impl TypeFormPresenter {
             frame: DialogFrame {
                 title,
                 submit,
-                can_confirm: self.name_error().is_none(),
+                can_confirm: self.can_confirm(),
                 destructive: false,
                 hints: Vec::new(),
             },
@@ -310,6 +294,66 @@ impl TypeFormPresenter {
             no: msg::documents_types_no(),
             editing: self.editing.is_some(),
             focused: self.focused,
+            hints: self.hints(),
+        }
+    }
+}
+
+impl DialogPresenter for TypeFormPresenter {
+    type Outcome = DocumentTypesOutcome;
+
+    fn input_event(input: DialogInput) -> TypeFormEvent {
+        TypeFormEvent::Input(input)
+    }
+
+    fn confirm_event() -> TypeFormEvent {
+        TypeFormEvent::Confirm
+    }
+
+    fn cancel_event() -> TypeFormEvent {
+        TypeFormEvent::Cancel
+    }
+
+    /// A name with no problem: the view model's `frame.can_confirm`.
+    fn can_confirm(&self) -> bool {
+        self.name_error().is_none()
+    }
+}
+
+impl TypeFormPresenter {
+    /// Cancel and confirm and the next field, from the Dialog keys.
+    fn hints(&self) -> Vec<Hint> {
+        vec![
+            self.keys.hint(BACK, lib_locale::msg::dialog_hint_cancel()),
+            self.keys
+                .hint(SELECT, lib_locale::msg::dialog_hint_confirm()),
+            self.keys
+                .hint(NEXT_FIELD, lib_locale::msg::dialog_hint_next_field()),
+        ]
+    }
+
+    /// Reads `input` for the focused field.
+    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<DocumentTypesOutcome>) {
+        let on_name = self.focused == DocumentTypeField::Name;
+        match input {
+            DialogInput::NextField => self.cycle_focus(false),
+            DialogInput::PreviousField => self.cycle_focus(true),
+            DialogInput::Select | DialogInput::Submit => self.save(router),
+            DialogInput::Left => self.step_focused(-1),
+            DialogInput::Right => self.step_focused(1),
+            DialogInput::Char(' ') if self.focused == DocumentTypeField::FinancialYear => {
+                self.financial_year = !self.financial_year;
+            }
+            DialogInput::Char(ch) if on_name => {
+                self.name.push(ch);
+                self.touched = true;
+            }
+            DialogInput::Backspace if on_name => {
+                self.name.pop();
+                self.touched = true;
+            }
+            // A control swallows typing, and the arrows step nothing here.
+            _ => {}
         }
     }
 
@@ -384,7 +428,7 @@ impl TypeFormPresenter {
         }
     }
 
-    fn confirm(&mut self, router: &mut dyn DialogRouter<DocumentTypesOutcome>) {
+    fn save(&mut self, router: &mut dyn DialogRouter<DocumentTypesOutcome>) {
         if self.name_error().is_some() {
             return;
         }
@@ -457,7 +501,7 @@ mod tests {
         ) {
             let (documents, shared) = sample();
             let form = Self {
-                presenter: TypeFormPresenter::add(shared),
+                presenter: TypeFormPresenter::add(shared, DialogKeys::default()),
                 router: RecordingRouter::default(),
             };
             (form, documents)
@@ -471,7 +515,8 @@ mod tests {
         ) {
             let (documents, shared) = sample();
             let form = Self {
-                presenter: TypeFormPresenter::edit(shared, id).expect("a default type"),
+                presenter: TypeFormPresenter::edit(shared, id, DialogKeys::default())
+                    .expect("a default type"),
                 router: RecordingRouter::default(),
             };
             (form, documents)
@@ -776,6 +821,23 @@ mod tests {
     fn an_edit_of_a_gone_type_has_no_form() {
         let (_, shared) = sample();
 
-        assert!(TypeFormPresenter::edit(shared, DocumentTypeId::seed(999)).is_none());
+        assert!(
+            TypeFormPresenter::edit(shared, DocumentTypeId::seed(999), DialogKeys::default())
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn the_legend_reads_the_dialog_keys() {
+        let (_, shared) = sample();
+        let form = TypeFormPresenter::add(shared, super::super::test_support::dialog_keys());
+
+        let legend: Vec<String> = form
+            .view_model()
+            .hints
+            .into_iter()
+            .map(|hint| format!("{} {}", hint.chord, hint.action))
+            .collect();
+        assert_eq!(legend, ["esc cancel", "enter confirm", "tab next field"]);
     }
 }

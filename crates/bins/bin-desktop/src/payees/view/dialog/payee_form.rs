@@ -7,10 +7,11 @@
 
 use gpui::{AnyElement, App, div, prelude::*, px};
 use lib_payees::presenter::{PayeeField, PayeeFormEvent, PayeeFormPresenter, PayeeFormViewModel};
+use lib_shell::Hint;
 
 use super::rules_field;
-use super::{Clicks, PayeesDialog, View, send};
 use crate::form::viper::{chosen_label, drawn, labels};
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 use crate::{
     dialog,
     form::{
@@ -23,60 +24,45 @@ use crate::{
 /// The Dialogs' width: the handoff's 6b and 6c.
 const WIDTH: gpui::Pixels = px(460.0);
 
-fn handle(presenter: &mut PayeeFormPresenter, event: PayeeFormEvent) {
-    send(presenter, event, PayeeFormPresenter::handle);
-}
+/// The open form's clicks.
+type Clicks = ModuleDialogClicks<PayeeFormPresenter>;
 
-fn form(dialog: &mut PayeesDialog) -> Option<&mut PayeeFormPresenter> {
-    match &mut dialog.view {
-        View::Form(presenter, _) => Some(presenter),
-        View::Delete(_) => None,
+/// The `lib-payees` form Presenter's [`DialogView`], hosted in a `ModuleDialog` (ADR-0056). Its
+/// widget state is the top row of the Default category list's window, which the View keeps between
+/// draws.
+impl DialogView for PayeeFormPresenter {
+    type Widgets = usize;
+
+    fn kind(view: &PayeeFormViewModel) -> &'static str {
+        if view.editing {
+            "EditPayee"
+        } else {
+            "AddPayee"
+        }
     }
-}
 
-/// A click on a text field focuses it.
-fn click_field(dialog: &mut PayeesDialog, field: PayeeField) {
-    if let Some(presenter) = form(dialog) {
-        handle(presenter, PayeeFormEvent::Focus(field));
+    fn render(
+        view: &PayeeFormViewModel,
+        scroll: &mut usize,
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        render(view, scroll, clicks, cx)
     }
-}
 
-/// A click on the select's closed field focuses it and toggles its list.
-fn click_select(dialog: &mut PayeesDialog) {
-    if let Some(presenter) = form(dialog) {
-        handle(presenter, PayeeFormEvent::ToggleCategories);
+    /// The fields the form draws, between its title and whether it would confirm.
+    fn readback(view: &PayeeFormViewModel) -> Vec<(&'static str, String)> {
+        framed(&view.frame, readback(view))
     }
-}
 
-/// A click on row `index` of the open list picks its Category.
-fn click_option(dialog: &mut PayeesDialog, index: usize) {
-    if let Some(presenter) = form(dialog)
-        && let Some(choice) = presenter.view_model().default_category.options.get(index)
-    {
-        handle(presenter, PayeeFormEvent::Category(choice.value));
-    }
-}
-
-fn click_add_rule(dialog: &mut PayeesDialog) {
-    if let Some(presenter) = form(dialog) {
-        handle(presenter, PayeeFormEvent::AddRule);
-    }
-}
-
-fn click_remove_rule(dialog: &mut PayeesDialog, index: usize) {
-    if let Some(presenter) = form(dialog) {
-        handle(presenter, PayeeFormEvent::RemoveRule(index));
+    fn hints(view: &PayeeFormViewModel) -> Vec<Hint> {
+        view.hints.clone()
     }
 }
 
 /// The form, its Default category list's window scrolled from `scroll`, which this draw moves to
 /// follow the highlight.
-pub(super) fn render(
-    view: &PayeeFormViewModel,
-    scroll: &mut usize,
-    actions: &Clicks,
-    cx: &App,
-) -> AnyElement {
+fn render(view: &PayeeFormViewModel, scroll: &mut usize, actions: &Clicks, cx: &App) -> AnyElement {
     let id = if view.editing {
         "edit-payee"
     } else {
@@ -90,7 +76,21 @@ pub(super) fn render(
         ("add-payee-name", "add-payee-category")
     };
     let options = labels(&view.default_category);
-    let on_field = |field: PayeeField| actions.click(move |dialog| click_field(dialog, field));
+    let on_field = |field: PayeeField| actions.send(PayeeFormEvent::Focus(field));
+    // A click on row `index` of the open list picks its Category.
+    let categories: Vec<_> = view
+        .default_category
+        .options
+        .iter()
+        .map(|choice| choice.value)
+        .collect();
+    let on_category = actions.option(move |index| {
+        categories
+            .get(index)
+            .map(|category| PayeeFormEvent::Category(*category))
+            .into_iter()
+            .collect()
+    });
     let card = div()
         .flex()
         .flex_col()
@@ -121,8 +121,9 @@ pub(super) fn render(
                     focused: view.default_category.focused,
                     accent: false,
                     read_only: None,
-                    on_field_click: actions.click(click_select),
-                    on_option_click: actions.option(click_option),
+                    // A click on the closed field focuses it and toggles its list.
+                    on_field_click: actions.send(PayeeFormEvent::ToggleCategories),
+                    on_option_click: on_category,
                 },
                 cx,
             ),
@@ -137,8 +138,8 @@ pub(super) fn render(
                     view.rule_add.clone(),
                     view.rule_input.focused,
                     on_field(PayeeField::Rule),
-                    actions.click(click_add_rule),
-                    actions.choose(click_remove_rule),
+                    actions.send(PayeeFormEvent::AddRule),
+                    actions.option(|index| vec![PayeeFormEvent::RemoveRule(index)]),
                     cx,
                 ))
                 .children(
@@ -188,7 +189,7 @@ fn callout(view: &PayeeFormViewModel, cx: &App) -> AnyElement {
 }
 
 /// The form's fields, for a test.
-pub(super) fn readback(view: &PayeeFormViewModel) -> Vec<(&'static str, String)> {
+fn readback(view: &PayeeFormViewModel) -> Vec<(&'static str, String)> {
     vec![
         ("field", format!("{:?}", view.focused)),
         ("name", view.name.text.clone()),

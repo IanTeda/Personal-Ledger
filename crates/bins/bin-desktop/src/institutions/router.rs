@@ -1,44 +1,49 @@
 //! `impl InstitutionsRouter` for the Desktop: where the Institutions page's Presenter asks to go.
-//! The Add, Edit and Delete Dialogs open as an Entity in the Dialog host through the page's gpui context, which is
-//! why the Router is built for each `handle` call, and a Notice goes onto the bin's queue
-//! (`crate::notices`), which the input's `send` drains.
+//! The Add, Edit and Delete Dialogs open as a `ModuleDialog` in the Dialog host through the page's
+//! gpui context, which is why the Router is built for each `handle` call
+//! (`PageView::with_router`), and a Notice goes onto the bin's queue (`crate::notices`), which the
+//! input's `send` drains.
 
-use gpui::Context;
-use lib_institutions::presenter::InstitutionsPageEvent;
+use gpui::{AppContext as _, Context, Entity};
+use lib_institutions::presenter::{DeleteInstitutionPresenter, InstitutionFormPresenter};
 use lib_institutions::{InstitutionsDialog as Which, InstitutionsRouter};
 use lib_toast::{Notice, Notify};
 
-use super::view::dialog::{DeleteInstitutionDialog, InstitutionsDialog};
-use super::view::page::InstitutionsPage;
+use super::{InstitutionsPage, InstitutionsRoutes, InstitutionsSetup};
 use crate::announcer::Announcer;
 use crate::notices::Queue;
-use crate::shell::view::dialog_entity::host_dialog;
+use crate::shell::view::dialog_entity::ModuleDialog;
+use crate::shell::view::module_page::ModulePage;
 
 pub(super) struct PageRouter<'a, 'b> {
-    pub ports: lib_institutions::SharedPorts,
+    pub routes: &'a InstitutionsRoutes,
     pub cx: &'a mut Context<'b, InstitutionsPage>,
 }
 
 impl InstitutionsRouter for PageRouter<'_, '_> {
-    /// Builds `dialog`'s Presenter on the shared ports and hosts its View; its confirmed outcome
-    /// comes back to the page through [`InstitutionsPage::dialog_landed`].
+    /// Builds `dialog`'s Presenter on the shared ports, handed the Dialog keys, and hosts it; its
+    /// confirmed outcome comes back to the page through [`ModulePage::landing`].
     fn open_dialog(&mut self, dialog: Which) -> bool {
-        let page = self.cx.weak_entity();
-        let landed = Box::new(move |outcome, cx: &mut gpui::App| {
-            // A page that has gone has nothing to land on.
-            let _ = page.update(cx, |page, cx| page.dialog_landed(outcome, cx));
-        });
-        if let Which::DeleteInstitution(id) = dialog {
-            let Some(dialog) = DeleteInstitutionDialog::open(id, &self.ports, landed) else {
-                return false;
-            };
-            host_dialog(self.cx, |_| dialog);
-            return true;
+        let routes = self.routes;
+        let landed = InstitutionsPage::landing(self.cx);
+        let (ports, keys) = (routes.ports.clone(), routes.dialog_keys.clone());
+        match dialog {
+            Which::AddInstitution => {
+                ModuleDialog::open(self.cx, InstitutionFormPresenter::add(ports, keys), landed);
+            }
+            Which::EditInstitution(id) => {
+                let Some(form) = InstitutionFormPresenter::edit(ports, id, keys) else {
+                    return false;
+                };
+                ModuleDialog::open(self.cx, form, landed);
+            }
+            Which::DeleteInstitution(id) => {
+                let Some(delete) = DeleteInstitutionPresenter::new(ports, id, keys) else {
+                    return false;
+                };
+                ModuleDialog::open(self.cx, delete, landed);
+            }
         }
-        let Some(dialog) = InstitutionsDialog::open(dialog, &self.ports, landed) else {
-            return false;
-        };
-        host_dialog(self.cx, |_| dialog);
         true
     }
 }
@@ -50,14 +55,18 @@ impl Notify for PageRouter<'_, '_> {
     }
 }
 
-/// The Institutions module's entry point: its Settings page, built on `ports`, which the Settings
-/// View hosts as any other page.
+/// The Institutions module's entry point: its Settings page, built on `setup`'s ports, which the
+/// Settings View hosts as any other page.
 pub fn institutions_page(
-    ports: lib_institutions::SharedPorts,
-    announcer: gpui::Entity<Announcer>,
-    keymap: lib_viper::keymap::Keymap<InstitutionsPageEvent>,
+    setup: InstitutionsSetup,
+    announcer: Entity<Announcer>,
     cx: &mut gpui::App,
-) -> gpui::Entity<InstitutionsPage> {
-    use gpui::AppContext as _;
-    cx.new(|cx| InstitutionsPage::new(ports, announcer, keymap, cx))
+) -> Entity<InstitutionsPage> {
+    let InstitutionsSetup {
+        presenter,
+        ports,
+        dialog_keys,
+    } = setup;
+    let routes = InstitutionsRoutes { ports, dialog_keys };
+    cx.new(|cx| ModulePage::new(presenter, routes, &announcer, cx))
 }

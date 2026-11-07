@@ -6,37 +6,47 @@
 
 use gpui::{AnyElement, App, div, prelude::*, px};
 use lib_documents::presenter::{RemoveTypeEvent, RemoveTypePresenter, RemoveTypeViewModel};
+use lib_shell::Hint;
 
-use super::{Clicks, DocumentTypesDialog, View, send};
 use crate::form::select_field::{self, SelectFieldProps};
 use crate::form::viper::{chosen_label, drawn, labels};
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 use crate::{dialog, theme::color};
 
-fn handle(presenter: &mut RemoveTypePresenter, event: RemoveTypeEvent) {
-    send(presenter, event, RemoveTypePresenter::handle);
-}
+/// The open Dialog's clicks.
+type Clicks = ModuleDialogClicks<RemoveTypePresenter>;
 
-/// A click on the destination field opens or closes its list.
-fn click_field(dialog: &mut DocumentTypesDialog) {
-    if let View::Remove(presenter, _) = &mut dialog.view {
-        handle(presenter, RemoveTypeEvent::ToggleDestinations);
+/// The `lib-documents` Remove type Presenter's [`DialogView`], hosted in a `ModuleDialog`
+/// (ADR-0056). Its widget state is the top row of the destination list's window, which the View
+/// keeps between draws.
+impl DialogView for RemoveTypePresenter {
+    type Widgets = usize;
+
+    fn kind(_view: &RemoveTypeViewModel) -> &'static str {
+        "RemoveDocumentType"
+    }
+
+    fn render(
+        view: &RemoveTypeViewModel,
+        scroll: &mut usize,
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        render(view, scroll, clicks, cx)
+    }
+
+    /// The destination chosen and what the Dialog says, between the title and whether it would
+    /// confirm.
+    fn readback(view: &RemoveTypeViewModel) -> Vec<(&'static str, String)> {
+        framed(&view.frame, readback(view))
+    }
+
+    fn hints(view: &RemoveTypeViewModel) -> Vec<Hint> {
+        view.hints.clone()
     }
 }
 
-/// A click on row `index` of the open list.
-fn click_option(dialog: &mut DocumentTypesDialog, index: usize) {
-    if let View::Remove(presenter, _) = &mut dialog.view
-        && let Some(destination) = presenter.view_model().destination
-        && let Some(choice) = destination.options.get(index)
-    {
-        handle(
-            presenter,
-            RemoveTypeEvent::Destination(choice.value.clone()),
-        );
-    }
-}
-
-pub(super) fn render(
+fn render(
     view: &RemoveTypeViewModel,
     scroll: &mut usize,
     actions: &Clicks,
@@ -50,6 +60,11 @@ pub(super) fn render(
             .into_any_element(),
     ];
     if let Some(destination) = &view.destination {
+        let names: Vec<String> = destination
+            .options
+            .iter()
+            .map(|choice| choice.value.clone())
+            .collect();
         body.push(select_field::render(
             SelectFieldProps {
                 id: "document-type-destination".into(),
@@ -59,8 +74,16 @@ pub(super) fn render(
                 focused: true,
                 accent: false,
                 read_only: None,
-                on_field_click: actions.click(click_field),
-                on_option_click: actions.option(click_option),
+                // A click on the destination field opens or closes its list.
+                on_field_click: actions.send(RemoveTypeEvent::ToggleDestinations),
+                // A click on row `index` of the open list picks that destination.
+                on_option_click: actions.option(move |index| {
+                    names
+                        .get(index)
+                        .map(|name| RemoveTypeEvent::Destination(name.clone()))
+                        .into_iter()
+                        .collect()
+                }),
             },
             cx,
         ));
@@ -103,7 +126,7 @@ pub(super) fn render(
 }
 
 /// The destination chosen and what the Dialog says, for a test.
-pub(super) fn readback(view: &RemoveTypeViewModel) -> Vec<(&'static str, String)> {
+fn readback(view: &RemoveTypeViewModel) -> Vec<(&'static str, String)> {
     vec![
         (
             "destination",

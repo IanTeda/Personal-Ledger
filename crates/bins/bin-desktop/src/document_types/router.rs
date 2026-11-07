@@ -1,37 +1,51 @@
 //! `impl DocumentTypesRouter` for the Desktop: where the Document Types page's Presenter asks to
-//! go. A Dialog opens as an Entity in the Dialog host through the page's gpui context, which is
-//! why the Router is built for each `handle` call, and a Notice goes onto the bin's queue
-//! (`crate::notices`), which the input's `send` drains.
+//! go. A Dialog opens as a `ModuleDialog` in the Dialog host through the page's gpui context, which
+//! is why the Router is built for each `handle` call (`PageView::with_router`), and a Notice goes
+//! onto the bin's queue (`crate::notices`), which the input's `send` drains.
 
-use gpui::{Context, Entity};
-use lib_documents::{DocumentTypesDialog as Which, DocumentTypesRouter, SharedRepository};
+use gpui::{AppContext as _, Context, Entity};
+use lib_documents::presenter::{DefaultNoticePresenter, RemoveTypePresenter, TypeFormPresenter};
+use lib_documents::{DocumentTypesDialog as Which, DocumentTypesRouter};
 use lib_toast::{Notice, Notify};
 
-use super::DocumentTypesSetup;
-use super::view::dialog::DocumentTypesDialog;
-use super::view::page::DocumentTypesPage;
+use super::{DocumentTypesPage, DocumentTypesRoutes, DocumentTypesSetup};
 use crate::announcer::Announcer;
 use crate::notices::Queue;
-use crate::shell::view::dialog_entity::host_dialog;
+use crate::shell::view::dialog_entity::ModuleDialog;
+use crate::shell::view::module_page::ModulePage;
 
 pub(super) struct PageRouter<'a, 'b> {
-    pub documents: SharedRepository,
+    pub routes: &'a DocumentTypesRoutes,
     pub cx: &'a mut Context<'b, DocumentTypesPage>,
 }
 
 impl DocumentTypesRouter for PageRouter<'_, '_> {
-    /// Builds `dialog`'s Presenter on the shared repository and hosts its View; its confirmed
-    /// outcome comes back to the page through [`DocumentTypesPage::dialog_landed`].
+    /// Builds `dialog`'s Presenter on the shared repository, handed the Dialog keys, and hosts it;
+    /// its confirmed outcome comes back to the page through [`ModulePage::landing`].
     fn open_dialog(&mut self, dialog: Which) -> bool {
-        let page = self.cx.weak_entity();
-        let landed = Box::new(move |outcome, cx: &mut gpui::App| {
-            // A page that has gone has nothing to land on.
-            let _ = page.update(cx, |page, cx| page.dialog_landed(outcome, cx));
-        });
-        let Some(dialog) = DocumentTypesDialog::open(dialog, &self.documents, landed) else {
-            return false;
-        };
-        host_dialog(self.cx, |_| dialog);
+        let routes = self.routes;
+        let landed = DocumentTypesPage::landing(self.cx);
+        let (documents, keys) = (routes.documents.clone(), routes.dialog_keys.clone());
+        match dialog {
+            Which::Add => {
+                ModuleDialog::open(self.cx, TypeFormPresenter::add(documents, keys), landed);
+            }
+            Which::Edit(id) => {
+                let Some(form) = TypeFormPresenter::edit(documents, id, keys) else {
+                    return false;
+                };
+                ModuleDialog::open(self.cx, form, landed);
+            }
+            Which::Remove(id) => {
+                let Some(remove) = RemoveTypePresenter::new(documents, id, keys) else {
+                    return false;
+                };
+                ModuleDialog::open(self.cx, remove, landed);
+            }
+            Which::DefaultNotice => {
+                ModuleDialog::open(self.cx, DefaultNoticePresenter::new(keys), landed);
+            }
+        }
         true
     }
 }
@@ -50,6 +64,14 @@ pub fn document_types_page(
     announcer: Entity<Announcer>,
     cx: &mut gpui::App,
 ) -> Entity<DocumentTypesPage> {
-    use gpui::AppContext as _;
-    cx.new(|cx| DocumentTypesPage::new(setup, announcer, cx))
+    let DocumentTypesSetup {
+        presenter,
+        documents,
+        dialog_keys,
+    } = setup;
+    let routes = DocumentTypesRoutes {
+        documents,
+        dialog_keys,
+    };
+    cx.new(|cx| ModulePage::new(presenter, routes, &announcer, cx))
 }

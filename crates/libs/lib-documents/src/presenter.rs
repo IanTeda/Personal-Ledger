@@ -91,6 +91,9 @@ pub(crate) mod test_support {
     use chrono::NaiveDate;
     use lib_core::{AccountId, BillPlanId, ItemId, Money, PayeeId, TransactionId};
 
+    use lib_viper::dialog::DialogKeys;
+    use lib_viper::keymap::{BACK, Binding, KeyBindingConfig, Keymap, NEXT_FIELD, SELECT};
+
     use super::library::Lookups;
     use crate::fake::InMemoryDocuments;
     use crate::protocols::{
@@ -104,6 +107,16 @@ pub(crate) mod test_support {
     /// needs: the first explicit `init` wins, so each test calls it before reading any.
     pub fn locale() {
         lib_locale::init_with_layers("en-US", &[crate::msg::LAYER]);
+    }
+
+    /// The Dialog keys a Dialog's legend reads, bound as `lib-shell`'s defaults bind them.
+    pub fn dialog_keys() -> DialogKeys {
+        const BINDINGS: &[Binding<()>] = &[
+            Binding::hidden(BACK, "esc", ()),
+            Binding::hidden(SELECT, "enter", ()),
+            Binding::hidden(NEXT_FIELD, "tab", ()),
+        ];
+        DialogKeys::of(&Keymap::new(BINDINGS, &KeyBindingConfig::default()))
     }
 
     /// The day the Documents page's tests are seeded on.

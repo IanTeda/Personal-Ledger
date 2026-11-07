@@ -157,10 +157,6 @@ impl OpenLedger {
         let announcer = cx.new(|_| Announcer::default());
         crate::input::open_ledger(commit, announcer.clone(), cx);
         let failures = Rc::new(failures);
-        let institutions_setup = crate::institutions::InstitutionsSetup::new(
-            storage.ports.institutions.clone(),
-            keybindings,
-        );
         let units = crate::units::UnitsSetup::new(
             storage.ports.units.clone(),
             storage.ports.unit_deletion.clone(),
@@ -168,10 +164,15 @@ impl OpenLedger {
         );
         // The Dialog keymap's chords, built once, which every module Dialog's hints read.
         let dialog_keys = DialogKeys::of(&lib_shell::dialog_keymap(keybindings));
+        let institutions_setup = crate::institutions::InstitutionsSetup::new(
+            storage.ports.institutions.clone(),
+            dialog_keys.clone(),
+            keybindings,
+        );
         let tags_setup = crate::tags::TagsSetup::new(
             storage.ports.tags.clone(),
             crate::tag_removal::RemovalStores::of(&storage.ports),
-            dialog_keys,
+            dialog_keys.clone(),
             keybindings,
         );
         let payments = storage.ports.bill_payments.clone();
@@ -182,10 +183,14 @@ impl OpenLedger {
             account_deletion,
             keybindings,
         );
-        let payees_setup =
-            crate::payees::PayeesSetup::new(storage.ports.payees.clone(), keybindings);
+        let payees_setup = crate::payees::PayeesSetup::new(
+            storage.ports.payees.clone(),
+            dialog_keys.clone(),
+            keybindings,
+        );
         let document_types_setup = crate::document_types::DocumentTypesSetup::new(
             storage.ports.documents.clone(),
+            dialog_keys,
             keybindings,
         );
         // Category delete writes the Categories, Transactions, Bills, Payees and Budgets stores

@@ -2,145 +2,66 @@
 //! the typed-back name, which holds every typed key, or, when an Account names the Institution, the
 //! refusal with the Accounts' names and only a Close button.
 
-use gpui::{
-    AnyElement, App, Context, IntoElement, Render, SharedString, Window, div, prelude::*, px,
-};
-use lib_institutions::presenter::{
-    DeleteInstitutionEvent, DeleteInstitutionPresenter, DeleteInstitutionViewModel,
-};
-use lib_shell::DialogCommand;
-use lib_viper::dialog::DialogInput;
-use lib_viper::keymap::{BACK, Keymap, SELECT};
-
-use super::{Landed, Router};
-use crate::dialog;
-use crate::shell::view::dialog_entity::DialogReadback;
-use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostedDialog};
-use crate::theme::color;
+use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
+use lib_institutions::presenter::{DeleteInstitutionPresenter, DeleteInstitutionViewModel};
 use lib_shell::Hint;
+
+use crate::dialog;
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
+use crate::theme::color;
 
 const WIDTH: gpui::Pixels = px(440.0);
 
-/// The open Delete institution Dialog: its Presenter.
-pub struct DeleteInstitutionDialog {
-    ports: lib_institutions::SharedPorts,
-    presenter: DeleteInstitutionPresenter,
-    landed: Landed,
-}
+/// The open Dialog's clicks.
+type Clicks = ModuleDialogClicks<DeleteInstitutionPresenter>;
 
-impl DeleteInstitutionDialog {
-    /// The Dialog for Institution `id` on `ports`, or `None` when it is gone. A confirm hands its
-    /// outcome to `landed`.
-    pub(crate) fn open(
-        id: lib_core::InstitutionId,
-        ports: &lib_institutions::SharedPorts,
-        landed: Landed,
-    ) -> Option<Self> {
-        Some(Self {
-            ports: ports.clone(),
-            presenter: DeleteInstitutionPresenter::new(ports.clone(), id)?,
-            landed,
-        })
+/// The `lib-institutions` Delete Presenter's [`DialogView`], hosted in a `ModuleDialog`
+/// (ADR-0056).
+impl DialogView for DeleteInstitutionPresenter {
+    type Widgets = ();
+
+    fn kind(_view: &DeleteInstitutionViewModel) -> &'static str {
+        "DeleteInstitution"
     }
 
-    fn send(&mut self, event: DeleteInstitutionEvent) -> Router {
-        let mut router = Router::default();
-        self.presenter.handle(event, &mut router);
-        router
-    }
-
-    /// Hands a confirmed outcome to the page and tells the host, once the Presenter has closed
-    /// the Dialog.
-    fn closed(&self, router: Router, cx: &mut Context<'_, Self>) {
-        let Some(outcome) = router.closed() else {
-            return;
-        };
-        if let Some(outcome) = outcome {
-            (self.landed)(outcome, cx);
-        }
-        cx.emit(DialogClosed);
-    }
-}
-
-impl gpui::EventEmitter<DialogClosed> for DeleteInstitutionDialog {}
-
-impl HostedDialog for DeleteInstitutionDialog {
-    /// Every input is the Presenter's to read: typing fills the confirmation, `select` deletes
-    /// once it is typed back, or closes a refusal.
-    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
-        let router = self.send(DeleteInstitutionEvent::Input(input));
-        self.closed(router, cx);
-    }
-
-    fn can_confirm(&self) -> bool {
-        self.presenter.view_model().frame.can_confirm
-    }
-
-    /// Sends Confirm to the Presenter, which runs its Interactor. A refusal turns the Dialog into the refusal and keeps it open.
-    fn confirm(&mut self, cx: &mut Context<'_, Self>) {
-        let router = self.send(DeleteInstitutionEvent::Confirm);
-        self.closed(router, cx);
-    }
-
-    /// A cancelled Dialog has written nothing.
-    fn cancel(&mut self, cx: &mut Context<'_, Self>) {
-        let router = self.send(DeleteInstitutionEvent::Cancel);
-        self.closed(router, cx);
-    }
-
-    fn close_open_select(&mut self) -> bool {
-        false
-    }
-
-    /// Cancel, and delete while the name can be typed back.
-    fn hints(&self, keymap: &Keymap<DialogCommand>) -> Option<Vec<Hint>> {
-        let key = |command| keymap.chord(command).unwrap_or_default().to_string();
-        let mut hints = vec![Hint::new(key(BACK), lib_locale::msg::dialog_hint_cancel())];
-        if self.presenter.view_model().confirm.is_some() {
-            hints.push(Hint::new(
-                key(SELECT),
-                lib_locale::msg::dialog_hint_confirm(),
-            ));
-        }
-        Some(hints)
+    fn render(
+        view: &DeleteInstitutionViewModel,
+        _widgets: &mut (),
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        render_view(view, clicks, cx)
     }
 
     /// The title, the typed-back name, what the Dialog says and the Accounts it lists, for a test.
-    fn readback(&self, _cx: &App) -> DialogReadback {
-        let view = self.presenter.view_model();
-        DialogReadback {
-            kind: "DeleteInstitution",
-            values: vec![
-                ("title", view.frame.title.clone()),
-                (
-                    "confirm",
-                    view.confirm
-                        .as_ref()
-                        .map(|field| field.text.clone())
-                        .unwrap_or_default(),
-                ),
-                ("notice", view.notice.clone()),
-                ("accounts", view.accounts.join(", ")),
-                ("more", view.more.clone().unwrap_or_default()),
-                ("refused", view.confirm.is_none().to_string()),
-                ("can_confirm", view.frame.can_confirm.to_string()),
-            ],
-        }
+    /// A refusal has no typed-back name, and reads `refused`.
+    fn readback(view: &DeleteInstitutionViewModel) -> Vec<(&'static str, String)> {
+        framed(&view.frame, readback(view))
+    }
+
+    fn hints(view: &DeleteInstitutionViewModel) -> Vec<Hint> {
+        view.hints.clone()
     }
 }
 
-impl Render for DeleteInstitutionDialog {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let actions = DialogClicks::new(cx);
-        render_view(&self.presenter.view_model(), &actions, cx)
-    }
+/// The typed-back name, what the Dialog says and the Accounts it lists, for a test.
+fn readback(view: &DeleteInstitutionViewModel) -> Vec<(&'static str, String)> {
+    vec![
+        (
+            "confirm",
+            view.confirm
+                .as_ref()
+                .map(|field| field.text.clone())
+                .unwrap_or_default(),
+        ),
+        ("notice", view.notice.clone()),
+        ("accounts", view.accounts.join(", ")),
+        ("more", view.more.clone().unwrap_or_default()),
+        ("refused", view.confirm.is_none().to_string()),
+    ]
 }
 
-fn render_view(
-    view: &DeleteInstitutionViewModel,
-    actions: &DialogClicks<DeleteInstitutionDialog>,
-    cx: &App,
-) -> AnyElement {
+fn render_view(view: &DeleteInstitutionViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     let mut fields = vec![
         div()
             .text_size(px(13.0))

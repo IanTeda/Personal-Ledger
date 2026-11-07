@@ -3,12 +3,44 @@
 //! written.
 
 use gpui::{AnyElement, App, div, prelude::*};
-use lib_documents::presenter::DefaultNoticeViewModel;
+use lib_documents::presenter::{DefaultNoticePresenter, DefaultNoticeViewModel};
+use lib_shell::Hint;
 
-use super::Clicks;
 use crate::dialog;
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 
-pub(super) fn render(view: &DefaultNoticeViewModel, actions: &Clicks, cx: &App) -> AnyElement {
+/// The open Dialog's clicks.
+type Clicks = ModuleDialogClicks<DefaultNoticePresenter>;
+
+/// The `lib-documents` Default type notice Presenter's [`DialogView`], hosted in a `ModuleDialog`
+/// (ADR-0056).
+impl DialogView for DefaultNoticePresenter {
+    type Widgets = ();
+
+    fn kind(_view: &DefaultNoticeViewModel) -> &'static str {
+        "DefaultNotice"
+    }
+
+    fn render(
+        view: &DefaultNoticeViewModel,
+        _widgets: &mut (),
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        render(view, clicks, cx)
+    }
+
+    /// The notice's text, between the title and whether it would confirm.
+    fn readback(view: &DefaultNoticeViewModel) -> Vec<(&'static str, String)> {
+        framed(&view.frame, readback(view))
+    }
+
+    fn hints(view: &DefaultNoticeViewModel) -> Vec<Hint> {
+        view.hints.clone()
+    }
+}
+
+fn render(view: &DefaultNoticeViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     let card = div()
         .flex()
         .flex_col()
@@ -32,6 +64,6 @@ pub(super) fn render(view: &DefaultNoticeViewModel, actions: &Clicks, cx: &App) 
 }
 
 /// The notice's text, for a test.
-pub(super) fn readback(view: &DefaultNoticeViewModel) -> Vec<(&'static str, String)> {
+fn readback(view: &DefaultNoticeViewModel) -> Vec<(&'static str, String)> {
     vec![("text", view.text.clone())]
 }

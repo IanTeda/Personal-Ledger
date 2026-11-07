@@ -81,6 +81,12 @@ pub trait PageView: PagePresenter + Sized + 'static {
         None
     }
 
+    /// The event `Esc` sends to close what the page has open (a row menu), `None` while it has
+    /// nothing open, which leaves `Esc` to Settings: it steps back to the index.
+    fn escape(_view: &Self::ViewModel) -> Option<Self::Event> {
+        None
+    }
+
     /// Records where the pointer opened a row's menu, before its event is sent. The position is
     /// the View's to draw the menu at; the Presenter never sees it.
     fn menu_at(_widgets: &mut Self::Widgets, _at: Point<Pixels>) {}
@@ -165,6 +171,12 @@ impl<P: PageView> ModulePage<P> {
         if let Some(event) = P::reveal(reveal) {
             self.send(event, cx);
         }
+    }
+
+    /// `Esc` on the page: closes what [`PageView::escape`] names, if the page has it open.
+    pub fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
+        let event = P::escape(&self.view_model());
+        self.take(event, cx)
     }
 
     pub fn page_status(&self) -> PageStatus {
@@ -259,6 +271,10 @@ impl<P: SettingsPageView> Page for ModulePage<P> {
 
     fn reveal(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
         ModulePage::reveal(self, reveal, cx);
+    }
+
+    fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
+        ModulePage::escape(self, cx)
     }
 
     fn set_page_focused(&mut self, focused: bool, _cx: &mut Context<'_, Self>) {

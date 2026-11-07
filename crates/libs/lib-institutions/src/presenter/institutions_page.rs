@@ -9,6 +9,7 @@
 use lib_core::InstitutionId;
 use lib_list_cursor::{Step, resolve, step_id};
 use lib_viper::keymap::{DELETE, EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
+use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::Hint;
 
 use crate::msg;
@@ -138,8 +139,14 @@ impl InstitutionsPagePresenter {
             open_dialog: None,
         }
     }
+}
 
-    pub fn handle(&mut self, event: InstitutionsPageEvent, router: &mut dyn InstitutionsRouter) {
+impl Presenter for InstitutionsPagePresenter {
+    type Event = InstitutionsPageEvent;
+    type ViewModel = InstitutionsPageViewModel;
+    type Router<'r> = dyn InstitutionsRouter + 'r;
+
+    fn handle(&mut self, event: InstitutionsPageEvent, router: &mut Self::Router<'_>) {
         // Any event but the menu's own closes it, as a key or click elsewhere does.
         let menu = self.menu.take();
         match event {
@@ -199,7 +206,7 @@ impl InstitutionsPagePresenter {
         }
     }
 
-    pub fn view_model(&self) -> InstitutionsPageViewModel {
+    fn view_model(&self) -> InstitutionsPageViewModel {
         let rows: Vec<InstitutionLine> = self
             .ports
             .borrow()
@@ -237,7 +244,21 @@ impl InstitutionsPagePresenter {
             open_dialog: self.open_dialog,
         }
     }
+}
 
+impl PagePresenter for InstitutionsPagePresenter {
+    type Outcome = InstitutionsOutcome;
+
+    fn dialog_closed(outcome: Option<InstitutionsOutcome>) -> InstitutionsPageEvent {
+        InstitutionsPageEvent::DialogClosed(outcome)
+    }
+
+    fn keymap(&self) -> &Keymap<InstitutionsPageEvent> {
+        &self.keymap
+    }
+}
+
+impl InstitutionsPagePresenter {
     /// The Institution ids in the order added, as the rows run.
     fn ids(&self) -> Vec<InstitutionId> {
         self.ports

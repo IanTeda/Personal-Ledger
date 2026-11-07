@@ -1,110 +1,62 @@
-//! The Document Types Settings page's View: the `lib-documents` page Presenter in a gpui Entity. It
-//! looks up each key the Shell passes on, as chord text, in the Document Types keymap, turns clicks
-//! into events, draws the view model (`render.rs`). Each key and click is one input (`crate::input::send`), which
-//! commits what it wrote. The Settings View hosts it as any other page.
+//! The Document Types Settings page's View: the `lib-documents` page Presenter's [`PageView`],
+//! which the generic `ModulePage` hosts (ADR-0056). It names the page's Router, the domains it
+//! repaints on, and how it draws the view model (`render.rs`); the keymap, the take, send and
+//! handle path and the Dialogs' landing are the generic page's.
 
 mod render;
 
-use gpui::{AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Subscription};
+use gpui::{AnyElement, App, Context, IntoElement as _, Window};
 use lib_database::Domain;
-use lib_documents::presenter::{
-    DocumentTypesPageEvent, DocumentTypesPagePresenter, DocumentTypesPageViewModel,
-};
-use lib_documents::{DocumentTypesOutcome, SharedRepository};
-use lib_shell::Hint;
-use lib_viper::keymap::Keymap;
+use lib_documents::presenter::{DocumentTypesPagePresenter, DocumentTypesPageViewModel};
 
 use crate::document_types::router::PageRouter;
-use crate::document_types::{DocumentTypesSetup, SettingsDocumentTypesSnapshot};
-use crate::settings::snapshot::PageSnapshot;
-use crate::{
-    announcer::{Announcer, notify_on},
-    navigation::movement::Movement,
-    settings::{
-        SettingsPage,
-        pages::{Page, PageRowClicked},
-    },
-    shell::view::page_clicks::PresenterPage,
-    view::event::ViewEvent,
+use crate::document_types::{
+    DocumentTypesPage, DocumentTypesRoutes, SettingsDocumentTypesSnapshot,
 };
+use crate::settings::SettingsPage;
+use crate::settings::snapshot::PageSnapshot;
+use crate::shell::view::module_page::{PageDraw, PageView, SettingsPageView};
+use crate::shell::view::statusline::PageStatus;
 
-impl EventEmitter<ViewEvent> for DocumentTypesPage {}
-impl EventEmitter<PageRowClicked> for DocumentTypesPage {}
+impl PageView for DocumentTypesPagePresenter {
+    type Setup = DocumentTypesRoutes;
+    type Widgets = ();
 
-pub struct DocumentTypesPage {
-    presenter: DocumentTypesPagePresenter,
-    documents: SharedRepository,
-    keymap: Keymap<DocumentTypesPageEvent>,
-    /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
-    /// draws the page.
-    page_focused: bool,
-    /// Repaints the page when the Document Types its rows read change.
-    _types_changed: Subscription,
-}
+    /// A Document Type write: the rows read the types and their Filed file counts.
+    const REPAINTS: &'static [Domain] = &[Domain::DocumentTypes];
 
-impl DocumentTypesPage {
-    pub fn new(
-        setup: DocumentTypesSetup,
-        announcer: Entity<Announcer>,
-        cx: &mut Context<'_, Self>,
-    ) -> Self {
-        let documents = setup.documents;
-        Self {
-            presenter: DocumentTypesPagePresenter::new(documents.clone(), setup.keymap.clone()),
-            documents,
-            _types_changed: notify_on(&announcer, Domain::DocumentTypes, cx),
-            keymap: setup.keymap,
-            page_focused: false,
+    fn with_router<R>(
+        setup: &DocumentTypesRoutes,
+        cx: &mut Context<'_, DocumentTypesPage>,
+        handle: impl FnOnce(&mut Self::Router<'_>) -> R,
+    ) -> R {
+        handle(&mut PageRouter { routes: setup, cx })
+    }
+
+    fn render(
+        view: &DocumentTypesPageViewModel,
+        page: PageDraw<'_, Self>,
+        _window: &mut Window,
+        cx: &mut Context<'_, DocumentTypesPage>,
+    ) -> AnyElement {
+        render::page(view, page.clicks, page.focused, cx)
+    }
+
+    /// The Presenter's legend, rebound keys included, and its count of types.
+    fn status(view: &DocumentTypesPageViewModel) -> PageStatus {
+        PageStatus {
+            hints: view.hints.clone(),
+            right: view.scope.clone(),
         }
     }
 
-    /// The one dispatch a keymap event takes into the page, from a key ([`Page::module_key`]) or a
-    /// palette Command ([`Page::module_command`]): sent as one input.
-    fn take(&mut self, event: DocumentTypesPageEvent, cx: &mut Context<'_, Self>) -> bool {
-        self.send(event, cx);
-        true
-    }
-
-    /// A key or click on the page: `event` as one input, committed once it is handled.
-    fn send(&mut self, event: DocumentTypesPageEvent, cx: &mut Context<'_, Self>) {
-        crate::input::join_or_send(cx, |cx| self.handle(event, cx));
-    }
-
-    /// Hands `event` to the Presenter with the Desktop's Router. Inside an input already, as
-    /// [`Self::send`] or a Dialog's confirm.
-    fn handle(&mut self, event: DocumentTypesPageEvent, cx: &mut Context<'_, Self>) {
-        let mut router = PageRouter {
-            documents: self.documents.clone(),
-            cx,
-        };
-        self.presenter.handle(event, &mut router);
-        cx.notify();
-    }
-
-    /// A confirmed Dialog's outcome, handed back by the Dialog host inside the confirm's input.
-    pub(in crate::document_types) fn dialog_landed(
-        &mut self,
-        outcome: DocumentTypesOutcome,
-        cx: &mut Context<'_, Self>,
-    ) {
-        self.handle(DocumentTypesPageEvent::DialogClosed(Some(outcome)), cx);
-    }
-
-    pub fn view_model(&self) -> DocumentTypesPageViewModel {
-        self.presenter.view_model()
+    fn heading_meta(view: &DocumentTypesPageViewModel, _cx: &App) -> Option<AnyElement> {
+        Some(view.scope.clone().into_any_element())
     }
 }
 
-/// The page's clicks on its rows and their controls.
-impl PresenterPage<DocumentTypesPageEvent> for DocumentTypesPage {
-    fn send(&mut self, event: DocumentTypesPageEvent, cx: &mut Context<'_, Self>) {
-        DocumentTypesPage::send(self, event, cx);
-    }
-
-    /// A click on a row or its controls hands the page focus.
-    fn row_clicked(&mut self, cx: &mut Context<'_, Self>) {
-        cx.emit(PageRowClicked);
-    }
+impl SettingsPageView for DocumentTypesPagePresenter {
+    const PAGE: SettingsPage = SettingsPage::Documents;
 }
 
 impl PageSnapshot for SettingsDocumentTypesSnapshot {
@@ -122,49 +74,5 @@ impl PageSnapshot for SettingsDocumentTypesSnapshot {
             document_type_ids: view.rows.iter().map(|row| row.id).collect(),
             document_type_names: view.rows.into_iter().map(|row| row.name).collect(),
         }
-    }
-}
-
-impl Page for DocumentTypesPage {
-    const PAGE: SettingsPage = SettingsPage::Documents;
-
-    /// Every chord the Document Types keymap binds, the arrows, `g g` and `J`/`K` among them. The
-    /// Shell has already taken its own keys.
-    fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {
-        let Some(event) = self.keymap.event(chord) else {
-            return false;
-        };
-        self.take(event, cx)
-    }
-
-    /// A palette Command, by its keymap `command` name: the event its key sends.
-    fn module_command(&mut self, command: &str, cx: &mut Context<'_, Self>) -> bool {
-        let Some(event) = self.keymap.event_for(command) else {
-            return false;
-        };
-        self.take(event, cx)
-    }
-
-    /// A movement the keymap doesn't bind does nothing on the page, and Settings leaves the page
-    /// where it is: there is no hand-off from a Document Type.
-    fn apply_movement(&mut self, _movement: Movement, _cx: &mut Context<'_, Self>) -> bool {
-        true
-    }
-
-    /// The Presenter's legend, rebound keys included, which the `?` cheat sheet reads.
-    fn hints(&self, _cx: &App) -> Vec<Hint> {
-        self.view_model().hints
-    }
-
-    fn status_note(&self, _cx: &App) -> String {
-        self.view_model().scope
-    }
-
-    fn set_page_focused(&mut self, focused: bool, _cx: &mut Context<'_, Self>) {
-        self.page_focused = focused;
-    }
-
-    fn heading_meta(&self, _cx: &App) -> AnyElement {
-        self.view_model().scope.into_any_element()
     }
 }

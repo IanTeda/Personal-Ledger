@@ -588,6 +588,14 @@ impl<P: DialogView> ModuleDialogClicks<P> {
         on_click(self.this.clone(), move |_| events.clone())
     }
 
+    /// A click that picks a value (a segment, a chip), sending the events `events` builds from it.
+    pub fn choose<T: 'static>(&self, events: impl Fn(T) -> Vec<P::Event> + 'static) -> OnChoose<T> {
+        let this = self.this.clone();
+        Rc::new(move |value, _window: &mut Window, cx: &mut App| {
+            deliver(&this, events(value), cx);
+        })
+    }
+
     /// A click on row `index` of a list (an open select, a swatch row), sending the events
     /// `events` builds from it.
     pub fn option(&self, events: impl Fn(usize) -> Vec<P::Event> + 'static) -> OnOptionClick {
