@@ -2,26 +2,47 @@
 //! `Tab` moves between them, and `Enter` confirms once both read: the Presenter reads every key.
 
 use gpui::{AnyElement, App, div, prelude::*};
+use lib_shell::Hint;
 use lib_units::presenter::{SetPriceEvent, SetPriceField, SetPricePresenter, SetPriceViewModel};
 use lib_viper::view::TextFieldView;
 
-use super::{Clicks, UnitsDialog, View, help, refusal, send};
+use super::{help, refusal};
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 use crate::{
     dialog,
     form::dialog_fields::{label, text_field},
 };
 
-fn handle(presenter: &mut SetPricePresenter, event: SetPriceEvent) {
-    send(presenter, event, SetPricePresenter::handle);
-}
+/// The open Dialog's clicks.
+type Clicks = ModuleDialogClicks<SetPricePresenter>;
 
-fn click_text(dialog: &mut UnitsDialog, field: SetPriceField) {
-    if let View::SetPrice(presenter) = &mut dialog.view {
-        handle(presenter, SetPriceEvent::Focus(field));
+/// The `lib-units` Set price Presenter's [`DialogView`], hosted in a `ModuleDialog` (ADR-0056).
+impl DialogView for SetPricePresenter {
+    type Widgets = ();
+
+    fn kind(_view: &SetPriceViewModel) -> &'static str {
+        "SetPrice"
+    }
+
+    fn render(
+        view: &SetPriceViewModel,
+        _widgets: &mut (),
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        render(view, clicks, cx)
+    }
+
+    fn readback(view: &SetPriceViewModel) -> Vec<(&'static str, String)> {
+        framed(&view.frame, readback(view))
+    }
+
+    fn hints(view: &SetPriceViewModel) -> Vec<Hint> {
+        view.hints.clone()
     }
 }
 
-pub(super) fn render(view: &SetPriceViewModel, actions: &Clicks, cx: &App) -> AnyElement {
+fn render(view: &SetPriceViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     let text = |id: &'static str, field: &TextFieldView, which: SetPriceField| {
         text_field(
             id,
@@ -29,7 +50,7 @@ pub(super) fn render(view: &SetPriceViewModel, actions: &Clicks, cx: &App) -> An
             &field.text,
             &field.placeholder,
             field.focused,
-            UnitsDialog::on_click(actions, move |dialog| click_text(dialog, which)),
+            actions.send(SetPriceEvent::Focus(which)),
             cx,
         )
     };
@@ -72,7 +93,7 @@ pub(super) fn render(view: &SetPriceViewModel, actions: &Clicks, cx: &App) -> An
     dialog::overlay(dialog::WIDTH, false, card, cx)
 }
 
-pub(super) fn readback(view: &SetPriceViewModel) -> Vec<(&'static str, String)> {
+fn readback(view: &SetPriceViewModel) -> Vec<(&'static str, String)> {
     let field = if view.week.focused { "Week" } else { "Close" };
     vec![
         ("week", view.week.text.clone()),

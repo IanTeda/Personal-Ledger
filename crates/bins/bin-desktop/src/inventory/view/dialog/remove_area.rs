@@ -7,43 +7,45 @@
 
 use gpui::{AnyElement, App, div, prelude::*, px};
 use lib_inventory::presenter::{RemoveAreaEvent, RemoveAreaPresenter, RemoveAreaViewModel};
+use lib_shell::Hint;
 
-use super::{Clicks, InventoryDialog, View};
 use crate::dialog;
 use crate::form::colour_field::error_line;
 use crate::form::select_field::{self, SelectFieldProps};
 use crate::form::viper::{drawn, labels};
-use crate::shell::view::dialog_entity::HostRouter;
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 
-fn handle(presenter: &mut RemoveAreaPresenter, event: RemoveAreaEvent) {
-    presenter.handle(event, &mut HostRouter::default());
-}
+/// The open Dialog's clicks.
+type Clicks = ModuleDialogClicks<RemoveAreaPresenter>;
 
-fn remove(dialog: &mut InventoryDialog) -> Option<&mut RemoveAreaPresenter> {
-    match &mut dialog.view {
-        View::RemoveArea(presenter, _) => Some(presenter),
-        _ => None,
+/// The `lib-inventory` Remove area Presenter's [`DialogView`], hosted in a `ModuleDialog`
+/// (ADR-0056). Its widget state is the destination list's top row.
+impl DialogView for RemoveAreaPresenter {
+    type Widgets = usize;
+
+    fn kind(_view: &RemoveAreaViewModel) -> &'static str {
+        "RemoveArea"
+    }
+
+    fn render(
+        view: &RemoveAreaViewModel,
+        scroll: &mut usize,
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        render(view, scroll, clicks, cx)
+    }
+
+    fn readback(view: &RemoveAreaViewModel) -> Vec<(&'static str, String)> {
+        framed(&view.frame, Vec::new())
+    }
+
+    fn hints(view: &RemoveAreaViewModel) -> Vec<Hint> {
+        view.hints.clone()
     }
 }
 
-/// A click on the destination field toggles its list.
-fn click_field(dialog: &mut InventoryDialog) {
-    if let Some(presenter) = remove(dialog) {
-        handle(presenter, RemoveAreaEvent::ToggleDestinations);
-    }
-}
-
-/// A click on row `index` of the open list.
-fn click_option(dialog: &mut InventoryDialog, index: usize) {
-    if let Some(presenter) = remove(dialog)
-        && let Some(destination) = presenter.view_model().destination
-        && let Some(choice) = destination.options.get(index)
-    {
-        handle(presenter, RemoveAreaEvent::Destination(choice.value));
-    }
-}
-
-pub(super) fn render(
+fn render(
     view: &RemoveAreaViewModel,
     scroll: &mut usize,
     actions: &Clicks,
@@ -58,6 +60,11 @@ pub(super) fn render(
     ];
     body.extend(view.destination.as_ref().map(|destination| {
         let options = labels(destination);
+        let values: Vec<_> = destination
+            .options
+            .iter()
+            .map(|choice| choice.value)
+            .collect();
         let state = drawn(destination, view.destination_list, scroll);
         select_field::render(
             SelectFieldProps {
@@ -68,8 +75,14 @@ pub(super) fn render(
                 focused: destination.focused,
                 accent: false,
                 read_only: None,
-                on_field_click: actions.click(click_field),
-                on_option_click: actions.option(click_option),
+                on_field_click: actions.send(RemoveAreaEvent::ToggleDestinations),
+                on_option_click: actions.option(move |row| {
+                    values
+                        .get(row)
+                        .map(|value| RemoveAreaEvent::Destination(*value))
+                        .into_iter()
+                        .collect()
+                }),
             },
             cx,
         )

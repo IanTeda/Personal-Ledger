@@ -9,8 +9,10 @@
 
 use lib_core::{AreaId, LocationId};
 use lib_toast::{Notice, ToastKind};
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::view::{DialogFrame, TextFieldView};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::{BACK, SELECT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
+use lib_viper::view::{DialogFrame, Hint, TextFieldView};
 
 use super::{area_name_error_text, area_refusal_text};
 use crate::interactor::{AddArea, EditArea};
@@ -24,6 +26,8 @@ pub enum AreaFormEvent {
     Input(DialogInput),
     /// The name's whole new text, as its View's input holds it.
     Name(String),
+    /// Saves a valid form, as its confirm button does.
+    Confirm,
     Cancel,
 }
 
@@ -39,9 +43,12 @@ pub struct AreaFormViewModel {
     pub refusal: Option<String>,
     /// Edit, rather than Add.
     pub editing: bool,
+    /// The status line's legend while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 pub struct AreaFormPresenter {
+    keys: DialogKeys,
     inventory: SharedInventory,
     location: LocationId,
     location_name: String,
@@ -54,10 +61,16 @@ pub struct AreaFormPresenter {
 }
 
 impl AreaFormPresenter {
-    /// A fresh Add form for Location `location`, or `None` when it is gone.
-    pub fn add(inventory: &SharedInventory, location: LocationId) -> Option<Self> {
+    /// A fresh Add form for Location `location`, or `None` when it is gone. `keys` are the Dialog
+    /// keymap's chords, which its hints show.
+    pub fn add(
+        inventory: &SharedInventory,
+        location: LocationId,
+        keys: DialogKeys,
+    ) -> Option<Self> {
         let found = inventory.borrow().location(location)?;
         Some(Self {
+            keys,
             inventory: inventory.clone(),
             location,
             location_name: found.name,
@@ -69,10 +82,11 @@ impl AreaFormPresenter {
     }
 
     /// The Edit form pre-filled from Area `area`, or `None` when it is gone.
-    pub fn edit(inventory: &SharedInventory, area: AreaId) -> Option<Self> {
+    pub fn edit(inventory: &SharedInventory, area: AreaId, keys: DialogKeys) -> Option<Self> {
         let rows = inventory.borrow().inventory();
         let (location, found) = rows.area(area)?;
         Some(Self {
+            keys,
             inventory: inventory.clone(),
             location: location.id,
             location_name: location.name.clone(),
@@ -82,15 +96,17 @@ impl AreaFormPresenter {
             refusal: None,
         })
     }
+}
 
-    pub fn handle(
-        &mut self,
-        event: AreaFormEvent,
-        router: &mut dyn DialogRouter<InventoryOutcome>,
-    ) {
+impl Presenter for AreaFormPresenter {
+    type Event = AreaFormEvent;
+    type ViewModel = AreaFormViewModel;
+    type Router<'r> = dyn DialogRouter<InventoryOutcome> + 'r;
+
+    fn handle(&mut self, event: AreaFormEvent, router: &mut Self::Router<'_>) {
         match event {
             AreaFormEvent::Input(input) => match input {
-                DialogInput::Select | DialogInput::Submit => self.confirm(router),
+                DialogInput::Select | DialogInput::Submit => self.save(router),
                 DialogInput::Char(ch) => {
                     let mut name = self.name.clone();
                     name.push(ch);
@@ -104,8 +120,78 @@ impl AreaFormPresenter {
                 _ => {}
             },
             AreaFormEvent::Name(text) => self.set_name(text),
+            AreaFormEvent::Confirm => self.save(router),
             AreaFormEvent::Cancel => router.close(None),
         }
+    }
+
+    fn view_model(&self) -> AreaFormViewModel {
+        let editing = self.editing.is_some();
+        let (title, submit) = if editing {
+            (
+                msg::inventory_area_edit_title(),
+                msg::inventory_area_edit_submit(),
+            )
+        } else {
+            (
+                msg::inventory_area_add_title(),
+                msg::inventory_area_add_submit(),
+            )
+        };
+        AreaFormViewModel {
+            frame: DialogFrame {
+                title,
+                submit,
+                can_confirm: self.can_confirm(),
+                destructive: false,
+                hints: Vec::new(),
+            },
+            hints: self.hints(),
+            name: TextFieldView {
+                label: msg::inventory_area_field_name(),
+                text: self.name.clone(),
+                placeholder: msg::inventory_area_field_name_placeholder(),
+                focused: true,
+            },
+            name_error: self
+                .problem()
+                .filter(|_| self.touched)
+                .map(area_name_error_text),
+            note: msg::inventory_area_in_location(&self.location_name),
+            refusal: self.refusal.clone(),
+            editing,
+        }
+    }
+}
+
+impl DialogPresenter for AreaFormPresenter {
+    type Outcome = InventoryOutcome;
+
+    fn input_event(input: DialogInput) -> AreaFormEvent {
+        AreaFormEvent::Input(input)
+    }
+
+    fn confirm_event() -> AreaFormEvent {
+        AreaFormEvent::Confirm
+    }
+
+    fn cancel_event() -> AreaFormEvent {
+        AreaFormEvent::Cancel
+    }
+
+    fn can_confirm(&self) -> bool {
+        self.problem().is_none()
+    }
+}
+
+impl AreaFormPresenter {
+    /// Cancel and confirm, from the Dialog keys.
+    fn hints(&self) -> Vec<Hint> {
+        vec![
+            self.keys.hint(BACK, lib_locale::msg::dialog_hint_cancel()),
+            self.keys
+                .hint(SELECT, lib_locale::msg::dialog_hint_confirm()),
+        ]
     }
 
     fn set_name(&mut self, text: String) {
@@ -116,7 +202,7 @@ impl AreaFormPresenter {
 
     /// Saves the form through the Interactors, raises the Toast and closes the Dialog; a refusal
     /// stays on the form. A form that can't confirm does nothing.
-    pub fn confirm(&mut self, router: &mut dyn DialogRouter<InventoryOutcome>) {
+    fn save(&mut self, router: &mut dyn DialogRouter<InventoryOutcome>) {
         if !self.can_confirm() {
             return;
         }
@@ -163,47 +249,6 @@ impl AreaFormPresenter {
         }
     }
 
-    pub fn view_model(&self) -> AreaFormViewModel {
-        let editing = self.editing.is_some();
-        let (title, submit) = if editing {
-            (
-                msg::inventory_area_edit_title(),
-                msg::inventory_area_edit_submit(),
-            )
-        } else {
-            (
-                msg::inventory_area_add_title(),
-                msg::inventory_area_add_submit(),
-            )
-        };
-        AreaFormViewModel {
-            frame: DialogFrame {
-                title,
-                submit,
-                can_confirm: self.can_confirm(),
-                destructive: false,
-                hints: Vec::new(),
-            },
-            name: TextFieldView {
-                label: msg::inventory_area_field_name(),
-                text: self.name.clone(),
-                placeholder: msg::inventory_area_field_name_placeholder(),
-                focused: true,
-            },
-            name_error: self
-                .problem()
-                .filter(|_| self.touched)
-                .map(area_name_error_text),
-            note: msg::inventory_area_in_location(&self.location_name),
-            refusal: self.refusal.clone(),
-            editing,
-        }
-    }
-
-    fn can_confirm(&self) -> bool {
-        self.problem().is_none()
-    }
-
     /// What is wrong with the name, if anything. Checked on the Location alone, as the rule is
     /// the Location's: a scratch Inventory of just that row, so the Items aren't copied.
     fn problem(&self) -> Option<NameError> {
@@ -241,7 +286,8 @@ mod tests {
             let (inventory, shared) = sample();
             let location = inventory.borrow().locations()[0].id;
             Self {
-                presenter: AreaFormPresenter::add(&shared, location).expect("seeded"),
+                presenter: AreaFormPresenter::add(&shared, location, DialogKeys::default())
+                    .expect("seeded"),
                 router: RecordingRouter::default(),
                 inventory,
             }
@@ -251,7 +297,8 @@ mod tests {
             let (inventory, shared) = sample();
             let area = inventory.borrow().locations()[0].areas[0].id;
             Self {
-                presenter: AreaFormPresenter::edit(&shared, area).expect("seeded"),
+                presenter: AreaFormPresenter::edit(&shared, area, DialogKeys::default())
+                    .expect("seeded"),
                 router: RecordingRouter::default(),
                 inventory,
             }
@@ -271,7 +318,8 @@ mod tests {
         }
 
         fn confirm(&mut self) -> Vec<RouterCall> {
-            self.presenter.confirm(&mut self.router);
+            self.presenter
+                .handle(AreaFormEvent::Confirm, &mut self.router);
             self.router.take()
         }
 
@@ -408,8 +456,13 @@ mod tests {
     fn the_dialog_for_a_gone_row_is_not_built() {
         let (_, shared) = sample();
 
-        assert!(AreaFormPresenter::add(&shared, LocationId::seed(9_999)).is_none());
-        assert!(AreaFormPresenter::edit(&shared, AreaId::seed(9_999)).is_none());
+        assert!(
+            AreaFormPresenter::add(&shared, LocationId::seed(9_999), DialogKeys::default())
+                .is_none()
+        );
+        assert!(
+            AreaFormPresenter::edit(&shared, AreaId::seed(9_999), DialogKeys::default()).is_none()
+        );
     }
 
     #[test]

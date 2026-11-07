@@ -3,47 +3,59 @@
 //! confirms.
 
 use gpui::{AnyElement, App, div, prelude::*};
+use lib_shell::Hint;
 use lib_units::presenter::{SetBaseUnitEvent, SetBaseUnitPresenter, SetBaseUnitViewModel};
 
-use super::{Clicks, UnitsDialog, View, drawn, refusal, send};
+use super::{drawn, refusal};
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 use crate::{
     dialog,
     form::select_field::{self, SelectFieldProps},
 };
 
-fn handle(presenter: &mut SetBaseUnitPresenter, event: SetBaseUnitEvent) {
-    send(presenter, event, SetBaseUnitPresenter::handle);
-}
+/// The `lib-units` Set base unit Presenter's [`DialogView`], hosted in a `ModuleDialog`
+/// (ADR-0056). Its widget state is the open list's scroll window.
+impl DialogView for SetBaseUnitPresenter {
+    type Widgets = usize;
 
-/// A click on the select's field: its list opens or closes.
-fn click_field(dialog: &mut UnitsDialog) {
-    if let View::SetBaseUnit(presenter, _) = &mut dialog.view {
-        handle(presenter, SetBaseUnitEvent::ToggleList);
+    fn kind(_view: &SetBaseUnitViewModel) -> &'static str {
+        "SetBaseUnit"
+    }
+
+    fn render(
+        view: &SetBaseUnitViewModel,
+        scroll: &mut usize,
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        render(view, scroll, clicks, cx)
+    }
+
+    fn readback(view: &SetBaseUnitViewModel) -> Vec<(&'static str, String)> {
+        framed(&view.frame, readback(view))
+    }
+
+    fn hints(view: &SetBaseUnitViewModel) -> Vec<Hint> {
+        view.hints.clone()
     }
 }
 
-/// A click on row `index` of the open list.
-fn click_option(dialog: &mut UnitsDialog, index: usize) {
-    if let View::SetBaseUnit(presenter, _) = &mut dialog.view {
-        let chosen = presenter
-            .view_model()
-            .base
-            .options
-            .get(index)
-            .map(|choice| choice.value);
-        if let Some(id) = chosen {
-            handle(presenter, SetBaseUnitEvent::Choose(id));
-        }
-    }
-}
+/// The open Dialog's clicks.
+type Clicks = ModuleDialogClicks<SetBaseUnitPresenter>;
 
-pub(super) fn render(
+fn render(
     view: &SetBaseUnitViewModel,
     scroll: &mut usize,
     actions: &Clicks,
     cx: &App,
 ) -> AnyElement {
     let options = super::labels(&view.base);
+    let ids: Vec<_> = view
+        .base
+        .options
+        .iter()
+        .map(|choice| choice.value)
+        .collect();
     let mut fields = vec![select_field::render(
         SelectFieldProps {
             id: "set-base-unit-select".into(),
@@ -53,8 +65,13 @@ pub(super) fn render(
             focused: view.base.focused,
             accent: false,
             read_only: None,
-            on_field_click: UnitsDialog::on_click(actions, click_field),
-            on_option_click: UnitsDialog::on_option(actions, click_option),
+            on_field_click: actions.send(SetBaseUnitEvent::ToggleList),
+            on_option_click: actions.option(move |row| {
+                ids.get(row)
+                    .map(|id| SetBaseUnitEvent::Choose(*id))
+                    .into_iter()
+                    .collect()
+            }),
         },
         cx,
     )];
@@ -83,7 +100,7 @@ pub(super) fn render(
     dialog::overlay(dialog::WIDTH, false, card, cx)
 }
 
-pub(super) fn readback(view: &SetBaseUnitViewModel) -> Vec<(&'static str, String)> {
+fn readback(view: &SetBaseUnitViewModel) -> Vec<(&'static str, String)> {
     vec![
         ("base", super::chosen_label(&view.base).unwrap_or_default()),
         ("options", super::labels(&view.base).join("|")),

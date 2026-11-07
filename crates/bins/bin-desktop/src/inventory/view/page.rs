@@ -18,7 +18,9 @@ use lib_inventory::presenter::{
     InventoryPageEvent, InventoryPagePresenter, InventoryPageViewModel, MenuAction,
 };
 use lib_inventory::{InventoryOutcome, InventoryRow, InventoryUnits as _, SharedInventory};
+use lib_viper::dialog::DialogKeys;
 use lib_viper::keymap::Keymap;
+use lib_viper::presenter::Presenter as _;
 
 use lib_shell::Hint;
 
@@ -44,6 +46,7 @@ pub struct InventoryPage {
     inventory: SharedInventory,
     /// The Units and Documents the Dialogs quote, over the stores (#1014).
     reads: StoredInventoryReads,
+    dialog_keys: DialogKeys,
     keymap: Keymap<InventoryPageEvent>,
     /// Where the open row menu was asked for, in window coordinates.
     menu_at: Point<Pixels>,
@@ -67,6 +70,7 @@ impl InventoryPage {
             presenter: InventoryPagePresenter::new(inventory.clone(), setup.keymap.clone()),
             inventory,
             reads: setup.reads,
+            dialog_keys: setup.dialog_keys,
             _inventory_changed: notify_on(&announcer, Domain::Inventory, cx),
             _units_changed: notify_on(&announcer, Domain::Units, cx),
             keymap: setup.keymap,
@@ -95,6 +99,7 @@ impl InventoryPage {
         let mut router = PageRouter {
             inventory: self.inventory.clone(),
             reads: self.reads.clone(),
+            dialog_keys: self.dialog_keys.clone(),
             cx,
         };
         self.presenter.handle(event, &mut router);

@@ -10,8 +10,10 @@
 
 use lib_core::LocationId;
 use lib_toast::{Notice, ToastKind};
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::view::{DialogFrame, TextFieldView, count};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::{BACK, SELECT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
+use lib_viper::view::{DialogFrame, Hint, TextFieldView, count};
 
 use super::location_refusal_text;
 use crate::interactor::RemoveLocation;
@@ -22,8 +24,14 @@ use crate::protocols::{
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RemoveLocationEvent {
+    /// A Dialog command or typed key: `select` and `submit` remove the Location once the Dialog
+    /// allows it, and typing goes to the typed-back name, the only field, which an empty Location
+    /// doesn't have.
+    Input(DialogInput),
     /// The confirmation field's whole new text.
     ConfirmText(String),
+    /// Removes the Location once the Dialog allows it, as its confirm button does.
+    Confirm,
     Cancel,
 }
 
@@ -37,9 +45,12 @@ pub struct RemoveLocationViewModel {
     pub confirm: Option<TextFieldView>,
     /// Why the last confirm was refused.
     pub refusal: Option<String>,
+    /// The status line's legend while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 pub struct RemoveLocationPresenter {
+    keys: DialogKeys,
     inventory: SharedInventory,
     id: LocationId,
     name: String,
@@ -53,14 +64,17 @@ pub struct RemoveLocationPresenter {
 
 impl RemoveLocationPresenter {
     /// The Dialog for Location `id`, its Documents read from `usage`, or `None` when it is gone.
+    /// `keys` are the Dialog keymap's chords, which its hints show.
     pub fn new(
         inventory: &SharedInventory,
         usage: &dyn LocationUsage,
         id: LocationId,
+        keys: DialogKeys,
     ) -> Option<Self> {
         let rows = inventory.borrow().inventory();
         let location = rows.location(id)?;
         Some(Self {
+            keys,
             inventory: inventory.clone(),
             id,
             name: location.name.clone(),
@@ -71,25 +85,93 @@ impl RemoveLocationPresenter {
             refusal: None,
         })
     }
+}
 
-    pub fn handle(
-        &mut self,
-        event: RemoveLocationEvent,
-        router: &mut dyn DialogRouter<InventoryOutcome>,
-    ) {
+impl Presenter for RemoveLocationPresenter {
+    type Event = RemoveLocationEvent;
+    type ViewModel = RemoveLocationViewModel;
+    type Router<'r> = dyn DialogRouter<InventoryOutcome> + 'r;
+
+    fn handle(&mut self, event: RemoveLocationEvent, router: &mut Self::Router<'_>) {
         match event {
+            RemoveLocationEvent::Input(input) => self.input(input, router),
             RemoveLocationEvent::ConfirmText(text) => self.confirm_text = text,
+            RemoveLocationEvent::Confirm => self.save(router),
             RemoveLocationEvent::Cancel => router.close(None),
         }
+    }
+
+    fn view_model(&self) -> RemoveLocationViewModel {
+        let name = self.name.as_str();
+        let holds_something = self.holds_something();
+        RemoveLocationViewModel {
+            frame: DialogFrame {
+                title: msg::inventory_dialog_remove_title(),
+                submit: msg::inventory_dialog_remove_submit(),
+                can_confirm: self.can_confirm(),
+                destructive: holds_something,
+                hints: Vec::new(),
+            },
+            hints: self.hints(),
+            warning: if holds_something {
+                msg::inventory_remove_warning(
+                    name,
+                    &msg::inventory_count_areas(count(self.areas)),
+                    &msg::inventory_count_items(count(self.items)),
+                    &msg::inventory_count_documents(count(self.documents)),
+                )
+            } else {
+                msg::inventory_remove_plain(name)
+            },
+            confirm: holds_something.then(|| TextFieldView {
+                label: msg::inventory_remove_confirm_label(name),
+                text: self.confirm_text.clone(),
+                placeholder: self.name.clone(),
+                focused: true,
+            }),
+            refusal: self.refusal.clone(),
+        }
+    }
+}
+
+impl DialogPresenter for RemoveLocationPresenter {
+    type Outcome = InventoryOutcome;
+
+    fn input_event(input: DialogInput) -> RemoveLocationEvent {
+        RemoveLocationEvent::Input(input)
+    }
+
+    fn confirm_event() -> RemoveLocationEvent {
+        RemoveLocationEvent::Confirm
+    }
+
+    fn cancel_event() -> RemoveLocationEvent {
+        RemoveLocationEvent::Cancel
+    }
+
+    fn can_confirm(&self) -> bool {
+        // Always for an empty Location, else once the name is typed exactly.
+        !self.holds_something() || self.confirm_text == self.name
+    }
+}
+
+impl RemoveLocationPresenter {
+    /// Cancel and confirm, from the Dialog keys.
+    fn hints(&self) -> Vec<Hint> {
+        vec![
+            self.keys.hint(BACK, lib_locale::msg::dialog_hint_cancel()),
+            self.keys
+                .hint(SELECT, lib_locale::msg::dialog_hint_confirm()),
+        ]
     }
 
     /// Reads a Dialog command or typed key: `select` and `submit` remove the Location once the
     /// Dialog allows it, and typing goes to the typed-back name, the only field, which an empty
     /// Location doesn't have.
-    pub fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<InventoryOutcome>) {
+    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<InventoryOutcome>) {
         let typed_back = self.holds_something();
         match input {
-            DialogInput::Select | DialogInput::Submit => self.confirm(router),
+            DialogInput::Select | DialogInput::Submit => self.save(router),
             DialogInput::Char(ch) if typed_back => self.confirm_text.push(ch),
             DialogInput::Backspace if typed_back => {
                 self.confirm_text.pop();
@@ -100,7 +182,7 @@ impl RemoveLocationPresenter {
 
     /// Removes the Location once the Dialog allows it, raises the Toast and
     /// closes the Dialog; a refusal stays in the Dialog.
-    pub fn confirm(&mut self, router: &mut dyn DialogRouter<InventoryOutcome>) {
+    fn save(&mut self, router: &mut dyn DialogRouter<InventoryOutcome>) {
         if !self.can_confirm() {
             return;
         }
@@ -133,45 +215,9 @@ impl RemoveLocationPresenter {
         }
     }
 
-    pub fn view_model(&self) -> RemoveLocationViewModel {
-        let name = self.name.as_str();
-        let holds_something = self.holds_something();
-        RemoveLocationViewModel {
-            frame: DialogFrame {
-                title: msg::inventory_dialog_remove_title(),
-                submit: msg::inventory_dialog_remove_submit(),
-                can_confirm: self.can_confirm(),
-                destructive: holds_something,
-                hints: Vec::new(),
-            },
-            warning: if holds_something {
-                msg::inventory_remove_warning(
-                    name,
-                    &msg::inventory_count_areas(count(self.areas)),
-                    &msg::inventory_count_items(count(self.items)),
-                    &msg::inventory_count_documents(count(self.documents)),
-                )
-            } else {
-                msg::inventory_remove_plain(name)
-            },
-            confirm: holds_something.then(|| TextFieldView {
-                label: msg::inventory_remove_confirm_label(name),
-                text: self.confirm_text.clone(),
-                placeholder: self.name.clone(),
-                focused: true,
-            }),
-            refusal: self.refusal.clone(),
-        }
-    }
-
     /// Only a Location holding Areas or Items asks for its name back.
     fn holds_something(&self) -> bool {
         self.areas > 0 || self.items > 0
-    }
-
-    /// Always for an empty Location, else once the name is typed exactly.
-    fn can_confirm(&self) -> bool {
-        !self.holds_something() || self.confirm_text == self.name
     }
 }
 
@@ -199,7 +245,8 @@ mod tests {
             let mut usage = InMemoryUsage::default();
             usage.uses.insert(id, LocationUse { documents });
             Self {
-                presenter: RemoveLocationPresenter::new(&shared, &usage, id).expect("seeded"),
+                presenter: RemoveLocationPresenter::new(&shared, &usage, id, DialogKeys::default())
+                    .expect("seeded"),
                 router: RecordingRouter::default(),
                 inventory,
             }
@@ -217,7 +264,8 @@ mod tests {
         }
 
         fn confirm(&mut self) -> Vec<RouterCall> {
-            self.presenter.confirm(&mut self.router);
+            self.presenter
+                .handle(RemoveLocationEvent::Confirm, &mut self.router);
             self.router.take()
         }
 
@@ -232,8 +280,13 @@ mod tests {
             }
             let id = inventory.borrow().locations()[index].id;
             Self {
-                presenter: RemoveLocationPresenter::new(&shared, &InMemoryUsage::default(), id)
-                    .expect("seeded"),
+                presenter: RemoveLocationPresenter::new(
+                    &shared,
+                    &InMemoryUsage::default(),
+                    id,
+                    DialogKeys::default(),
+                )
+                .expect("seeded"),
                 router: RecordingRouter::default(),
                 inventory,
             }
@@ -351,7 +404,8 @@ mod tests {
             RemoveLocationPresenter::new(
                 &shared,
                 &InMemoryUsage::default(),
-                LocationId::seed(9_999)
+                LocationId::seed(9_999),
+                DialogKeys::default()
             )
             .is_none()
         );

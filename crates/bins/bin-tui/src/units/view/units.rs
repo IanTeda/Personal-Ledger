@@ -29,6 +29,7 @@ use lib_units::presenter::{
 };
 use lib_units::{SharedPorts, UnitId};
 use lib_viper::keymap::Keymap;
+use lib_viper::presenter::Presenter as _;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},

@@ -6,8 +6,9 @@
 //! keychain's, off this module (ADR-0043).
 
 use lib_core::PriceSourceId;
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView, count};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::presenter::{DialogPresenter, Presenter};
+use lib_viper::view::{Choice, DialogFrame, Hint, SelectView, TextFieldView, count};
 use secrecy::{ExposeSecret as _, SecretString};
 
 use super::{UnitsOutcome, cycle, step, updates_choices};
@@ -96,6 +97,8 @@ pub struct PriceSourceFormViewModel {
     /// The fields on screen, in `Tab` order.
     pub fields: Vec<PriceSourceField>,
     pub refusal: Option<String>,
+    /// The status line's legend while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -122,6 +125,7 @@ enum Mode {
 
 pub struct PriceSourceFormPresenter {
     ports: SharedPorts,
+    keys: DialogKeys,
     mode: Mode,
     name: String,
     updates: Updates,
@@ -143,9 +147,11 @@ pub struct PriceSourceFormPresenter {
 impl PriceSourceFormPresenter {
     /// An empty Add price source form, for a Custom source: the built-ins are always listed, so
     /// there is none to add.
-    pub fn add(ports: SharedPorts) -> Self {
+    /// `keys` are the Dialog keymap's chords, which its hints show.
+    pub fn add(ports: SharedPorts, keys: DialogKeys) -> Self {
         Self {
             ports,
+            keys,
             mode: Mode::AddCustom,
             name: String::new(),
             updates: Updates::Daily,
@@ -164,8 +170,8 @@ impl PriceSourceFormPresenter {
     /// The Edit form for source `id`: a built-in's name and Updates, or a Custom source's every
     /// field but the key, which was never stored. `None` for Manual entry, which has nothing to
     /// edit, or a source that is gone.
-    pub fn edit(ports: SharedPorts, id: PriceSourceId) -> Option<Self> {
-        let mut form = Self::add(ports.clone());
+    pub fn edit(ports: SharedPorts, id: PriceSourceId, keys: DialogKeys) -> Option<Self> {
+        let mut form = Self::add(ports.clone(), keys);
         let ports = ports.borrow();
         let catalogue = ports.source_catalogue();
         let source = catalogue.source(id)?;
@@ -190,12 +196,14 @@ impl PriceSourceFormPresenter {
         drop(ports);
         Some(form)
     }
+}
 
-    pub fn handle(
-        &mut self,
-        event: PriceSourceFormEvent,
-        router: &mut dyn DialogRouter<UnitsOutcome>,
-    ) {
+impl Presenter for PriceSourceFormPresenter {
+    type Event = PriceSourceFormEvent;
+    type ViewModel = PriceSourceFormViewModel;
+    type Router<'r> = dyn DialogRouter<UnitsOutcome> + 'r;
+
+    fn handle(&mut self, event: PriceSourceFormEvent, router: &mut Self::Router<'_>) {
         match event {
             PriceSourceFormEvent::Input(input) => self.input(input, router),
             PriceSourceFormEvent::Text(field, text) => {
@@ -219,64 +227,12 @@ impl PriceSourceFormPresenter {
                     self.focused = field;
                 }
             }
-            PriceSourceFormEvent::Confirm => self.confirm(router),
+            PriceSourceFormEvent::Confirm => self.save(router),
             PriceSourceFormEvent::Cancel => router.close(None),
         }
     }
 
-    /// Reads `input` for the focused field, as the Desktop sends it.
-    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<UnitsOutcome>) {
-        match (input, self.focused) {
-            (DialogInput::NextField, _) => self.cycle_focus(false),
-            (DialogInput::PreviousField, _) => self.cycle_focus(true),
-            (DialogInput::Select | DialogInput::Submit, _) => self.confirm(router),
-            (DialogInput::Left, _) => self.step_focused(-1),
-            (DialogInput::Right, _) => self.step_focused(1),
-            (DialogInput::Char(ch), PriceSourceField::ApiKey) => {
-                let mut key = self.api_key.expose_secret().to_string();
-                key.push(ch);
-                self.api_key = SecretString::from(key);
-            }
-            (DialogInput::Backspace, PriceSourceField::ApiKey) => {
-                let mut key = self.api_key.expose_secret().to_string();
-                key.pop();
-                self.api_key = SecretString::from(key);
-            }
-            // A control swallows typing, so it never reaches a text field.
-            (DialogInput::Char(ch), field) => {
-                if let Some(text) = self.text_mut(field) {
-                    text.push(ch);
-                }
-            }
-            (DialogInput::Backspace, field) => {
-                if let Some(text) = self.text_mut(field) {
-                    text.pop();
-                }
-            }
-            _ => {}
-        }
-    }
-
-    /// `delta` on the focused control, stopping at either end.
-    fn step_focused(&mut self, delta: isize) {
-        match self.focused {
-            PriceSourceField::Updates => {
-                let options: Vec<_> = updates_choices().iter().map(|c| c.value).collect();
-                self.updates = step(&options, self.updates, delta);
-            }
-            PriceSourceField::Auth => {
-                let auth = step(&[AuthChoice::None, AuthChoice::ApiKey], self.auth, delta);
-                self.set_auth(auth);
-            }
-            _ => {}
-        }
-    }
-
-    fn cycle_focus(&mut self, backward: bool) {
-        self.focused = cycle(self.order(), self.focused, backward, |f| self.shows(f));
-    }
-
-    pub fn view_model(&self) -> PriceSourceFormViewModel {
+    fn view_model(&self) -> PriceSourceFormViewModel {
         let text = |label, text: &str, placeholder, field| TextFieldView {
             label,
             text: text.to_string(),
@@ -363,6 +319,7 @@ impl PriceSourceFormPresenter {
                 destructive: false,
                 hints: super::form_hints(),
             },
+            hints: super::dialog_legend(&self.keys, &super::form_hints()),
             name: text(
                 lib_locale::msg::column_name(),
                 &self.name,
@@ -394,6 +351,80 @@ impl PriceSourceFormPresenter {
                 .collect(),
             refusal: self.refusal.clone(),
         }
+    }
+}
+
+impl DialogPresenter for PriceSourceFormPresenter {
+    type Outcome = UnitsOutcome;
+
+    fn input_event(input: DialogInput) -> PriceSourceFormEvent {
+        PriceSourceFormEvent::Input(input)
+    }
+
+    fn confirm_event() -> PriceSourceFormEvent {
+        PriceSourceFormEvent::Confirm
+    }
+
+    fn cancel_event() -> PriceSourceFormEvent {
+        PriceSourceFormEvent::Cancel
+    }
+
+    fn can_confirm(&self) -> bool {
+        self.is_valid()
+    }
+}
+
+impl PriceSourceFormPresenter {
+    /// Reads `input` for the focused field, as the Desktop sends it.
+    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<UnitsOutcome>) {
+        match (input, self.focused) {
+            (DialogInput::NextField, _) => self.cycle_focus(false),
+            (DialogInput::PreviousField, _) => self.cycle_focus(true),
+            (DialogInput::Select | DialogInput::Submit, _) => self.save(router),
+            (DialogInput::Left, _) => self.step_focused(-1),
+            (DialogInput::Right, _) => self.step_focused(1),
+            (DialogInput::Char(ch), PriceSourceField::ApiKey) => {
+                let mut key = self.api_key.expose_secret().to_string();
+                key.push(ch);
+                self.api_key = SecretString::from(key);
+            }
+            (DialogInput::Backspace, PriceSourceField::ApiKey) => {
+                let mut key = self.api_key.expose_secret().to_string();
+                key.pop();
+                self.api_key = SecretString::from(key);
+            }
+            // A control swallows typing, so it never reaches a text field.
+            (DialogInput::Char(ch), field) => {
+                if let Some(text) = self.text_mut(field) {
+                    text.push(ch);
+                }
+            }
+            (DialogInput::Backspace, field) => {
+                if let Some(text) = self.text_mut(field) {
+                    text.pop();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// `delta` on the focused control, stopping at either end.
+    fn step_focused(&mut self, delta: isize) {
+        match self.focused {
+            PriceSourceField::Updates => {
+                let options: Vec<_> = updates_choices().iter().map(|c| c.value).collect();
+                self.updates = step(&options, self.updates, delta);
+            }
+            PriceSourceField::Auth => {
+                let auth = step(&[AuthChoice::None, AuthChoice::ApiKey], self.auth, delta);
+                self.set_auth(auth);
+            }
+            _ => {}
+        }
+    }
+
+    fn cycle_focus(&mut self, backward: bool) {
+        self.focused = cycle(self.order(), self.focused, backward, |f| self.shows(f));
     }
 
     fn is_custom(&self) -> bool {
@@ -519,7 +550,7 @@ impl PriceSourceFormPresenter {
         ))
     }
 
-    fn confirm(&mut self, router: &mut dyn DialogRouter<UnitsOutcome>) {
+    fn save(&mut self, router: &mut dyn DialogRouter<UnitsOutcome>) {
         if !self.is_valid() {
             return;
         }
@@ -609,7 +640,7 @@ mod tests {
     #[test]
     fn a_custom_source_needs_its_name_address_request_and_price_path_and_saves_trimmed() {
         let (ports, shared) = sample();
-        let mut form = PriceSourceFormPresenter::add(shared);
+        let mut form = PriceSourceFormPresenter::add(shared, DialogKeys::default());
         assert!(!form.view_model().frame.can_confirm);
         assert_eq!(form.view_model().frame.title, "Add price source");
 
@@ -636,7 +667,7 @@ mod tests {
     #[test]
     fn api_key_authentication_shows_the_key_fields_and_needs_them_on_a_new_source() {
         let (ports, shared) = sample();
-        let mut form = PriceSourceFormPresenter::add(shared);
+        let mut form = PriceSourceFormPresenter::add(shared, DialogKeys::default());
         send(&mut form, filled());
         assert!(form.view_model().endpoint.unwrap().key_param.is_none());
 
@@ -674,7 +705,7 @@ mod tests {
     #[test]
     fn tab_skips_the_hidden_key_fields_and_choosing_none_moves_focus_off_them() {
         let (_, shared) = sample();
-        let mut form = PriceSourceFormPresenter::add(shared);
+        let mut form = PriceSourceFormPresenter::add(shared, DialogKeys::default());
         send(
             &mut form,
             vec![PriceSourceFormEvent::Focus(PriceSourceField::Auth)],
@@ -700,7 +731,8 @@ mod tests {
     fn editing_a_built_in_saves_only_its_name_and_updates_and_shows_its_endpoint_read_only() {
         let (ports, shared) = sample();
         ports.borrow_mut().units.units[1].link.source_id = COINGECKO;
-        let mut form = PriceSourceFormPresenter::edit(shared, COINGECKO).unwrap();
+        let mut form =
+            PriceSourceFormPresenter::edit(shared, COINGECKO, DialogKeys::default()).unwrap();
         let view = form.view_model();
         assert_eq!(view.frame.title, "Edit price source — CoinGecko");
         assert_eq!(view.endpoint, None);
@@ -736,7 +768,7 @@ mod tests {
     #[test]
     fn editing_a_custom_source_prefills_all_but_the_key_and_needs_no_key_retyped() {
         let (ports, shared) = sample();
-        let mut add = PriceSourceFormPresenter::add(shared.clone());
+        let mut add = PriceSourceFormPresenter::add(shared.clone(), DialogKeys::default());
         let mut events = filled();
         events.extend([
             PriceSourceFormEvent::Auth(AuthChoice::ApiKey),
@@ -747,7 +779,7 @@ mod tests {
         send(&mut add, events);
         let id = custom_records(&ports.borrow())[0].id;
 
-        let mut edit = PriceSourceFormPresenter::edit(shared, id).unwrap();
+        let mut edit = PriceSourceFormPresenter::edit(shared, id, DialogKeys::default()).unwrap();
         let view = edit.view_model();
         let endpoint = view.endpoint.unwrap();
         assert_eq!(endpoint.address.text, "https://www.alphavantage.co");
@@ -777,14 +809,17 @@ mod tests {
     #[test]
     fn manual_entry_has_no_edit_form_and_a_source_removed_under_one_is_refused_as_text() {
         let (ports, shared) = sample();
-        assert!(PriceSourceFormPresenter::edit(shared.clone(), MANUAL_ENTRY).is_none());
+        assert!(
+            PriceSourceFormPresenter::edit(shared.clone(), MANUAL_ENTRY, DialogKeys::default())
+                .is_none()
+        );
 
-        let mut add = PriceSourceFormPresenter::add(shared.clone());
+        let mut add = PriceSourceFormPresenter::add(shared.clone(), DialogKeys::default());
         let mut events = filled();
         events.push(PriceSourceFormEvent::Confirm);
         send(&mut add, events);
         let id = custom_records(&ports.borrow())[0].id;
-        let mut edit = PriceSourceFormPresenter::edit(shared, id).unwrap();
+        let mut edit = PriceSourceFormPresenter::edit(shared, id, DialogKeys::default()).unwrap();
         ports.borrow_mut().price_sources.records.clear();
 
         assert_eq!(send(&mut edit, vec![PriceSourceFormEvent::Confirm]), []);
@@ -797,7 +832,7 @@ mod tests {
     #[test]
     fn the_form_takes_next_field_choose_and_cancel() {
         let (_, shared) = sample();
-        let view = PriceSourceFormPresenter::add(shared).view_model();
+        let view = PriceSourceFormPresenter::add(shared, DialogKeys::default()).view_model();
 
         assert_eq!(
             hints(&view.frame),
@@ -812,7 +847,7 @@ mod tests {
     #[test]
     fn dialog_input_types_into_a_text_field_and_left_right_step_updates_swallowing_typing() {
         let (_, shared) = sample();
-        let mut form = PriceSourceFormPresenter::add(shared);
+        let mut form = PriceSourceFormPresenter::add(shared, DialogKeys::default());
         send(
             &mut form,
             vec![
@@ -837,7 +872,7 @@ mod tests {
     #[test]
     fn a_typed_api_key_is_held_and_saved_but_never_shown() {
         let (ports, shared) = sample();
-        let mut form = PriceSourceFormPresenter::add(shared);
+        let mut form = PriceSourceFormPresenter::add(shared, DialogKeys::default());
         let mut events = filled();
         events.push(PriceSourceFormEvent::Auth(AuthChoice::ApiKey));
         events.push(typed(PriceSourceField::KeyParam, "apikey"));

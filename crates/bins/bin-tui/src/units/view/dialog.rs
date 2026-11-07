@@ -18,8 +18,9 @@ use lib_units::presenter::{
     UnitsOutcome,
 };
 use lib_units::{SharedPorts, UnitsDialog as Which};
-use lib_viper::dialog::DialogRouter;
+use lib_viper::dialog::{DialogKeys, DialogRouter};
 use lib_viper::keymap::{Keymap, SELECT};
+use lib_viper::presenter::Presenter as _;
 use lib_viper::view::{DialogFrame, SelectView, TextFieldView};
 use ratatui::{
     Frame,
@@ -76,22 +77,26 @@ impl Dialog {
         now: &lib_units::presenter::Clock,
     ) -> Option<Self> {
         let ports = ports.clone();
+        // The TUI's footer reads its own hints from the keymap, so the Presenters' stay empty.
+        let keys = DialogKeys::default();
         Some(match which {
-            Which::AddUnit => Self::UnitForm(UnitFormPresenter::add(ports)),
-            Which::EditUnit(id) => Self::UnitForm(UnitFormPresenter::edit(ports, id)?),
-            Which::DeleteUnit(id) => Self::DeleteUnit(DeleteUnitPresenter::new(ports, id)?),
-            Which::SetBaseUnit => Self::SetBaseUnit(SetBaseUnitPresenter::new(ports)),
-            Which::SetPrice(id) => Self::SetPrice(SetPricePresenter::new(ports, now.clone(), id)?),
+            Which::AddUnit => Self::UnitForm(UnitFormPresenter::add(ports, keys)),
+            Which::EditUnit(id) => Self::UnitForm(UnitFormPresenter::edit(ports, id, keys)?),
+            Which::DeleteUnit(id) => Self::DeleteUnit(DeleteUnitPresenter::new(ports, id, keys)?),
+            Which::SetBaseUnit => Self::SetBaseUnit(SetBaseUnitPresenter::new(ports, keys)),
+            Which::SetPrice(id) => {
+                Self::SetPrice(SetPricePresenter::new(ports, now.clone(), id, keys)?)
+            }
             Which::AddPriceSource => Self::PriceSourceForm(
-                PriceSourceFormPresenter::add(ports),
+                PriceSourceFormPresenter::add(ports, keys),
                 SecretString::from(String::new()),
             ),
             Which::EditPriceSource(id) => Self::PriceSourceForm(
-                PriceSourceFormPresenter::edit(ports, id)?,
+                PriceSourceFormPresenter::edit(ports, id, keys)?,
                 SecretString::from(String::new()),
             ),
             Which::DeletePriceSource(id) => {
-                Self::DeletePriceSource(DeletePriceSourcePresenter::new(ports, id)?)
+                Self::DeletePriceSource(DeletePriceSourcePresenter::new(ports, id, keys)?)
             }
         })
     }

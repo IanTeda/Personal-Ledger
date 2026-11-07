@@ -6,12 +6,15 @@
 //! read-only, with the reason in the usage notice.
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
-use lib_accounts::presenter::{AccountField, AccountFormEvent, AccountFormViewModel};
-
+use lib_accounts::presenter::{
+    AccountField, AccountFormEvent, AccountFormPresenter, AccountFormViewModel,
+};
+use lib_shell::Hint;
 use lib_viper::view::SelectList;
 
-use super::{AccountsDialog, Clicks};
+use crate::form::select_field::OnOptionClick;
 use crate::form::viper::{chosen_label, drawn, labels};
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 use crate::{
     dialog,
     form::{
@@ -25,40 +28,40 @@ use crate::{
 
 const WIDTH: gpui::Pixels = px(440.0);
 
-/// A click on a text field focuses it, closing an open list.
-fn click_text(dialog: &mut AccountsDialog, field: AccountField) {
-    dialog.send(AccountFormEvent::Focus(field));
-}
+/// The open form's clicks.
+type Clicks = ModuleDialogClicks<AccountFormPresenter>;
 
-/// A click on a select's closed field focuses it and toggles its list. A field that refuses focus
-/// takes no click.
-fn click_select(dialog: &mut AccountsDialog, field: AccountField) {
-    dialog.send(AccountFormEvent::ToggleList(field));
-}
+/// The `lib-accounts` form Presenter's [`DialogView`], hosted in a `ModuleDialog` (ADR-0056). Its
+/// widget state is the top row of each select's list window (Institution, Type, Unit), which the
+/// View keeps between draws.
+impl DialogView for AccountFormPresenter {
+    type Widgets = [usize; 3];
 
-/// A click on row `index` of an open list.
-fn click_option(dialog: &mut AccountsDialog, field: AccountField, index: usize) {
-    let view = dialog.presenter.view_model();
-    let event = match field {
-        AccountField::Institution => view
-            .institution
-            .options
-            .get(index)
-            .map(|choice| AccountFormEvent::Institution(choice.value)),
-        AccountField::Type => view
-            .account_type
-            .options
-            .get(index)
-            .map(|choice| AccountFormEvent::Type(choice.value.clone())),
-        AccountField::Unit => view
-            .unit
-            .options
-            .get(index)
-            .map(|choice| AccountFormEvent::Unit(choice.value)),
-        _ => None,
-    };
-    if let Some(event) = event {
-        dialog.send(event);
+    fn kind(view: &AccountFormViewModel) -> &'static str {
+        if view.editing {
+            "EditAccount"
+        } else {
+            "AddAccount"
+        }
+    }
+
+    fn render(
+        view: &AccountFormViewModel,
+        scrolls: &mut [usize; 3],
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        render(view, scrolls, clicks, cx)
+    }
+
+    /// The focused field, the drafts, the selects, whether a list is open and whether it would
+    /// confirm; Edit also reads back the `transactions` and `budgets` counts it quotes.
+    fn readback(view: &AccountFormViewModel) -> Vec<(&'static str, String)> {
+        framed(&view.frame, readback(view))
+    }
+
+    fn hints(view: &AccountFormViewModel) -> Vec<Hint> {
+        view.hints.clone()
     }
 }
 
@@ -71,7 +74,7 @@ fn list_of(view: &AccountFormViewModel, field: AccountField) -> SelectList {
     }
 }
 
-pub(super) fn render(
+fn render(
     view: &AccountFormViewModel,
     scrolls: &mut [usize; 3],
     actions: &Clicks,
@@ -113,10 +116,55 @@ pub(super) fn render(
                 "add-account-confirm",
             )
         };
-    let on_text = |field: AccountField| actions.click(move |dialog| click_text(dialog, field));
-    let on_select = |field: AccountField| actions.click(move |dialog| click_select(dialog, field));
-    let on_option = |field: AccountField| {
-        actions.option(move |dialog, index| click_option(dialog, field, index))
+    // A click on a text field focuses it, closing an open list.
+    let on_text = |field: AccountField| actions.send(AccountFormEvent::Focus(field));
+    // A click on a select's closed field focuses it and toggles its list. A field that refuses
+    // focus takes no click.
+    let on_select = |field: AccountField| actions.send(AccountFormEvent::ToggleList(field));
+    // A click on row `index` of an open list picks its choice; the lists are fixed while the
+    // Dialog is open.
+    let institutions: Vec<_> = view.institution.options.iter().map(|c| c.value).collect();
+    let types: Vec<_> = view
+        .account_type
+        .options
+        .iter()
+        .map(|c| c.value.clone())
+        .collect();
+    let units: Vec<_> = view.unit.options.iter().map(|c| c.value).collect();
+    let on_option = |field: AccountField| -> OnOptionClick {
+        match field {
+            AccountField::Institution => {
+                let institutions = institutions.clone();
+                actions.option(move |index| {
+                    institutions
+                        .get(index)
+                        .map(|id| AccountFormEvent::Institution(*id))
+                        .into_iter()
+                        .collect()
+                })
+            }
+            AccountField::Type => {
+                let types = types.clone();
+                actions.option(move |index| {
+                    types
+                        .get(index)
+                        .map(|account_type| AccountFormEvent::Type(account_type.clone()))
+                        .into_iter()
+                        .collect()
+                })
+            }
+            AccountField::Unit => {
+                let units = units.clone();
+                actions.option(move |index| {
+                    units
+                        .get(index)
+                        .map(|id| AccountFormEvent::Unit(*id))
+                        .into_iter()
+                        .collect()
+                })
+            }
+            _ => actions.option(|_| Vec::new()),
+        }
     };
     let select = |id: &'static str,
                   label: &str,
@@ -279,7 +327,7 @@ fn read_only_field(id: &'static str, label: AnyElement, value: String, cx: &App)
 /// The form's fields, for a test: the focused field's variant name, the drafts, the selects'
 /// chosen labels, the Unit codes on offer, and whether a list is open. Edit adds the counts it
 /// quotes.
-pub(super) fn readback(view: &AccountFormViewModel) -> Vec<(&'static str, String)> {
+fn readback(view: &AccountFormViewModel) -> Vec<(&'static str, String)> {
     let mut values = vec![
         ("focused", format!("{:?}", view.focused)),
         ("name", view.name.text.clone()),

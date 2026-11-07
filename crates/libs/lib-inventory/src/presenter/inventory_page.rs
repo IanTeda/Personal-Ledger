@@ -16,6 +16,7 @@ use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::format::upper;
 use lib_toast::{Notice, ToastKind};
 use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
+use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Hint, count};
 
 use crate::interactor::MoveArea;
@@ -170,18 +171,18 @@ impl InventoryPagePresenter {
         }
     }
 
-    /// Whether the page takes `event` from its keymap, rather than the Client's frame having it:
-    /// `left` with nothing to close or climb to is the Settings index's again.
-    pub fn takes(&self, event: &InventoryPageEvent) -> bool {
-        *event != InventoryPageEvent::Collapse || self.left_is_local()
-    }
-
     /// Whether a row menu is open, which `Esc` closes before it leaves the page.
     pub fn menu_open(&self) -> bool {
         self.menu.is_some()
     }
+}
 
-    pub fn handle(&mut self, event: InventoryPageEvent, router: &mut dyn InventoryRouter) {
+impl Presenter for InventoryPagePresenter {
+    type Event = InventoryPageEvent;
+    type ViewModel = InventoryPageViewModel;
+    type Router<'r> = dyn InventoryRouter + 'r;
+
+    fn handle(&mut self, event: InventoryPageEvent, router: &mut Self::Router<'_>) {
         // Any key or click other than the one that opens a menu puts the open one away.
         if !matches!(
             event,
@@ -235,7 +236,13 @@ impl InventoryPagePresenter {
         }
     }
 
-    pub fn view_model(&self) -> InventoryPageViewModel {
+    /// Whether the page takes `event` from its keymap, rather than the Client's frame having it:
+    /// `left` with nothing to close or climb to is the Settings index's again.
+    fn takes(&self, event: &InventoryPageEvent) -> bool {
+        *event != InventoryPageEvent::Collapse || self.left_is_local()
+    }
+
+    fn view_model(&self) -> InventoryPageViewModel {
         let inventory = self.inventory.borrow().inventory();
         let rows = visible_rows(&inventory.locations, &self.expanded);
         let selected = resolve(rows.iter().copied(), self.selected);
@@ -268,7 +275,21 @@ impl InventoryPagePresenter {
             open_dialog: self.open_dialog,
         }
     }
+}
 
+impl PagePresenter for InventoryPagePresenter {
+    type Outcome = InventoryOutcome;
+
+    fn dialog_closed(outcome: Option<InventoryOutcome>) -> InventoryPageEvent {
+        InventoryPageEvent::DialogClosed(outcome)
+    }
+
+    fn keymap(&self) -> &Keymap<InventoryPageEvent> {
+        &self.keymap
+    }
+}
+
+impl InventoryPagePresenter {
     fn line(&self, inventory: &Inventory, row: InventoryRow) -> Option<InventoryLine> {
         match row {
             InventoryRow::Location(id) => {

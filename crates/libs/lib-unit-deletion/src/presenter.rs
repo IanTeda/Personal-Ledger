@@ -22,11 +22,12 @@ use lib_core::{InstitutionId, UnitId};
 use lib_units::presenter::{
     DeleteUnitEvent as UnitsDeleteEvent, DeleteUnitPresenter as UnitsDeletePresenter,
     DeleteUnitViewModel as UnitsDeleteViewModel, UnitChange, UnitsOutcome, active_unit_choices,
-    confirms_delete, delete_refusal,
+    confirms_delete, delete_refusal, dialog_legend,
 };
 use lib_units::{SharedPorts, UnitUse};
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::view::{Choice, SelectList, SelectMove, SelectView, count};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::presenter::{DialogPresenter, Presenter};
+use lib_viper::view::{Choice, Hint, SelectList, SelectMove, SelectView, count};
 
 use crate::error::Error;
 use crate::interactor::{DeleteUnit, Replacement};
@@ -70,6 +71,8 @@ pub struct DeleteUnitViewModel {
     pub focus: usize,
     /// The focused select's list: open, and its highlight.
     pub list: SelectList,
+    /// The status line's legend while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,6 +103,7 @@ enum Mode {
 /// The Dialog while the Unit can still be deleted.
 struct Deleting {
     ports: SharedPorts,
+    keys: DialogKeys,
     deletion: SharedUnitDeletion,
     id: UnitId,
     code: String,
@@ -126,8 +130,13 @@ struct Named {
 impl DeleteUnitPresenter {
     /// The Dialog for Unit `id`, reading what names it through `ports`' usage and the rest through
     /// `deletion`, or `None` when it is gone. `ports` are `lib-units`' own, which Deactivate writes
-    /// through.
-    pub fn new(ports: SharedPorts, deletion: SharedUnitDeletion, id: UnitId) -> Option<Self> {
+    /// through. `keys` are the Dialog keymap's chords, which its hints show.
+    pub fn new(
+        ports: SharedPorts,
+        deletion: SharedUnitDeletion,
+        id: UnitId,
+        keys: DialogKeys,
+    ) -> Option<Self> {
         let uses = ports.borrow().usage().unit_usage(id);
         let others = UnitUse {
             institutions: 0,
@@ -135,7 +144,7 @@ impl DeleteUnitPresenter {
         };
         if others.is_used() {
             return Some(Self {
-                mode: Mode::Deactivate(UnitsDeletePresenter::new(ports, id)?),
+                mode: Mode::Deactivate(UnitsDeletePresenter::new(ports, id, keys)?),
             });
         }
         let (units, base_unit, naming) = {
@@ -174,6 +183,7 @@ impl DeleteUnitPresenter {
         Some(Self {
             mode: Mode::Delete(Deleting {
                 ports,
+                keys,
                 deletion,
                 id,
                 code,
@@ -188,8 +198,14 @@ impl DeleteUnitPresenter {
             }),
         })
     }
+}
 
-    pub fn handle(&mut self, event: DeleteUnitEvent, router: &mut dyn DialogRouter<UnitsOutcome>) {
+impl Presenter for DeleteUnitPresenter {
+    type Event = DeleteUnitEvent;
+    type ViewModel = DeleteUnitViewModel;
+    type Router<'r> = dyn DialogRouter<UnitsOutcome> + 'r;
+
+    fn handle(&mut self, event: DeleteUnitEvent, router: &mut Self::Router<'_>) {
         match &mut self.mode {
             Mode::Deactivate(dialog) => {
                 let event = match event {
@@ -216,18 +232,59 @@ impl DeleteUnitPresenter {
         }
     }
 
-    pub fn view_model(&self) -> DeleteUnitViewModel {
+    fn view_model(&self) -> DeleteUnitViewModel {
         match &self.mode {
-            Mode::Deactivate(dialog) => DeleteUnitViewModel {
-                unit: dialog.view_model(),
-                usual_units: None,
-                focus: 0,
-                list: SelectList::default(),
-            },
+            Mode::Deactivate(dialog) => {
+                let unit = dialog.view_model();
+                DeleteUnitViewModel {
+                    hints: unit.hints.clone(),
+                    unit,
+                    usual_units: None,
+                    focus: 0,
+                    list: SelectList::default(),
+                }
+            }
             Mode::Delete(dialog) => dialog.view_model(),
         }
     }
 }
+
+impl DialogPresenter for DeleteUnitPresenter {
+    type Outcome = UnitsOutcome;
+
+    fn input_event(input: DialogInput) -> DeleteUnitEvent {
+        DeleteUnitEvent::Input(input)
+    }
+
+    fn confirm_event() -> DeleteUnitEvent {
+        DeleteUnitEvent::Confirm
+    }
+
+    fn cancel_event() -> DeleteUnitEvent {
+        DeleteUnitEvent::Cancel
+    }
+
+    fn can_confirm(&self) -> bool {
+        match &self.mode {
+            Mode::Deactivate(dialog) => dialog.can_confirm(),
+            Mode::Delete(dialog) => confirms_delete(&dialog.confirm_text, &dialog.code),
+        }
+    }
+
+    /// Closes the open select's list without picking: the host's `back`.
+    fn close_open_select(&mut self) -> bool {
+        let open = match &self.mode {
+            Mode::Delete(dialog) => dialog.list.is_open(),
+            Mode::Deactivate(_) => false,
+        };
+        if open && let Mode::Delete(dialog) = &mut self.mode {
+            dialog.list.close();
+        }
+        open
+    }
+}
+
+impl DeleteUnitPresenter {}
 
 impl Deleting {
     /// Returns `lib-units`' Dialog to carry on in when the Unit came into use under this one.
@@ -377,6 +434,7 @@ impl Deleting {
                 .collect(),
         });
         DeleteUnitViewModel {
+            hints: dialog_legend(&self.keys, &unit.frame.hints),
             unit,
             usual_units,
             focus: self.focus,
@@ -419,7 +477,7 @@ impl Deleting {
                 None
             }
             Err(Error::Unit(lib_units::Error::UnitInUse(_))) => {
-                match UnitsDeletePresenter::new(self.ports.clone(), self.id) {
+                match UnitsDeletePresenter::new(self.ports.clone(), self.id, self.keys.clone()) {
                     Some(deactivate) => return Some(deactivate),
                     None => Some(lib_units::msg::units_refusal_unit_gone()),
                 }
@@ -467,7 +525,8 @@ mod tests {
             let (ports, shared) = ports.shared();
             let deletion = Rc::new(RefCell::new(rows));
             let port: SharedUnitDeletion = deletion.clone();
-            let presenter = DeleteUnitPresenter::new(shared, port, id).expect("a world Unit");
+            let presenter = DeleteUnitPresenter::new(shared, port, id, DialogKeys::default())
+                .expect("a world Unit");
             Self {
                 deletion,
                 ports,
@@ -725,7 +784,9 @@ mod tests {
         lib_locale::init_with_layers("en-US", &[msg::LAYER, lib_units::msg::LAYER]);
         let (_, shared) = InMemoryPorts::sample(now()).shared();
         let port: SharedUnitDeletion = Rc::new(RefCell::new(world()));
-        assert!(DeleteUnitPresenter::new(shared, port, UnitId::new()).is_none());
+        assert!(
+            DeleteUnitPresenter::new(shared, port, UnitId::new(), DialogKeys::default()).is_none()
+        );
     }
 
     fn input(dialog: &mut Dialog, inputs: &[DialogInput]) {
@@ -826,5 +887,28 @@ mod tests {
         dialog.send(DeleteUnitEvent::ToggleSelect(1));
         dialog.send(DeleteUnitEvent::CloseList);
         assert!(!dialog.view().list.is_open());
+    }
+
+    #[test]
+    fn the_legend_reads_the_dialog_keys_and_follows_the_mode() {
+        use lib_viper::keymap::{BACK, Binding, KeyBindingConfig, Keymap, SELECT};
+        const BINDINGS: &[Binding<()>] = &[
+            Binding::hidden(BACK, "esc", ()),
+            Binding::hidden(SELECT, "enter", ()),
+        ];
+        let keys = DialogKeys::of(&Keymap::new(BINDINGS, &KeyBindingConfig::default()));
+        let mut dialog = Dialog::open(BTC);
+        let (ports, deletion): (SharedPorts, SharedUnitDeletion) =
+            (dialog.ports.clone(), dialog.deletion.clone());
+        dialog.presenter =
+            DeleteUnitPresenter::new(ports, deletion, BTC, keys).expect("a world Unit");
+
+        let legend: Vec<String> = dialog
+            .view()
+            .hints
+            .into_iter()
+            .map(|hint| format!("{} {}", hint.chord, hint.action))
+            .collect();
+        assert_eq!(legend, ["enter confirm", "esc cancel"]);
     }
 }

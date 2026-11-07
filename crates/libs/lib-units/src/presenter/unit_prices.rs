@@ -12,6 +12,7 @@ use lib_core::{Money, UnitId};
 use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::format::{AmountStyle, format_amount, format_date, format_month_day};
 use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP};
+use lib_viper::presenter::Presenter;
 use lib_viper::view::Hint;
 
 use super::units_pane::{Fact, amount};
@@ -141,8 +142,14 @@ impl UnitPricesPresenter {
     pub fn unit(&self) -> UnitId {
         self.unit
     }
+}
 
-    pub fn handle(&mut self, event: UnitPricesEvent, router: &mut dyn UnitsRouter) {
+impl Presenter for UnitPricesPresenter {
+    type Event = UnitPricesEvent;
+    type ViewModel = UnitPricesViewModel;
+    type Router<'r> = dyn UnitsRouter + 'r;
+
+    fn handle(&mut self, event: UnitPricesEvent, router: &mut Self::Router<'_>) {
         match event {
             UnitPricesEvent::Move(step) => {
                 let weeks = self.row_weeks();
@@ -164,7 +171,7 @@ impl UnitPricesPresenter {
         }
     }
 
-    pub fn view_model(&self) -> UnitPricesViewModel {
+    fn view_model(&self) -> UnitPricesViewModel {
         let ports = self.ports.borrow();
         let units = ports.units().units();
         let unit = units.iter().find(|unit| unit.id == self.unit);
@@ -250,7 +257,9 @@ impl UnitPricesPresenter {
             back: msg::units_prices_hint_back(),
         }
     }
+}
 
+impl UnitPricesPresenter {
     /// The PRICE figures, which read the Unit's latest prices whatever the window, then its
     /// symbol and the Unit it is priced in.
     fn facts(&self, unit: &UnitRow, quote: Option<&UnitRow>) -> Vec<Fact> {

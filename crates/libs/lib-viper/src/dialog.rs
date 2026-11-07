@@ -14,7 +14,7 @@ use crate::keymap::{
     BACK, Keymap, LIST_NEXT, LIST_PREVIOUS, NEXT_FIELD, PREVIOUS_FIELD, SELECT, SELECT_NEXT,
     SELECT_PREVIOUS, SUBMIT,
 };
-use crate::view::Hint;
+use crate::view::{DialogHint, Hint};
 
 /// One input a module Dialog's Presenter takes: a Dialog keymap command other than `back`, or a key
 /// typed into the focused field. What it means is the Presenter's call, from its focused field and
@@ -96,6 +96,23 @@ impl DialogKeys {
     /// The hint for `command`: its chord and `action`, the Message saying what it does.
     pub fn hint(&self, command: &str, action: String) -> Hint {
         Hint::new(self.chord(command), action)
+    }
+
+    /// `hints` as `(chord, action)` pairs, each command's chord read from these keys: a hint of
+    /// two commands reads `up/down`, an unbound one reads empty. It is [`legend`](crate::view::legend)
+    /// over the chords a Dialog was handed, for a Dialog whose frame already lists its hints.
+    pub fn legend(&self, hints: &[DialogHint]) -> Vec<Hint> {
+        hints
+            .iter()
+            .map(|hint| {
+                let chords: Vec<&str> = hint
+                    .commands
+                    .iter()
+                    .map(|command| self.chord(command))
+                    .collect();
+                Hint::new(chords.join("/"), hint.action.clone())
+            })
+            .collect()
     }
 
     /// The list step's two chords as a hint shows them, `j/k` by default.

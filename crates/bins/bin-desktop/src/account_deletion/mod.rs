@@ -3,10 +3,10 @@
 //! rule, every piece of text and the Presenter are `lib-account-deletion`'s; this folder turns gpui
 //! keys and clicks into Presenter events and draws the view model.
 //!
-//! - `view/dialog/delete_account.rs` holds the Presenter in an Entity in the Dialog host and draws
-//!   it.
-//! - `router.rs` is the module's entry point ([`router::open_delete`]), which the legacy Accounts
-//!   page calls until the Accounts page is a module (#855).
+//! - `view/dialog/delete_account.rs` is the Presenter's `DialogView`, hosted in a generic
+//!   `ModuleDialog` (ADR-0056), and draws it.
+//! - `router.rs` is the module's entry point ([`router::open_delete`]), which the Accounts page's
+//!   Router calls.
 //!
 //! Account delete writes through `lib-database`'s `AccountDeletionAdapter`, which `LedgerPorts`
 //! builds over the Accounts, Transactions and Bills stores (#1084), so the Account, its
@@ -18,8 +18,6 @@ pub(crate) mod view;
 
 use lib_account_deletion::SharedDeletion;
 use lib_database::{LedgerPorts, StoredAccountReads};
-
-pub use view::dialog::delete_account::DeleteAccountDialog;
 
 /// What the Delete Dialog reads and writes through: the deletion port, the Bills ports whose
 /// reads a confirm copies back, and the figures it quotes as it opens: the Transactions counted by

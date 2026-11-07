@@ -4,20 +4,26 @@
 //! for the page to apply once `handle` returns; and a Notice goes onto the bin's queue
 //! (`crate::notices`), which the input's `send` drains.
 
-use gpui::Context;
+use gpui::{App, Context};
 use lib_toast::{Notice, Notify};
+use lib_units::presenter::{
+    DeletePriceSourcePresenter, PriceSourceFormPresenter, SetBaseUnitPresenter, SetPricePresenter,
+    UnitFormPresenter, UnitsOutcome,
+};
 use lib_units::{UnitId, UnitsDialog as Which, UnitsRouter};
+use lib_viper::dialog::DialogKeys;
 
-use super::view::dialog::UnitsDialog;
+use super::UnitsSetup;
 use super::view::page::UnitsPage;
 use crate::announcer::Announcer;
 use crate::notices::Queue;
-use crate::shell::view::dialog_entity::host_dialog;
-use crate::unit_deletion::DeleteUnitDialog;
+use crate::shell::view::dialog_entity::ModuleDialog;
 
 pub(super) struct PageRouter<'a, 'b> {
     pub ports: lib_units::SharedPorts,
     pub deletion: lib_unit_deletion::SharedUnitDeletion,
+    /// The Dialog keys the Dialogs' status-line hints are built from.
+    pub dialog_keys: DialogKeys,
     /// The Clock the set price Dialog reads now from.
     pub clock: lib_core::Clock,
     pub cx: &'a mut Context<'b, UnitsPage>,
@@ -26,28 +32,63 @@ pub(super) struct PageRouter<'a, 'b> {
 }
 
 impl UnitsRouter for PageRouter<'_, '_> {
-    /// Builds `dialog`'s Presenter on the shared ports and hosts its View; its confirmed outcome
-    /// comes back to the page through [`UnitsPage::dialog_landed`]. Delete unit is the Unit
-    /// Deletion module's Dialog, which writes the Institutions that name the Unit too.
+    /// Builds `dialog`'s Presenter on the shared ports, handed the Dialog keys, and hosts it as a
+    /// `ModuleDialog`; its confirmed outcome comes back to the page through
+    /// [`UnitsPage::dialog_landed`]. Delete unit is the Unit Deletion module's Dialog, which writes
+    /// the Institutions that name the Unit too.
     fn open_dialog(&mut self, dialog: Which) -> bool {
         let page = self.cx.weak_entity();
-        let landed = Box::new(move |outcome, cx: &mut gpui::App| {
+        let landed = move |outcome: UnitsOutcome, cx: &mut App| {
             // A page that has gone has nothing to land on.
             let _ = page.update(cx, |page, cx| page.dialog_landed(outcome, cx));
-        });
-        if let Which::DeleteUnit(id) = dialog {
-            let Some(dialog) =
-                DeleteUnitDialog::open(id, &self.ports, &self.deletion, landed, self.cx)
-            else {
-                return false;
-            };
-            host_dialog(self.cx, |_| dialog);
-            return true;
-        }
-        let Some(dialog) = UnitsDialog::open(dialog, &self.ports, &self.clock, landed) else {
-            return false;
         };
-        host_dialog(self.cx, |_| dialog);
+        let (ports, keys) = (self.ports.clone(), self.dialog_keys.clone());
+        match dialog {
+            Which::AddUnit => {
+                ModuleDialog::open(self.cx, UnitFormPresenter::add(ports, keys), landed);
+            }
+            Which::EditUnit(id) => {
+                let Some(form) = UnitFormPresenter::edit(ports, id, keys) else {
+                    return false;
+                };
+                ModuleDialog::open(self.cx, form, landed);
+            }
+            Which::DeleteUnit(id) => {
+                return crate::unit_deletion::router::open_delete(
+                    self.cx,
+                    &ports,
+                    &self.deletion,
+                    id,
+                    keys,
+                    landed,
+                );
+            }
+            Which::SetBaseUnit => {
+                ModuleDialog::open(self.cx, SetBaseUnitPresenter::new(ports, keys), landed);
+            }
+            Which::SetPrice(id) => {
+                let now = super::view::page::now_of(&self.clock);
+                let Some(set) = SetPricePresenter::new(ports, now, id, keys) else {
+                    return false;
+                };
+                ModuleDialog::open(self.cx, set, landed);
+            }
+            Which::AddPriceSource => {
+                ModuleDialog::open(self.cx, PriceSourceFormPresenter::add(ports, keys), landed);
+            }
+            Which::EditPriceSource(id) => {
+                let Some(form) = PriceSourceFormPresenter::edit(ports, id, keys) else {
+                    return false;
+                };
+                ModuleDialog::open(self.cx, form, landed);
+            }
+            Which::DeletePriceSource(id) => {
+                let Some(delete) = DeletePriceSourcePresenter::new(ports, id, keys) else {
+                    return false;
+                };
+                ModuleDialog::open(self.cx, delete, landed);
+            }
+        }
         true
     }
 
@@ -67,17 +108,14 @@ impl Notify for PageRouter<'_, '_> {
     }
 }
 
-/// The Units module's entry point: its Settings page, built on `ports`, which the Settings View
-/// hosts as any other page.
+/// The Units module's entry point: its Settings page, built on `setup`'s ports and dated by
+/// `clock`, which the Settings View hosts as any other page.
 pub fn units_page(
-    ports: lib_units::SharedPorts,
-    deletion: lib_unit_deletion::SharedUnitDeletion,
+    setup: UnitsSetup,
     announcer: gpui::Entity<Announcer>,
-    keymap: lib_viper::keymap::Keymap<lib_units::presenter::UnitsPageEvent>,
-    prices_keymap: lib_viper::keymap::Keymap<lib_units::presenter::UnitPricesEvent>,
     clock: lib_core::Clock,
-    cx: &mut gpui::App,
+    cx: &mut App,
 ) -> gpui::Entity<UnitsPage> {
     use gpui::AppContext as _;
-    cx.new(|cx| UnitsPage::new(ports, deletion, announcer, keymap, prices_keymap, clock, cx))
+    cx.new(|cx| UnitsPage::new(setup, announcer, clock, cx))
 }

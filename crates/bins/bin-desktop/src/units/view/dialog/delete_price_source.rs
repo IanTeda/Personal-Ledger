@@ -5,12 +5,44 @@
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, Window, div, prelude::*, px};
-use lib_units::presenter::DeletePriceSourceViewModel;
+use lib_shell::Hint;
+use lib_units::presenter::{DeletePriceSourcePresenter, DeletePriceSourceViewModel};
 
-use super::{Clicks, refusal};
+use super::refusal;
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 use crate::{dialog, form::fields::text_field};
 
-pub(super) fn render(view: &DeletePriceSourceViewModel, actions: &Clicks, cx: &App) -> AnyElement {
+/// The open Dialog's clicks.
+type Clicks = ModuleDialogClicks<DeletePriceSourcePresenter>;
+
+/// The `lib-units` Delete price source Presenter's [`DialogView`], hosted in a `ModuleDialog`
+/// (ADR-0056).
+impl DialogView for DeletePriceSourcePresenter {
+    type Widgets = ();
+
+    fn kind(_view: &DeletePriceSourceViewModel) -> &'static str {
+        "DeletePriceSource"
+    }
+
+    fn render(
+        view: &DeletePriceSourceViewModel,
+        _widgets: &mut (),
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        render(view, clicks, cx)
+    }
+
+    fn readback(view: &DeletePriceSourceViewModel) -> Vec<(&'static str, String)> {
+        framed(&view.frame, readback(view))
+    }
+
+    fn hints(view: &DeletePriceSourceViewModel) -> Vec<Hint> {
+        view.hints.clone()
+    }
+}
+
+fn render(view: &DeletePriceSourceViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     let mut fields = vec![
         div()
             .text_size(px(13.0))
@@ -60,7 +92,7 @@ pub(super) fn render(view: &DeletePriceSourceViewModel, actions: &Clicks, cx: &A
     dialog::overlay(dialog::WIDTH, true, card, cx)
 }
 
-pub(super) fn readback(view: &DeletePriceSourceViewModel) -> Vec<(&'static str, String)> {
+fn readback(view: &DeletePriceSourceViewModel) -> Vec<(&'static str, String)> {
     vec![
         ("confirm", view.confirm.text.clone()),
         ("warning", view.warning.clone()),

@@ -9,6 +9,7 @@ use lib_locale::Label as _;
 use lib_locale::format::format_time_minutes;
 use lib_toast::{Notice, ToastKind};
 use lib_viper::keymap::{DELETE, EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
+use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Hint, count};
 
 use super::units_pane::{DetailPane, PaneInput, amount, detail_pane};
@@ -325,8 +326,14 @@ impl UnitsPagePresenter {
             open_dialog: None,
         }
     }
+}
 
-    pub fn handle(&mut self, event: UnitsPageEvent, router: &mut dyn UnitsRouter) {
+impl Presenter for UnitsPagePresenter {
+    type Event = UnitsPageEvent;
+    type ViewModel = UnitsPageViewModel;
+    type Router<'r> = dyn UnitsRouter + 'r;
+
+    fn handle(&mut self, event: UnitsPageEvent, router: &mut Self::Router<'_>) {
         // Any event but the menu's own closes it, as a key or click elsewhere does.
         let menu = self.menu.take();
         match event {
@@ -395,7 +402,7 @@ impl UnitsPagePresenter {
         }
     }
 
-    pub fn view_model(&self) -> UnitsPageViewModel {
+    fn view_model(&self) -> UnitsPageViewModel {
         let ports = self.ports.borrow();
         let units = ports.units().units();
         let catalogue = ports.source_catalogue();
@@ -527,7 +534,21 @@ impl UnitsPagePresenter {
             open_dialog: self.open_dialog,
         }
     }
+}
 
+impl PagePresenter for UnitsPagePresenter {
+    type Outcome = UnitsOutcome;
+
+    fn dialog_closed(outcome: Option<UnitsOutcome>) -> UnitsPageEvent {
+        UnitsPageEvent::DialogClosed(outcome)
+    }
+
+    fn keymap(&self) -> &Keymap<UnitsPageEvent> {
+        &self.keymap
+    }
+}
+
+impl UnitsPagePresenter {
     fn rows_of(units: &[UnitRow], sources: &[PriceSource<'_>]) -> Vec<UnitsRow> {
         units
             .iter()

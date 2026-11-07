@@ -9,8 +9,10 @@
 
 use lib_core::{AreaId, LocationId};
 use lib_toast::{Notice, ToastKind};
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::view::{Choice, DialogFrame, SelectList, SelectMove, SelectView, count};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::{BACK, SELECT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
+use lib_viper::view::{Choice, DialogFrame, Hint, SelectList, SelectMove, SelectView, count};
 
 use super::area_refusal_text;
 use crate::default_destination;
@@ -30,6 +32,8 @@ pub enum RemoveAreaEvent {
     ToggleDestinations,
     /// Closes the destination's open list without picking: the host's `back`.
     CloseDestinations,
+    /// Removes the Area, as its confirm button does.
+    Confirm,
     Cancel,
 }
 
@@ -44,9 +48,12 @@ pub struct RemoveAreaViewModel {
     pub destination_list: SelectList,
     /// Why the last confirm was refused.
     pub refusal: Option<String>,
+    /// The status line's legend while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 pub struct RemoveAreaPresenter {
+    keys: DialogKeys,
     inventory: SharedInventory,
     id: AreaId,
     name: String,
@@ -60,12 +67,14 @@ pub struct RemoveAreaPresenter {
 }
 
 impl RemoveAreaPresenter {
-    /// The Dialog for Area `id`, or `None` when it is gone.
-    pub fn new(inventory: &SharedInventory, id: AreaId) -> Option<Self> {
+    /// The Dialog for Area `id`, or `None` when it is gone. `keys` are the Dialog keymap's chords,
+    /// which its hints show.
+    pub fn new(inventory: &SharedInventory, id: AreaId, keys: DialogKeys) -> Option<Self> {
         let rows = inventory.borrow().inventory();
         let (location, area) = rows.area(id)?;
         let items = rows.area_items(id);
         Some(Self {
+            keys,
             inventory: inventory.clone(),
             id,
             name: area.name.clone(),
@@ -84,12 +93,14 @@ impl RemoveAreaPresenter {
             refusal: None,
         })
     }
+}
 
-    pub fn handle(
-        &mut self,
-        event: RemoveAreaEvent,
-        router: &mut dyn DialogRouter<InventoryOutcome>,
-    ) {
+impl Presenter for RemoveAreaPresenter {
+    type Event = RemoveAreaEvent;
+    type ViewModel = RemoveAreaViewModel;
+    type Router<'r> = dyn DialogRouter<InventoryOutcome> + 'r;
+
+    fn handle(&mut self, event: RemoveAreaEvent, router: &mut Self::Router<'_>) {
         match event {
             RemoveAreaEvent::Input(input) => self.input(input, router),
             RemoveAreaEvent::Destination(id) => {
@@ -105,15 +116,90 @@ impl RemoveAreaPresenter {
             RemoveAreaEvent::CloseDestinations => {
                 self.list.close();
             }
+            RemoveAreaEvent::Confirm => self.save(router),
             RemoveAreaEvent::Cancel => router.close(None),
         }
+    }
+
+    fn view_model(&self) -> RemoveAreaViewModel {
+        let holds_items = self.items > 0;
+        RemoveAreaViewModel {
+            frame: DialogFrame {
+                title: msg::inventory_area_remove_title(),
+                submit: msg::inventory_area_remove_submit(),
+                can_confirm: self.can_confirm(),
+                destructive: holds_items,
+                hints: Vec::new(),
+            },
+            hints: self.hints(),
+            warning: if holds_items {
+                msg::inventory_area_remove_with_items(
+                    &self.name,
+                    &msg::inventory_count_items(count(self.items)),
+                )
+            } else {
+                msg::inventory_area_remove_plain(&self.name)
+            },
+            destination: holds_items.then(|| SelectView {
+                label: msg::inventory_area_remove_destination(),
+                options: self.options(),
+                chosen: self.chosen,
+                focused: true,
+            }),
+            destination_list: self.list,
+            refusal: self.refusal.clone(),
+        }
+    }
+}
+
+impl DialogPresenter for RemoveAreaPresenter {
+    type Outcome = InventoryOutcome;
+
+    fn input_event(input: DialogInput) -> RemoveAreaEvent {
+        RemoveAreaEvent::Input(input)
+    }
+
+    fn confirm_event() -> RemoveAreaEvent {
+        RemoveAreaEvent::Confirm
+    }
+
+    fn cancel_event() -> RemoveAreaEvent {
+        RemoveAreaEvent::Cancel
+    }
+
+    fn can_confirm(&self) -> bool {
+        // An empty Area always; one with Items once a destination is chosen.
+        self.items == 0
+            || self
+                .chosen
+                .is_some_and(|id| self.destinations.iter().any(|(area, _)| *area == id))
+    }
+
+    /// Closes the open select's list without picking: the host's `back`.
+    fn close_open_select(&mut self) -> bool {
+        let open = self.list.is_open();
+        if open {
+            self.list.close();
+        }
+        open
+    }
+}
+
+impl RemoveAreaPresenter {
+    /// Cancel and confirm, from the Dialog keys.
+    fn hints(&self) -> Vec<Hint> {
+        vec![
+            self.keys.hint(BACK, lib_locale::msg::dialog_hint_cancel()),
+            self.keys
+                .hint(SELECT, lib_locale::msg::dialog_hint_confirm()),
+        ]
     }
 
     /// Reads `input`: the destination, when the Area holds Items, is the only field.
     fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<InventoryOutcome>) {
         match input {
-            DialogInput::Submit => self.confirm(router),
-            DialogInput::Select if !self.list.is_open() => self.confirm(router),
+            DialogInput::Submit => self.save(router),
+            DialogInput::Select if !self.list.is_open() => self.save(router),
             _ if self.items > 0 => {
                 let options = self.options();
                 if let SelectMove::Chose(id) =
@@ -146,7 +232,7 @@ impl RemoveAreaPresenter {
 
     /// Removes the Area, moving its Items, raises the Toast and closes the Dialog; a refusal stays
     /// in the Dialog.
-    pub fn confirm(&mut self, router: &mut dyn DialogRouter<InventoryOutcome>) {
+    fn save(&mut self, router: &mut dyn DialogRouter<InventoryOutcome>) {
         if !self.can_confirm() {
             return;
         }
@@ -198,43 +284,6 @@ impl RemoveAreaPresenter {
             Err(refusal) => self.refusal = Some(area_refusal_text(refusal)),
         }
     }
-
-    pub fn view_model(&self) -> RemoveAreaViewModel {
-        let holds_items = self.items > 0;
-        RemoveAreaViewModel {
-            frame: DialogFrame {
-                title: msg::inventory_area_remove_title(),
-                submit: msg::inventory_area_remove_submit(),
-                can_confirm: self.can_confirm(),
-                destructive: holds_items,
-                hints: Vec::new(),
-            },
-            warning: if holds_items {
-                msg::inventory_area_remove_with_items(
-                    &self.name,
-                    &msg::inventory_count_items(count(self.items)),
-                )
-            } else {
-                msg::inventory_area_remove_plain(&self.name)
-            },
-            destination: holds_items.then(|| SelectView {
-                label: msg::inventory_area_remove_destination(),
-                options: self.options(),
-                chosen: self.chosen,
-                focused: true,
-            }),
-            destination_list: self.list,
-            refusal: self.refusal.clone(),
-        }
-    }
-
-    /// An empty Area always; one with Items once a destination is chosen.
-    fn can_confirm(&self) -> bool {
-        self.items == 0
-            || self
-                .chosen
-                .is_some_and(|id| self.destinations.iter().any(|(area, _)| *area == id))
-    }
 }
 
 #[cfg(test)]
@@ -256,7 +305,8 @@ mod tests {
             let (inventory, shared) = sample();
             let area = inventory.borrow().locations()[0].areas[index].id;
             Self {
-                presenter: RemoveAreaPresenter::new(&shared, area).expect("seeded"),
+                presenter: RemoveAreaPresenter::new(&shared, area, DialogKeys::default())
+                    .expect("seeded"),
                 router: RecordingRouter::default(),
                 inventory,
             }
@@ -275,7 +325,8 @@ mod tests {
         }
 
         fn confirm(&mut self) -> Vec<RouterCall> {
-            self.presenter.confirm(&mut self.router);
+            self.presenter
+                .handle(RemoveAreaEvent::Confirm, &mut self.router);
             self.router.take()
         }
     }
@@ -378,7 +429,8 @@ mod tests {
             id
         };
         let shared: SharedInventory = dialog.inventory.clone();
-        dialog.presenter = RemoveAreaPresenter::new(&shared, attic).expect("added");
+        dialog.presenter =
+            RemoveAreaPresenter::new(&shared, attic, DialogKeys::default()).expect("added");
 
         let view = dialog.presenter.view_model();
         assert_eq!(view.warning, "Remove Attic? It has no items.");
@@ -408,7 +460,9 @@ mod tests {
         assert_eq!(dialog.router.take(), [RouterCall::CloseDialog(None)]);
 
         let (_, shared) = sample();
-        assert!(RemoveAreaPresenter::new(&shared, AreaId::seed(9_999)).is_none());
+        assert!(
+            RemoveAreaPresenter::new(&shared, AreaId::seed(9_999), DialogKeys::default()).is_none()
+        );
     }
 
     #[test]

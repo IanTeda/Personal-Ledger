@@ -14,14 +14,13 @@
 
 use std::rc::Rc;
 
-use gpui::{AnyElement, App, Context, EventEmitter, Render, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, Window, div, prelude::*, px};
 use lib_core::UnitId;
-use lib_unit_deletion::SharedUnitDeletion;
+use lib_shell::Hint;
 use lib_unit_deletion::presenter::{
     DeleteUnitEvent, DeleteUnitPresenter, DeleteUnitViewModel, UsualUnitSelect,
 };
 use lib_units::presenter::NewBaseView;
-use lib_viper::dialog::DialogInput;
 use lib_viper::view::SelectList;
 
 use crate::dialog;
@@ -29,13 +28,12 @@ use crate::form::fields::text_field;
 use crate::form::select::SelectState;
 use crate::form::select_field::{self, SelectFieldProps};
 use crate::form::viper::{chosen_label, drawn, labels};
-use crate::shell::view::dialog_entity::DialogReadback;
-use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostedDialog};
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks};
 use crate::theme::color;
-use crate::units::{Landed, Router, help, refusal};
+use crate::units::{help, refusal};
 
 /// The open Delete Dialog's clicks.
-type Clicks = DialogClicks<DeleteUnitDialog>;
+type Clicks = ModuleDialogClicks<DeleteUnitPresenter>;
 
 /// A select the Dialog draws, found by its position: the New base unit first when the Unit is the
 /// base, then the Usual unit of each Institution naming it, in the Ledger's order.
@@ -117,190 +115,108 @@ impl Select<'_> {
     }
 }
 
-/// The open Delete unit Dialog: its Presenter, the Units ports, each select's open-list scroll window, and the Units page's landing.
-pub struct DeleteUnitDialog {
-    presenter: DeleteUnitPresenter,
-    ports: lib_units::SharedPorts,
-    /// Each select's open-list scroll window by position, a position in [`select`].
-    scrolls: Vec<usize>,
-    landed: Landed,
-}
+/// The `lib-unit-deletion` Presenter's [`DialogView`], hosted in a `ModuleDialog` (ADR-0056). Its
+/// widget state is each select's open-list scroll window by position, a position in [`select`].
+impl DialogView for DeleteUnitPresenter {
+    type Widgets = Vec<usize>;
 
-impl DeleteUnitDialog {
-    /// The Dialog for Unit `id`, or `None` when it is gone. Usage is copied from the Ledger first,
-    /// so the Presenter sees what names the Unit now.
-    pub(crate) fn open(
-        id: UnitId,
-        ports: &lib_units::SharedPorts,
-        deletion: &SharedUnitDeletion,
-        landed: Landed,
-        _cx: &App,
-    ) -> Option<Self> {
-        let presenter = DeleteUnitPresenter::new(ports.clone(), deletion.clone(), id)?;
-        Some(Self {
-            presenter,
-            ports: ports.clone(),
-            scrolls: Vec::new(),
-            landed,
-        })
+    fn kind(_view: &DeleteUnitViewModel) -> &'static str {
+        "DeleteUnit"
     }
 
-    fn view(&self) -> DeleteUnitViewModel {
-        self.presenter.view_model()
-    }
-
-    /// Sends `event` to the Presenter, returning what its Router was asked.
-    fn send(&mut self, event: DeleteUnitEvent) -> Router {
-        let mut router = Router::default();
-        self.presenter.handle(event, &mut router);
-        router
-    }
-
-    /// A click on the select at `index`: it takes the arrow keys, and its list opens or closes.
-    fn click_select(&mut self, index: usize) {
-        self.send(DeleteUnitEvent::ToggleSelect(index));
-    }
-
-    /// A click on row `option` of the open list of the select at `index`.
-    fn click_option(&mut self, index: usize, option: usize) {
-        let view = self.view();
-        if let Some(event) = select(&view, index).and_then(|select| select.choose(option)) {
-            self.send(event);
+    fn render(
+        view: &DeleteUnitViewModel,
+        scrolls: &mut Vec<usize>,
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        let count = select_count(view);
+        if scrolls.len() < count {
+            scrolls.resize(count, 0);
         }
-    }
-
-    /// Hands a confirmed outcome to the page and tells the host, once the Presenter has closed
-    /// the Dialog.
-    fn closed(&self, router: Router, cx: &mut Context<'_, Self>) {
-        let Some(outcome) = router.closed() else {
-            return;
-        };
-        if let Some(outcome) = outcome {
-            (self.landed)(outcome, cx);
-        }
-        cx.emit(DialogClosed);
-    }
-}
-
-impl EventEmitter<DialogClosed> for DeleteUnitDialog {}
-
-impl HostedDialog for DeleteUnitDialog {
-    /// Every input is the Presenter's to read.
-    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
-        let router = self.send(DeleteUnitEvent::Input(input));
-        self.closed(router, cx);
-    }
-
-    fn can_confirm(&self) -> bool {
-        self.view().unit.frame.can_confirm
-    }
-
-    /// Sends Confirm to the Presenter, which deletes or deactivates, reassigning
-    /// the Institutions that named it. A refusal stays on the view model and keeps the Dialog open.
-    fn confirm(&mut self, cx: &mut Context<'_, Self>) {
-        let router = self.send(DeleteUnitEvent::Confirm);
-        self.closed(router, cx);
-    }
-
-    /// A cancelled delete has written nothing.
-    fn cancel(&mut self, cx: &mut Context<'_, Self>) {
-        let router = self.send(DeleteUnitEvent::Cancel);
-        self.closed(router, cx);
-    }
-
-    fn close_open_select(&mut self) -> bool {
-        let open = self.view().list.is_open();
-        self.send(DeleteUnitEvent::CloseList);
-        open
+        render(view, scrolls, clicks, cx)
     }
 
     /// The open Dialog's title, the fields it draws and whether it would confirm, for a test.
-    fn readback(&self, _cx: &App) -> DialogReadback {
-        let view = self.view();
-        let unit = &view.unit;
-        let usual_units = view.usual_units.as_ref();
-        let focused = select(&view, view.focus).map(|select| select.label().to_string());
-        DialogReadback {
-            kind: "DeleteUnit",
-            values: vec![
-                ("title", unit.frame.title.clone()),
-                (
-                    "confirm",
-                    unit.confirm
-                        .as_ref()
-                        .map(|confirm| confirm.text.clone())
-                        .unwrap_or_default(),
-                ),
-                ("in_use", unit.in_use.is_some().to_string()),
-                (
-                    "in_use_text",
-                    unit.in_use
-                        .as_ref()
-                        .map(|in_use| in_use.text.clone())
-                        .unwrap_or_default(),
-                ),
-                (
-                    "new_base",
-                    unit.new_base
-                        .as_ref()
-                        .and_then(|new_base| chosen_label(&new_base.select))
-                        .unwrap_or_default(),
-                ),
-                (
-                    "new_base_options",
-                    unit.new_base
-                        .as_ref()
-                        .map(|new_base| labels(&new_base.select).join("|"))
-                        .unwrap_or_default(),
-                ),
-                (
-                    "usual_units_help",
-                    usual_units
-                        .map(|usual_units| usual_units.help.clone())
-                        .unwrap_or_default(),
-                ),
-                // `Coinspot=None|Kraken=vas — Vanguard Aus Shares`, in the Ledger's order.
-                (
-                    "usual_units",
-                    usual_units
-                        .map(|usual_units| {
-                            usual_units
-                                .selects
-                                .iter()
-                                .map(|named| {
-                                    let chosen = chosen_label(&named.select).unwrap_or_default();
-                                    format!("{}={chosen}", named.select.label)
-                                })
-                                .collect::<Vec<_>>()
-                                .join("|")
-                        })
-                        .unwrap_or_default(),
-                ),
-                (
-                    "usual_unit_options",
-                    usual_units
-                        .and_then(|usual_units| usual_units.selects.first())
-                        .map(|named| labels(&named.select).join("|"))
-                        .unwrap_or_default(),
-                ),
-                ("focused", focused.unwrap_or_default()),
-                ("select_open", view.list.is_open().to_string()),
-                ("refusal", unit.refusal.clone().unwrap_or_default()),
-                ("can_confirm", unit.frame.can_confirm.to_string()),
-            ],
-        }
+    fn readback(view: &DeleteUnitViewModel) -> Vec<(&'static str, String)> {
+        readback(view)
+    }
+
+    fn hints(view: &DeleteUnitViewModel) -> Vec<Hint> {
+        view.hints.clone()
     }
 }
 
-impl Render for DeleteUnitDialog {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let view = self.view();
-        let count = select_count(&view);
-        if self.scrolls.len() < count {
-            self.scrolls.resize(count, 0);
-        }
-        render(&view, &mut self.scrolls, &Clicks::new(cx), cx)
-    }
+fn readback(view: &DeleteUnitViewModel) -> Vec<(&'static str, String)> {
+    let unit = &view.unit;
+    let usual_units = view.usual_units.as_ref();
+    let focused = select(view, view.focus).map(|select| select.label().to_string());
+    vec![
+        ("title", unit.frame.title.clone()),
+        (
+            "confirm",
+            unit.confirm
+                .as_ref()
+                .map(|confirm| confirm.text.clone())
+                .unwrap_or_default(),
+        ),
+        ("in_use", unit.in_use.is_some().to_string()),
+        (
+            "in_use_text",
+            unit.in_use
+                .as_ref()
+                .map(|in_use| in_use.text.clone())
+                .unwrap_or_default(),
+        ),
+        (
+            "new_base",
+            unit.new_base
+                .as_ref()
+                .and_then(|new_base| chosen_label(&new_base.select))
+                .unwrap_or_default(),
+        ),
+        (
+            "new_base_options",
+            unit.new_base
+                .as_ref()
+                .map(|new_base| labels(&new_base.select).join("|"))
+                .unwrap_or_default(),
+        ),
+        (
+            "usual_units_help",
+            usual_units
+                .map(|usual_units| usual_units.help.clone())
+                .unwrap_or_default(),
+        ),
+        // `Coinspot=None|Kraken=vas — Vanguard Aus Shares`, in the Ledger's order.
+        (
+            "usual_units",
+            usual_units
+                .map(|usual_units| {
+                    usual_units
+                        .selects
+                        .iter()
+                        .map(|named| {
+                            let chosen = chosen_label(&named.select).unwrap_or_default();
+                            format!("{}={chosen}", named.select.label)
+                        })
+                        .collect::<Vec<_>>()
+                        .join("|")
+                })
+                .unwrap_or_default(),
+        ),
+        (
+            "usual_unit_options",
+            usual_units
+                .and_then(|usual_units| usual_units.selects.first())
+                .map(|named| labels(&named.select).join("|"))
+                .unwrap_or_default(),
+        ),
+        ("focused", focused.unwrap_or_default()),
+        ("select_open", view.list.is_open().to_string()),
+        ("refusal", unit.refusal.clone().unwrap_or_default()),
+        ("can_confirm", unit.frame.can_confirm.to_string()),
+    ]
 }
 
 fn render(
@@ -343,12 +259,13 @@ fn render(
         let Some(select) = select(view, index) else {
             continue;
         };
-        let on_field_click = actions.click(move |dialog: &mut DeleteUnitDialog| {
-            dialog.click_select(index);
-        });
-        let on_option_click = actions.option(move |dialog: &mut DeleteUnitDialog, option| {
-            dialog.click_option(index, option);
-        });
+        let on_field_click = actions.send(DeleteUnitEvent::ToggleSelect(index));
+        // The event each row of the open list sends, read off the view as it is drawn.
+        let choices: Vec<Option<DeleteUnitEvent>> = (0..select.options().len())
+            .map(|row| select.choose(row))
+            .collect();
+        let on_option_click =
+            actions.option(move |row| choices.get(row).cloned().flatten().into_iter().collect());
         let focused = ring && index == view.focus;
         let options = select.options();
         let list = if index == view.focus {

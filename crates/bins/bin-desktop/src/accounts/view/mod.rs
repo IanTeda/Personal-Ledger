@@ -1,2 +1,2 @@
-pub mod dialog;
-pub mod page;
+mod dialog;
+mod page;

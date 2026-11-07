@@ -1,5 +1,5 @@
 //! One Presenter per Accounts View: the Settings page and the Add and Edit Dialogs (one form).
-//! Each takes events through `handle` and builds a plain-data view model through `view_model`, its
+//! Each takes events through `handle` and builds a plain-data view model through `view_model` (`lib-viper`'s Presenter contract, ADR-0056), its
 //! text already localised from [`crate::msg`], so a View only draws. They share one set of ports
 //! ([`SharedPorts`](crate::protocols::SharedPorts)) and ask for navigation through the
 //! [`AccountsRouter`](crate::protocols::AccountsRouter) the Client passes in. Delete is
@@ -34,6 +34,9 @@ pub(crate) mod test_support {
     use std::cell::RefCell;
     use std::rc::Rc;
 
+    use lib_viper::dialog::DialogKeys;
+    use lib_viper::keymap::{BACK, Binding, KeyBindingConfig, Keymap, NEXT_FIELD, SELECT};
+
     use crate::fake::InMemoryPorts;
     use crate::protocols::SharedPorts;
 
@@ -47,5 +50,15 @@ pub(crate) mod test_support {
     pub fn sample() -> (Rc<RefCell<InMemoryPorts>>, SharedPorts) {
         locale();
         InMemoryPorts::sample().shared()
+    }
+
+    /// The Dialog keys a Dialog's legend reads, bound as `lib-shell`'s defaults bind them.
+    pub fn dialog_keys() -> DialogKeys {
+        const BINDINGS: &[Binding<()>] = &[
+            Binding::hidden(BACK, "esc", ()),
+            Binding::hidden(SELECT, "enter", ()),
+            Binding::hidden(NEXT_FIELD, "tab", ()),
+        ];
+        DialogKeys::of(&Keymap::new(BINDINGS, &KeyBindingConfig::default()))
     }
 }

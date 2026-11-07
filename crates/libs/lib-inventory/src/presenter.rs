@@ -71,6 +71,9 @@ pub(crate) mod test_support {
     use std::cell::RefCell;
     use std::rc::Rc;
 
+    use lib_viper::dialog::DialogKeys;
+    use lib_viper::keymap::{BACK, Binding, KeyBindingConfig, Keymap, NEXT_FIELD, SELECT};
+
     use crate::fake::InMemoryInventory;
     use crate::protocols::SharedInventory;
 
@@ -87,5 +90,15 @@ pub(crate) mod test_support {
             chrono::NaiveDate::from_ymd_opt(2026, 10, 2).expect("a real date"),
         )
         .shared()
+    }
+
+    /// The Dialog keys a Dialog's legend reads, bound as `lib-shell`'s defaults bind them.
+    pub fn dialog_keys() -> DialogKeys {
+        const BINDINGS: &[Binding<()>] = &[
+            Binding::hidden(BACK, "esc", ()),
+            Binding::hidden(SELECT, "enter", ()),
+            Binding::hidden(NEXT_FIELD, "tab", ()),
+        ];
+        DialogKeys::of(&Keymap::new(BINDINGS, &KeyBindingConfig::default()))
     }
 }

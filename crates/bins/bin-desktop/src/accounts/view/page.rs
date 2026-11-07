@@ -1,153 +1,76 @@
-//! The Accounts Settings page's View: the `lib-accounts` page Presenter in a gpui Entity. It looks
-//! up each key the Shell passes on, as chord text, in the Accounts keymap, turns clicks into
-//! events, draws the view model (`render.rs`). Each key and click is one input (`crate::input::send`), which
-//! commits what it wrote. The Settings View hosts it as any other page.
+//! The Accounts Settings page's View: the `lib-accounts` page Presenter's [`PageView`], which the
+//! generic `ModulePage` hosts (ADR-0056). It names the page's Router, the domains it repaints on,
+//! and how it draws the view model (`render.rs`); the keymap, the take, send and handle path and
+//! the Dialogs' landing are the generic page's.
 
 mod render;
 
-use gpui::{AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Subscription};
-use lib_accounts::AccountsOutcome;
-use lib_accounts::presenter::{
-    AccountsCommand, AccountsPageEvent, AccountsPagePresenter, AccountsPageViewModel,
-};
+use gpui::{AnyElement, App, Context, IntoElement as _, Window};
+use lib_accounts::presenter::{AccountsPageEvent, AccountsPagePresenter, AccountsPageViewModel};
 use lib_database::Domain;
-use lib_viper::keymap::Keymap;
 
-use lib_shell::Hint;
-
-use crate::account_deletion::DeletionStores;
-use crate::accounts::SettingsAccountsSnapshot;
 use crate::accounts::router::PageRouter;
+use crate::accounts::{AccountsPage, AccountsRoutes, SettingsAccountsSnapshot};
+use crate::settings::SettingsPage;
 use crate::settings::snapshot::PageSnapshot;
-use crate::{
-    announcer::{Announcer, notify_on},
-    navigation::command::AccountsVerb,
-    navigation::movement::Movement,
-    settings::{
-        SettingsPage,
-        pages::{Page, PageRowClicked},
-    },
-    shell::view::page_clicks::PresenterPage,
-    view::event::{Reveal, ViewEvent},
-};
+use crate::shell::view::module_page::{PageDraw, PageView, SettingsPageView};
+use crate::shell::view::statusline::PageStatus;
+use crate::view::event::Reveal;
 
-impl EventEmitter<ViewEvent> for AccountsPage {}
+impl PageView for AccountsPagePresenter {
+    type Setup = AccountsRoutes;
+    type Widgets = ();
 
-/// The page has no rows, so it never emits a row click.
-impl EventEmitter<PageRowClicked> for AccountsPage {}
+    /// An Accounts write, and the Units and Institutions whose codes and names the rows show.
+    const REPAINTS: &'static [Domain] = &[Domain::Accounts, Domain::Units, Domain::Institutions];
 
-pub struct AccountsPage {
-    presenter: AccountsPagePresenter,
-    ports: lib_accounts::SharedPorts,
-    deletion: DeletionStores,
-    clock: lib_core::Clock,
-    keymap: Keymap<AccountsPageEvent>,
-    /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
-    /// draws the page.
-    page_focused: bool,
-    /// Repaints the page when the Accounts, or the Units and Institutions it names, change.
-    _accounts_changed: Subscription,
-    _units_changed: Subscription,
-    _institutions_changed: Subscription,
-}
+    fn with_router<R>(
+        setup: &AccountsRoutes,
+        cx: &mut Context<'_, AccountsPage>,
+        handle: impl FnOnce(&mut Self::Router<'_>) -> R,
+    ) -> R {
+        handle(&mut PageRouter { routes: setup, cx })
+    }
 
-impl AccountsPage {
-    pub fn new(
-        ports: lib_accounts::SharedPorts,
-        deletion: DeletionStores,
-        announcer: Entity<Announcer>,
-        clock: lib_core::Clock,
-        keymap: Keymap<AccountsPageEvent>,
-        cx: &mut Context<'_, Self>,
-    ) -> Self {
-        Self {
-            presenter: AccountsPagePresenter::new(ports.clone(), keymap.clone()),
-            ports,
-            deletion,
-            _accounts_changed: notify_on(&announcer, Domain::Accounts, cx),
-            _units_changed: notify_on(&announcer, Domain::Units, cx),
-            _institutions_changed: notify_on(&announcer, Domain::Institutions, cx),
-            clock,
-            keymap,
-            page_focused: false,
+    fn render(
+        view: &AccountsPageViewModel,
+        page: PageDraw<'_, Self>,
+        _window: &mut Window,
+        cx: &mut Context<'_, AccountsPage>,
+    ) -> AnyElement {
+        render::page(view, page.clicks, page.focused, cx)
+    }
+
+    /// The Presenter's legend, rebound keys included, and its count of Accounts.
+    fn status(view: &AccountsPageViewModel) -> PageStatus {
+        PageStatus {
+            hints: view.hints.clone(),
+            right: view.status.clone(),
         }
     }
 
-    /// A key or click on the page: `event` as one input, committed once it is handled.
-    fn send(&mut self, event: AccountsPageEvent, cx: &mut Context<'_, Self>) {
-        crate::input::join_or_send(cx, |cx| self.handle(event, cx));
+    fn heading_meta(view: &AccountsPageViewModel, _cx: &App) -> Option<AnyElement> {
+        Some(view.scope.clone().into_any_element())
     }
 
-    /// Hands `event` to the Presenter with the Desktop's Router. Inside an input already, as
-    /// [`Self::send`] or a Dialog's confirm.
-    fn handle(&mut self, event: AccountsPageEvent, cx: &mut Context<'_, Self>) {
-        let mut router = PageRouter {
-            ports: self.ports.clone(),
-            deletion: self.deletion.clone(),
-            clock: self.clock.clone(),
-            cx,
-        };
-        self.presenter.handle(event, &mut router);
-        cx.notify();
-    }
-
-    /// A confirmed Dialog's outcome, handed back by the Dialog host inside the confirm's input.
-    pub(in crate::accounts) fn dialog_landed(
-        &mut self,
-        outcome: AccountsOutcome,
-        cx: &mut Context<'_, Self>,
-    ) {
-        self.handle(AccountsPageEvent::DialogClosed(Some(outcome)), cx);
-    }
-
-    /// The Delete Dialog landed, inside the confirm's input.
-    pub(in crate::accounts) fn deleted(&mut self, cx: &mut Context<'_, Self>) {
-        self.handle(AccountsPageEvent::Deleted, cx);
-    }
-
-    /// The page as drawn, with the Units, Institutions and Budgets as the stores have them now.
-    pub fn view_model(&self, _cx: &App) -> AccountsPageViewModel {
-        self.presenter.view_model()
-    }
-
-    /// `accounts new|edit|delete [<account name>]`, through [`crate::accounts::router::run_command`]:
-    /// the same Dialog the page's `n`/`e`/`d` and buttons open. A name that fits nothing or several
-    /// Accounts puts a status-line message naming the problem.
-    pub(in crate::accounts) fn run_command(
-        &mut self,
-        command_name: &str,
-        verb: AccountsVerb,
-        argument: &str,
-        cx: &mut Context<'_, Self>,
-    ) {
-        let verb = match verb {
-            AccountsVerb::New => AccountsCommand::New,
-            AccountsVerb::Edit => AccountsCommand::Edit,
-            AccountsVerb::Delete => AccountsCommand::Delete,
-        };
-        self.send(
-            AccountsPageEvent::Command {
-                command: command_name.to_string(),
-                verb,
-                argument: argument.to_string(),
-            },
-            cx,
-        );
+    /// Selects an Account another View handed off.
+    fn reveal(reveal: Reveal) -> Option<AccountsPageEvent> {
+        match reveal {
+            Reveal::Account(id) => Some(AccountsPageEvent::Reveal(id)),
+            _ => None,
+        }
     }
 }
 
-/// The page's clicks on its rows and buttons.
-impl PresenterPage<AccountsPageEvent> for AccountsPage {
-    fn send(&mut self, event: AccountsPageEvent, cx: &mut Context<'_, Self>) {
-        AccountsPage::send(self, event, cx);
-    }
+impl SettingsPageView for AccountsPagePresenter {
+    const PAGE: SettingsPage = SettingsPage::Accounts;
 }
 
 impl PageSnapshot for SettingsAccountsSnapshot {
     type Page = AccountsPage;
 
-    fn read(page: &AccountsPage, cx: &App) -> Self {
-        let view = page.view_model(cx);
+    fn read(page: &AccountsPage, _cx: &App) -> Self {
+        let view = page.view_model();
         let lines = || view.groups.iter().flat_map(|group| &group.lines);
         SettingsAccountsSnapshot {
             selected_account: lines()
@@ -155,50 +78,5 @@ impl PageSnapshot for SettingsAccountsSnapshot {
                 .map(|line| line.name.clone()),
             account_names: lines().map(|line| line.name.clone()).collect(),
         }
-    }
-}
-
-impl Page for AccountsPage {
-    const PAGE: SettingsPage = SettingsPage::Accounts;
-
-    /// Every chord the Accounts keymap binds, the arrows, `g g` and `enter` among them. The Shell
-    /// has already taken its own keys.
-    fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {
-        let Some(event) = self.keymap.event(chord) else {
-            return false;
-        };
-        self.send(event, cx);
-        true
-    }
-
-    /// A movement the keymap doesn't bind does nothing on the page, and Settings leaves the page
-    /// where it is.
-    fn apply_movement(&mut self, _movement: Movement, _cx: &mut Context<'_, Self>) -> bool {
-        true
-    }
-
-    /// Selects an Account another View handed off.
-    fn reveal(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
-        if let Reveal::Account(id) = reveal {
-            self.send(AccountsPageEvent::Reveal(id), cx);
-        }
-    }
-
-    /// The Presenter's legend, rebound keys included, which the `?` cheat sheet reads.
-    fn hints(&self, cx: &App) -> Vec<Hint> {
-        self.view_model(cx).hints
-    }
-
-    /// The page's account count.
-    fn status_note(&self, cx: &App) -> String {
-        self.view_model(cx).status
-    }
-
-    fn set_page_focused(&mut self, focused: bool, _cx: &mut Context<'_, Self>) {
-        self.page_focused = focused;
-    }
-
-    fn heading_meta(&self, cx: &App) -> AnyElement {
-        self.view_model(cx).scope.into_any_element()
     }
 }

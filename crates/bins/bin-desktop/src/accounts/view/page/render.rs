@@ -3,36 +3,39 @@
 //! (NAME / INSTITUTION / UNIT / ACTIONS). Every click sends the Presenter the event its key does:
 //! a row opens the Account's ledger, as `enter` does.
 
-use gpui::{App, ClickEvent, Context, SharedString, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, ClickEvent, SharedString, Window, div, prelude::*, px};
 use lib_accounts::presenter::{
     AccountGroupView, AccountLine, AccountsPageEvent, AccountsPageViewModel,
 };
 use lib_core::AccountId;
 use lib_locale::format::upper;
 
-use super::AccountsPage;
+use crate::accounts::AccountsPage;
 use crate::{shell::view::page_clicks::PageClicks, theme::color};
 
-impl Render for AccountsPage {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let clicks = PageClicks::new(cx);
-        let view = self.view_model(cx);
-        let focused = self.page_focused;
-        div()
-            .flex()
-            .flex_col()
-            .child(kicker_row(&view, &clicks, cx))
-            .children(
-                view.groups
-                    .iter()
-                    .map(|group| group_block(group, &view, focused, &clicks, cx)),
-            )
-            .children(
-                view.empty
-                    .clone()
-                    .map(|empty| div().text_color(color::muted(cx)).child(empty)),
-            )
-    }
+/// The page: the kicker and **+ Add account**, one table per type, or the empty note. The selected
+/// row's bar is drawn only while the page has `focused`.
+pub(super) fn page(
+    view: &AccountsPageViewModel,
+    clicks: &PageClicks<AccountsPage>,
+    focused: bool,
+    cx: &App,
+) -> AnyElement {
+    div()
+        .flex()
+        .flex_col()
+        .child(kicker_row(view, clicks, cx))
+        .children(
+            view.groups
+                .iter()
+                .map(|group| group_block(group, view, focused, clicks, cx)),
+        )
+        .children(
+            view.empty
+                .clone()
+                .map(|empty| div().text_color(color::muted(cx)).child(empty)),
+        )
+        .into_any_element()
 }
 
 fn kicker_row(

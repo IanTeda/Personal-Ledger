@@ -8,8 +8,11 @@
 
 use lib_core::{PriceSourceId, UnitId, UnitKind};
 use lib_locale::Label as _;
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::view::{Choice, DialogFrame, SelectList, SelectMove, SelectView, TextFieldView};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::presenter::{DialogPresenter, Presenter};
+use lib_viper::view::{
+    Choice, DialogFrame, Hint, SelectList, SelectMove, SelectView, TextFieldView,
+};
 
 use super::{UnitChange, UnitsOutcome, cycle, unique_label, uses_text};
 use crate::interactor::{AddUnit, EditUnit};
@@ -102,6 +105,8 @@ pub struct UnitFormViewModel {
     pub usage: Option<String>,
     /// Why the last confirm was refused.
     pub refusal: Option<String>,
+    /// The status line's legend while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 /// A Price Source as the Source select offers it.
@@ -114,6 +119,7 @@ struct SourceOption {
 
 pub struct UnitFormPresenter {
     ports: SharedPorts,
+    keys: DialogKeys,
     /// The Unit an Edit rewrites; `None` for Add.
     editing: Option<UnitId>,
     code: String,
@@ -138,8 +144,9 @@ pub struct UnitFormPresenter {
 
 impl UnitFormPresenter {
     /// An empty Add unit form: the first Kind, on Manual entry, quoted in the base Unit.
-    pub fn add(ports: SharedPorts) -> Self {
-        let mut form = Self::blank(ports);
+    /// `keys` are the Dialog keymap's chords, which its hints show.
+    pub fn add(ports: SharedPorts, keys: DialogKeys) -> Self {
+        let mut form = Self::blank(ports, keys);
         form.quote = form.base();
         form
     }
@@ -147,9 +154,9 @@ impl UnitFormPresenter {
     /// The Edit unit form pre-filled from Unit `id`, or `None` when it is gone. Its source isn't
     /// re-filtered: a stored link whose source can't price the stored Kind stays as it was until
     /// Type changes, so opening and saving never rewrites it.
-    pub fn edit(ports: SharedPorts, id: UnitId) -> Option<Self> {
+    pub fn edit(ports: SharedPorts, id: UnitId, keys: DialogKeys) -> Option<Self> {
         let unit = ports.borrow().units().unit(id)?;
-        let mut form = Self::blank(ports);
+        let mut form = Self::blank(ports, keys);
         let quote = form
             .quotes
             .iter()
@@ -167,7 +174,7 @@ impl UnitFormPresenter {
         Some(form)
     }
 
-    fn blank(ports: SharedPorts) -> Self {
+    fn blank(ports: SharedPorts, keys: DialogKeys) -> Self {
         let (sources, quotes) = {
             let ports = ports.borrow();
             let catalogue = ports.source_catalogue();
@@ -213,6 +220,7 @@ impl UnitFormPresenter {
         };
         Self {
             ports,
+            keys,
             editing: None,
             code: String::new(),
             name: String::new(),
@@ -240,8 +248,14 @@ impl UnitFormPresenter {
             .or(self.quotes.first())
             .map(|choice| choice.value)
     }
+}
 
-    pub fn handle(&mut self, event: UnitFormEvent, router: &mut dyn DialogRouter<UnitsOutcome>) {
+impl Presenter for UnitFormPresenter {
+    type Event = UnitFormEvent;
+    type ViewModel = UnitFormViewModel;
+    type Router<'r> = dyn DialogRouter<UnitsOutcome> + 'r;
+
+    fn handle(&mut self, event: UnitFormEvent, router: &mut Self::Router<'_>) {
         let closes_list = matches!(
             event,
             UnitFormEvent::Kind(_)
@@ -280,11 +294,140 @@ impl UnitFormPresenter {
                     self.focused = field;
                 }
             }
-            UnitFormEvent::Confirm => self.confirm(router),
+            UnitFormEvent::Confirm => self.save(router),
             UnitFormEvent::Cancel => router.close(None),
         }
     }
 
+    fn view_model(&self) -> UnitFormViewModel {
+        let text = |label, text: &str, placeholder, field| TextFieldView {
+            label,
+            text: text.to_string(),
+            placeholder,
+            focused: self.focused == field,
+        };
+        let fetching = !self.is_manual();
+        let (title, submit) = match self.editing {
+            Some(_) => (msg::units_edit_title(&self.code), msg::units_edit_submit()),
+            None => (msg::units_add_title(), msg::units_add_submit()),
+        };
+        UnitFormViewModel {
+            frame: DialogFrame {
+                title,
+                submit,
+                can_confirm: self.is_valid(),
+                destructive: false,
+                hints: super::form_hints(),
+            },
+            hints: super::dialog_legend(&self.keys, &super::form_hints()),
+            code: text(
+                lib_locale::msg::column_code(),
+                &self.code,
+                msg::units_code_placeholder(),
+                UnitField::Code,
+            ),
+            kind: SelectView {
+                label: lib_locale::msg::column_type(),
+                options: UnitKind::all()
+                    .iter()
+                    .map(|kind| Choice {
+                        value: *kind,
+                        label: kind.label(),
+                    })
+                    .collect(),
+                chosen: Some(self.kind),
+                focused: self.focused == UnitField::Type,
+            },
+            name: text(
+                lib_locale::msg::column_name(),
+                &self.name,
+                msg::units_name_placeholder(),
+                UnitField::Name,
+            ),
+            precision: text(
+                msg::units_field_precision(),
+                &self.precision,
+                msg::units_precision_placeholder(&Precision::MAX.to_string()),
+                UnitField::Precision,
+            ),
+            precision_help: msg::units_precision_help(),
+            source_group: msg::units_group_source(),
+            source: SelectView {
+                label: msg::units_field_source(),
+                options: self
+                    .sources_for_kind()
+                    .map(|source| Choice {
+                        value: source.id,
+                        label: source.label.clone(),
+                    })
+                    .collect(),
+                chosen: Some(self.source),
+                focused: self.focused == UnitField::Source,
+            },
+            source_help: msg::units_source_help(),
+            symbol: fetching.then(|| {
+                text(
+                    msg::units_field_symbol(),
+                    &self.symbol,
+                    msg::units_symbol_placeholder(),
+                    UnitField::Symbol,
+                )
+            }),
+            symbol_help: fetching.then(|| msg::units_symbol_help(self.source_label())),
+            quote: fetching.then(|| SelectView {
+                label: msg::units_field_quote(),
+                options: self.quotes.clone(),
+                chosen: self.quote,
+                focused: self.focused == UnitField::Quote,
+            }),
+            test_price: fetching.then(msg::units_test_price),
+            list: self.list,
+            fields: UnitField::ORDER
+                .into_iter()
+                .filter(|field| self.shows(*field))
+                .collect(),
+            usage: self.usage.map(|uses| {
+                if uses.is_used() {
+                    msg::units_edit_usage(&uses_text(uses))
+                } else {
+                    msg::units_edit_usage_none()
+                }
+            }),
+            refusal: self.refusal.clone(),
+        }
+    }
+}
+
+impl DialogPresenter for UnitFormPresenter {
+    type Outcome = UnitsOutcome;
+
+    fn input_event(input: DialogInput) -> UnitFormEvent {
+        UnitFormEvent::Input(input)
+    }
+
+    fn confirm_event() -> UnitFormEvent {
+        UnitFormEvent::Confirm
+    }
+
+    fn cancel_event() -> UnitFormEvent {
+        UnitFormEvent::Cancel
+    }
+
+    fn can_confirm(&self) -> bool {
+        self.is_valid()
+    }
+
+    /// Closes the open select's list without picking: the host's `back`.
+    fn close_open_select(&mut self) -> bool {
+        let open = self.list.is_open();
+        if open {
+            self.list.close();
+        }
+        open
+    }
+}
+
+impl UnitFormPresenter {
     /// Reads `input` for the focused field, as the Desktop sends it.
     fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<UnitsOutcome>) {
         let on_select = matches!(
@@ -300,10 +443,10 @@ impl UnitFormPresenter {
                     self.shows(field)
                 });
             }
-            DialogInput::Submit => self.confirm(router),
+            DialogInput::Submit => self.save(router),
             // A select swallows typing, so it never reaches a text field.
             _ if on_select => self.select_input(input),
-            DialogInput::Select => self.confirm(router),
+            DialogInput::Select => self.save(router),
             DialogInput::Char(ch) => {
                 if let Some(text) = self.text_mut() {
                     text.push(ch);
@@ -412,103 +555,6 @@ impl UnitFormPresenter {
         }
     }
 
-    pub fn view_model(&self) -> UnitFormViewModel {
-        let text = |label, text: &str, placeholder, field| TextFieldView {
-            label,
-            text: text.to_string(),
-            placeholder,
-            focused: self.focused == field,
-        };
-        let fetching = !self.is_manual();
-        let (title, submit) = match self.editing {
-            Some(_) => (msg::units_edit_title(&self.code), msg::units_edit_submit()),
-            None => (msg::units_add_title(), msg::units_add_submit()),
-        };
-        UnitFormViewModel {
-            frame: DialogFrame {
-                title,
-                submit,
-                can_confirm: self.is_valid(),
-                destructive: false,
-                hints: super::form_hints(),
-            },
-            code: text(
-                lib_locale::msg::column_code(),
-                &self.code,
-                msg::units_code_placeholder(),
-                UnitField::Code,
-            ),
-            kind: SelectView {
-                label: lib_locale::msg::column_type(),
-                options: UnitKind::all()
-                    .iter()
-                    .map(|kind| Choice {
-                        value: *kind,
-                        label: kind.label(),
-                    })
-                    .collect(),
-                chosen: Some(self.kind),
-                focused: self.focused == UnitField::Type,
-            },
-            name: text(
-                lib_locale::msg::column_name(),
-                &self.name,
-                msg::units_name_placeholder(),
-                UnitField::Name,
-            ),
-            precision: text(
-                msg::units_field_precision(),
-                &self.precision,
-                msg::units_precision_placeholder(&Precision::MAX.to_string()),
-                UnitField::Precision,
-            ),
-            precision_help: msg::units_precision_help(),
-            source_group: msg::units_group_source(),
-            source: SelectView {
-                label: msg::units_field_source(),
-                options: self
-                    .sources_for_kind()
-                    .map(|source| Choice {
-                        value: source.id,
-                        label: source.label.clone(),
-                    })
-                    .collect(),
-                chosen: Some(self.source),
-                focused: self.focused == UnitField::Source,
-            },
-            source_help: msg::units_source_help(),
-            symbol: fetching.then(|| {
-                text(
-                    msg::units_field_symbol(),
-                    &self.symbol,
-                    msg::units_symbol_placeholder(),
-                    UnitField::Symbol,
-                )
-            }),
-            symbol_help: fetching.then(|| msg::units_symbol_help(self.source_label())),
-            quote: fetching.then(|| SelectView {
-                label: msg::units_field_quote(),
-                options: self.quotes.clone(),
-                chosen: self.quote,
-                focused: self.focused == UnitField::Quote,
-            }),
-            test_price: fetching.then(msg::units_test_price),
-            list: self.list,
-            fields: UnitField::ORDER
-                .into_iter()
-                .filter(|field| self.shows(*field))
-                .collect(),
-            usage: self.usage.map(|uses| {
-                if uses.is_used() {
-                    msg::units_edit_usage(&uses_text(uses))
-                } else {
-                    msg::units_edit_usage_none()
-                }
-            }),
-            refusal: self.refusal.clone(),
-        }
-    }
-
     fn sources_for_kind(&self) -> impl Iterator<Item = &SourceOption> {
         self.sources
             .iter()
@@ -569,7 +615,7 @@ impl UnitFormPresenter {
         }
     }
 
-    fn confirm(&mut self, router: &mut dyn DialogRouter<UnitsOutcome>) {
+    fn save(&mut self, router: &mut dyn DialogRouter<UnitsOutcome>) {
         let Some(precision) = Precision::parse(&self.precision).filter(|_| self.is_valid()) else {
             return;
         };
@@ -672,7 +718,7 @@ mod tests {
     #[test]
     fn a_new_form_is_on_manual_entry_quoted_in_the_base_unit_and_hides_symbol_and_quote() {
         let (_, ports) = sample();
-        let form = UnitFormPresenter::add(ports);
+        let form = UnitFormPresenter::add(ports, DialogKeys::default());
         let view = form.view_model();
 
         assert_eq!(view.frame.title, "Add unit");
@@ -695,7 +741,7 @@ mod tests {
     #[test]
     fn the_source_list_holds_only_sources_that_price_the_kind() {
         let (_, ports) = sample();
-        let mut form = UnitFormPresenter::add(ports);
+        let mut form = UnitFormPresenter::add(ports, DialogKeys::default());
 
         send(&mut form, vec![UnitFormEvent::Kind(UnitKind::Crypto)]);
         assert_eq!(source_labels(&form), ["CoinGecko", "Manual entry"]);
@@ -712,7 +758,7 @@ mod tests {
     #[test]
     fn a_fetching_source_shows_symbol_and_quote_and_changing_type_falls_back_to_manual_entry() {
         let (_, ports) = sample();
-        let mut form = UnitFormPresenter::add(ports);
+        let mut form = UnitFormPresenter::add(ports, DialogKeys::default());
         send(
             &mut form,
             vec![
@@ -745,7 +791,7 @@ mod tests {
     #[test]
     fn tab_skips_fields_manual_entry_hides_and_wraps() {
         let (_, ports) = sample();
-        let mut form = UnitFormPresenter::add(ports);
+        let mut form = UnitFormPresenter::add(ports, DialogKeys::default());
         send(&mut form, vec![UnitFormEvent::Focus(UnitField::Symbol)]);
         assert!(
             form.view_model().code.focused,
@@ -767,7 +813,7 @@ mod tests {
     #[test]
     fn adding_a_unit_saves_its_link_and_closes_with_its_code() {
         let (ports, shared) = sample();
-        let mut form = UnitFormPresenter::add(shared);
+        let mut form = UnitFormPresenter::add(shared, DialogKeys::default());
 
         let calls = send(
             &mut form,
@@ -803,7 +849,7 @@ mod tests {
     #[test]
     fn an_invalid_form_does_not_confirm() {
         let (ports, shared) = sample();
-        let mut form = UnitFormPresenter::add(shared);
+        let mut form = UnitFormPresenter::add(shared, DialogKeys::default());
 
         let calls = send(
             &mut form,
@@ -821,7 +867,8 @@ mod tests {
     #[test]
     fn editing_shows_the_real_usage_counts_and_adding_shows_none() {
         let (ports, shared) = sample();
-        let form = UnitFormPresenter::edit(shared.clone(), UnitId::SEED_BTC).unwrap();
+        let form = UnitFormPresenter::edit(shared.clone(), UnitId::SEED_BTC, DialogKeys::default())
+            .unwrap();
         assert_eq!(
             form.view_model().usage.as_deref(),
             Some("Nothing uses this unit yet.")
@@ -835,19 +882,26 @@ mod tests {
                 ..UnitUse::default()
             },
         );
-        let form = UnitFormPresenter::edit(shared.clone(), UnitId::SEED_BTC).unwrap();
+        let form = UnitFormPresenter::edit(shared.clone(), UnitId::SEED_BTC, DialogKeys::default())
+            .unwrap();
         assert_eq!(
             form.view_model().usage.as_deref(),
             Some("Used by 2 accounts, 1 budget.")
         );
-        assert_eq!(UnitFormPresenter::add(shared).view_model().usage, None);
+        assert_eq!(
+            UnitFormPresenter::add(shared, DialogKeys::default())
+                .view_model()
+                .usage,
+            None
+        );
     }
 
     #[test]
     fn editing_prefills_the_row_keeps_an_unfitting_stored_source_and_saves_under_its_id() {
         let (ports, shared) = sample();
         ports.borrow_mut().units.units[1].kind = UnitKind::Currency;
-        let mut form = UnitFormPresenter::edit(shared, UnitId::SEED_BTC).expect("btc is seeded");
+        let mut form = UnitFormPresenter::edit(shared, UnitId::SEED_BTC, DialogKeys::default())
+            .expect("btc is seeded");
         let view = form.view_model();
         assert_eq!(view.frame.title, "Edit unit — btc");
         assert_eq!(view.code.text, "btc");
@@ -879,7 +933,9 @@ mod tests {
     #[test]
     fn a_unit_or_source_removed_under_the_dialog_is_refused_as_text_and_it_stays_open() {
         let (ports, shared) = sample();
-        let mut edit = UnitFormPresenter::edit(shared.clone(), UnitId::SEED_VAS).unwrap();
+        let mut edit =
+            UnitFormPresenter::edit(shared.clone(), UnitId::SEED_VAS, DialogKeys::default())
+                .unwrap();
         ports.borrow_mut().units.units.remove(2);
         assert_eq!(send(&mut edit, vec![UnitFormEvent::Confirm]), []);
         assert_eq!(
@@ -893,7 +949,7 @@ mod tests {
             updates: crate::Updates::Daily,
         }
         .run(&mut ports.borrow_mut().price_sources);
-        let mut add = UnitFormPresenter::add(shared);
+        let mut add = UnitFormPresenter::add(shared, DialogKeys::default());
         send(
             &mut add,
             vec![
@@ -914,7 +970,7 @@ mod tests {
     fn a_fetching_source_needs_a_quote_unit_to_be_valid() {
         let (ports, shared) = sample();
         ports.borrow_mut().units.units.clear();
-        let mut form = UnitFormPresenter::add(shared);
+        let mut form = UnitFormPresenter::add(shared, DialogKeys::default());
         send(
             &mut form,
             vec![
@@ -935,7 +991,7 @@ mod tests {
     #[test]
     fn a_quote_unit_removed_under_the_dialog_is_refused_as_text_and_nothing_is_written() {
         let (ports, shared) = sample();
-        let mut add = UnitFormPresenter::add(shared.clone());
+        let mut add = UnitFormPresenter::add(shared.clone(), DialogKeys::default());
         send(
             &mut add,
             vec![
@@ -943,7 +999,8 @@ mod tests {
                 UnitFormEvent::Name("x".into()),
             ],
         );
-        let mut edit = UnitFormPresenter::edit(shared, UnitId::SEED_BTC).unwrap();
+        let mut edit =
+            UnitFormPresenter::edit(shared, UnitId::SEED_BTC, DialogKeys::default()).unwrap();
         ports.borrow_mut().units.units.remove(0);
         let before = ports.borrow().clone();
 
@@ -962,7 +1019,7 @@ mod tests {
     fn the_first_unit_on_an_empty_ledger_is_quoted_in_itself() {
         let (ports, shared) = sample();
         ports.borrow_mut().units.units.clear();
-        let mut form = UnitFormPresenter::add(shared);
+        let mut form = UnitFormPresenter::add(shared, DialogKeys::default());
         send(
             &mut form,
             vec![
@@ -980,7 +1037,7 @@ mod tests {
     #[test]
     fn a_new_units_precision_follows_its_type_until_one_is_typed() {
         let (_, ports) = sample();
-        let mut form = UnitFormPresenter::add(ports);
+        let mut form = UnitFormPresenter::add(ports, DialogKeys::default());
         assert_eq!(form.view_model().precision.text, "2", "Currency's");
 
         send(&mut form, vec![UnitFormEvent::Kind(UnitKind::Crypto)]);
@@ -1003,7 +1060,8 @@ mod tests {
     #[test]
     fn editing_prefills_the_precision_and_a_type_change_keeps_it() {
         let (_, shared) = sample();
-        let mut form = UnitFormPresenter::edit(shared, UnitId::SEED_AUD).expect("aud is seeded");
+        let mut form = UnitFormPresenter::edit(shared, UnitId::SEED_AUD, DialogKeys::default())
+            .expect("aud is seeded");
         assert_eq!(form.view_model().precision.text, "2");
 
         send(&mut form, vec![UnitFormEvent::Kind(UnitKind::Crypto)]);
@@ -1014,7 +1072,7 @@ mod tests {
     #[test]
     fn precision_sits_after_name_in_tab_order() {
         let (_, ports) = sample();
-        let mut form = UnitFormPresenter::add(ports);
+        let mut form = UnitFormPresenter::add(ports, DialogKeys::default());
         send(
             &mut form,
             vec![
@@ -1039,7 +1097,8 @@ mod tests {
     #[test]
     fn a_precision_outside_0_to_18_does_not_confirm_and_one_inside_is_saved() {
         let (ports, shared) = sample();
-        let mut form = UnitFormPresenter::edit(shared, UnitId::SEED_BTC).expect("btc is seeded");
+        let mut form = UnitFormPresenter::edit(shared, UnitId::SEED_BTC, DialogKeys::default())
+            .expect("btc is seeded");
 
         for refused in ["", "19", "2.5"] {
             let calls = send(
@@ -1069,7 +1128,7 @@ mod tests {
     #[test]
     fn cancel_closes_with_no_outcome() {
         let (_, ports) = sample();
-        let mut form = UnitFormPresenter::add(ports);
+        let mut form = UnitFormPresenter::add(ports, DialogKeys::default());
         assert_eq!(
             send(&mut form, vec![UnitFormEvent::Cancel]),
             [RouterCall::CloseDialog(None)]
@@ -1079,7 +1138,7 @@ mod tests {
     #[test]
     fn the_form_takes_next_field_choose_and_cancel() {
         let (_, ports) = sample();
-        let view = UnitFormPresenter::add(ports).view_model();
+        let view = UnitFormPresenter::add(ports, DialogKeys::default()).view_model();
 
         assert_eq!(
             hints(&view.frame),
@@ -1094,7 +1153,7 @@ mod tests {
     #[test]
     fn dialog_input_types_into_the_focused_field_and_tab_leaving_a_select_closes_its_list() {
         let (_, ports) = sample();
-        let mut form = UnitFormPresenter::add(ports);
+        let mut form = UnitFormPresenter::add(ports, DialogKeys::default());
         send(
             &mut form,
             vec![
@@ -1124,7 +1183,7 @@ mod tests {
     #[test]
     fn dialog_input_steps_an_open_list_and_select_commits_it_rather_than_confirming() {
         let (_, ports) = sample();
-        let mut form = UnitFormPresenter::add(ports);
+        let mut form = UnitFormPresenter::add(ports, DialogKeys::default());
         let before = form.view_model().kind.chosen;
         let calls = send(
             &mut form,

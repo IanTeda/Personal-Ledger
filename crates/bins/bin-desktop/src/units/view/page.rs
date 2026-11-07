@@ -23,10 +23,13 @@ use lib_units::presenter::{
     UnitPricesEvent, UnitPricesPresenter, UnitPricesViewModel, UnitsPageEvent, UnitsPagePresenter,
     UnitsPageViewModel,
 };
+use lib_viper::dialog::DialogKeys;
 use lib_viper::keymap::Keymap;
+use lib_viper::presenter::Presenter as _;
 
 use lib_shell::Hint;
 
+use crate::units::UnitsSetup;
 use crate::units::router::PageRouter;
 use crate::{
     announcer::{Announcer, notify_on},
@@ -51,6 +54,7 @@ pub struct UnitsPage {
     presenter: UnitsPagePresenter,
     ports: lib_units::SharedPorts,
     deletion: lib_unit_deletion::SharedUnitDeletion,
+    dialog_keys: DialogKeys,
     keymap: Keymap<UnitsPageEvent>,
     prices_keymap: Keymap<UnitPricesEvent>,
     /// The Unit prices view, while it shows in place of the tables.
@@ -71,20 +75,25 @@ pub(crate) fn now_of(clock: &lib_core::Clock) -> Rc<dyn Fn() -> chrono::DateTime
 
 impl UnitsPage {
     pub fn new(
-        ports: lib_units::SharedPorts,
-        deletion: lib_unit_deletion::SharedUnitDeletion,
+        setup: UnitsSetup,
         announcer: Entity<Announcer>,
-        keymap: Keymap<UnitsPageEvent>,
-        prices_keymap: Keymap<UnitPricesEvent>,
         clock: lib_core::Clock,
         cx: &mut Context<'_, Self>,
     ) -> Self {
+        let UnitsSetup {
+            ports,
+            deletion,
+            dialog_keys,
+            keymap,
+            prices_keymap,
+        } = setup;
         let presenter = UnitsPagePresenter::new(ports.clone(), now_of(&clock), keymap.clone());
         Self {
             presenter,
             clock,
             ports,
             deletion,
+            dialog_keys,
             _units_changed: notify_on(&announcer, Domain::Units, cx),
             // The pane's ACCOUNTS group reads the Ledger's Accounts.
             _accounts_changed: notify_on(&announcer, Domain::Accounts, cx),
@@ -106,6 +115,7 @@ impl UnitsPage {
         let mut router = PageRouter {
             ports: self.ports.clone(),
             deletion: self.deletion.clone(),
+            dialog_keys: self.dialog_keys.clone(),
             clock: self.clock.clone(),
             cx,
             prices: None,
@@ -128,6 +138,7 @@ impl UnitsPage {
         let mut router = PageRouter {
             ports: self.ports.clone(),
             deletion: self.deletion.clone(),
+            dialog_keys: self.dialog_keys.clone(),
             clock: self.clock.clone(),
             cx,
             prices: None,

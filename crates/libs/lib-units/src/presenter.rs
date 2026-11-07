@@ -1,5 +1,6 @@
 //! One Presenter per Units View: the Settings page, the Unit prices view and each Dialog. Each
-//! takes events through `handle` and builds a plain-data view model through `view_model`, its text
+//! takes events through `handle` and builds a plain-data view model through `view_model`
+//! (`lib-viper`'s Presenter contract, ADR-0056), its text
 //! already localised from [`crate::msg`], so a View only draws. They share one set of ports
 //! ([`SharedPorts`](crate::protocols::SharedPorts)) and ask for navigation through the
 //! [`UnitsRouter`](crate::protocols::UnitsRouter) the Client passes in.
@@ -22,8 +23,9 @@ use std::rc::Rc;
 use chrono::{DateTime, Utc};
 use lib_core::PriceSourceId;
 use lib_list_cursor::Step;
-use lib_viper::keymap::{BACK, NEXT_FIELD, SELECT_NEXT, SELECT_PREVIOUS};
-use lib_viper::view::{Choice, DialogHint, count};
+use lib_viper::dialog::DialogKeys;
+use lib_viper::keymap::{BACK, NEXT_FIELD, SELECT, SELECT_NEXT, SELECT_PREVIOUS};
+use lib_viper::view::{Choice, DialogHint, Hint, count};
 
 pub use delete_price_source::{
     DeletePriceSourceEvent, DeletePriceSourcePresenter, DeletePriceSourceViewModel,
@@ -80,6 +82,14 @@ fn cancel_hint() -> DialogHint {
         commands: &[BACK],
         action: lib_locale::msg::dialog_hint_cancel(),
     }
+}
+
+/// A Dialog's status-line legend: confirm, then the keys its frame lists, each chord read from the
+/// Dialog `keys` it was opened with.
+pub fn dialog_legend(keys: &DialogKeys, hints: &[DialogHint]) -> Vec<Hint> {
+    let mut legend = vec![keys.hint(SELECT, lib_locale::msg::dialog_hint_confirm())];
+    legend.extend(keys.legend(hints));
+    legend
 }
 
 /// Where a Presenter reads the time from: `Utc::now` in a Client, a fixed instant in a test.
@@ -271,6 +281,11 @@ pub(crate) mod test_support {
     use chrono::{DateTime, TimeZone, Utc};
 
     use super::Clock;
+    use lib_viper::dialog::DialogKeys;
+    use lib_viper::keymap::{
+        BACK, Binding, KeyBindingConfig, Keymap, NEXT_FIELD, SELECT, SELECT_NEXT, SELECT_PREVIOUS,
+    };
+
     use crate::fake::InMemoryPorts;
     use crate::protocols::SharedPorts;
 
@@ -278,6 +293,18 @@ pub(crate) mod test_support {
     /// needs: the first explicit `init` wins, so each test calls it before reading any.
     pub fn locale() {
         lib_locale::init_with_layers("en-US", &[crate::msg::LAYER]);
+    }
+
+    /// The Dialog keys a Dialog's legend reads, bound as `lib-shell`'s defaults bind them.
+    pub fn dialog_keys() -> DialogKeys {
+        const BINDINGS: &[Binding<()>] = &[
+            Binding::hidden(BACK, "esc", ()),
+            Binding::hidden(SELECT, "enter", ()),
+            Binding::hidden(NEXT_FIELD, "tab", ()),
+            Binding::hidden(SELECT_NEXT, "down", ()),
+            Binding::hidden(SELECT_PREVIOUS, "up", ()),
+        ];
+        DialogKeys::of(&Keymap::new(BINDINGS, &KeyBindingConfig::default()))
     }
 
     /// The instant the tests' clock reads.
@@ -331,6 +358,26 @@ mod tests {
     use chrono::Duration;
 
     use super::*;
+
+    #[test]
+    fn a_dialogs_legend_is_confirm_then_its_frames_keys_read_from_the_dialog_keys() {
+        test_support::locale();
+
+        let legend: Vec<String> = dialog_legend(&test_support::dialog_keys(), &form_hints())
+            .into_iter()
+            .map(|hint| format!("{} {}", hint.chord, hint.action))
+            .collect();
+
+        assert_eq!(
+            legend,
+            [
+                "enter confirm",
+                "tab next field",
+                "up/down choose",
+                "esc cancel"
+            ]
+        );
+    }
 
     #[test]
     fn joined_puts_each_part_after_the_last_and_is_empty_for_none() {

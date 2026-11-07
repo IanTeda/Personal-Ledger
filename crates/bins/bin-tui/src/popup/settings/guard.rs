@@ -16,6 +16,8 @@
 use lib_core::UnitId;
 use lib_units::SharedPorts;
 use lib_units::presenter::{SetBaseUnitEvent, SetBaseUnitPresenter};
+use lib_viper::dialog::DialogKeys;
+use lib_viper::presenter::Presenter as _;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -61,7 +63,8 @@ pub struct BaseUnitGuardPopup {
     ports: TuiPorts,
     /// What ends the confirm's input.
     commit: std::rc::Rc<dyn lib_database::Commit>,
-    presenter: SetBaseUnitPresenter,
+    /// Boxed: the Presenter holds the Dialog keys, which would make the popup enum large.
+    presenter: Box<SetBaseUnitPresenter>,
     from: String,
     to: String,
     typed: String,
@@ -75,7 +78,7 @@ impl BaseUnitGuardPopup {
     /// is the base already, or isn't one the Presenter offers.
     pub fn open(units: &UnitsSetup, to: &str) -> Option<Self> {
         let shared: SharedPorts = units.ports.clone();
-        let mut presenter = SetBaseUnitPresenter::new(shared.clone());
+        let mut presenter = SetBaseUnitPresenter::new(shared.clone(), DialogKeys::default());
         let (from, to_id, transactions, accounts, already) = {
             let held = units.ports.borrow();
             let code = |id: UnitId| held.units().unit(id).map(|unit| unit.code);
@@ -111,7 +114,7 @@ impl BaseUnitGuardPopup {
         Some(Self {
             ports: units.ports.clone(),
             commit: units.commit.clone(),
-            presenter,
+            presenter: Box::new(presenter),
             from,
             to: to.to_string(),
             typed: String::new(),

@@ -3,39 +3,83 @@
 //! Router is built for each `handle` call, and a Notice goes onto the bin's queue
 //! (`crate::notices`), which the input's `send` drains.
 
-use gpui::{Context, Entity};
+use gpui::{App, Context, Entity};
 use lib_database::StoredInventoryReads;
-use lib_inventory::{InventoryDialog as Which, InventoryRouter, SharedInventory};
+use lib_inventory::presenter::{
+    AreaBlockedPresenter, AreaFormPresenter, LocationFormPresenter, RemoveAreaPresenter,
+    RemoveLocationPresenter,
+};
+use lib_inventory::{InventoryDialog as Which, InventoryOutcome, InventoryRouter, SharedInventory};
 use lib_toast::{Notice, Notify};
+use lib_viper::dialog::DialogKeys;
 
 use super::InventorySetup;
-use super::view::dialog::InventoryDialog;
 use super::view::page::InventoryPage;
 use crate::announcer::Announcer;
 use crate::notices::Queue;
-use crate::shell::view::dialog_entity::host_dialog;
+use crate::shell::view::dialog_entity::ModuleDialog;
 
 pub(super) struct PageRouter<'a, 'b> {
     pub inventory: SharedInventory,
     pub reads: StoredInventoryReads,
+    /// The Dialog keys the Dialogs' status-line hints are built from.
+    pub dialog_keys: DialogKeys,
     pub cx: &'a mut Context<'b, InventoryPage>,
 }
 
 impl InventoryRouter for PageRouter<'_, '_> {
     /// Builds `dialog`'s Presenter on the shared Inventory, its Units and Documents read through
-    /// [`StoredInventoryReads`], and hosts its View; its confirmed outcome comes back to the page through
-    /// [`InventoryPage::dialog_landed`].
+    /// [`StoredInventoryReads`], handed the Dialog keys, and hosts it as a `ModuleDialog`; its
+    /// confirmed outcome comes back to the page through [`InventoryPage::dialog_landed`].
     fn open_dialog(&mut self, dialog: Which) -> bool {
         let page = self.cx.weak_entity();
-        let landed = Box::new(move |outcome, cx: &mut gpui::App| {
+        let landed = move |outcome: InventoryOutcome, cx: &mut App| {
             // A page that has gone has nothing to land on.
             let _ = page.update(cx, |page, cx| page.dialog_landed(outcome, cx));
-        });
-        let Some(dialog) = InventoryDialog::open(dialog, &self.inventory, &self.reads, landed)
-        else {
-            return false;
         };
-        host_dialog(self.cx, |_| dialog);
+        let (inventory, reads, keys) = (&self.inventory, &self.reads, self.dialog_keys.clone());
+        match dialog {
+            Which::AddLocation { unit } => {
+                let form = LocationFormPresenter::add(inventory, reads, unit, keys);
+                ModuleDialog::open(self.cx, form, landed);
+            }
+            Which::EditLocation(id) => {
+                let Some(form) = LocationFormPresenter::edit(inventory, reads, id, keys) else {
+                    return false;
+                };
+                ModuleDialog::open(self.cx, form, landed);
+            }
+            Which::RemoveLocation(id) => {
+                let Some(remove) = RemoveLocationPresenter::new(inventory, reads, id, keys) else {
+                    return false;
+                };
+                ModuleDialog::open(self.cx, remove, landed);
+            }
+            Which::AddArea(location) => {
+                let Some(form) = AreaFormPresenter::add(inventory, location, keys) else {
+                    return false;
+                };
+                ModuleDialog::open(self.cx, form, landed);
+            }
+            Which::EditArea(id) => {
+                let Some(form) = AreaFormPresenter::edit(inventory, id, keys) else {
+                    return false;
+                };
+                ModuleDialog::open(self.cx, form, landed);
+            }
+            Which::RemoveArea(id) => {
+                let Some(remove) = RemoveAreaPresenter::new(inventory, id, keys) else {
+                    return false;
+                };
+                ModuleDialog::open(self.cx, remove, landed);
+            }
+            Which::AreaBlocked(id) => {
+                let Some(blocked) = AreaBlockedPresenter::new(inventory, id, keys) else {
+                    return false;
+                };
+                ModuleDialog::open(self.cx, blocked, landed);
+            }
+        }
         true
     }
 }
@@ -52,7 +96,7 @@ impl Notify for PageRouter<'_, '_> {
 pub fn inventory_page(
     setup: InventorySetup,
     announcer: Entity<Announcer>,
-    cx: &mut gpui::App,
+    cx: &mut App,
 ) -> Entity<InventoryPage> {
     use gpui::AppContext as _;
     cx.new(|cx| InventoryPage::new(setup, announcer, cx))

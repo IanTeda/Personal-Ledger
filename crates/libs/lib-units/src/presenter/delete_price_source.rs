@@ -2,8 +2,9 @@
 //! Units it prices, which fall back to Manual entry.
 
 use lib_core::PriceSourceId;
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::view::{DialogFrame, TextFieldView, count};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::presenter::{DialogPresenter, Presenter};
+use lib_viper::view::{DialogFrame, Hint, TextFieldView, count};
 
 use super::{UnitsOutcome, linked_codes};
 use crate::interactor::DeletePriceSource;
@@ -30,10 +31,13 @@ pub struct DeletePriceSourceViewModel {
     pub fallback: Option<String>,
     pub confirm: TextFieldView,
     pub refusal: Option<String>,
+    /// The status line's legend while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 pub struct DeletePriceSourcePresenter {
     ports: SharedPorts,
+    keys: DialogKeys,
     id: PriceSourceId,
     name: String,
     /// The Units it prices, copied when the Dialog opens.
@@ -45,7 +49,8 @@ pub struct DeletePriceSourcePresenter {
 impl DeletePriceSourcePresenter {
     /// The Dialog for source `id`, or `None` when it is gone. Only a Custom source can be deleted,
     /// but that is the Interactor's to refuse.
-    pub fn new(ports: SharedPorts, id: PriceSourceId) -> Option<Self> {
+    /// `keys` are the Dialog keymap's chords, which its hints show.
+    pub fn new(ports: SharedPorts, id: PriceSourceId, keys: DialogKeys) -> Option<Self> {
         let (name, codes) = {
             let ports = ports.borrow();
             let name = ports.source_catalogue().source(id)?.name.to_string();
@@ -53,6 +58,7 @@ impl DeletePriceSourcePresenter {
         };
         Some(Self {
             ports,
+            keys,
             id,
             name,
             codes,
@@ -60,15 +66,17 @@ impl DeletePriceSourcePresenter {
             refusal: None,
         })
     }
+}
 
-    pub fn handle(
-        &mut self,
-        event: DeletePriceSourceEvent,
-        router: &mut dyn DialogRouter<UnitsOutcome>,
-    ) {
+impl Presenter for DeletePriceSourcePresenter {
+    type Event = DeletePriceSourceEvent;
+    type ViewModel = DeletePriceSourceViewModel;
+    type Router<'r> = dyn DialogRouter<UnitsOutcome> + 'r;
+
+    fn handle(&mut self, event: DeletePriceSourceEvent, router: &mut Self::Router<'_>) {
         match event {
             DeletePriceSourceEvent::Input(input) => match input {
-                DialogInput::Select | DialogInput::Submit => self.confirm(router),
+                DialogInput::Select | DialogInput::Submit => self.save(router),
                 DialogInput::Char(ch) => self.confirm_text.push(ch),
                 DialogInput::Backspace => {
                     self.confirm_text.pop();
@@ -76,12 +84,12 @@ impl DeletePriceSourcePresenter {
                 _ => {}
             },
             DeletePriceSourceEvent::ConfirmText(text) => self.confirm_text = text,
-            DeletePriceSourceEvent::Confirm => self.confirm(router),
+            DeletePriceSourceEvent::Confirm => self.save(router),
             DeletePriceSourceEvent::Cancel => router.close(None),
         }
     }
 
-    pub fn view_model(&self) -> DeletePriceSourceViewModel {
+    fn view_model(&self) -> DeletePriceSourceViewModel {
         let units = count(self.codes.len());
         DeletePriceSourceViewModel {
             frame: DialogFrame {
@@ -91,6 +99,7 @@ impl DeletePriceSourcePresenter {
                 destructive: true,
                 hints: vec![super::cancel_hint()],
             },
+            hints: super::dialog_legend(&self.keys, &[super::cancel_hint()]),
             warning: msg::units_price_source_delete_warning(units),
             fallback: (!self.codes.is_empty())
                 .then(|| msg::units_price_source_delete_fallback(units, &self.codes.join(", "))),
@@ -103,9 +112,31 @@ impl DeletePriceSourcePresenter {
             refusal: self.refusal.clone(),
         }
     }
+}
 
+impl DialogPresenter for DeletePriceSourcePresenter {
+    type Outcome = UnitsOutcome;
+
+    fn input_event(input: DialogInput) -> DeletePriceSourceEvent {
+        DeletePriceSourceEvent::Input(input)
+    }
+
+    fn confirm_event() -> DeletePriceSourceEvent {
+        DeletePriceSourceEvent::Confirm
+    }
+
+    fn cancel_event() -> DeletePriceSourceEvent {
+        DeletePriceSourceEvent::Cancel
+    }
+
+    fn can_confirm(&self) -> bool {
+        self.confirm_text == self.name
+    }
+}
+
+impl DeletePriceSourcePresenter {
     /// The typed name must match exactly, case and all, as Delete unit's code does.
-    fn confirm(&mut self, router: &mut dyn DialogRouter<UnitsOutcome>) {
+    fn save(&mut self, router: &mut dyn DialogRouter<UnitsOutcome>) {
         if self.confirm_text != self.name {
             return;
         }
@@ -169,7 +200,8 @@ mod tests {
         }
         .run(&mut ports.borrow_mut().price_sources);
         ports.borrow_mut().units.units[1].link.source_id = source.id;
-        let mut dialog = DeletePriceSourcePresenter::new(shared, source.id).unwrap();
+        let mut dialog =
+            DeletePriceSourcePresenter::new(shared, source.id, DialogKeys::default()).unwrap();
         let view = dialog.view_model();
         assert_eq!(view.frame.title, "Delete price source — Broker");
         assert_eq!(
@@ -201,7 +233,9 @@ mod tests {
     #[test]
     fn a_built_in_or_a_gone_source_is_refused_as_text() {
         let (ports, shared) = sample();
-        let mut built_in = DeletePriceSourcePresenter::new(shared.clone(), COINGECKO).unwrap();
+        let mut built_in =
+            DeletePriceSourcePresenter::new(shared.clone(), COINGECKO, DialogKeys::default())
+                .unwrap();
         assert_eq!(send(&mut built_in, typed("CoinGecko")), []);
         assert_eq!(
             built_in.view_model().refusal.as_deref(),
@@ -214,7 +248,8 @@ mod tests {
             updates: Updates::Daily,
         }
         .run(&mut ports.borrow_mut().price_sources);
-        let mut gone = DeletePriceSourcePresenter::new(shared, source.id).unwrap();
+        let mut gone =
+            DeletePriceSourcePresenter::new(shared, source.id, DialogKeys::default()).unwrap();
         ports.borrow_mut().price_sources.records.clear();
         send(&mut gone, typed("Broker"));
         assert_eq!(
@@ -226,7 +261,7 @@ mod tests {
     #[test]
     fn deleting_takes_no_field_keys() {
         let (_, shared) = sample();
-        let view = DeletePriceSourcePresenter::new(shared, COINGECKO)
+        let view = DeletePriceSourcePresenter::new(shared, COINGECKO, DialogKeys::default())
             .unwrap()
             .view_model();
 
@@ -242,7 +277,8 @@ mod tests {
             updates: Updates::Daily,
         }
         .run(&mut ports.borrow_mut().price_sources);
-        let mut dialog = DeletePriceSourcePresenter::new(shared, source.id).unwrap();
+        let mut dialog =
+            DeletePriceSourcePresenter::new(shared, source.id, DialogKeys::default()).unwrap();
         let mut events: Vec<_> = "Fxx"
             .chars()
             .map(|ch| DeletePriceSourceEvent::Input(DialogInput::Char(ch)))

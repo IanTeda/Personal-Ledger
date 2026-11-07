@@ -13,8 +13,12 @@
 
 use lib_core::{LocationId, UnitId};
 use lib_toast::{Notice, ToastKind};
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::view::{Choice, DialogFrame, SelectList, SelectMove, SelectView, TextFieldView};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::{BACK, NEXT_FIELD, SELECT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
+use lib_viper::view::{
+    Choice, DialogFrame, Hint, SelectList, SelectMove, SelectView, TextFieldView,
+};
 
 use super::{location_name_error_text, location_refusal_text};
 use crate::interactor::{AddLocation, EditLocation};
@@ -49,6 +53,8 @@ pub enum LocationFormEvent {
     CloseUnits,
     /// A click on a field, which closes an open list.
     Focus(LocationField),
+    /// Saves a valid form, as its confirm button does.
+    Confirm,
     Cancel,
 }
 
@@ -66,6 +72,8 @@ pub struct LocationFormViewModel {
     /// Edit, rather than Add.
     pub editing: bool,
     pub focused: LocationField,
+    /// The status line's legend while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 /// The Unit field as drawn: a select on Add, the Unit's read-only text on Edit.
@@ -96,6 +104,7 @@ enum Problem {
 }
 
 pub struct LocationFormPresenter {
+    keys: DialogKeys,
     inventory: SharedInventory,
     /// The fiat Units, copied in when the Dialog opened.
     choices: Vec<UnitChoice>,
@@ -111,17 +120,19 @@ pub struct LocationFormPresenter {
 
 impl LocationFormPresenter {
     /// A fresh Add form: no name, and `preferred` chosen as the Unit when it is a fiat one, else
-    /// the first.
+    /// the first. `keys` are the Dialog keymap's chords, which its hints show.
     pub fn add(
         inventory: &SharedInventory,
         units: &dyn InventoryUnits,
         preferred: Option<UnitId>,
+        keys: DialogKeys,
     ) -> Self {
         let choices = units.currencies();
         let unit = preferred
             .filter(|id| choices.iter().any(|choice| choice.id == *id))
             .or_else(|| choices.first().map(|choice| choice.id));
         Self {
+            keys,
             inventory: inventory.clone(),
             choices,
             editing: None,
@@ -139,11 +150,13 @@ impl LocationFormPresenter {
         inventory: &SharedInventory,
         units: &dyn InventoryUnits,
         id: LocationId,
+        keys: DialogKeys,
     ) -> Option<Self> {
         let location = inventory.borrow().location(id)?;
         let choices = units.currencies();
         let code = units.unit_code(location.unit).unwrap_or_default();
         Some(Self {
+            keys,
             inventory: inventory.clone(),
             unit: choices
                 .iter()
@@ -162,12 +175,14 @@ impl LocationFormPresenter {
             refusal: None,
         })
     }
+}
 
-    pub fn handle(
-        &mut self,
-        event: LocationFormEvent,
-        router: &mut dyn DialogRouter<InventoryOutcome>,
-    ) {
+impl Presenter for LocationFormPresenter {
+    type Event = LocationFormEvent;
+    type ViewModel = LocationFormViewModel;
+    type Router<'r> = dyn DialogRouter<InventoryOutcome> + 'r;
+
+    fn handle(&mut self, event: LocationFormEvent, router: &mut Self::Router<'_>) {
         match event {
             LocationFormEvent::Input(input) => self.input(input, router),
             LocationFormEvent::Name(text) => self.set_name(text),
@@ -191,8 +206,110 @@ impl LocationFormPresenter {
                     self.focused = field;
                 }
             }
+            LocationFormEvent::Confirm => self.save(router),
             LocationFormEvent::Cancel => router.close(None),
         }
+    }
+
+    fn view_model(&self) -> LocationFormViewModel {
+        let editing = self.editing.is_some();
+        let (title, submit) = if editing {
+            (
+                msg::inventory_dialog_edit_title(),
+                msg::inventory_dialog_save(),
+            )
+        } else {
+            (
+                msg::inventory_dialog_add_title(),
+                msg::inventory_dialog_add_submit(),
+            )
+        };
+        let problem = self.problem();
+        LocationFormViewModel {
+            frame: DialogFrame {
+                title,
+                submit,
+                can_confirm: problem.is_none(),
+                destructive: false,
+                hints: Vec::new(),
+            },
+            hints: self.hints(),
+            name: TextFieldView {
+                label: msg::inventory_field_name(),
+                text: self.name.clone(),
+                placeholder: msg::inventory_field_name_placeholder(),
+                focused: self.focused == LocationField::Name,
+            },
+            name_error: match problem {
+                Some(Problem::Name(error)) if self.touched => Some(location_name_error_text(error)),
+                _ => None,
+            },
+            unit: UnitField {
+                select: SelectView {
+                    label: msg::inventory_field_unit(),
+                    options: self.options(),
+                    chosen: self.unit,
+                    focused: self.focused == LocationField::Unit,
+                },
+                hint: msg::inventory_field_unit_hint(),
+                fixed: self
+                    .editing
+                    .as_ref()
+                    .map(|editing| editing.fixed_unit.clone()),
+                error: (!editing && self.unit.is_none()).then(msg::inventory_error_unit_missing),
+            },
+            unit_list: self.unit_list,
+            refusal: self.refusal.clone(),
+            editing,
+            focused: self.focused,
+        }
+    }
+}
+
+impl DialogPresenter for LocationFormPresenter {
+    type Outcome = InventoryOutcome;
+
+    fn input_event(input: DialogInput) -> LocationFormEvent {
+        LocationFormEvent::Input(input)
+    }
+
+    fn confirm_event() -> LocationFormEvent {
+        LocationFormEvent::Confirm
+    }
+
+    fn cancel_event() -> LocationFormEvent {
+        LocationFormEvent::Cancel
+    }
+
+    fn can_confirm(&self) -> bool {
+        self.problem().is_none()
+    }
+
+    /// Closes the open select's list without picking: the host's `back`.
+    fn close_open_select(&mut self) -> bool {
+        let open = self.unit_list.is_open();
+        if open {
+            self.unit_list.close();
+        }
+        open
+    }
+}
+
+impl LocationFormPresenter {
+    /// Cancel and confirm, then the next field on Add, the only form with two.
+    fn hints(&self) -> Vec<Hint> {
+        let mut hints = vec![
+            self.keys.hint(BACK, lib_locale::msg::dialog_hint_cancel()),
+            self.keys
+                .hint(SELECT, lib_locale::msg::dialog_hint_confirm()),
+        ];
+        if self.editing.is_none() {
+            hints.push(
+                self.keys
+                    .hint(NEXT_FIELD, lib_locale::msg::dialog_hint_next_field()),
+            );
+        }
+        hints
     }
 
     /// Reads `input` for the focused field.
@@ -204,8 +321,8 @@ impl LocationFormPresenter {
                 self.unit_list.close();
                 self.cycle(input == DialogInput::PreviousField);
             }
-            DialogInput::Submit => self.confirm(router),
-            DialogInput::Select if !(on_unit && self.unit_list.is_open()) => self.confirm(router),
+            DialogInput::Submit => self.save(router),
+            DialogInput::Select if !(on_unit && self.unit_list.is_open()) => self.save(router),
             _ if on_unit => {
                 // A select swallows typing, so it never reaches the name.
                 let options = self.options();
@@ -255,7 +372,7 @@ impl LocationFormPresenter {
 
     /// Saves the form through the Interactors, raises the Toast and closes the Dialog; a refusal
     /// stays on the form. A form that can't confirm does nothing.
-    pub fn confirm(&mut self, router: &mut dyn DialogRouter<InventoryOutcome>) {
+    fn save(&mut self, router: &mut dyn DialogRouter<InventoryOutcome>) {
         if !self.can_confirm() {
             return;
         }
@@ -311,59 +428,6 @@ impl LocationFormPresenter {
         }
     }
 
-    pub fn view_model(&self) -> LocationFormViewModel {
-        let editing = self.editing.is_some();
-        let (title, submit) = if editing {
-            (
-                msg::inventory_dialog_edit_title(),
-                msg::inventory_dialog_save(),
-            )
-        } else {
-            (
-                msg::inventory_dialog_add_title(),
-                msg::inventory_dialog_add_submit(),
-            )
-        };
-        let problem = self.problem();
-        LocationFormViewModel {
-            frame: DialogFrame {
-                title,
-                submit,
-                can_confirm: problem.is_none(),
-                destructive: false,
-                hints: Vec::new(),
-            },
-            name: TextFieldView {
-                label: msg::inventory_field_name(),
-                text: self.name.clone(),
-                placeholder: msg::inventory_field_name_placeholder(),
-                focused: self.focused == LocationField::Name,
-            },
-            name_error: match problem {
-                Some(Problem::Name(error)) if self.touched => Some(location_name_error_text(error)),
-                _ => None,
-            },
-            unit: UnitField {
-                select: SelectView {
-                    label: msg::inventory_field_unit(),
-                    options: self.options(),
-                    chosen: self.unit,
-                    focused: self.focused == LocationField::Unit,
-                },
-                hint: msg::inventory_field_unit_hint(),
-                fixed: self
-                    .editing
-                    .as_ref()
-                    .map(|editing| editing.fixed_unit.clone()),
-                error: (!editing && self.unit.is_none()).then(msg::inventory_error_unit_missing),
-            },
-            unit_list: self.unit_list,
-            refusal: self.refusal.clone(),
-            editing,
-            focused: self.focused,
-        }
-    }
-
     fn order(&self) -> &'static [LocationField] {
         if self.editing.is_some() {
             &[LocationField::Name]
@@ -384,10 +448,6 @@ impl LocationFormPresenter {
             at + 1
         };
         self.focused = order[next % order.len()];
-    }
-
-    fn can_confirm(&self) -> bool {
-        self.problem().is_none()
     }
 
     /// The first problem with the draft, in screen order. The name is checked against the other
@@ -435,7 +495,12 @@ mod tests {
         fn add_with(units: &InMemoryUnits, preferred: Option<UnitId>) -> Self {
             let (inventory, shared) = sample();
             Self {
-                presenter: LocationFormPresenter::add(&shared, units, preferred),
+                presenter: LocationFormPresenter::add(
+                    &shared,
+                    units,
+                    preferred,
+                    DialogKeys::default(),
+                ),
                 router: RecordingRouter::default(),
                 inventory,
             }
@@ -445,8 +510,13 @@ mod tests {
             let (inventory, shared) = sample();
             let id = inventory.borrow().locations()[0].id;
             Self {
-                presenter: LocationFormPresenter::edit(&shared, &InMemoryUnits::sample(), id)
-                    .expect("seeded"),
+                presenter: LocationFormPresenter::edit(
+                    &shared,
+                    &InMemoryUnits::sample(),
+                    id,
+                    DialogKeys::default(),
+                )
+                .expect("seeded"),
                 router: RecordingRouter::default(),
                 inventory,
             }
@@ -476,7 +546,8 @@ mod tests {
         }
 
         fn confirm(&mut self) -> Vec<RouterCall> {
-            self.presenter.confirm(&mut self.router);
+            self.presenter
+                .handle(LocationFormEvent::Confirm, &mut self.router);
             self.router.take()
         }
     }
@@ -731,8 +802,44 @@ mod tests {
 
         let (_, shared) = sample();
         assert!(
-            LocationFormPresenter::edit(&shared, &InMemoryUnits::sample(), LocationId::seed(9_999))
-                .is_none()
+            LocationFormPresenter::edit(
+                &shared,
+                &InMemoryUnits::sample(),
+                LocationId::seed(9_999),
+                DialogKeys::default()
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn the_legend_reads_the_dialog_keys_and_adds_the_next_field_on_add_only() {
+        use super::super::test_support::dialog_keys;
+        let (inventory, shared) = sample();
+        let units = InMemoryUnits::sample();
+        let legend = |form: LocationFormPresenter| -> Vec<String> {
+            form.view_model()
+                .hints
+                .into_iter()
+                .map(|hint| format!("{} {}", hint.chord, hint.action))
+                .collect()
+        };
+        let id = inventory.borrow().locations()[0].id;
+
+        assert_eq!(
+            legend(LocationFormPresenter::add(
+                &shared,
+                &units,
+                None,
+                dialog_keys()
+            )),
+            ["esc cancel", "enter confirm", "tab next field"]
+        );
+        assert_eq!(
+            legend(
+                LocationFormPresenter::edit(&shared, &units, id, dialog_keys()).expect("seeded")
+            ),
+            ["esc cancel", "enter confirm"]
         );
     }
 }

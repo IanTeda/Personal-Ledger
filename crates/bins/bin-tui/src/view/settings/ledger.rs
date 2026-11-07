@@ -15,6 +15,7 @@ use chrono::Local;
 use crossterm::event::{KeyCode, KeyEvent};
 use lib_list_cursor::Step;
 use lib_units::presenter::SetBaseUnitPresenter;
+use lib_viper::presenter::Presenter as _;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -200,7 +201,10 @@ pub(super) fn draft(field: SettingField, context: &Context<'_>) -> Option<(Draft
 /// so the TUI keeps no rule of its own about which Units can be the base.
 fn base_unit_draft(units: &TuiPorts) -> Option<(Draft, String)> {
     let shared: lib_units::SharedPorts = units.clone();
-    let options = SetBaseUnitPresenter::new(shared).view_model().base.options;
+    let options = SetBaseUnitPresenter::new(shared, lib_viper::dialog::DialogKeys::default())
+        .view_model()
+        .base
+        .options;
     let ports = units.borrow();
     let base = ports.base_unit().base_unit();
     let code = |id| ports.units().unit(id).map(|unit| unit.code);

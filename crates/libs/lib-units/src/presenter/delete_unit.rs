@@ -6,16 +6,20 @@
 //! base Unit also asks for the Unit that takes over as base, since the Ledger always has one.
 
 use lib_core::UnitId;
-use lib_viper::view::{Choice, DialogFrame, SelectView, TextFieldView, count};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::presenter::{DialogPresenter, Presenter};
+use lib_viper::view::{Choice, DialogFrame, Hint, SelectView, TextFieldView, count};
 
 use super::{UnitChange, UnitsOutcome, uses_text};
 use crate::interactor::{DeactivateUnit, DeleteUnit};
 use crate::protocols::SharedPorts;
 use crate::{Error, UnitRow, UnitUse, msg, units_by_code};
-use lib_viper::dialog::DialogRouter;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeleteUnitEvent {
+    /// A Dialog command or typed key: `select` and `submit` confirm, and typing goes to the
+    /// confirmation field while there is one.
+    Input(DialogInput),
     /// The confirmation field's whole new text.
     ConfirmText(String),
     NewBase(UnitId),
@@ -34,6 +38,9 @@ pub struct DeleteUnitViewModel {
     pub in_use: Option<InUseView>,
     /// Why the last confirm was refused, for any other refusal.
     pub refusal: Option<String>,
+    /// The status line's legend while the Dialog is open. [`Self::deleting`] leaves it empty for
+    /// the Presenter that built the view to fill from its Dialog keys.
+    pub hints: Vec<Hint>,
 }
 
 impl DeleteUnitViewModel {
@@ -79,6 +86,7 @@ impl DeleteUnitViewModel {
             }),
             in_use: None,
             refusal,
+            hints: Vec::new(),
         }
     }
 }
@@ -101,6 +109,7 @@ pub struct InUseView {
 
 pub struct DeleteUnitPresenter {
     ports: SharedPorts,
+    keys: DialogKeys,
     id: UnitId,
     code: String,
     confirm_text: String,
@@ -117,8 +126,9 @@ pub struct DeleteUnitPresenter {
 }
 
 impl DeleteUnitPresenter {
-    /// The Dialog for Unit `id`, or `None` when it is gone.
-    pub fn new(ports: SharedPorts, id: UnitId) -> Option<Self> {
+    /// The Dialog for Unit `id`, or `None` when it is gone. `keys` are the Dialog keymap's chords,
+    /// which its hints show.
+    pub fn new(ports: SharedPorts, id: UnitId, keys: DialogKeys) -> Option<Self> {
         let (code, candidates, in_use, is_base) = {
             let ports = ports.borrow();
             let units = ports.units().units();
@@ -143,6 +153,7 @@ impl DeleteUnitPresenter {
             .map(|choice: &Choice<UnitId>| choice.value);
         Some(Self {
             ports,
+            keys,
             id,
             code,
             confirm_text: String::new(),
@@ -153,9 +164,26 @@ impl DeleteUnitPresenter {
             refusal: None,
         })
     }
+}
 
-    pub fn handle(&mut self, event: DeleteUnitEvent, router: &mut dyn DialogRouter<UnitsOutcome>) {
+impl Presenter for DeleteUnitPresenter {
+    type Event = DeleteUnitEvent;
+    type ViewModel = DeleteUnitViewModel;
+    type Router<'r> = dyn DialogRouter<UnitsOutcome> + 'r;
+
+    fn handle(&mut self, event: DeleteUnitEvent, router: &mut Self::Router<'_>) {
         match event {
+            DeleteUnitEvent::Input(input) => match input {
+                DialogInput::Select | DialogInput::Submit => {
+                    self.handle(DeleteUnitEvent::Confirm, router)
+                }
+                // Deactivating has no confirmation field to type into.
+                DialogInput::Char(ch) if self.in_use.is_none() => self.confirm_text.push(ch),
+                DialogInput::Backspace if self.in_use.is_none() => {
+                    self.confirm_text.pop();
+                }
+                _ => {}
+            },
             DeleteUnitEvent::ConfirmText(text) => self.confirm_text = text,
             DeleteUnitEvent::NewBase(id) => {
                 if self.candidates.iter().any(|choice| choice.value == id) {
@@ -172,9 +200,9 @@ impl DeleteUnitPresenter {
         }
     }
 
-    pub fn view_model(&self) -> DeleteUnitViewModel {
+    fn view_model(&self) -> DeleteUnitViewModel {
         let code = self.code.as_str();
-        match self.in_use {
+        let mut view = match self.in_use {
             Some(uses) => DeleteUnitViewModel {
                 frame: DialogFrame {
                     title: msg::units_deactivate_title(code),
@@ -191,6 +219,7 @@ impl DeleteUnitPresenter {
                     base: self.is_base.then(msg::units_in_use_base),
                 }),
                 refusal: self.refusal.clone(),
+                hints: Vec::new(),
             },
             None => DeleteUnitViewModel::deleting(
                 code,
@@ -199,9 +228,36 @@ impl DeleteUnitPresenter {
                 self.new_base,
                 self.refusal.clone(),
             ),
-        }
+        };
+        view.hints = super::dialog_legend(&self.keys, &view.frame.hints);
+        view
+    }
+}
+
+impl DialogPresenter for DeleteUnitPresenter {
+    type Outcome = UnitsOutcome;
+
+    fn input_event(input: DialogInput) -> DeleteUnitEvent {
+        DeleteUnitEvent::Input(input)
     }
 
+    fn confirm_event() -> DeleteUnitEvent {
+        DeleteUnitEvent::Confirm
+    }
+
+    fn cancel_event() -> DeleteUnitEvent {
+        DeleteUnitEvent::Cancel
+    }
+
+    fn can_confirm(&self) -> bool {
+        match self.in_use {
+            Some(_) => !self.is_base,
+            None => confirms_delete(&self.confirm_text, &self.code),
+        }
+    }
+}
+
+impl DeleteUnitPresenter {
     fn delete(&mut self, router: &mut dyn DialogRouter<UnitsOutcome>) {
         if !confirms_delete(&self.confirm_text, &self.code) {
             return;
@@ -309,7 +365,8 @@ mod tests {
     #[test]
     fn deleting_needs_the_exact_code_typed_and_closes_with_it() {
         let (ports, shared) = sample();
-        let mut dialog = DeleteUnitPresenter::new(shared, UnitId::SEED_BTC).unwrap();
+        let mut dialog =
+            DeleteUnitPresenter::new(shared, UnitId::SEED_BTC, DialogKeys::default()).unwrap();
         let view = dialog.view_model();
         assert_eq!(view.frame.title, "Delete unit — btc");
         assert_eq!(view.confirm.unwrap().label, "Type btc to confirm");
@@ -355,7 +412,8 @@ mod tests {
         let (ports, shared) = sample();
         unquote_aud(&mut ports.borrow_mut());
         ports.borrow_mut().units.units[1].is_active = false;
-        let mut dialog = DeleteUnitPresenter::new(shared, UnitId::SEED_AUD).unwrap();
+        let mut dialog =
+            DeleteUnitPresenter::new(shared, UnitId::SEED_AUD, DialogKeys::default()).unwrap();
         let new_base = dialog.view_model().new_base.expect("aud is the base");
         let labels: Vec<_> = new_base
             .select
@@ -389,7 +447,9 @@ mod tests {
     fn deleting_a_unit_other_units_quote_is_refused_as_text_with_the_count() {
         let (ports, shared) = sample();
         let before = ports.borrow().clone();
-        let mut dialog = DeleteUnitPresenter::new(shared.clone(), UnitId::SEED_AUD).unwrap();
+        let mut dialog =
+            DeleteUnitPresenter::new(shared.clone(), UnitId::SEED_AUD, DialogKeys::default())
+                .unwrap();
         send(
             &mut dialog,
             vec![
@@ -408,7 +468,8 @@ mod tests {
 
         ports.borrow_mut().units.units[2].link.quote = UnitId::SEED_AUD;
         ports.borrow_mut().units.units[1].link.quote = UnitId::SEED_VAS;
-        let mut dialog = DeleteUnitPresenter::new(shared, UnitId::SEED_AUD).unwrap();
+        let mut dialog =
+            DeleteUnitPresenter::new(shared, UnitId::SEED_AUD, DialogKeys::default()).unwrap();
         send(
             &mut dialog,
             vec![
@@ -436,7 +497,8 @@ mod tests {
                 ..UnitUse::default()
             },
         );
-        let mut dialog = DeleteUnitPresenter::new(shared, UnitId::SEED_BTC).unwrap();
+        let mut dialog =
+            DeleteUnitPresenter::new(shared, UnitId::SEED_BTC, DialogKeys::default()).unwrap();
 
         let view = dialog.view_model();
         assert_eq!(view.frame.title, "Deactivate unit — btc");
@@ -465,7 +527,8 @@ mod tests {
     #[test]
     fn a_unit_unused_when_opened_but_used_by_confirm_still_turns_into_deactivate() {
         let (ports, shared) = sample();
-        let mut dialog = DeleteUnitPresenter::new(shared, UnitId::SEED_BTC).unwrap();
+        let mut dialog =
+            DeleteUnitPresenter::new(shared, UnitId::SEED_BTC, DialogKeys::default()).unwrap();
         assert!(dialog.view_model().in_use.is_none());
         ports.borrow_mut().usage.uses.insert(
             UnitId::SEED_BTC,
@@ -497,7 +560,8 @@ mod tests {
                 ..UnitUse::default()
             },
         );
-        let mut dialog = DeleteUnitPresenter::new(shared, UnitId::SEED_AUD).unwrap();
+        let mut dialog =
+            DeleteUnitPresenter::new(shared, UnitId::SEED_AUD, DialogKeys::default()).unwrap();
 
         let view = dialog.view_model();
         assert_eq!(view.frame.submit, "Deactivate unit");
@@ -532,7 +596,9 @@ mod tests {
     fn deleting_the_only_unit_or_a_base_with_no_active_successor_is_refused_as_text() {
         let (ports, shared) = sample();
         ports.borrow_mut().units.units.truncate(1);
-        let mut only = DeleteUnitPresenter::new(shared.clone(), UnitId::SEED_AUD).unwrap();
+        let mut only =
+            DeleteUnitPresenter::new(shared.clone(), UnitId::SEED_AUD, DialogKeys::default())
+                .unwrap();
         send(
             &mut only,
             vec![
@@ -549,7 +615,8 @@ mod tests {
         for unit in &mut ports.borrow_mut().units.units[1..] {
             unit.is_active = false;
         }
-        let mut base = DeleteUnitPresenter::new(shared, UnitId::SEED_AUD).unwrap();
+        let mut base =
+            DeleteUnitPresenter::new(shared, UnitId::SEED_AUD, DialogKeys::default()).unwrap();
         assert_eq!(base.view_model().new_base, None, "no active Unit to offer");
         send(
             &mut base,
@@ -567,7 +634,9 @@ mod tests {
     #[test]
     fn a_unit_or_new_base_removed_under_the_dialog_is_refused_as_text() {
         let (ports, shared) = sample();
-        let mut dialog = DeleteUnitPresenter::new(shared.clone(), UnitId::SEED_VAS).unwrap();
+        let mut dialog =
+            DeleteUnitPresenter::new(shared.clone(), UnitId::SEED_VAS, DialogKeys::default())
+                .unwrap();
         ports.borrow_mut().units.units.remove(2);
         send(
             &mut dialog,
@@ -582,7 +651,8 @@ mod tests {
         );
 
         let (ports, shared) = sample();
-        let mut base = DeleteUnitPresenter::new(shared, UnitId::SEED_AUD).unwrap();
+        let mut base =
+            DeleteUnitPresenter::new(shared, UnitId::SEED_AUD, DialogKeys::default()).unwrap();
         send(&mut base, vec![DeleteUnitEvent::NewBase(UnitId::SEED_VAS)]);
         ports.borrow_mut().units.units.remove(2);
         send(
@@ -598,7 +668,8 @@ mod tests {
         );
 
         let (ports, shared) = sample();
-        let mut inactive = DeleteUnitPresenter::new(shared, UnitId::SEED_AUD).unwrap();
+        let mut inactive =
+            DeleteUnitPresenter::new(shared, UnitId::SEED_AUD, DialogKeys::default()).unwrap();
         ports.borrow_mut().units.units[1].is_active = false;
         send(
             &mut inactive,
@@ -616,14 +687,16 @@ mod tests {
     #[test]
     fn deleting_or_deactivating_takes_no_field_keys_but_the_new_base_select_takes_choose() {
         let (ports, shared) = sample();
-        let view = DeleteUnitPresenter::new(shared.clone(), UnitId::SEED_BTC)
-            .unwrap()
-            .view_model();
+        let view =
+            DeleteUnitPresenter::new(shared.clone(), UnitId::SEED_BTC, DialogKeys::default())
+                .unwrap()
+                .view_model();
         assert_eq!(hints(&view.frame), pairs(&[("back", "cancel")]));
 
-        let view = DeleteUnitPresenter::new(shared.clone(), UnitId::SEED_AUD)
-            .unwrap()
-            .view_model();
+        let view =
+            DeleteUnitPresenter::new(shared.clone(), UnitId::SEED_AUD, DialogKeys::default())
+                .unwrap()
+                .view_model();
         assert!(view.new_base.is_some(), "aud is the base");
         assert_eq!(
             hints(&view.frame),
@@ -640,7 +713,7 @@ mod tests {
                 ..UnitUse::default()
             },
         );
-        let view = DeleteUnitPresenter::new(shared, UnitId::SEED_BTC)
+        let view = DeleteUnitPresenter::new(shared, UnitId::SEED_BTC, DialogKeys::default())
             .unwrap()
             .view_model();
         assert!(view.in_use.is_some(), "btc deactivates");

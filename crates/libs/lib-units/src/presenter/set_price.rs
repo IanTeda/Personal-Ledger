@@ -9,8 +9,9 @@ use lib_locale::format::{
     AmountStyle, DateInputOptions, date_error_message, format_amount, format_date,
     format_date_input, parse_date_with, parse_positive_amount,
 };
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::view::{DialogFrame, TextFieldView};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::presenter::{DialogPresenter, Presenter};
+use lib_viper::view::{DialogFrame, Hint, TextFieldView};
 
 use super::{Clock, UnitsOutcome, cycle};
 use crate::interactor::SetPrice;
@@ -58,10 +59,13 @@ pub struct SetPriceViewModel {
     pub close_help: String,
     /// Why the last confirm was refused.
     pub refusal: Option<String>,
+    /// The status line's legend while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 pub struct SetPricePresenter {
     ports: SharedPorts,
+    keys: DialogKeys,
     clock: Clock,
     id: UnitId,
     code: String,
@@ -77,7 +81,8 @@ pub struct SetPricePresenter {
 impl SetPricePresenter {
     /// The Dialog for Unit `id`, or `None` when it is gone or not on Manual entry, which takes no
     /// price by hand.
-    pub fn new(ports: SharedPorts, clock: Clock, id: UnitId) -> Option<Self> {
+    /// `keys` are the Dialog keymap's chords, which its hints show.
+    pub fn new(ports: SharedPorts, clock: Clock, id: UnitId, keys: DialogKeys) -> Option<Self> {
         let (code, quote) = {
             let ports = ports.borrow();
             let unit = ports.units().unit(id)?;
@@ -93,6 +98,7 @@ impl SetPricePresenter {
         let today = today(&clock);
         Some(Self {
             ports,
+            keys,
             clock,
             id,
             code,
@@ -103,15 +109,21 @@ impl SetPricePresenter {
             refusal: None,
         })
     }
+}
 
-    pub fn handle(&mut self, event: SetPriceEvent, router: &mut dyn DialogRouter<UnitsOutcome>) {
+impl Presenter for SetPricePresenter {
+    type Event = SetPriceEvent;
+    type ViewModel = SetPriceViewModel;
+    type Router<'r> = dyn DialogRouter<UnitsOutcome> + 'r;
+
+    fn handle(&mut self, event: SetPriceEvent, router: &mut Self::Router<'_>) {
         match event {
             SetPriceEvent::Input(input) => match input {
                 DialogInput::NextField | DialogInput::PreviousField => {
                     let backward = input == DialogInput::PreviousField;
                     self.focused = cycle(&SetPriceField::ORDER, self.focused, backward, |_| true);
                 }
-                DialogInput::Select | DialogInput::Submit => self.confirm(router),
+                DialogInput::Select | DialogInput::Submit => self.save(router),
                 DialogInput::Char(ch) => self.focused_text().push(ch),
                 DialogInput::Backspace => {
                     self.focused_text().pop();
@@ -125,19 +137,12 @@ impl SetPricePresenter {
                 self.focused = cycle(&SetPriceField::ORDER, self.focused, backward, |_| true);
             }
             SetPriceEvent::Focus(field) => self.focused = field,
-            SetPriceEvent::Confirm => self.confirm(router),
+            SetPriceEvent::Confirm => self.save(router),
             SetPriceEvent::Cancel => router.close(None),
         }
     }
 
-    fn focused_text(&mut self) -> &mut String {
-        match self.focused {
-            SetPriceField::Week => &mut self.week,
-            SetPriceField::Close => &mut self.close,
-        }
-    }
-
-    pub fn view_model(&self) -> SetPriceViewModel {
+    fn view_model(&self) -> SetPriceViewModel {
         let text = |label, text: &str, placeholder, field| TextFieldView {
             label,
             text: text.to_string(),
@@ -164,6 +169,10 @@ impl SetPricePresenter {
                 destructive: false,
                 hints: vec![super::next_field_hint(), super::cancel_hint()],
             },
+            hints: super::dialog_legend(
+                &self.keys,
+                &[super::next_field_hint(), super::cancel_hint()],
+            ),
             week: text(
                 msg::units_set_price_field_week(),
                 &self.week,
@@ -179,6 +188,35 @@ impl SetPricePresenter {
             ),
             close_help,
             refusal: self.refusal.clone(),
+        }
+    }
+}
+
+impl DialogPresenter for SetPricePresenter {
+    type Outcome = UnitsOutcome;
+
+    fn input_event(input: DialogInput) -> SetPriceEvent {
+        SetPriceEvent::Input(input)
+    }
+
+    fn confirm_event() -> SetPriceEvent {
+        SetPriceEvent::Confirm
+    }
+
+    fn cancel_event() -> SetPriceEvent {
+        SetPriceEvent::Cancel
+    }
+
+    fn can_confirm(&self) -> bool {
+        self.day().is_ok() && self.price().is_some()
+    }
+}
+
+impl SetPricePresenter {
+    fn focused_text(&mut self) -> &mut String {
+        match self.focused {
+            SetPriceField::Week => &mut self.week,
+            SetPriceField::Close => &mut self.close,
         }
     }
 
@@ -206,7 +244,7 @@ impl SetPricePresenter {
         Some(close)
     }
 
-    fn confirm(&mut self, router: &mut dyn DialogRouter<UnitsOutcome>) {
+    fn save(&mut self, router: &mut dyn DialogRouter<UnitsOutcome>) {
         let (Ok(day), Some(close)) = (self.day(), self.price()) else {
             return;
         };
@@ -267,7 +305,8 @@ mod tests {
     }
 
     fn vas(shared: SharedPorts) -> SetPricePresenter {
-        SetPricePresenter::new(shared, clock(), UnitId::SEED_VAS).expect("vas is on Manual entry")
+        SetPricePresenter::new(shared, clock(), UnitId::SEED_VAS, DialogKeys::default())
+            .expect("vas is on Manual entry")
     }
 
     fn day(y: i32, m: u32, d: u32) -> NaiveDate {
@@ -294,8 +333,18 @@ mod tests {
     fn a_unit_on_a_fetching_source_or_gone_opens_no_dialog() {
         let (_, shared) = sample();
 
-        assert!(SetPricePresenter::new(shared.clone(), clock(), UnitId::SEED_BTC).is_none());
-        assert!(SetPricePresenter::new(shared, clock(), UnitId::new()).is_none());
+        assert!(
+            SetPricePresenter::new(
+                shared.clone(),
+                clock(),
+                UnitId::SEED_BTC,
+                DialogKeys::default()
+            )
+            .is_none()
+        );
+        assert!(
+            SetPricePresenter::new(shared, clock(), UnitId::new(), DialogKeys::default()).is_none()
+        );
     }
 
     #[test]

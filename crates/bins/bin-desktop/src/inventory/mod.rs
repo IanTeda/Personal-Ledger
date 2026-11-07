@@ -6,8 +6,8 @@
 //! `inventory::X` path keeps working.
 //!
 //! - `view/page.rs` wraps the page Presenter in an Entity, which the Settings View hosts.
-//! - `view/dialog.rs` holds each Dialog's Presenter in an Entity in the Dialog host, one View per
-//!   Dialog in `view/dialog/`.
+//! - `view/dialog.rs` and `view/dialog/` are each Dialog Presenter's `DialogView`, hosted in a
+//!   generic `ModuleDialog` (ADR-0056).
 //! - `router.rs` is the Router and the module's entry point ([`inventory_page`]).
 //!
 //! The Inventory repository is `lib-database`'s `StoredInventoryPorts`; the Units and Documents its
@@ -47,6 +47,8 @@ pub struct SettingsInventorySnapshot {
 pub struct InventorySetup {
     pub inventory: SharedInventory,
     pub reads: lib_database::StoredInventoryReads,
+    /// The Dialog keymap's chords, which the module's Dialogs build their status-line hints from.
+    pub dialog_keys: lib_viper::dialog::DialogKeys,
     pub keymap: lib_viper::keymap::Keymap<InventoryPageEvent>,
 }
 
@@ -54,11 +56,13 @@ impl InventorySetup {
     pub fn new(
         inventory: SharedInventory,
         reads: lib_database::StoredInventoryReads,
+        dialog_keys: lib_viper::dialog::DialogKeys,
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
             inventory,
             reads,
+            dialog_keys,
             keymap: keymap::inventory_page_keymap(config),
         }
     }
@@ -66,10 +70,12 @@ impl InventorySetup {
     /// `storage`'s Inventory store under the default keys, for a test that builds `Root` directly.
     #[cfg(test)]
     pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
+        let config = lib_config::KeyBindingConfig::default();
         Self::new(
             storage.ports.inventory.clone(),
             storage.ports.inventory_reads.clone(),
-            &lib_config::KeyBindingConfig::default(),
+            lib_viper::dialog::DialogKeys::of(&lib_shell::dialog_keymap(&config)),
+            &config,
         )
     }
 }

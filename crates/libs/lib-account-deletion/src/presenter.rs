@@ -16,8 +16,10 @@ use lib_core::AccountId;
 use lib_locale::Segment;
 use lib_locale::format::{AmountStyle, format_amount};
 use lib_toast::{Notice, ToastKind};
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::view::{DialogFrame, TextFieldView, count};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::{BACK, SELECT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
+use lib_viper::view::{DialogFrame, Hint, TextFieldView, count};
 
 use crate::error::Error;
 use crate::interactor::DeleteAccount;
@@ -51,10 +53,13 @@ pub struct DeleteAccountViewModel {
     pub usage: AccountUse,
     /// Why the last confirm was refused.
     pub refusal: Option<String>,
+    /// The status line's legend while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 pub struct DeleteAccountPresenter {
     deletion: SharedDeletion,
+    keys: DialogKeys,
     id: AccountId,
     name: String,
     /// The balance in the Account's own Unit, formatted when it opens.
@@ -68,7 +73,13 @@ pub struct DeleteAccountPresenter {
 
 impl DeleteAccountPresenter {
     /// The Dialog for Account `id`, reading its counts from `reads`, or `None` when it is gone.
-    pub fn new(deletion: SharedDeletion, reads: &dyn DeletionReads, id: AccountId) -> Option<Self> {
+    /// `keys` are the Dialog keymap's chords, which its hints show.
+    pub fn new(
+        deletion: SharedDeletion,
+        reads: &dyn DeletionReads,
+        id: AccountId,
+        keys: DialogKeys,
+    ) -> Option<Self> {
         let (account, plans) = {
             let port = deletion.borrow();
             (port.account(id)?, port.bill_plans_paying_from(id))
@@ -80,6 +91,7 @@ impl DeleteAccountPresenter {
         };
         Some(Self {
             deletion,
+            keys,
             id,
             name: account.name,
             balance,
@@ -89,15 +101,17 @@ impl DeleteAccountPresenter {
             refusal: None,
         })
     }
+}
 
-    pub fn handle(
-        &mut self,
-        event: DeleteAccountEvent,
-        router: &mut dyn DialogRouter<AccountDeleted>,
-    ) {
+impl Presenter for DeleteAccountPresenter {
+    type Event = DeleteAccountEvent;
+    type ViewModel = DeleteAccountViewModel;
+    type Router<'r> = dyn DialogRouter<AccountDeleted> + 'r;
+
+    fn handle(&mut self, event: DeleteAccountEvent, router: &mut Self::Router<'_>) {
         match event {
             DeleteAccountEvent::Input(input) => match input {
-                DialogInput::Select | DialogInput::Submit => self.confirm(router),
+                DialogInput::Select | DialogInput::Submit => self.save(router),
                 DialogInput::Char(ch) => self.confirm_text.push(ch),
                 DialogInput::Backspace => {
                     self.confirm_text.pop();
@@ -105,12 +119,12 @@ impl DeleteAccountPresenter {
                 _ => {}
             },
             DeleteAccountEvent::ConfirmText(text) => self.confirm_text = text,
-            DeleteAccountEvent::Confirm => self.confirm(router),
+            DeleteAccountEvent::Confirm => self.save(router),
             DeleteAccountEvent::Cancel => router.close(None),
         }
     }
 
-    pub fn view_model(&self) -> DeleteAccountViewModel {
+    fn view_model(&self) -> DeleteAccountViewModel {
         let name = self.name.as_str();
         DeleteAccountViewModel {
             frame: DialogFrame {
@@ -134,15 +148,43 @@ impl DeleteAccountPresenter {
             },
             usage: self.usage,
             refusal: self.refusal.clone(),
+            hints: self.hints(),
         }
+    }
+}
+
+impl DialogPresenter for DeleteAccountPresenter {
+    type Outcome = AccountDeleted;
+
+    fn input_event(input: DialogInput) -> DeleteAccountEvent {
+        DeleteAccountEvent::Input(input)
+    }
+
+    fn confirm_event() -> DeleteAccountEvent {
+        DeleteAccountEvent::Confirm
+    }
+
+    fn cancel_event() -> DeleteAccountEvent {
+        DeleteAccountEvent::Cancel
     }
 
     /// The typed name must match exactly, case and all, and no Bill Plan may pay from it.
     fn can_confirm(&self) -> bool {
         self.plans == 0 && self.confirm_text == self.name
     }
+}
 
-    fn confirm(&mut self, router: &mut dyn DialogRouter<AccountDeleted>) {
+impl DeleteAccountPresenter {
+    /// Cancel and confirm, from the Dialog keys.
+    fn hints(&self) -> Vec<Hint> {
+        vec![
+            self.keys.hint(BACK, lib_locale::msg::dialog_hint_cancel()),
+            self.keys
+                .hint(SELECT, lib_locale::msg::dialog_hint_confirm()),
+        ]
+    }
+
+    fn save(&mut self, router: &mut dyn DialogRouter<AccountDeleted>) {
         if !self.can_confirm() {
             return;
         }
@@ -206,8 +248,8 @@ mod tests {
             );
             reads.unit_codes.insert(UnitId::SEED_AUD, "aud".into());
             let shared: SharedDeletion = deletion.clone();
-            let presenter =
-                DeleteAccountPresenter::new(shared, &reads, id).expect("a world Account");
+            let presenter = DeleteAccountPresenter::new(shared, &reads, id, DialogKeys::default())
+                .expect("a world Account");
             Self {
                 deletion,
                 presenter,
@@ -403,8 +445,34 @@ mod tests {
     fn an_account_gone_opens_no_dialog() {
         let shared: SharedDeletion = Rc::new(RefCell::new(world()));
         assert!(
-            DeleteAccountPresenter::new(shared, &InMemoryReads::default(), AccountId::seed(9_999))
-                .is_none()
+            DeleteAccountPresenter::new(
+                shared,
+                &InMemoryReads::default(),
+                AccountId::seed(9_999),
+                DialogKeys::default()
+            )
+            .is_none()
         );
+    }
+
+    #[test]
+    fn the_legend_reads_the_dialog_keys() {
+        use lib_viper::keymap::{Binding, KeyBindingConfig, Keymap};
+        const BINDINGS: &[Binding<()>] = &[
+            Binding::hidden(BACK, "esc", ()),
+            Binding::hidden(SELECT, "enter", ()),
+        ];
+        let keys = DialogKeys::of(&Keymap::new(BINDINGS, &KeyBindingConfig::default()));
+        let shared: SharedDeletion = Rc::new(RefCell::new(world()));
+        let dialog = DeleteAccountPresenter::new(shared, &InMemoryReads::default(), WALLET, keys)
+            .expect("a world Account");
+
+        let legend: Vec<String> = dialog
+            .view_model()
+            .hints
+            .into_iter()
+            .map(|hint| format!("{} {}", hint.chord, hint.action))
+            .collect();
+        assert_eq!(legend, ["esc cancel", "enter confirm"]);
     }
 }

@@ -14,6 +14,7 @@ use lib_locale::Label;
 use lib_locale::format::{AmountStyle, format_amount};
 use lib_toast::Notice;
 use lib_viper::keymap::{DELETE, EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW, SELECT};
+use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Hint, count};
 
 use super::institution_label;
@@ -127,8 +128,14 @@ impl AccountsPagePresenter {
             delete_position: None,
         }
     }
+}
 
-    pub fn handle(&mut self, event: AccountsPageEvent, router: &mut dyn AccountsRouter) {
+impl Presenter for AccountsPagePresenter {
+    type Event = AccountsPageEvent;
+    type ViewModel = AccountsPageViewModel;
+    type Router<'r> = dyn AccountsRouter + 'r;
+
+    fn handle(&mut self, event: AccountsPageEvent, router: &mut Self::Router<'_>) {
         match event {
             AccountsPageEvent::Move(step) => {
                 self.selected = step_id(&self.ids(), self.selected(), step);
@@ -177,7 +184,7 @@ impl AccountsPagePresenter {
         }
     }
 
-    pub fn view_model(&self) -> AccountsPageViewModel {
+    fn view_model(&self) -> AccountsPageViewModel {
         let ports = self.ports.borrow();
         let accounts = ports.accounts().accounts();
         let institutions = ports.institutions().account_institutions();
@@ -228,7 +235,21 @@ impl AccountsPagePresenter {
             open_dialog: self.open_dialog.clone(),
         }
     }
+}
 
+impl PagePresenter for AccountsPagePresenter {
+    type Outcome = AccountsOutcome;
+
+    fn dialog_closed(outcome: Option<AccountsOutcome>) -> AccountsPageEvent {
+        AccountsPageEvent::DialogClosed(outcome)
+    }
+
+    fn keymap(&self) -> &Keymap<AccountsPageEvent> {
+        &self.keymap
+    }
+}
+
+impl AccountsPagePresenter {
     /// The Account ids in the order the page lists them.
     fn ids(&self) -> Vec<AccountId> {
         let accounts = self.ports.borrow().accounts().accounts();

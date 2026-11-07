@@ -1,8 +1,9 @@
 //! The Set base unit Dialog: a select over the active Units, by code, on the base Unit to start.
 
 use lib_core::UnitId;
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::view::{Choice, DialogFrame, SelectList, SelectMove, SelectView};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::presenter::{DialogPresenter, Presenter};
+use lib_viper::view::{Choice, DialogFrame, Hint, SelectList, SelectMove, SelectView};
 
 use super::{UnitChange, UnitsOutcome};
 use crate::interactor::SetBaseUnit;
@@ -32,10 +33,13 @@ pub struct SetBaseUnitViewModel {
     /// The select's list: open, and its highlight.
     pub list: SelectList,
     pub refusal: Option<String>,
+    /// The status line's legend while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 pub struct SetBaseUnitPresenter {
     ports: SharedPorts,
+    keys: DialogKeys,
     options: Vec<Choice<UnitId>>,
     chosen: Option<UnitId>,
     list: SelectList,
@@ -43,7 +47,8 @@ pub struct SetBaseUnitPresenter {
 }
 
 impl SetBaseUnitPresenter {
-    pub fn new(ports: SharedPorts) -> Self {
+    /// `keys` are the Dialog keymap's chords, which its hints show.
+    pub fn new(ports: SharedPorts, keys: DialogKeys) -> Self {
         let (options, chosen) = {
             let ports = ports.borrow();
             let units = ports.units().units();
@@ -61,14 +66,21 @@ impl SetBaseUnitPresenter {
         };
         Self {
             ports,
+            keys,
             options,
             chosen,
             list: SelectList::default(),
             refusal: None,
         }
     }
+}
 
-    pub fn handle(&mut self, event: SetBaseUnitEvent, router: &mut dyn DialogRouter<UnitsOutcome>) {
+impl Presenter for SetBaseUnitPresenter {
+    type Event = SetBaseUnitEvent;
+    type ViewModel = SetBaseUnitViewModel;
+    type Router<'r> = dyn DialogRouter<UnitsOutcome> + 'r;
+
+    fn handle(&mut self, event: SetBaseUnitEvent, router: &mut Self::Router<'_>) {
         match event {
             SetBaseUnitEvent::Input(input) => self.input(input, router),
             SetBaseUnitEvent::Choose(id) => {
@@ -79,16 +91,68 @@ impl SetBaseUnitPresenter {
             SetBaseUnitEvent::CloseList => {
                 self.list.close();
             }
-            SetBaseUnitEvent::Confirm => self.confirm(router),
+            SetBaseUnitEvent::Confirm => self.save(router),
             SetBaseUnitEvent::Cancel => router.close(None),
         }
     }
 
+    fn view_model(&self) -> SetBaseUnitViewModel {
+        SetBaseUnitViewModel {
+            frame: DialogFrame {
+                title: msg::units_set_base_title(),
+                submit: msg::units_set_base_submit(),
+                can_confirm: self.chosen.is_some(),
+                destructive: false,
+                hints: vec![super::choose_hint(), super::cancel_hint()],
+            },
+            hints: super::dialog_legend(&self.keys, &[super::choose_hint(), super::cancel_hint()]),
+            base: SelectView {
+                label: msg::units_set_base_label(),
+                options: self.options.clone(),
+                chosen: self.chosen,
+                focused: true,
+            },
+            list: self.list,
+            refusal: self.refusal.clone(),
+        }
+    }
+}
+
+impl DialogPresenter for SetBaseUnitPresenter {
+    type Outcome = UnitsOutcome;
+
+    fn input_event(input: DialogInput) -> SetBaseUnitEvent {
+        SetBaseUnitEvent::Input(input)
+    }
+
+    fn confirm_event() -> SetBaseUnitEvent {
+        SetBaseUnitEvent::Confirm
+    }
+
+    fn cancel_event() -> SetBaseUnitEvent {
+        SetBaseUnitEvent::Cancel
+    }
+
+    fn can_confirm(&self) -> bool {
+        self.chosen.is_some()
+    }
+
+    /// Closes the open select's list without picking: the host's `back`.
+    fn close_open_select(&mut self) -> bool {
+        let open = self.list.is_open();
+        if open {
+            self.list.close();
+        }
+        open
+    }
+}
+
+impl SetBaseUnitPresenter {
     /// Reads `input`: the select is the only field.
     fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<UnitsOutcome>) {
         match input {
-            DialogInput::Submit => self.confirm(router),
-            DialogInput::Select if !self.list.is_open() => self.confirm(router),
+            DialogInput::Submit => self.save(router),
+            DialogInput::Select if !self.list.is_open() => self.save(router),
             _ => {
                 if let SelectMove::Chose(id) =
                     self.list.input(input, &self.options, self.chosen.as_ref())
@@ -105,27 +169,7 @@ impl SetBaseUnitPresenter {
         }
     }
 
-    pub fn view_model(&self) -> SetBaseUnitViewModel {
-        SetBaseUnitViewModel {
-            frame: DialogFrame {
-                title: msg::units_set_base_title(),
-                submit: msg::units_set_base_submit(),
-                can_confirm: self.chosen.is_some(),
-                destructive: false,
-                hints: vec![super::choose_hint(), super::cancel_hint()],
-            },
-            base: SelectView {
-                label: msg::units_set_base_label(),
-                options: self.options.clone(),
-                chosen: self.chosen,
-                focused: true,
-            },
-            list: self.list,
-            refusal: self.refusal.clone(),
-        }
-    }
-
-    fn confirm(&mut self, router: &mut dyn DialogRouter<UnitsOutcome>) {
+    fn save(&mut self, router: &mut dyn DialogRouter<UnitsOutcome>) {
         let Some(id) = self.chosen else {
             return;
         };
@@ -173,7 +217,7 @@ mod tests {
     fn the_select_offers_the_active_units_by_code_starting_on_the_base() {
         let (ports, shared) = sample();
         ports.borrow_mut().units.units[2].is_active = false;
-        let view = SetBaseUnitPresenter::new(shared).view_model();
+        let view = SetBaseUnitPresenter::new(shared, DialogKeys::default()).view_model();
 
         let labels: Vec<_> = view.base.options.iter().map(|o| o.label.as_str()).collect();
         assert_eq!(labels, ["aud — Australian Dollar", "btc — Bitcoin"]);
@@ -183,7 +227,7 @@ mod tests {
     #[test]
     fn confirming_moves_the_base_and_closes_with_its_code() {
         let (ports, shared) = sample();
-        let mut dialog = SetBaseUnitPresenter::new(shared);
+        let mut dialog = SetBaseUnitPresenter::new(shared, DialogKeys::default());
 
         let calls = send(
             &mut dialog,
@@ -206,7 +250,7 @@ mod tests {
     #[test]
     fn a_unit_deactivated_or_removed_under_the_dialog_is_refused_as_text() {
         let (ports, shared) = sample();
-        let mut dialog = SetBaseUnitPresenter::new(shared);
+        let mut dialog = SetBaseUnitPresenter::new(shared, DialogKeys::default());
         send(
             &mut dialog,
             vec![SetBaseUnitEvent::Choose(UnitId::SEED_BTC)],
@@ -231,7 +275,7 @@ mod tests {
     #[test]
     fn its_one_select_takes_choose_and_cancel_and_no_next_field() {
         let (_, shared) = sample();
-        let view = SetBaseUnitPresenter::new(shared).view_model();
+        let view = SetBaseUnitPresenter::new(shared, DialogKeys::default()).view_model();
 
         assert_eq!(
             hints(&view.frame),
@@ -245,7 +289,7 @@ mod tests {
     #[test]
     fn dialog_input_opens_steps_and_commits_the_list_then_select_confirms() {
         let (_, shared) = sample();
-        let mut dialog = SetBaseUnitPresenter::new(shared);
+        let mut dialog = SetBaseUnitPresenter::new(shared, DialogKeys::default());
         let calls = send(
             &mut dialog,
             vec![
@@ -272,7 +316,7 @@ mod tests {
     #[test]
     fn a_click_toggles_the_list_and_back_closes_it_without_picking() {
         let (_, shared) = sample();
-        let mut dialog = SetBaseUnitPresenter::new(shared);
+        let mut dialog = SetBaseUnitPresenter::new(shared, DialogKeys::default());
         send(&mut dialog, vec![SetBaseUnitEvent::ToggleList]);
         assert!(dialog.view_model().list.is_open());
 

@@ -23,9 +23,11 @@ use chrono::{Datelike, NaiveDate};
 use lib_core::{AccountId, AccountType, InstitutionId, Money, UnitId};
 use lib_locale::Label;
 use lib_locale::format::{AmountStyle, format_amount};
-use lib_viper::dialog::{DialogInput, DialogRouter};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::{BACK, NEXT_FIELD, SELECT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
 use lib_viper::view::{
-    Choice, DialogFrame, SelectList, SelectMove, SelectView, TextFieldView, count,
+    Choice, DialogFrame, Hint, SelectList, SelectMove, SelectView, TextFieldView, count,
 };
 
 use crate::interactor::{AddAccount, EditAccount};
@@ -113,6 +115,8 @@ pub struct AccountFormViewModel {
     pub error: Option<String>,
     pub editing: bool,
     pub focused: AccountField,
+    /// The status line's legend while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 /// The Account an Edit saves, with what its fixed fields show.
@@ -127,6 +131,7 @@ struct Editing {
 
 pub struct AccountFormPresenter {
     ports: SharedPorts,
+    keys: DialogKeys,
     today: NaiveDate,
     editing: Option<Editing>,
     institutions: Vec<Choice<InstitutionId>>,
@@ -157,8 +162,8 @@ pub struct AccountFormPresenter {
 impl AccountFormPresenter {
     /// A fresh Add form: Type on Bank (the common case), Institution on Bank's default, Unit on the
     /// base Unit when it is one of the options and the first option otherwise. The Account opens
-    /// `today`.
-    pub fn add(ports: SharedPorts, name: &str, today: NaiveDate) -> Self {
+    /// `today`. `keys` are the Dialog keymap's chords, which its hints show.
+    pub fn add(ports: SharedPorts, name: &str, today: NaiveDate, keys: DialogKeys) -> Self {
         let (institutions, units, base) = {
             let ports = ports.borrow();
             (
@@ -191,6 +196,7 @@ impl AccountFormPresenter {
             .collect();
         let mut form = Self {
             ports,
+            keys,
             today,
             editing: None,
             institution: None,
@@ -224,7 +230,12 @@ impl AccountFormPresenter {
     /// The Edit form pre-filled from Account `id`, or `None` when it is gone. Its Institution counts
     /// as picked, so a change of Type leaves it; one no longer among the choices falls back to the
     /// Type's default, so the form still saves.
-    pub fn edit(ports: SharedPorts, id: AccountId, today: NaiveDate) -> Option<Self> {
+    pub fn edit(
+        ports: SharedPorts,
+        id: AccountId,
+        today: NaiveDate,
+        keys: DialogKeys,
+    ) -> Option<Self> {
         let (account, usage, unit) = {
             let ports = ports.borrow();
             let account = ports.accounts().account(id)?;
@@ -238,7 +249,7 @@ impl AccountFormPresenter {
         };
         let precision = unit.as_ref().map(|unit| unit.precision);
         let unit_code = unit.map(|unit| unit.code);
-        let mut form = Self::add(ports, &account.name, today);
+        let mut form = Self::add(ports, &account.name, today, keys);
         // A deactivated Unit takes no new Account, but the one already on it keeps showing.
         if !form.units.iter().any(|choice| choice.value == account.unit)
             && let Some(code) = &unit_code
@@ -280,12 +291,14 @@ impl AccountFormPresenter {
         });
         Some(form)
     }
+}
 
-    pub fn handle(
-        &mut self,
-        event: AccountFormEvent,
-        router: &mut dyn DialogRouter<AccountsOutcome>,
-    ) {
+impl Presenter for AccountFormPresenter {
+    type Event = AccountFormEvent;
+    type ViewModel = AccountFormViewModel;
+    type Router<'r> = dyn DialogRouter<AccountsOutcome> + 'r;
+
+    fn handle(&mut self, event: AccountFormEvent, router: &mut Self::Router<'_>) {
         self.error = None;
         match event {
             AccountFormEvent::Input(input) => self.input(input, router),
@@ -332,11 +345,47 @@ impl AccountFormPresenter {
                     self.focused = field;
                 }
             }
-            AccountFormEvent::Confirm => self.confirm(router),
+            AccountFormEvent::Confirm => self.save(router),
             AccountFormEvent::Cancel => router.close(None),
         }
     }
 
+    fn view_model(&self) -> AccountFormViewModel {
+        self.build_view_model()
+    }
+}
+
+impl DialogPresenter for AccountFormPresenter {
+    type Outcome = AccountsOutcome;
+
+    fn input_event(input: DialogInput) -> AccountFormEvent {
+        AccountFormEvent::Input(input)
+    }
+
+    fn confirm_event() -> AccountFormEvent {
+        AccountFormEvent::Confirm
+    }
+
+    fn cancel_event() -> AccountFormEvent {
+        AccountFormEvent::Cancel
+    }
+
+    fn can_confirm(&self) -> bool {
+        self.is_valid()
+    }
+
+    /// Closes the open select's list without picking: the host's `back`.
+    fn close_open_select(&mut self) -> bool {
+        let open = self.list.is_open();
+        if open {
+            self.error = None;
+            self.list.close();
+        }
+        open
+    }
+}
+
+impl AccountFormPresenter {
     /// Reads `input` for the focused field.
     fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<AccountsOutcome>) {
         let on_select = matches!(
@@ -349,10 +398,10 @@ impl AccountFormPresenter {
                 self.commit_list();
                 self.cycle(input == DialogInput::PreviousField);
             }
-            DialogInput::Submit => self.confirm(router),
+            DialogInput::Submit => self.save(router),
             // A select swallows typing, so it never reaches a text field.
             _ if on_select => self.select_input(input),
-            DialogInput::Select => self.confirm(router),
+            DialogInput::Select => self.save(router),
             DialogInput::Char(ch) => self.edit_text(|text| text.push(ch)),
             DialogInput::Backspace => self.edit_text(|text| {
                 text.pop();
@@ -460,7 +509,7 @@ impl AccountFormPresenter {
         }
     }
 
-    pub fn view_model(&self) -> AccountFormViewModel {
+    fn build_view_model(&self) -> AccountFormViewModel {
         let (title, submit) = if self.editing.is_some() {
             (msg::accounts_edit_title(), msg::accounts_edit_submit())
         } else {
@@ -520,7 +569,19 @@ impl AccountFormPresenter {
             error: self.error.map(refusal_text),
             editing: self.editing.is_some(),
             focused: self.focused,
+            hints: self.hints(),
         }
+    }
+
+    /// Cancel, confirm and the next field, from the Dialog keys.
+    fn hints(&self) -> Vec<Hint> {
+        vec![
+            self.keys.hint(BACK, lib_locale::msg::dialog_hint_cancel()),
+            self.keys
+                .hint(SELECT, lib_locale::msg::dialog_hint_confirm()),
+            self.keys
+                .hint(NEXT_FIELD, lib_locale::msg::dialog_hint_next_field()),
+        ]
     }
 
     /// The Institution the Type starts on: for Cash the Personal Institution, for any other Type
@@ -608,7 +669,7 @@ impl AccountFormPresenter {
         })
     }
 
-    fn confirm(&mut self, router: &mut dyn DialogRouter<AccountsOutcome>) {
+    fn save(&mut self, router: &mut dyn DialogRouter<AccountsOutcome>) {
         if !self.is_valid() {
             return;
         }
@@ -723,7 +784,7 @@ mod tests {
     }
 
     fn add(shared: SharedPorts) -> AccountFormPresenter {
-        AccountFormPresenter::add(shared, "", today())
+        AccountFormPresenter::add(shared, "", today(), DialogKeys::default())
     }
 
     #[test]
@@ -767,7 +828,7 @@ mod tests {
     #[test]
     fn a_typed_new_prefills_the_name() {
         let (_, shared) = sample();
-        let form = AccountFormPresenter::add(shared, " Rainy Day ", today());
+        let form = AccountFormPresenter::add(shared, " Rainy Day ", today(), DialogKeys::default());
 
         assert_eq!(form.view_model().name.text, "Rainy Day");
         assert!(form.view_model().frame.can_confirm);
@@ -1070,7 +1131,8 @@ mod tests {
         let (ports, shared) = sample();
         give_usual_unit(&ports, InstitutionId::SEED_AMEX, UnitId::SEED_BTC);
         let mut form =
-            AccountFormPresenter::edit(shared, AccountId::seed(6), today()).expect("sample");
+            AccountFormPresenter::edit(shared, AccountId::seed(6), today(), DialogKeys::default())
+                .expect("sample");
         let before = form.view_model().unit.chosen;
 
         send(
@@ -1219,8 +1281,13 @@ mod tests {
                 budgets: 3,
             },
         );
-        let mut form = AccountFormPresenter::edit(shared.clone(), AccountId::seed(2), today())
-            .expect("sample");
+        let mut form = AccountFormPresenter::edit(
+            shared.clone(),
+            AccountId::seed(2),
+            today(),
+            DialogKeys::default(),
+        )
+        .expect("sample");
         let view = form.view_model();
 
         assert_eq!(view.frame.title, "Edit account");
@@ -1267,14 +1334,22 @@ mod tests {
             .expect("kept");
         assert_eq!(saved.name, "Everyday");
         assert_eq!(saved.balance.to_string(), "4182.55");
-        assert!(AccountFormPresenter::edit(shared, AccountId::new(), today()).is_none());
+        assert!(
+            AccountFormPresenter::edit(shared, AccountId::new(), today(), DialogKeys::default())
+                .is_none()
+        );
     }
 
     #[test]
     fn edit_shows_the_balance_at_its_units_precision() {
         let (ports, shared) = sample();
-        let bitcoin = AccountFormPresenter::edit(shared.clone(), AccountId::seed(7), today())
-            .expect("sample");
+        let bitcoin = AccountFormPresenter::edit(
+            shared.clone(),
+            AccountId::seed(7),
+            today(),
+            DialogKeys::default(),
+        )
+        .expect("sample");
         assert_eq!(
             bitcoin.view_model().balance_read_only.as_deref(),
             Some("0.41200000")
@@ -1286,7 +1361,8 @@ mod tests {
             }
         }
         let everyday =
-            AccountFormPresenter::edit(shared, AccountId::seed(2), today()).expect("sample");
+            AccountFormPresenter::edit(shared, AccountId::seed(2), today(), DialogKeys::default())
+                .expect("sample");
         assert_eq!(
             everyday.view_model().balance_read_only.as_deref(),
             Some("4,183")
@@ -1297,9 +1373,10 @@ mod tests {
     fn edit_keeps_an_accounts_deactivated_unit_among_the_choices() {
         let (ports, shared) = sample();
         ports.borrow_mut().units.units[1].is_active = false;
-        let view = AccountFormPresenter::edit(shared, AccountId::seed(6), today())
-            .expect("sample")
-            .view_model();
+        let view =
+            AccountFormPresenter::edit(shared, AccountId::seed(6), today(), DialogKeys::default())
+                .expect("sample")
+                .view_model();
 
         assert_eq!(view.unit.chosen, Some(UnitId::SEED_VAS));
         assert!(view.unit.options.iter().any(|c| c.label == "vas"));
@@ -1310,7 +1387,8 @@ mod tests {
     fn edit_of_a_cash_account_shows_its_institution_and_a_change_of_type_keeps_it() {
         let (_, shared) = sample();
         let mut form =
-            AccountFormPresenter::edit(shared, AccountId::seed(1), today()).expect("sample");
+            AccountFormPresenter::edit(shared, AccountId::seed(1), today(), DialogKeys::default())
+                .expect("sample");
         assert_eq!(
             form.view_model().institution.chosen,
             Some(InstitutionId::SEED_PERSONAL)
@@ -1331,9 +1409,10 @@ mod tests {
             .institutions
             .institutions
             .retain(|row| row.id != InstitutionId::SEED_PERSONAL);
-        let view = AccountFormPresenter::edit(shared, AccountId::seed(1), today())
-            .expect("sample")
-            .view_model();
+        let view =
+            AccountFormPresenter::edit(shared, AccountId::seed(1), today(), DialogKeys::default())
+                .expect("sample")
+                .view_model();
 
         assert_eq!(view.institution.chosen, None);
         assert!(!view.frame.can_confirm, "an Institution is required");
@@ -1344,7 +1423,8 @@ mod tests {
             .institutions
             .retain(|row| row.id != InstitutionId::SEED_AMEX);
         let mut form =
-            AccountFormPresenter::edit(shared, AccountId::seed(4), today()).expect("sample");
+            AccountFormPresenter::edit(shared, AccountId::seed(4), today(), DialogKeys::default())
+                .expect("sample");
         let view = form.view_model();
         assert_eq!(view.institution.chosen, None, "not the Type's default");
         assert!(!view.frame.can_confirm);
@@ -1361,7 +1441,8 @@ mod tests {
     fn an_account_gone_under_the_edit_is_refused_onto_the_form() {
         let (ports, shared) = sample();
         let mut form =
-            AccountFormPresenter::edit(shared, AccountId::seed(3), today()).expect("sample");
+            AccountFormPresenter::edit(shared, AccountId::seed(3), today(), DialogKeys::default())
+                .expect("sample");
         ports
             .borrow_mut()
             .accounts
@@ -1387,5 +1468,24 @@ mod tests {
             [RouterCall::CloseDialog(None)]
         );
         assert_eq!(*ports.borrow(), before);
+    }
+
+    #[test]
+    fn the_legend_reads_the_dialog_keys() {
+        let (_, shared) = sample();
+        let form = AccountFormPresenter::add(
+            shared,
+            "",
+            today(),
+            super::super::test_support::dialog_keys(),
+        );
+
+        let legend: Vec<String> = form
+            .view_model()
+            .hints
+            .into_iter()
+            .map(|hint| format!("{} {}", hint.chord, hint.action))
+            .collect();
+        assert_eq!(legend, ["esc cancel", "enter confirm", "tab next field"]);
     }
 }

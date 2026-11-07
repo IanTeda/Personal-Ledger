@@ -1,153 +1,63 @@
 //! The Delete account Dialog (`docs/ux/desktop-mockups/17-accounts/README.md`'s 3d) on the shared
-//! `crate::dialog` frame's destructive variant, an Entity in the Dialog host
+//! `crate::dialog` frame's destructive variant, hosted by the generic `ModuleDialog`
 //! (`shell::view::dialog_entity`): what goes, why it can't go yet while a Bill Plan pays from the
 //! Account, and the typed-back name. Every key and click becomes a `lib-account-deletion`
 //! Presenter event, and this draws the view model and nothing else.
 //!
 //! Every Dialog command and typed key reaches the Presenter as a `lib-viper` `DialogInput`: typing
-//! edits the typed-back name, and `select` confirms once the Presenter would. Confirm and Cancel
-//! go to the Presenter, which closes the Dialog through the host's [`HostRouter`]; a confirmed
-//! outcome is handed to the page, and the host closes on [`DialogClosed`].
+//! edits the typed-back name, and `select` confirms once the Presenter would.
 
 use std::rc::Rc;
 
-use gpui::{AnyElement, App, Context, EventEmitter, Render, Window, div, prelude::*, px};
-use lib_account_deletion::AccountDeleted;
-use lib_account_deletion::presenter::{
-    DeleteAccountEvent, DeleteAccountPresenter, DeleteAccountViewModel,
-};
-use lib_shell::DialogCommand;
-use lib_viper::dialog::DialogInput;
-use lib_viper::keymap::{BACK, Keymap, SELECT};
+use gpui::{AnyElement, App, Window, div, prelude::*, px};
+use lib_account_deletion::presenter::{DeleteAccountPresenter, DeleteAccountViewModel};
+use lib_shell::Hint;
 
 use crate::dialog;
 use crate::form::dialog_fields::text_field;
-use crate::shell::view::dialog_entity::DialogReadback;
-use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 use crate::theme::color;
-use lib_shell::Hint;
 
 /// The Dialog's width: the Accounts dialogs' 440px.
 const WIDTH: gpui::Pixels = px(440.0);
 
 /// The open Delete Dialog's clicks.
-type Clicks = DialogClicks<DeleteAccountDialog>;
+type Clicks = ModuleDialogClicks<DeleteAccountPresenter>;
 
-/// The host's Router, as the Delete Dialog's Presenter closes through it.
-type Router = HostRouter<AccountDeleted>;
+/// The `lib-account-deletion` Presenter's [`DialogView`], hosted in a `ModuleDialog` (ADR-0056).
+impl DialogView for DeleteAccountPresenter {
+    type Widgets = ();
 
-/// What a landed delete hands the page that opened it.
-pub(crate) type Landed = Box<dyn Fn(AccountDeleted, &mut App)>;
-
-/// The open Delete account Dialog: its Presenter, the Bills ports, the Accounts ports and the
-/// page's landing.
-pub struct DeleteAccountDialog {
-    presenter: DeleteAccountPresenter,
-    bills: lib_bills::SharedPorts,
-    accounts: lib_accounts::SharedPorts,
-    landed: Landed,
-}
-
-impl DeleteAccountDialog {
-    pub(crate) fn new(
-        presenter: DeleteAccountPresenter,
-        bills: &lib_bills::SharedPorts,
-        accounts: &lib_accounts::SharedPorts,
-        landed: Landed,
-    ) -> Self {
-        Self {
-            presenter,
-            bills: bills.clone(),
-            accounts: accounts.clone(),
-            landed,
-        }
+    fn kind(_view: &DeleteAccountViewModel) -> &'static str {
+        "DeleteAccount"
     }
 
-    fn view(&self) -> DeleteAccountViewModel {
-        self.presenter.view_model()
+    fn render(
+        view: &DeleteAccountViewModel,
+        _widgets: &mut (),
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        render(view, clicks, cx)
     }
 
-    /// Sends `event` to the Presenter, returning what its Router was asked.
-    fn send(&mut self, event: DeleteAccountEvent) -> Router {
-        let mut router = Router::default();
-        self.presenter.handle(event, &mut router);
-        router
-    }
-
-    /// Hands a landed delete to the page and tells the host, once the Presenter has closed the
-    /// Dialog.
-    fn closed(&self, router: Router, cx: &mut Context<'_, Self>) {
-        let Some(outcome) = router.closed() else {
-            return;
-        };
-        if let Some(outcome) = outcome {
-            (self.landed)(outcome, cx);
-        }
-        cx.emit(DialogClosed);
-    }
-}
-
-impl EventEmitter<DialogClosed> for DeleteAccountDialog {}
-
-impl HostedDialog for DeleteAccountDialog {
-    /// Every input is the Presenter's to read.
-    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
-        let router = self.send(DeleteAccountEvent::Input(input));
-        self.closed(router, cx);
-    }
-
-    fn can_confirm(&self) -> bool {
-        self.view().frame.can_confirm
-    }
-
-    /// Sends Confirm to the Presenter, which deletes. A refusal stays on the view model and keeps
-    /// the Dialog open.
-    fn confirm(&mut self, cx: &mut Context<'_, Self>) {
-        let router = self.send(DeleteAccountEvent::Confirm);
-        self.closed(router, cx);
-    }
-
-    /// A cancelled delete has written nothing.
-    fn cancel(&mut self, cx: &mut Context<'_, Self>) {
-        let router = self.send(DeleteAccountEvent::Cancel);
-        self.closed(router, cx);
-    }
-
-    /// The Dialog has no select.
-    fn close_open_select(&mut self) -> bool {
-        false
-    }
-
-    fn hints(&self, keymap: &Keymap<DialogCommand>) -> Option<Vec<Hint>> {
-        let key = |command| keymap.chord(command).unwrap_or_default().to_string();
-        Some(vec![
-            Hint::new(key(BACK), lib_locale::msg::dialog_hint_cancel()),
-            Hint::new(key(SELECT), lib_locale::msg::dialog_hint_confirm()),
-        ])
-    }
-
-    /// The typed-back name, the counts quoted, why it can't be deleted yet and whether it would
-    /// confirm, for a test.
-    fn readback(&self, _cx: &App) -> DialogReadback {
-        let view = self.view();
-        DialogReadback {
-            kind: "DeleteAccount",
-            values: vec![
-                ("title", view.frame.title),
-                ("confirm", view.confirm.text),
+    /// The typed-back name, the counts quoted and why it can't be deleted yet, between the title
+    /// and whether it would confirm.
+    fn readback(view: &DeleteAccountViewModel) -> Vec<(&'static str, String)> {
+        framed(
+            &view.frame,
+            vec![
+                ("confirm", view.confirm.text.clone()),
                 ("transactions", view.usage.transactions.to_string()),
                 ("budgets", view.usage.budgets.to_string()),
-                ("blocked", view.blocked.unwrap_or_default()),
-                ("refusal", view.refusal.unwrap_or_default()),
-                ("can_confirm", view.frame.can_confirm.to_string()),
+                ("blocked", view.blocked.clone().unwrap_or_default()),
+                ("refusal", view.refusal.clone().unwrap_or_default()),
             ],
-        }
+        )
     }
-}
 
-impl Render for DeleteAccountDialog {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        render(&self.view(), &Clicks::new(cx), cx)
+    fn hints(view: &DeleteAccountViewModel) -> Vec<Hint> {
+        view.hints.clone()
     }
 }
 

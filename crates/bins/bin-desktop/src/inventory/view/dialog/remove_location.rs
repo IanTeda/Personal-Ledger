@@ -3,14 +3,53 @@
 //! back, which holds every typed key.
 
 use gpui::{AnyElement, App, div, prelude::*, px};
-use lib_inventory::presenter::RemoveLocationViewModel;
+use lib_inventory::presenter::{
+    RemoveLocationEvent, RemoveLocationPresenter, RemoveLocationViewModel,
+};
+use lib_shell::Hint;
 
-use super::Clicks;
 use crate::dialog;
 use crate::form::colour_field::error_line;
 use crate::form::fields::text_field;
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 
-pub(super) fn render(view: &RemoveLocationViewModel, actions: &Clicks, cx: &App) -> AnyElement {
+/// The open Dialog's clicks.
+type Clicks = ModuleDialogClicks<RemoveLocationPresenter>;
+
+/// The `lib-inventory` Remove location Presenter's [`DialogView`], hosted in a `ModuleDialog`
+/// (ADR-0056).
+impl DialogView for RemoveLocationPresenter {
+    type Widgets = ();
+
+    fn kind(_view: &RemoveLocationViewModel) -> &'static str {
+        "RemoveLocation"
+    }
+
+    fn render(
+        view: &RemoveLocationViewModel,
+        _widgets: &mut (),
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        render(view, clicks, cx)
+    }
+
+    /// The name typed back, when the Location holds anything.
+    fn readback(view: &RemoveLocationViewModel) -> Vec<(&'static str, String)> {
+        let typed = view
+            .confirm
+            .as_ref()
+            .map(|field| field.text.clone())
+            .unwrap_or_default();
+        framed(&view.frame, vec![("confirm", typed)])
+    }
+
+    fn hints(view: &RemoveLocationViewModel) -> Vec<Hint> {
+        view.hints.clone()
+    }
+}
+
+fn render(view: &RemoveLocationViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     let destructive = view.frame.destructive;
     let mut body = vec![
         div()
@@ -25,7 +64,7 @@ pub(super) fn render(view: &RemoveLocationViewModel, actions: &Clicks, cx: &App)
             &field.text,
             &field.placeholder,
             field.focused,
-            actions.click(|_| {}),
+            actions.send_all(Vec::<RemoveLocationEvent>::new()),
             cx,
         )
         .into_any_element()

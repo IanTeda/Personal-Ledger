@@ -9,51 +9,51 @@ use gpui::{AnyElement, App, SharedString, div, prelude::*};
 use lib_inventory::presenter::{
     LocationField, LocationFormEvent, LocationFormPresenter, LocationFormViewModel,
 };
+use lib_shell::Hint;
 
-use super::{Clicks, InventoryDialog, View, note};
+use super::note;
 use crate::dialog;
 use crate::form::colour_field::error_line;
 use crate::form::fields::text_field;
 use crate::form::select_field::{self, SelectFieldProps};
 use crate::form::viper::{drawn, labels};
-use crate::shell::view::dialog_entity::HostRouter;
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 
-fn handle(presenter: &mut LocationFormPresenter, event: LocationFormEvent) {
-    presenter.handle(event, &mut HostRouter::default());
-}
+/// The open form's clicks.
+type Clicks = ModuleDialogClicks<LocationFormPresenter>;
 
-fn form(dialog: &mut InventoryDialog) -> Option<&mut LocationFormPresenter> {
-    match &mut dialog.view {
-        View::Location(presenter, _) => Some(presenter),
-        _ => None,
-    }
-}
+/// The `lib-inventory` Location form Presenter's [`DialogView`], hosted in a `ModuleDialog`
+/// (ADR-0056). Its widget state is the Unit list's top row.
+impl DialogView for LocationFormPresenter {
+    type Widgets = usize;
 
-/// A click on the Unit field focuses it and toggles its list.
-fn click_unit(dialog: &mut InventoryDialog) {
-    if let Some(presenter) = form(dialog) {
-        handle(presenter, LocationFormEvent::ToggleUnits);
-    }
-}
-
-/// A click on row `index` of the open list.
-fn click_option(dialog: &mut InventoryDialog, index: usize) {
-    if let Some(presenter) = form(dialog) {
-        handle(presenter, LocationFormEvent::Focus(LocationField::Unit));
-        if let Some(choice) = presenter.view_model().unit.select.options.get(index) {
-            handle(presenter, LocationFormEvent::Unit(choice.value));
+    fn kind(view: &LocationFormViewModel) -> &'static str {
+        if view.editing {
+            "EditLocation"
+        } else {
+            "AddLocation"
         }
     }
-}
 
-/// A click on a field focuses it, closing the list.
-fn focus(dialog: &mut InventoryDialog, field: LocationField) {
-    if let Some(presenter) = form(dialog) {
-        handle(presenter, LocationFormEvent::Focus(field));
+    fn render(
+        view: &LocationFormViewModel,
+        scroll: &mut usize,
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        render(view, scroll, clicks, cx)
+    }
+
+    fn readback(view: &LocationFormViewModel) -> Vec<(&'static str, String)> {
+        framed(&view.frame, vec![("name", view.name.text.clone())])
+    }
+
+    fn hints(view: &LocationFormViewModel) -> Vec<Hint> {
+        view.hints.clone()
     }
 }
 
-pub(super) fn render(
+fn render(
     view: &LocationFormViewModel,
     scroll: &mut usize,
     actions: &Clicks,
@@ -67,6 +67,13 @@ pub(super) fn render(
     };
     let options = labels(&view.unit.select);
     let state = drawn(&view.unit.select, view.unit_list, scroll);
+    let units: Vec<_> = view
+        .unit
+        .select
+        .options
+        .iter()
+        .map(|choice| choice.value)
+        .collect();
     let name_error = view.name_error.clone().map(|text| note(text, true, cx));
     let fields: Vec<AnyElement> = vec![
         div()
@@ -76,7 +83,7 @@ pub(super) fn render(
                 &view.name.text,
                 &view.name.placeholder,
                 view.name.focused,
-                actions.click(|dialog| focus(dialog, LocationField::Name)),
+                actions.send(LocationFormEvent::Focus(LocationField::Name)),
                 cx,
             ))
             .children(name_error)
@@ -91,8 +98,13 @@ pub(super) fn render(
                     focused: view.unit.select.focused,
                     accent: false,
                     read_only: view.unit.fixed.clone().map(SharedString::from),
-                    on_field_click: actions.click(click_unit),
-                    on_option_click: actions.option(click_option),
+                    on_field_click: actions.send(LocationFormEvent::ToggleUnits),
+                    on_option_click: actions.option(move |row| {
+                        // A row click focuses the Unit field, then picks.
+                        let mut events = vec![LocationFormEvent::Focus(LocationField::Unit)];
+                        events.extend(units.get(row).map(|unit| LocationFormEvent::Unit(*unit)));
+                        events
+                    }),
                 },
                 cx,
             ))

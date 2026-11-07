@@ -6,9 +6,8 @@
 //! The typed API key is the Presenter's, held as a secret, and the form draws it masked. It is
 //! never stored (ADR-0043).
 
-use std::rc::Rc;
-
-use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
+use lib_shell::Hint;
 use lib_units::Updates;
 use lib_units::presenter::{
     AuthChoice, PriceSourceField, PriceSourceFormEvent, PriceSourceFormPresenter,
@@ -16,7 +15,8 @@ use lib_units::presenter::{
 };
 use lib_viper::view::{Choice, SelectView, TextFieldView};
 
-use super::{Clicks, UnitsDialog, View, help, refusal, send, test_not_built};
+use super::{help, refusal, test_not_built};
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 use crate::{
     dialog,
     form::fields::{field_label, segmented_labelled, text_field},
@@ -29,8 +29,38 @@ const CUSTOM_WIDTH: gpui::Pixels = px(620.0);
 const BUILT_IN_WIDTH: gpui::Pixels = px(480.0);
 const MONOSPACE: &str = "monospace";
 
-fn handle(presenter: &mut PriceSourceFormPresenter, event: PriceSourceFormEvent) {
-    send(presenter, event, PriceSourceFormPresenter::handle);
+/// The open form's clicks.
+type Clicks = ModuleDialogClicks<PriceSourceFormPresenter>;
+
+/// The `lib-units` price source form Presenter's [`DialogView`], hosted in a `ModuleDialog`
+/// (ADR-0056).
+impl DialogView for PriceSourceFormPresenter {
+    type Widgets = ();
+
+    fn kind(view: &PriceSourceFormViewModel) -> &'static str {
+        match (&view.endpoint, &view.usage) {
+            (None, _) => "EditBuiltInPriceSource",
+            (Some(_), None) => "AddPriceSource",
+            (Some(_), Some(_)) => "EditPriceSource",
+        }
+    }
+
+    fn render(
+        view: &PriceSourceFormViewModel,
+        _widgets: &mut (),
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        render(view, clicks, cx)
+    }
+
+    fn readback(view: &PriceSourceFormViewModel) -> Vec<(&'static str, String)> {
+        framed(&view.frame, readback(view))
+    }
+
+    fn hints(view: &PriceSourceFormViewModel) -> Vec<Hint> {
+        view.hints.clone()
+    }
 }
 
 /// The field with focus, as the view model draws it.
@@ -64,15 +94,6 @@ fn focused(view: &PriceSourceFormViewModel) -> Option<PriceSourceField> {
     .find_map(|(is_focused, field)| is_focused.then_some(field))
 }
 
-/// A click that sends `event` to the open form.
-fn click(actions: &Clicks, event: PriceSourceFormEvent) -> dialog::OnClick {
-    UnitsDialog::on_click(actions, move |dialog| {
-        if let View::PriceSourceForm(presenter) = &mut dialog.view {
-            handle(presenter, event.clone());
-        }
-    })
-}
-
 /// A segmented control over a select's choices, each click sending `event` of the choice.
 fn segmented<T: Copy + PartialEq + 'static>(
     id_prefix: &'static str,
@@ -89,7 +110,6 @@ fn segmented<T: Copy + PartialEq + 'static>(
         .iter()
         .map(|Choice { value, label }| (*value, SharedString::from(label.clone())))
         .collect();
-    let actions = actions.clone();
     div()
         .flex_none()
         .child(field_label(select.label.clone()))
@@ -97,9 +117,7 @@ fn segmented<T: Copy + PartialEq + 'static>(
             id_prefix,
             options,
             current,
-            Rc::new(move |value: T, window: &mut Window, cx: &mut App| {
-                click(&actions, event(value))(window, cx);
-            }),
+            actions.choose(move |value: T| vec![event(value)]),
             None,
             cx,
         ))
@@ -125,7 +143,7 @@ fn text_box(
     } else {
         (format!("{}{caret}", field.text), color::foreground(cx))
     };
-    let on_click = click(actions, PriceSourceFormEvent::Focus(which));
+    let on_click = actions.send(PriceSourceFormEvent::Focus(which));
     div()
         .child(field_label(field.label.clone()))
         .child(
@@ -151,7 +169,7 @@ fn text_box(
         .into_any_element()
 }
 
-pub(super) fn render(view: &PriceSourceFormViewModel, actions: &Clicks, cx: &App) -> AnyElement {
+fn render(view: &PriceSourceFormViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     match &view.endpoint {
         Some(_) => render_custom(view, actions, cx),
         None => render_built_in(view, actions, cx),
@@ -282,7 +300,7 @@ fn render_built_in(view: &PriceSourceFormViewModel, actions: &Clicks, cx: &App) 
                 &view.name.text,
                 &view.name.placeholder,
                 view.name.focused,
-                click(actions, PriceSourceFormEvent::Focus(PriceSourceField::Name)),
+                actions.send(PriceSourceFormEvent::Focus(PriceSourceField::Name)),
                 cx,
             ))
             .child(help(view.name_help.clone(), cx))
@@ -407,7 +425,7 @@ fn fact_block(view: &PriceSourceFormViewModel, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-pub(super) fn readback(view: &PriceSourceFormViewModel) -> Vec<(&'static str, String)> {
+fn readback(view: &PriceSourceFormViewModel) -> Vec<(&'static str, String)> {
     let endpoint = view.endpoint.as_ref();
     let text =
         |field: Option<&TextFieldView>| field.map(|field| field.text.clone()).unwrap_or_default();

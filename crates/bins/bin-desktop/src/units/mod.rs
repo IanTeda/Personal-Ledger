@@ -4,8 +4,8 @@
 //! draws the view models.
 //!
 //! - `view/page.rs` wraps the page Presenter in an Entity, which the Settings View hosts.
-//! - `view/dialog.rs` holds each Dialog's Presenter in an Entity in the Dialog host, one View per Dialog
-//!   in `view/dialog/`.
+//! - `view/dialog.rs` and `view/dialog/` are each Dialog Presenter's `DialogView`, hosted in a
+//!   generic `ModuleDialog` (ADR-0056).
 //! - `router.rs` is the Router and the module's entry point ([`units_page`]).
 //!
 //! The ports are `lib-database`'s `StoredUnitsPorts`, which `LedgerPorts` hands the page and its
@@ -17,7 +17,7 @@ mod view;
 use gpui::App;
 use lib_units::SharedPorts;
 pub use router::units_page;
-pub(crate) use view::dialog::{Landed, Router, help, refusal};
+pub(crate) use view::dialog::{help, refusal};
 pub use view::page::UnitsPage;
 
 use crate::settings::snapshot::PageSnapshot;
@@ -68,6 +68,8 @@ pub struct UnitsSetup {
     /// The Unit Deletion module's port over the Units and Institutions stores, which Delete unit
     /// writes through (#903).
     pub deletion: lib_unit_deletion::SharedUnitDeletion,
+    /// The Dialog keymap's chords, which the module's Dialogs build their status-line hints from.
+    pub dialog_keys: lib_viper::dialog::DialogKeys,
     pub keymap: lib_viper::keymap::Keymap<lib_units::presenter::UnitsPageEvent>,
     pub prices_keymap: lib_viper::keymap::Keymap<lib_units::presenter::UnitPricesEvent>,
 }
@@ -76,11 +78,13 @@ impl UnitsSetup {
     pub fn new(
         ports: SharedPorts,
         deletion: lib_unit_deletion::SharedUnitDeletion,
+        dialog_keys: lib_viper::dialog::DialogKeys,
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
             ports,
             deletion,
+            dialog_keys,
             keymap: lib_units::keymap::units_page_keymap(config),
             prices_keymap: lib_units::keymap::unit_prices_keymap(config),
         }
@@ -89,10 +93,12 @@ impl UnitsSetup {
     /// `storage`'s Units ports under the default keys, for a test that builds `Root` directly.
     #[cfg(test)]
     pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
+        let config = lib_config::KeyBindingConfig::default();
         Self::new(
             storage.ports.units.clone(),
             storage.ports.unit_deletion.clone(),
-            &lib_config::KeyBindingConfig::default(),
+            lib_viper::dialog::DialogKeys::of(&lib_shell::dialog_keymap(&config)),
+            &config,
         )
     }
 }
