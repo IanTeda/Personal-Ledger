@@ -77,7 +77,7 @@ impl CategoriesSetup {
             storage.ports.categories.clone(),
             storage.ports.category_save.clone(),
             storage.ports.stores.budgets.clone(),
-            crate::category_deletion::DeletionStores::of(&storage.ports),
+            DeletionStores::of(&storage.ports),
             &lib_config::KeyBindingConfig::default(),
         )
     }

@@ -7,12 +7,10 @@
 //!   `view/filter_popover.rs` draw it.
 //! - `router.rs` is the module's entry point for other modules' Routers: `show` selects a
 //!   Transaction and `show_filtered` lists the Transactions a filter leaves, from the first row.
-//! - `ports.rs` answers the page's ports from the stores (#774).
 //!
 //! The sample seed is `lib_transactions::fake`'s, joined to the other samples by
 //! `lib_database::seed::sample_transaction_history`.
 
-pub(crate) mod ports;
 pub(crate) mod router;
 pub(crate) mod view;
 

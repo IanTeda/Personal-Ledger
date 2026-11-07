@@ -60,7 +60,7 @@ impl TagsSetup {
     pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
             storage.ports.tags.clone(),
-            crate::tag_removal::RemovalStores::of(&storage.ports),
+            RemovalStores::of(&storage.ports),
             &lib_config::KeyBindingConfig::default(),
         )
     }
