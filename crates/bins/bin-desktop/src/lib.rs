@@ -210,7 +210,7 @@ fn open_and_generate(
     today: chrono::NaiveDate,
 ) -> lib_database::Result<Storage> {
     let mut storage = open_storage(path)?;
-    bills::ports::generate(&mut storage.bills, today);
+    bills::generate(&mut storage.bills, today);
     lib_database::Commit::commit(&storage.pending);
     Ok(storage)
 }

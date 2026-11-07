@@ -569,7 +569,7 @@ impl Root {
     /// paid from instead of meeting the Bill Plans refusal.
     #[doc(hidden)]
     pub fn move_bill_plans_for_test(&mut self, to: lib_core::AccountId, cx: &mut App) {
-        let bills = &self.open().stores.bills;
+        let bills = &self.open().stores.bill_ports;
         crate::input::join_or_send(cx, |_| {
             let mut ports = bills.borrow_mut();
             for mut plan in lib_bills::BillsPorts::bills(&*ports).bill_plans() {
@@ -586,7 +586,7 @@ impl Root {
     #[doc(hidden)]
     pub fn unquote_units_for_test(&mut self, cx: &mut App) {
         let units = &self.open().units;
-        crate::input::join_or_send(cx, |_| crate::units::ports::unquote_for_test(units));
+        crate::input::join_or_send(cx, |_| crate::units::unquote_for_test(units));
     }
 
     /// Gives Institution `id` Unit `unit` as its Usual unit, so a test can delete a Unit an
@@ -606,15 +606,14 @@ impl Root {
     /// store codes it: `None` for none.
     #[doc(hidden)]
     pub fn usual_unit_code(&self, id: lib_core::InstitutionId, _cx: &App) -> Option<String> {
-        let unit = lib_institutions::InstitutionsPorts::institutions(
-            &*self.open().stores.institutions.borrow(),
-        )
-        .institution(id)?
-        .usual_unit?;
-        Some(
-            lib_database::UnitsStore::unit_code(&*self.open().units.borrow(), unit)
-                .unwrap_or_default(),
-        )
+        let stores = &self.open().stores;
+        let unit = stores
+            .institutions
+            .borrow()
+            .institutions()
+            .institution(id)?
+            .usual_unit?;
+        Some(stores.units.borrow().unit_code(unit).unwrap_or_default())
     }
 
     /// The status line's flash message (e.g. "not yet built"), if one is showing.

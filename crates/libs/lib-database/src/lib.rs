@@ -107,8 +107,9 @@ pub use storage::{Storage, StoreParts, Stores, open_storage};
 /// every `Rc` pointing down a layer, so no build order guards against a cycle.
 pub mod ports;
 pub use ports::{
-    LedgerPorts, StoredBudgetsPorts, StoredCategoriesPorts, StoredDocumentsPorts,
-    StoredInventoryPorts, StoredTagsPorts, StoredTransactionsPorts,
+    LedgerPorts, StoredAccountsPorts, StoredBillsPorts, StoredBudgetsPorts, StoredCategoriesPorts,
+    StoredDocumentsPorts, StoredInstitutionsPorts, StoredInventoryPorts, StoredPayeesPorts,
+    StoredTagsPorts, StoredTransactionsPorts, StoredUnitsPorts,
 };
 
 /// The Sample Ledger, one fixed Ledger for development and tests, and the dev seed that writes it.

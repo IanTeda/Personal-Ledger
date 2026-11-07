@@ -8,7 +8,6 @@ use lib_institutions::presenter::InstitutionsPageEvent;
 use lib_institutions::{InstitutionsDialog as Which, InstitutionsRouter};
 use lib_toast::{Notice, Notify};
 
-use super::ports::DesktopPorts;
 use super::view::dialog::{DeleteInstitutionDialog, InstitutionsDialog};
 use super::view::page::InstitutionsPage;
 use crate::announcer::Announcer;
@@ -16,7 +15,7 @@ use crate::notices::Queue;
 use crate::shell::view::dialog_entity::host_dialog;
 
 pub(super) struct PageRouter<'a, 'b> {
-    pub ports: DesktopPorts,
+    pub ports: lib_institutions::SharedPorts,
     pub cx: &'a mut Context<'b, InstitutionsPage>,
 }
 
@@ -54,7 +53,7 @@ impl Notify for PageRouter<'_, '_> {
 /// The Institutions module's entry point: its Settings page, built on `ports`, which the Settings
 /// View hosts as any other page.
 pub fn institutions_page(
-    ports: DesktopPorts,
+    ports: lib_institutions::SharedPorts,
     announcer: gpui::Entity<Announcer>,
     keymap: lib_viper::keymap::Keymap<InstitutionsPageEvent>,
     cx: &mut gpui::App,

@@ -17,7 +17,6 @@ use lib_shell::DialogCommand;
 use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
 
-use crate::bills::ports::DesktopPorts;
 use crate::dialog;
 use crate::shell::view::dialog_entity::DialogReadback;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
@@ -31,7 +30,7 @@ pub(crate) type Landed = Box<dyn Fn(BillsOutcome, &mut App)>;
 
 /// The open Bills Dialog: its Presenter and its widget state.
 pub struct BillsDialog {
-    ports: DesktopPorts,
+    ports: lib_bills::SharedPorts,
     view: View,
     landed: Landed,
 }
@@ -57,18 +56,22 @@ impl BillsDialog {
     /// The Add or Edit bill plan Dialog on `presenter`. A confirm hands its outcome to `landed`.
     pub(crate) fn plan_form(
         presenter: PlanFormPresenter,
-        ports: &DesktopPorts,
+        ports: &lib_bills::SharedPorts,
         landed: Landed,
     ) -> Self {
         Self::new(View::PlanForm(Box::new(presenter), 0), ports, landed)
     }
 
     /// The Skip this cycle Dialog on `presenter`.
-    pub(crate) fn skip(presenter: SkipPresenter, ports: &DesktopPorts, landed: Landed) -> Self {
+    pub(crate) fn skip(
+        presenter: SkipPresenter,
+        ports: &lib_bills::SharedPorts,
+        landed: Landed,
+    ) -> Self {
         Self::new(View::Skip(presenter), ports, landed)
     }
 
-    fn new(view: View, ports: &DesktopPorts, landed: Landed) -> Self {
+    fn new(view: View, ports: &lib_bills::SharedPorts, landed: Landed) -> Self {
         Self {
             ports: ports.clone(),
             view,

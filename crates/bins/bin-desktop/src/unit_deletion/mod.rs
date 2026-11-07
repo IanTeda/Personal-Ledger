@@ -5,26 +5,10 @@
 //!
 //! - `view/dialog/delete_unit.rs` holds the Presenter in an Entity in the Dialog host and draws it.
 //!
-//! Unit delete writes through [`deletion`], `lib-database`'s adapter over the Units ports and the
-//! Institutions ports the two modules hold, so the Unit's removal, the base's move and the
+//! Unit delete writes through `lib-database`'s `UnitDeletionAdapter`, which `LedgerPorts` builds
+//! over the Units and Institutions stores (#1084), so the Unit's removal, the base's move and the
 //! Institutions' new Usual units join the one pending batch and land in one commit.
 
 pub(crate) mod view;
 
-use std::cell::RefCell;
-use std::rc::Rc;
-
-use lib_database::{SharedInstitutionsStore, SharedUnitsStore, UnitDeletionAdapter};
-use lib_unit_deletion::SharedUnitDeletion;
-
 pub use view::dialog::delete_unit::DeleteUnitDialog;
-
-/// The deletion port over the stores `units` and `institutions` wrap.
-pub fn deletion(
-    units: &crate::units::DesktopPorts,
-    institutions: &crate::institutions::ports::DesktopPorts,
-) -> SharedUnitDeletion {
-    let units: SharedUnitsStore = units.clone();
-    let institutions: SharedInstitutionsStore = institutions.clone();
-    Rc::new(RefCell::new(UnitDeletionAdapter::new(units, institutions)))
-}

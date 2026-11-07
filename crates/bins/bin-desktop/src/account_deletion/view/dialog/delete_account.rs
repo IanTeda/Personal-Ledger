@@ -20,7 +20,6 @@ use lib_shell::DialogCommand;
 use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{BACK, Keymap, SELECT};
 
-use crate::bills::DesktopPorts;
 use crate::dialog;
 use crate::form::dialog_fields::text_field;
 use crate::shell::view::dialog_entity::DialogReadback;
@@ -44,16 +43,16 @@ pub(crate) type Landed = Box<dyn Fn(AccountDeleted, &mut App)>;
 /// page's landing.
 pub struct DeleteAccountDialog {
     presenter: DeleteAccountPresenter,
-    bills: DesktopPorts,
-    accounts: crate::accounts::DesktopPorts,
+    bills: lib_bills::SharedPorts,
+    accounts: lib_accounts::SharedPorts,
     landed: Landed,
 }
 
 impl DeleteAccountDialog {
     pub(crate) fn new(
         presenter: DeleteAccountPresenter,
-        bills: &DesktopPorts,
-        accounts: &crate::accounts::DesktopPorts,
+        bills: &lib_bills::SharedPorts,
+        accounts: &lib_accounts::SharedPorts,
         landed: Landed,
     ) -> Self {
         Self {

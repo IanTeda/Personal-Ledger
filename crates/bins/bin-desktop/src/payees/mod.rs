@@ -7,16 +7,13 @@
 //! - `view/dialog.rs` holds each Dialog's Presenter in an Entity in the Dialog host, one View per
 //!   Dialog in `view/dialog/`.
 //! - `router.rs` is the Router and the module's entry point ([`payees_page`]).
-//! - `ports.rs` holds the store with its reads of the other domains' stores (#832, #1005).
 //!
-//! Where the Payees are kept, the SQLite adapter opened at start or memory, is `lib-database`'s
-//! `PayeesStore`.
+//! The ports are `lib-database`'s `StoredPayeesPorts`, which `LedgerPorts` hands the page and its
+//! Dialogs (#1084).
 
-pub mod ports;
 mod router;
 mod view;
 
-pub use ports::{DesktopPorts, LedgerBackedPorts};
 pub use router::payees_page;
 pub use view::page::PayeesPage;
 
@@ -36,12 +33,12 @@ pub struct SettingsPayeesSnapshot {
 /// What `shell::router::build` hands the Payees module: its ports, shared with the Ledger and the
 /// Bills reads, and its keymap under `[keybindings]`.
 pub struct PayeesSetup {
-    pub ports: DesktopPorts,
+    pub ports: lib_payees::SharedPorts,
     pub keymap: lib_viper::keymap::Keymap<PayeesPageEvent>,
 }
 
 impl PayeesSetup {
-    pub fn new(ports: DesktopPorts, config: &lib_config::KeyBindingConfig) -> Self {
+    pub fn new(ports: lib_payees::SharedPorts, config: &lib_config::KeyBindingConfig) -> Self {
         Self {
             ports,
             keymap: lib_payees::keymap::payees_page_keymap(config),
@@ -52,7 +49,7 @@ impl PayeesSetup {
     #[cfg(test)]
     pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
-            storage.payees.clone(),
+            storage.payee_ports.clone(),
             &lib_config::KeyBindingConfig::default(),
         )
     }

@@ -14,22 +14,31 @@
 //!
 //! A domain joining it adds its `Stored<Domain>Ports` in a file of its own under `ports/`, a field
 //! here holding it as the domain crate's `SharedPorts`, and a line in [`LedgerPorts::new`] building
-//! it over [`SharedStores`]. The domains not yet migrated are built by the Clients from
-//! [`LedgerPorts::stores`] (#1084).
+//! it over [`SharedStores`].
 
+mod accounts;
+mod bills;
 mod budgets;
 mod categories;
 mod documents;
+mod institutions;
 mod inventory;
+mod payees;
 mod tags;
 mod transactions;
+mod units;
 
+pub use accounts::StoredAccountsPorts;
+pub use bills::StoredBillsPorts;
 pub use budgets::StoredBudgetsPorts;
 pub use categories::StoredCategoriesPorts;
 pub use documents::StoredDocumentsPorts;
+pub use institutions::StoredInstitutionsPorts;
 pub use inventory::StoredInventoryPorts;
+pub use payees::StoredPayeesPorts;
 pub use tags::StoredTagsPorts;
 pub use transactions::StoredTransactionsPorts;
+pub use units::StoredUnitsPorts;
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -38,12 +47,14 @@ use std::sync::mpsc;
 use lib_core::Clock;
 
 use crate::adapter::store::{
-    SharedStores, StoredBudgetReads, StoredCategoryDeletionReads, StoredImportReads,
-    StoredTagReads, StoredTagRemovalReads, StoredTransactionReads,
+    SharedStores, StoredAccountReads, StoredBillReads, StoredBillUnits, StoredBudgetReads,
+    StoredCategoryDeletionReads, StoredImportReads, StoredInstitutionReads, StoredPayeeReads,
+    StoredTagReads, StoredTagRemovalReads, StoredTransactionReads, StoredUnitReads,
 };
 use crate::{
-    BillPaymentsAdapter, CategoryDeletionAdapter, Commit, Domain, Result, StoredCategoryRows,
-    Stores, TagRemovalAdapter, TransactionImportAdapter, WriteFailure,
+    AccountDeletionAdapter, BillPaymentsAdapter, CategoryDeletionAdapter, Commit, Domain, Result,
+    StoredCategoryRows, Stores, TagRemovalAdapter, TransactionImportAdapter, UnitDeletionAdapter,
+    WriteFailure,
 };
 
 /// A Ledger as a Client holds it: every domain's ports over the shared stores, the cross-domain
@@ -51,6 +62,24 @@ use crate::{
 pub struct LedgerPorts {
     /// Every domain's store, shared: the bottom layer the ports, reads and adapters hold.
     pub stores: SharedStores,
+    /// The Units page's, its Dialogs' and the Ledger settings page's ports ([`StoredUnitsPorts`]).
+    pub units: lib_units::SharedPorts,
+    /// Unit delete's atomic port over the Units and Institutions stores ([`UnitDeletionAdapter`]).
+    pub unit_deletion: lib_unit_deletion::SharedUnitDeletion,
+    /// The Institutions page's and its Dialogs' ports ([`StoredInstitutionsPorts`]).
+    pub institutions: lib_institutions::SharedPorts,
+    /// The Accounts page's and its Dialogs' ports ([`StoredAccountsPorts`]).
+    pub accounts: lib_accounts::SharedPorts,
+    /// What names an Account and the Units it may count in, over the stores: what the Delete
+    /// account Dialog quotes when it opens.
+    pub account_reads: StoredAccountReads,
+    /// Account delete's atomic port over the Accounts, Transactions and Bills stores
+    /// ([`AccountDeletionAdapter`]).
+    pub account_deletion: lib_account_deletion::SharedDeletion,
+    /// The Payees page's and its Dialogs' ports ([`StoredPayeesPorts`]).
+    pub payees: lib_payees::SharedPorts,
+    /// The Bills page's and its Dialogs' ports ([`StoredBillsPorts`]).
+    pub bills: lib_bills::SharedPorts,
     /// The Tags page's and its Add and Edit Dialogs' ports ([`StoredTagsPorts`]).
     pub tags: lib_tags::SharedPorts,
     /// Tag remove and merge's atomic port over the Tags and Transactions stores
@@ -143,7 +172,65 @@ impl LedgerPorts {
             units: stores.units.clone(),
             payees: stores.payees.clone(),
         });
+        let account_reads = StoredAccountReads {
+            transactions: stores.transactions.clone(),
+            budgets: stores.budgets.clone(),
+            units: stores.units.clone(),
+            institutions: stores.institutions.clone(),
+        };
         Self {
+            units: Rc::new(RefCell::new(StoredUnitsPorts::new(
+                stores.units.clone(),
+                StoredUnitReads {
+                    accounts: stores.accounts.clone(),
+                    transactions: stores.transactions.clone(),
+                    bills: stores.bills.clone(),
+                    budgets: stores.budgets.clone(),
+                    inventory: stores.inventory.clone(),
+                    institutions: stores.institutions.clone(),
+                },
+            ))),
+            unit_deletion: Rc::new(RefCell::new(UnitDeletionAdapter::new(
+                stores.units.clone(),
+                stores.institutions.clone(),
+            ))),
+            institutions: Rc::new(RefCell::new(StoredInstitutionsPorts::new(
+                stores.institutions.clone(),
+                StoredInstitutionReads {
+                    accounts: stores.accounts.clone(),
+                    units: stores.units.clone(),
+                },
+            ))),
+            accounts: Rc::new(RefCell::new(StoredAccountsPorts::new(
+                stores.accounts.clone(),
+                account_reads.clone(),
+            ))),
+            account_reads,
+            account_deletion: Rc::new(RefCell::new(AccountDeletionAdapter::new(
+                stores.accounts.clone(),
+                stores.transactions.clone(),
+                stores.bills.clone(),
+            ))),
+            payees: Rc::new(RefCell::new(StoredPayeesPorts::new(
+                stores.payees.clone(),
+                StoredPayeeReads {
+                    transactions: stores.transactions.clone(),
+                    bills: stores.bills.clone(),
+                    categories: stores.categories.clone(),
+                },
+            ))),
+            bills: Rc::new(RefCell::new(StoredBillsPorts::new(
+                stores.bills.clone(),
+                StoredBillReads {
+                    payees: stores.payees.clone(),
+                    accounts: stores.accounts.clone(),
+                    categories: stores.categories.clone(),
+                    transactions: stores.transactions.clone(),
+                },
+                StoredBillUnits {
+                    units: stores.units.clone(),
+                },
+            ))),
             categories: Rc::new(RefCell::new(category_save.clone())),
             category_save,
             category_deletion: Rc::new(RefCell::new(CategoryDeletionAdapter::new(

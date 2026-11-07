@@ -27,7 +27,6 @@ use lib_viper::keymap::Keymap;
 
 use lib_shell::Hint;
 
-use crate::units::ports::DesktopPorts;
 use crate::units::router::PageRouter;
 use crate::{
     announcer::{Announcer, notify_on},
@@ -50,7 +49,7 @@ impl EventEmitter<PageRowClicked> for UnitsPage {}
 
 pub struct UnitsPage {
     presenter: UnitsPagePresenter,
-    ports: DesktopPorts,
+    ports: lib_units::SharedPorts,
     deletion: lib_unit_deletion::SharedUnitDeletion,
     keymap: Keymap<UnitsPageEvent>,
     prices_keymap: Keymap<UnitPricesEvent>,
@@ -72,7 +71,7 @@ pub(crate) fn now_of(clock: &lib_core::Clock) -> Rc<dyn Fn() -> chrono::DateTime
 
 impl UnitsPage {
     pub fn new(
-        ports: DesktopPorts,
+        ports: lib_units::SharedPorts,
         deletion: lib_unit_deletion::SharedUnitDeletion,
         announcer: Entity<Announcer>,
         keymap: Keymap<UnitsPageEvent>,

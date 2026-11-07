@@ -8,13 +8,10 @@
 //! - `router.rs` is the Router and the module's entry point ([`categories_page`]); it opens the
 //!   Delete category Dialog through the Category Deletion module (`crate::category_deletion`,
 //!   #1005).
-//! - `ports.rs` holds the store as the Presenters share it, and the ports answered from the
-//!   stores the Open Ledger hands it: the usage, the Monthly budget and the handover (#859).
 //!
-//! Where the Categories are kept, the SQLite adapter opened at start or memory, is
-//! `lib-database`'s `CategoriesStore`.
+//! The ports are `lib-database`'s `StoredCategoriesPorts`, which `LedgerPorts` hands the page and
+//! its Dialogs: the repository, the usage, the Monthly budget and the handover (#859, #1083).
 
-pub mod ports;
 mod router;
 mod view;
 

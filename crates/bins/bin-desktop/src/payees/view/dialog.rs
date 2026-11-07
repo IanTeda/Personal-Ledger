@@ -22,7 +22,6 @@ use lib_shell::DialogCommand;
 use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
 
-use crate::payees::ports::DesktopPorts;
 use crate::shell::view::dialog_entity::DialogReadback;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
 use lib_shell::Hint;
@@ -35,7 +34,7 @@ pub(crate) type Landed = Box<dyn Fn(PayeesOutcome, &mut App)>;
 
 /// The open Payees Dialog: its Presenter and its widget state.
 pub struct PayeesDialog {
-    ports: DesktopPorts,
+    ports: lib_payees::SharedPorts,
     view: View,
     landed: Landed,
 }
@@ -60,7 +59,11 @@ impl View {
 impl PayeesDialog {
     /// `which`'s Presenter on `ports`, or `None` when the Payee it names is gone. A confirm
     /// hands its outcome to `landed`.
-    pub(crate) fn open(which: Which, ports: &DesktopPorts, landed: Landed) -> Option<Self> {
+    pub(crate) fn open(
+        which: Which,
+        ports: &lib_payees::SharedPorts,
+        landed: Landed,
+    ) -> Option<Self> {
         let shared = ports.clone();
         let view = match which {
             Which::AddPayee => View::Form(PayeeFormPresenter::add(shared), 0),

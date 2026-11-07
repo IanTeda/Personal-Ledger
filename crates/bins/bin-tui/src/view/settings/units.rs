@@ -19,7 +19,6 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use lib_shell::WindowSize;
 use lib_toast::ToastKind;
-use lib_units::UnitsPorts as _;
 use lib_units::presenter::UnitsPageViewModel;
 use ratatui::{Frame, layout::Constraint, layout::Rect};
 

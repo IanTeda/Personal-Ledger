@@ -18,7 +18,6 @@ use lib_viper::keymap::Keymap;
 use lib_shell::Hint;
 
 use crate::institutions::SettingsInstitutionsSnapshot;
-use crate::institutions::ports::DesktopPorts;
 use crate::institutions::router::PageRouter;
 use crate::settings::snapshot::PageSnapshot;
 use crate::{
@@ -37,7 +36,7 @@ impl EventEmitter<PageRowClicked> for InstitutionsPage {}
 
 pub struct InstitutionsPage {
     presenter: InstitutionsPagePresenter,
-    ports: DesktopPorts,
+    ports: lib_institutions::SharedPorts,
     keymap: Keymap<InstitutionsPageEvent>,
     /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
     /// draws the page.
@@ -50,7 +49,7 @@ pub struct InstitutionsPage {
 
 impl InstitutionsPage {
     pub fn new(
-        ports: DesktopPorts,
+        ports: lib_institutions::SharedPorts,
         announcer: Entity<Announcer>,
         keymap: Keymap<InstitutionsPageEvent>,
         cx: &mut Context<'_, Self>,

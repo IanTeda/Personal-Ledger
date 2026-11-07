@@ -28,7 +28,6 @@ use lib_viper::dialog::{DialogInput, DialogRouter};
 
 use self::unit_form::UnitSelects;
 use crate::form::viper::{chosen_label, drawn, labels};
-use crate::units::ports::DesktopPorts;
 use crate::{
     dialog,
     shell::view::dialog_entity::DialogReadback,
@@ -48,7 +47,7 @@ pub(crate) type Landed = Box<dyn Fn(UnitsOutcome, &mut App)>;
 
 /// The open Units Dialog: its Presenter and its widget state.
 pub struct UnitsDialog {
-    ports: DesktopPorts,
+    ports: lib_units::SharedPorts,
     view: View,
     landed: Landed,
 }
@@ -89,7 +88,7 @@ impl UnitsDialog {
     /// hands its outcome to `landed`.
     pub(crate) fn open(
         which: Which,
-        ports: &DesktopPorts,
+        ports: &lib_units::SharedPorts,
         clock: &lib_core::Clock,
         landed: Landed,
     ) -> Option<Self> {

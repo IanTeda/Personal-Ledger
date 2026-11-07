@@ -20,7 +20,6 @@ use lib_shell::DialogCommand;
 use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
 
-use crate::institutions::ports::DesktopPorts;
 use crate::shell::view::dialog_entity::DialogReadback;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
 use lib_shell::Hint;
@@ -33,7 +32,7 @@ pub(crate) type Landed = Box<dyn Fn(InstitutionsOutcome, &mut App)>;
 
 /// The open Institutions Dialog: its Presenter.
 pub struct InstitutionsDialog {
-    ports: DesktopPorts,
+    ports: lib_institutions::SharedPorts,
     presenter: InstitutionFormPresenter,
     /// The top row of the Usual unit list's window, which the View keeps between draws.
     scroll: usize,
@@ -45,7 +44,11 @@ pub struct InstitutionsDialog {
 impl InstitutionsDialog {
     /// `which`'s Presenter on `ports`, or `None` when it is an Edit of an Institution that has
     /// gone. A confirm hands its outcome to `landed`.
-    pub(crate) fn open(which: Which, ports: &DesktopPorts, landed: Landed) -> Option<Self> {
+    pub(crate) fn open(
+        which: Which,
+        ports: &lib_institutions::SharedPorts,
+        landed: Landed,
+    ) -> Option<Self> {
         let presenter = match which {
             Which::AddInstitution => InstitutionFormPresenter::add(ports.clone()),
             Which::EditInstitution(id) => InstitutionFormPresenter::edit(ports.clone(), id)?,

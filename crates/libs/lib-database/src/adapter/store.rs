@@ -179,7 +179,7 @@ impl<S: DocumentsStore + ?Sized> DocumentRepository for Recorded<S> {
 }
 
 /// The Units, Price Sources and base Unit ports, wherever they are kept. Usage and holdings are
-/// other domains', so each Client answers them itself (its `units/ports.rs`).
+/// other domains', which [`StoredUnitReads`] answers beside them in `StoredUnitsPorts` (#1084).
 pub trait UnitsStore {
     fn units(&self) -> &dyn UnitRepository;
 
@@ -306,9 +306,8 @@ pub type SharedUnitsStore = Rc<RefCell<dyn UnitsStore>>;
 pub type SharedInstitutionsStore = Rc<RefCell<dyn InstitutionsStore>>;
 
 /// Every domain's store as the Client shares it out, so a domain is reloaded by its [`Domain`] in
-/// one call ([`SharedStores::reload`]): after a failed write, or a commit's cascade. A Client
-/// builds it from the shared values its modules hold, which may wrap the store (as the Desktop's
-/// ports do) as long as their `reload` reaches it.
+/// one call ([`SharedStores::reload`]): after a failed write, or a commit's cascade. `LedgerPorts`
+/// shares each store out once and builds every port over these.
 #[derive(Clone)]
 pub struct SharedStores {
     pub units: SharedUnitsStore,

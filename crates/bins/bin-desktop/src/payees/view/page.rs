@@ -14,7 +14,6 @@ use lib_viper::keymap::Keymap;
 use lib_shell::Hint;
 
 use crate::payees::SettingsPayeesSnapshot;
-use crate::payees::ports::DesktopPorts;
 use crate::payees::router::PageRouter;
 use crate::settings::snapshot::PageSnapshot;
 use crate::{
@@ -33,7 +32,7 @@ impl EventEmitter<PageRowClicked> for PayeesPage {}
 
 pub struct PayeesPage {
     presenter: PayeesPagePresenter,
-    ports: DesktopPorts,
+    ports: lib_payees::SharedPorts,
     clock: lib_core::Clock,
     keymap: Keymap<PayeesPageEvent>,
     /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
@@ -47,7 +46,7 @@ pub struct PayeesPage {
 
 impl PayeesPage {
     pub fn new(
-        ports: DesktopPorts,
+        ports: lib_payees::SharedPorts,
         announcer: Entity<Announcer>,
         clock: lib_core::Clock,
         keymap: Keymap<PayeesPageEvent>,

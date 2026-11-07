@@ -17,7 +17,6 @@ use lib_shell::Hint;
 
 use crate::account_deletion::DeletionStores;
 use crate::accounts::SettingsAccountsSnapshot;
-use crate::accounts::ports::DesktopPorts;
 use crate::accounts::router::PageRouter;
 use crate::settings::snapshot::PageSnapshot;
 use crate::{
@@ -39,7 +38,7 @@ impl EventEmitter<PageRowClicked> for AccountsPage {}
 
 pub struct AccountsPage {
     presenter: AccountsPagePresenter,
-    ports: DesktopPorts,
+    ports: lib_accounts::SharedPorts,
     deletion: DeletionStores,
     clock: lib_core::Clock,
     keymap: Keymap<AccountsPageEvent>,
@@ -54,7 +53,7 @@ pub struct AccountsPage {
 
 impl AccountsPage {
     pub fn new(
-        ports: DesktopPorts,
+        ports: lib_accounts::SharedPorts,
         deletion: DeletionStores,
         announcer: Entity<Announcer>,
         clock: lib_core::Clock,

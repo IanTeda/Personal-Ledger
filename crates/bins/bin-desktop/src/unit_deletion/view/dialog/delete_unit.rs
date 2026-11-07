@@ -32,7 +32,7 @@ use crate::form::viper::{chosen_label, drawn, labels};
 use crate::shell::view::dialog_entity::DialogReadback;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostedDialog};
 use crate::theme::color;
-use crate::units::{DesktopPorts, Landed, Router, help, refusal};
+use crate::units::{Landed, Router, help, refusal};
 
 /// The open Delete Dialog's clicks.
 type Clicks = DialogClicks<DeleteUnitDialog>;
@@ -120,7 +120,7 @@ impl Select<'_> {
 /// The open Delete unit Dialog: its Presenter, the Units ports, each select's open-list scroll window, and the Units page's landing.
 pub struct DeleteUnitDialog {
     presenter: DeleteUnitPresenter,
-    ports: DesktopPorts,
+    ports: lib_units::SharedPorts,
     /// Each select's open-list scroll window by position, a position in [`select`].
     scrolls: Vec<usize>,
     landed: Landed,
@@ -131,7 +131,7 @@ impl DeleteUnitDialog {
     /// so the Presenter sees what names the Unit now.
     pub(crate) fn open(
         id: UnitId,
-        ports: &DesktopPorts,
+        ports: &lib_units::SharedPorts,
         deletion: &SharedUnitDeletion,
         landed: Landed,
         _cx: &App,

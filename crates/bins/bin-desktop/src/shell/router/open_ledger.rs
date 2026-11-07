@@ -107,7 +107,7 @@ pub struct OpenLedger {
     pub(super) stores: LedgerStores,
     /// The Units ports the Units page and the General page share, reloaded here when a write to
     /// them fails.
-    pub(super) units: crate::units::DesktopPorts,
+    pub(super) units: lib_units::SharedPorts,
     /// The Announcer's count when the rail's counts were last read, so the Shell reads them afresh
     /// only after a change rather than after every input.
     pub(super) rail_counted_at: std::cell::Cell<usize>,
@@ -148,7 +148,6 @@ impl OpenLedger {
         } = file;
         let BuiltStores {
             stores: storage,
-            units,
             commit,
             failures,
         } = LedgerStores::build(lib_database::LedgerPorts::new(stores, clock.clone()));
@@ -157,9 +156,16 @@ impl OpenLedger {
         let announcer = cx.new(|_| Announcer::default());
         crate::input::open_ledger(commit, announcer.clone(), cx);
         let failures = Rc::new(failures);
-        let institutions_setup =
-            crate::institutions::InstitutionsSetup::new(storage.institutions.clone(), keybindings);
-        let units = crate::units::UnitsSetup::on(units, &storage.institutions, keybindings);
+        let institutions_setup = crate::institutions::InstitutionsSetup::new(
+            storage.institution_ports.clone(),
+            keybindings,
+        );
+        let units = crate::units::UnitsSetup::new(
+            storage.unit_ports.clone(),
+            storage.units.clone(),
+            storage.unit_deletion.clone(),
+            keybindings,
+        );
         let tags_setup = crate::tags::TagsSetup::new(
             storage.tag_ports.clone(),
             storage.tag_removal.clone(),
@@ -167,22 +173,14 @@ impl OpenLedger {
         );
         let payments = storage.payments.clone();
         // Account delete writes the Accounts, Transactions and Bills stores together (#854).
-        let account_deletion = crate::account_deletion::DeletionStores {
-            deletion: crate::account_deletion::deletion(
-                storage.accounts.clone(),
-                storage.transactions.clone(),
-                &storage.bills,
-            ),
-            accounts: storage.accounts.clone(),
-            bills: storage.bills.clone(),
-            reads: storage.account_reads.clone(),
-        };
+        let account_deletion = storage.account_deletion.clone();
         let accounts_setup = crate::accounts::AccountsSetup::new(
-            storage.accounts.clone(),
+            storage.account_ports.clone(),
             account_deletion,
             keybindings,
         );
-        let payees_setup = crate::payees::PayeesSetup::new(storage.payees.clone(), keybindings);
+        let payees_setup =
+            crate::payees::PayeesSetup::new(storage.payee_ports.clone(), keybindings);
         let document_types_setup = crate::document_types::DocumentTypesSetup::new(
             storage.document_ports.clone(),
             keybindings,
@@ -201,7 +199,8 @@ impl OpenLedger {
             storage.inventory_reads(),
             keybindings,
         );
-        let bills = crate::bills::BillsSetup::new(storage.bills.clone(), payments, keybindings);
+        let bills =
+            crate::bills::BillsSetup::new(storage.bill_ports.clone(), payments, keybindings);
         let settings_setup = crate::settings::pages::SettingsSetup {
             units,
             institutions: institutions_setup,
@@ -222,8 +221,8 @@ impl OpenLedger {
             categories: storage.categories.clone(),
             accounts: storage.accounts.clone(),
             transactions: storage.transactions.clone(),
-            bills: storage.bills.borrow().store(),
-            units: settings_setup.units.ports.clone(),
+            bills: storage.bills.clone(),
+            units: storage.units.clone(),
             payees: storage.payees.clone(),
         });
         // The Dashboard reads its Bills and Budgets through the stores too (#1024).

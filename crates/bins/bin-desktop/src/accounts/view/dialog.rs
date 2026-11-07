@@ -19,7 +19,6 @@ use lib_shell::DialogCommand;
 use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
 
-use crate::accounts::ports::DesktopPorts;
 use crate::shell::view::dialog_entity::DialogReadback;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
 use lib_shell::Hint;
@@ -32,7 +31,7 @@ pub(crate) type Landed = Box<dyn Fn(AccountsOutcome, &mut App)>;
 
 /// The open Add or Edit account Dialog: its Presenter and its widget state.
 pub struct AccountsDialog {
-    ports: DesktopPorts,
+    ports: lib_accounts::SharedPorts,
     presenter: AccountFormPresenter,
     /// The top row of each select's list window (Institution, Type, Unit), which the View keeps
     /// between draws.
@@ -45,7 +44,7 @@ impl AccountsDialog {
     /// hands its outcome to `landed`. An Account added opens `today`.
     pub(crate) fn open(
         which: Which,
-        ports: &DesktopPorts,
+        ports: &lib_accounts::SharedPorts,
         today: chrono::NaiveDate,
         landed: Landed,
     ) -> Option<Self> {

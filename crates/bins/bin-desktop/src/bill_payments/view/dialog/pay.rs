@@ -20,7 +20,6 @@ use lib_bill_payments::presenter::{
     MatchChoice, PayEvent, PayField, PayMode, PayPresenter, PayViewModel,
 };
 
-use crate::bills::DesktopPorts;
 use crate::dialog;
 use crate::form::dialog_fields::{label, text_field, two_up};
 use crate::shell::view::dialog_entity::DialogReadback;
@@ -47,14 +46,18 @@ pub(crate) type Landed = Box<dyn Fn(PayOutcome, &mut App)>;
 /// Ledger it reads from.
 pub struct PayDialog {
     presenter: PayPresenter,
-    ports: DesktopPorts,
+    ports: lib_bills::SharedPorts,
     landed: Landed,
     /// The body's scroll, which `j`/`k` move to keep the chosen Match row in view.
     scroll: ScrollHandle,
 }
 
 impl PayDialog {
-    pub(crate) fn new(presenter: PayPresenter, ports: &DesktopPorts, landed: Landed) -> Self {
+    pub(crate) fn new(
+        presenter: PayPresenter,
+        ports: &lib_bills::SharedPorts,
+        landed: Landed,
+    ) -> Self {
         Self {
             presenter,
             ports: ports.clone(),

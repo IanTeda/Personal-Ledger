@@ -8,38 +8,18 @@
 //! - `router.rs` is the module's entry point ([`router::open_delete`]), which the legacy Accounts
 //!   page calls until the Accounts page is a module (#855).
 //!
-//! Account delete writes through [`deletion`], `lib-database`'s adapter over the Accounts and
-//! Transactions stores the Open Ledger holds and the Bills store the Bills ports hold, so the
-//! Account, its Transactions and the Unmatch of the entries they paid join the one pending batch
-//! and land in one commit.
+//! Account delete writes through `lib-database`'s `AccountDeletionAdapter`, which `LedgerPorts`
+//! builds over the Accounts, Transactions and Bills stores (#1084), so the Account, its
+//! Transactions and the Unmatch of the entries they paid join the one pending batch and land in
+//! one commit.
 
 pub mod router;
 pub(crate) mod view;
 
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use lib_account_deletion::SharedDeletion;
-use lib_database::{
-    AccountDeletionAdapter, SharedAccountsStore, SharedTransactionsStore, StoredAccountReads,
-};
-
-use crate::bills::DesktopPorts;
+use lib_database::{LedgerPorts, StoredAccountReads};
 
 pub use view::dialog::delete_account::DeleteAccountDialog;
-
-/// The deletion port over `accounts`, `transactions` and the Bills store `bills` writes.
-pub fn deletion(
-    accounts: SharedAccountsStore,
-    transactions: SharedTransactionsStore,
-    bills: &DesktopPorts,
-) -> SharedDeletion {
-    Rc::new(RefCell::new(AccountDeletionAdapter::new(
-        accounts,
-        transactions,
-        bills.borrow().store(),
-    )))
-}
 
 /// What the Delete Dialog reads and writes through: the deletion port, the Bills ports whose
 /// reads a confirm copies back, and the figures it quotes as it opens: the Transactions counted by
@@ -48,25 +28,21 @@ pub fn deletion(
 #[derive(Clone)]
 pub struct DeletionStores {
     pub deletion: SharedDeletion,
-    /// The Accounts ports the deletion port writes through.
-    pub accounts: crate::accounts::DesktopPorts,
-    pub bills: DesktopPorts,
+    /// The Accounts ports, which read the Account the Dialog deletes.
+    pub accounts: lib_accounts::SharedPorts,
+    pub bills: lib_bills::SharedPorts,
     pub reads: StoredAccountReads,
 }
 
 impl DeletionStores {
-    /// The deletion port over `storage`'s stores, for a test that builds `Root` directly.
-    #[cfg(test)]
-    pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
+    /// The deletion port and reads `ports` built over the stores, beside the Accounts and Bills
+    /// ports.
+    pub fn of(ports: &LedgerPorts) -> Self {
         Self {
-            deletion: deletion(
-                storage.accounts.clone(),
-                storage.transactions.clone(),
-                &storage.bills,
-            ),
-            accounts: storage.accounts.clone(),
-            bills: storage.bills.clone(),
-            reads: storage.account_reads.clone(),
+            deletion: ports.account_deletion.clone(),
+            accounts: ports.accounts.clone(),
+            bills: ports.bills.clone(),
+            reads: ports.account_reads.clone(),
         }
     }
 }

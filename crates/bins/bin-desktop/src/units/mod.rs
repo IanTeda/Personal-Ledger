@@ -7,19 +7,16 @@
 //! - `view/dialog.rs` holds each Dialog's Presenter in an Entity in the Dialog host, one View per Dialog
 //!   in `view/dialog/`.
 //! - `router.rs` is the Router and the module's entry point ([`units_page`]).
-//! - `ports.rs` holds the ports over the shared Units store, with usage and holdings read from the
-//!   other domains' stores (#1052).
 //!
-//! Where the Units are kept, the SQLite adapter opened at start or memory, is `lib-database`'s
-//! `UnitsStore`.
+//! The ports are `lib-database`'s `StoredUnitsPorts`, which `LedgerPorts` hands the page and its
+//! Dialogs with usage and holdings read from the other domains' stores (#1052, #1084).
 
-pub mod ports;
 mod router;
 mod view;
 
 use gpui::App;
 use lib_database::SharedUnitsStore;
-pub use ports::{DesktopPorts, LedgerBackedPorts};
+use lib_units::SharedPorts;
 pub use router::units_page;
 pub(crate) use view::dialog::{Landed, Router, help, refusal};
 pub use view::page::UnitsPage;
@@ -51,11 +48,27 @@ impl PageSnapshot for Option<UnitPricesSnapshot> {
     }
 }
 
+/// Prices every Unit in itself, so none is quoted in another and any can be deleted; for a UI test
+/// that deletes a seeded Unit.
+#[doc(hidden)]
+pub fn unquote_for_test(ports: &SharedPorts) {
+    let mut ports = ports.borrow_mut();
+    let units = ports.units().units();
+    for mut unit in units {
+        if unit.link.quote != unit.id {
+            unit.link.quote = unit.id;
+            ports.split_mut().units.upsert_unit(unit);
+        }
+    }
+}
+
 /// What `shell::router::build` hands the Units module: its ports, and the page's and the Unit
 /// prices view's keymaps under `[keybindings]`.
 pub struct UnitsSetup {
-    pub ports: DesktopPorts,
-    /// The Unit Deletion module's port over these ports and the Institutions', which Delete unit
+    pub ports: SharedPorts,
+    /// The Units store the Ledger page reads the base Unit from and writes it to.
+    pub store: SharedUnitsStore,
+    /// The Unit Deletion module's port over the Units and Institutions stores, which Delete unit
     /// writes through (#903).
     pub deletion: lib_unit_deletion::SharedUnitDeletion,
     pub keymap: lib_viper::keymap::Keymap<lib_units::presenter::UnitsPageEvent>,
@@ -64,49 +77,27 @@ pub struct UnitsSetup {
 
 impl UnitsSetup {
     pub fn new(
-        ports: SharedUnitsStore,
-        reads: lib_database::StoredUnitReads,
-        institutions: &crate::institutions::ports::DesktopPorts,
-        config: &lib_config::KeyBindingConfig,
-    ) -> Self {
-        Self::on(
-            LedgerBackedPorts::shared(ports, reads),
-            institutions,
-            config,
-        )
-    }
-
-    /// The Units Setup on `ports` already built over the stores, as `LedgerStores::build` builds
-    /// them.
-    pub fn on(
-        ports: DesktopPorts,
-        institutions: &crate::institutions::ports::DesktopPorts,
+        ports: SharedPorts,
+        store: SharedUnitsStore,
+        deletion: lib_unit_deletion::SharedUnitDeletion,
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
-            deletion: crate::unit_deletion::deletion(&ports, institutions),
             ports,
+            store,
+            deletion,
             keymap: lib_units::keymap::units_page_keymap(config),
             prices_keymap: lib_units::keymap::unit_prices_keymap(config),
         }
     }
 
-    /// `storage`'s Units store under the default keys, reading its Accounts, Transactions,
-    /// Bills, Budgets, Inventory and Institutions and deleting beside its Institutions, for a test
-    /// that builds `Root` directly.
+    /// `storage`'s Units ports under the default keys, for a test that builds `Root` directly.
     #[cfg(test)]
     pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
+            storage.unit_ports.clone(),
             storage.units.clone(),
-            lib_database::StoredUnitReads {
-                accounts: storage.accounts.clone(),
-                transactions: storage.transactions.clone(),
-                bills: storage.bills.borrow().store(),
-                budgets: storage.budgets.clone(),
-                inventory: storage.inventory.clone(),
-                institutions: storage.institutions.clone(),
-            },
-            &storage.institutions,
+            storage.unit_deletion.clone(),
             &lib_config::KeyBindingConfig::default(),
         )
     }

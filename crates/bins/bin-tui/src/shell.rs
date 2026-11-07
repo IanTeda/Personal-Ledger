@@ -13,7 +13,7 @@ use chrono::{DateTime, Local};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use lib_colour_theme::ColourAppearance;
 use lib_config::{ConfigWriter, KeyBindingConfig, PersonalLedgerConfig};
-use lib_database::{Domain, Stores, WriteFailure, Writer};
+use lib_database::{Domain, LedgerPorts, Stores, WriteFailure, Writer};
 use lib_locale::format::upper;
 use lib_shell::WindowSize;
 use lib_shell::window_size::{MIN_COLUMNS, MIN_ROWS};
@@ -370,13 +370,14 @@ impl Shell {
         self.toasts.raise(kind, text, Local::now());
     }
 
-    /// The Open Ledger on `stores`, its Units under the key bindings already set.
+    /// The Open Ledger on `LedgerPorts` over `stores`, its Units under the key bindings already
+    /// set.
     fn open_ledger_on(&self, path: PathBuf, stores: Stores, writer: Option<Writer>) -> OpenLedger {
-        let (units, failures) = UnitsSetup::on(stores, &self.keybindings);
+        let ledger = LedgerPorts::new(stores, lib_core::Clock::new(|| Local::now().date_naive()));
         OpenLedger {
             path,
-            units,
-            failures: Some(failures),
+            units: UnitsSetup::on(&ledger, &self.keybindings),
+            failures: Some(ledger.failures),
             writer,
         }
     }
@@ -562,14 +563,14 @@ impl Shell {
                 }
             }
         }
-        let units = ledger.units.ports.clone();
+        let stores = ledger.units.stores.clone();
         // Units is the only domain an adapter saves so far; later ones join here.
         for failure in failed {
             if !failure.domains.contains(&Domain::Units) {
                 continue;
             }
             tracing::warn!(error = %failure.error, "A Units write failed; reloading the Units");
-            let text = match units.borrow_mut().reload() {
+            let text = match stores.reload(Domain::Units) {
                 Ok(()) => crate::msg::tui_toast_write_failed_units(),
                 Err(error) => {
                     tracing::error!(%error, "Failed to reload the Units after a failed write");
@@ -2266,7 +2267,7 @@ impl Shell {
                 let guard = self
                     .ledger
                     .as_ref()
-                    .and_then(|ledger| BaseUnitGuardPopup::open(&ledger.units.ports, code));
+                    .and_then(|ledger| BaseUnitGuardPopup::open(&ledger.units, code));
                 if let Some(guard) = guard {
                     self.settings_popup = Some(SettingsPopup::BaseUnitGuard(guard));
                 }
@@ -5126,7 +5127,6 @@ mod tests {
 
     #[test]
     fn the_guard_takes_every_plain_key_and_esc_cancels_it() {
-        use lib_units::UnitsPorts;
         let mut shell = guarded();
         for (code, typed) in [('g', 'g'), (':', ':'), ('q', 'q')] {
             let action = shell.map_event(Event::Key(KeyEvent::new(

@@ -8,7 +8,6 @@ use gpui::Context;
 use lib_toast::{Notice, Notify};
 use lib_units::{UnitId, UnitsDialog as Which, UnitsRouter};
 
-use super::ports::DesktopPorts;
 use super::view::dialog::UnitsDialog;
 use super::view::page::UnitsPage;
 use crate::announcer::Announcer;
@@ -17,7 +16,7 @@ use crate::shell::view::dialog_entity::host_dialog;
 use crate::unit_deletion::DeleteUnitDialog;
 
 pub(super) struct PageRouter<'a, 'b> {
-    pub ports: DesktopPorts,
+    pub ports: lib_units::SharedPorts,
     pub deletion: lib_unit_deletion::SharedUnitDeletion,
     /// The Clock the set price Dialog reads now from.
     pub clock: lib_core::Clock,
@@ -71,7 +70,7 @@ impl Notify for PageRouter<'_, '_> {
 /// The Units module's entry point: its Settings page, built on `ports`, which the Settings View
 /// hosts as any other page.
 pub fn units_page(
-    ports: DesktopPorts,
+    ports: lib_units::SharedPorts,
     deletion: lib_unit_deletion::SharedUnitDeletion,
     announcer: gpui::Entity<Announcer>,
     keymap: lib_viper::keymap::Keymap<lib_units::presenter::UnitsPageEvent>,

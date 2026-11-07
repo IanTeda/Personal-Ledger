@@ -8,28 +8,31 @@ use std::rc::Rc;
 use std::sync::mpsc;
 
 use lib_database::{
-    LedgerPorts, PayeesStore, SharedBudgetsStore, SharedCategoriesStore, SharedDocumentsStore,
-    SharedInstitutionsStore, SharedInventoryStore, SharedStores, SharedTagsStore,
-    SharedTransactionsStore, SharedUnitsStore, StoredAccountReads, StoredCategoriesPorts,
-    StoredDocumentReads, StoredInventoryReads,
+    LedgerPorts, PayeesStore, SharedAccountsStore, SharedBillsStore, SharedBudgetsStore,
+    SharedCategoriesStore, SharedDocumentsStore, SharedInstitutionsStore, SharedInventoryStore,
+    SharedPayeesStore, SharedStores, SharedTagsStore, SharedTransactionsStore, SharedUnitsStore,
+    StoredCategoriesPorts, StoredDocumentReads, StoredInventoryReads,
 };
-use lib_institutions::InstitutionsPorts as _;
 
-use crate::accounts::ports::DesktopPorts as DesktopAccountsPorts;
-use crate::bills::ports::DesktopPorts as DesktopBillsPorts;
-use crate::institutions::ports::DesktopPorts as DesktopInstitutionsPorts;
-use crate::payees::ports::DesktopPorts as DesktopPayeesPorts;
-
-/// The shared stores and ports a Ledger's modules and the cross-domain modules write, each one
-/// value however many hold it.
+/// The shared stores and the ports `lib-database` built over them, which a Ledger's modules and
+/// the cross-domain modules write, each one value however many hold it.
 pub struct LedgerStores {
-    pub institutions: DesktopInstitutionsPorts,
-    /// The Institutions store under the Institutions ports, which the Accounts' reads hold too.
-    pub institutions_store: SharedInstitutionsStore,
-    pub accounts: DesktopAccountsPorts,
-    /// The usage of the Accounts and the Units and Institutions they may name, over the stores
-    /// (#993, #1052, #1053): the Accounts ports' reads and Account delete's.
-    pub account_reads: StoredAccountReads,
+    /// The Units store the Units ports share and the Accounts, Institutions, Bills, Tags and
+    /// Inventory reads take Units from: the Ledger file's, or the Sample Ledger's in memory in a
+    /// test.
+    pub units: SharedUnitsStore,
+    /// `lib-database`'s Units ports, which the Units page and its Dialogs share (#1084).
+    pub unit_ports: lib_units::SharedPorts,
+    /// Unit delete's port over the Units and Institutions stores, built by `lib-database`.
+    pub unit_deletion: lib_unit_deletion::SharedUnitDeletion,
+    pub institutions: SharedInstitutionsStore,
+    /// `lib-database`'s Institutions ports, which the Institutions page and its Dialogs share.
+    pub institution_ports: lib_institutions::SharedPorts,
+    pub accounts: SharedAccountsStore,
+    /// `lib-database`'s Accounts ports, which the Accounts page and its Dialogs share.
+    pub account_ports: lib_accounts::SharedPorts,
+    /// Account delete's port and reads, built by `lib-database`.
+    pub account_deletion: crate::account_deletion::DeletionStores,
     pub categories: SharedCategoriesStore,
     /// `lib-database`'s Categories ports as the Categories page's repository, and as the Add and
     /// Edit Dialogs' save ports over the same stores (#1083).
@@ -43,7 +46,9 @@ pub struct LedgerStores {
     pub tag_ports: lib_tags::SharedPorts,
     /// Tag remove and merge's port and reads, built by `lib-database` beside the Tags ports.
     pub tag_removal: crate::tag_removal::RemovalStores,
-    pub payees: DesktopPayeesPorts,
+    pub payees: SharedPayeesStore,
+    /// `lib-database`'s Payees ports, which the Payees page and its Dialogs share.
+    pub payee_ports: lib_payees::SharedPorts,
     pub transactions: SharedTransactionsStore,
     /// The Transactions page's ports, built by `lib-database`.
     pub transaction_ports: lib_transactions::SharedPorts,
@@ -51,7 +56,9 @@ pub struct LedgerStores {
     pub import: crate::transaction_import::ImportStores,
     /// Pay it directly's port over the Transactions and Bills stores, built by `lib-database`.
     pub payments: lib_bill_payments::SharedPayments,
-    pub bills: DesktopBillsPorts,
+    pub bills: SharedBillsStore,
+    /// `lib-database`'s Bills ports, which the Bills page and its Dialogs share.
+    pub bill_ports: lib_bills::SharedPorts,
     pub budgets: SharedBudgetsStore,
     /// The Budgets page's and its Dialogs' ports, built by `lib-database`.
     pub budget_ports: lib_budgets::SharedPorts,
@@ -61,17 +68,14 @@ pub struct LedgerStores {
     pub documents: SharedDocumentsStore,
     /// The Documents and Document Types pages' repository, built by `lib-database`.
     pub document_ports: lib_documents::SharedRepository,
-    /// The Units store the Units ports share and the Accounts, Institutions, Bills, Tags and
-    /// Inventory reads take Units from: the Ledger file's, or the Sample Ledger's in memory in a
-    /// test.
-    pub units: SharedUnitsStore,
+    /// Every store above as one value, which reloads a domain by its `Domain`.
+    shared: SharedStores,
 }
 
-/// [`LedgerStores::build`]'s result: the shared stores, the Units ports over them, which the Units
-/// Setup and the Open Ledger hold typed, and the commit and failure channel `stores` came with.
+/// [`LedgerStores::build`]'s result: the shared stores and ports, and the commit and failure
+/// channel `ports` came with.
 pub struct BuiltStores {
     pub stores: LedgerStores,
-    pub units: crate::units::DesktopPorts,
     pub commit: Rc<dyn lib_database::Commit>,
     pub failures: mpsc::Receiver<lib_database::WriteFailure>,
 }
@@ -88,17 +92,22 @@ impl LedgerStores {
         .stores
     }
 
-    /// The ports `lib-database` built and the Desktop's own ports over its shared stores, wired
-    /// once: the one place a Ledger's stores are shared out, for [`super::OpenLedger::build`] and
-    /// the tests' `sample`. The Tags, Categories, Transactions, Budgets, Inventory and Documents
-    /// come from `ports` whole (#1082, #1083); the other domains are built here over `ports`'
-    /// stores until theirs move into `LedgerPorts` too (#1084).
+    /// The ports `lib-database` built, taken whole and named for the modules that hold them: the
+    /// one place a Ledger's stores are shared out, for [`super::OpenLedger::build`] and the tests'
+    /// `sample`.
     pub fn build(ports: LedgerPorts) -> BuiltStores {
         let tag_removal = crate::tag_removal::RemovalStores::of(&ports);
         let category_deletion = crate::category_deletion::DeletionStores::of(&ports);
         let import = crate::transaction_import::ImportStores::of(&ports);
+        let account_deletion = crate::account_deletion::DeletionStores::of(&ports);
         let LedgerPorts {
             stores,
+            units: unit_ports,
+            unit_deletion,
+            institutions: institution_ports,
+            accounts: account_ports,
+            payees: payee_ports,
+            bills: bill_ports,
             tags: tag_ports,
             categories: category_ports,
             category_save,
@@ -111,6 +120,7 @@ impl LedgerStores {
             failures,
             ..
         } = ports;
+        let shared = stores.clone();
         let SharedStores {
             units,
             institutions,
@@ -124,61 +134,16 @@ impl LedgerStores {
             inventory,
             documents,
         } = stores;
-        // The Payees ports are shared by the Payees module, the cross-domain adapters, the
-        // Documents and the Bills reads (#831, #832), and count what names a Payee in the
-        // Transactions, Bills and Categories stores (#992).
-        let payees = crate::payees::LedgerBackedPorts::shared(
-            payees,
-            lib_database::StoredPayeeReads {
-                transactions: transactions.clone(),
-                bills: bills.clone(),
-                categories: categories.clone(),
-            },
-        );
-        // The Accounts' reads take the Units and Institutions stores themselves, not their ports:
-        // the Units and Institutions ports read the Accounts ports, so reading theirs would be a
-        // cycle (#1052, #1053).
-        let account_reads = StoredAccountReads {
-            transactions: transactions.clone(),
-            budgets: budgets.clone(),
-            units: units.clone(),
-            institutions: institutions.clone(),
-        };
-        let accounts = crate::accounts::LedgerBackedPorts::shared(accounts, account_reads.clone());
-        let institutions_store = institutions.clone();
-        let institutions = crate::institutions::LedgerBackedPorts::shared(
-            institutions,
-            accounts.clone(),
-            units.clone(),
-        );
-        // The Units ports count what names each Unit in the Accounts, Transactions, Bills,
-        // Budgets, Inventory and Institutions stores, and answer the Bills reads of the Unit codes
-        // (#993), so they are built before the Bills ports.
-        let units = crate::units::LedgerBackedPorts::shared(
-            units,
-            lib_database::StoredUnitReads {
-                accounts: accounts.clone(),
-                transactions: transactions.clone(),
-                bills: bills.clone(),
-                budgets: budgets.clone(),
-                inventory: inventory.clone(),
-                institutions: institutions.clone(),
-            },
-        );
-        let bills = crate::bills::LedgerBackedPorts::shared(
-            bills,
-            payees.clone(),
-            accounts.clone(),
-            categories.clone(),
-            transactions.clone(),
-            units.clone(),
-        );
         BuiltStores {
             stores: Self {
+                units,
+                unit_ports,
+                unit_deletion,
                 institutions,
-                institutions_store,
+                institution_ports,
                 accounts,
-                account_reads,
+                account_ports,
+                account_deletion,
                 categories,
                 category_ports,
                 category_save,
@@ -187,41 +152,30 @@ impl LedgerStores {
                 tag_ports,
                 tag_removal,
                 payees,
+                payee_ports,
                 transactions,
                 transaction_ports,
                 import,
                 payments,
                 bills,
+                bill_ports,
                 budgets,
                 budget_ports,
                 inventory,
                 inventory_ports,
                 documents,
                 document_ports,
-                units: units.clone(),
+                shared,
             },
-            units,
             commit,
             failures,
         }
     }
 
-    /// Every domain's store, through the shared value its modules hold, so a domain reloads by its
-    /// `Domain` in one call: after a failed write, or a commit's cascade (#1081).
-    pub fn shared(&self) -> SharedStores {
-        SharedStores {
-            units: self.units.clone(),
-            institutions: self.institutions_store.clone(),
-            accounts: self.accounts.clone(),
-            categories: self.categories.clone(),
-            tags: self.tags.clone(),
-            payees: self.payees.clone(),
-            transactions: self.transactions.clone(),
-            bills: self.bills.borrow().store(),
-            budgets: self.budgets.clone(),
-            inventory: self.inventory.clone(),
-            documents: self.documents.clone(),
-        }
+    /// Every domain's store, so a domain reloads by its `Domain` in one call: after a failed
+    /// write, or a commit's cascade (#1081).
+    pub fn shared(&self) -> &SharedStores {
+        &self.shared
     }
 
     /// The other domains' stores as `lib_inventory`'s reads, which the Inventory page and its
@@ -242,7 +196,7 @@ impl LedgerStores {
             payees: self.payees.clone(),
             accounts: self.accounts.clone(),
             institutions: self.institutions.clone(),
-            bills: self.bills.borrow().store(),
+            bills: self.bills.clone(),
             inventory: self.inventory.clone(),
         }
     }
@@ -318,12 +272,12 @@ impl LedgerStores {
     /// Institution names.
     #[doc(hidden)]
     pub fn name_usual_unit_for_test(&self, id: lib_core::InstitutionId, unit: lib_core::UnitId) {
-        let mut ports = self.institutions.borrow_mut();
-        let Some(mut institution) = ports.institutions().institution(id) else {
+        let mut store = self.institutions.borrow_mut();
+        let Some(mut institution) = store.institutions().institution(id) else {
             return;
         };
         institution.usual_unit = Some(unit);
-        ports.institutions_mut().upsert_institution(institution);
+        store.institutions_mut().upsert_institution(institution);
     }
 }
 
@@ -334,7 +288,6 @@ mod tests {
     use lib_database::{Commit, PendingWrites, Stores};
 
     use super::*;
-    use lib_bills::BillsPorts as _;
 
     /// The Desktop's start-up storage on the Ledger file in `dir`, the Sample Ledger as of `today`
     /// when there is none yet.
@@ -360,7 +313,7 @@ mod tests {
     struct OnStorage {
         store: Entity<LedgerStores>,
         /// The Bills ports the store shares, which the Bills module writes.
-        bills: DesktopBillsPorts,
+        bills: lib_bills::SharedPorts,
         /// The payments port over the Transactions and Bills stores, the Bill Payments module's.
         payments: lib_bill_payments::SharedPayments,
         /// The deletion port over the Accounts, Transactions and Bills stores, the Account
@@ -381,13 +334,9 @@ mod tests {
             lib_core::Clock::fixed(chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a date")),
         ))
         .stores;
-        let bills = built.bills.clone();
+        let bills = built.bill_ports.clone();
         let payments = built.payments.clone();
-        let deletion = crate::account_deletion::deletion(
-            built.accounts.clone(),
-            built.transactions.clone(),
-            &bills,
-        );
+        let deletion = built.account_deletion.deletion.clone();
         let category_deletion = built.category_deletion.deletion.clone();
         OnStorage {
             store: cx.new(|_| built),
@@ -515,7 +464,7 @@ mod tests {
         PayeesStore::payees(&*store.payees.borrow()).payees()
     }
 
-    /// The Bill Plans and the Bill Schedule as the Bills ports hold them, the entries by due date
+    /// The Bill Plans and the Bill Schedule as the Bills store holds them, the entries by due date
     /// and then Plan, since a port lists them in no particular order.
     fn bills_of(
         cx: &mut TestAppContext,
@@ -532,19 +481,19 @@ mod tests {
         transactions
     }
 
-    /// The Accounts as the Accounts ports hold them.
+    /// The Accounts as the Accounts store holds them.
     fn accounts_of(store: &LedgerStores) -> Vec<lib_accounts::Account> {
-        lib_accounts::AccountsPorts::accounts(&*store.accounts.borrow()).accounts()
+        store.accounts.borrow().accounts().accounts()
     }
 
-    /// The Bill Plans as the Bills ports hold them.
+    /// The Bill Plans as the Bills store holds them.
     fn plans_of(store: &LedgerStores) -> Vec<lib_bills::BillPlan> {
-        store.bills.borrow().bills().bill_plans()
+        store.bills.borrow().plans().bill_plans()
     }
 
-    /// The Bill Schedule as the Bills ports hold it, by due date and then Plan.
+    /// The Bill Schedule as the Bills store holds it, by due date and then Plan.
     fn entries_of(store: &LedgerStores) -> Vec<lib_bills::BillScheduleEntry> {
-        let mut entries = store.bills.borrow().bills().entries();
+        let mut entries = store.bills.borrow().entries().entries();
         entries.sort_by_key(|entry| (entry.due, entry.plan_id));
         entries
     }
@@ -552,7 +501,7 @@ mod tests {
     /// Every Split as the Bills ports read them from the Transactions store.
     fn splits_of(store: &LedgerStores) -> Vec<lib_bills::BillSplit> {
         store
-            .bills
+            .bill_ports
             .borrow()
             .transactions()
             .splits_between(chrono::NaiveDate::MIN, chrono::NaiveDate::MAX)

@@ -6,17 +6,13 @@
 //! - `view/page.rs` wraps the page Presenter in an Entity, which the Settings View hosts.
 //! - `view/dialog.rs` holds the Add Dialog's Presenter in an Entity in the Dialog host.
 //! - `router.rs` is the Router and the module's entry point ([`institutions_page`]).
-//! - `ports.rs` holds the halfway shims: the Units copied from the Ledger, and the Ledger read
-//!   copy refreshed after each write (#850).
 //!
-//! Where the Institutions are kept, the SQLite adapter opened at start or memory, is
-//! `lib-database`'s `InstitutionsStore`.
+//! The ports are `lib-database`'s `StoredInstitutionsPorts`, which `LedgerPorts` hands the page and
+//! its Dialogs (#1084).
 
-pub mod ports;
 mod router;
 mod view;
 
-pub use ports::{DesktopPorts, LedgerBackedPorts};
 pub use router::institutions_page;
 pub use view::page::InstitutionsPage;
 
@@ -36,12 +32,15 @@ pub struct SettingsInstitutionsSnapshot {
 /// What `shell::router::build` hands the Institutions module: its ports, shared with the Ledger
 /// store, and its keymap under `[keybindings]`.
 pub struct InstitutionsSetup {
-    pub ports: DesktopPorts,
+    pub ports: lib_institutions::SharedPorts,
     pub keymap: lib_viper::keymap::Keymap<InstitutionsPageEvent>,
 }
 
 impl InstitutionsSetup {
-    pub fn new(ports: DesktopPorts, config: &lib_config::KeyBindingConfig) -> Self {
+    pub fn new(
+        ports: lib_institutions::SharedPorts,
+        config: &lib_config::KeyBindingConfig,
+    ) -> Self {
         Self {
             ports,
             keymap: lib_institutions::keymap::institutions_page_keymap(config),
@@ -53,7 +52,7 @@ impl InstitutionsSetup {
     #[cfg(test)]
     pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
-            storage.institutions.clone(),
+            storage.institution_ports.clone(),
             &lib_config::KeyBindingConfig::default(),
         )
     }

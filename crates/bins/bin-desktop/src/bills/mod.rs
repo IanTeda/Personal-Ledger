@@ -9,32 +9,48 @@
 //!   per Dialog in `view/dialog/`.
 //! - `router.rs` is the Router and the module's entry point ([`bills_page`]). It opens the Pay
 //!   Dialog through the Bill Payments module's entry point (`crate::bill_payments`).
-//! - `ports.rs` holds the halfway shims: the store shared with the Open Ledger (#778, #1028).
+//!
+//! The ports are `lib-database`'s `StoredBillsPorts`, which `LedgerPorts` hands the page and its
+//! Dialogs (#1084); what stays here is when the Bill Schedule is generated ([`generate`],
+//! [`new_month`]).
 
-pub mod ports;
 mod router;
 pub(crate) mod view;
 
 pub use lib_bills::*;
-pub use ports::{DesktopPorts, LedgerBackedPorts};
 pub use router::bills_page;
 pub use view::dialog::BillsDialog;
 pub use view::page::BillsPage;
 pub use view::snapshot::{BillRowSnapshot, BillsSnapshot};
 
+use lib_bills::interactor::PopulateSchedule;
 use lib_bills::presenter::BillsPageEvent;
+
+/// Brings the stored Bill Schedule up to the horizon as of `today` (ADR-0019's "on Client start"),
+/// writing the entries generation adds. The caller commits them.
+pub fn generate(store: &mut dyn BillsRepository, today: chrono::NaiveDate) {
+    PopulateSchedule { today }.run(store);
+}
+
+/// Brings the Bill Schedule up to the horizon for the month a running Desktop has crossed into,
+/// wherever it is (ADR-0019). The day poll's input commits the new entries as one write, which
+/// the input door announces, so the Dashboard and Budgets redraw, and a failed save rolls back like
+/// any Bills write.
+pub fn new_month(ports: &SharedPorts, today: chrono::NaiveDate) {
+    PopulateSchedule { today }.run(ports.borrow_mut().split_mut().bills);
+}
 
 /// What `shell::router::build` hands the Bills module: its ports, shared with the Open Ledger, the payments
 /// port the Pay Dialog it opens writes through, and its keymap under `[keybindings]`.
 pub struct BillsSetup {
-    pub ports: DesktopPorts,
+    pub ports: SharedPorts,
     pub payments: lib_bill_payments::SharedPayments,
     pub keymap: lib_viper::keymap::Keymap<BillsPageEvent>,
 }
 
 impl BillsSetup {
     pub fn new(
-        ports: DesktopPorts,
+        ports: SharedPorts,
         payments: lib_bill_payments::SharedPayments,
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
@@ -50,7 +66,7 @@ impl BillsSetup {
     #[cfg(test)]
     pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
-            storage.bills.clone(),
+            storage.bill_ports.clone(),
             storage.payments.clone(),
             &lib_config::KeyBindingConfig::default(),
         )

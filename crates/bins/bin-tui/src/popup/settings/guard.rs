@@ -14,8 +14,8 @@
 //! yet, so those stay worked examples, each marked `// wireframe:`.
 
 use lib_core::UnitId;
+use lib_units::SharedPorts;
 use lib_units::presenter::{SetBaseUnitEvent, SetBaseUnitPresenter};
-use lib_units::{SharedPorts, UnitsPorts};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -27,8 +27,8 @@ use ratatui::{
 use crate::colours::Colours;
 use crate::msg;
 use crate::popup::REFERENCE_TERMINAL_WIDTH;
-use crate::units::TuiPorts;
 use crate::units::router::Router;
+use crate::units::{TuiPorts, UnitsSetup};
 
 /// The popup's width: 78% of the reference terminal, the command popup's.
 const POPUP_WIDTH: u16 = REFERENCE_TERMINAL_WIDTH * 78 / 100;
@@ -59,6 +59,8 @@ pub enum Confirmed {
 /// The guard on moving the base from `from` to `to`, the Unit codes.
 pub struct BaseUnitGuardPopup {
     ports: TuiPorts,
+    /// What ends the confirm's input.
+    commit: std::rc::Rc<dyn lib_database::Commit>,
     presenter: SetBaseUnitPresenter,
     from: String,
     to: String,
@@ -71,11 +73,11 @@ pub struct BaseUnitGuardPopup {
 impl BaseUnitGuardPopup {
     /// The guard on making the Unit coded `to` the base, chosen on the Presenter. `None` when `to`
     /// is the base already, or isn't one the Presenter offers.
-    pub fn open(ports: &TuiPorts, to: &str) -> Option<Self> {
-        let shared: SharedPorts = ports.clone();
+    pub fn open(units: &UnitsSetup, to: &str) -> Option<Self> {
+        let shared: SharedPorts = units.ports.clone();
         let mut presenter = SetBaseUnitPresenter::new(shared.clone());
         let (from, to_id, transactions, accounts, already) = {
-            let held = ports.borrow();
+            let held = units.ports.borrow();
             let code = |id: UnitId| held.units().unit(id).map(|unit| unit.code);
             let from = code(held.base_unit().base_unit())?;
             let to_id = presenter
@@ -85,8 +87,7 @@ impl BaseUnitGuardPopup {
                 .iter()
                 .map(|choice| choice.value)
                 .find(|id| code(*id).as_deref() == Some(to))?;
-            let stores = held.stores();
-            let accounts = stores.accounts.accounts().accounts();
+            let accounts = units.stores.accounts.borrow().accounts().accounts();
             let already = accounts
                 .iter()
                 .filter(|account| account.unit == to_id)
@@ -94,7 +95,7 @@ impl BaseUnitGuardPopup {
             (
                 from,
                 to_id,
-                stores.transactions.all_transactions().len(),
+                units.stores.transactions.borrow().all_transactions().len(),
                 accounts.len(),
                 already,
             )
@@ -108,7 +109,8 @@ impl BaseUnitGuardPopup {
             &mut Router::new(shared, &mut toasts),
         );
         Some(Self {
-            ports: ports.clone(),
+            ports: units.ports.clone(),
+            commit: units.commit.clone(),
             presenter,
             from,
             to: to.to_string(),
@@ -144,7 +146,7 @@ impl BaseUnitGuardPopup {
                 .handle(SetBaseUnitEvent::Confirm, &mut router);
             router.closed.take()
         };
-        self.ports.borrow_mut().commit();
+        self.commit.commit();
         match closed {
             Some(Some(_)) => Confirmed::Set(self.to.clone()),
             _ => Confirmed::Refused,
@@ -348,8 +350,8 @@ mod tests {
 
     use super::*;
 
-    fn sample() -> TuiPorts {
-        crate::units::UnitsSetup::sample(&lib_config::KeyBindingConfig::default()).ports
+    fn sample() -> UnitsSetup {
+        UnitsSetup::sample(&lib_config::KeyBindingConfig::default())
     }
 
     fn render(guard: &BaseUnitGuardPopup) -> String {
@@ -395,7 +397,7 @@ mod tests {
         guard.push('c');
         assert!(guard.matches());
         assert_eq!(guard.confirm(), Confirmed::Set("btc".into()));
-        let base = ports.borrow().base_unit().base_unit();
+        let base = ports.ports.borrow().base_unit().base_unit();
         assert_eq!(base, UnitId::SEED_BTC);
     }
 

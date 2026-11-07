@@ -11,7 +11,6 @@ use lib_bills::{BillsRouter, EntryId, PayRequest};
 use lib_core::{BillPlanId, Clock, DateStyle, TransactionId};
 use lib_toast::{Notice, Notify};
 
-use super::ports::DesktopPorts;
 use super::view::dialog::BillsDialog;
 use super::view::page::BillsPage;
 use crate::announcer::Announcer;
@@ -19,7 +18,7 @@ use crate::notices::Queue;
 use crate::shell::view::dialog_entity::host_dialog;
 
 pub(super) struct PageRouter<'a, 'b> {
-    pub ports: DesktopPorts,
+    pub ports: lib_bills::SharedPorts,
     /// What the Pay Dialog writes Pay it directly through.
     pub payments: SharedPayments,
     /// The day and date style the page's Dialogs are opened on.
@@ -101,7 +100,7 @@ impl Notify for PageRouter<'_, '_> {
 /// destination. `payments` is what the Pay Dialog it opens writes through, and `clock` reads the
 /// calendar day the page dates its rows by.
 pub fn bills_page(
-    ports: DesktopPorts,
+    ports: lib_bills::SharedPorts,
     payments: SharedPayments,
     announcer: Entity<Announcer>,
     keymap: lib_viper::keymap::Keymap<BillsPageEvent>,

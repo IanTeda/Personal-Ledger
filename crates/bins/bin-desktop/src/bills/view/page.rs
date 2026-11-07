@@ -26,7 +26,6 @@ use lib_viper::view::SelectView;
 
 use super::{planner, schedule};
 use crate::announcer::{Announcer, LedgerChanged};
-use crate::bills::ports::DesktopPorts;
 use crate::bills::router::PageRouter;
 use crate::form::select::SelectState;
 use crate::form::viper::{choose_option, select_key, synced, toggle_select};
@@ -47,7 +46,7 @@ pub struct BillsPage {
     presenter: BillsPagePresenter,
     /// The day the page's Dialogs are opened on.
     clock: Clock,
-    ports: DesktopPorts,
+    ports: lib_bills::SharedPorts,
     /// What the Pay Dialog the page opens writes Pay it directly through.
     payments: SharedPayments,
     keymap: Keymap<BillsPageEvent>,
@@ -60,7 +59,7 @@ pub struct BillsPage {
 
 impl BillsPage {
     pub fn new(
-        ports: DesktopPorts,
+        ports: lib_bills::SharedPorts,
         payments: SharedPayments,
         announcer: Entity<Announcer>,
         keymap: Keymap<BillsPageEvent>,

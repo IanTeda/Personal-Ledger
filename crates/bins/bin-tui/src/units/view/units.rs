@@ -93,6 +93,8 @@ pub(super) const HINT_SEPARATOR: &str = "  \u{b7}  ";
 pub struct UnitsView {
     presenter: UnitsPagePresenter,
     ports: TuiPorts,
+    /// What ends each input: the Units, its stores and the commit, as the Open Ledger holds them.
+    setup: UnitsSetup,
     keymap: Keymap<UnitsPageEvent>,
     prices_keymap: Keymap<UnitPricesEvent>,
     dialog_keymap: Keymap<DialogCommand>,
@@ -121,6 +123,7 @@ impl UnitsView {
             presenter: UnitsPagePresenter::new(shared, now.clone(), setup.keymap.clone()),
             now,
             ports: setup.ports.clone(),
+            setup: setup.clone(),
             keymap: setup.keymap.clone(),
             prices_keymap: setup.prices_keymap.clone(),
             dialog_keymap: setup.dialog_keymap.clone(),
@@ -152,7 +155,7 @@ impl UnitsView {
         let mut router = Router::with_now(self.ports.clone(), &mut self.toasts, self.now.clone());
         self.presenter.handle(event, &mut router);
         let (opened, prices) = (router.opened.take(), router.prices.take());
-        self.ports.borrow_mut().commit();
+        self.setup.commit();
         self.apply(opened, prices);
     }
 
@@ -164,7 +167,7 @@ impl UnitsView {
         let mut router = Router::with_now(self.ports.clone(), &mut self.toasts, self.now.clone());
         presenter.handle(event, &mut router);
         let (opened, prices) = (router.opened.take(), router.prices.take());
-        self.ports.borrow_mut().commit();
+        self.setup.commit();
         self.apply(opened, prices);
     }
 
@@ -211,7 +214,7 @@ impl UnitsView {
         let mut router = Router::with_now(self.ports.clone(), &mut self.toasts, self.now.clone());
         dialog.handle_key(key, &self.dialog_keymap, &mut router);
         let closed = router.closed.take();
-        self.ports.borrow_mut().commit();
+        self.setup.commit();
         if let Some(outcome) = closed {
             self.dialog = None;
             self.send(UnitsPageEvent::DialogClosed(outcome));

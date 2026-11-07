@@ -7,16 +7,13 @@
 //! - `view/dialog.rs` holds the Add and Edit Dialog's Presenter in an Entity in the Dialog host.
 //! - `router.rs` is the Router and the module's entry point ([`accounts_page`]). It opens
 //!   `lib-account-deletion`'s Delete Dialog through that module's entry point.
-//! - `ports.rs` holds the store with its reads of the other domains' stores (#855, #1054).
 //!
-//! Where the Accounts are kept, the SQLite adapter opened at start or memory, is `lib-database`'s
-//! `AccountsStore`.
+//! The ports are `lib-database`'s `StoredAccountsPorts`, which `LedgerPorts` hands the page and its
+//! Dialogs (#1084).
 
-pub mod ports;
 pub(crate) mod router;
 mod view;
 
-pub use ports::{DesktopPorts, LedgerBackedPorts};
 pub use router::accounts_page;
 pub use view::page::AccountsPage;
 
@@ -40,18 +37,17 @@ pub struct SettingsAccountsSnapshot {
     pub selected_account: Option<String>,
 }
 
-/// What `shell::router::build` hands the Accounts module: its ports, shared with the Ledger, the
-/// Units and Bills reads and the deletion adapter, the stores its Delete Dialog writes through,
-/// and its keymap under `[keybindings]`.
+/// What `shell::router::build` hands the Accounts module: its ports, what its Delete Dialog reads
+/// and writes through, and its keymap under `[keybindings]`.
 pub struct AccountsSetup {
-    pub ports: DesktopPorts,
+    pub ports: lib_accounts::SharedPorts,
     pub deletion: crate::account_deletion::DeletionStores,
     pub keymap: lib_viper::keymap::Keymap<AccountsPageEvent>,
 }
 
 impl AccountsSetup {
     pub fn new(
-        ports: DesktopPorts,
+        ports: lib_accounts::SharedPorts,
         deletion: crate::account_deletion::DeletionStores,
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
@@ -66,8 +62,8 @@ impl AccountsSetup {
     #[cfg(test)]
     pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
-            storage.accounts.clone(),
-            crate::account_deletion::DeletionStores::sample(storage),
+            storage.account_ports.clone(),
+            storage.account_deletion.clone(),
             &lib_config::KeyBindingConfig::default(),
         )
     }

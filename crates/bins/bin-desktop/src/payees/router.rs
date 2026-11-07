@@ -9,7 +9,6 @@ use lib_payees::{PayeesDialog as Which, PayeesRouter};
 use lib_toast::{Notice, Notify};
 use lib_transactions::query::TransactionFilters;
 
-use super::ports::DesktopPorts;
 use super::view::dialog::PayeesDialog;
 use super::view::page::PayeesPage;
 use crate::announcer::Announcer;
@@ -17,7 +16,7 @@ use crate::notices::Queue;
 use crate::shell::view::dialog_entity::host_dialog;
 
 pub(super) struct PageRouter<'a, 'b> {
-    pub ports: DesktopPorts,
+    pub ports: lib_payees::SharedPorts,
     pub clock: lib_core::Clock,
     pub cx: &'a mut Context<'b, PayeesPage>,
 }
@@ -56,7 +55,7 @@ impl Notify for PageRouter<'_, '_> {
 /// The Payees module's entry point: its Settings page, built on `ports`, which the Settings View
 /// hosts as any other page.
 pub fn payees_page(
-    ports: DesktopPorts,
+    ports: lib_payees::SharedPorts,
     announcer: gpui::Entity<Announcer>,
     clock: lib_core::Clock,
     keymap: lib_viper::keymap::Keymap<PayeesPageEvent>,

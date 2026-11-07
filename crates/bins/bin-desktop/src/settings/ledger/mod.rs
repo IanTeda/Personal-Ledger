@@ -28,7 +28,6 @@ use crate::{
         router::LedgerRouter,
     },
     shell::view::page_clicks::PresenterPage,
-    units::DesktopPorts,
     view::event::ViewEvent,
 };
 
@@ -62,13 +61,12 @@ pub struct LedgerPage {
 impl LedgerPage {
     pub fn new(
         announcer: Entity<Announcer>,
-        ports: DesktopPorts,
+        store: SharedUnitsStore,
         keys: LedgerKeys,
         cx: &mut Context<'_, Self>,
     ) -> Self {
         // The Presenter reads the Units on each draw, so a write anywhere repaints the page.
         let units_changed = notify_on(&announcer, Domain::Units, cx);
-        let store: SharedUnitsStore = ports.clone();
         let presenter = LedgerPresenter::new(LedgerSetup {
             units: Rc::new(StoredSettingsReads {
                 units: store.clone(),

@@ -97,7 +97,7 @@ use ratatui::{
 use crate::colours::Colours;
 use crate::msg;
 use crate::popup::settings::edit::{FieldEditor, Outcome};
-use crate::units::{TuiPorts, UnitsSetup};
+use crate::units::UnitsSetup;
 use crate::view::{Action, View, ViewId};
 
 use field::{SettingField, SettingsValues};
@@ -346,7 +346,7 @@ pub struct SettingsView {
     /// The values that hold for the session, shared with `Shell` as `selected` is.
     values: Rc<RefCell<SettingsValues>>,
     /// The Open Ledger's Units ports, for the base unit; `None` for a View built without one.
-    units: Option<TuiPorts>,
+    units: Option<UnitsSetup>,
     /// `Some` while a field is open in place.
     editor: Option<FieldEditor>,
     /// Whether a Ledger is open: without one the this ledger pages are refused.
@@ -410,7 +410,7 @@ impl SettingsView {
             selected,
             picker: None,
             values,
-            units: units.map(|setup| setup.ports.clone()),
+            units: units.cloned(),
             editor: None,
             ledger_open: true,
             general: general::GeneralPage::new(),
@@ -672,7 +672,7 @@ impl SettingsView {
 struct Context<'a> {
     values: &'a SettingsValues,
     /// The Open Ledger's Units ports; `None` for a View built without them.
-    units: Option<&'a TuiPorts>,
+    units: Option<&'a UnitsSetup>,
     /// The field open in place, if any.
     editor: Option<&'a FieldEditor>,
 }

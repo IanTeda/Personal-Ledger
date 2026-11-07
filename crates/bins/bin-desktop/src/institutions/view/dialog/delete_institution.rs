@@ -14,7 +14,6 @@ use lib_viper::keymap::{BACK, Keymap, SELECT};
 
 use super::{Landed, Router};
 use crate::dialog;
-use crate::institutions::ports::DesktopPorts;
 use crate::shell::view::dialog_entity::DialogReadback;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostedDialog};
 use crate::theme::color;
@@ -24,7 +23,7 @@ const WIDTH: gpui::Pixels = px(440.0);
 
 /// The open Delete institution Dialog: its Presenter.
 pub struct DeleteInstitutionDialog {
-    ports: DesktopPorts,
+    ports: lib_institutions::SharedPorts,
     presenter: DeleteInstitutionPresenter,
     landed: Landed,
 }
@@ -34,7 +33,7 @@ impl DeleteInstitutionDialog {
     /// outcome to `landed`.
     pub(crate) fn open(
         id: lib_core::InstitutionId,
-        ports: &DesktopPorts,
+        ports: &lib_institutions::SharedPorts,
         landed: Landed,
     ) -> Option<Self> {
         Some(Self {

@@ -2,7 +2,7 @@
 //! poll that delivers `lib-shell`'s [`ShellInput::DayTick`] as one input. The Shell's Presenter
 //! decides when a month has turned (#822); the root Router's `month_turned` (`root_router.rs`)
 //! generates its Bill Schedule wherever the person is (#793). An `impl Root` block; the
-//! generation itself is the Bills module's (`bills::ports::new_month`).
+//! generation itself is the Bills module's (`bills::new_month`).
 
 use std::time::Duration;
 

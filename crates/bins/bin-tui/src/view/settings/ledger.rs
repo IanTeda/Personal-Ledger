@@ -14,7 +14,6 @@
 use chrono::Local;
 use crossterm::event::{KeyCode, KeyEvent};
 use lib_list_cursor::Step;
-use lib_units::UnitsPorts;
 use lib_units::presenter::SetBaseUnitPresenter;
 use ratatui::{
     Frame,
@@ -29,7 +28,7 @@ use super::{Context, FieldRow, Open, list, render_form};
 use crate::colours::Colours;
 use crate::msg;
 use crate::popup::settings::edit::{Draft, FieldEditor, Segment};
-use crate::units::TuiPorts;
+use crate::units::{TuiPorts, UnitsSetup};
 use crate::view::Action;
 
 /// The fields, in the page's order.
@@ -143,7 +142,10 @@ fn row(field: SettingField, context: &Context<'_>) -> FieldRow {
         SettingField::LedgerName => values.ledger_name.clone(),
         SettingField::Owner => values.owner.clone(),
         SettingField::FinancialYearStart => month_label(values.financial_year_start),
-        _ => context.units.map(base_unit_label).unwrap_or_default(),
+        _ => context
+            .units
+            .map(|units| base_unit_label(&units.ports))
+            .unwrap_or_default(),
     };
     FieldRow {
         field,
@@ -189,7 +191,7 @@ pub(super) fn draft(field: SettingField, context: &Context<'_>) -> Option<(Draft
                 month_label(values.financial_year_start),
             )
         }
-        SettingField::BaseUnit => base_unit_draft(context.units?)?,
+        SettingField::BaseUnit => base_unit_draft(&context.units?.ports)?,
         _ => return None,
     })
 }
@@ -259,7 +261,7 @@ fn sub_rows(editor: &FieldEditor, context: &Context<'_>) -> Vec<(String, String)
             let chosen = context
                 .units
                 .and_then(|units| {
-                    let ports = units.borrow();
+                    let ports = units.ports.borrow();
                     ports
                         .units()
                         .units()
@@ -285,17 +287,17 @@ fn sub_rows(editor: &FieldEditor, context: &Context<'_>) -> Vec<(String, String)
 }
 
 /// THIS LEDGER: a 4-cell box of counts, each derived on this draw.
-fn render_this_ledger(frame: &mut Frame<'_>, area: Rect, units: &TuiPorts, c: &Colours) {
-    let ports = units.borrow();
-    let stores = ports.stores();
+fn render_this_ledger(frame: &mut Frame<'_>, area: Rect, units: &UnitsSetup, c: &Colours) {
+    let ports = units.ports.borrow();
+    let stores = &units.stores;
     let cells = [
         (
             msg::tui_settings_ledger_accounts(),
-            stores.accounts.accounts().accounts().len(),
+            stores.accounts.borrow().accounts().accounts().len(),
         ),
         (
             msg::tui_settings_ledger_transactions(),
-            stores.transactions.all_transactions().len(),
+            stores.transactions.borrow().all_transactions().len(),
         ),
         (
             msg::tui_settings_ledger_units(),
@@ -303,7 +305,12 @@ fn render_this_ledger(frame: &mut Frame<'_>, area: Rect, units: &TuiPorts, c: &C
         ),
         (
             msg::tui_settings_ledger_institutions(),
-            stores.institutions.institutions().institutions().len(),
+            stores
+                .institutions
+                .borrow()
+                .institutions()
+                .institutions()
+                .len(),
         ),
     ];
     let block = Block::bordered()

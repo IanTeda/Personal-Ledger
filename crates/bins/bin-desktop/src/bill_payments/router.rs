@@ -8,14 +8,13 @@ use lib_bills::PayRequest;
 use lib_core::{Clock, DateStyle};
 
 use super::PayDialog;
-use crate::bills::DesktopPorts;
 use crate::shell::view::dialog_entity::host_dialog;
 use crate::view::event::ViewEvent;
 
 /// What the Pay Dialog reads and writes through: the Bills ports its Match panel and wording read,
 /// and the port Pay it directly writes through.
 pub struct PayStores<'a> {
-    pub bills: &'a DesktopPorts,
+    pub bills: &'a lib_bills::SharedPorts,
     pub payments: &'a SharedPayments,
 }
 

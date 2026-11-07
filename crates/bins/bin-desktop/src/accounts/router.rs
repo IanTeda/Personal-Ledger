@@ -10,7 +10,6 @@ use lib_core::AccountId;
 use lib_toast::{Notice, Notify};
 use lib_transactions::query::TransactionFilters;
 
-use super::ports::DesktopPorts;
 use super::view::dialog::AccountsDialog;
 use super::view::page::AccountsPage;
 use crate::account_deletion::DeletionStores;
@@ -19,7 +18,7 @@ use crate::notices::Queue;
 use crate::shell::view::dialog_entity::host_dialog;
 
 pub(super) struct PageRouter<'a, 'b> {
-    pub ports: DesktopPorts,
+    pub ports: lib_accounts::SharedPorts,
     pub deletion: DeletionStores,
     pub clock: lib_core::Clock,
     pub cx: &'a mut Context<'b, AccountsPage>,
