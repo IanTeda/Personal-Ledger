@@ -126,3 +126,7 @@ Slice 12 ([#1036](https://github.com/IanTeda/Personal-Ledger/issues/1036)) moved
 
 - **Settings is a module.** The frame's state and keys are `lib-settings`' frame Presenter and keymap, which emits `PageChanged` for Back and Forward, and every config page renders from its Presenter's view model and a `PageClicks` (the 2026-11-04 amendment), with no `On*` alias, closure builder or `LogBoxProps` left.
 - **The Tracing log feed is a port.** The 2026-10-30 Settings page amendment kept the feed pushing entries through `SettingsView::page::<T>()`. Tracing now reads the capture through `lib-settings`' `TracingLog` port, and the bin only signals `TracingEvent::Appended`. `SettingsView::page::<T>()` stays for the palette commands and the test snapshots.
+
+## Amendment (2026-11-07): one generic Entity hosts each Presenter
+
+[ADR-0056](0056-one-generic-entity-hosts-each-presenter-through-lib-viper-s-presenter-contract.md) keeps the rule that a View Entity renders and handles its own input, but the Entity is now generic: `ModulePage<P>` hosts a page Presenter and `ModuleDialog<P>` a Dialog Presenter, through `lib-viper`'s Presenter contract. A domain writes a `PageView` or `DialogView` on its Presenter type and its Router, not an Entity. Decided in [#1077](https://github.com/IanTeda/Personal-Ledger/issues/1077).
