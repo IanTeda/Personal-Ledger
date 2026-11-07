@@ -14,34 +14,62 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use lib_database::{PayeesStore, StoredPayeeReads};
-use lib_payees::{PayeeCategories, PayeeRepository, PayeeUsage, PayeesPorts, PortsMut};
+use lib_core::PayeeId;
+use lib_database::{PayeesStore, SharedPayeesStore, StoredPayeeReads};
+use lib_payees::{Payee, PayeeCategories, PayeeRepository, PayeeUsage, PayeesPorts, PortsMut};
 
 /// The Payees ports the Payees module, Category delete, the Import and the Bills reads share.
 pub type DesktopPorts = Rc<RefCell<LedgerBackedPorts>>;
 
+/// The shared Payees store's Payees, borrowed for each call: the store is `LedgerPorts`' shared
+/// one (#1082), whose guard can't be lent out of it.
+struct SharedPayees {
+    store: SharedPayeesStore,
+}
+
+impl PayeeRepository for SharedPayees {
+    fn payees(&self) -> Vec<Payee> {
+        self.store.borrow().payees().payees()
+    }
+
+    fn upsert_payee(&mut self, payee: Payee) {
+        self.store.borrow_mut().payees_mut().upsert_payee(payee);
+    }
+
+    fn delete_payee(&mut self, id: PayeeId) {
+        self.store.borrow_mut().payees_mut().delete_payee(id);
+    }
+}
+
 /// `store`'s Payees, with their use and the Categories a Payee may default to read from the other
 /// domains' stores.
 pub struct LedgerBackedPorts {
-    store: Box<dyn PayeesStore>,
+    store: SharedPayeesStore,
+    payees: SharedPayees,
     reads: StoredPayeeReads,
 }
 
 impl LedgerBackedPorts {
-    pub fn shared(store: Box<dyn PayeesStore>, reads: StoredPayeeReads) -> DesktopPorts {
-        Rc::new(RefCell::new(Self { store, reads }))
+    pub fn shared(store: SharedPayeesStore, reads: StoredPayeeReads) -> DesktopPorts {
+        Rc::new(RefCell::new(Self {
+            payees: SharedPayees {
+                store: store.clone(),
+            },
+            store,
+            reads,
+        }))
     }
 
     /// The sample Payees in memory, reading the other domains through `reads`, for a test that needs
     /// no storage.
     pub fn in_memory(reads: StoredPayeeReads) -> DesktopPorts {
         Self::shared(
-            Box::new(lib_payees::fake::InMemoryPorts {
+            Rc::new(RefCell::new(lib_payees::fake::InMemoryPorts {
                 payees: lib_payees::fake::InMemoryPayees {
                     payees: lib_payees::sample_payees(),
                 },
                 ..Default::default()
-            }),
+            })),
             reads,
         )
     }
@@ -49,7 +77,7 @@ impl LedgerBackedPorts {
 
 impl PayeesPorts for LedgerBackedPorts {
     fn payees(&self) -> &dyn PayeeRepository {
-        self.store.payees()
+        &self.payees
     }
 
     fn usage(&self) -> &dyn PayeeUsage {
@@ -62,7 +90,7 @@ impl PayeesPorts for LedgerBackedPorts {
 
     fn split_mut(&mut self) -> PortsMut<'_> {
         PortsMut {
-            payees: self.store.payees_mut(),
+            payees: &mut self.payees,
             usage: &self.reads,
         }
     }
@@ -71,15 +99,15 @@ impl PayeesPorts for LedgerBackedPorts {
 /// The same ports as the store they wrap, for Category delete, the Import and the Bills reads.
 impl PayeesStore for LedgerBackedPorts {
     fn payees(&self) -> &dyn PayeeRepository {
-        self.store.payees()
+        &self.payees
     }
 
     fn payees_mut(&mut self) -> &mut dyn PayeeRepository {
-        self.store.payees_mut()
+        &mut self.payees
     }
 
     fn reload(&mut self) -> lib_database::Result<()> {
-        self.store.reload()
+        self.store.borrow_mut().reload()
     }
 }
 

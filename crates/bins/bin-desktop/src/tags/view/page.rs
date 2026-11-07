@@ -16,7 +16,7 @@ use lib_shell::Hint;
 use crate::settings::snapshot::PageSnapshot;
 use crate::tag_removal::RemovalStores;
 use crate::tags::router::PageRouter;
-use crate::tags::{SettingsTagsSnapshot, TagsSetup, ports};
+use crate::tags::{SettingsTagsSnapshot, TagsSetup};
 use crate::{
     announcer::{Announcer, notify_on},
     navigation::movement::Movement,
@@ -34,7 +34,6 @@ impl EventEmitter<PageRowClicked> for TagsPage {}
 pub struct TagsPage {
     presenter: TagsPagePresenter,
     ports: SharedPorts,
-    /// The writes the page's ports have made, read around an input to tell whether it wrote.
     /// Tag remove and merge's port and reads, which their Dialogs open on.
     removal: RemovalStores,
     clock: lib_core::Clock,
@@ -55,10 +54,9 @@ impl TagsPage {
         clock: lib_core::Clock,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        let ports = ports::shared(&setup.store, setup.usage.clone());
         Self {
-            presenter: TagsPagePresenter::new(ports.clone(), setup.keymap.clone()),
-            ports,
+            presenter: TagsPagePresenter::new(setup.ports.clone(), setup.keymap.clone()),
+            ports: setup.ports,
             removal: setup.removal,
             _tags_changed: notify_on(&announcer, Domain::Tags, cx),
             _transactions_changed: notify_on(&announcer, Domain::Transactions, cx),

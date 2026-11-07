@@ -13,9 +13,9 @@
 //! The Accounts store is shared as well ([`SharedAccountsStore`]): the Desktop's Ledger forwards
 //! the Accounts writers to it, and the Units and Bills read its rows (#853). So is the Categories
 //! store ([`SharedCategoriesStore`]): the Desktop's Ledger forwards the Categories writers to it,
-//! and the Bills and Payees read its rows (#858). So is the Tags store ([`SharedTagsStore`]): the
-//! Desktop's Ledger forwards the Tags writers to it, and the Tags page and Dialogs read its
-//! usage (#862). So is the Inventory store ([`SharedInventoryStore`]): the Desktop's Ledger
+//! and the Bills and Payees read its rows (#858). So is the Tags store ([`SharedTagsStore`]):
+//! [`StoredTagsPorts`](crate::StoredTagsPorts) writes it, and the Tag Removal adapter and the
+//! Transactions' reads hold it (#862, #1082). So is the Inventory store ([`SharedInventoryStore`]): the Desktop's Ledger
 //! forwards the Inventory writers to it and keeps a read copy of it for Documents (#866).
 //!
 //! A cross-domain module writes two stores another module also holds, so the Transactions and
@@ -537,8 +537,8 @@ impl CategoriesStore for InMemoryCategories {
     }
 }
 
-/// A Tags store shared by the Tags page and the Tag Removal adapter. Single-threaded, as the ports
-/// are.
+/// A Tags store shared by [`StoredTagsPorts`](crate::StoredTagsPorts), the Tag Removal adapter and
+/// the Transactions' reads. Single-threaded, as the ports are.
 pub type SharedTagsStore = Rc<RefCell<dyn TagsStore>>;
 
 /// The Tags repository port, wherever it is kept, and the delete Tag remove and merge send. What

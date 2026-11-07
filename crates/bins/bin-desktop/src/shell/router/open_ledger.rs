@@ -151,7 +151,7 @@ impl OpenLedger {
             units,
             commit,
             failures,
-        } = LedgerStores::build(stores);
+        } = LedgerStores::build(lib_database::LedgerPorts::new(stores));
         // The stores are the truth: the input door announces what each input wrote through the
         // Announcer, which holds no rows (#1028, #1057, #1081).
         let announcer = cx.new(|_| Announcer::default());
@@ -161,12 +161,8 @@ impl OpenLedger {
             crate::institutions::InstitutionsSetup::new(storage.institutions.clone(), keybindings);
         let units = crate::units::UnitsSetup::on(units, &storage.institutions, keybindings);
         let tags_setup = crate::tags::TagsSetup::new(
-            storage.tags.clone(),
-            lib_database::StoredTagReads {
-                transactions: storage.transactions.clone(),
-                accounts: storage.accounts.clone(),
-                units: units.ports.clone(),
-            },
+            storage.tag_ports.clone(),
+            storage.tag_removal.clone(),
             keybindings,
         );
         let payments = crate::bill_payments::payments(storage.transactions.clone(), &storage.bills);

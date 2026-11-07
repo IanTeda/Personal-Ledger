@@ -1,18 +1,17 @@
 //! The stores an Open Ledger's modules share, and the stored reads built over them (#1057): what
-//! [`super::OpenLedger::build`] assembles once from the `Stores` it is given and hands each page,
+//! [`super::OpenLedger::build`] assembles once from the `LedgerPorts` it is given and hands each page,
 //! so no page reaches through an Entity for its data. The Open Ledger keeps them for what runs
 //! after it is built: a failed write's reload (`write_failures.rs`), a new month's Bill Schedule
 //! and the `*_for_test` hooks `Root`'s test support calls.
 
-use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::mpsc;
 
 use lib_database::{
-    PayeesStore, SharedBudgetsStore, SharedCategoriesStore, SharedDocumentsStore,
+    LedgerPorts, PayeesStore, SharedBudgetsStore, SharedCategoriesStore, SharedDocumentsStore,
     SharedInstitutionsStore, SharedInventoryStore, SharedStores, SharedTagsStore,
     SharedTransactionsStore, SharedUnitsStore, StoredAccountReads, StoredCategoryRows,
-    StoredDocumentReads, StoredInventoryReads, Stores,
+    StoredDocumentReads, StoredInventoryReads,
 };
 use lib_institutions::InstitutionsPorts as _;
 
@@ -33,7 +32,12 @@ pub struct LedgerStores {
     /// (#993, #1052, #1053): the Accounts ports' reads and Account delete's.
     pub account_reads: StoredAccountReads,
     pub categories: SharedCategoriesStore,
+    /// The Tags store under the Tags ports, which the Transactions' reads hold too.
     pub tags: SharedTagsStore,
+    /// `lib-database`'s Tags ports, which the Tags page and its Add and Edit Dialogs share (#1082).
+    pub tag_ports: lib_tags::SharedPorts,
+    /// Tag remove and merge's port and reads, built by `lib-database` beside the Tags ports.
+    pub tag_removal: crate::tag_removal::RemovalStores,
     pub payees: DesktopPayeesPorts,
     pub transactions: SharedTransactionsStore,
     pub bills: DesktopBillsPorts,
@@ -60,13 +64,26 @@ impl LedgerStores {
     /// rows as the UI tests without building the whole Open Ledger.
     #[cfg(test)]
     pub fn sample(today: chrono::NaiveDate) -> Self {
-        Self::build(Stores::fake(lib_database::FakeStores::sample(today)).0).stores
+        Self::build(LedgerPorts::new(
+            lib_database::Stores::fake(lib_database::FakeStores::sample(today)).0,
+        ))
+        .stores
     }
 
-    /// The shared stores and ports over `stores`, wired once: the one place a Ledger's stores are
-    /// shared out, for [`super::OpenLedger::build`] and the tests' `sample`.
-    pub fn build(stores: Stores) -> BuiltStores {
-        let Stores {
+    /// The ports `lib-database` built and the Desktop's own ports over its shared stores, wired
+    /// once: the one place a Ledger's stores are shared out, for [`super::OpenLedger::build`] and
+    /// the tests' `sample`. The Tags come from `ports` whole (#1082); the other domains are built
+    /// here over `ports`' stores until theirs move into `LedgerPorts` too (#1083, #1084).
+    pub fn build(ports: LedgerPorts) -> BuiltStores {
+        let tag_removal = crate::tag_removal::RemovalStores::of(&ports);
+        let LedgerPorts {
+            stores,
+            tags: tag_ports,
+            commit,
+            failures,
+            ..
+        } = ports;
+        let SharedStores {
             units,
             institutions,
             accounts,
@@ -78,51 +95,28 @@ impl LedgerStores {
             budgets,
             inventory,
             documents,
-            commit,
-            failures,
         } = stores;
-        // The Transactions and Bills stores are shared: Pay it directly writes both (#779), and
-        // Payees counts what names a Payee in them (#992). The Payees ports are shared by the
-        // Payees module, the cross-domain adapters, the Documents and the Bills reads
-        // (#831, #832). The Categories store is shared by the Categories module, Category delete,
-        // the Bills and Payees reads (#858, #859, #1005).
-        let categories: SharedCategoriesStore = Rc::new(RefCell::new(categories));
-        let transactions: SharedTransactionsStore = Rc::new(RefCell::new(transactions));
-        let bills: lib_database::SharedBillsStore = Rc::new(RefCell::new(bills));
+        // The Payees ports are shared by the Payees module, the cross-domain adapters, the
+        // Documents and the Bills reads (#831, #832), and count what names a Payee in the
+        // Transactions, Bills and Categories stores (#992).
         let payees = crate::payees::LedgerBackedPorts::shared(
-            Box::new(payees),
+            payees,
             lib_database::StoredPayeeReads {
                 transactions: transactions.clone(),
                 bills: bills.clone(),
                 categories: categories.clone(),
             },
         );
-        // The Tags store is shared by the Tags page and Tag remove and merge (#862, #1003).
-        let tags: SharedTagsStore = Rc::new(RefCell::new(tags));
-        // The Inventory store is shared by the Inventory page and the Documents reads (#866, #867).
-        let inventory: SharedInventoryStore = Rc::new(RefCell::new(inventory));
-        // The Budgets store is shared by the Budgets module, Category delete, the Accounts, Units
-        // and Categories usage counts and the Categories Monthly budget (#952).
-        let budgets: SharedBudgetsStore = Rc::new(RefCell::new(budgets));
-        // The Units store is shared by the Units ports and the Accounts' and Institutions' reads of
-        // the Units they may name (#1052). The Units ports count what names a Unit in the Accounts
-        // and Institutions ports, so those read the store itself, not the Units ports, or each
-        // would hold the other.
-        let units: SharedUnitsStore = Rc::new(RefCell::new(units));
-        // The Institutions store is shared by the Institutions ports and the Accounts' reads of the
-        // Institutions an Account may be at (#1053), for the same reason as the Units store: the
-        // Institutions ports read the Accounts ports, so owning it there would be a cycle.
-        let institutions: SharedInstitutionsStore = Rc::new(RefCell::new(institutions));
-        // The Accounts store is shared by the Accounts module, the Units, Bills and Documents reads
-        // (#853), and the Institutions' reads of which Accounts name one (#876).
+        // The Accounts' reads take the Units and Institutions stores themselves, not their ports:
+        // the Units and Institutions ports read the Accounts ports, so reading theirs would be a
+        // cycle (#1052, #1053).
         let account_reads = StoredAccountReads {
             transactions: transactions.clone(),
             budgets: budgets.clone(),
             units: units.clone(),
             institutions: institutions.clone(),
         };
-        let accounts =
-            crate::accounts::LedgerBackedPorts::shared(Box::new(accounts), account_reads.clone());
+        let accounts = crate::accounts::LedgerBackedPorts::shared(accounts, account_reads.clone());
         let institutions_store = institutions.clone();
         let institutions = crate::institutions::LedgerBackedPorts::shared(
             institutions,
@@ -151,9 +145,6 @@ impl LedgerStores {
             transactions.clone(),
             units.clone(),
         );
-        // The Documents store is shared by the Documents page, the Document Types page and the
-        // Inventory's Documents reads (#963, #966, #1014).
-        let documents: SharedDocumentsStore = Rc::new(RefCell::new(documents));
         BuiltStores {
             stores: Self {
                 institutions,
@@ -162,6 +153,8 @@ impl LedgerStores {
                 account_reads,
                 categories,
                 tags,
+                tag_ports,
+                tag_removal,
                 payees,
                 transactions,
                 bills,
@@ -320,10 +313,9 @@ impl LedgerStores {
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::RefCell, rc::Rc};
 
     use gpui::{AppContext, Entity, TestAppContext};
-    use lib_database::{Commit, PendingWrites, StoredPayeeReads};
+    use lib_database::{Commit, PendingWrites, Stores};
 
     use super::*;
     use lib_bills::BillsPorts as _;
@@ -367,73 +359,25 @@ mod tests {
     /// [`on_storage`] with the ports the Bills, Bill Payments, Account Deletion and Category
     /// Deletion modules write.
     fn on_storage_with_bills(cx: &mut TestAppContext, storage: lib_database::Storage) -> OnStorage {
-        let pending = storage.pending;
-        let categories: SharedCategoriesStore = Rc::new(RefCell::new(storage.categories));
-        let transactions: SharedTransactionsStore = Rc::new(RefCell::new(storage.transactions));
-        let bills_store: lib_database::SharedBillsStore = Rc::new(RefCell::new(storage.bills));
-        let payees = crate::payees::LedgerBackedPorts::shared(
-            Box::new(storage.payees),
-            StoredPayeeReads {
-                transactions: transactions.clone(),
-                bills: bills_store.clone(),
-                categories: categories.clone(),
-            },
-        );
-        let budgets: SharedBudgetsStore = Rc::new(RefCell::new(storage.budgets));
-        let units: SharedUnitsStore = Rc::new(RefCell::new(storage.units));
-        let institutions_store: SharedInstitutionsStore =
-            Rc::new(RefCell::new(storage.institutions));
-        let account_reads = StoredAccountReads {
-            transactions: transactions.clone(),
-            budgets: budgets.clone(),
-            units: units.clone(),
-            institutions: institutions_store.clone(),
-        };
-        let accounts = crate::accounts::LedgerBackedPorts::shared(
-            Box::new(storage.accounts),
-            account_reads.clone(),
-        );
-        let institutions = crate::institutions::LedgerBackedPorts::shared(
-            institutions_store.clone(),
-            accounts.clone(),
-            units.clone(),
-        );
-        let bills = crate::bills::ports::LedgerBackedPorts::shared(
-            bills_store,
-            payees.clone(),
-            accounts.clone(),
-            categories.clone(),
-            transactions.clone(),
-            units.clone(),
-        );
-        let payments = crate::bill_payments::payments(transactions.clone(), &bills);
-        let deletion =
-            crate::account_deletion::deletion(accounts.clone(), transactions.clone(), &bills);
-        let category_deletion = crate::category_deletion::DeletionStores::new(
-            categories.clone(),
-            transactions.clone(),
+        let pending = storage.pending.clone();
+        let built = LedgerStores::build(LedgerPorts::new(Stores::from(storage))).stores;
+        let bills = built.bills.clone();
+        let payments = crate::bill_payments::payments(built.transactions.clone(), &bills);
+        let deletion = crate::account_deletion::deletion(
+            built.accounts.clone(),
+            built.transactions.clone(),
             &bills,
-            payees.clone(),
-            budgets.clone(),
+        );
+        let category_deletion = crate::category_deletion::DeletionStores::new(
+            built.categories.clone(),
+            built.transactions.clone(),
+            &bills,
+            built.payees.clone(),
+            built.budgets.clone(),
         )
         .deletion;
-        let store = cx.new(|_| LedgerStores {
-            institutions,
-            institutions_store,
-            accounts: accounts.clone(),
-            account_reads,
-            categories,
-            tags: Rc::new(RefCell::new(storage.tags)),
-            payees,
-            transactions,
-            bills: bills.clone(),
-            budgets,
-            inventory: Rc::new(RefCell::new(storage.inventory)),
-            documents: Rc::new(RefCell::new(storage.documents)),
-            units,
-        });
         OnStorage {
-            store,
+            store: cx.new(|_| built),
             bills,
             payments,
             deletion,

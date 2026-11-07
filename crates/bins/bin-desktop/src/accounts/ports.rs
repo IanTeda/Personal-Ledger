@@ -15,36 +15,67 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use lib_accounts::{
-    AccountInstitutions, AccountRepository, AccountUnits, AccountUsage, AccountsPorts,
+    Account, AccountInstitutions, AccountRepository, AccountUnits, AccountUsage, AccountsPorts,
 };
+use lib_core::AccountId;
 use lib_database::FakeStores;
-use lib_database::{AccountsStore, StoredAccountReads};
+use lib_database::{AccountsStore, SharedAccountsStore, StoredAccountReads};
 
 /// The Accounts ports the Accounts module and the Ledger share.
 pub type DesktopPorts = Rc<RefCell<LedgerBackedPorts>>;
 
+/// The shared Accounts store's Accounts, borrowed for each call: the store is `LedgerPorts`'
+/// shared one (#1082), whose guard can't be lent out of it.
+struct SharedAccounts {
+    store: SharedAccountsStore,
+}
+
+impl AccountRepository for SharedAccounts {
+    fn accounts(&self) -> Vec<Account> {
+        self.store.borrow().accounts().accounts()
+    }
+
+    fn upsert_account(&mut self, account: Account) {
+        self.store
+            .borrow_mut()
+            .accounts_mut()
+            .upsert_account(account);
+    }
+
+    fn delete_account(&mut self, id: AccountId) {
+        self.store.borrow_mut().accounts_mut().delete_account(id);
+    }
+}
+
 /// `store`'s Accounts, with the Institutions an Account may name, the Units it may count in and the
 /// Transactions and Budgets that name each read from `reads`.
 pub struct LedgerBackedPorts {
-    store: Box<dyn AccountsStore>,
+    store: SharedAccountsStore,
+    accounts: SharedAccounts,
     reads: StoredAccountReads,
 }
 
 impl LedgerBackedPorts {
-    pub fn shared(store: Box<dyn AccountsStore>, reads: StoredAccountReads) -> DesktopPorts {
-        Rc::new(RefCell::new(Self { store, reads }))
+    pub fn shared(store: SharedAccountsStore, reads: StoredAccountReads) -> DesktopPorts {
+        Rc::new(RefCell::new(Self {
+            accounts: SharedAccounts {
+                store: store.clone(),
+            },
+            store,
+            reads,
+        }))
     }
 
     /// The sample Accounts in memory, reading the other domains through `reads`, for a test that
     /// needs no storage.
     pub fn in_memory(reads: StoredAccountReads) -> DesktopPorts {
         Self::shared(
-            Box::new(lib_accounts::fake::InMemoryPorts {
+            Rc::new(RefCell::new(lib_accounts::fake::InMemoryPorts {
                 accounts: lib_accounts::fake::InMemoryAccounts {
                     accounts: lib_accounts::sample_accounts(),
                 },
                 ..Default::default()
-            }),
+            })),
             reads,
         )
     }
@@ -52,11 +83,11 @@ impl LedgerBackedPorts {
 
 impl AccountsPorts for LedgerBackedPorts {
     fn accounts(&self) -> &dyn AccountRepository {
-        self.store.accounts()
+        &self.accounts
     }
 
     fn accounts_mut(&mut self) -> &mut dyn AccountRepository {
-        self.store.accounts_mut()
+        &mut self.accounts
     }
 
     fn usage(&self) -> &dyn AccountUsage {
@@ -76,15 +107,15 @@ impl AccountsPorts for LedgerBackedPorts {
 /// and the deletion adapter.
 impl AccountsStore for LedgerBackedPorts {
     fn accounts(&self) -> &dyn AccountRepository {
-        self.store.accounts()
+        &self.accounts
     }
 
     fn accounts_mut(&mut self) -> &mut dyn AccountRepository {
-        self.store.accounts_mut()
+        &mut self.accounts
     }
 
     fn reload(&mut self) -> lib_database::Result<()> {
-        self.store.reload()
+        self.store.borrow_mut().reload()
     }
 }
 

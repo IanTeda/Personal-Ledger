@@ -622,13 +622,11 @@ mod tests {
 /// in-memory fakes and on the Ledger file.
 #[cfg(test)]
 mod committed_tests {
-    use std::cell::RefCell;
     use std::rc::Rc;
 
     use chrono::NaiveDate;
     use lib_category_deletion::CategoryDeletion as _;
     use lib_documents::DocumentLink;
-    use lib_tag_removal::TagRemoval as _;
 
     use super::*;
     use crate::adapter::store::{
@@ -655,22 +653,10 @@ mod committed_tests {
         (Stores::from(storage), writer)
     }
 
-    /// Every store shared, as a Client shares them out, and the commit.
+    /// Every store shared, as a Client holds them through [`crate::LedgerPorts`], and the commit.
     fn share(stores: Stores) -> (SharedStores, Rc<dyn crate::Commit>) {
-        let shared = SharedStores {
-            units: Rc::new(RefCell::new(stores.units)),
-            institutions: Rc::new(RefCell::new(stores.institutions)),
-            accounts: Rc::new(RefCell::new(stores.accounts)),
-            categories: Rc::new(RefCell::new(stores.categories)),
-            tags: Rc::new(RefCell::new(stores.tags)),
-            payees: Rc::new(RefCell::new(stores.payees)),
-            transactions: Rc::new(RefCell::new(stores.transactions)),
-            bills: Rc::new(RefCell::new(stores.bills)),
-            budgets: Rc::new(RefCell::new(stores.budgets)),
-            inventory: Rc::new(RefCell::new(stores.inventory)),
-            documents: Rc::new(RefCell::new(stores.documents)),
-        };
-        (shared, stores.commit)
+        let ledger = crate::LedgerPorts::new(stores);
+        (ledger.stores, ledger.commit)
     }
 
     /// Renames the first sample Tag, a write to the Tags alone.
@@ -729,10 +715,9 @@ mod committed_tests {
     fn a_tag_merge_reports_the_tags_and_the_transactions() {
         let dir = tempfile::tempdir().expect("a temporary directory");
         for stores in [fakes(), file(dir.path()).0] {
-            let (shared, commit) = share(stores);
-            let mut removal =
-                crate::TagRemovalAdapter::new(shared.tags.clone(), shared.transactions.clone());
-            let tags = shared.tags.borrow().tags().tags();
+            let ledger = crate::LedgerPorts::new(stores);
+            let mut removal = ledger.tag_removal.borrow_mut();
+            let tags = ledger.stores.tags.borrow().tags().tags();
             let source = tags
                 .iter()
                 .find(|tag| !removal.transactions_carrying(tag.id).is_empty())
@@ -745,11 +730,11 @@ mod committed_tests {
                 .id;
 
             lib_tag_removal::interactor::MergeTags { source, target }
-                .run(&mut removal)
+                .run(&mut *removal)
                 .expect("both Tags exist");
 
             assert_eq!(
-                commit.commit(),
+                ledger.commit.commit(),
                 wrote(&[Domain::Transactions, Domain::Tags])
             );
         }

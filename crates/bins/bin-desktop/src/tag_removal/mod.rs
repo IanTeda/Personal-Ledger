@@ -8,20 +8,16 @@
 //! - `router.rs` is the module's entry point ([`router::open_remove`], [`router::open_merge`]).
 //!
 //! Remove and merge write through [`RemovalStores`]' port, `lib-database`'s adapter over the Tags
-//! and Transactions stores the Tags and Transactions modules share, so the rewritten Splits and the
-//! Tag's delete join the one pending batch and land in the one commit of the confirm's input.
+//! and Transactions stores, which `LedgerPorts` builds beside the Tags ports (#1082), so the
+//! rewritten Splits and the Tag's delete join the one pending batch and land in the one commit of
+//! the confirm's input.
 //! Nothing here reads the `Announcer`: the Tags page hears of a confirm through its `landed`
 //! callback and brings what else reads the two domains in line.
 
 pub mod router;
 pub(crate) mod view;
 
-use std::cell::RefCell;
-use std::rc::Rc;
-
-use lib_database::{
-    SharedTagsStore, SharedTransactionsStore, StoredTagRemovalReads, TagRemovalAdapter,
-};
+use lib_database::{LedgerPorts, StoredTagRemovalReads};
 use lib_tag_removal::SharedTagRemoval;
 
 pub use view::dialog::TagRemovalDialog;
@@ -35,14 +31,11 @@ pub struct RemovalStores {
 }
 
 impl RemovalStores {
-    /// The port and reads over `tags` and `transactions`.
-    pub fn new(tags: SharedTagsStore, transactions: SharedTransactionsStore) -> Self {
+    /// The port and reads `ports` built over the Tags and Transactions stores.
+    pub fn of(ports: &LedgerPorts) -> Self {
         Self {
-            removal: Rc::new(RefCell::new(TagRemovalAdapter::new(
-                tags.clone(),
-                transactions.clone(),
-            ))),
-            reads: StoredTagRemovalReads { tags, transactions },
+            removal: ports.tag_removal.clone(),
+            reads: ports.tag_removal_reads.clone(),
         }
     }
 }

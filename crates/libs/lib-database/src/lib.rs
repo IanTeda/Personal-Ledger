@@ -102,6 +102,12 @@ pub use adapter::units::UnitsAdapter;
 pub mod storage;
 pub use storage::{Storage, StoreParts, Stores, open_storage};
 
+/// What a Client holds a Ledger by: [`LedgerPorts`], each domain's `Stored<Domain>Ports` and the
+/// cross-domain adapters over the shared stores. Its module doc states the invariant that keeps
+/// every `Rc` pointing down a layer, so no build order guards against a cycle.
+pub mod ports;
+pub use ports::{LedgerPorts, StoredTagsPorts};
+
 /// The Sample Ledger, one fixed Ledger for development and tests, and the dev seed that writes it.
 pub mod seed;
 
