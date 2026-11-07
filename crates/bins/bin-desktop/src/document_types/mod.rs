@@ -54,7 +54,7 @@ impl DocumentTypesSetup {
     #[cfg(test)]
     pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
-            storage.document_ports.clone(),
+            storage.ports.documents.clone(),
             &lib_config::KeyBindingConfig::default(),
         )
     }

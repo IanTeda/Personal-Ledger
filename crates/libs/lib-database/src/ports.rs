@@ -48,13 +48,14 @@ use lib_core::Clock;
 
 use crate::adapter::store::{
     SharedStores, StoredAccountReads, StoredBillReads, StoredBillUnits, StoredBudgetReads,
-    StoredCategoryDeletionReads, StoredImportReads, StoredInstitutionReads, StoredPayeeReads,
+    StoredCategoryDeletionReads, StoredDashboardReads, StoredDocumentReads, StoredImportReads,
+    StoredInstitutionReads, StoredInventoryReads, StoredPayeeReads, StoredShellReads,
     StoredTagReads, StoredTagRemovalReads, StoredTransactionReads, StoredUnitReads,
 };
 use crate::{
-    AccountDeletionAdapter, BillPaymentsAdapter, CategoryDeletionAdapter, Commit, Domain, Result,
-    StoredCategoryRows, Stores, TagRemovalAdapter, TransactionImportAdapter, UnitDeletionAdapter,
-    WriteFailure,
+    AccountDeletionAdapter, BillPaymentsAdapter, CategoryDeletionAdapter, Commit, Domain,
+    LedgerPreferencesAdapter, Result, StoredCategoryRows, StoredSettingsReads, Stores,
+    TagRemovalAdapter, TransactionImportAdapter, UnitDeletionAdapter, WriteFailure,
 };
 
 /// A Ledger as a Client holds it: every domain's ports over the shared stores, the cross-domain
@@ -114,6 +115,18 @@ pub struct LedgerPorts {
     pub inventory: lib_inventory::SharedInventory,
     /// The Documents and Document Types pages' repository ([`StoredDocumentsPorts`]).
     pub documents: lib_documents::SharedRepository,
+    /// What the Inventory page and its Dialogs read the Units and Documents through.
+    pub inventory_reads: StoredInventoryReads,
+    /// What the Documents page reads the other domains through.
+    pub document_reads: StoredDocumentReads,
+    /// The Settings › Ledger page's Units read ([`StoredSettingsReads`]).
+    pub ledger_units: Rc<StoredSettingsReads>,
+    /// The Settings › Ledger page's base Unit write ([`LedgerPreferencesAdapter`]).
+    pub ledger_preferences: Rc<LedgerPreferencesAdapter>,
+    /// The Dashboard's Bills and Budgets reads ([`StoredDashboardReads`]).
+    pub dashboard_reads: Rc<StoredDashboardReads>,
+    /// The Shell's rail-count reads ([`StoredShellReads`]).
+    pub shell_reads: StoredShellReads,
     pub commit: Rc<dyn Commit>,
     pub failures: mpsc::Receiver<WriteFailure>,
 }
@@ -178,7 +191,35 @@ impl LedgerPorts {
             units: stores.units.clone(),
             institutions: stores.institutions.clone(),
         };
+        let dashboard_reads = Rc::new(StoredDashboardReads {
+            budgets: stores.budgets.clone(),
+            budget_reads: (*budget_reads).clone(),
+        });
+        let shell_reads = StoredShellReads {
+            budgets: stores.budgets.clone(),
+            documents: stores.documents.clone(),
+            budget_reads: (*budget_reads).clone(),
+        };
         Self {
+            inventory_reads: StoredInventoryReads {
+                units: stores.units.clone(),
+                inventory: stores.inventory.clone(),
+                documents: stores.documents.clone(),
+            },
+            document_reads: StoredDocumentReads {
+                transactions: stores.transactions.clone(),
+                payees: stores.payees.clone(),
+                accounts: stores.accounts.clone(),
+                institutions: stores.institutions.clone(),
+                bills: stores.bills.clone(),
+                inventory: stores.inventory.clone(),
+            },
+            ledger_units: Rc::new(StoredSettingsReads {
+                units: stores.units.clone(),
+            }),
+            ledger_preferences: Rc::new(LedgerPreferencesAdapter::new(stores.units.clone())),
+            dashboard_reads,
+            shell_reads,
             units: Rc::new(RefCell::new(StoredUnitsPorts::new(
                 stores.units.clone(),
                 StoredUnitReads {

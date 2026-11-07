@@ -67,8 +67,8 @@ impl InventorySetup {
     #[cfg(test)]
     pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
-            storage.inventory_ports.clone(),
-            storage.inventory_reads(),
+            storage.ports.inventory.clone(),
+            storage.ports.inventory_reads.clone(),
             &lib_config::KeyBindingConfig::default(),
         )
     }

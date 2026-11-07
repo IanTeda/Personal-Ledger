@@ -523,7 +523,10 @@ impl Root {
     #[doc(hidden)]
     pub fn empty_tags_for_test(&mut self, cx: &mut App) {
         let open = self.open();
-        let (tags, transactions) = (open.stores.tags.clone(), open.stores.transactions.clone());
+        let (tags, transactions) = (
+            open.stores.ports.stores.tags.clone(),
+            open.stores.ports.stores.transactions.clone(),
+        );
         let ids: Vec<_> = tags
             .borrow()
             .tags()
@@ -569,7 +572,7 @@ impl Root {
     /// paid from instead of meeting the Bill Plans refusal.
     #[doc(hidden)]
     pub fn move_bill_plans_for_test(&mut self, to: lib_core::AccountId, cx: &mut App) {
-        let bills = &self.open().stores.bill_ports;
+        let bills = &self.open().stores.ports.bills;
         crate::input::join_or_send(cx, |_| {
             let mut ports = bills.borrow_mut();
             for mut plan in lib_bills::BillsPorts::bills(&*ports).bill_plans() {
@@ -608,12 +611,22 @@ impl Root {
     pub fn usual_unit_code(&self, id: lib_core::InstitutionId, _cx: &App) -> Option<String> {
         let stores = &self.open().stores;
         let unit = stores
+            .ports
+            .stores
             .institutions
             .borrow()
             .institutions()
             .institution(id)?
             .usual_unit?;
-        Some(stores.units.borrow().unit_code(unit).unwrap_or_default())
+        Some(
+            stores
+                .ports
+                .stores
+                .units
+                .borrow()
+                .unit_code(unit)
+                .unwrap_or_default(),
+        )
     }
 
     /// The status line's flash message (e.g. "not yet built"), if one is showing.

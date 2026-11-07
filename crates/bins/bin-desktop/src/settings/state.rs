@@ -700,7 +700,10 @@ mod tests {
             categories: crate::categories::CategoriesSetup::sample(&storage),
             tags: crate::tags::TagsSetup::sample(&storage),
             inventory: crate::inventory::InventorySetup::sample(&storage),
-            ledger: crate::settings::ledger::LedgerKeys::new(&KeyBindingConfig::default()),
+            ledger: crate::settings::ledger::LedgerKeys::new(
+                &KeyBindingConfig::default(),
+                &storage.ports,
+            ),
         };
         let announcer = cx.new(|_| Announcer::default());
         let clock = lib_core::Clock::fixed(today);

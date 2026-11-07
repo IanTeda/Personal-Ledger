@@ -49,7 +49,7 @@ impl PayeesSetup {
     #[cfg(test)]
     pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
-            storage.payee_ports.clone(),
+            storage.ports.payees.clone(),
             &lib_config::KeyBindingConfig::default(),
         )
     }

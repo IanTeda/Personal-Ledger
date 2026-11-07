@@ -329,8 +329,7 @@ impl LedgerPages {
             ledger: ledger_keys,
         } = setup;
         Self {
-            ledger: cx
-                .new(|cx| LedgerPage::new(announcer.clone(), units.store.clone(), ledger_keys, cx)),
+            ledger: cx.new(|cx| LedgerPage::new(announcer.clone(), ledger_keys, cx)),
             units: units_page(
                 units.ports,
                 units.deletion,

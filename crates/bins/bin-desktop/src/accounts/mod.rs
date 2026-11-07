@@ -62,8 +62,8 @@ impl AccountsSetup {
     #[cfg(test)]
     pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
-            storage.account_ports.clone(),
-            storage.account_deletion.clone(),
+            storage.ports.accounts.clone(),
+            crate::account_deletion::DeletionStores::of(&storage.ports),
             &lib_config::KeyBindingConfig::default(),
         )
     }

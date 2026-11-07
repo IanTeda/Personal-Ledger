@@ -157,50 +157,49 @@ impl OpenLedger {
         crate::input::open_ledger(commit, announcer.clone(), cx);
         let failures = Rc::new(failures);
         let institutions_setup = crate::institutions::InstitutionsSetup::new(
-            storage.institution_ports.clone(),
+            storage.ports.institutions.clone(),
             keybindings,
         );
         let units = crate::units::UnitsSetup::new(
-            storage.unit_ports.clone(),
-            storage.units.clone(),
-            storage.unit_deletion.clone(),
+            storage.ports.units.clone(),
+            storage.ports.unit_deletion.clone(),
             keybindings,
         );
         let tags_setup = crate::tags::TagsSetup::new(
-            storage.tag_ports.clone(),
-            storage.tag_removal.clone(),
+            storage.ports.tags.clone(),
+            crate::tag_removal::RemovalStores::of(&storage.ports),
             keybindings,
         );
-        let payments = storage.payments.clone();
+        let payments = storage.ports.bill_payments.clone();
         // Account delete writes the Accounts, Transactions and Bills stores together (#854).
-        let account_deletion = storage.account_deletion.clone();
+        let account_deletion = crate::account_deletion::DeletionStores::of(&storage.ports);
         let accounts_setup = crate::accounts::AccountsSetup::new(
-            storage.account_ports.clone(),
+            storage.ports.accounts.clone(),
             account_deletion,
             keybindings,
         );
         let payees_setup =
-            crate::payees::PayeesSetup::new(storage.payee_ports.clone(), keybindings);
+            crate::payees::PayeesSetup::new(storage.ports.payees.clone(), keybindings);
         let document_types_setup = crate::document_types::DocumentTypesSetup::new(
-            storage.document_ports.clone(),
+            storage.ports.documents.clone(),
             keybindings,
         );
         // Category delete writes the Categories, Transactions, Bills, Payees and Budgets stores
         // together (#1005).
         let categories_setup = crate::categories::CategoriesSetup::new(
-            storage.category_ports.clone(),
-            storage.category_save.clone(),
-            storage.budgets.clone(),
-            storage.category_deletion.clone(),
+            storage.ports.categories.clone(),
+            storage.ports.category_save.clone(),
+            storage.ports.stores.budgets.clone(),
+            crate::category_deletion::DeletionStores::of(&storage.ports),
             keybindings,
         );
         let inventory_setup = crate::inventory::InventorySetup::new(
-            storage.inventory_ports.clone(),
-            storage.inventory_reads(),
+            storage.ports.inventory.clone(),
+            storage.ports.inventory_reads.clone(),
             keybindings,
         );
         let bills =
-            crate::bills::BillsSetup::new(storage.bill_ports.clone(), payments, keybindings);
+            crate::bills::BillsSetup::new(storage.ports.bills.clone(), payments, keybindings);
         let settings_setup = crate::settings::pages::SettingsSetup {
             units,
             institutions: institutions_setup,
@@ -210,34 +209,16 @@ impl OpenLedger {
             categories: categories_setup,
             tags: tags_setup,
             inventory: inventory_setup,
-            ledger: crate::settings::ledger::LedgerKeys::new(keybindings),
+            ledger: crate::settings::ledger::LedgerKeys::new(keybindings, &storage.ports),
         };
 
         // The Transactions page and the Import step come from `lib-database`'s `LedgerPorts`.
-        let transactions_ports = storage.transaction_ports.clone();
-        let import_stores = storage.import.clone();
-        // The Budgets page reads the other domains through their stores (#952).
-        let budget_reads = Rc::new(lib_database::StoredBudgetReads {
-            categories: storage.categories.clone(),
-            accounts: storage.accounts.clone(),
-            transactions: storage.transactions.clone(),
-            bills: storage.bills.clone(),
-            units: storage.units.clone(),
-            payees: storage.payees.clone(),
-        });
-        // The Dashboard reads its Bills and Budgets through the stores too (#1024).
-        let dashboard_reads = Rc::new(lib_database::StoredDashboardReads {
-            budgets: storage.budgets.clone(),
-            budget_reads: (*budget_reads).clone(),
-        });
-        // The rail's badges read their counts through the Shell's port, answered over the stores
-        // (#1026).
-        let rail_reads = CountedRailReads::new(lib_database::StoredShellReads {
-            budgets: storage.budgets.clone(),
-            documents: storage.documents.clone(),
-            budget_reads: (*budget_reads).clone(),
-        });
-        let budgets_ports = storage.budget_ports.clone();
+        let transactions_ports = storage.ports.transactions.clone();
+        let import_stores = crate::transaction_import::ImportStores::of(&storage.ports);
+        // The Dashboard and the rail's badges read through the reads `LedgerPorts` built.
+        let dashboard_reads = storage.ports.dashboard_reads.clone();
+        let rail_reads = CountedRailReads::new(storage.ports.shell_reads.clone());
+        let budgets_ports = storage.ports.budgets.clone();
         let units_ports = settings_setup.units.ports.clone();
         // The pages repaint when a domain they read is announced.
         let categories_subscription = notify_on(&announcer, lib_database::Domain::Categories, cx);
@@ -289,9 +270,9 @@ impl OpenLedger {
         // The Documents page writes the store through its Interactors, and reads the other
         // domains through their stores (#967).
         let documents_view = crate::documents::view::page::documents_page(
-            &storage.document_ports,
+            &storage.ports.documents,
             Rc::new(crate::documents::files::DiskFiles),
-            storage.document_reads(),
+            storage.ports.document_reads.clone(),
             announcer.clone(),
             lib_documents::keymap::documents_page_keymap(keybindings),
             clock.clone(),

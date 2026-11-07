@@ -74,10 +74,10 @@ impl CategoriesSetup {
     #[cfg(test)]
     pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
-            storage.category_ports.clone(),
-            storage.category_save.clone(),
-            storage.budgets.clone(),
-            storage.category_deletion.clone(),
+            storage.ports.categories.clone(),
+            storage.ports.category_save.clone(),
+            storage.ports.stores.budgets.clone(),
+            crate::category_deletion::DeletionStores::of(&storage.ports),
             &lib_config::KeyBindingConfig::default(),
         )
     }

@@ -66,8 +66,8 @@ impl BillsSetup {
     #[cfg(test)]
     pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
-            storage.bill_ports.clone(),
-            storage.payments.clone(),
+            storage.ports.bills.clone(),
+            storage.ports.bill_payments.clone(),
             &lib_config::KeyBindingConfig::default(),
         )
     }

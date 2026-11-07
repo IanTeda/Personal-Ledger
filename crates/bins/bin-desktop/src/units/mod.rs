@@ -15,7 +15,6 @@ mod router;
 mod view;
 
 use gpui::App;
-use lib_database::SharedUnitsStore;
 use lib_units::SharedPorts;
 pub use router::units_page;
 pub(crate) use view::dialog::{Landed, Router, help, refusal};
@@ -66,8 +65,6 @@ pub fn unquote_for_test(ports: &SharedPorts) {
 /// prices view's keymaps under `[keybindings]`.
 pub struct UnitsSetup {
     pub ports: SharedPorts,
-    /// The Units store the Ledger page reads the base Unit from and writes it to.
-    pub store: SharedUnitsStore,
     /// The Unit Deletion module's port over the Units and Institutions stores, which Delete unit
     /// writes through (#903).
     pub deletion: lib_unit_deletion::SharedUnitDeletion,
@@ -78,13 +75,11 @@ pub struct UnitsSetup {
 impl UnitsSetup {
     pub fn new(
         ports: SharedPorts,
-        store: SharedUnitsStore,
         deletion: lib_unit_deletion::SharedUnitDeletion,
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
             ports,
-            store,
             deletion,
             keymap: lib_units::keymap::units_page_keymap(config),
             prices_keymap: lib_units::keymap::unit_prices_keymap(config),
@@ -95,9 +90,8 @@ impl UnitsSetup {
     #[cfg(test)]
     pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
-            storage.unit_ports.clone(),
-            storage.units.clone(),
-            storage.unit_deletion.clone(),
+            storage.ports.units.clone(),
+            storage.ports.unit_deletion.clone(),
             &lib_config::KeyBindingConfig::default(),
         )
     }

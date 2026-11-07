@@ -73,7 +73,7 @@ impl ShellRouter for RootRouter<'_, '_> {
         let Some(open) = self.open.as_ref() else {
             return;
         };
-        crate::bills::new_month(&open.stores.bill_ports, today);
+        crate::bills::new_month(&open.stores.ports.bills, today);
         open.views
             .budgets
             .update(self.cx, |budgets, cx| budgets.month_turned(cx));

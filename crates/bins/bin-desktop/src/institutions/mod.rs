@@ -52,7 +52,7 @@ impl InstitutionsSetup {
     #[cfg(test)]
     pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
-            storage.institution_ports.clone(),
+            storage.ports.institutions.clone(),
             &lib_config::KeyBindingConfig::default(),
         )
     }

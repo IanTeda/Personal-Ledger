@@ -13,7 +13,7 @@ use std::rc::Rc;
 
 use gpui::{App, Context, Entity, EventEmitter, Subscription};
 use lib_database::Domain;
-use lib_database::{LedgerPreferencesAdapter, SharedUnitsStore, StoredSettingsReads};
+use lib_database::{LedgerPorts, LedgerPreferencesAdapter, StoredSettingsReads};
 use lib_settings::keymap::ledger_keymap;
 use lib_settings::{LedgerEvent, LedgerPresenter, LedgerSetup, LedgerViewModel};
 use lib_shell::Hint;
@@ -41,11 +41,16 @@ impl EventEmitter<PageRowClicked> for LedgerPage {}
 pub struct LedgerKeys {
     pub keymap: Keymap<LedgerEvent>,
     pub back_chord: String,
+    /// The Units read and the base Unit write `LedgerPorts` built.
+    pub units: Rc<StoredSettingsReads>,
+    pub preferences: Rc<LedgerPreferencesAdapter>,
 }
 
 impl LedgerKeys {
-    pub fn new(config: &KeyBindingConfig) -> Self {
+    pub fn new(config: &KeyBindingConfig, ports: &LedgerPorts) -> Self {
         Self {
+            units: ports.ledger_units.clone(),
+            preferences: ports.ledger_preferences.clone(),
             keymap: ledger_keymap(config),
             back_chord: crate::settings::state::back_chord(config),
         }
@@ -59,19 +64,12 @@ pub struct LedgerPage {
 }
 
 impl LedgerPage {
-    pub fn new(
-        announcer: Entity<Announcer>,
-        store: SharedUnitsStore,
-        keys: LedgerKeys,
-        cx: &mut Context<'_, Self>,
-    ) -> Self {
+    pub fn new(announcer: Entity<Announcer>, keys: LedgerKeys, cx: &mut Context<'_, Self>) -> Self {
         // The Presenter reads the Units on each draw, so a write anywhere repaints the page.
         let units_changed = notify_on(&announcer, Domain::Units, cx);
         let presenter = LedgerPresenter::new(LedgerSetup {
-            units: Rc::new(StoredSettingsReads {
-                units: store.clone(),
-            }),
-            preferences: Rc::new(LedgerPreferencesAdapter::new(store)),
+            units: keys.units,
+            preferences: keys.preferences,
             keymap: keys.keymap,
             back_chord: keys.back_chord,
         });
