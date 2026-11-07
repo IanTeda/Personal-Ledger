@@ -13,15 +13,14 @@ mod institution_form;
 
 pub(crate) use delete_institution::DeleteInstitutionDialog;
 
-use gpui::{App, Context, Entity, EventEmitter, IntoElement, Render, Window};
+use gpui::{App, Context, EventEmitter, IntoElement, Render, Window};
 use lib_institutions::presenter::{InstitutionFormEvent, InstitutionFormPresenter};
 use lib_institutions::{InstitutionsDialog as Which, InstitutionsOutcome};
 use lib_shell::DialogCommand;
 use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
 
-use crate::announcer::Announcer;
-use crate::institutions::ports::{self, DesktopPorts};
+use crate::institutions::ports::DesktopPorts;
 use crate::shell::view::dialog_entity::DialogReadback;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
 use lib_shell::Hint;
@@ -35,8 +34,6 @@ pub(crate) type Landed = Box<dyn Fn(InstitutionsOutcome, &mut App)>;
 /// The open Institutions Dialog: its Presenter.
 pub struct InstitutionsDialog {
     ports: DesktopPorts,
-    /// The Ledger a confirm announces its write through.
-    announcer: Entity<Announcer>,
     presenter: InstitutionFormPresenter,
     /// The top row of the Usual unit list's window, which the View keeps between draws.
     scroll: usize,
@@ -47,13 +44,8 @@ pub struct InstitutionsDialog {
 
 impl InstitutionsDialog {
     /// `which`'s Presenter on `ports`, or `None` when it is an Edit of an Institution that has
-    /// gone. A confirm announces what it wrote and hands its outcome to `landed`.
-    pub(crate) fn open(
-        which: Which,
-        ports: &DesktopPorts,
-        announcer: &Entity<Announcer>,
-        landed: Landed,
-    ) -> Option<Self> {
+    /// gone. A confirm hands its outcome to `landed`.
+    pub(crate) fn open(which: Which, ports: &DesktopPorts, landed: Landed) -> Option<Self> {
         let presenter = match which {
             Which::AddInstitution => InstitutionFormPresenter::add(ports.clone()),
             Which::EditInstitution(id) => InstitutionFormPresenter::edit(ports.clone(), id)?,
@@ -62,7 +54,6 @@ impl InstitutionsDialog {
         };
         Some(Self {
             ports: ports.clone(),
-            announcer: announcer.clone(),
             presenter,
             scroll: 0,
             which,
@@ -96,17 +87,9 @@ type Router = HostRouter<InstitutionsOutcome>;
 impl EventEmitter<DialogClosed> for InstitutionsDialog {}
 
 impl HostedDialog for InstitutionsDialog {
-    /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) announces
-    /// the Institutions written before it and after it.
+    /// Every input is the Presenter's to read.
     fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
-        let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
-        if may_confirm {
-            ports::refresh(&self.ports, &self.announcer, cx);
-        }
         let router = self.send(InstitutionFormEvent::Input(input));
-        if may_confirm {
-            ports::refresh(&self.ports, &self.announcer, cx);
-        }
         self.closed(router, cx);
     }
 
@@ -114,12 +97,9 @@ impl HostedDialog for InstitutionsDialog {
         self.presenter.view_model().frame.can_confirm
     }
 
-    /// Sends Confirm to the Presenter, which runs its Interactor, announcing the
-    /// Institutions written either side. A refusal stays on the Presenter's view model and keeps the Dialog open.
+    /// Sends Confirm to the Presenter, which runs its Interactor. A refusal stays on the Presenter's view model and keeps the Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
-        ports::refresh(&self.ports, &self.announcer, cx);
         let router = self.send(InstitutionFormEvent::Confirm);
-        ports::refresh(&self.ports, &self.announcer, cx);
         self.closed(router, cx);
     }
 

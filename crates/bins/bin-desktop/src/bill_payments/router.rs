@@ -8,17 +8,15 @@ use lib_bills::PayRequest;
 use lib_core::{Clock, DateStyle};
 
 use super::PayDialog;
-use crate::announcer::Announcer;
 use crate::bills::DesktopPorts;
 use crate::shell::view::dialog_entity::host_dialog;
 use crate::view::event::ViewEvent;
 
 /// What the Pay Dialog reads and writes through: the Bills ports its Match panel and wording read,
-/// the port Pay it directly writes through, and the Ledger a confirm announces its write through.
+/// and the port Pay it directly writes through.
 pub struct PayStores<'a> {
     pub bills: &'a DesktopPorts,
     pub payments: &'a SharedPayments,
-    pub announcer: &'a gpui::Entity<Announcer>,
 }
 
 /// Opens the Pay Dialog on `request`'s entry over page `P`, whose `landed` runs with the outcome
@@ -33,11 +31,7 @@ pub fn open_pay<P: EventEmitter<ViewEvent> + 'static>(
     date_style: Option<DateStyle>,
     landed: impl Fn(&mut P, PayOutcome, &mut Context<'_, P>) + 'static,
 ) -> bool {
-    let PayStores {
-        bills,
-        payments,
-        announcer,
-    } = stores;
+    let PayStores { bills, payments } = stores;
     let Some(presenter) =
         PayPresenter::new(bills.clone(), payments.clone(), request, clock, date_style)
     else {
@@ -48,7 +42,7 @@ pub fn open_pay<P: EventEmitter<ViewEvent> + 'static>(
         // A page that has gone has nothing to land on.
         let _ = page.update(cx, |page, cx| landed(page, outcome, cx));
     });
-    let dialog = PayDialog::new(presenter, bills, announcer, landed);
+    let dialog = PayDialog::new(presenter, bills, landed);
     host_dialog(cx, |_| dialog);
     true
 }

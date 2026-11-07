@@ -14,7 +14,7 @@
 
 use std::rc::Rc;
 
-use gpui::{AnyElement, App, Context, Entity, EventEmitter, Render, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, Context, EventEmitter, Render, Window, div, prelude::*, px};
 use lib_core::UnitId;
 use lib_unit_deletion::SharedUnitDeletion;
 use lib_unit_deletion::presenter::{
@@ -24,7 +24,6 @@ use lib_units::presenter::NewBaseView;
 use lib_viper::dialog::DialogInput;
 use lib_viper::view::SelectList;
 
-use crate::announcer::Announcer;
 use crate::dialog;
 use crate::form::fields::text_field;
 use crate::form::select::SelectState;
@@ -118,12 +117,10 @@ impl Select<'_> {
     }
 }
 
-/// The open Delete unit Dialog: its Presenter, the Units ports and the Ledger its confirm
-/// announces through, each select's open-list scroll window, and the Units page's landing.
+/// The open Delete unit Dialog: its Presenter, the Units ports, each select's open-list scroll window, and the Units page's landing.
 pub struct DeleteUnitDialog {
     presenter: DeleteUnitPresenter,
     ports: DesktopPorts,
-    announcer: Entity<Announcer>,
     /// Each select's open-list scroll window by position, a position in [`select`].
     scrolls: Vec<usize>,
     landed: Landed,
@@ -136,7 +133,6 @@ impl DeleteUnitDialog {
         id: UnitId,
         ports: &DesktopPorts,
         deletion: &SharedUnitDeletion,
-        announcer: &Entity<Announcer>,
         landed: Landed,
         _cx: &App,
     ) -> Option<Self> {
@@ -144,7 +140,6 @@ impl DeleteUnitDialog {
         Some(Self {
             presenter,
             ports: ports.clone(),
-            announcer: announcer.clone(),
             scrolls: Vec::new(),
             landed,
         })
@@ -190,17 +185,9 @@ impl DeleteUnitDialog {
 impl EventEmitter<DialogClosed> for DeleteUnitDialog {}
 
 impl HostedDialog for DeleteUnitDialog {
-    /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) announces
-    /// any write either side, as [`Self::confirm`] does.
+    /// Every input is the Presenter's to read.
     fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
-        let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
-        if may_confirm {
-            crate::units::ports::announce(&self.ports, &self.announcer, cx);
-        }
         let router = self.send(DeleteUnitEvent::Input(input));
-        if may_confirm {
-            crate::unit_deletion::refresh(&self.ports, &self.announcer, cx);
-        }
         self.closed(router, cx);
     }
 
@@ -208,12 +195,10 @@ impl HostedDialog for DeleteUnitDialog {
         self.view().unit.frame.can_confirm
     }
 
-    /// Sends Confirm to the Presenter, which deletes or deactivates, announcing the Units' writes
-    /// and announcing the Institutions it reassigned either side. A refusal stays on the view model and keeps the Dialog open.
+    /// Sends Confirm to the Presenter, which deletes or deactivates, reassigning
+    /// the Institutions that named it. A refusal stays on the view model and keeps the Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
-        crate::units::ports::announce(&self.ports, &self.announcer, cx);
         let router = self.send(DeleteUnitEvent::Confirm);
-        crate::unit_deletion::refresh(&self.ports, &self.announcer, cx);
         self.closed(router, cx);
     }
 

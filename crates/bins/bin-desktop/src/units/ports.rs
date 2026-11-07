@@ -1,8 +1,7 @@
 //! The Units ports as the Desktop holds them: the Units store `shell::router::build` shares, with
 //! `UnitUsage` and `UnitHoldings` read from the Accounts, Transactions, Bills, Budgets, Inventory
-//! and Institutions stores through `lib-database`'s [`StoredUnitReads`] (#993), and the
-//! announcement that tells the Views reading the Units of a write. The write is committed by the
-//! input it was made in (`crate::input::send`), not here. The Ledger keeps no read copy of the
+//! and Institutions stores through `lib-database`'s [`StoredUnitReads`] (#993). The write is
+//! committed and announced by the input it was made in (`crate::input::send`), not here. The Ledger keeps no read copy of the
 //! Units (#1052).
 //!
 //! Usage and holdings are counted in the stores on each ask, whether they are the adapters or
@@ -12,19 +11,15 @@
 //! store for their Unit choices, and the reads here hold their ports, so a store owned here and
 //! read there would be a cycle of `Rc`s that outlives the Ledger it was built on.
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::rc::Rc;
 
-use gpui::{App, Entity};
 use lib_core::{PriceSourceId, UnitId};
 use lib_database::{SharedUnitsStore, StoredUnitReads};
 use lib_units::{
     BaseUnitRepository, PortsMut, PriceSourceRecord, PriceSourceRepository, UnitHoldings,
     UnitRepository, UnitRow, UnitUsage, UnitsPorts,
 };
-
-use crate::announcer::{Announcer, Domain};
-use crate::write_count::WriteCount;
 
 /// The Units ports the Units module and the General page share.
 pub type DesktopPorts = Rc<RefCell<LedgerBackedPorts>>;
@@ -105,9 +100,6 @@ pub struct LedgerBackedPorts {
     price_sources: SharedPriceSources,
     base_unit: SharedBaseUnit,
     reads: StoredUnitReads,
-    writes: WriteCount,
-    /// The write count the last announcement saw, so a write is announced once.
-    announced: Cell<u64>,
 }
 
 impl LedgerBackedPorts {
@@ -118,15 +110,7 @@ impl LedgerBackedPorts {
             base_unit: SharedBaseUnit(store.clone()),
             store,
             reads,
-            writes: WriteCount::default(),
-            announced: Cell::new(0),
         }))
-    }
-
-    /// Whether these ports handed a mutable store out since the last ask.
-    fn take_written(&self) -> bool {
-        let writes = self.writes.get();
-        writes != self.announced.replace(writes)
     }
 }
 
@@ -152,7 +136,6 @@ impl UnitsPorts for LedgerBackedPorts {
     }
 
     fn split_mut(&mut self) -> PortsMut<'_> {
-        self.writes.bump();
         PortsMut {
             units: &mut self.units,
             price_sources: &mut self.price_sources,
@@ -178,7 +161,6 @@ impl lib_database::UnitsStore for LedgerBackedPorts {
     }
 
     fn split_mut<'a>(&'a mut self, usage: &'a dyn UnitUsage) -> PortsMut<'a> {
-        self.writes.bump();
         PortsMut {
             units: &mut self.units,
             price_sources: &mut self.price_sources,
@@ -195,44 +177,15 @@ impl lib_database::UnitsStore for LedgerBackedPorts {
 /// Prices every Unit in itself, so none is quoted in another and any can be deleted; for a UI test
 /// that deletes a seeded Unit.
 #[doc(hidden)]
-pub fn unquote_for_test(ports: &DesktopPorts, announcer: &Entity<Announcer>, cx: &mut App) {
-    {
-        let mut ports = ports.borrow_mut();
-        let units = UnitsPorts::units(&*ports).units();
-        for mut unit in units {
-            if unit.link.quote != unit.id {
-                unit.link.quote = unit.id;
-                UnitsPorts::split_mut(&mut *ports).units.upsert_unit(unit);
-            }
+pub fn unquote_for_test(ports: &DesktopPorts) {
+    let mut ports = ports.borrow_mut();
+    let units = UnitsPorts::units(&*ports).units();
+    for mut unit in units {
+        if unit.link.quote != unit.id {
+            unit.link.quote = unit.id;
+            UnitsPorts::split_mut(&mut *ports).units.upsert_unit(unit);
         }
     }
-    announce(ports, announcer, cx);
-}
-
-/// Puts the ports back to the rows as stored, after a write that named the Units failed,
-/// announcing `Domain::Units` so every Units view model is rebuilt (ADR-0046).
-///
-/// # Errors
-/// Returns the error reading the rows back; the ports are left as they were.
-pub fn reload(
-    ports: &DesktopPorts,
-    announcer: &Entity<Announcer>,
-    cx: &mut App,
-) -> lib_database::Result<()> {
-    lib_database::UnitsStore::reload(&mut *ports.borrow_mut())?;
-    announcer.update(cx, |announcer, cx| announcer.announce(Domain::Units, cx));
-    Ok(())
-}
-
-/// Announces `Domain::Units` when the ports were written since the last announcement, so the
-/// Accounts, Inventory, Bills, Budgets, Transactions and the Dashboard see a write at once. Run
-/// before and after every Units event and Dialog confirm. Returns whether it announced.
-pub fn announce(ports: &DesktopPorts, announcer: &Entity<Announcer>, cx: &mut App) -> bool {
-    let written = ports.borrow().take_written();
-    if written {
-        announcer.update(cx, |announcer, cx| announcer.announce(Domain::Units, cx));
-    }
-    written
 }
 
 #[cfg(test)]
@@ -259,9 +212,8 @@ mod tests {
     }
 
     #[test]
-    fn a_write_through_the_ports_lands_in_the_shared_store_and_is_noted_once() {
+    fn a_write_through_the_ports_lands_in_the_shared_store() {
         let (store, ports) = ports();
-        assert!(!ports.borrow().take_written(), "nothing written yet");
 
         let mut aud = store
             .borrow()
@@ -277,7 +229,5 @@ mod tests {
             store.borrow().unit_code(UnitId::SEED_AUD).as_deref(),
             Some("aud2")
         );
-        assert!(ports.borrow().take_written());
-        assert!(!ports.borrow().take_written(), "a write is announced once");
     }
 }

@@ -13,15 +13,12 @@
 //! the holdings, the handover and the type-change blockers' Bill Plans, is `lib-database`'s
 //! `StoredCategoryRows`, the one selection Category delete reads too (#1034). The Open Ledger
 //! hands the page these stores as [`CategoryStores`] (#1057). The Ledger keeps no read copy of the
-//! Categories (#1055): each write to the store is counted ([`CategoriesWrites`]), and [`refresh`]
-//! announces `Domain::Categories` once per counted write.
+//! Categories (#1055), and the input a write is made in announces it (#1081).
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::announcer::Domain;
 use chrono::Datelike as _;
-use gpui::{App, Entity};
 use lib_budgets::{Budgets, Error};
 use lib_categories::{
     Category, CategoryBudget, CategoryHandover, CategoryRepository, CategoryUsage, CategoryUse,
@@ -29,88 +26,15 @@ use lib_categories::{
     TypeChangeBlockers,
 };
 use lib_core::{CategoryId, Clock, Money};
-use lib_database::{
-    CategoriesStore, SharedBudgetsStore, SharedCategoriesStore, StoredCategoryRows,
-};
+use lib_database::{SharedBudgetsStore, SharedCategoriesStore, StoredCategoryRows};
 
-use crate::announcer::Announcer;
 use crate::budgets::PERSONAL_SPENDING_ID;
-use crate::write_count::WriteCount;
 
-/// The Categories store with each write counted, whoever makes it (the Categories page, Category
-/// delete), so an input's announcement needs no copy to compare against.
-struct CountedCategories {
-    store: Box<dyn CategoriesStore>,
-    writes: WriteCount,
-}
-
-impl CategoryRepository for CountedCategories {
-    fn categories(&self) -> Vec<Category> {
-        self.store.categories().categories()
-    }
-
-    fn upsert_category(&mut self, category: Category) {
-        self.writes.bump();
-        self.store.categories_mut().upsert_category(category);
-    }
-}
-
-impl CategoriesStore for CountedCategories {
-    fn categories(&self) -> &dyn CategoryRepository {
-        self
-    }
-
-    fn categories_mut(&mut self) -> &mut dyn CategoryRepository {
-        self
-    }
-
-    fn delete_category(&mut self, id: CategoryId) {
-        self.writes.bump();
-        self.store.delete_category(id);
-    }
-
-    fn reload(&mut self) -> lib_database::Result<()> {
-        self.store.reload()
-    }
-}
-
-/// The writes made to the Categories store, and the count the last announcement saw, so each
-/// write is announced once. A clone shares both.
-#[derive(Clone, Default)]
-pub struct CategoriesWrites {
-    writes: WriteCount,
-    announced: Rc<Cell<u64>>,
-}
-
-impl CategoriesWrites {
-    /// Whether the store was written since the last ask.
-    fn take_written(&self) -> bool {
-        let writes = self.writes.get();
-        writes != self.announced.replace(writes)
-    }
-}
-
-/// `store` shared, with the count of the writes made to it.
-pub fn counted(store: Box<dyn CategoriesStore>) -> (SharedCategoriesStore, CategoriesWrites) {
-    let writes = CategoriesWrites::default();
-    let shared = Rc::new(RefCell::new(CountedCategories {
-        store,
-        writes: writes.writes.clone(),
-    }));
-    (shared, writes)
-}
-
-/// The sample Categories in memory, with the count of the writes made to them, for a test that
-/// needs no storage.
-pub fn in_memory_counted() -> (SharedCategoriesStore, CategoriesWrites) {
-    counted(Box::new(lib_categories::fake::InMemoryCategories {
+/// The sample Categories in memory, for a test that needs no storage.
+pub fn in_memory() -> SharedCategoriesStore {
+    Rc::new(RefCell::new(lib_categories::fake::InMemoryCategories {
         categories: lib_categories::sample_categories(),
     }))
-}
-
-/// The sample Categories in memory, for a test that needs no storage and no count.
-pub fn in_memory() -> SharedCategoriesStore {
-    in_memory_counted().0
 }
 
 /// The shared store as the module's Presenters hold the repository, borrowed for each call: the
@@ -135,46 +59,12 @@ pub fn shared(store: &SharedCategoriesStore) -> SharedCategories {
     Rc::new(RefCell::new(StoreCategories(store.clone())))
 }
 
-/// Announces `Domain::Categories` when the store was written since the last announcement. Run
-/// before and after every Categories event and Dialog confirm, so Transactions, Budgets, Import and
-/// the Dashboard see a write at once.
-pub fn refresh(writes: &CategoriesWrites, announcer: &Entity<Announcer>, cx: &mut App) {
-    if writes.take_written() {
-        announce(announcer, cx);
-    }
-}
-
-/// Announces `Domain::Categories`, so every reader redraws.
-fn announce(announcer: &Entity<Announcer>, cx: &mut App) {
-    announcer.update(cx, |announcer, cx| {
-        announcer.announce(Domain::Categories, cx);
-    });
-}
-
-/// Puts the Categories back as stored, after a write that named them failed, and announces
-/// `Domain::Categories` so every reader redraws (ADR-0046).
-///
-/// # Errors
-/// Returns the error reading them back; the store is left as it was.
-pub fn reload(
-    stores: &CategoryStores,
-    announcer: &Entity<Announcer>,
-    cx: &mut App,
-) -> lib_database::Result<()> {
-    stores.categories.borrow_mut().reload()?;
-    // The announcement below covers any write not yet announced.
-    stores.writes.take_written();
-    announce(announcer, cx);
-    Ok(())
-}
-
-/// What the Categories ports reach beyond the page's own repository: the Categories store and its
-/// write count, the Budgets store and the rows naming a Category in the Transactions, Bills and
+/// What the Categories ports reach beyond the page's own repository: the Categories store, the
+/// Budgets store and the rows naming a Category in the Transactions, Bills and
 /// Payees stores. The Open Ledger builds it once ([`crate::shell::router::LedgerStores`]).
 #[derive(Clone)]
 pub struct CategoryStores {
     pub categories: SharedCategoriesStore,
-    pub writes: CategoriesWrites,
     pub budgets: SharedBudgetsStore,
     pub rows: StoredCategoryRows,
 }
@@ -190,25 +80,17 @@ impl CategoryStores {
     }
 }
 
-/// The Categories ports the Desktop answers from its stores, built for one call around its gpui
-/// context: what names a Category, the Monthly budget in the Personal spending Budget as of the
-/// day `clock` reads when each call runs, and the handover, each write announced through
-/// `announcer`.
+/// The Categories ports the Desktop answers from its stores, built for one call: what names a
+/// Category, the Monthly budget in the Personal spending Budget as of the day `clock` reads when
+/// each call runs, and the handover. The input they are made in announces their writes.
 pub struct LedgerPorts<'a> {
     pub stores: &'a CategoryStores,
-    pub announcer: &'a Entity<Announcer>,
     /// The Shell's Clock, read on each call so a Desktop left running past a month turn writes
     /// into the new month, never a closed one.
     pub clock: Clock,
-    pub cx: &'a mut App,
 }
 
 impl LedgerPorts<'_> {
-    fn announce(&mut self, domain: Domain) {
-        self.announcer
-            .update(self.cx, |announcer, cx| announcer.announce(domain, cx));
-    }
-
     /// The Budgets as the Budgets store holds them.
     fn budgets(&self) -> Budgets {
         Budgets::from_stored(self.stores.budgets.borrow().budgets().budgets())
@@ -287,13 +169,12 @@ impl CategoryBudget for LedgerPorts<'_> {
     }
 
     /// Saves the amount to the Budgets store on the Categories store's tree, which holds the
-    /// Category just written, then announces the Budgets.
+    /// Category just written.
     fn set_monthly_budget(
         &mut self,
         category: CategoryId,
         amount: Option<Money>,
     ) -> Result<(), MonthlyBudgetRefusal> {
-        refresh(&self.stores.writes, self.announcer, self.cx);
         let saved = crate::budgets::ports::set_monthly_limit(
             &mut *self.stores.budgets.borrow_mut(),
             &self.stores.budget_categories(),
@@ -302,7 +183,6 @@ impl CategoryBudget for LedgerPorts<'_> {
             amount,
             self.clock.today(),
         );
-        self.announce(Domain::Budgets);
         saved.map(|_| ()).map_err(budget_refusal)
     }
 
@@ -315,15 +195,13 @@ impl CategoryBudget for LedgerPorts<'_> {
         })
     }
 
-    /// Stops the parent in every active Budget in the Budgets store, in the input's one commit,
-    /// then announces the Budgets.
+    /// Stops the parent in every active Budget in the Budgets store, in the input's one commit.
     fn stop_new_parent(&mut self, parent: CategoryId) {
         crate::budgets::ports::stop_new_parent(
             &mut *self.stores.budgets.borrow_mut(),
             parent,
             self.clock.today(),
         );
-        self.announce(Domain::Budgets);
     }
 }
 
@@ -332,40 +210,18 @@ impl CategoryHandover for LedgerPorts<'_> {
         self.stores.rows.holdings(category)
     }
 
-    /// Re-points the rows in the Transactions, Bills and Payees stores, in the input's one commit,
-    /// then announces the three.
+    /// Re-points the rows in the Transactions, Bills and Payees stores, in the input's one commit.
     fn hand_over(&mut self, from: CategoryId, to: CategoryId) {
         self.stores.rows.clone().hand_over(from, to);
-        for domain in [Domain::Transactions, Domain::Bills, Domain::Payees] {
-            self.announce(domain);
-        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use chrono::NaiveDate;
-    use gpui::{AppContext as _, TestAppContext};
+    use gpui::TestAppContext;
 
     use super::*;
-
-    #[test]
-    fn a_write_to_the_store_is_counted_whoever_makes_it() {
-        let (store, writes) = in_memory_counted();
-        assert!(!writes.take_written(), "nothing written yet");
-        let first = store.borrow().categories().categories()[0].clone();
-
-        store
-            .borrow_mut()
-            .categories_mut()
-            .upsert_category(first.clone());
-        assert!(writes.take_written());
-        assert!(!writes.take_written(), "a write is announced once");
-
-        store.borrow_mut().delete_category(first.id);
-        assert!(writes.take_written());
-        assert!(store.borrow().categories().category(first.id).is_none());
-    }
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 10, 11).expect("a real date")
@@ -374,18 +230,15 @@ mod tests {
     #[gpui::test]
     fn the_budget_port_checks_on_a_copy_and_saves_through_the_ledger(cx: &mut TestAppContext) {
         let stores = crate::shell::router::LedgerStores::sample(today()).category_stores();
-        let announcer = cx.new(|_| Announcer::default());
         let categories = lib_categories::sample_categories();
         let groceries = lib_categories::find_by_name(&categories, "Groceries").expect("seeded");
         let salary = lib_categories::find_by_name(&categories, "Salary").expect("seeded");
         let amount: Money = "612".parse().expect("an amount");
 
-        cx.update(|cx| {
+        cx.update(|_| {
             let mut ports = LedgerPorts {
                 stores: &stores,
-                announcer: &announcer,
                 clock: Clock::fixed(today()),
-                cx,
             };
             assert_eq!(
                 ports.check_monthly_budget(&categories, salary, Some(&amount)),
@@ -415,7 +268,6 @@ mod tests {
         let october = today();
         let (clock, day) = Clock::settable(october);
         let stores = crate::shell::router::LedgerStores::sample(october).category_stores();
-        let announcer = cx.new(|_| Announcer::default());
         let categories = lib_categories::sample_categories();
         let groceries = lib_categories::find_by_name(&categories, "Groceries").expect("seeded");
         let months = |stores: &CategoryStores| -> Vec<(i32, u32)> {
@@ -438,12 +290,10 @@ mod tests {
         let before = months(&stores);
 
         day.set(NaiveDate::from_ymd_opt(2026, 11, 2).expect("a real date"));
-        cx.update(|cx| {
+        cx.update(|_| {
             let mut ports = LedgerPorts {
                 stores: &stores,
-                announcer: &announcer,
                 clock,
-                cx,
             };
             ports
                 .set_monthly_budget(groceries, Some("612".parse().expect("an amount")))
@@ -465,16 +315,13 @@ mod tests {
     #[gpui::test]
     fn a_new_parent_is_stopped_in_every_active_budget_through_the_store(cx: &mut TestAppContext) {
         let stores = crate::shell::router::LedgerStores::sample(today()).category_stores();
-        let announcer = cx.new(|_| Announcer::default());
         let categories = lib_categories::sample_categories();
         let groceries = lib_categories::find_by_name(&categories, "Groceries").expect("seeded");
 
-        cx.update(|cx| {
+        cx.update(|_| {
             let mut ports = LedgerPorts {
                 stores: &stores,
-                announcer: &announcer,
                 clock: Clock::fixed(today()),
-                cx,
             };
             let stop = ports.parent_stop(groceries).expect("budgeted in the seed");
             assert_eq!((stop.budgets, stop.month), (2, 10));
@@ -498,18 +345,15 @@ mod tests {
     #[gpui::test]
     fn the_handover_port_moves_splits_to_the_new_child_through_the_stores(cx: &mut TestAppContext) {
         let stores = crate::shell::router::LedgerStores::sample(today()).category_stores();
-        let announcer = cx.new(|_| Announcer::default());
         let categories = lib_categories::sample_categories();
         let groceries = lib_categories::find_by_name(&categories, "Groceries").expect("seeded");
         let child = lib_categories::find_by_name(&categories, "Dining")
             .expect("another seeded leaf stands in for a new child");
 
-        cx.update(|cx| {
+        cx.update(|_| {
             let mut ports = LedgerPorts {
                 stores: &stores,
-                announcer: &announcer,
                 clock: Clock::fixed(today()),
-                cx,
             };
             let held = ports.holdings(groceries);
             assert!(held.splits > 0, "the sample buys groceries");
@@ -530,28 +374,23 @@ mod tests {
         cx: &mut TestAppContext,
     ) {
         let stores = crate::shell::router::LedgerStores::sample(today()).category_stores();
-        let announcer = cx.new(|_| Announcer::default());
         let categories = lib_categories::sample_categories();
         let groceries = lib_categories::find_by_name(&categories, "Groceries").expect("seeded");
         let next_month = NaiveDate::from_ymd_opt(2026, 11, 1).expect("a real date");
         let (clock, day) = Clock::settable(today());
 
-        cx.update(|cx| {
+        cx.update(|_| {
             // Stop Groceries from next month in every active Budget.
             LedgerPorts {
                 stores: &stores,
-                announcer: &announcer,
                 clock: Clock::fixed(next_month),
-                cx,
             }
             .stop_new_parent(groceries);
 
             // Only the Clock moves; nothing is rebuilt.
             let ports = LedgerPorts {
                 stores: &stores,
-                announcer: &announcer,
                 clock,
-                cx,
             };
             assert!(ports.type_change_blockers(&[groceries]).budgets > 0);
 

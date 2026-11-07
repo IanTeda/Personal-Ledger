@@ -566,12 +566,11 @@ fn filing_a_document_drops_the_documents_badge(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn moving_a_cursor_or_scrolling_announces_nothing_and_recounts_no_badge(app: &mut TestAppContext) {
+fn moving_a_cursor_or_scrolling_recounts_no_badge(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
     // A first input past the Ledger opening, so any read it asks for has been made.
     ui.press("g h");
     let reads = ui.read(|shell| shell.rail_count_reads());
-    let announced = ui.read_app(|shell, cx| shell.ledger_announcements(cx));
 
     ui.press("j j k");
     ui.press("g w");
@@ -582,13 +581,8 @@ fn moving_a_cursor_or_scrolling_announces_nothing_and_recounts_no_badge(app: &mu
     ui.press("j j ctrl+d");
 
     assert_eq!(
-        ui.read_app(|shell, cx| shell.ledger_announcements(cx)),
-        announced,
-        "a cursor move or a scroll writes nothing, so nothing is announced"
-    );
-    assert_eq!(
         ui.read(|shell| shell.rail_count_reads()),
         reads,
-        "and so no badge is counted again"
+        "a cursor move or a scroll writes nothing, so no badge is counted again"
     );
 }

@@ -20,7 +20,6 @@ use crate::shell::view::dialog_entity::host_dialog;
 
 pub(super) struct PageRouter<'a, 'b> {
     pub ports: DesktopPorts,
-    pub announcer: gpui::Entity<Announcer>,
     pub deletion: DeletionStores,
     pub clock: lib_core::Clock,
     pub cx: &'a mut Context<'b, AccountsPage>,
@@ -35,13 +34,8 @@ impl AccountsRouter for PageRouter<'_, '_> {
             // A page that has gone has nothing to land on.
             let _ = page.update(cx, |page, cx| page.dialog_landed(outcome, cx));
         });
-        let Some(dialog) = AccountsDialog::open(
-            dialog,
-            &self.ports,
-            &self.announcer,
-            self.clock.today(),
-            landed,
-        ) else {
+        let Some(dialog) = AccountsDialog::open(dialog, &self.ports, self.clock.today(), landed)
+        else {
             return false;
         };
         host_dialog(self.cx, |_| dialog);
@@ -54,7 +48,6 @@ impl AccountsRouter for PageRouter<'_, '_> {
         crate::account_deletion::router::open_delete(
             self.cx,
             &self.deletion,
-            &self.announcer,
             id,
             |page: &mut AccountsPage, _deleted, cx| page.deleted(cx),
         )

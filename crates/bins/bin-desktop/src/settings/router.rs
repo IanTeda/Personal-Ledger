@@ -7,18 +7,15 @@
 //! the root Router as [`ViewEvent`]s; a colour change is applied once the current update ends; a
 //! Notice goes onto the bin's queue (`crate::notices`), which the input's `send` drains.
 
-use gpui::{Context, Entity, EventEmitter, ListState};
+use gpui::{Context, EventEmitter, ListState};
 use lib_settings::{
     ClearLogsPresenter, ColourChoice, DisplayOutput, LogListChange, LogScroll, SettingsPage,
     SettingsRouter,
 };
 use lib_toast::{Notice, Notify};
 
-use super::ledger::LedgerPage;
 use super::state::SettingsView;
 use super::tracing::{TracingPage, apply_change, dialogs::clear_logs::ClearLogsDialog, scroll};
-use crate::announcer::Announcer;
-use crate::units::DesktopPorts;
 use crate::view::event::{ViewEvent, ViewMode};
 
 /// The page on show changed by the person's hand, for the root Router to record in the Shell's
@@ -122,17 +119,11 @@ impl Notify for TracingRouter<'_, '_> {
     }
 }
 
-/// `impl lib_settings::LedgerRouter` for the Ledger page: the Units ports and the Ledger that
-/// announces their writes, lent beside its Presenter.
-pub(super) struct LedgerRouter<'a, 'b> {
-    pub ports: &'a DesktopPorts,
-    pub announcer: &'a Entity<Announcer>,
-    pub cx: &'a mut Context<'b, LedgerPage>,
-}
+/// `impl lib_settings::LedgerRouter` for the Ledger page. It does nothing: the input the base
+/// Unit is changed in announces `Domain::Units` from its commit, so every view of the base Unit
+/// follows at once (#1081).
+pub(super) struct LedgerRouter;
 
-impl lib_settings::LedgerRouter for LedgerRouter<'_, '_> {
-    /// Announces `Domain::Units`, so every view of the base Unit follows at once.
-    fn base_unit_changed(&mut self) {
-        crate::units::ports::announce(self.ports, self.announcer, self.cx);
-    }
+impl lib_settings::LedgerRouter for LedgerRouter {
+    fn base_unit_changed(&mut self) {}
 }

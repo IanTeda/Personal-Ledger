@@ -21,7 +21,6 @@ pub(super) struct PageRouter<'a, 'b> {
     pub categories: lib_categories::SharedCategories,
     pub deletion: DeletionStores,
     pub stores: crate::categories::ports::CategoryStores,
-    pub announcer: Entity<Announcer>,
     pub clock: Clock,
     pub cx: &'a mut Context<'b, CategoriesPage>,
 }
@@ -54,11 +53,9 @@ impl CategoriesRouter for PageRouter<'_, '_> {
             &self.categories,
             PortsOn {
                 stores: self.stores.clone(),
-                announcer: self.announcer.clone(),
                 clock: self.clock.clone(),
             },
             landed,
-            self.cx,
         ) else {
             return false;
         };

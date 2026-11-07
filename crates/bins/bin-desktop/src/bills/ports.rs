@@ -2,8 +2,8 @@
 //! the Bills module and the Open Ledger, the Payees store Bills reads its Payees from (#831), the
 //! Accounts store it reads its Accounts from (#853), the Categories store it reads its
 //! Categories from (#858), the Transactions store it reads its Splits from (#926) and the Units
-//! store it reads its Unit codes from (#993), and the announcement of a Bills write (#1028). The
-//! write is committed by the input it was made in (`crate::input::send`), not here.
+//! store it reads its Unit codes from (#993). The write is committed and announced by the input it
+//! was made in (`crate::input::send`), not here.
 //!
 //! The store is shared with the Bill Payments module too, whose Pay it directly writes an entry,
 //! the Account Deletion module, whose delete Unmatches the entries an Account's Transactions paid
@@ -13,7 +13,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use gpui::{App, Entity};
 use lib_bills::interactor::PopulateSchedule;
 use lib_bills::{
     BillAccounts, BillCategories, BillPayees, BillPlan, BillPlanRepository, BillScheduleEntry,
@@ -25,18 +24,14 @@ use lib_database::{
     SharedTransactionsStore, SharedUnitsStore, StoredBillReads, StoredBillUnits,
 };
 
-use crate::announcer::{Announcer, Domain};
-
 /// The Bills ports the Bills module and the Open Ledger share.
 pub type DesktopPorts = Rc<RefCell<LedgerBackedPorts>>;
 
 /// The store's two repositories as the one a Bills Interactor writes through. It forwards rather
 /// than lending the store's own: `bills()` returns a borrow that must outlive the call, and the
-/// store is shared behind a `RefCell` whose guard can't be lent out of it. It notes each write, so
-/// the Bills are announced only after an event that wrote them ([`announce_written`]).
+/// store is shared behind a `RefCell` whose guard can't be lent out of it.
 struct Store {
     rows: SharedBillsStore,
-    wrote: bool,
 }
 
 impl BillPlanRepository for Store {
@@ -45,7 +40,6 @@ impl BillPlanRepository for Store {
     }
 
     fn upsert_bill_plan(&mut self, plan: BillPlan) {
-        self.wrote = true;
         self.rows.borrow_mut().plans_mut().upsert_bill_plan(plan);
     }
 }
@@ -56,7 +50,6 @@ impl BillScheduleRepository for Store {
     }
 
     fn upsert_entry(&mut self, entry: BillScheduleEntry) {
-        self.wrote = true;
         self.rows.borrow_mut().entries_mut().upsert_entry(entry);
     }
 }
@@ -79,10 +72,7 @@ impl LedgerBackedPorts {
         units: SharedUnitsStore,
     ) -> DesktopPorts {
         Rc::new(RefCell::new(Self {
-            store: Store {
-                rows: store,
-                wrote: false,
-            },
+            store: Store { rows: store },
             reads: StoredBillReads {
                 payees,
                 accounts,
@@ -124,11 +114,6 @@ impl LedgerBackedPorts {
     /// The Bills store the ports write, which the Bill Payments module writes too.
     pub fn store(&self) -> SharedBillsStore {
         self.store.rows.clone()
-    }
-
-    /// Whether a Bills Interactor wrote through these ports since the last ask.
-    fn take_wrote(&mut self) -> bool {
-        std::mem::take(&mut self.store.wrote)
     }
 }
 
@@ -187,31 +172,11 @@ pub fn generate(store: &mut dyn BillsRepository, today: chrono::NaiveDate) {
 }
 
 /// Brings the Bill Schedule up to the horizon for the month a running Desktop has crossed into,
-/// wherever it is (ADR-0019), then announces the Bills as after a Bills event, so the
-/// Dashboard and Budgets redraw on the new entries. The day poll's input commits them as
-/// one write, and a failed save rolls back like any Bills write.
-pub fn new_month(
-    ports: &DesktopPorts,
-    announcer: &Entity<Announcer>,
-    today: chrono::NaiveDate,
-    cx: &mut App,
-) {
+/// wherever it is (ADR-0019). The day poll's input commits the new entries as one write, which
+/// the input door announces, so the Dashboard and Budgets redraw, and a failed save rolls back like any
+/// Bills write.
+pub fn new_month(ports: &DesktopPorts, today: chrono::NaiveDate) {
     PopulateSchedule { today }.run(ports.borrow_mut().split_mut().bills);
-    announce_written(ports, announcer, cx);
-}
-
-/// Announces `Domain::Bills`, so the Dashboard, Bills, Budgets and Documents redraw on a write at
-/// once (#1028): for a module that wrote the Bills store directly, such as Bill Payments.
-pub fn announce(announcer: &Entity<Announcer>, cx: &mut App) {
-    announcer.update(cx, |announcer, cx| announcer.announce(Domain::Bills, cx));
-}
-
-/// Announces `Domain::Bills` after a Bills event or Dialog input, but only when it wrote through
-/// `ports`, so a cursor move or a keystroke into a field redraws no other View.
-pub fn announce_written(ports: &DesktopPorts, announcer: &Entity<Announcer>, cx: &mut App) {
-    if ports.borrow_mut().take_wrote() {
-        announce(announcer, cx);
-    }
 }
 
 #[cfg(test)]

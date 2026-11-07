@@ -13,9 +13,8 @@ use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{BACK, Keymap, SELECT};
 
 use super::{Landed, Router};
-use crate::announcer::Announcer;
 use crate::dialog;
-use crate::institutions::ports::{self, DesktopPorts};
+use crate::institutions::ports::DesktopPorts;
 use crate::shell::view::dialog_entity::DialogReadback;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostedDialog};
 use crate::theme::color;
@@ -26,8 +25,6 @@ const WIDTH: gpui::Pixels = px(440.0);
 /// The open Delete institution Dialog: its Presenter.
 pub struct DeleteInstitutionDialog {
     ports: DesktopPorts,
-    /// The Ledger a confirm announces its write through.
-    announcer: gpui::Entity<Announcer>,
     presenter: DeleteInstitutionPresenter,
     landed: Landed,
 }
@@ -38,12 +35,10 @@ impl DeleteInstitutionDialog {
     pub(crate) fn open(
         id: lib_core::InstitutionId,
         ports: &DesktopPorts,
-        announcer: &gpui::Entity<Announcer>,
         landed: Landed,
     ) -> Option<Self> {
         Some(Self {
             ports: ports.clone(),
-            announcer: announcer.clone(),
             presenter: DeleteInstitutionPresenter::new(ports.clone(), id)?,
             landed,
         })
@@ -74,14 +69,7 @@ impl HostedDialog for DeleteInstitutionDialog {
     /// Every input is the Presenter's to read: typing fills the confirmation, `select` deletes
     /// once it is typed back, or closes a refusal.
     fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
-        let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
-        if may_confirm {
-            ports::refresh(&self.ports, &self.announcer, cx);
-        }
         let router = self.send(DeleteInstitutionEvent::Input(input));
-        if may_confirm {
-            ports::refresh(&self.ports, &self.announcer, cx);
-        }
         self.closed(router, cx);
     }
 
@@ -89,12 +77,9 @@ impl HostedDialog for DeleteInstitutionDialog {
         self.presenter.view_model().frame.can_confirm
     }
 
-    /// Sends Confirm to the Presenter, which runs its Interactor, announcing the
-    /// Institutions written either side. A refusal turns the Dialog into the refusal and keeps it open.
+    /// Sends Confirm to the Presenter, which runs its Interactor. A refusal turns the Dialog into the refusal and keeps it open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
-        ports::refresh(&self.ports, &self.announcer, cx);
         let router = self.send(DeleteInstitutionEvent::Confirm);
-        ports::refresh(&self.ports, &self.announcer, cx);
         self.closed(router, cx);
     }
 

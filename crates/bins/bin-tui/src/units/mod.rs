@@ -78,13 +78,13 @@ impl UnitsSetup {
             ..
         } = stores;
         let usage = StoredUsage {
-            accounts,
-            bills,
-            budgets,
-            inventory,
-            institutions,
-            transactions,
+            accounts: Box::new(accounts),
+            bills: Box::new(bills),
+            budgets: Box::new(budgets),
+            inventory: Box::new(inventory),
+            institutions: Box::new(institutions),
+            transactions: Box::new(transactions),
         };
-        (Self::new(units, usage, commit, config), failures)
+        (Self::new(Box::new(units), usage, commit, config), failures)
     }
 }

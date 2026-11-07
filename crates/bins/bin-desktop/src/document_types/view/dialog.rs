@@ -13,7 +13,7 @@ mod default_notice;
 mod remove_type;
 mod type_form;
 
-use gpui::{App, Context, Entity, EventEmitter, IntoElement, Render, Window};
+use gpui::{App, Context, EventEmitter, IntoElement, Render, Window};
 use lib_documents::presenter::{
     DefaultNoticeEvent, DefaultNoticePresenter, RemoveTypeEvent, RemoveTypePresenter,
     TypeFormEvent, TypeFormPresenter,
@@ -23,8 +23,6 @@ use lib_shell::{DialogCommand, Hint};
 use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
 
-use crate::announcer::Announcer;
-use crate::document_types::ports;
 use crate::shell::view::dialog_entity::DialogReadback;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
 
@@ -36,8 +34,6 @@ pub(crate) type Landed = Box<dyn Fn(DocumentTypesOutcome, &mut App)>;
 
 /// The open Document Types Dialog: its Presenter and its widget state.
 pub struct DocumentTypesDialog {
-    /// The Ledger store a confirm announces what it wrote through.
-    announcer: Entity<Announcer>,
     view: View,
     landed: Landed,
 }
@@ -65,13 +61,8 @@ impl View {
 
 impl DocumentTypesDialog {
     /// `which`'s Presenter on `documents`, or `None` when the type it names is gone. A confirm
-    /// announces what it wrote and hands its outcome to `landed`.
-    pub(crate) fn open(
-        which: Which,
-        documents: &SharedRepository,
-        announcer: &Entity<Announcer>,
-        landed: Landed,
-    ) -> Option<Self> {
+    /// hands its outcome to `landed`.
+    pub(crate) fn open(which: Which, documents: &SharedRepository, landed: Landed) -> Option<Self> {
         let shared = documents.clone();
         let view = match which {
             Which::Add => View::Form(TypeFormPresenter::add(shared)),
@@ -79,11 +70,7 @@ impl DocumentTypesDialog {
             Which::Remove(id) => View::Remove(RemoveTypePresenter::new(shared, id)?, 0),
             Which::DefaultNotice => View::Notice(DefaultNoticePresenter),
         };
-        Some(Self {
-            announcer: announcer.clone(),
-            view,
-            landed,
-        })
+        Some(Self { view, landed })
     }
 
     /// Sends the open Presenter its Confirm or its Cancel, returning what its Router was asked.
@@ -146,8 +133,7 @@ type Router = HostRouter<DocumentTypesOutcome>;
 impl EventEmitter<DialogClosed> for DocumentTypesDialog {}
 
 impl HostedDialog for DocumentTypesDialog {
-    /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) announces
-    /// what it wrote after it.
+    /// Every input is the Presenter's to read.
     fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
         let router = match &mut self.view {
             View::Form(presenter) => send(
@@ -166,9 +152,6 @@ impl HostedDialog for DocumentTypesDialog {
                 DefaultNoticePresenter::handle,
             ),
         };
-        if matches!(input, DialogInput::Select | DialogInput::Submit) {
-            ports::announce(&self.announcer, cx);
-        }
         self.closed(router, cx);
     }
 
@@ -180,11 +163,9 @@ impl HostedDialog for DocumentTypesDialog {
         }
     }
 
-    /// Sends Confirm to the Presenter, which runs its Interactor, then announces what it wrote. A
-    /// refusal stays on the Presenter's view model and keeps the Dialog open.
+    /// Sends Confirm to the Presenter, which runs its Interactor. A refusal stays on the Presenter's view model and keeps the Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
         let router = self.close_event(true);
-        ports::announce(&self.announcer, cx);
         self.closed(router, cx);
     }
 

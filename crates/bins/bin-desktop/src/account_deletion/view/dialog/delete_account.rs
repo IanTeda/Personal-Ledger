@@ -11,7 +11,7 @@
 
 use std::rc::Rc;
 
-use gpui::{AnyElement, App, Context, Entity, EventEmitter, Render, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, Context, EventEmitter, Render, Window, div, prelude::*, px};
 use lib_account_deletion::AccountDeleted;
 use lib_account_deletion::presenter::{
     DeleteAccountEvent, DeleteAccountPresenter, DeleteAccountViewModel,
@@ -20,7 +20,6 @@ use lib_shell::DialogCommand;
 use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{BACK, Keymap, SELECT};
 
-use crate::announcer::Announcer;
 use crate::bills::DesktopPorts;
 use crate::dialog;
 use crate::form::dialog_fields::text_field;
@@ -42,12 +41,11 @@ type Router = HostRouter<AccountDeleted>;
 pub(crate) type Landed = Box<dyn Fn(AccountDeleted, &mut App)>;
 
 /// The open Delete account Dialog: its Presenter, the Bills ports, the Accounts ports and the
-/// Announcer its confirm announces the delete from and through, and the page's landing.
+/// page's landing.
 pub struct DeleteAccountDialog {
     presenter: DeleteAccountPresenter,
     bills: DesktopPorts,
     accounts: crate::accounts::DesktopPorts,
-    announcer: Entity<Announcer>,
     landed: Landed,
 }
 
@@ -56,14 +54,12 @@ impl DeleteAccountDialog {
         presenter: DeleteAccountPresenter,
         bills: &DesktopPorts,
         accounts: &crate::accounts::DesktopPorts,
-        announcer: &Entity<Announcer>,
         landed: Landed,
     ) -> Self {
         Self {
             presenter,
             bills: bills.clone(),
             accounts: accounts.clone(),
-            announcer: announcer.clone(),
             landed,
         }
     }
@@ -95,13 +91,9 @@ impl DeleteAccountDialog {
 impl EventEmitter<DialogClosed> for DeleteAccountDialog {}
 
 impl HostedDialog for DeleteAccountDialog {
-    /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) announces
-    /// what it wrote after it ([`crate::account_deletion::refresh`]).
+    /// Every input is the Presenter's to read.
     fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
         let router = self.send(DeleteAccountEvent::Input(input));
-        if matches!(input, DialogInput::Select | DialogInput::Submit) {
-            crate::account_deletion::refresh(&self.accounts, &self.announcer, cx);
-        }
         self.closed(router, cx);
     }
 
@@ -109,12 +101,10 @@ impl HostedDialog for DeleteAccountDialog {
         self.view().frame.can_confirm
     }
 
-    /// Sends Confirm to the Presenter, which deletes, then announces what it wrote
-    /// ([`crate::account_deletion::refresh`]). A refusal stays on the view model and keeps the
-    /// Dialog open.
+    /// Sends Confirm to the Presenter, which deletes. A refusal stays on the view model and keeps
+    /// the Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
         let router = self.send(DeleteAccountEvent::Confirm);
-        crate::account_deletion::refresh(&self.accounts, &self.announcer, cx);
         self.closed(router, cx);
     }
 

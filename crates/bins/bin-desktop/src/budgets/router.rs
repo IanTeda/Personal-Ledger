@@ -31,7 +31,6 @@ const BUDGET_HISTORY_FILE: &str = "budget-history.csv";
 
 pub(super) struct PageRouter<'a, 'b> {
     pub ports: DesktopPorts,
-    pub announcer: Entity<Announcer>,
     /// The day the page's Dialogs are opened on, and the date style the Switcher writes in.
     pub clock: Clock,
     pub date_style: Option<DateStyle>,
@@ -41,7 +40,7 @@ pub(super) struct PageRouter<'a, 'b> {
 impl PageRouter<'_, '_> {
     /// Hosts the Dialog `form` opens, which hands its outcome back to the page.
     fn host(&mut self, form: Form) -> bool {
-        let dialog = FormDialog::new(form, self.ports.clone(), &self.announcer, self.landed());
+        let dialog = FormDialog::new(form, self.ports.clone(), self.landed());
         host_dialog(self.cx, |_| dialog);
         true
     }
@@ -65,24 +64,14 @@ impl BudgetsRouter for PageRouter<'_, '_> {
             self.clock.clone(),
             self.date_style,
         );
-        let dialog = ListDialog::switcher(
-            presenter,
-            self.ports.clone(),
-            &self.announcer,
-            self.landed(),
-        );
+        let dialog = ListDialog::switcher(presenter, self.ports.clone(), self.landed());
         host_dialog(self.cx, |_| dialog);
         true
     }
 
     fn open_manage(&mut self, current: BudgetId) -> bool {
         let presenter = ManagePresenter::new(self.ports.presenter(), current, self.clock.clone());
-        let dialog = ListDialog::manage(
-            presenter,
-            self.ports.clone(),
-            &self.announcer,
-            self.landed(),
-        );
+        let dialog = ListDialog::manage(presenter, self.ports.clone(), self.landed());
         host_dialog(self.cx, |_| dialog);
         true
     }

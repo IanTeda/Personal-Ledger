@@ -1,8 +1,7 @@
 //! The Bills page's View: the `lib-bills` page Presenter in a gpui Entity, which the Shell hosts as
 //! the Bills destination (`docs/ux/desktop-mockups/12-bills/`). It looks up each key the
 //! Shell passes on, as chord text, in the Bills keymap, turns clicks into events, draws the view model (`schedule.rs`, `filters.rs`,
-//! `planner.rs`), and announces the Bills after an event that wrote them
-//! ([`ports::announce_written`]).
+//! `planner.rs`).
 //! Each key and click is one input (`crate::input::send`), which commits what it wrote.
 //!
 //! A focused scope select's open list and highlight are gpui's widget state, so they are kept here:
@@ -10,7 +9,6 @@
 
 use crate::navigation::nav::NounLabel;
 
-use crate::announcer::Domain;
 use gpui::{
     AnyElement, App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, SharedString,
     Subscription, Window, div, prelude::*, px,
@@ -21,13 +19,14 @@ use lib_bills::presenter::{
     BillsPageEvent, BillsPagePresenter, BillsPageViewModel, BillsTab, FilterField, ScheduleEvent,
 };
 use lib_core::Clock;
+use lib_database::Domain;
 use lib_list_cursor::Step;
 use lib_viper::keymap::Keymap;
 use lib_viper::view::SelectView;
 
 use super::{planner, schedule};
 use crate::announcer::{Announcer, LedgerChanged};
-use crate::bills::ports::{self, DesktopPorts};
+use crate::bills::ports::DesktopPorts;
 use crate::bills::router::PageRouter;
 use crate::form::select::SelectState;
 use crate::form::viper::{choose_option, select_key, synced, toggle_select};
@@ -51,7 +50,6 @@ pub struct BillsPage {
     ports: DesktopPorts,
     /// What the Pay Dialog the page opens writes Pay it directly through.
     payments: SharedPayments,
-    announcer: Entity<Announcer>,
     keymap: Keymap<BillsPageEvent>,
     /// The page's own scroll, reset as it becomes the destination and as its tab changes.
     scroll: ScrollHandle,
@@ -92,7 +90,6 @@ impl BillsPage {
             clock,
             ports,
             payments,
-            announcer,
             keymap,
             scroll: ScrollHandle::new(),
             filter_select: None,
@@ -106,8 +103,8 @@ impl BillsPage {
         crate::input::join_or_send(cx, |cx| self.handle(event, cx));
     }
 
-    /// Hands `event` to the Presenter with the Desktop's Router, then announces the Bills if it
-    /// wrote them. Inside an input already, as [`Self::send`] or a Dialog's confirm.
+    /// Hands `event` to the Presenter with the Desktop's Router. Inside an input already, as
+    /// [`Self::send`] or a Dialog's confirm.
     fn handle(&mut self, event: BillsPageEvent, cx: &mut Context<'_, Self>) {
         let tab = self.presenter.tab();
         let mut router = PageRouter {
@@ -115,11 +112,9 @@ impl BillsPage {
             payments: self.payments.clone(),
             clock: self.clock.clone(),
             date_style: self.presenter.date_style(),
-            announcer: self.announcer.clone(),
             cx,
         };
         self.presenter.handle(event, &mut router);
-        ports::announce_written(&self.ports, &self.announcer, cx);
         if self.presenter.tab() != tab {
             self.scroll.set_offset(gpui::Point::default());
         }

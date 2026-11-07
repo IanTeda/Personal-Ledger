@@ -9,7 +9,7 @@
 
 use std::rc::Rc;
 
-use gpui::{App, Context, Entity, EventEmitter, Pixels, Window, px};
+use gpui::{App, Context, EventEmitter, Pixels, Window, px};
 use lib_budgets::BudgetsOutcome;
 use lib_budgets::ManageAction;
 use lib_budgets::presenter::{ManageEvent, ManagePresenter, SwitcherEvent, SwitcherPresenter};
@@ -17,8 +17,7 @@ use lib_shell::{DialogCommand, Hint};
 use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::Keymap;
 
-use crate::announcer::Announcer;
-use crate::budgets::ports::{self, DesktopPorts};
+use crate::budgets::ports::DesktopPorts;
 use crate::budgets::view::snapshot::ManageRowSnapshot;
 use crate::dialog::OnClick;
 use crate::shell::view::dialog_entity::DialogReadback;
@@ -40,7 +39,6 @@ pub struct ListDialog {
     pub(crate) list: List,
     /// The ports the Presenter writes through, asked after each event whether it wrote.
     ports: DesktopPorts,
-    announcer: Entity<Announcer>,
     landed: Landed,
     /// The Switcher card's left edge: the page's, which the Shell sets as it draws the rails.
     pub(in crate::budgets) left: Pixels,
@@ -52,29 +50,18 @@ impl EventEmitter<DialogClosed> for ListDialog {}
 type Router = HostRouter<BudgetsOutcome>;
 
 impl ListDialog {
-    pub fn switcher(
-        presenter: SwitcherPresenter,
-        ports: DesktopPorts,
-        announcer: &Entity<Announcer>,
-        landed: Landed,
-    ) -> Self {
-        Self::new(List::Switcher(presenter), ports, announcer, landed)
+    pub fn switcher(presenter: SwitcherPresenter, ports: DesktopPorts, landed: Landed) -> Self {
+        Self::new(List::Switcher(presenter), ports, landed)
     }
 
-    pub fn manage(
-        presenter: ManagePresenter,
-        ports: DesktopPorts,
-        announcer: &Entity<Announcer>,
-        landed: Landed,
-    ) -> Self {
-        Self::new(List::Manage(presenter), ports, announcer, landed)
+    pub fn manage(presenter: ManagePresenter, ports: DesktopPorts, landed: Landed) -> Self {
+        Self::new(List::Manage(presenter), ports, landed)
     }
 
-    fn new(list: List, ports: DesktopPorts, announcer: &Entity<Announcer>, landed: Landed) -> Self {
+    fn new(list: List, ports: DesktopPorts, landed: Landed) -> Self {
         Self {
             list,
             ports,
-            announcer: announcer.clone(),
             landed,
             left: px(0.0),
         }
@@ -109,8 +96,7 @@ impl ListDialog {
         });
     }
 
-    /// Hands an event to the Presenter, announces the Budgets if it wrote them,
-    /// and, once the Presenter has closed the Dialog, hands its outcome to the page.
+    /// Hands an event to the Presenter and, once the Presenter has closed the Dialog, hands its outcome to the page.
     fn run(
         &mut self,
         cx: &mut Context<'_, Self>,
@@ -118,7 +104,6 @@ impl ListDialog {
     ) {
         let mut router = Router::default();
         handle(&mut self.list, &mut router);
-        ports::announce_written(&self.ports, &self.announcer, cx);
         if let Some(outcome) = router.closed() {
             (self.landed)(outcome, cx);
             cx.emit(DialogClosed);

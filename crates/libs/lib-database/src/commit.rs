@@ -3,6 +3,10 @@
 //! it, in the order made. The ports can't tell where an Interactor call ends, so the bin calls
 //! [`Commit::commit`] once after each Presenter `handle`, and a call that writes two domains, such
 //! as a Transaction and the Bill Schedule entry it pays, lands as one transaction.
+//!
+//! The commit also says what the input changed ([`Committed`]): each store [`Stores`](crate::Stores)
+//! holds notes its [`Domain`] in the commit's [`Written`] on every mutable access, so a Client
+//! announces from the commit rather than counting its own writes.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -13,11 +17,49 @@ use crate::writer::{Batch, Change, Domain, Writer};
 /// Ledger file's adapters and on a test's in-memory ports.
 pub trait Commit {
     /// Sends every write made since the last commit as one transaction. Never waits: a failure is
-    /// reported on the writer's failure channel. Returns each domain a cascade of the writes
-    /// changes in the file, whose adapter the caller reloads after (ADR-0046's 2026-11-02
-    /// amendment): a reload goes through the writer, so it is queued behind this commit and sees
-    /// the cascade.
-    fn commit(&self) -> Vec<Domain>;
+    /// reported on the writer's failure channel. Returns what the input changed: the domains
+    /// written, and each domain a cascade of the writes changes in the file, whose adapter the
+    /// caller reloads after (ADR-0046's 2026-11-02 amendment): a reload goes through the writer, so
+    /// it is queued behind this commit and sees the cascade.
+    fn commit(&self) -> Committed;
+}
+
+/// What one commit changed, each domain once, in the order first written.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Committed {
+    /// Every domain a store was mutably reached for since the last commit, and every domain a
+    /// queued write names.
+    pub wrote: Vec<Domain>,
+    /// Every domain the file's `ON DELETE CASCADE` changes behind memory's back, for the caller to
+    /// reload.
+    pub cascaded: Vec<Domain>,
+}
+
+impl Committed {
+    /// Whether the input changed nothing, so nothing needs announcing.
+    pub fn is_empty(&self) -> bool {
+        self.wrote.is_empty() && self.cascaded.is_empty()
+    }
+}
+
+/// The domains written since the last commit, noted by each store's recorder and drained by the
+/// commit. Single-threaded, as the ports are; a clone shares the same set.
+#[derive(Debug, Clone, Default)]
+pub struct Written(Rc<RefCell<Vec<Domain>>>);
+
+impl Written {
+    /// Notes that `domain` was written, once, behind those already noted.
+    pub fn note(&self, domain: Domain) {
+        let mut written = self.0.borrow_mut();
+        if !written.contains(&domain) {
+            written.push(domain);
+        }
+    }
+
+    /// The domains noted since the last take, leaving none.
+    pub fn take(&self) -> Vec<Domain> {
+        std::mem::take(&mut *self.0.borrow_mut())
+    }
 }
 
 /// The writes every adapter on one [`Writer`] has made since the last commit. Single-threaded, as
@@ -25,6 +67,7 @@ pub trait Commit {
 #[derive(Clone)]
 pub struct PendingWrites {
     changes: Rc<RefCell<Vec<Box<dyn Change>>>>,
+    written: Written,
     writer: Writer,
 }
 
@@ -32,8 +75,14 @@ impl PendingWrites {
     pub fn new(writer: Writer) -> Self {
         Self {
             changes: Rc::default(),
+            written: Written::default(),
             writer,
         }
+    }
+
+    /// The domains noted as written since the last commit, which the stores' recorders share.
+    pub fn written(&self) -> &Written {
+        &self.written
     }
 
     /// The writer the writes go to, which an adapter also loads through.
@@ -57,26 +106,48 @@ impl PendingWrites {
 
 impl Commit for PendingWrites {
     #[tracing::instrument(name = "Commit the Ledger writes", level = "debug", skip_all)]
-    fn commit(&self) -> Vec<Domain> {
+    fn commit(&self) -> Committed {
+        let mut wrote = self.written.take();
         let changes = std::mem::take(&mut *self.changes.borrow_mut());
         if changes.is_empty() {
-            return Vec::new();
+            return Committed {
+                wrote,
+                cascaded: Vec::new(),
+            };
         }
         let batch = Batch::new(changes);
-        let cascades = batch.cascades();
+        // A write queued by an adapter no recorder wraps is still the input's.
+        for domain in batch.domains() {
+            if !wrote.contains(&domain) {
+                wrote.push(domain);
+            }
+        }
+        let cascaded = batch.cascades();
         self.writer.write(batch);
-        cascades
+        Committed { wrote, cascaded }
     }
 }
 
 /// The commit of in-memory ports, which are their own storage, so there is nowhere to send and no
-/// file to cascade.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct InMemoryCommit;
+/// file to cascade: it says only which domains were written.
+#[derive(Debug, Default, Clone)]
+pub struct InMemoryCommit {
+    written: Written,
+}
+
+impl InMemoryCommit {
+    /// The domains noted as written since the last commit, which the stores' recorders share.
+    pub fn written(&self) -> &Written {
+        &self.written
+    }
+}
 
 impl Commit for InMemoryCommit {
-    fn commit(&self) -> Vec<Domain> {
-        Vec::new()
+    fn commit(&self) -> Committed {
+        Committed {
+            wrote: self.written.take(),
+            cascaded: Vec::new(),
+        }
     }
 }
 
@@ -194,7 +265,7 @@ mod tests {
         let mut ledger = Ledger::open(options);
 
         ledger.add_unit_and_note(Some("paid"));
-        let cascades = ledger.pending.commit();
+        let committed = ledger.pending.commit();
         ledger
             .pending
             .writer()
@@ -203,7 +274,11 @@ mod tests {
 
         assert!(ledger.stored_codes().contains(&"nzd".to_string()));
         assert_eq!(ledger.stored_notes(), ["paid"]);
-        assert!(cascades.is_empty(), "nothing deleted, so nothing to reload");
+        assert_eq!(committed.wrote, [Domain::Units, Domain::Test]);
+        assert!(
+            committed.cascaded.is_empty(),
+            "nothing deleted, so nothing to reload"
+        );
         assert!(ledger.failures.try_recv().is_err());
     }
 

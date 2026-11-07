@@ -9,8 +9,7 @@
 //!   per Dialog in `view/dialog/`.
 //! - `router.rs` is the Router and the module's entry point ([`bills_page`]). It opens the Pay
 //!   Dialog through the Bill Payments module's entry point (`crate::bill_payments`).
-//! - `ports.rs` holds the halfway shims: the store shared with the Open Ledger, and the
-//!   announcement of each write (#778, #1028).
+//! - `ports.rs` holds the halfway shims: the store shared with the Open Ledger (#778, #1028).
 
 pub mod ports;
 mod router;

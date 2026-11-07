@@ -18,12 +18,9 @@ pub(crate) mod view;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use gpui::{App, Entity};
 use lib_core::Clock;
 use lib_database::{SharedCategoriesStore, SharedTransactionsStore, TransactionImportAdapter};
 use lib_transaction_import::{ImportPorts, SeededStatement};
-
-use crate::announcer::{Announcer, Domain};
 
 pub use view::page::ImportPage;
 
@@ -57,14 +54,4 @@ impl ImportStores {
             statement: Rc::new(SeededStatement::stub(clock.today())),
         }
     }
-}
-
-/// Announces the Transactions and the Payees after a commit, so
-/// the Transactions list, the Dashboard and the Views reading the Payees see the Import at once.
-/// The continuing input commits it.
-pub(crate) fn announce(announcer: &Entity<Announcer>, cx: &mut App) {
-    announcer.update(cx, |announcer, cx| {
-        announcer.announce(Domain::Transactions, cx);
-        announcer.announce(Domain::Payees, cx);
-    });
 }

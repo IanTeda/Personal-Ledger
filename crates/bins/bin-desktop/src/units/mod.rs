@@ -8,7 +8,7 @@
 //!   in `view/dialog/`.
 //! - `router.rs` is the Router and the module's entry point ([`units_page`]).
 //! - `ports.rs` holds the ports over the shared Units store, with usage and holdings read from the
-//!   other domains' stores, and the announcement of a Units write (#1052).
+//!   other domains' stores (#1052).
 //!
 //! Where the Units are kept, the SQLite adapter opened at start or memory, is `lib-database`'s
 //! `UnitsStore`.

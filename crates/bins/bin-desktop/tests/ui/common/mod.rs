@@ -38,9 +38,9 @@ use lib_colour_theme::ThemeOverrides;
 use lib_core::TransactionId;
 use lib_core::{AccountId, CategoryId, InstitutionId, PayeeId, PriceSourceId, TagId, UnitId};
 use lib_database::{
-    AccountsStore, BillsStore, BudgetsStore, CategoriesStore, Commit, CountingCommit,
-    DocumentsStore, Domain, FakeStores, InstitutionsStore, InventoryStore, PayeesStore, Stores,
-    TagsStore, TransactionsStore, UnitsStore, WriteFailure,
+    AccountsStore, BillsStore, BudgetsStore, CategoriesStore, Commit, Committed, CountingCommit,
+    DocumentsStore, Domain, FakeStores, InstitutionsStore, InventoryStore, PayeesStore, Recorded,
+    StoreParts, Stores, TagsStore, TransactionsStore, UnitsStore, WriteFailure, Written,
 };
 use lib_documents::fake::InMemoryDocuments;
 use lib_documents::types::DocumentTypeRow;
@@ -667,19 +667,41 @@ impl UnitsStore for FailingUnits {
 struct FailingCommit {
     domains: Vec<Domain>,
     written: Rc<Cell<bool>>,
+    recorded: Written,
     report: mpsc::Sender<WriteFailure>,
 }
 
 impl Commit for FailingCommit {
-    fn commit(&self) -> Vec<Domain> {
+    fn commit(&self) -> Committed {
         if self.written.replace(false) {
             let _ = self.report.send(WriteFailure {
                 domains: self.domains.clone(),
                 error: lib_database::Error::Generic("the test's write fails".into()),
             });
         }
-        Vec::new()
+        Committed {
+            wrote: self.recorded.take(),
+            cascaded: Vec::new(),
+        }
     }
+}
+
+/// `parts` recorded and committed by a [`FailingCommit`] naming `domains`, its failures reported
+/// on `channel`.
+fn failing(
+    parts: StoreParts,
+    domains: Vec<Domain>,
+    written: Rc<Cell<bool>>,
+    (report, failures): (mpsc::Sender<WriteFailure>, mpsc::Receiver<WriteFailure>),
+) -> Stores {
+    let recorded = Written::default();
+    let commit = FailingCommit {
+        domains,
+        written,
+        recorded: recorded.clone(),
+        report,
+    };
+    Stores::new(parts, &recorded, Rc::new(commit), failures)
 }
 
 /// The date every test is anchored to, so scopes and seeded relative dates never drift.
@@ -807,10 +829,14 @@ impl<'a> Harness<'a> {
     /// fails, as a Ledger file that can't be read would.
     pub fn with_unreadable_payee_usage(app: &'a mut TestAppContext) -> Self {
         let (mut stores, count) = Stores::fake(FakeStores::sample(today()));
-        stores.transactions = Box::new(MiscountedTransactions {
-            inner: stores.transactions,
-            payee_splits: None,
-        });
+        stores.transactions = Recorded::new(
+            Domain::Transactions,
+            Written::default(),
+            Box::new(MiscountedTransactions {
+                inner: Box::new(stores.transactions),
+                payee_splits: None,
+            }),
+        );
         Self::build(
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
@@ -828,10 +854,14 @@ impl<'a> Harness<'a> {
         storage: lib_database::Storage,
     ) -> Self {
         let mut stores = Stores::from(storage);
-        stores.transactions = Box::new(MiscountedTransactions {
-            inner: stores.transactions,
-            payee_splits: Some(0),
-        });
+        stores.transactions = Recorded::new(
+            Domain::Transactions,
+            Written::default(),
+            Box::new(MiscountedTransactions {
+                inner: Box::new(stores.transactions),
+                payee_splits: Some(0),
+            }),
+        );
         Self::build(
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
@@ -851,29 +881,28 @@ impl<'a> Harness<'a> {
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
-            counted(Stores {
-                units: Box::new(FailingUnits::new(
-                    InMemoryPorts::sample(chrono::Utc::now()),
-                    &written,
-                    reload_fails,
-                )),
-                institutions: Box::new(InMemoryInstitutions::sample()),
-                accounts: Box::new(lib_accounts::fake::InMemoryPorts::sample()),
-                categories: Box::new(InMemoryCategories::sample()),
-                tags: Box::new(lib_tags::fake::InMemoryPorts::sample()),
-                payees: Box::new(lib_payees::fake::InMemoryPorts::sample()),
-                transactions: Box::new(sample.transactions),
-                bills: Box::new(sample.bills),
-                budgets: Box::new(sample.budgets),
-                inventory: Box::new(sample.inventory),
-                documents: Box::new(sample.documents),
-                commit: Rc::new(FailingCommit {
-                    domains: vec![Domain::Units],
-                    written,
-                    report,
-                }),
-                failures,
-            }),
+            counted(failing(
+                StoreParts {
+                    units: Box::new(FailingUnits::new(
+                        InMemoryPorts::sample(chrono::Utc::now()),
+                        &written,
+                        reload_fails,
+                    )),
+                    institutions: Box::new(InMemoryInstitutions::sample()),
+                    accounts: Box::new(lib_accounts::fake::InMemoryPorts::sample()),
+                    categories: Box::new(InMemoryCategories::sample()),
+                    tags: Box::new(lib_tags::fake::InMemoryPorts::sample()),
+                    payees: Box::new(lib_payees::fake::InMemoryPorts::sample()),
+                    transactions: Box::new(sample.transactions),
+                    bills: Box::new(sample.bills),
+                    budgets: Box::new(sample.budgets),
+                    inventory: Box::new(sample.inventory),
+                    documents: Box::new(sample.documents),
+                },
+                vec![Domain::Units],
+                written,
+                (report, failures),
+            )),
         )
     }
 
@@ -889,31 +918,30 @@ impl<'a> Harness<'a> {
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
-            counted(Stores {
-                units: Box::new(InMemoryPorts::sample(chrono::Utc::now())),
-                institutions: Box::new(FailingInstitutions {
-                    institutions: Marked {
-                        inner: stored.clone(),
-                        written: written.clone(),
-                    },
-                    stored,
-                }),
-                accounts: Box::new(lib_accounts::fake::InMemoryPorts::sample()),
-                categories: Box::new(InMemoryCategories::sample()),
-                tags: Box::new(lib_tags::fake::InMemoryPorts::sample()),
-                payees: Box::new(lib_payees::fake::InMemoryPorts::sample()),
-                transactions: Box::new(sample.transactions),
-                bills: Box::new(sample.bills),
-                budgets: Box::new(sample.budgets),
-                inventory: Box::new(sample.inventory),
-                documents: Box::new(sample.documents),
-                commit: Rc::new(FailingCommit {
-                    domains: vec![Domain::Institutions],
-                    written,
-                    report,
-                }),
-                failures,
-            }),
+            counted(failing(
+                StoreParts {
+                    units: Box::new(InMemoryPorts::sample(chrono::Utc::now())),
+                    institutions: Box::new(FailingInstitutions {
+                        institutions: Marked {
+                            inner: stored.clone(),
+                            written: written.clone(),
+                        },
+                        stored,
+                    }),
+                    accounts: Box::new(lib_accounts::fake::InMemoryPorts::sample()),
+                    categories: Box::new(InMemoryCategories::sample()),
+                    tags: Box::new(lib_tags::fake::InMemoryPorts::sample()),
+                    payees: Box::new(lib_payees::fake::InMemoryPorts::sample()),
+                    transactions: Box::new(sample.transactions),
+                    bills: Box::new(sample.bills),
+                    budgets: Box::new(sample.budgets),
+                    inventory: Box::new(sample.inventory),
+                    documents: Box::new(sample.documents),
+                },
+                vec![Domain::Institutions],
+                written,
+                (report, failures),
+            )),
         )
     }
 
@@ -929,31 +957,30 @@ impl<'a> Harness<'a> {
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
-            counted(Stores {
-                units: Box::new(InMemoryPorts::sample(chrono::Utc::now())),
-                institutions: Box::new(InMemoryInstitutions::sample()),
-                accounts: Box::new(FailingAccounts {
-                    accounts: Marked {
-                        inner: stored.clone(),
-                        written: written.clone(),
-                    },
-                    stored,
-                }),
-                categories: Box::new(InMemoryCategories::sample()),
-                tags: Box::new(lib_tags::fake::InMemoryPorts::sample()),
-                payees: Box::new(lib_payees::fake::InMemoryPorts::sample()),
-                transactions: Box::new(sample.transactions),
-                bills: Box::new(sample.bills),
-                budgets: Box::new(sample.budgets),
-                inventory: Box::new(sample.inventory),
-                documents: Box::new(sample.documents),
-                commit: Rc::new(FailingCommit {
-                    domains: vec![Domain::Accounts],
-                    written,
-                    report,
-                }),
-                failures,
-            }),
+            counted(failing(
+                StoreParts {
+                    units: Box::new(InMemoryPorts::sample(chrono::Utc::now())),
+                    institutions: Box::new(InMemoryInstitutions::sample()),
+                    accounts: Box::new(FailingAccounts {
+                        accounts: Marked {
+                            inner: stored.clone(),
+                            written: written.clone(),
+                        },
+                        stored,
+                    }),
+                    categories: Box::new(InMemoryCategories::sample()),
+                    tags: Box::new(lib_tags::fake::InMemoryPorts::sample()),
+                    payees: Box::new(lib_payees::fake::InMemoryPorts::sample()),
+                    transactions: Box::new(sample.transactions),
+                    bills: Box::new(sample.bills),
+                    budgets: Box::new(sample.budgets),
+                    inventory: Box::new(sample.inventory),
+                    documents: Box::new(sample.documents),
+                },
+                vec![Domain::Accounts],
+                written,
+                (report, failures),
+            )),
         )
     }
 
@@ -969,31 +996,30 @@ impl<'a> Harness<'a> {
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
-            counted(Stores {
-                units: Box::new(InMemoryPorts::sample(chrono::Utc::now())),
-                institutions: Box::new(InMemoryInstitutions::sample()),
-                accounts: Box::new(lib_accounts::fake::InMemoryPorts::sample()),
-                categories: Box::new(FailingCategories {
-                    categories: Marked {
-                        inner: stored.clone(),
-                        written: written.clone(),
-                    },
-                    stored,
-                }),
-                tags: Box::new(lib_tags::fake::InMemoryPorts::sample()),
-                payees: Box::new(lib_payees::fake::InMemoryPorts::sample()),
-                transactions: Box::new(sample.transactions),
-                bills: Box::new(sample.bills),
-                budgets: Box::new(sample.budgets),
-                inventory: Box::new(sample.inventory),
-                documents: Box::new(sample.documents),
-                commit: Rc::new(FailingCommit {
-                    domains: vec![Domain::Categories],
-                    written,
-                    report,
-                }),
-                failures,
-            }),
+            counted(failing(
+                StoreParts {
+                    units: Box::new(InMemoryPorts::sample(chrono::Utc::now())),
+                    institutions: Box::new(InMemoryInstitutions::sample()),
+                    accounts: Box::new(lib_accounts::fake::InMemoryPorts::sample()),
+                    categories: Box::new(FailingCategories {
+                        categories: Marked {
+                            inner: stored.clone(),
+                            written: written.clone(),
+                        },
+                        stored,
+                    }),
+                    tags: Box::new(lib_tags::fake::InMemoryPorts::sample()),
+                    payees: Box::new(lib_payees::fake::InMemoryPorts::sample()),
+                    transactions: Box::new(sample.transactions),
+                    bills: Box::new(sample.bills),
+                    budgets: Box::new(sample.budgets),
+                    inventory: Box::new(sample.inventory),
+                    documents: Box::new(sample.documents),
+                },
+                vec![Domain::Categories],
+                written,
+                (report, failures),
+            )),
         )
     }
 
@@ -1009,31 +1035,30 @@ impl<'a> Harness<'a> {
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
-            counted(Stores {
-                units: Box::new(InMemoryPorts::sample(chrono::Utc::now())),
-                institutions: Box::new(InMemoryInstitutions::sample()),
-                accounts: Box::new(lib_accounts::fake::InMemoryPorts::sample()),
-                categories: Box::new(InMemoryCategories::sample()),
-                tags: Box::new(FailingTags {
-                    tags: Marked {
-                        inner: stored.clone(),
-                        written: written.clone(),
-                    },
-                    stored,
-                }),
-                payees: Box::new(lib_payees::fake::InMemoryPorts::sample()),
-                transactions: Box::new(sample.transactions),
-                bills: Box::new(sample.bills),
-                budgets: Box::new(sample.budgets),
-                inventory: Box::new(sample.inventory),
-                documents: Box::new(sample.documents),
-                commit: Rc::new(FailingCommit {
-                    domains: vec![Domain::Tags],
-                    written,
-                    report,
-                }),
-                failures,
-            }),
+            counted(failing(
+                StoreParts {
+                    units: Box::new(InMemoryPorts::sample(chrono::Utc::now())),
+                    institutions: Box::new(InMemoryInstitutions::sample()),
+                    accounts: Box::new(lib_accounts::fake::InMemoryPorts::sample()),
+                    categories: Box::new(InMemoryCategories::sample()),
+                    tags: Box::new(FailingTags {
+                        tags: Marked {
+                            inner: stored.clone(),
+                            written: written.clone(),
+                        },
+                        stored,
+                    }),
+                    payees: Box::new(lib_payees::fake::InMemoryPorts::sample()),
+                    transactions: Box::new(sample.transactions),
+                    bills: Box::new(sample.bills),
+                    budgets: Box::new(sample.budgets),
+                    inventory: Box::new(sample.inventory),
+                    documents: Box::new(sample.documents),
+                },
+                vec![Domain::Tags],
+                written,
+                (report, failures),
+            )),
         )
     }
 
@@ -1045,25 +1070,24 @@ impl<'a> Harness<'a> {
         let written = Rc::new(Cell::new(false));
         let fakes = FakeStores::sample(today());
         let stored = fakes.inventory.clone();
-        let (mut stores, _) = Stores::fake(fakes);
-        stores.inventory = Box::new(FailingInventory {
+        let mut parts = StoreParts::from(fakes);
+        parts.inventory = Box::new(FailingInventory {
             inventory: Marked {
                 inner: stored.clone(),
                 written: written.clone(),
             },
             stored,
         });
-        stores.commit = Rc::new(FailingCommit {
-            domains: vec![Domain::Inventory],
-            written,
-            report,
-        });
-        stores.failures = failures;
         Self::build(
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
-            counted(stores),
+            counted(failing(
+                parts,
+                vec![Domain::Inventory],
+                written,
+                (report, failures),
+            )),
         )
     }
 
@@ -1079,31 +1103,30 @@ impl<'a> Harness<'a> {
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
-            counted(Stores {
-                units: Box::new(InMemoryPorts::sample(chrono::Utc::now())),
-                institutions: Box::new(InMemoryInstitutions::sample()),
-                accounts: Box::new(lib_accounts::fake::InMemoryPorts::sample()),
-                categories: Box::new(InMemoryCategories::sample()),
-                tags: Box::new(lib_tags::fake::InMemoryPorts::sample()),
-                payees: Box::new(FailingPayees {
-                    payees: Marked {
-                        inner: stored.clone(),
-                        written: written.clone(),
-                    },
-                    stored,
-                }),
-                transactions: Box::new(sample.transactions),
-                bills: Box::new(sample.bills),
-                budgets: Box::new(sample.budgets),
-                inventory: Box::new(sample.inventory),
-                documents: Box::new(sample.documents),
-                commit: Rc::new(FailingCommit {
-                    domains: vec![Domain::Payees],
-                    written,
-                    report,
-                }),
-                failures,
-            }),
+            counted(failing(
+                StoreParts {
+                    units: Box::new(InMemoryPorts::sample(chrono::Utc::now())),
+                    institutions: Box::new(InMemoryInstitutions::sample()),
+                    accounts: Box::new(lib_accounts::fake::InMemoryPorts::sample()),
+                    categories: Box::new(InMemoryCategories::sample()),
+                    tags: Box::new(lib_tags::fake::InMemoryPorts::sample()),
+                    payees: Box::new(FailingPayees {
+                        payees: Marked {
+                            inner: stored.clone(),
+                            written: written.clone(),
+                        },
+                        stored,
+                    }),
+                    transactions: Box::new(sample.transactions),
+                    bills: Box::new(sample.bills),
+                    budgets: Box::new(sample.budgets),
+                    inventory: Box::new(sample.inventory),
+                    documents: Box::new(sample.documents),
+                },
+                vec![Domain::Payees],
+                written,
+                (report, failures),
+            )),
         )
     }
 
@@ -1119,31 +1142,30 @@ impl<'a> Harness<'a> {
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
-            counted(Stores {
-                units: Box::new(InMemoryPorts::sample(chrono::Utc::now())),
-                institutions: Box::new(InMemoryInstitutions::sample()),
-                accounts: Box::new(lib_accounts::fake::InMemoryPorts::sample()),
-                categories: Box::new(InMemoryCategories::sample()),
-                tags: Box::new(lib_tags::fake::InMemoryPorts::sample()),
-                payees: Box::new(lib_payees::fake::InMemoryPorts::sample()),
-                transactions: Box::new(FailingTransactions {
-                    transactions: Marked {
-                        inner: stored.clone(),
-                        written: written.clone(),
-                    },
-                    stored,
-                }),
-                bills: Box::new(sample.bills),
-                budgets: Box::new(sample.budgets),
-                inventory: Box::new(sample.inventory),
-                documents: Box::new(sample.documents),
-                commit: Rc::new(FailingCommit {
-                    domains: vec![Domain::Transactions],
-                    written,
-                    report,
-                }),
-                failures,
-            }),
+            counted(failing(
+                StoreParts {
+                    units: Box::new(InMemoryPorts::sample(chrono::Utc::now())),
+                    institutions: Box::new(InMemoryInstitutions::sample()),
+                    accounts: Box::new(lib_accounts::fake::InMemoryPorts::sample()),
+                    categories: Box::new(InMemoryCategories::sample()),
+                    tags: Box::new(lib_tags::fake::InMemoryPorts::sample()),
+                    payees: Box::new(lib_payees::fake::InMemoryPorts::sample()),
+                    transactions: Box::new(FailingTransactions {
+                        transactions: Marked {
+                            inner: stored.clone(),
+                            written: written.clone(),
+                        },
+                        stored,
+                    }),
+                    bills: Box::new(sample.bills),
+                    budgets: Box::new(sample.budgets),
+                    inventory: Box::new(sample.inventory),
+                    documents: Box::new(sample.documents),
+                },
+                vec![Domain::Transactions],
+                written,
+                (report, failures),
+            )),
         )
     }
 
@@ -1159,31 +1181,30 @@ impl<'a> Harness<'a> {
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
-            counted(Stores {
-                units: Box::new(InMemoryPorts::sample(chrono::Utc::now())),
-                institutions: Box::new(InMemoryInstitutions::sample()),
-                accounts: Box::new(lib_accounts::fake::InMemoryPorts::sample()),
-                categories: Box::new(InMemoryCategories::sample()),
-                tags: Box::new(lib_tags::fake::InMemoryPorts::sample()),
-                payees: Box::new(lib_payees::fake::InMemoryPorts::sample()),
-                transactions: Box::new(sample.transactions),
-                bills: Box::new(FailingBills {
-                    bills: Marked {
-                        inner: stored.clone(),
-                        written: written.clone(),
-                    },
-                    stored,
-                }),
-                budgets: Box::new(sample.budgets),
-                inventory: Box::new(sample.inventory),
-                documents: Box::new(sample.documents),
-                commit: Rc::new(FailingCommit {
-                    domains: vec![Domain::Bills],
-                    written,
-                    report,
-                }),
-                failures,
-            }),
+            counted(failing(
+                StoreParts {
+                    units: Box::new(InMemoryPorts::sample(chrono::Utc::now())),
+                    institutions: Box::new(InMemoryInstitutions::sample()),
+                    accounts: Box::new(lib_accounts::fake::InMemoryPorts::sample()),
+                    categories: Box::new(InMemoryCategories::sample()),
+                    tags: Box::new(lib_tags::fake::InMemoryPorts::sample()),
+                    payees: Box::new(lib_payees::fake::InMemoryPorts::sample()),
+                    transactions: Box::new(sample.transactions),
+                    bills: Box::new(FailingBills {
+                        bills: Marked {
+                            inner: stored.clone(),
+                            written: written.clone(),
+                        },
+                        stored,
+                    }),
+                    budgets: Box::new(sample.budgets),
+                    inventory: Box::new(sample.inventory),
+                    documents: Box::new(sample.documents),
+                },
+                vec![Domain::Bills],
+                written,
+                (report, failures),
+            )),
         )
     }
 
@@ -1199,31 +1220,30 @@ impl<'a> Harness<'a> {
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
-            counted(Stores {
-                units: Box::new(fakes.units),
-                institutions: Box::new(fakes.institutions),
-                accounts: Box::new(fakes.accounts),
-                categories: Box::new(fakes.categories),
-                tags: Box::new(fakes.tags),
-                payees: Box::new(fakes.payees),
-                transactions: Box::new(fakes.transactions),
-                bills: Box::new(fakes.bills),
-                budgets: Box::new(FailingBudgets {
-                    budgets: Marked {
-                        inner: stored.clone(),
-                        written: written.clone(),
-                    },
-                    stored,
-                }),
-                inventory: Box::new(fakes.inventory),
-                documents: Box::new(fakes.documents),
-                commit: Rc::new(FailingCommit {
-                    domains: vec![Domain::Budgets],
-                    written,
-                    report,
-                }),
-                failures,
-            }),
+            counted(failing(
+                StoreParts {
+                    units: Box::new(fakes.units),
+                    institutions: Box::new(fakes.institutions),
+                    accounts: Box::new(fakes.accounts),
+                    categories: Box::new(fakes.categories),
+                    tags: Box::new(fakes.tags),
+                    payees: Box::new(fakes.payees),
+                    transactions: Box::new(fakes.transactions),
+                    bills: Box::new(fakes.bills),
+                    budgets: Box::new(FailingBudgets {
+                        budgets: Marked {
+                            inner: stored.clone(),
+                            written: written.clone(),
+                        },
+                        stored,
+                    }),
+                    inventory: Box::new(fakes.inventory),
+                    documents: Box::new(fakes.documents),
+                },
+                vec![Domain::Budgets],
+                written,
+                (report, failures),
+            )),
         )
     }
 
@@ -1239,31 +1259,30 @@ impl<'a> Harness<'a> {
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
-            counted(Stores {
-                units: Box::new(fakes.units),
-                institutions: Box::new(fakes.institutions),
-                accounts: Box::new(fakes.accounts),
-                categories: Box::new(fakes.categories),
-                tags: Box::new(fakes.tags),
-                payees: Box::new(fakes.payees),
-                transactions: Box::new(fakes.transactions),
-                bills: Box::new(fakes.bills),
-                budgets: Box::new(fakes.budgets),
-                inventory: Box::new(fakes.inventory),
-                documents: Box::new(FailingDocuments {
-                    documents: Marked {
-                        inner: stored.clone(),
-                        written: written.clone(),
-                    },
-                    stored,
-                }),
-                commit: Rc::new(FailingCommit {
-                    domains: vec![Domain::Documents],
-                    written,
-                    report,
-                }),
-                failures,
-            }),
+            counted(failing(
+                StoreParts {
+                    units: Box::new(fakes.units),
+                    institutions: Box::new(fakes.institutions),
+                    accounts: Box::new(fakes.accounts),
+                    categories: Box::new(fakes.categories),
+                    tags: Box::new(fakes.tags),
+                    payees: Box::new(fakes.payees),
+                    transactions: Box::new(fakes.transactions),
+                    bills: Box::new(fakes.bills),
+                    budgets: Box::new(fakes.budgets),
+                    inventory: Box::new(fakes.inventory),
+                    documents: Box::new(FailingDocuments {
+                        documents: Marked {
+                            inner: stored.clone(),
+                            written: written.clone(),
+                        },
+                        stored,
+                    }),
+                },
+                vec![Domain::Documents],
+                written,
+                (report, failures),
+            )),
         )
     }
 
@@ -1279,37 +1298,36 @@ impl<'a> Harness<'a> {
             app,
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
-            counted(Stores {
-                units: Box::new(InMemoryPorts::sample(chrono::Utc::now())),
-                institutions: Box::new(InMemoryInstitutions::sample()),
-                accounts: Box::new(lib_accounts::fake::InMemoryPorts::sample()),
-                categories: Box::new(InMemoryCategories::sample()),
-                tags: Box::new(lib_tags::fake::InMemoryPorts::sample()),
-                payees: Box::new(lib_payees::fake::InMemoryPorts::sample()),
-                transactions: Box::new(FailingTransactions {
-                    transactions: Marked {
-                        inner: transactions.clone(),
-                        written: written.clone(),
-                    },
-                    stored: transactions,
-                }),
-                bills: Box::new(FailingBills {
-                    bills: Marked {
-                        inner: bills.clone(),
-                        written: written.clone(),
-                    },
-                    stored: bills,
-                }),
-                budgets: Box::new(sample.budgets),
-                inventory: Box::new(sample.inventory),
-                documents: Box::new(sample.documents),
-                commit: Rc::new(FailingCommit {
-                    domains: vec![Domain::Transactions, Domain::Bills],
-                    written,
-                    report,
-                }),
-                failures,
-            }),
+            counted(failing(
+                StoreParts {
+                    units: Box::new(InMemoryPorts::sample(chrono::Utc::now())),
+                    institutions: Box::new(InMemoryInstitutions::sample()),
+                    accounts: Box::new(lib_accounts::fake::InMemoryPorts::sample()),
+                    categories: Box::new(InMemoryCategories::sample()),
+                    tags: Box::new(lib_tags::fake::InMemoryPorts::sample()),
+                    payees: Box::new(lib_payees::fake::InMemoryPorts::sample()),
+                    transactions: Box::new(FailingTransactions {
+                        transactions: Marked {
+                            inner: transactions.clone(),
+                            written: written.clone(),
+                        },
+                        stored: transactions,
+                    }),
+                    bills: Box::new(FailingBills {
+                        bills: Marked {
+                            inner: bills.clone(),
+                            written: written.clone(),
+                        },
+                        stored: bills,
+                    }),
+                    budgets: Box::new(sample.budgets),
+                    inventory: Box::new(sample.inventory),
+                    documents: Box::new(sample.documents),
+                },
+                vec![Domain::Transactions, Domain::Bills],
+                written,
+                (report, failures),
+            )),
         )
     }
 

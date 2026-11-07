@@ -130,6 +130,11 @@ mod tests {
     use lib_ledger_creation::contract::{self, CreationFactory, Stored};
 
     use super::*;
+    use crate::{
+        AccountsStore as _, BillsStore as _, BudgetsStore as _, CategoriesStore as _,
+        DocumentsStore as _, InstitutionsStore as _, InventoryStore as _, PayeesStore as _,
+        TagsStore as _, TransactionsStore as _, UnitsStore as _,
+    };
     use crate::{Stores, open_storage};
 
     /// The adapter on a fresh folder, read back through `open_storage`, as a Client opens a Ledger.

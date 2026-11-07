@@ -25,8 +25,6 @@ pub(super) struct PageRouter<'a, 'b> {
     /// The day and date style the page's Dialogs are opened on.
     pub clock: Clock,
     pub date_style: Option<DateStyle>,
-    /// The Ledger the page's Dialogs read from and announce their writes through.
-    pub announcer: Entity<Announcer>,
     pub cx: &'a mut Context<'b, BillsPage>,
 }
 
@@ -61,16 +59,14 @@ impl BillsRouter for PageRouter<'_, '_> {
             )),
             Some(id) => PlanFormPresenter::edit(ports, id, self.clock.clone(), self.date_style),
         };
-        let dialog = presenter.map(|presenter| {
-            BillsDialog::plan_form(presenter, &self.ports, &self.announcer, self.landed())
-        });
+        let dialog = presenter
+            .map(|presenter| BillsDialog::plan_form(presenter, &self.ports, self.landed()));
         self.host(dialog)
     }
 
     fn open_skip(&mut self, entry: EntryId) -> bool {
-        let dialog = SkipPresenter::new(self.ports.clone(), entry).map(|presenter| {
-            BillsDialog::skip(presenter, &self.ports, &self.announcer, self.landed())
-        });
+        let dialog = SkipPresenter::new(self.ports.clone(), entry)
+            .map(|presenter| BillsDialog::skip(presenter, &self.ports, self.landed()));
         self.host(dialog)
     }
 
@@ -81,7 +77,6 @@ impl BillsRouter for PageRouter<'_, '_> {
             crate::bill_payments::router::PayStores {
                 bills: &self.ports,
                 payments: &self.payments,
-                announcer: &self.announcer,
             },
             request,
             self.clock.clone(),

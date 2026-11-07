@@ -7,8 +7,7 @@
 //! - `view/dialog.rs` holds each Dialog's Presenter in an Entity in the Dialog host, one View per
 //!   Dialog in `view/dialog/`.
 //! - `router.rs` is the Router and the module's entry point ([`document_types_page`]).
-//! - `ports.rs` holds the Documents store as the Presenters share it, and the announcement after a
-//!   write.
+//! - `ports.rs` holds the Documents store as the Presenters share it.
 //!
 //! The Documents destination (`src/documents/`) reads the types through the same store. Where the Documents are kept,
 //! the SQLite adapter opened at start or memory, is `lib-database`'s `DocumentsStore`.

@@ -1,24 +1,23 @@
 //! The Accounts Settings page's View: the `lib-accounts` page Presenter in a gpui Entity. It looks
 //! up each key the Shell passes on, as chord text, in the Accounts keymap, turns clicks into
-//! events, draws the view model (`render.rs`), and announces any Accounts write after every
-//! event ([`ports::refresh`]). Each key and click is one input (`crate::input::send`), which
+//! events, draws the view model (`render.rs`). Each key and click is one input (`crate::input::send`), which
 //! commits what it wrote. The Settings View hosts it as any other page.
 
 mod render;
 
-use crate::announcer::Domain;
 use gpui::{AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Subscription};
 use lib_accounts::AccountsOutcome;
 use lib_accounts::presenter::{
     AccountsCommand, AccountsPageEvent, AccountsPagePresenter, AccountsPageViewModel,
 };
+use lib_database::Domain;
 use lib_viper::keymap::Keymap;
 
 use lib_shell::Hint;
 
 use crate::account_deletion::DeletionStores;
 use crate::accounts::SettingsAccountsSnapshot;
-use crate::accounts::ports::{self, DesktopPorts};
+use crate::accounts::ports::DesktopPorts;
 use crate::accounts::router::PageRouter;
 use crate::settings::snapshot::PageSnapshot;
 use crate::{
@@ -42,7 +41,6 @@ pub struct AccountsPage {
     presenter: AccountsPagePresenter,
     ports: DesktopPorts,
     deletion: DeletionStores,
-    announcer: Entity<Announcer>,
     clock: lib_core::Clock,
     keymap: Keymap<AccountsPageEvent>,
     /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
@@ -70,7 +68,6 @@ impl AccountsPage {
             _accounts_changed: notify_on(&announcer, Domain::Accounts, cx),
             _units_changed: notify_on(&announcer, Domain::Units, cx),
             _institutions_changed: notify_on(&announcer, Domain::Institutions, cx),
-            announcer,
             clock,
             keymap,
             page_focused: false,
@@ -82,20 +79,16 @@ impl AccountsPage {
         crate::input::join_or_send(cx, |cx| self.handle(event, cx));
     }
 
-    /// Hands `event` to the Presenter with the Desktop's Router, then announces whatever it
-    /// wrote. Inside an input already, as [`Self::send`] or a Dialog's
-    /// confirm.
+    /// Hands `event` to the Presenter with the Desktop's Router. Inside an input already, as
+    /// [`Self::send`] or a Dialog's confirm.
     fn handle(&mut self, event: AccountsPageEvent, cx: &mut Context<'_, Self>) {
-        ports::refresh(&self.ports, &self.announcer, cx);
         let mut router = PageRouter {
             ports: self.ports.clone(),
-            announcer: self.announcer.clone(),
             deletion: self.deletion.clone(),
             clock: self.clock.clone(),
             cx,
         };
         self.presenter.handle(event, &mut router);
-        ports::refresh(&self.ports, &self.announcer, cx);
         cx.notify();
     }
 

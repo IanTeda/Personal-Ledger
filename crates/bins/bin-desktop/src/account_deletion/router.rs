@@ -2,13 +2,12 @@
 //! Delete Dialog's Presenter closes it through the host's `HostRouter`, which puts a Notice onto
 //! the bin's queue (`crate::notices`).
 
-use gpui::{Context, Entity, EventEmitter};
+use gpui::{Context, EventEmitter};
 use lib_account_deletion::AccountDeleted;
 use lib_account_deletion::presenter::DeleteAccountPresenter;
 use lib_core::AccountId;
 
 use super::{DeleteAccountDialog, DeletionStores};
-use crate::announcer::Announcer;
 use crate::shell::view::dialog_entity::host_dialog;
 use crate::view::event::ViewEvent;
 
@@ -18,7 +17,6 @@ use crate::view::event::ViewEvent;
 pub fn open_delete<P: EventEmitter<ViewEvent> + 'static>(
     cx: &mut Context<'_, P>,
     stores: &DeletionStores,
-    announcer: &Entity<Announcer>,
     id: AccountId,
     landed: impl Fn(&mut P, AccountDeleted, &mut Context<'_, P>) + 'static,
 ) -> bool {
@@ -31,13 +29,7 @@ pub fn open_delete<P: EventEmitter<ViewEvent> + 'static>(
         // A page that has gone has nothing to land on.
         let _ = page.update(cx, |page, cx| landed(page, outcome, cx));
     });
-    let dialog = DeleteAccountDialog::new(
-        presenter,
-        &stores.bills,
-        &stores.accounts,
-        announcer,
-        landed,
-    );
+    let dialog = DeleteAccountDialog::new(presenter, &stores.bills, &stores.accounts, landed);
     host_dialog(cx, |_| dialog);
     true
 }

@@ -1,6 +1,6 @@
 //! The Institutions ports as the Desktop holds them: the Institutions store `shell::router::build`
-//! shares, and the announcement that tells the Views reading the Institutions of a write. The
-//! write is committed by the input it was made in (`crate::input::send`), not here. The Ledger
+//! shares. The write is committed and announced by the input it was made in
+//! (`crate::input::send`), not here. The Ledger
 //! keeps no read copy of the Institutions (#1053): the Accounts page reads them from the store
 //! through `lib-database`'s `StoredAccountReads`.
 //!
@@ -17,10 +17,9 @@
 //! The ports are one value shared two ways: the Institutions module's Presenters read and write
 //! them as [`InstitutionsPorts`], and the Ledger store reloads them after a failed write.
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::rc::Rc;
 
-use gpui::{App, Entity};
 use lib_core::InstitutionId;
 use lib_database::{
     InstitutionsStore, SharedAccountsStore, SharedInstitutionsStore, SharedUnitsStore,
@@ -30,17 +29,12 @@ use lib_institutions::{
     Institution, InstitutionRepository, InstitutionUnits, InstitutionUsage, InstitutionsPorts,
 };
 
-use crate::announcer::{Announcer, Domain};
-use crate::write_count::WriteCount;
-
 /// The Institutions ports the Institutions module and the Ledger store share.
 pub type DesktopPorts = Rc<RefCell<LedgerBackedPorts>>;
 
-/// The shared Institutions store's Institutions, borrowed for each call. A write counts, so the
-/// ports can tell whether an input wrote.
+/// The shared Institutions store's Institutions, borrowed for each call.
 struct SharedInstitutions {
     store: SharedInstitutionsStore,
-    writes: WriteCount,
 }
 
 impl InstitutionRepository for SharedInstitutions {
@@ -49,7 +43,6 @@ impl InstitutionRepository for SharedInstitutions {
     }
 
     fn upsert_institution(&mut self, institution: Institution) {
-        self.writes.bump();
         self.store
             .borrow_mut()
             .institutions_mut()
@@ -57,7 +50,6 @@ impl InstitutionRepository for SharedInstitutions {
     }
 
     fn delete_institution(&mut self, id: InstitutionId) {
-        self.writes.bump();
         self.store
             .borrow_mut()
             .institutions_mut()
@@ -71,8 +63,6 @@ pub struct LedgerBackedPorts {
     store: SharedInstitutionsStore,
     institutions: SharedInstitutions,
     reads: StoredInstitutionReads,
-    /// The write count the last announcement saw, so a write is announced once.
-    announced: Cell<u64>,
 }
 
 impl LedgerBackedPorts {
@@ -84,18 +74,10 @@ impl LedgerBackedPorts {
         Rc::new(RefCell::new(Self {
             institutions: SharedInstitutions {
                 store: store.clone(),
-                writes: WriteCount::default(),
             },
             store,
             reads: StoredInstitutionReads { accounts, units },
-            announced: Cell::new(0),
         }))
-    }
-
-    /// Whether these ports were written since the last ask.
-    fn take_written(&self) -> bool {
-        let writes = self.institutions.writes.get();
-        writes != self.announced.replace(writes)
     }
 }
 
@@ -140,37 +122,6 @@ pub fn in_memory_store() -> SharedInstitutionsStore {
     ))
 }
 
-/// Puts the Institutions back as stored, after a write that named them failed, and announces
-/// `Domain::Institutions` so every reader redraws (ADR-0046).
-///
-/// # Errors
-/// Returns the error reading them back; the ports are left as they were.
-pub fn reload(
-    ports: &DesktopPorts,
-    announcer: &Entity<Announcer>,
-    cx: &mut App,
-) -> lib_database::Result<()> {
-    InstitutionsStore::reload(&mut *ports.borrow_mut())?;
-    announce(announcer, cx);
-    Ok(())
-}
-
-/// Announces `Domain::Institutions`, so the Institutions and Accounts pages redraw (#1053).
-pub fn announce(announcer: &Entity<Announcer>, cx: &mut App) {
-    announcer.update(cx, |announcer, cx| {
-        announcer.announce(Domain::Institutions, cx);
-    });
-}
-
-/// Announces `Domain::Institutions` when the ports were written since the last announcement, so
-/// the Accounts page sees a write at once. Run before and after every Institutions event and
-/// Dialog confirm.
-pub fn refresh(ports: &DesktopPorts, announcer: &Entity<Announcer>, cx: &mut App) {
-    if ports.borrow().take_written() {
-        announce(announcer, cx);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use lib_core::InstitutionId;
@@ -205,10 +156,9 @@ mod tests {
     }
 
     #[test]
-    fn a_write_through_the_ports_lands_in_the_shared_store_and_is_noted_once() {
+    fn a_write_through_the_ports_lands_in_the_shared_store() {
         let ports = ports(&sample());
         let mut held = ports.borrow_mut();
-        assert!(!held.take_written());
 
         let mut personal = InstitutionsPorts::institutions(&*held)
             .institution(InstitutionId::SEED_PERSONAL)
@@ -224,8 +174,6 @@ mod tests {
                 .map(|row| row.name),
             Some("Renamed".to_owned())
         );
-        assert!(held.take_written());
-        assert!(!held.take_written());
     }
 
     #[test]

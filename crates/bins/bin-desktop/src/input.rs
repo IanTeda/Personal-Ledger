@@ -3,8 +3,10 @@
 //! a module reports reach a Presenter through [`send`]. It runs the Presenter's `handle`, commits
 //! exactly once, whether or not anything was written (an empty commit is a no-op in the writer),
 //! reloads what the commit's deletes cascaded into, such as the Document Links to a deleted Payee,
-//! then drains the Notices the Routers queued into the Shell and redraws. No port or store
-//! commits for itself.
+//! announces in one `LedgerChanged` every domain the commit says the input wrote or cascaded into
+//! and every domain a failed write's rollback reloaded (none, when there are none), then drains
+//! the Notices the Routers queued into the Shell and redraws. No port or store commits for itself,
+//! and nothing else calls the [`Announcer`] (#1081).
 //!
 //! A call from one module to another (the root Router's month turn, a Dialog handing its outcome
 //! to its page) runs inside the current `send`, so the one commit covers every module's writes.
@@ -40,24 +42,30 @@
 //! input rather than sending its own (#1065).
 
 use std::borrow::BorrowMut;
+use std::collections::BTreeSet;
 use std::rc::Rc;
 
-use gpui::{App, Global, WeakEntity};
-use lib_database::Commit;
+use gpui::{App, Entity, Global, WeakEntity};
+use lib_database::{Commit, Committed, Domain};
 use lib_shell::ShellCommand;
 
+use crate::announcer::Announcer;
 use crate::shell::router::Root;
 
-/// What [`send`] reaches through: the commit every store's writes end in, and the Shell the
-/// Notices drain into. One per window's App, installed by `shell::router::build`.
+/// What [`send`] reaches through: the commit every store's writes end in, the Announcer it
+/// announces what the commit changed through, and the Shell the Notices drain into. One per
+/// window's App, installed by `shell::router::build`.
 struct Door {
-    /// The Open Ledger's commit, installed by `OpenLedger::build`: here rather than on `Root`
-    /// because `send` runs while `Root` may be mid-update. `None` with no Ledger open, when an
-    /// input has nothing to commit.
-    commit: Option<Rc<dyn Commit>>,
+    /// The Open Ledger's commit and Announcer, installed by `OpenLedger::build`: here rather than
+    /// on `Root` because `send` runs while `Root` may be mid-update. `None` with no Ledger open,
+    /// when an input has nothing to commit or announce.
+    ledger: Option<(Rc<dyn Commit>, Entity<Announcer>)>,
     shell: WeakEntity<Root>,
     /// Whether a `send` is running, so a second one inside it is caught.
     open: bool,
+    /// The domains read back from the file during the running input (a failed write's rollback),
+    /// announced with what it wrote.
+    reloaded: BTreeSet<Domain>,
 }
 
 impl Global for Door {}
@@ -66,17 +74,19 @@ impl Global for Door {}
 /// `shell::router::build`.
 pub(crate) fn install(shell: WeakEntity<Root>, cx: &mut App) {
     cx.set_global(Door {
-        commit: None,
+        ledger: None,
         shell,
         open: false,
+        reloaded: BTreeSet::new(),
     });
 }
 
-/// Ends every input from now on in `commit`, the Open Ledger's. Called by `OpenLedger::build`; a
-/// door not yet installed (a unit test building a part with no Shell) is left without one.
-pub(crate) fn open_ledger(commit: Rc<dyn Commit>, cx: &mut App) {
+/// Ends every input from now on in `commit`, the Open Ledger's, announcing what it changed through
+/// `announcer`. Called by `OpenLedger::build`; a door not yet installed (a unit test building a
+/// part with no Shell) is left without one.
+pub(crate) fn open_ledger(commit: Rc<dyn Commit>, announcer: Entity<Announcer>, cx: &mut App) {
     if cx.has_global::<Door>() {
-        cx.global_mut::<Door>().commit = Some(commit);
+        cx.global_mut::<Door>().ledger = Some((commit, announcer));
     }
 }
 
@@ -84,7 +94,15 @@ pub(crate) fn open_ledger(commit: Rc<dyn Commit>, cx: &mut App) {
 /// Called by `Root::close_ledger`; a door not yet installed is left as it is.
 pub(crate) fn close_ledger(cx: &mut App) {
     if cx.has_global::<Door>() {
-        cx.global_mut::<Door>().commit = None;
+        cx.global_mut::<Door>().ledger = None;
+    }
+}
+
+/// Notes that `domain` was read back from the file during the running input, so the input's one
+/// announcement names it: a failed write's rollback changes memory without writing.
+pub(crate) fn reloaded(domain: Domain, cx: &mut App) {
+    if cx.has_global::<Door>() {
+        cx.global_mut::<Door>().reloaded.insert(domain);
     }
 }
 
@@ -111,9 +129,9 @@ pub(crate) fn join_or_send<C: BorrowMut<App>, R>(
 }
 
 /// Delivers one input: runs `handle`, which hands it to its Presenter, then commits once, reloads
-/// each domain the commit's deletes cascade into (ADR-0046's 2026-11-02 amendment), reads the
-/// rail's badge counts again if the Ledger announced a change, drains the queued Notices into the
-/// Shell and redraws it. The reload and drain wait for the current update to
+/// each domain the commit's deletes cascade into (ADR-0046's 2026-11-02 amendment), announces what
+/// the input changed, reads the rail's badge counts again if it changed anything, drains the
+/// queued Notices into the Shell and redraws it. The reload and drain wait for the current update to
 /// end, since the Shell may be the Entity handling the input. Without a door (a unit test that
 /// builds a part with no Shell), it only runs `handle`.
 pub(crate) fn send<C: BorrowMut<App>, R>(cx: &mut C, handle: impl FnOnce(&mut C) -> R) -> R {
@@ -150,22 +168,32 @@ pub(crate) fn offer<C: BorrowMut<App>, R>(
     if !taken {
         return handled;
     }
-    let cascades = door
-        .commit
-        .as_ref()
-        .map(|commit| commit.commit())
-        .unwrap_or_default();
+    let reloaded = std::mem::take(&mut door.reloaded);
+    let (committed, announcer) = match &door.ledger {
+        Some((commit, announcer)) => (commit.commit(), Some(announcer.clone())),
+        None => (Committed::default(), None),
+    };
     let shell = door.shell.clone();
     app.defer(move |cx| {
-        // Gone with the window, so there is nothing left to show the Notices on.
+        // Gone with the window, so there is nothing left to reload into or show the Notices on.
+        let _ = shell.update(cx, |shell, _| shell.reload_cascades(&committed.cascaded));
+        let changed = changed(&committed, reloaded);
+        if let Some(announcer) = announcer.filter(|_| !changed.is_empty()) {
+            announcer.update(cx, |announcer, cx| announcer.announce(changed, cx));
+        }
         let _ = shell.update(cx, |shell, cx| {
-            shell.reload_cascades(&cascades, cx);
             shell.refresh_rail_counts(false, cx);
             shell.drain_notices(cx);
             cx.notify();
         });
     });
     handled
+}
+
+/// Every domain an input changed: those `committed` wrote or cascaded into, and those `reloaded`.
+fn changed(committed: &Committed, mut reloaded: BTreeSet<Domain>) -> BTreeSet<Domain> {
+    reloaded.extend(committed.wrote.iter().chain(&committed.cascaded));
+    reloaded
 }
 
 /// What the Shell's global keymap made of a key (step 3).
@@ -234,7 +262,7 @@ pub(crate) fn route_key(route: &mut impl KeyRoute) -> bool {
 mod tests {
     use std::cell::Cell;
 
-    use gpui::TestAppContext;
+    use gpui::{AppContext as _, TestAppContext};
     use lib_list_cursor::Step;
 
     use super::*;
@@ -436,13 +464,108 @@ mod tests {
 
     /// A door on a counting commit, draining into no Shell.
     fn door(cx: &mut TestAppContext) -> Rc<Cell<usize>> {
-        let commit = lib_database::CountingCommit::new(Rc::new(lib_database::InMemoryCommit));
+        door_announcing(cx).0
+    }
+
+    /// [`door`], with the commit's set of written domains, which a test notes a write in, and the
+    /// Announcer it announces through.
+    fn door_announcing(
+        cx: &mut TestAppContext,
+    ) -> (Rc<Cell<usize>>, lib_database::Written, Entity<Announcer>) {
+        let in_memory = lib_database::InMemoryCommit::default();
+        let written = in_memory.written().clone();
+        let commit = lib_database::CountingCommit::new(Rc::new(in_memory));
         let count = commit.count();
+        let announcer = cx.new(|_| Announcer::default());
         cx.update(|cx| {
             install(WeakEntity::new_invalid(), cx);
-            open_ledger(Rc::new(commit), cx);
+            open_ledger(Rc::new(commit), announcer.clone(), cx);
         });
-        count
+        (count, written, announcer)
+    }
+
+    /// Every `LedgerChanged` `announcer` emits from now on.
+    fn heard(
+        announcer: &Entity<Announcer>,
+        cx: &mut TestAppContext,
+    ) -> (
+        Rc<std::cell::RefCell<Vec<BTreeSet<Domain>>>>,
+        gpui::Subscription,
+    ) {
+        let heard: Rc<std::cell::RefCell<Vec<BTreeSet<Domain>>>> = Rc::default();
+        let log = heard.clone();
+        let subscription = cx.update(|cx| {
+            cx.subscribe(
+                announcer,
+                move |_, event: &crate::announcer::LedgerChanged, _| {
+                    std::cell::RefCell::borrow_mut(&log).push(event.what.clone());
+                },
+            )
+        });
+        (heard, subscription)
+    }
+
+    #[gpui::test]
+    fn an_input_that_wrote_nothing_announces_nothing(cx: &mut TestAppContext) {
+        let (_, _, announcer) = door_announcing(cx);
+        let (heard, _subscription) = heard(&announcer, cx);
+
+        cx.update(|cx| send(cx, |_| ()));
+        cx.run_until_parked();
+
+        assert!(heard.borrow().is_empty());
+    }
+
+    #[gpui::test]
+    fn an_input_that_wrote_announces_every_domain_it_wrote_once(cx: &mut TestAppContext) {
+        let (_, written, announcer) = door_announcing(cx);
+        let (heard, _subscription) = heard(&announcer, cx);
+
+        cx.update(|cx| {
+            send(cx, |_| {
+                written.note(Domain::Transactions);
+                written.note(Domain::Tags);
+                written.note(Domain::Transactions);
+            })
+        });
+        cx.run_until_parked();
+
+        assert_eq!(
+            *heard.borrow(),
+            [BTreeSet::from([Domain::Tags, Domain::Transactions])]
+        );
+    }
+
+    #[gpui::test]
+    fn a_rollback_announces_the_domains_it_reloaded(cx: &mut TestAppContext) {
+        let (_, _, announcer) = door_announcing(cx);
+        let (heard, _subscription) = heard(&announcer, cx);
+
+        cx.update(|cx| send(cx, |cx| reloaded(Domain::Budgets, cx)));
+        cx.run_until_parked();
+
+        assert_eq!(*heard.borrow(), [BTreeSet::from([Domain::Budgets])]);
+    }
+
+    #[test]
+    fn what_changed_is_every_domain_written_cascaded_or_reloaded_once() {
+        let committed = Committed {
+            wrote: vec![Domain::Payees, Domain::Transactions],
+            cascaded: vec![Domain::Documents],
+        };
+
+        assert_eq!(
+            changed(
+                &committed,
+                BTreeSet::from([Domain::Transactions, Domain::Units])
+            ),
+            BTreeSet::from([
+                Domain::Payees,
+                Domain::Transactions,
+                Domain::Documents,
+                Domain::Units,
+            ])
+        );
     }
 
     #[gpui::test]

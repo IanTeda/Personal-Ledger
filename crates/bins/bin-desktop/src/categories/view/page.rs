@@ -1,18 +1,17 @@
 //! The Categories Settings page's View: the `lib-categories` page Presenter in a gpui Entity. It
 //! looks up each key the Shell passes on, as chord text, in the Categories keymap, turns clicks
-//! into events, draws the view model (`render.rs`), and announces any Categories write after
-//! every event ([`ports::refresh`]). Each key and click is one input (`crate::input::send`), which
+//! into events, draws the view model (`render.rs`). Each key and click is one input (`crate::input::send`), which
 //! commits what it wrote. The Settings View hosts it as any other page.
 
 mod render;
 
-use crate::announcer::Domain;
 use gpui::{AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Subscription};
 use lib_categories::presenter::{
     CategoriesPageEvent, CategoriesPagePresenter, CategoriesPageViewModel,
 };
-use lib_categories::{CategoriesOutcome, CategoryChange, SharedCategories};
+use lib_categories::{CategoriesOutcome, SharedCategories};
 use lib_core::Clock;
+use lib_database::Domain;
 use lib_viper::keymap::Keymap;
 
 use lib_shell::Hint;
@@ -43,7 +42,6 @@ pub struct CategoriesPage {
     deletion: DeletionStores,
     /// The stores the page's Dialogs read and write beyond the Categories, and the write count.
     stores: ports::CategoryStores,
-    announcer: Entity<Announcer>,
     keymap: Keymap<CategoriesPageEvent>,
     clock: Clock,
     /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
@@ -67,7 +65,6 @@ impl CategoriesPage {
             deletion: setup.deletion,
             stores: setup.stores,
             _categories_changed: notify_on(&announcer, Domain::Categories, cx),
-            announcer,
             keymap: setup.keymap,
             clock,
             page_focused: false,
@@ -88,44 +85,28 @@ impl CategoriesPage {
         crate::input::join_or_send(cx, |cx| self.handle(event, cx));
     }
 
-    /// Hands `event` to the Presenter with the Desktop's Router, then announces whatever it
-    /// wrote. Inside an input already, as [`Self::send`] or a Dialog's
-    /// confirm.
+    /// Hands `event` to the Presenter with the Desktop's Router. Inside an input already, as
+    /// [`Self::send`] or a Dialog's confirm.
     fn handle(&mut self, event: CategoriesPageEvent, cx: &mut Context<'_, Self>) {
-        ports::refresh(&self.stores.writes, &self.announcer, cx);
         let mut router = PageRouter {
             categories: self.categories.clone(),
             deletion: self.deletion.clone(),
             stores: self.stores.clone(),
-            announcer: self.announcer.clone(),
             clock: self.clock.clone(),
             cx,
         };
         self.presenter.handle(event, &mut router);
-        ports::refresh(&self.stores.writes, &self.announcer, cx);
         cx.notify();
     }
 
-    /// A confirmed Dialog's outcome, handed back by the Dialog host inside the confirm's input. A
-    /// delete re-pointed the Splits, Bill Plans, Payee defaults and Budget Limits naming the
-    /// Category, so the four are announced, for the Views reading them.
+    /// A confirmed Dialog's outcome, handed back by the Dialog host inside the confirm's input,
+    /// whose commit names what the confirm wrote: a delete's Splits, Bill Plans, Payee defaults
+    /// and Budget Limits as well as the Categories.
     pub(in crate::categories) fn dialog_landed(
         &mut self,
         outcome: CategoriesOutcome,
         cx: &mut Context<'_, Self>,
     ) {
-        if outcome.change == CategoryChange::Deleted {
-            self.announcer.update(cx, |announcer, cx| {
-                for domain in [
-                    Domain::Transactions,
-                    Domain::Bills,
-                    Domain::Budgets,
-                    Domain::Payees,
-                ] {
-                    announcer.announce(domain, cx);
-                }
-            });
-        }
         self.handle(CategoriesPageEvent::DialogClosed(Some(outcome)), cx);
     }
 

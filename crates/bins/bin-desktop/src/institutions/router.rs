@@ -17,7 +17,6 @@ use crate::shell::view::dialog_entity::host_dialog;
 
 pub(super) struct PageRouter<'a, 'b> {
     pub ports: DesktopPorts,
-    pub announcer: gpui::Entity<Announcer>,
     pub cx: &'a mut Context<'b, InstitutionsPage>,
 }
 
@@ -31,16 +30,13 @@ impl InstitutionsRouter for PageRouter<'_, '_> {
             let _ = page.update(cx, |page, cx| page.dialog_landed(outcome, cx));
         });
         if let Which::DeleteInstitution(id) = dialog {
-            let Some(dialog) =
-                DeleteInstitutionDialog::open(id, &self.ports, &self.announcer, landed)
-            else {
+            let Some(dialog) = DeleteInstitutionDialog::open(id, &self.ports, landed) else {
                 return false;
             };
             host_dialog(self.cx, |_| dialog);
             return true;
         }
-        let Some(dialog) = InstitutionsDialog::open(dialog, &self.ports, &self.announcer, landed)
-        else {
+        let Some(dialog) = InstitutionsDialog::open(dialog, &self.ports, landed) else {
             return false;
         };
         host_dialog(self.cx, |_| dialog);

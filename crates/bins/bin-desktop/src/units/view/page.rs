@@ -1,6 +1,6 @@
 //! The Units Settings page's View: the `lib-units` page Presenter in a gpui Entity. It looks up
 //! each key the Shell passes on, as chord text, in the Units keymap, turns clicks into events, draws the view model
-//! (`render.rs`, `pane.rs`), and announces what each event wrote ([`ports::announce`]). Each key and click is one input (`crate::input::send`), which commits
+//! (`render.rs`, `pane.rs`). Each key and click is one input (`crate::input::send`), which commits
 //! what it wrote. The Settings View hosts it as any other page.
 //!
 //! A Unit's prices view (`prices.rs`) shows in place of the tables while it is open, on
@@ -17,7 +17,7 @@ use gpui::{
     AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Pixels, Point, Subscription,
 };
 
-use crate::announcer::Domain;
+use lib_database::Domain;
 use lib_units::UnitId;
 use lib_units::presenter::{
     UnitPricesEvent, UnitPricesPresenter, UnitPricesViewModel, UnitsPageEvent, UnitsPagePresenter,
@@ -27,7 +27,7 @@ use lib_viper::keymap::Keymap;
 
 use lib_shell::Hint;
 
-use crate::units::ports::{self, DesktopPorts};
+use crate::units::ports::DesktopPorts;
 use crate::units::router::PageRouter;
 use crate::{
     announcer::{Announcer, notify_on},
@@ -52,7 +52,6 @@ pub struct UnitsPage {
     presenter: UnitsPagePresenter,
     ports: DesktopPorts,
     deletion: lib_unit_deletion::SharedUnitDeletion,
-    announcer: Entity<Announcer>,
     keymap: Keymap<UnitsPageEvent>,
     prices_keymap: Keymap<UnitPricesEvent>,
     /// The Unit prices view, while it shows in place of the tables.
@@ -90,7 +89,6 @@ impl UnitsPage {
             _units_changed: notify_on(&announcer, Domain::Units, cx),
             // The pane's ACCOUNTS group reads the Ledger's Accounts.
             _accounts_changed: notify_on(&announcer, Domain::Accounts, cx),
-            announcer,
             keymap,
             prices_keymap,
             prices: None,
@@ -103,15 +101,12 @@ impl UnitsPage {
         crate::input::join_or_send(cx, |cx| self.handle(event, cx));
     }
 
-    /// Hands `event` to the Presenter with the Desktop's Router, then announces whatever it
-    /// wrote. Inside an input already, as [`Self::send`] or a Dialog's
-    /// confirm.
+    /// Hands `event` to the Presenter with the Desktop's Router, Router. Inside an input already, as
+    /// [`Self::send`] or a Dialog's confirm.
     fn handle(&mut self, event: UnitsPageEvent, cx: &mut Context<'_, Self>) {
-        ports::announce(&self.ports, &self.announcer, cx);
         let mut router = PageRouter {
             ports: self.ports.clone(),
             deletion: self.deletion.clone(),
-            announcer: self.announcer.clone(),
             clock: self.clock.clone(),
             cx,
             prices: None,
@@ -119,7 +114,6 @@ impl UnitsPage {
         self.presenter.handle(event, &mut router);
         let prices = router.prices;
         self.apply_prices(prices);
-        ports::announce(&self.ports, &self.announcer, cx);
         cx.notify();
     }
 
@@ -132,11 +126,9 @@ impl UnitsPage {
         let Some(presenter) = &mut self.prices else {
             return;
         };
-        ports::announce(&self.ports, &self.announcer, cx);
         let mut router = PageRouter {
             ports: self.ports.clone(),
             deletion: self.deletion.clone(),
-            announcer: self.announcer.clone(),
             clock: self.clock.clone(),
             cx,
             prices: None,
@@ -144,7 +136,6 @@ impl UnitsPage {
         presenter.handle(event, &mut router);
         let prices = router.prices;
         self.apply_prices(prices);
-        ports::announce(&self.ports, &self.announcer, cx);
         cx.notify();
     }
 

@@ -5,11 +5,11 @@
 //! of the View interface is a no-op. Each click is one input (`crate::input::send`), whose commit
 //! writes nothing, since the Dashboard writes nothing.
 
-use crate::announcer::Domain;
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, Subscription, Window};
 use gpui::{div, prelude::*, px};
 use lib_core::{Clock, DateStyle};
 use lib_dashboard::{DashboardEvent, DashboardPresenter, DashboardReads, DashboardViewModel};
+use lib_database::Domain;
 use lib_viper::display::StatusGlyphs;
 
 use super::content;
@@ -65,8 +65,8 @@ impl DashboardPage {
                 Domain::Payees,
             ];
             if reads.iter().any(|domain| event.what.contains(domain)) {
-                // Not `send`: the announcement is raised inside the input that wrote, whose one commit
-                // is still to come, so a second commit here would count as another input.
+                // Not `send`: the input door announces after the input's one commit, and a redraw
+                // writes nothing, so it is no input of its own.
                 this.presenter
                     .handle(DashboardEvent::LedgerChanged, &mut PageRouter { cx });
                 cx.notify();

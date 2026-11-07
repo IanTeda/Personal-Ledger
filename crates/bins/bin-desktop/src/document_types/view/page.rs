@@ -1,13 +1,12 @@
 //! The Document Types Settings page's View: the `lib-documents` page Presenter in a gpui Entity. It
 //! looks up each key the Shell passes on, as chord text, in the Document Types keymap, turns clicks
-//! into events, draws the view model (`render.rs`), and announces the Documents after every event
-//! so the Documents View redraws ([`ports::announce`]). Each key and click is one input (`crate::input::send`), which
+//! into events, draws the view model (`render.rs`). Each key and click is one input (`crate::input::send`), which
 //! commits what it wrote. The Settings View hosts it as any other page.
 
 mod render;
 
-use crate::announcer::Domain;
 use gpui::{AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Subscription};
+use lib_database::Domain;
 use lib_documents::presenter::{
     DocumentTypesPageEvent, DocumentTypesPagePresenter, DocumentTypesPageViewModel,
 };
@@ -35,7 +34,6 @@ impl EventEmitter<PageRowClicked> for DocumentTypesPage {}
 pub struct DocumentTypesPage {
     presenter: DocumentTypesPagePresenter,
     documents: SharedRepository,
-    announcer: Entity<Announcer>,
     keymap: Keymap<DocumentTypesPageEvent>,
     /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
     /// draws the page.
@@ -50,13 +48,11 @@ impl DocumentTypesPage {
         announcer: Entity<Announcer>,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        // Settings › Documents announces after each event itself, so its writes go unnoted.
-        let documents = ports::shared(&setup.store, &ports::Written::default());
+        let documents = ports::shared(&setup.store);
         Self {
             presenter: DocumentTypesPagePresenter::new(documents.clone(), setup.keymap.clone()),
             documents,
             _types_changed: notify_on(&announcer, Domain::DocumentTypes, cx),
-            announcer,
             keymap: setup.keymap,
             page_focused: false,
         }
@@ -74,17 +70,14 @@ impl DocumentTypesPage {
         crate::input::join_or_send(cx, |cx| self.handle(event, cx));
     }
 
-    /// Hands `event` to the Presenter with the Desktop's Router, then announces whatever it wrote.
-    /// Inside an input already, as [`Self::send`] or a Dialog's
-    /// confirm.
+    /// Hands `event` to the Presenter with the Desktop's Router. Inside an input already, as
+    /// [`Self::send`] or a Dialog's confirm.
     fn handle(&mut self, event: DocumentTypesPageEvent, cx: &mut Context<'_, Self>) {
         let mut router = PageRouter {
             documents: self.documents.clone(),
-            announcer: self.announcer.clone(),
             cx,
         };
         self.presenter.handle(event, &mut router);
-        ports::announce(&self.announcer, cx);
         cx.notify();
     }
 

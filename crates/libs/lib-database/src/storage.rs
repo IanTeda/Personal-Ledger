@@ -40,7 +40,28 @@ pub struct Storage {
 /// [`Storage`] start-up opened, or from in-memory stores for a test ([`Stores::fake`]), so
 /// building the Shell takes one argument for storage. The writer isn't here: the Client keeps it
 /// from the [`Storage`] to flush as it quits.
+///
+/// Each store is [`Recorded`](store::Recorded): it notes its domain in the commit's
+/// [`Written`](crate::Written) on every mutable access, so the [`Committed`](crate::Committed) the
+/// commit returns names every domain the input wrote.
 pub struct Stores {
+    pub units: store::Recorded<dyn store::UnitsStore>,
+    pub institutions: store::Recorded<dyn store::InstitutionsStore>,
+    pub accounts: store::Recorded<dyn store::AccountsStore>,
+    pub categories: store::Recorded<dyn store::CategoriesStore>,
+    pub tags: store::Recorded<dyn store::TagsStore>,
+    pub payees: store::Recorded<dyn store::PayeesStore>,
+    pub transactions: store::Recorded<dyn store::TransactionsStore>,
+    pub bills: store::Recorded<dyn store::BillsStore>,
+    pub budgets: store::Recorded<dyn store::BudgetsStore>,
+    pub inventory: store::Recorded<dyn store::InventoryStore>,
+    pub documents: store::Recorded<dyn store::DocumentsStore>,
+    pub commit: Rc<dyn crate::Commit>,
+    pub failures: mpsc::Receiver<WriteFailure>,
+}
+
+/// The stores [`Stores::new`] wraps, unrecorded: the adapters or the in-memory fakes.
+pub struct StoreParts {
     pub units: Box<dyn store::UnitsStore>,
     pub institutions: Box<dyn store::InstitutionsStore>,
     pub accounts: Box<dyn store::AccountsStore>,
@@ -52,27 +73,65 @@ pub struct Stores {
     pub budgets: Box<dyn store::BudgetsStore>,
     pub inventory: Box<dyn store::InventoryStore>,
     pub documents: Box<dyn store::DocumentsStore>,
-    pub commit: Rc<dyn crate::Commit>,
-    pub failures: mpsc::Receiver<WriteFailure>,
+}
+
+impl Stores {
+    /// `parts`, each wrapped once in a recorder noting its domain in `written`, which `commit`
+    /// drains, so the commit says what each input wrote.
+    pub fn new(
+        parts: StoreParts,
+        written: &crate::Written,
+        commit: Rc<dyn crate::Commit>,
+        failures: mpsc::Receiver<WriteFailure>,
+    ) -> Self {
+        use crate::Domain;
+        Self {
+            units: store::Recorded::new(Domain::Units, written.clone(), parts.units),
+            institutions: store::Recorded::new(
+                Domain::Institutions,
+                written.clone(),
+                parts.institutions,
+            ),
+            accounts: store::Recorded::new(Domain::Accounts, written.clone(), parts.accounts),
+            categories: store::Recorded::new(Domain::Categories, written.clone(), parts.categories),
+            tags: store::Recorded::new(Domain::Tags, written.clone(), parts.tags),
+            payees: store::Recorded::new(Domain::Payees, written.clone(), parts.payees),
+            transactions: store::Recorded::new(
+                Domain::Transactions,
+                written.clone(),
+                parts.transactions,
+            ),
+            bills: store::Recorded::new(Domain::Bills, written.clone(), parts.bills),
+            budgets: store::Recorded::new(Domain::Budgets, written.clone(), parts.budgets),
+            inventory: store::Recorded::new(Domain::Inventory, written.clone(), parts.inventory),
+            documents: store::Recorded::new(Domain::Documents, written.clone(), parts.documents),
+            commit,
+            failures,
+        }
+    }
 }
 
 impl From<Storage> for Stores {
     fn from(storage: Storage) -> Self {
-        Self {
-            units: Box::new(storage.units),
-            institutions: Box::new(storage.institutions),
-            accounts: Box::new(storage.accounts),
-            categories: Box::new(storage.categories),
-            tags: Box::new(storage.tags),
-            payees: Box::new(storage.payees),
-            transactions: Box::new(storage.transactions),
-            bills: Box::new(storage.bills),
-            budgets: Box::new(storage.budgets),
-            inventory: Box::new(storage.inventory),
-            documents: Box::new(storage.documents),
-            commit: Rc::new(storage.pending),
-            failures: storage.failures,
-        }
+        let written = storage.pending.written().clone();
+        Self::new(
+            StoreParts {
+                units: Box::new(storage.units),
+                institutions: Box::new(storage.institutions),
+                accounts: Box::new(storage.accounts),
+                categories: Box::new(storage.categories),
+                tags: Box::new(storage.tags),
+                payees: Box::new(storage.payees),
+                transactions: Box::new(storage.transactions),
+                bills: Box::new(storage.bills),
+                budgets: Box::new(storage.budgets),
+                inventory: Box::new(storage.inventory),
+                documents: Box::new(storage.documents),
+            },
+            &written,
+            Rc::new(storage.pending),
+            storage.failures,
+        )
     }
 }
 
@@ -555,6 +614,278 @@ mod tests {
                 .iter()
                 .any(|entry| matches!(entry.resolution, Resolution::Paid(_))),
             "the sample's Paid entries keep their Transactions"
+        );
+    }
+}
+
+/// What the commit says an input changed, read through [`Stores`] as a Client holds them: on the
+/// in-memory fakes and on the Ledger file.
+#[cfg(test)]
+mod committed_tests {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    use chrono::NaiveDate;
+    use lib_category_deletion::CategoryDeletion as _;
+    use lib_documents::DocumentLink;
+    use lib_tag_removal::TagRemoval as _;
+
+    use super::*;
+    use crate::adapter::store::{
+        DocumentsStore, PayeesStore, SharedStores, TagsStore, TransactionsStore as _,
+    };
+    use crate::{Committed, Domain, FakeStores, seed};
+
+    fn today() -> NaiveDate {
+        NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date")
+    }
+
+    /// The Sample Ledger in memory, as the UI tests build the Client on it.
+    fn fakes() -> Stores {
+        Stores::fake(FakeStores::sample(today())).0
+    }
+
+    /// The Sample Ledger created as a Ledger file in `dir`, opened as a Client opens it, with the
+    /// writer to flush it through.
+    fn file(dir: &Path) -> (Stores, Writer) {
+        let path = dir.join("ledger.pldb");
+        seed::sample_ledger(&path, today()).expect("the Sample Ledger is created");
+        let storage = open_storage(&path).expect("the Ledger opens");
+        let writer = storage.writer.clone();
+        (Stores::from(storage), writer)
+    }
+
+    /// Every store shared, as a Client shares them out, and the commit.
+    fn share(stores: Stores) -> (SharedStores, Rc<dyn crate::Commit>) {
+        let shared = SharedStores {
+            units: Rc::new(RefCell::new(stores.units)),
+            institutions: Rc::new(RefCell::new(stores.institutions)),
+            accounts: Rc::new(RefCell::new(stores.accounts)),
+            categories: Rc::new(RefCell::new(stores.categories)),
+            tags: Rc::new(RefCell::new(stores.tags)),
+            payees: Rc::new(RefCell::new(stores.payees)),
+            transactions: Rc::new(RefCell::new(stores.transactions)),
+            bills: Rc::new(RefCell::new(stores.bills)),
+            budgets: Rc::new(RefCell::new(stores.budgets)),
+            inventory: Rc::new(RefCell::new(stores.inventory)),
+            documents: Rc::new(RefCell::new(stores.documents)),
+        };
+        (shared, stores.commit)
+    }
+
+    /// Renames the first sample Tag, a write to the Tags alone.
+    fn rename_a_tag(stores: &mut Stores) {
+        let mut tag = stores.tags.tags().tags()[0].clone();
+        tag.name.push_str(" (renamed)");
+        stores.tags.tags_mut().upsert_tag(tag);
+    }
+
+    /// Writes the first Document Type back as it is, a write to the Document Types alone.
+    fn rewrite_a_document_type(stores: &mut Stores) {
+        let row = DocumentsStore::documents(&stores.documents).document_types()[0].clone();
+        DocumentsStore::documents_mut(&mut stores.documents).upsert_document_type(&row);
+    }
+
+    fn wrote(domains: &[Domain]) -> Committed {
+        Committed {
+            wrote: domains.to_vec(),
+            cascaded: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_commit_with_no_writes_reports_nothing_on_either() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        for stores in [fakes(), file(dir.path()).0] {
+            let _ = stores.tags.tags().tags();
+
+            assert!(stores.commit.commit().is_empty());
+        }
+    }
+
+    #[test]
+    fn a_write_puts_its_domain_in_wrote_once_on_either() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        for mut stores in [fakes(), file(dir.path()).0] {
+            rename_a_tag(&mut stores);
+            rename_a_tag(&mut stores);
+
+            assert_eq!(stores.commit.commit(), wrote(&[Domain::Tags]));
+            assert!(stores.commit.commit().is_empty(), "the commit drains it");
+        }
+    }
+
+    #[test]
+    fn a_document_type_write_reports_document_types_alone_on_either() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        for mut stores in [fakes(), file(dir.path()).0] {
+            rewrite_a_document_type(&mut stores);
+
+            assert_eq!(stores.commit.commit(), wrote(&[Domain::DocumentTypes]));
+        }
+    }
+
+    #[test]
+    fn a_tag_merge_reports_the_tags_and_the_transactions() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        for stores in [fakes(), file(dir.path()).0] {
+            let (shared, commit) = share(stores);
+            let mut removal =
+                crate::TagRemovalAdapter::new(shared.tags.clone(), shared.transactions.clone());
+            let tags = shared.tags.borrow().tags().tags();
+            let source = tags
+                .iter()
+                .find(|tag| !removal.transactions_carrying(tag.id).is_empty())
+                .expect("the sample tags a Transaction")
+                .id;
+            let target = tags
+                .iter()
+                .find(|tag| tag.id != source)
+                .expect("the sample has two Tags")
+                .id;
+
+            lib_tag_removal::interactor::MergeTags { source, target }
+                .run(&mut removal)
+                .expect("both Tags exist");
+
+            assert_eq!(
+                commit.commit(),
+                wrote(&[Domain::Transactions, Domain::Tags])
+            );
+        }
+    }
+
+    #[test]
+    fn a_category_delete_reports_every_domain_its_handover_writes() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        for stores in [fakes(), file(dir.path()).0] {
+            let (shared, commit) = share(stores);
+            let mut deletion = crate::CategoryDeletionAdapter::new(
+                shared.categories.clone(),
+                shared.transactions.clone(),
+                shared.bills.clone(),
+                shared.payees.clone(),
+                shared.budgets.clone(),
+            );
+            let categories = shared.categories.borrow().categories().categories();
+            let id = categories
+                .iter()
+                .map(|category| category.id)
+                .find(|&id| {
+                    !deletion.transactions_using(id).is_empty()
+                        && !deletion.bill_plans_using(id).is_empty()
+                        && !deletion.payees_defaulting_to(id).is_empty()
+                        && !deletion.budgets_limiting(id).is_empty()
+                })
+                .expect("a sample Category named by a Split, a Bill Plan, a Payee and a Limit");
+
+            lib_category_deletion::interactor::DeleteCategory { id }
+                .run(&mut deletion)
+                .expect("a leaf Category deletes");
+
+            let mut domains = commit.commit().wrote;
+            domains.sort();
+            assert_eq!(
+                domains,
+                [
+                    Domain::Categories,
+                    Domain::Payees,
+                    Domain::Transactions,
+                    Domain::Bills,
+                    Domain::Budgets,
+                ]
+            );
+        }
+    }
+
+    #[test]
+    fn a_delete_that_cascades_on_the_file_reports_the_cascade() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let (mut stores, _writer) = file(dir.path());
+        let linked = DocumentsStore::documents(&stores.documents)
+            .documents()
+            .into_iter()
+            .flat_map(|document| document.links)
+            .find_map(|link| match link {
+                DocumentLink::Transaction(id) => Some(id),
+                _ => None,
+            })
+            .expect("a sample Document links a Transaction");
+
+        stores
+            .transactions
+            .transactions_mut()
+            .delete_transaction(linked);
+
+        assert_eq!(
+            stores.commit.commit(),
+            Committed {
+                wrote: vec![Domain::Transactions],
+                cascaded: vec![Domain::Documents],
+            }
+        );
+    }
+
+    #[test]
+    fn a_reload_by_domain_drops_only_that_domains_pending_writes() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let (stores, writer) = file(dir.path());
+        let (shared, commit) = share(stores);
+        let mut tag = shared.tags.borrow().tags().tags()[0].clone();
+        let stored_name = tag.name.clone();
+        tag.name.push_str(" (dropped)");
+        shared.tags.borrow_mut().tags_mut().upsert_tag(tag.clone());
+        let mut payee = shared.payees.borrow().payees().payees()[0].clone();
+        payee.name.push_str(" (kept)");
+        shared
+            .payees
+            .borrow_mut()
+            .payees_mut()
+            .upsert_payee(payee.clone());
+
+        shared.reload(Domain::Tags).expect("the Tags load");
+        commit.commit();
+        writer.flush().expect("the writer is running");
+
+        let reopened = open_storage(&dir.path().join("ledger.pldb")).expect("the Ledger opens");
+        assert_eq!(
+            TagsStore::tags(&reopened.tags)
+                .tag(tag.id)
+                .map(|tag| tag.name),
+            Some(stored_name.clone())
+        );
+        assert_eq!(
+            shared.tags.borrow().tags().tag(tag.id).map(|tag| tag.name),
+            Some(stored_name),
+            "memory is read back too"
+        );
+        assert_eq!(
+            PayeesStore::payees(&reopened.payees)
+                .payee(payee.id)
+                .map(|payee| payee.name),
+            Some(payee.name)
+        );
+    }
+
+    #[test]
+    fn the_documents_and_the_document_types_reload_the_one_documents_store() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let (stores, _writer) = file(dir.path());
+        let (shared, _commit) = share(stores);
+        let before = shared.documents.borrow().documents().document_types();
+        let mut row = before[0].clone();
+        row.name.push_str(" (dropped)");
+        shared
+            .documents
+            .borrow_mut()
+            .documents_mut()
+            .upsert_document_type(&row);
+
+        shared.reload(Domain::DocumentTypes).expect("the rows load");
+
+        assert_eq!(
+            shared.documents.borrow().documents().document_types(),
+            before
         );
     }
 }

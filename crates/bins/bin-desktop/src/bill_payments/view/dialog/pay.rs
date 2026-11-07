@@ -12,15 +12,14 @@
 //! closes on [`DialogClosed`].
 
 use gpui::{
-    AnyElement, App, Context, Entity, EventEmitter, Render, ScrollHandle, SharedString, Window,
-    div, prelude::*, px,
+    AnyElement, App, Context, EventEmitter, Render, ScrollHandle, SharedString, Window, div,
+    prelude::*, px,
 };
 use lib_bill_payments::PayOutcome;
 use lib_bill_payments::presenter::{
     MatchChoice, PayEvent, PayField, PayMode, PayPresenter, PayViewModel,
 };
 
-use crate::announcer::Announcer;
 use crate::bills::DesktopPorts;
 use crate::dialog;
 use crate::form::dialog_fields::{label, text_field, two_up};
@@ -45,27 +44,20 @@ type Clicks = DialogClicks<PayDialog>;
 pub(crate) type Landed = Box<dyn Fn(PayOutcome, &mut App)>;
 
 /// The open Pay Dialog: its Presenter, the Bills ports its confirm copies the reads into, and the
-/// Ledger it reads from and announces its write through.
+/// Ledger it reads from.
 pub struct PayDialog {
     presenter: PayPresenter,
     ports: DesktopPorts,
-    announcer: Entity<Announcer>,
     landed: Landed,
     /// The body's scroll, which `j`/`k` move to keep the chosen Match row in view.
     scroll: ScrollHandle,
 }
 
 impl PayDialog {
-    pub(crate) fn new(
-        presenter: PayPresenter,
-        ports: &DesktopPorts,
-        announcer: &Entity<Announcer>,
-        landed: Landed,
-    ) -> Self {
+    pub(crate) fn new(presenter: PayPresenter, ports: &DesktopPorts, landed: Landed) -> Self {
         Self {
             presenter,
             ports: ports.clone(),
-            announcer: announcer.clone(),
             landed,
             scroll: ScrollHandle::new(),
         }
@@ -108,15 +100,10 @@ type Router = HostRouter<PayOutcome>;
 impl EventEmitter<DialogClosed> for PayDialog {}
 
 impl HostedDialog for PayDialog {
-    /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) announces the
-    /// Transactions and the Bills after it, as it may have written them. A step down
+    /// Every input is the Presenter's to read. A step down
     /// the Match list scrolls the chosen row into view.
     fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
-        let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
         let router = self.send(PayEvent::Input(input));
-        if may_confirm {
-            crate::bill_payments::announce(&self.announcer, cx);
-        }
         let steps = matches!(input, DialogInput::SelectNext | DialogInput::SelectPrevious);
         let view = self.view();
         if steps
@@ -132,11 +119,9 @@ impl HostedDialog for PayDialog {
         self.view().frame.can_confirm
     }
 
-    /// Sends Confirm to the Presenter, which pays or matches, then announces the Transactions and
-    /// the Bills. A refusal stays on the view model and keeps the Dialog open.
+    /// Sends Confirm to the Presenter, which pays or matches. A refusal stays on the view model and keeps the Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
         let router = self.send(PayEvent::Confirm);
-        crate::bill_payments::announce(&self.announcer, cx);
         self.closed(router, cx);
     }
 

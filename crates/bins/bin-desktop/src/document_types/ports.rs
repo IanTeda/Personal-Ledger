@@ -1,42 +1,24 @@
 //! The Documents store as the Document Types module's Presenters hold it (#966): the store
 //! `shell::router::build` is given, shared with the Documents page. The
-//! writes are committed by the input they were made in (`crate::input::send`), not here.
+//! writes are committed and announced by the input they were made in (`crate::input::send`), not
+//! here.
 
-use std::cell::{Cell, RefCell, RefMut};
+use std::cell::RefCell;
 use std::rc::Rc;
 
-use gpui::{App, Entity};
 use lib_core::{DocumentId, DocumentTypeId};
-use lib_database::{DocumentsStore, SharedDocumentsStore};
+use lib_database::SharedDocumentsStore;
 use lib_documents::types::DocumentTypeRow;
 use lib_documents::{Document, DocumentRepository, SharedRepository};
 
-use crate::announcer::{Announcer, Domain};
-
-/// Whether a write went through a [`StoreDocuments`] since the last ask, so the Documents page
-/// announces the Documents only after an event that wrote them. A clone shares the one flag.
-#[derive(Clone, Default)]
-pub struct Written(Rc<Cell<bool>>);
-
-impl Written {
-    /// Whether anything was written since the last ask.
-    pub fn take(&self) -> bool {
-        self.0.take()
-    }
-}
-
 /// The shared store as the module's Presenters hold the repository, borrowed for each call: the
-/// store is shared behind a `RefCell` whose guard can't be lent out of it. Each write sets
-/// `written`.
+/// store is shared behind a `RefCell` whose guard can't be lent out of it.
 pub struct StoreDocuments {
     store: SharedDocumentsStore,
-    written: Written,
 }
 
 impl StoreDocuments {
-    /// The store to write, noting the write.
-    fn write(&self) -> RefMut<'_, dyn DocumentsStore> {
-        self.written.0.set(true);
+    fn write(&self) -> std::cell::RefMut<'_, dyn lib_database::DocumentsStore> {
         self.store.borrow_mut()
     }
 }
@@ -71,23 +53,11 @@ impl DocumentRepository for StoreDocuments {
     }
 }
 
-/// `store` as the Document Types module's Presenters and the Documents page share it, each write
-/// noted in `written`.
-pub fn shared(store: &SharedDocumentsStore, written: &Written) -> SharedRepository {
+/// `store` as the Document Types module's Presenters and the Documents page share it.
+pub fn shared(store: &SharedDocumentsStore) -> SharedRepository {
     Rc::new(RefCell::new(StoreDocuments {
         store: store.clone(),
-        written: written.clone(),
     }))
-}
-
-/// Announces `Domain::Documents` and `Domain::DocumentTypes` after a Document Types event or Dialog
-/// confirm, so the Documents View redraws what the store now holds: a removal moves Documents, and
-/// a reorder or a new type reaches its type filter.
-pub fn announce(announcer: &Entity<Announcer>, cx: &mut App) {
-    announcer.update(cx, |announcer, cx| {
-        announcer.announce(Domain::Documents, cx);
-        announcer.announce(Domain::DocumentTypes, cx);
-    });
 }
 
 #[cfg(test)]
@@ -108,12 +78,7 @@ mod tests {
     #[test]
     fn the_interactors_write_the_shared_store_through_the_wrapper() {
         let store = store();
-        let written = Written::default();
-        let shared = shared(&store, &written);
-        assert!(
-            !written.take(),
-            "nothing is written before an Interactor runs"
-        );
+        let shared = shared(&store);
 
         assert!(
             MoveDocumentType {
@@ -134,7 +99,5 @@ mod tests {
         assert_eq!(stored[1].name, "Receipts");
         assert_eq!(stored.last().map(|row| row.files), Some(33));
         assert_eq!(shared.borrow().document_types(), stored);
-        assert!(written.take(), "the writes are noted");
-        assert!(!written.take(), "and the note is taken once");
     }
 }

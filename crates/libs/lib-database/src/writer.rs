@@ -35,8 +35,10 @@ static CLIENT_MIGRATIONS: Migrator = sqlx::migrate!("./migrations/client");
 /// A boxed future a [`Batch`] or a [`Writer::run`] job returns.
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-/// The domain a change belongs to, so a failure can name the adapters that must reload.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// A part of the Ledger a write can touch: what a change belongs to, so a failure can name the
+/// adapters that must reload, and what a [`Committed`](crate::Committed) names, so a Client tells
+/// the readers of each domain an input changed. The one `Domain` both Clients name domains by.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Domain {
     Units,
     Institutions,
@@ -49,6 +51,9 @@ pub enum Domain {
     Budgets,
     Inventory,
     Documents,
+    /// The Document Types, kept in the Documents store but announced on their own, so the Document
+    /// Types page hears only their writes.
+    DocumentTypes,
     /// The test-only second adapter, which proves one commit spans domains.
     #[cfg(test)]
     Test,

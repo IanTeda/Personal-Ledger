@@ -10,7 +10,8 @@
 //!
 //! It is the one place a Ledger's stores and stored reads are assembled ([`LedgerStores`], #1057):
 //! `build` hands each page the reads it needs, and keeps the stores for a failed write's reload, a
-//! new month and the test hooks. Writes are announced through its [`Announcer`].
+//! new month and the test hooks. The input door announces each input's writes through its
+//! [`Announcer`] (#1081).
 
 mod stores;
 
@@ -94,11 +95,11 @@ impl lib_shell::ShellRailCounts for CountedRailReads {
 }
 
 /// Everything built on one Ledger file: its stores and the ports over them, the Views that read
-/// them, the Announcer their writes are announced through, and the listener for its writer's
+/// them, the Announcer the input door announces their writes through, and the listener for its writer's
 /// failures. Its commit is installed in `input.rs`'s door as it is built, since `send` can't reach
 /// `Root` mid-update.
 pub struct OpenLedger {
-    /// What every module announces its writes through, which the pages repaint on. It holds no
+    /// What the input door announces each input's writes through, which the pages repaint on. It holds no
     /// rows: every page reads the stores below.
     pub(super) announcer: Entity<Announcer>,
     /// The shared stores, reloaded here when a write to them fails, and which a new month's Bill
@@ -151,7 +152,10 @@ impl OpenLedger {
             commit,
             failures,
         } = LedgerStores::build(stores);
-        crate::input::open_ledger(commit, cx);
+        // The stores are the truth: the input door announces what each input wrote through the
+        // Announcer, which holds no rows (#1028, #1057, #1081).
+        let announcer = cx.new(|_| Announcer::default());
+        crate::input::open_ledger(commit, announcer.clone(), cx);
         let failures = Rc::new(failures);
         let institutions_setup =
             crate::institutions::InstitutionsSetup::new(storage.institutions.clone(), keybindings);
@@ -258,21 +262,17 @@ impl OpenLedger {
         });
         let budgets_ports =
             crate::budgets::ports::DesktopPorts::new(storage.budgets.clone(), budget_reads);
-        // The stores are the truth: their writers announce through the Announcer, which holds no
-        // rows (#1028, #1057).
-        let announcer = cx.new(|_| Announcer::default());
         let units_ports = settings_setup.units.ports.clone();
         // The pages repaint when a domain they read is announced.
-        let categories_subscription =
-            notify_on(&announcer, crate::announcer::Domain::Categories, cx);
-        let units_subscription = notify_on(&announcer, crate::announcer::Domain::Units, cx);
-        let tags_subscription = notify_on(&announcer, crate::announcer::Domain::Tags, cx);
+        let categories_subscription = notify_on(&announcer, lib_database::Domain::Categories, cx);
+        let units_subscription = notify_on(&announcer, lib_database::Domain::Units, cx);
+        let tags_subscription = notify_on(&announcer, lib_database::Domain::Tags, cx);
         let institutions_subscription =
-            notify_on(&announcer, crate::announcer::Domain::Institutions, cx);
-        let accounts_changed = notify_on(&announcer, crate::announcer::Domain::Accounts, cx);
-        let payees_changed = notify_on(&announcer, crate::announcer::Domain::Payees, cx);
+            notify_on(&announcer, lib_database::Domain::Institutions, cx);
+        let accounts_changed = notify_on(&announcer, lib_database::Domain::Accounts, cx);
+        let payees_changed = notify_on(&announcer, lib_database::Domain::Payees, cx);
         // Documents resolve their Links against the Inventory.
-        let inventory_changed = notify_on(&announcer, crate::announcer::Domain::Inventory, cx);
+        let inventory_changed = notify_on(&announcer, lib_database::Domain::Inventory, cx);
         settings.update(cx, |view, cx| {
             view.open_ledger(&announcer, clock, settings_setup, cx)
         });
@@ -282,8 +282,7 @@ impl OpenLedger {
         let transactions_subscription = Root::view_event_subscription(&transactions_view, cx);
         // The status line reads the page's state, so a change in it repaints `Root` too.
         let transactions_view_observer = cx.observe(&transactions_view, |_, _, cx| cx.notify());
-        let import_view =
-            cx.new(|_| ImportPage::new(import_stores, announcer.clone(), clock.clone()));
+        let import_view = cx.new(|_| ImportPage::new(import_stores, clock.clone()));
         // The status line reads the step's state, and which View shows turns on it being open.
         let import_view_observer = cx.observe(&import_view, |_, _, cx| cx.notify());
         let budgets_view = crate::budgets::router::budgets_page(

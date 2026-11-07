@@ -16,11 +16,9 @@ pub(crate) mod view;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use gpui::{App, Entity};
 use lib_bill_payments::SharedPayments;
 use lib_database::{BillPaymentsAdapter, SharedTransactionsStore};
 
-use crate::announcer::{Announcer, Domain};
 use crate::bills::DesktopPorts;
 
 pub use view::dialog::pay::PayDialog;
@@ -31,14 +29,4 @@ pub fn payments(transactions: SharedTransactionsStore, bills: &DesktopPorts) -> 
         transactions,
         bills.borrow().store(),
     )))
-}
-
-/// Announces the Transactions and the Bills after a confirm, so the Transactions View, the
-/// Dashboard and the Bills page see the payment at once (#1028). The confirm's
-/// input commits it.
-pub(crate) fn announce(announcer: &Entity<Announcer>, cx: &mut App) {
-    announcer.update(cx, |announcer, cx| {
-        announcer.announce(Domain::Transactions, cx);
-    });
-    crate::bills::ports::announce(announcer, cx);
 }

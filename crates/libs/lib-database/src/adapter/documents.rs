@@ -138,6 +138,7 @@ impl DocumentsAdapter {
         self.documents = fresh.documents;
         self.types = fresh.types;
         self.pending.discard(Domain::Documents);
+        self.pending.discard(Domain::DocumentTypes);
         Ok(())
     }
 
@@ -200,7 +201,10 @@ impl DocumentRepository for DocumentsAdapter {
 
 impl Change for DocumentsChange {
     fn domain(&self) -> Domain {
-        Domain::Documents
+        match self {
+            Self::UpsertDocument(_) | Self::DeleteDocument(_) => Domain::Documents,
+            Self::UpsertType(..) | Self::DeleteType(_) | Self::Order(_) => Domain::DocumentTypes,
+        }
     }
 
     fn apply<'c>(self: Box<Self>, conn: &'c mut SqliteConnection) -> BoxFuture<'c, Result<()>> {
@@ -861,7 +865,7 @@ mod tests {
                     .delete_item(id),
                 DocumentLink::BillPlan(_) => panic!("a Bill Plan has no delete"),
             }
-            let cascades = self.pending.commit();
+            let cascades = self.pending.commit().cascaded;
             assert_eq!(
                 cascades,
                 [Domain::Documents],
@@ -945,7 +949,7 @@ mod tests {
         factory.pending.commit();
         let failures = factory.failures();
         assert_eq!(failures.len(), 1, "the delete is refused");
-        assert_eq!(failures[0].domains, [Domain::Documents]);
+        assert_eq!(failures[0].domains, [Domain::DocumentTypes]);
         documents.reload().expect("the rows load");
         assert_eq!(documents.document_types(), default_types());
         assert_eq!(documents.documents(), [tax_return()]);
@@ -996,7 +1000,7 @@ mod tests {
             .location;
 
         inventory.inventory_mut().delete_location(location);
-        let cascades = factory.pending.commit();
+        let cascades = factory.pending.commit().cascaded;
         documents.reload().expect("the rows load");
 
         assert_eq!(cascades, [Domain::Documents]);

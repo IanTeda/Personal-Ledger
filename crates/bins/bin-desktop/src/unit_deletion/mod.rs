@@ -14,11 +14,8 @@ pub(crate) mod view;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use gpui::{App, Entity};
 use lib_database::{SharedInstitutionsStore, SharedUnitsStore, UnitDeletionAdapter};
 use lib_unit_deletion::SharedUnitDeletion;
-
-use crate::announcer::Announcer;
 
 pub use view::dialog::delete_unit::DeleteUnitDialog;
 
@@ -30,19 +27,4 @@ pub fn deletion(
     let units: SharedUnitsStore = units.clone();
     let institutions: SharedInstitutionsStore = institutions.clone();
     Rc::new(RefCell::new(UnitDeletionAdapter::new(units, institutions)))
-}
-
-/// Announces the Units and, when they were written, the Institutions after a confirm, so the Units
-/// and Institutions pages, the Accounts and the Dashboard see the delete at once. A Unit delete
-/// writes the Institutions that name the Unit in the same step as the Units, and these ports can't
-/// see the Institutions' write count from here, so a Units write stands for it. The confirm's
-/// input commits it.
-pub(crate) fn refresh(
-    units: &crate::units::DesktopPorts,
-    announcer: &Entity<Announcer>,
-    cx: &mut App,
-) {
-    if crate::units::ports::announce(units, announcer, cx) {
-        crate::institutions::ports::announce(announcer, cx);
-    }
 }

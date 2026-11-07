@@ -480,14 +480,6 @@ impl Root {
         self.open.as_ref().map_or(0, |open| open.rail_reads.reads())
     }
 
-    /// How many changes the Ledger announced, for a test.
-    #[doc(hidden)]
-    pub fn ledger_announcements(&self, cx: &App) -> usize {
-        self.open
-            .as_ref()
-            .map_or(0, |open| open.announcer.read(cx).announcements())
-    }
-
     /// The rail's badge counts the Shell's Presenter holds, which the rail draws; `None` with no
     /// Ledger open.
     #[doc(hidden)]
@@ -522,8 +514,8 @@ impl Root {
     /// a test can reach the Inventory page's empty state.
     #[doc(hidden)]
     pub fn empty_inventory_for_test(&mut self, cx: &mut App) {
-        let open = self.open();
-        open.stores.empty_inventory_for_test(&open.announcer, cx);
+        let stores = &self.open().stores;
+        crate::input::join_or_send(cx, |_| stores.empty_inventory_for_test());
     }
 
     /// Removes every Tag through `lib-tag-removal`'s Interactor over the Tags and Transactions
@@ -540,66 +532,61 @@ impl Root {
             .map(|tag| tag.id)
             .collect();
         let mut removal = lib_database::TagRemovalAdapter::new(tags, transactions);
-        for id in ids {
-            assert!(
-                lib_tag_removal::interactor::RemoveTag { id }
-                    .run(&mut removal)
-                    .is_ok(),
-                "a Tag listed a moment ago must still be removable"
-            );
-        }
-        open.announcer.update(cx, |announcer, cx| {
-            announcer.announce(crate::announcer::Domain::Transactions, cx);
-            announcer.announce(crate::announcer::Domain::Tags, cx);
+        crate::input::join_or_send(cx, |_| {
+            for id in ids {
+                assert!(
+                    lib_tag_removal::interactor::RemoveTag { id }
+                        .run(&mut removal)
+                        .is_ok(),
+                    "a Tag listed a moment ago must still be removable"
+                );
+            }
         });
     }
 
     /// Adds a Location priced in `unit`, which then names it.
     #[doc(hidden)]
     pub fn add_location_in_for_test(&mut self, unit: lib_core::UnitId, cx: &mut App) {
-        let open = self.open();
-        open.stores
-            .add_location_in_for_test(unit, &open.announcer, cx);
+        let stores = &self.open().stores;
+        crate::input::join_or_send(cx, |_| stores.add_location_in_for_test(unit));
     }
 
     /// Adds a Budget in `unit`, which then names it.
     #[doc(hidden)]
     pub fn add_budget_in_for_test(&mut self, unit: lib_core::UnitId, cx: &mut App) {
-        let open = self.open();
-        open.stores
-            .add_budget_in_for_test(unit, &open.announcer, cx);
+        let stores = &self.open().stores;
+        crate::input::join_or_send(cx, |_| stores.add_budget_in_for_test(unit));
     }
 
     /// Adds a Payee called `name`, so an Import that creates it is refused.
     #[doc(hidden)]
     pub fn add_payee_for_test(&mut self, name: &str, cx: &mut App) {
-        let open = self.open();
-        open.stores.add_payee_for_test(name, &open.announcer, cx);
+        let stores = &self.open().stores;
+        crate::input::join_or_send(cx, |_| stores.add_payee_for_test(name));
     }
 
     /// Moves every Bill Plan to pay from Account `to`, so a test can delete the Account another Plan
     /// paid from instead of meeting the Bill Plans refusal.
     #[doc(hidden)]
     pub fn move_bill_plans_for_test(&mut self, to: lib_core::AccountId, cx: &mut App) {
-        {
-            let mut ports = self.open().stores.bills.borrow_mut();
+        let bills = &self.open().stores.bills;
+        crate::input::join_or_send(cx, |_| {
+            let mut ports = bills.borrow_mut();
             for mut plan in lib_bills::BillsPorts::bills(&*ports).bill_plans() {
                 plan.account_id = to;
                 lib_bills::BillsPorts::split_mut(&mut *ports)
                     .bills
                     .upsert_bill_plan(plan);
             }
-        }
-        let open = self.open();
-        crate::bills::ports::announce(&open.announcer, cx);
+        });
     }
 
     /// Leaves no Unit quoted in another, so a test can delete a seeded Unit instead of meeting the
     /// quoted refusal.
     #[doc(hidden)]
     pub fn unquote_units_for_test(&mut self, cx: &mut App) {
-        let open = self.open();
-        crate::units::ports::unquote_for_test(&open.units, &open.announcer, cx);
+        let units = &self.open().units;
+        crate::input::join_or_send(cx, |_| crate::units::ports::unquote_for_test(units));
     }
 
     /// Gives Institution `id` Unit `unit` as its Usual unit, so a test can delete a Unit an
@@ -611,9 +598,8 @@ impl Root {
         unit: lib_core::UnitId,
         cx: &mut App,
     ) {
-        let open = self.open();
-        open.stores
-            .name_usual_unit_for_test(id, unit, &open.announcer, cx);
+        let stores = &self.open().stores;
+        crate::input::join_or_send(cx, |_| stores.name_usual_unit_for_test(id, unit));
     }
 
     /// The code of Institution `id`'s Usual unit, as the Institutions store names it and the Units

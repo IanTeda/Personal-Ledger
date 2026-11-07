@@ -106,7 +106,7 @@ Desktop locations for the ticked requirements. The TUI's PAY-001 to PAY-004 live
 
 ## Open questions and known gaps
 
-- **Halfway states.** The Ledger keeps no read copy of the Payees (#1005): the Payees page, Category delete (`lib-category-deletion`'s port) and the Import (its own port, #943) write the Payees store and announce `Domain::Payees`, and a failed write reloads the store (`payees::ports::reload`).
+- **Halfway states.** The Ledger keeps no read copy of the Payees (#1005): the Payees page, Category delete (`lib-category-deletion`'s port) and the Import (its own port, #943) write the Payees store, which the input door announces from the commit, and a failed write reloads the store by its `Domain`.
 - **The contract's writes don't run the Interactors.** `contract.rs` applies the Entity rules to rows itself, so the Interactors are tested only on the fakes ([#836](https://github.com/IanTeda/Personal-Ledger/issues/836)).
 - **The Deactivate Dialog counts transactions only.** A Payee only Bill Plans name reads "used by 0 transactions" ([#837](https://github.com/IanTeda/Personal-Ledger/issues/837)).
 - **A delete the foreign keys refuse shows its success Toast first.** Only when a Split or Bill Plan lands between the count and the commit: the Dialog's "Deleted payee" Toast shows, then the Error Toast as the Payees reload. The commit runs after the Dialog closes, so it can't know sooner (ADR-0046).

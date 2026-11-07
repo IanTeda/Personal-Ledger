@@ -545,16 +545,17 @@ fn budgets_duplicate_writes_on_the_budgets_page_in_one_input(app: &mut TestAppCo
     let mut ui = Harness::new(app);
     open_palette(&mut ui);
     type_text(&mut ui, "budgets duplicate");
-    let before = ui.read_app(|s, cx| s.ledger_announcements(cx));
+    let before = ui.budgets().budget;
     let commits = ui.commits();
 
     ui.press("enter");
 
     assert_eq!(ui.noun(), Noun::Budgets);
     assert!(ui.dialog().is_some(), "the copy opens to be renamed");
-    assert!(
-        ui.read_app(|s, cx| s.ledger_announcements(cx)) > before,
-        "the copy was written"
+    assert_ne!(
+        ui.budgets().budget,
+        before,
+        "the copy is written and on show"
     );
     assert_eq!(ui.commits() - commits, 1, "the write commits once");
 }

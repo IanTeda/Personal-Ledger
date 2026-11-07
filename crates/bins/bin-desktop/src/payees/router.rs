@@ -18,7 +18,6 @@ use crate::shell::view::dialog_entity::host_dialog;
 
 pub(super) struct PageRouter<'a, 'b> {
     pub ports: DesktopPorts,
-    pub announcer: gpui::Entity<Announcer>,
     pub clock: lib_core::Clock,
     pub cx: &'a mut Context<'b, PayeesPage>,
 }
@@ -32,7 +31,7 @@ impl PayeesRouter for PageRouter<'_, '_> {
             // A page that has gone has nothing to land on.
             let _ = page.update(cx, |page, cx| page.dialog_landed(outcome, cx));
         });
-        let Some(dialog) = PayeesDialog::open(dialog, &self.ports, &self.announcer, landed) else {
+        let Some(dialog) = PayeesDialog::open(dialog, &self.ports, landed) else {
             return false;
         };
         host_dialog(self.cx, |_| dialog);

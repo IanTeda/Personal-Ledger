@@ -21,8 +21,8 @@
 use gpui::UniformListScrollHandle;
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollStrategy, Subscription};
 
-use crate::announcer::Domain;
 use lib_core::{Clock, DateStyle, TransactionId};
+use lib_database::Domain;
 use lib_list_cursor::Step;
 use lib_shell::DialogCommand;
 use lib_transactions::SharedPorts;

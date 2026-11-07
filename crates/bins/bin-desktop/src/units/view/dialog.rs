@@ -17,7 +17,7 @@ mod set_base_unit;
 mod set_price;
 mod unit_form;
 
-use gpui::{AnyElement, App, Context, Entity, EventEmitter, Render, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, Context, EventEmitter, Render, Window, div, prelude::*, px};
 use lib_units::UnitsDialog as Which;
 use lib_units::presenter::{
     DeletePriceSourceEvent, DeletePriceSourcePresenter, PriceSourceFormEvent,
@@ -27,9 +27,8 @@ use lib_units::presenter::{
 use lib_viper::dialog::{DialogInput, DialogRouter};
 
 use self::unit_form::UnitSelects;
-use crate::announcer::Announcer;
 use crate::form::viper::{chosen_label, drawn, labels};
-use crate::units::ports::{self, DesktopPorts};
+use crate::units::ports::DesktopPorts;
 use crate::{
     dialog,
     shell::view::dialog_entity::DialogReadback,
@@ -50,8 +49,6 @@ pub(crate) type Landed = Box<dyn Fn(UnitsOutcome, &mut App)>;
 /// The open Units Dialog: its Presenter and its widget state.
 pub struct UnitsDialog {
     ports: DesktopPorts,
-    /// The Ledger a confirm announces what it wrote through.
-    announcer: Entity<Announcer>,
     view: View,
     landed: Landed,
 }
@@ -89,11 +86,10 @@ impl View {
 
 impl UnitsDialog {
     /// `which`'s Presenter on `ports`, or `None` when the row it names is gone. A confirm
-    /// announces what it wrote and hands its outcome to `landed`.
+    /// hands its outcome to `landed`.
     pub(crate) fn open(
         which: Which,
         ports: &DesktopPorts,
-        announcer: &Entity<Announcer>,
         clock: &lib_core::Clock,
         landed: Landed,
     ) -> Option<Self> {
@@ -119,7 +115,6 @@ impl UnitsDialog {
         };
         Some(Self {
             ports: ports.clone(),
-            announcer: announcer.clone(),
             view,
             landed,
         })
@@ -291,18 +286,9 @@ fn test_not_built(id: &'static str, label: String, note: String, cx: &App) -> An
 impl EventEmitter<DialogClosed> for UnitsDialog {}
 
 impl HostedDialog for UnitsDialog {
-    /// Every input is the Presenter's to read: it holds every field and every open list. One
-    /// that may confirm (`select`, `submit`) announces the Units' writes either side, as
-    /// [`Self::confirm`] does.
+    /// Every input is the Presenter's to read: it holds every field and every open list.
     fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
-        let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
-        if may_confirm {
-            ports::announce(&self.ports, &self.announcer, cx);
-        }
         let router = self.send_input(input);
-        if may_confirm {
-            ports::announce(&self.ports, &self.announcer, cx);
-        }
         self.closed(router, cx);
     }
 
@@ -316,12 +302,9 @@ impl HostedDialog for UnitsDialog {
         }
     }
 
-    /// Sends Confirm to the Presenter, which runs its Interactor, announcing the Units' writes
-    /// either side. A refusal stays on the Presenter's view model and keeps the Dialog open.
+    /// Sends Confirm to the Presenter, which runs its Interactor. A refusal stays on the Presenter's view model and keeps the Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
-        ports::announce(&self.ports, &self.announcer, cx);
         let router = self.close_event(true);
-        ports::announce(&self.ports, &self.announcer, cx);
         self.closed(router, cx);
     }
 

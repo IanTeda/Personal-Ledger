@@ -1,8 +1,7 @@
 //! The Payees ports as the Desktop holds them: the store `shell::router::build` is given, with
 //! `PayeeUsage` and `PayeeCategories` read from the Transactions, Bills and Categories stores
-//! through `lib-database`'s [`StoredPayeeReads`] (#992), and the announcement that tells the Views
-//! reading the Payees of a write. The write is committed by the input it was made in
-//! (`crate::input::send`), not here. The Ledger keeps no read copy of the Payees (#1005).
+//! through `lib-database`'s [`StoredPayeeReads`] (#992). The write is committed and announced by
+//! the input it was made in (`crate::input::send`), not here. The Ledger keeps no read copy of the Payees (#1005).
 //!
 //! The ports are one value shared three ways: the Payees module's Presenters read and write them
 //! as [`PayeesPorts`], and Category delete, the Import and the Bills reads hold the same value as a
@@ -15,12 +14,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use gpui::{App, Entity};
 use lib_database::{PayeesStore, StoredPayeeReads};
 use lib_payees::{PayeeCategories, PayeeRepository, PayeeUsage, PayeesPorts, PortsMut};
-
-use crate::announcer::{Announcer, Domain};
-use crate::write_count::WriteCount;
 
 /// The Payees ports the Payees module, Category delete, the Import and the Bills reads share.
 pub type DesktopPorts = Rc<RefCell<LedgerBackedPorts>>;
@@ -30,22 +25,11 @@ pub type DesktopPorts = Rc<RefCell<LedgerBackedPorts>>;
 pub struct LedgerBackedPorts {
     store: Box<dyn PayeesStore>,
     reads: StoredPayeeReads,
-    writes: WriteCount,
 }
 
 impl LedgerBackedPorts {
     pub fn shared(store: Box<dyn PayeesStore>, reads: StoredPayeeReads) -> DesktopPorts {
-        Rc::new(RefCell::new(Self {
-            store,
-            reads,
-            writes: WriteCount::default(),
-        }))
-    }
-
-    /// How many times these ports handed a mutable store out, so a page can tell whether an input
-    /// wrote without cloning the Payees around it.
-    pub fn writes(&self) -> u64 {
-        self.writes.get()
+        Rc::new(RefCell::new(Self { store, reads }))
     }
 
     /// The sample Payees in memory, reading the other domains through `reads`, for a test that needs
@@ -77,7 +61,6 @@ impl PayeesPorts for LedgerBackedPorts {
     }
 
     fn split_mut(&mut self) -> PortsMut<'_> {
-        self.writes.bump();
         PortsMut {
             payees: self.store.payees_mut(),
             usage: &self.reads,
@@ -92,34 +75,12 @@ impl PayeesStore for LedgerBackedPorts {
     }
 
     fn payees_mut(&mut self) -> &mut dyn PayeeRepository {
-        self.writes.bump();
         self.store.payees_mut()
     }
 
     fn reload(&mut self) -> lib_database::Result<()> {
         self.store.reload()
     }
-}
-
-/// Announces `Domain::Payees`, after a write to the Payees store, so Transactions, Bills, Budgets
-/// and Documents redraw.
-pub fn announce(announcer: &Entity<Announcer>, cx: &mut App) {
-    announcer.update(cx, |announcer, cx| announcer.announce(Domain::Payees, cx));
-}
-
-/// Puts the Payees back as stored, after a write that named them failed, and announces them so
-/// every reader redraws (ADR-0046).
-///
-/// # Errors
-/// Returns the error reading them back; the store is left as it was.
-pub fn reload(
-    ports: &DesktopPorts,
-    announcer: &Entity<Announcer>,
-    cx: &mut App,
-) -> lib_database::Result<()> {
-    PayeesStore::reload(&mut *ports.borrow_mut())?;
-    announce(announcer, cx);
-    Ok(())
 }
 
 #[cfg(test)]

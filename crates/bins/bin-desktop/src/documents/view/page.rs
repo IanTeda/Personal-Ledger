@@ -14,12 +14,12 @@
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use crate::announcer::Domain;
 use gpui::{
     App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, ScrollStrategy, Subscription,
     UniformListScrollHandle, Window, prelude::*,
 };
 use lib_core::{Clock, DateStyle};
+use lib_database::Domain;
 use lib_documents::presenter::{DocumentsPageEvent, DocumentsPagePresenter};
 use lib_documents::{
     DocumentsMode, DocumentsOutcome, LibraryScope, LibrarySort, SharedFiles, SharedRepository,
@@ -28,7 +28,6 @@ use lib_viper::keymap::Keymap;
 
 use super::Scrolls;
 use crate::announcer::{Announcer, LedgerChanged};
-use crate::document_types::ports::Written;
 use crate::documents::router::PageRouter;
 use crate::navigation::movement::Movement;
 use crate::shell::view::page_clicks::{PageClicks, PresenterPage};
@@ -46,24 +45,19 @@ pub struct DocumentsPage {
     zone_focused: bool,
     library_scroll: UniformListScrollHandle,
     inbox_scroll: ScrollHandle,
-    /// The Ledger the page announces the Documents through after an event that wrote them.
-    announcer: Entity<Announcer>,
-    /// Set by each write through the page's repository.
-    written: Written,
     _ledger_changed: Subscription,
 }
 
 impl DocumentsPage {
     pub fn new(
         presenter: DocumentsPagePresenter,
-        announcer: Entity<Announcer>,
-        written: Written,
+        announcer: &Entity<Announcer>,
         keymap: Keymap<DocumentsPageEvent>,
         cx: &mut Context<'_, Self>,
     ) -> Self {
         // The rows name records from every domain a Link reaches, and Settings › Documents writes
         // the Document Types: a change to any is redrawn.
-        let _ledger_changed = cx.subscribe(&announcer, |_, _, event: &LedgerChanged, cx| {
+        let _ledger_changed = cx.subscribe(announcer, |_, _, event: &LedgerChanged, cx| {
             let reads = [
                 Domain::Accounts,
                 Domain::Bills,
@@ -83,17 +77,7 @@ impl DocumentsPage {
             zone_focused: false,
             library_scroll: UniformListScrollHandle::new(),
             inbox_scroll: ScrollHandle::new(),
-            announcer,
-            written,
             _ledger_changed,
-        }
-    }
-
-    /// Announces the Documents if the page or its Dialogs wrote them since the last ask, so the
-    /// rail's Inbox count and the other readers follow, and a cursor move announces nothing.
-    fn announce_written(&self, cx: &mut Context<'_, Self>) {
-        if self.written.take() {
-            crate::document_types::ports::announce(&self.announcer, cx);
         }
     }
 
@@ -123,7 +107,6 @@ impl DocumentsPage {
             cx,
         };
         self.presenter.handle(event, &mut router);
-        self.announce_written(cx);
         self.follow_selection(mode, before);
         cx.notify();
     }
@@ -156,7 +139,6 @@ impl DocumentsPage {
         match outcome {
             Some(outcome) => self.handle(DocumentsPageEvent::DialogClosed(outcome), cx),
             None => {
-                self.announce_written(cx);
                 cx.notify();
             }
         }
@@ -342,8 +324,8 @@ impl DocumentsPage {
 /// The Documents module's entry point: its page, on the Documents store (`store`), the other
 /// domains' reads over their stores (`reads`) and the disk (`files`), which the Shell hosts as the
 /// Documents destination. `clock` reads the day the Key Dates are banded against. The page writes
-/// the store through its Interactors and announces the Documents after an event that wrote them,
-/// so the rail's Inbox count follows a filing.
+/// the store through its Interactors; the input that wrote announces the Documents, so the rail's
+/// Inbox count follows a filing.
 pub fn documents_page(
     store: &lib_database::SharedDocumentsStore,
     files: SharedFiles,
@@ -353,8 +335,7 @@ pub fn documents_page(
     clock: Clock,
     cx: &mut App,
 ) -> Entity<DocumentsPage> {
-    let written = Written::default();
-    let documents: SharedRepository = crate::document_types::ports::shared(store, &written);
+    let documents: SharedRepository = crate::document_types::ports::shared(store);
     let reads = Rc::new(reads);
     let presenter = DocumentsPagePresenter::new(
         documents,
@@ -364,7 +345,7 @@ pub fn documents_page(
         keymap.clone(),
         crate::shell::view::statusline::STUB_LEDGER_FILE.to_string(),
     );
-    cx.new(|cx| DocumentsPage::new(presenter, announcer, written, keymap, cx))
+    cx.new(|cx| DocumentsPage::new(presenter, &announcer, keymap, cx))
 }
 
 /// The page's clicks, each one an event sent to its Presenter.

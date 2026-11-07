@@ -7,8 +7,7 @@
 //! - `view/dialog.rs` holds each Dialog's Presenter in an Entity in the Dialog host, one View per
 //!   Dialog in `view/dialog/`.
 //! - `router.rs` is the Router and the module's entry point ([`payees_page`]).
-//! - `ports.rs` holds the store with its reads of the other domains' stores, and the
-//!   announcement after each write (#832, #1005).
+//! - `ports.rs` holds the store with its reads of the other domains' stores (#832, #1005).
 //!
 //! Where the Payees are kept, the SQLite adapter opened at start or memory, is `lib-database`'s
 //! `PayeesStore`.

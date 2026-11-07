@@ -10,15 +10,14 @@
 mod plan_form;
 mod skip;
 
-use gpui::{App, Context, Entity, EventEmitter, IntoElement, Render, Window};
+use gpui::{App, Context, EventEmitter, IntoElement, Render, Window};
 use lib_bills::BillsOutcome;
 use lib_bills::presenter::{PlanFormEvent, PlanFormPresenter, SkipEvent, SkipPresenter};
 use lib_shell::DialogCommand;
 use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
 
-use crate::announcer::Announcer;
-use crate::bills::ports::{self, DesktopPorts};
+use crate::bills::ports::DesktopPorts;
 use crate::dialog;
 use crate::shell::view::dialog_entity::DialogReadback;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
@@ -33,8 +32,6 @@ pub(crate) type Landed = Box<dyn Fn(BillsOutcome, &mut App)>;
 /// The open Bills Dialog: its Presenter and its widget state.
 pub struct BillsDialog {
     ports: DesktopPorts,
-    /// The Ledger a confirm reads from and announces what it wrote through.
-    announcer: Entity<Announcer>,
     view: View,
     landed: Landed,
 }
@@ -57,41 +54,23 @@ impl View {
 }
 
 impl BillsDialog {
-    /// The Add or Edit bill plan Dialog on `presenter`. A confirm announces what it wrote
-    /// and hands its outcome to `landed`.
+    /// The Add or Edit bill plan Dialog on `presenter`. A confirm hands its outcome to `landed`.
     pub(crate) fn plan_form(
         presenter: PlanFormPresenter,
         ports: &DesktopPorts,
-        announcer: &Entity<Announcer>,
         landed: Landed,
     ) -> Self {
-        Self::new(
-            View::PlanForm(Box::new(presenter), 0),
-            ports,
-            announcer,
-            landed,
-        )
+        Self::new(View::PlanForm(Box::new(presenter), 0), ports, landed)
     }
 
     /// The Skip this cycle Dialog on `presenter`.
-    pub(crate) fn skip(
-        presenter: SkipPresenter,
-        ports: &DesktopPorts,
-        announcer: &Entity<Announcer>,
-        landed: Landed,
-    ) -> Self {
-        Self::new(View::Skip(presenter), ports, announcer, landed)
+    pub(crate) fn skip(presenter: SkipPresenter, ports: &DesktopPorts, landed: Landed) -> Self {
+        Self::new(View::Skip(presenter), ports, landed)
     }
 
-    fn new(
-        view: View,
-        ports: &DesktopPorts,
-        announcer: &Entity<Announcer>,
-        landed: Landed,
-    ) -> Self {
+    fn new(view: View, ports: &DesktopPorts, landed: Landed) -> Self {
         Self {
             ports: ports.clone(),
-            announcer: announcer.clone(),
             view,
             landed,
         }
@@ -176,10 +155,9 @@ fn send<P, E>(
 impl EventEmitter<DialogClosed> for BillsDialog {}
 
 impl HostedDialog for BillsDialog {
-    /// Every input is the Presenter's to read, and announces the Bills after it if it wrote them.
+    /// Every input is the Presenter's to read.
     fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
         let router = self.input_event(input);
-        ports::announce_written(&self.ports, &self.announcer, cx);
         self.closed(router, cx);
     }
 
@@ -194,7 +172,6 @@ impl HostedDialog for BillsDialog {
     /// Presenter's view model and keeps the Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
         let router = self.close_event(true);
-        ports::announce_written(&self.ports, &self.announcer, cx);
         self.closed(router, cx);
     }
 

@@ -1,7 +1,6 @@
 //! The Inventory Settings page's View: the `lib-inventory` page Presenter in a gpui Entity. It
 //! looks up each key the Shell passes on, as chord text, in the Inventory keymap, turns clicks into
-//! events, draws the view model (`render.rs`), and announces any Inventory write after every
-//! event. Each key and click is one input (`crate::input::send`), which
+//! events, draws the view model (`render.rs`). Each key and click is one input (`crate::input::send`), which
 //! commits what it wrote. The Settings View hosts it as any other page.
 //!
 //! The row menu's position is the View's: the Presenter holds which row the menu is on and its
@@ -9,11 +8,11 @@
 
 mod render;
 
-use crate::announcer::Domain;
 use gpui::{
     AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Keystroke, Pixels, Point,
     Subscription,
 };
+use lib_database::Domain;
 use lib_database::StoredInventoryReads;
 use lib_inventory::presenter::{
     InventoryPageEvent, InventoryPagePresenter, InventoryPageViewModel, MenuAction,
@@ -27,7 +26,6 @@ use crate::inventory::ports;
 use crate::inventory::router::PageRouter;
 use crate::inventory::{InventorySetup, SettingsInventorySnapshot};
 use crate::settings::snapshot::PageSnapshot;
-use crate::write_count::WriteCount;
 use crate::{
     announcer::{Announcer, notify_on},
     navigation::movement::Movement,
@@ -45,11 +43,8 @@ impl EventEmitter<PageRowClicked> for InventoryPage {}
 pub struct InventoryPage {
     presenter: InventoryPagePresenter,
     inventory: SharedInventory,
-    /// The writes the page's ports have made, read around an input to tell whether it wrote.
-    writes: WriteCount,
     /// The Units and Documents the Dialogs quote, over the stores (#1014).
     reads: StoredInventoryReads,
-    announcer: Entity<Announcer>,
     keymap: Keymap<InventoryPageEvent>,
     /// Where the open row menu was asked for, in window coordinates.
     menu_at: Point<Pixels>,
@@ -68,16 +63,13 @@ impl InventoryPage {
         announcer: Entity<Announcer>,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        let writes = WriteCount::default();
-        let inventory = ports::shared(&setup.store, &writes);
+        let inventory = ports::shared(&setup.store);
         Self {
             presenter: InventoryPagePresenter::new(inventory.clone(), setup.keymap.clone()),
             inventory,
-            writes,
             reads: setup.reads,
             _inventory_changed: notify_on(&announcer, Domain::Inventory, cx),
             _units_changed: notify_on(&announcer, Domain::Units, cx),
-            announcer,
             keymap: setup.keymap,
             menu_at: Point::default(),
             page_focused: false,
@@ -98,23 +90,15 @@ impl InventoryPage {
         crate::input::join_or_send(cx, |cx| self.handle(event, cx));
     }
 
-    /// Hands `event` to the Presenter with the Desktop's Router, then announces
-    /// `Domain::Inventory` when the rows changed, so the Documents redraw. Inside an input already,
-    /// as [`Self::send`] or a Dialog's confirm, whose write is announced as it lands.
+    /// Hands `event` to the Presenter with the Desktop's Router. Inside an input already, as
+    /// [`Self::send`] or a Dialog's confirm.
     fn handle(&mut self, event: InventoryPageEvent, cx: &mut Context<'_, Self>) {
-        let before = self.writes.get();
-        let landed = matches!(event, InventoryPageEvent::DialogClosed(Some(_)));
         let mut router = PageRouter {
             inventory: self.inventory.clone(),
             reads: self.reads.clone(),
             cx,
         };
         self.presenter.handle(event, &mut router);
-        if landed || self.writes.get() != before {
-            self.announcer.update(cx, |announcer, cx| {
-                announcer.announce(Domain::Inventory, cx);
-            });
-        }
         cx.notify();
     }
 

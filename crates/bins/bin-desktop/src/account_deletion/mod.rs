@@ -19,13 +19,11 @@ pub(crate) mod view;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use gpui::{App, Entity};
 use lib_account_deletion::SharedDeletion;
 use lib_database::{
     AccountDeletionAdapter, SharedAccountsStore, SharedTransactionsStore, StoredAccountReads,
 };
 
-use crate::announcer::{Announcer, Domain};
 use crate::bills::DesktopPorts;
 
 pub use view::dialog::delete_account::DeleteAccountDialog;
@@ -50,8 +48,7 @@ pub fn deletion(
 #[derive(Clone)]
 pub struct DeletionStores {
     pub deletion: SharedDeletion,
-    /// The Accounts ports the deletion port writes through, whose write count the confirm
-    /// announces from.
+    /// The Accounts ports the deletion port writes through.
     pub accounts: crate::accounts::DesktopPorts,
     pub bills: DesktopPorts,
     pub reads: StoredAccountReads,
@@ -72,19 +69,4 @@ impl DeletionStores {
             reads: storage.account_reads.clone(),
         }
     }
-}
-
-/// Announces the Accounts when a confirm wrote them through `accounts`, and the Transactions and
-/// the Bills, so the Accounts page, the Transactions View, the Dashboard and the Bills page see
-/// the delete at once. The confirm's input commits it.
-pub(crate) fn refresh(
-    accounts: &crate::accounts::DesktopPorts,
-    announcer: &Entity<Announcer>,
-    cx: &mut App,
-) {
-    crate::accounts::ports::refresh(accounts, announcer, cx);
-    announcer.update(cx, |announcer, cx| {
-        announcer.announce(Domain::Transactions, cx);
-    });
-    crate::bills::ports::announce(announcer, cx);
 }

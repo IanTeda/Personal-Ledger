@@ -1,8 +1,7 @@
 //! The Budgets page's View: the `lib-budgets` page Presenter in a gpui Entity, which the Shell
 //! hosts as the Budgets destination (`docs/ux/desktop-mockups/14-budgets-v2/`). It looks up each
 //! key the Shell passes on, as chord text, in the Budgets keymap for the tab shown, turns clicks
-//! into events, draws the view model (`progress.rs`, `plan.rs`, `history.rs`) and announces
-//! the Budgets after an event that wrote them ([`ports::announce_written`]). Each key and click is one
+//! into events, draws the view model (`progress.rs`, `plan.rs`, `history.rs`). Each key and click is one
 //! input (`crate::input::send`), which commits what it wrote.
 //!
 //! Typing into a Plan cell is the Shell's Insert mode, which the page asks for as the Presenter
@@ -10,7 +9,6 @@
 //! the Shell ([`BudgetsPage::key_ahead`]) and turns into a cell event; `esc` comes back as
 //! [`BudgetsPage::escape`].
 
-use crate::announcer::Domain;
 use gpui::{
     AnyElement, App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, SharedString,
     Subscription, Window, div, prelude::*, px,
@@ -21,12 +19,13 @@ use lib_budgets::presenter::{
 };
 use lib_budgets::{BudgetsOutcome, Span};
 use lib_core::{BudgetId, Clock, DateStyle};
+use lib_database::Domain;
 use lib_locale::format::upper;
 use lib_viper::keymap::Keymap;
 
 use super::{history, plan, progress};
 use crate::announcer::{Announcer, LedgerChanged};
-use crate::budgets::ports::{self, DesktopPorts};
+use crate::budgets::ports::DesktopPorts;
 use crate::budgets::router::PageRouter;
 use crate::navigation::movement::Movement;
 use crate::navigation::nav::Noun;
@@ -42,7 +41,6 @@ impl EventEmitter<ViewEvent> for BudgetsPage {}
 pub struct BudgetsPage {
     presenter: BudgetsPagePresenter,
     ports: DesktopPorts,
-    announcer: Entity<Announcer>,
     clock: Clock,
     keymap: Keymap<BudgetsPageEvent>,
     /// The page's own scroll, reset as it becomes the destination, as its tab changes and as
@@ -79,7 +77,6 @@ impl BudgetsPage {
         Self {
             presenter,
             ports,
-            announcer,
             clock,
             keymap,
             scroll: ScrollHandle::new(),
@@ -112,9 +109,8 @@ impl BudgetsPage {
         crate::input::join_or_send(cx, |cx| self.handle(event, cx));
     }
 
-    /// Hands `event` to the Presenter with the Desktop's Router, then announces the Budgets, as
-    /// it may have written them, and the Shell's Insert mode with the cell being typed into.
-    /// Inside an input already, as [`Self::send`] or a Dialog's confirm.
+    /// Hands `event` to the Presenter with the Desktop's Router, then the Shell its Insert mode
+    /// with the cell being typed into. Inside an input already, as [`Self::send`] or a Dialog's confirm.
     fn handle(&mut self, event: BudgetsPageEvent, cx: &mut Context<'_, Self>) {
         let (tab, budget) = (self.presenter.tab(), self.presenter.current());
         let cell_event = matches!(
@@ -131,13 +127,11 @@ impl BudgetsPage {
         let was_editing = self.presenter.editing() && cell_event;
         let mut router = PageRouter {
             ports: self.ports.clone(),
-            announcer: self.announcer.clone(),
             clock: self.clock.clone(),
             date_style: self.presenter.date_style(),
             cx,
         };
         self.presenter.handle(event, &mut router);
-        ports::announce_written(&self.ports, &self.announcer, cx);
         match (was_editing, self.presenter.editing()) {
             (false, true) => cx.emit(ViewEvent::EnterMode(ViewMode::Insert)),
             (true, false) => cx.emit(ViewEvent::ExitMode),

@@ -17,7 +17,9 @@ use std::sync::mpsc;
 use bin_tui::{Shell, build_shell, colours::Colours, event::Event, locale};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use lib_config::KeyBindingConfig;
-use lib_database::{Commit, FakeStores, InMemoryCommit, Stores, UnitsStore, WriteFailure};
+use lib_database::{
+    Commit, Domain, FakeStores, InMemoryCommit, Recorded, Stores, UnitsStore, WriteFailure, Written,
+};
 use lib_units::fake::InMemoryPorts;
 use ratatui::{Terminal, backend::TestBackend};
 
@@ -35,7 +37,7 @@ pub fn shell() -> Shell {
 pub fn shell_with_failures() -> (Shell, mpsc::Sender<WriteFailure>) {
     shell_on(
         Box::new(InMemoryPorts::sample(chrono::Utc::now())),
-        Rc::new(InMemoryCommit),
+        Rc::new(InMemoryCommit::default()),
     )
 }
 
@@ -48,7 +50,8 @@ pub fn shell_on(
     let (report, failures) = mpsc::channel();
     let (sample, _) = Stores::fake(FakeStores::sample(chrono::Local::now().date_naive()));
     let stores = Stores {
-        units,
+        // The test's own commit drains nothing these note, so a fresh set will do.
+        units: Recorded::new(Domain::Units, Written::default(), units),
         commit,
         failures,
         ..sample

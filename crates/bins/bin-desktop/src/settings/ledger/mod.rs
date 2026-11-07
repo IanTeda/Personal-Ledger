@@ -11,8 +11,8 @@ mod render;
 
 use std::rc::Rc;
 
-use crate::announcer::Domain;
 use gpui::{App, Context, Entity, EventEmitter, Subscription};
+use lib_database::Domain;
 use lib_database::{LedgerPreferencesAdapter, SharedUnitsStore, StoredSettingsReads};
 use lib_settings::keymap::ledger_keymap;
 use lib_settings::{LedgerEvent, LedgerPresenter, LedgerSetup, LedgerViewModel};
@@ -53,12 +53,9 @@ impl LedgerKeys {
     }
 }
 
-/// The Ledger page: its Presenter, and the Units ports whose base Unit change it announces
-/// (`crate::units::ports::announce`). The page itself reads neither.
+/// The Ledger page: its Presenter, over the Units store.
 pub struct LedgerPage {
     presenter: LedgerPresenter,
-    ports: DesktopPorts,
-    announcer: Entity<Announcer>,
     _units_changed: Subscription,
 }
 
@@ -82,8 +79,6 @@ impl LedgerPage {
         });
         Self {
             presenter,
-            ports,
-            announcer,
             _units_changed: units_changed,
         }
     }
@@ -103,12 +98,7 @@ impl LedgerPage {
     }
 
     fn handle(&mut self, event: LedgerEvent, cx: &mut Context<'_, Self>) {
-        let mut router = LedgerRouter {
-            ports: &self.ports,
-            announcer: &self.announcer,
-            cx,
-        };
-        self.presenter.handle(event, &mut router);
+        self.presenter.handle(event, &mut LedgerRouter);
         cx.notify();
     }
 }

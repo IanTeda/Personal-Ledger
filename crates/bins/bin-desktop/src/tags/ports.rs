@@ -5,21 +5,17 @@
 //!
 //! The Tags page writes the repository through `lib-tags`' Interactors; Tag remove and merge
 //! rewrite Splits too, so they write through `lib-tag-removal`'s atomic port (#1003). Neither keeps
-//! a Ledger read copy of the Tags: a write announces `Domain::Tags` ([`announce`]), and what carries
-//! each Tag is counted in the other domains' stores ([`StoredTagReads`]).
+//! a Ledger read copy of the Tags: the input a write is made in announces it (#1081), and what
+//! carries each Tag is counted in the other domains' stores ([`StoredTagReads`]).
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use gpui::{App, Entity};
 use lib_core::TagId;
 use lib_database::{SharedTagsStore, StoredTagReads};
 use lib_tags::fake::{InMemoryPorts, InMemoryTagUsage, InMemoryTags};
 use lib_tags::{SharedPorts, Tag, TagRepository, TagUsage, TagUse};
-
-use crate::announcer::{Announcer, Domain};
-use crate::write_count::WriteCount;
 
 /// The sample Tags in memory, for a test that needs no storage. What carries them is read through
 /// [`StoredTagReads`].
@@ -40,7 +36,6 @@ pub fn in_memory() -> SharedTagsStore {
 pub struct StorePorts {
     store: SharedTagsStore,
     usage: StoredTagReads,
-    writes: WriteCount,
 }
 
 impl TagRepository for StorePorts {
@@ -49,7 +44,6 @@ impl TagRepository for StorePorts {
     }
 
     fn upsert_tag(&mut self, tag: Tag) {
-        self.writes.bump();
         self.store.borrow_mut().tags_mut().upsert_tag(tag);
     }
 }
@@ -65,33 +59,11 @@ impl TagUsage for StorePorts {
 }
 
 /// `store` as the Tags module's Presenters share it.
-pub fn shared(store: &SharedTagsStore, usage: StoredTagReads, writes: &WriteCount) -> SharedPorts {
+pub fn shared(store: &SharedTagsStore, usage: StoredTagReads) -> SharedPorts {
     Rc::new(RefCell::new(StorePorts {
         store: store.clone(),
         usage,
-        writes: writes.clone(),
     }))
-}
-
-/// Announces `Domain::Tags`, after a write to the Tags store, so the Tags page, the Transactions
-/// and the Shell redraw.
-pub fn announce(announcer: &Entity<Announcer>, cx: &mut App) {
-    announcer.update(cx, |announcer, cx| announcer.announce(Domain::Tags, cx));
-}
-
-/// Puts the Tags back as stored, after a write that named them failed, and announces them so
-/// every reader redraws (ADR-0046).
-///
-/// # Errors
-/// Returns the error reading them back; the store is left as it was.
-pub fn reload(
-    store: &SharedTagsStore,
-    announcer: &Entity<Announcer>,
-    cx: &mut App,
-) -> lib_database::Result<()> {
-    store.borrow_mut().reload()?;
-    announce(announcer, cx);
-    Ok(())
 }
 
 #[cfg(test)]
@@ -110,7 +82,6 @@ mod tests {
                 accounts: setup.accounts.clone(),
                 units: setup.units.clone(),
             },
-            writes: WriteCount::default(),
         };
 
         let used = ports.tag_usage(shared);

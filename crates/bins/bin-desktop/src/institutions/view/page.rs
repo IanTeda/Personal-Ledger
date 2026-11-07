@@ -1,15 +1,14 @@
 //! The Institutions Settings page's View: the `lib-institutions` page Presenter in a gpui Entity.
 //! It looks up each key the Shell passes on, as chord text, in the Institutions keymap, turns
-//! clicks into events, draws the view model (`render.rs`), and announces its writes
-//! after every event ([`ports::refresh`]). Each key and click is one input (`crate::input::send`),
+//! clicks into events, draws the view model (`render.rs`). Each key and click is one input (`crate::input::send`),
 //! which commits what it wrote. The Settings View hosts it as any other page.
 
 mod render;
 
-use crate::announcer::Domain;
 use gpui::{
     AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Pixels, Point, Subscription,
 };
+use lib_database::Domain;
 use lib_institutions::InstitutionsOutcome;
 use lib_institutions::presenter::{
     InstitutionsPageEvent, InstitutionsPagePresenter, InstitutionsPageViewModel,
@@ -19,7 +18,7 @@ use lib_viper::keymap::Keymap;
 use lib_shell::Hint;
 
 use crate::institutions::SettingsInstitutionsSnapshot;
-use crate::institutions::ports::{self, DesktopPorts};
+use crate::institutions::ports::DesktopPorts;
 use crate::institutions::router::PageRouter;
 use crate::settings::snapshot::PageSnapshot;
 use crate::{
@@ -39,7 +38,6 @@ impl EventEmitter<PageRowClicked> for InstitutionsPage {}
 pub struct InstitutionsPage {
     presenter: InstitutionsPagePresenter,
     ports: DesktopPorts,
-    announcer: Entity<Announcer>,
     keymap: Keymap<InstitutionsPageEvent>,
     /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
     /// draws the page.
@@ -61,7 +59,6 @@ impl InstitutionsPage {
             presenter: InstitutionsPagePresenter::new(ports.clone(), keymap.clone()),
             ports,
             _institutions_changed: notify_on(&announcer, Domain::Institutions, cx),
-            announcer,
             keymap,
             page_focused: false,
             menu_at: Point::default(),
@@ -79,18 +76,14 @@ impl InstitutionsPage {
         crate::input::join_or_send(cx, |cx| self.handle(event, cx));
     }
 
-    /// Hands `event` to the Presenter with the Desktop's Router, then announces
-    /// whatever it wrote. Inside an input already, as [`Self::send`] or a Dialog's
-    /// confirm.
+    /// Hands `event` to the Presenter with the Desktop's Router. Inside an input already, as
+    /// [`Self::send`] or a Dialog's confirm.
     fn handle(&mut self, event: InstitutionsPageEvent, cx: &mut Context<'_, Self>) {
-        ports::refresh(&self.ports, &self.announcer, cx);
         let mut router = PageRouter {
             ports: self.ports.clone(),
-            announcer: self.announcer.clone(),
             cx,
         };
         self.presenter.handle(event, &mut router);
-        ports::refresh(&self.ports, &self.announcer, cx);
         cx.notify();
     }
 

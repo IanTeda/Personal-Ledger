@@ -4,7 +4,10 @@
 mod common;
 
 use common::{cold_shell, press, run_command, screen, shell_with_failures, type_text};
-use lib_database::{Domain, WriteFailure};
+use lib_database::{
+    AccountsStore as _, CategoriesStore as _, Domain, InstitutionsStore as _, PayeesStore as _,
+    TagsStore as _, WriteFailure,
+};
 
 /// The top row of a drawn frame.
 fn status_line(frame: &str) -> &str {

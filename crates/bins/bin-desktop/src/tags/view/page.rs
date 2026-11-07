@@ -1,15 +1,14 @@
 //! The Tags Settings page's View: the `lib-tags` page Presenter in a gpui Entity. It looks up each
 //! key the Shell passes on, as chord text, in the Tags keymap, turns clicks into events, draws the
-//! view model (`render.rs`), and announces `Domain::Tags` after an event or Dialog that wrote the
-//! Tags ([`ports::announce`]). Each key and click is one input (`crate::input::send`), which
+//! view model (`render.rs`). Each key and click is one input (`crate::input::send`), which
 //! commits what it wrote. The Settings View hosts it as any other page.
 
 mod render;
 
-use crate::announcer::Domain;
 use gpui::{AnyElement, App, Context, Entity, EventEmitter, Subscription};
+use lib_database::Domain;
 use lib_tags::presenter::{TagsPageEvent, TagsPagePresenter, TagsPageViewModel};
-use lib_tags::{SharedPorts, TagChange, TagsOutcome};
+use lib_tags::{SharedPorts, TagsOutcome};
 use lib_viper::keymap::Keymap;
 
 use lib_shell::Hint;
@@ -18,7 +17,6 @@ use crate::settings::snapshot::PageSnapshot;
 use crate::tag_removal::RemovalStores;
 use crate::tags::router::PageRouter;
 use crate::tags::{SettingsTagsSnapshot, TagsSetup, ports};
-use crate::write_count::WriteCount;
 use crate::{
     announcer::{Announcer, notify_on},
     navigation::movement::Movement,
@@ -37,11 +35,8 @@ pub struct TagsPage {
     presenter: TagsPagePresenter,
     ports: SharedPorts,
     /// The writes the page's ports have made, read around an input to tell whether it wrote.
-    writes: WriteCount,
     /// Tag remove and merge's port and reads, which their Dialogs open on.
     removal: RemovalStores,
-    /// What hears of a Tags write: the Tags page itself, the Transactions and the Shell.
-    announcer: Entity<Announcer>,
     clock: lib_core::Clock,
     keymap: Keymap<TagsPageEvent>,
     /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
@@ -60,16 +55,13 @@ impl TagsPage {
         clock: lib_core::Clock,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        let writes = WriteCount::default();
-        let ports = ports::shared(&setup.store, setup.usage.clone(), &writes);
+        let ports = ports::shared(&setup.store, setup.usage.clone());
         Self {
             presenter: TagsPagePresenter::new(ports.clone(), setup.keymap.clone()),
             ports,
-            writes,
             removal: setup.removal,
             _tags_changed: notify_on(&announcer, Domain::Tags, cx),
             _transactions_changed: notify_on(&announcer, Domain::Transactions, cx),
-            announcer,
             clock,
             keymap: setup.keymap,
             page_focused: false,
@@ -90,10 +82,9 @@ impl TagsPage {
         crate::input::join_or_send(cx, |cx| self.handle(event, cx));
     }
 
-    /// Hands `event` to the Presenter with the Desktop's Router, announcing the Tags when it wrote
-    /// them. Inside an input already, as [`Self::send`] or a Dialog's confirm.
+    /// Hands `event` to the Presenter with the Desktop's Router. Inside an input already, as
+    /// [`Self::send`] or a Dialog's confirm.
     fn handle(&mut self, event: TagsPageEvent, cx: &mut Context<'_, Self>) {
-        let before = self.writes.get();
         let mut router = PageRouter {
             ports: self.ports.clone(),
             removal: self.removal.clone(),
@@ -101,22 +92,12 @@ impl TagsPage {
             cx,
         };
         self.presenter.handle(event, &mut router);
-        if self.writes.get() != before {
-            ports::announce(&self.announcer, cx);
-        }
         cx.notify();
     }
 
-    /// A confirmed Dialog's outcome, handed back by the Dialog host inside the confirm's input.
-    /// Every confirm wrote the Tags, so they are announced; a remove or merge rewrote Splits too,
-    /// so the Transactions are announced for the Views reading them.
+    /// A confirmed Dialog's outcome, handed back by the Dialog host inside the confirm's input,
+    /// whose commit names what the confirm wrote: a remove or merge's Splits as well as the Tags.
     pub(crate) fn dialog_landed(&mut self, outcome: TagsOutcome, cx: &mut Context<'_, Self>) {
-        if matches!(outcome.change, TagChange::Removed | TagChange::Merged) {
-            self.announcer.update(cx, |announcer, cx| {
-                announcer.announce(Domain::Transactions, cx);
-            });
-        }
-        ports::announce(&self.announcer, cx);
         self.handle(TagsPageEvent::DialogClosed(Some(outcome)), cx);
     }
 

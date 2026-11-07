@@ -80,15 +80,15 @@ pub use adapter::payees::PayeesAdapter;
 pub use adapter::settings::{LedgerPreferencesAdapter, StoredSettingsReads};
 pub use adapter::store::{
     AccountsStore, BillsStore, BudgetsStore, CategoriesStore, CountingCommit, DocumentsStore,
-    FakeStores, InstitutionsStore, InventoryStore, PayeesStore, SharedAccountsStore,
+    FakeStores, InstitutionsStore, InventoryStore, PayeesStore, Recorded, SharedAccountsStore,
     SharedBillsStore, SharedBudgetsStore, SharedCategoriesStore, SharedDocumentsStore,
-    SharedInstitutionsStore, SharedInventoryStore, SharedPayeesStore, SharedTagsStore,
-    SharedTransactionsStore, SharedUnitsStore, StoredAccountReads, StoredBillReads,
-    StoredBillUnits, StoredBudgetCategories, StoredBudgetReads, StoredCategoryDeletionReads,
-    StoredDashboardReads, StoredDocumentReads, StoredImportReads, StoredInstitutionReads,
-    StoredInventoryReads, StoredPayeeReads, StoredShellReads, StoredTagReads,
-    StoredTagRemovalReads, StoredTransactionReads, StoredUnitReads, TagsStore, TransactionsStore,
-    UnitsStore,
+    SharedInstitutionsStore, SharedInventoryStore, SharedPayeesStore, SharedStores,
+    SharedTagsStore, SharedTransactionsStore, SharedUnitsStore, StoredAccountReads,
+    StoredBillReads, StoredBillUnits, StoredBudgetCategories, StoredBudgetReads,
+    StoredCategoryDeletionReads, StoredDashboardReads, StoredDocumentReads, StoredImportReads,
+    StoredInstitutionReads, StoredInventoryReads, StoredPayeeReads, StoredShellReads,
+    StoredTagReads, StoredTagRemovalReads, StoredTransactionReads, StoredUnitReads, TagsStore,
+    TransactionsStore, UnitsStore,
 };
 pub use adapter::tag_removal::TagRemovalAdapter;
 pub use adapter::tags::TagsAdapter;
@@ -100,14 +100,14 @@ pub use adapter::units::UnitsAdapter;
 /// A Client's Ledger file, opened at start-up with its adapters and the writer, and the
 /// [`Stores`] its Shell is built on.
 pub mod storage;
-pub use storage::{Storage, Stores, open_storage};
+pub use storage::{Storage, StoreParts, Stores, open_storage};
 
 /// The Sample Ledger, one fixed Ledger for development and tests, and the dev seed that writes it.
 pub mod seed;
 
 /// The writes every adapter makes in one Interactor call, committed together (ADR-0046).
 pub mod commit;
-pub use commit::{Commit, InMemoryCommit, PendingWrites};
+pub use commit::{Commit, Committed, InMemoryCommit, PendingWrites, Written};
 
 /// The one writer thread every adapter saves through (ADR-0046).
 pub mod writer;

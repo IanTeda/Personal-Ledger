@@ -19,7 +19,6 @@ use crate::unit_deletion::DeleteUnitDialog;
 pub(super) struct PageRouter<'a, 'b> {
     pub ports: DesktopPorts,
     pub deletion: lib_unit_deletion::SharedUnitDeletion,
-    pub announcer: gpui::Entity<Announcer>,
     /// The Clock the set price Dialog reads now from.
     pub clock: lib_core::Clock,
     pub cx: &'a mut Context<'b, UnitsPage>,
@@ -38,22 +37,15 @@ impl UnitsRouter for PageRouter<'_, '_> {
             let _ = page.update(cx, |page, cx| page.dialog_landed(outcome, cx));
         });
         if let Which::DeleteUnit(id) = dialog {
-            let Some(dialog) = DeleteUnitDialog::open(
-                id,
-                &self.ports,
-                &self.deletion,
-                &self.announcer,
-                landed,
-                self.cx,
-            ) else {
+            let Some(dialog) =
+                DeleteUnitDialog::open(id, &self.ports, &self.deletion, landed, self.cx)
+            else {
                 return false;
             };
             host_dialog(self.cx, |_| dialog);
             return true;
         }
-        let Some(dialog) =
-            UnitsDialog::open(dialog, &self.ports, &self.announcer, &self.clock, landed)
-        else {
+        let Some(dialog) = UnitsDialog::open(dialog, &self.ports, &self.clock, landed) else {
             return false;
         };
         host_dialog(self.cx, |_| dialog);

@@ -5,6 +5,11 @@
 //! [`Commit`](crate::Commit), once per input. [`Stores::fake`] builds the bundle on in-memory
 //! stores with a [`CountingCommit`], so a test asserts that once.
 //!
+//! [`Stores::new`] wraps each store once in a [`Recorded`], which notes the store's
+//! [`Domain`](crate::Domain) in the [`Written`](crate::Written) set the commit drains on every
+//! write, so [`Committed`](crate::Committed) says what an input wrote and no module counts its own
+//! writes (#1081). [`SharedStores::reload`] reloads one domain's store by its `Domain`.
+//!
 //! The Accounts store is shared as well ([`SharedAccountsStore`]): the Desktop's Ledger forwards
 //! the Accounts writers to it, and the Units and Bills read its rows (#853). So is the Categories
 //! store ([`SharedCategoriesStore`]): the Desktop's Ledger forwards the Categories writers to it,
@@ -111,8 +116,67 @@ use crate::adapter::{
 use crate::{
     AccountsAdapter, BillsAdapter, BudgetsAdapter, CategoriesAdapter, Commit, DocumentsAdapter,
     Domain, InMemoryCommit, InstitutionsAdapter, InventoryAdapter, PayeesAdapter, Result, Stores,
-    TagsAdapter, TransactionsAdapter, UnitsAdapter,
+    TagsAdapter, TransactionsAdapter, UnitsAdapter, Written,
 };
+
+/// A store as [`Stores`] holds it: the adapter or the in-memory fake, wrapped once as `Stores` is
+/// built, noting its [`Domain`] in the commit's [`Written`] on every mutable access, so the commit
+/// says what an input wrote and no Client counts its own writes. The grain is the borrow, not the
+/// write: a mutable borrow that writes nothing costs one extra repaint. A reload notes nothing,
+/// since it puts memory back as stored rather than writing.
+pub struct Recorded<S: ?Sized> {
+    domain: Domain,
+    written: Written,
+    store: Box<S>,
+}
+
+impl<S: ?Sized> Recorded<S> {
+    /// `store`, noting `domain` in `written` on every mutable access.
+    pub fn new(domain: Domain, written: Written, store: Box<S>) -> Self {
+        Self {
+            domain,
+            written,
+            store,
+        }
+    }
+}
+
+/// Each write notes the domain it writes: a Document's [`Domain::Documents`], a Document Type's
+/// [`Domain::DocumentTypes`].
+impl<S: DocumentsStore + ?Sized> DocumentRepository for Recorded<S> {
+    fn documents(&self) -> Vec<lib_documents::Document> {
+        self.store.documents().documents()
+    }
+
+    fn document_types(&self) -> Vec<lib_documents::types::DocumentTypeRow> {
+        self.store.documents().document_types()
+    }
+
+    fn upsert_document(&mut self, document: &lib_documents::Document) {
+        self.written.note(Domain::Documents);
+        self.store.documents_mut().upsert_document(document);
+    }
+
+    fn delete_document(&mut self, id: lib_core::DocumentId) {
+        self.written.note(Domain::Documents);
+        self.store.documents_mut().delete_document(id);
+    }
+
+    fn upsert_document_type(&mut self, row: &lib_documents::types::DocumentTypeRow) {
+        self.written.note(Domain::DocumentTypes);
+        self.store.documents_mut().upsert_document_type(row);
+    }
+
+    fn delete_document_type(&mut self, id: lib_core::DocumentTypeId) {
+        self.written.note(Domain::DocumentTypes);
+        self.store.documents_mut().delete_document_type(id);
+    }
+
+    fn move_document_type(&mut self, id: lib_core::DocumentTypeId, to: usize) {
+        self.written.note(Domain::DocumentTypes);
+        self.store.documents_mut().move_document_type(id, to);
+    }
+}
 
 /// The Units, Price Sources and base Unit ports, wherever they are kept. Usage and holdings are
 /// other domains', so each Client answers them itself (its `units/ports.rs`).
@@ -241,41 +305,87 @@ pub type SharedUnitsStore = Rc<RefCell<dyn UnitsStore>>;
 /// An Institutions store shared by the Institutions module and the Unit Deletion adapter (#902).
 pub type SharedInstitutionsStore = Rc<RefCell<dyn InstitutionsStore>>;
 
-/// A boxed store is the store, so a bin given one can share it ([`SharedUnitsStore`]).
-impl<T: UnitsStore + ?Sized> UnitsStore for Box<T> {
-    fn units(&self) -> &dyn UnitRepository {
-        (**self).units()
-    }
+/// Every domain's store as the Client shares it out, so a domain is reloaded by its [`Domain`] in
+/// one call ([`SharedStores::reload`]): after a failed write, or a commit's cascade. A Client
+/// builds it from the shared values its modules hold, which may wrap the store (as the Desktop's
+/// ports do) as long as their `reload` reaches it.
+#[derive(Clone)]
+pub struct SharedStores {
+    pub units: SharedUnitsStore,
+    pub institutions: SharedInstitutionsStore,
+    pub accounts: SharedAccountsStore,
+    pub categories: SharedCategoriesStore,
+    pub tags: SharedTagsStore,
+    pub payees: SharedPayeesStore,
+    pub transactions: SharedTransactionsStore,
+    pub bills: SharedBillsStore,
+    pub budgets: SharedBudgetsStore,
+    pub inventory: SharedInventoryStore,
+    pub documents: SharedDocumentsStore,
+}
 
-    fn price_sources(&self) -> &dyn PriceSourceRepository {
-        (**self).price_sources()
-    }
-
-    fn base_unit(&self) -> &dyn BaseUnitRepository {
-        (**self).base_unit()
-    }
-
-    fn split_mut<'a>(&'a mut self, usage: &'a dyn UnitUsage) -> PortsMut<'a> {
-        (**self).split_mut(usage)
-    }
-
-    fn reload(&mut self) -> Result<()> {
-        (**self).reload()
+impl SharedStores {
+    /// Reads `domain`'s rows back as stored and drops its writes not yet committed (ADR-0046).
+    /// The Documents and the Document Types share one store, so either reloads both.
+    ///
+    /// # Errors
+    /// Returns the error reading the rows back; memory is left as it was.
+    pub fn reload(&self, domain: Domain) -> Result<()> {
+        match domain {
+            Domain::Units => self.units.borrow_mut().reload(),
+            Domain::Institutions => self.institutions.borrow_mut().reload(),
+            Domain::Accounts => self.accounts.borrow_mut().reload(),
+            Domain::Categories => self.categories.borrow_mut().reload(),
+            Domain::Tags => self.tags.borrow_mut().reload(),
+            Domain::Payees => self.payees.borrow_mut().reload(),
+            Domain::Transactions => self.transactions.borrow_mut().reload(),
+            Domain::Bills => self.bills.borrow_mut().reload(),
+            Domain::Budgets => self.budgets.borrow_mut().reload(),
+            Domain::Inventory => self.inventory.borrow_mut().reload(),
+            Domain::Documents | Domain::DocumentTypes => self.documents.borrow_mut().reload(),
+            #[cfg(test)]
+            Domain::Test => Ok(()),
+        }
     }
 }
 
-/// A boxed store is the store, so a bin given one can share it ([`SharedInstitutionsStore`]).
-impl<T: InstitutionsStore + ?Sized> InstitutionsStore for Box<T> {
-    fn institutions(&self) -> &dyn InstitutionRepository {
-        (**self).institutions()
+/// The store, noting its domain written on every mutable access.
+impl<S: UnitsStore + ?Sized> UnitsStore for Recorded<S> {
+    fn units(&self) -> &dyn UnitRepository {
+        self.store.units()
     }
 
-    fn institutions_mut(&mut self) -> &mut dyn InstitutionRepository {
-        (**self).institutions_mut()
+    fn price_sources(&self) -> &dyn PriceSourceRepository {
+        self.store.price_sources()
+    }
+
+    fn base_unit(&self) -> &dyn BaseUnitRepository {
+        self.store.base_unit()
+    }
+
+    fn split_mut<'a>(&'a mut self, usage: &'a dyn UnitUsage) -> PortsMut<'a> {
+        self.written.note(self.domain);
+        self.store.split_mut(usage)
     }
 
     fn reload(&mut self) -> Result<()> {
-        (**self).reload()
+        self.store.reload()
+    }
+}
+
+/// The store, noting its domain written on every mutable access.
+impl<S: InstitutionsStore + ?Sized> InstitutionsStore for Recorded<S> {
+    fn institutions(&self) -> &dyn InstitutionRepository {
+        self.store.institutions()
+    }
+
+    fn institutions_mut(&mut self) -> &mut dyn InstitutionRepository {
+        self.written.note(self.domain);
+        self.store.institutions_mut()
+    }
+
+    fn reload(&mut self) -> Result<()> {
+        self.store.reload()
     }
 }
 
@@ -312,18 +422,19 @@ impl AccountsStore for AccountsAdapter {
     }
 }
 
-/// A boxed store is the store, so a bin given one can share it ([`SharedAccountsStore`]).
-impl<T: AccountsStore + ?Sized> AccountsStore for Box<T> {
+/// The store, noting its domain written on every mutable access.
+impl<S: AccountsStore + ?Sized> AccountsStore for Recorded<S> {
     fn accounts(&self) -> &dyn AccountRepository {
-        (**self).accounts()
+        self.store.accounts()
     }
 
     fn accounts_mut(&mut self) -> &mut dyn AccountRepository {
-        (**self).accounts_mut()
+        self.written.note(self.domain);
+        self.store.accounts_mut()
     }
 
     fn reload(&mut self) -> Result<()> {
-        (**self).reload()
+        self.store.reload()
     }
 }
 
@@ -386,22 +497,24 @@ impl CategoriesStore for CategoriesAdapter {
     }
 }
 
-/// A boxed store is the store, so a bin given one can share it ([`SharedCategoriesStore`]).
-impl<T: CategoriesStore + ?Sized> CategoriesStore for Box<T> {
+/// The store, noting its domain written on every mutable access.
+impl<S: CategoriesStore + ?Sized> CategoriesStore for Recorded<S> {
     fn categories(&self) -> &dyn CategoryRepository {
-        (**self).categories()
+        self.store.categories()
     }
 
     fn categories_mut(&mut self) -> &mut dyn CategoryRepository {
-        (**self).categories_mut()
+        self.written.note(self.domain);
+        self.store.categories_mut()
     }
 
     fn delete_category(&mut self, id: CategoryId) {
-        (**self).delete_category(id);
+        self.written.note(self.domain);
+        self.store.delete_category(id);
     }
 
     fn reload(&mut self) -> Result<()> {
-        (**self).reload()
+        self.store.reload()
     }
 }
 
@@ -465,22 +578,24 @@ impl TagsStore for TagsAdapter {
     }
 }
 
-/// A boxed store is the store, so a bin given one can share it ([`SharedTagsStore`]).
-impl<T: TagsStore + ?Sized> TagsStore for Box<T> {
+/// The store, noting its domain written on every mutable access.
+impl<S: TagsStore + ?Sized> TagsStore for Recorded<S> {
     fn tags(&self) -> &dyn TagRepository {
-        (**self).tags()
+        self.store.tags()
     }
 
     fn tags_mut(&mut self) -> &mut dyn TagRepository {
-        (**self).tags_mut()
+        self.written.note(self.domain);
+        self.store.tags_mut()
     }
 
     fn delete_tag(&mut self, id: TagId) {
-        (**self).delete_tag(id);
+        self.written.note(self.domain);
+        self.store.delete_tag(id);
     }
 
     fn reload(&mut self) -> Result<()> {
-        (**self).reload()
+        self.store.reload()
     }
 }
 
@@ -534,18 +649,19 @@ impl InventoryStore for InventoryAdapter {
     }
 }
 
-/// A boxed store is the store, so a bin given one can share it ([`SharedInventoryStore`]).
-impl<T: InventoryStore + ?Sized> InventoryStore for Box<T> {
+/// The store, noting its domain written on every mutable access.
+impl<S: InventoryStore + ?Sized> InventoryStore for Recorded<S> {
     fn inventory(&self) -> &dyn InventoryRepository {
-        (**self).inventory()
+        self.store.inventory()
     }
 
     fn inventory_mut(&mut self) -> &mut dyn InventoryRepository {
-        (**self).inventory_mut()
+        self.written.note(self.domain);
+        self.store.inventory_mut()
     }
 
     fn reload(&mut self) -> Result<()> {
-        (**self).reload()
+        self.store.reload()
     }
 }
 
@@ -662,38 +778,39 @@ impl TransactionsStore for TransactionsAdapter {
     }
 }
 
-/// A boxed store is the store, so a bin given one can share it ([`SharedTransactionsStore`]).
-impl<T: TransactionsStore + ?Sized> TransactionsStore for Box<T> {
+/// The store, noting its domain written on every mutable access.
+impl<S: TransactionsStore + ?Sized> TransactionsStore for Recorded<S> {
     fn transactions(&self) -> &dyn TransactionRepository {
-        (**self).transactions()
+        self.store.transactions()
     }
 
     fn transactions_mut(&mut self) -> &mut dyn TransactionRepository {
-        (**self).transactions_mut()
+        self.written.note(self.domain);
+        self.store.transactions_mut()
     }
 
     fn category_splits(&self, id: CategoryId) -> usize {
-        (**self).category_splits(id)
+        self.store.category_splits(id)
     }
 
     fn payee_splits(&self, id: PayeeId) -> Option<usize> {
-        (**self).payee_splits(id)
+        self.store.payee_splits(id)
     }
 
     fn account_transaction_counts(&self, accounts: &[AccountId]) -> HashMap<AccountId, usize> {
-        (**self).account_transaction_counts(accounts)
+        self.store.account_transaction_counts(accounts)
     }
 
     fn tagged_splits(&self, id: TagId) -> Vec<TaggedSplit> {
-        (**self).tagged_splits(id)
+        self.store.tagged_splits(id)
     }
 
     fn tag_transaction_counts(&self) -> HashMap<TagId, usize> {
-        (**self).tag_transaction_counts()
+        self.store.tag_transaction_counts()
     }
 
     fn reload(&mut self) -> Result<()> {
-        (**self).reload()
+        self.store.reload()
     }
 }
 
@@ -775,30 +892,32 @@ impl BillsStore for BillsAdapter {
     }
 }
 
-/// A boxed store is the store, so a bin given one can share it ([`SharedBillsStore`]).
-impl<T: BillsStore + ?Sized> BillsStore for Box<T> {
+/// The store, noting its domain written on every mutable access.
+impl<S: BillsStore + ?Sized> BillsStore for Recorded<S> {
     fn plans(&self) -> &dyn BillPlanRepository {
-        (**self).plans()
+        self.store.plans()
     }
 
     fn plans_mut(&mut self) -> &mut dyn BillPlanRepository {
-        (**self).plans_mut()
+        self.written.note(self.domain);
+        self.store.plans_mut()
     }
 
     fn entries(&self) -> &dyn BillScheduleRepository {
-        (**self).entries()
+        self.store.entries()
     }
 
     fn entries_mut(&mut self) -> &mut dyn BillScheduleRepository {
-        (**self).entries_mut()
+        self.written.note(self.domain);
+        self.store.entries_mut()
     }
 
     fn payee_bill_plans(&self, id: PayeeId) -> Option<usize> {
-        (**self).payee_bill_plans(id)
+        self.store.payee_bill_plans(id)
     }
 
     fn reload(&mut self) -> Result<()> {
-        (**self).reload()
+        self.store.reload()
     }
 }
 
@@ -862,18 +981,19 @@ impl PayeesStore for PayeesAdapter {
     }
 }
 
-/// A boxed store is the store, so a bin given one can share it ([`SharedPayeesStore`]).
-impl<T: PayeesStore + ?Sized> PayeesStore for Box<T> {
+/// The store, noting its domain written on every mutable access.
+impl<S: PayeesStore + ?Sized> PayeesStore for Recorded<S> {
     fn payees(&self) -> &dyn PayeeRepository {
-        (**self).payees()
+        self.store.payees()
     }
 
     fn payees_mut(&mut self) -> &mut dyn PayeeRepository {
-        (**self).payees_mut()
+        self.written.note(self.domain);
+        self.store.payees_mut()
     }
 
     fn reload(&mut self) -> Result<()> {
-        (**self).reload()
+        self.store.reload()
     }
 }
 
@@ -950,18 +1070,19 @@ impl BudgetsStore for BudgetsAdapter {
     }
 }
 
-/// A boxed store is the store, so a bin given one can share it ([`SharedBudgetsStore`]).
-impl<T: BudgetsStore + ?Sized> BudgetsStore for Box<T> {
+/// The store, noting its domain written on every mutable access.
+impl<S: BudgetsStore + ?Sized> BudgetsStore for Recorded<S> {
     fn budgets(&self) -> &dyn BudgetRepository {
-        (**self).budgets()
+        self.store.budgets()
     }
 
     fn budgets_mut(&mut self) -> &mut dyn BudgetRepository {
-        (**self).budgets_mut()
+        self.written.note(self.domain);
+        self.store.budgets_mut()
     }
 
     fn reload(&mut self) -> Result<()> {
-        (**self).reload()
+        self.store.reload()
     }
 }
 
@@ -1617,18 +1738,19 @@ impl DocumentsStore for DocumentsAdapter {
     }
 }
 
-/// A boxed store is the store, so a bin given one can share it ([`SharedDocumentsStore`]).
-impl<T: DocumentsStore + ?Sized> DocumentsStore for Box<T> {
+/// The Documents recorder lends itself as the repository, so it notes Documents or Document
+/// Types by the write rather than by the borrow: the Document Types page hears only its own.
+impl<S: DocumentsStore + ?Sized> DocumentsStore for Recorded<S> {
     fn documents(&self) -> &dyn DocumentRepository {
-        (**self).documents()
+        self
     }
 
     fn documents_mut(&mut self) -> &mut dyn DocumentRepository {
-        (**self).documents_mut()
+        self
     }
 
     fn reload(&mut self) -> Result<()> {
-        (**self).reload()
+        self.store.reload()
     }
 }
 
@@ -1764,7 +1886,7 @@ impl CountingCommit {
 }
 
 impl Commit for CountingCommit {
-    fn commit(&self) -> Vec<Domain> {
+    fn commit(&self) -> crate::Committed {
         self.count.set(self.count.get() + 1);
         self.inner.commit()
     }
@@ -1852,40 +1974,38 @@ impl FakeStores {
     }
 }
 
+impl From<FakeStores> for crate::StoreParts {
+    fn from(fakes: FakeStores) -> Self {
+        Self {
+            units: Box::new(fakes.units),
+            institutions: Box::new(fakes.institutions),
+            accounts: Box::new(fakes.accounts),
+            categories: Box::new(fakes.categories),
+            tags: Box::new(fakes.tags),
+            payees: Box::new(fakes.payees),
+            transactions: Box::new(fakes.transactions),
+            bills: Box::new(fakes.bills),
+            budgets: Box::new(fakes.budgets),
+            inventory: Box::new(fakes.inventory),
+            documents: Box::new(fakes.documents),
+        }
+    }
+}
+
 impl Stores {
     /// `fakes` in memory, committed through a [`CountingCommit`] whose count is returned, on a
     /// failure channel nothing reports on, since there is no writer.
     pub fn fake(fakes: FakeStores) -> (Self, Rc<Cell<usize>>) {
-        let FakeStores {
-            units,
-            institutions,
-            accounts,
-            categories,
-            tags,
-            payees,
-            transactions,
-            bills,
-            budgets,
-            inventory,
-            documents,
-        } = fakes;
-        let commit = CountingCommit::new(Rc::new(InMemoryCommit));
+        let in_memory = InMemoryCommit::default();
+        let written = in_memory.written().clone();
+        let commit = CountingCommit::new(Rc::new(in_memory));
         let count = commit.count();
-        let stores = Self {
-            units: Box::new(units),
-            institutions: Box::new(institutions),
-            accounts: Box::new(accounts),
-            categories: Box::new(categories),
-            tags: Box::new(tags),
-            payees: Box::new(payees),
-            transactions: Box::new(transactions),
-            bills: Box::new(bills),
-            budgets: Box::new(budgets),
-            inventory: Box::new(inventory),
-            documents: Box::new(documents),
-            commit: Rc::new(commit),
-            failures: mpsc::channel().1,
-        };
+        let stores = Self::new(
+            crate::StoreParts::from(fakes),
+            &written,
+            Rc::new(commit),
+            mpsc::channel().1,
+        );
         (stores, count)
     }
 }

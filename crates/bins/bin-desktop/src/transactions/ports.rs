@@ -2,8 +2,8 @@
 //! page's Presenter reads, answered from the stores the Open Ledger assembles (`LedgerStores`):
 //! the Transactions store, and the other domains through `lib_database`'s
 //! `StoredTransactionReads`. Every writer of Transactions is a module writing the store, or a
-//! cross-domain module's port over it (#1006), and announces `Domain::Transactions` through the
-//! `Announcer`; the Ledger keeps no read copy (#1028).
+//! cross-domain module's port over it (#1006); the input it is made in announces it (#1081), and
+//! the Ledger keeps no read copy (#1028).
 
 use std::cell::RefCell;
 use std::rc::Rc;

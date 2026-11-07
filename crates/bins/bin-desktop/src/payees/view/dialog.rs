@@ -13,7 +13,7 @@ mod delete_payee;
 mod payee_form;
 mod rules_field;
 
-use gpui::{App, Context, Entity, EventEmitter, IntoElement, Render, Window};
+use gpui::{App, Context, EventEmitter, IntoElement, Render, Window};
 use lib_payees::presenter::{
     DeletePayeeEvent, DeletePayeePresenter, PayeeFormEvent, PayeeFormPresenter,
 };
@@ -22,8 +22,7 @@ use lib_shell::DialogCommand;
 use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
 
-use crate::announcer::Announcer;
-use crate::payees::ports::{self, DesktopPorts};
+use crate::payees::ports::DesktopPorts;
 use crate::shell::view::dialog_entity::DialogReadback;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
 use lib_shell::Hint;
@@ -37,8 +36,6 @@ pub(crate) type Landed = Box<dyn Fn(PayeesOutcome, &mut App)>;
 /// The open Payees Dialog: its Presenter and its widget state.
 pub struct PayeesDialog {
     ports: DesktopPorts,
-    /// What a confirm announces its write through.
-    announcer: Entity<Announcer>,
     view: View,
     landed: Landed,
 }
@@ -62,13 +59,8 @@ impl View {
 
 impl PayeesDialog {
     /// `which`'s Presenter on `ports`, or `None` when the Payee it names is gone. A confirm
-    /// announces what it wrote and hands its outcome to `landed`.
-    pub(crate) fn open(
-        which: Which,
-        ports: &DesktopPorts,
-        announcer: &Entity<Announcer>,
-        landed: Landed,
-    ) -> Option<Self> {
+    /// hands its outcome to `landed`.
+    pub(crate) fn open(which: Which, ports: &DesktopPorts, landed: Landed) -> Option<Self> {
         let shared = ports.clone();
         let view = match which {
             Which::AddPayee => View::Form(PayeeFormPresenter::add(shared), 0),
@@ -77,7 +69,6 @@ impl PayeesDialog {
         };
         Some(Self {
             ports: ports.clone(),
-            announcer: announcer.clone(),
             view,
             landed,
         })
@@ -121,15 +112,12 @@ impl PayeesDialog {
         }
     }
 
-    /// Once the Presenter has closed the Dialog, announces the Payees a confirm wrote, hands its
-    /// outcome to the page and tells the host. A Presenter writes only on the confirm that closes
-    /// it, so an input that leaves the Dialog open, or a cancel, announces nothing.
+    /// Once the Presenter has closed the Dialog, hands its outcome to the page and tells the host.
     fn closed(&self, router: Router, cx: &mut Context<'_, Self>) {
         let Some(outcome) = router.closed() else {
             return;
         };
         if let Some(outcome) = outcome {
-            ports::announce(&self.announcer, cx);
             (self.landed)(outcome, cx);
         }
         cx.emit(DialogClosed);

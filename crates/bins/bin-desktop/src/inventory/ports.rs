@@ -10,7 +10,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::write_count::WriteCount;
 use lib_core::{ItemId, LocationId};
 use lib_database::SharedInventoryStore;
 use lib_inventory::{InventoryRepository, Item, Location, SharedInventory};
@@ -19,7 +18,6 @@ use lib_inventory::{InventoryRepository, Item, Location, SharedInventory};
 /// store is shared behind a `RefCell` whose guard can't be lent out of it.
 pub struct StoreInventory {
     store: SharedInventoryStore,
-    writes: WriteCount,
 }
 
 impl InventoryRepository for StoreInventory {
@@ -32,7 +30,6 @@ impl InventoryRepository for StoreInventory {
     }
 
     fn upsert_location(&mut self, location: Location) {
-        self.writes.bump();
         self.store
             .borrow_mut()
             .inventory_mut()
@@ -40,25 +37,21 @@ impl InventoryRepository for StoreInventory {
     }
 
     fn upsert_item(&mut self, item: Item) {
-        self.writes.bump();
         self.store.borrow_mut().inventory_mut().upsert_item(item);
     }
 
     fn delete_item(&mut self, id: ItemId) {
-        self.writes.bump();
         self.store.borrow_mut().inventory_mut().delete_item(id);
     }
 
     fn delete_location(&mut self, id: LocationId) {
-        self.writes.bump();
         self.store.borrow_mut().inventory_mut().delete_location(id);
     }
 }
 
 /// `store` as the Inventory module's Presenters share it.
-pub fn shared(store: &SharedInventoryStore, writes: &WriteCount) -> SharedInventory {
+pub fn shared(store: &SharedInventoryStore) -> SharedInventory {
     Rc::new(RefCell::new(StoreInventory {
         store: store.clone(),
-        writes: writes.clone(),
     }))
 }

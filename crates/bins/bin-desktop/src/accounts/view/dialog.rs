@@ -12,15 +12,14 @@
 
 mod account_form;
 
-use gpui::{App, Context, Entity, EventEmitter, IntoElement, Render, Window};
+use gpui::{App, Context, EventEmitter, IntoElement, Render, Window};
 use lib_accounts::presenter::{AccountFormEvent, AccountFormPresenter};
 use lib_accounts::{AccountsDialog as Which, AccountsOutcome};
 use lib_shell::DialogCommand;
 use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
 
-use crate::accounts::ports::{self, DesktopPorts};
-use crate::announcer::Announcer;
+use crate::accounts::ports::DesktopPorts;
 use crate::shell::view::dialog_entity::DialogReadback;
 use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
 use lib_shell::Hint;
@@ -34,8 +33,6 @@ pub(crate) type Landed = Box<dyn Fn(AccountsOutcome, &mut App)>;
 /// The open Add or Edit account Dialog: its Presenter and its widget state.
 pub struct AccountsDialog {
     ports: DesktopPorts,
-    /// What a confirm announces its write through.
-    announcer: Entity<Announcer>,
     presenter: AccountFormPresenter,
     /// The top row of each select's list window (Institution, Type, Unit), which the View keeps
     /// between draws.
@@ -45,11 +42,10 @@ pub struct AccountsDialog {
 
 impl AccountsDialog {
     /// `which`'s Presenter on `ports`, or `None` when the Account it names is gone. A confirm
-    /// announces what it wrote and hands its outcome to `landed`. An Account added opens `today`.
+    /// hands its outcome to `landed`. An Account added opens `today`.
     pub(crate) fn open(
         which: Which,
         ports: &DesktopPorts,
-        announcer: &Entity<Announcer>,
         today: chrono::NaiveDate,
         landed: Landed,
     ) -> Option<Self> {
@@ -60,7 +56,6 @@ impl AccountsDialog {
         };
         Some(Self {
             ports: ports.clone(),
-            announcer: announcer.clone(),
             presenter,
             scrolls: [0; 3],
             landed,
@@ -102,17 +97,9 @@ type Router = HostRouter<AccountsOutcome>;
 impl EventEmitter<DialogClosed> for AccountsDialog {}
 
 impl HostedDialog for AccountsDialog {
-    /// Every input is the Presenter's to read. One that may confirm (`select`, `submit`) runs announcing
-    /// a write before and after it.
+    /// Every input is the Presenter's to read.
     fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
-        let may_confirm = matches!(input, DialogInput::Select | DialogInput::Submit);
-        if may_confirm {
-            ports::refresh(&self.ports, &self.announcer, cx);
-        }
         let router = self.send(AccountFormEvent::Input(input));
-        if may_confirm {
-            ports::refresh(&self.ports, &self.announcer, cx);
-        }
         self.closed(router, cx);
     }
 
@@ -120,12 +107,9 @@ impl HostedDialog for AccountsDialog {
         self.presenter.view_model().frame.can_confirm
     }
 
-    /// Sends Confirm to the Presenter, which runs its Interactor, announcing any write
-    /// either side. A refusal stays on the Presenter's view model and keeps the Dialog open.
+    /// Sends Confirm to the Presenter, which runs its Interactor. A refusal stays on the Presenter's view model and keeps the Dialog open.
     fn confirm(&mut self, cx: &mut Context<'_, Self>) {
-        ports::refresh(&self.ports, &self.announcer, cx);
         let router = self.send(AccountFormEvent::Confirm);
-        ports::refresh(&self.ports, &self.announcer, cx);
         self.closed(router, cx);
     }
 

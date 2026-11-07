@@ -1,13 +1,12 @@
 //! The Payees Settings page's View: the `lib-payees` page Presenter in a gpui Entity. It looks up
 //! each key the Shell passes on, as chord text, in the Payees keymap, turns clicks into events,
-//! draws the view model (`render.rs`), and announces `Domain::Payees` after an event that wrote
-//! the Payees ([`ports::announce`]). Each key and click is one input (`crate::input::send`), which
+//! draws the view model (`render.rs`). Each key and click is one input (`crate::input::send`), which
 //! commits what it wrote. The Settings View hosts it as any other page.
 
 mod render;
 
-use crate::announcer::Domain;
 use gpui::{AnyElement, App, Context, Entity, EventEmitter, Subscription};
+use lib_database::Domain;
 use lib_payees::PayeesOutcome;
 use lib_payees::presenter::{PayeesPageEvent, PayeesPagePresenter, PayeesPageViewModel};
 use lib_viper::keymap::Keymap;
@@ -15,7 +14,7 @@ use lib_viper::keymap::Keymap;
 use lib_shell::Hint;
 
 use crate::payees::SettingsPayeesSnapshot;
-use crate::payees::ports::{self, DesktopPorts};
+use crate::payees::ports::DesktopPorts;
 use crate::payees::router::PageRouter;
 use crate::settings::snapshot::PageSnapshot;
 use crate::{
@@ -35,7 +34,6 @@ impl EventEmitter<PageRowClicked> for PayeesPage {}
 pub struct PayeesPage {
     presenter: PayeesPagePresenter,
     ports: DesktopPorts,
-    announcer: Entity<Announcer>,
     clock: lib_core::Clock,
     keymap: Keymap<PayeesPageEvent>,
     /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
@@ -60,7 +58,6 @@ impl PayeesPage {
             ports,
             _payees_changed: notify_on(&announcer, Domain::Payees, cx),
             _categories_changed: notify_on(&announcer, Domain::Categories, cx),
-            announcer,
             clock,
             keymap,
             page_focused: false,
@@ -78,20 +75,15 @@ impl PayeesPage {
         crate::input::join_or_send(cx, |cx| self.handle(event, cx));
     }
 
-    /// Hands `event` to the Presenter with the Desktop's Router, announcing the Payees when it
-    /// wrote them. Inside an input already, as [`Self::send`] or a Dialog's confirm.
+    /// Hands `event` to the Presenter with the Desktop's Router. Inside an input already, as
+    /// [`Self::send`] or a Dialog's confirm.
     fn handle(&mut self, event: PayeesPageEvent, cx: &mut Context<'_, Self>) {
-        let before = self.ports.borrow().writes();
         let mut router = PageRouter {
             ports: self.ports.clone(),
-            announcer: self.announcer.clone(),
             clock: self.clock.clone(),
             cx,
         };
         self.presenter.handle(event, &mut router);
-        if self.ports.borrow().writes() != before {
-            ports::announce(&self.announcer, cx);
-        }
         cx.notify();
     }
 

@@ -8,19 +8,17 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::mpsc;
 
-use gpui::{App, Entity};
 use lib_database::{
     PayeesStore, SharedBudgetsStore, SharedCategoriesStore, SharedDocumentsStore,
-    SharedInstitutionsStore, SharedInventoryStore, SharedTagsStore, SharedTransactionsStore,
-    SharedUnitsStore, StoredAccountReads, StoredCategoryRows, StoredDocumentReads,
-    StoredInventoryReads, Stores,
+    SharedInstitutionsStore, SharedInventoryStore, SharedStores, SharedTagsStore,
+    SharedTransactionsStore, SharedUnitsStore, StoredAccountReads, StoredCategoryRows,
+    StoredDocumentReads, StoredInventoryReads, Stores,
 };
 use lib_institutions::InstitutionsPorts as _;
 
 use crate::accounts::ports::DesktopPorts as DesktopAccountsPorts;
-use crate::announcer::{Announcer, Domain};
 use crate::bills::ports::DesktopPorts as DesktopBillsPorts;
-use crate::categories::ports::{CategoriesWrites, CategoryStores};
+use crate::categories::ports::CategoryStores;
 use crate::institutions::ports::DesktopPorts as DesktopInstitutionsPorts;
 use crate::payees::ports::DesktopPorts as DesktopPayeesPorts;
 
@@ -35,8 +33,6 @@ pub struct LedgerStores {
     /// (#993, #1052, #1053): the Accounts ports' reads and Account delete's.
     pub account_reads: StoredAccountReads,
     pub categories: SharedCategoriesStore,
-    /// The writes made to the Categories store, which the Categories announce from.
-    pub categories_writes: CategoriesWrites,
     pub tags: SharedTagsStore,
     pub payees: DesktopPayeesPorts,
     pub transactions: SharedTransactionsStore,
@@ -90,12 +86,11 @@ impl LedgerStores {
         // Payees module, the cross-domain adapters, the Documents and the Bills reads
         // (#831, #832). The Categories store is shared by the Categories module, Category delete,
         // the Bills and Payees reads (#858, #859, #1005).
-        let (categories, categories_writes) =
-            crate::categories::ports::counted(Box::new(categories));
+        let categories: SharedCategoriesStore = Rc::new(RefCell::new(categories));
         let transactions: SharedTransactionsStore = Rc::new(RefCell::new(transactions));
         let bills: lib_database::SharedBillsStore = Rc::new(RefCell::new(bills));
         let payees = crate::payees::LedgerBackedPorts::shared(
-            payees,
+            Box::new(payees),
             lib_database::StoredPayeeReads {
                 transactions: transactions.clone(),
                 bills: bills.clone(),
@@ -126,7 +121,8 @@ impl LedgerStores {
             units: units.clone(),
             institutions: institutions.clone(),
         };
-        let accounts = crate::accounts::LedgerBackedPorts::shared(accounts, account_reads.clone());
+        let accounts =
+            crate::accounts::LedgerBackedPorts::shared(Box::new(accounts), account_reads.clone());
         let institutions_store = institutions.clone();
         let institutions = crate::institutions::LedgerBackedPorts::shared(
             institutions,
@@ -165,7 +161,6 @@ impl LedgerStores {
                 accounts,
                 account_reads,
                 categories,
-                categories_writes,
                 tags,
                 payees,
                 transactions,
@@ -178,6 +173,24 @@ impl LedgerStores {
             units,
             commit,
             failures,
+        }
+    }
+
+    /// Every domain's store, through the shared value its modules hold, so a domain reloads by its
+    /// `Domain` in one call: after a failed write, or a commit's cascade (#1081).
+    pub fn shared(&self) -> SharedStores {
+        SharedStores {
+            units: self.units.clone(),
+            institutions: self.institutions_store.clone(),
+            accounts: self.accounts.clone(),
+            categories: self.categories.clone(),
+            tags: self.tags.clone(),
+            payees: self.payees.clone(),
+            transactions: self.transactions.clone(),
+            bills: self.bills.borrow().store(),
+            budgets: self.budgets.clone(),
+            inventory: self.inventory.clone(),
+            documents: self.documents.clone(),
         }
     }
 
@@ -220,7 +233,6 @@ impl LedgerStores {
     pub fn category_stores(&self) -> CategoryStores {
         CategoryStores {
             categories: self.categories.clone(),
-            writes: self.categories_writes.clone(),
             budgets: self.budgets.clone(),
             rows: self.category_rows(),
         }
@@ -229,12 +241,7 @@ impl LedgerStores {
     /// Adds a Location priced in `unit` to the Inventory store, so a test can delete a Unit one
     /// names (#885).
     #[doc(hidden)]
-    pub fn add_location_in_for_test(
-        &self,
-        unit: lib_core::UnitId,
-        announcer: &Entity<Announcer>,
-        cx: &mut App,
-    ) {
+    pub fn add_location_in_for_test(&self, unit: lib_core::UnitId) {
         let mut scratch = lib_inventory::Inventory::default();
         let draft = lib_inventory::LocationDraft {
             name: "Beach shack".to_string(),
@@ -250,16 +257,12 @@ impl LedgerStores {
             .borrow_mut()
             .inventory_mut()
             .upsert_location(location);
-        announcer.update(cx, |announcer, cx| {
-            announcer.announce(Domain::Units, cx);
-            announcer.announce(Domain::Inventory, cx);
-        });
     }
 
     /// Removes every Location from the Inventory store through the Interactor, as the Remove
     /// location Dialog does.
     #[doc(hidden)]
-    pub fn empty_inventory_for_test(&self, announcer: &Entity<Announcer>, cx: &mut App) {
+    pub fn empty_inventory_for_test(&self) {
         let ids: Vec<lib_core::LocationId> = self
             .inventory
             .borrow()
@@ -276,35 +279,23 @@ impl LedgerStores {
                 "a Location listed a moment ago must still be removable"
             );
         }
-        announcer.update(cx, |announcer, cx| {
-            announcer.announce(Domain::Inventory, cx)
-        });
     }
 
     /// Writes an empty default Budget in `unit` straight to the Budgets store, which then names
     /// the Unit.
     #[doc(hidden)]
-    pub fn add_budget_in_for_test(
-        &self,
-        unit: lib_core::UnitId,
-        announcer: &Entity<Announcer>,
-        cx: &mut App,
-    ) {
+    pub fn add_budget_in_for_test(&self, unit: lib_core::UnitId) {
         let budget = lib_budgets::personal_spending(unit, &[]);
         self.budgets
             .borrow_mut()
             .budgets_mut()
             .upsert_budget(&budget);
-        announcer.update(cx, |announcer, cx| {
-            announcer.announce(Domain::Units, cx);
-            announcer.announce(Domain::Budgets, cx);
-        });
     }
 
     /// Writes a Payee called `name` straight to the Payees store, so a test can meet the refusal
     /// of an Import that creates the same name.
     #[doc(hidden)]
-    pub fn add_payee_for_test(&self, name: &str, announcer: &Entity<Announcer>, cx: &mut App) {
+    pub fn add_payee_for_test(&self, name: &str) {
         PayeesStore::payees_mut(&mut *self.payees.borrow_mut()).upsert_payee(lib_payees::Payee {
             id: lib_core::PayeeId::new(),
             name: name.to_owned(),
@@ -312,30 +303,18 @@ impl LedgerStores {
             default_category: None,
             is_active: true,
         });
-        announcer.update(cx, |announcer, cx| announcer.announce(Domain::Payees, cx));
     }
 
     /// Gives Institution `id` Unit `unit` as its Usual unit, so a test can delete a Unit an
     /// Institution names.
     #[doc(hidden)]
-    pub fn name_usual_unit_for_test(
-        &self,
-        id: lib_core::InstitutionId,
-        unit: lib_core::UnitId,
-        announcer: &Entity<Announcer>,
-        cx: &mut App,
-    ) {
-        {
-            let mut ports = self.institutions.borrow_mut();
-            let Some(mut institution) = ports.institutions().institution(id) else {
-                return;
-            };
-            institution.usual_unit = Some(unit);
-            ports.institutions_mut().upsert_institution(institution);
-        }
-        announcer.update(cx, |announcer, cx| {
-            announcer.announce(Domain::Institutions, cx);
-        });
+    pub fn name_usual_unit_for_test(&self, id: lib_core::InstitutionId, unit: lib_core::UnitId) {
+        let mut ports = self.institutions.borrow_mut();
+        let Some(mut institution) = ports.institutions().institution(id) else {
+            return;
+        };
+        institution.usual_unit = Some(unit);
+        ports.institutions_mut().upsert_institution(institution);
     }
 }
 
@@ -372,10 +351,6 @@ mod tests {
     /// The stores on the Ledger file, with the ports the modules that write beside them hold.
     struct OnStorage {
         store: Entity<LedgerStores>,
-        /// The Accounts ports the stores share, which Account delete announces from.
-        accounts: DesktopAccountsPorts,
-        /// What the modules announce their writes through.
-        announcer: Entity<Announcer>,
         /// The Bills ports the store shares, which the Bills module writes.
         bills: DesktopBillsPorts,
         /// The payments port over the Transactions and Bills stores, the Bill Payments module's.
@@ -393,8 +368,7 @@ mod tests {
     /// Deletion modules write.
     fn on_storage_with_bills(cx: &mut TestAppContext, storage: lib_database::Storage) -> OnStorage {
         let pending = storage.pending;
-        let (categories, categories_writes) =
-            crate::categories::ports::counted(Box::new(storage.categories));
+        let categories: SharedCategoriesStore = Rc::new(RefCell::new(storage.categories));
         let transactions: SharedTransactionsStore = Rc::new(RefCell::new(storage.transactions));
         let bills_store: lib_database::SharedBillsStore = Rc::new(RefCell::new(storage.bills));
         let payees = crate::payees::LedgerBackedPorts::shared(
@@ -449,7 +423,6 @@ mod tests {
             accounts: accounts.clone(),
             account_reads,
             categories,
-            categories_writes,
             tags: Rc::new(RefCell::new(storage.tags)),
             payees,
             transactions,
@@ -461,8 +434,6 @@ mod tests {
         });
         OnStorage {
             store,
-            accounts,
-            announcer: cx.new(|_| Announcer::default()),
             bills,
             payments,
             deletion,
@@ -471,17 +442,13 @@ mod tests {
         }
     }
 
-    /// Deletes Account `id` through the Account Deletion module's port, then announces it,
-    /// as its Dialog's confirm does.
+    /// Deletes Account `id` through the Account Deletion module's port, as its Dialog's confirm
+    /// does.
     fn delete_account(
-        cx: &mut TestAppContext,
         on: &OnStorage,
         id: lib_core::AccountId,
     ) -> lib_account_deletion::Result<lib_account_deletion::AccountDeleted> {
-        let deleted = lib_account_deletion::interactor::DeleteAccount { id }
-            .run(&mut *on.deletion.borrow_mut());
-        cx.update(|cx| crate::account_deletion::refresh(&on.accounts, &on.announcer, cx));
-        deleted
+        lib_account_deletion::interactor::DeleteAccount { id }.run(&mut *on.deletion.borrow_mut())
     }
 
     #[gpui::test]
@@ -498,7 +465,7 @@ mod tests {
             .expect("a sample Account")
             .id;
 
-        delete_account(cx, &on, wallet).expect("nothing pays from the Wallet");
+        delete_account(&on, wallet).expect("nothing pays from the Wallet");
         on.pending.commit();
         let before = store.read_with(cx, |store, _| transactions_of(store));
         crate::quit(&writer);
@@ -669,7 +636,6 @@ mod tests {
             store,
             bills,
             payments,
-            announcer,
             pending,
             ..
         } = on_storage_with_bills(cx, storage);
@@ -751,7 +717,6 @@ mod tests {
             .run(ports.bills, ports.accounts, ports.categories)
             .expect("the plan is edited");
         }
-        cx.update(|cx| crate::bill_payments::announce(&announcer, cx));
         let before = bills_of(cx, &store);
         let transactions = store.read_with(cx, |store, _| transactions_of(store));
 
@@ -827,7 +792,6 @@ mod tests {
                 ports.split_mut().bills.upsert_bill_plan(plan);
             }
         }
-        cx.update(|cx| crate::bills::ports::announce(&on.announcer, cx));
         on.pending.commit();
         let budgets = on.store.read_with(cx, |store, _| budgets_of(store));
         assert!(
@@ -835,7 +799,7 @@ mod tests {
             "a sample Budget counts the Account"
         );
 
-        delete_account(cx, &on, account).expect("no Plan pays from it now");
+        delete_account(&on, account).expect("no Plan pays from it now");
         assert_eq!(resolution(cx, &on.store), Some(Resolution::Unresolved));
         on.store.read_with(cx, |store, _| {
             assert!(accounts_of(store).iter().all(|a| a.id != account));
@@ -890,7 +854,7 @@ mod tests {
         assert!(booked > 0, "the sample books to a Bill Plan's Account");
 
         assert_eq!(
-            delete_account(cx, &on, account),
+            delete_account(&on, account),
             Err(lib_account_deletion::Error::PaidFromByBillPlans { plans })
         );
 
