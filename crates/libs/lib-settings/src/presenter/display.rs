@@ -9,6 +9,7 @@
 //! ([`DeviceRouter::colour_changed`]); how each theme's card looks, and what the Client's own
 //! `[theme]` overrides and the system's light or dark setting make of it, is the Client's to draw.
 
+use std::convert::Infallible;
 use std::rc::Rc;
 
 use chrono::NaiveDate;
@@ -18,9 +19,10 @@ use lib_list_cursor::Step;
 use lib_locale::format::{AmountStyle, format_amount, format_date};
 use lib_viper::display::{RowDensity, StatusGlyphs};
 use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP, SELECT};
+use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Choice, Hint, SelectView};
 
-use super::device::{ControlView, PageKey, chord, chords, settle, shadowed_note, step_choice};
+use super::device::{ControlView, chord, chords, settle, shadowed_note, step_choice};
 use crate::keymap::{NEXT_CHOICE, PREVIOUS_CHOICE};
 use crate::msg;
 use crate::protocols::{ColourChoice, DeviceConfiguration, DeviceKey, DeviceRouter};
@@ -61,8 +63,14 @@ pub struct DisplayOutput {
 /// What Display is told and the person asks of it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DisplayEvent {
-    /// A key from [`crate::keymap::device_page_keymap`].
-    Key(PageKey),
+    /// `j`/`k`: the control below or above, or the grid's row.
+    Move(Step),
+    /// `h`/`l`: the focused control's choice after or before, or the grid's card.
+    Change(Step),
+    /// `enter`: ticks the checkbox, or chooses the Colour Theme the grid's focus is on.
+    Select,
+    /// `space`: ticks the checkbox.
+    Toggle,
     /// `back` (`esc`) in the Colour Theme grid: up to the control above it.
     Back,
     /// Any other key in the Colour Theme grid leaves it, as a movement the grid doesn't take does.
@@ -75,6 +83,16 @@ pub enum DisplayEvent {
     ClickColourTheme(&'static str),
     /// An Appearance click, or the palette's `theme` or `appearance`.
     ChooseColour(ColourChoice),
+}
+
+impl DisplayEvent {
+    /// Whether the event is one of the keymap's keys, which go to the focused control or the grid.
+    fn is_key(&self) -> bool {
+        matches!(
+            self,
+            Self::Move(_) | Self::Change(_) | Self::Select | Self::Toggle
+        )
+    }
 }
 
 /// What start-up read of Display's Configuration.
@@ -93,7 +111,7 @@ pub struct DisplaySetup {
     /// Where the settings are written; the Client swaps in its configuration file's once start-up
     /// has read it ([`DisplayPresenter::configure`]).
     pub device: Rc<dyn DeviceConfiguration>,
-    pub keymap: Keymap<PageKey>,
+    pub keymap: Keymap<DisplayEvent>,
     /// The chord of the Shell's `back`, for the legend.
     pub back_chord: String,
 }
@@ -171,7 +189,7 @@ pub struct DisplayViewModel {
 /// Settings › Display's Presenter.
 pub struct DisplayPresenter {
     device: Rc<dyn DeviceConfiguration>,
-    keymap: Keymap<PageKey>,
+    keymap: Keymap<DisplayEvent>,
     back_chord: String,
     output: DisplayOutput,
     colour_theme: Option<String>,
@@ -200,12 +218,8 @@ impl DisplayPresenter {
         }
     }
 
-    pub fn keymap(&self) -> &Keymap<PageKey> {
-        &self.keymap
-    }
-
     /// Replaces the keymap and the `back` chord, for a `[keybindings]` change.
-    pub fn set_keymap(&mut self, keymap: Keymap<PageKey>, back_chord: String) {
+    pub fn set_keymap(&mut self, keymap: Keymap<DisplayEvent>, back_chord: String) {
         self.keymap = keymap;
         self.back_chord = back_chord;
     }
@@ -252,36 +266,26 @@ impl DisplayPresenter {
     pub fn in_grid(&self) -> bool {
         self.grid.is_some()
     }
+}
 
-    /// Whether Display takes `event` as things stand, so a key it declines goes on to the frame.
-    /// The grid declines `h` in its first column, so the frame's `h` steps out to the index, and
-    /// `space`, which leaves it.
-    pub fn takes(&self, event: &DisplayEvent) -> bool {
-        match event {
-            DisplayEvent::Key(key) => match (self.grid, self.field) {
-                (Some(index), _) => match key {
-                    PageKey::Change(Step::Prev) => index % self.columns != 0,
-                    PageKey::Toggle => false,
-                    _ => true,
-                },
-                (None, Some(_)) => true,
-                (None, None) => false,
-            },
-            DisplayEvent::Back | DisplayEvent::LeaveGrid => self.grid.is_some(),
-            _ => true,
-        }
-    }
+impl Presenter for DisplayPresenter {
+    type Event = DisplayEvent;
+    type ViewModel = DisplayViewModel;
+    type Router<'r> = dyn DeviceRouter + 'r;
 
-    pub fn handle(&mut self, event: DisplayEvent, router: &mut dyn DeviceRouter) {
+    fn handle(&mut self, event: DisplayEvent, router: &mut Self::Router<'_>) {
         if !self.takes(&event) {
             return;
         }
         match event {
-            DisplayEvent::Key(key) => {
+            DisplayEvent::Move(_)
+            | DisplayEvent::Change(_)
+            | DisplayEvent::Select
+            | DisplayEvent::Toggle => {
                 if let Some(index) = self.grid {
-                    self.grid_key(index, key, router);
+                    self.grid_key(index, event, router);
                 } else {
-                    self.field_key(key, router);
+                    self.field_key(event, router);
                 }
             }
             DisplayEvent::Back => {
@@ -304,7 +308,7 @@ impl DisplayPresenter {
         }
     }
 
-    pub fn view_model(&self) -> DisplayViewModel {
+    fn view_model(&self) -> DisplayViewModel {
         let device = self.device.as_ref();
         let output = self.output;
         let chosen = self.chosen_theme();
@@ -449,6 +453,41 @@ impl DisplayPresenter {
             help,
         }
     }
+
+    /// Whether Display takes `event` as things stand, so a key it declines goes on to the frame.
+    /// The grid declines `h` in its first column, so the frame's `h` steps out to the index, and
+    /// `space`, which leaves it.
+    fn takes(&self, event: &DisplayEvent) -> bool {
+        if event.is_key() {
+            return match (self.grid, self.field) {
+                (Some(index), _) => match event {
+                    DisplayEvent::Change(Step::Prev) => index % self.columns != 0,
+                    DisplayEvent::Toggle => false,
+                    _ => true,
+                },
+                (None, Some(_)) => true,
+                (None, None) => false,
+            };
+        }
+        match event {
+            DisplayEvent::Back | DisplayEvent::LeaveGrid => self.grid.is_some(),
+            _ => true,
+        }
+    }
+}
+
+impl PagePresenter for DisplayPresenter {
+    /// Display opens no Dialog.
+    type Outcome = Infallible;
+
+    /// Display opens no Dialog, so there is nothing to tell it.
+    fn dialog_closed(_outcome: Option<Infallible>) -> Option<DisplayEvent> {
+        None
+    }
+
+    fn keymap(&self) -> &Keymap<DisplayEvent> {
+        &self.keymap
+    }
 }
 
 impl DisplayPresenter {
@@ -469,13 +508,13 @@ impl DisplayPresenter {
     /// The controls' keys: `j`/`k` walk the controls and on past the last into the Colour Theme
     /// grid, `h`/`l` change a segmented or radio control (or clear or tick the checkbox) in place,
     /// and `enter`/`space` toggle the checkbox.
-    fn field_key(&mut self, key: PageKey, router: &mut dyn DeviceRouter) {
+    fn field_key(&mut self, key: DisplayEvent, router: &mut dyn DeviceRouter) {
         let Some(field) = self.field else {
             return;
         };
         match key {
-            PageKey::Move(Step::Prev) => self.field = Some(field.saturating_sub(1)),
-            PageKey::Move(_) => {
+            DisplayEvent::Move(Step::Prev) => self.field = Some(field.saturating_sub(1)),
+            DisplayEvent::Move(_) => {
                 if field + 1 >= DISPLAY_FIELD_COUNT {
                     self.field = None;
                     self.grid = Some(self.chosen_theme());
@@ -483,7 +522,7 @@ impl DisplayPresenter {
                     self.field = Some(field + 1);
                 }
             }
-            PageKey::Change(step) => match field {
+            DisplayEvent::Change(step) => match field {
                 0 => {
                     let current = self.output.date_style;
                     if let Some(style) = step_choice(&DATE_STYLE_CHOICES, &current, &current, step)
@@ -509,41 +548,40 @@ impl DisplayPresenter {
                     router,
                 ),
             },
-            PageKey::Select | PageKey::Toggle => {
-                if field == DISPLAY_FIELD_SIDEBAR {
-                    self.change(
-                        |output| output.start_sidebar_minimised = !output.start_sidebar_minimised,
-                        router,
-                    );
-                }
+            DisplayEvent::Select | DisplayEvent::Toggle if field == DISPLAY_FIELD_SIDEBAR => {
+                self.change(
+                    |output| output.start_sidebar_minimised = !output.start_sidebar_minimised,
+                    router,
+                );
             }
+            _ => {}
         }
     }
 
     /// The Colour Theme grid (`docs/colour-themes-design.md` "Settings"): the moves step the focus,
     /// stopping at the edges, `k` on the top row climbs back to the last control, and `enter`
     /// chooses the card. Moving the focus never previews.
-    fn grid_key(&mut self, index: usize, key: PageKey, router: &mut dyn DeviceRouter) {
+    fn grid_key(&mut self, index: usize, key: DisplayEvent, router: &mut dyn DeviceRouter) {
         let last = ColourTheme::built_in().len().saturating_sub(1);
         match key {
-            PageKey::Select => {
+            DisplayEvent::Select => {
                 if let Some(theme) = ColourTheme::built_in().get(index) {
                     self.choose_colour(ColourChoice::Theme(theme.id), router);
                 }
             }
-            PageKey::Move(Step::Prev) if index < self.columns => {
+            DisplayEvent::Move(Step::Prev) if index < self.columns => {
                 self.grid = None;
                 self.field = Some(DISPLAY_FIELD_COUNT - 1);
             }
-            PageKey::Move(Step::Prev) => self.grid = Some(index - self.columns),
-            PageKey::Move(_) => {
+            DisplayEvent::Move(Step::Prev) => self.grid = Some(index - self.columns),
+            DisplayEvent::Move(_) => {
                 if index + self.columns <= last {
                     self.grid = Some(index + self.columns);
                 }
             }
-            PageKey::Change(Step::Prev) => self.grid = Some(index.saturating_sub(1)),
-            PageKey::Change(_) => self.grid = Some((index + 1).min(last)),
-            PageKey::Toggle => {}
+            DisplayEvent::Change(Step::Prev) => self.grid = Some(index.saturating_sub(1)),
+            DisplayEvent::Change(_) => self.grid = Some((index + 1).min(last)),
+            _ => {}
         }
     }
 
@@ -749,13 +787,13 @@ mod tests {
 
     use super::*;
     use crate::fake::{InMemoryDeviceConfiguration, RecordingRouter, Routed};
-    use crate::keymap::device_page_keymap;
+    use crate::keymap::display_keymap;
 
     fn display_on(device: Rc<InMemoryDeviceConfiguration>) -> DisplayPresenter {
         lib_locale::init_with_layers("en-US", &[msg::LAYER]);
         let mut display = DisplayPresenter::new(DisplaySetup {
             device: device.clone(),
-            keymap: device_page_keymap(&KeyBindingConfig::default()),
+            keymap: display_keymap(&KeyBindingConfig::default()),
             back_chord: "esc".to_string(),
         });
         display.configure(device, DisplaySettings::default());
@@ -779,14 +817,10 @@ mod tests {
         router
     }
 
-    fn key(key: PageKey) -> DisplayEvent {
-        DisplayEvent::Key(key)
-    }
-
-    const DOWN: DisplayEvent = DisplayEvent::Key(PageKey::Move(Step::Next));
-    const UP: DisplayEvent = DisplayEvent::Key(PageKey::Move(Step::Prev));
-    const LEFT: DisplayEvent = DisplayEvent::Key(PageKey::Change(Step::Prev));
-    const RIGHT: DisplayEvent = DisplayEvent::Key(PageKey::Change(Step::Next));
+    const DOWN: DisplayEvent = DisplayEvent::Move(Step::Next);
+    const UP: DisplayEvent = DisplayEvent::Move(Step::Prev);
+    const LEFT: DisplayEvent = DisplayEvent::Change(Step::Prev);
+    const RIGHT: DisplayEvent = DisplayEvent::Change(Step::Next);
 
     #[test]
     fn the_date_style_is_saved_then_reaches_the_views() {
@@ -1021,11 +1055,11 @@ mod tests {
         assert_eq!(display.output().row_density, RowDensity::Roomy);
         assert_eq!(display.output().status_glyphs, StatusGlyphs::AsciiFallback);
         assert_eq!(display.view_model().field, Some(DISPLAY_FIELD_SIDEBAR));
-        send(&mut display, [key(PageKey::Toggle)]);
+        send(&mut display, [DisplayEvent::Toggle]);
         assert!(display.output().start_sidebar_minimised);
         send(&mut display, [LEFT]);
         assert!(!display.output().start_sidebar_minimised);
-        send(&mut display, [key(PageKey::Select)]);
+        send(&mut display, [DisplayEvent::Select]);
         assert!(display.output().start_sidebar_minimised);
     }
 
@@ -1065,10 +1099,10 @@ mod tests {
             !display.takes(&LEFT),
             "the frame's h steps out to the index"
         );
-        assert!(!display.takes(&key(PageKey::Toggle)));
+        assert!(!display.takes(&DisplayEvent::Toggle));
         send(&mut display, [RIGHT]);
         assert_eq!(display.view_model().grid, Some(1));
-        let router = send(&mut display, [key(PageKey::Select)]);
+        let router = send(&mut display, [DisplayEvent::Select]);
         assert!(
             router
                 .routed

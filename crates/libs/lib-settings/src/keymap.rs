@@ -7,9 +7,9 @@
 //! While the picker is open the same keys move its highlight and open its chosen page, and every
 //! other key the frame binds is swallowed ([`SettingsFramePresenter::takes`]).
 //!
-//! The This device pages' keys ([`device_page_keymap`]) walk a page's controls and change the one
-//! focused, and on Display toggle its checkbox and choose a Colour Theme. A page's keys are offered
-//! before the frame's, so its `h`/`l` win over the frame's `h`.
+//! The This device pages' keys ([`general_keymap`], [`display_keymap`]) walk a page's controls and
+//! change the one focused, and on Display toggle its checkbox and choose a Colour Theme. A page's
+//! keys are offered before the frame's, so its `h`/`l` win over the frame's `h`.
 //!
 //! [`SettingsFramePresenter::takes`]: crate::presenter::SettingsFramePresenter::takes
 
@@ -19,7 +19,9 @@ use lib_viper::keymap::{
     MOVE_LAST, MOVE_UP, SELECT,
 };
 
-use crate::presenter::{LedgerEvent, LogScroll, PageKey, SettingsFrameEvent, TracingEvent};
+use crate::presenter::{
+    DisplayEvent, GeneralEvent, LedgerEvent, LogScroll, SettingsFrameEvent, TracingEvent,
+};
 
 /// From the index into the page on show.
 pub const ENTER_PAGE: &str = "settings.enter_page";
@@ -73,24 +75,42 @@ pub const CHOICE_RIGHT: &str = "settings.choice_right";
 /// Ticks or clears the focused checkbox.
 pub const TOGGLE: &str = "settings.toggle";
 
-/// The This device pages' commands (General and Display), with today's keys. None is listed in
-/// the palette: each means something only where the focus is.
-pub const DEVICE_PAGE_BINDINGS: &[Binding<PageKey>] = &[
-    Binding::hidden(MOVE_DOWN, "j", PageKey::Move(Step::Next)),
-    Binding::hidden(MOVE_UP, "k", PageKey::Move(Step::Prev)),
-    Binding::hidden(ARROW_DOWN, "down", PageKey::Move(Step::Next)),
-    Binding::hidden(ARROW_UP, "up", PageKey::Move(Step::Prev)),
-    Binding::hidden(PREVIOUS_CHOICE, "h", PageKey::Change(Step::Prev)),
-    Binding::hidden(NEXT_CHOICE, "l", PageKey::Change(Step::Next)),
-    Binding::hidden(CHOICE_LEFT, "left", PageKey::Change(Step::Prev)),
-    Binding::hidden(CHOICE_RIGHT, "right", PageKey::Change(Step::Next)),
-    Binding::hidden(SELECT, "enter", PageKey::Select),
-    Binding::hidden(TOGGLE, "space", PageKey::Toggle),
+/// Settings › General's commands, with today's keys: `j`/`k` walk the controls and `h`/`l` change
+/// the one focused. None is listed in the palette: each means something only where the focus is.
+pub const GENERAL_BINDINGS: &[Binding<GeneralEvent>] = &[
+    Binding::hidden(MOVE_DOWN, "j", GeneralEvent::Move(Step::Next)),
+    Binding::hidden(MOVE_UP, "k", GeneralEvent::Move(Step::Prev)),
+    Binding::hidden(ARROW_DOWN, "down", GeneralEvent::Move(Step::Next)),
+    Binding::hidden(ARROW_UP, "up", GeneralEvent::Move(Step::Prev)),
+    Binding::hidden(PREVIOUS_CHOICE, "h", GeneralEvent::Change(Step::Prev)),
+    Binding::hidden(NEXT_CHOICE, "l", GeneralEvent::Change(Step::Next)),
+    Binding::hidden(CHOICE_LEFT, "left", GeneralEvent::Change(Step::Prev)),
+    Binding::hidden(CHOICE_RIGHT, "right", GeneralEvent::Change(Step::Next)),
 ];
 
-/// The This device pages' keymap under `config`'s overrides.
-pub fn device_page_keymap(config: &KeyBindingConfig) -> Keymap<PageKey> {
-    Keymap::new(DEVICE_PAGE_BINDINGS, config)
+/// Settings › General's keymap under `config`'s overrides.
+pub fn general_keymap(config: &KeyBindingConfig) -> Keymap<GeneralEvent> {
+    Keymap::new(GENERAL_BINDINGS, config)
+}
+
+/// Settings › Display's commands, with today's keys: General's, with `enter` and `space` for the
+/// checkbox and `enter` to choose a Colour Theme. None is listed in the palette.
+pub const DISPLAY_BINDINGS: &[Binding<DisplayEvent>] = &[
+    Binding::hidden(MOVE_DOWN, "j", DisplayEvent::Move(Step::Next)),
+    Binding::hidden(MOVE_UP, "k", DisplayEvent::Move(Step::Prev)),
+    Binding::hidden(ARROW_DOWN, "down", DisplayEvent::Move(Step::Next)),
+    Binding::hidden(ARROW_UP, "up", DisplayEvent::Move(Step::Prev)),
+    Binding::hidden(PREVIOUS_CHOICE, "h", DisplayEvent::Change(Step::Prev)),
+    Binding::hidden(NEXT_CHOICE, "l", DisplayEvent::Change(Step::Next)),
+    Binding::hidden(CHOICE_LEFT, "left", DisplayEvent::Change(Step::Prev)),
+    Binding::hidden(CHOICE_RIGHT, "right", DisplayEvent::Change(Step::Next)),
+    Binding::hidden(SELECT, "enter", DisplayEvent::Select),
+    Binding::hidden(TOGGLE, "space", DisplayEvent::Toggle),
+];
+
+/// Settings › Display's keymap under `config`'s overrides.
+pub fn display_keymap(config: &KeyBindingConfig) -> Keymap<DisplayEvent> {
+    Keymap::new(DISPLAY_BINDINGS, config)
 }
 
 /// Settings › Ledger's commands, with today's keys: `j`/`k` step the Base unit select. None is
@@ -190,19 +210,38 @@ mod tests {
     }
 
     #[test]
-    fn the_device_page_defaults_are_todays_keys() {
-        let keymap = device_page_keymap(&KeyBindingConfig::default());
+    fn the_general_defaults_are_todays_keys() {
+        let keymap = general_keymap(&KeyBindingConfig::default());
 
         for (chord, event) in [
-            ("j", PageKey::Move(Step::Next)),
-            ("down", PageKey::Move(Step::Next)),
-            ("k", PageKey::Move(Step::Prev)),
-            ("h", PageKey::Change(Step::Prev)),
-            ("left", PageKey::Change(Step::Prev)),
-            ("l", PageKey::Change(Step::Next)),
-            ("right", PageKey::Change(Step::Next)),
-            ("enter", PageKey::Select),
-            ("space", PageKey::Toggle),
+            ("j", GeneralEvent::Move(Step::Next)),
+            ("down", GeneralEvent::Move(Step::Next)),
+            ("k", GeneralEvent::Move(Step::Prev)),
+            ("h", GeneralEvent::Change(Step::Prev)),
+            ("left", GeneralEvent::Change(Step::Prev)),
+            ("l", GeneralEvent::Change(Step::Next)),
+            ("right", GeneralEvent::Change(Step::Next)),
+        ] {
+            assert_eq!(keymap.event(chord), Some(event), "{chord}");
+        }
+        assert_eq!(keymap.event("enter"), None, "General has no checkbox");
+        assert_eq!(keymap.listed().count(), 0, "the palette lists none");
+    }
+
+    #[test]
+    fn the_display_defaults_are_todays_keys() {
+        let keymap = display_keymap(&KeyBindingConfig::default());
+
+        for (chord, event) in [
+            ("j", DisplayEvent::Move(Step::Next)),
+            ("down", DisplayEvent::Move(Step::Next)),
+            ("k", DisplayEvent::Move(Step::Prev)),
+            ("h", DisplayEvent::Change(Step::Prev)),
+            ("left", DisplayEvent::Change(Step::Prev)),
+            ("l", DisplayEvent::Change(Step::Next)),
+            ("right", DisplayEvent::Change(Step::Next)),
+            ("enter", DisplayEvent::Select),
+            ("space", DisplayEvent::Toggle),
         ] {
             assert_eq!(keymap.event(chord), Some(event), "{chord}");
         }

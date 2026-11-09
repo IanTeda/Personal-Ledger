@@ -10,6 +10,7 @@
 use lib_list_cursor::Step;
 use lib_toast::Notice;
 use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP, SELECT};
+use lib_viper::presenter::Presenter;
 use lib_viper::view::{Hint, count};
 
 use crate::keymap::{ENTER_PAGE, NEXT_PAGE, PICKER, PREVIOUS_PAGE};
@@ -262,33 +263,52 @@ impl SettingsFramePresenter {
         self.ledger_open || !page.needs_ledger()
     }
 
-    /// Whether the frame takes `event` as things stand, so a key it declines goes on to the page
-    /// or the Shell (the page's keys go first, so its `h` wins over [`SettingsFrameEvent::FocusIndex`]).
-    /// The open picker takes every key. Anything but a key is always taken.
-    pub fn takes(&self, event: &SettingsFrameEvent) -> bool {
-        if !event.is_key() || self.picker.is_some() {
-            return true;
-        }
-        let index = self.focus == SettingsFocus::Index;
-        let medium_page = self.drill_down && !index;
-        match event {
-            SettingsFrameEvent::Move(step) => {
-                index && matches!(step, Step::Next | Step::Prev | Step::First | Step::Last)
-            }
-            SettingsFrameEvent::Select | SettingsFrameEvent::EnterPage => index,
-            SettingsFrameEvent::FocusIndex => !index,
-            SettingsFrameEvent::StepPage(_) | SettingsFrameEvent::OpenPicker => medium_page,
-            SettingsFrameEvent::Back => self.takes_back(),
-            _ => false,
-        }
-    }
-
     /// Whether `back` has something to back out of: the picker, or a page with the keyboard.
     pub fn takes_back(&self) -> bool {
         self.picker.is_some() || self.focus == SettingsFocus::Page
     }
 
-    pub fn handle(&mut self, event: SettingsFrameEvent, router: &mut dyn SettingsRouter) {
+    /// The frame's status-line hints as things stand: the picker's while it is open, the index's
+    /// while it has the keyboard, and what a page adds at Medium. A docked page adds none, its own
+    /// hints being the page's. Each chord is read from the keymap, so a rebind shows.
+    pub fn hints(&self) -> Vec<Hint> {
+        if self.picker.is_some() {
+            return vec![
+                Hint::new(self.pair(MOVE_DOWN, MOVE_UP), msg::settings_hint_page()),
+                Hint::new(self.chord(SELECT), msg::settings_hint_open()),
+                Hint::new(self.back_chord.clone(), msg::settings_hint_close()),
+            ];
+        }
+        match self.focus {
+            SettingsFocus::Index => self.index_hints(),
+            SettingsFocus::Page if self.drill_down => vec![
+                Hint::new(
+                    self.pair(PREVIOUS_PAGE, NEXT_PAGE),
+                    msg::settings_hint_pages(),
+                ),
+                Hint::new(self.chord(PICKER), msg::settings_hint_picker()),
+                Hint::new(self.back_chord.clone(), msg::settings_hint_settings()),
+            ],
+            SettingsFocus::Page => Vec::new(),
+        }
+    }
+
+    /// The frame's part of the `?` cheat sheet's Settings group: the index's keys, ahead of the
+    /// page's own.
+    pub fn help(&self) -> Vec<Hint> {
+        self.index_hints()
+    }
+}
+
+/// The frame is a composite host, not a page: it has no Dialog of its own to hear back from, and
+/// the Client offers each key to the open page ahead of it, so it implements [`Presenter`] alone
+/// (ADR-0056).
+impl Presenter for SettingsFramePresenter {
+    type Event = SettingsFrameEvent;
+    type ViewModel = SettingsFrameViewModel;
+    type Router<'r> = dyn SettingsRouter + 'r;
+
+    fn handle(&mut self, event: SettingsFrameEvent, router: &mut Self::Router<'_>) {
         if !self.takes(&event) {
             return;
         }
@@ -362,7 +382,7 @@ impl SettingsFramePresenter {
         }
     }
 
-    pub fn view_model(&self) -> SettingsFrameViewModel {
+    fn view_model(&self) -> SettingsFrameViewModel {
         let settings = lib_locale::msg::nav_settings();
         let page_label = self.selected.label();
         SettingsFrameViewModel {
@@ -403,35 +423,25 @@ impl SettingsFramePresenter {
         }
     }
 
-    /// The frame's status-line hints as things stand: the picker's while it is open, the index's
-    /// while it has the keyboard, and what a page adds at Medium. A docked page adds none, its own
-    /// hints being the page's. Each chord is read from the keymap, so a rebind shows.
-    pub fn hints(&self) -> Vec<Hint> {
-        if self.picker.is_some() {
-            return vec![
-                Hint::new(self.pair(MOVE_DOWN, MOVE_UP), msg::settings_hint_page()),
-                Hint::new(self.chord(SELECT), msg::settings_hint_open()),
-                Hint::new(self.back_chord.clone(), msg::settings_hint_close()),
-            ];
+    /// Whether the frame takes `event` as things stand, so a key it declines goes on to the page
+    /// or the Shell (the page's keys go first, so its `h` wins over [`SettingsFrameEvent::FocusIndex`]).
+    /// The open picker takes every key. Anything but a key is always taken.
+    fn takes(&self, event: &SettingsFrameEvent) -> bool {
+        if !event.is_key() || self.picker.is_some() {
+            return true;
         }
-        match self.focus {
-            SettingsFocus::Index => self.index_hints(),
-            SettingsFocus::Page if self.drill_down => vec![
-                Hint::new(
-                    self.pair(PREVIOUS_PAGE, NEXT_PAGE),
-                    msg::settings_hint_pages(),
-                ),
-                Hint::new(self.chord(PICKER), msg::settings_hint_picker()),
-                Hint::new(self.back_chord.clone(), msg::settings_hint_settings()),
-            ],
-            SettingsFocus::Page => Vec::new(),
+        let index = self.focus == SettingsFocus::Index;
+        let medium_page = self.drill_down && !index;
+        match event {
+            SettingsFrameEvent::Move(step) => {
+                index && matches!(step, Step::Next | Step::Prev | Step::First | Step::Last)
+            }
+            SettingsFrameEvent::Select | SettingsFrameEvent::EnterPage => index,
+            SettingsFrameEvent::FocusIndex => !index,
+            SettingsFrameEvent::StepPage(_) | SettingsFrameEvent::OpenPicker => medium_page,
+            SettingsFrameEvent::Back => self.takes_back(),
+            _ => false,
         }
-    }
-
-    /// The frame's part of the `?` cheat sheet's Settings group: the index's keys, ahead of the
-    /// page's own.
-    pub fn help(&self) -> Vec<Hint> {
-        self.index_hints()
     }
 }
 

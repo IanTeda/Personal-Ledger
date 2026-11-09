@@ -14,9 +14,10 @@ use std::rc::Rc;
 use lib_list_cursor::Step;
 use lib_viper::dialog::DialogKeys;
 use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP};
+use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Choice, Hint};
 
-use super::clear_logs::ClearLogsPresenter;
+use super::clear_logs::{ClearLogsOutcome, ClearLogsPresenter};
 use super::device::{chord, chords, step_choice};
 use crate::keymap::{CLEAR_LOGS, NEXT_CHOICE, PREVIOUS_CHOICE};
 use crate::log::{LogLine, TracingLevel};
@@ -192,10 +193,6 @@ impl TracingPresenter {
         }
     }
 
-    pub fn keymap(&self) -> &Keymap<TracingEvent> {
-        &self.keymap
-    }
-
     /// Replaces the keymap, the `back` chord and the Dialog keys, for a `[keybindings]` change.
     pub fn set_keymap(
         &mut self,
@@ -224,7 +221,20 @@ impl TracingPresenter {
         self.mirror.visible.len()
     }
 
-    pub fn handle(&mut self, event: TracingEvent, router: &mut dyn TracingRouter) {
+    /// A level filters the log box at once, including what is already there, and starts it back at
+    /// the newest entry.
+    fn set_level(&mut self, level: TracingLevel, router: &mut dyn TracingRouter) {
+        self.mirror.set_level(level);
+        router.log_changed(LogListChange::Reset(self.mirror.visible.len()));
+    }
+}
+
+impl Presenter for TracingPresenter {
+    type Event = TracingEvent;
+    type ViewModel = TracingViewModel;
+    type Router<'r> = dyn TracingRouter + 'r;
+
+    fn handle(&mut self, event: TracingEvent, router: &mut Self::Router<'_>) {
         match event {
             TracingEvent::Level(step) => {
                 let level = self.mirror.level;
@@ -253,7 +263,7 @@ impl TracingPresenter {
         }
     }
 
-    pub fn view_model(&self) -> TracingViewModel {
+    fn view_model(&self) -> TracingViewModel {
         let mirror = &self.mirror;
         let empty = mirror.visible.is_empty().then(|| {
             if mirror.hidden() == 0 {
@@ -295,12 +305,19 @@ impl TracingPresenter {
             ],
         }
     }
+}
 
-    /// A level filters the log box at once, including what is already there, and starts it back at
-    /// the newest entry.
-    fn set_level(&mut self, level: TracingLevel, router: &mut dyn TracingRouter) {
-        self.mirror.set_level(level);
-        router.log_changed(LogListChange::Reset(self.mirror.visible.len()));
+impl PagePresenter for TracingPresenter {
+    /// What the Clear logs Dialog lands with.
+    type Outcome = ClearLogsOutcome;
+
+    /// A confirmed Clear logs empties the mirror; a cancelled one leaves it.
+    fn dialog_closed(outcome: Option<ClearLogsOutcome>) -> Option<TracingEvent> {
+        outcome.map(|ClearLogsOutcome::Cleared| TracingEvent::Cleared)
+    }
+
+    fn keymap(&self) -> &Keymap<TracingEvent> {
+        &self.keymap
     }
 }
 

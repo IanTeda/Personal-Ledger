@@ -18,6 +18,7 @@ use lib_settings::keymap::ledger_keymap;
 use lib_settings::{LedgerEvent, LedgerPresenter, LedgerSetup, LedgerViewModel};
 use lib_shell::Hint;
 use lib_viper::keymap::{KeyBindingConfig, Keymap};
+use lib_viper::presenter::{PagePresenter, Presenter};
 
 use crate::settings::snapshot::PageSnapshot;
 use crate::{

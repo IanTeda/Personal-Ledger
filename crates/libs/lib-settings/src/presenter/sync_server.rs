@@ -2,7 +2,11 @@
 //! "Sync now" stand-in. Sync now is permanently out of scope for this map, so its event only says
 //! so on the status line, through [`Notify`].
 
+use std::convert::Infallible;
+
 use lib_toast::{Notice, Notify};
+use lib_viper::keymap::{KeyBindingConfig, Keymap};
+use lib_viper::presenter::{PagePresenter, Presenter};
 
 use crate::msg;
 
@@ -25,16 +29,33 @@ pub struct SyncServerViewModel {
     pub sync_now: String,
 }
 
-/// Settings › Sync server's Presenter. It holds no state.
-#[derive(Debug, Default)]
-pub struct SyncServerPresenter;
+/// Settings › Sync server's Presenter. It holds no state, and its only events are its buttons' clicks,
+/// so its keymap binds nothing.
+#[derive(Debug)]
+pub struct SyncServerPresenter {
+    keymap: Keymap<SyncServerEvent>,
+}
 
 impl SyncServerPresenter {
     pub fn new() -> Self {
-        Self
+        Self {
+            keymap: Keymap::new(&[], &KeyBindingConfig::default()),
+        }
     }
+}
 
-    pub fn handle(&mut self, event: SyncServerEvent, router: &mut dyn Notify) {
+impl Default for SyncServerPresenter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Presenter for SyncServerPresenter {
+    type Event = SyncServerEvent;
+    type ViewModel = SyncServerViewModel;
+    type Router<'r> = dyn Notify + 'r;
+
+    fn handle(&mut self, event: SyncServerEvent, router: &mut Self::Router<'_>) {
         match event {
             SyncServerEvent::SyncNow => router.notify(Notice::Status(
                 msg::settings_status_sync_now_not_implemented(),
@@ -42,7 +63,7 @@ impl SyncServerPresenter {
         }
     }
 
-    pub fn view_model(&self) -> SyncServerViewModel {
+    fn view_model(&self) -> SyncServerViewModel {
         SyncServerViewModel {
             url_label: msg::settings_sync_url(),
             url: "sync.ledger.localhost".to_string(),
@@ -52,6 +73,20 @@ impl SyncServerPresenter {
             last: "14 sep 2026 \u{b7} 09:14".to_string(),
             sync_now: msg::settings_sync_now(),
         }
+    }
+}
+
+impl PagePresenter for SyncServerPresenter {
+    /// Sync server opens no Dialog.
+    type Outcome = Infallible;
+
+    /// Sync server opens no Dialog, so there is nothing to tell it.
+    fn dialog_closed(_outcome: Option<Infallible>) -> Option<SyncServerEvent> {
+        None
+    }
+
+    fn keymap(&self) -> &Keymap<SyncServerEvent> {
+        &self.keymap
     }
 }
 

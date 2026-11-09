@@ -7,14 +7,17 @@
 //! A control shows a change only once it is saved: a shadowed key or a refused write leaves it as
 //! it was and says why on the status line.
 
+use std::convert::Infallible;
 use std::path::PathBuf;
 use std::rc::Rc;
 
 use lib_core::{OnStart, StartView};
+use lib_list_cursor::Step;
 use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP};
+use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Choice, Hint, SelectView};
 
-use super::device::{ControlView, PageKey, chords, settle, shadowed_note, step_choice};
+use super::device::{ControlView, chords, settle, shadowed_note, step_choice};
 use crate::keymap::{NEXT_CHOICE, PREVIOUS_CHOICE};
 use crate::msg;
 use crate::protocols::{DeviceConfiguration, DeviceKey, DeviceRouter};
@@ -35,8 +38,10 @@ const GENERAL_FIELD_COUNT: usize = 3;
 /// What General is told and the person asks of it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GeneralEvent {
-    /// A key from [`crate::keymap::device_page_keymap`].
-    Key(PageKey),
+    /// `j`/`k`: the control below or above.
+    Move(Step),
+    /// `h`/`l`: the focused control's choice after or before.
+    Change(Step),
     ChooseOnStart(OnStart),
     ChooseStartView(StartView),
     ChooseToasts(bool),
@@ -86,7 +91,7 @@ pub struct GeneralSetup {
     /// Where the settings are written; the Client swaps in its configuration file's once start-up
     /// has read it ([`GeneralPresenter::configure`]).
     pub device: Rc<dyn DeviceConfiguration>,
-    pub keymap: Keymap<PageKey>,
+    pub keymap: Keymap<GeneralEvent>,
     /// The chord of the Shell's `back`, for the legend.
     pub back_chord: String,
     /// Start view's choices, labelled, in the order the radio group shows them: the Client's own
@@ -139,7 +144,7 @@ pub struct GeneralViewModel {
 /// Settings › General's Presenter.
 pub struct GeneralPresenter {
     device: Rc<dyn DeviceConfiguration>,
-    keymap: Keymap<PageKey>,
+    keymap: Keymap<GeneralEvent>,
     back_chord: String,
     start_views: Vec<Choice<StartView>>,
     locale: LocaleLine,
@@ -165,12 +170,8 @@ impl GeneralPresenter {
         }
     }
 
-    pub fn keymap(&self) -> &Keymap<PageKey> {
-        &self.keymap
-    }
-
     /// Replaces the keymap and the `back` chord, for a `[keybindings]` change.
-    pub fn set_keymap(&mut self, keymap: Keymap<PageKey>, back_chord: String) {
+    pub fn set_keymap(&mut self, keymap: Keymap<GeneralEvent>, back_chord: String) {
         self.keymap = keymap;
         self.back_chord = back_chord;
     }
@@ -209,24 +210,20 @@ impl GeneralPresenter {
     pub fn this_device(&self) -> &ThisDevice {
         &self.this_device
     }
+}
 
-    /// Whether General takes `event` as things stand, so a key it declines goes on to the frame:
-    /// only while a control has the keyboard, and only its moves and changes.
-    pub fn takes(&self, event: &GeneralEvent) -> bool {
-        match event {
-            GeneralEvent::Key(key) => {
-                self.field.is_some() && matches!(key, PageKey::Move(_) | PageKey::Change(_))
-            }
-            _ => true,
-        }
-    }
+impl Presenter for GeneralPresenter {
+    type Event = GeneralEvent;
+    type ViewModel = GeneralViewModel;
+    type Router<'r> = dyn DeviceRouter + 'r;
 
-    pub fn handle(&mut self, event: GeneralEvent, router: &mut dyn DeviceRouter) {
+    fn handle(&mut self, event: GeneralEvent, router: &mut Self::Router<'_>) {
         if !self.takes(&event) {
             return;
         }
         match event {
-            GeneralEvent::Key(key) => self.key(key, router),
+            GeneralEvent::Move(step) => self.move_field(step),
+            GeneralEvent::Change(step) => self.change(step, router),
             GeneralEvent::ChooseOnStart(on_start) => self.choose_on_start(on_start, router),
             GeneralEvent::ChooseStartView(start_view) => {
                 self.choose_start_view(start_view, router);
@@ -240,7 +237,7 @@ impl GeneralPresenter {
         }
     }
 
-    pub fn view_model(&self) -> GeneralViewModel {
+    fn view_model(&self) -> GeneralViewModel {
         let device = self.device.as_ref();
         let listed = self
             .start_views
@@ -342,52 +339,75 @@ impl GeneralPresenter {
             ],
         }
     }
+
+    /// Whether General takes `event` as things stand, so a key it declines goes on to the frame:
+    /// a move or change only while a control has the keyboard.
+    fn takes(&self, event: &GeneralEvent) -> bool {
+        match event {
+            GeneralEvent::Move(_) | GeneralEvent::Change(_) => self.field.is_some(),
+            _ => true,
+        }
+    }
+}
+
+impl PagePresenter for GeneralPresenter {
+    /// General opens no Dialog.
+    type Outcome = Infallible;
+
+    /// General opens no Dialog, so there is nothing to tell it.
+    fn dialog_closed(_outcome: Option<Infallible>) -> Option<GeneralEvent> {
+        None
+    }
+
+    fn keymap(&self) -> &Keymap<GeneralEvent> {
+        &self.keymap
+    }
 }
 
 impl GeneralPresenter {
-    /// `j`/`k` walk the controls, stopping at either end, and `h`/`l` step the focused one's
-    /// choice.
-    fn key(&mut self, key: PageKey, router: &mut dyn DeviceRouter) {
+    /// `j`/`k` walk the controls, stopping at either end.
+    fn move_field(&mut self, step: Step) {
+        if let Some(field) = self.field {
+            self.field = Some(lib_list_cursor::step(field, GENERAL_FIELD_COUNT, step));
+        }
+    }
+
+    /// `h`/`l` step the focused control's choice.
+    fn change(&mut self, step: Step, router: &mut dyn DeviceRouter) {
         let Some(field) = self.field else {
             return;
         };
-        match key {
-            PageKey::Move(step) => {
-                self.field = Some(lib_list_cursor::step(field, GENERAL_FIELD_COUNT, step));
+        match field {
+            GENERAL_FIELD_ON_START => {
+                let current = self.settings.on_start;
+                if let Some(next) = step_choice(&ON_START_CHOICES, &current, &current, step) {
+                    self.choose_on_start(next, router);
+                }
             }
-            PageKey::Change(step) => match field {
-                GENERAL_FIELD_ON_START => {
-                    let current = self.settings.on_start;
-                    if let Some(next) = step_choice(&ON_START_CHOICES, &current, &current, step) {
-                        self.choose_on_start(next, router);
-                    }
+            GENERAL_FIELD_START_VIEW => {
+                let choices: Vec<StartView> = self
+                    .start_views
+                    .iter()
+                    .map(|choice| choice.value.clone())
+                    .collect();
+                // A noun from the file that isn't a choice steps from the Dashboard.
+                if let Some(next) = step_choice(
+                    &choices,
+                    &self.settings.start_view,
+                    &StartView::Dashboard,
+                    step,
+                ) {
+                    self.choose_start_view(next, router);
                 }
-                GENERAL_FIELD_START_VIEW => {
-                    let choices: Vec<StartView> = self
-                        .start_views
-                        .iter()
-                        .map(|choice| choice.value.clone())
-                        .collect();
-                    // A noun from the file that isn't a choice steps from the Dashboard.
-                    if let Some(next) = step_choice(
-                        &choices,
-                        &self.settings.start_view,
-                        &StartView::Dashboard,
-                        step,
-                    ) {
-                        self.choose_start_view(next, router);
-                    }
+            }
+            _ => {
+                let current = self.settings.toasts_on;
+                if let Some(on) = step_choice(&TOASTS_CHOICES, &current, &current, step)
+                    && on != current
+                {
+                    self.write_toasts(on, router);
                 }
-                _ => {
-                    let current = self.settings.toasts_on;
-                    if let Some(on) = step_choice(&TOASTS_CHOICES, &current, &current, step)
-                        && on != current
-                    {
-                        self.write_toasts(on, router);
-                    }
-                }
-            },
-            PageKey::Select | PageKey::Toggle => {}
+            }
         }
     }
 
@@ -431,13 +451,12 @@ fn on_start_label(choice: OnStart) -> String {
 
 #[cfg(test)]
 mod tests {
-    use lib_list_cursor::Step;
     use lib_toast::Notice;
     use lib_viper::keymap::KeyBindingConfig;
 
     use super::*;
     use crate::fake::{InMemoryDeviceConfiguration, RecordingRouter, Routed};
-    use crate::keymap::device_page_keymap;
+    use crate::keymap::general_keymap;
 
     fn start_views() -> Vec<Choice<StartView>> {
         ["dashboard", "last", "settings", "bills"]
@@ -453,7 +472,7 @@ mod tests {
         lib_locale::init_with_layers("en-US", &[msg::LAYER]);
         let mut general = GeneralPresenter::new(GeneralSetup {
             device: device.clone(),
-            keymap: device_page_keymap(&KeyBindingConfig::default()),
+            keymap: general_keymap(&KeyBindingConfig::default()),
             back_chord: "esc".to_string(),
             start_views: start_views(),
             locale: LocaleLine {
@@ -481,15 +500,11 @@ mod tests {
         router
     }
 
-    fn key(key: PageKey) -> GeneralEvent {
-        GeneralEvent::Key(key)
-    }
-
     #[test]
     fn focus_arrives_on_on_start_and_leaves_the_controls() {
         let (_, mut general) = writable();
         assert_eq!(general.view_model().field, None);
-        assert!(!general.takes(&key(PageKey::Move(Step::Next))));
+        assert!(!general.takes(&GeneralEvent::Move(Step::Next)));
 
         general.set_page_focused(true);
         assert_eq!(general.view_model().field, Some(GENERAL_FIELD_ON_START));
@@ -514,16 +529,17 @@ mod tests {
 
         send(
             &mut general,
-            std::iter::repeat_n(key(PageKey::Move(Step::Next)), 3),
+            std::iter::repeat_n(GeneralEvent::Move(Step::Next), 3),
         );
         assert_eq!(general.view_model().field, Some(GENERAL_FIELD_TOASTS));
         send(
             &mut general,
-            std::iter::repeat_n(key(PageKey::Move(Step::Prev)), 4),
+            std::iter::repeat_n(GeneralEvent::Move(Step::Prev), 4),
         );
         assert_eq!(general.view_model().field, Some(GENERAL_FIELD_ON_START));
-        assert!(
-            !general.takes(&key(PageKey::Select)),
+        assert_eq!(
+            general.keymap().event("enter"),
+            None,
             "enter is the frame's"
         );
     }
@@ -533,7 +549,7 @@ mod tests {
         let (device, mut general) = writable();
         general.set_page_focused(true);
 
-        let router = send(&mut general, [key(PageKey::Change(Step::Next))]);
+        let router = send(&mut general, [GeneralEvent::Change(Step::Next)]);
 
         assert_eq!(general.settings().on_start, OnStart::NoLedger);
         assert_eq!(device.stored().on_start, Some(OnStart::NoLedger));
@@ -541,7 +557,7 @@ mod tests {
             router.statuses(),
             ["on_start saved to personal-ledger.conf"]
         );
-        let router = send(&mut general, [key(PageKey::Change(Step::Next))]);
+        let router = send(&mut general, [GeneralEvent::Change(Step::Next)]);
         assert!(router.routed.is_empty(), "the last choice stays, unwritten");
     }
 
@@ -612,14 +628,14 @@ mod tests {
         send(
             &mut general,
             [
-                key(PageKey::Move(Step::Next)),
-                key(PageKey::Change(Step::Next)),
+                GeneralEvent::Move(Step::Next),
+                GeneralEvent::Change(Step::Next),
             ],
         );
         assert_eq!(general.settings().start_view, StartView::Last);
         send(
             &mut general,
-            std::iter::repeat_n(key(PageKey::Change(Step::Next)), 5),
+            std::iter::repeat_n(GeneralEvent::Change(Step::Next), 5),
         );
         assert_eq!(
             general.settings().start_view,
@@ -699,7 +715,7 @@ mod tests {
         config
             .bindings
             .insert(NEXT_CHOICE.to_string(), "ctrl+l".to_string());
-        general.set_keymap(device_page_keymap(&config), "esc".to_string());
+        general.set_keymap(general_keymap(&config), "esc".to_string());
         assert_eq!(pairs(&general)[1].0, "h/ctrl+l");
     }
 }

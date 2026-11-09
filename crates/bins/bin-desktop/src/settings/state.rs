@@ -28,6 +28,7 @@ use lib_settings::{
     ThisDevice, TracingLevel, TracingLog, keymap::settings_frame_keymap,
 };
 use lib_viper::keymap::KeyBindingConfig;
+use lib_viper::presenter::Presenter;
 use std::path::PathBuf;
 use std::rc::Rc;
 

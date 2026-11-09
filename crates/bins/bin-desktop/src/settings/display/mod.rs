@@ -1,6 +1,6 @@
 //! Settings › Display's View: `lib-settings`' Display Presenter in a gpui Entity, which the
-//! Settings View hosts as any other page. It looks up each key the Shell passes on in the This
-//! device pages' keymap, turns clicks into events through `PageClicks`, tells the Presenter how
+//! Settings View hosts as any other page. It looks up each key the Shell passes on in Display's
+//! keymap, turns clicks into events through `PageClicks`, tells the Presenter how
 //! many Colour Theme cards fit a row, and draws the view model (`render.rs`, `colour_theme.rs`).
 //! The date style, Colour Theme and Appearance are written through the Presenter's
 //! `DeviceConfiguration` (`super::device`); the Display output reaches the Shell as
@@ -13,13 +13,14 @@ pub(crate) mod render;
 use std::rc::Rc;
 
 use gpui::{App, Context, EventEmitter, Keystroke};
-use lib_settings::keymap::device_page_keymap;
+use lib_settings::keymap::display_keymap;
 use lib_settings::{
     ColourChoice, DeviceConfiguration, DisplayEvent, DisplayOutput, DisplayPresenter,
     DisplaySettings, DisplaySetup, DisplayViewModel,
 };
 use lib_shell::Hint;
 use lib_viper::keymap::KeyBindingConfig;
+use lib_viper::presenter::{PagePresenter, Presenter};
 
 use crate::{
     navigation::movement::Movement,
@@ -54,7 +55,7 @@ impl DisplayPage {
         Self {
             presenter: DisplayPresenter::new(DisplaySetup {
                 device,
-                keymap: device_page_keymap(config),
+                keymap: display_keymap(config),
                 back_chord,
             }),
         }
@@ -63,7 +64,7 @@ impl DisplayPage {
     /// The page's keys under `config`'s overrides.
     pub fn set_keymaps(&mut self, config: &KeyBindingConfig, back_chord: String) {
         self.presenter
-            .set_keymap(device_page_keymap(config), back_chord);
+            .set_keymap(display_keymap(config), back_chord);
     }
 
     /// Writes to `device` from now on, showing `settings` as start-up read them.
@@ -130,10 +131,9 @@ impl Page for DisplayPage {
     /// the page's `h`/`l` win. The grid declines `h` in its first column, which the frame's `h`
     /// then takes back to the index.
     fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {
-        let Some(key) = self.presenter.keymap().event(chord) else {
+        let Some(event) = self.presenter.keymap().event(chord) else {
             return false;
         };
-        let event = DisplayEvent::Key(key);
         if !self.presenter.takes(&event) {
             return false;
         }

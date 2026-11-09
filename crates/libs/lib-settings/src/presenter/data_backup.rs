@@ -2,7 +2,11 @@
 //! Both are permanently out of scope for this map, so each event only says so on the status line,
 //! through [`Notify`].
 
+use std::convert::Infallible;
+
 use lib_toast::{Notice, Notify};
+use lib_viper::keymap::{KeyBindingConfig, Keymap};
+use lib_viper::presenter::{PagePresenter, Presenter};
 
 use crate::msg;
 
@@ -29,16 +33,33 @@ pub struct DataBackupViewModel {
     pub export_ledger: String,
 }
 
-/// Settings › Data & backup's Presenter. It holds no state.
-#[derive(Debug, Default)]
-pub struct DataBackupPresenter;
+/// Settings › Data & backup's Presenter. It holds no state, and its only events are its buttons' clicks,
+/// so its keymap binds nothing.
+#[derive(Debug)]
+pub struct DataBackupPresenter {
+    keymap: Keymap<DataBackupEvent>,
+}
 
 impl DataBackupPresenter {
     pub fn new() -> Self {
-        Self
+        Self {
+            keymap: Keymap::new(&[], &KeyBindingConfig::default()),
+        }
     }
+}
 
-    pub fn handle(&mut self, event: DataBackupEvent, router: &mut dyn Notify) {
+impl Default for DataBackupPresenter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Presenter for DataBackupPresenter {
+    type Event = DataBackupEvent;
+    type ViewModel = DataBackupViewModel;
+    type Router<'r> = dyn Notify + 'r;
+
+    fn handle(&mut self, event: DataBackupEvent, router: &mut Self::Router<'_>) {
         let text = match event {
             DataBackupEvent::BackupNow => msg::settings_status_backup_now_not_implemented(),
             DataBackupEvent::ExportLedger => msg::settings_status_export_ledger_not_implemented(),
@@ -46,7 +67,7 @@ impl DataBackupPresenter {
         router.notify(Notice::Status(text));
     }
 
-    pub fn view_model(&self) -> DataBackupViewModel {
+    fn view_model(&self) -> DataBackupViewModel {
         DataBackupViewModel {
             rows: vec![
                 DataBackupRow {
@@ -63,6 +84,20 @@ impl DataBackupPresenter {
             backup_now: msg::settings_backup_now(),
             export_ledger: msg::settings_backup_export(),
         }
+    }
+}
+
+impl PagePresenter for DataBackupPresenter {
+    /// Data & backup opens no Dialog.
+    type Outcome = Infallible;
+
+    /// Data & backup opens no Dialog, so there is nothing to tell it.
+    fn dialog_closed(_outcome: Option<Infallible>) -> Option<DataBackupEvent> {
+        None
+    }
+
+    fn keymap(&self) -> &Keymap<DataBackupEvent> {
+        &self.keymap
     }
 }
 

@@ -3,11 +3,13 @@
 //! own and a change made anywhere shows at once. The name, owner and financial-year fields and the
 //! THIS LEDGER summary are the mockup's placeholder values until those Preferences persist.
 
+use std::convert::Infallible;
 use std::rc::Rc;
 
 use lib_core::UnitId;
 use lib_list_cursor::Step;
 use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP};
+use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::Hint;
 
 use super::device::{chords, step_choice};
@@ -86,10 +88,6 @@ impl LedgerPresenter {
         }
     }
 
-    pub fn keymap(&self) -> &Keymap<LedgerEvent> {
-        &self.keymap
-    }
-
     /// Replaces the keymap and the `back` chord, for a `[keybindings]` change.
     pub fn set_keymap(&mut self, keymap: Keymap<LedgerEvent>, back_chord: String) {
         self.keymap = keymap;
@@ -104,16 +102,24 @@ impl LedgerPresenter {
         changed
     }
 
-    /// Whether the Presenter takes `event` as things stand, so a key it declines goes on to the
-    /// frame: a step only while the page has the keyboard.
-    pub fn takes(&self, event: &LedgerEvent) -> bool {
-        match event {
-            LedgerEvent::Step(_) => self.page_focused,
-            LedgerEvent::ChooseBaseUnit(_) => true,
+    /// A refusal means the Unit was removed or deactivated under the select, which repaints
+    /// without it, so there is nothing to report.
+    fn set_base_unit(&mut self, id: UnitId, router: &mut dyn LedgerRouter) {
+        if self.units.base_unit() == Some(id) {
+            return;
+        }
+        if self.preferences.set_base_unit(id) == BaseUnitAnswer::Saved {
+            router.base_unit_changed();
         }
     }
+}
 
-    pub fn handle(&mut self, event: LedgerEvent, router: &mut dyn LedgerRouter) {
+impl Presenter for LedgerPresenter {
+    type Event = LedgerEvent;
+    type ViewModel = LedgerViewModel;
+    type Router<'r> = dyn LedgerRouter + 'r;
+
+    fn handle(&mut self, event: LedgerEvent, router: &mut Self::Router<'_>) {
         if !self.takes(&event) {
             return;
         }
@@ -131,18 +137,7 @@ impl LedgerPresenter {
         }
     }
 
-    /// A refusal means the Unit was removed or deactivated under the select, which repaints
-    /// without it, so there is nothing to report.
-    fn set_base_unit(&mut self, id: UnitId, router: &mut dyn LedgerRouter) {
-        if self.units.base_unit() == Some(id) {
-            return;
-        }
-        if self.preferences.set_base_unit(id) == BaseUnitAnswer::Saved {
-            router.base_unit_changed();
-        }
-    }
-
-    pub fn view_model(&self) -> LedgerViewModel {
+    fn view_model(&self) -> LedgerViewModel {
         LedgerViewModel {
             fields: vec![
                 (msg::settings_ledger_name(), "Personal Ledger".to_string()),
@@ -184,6 +179,29 @@ impl LedgerPresenter {
                 Hint::new(self.back_chord.clone(), msg::settings_hint_index()),
             ],
         }
+    }
+
+    /// Whether the Presenter takes `event` as things stand, so a key it declines goes on to the
+    /// frame: a step only while the page has the keyboard.
+    fn takes(&self, event: &LedgerEvent) -> bool {
+        match event {
+            LedgerEvent::Step(_) => self.page_focused,
+            LedgerEvent::ChooseBaseUnit(_) => true,
+        }
+    }
+}
+
+impl PagePresenter for LedgerPresenter {
+    /// Settings › Ledger opens no Dialog.
+    type Outcome = Infallible;
+
+    /// Settings › Ledger opens no Dialog, so there is nothing to tell it.
+    fn dialog_closed(_outcome: Option<Infallible>) -> Option<LedgerEvent> {
+        None
+    }
+
+    fn keymap(&self) -> &Keymap<LedgerEvent> {
+        &self.keymap
     }
 }
 

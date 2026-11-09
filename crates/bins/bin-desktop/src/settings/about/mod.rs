@@ -8,6 +8,7 @@ use gpui::{App, EventEmitter};
 use lib_settings::{AboutPresenter, AboutSetup, AboutViewModel, SettingsFrameEvent};
 use lib_shell::Hint;
 use lib_viper::keymap::Keymap;
+use lib_viper::presenter::Presenter;
 
 use crate::{
     settings::{

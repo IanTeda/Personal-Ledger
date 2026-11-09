@@ -9,6 +9,7 @@ use gpui::{App, Context, EventEmitter};
 use lib_settings::{DataBackupEvent, DataBackupPresenter, DataBackupViewModel, SettingsFrameEvent};
 use lib_shell::Hint;
 use lib_viper::keymap::Keymap;
+use lib_viper::presenter::Presenter;
 
 use crate::{
     settings::{

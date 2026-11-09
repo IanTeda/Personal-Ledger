@@ -1,6 +1,6 @@
 //! Settings › General's View: `lib-settings`' General Presenter in a gpui Entity, which the
-//! Settings View hosts as any other page. It looks up each key the Shell passes on in the This
-//! device pages' keymap, turns clicks into events through `PageClicks` and draws the view model
+//! Settings View hosts as any other page. It looks up each key the Shell passes on in General's
+//! keymap, turns clicks into events through `PageClicks` and draws the view model
 //! (`render.rs`). On start, Start view and Toasts are written through the Presenter's
 //! `DeviceConfiguration` (`super::device`); saved Toasts reach the Shell as
 //! `ViewEvent::ToastsChanged` (`super::router`). Each key and click is one input
@@ -13,13 +13,14 @@ use std::rc::Rc;
 
 use gpui::{App, Context, EventEmitter};
 use lib_core::StartView;
-use lib_settings::keymap::device_page_keymap;
+use lib_settings::keymap::general_keymap;
 use lib_settings::{
     DeviceConfiguration, GeneralEvent, GeneralPresenter, GeneralSettings, GeneralSetup,
     GeneralViewModel, LocaleLine, ThisDevice,
 };
 use lib_shell::Hint;
 use lib_viper::keymap::KeyBindingConfig;
+use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::Choice;
 
 use crate::{
@@ -57,7 +58,7 @@ impl GeneralPage {
         Self {
             presenter: GeneralPresenter::new(GeneralSetup {
                 device,
-                keymap: device_page_keymap(config),
+                keymap: general_keymap(config),
                 back_chord,
                 start_views: start_view::CHOICES
                     .into_iter()
@@ -74,7 +75,7 @@ impl GeneralPage {
     /// The page's keys under `config`'s overrides.
     pub fn set_keymaps(&mut self, config: &KeyBindingConfig, back_chord: String) {
         self.presenter
-            .set_keymap(device_page_keymap(config), back_chord);
+            .set_keymap(general_keymap(config), back_chord);
     }
 
     /// Writes to `device` from now on, showing `settings` as start-up read them.
@@ -133,10 +134,9 @@ impl Page for GeneralPage {
     /// The keymap's chords while a control has the keyboard, ahead of the frame's, so its `h`/`l`
     /// win; the rest go on to the frame.
     fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {
-        let Some(key) = self.presenter.keymap().event(chord) else {
+        let Some(event) = self.presenter.keymap().event(chord) else {
             return false;
         };
-        let event = GeneralEvent::Key(key);
         if !self.presenter.takes(&event) {
             return false;
         }
