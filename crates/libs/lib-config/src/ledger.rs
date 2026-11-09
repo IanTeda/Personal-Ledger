@@ -118,14 +118,19 @@ impl LedgerConfig {
     ) -> crate::Result<LedgerConfig> {
         let mut config_builder = Self::defaults_builder()?;
 
-        if let Some(system_config) = Self::get_system_config_path().filter(|p| p.exists()) {
-            config_builder = Self::add_ini_source(config_builder, &system_config)?;
-        }
-        if let Some(user_config) = Self::get_user_config_path().filter(|p| p.exists()) {
-            config_builder = Self::add_ini_source(config_builder, &user_config)?;
-        }
-        if let Some(exec_config) = Self::get_executable_config_path().filter(|p| p.exists()) {
-            config_builder = Self::add_ini_source(config_builder, &exec_config)?;
+        // A unit test reads none of the machine's files, so the developer's own config never leaks
+        // into what it asserts; the writer still names the user file as its target.
+        let machine_files = if cfg!(test) {
+            Vec::new()
+        } else {
+            vec![
+                Self::get_system_config_path(),
+                Self::get_user_config_path(),
+                Self::get_executable_config_path(),
+            ]
+        };
+        for file in machine_files.into_iter().flatten().filter(|p| p.exists()) {
+            config_builder = Self::add_ini_source(config_builder, &file)?;
         }
 
         let cwd_config = if config_file.is_none() {
