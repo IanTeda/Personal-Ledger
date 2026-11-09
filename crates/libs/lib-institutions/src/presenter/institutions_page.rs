@@ -249,8 +249,8 @@ impl Presenter for InstitutionsPagePresenter {
 impl PagePresenter for InstitutionsPagePresenter {
     type Outcome = InstitutionsOutcome;
 
-    fn dialog_closed(outcome: Option<InstitutionsOutcome>) -> InstitutionsPageEvent {
-        InstitutionsPageEvent::DialogClosed(outcome)
+    fn dialog_closed(outcome: Option<InstitutionsOutcome>) -> Option<InstitutionsPageEvent> {
+        Some(InstitutionsPageEvent::DialogClosed(outcome))
     }
 
     fn keymap(&self) -> &Keymap<InstitutionsPageEvent> {

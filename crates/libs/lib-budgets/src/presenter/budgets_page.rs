@@ -601,8 +601,8 @@ impl Presenter for BudgetsPagePresenter {
 impl PagePresenter for BudgetsPagePresenter {
     type Outcome = BudgetsOutcome;
 
-    fn dialog_closed(outcome: Option<BudgetsOutcome>) -> BudgetsPageEvent {
-        BudgetsPageEvent::DialogClosed(outcome)
+    fn dialog_closed(outcome: Option<BudgetsOutcome>) -> Option<BudgetsPageEvent> {
+        Some(BudgetsPageEvent::DialogClosed(outcome))
     }
 
     /// The tab shown's keys; none while a Plan cell is being typed into, so every key types.

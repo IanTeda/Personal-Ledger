@@ -52,8 +52,8 @@ pub trait PagePresenter: Presenter<Event: Clone> {
     type Outcome;
 
     /// The event telling the page its open Dialog closed: with what its confirm did, or `None`
-    /// when it was cancelled.
-    fn dialog_closed(outcome: Option<Self::Outcome>) -> Self::Event;
+    /// when it was cancelled. `None` for a page that opens no Dialog, which has nothing to be told.
+    fn dialog_closed(outcome: Option<Self::Outcome>) -> Option<Self::Event>;
 
     /// The page's keys under `[keybindings]` for its current state (the tab shown, an open
     /// select), which its legend reads its chords from too. A palette Command of another state
@@ -199,8 +199,8 @@ mod tests {
     impl PagePresenter for ToyPage {
         type Outcome = &'static str;
 
-        fn dialog_closed(outcome: Option<&'static str>) -> PageEvent {
-            PageEvent::Closed(outcome)
+        fn dialog_closed(outcome: Option<&'static str>) -> Option<PageEvent> {
+            Some(PageEvent::Closed(outcome))
         }
 
         fn keymap(&self) -> &Keymap<PageEvent> {
@@ -340,11 +340,11 @@ mod tests {
         let mut page = page();
 
         page.handle(
-            ToyPage::dialog_closed(Some("saved")),
+            ToyPage::dialog_closed(Some("saved")).expect("the toy page opens Dialogs"),
             &mut Borrowing { log: &mut log },
         );
         page.handle(
-            ToyPage::dialog_closed(None),
+            ToyPage::dialog_closed(None).expect("the toy page opens Dialogs"),
             &mut Borrowing { log: &mut log },
         );
 

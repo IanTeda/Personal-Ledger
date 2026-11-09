@@ -240,8 +240,8 @@ impl Presenter for AccountsPagePresenter {
 impl PagePresenter for AccountsPagePresenter {
     type Outcome = AccountsOutcome;
 
-    fn dialog_closed(outcome: Option<AccountsOutcome>) -> AccountsPageEvent {
-        AccountsPageEvent::DialogClosed(outcome)
+    fn dialog_closed(outcome: Option<AccountsOutcome>) -> Option<AccountsPageEvent> {
+        Some(AccountsPageEvent::DialogClosed(outcome))
     }
 
     fn keymap(&self) -> &Keymap<AccountsPageEvent> {

@@ -227,8 +227,8 @@ impl Presenter for CategoriesPagePresenter {
 impl PagePresenter for CategoriesPagePresenter {
     type Outcome = CategoriesOutcome;
 
-    fn dialog_closed(outcome: Option<CategoriesOutcome>) -> CategoriesPageEvent {
-        CategoriesPageEvent::DialogClosed(outcome)
+    fn dialog_closed(outcome: Option<CategoriesOutcome>) -> Option<CategoriesPageEvent> {
+        Some(CategoriesPageEvent::DialogClosed(outcome))
     }
 
     fn keymap(&self) -> &Keymap<CategoriesPageEvent> {

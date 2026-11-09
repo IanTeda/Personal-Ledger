@@ -430,9 +430,9 @@ pub enum TransactionsOutcome {}
 impl PagePresenter for TransactionsPagePresenter {
     type Outcome = TransactionsOutcome;
 
-    /// Never sent, since the page opens no Dialog: the page entered again changes nothing it shows.
-    fn dialog_closed(_outcome: Option<TransactionsOutcome>) -> TransactionsPageEvent {
-        TransactionsPageEvent::KeepSearch
+    /// The page opens no Dialog, so there is nothing to tell it.
+    fn dialog_closed(_outcome: Option<TransactionsOutcome>) -> Option<TransactionsPageEvent> {
+        None
     }
 
     /// The popover's keys while it is open, none while the Search is (every key types), else the

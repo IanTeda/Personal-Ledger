@@ -280,8 +280,8 @@ impl Presenter for InventoryPagePresenter {
 impl PagePresenter for InventoryPagePresenter {
     type Outcome = InventoryOutcome;
 
-    fn dialog_closed(outcome: Option<InventoryOutcome>) -> InventoryPageEvent {
-        InventoryPageEvent::DialogClosed(outcome)
+    fn dialog_closed(outcome: Option<InventoryOutcome>) -> Option<InventoryPageEvent> {
+        Some(InventoryPageEvent::DialogClosed(outcome))
     }
 
     fn keymap(&self) -> &Keymap<InventoryPageEvent> {

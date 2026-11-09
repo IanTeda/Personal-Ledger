@@ -16,7 +16,7 @@ use crate::{
 pub enum ViewEvent {
     /// Raise a Toast whose Message the View has already resolved to text.
     RaiseToast { kind: ToastKind, text: String },
-    /// Open a module's Dialog, an Entity holding its Presenter (`dialog_entity::host_dialog`).
+    /// Open a module's Dialog, an Entity holding its Presenter (`dialog_entity::ModuleDialog::open`).
     HostDialog(DialogHandle),
     /// Make `Noun` the active destination, as the rail or a `g`-jump would.
     Navigate(Noun),

@@ -539,8 +539,8 @@ impl Presenter for UnitsPagePresenter {
 impl PagePresenter for UnitsPagePresenter {
     type Outcome = UnitsOutcome;
 
-    fn dialog_closed(outcome: Option<UnitsOutcome>) -> UnitsPageEvent {
-        UnitsPageEvent::DialogClosed(outcome)
+    fn dialog_closed(outcome: Option<UnitsOutcome>) -> Option<UnitsPageEvent> {
+        Some(UnitsPageEvent::DialogClosed(outcome))
     }
 
     fn keymap(&self) -> &Keymap<UnitsPageEvent> {

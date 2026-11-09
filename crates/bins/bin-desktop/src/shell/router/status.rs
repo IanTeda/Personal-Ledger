@@ -57,9 +57,7 @@ impl Root {
             ActiveViewEntity::Shell(_) => None,
             view => view.page_status(cx),
         };
-        let hints = self
-            .hosted_dialog()
-            .and_then(|dialog| dialog.hints(self.presenter.dialog_keymap(), cx));
+        let hints = self.hosted_dialog().and_then(|dialog| dialog.hints(cx));
         match hints {
             Some(hints) => Some(PageStatus {
                 hints,

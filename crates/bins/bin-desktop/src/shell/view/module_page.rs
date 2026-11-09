@@ -238,6 +238,8 @@ impl<P: PageView> ModulePage<P> {
 
     /// A palette Command, by its keymap `command` name: the event its key sends.
     /// The tab or mode it belongs to is shown first ([`PagePresenter::shows`]), in the same input.
+    /// Whether the page took the Command's own event: one it refuses once shown is reported
+    /// refused, even though its tab or mode now shows.
     pub fn module_command(&mut self, command: &str, cx: &mut Context<'_, Self>) -> bool {
         let Some(event) = self.presenter.keymap().event_for(command) else {
             return false;
@@ -245,17 +247,18 @@ impl<P: PageView> ModulePage<P> {
         let Some(shown) = self.presenter.shows(&event) else {
             return self.take(Some(event), cx);
         };
-        let followed = crate::input::join_or_send(cx, |cx| {
+        let (followed, taken) = crate::input::join_or_send(cx, |cx| {
             let mut followed: Vec<ViewEvent> = self.handle(shown, cx).into_iter().collect();
-            if self.presenter.takes(&event) {
+            let taken = self.presenter.takes(&event);
+            if taken {
                 followed.extend(self.handle(event, cx));
             }
-            followed
+            (followed, taken)
         });
         for event in followed {
             cx.emit(event);
         }
-        true
+        taken
     }
 
     /// Shows a record another View handed off, if the page shows it.
@@ -346,7 +349,9 @@ impl<P: PageView> ModulePage<P> {
 
     /// A confirmed Dialog's outcome, handed back by the Dialog host inside the confirm's input.
     fn dialog_landed(&mut self, outcome: P::Outcome, cx: &mut Context<'_, Self>) {
-        if let Some(followed) = self.handle(P::dialog_closed(Some(outcome)), cx) {
+        if let Some(event) = P::dialog_closed(Some(outcome))
+            && let Some(followed) = self.handle(event, cx)
+        {
             cx.emit(followed);
         }
     }
@@ -397,14 +402,20 @@ fn view_mode(mode: PageMode) -> ViewMode {
 }
 
 /// What `keystroke` types into a page's mode: the editing keys, or each character an unmodified
-/// key types.
+/// key types. A modified chord types nothing, as in a Dialog (`DialogKey::Char`).
 fn text_keys(keystroke: &Keystroke) -> Vec<TextKey> {
     let shift = keystroke.modifiers.shift;
     match keystroke.key.as_str() {
         "backspace" => vec![TextKey::Backspace],
         "enter" => vec![TextKey::Enter { shift }],
         "tab" => vec![TextKey::Tab { shift }],
-        _ if keystroke.modifiers.control || keystroke.modifiers.platform => Vec::new(),
+        _ if keystroke.modifiers.control
+            || keystroke.modifiers.alt
+            || keystroke.modifiers.platform
+            || keystroke.modifiers.function =>
+        {
+            Vec::new()
+        }
         _ => keystroke
             .key_char
             .as_deref()

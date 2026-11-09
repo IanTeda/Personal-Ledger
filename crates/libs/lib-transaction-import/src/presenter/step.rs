@@ -140,9 +140,9 @@ impl PagePresenter for ImportStepPresenter {
     /// The step opens no Dialog.
     type Outcome = Infallible;
 
-    /// Never sent, since the step opens no Dialog: a row past the last, which selects nothing.
-    fn dialog_closed(_outcome: Option<Infallible>) -> ImportEvent {
-        ImportEvent::SelectRow(usize::MAX)
+    /// The step opens no Dialog, so there is nothing to tell it.
+    fn dialog_closed(_outcome: Option<Infallible>) -> Option<ImportEvent> {
+        None
     }
 
     /// The open select's keys while one is open, else the rows'.

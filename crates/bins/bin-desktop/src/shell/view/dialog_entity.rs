@@ -28,7 +28,6 @@ use gpui::{EntityId, IntoElement, Render, Subscription, WeakEntity, Window};
 use lib_shell::DialogCommand;
 use lib_toast::{Notice, Notify};
 use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::keymap::Keymap;
 use lib_viper::presenter::DialogPresenter;
 use lib_viper::view::DialogFrame;
 
@@ -147,7 +146,7 @@ trait AnyHosted {
     fn close_open_select(&self, cx: &mut App) -> bool;
     fn steps_list(&self, cx: &App) -> bool;
     fn cancel(&self, cx: &mut App);
-    fn hints(&self, keymap: &Keymap<DialogCommand>, cx: &App) -> Option<Vec<Hint>>;
+    fn hints(&self, cx: &App) -> Option<Vec<Hint>>;
     fn readback(&self, cx: &App) -> DialogReadback;
     fn view(&self) -> AnyView;
     fn entity(&self) -> AnyEntity;
@@ -191,9 +190,9 @@ impl<P: DialogView> AnyHosted for Entity<ModuleDialog<P>> {
         });
     }
 
-    /// The view model's hints: their chords are already the Dialog keymap's, so `keymap` is not
-    /// read. A Dialog with none leaves the View's.
-    fn hints(&self, _keymap: &Keymap<DialogCommand>, cx: &App) -> Option<Vec<Hint>> {
+    /// The view model's hints, whose chords the Presenter took from the Dialog keys at open. A
+    /// Dialog with none leaves the View's.
+    fn hints(&self, cx: &App) -> Option<Vec<Hint>> {
         let hints = P::hints(&self.read(cx).presenter.view_model());
         (!hints.is_empty()).then_some(hints)
     }
@@ -270,8 +269,8 @@ impl DialogHandle {
         self.0.cancel(cx);
     }
 
-    pub fn hints(&self, keymap: &Keymap<DialogCommand>, cx: &App) -> Option<Vec<Hint>> {
-        self.0.hints(keymap, cx)
+    pub fn hints(&self, cx: &App) -> Option<Vec<Hint>> {
+        self.0.hints(cx)
     }
 
     pub fn readback(&self, cx: &App) -> DialogReadback {
@@ -291,17 +290,6 @@ impl DialogHandle {
     pub fn on_closed(&self, closed: impl Fn(&mut App) + 'static, cx: &mut App) -> Subscription {
         self.0.on_closed(Box::new(closed), cx)
     }
-}
-
-/// Opens `presenter`'s Dialog in the host over page `Page`, whose confirm hands its outcome to
-/// `landed` (the page's `ModulePage::landing`).
-pub fn host_dialog<P: DialogView, Page: EventEmitter<ViewEvent> + 'static>(
-    cx: &mut Context<'_, Page>,
-    presenter: P,
-    landed: impl Fn(P::Outcome, &mut App) + 'static,
-) {
-    let dialog = cx.new(|_| ModuleDialog::new(presenter, landed));
-    cx.emit(ViewEvent::HostDialog(DialogHandle::new(dialog)));
 }
 
 /// A click that picks a value of `T`.
@@ -375,7 +363,8 @@ impl<P: DialogView> ModuleDialog<P> {
         presenter: P,
         landed: impl Fn(P::Outcome, &mut App) + 'static,
     ) {
-        host_dialog(cx, presenter, landed);
+        let dialog = cx.new(|_| Self::new(presenter, landed));
+        cx.emit(ViewEvent::HostDialog(DialogHandle::new(dialog)));
     }
 
     /// The Presenter, for the Shell to feed what changes behind the Dialog (a Toast raised under

@@ -211,8 +211,8 @@ impl Presenter for TagsPagePresenter {
 impl PagePresenter for TagsPagePresenter {
     type Outcome = TagsOutcome;
 
-    fn dialog_closed(outcome: Option<TagsOutcome>) -> TagsPageEvent {
-        TagsPageEvent::DialogClosed(outcome)
+    fn dialog_closed(outcome: Option<TagsOutcome>) -> Option<TagsPageEvent> {
+        Some(TagsPageEvent::DialogClosed(outcome))
     }
 
     fn keymap(&self) -> &Keymap<TagsPageEvent> {
@@ -579,6 +579,7 @@ mod tests {
                 id,
                 name: String::new(),
             }))
+            .expect("the Tags page opens Dialogs")
         };
 
         page.send(TagsPageEvent::New);
@@ -589,7 +590,7 @@ mod tests {
         assert_eq!(page.selected_name().as_deref(), Some("work-trip"));
         page.send(outcome(TagChange::Removed, WORK_TRIP));
         assert_eq!(page.selected_name().as_deref(), Some("work-trip"));
-        page.send(TagsPagePresenter::dialog_closed(None));
+        page.send(TagsPagePresenter::dialog_closed(None).expect("the Tags page opens Dialogs"));
     }
 
     #[test]

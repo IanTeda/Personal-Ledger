@@ -106,7 +106,7 @@ impl lib_settings::TracingRouter for TracingRouter<'_, '_> {
     fn open_clear_logs(&mut self, dialog: ClearLogsPresenter) {
         self.cx.emit(ViewEvent::SetStatus(None));
         let page = self.cx.weak_entity();
-        crate::shell::view::dialog_entity::host_dialog(self.cx, dialog, move |_, cx| {
+        crate::shell::view::dialog_entity::ModuleDialog::open(self.cx, dialog, move |_, cx| {
             // A page that has gone has nothing to land on.
             let _ = page.update(cx, |page, cx| page.cleared(cx));
         });

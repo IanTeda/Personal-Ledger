@@ -1245,8 +1245,8 @@ impl Presenter for DocumentsPagePresenter {
 impl PagePresenter for DocumentsPagePresenter {
     type Outcome = DocumentsOutcome;
 
-    fn dialog_closed(outcome: Option<DocumentsOutcome>) -> DocumentsPageEvent {
-        DocumentsPageEvent::DialogClosed(outcome)
+    fn dialog_closed(outcome: Option<DocumentsOutcome>) -> Option<DocumentsPageEvent> {
+        Some(DocumentsPageEvent::DialogClosed(outcome))
     }
 
     /// No keys while the Search is open, so every key types; else the mode showing's.

@@ -272,8 +272,8 @@ impl Presenter for BillsPagePresenter {
 impl PagePresenter for BillsPagePresenter {
     type Outcome = BillsOutcome;
 
-    fn dialog_closed(outcome: Option<BillsOutcome>) -> BillsPageEvent {
-        BillsPageEvent::DialogClosed(outcome)
+    fn dialog_closed(outcome: Option<BillsOutcome>) -> Option<BillsPageEvent> {
+        Some(BillsPageEvent::DialogClosed(outcome))
     }
 
     /// The tab shown's keys and the ones both tabs share.

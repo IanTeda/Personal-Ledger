@@ -221,8 +221,8 @@ impl Presenter for PayeesPagePresenter {
 impl PagePresenter for PayeesPagePresenter {
     type Outcome = PayeesOutcome;
 
-    fn dialog_closed(outcome: Option<PayeesOutcome>) -> PayeesPageEvent {
-        PayeesPageEvent::DialogClosed(outcome)
+    fn dialog_closed(outcome: Option<PayeesOutcome>) -> Option<PayeesPageEvent> {
+        Some(PayeesPageEvent::DialogClosed(outcome))
     }
 
     fn keymap(&self) -> &Keymap<PayeesPageEvent> {

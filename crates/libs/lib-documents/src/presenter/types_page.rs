@@ -212,8 +212,8 @@ impl Presenter for DocumentTypesPagePresenter {
 impl PagePresenter for DocumentTypesPagePresenter {
     type Outcome = DocumentTypesOutcome;
 
-    fn dialog_closed(outcome: Option<DocumentTypesOutcome>) -> DocumentTypesPageEvent {
-        DocumentTypesPageEvent::DialogClosed(outcome)
+    fn dialog_closed(outcome: Option<DocumentTypesOutcome>) -> Option<DocumentTypesPageEvent> {
+        Some(DocumentTypesPageEvent::DialogClosed(outcome))
     }
 
     fn keymap(&self) -> &Keymap<DocumentTypesPageEvent> {

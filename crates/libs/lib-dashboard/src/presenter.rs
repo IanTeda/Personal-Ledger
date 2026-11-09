@@ -199,9 +199,9 @@ pub enum DashboardOutcome {}
 impl PagePresenter for DashboardPresenter {
     type Outcome = DashboardOutcome;
 
-    /// Never sent: the Dashboard opens no Dialog. A redraw is harmless if one ever is.
-    fn dialog_closed(_outcome: Option<DashboardOutcome>) -> DashboardEvent {
-        DashboardEvent::LedgerChanged
+    /// The Dashboard opens no Dialog, so there is nothing to tell it.
+    fn dialog_closed(_outcome: Option<DashboardOutcome>) -> Option<DashboardEvent> {
+        None
     }
 
     fn keymap(&self) -> &Keymap<DashboardEvent> {
