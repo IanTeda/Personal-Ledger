@@ -88,7 +88,12 @@ impl PageView for DashboardPresenter {
     }
 
     /// The page has no list, so a movement scrolls it.
-    fn after(&self, scroll: Option<Step>, widgets: &mut DashboardWidgets) -> Option<ViewEvent> {
+    fn after(
+        &self,
+        scroll: Option<Step>,
+        _setup: &Self::Setup,
+        widgets: &mut DashboardWidgets,
+    ) -> Option<ViewEvent> {
         if let Some(movement) = scroll.and_then(|step| Movement::of(ShellCommand::Move(step))) {
             scroll_by_movement(&widgets.scroll, movement);
         }

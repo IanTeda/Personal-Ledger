@@ -89,8 +89,14 @@ pub trait PageView: PagePresenter + Sized + 'static {
     }
 
     /// Follows a handle in the widget state (a scroll back to the top, onto the selection), and
-    /// the View event it asks the Shell for (a status reset), from what [`Self::before`] noted.
-    fn after(&self, _before: Self::Before, _widgets: &mut Self::Widgets) -> Option<ViewEvent> {
+    /// the View event it asks the Shell for (a status reset), from what [`Self::before`] noted and
+    /// what the Router left in `setup` for it (Tracing's list effects).
+    fn after(
+        &self,
+        _before: Self::Before,
+        _setup: &Self::Setup,
+        _widgets: &mut Self::Widgets,
+    ) -> Option<ViewEvent> {
         None
     }
 
@@ -309,7 +315,8 @@ impl<P: PageView> ModulePage<P> {
 
     /// A key the page's keymap binds, by its `chord`: the event it sends, unless the page doesn't
     /// take it now. The Shell has already taken its own keys. Whether the key stops here: one whose
-    /// event [`PageView::passes_on`] goes on to the Shell's fallback even once taken.
+    /// event [`PageView::passes_on`] goes on to the Shell's fallback even once taken, inside the
+    /// same input.
     pub fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {
         let event = self.presenter.keymap().event(chord);
         let passes_on = event.as_ref().is_some_and(P::passes_on);
@@ -476,7 +483,7 @@ impl<P: PageView> ModulePage<P> {
                 None => ViewEvent::ExitMode,
             });
         }
-        let followed = self.presenter.after(before, &mut self.widgets);
+        let followed = self.presenter.after(before, &self.setup, &mut self.widgets);
         cx.notify();
         followed
     }

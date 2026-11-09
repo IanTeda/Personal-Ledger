@@ -37,6 +37,7 @@ use lib_settings::ColourChoice;
 use lib_shell::{Destination, PaletteEffect, PaletteEntry, ShellCommand};
 use lib_viper::keymap::Keymap;
 
+use crate::navigation::active_view::ActiveView;
 use crate::{navigation::nav::Noun, settings::SettingsPage};
 use lib_shell::ExplorerMode;
 
@@ -150,6 +151,18 @@ impl ModulePage {
             Self::Budgets => Destination::Noun(Noun::Budgets),
             Self::Documents => Destination::Noun(Noun::Documents),
             Self::Transactions => Destination::Noun(Noun::Transactions),
+        }
+    }
+
+    /// The View the page is, which takes the Command through its `PageHandle`. The Transactions
+    /// list, not the Import step, even while the step is open over it.
+    pub fn view(self) -> ActiveView {
+        match self {
+            Self::Settings(section) => ActiveView::Settings(section),
+            Self::Bills => ActiveView::Bills,
+            Self::Budgets => ActiveView::Budgets,
+            Self::Documents => ActiveView::Documents,
+            Self::Transactions => ActiveView::Transactions,
         }
     }
 }

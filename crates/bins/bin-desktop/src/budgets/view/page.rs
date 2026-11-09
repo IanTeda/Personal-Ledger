@@ -90,7 +90,12 @@ impl PageView for BudgetsPagePresenter {
     }
 
     /// Another tab or Budget starts the page at the top; a tab shown clears the status line.
-    fn after(&self, before: BudgetsBefore, widgets: &mut BudgetsWidgets) -> Option<ViewEvent> {
+    fn after(
+        &self,
+        before: BudgetsBefore,
+        _setup: &Self::Setup,
+        widgets: &mut BudgetsWidgets,
+    ) -> Option<ViewEvent> {
         if self.tab() != before.tab || Some(self.current()) != before.budget {
             widgets.scroll.set_offset(gpui::Point::default());
         }

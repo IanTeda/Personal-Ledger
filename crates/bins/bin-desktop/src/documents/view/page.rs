@@ -92,7 +92,12 @@ impl PageView for DocumentsPagePresenter {
 
     /// Back to the top as the mode changes; otherwise the selected row scrolled into view, landing
     /// at the edge it came from, as on Transactions.
-    fn after(&self, before: DocumentsBefore, widgets: &mut DocumentsWidgets) -> Option<ViewEvent> {
+    fn after(
+        &self,
+        before: DocumentsBefore,
+        _setup: &Self::Setup,
+        widgets: &mut DocumentsWidgets,
+    ) -> Option<ViewEvent> {
         let (mode, at) = (DocumentsPagePresenter::mode(self), self.selected());
         if mode != before.mode {
             widgets

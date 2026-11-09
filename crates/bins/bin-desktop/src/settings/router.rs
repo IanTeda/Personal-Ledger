@@ -15,7 +15,7 @@ use lib_settings::{
 use lib_toast::{Notice, Notify};
 
 use super::state::SettingsView;
-use super::tracing::{LogListEffect, TracingPage, queue_list_effect};
+use super::tracing::{ListEffects, LogListEffect, TracingPage};
 use crate::view::event::{ViewEvent, ViewMode};
 
 /// The page on show changed by the person's hand, for the root Router to record in the Shell's
@@ -84,18 +84,23 @@ impl<P> Notify for DeviceRouter<'_, '_, P> {
 
 /// `impl lib_settings::TracingRouter` for the Tracing page: the log box's list and the Dialog it
 /// opens. The list is the page's widget state, which the Router never holds: it queues what the
-/// Presenter asks of it for the page's `PageView::after` to apply.
+/// Presenter asks of it in the page's `list_effects`, for its `PageView::after` to apply.
 pub(super) struct TracingRouter<'a, 'b> {
     pub cx: &'a mut Context<'b, TracingPage>,
+    pub list_effects: &'a ListEffects,
 }
 
 impl lib_settings::TracingRouter for TracingRouter<'_, '_> {
     fn scroll(&mut self, to: LogScroll) {
-        queue_list_effect(LogListEffect::Scroll(to));
+        self.list_effects
+            .borrow_mut()
+            .push(LogListEffect::Scroll(to));
     }
 
     fn log_changed(&mut self, change: LogListChange) {
-        queue_list_effect(LogListEffect::Changed(change));
+        self.list_effects
+            .borrow_mut()
+            .push(LogListEffect::Changed(change));
     }
 
     /// Clear logs asks first, since the capture is emptied for good (#502), and clears the status

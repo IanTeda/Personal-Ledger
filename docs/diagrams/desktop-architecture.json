@@ -22,7 +22,7 @@
       "sources": [{ "path": "crates/bins/bin-desktop/src/lib.rs", "line": 72, "end_line": 118 }] },
     { "id": "shell", "type": "frontend", "label": "Shell", "sublabel": "app.rs + impl blocks", "tag": "root render tree", "pos": [820, 40], "size": [150, 64],
       "sources": [{ "path": "crates/bins/bin-desktop/src/app.rs", "line": 1, "end_line": 27 }, { "path": "crates/bins/bin-desktop/src/app.rs", "line": 118, "end_line": 184 }, { "path": "crates/bins/bin-desktop/src/app/view_events.rs", "line": 10, "end_line": 33 }] },
-    { "id": "views", "type": "frontend", "label": "View Entities", "sublabel": "Bills … Settings", "tag": "ActiveViewEntity", "pos": [1080, 40], "size": [150, 64],
+    { "id": "views", "type": "frontend", "label": "View Entities", "sublabel": "Bills … Settings", "tag": "PageHandle", "pos": [1080, 40], "size": [150, 64],
       "sources": [{ "path": "crates/bins/bin-desktop/src/view/active.rs", "line": 22, "end_line": 54 }, { "path": "crates/bins/bin-desktop/src/view/event.rs", "line": 1, "end_line": 3 }, { "path": "crates/bins/bin-desktop/src/settings/state.rs", "line": 1, "end_line": 13 }] },
     { "id": "stores", "type": "backend", "label": "Domain stores", "sublabel": "read views, no rows", "tag": "Categories, Tags, Inventory", "pos": [1340, 40], "size": [150, 64],
       "sources": [{ "path": "crates/bins/bin-desktop/src/view/tags/state.rs", "line": 1, "end_line": 12 }, { "path": "crates/bins/bin-desktop/src/view/categories/state.rs", "line": 21 }, { "path": "crates/bins/bin-desktop/src/inventory/store.rs", "line": 14 }] },
@@ -63,7 +63,7 @@
     { "id": "ledger-domains", "from": "ledger", "to": "domains", "label": "model + rules" }
   ],
   "cards": [
-    { "dot": "cyan", "title": "Shell and Views", "items": ["No View trait: Shell forwards through ActiveViewEntity (ADR-0016, ADR-0037)", "Views reach Shell only by emitting ViewEvent (ADR-0032)", "Dashboard and placeholders are still drawn by Shell (ShellView)", "Settings is one View; Accounts, Payees, Units and Institutions pages have their own Entities"] },
+    { "dot": "cyan", "title": "Shell and Views", "items": ["One hosting trait: Shell reaches the active View through &dyn PageHandle (ADR-0016, ADR-0056)", "Views reach Shell only by emitting ViewEvent (ADR-0032)", "Dashboard and placeholders are still drawn by Shell (ShellView)", "Settings is one View; Accounts, Payees, Units and Institutions pages have their own Entities"] },
     { "dot": "emerald", "title": "Data", "items": ["LedgerStore holds the only Ledger (ADR-0038)", "A Dialog's form becomes a command; its Apply adapter runs it on LedgerStore", "Views and Settings pages repaint via notify_on; Categories, Tags and Inventory still have read-only stores", "Writes are not persisted yet (#636); the Ledger starts from Ledger::stub_on(today)"] },
     { "dot": "violet", "title": "Persistence", "items": ["Only noun, rail, Settings page, Documents state and window geometry survive restart", "A JSON state file, not lib-config's INI"] }
   ]

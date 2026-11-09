@@ -73,7 +73,12 @@ impl PageView for ImportStepPresenter {
 
     /// A step opened or closed starts at the top; an open one keeps its selected row in view and
     /// the open select's window on its highlight.
-    fn after(&self, before: ImportBefore, widgets: &mut ImportWidgets) -> Option<ViewEvent> {
+    fn after(
+        &self,
+        before: ImportBefore,
+        _setup: &Self::Setup,
+        widgets: &mut ImportWidgets,
+    ) -> Option<ViewEvent> {
         if self.is_open() != before.open {
             *widgets = ImportWidgets::default();
             return None;

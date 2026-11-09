@@ -5322,8 +5322,8 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         <text data-detail="fine" x="895" y="96" class="t-frontend" font-size="7" text-anchor="middle">root render tree</text>
         </g>
 
-        <g id="node-views" data-node-id="views" data-node-label="View Entities" tabindex="0" role="button" aria-label="Focus View Entities, Bills … Settings, bin-desktop (gpui)" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="Bills … Settings" data-node-tag="ActiveViewEntity" data-node-context="bin-desktop (gpui)">
-          <title>View Entities · Bills … Settings · bin-desktop (gpui) · ActiveViewEntity</title>
+        <g id="node-views" data-node-id="views" data-node-label="View Entities" tabindex="0" role="button" aria-label="Focus View Entities, Bills … Settings, bin-desktop (gpui)" aria-pressed="false" data-node-kind="frontend" data-node-sublabel="Bills … Settings" data-node-tag="PageHandle" data-node-context="bin-desktop (gpui)">
+          <title>View Entities · Bills … Settings · bin-desktop (gpui) · PageHandle</title>
           <rect x="1080" y="40" width="150" height="64" rx="8" class="c-mask"/>
           <rect x="1080" y="40" width="150" height="64" rx="8" class="c-frontend" data-animate="node" style="--step:7" stroke-width="1.5"/>
           <g aria-hidden="true" data-semantic-sigil="frontend" class="semantic-sigil s-frontend" transform="translate(1086 46) scale(0.6875)">
@@ -5334,7 +5334,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           </g>
           <text data-node-label="" data-detail-anchor="" x="1155" y="70" class="t-primary" font-size="11" font-weight="600" text-anchor="middle">View Entities</text>
         <text data-detail="context" x="1155" y="86" class="t-muted" font-size="9" text-anchor="middle">Bills … Settings</text>
-        <text data-detail="fine" x="1155" y="96" class="t-frontend" font-size="7" text-anchor="middle">ActiveViewEntity</text>
+        <text data-detail="fine" x="1155" y="96" class="t-frontend" font-size="7" text-anchor="middle">PageHandle</text>
         </g>
 
         <g id="node-stores" data-node-id="stores" data-node-label="Domain stores" tabindex="0" role="button" aria-label="Focus Domain stores, read views, no rows, bin-desktop (gpui)" aria-pressed="false" data-node-kind="backend" data-node-sublabel="read views, no rows" data-node-tag="Categories, Tags, Inventory" data-node-context="bin-desktop (gpui)">
@@ -5713,7 +5713,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
           <h3>Shell and Views</h3>
         </div>
         <ul>
-          <li>No View trait: Shell forwards through ActiveViewEntity (ADR-0016, ADR-0037)</li>
+          <li>One hosting trait: Shell reaches the active View through &amp;dyn PageHandle (ADR-0016, ADR-0056)</li>
           <li>Views reach Shell only by emitting ViewEvent (ADR-0032)</li>
           <li>Dashboard and placeholders are still drawn by Shell (ShellView)</li>
           <li>Settings is one View; Accounts, Payees, Units and Institutions pages have their own Entities</li>

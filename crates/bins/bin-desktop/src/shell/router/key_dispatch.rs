@@ -64,6 +64,7 @@ impl Root {
             shell: self,
             keystroke,
             window_size,
+            fallback: None,
             cx,
         });
         redraw || cleared
@@ -176,6 +177,9 @@ struct Keys<'a, 'b> {
     shell: &'a mut Root,
     keystroke: &'a Keystroke,
     window_size: WindowSize,
+    /// The command the Shell falls back on for the key, once its global keymap has passed it on,
+    /// so the module step can run it inside the module's input.
+    fallback: Option<ShellCommand>,
     cx: &'a mut Context<'b, Root>,
 }
 
@@ -252,16 +256,42 @@ impl KeyRoute for Keys<'_, '_> {
                 shell.start_prefix_timer(self.cx);
                 Offered::Took(false)
             }
-            ShellKey::Passed { chord, fallback } => Offered::Passed { chord, fallback },
+            ShellKey::Passed { chord, fallback } => {
+                self.fallback = fallback;
+                Offered::Passed { chord, fallback }
+            }
         }
     }
 
+    /// The page and, should it not stop the key, the Shell's fallback are one input: a key whose
+    /// event the page hands on ([`PageView::passes_on`]) commits once, with what the fallback
+    /// does. A key the page declines with no fallback is no input: nothing commits.
+    ///
+    /// [`PageView::passes_on`]: crate::shell::view::module_page::PageView::passes_on
     fn module(&mut self, chord: &str) -> bool {
         let shell = &mut *self.shell;
-        shell.view_has_keys()
-            && shell
-                .active_page(self.cx)
-                .is_some_and(|page| page.module_key(chord, self.cx))
+        if !shell.view_has_keys() {
+            return false;
+        }
+        let window_size = self.window_size;
+        let fallback = self.fallback;
+        input::offer(self.cx, |cx| {
+            let Some(page) = shell.active_page(cx) else {
+                return (false, false);
+            };
+            if page.module_key(chord, cx) {
+                return (true, true);
+            }
+            match fallback {
+                Some(command) => {
+                    shell.with_router(window_size, cx, |presenter, router| {
+                        presenter.command(command, router);
+                    });
+                    (true, true)
+                }
+                None => (false, false),
+            }
+        })
     }
 
     fn fall_back(&mut self, fallback: Option<ShellCommand>) -> bool {

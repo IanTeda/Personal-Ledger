@@ -9,7 +9,7 @@ use lib_units::presenter::{
     DeletePriceSourcePresenter, PriceSourceFormPresenter, SetBaseUnitPresenter, SetPricePresenter,
     UnitFormPresenter, UnitsPagePresenter,
 };
-use lib_units::{UnitId, UnitsDialog as Which, UnitsRouter};
+use lib_units::{UnitsDialog as Which, UnitsRouter};
 
 use super::{UnitsPage, UnitsRoutes, UnitsSetup};
 use crate::announcer::Announcer;
@@ -79,12 +79,6 @@ impl UnitsRouter for PageRouter<'_, '_> {
         }
         true
     }
-
-    /// The page Presenter holds the prices view and draws it in its view model, so there is
-    /// nothing to build.
-    fn open_prices(&mut self, _unit: UnitId) {}
-
-    fn close_prices(&mut self) {}
 }
 
 impl Notify for PageRouter<'_, '_> {

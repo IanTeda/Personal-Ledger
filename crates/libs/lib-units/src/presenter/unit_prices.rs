@@ -1,8 +1,8 @@
 //! The Unit prices view: one Unit's PRICE figures over its WEEKLY CLOSE chart and its WEEKLY PRICES
 //! table, in a 12-month window `[` steps back and `]` forward by a month, never past the current
-//! week. A state of the Units page, which holds it while it shows in place of the tables
-//! ([`UnitsRouter::open_prices`]) and hands it its events (`UnitsPageEvent::Prices`), so closing
-//! it ([`UnitPricesEvent::Back`]) finds the page's selection as it was.
+//! week. A state of the Units page, which holds it while it shows in place of the tables and hands
+//! it its events (`UnitsPageEvent::Prices`). Closing it ([`UnitPricesEvent::Back`]) is the page's
+//! to do, so it finds the page's selection as it was.
 //!
 //! Prices show at the quote Unit's Precision. The chart's values are plain numbers, for drawing
 //! only; every figure a person reads is formatted here.
@@ -168,7 +168,8 @@ impl Presenter for UnitPricesPresenter {
                     router.open_dialog(UnitsDialog::SetPrice(self.unit));
                 }
             }
-            UnitPricesEvent::Back => router.close_prices(),
+            // The page closes the view, which it holds.
+            UnitPricesEvent::Back => {}
         }
     }
 
@@ -665,9 +666,9 @@ mod tests {
     }
 
     #[test]
-    fn back_closes_the_view() {
+    fn back_is_left_to_the_page() {
         let mut view = View::of(UnitId::SEED_BTC);
-        assert_eq!(view.send(UnitPricesEvent::Back), [RouterCall::ClosePrices]);
+        assert_eq!(view.send(UnitPricesEvent::Back), []);
     }
 
     #[test]

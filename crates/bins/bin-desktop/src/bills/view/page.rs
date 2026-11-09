@@ -86,7 +86,12 @@ impl PageView for BillsPagePresenter {
     }
 
     /// A tab change starts the page at the top; a tab shown clears the status line.
-    fn after(&self, before: BillsBefore, widgets: &mut BillsWidgets) -> Option<ViewEvent> {
+    fn after(
+        &self,
+        before: BillsBefore,
+        _setup: &Self::Setup,
+        widgets: &mut BillsWidgets,
+    ) -> Option<ViewEvent> {
         if self.tab() != before.tab {
             widgets.scroll.set_offset(gpui::Point::default());
         }

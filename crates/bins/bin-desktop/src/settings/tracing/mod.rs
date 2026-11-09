@@ -2,7 +2,8 @@
 //! live log capture. `lib-settings`' Tracing Presenter is the [`PageView`] the generic `ModulePage`
 //! hosts (ADR-0056), with the virtualised list that shows its rows as the page's widget state
 //! ([`LogList`]). The Presenter tells its Router (`super::router::TracingRouter`) how the rows
-//! changed and where to scroll; [`PageView::after`] applies that to the list. The capture is read
+//! changed and where to scroll, queued in the page's [`TracingPageSetup`]; [`PageView::after`]
+//! applies that to the list. The capture is read
 //! through the `TracingLog` port (`log.rs`); the page subscribes to the capture feed's
 //! [`LogFeed`] (`PageView::subscribe`), and each signal is a [`TracingEvent::LogChanged`] input.
 //! Clear logs is a module Dialog (`dialogs/`) the Router hosts. The page has no form: the level
@@ -64,7 +65,11 @@ pub fn tracing_page(
         dialog_keys: DialogKeys::of(&lib_shell::dialog_keymap(config)),
         level,
     });
-    ModulePage::detached(presenter, feed, cx)
+    let setup = TracingPageSetup {
+        feed,
+        list_effects: ListEffects::default(),
+    };
+    ModulePage::detached(presenter, setup, cx)
 }
 
 /// The log box's virtualised list, the page's widget state: the Presenter never sees it.
@@ -83,52 +88,57 @@ pub(super) enum LogListEffect {
     Changed(LogListChange),
 }
 
-thread_local! {
-    /// The Router's half of the hand-over to [`PageView::after`]: the Router is built over the
-    /// Setup and never sees the page's widget state, so it queues what the Presenter asked of the
-    /// list here and `after` applies it once the handle returns. Per thread, as the Notices'
-    /// queue is (`crate::notices`), since every handle runs on the main thread.
-    static LIST_EFFECTS: RefCell<Vec<LogListEffect>> = const { RefCell::new(Vec::new()) };
-}
+/// The Router's half of the hand-over to [`PageView::after`]: the Router is built over the Setup
+/// and never sees the page's widget state, so it queues what the Presenter asked of the list here
+/// and `after` applies it once the handle returns. Shared, since the Router borrows the Setup only
+/// for the handle.
+pub(super) type ListEffects = Rc<RefCell<Vec<LogListEffect>>>;
 
-/// Queues `effect` for the handle's [`PageView::after`].
-pub(super) fn queue_list_effect(effect: LogListEffect) {
-    LIST_EFFECTS.with_borrow_mut(|effects| effects.push(effect));
+/// What Tracing's Router is built from: the capture feed the page subscribes to, and the list
+/// effects the Router queues for [`PageView::after`]. Owned by the page, so each Tracing page has
+/// its own queue.
+pub struct TracingPageSetup {
+    feed: Entity<LogFeed>,
+    list_effects: ListEffects,
 }
 
 impl PageView for TracingPresenter {
-    /// The capture feed the page subscribes to.
-    type Setup = Entity<LogFeed>;
+    /// The capture feed the page subscribes to, and the list effects its Router queues.
+    type Setup = TracingPageSetup;
     type Widgets = LogList;
     type Before = ();
 
     /// Tracing reads the capture, not the Ledger.
     const REPAINTS: &'static [Domain] = &[];
 
-    /// A movement the keymap doesn't bind is left to the frame, as before the generic page: the
-    /// log box fills the page, so the frame has nothing to scroll.
-    const FRAME_SCROLLS: bool = true;
+    /// A movement the keymap doesn't bind does nothing: the log box fills the page and scrolls
+    /// itself, so the frame's body has nothing to scroll.
+    const FRAME_SCROLLS: bool = false;
 
     /// The log box fills the page and scrolls itself.
     const FILLS_PAGE: bool = true;
 
     fn with_router<R>(
         presenter: &mut Self,
-        _setup: &Entity<LogFeed>,
+        setup: &TracingPageSetup,
         cx: &mut Context<'_, TracingPage>,
         handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
     ) -> R {
-        handle(presenter, &mut TracingRouter { cx })
-    }
-
-    /// Drops anything a handle that never reached `after` left queued.
-    fn before(&mut self, _event: &TracingEvent, _widgets: &LogList) {
-        LIST_EFFECTS.with_borrow_mut(Vec::clear);
+        let mut router = TracingRouter {
+            cx,
+            list_effects: &setup.list_effects,
+        };
+        handle(presenter, &mut router)
     }
 
     /// Applies what the Presenter asked of the list, in the order it asked.
-    fn after(&self, _before: (), widgets: &mut LogList) -> Option<ViewEvent> {
-        for effect in LIST_EFFECTS.with_borrow_mut(std::mem::take) {
+    fn after(
+        &self,
+        _before: (),
+        setup: &TracingPageSetup,
+        widgets: &mut LogList,
+    ) -> Option<ViewEvent> {
+        for effect in setup.list_effects.take() {
             match effect {
                 LogListEffect::Scroll(to) => scroll(&widgets.0, to),
                 LogListEffect::Changed(change) => apply_change(&widgets.0, change),
@@ -138,8 +148,8 @@ impl PageView for TracingPresenter {
     }
 
     /// Each signal of the capture feed pulls the new entries in, as one input.
-    fn subscribe(feed: &Entity<LogFeed>, cx: &mut Context<'_, TracingPage>) -> Vec<Subscription> {
-        vec![cx.subscribe(feed, |page, _, _: &LogAppended, cx| {
+    fn subscribe(setup: &TracingPageSetup, cx: &mut Context<'_, TracingPage>) -> Vec<Subscription> {
+        vec![cx.subscribe(&setup.feed, |page, _, _: &LogAppended, cx| {
             page.send(TracingEvent::LogChanged, cx);
         })]
     }

@@ -136,6 +136,7 @@ impl PageView for TransactionsPagePresenter {
     fn after(
         &self,
         before: TransactionsBefore,
+        _setup: &Self::Setup,
         widgets: &mut TransactionsWidgets,
     ) -> Option<ViewEvent> {
         if let Some(anchor) = before.anchor {

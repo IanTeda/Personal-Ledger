@@ -313,8 +313,9 @@ pub struct UnitsPagePresenter {
     docked: bool,
     activity: Vec<ActivityLine>,
     open_dialog: Option<UnitsDialog>,
-    /// The Unit prices view, while it shows in place of the tables: opened and closed through the
-    /// Router's `open_prices` and `close_prices`, which the page notes ([`Noting`]).
+    /// The Unit prices view, while it shows in place of the tables: a state of the page, which
+    /// opens it on `MenuAction::Prices` and closes it on the view's `UnitPricesEvent::Back`. The
+    /// Client's Router is not told: it draws the view from the view model.
     prices: Option<UnitPricesPresenter>,
     /// The keys the prices view is built with, so its legend shows the chords the Client binds.
     prices_keymap: Keymap<UnitPricesEvent>,
@@ -372,50 +373,14 @@ impl UnitsPagePresenter {
             .chain(prices.map(UnitsPageEvent::Prices))
     }
 
-    /// Opens the prices view a Presenter asked for (`Some`) or closes it (`None`).
-    fn apply_prices(&mut self, prices: Option<Option<UnitId>>) {
-        match prices {
-            Some(Some(unit)) => {
-                self.prices = Some(UnitPricesPresenter::new(
-                    self.ports.clone(),
-                    self.clock.clone(),
-                    self.prices_keymap.clone(),
-                    unit,
-                ));
-            }
-            Some(None) => self.prices = None,
-            None => {}
-        }
-    }
-}
-
-/// The page's Router around one handle: it notes the prices view the page or the view asked to
-/// show or close, for the page to act on once the handle returns, and passes every call on, so a
-/// Client's Router still hears it.
-struct Noting<'a, 'r> {
-    router: &'a mut (dyn UnitsRouter + 'r),
-    prices: Option<Option<UnitId>>,
-}
-
-impl lib_toast::Notify for Noting<'_, '_> {
-    fn notify(&mut self, notice: Notice) {
-        self.router.notify(notice);
-    }
-}
-
-impl UnitsRouter for Noting<'_, '_> {
-    fn open_dialog(&mut self, dialog: UnitsDialog) -> bool {
-        self.router.open_dialog(dialog)
-    }
-
+    /// Shows `unit`'s prices view in place of the tables, the selection kept for the way back.
     fn open_prices(&mut self, unit: UnitId) {
-        self.prices = Some(Some(unit));
-        self.router.open_prices(unit);
-    }
-
-    fn close_prices(&mut self) {
-        self.prices = Some(None);
-        self.router.close_prices();
+        self.prices = Some(UnitPricesPresenter::new(
+            self.ports.clone(),
+            self.clock.clone(),
+            self.prices_keymap.clone(),
+            unit,
+        ));
     }
 }
 
@@ -424,16 +389,9 @@ impl Presenter for UnitsPagePresenter {
     type ViewModel = UnitsPageViewModel;
     type Router<'r> = dyn UnitsRouter + 'r;
 
-    /// Handles `event`, a prices view's on the open view, then opens or closes the prices view
-    /// the handle asked for.
+    /// Handles `event`, a prices view's on the open view.
     fn handle(&mut self, event: UnitsPageEvent, router: &mut Self::Router<'_>) {
-        let mut noting = Noting {
-            router,
-            prices: None,
-        };
-        self.handle_noted(event, &mut noting);
-        let prices = noting.prices;
-        self.apply_prices(prices);
+        self.handle_event(event, router);
     }
 
     fn view_model(&self) -> UnitsPageViewModel {
@@ -452,7 +410,7 @@ impl Presenter for UnitsPagePresenter {
 }
 
 impl UnitsPagePresenter {
-    fn handle_noted(&mut self, event: UnitsPageEvent, router: &mut dyn UnitsRouter) {
+    fn handle_event(&mut self, event: UnitsPageEvent, router: &mut dyn UnitsRouter) {
         // Any event but the menu's own closes it, as a key or click elsewhere does.
         let menu = self.menu.take();
         match event {
@@ -518,6 +476,9 @@ impl UnitsPagePresenter {
                     self.land(outcome, router);
                 }
             }
+            // The view's Back is the page's to act on: it closes the view, which leaves the
+            // selection as it was.
+            UnitsPageEvent::Prices(UnitPricesEvent::Back) => self.prices = None,
             UnitsPageEvent::Prices(event) => {
                 if let Some(prices) = self.prices.as_mut() {
                     prices.handle(event, router);
@@ -777,7 +738,7 @@ impl UnitsPagePresenter {
             return;
         }
         match (action, row) {
-            (MenuAction::Prices, UnitsRow::Unit(id)) => router.open_prices(id),
+            (MenuAction::Prices, UnitsRow::Unit(id)) => self.open_prices(id),
             (MenuAction::EditUnit, UnitsRow::Unit(id)) => {
                 self.open(UnitsDialog::EditUnit(id), router);
             }
@@ -1154,9 +1115,10 @@ mod tests {
     fn enter_opens_a_units_prices_and_edits_a_price_source() {
         let mut page = Page::new();
         page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_BTC)));
+        page.send(UnitsPageEvent::Open);
         assert_eq!(
-            page.send(UnitsPageEvent::Open),
-            [RouterCall::OpenPrices(UnitId::SEED_BTC)]
+            page.view().prices.map(|prices| prices.unit),
+            Some(UnitId::SEED_BTC)
         );
         assert_eq!(
             page.selected(),
@@ -1177,16 +1139,18 @@ mod tests {
     fn every_units_menu_and_pane_offer_its_prices() {
         let mut page = Page::new();
         page.send(UnitsPageEvent::OpenMenu(UnitsRow::Unit(UnitId::SEED_BTC)));
+        page.send(UnitsPageEvent::Menu(MenuAction::Prices));
         assert_eq!(
-            page.send(UnitsPageEvent::Menu(MenuAction::Prices)),
-            [RouterCall::OpenPrices(UnitId::SEED_BTC)]
+            page.view().prices.map(|prices| prices.unit),
+            Some(UnitId::SEED_BTC)
         );
+        page.send(UnitsPageEvent::Action(
+            MenuAction::Prices,
+            UnitsRow::Unit(UnitId::SEED_VAS),
+        ));
         assert_eq!(
-            page.send(UnitsPageEvent::Action(
-                MenuAction::Prices,
-                UnitsRow::Unit(UnitId::SEED_VAS)
-            )),
-            [RouterCall::OpenPrices(UnitId::SEED_VAS)]
+            page.view().prices.map(|prices| prices.unit),
+            Some(UnitId::SEED_VAS)
         );
     }
 
@@ -1215,10 +1179,7 @@ mod tests {
             Some(UnitsPageEvent::Prices(UnitPricesEvent::Back))
         );
 
-        assert_eq!(
-            page.send(UnitsPageEvent::Prices(UnitPricesEvent::Back)),
-            [RouterCall::ClosePrices]
-        );
+        page.send(UnitsPageEvent::Prices(UnitPricesEvent::Back));
         assert!(page.view().prices.is_none());
         assert!(
             !page
@@ -1265,8 +1226,6 @@ mod tests {
             fn open_dialog(&mut self, _dialog: UnitsDialog) -> bool {
                 false
             }
-            fn open_prices(&mut self, _unit: UnitId) {}
-            fn close_prices(&mut self) {}
         }
         impl lib_toast::Notify for Refusing {
             fn notify(&mut self, _notice: Notice) {}

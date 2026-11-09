@@ -409,35 +409,20 @@ impl RootRouter<'_, '_> {
 
     /// A module Command on its page, which the Shell has shown (Settings' page, opened here with
     /// focus in it): the page's Router takes the event its keymap binds `command` to, inside the
-    /// input, as the key's is. Whether the page took it.
+    /// input, as the key's is. Whether the page took it: a This Ledger page Settings refused to
+    /// open with no Ledger open takes nothing.
     fn run_module_command(&mut self, page: ModulePage, command: &'static str) -> bool {
         let cx = &mut *self.cx;
-        match page {
-            ModulePage::Settings(section) => self.settings.update(cx, |view, cx| {
-                view.open_page(section, cx);
-                view.module_command(section, command, cx)
-            }),
-            ModulePage::Bills => self.open.as_ref().is_some_and(|open| {
-                open.views
-                    .bills
-                    .update(cx, |page, cx| page.module_command(command, cx))
-            }),
-            ModulePage::Budgets => self.open.as_ref().is_some_and(|open| {
-                open.views
-                    .budgets
-                    .update(cx, |page, cx| page.module_command(command, cx))
-            }),
-            ModulePage::Documents => self.open.as_ref().is_some_and(|open| {
-                open.views
-                    .documents
-                    .update(cx, |page, cx| page.module_command(command, cx))
-            }),
-            ModulePage::Transactions => self.open.as_ref().is_some_and(|open| {
-                open.views
-                    .transactions
-                    .update(cx, |page, cx| page.module_command(command, cx))
-            }),
+        if let ModulePage::Settings(section) = page
+            && !self
+                .settings
+                .update(cx, |view, cx| view.open_page(section, cx))
+        {
+            return false;
         }
+        let views = self.open.as_ref().map(|open| &open.views);
+        active::page(page.view(), views, self.settings)
+            .is_some_and(|handle| handle.module_command(command, cx))
     }
 }
 

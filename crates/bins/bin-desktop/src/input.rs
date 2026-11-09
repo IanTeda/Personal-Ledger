@@ -19,15 +19,17 @@
 //! 2. A mode the active View entered for something of its own: its Search, a filter popover, an
 //!    edit in place or Settings' page picker. The View reads the key through its `mode_key`, the
 //!    page's `ModulePage::mode_key` or the Settings frame's (`esc` closes what it opened, then
-//!    leaves the mode), and what it leaves is swallowed. The Shell's command palette and file explorer are modes too, but the
-//!    Shell's: their `lib-shell` Presenters resolve their keys through the Dialog keymap. Who
-//!    entered the current mode is recorded in `lib-shell`'s `NavState` (`view_owns_mode`), set by
-//!    the View's `ViewEvent::EnterMode` and cleared on leaving any mode.
+//!    leaves the mode), and what it leaves is swallowed. The Shell's command palette and file
+//!    explorer are modes too, but the Shell's: their `lib-shell` Presenters resolve their keys
+//!    through the Dialog keymap. Who entered the current mode is recorded in `lib-shell`'s
+//!    `NavState` (`view_owns_mode`), set by the View's `ViewEvent::EnterMode` and cleared on
+//!    leaving any mode.
 //! 3. `lib-shell`'s global keymap, which takes the keys the Shell keeps (`?`, `:`, `/`, the rail
 //!    toggle, `shift+tab`, `esc`, the Toast keys and the `g` jumps) and passes the rest on.
 //! 4. The focused module's keymap. In Settings that is the open page's, then the frame's
 //!    (`lib-settings`). A key whose event the page hands on (the Colour Theme grid's `tab`, once it
-//!    has left the grid) goes on as one the module declined.
+//!    has left the grid) goes on to the Shell's fallback inside the page's input, so the key is
+//!    still one input with one commit.
 //! 5. The fall-back: a key no step took goes back to the Shell when its global keymap binds it to
 //!    focus `tab`, `a`, a movement or `enter`, so a list's own `tab` or `a` wins over the Shell's.
 //!    A movement the Shell falls back on in Settings is the frame's own: it scrolls the body or

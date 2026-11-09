@@ -6,7 +6,7 @@
 
 use lib_toast::{Notice, Notify, ToastKind};
 use lib_units::presenter::UnitsOutcome;
-use lib_units::{SharedPorts, UnitId, UnitsDialog as Which, UnitsRouter};
+use lib_units::{SharedPorts, UnitsDialog as Which, UnitsRouter};
 use lib_viper::dialog::DialogRouter;
 
 use super::view::dialog::Dialog;
@@ -48,11 +48,6 @@ impl UnitsRouter for Router<'_> {
         self.opened = Dialog::open(dialog, &self.ports, &self.now);
         self.opened.is_some()
     }
-
-    /// The page Presenter holds the prices view, which the View draws from its view model.
-    fn open_prices(&mut self, _unit: UnitId) {}
-
-    fn close_prices(&mut self) {}
 }
 
 impl DialogRouter<UnitsOutcome> for Router<'_> {
