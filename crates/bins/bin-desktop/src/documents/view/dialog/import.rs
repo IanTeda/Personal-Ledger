@@ -3,15 +3,46 @@
 //! failed shows under the box until the paths change.
 
 use gpui::{AnyElement, App, div, prelude::*, px};
-use lib_documents::presenter::ImportViewModel;
+use lib_documents::presenter::{ImportPresenter, ImportViewModel};
+use lib_shell::Hint;
 
-use super::Clicks;
 use super::document_form::error_line;
 use crate::dialog;
 use crate::form::dialog_fields::label;
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 use crate::theme::color;
 
-pub(super) fn render(view: &ImportViewModel, actions: &Clicks, cx: &App) -> AnyElement {
+type Clicks = ModuleDialogClicks<ImportPresenter>;
+
+/// The `lib-documents` Import files Presenter's [`DialogView`], hosted in a `ModuleDialog`
+/// (ADR-0056).
+impl DialogView for ImportPresenter {
+    type Widgets = ();
+
+    fn kind(_view: &ImportViewModel) -> &'static str {
+        "import"
+    }
+
+    fn render(view: &ImportViewModel, _widgets: &mut (), clicks: &Clicks, cx: &App) -> AnyElement {
+        render(view, clicks, cx)
+    }
+
+    fn readback(view: &ImportViewModel) -> Vec<(&'static str, String)> {
+        framed(
+            &view.frame,
+            vec![
+                ("paths", view.paths.clone()),
+                ("notes", view.notes.join("\n")),
+            ],
+        )
+    }
+
+    fn hints(view: &ImportViewModel) -> Vec<Hint> {
+        view.hints.clone()
+    }
+}
+
+fn render(view: &ImportViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     let lines = if view.paths.is_empty() {
         div()
             .text_color(color::faint_text(cx))

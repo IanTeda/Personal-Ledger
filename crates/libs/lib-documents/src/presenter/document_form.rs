@@ -17,8 +17,9 @@ use chrono::NaiveDate;
 use lib_core::DocumentId;
 use lib_locale::format::{format_date_input, parse_optional_date};
 use lib_toast::{Notice, ToastKind};
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::{BACK, NEXT_FIELD, SELECT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
 use lib_viper::view::{
     Choice, DialogFrame, Hint, SelectList, SelectMove, SelectView, TextFieldView,
 };
@@ -130,9 +131,13 @@ pub struct DocumentFormViewModel {
     /// Add's note under the fields.
     pub note: Option<String>,
     pub focused: DocumentField,
+    /// The status line's hints while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 pub struct DocumentFormPresenter {
+    /// The Dialog keymap's chords, which its hints show.
+    keys: DialogKeys,
     ports: DialogPorts,
     /// The Document an Edit saves, `None` on Add.
     editing: Option<DocumentId>,
@@ -154,7 +159,7 @@ pub struct DocumentFormPresenter {
 impl DocumentFormPresenter {
     /// A fresh Add form. A Type scope pre-fills the Type; a Financial Year scope pre-fills the date
     /// (today if inside that year, otherwise the year's last day); All pre-fills nothing.
-    pub fn add(ports: DialogPorts, scope: LibraryScope) -> Self {
+    pub fn add(ports: DialogPorts, scope: LibraryScope, keys: DialogKeys) -> Self {
         let types = ports.documents.borrow().document_types();
         let today = ports.today;
         let doc_type = match scope {
@@ -168,6 +173,7 @@ impl DocumentFormPresenter {
             format_date_input(date, ports.date_style)
         };
         Self {
+            keys,
             ports,
             editing: None,
             types,
@@ -185,9 +191,9 @@ impl DocumentFormPresenter {
     }
 
     /// The Edit form pre-filled from Filed Document `id`, or `None` when it has gone.
-    pub fn edit(ports: DialogPorts, id: DocumentId) -> Option<Self> {
+    pub fn edit(ports: DialogPorts, id: DocumentId, keys: DialogKeys) -> Option<Self> {
         let document = get(&ports.documents.borrow().documents(), id)?.clone();
-        let mut form = Self::add(ports, LibraryScope::All);
+        let mut form = Self::add(ports, LibraryScope::All, keys);
         let style = form.ports.date_style;
         let key = document.key_date.as_ref();
         form.editing = Some(id);
@@ -203,59 +209,6 @@ impl DocumentFormPresenter {
         form.reminder = key.is_some_and(|key| key.reminder);
         form.focused = DocumentField::Title;
         Some(form)
-    }
-
-    pub fn handle(
-        &mut self,
-        event: DocumentFormEvent,
-        router: &mut dyn DialogRouter<DocumentsOutcome>,
-    ) {
-        match event {
-            DocumentFormEvent::Input(input) => self.input(input, router),
-            DocumentFormEvent::Path(text) => {
-                self.path = text;
-                if !self.title_typed {
-                    self.title = default_title(Path::new(self.path.trim()));
-                }
-            }
-            DocumentFormEvent::Title(text) => {
-                self.title = text;
-                self.title_typed = true;
-            }
-            DocumentFormEvent::Date(text) => self.date = text,
-            DocumentFormEvent::KeyDate(text) => self.key_date = text,
-            DocumentFormEvent::Type(kind) => {
-                self.list.close();
-                self.focused = DocumentField::Type;
-                self.doc_type = kind;
-            }
-            DocumentFormEvent::KeyKind(kind) => {
-                self.list.close();
-                self.focused = DocumentField::KeyKind;
-                self.key_kind = kind;
-            }
-            DocumentFormEvent::ToggleList(field) => self.toggle_list(field),
-            DocumentFormEvent::CloseList => {
-                self.list.close();
-            }
-            DocumentFormEvent::ToggleReminder => {
-                if self.key_kind.is_some() {
-                    self.list.close();
-                    self.focused = DocumentField::Reminder;
-                    self.reminder = !self.reminder;
-                }
-            }
-            DocumentFormEvent::NextField => self.cycle_focus(false),
-            DocumentFormEvent::PrevField => self.cycle_focus(true),
-            DocumentFormEvent::Focus(field) => {
-                self.list.close();
-                if self.shows(field) {
-                    self.focused = field;
-                }
-            }
-            DocumentFormEvent::Confirm => self.confirm(router),
-            DocumentFormEvent::Cancel => router.close(None),
-        }
     }
 
     /// What `input` means on the focused field.
@@ -369,94 +322,9 @@ impl DocumentFormPresenter {
             .collect()
     }
 
-    pub fn view_model(&self) -> DocumentFormViewModel {
-        let problems = self.problems();
-        let (title, submit) = if self.editing.is_some() {
-            (
-                msg::documents_dialog_edit_title(),
-                msg::documents_dialog_edit_submit(),
-            )
-        } else {
-            (
-                msg::documents_dialog_add_title(),
-                msg::documents_dialog_add_submit(),
-            )
-        };
-        let text = |label: String, text: &str, field: DocumentField| TextFieldView {
-            label,
-            text: text.to_string(),
-            placeholder: String::new(),
-            focused: self.focused == field,
-        };
-        let key_shown = self.key_kind.is_some();
-        DocumentFormViewModel {
-            frame: DialogFrame {
-                title,
-                submit,
-                can_confirm: self.can_save(&problems),
-                destructive: false,
-                hints: Vec::new(),
-            },
-            editing: self.editing.is_some(),
-            path: self.editing.is_none().then(|| TextFieldView {
-                placeholder: msg::documents_dialog_field_path_placeholder(),
-                ..text(
-                    msg::documents_dialog_field_path(),
-                    &self.path,
-                    DocumentField::Path,
-                )
-            }),
-            path_error: problems.path.map(|problem| match problem {
-                PathRefusal::Unsupported => msg::documents_dialog_error_unsupported(),
-                PathRefusal::Already(title) => msg::documents_dialog_error_already(&title),
-                PathRefusal::NotFound => msg::documents_dialog_error_path_missing(self.path.trim()),
-            }),
-            title: text(
-                msg::documents_dialog_field_title(),
-                &self.title,
-                DocumentField::Title,
-            ),
-            doc_type: SelectView {
-                label: msg::documents_dialog_field_type(),
-                options: self.type_choices(),
-                chosen: Some(self.doc_type),
-                focused: self.focused == DocumentField::Type,
-            },
-            date: text(
-                msg::documents_dialog_field_date(),
-                &self.date,
-                DocumentField::Date,
-            ),
-            date_error: problems.date,
-            key_kind: SelectView {
-                label: msg::documents_dialog_field_key_kind(),
-                options: self.key_kind_choices(),
-                chosen: Some(self.key_kind),
-                focused: self.focused == DocumentField::KeyKind,
-            },
-            list: self.list,
-            key_date: key_shown.then(|| {
-                text(
-                    msg::documents_dialog_field_key_date(),
-                    &self.key_date,
-                    DocumentField::KeyDate,
-                )
-            }),
-            // A Key Date still to be typed refuses Save but says nothing.
-            key_date_error: problems.key_date.filter(|hint| !hint.is_empty()),
-            reminder: key_shown.then(|| CheckboxView {
-                label: msg::documents_dialog_field_reminder(),
-                checked: self.reminder,
-                focused: self.focused == DocumentField::Reminder,
-            }),
-            note: self.editing.is_none().then(msg::documents_dialog_add_note),
-            focused: self.focused,
-        }
-    }
-
-    /// The status line's legend: cancel, confirm and the key that moves field.
-    pub fn legend<E: Clone>(&self, keymap: &Keymap<E>) -> Vec<Hint> {
-        form_legend(keymap)
+    /// The status line's hints, their chords the Dialog keys': cancel, confirm and the key that moves field.
+    fn hints(&self) -> Vec<Hint> {
+        form_legend(&self.keys)
     }
 
     /// Whether `field` is on the form.
@@ -603,8 +471,8 @@ impl Problems {
 }
 
 /// A form Dialog's legend: cancel, confirm and the key that moves field.
-pub(super) fn form_legend<E: Clone>(keymap: &Keymap<E>) -> Vec<Hint> {
-    let key = |command| keymap.chord(command).unwrap_or_default().to_string();
+pub(super) fn form_legend(keys: &DialogKeys) -> Vec<Hint> {
+    let key = |command| keys.chord(command).to_string();
     vec![
         Hint::new(key(BACK), msg::documents_dialog_hint_cancel()),
         Hint::new(key(NEXT_FIELD), msg::documents_dialog_hint_next_field()),
@@ -615,6 +483,176 @@ pub(super) fn form_legend<E: Clone>(keymap: &Keymap<E>) -> Vec<Hint> {
 /// The Document a Dialog acts on, as the repository holds it now.
 pub(super) fn document(ports: &DialogPorts, id: DocumentId) -> Option<Document> {
     get(&ports.documents.borrow().documents(), id).cloned()
+}
+
+impl Presenter for DocumentFormPresenter {
+    type Event = DocumentFormEvent;
+    type ViewModel = DocumentFormViewModel;
+    type Router<'r> = dyn DialogRouter<DocumentsOutcome> + 'r;
+
+    fn handle(&mut self, event: DocumentFormEvent, router: &mut Self::Router<'_>) {
+        match event {
+            DocumentFormEvent::Input(input) => self.input(input, router),
+            DocumentFormEvent::Path(text) => {
+                self.path = text;
+                if !self.title_typed {
+                    self.title = default_title(Path::new(self.path.trim()));
+                }
+            }
+            DocumentFormEvent::Title(text) => {
+                self.title = text;
+                self.title_typed = true;
+            }
+            DocumentFormEvent::Date(text) => self.date = text,
+            DocumentFormEvent::KeyDate(text) => self.key_date = text,
+            DocumentFormEvent::Type(kind) => {
+                self.list.close();
+                self.focused = DocumentField::Type;
+                self.doc_type = kind;
+            }
+            DocumentFormEvent::KeyKind(kind) => {
+                self.list.close();
+                self.focused = DocumentField::KeyKind;
+                self.key_kind = kind;
+            }
+            DocumentFormEvent::ToggleList(field) => self.toggle_list(field),
+            DocumentFormEvent::CloseList => {
+                self.list.close();
+            }
+            DocumentFormEvent::ToggleReminder => {
+                if self.key_kind.is_some() {
+                    self.list.close();
+                    self.focused = DocumentField::Reminder;
+                    self.reminder = !self.reminder;
+                }
+            }
+            DocumentFormEvent::NextField => self.cycle_focus(false),
+            DocumentFormEvent::PrevField => self.cycle_focus(true),
+            DocumentFormEvent::Focus(field) => {
+                self.list.close();
+                if self.shows(field) {
+                    self.focused = field;
+                }
+            }
+            DocumentFormEvent::Confirm => self.confirm(router),
+            DocumentFormEvent::Cancel => router.close(None),
+        }
+    }
+
+    fn view_model(&self) -> DocumentFormViewModel {
+        let problems = self.problems();
+        let (title, submit) = if self.editing.is_some() {
+            (
+                msg::documents_dialog_edit_title(),
+                msg::documents_dialog_edit_submit(),
+            )
+        } else {
+            (
+                msg::documents_dialog_add_title(),
+                msg::documents_dialog_add_submit(),
+            )
+        };
+        let text = |label: String, text: &str, field: DocumentField| TextFieldView {
+            label,
+            text: text.to_string(),
+            placeholder: String::new(),
+            focused: self.focused == field,
+        };
+        let key_shown = self.key_kind.is_some();
+        DocumentFormViewModel {
+            hints: self.hints(),
+            frame: DialogFrame {
+                title,
+                submit,
+                can_confirm: self.can_save(&problems),
+                destructive: false,
+                hints: Vec::new(),
+            },
+            editing: self.editing.is_some(),
+            path: self.editing.is_none().then(|| TextFieldView {
+                placeholder: msg::documents_dialog_field_path_placeholder(),
+                ..text(
+                    msg::documents_dialog_field_path(),
+                    &self.path,
+                    DocumentField::Path,
+                )
+            }),
+            path_error: problems.path.map(|problem| match problem {
+                PathRefusal::Unsupported => msg::documents_dialog_error_unsupported(),
+                PathRefusal::Already(title) => msg::documents_dialog_error_already(&title),
+                PathRefusal::NotFound => msg::documents_dialog_error_path_missing(self.path.trim()),
+            }),
+            title: text(
+                msg::documents_dialog_field_title(),
+                &self.title,
+                DocumentField::Title,
+            ),
+            doc_type: SelectView {
+                label: msg::documents_dialog_field_type(),
+                options: self.type_choices(),
+                chosen: Some(self.doc_type),
+                focused: self.focused == DocumentField::Type,
+            },
+            date: text(
+                msg::documents_dialog_field_date(),
+                &self.date,
+                DocumentField::Date,
+            ),
+            date_error: problems.date,
+            key_kind: SelectView {
+                label: msg::documents_dialog_field_key_kind(),
+                options: self.key_kind_choices(),
+                chosen: Some(self.key_kind),
+                focused: self.focused == DocumentField::KeyKind,
+            },
+            list: self.list,
+            key_date: key_shown.then(|| {
+                text(
+                    msg::documents_dialog_field_key_date(),
+                    &self.key_date,
+                    DocumentField::KeyDate,
+                )
+            }),
+            // A Key Date still to be typed refuses Save but says nothing.
+            key_date_error: problems.key_date.filter(|hint| !hint.is_empty()),
+            reminder: key_shown.then(|| CheckboxView {
+                label: msg::documents_dialog_field_reminder(),
+                checked: self.reminder,
+                focused: self.focused == DocumentField::Reminder,
+            }),
+            note: self.editing.is_none().then(msg::documents_dialog_add_note),
+            focused: self.focused,
+        }
+    }
+}
+
+impl DialogPresenter for DocumentFormPresenter {
+    type Outcome = DocumentsOutcome;
+
+    fn input_event(input: DialogInput) -> DocumentFormEvent {
+        DocumentFormEvent::Input(input)
+    }
+
+    fn confirm_event() -> DocumentFormEvent {
+        DocumentFormEvent::Confirm
+    }
+
+    fn cancel_event() -> DocumentFormEvent {
+        DocumentFormEvent::Cancel
+    }
+
+    fn can_confirm(&self) -> bool {
+        self.view_model().frame.can_confirm
+    }
+
+    /// Closes the open select's list without picking: the host's `back`.
+    fn close_open_select(&mut self) -> bool {
+        let open = self.list.is_open();
+        if open {
+            self.list.close();
+        }
+        open
+    }
 }
 
 #[cfg(test)]
@@ -642,7 +680,11 @@ mod tests {
     fn add() -> Form {
         let ports = dialog_ports(disk());
         Form {
-            presenter: DocumentFormPresenter::add(ports.clone(), LibraryScope::All),
+            presenter: DocumentFormPresenter::add(
+                ports.clone(),
+                LibraryScope::All,
+                DialogKeys::default(),
+            ),
             ports,
             router: RecordingDocumentsRouter::default(),
         }
@@ -668,8 +710,11 @@ mod tests {
     #[test]
     fn a_type_scope_prefills_the_type_and_a_year_scope_the_date() {
         let ports = dialog_ports(disk());
-        let by_type =
-            DocumentFormPresenter::add(ports.clone(), LibraryScope::Type(DocumentType::INSURANCE));
+        let by_type = DocumentFormPresenter::add(
+            ports.clone(),
+            LibraryScope::Type(DocumentType::INSURANCE),
+            DialogKeys::default(),
+        );
         assert_eq!(
             by_type.view_model().doc_type.chosen,
             Some(DocumentType::INSURANCE)
@@ -678,6 +723,7 @@ mod tests {
         let by_year = DocumentFormPresenter::add(
             ports.clone(),
             LibraryScope::Year(crate::YearFacet::Year(2024)),
+            DialogKeys::default(),
         );
         let view = by_year.view_model();
         assert_eq!(view.doc_type.chosen, Some(DocumentType::OTHER));
@@ -686,7 +732,7 @@ mod tests {
             Ok(NaiveDate::from_ymd_opt(2025, 6, 30))
         );
         assert_eq!(
-            DocumentFormPresenter::add(ports, LibraryScope::All)
+            DocumentFormPresenter::add(ports, LibraryScope::All, DialogKeys::default())
                 .view_model()
                 .date
                 .text,
@@ -700,7 +746,11 @@ mod tests {
         first.send(DocumentFormEvent::Path("/tmp/policy.pdf".to_string()));
         first.send(DocumentFormEvent::Confirm);
         let mut form = Form {
-            presenter: DocumentFormPresenter::add(first.ports.clone(), LibraryScope::All),
+            presenter: DocumentFormPresenter::add(
+                first.ports.clone(),
+                LibraryScope::All,
+                DialogKeys::default(),
+            ),
             ports: first.ports,
             router: RecordingDocumentsRouter::default(),
         };
@@ -800,7 +850,8 @@ mod tests {
         let ports = dialog_ports(disk());
         let id = world().file(POLICY).id;
         let mut form = Form {
-            presenter: DocumentFormPresenter::edit(ports.clone(), id).expect("the policy is there"),
+            presenter: DocumentFormPresenter::edit(ports.clone(), id, DialogKeys::default())
+                .expect("the policy is there"),
             ports,
             router: RecordingDocumentsRouter::default(),
         };

@@ -6,59 +6,83 @@
 
 use gpui::{AnyElement, App, div, prelude::*, px};
 use lib_documents::presenter::{
-    CheckboxView, DocumentField, DocumentFormEvent, DocumentFormViewModel,
+    CheckboxView, DocumentField, DocumentFormEvent, DocumentFormPresenter, DocumentFormViewModel,
 };
+use lib_shell::Hint;
 use lib_viper::view::{SelectList, TextFieldView};
 
-use super::{Clicks, DocumentsDialog, View};
 use crate::dialog;
 use crate::form::dialog_fields::{label, text_field, two_up};
 use crate::form::select_field::{self, SelectFieldProps};
 use crate::form::viper::{drawn, labels};
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 use crate::theme::color;
 
+type Clicks = ModuleDialogClicks<DocumentFormPresenter>;
+
+/// The Document type and Key date selects' list scroll windows.
+#[derive(Default)]
+pub struct FormWidgets {
+    doc_type: usize,
+    key_kind: usize,
+}
+
+/// The `lib-documents` Add and Edit document Presenter's [`DialogView`], hosted in a
+/// `ModuleDialog` (ADR-0056).
+impl DialogView for DocumentFormPresenter {
+    type Widgets = FormWidgets;
+
+    fn kind(view: &DocumentFormViewModel) -> &'static str {
+        if view.editing { "edit" } else { "add" }
+    }
+
+    fn render(
+        view: &DocumentFormViewModel,
+        widgets: &mut FormWidgets,
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        render(
+            view,
+            &mut widgets.doc_type,
+            &mut widgets.key_kind,
+            clicks,
+            cx,
+        )
+    }
+
+    fn readback(view: &DocumentFormViewModel) -> Vec<(&'static str, String)> {
+        let mut values = Vec::new();
+        if let Some(path) = &view.path {
+            values.push(("path", path.text.clone()));
+        }
+        values.push(("document_title", view.title.text.clone()));
+        values.push(("date", view.date.text.clone()));
+        values.push((
+            "error",
+            view.path_error
+                .clone()
+                .or_else(|| view.date_error.clone())
+                .unwrap_or_default(),
+        ));
+        framed(&view.frame, values)
+    }
+
+    fn hints(view: &DocumentFormViewModel) -> Vec<Hint> {
+        view.hints.clone()
+    }
+}
+
 /// A click on a text field or the reminder focuses it; the reminder's also flips it.
-fn click_field(dialog: &mut DocumentsDialog, field: DocumentField) {
-    dialog.apply(|view, router| {
-        if let View::Form(presenter, ..) = view {
-            presenter.handle(DocumentFormEvent::Focus(field), router);
-            if field == DocumentField::Reminder {
-                presenter.handle(DocumentFormEvent::ToggleReminder, router);
-            }
-        }
-    });
+fn click_field(field: DocumentField) -> Vec<DocumentFormEvent> {
+    let mut events = vec![DocumentFormEvent::Focus(field)];
+    if field == DocumentField::Reminder {
+        events.push(DocumentFormEvent::ToggleReminder);
+    }
+    events
 }
 
-/// A click on a select's field focuses it and toggles its list, closing the other's.
-fn click_select(dialog: &mut DocumentsDialog, field: DocumentField) {
-    dialog.apply(|view, router| {
-        if let View::Form(presenter, ..) = view {
-            presenter.handle(DocumentFormEvent::ToggleList(field), router);
-        }
-    });
-}
-
-fn choose_type(dialog: &mut DocumentsDialog, index: usize) {
-    dialog.apply(|view, router| {
-        if let View::Form(presenter, ..) = view
-            && let Some(choice) = presenter.view_model().doc_type.options.get(index)
-        {
-            presenter.handle(DocumentFormEvent::Type(choice.value), router);
-        }
-    });
-}
-
-fn choose_key_kind(dialog: &mut DocumentsDialog, index: usize) {
-    dialog.apply(|view, router| {
-        if let View::Form(presenter, ..) = view
-            && let Some(choice) = presenter.view_model().key_kind.options.get(index)
-        {
-            presenter.handle(DocumentFormEvent::KeyKind(choice.value), router);
-        }
-    });
-}
-
-pub(super) fn render(
+fn render(
     view: &DocumentFormViewModel,
     doc_type_scroll: &mut usize,
     key_kind_scroll: &mut usize,
@@ -72,7 +96,7 @@ pub(super) fn render(
             &field.text,
             &field.placeholder,
             field.focused,
-            actions.click(move |dialog| click_field(dialog, which)),
+            actions.send_all(click_field(which)),
             cx,
         )
     };
@@ -92,13 +116,25 @@ pub(super) fn render(
                 focused,
                 accent: false,
                 read_only: None,
-                on_field_click: actions.click(move |dialog| click_select(dialog, field)),
+                on_field_click: actions.send(DocumentFormEvent::ToggleList(field)),
                 on_option_click,
             },
             cx,
         )
     };
 
+    let types: Vec<_> = view
+        .doc_type
+        .options
+        .iter()
+        .map(|choice| choice.value)
+        .collect();
+    let kinds: Vec<_> = view
+        .key_kind
+        .options
+        .iter()
+        .map(|choice| choice.value)
+        .collect();
     let mut fields: Vec<AnyElement> = Vec::new();
     if let Some(path) = &view.path {
         fields.push(with_error(
@@ -124,7 +160,12 @@ pub(super) fn render(
             ),
             view.doc_type.focused,
             view.doc_type.label.clone(),
-            actions.option(choose_type),
+            actions.option(move |index| {
+                types
+                    .get(index)
+                    .map(|value| vec![DocumentFormEvent::Type(*value)])
+                    .unwrap_or_default()
+            }),
         ),
         with_error(
             text("document-date", &view.date, DocumentField::Date),
@@ -147,7 +188,12 @@ pub(super) fn render(
         ),
         view.key_kind.focused,
         view.key_kind.label.clone(),
-        actions.option(choose_key_kind),
+        actions.option(move |index| {
+            kinds
+                .get(index)
+                .map(|value| vec![DocumentFormEvent::KeyKind(*value)])
+                .unwrap_or_default()
+        }),
     ));
     if let Some(key_date) = &view.key_date {
         fields.push(with_error(
@@ -159,7 +205,7 @@ pub(super) fn render(
     if let Some(reminder) = &view.reminder {
         fields.push(checkbox(
             reminder,
-            actions.click(|dialog| click_field(dialog, DocumentField::Reminder)),
+            actions.send_all(click_field(DocumentField::Reminder)),
             cx,
         ));
     }

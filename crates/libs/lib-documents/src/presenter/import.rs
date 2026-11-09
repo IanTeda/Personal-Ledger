@@ -3,8 +3,9 @@
 //! change.
 
 use lib_toast::{Notice, ToastKind};
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::keymap::{BACK, Keymap, SUBMIT};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::{BACK, SUBMIT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
 use lib_viper::view::{DialogFrame, Hint, count};
 
 use super::DialogPorts;
@@ -35,74 +36,32 @@ pub struct ImportViewModel {
     /// Why each path of the last attempt, which imported none, failed.
     pub notes: Vec<String>,
     pub note: String,
+    /// The status line's hints while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 pub struct ImportPresenter {
+    /// The Dialog keymap's chords, which its hints show.
+    keys: DialogKeys,
     ports: DialogPorts,
     paths: String,
     notes: Vec<String>,
 }
 
 impl ImportPresenter {
-    pub fn new(ports: DialogPorts) -> Self {
+    /// The Dialog with no paths typed. `keys` are the Dialog keymap's chords, which its hints show.
+    pub fn new(ports: DialogPorts, keys: DialogKeys) -> Self {
         Self {
+            keys,
             ports,
             paths: String::new(),
             notes: Vec::new(),
         }
     }
 
-    pub fn handle(&mut self, event: ImportEvent, router: &mut dyn DialogRouter<DocumentsOutcome>) {
-        match event {
-            ImportEvent::Input(input) => match input {
-                DialogInput::Select => self.handle(ImportEvent::Newline, router),
-                DialogInput::Submit => self.confirm(router),
-                DialogInput::Char(ch) if !ch.is_control() => {
-                    let mut paths = self.paths.clone();
-                    paths.push(ch);
-                    self.handle(ImportEvent::Paths(paths), router);
-                }
-                DialogInput::Backspace => {
-                    let mut paths = self.paths.clone();
-                    paths.pop();
-                    self.handle(ImportEvent::Paths(paths), router);
-                }
-                _ => {}
-            },
-            ImportEvent::Paths(text) => {
-                self.paths = text;
-                self.notes.clear();
-            }
-            ImportEvent::Newline => {
-                if !self.paths.is_empty() && !self.paths.ends_with('\n') {
-                    self.paths.push('\n');
-                }
-            }
-            ImportEvent::Confirm => self.confirm(router),
-            ImportEvent::Cancel => router.close(None),
-        }
-    }
-
-    pub fn view_model(&self) -> ImportViewModel {
-        ImportViewModel {
-            frame: DialogFrame {
-                title: msg::documents_dialog_import_title(),
-                submit: msg::documents_dialog_import_submit(),
-                can_confirm: !self.lines().is_empty(),
-                destructive: false,
-                hints: Vec::new(),
-            },
-            label: msg::documents_dialog_field_paths(),
-            paths: self.paths.clone(),
-            placeholder: msg::documents_dialog_field_paths_placeholder(),
-            notes: self.notes.clone(),
-            note: msg::documents_dialog_import_note(),
-        }
-    }
-
-    /// The status line's legend: `Enter` types a new line, so `submit` imports.
-    pub fn legend<E: Clone>(&self, keymap: &Keymap<E>) -> Vec<Hint> {
-        let key = |command| keymap.chord(command).unwrap_or_default().to_string();
+    /// The status line's hints, their chords the Dialog keys': `Enter` types a new line, so `submit` imports.
+    fn hints(&self) -> Vec<Hint> {
+        let key = |command| self.keys.chord(command).to_string();
         vec![
             Hint::new(key(BACK), msg::documents_dialog_hint_cancel()),
             Hint::new(key(SUBMIT), msg::documents_dialog_hint_confirm()),
@@ -165,6 +124,81 @@ fn import_notes(outcomes: &[ImportOutcome]) -> Vec<String> {
         .collect()
 }
 
+impl Presenter for ImportPresenter {
+    type Event = ImportEvent;
+    type ViewModel = ImportViewModel;
+    type Router<'r> = dyn DialogRouter<DocumentsOutcome> + 'r;
+
+    fn handle(&mut self, event: ImportEvent, router: &mut Self::Router<'_>) {
+        match event {
+            ImportEvent::Input(input) => match input {
+                DialogInput::Select => self.handle(ImportEvent::Newline, router),
+                DialogInput::Submit => self.confirm(router),
+                DialogInput::Char(ch) if !ch.is_control() => {
+                    let mut paths = self.paths.clone();
+                    paths.push(ch);
+                    self.handle(ImportEvent::Paths(paths), router);
+                }
+                DialogInput::Backspace => {
+                    let mut paths = self.paths.clone();
+                    paths.pop();
+                    self.handle(ImportEvent::Paths(paths), router);
+                }
+                _ => {}
+            },
+            ImportEvent::Paths(text) => {
+                self.paths = text;
+                self.notes.clear();
+            }
+            ImportEvent::Newline => {
+                if !self.paths.is_empty() && !self.paths.ends_with('\n') {
+                    self.paths.push('\n');
+                }
+            }
+            ImportEvent::Confirm => self.confirm(router),
+            ImportEvent::Cancel => router.close(None),
+        }
+    }
+
+    fn view_model(&self) -> ImportViewModel {
+        ImportViewModel {
+            hints: self.hints(),
+            frame: DialogFrame {
+                title: msg::documents_dialog_import_title(),
+                submit: msg::documents_dialog_import_submit(),
+                can_confirm: !self.lines().is_empty(),
+                destructive: false,
+                hints: Vec::new(),
+            },
+            label: msg::documents_dialog_field_paths(),
+            paths: self.paths.clone(),
+            placeholder: msg::documents_dialog_field_paths_placeholder(),
+            notes: self.notes.clone(),
+            note: msg::documents_dialog_import_note(),
+        }
+    }
+}
+
+impl DialogPresenter for ImportPresenter {
+    type Outcome = DocumentsOutcome;
+
+    fn input_event(input: DialogInput) -> ImportEvent {
+        ImportEvent::Input(input)
+    }
+
+    fn confirm_event() -> ImportEvent {
+        ImportEvent::Confirm
+    }
+
+    fn cancel_event() -> ImportEvent {
+        ImportEvent::Cancel
+    }
+
+    fn can_confirm(&self) -> bool {
+        !self.lines().is_empty()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::test_support::dialog_ports;
@@ -178,7 +212,7 @@ mod tests {
                 .with("/tmp/b.png", 10),
         );
         (
-            ImportPresenter::new(ports.clone()),
+            ImportPresenter::new(ports.clone(), DialogKeys::default()),
             ports,
             RecordingDocumentsRouter::default(),
         )

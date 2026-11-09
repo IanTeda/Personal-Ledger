@@ -288,7 +288,7 @@ impl OpenLedger {
             Rc::new(crate::documents::files::DiskFiles),
             storage.ports.document_reads.clone(),
             announcer.clone(),
-            lib_documents::keymap::documents_page_keymap(keybindings),
+            keybindings,
             clock.clone(),
             cx,
         );

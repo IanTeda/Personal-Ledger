@@ -9,8 +9,9 @@
 use lib_core::DocumentId;
 use lib_locale::Segment;
 use lib_toast::{Notice, ToastKind};
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::keymap::{BACK, Keymap, SELECT};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::{BACK, SELECT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
 use lib_viper::view::{DialogFrame, Hint, count};
 
 use super::DialogPorts;
@@ -36,9 +37,13 @@ pub struct DeleteDocumentViewModel {
     pub warning: Vec<Segment>,
     /// Why the last confirm was refused.
     pub refusal: Option<String>,
+    /// The status line's hints while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 pub struct DeleteDocumentPresenter {
+    /// The Dialog keymap's chords, which its hints show.
+    keys: DialogKeys,
     documents: SharedRepository,
     id: DocumentId,
     title: String,
@@ -49,7 +54,7 @@ pub struct DeleteDocumentPresenter {
 
 impl DeleteDocumentPresenter {
     /// The Dialog for deleting Document `id`, or `None` when it is gone.
-    pub fn new(ports: DialogPorts, id: DocumentId) -> Option<Self> {
+    pub fn new(ports: DialogPorts, id: DocumentId, keys: DialogKeys) -> Option<Self> {
         let documents = ports.documents;
         let (title, path, links) = {
             let held = documents.borrow().documents();
@@ -61,6 +66,7 @@ impl DeleteDocumentPresenter {
             )
         };
         Some(Self {
+            keys,
             documents,
             id,
             title,
@@ -70,37 +76,9 @@ impl DeleteDocumentPresenter {
         })
     }
 
-    pub fn handle(
-        &mut self,
-        event: DeleteDocumentEvent,
-        router: &mut dyn DialogRouter<DocumentsOutcome>,
-    ) {
-        match event {
-            DeleteDocumentEvent::Input(DialogInput::Select | DialogInput::Submit)
-            | DeleteDocumentEvent::Confirm => self.confirm(router),
-            DeleteDocumentEvent::Input(_) => {}
-            DeleteDocumentEvent::Cancel => router.close(None),
-        }
-    }
-
-    pub fn view_model(&self) -> DeleteDocumentViewModel {
-        DeleteDocumentViewModel {
-            frame: DialogFrame {
-                title: msg::documents_dialog_delete_title(&self.title),
-                submit: msg::documents_dialog_delete_submit(),
-                can_confirm: true,
-                destructive: true,
-                hints: Vec::new(),
-            },
-            body: msg::documents_dialog_delete_body(count(self.links), &self.path),
-            warning: msg::documents_dialog_delete_warning(),
-            refusal: self.refusal.clone(),
-        }
-    }
-
-    /// The status line's legend: cancel and confirm.
-    pub fn legend<E: Clone>(&self, keymap: &Keymap<E>) -> Vec<Hint> {
-        let key = |command| keymap.chord(command).unwrap_or_default().to_string();
+    /// The status line's hints, their chords the Dialog keys': cancel and confirm.
+    fn hints(&self) -> Vec<Hint> {
+        let key = |command| self.keys.chord(command).to_string();
         vec![
             Hint::new(key(BACK), msg::documents_dialog_hint_cancel()),
             Hint::new(key(SELECT), msg::documents_dialog_hint_confirm()),
@@ -122,6 +100,57 @@ impl DeleteDocumentPresenter {
     }
 }
 
+impl Presenter for DeleteDocumentPresenter {
+    type Event = DeleteDocumentEvent;
+    type ViewModel = DeleteDocumentViewModel;
+    type Router<'r> = dyn DialogRouter<DocumentsOutcome> + 'r;
+
+    fn handle(&mut self, event: DeleteDocumentEvent, router: &mut Self::Router<'_>) {
+        match event {
+            DeleteDocumentEvent::Input(DialogInput::Select | DialogInput::Submit)
+            | DeleteDocumentEvent::Confirm => self.confirm(router),
+            DeleteDocumentEvent::Input(_) => {}
+            DeleteDocumentEvent::Cancel => router.close(None),
+        }
+    }
+
+    fn view_model(&self) -> DeleteDocumentViewModel {
+        DeleteDocumentViewModel {
+            hints: self.hints(),
+            frame: DialogFrame {
+                title: msg::documents_dialog_delete_title(&self.title),
+                submit: msg::documents_dialog_delete_submit(),
+                can_confirm: true,
+                destructive: true,
+                hints: Vec::new(),
+            },
+            body: msg::documents_dialog_delete_body(count(self.links), &self.path),
+            warning: msg::documents_dialog_delete_warning(),
+            refusal: self.refusal.clone(),
+        }
+    }
+}
+
+impl DialogPresenter for DeleteDocumentPresenter {
+    type Outcome = DocumentsOutcome;
+
+    fn input_event(input: DialogInput) -> DeleteDocumentEvent {
+        DeleteDocumentEvent::Input(input)
+    }
+
+    fn confirm_event() -> DeleteDocumentEvent {
+        DeleteDocumentEvent::Confirm
+    }
+
+    fn cancel_event() -> DeleteDocumentEvent {
+        DeleteDocumentEvent::Cancel
+    }
+
+    fn can_confirm(&self) -> bool {
+        true
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::test_support::{dialog_ports, locale};
@@ -135,8 +164,8 @@ mod tests {
         let filed = held.iter().find(|d| d.is_filed() && !d.links.is_empty());
         let filed = filed.expect("a linked Filed Document").id;
         let unfiled = held.iter().find(|d| d.is_unfiled()).expect("Unfiled").id;
-        let presenter =
-            DeleteDocumentPresenter::new(ports.clone(), filed).expect("a sample Document");
+        let presenter = DeleteDocumentPresenter::new(ports.clone(), filed, DialogKeys::default())
+            .expect("a sample Document");
         (presenter, ports, filed, unfiled)
     }
 
@@ -182,7 +211,7 @@ mod tests {
         let document = get(&held, unfiled).expect("there");
         assert!(document.links.is_empty());
 
-        let view = DeleteDocumentPresenter::new(ports, unfiled)
+        let view = DeleteDocumentPresenter::new(ports, unfiled, DialogKeys::default())
             .expect("a Document")
             .view_model();
 
@@ -266,6 +295,9 @@ mod tests {
     #[test]
     fn no_dialog_opens_on_a_document_that_is_gone() {
         let (_, ports, ..) = open();
-        assert!(DeleteDocumentPresenter::new(ports, DocumentId::seed(9_999)).is_none());
+        assert!(
+            DeleteDocumentPresenter::new(ports, DocumentId::seed(9_999), DialogKeys::default())
+                .is_none()
+        );
     }
 }

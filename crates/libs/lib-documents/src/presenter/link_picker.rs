@@ -17,8 +17,9 @@ use chrono::NaiveDate;
 use lib_core::DocumentId;
 use lib_locale::format::format_date;
 use lib_toast::{Notice, ToastKind};
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::{BACK, NEXT_FIELD, SELECT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
 use lib_viper::view::Hint;
 
 use super::DialogPorts;
@@ -158,6 +159,8 @@ pub struct PickerRowView {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LinkPickerViewModel {
+    /// Why it is open, and which Document it acts on.
+    pub purpose: Purpose,
     /// Why it is open: Link, File or Follow.
     pub title: String,
     pub query: String,
@@ -174,9 +177,13 @@ pub struct LinkPickerViewModel {
     pub empty: String,
     /// The keys, under the list.
     pub footer: String,
+    /// The status line's hints while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 pub struct LinkPickerPresenter {
+    /// The Dialog keymap's chords, which its hints show.
+    keys: DialogKeys,
     ports: DialogPorts,
     purpose: Purpose,
     records: LinkRecords,
@@ -195,7 +202,7 @@ pub struct LinkPickerPresenter {
 
 impl LinkPickerPresenter {
     /// The picker on `purpose`'s Document, or `None` when it has gone.
-    pub fn new(ports: DialogPorts, purpose: Purpose) -> Option<Self> {
+    pub fn new(ports: DialogPorts, purpose: Purpose, keys: DialogKeys) -> Option<Self> {
         let document = document(&ports, purpose.document())?;
         let (anchor, doc_type) = match (purpose, &document.intake) {
             (Purpose::File(_), Some(intake)) => (
@@ -207,6 +214,7 @@ impl LinkPickerPresenter {
         let records = LinkRecords::read(&*ports.reads);
         let types = ports.documents.borrow().document_types();
         Some(Self {
+            keys,
             ports,
             purpose,
             records,
@@ -222,33 +230,6 @@ impl LinkPickerPresenter {
 
     pub fn purpose(&self) -> Purpose {
         self.purpose
-    }
-
-    pub fn handle(
-        &mut self,
-        event: LinkPickerEvent,
-        router: &mut dyn DialogRouter<DocumentsOutcome>,
-    ) {
-        match event {
-            LinkPickerEvent::Input(input) => self.input(input, router),
-            LinkPickerEvent::Query(text) => {
-                self.query = text;
-                self.selected = 0;
-            }
-            LinkPickerEvent::CycleKind => {
-                self.kind = self.kind.next();
-                self.selected = 0;
-            }
-            LinkPickerEvent::Down => {
-                let last = self.rows().len().saturating_sub(1);
-                self.selected = (self.selected + 1).min(last);
-            }
-            LinkPickerEvent::Up => self.selected = self.selected.saturating_sub(1),
-            LinkPickerEvent::StepType { forward } => self.step_type(forward),
-            LinkPickerEvent::Pick => self.pick(self.selected, router),
-            LinkPickerEvent::PickRow(index) => self.pick(index, router),
-            LinkPickerEvent::Cancel => router.close(None),
-        }
     }
 
     /// What `input` means: the query line and the highlight.
@@ -276,51 +257,9 @@ impl LinkPickerPresenter {
         self.handle(event, router);
     }
 
-    pub fn view_model(&self) -> LinkPickerViewModel {
-        let rows = self.rows();
-        let (title, footer) = match self.purpose {
-            Purpose::Link(_) => (
-                msg::documents_dialog_picker_title_link(),
-                msg::documents_dialog_picker_hint_toggle(),
-            ),
-            Purpose::File(_) => (
-                msg::documents_dialog_picker_title_file(),
-                msg::documents_dialog_picker_hint_pick(),
-            ),
-            Purpose::Follow(_) => (
-                msg::documents_dialog_picker_title_follow(),
-                msg::documents_dialog_picker_hint_follow(),
-            ),
-        };
-        LinkPickerViewModel {
-            title,
-            query: self.query.clone(),
-            placeholder: msg::documents_dialog_picker_placeholder(),
-            kinds: (!matches!(self.purpose, Purpose::Follow(_))).then(|| {
-                KindFilter::ALL
-                    .iter()
-                    .map(|kind| KindTab {
-                        label: kind.label(),
-                        active: *kind == self.kind,
-                    })
-                    .collect()
-            }),
-            kind: self.kind.label(),
-            type_line: matches!(self.purpose, Purpose::File(_)).then(|| PickerTypeLine {
-                label: msg::documents_dialog_picker_type(),
-                chosen: self.doc_type.map(|kind| type_label(&self.types, kind)),
-                none: msg::documents_dialog_picker_type_none(),
-            }),
-            selected: self.selected.min(rows.len().saturating_sub(1)),
-            rows,
-            empty: msg::documents_dialog_picker_empty(),
-            footer,
-        }
-    }
-
-    /// The status line's legend: cancel, the kind filter and pick.
-    pub fn legend<E: Clone>(&self, keymap: &Keymap<E>) -> Vec<Hint> {
-        let key = |command| keymap.chord(command).unwrap_or_default().to_string();
+    /// The status line's hints, their chords the Dialog keys': cancel, the kind filter and pick.
+    fn hints(&self) -> Vec<Hint> {
+        let key = |command| self.keys.chord(command).to_string();
         vec![
             Hint::new(key(BACK), msg::documents_dialog_hint_cancel()),
             Hint::new(key(NEXT_FIELD), msg::documents_dialog_hint_kind()),
@@ -636,6 +575,99 @@ fn matches_query(haystack: &str, needle: &str) -> bool {
         && haystack.contains(&bare)
 }
 
+impl Presenter for LinkPickerPresenter {
+    type Event = LinkPickerEvent;
+    type ViewModel = LinkPickerViewModel;
+    type Router<'r> = dyn DialogRouter<DocumentsOutcome> + 'r;
+
+    fn handle(&mut self, event: LinkPickerEvent, router: &mut Self::Router<'_>) {
+        match event {
+            LinkPickerEvent::Input(input) => self.input(input, router),
+            LinkPickerEvent::Query(text) => {
+                self.query = text;
+                self.selected = 0;
+            }
+            LinkPickerEvent::CycleKind => {
+                self.kind = self.kind.next();
+                self.selected = 0;
+            }
+            LinkPickerEvent::Down => {
+                let last = self.rows().len().saturating_sub(1);
+                self.selected = (self.selected + 1).min(last);
+            }
+            LinkPickerEvent::Up => self.selected = self.selected.saturating_sub(1),
+            LinkPickerEvent::StepType { forward } => self.step_type(forward),
+            LinkPickerEvent::Pick => self.pick(self.selected, router),
+            LinkPickerEvent::PickRow(index) => self.pick(index, router),
+            LinkPickerEvent::Cancel => router.close(None),
+        }
+    }
+
+    fn view_model(&self) -> LinkPickerViewModel {
+        let rows = self.rows();
+        let (title, footer) = match self.purpose {
+            Purpose::Link(_) => (
+                msg::documents_dialog_picker_title_link(),
+                msg::documents_dialog_picker_hint_toggle(),
+            ),
+            Purpose::File(_) => (
+                msg::documents_dialog_picker_title_file(),
+                msg::documents_dialog_picker_hint_pick(),
+            ),
+            Purpose::Follow(_) => (
+                msg::documents_dialog_picker_title_follow(),
+                msg::documents_dialog_picker_hint_follow(),
+            ),
+        };
+        LinkPickerViewModel {
+            hints: self.hints(),
+            purpose: self.purpose,
+            title,
+            query: self.query.clone(),
+            placeholder: msg::documents_dialog_picker_placeholder(),
+            kinds: (!matches!(self.purpose, Purpose::Follow(_))).then(|| {
+                KindFilter::ALL
+                    .iter()
+                    .map(|kind| KindTab {
+                        label: kind.label(),
+                        active: *kind == self.kind,
+                    })
+                    .collect()
+            }),
+            kind: self.kind.label(),
+            type_line: matches!(self.purpose, Purpose::File(_)).then(|| PickerTypeLine {
+                label: msg::documents_dialog_picker_type(),
+                chosen: self.doc_type.map(|kind| type_label(&self.types, kind)),
+                none: msg::documents_dialog_picker_type_none(),
+            }),
+            selected: self.selected.min(rows.len().saturating_sub(1)),
+            rows,
+            empty: msg::documents_dialog_picker_empty(),
+            footer,
+        }
+    }
+}
+
+impl DialogPresenter for LinkPickerPresenter {
+    type Outcome = DocumentsOutcome;
+
+    fn input_event(input: DialogInput) -> LinkPickerEvent {
+        LinkPickerEvent::Input(input)
+    }
+
+    fn confirm_event() -> LinkPickerEvent {
+        LinkPickerEvent::Pick
+    }
+
+    fn cancel_event() -> LinkPickerEvent {
+        LinkPickerEvent::Cancel
+    }
+
+    fn can_confirm(&self) -> bool {
+        true
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::test_support::{dialog_ports, world};
@@ -657,7 +689,7 @@ mod tests {
         let ports = dialog_ports(InMemoryFiles::default());
         let id = world().file(file).id;
         Picker {
-            presenter: LinkPickerPresenter::new(ports.clone(), purpose(id))
+            presenter: LinkPickerPresenter::new(ports.clone(), purpose(id), DialogKeys::default())
                 .expect("the Document is there"),
             ports,
             router: RecordingDocumentsRouter::default(),

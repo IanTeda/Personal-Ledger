@@ -24,6 +24,7 @@ use lib_documents::presenter::{DocumentsPageEvent, DocumentsPagePresenter};
 use lib_documents::{
     DocumentsMode, DocumentsOutcome, LibraryScope, LibrarySort, SharedFiles, SharedRepository,
 };
+use lib_viper::dialog::DialogKeys;
 use lib_viper::keymap::Keymap;
 
 use super::Scrolls;
@@ -45,6 +46,8 @@ pub struct DocumentsPage {
     zone_focused: bool,
     library_scroll: UniformListScrollHandle,
     inbox_scroll: ScrollHandle,
+    /// The Dialog keymap's chords, which the page's Dialogs' hints show.
+    dialog_keys: DialogKeys,
     _ledger_changed: Subscription,
 }
 
@@ -53,6 +56,7 @@ impl DocumentsPage {
         presenter: DocumentsPagePresenter,
         announcer: &Entity<Announcer>,
         keymap: Keymap<DocumentsPageEvent>,
+        dialog_keys: DialogKeys,
         cx: &mut Context<'_, Self>,
     ) -> Self {
         // The rows name records from every domain a Link reaches, and Settings › Documents writes
@@ -77,6 +81,7 @@ impl DocumentsPage {
             zone_focused: false,
             library_scroll: UniformListScrollHandle::new(),
             inbox_scroll: ScrollHandle::new(),
+            dialog_keys,
             _ledger_changed,
         }
     }
@@ -104,6 +109,7 @@ impl DocumentsPage {
         let (mode, before) = (self.presenter.mode(), self.presenter.selected());
         let mut router = PageRouter {
             ports: self.presenter.dialog_ports(),
+            keys: self.dialog_keys.clone(),
             cx,
         };
         self.presenter.handle(event, &mut router);
@@ -325,16 +331,19 @@ impl DocumentsPage {
 /// domains' reads over their stores (`reads`) and the disk (`files`), which the Shell hosts as the
 /// Documents destination. `clock` reads the day the Key Dates are banded against. The page writes
 /// the store through its Interactors; the input that wrote announces the Documents, so the rail's
-/// Inbox count follows a filing.
+/// Inbox count follows a filing. Its keys, and the Dialog keys its Dialogs' hints show, are
+/// `config`'s.
 pub fn documents_page(
     documents: &SharedRepository,
     files: SharedFiles,
     reads: lib_database::StoredDocumentReads,
     announcer: Entity<Announcer>,
-    keymap: Keymap<DocumentsPageEvent>,
+    config: &lib_config::KeyBindingConfig,
     clock: Clock,
     cx: &mut App,
 ) -> Entity<DocumentsPage> {
+    let keymap = lib_documents::keymap::documents_page_keymap(config);
+    let dialog_keys = DialogKeys::of(&lib_shell::dialog_keymap(config));
     let documents = documents.clone();
     let reads = Rc::new(reads);
     let presenter = DocumentsPagePresenter::new(
@@ -345,7 +354,7 @@ pub fn documents_page(
         keymap.clone(),
         crate::shell::view::statusline::STUB_LEDGER_FILE.to_string(),
     );
-    cx.new(|cx| DocumentsPage::new(presenter, &announcer, keymap, cx))
+    cx.new(|cx| DocumentsPage::new(presenter, &announcer, keymap, dialog_keys, cx))
 }
 
 /// The page's clicks, each one an event sent to its Presenter.

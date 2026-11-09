@@ -11,17 +11,18 @@ use gpui::{App, Context};
 use lib_documents::presenter::DialogPorts;
 use lib_documents::{DocumentLink, DocumentsDialog as Which, DocumentsRouter};
 use lib_toast::{Notice, Notify};
+use lib_viper::dialog::DialogKeys;
 
-use super::view::dialog::DocumentsDialog;
 use super::view::page::DocumentsPage;
 use crate::navigation::nav::Noun;
 use crate::notices::Queue;
-use crate::shell::view::dialog_entity::host_dialog;
 use crate::view::event::{Reveal, ViewEvent};
 
 pub(super) struct PageRouter<'a, 'b> {
     /// What the page's Dialogs read and write through.
     pub ports: DialogPorts,
+    /// The Dialog keymap's chords, which the Dialogs' hints show.
+    pub keys: DialogKeys,
     pub cx: &'a mut Context<'b, DocumentsPage>,
 }
 
@@ -43,19 +44,10 @@ impl DocumentsRouter for PageRouter<'_, '_> {
         self.cx.emit(event);
     }
 
-    /// Builds `dialog`'s Presenter on the page's ports and hosts its View; what it asks of the page
-    /// as it closes comes back through [`DocumentsPage::dialog_landed`].
+    /// Builds `dialog`'s Presenter on the page's ports and hosts it in a `ModuleDialog`; what it
+    /// asks of the page as it closes comes back through [`DocumentsPage::dialog_landed`].
     fn open_dialog(&mut self, dialog: Which) -> bool {
-        let page = self.cx.weak_entity();
-        let landed = Box::new(move |outcome, cx: &mut App| {
-            // A page that has gone has nothing to land on.
-            let _ = page.update(cx, |page, cx| page.dialog_landed(outcome, cx));
-        });
-        let Some(dialog) = DocumentsDialog::open(dialog, self.ports.clone(), landed) else {
-            return false;
-        };
-        host_dialog(self.cx, |_| dialog);
-        true
+        super::view::dialog::open(dialog, self.ports.clone(), self.keys.clone(), self.cx)
     }
 
     fn open_file(&mut self, path: &Path, in_folder: bool) {

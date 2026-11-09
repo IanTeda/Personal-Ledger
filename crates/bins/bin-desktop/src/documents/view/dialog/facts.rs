@@ -3,45 +3,71 @@
 //! Presenter's; this View draws the form and turns its clicks into Presenter events.
 
 use gpui::{AnyElement, App, div, prelude::*};
-use lib_documents::presenter::{FactsField, FactsFormEvent, FactsFormViewModel};
+use lib_documents::presenter::{
+    FactsField, FactsFormEvent, FactsFormPresenter, FactsFormViewModel,
+};
+use lib_shell::Hint;
 use lib_viper::view::TextFieldView;
 
 use super::document_form::with_error;
-use super::{Clicks, DocumentsDialog, View};
 use crate::dialog;
 use crate::form::dialog_fields::{label, text_field, two_up};
 use crate::form::select_field::{self, SelectFieldProps};
 use crate::form::viper::{drawn, labels};
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 
-fn click_field(dialog: &mut DocumentsDialog, field: FactsField) {
-    dialog.apply(|view, router| {
-        if let View::Facts(presenter, _) = view {
-            let event = if field == FactsField::Type {
-                FactsFormEvent::ToggleTypeList
-            } else {
-                FactsFormEvent::Focus(field)
-            };
-            presenter.handle(event, router);
-        }
-    });
+type Clicks = ModuleDialogClicks<FactsFormPresenter>;
+
+/// The `lib-documents` Edit extracted facts Presenter's [`DialogView`], hosted in a
+/// `ModuleDialog` (ADR-0056). Its widget state is the Document type list's scroll window.
+impl DialogView for FactsFormPresenter {
+    type Widgets = usize;
+
+    fn kind(_view: &FactsFormViewModel) -> &'static str {
+        "facts"
+    }
+
+    fn render(
+        view: &FactsFormViewModel,
+        scroll: &mut usize,
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        render(view, scroll, clicks, cx)
+    }
+
+    fn readback(view: &FactsFormViewModel) -> Vec<(&'static str, String)> {
+        framed(
+            &view.frame,
+            vec![
+                ("merchant", view.merchant.text.clone()),
+                ("total", view.total.text.clone()),
+                (
+                    "error",
+                    view.total_error
+                        .clone()
+                        .or_else(|| view.date_error.clone())
+                        .unwrap_or_default(),
+                ),
+            ],
+        )
+    }
+
+    fn hints(view: &FactsFormViewModel) -> Vec<Hint> {
+        view.hints.clone()
+    }
 }
 
-fn choose_type(dialog: &mut DocumentsDialog, index: usize) {
-    dialog.apply(|view, router| {
-        if let View::Facts(presenter, _) = view
-            && let Some(choice) = presenter.view_model().doc_type.options.get(index)
-        {
-            presenter.handle(FactsFormEvent::Type(choice.value), router);
-        }
-    });
+/// A click on a field focuses it; the type select's toggles its list.
+fn click_field(field: FactsField) -> FactsFormEvent {
+    if field == FactsField::Type {
+        FactsFormEvent::ToggleTypeList
+    } else {
+        FactsFormEvent::Focus(field)
+    }
 }
 
-pub(super) fn render(
-    view: &FactsFormViewModel,
-    scroll: &mut usize,
-    actions: &Clicks,
-    cx: &App,
-) -> AnyElement {
+fn render(view: &FactsFormViewModel, scroll: &mut usize, actions: &Clicks, cx: &App) -> AnyElement {
     let text = |id: &'static str, field: &TextFieldView, which: FactsField| {
         text_field(
             id,
@@ -49,10 +75,16 @@ pub(super) fn render(
             &field.text,
             &field.placeholder,
             field.focused,
-            actions.click(move |dialog| click_field(dialog, which)),
+            actions.send(click_field(which)),
             cx,
         )
     };
+    let types: Vec<_> = view
+        .doc_type
+        .options
+        .iter()
+        .map(|choice| choice.value)
+        .collect();
     let type_field = select_field::render(
         SelectFieldProps {
             id: "facts-type".into(),
@@ -62,8 +94,13 @@ pub(super) fn render(
             focused: view.doc_type.focused,
             accent: false,
             read_only: None,
-            on_field_click: actions.click(|dialog| click_field(dialog, FactsField::Type)),
-            on_option_click: actions.option(choose_type),
+            on_field_click: actions.send(click_field(FactsField::Type)),
+            on_option_click: actions.option(move |index| {
+                types
+                    .get(index)
+                    .map(|value| vec![FactsFormEvent::Type(*value)])
+                    .unwrap_or_default()
+            }),
         },
         cx,
     );

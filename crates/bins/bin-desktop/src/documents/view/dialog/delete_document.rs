@@ -4,12 +4,48 @@
 //! swallowed.
 
 use gpui::{AnyElement, App, div, prelude::*, px};
-use lib_documents::presenter::DeleteDocumentViewModel;
+use lib_documents::presenter::{DeleteDocumentPresenter, DeleteDocumentViewModel};
+use lib_shell::Hint;
 
-use super::Clicks;
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 use crate::{dialog, theme::color};
 
-pub(super) fn render(view: &DeleteDocumentViewModel, actions: &Clicks, cx: &App) -> AnyElement {
+type Clicks = ModuleDialogClicks<DeleteDocumentPresenter>;
+
+/// The `lib-documents` Delete document Presenter's [`DialogView`], hosted in a `ModuleDialog`
+/// (ADR-0056).
+impl DialogView for DeleteDocumentPresenter {
+    type Widgets = ();
+
+    fn kind(_view: &DeleteDocumentViewModel) -> &'static str {
+        "delete"
+    }
+
+    fn render(
+        view: &DeleteDocumentViewModel,
+        _widgets: &mut (),
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        render(view, clicks, cx)
+    }
+
+    fn readback(view: &DeleteDocumentViewModel) -> Vec<(&'static str, String)> {
+        framed(
+            &view.frame,
+            vec![
+                ("body", view.body.clone()),
+                ("refusal", view.refusal.clone().unwrap_or_default()),
+            ],
+        )
+    }
+
+    fn hints(view: &DeleteDocumentViewModel) -> Vec<Hint> {
+        view.hints.clone()
+    }
+}
+
+fn render(view: &DeleteDocumentViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     let mut fields = vec![
         div()
             .text_size(px(13.0))

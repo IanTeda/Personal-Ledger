@@ -7,18 +7,55 @@
 use std::ops::Range;
 
 use gpui::{AnyElement, App, IntoElement, div, prelude::*, px};
-use lib_documents::presenter::{LinkPickerViewModel, PickerRowView};
+use lib_documents::presenter::{
+    LinkPickerEvent, LinkPickerPresenter, LinkPickerViewModel, PickerRowView, Purpose,
+};
+use lib_shell::Hint;
 
-use super::Clicks;
 use crate::dialog;
 use crate::documents::view::snapshot::PickerSnapshot;
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks};
 use crate::theme::color;
+
+type Clicks = ModuleDialogClicks<LinkPickerPresenter>;
+
+/// The `lib-documents` link picker Presenter's [`DialogView`], hosted in a `ModuleDialog`
+/// (ADR-0056). A row click picks it, as `select` does on the highlight.
+impl DialogView for LinkPickerPresenter {
+    type Widgets = ();
+
+    fn kind(view: &LinkPickerViewModel) -> &'static str {
+        match view.purpose {
+            Purpose::Link(_) => "picker-link",
+            Purpose::File(_) => "picker-file",
+            Purpose::Follow(_) => "picker-follow",
+        }
+    }
+
+    fn render(
+        view: &LinkPickerViewModel,
+        _widgets: &mut (),
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        render(view, clicks, cx)
+    }
+
+    /// The picker draws no confirm button, so it reads back only its title.
+    fn readback(view: &LinkPickerViewModel) -> Vec<(&'static str, String)> {
+        vec![("title", view.title.clone())]
+    }
+
+    fn hints(view: &LinkPickerViewModel) -> Vec<Hint> {
+        view.hints.clone()
+    }
+}
 
 /// Rows drawn at once; the list scrolls past this, the palette's own capped-window idiom.
 const VISIBLE_ROWS: usize = 9;
 
 /// What a test reads of the open picker.
-pub(super) fn snapshot(view: &LinkPickerViewModel) -> PickerSnapshot {
+pub(crate) fn snapshot(view: &LinkPickerViewModel) -> PickerSnapshot {
     PickerSnapshot {
         kind: view.kind.clone(),
         query: view.query.clone(),
@@ -51,7 +88,7 @@ fn visible_window(selected: usize, len: usize, cap: usize) -> Range<usize> {
     start..(start + cap).min(len)
 }
 
-pub(super) fn render(view: &LinkPickerViewModel, actions: &Clicks, cx: &App) -> AnyElement {
+fn render(view: &LinkPickerViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     let window = visible_window(view.selected, view.rows.len(), VISIBLE_ROWS);
 
     let query_line = div()
@@ -123,7 +160,7 @@ pub(super) fn render(view: &LinkPickerViewModel, actions: &Clicks, cx: &App) -> 
                 .enumerate()
                 .map(|(offset, row)| {
                     let index = window.start + offset;
-                    let on_pick = actions.act(move |dialog, cx| dialog.pick_row(index, cx));
+                    let on_pick = actions.send(LinkPickerEvent::PickRow(index));
                     picker_row(index, row, index == view.selected, on_pick, cx)
                 }),
         );

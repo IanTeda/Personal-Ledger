@@ -2,12 +2,42 @@
 //! Presenter's: `select` and `submit` confirm and every other input is swallowed.
 
 use gpui::{AnyElement, App, div, prelude::*, px};
-use lib_documents::presenter::AcceptAllViewModel;
+use lib_documents::presenter::{AcceptAllPresenter, AcceptAllViewModel};
+use lib_shell::Hint;
 
-use super::Clicks;
 use crate::dialog;
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 
-pub(super) fn render(view: &AcceptAllViewModel, actions: &Clicks, cx: &App) -> AnyElement {
+type Clicks = ModuleDialogClicks<AcceptAllPresenter>;
+
+/// The `lib-documents` Accept all Presenter's [`DialogView`], hosted in a `ModuleDialog`
+/// (ADR-0056).
+impl DialogView for AcceptAllPresenter {
+    type Widgets = ();
+
+    fn kind(_view: &AcceptAllViewModel) -> &'static str {
+        "accept-all"
+    }
+
+    fn render(
+        view: &AcceptAllViewModel,
+        _widgets: &mut (),
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        render(view, clicks, cx)
+    }
+
+    fn readback(view: &AcceptAllViewModel) -> Vec<(&'static str, String)> {
+        framed(&view.frame, vec![("body", view.body.clone())])
+    }
+
+    fn hints(view: &AcceptAllViewModel) -> Vec<Hint> {
+        view.hints.clone()
+    }
+}
+
+fn render(view: &AcceptAllViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     let card = div()
         .flex()
         .flex_col()

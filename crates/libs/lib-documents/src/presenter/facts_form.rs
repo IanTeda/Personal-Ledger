@@ -7,8 +7,8 @@ use chrono::NaiveDate;
 use lib_core::{DocumentId, Money};
 use lib_locale::format::{format_date_input, parse_optional_date};
 use lib_toast::{Notice, ToastKind};
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::keymap::Keymap;
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::presenter::{DialogPresenter, Presenter};
 use lib_viper::view::{
     Choice, DialogFrame, Hint, SelectList, SelectMove, SelectView, TextFieldView,
 };
@@ -73,9 +73,13 @@ pub struct FactsFormViewModel {
     pub doc_type_list: SelectList,
     pub note: String,
     pub focused: FactsField,
+    /// The status line's hints while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 pub struct FactsFormPresenter {
+    /// The Dialog keymap's chords, which its hints show.
+    keys: DialogKeys,
     ports: DialogPorts,
     id: DocumentId,
     title: String,
@@ -91,7 +95,7 @@ pub struct FactsFormPresenter {
 
 impl FactsFormPresenter {
     /// The form pre-filled from Document `id`'s Extracted Facts, or `None` when it has gone.
-    pub fn new(ports: DialogPorts, id: DocumentId) -> Option<Self> {
+    pub fn new(ports: DialogPorts, id: DocumentId, keys: DialogKeys) -> Option<Self> {
         let document = document(&ports, id)?;
         let types = ports.documents.borrow().document_types();
         let facts = document
@@ -99,6 +103,7 @@ impl FactsFormPresenter {
             .map(|intake| intake.facts)
             .unwrap_or_default();
         Some(Self {
+            keys,
             id,
             title: document.title,
             doc_type: facts.doc_type.unwrap_or(DocumentType(fallback_id(&types))),
@@ -116,40 +121,6 @@ impl FactsFormPresenter {
             list: SelectList::default(),
             ports,
         })
-    }
-
-    pub fn handle(
-        &mut self,
-        event: FactsFormEvent,
-        router: &mut dyn DialogRouter<DocumentsOutcome>,
-    ) {
-        match event {
-            FactsFormEvent::Input(input) => self.input(input, router),
-            FactsFormEvent::Merchant(text) => self.merchant = text,
-            FactsFormEvent::Date(text) => self.date = text,
-            FactsFormEvent::Total(text) => self.total = text,
-            FactsFormEvent::Type(kind) => {
-                self.list.close();
-                self.focused = FactsField::Type;
-                self.doc_type = kind;
-            }
-            FactsFormEvent::ToggleTypeList => {
-                self.focused = FactsField::Type;
-                let options = self.type_choices();
-                self.list.toggle(&options, Some(&self.doc_type));
-            }
-            FactsFormEvent::CloseList => {
-                self.list.close();
-            }
-            FactsFormEvent::NextField => self.cycle_focus(false),
-            FactsFormEvent::PrevField => self.cycle_focus(true),
-            FactsFormEvent::Focus(field) => {
-                self.list.close();
-                self.focused = field;
-            }
-            FactsFormEvent::Confirm => self.confirm(router),
-            FactsFormEvent::Cancel => router.close(None),
-        }
     }
 
     /// What `input` means on the focused field.
@@ -207,54 +178,9 @@ impl FactsFormPresenter {
             .collect()
     }
 
-    pub fn view_model(&self) -> FactsFormViewModel {
-        let date_error = self.parse_date().err();
-        let total_error = self
-            .total_unreadable()
-            .then(msg::documents_dialog_error_total);
-        let text = |label: String, text: &str, field: FactsField| TextFieldView {
-            label,
-            text: text.to_string(),
-            placeholder: String::new(),
-            focused: self.focused == field,
-        };
-        FactsFormViewModel {
-            frame: DialogFrame {
-                title: msg::documents_dialog_facts_title(),
-                submit: msg::documents_dialog_facts_submit(),
-                can_confirm: date_error.is_none() && total_error.is_none(),
-                destructive: false,
-                hints: Vec::new(),
-            },
-            merchant: text(
-                msg::documents_fact_merchant(),
-                &self.merchant,
-                FactsField::Merchant,
-            ),
-            date: text(
-                msg::documents_dialog_field_date(),
-                &self.date,
-                FactsField::Date,
-            ),
-            // A date the parser can't place but gives no hint for is left unsaid.
-            date_error: date_error.filter(|hint| !hint.is_empty()),
-            total: text(msg::documents_fact_total(), &self.total, FactsField::Total),
-            total_error,
-            doc_type: SelectView {
-                label: msg::documents_dialog_field_type(),
-                options: self.type_choices(),
-                chosen: Some(self.doc_type),
-                focused: self.focused == FactsField::Type,
-            },
-            doc_type_list: self.list,
-            note: msg::documents_dialog_facts_note(),
-            focused: self.focused,
-        }
-    }
-
-    /// The status line's legend: cancel, confirm and the key that moves field.
-    pub fn legend<E: Clone>(&self, keymap: &Keymap<E>) -> Vec<Hint> {
-        form_legend(keymap)
+    /// The status line's hints, their chords the Dialog keys': cancel, confirm and the key that moves field.
+    fn hints(&self) -> Vec<Hint> {
+        form_legend(&self.keys)
     }
 
     fn cycle_focus(&mut self, backward: bool) {
@@ -331,6 +257,117 @@ pub fn parse_total(text: &str) -> Option<Money> {
     cleaned.parse::<Money>().ok()
 }
 
+impl Presenter for FactsFormPresenter {
+    type Event = FactsFormEvent;
+    type ViewModel = FactsFormViewModel;
+    type Router<'r> = dyn DialogRouter<DocumentsOutcome> + 'r;
+
+    fn handle(&mut self, event: FactsFormEvent, router: &mut Self::Router<'_>) {
+        match event {
+            FactsFormEvent::Input(input) => self.input(input, router),
+            FactsFormEvent::Merchant(text) => self.merchant = text,
+            FactsFormEvent::Date(text) => self.date = text,
+            FactsFormEvent::Total(text) => self.total = text,
+            FactsFormEvent::Type(kind) => {
+                self.list.close();
+                self.focused = FactsField::Type;
+                self.doc_type = kind;
+            }
+            FactsFormEvent::ToggleTypeList => {
+                self.focused = FactsField::Type;
+                let options = self.type_choices();
+                self.list.toggle(&options, Some(&self.doc_type));
+            }
+            FactsFormEvent::CloseList => {
+                self.list.close();
+            }
+            FactsFormEvent::NextField => self.cycle_focus(false),
+            FactsFormEvent::PrevField => self.cycle_focus(true),
+            FactsFormEvent::Focus(field) => {
+                self.list.close();
+                self.focused = field;
+            }
+            FactsFormEvent::Confirm => self.confirm(router),
+            FactsFormEvent::Cancel => router.close(None),
+        }
+    }
+
+    fn view_model(&self) -> FactsFormViewModel {
+        let date_error = self.parse_date().err();
+        let total_error = self
+            .total_unreadable()
+            .then(msg::documents_dialog_error_total);
+        let text = |label: String, text: &str, field: FactsField| TextFieldView {
+            label,
+            text: text.to_string(),
+            placeholder: String::new(),
+            focused: self.focused == field,
+        };
+        FactsFormViewModel {
+            hints: self.hints(),
+            frame: DialogFrame {
+                title: msg::documents_dialog_facts_title(),
+                submit: msg::documents_dialog_facts_submit(),
+                can_confirm: date_error.is_none() && total_error.is_none(),
+                destructive: false,
+                hints: Vec::new(),
+            },
+            merchant: text(
+                msg::documents_fact_merchant(),
+                &self.merchant,
+                FactsField::Merchant,
+            ),
+            date: text(
+                msg::documents_dialog_field_date(),
+                &self.date,
+                FactsField::Date,
+            ),
+            // A date the parser can't place but gives no hint for is left unsaid.
+            date_error: date_error.filter(|hint| !hint.is_empty()),
+            total: text(msg::documents_fact_total(), &self.total, FactsField::Total),
+            total_error,
+            doc_type: SelectView {
+                label: msg::documents_dialog_field_type(),
+                options: self.type_choices(),
+                chosen: Some(self.doc_type),
+                focused: self.focused == FactsField::Type,
+            },
+            doc_type_list: self.list,
+            note: msg::documents_dialog_facts_note(),
+            focused: self.focused,
+        }
+    }
+}
+
+impl DialogPresenter for FactsFormPresenter {
+    type Outcome = DocumentsOutcome;
+
+    fn input_event(input: DialogInput) -> FactsFormEvent {
+        FactsFormEvent::Input(input)
+    }
+
+    fn confirm_event() -> FactsFormEvent {
+        FactsFormEvent::Confirm
+    }
+
+    fn cancel_event() -> FactsFormEvent {
+        FactsFormEvent::Cancel
+    }
+
+    fn can_confirm(&self) -> bool {
+        self.view_model().frame.can_confirm
+    }
+
+    /// Closes the open select's list without picking: the host's `back`.
+    fn close_open_select(&mut self) -> bool {
+        let open = self.list.is_open();
+        if open {
+            self.list.close();
+        }
+        open
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use bigdecimal::BigDecimal;
@@ -351,7 +388,8 @@ mod tests {
         let ports = dialog_ports(InMemoryFiles::default());
         let id = world().file(RECEIPT).id;
         (
-            FactsFormPresenter::new(ports.clone(), id).expect("the receipt is Unfiled"),
+            FactsFormPresenter::new(ports.clone(), id, DialogKeys::default())
+                .expect("the receipt is Unfiled"),
             ports,
             RecordingDocumentsRouter::default(),
             id,
