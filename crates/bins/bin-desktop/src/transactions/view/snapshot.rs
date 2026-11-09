@@ -66,10 +66,8 @@ impl TransactionsPage {
             draft_status: filter
                 .and_then(|view| view.status.chosen)
                 .map(|status| format!("{status:?}")),
-            account_list_open: self
-                .filter_list
-                .as_ref()
-                .is_some_and(|(field, list)| *field == FilterField::Account && list.is_open()),
+            account_list_open: filter
+                .is_some_and(|view| view.focused == FilterField::Account && view.list.is_open()),
         }
     }
 }

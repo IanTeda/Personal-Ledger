@@ -6,9 +6,13 @@
 
 use gpui::{App, Entity, Global, WeakEntity};
 use lib_core::TransactionId;
+use lib_list_cursor::Step;
+use lib_transactions::presenter::TransactionsPageEvent;
 use lib_transactions::query::TransactionFilters;
 
 use super::TransactionsPage;
+use crate::navigation::nav::Noun;
+use crate::view::event::ViewEvent;
 
 /// The page the entry point reaches, installed once by `shell::router::build`'s `Root`.
 struct Page(WeakEntity<TransactionsPage>);
@@ -23,28 +27,33 @@ pub(crate) fn install(page: &Entity<TransactionsPage>, cx: &mut App) {
 /// Shows Transaction `id` on the Transactions page, selected, with the date range widened to reach
 /// it. A Transaction that has gone leaves the page as it was.
 pub fn show(cx: &mut App, id: TransactionId) {
-    hand_off(cx, |page, cx| page.show(id, cx));
+    hand_off(cx, TransactionsPageEvent::RevealTransaction(id), true);
 }
 
-/// Shows the Transactions page filtered to `filters`, from its first row.
+/// Shows the Transactions page filtered to `filters`, from its first row, with no Search or draft
+/// left over.
 pub fn show_filtered(cx: &mut App, filters: TransactionFilters) {
-    hand_off(cx, |page, cx| page.show_filtered(filters, cx));
+    hand_off(cx, TransactionsPageEvent::ShowFiltered(filters), true);
 }
 
 /// Puts the Transactions page back on its first row, where an Import commit lands. The page is
 /// already the destination, the Noun staying Transactions under the Import.
 pub fn first_row(cx: &mut App) {
-    hand_off(cx, TransactionsPage::reset_selection);
+    hand_off(cx, TransactionsPageEvent::Move(Step::First), false);
 }
 
-/// Runs `hand_off` on the installed page. Without one (a part built with no Shell) there is
-/// nowhere to show it.
-fn hand_off(
-    cx: &mut App,
-    hand_off: impl FnOnce(&mut TransactionsPage, &mut gpui::Context<'_, TransactionsPage>),
-) {
+/// Sends `event` to the installed page, then, when `navigate`, asks the Shell to show it. Another
+/// module's input is already being sent, so the hand-off joins it and its one commit; one from a
+/// View that isn't a module yet is an input of its own. Without an installed page (a part built
+/// with no Shell) there is nowhere to show it.
+fn hand_off(cx: &mut App, event: TransactionsPageEvent, navigate: bool) {
     let Some(page) = cx.try_global::<Page>().and_then(|page| page.0.upgrade()) else {
         return;
     };
-    page.update(cx, hand_off);
+    page.update(cx, |page, cx| {
+        page.send(event, cx);
+        if navigate {
+            cx.emit(ViewEvent::Navigate(Noun::Transactions));
+        }
+    });
 }

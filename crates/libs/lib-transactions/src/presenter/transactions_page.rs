@@ -17,6 +17,9 @@
 //! - **Display Preferences** are pushed to it ([`TransactionsPageEvent::DisplayChanged`]): each
 //!   row's status marks and the legend follow the Status glyphs, and the view model carries the
 //!   Row density for the Client to size its rows by.
+//! - **Keys:** it owns its keymaps, built from `[keybindings]` ([`TransactionsPageEvent::KeysChanged`]):
+//!   the page's, the popover's while it is open (its Filter mode), and none while the Search is
+//!   open (its Search mode), where every key types ([`PagePresenter::typed`]).
 //!
 //! The rows are read from the ports each time the view model is built, so a write any module makes
 //! shows on the next draw.
@@ -30,14 +33,15 @@ use lib_list_cursor::Step;
 use lib_locale::format::{AmountStyle, format_amount, format_date};
 use lib_toast::{Notice, Notify};
 use lib_viper::display::{RowDensity, StatusGlyphs, flag_glyph};
-use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW, SELECT};
+use lib_viper::keymap::{EDIT, KeyBindingConfig, Keymap, MOVE_DOWN, MOVE_UP, NEW, SEARCH, SELECT};
+use lib_viper::presenter::{PageMode, PagePresenter, Presenter, TextKey};
 use lib_viper::view::{Hint, count};
 
 use super::filter::{
     ChipField, ChipView, FilterEvent, FilterOutcome, FilterPresenter, FilterViewModel,
 };
 use super::glyphs::{status_glyph, status_legend};
-use crate::keymap::FILTER;
+use crate::keymap::{FILTER, transactions_filter_keymap, transactions_page_keymap};
 use crate::protocols::{SharedPorts, TransactionsPorts};
 use crate::query::{TransactionFilters, Visible, query};
 use crate::{Transaction, TransactionCategory, TransactionPayee, TransactionTag, msg};
@@ -90,6 +94,8 @@ pub enum TransactionsPageEvent {
         glyphs: StatusGlyphs,
         density: RowDensity,
     },
+    /// `[keybindings]` changed: the keymaps are built afresh under it.
+    KeysChanged(KeyBindingConfig),
 }
 
 /// The TAGS cell.
@@ -162,7 +168,7 @@ pub struct TransactionsPageViewModel {
     /// A position in `rows`, clamped: `0` when there are none.
     pub selected: usize,
     pub footer: FooterView,
-    /// The status line's legend for the page.
+    /// The status line's legend: the open popover's, else the page's.
     pub hints: Vec<Hint>,
     /// The status line's glyph legend, on its right: `○ open · ◐ cleared · ● reconciled · ⚑ flagged`.
     pub legend: String,
@@ -177,10 +183,10 @@ pub struct TransactionsPagePresenter {
     /// Today, which the default filters and a date typed as `today` read.
     clock: Clock,
     keymap: Keymap<TransactionsPageEvent>,
-    /// The popover's own keys, read while it is open.
-    filter_keymap: Keymap<FilterEvent>,
-    /// The Shell's chord for Search, which the legend names.
-    search_chord: String,
+    /// The popover's keys, read while it is open.
+    filter_keymap: Keymap<TransactionsPageEvent>,
+    /// The keys while the Search is open: none, so every key types.
+    search_keymap: Keymap<TransactionsPageEvent>,
     /// A position in the rows shown, clamped wherever it is read.
     selected: usize,
     /// How far a half-page move steps.
@@ -196,23 +202,16 @@ pub struct TransactionsPagePresenter {
 }
 
 impl TransactionsPagePresenter {
-    /// The page on its first row, filtered to the defaults (this year). `keymap` and
-    /// `filter_keymap` are the ones the Client looks keys up in and `search_chord` the Shell's key
-    /// for Search, so the legend shows the chords they bind.
-    pub fn new(
-        ports: SharedPorts,
-        clock: Clock,
-        keymap: Keymap<TransactionsPageEvent>,
-        filter_keymap: Keymap<FilterEvent>,
-        search_chord: String,
-    ) -> Self {
+    /// The page on its first row, filtered to the defaults (this year), its keys under `config`.
+    pub fn new(ports: SharedPorts, clock: Clock, config: &KeyBindingConfig) -> Self {
         let filters = TransactionFilters::defaults(clock.today());
+        let keymap = transactions_page_keymap(config);
         Self {
             ports,
             clock,
+            search_keymap: keymap.scoped(|_| false),
             keymap,
-            filter_keymap,
-            search_chord,
+            filter_keymap: transactions_filter_keymap(config),
             selected: 0,
             half_page: lib_list_cursor::HALF_PAGE,
             filters,
@@ -223,18 +222,6 @@ impl TransactionsPagePresenter {
             glyphs: StatusGlyphs::default(),
             density: RowDensity::default(),
         }
-    }
-
-    /// Follows a change to `[keybindings]`.
-    pub fn set_keymap(
-        &mut self,
-        keymap: Keymap<TransactionsPageEvent>,
-        filter_keymap: Keymap<FilterEvent>,
-        search_chord: String,
-    ) {
-        self.keymap = keymap;
-        self.filter_keymap = filter_keymap;
-        self.search_chord = search_chord;
     }
 
     /// How many rows a half-page move steps: what the Client measures half its viewport to hold.
@@ -248,34 +235,64 @@ impl TransactionsPagePresenter {
         self.selected.min(self.row_count().saturating_sub(1))
     }
 
-    pub fn is_filtering(&self) -> bool {
-        self.filter.is_some()
-    }
-
-    pub fn is_searching(&self) -> bool {
-        self.searching
-    }
-
-    /// The open popover's Presenter, for the Client to read which field has focus.
-    pub fn filter(&self) -> Option<&FilterPresenter> {
-        self.filter.as_ref()
-    }
-
-    pub fn date_style(&self) -> Option<DateStyle> {
-        self.date_style
-    }
-
     /// The Row density Preference, for the Client to measure a half page by.
     pub fn density(&self) -> RowDensity {
         self.density
     }
 
-    /// The status line's glyph legend. Read on every draw, so it reads no rows.
-    pub fn legend(&self) -> String {
-        status_legend(self.glyphs)
+    /// The table filtered to `filters` from its first row, with no Search or draft left over.
+    fn show_filtered(&mut self, filters: TransactionFilters) {
+        self.filters = filters;
+        self.search.clear();
+        self.searching = false;
+        self.filter = None;
+        self.selected = 0;
     }
 
-    pub fn handle(&mut self, event: TransactionsPageEvent, notify: &mut dyn Notify) {
+    /// Transaction `id`, selected, on the default filters with the date range widened to reach
+    /// it; nothing for a Transaction that has gone.
+    fn reveal(&mut self, id: TransactionId, today: NaiveDate) {
+        let Some(date) = self
+            .ports
+            .borrow()
+            .all_transactions()
+            .into_iter()
+            .find(|transaction| transaction.id == id)
+            .map(|transaction| transaction.date)
+        else {
+            return;
+        };
+        let mut filters = TransactionFilters::defaults(today);
+        filters.from = filters.from.map(|from| from.min(date));
+        filters.to = filters.to.map(|to| to.max(date));
+        self.show_filtered(filters);
+        let ports = self.ports.borrow();
+        let transactions = newest_first(&*ports);
+        self.selected = query(&*ports, &transactions, &self.filters, &self.search)
+            .rows
+            .iter()
+            .position(|row| row.transaction.id == id)
+            .unwrap_or(0);
+    }
+
+    /// How many rows the filters and Search leave.
+    fn row_count(&self) -> usize {
+        let ports = self.ports.borrow();
+        let transactions = newest_first(&*ports);
+        query(&*ports, &transactions, &self.filters, &self.search)
+            .rows
+            .len()
+    }
+}
+
+impl Presenter for TransactionsPagePresenter {
+    type Event = TransactionsPageEvent;
+    type ViewModel = TransactionsPageViewModel;
+    type Router<'r> = dyn Notify + 'r;
+
+    /// While the popover is open it takes its own events and the page takes only a hand-off, the
+    /// page entered again and the Preferences; everything else waits until it closes.
+    fn handle(&mut self, event: TransactionsPageEvent, router: &mut Self::Router<'_>) {
         if let Some(filter) = self.filter.as_mut() {
             match event {
                 TransactionsPageEvent::Filter(event) => {
@@ -295,8 +312,9 @@ impl TransactionsPagePresenter {
                 | TransactionsPageEvent::RevealAccount(_)
                 | TransactionsPageEvent::ShowFiltered(_)
                 | TransactionsPageEvent::Entered => self.filter = None,
-                // The rows behind the popover redraw in the new Preferences.
-                TransactionsPageEvent::DisplayChanged { .. } => {}
+                // The rows behind the popover redraw in the new Preferences, and new keys reach it.
+                TransactionsPageEvent::DisplayChanged { .. }
+                | TransactionsPageEvent::KeysChanged(_) => {}
                 // The draft's dates follow a new style, so what was typed still reads as meant.
                 TransactionsPageEvent::SetDateStyle(style) => filter.set_date_style(style),
                 // The popover is modal: nothing else on the page is reached while it is open.
@@ -312,13 +330,13 @@ impl TransactionsPagePresenter {
             }
             TransactionsPageEvent::Select(index) => self.selected = index,
             TransactionsPageEvent::Open => {
-                notify.notify(Notice::Status(msg::transactions_open_not_yet_built()));
+                router.notify(Notice::Status(msg::transactions_open_not_yet_built()));
             }
             TransactionsPageEvent::New => {
-                notify.notify(Notice::Status(msg::transactions_add_not_yet_built()));
+                router.notify(Notice::Status(msg::transactions_add_not_yet_built()));
             }
             TransactionsPageEvent::Edit => {
-                notify.notify(Notice::Status(msg::transactions_edit_not_yet_built()));
+                router.notify(Notice::Status(msg::transactions_edit_not_yet_built()));
             }
             // A chip clicked while the Search is open leaves the Search, its text kept, as `Enter`
             // would: the popover's mode takes the Search's place.
@@ -371,54 +389,15 @@ impl TransactionsPagePresenter {
                 self.glyphs = glyphs;
                 self.density = density;
             }
+            TransactionsPageEvent::KeysChanged(config) => {
+                self.keymap = transactions_page_keymap(&config);
+                self.search_keymap = self.keymap.scoped(|_| false);
+                self.filter_keymap = transactions_filter_keymap(&config);
+            }
         }
     }
 
-    /// The table filtered to `filters` from its first row, with no Search or draft left over.
-    fn show_filtered(&mut self, filters: TransactionFilters) {
-        self.filters = filters;
-        self.search.clear();
-        self.searching = false;
-        self.filter = None;
-        self.selected = 0;
-    }
-
-    /// Transaction `id`, selected, on the default filters with the date range widened to reach
-    /// it; nothing for a Transaction that has gone.
-    fn reveal(&mut self, id: TransactionId, today: NaiveDate) {
-        let Some(date) = self
-            .ports
-            .borrow()
-            .all_transactions()
-            .into_iter()
-            .find(|transaction| transaction.id == id)
-            .map(|transaction| transaction.date)
-        else {
-            return;
-        };
-        let mut filters = TransactionFilters::defaults(today);
-        filters.from = filters.from.map(|from| from.min(date));
-        filters.to = filters.to.map(|to| to.max(date));
-        self.show_filtered(filters);
-        let ports = self.ports.borrow();
-        let transactions = newest_first(&*ports);
-        self.selected = query(&*ports, &transactions, &self.filters, &self.search)
-            .rows
-            .iter()
-            .position(|row| row.transaction.id == id)
-            .unwrap_or(0);
-    }
-
-    /// How many rows the filters and Search leave.
-    fn row_count(&self) -> usize {
-        let ports = self.ports.borrow();
-        let transactions = newest_first(&*ports);
-        query(&*ports, &transactions, &self.filters, &self.search)
-            .rows
-            .len()
-    }
-
-    pub fn view_model(&self) -> TransactionsPageViewModel {
+    fn view_model(&self) -> TransactionsPageViewModel {
         let ports = self.ports.borrow();
         let transactions = newest_first(&*ports);
         let visible = query(&*ports, &transactions, &self.filters, &self.search);
@@ -433,39 +412,75 @@ impl TransactionsPagePresenter {
             selected: self.selected.min(rows.len().saturating_sub(1)),
             footer: footer(&*ports, &visible, &self.filters),
             rows,
-            hints: self.page_hints(),
-            legend: self.legend(),
+            hints: match &self.filter {
+                Some(_) => FilterPresenter::legend(&self.filter_keymap),
+                None => self.page_hints(),
+            },
+            legend: status_legend(self.glyphs),
             density: self.density,
             filter: self.filter.as_ref().map(FilterPresenter::view_model),
         }
     }
+}
 
-    /// The status line's legend: the open popover's, else the page's. `dialog_keymap` is the
-    /// Dialog keymap the Client looks the popover's keys up in, passed per call since it is
-    /// `lib-shell`'s. Read on every draw, so it reads no rows.
-    pub fn hints<E: Clone>(&self, dialog_keymap: &Keymap<E>) -> Vec<Hint> {
-        match &self.filter {
-            Some(filter) => filter.legend(dialog_keymap, &self.filter_keymap),
-            None => self.page_hints(),
+/// The page opens no Dialog yet, so no outcome lands on it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransactionsOutcome {}
+
+impl PagePresenter for TransactionsPagePresenter {
+    type Outcome = TransactionsOutcome;
+
+    /// Never sent, since the page opens no Dialog: the page entered again changes nothing it shows.
+    fn dialog_closed(_outcome: Option<TransactionsOutcome>) -> TransactionsPageEvent {
+        TransactionsPageEvent::KeepSearch
+    }
+
+    /// The popover's keys while it is open, none while the Search is (every key types), else the
+    /// page's.
+    fn keymap(&self) -> &Keymap<TransactionsPageEvent> {
+        if self.filter.is_some() {
+            &self.filter_keymap
+        } else if self.searching {
+            &self.search_keymap
+        } else {
+            &self.keymap
         }
     }
 
-    /// Offers `chord` to the open popover's own keymap (reset), returning whether it took it.
-    /// False when the popover is closed or the chord is not bound there, so the Client goes on to
-    /// the field's typing.
-    pub fn filter_key(&mut self, chord: &str) -> bool {
-        if self.filter.is_none() {
-            return false;
+    /// In the Search, typing filters live, `Backspace` edits and `Enter` keeps the text; in the
+    /// popover, a key its keymap leaves is the focused field's typing.
+    fn typed(&self, key: TextKey) -> Option<TransactionsPageEvent> {
+        if self.filter.is_some() {
+            return match key {
+                TextKey::Char(ch) => Some(TransactionsPageEvent::Filter(FilterEvent::Type(ch))),
+                TextKey::Backspace => Some(TransactionsPageEvent::Filter(FilterEvent::Backspace)),
+                TextKey::Enter { .. } | TextKey::Tab { .. } => None,
+            };
         }
-        let Some(event) = self.filter_keymap.event(chord) else {
-            return false;
-        };
-        if let Some(filter) = self.filter.as_mut() {
-            filter.handle(event);
+        if !self.searching {
+            return None;
         }
-        true
+        match key {
+            TextKey::Char(ch) if !ch.is_control() => Some(TransactionsPageEvent::SearchType(ch)),
+            TextKey::Backspace => Some(TransactionsPageEvent::SearchBackspace),
+            TextKey::Enter { .. } => Some(TransactionsPageEvent::KeepSearch),
+            TextKey::Char(_) | TextKey::Tab { .. } => None,
+        }
     }
 
+    /// The popover is the Filter mode, taking the Search's place when opened over it.
+    fn mode(&self) -> Option<PageMode> {
+        if self.filter.is_some() {
+            Some(PageMode::Filter)
+        } else if self.searching {
+            Some(PageMode::Search)
+        } else {
+            None
+        }
+    }
+}
+
+impl TransactionsPagePresenter {
     /// The page's legend, its chords read from the keymap so an override shows.
     fn page_hints(&self) -> Vec<Hint> {
         let chord = |command: &str| self.keymap.chord(command).unwrap_or_default().to_string();
@@ -478,7 +493,7 @@ impl TransactionsPagePresenter {
             hint(chord(SELECT), msg::transactions_hint_open()),
             hint(chord(EDIT), msg::transactions_hint_edit()),
             hint(chord(NEW), msg::transactions_hint_add()),
-            hint(self.search_chord.clone(), msg::transactions_hint_search()),
+            hint(chord(SEARCH), msg::transactions_hint_search()),
             hint(chord(FILTER), msg::transactions_hint_filter()),
         ]
     }
@@ -664,11 +679,11 @@ mod tests {
     use super::*;
     use crate::Split;
     use crate::fake::{InMemoryPorts, InMemoryTransactions};
-    use crate::keymap::{RESET_FILTERS, transactions_filter_keymap, transactions_page_keymap};
+    use crate::keymap::RESET_FILTERS;
     use crate::presenter::FilterField;
     use crate::presenter::test_support::*;
     use crate::{TransactionRepository, TransactionUnit};
-    use lib_viper::keymap::{BACK, Binding, NEXT_FIELD};
+    use lib_viper::keymap::{BACK, NEXT_FIELD};
 
     const SHOP: TransactionId = TransactionId::seed(1);
     const RENT: TransactionId = TransactionId::seed(2);
@@ -776,13 +791,7 @@ mod tests {
         fn with_keys(config: &KeyBindingConfig) -> Self {
             locale();
             let (ports, shared) = sample().shared();
-            let presenter = TransactionsPagePresenter::new(
-                shared,
-                Clock::fixed(today()),
-                transactions_page_keymap(config),
-                transactions_filter_keymap(config),
-                "/".to_string(),
-            );
+            let presenter = TransactionsPagePresenter::new(shared, Clock::fixed(today()), config);
             Self {
                 ports,
                 presenter,
@@ -1048,7 +1057,6 @@ mod tests {
         page.send(TransactionsPageEvent::SetDateStyle(Some(DateStyle::Iso)));
 
         assert_eq!(page.view().rows[0].date, "2026-09-18");
-        assert_eq!(page.presenter.date_style(), Some(DateStyle::Iso));
     }
 
     #[test]
@@ -1073,7 +1081,6 @@ mod tests {
             view.legend,
             "- open \u{b7} o cleared \u{b7} x reconciled \u{b7} ! flagged"
         );
-        assert_eq!(page.presenter.legend(), view.legend);
         assert_eq!(view.density, RowDensity::Compact);
         assert_eq!(page.presenter.density(), RowDensity::Compact);
     }
@@ -1195,16 +1202,6 @@ mod tests {
         );
     }
 
-    /// The Dialog commands the popover's legend reads, with `lib-shell`'s defaults.
-    fn dialog_keymap(config: &KeyBindingConfig) -> Keymap<()> {
-        const DIALOG: &[Binding<()>] = &[
-            Binding::hidden(NEXT_FIELD, "tab", ()),
-            Binding::hidden(SELECT, "enter", ()),
-            Binding::hidden(BACK, "esc", ()),
-        ];
-        Keymap::new(DIALOG, config)
-    }
-
     fn legend_pairs(hints: Vec<Hint>) -> Vec<(String, String)> {
         hints
             .into_iter()
@@ -1215,8 +1212,7 @@ mod tests {
     #[test]
     fn the_open_popover_names_its_keys_and_the_closed_page_its_own() {
         let mut page = Page::new();
-        let keymap = dialog_keymap(&KeyBindingConfig::default());
-        let closed = legend_pairs(page.presenter.hints(&keymap));
+        let closed = legend_pairs(page.view().hints);
         assert_eq!(closed[0].1, "row");
 
         page.send(TransactionsPageEvent::OpenFilter(None));
@@ -1233,7 +1229,7 @@ mod tests {
         assert_eq!(commands, [NEXT_FIELD, SELECT, BACK, RESET_FILTERS]);
         let pair = |chord: &str, action: &str| (chord.to_string(), action.to_string());
         assert_eq!(
-            legend_pairs(page.presenter.hints(&keymap)),
+            legend_pairs(page.view().hints),
             [
                 pair("tab", "next field"),
                 pair("enter", "apply"),
@@ -1243,7 +1239,7 @@ mod tests {
         );
 
         page.send(TransactionsPageEvent::Filter(FilterEvent::Cancel));
-        assert_eq!(legend_pairs(page.presenter.hints(&keymap)), closed);
+        assert_eq!(legend_pairs(page.view().hints), closed);
     }
 
     #[test]
@@ -1259,8 +1255,8 @@ mod tests {
         page.send(TransactionsPageEvent::OpenFilter(None));
 
         let chords: Vec<String> = page
-            .presenter
-            .hints(&dialog_keymap(&config))
+            .view()
+            .hints
             .into_iter()
             .map(|hint| hint.chord)
             .collect();
@@ -1269,17 +1265,26 @@ mod tests {
     }
 
     #[test]
-    fn the_filter_key_resets_the_draft_only_while_the_popover_is_open() {
+    fn the_popover_s_keymap_and_typing_reach_it_only_while_it_is_open() {
         let mut page = Page::new();
-        assert!(!page.presenter.filter_key("ctrl+r"), "closed");
+        let reset = Some(TransactionsPageEvent::Filter(FilterEvent::Reset));
+        assert_ne!(page.presenter.keymap().event("ctrl+r"), reset, "closed");
+        assert_eq!(page.presenter.typed(TextKey::Char('x')), None);
         page.send(TransactionsPageEvent::OpenFilter(None));
         page.send(TransactionsPageEvent::Filter(FilterEvent::Focus(
             FilterField::Payee,
         )));
-        page.send(TransactionsPageEvent::Filter(FilterEvent::Type('x')));
+        assert_eq!(page.presenter.mode(), Some(PageMode::Filter));
+        let typed = page.presenter.typed(TextKey::Char('x')).expect("typing");
+        page.send(typed);
 
-        assert!(!page.presenter.filter_key("ctrl+q"), "not bound there");
-        assert!(page.presenter.filter_key("ctrl+r"));
+        assert_eq!(
+            page.presenter.keymap().event("ctrl+q"),
+            None,
+            "not bound there"
+        );
+        let reset = page.presenter.keymap().event("ctrl+r").expect("reset");
+        page.send(reset);
 
         assert_eq!(page.view().filter.expect("open").payee.text, "");
     }
@@ -1288,10 +1293,9 @@ mod tests {
     fn the_popover_legend_renders_in_the_pseudo_locale() {
         locale();
         lib_locale::with_locale(lib_locale::Locale::EnXa, || {
-            let keymap = dialog_keymap(&KeyBindingConfig::default());
             let mut page = Page::new();
             page.send(TransactionsPageEvent::OpenFilter(None));
-            for hint in page.presenter.hints(&keymap) {
+            for hint in page.view().hints {
                 assert!(hint.action.starts_with('['), "{}", hint.action);
             }
         });
@@ -1337,16 +1341,5 @@ mod tests {
         let filter = view.filter.expect("the popover stays open");
         assert_eq!(filter.from.text, "2026-01-01");
         assert_eq!(view.rows[0].date, "2026-09-18");
-    }
-
-    #[test]
-    fn the_legend_is_read_without_the_rows() {
-        let page = Page::new();
-
-        assert_eq!(
-            page.presenter
-                .hints(&dialog_keymap(&KeyBindingConfig::default())),
-            page.view().hints
-        );
     }
 }

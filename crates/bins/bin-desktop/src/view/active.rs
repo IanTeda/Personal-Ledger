@@ -144,7 +144,7 @@ impl ActiveViewEntity {
             // A module page takes keys ahead only in a mode of its own.
             Self::Bills(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
             Self::Budgets(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
-            Self::Transactions(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
+            Self::Transactions(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
             Self::Documents(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
             Self::Settings(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
             // The step's open select is a mode of its own.
@@ -156,13 +156,13 @@ impl ActiveViewEntity {
     /// A key no other step took. Returns whether the View took it.
     pub fn handle_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
         match self {
-            Self::Transactions(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),
             Self::Documents(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),
             Self::Settings(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),
             // Every step key and every module page's key is its keymap's.
             Self::Dashboard(_)
             | Self::Bills(_)
             | Self::Budgets(_)
+            | Self::Transactions(_)
             | Self::Import(_)
             | Self::Shell(_) => false,
         }
@@ -170,15 +170,13 @@ impl ActiveViewEntity {
 
     pub fn apply_movement(&self, movement: Movement, cx: &mut App) {
         match self {
-            Self::Transactions(view) => {
-                view.update(cx, |view, cx| view.apply_movement(movement, cx))
-            }
             Self::Documents(view) => view.update(cx, |view, cx| view.apply_movement(movement, cx)),
             Self::Settings(view) => view.update(cx, |view, cx| view.apply_movement(movement, cx)),
             // The step's and a module page's movements are its keymap's.
             Self::Dashboard(_)
             | Self::Bills(_)
             | Self::Budgets(_)
+            | Self::Transactions(_)
             | Self::Import(_)
             | Self::Shell(_) => {}
         }
@@ -217,7 +215,7 @@ impl ActiveViewEntity {
             Self::Dashboard(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
             Self::Bills(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
             Self::Budgets(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
-            Self::Transactions(view) => view.update(cx, |view, cx| view.search_key(keystroke, cx)),
+            Self::Transactions(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
             Self::Documents(view) => view.update(cx, |view, cx| view.search_key(keystroke, cx)),
             Self::Settings(view) => view.update(cx, |view, cx| view.search_key(keystroke, cx)),
             Self::Import(_) | Self::Shell(_) => false,
@@ -271,7 +269,7 @@ impl ActiveViewEntity {
             Self::Dashboard(_) => None,
             Self::Bills(view) => Some(view.read(cx).page_status()),
             Self::Budgets(view) => Some(view.read(cx).page_status()),
-            Self::Transactions(view) => view.read(cx).page_status(cx),
+            Self::Transactions(view) => Some(view.read(cx).page_status()),
             Self::Import(view) => Some(view.read(cx).page_status()),
             Self::Documents(view) => view.read(cx).page_status(cx),
             Self::Settings(view) => view.read(cx).page_status(cx),
@@ -284,7 +282,7 @@ impl ActiveViewEntity {
     pub fn help_group(&self, cx: &App) -> Option<HelpGroup> {
         match self {
             Self::Bills(view) => view.read(cx).help_group(),
-            Self::Transactions(view) => view.read(cx).help_group(cx),
+            Self::Transactions(view) => view.read(cx).help_group(),
             Self::Documents(view) => view.read(cx).help_group(cx),
             Self::Settings(view) => view.read(cx).help_group(cx),
             Self::Budgets(view) => view.read(cx).help_group(),

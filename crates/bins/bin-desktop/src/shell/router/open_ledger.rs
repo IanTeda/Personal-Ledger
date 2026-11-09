@@ -27,7 +27,6 @@ use lib_viper::dialog::DialogKeys;
 use super::Root;
 use crate::announcer::{Announcer, notify_on};
 use crate::settings::state::SettingsView;
-use crate::transactions::TransactionsPage;
 use crate::view::active::ViewEntities;
 
 /// What an Open Ledger is built on: the stores, and the file they read and its writer when they are
@@ -247,8 +246,12 @@ impl OpenLedger {
         settings.update(cx, |view, cx| {
             view.open_ledger(&announcer, clock, settings_setup, cx)
         });
-        let transactions_view =
-            cx.new(|cx| TransactionsPage::new(transactions_ports, &announcer, clock.clone(), cx));
+        let transactions_view = crate::transactions::transactions_page(
+            transactions_ports,
+            &announcer,
+            clock.clone(),
+            cx,
+        );
         crate::transactions::router::install(&transactions_view, cx);
         let transactions_subscription = Root::view_event_subscription(&transactions_view, cx);
         // The status line reads the page's state, so a change in it repaints `Root` too.

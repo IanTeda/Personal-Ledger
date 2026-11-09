@@ -259,11 +259,17 @@ impl<P: PageView> ModulePage<P> {
     }
 
     /// The page has just become the destination: its widget state starts afresh (scrolled to the
-    /// top), and the Presenter is sent [`PageView::entered`].
+    /// top), and the Presenter is handed [`PageView::entered`]. Not an input of its own: entering
+    /// writes nothing, and the navigation that entered the page is the input, or follows a
+    /// hand-off's, whose commit has landed.
     pub fn on_enter(&mut self, cx: &mut Context<'_, Self>) {
         self.widgets = P::Widgets::default();
         match P::entered() {
-            Some(event) => self.send(event, cx),
+            Some(event) => {
+                if let Some(followed) = self.handle(event, cx) {
+                    cx.emit(followed);
+                }
+            }
             None => cx.notify(),
         }
     }

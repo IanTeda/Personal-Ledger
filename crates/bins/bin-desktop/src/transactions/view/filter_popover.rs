@@ -9,7 +9,8 @@
 //! (which also disables **apply**); Status is the shared segmented control. The page behind is dimmed
 //! by the page itself (`opacity .55`, the map's blur-free replacement for the mockup's blur), not by
 //! a scrim here, so the rails and header stay at full strength. Every click is a
-//! [`FilterEvent`] to the page's Presenter, sent through [`PageClicks`].
+//! [`FilterEvent`] to the page's Presenter, sent through [`PageClicks`]; the Presenter holds the
+//! focused select's open list, and the card keeps only its window of options.
 
 use std::rc::Rc;
 
@@ -21,16 +22,16 @@ use gpui::{
 use lib_transactions::presenter::{
     FilterEvent, FilterField, FilterViewModel, TransactionsPageEvent, status_filter_label,
 };
-use lib_viper::view::TextFieldView;
+use lib_viper::view::{SelectList, TextFieldView};
 
-use super::page::{TransactionsPage, select_labels};
+use super::page::TransactionsPage;
 use crate::{
     dialog,
     form::fields::{OnSegmentClick, segmented_control},
     form::{
         dialog_fields::{label, text_field, two_up},
-        select::SelectState,
         select_field::{self, SelectFieldProps},
+        viper::{drawn, labels},
     },
     shell::view::page_clicks::PageClicks,
     theme::color,
@@ -40,27 +41,45 @@ use lib_transactions::query::StatusFilter;
 /// The card's width: the bundle's own 400px.
 const WIDTH: Pixels = px(400.0);
 
-/// The card at `at`, its top-left corner in window coordinates just below the triggering chip,
-/// and `list` a select's open list with the field it belongs to.
+/// The card at `at`, its top-left corner in window coordinates just below the triggering chip.
+/// `window` is the focused select's open list's first drawn option, kept between draws.
 pub fn render(
     view: &FilterViewModel,
-    list: Option<&(FilterField, SelectState)>,
+    window: &mut usize,
     at: Point<Pixels>,
     clicks: &PageClicks<TransactionsPage>,
     cx: &App,
 ) -> AnyElement {
     let filter = |event: FilterEvent| TransactionsPageEvent::Filter(event);
-    // A select shows its own open list, else its choice closed.
-    let select = |field: FilterField| -> (Vec<String>, SelectState) {
-        let (options, chosen) = select_labels(view, field);
-        let state = match list {
-            Some((at, state)) if *at == field => state.clone(),
-            _ => SelectState::new(chosen),
-        };
-        (options, state)
+    // Only the focused select's list is ever open, and only its window is kept.
+    let mut closed = 0;
+    let list = |field: FilterField| {
+        if view.focused == field {
+            view.list
+        } else {
+            SelectList::default()
+        }
     };
-    let (account_options, account_state) = select(FilterField::Account);
-    let (category_options, category_state) = select(FilterField::Category);
+    let (account_list, category_list) = (list(FilterField::Account), list(FilterField::Category));
+    let account_state = drawn(
+        &view.account,
+        account_list,
+        if account_list.is_open() {
+            &mut *window
+        } else {
+            &mut closed
+        },
+    );
+    let category_state = drawn(
+        &view.category,
+        category_list,
+        if category_list.is_open() {
+            &mut *window
+        } else {
+            &mut closed
+        },
+    );
+    let (account_options, category_options) = (labels(&view.account), labels(&view.category));
     let can_apply = view.frame.can_confirm;
     let click = |field: FilterField| clicks.click(filter(FilterEvent::Focus(field)));
     // An option's index is its place in the select's options, as `select_labels` lists them.

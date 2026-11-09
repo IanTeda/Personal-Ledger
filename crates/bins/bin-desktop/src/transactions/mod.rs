@@ -2,8 +2,8 @@
 //! the Transactions page. Every rule, every piece of text and the keymap are `lib-transactions`';
 //! this folder turns gpui keys and clicks into Presenter events and draws the view models.
 //!
-//! - `view/page.rs` wraps the page Presenter in an Entity, which the Shell hosts as the
-//!   Transactions destination; `view/header.rs`, `view/table.rs`, `view/footer.rs` and
+//! - `view/page.rs` is the page Presenter's `PageView`, which the generic `ModulePage` hosts as
+//!   the Transactions destination; `view/header.rs`, `view/table.rs`, `view/footer.rs` and
 //!   `view/filter_popover.rs` draw it.
 //! - `router.rs` is the module's entry point for other modules' Routers: `show` selects a
 //!   Transaction and `show_filtered` lists the Transactions a filter leaves, from the first row.
@@ -16,4 +16,4 @@ pub(crate) mod view;
 
 #[cfg(test)]
 pub use lib_database::seed::sample_transaction_history;
-pub use view::page::TransactionsPage;
+pub use view::page::{TransactionsPage, transactions_page};

@@ -382,8 +382,10 @@ mod tests {
         let inventory = lib_inventory::keymap::INVENTORY_PAGE_BINDINGS
             .iter()
             .map(|binding| (binding.command, binding.chord));
+        // The Shell keeps `/` and sends the page's `search` by name.
         let transactions = lib_transactions::keymap::TRANSACTIONS_PAGE_BINDINGS
             .iter()
+            .filter(|binding| binding.command != lib_viper::keymap::SEARCH)
             .map(|binding| (binding.command, binding.chord));
         let transaction_filter = lib_transactions::keymap::TRANSACTIONS_FILTER_BINDINGS
             .iter()

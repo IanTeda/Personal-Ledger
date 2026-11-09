@@ -14,14 +14,20 @@
 //!   the applied filters. **apply** hands the draft back as the filters; `cancel` discards it.
 //!
 //! The choices are read when the popover opens, as it is modal and nothing changes them under it.
-//! A select's open list and highlight are the View's widget state: the Presenter holds the chosen
-//! option, and steps it while the list is closed.
+//! The focused select's open list and highlight are the Presenter's too, as `lib-viper`'s
+//! [`SelectList`]: `select` opens or commits it, the select steps move its highlight while it is
+//! open and its value while it is closed, leaving the field commits it, and `back` closes it before
+//! it cancels the popover. Only the list's scroll window is the View's.
 
 use chrono::NaiveDate;
 use lib_core::{AccountId, CategoryId, DateStyle, PayeeId, TagId};
 use lib_locale::format::{format_date_input, parse_optional_date};
+use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
-use lib_viper::view::{Choice, DialogFrame, DialogHint, Hint, SelectView, TextFieldView, legend};
+use lib_viper::view::{
+    Choice, DialogFrame, DialogHint, Hint, SelectList, SelectMove, SelectView, TextFieldView,
+    legend,
+};
 
 use crate::keymap::RESET_FILTERS;
 use crate::msg;
@@ -63,12 +69,21 @@ pub enum FilterEvent {
     /// `Tab`/`Shift-Tab`, wrapping.
     NextField,
     PreviousField,
-    /// A click on a field.
+    /// A click on a field. On a select it opens the list, or closes it when it is open.
     Focus(FilterField),
-    /// `Down`/`Up` on a closed select: the next or previous option, wrapping. Nothing elsewhere.
+    /// `Down`/`Up` on a select: the next or previous option of a closed one, or the open list's
+    /// highlight, wrapping. Nothing elsewhere.
     SelectNext,
     SelectPrevious,
-    /// An Account or Category picked from its open list.
+    /// `select` (`Enter`): opens a select's list or commits its highlight; on any other field,
+    /// **apply**.
+    Activate,
+    /// `back`: closes an open list, else cancels the popover.
+    Back,
+    /// `Left` and `Right`: the previous or next Status while the Status control has focus.
+    Left,
+    Right,
+    /// An Account or Category picked from its open list, which closes it.
     Account(Option<AccountId>),
     Category(Option<CategoryId>),
     /// A click on a Status segment, which focuses the control.
@@ -76,7 +91,8 @@ pub enum FilterEvent {
     /// `Right`/`Space` and `Left` on the Status control: the next or previous Status, wrapping.
     StatusNext,
     StatusPrevious,
-    /// A character typed into the focused text field, and `Backspace` on it.
+    /// A character typed into the focused text field, and `Backspace` on it. `Space` steps the
+    /// Status control and opens or commits a select's list instead.
     Type(char),
     Backspace,
     Reset,
@@ -107,6 +123,8 @@ pub struct FilterViewModel {
     pub to: TextFieldView,
     pub to_error: Option<String>,
     pub status: SelectView<StatusFilter>,
+    /// The focused select's list: open, on its highlight, or closed.
+    pub list: SelectList,
     /// The **reset** button.
     pub reset: String,
     pub focused: FilterField,
@@ -140,6 +158,8 @@ pub struct FilterPresenter {
     to: String,
     status: StatusFilter,
     focused: FilterField,
+    /// The focused select's list.
+    list: SelectList,
 }
 
 impl FilterPresenter {
@@ -205,6 +225,7 @@ impl FilterPresenter {
             to: String::new(),
             status: StatusFilter::All,
             focused: chip.map(ChipField::field).unwrap_or_default(),
+            list: SelectList::default(),
         };
         presenter.fill(applied);
         presenter
@@ -265,6 +286,7 @@ impl FilterPresenter {
     pub fn handle(&mut self, event: FilterEvent) -> Option<FilterOutcome> {
         match event {
             FilterEvent::NextField | FilterEvent::PreviousField => {
+                self.commit_list();
                 let order = FilterField::ORDER;
                 let index = order.iter().position(|f| *f == self.focused).unwrap_or(0);
                 let next = if event == FilterEvent::PreviousField {
@@ -274,27 +296,59 @@ impl FilterPresenter {
                 };
                 self.focused = order[next % order.len()];
             }
-            FilterEvent::Focus(field) => self.focused = field,
-            FilterEvent::SelectNext => self.step_select(1),
-            FilterEvent::SelectPrevious => self.step_select(-1),
-            FilterEvent::Account(id) => {
-                if self.choices.accounts.iter().any(|c| c.value == id) {
-                    self.account = id;
-                    self.account_ids.clear();
+            FilterEvent::Focus(field) => {
+                if field == self.focused {
+                    if field.is_select() {
+                        self.toggle_list();
+                    }
+                } else {
+                    self.list.close();
+                    self.focused = field;
+                    if field.is_select() {
+                        self.toggle_list();
+                    }
                 }
+            }
+            FilterEvent::SelectNext => self.select_input(DialogInput::SelectNext),
+            FilterEvent::SelectPrevious => self.select_input(DialogInput::SelectPrevious),
+            FilterEvent::Activate if self.focused.is_select() => {
+                self.select_input(DialogInput::Select);
+            }
+            FilterEvent::Activate => return self.handle(FilterEvent::Apply),
+            FilterEvent::Back => {
+                if !self.list.close() {
+                    return Some(FilterOutcome::Cancelled);
+                }
+            }
+            FilterEvent::Left if self.focused == FilterField::Status => {
+                return self.handle(FilterEvent::StatusPrevious);
+            }
+            FilterEvent::Right if self.focused == FilterField::Status => {
+                return self.handle(FilterEvent::StatusNext);
+            }
+            FilterEvent::Left | FilterEvent::Right => {}
+            FilterEvent::Account(id) => {
+                self.list.close();
+                self.choose_account(id);
             }
             FilterEvent::Category(id) => {
-                if self.choices.categories.iter().any(|c| c.value == id) {
-                    self.category = id;
-                }
+                self.list.close();
+                self.choose_category(id);
             }
             FilterEvent::Status(status) => {
+                self.list.close();
                 self.focused = FilterField::Status;
                 self.status = status;
             }
             FilterEvent::StatusNext => self.status = stepped(&StatusFilter::ALL, self.status, 1),
             FilterEvent::StatusPrevious => {
                 self.status = stepped(&StatusFilter::ALL, self.status, -1);
+            }
+            FilterEvent::Type(' ') if self.focused == FilterField::Status => {
+                return self.handle(FilterEvent::StatusNext);
+            }
+            FilterEvent::Type(' ') if self.focused.is_select() => {
+                self.select_input(DialogInput::Select);
             }
             FilterEvent::Type(ch) => {
                 if let Some(text) = self.text_mut()
@@ -308,27 +362,82 @@ impl FilterPresenter {
                     text.pop();
                 }
             }
-            FilterEvent::Reset => self.fill(&TransactionFilters::defaults(self.today)),
+            FilterEvent::Reset => {
+                self.list.close();
+                self.fill(&TransactionFilters::defaults(self.today));
+            }
             FilterEvent::Apply => return self.filters().map(FilterOutcome::Applied),
             FilterEvent::Cancel => return Some(FilterOutcome::Cancelled),
         }
         None
     }
 
-    /// Steps the focused select's choice by `delta`, wrapping; nothing on any other field.
-    fn step_select(&mut self, delta: isize) {
-        fn values<T: Copy>(choices: &[Choice<T>]) -> Vec<T> {
-            choices.iter().map(|choice| choice.value).collect()
-        }
+    /// `input` on the focused select's list: it opens or moves the list, or picks an option (a
+    /// closed select stepped, an open list committed). Nothing on any other field.
+    fn select_input(&mut self, input: DialogInput) {
         match self.focused {
             FilterField::Account => {
-                self.account = stepped(&values(&self.choices.accounts), self.account, delta);
-                self.account_ids.clear();
+                let picked = self
+                    .list
+                    .input(input, &self.choices.accounts, Some(&self.account));
+                if let SelectMove::Chose(id) = picked {
+                    self.choose_account(id);
+                }
             }
             FilterField::Category => {
-                self.category = stepped(&values(&self.choices.categories), self.category, delta);
+                let picked = self
+                    .list
+                    .input(input, &self.choices.categories, Some(&self.category));
+                if let SelectMove::Chose(id) = picked {
+                    self.choose_category(id);
+                }
             }
             _ => {}
+        }
+    }
+
+    /// A click on the focused select's field: opens its list on its choice, or closes it.
+    fn toggle_list(&mut self) {
+        match self.focused {
+            FilterField::Account => self
+                .list
+                .toggle(&self.choices.accounts, Some(&self.account)),
+            FilterField::Category => self
+                .list
+                .toggle(&self.choices.categories, Some(&self.category)),
+            _ => {}
+        }
+    }
+
+    /// Leaving a select commits its open list's highlight, as a click on it would.
+    fn commit_list(&mut self) {
+        match self.focused {
+            FilterField::Account => {
+                if let Some(id) = self.list.commit(&self.choices.accounts) {
+                    self.choose_account(id);
+                }
+            }
+            FilterField::Category => {
+                if let Some(id) = self.list.commit(&self.choices.categories) {
+                    self.choose_category(id);
+                }
+            }
+            _ => {
+                self.list.close();
+            }
+        }
+    }
+
+    fn choose_account(&mut self, id: Option<AccountId>) {
+        if self.choices.accounts.iter().any(|c| c.value == id) {
+            self.account = id;
+            self.account_ids.clear();
+        }
+    }
+
+    fn choose_category(&mut self, id: Option<CategoryId>) {
+        if self.choices.categories.iter().any(|c| c.value == id) {
+            self.category = id;
         }
     }
 
@@ -387,24 +496,10 @@ impl FilterPresenter {
         ]
     }
 
-    /// The popover's legend: the Dialog commands' chords read from `dialog_keymap` and reset's
-    /// from `filter_keymap`, so a `[keybindings]` override of either shows.
-    pub fn legend<E: Clone>(
-        &self,
-        dialog_keymap: &Keymap<E>,
-        filter_keymap: &Keymap<FilterEvent>,
-    ) -> Vec<Hint> {
-        Self::dialog_hints()
-            .into_iter()
-            .flat_map(|hint| {
-                let hints = std::slice::from_ref(&hint);
-                if hint.commands == [RESET_FILTERS] {
-                    legend(hints, filter_keymap)
-                } else {
-                    legend(hints, dialog_keymap)
-                }
-            })
-            .collect()
+    /// The popover's legend, each chord read from `keymap`, the popover's, so a `[keybindings]`
+    /// override of a Dialog command or of reset shows.
+    pub fn legend<E: Clone>(keymap: &Keymap<E>) -> Vec<Hint> {
+        legend(&Self::dialog_hints(), keymap)
     }
 
     pub fn view_model(&self) -> FilterViewModel {
@@ -474,6 +569,7 @@ impl FilterPresenter {
                 chosen: Some(self.status),
                 focused: self.focused == FilterField::Status,
             },
+            list: self.list,
             reset: msg::transactions_filter_reset(),
             focused: self.focused,
         }
@@ -838,7 +934,8 @@ mod tests {
     #[test]
     fn a_closed_select_steps_its_choice_and_wraps() {
         let mut presenter = au(|| open(&TransactionFilters::defaults(today())));
-        presenter.handle(FilterEvent::Focus(FilterField::Category));
+        presenter.handle(FilterEvent::NextField);
+        assert_eq!(presenter.focused(), FilterField::Category);
 
         presenter.handle(FilterEvent::SelectNext);
         assert_eq!(presenter.view_model().category.chosen, Some(Some(FOOD)));
@@ -850,6 +947,80 @@ mod tests {
         presenter.handle(FilterEvent::SelectNext);
         assert_eq!(presenter.view_model().category.chosen, Some(Some(HOUSING)));
         assert_eq!(presenter.view_model().payee.text, "", "not a select");
+    }
+
+    #[test]
+    fn a_select_s_list_opens_moves_and_commits_and_back_closes_it_before_cancelling() {
+        let mut presenter = au(|| open(&TransactionFilters::defaults(today())));
+        presenter.handle(FilterEvent::NextField);
+
+        presenter.handle(FilterEvent::Activate);
+        assert!(
+            presenter.view_model().list.is_open(),
+            "select opens the list"
+        );
+        presenter.handle(FilterEvent::SelectNext);
+        assert_eq!(
+            presenter.view_model().category.chosen,
+            Some(None),
+            "an open list moves its highlight, not the choice"
+        );
+        presenter.handle(FilterEvent::Activate);
+        assert!(!presenter.view_model().list.is_open());
+        assert_eq!(presenter.view_model().category.chosen, Some(Some(FOOD)));
+
+        presenter.handle(FilterEvent::Type(' '));
+        assert!(presenter.view_model().list.is_open(), "space opens it too");
+        assert_eq!(
+            presenter.handle(FilterEvent::Back),
+            None,
+            "back closes the list"
+        );
+        assert!(!presenter.view_model().list.is_open());
+        assert_eq!(
+            presenter.handle(FilterEvent::Back),
+            Some(FilterOutcome::Cancelled)
+        );
+    }
+
+    #[test]
+    fn a_click_toggles_a_select_s_list_and_leaving_the_field_commits_it() {
+        let mut presenter = au(|| open(&TransactionFilters::defaults(today())));
+        presenter.handle(FilterEvent::Focus(FilterField::Category));
+        assert!(presenter.view_model().list.is_open());
+        presenter.handle(FilterEvent::Focus(FilterField::Category));
+        assert!(
+            !presenter.view_model().list.is_open(),
+            "a second click closes it"
+        );
+
+        presenter.handle(FilterEvent::Focus(FilterField::Category));
+        presenter.handle(FilterEvent::SelectNext);
+        presenter.handle(FilterEvent::NextField);
+
+        assert_eq!(presenter.focused(), FilterField::Payee);
+        assert!(!presenter.view_model().list.is_open());
+        assert_eq!(presenter.view_model().category.chosen, Some(Some(FOOD)));
+    }
+
+    #[test]
+    fn left_and_right_step_only_the_status_control() {
+        let mut presenter = au(|| open(&TransactionFilters::defaults(today())));
+        presenter.handle(FilterEvent::Right);
+        assert_eq!(
+            presenter.view_model().status.chosen,
+            Some(StatusFilter::All)
+        );
+
+        presenter.handle(FilterEvent::Status(StatusFilter::All));
+        presenter.handle(FilterEvent::Right);
+        let stepped = presenter.view_model().status.chosen;
+        assert_ne!(stepped, Some(StatusFilter::All));
+        presenter.handle(FilterEvent::Left);
+        assert_eq!(
+            presenter.view_model().status.chosen,
+            Some(StatusFilter::All)
+        );
     }
 
     #[test]

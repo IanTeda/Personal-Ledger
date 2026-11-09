@@ -464,8 +464,7 @@ pub(super) fn reset_view_scroll(
     }
 }
 
-/// The keys of Settings and the Open Ledger's Views, under `config`'s overrides. The Transactions
-/// filter popover reads its keys through the Dialog keymap too, until it is a module Dialog (#923).
+/// The keys of Settings and the Open Ledger's Views, under `config`'s overrides.
 pub(super) fn set_view_keymaps(
     settings: &Entity<SettingsView>,
     open: Option<&OpenLedger>,
@@ -476,9 +475,12 @@ pub(super) fn set_view_keymaps(
     let Some(open) = open else {
         return;
     };
-    open.views
-        .transactions
-        .update(cx, |view, _| view.set_keymaps(config));
+    open.views.transactions.update(cx, |page, cx| {
+        page.send(
+            lib_transactions::presenter::TransactionsPageEvent::KeysChanged(config.clone()),
+            cx,
+        );
+    });
     open.views.import.update(cx, |page, cx| {
         page.send(
             lib_transaction_import::presenter::ImportEvent::KeysChanged(config.clone()),
@@ -529,8 +531,13 @@ pub(super) fn push_display_preferences(
             cx,
         );
     });
-    open.views.transactions.update(cx, |view, cx| {
-        view.set_display(date_style, glyphs, density, cx)
+    open.views.transactions.update(cx, |page, cx| {
+        use lib_transactions::presenter::TransactionsPageEvent;
+        page.send(TransactionsPageEvent::SetDateStyle(date_style), cx);
+        page.send(
+            TransactionsPageEvent::DisplayChanged { glyphs, density },
+            cx,
+        );
     });
     open.views
         .documents
