@@ -5,7 +5,6 @@ use gpui::Context;
 use lib_shell::ShellCommand;
 
 use super::Root;
-use crate::view::active::ActiveViewEntity;
 use crate::{
     navigation::nav::InputMode,
     shell::view::statusline::{HintAction, PageStatus},
@@ -53,10 +52,7 @@ impl Root {
     /// it has none. While a Dialog that has its own hints is open, they replace the View's
     /// (ADR-0037).
     pub(super) fn page_status(&self, cx: &gpui::App) -> Option<PageStatus> {
-        let status = match self.active_view_entity(cx) {
-            ActiveViewEntity::Shell(_) => None,
-            view => view.page_status(cx),
-        };
+        let status = self.active_page(cx).and_then(|page| page.page_status(cx));
         let hints = self.hosted_dialog().and_then(|dialog| dialog.hints(cx));
         match hints {
             Some(hints) => Some(PageStatus {

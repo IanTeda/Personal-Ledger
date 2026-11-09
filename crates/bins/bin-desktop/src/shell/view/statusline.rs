@@ -33,7 +33,7 @@ pub const HEIGHT: Pixels = px(28.0);
 
 /// A page's own status-line content, replacing the shell-wide hint strip and file path while that
 /// page is showing: its key legend and its right-aligned text.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct PageStatus {
     pub hints: Vec<Hint>,
     pub right: String,

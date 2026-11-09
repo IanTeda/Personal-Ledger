@@ -56,6 +56,10 @@ impl PageView for DisplayPresenter {
     /// Display reads Configuration, not the Ledger.
     const REPAINTS: &'static [Domain] = &[];
 
+    /// The page has no selection, so a movement its keymap doesn't bind (`Ctrl-d` on a control,
+    /// `G`) scrolls the Settings body, the Colour Theme grid keeping the keyboard.
+    const FRAME_SCROLLS: bool = true;
+
     fn with_router<R>(
         presenter: &mut Self,
         _setup: &(),
@@ -122,8 +126,4 @@ impl PageView for DisplayPresenter {
 
 impl SettingsPageView for DisplayPresenter {
     const PAGE: SettingsPage = SettingsPage::Display;
-
-    /// The page has no selection, so a movement its keymap doesn't bind (`Ctrl-d` on a control,
-    /// `G`) scrolls the Settings body, the Colour Theme grid keeping the keyboard.
-    const FRAME_SCROLLS: bool = true;
 }

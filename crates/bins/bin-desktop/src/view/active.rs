@@ -1,50 +1,24 @@
-//! `ActiveViewEntity` -- the active View as `Root` forwards to it (ADR-0037). Each method holds
-//! the one exhaustive match over the Views and forwards to the inherent method of the same name on
-//! the View's Entity, so a new View fails to compile here and nowhere else. There is no `View`
-//! trait and no `dyn` erasure (ADR-0016).
+//! The active View as `Root` hosts it (ADR-0016's and ADR-0056's #1079 update): [`page`] is the one
+//! match on the [`ActiveView`], handing back the View's Entity as one `dyn` [`PageHandle`], so a new
+//! View fails to compile here and nowhere else. `Root` calls the trait, not a forwarding method per
+//! View, and keeps each View's typed Entity in [`ViewEntities`] for the hand-offs between Views.
 //!
-//! The Views not yet moved onto this interface sit in [`ShellView`], and `Root` keeps their
-//! handlers until their own ticket moves them. Every `ShellView` arm here does nothing, since
-//! `Root` has already run its own handler for it.
+//! A View `Root` still draws itself has no handle: a placeholder Noun, or with no Ledger open the
+//! no Ledger open content ([`ShellView`]).
 
-use gpui::{AnyElement, App, Entity, IntoElement, Keystroke};
+use gpui::Entity;
 
-use super::event::Reveal;
 use crate::bills::BillsPage;
 use crate::budgets::BudgetsPage;
 use crate::dashboard::DashboardPage;
 use crate::documents::view::page::DocumentsPage;
+use crate::navigation::{active_view::ActiveView, nav::Noun};
 use crate::settings::state::SettingsView;
+use crate::shell::view::page_handle::PageHandle;
 use crate::transaction_import::ImportPage;
 use crate::transactions::TransactionsPage;
-use crate::{
-    navigation::{active_view::ActiveView, movement::Movement, nav::Noun},
-    shell::view::statusline::PageStatus,
-    view::help::HelpGroup,
-};
 
-/// The active View, holding its typed Entity once it renders and handles its own input.
-#[derive(Clone)]
-pub enum ActiveViewEntity {
-    Dashboard(Entity<DashboardPage>),
-    Bills(Entity<BillsPage>),
-    Budgets(Entity<BudgetsPage>),
-    /// The Transactions list.
-    Transactions(Entity<TransactionsPage>),
-    /// The Transactions destination's Import step, shown in place of the list while it is open: the
-    /// Transaction Import module's View.
-    Import(Entity<ImportPage>),
-    Documents(Entity<DocumentsPage>),
-    /// Settings: the index and every page. A page with its own Entity (Accounts, Payees) is
-    /// forwarded to by the View; `Root` still draws the other pages with Ledger data and handles
-    /// their keys first (`Root`) until each moves into the View.
-    Settings(Entity<SettingsView>),
-    /// A View whose rendering and input are still `Root`'s.
-    Shell(ShellView),
-}
-
-/// The Views whose rendering and input are still `Root`'s: [`ActiveView`] less each View that
-/// has moved onto [`ActiveViewEntity`].
+/// The Views `Root` still draws itself, with no Entity of their own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShellView {
     /// A Noun whose surface is a later map's work (#420).
@@ -52,6 +26,17 @@ pub enum ShellView {
     /// No Ledger open (#977): the Dashboard's no Ledger open content, offering `:open` and `:new`,
     /// which stands without the Open Ledger's Views.
     NoLedger,
+}
+
+impl ShellView {
+    /// What `Root` draws for `view`, which has no handle: with no Ledger open, every View but
+    /// Settings is the no Ledger open content.
+    pub fn of(view: ActiveView, ledger_open: bool) -> Self {
+        match view {
+            ActiveView::Placeholder(noun) if ledger_open => Self::Placeholder(noun),
+            _ => Self::NoLedger,
+        }
+    }
 }
 
 /// The View Entities `Root` owns, one per View that renders and handles its own input.
@@ -64,201 +49,40 @@ pub struct ViewEntities {
     pub documents: Entity<DocumentsPage>,
 }
 
-impl ActiveViewEntity {
-    /// The Entity behind `view`, from the Open Ledger's View Entities and `Root`'s Settings. With
-    /// no Ledger open (`views` is `None`) every View but Settings is the no Ledger open content.
-    pub fn new(
-        view: ActiveView,
-        views: Option<&ViewEntities>,
-        settings: &Entity<SettingsView>,
-    ) -> Self {
-        if let ActiveView::Settings(_) = view {
-            return Self::Settings(settings.clone());
-        }
-        let Some(views) = views else {
-            return Self::Shell(ShellView::NoLedger);
-        };
-        match view {
-            ActiveView::Bills => Self::Bills(views.bills.clone()),
-            ActiveView::Budgets => Self::Budgets(views.budgets.clone()),
-            ActiveView::Transactions => Self::Transactions(views.transactions.clone()),
-            ActiveView::Import => Self::Import(views.import.clone()),
-            ActiveView::Dashboard => Self::Dashboard(views.dashboard.clone()),
-            ActiveView::Documents => Self::Documents(views.documents.clone()),
-            ActiveView::Settings(_) => Self::Settings(settings.clone()),
-            ActiveView::Placeholder(noun) => Self::Shell(ShellView::Placeholder(noun)),
-        }
+impl ViewEntities {
+    /// Every View, for what `Root` does to each alike (following its events).
+    pub fn all(&self) -> [&dyn PageHandle; 6] {
+        [
+            &self.dashboard,
+            &self.bills,
+            &self.budgets,
+            &self.transactions,
+            &self.import,
+            &self.documents,
+        ]
     }
+}
 
-    /// The View as a child element of `Root`'s main pane, told whether the View zone has focus
-    /// for the focus rings it draws within itself. A `ShellView` is drawn by `Root`.
-    pub fn element(
-        &self,
-        zone_focused: bool,
-        window_size: crate::shell::view::window_size::WindowSize,
-        cx: &mut App,
-    ) -> AnyElement {
-        match self {
-            Self::Dashboard(view) => view.clone().into_any_element(),
-            Self::Documents(view) => {
-                view.update(cx, |view, _| view.set_focused(zone_focused));
-                view.clone().into_any_element()
-            }
-            Self::Settings(view) => {
-                view.update(cx, |view, cx| {
-                    view.set_zone_focused(zone_focused);
-                    view.set_window_size(window_size, cx);
-                });
-                view.clone().into_any_element()
-            }
-            Self::Bills(view) => view.clone().into_any_element(),
-            Self::Budgets(view) => view.clone().into_any_element(),
-            Self::Transactions(view) => view.clone().into_any_element(),
-            Self::Import(view) => view.clone().into_any_element(),
-            Self::Shell(_) => gpui::Empty.into_any_element(),
-        }
+/// The Entity behind `view`, from the Open Ledger's View Entities and `Root`'s Settings: `None` for
+/// a View `Root` still draws ([`ShellView`]). With no Ledger open (`views` is `None`) only Settings
+/// has a handle.
+pub fn page<'a>(
+    view: ActiveView,
+    views: Option<&'a ViewEntities>,
+    settings: &'a Entity<SettingsView>,
+) -> Option<&'a dyn PageHandle> {
+    if let ActiveView::Settings(_) = view {
+        return Some(settings);
     }
-
-    /// A key the focused module's keymap takes, by `chord`: the Bills, Budgets, Documents or
-    /// Transactions page's, the Import step's, or the Settings frame's and its open page's. Returns
-    /// whether it took the key.
-    pub fn module_key(&self, chord: &str, cx: &mut App) -> bool {
-        match self {
-            Self::Bills(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
-            Self::Transactions(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
-            Self::Settings(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
-            Self::Import(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
-            Self::Budgets(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
-            Self::Documents(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
-            Self::Dashboard(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
-            Self::Shell(_) => false,
-        }
-    }
-
-    /// A key while the View is in a mode it entered for something of its own (its Search, a
-    /// filter popover, an edit in place, Settings' page picker): `ModulePage::mode_key`, or the
-    /// Settings frame's. Returns whether the View took it; in Normal mode it takes nothing.
-    pub fn mode_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
-        match self {
-            Self::Dashboard(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
-            Self::Bills(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
-            Self::Budgets(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
-            Self::Transactions(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
-            Self::Documents(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
-            Self::Import(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
-            Self::Settings(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
-            Self::Shell(_) => false,
-        }
-    }
-
-    /// A movement the Shell fell back on, which no keymap took: Settings' frame scrolls or steps
-    /// its index with it.
-    pub fn apply_movement(&self, movement: Movement, cx: &mut App) {
-        match self {
-            Self::Settings(view) => view.update(cx, |view, cx| view.apply_movement(movement, cx)),
-            // The step's and a module page's movements are its keymap's.
-            Self::Dashboard(_)
-            | Self::Bills(_)
-            | Self::Budgets(_)
-            | Self::Transactions(_)
-            | Self::Documents(_)
-            | Self::Import(_)
-            | Self::Shell(_) => {}
-        }
-    }
-
-    /// `Esc`, after the Dialog host's open select. Returns whether the View consumed it.
-    pub fn escape(&self, cx: &mut App) -> bool {
-        match self {
-            Self::Dashboard(view) => view.update(cx, |view, cx| view.escape(cx)),
-            Self::Bills(view) => view.update(cx, |view, cx| view.escape(cx)),
-            Self::Budgets(view) => view.update(cx, |view, cx| view.escape(cx)),
-            Self::Transactions(view) => view.update(cx, |view, cx| view.escape(cx)),
-            Self::Import(view) => view.update(cx, |view, cx| view.escape(cx)),
-            Self::Documents(view) => view.update(cx, |view, cx| view.escape(cx)),
-            Self::Settings(view) => view.update(cx, |view, cx| view.escape(cx)),
-            Self::Shell(_) => false,
-        }
-    }
-
-    /// `/`. Returns `false` when the View has no Search, leaving `/` inert.
-    pub fn start_search(&self, cx: &mut App) -> bool {
-        match self {
-            Self::Dashboard(view) => view.update(cx, |view, cx| view.start_search(cx)),
-            Self::Bills(view) => view.update(cx, |view, cx| view.start_search(cx)),
-            Self::Budgets(view) => view.update(cx, |view, cx| view.start_search(cx)),
-            Self::Transactions(view) => view.update(cx, |view, cx| view.start_search(cx)),
-            Self::Documents(view) => view.update(cx, |view, cx| view.start_search(cx)),
-            Self::Settings(view) => view.update(cx, |view, cx| view.start_search(cx)),
-            Self::Import(_) | Self::Shell(_) => false,
-        }
-    }
-
-    /// The View has just become the destination.
-    pub fn on_enter(&self, cx: &mut App) {
-        match self {
-            Self::Dashboard(view) => view.update(cx, |view, cx| view.on_enter(cx)),
-            Self::Bills(view) => view.update(cx, |view, cx| view.on_enter(cx)),
-            Self::Budgets(view) => view.update(cx, |view, cx| view.on_enter(cx)),
-            Self::Transactions(view) => view.update(cx, |view, cx| view.on_enter(cx)),
-            Self::Import(view) => view.update(cx, |view, cx| view.on_enter(cx)),
-            Self::Documents(view) => view.update(cx, |view, cx| view.on_enter(cx)),
-            Self::Settings(view) => view.update(cx, |view, cx| view.on_enter(cx)),
-            Self::Shell(_) => {}
-        }
-    }
-
-    /// Shows a record another View handed off.
-    pub fn reveal(&self, reveal: Reveal, cx: &mut App) {
-        match self {
-            Self::Dashboard(view) => view.update(cx, |view, cx| view.reveal(reveal, cx)),
-            Self::Bills(view) => view.update(cx, |view, cx| view.reveal(reveal, cx)),
-            Self::Budgets(view) => view.update(cx, |view, cx| view.reveal(reveal, cx)),
-            Self::Documents(view) => view.update(cx, |view, cx| view.reveal(reveal, cx)),
-            Self::Settings(view) => view.update(cx, |view, cx| view.reveal(reveal, cx)),
-            // Transactions is reached through its entry point, not a `Reveal`. `Root` makes
-            // Transactions the destination first, which closes the step.
-            Self::Transactions(_) | Self::Import(_) | Self::Shell(_) => {}
-        }
-    }
-
-    /// The narrowest the View lays out at, when it has content that must not squeeze (the
-    /// Transactions table, whose width the Import step keeps). A View area narrower than this
-    /// scrolls sideways (ADR-0042).
-    pub fn min_width(&self) -> Option<gpui::Pixels> {
-        match self {
-            Self::Transactions(_) | Self::Import(_) => {
-                Some(crate::transactions::view::table::min_width())
-            }
-            _ => None,
-        }
-    }
-
-    /// The status line's hints and right-hand text for the View's own state.
-    pub fn page_status(&self, cx: &App) -> Option<PageStatus> {
-        match self {
-            // The Dashboard words no hints of its own, so the Shell's strip shows.
-            Self::Dashboard(_) => None,
-            Self::Bills(view) => Some(view.read(cx).page_status()),
-            Self::Budgets(view) => Some(view.read(cx).page_status()),
-            Self::Transactions(view) => Some(view.read(cx).page_status()),
-            Self::Import(view) => Some(view.read(cx).page_status()),
-            Self::Documents(view) => Some(view.read(cx).page_status()),
-            Self::Settings(view) => view.read(cx).page_status(cx),
-            Self::Shell(_) => None,
-        }
-    }
-
-    /// The View's own group of keys for the `?` Help Dialog, `None` for a View that adds none
-    /// to the global shortcuts.
-    pub fn help_group(&self, cx: &App) -> Option<HelpGroup> {
-        match self {
-            Self::Bills(view) => view.read(cx).help_group(),
-            Self::Transactions(view) => view.read(cx).help_group(),
-            Self::Documents(view) => view.read(cx).help_group(),
-            Self::Settings(view) => view.read(cx).help_group(cx),
-            Self::Budgets(view) => view.read(cx).help_group(),
-            Self::Dashboard(_) | Self::Import(_) | Self::Shell(_) => None,
-        }
+    let views = views?;
+    match view {
+        ActiveView::Dashboard => Some(&views.dashboard),
+        ActiveView::Bills => Some(&views.bills),
+        ActiveView::Budgets => Some(&views.budgets),
+        ActiveView::Transactions => Some(&views.transactions),
+        ActiveView::Import => Some(&views.import),
+        ActiveView::Documents => Some(&views.documents),
+        ActiveView::Settings(_) => Some(settings),
+        ActiveView::Placeholder(_) => None,
     }
 }

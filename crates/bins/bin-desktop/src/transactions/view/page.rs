@@ -85,6 +85,11 @@ impl PageView for TransactionsPagePresenter {
         Domain::Units,
     ];
 
+    /// The table draws every column, scrolling sideways in a narrower View.
+    fn min_width() -> Option<gpui::Pixels> {
+        Some(crate::transactions::view::table::min_width())
+    }
+
     fn with_router<R>(
         presenter: &mut Self,
         _setup: &(),

@@ -26,9 +26,10 @@ use crate::navigation::nav::Noun;
 use crate::settings::{SettingsPage, state::SettingsView};
 use crate::shell::state::ShellState;
 use crate::shell::view::dialog_entity::{DialogHandle, ModuleDialog};
+use crate::shell::view::page_handle::PageHandle;
 use crate::shell::view::rail as rail_view;
 use crate::shell::view::window_size::WindowSize;
-use crate::view::active::ActiveViewEntity;
+use crate::view::active;
 use lib_settings::DisplayOutput;
 
 /// The Documents mode, Library scope and sort a Ledger's Documents page opens on.
@@ -123,21 +124,26 @@ impl ShellRouter for RootRouter<'_, '_> {
     /// A View the Shell still draws (a placeholder, or the no Ledger open content) has no Search
     /// box, but `/` enters Search mode on it as it always has, for `esc` to leave.
     fn start_search(&mut self, noun: Noun) -> bool {
-        match self.active_view_entity(noun) {
-            ActiveViewEntity::Shell(_) => true,
-            view => view.start_search(self.cx),
+        match active_page(noun, self.settings, self.open.as_ref(), self.cx) {
+            None => true,
+            Some(page) => page.start_search(self.cx),
         }
     }
 
     fn view_back(&mut self, noun: Noun) -> bool {
-        self.active_view_entity(noun).escape(self.cx)
+        active_page(noun, self.settings, self.open.as_ref(), self.cx)
+            .is_some_and(|page| page.escape(self.cx))
     }
 
-    /// A placeholder, or the no Ledger open content, has nothing to move through.
+    /// The Settings frame's own: it scrolls the body or steps its index. Every other View binds
+    /// the movements it takes in its keymap, and a placeholder, or the no Ledger open content, has
+    /// nothing to move through.
     fn move_selection(&mut self, noun: Noun, movement: Movement) {
-        match self.active_view_entity(noun) {
-            ActiveViewEntity::Shell(_) => {}
-            view => view.apply_movement(movement, self.cx),
+        if let ActiveView::Settings(_) =
+            active_view(noun, self.settings, self.open.as_ref(), self.cx)
+        {
+            self.settings
+                .update(self.cx, |view, cx| view.apply_movement(movement, cx));
         }
     }
 
@@ -146,17 +152,19 @@ impl ShellRouter for RootRouter<'_, '_> {
     }
 
     fn reset_view_scroll(&mut self, noun: Noun) {
-        let active = self.active_view_entity(noun);
+        let view = active_view(noun, self.settings, self.open.as_ref(), self.cx);
         reset_view_scroll(
             self.view_x_scroll_handle,
-            active,
+            view,
+            self.settings,
             self.open.as_ref(),
             self.cx,
         );
     }
 
     fn help_group(&mut self, noun: Noun) -> Option<HelpGroup> {
-        self.active_view_entity(noun).help_group(self.cx)
+        active_page(noun, self.settings, self.open.as_ref(), self.cx)
+            .and_then(|page| page.help_group(self.cx))
     }
 
     fn host_dialog(&mut self, dialog: ShellDialog) {
@@ -315,11 +323,6 @@ impl RootRouter<'_, '_> {
         }
     }
 
-    /// The View showing `noun`, as `Root` forwards to it (ADR-0037).
-    fn active_view_entity(&self, noun: Noun) -> ActiveViewEntity {
-        active_view_entity(noun, self.settings, self.open.as_ref(), self.cx)
-    }
-
     /// The Display output, which Settings › Display's Presenter holds.
     fn display_output(&self) -> DisplayOutput {
         self.settings.read(self.cx).display_output(self.cx)
@@ -438,20 +441,34 @@ impl RootRouter<'_, '_> {
     }
 }
 
-/// The View showing `noun` as `Root` forwards to it (ADR-0037): with no Ledger open, Settings or
-/// the no Ledger open content.
-pub(super) fn active_view_entity(
+/// The View showing `noun`: Settings' page, or the Transactions destination's Import step while
+/// it is open.
+fn active_view(
     noun: Noun,
     settings: &Entity<SettingsView>,
     open: Option<&OpenLedger>,
     cx: &App,
-) -> ActiveViewEntity {
-    let view = ActiveView::derive(
+) -> ActiveView {
+    ActiveView::derive(
         noun,
         settings.read(cx).selected_section(),
         open.is_some_and(|open| open.views.import.read(cx).presenter().is_open()),
-    );
-    ActiveViewEntity::new(view, open.map(|open| &open.views), settings)
+    )
+}
+
+/// The View showing `noun` through the one hosting trait, `None` for a View `Root` still draws (a
+/// placeholder, or with no Ledger open the no Ledger open content).
+fn active_page<'a>(
+    noun: Noun,
+    settings: &'a Entity<SettingsView>,
+    open: Option<&'a OpenLedger>,
+    cx: &App,
+) -> Option<&'a dyn PageHandle> {
+    active::page(
+        active_view(noun, settings, open, cx),
+        open.map(|open| &open.views),
+        settings,
+    )
 }
 
 /// A new noun's view is a different (usually much shorter) length -- carrying over the old scroll
@@ -461,16 +478,18 @@ pub(super) fn active_view_entity(
 /// entering it closes the step, so the list it uncovers is told too.
 pub(super) fn reset_view_scroll(
     view_x_scroll_handle: &ScrollHandle,
-    active: ActiveViewEntity,
+    view: ActiveView,
+    settings: &Entity<SettingsView>,
     open: Option<&OpenLedger>,
     cx: &mut App,
 ) {
     view_x_scroll_handle.set_offset(gpui::Point::default());
-    active.on_enter(cx);
-    if let (ActiveViewEntity::Import(_), Some(open)) = (active, open) {
-        open.views
-            .transactions
-            .update(cx, |page, cx| page.on_enter(cx));
+    let views = open.map(|open| &open.views);
+    if let Some(page) = active::page(view, views, settings) {
+        page.on_enter(cx);
+    }
+    if let (ActiveView::Import, Some(views)) = (view, views) {
+        views.transactions.on_enter(cx);
     }
 }
 

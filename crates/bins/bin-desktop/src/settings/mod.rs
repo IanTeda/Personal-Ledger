@@ -175,13 +175,15 @@ impl Render for SettingsView {
         }
         self.sync_frame(cx);
         let page = self.selected_page();
-        page.set_page_focused(page_focused, cx);
-        let meta = page.heading_meta(cx);
+        page.set_focused(page_focused, cx);
+        let meta = page
+            .heading_meta(cx)
+            .unwrap_or_else(|| scope_note(self.selected_section()).into_any_element());
         let content = page.view().into_any_element();
         let pane = page.side_pane(cx);
         // Tracing's log box fills the page and scrolls itself, so its body must not scroll too.
-        let fills = page.fills_page();
-        let full_width = page.full_width();
+        let layout = page.layout();
+        let (fills, full_width) = (layout.fills_page, layout.full_width);
         let body = div()
             .id("settings-body")
             .flex_1()
@@ -223,12 +225,12 @@ impl Render for SettingsView {
 /// One page: heading + right-aligned scope note, a 2px rule, the page's content, then a **48px**
 /// bottom gap -- every page, no exceptions (README's implementation note 4: mixed top/bottom
 /// margin ownership is how this gap goes missing, so it's carried on a single edge, here). The
-/// whole block caps at [`CONTENT_MAX_WIDTH`], except a [`SettingsPageView::FULL_WIDTH`] page
+/// whole block caps at [`CONTENT_MAX_WIDTH`], except a [`PageView::FULL_WIDTH`] page
 /// (Units, whose tables fill the View's width down to their 610px minimum). A
-/// [`SettingsPageView::FILLS_PAGE`] page fills the body's height.
+/// [`PageView::FILLS_PAGE`] page fills the body's height.
 ///
-/// [`SettingsPageView::FULL_WIDTH`]: crate::shell::view::module_page::SettingsPageView::FULL_WIDTH
-/// [`SettingsPageView::FILLS_PAGE`]: crate::shell::view::module_page::SettingsPageView::FILLS_PAGE
+/// [`PageView::FULL_WIDTH`]: crate::shell::view::module_page::PageView::FULL_WIDTH
+/// [`PageView::FILLS_PAGE`]: crate::shell::view::module_page::PageView::FILLS_PAGE
 fn section_block(
     heading: AnyElement,
     meta: AnyElement,

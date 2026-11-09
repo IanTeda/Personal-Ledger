@@ -259,15 +259,8 @@ impl OpenLedger {
             cx,
         );
         crate::transactions::router::install(&transactions_view, cx);
-        let transactions_subscription = Root::view_event_subscription(&transactions_view, cx);
-        // The status line reads the page's state, so a change in it repaints `Root` too.
-        let transactions_view_observer = cx.observe(&transactions_view, |_, _, cx| cx.notify());
         let import_view =
             crate::transaction_import::import_page(import_stores, &announcer, clock.clone(), cx);
-        // An open select is the step's Filter mode, which it tells `Root` of.
-        let import_subscription = Root::view_event_subscription(&import_view, cx);
-        // The status line reads the step's state, and which View shows turns on it being open.
-        let import_view_observer = cx.observe(&import_view, |_, _, cx| cx.notify());
         let budgets_view = crate::budgets::router::budgets_page(
             budgets_ports,
             &announcer,
@@ -276,17 +269,9 @@ impl OpenLedger {
             dialog_keys.clone(),
             cx,
         );
-        let budgets_subscription = Root::view_event_subscription(&budgets_view, cx);
-        // The status line reads the page's state, so a change in it repaints `Root` too.
-        let budgets_view_observer = cx.observe(&budgets_view, |_, _, cx| cx.notify());
         let dashboard_view =
             crate::dashboard::dashboard_page(dashboard_reads, &announcer, clock.clone(), cx);
-        let dashboard_subscription = Root::view_event_subscription(&dashboard_view, cx);
-        let dashboard_view_observer = cx.observe(&dashboard_view, |_, _, cx| cx.notify());
         let bills_view = crate::bills::bills_page(bills, &announcer, clock.clone(), cx);
-        let bills_subscription = Root::view_event_subscription(&bills_view, cx);
-        // The status line reads the page's state, so a change in it repaints `Root` too.
-        let bills_view_observer = cx.observe(&bills_view, |_, _, cx| cx.notify());
         // The Documents page writes the store through its Interactors, and reads the other
         // domains through their stores (#967).
         let documents_view = crate::documents::view::page::documents_page(
@@ -299,9 +284,31 @@ impl OpenLedger {
             dialog_keys.clone(),
             cx,
         );
-        let documents_subscription = Root::view_event_subscription(&documents_view, cx);
-        // The status line reads the page's state, so a change in it repaints `Root` too.
-        let documents_view_observer = cx.observe(&documents_view, |_, _, cx| cx.notify());
+        let views = ViewEntities {
+            dashboard: dashboard_view,
+            bills: bills_view,
+            budgets: budgets_view,
+            transactions: transactions_view,
+            import: import_view,
+            documents: documents_view,
+        };
+        // Each View's events reach `Root`, and a change in one repaints it: the status line reads
+        // the View's state, and which View shows turns on the Import step being open.
+        let signals = Root::page_signals(cx);
+        let mut subscriptions: Vec<Subscription> = views
+            .all()
+            .into_iter()
+            .flat_map(|view| view.subscribe(&signals, cx))
+            .collect();
+        subscriptions.extend([
+            tags_subscription,
+            payees_changed,
+            categories_subscription,
+            units_subscription,
+            accounts_changed,
+            institutions_subscription,
+            inventory_changed,
+        ]);
         Self {
             announcer,
             stores: storage,
@@ -309,38 +316,11 @@ impl OpenLedger {
             // No count read yet, so the first refresh after the Ledger opens reads its counts.
             rail_counted_at: std::cell::Cell::new(usize::MAX),
             rail_reads,
-            views: ViewEntities {
-                dashboard: dashboard_view,
-                bills: bills_view,
-                budgets: budgets_view,
-                transactions: transactions_view,
-                import: import_view,
-                documents: documents_view,
-            },
+            views,
             dialog_keys,
             path,
             writer,
-            _subscriptions: vec![
-                dashboard_subscription,
-                dashboard_view_observer,
-                budgets_subscription,
-                budgets_view_observer,
-                bills_subscription,
-                bills_view_observer,
-                transactions_subscription,
-                transactions_view_observer,
-                import_subscription,
-                import_view_observer,
-                documents_subscription,
-                documents_view_observer,
-                tags_subscription,
-                payees_changed,
-                categories_subscription,
-                units_subscription,
-                accounts_changed,
-                institutions_subscription,
-                inventory_changed,
-            ],
+            _subscriptions: subscriptions,
             _write_failures: Root::listen_for_write_failures(failures.clone(), cx),
             failures,
         }

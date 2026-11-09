@@ -1,9 +1,10 @@
 //! The Settings pages: [`SettingsPages`], every page's Entity, and [`PageFrame`], the space they are
-//! drawn in. Every page is a [`ModulePage`] on a [`SettingsPageView`] (#1100), and [`PageHandle`]
-//! is its surface over the `Entity`, so [`SettingsPages::get`] hands the Settings View the open
-//! page as one `dyn` handle and `get` is the only match on the page.
+//! drawn in. Every page is a [`ModulePage`](crate::shell::view::module_page::ModulePage) (#1100), and [`PageHandle`], the one hosting trait
+//! `Root` reaches the active View through too (#1101), is its surface over the `Entity`, so
+//! [`SettingsPages::get`] hands the Settings View the open page as one `dyn` handle and `get` is the
+//! only match on the page.
 
-use gpui::{AnyElement, AnyView, App, AppContext as _, Context, Entity, Subscription};
+use gpui::{AppContext as _, Context, Entity, Subscription};
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -11,7 +12,6 @@ use std::rc::Rc;
 use lib_settings::{
     LedgerCounts, LedgerSummaries, SettingsFrameEvent, keymap::settings_frame_keymap,
 };
-use lib_shell::Hint;
 use lib_viper::keymap::{KeyBindingConfig, Keymap};
 
 use crate::{
@@ -38,14 +38,9 @@ use crate::{
             tracing_page,
         },
     },
-    shell::view::{
-        module_page::{ModulePage, SettingsPageView},
-        statusline::PageStatus,
-        window_size::WindowSize,
-    },
+    shell::view::{page_handle::PageHandle, window_size::WindowSize},
     tags::{TagsPage, TagsSetup, tags_page},
     units::{UnitsPage, UnitsSetup, units_page},
-    view::event::{Reveal, ViewEvent},
 };
 
 /// A click on a row of a Settings page, which hands the page keyboard focus. Every page with rows
@@ -75,109 +70,6 @@ pub struct PageFrame {
     pub window_size: WindowSize,
     /// The page body's width, which sets the Display page's Colour Theme grid columns.
     pub body_width: f32,
-}
-
-/// A Settings page's [`ModulePage`] behind one `dyn` handle: what the Settings View calls, without
-/// knowing which page. The page's own items are its [`SettingsPageView`]'s.
-pub trait PageHandle {
-    fn module_key(&self, chord: &str, cx: &mut App) -> bool;
-    fn module_command(&self, command: &str, cx: &mut App) -> bool;
-    fn escape(&self, cx: &mut App) -> bool;
-    fn start_search(&self, cx: &mut App) -> bool;
-    fn reveal(&self, reveal: Reveal, cx: &mut App);
-    fn set_page_focused(&self, focused: bool, cx: &mut App);
-    fn set_frame(&self, frame: PageFrame, cx: &mut App);
-    fn fills_page(&self) -> bool;
-    fn full_width(&self) -> bool;
-    /// [`SettingsPageView::FRAME_SCROLLS`]: whether a movement the page declined scrolls the body.
-    fn frame_scrolls(&self) -> bool;
-    fn heading_meta(&self, cx: &App) -> AnyElement;
-    fn hints(&self, cx: &App) -> Vec<Hint>;
-    fn page_status(&self, cx: &App) -> PageStatus;
-    fn side_pane(&self, cx: &App) -> Option<AnyElement>;
-    fn view(&self) -> AnyView;
-    /// Re-emits the page's [`ViewEvent`]s, repaints the View on its changes and follows its row
-    /// clicks.
-    fn subscribe(&self, cx: &mut Context<'_, SettingsView>) -> Vec<Subscription>;
-}
-
-impl<P: SettingsPageView> PageHandle for Entity<ModulePage<P>> {
-    /// Every chord the page's keymap binds, the arrows and `g g` among them.
-    fn module_key(&self, chord: &str, cx: &mut App) -> bool {
-        self.update(cx, |page, cx| page.module_key(chord, cx))
-    }
-
-    fn module_command(&self, command: &str, cx: &mut App) -> bool {
-        self.update(cx, |page, cx| page.module_command(command, cx))
-    }
-
-    /// Closes what the page has open; `false` leaves `Esc` to Settings, which steps back to the
-    /// index.
-    fn escape(&self, cx: &mut App) -> bool {
-        self.update(cx, |page, cx| page.escape(cx))
-    }
-
-    /// `/` is inert on a page that does not open a Search.
-    fn start_search(&self, cx: &mut App) -> bool {
-        self.update(cx, |page, cx| page.start_search(cx))
-    }
-
-    fn reveal(&self, reveal: Reveal, cx: &mut App) {
-        self.update(cx, |page, cx| page.reveal(reveal, cx));
-    }
-
-    fn set_page_focused(&self, focused: bool, cx: &mut App) {
-        self.update(cx, |page, cx| page.set_page_focused(focused, cx));
-    }
-
-    /// Told outside any input, which can be every draw: handed on as `PageView::framed`'s event.
-    fn set_frame(&self, frame: PageFrame, cx: &mut App) {
-        self.update(cx, |page, cx| page.framed(frame, cx));
-    }
-
-    fn fills_page(&self) -> bool {
-        P::FILLS_PAGE
-    }
-
-    fn full_width(&self) -> bool {
-        P::FULL_WIDTH
-    }
-
-    fn frame_scrolls(&self) -> bool {
-        P::FRAME_SCROLLS
-    }
-
-    fn heading_meta(&self, cx: &App) -> AnyElement {
-        self.read(cx).heading_meta(cx)
-    }
-
-    fn hints(&self, cx: &App) -> Vec<Hint> {
-        self.read(cx).hints()
-    }
-
-    fn page_status(&self, cx: &App) -> PageStatus {
-        self.read(cx).page_status()
-    }
-
-    fn side_pane(&self, cx: &App) -> Option<AnyElement> {
-        self.read(cx).side_pane(self, cx)
-    }
-
-    fn view(&self) -> AnyView {
-        self.clone().into()
-    }
-
-    fn subscribe(&self, cx: &mut Context<'_, SettingsView>) -> Vec<Subscription> {
-        vec![
-            cx.subscribe(self, |_view, _page, event: &ViewEvent, cx| {
-                cx.emit(event.clone());
-            }),
-            cx.observe(self, |_view, _page, cx| cx.notify()),
-            cx.subscribe(self, |view, _page, _event: &PageRowClicked, cx| {
-                view.focus_page_from_click(cx);
-            }),
-        ]
-    }
 }
 
 /// The Entity of every Settings page. Settings builds them and `Root` reaches them only through

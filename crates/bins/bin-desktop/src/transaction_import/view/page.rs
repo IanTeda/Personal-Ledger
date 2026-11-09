@@ -49,6 +49,11 @@ impl PageView for ImportStepPresenter {
     /// The step reads the Payees and Categories as it opens, and nothing changes them under it.
     const REPAINTS: &'static [Domain] = &[];
 
+    /// The step keeps the Transactions table's width, which it shows in place of.
+    fn min_width() -> Option<gpui::Pixels> {
+        Some(crate::transactions::view::table::min_width())
+    }
+
     fn with_router<R>(
         presenter: &mut Self,
         _setup: &(),

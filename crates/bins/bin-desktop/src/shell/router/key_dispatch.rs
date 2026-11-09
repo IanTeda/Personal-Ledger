@@ -206,7 +206,11 @@ impl KeyRoute for Keys<'_, '_> {
             return Some(shell.handle_explorer_key(self.keystroke, self.window_size, self.cx));
         }
         if self.keystroke.key == "escape" {
-            if !(shell.view_owns_mode() && shell.active_view_entity(self.cx).escape(self.cx)) {
+            if !(shell.view_owns_mode()
+                && shell
+                    .active_page(self.cx)
+                    .is_some_and(|page| page.escape(self.cx)))
+            {
                 shell.close_popups_and_exit_mode();
             }
             return Some(true);
@@ -216,8 +220,8 @@ impl KeyRoute for Keys<'_, '_> {
         // into.
         let taken = shell.view_owns_mode()
             && shell
-                .active_view_entity(self.cx)
-                .mode_key(self.keystroke, self.cx);
+                .active_page(self.cx)
+                .is_some_and(|page| page.mode_key(self.keystroke, self.cx));
         Some(taken)
     }
 
@@ -254,7 +258,10 @@ impl KeyRoute for Keys<'_, '_> {
 
     fn module(&mut self, chord: &str) -> bool {
         let shell = &mut *self.shell;
-        shell.view_has_keys() && shell.active_view_entity(self.cx).module_key(chord, self.cx)
+        shell.view_has_keys()
+            && shell
+                .active_page(self.cx)
+                .is_some_and(|page| page.module_key(chord, self.cx))
     }
 
     fn fall_back(&mut self, fallback: Option<ShellCommand>) -> bool {

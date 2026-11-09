@@ -5,9 +5,10 @@
 //! frame its keys and clicks, and reaches `Root` only through [`ViewEvent`], which it re-emits from
 //! its pages, and [`PageChanged`], which the frame's Router raises.
 //!
-//! Every page is a [`ModulePage`] on a [`SettingsPageView`] behind one `dyn`
-//! [`PageHandle`](super::pages::PageHandle), so while a page has focus this View forwards its keys,
-//! `Esc`, Search and status to it without knowing which page it is. The page picker is the frame's
+//! Every page is a [`ModulePage`] behind one `dyn` [`PageHandle`], so while a page has focus this
+//! View forwards its keys, `Esc`, Search and status to it without knowing which page it is. The View
+//! is itself a [`PageHandle`] to `Root` (#1101): a composite host, offering each key to its open page
+//! through the same trait `Root` offers it to the View through. The page picker is the frame's
 //! mode (`PageMode::Filter`), whose keys the key route offers through [`SettingsView::mode_key`];
 //! a movement the Shell falls back on is the frame's own, scrolling the body or stepping the index
 //! (#1100).
@@ -17,18 +18,21 @@ use super::router::{FrameRouter, PageChanged};
 use crate::{
     announcer::Announcer,
     navigation::{chord::chord, movement::Movement},
-    settings::pages::{LedgerPages, PageFrame, PageHandle, SettingsPages, SettingsSetup},
+    settings::pages::{LedgerPages, PageFrame, SettingsPages, SettingsSetup},
     settings::{SettingsFocus, SettingsPage},
     shell::view::{
         module_page::{ModulePage, SettingsPageView},
         page_clicks::PresenterPage,
+        page_handle::{PageHandle, PageLayout, PageSignals},
         statusline::PageStatus,
         window_size::WindowSize,
     },
     view::event::{Reveal, ViewEvent},
     view::help::HelpGroup,
 };
-use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, Subscription};
+use gpui::{
+    AnyElement, AnyView, App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, Subscription,
+};
 use lib_list_cursor::Step;
 use lib_settings::{
     ColourChoice, DeviceConfiguration, DisplayEvent, DisplayOutput, DisplaySettings, GeneralEvent,
@@ -85,7 +89,7 @@ impl SettingsView {
     /// and the frame's `[keybindings]` through [`Self::set_keymaps`].
     pub fn new(cx: &mut Context<'_, Self>) -> Self {
         let pages = SettingsPages::new(cx);
-        let _page_subscriptions = pages.all().flat_map(|page| page.subscribe(cx)).collect();
+        let _page_subscriptions = subscribe_pages(&pages, cx);
         let config = KeyBindingConfig::default();
         let frame = SettingsFramePresenter::new(SettingsFrameSetup {
             keymap: settings_frame_keymap(&config),
@@ -183,11 +187,7 @@ impl SettingsView {
         let pages = LedgerPages::new(announcer, clock, setup, self.frame.keymap(), cx);
         self.pages.ledger = Some(pages);
         // Subscribed afresh, so a swapped-out Ledger's pages leave no subscription behind.
-        self._page_subscriptions = self
-            .pages
-            .all()
-            .flat_map(|page| page.subscribe(cx))
-            .collect();
+        self._page_subscriptions = subscribe_pages(&self.pages, cx);
         self.handle(SettingsFrameEvent::LedgerOpened, cx);
         self.sync_frame(cx);
     }
@@ -204,11 +204,7 @@ impl SettingsView {
     /// gives way to the index, its cursor on General.
     pub fn close_ledger(&mut self, cx: &mut Context<'_, Self>) {
         self.pages.ledger = None;
-        self._page_subscriptions = self
-            .pages
-            .all()
-            .flat_map(|page| page.subscribe(cx))
-            .collect();
+        self._page_subscriptions = subscribe_pages(&self.pages, cx);
         self.handle(SettingsFrameEvent::LedgerClosed, cx);
         self.sync_frame(cx);
     }
@@ -374,13 +370,13 @@ impl SettingsView {
                 self.scroll_handle.set_offset(gpui::Point::default());
             }
             if let Some(before) = self.pages.get(page_before) {
-                before.set_page_focused(false, cx);
+                before.set_focused(false, cx);
             }
         }
         if moved || reopened || focus != focus_before {
-            self.selected_page().set_page_focused(false, cx);
+            self.selected_page().set_focused(false, cx);
             if focus == SettingsFocus::Page {
-                self.selected_page().set_page_focused(true, cx);
+                self.selected_page().set_focused(true, cx);
             }
         }
         let entered = event == SettingsFrameEvent::Entered;
@@ -473,11 +469,11 @@ impl SettingsView {
 
     /// A movement the Shell fell back on, which no keymap took: the frame's own. The index (on
     /// show, or docked with the keyboard) steps through the pages as the frame's own keys do, and a
-    /// page the frame scrolls (`SettingsPageView::FRAME_SCROLLS`) scrolls the body. A page with a
+    /// page the frame scrolls (`PageView::FRAME_SCROLLS`) scrolls the body. A page with a
     /// selection of its own binds every movement it takes, so one it declined does nothing.
     pub fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) {
         if let Some(page) = self.focused_page()
-            && !page.frame_scrolls()
+            && !page.layout().frame_scrolls
         {
             return;
         }
@@ -554,7 +550,7 @@ impl SettingsView {
         }
         match self.focused_page() {
             Some(page) => {
-                let mut status = page.page_status(cx);
+                let mut status = page.page_status(cx).unwrap_or_default();
                 status.hints.extend(self.frame.hints());
                 Some(status)
             }
@@ -565,14 +561,29 @@ impl SettingsView {
         }
     }
 
-    /// The `?` cheat-sheet's Settings group: the index keys, then the open page's.
+    /// The `?` cheat-sheet's Settings group: the index keys, then the open page's: its own Help
+    /// group when it gives one (Display's controls and grid both), else what its status line shows.
     pub fn help_group(&self, cx: &App) -> Option<HelpGroup> {
+        let page = self.selected_page();
+        let page_keys = match page.help_group(cx) {
+            Some(group) => group.keys,
+            None => page
+                .page_status(cx)
+                .map(|status| {
+                    status
+                        .hints
+                        .into_iter()
+                        .map(|hint| (hint.action, hint.chord))
+                        .collect()
+                })
+                .unwrap_or_default(),
+        };
         let keys = self
             .frame
             .help()
             .into_iter()
-            .chain(self.selected_page().hints(cx))
             .map(|hint| (hint.action, hint.chord))
+            .chain(page_keys)
             .collect();
         Some(HelpGroup {
             heading: crate::msg::desktop_help_settings_label(),
@@ -680,6 +691,98 @@ impl SettingsView {
         self.pages
             .general
             .update(cx, |page, cx| page.send(GeneralEvent::SetToasts(on), cx));
+    }
+}
+
+/// Every page's events re-emitted for `Root`, its changes repainting this View and its row clicks
+/// handing it focus.
+fn subscribe_pages(pages: &SettingsPages, cx: &mut Context<'_, SettingsView>) -> Vec<Subscription> {
+    let signals = PageSignals::to(
+        cx,
+        |_view, event, cx| cx.emit(event.clone()),
+        |view, cx| view.focus_page_from_click(cx),
+    );
+    pages
+        .all()
+        .flat_map(|page| page.subscribe(&signals, cx))
+        .collect()
+}
+
+/// Settings as `Root` hosts it: a composite host, offering each key to its open page through the
+/// same trait.
+impl PageHandle for Entity<SettingsView> {
+    fn module_key(&self, chord: &str, cx: &mut App) -> bool {
+        self.update(cx, |view, cx| view.module_key(chord, cx))
+    }
+
+    /// On the open page.
+    fn module_command(&self, command: &str, cx: &mut App) -> bool {
+        self.update(cx, |view, cx| {
+            let section = view.selected_section();
+            view.module_command(section, command, cx)
+        })
+    }
+
+    fn mode_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
+        self.update(cx, |view, cx| view.mode_key(keystroke, cx))
+    }
+
+    fn escape(&self, cx: &mut App) -> bool {
+        self.update(cx, |view, cx| view.escape(cx))
+    }
+
+    fn start_search(&self, cx: &mut App) -> bool {
+        self.update(cx, |view, cx| view.start_search(cx))
+    }
+
+    fn on_enter(&self, cx: &mut App) {
+        self.update(cx, |view, cx| view.on_enter(cx));
+    }
+
+    fn reveal(&self, reveal: Reveal, cx: &mut App) {
+        self.update(cx, |view, cx| view.reveal(reveal, cx));
+    }
+
+    /// Whether the View zone has focus.
+    fn set_focused(&self, focused: bool, cx: &mut App) {
+        self.update(cx, |view, _| view.set_zone_focused(focused));
+    }
+
+    /// The Window Size only: the View measures its own body, which it tells its pages.
+    fn set_frame(&self, frame: PageFrame, cx: &mut App) {
+        self.update(cx, |view, cx| view.set_window_size(frame.window_size, cx));
+    }
+
+    fn page_status(&self, cx: &App) -> Option<PageStatus> {
+        self.read(cx).page_status(cx)
+    }
+
+    fn help_group(&self, cx: &App) -> Option<HelpGroup> {
+        self.read(cx).help_group(cx)
+    }
+
+    /// Settings draws its pages' headings itself.
+    fn heading_meta(&self, _cx: &App) -> Option<AnyElement> {
+        None
+    }
+
+    /// Settings docks its own panes.
+    fn side_pane(&self, _cx: &App) -> Option<AnyElement> {
+        None
+    }
+
+    fn layout(&self) -> PageLayout {
+        PageLayout::default()
+    }
+
+    fn view(&self) -> AnyView {
+        self.clone().into()
+    }
+
+    /// Its own events (each page's re-emitted among them) and changes; its row clicks are its
+    /// pages', which it follows itself.
+    fn subscribe(&self, signals: &PageSignals, cx: &mut App) -> Vec<Subscription> {
+        signals.follow(self, cx)
     }
 }
 

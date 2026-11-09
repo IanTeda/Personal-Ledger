@@ -2,7 +2,7 @@
 //! owns the Presenter, the widget state its View keeps beside it, whether the page has focus and
 //! its repaints, and is the one take, send and handle path a key, a palette Command, a click or a
 //! landed Dialog reaches the Presenter through. A domain writes a [`PageView`] on its page
-//! Presenter (its Router, what it repaints on, how it draws) and no Entity of its own.
+//! Presenter (its Router, what it repaints on, how it draws and lays out) and no Entity of its own.
 //!
 //! The page never counts or announces a write: each input's `send` announces what its commit
 //! names (ADR-0055), and the page repaints on the domains in [`PageView::REPAINTS`].
@@ -10,19 +10,15 @@
 //! It takes no leftover-key handler: a page types text through `PagePresenter::typed` and reports a
 //! mode of its own through `PagePresenter::mode`, which the page turns into `EnterMode` and
 //! `ExitMode` around each handle, and the key route offers it every key in that mode through
-//! [`ModulePage::mode_key`] (#1100). It also serves the main Views' methods `ActiveViewEntity` forwards
-//! to (`on_enter`, `start_search`, the `?` Help group), with [`PageView`]'s hooks around a handle
-//! for the widget state a main View keeps (ADR-0056's main-View consequence).
+//! [`ModulePage::mode_key`] (#1100). Main Views and Settings pages alike are reached through
+//! [`PageHandle`](super::page_handle::PageHandle) over their Entity (#1101), with [`PageView`]'s
+//! hooks around a handle for the widget state a page keeps (ADR-0056's main-View consequence).
 //! [`PresenterPage`] is how [`PageClicks`] reaches the page, for the generic page as for the
-//! hand-written ones. A Settings page is a [`SettingsPageView`] too, which the Settings View reaches
-//! through `settings::pages::PageHandle` over its Entity.
+//! hand-written ones. A Settings page is a [`SettingsPageView`] too, naming its place in the index.
 
-use gpui::{
-    AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Keystroke, Pixels, Point,
-};
+use gpui::{AnyElement, App, Context, Entity, EventEmitter, Keystroke, Pixels, Point};
 use gpui::{Render, Subscription, Window};
 use lib_database::Domain;
-use lib_shell::Hint;
 use lib_viper::keymap::SEARCH;
 use lib_viper::presenter::{PageMode, PagePresenter, TextKey};
 
@@ -54,6 +50,27 @@ pub trait PageView: PagePresenter + Sized + 'static {
 
     /// The Ledger domains whose change repaints the page: its own, and any its view model reads.
     const REPAINTS: &'static [Domain];
+
+    /// Whether a Settings page fills the body's height and scrolls inside itself (Tracing's log
+    /// box) rather than the body scrolling the whole page.
+    const FILLS_PAGE: bool = false;
+
+    /// Whether a Settings page draws past the Settings content width to the View's (Units' tables,
+    /// down to their 610px minimum).
+    const FULL_WIDTH: bool = false;
+
+    /// Whether a movement the page's keymap didn't take falls back to the Settings frame, which
+    /// scrolls the body with it. A page with a selection of its own binds every movement it takes,
+    /// so leaves this `false` and a movement it declines does nothing; General, Ledger and the info
+    /// pages have none.
+    const FRAME_SCROLLS: bool = false;
+
+    /// The narrowest the page lays out at, when it has content that must not squeeze (the
+    /// Transactions table, whose width the Import step keeps). A View area narrower than this
+    /// scrolls sideways (ADR-0042).
+    fn min_width() -> Option<Pixels> {
+        None
+    }
 
     /// Runs `handle` on `presenter` with the page's Router, built over `setup` around this call's
     /// context, which is how a Router opens a Dialog in the host. The Router may read what the
@@ -170,25 +187,11 @@ pub trait PageView: PagePresenter + Sized + 'static {
 }
 
 /// A Settings page's [`PageView`]: its place in the index, which the Settings View finds the page
-/// by, and how the Settings body lays it out. Its identity (order, id, label, scope note) stays on
-/// [`SettingsPage`], which the page names through [`Self::PAGE`].
+/// by. Its identity (order, id, label, scope note) stays on [`SettingsPage`], which the page names
+/// through [`Self::PAGE`]; how the body lays it out is [`PageView`]'s, as every page's is.
 pub trait SettingsPageView: PageView {
     /// The page's place in the index.
     const PAGE: SettingsPage;
-
-    /// Whether the page fills the body's height and scrolls inside itself (Tracing's log box)
-    /// rather than the body scrolling the whole page.
-    const FILLS_PAGE: bool = false;
-
-    /// Whether the page draws past the Settings content width to the View's (Units' tables, down
-    /// to their 610px minimum).
-    const FULL_WIDTH: bool = false;
-
-    /// Whether a movement the page's keymap didn't take falls back to the Settings frame, which
-    /// scrolls the body with it. A page with a selection of its own binds every movement it takes,
-    /// so leaves this `false` and a movement it declines does nothing; General, Ledger and the info
-    /// pages have none.
-    const FRAME_SCROLLS: bool = false;
 }
 
 /// What [`PageView::render`] draws with beside the view model.
@@ -206,8 +209,7 @@ pub struct ModulePage<P: PageView> {
     presenter: P,
     setup: P::Setup,
     widgets: P::Widgets,
-    /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
-    /// draws the page.
+    /// Whether the page has the keyboard, told by its host as it draws the page.
     page_focused: bool,
     /// Repaints the page when a domain in [`PageView::REPAINTS`] changes, and follows what
     /// [`PageView::subscribe`] names.
@@ -279,12 +281,6 @@ impl<P: PageView> ModulePage<P> {
     pub fn update_presenter(&mut self, cx: &mut Context<'_, Self>, change: impl FnOnce(&mut P)) {
         change(&mut self.presenter);
         cx.notify();
-    }
-
-    /// Records whether the View zone has focus, as the Shell draws a main View's page: the focus
-    /// rings it draws within itself follow it.
-    pub fn set_focused(&mut self, focused: bool) {
-        self.page_focused = focused;
     }
 
     /// The Presenter, for a test's snapshot of what it holds beyond its view model.
@@ -554,34 +550,21 @@ impl<P: PageView> PresenterPage<P::Event> for ModulePage<P> {
     }
 }
 
-/// What the Settings View asks of a Settings page beyond the main Views' methods.
-impl<P: SettingsPageView> ModulePage<P> {
-    /// Told whether the page, not the index, holds keyboard focus, as the View draws it and as
-    /// focus moves in or out.
-    pub fn set_page_focused(&mut self, focused: bool, cx: &mut Context<'_, Self>) {
+/// What a host reads of the page beyond its keys, through `PageHandle`.
+impl<P: PageView> ModulePage<P> {
+    /// Told whether the page has the keyboard, as its host draws it and as focus moves in or out:
+    /// the View zone for a main View, the page rather than the index for a Settings page. The focus
+    /// rings the page draws within itself follow it.
+    pub fn set_focused(&mut self, focused: bool, cx: &mut Context<'_, Self>) {
         self.page_focused = focused;
         if self.presenter.focus_changed(focused) {
             cx.notify();
         }
     }
 
-    /// The heading's right-aligned meta: [`PageView::heading_meta`], else the page's scope note.
-    pub fn heading_meta(&self, cx: &App) -> AnyElement {
+    /// A Settings page heading's right-aligned meta, [`PageView::heading_meta`].
+    pub fn heading_meta(&self, cx: &App) -> Option<AnyElement> {
         P::heading_meta(&self.view_model(), cx)
-            .unwrap_or_else(|| crate::settings::scope_note(P::PAGE).into_any_element())
-    }
-
-    /// The `?` cheat sheet's keys: the page's [`PageView::help`] group when it gives one (Display's
-    /// controls and grid both), else what its status line shows.
-    pub fn hints(&self) -> Vec<Hint> {
-        match self.help_group() {
-            Some(group) => group
-                .keys
-                .into_iter()
-                .map(|(action, chord)| Hint::new(chord, action))
-                .collect(),
-            None => self.page_status().hints,
-        }
     }
 
     /// A pane drawn at the View's right edge, beside the page, its clicks reaching `entity`.

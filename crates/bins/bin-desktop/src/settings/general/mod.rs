@@ -66,6 +66,9 @@ impl PageView for GeneralPresenter {
     /// General reads Configuration, not the Ledger.
     const REPAINTS: &'static [Domain] = &[];
 
+    /// With no control focused, the frame scrolls the page.
+    const FRAME_SCROLLS: bool = true;
+
     fn with_router<R>(
         presenter: &mut Self,
         _setup: &(),
@@ -100,9 +103,6 @@ impl PageView for GeneralPresenter {
 
 impl SettingsPageView for GeneralPresenter {
     const PAGE: SettingsPage = SettingsPage::General;
-
-    /// With no control focused, the frame scrolls the page.
-    const FRAME_SCROLLS: bool = true;
 }
 
 /// The General page for a test: the focused control, each setting, and what it shows read-only.

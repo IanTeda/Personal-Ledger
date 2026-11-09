@@ -10,9 +10,10 @@
 //! `g`-prefix jump chords (`g d`, `g t`, ...) and the `Normal`/`Insert`/`Command`/`Search`
 //! mode transitions (issue #150); the command palette (issue #151); the collapsed rail, its
 //! `b`-key/click toggle, and its hover tooltip (issue #152). `?`'s help overlay (issue #169, a
-//! Dialog in `InputMode::Dialog`). No `View` trait (ADR-0016): `Root` forwards to the active View
-//! through `view::active::ActiveViewEntity` (ADR-0037), and `render_view` in `router/render.rs`
-//! draws the Views not yet moved onto it.
+//! Dialog in `InputMode::Dialog`). One hosting trait (ADR-0016's #1079 update): `Root` reaches the
+//! active View as a `dyn PageHandle` from `view::active::page`'s one match on the `ActiveView`, and
+//! `render_view` in `router/render.rs` draws the Views with no handle (a placeholder, no Ledger
+//! open).
 //!
 //! The file holds the `Root` struct, [`build`], construction, persisted setters, the accessor
 //! surface, `impl Focusable`, per-domain wiring and the unit tests. Each cross-cutting concern
@@ -84,7 +85,8 @@ use gpui::{
 use lib_documents::presenter::DocumentsPageEvent;
 use lib_shell::{NavInput, ToastInput};
 
-use crate::view::active::ActiveViewEntity;
+use crate::shell::view::page_handle::PageHandle;
+use crate::view::active;
 use crate::{
     documents::{DocumentsMode, LibraryScope, LibrarySort},
     navigation::active_view::ActiveView,
@@ -226,16 +228,12 @@ impl Root {
         cx: &mut Context<'_, Self>,
     ) -> Self {
         let settings = cx.new(SettingsView::new);
-        let _settings_subscriptions = vec![
-            Self::view_event_subscription(&settings, cx),
-            // The frame's Router says which page the person moved to, for Back and Forward.
-            cx.subscribe(&settings, |shell, _, PageChanged(page), cx| {
-                shell.navigate(NavInput::SettingsPage(*page));
-                cx.notify();
-            }),
-            // The status line reads the page's state, so a change in it repaints `Root` too.
-            cx.observe(&settings, |_, _, cx| cx.notify()),
-        ];
+        let mut _settings_subscriptions = settings.subscribe(&Self::page_signals(cx), cx);
+        // The frame's Router says which page the person moved to, for Back and Forward.
+        _settings_subscriptions.push(cx.subscribe(&settings, |shell, _, PageChanged(page), cx| {
+            shell.navigate(NavInput::SettingsPage(*page));
+            cx.notify();
+        }));
         Self {
             focus_handle,
             view_x_scroll_handle: ScrollHandle::new(),
@@ -672,10 +670,14 @@ impl Root {
         )
     }
 
-    /// The active View as `Root` forwards to it (ADR-0037): with no Ledger open, Settings or the
-    /// no Ledger open content.
-    fn active_view_entity(&self, cx: &App) -> ActiveViewEntity {
-        root_router::active_view_entity(self.nav().noun(), &self.settings, self.open.as_ref(), cx)
+    /// The active View as `Root` hosts it, through the one hosting trait: `None` for a View `Root`
+    /// still draws (a placeholder, or with no Ledger open the no Ledger open content).
+    fn active_page<'a>(&'a self, cx: &App) -> Option<&'a dyn PageHandle> {
+        active::page(
+            self.active_view(cx),
+            self.open.as_ref().map(|open| &open.views),
+            &self.settings,
+        )
     }
 
     /// Hands the Toasts Preference to the Toasts, after a change on Settings › General or

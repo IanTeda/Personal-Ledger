@@ -1,30 +1,34 @@
-//! The `ViewEvent` channel into `Root`: `Root` subscribes to each View Entity and handles
-//! every event in `handle_view_event`, the one place a View's request turns into `Root` state
+//! The `ViewEvent` channel into `Root`: `Root` follows each View through `PageHandle::subscribe`
+//! with [`Root::page_signals`], and handles every event in `handle_view_event`, the one place a View's request turns into `Root` state
 //! (ADR-0032, ADR-0037). As the root Router, it turns a Toast or a status a View not yet a module
 //! raised into one input (`ShellInput::Notice`), so it reaches the frame as a module's Notice
 //! does; the other requests are handled as before. An `impl Root` block, not a module of the
 //! same name.
 
-use gpui::{Context, Entity, EventEmitter, Subscription};
+use gpui::Context;
 use lib_shell::ShellInput;
 use lib_toast::Notice;
 
 use super::Root;
+use crate::shell::view::page_handle::PageSignals;
 use crate::view::event::{Reveal, ViewEvent};
 use lib_shell::NavInput;
 
 impl Root {
-    /// The subscription that hands a View's events to [`Self::handle_view_event`], which whoever
-    /// built the View keeps: dropping it silently stops the View's events.
-    pub(super) fn view_event_subscription<V: EventEmitter<ViewEvent>>(
-        view: &Entity<V>,
-        cx: &mut Context<'_, Self>,
-    ) -> Subscription {
-        cx.subscribe(view, |shell, _view, event: &ViewEvent, cx| {
-            shell.handle_view_event(event.clone(), cx);
-            // A View's request changes what `Root` draws, and nothing else schedules a frame.
-            cx.notify();
-        })
+    /// Where a View's signals reach `Root`: its events to [`Self::handle_view_event`], and its
+    /// changes repainting `Root`, whose status line reads the View's state. Whoever built the View
+    /// keeps the subscriptions: dropping them silently stops the View's events. A row click is the
+    /// View's own, as `Root` already gives the View zone focus on any click in it.
+    pub(super) fn page_signals(cx: &Context<'_, Self>) -> PageSignals {
+        PageSignals::to(
+            cx,
+            |shell, event, cx| {
+                shell.handle_view_event(event.clone(), cx);
+                // A View's request changes what `Root` draws, and nothing else schedules a frame.
+                cx.notify();
+            },
+            |_, _| {},
+        )
     }
 
     /// Applies one View request to `Root`'s own state, using the same helpers the keyboard and
@@ -66,7 +70,9 @@ impl Root {
     pub(super) fn reveal(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
         self.navigate(NavInput::Show(reveal.noun()));
         self.reset_view_scroll(cx);
-        self.active_view_entity(cx).reveal(reveal, cx);
+        if let Some(page) = self.active_page(cx) {
+            page.reveal(reveal, cx);
+        }
     }
 
     /// Whether the current mode is one the active View entered itself, so its keys are the View's.
@@ -106,7 +112,7 @@ mod tests {
         });
         let view = cx.new(|_| StandInView);
         // A Toast or status arrives as one input, which drains into the Shell through the door.
-        let _subscription = shell.update(cx, |_, cx| Root::view_event_subscription(&view, cx));
+        let _subscriptions = shell.update(cx, |_, cx| Root::page_signals(cx).follow(&view, cx));
 
         view.update(cx, |_, cx| {
             cx.emit(ViewEvent::RaiseToast {
@@ -156,7 +162,7 @@ mod tests {
         });
         let view = cx.new(|_| StandInView);
         // A Toast or status arrives as one input, which drains into the Shell through the door.
-        let _subscription = shell.update(cx, |_, cx| Root::view_event_subscription(&view, cx));
+        let _subscriptions = shell.update(cx, |_, cx| Root::page_signals(cx).follow(&view, cx));
         // The sample seed's plans, which `FakeStores::sample` holds.
         let (id, last_plan) =
             lib_bills::planner_order(&lib_database::seed::sample_bills(today).plans)

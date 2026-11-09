@@ -48,6 +48,9 @@ impl PageView for UnitsPagePresenter {
     /// A Units write or a rollback, and the Accounts the detail pane's ACCOUNTS group reads.
     const REPAINTS: &'static [Domain] = &[Domain::Units, Domain::Accounts];
 
+    /// The tables fill the View's width, down to their 610px minimum.
+    const FULL_WIDTH: bool = true;
+
     fn with_router<R>(
         presenter: &mut Self,
         setup: &UnitsRoutes,
@@ -126,6 +129,4 @@ impl PageView for UnitsPagePresenter {
 
 impl SettingsPageView for UnitsPagePresenter {
     const PAGE: SettingsPage = SettingsPage::Units;
-    /// The tables fill the View's width, down to their 610px minimum.
-    const FULL_WIDTH: bool = true;
 }

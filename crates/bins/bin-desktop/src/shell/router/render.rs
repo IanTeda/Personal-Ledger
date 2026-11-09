@@ -18,6 +18,7 @@ use crate::{
     documents::{self},
     navigation::explorer::{self as explorer_view},
     navigation::nav::{FocusZone, InputMode},
+    settings::pages::PageFrame,
     shell::view::dialog_entity::DialogHandle,
     shell::view::page_clicks::PageClicks,
     shell::view::rail::{self as rail_view, context::ContextRail, primary::PrimaryRail},
@@ -25,10 +26,7 @@ use crate::{
     shell::view::topbar::{self, TopBar},
     shell::view::window_size::{WindowSize, WindowSizeExt},
     theme::{color, type_scale},
-    view::{
-        active::{ActiveViewEntity, ShellView},
-        placeholder,
-    },
+    view::{active::ShellView, placeholder},
 };
 
 impl Render for Root {
@@ -40,7 +38,6 @@ impl Render for Root {
         let rail_mode = self.primary_rail(window_size, cx);
         self.place_budgets_switcher(rail_mode, cx);
         let focus = self.nav().focus();
-        let active_entity = self.active_view_entity(cx);
         // The "1d" spec: "The shell behind the palette drops to 30% opacity" -- the "1e" file
         // explorer reuses the same dimming pattern (Implementation note 10). Applied to the top
         // bar and content row only, not the status line -- that same spec separately describes
@@ -167,11 +164,20 @@ impl Render for Root {
         let rail_counts = self.presenter.view_model().rail_counts.unwrap_or_default();
         let clicks = PageClicks::new(cx);
 
-        // The active View's own element, told whether the View zone has focus before the status
-        // line reads its page status.
-        let active_element = active_entity.element(focus == FocusZone::View, window_size, cx);
-        let view_status = self.view_status(cx);
+        // The active View's own element and the narrowest it lays out at, the View told whether
+        // the View zone has focus and the space it is drawn in before the status line reads its
+        // page status. A View with no handle is drawn here (`render_view`).
         let active_view = self.active_view(cx);
+        let frame = PageFrame {
+            window_size,
+            body_width: f32::from(self.view_x_scroll_handle.bounds().size.width),
+        };
+        let active_element = self.active_page(cx).map(|page| {
+            page.set_focused(focus == FocusZone::View, cx);
+            page.set_frame(frame, cx);
+            (page.view().into_any_element(), page.layout().min_width)
+        });
+        let view_status = self.view_status(cx);
 
         div()
             .size_full()
@@ -235,13 +241,16 @@ impl Render for Root {
                                     ))
                                 },
                             )
-                            .child(match active_entity {
-                                ActiveViewEntity::Shell(view) => {
-                                    render_view(view, focus == FocusZone::View, &clicks, cx)
-                                }
-                                _ => view_frame(
-                                    active_element,
-                                    active_entity.min_width(),
+                            .child(match active_element {
+                                None => render_view(
+                                    ShellView::of(active_view, self.ledger_open()),
+                                    focus == FocusZone::View,
+                                    &clicks,
+                                    cx,
+                                ),
+                                Some((element, min_width)) => view_frame(
+                                    element,
+                                    min_width,
                                     &self.view_x_scroll_handle,
                                     focus == FocusZone::View,
                                     cx.listener(|shell, _: &MouseDownEvent, _window, cx| {
