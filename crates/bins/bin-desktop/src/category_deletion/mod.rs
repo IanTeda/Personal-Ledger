@@ -3,8 +3,8 @@
 //! through. Every rule, every piece of text and the Presenter are `lib-category-deletion`'s; this
 //! folder turns gpui keys and clicks into Presenter events and draws the view model.
 //!
-//! - `view/dialog.rs` holds the Presenter in an Entity in the Dialog host, drawn by
-//!   `view/dialog/delete_category.rs`.
+//! - `view/dialog/delete_category.rs` is the Presenter's `DialogView`, hosted in a `ModuleDialog`
+//!   (ADR-0056).
 //! - `router.rs` is the module's entry point ([`router::open_delete`]).
 //!
 //! Delete writes through [`DeletionStores`]' port, `lib-database`'s adapter over the Categories,
@@ -18,8 +18,6 @@ pub(crate) mod view;
 
 use lib_category_deletion::SharedCategoryDeletion;
 use lib_database::StoredCategoryDeletionReads;
-
-pub use view::dialog::CategoryDeletionDialog;
 
 /// What the Delete category Dialog writes and reads through: the deletion port and the reads it
 /// shows when it opens, which `lib-database`'s `LedgerPorts` builds over the shared stores.

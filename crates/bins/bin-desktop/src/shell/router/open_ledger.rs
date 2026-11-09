@@ -199,6 +199,7 @@ impl OpenLedger {
             storage.ports.category_save.clone(),
             storage.ports.stores.budgets.clone(),
             crate::category_deletion::DeletionStores::of(&storage.ports),
+            dialog_keys.clone(),
             keybindings,
         );
         let inventory_setup = crate::inventory::InventorySetup::new(

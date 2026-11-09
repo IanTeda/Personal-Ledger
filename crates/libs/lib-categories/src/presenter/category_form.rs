@@ -21,16 +21,18 @@ use std::collections::BTreeMap;
 
 use lib_core::{CategoryId, CategoryTypes, Money};
 use lib_locale::format::format_month;
-use lib_viper::dialog::{DialogInput, DialogRouter};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::{BACK, NEXT_FIELD, SELECT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
 use lib_viper::view::{
-    Choice, DialogFrame, SelectList, SelectMove, SelectView, TextFieldView, count,
+    Choice, DialogFrame, Hint, SelectList, SelectMove, SelectView, TextFieldView, count,
 };
 
 use super::{save_refusal_text, type_in_use_text};
 use crate::interactor::{AddCategory, BudgetChange, EditCategory};
 use crate::protocols::{
-    CategoriesOutcome, CategoryChange, CategorySavePorts, CategoryUsage, Holdings, ParentStop,
-    SharedCategories, TypeChangeBlockers,
+    CategoriesOutcome, CategoryChange, CategorySavePorts, Holdings, ParentStop, SharedCategories,
+    SharedSavePorts, TypeChangeBlockers,
 };
 use crate::{
     Category, depth, descendants_inclusive, get, is_leaf, is_uncategorised, move_exceeds_depth,
@@ -67,6 +69,10 @@ pub enum CategoryFormEvent {
     CloseParents,
     /// A click on a field, which closes an open list.
     Focus(CategoryField),
+    /// A Dialog command or typed key, which the Presenter reads for the focused field.
+    Input(DialogInput),
+    /// Saves a valid form and closes the Dialog; a refusal stays on the form.
+    Confirm,
     Cancel,
 }
 
@@ -97,6 +103,8 @@ pub struct CategoryFormViewModel {
     /// Edit, rather than Add.
     pub editing: bool,
     pub focused: CategoryField,
+    /// The status line's legend while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 /// The Monthly budget field as drawn.
@@ -134,6 +142,9 @@ struct Editing {
 
 pub struct CategoryFormPresenter {
     categories: SharedCategories,
+    /// What the form reads when it opens and the confirm writes through.
+    ports: SharedSavePorts,
+    keys: DialogKeys,
     editing: Option<Editing>,
     parents: Vec<Choice<Option<CategoryId>>>,
     /// Where each offered parent is budgeted, read when the Dialog opened.
@@ -151,12 +162,17 @@ pub struct CategoryFormPresenter {
 }
 
 impl CategoryFormPresenter {
-    /// A fresh Add form, at top level as an Expense or under `parent` as its type.
+    /// A fresh Add form, at top level as an Expense or under `parent` as its type. `ports` are what
+    /// it reads now and its confirm writes through; `keys` are the Dialog keymap's chords, which
+    /// its hints show.
     pub fn add(
         categories: SharedCategories,
-        budget: &dyn CategorySavePorts,
+        ports: SharedSavePorts,
         parent: Option<CategoryId>,
+        keys: DialogKeys,
     ) -> Self {
+        let guard = ports.borrow();
+        let budget = &*guard;
         let rows = categories.borrow().categories();
         let parents = choices(
             &rows,
@@ -172,10 +188,16 @@ impl CategoryFormPresenter {
             .monthly_budget(&rows, None)
             .archived
             .map(BudgetLock::Archived);
+        let (stops, holdings) = (
+            parent_stops(budget, &parents),
+            parent_holdings(budget, &parents),
+        );
         Self {
-            stops: parent_stops(budget, &parents),
-            holdings: parent_holdings(budget, &parents),
+            stops,
+            holdings,
             categories,
+            ports: ports.clone(),
+            keys,
             editing: None,
             parents,
             name: String::new(),
@@ -193,10 +215,13 @@ impl CategoryFormPresenter {
     /// shows this month's amount, a parent's being its leaves' sum.
     pub fn edit(
         categories: SharedCategories,
-        budget: &dyn CategorySavePorts,
-        usage: &dyn CategoryUsage,
+        ports: SharedSavePorts,
         id: CategoryId,
+        keys: DialogKeys,
     ) -> Option<Self> {
+        let guard = ports.borrow();
+        let budget = &*guard;
+        let usage = budget;
         let rows = categories.borrow().categories();
         let category = get(&rows, id)?.clone();
         let subtree = descendants_inclusive(&rows, id);
@@ -216,10 +241,16 @@ impl CategoryFormPresenter {
             monthly.archived.map(BudgetLock::Archived)
         };
         let parents = choices(&rows, offered);
+        let (stops, holdings) = (
+            parent_stops(budget, &parents),
+            parent_holdings(budget, &parents),
+        );
         Some(Self {
-            stops: parent_stops(budget, &parents),
-            holdings: parent_holdings(budget, &parents),
+            stops,
+            holdings,
             parents,
+            ports: ports.clone(),
+            keys,
             editing: Some(Editing {
                 id,
                 splits: subtree
@@ -247,13 +278,17 @@ impl CategoryFormPresenter {
             refusal: None,
         })
     }
+}
 
-    pub fn handle(
-        &mut self,
-        event: CategoryFormEvent,
-        router: &mut dyn DialogRouter<CategoriesOutcome>,
-    ) {
+impl Presenter for CategoryFormPresenter {
+    type Event = CategoryFormEvent;
+    type ViewModel = CategoryFormViewModel;
+    type Router<'r> = dyn DialogRouter<CategoriesOutcome> + 'r;
+
+    fn handle(&mut self, event: CategoryFormEvent, router: &mut Self::Router<'_>) {
         match event {
+            CategoryFormEvent::Input(input) => self.input(input, router),
+            CategoryFormEvent::Confirm => self.save(router),
             CategoryFormEvent::Name(text) => self.set_name(text),
             CategoryFormEvent::Budget(text) => self.set_budget(&text),
             CategoryFormEvent::Parent(id) => {
@@ -281,18 +316,47 @@ impl CategoryFormPresenter {
         }
     }
 
+    fn view_model(&self) -> CategoryFormViewModel {
+        self.build_view_model()
+    }
+}
+
+impl DialogPresenter for CategoryFormPresenter {
+    type Outcome = CategoriesOutcome;
+
+    fn input_event(input: DialogInput) -> CategoryFormEvent {
+        CategoryFormEvent::Input(input)
+    }
+
+    fn confirm_event() -> CategoryFormEvent {
+        CategoryFormEvent::Confirm
+    }
+
+    fn cancel_event() -> CategoryFormEvent {
+        CategoryFormEvent::Cancel
+    }
+
+    fn can_confirm(&self) -> bool {
+        !self.name.trim().is_empty() && !self.name_taken()
+    }
+
+    /// Closes the Parent category's open list without picking: the host's `back`.
+    fn close_open_select(&mut self) -> bool {
+        let open = self.parent_list.is_open();
+        if open {
+            self.parent_list.close();
+        }
+        open
+    }
+}
+
+impl CategoryFormPresenter {
     /// Reads a Dialog command or typed key for the focused field: `select` and `submit` confirm a
-    /// valid form through `budget`, except that `select` on the Parent category opens its list and
+    /// valid form through its ports, except that `select` on the Parent category opens its list and
     /// picks from it; typing edits Name and Monthly budget and goes nowhere on the select or Type;
     /// the arrows step the select and switch Type; the field keys move focus, wrapping and
-    /// committing an open list's highlight. `budget` is lent for the call, since the Desktop
-    /// writes its Ledger only with the gpui context the call runs in.
-    pub fn input(
-        &mut self,
-        input: DialogInput,
-        budget: &mut dyn CategorySavePorts,
-        router: &mut dyn DialogRouter<CategoriesOutcome>,
-    ) {
+    /// committing an open list's highlight.
+    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<CategoriesOutcome>) {
         match (input, self.focused) {
             (DialogInput::NextField | DialogInput::PreviousField, _) => {
                 // Leaving the select commits an open list's highlight, as a click on it would.
@@ -308,7 +372,7 @@ impl CategoryFormPresenter {
                 };
                 self.focused = order[next % order.len()];
             }
-            (DialogInput::Submit, _) => self.confirm(budget, router),
+            (DialogInput::Submit, _) => self.save(router),
             (_, CategoryField::Parent) if self.fixed() => {}
             (_, CategoryField::Parent) => {
                 // A select swallows typing, so it never reaches the Shell.
@@ -319,7 +383,7 @@ impl CategoryFormPresenter {
                     self.pick_parent(id);
                 }
             }
-            (DialogInput::Select, _) => self.confirm(budget, router),
+            (DialogInput::Select, _) => self.save(router),
             (DialogInput::SelectNext | DialogInput::SelectPrevious, CategoryField::Type) => {
                 let other = match self.category_type {
                     CategoryTypes::Expense => CategoryTypes::Income,
@@ -385,16 +449,14 @@ impl CategoryFormPresenter {
         }
     }
 
-    /// Saves the form through the Interactor, the budget written through `budget`, and closes the
+    /// Saves the form through the Interactor, the budget written through its ports, and closes the
     /// Dialog; a refusal stays on the form. A form that can't confirm does nothing.
-    pub fn confirm(
-        &mut self,
-        budget: &mut dyn CategorySavePorts,
-        router: &mut dyn DialogRouter<CategoriesOutcome>,
-    ) {
+    fn save(&mut self, router: &mut dyn DialogRouter<CategoriesOutcome>) {
         if !self.can_confirm() {
             return;
         }
+        let mut ports = self.ports.borrow_mut();
+        let budget = &mut *ports;
         let name = self.name.trim().to_string();
         let monthly = self.budget_change();
         let saved = {
@@ -427,7 +489,7 @@ impl CategoryFormPresenter {
         }
     }
 
-    pub fn view_model(&self) -> CategoryFormViewModel {
+    fn build_view_model(&self) -> CategoryFormViewModel {
         let (title, submit) = if self.editing.is_some() {
             (msg::categories_edit_title(), msg::categories_edit_submit())
         } else {
@@ -484,7 +546,19 @@ impl CategoryFormPresenter {
             refusal: self.refusal.clone(),
             editing: self.editing.is_some(),
             focused: self.focused,
+            hints: self.hints(),
         }
+    }
+
+    /// Cancel, confirm and the next field, from the Dialog keys.
+    fn hints(&self) -> Vec<Hint> {
+        vec![
+            self.keys.hint(BACK, lib_locale::msg::dialog_hint_cancel()),
+            self.keys
+                .hint(SELECT, lib_locale::msg::dialog_hint_confirm()),
+            self.keys
+                .hint(NEXT_FIELD, lib_locale::msg::dialog_hint_next_field()),
+        ]
     }
 
     fn category(&self, id: CategoryId) -> Option<Category> {
@@ -515,10 +589,6 @@ impl CategoryFormPresenter {
             && self.categories.borrow().categories().iter().any(|c| {
                 Some(c.id) != own && c.parent == self.parent && c.name.eq_ignore_ascii_case(name)
             })
-    }
-
-    fn can_confirm(&self) -> bool {
-        !self.name.trim().is_empty() && !self.name_taken()
     }
 
     /// What the save does to the Monthly budget. Text that isn't an amount leaves it alone.
@@ -688,11 +758,14 @@ fn type_label(category_type: &CategoryTypes) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
     use super::super::test_support::sample;
     use super::*;
     use crate::CategoryError;
     use crate::CategoryRepository as _;
-    use crate::fake::{InMemoryCategoryBudget, InMemoryCategoryUsage, RecordingRouter, RouterCall};
+    use crate::fake::{InMemoryCategoryBudget, RecordingRouter, RouterCall};
     use crate::protocols::{CategoryBudget as _, CategoryUse, MonthlyBudgetRefusal};
 
     const HOUSING: CategoryId = CategoryId::seed(1);
@@ -714,25 +787,25 @@ mod tests {
         router.calls
     }
 
-    fn confirm(
-        form: &mut CategoryFormPresenter,
-        budget: &mut InMemoryCategoryBudget,
-    ) -> Vec<RouterCall> {
-        let mut router = RecordingRouter::default();
-        form.confirm(budget, &mut router);
-        router.calls
+    /// The ports a form is handed, with the handle the test reads and sets them through.
+    type Ports = Rc<RefCell<InMemoryCategoryBudget>>;
+
+    fn ports(budget: InMemoryCategoryBudget) -> Ports {
+        Rc::new(RefCell::new(budget))
     }
 
-    fn press(
-        form: &mut CategoryFormPresenter,
-        budget: &mut InMemoryCategoryBudget,
-        inputs: &[DialogInput],
-    ) -> Vec<RouterCall> {
-        let mut router = RecordingRouter::default();
-        for input in inputs {
-            form.input(*input, budget, &mut router);
-        }
-        router.calls
+    fn confirm(form: &mut CategoryFormPresenter) -> Vec<RouterCall> {
+        send(form, vec![CategoryFormEvent::Confirm])
+    }
+
+    fn press(form: &mut CategoryFormPresenter, inputs: &[DialogInput]) -> Vec<RouterCall> {
+        send(
+            form,
+            inputs
+                .iter()
+                .map(|i| CategoryFormEvent::Input(*i))
+                .collect(),
+        )
     }
 
     fn keys(text: &str) -> Vec<DialogInput> {
@@ -753,8 +826,9 @@ mod tests {
     #[test]
     fn add_needs_a_name_unique_among_its_siblings_then_saves_and_closes() {
         let (categories, shared) = sample();
-        let mut budget = InMemoryCategoryBudget::default();
-        let mut form = CategoryFormPresenter::add(shared, &budget, Some(FOOD));
+        let budget = ports(InMemoryCategoryBudget::default());
+        let mut form =
+            CategoryFormPresenter::add(shared, budget.clone(), Some(FOOD), DialogKeys::default());
         assert!(!form.view_model().frame.can_confirm);
 
         send(&mut form, vec![name("groceries")]);
@@ -764,10 +838,10 @@ mod tests {
             view.name_error.as_deref(),
             Some("Another category under that parent already has this name.")
         );
-        assert_eq!(confirm(&mut form, &mut budget), []);
+        assert_eq!(confirm(&mut form), []);
 
         send(&mut form, vec![name("Takeaway")]);
-        let calls = confirm(&mut form, &mut budget);
+        let calls = confirm(&mut form);
 
         let added = categories
             .borrow()
@@ -789,8 +863,9 @@ mod tests {
     #[test]
     fn a_parent_sets_and_locks_the_type_and_says_so() {
         let (_, shared) = sample();
-        let budget = InMemoryCategoryBudget::default();
-        let mut form = CategoryFormPresenter::add(shared, &budget, None);
+        let budget = ports(InMemoryCategoryBudget::default());
+        let mut form =
+            CategoryFormPresenter::add(shared, budget.clone(), None, DialogKeys::default());
         let view = form.view_model();
         assert!(!view.type_locked);
         assert_eq!(
@@ -824,15 +899,14 @@ mod tests {
     #[test]
     fn tab_walks_the_fields_and_the_budget_keeps_only_an_amonts_characters() {
         let (_, shared) = sample();
-        let budget = InMemoryCategoryBudget::default();
-        let mut form = CategoryFormPresenter::add(shared, &budget, None);
+        let budget = ports(InMemoryCategoryBudget::default());
+        let mut form =
+            CategoryFormPresenter::add(shared, budget.clone(), None, DialogKeys::default());
 
-        let mut budget = budget;
-        press(&mut form, &mut budget, &[DialogInput::NextField]);
+        press(&mut form, &[DialogInput::NextField]);
         assert_eq!(form.view_model().focused, CategoryField::Parent);
         press(
             &mut form,
-            &mut budget,
             &[DialogInput::PreviousField, DialogInput::PreviousField],
         );
         assert_eq!(form.view_model().focused, CategoryField::Budget);
@@ -847,21 +921,22 @@ mod tests {
     #[test]
     fn typing_edits_name_and_budget_and_goes_nowhere_on_parent_or_type() {
         let (_, shared) = sample();
-        let mut budget = InMemoryCategoryBudget::default();
-        let mut form = CategoryFormPresenter::add(shared, &budget, None);
+        let budget = ports(InMemoryCategoryBudget::default());
+        let mut form =
+            CategoryFormPresenter::add(shared, budget.clone(), None, DialogKeys::default());
 
-        press(&mut form, &mut budget, &keys("Petx"));
-        press(&mut form, &mut budget, &[DialogInput::Backspace]);
-        press(&mut form, &mut budget, &keys("s"));
+        press(&mut form, &keys("Petx"));
+        press(&mut form, &[DialogInput::Backspace]);
+        press(&mut form, &keys("s"));
         assert_eq!(form.view_model().name.text, "Pets");
-        press(&mut form, &mut budget, &[DialogInput::NextField]);
-        press(&mut form, &mut budget, &keys("ab"));
-        press(&mut form, &mut budget, &[DialogInput::NextField]);
-        press(&mut form, &mut budget, &keys("cd"));
-        press(&mut form, &mut budget, &[DialogInput::Backspace]);
-        press(&mut form, &mut budget, &[DialogInput::NextField]);
-        press(&mut form, &mut budget, &keys("4x0.59"));
-        press(&mut form, &mut budget, &[DialogInput::Backspace]);
+        press(&mut form, &[DialogInput::NextField]);
+        press(&mut form, &keys("ab"));
+        press(&mut form, &[DialogInput::NextField]);
+        press(&mut form, &keys("cd"));
+        press(&mut form, &[DialogInput::Backspace]);
+        press(&mut form, &[DialogInput::NextField]);
+        press(&mut form, &keys("4x0.59"));
+        press(&mut form, &[DialogInput::Backspace]);
 
         let view = form.view_model();
         assert_eq!(view.name.text, "Pets");
@@ -872,30 +947,32 @@ mod tests {
     #[test]
     fn the_arrows_switch_an_unlocked_type_and_leave_a_locked_one() {
         let (_, shared) = sample();
-        let mut budget = InMemoryCategoryBudget::default();
-        let mut form = CategoryFormPresenter::add(shared.clone(), &budget, None);
+        let budget = ports(InMemoryCategoryBudget::default());
+        let mut form =
+            CategoryFormPresenter::add(shared.clone(), budget.clone(), None, DialogKeys::default());
         form.handle(
             CategoryFormEvent::Focus(CategoryField::Type),
             &mut RecordingRouter::default(),
         );
 
-        press(&mut form, &mut budget, &[DialogInput::SelectNext]);
+        press(&mut form, &[DialogInput::SelectNext]);
         assert_eq!(
             form.view_model().category_type.chosen,
             Some(CategoryTypes::Income)
         );
-        press(&mut form, &mut budget, &[DialogInput::SelectPrevious]);
+        press(&mut form, &[DialogInput::SelectPrevious]);
         assert_eq!(
             form.view_model().category_type.chosen,
             Some(CategoryTypes::Expense)
         );
 
-        let mut child = CategoryFormPresenter::add(shared, &budget, Some(SALARY));
+        let mut child =
+            CategoryFormPresenter::add(shared, budget.clone(), Some(SALARY), DialogKeys::default());
         child.handle(
             CategoryFormEvent::Focus(CategoryField::Type),
             &mut RecordingRouter::default(),
         );
-        press(&mut child, &mut budget, &[DialogInput::SelectNext]);
+        press(&mut child, &[DialogInput::SelectNext]);
         assert_eq!(
             child.view_model().category_type.chosen,
             Some(CategoryTypes::Income)
@@ -905,23 +982,24 @@ mod tests {
     #[test]
     fn the_parent_select_opens_moves_and_picks_and_leaving_it_commits_the_highlight() {
         let (_, shared) = sample();
-        let mut budget = InMemoryCategoryBudget::default();
-        let mut form = CategoryFormPresenter::add(shared, &budget, None);
-        press(&mut form, &mut budget, &[DialogInput::NextField]);
+        let budget = ports(InMemoryCategoryBudget::default());
+        let mut form =
+            CategoryFormPresenter::add(shared, budget.clone(), None, DialogKeys::default());
+        press(&mut form, &[DialogInput::NextField]);
 
-        assert_eq!(press(&mut form, &mut budget, &[DialogInput::Select]), []);
+        assert_eq!(press(&mut form, &[DialogInput::Select]), []);
         assert_eq!(
             form.view_model().parent_list.highlight(),
             Some(0),
             "on None"
         );
-        press(&mut form, &mut budget, &[DialogInput::SelectNext]);
+        press(&mut form, &[DialogInput::SelectNext]);
         assert_eq!(
             form.view_model().parent.chosen,
             Some(None),
             "not yet picked"
         );
-        press(&mut form, &mut budget, &[DialogInput::Select]);
+        press(&mut form, &[DialogInput::Select]);
         let view = form.view_model();
         assert!(!view.parent_list.is_open());
         let picked = view.parent.options[1].value;
@@ -929,7 +1007,6 @@ mod tests {
 
         press(
             &mut form,
-            &mut budget,
             &[
                 DialogInput::Char(' '),
                 DialogInput::SelectNext,
@@ -945,8 +1022,9 @@ mod tests {
     #[test]
     fn a_click_toggles_the_parent_list_and_back_or_a_focus_click_closes_it() {
         let (_, shared) = sample();
-        let budget = InMemoryCategoryBudget::default();
-        let mut form = CategoryFormPresenter::add(shared, &budget, None);
+        let budget = ports(InMemoryCategoryBudget::default());
+        let mut form =
+            CategoryFormPresenter::add(shared, budget.clone(), None, DialogKeys::default());
 
         send(&mut form, vec![CategoryFormEvent::ToggleParents]);
         assert!(form.view_model().parent_list.is_open());
@@ -975,17 +1053,14 @@ mod tests {
     #[test]
     fn select_confirms_off_the_select_and_submit_confirms_from_it() {
         let (categories, shared) = sample();
-        let mut budget = InMemoryCategoryBudget::default();
-        let mut form = CategoryFormPresenter::add(shared, &budget, None);
-        assert_eq!(
-            press(&mut form, &mut budget, &[DialogInput::Select]),
-            [],
-            "no name"
-        );
+        let budget = ports(InMemoryCategoryBudget::default());
+        let mut form =
+            CategoryFormPresenter::add(shared, budget.clone(), None, DialogKeys::default());
+        assert_eq!(press(&mut form, &[DialogInput::Select]), [], "no name");
 
-        press(&mut form, &mut budget, &keys("Pets"));
-        press(&mut form, &mut budget, &[DialogInput::NextField]);
-        let calls = press(&mut form, &mut budget, &[DialogInput::Submit]);
+        press(&mut form, &keys("Pets"));
+        press(&mut form, &[DialogInput::NextField]);
+        let calls = press(&mut form, &[DialogInput::Submit]);
 
         assert!(matches!(
             calls.as_slice(),
@@ -1000,9 +1075,10 @@ mod tests {
         );
 
         let (_, shared) = sample();
-        let mut form = CategoryFormPresenter::add(shared, &budget, None);
-        press(&mut form, &mut budget, &keys("Gifts"));
-        let calls = press(&mut form, &mut budget, &[DialogInput::Select]);
+        let mut form =
+            CategoryFormPresenter::add(shared, budget.clone(), None, DialogKeys::default());
+        press(&mut form, &keys("Gifts"));
+        let calls = press(&mut form, &[DialogInput::Select]);
         assert!(matches!(
             calls.as_slice(),
             [RouterCall::CloseDialog(Some(_))]
@@ -1012,11 +1088,15 @@ mod tests {
     #[test]
     fn edit_offers_no_parent_in_its_subtree_or_past_the_depth_cap() {
         let (_, shared) = sample();
-        let budget = InMemoryCategoryBudget::default();
-        let usage = InMemoryCategoryUsage::default();
+        let budget = ports(InMemoryCategoryBudget::default());
 
-        let housing =
-            CategoryFormPresenter::edit(shared.clone(), &budget, &usage, HOUSING).expect("seeded");
+        let housing = CategoryFormPresenter::edit(
+            shared.clone(),
+            budget.clone(),
+            HOUSING,
+            DialogKeys::default(),
+        )
+        .expect("seeded");
         let offered = labels(&housing.view_model().parent);
         assert!(
             !offered.contains(&"Transport".to_string()),
@@ -1024,25 +1104,39 @@ mod tests {
         );
         assert!(!offered.iter().any(|label| label.starts_with("Housing")));
 
-        let utilities = CategoryFormPresenter::edit(shared.clone(), &budget, &usage, UTILITIES)
-            .expect("seeded");
+        let utilities = CategoryFormPresenter::edit(
+            shared.clone(),
+            budget.clone(),
+            UTILITIES,
+            DialogKeys::default(),
+        )
+        .expect("seeded");
         assert!(labels(&utilities.view_model().parent).contains(&"Transport".to_string()));
-        assert!(CategoryFormPresenter::edit(shared, &budget, &usage, CategoryId::new()).is_none());
+        assert!(
+            CategoryFormPresenter::edit(
+                shared,
+                budget.clone(),
+                CategoryId::new(),
+                DialogKeys::default()
+            )
+            .is_none()
+        );
     }
 
     #[test]
     fn edit_quotes_the_subtrees_transactions_and_its_type_change_cascades_on_save() {
         let (categories, shared) = sample();
-        let mut budget = InMemoryCategoryBudget::default();
-        let mut usage = InMemoryCategoryUsage::default();
-        usage.uses.insert(
+        let budget = ports(InMemoryCategoryBudget::default());
+        budget.borrow_mut().uses.insert(
             GROCERIES,
             CategoryUse {
                 splits: 3,
                 budgets: 0,
             },
         );
-        let mut form = CategoryFormPresenter::edit(shared, &budget, &usage, FOOD).expect("seeded");
+        let mut form =
+            CategoryFormPresenter::edit(shared, budget.clone(), FOOD, DialogKeys::default())
+                .expect("seeded");
         assert_eq!(
             form.view_model().notice,
             "This category has 3 transactions. Changing its type will affect these transactions."
@@ -1060,7 +1154,7 @@ mod tests {
             Some(CategoryTypes::Expense),
             "nothing is written until the save"
         );
-        confirm(&mut form, &mut budget);
+        confirm(&mut form);
         assert_eq!(
             categories
                 .borrow()
@@ -1073,16 +1167,17 @@ mod tests {
     #[test]
     fn a_type_blocked_by_one_use_reads_in_the_singular() {
         let (_categories, shared) = sample();
-        let budget = InMemoryCategoryBudget::default();
-        let mut usage = InMemoryCategoryUsage::default();
-        usage.blockers.insert(
+        let budget = ports(InMemoryCategoryBudget::default());
+        budget.borrow_mut().blockers.insert(
             GROCERIES,
             TypeChangeBlockers {
                 budgets: 0,
                 bill_plans: 1,
             },
         );
-        let mut form = CategoryFormPresenter::edit(shared, &budget, &usage, FOOD).expect("seeded");
+        let mut form =
+            CategoryFormPresenter::edit(shared, budget.clone(), FOOD, DialogKeys::default())
+                .expect("seeded");
 
         send(
             &mut form,
@@ -1098,17 +1193,18 @@ mod tests {
     #[test]
     fn a_blocked_type_shows_its_notice_on_pick_and_the_save_is_refused_with_the_same_text() {
         let (categories, shared) = sample();
-        let mut budget = InMemoryCategoryBudget::default();
+        let budget = ports(InMemoryCategoryBudget::default());
         let used = TypeChangeBlockers {
             budgets: 2,
             bill_plans: 1,
         };
         // The form reads the notice through `usage` and the save refuses through `budget`; a
         // Client lends one set of ports as both, so both hold the same blockers.
-        budget.blockers.insert(GROCERIES, used);
-        let mut usage = InMemoryCategoryUsage::default();
-        usage.blockers.insert(GROCERIES, used);
-        let mut form = CategoryFormPresenter::edit(shared, &budget, &usage, FOOD).expect("seeded");
+        budget.borrow_mut().blockers.insert(GROCERIES, used);
+        budget.borrow_mut().blockers.insert(GROCERIES, used);
+        let mut form =
+            CategoryFormPresenter::edit(shared, budget.clone(), FOOD, DialogKeys::default())
+                .expect("seeded");
         assert!(!form.view_model().notice.contains("can't become"));
 
         send(
@@ -1118,7 +1214,7 @@ mod tests {
         let said = "Food can't become Income: 2 Budgets and 1 Bill Plan use its Categories.";
         assert_eq!(form.view_model().notice, said);
 
-        let calls = confirm(&mut form, &mut budget);
+        let calls = confirm(&mut form);
         assert!(calls.is_empty(), "the Dialog stays open");
         assert_eq!(form.view_model().refusal.as_deref(), Some(said));
         assert_eq!(
@@ -1136,9 +1232,10 @@ mod tests {
     #[test]
     fn an_unused_subtree_shows_no_type_notice() {
         let (_, shared) = sample();
-        let budget = InMemoryCategoryBudget::default();
-        let usage = InMemoryCategoryUsage::default();
-        let mut form = CategoryFormPresenter::edit(shared, &budget, &usage, FOOD).expect("seeded");
+        let budget = ports(InMemoryCategoryBudget::default());
+        let mut form =
+            CategoryFormPresenter::edit(shared, budget.clone(), FOOD, DialogKeys::default())
+                .expect("seeded");
 
         send(
             &mut form,
@@ -1153,9 +1250,9 @@ mod tests {
         let (_, shared) = sample();
         let mut form = CategoryFormPresenter::edit(
             shared,
-            &InMemoryCategoryBudget::default(),
-            &InMemoryCategoryUsage::default(),
+            ports(InMemoryCategoryBudget::default()),
             GROCERIES,
+            DialogKeys::default(),
         )
         .expect("seeded");
 
@@ -1166,36 +1263,50 @@ mod tests {
     #[test]
     fn the_monthly_budget_opens_with_this_months_amount_and_a_parent_shows_its_rollup() {
         let (_, shared) = sample();
-        let mut budget = InMemoryCategoryBudget::default();
-        budget.amounts.insert(GROCERIES, money("600"));
-        budget.amounts.insert(CategoryId::seed(8), money("150"));
-        let usage = InMemoryCategoryUsage::default();
+        let budget = ports(InMemoryCategoryBudget::default());
+        budget.borrow_mut().amounts.insert(GROCERIES, money("600"));
+        budget
+            .borrow_mut()
+            .amounts
+            .insert(CategoryId::seed(8), money("150"));
 
-        let groceries = CategoryFormPresenter::edit(shared.clone(), &budget, &usage, GROCERIES)
-            .expect("seeded");
+        let groceries = CategoryFormPresenter::edit(
+            shared.clone(),
+            budget.clone(),
+            GROCERIES,
+            DialogKeys::default(),
+        )
+        .expect("seeded");
         let view = groceries.view_model();
         assert_eq!(view.budget.field.text, "600");
         assert_eq!(view.budget.read_only, None);
 
-        let food =
-            CategoryFormPresenter::edit(shared.clone(), &budget, &usage, FOOD).expect("seeded");
+        let food = CategoryFormPresenter::edit(
+            shared.clone(),
+            budget.clone(),
+            FOOD,
+            DialogKeys::default(),
+        )
+        .expect("seeded");
         assert_eq!(
             food.view_model().budget.read_only.as_deref(),
             Some("750 \u{b7} rollup of children's budgets")
         );
         let transport =
-            CategoryFormPresenter::edit(shared, &budget, &usage, TRANSPORT).expect("seeded");
+            CategoryFormPresenter::edit(shared, budget.clone(), TRANSPORT, DialogKeys::default())
+                .expect("seeded");
         assert_eq!(transport.view_model().budget.read_only, None);
     }
 
     #[test]
     fn an_archived_budget_is_read_only_and_a_save_leaves_it() {
         let (_, shared) = sample();
-        let mut budget = InMemoryCategoryBudget {
+        let budget = ports(InMemoryCategoryBudget {
             archived: Some("Personal spending".into()),
             ..Default::default()
-        };
-        let mut form = CategoryFormPresenter::add(shared, &budget, None);
+        });
+        let mut form =
+            CategoryFormPresenter::add(shared, budget.clone(), None, DialogKeys::default());
         assert_eq!(
             form.view_model().budget.read_only.as_deref(),
             Some("\u{2014} \u{b7} Personal spending is archived, so its amounts are read-only")
@@ -1206,7 +1317,7 @@ mod tests {
             vec![name("Pets"), CategoryFormEvent::Budget("40".into())],
         );
         assert_eq!(form.view_model().budget.field.text, "");
-        let calls = confirm(&mut form, &mut budget);
+        let calls = confirm(&mut form);
         assert!(matches!(
             calls.as_slice(),
             [RouterCall::CloseDialog(Some(_))]
@@ -1216,9 +1327,10 @@ mod tests {
     #[test]
     fn a_budget_on_an_income_category_is_refused_and_writes_nothing() {
         let (categories, shared) = sample();
-        let mut budget = InMemoryCategoryBudget::default();
+        let budget = ports(InMemoryCategoryBudget::default());
         let before = categories.borrow().clone();
-        let mut form = CategoryFormPresenter::add(shared, &budget, None);
+        let mut form =
+            CategoryFormPresenter::add(shared, budget.clone(), None, DialogKeys::default());
 
         send(
             &mut form,
@@ -1228,7 +1340,7 @@ mod tests {
                 CategoryFormEvent::Budget("40".into()),
             ],
         );
-        assert_eq!(confirm(&mut form, &mut budget), []);
+        assert_eq!(confirm(&mut form), []);
 
         assert_eq!(
             form.view_model().refusal.as_deref(),
@@ -1236,7 +1348,9 @@ mod tests {
         );
         assert_eq!(*categories.borrow(), before);
         assert_eq!(
-            budget.check_monthly_budget(&[], SALARY, Some(&money("1"))),
+            budget
+                .borrow()
+                .check_monthly_budget(&[], SALARY, Some(&money("1"))),
             Err(MonthlyBudgetRefusal::NotAnExpenseLeaf)
         );
     }
@@ -1244,32 +1358,29 @@ mod tests {
     #[test]
     fn a_blank_budget_on_edit_stops_the_amount() {
         let (_, shared) = sample();
-        let mut budget = InMemoryCategoryBudget::default();
-        budget.amounts.insert(GROCERIES, money("600"));
-        let mut form = CategoryFormPresenter::edit(
-            shared,
-            &budget,
-            &InMemoryCategoryUsage::default(),
-            GROCERIES,
-        )
-        .expect("seeded");
+        let budget = ports(InMemoryCategoryBudget::default());
+        budget.borrow_mut().amounts.insert(GROCERIES, money("600"));
+        let mut form =
+            CategoryFormPresenter::edit(shared, budget.clone(), GROCERIES, DialogKeys::default())
+                .expect("seeded");
 
         send(&mut form, vec![CategoryFormEvent::Budget(String::new())]);
-        confirm(&mut form, &mut budget);
+        confirm(&mut form);
 
-        assert!(budget.amounts.is_empty());
+        assert!(budget.borrow_mut().amounts.is_empty());
     }
 
     #[test]
     fn a_budgeted_parent_chosen_warns_its_budget_stops() {
         let (_, shared) = sample();
-        let mut budget = InMemoryCategoryBudget {
+        let budget = ports(InMemoryCategoryBudget {
             other_budgets: 1,
             ..Default::default()
-        };
-        budget.amounts.insert(TRANSPORT, money("600"));
-        budget.amounts.insert(FOOD, money("1"));
-        let mut form = CategoryFormPresenter::add(shared.clone(), &budget, None);
+        });
+        budget.borrow_mut().amounts.insert(TRANSPORT, money("600"));
+        budget.borrow_mut().amounts.insert(FOOD, money("1"));
+        let mut form =
+            CategoryFormPresenter::add(shared.clone(), budget.clone(), None, DialogKeys::default());
         assert_eq!(
             form.view_model().notice,
             "Picking a parent will lock the type control to the parent's type."
@@ -1296,11 +1407,11 @@ mod tests {
     #[test]
     fn the_stop_notice_shows_on_edit_when_moving_under_a_budgeted_leaf() {
         let (_, shared) = sample();
-        let mut budget = InMemoryCategoryBudget::default();
-        budget.amounts.insert(TRANSPORT, money("600"));
-        let usage = InMemoryCategoryUsage::default();
+        let budget = ports(InMemoryCategoryBudget::default());
+        budget.borrow_mut().amounts.insert(TRANSPORT, money("600"));
         let mut form =
-            CategoryFormPresenter::edit(shared, &budget, &usage, GROCERIES).expect("seeded");
+            CategoryFormPresenter::edit(shared, budget.clone(), GROCERIES, DialogKeys::default())
+                .expect("seeded");
 
         send(&mut form, vec![CategoryFormEvent::Parent(Some(TRANSPORT))]);
 
@@ -1322,9 +1433,14 @@ mod tests {
     #[test]
     fn the_handover_notice_names_what_a_leaf_parent_holds_and_the_child() {
         let (_, shared) = sample();
-        let mut budget = InMemoryCategoryBudget::default();
-        budget.held.insert(TRANSPORT, held(42, 1, 0));
-        let mut form = CategoryFormPresenter::add(shared, &budget, Some(TRANSPORT));
+        let budget = ports(InMemoryCategoryBudget::default());
+        budget.borrow_mut().held.insert(TRANSPORT, held(42, 1, 0));
+        let mut form = CategoryFormPresenter::add(
+            shared,
+            budget.clone(),
+            Some(TRANSPORT),
+            DialogKeys::default(),
+        );
         send(&mut form, vec![CategoryFormEvent::Name("Fuel".into())]);
 
         assert_eq!(
@@ -1336,10 +1452,15 @@ mod tests {
     #[test]
     fn the_handover_notice_lists_all_three_and_shows_beside_the_stop_notice() {
         let (_, shared) = sample();
-        let mut budget = InMemoryCategoryBudget::default();
-        budget.held.insert(TRANSPORT, held(2, 3, 1));
-        budget.amounts.insert(TRANSPORT, money("600"));
-        let form = CategoryFormPresenter::add(shared, &budget, Some(TRANSPORT));
+        let budget = ports(InMemoryCategoryBudget::default());
+        budget.borrow_mut().held.insert(TRANSPORT, held(2, 3, 1));
+        budget.borrow_mut().amounts.insert(TRANSPORT, money("600"));
+        let form = CategoryFormPresenter::add(
+            shared,
+            budget.clone(),
+            Some(TRANSPORT),
+            DialogKeys::default(),
+        );
 
         let notice = form.view_model().notice;
 
@@ -1353,11 +1474,21 @@ mod tests {
     #[test]
     fn no_handover_notice_for_an_empty_leaf_a_parent_with_children_or_a_top_level_add() {
         let (_, shared) = sample();
-        let mut budget = InMemoryCategoryBudget::default();
-        budget.held.insert(FOOD, held(9, 0, 0));
-        let empty = CategoryFormPresenter::add(shared.clone(), &budget, Some(TRANSPORT));
-        let parent = CategoryFormPresenter::add(shared.clone(), &budget, Some(FOOD));
-        let top = CategoryFormPresenter::add(shared, &budget, None);
+        let budget = ports(InMemoryCategoryBudget::default());
+        budget.borrow_mut().held.insert(FOOD, held(9, 0, 0));
+        let empty = CategoryFormPresenter::add(
+            shared.clone(),
+            budget.clone(),
+            Some(TRANSPORT),
+            DialogKeys::default(),
+        );
+        let parent = CategoryFormPresenter::add(
+            shared.clone(),
+            budget.clone(),
+            Some(FOOD),
+            DialogKeys::default(),
+        );
+        let top = CategoryFormPresenter::add(shared, budget.clone(), None, DialogKeys::default());
 
         for form in [empty, parent, top] {
             assert!(!form.view_model().notice.contains("move to"));
@@ -1367,11 +1498,11 @@ mod tests {
     #[test]
     fn the_handover_notice_shows_on_edit_when_moving_under_a_leaf_holding_rows() {
         let (_, shared) = sample();
-        let mut budget = InMemoryCategoryBudget::default();
-        budget.held.insert(TRANSPORT, held(0, 0, 2));
-        let usage = InMemoryCategoryUsage::default();
+        let budget = ports(InMemoryCategoryBudget::default());
+        budget.borrow_mut().held.insert(TRANSPORT, held(0, 0, 2));
         let mut form =
-            CategoryFormPresenter::edit(shared, &budget, &usage, GROCERIES).expect("seeded");
+            CategoryFormPresenter::edit(shared, budget.clone(), GROCERIES, DialogKeys::default())
+                .expect("seeded");
 
         send(&mut form, vec![CategoryFormEvent::Parent(Some(TRANSPORT))]);
 
@@ -1394,25 +1525,32 @@ mod tests {
     #[test]
     fn add_never_offers_uncategorised_as_a_parent() {
         let (uncategorised, shared) = sample_with_uncategorised();
-        let budget = InMemoryCategoryBudget::default();
+        let budget = ports(InMemoryCategoryBudget::default());
 
-        let form = CategoryFormPresenter::add(shared.clone(), &budget, None);
+        let form =
+            CategoryFormPresenter::add(shared.clone(), budget.clone(), None, DialogKeys::default());
         assert!(
             !labels(&form.view_model().parent).contains(&"Uncategorised".to_string()),
             "not in Parent"
         );
 
-        let asked_under_it = CategoryFormPresenter::add(shared, &budget, Some(uncategorised));
+        let asked_under_it = CategoryFormPresenter::add(
+            shared,
+            budget.clone(),
+            Some(uncategorised),
+            DialogKeys::default(),
+        );
         assert_eq!(asked_under_it.view_model().parent.chosen, Some(None));
     }
 
     #[test]
     fn edit_never_offers_uncategorised_as_a_parent() {
         let (_, shared) = sample_with_uncategorised();
-        let budget = InMemoryCategoryBudget::default();
-        let usage = InMemoryCategoryUsage::default();
+        let budget = ports(InMemoryCategoryBudget::default());
 
-        let form = CategoryFormPresenter::edit(shared, &budget, &usage, TRANSPORT).expect("seeded");
+        let form =
+            CategoryFormPresenter::edit(shared, budget.clone(), TRANSPORT, DialogKeys::default())
+                .expect("seeded");
 
         assert!(!labels(&form.view_model().parent).contains(&"Uncategorised".to_string()));
     }
@@ -1420,10 +1558,14 @@ mod tests {
     #[test]
     fn uncategorised_opens_with_name_parent_and_type_read_only_and_the_budget_settable() {
         let (uncategorised, shared) = sample_with_uncategorised();
-        let mut budget = InMemoryCategoryBudget::default();
-        let usage = InMemoryCategoryUsage::default();
-        let mut form = CategoryFormPresenter::edit(shared.clone(), &budget, &usage, uncategorised)
-            .expect("added");
+        let budget = ports(InMemoryCategoryBudget::default());
+        let mut form = CategoryFormPresenter::edit(
+            shared.clone(),
+            budget.clone(),
+            uncategorised,
+            DialogKeys::default(),
+        )
+        .expect("added");
 
         let view = form.view_model();
         assert!(view.name_read_only && view.parent_read_only && view.type_locked);
@@ -1443,7 +1585,7 @@ mod tests {
                 CategoryFormEvent::ToggleParents,
             ],
         );
-        press(&mut form, &mut budget, &[DialogInput::SelectNext]);
+        press(&mut form, &[DialogInput::SelectNext]);
         let view = form.view_model();
         assert_eq!(view.name.text, "Uncategorised");
         assert_eq!(view.parent.chosen, Some(None));
@@ -1452,9 +1594,12 @@ mod tests {
 
         // The Monthly budget saves, and the Category stays as it was.
         send(&mut form, vec![CategoryFormEvent::Budget("25".into())]);
-        let calls = confirm(&mut form, &mut budget);
+        let calls = confirm(&mut form);
         assert_eq!(calls.len(), 1, "closed: {calls:?}");
-        assert_eq!(budget.amounts.get(&uncategorised), Some(&money("25")));
+        assert_eq!(
+            budget.borrow_mut().amounts.get(&uncategorised),
+            Some(&money("25"))
+        );
         assert_eq!(
             shared.borrow().category(uncategorised).map(|c| c.name),
             Some("Uncategorised".into())
@@ -1464,19 +1609,46 @@ mod tests {
     #[test]
     fn a_save_that_moves_a_parent_under_a_leaf_with_rows_says_so_and_stays_open() {
         let (_, shared) = sample();
-        let mut budget = InMemoryCategoryBudget::default();
-        budget.held.insert(TRANSPORT, held(2, 1, 0));
-        let usage = InMemoryCategoryUsage::default();
-        let mut form = CategoryFormPresenter::edit(shared, &budget, &usage, FOOD).expect("seeded");
+        let budget = ports(InMemoryCategoryBudget::default());
+        budget.borrow_mut().held.insert(TRANSPORT, held(2, 1, 0));
+        let mut form =
+            CategoryFormPresenter::edit(shared, budget.clone(), FOOD, DialogKeys::default())
+                .expect("seeded");
         send(&mut form, vec![CategoryFormEvent::Parent(Some(TRANSPORT))]);
 
-        let calls = confirm(&mut form, &mut budget);
+        let calls = confirm(&mut form);
 
         assert_eq!(calls, []);
         assert_eq!(
             form.view_model().refusal.as_deref(),
             Some("Transport has Splits and Bill Plans; add a Category under it first.")
         );
+    }
+
+    #[test]
+    fn the_legend_reads_the_dialog_keys() {
+        use lib_viper::keymap::{BACK, Binding, KeyBindingConfig, Keymap, NEXT_FIELD, SELECT};
+        const BINDINGS: &[Binding<()>] = &[
+            Binding::hidden(BACK, "esc", ()),
+            Binding::hidden(SELECT, "enter", ()),
+            Binding::hidden(NEXT_FIELD, "tab", ()),
+        ];
+        let keys = DialogKeys::of(&Keymap::new(BINDINGS, &KeyBindingConfig::default()));
+        let (_, shared) = sample();
+        let form = CategoryFormPresenter::add(
+            shared,
+            ports(InMemoryCategoryBudget::default()),
+            None,
+            keys,
+        );
+
+        let legend: Vec<String> = form
+            .view_model()
+            .hints
+            .into_iter()
+            .map(|hint| format!("{} {}", hint.chord, hint.action))
+            .collect();
+        assert_eq!(legend, ["esc cancel", "enter confirm", "tab next field"]);
     }
 
     #[test]

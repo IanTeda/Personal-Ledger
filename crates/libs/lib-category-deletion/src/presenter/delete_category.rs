@@ -11,8 +11,10 @@ use lib_categories::{CategoriesOutcome, CategoryChange};
 use lib_core::CategoryId;
 use lib_locale::Segment;
 use lib_toast::{Notice, ToastKind};
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::view::{DialogFrame, TextFieldView, count};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::{BACK, SELECT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
+use lib_viper::view::{DialogFrame, Hint, TextFieldView, count};
 
 use super::refusal_text;
 use crate::interactor::DeleteCategory;
@@ -23,6 +25,10 @@ use crate::protocols::{CategoryDeletionReads, SharedCategoryDeletion};
 pub enum DeleteCategoryEvent {
     /// The confirmation field's whole new text.
     ConfirmText(String),
+    /// A Dialog command or typed key, which the Presenter reads itself.
+    Input(DialogInput),
+    /// Deletes the Category once its name is typed back; a refusal stays in the Dialog.
+    Confirm,
     Cancel,
 }
 
@@ -37,10 +43,13 @@ pub struct DeleteCategoryViewModel {
     pub confirm: TextFieldView,
     /// Why the last confirm was refused.
     pub refusal: Option<String>,
+    /// The status line's legend while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 pub struct DeleteCategoryPresenter {
     deletion: SharedCategoryDeletion,
+    keys: DialogKeys,
     id: CategoryId,
     name: String,
     /// The Splits naming the Category, read when the Dialog opens.
@@ -53,15 +62,17 @@ pub struct DeleteCategoryPresenter {
 
 impl DeleteCategoryPresenter {
     /// The Dialog for Category `id`, its use read from `reads` when it opens, or `None` when it is
-    /// gone.
+    /// gone. `keys` are the Dialog keymap's chords, which its hints show.
     pub fn new(
         deletion: SharedCategoryDeletion,
         reads: &dyn CategoryDeletionReads,
         id: CategoryId,
+        keys: DialogKeys,
     ) -> Option<Self> {
         let in_use = reads.category_in_use(id)?;
         Some(Self {
             deletion,
+            keys,
             id,
             name: in_use.category.name,
             splits: in_use.splits,
@@ -70,23 +81,54 @@ impl DeleteCategoryPresenter {
             refusal: None,
         })
     }
+}
 
-    pub fn handle(
-        &mut self,
-        event: DeleteCategoryEvent,
-        router: &mut dyn DialogRouter<CategoriesOutcome>,
-    ) {
+impl Presenter for DeleteCategoryPresenter {
+    type Event = DeleteCategoryEvent;
+    type ViewModel = DeleteCategoryViewModel;
+    type Router<'r> = dyn DialogRouter<CategoriesOutcome> + 'r;
+
+    fn handle(&mut self, event: DeleteCategoryEvent, router: &mut Self::Router<'_>) {
         match event {
+            DeleteCategoryEvent::Input(input) => self.input(input, router),
+            DeleteCategoryEvent::Confirm => self.delete(router),
             DeleteCategoryEvent::ConfirmText(text) => self.confirm_text = text,
             DeleteCategoryEvent::Cancel => router.close(None),
         }
     }
 
+    fn view_model(&self) -> DeleteCategoryViewModel {
+        self.build_view_model()
+    }
+}
+
+impl DialogPresenter for DeleteCategoryPresenter {
+    type Outcome = CategoriesOutcome;
+
+    fn input_event(input: DialogInput) -> DeleteCategoryEvent {
+        DeleteCategoryEvent::Input(input)
+    }
+
+    fn confirm_event() -> DeleteCategoryEvent {
+        DeleteCategoryEvent::Confirm
+    }
+
+    fn cancel_event() -> DeleteCategoryEvent {
+        DeleteCategoryEvent::Cancel
+    }
+
+    /// The typed name must match exactly, case and all.
+    fn can_confirm(&self) -> bool {
+        self.confirm_text == self.name
+    }
+}
+
+impl DeleteCategoryPresenter {
     /// Reads a Dialog command or typed key: `select` and `submit` delete once the name is typed
     /// back, and typing goes to the typed-back name, the only field.
-    pub fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<CategoriesOutcome>) {
+    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<CategoriesOutcome>) {
         match input {
-            DialogInput::Select | DialogInput::Submit => self.confirm(router),
+            DialogInput::Select | DialogInput::Submit => self.delete(router),
             DialogInput::Char(ch) => self.confirm_text.push(ch),
             DialogInput::Backspace => {
                 self.confirm_text.pop();
@@ -97,7 +139,7 @@ impl DeleteCategoryPresenter {
 
     /// Deletes the Category once its name is typed back, raises the Toast and closes the Dialog;
     /// a refusal stays in the Dialog.
-    pub fn confirm(&mut self, router: &mut dyn DialogRouter<CategoriesOutcome>) {
+    fn delete(&mut self, router: &mut dyn DialogRouter<CategoriesOutcome>) {
         if !self.can_confirm() {
             return;
         }
@@ -121,7 +163,7 @@ impl DeleteCategoryPresenter {
         }
     }
 
-    pub fn view_model(&self) -> DeleteCategoryViewModel {
+    fn build_view_model(&self) -> DeleteCategoryViewModel {
         DeleteCategoryViewModel {
             frame: DialogFrame {
                 title: msg::categories_delete_title(&self.name),
@@ -139,12 +181,17 @@ impl DeleteCategoryPresenter {
                 focused: true,
             },
             refusal: self.refusal.clone(),
+            hints: self.hints(),
         }
     }
 
-    /// The typed name must match exactly, case and all.
-    fn can_confirm(&self) -> bool {
-        self.confirm_text == self.name
+    /// Cancel and confirm, from the Dialog keys.
+    fn hints(&self) -> Vec<Hint> {
+        vec![
+            self.keys.hint(BACK, lib_locale::msg::dialog_hint_cancel()),
+            self.keys
+                .hint(SELECT, lib_locale::msg::dialog_hint_confirm()),
+        ]
     }
 }
 
@@ -175,9 +222,14 @@ mod tests {
     #[test]
     fn it_quotes_the_categorys_transactions_and_budgets() {
         let (rows, deletion) = shared_world();
-        let view = DeleteCategoryPresenter::new(deletion.clone(), &*rows.borrow(), GROCERIES)
-            .expect("a world Category")
-            .view_model();
+        let view = DeleteCategoryPresenter::new(
+            deletion.clone(),
+            &*rows.borrow(),
+            GROCERIES,
+            DialogKeys::default(),
+        )
+        .expect("a world Category")
+        .view_model();
 
         assert_eq!(view.frame.title, "Delete category \u{2014} Groceries");
         assert_eq!(view.frame.submit, "Delete category");
@@ -193,25 +245,35 @@ mod tests {
         );
         assert_eq!(view.confirm.label, "Type Groceries to confirm");
         assert!(
-            DeleteCategoryPresenter::new(deletion, &*rows.borrow(), CategoryId::seed(999))
-                .is_none()
+            DeleteCategoryPresenter::new(
+                deletion,
+                &*rows.borrow(),
+                CategoryId::seed(999),
+                DialogKeys::default()
+            )
+            .is_none()
         );
     }
 
     #[test]
     fn confirm_waits_for_the_exact_name_then_deletes_and_raises_its_toast() {
         let (rows, deletion) = shared_world();
-        let mut dialog = DeleteCategoryPresenter::new(deletion, &*rows.borrow(), GROCERIES)
-            .expect("a world Category");
+        let mut dialog = DeleteCategoryPresenter::new(
+            deletion,
+            &*rows.borrow(),
+            GROCERIES,
+            DialogKeys::default(),
+        )
+        .expect("a world Category");
         let mut router = RecordingRouter::default();
 
         typed(&mut dialog, "groceries");
-        dialog.confirm(&mut router);
+        dialog.handle(DeleteCategoryEvent::Confirm, &mut router);
         assert_eq!(router.take(), []);
         assert!(rows.borrow().categories.category(GROCERIES).is_some());
 
         typed(&mut dialog, "Groceries");
-        dialog.confirm(&mut router);
+        dialog.handle(DeleteCategoryEvent::Confirm, &mut router);
 
         assert_eq!(
             router.take(),
@@ -237,11 +299,12 @@ mod tests {
     #[test]
     fn typing_builds_the_name_and_select_deletes_only_once_it_is_exact() {
         let (rows, deletion) = shared_world();
-        let mut dialog = DeleteCategoryPresenter::new(deletion, &*rows.borrow(), RENT)
-            .expect("a world Category");
+        let mut dialog =
+            DeleteCategoryPresenter::new(deletion, &*rows.borrow(), RENT, DialogKeys::default())
+                .expect("a world Category");
         let mut router = RecordingRouter::default();
         let mut press = |dialog: &mut DeleteCategoryPresenter, input| {
-            dialog.input(input, &mut router);
+            dialog.handle(DeleteCategoryEvent::Input(input), &mut router);
         };
 
         for ch in "Renx".chars() {
@@ -269,8 +332,13 @@ mod tests {
     fn a_parent_or_an_uncategorised_in_use_is_refused_in_the_dialog() {
         let (rows, deletion) = shared_world();
         let mut router = RecordingRouter::default();
-        let mut dialog = DeleteCategoryPresenter::new(deletion.clone(), &*rows.borrow(), RENT)
-            .expect("a world Category");
+        let mut dialog = DeleteCategoryPresenter::new(
+            deletion.clone(),
+            &*rows.borrow(),
+            RENT,
+            DialogKeys::default(),
+        )
+        .expect("a world Category");
         typed(&mut dialog, "Rent");
 
         // A child added under Rent while the Dialog was open makes it a parent.
@@ -282,17 +350,21 @@ mod tests {
                 parent: Some(RENT),
                 category_type: lib_core::CategoryTypes::Expense,
             });
-        dialog.confirm(&mut router);
+        dialog.handle(DeleteCategoryEvent::Confirm, &mut router);
         assert_eq!(
             dialog.view_model().refusal.as_deref(),
             Some("Delete or move its subcategories first.")
         );
 
-        let mut uncategorised =
-            DeleteCategoryPresenter::new(deletion, &*rows.borrow(), UNCATEGORISED_INCOME)
-                .expect("a world Category");
+        let mut uncategorised = DeleteCategoryPresenter::new(
+            deletion,
+            &*rows.borrow(),
+            UNCATEGORISED_INCOME,
+            DialogKeys::default(),
+        )
+        .expect("a world Category");
         typed(&mut uncategorised, "Uncategorised");
-        uncategorised.confirm(&mut router);
+        uncategorised.handle(DeleteCategoryEvent::Confirm, &mut router);
         assert_eq!(
             uncategorised.view_model().refusal.as_deref(),
             Some("Uncategorised can't be deleted while transactions or bills use it.")
@@ -310,15 +382,19 @@ mod tests {
     #[test]
     fn a_category_gone_under_the_dialog_is_refused() {
         let (rows, deletion) = shared_world();
-        let mut dialog = DeleteCategoryPresenter::new(deletion, &*rows.borrow(), RENT)
-            .expect("a world Category");
+        let mut dialog =
+            DeleteCategoryPresenter::new(deletion, &*rows.borrow(), RENT, DialogKeys::default())
+                .expect("a world Category");
         rows.borrow_mut()
             .categories
             .categories
             .retain(|category| category.id != RENT);
         typed(&mut dialog, "Rent");
 
-        dialog.confirm(&mut RecordingRouter::default());
+        dialog.handle(
+            DeleteCategoryEvent::Confirm,
+            &mut RecordingRouter::default(),
+        );
 
         assert_eq!(
             dialog.view_model().refusal.as_deref(),

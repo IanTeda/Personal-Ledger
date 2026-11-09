@@ -5,48 +5,48 @@
 //! Every click is an event sent to the Presenter, so the keyboard and the mouse reach the same
 //! handlers.
 
-use gpui::{
-    AnyElement, App, ClickEvent, Context, Render, SharedString, Window, div, prelude::*, px,
-};
+use gpui::{AnyElement, App, ClickEvent, SharedString, Window, div, prelude::*, px};
 use lib_categories::presenter::{
     CategoriesPageEvent, CategoriesPageViewModel, CategoryLine, CategoryTree,
 };
 
-use super::CategoriesPage;
+use crate::categories::CategoriesPage;
 use crate::{shell::view::page_clicks::PageClicks, theme::color};
 
-impl Render for CategoriesPage {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let clicks = PageClicks::new(cx);
-        let view = self.view_model();
-        let focused = self.page_focused;
-        let cx: &App = cx;
-        div()
-            .flex()
-            .flex_col()
-            .child(kicker_row(
-                view.expense.kicker.clone(),
-                Some((
-                    view.add_button.clone(),
-                    clicks.send(CategoriesPageEvent::New),
-                )),
-                cx,
-            ))
-            .child(tree_table(&view.expense, &view, focused, &clicks, cx))
-            .child(kicker_row(
-                view.income.kicker.clone(),
-                None::<(String, fn(&ClickEvent, &mut Window, &mut App))>,
-                cx,
-            ))
-            .child(tree_table(&view.income, &view, focused, &clicks, cx))
-            .child(
-                div()
-                    .max_w(px(620.0))
-                    .text_size(px(11.5))
-                    .text_color(color::muted(cx))
-                    .child(view.note.clone()),
-            )
-    }
+/// The page: both trees under their kickers, and the note. The selected row is inverted only while
+/// the page has `focused`.
+pub(super) fn page(
+    view: &CategoriesPageViewModel,
+    clicks: &PageClicks<CategoriesPage>,
+    focused: bool,
+    cx: &App,
+) -> AnyElement {
+    div()
+        .flex()
+        .flex_col()
+        .child(kicker_row(
+            view.expense.kicker.clone(),
+            Some((
+                view.add_button.clone(),
+                clicks.send(CategoriesPageEvent::New),
+            )),
+            cx,
+        ))
+        .child(tree_table(&view.expense, view, focused, clicks, cx))
+        .child(kicker_row(
+            view.income.kicker.clone(),
+            None::<(String, fn(&ClickEvent, &mut Window, &mut App))>,
+            cx,
+        ))
+        .child(tree_table(&view.income, view, focused, clicks, cx))
+        .child(
+            div()
+                .max_w(px(620.0))
+                .text_size(px(11.5))
+                .text_color(color::muted(cx))
+                .child(view.note.clone()),
+        )
+        .into_any_element()
 }
 
 fn kicker_row(

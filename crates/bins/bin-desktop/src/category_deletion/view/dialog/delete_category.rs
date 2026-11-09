@@ -4,15 +4,46 @@
 //! every typed key.
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
-use lib_category_deletion::presenter::DeleteCategoryViewModel;
+use lib_category_deletion::presenter::{DeleteCategoryPresenter, DeleteCategoryViewModel};
+use lib_shell::Hint;
 
-use super::Clicks;
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 use crate::{dialog, theme::color};
 
 /// The Dialog's width: the handoff's 5d.
 const WIDTH: gpui::Pixels = px(440.0);
 
-pub(super) fn render(view: &DeleteCategoryViewModel, actions: &Clicks, cx: &App) -> AnyElement {
+/// The open Dialog's clicks.
+type Clicks = ModuleDialogClicks<DeleteCategoryPresenter>;
+
+/// The `lib-category-deletion` Presenter's [`DialogView`], hosted in a `ModuleDialog` (ADR-0056).
+impl DialogView for DeleteCategoryPresenter {
+    type Widgets = ();
+
+    fn kind(_view: &DeleteCategoryViewModel) -> &'static str {
+        "DeleteCategory"
+    }
+
+    fn render(
+        view: &DeleteCategoryViewModel,
+        _widgets: &mut (),
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        render(view, clicks, cx)
+    }
+
+    /// The typed-back name and the warning, between the title and whether it would confirm.
+    fn readback(view: &DeleteCategoryViewModel) -> Vec<(&'static str, String)> {
+        framed(&view.frame, readback(view))
+    }
+
+    fn hints(view: &DeleteCategoryViewModel) -> Vec<Hint> {
+        view.hints.clone()
+    }
+}
+
+fn render(view: &DeleteCategoryViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     let mut fields = vec![
         warning(view),
         dialog::info_panel(view.reference.clone(), cx).into_any_element(),
@@ -106,7 +137,7 @@ fn error_line(text: String, cx: &App) -> AnyElement {
 }
 
 /// The typed-back name and the warning, for a test.
-pub(super) fn readback(view: &DeleteCategoryViewModel) -> Vec<(&'static str, String)> {
+fn readback(view: &DeleteCategoryViewModel) -> Vec<(&'static str, String)> {
     vec![
         ("confirm", view.confirm.text.clone()),
         (

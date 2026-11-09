@@ -3,7 +3,7 @@
 //! through `handle` and builds a plain-data view model through `view_model`, its text already localised from [`crate::msg`], so a View only draws. They share
 //! one repository ([`SharedCategories`](crate::protocols::SharedCategories)) and ask for
 //! navigation through the [`CategoriesRouter`](crate::protocols::CategoriesRouter) the Client
-//! passes in. A Dialog's confirm is lent the ports onto the other domains its save reaches.
+//! passes in. The form holds the ports onto the other domains its save reaches from the moment it opens (ADR-0056).
 
 mod categories_page;
 mod category_form;

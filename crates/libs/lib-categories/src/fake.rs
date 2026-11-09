@@ -96,11 +96,13 @@ pub struct InMemoryCategoryBudget {
     pub handed_over: Vec<(CategoryId, CategoryId)>,
     /// The Budgets and Bill Plans in use per Category, for [`CategoryUsage::type_change_blockers`].
     pub blockers: BTreeMap<CategoryId, TypeChangeBlockers>,
+    /// Usage counts per Category, for [`CategoryUsage::category_usage`]; one not listed is unused.
+    pub uses: BTreeMap<CategoryId, CategoryUse>,
 }
 
 impl CategoryUsage for InMemoryCategoryBudget {
-    fn category_usage(&self, _id: CategoryId) -> CategoryUse {
-        CategoryUse::default()
+    fn category_usage(&self, id: CategoryId) -> CategoryUse {
+        self.uses.get(&id).copied().unwrap_or_default()
     }
 
     /// The sum over the subtree's Categories.

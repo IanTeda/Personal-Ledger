@@ -2,34 +2,32 @@
 //! The Dialog's Presenter closes it through the host's `HostRouter`, which puts its Toast onto the
 //! bin's queue (`crate::notices`).
 
-use gpui::{Context, EventEmitter};
+use gpui::{App, Context, EventEmitter};
 use lib_categories::CategoriesOutcome;
 use lib_category_deletion::presenter::DeleteCategoryPresenter;
 use lib_core::CategoryId;
+use lib_viper::dialog::DialogKeys;
 
-use super::view::dialog::Landed;
-use super::{CategoryDeletionDialog, DeletionStores};
-use crate::shell::view::dialog_entity::host_dialog;
+use super::DeletionStores;
+use crate::shell::view::dialog_entity::ModuleDialog;
 use crate::view::event::ViewEvent;
 
 /// Opens the Delete category Dialog on Category `id` over page `P`, whose `landed` runs with what
 /// was deleted once a confirm lands, so the page redraws. Its use is read from `stores` as it
-/// opens. Returns whether it opened: a Category that has gone has no Dialog.
+/// opens, and its hints from `keys`. Returns whether it opened: a Category that has gone has no
+/// Dialog.
 pub fn open_delete<P: EventEmitter<ViewEvent> + 'static>(
     cx: &mut Context<'_, P>,
     stores: &DeletionStores,
     id: CategoryId,
-    landed: impl Fn(&mut P, CategoriesOutcome, &mut Context<'_, P>) + 'static,
+    keys: DialogKeys,
+    landed: impl Fn(CategoriesOutcome, &mut App) + 'static,
 ) -> bool {
-    let Some(presenter) = DeleteCategoryPresenter::new(stores.deletion.clone(), &stores.reads, id)
+    let Some(presenter) =
+        DeleteCategoryPresenter::new(stores.deletion.clone(), &stores.reads, id, keys)
     else {
         return false;
     };
-    let page = cx.weak_entity();
-    let landed: Landed = Box::new(move |outcome, cx: &mut gpui::App| {
-        // A page that has gone has nothing to land on.
-        let _ = page.update(cx, |page, cx| landed(page, outcome, cx));
-    });
-    host_dialog(cx, |_| CategoryDeletionDialog::new(presenter, landed));
+    ModuleDialog::open(cx, presenter, landed);
     true
 }

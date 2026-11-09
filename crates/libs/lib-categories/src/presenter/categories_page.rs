@@ -12,6 +12,7 @@ use lib_list_cursor::{Step, step_id};
 use lib_locale::format::upper;
 use lib_toast::Notice;
 use lib_viper::keymap::{DELETE, EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
+use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Hint, count};
 
 use crate::keymap::{COLLAPSE, EXPAND, NEW_CHILD};
@@ -121,21 +122,14 @@ impl CategoriesPagePresenter {
             open_dialog: None,
         }
     }
+}
 
-    /// Whether the page takes `event` from its keymap, rather than the Client's frame having it:
-    /// `left` with nothing to fold or climb to is the Settings index's again, and Edit, Delete and
-    /// New child with no Category selected have nothing to act on.
-    pub fn takes(&self, event: &CategoriesPageEvent) -> bool {
-        match event {
-            CategoriesPageEvent::Collapse => self.collapse_target().is_some(),
-            CategoriesPageEvent::Edit
-            | CategoriesPageEvent::Delete
-            | CategoriesPageEvent::NewChild => self.selected().is_some(),
-            _ => true,
-        }
-    }
+impl Presenter for CategoriesPagePresenter {
+    type Event = CategoriesPageEvent;
+    type ViewModel = CategoriesPageViewModel;
+    type Router<'r> = dyn CategoriesRouter + 'r;
 
-    pub fn handle(&mut self, event: CategoriesPageEvent, router: &mut dyn CategoriesRouter) {
+    fn handle(&mut self, event: CategoriesPageEvent, router: &mut Self::Router<'_>) {
         match event {
             CategoriesPageEvent::Move(step) => self.step(step),
             CategoriesPageEvent::Select(id) => self.select(id),
@@ -175,7 +169,20 @@ impl CategoriesPagePresenter {
         }
     }
 
-    pub fn view_model(&self) -> CategoriesPageViewModel {
+    /// Whether the page takes `event` from its keymap, rather than the Client's frame having it:
+    /// `left` with nothing to fold or climb to is the Settings index's again, and Edit, Delete and
+    /// New child with no Category selected have nothing to act on.
+    fn takes(&self, event: &CategoriesPageEvent) -> bool {
+        match event {
+            CategoriesPageEvent::Collapse => self.collapse_target().is_some(),
+            CategoriesPageEvent::Edit
+            | CategoriesPageEvent::Delete
+            | CategoriesPageEvent::NewChild => self.selected().is_some(),
+            _ => true,
+        }
+    }
+
+    fn view_model(&self) -> CategoriesPageViewModel {
         let categories = self.categories.borrow().categories();
         let rows = settings_rows(&categories, &self.expanded);
         let tree = |wanted: CategoryTypes, kicker: fn(&str) -> String| {
@@ -215,7 +222,21 @@ impl CategoriesPagePresenter {
             open_dialog: self.open_dialog,
         }
     }
+}
 
+impl PagePresenter for CategoriesPagePresenter {
+    type Outcome = CategoriesOutcome;
+
+    fn dialog_closed(outcome: Option<CategoriesOutcome>) -> CategoriesPageEvent {
+        CategoriesPageEvent::DialogClosed(outcome)
+    }
+
+    fn keymap(&self) -> &Keymap<CategoriesPageEvent> {
+        &self.keymap
+    }
+}
+
+impl CategoriesPagePresenter {
     fn categories(&self) -> Vec<Category> {
         self.categories.borrow().categories()
     }

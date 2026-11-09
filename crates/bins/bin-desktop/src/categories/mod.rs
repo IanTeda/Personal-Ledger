@@ -3,8 +3,10 @@
 //! Every rule, every piece of text and the keymap are `lib-categories`'; this folder turns gpui
 //! keys and clicks into Presenter events and draws the view models.
 //!
-//! - `view/page.rs` wraps the page Presenter in an Entity, which the Settings View hosts.
-//! - `view/dialog.rs` holds the Add and Edit Dialog's Presenter in an Entity in the Dialog host.
+//! - `view/page.rs` is the page Presenter's `PageView`: the generic `ModulePage` hosts it
+//!   ([`CategoriesPage`]), which the Settings View hosts as any other page (ADR-0056).
+//! - `view/dialog.rs` and `view/dialog/` are the Add and Edit form Presenter's `DialogView`, hosted
+//!   in a `ModuleDialog`.
 //! - `router.rs` is the Router and the module's entry point ([`categories_page`]); it opens the
 //!   Delete category Dialog through the Category Deletion module (`crate::category_deletion`,
 //!   #1005).
@@ -16,12 +18,16 @@ mod router;
 mod view;
 
 pub use router::categories_page;
-pub use view::page::CategoriesPage;
 
-use lib_categories::presenter::CategoriesPageEvent;
+use lib_categories::presenter::CategoriesPagePresenter;
 use lib_core::{CategoryId, CategoryTypes};
+use lib_viper::dialog::DialogKeys;
 
 use crate::category_deletion::DeletionStores;
+use crate::shell::view::module_page::ModulePage;
+
+/// The Categories Settings page: the page Presenter in the generic page Entity.
+pub type CategoriesPage = ModulePage<CategoriesPagePresenter>;
 
 /// The Categories page as the UI tests read it: names and types in the store's tree order, and the
 /// selected row's name (ADR-0030).
@@ -39,17 +45,19 @@ pub struct SettingsCategoriesSnapshot {
     pub selected_budget_months: Vec<(i32, u32)>,
 }
 
-/// What the Open Ledger hands the Categories module: `lib-database`'s Categories ports, as the
-/// page's repository and as the Dialogs' save ports, the Budgets store the page's snapshot reads,
-/// Category delete's port and reads, and its keymap under `[keybindings]`.
+/// What the Open Ledger hands the Categories module: the page's Presenter, which owns the
+/// Categories keymap under `[keybindings]`, `lib-database`'s Categories ports as the save ports each
+/// form holds from open, the Budgets store the page's snapshot reads, Category delete's port and
+/// reads, and the Dialog keys every Categories Dialog's hints read.
 pub struct CategoriesSetup {
+    pub presenter: CategoriesPagePresenter,
     pub categories: lib_categories::SharedCategories,
     pub save: lib_database::StoredCategoriesPorts,
     /// The Budgets store, which the page's snapshot reads the selected Category's records from.
     pub budgets: lib_database::SharedBudgetsStore,
     /// Category delete's port and reads, over the Categories store and the stores it re-points.
     pub deletion: DeletionStores,
-    pub keymap: lib_viper::keymap::Keymap<CategoriesPageEvent>,
+    pub dialog_keys: DialogKeys,
 }
 
 impl CategoriesSetup {
@@ -58,14 +66,19 @@ impl CategoriesSetup {
         save: lib_database::StoredCategoriesPorts,
         budgets: lib_database::SharedBudgetsStore,
         deletion: DeletionStores,
+        dialog_keys: DialogKeys,
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
+            presenter: CategoriesPagePresenter::new(
+                categories.clone(),
+                lib_categories::keymap::categories_page_keymap(config),
+            ),
             categories,
             save,
             budgets,
             deletion,
-            keymap: lib_categories::keymap::categories_page_keymap(config),
+            dialog_keys,
         }
     }
 
@@ -73,12 +86,24 @@ impl CategoriesSetup {
     /// directly.
     #[cfg(test)]
     pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
+        let config = lib_config::KeyBindingConfig::default();
         Self::new(
             storage.ports.categories.clone(),
             storage.ports.category_save.clone(),
             storage.ports.stores.budgets.clone(),
             DeletionStores::of(&storage.ports),
-            &lib_config::KeyBindingConfig::default(),
+            DialogKeys::of(&lib_shell::dialog_keymap(&config)),
+            &config,
         )
     }
+}
+
+/// What the Categories page's Router is built from for each call (its `PageView::Setup`): the
+/// ports and Dialog keys its Dialogs open on, and the Budgets store its snapshot reads.
+pub struct CategoriesRoutes {
+    pub categories: lib_categories::SharedCategories,
+    pub save: lib_database::StoredCategoriesPorts,
+    pub budgets: lib_database::SharedBudgetsStore,
+    pub deletion: DeletionStores,
+    pub dialog_keys: DialogKeys,
 }

@@ -1,3 +1,5 @@
-//! The Category Deletion module's View: the Delete category Dialog.
+//! The Category Deletion module's Views: the Delete category Dialog, its only one.
 
-pub(crate) mod dialog;
+pub(crate) mod dialog {
+    pub(crate) mod delete_category;
+}

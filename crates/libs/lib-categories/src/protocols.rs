@@ -186,6 +186,10 @@ pub trait CategorySavePorts: CategoryBudget + CategoryHandover + CategoryUsage {
 
 impl<T: CategoryBudget + CategoryHandover + CategoryUsage + ?Sized> CategorySavePorts for T {}
 
+/// The save ports a Category form holds from the moment it opens (ADR-0056): the Client hands it a
+/// clone of the Ledger's ports, which share the stores the confirm writes to.
+pub type SharedSavePorts = Rc<RefCell<dyn CategorySavePorts>>;
+
 /// A Categories Dialog, as the page asks the Router to open it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CategoriesDialog {

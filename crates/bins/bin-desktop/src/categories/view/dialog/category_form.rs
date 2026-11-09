@@ -10,9 +10,10 @@ use lib_categories::presenter::{
     CategoryField, CategoryFormEvent, CategoryFormPresenter, CategoryFormViewModel,
 };
 use lib_core::CategoryTypes;
+use lib_shell::Hint;
 
-use super::{CategoriesDialog, Clicks, send};
 use crate::form::viper::{chosen_label, drawn, labels};
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 use crate::{
     dialog,
     form::{
@@ -25,38 +26,43 @@ use crate::{
 /// The Dialogs' width: the handoff's 5b and 5c.
 const WIDTH: gpui::Pixels = px(440.0);
 
-fn handle(presenter: &mut CategoryFormPresenter, event: CategoryFormEvent) {
-    send(presenter, event, CategoryFormPresenter::handle);
-}
+/// The open form's clicks.
+type Clicks = ModuleDialogClicks<CategoryFormPresenter>;
 
-/// A click on a text field focuses it, closing the list.
-fn click_field(dialog: &mut CategoriesDialog, field: CategoryField) {
-    handle(&mut dialog.presenter, CategoryFormEvent::Focus(field));
-}
+/// The `lib-categories` form Presenter's [`DialogView`], hosted in a `ModuleDialog` (ADR-0056). Its
+/// widget state is the top row of the Parent category list's window, which the View keeps between
+/// draws.
+impl DialogView for CategoryFormPresenter {
+    type Widgets = usize;
 
-/// A click on the select's closed field focuses it and toggles its list.
-fn click_select(dialog: &mut CategoriesDialog) {
-    handle(&mut dialog.presenter, CategoryFormEvent::ToggleParents);
-}
+    fn kind(view: &CategoryFormViewModel) -> &'static str {
+        if view.editing {
+            "EditCategory"
+        } else {
+            "AddCategory"
+        }
+    }
 
-/// A click on row `index` of the open list.
-fn click_option(dialog: &mut CategoriesDialog, index: usize) {
-    if let Some(choice) = dialog.presenter.view_model().parent.options.get(index) {
-        handle(
-            &mut dialog.presenter,
-            CategoryFormEvent::Parent(choice.value),
-        );
+    fn render(
+        view: &CategoryFormViewModel,
+        scroll: &mut usize,
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        render(view, scroll, clicks, cx)
+    }
+
+    /// The fields the form draws, between its title and whether it would confirm.
+    fn readback(view: &CategoryFormViewModel) -> Vec<(&'static str, String)> {
+        framed(&view.frame, readback(view))
+    }
+
+    fn hints(view: &CategoryFormViewModel) -> Vec<Hint> {
+        view.hints.clone()
     }
 }
 
-fn click_type(dialog: &mut CategoriesDialog, category_type: CategoryTypes) {
-    handle(
-        &mut dialog.presenter,
-        CategoryFormEvent::Type(category_type),
-    );
-}
-
-pub(super) fn render(
+fn render(
     view: &CategoryFormViewModel,
     scroll: &mut usize,
     actions: &Clicks,
@@ -84,7 +90,21 @@ pub(super) fn render(
     };
     let options = labels(&view.parent);
     let state = drawn(&view.parent, view.parent_list, scroll);
-    let on_field = |field: CategoryField| actions.click(move |dialog| click_field(dialog, field));
+    let on_field = |field: CategoryField| actions.send(CategoryFormEvent::Focus(field));
+    // A click on row `index` of the open list picks its parent.
+    let parents: Vec<_> = view
+        .parent
+        .options
+        .iter()
+        .map(|choice| choice.value)
+        .collect();
+    let on_parent = actions.option(move |index| {
+        parents
+            .get(index)
+            .map(|parent| CategoryFormEvent::Parent(*parent))
+            .into_iter()
+            .collect()
+    });
     let name_field = if view.name_read_only {
         div()
             .child(label(view.name.label.clone()))
@@ -118,8 +138,9 @@ pub(super) fn render(
                 read_only: view
                     .parent_read_only
                     .then(|| chosen_label(&view.parent).unwrap_or_default().into()),
-                on_field_click: actions.click(click_select),
-                on_option_click: actions.option(click_option),
+                // A click on the closed field focuses it and toggles its list.
+                on_field_click: actions.send(CategoryFormEvent::ToggleParents),
+                on_option_click: on_parent,
             },
             cx,
         ),
@@ -170,7 +191,7 @@ fn type_field(view: &CategoryFormViewModel, actions: &Clicks, cx: &App) -> AnyEl
                     };
                     let element = format!("{prefix}-{suffix}");
                     let value = choice.value.clone();
-                    let on_click = actions.click(move |dialog| click_type(dialog, value.clone()));
+                    let on_click = actions.send(CategoryFormEvent::Type(value));
                     div()
                         .debug_selector({
                             let element = element.clone();
@@ -267,7 +288,7 @@ fn notice(text: String, cx: &App) -> AnyElement {
 }
 
 /// A problem with a field or a refused confirm, under the field.
-pub(super) fn error_line(text: String, cx: &App) -> AnyElement {
+fn error_line(text: String, cx: &App) -> AnyElement {
     div()
         .mt(px(4.0))
         .text_size(px(11.5))
@@ -279,7 +300,7 @@ pub(super) fn error_line(text: String, cx: &App) -> AnyElement {
 
 /// The form's fields, for a test: the parent chosen, when there is one, the parents offered and
 /// the fields that are read-only.
-pub(super) fn readback(view: &CategoryFormViewModel) -> Vec<(&'static str, String)> {
+fn readback(view: &CategoryFormViewModel) -> Vec<(&'static str, String)> {
     let mut values = vec![
         ("field", format!("{:?}", view.focused)),
         ("name", view.name.text.clone()),

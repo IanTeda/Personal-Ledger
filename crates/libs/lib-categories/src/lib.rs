@@ -29,5 +29,6 @@ pub use entity::*;
 pub use protocols::{
     CategoriesDialog, CategoriesOutcome, CategoriesRouter, CategoryBudget, CategoryChange,
     CategoryHandover, CategoryRepository, CategorySavePorts, CategoryUsage, CategoryUse, Holdings,
-    MonthlyBudget, MonthlyBudgetRefusal, ParentStop, SharedCategories, TypeChangeBlockers,
+    MonthlyBudget, MonthlyBudgetRefusal, ParentStop, SharedCategories, SharedSavePorts,
+    TypeChangeBlockers,
 };

@@ -1,58 +1,61 @@
 //! `impl CategoriesRouter` for the Desktop: where the Categories page's Presenter asks to go. A
-//! Dialog opens as an Entity in the Dialog host through the page's gpui context, which is why the
-//! Router is built for each `handle` call, and a Notice goes onto the bin's queue
-//! (`crate::notices`), which the input's `send` drains. The Delete category Dialog is the Category
-//! Deletion module's (`crate::category_deletion`, #1005), opened through its entry point.
+//! Dialog opens as a `ModuleDialog` in the Dialog host through the page's gpui context, which is why
+//! the Router is built for each `handle` call (`PageView::with_router`), and a Notice goes onto the
+//! bin's queue (`crate::notices`), which the input's `send` drains. The Delete category Dialog is
+//! the Category Deletion module's (`crate::category_deletion`, #1005), opened through its entry
+//! point.
 
-use gpui::{Context, Entity};
-use lib_categories::{CategoriesDialog as Which, CategoriesOutcome, CategoriesRouter};
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use gpui::{AppContext as _, Context, Entity};
+use lib_categories::presenter::CategoryFormPresenter;
+use lib_categories::{CategoriesDialog as Which, CategoriesRouter, SharedSavePorts};
 use lib_toast::{Notice, Notify};
 
-use super::CategoriesSetup;
-use super::view::dialog::CategoriesDialog;
-use super::view::page::CategoriesPage;
+use super::{CategoriesPage, CategoriesRoutes, CategoriesSetup};
 use crate::announcer::Announcer;
-use crate::category_deletion::DeletionStores;
 use crate::notices::Queue;
-use crate::shell::view::dialog_entity::host_dialog;
+use crate::shell::view::dialog_entity::ModuleDialog;
+use crate::shell::view::module_page::ModulePage;
 
 pub(super) struct PageRouter<'a, 'b> {
-    pub categories: lib_categories::SharedCategories,
-    pub deletion: DeletionStores,
-    pub save: lib_database::StoredCategoriesPorts,
+    pub routes: &'a CategoriesRoutes,
     pub cx: &'a mut Context<'b, CategoriesPage>,
 }
 
 impl CategoriesRouter for PageRouter<'_, '_> {
-    /// Builds `dialog`'s Presenter and hosts its View: Add and Edit on the shared Categories, their
-    /// usage and budget read from the stores, Delete on the Category Deletion module's port. Its
-    /// confirmed outcome comes back to the page through [`CategoriesPage::dialog_landed`].
+    /// Builds `dialog`'s Presenter and hosts it: Add and Edit on the shared Categories and a clone
+    /// of the Ledger's save ports, which the form holds from open, Delete on the Category Deletion
+    /// module's port. Its confirmed outcome comes back to the page through
+    /// [`ModulePage::landing`].
     fn open_dialog(&mut self, dialog: Which) -> bool {
-        if let Which::DeleteCategory(id) = dialog {
-            let landed = |page: &mut CategoriesPage,
-                          outcome: CategoriesOutcome,
-                          cx: &mut Context<'_, CategoriesPage>| {
-                page.dialog_landed(outcome, cx);
-            };
-            return crate::category_deletion::router::open_delete(
+        let routes = self.routes;
+        let landed = CategoriesPage::landing(self.cx);
+        let keys = routes.dialog_keys.clone();
+        let save: SharedSavePorts = Rc::new(RefCell::new(routes.save.clone()));
+        let categories = routes.categories.clone();
+        match dialog {
+            Which::AddCategory { parent } => {
+                let form = CategoryFormPresenter::add(categories, save, parent, keys);
+                ModuleDialog::open(self.cx, form, landed);
+                true
+            }
+            Which::EditCategory(id) => {
+                let Some(form) = CategoryFormPresenter::edit(categories, save, id, keys) else {
+                    return false;
+                };
+                ModuleDialog::open(self.cx, form, landed);
+                true
+            }
+            Which::DeleteCategory(id) => crate::category_deletion::router::open_delete(
                 self.cx,
-                &self.deletion,
+                &routes.deletion,
                 id,
+                keys,
                 landed,
-            );
+            ),
         }
-        let page = self.cx.weak_entity();
-        let landed = Box::new(move |outcome, cx: &mut gpui::App| {
-            // A page that has gone has nothing to land on.
-            let _ = page.update(cx, |page, cx| page.dialog_landed(outcome, cx));
-        });
-        let Some(dialog) =
-            CategoriesDialog::open(dialog, &self.categories, self.save.clone(), landed)
-        else {
-            return false;
-        };
-        host_dialog(self.cx, |_| dialog);
-        true
     }
 }
 
@@ -70,6 +73,20 @@ pub fn categories_page(
     announcer: Entity<Announcer>,
     cx: &mut gpui::App,
 ) -> Entity<CategoriesPage> {
-    use gpui::AppContext as _;
-    cx.new(|cx| CategoriesPage::new(setup, announcer, cx))
+    let CategoriesSetup {
+        presenter,
+        categories,
+        save,
+        budgets,
+        deletion,
+        dialog_keys,
+    } = setup;
+    let routes = CategoriesRoutes {
+        categories,
+        save,
+        budgets,
+        deletion,
+        dialog_keys,
+    };
+    cx.new(|cx| ModulePage::new(presenter, routes, &announcer, cx))
 }
