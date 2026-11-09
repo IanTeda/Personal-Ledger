@@ -7,14 +7,15 @@
 //! The page never counts or announces a write: each input's `send` announces what its commit
 //! names (ADR-0055), and the page repaints on the domains in [`PageView::REPAINTS`].
 //!
-//! It takes no leftover-key handler, `key_ahead` or `search_key`, the pre-module key paths #1079
-//! retires: a page types text through `PagePresenter::typed` and reports a mode of its own through
-//! `PagePresenter::mode`, which the page turns into `EnterMode` and `ExitMode` around each handle
-//! ([`ModulePage::mode_key`]). It also serves the main Views' methods `ActiveViewEntity` forwards
+//! It takes no leftover-key handler: a page types text through `PagePresenter::typed` and reports a
+//! mode of its own through `PagePresenter::mode`, which the page turns into `EnterMode` and
+//! `ExitMode` around each handle, and the key route offers it every key in that mode through
+//! [`ModulePage::mode_key`] (#1100). It also serves the main Views' methods `ActiveViewEntity` forwards
 //! to (`on_enter`, `start_search`, the `?` Help group), with [`PageView`]'s hooks around a handle
 //! for the widget state a main View keeps (ADR-0056's main-View consequence).
 //! [`PresenterPage`] is how [`PageClicks`] reaches the page, for the generic page as for the
-//! hand-written ones.
+//! hand-written ones. A Settings page is a [`SettingsPageView`] too, which the Settings View reaches
+//! through `settings::pages::PageHandle` over its Entity.
 
 use gpui::{
     AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Keystroke, Pixels, Point,
@@ -29,9 +30,8 @@ use super::page_clicks::{PageClicks, PresenterPage};
 use super::statusline::PageStatus;
 use crate::announcer::{Announcer, LedgerChanged, notify_on};
 use crate::navigation::chord::chord;
-use crate::navigation::movement::Movement;
 use crate::settings::SettingsPage;
-use crate::settings::pages::{Page, PageFrame, PageRowClicked};
+use crate::settings::pages::{PageFrame, PageRowClicked};
 use crate::view::event::{Reveal, ViewEvent, ViewMode};
 use crate::view::help::HelpGroup;
 
@@ -54,11 +54,6 @@ pub trait PageView: PagePresenter + Sized + 'static {
 
     /// The Ledger domains whose change repaints the page: its own, and any its view model reads.
     const REPAINTS: &'static [Domain];
-
-    /// Whether a movement the page's keymap didn't take is left to the Settings frame, which
-    /// scrolls the body with it. A page with a selection of its own takes every movement, so
-    /// leaves this `false`; General, Ledger and the info pages have none.
-    const FRAME_SCROLLS: bool = false;
 
     /// Runs `handle` on `presenter` with the page's Router, built over `setup` around this call's
     /// context, which is how a Router opens a Dialog in the host. The Router may read what the
@@ -174,17 +169,26 @@ pub trait PageView: PagePresenter + Sized + 'static {
     fn menu_at(_widgets: &mut Self::Widgets, _at: Point<Pixels>) {}
 }
 
-/// A Settings page's [`PageView`]: its place in the index, which `Page` is keyed by, and how the
-/// Settings body lays it out.
+/// A Settings page's [`PageView`]: its place in the index, which the Settings View finds the page
+/// by, and how the Settings body lays it out. Its identity (order, id, label, scope note) stays on
+/// [`SettingsPage`], which the page names through [`Self::PAGE`].
 pub trait SettingsPageView: PageView {
+    /// The page's place in the index.
     const PAGE: SettingsPage;
 
     /// Whether the page fills the body's height and scrolls inside itself (Tracing's log box)
     /// rather than the body scrolling the whole page.
     const FILLS_PAGE: bool = false;
 
-    /// Whether the page draws past the Settings content width to the View's (Units' tables).
+    /// Whether the page draws past the Settings content width to the View's (Units' tables, down
+    /// to their 610px minimum).
     const FULL_WIDTH: bool = false;
+
+    /// Whether a movement the page's keymap didn't take falls back to the Settings frame, which
+    /// scrolls the body with it. A page with a selection of its own binds every movement it takes,
+    /// so leaves this `false` and a movement it declines does nothing; General, Ledger and the info
+    /// pages have none.
+    const FRAME_SCROLLS: bool = false;
 }
 
 /// What [`PageView::render`] draws with beside the view model.
@@ -365,7 +369,7 @@ impl<P: PageView> ModulePage<P> {
 
     /// Hands the Presenter [`PageView::framed`]'s event for `frame`, if it takes it. Not an input:
     /// the frame is layout, and it is told outside any input (as the Settings View draws).
-    fn framed(&mut self, frame: PageFrame, cx: &mut Context<'_, Self>) {
+    pub fn framed(&mut self, frame: PageFrame, cx: &mut Context<'_, Self>) {
         if let Some(event) = P::framed(frame).filter(|event| self.presenter.takes(event))
             && let Some(followed) = self.handle(event, cx)
         {
@@ -550,53 +554,26 @@ impl<P: PageView> PresenterPage<P::Event> for ModulePage<P> {
     }
 }
 
-impl<P: SettingsPageView> Page for ModulePage<P> {
-    const PAGE: SettingsPage = P::PAGE;
-    const FILLS_PAGE: bool = P::FILLS_PAGE;
-    const FULL_WIDTH: bool = P::FULL_WIDTH;
-
-    /// Every chord the page's keymap binds, the arrows and `g g` among them.
-    fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {
-        ModulePage::module_key(self, chord, cx)
-    }
-
-    fn module_command(&mut self, command: &str, cx: &mut Context<'_, Self>) -> bool {
-        ModulePage::module_command(self, command, cx)
-    }
-
-    /// A movement the keymap doesn't bind (`enter`) does nothing on the page, and Settings leaves
-    /// the page where it is: the keymap binds every movement a module page takes.
-    fn apply_movement(&mut self, _movement: Movement, _cx: &mut Context<'_, Self>) -> bool {
-        !P::FRAME_SCROLLS
-    }
-
-    fn reveal(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
-        ModulePage::reveal(self, reveal, cx);
-    }
-
-    fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
-        ModulePage::escape(self, cx)
-    }
-
-    fn set_page_focused(&mut self, focused: bool, cx: &mut Context<'_, Self>) {
+/// What the Settings View asks of a Settings page beyond the main Views' methods.
+impl<P: SettingsPageView> ModulePage<P> {
+    /// Told whether the page, not the index, holds keyboard focus, as the View draws it and as
+    /// focus moves in or out.
+    pub fn set_page_focused(&mut self, focused: bool, cx: &mut Context<'_, Self>) {
         self.page_focused = focused;
         if self.presenter.focus_changed(focused) {
             cx.notify();
         }
     }
 
-    fn set_frame(&mut self, frame: PageFrame, cx: &mut Context<'_, Self>) {
-        self.framed(frame, cx);
-    }
-
-    fn heading_meta(&self, cx: &App) -> AnyElement {
+    /// The heading's right-aligned meta: [`PageView::heading_meta`], else the page's scope note.
+    pub fn heading_meta(&self, cx: &App) -> AnyElement {
         P::heading_meta(&self.view_model(), cx)
             .unwrap_or_else(|| crate::settings::scope_note(P::PAGE).into_any_element())
     }
 
     /// The `?` cheat sheet's keys: the page's [`PageView::help`] group when it gives one (Display's
     /// controls and grid both), else what its status line shows.
-    fn hints(&self, _cx: &App) -> Vec<Hint> {
+    pub fn hints(&self) -> Vec<Hint> {
         match self.help_group() {
             Some(group) => group
                 .keys
@@ -607,15 +584,8 @@ impl<P: SettingsPageView> Page for ModulePage<P> {
         }
     }
 
-    fn page_status(&self, _cx: &App) -> Option<PageStatus> {
-        Some(self.page_status())
-    }
-
-    fn status_note(&self, _cx: &App) -> String {
-        self.page_status().right
-    }
-
-    fn side_pane(&self, entity: &Entity<Self>, cx: &App) -> Option<AnyElement> {
+    /// A pane drawn at the View's right edge, beside the page, its clicks reaching `entity`.
+    pub fn side_pane(&self, entity: &Entity<Self>, cx: &App) -> Option<AnyElement> {
         P::side_pane(&self.view_model(), &PageClicks::of(entity), cx)
     }
 }

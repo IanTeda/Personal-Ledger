@@ -41,6 +41,6 @@ impl Root {
     /// A Settings page's snapshot for a test, read from the page `S` names, as the View builds it.
     #[doc(hidden)]
     pub fn settings_page_snapshot<S: PageSnapshot>(&self, cx: &gpui::App) -> S {
-        S::read(self.settings.read(cx).page::<S::Page>().read(cx), cx)
+        S::read(self.settings.read(cx).page::<S::Presenter>().read(cx), cx)
     }
 }

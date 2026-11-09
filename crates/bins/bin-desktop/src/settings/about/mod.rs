@@ -39,9 +39,6 @@ impl PageView for AboutPresenter {
     /// About reads no Ledger domain.
     const REPAINTS: &'static [Domain] = &[];
 
-    /// The frame scrolls the page: it has no selection.
-    const FRAME_SCROLLS: bool = true;
-
     /// About takes no event, so its Router is the status line's queue, which nothing uses.
     fn with_router<R>(
         presenter: &mut Self,
@@ -71,4 +68,7 @@ impl PageView for AboutPresenter {
 
 impl SettingsPageView for AboutPresenter {
     const PAGE: SettingsPage = SettingsPage::About;
+
+    /// The frame scrolls the page: it has no selection.
+    const FRAME_SCROLLS: bool = true;
 }

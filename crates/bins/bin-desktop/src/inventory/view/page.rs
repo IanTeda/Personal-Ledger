@@ -89,7 +89,7 @@ fn row_label(inventory: &Inventory, row: InventoryRow) -> String {
 }
 
 impl PageSnapshot for SettingsInventorySnapshot {
-    type Page = InventoryPage;
+    type Presenter = InventoryPagePresenter;
 
     /// The visible rows and the selected one, each Location's Areas, Units and insurers, and each
     /// Area's Item count.

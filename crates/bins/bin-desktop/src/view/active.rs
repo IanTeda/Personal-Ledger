@@ -135,22 +135,24 @@ impl ActiveViewEntity {
         }
     }
 
-    /// A key the View claims before the Shell's fallback. Returns whether it took the key.
-    pub fn key_ahead(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
+    /// A key while the View is in a mode it entered for something of its own (its Search, a
+    /// filter popover, an edit in place, Settings' page picker): `ModulePage::mode_key`, or the
+    /// Settings frame's. Returns whether the View took it; in Normal mode it takes nothing.
+    pub fn mode_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
         match self {
             Self::Dashboard(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
-            // A module page takes keys ahead only in a mode of its own.
             Self::Bills(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
             Self::Budgets(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
             Self::Transactions(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
             Self::Documents(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
-            Self::Settings(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
-            // The step's open select is a mode of its own.
             Self::Import(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
+            Self::Settings(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
             Self::Shell(_) => false,
         }
     }
 
+    /// A movement the Shell fell back on, which no keymap took: Settings' frame scrolls or steps
+    /// its index with it.
     pub fn apply_movement(&self, movement: Movement, cx: &mut App) {
         match self {
             Self::Settings(view) => view.update(cx, |view, cx| view.apply_movement(movement, cx)),
@@ -189,19 +191,6 @@ impl ActiveViewEntity {
             Self::Documents(view) => view.update(cx, |view, cx| view.start_search(cx)),
             Self::Settings(view) => view.update(cx, |view, cx| view.start_search(cx)),
             Self::Import(_) | Self::Shell(_) => false,
-        }
-    }
-
-    /// A key typed while the View's Search is open. Returns whether the View took it.
-    pub fn search_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
-        match self {
-            Self::Dashboard(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
-            Self::Bills(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
-            Self::Budgets(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
-            Self::Transactions(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
-            Self::Documents(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
-            // No Settings page opens a Search.
-            Self::Settings(_) | Self::Import(_) | Self::Shell(_) => false,
         }
     }
 

@@ -60,7 +60,7 @@ impl SettingsPageView for CategoriesPagePresenter {
 }
 
 impl PageSnapshot for SettingsCategoriesSnapshot {
-    type Page = CategoriesPage;
+    type Presenter = CategoriesPagePresenter;
 
     /// The Categories in the store's tree order, and the selected row's name.
     fn read(page: &CategoriesPage, _cx: &App) -> Self {

@@ -45,7 +45,7 @@ pub enum ViewEvent {
 pub enum ViewMode {
     /// An edit in place. `Root` hands the View every key first.
     Insert,
-    /// The View's Search box. `Root` hands the View every key through `search_key`.
+    /// The View's Search box. `Root` hands the View every key through `mode_key`.
     Search,
     /// A filter popover. `Root` hands the View every key first.
     Filter,

@@ -205,7 +205,7 @@ impl ShellRouter for RootRouter<'_, '_> {
                 let page = self
                     .settings
                     .read(cx)
-                    .page::<crate::accounts::AccountsPage>();
+                    .page::<lib_accounts::presenter::AccountsPagePresenter>();
                 crate::accounts::router::run_command(&page, run.name, verb, &run.argument, cx);
             }
             CommandEffect::Colour(colour) => {

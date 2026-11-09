@@ -15,7 +15,6 @@ use crate::{
     navigation::nav::{FocusZone, InputMode},
     shell::view::dialog_entity::DialogKey,
     shell::view::window_size::WindowSize,
-    view::active::ActiveViewEntity,
 };
 use lib_shell::NavInput;
 
@@ -100,36 +99,6 @@ impl Root {
         self.nav().focus() == FocusZone::View && self.nav().mode() == InputMode::Normal
     }
 
-    /// Whether a key reaches the active View's own handler: the View zone has focus, in `Normal`
-    /// mode, with no `Ctrl`, `Alt` or `Cmd` held (ADR-0037). `Shift` is the View's to read.
-    fn view_takes_key(&self, keystroke: &Keystroke) -> bool {
-        let modifiers = &keystroke.modifiers;
-        self.view_has_keys() && !(modifiers.control || modifiers.alt || modifiers.platform)
-    }
-
-    /// Whether a key reaches the active View's own handler ahead of the Shell's fallback: as
-    /// [`Self::view_takes_key`], and every key in an `Insert` or `Filter` mode the View entered for
-    /// something it opened itself (`ViewEvent::EnterMode`). The Shell swallows every key in those
-    /// modes, so only the View can use one; `Esc` comes back to the View as `escape`. A Search the
-    /// View entered reads its keys through `search_key` instead.
-    fn view_takes_key_ahead(&self, keystroke: &Keystroke) -> bool {
-        (self.view_owns_mode() && self.nav().mode() != InputMode::Search)
-            || self.view_takes_key(keystroke)
-    }
-
-    /// The active View's own keys, taken ahead of the Shell's fallback.
-    fn handle_view_key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
-        match self.active_view_entity(cx) {
-            ActiveViewEntity::Shell(_) => false,
-            view => {
-                if !self.view_takes_key_ahead(keystroke) {
-                    return false;
-                }
-                view.key_ahead(keystroke, cx)
-            }
-        }
-    }
-
     /// A key while the palette is open, as one input: its Presenter resolves it through the
     /// Dialog keymap and its own `history_back`, types any key neither binds, and runs the Command
     /// it closes on through the root Router. The palette takes every key, so a key it gives no
@@ -172,17 +141,6 @@ impl Root {
             presenter.explorer_key(&chord, typed, router)
         });
         outcome != ExplorerOutcome::Ignored
-    }
-
-    /// Routes a keystroke while `InputMode::Search` is active (step 2, mirroring
-    /// [`Self::handle_palette_key`]'s shape): to the active View's Search. A no-op everywhere
-    /// else.
-    fn handle_search_key(&mut self, keystroke: &Keystroke, cx: &mut gpui::App) -> bool {
-        let view = self.active_view_entity(cx);
-        if !matches!(view, ActiveViewEntity::Shell(_)) {
-            return view.search_key(keystroke, cx);
-        }
-        false
     }
 
     /// A key while a module's Dialog is open, as one input: resolved through the Dialog keymap,
@@ -232,8 +190,9 @@ impl KeyRoute for Keys<'_, '_> {
 
     /// The palette, Search, a filter, the file explorer or Insert takes every key. The palette and
     /// the file explorer are the Shell's own, and read their keys, `back` included, through its
-    /// Presenter. A mode the View entered for something of its own reads them first, `Esc`
-    /// included.
+    /// Presenter. A mode the View entered for something of its own (its Search, a filter popover,
+    /// an edit in place, Settings' page picker) reads them through the View's `mode_key`, `Esc`
+    /// coming back to it as `escape`.
     fn mode(&mut self) -> Option<bool> {
         let shell = &mut *self.shell;
         let mode = shell.nav().mode();
@@ -252,23 +211,13 @@ impl KeyRoute for Keys<'_, '_> {
             }
             return Some(true);
         }
-        if shell.view_owns_mode()
-            && mode != InputMode::Search
-            && shell.handle_view_key_ahead(self.keystroke, self.cx)
-        {
-            return Some(true);
-        }
-        let taken = match mode {
-            InputMode::Search => shell.handle_search_key(self.keystroke, self.cx),
-            // Only a View opens a filter popover, and it reads the popover's keys above; what it
-            // leaves is swallowed, as is every key in Insert, which has no input surface yet.
-            // Command mode with neither the palette nor the explorer open has nothing to type into.
-            InputMode::Command
-            | InputMode::Filter
-            | InputMode::Insert
-            | InputMode::Dialog
-            | InputMode::Normal => false,
-        };
+        // What the View leaves in its own mode is swallowed, as is every key in a mode no View
+        // entered: Command mode with neither the palette nor the explorer open has nothing to type
+        // into.
+        let taken = shell.view_owns_mode()
+            && shell
+                .active_view_entity(self.cx)
+                .mode_key(self.keystroke, self.cx);
         Some(taken)
     }
 
@@ -308,13 +257,7 @@ impl KeyRoute for Keys<'_, '_> {
         shell.view_has_keys() && shell.active_view_entity(self.cx).module_key(chord, self.cx)
     }
 
-    /// The View's keys that sit ahead of the Shell's fallback (a Budgets Plan cell's typing, the
-    /// Documents keys, the Settings pages' own keys).
-    fn view(&mut self) -> bool {
-        self.shell.handle_view_key_ahead(self.keystroke, self.cx)
-    }
-
-    fn fall_back(&mut self, fallback: Option<ShellCommand>, _sequence: bool) -> bool {
+    fn fall_back(&mut self, fallback: Option<ShellCommand>) -> bool {
         let shell = &mut *self.shell;
         // The Shell's Presenter runs the command it falls back on, as one input.
         if let Some(command) = fallback {

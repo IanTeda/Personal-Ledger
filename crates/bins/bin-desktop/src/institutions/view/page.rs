@@ -76,7 +76,7 @@ impl SettingsPageView for InstitutionsPagePresenter {
 }
 
 impl PageSnapshot for SettingsInstitutionsSnapshot {
-    type Page = InstitutionsPage;
+    type Presenter = InstitutionsPagePresenter;
 
     fn read(page: &InstitutionsPage, _cx: &App) -> Self {
         let view = page.view_model();

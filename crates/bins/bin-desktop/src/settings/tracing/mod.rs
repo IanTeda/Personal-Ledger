@@ -105,10 +105,6 @@ impl PageView for TracingPresenter {
     /// Tracing reads the capture, not the Ledger.
     const REPAINTS: &'static [Domain] = &[];
 
-    /// A movement the keymap doesn't bind is left to the frame, as before the generic page: the
-    /// log box fills the page, so the frame has nothing to scroll.
-    const FRAME_SCROLLS: bool = true;
-
     fn with_router<R>(
         presenter: &mut Self,
         _setup: &Entity<LogFeed>,
@@ -161,6 +157,11 @@ impl PageView for TracingPresenter {
 
 impl SettingsPageView for TracingPresenter {
     const PAGE: SettingsPage = SettingsPage::Tracing;
+
+    /// A movement the keymap doesn't bind is left to the frame, as before the generic page: the
+    /// log box fills the page, so the frame has nothing to scroll.
+    const FRAME_SCROLLS: bool = true;
+
     /// The log box fills the page and scrolls itself.
     const FILLS_PAGE: bool = true;
 }
@@ -218,7 +219,7 @@ fn scroll(list: &ListState, scroll: LogScroll) {
 }
 
 impl PageSnapshot for SettingsTracingSnapshot {
-    type Page = TracingPage;
+    type Presenter = TracingPresenter;
 
     /// The Tracing page's state.
     fn read(page: &TracingPage, _cx: &App) -> Self {

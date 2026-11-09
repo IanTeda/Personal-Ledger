@@ -38,7 +38,7 @@ pub type SettingsUnitsSnapshot = lib_units::presenter::UnitsPageViewModel;
 pub type UnitPricesSnapshot = lib_units::presenter::UnitPricesViewModel;
 
 impl PageSnapshot for SettingsUnitsSnapshot {
-    type Page = UnitsPage;
+    type Presenter = UnitsPagePresenter;
 
     fn read(page: &UnitsPage, _cx: &App) -> Self {
         page.view_model()
@@ -47,7 +47,7 @@ impl PageSnapshot for SettingsUnitsSnapshot {
 
 /// `None` while the Unit prices view is closed.
 impl PageSnapshot for Option<UnitPricesSnapshot> {
-    type Page = UnitsPage;
+    type Presenter = UnitsPagePresenter;
 
     fn read(page: &UnitsPage, _cx: &App) -> Self {
         page.view_model().prices

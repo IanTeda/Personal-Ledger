@@ -16,9 +16,10 @@
 //! Every key takes one route, [`route_key`], offered to each step in turn until one takes it:
 //!
 //! 1. An open Dialog takes every key.
-//! 2. A mode the active View entered for something of its own: its Search, a filter popover or
-//!    an edit in place. The View is offered the key first (`esc` closes what it opened, then
-//!    leaves the mode). The Shell's command palette and file explorer are modes too, but the
+//! 2. A mode the active View entered for something of its own: its Search, a filter popover, an
+//!    edit in place or Settings' page picker. The View reads the key through its `mode_key`, the
+//!    page's `ModulePage::mode_key` or the Settings frame's (`esc` closes what it opened, then
+//!    leaves the mode), and what it leaves is swallowed. The Shell's command palette and file explorer are modes too, but the
 //!    Shell's: their `lib-shell` Presenters resolve their keys through the Dialog keymap. Who
 //!    entered the current mode is recorded in `lib-shell`'s `NavState` (`view_owns_mode`), set by
 //!    the View's `ViewEvent::EnterMode` and cleared on leaving any mode.
@@ -27,11 +28,13 @@
 //! 4. The focused module's keymap. In Settings that is the open page's, then the frame's
 //!    (`lib-settings`). A key whose event the page hands on (the Colour Theme grid's `tab`, once it
 //!    has left the grid) goes on as one the module declined.
-//! 5. A View that isn't a module yet, with its own key handler.
+//! 5. The fall-back: a key no step took goes back to the Shell when its global keymap binds it to
+//!    focus `tab`, `a`, a movement or `enter`, so a list's own `tab` or `a` wins over the Shell's.
+//!    A movement the Shell falls back on in Settings is the frame's own: it scrolls the body or
+//!    steps the index. Any other key goes nowhere: every View is a module, with no leftover key
+//!    handler (#1100).
 //!
-//! A key no step takes falls back to the Shell when its global keymap binds it to focus `tab`, `a`,
-//! a movement or `enter`, so a list's own `tab` or `a` wins over the Shell's; otherwise the View's
-//! leftover handler has it. Each step that reaches a Presenter does so through its own `send`.
+//! Each step that reaches a Presenter does so through its own `send`.
 //!
 //! Before any step, the Shell's Presenter hears the key arrive and clears the status message, so a
 //! message the key sets answers it alone. The Notices drain into the Presenter's Toast stack and
@@ -202,8 +205,8 @@ fn changed(committed: &Committed, mut reloaded: BTreeSet<Domain>) -> BTreeSet<Do
 pub(crate) enum Offered {
     /// It took the key; `true` when the window needs redrawing.
     Took(bool),
-    /// Not the Shell's to take first: `chord` goes on to the module and the View, with the
-    /// command the Shell falls back on if neither takes it.
+    /// Not the Shell's to take first: `chord` goes on to the module, with the command the Shell
+    /// falls back on if it doesn't take it.
     Passed {
         chord: String,
         fallback: Option<ShellCommand>,
@@ -216,7 +219,7 @@ pub(crate) trait KeyRoute {
     /// Step 1: an open Dialog takes every key.
     fn dialog(&mut self) -> Option<bool>;
 
-    /// Step 2: a mode left in the bin takes every key.
+    /// Step 2: a mode, the Shell's or one the View entered, takes every key.
     fn mode(&mut self) -> Option<bool>;
 
     /// Step 3: the global keymap.
@@ -226,12 +229,9 @@ pub(crate) trait KeyRoute {
     /// Whether it took the key.
     fn module(&mut self, chord: &str) -> bool;
 
-    /// Step 5: the focused View's own key handler, for a single key. Whether it took the key.
-    fn view(&mut self) -> bool;
-
-    /// No step took the key: the Shell's `fallback`, if it has one. Whether the window needs
-    /// redrawing.
-    fn fall_back(&mut self, fallback: Option<ShellCommand>, sequence: bool) -> bool;
+    /// Step 5: no step took the key, so the Shell's `fallback`, if it has one. Whether the window
+    /// needs redrawing.
+    fn fall_back(&mut self, fallback: Option<ShellCommand>) -> bool;
 }
 
 /// Offers a key to each step of `route` in order, until one takes it. Returns whether the window
@@ -250,13 +250,7 @@ pub(crate) fn route_key(route: &mut impl KeyRoute) -> bool {
     if route.module(&chord) {
         return true;
     }
-    // A View not yet a module reads one key at a time, so a sequence is the module's or the
-    // Shell's.
-    let sequence = chord.contains(' ');
-    if !sequence && route.view() {
-        return true;
-    }
-    route.fall_back(fallback, sequence)
+    route.fall_back(fallback)
 }
 
 #[cfg(test)]
@@ -313,18 +307,16 @@ mod tests {
             self.ask("module")
         }
 
-        fn view(&mut self) -> bool {
-            self.ask("view")
-        }
-
-        fn fall_back(&mut self, _fallback: Option<ShellCommand>, _sequence: bool) -> bool {
+        fn fall_back(&mut self, _fallback: Option<ShellCommand>) -> bool {
             self.ask("fall_back")
         }
     }
 
+    /// The route's five steps: dialog, mode, global, module and fall-back. There is no View step
+    /// after the module's: every View is a module (#1100).
     #[test]
     fn each_step_is_asked_in_order_and_the_first_to_take_the_key_ends_it() {
-        let order = ["dialog", "mode", "global", "module", "view", "fall_back"];
+        let order = ["dialog", "mode", "global", "module", "fall_back"];
         for (index, taker) in order.into_iter().enumerate() {
             let mut steps = Steps::taken_by(taker);
             assert!(route_key(&mut steps), "{taker}");
@@ -333,7 +325,7 @@ mod tests {
     }
 
     #[test]
-    fn a_sequence_skips_the_view_that_reads_one_key_at_a_time() {
+    fn a_sequence_takes_the_same_steps_as_a_single_key() {
         let mut steps = Steps::taken_by("fall_back");
         steps.chord = "g g";
 

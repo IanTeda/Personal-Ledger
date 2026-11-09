@@ -38,9 +38,6 @@ impl PageView for DataBackupPresenter {
     /// The page reads no Ledger domain.
     const REPAINTS: &'static [Domain] = &[];
 
-    /// The frame scrolls the page: it has no selection.
-    const FRAME_SCROLLS: bool = true;
-
     fn with_router<R>(
         presenter: &mut Self,
         _setup: &(),
@@ -69,4 +66,7 @@ impl PageView for DataBackupPresenter {
 
 impl SettingsPageView for DataBackupPresenter {
     const PAGE: SettingsPage = SettingsPage::DataBackup;
+
+    /// The frame scrolls the page: it has no selection.
+    const FRAME_SCROLLS: bool = true;
 }

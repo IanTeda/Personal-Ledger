@@ -61,7 +61,7 @@ impl SettingsPageView for TagsPagePresenter {
 }
 
 impl PageSnapshot for SettingsTagsSnapshot {
-    type Page = TagsPage;
+    type Presenter = TagsPagePresenter;
 
     /// The Tags A–Z, their ids and the selected row's name.
     fn read(page: &TagsPage, _cx: &App) -> Self {

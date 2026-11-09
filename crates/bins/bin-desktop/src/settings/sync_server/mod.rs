@@ -38,9 +38,6 @@ impl PageView for SyncServerPresenter {
     /// The page reads no Ledger domain.
     const REPAINTS: &'static [Domain] = &[];
 
-    /// The frame scrolls the page: it has no selection.
-    const FRAME_SCROLLS: bool = true;
-
     fn with_router<R>(
         presenter: &mut Self,
         _setup: &(),
@@ -69,4 +66,7 @@ impl PageView for SyncServerPresenter {
 
 impl SettingsPageView for SyncServerPresenter {
     const PAGE: SettingsPage = SettingsPage::SyncServer;
+
+    /// The frame scrolls the page: it has no selection.
+    const FRAME_SCROLLS: bool = true;
 }

@@ -5,16 +5,17 @@
 use gpui::App;
 
 use super::state::SettingsView;
-use crate::settings::{SettingsFocus, display::DisplayPage, pages::Page};
+use crate::settings::{SettingsFocus, display::DisplayPage};
+use crate::shell::view::module_page::{ModulePage, SettingsPageView};
 
 /// A Settings page's snapshot, read from the page it names, so `Root::settings_page_snapshot` and
 /// the test harness reach every page through one path keyed on the snapshot's type rather than a
 /// forwarder per page (ADR-0037's Settings page identity amendment).
 pub trait PageSnapshot: Sized {
-    /// The page the snapshot is read from.
-    type Page: Page;
+    /// The Presenter of the page the snapshot is read from.
+    type Presenter: SettingsPageView;
 
-    fn read(page: &Self::Page, cx: &App) -> Self;
+    fn read(page: &ModulePage<Self::Presenter>, cx: &App) -> Self;
 }
 
 /// The Settings shell's state: the page on show and the dialog open over it. Each page's own state
@@ -75,7 +76,7 @@ impl SettingsView {
 }
 
 impl PageSnapshot for SettingsDisplaySnapshot {
-    type Page = DisplayPage;
+    type Presenter = lib_settings::DisplayPresenter;
 
     fn read(page: &DisplayPage, _cx: &App) -> Self {
         let model = page.view_model();

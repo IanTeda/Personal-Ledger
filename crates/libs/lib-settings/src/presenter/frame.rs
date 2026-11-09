@@ -21,7 +21,7 @@
 use lib_list_cursor::Step;
 use lib_toast::Notice;
 use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP, SELECT};
-use lib_viper::presenter::Presenter;
+use lib_viper::presenter::{PageMode, Presenter};
 use lib_viper::view::{Hint, count};
 
 use crate::keymap::{ENTER_PAGE, NEXT_PAGE, PICKER, PREVIOUS_PAGE};
@@ -283,6 +283,14 @@ impl SettingsFramePresenter {
     /// Whether the picker is open, so the Client offers it every key.
     pub fn picker_open(&self) -> bool {
         self.picker.is_some()
+    }
+
+    /// The mode the frame is in for something of its own, as a page reports one: the open picker
+    /// is a [`PageMode::Filter`], whose keys the Client offers the frame ahead of the Shell's.
+    /// `None` while it is closed. The picker swallows what it gives no meaning to, so a Client
+    /// offers it no typed text.
+    pub fn mode(&self) -> Option<PageMode> {
+        self.picker.is_some().then_some(PageMode::Filter)
     }
 
     /// Whether `page` can show: every This device page, and a This Ledger page only with a Ledger
@@ -1273,8 +1281,18 @@ mod tests {
         medium(&mut frame);
         send(&mut frame, [E::Select]);
 
+        assert_eq!(
+            frame.mode(),
+            None,
+            "a page on show is in no mode of the frame's"
+        );
         let router = send(&mut frame, [E::OpenPicker]);
         assert_eq!(router.routed, [Routed::PickerOpened]);
+        assert_eq!(
+            frame.mode(),
+            Some(PageMode::Filter),
+            "the open picker is a Filter mode"
+        );
         let picker = frame.view_model().picker.expect("the picker is open");
         assert_eq!(picker.chosen, Some(SettingsPage::General));
         assert_eq!(picker.groups.len(), 2, "both groups, in index order");
@@ -1297,6 +1315,7 @@ mod tests {
         assert_eq!(frame.selected(), SettingsPage::Tracing);
         assert_eq!(frame.focus(), SettingsFocus::Page);
         assert!(!frame.picker_open());
+        assert_eq!(frame.mode(), None, "closing the picker leaves its mode");
         assert_eq!(
             router.routed,
             [

@@ -223,9 +223,12 @@ impl Render for SettingsView {
 /// One page: heading + right-aligned scope note, a 2px rule, the page's content, then a **48px**
 /// bottom gap -- every page, no exceptions (README's implementation note 4: mixed top/bottom
 /// margin ownership is how this gap goes missing, so it's carried on a single edge, here). The
-/// whole block caps at [`CONTENT_MAX_WIDTH`], except a [`pages::Page::FULL_WIDTH`] page (Units, whose
-/// tables fill the View's width down to their 610px minimum). A [`pages::Page::FILLS_PAGE`] page
-/// fills the body's height.
+/// whole block caps at [`CONTENT_MAX_WIDTH`], except a [`SettingsPageView::FULL_WIDTH`] page
+/// (Units, whose tables fill the View's width down to their 610px minimum). A
+/// [`SettingsPageView::FILLS_PAGE`] page fills the body's height.
+///
+/// [`SettingsPageView::FULL_WIDTH`]: crate::shell::view::module_page::SettingsPageView::FULL_WIDTH
+/// [`SettingsPageView::FILLS_PAGE`]: crate::shell::view::module_page::SettingsPageView::FILLS_PAGE
 fn section_block(
     heading: AnyElement,
     meta: AnyElement,

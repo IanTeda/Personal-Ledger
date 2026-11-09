@@ -69,7 +69,7 @@ impl SettingsPageView for AccountsPagePresenter {
 }
 
 impl PageSnapshot for SettingsAccountsSnapshot {
-    type Page = AccountsPage;
+    type Presenter = AccountsPagePresenter;
 
     fn read(page: &AccountsPage, _cx: &App) -> Self {
         let view = page.view_model();

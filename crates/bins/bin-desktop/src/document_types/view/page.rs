@@ -62,7 +62,7 @@ impl SettingsPageView for DocumentTypesPagePresenter {
 }
 
 impl PageSnapshot for SettingsDocumentTypesSnapshot {
-    type Page = DocumentTypesPage;
+    type Presenter = DocumentTypesPagePresenter;
 
     fn read(page: &DocumentTypesPage, _cx: &App) -> Self {
         let view = page.view_model();

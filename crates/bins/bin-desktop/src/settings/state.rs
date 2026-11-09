@@ -5,18 +5,26 @@
 //! frame its keys and clicks, and reaches `Root` only through [`ViewEvent`], which it re-emits from
 //! its pages, and [`PageChanged`], which the frame's Router raises.
 //!
-//! Every page is a [`Page`](super::pages::Page) behind one `dyn` handle, so while a page has focus
-//! this View forwards its keys, movement, `Esc`, Search and status to it without knowing which page
-//! it is. Halfway state (#1036): every page, domain or config, still renders through that trait.
+//! Every page is a [`ModulePage`] on a [`SettingsPageView`] behind one `dyn`
+//! [`PageHandle`](super::pages::PageHandle), so while a page has focus this View forwards its keys,
+//! `Esc`, Search and status to it without knowing which page it is. The page picker is the frame's
+//! mode (`PageMode::Filter`), whose keys the key route offers through [`SettingsView::mode_key`];
+//! a movement the Shell falls back on is the frame's own, scrolling the body or stepping the index
+//! (#1100).
 
 use super::hints::settings_plain_page_hints;
 use super::router::{FrameRouter, PageChanged};
 use crate::{
     announcer::Announcer,
     navigation::{chord::chord, movement::Movement},
-    settings::pages::{LedgerPages, Page, PageFrame, PageHandle, SettingsPages, SettingsSetup},
+    settings::pages::{LedgerPages, PageFrame, PageHandle, SettingsPages, SettingsSetup},
     settings::{SettingsFocus, SettingsPage},
-    shell::view::{page_clicks::PresenterPage, statusline::PageStatus, window_size::WindowSize},
+    shell::view::{
+        module_page::{ModulePage, SettingsPageView},
+        page_clicks::PresenterPage,
+        statusline::PageStatus,
+        window_size::WindowSize,
+    },
     view::event::{Reveal, ViewEvent},
     view::help::HelpGroup,
 };
@@ -270,24 +278,23 @@ impl SettingsView {
         Some(summarise(model.selected, &sources))
     }
 
-    /// The `T` page's Entity, for what `Root` drives on a page: a module Router's entry point and
-    /// the Settings snapshots. Found through `T::PAGE`, so a new page needs
-    /// no accessor of its own (ADR-0037's 2026-10-30 amendment).
-    /// A This Ledger page is built only with a Ledger open, so only a caller on the Open Ledger asks
-    /// for one.
+    /// The page Entity hosting Presenter `P`, for what `Root` drives on a page: a module Router's
+    /// entry point and the Settings snapshots. Found through `P::PAGE`, so a new page needs no
+    /// accessor of its own (ADR-0037's 2026-10-30 amendment). A This Ledger page is built only with
+    /// a Ledger open, so only a caller on the Open Ledger asks for one.
     #[expect(
         clippy::expect_used,
-        reason = "SettingsPages::get and T::PAGE can't disagree, page_returns_the_page_for_every_settings_page checks each page, and only a caller on the Open Ledger asks for a This Ledger page"
+        reason = "SettingsPages::get and P::PAGE can't disagree, page_returns_the_page_for_every_settings_page checks each page, and only a caller on the Open Ledger asks for a This Ledger page"
     )]
-    pub fn page<T: Page>(&self) -> Entity<T> {
+    pub fn page<P: SettingsPageView>(&self) -> Entity<ModulePage<P>> {
         self.pages
-            .get(T::PAGE)
+            .get(P::PAGE)
             .expect("a This Ledger page is asked for only with a Ledger open")
             .view()
-            .downcast::<T>()
+            .downcast::<ModulePage<P>>()
             // The `AnyView` handed back isn't `Debug`, so `expect` needs it dropped.
             .map_err(drop)
-            .expect("`SettingsPages::get` hands back `T::PAGE`'s page, which is a `T`")
+            .expect("`SettingsPages::get` hands back `P::PAGE`'s page, which hosts a `P`")
     }
 
     /// The open page, while it has focus: the page, rather than the frame, then takes its keys,
@@ -409,8 +416,8 @@ impl SettingsView {
 
     /// Settings' keys at the key route's module-keymap step, by `chord`, in order: the focused
     /// page's module keymap, then the frame's keymap. The page goes first, so a page's `h`/`l` win
-    /// over the frame's `h`. Not while the page picker is open, whose keys [`Self::key_ahead`]
-    /// reads in its mode.
+    /// over the frame's `h`. Not while the page picker is open, whose keys [`Self::mode_key`] reads
+    /// in its mode.
     pub fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {
         if self.frame.picker_open() {
             return false;
@@ -443,12 +450,13 @@ impl SettingsView {
         taken
     }
 
-    /// Every key but `Esc` while the page picker is open, which reads them in its own mode: its
-    /// moves step the highlight and `select` opens the chosen page. Every other key is swallowed,
-    /// as before the frame was a module, so the picker's query is not typed into yet. `Esc` comes
-    /// back as [`Self::escape`]. Every other key is the module step's ([`Self::module_key`]).
-    pub fn key_ahead(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
-        if keystroke.key == "escape" || !self.frame.picker_open() {
+    /// A key while the frame is in a mode of its own (the page picker, a `PageMode::Filter`), as a
+    /// module page's `mode_key` is offered one: its moves step the highlight and `select` opens the
+    /// chosen page. Every other key is swallowed, so the picker's query is not typed into yet.
+    /// `Esc` comes back as [`Self::escape`]. In no mode the frame takes nothing here, and its keys
+    /// are the module step's ([`Self::module_key`]).
+    pub fn mode_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+        if keystroke.key == "escape" || self.frame.mode().is_none() {
             return false;
         }
         let event = chord(keystroke).and_then(|chord| self.frame.keymap().event(&chord));
@@ -463,12 +471,13 @@ impl SettingsView {
         true
     }
 
-    /// A movement the Shell fell back on: a page with its own selection moves it, the index (on
-    /// show, or docked with the keyboard) steps through the pages as the frame's own keys do, and
-    /// anything else scrolls.
+    /// A movement the Shell fell back on, which no keymap took: the frame's own. The index (on
+    /// show, or docked with the keyboard) steps through the pages as the frame's own keys do, and a
+    /// page the frame scrolls (`SettingsPageView::FRAME_SCROLLS`) scrolls the body. A page with a
+    /// selection of its own binds every movement it takes, so one it declined does nothing.
     pub fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) {
         if let Some(page) = self.focused_page()
-            && page.apply_movement(movement, cx)
+            && !page.frame_scrolls()
         {
             return;
         }
@@ -545,7 +554,7 @@ impl SettingsView {
         }
         match self.focused_page() {
             Some(page) => {
-                let mut status = page.page_status(cx)?;
+                let mut status = page.page_status(cx);
                 status.hints.extend(self.frame.hints());
                 Some(status)
             }
@@ -686,45 +695,43 @@ impl PresenterPage<SettingsFrameEvent> for SettingsView {
 mod tests {
     use gpui::{AppContext as _, EntityId, TestAppContext};
 
-    use super::*;
-    use crate::{
-        accounts::AccountsPage,
-        categories::CategoriesPage,
-        document_types::DocumentTypesPage,
-        institutions::InstitutionsPage,
-        inventory::InventoryPage,
-        payees::PayeesPage,
-        settings::{
-            about::AboutPage, data_backup::DataBackupPage, display::DisplayPage,
-            general::GeneralPage, ledger::LedgerPage, sync_server::SyncServerPage,
-            tracing::TracingPage,
-        },
-        tags::TagsPage,
-        units::UnitsPage,
+    use lib_accounts::presenter::AccountsPagePresenter;
+    use lib_categories::presenter::CategoriesPagePresenter;
+    use lib_documents::presenter::DocumentTypesPagePresenter;
+    use lib_institutions::presenter::InstitutionsPagePresenter;
+    use lib_inventory::presenter::InventoryPagePresenter;
+    use lib_payees::presenter::PayeesPagePresenter;
+    use lib_settings::{
+        AboutPresenter, DataBackupPresenter, DisplayPresenter, GeneralPresenter, LedgerPresenter,
+        SyncServerPresenter, TracingPresenter,
     };
+    use lib_tags::presenter::TagsPagePresenter;
+    use lib_units::presenter::UnitsPagePresenter;
 
-    /// `page::<T>()`'s Entity, and `T::PAGE`, for the page type that draws `page`. The match is
-    /// exhaustive, so a new page fails to compile here until it is covered.
+    use super::*;
+
+    /// `page::<P>()`'s Entity, and `P::PAGE`, for the Presenter whose page draws `page`. The match
+    /// is exhaustive, so a new page fails to compile here until it is covered.
     fn typed(view: &SettingsView, page: SettingsPage) -> (EntityId, SettingsPage) {
-        fn found<T: Page>(view: &SettingsView) -> (EntityId, SettingsPage) {
-            (view.page::<T>().entity_id(), T::PAGE)
+        fn found<P: SettingsPageView>(view: &SettingsView) -> (EntityId, SettingsPage) {
+            (view.page::<P>().entity_id(), P::PAGE)
         }
         match page {
-            SettingsPage::General => found::<GeneralPage>(view),
-            SettingsPage::Ledger => found::<LedgerPage>(view),
-            SettingsPage::Display => found::<DisplayPage>(view),
-            SettingsPage::Units => found::<UnitsPage>(view),
-            SettingsPage::Institutions => found::<InstitutionsPage>(view),
-            SettingsPage::Accounts => found::<AccountsPage>(view),
-            SettingsPage::Categories => found::<CategoriesPage>(view),
-            SettingsPage::Tags => found::<TagsPage>(view),
-            SettingsPage::Payees => found::<PayeesPage>(view),
-            SettingsPage::Documents => found::<DocumentTypesPage>(view),
-            SettingsPage::Inventory => found::<InventoryPage>(view),
-            SettingsPage::SyncServer => found::<SyncServerPage>(view),
-            SettingsPage::DataBackup => found::<DataBackupPage>(view),
-            SettingsPage::Tracing => found::<TracingPage>(view),
-            SettingsPage::About => found::<AboutPage>(view),
+            SettingsPage::General => found::<GeneralPresenter>(view),
+            SettingsPage::Ledger => found::<LedgerPresenter>(view),
+            SettingsPage::Display => found::<DisplayPresenter>(view),
+            SettingsPage::Units => found::<UnitsPagePresenter>(view),
+            SettingsPage::Institutions => found::<InstitutionsPagePresenter>(view),
+            SettingsPage::Accounts => found::<AccountsPagePresenter>(view),
+            SettingsPage::Categories => found::<CategoriesPagePresenter>(view),
+            SettingsPage::Tags => found::<TagsPagePresenter>(view),
+            SettingsPage::Payees => found::<PayeesPagePresenter>(view),
+            SettingsPage::Documents => found::<DocumentTypesPagePresenter>(view),
+            SettingsPage::Inventory => found::<InventoryPagePresenter>(view),
+            SettingsPage::SyncServer => found::<SyncServerPresenter>(view),
+            SettingsPage::DataBackup => found::<DataBackupPresenter>(view),
+            SettingsPage::Tracing => found::<TracingPresenter>(view),
+            SettingsPage::About => found::<AboutPresenter>(view),
         }
     }
 

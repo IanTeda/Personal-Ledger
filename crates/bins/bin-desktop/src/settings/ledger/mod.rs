@@ -73,9 +73,6 @@ impl PageView for LedgerPresenter {
     /// The Presenter reads the Units on each draw, so a write anywhere repaints the page.
     const REPAINTS: &'static [Domain] = &[Domain::Units];
 
-    /// With the keyboard off the select, the frame scrolls the page.
-    const FRAME_SCROLLS: bool = true;
-
     fn with_router<R>(
         presenter: &mut Self,
         _setup: &(),
@@ -109,10 +106,13 @@ impl PageView for LedgerPresenter {
 
 impl SettingsPageView for LedgerPresenter {
     const PAGE: SettingsPage = SettingsPage::Ledger;
+
+    /// With the keyboard off the select, the frame scrolls the page.
+    const FRAME_SCROLLS: bool = true;
 }
 
 impl PageSnapshot for SettingsLedgerSnapshot {
-    type Page = LedgerPage;
+    type Presenter = LedgerPresenter;
 
     /// The select's state for a test: the base Unit's code and the options' codes in order.
     fn read(page: &LedgerPage, _cx: &App) -> Self {
