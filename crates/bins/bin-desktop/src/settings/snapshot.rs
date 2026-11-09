@@ -22,9 +22,10 @@ pub trait PageSnapshot: Sized {
 #[doc(hidden)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsSnapshot {
-    /// The page on show, as its `SettingsPage` variant name.
+    /// The page on show, or the index's cursor while the index shows, as its `SettingsPage`
+    /// variant name.
     pub page: String,
-    /// Whether the page, not the index rail, holds keyboard focus.
+    /// Whether a page shows, with the keyboard in it, rather than the Settings index.
     pub page_focused: bool,
     /// The status line's message, where the stubbed buttons report.
     pub status_message: Option<String>,

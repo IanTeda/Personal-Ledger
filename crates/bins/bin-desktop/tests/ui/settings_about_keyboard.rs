@@ -1,5 +1,5 @@
-//! The Settings About page driven by keys. About has no controls, so `l` and `enter` on the
-//! index are a quiet no-op and focus stays on the index. The checks cover reaching the page, the
+//! The Settings About page driven by keys. About has no controls, but `l` and `enter` on the
+//! index open it like any page, the index being Settings' resting view. The checks cover reaching the page, the
 //! last of THIS DEVICE, the keys that must leave it unchanged, `j` crossing on into THIS LEDGER,
 //! and `esc` returning focus to the index from a page that has it. State is read back from `Root`.
 
@@ -31,23 +31,33 @@ fn j_down_the_index_swaps_to_about_with_focus_on_the_index(app: &mut TestAppCont
 #[gpui::test]
 fn the_about_page_shows_its_version_line(app: &mut TestAppContext) {
     let mut ui = on_about(app);
+    assert!(!ui.is_drawn("settings-about-version"), "the index shows");
+
+    ui.press("enter");
 
     assert!(ui.is_drawn("settings-about-version"));
 }
 
 #[gpui::test]
-fn stepping_into_about_is_a_quiet_no_op(app: &mut TestAppContext) {
-    let mut ui = on_about(app);
-    let toasts_before = ui.toasts();
+fn l_or_enter_open_about_though_it_has_nothing_to_focus(app: &mut TestAppContext) {
+    for open in ["l", "enter"] {
+        let mut ui = on_about(app);
+        let toasts_before = ui.toasts();
 
-    ui.press("l");
-    ui.press("enter");
+        ui.press(open);
 
-    let page = ui.settings_frame();
-    assert_eq!(page.page, "About");
-    assert!(!page.page_focused);
-    assert_eq!(page.status_message, None);
-    assert_eq!(ui.toasts(), toasts_before);
+        let page = ui.settings_frame();
+        assert_eq!(page.page, "About");
+        assert!(page.page_focused, "{open} opens About");
+        assert_eq!(page.status_message, None);
+        assert_eq!(ui.toasts(), toasts_before);
+
+        ui.press("escape");
+        assert!(
+            !ui.settings_frame().page_focused,
+            "esc returns to the index"
+        );
+    }
 }
 
 #[gpui::test]

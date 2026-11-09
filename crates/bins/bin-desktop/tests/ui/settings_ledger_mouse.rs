@@ -1,4 +1,4 @@
-//! Settings › Ledger driven by the mouse: an index click hands focus back to the index, and the
+//! Settings › Ledger driven by the mouse: an index click opens that page, and the
 //! Base unit select's options set the base Unit, which the Units page and new Accounts follow. State is read back from `Root`.
 
 use super::common;
@@ -16,7 +16,7 @@ fn on_settings(app: &mut TestAppContext) -> Harness<'_> {
 }
 
 #[gpui::test]
-fn clicking_an_index_entry_from_a_page_focuses_the_index(app: &mut TestAppContext) {
+fn clicking_an_index_entry_from_a_page_opens_that_page(app: &mut TestAppContext) {
     let mut ui = on_settings(app);
 
     ui.press("l");
@@ -24,7 +24,8 @@ fn clicking_an_index_entry_from_a_page_focuses_the_index(app: &mut TestAppContex
     ui.click("settings-index-Display");
     let page = ui.settings_frame();
     assert_eq!(page.page, "Display");
-    assert!(!page.page_focused);
+    assert!(page.page_focused);
+    assert!(ui.is_drawn("display-fields"));
 }
 
 #[gpui::test]

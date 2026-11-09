@@ -1,6 +1,7 @@
-//! The Settings body (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting state", "Body"): one page
-//! at a time, not a continuous scroll. The settings index rail (`shell::view::rail::settings_index`) swaps the
-//! page, and only the selected page is mounted. Each page keeps the same anatomy: one heading
+//! The Settings body (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting state", "Body"): the
+//! Settings index, Settings' resting view at every Window Size, or one page at a time, not a
+//! continuous scroll. At Large and X-Large the index is also docked beside it
+//! (`shell::view::rail::settings_index`), and only the selected page is mounted. Each page keeps the same anatomy: one heading
 //! ("Settings - <page>") with its right-aligned meta over a 2px rule, then the page's content.
 //!
 //! The frame (which page shows, the Index/Page focus, the Medium drill-down and the page picker)
@@ -52,11 +53,11 @@ pub const CONTENT_MAX_WIDTH: Pixels = px(840.0);
 /// The page picker's own width, under the page name.
 const PICKER_WIDTH: Pixels = px(280.0);
 
-/// Where the Medium index page's groups start among its scrolled children, after the heading and
+/// Where the index page's groups start among its scrolled children, after the heading and
 /// its rule.
 const INDEX_PAGE_FIRST_GROUP: usize = 2;
 
-/// Where `page`'s row sits among the Medium index page's scrolled children, so the selected row
+/// Where `page`'s row sits among the index page's scrolled children, so the selected row
 /// can be scrolled to: past the heading and its rule, the rows before it and one heading per group
 /// up to its own.
 fn index_page_child(page: SettingsPage) -> usize {
@@ -76,7 +77,7 @@ pub fn scope_note(page: SettingsPage) -> String {
     })
 }
 
-/// The icon beside the page's name on the Medium index page (DESKTOP-119). A page that was a
+/// The icon beside the page's name on the index page (DESKTOP-119). A page that was a
 /// rail noun keeps that noun's icon, so it reads the same wherever it shows; Institutions
 /// shares Loans' bank.
 pub fn icon(page: SettingsPage) -> DesktopIcon {
@@ -113,13 +114,14 @@ impl Render for SettingsView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
         let model = self.view_model();
         let clicks = PageClicks::new(cx);
-        let index_focused = self.zone_focused && model.focus == SettingsFocus::Index;
         let page_focused = self.zone_focused && model.focus == SettingsFocus::Page;
         let drill_down = model.drill_down;
-        // At Medium the index is a page of its own, in the page's place (DESKTOP-119).
+        let docked =
+            (!drill_down).then(|| SettingsIndexRail::new(model.groups.clone(), clicks.clone()));
+        // The index is Settings' resting view, in the page's place at every Window Size: alone at
+        // Medium (DESKTOP-119), beside the docked index at Large and X-Large (DESKTOP-181, 182).
         if model.index_page {
-            return div()
-                .id("settings")
+            let index = div()
                 .relative()
                 .flex_1()
                 .min_w(px(0.0))
@@ -151,7 +153,15 @@ impl Render for SettingsView {
                             Scrollbar::vertical(&self.index_scroll)
                                 .scrollbar_show(ScrollbarShow::Always),
                         ),
-                )
+                );
+            return div()
+                .id("settings")
+                .flex_1()
+                .min_w(px(0.0))
+                .h_full()
+                .flex()
+                .children(docked)
+                .child(index)
                 .into_any_element();
         }
         self.sync_frame(cx);
@@ -194,13 +204,7 @@ impl Render for SettingsView {
             .min_w(px(0.0))
             .h_full()
             .flex()
-            .when(!drill_down, |this| {
-                this.child(SettingsIndexRail::new(
-                    model.groups.clone(),
-                    index_focused,
-                    clicks.clone(),
-                ))
-            })
+            .children(docked)
             .child(body)
             .children(pane)
             .into_any_element()
@@ -363,10 +367,10 @@ fn page_picker(picker: &PickerView, clicks: &PageClicks<SettingsView>, cx: &App)
         .into_any_element()
 }
 
-/// The Settings index as a page of its own, at Medium (DESKTOP-119): a plain **Settings** heading,
-/// then each group's heading, with its scope line and what it holds, over one row per page with
-/// its one-line description. The page on show stays selected. Each is a child of the scroll on
-/// its own ([`index_page_child`]), so a row can be scrolled to.
+/// The Settings index as a page of its own, at every Window Size (DESKTOP-119, 181, 182): a plain
+/// **Settings** heading, then each group's heading, with its scope line and what it holds, over
+/// one row per page with its one-line description. The row under the cursor is highlighted. Each
+/// is a child of the scroll on its own ([`index_page_child`]), so a row can be scrolled to.
 fn index_page(
     groups: &[IndexGroup],
     index_count: &str,
@@ -397,7 +401,7 @@ fn index_page(
         .mb(px(6.0));
     let row = |row: &IndexRow| {
         let page = row.page;
-        let active = row.selected;
+        let active = row.cursor;
         div()
             .id(SharedString::from(format!("settings-index-page-{page:?}")))
             .debug_selector(move || format!("settings-index-page-{page:?}"))
@@ -468,7 +472,7 @@ fn index_page(
         .collect()
 }
 
-/// A group's heading on the Medium index page: its name with the page count and sync scope at the
+/// A group's heading on the index page: its name with the page count and sync scope at the
 /// right, and a line saying where its settings live.
 fn group_heading(group: &IndexGroup, cx: &App) -> AnyElement {
     let scope = group.group;

@@ -317,28 +317,29 @@ log_file_path = "/var/log/personal-ledger/personal-ledger.log"
 
 ## The Settings screen in the Desktop app
 
-Settings in the Desktop app is paged: a list of pages down the left (the index) and one page open beside it. Choosing an entry swaps the page; nothing scrolls from one section into the next. The index lists its pages in two groups:
+Settings in the Desktop app is paged, and the Settings index, the list of its pages, is where it rests at every window size. Opening Settings shows the index, and choosing an entry opens that page; nothing scrolls from one section into the next. In a narrow (Medium) window the index and each page take the View in turn. In a wider (Large or X-Large) window the index is also docked down the left: while the index shows, nothing is selected in the docked list and the row under the index's cursor is tinted, and while a page shows, its entry is selected there. The index lists its pages in two groups:
 
 - **This device:** General, Display, Tracing (Logs) and About. These belong to the computer you are on and never sync.
 - **This ledger:** Ledger, Units, Institutions, Accounts, Categories, Tags, Payees, Documents, Inventory, Sync server and Data & backup. These are stored in the open Ledger, or act on its file.
 
 `j`, `k`, `[` and `]` run from the end of This device straight into This ledger, and the page picker lists the pages under the same two headings. The Desktop has no AI connections or History page yet.
 
-With no Ledger open, `g` `s` and `settings` still open Settings, on the page you last left if it is a This device page, otherwise on General. The This ledger pages are drawn dim. Choosing one says "No Ledger open: :open or :new first" and leaves you on the page you were on. That covers `j`, `k`, `G`, `[`, `]`, a click, the picker and `settings units`.
+With no Ledger open, `g` `s` and `settings` still open Settings on the index, its cursor on the page you last left if it is a This device page, otherwise on General. The This ledger pages are drawn dim. Choosing one says "No Ledger open: :open or :new first" and leaves you where you were. If the Ledger closes while a This ledger page is showing, Settings goes back to the index with the cursor on General. That covers `j`, `k`, `G`, `[`, `]`, a click, the picker and `settings units`.
 
 Accounts, Categories, Tags and Payees live here rather than on the main rail. You reach them from the index, with `:settings accounts` (and likewise `categories`, `tags`, `payees`, `documents`, `inventory`), or with the older `:accounts`, `:categories`, `:tags` and `:payees` commands, which still work. `:units` and `:institutions` open their pages the same way.
 
-- Press `g` `s` to open Settings with the index focused. `j` and `k` move through the index and the page follows. `/` searches the index.
-- Press `l` to move into the open page and `h` to come back to the index. Page keys such as `e` (edit), `d` (delete), `n` (new), `x` (remove) and `m` (merge) only act while the page has focus.
-- `Esc` backs out one step at a time: a dialog or search first, then the page back to the index.
-- The page you last had open is remembered, so Settings reopens where you left it.
+- Press `g` `s`, type `:settings` or click Settings on the main rail to open Settings on the index, even when a page is already showing. `j` and `k` move the index's cursor; no page opens until you choose one.
+- Press `enter` or `l`, or click an entry in either list, to open the page under the cursor with the keyboard in it. `:settings <page>` (such as `:settings units`), the page picker and a jump from another View to one of a page's records open that page straight away. Page keys such as `e` (edit), `d` (delete), `n` (new), `x` (remove) and `m` (merge) act on the open page.
+- `Esc`, `h` and the left arrow on a page go back to the index, at every window size. `Esc` backs out one step at a time: a dialog or search first, then the page back to the index.
+- Back and Forward step between the pages you opened, showing each page itself; the index is not a step of its own.
+- The page you last had open is remembered as the index's cursor, so Settings reopens on the index with that page under the cursor, starting the app on Settings included. Resizing the window keeps whatever is showing, the index or a page.
 
 ### General page
 
 General holds what belongs to this device:
 
 - **On start** chooses which Ledger the app opens as it starts: **Reopen last Ledger** (the default) opens the one open when you last quit, or none if none was, and **Start with no Ledger open** opens none. A file named by `--file` or `file` always wins. Starting never creates a Ledger file: if the file named is missing or won't open, an error Toast says so and the app starts with no Ledger open. It still remembers that Ledger, so the next start tries it again.
-- **Start view** chooses the View the app lands on as it starts, after On start has opened a Ledger or none: **Dashboard** (the default), **Last view** (the View showing when you last quit), **Settings** (on the page you last had open), or **Transactions**, **Documents**, **Bills** or **Budgets**. Every View but the Dashboard and Settings needs a Ledger, so with none open the app lands on the Dashboard's no Ledger open content instead, and Settings opens on General if the page you last had open is a This Ledger page. A `start_view` in `personal-ledger.conf` that isn't one of these, such as `cash` or the TUI's `units`, is named under the choices; `cash` still lands on its View, and a noun the Desktop doesn't have lands on the Dashboard.
+- **Start view** chooses the View the app lands on as it starts, after On start has opened a Ledger or none: **Dashboard** (the default), **Last view** (the View showing when you last quit), **Settings** (on the index, with the page you last had open under the cursor), or **Transactions**, **Documents**, **Bills** or **Budgets**. Every View but the Dashboard and Settings needs a Ledger, so with none open the app lands on the Dashboard's no Ledger open content instead, and Settings puts its cursor on General if the page you last had open is a This Ledger page. A `start_view` in `personal-ledger.conf` that isn't one of these, such as `cash` or the TUI's `units`, is named under the choices; `cash` still lands on its View, and a noun the Desktop doesn't have lands on the Dashboard.
 - **Toasts** turns Toasts on or off (see Toasts below).
 - **Language and region** and **Ledger folder** show the Locale and the `data` folder. They are read from `personal-ledger.conf` when the app starts, so change them there.
 

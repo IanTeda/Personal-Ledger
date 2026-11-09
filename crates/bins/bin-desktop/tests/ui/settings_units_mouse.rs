@@ -113,7 +113,6 @@ fn clicking_the_units_index_entry_swaps_to_the_page(app: &mut TestAppContext) {
 #[gpui::test]
 fn clicking_a_row_selects_it_and_focuses_the_page(app: &mut TestAppContext) {
     let mut ui = on_units(app);
-    assert!(!ui.settings_frame().page_focused);
 
     ui.click("unit-row-2");
     assert_eq!(selected(&mut ui), "vas");

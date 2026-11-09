@@ -1,6 +1,6 @@
 //! The Settings destination's Entity (ADR-0032, ADR-0037). [`SettingsView`] holds `lib-settings`'
-//! frame Presenter, which owns the page on show, where keyboard focus sits, the Medium drill-down
-//! and the page picker, and builds its pages ([`SettingsPages`]). It renders the Presenter's view
+//! frame Presenter, which owns whether the index (Settings' resting view) or a page shows, the
+//! index's cursor, the Medium drill-down and the page picker, and builds its pages ([`SettingsPages`]). It renders the Presenter's view
 //! model (`impl Render` in `super`), sends the frame its keys and clicks, and reaches `Root` only
 //! through [`ViewEvent`], which it re-emits from its pages, and [`PageChanged`], which the frame's
 //! Router raises.
@@ -36,8 +36,8 @@ impl EventEmitter<ViewEvent> for SettingsView {}
 
 impl EventEmitter<PageChanged> for SettingsView {}
 
-/// The Settings View's own state. The page is the last one visited, so it survives leaving and
-/// re-entering Settings, as `g s` relies on.
+/// The Settings View's own state. The index's cursor is the last page visited, so it survives
+/// leaving and re-entering Settings, which lands on the index.
 pub struct SettingsView {
     pages: SettingsPages,
     frame: SettingsFramePresenter,
@@ -48,9 +48,9 @@ pub struct SettingsView {
     /// Whether the View zone has focus, told by `Root` as it draws the View.
     pub(super) zone_focused: bool,
     /// The Window Size the View was last drawn at, told by `Root` as it draws the View, so the
-    /// pages act on the layout on screen. At Medium, Settings is a drill-down: the index is a page
-    /// of its own and a page's heading carries the page picker (DESKTOP-119), which the frame is
-    /// told as the Window Size changes.
+    /// pages act on the layout on screen. At Medium, Settings is a drill-down: no index is docked
+    /// and a page's heading carries the page picker (DESKTOP-119, 120), which the frame is told as
+    /// the Window Size changes.
     window_size: WindowSize,
     /// Keeps each page's events reaching this View: its `ViewEvent`s re-emitted for `Root`, its
     /// changes repainting this View and its row clicks handing it focus.
@@ -164,7 +164,7 @@ impl SettingsView {
     }
 
     /// Drops the This Ledger pages with the Ledger they were built on. A This Ledger page on show
-    /// gives way to General, as at a start with no Ledger open.
+    /// gives way to the index, its cursor on General.
     pub fn close_ledger(&mut self, cx: &mut Context<'_, Self>) {
         self.pages.ledger = None;
         self._page_subscriptions = self
@@ -284,7 +284,7 @@ impl SettingsView {
     /// the selection and focus: a newly shown page starts at its top, a page losing the keyboard is
     /// told so, and one (re)opened is told it has it, so `:settings display` on Display puts the
     /// keyboard back on its first control. A restored page keeps its scroll. The index scrolls to
-    /// the selected row at Medium.
+    /// its cursor's row.
     fn handle(&mut self, event: SettingsFrameEvent, cx: &mut Context<'_, Self>) {
         let page_before = self.frame.selected();
         let focus_before = self.frame.focus();
@@ -322,12 +322,9 @@ impl SettingsView {
         cx.notify();
     }
 
-    /// Scrolls the Medium index page just enough to show the selected row, as the selection moves
-    /// or the index comes back on show.
+    /// Scrolls the index page just enough to show the cursor's row, as the cursor moves or the
+    /// index comes back on show.
     fn reveal_index_row(&self) {
-        if self.window_size != WindowSize::Medium {
-            return;
-        }
         self.index_scroll
             .scroll_to_item(super::index_page_child(self.frame.selected()));
     }
@@ -462,8 +459,9 @@ impl SettingsView {
             .is_some_and(|page| page.start_search(cx))
     }
 
-    /// Settings has just become the destination: focus goes back to the index (`g s` "lands on
-    /// the index"), and the page on show, the last-visited one, starts at its top.
+    /// Settings has just become the destination, by `g s`, `:settings` or the rail item (even with
+    /// a page showing), or at a start on Settings: it lands on the index, its resting view, with
+    /// the cursor on the last-visited page, which starts at its top when opened.
     pub fn on_enter(&mut self, cx: &mut Context<'_, Self>) {
         self.scroll_handle.set_offset(gpui::Point::default());
         self.handle(SettingsFrameEvent::Entered, cx);
@@ -533,8 +531,9 @@ impl SettingsView {
         self.frame.focus()
     }
 
-    /// Back, Forward or the launch restore `page`, without moving focus. A This Ledger page with no
-    /// Ledger open restores General instead.
+    /// Back or Forward onto `page`, which shows the page itself with the keyboard in it, or the
+    /// launch restore, which [`Self::on_enter`] then returns to the index. A This Ledger page with
+    /// no Ledger open restores General instead.
     pub fn restore(&mut self, page: SettingsPage, cx: &mut Context<'_, Self>) {
         self.handle(SettingsFrameEvent::Restore(page), cx);
     }

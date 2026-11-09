@@ -235,12 +235,6 @@ impl SettingsPage {
             .find(|page| page.id() == id)
             .unwrap_or_default()
     }
-
-    /// Whether this page holds anything the keyboard can move into. Entering a page with nothing
-    /// to focus is a quiet no-op on the docked index (the keyboard-model decision).
-    pub fn has_controls(self) -> bool {
-        !matches!(self, Self::About)
-    }
 }
 
 #[cfg(test)]
@@ -349,14 +343,5 @@ mod tests {
             SettingsPage::Tracing.scope_note(ScopeFacts { log_capacity: 1 }),
             "this device · diagnostic · last 1 entry"
         );
-    }
-
-    #[test]
-    fn only_about_has_nothing_to_focus() {
-        let without: Vec<_> = SettingsPage::ALL
-            .into_iter()
-            .filter(|page| !page.has_controls())
-            .collect();
-        assert_eq!(without, [SettingsPage::About]);
     }
 }

@@ -1,5 +1,5 @@
-//! The Settings View driven by clicks, across its pages: the index rail and its Medium index page
-//! and picker. Each page's own clicks are in its `settings_<page>_mouse.rs`. Only elements tagged
+//! The Settings View driven by clicks, across its pages: the Settings index, the resting view at
+//! every Window Size, the docked index at Large and X-Large, and the Medium picker. Each page's own clicks are in its `settings_<page>_mouse.rs`. Only elements tagged
 //! with `debug_selector` are clicked; state is read back from `Root`.
 
 use super::common;
@@ -23,11 +23,13 @@ fn mode(ui: &mut Harness<'_>) -> InputMode {
 }
 
 #[gpui::test]
-fn clicking_an_index_entry_swaps_the_page(app: &mut TestAppContext) {
+fn clicking_a_docked_index_entry_opens_its_page(app: &mut TestAppContext) {
     let mut ui = on_settings(app);
+    assert!(!ui.settings_frame().page_focused, "the index shows");
 
     ui.click("settings-index-Accounts");
     assert_eq!(ui.settings_frame().page, "Accounts");
+    assert!(ui.settings_frame().page_focused);
     ui.click("settings-index-About");
     assert_eq!(ui.settings_frame().page, "About");
     ui.click("settings-index-General");
@@ -69,12 +71,44 @@ fn at_medium_the_caret_opens_the_picker_and_a_row_jumps_to_its_page(app: &mut Te
 }
 
 #[gpui::test]
-fn at_x_large_the_docked_index_swaps_the_capped_page(app: &mut TestAppContext) {
+fn at_large_and_x_large_a_row_of_the_index_on_show_opens_its_page(app: &mut TestAppContext) {
+    for window_size in [WindowSize::Large, WindowSize::XLarge] {
+        let mut ui = Harness::new(app);
+        ui.resize_to(window_size);
+        ui.press("g s");
+        assert!(ui.is_drawn("settings-index-page"), "{window_size:?}");
+        assert!(ui.is_drawn("settings-index-General"), "docked beside it");
+
+        ui.click("settings-index-page-Units");
+
+        let settings = ui.settings_frame();
+        assert_eq!(settings.page, "Units");
+        assert!(settings.page_focused);
+        assert!(ui.is_drawn("settings-units-table"));
+    }
+}
+
+#[gpui::test]
+fn the_rail_item_returns_an_open_page_to_the_index(app: &mut TestAppContext) {
+    let mut ui = on_settings(app);
+    ui.click("settings-index-Tags");
+    assert!(ui.settings_frame().page_focused);
+
+    ui.click("primary-rail-Settings");
+
+    let settings = ui.settings_frame();
+    assert!(!settings.page_focused, "the rail item lands on the index");
+    assert_eq!(settings.page, "Tags", "its cursor on the page left");
+}
+
+#[gpui::test]
+fn at_x_large_the_docked_index_opens_the_capped_page(app: &mut TestAppContext) {
     let mut ui = on_settings(app);
     ui.resize_to(WindowSize::XLarge);
 
     ui.click("settings-index-Display");
     assert_eq!(ui.settings_frame().page, "Display");
+    assert!(ui.settings_frame().page_focused);
     let page = ui.bounds("settings-page");
     assert_eq!(
         page.size.width,

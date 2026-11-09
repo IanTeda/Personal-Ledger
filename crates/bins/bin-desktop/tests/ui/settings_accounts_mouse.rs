@@ -145,6 +145,8 @@ fn a_new_account_defaults_to_the_base_unit_set_on_ledger(app: &mut TestAppContex
     ui.press("g s");
     ui.click("settings-index-Ledger");
     ui.click("settings-ledger-base-unit-btc");
+    ui.press("escape");
+    assert!(ui.is_drawn("settings-index-page"));
     ui.press("j j j");
     assert_eq!(ui.settings_frame().page, "Accounts");
     ui.press("l");

@@ -95,6 +95,16 @@ pub mod color {
         })
     }
 
+    /// The tint under a list's cursor where another list holds the selection: `foreground` at 10%,
+    /// the docked Settings index's row for the page under the Settings index's cursor
+    /// (DESKTOP-181's `rgba(32,30,29,.10)`).
+    pub fn cursor_tint(cx: &App) -> Rgba {
+        Rgba {
+            a: 0.10,
+            ..foreground(cx)
+        }
+    }
+
     /// Chart series `index` (0-based), repeating after the fifth.
     pub fn chart_series(index: usize, cx: &App) -> Rgba {
         to_gpui(resolved(cx).chart_series_colour(index))

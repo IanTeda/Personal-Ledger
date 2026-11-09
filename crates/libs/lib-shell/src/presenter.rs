@@ -373,13 +373,14 @@ impl<P: Copy + Eq + Default, E: Clone> ShellPresenter<P, E> {
     }
 
     /// A `g` jump onto `noun`, refused with no Ledger open for a noun that needs one. A jump key
-    /// always resets the View's scroll; the palette's only when it lands on another noun.
+    /// always resets the View's scroll; the palette's only when it lands on another noun, or on
+    /// Settings, which every way in lands on its index (its resting view) even from a page.
     fn jump<R: ShellRouter + ?Sized>(&mut self, noun: Noun, always_reset: bool, router: &mut R) {
         if noun.needs_ledger() && !router.ledger_open() {
             router.refused_without_ledger();
             return;
         }
-        if always_reset {
+        if always_reset || noun == Noun::Settings {
             self.nav.set_noun(noun);
             router.reset_view_scroll(noun);
         } else {
@@ -1588,6 +1589,21 @@ mod tests {
 
         assert!(router.routed.is_empty());
         assert_eq!(shell.nav().mode(), InputMode::Normal);
+    }
+
+    #[test]
+    fn a_palette_jump_onto_settings_always_enters_it_afresh() {
+        let mut shell = palette_on(PaletteEffect::Shell(ShellCommand::Jump(Noun::Settings)));
+        shell.navigate(NavInput::Show(Noun::Settings));
+        let mut router = RecordingRouter::default();
+
+        run_on(&mut shell, &mut router);
+
+        assert_eq!(
+            router.routed,
+            [Routed::ViewScrollReset(Noun::Settings)],
+            "`:settings` on a Settings page lands on the index"
+        );
     }
 
     #[test]

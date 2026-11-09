@@ -149,7 +149,16 @@ fn start_view_settings_lands_on_the_remembered_settings_page(app: &mut TestAppCo
     let mut ui = landing_on(app, &dir, StartView::Settings, Noun::Bills, "units");
 
     assert_eq!(ui.noun(), Noun::Settings);
-    assert_eq!(ui.settings_frame().page, "Units");
+    assert_eq!(
+        ui.settings_frame().page,
+        "Units",
+        "the cursor on the remembered page"
+    );
+    assert!(!ui.settings_frame().page_focused);
+    assert!(
+        ui.is_drawn("settings-index-page"),
+        "a start lands on the index"
+    );
 }
 
 #[gpui::test]

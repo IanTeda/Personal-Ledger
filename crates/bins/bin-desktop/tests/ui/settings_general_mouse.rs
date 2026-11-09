@@ -9,7 +9,7 @@ use lib_core::OnStart;
 
 fn on_general(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
-    ui.press("g s");
+    ui.press("g s enter");
     assert_eq!(ui.settings_frame().page, "General");
     ui
 }
@@ -70,7 +70,7 @@ fn clicking_a_shadowed_toasts_option_changes_nothing(app: &mut TestAppContext) {
         &lib_config::PersonalLedgerConfig::default(),
         &[("PERSONAL_LEDGER_PERSONAL_LEDGER__TOASTS", "true")],
     );
-    ui.press("g s");
+    ui.press("g s enter");
     assert!(ui.is_drawn("shadowed-toasts"));
 
     ui.click("general-toasts-1");
@@ -96,7 +96,7 @@ fn the_locale_ledger_folder_and_this_device_box_are_drawn(app: &mut TestAppConte
 #[gpui::test]
 fn toasts_are_no_longer_on_display(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
-    ui.press("g s j");
+    ui.press("g s j enter");
     assert_eq!(ui.settings_frame().page, "Display");
 
     assert!(ui.is_drawn("display-fields"));

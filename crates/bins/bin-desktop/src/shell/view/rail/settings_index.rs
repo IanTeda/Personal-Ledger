@@ -15,23 +15,19 @@ use crate::{settings::state::SettingsView, shell::view::page_clicks::PageClicks,
 pub const WIDTH: gpui::Pixels = px(214.0);
 
 /// The rail as the Settings frame's view model draws it: each group's rows, the page on show
-/// selected and, with no Ledger open, the This Ledger rows muted. A row's click is the frame's
-/// [`SettingsFrameEvent::ClickIndex`], which swaps the body to that page.
+/// selected and, with no Ledger open, the This Ledger rows muted. While the Settings index shows
+/// beside it no row is selected, and the row under the index's cursor is tinted, so the two lists
+/// read as one (DESKTOP-181). A row's click is the frame's [`SettingsFrameEvent::ClickIndex`],
+/// which opens that page.
 #[derive(IntoElement)]
 pub struct SettingsIndexRail {
     groups: Vec<IndexGroup>,
-    /// Whether keyboard focus is on the index rather than the page.
-    focused: bool,
     clicks: PageClicks<SettingsView>,
 }
 
 impl SettingsIndexRail {
-    pub fn new(groups: Vec<IndexGroup>, focused: bool, clicks: PageClicks<SettingsView>) -> Self {
-        Self {
-            groups,
-            focused,
-            clicks,
-        }
+    pub fn new(groups: Vec<IndexGroup>, clicks: PageClicks<SettingsView>) -> Self {
+        Self { groups, clicks }
     }
 }
 
@@ -46,12 +42,9 @@ impl RenderOnce for SettingsIndexRail {
             .flex()
             .flex_col()
             .bg(color::background(cx))
+            // The keyboard is on the index page or in the page beside it, never on the rail.
             .border_r(px(2.0))
-            .border_color(if self.focused {
-                color::foreground(cx)
-            } else {
-                color::structural_rule(cx)
-            })
+            .border_color(color::structural_rule(cx))
             .child(rail_label(
                 &lib_locale::format::upper(&crate::navigation::nav::Noun::Settings.label()),
                 cx,
@@ -110,6 +103,7 @@ fn entry_row(row: &IndexRow, clicks: &PageClicks<SettingsView>, cx: &App) -> imp
                 .text_color(color::selection_text(cx))
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)
         })
+        .when(row.cursor, |this| this.bg(color::cursor_tint(cx)))
         .on_click(clicks.send(SettingsFrameEvent::ClickIndex(section)))
         .child(row.label.clone())
 }

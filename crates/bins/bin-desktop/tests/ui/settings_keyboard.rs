@@ -1,5 +1,6 @@
-//! The Settings View driven by keys, across its pages: the index rail's paged navigation, focus
-//! stepping into and out of a page, and the Medium drill-down with its page picker. Each page's own
+//! The Settings View driven by keys, across its pages: the Settings index as the resting view at
+//! every Window Size, opening a page and returning to the index, re-entry, Back and Forward, and
+//! the Medium drill-down with its page picker. Each page's own
 //! keys are in its `settings_<page>_keyboard.rs`. State is read back from `Root`.
 
 use super::common;
@@ -39,15 +40,18 @@ fn opens_on_general_with_focus_on_the_index(app: &mut TestAppContext) {
     let page = ui.settings_frame();
     assert_eq!(page.page, "General");
     assert!(!page.page_focused);
+    assert!(ui.is_drawn("settings-index-page"));
+    assert!(!ui.is_drawn("settings-page"), "no page is open");
     assert_eq!(ui.dialog(), None);
 }
 
 #[gpui::test]
-fn j_and_k_swap_the_page_live(app: &mut TestAppContext) {
+fn j_and_k_move_the_index_cursor_without_opening_a_page(app: &mut TestAppContext) {
     let mut ui = on_settings(app);
 
     ui.press("j");
     assert_eq!(ui.settings_frame().page, "Display");
+    assert!(!ui.is_drawn("settings-page"));
     ui.press("j j j");
     assert_eq!(
         ui.settings_frame().page,
@@ -333,20 +337,56 @@ fn leaving_medium_closes_the_picker_and_docks_the_index(app: &mut TestAppContext
     assert_eq!(ui.settings_frame().picker_chosen, None);
     assert_eq!(mode(&mut ui), InputMode::Normal);
     assert!(ui.is_drawn("settings-index-Display"));
+    assert!(
+        ui.settings_frame().page_focused && ui.is_drawn("settings-page"),
+        "resizing keeps the page showing"
+    );
 }
 
 #[gpui::test]
-fn at_large_and_x_large_every_page_renders_beside_the_docked_index(app: &mut TestAppContext) {
+fn resizing_keeps_the_index_showing(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.press("g s j");
+
+    for window_size in [WindowSize::Medium, WindowSize::XLarge, WindowSize::Large] {
+        ui.resize_to(window_size);
+        assert!(ui.is_drawn("settings-index-page"), "{window_size:?}");
+        assert_eq!(ui.settings_frame().page, "Display");
+    }
+}
+
+#[gpui::test]
+fn at_large_and_x_large_g_s_lands_on_the_index_beside_the_docked_index(app: &mut TestAppContext) {
     for window_size in [WindowSize::Large, WindowSize::XLarge] {
         let mut ui = Harness::new(app);
         ui.resize_to(window_size);
         ui.press("g s");
 
+        assert!(ui.is_drawn("settings-index-page"), "{window_size:?}");
+        assert!(ui.is_drawn("settings-index-General"), "the index docks too");
+        assert!(!ui.is_drawn("settings-page"), "no page is open");
+        assert!(!ui.settings_frame().page_focused);
+        assert_eq!(hint_keys(&mut ui), ["j/k", "l/enter"]);
+    }
+}
+
+#[gpui::test]
+fn at_large_and_x_large_every_page_opens_beside_the_docked_index(app: &mut TestAppContext) {
+    for window_size in [WindowSize::Large, WindowSize::XLarge] {
+        let mut ui = Harness::new(app);
+        ui.resize_to(window_size);
+
         for (index, page) in PAGES.into_iter().enumerate() {
+            // Each time from the index: `g s` lands on it even from an open page, its cursor on
+            // the page just left.
+            ui.press("g s");
+            assert!(!ui.settings_frame().page_focused);
             if index > 0 {
                 ui.press("j");
             }
+            ui.press("enter");
             assert_eq!(ui.settings_frame().page, page);
+            assert!(ui.settings_frame().page_focused, "{page} opens");
             assert!(ui.is_drawn(&format!("settings-index-{page}")));
             // Units' tables fill the View instead (`settings_units_keyboard`).
             assert!(
@@ -355,10 +395,101 @@ fn at_large_and_x_large_every_page_renders_beside_the_docked_index(app: &mut Tes
             );
         }
         // `[`, `]` and `p` are Medium's; here they leave the page alone.
-        ui.press("l ] p");
+        ui.press("] p");
         assert_eq!(ui.settings_frame().page, "DataBackup");
         assert_eq!(ui.settings_frame().picker_chosen, None);
     }
+}
+
+#[gpui::test]
+fn esc_h_and_left_return_a_page_to_the_index_at_every_window_size(app: &mut TestAppContext) {
+    for window_size in [WindowSize::Medium, WindowSize::Large, WindowSize::XLarge] {
+        for leave in ["escape", "h", "left"] {
+            let mut ui = Harness::new(app);
+            ui.resize_to(window_size);
+            // About has no key of its own for `h` or `left`.
+            ui.press(": s e t t i n g s space a b o u t enter");
+            assert_eq!(ui.settings_frame().page, "About");
+            assert!(ui.settings_frame().page_focused);
+
+            ui.press(leave);
+
+            let settings = ui.settings_frame();
+            assert!(!settings.page_focused, "{leave} at {window_size:?}");
+            assert!(
+                ui.is_drawn("settings-index-page"),
+                "{leave} at {window_size:?}"
+            );
+            assert_eq!(settings.page, "About", "the cursor stays on the page left");
+        }
+    }
+}
+
+#[gpui::test]
+fn every_way_into_settings_lands_on_the_index_even_from_a_page(app: &mut TestAppContext) {
+    for enter in ["g s", ": s e t t i n g s enter", "rail"] {
+        let mut ui = Harness::new(app);
+        ui.press("g s j enter");
+        assert!(ui.settings_frame().page_focused);
+
+        if enter == "rail" {
+            ui.click("primary-rail-Settings");
+        } else {
+            ui.press(enter);
+        }
+
+        let settings = ui.settings_frame();
+        assert_eq!(ui.noun(), Noun::Settings);
+        assert!(!settings.page_focused, "{enter}");
+        assert!(ui.is_drawn("settings-index-page"), "{enter}");
+        assert_eq!(settings.page, "Display", "{enter} keeps the cursor");
+    }
+}
+
+#[gpui::test]
+fn back_and_forward_show_the_page_itself(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.press("g s j enter");
+    ui.press("g d");
+    assert_eq!(ui.noun(), Noun::Dashboard);
+
+    ui.click("topbar-back");
+    let settings = ui.settings_frame();
+    assert_eq!(ui.noun(), Noun::Settings);
+    assert_eq!(settings.page, "Display");
+    assert!(settings.page_focused, "Back shows the page, not the index");
+    assert!(ui.is_drawn("settings-page"));
+
+    ui.press("escape j enter");
+    assert_eq!(ui.settings_frame().page, "Tracing");
+    ui.click("topbar-back");
+    let settings = ui.settings_frame();
+    assert_eq!(
+        settings.page, "Display",
+        "history records pages, not the index"
+    );
+    assert!(settings.page_focused);
+
+    ui.click("topbar-forward");
+    let settings = ui.settings_frame();
+    assert_eq!(settings.page, "Tracing");
+    assert!(settings.page_focused);
+}
+
+#[gpui::test]
+fn closing_the_ledger_on_a_this_ledger_page_shows_the_index_on_general(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.press(": s e t t i n g s space u n i t s enter");
+    assert_eq!(ui.settings_frame().page, "Units");
+    assert!(ui.settings_frame().page_focused);
+
+    ui.press(": c l o s e enter");
+    ui.press("g s");
+
+    let settings = ui.settings_frame();
+    assert_eq!(settings.page, "General");
+    assert!(!settings.page_focused);
+    assert!(ui.is_drawn("settings-index-page"));
 }
 
 /// The top of the element tagged `selector`.

@@ -15,10 +15,10 @@ fn on_sync_server(app: &mut TestAppContext) -> Harness<'_> {
 }
 
 #[gpui::test]
-fn clicking_the_sync_server_index_entry_swaps_to_the_page(app: &mut TestAppContext) {
+fn clicking_the_sync_server_index_entry_opens_the_page(app: &mut TestAppContext) {
     let mut ui = on_sync_server(app);
 
-    assert!(!ui.settings_frame().page_focused);
+    assert!(ui.settings_frame().page_focused);
     assert!(ui.is_drawn("settings-sync-now"));
 }
 

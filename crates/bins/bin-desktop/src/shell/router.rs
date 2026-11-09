@@ -404,11 +404,13 @@ impl Root {
         self.settings.read(cx).selected_section()
     }
 
-    /// Restores the last-visited Settings page at launch, through the frame's Presenter. A This
-    /// Ledger page with no Ledger open restores General instead.
+    /// Restores the last-visited Settings page at launch, through the frame's Presenter, as the
+    /// index's cursor: a start on Settings lands on the index, its resting view. A This Ledger page
+    /// with no Ledger open restores General instead.
     fn restore_settings_page(&mut self, section: SettingsPage, cx: &mut App) {
         let restored = self.settings.update(cx, |view, cx| {
             view.restore(section, cx);
+            view.on_enter(cx);
             view.selected_section()
         });
         self.navigate(NavInput::RestoreSettingsPage(restored));

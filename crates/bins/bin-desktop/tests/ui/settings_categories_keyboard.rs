@@ -418,7 +418,7 @@ fn question_mark_lists_the_keys_the_status_line_shows(app: &mut TestAppContext) 
 /// Categories, two above Payees, and goes back there.
 fn woolworths_default(ui: &mut Harness<'_>) -> Option<String> {
     ui.press("g s");
-    ui.press("j j");
+    ui.press("j j enter");
     assert_eq!(ui.settings_frame().page, "Payees");
     ui.click(&format!(
         "settings-payees-edit-{}",

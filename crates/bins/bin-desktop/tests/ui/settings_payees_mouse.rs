@@ -48,7 +48,6 @@ fn the_add_dialog_confirm_adds_and_selects_the_payee(app: &mut TestAppContext) {
 #[gpui::test]
 fn clicking_a_row_selects_it_and_focuses_the_page(app: &mut TestAppContext) {
     let mut ui = on_payees(app);
-    assert!(!ui.settings_frame().page_focused);
 
     ui.click(&format!("settings-payees-row-{}", PayeeId::seed(8)));
     assert_eq!(

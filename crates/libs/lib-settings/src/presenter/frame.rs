@@ -1,11 +1,17 @@
-//! The Settings frame's Presenter: which page shows, whether the index or the page has the
-//! keyboard, the Medium drill-down and its page picker. The pages themselves are drawn by their
-//! own Presenters; the frame only chooses among them.
+//! The Settings frame's Presenter: whether the Settings index or a page shows, the index's cursor,
+//! the Medium drill-down and its page picker. The pages themselves are drawn by their own
+//! Presenters; the frame only chooses among them.
+//!
+//! The index is Settings' resting view at every Window Size (#1102): entering Settings (`g s`,
+//! `:settings`, the rail item, a start on Settings) shows it, with its cursor on the page last
+//! left; `enter`, a click, a command, the picker, a Reveal or Back and Forward show a page, and
+//! `esc`, `h` and `left` on a page return to the index. History records pages only, so moving the
+//! cursor announces nothing; opening a page does.
 //!
 //! With no Ledger open the This Ledger pages stay on the index, drawn muted, and choosing one by
 //! any route (a key, a click, the picker, a command) is refused on the status line and leaves the
-//! page on show (`docs/settings.md`). A This Ledger page is never the page on show then: a restore
-//! or a closing Ledger falls back to General.
+//! frame as it was (`docs/settings.md`). A This Ledger page is never the cursor then: a restore
+//! falls back to General, and a closing Ledger returns a This Ledger page to the index on General.
 
 use lib_list_cursor::Step;
 use lib_toast::Notice;
@@ -22,13 +28,13 @@ use crate::protocols::SettingsRouter;
 /// tells it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsFrameEvent {
-    /// On the index, step the page on show; in the picker, step its highlight.
+    /// On the index, step its cursor; in the picker, step its highlight.
     Move(Step),
-    /// `enter`: into the page from the index, or the picker's chosen page.
+    /// `enter`: the page under the index's cursor, or the picker's chosen page.
     Select,
-    /// From the index into the page on show.
+    /// `l`: the page under the index's cursor.
     EnterPage,
-    /// From the page back to the index.
+    /// `h` or `left`: from the page back to the index.
     FocusIndex,
     /// At Medium, on a page: the page before or after in index order.
     StepPage(Step),
@@ -36,9 +42,9 @@ pub enum SettingsFrameEvent {
     OpenPicker,
     /// The Shell's `back` (`esc`): close the picker, else leave the page for the index.
     Back,
-    /// A click on a docked index row: that page shows, and the index keeps the keyboard.
+    /// A click on a docked index row, at Large and X-Large: that page opens.
     ClickIndex(SettingsPage),
-    /// A click on a Medium index page row: that page opens in the index's place.
+    /// A click on a row of the index on show: that page opens in the index's place.
     ClickIndexPage(SettingsPage),
     /// A click on the Medium breadcrumb's **Settings**: back to the index.
     ClickCrumb,
@@ -50,13 +56,17 @@ pub enum SettingsFrameEvent {
     PageClicked,
     /// A command or hand-off (`settings units`, a Reveal) opens a page with the keyboard in it.
     OpenPage(SettingsPage),
-    /// Back, Forward or the launch restore `page`, without moving focus or telling the Shell back.
+    /// Back or Forward onto `page`, which shows the page itself with the keyboard in it, without
+    /// telling the Shell back. The launch restore sends it too, then [`Self::Entered`], so a start
+    /// on Settings shows the index with its cursor on the restored page.
     Restore(SettingsPage),
-    /// Settings has just become the destination, which lands on the index.
+    /// Settings has just become the destination (`g s`, `:settings`, the rail item, even with a
+    /// page already showing), which lands on the index with its cursor where it was.
     Entered,
     /// A Ledger opened, so the This Ledger pages can show.
     LedgerOpened,
-    /// The Ledger closed, so the This Ledger pages can't.
+    /// The Ledger closed, so the This Ledger pages can't: one showing gives way to the index,
+    /// with the cursor on General.
     LedgerClosed,
     /// Whether Settings is drawn as the Medium drill-down, the index and each page taking the View
     /// in turn. Leaving it closes the picker, which only the drill-down draws.
@@ -79,11 +89,14 @@ impl SettingsFrameEvent {
     }
 }
 
-/// Where the keyboard sits in Settings.
+/// What Settings shows, at every Window Size, and so where the keyboard sits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SettingsFocus {
+    /// The Settings index shows, Settings' resting view, and no page is open. Its cursor is the
+    /// frame's selected page.
     #[default]
     Index,
+    /// The selected page shows, with the keyboard in it.
     Page,
 }
 
@@ -102,10 +115,13 @@ pub struct SettingsFrameSetup {
 pub struct IndexRow {
     pub page: SettingsPage,
     pub label: String,
-    /// The line under the label on the Medium index page.
+    /// The line under the label on the index page.
     pub description: String,
-    /// The page on show.
+    /// The page on show, drawn selected in the docked index. No row is while the index shows.
     pub selected: bool,
+    /// The index's cursor while the index shows: highlighted on the index page, and tinted, not
+    /// selected, in the docked index (DESKTOP-181).
+    pub cursor: bool,
     /// A This Ledger page with no Ledger open: drawn dim, and refused when chosen.
     pub muted: bool,
 }
@@ -160,12 +176,12 @@ pub struct PickerView {
 /// The frame as the Client draws it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsFrameViewModel {
-    /// The page on show.
+    /// The page on show, or the index's cursor while the index shows.
     pub selected: SettingsPage,
     pub focus: SettingsFocus,
     pub ledger_open: bool,
     pub drill_down: bool,
-    /// At Medium with the index focused, the index is a page of its own, in the page's place.
+    /// The index shows, in the page's place, at every Window Size: Settings' resting view.
     pub index_page: bool,
     /// The heading beside the docked index: `Settings - Display`.
     pub heading: String,
@@ -215,7 +231,7 @@ pub struct SettingsFramePresenter {
 }
 
 impl SettingsFramePresenter {
-    /// The frame on General with the index focused, docked rather than drilled down.
+    /// The frame on the index, its cursor on General, docked rather than drilled down.
     pub fn new(setup: SettingsFrameSetup) -> Self {
         Self {
             keymap: setup.keymap,
@@ -243,7 +259,8 @@ impl SettingsFramePresenter {
         self.back_chord = back_chord;
     }
 
-    /// The page on show, also the last-visited page the Client remembers.
+    /// The page on show, or the index's cursor while the index shows: the last-visited page the
+    /// Client remembers.
     pub fn selected(&self) -> SettingsPage {
         self.selected
     }
@@ -320,31 +337,29 @@ impl Presenter for SettingsFramePresenter {
             SettingsFrameEvent::Move(step) => {
                 let next =
                     lib_list_cursor::step(self.selected.index(), SettingsPage::ALL.len(), step);
-                self.select(SettingsPage::ALL[next], router);
+                let page = SettingsPage::ALL[next];
+                if self.allowed(page, router) {
+                    self.selected = page;
+                }
             }
-            SettingsFrameEvent::Select
-            | SettingsFrameEvent::EnterPage
-            | SettingsFrameEvent::PageClicked => {
-                self.focus_page();
+            SettingsFrameEvent::Select | SettingsFrameEvent::EnterPage => {
+                self.open_page(self.selected, router);
             }
-            SettingsFrameEvent::FocusIndex | SettingsFrameEvent::Entered => {
+            SettingsFrameEvent::PageClicked => self.focus = SettingsFocus::Page,
+            SettingsFrameEvent::FocusIndex
+            | SettingsFrameEvent::Entered
+            | SettingsFrameEvent::Back => {
                 self.focus = SettingsFocus::Index;
             }
-            SettingsFrameEvent::Back => self.focus = SettingsFocus::Index,
             SettingsFrameEvent::StepPage(step) => {
                 let next =
                     lib_list_cursor::step(self.selected.index(), SettingsPage::ALL.len(), step);
-                if self.select(SettingsPage::ALL[next], router) {
-                    self.focus_page();
-                }
+                self.open_page(SettingsPage::ALL[next], router);
             }
             SettingsFrameEvent::OpenPicker => self.open_picker(router),
-            SettingsFrameEvent::ClickIndex(page) => {
-                if self.select(page, router) {
-                    self.focus = SettingsFocus::Index;
-                }
-            }
-            SettingsFrameEvent::ClickIndexPage(page) | SettingsFrameEvent::OpenPage(page) => {
+            SettingsFrameEvent::ClickIndex(page)
+            | SettingsFrameEvent::ClickIndexPage(page)
+            | SettingsFrameEvent::OpenPage(page) => {
                 self.open_page(page, router);
             }
             SettingsFrameEvent::ClickCrumb => {
@@ -365,12 +380,14 @@ impl Presenter for SettingsFramePresenter {
                 } else {
                     SettingsPage::General
                 };
+                self.focus = SettingsFocus::Page;
             }
             SettingsFrameEvent::LedgerOpened => self.ledger_open = true,
             SettingsFrameEvent::LedgerClosed => {
                 self.ledger_open = false;
                 if !self.can_show(self.selected) {
                     self.selected = SettingsPage::General;
+                    self.focus = SettingsFocus::Index;
                 }
             }
             SettingsFrameEvent::DrillDown(drill_down) => {
@@ -390,7 +407,7 @@ impl Presenter for SettingsFramePresenter {
             focus: self.focus,
             ledger_open: self.ledger_open,
             drill_down: self.drill_down,
-            index_page: self.drill_down && self.focus == SettingsFocus::Index,
+            index_page: self.focus == SettingsFocus::Index,
             heading: msg::settings_page_heading(&settings, &page_label),
             breadcrumb: (self.drill_down && self.focus == SettingsFocus::Page).then_some(
                 Breadcrumb {
@@ -412,7 +429,8 @@ impl Presenter for SettingsFramePresenter {
                             page,
                             label: page.label(),
                             description: page.description(),
-                            selected: page == self.selected,
+                            selected: page == self.selected && self.focus == SettingsFocus::Page,
+                            cursor: page == self.selected && self.focus == SettingsFocus::Index,
                             muted: !self.can_show(page),
                         })
                         .collect(),
@@ -446,34 +464,29 @@ impl Presenter for SettingsFramePresenter {
 }
 
 impl SettingsFramePresenter {
-    /// Makes `page` the page on show, announcing a change. With no Ledger open a This Ledger page
-    /// is refused on the status line and the page on show stays. Whether `page` now shows.
-    fn select(&mut self, page: SettingsPage, router: &mut dyn SettingsRouter) -> bool {
-        if !self.can_show(page) {
-            router.notify(Notice::Status(msg::settings_status_refused_no_ledger(
-                ":open", ":new",
-            )));
+    /// Whether `page` may be chosen. With no Ledger open a This Ledger page is refused on the
+    /// status line, and the frame stays as it was.
+    fn allowed(&self, page: SettingsPage, router: &mut dyn SettingsRouter) -> bool {
+        if self.can_show(page) {
+            return true;
+        }
+        router.notify(Notice::Status(msg::settings_status_refused_no_ledger(
+            ":open", ":new",
+        )));
+        false
+    }
+
+    /// Shows `page` with the keyboard in it, a page with nothing to focus included, and announces
+    /// it for the Shell's history, which records pages only. The Shell ignores a page it already
+    /// holds, so a page reopened from the index is announced again. Whether `page` now shows.
+    fn open_page(&mut self, page: SettingsPage, router: &mut dyn SettingsRouter) -> bool {
+        if !self.allowed(page, router) {
             return false;
         }
-        if self.selected != page {
-            self.selected = page;
-            router.page_changed(page);
-        }
+        self.selected = page;
+        self.focus = SettingsFocus::Page;
+        router.page_changed(page);
         true
-    }
-
-    /// Hands the page the keyboard. A page with nothing to focus keeps it on the docked index as a
-    /// quiet no-op; at Medium the page is what's on screen, so it opens all the same.
-    fn focus_page(&mut self) {
-        if self.selected.has_controls() || self.drill_down {
-            self.focus = SettingsFocus::Page;
-        }
-    }
-
-    fn open_page(&mut self, page: SettingsPage, router: &mut dyn SettingsRouter) {
-        if self.select(page, router) {
-            self.focus_page();
-        }
     }
 
     fn open_picker(&mut self, router: &mut dyn SettingsRouter) {
@@ -492,8 +505,7 @@ impl SettingsFramePresenter {
 
     /// Straight to `page` from the picker. A refused page leaves the picker open.
     fn pick(&mut self, page: SettingsPage, router: &mut dyn SettingsRouter) {
-        if !self.can_show(page) {
-            self.select(page, router);
+        if !self.allowed(page, router) {
             return;
         }
         self.close_picker(router);
@@ -615,8 +627,24 @@ mod tests {
         send(frame, [SettingsFrameEvent::DrillDown(true)]);
     }
 
+    /// The pages whose index rows are drawn selected, and the one under the cursor.
+    fn rows(frame: &SettingsFramePresenter) -> (Vec<SettingsPage>, Vec<SettingsPage>) {
+        let model = frame.view_model();
+        let rows: Vec<_> = model.groups.iter().flat_map(|g| g.rows.clone()).collect();
+        (
+            rows.iter()
+                .filter(|row| row.selected)
+                .map(|row| row.page)
+                .collect(),
+            rows.iter()
+                .filter(|row| row.cursor)
+                .map(|row| row.page)
+                .collect(),
+        )
+    }
+
     #[test]
-    fn opens_on_general_with_the_index_focused() {
+    fn opens_on_the_index_with_its_cursor_on_general() {
         let frame = frame();
         let model = frame.view_model();
 
@@ -624,35 +652,54 @@ mod tests {
         assert_eq!(model.focus, SettingsFocus::Index);
         assert_eq!(model.heading, "Settings - General");
         assert_eq!(model.scope_note, "this device · never synced");
-        assert!(!model.index_page);
+        assert!(
+            model.index_page,
+            "the index is the resting view, docked or not"
+        );
         assert_eq!(model.picker, None);
     }
 
     #[test]
-    fn moving_on_the_index_selects_each_page_and_announces_it() {
+    fn moving_on_the_index_moves_its_cursor_and_announces_nothing() {
         let mut frame = frame();
 
         let router = send(&mut frame, [E::Move(Step::Next), E::Move(Step::Next)]);
 
         assert_eq!(frame.selected(), SettingsPage::Tracing);
-        assert_eq!(
-            router.pages_changed(),
-            [SettingsPage::Display, SettingsPage::Tracing]
+        assert!(
+            router.pages_changed().is_empty(),
+            "history records pages, not the cursor"
         );
         assert_eq!(
             frame.focus(),
             SettingsFocus::Index,
             "the index keeps the keyboard"
         );
-        let selected: Vec<_> = frame
-            .view_model()
-            .groups
-            .iter()
-            .flat_map(|group| group.rows.iter())
-            .filter(|row| row.selected)
-            .map(|row| row.page)
-            .collect();
-        assert_eq!(selected, [SettingsPage::Tracing]);
+        assert!(frame.view_model().index_page);
+        assert_eq!(
+            rows(&frame),
+            (vec![], vec![SettingsPage::Tracing]),
+            "no row is selected while the index shows; the cursor's is tinted"
+        );
+    }
+
+    #[test]
+    fn opening_the_page_under_the_cursor_selects_its_row_and_announces_it() {
+        let mut frame = frame();
+
+        let router = send(&mut frame, [E::Move(Step::Next), E::Select]);
+
+        assert_eq!(frame.focus(), SettingsFocus::Page);
+        assert!(!frame.view_model().index_page);
+        assert_eq!(router.pages_changed(), [SettingsPage::Display]);
+        assert_eq!(rows(&frame), (vec![SettingsPage::Display], vec![]));
+
+        let router = send(&mut frame, [E::Back, E::EnterPage]);
+        assert_eq!(
+            router.pages_changed(),
+            [SettingsPage::Display],
+            "a reopened page is announced again; the Shell ignores a page it holds"
+        );
     }
 
     #[test]
@@ -674,14 +721,17 @@ mod tests {
     }
 
     #[test]
-    fn a_click_on_the_docked_index_shows_the_page_and_keeps_the_index_focused() {
-        let mut frame = frame();
+    fn a_click_on_either_index_opens_the_page() {
+        for click in [E::ClickIndex, E::ClickIndexPage] {
+            let mut frame = frame();
 
-        let router = send(&mut frame, [E::ClickIndex(SettingsPage::Payees)]);
+            let router = send(&mut frame, [click(SettingsPage::Payees)]);
 
-        assert_eq!(frame.selected(), SettingsPage::Payees);
-        assert_eq!(frame.focus(), SettingsFocus::Index);
-        assert_eq!(router.pages_changed(), [SettingsPage::Payees]);
+            assert_eq!(frame.selected(), SettingsPage::Payees);
+            assert_eq!(frame.focus(), SettingsFocus::Page);
+            assert!(!frame.view_model().index_page);
+            assert_eq!(router.pages_changed(), [SettingsPage::Payees]);
+        }
     }
 
     #[test]
@@ -714,11 +764,13 @@ mod tests {
     #[test]
     fn stepping_from_the_last_this_device_page_with_no_ledger_is_refused_and_stays() {
         let mut frame = no_ledger();
-        send(&mut frame, [E::ClickIndex(SettingsPage::About)]);
+        send(&mut frame, [E::Move(Step::Next); 3]);
+        assert_eq!(frame.selected(), SettingsPage::About);
 
         let router = send(&mut frame, [E::Move(Step::Next)]);
 
         assert_eq!(frame.selected(), SettingsPage::About);
+        assert_eq!(frame.focus(), SettingsFocus::Index);
         assert_eq!(router.statuses().len(), 1);
     }
 
@@ -744,9 +796,33 @@ mod tests {
         assert_eq!(
             frame.selected(),
             SettingsPage::General,
-            "a This Ledger page on show gives way to General"
+            "a This Ledger page on show gives way to the index on General"
         );
+        assert_eq!(frame.focus(), SettingsFocus::Index);
+        assert!(frame.view_model().index_page);
         assert!(router.pages_changed().is_empty());
+    }
+
+    #[test]
+    fn a_closing_ledger_leaves_a_this_device_page_on_show() {
+        let mut frame = frame();
+        send(&mut frame, [E::OpenPage(SettingsPage::Display)]);
+
+        send(&mut frame, [E::LedgerClosed]);
+
+        assert_eq!(frame.selected(), SettingsPage::Display);
+        assert_eq!(frame.focus(), SettingsFocus::Page);
+    }
+
+    #[test]
+    fn a_closing_ledger_moves_an_index_cursor_on_a_this_ledger_page_to_general() {
+        let mut frame = frame();
+        send(&mut frame, [E::Move(Step::Last)]);
+
+        send(&mut frame, [E::LedgerClosed]);
+
+        assert_eq!(frame.selected(), SettingsPage::General);
+        assert_eq!(frame.focus(), SettingsFocus::Index);
     }
 
     #[test]
@@ -787,21 +863,62 @@ mod tests {
     }
 
     #[test]
-    fn a_page_with_nothing_to_focus_keeps_the_keyboard_on_the_docked_index() {
+    fn a_page_with_nothing_to_focus_opens_like_any_other() {
         let mut frame = frame();
-        send(
-            &mut frame,
-            [E::ClickIndex(SettingsPage::About), E::EnterPage],
-        );
-        assert_eq!(frame.focus(), SettingsFocus::Index);
+        send(&mut frame, [E::Move(Step::Next); 3]);
+        assert_eq!(frame.selected(), SettingsPage::About);
 
-        medium(&mut frame);
         send(&mut frame, [E::EnterPage]);
+
         assert_eq!(
             frame.focus(),
             SettingsFocus::Page,
-            "at Medium the page opens all the same"
+            "with the index the resting view, About shows only when opened"
         );
+        assert!(!frame.view_model().index_page);
+    }
+
+    #[test]
+    fn esc_h_and_left_return_a_page_to_the_index_at_every_window_size() {
+        for drill_down in [false, true] {
+            for leave in [E::Back, E::FocusIndex] {
+                let mut frame = frame();
+                send(&mut frame, [E::DrillDown(drill_down)]);
+                send(&mut frame, [E::OpenPage(SettingsPage::Tags)]);
+
+                let router = send(&mut frame, [leave]);
+
+                let model = frame.view_model();
+                assert!(model.index_page, "{leave:?} at drill-down {drill_down}");
+                assert_eq!(model.selected, SettingsPage::Tags, "the cursor stays");
+                assert!(router.routed.is_empty(), "the index is no history entry");
+            }
+        }
+    }
+
+    #[test]
+    fn entering_settings_lands_on_the_index_even_from_an_open_page() {
+        let mut frame = frame();
+        send(&mut frame, [E::Move(Step::Next), E::Select]);
+        assert_eq!(frame.focus(), SettingsFocus::Page);
+
+        let router = send(&mut frame, [E::Entered]);
+
+        assert_eq!(frame.focus(), SettingsFocus::Index);
+        assert!(frame.view_model().index_page);
+        assert_eq!(frame.selected(), SettingsPage::Display, "the cursor stays");
+        assert!(router.routed.is_empty());
+    }
+
+    #[test]
+    fn a_start_on_settings_lands_on_the_index_with_the_restored_page_under_the_cursor() {
+        let mut frame = frame();
+
+        let router = send(&mut frame, [E::Restore(SettingsPage::Units), E::Entered]);
+
+        assert_eq!(frame.selected(), SettingsPage::Units);
+        assert_eq!(frame.focus(), SettingsFocus::Index);
+        assert!(router.routed.is_empty());
     }
 
     #[test]
@@ -832,18 +949,51 @@ mod tests {
     }
 
     #[test]
-    fn a_restored_page_shows_without_being_announced_or_moving_focus() {
-        let mut frame = frame();
-        send(&mut frame, [E::EnterPage]);
+    fn back_and_forward_show_the_restored_page_itself_without_announcing_it() {
+        for drill_down in [false, true] {
+            let mut frame = frame();
+            send(&mut frame, [E::DrillDown(drill_down)]);
 
-        let router = send(&mut frame, [E::Restore(SettingsPage::Inventory)]);
+            let router = send(&mut frame, [E::Restore(SettingsPage::Inventory)]);
 
-        assert_eq!(frame.selected(), SettingsPage::Inventory);
+            assert_eq!(frame.selected(), SettingsPage::Inventory);
+            assert_eq!(
+                frame.focus(),
+                SettingsFocus::Page,
+                "the page, not the index"
+            );
+            assert!(!frame.view_model().index_page);
+            assert!(
+                router.routed.is_empty(),
+                "the Shell restored it, so nothing goes back"
+            );
+        }
+    }
+
+    #[test]
+    fn with_no_ledger_a_restored_this_ledger_page_shows_general() {
+        let mut frame = no_ledger();
+
+        let router = send(&mut frame, [E::Restore(SettingsPage::Payees)]);
+
+        assert_eq!(frame.selected(), SettingsPage::General);
         assert_eq!(frame.focus(), SettingsFocus::Page);
-        assert!(
-            router.routed.is_empty(),
-            "the Shell restored it, so nothing goes back"
-        );
+        assert!(router.routed.is_empty(), "a restore falls back quietly");
+    }
+
+    #[test]
+    fn resizing_keeps_whatever_shows() {
+        let mut frame = frame();
+        send(&mut frame, [E::OpenPage(SettingsPage::Tags)]);
+        medium(&mut frame);
+        assert_eq!(frame.focus(), SettingsFocus::Page);
+        send(&mut frame, [E::DrillDown(false)]);
+        assert_eq!(frame.focus(), SettingsFocus::Page);
+
+        send(&mut frame, [E::Back, E::DrillDown(true)]);
+        assert!(frame.view_model().index_page);
+        send(&mut frame, [E::DrillDown(false)]);
+        assert!(frame.view_model().index_page);
     }
 
     #[test]
