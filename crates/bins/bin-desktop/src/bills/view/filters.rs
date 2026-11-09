@@ -1,17 +1,17 @@
 //! Draws the Schedule tab's filter row and stat callout (`docs/ux/desktop-mockups/12-bills/README.md`'s
 //! 8a, carrying over 8f's History pieces in #381): status chips, then the Bill, Category and
 //! Account selects, and the Last paid / Average / Same period last year figures while scoped to
-//! one Bill Plan. The selects are the dialogs' shared dropdown, opening inline beneath the row.
+//! one Bill Plan. The selects are the dialogs' shared dropdown, opening inline beneath the row;
+//! the Presenter holds which is focused and its open list, and every click is its event.
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use lib_bills::presenter::{
     BillsPageEvent, ChipView, FilterField, FiltersView, ScheduleEvent, StatsView,
 };
 
-use super::page::{BillsPage, FilterClick};
-use crate::form::select::SelectState;
+use super::page::BillsPage;
 use crate::form::select_field::{self, SelectFieldProps};
-use crate::form::viper::labels;
+use crate::form::viper::{drawn, labels};
 use crate::shell::view::page_clicks::PageClicks;
 use crate::theme::color;
 
@@ -25,26 +25,26 @@ fn select_id(field: FilterField) -> &'static str {
     }
 }
 
-/// The filter row, then the stat callout while scoped to one Bill Plan. `states` holds each
-/// select's widget state, in the view model's order.
+/// The filter row, then the stat callout while scoped to one Bill Plan. `window` is the open
+/// list's window, which the page keeps so it follows the highlight.
 pub(super) fn render(
     view: &FiltersView,
     stats: Option<&StatsView>,
-    states: &[SelectState],
+    window: &mut usize,
     clicks: &PageClicks<BillsPage>,
     cx: &App,
 ) -> AnyElement {
     div()
         .flex()
         .flex_col()
-        .child(filter_row(view, states, clicks, cx))
+        .child(filter_row(view, window, clicks, cx))
         .children(stats.map(|stats| stat_callout(stats, cx)))
         .into_any_element()
 }
 
 fn filter_row(
     view: &FiltersView,
-    states: &[SelectState],
+    window: &mut usize,
     clicks: &PageClicks<BillsPage>,
     cx: &App,
 ) -> impl IntoElement {
@@ -68,9 +68,17 @@ fn filter_row(
                 .mb(px(6.0))
                 .bg(color::border(cx)),
         )
-        .children(view.selects.iter().zip(states).map(|(select, state)| {
+        .children(view.selects.iter().map(|select| {
             let field = select.field;
             let options = labels(&select.view);
+            // Only the focused select's list is ever open, and only its window is kept.
+            let mut closed = 0;
+            let scroll = if select.list.is_open() {
+                &mut *window
+            } else {
+                &mut closed
+            };
+            let state = drawn(&select.view, select.list, scroll);
             div()
                 .w(SELECT_WIDTH)
                 .flex_none()
@@ -79,13 +87,15 @@ fn filter_row(
                         id: select_id(field).into(),
                         label: select.view.label.clone().into(),
                         options: &options,
-                        state,
+                        state: &state,
                         focused: select.view.focused,
                         accent: select.accent,
                         read_only: None,
-                        on_field_click: clicks.click(FilterClick::Field(field)),
-                        on_option_click: clicks
-                            .option(move |index| FilterClick::Option(field, index)),
+                        on_field_click: clicks
+                            .click(BillsPageEvent::Schedule(ScheduleEvent::ToggleFilter(field))),
+                        on_option_click: clicks.option(move |index| {
+                            BillsPageEvent::Schedule(ScheduleEvent::FilterOption(field, index))
+                        }),
                     },
                     cx,
                 ))

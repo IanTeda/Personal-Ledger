@@ -207,11 +207,15 @@ impl OpenLedger {
         let inventory_setup = crate::inventory::InventorySetup::new(
             storage.ports.inventory.clone(),
             storage.ports.inventory_reads.clone(),
-            dialog_keys,
+            dialog_keys.clone(),
             keybindings,
         );
-        let bills =
-            crate::bills::BillsSetup::new(storage.ports.bills.clone(), payments, keybindings);
+        let bills = crate::bills::BillsSetup::new(
+            storage.ports.bills.clone(),
+            payments,
+            dialog_keys.clone(),
+            keybindings,
+        );
         let settings_setup = crate::settings::pages::SettingsSetup {
             units,
             institutions: institutions_setup,
@@ -256,9 +260,10 @@ impl OpenLedger {
         let import_view_observer = cx.observe(&import_view, |_, _, cx| cx.notify());
         let budgets_view = crate::budgets::router::budgets_page(
             budgets_ports,
-            announcer.clone(),
+            &announcer,
             lib_budgets::keymap::budgets_page_keymap(keybindings),
             clock.clone(),
+            dialog_keys,
             cx,
         );
         let budgets_subscription = Root::view_event_subscription(&budgets_view, cx);
@@ -268,14 +273,7 @@ impl OpenLedger {
             cx.new(|cx| DashboardPage::new(dashboard_reads, &announcer, clock.clone(), cx));
         let dashboard_subscription = Root::view_event_subscription(&dashboard_view, cx);
         let dashboard_view_observer = cx.observe(&dashboard_view, |_, _, cx| cx.notify());
-        let bills_view = crate::bills::bills_page(
-            bills.ports,
-            bills.payments,
-            announcer.clone(),
-            bills.keymap,
-            clock.clone(),
-            cx,
-        );
+        let bills_view = crate::bills::bills_page(bills, &announcer, clock.clone(), cx);
         let bills_subscription = Root::view_event_subscription(&bills_view, cx);
         // The status line reads the page's state, so a change in it repaints `Root` too.
         let bills_view_observer = cx.observe(&bills_view, |_, _, cx| cx.notify());

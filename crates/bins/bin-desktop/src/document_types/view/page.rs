@@ -21,16 +21,18 @@ use crate::shell::view::statusline::PageStatus;
 impl PageView for DocumentTypesPagePresenter {
     type Setup = DocumentTypesRoutes;
     type Widgets = ();
+    type Before = ();
 
     /// A Document Type write: the rows read the types and their Filed file counts.
     const REPAINTS: &'static [Domain] = &[Domain::DocumentTypes];
 
     fn with_router<R>(
+        presenter: &mut Self,
         setup: &DocumentTypesRoutes,
         cx: &mut Context<'_, DocumentTypesPage>,
-        handle: impl FnOnce(&mut Self::Router<'_>) -> R,
+        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
     ) -> R {
-        handle(&mut PageRouter { routes: setup, cx })
+        handle(presenter, &mut PageRouter { routes: setup, cx })
     }
 
     fn render(

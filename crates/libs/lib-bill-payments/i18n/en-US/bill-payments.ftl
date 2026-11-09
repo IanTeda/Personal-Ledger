@@ -24,3 +24,5 @@ bill-payments-pay-error-gone = This bill can no longer be paid.
 ## already formatted.
 
 bill-payments-pay-candidate = { $payee } · { $date } · { $amount }
+## The Pay Dialog's status-line hint for `←`/`→`.
+bill-payments-pay-hint-switch-panel = switch panel

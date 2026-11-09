@@ -3,8 +3,10 @@
 //! cancelled instead, since it has no next cycle (#368).
 
 use lib_locale::format::format_month_day;
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::view::DialogFrame;
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::{BACK, SELECT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
+use lib_viper::view::{DialogFrame, Hint};
 
 use crate::interactor::SkipBill;
 use crate::protocols::{BillsOutcome, SharedPorts};
@@ -23,6 +25,8 @@ pub enum SkipEvent {
 pub struct SkipViewModel {
     pub frame: DialogFrame,
     pub body: String,
+    /// The status line's legend while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 pub struct SkipPresenter {
@@ -33,8 +37,9 @@ pub struct SkipPresenter {
 
 impl SkipPresenter {
     /// The Dialog on entry `entry`, or `None` when its Plan is gone. Its text is read once: the
-    /// Dialog is modal, so nothing renames the Plan under it.
-    pub fn new(ports: SharedPorts, entry: EntryId) -> Option<Self> {
+    /// Dialog is modal, so nothing renames the Plan under it. `keys` are the Dialog keymap's
+    /// chords, which its hints show.
+    pub fn new(ports: SharedPorts, entry: EntryId, keys: DialogKeys) -> Option<Self> {
         let plan = ports.borrow().bills().bill_plan(entry.plan_id)?;
         let due = format_month_day(entry.due);
         let body = if plan.recurrence == Recurrence::OneShot {
@@ -54,13 +59,23 @@ impl SkipPresenter {
                     hints: Vec::new(),
                 },
                 body,
+                hints: vec![
+                    keys.hint(BACK, lib_locale::msg::dialog_hint_cancel()),
+                    keys.hint(SELECT, lib_locale::msg::dialog_hint_confirm()),
+                ],
             },
         })
     }
+}
+
+impl Presenter for SkipPresenter {
+    type Event = SkipEvent;
+    type ViewModel = SkipViewModel;
+    type Router<'r> = dyn DialogRouter<BillsOutcome> + 'r;
 
     /// Confirm skips the entry and closes; an entry settled or superseded underneath closes the
     /// Dialog too, with the refusal for the page to report, since there is no form to show it on.
-    pub fn handle(&mut self, event: SkipEvent, router: &mut dyn DialogRouter<BillsOutcome>) {
+    fn handle(&mut self, event: SkipEvent, router: &mut Self::Router<'_>) {
         match event {
             SkipEvent::Input(DialogInput::Select | DialogInput::Submit) | SkipEvent::Confirm => {
                 let skipped =
@@ -75,8 +90,29 @@ impl SkipPresenter {
         }
     }
 
-    pub fn view_model(&self) -> SkipViewModel {
+    fn view_model(&self) -> SkipViewModel {
         self.view.clone()
+    }
+}
+
+impl DialogPresenter for SkipPresenter {
+    type Outcome = BillsOutcome;
+
+    fn input_event(input: DialogInput) -> SkipEvent {
+        SkipEvent::Input(input)
+    }
+
+    fn confirm_event() -> SkipEvent {
+        SkipEvent::Confirm
+    }
+
+    fn cancel_event() -> SkipEvent {
+        SkipEvent::Cancel
+    }
+
+    /// Nothing to fill in.
+    fn can_confirm(&self) -> bool {
+        true
     }
 }
 
@@ -92,7 +128,8 @@ mod tests {
     fn confirm_skips_the_entry_and_closes() {
         let (ports, shared) = sample();
         let origin = entry_of(&ports.borrow(), "Origin Energy", date(2026, 9, 24));
-        let mut skip = SkipPresenter::new(shared, origin).expect("the Plan is there");
+        let mut skip =
+            SkipPresenter::new(shared, origin, DialogKeys::default()).expect("the Plan is there");
         let view = skip.view_model();
         assert_eq!(view.frame.title, "Skip this cycle \u{2014} Origin Energy");
         assert!(view.body.contains("isn't affected"));
@@ -119,7 +156,8 @@ mod tests {
         ] {
             let (_ports, shared) = sample();
             let origin = entry_of(&_ports.borrow(), "Origin Energy", date(2026, 9, 24));
-            let mut skip = SkipPresenter::new(shared, origin).expect("the Plan is there");
+            let mut skip = SkipPresenter::new(shared, origin, DialogKeys::default())
+                .expect("the Plan is there");
             let mut router = RecordingRouter::default();
 
             skip.handle(SkipEvent::Input(input), &mut router);
@@ -140,7 +178,8 @@ mod tests {
     fn an_entry_settled_underneath_closes_with_the_refusal() {
         let (ports, shared) = sample();
         let origin = entry_of(&ports.borrow(), "Origin Energy", date(2026, 9, 24));
-        let mut skip = SkipPresenter::new(shared, origin).expect("the Plan is there");
+        let mut skip =
+            SkipPresenter::new(shared, origin, DialogKeys::default()).expect("the Plan is there");
         SkipBill { entry: origin }
             .run(&mut ports.borrow_mut().bills)
             .expect("an open entry");
@@ -165,6 +204,7 @@ mod tests {
                 plan_id: id,
                 due: date(2026, 9, 24),
             },
+            DialogKeys::default(),
         )
         .expect("the Plan is there");
 

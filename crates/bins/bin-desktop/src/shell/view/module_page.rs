@@ -7,24 +7,33 @@
 //! The page never counts or announces a write: each input's `send` announces what its commit
 //! names (ADR-0055), and the page repaints on the domains in [`PageView::REPAINTS`].
 //!
-//! It takes no `handle_key`, `key_ahead` or `search_key`: those are the pre-module key paths
-//! #1079 retires, so a page that still needs one stays hand-written until then.
+//! It takes no `handle_key`, `key_ahead` or `search_key`, the pre-module key paths #1079 retires: a
+//! page types text through `PagePresenter::typed` and reports a mode of its own through
+//! `PagePresenter::mode`, which the page turns into `EnterMode` and `ExitMode` around each handle
+//! ([`ModulePage::mode_key`]). It also serves the main Views' methods `ActiveViewEntity` forwards
+//! to (`on_enter`, `start_search`, the `?` Help group), with [`PageView`]'s hooks around a handle
+//! for the widget state a main View keeps (ADR-0056's main-View consequence).
 //! [`PresenterPage`] is how [`PageClicks`] reaches the page, for the generic page as for the
 //! hand-written ones.
 
-use gpui::{AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Pixels, Point};
+use gpui::{
+    AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Keystroke, Pixels, Point,
+};
 use gpui::{Render, Subscription, Window};
 use lib_database::Domain;
 use lib_shell::Hint;
-use lib_viper::presenter::PagePresenter;
+use lib_viper::keymap::SEARCH;
+use lib_viper::presenter::{PageMode, PagePresenter, TextKey};
 
 use super::page_clicks::{PageClicks, PresenterPage};
 use super::statusline::PageStatus;
-use crate::announcer::{Announcer, notify_on};
+use crate::announcer::{Announcer, LedgerChanged, notify_on};
+use crate::navigation::chord::chord;
 use crate::navigation::movement::Movement;
 use crate::settings::SettingsPage;
 use crate::settings::pages::{Page, PageRowClicked};
-use crate::view::event::{Reveal, ViewEvent};
+use crate::view::event::{Reveal, ViewEvent, ViewMode};
+use crate::view::help::HelpGroup;
 
 /// The bin's half of a page Presenter: the Router it is lent for each call, the domains it
 /// repaints on, and how it draws. Implemented on the Presenter type itself.
@@ -35,19 +44,54 @@ pub trait PageView: PagePresenter + Sized + 'static {
     type Setup: 'static;
 
     /// The widget state that is gpui's to keep beside the Presenter, which the Presenter never
-    /// sees: a scroll handle, a row menu's position. `()` for a page with none.
+    /// sees: a scroll handle, a row menu's position. `()` for a page with none. It is reset as the
+    /// page becomes the destination.
     type Widgets: Default + 'static;
+
+    /// What [`Self::before`] notes ahead of a handle for [`Self::after`]: `()` for a page that
+    /// keeps nothing across one.
+    type Before: Default;
 
     /// The Ledger domains whose change repaints the page: its own, and any its view model reads.
     const REPAINTS: &'static [Domain];
 
-    /// Runs `handle` with the page's Router, built over `setup` around this call's context, which
-    /// is how a Router opens a Dialog in the host.
+    /// Runs `handle` on `presenter` with the page's Router, built over `setup` around this call's
+    /// context, which is how a Router opens a Dialog in the host. The Router may read what the
+    /// Presenter holds for the Dialogs it opens (the date style) before `handle` runs.
     fn with_router<R>(
+        presenter: &mut Self,
         setup: &Self::Setup,
         cx: &mut Context<'_, ModulePage<Self>>,
-        handle: impl FnOnce(&mut Self::Router<'_>) -> R,
+        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
     ) -> R;
+
+    /// Notes what [`Self::after`] compares against, ahead of `event`'s handle: the tab shown, the
+    /// selection. It may hand the Presenter widget facts (a half page).
+    fn before(&mut self, _event: &Self::Event, _widgets: &Self::Widgets) -> Self::Before {
+        Self::Before::default()
+    }
+
+    /// Follows a handle in the widget state (a scroll back to the top, onto the selection), and
+    /// the View event it asks the Shell for (a status reset), from what [`Self::before`] noted.
+    fn after(&self, _before: Self::Before, _widgets: &mut Self::Widgets) -> Option<ViewEvent> {
+        None
+    }
+
+    /// The event the page is sent as it becomes the destination, after its widget state is reset.
+    fn entered() -> Option<Self::Event> {
+        None
+    }
+
+    /// The event the page is sent when a domain in [`Self::REPAINTS`] changes, ahead of its
+    /// repaint, for a Presenter that keeps what it read until told; `None` only repaints.
+    fn ledger_changed() -> Option<Self::Event> {
+        None
+    }
+
+    /// The page's group of keys for the `?` Help Dialog, `None` for a page that adds none.
+    fn help(_view: &Self::ViewModel) -> Option<HelpGroup> {
+        None
+    }
 
     /// Draws the page from `view`.
     fn render(
@@ -128,20 +172,46 @@ impl<P: PageView> ModulePage<P> {
         announcer: &Entity<Announcer>,
         cx: &mut Context<'_, Self>,
     ) -> Self {
+        let repaints = match P::ledger_changed() {
+            None => P::REPAINTS
+                .iter()
+                .map(|domain| notify_on(announcer, *domain, cx))
+                .collect(),
+            // The announcement comes after the input's commit, so the event is handled directly:
+            // telling the Presenter writes nothing.
+            Some(_) => vec![cx.subscribe(
+                announcer,
+                |page: &mut Self, _, event: &LedgerChanged, cx| {
+                    if P::REPAINTS.iter().any(|domain| event.what.contains(domain))
+                        && let Some(changed) = P::ledger_changed()
+                        && let Some(followed) = page.handle(changed, cx)
+                    {
+                        cx.emit(followed);
+                    }
+                },
+            )],
+        };
         Self {
             presenter,
             setup,
             widgets: P::Widgets::default(),
             page_focused: false,
-            _repaints: P::REPAINTS
-                .iter()
-                .map(|domain| notify_on(announcer, *domain, cx))
-                .collect(),
+            _repaints: repaints,
         }
     }
 
     pub fn view_model(&self) -> P::ViewModel {
         self.presenter.view_model()
+    }
+
+    /// The Presenter, for a test's snapshot of what it holds beyond its view model.
+    pub fn presenter(&self) -> &P {
+        &self.presenter
+    }
+
+    /// What the page's Router is built from, for a test's snapshot.
+    pub fn setup(&self) -> &P::Setup {
+        &self.setup
     }
 
     /// Where a Dialog the page opens hands its confirmed outcome, inside the confirm's input,
@@ -183,15 +253,74 @@ impl<P: PageView> ModulePage<P> {
         P::status(&self.view_model())
     }
 
+    /// The `?` Help Dialog's group for the page.
+    pub fn help_group(&self) -> Option<HelpGroup> {
+        P::help(&self.view_model())
+    }
+
+    /// The page has just become the destination: its widget state starts afresh (scrolled to the
+    /// top), and the Presenter is sent [`PageView::entered`].
+    pub fn on_enter(&mut self, cx: &mut Context<'_, Self>) {
+        self.widgets = P::Widgets::default();
+        match P::entered() {
+            Some(event) => self.send(event, cx),
+            None => cx.notify(),
+        }
+    }
+
+    /// `/`: the keymap's `search` command, reporting whether the page is now in its Search. A
+    /// page without one leaves `/` inert.
+    pub fn start_search(&mut self, cx: &mut Context<'_, Self>) -> bool {
+        self.module_command(SEARCH, cx) && self.presenter.mode() == Some(PageMode::Search)
+    }
+
+    /// A key while the page is in a mode of its own: offered to the keymap by its chord, then to
+    /// [`PagePresenter::typed`]. Returns whether either took it; in Normal mode the page takes
+    /// nothing here, and the key goes on to the Shell's keymap.
+    pub fn mode_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
+        if self.presenter.mode().is_none() {
+            return false;
+        }
+        if let Some(chord) = chord(keystroke)
+            && self.module_key(&chord, cx)
+        {
+            return true;
+        }
+        let events: Vec<P::Event> = text_keys(keystroke)
+            .into_iter()
+            .filter_map(|key| self.presenter.typed(key))
+            .collect();
+        if events.is_empty() {
+            return false;
+        }
+        let followed = crate::input::join_or_send(cx, |cx| {
+            events
+                .into_iter()
+                .filter_map(|event| self.handle(event, cx))
+                .collect::<Vec<_>>()
+        });
+        for event in followed {
+            cx.emit(event);
+        }
+        true
+    }
+
     /// A key or click on the page: `event` as one input, committed once it is handled. Inside an
     /// input already (a palette Command's), it joins that one.
+    ///
+    /// What [`PageView::after`] asks of the Shell is told it once the input is sent, so it lands
+    /// after the Notices the input's drain shows: a status the event clears stays cleared (#828).
     pub fn send(&mut self, event: P::Event, cx: &mut Context<'_, Self>) {
-        crate::input::join_or_send(cx, |cx| self.handle(event, cx));
+        if let Some(followed) = crate::input::join_or_send(cx, |cx| self.handle(event, cx)) {
+            cx.emit(followed);
+        }
     }
 
     /// A confirmed Dialog's outcome, handed back by the Dialog host inside the confirm's input.
     fn dialog_landed(&mut self, outcome: P::Outcome, cx: &mut Context<'_, Self>) {
-        self.handle(P::dialog_closed(Some(outcome)), cx);
+        if let Some(followed) = self.handle(P::dialog_closed(Some(outcome)), cx) {
+            cx.emit(followed);
+        }
     }
 
     /// The one dispatch a keymap event takes into the page: sent as one input, unless the page
@@ -204,14 +333,55 @@ impl<P: PageView> ModulePage<P> {
         true
     }
 
-    /// Hands `event` to the Presenter with the page's Router, then redraws. Inside an input
-    /// already, as [`Self::send`] or a Dialog's confirm.
-    fn handle(&mut self, event: P::Event, cx: &mut Context<'_, Self>) {
+    /// Hands `event` to the Presenter with the page's Router, then tells the Shell of a mode the
+    /// Presenter entered or left and follows the handle in the widget state, then redraws. Inside
+    /// an input already, as [`Self::send`] or a Dialog's confirm. Returns what
+    /// [`PageView::after`] asks of the Shell, for the caller to tell it.
+    fn handle(&mut self, event: P::Event, cx: &mut Context<'_, Self>) -> Option<ViewEvent> {
+        let mode = self.presenter.mode();
+        let before = self.presenter.before(&event, &self.widgets);
         let Self {
             presenter, setup, ..
         } = self;
-        P::with_router(setup, cx, |router| presenter.handle(event, router));
+        P::with_router(presenter, setup, cx, |presenter, router| {
+            presenter.handle(event, router);
+        });
+        let now = self.presenter.mode();
+        if now != mode {
+            cx.emit(match now {
+                Some(mode) => ViewEvent::EnterMode(view_mode(mode)),
+                None => ViewEvent::ExitMode,
+            });
+        }
+        let followed = self.presenter.after(before, &mut self.widgets);
         cx.notify();
+        followed
+    }
+}
+
+/// The Shell's mode for a page's own.
+fn view_mode(mode: PageMode) -> ViewMode {
+    match mode {
+        PageMode::Insert => ViewMode::Insert,
+        PageMode::Search => ViewMode::Search,
+        PageMode::Filter => ViewMode::Filter,
+    }
+}
+
+/// What `keystroke` types into a page's mode: the editing keys, or each character an unmodified
+/// key types.
+fn text_keys(keystroke: &Keystroke) -> Vec<TextKey> {
+    let shift = keystroke.modifiers.shift;
+    match keystroke.key.as_str() {
+        "backspace" => vec![TextKey::Backspace],
+        "enter" => vec![TextKey::Enter { shift }],
+        "tab" => vec![TextKey::Tab { shift }],
+        _ if keystroke.modifiers.control || keystroke.modifiers.platform => Vec::new(),
+        _ => keystroke
+            .key_char
+            .as_deref()
+            .map(|text| text.chars().map(TextKey::Char).collect())
+            .unwrap_or_default(),
     }
 }
 

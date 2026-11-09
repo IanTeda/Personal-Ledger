@@ -18,7 +18,6 @@ desktop-hint-open = open
 desktop-hint-edit = edit
 desktop-hint-add = add
 desktop-hint-filter = filter
-desktop-hint-choose = choose
 desktop-hint-scroll = scroll
 desktop-hint-index = index
 

@@ -2,13 +2,14 @@
 //! model, on the shared `crate::dialog` frame: the header counts, one row per Budget with its
 //! actions, a refused action's error and the three notes. An archived row is dimmed.
 
-use gpui::{AnyElement, App, Context, SharedString, div, prelude::*, px};
-use lib_budgets::presenter::{ManageEvent, ManageRow, ManageViewModel};
+use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
+use lib_budgets::presenter::{ManageEvent, ManagePresenter, ManageRow, ManageViewModel};
 use lib_locale::format::upper;
+use lib_shell::Hint;
 
-use super::dialog::ListDialog;
 use crate::dialog;
 use crate::form::colour_field::error_line;
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks};
 use crate::theme::color;
 
 /// Wide enough for the table's seven columns.
@@ -50,7 +51,8 @@ fn table_row(
     row: &ManageRow,
     selected: bool,
     last: bool,
-    cx: &Context<'_, ListDialog>,
+    clicks: &Clicks,
+    cx: &App,
 ) -> AnyElement {
     let app: &App = cx;
     let (primary, secondary) = if selected {
@@ -58,11 +60,11 @@ fn table_row(
     } else {
         (color::foreground(app), color::muted(app))
     };
-    let on_row_click = ListDialog::on_manage(cx, ManageEvent::Select(index));
+    let on_row_click = clicks.send(ManageEvent::Select(index));
     let id = row.id;
     let links = row.actions.iter().map(|choice| {
         let action = choice.value;
-        let on_click = ListDialog::on_manage(cx, ManageEvent::ActOn(id, action));
+        let on_click = clicks.send(ManageEvent::ActOn(id, action));
         let selector = format!("budgets-manage-{id}-{action:?}");
         div()
             .id(SharedString::from(selector.clone()))
@@ -172,16 +174,66 @@ fn note(title: String, body: String, cx: &App) -> impl IntoElement {
         )
 }
 
-pub(super) fn render(view: &ManageViewModel, cx: &Context<'_, ListDialog>) -> AnyElement {
-    let on_close = ListDialog::on_manage(cx, ManageEvent::Cancel);
-    let on_new = ListDialog::on_manage(cx, ManageEvent::New);
+/// The open Manage budgets' clicks.
+type Clicks = ModuleDialogClicks<ManagePresenter>;
+
+/// The `lib-budgets` Manage budgets Presenter's [`DialogView`], hosted in a `ModuleDialog`
+/// (ADR-0056).
+impl DialogView for ManagePresenter {
+    type Widgets = ();
+
+    fn kind(_view: &ManageViewModel) -> &'static str {
+        "Manage"
+    }
+
+    fn render(view: &ManageViewModel, _widgets: &mut (), clicks: &Clicks, cx: &App) -> AnyElement {
+        render(view, clicks, cx)
+    }
+
+    /// The Budgets listed, the cursor's and the refusal under the table.
+    fn readback(view: &ManageViewModel) -> Vec<(&'static str, String)> {
+        let selected = view
+            .rows
+            .get(view.selected)
+            .map(|row| row.name.clone())
+            .unwrap_or_default();
+        let names = view
+            .rows
+            .iter()
+            .map(|row| row.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        vec![
+            ("Budgets", names),
+            ("Selected", selected),
+            ("Error", view.error.clone().unwrap_or_default()),
+        ]
+    }
+
+    fn hints(view: &ManageViewModel) -> Vec<Hint> {
+        view.hints.clone()
+    }
+}
+
+fn render(view: &ManageViewModel, clicks: &Clicks, cx: &App) -> AnyElement {
+    let on_close = clicks.send(ManageEvent::Cancel);
+    let on_new = clicks.send(ManageEvent::New);
     let count = view.rows.len();
     let selected = view.selected.min(count.saturating_sub(1));
     let rows: Vec<AnyElement> = view
         .rows
         .iter()
         .enumerate()
-        .map(|(index, row)| table_row(index, row, index == selected, index + 1 == count, cx))
+        .map(|(index, row)| {
+            table_row(
+                index,
+                row,
+                index == selected,
+                index + 1 == count,
+                clicks,
+                cx,
+            )
+        })
         .collect();
     let app: &App = cx;
     let table = div()

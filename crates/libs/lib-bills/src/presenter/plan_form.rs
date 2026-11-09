@@ -21,8 +21,12 @@
 use chrono::NaiveDate;
 use lib_core::{AccountId, BillPlanId, CategoryId, Clock, DateStyle, Money, PayeeId, UnitId};
 use lib_locale::format::{format_date_input, parse_optional_date, parse_positive_amount};
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::view::{Choice, DialogFrame, SelectList, SelectMove, SelectView, TextFieldView};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::{BACK, NEXT_FIELD, SELECT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
+use lib_viper::view::{
+    Choice, DialogFrame, Hint, SelectList, SelectMove, SelectView, TextFieldView,
+};
 
 use super::{cycle, recurrence_label};
 use crate::interactor::{AddBillPlan, EditBillPlan};
@@ -128,6 +132,8 @@ pub struct PlanFormViewModel {
     pub list: SelectList,
     /// Why the last confirm was refused.
     pub refusal: Option<String>,
+    /// The status line's legend while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -148,6 +154,8 @@ struct Choices {
 
 pub struct PlanFormPresenter {
     ports: SharedPorts,
+    /// The Dialog keymap's chords, which the legend shows.
+    keys: DialogKeys,
     /// The Plan an Edit saves, and its stored name, which the title keeps while Name is retyped.
     editing: Option<(BillPlanId, String)>,
     /// What the dates are judged on: `today`, and the day a save supersedes from.
@@ -175,12 +183,18 @@ pub struct PlanFormPresenter {
 impl PlanFormPresenter {
     /// A fresh Add form: the first Unit and its first Account, Monthly, Fixed, First Due today
     /// (the word `today`), everything else empty. Dates are judged on the day `clock` reads and
-    /// typed in `date_style`.
-    pub fn add(ports: SharedPorts, clock: Clock, date_style: Option<DateStyle>) -> Self {
+    /// typed in `date_style`; `keys` are the Dialog keymap's chords, which its hints show.
+    pub fn add(
+        ports: SharedPorts,
+        clock: Clock,
+        date_style: Option<DateStyle>,
+        keys: DialogKeys,
+    ) -> Self {
         let choices = Self::choices(&ports, None);
         let unit = choices.units.first().map(|choice| choice.value);
         let mut form = Self {
             ports,
+            keys,
             editing: None,
             clock,
             date_style,
@@ -212,11 +226,13 @@ impl PlanFormPresenter {
         id: BillPlanId,
         clock: Clock,
         date_style: Option<DateStyle>,
+        keys: DialogKeys,
     ) -> Option<Self> {
         let plan = ports.borrow().bills().bill_plan(id)?;
         let choices = Self::choices(&ports, plan.payee_id);
         Some(Self {
             ports,
+            keys,
             editing: Some((id, plan.name.clone())),
             clock,
             date_style,
@@ -311,69 +327,6 @@ impl PlanFormPresenter {
                 label: p.name,
             }))
             .collect(),
-        }
-    }
-
-    pub fn handle(&mut self, event: PlanFormEvent, router: &mut dyn DialogRouter<BillsOutcome>) {
-        if event != PlanFormEvent::Confirm {
-            self.refusal = None;
-        }
-        match event {
-            PlanFormEvent::Input(input) => self.input(input, router),
-            PlanFormEvent::Name(text) => self.name = text,
-            PlanFormEvent::Amount(text) => self.amount = decimal_characters(&text),
-            PlanFormEvent::FirstDue(text) => self.first_due = text,
-            PlanFormEvent::EndsOn(text) => self.ends_on = text,
-            PlanFormEvent::Lead(text) => {
-                self.lead = text.chars().filter(char::is_ascii_digit).collect();
-            }
-            PlanFormEvent::Category(id) => {
-                self.list.close();
-                self.set_category(id);
-            }
-            PlanFormEvent::Unit(id) => {
-                self.list.close();
-                self.set_unit(id);
-            }
-            PlanFormEvent::Account(id) => {
-                self.list.close();
-                self.set_account(id);
-            }
-            PlanFormEvent::Payee(id) => {
-                self.list.close();
-                self.set_payee(id);
-            }
-            PlanFormEvent::Recurrence(recurrence) => {
-                self.list.close();
-                self.set_recurrence(recurrence);
-            }
-            PlanFormEvent::AmountKind(kind) => {
-                self.focused = PlanField::AmountKind;
-                self.amount_kind = kind;
-            }
-            PlanFormEvent::ToggleActive => self.toggle_active(),
-            PlanFormEvent::ToggleList(field) => {
-                if self.is_select(field) {
-                    // Only the clicked select's list opens; a second click closes it.
-                    if self.focused == field && self.list.is_open() {
-                        self.list.close();
-                    } else {
-                        self.focus(field);
-                        self.toggle_list();
-                    }
-                }
-            }
-            PlanFormEvent::CloseList => {
-                self.list.close();
-            }
-            PlanFormEvent::Focus(field) => {
-                self.list.close();
-                if self.shows(field) {
-                    self.focused = field;
-                }
-            }
-            PlanFormEvent::Confirm => self.confirm(router),
-            PlanFormEvent::Cancel => router.close(None),
         }
     }
 
@@ -691,8 +644,149 @@ impl PlanFormPresenter {
             Err(refusal) => self.refusal = Some(refusal_text(&refusal)),
         }
     }
+}
 
-    pub fn view_model(&self) -> PlanFormViewModel {
+/// The Recurrences the select offers, in the order `Recurrence::ALL` lists them.
+fn recurrence_choices() -> Vec<Choice<Recurrence>> {
+    Recurrence::ALL
+        .into_iter()
+        .map(|value| Choice {
+            value,
+            label: recurrence_label(value),
+        })
+        .collect()
+}
+
+fn select_view<T>(
+    label: String,
+    options: Vec<Choice<T>>,
+    chosen: Option<T>,
+    focused: bool,
+) -> SelectView<T> {
+    SelectView {
+        label,
+        options,
+        chosen,
+        focused,
+    }
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct FieldErrors {
+    amount: Option<String>,
+    first_due: Option<String>,
+    ends_on: Option<String>,
+    lead: Option<String>,
+}
+
+impl FieldErrors {
+    fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+}
+
+/// The characters a decimal amount takes: digits, and one point.
+fn decimal_characters(text: &str) -> String {
+    let mut kept = String::new();
+    for ch in text.chars() {
+        if ch.is_ascii_digit() || (ch == '.' && !kept.contains('.')) {
+            kept.push(ch);
+        }
+    }
+    kept
+}
+
+/// A refused Save. The form's own checks catch most of these first; what's left is a choice the
+/// selects couldn't fill (no expense Category, no Account in the Unit) or a Plan gone under it.
+fn refusal_text(refusal: &Error) -> String {
+    match refusal {
+        Error::NameRequired => msg::bills_plan_error_name(),
+        Error::CategoryNotExpenseLeaf => msg::bills_plan_error_category(),
+        Error::AccountRequired | Error::UnitMismatch => msg::bills_plan_error_account(),
+        Error::AmountNotPositive => msg::bills_plan_error_amount(),
+        Error::EndsBeforeFirstDue => msg::bills_plan_error_ends_before_first_due(),
+        Error::PlanNotFound => msg::bills_plan_error_gone(),
+        // Not reachable from the form: One-shot hides Ends On, Edit locks the Unit, and the rest
+        // come from settlement.
+        Error::UnitLocked(_)
+        | Error::EndsOnForOneShot
+        | Error::EntryNotFound
+        | Error::EntryNotOpen
+        | Error::NotACandidate
+        | Error::NotPaid
+        | Error::NotSkipped => msg::bills_plan_error_other(),
+    }
+}
+
+impl Presenter for PlanFormPresenter {
+    type Event = PlanFormEvent;
+    type ViewModel = PlanFormViewModel;
+    type Router<'r> = dyn DialogRouter<BillsOutcome> + 'r;
+
+    fn handle(&mut self, event: PlanFormEvent, router: &mut Self::Router<'_>) {
+        if event != PlanFormEvent::Confirm {
+            self.refusal = None;
+        }
+        match event {
+            PlanFormEvent::Input(input) => self.input(input, router),
+            PlanFormEvent::Name(text) => self.name = text,
+            PlanFormEvent::Amount(text) => self.amount = decimal_characters(&text),
+            PlanFormEvent::FirstDue(text) => self.first_due = text,
+            PlanFormEvent::EndsOn(text) => self.ends_on = text,
+            PlanFormEvent::Lead(text) => {
+                self.lead = text.chars().filter(char::is_ascii_digit).collect();
+            }
+            PlanFormEvent::Category(id) => {
+                self.list.close();
+                self.set_category(id);
+            }
+            PlanFormEvent::Unit(id) => {
+                self.list.close();
+                self.set_unit(id);
+            }
+            PlanFormEvent::Account(id) => {
+                self.list.close();
+                self.set_account(id);
+            }
+            PlanFormEvent::Payee(id) => {
+                self.list.close();
+                self.set_payee(id);
+            }
+            PlanFormEvent::Recurrence(recurrence) => {
+                self.list.close();
+                self.set_recurrence(recurrence);
+            }
+            PlanFormEvent::AmountKind(kind) => {
+                self.focused = PlanField::AmountKind;
+                self.amount_kind = kind;
+            }
+            PlanFormEvent::ToggleActive => self.toggle_active(),
+            PlanFormEvent::ToggleList(field) => {
+                if self.is_select(field) {
+                    // Only the clicked select's list opens; a second click closes it.
+                    if self.focused == field && self.list.is_open() {
+                        self.list.close();
+                    } else {
+                        self.focus(field);
+                        self.toggle_list();
+                    }
+                }
+            }
+            PlanFormEvent::CloseList => {
+                self.list.close();
+            }
+            PlanFormEvent::Focus(field) => {
+                self.list.close();
+                if self.shows(field) {
+                    self.focused = field;
+                }
+            }
+            PlanFormEvent::Confirm => self.confirm(router),
+            PlanFormEvent::Cancel => router.close(None),
+        }
+    }
+
+    fn view_model(&self) -> PlanFormViewModel {
         let text = |label: String, text: &str, placeholder: String, field| TextFieldView {
             label,
             text: text.to_string(),
@@ -819,79 +913,39 @@ impl PlanFormPresenter {
                 .collect(),
             list: self.list,
             refusal: self.refusal.clone(),
+            hints: vec![
+                self.keys.hint(BACK, lib_locale::msg::dialog_hint_cancel()),
+                self.keys
+                    .hint(SELECT, lib_locale::msg::dialog_hint_confirm()),
+                self.keys
+                    .hint(NEXT_FIELD, lib_locale::msg::dialog_hint_next_field()),
+            ],
         }
     }
 }
 
-/// The Recurrences the select offers, in the order `Recurrence::ALL` lists them.
-fn recurrence_choices() -> Vec<Choice<Recurrence>> {
-    Recurrence::ALL
-        .into_iter()
-        .map(|value| Choice {
-            value,
-            label: recurrence_label(value),
-        })
-        .collect()
-}
+impl DialogPresenter for PlanFormPresenter {
+    type Outcome = BillsOutcome;
 
-fn select_view<T>(
-    label: String,
-    options: Vec<Choice<T>>,
-    chosen: Option<T>,
-    focused: bool,
-) -> SelectView<T> {
-    SelectView {
-        label,
-        options,
-        chosen,
-        focused,
+    fn input_event(input: DialogInput) -> PlanFormEvent {
+        PlanFormEvent::Input(input)
     }
-}
 
-#[derive(Debug, Default, PartialEq, Eq)]
-struct FieldErrors {
-    amount: Option<String>,
-    first_due: Option<String>,
-    ends_on: Option<String>,
-    lead: Option<String>,
-}
-
-impl FieldErrors {
-    fn is_empty(&self) -> bool {
-        *self == Self::default()
+    fn confirm_event() -> PlanFormEvent {
+        PlanFormEvent::Confirm
     }
-}
 
-/// The characters a decimal amount takes: digits, and one point.
-fn decimal_characters(text: &str) -> String {
-    let mut kept = String::new();
-    for ch in text.chars() {
-        if ch.is_ascii_digit() || (ch == '.' && !kept.contains('.')) {
-            kept.push(ch);
-        }
+    fn cancel_event() -> PlanFormEvent {
+        PlanFormEvent::Cancel
     }
-    kept
-}
 
-/// A refused Save. The form's own checks catch most of these first; what's left is a choice the
-/// selects couldn't fill (no expense Category, no Account in the Unit) or a Plan gone under it.
-fn refusal_text(refusal: &Error) -> String {
-    match refusal {
-        Error::NameRequired => msg::bills_plan_error_name(),
-        Error::CategoryNotExpenseLeaf => msg::bills_plan_error_category(),
-        Error::AccountRequired | Error::UnitMismatch => msg::bills_plan_error_account(),
-        Error::AmountNotPositive => msg::bills_plan_error_amount(),
-        Error::EndsBeforeFirstDue => msg::bills_plan_error_ends_before_first_due(),
-        Error::PlanNotFound => msg::bills_plan_error_gone(),
-        // Not reachable from the form: One-shot hides Ends On, Edit locks the Unit, and the rest
-        // come from settlement.
-        Error::UnitLocked(_)
-        | Error::EndsOnForOneShot
-        | Error::EntryNotFound
-        | Error::EntryNotOpen
-        | Error::NotACandidate
-        | Error::NotPaid
-        | Error::NotSkipped => msg::bills_plan_error_other(),
+    /// Every field filled and none with a problem.
+    fn can_confirm(&self) -> bool {
+        self.draft().is_some()
+    }
+
+    fn close_open_select(&mut self) -> bool {
+        self.list.close()
     }
 }
 
@@ -930,7 +984,12 @@ mod tests {
             let (ports, shared) = sample();
             Self {
                 ports,
-                presenter: PlanFormPresenter::add(shared, Clock::fixed(today()), None),
+                presenter: PlanFormPresenter::add(
+                    shared,
+                    Clock::fixed(today()),
+                    None,
+                    DialogKeys::default(),
+                ),
                 router: RecordingRouter::default(),
             }
         }
@@ -947,8 +1006,14 @@ mod tests {
                 .expect("a sample Plan");
             Self {
                 ports,
-                presenter: PlanFormPresenter::edit(shared, id, Clock::fixed(today()), None)
-                    .expect("the Plan is there"),
+                presenter: PlanFormPresenter::edit(
+                    shared,
+                    id,
+                    Clock::fixed(today()),
+                    None,
+                    DialogKeys::default(),
+                )
+                .expect("the Plan is there"),
                 router: RecordingRouter::default(),
             }
         }

@@ -55,8 +55,50 @@ pub trait PagePresenter: Presenter<Event: Clone> {
     /// when it was cancelled.
     fn dialog_closed(outcome: Option<Self::Outcome>) -> Self::Event;
 
-    /// The page's keys under `[keybindings]`, which its legend reads its chords from too.
+    /// The page's keys under `[keybindings]` for its current state (the tab shown, an open
+    /// select), which its legend reads its chords from too. A palette Command of another state
+    /// still reaches its event by name, and the Presenter shows that state first inside `handle`.
     fn keymap(&self) -> &Keymap<Self::Event>;
+
+    /// A key typed while the page is in a mode of its own ([`Self::mode`]), which its keymap
+    /// didn't bind: the event it types, or `None` for one the mode gives no meaning to. A Client
+    /// never offers it a key in Normal mode.
+    fn typed(&self, _key: TextKey) -> Option<Self::Event> {
+        None
+    }
+
+    /// The mode the page is in for something of its own (an edit in place, its Search, an open
+    /// select), `None` in Normal mode. While it lasts, the Client offers the page every key first:
+    /// to its keymap, then to [`Self::typed`]; a key neither takes goes nowhere else.
+    fn mode(&self) -> Option<PageMode> {
+        None
+    }
+}
+
+/// A key typed into a page's mode, free of any toolkit: a character, or one of the keys a text
+/// edit reads. A Client turns its own keystrokes into these.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextKey {
+    /// A printable character, typed without Ctrl.
+    Char(char),
+    Backspace,
+    Enter {
+        shift: bool,
+    },
+    Tab {
+        shift: bool,
+    },
+}
+
+/// A mode a page enters for something of its own, which the Client hands the page's keys to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PageMode {
+    /// An edit in place (a Budgets Plan cell).
+    Insert,
+    /// The page's Search box.
+    Search,
+    /// A filter popover or an open select's list.
+    Filter,
 }
 
 /// A Dialog's Presenter: it closes through the one [`DialogRouter`] every module's Dialogs share,
@@ -317,6 +359,15 @@ mod tests {
 
         assert_eq!(dialog.view_model(), "x");
         assert_eq!(log, ["close Some(\"saved\")", "close None"]);
+    }
+
+    #[test]
+    fn a_page_without_a_mode_types_nothing() {
+        let page = page();
+
+        assert_eq!(page.mode(), None);
+        assert_eq!(page.typed(TextKey::Char('x')), None);
+        assert_eq!(page.typed(TextKey::Enter { shift: false }), None);
     }
 
     #[test]

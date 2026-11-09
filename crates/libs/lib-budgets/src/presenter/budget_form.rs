@@ -14,8 +14,9 @@
 
 use lib_core::{AccountId, BudgetId, Clock, UnitId};
 use lib_toast::{Notice, ToastKind};
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::{BACK, NEXT_FIELD, SELECT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
 use lib_viper::view::{
     Choice, DialogFrame, Hint, SelectList, SelectMove, SelectView, TextFieldView,
 };
@@ -79,6 +80,8 @@ pub enum BudgetFormEvent {
     /// `left`/`right` on the Account chips or Start from, stopping at either end.
     StepBack,
     StepForward,
+    /// `submit`, `select` where it confirms, and the submit button.
+    Confirm,
     Cancel,
 }
 
@@ -125,6 +128,8 @@ pub struct BudgetFormViewModel {
     pub error: Option<String>,
     pub editing: bool,
     pub focused: BudgetField,
+    /// The status line's hints, in the Dialog keymap's chords.
+    pub hints: Vec<Hint>,
 }
 
 /// An Account that takes Transactions, as the form needs it.
@@ -159,12 +164,19 @@ pub struct BudgetFormPresenter {
     /// The Unit's list.
     list: SelectList,
     error: Option<String>,
+    /// The Dialog keymap's chords, which its hints show.
+    keys: DialogKeys,
 }
 
 impl BudgetFormPresenter {
     /// A new Budget in the Unit of Budget `current` (or the first Unit on offer), every Account
     /// preselected; `current` is the Budget Copy categories names.
-    pub fn new_budget(ports: &SharedPorts, clock: Clock, current: BudgetId) -> Self {
+    pub fn new_budget(
+        ports: &SharedPorts,
+        clock: Clock,
+        current: BudgetId,
+        keys: DialogKeys,
+    ) -> Self {
         let source = ports.borrow().budgets().budget(current);
         let (candidates, units) = Self::offers(ports);
         let unit = source
@@ -191,20 +203,23 @@ impl BudgetFormPresenter {
             focused: BudgetField::Name,
             list: SelectList::default(),
             error: None,
+            keys,
         };
         form.account_ids = form.offered_ids();
         form
     }
 
     /// Edit mode on Budget `id`, prefilled from it, or `None` when it is gone or archived.
-    pub fn edit(ports: &SharedPorts, clock: Clock, id: BudgetId) -> Option<Self> {
+    pub fn edit(ports: &SharedPorts, clock: Clock, id: BudgetId, keys: DialogKeys) -> Option<Self> {
         let budget = ports
             .borrow()
             .budgets()
             .budget(id)
             .filter(|budget| !budget.is_archived())?;
         let (candidates, units) = Self::offers(ports);
-        Some(Self::editing_from(ports, clock, &budget, candidates, units))
+        Some(Self::editing_from(
+            ports, clock, &budget, candidates, units, keys,
+        ))
     }
 
     fn editing_from(
@@ -213,6 +228,7 @@ impl BudgetFormPresenter {
         budget: &Budget,
         candidates: Vec<Candidate>,
         units: Vec<(UnitId, String)>,
+        keys: DialogKeys,
     ) -> Self {
         Self {
             ports: ports.clone(),
@@ -230,6 +246,7 @@ impl BudgetFormPresenter {
             focused: BudgetField::Name,
             list: SelectList::default(),
             error: None,
+            keys,
         }
     }
 
@@ -302,72 +319,17 @@ impl BudgetFormPresenter {
         self.focused
     }
 
-    pub fn handle(
-        &mut self,
-        event: BudgetFormEvent,
-        router: &mut dyn DialogRouter<BudgetsOutcome>,
-    ) {
-        match event {
-            BudgetFormEvent::Input(input) => self.input(input, router),
-            BudgetFormEvent::Name(text) => {
-                self.name = text;
-                self.error = None;
-            }
-            BudgetFormEvent::Unit(unit) => {
-                self.list.close();
-                self.set_unit(unit);
-            }
-            BudgetFormEvent::ToggleUnitList => {
-                if !self.is_edit() {
-                    self.focused = BudgetField::Unit;
-                    let options = self.unit_choices();
-                    self.list.toggle(&options, self.unit.as_ref());
-                }
-            }
-            BudgetFormEvent::CloseList => {
-                self.list.close();
-            }
-            BudgetFormEvent::ToggleAccount(id) => self.toggle_account(id),
-            BudgetFormEvent::ToggleCursorAccount => {
-                if let Some(candidate) = self.offered().get(self.account_cursor) {
-                    let id = candidate.id;
-                    self.toggle_account(id);
-                }
-            }
-            BudgetFormEvent::StartFrom(choice) => {
-                self.list.close();
-                if self.is_edit() || (choice == StartChoice::Copy && !self.can_copy()) {
-                    return;
-                }
-                self.focused = BudgetField::StartFrom;
-                self.start_from = choice;
-                self.error = None;
-            }
-            BudgetFormEvent::Focus(field) => {
-                self.list.close();
-                if self.stops().contains(&field) {
-                    self.focused = field;
-                }
-            }
-            BudgetFormEvent::NextField => self.cycle(false),
-            BudgetFormEvent::PrevField => self.cycle(true),
-            BudgetFormEvent::StepBack => self.step(false),
-            BudgetFormEvent::StepForward => self.step(true),
-            BudgetFormEvent::Cancel => router.close(None),
-        }
-    }
-
     /// What `input` means on the focused field.
     fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<BudgetsOutcome>) {
         match (input, self.focused) {
             (DialogInput::NextField, _) => self.cycle(false),
             (DialogInput::PreviousField, _) => self.cycle(true),
-            (DialogInput::Submit, _) => self.confirm(router),
+            (DialogInput::Submit, _) => self.submit(router),
             // `select` confirms except where it commits the Unit's open list.
             (DialogInput::Select, field)
                 if !(field == BudgetField::Unit && self.list.is_open()) =>
             {
-                self.confirm(router);
+                self.submit(router);
             }
             (_, BudgetField::Unit) => {
                 let options = self.unit_choices();
@@ -497,15 +459,10 @@ impl BudgetFormPresenter {
         self.error = None;
     }
 
-    /// A Budget needs a name, a Unit and at least one on-budget Account.
-    fn can_confirm(&self) -> bool {
-        !self.name.trim().is_empty() && self.unit.is_some() && !self.account_ids.is_empty()
-    }
-
     /// Saves the form through the Interactors, raises the Toast and closes the Dialog; a refusal
     /// stays on the form. A form that can't confirm does nothing.
-    pub fn confirm(&mut self, router: &mut dyn DialogRouter<BudgetsOutcome>) {
-        if !self.can_confirm() {
+    fn submit(&mut self, router: &mut dyn DialogRouter<BudgetsOutcome>) {
+        if !DialogPresenter::can_confirm(self) {
             return;
         }
         let name = self.name.trim().to_string();
@@ -553,7 +510,75 @@ impl BudgetFormPresenter {
         }
     }
 
-    pub fn view_model(&self) -> BudgetFormViewModel {
+    /// The status line's hints, in the Dialog keymap's chords it was handed at open.
+    fn hints(&self) -> Vec<Hint> {
+        vec![
+            Hint::new(self.keys.chord(NEXT_FIELD), msg::budgets_hint_next_field()),
+            Hint::new("\u{2190}/\u{2192}", msg::budgets_hint_choose()),
+            Hint::new(self.keys.chord(SELECT), msg::budgets_hint_save()),
+            Hint::new(self.keys.chord(BACK), msg::budgets_hint_cancel()),
+        ]
+    }
+}
+
+impl Presenter for BudgetFormPresenter {
+    type Event = BudgetFormEvent;
+    type ViewModel = BudgetFormViewModel;
+    type Router<'r> = dyn DialogRouter<BudgetsOutcome> + 'r;
+
+    fn handle(&mut self, event: BudgetFormEvent, router: &mut Self::Router<'_>) {
+        match event {
+            BudgetFormEvent::Input(input) => self.input(input, router),
+            BudgetFormEvent::Name(text) => {
+                self.name = text;
+                self.error = None;
+            }
+            BudgetFormEvent::Unit(unit) => {
+                self.list.close();
+                self.set_unit(unit);
+            }
+            BudgetFormEvent::ToggleUnitList => {
+                if !self.is_edit() {
+                    self.focused = BudgetField::Unit;
+                    let options = self.unit_choices();
+                    self.list.toggle(&options, self.unit.as_ref());
+                }
+            }
+            BudgetFormEvent::CloseList => {
+                self.list.close();
+            }
+            BudgetFormEvent::ToggleAccount(id) => self.toggle_account(id),
+            BudgetFormEvent::ToggleCursorAccount => {
+                if let Some(candidate) = self.offered().get(self.account_cursor) {
+                    let id = candidate.id;
+                    self.toggle_account(id);
+                }
+            }
+            BudgetFormEvent::StartFrom(choice) => {
+                self.list.close();
+                if self.is_edit() || (choice == StartChoice::Copy && !self.can_copy()) {
+                    return;
+                }
+                self.focused = BudgetField::StartFrom;
+                self.start_from = choice;
+                self.error = None;
+            }
+            BudgetFormEvent::Focus(field) => {
+                self.list.close();
+                if self.stops().contains(&field) {
+                    self.focused = field;
+                }
+            }
+            BudgetFormEvent::NextField => self.cycle(false),
+            BudgetFormEvent::PrevField => self.cycle(true),
+            BudgetFormEvent::StepBack => self.step(false),
+            BudgetFormEvent::StepForward => self.step(true),
+            BudgetFormEvent::Confirm => self.submit(router),
+            BudgetFormEvent::Cancel => router.close(None),
+        }
+    }
+
+    fn view_model(&self) -> BudgetFormViewModel {
         let edit = self.is_edit();
         let (title, submit) = if edit {
             (
@@ -670,26 +695,33 @@ impl BudgetFormPresenter {
             error: self.error.clone(),
             editing: edit,
             focused,
+            hints: self.hints(),
         }
     }
+}
 
-    /// The status line's legend, `next_field`, `select` and `back` read from the Dialog `keymap`.
-    pub fn legend<E: Clone>(&self, keymap: &Keymap<E>) -> Vec<Hint> {
-        vec![
-            Hint::new(
-                keymap.chord(NEXT_FIELD).unwrap_or_default(),
-                msg::budgets_hint_next_field(),
-            ),
-            Hint::new("\u{2190}/\u{2192}", msg::budgets_hint_choose()),
-            Hint::new(
-                keymap.chord(SELECT).unwrap_or_default(),
-                msg::budgets_hint_save(),
-            ),
-            Hint::new(
-                keymap.chord(BACK).unwrap_or_default(),
-                msg::budgets_hint_cancel(),
-            ),
-        ]
+impl DialogPresenter for BudgetFormPresenter {
+    type Outcome = BudgetsOutcome;
+
+    fn input_event(input: DialogInput) -> Self::Event {
+        BudgetFormEvent::Input(input)
+    }
+
+    fn confirm_event() -> Self::Event {
+        BudgetFormEvent::Confirm
+    }
+
+    fn cancel_event() -> Self::Event {
+        BudgetFormEvent::Cancel
+    }
+
+    /// A Budget needs a name, a Unit and at least one on-budget Account.
+    fn can_confirm(&self) -> bool {
+        !self.name.trim().is_empty() && self.unit.is_some() && !self.account_ids.is_empty()
+    }
+
+    fn close_open_select(&mut self) -> bool {
+        self.list.close()
     }
 }
 
@@ -714,6 +746,7 @@ mod tests {
                     &shared,
                     Clock::fixed(today()),
                     PERSONAL_SPENDING_ID,
+                    DialogKeys::default(),
                 ),
                 ports,
                 router: RecordingRouter::default(),
@@ -727,6 +760,7 @@ mod tests {
                     &shared,
                     Clock::fixed(today()),
                     PERSONAL_SPENDING_ID,
+                    DialogKeys::default(),
                 )
                 .expect("the default takes edits"),
                 ports,
@@ -840,7 +874,8 @@ mod tests {
         let stored = form.budgets().len();
         form.send(BudgetFormEvent::Name("Trip".into()));
 
-        form.presenter.confirm(&mut form.router);
+        form.presenter
+            .handle(BudgetFormEvent::Confirm, &mut form.router);
 
         let budgets = form.budgets();
         assert_eq!(budgets.len(), stored + 1);
@@ -865,7 +900,8 @@ mod tests {
         let stored = form.budgets();
         form.send(BudgetFormEvent::Name(taken));
 
-        form.presenter.confirm(&mut form.router);
+        form.presenter
+            .handle(BudgetFormEvent::Confirm, &mut form.router);
 
         assert_eq!(form.router.routed, []);
         assert_eq!(
@@ -887,7 +923,8 @@ mod tests {
         assert_eq!(view.frame.submit, "Save");
 
         form.send(BudgetFormEvent::Name("Household".into()));
-        form.presenter.confirm(&mut form.router);
+        form.presenter
+            .handle(BudgetFormEvent::Confirm, &mut form.router);
 
         assert_eq!(
             form.router.routed,

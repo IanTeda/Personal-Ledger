@@ -7,77 +7,60 @@
 
 use gpui::{AnyElement, App, div, prelude::*, px};
 use lib_budgets::presenter::{LimitField, LimitFormEvent, LimitFormPresenter, LimitFormViewModel};
-use lib_budgets::{Rollover, Span};
+use lib_shell::Hint;
 
-use super::{Clicks, Form, FormDialog, Router, picker, segmented};
+use super::{picker, segmented};
 use crate::dialog;
 use crate::form::colour_field::error_line;
 use crate::form::dialog_fields::{label, text_field};
 use crate::form::select_field::{self, SelectFieldProps};
 use crate::form::viper::{drawn, labels};
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 use crate::theme::color;
 
 /// The dialog's width: the handoff's 9e.
 const WIDTH: gpui::Pixels = px(480.0);
 
-fn handle(presenter: &mut LimitFormPresenter, event: LimitFormEvent) {
-    presenter.handle(event, &mut Router::default());
-}
+/// The open form's clicks.
+type Clicks = ModuleDialogClicks<LimitFormPresenter>;
 
-fn form(dialog: &mut FormDialog) -> Option<&mut LimitFormPresenter> {
-    match &mut dialog.view {
-        Form::Limit(presenter, _) => Some(presenter),
-        _ => None,
+/// The `lib-budgets` Edit budget Presenter's [`DialogView`], hosted in a `ModuleDialog`
+/// (ADR-0056). Its widget state is the top row of the open Category or Starting list's window.
+impl DialogView for LimitFormPresenter {
+    type Widgets = usize;
+
+    fn kind(_view: &LimitFormViewModel) -> &'static str {
+        "EditLimit"
+    }
+
+    fn render(
+        view: &LimitFormViewModel,
+        scroll: &mut usize,
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        render(view, scroll, clicks, cx)
+    }
+
+    /// The Amount draft.
+    fn readback(view: &LimitFormViewModel) -> Vec<(&'static str, String)> {
+        framed(&view.frame, vec![("amount", view.amount.text.clone())])
+    }
+
+    fn hints(view: &LimitFormViewModel) -> Vec<Hint> {
+        view.hints.clone()
     }
 }
 
-/// Moves focus to `field`, closing an open list as a click elsewhere does.
-fn focus(dialog: &mut FormDialog, field: LimitField) {
-    if let Some(presenter) = form(dialog) {
-        handle(presenter, LimitFormEvent::Focus(field));
-    }
-}
-
-/// A click on the Category field: focuses it and toggles its list.
-fn click_category(dialog: &mut FormDialog) {
-    if let Some(presenter) = form(dialog) {
-        handle(presenter, LimitFormEvent::ToggleList(LimitField::Category));
-    }
-}
-
-fn click_starting(dialog: &mut FormDialog) {
-    if let Some(presenter) = form(dialog) {
-        handle(presenter, LimitFormEvent::ToggleList(LimitField::Starting));
-    }
-}
-
-fn choose_category(dialog: &mut FormDialog, index: usize) {
-    if let Some(presenter) = form(dialog)
-        && let Some(select) = presenter.view_model().category
-        && let Some(choice) = select.options.get(index)
-    {
-        handle(presenter, LimitFormEvent::Category(choice.value));
-    }
-}
-
-fn choose_starting(dialog: &mut FormDialog, index: usize) {
-    if let Some(presenter) = form(dialog)
-        && let Some(choice) = presenter.view_model().starting.options.get(index)
-    {
-        handle(presenter, LimitFormEvent::Starting(choice.value));
-    }
-}
-
-fn set_span(dialog: &mut FormDialog, span: Span) {
-    if let Some(presenter) = form(dialog) {
-        handle(presenter, LimitFormEvent::Span(span));
-    }
-}
-
-fn set_rollover(dialog: &mut FormDialog, rollover: Rollover) {
-    if let Some(presenter) = form(dialog) {
-        handle(presenter, LimitFormEvent::Rollover(rollover));
-    }
+/// A click on row `index` of an open list, choosing that row's value. The options are fixed
+/// while the Dialog is open.
+fn option_click<T: Clone + 'static>(
+    actions: &Clicks,
+    options: &[lib_viper::view::Choice<T>],
+    event: fn(T) -> LimitFormEvent,
+) -> select_field::OnOptionClick {
+    let values: Vec<T> = options.iter().map(|choice| choice.value.clone()).collect();
+    actions.option(move |index| values.get(index).cloned().map(event).into_iter().collect())
 }
 
 /// One summary line: what it is on the left, the figures on the right.
@@ -98,12 +81,7 @@ fn preview_line(what: String, figures: String, strong: bool, cx: &App) -> AnyEle
         .into_any_element()
 }
 
-pub(super) fn render(
-    view: &LimitFormViewModel,
-    scroll: &mut usize,
-    actions: &Clicks,
-    cx: &App,
-) -> AnyElement {
+fn render(view: &LimitFormViewModel, scroll: &mut usize, actions: &Clicks, cx: &App) -> AnyElement {
     let mut fields = Vec::new();
     // Only the focused select's list can be open, and only its window is kept.
     let mut unused = 0;
@@ -122,8 +100,8 @@ pub(super) fn render(
                 focused: select.focused,
                 accent: false,
                 read_only: None,
-                on_field_click: actions.click(click_category),
-                on_option_click: actions.option(choose_category),
+                on_field_click: actions.send(LimitFormEvent::ToggleList(LimitField::Category)),
+                on_option_click: option_click(actions, &select.options, LimitFormEvent::Category),
             },
             cx,
         ));
@@ -139,7 +117,7 @@ pub(super) fn render(
                 &view.amount.text,
                 &view.amount.placeholder,
                 view.amount.focused,
-                actions.click(|dialog| focus(dialog, LimitField::Amount)),
+                actions.send(LimitFormEvent::Focus(LimitField::Amount)),
                 cx,
             ))
             .children(view.amount_error.clone().map(|text| error_line(text, cx)))
@@ -160,12 +138,16 @@ pub(super) fn render(
             focused: view.starting.focused,
             accent: false,
             read_only: None,
-            on_field_click: actions.click(click_starting),
-            on_option_click: actions.option(choose_starting),
+            on_field_click: actions.send(LimitFormEvent::ToggleList(LimitField::Starting)),
+            on_option_click: option_click(
+                actions,
+                &view.starting.options,
+                LimitFormEvent::Starting,
+            ),
         },
         cx,
     ));
-    let on_span = actions.choose(set_span);
+    let on_span = actions.choose(|span| vec![LimitFormEvent::Span(span)]);
     fields.push(segmented(
         "budgets-limit-span",
         view.span.label.clone(),
@@ -183,7 +165,7 @@ pub(super) fn render(
             .collect(),
         cx,
     ));
-    let on_rollover = actions.choose(set_rollover);
+    let on_rollover = actions.choose(|rollover| vec![LimitFormEvent::Rollover(rollover)]);
     fields.push(segmented(
         "budgets-limit-rollover",
         view.rollover.label.clone(),
@@ -229,13 +211,7 @@ pub(super) fn render(
 
     let mut buttons = Vec::new();
     if let Some(stop) = &view.stop {
-        let on_stop = actions.act(|dialog, cx| {
-            dialog.run(cx, |view, router| {
-                if let Form::Limit(presenter, _) = view {
-                    presenter.handle(LimitFormEvent::StopBudgeting, router);
-                }
-            });
-        });
+        let on_stop = actions.send(LimitFormEvent::StopBudgeting);
         buttons.push(
             div()
                 .id("budgets-limit-stop")

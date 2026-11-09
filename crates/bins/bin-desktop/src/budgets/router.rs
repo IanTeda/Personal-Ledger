@@ -1,7 +1,7 @@
 //! `impl BudgetsRouter` for the Desktop: where the Budgets page's Presenter asks to go. Every
 //! Dialog (the Switcher, Manage budgets, the Budget form, Edit budget, Stop budgeting, Fill and the
-//! Category detail) opens as an Entity in the Dialog host, holding its Presenter. All of it goes
-//! through the page's gpui context, which is why the Router is built for each `handle` call. A
+//! Category detail) opens as a `ModuleDialog` in the Dialog host, holding its Presenter. All of it goes
+//! through the page's gpui context, which is why the Router is built for each `handle` call (`PageView::with_router`). A
 //! Notice goes onto the bin's queue (`crate::notices`), which the input's `send` drains.
 //!
 //! The History export is the Router's: the platform's save dialog, the write and the Toast that
@@ -9,117 +9,141 @@
 
 use gpui::{AppContext as _, Context, Entity};
 use lib_budgets::presenter::{
-    BudgetFormPresenter, BudgetsPageEvent, DetailPresenter, FillPresenter, LimitFormPresenter,
-    ManagePresenter, StopPresenter, SwitcherPresenter,
+    BudgetFormPresenter, BudgetsPageEvent, BudgetsPagePresenter, DetailPresenter, FillPresenter,
+    LimitFormPresenter, ManagePresenter, StopPresenter, SwitcherPresenter,
 };
 use lib_budgets::{BudgetsRouter, ExportHistory, SharedPorts};
 use lib_core::{BudgetId, CategoryId, Clock, DateStyle, Period};
 use lib_toast::{Notice, Notify, ToastKind};
 use lib_transactions::query::TransactionFilters;
+use lib_viper::dialog::DialogKeys;
 
-use super::view::dialog::ListDialog;
-use super::view::form_dialog::{Form, FormDialog};
 use super::view::page::BudgetsPage;
 use crate::announcer::Announcer;
 use crate::notices::Queue;
-use crate::shell::view::dialog_entity::host_dialog;
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialog};
+use crate::shell::view::module_page::ModulePage;
 use crate::view::event::{Reveal, ViewEvent};
 
 /// The file name the History export's save dialog suggests.
 const BUDGET_HISTORY_FILE: &str = "budget-history.csv";
 
-pub(super) struct PageRouter<'a, 'b> {
+/// What the Budgets page's Router is built from for each call: the ports its Dialogs open on, the
+/// day they open on and the Dialog keys their hints show.
+pub struct BudgetsRoutes {
     pub ports: SharedPorts,
-    /// The day the page's Dialogs are opened on, and the date style the Switcher writes in.
     pub clock: Clock,
+    pub dialog_keys: DialogKeys,
+}
+
+pub(crate) struct PageRouter<'a, 'b> {
+    pub routes: &'a BudgetsRoutes,
+    /// The date style the Switcher writes its dates in: the Presenter's.
     pub date_style: Option<DateStyle>,
     pub cx: &'a mut Context<'b, BudgetsPage>,
 }
 
 impl PageRouter<'_, '_> {
-    /// Hosts the Dialog `form` opens, which hands its outcome back to the page.
-    fn host(&mut self, form: Form) -> bool {
-        let dialog = FormDialog::new(form, self.ports.clone(), self.landed());
-        host_dialog(self.cx, |_| dialog);
+    /// Hosts `presenter`'s Dialog, which hands its outcome back to the page. A Dialog with nothing
+    /// to open on (`None`) opens nothing.
+    fn open<P>(&mut self, presenter: Option<P>) -> bool
+    where
+        P: DialogView<Outcome = lib_budgets::BudgetsOutcome>,
+    {
+        let Some(presenter) = presenter else {
+            return false;
+        };
+        let landed = BudgetsPage::landing(self.cx);
+        ModuleDialog::open(self.cx, presenter, landed);
         true
     }
 
-    /// What a closed Dialog hands back: its outcome, to
-    /// [`BudgetsPage::dialog_landed`].
-    fn landed(&self) -> super::view::dialog::Landed {
-        let page = self.cx.weak_entity();
-        Box::new(move |outcome, cx: &mut gpui::App| {
-            // A page that has gone has nothing to land on.
-            let _ = page.update(cx, |page, cx| page.dialog_landed(outcome, cx));
-        })
+    fn ports(&self) -> &SharedPorts {
+        &self.routes.ports
+    }
+
+    fn clock(&self) -> Clock {
+        self.routes.clock.clone()
+    }
+
+    fn keys(&self) -> DialogKeys {
+        self.routes.dialog_keys.clone()
     }
 }
 
 impl BudgetsRouter for PageRouter<'_, '_> {
     fn open_switcher(&mut self, current: BudgetId) -> bool {
         let presenter = SwitcherPresenter::new(
-            self.ports.clone(),
+            self.ports().clone(),
             current,
-            self.clock.clone(),
+            self.clock(),
             self.date_style,
+            self.keys(),
         );
-        let dialog = ListDialog::switcher(presenter, self.ports.clone(), self.landed());
-        host_dialog(self.cx, |_| dialog);
-        true
+        self.open(Some(presenter))
     }
 
     fn open_manage(&mut self, current: BudgetId) -> bool {
-        let presenter = ManagePresenter::new(self.ports.clone(), current, self.clock.clone());
-        let dialog = ListDialog::manage(presenter, self.ports.clone(), self.landed());
-        host_dialog(self.cx, |_| dialog);
-        true
+        let presenter =
+            ManagePresenter::new(self.ports().clone(), current, self.clock(), self.keys());
+        self.open(Some(presenter))
     }
 
     fn open_new_budget(&mut self, current: BudgetId) -> bool {
-        let presenter = BudgetFormPresenter::new_budget(&self.ports, self.clock.clone(), current);
-        self.host(Form::Budget(presenter, 0))
+        let presenter =
+            BudgetFormPresenter::new_budget(self.ports(), self.clock(), current, self.keys());
+        self.open(Some(presenter))
     }
 
     fn open_edit_budget(&mut self, id: BudgetId) -> bool {
-        match BudgetFormPresenter::edit(&self.ports, self.clock.clone(), id) {
-            Some(presenter) => self.host(Form::Budget(presenter, 0)),
-            None => false,
-        }
+        let presenter = BudgetFormPresenter::edit(self.ports(), self.clock(), id, self.keys());
+        self.open(presenter)
     }
 
     fn open_limit(&mut self, budget: BudgetId, category: CategoryId, month: Period) -> bool {
-        match LimitFormPresenter::edit(&self.ports, self.clock.clone(), budget, category, month) {
-            Some(presenter) => self.host(Form::Limit(presenter, 0)),
-            None => false,
-        }
+        let presenter = LimitFormPresenter::edit(
+            self.ports(),
+            self.clock(),
+            budget,
+            category,
+            month,
+            self.keys(),
+        );
+        self.open(presenter)
     }
 
     fn open_limit_picker(&mut self, budget: BudgetId) -> bool {
-        match LimitFormPresenter::picker(&self.ports, self.clock.clone(), budget) {
-            Some(presenter) => self.host(Form::Limit(presenter, 0)),
-            None => false,
-        }
+        let presenter = LimitFormPresenter::picker(self.ports(), self.clock(), budget, self.keys());
+        self.open(presenter)
     }
 
     fn open_stop(&mut self, budget: BudgetId, category: CategoryId, month: Period) -> bool {
-        match StopPresenter::new(&self.ports, self.clock.clone(), budget, category, month) {
-            Some(presenter) => self.host(Form::Stop(presenter, 0)),
-            None => false,
-        }
+        let presenter = StopPresenter::new(
+            self.ports(),
+            self.clock(),
+            budget,
+            category,
+            month,
+            self.keys(),
+        );
+        self.open(presenter)
     }
 
     fn open_fill(&mut self, budget: BudgetId, month: Period) -> bool {
-        match FillPresenter::new(&self.ports, self.clock.clone(), budget, month) {
-            Some(presenter) => self.host(Form::Fill(presenter)),
-            None => false,
-        }
+        let presenter = FillPresenter::new(self.ports(), self.clock(), budget, month, self.keys());
+        self.open(presenter)
     }
 
     fn open_detail(&mut self, budget: BudgetId, category: CategoryId, month: Period) -> bool {
-        match DetailPresenter::new(&self.ports, self.clock.clone(), budget, category, month) {
-            Some(presenter) => self.host(Form::Detail(presenter)),
-            None => false,
-        }
+        let presenter = DetailPresenter::new(
+            self.ports(),
+            self.clock(),
+            budget,
+            category,
+            month,
+            self.keys(),
+        );
+        self.open(presenter)
     }
 
     /// Asks where to save through the platform's save dialog, writes the CSV there and raises a
@@ -165,7 +189,7 @@ impl BudgetsRouter for PageRouter<'_, '_> {
     /// `transactions::router::show_filtered`.
     fn show_transactions(&mut self, budget: BudgetId, category: CategoryId, month: Period) {
         let account_ids = self
-            .ports
+            .ports()
             .borrow()
             .budgets()
             .budget(budget)
@@ -189,10 +213,17 @@ impl Notify for PageRouter<'_, '_> {
 /// Budgets destination. `clock` reads the calendar day the figures are worked out on.
 pub fn budgets_page(
     ports: SharedPorts,
-    announcer: Entity<Announcer>,
+    announcer: &Entity<Announcer>,
     keymap: lib_viper::keymap::Keymap<BudgetsPageEvent>,
     clock: Clock,
+    dialog_keys: DialogKeys,
     cx: &mut gpui::App,
 ) -> Entity<BudgetsPage> {
-    cx.new(|cx| BudgetsPage::new(ports, announcer, keymap, clock, cx))
+    let presenter = BudgetsPagePresenter::new(ports.clone(), clock.clone(), keymap);
+    let routes = BudgetsRoutes {
+        ports,
+        clock,
+        dialog_keys,
+    };
+    cx.new(|cx| ModulePage::new(presenter, routes, announcer, cx))
 }

@@ -12,7 +12,6 @@ use lib_bills::presenter::{
 
 use super::filters;
 use super::page::BillsPage;
-use crate::form::select::SelectState;
 use crate::shell::view::page_clicks::PageClicks;
 use crate::theme::color;
 
@@ -58,9 +57,10 @@ pub(super) fn meta_line(clauses: &[MetaClause], cx: &App) -> AnyElement {
         .into_any_element()
 }
 
+/// The Schedule tab; `filter_window` is the open scope list's window, which the page keeps.
 pub(super) fn render(
     view: &ScheduleViewModel,
-    filter_states: &[SelectState],
+    filter_window: &mut usize,
     clicks: &PageClicks<BillsPage>,
     cx: &App,
 ) -> AnyElement {
@@ -71,7 +71,7 @@ pub(super) fn render(
         .child(filters::render(
             &view.filters,
             view.stats.as_ref(),
-            filter_states,
+            filter_window,
             clicks,
             cx,
         ))

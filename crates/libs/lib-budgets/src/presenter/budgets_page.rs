@@ -2,7 +2,9 @@
 //! Switcher's title, its method tag, the meta line and the primary action), the Progress, Plan and
 //! History tabs, and the status line's legend and right-hand text. It holds the Budget on show,
 //! each tab's month or range and cursor, and the Plan cell being typed into, and sends each event
-//! to the tab it belongs to, ignoring one for a tab not shown.
+//! to the tab it belongs to, showing that tab first when another is shown (a palette Command of
+//! another tab). Its keymap is the tab shown's, and none while a Plan cell is being typed into:
+//! that is its Insert mode, whose keys it types through `typed`.
 //!
 //! The Budget on show is held here in memory, opening on the default (the last one opened is a
 //! Client-scoped Preference not yet kept). The page reads the day from its Clock on every event
@@ -10,11 +12,13 @@
 //! to the new one, so the page never strands itself in last month.
 
 use chrono::NaiveDate;
+use lib_config::KeyBindingConfig;
 use lib_core::{BudgetId, Clock, DateStyle, Period};
 use lib_list_cursor::Step;
 use lib_locale::Segment;
 use lib_toast::Notice;
 use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, SELECT};
+use lib_viper::presenter::{PageMode, PagePresenter, Presenter, TextKey};
 use lib_viper::view::Hint;
 
 use super::history::{HistoryEvent, HistoryState, HistoryViewModel};
@@ -24,10 +28,10 @@ use super::{error_text, method_label, plain};
 use crate::interactor::{ArchiveBudget, DuplicateBudget, RestoreBudget, SetDefaultBudget};
 use crate::keymap::{
     BUDGET_CATEGORY, CLEAR, COLUMN_LEFT, COLUMN_RIGHT, EXPORT, FILL, NEXT_PERIOD, NEXT_TAB,
-    PREVIOUS_PERIOD, ROLLOVER, STOP, SWITCH,
+    PREVIOUS_PERIOD, ROLLOVER, STOP, SWITCH, budgets_page_keymap, tab_keymap,
 };
 use crate::protocols::{BudgetRepository, BudgetsOutcome, BudgetsRouter, SharedPorts};
-use crate::{Budget, Error, PERSONAL_SPENDING_ID, Result, default_plan_start, msg};
+use crate::{Budget, Error, PERSONAL_SPENDING_ID, Result, Span, default_plan_start, msg};
 
 /// Which tab of the page shows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -91,16 +95,16 @@ pub enum BudgetsPageEvent {
     MonthTurned,
     /// The Display Preference the Switcher's archived dates are written in.
     SetDateStyle(Option<DateStyle>),
-    /// Show Budget `id`: one the New budget form created.
-    ShowBudget(BudgetId),
+    /// `[keybindings]` changed: the keys and the legend's chords follow it.
+    KeysChanged(KeyBindingConfig),
     /// The open Switcher or Manage budgets closed, with what it hands the page, `None` when it
     /// closed with nothing to show.
     DialogClosed(Option<BudgetsOutcome>),
 }
 
 impl BudgetsPageEvent {
-    /// The tab this event acts on, for one that does nothing on another (the palette shows it
-    /// first); `None` for an event every tab takes.
+    /// The tab this event acts on, which the page shows first when another is shown; `None` for
+    /// an event every tab takes.
     pub fn tab(&self) -> Option<BudgetsTab> {
         match self {
             Self::Progress(_) => Some(BudgetsTab::Progress),
@@ -159,10 +163,32 @@ pub enum TabBody {
     Gone,
 }
 
+/// The page's keymap as each state reads it: a tab's own chords, with every command still reached
+/// by name, and the Plan cell editor's, which binds no chord so that every key types.
+struct Keys {
+    all: Keymap<BudgetsPageEvent>,
+    progress: Keymap<BudgetsPageEvent>,
+    plan: Keymap<BudgetsPageEvent>,
+    history: Keymap<BudgetsPageEvent>,
+    editing: Keymap<BudgetsPageEvent>,
+}
+
+impl Keys {
+    fn new(all: Keymap<BudgetsPageEvent>) -> Self {
+        Self {
+            progress: tab_keymap(&all, BudgetsTab::Progress),
+            plan: tab_keymap(&all, BudgetsTab::Plan),
+            history: tab_keymap(&all, BudgetsTab::History),
+            editing: all.scoped(|_| false),
+            all,
+        }
+    }
+}
+
 pub struct BudgetsPagePresenter {
     pub(super) ports: SharedPorts,
     clock: Clock,
-    keymap: Keymap<BudgetsPageEvent>,
+    keys: Keys,
     pub(super) current: BudgetId,
     tab: BudgetsTab,
     /// The month the page last caught up to.
@@ -189,7 +215,7 @@ impl BudgetsPagePresenter {
         Self {
             ports,
             clock,
-            keymap,
+            keys: Keys::new(keymap),
             current,
             tab: BudgetsTab::default(),
             month: Period::of(today),
@@ -217,11 +243,6 @@ impl BudgetsPagePresenter {
     /// The date style the Switcher's dates are written in.
     pub fn date_style(&self) -> Option<DateStyle> {
         self.date_style
-    }
-
-    /// Follows a change to `[keybindings]`, so the legend shows the chords now bound.
-    pub fn set_keymap(&mut self, keymap: Keymap<BudgetsPageEvent>) {
-        self.keymap = keymap;
     }
 
     /// The Progress month shown and its selected row.
@@ -266,7 +287,131 @@ impl BudgetsPagePresenter {
         self.budget().filter(|budget| !budget.is_archived())
     }
 
-    pub fn handle(&mut self, event: BudgetsPageEvent, router: &mut dyn BudgetsRouter) {
+    /// Runs `write` on the repository, borrowed for one Interactor.
+    pub(super) fn with_repo<T>(&self, write: impl FnOnce(&mut dyn BudgetRepository) -> T) -> T {
+        write(self.ports.borrow_mut().split_mut().budgets)
+    }
+
+    /// A Budget-wide verb's refusal, on the status line.
+    fn report(done: Result<()>, router: &mut dyn BudgetsRouter) {
+        if let Err(error) = done {
+            router.notify(Notice::Status(error_text(&error)));
+        }
+    }
+
+    /// Moves what sat on the month the page last saw onto today's, once the month has turned.
+    fn catch_up(&mut self) {
+        let today = self.today();
+        let now = Period::of(today);
+        if now == self.month {
+            return;
+        }
+        let was = self.month;
+        if self.progress.period == was {
+            self.progress.period = now;
+        }
+        if self.plan.start == was.prev().prev() {
+            self.plan.start = default_plan_start(today);
+        }
+        if self.history.end == was {
+            self.history.end = now;
+        }
+        self.month = now;
+    }
+
+    /// Switches the tab, putting its selection back at the top. The Shell clears a stale status
+    /// message on the key that switched it (ADR-0048), and the Client on a click.
+    fn show_tab(&mut self, tab: BudgetsTab) {
+        self.tab = tab;
+        self.progress.selected = 0;
+    }
+
+    /// Shows Budget `id`, keeping the tab (every method built has all three) and putting each
+    /// tab's cursor and range back at its start. A Budget that has gone leaves the page as it was.
+    fn show_budget(&mut self, id: BudgetId) {
+        if self.ports.borrow().budgets().budget(id).is_none() {
+            return;
+        }
+        let today = self.today();
+        self.current = id;
+        self.progress.selected = 0;
+        self.plan = PlanState::new(today);
+        self.history = HistoryState::new(today);
+    }
+
+    /// The tab shown's legend, its chords read from the keymap so an override shows. The Plan
+    /// cell editor's keys are its own, not the keymap's.
+    fn hints(&self) -> Vec<Hint> {
+        let chord = |command: &str| self.keys.all.chord(command).unwrap_or_default().to_string();
+        let pair = |a: &str, b: &str| format!("{}/{}", chord(a), chord(b));
+        let hint = |chord: String, action: String| Hint { chord, action };
+        let rows = hint(pair(MOVE_DOWN, MOVE_UP), msg::budgets_hint_row());
+        let switch = hint(chord(NEXT_TAB), msg::budgets_hint_switch_view());
+        let range = hint(
+            pair(PREVIOUS_PERIOD, NEXT_PERIOD),
+            msg::budgets_hint_range(),
+        );
+        let budget_category = hint(chord(BUDGET_CATEGORY), msg::budgets_hint_budget_category());
+        match self.tab {
+            BudgetsTab::Progress => vec![
+                rows,
+                hint(chord(SELECT), msg::budgets_hint_open()),
+                hint(chord(EDIT), msg::budgets_hint_edit_budget()),
+                budget_category,
+                hint(chord(STOP), msg::budgets_hint_stop_budgeting()),
+                hint(chord(SWITCH), msg::budgets_hint_switch_budget()),
+                hint(
+                    pair(PREVIOUS_PERIOD, NEXT_PERIOD),
+                    msg::budgets_hint_period(),
+                ),
+                switch,
+            ],
+            BudgetsTab::Plan if self.editing() => vec![
+                hint("enter".to_string(), msg::budgets_hint_save_cell()),
+                hint("esc".to_string(), msg::budgets_hint_cancel()),
+                hint("tab".to_string(), msg::budgets_hint_next_month()),
+                hint(
+                    "shift+enter".to_string(),
+                    msg::budgets_hint_this_month_only(),
+                ),
+            ],
+            BudgetsTab::Plan => vec![
+                hint(
+                    format!(
+                        "{}/{}/{}/{}",
+                        chord(COLUMN_LEFT),
+                        chord(MOVE_DOWN),
+                        chord(MOVE_UP),
+                        chord(COLUMN_RIGHT)
+                    ),
+                    msg::budgets_hint_cell(),
+                ),
+                hint(chord(SELECT), msg::budgets_hint_edit()),
+                hint(chord(ROLLOVER), msg::budgets_hint_rollover()),
+                hint(chord(CLEAR), msg::budgets_hint_clear()),
+                hint(chord(FILL), msg::budgets_hint_fill()),
+                budget_category,
+                range,
+                switch,
+            ],
+            BudgetsTab::History => vec![
+                rows,
+                hint(pair(COLUMN_LEFT, COLUMN_RIGHT), msg::budgets_hint_month()),
+                hint(chord(SELECT), msg::budgets_hint_open()),
+                hint(chord(EXPORT), msg::budgets_hint_export()),
+                range,
+                switch,
+            ],
+        }
+    }
+}
+
+impl Presenter for BudgetsPagePresenter {
+    type Event = BudgetsPageEvent;
+    type ViewModel = BudgetsPageViewModel;
+    type Router<'r> = dyn BudgetsRouter + 'r;
+
+    fn handle(&mut self, event: BudgetsPageEvent, router: &mut Self::Router<'_>) {
         self.catch_up();
         // Anything but the cell editor's own keys leaves the cell being typed into: a Dialog, a
         // tab or another Budget never opens over it.
@@ -277,6 +422,9 @@ impl BudgetsPagePresenter {
             )
         ) {
             self.plan.edit = None;
+        }
+        if let Some(tab) = event.tab().filter(|tab| *tab != self.tab) {
+            self.show_tab(tab);
         }
         match event {
             BudgetsPageEvent::Move(step) => match self.tab {
@@ -335,24 +483,14 @@ impl BudgetsPagePresenter {
                 let done = self.with_repo(|repo| RestoreBudget(self.current).run(repo));
                 Self::report(done, router);
             }
-            BudgetsPageEvent::Progress(event) => {
-                if self.tab == BudgetsTab::Progress {
-                    self.progress_event(event, router);
-                }
-            }
-            BudgetsPageEvent::Plan(event) => {
-                if self.tab == BudgetsTab::Plan {
-                    self.plan_event(event, router);
-                }
-            }
-            BudgetsPageEvent::History(event) => {
-                if self.tab == BudgetsTab::History {
-                    self.history_event(event, router);
-                }
-            }
+            BudgetsPageEvent::Progress(event) => self.progress_event(event, router),
+            BudgetsPageEvent::Plan(event) => self.plan_event(event, router),
+            BudgetsPageEvent::History(event) => self.history_event(event, router),
             BudgetsPageEvent::Entered | BudgetsPageEvent::MonthTurned => {}
             BudgetsPageEvent::SetDateStyle(style) => self.date_style = style,
-            BudgetsPageEvent::ShowBudget(id) => self.show_budget(id),
+            BudgetsPageEvent::KeysChanged(config) => {
+                self.keys = Keys::new(budgets_page_keymap(&config));
+            }
             BudgetsPageEvent::DialogClosed(outcome) => match outcome {
                 Some(BudgetsOutcome::Show(id)) => self.show_budget(id),
                 Some(BudgetsOutcome::ShowAndEdit(id)) => {
@@ -382,59 +520,7 @@ impl BudgetsPagePresenter {
         }
     }
 
-    /// Runs `write` on the repository, borrowed for one Interactor.
-    pub(super) fn with_repo<T>(&self, write: impl FnOnce(&mut dyn BudgetRepository) -> T) -> T {
-        write(self.ports.borrow_mut().split_mut().budgets)
-    }
-
-    /// A Budget-wide verb's refusal, on the status line.
-    fn report(done: Result<()>, router: &mut dyn BudgetsRouter) {
-        if let Err(error) = done {
-            router.notify(Notice::Status(error_text(&error)));
-        }
-    }
-
-    /// Moves what sat on the month the page last saw onto today's, once the month has turned.
-    fn catch_up(&mut self) {
-        let today = self.today();
-        let now = Period::of(today);
-        if now == self.month {
-            return;
-        }
-        let was = self.month;
-        if self.progress.period == was {
-            self.progress.period = now;
-        }
-        if self.plan.start == was.prev().prev() {
-            self.plan.start = default_plan_start(today);
-        }
-        if self.history.end == was {
-            self.history.end = now;
-        }
-        self.month = now;
-    }
-
-    /// Switches the tab, putting its selection back at the top. The Shell clears a stale status
-    /// message on the key that switched it (ADR-0048), and the Client on a click.
-    fn show_tab(&mut self, tab: BudgetsTab) {
-        self.tab = tab;
-        self.progress.selected = 0;
-    }
-
-    /// Shows Budget `id`, keeping the tab (every method built has all three) and putting each
-    /// tab's cursor and range back at its start. A Budget that has gone leaves the page as it was.
-    fn show_budget(&mut self, id: BudgetId) {
-        if self.ports.borrow().budgets().budget(id).is_none() {
-            return;
-        }
-        let today = self.today();
-        self.current = id;
-        self.progress.selected = 0;
-        self.plan = PlanState::new(today);
-        self.history = HistoryState::new(today);
-    }
-
-    pub fn view_model(&self) -> BudgetsPageViewModel {
+    fn view_model(&self) -> BudgetsPageViewModel {
         let tabs = BudgetsTab::ALL
             .iter()
             .map(|tab| TabView {
@@ -513,71 +599,51 @@ impl BudgetsPagePresenter {
             editing: self.editing(),
         }
     }
+}
 
-    /// The tab shown's legend, its chords read from the keymap so an override shows. The Plan
-    /// cell editor's keys are its own, not the keymap's.
-    fn hints(&self) -> Vec<Hint> {
-        let chord = |command: &str| self.keymap.chord(command).unwrap_or_default().to_string();
-        let pair = |a: &str, b: &str| format!("{}/{}", chord(a), chord(b));
-        let hint = |chord: String, action: String| Hint { chord, action };
-        let rows = hint(pair(MOVE_DOWN, MOVE_UP), msg::budgets_hint_row());
-        let switch = hint(chord(NEXT_TAB), msg::budgets_hint_switch_view());
-        let range = hint(
-            pair(PREVIOUS_PERIOD, NEXT_PERIOD),
-            msg::budgets_hint_range(),
-        );
-        let budget_category = hint(chord(BUDGET_CATEGORY), msg::budgets_hint_budget_category());
-        match self.tab {
-            BudgetsTab::Progress => vec![
-                rows,
-                hint(chord(SELECT), msg::budgets_hint_open()),
-                hint(chord(EDIT), msg::budgets_hint_edit_budget()),
-                budget_category,
-                hint(chord(STOP), msg::budgets_hint_stop_budgeting()),
-                hint(chord(SWITCH), msg::budgets_hint_switch_budget()),
-                hint(
-                    pair(PREVIOUS_PERIOD, NEXT_PERIOD),
-                    msg::budgets_hint_period(),
-                ),
-                switch,
-            ],
-            BudgetsTab::Plan if self.editing() => vec![
-                hint("enter".to_string(), msg::budgets_hint_save_cell()),
-                hint("esc".to_string(), msg::budgets_hint_cancel()),
-                hint("tab".to_string(), msg::budgets_hint_next_month()),
-                hint(
-                    "shift+enter".to_string(),
-                    msg::budgets_hint_this_month_only(),
-                ),
-            ],
-            BudgetsTab::Plan => vec![
-                hint(
-                    format!(
-                        "{}/{}/{}/{}",
-                        chord(COLUMN_LEFT),
-                        chord(MOVE_DOWN),
-                        chord(MOVE_UP),
-                        chord(COLUMN_RIGHT)
-                    ),
-                    msg::budgets_hint_cell(),
-                ),
-                hint(chord(SELECT), msg::budgets_hint_edit()),
-                hint(chord(ROLLOVER), msg::budgets_hint_rollover()),
-                hint(chord(CLEAR), msg::budgets_hint_clear()),
-                hint(chord(FILL), msg::budgets_hint_fill()),
-                budget_category,
-                range,
-                switch,
-            ],
-            BudgetsTab::History => vec![
-                rows,
-                hint(pair(COLUMN_LEFT, COLUMN_RIGHT), msg::budgets_hint_month()),
-                hint(chord(SELECT), msg::budgets_hint_open()),
-                hint(chord(EXPORT), msg::budgets_hint_export()),
-                range,
-                switch,
-            ],
+impl PagePresenter for BudgetsPagePresenter {
+    type Outcome = BudgetsOutcome;
+
+    fn dialog_closed(outcome: Option<BudgetsOutcome>) -> BudgetsPageEvent {
+        BudgetsPageEvent::DialogClosed(outcome)
+    }
+
+    /// The tab shown's keys; none while a Plan cell is being typed into, so every key types.
+    fn keymap(&self) -> &Keymap<BudgetsPageEvent> {
+        if self.editing() {
+            return &self.keys.editing;
         }
+        match self.tab {
+            BudgetsTab::Progress => &self.keys.progress,
+            BudgetsTab::Plan => &self.keys.plan,
+            BudgetsTab::History => &self.keys.history,
+        }
+    }
+
+    /// The Plan cell editor's keys (9b): `enter` saves onward and `shift+enter` this month only,
+    /// `tab`/`shift+tab` save and move to the next or previous month, and a character types.
+    fn typed(&self, key: TextKey) -> Option<BudgetsPageEvent> {
+        if !self.editing() {
+            return None;
+        }
+        let event = match key {
+            TextKey::Char(c) => PlanEvent::Type(c),
+            TextKey::Backspace => PlanEvent::Backspace,
+            TextKey::Enter { shift } => PlanEvent::Save {
+                span: if shift { Span::MonthOnly } else { Span::Onward },
+                step: 0,
+            },
+            TextKey::Tab { shift } => PlanEvent::Save {
+                span: Span::Onward,
+                step: if shift { -1 } else { 1 },
+            },
+        };
+        Some(BudgetsPageEvent::Plan(event))
+    }
+
+    /// A Plan cell being typed into is the page's Insert mode.
+    fn mode(&self) -> Option<PageMode> {
+        self.editing().then_some(PageMode::Insert)
     }
 }
 
@@ -586,7 +652,6 @@ mod tests {
     use std::cell::{Cell, RefCell};
     use std::rc::Rc;
 
-    use lib_config::KeyBindingConfig;
     use lib_core::CategoryId;
 
     use super::*;
@@ -670,13 +735,86 @@ mod tests {
     }
 
     #[test]
-    fn an_event_for_another_tab_does_nothing() {
+    fn an_event_for_another_tab_shows_that_tab_first() {
         let mut page = Page::new();
 
         page.send(BudgetsPageEvent::History(HistoryEvent::Export));
-        page.send(BudgetsPageEvent::Plan(PlanEvent::Fill));
 
-        assert!(page.router.routed.is_empty());
+        assert_eq!(page.presenter.tab(), BudgetsTab::History);
+        assert!(matches!(page.router.routed.as_slice(), [Routed::Export(_)]));
+    }
+
+    #[test]
+    fn the_keymap_is_the_tab_shown_s_and_names_every_command() {
+        let mut page = Page::new();
+        assert_eq!(
+            page.presenter.keymap().event("["),
+            Some(BudgetsPageEvent::Progress(ProgressEvent::PreviousPeriod))
+        );
+
+        page.send(BudgetsPageEvent::ShowTab(BudgetsTab::Plan));
+
+        let keymap = page.presenter.keymap();
+        assert_eq!(
+            keymap.event("["),
+            Some(BudgetsPageEvent::Plan(PlanEvent::PreviousRange))
+        );
+        assert_eq!(
+            keymap.event_for(EXPORT),
+            Some(BudgetsPageEvent::History(HistoryEvent::Export)),
+            "a command of another tab is still reached by name"
+        );
+    }
+
+    #[test]
+    fn a_plan_cell_being_typed_into_is_insert_mode_whose_keys_type() {
+        let mut page = Page::new();
+        page.send(BudgetsPageEvent::ShowTab(BudgetsTab::Plan));
+        assert_eq!(page.presenter.mode(), None);
+        assert_eq!(page.presenter.typed(TextKey::Char('1')), None);
+
+        page.send(BudgetsPageEvent::Plan(PlanEvent::ClickCell(0, 2)));
+
+        assert_eq!(page.presenter.mode(), Some(PageMode::Insert));
+        assert_eq!(page.presenter.keymap().event("j"), None, "every key types");
+        assert_eq!(
+            page.presenter.typed(TextKey::Char('1')),
+            Some(BudgetsPageEvent::Plan(PlanEvent::Type('1')))
+        );
+        assert_eq!(
+            page.presenter.typed(TextKey::Enter { shift: true }),
+            Some(BudgetsPageEvent::Plan(PlanEvent::Save {
+                span: Span::MonthOnly,
+                step: 0,
+            }))
+        );
+        assert_eq!(
+            page.presenter.typed(TextKey::Tab { shift: true }),
+            Some(BudgetsPageEvent::Plan(PlanEvent::Save {
+                span: Span::Onward,
+                step: -1,
+            }))
+        );
+        page.send(BudgetsPageEvent::Plan(PlanEvent::Abandon));
+        assert_eq!(page.presenter.mode(), None);
+    }
+
+    #[test]
+    fn rebound_keys_reach_the_keymap_and_the_legend() {
+        let mut page = Page::new();
+        let mut config = KeyBindingConfig::default();
+        config
+            .bindings
+            .insert(SWITCH.to_string(), "ctrl+b".to_string());
+
+        page.send(BudgetsPageEvent::KeysChanged(config));
+
+        assert_eq!(
+            page.presenter.keymap().event("ctrl+b"),
+            Some(BudgetsPageEvent::Switch)
+        );
+        let hints = page.presenter.view_model().hints;
+        assert!(hints.iter().any(|hint| hint.chord == "ctrl+b"));
     }
 
     #[test]
@@ -749,11 +887,15 @@ mod tests {
     fn set_default_and_archive_run_on_the_budget_shown() {
         let mut page = Page::new();
         let other = page.ports.borrow().budgets.budgets[1].id;
-        page.send(BudgetsPageEvent::ShowBudget(other));
+        page.send(BudgetsPageEvent::DialogClosed(Some(BudgetsOutcome::Show(
+            other,
+        ))));
 
         page.send(BudgetsPageEvent::SetDefault);
         assert!(page.budget(other).is_default);
-        page.send(BudgetsPageEvent::ShowBudget(PERSONAL_SPENDING_ID));
+        page.send(BudgetsPageEvent::DialogClosed(Some(BudgetsOutcome::Show(
+            PERSONAL_SPENDING_ID,
+        ))));
         page.send(BudgetsPageEvent::Archive);
         assert!(page.budget(PERSONAL_SPENDING_ID).is_archived());
 

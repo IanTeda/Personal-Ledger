@@ -182,6 +182,27 @@ impl<E: Clone> Keymap<E> {
                 Palette::Hidden => None,
             })
     }
+
+    /// This keymap for one state of its page (a tab, an open select): a chord reaches only the
+    /// events `own` keeps, while the palette still finds every command by name, the state's own
+    /// binding of it first. The other bindings keep their command but lose their chord, so a key
+    /// another state binds falls through rather than acting where it does nothing.
+    pub fn scoped(&self, own: impl Fn(&E) -> bool) -> Self {
+        let (kept, others): (Vec<_>, Vec<_>) = self
+            .bindings
+            .iter()
+            .cloned()
+            .partition(|bound| own(&bound.event));
+        Self {
+            bindings: kept
+                .into_iter()
+                .chain(others.into_iter().map(|bound| Bound {
+                    chord: String::new(),
+                    ..bound
+                }))
+                .collect(),
+        }
+    }
 }
 
 pub const MOVE_DOWN: &str = "move_down";
@@ -203,6 +224,9 @@ pub const NEW: &str = "new";
 pub const EDIT: &str = "edit";
 pub const DELETE: &str = "delete";
 pub const REACTIVATE: &str = "reactivate";
+/// A page's Search: `/` sends the event its page binds to this name, which opens the page's own
+/// Search mode (`PageMode::Search`).
+pub const SEARCH: &str = "search";
 
 /// The Dialog keymap's commands (`lib_shell::dialog`), flat so one override applies in every
 /// Dialog. `select` and `back` are the names Views already back out and choose by. Not `confirm`
@@ -351,5 +375,25 @@ mod tests {
             .map(|listed| (listed.command, listed.name, listed.chord))
             .collect();
         assert_eq!(listed, [(DELETE, "rows delete", "ctrl+x")]);
+    }
+
+    #[test]
+    fn a_scoped_keymap_reaches_only_its_own_events_by_chord_but_every_command_by_name() {
+        let keymap = Keymap::new(BINDINGS, &KeyBindingConfig::default());
+        let scoped = keymap.scoped(|event| *event == Event::New);
+
+        assert_eq!(scoped.event("n"), Some(Event::New));
+        assert_eq!(
+            scoped.event("d"),
+            None,
+            "another state's chord falls through"
+        );
+        assert_eq!(
+            scoped.event_for(DELETE),
+            Some(Event::Delete),
+            "the palette still runs it by name"
+        );
+        assert_eq!(scoped.event(""), None);
+        assert_eq!(keymap.scoped(|_| false).event("n"), None);
     }
 }

@@ -478,6 +478,17 @@ impl<P: DialogView> ModuleDialog<P> {
         });
     }
 
+    /// The Dialog as drawn, for a test's snapshot.
+    pub fn view_model(&self) -> P::ViewModel {
+        self.presenter.view_model()
+    }
+
+    /// The widget state the View keeps, for the Shell to place the Dialog by as it lays out (the
+    /// Budgets Switcher's left edge).
+    pub fn widgets_mut(&mut self) -> &mut P::Widgets {
+        &mut self.widgets
+    }
+
     /// Hands `event` to the Presenter. Once it has closed the Dialog, hands a confirm's outcome
     /// to the page and tells the host, returning `true`.
     fn handle(&mut self, event: P::Event, cx: &mut Context<'_, Self>) -> bool {

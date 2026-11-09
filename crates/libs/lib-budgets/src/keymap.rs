@@ -228,30 +228,11 @@ pub fn budgets_page_keymap(config: &KeyBindingConfig) -> Keymap<BudgetsPageEvent
     Keymap::new(BUDGETS_PAGE_BINDINGS, config)
 }
 
-/// The event `chord` sends on `tab`: a tab's own binding, else one every tab takes. `None` when
-/// the chord binds nothing there, so the key goes on to the Shell.
-pub fn event_on(
-    keymap: &Keymap<BudgetsPageEvent>,
-    chord: &str,
-    tab: BudgetsTab,
-) -> Option<BudgetsPageEvent> {
-    keymap
-        .events(chord)
-        .find(|event| event.tab().is_none_or(|own| own == tab))
-}
-
-/// The event the palette's `command` sends from `tab`: the tab's own binding of it when it has
-/// one, else its first, whose tab the page shows first.
-pub fn command_on(
-    keymap: &Keymap<BudgetsPageEvent>,
-    command: &str,
-    tab: BudgetsTab,
-) -> Option<BudgetsPageEvent> {
-    let mut events = keymap.events_for(command).peekable();
-    let first = events.peek().cloned();
-    events
-        .find(|event| event.tab().is_none_or(|own| own == tab))
-        .or(first)
+/// The keymap on `tab`: a chord reaches the tab's own bindings and those every tab takes, so a key
+/// another tab binds goes on to the Shell, while the palette finds every command by name, `tab`'s
+/// own binding of it first and else its first, whose tab the page shows first.
+pub fn tab_keymap(keymap: &Keymap<BudgetsPageEvent>, tab: BudgetsTab) -> Keymap<BudgetsPageEvent> {
+    keymap.scoped(|event| event.tab().is_none_or(|own| own == tab))
 }
 
 #[cfg(test)]
@@ -275,24 +256,24 @@ mod tests {
         let keymap = defaults();
 
         assert_eq!(
-            event_on(&keymap, "x", BudgetsTab::Plan),
+            tab_keymap(&keymap, BudgetsTab::Plan).event("x"),
             Some(Plan(PlanEvent::Clear))
         );
         assert_eq!(
-            event_on(&keymap, "x", BudgetsTab::History),
+            tab_keymap(&keymap, BudgetsTab::History).event("x"),
             Some(History(HistoryEvent::Export))
         );
-        assert_eq!(event_on(&keymap, "x", BudgetsTab::Progress), None);
+        assert_eq!(tab_keymap(&keymap, BudgetsTab::Progress).event("x"), None);
         assert_eq!(
-            event_on(&keymap, "[", BudgetsTab::Progress),
+            tab_keymap(&keymap, BudgetsTab::Progress).event("["),
             Some(Progress(ProgressEvent::PreviousPeriod))
         );
         assert_eq!(
-            event_on(&keymap, "j", BudgetsTab::History),
+            tab_keymap(&keymap, BudgetsTab::History).event("j"),
             Some(BudgetsPageEvent::Move(Step::Next))
         );
         assert_eq!(
-            event_on(&keymap, "c", BudgetsTab::History),
+            tab_keymap(&keymap, BudgetsTab::History).event("c"),
             None,
             "History budgets no Category"
         );
@@ -303,19 +284,19 @@ mod tests {
         let keymap = defaults();
 
         assert_eq!(
-            command_on(&keymap, NEXT_PERIOD, BudgetsTab::History),
+            tab_keymap(&keymap, BudgetsTab::History).event_for(NEXT_PERIOD),
             Some(History(HistoryEvent::NextRange))
         );
         assert_eq!(
-            command_on(&keymap, FILL, BudgetsTab::Progress),
+            tab_keymap(&keymap, BudgetsTab::Progress).event_for(FILL),
             Some(Plan(PlanEvent::Fill))
         );
         assert_eq!(
-            command_on(&keymap, ARCHIVE, BudgetsTab::Plan),
+            tab_keymap(&keymap, BudgetsTab::Plan).event_for(ARCHIVE),
             Some(BudgetsPageEvent::Archive)
         );
         assert_eq!(
-            command_on(&keymap, "budgets.nothing", BudgetsTab::Plan),
+            tab_keymap(&keymap, BudgetsTab::Plan).event_for("budgets.nothing"),
             None
         );
     }
@@ -325,17 +306,17 @@ mod tests {
         let keymap = budgets_page_keymap(&overriding(NEXT_PERIOD, "ctrl+n"));
 
         assert_eq!(
-            event_on(&keymap, "ctrl+n", BudgetsTab::Plan),
+            tab_keymap(&keymap, BudgetsTab::Plan).event("ctrl+n"),
             Some(Plan(PlanEvent::NextRange))
         );
         assert_eq!(
-            event_on(&keymap, "ctrl+n", BudgetsTab::Progress),
+            tab_keymap(&keymap, BudgetsTab::Progress).event("ctrl+n"),
             Some(Progress(ProgressEvent::NextPeriod))
         );
-        assert_eq!(event_on(&keymap, "]", BudgetsTab::Plan), None);
+        assert_eq!(tab_keymap(&keymap, BudgetsTab::Plan).event("]"), None);
         let bound = budgets_page_keymap(&overriding(ARCHIVE, "A"));
         assert_eq!(
-            event_on(&bound, "A", BudgetsTab::Progress),
+            tab_keymap(&bound, BudgetsTab::Progress).event("A"),
             Some(BudgetsPageEvent::Archive)
         );
     }

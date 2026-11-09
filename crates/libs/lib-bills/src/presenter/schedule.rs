@@ -13,11 +13,14 @@ use lib_list_cursor::Step;
 use lib_locale::Segment;
 use lib_locale::format::{format_month_day, format_year_month, upper};
 use lib_toast::Notice;
-use lib_viper::view::{Choice, SelectView, count};
+use lib_viper::dialog::DialogInput;
+use lib_viper::view::{Choice, SelectList, SelectMove, SelectView, count};
 
 use super::{money, paid_splits, status_chip_label};
 use crate::history::{BillFilters, PlanStats, STATUS_CHIPS, SamePeriod, plan_stats};
 use crate::interactor::MatchCandidates;
+use lib_viper::presenter::Presenter;
+
 use crate::protocols::{BillsPorts, BillsRouter, PayRequest, SharedPorts};
 use crate::{
     AmountKind, BillPlan, BillScheduleEntry, BillSplit, BillStatus, Recurrence, Resolution,
@@ -53,11 +56,13 @@ pub enum FilterChoice {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScheduleEvent {
-    /// `j`/`k`, `g g`, `G`, `Ctrl-d`/`Ctrl-u` over the rows shown.
+    /// `j`/`k`, `g g`, `G`, `Ctrl-d`/`Ctrl-u` over the rows shown. On a focused scope select, the
+    /// moves up and down step its value or its open list's highlight, and the others wait.
     Move(Step),
     /// A click on row `index` of the rows shown.
     Select(usize),
-    /// `Enter`: a Paid row's Transaction.
+    /// `Enter`: a Paid row's Transaction; on a focused scope select, opens its list or picks its
+    /// highlight.
     Open,
     /// `p` and `s` on the selected row.
     Pay,
@@ -75,9 +80,11 @@ pub enum ScheduleEvent {
     ToggleChip(BillStatus),
     /// `f`: the next scope select, then off the filter row.
     CycleFilter,
-    /// A click on a scope select.
-    FocusFilter(FilterField),
-    /// `Esc` with no list open: off the filter row.
+    /// A click on a scope select: focuses it and opens its list, or closes its own open list.
+    ToggleFilter(FilterField),
+    /// A click on row `index` of a scope select's open list.
+    FilterOption(FilterField, usize),
+    /// `Esc` on the filter row: closes an open list, else leaves the row.
     LeaveFilters,
     /// A scope select's option chosen.
     Filter(FilterField, FilterChoice),
@@ -155,6 +162,8 @@ pub struct ChipView {
 pub struct FilterSelectView {
     pub field: FilterField,
     pub view: SelectView<FilterChoice>,
+    /// Its list: open, and its highlight, while it is the focused select's.
+    pub list: SelectList,
     /// The Bill select while it names a Plan, drawn in the accent.
     pub accent: bool,
 }
@@ -242,6 +251,8 @@ pub struct SchedulePresenter {
     all: bool,
     filters: BillFilters,
     filter_focus: Option<FilterField>,
+    /// The focused scope select's list; it closes whenever focus leaves the select.
+    filter_list: SelectList,
 }
 
 impl SchedulePresenter {
@@ -255,63 +266,51 @@ impl SchedulePresenter {
             all: false,
             filters: BillFilters::default(),
             filter_focus: None,
+            filter_list: SelectList::default(),
         }
     }
 
-    pub fn handle(&mut self, event: ScheduleEvent, router: &mut dyn BillsRouter) {
-        match event {
-            ScheduleEvent::Move(step) => {
-                let len = self.rows(self.clock.today()).len();
-                self.selected = lib_list_cursor::step(self.clamped(len), len, step);
-            }
-            ScheduleEvent::Select(index) => self.selected = index,
-            ScheduleEvent::Open => self.view_transaction(router),
-            ScheduleEvent::Pay => self.pay(router),
-            ScheduleEvent::Skip => self.skip(router),
-            ScheduleEvent::PayRow(index) => {
-                self.selected = index;
-                self.pay(router);
-            }
-            ScheduleEvent::SkipRow(index) => {
-                self.selected = index;
-                self.skip(router);
-            }
-            ScheduleEvent::ViewTransaction(index) => {
-                self.selected = index;
-                self.view_transaction(router);
-            }
-            ScheduleEvent::PrevPeriod | ScheduleEvent::NextPeriod => {
-                if !std::mem::take(&mut self.all) {
-                    self.period = if event == ScheduleEvent::NextPeriod {
-                        self.period.next()
-                    } else {
-                        self.period.prev()
-                    };
-                }
-                self.selected = 0;
-            }
-            ScheduleEvent::ToggleAll => {
-                self.all = !self.all;
-                self.selected = 0;
-            }
-            ScheduleEvent::ToggleChip(status) => {
-                self.filters.toggle(status);
-                self.selected = 0;
-            }
-            ScheduleEvent::CycleFilter => {
-                self.filter_focus = match self.filter_focus {
-                    None => Some(FilterField::Plan),
-                    Some(field) => field.next(),
-                };
-            }
-            ScheduleEvent::FocusFilter(field) => self.filter_focus = Some(field),
-            ScheduleEvent::LeaveFilters => self.filter_focus = None,
-            ScheduleEvent::Filter(field, choice) => {
-                self.set_filter(field, choice);
-                self.filter_focus = Some(field);
-                self.selected = 0;
-            }
+    /// Focuses scope select `field` (or none), closing an open list on another.
+    fn focus_filter(&mut self, field: Option<FilterField>) {
+        if self.filter_focus != field {
+            self.filter_list.close();
         }
+        self.filter_focus = field;
+    }
+
+    /// Scopes the rows by `choice` on select `field`, which keeps focus.
+    fn choose_filter(&mut self, field: FilterField, choice: FilterChoice) {
+        self.set_filter(field, choice);
+        self.filter_focus = Some(field);
+        self.selected = 0;
+    }
+
+    /// `input` on the focused scope select: steps its value, or opens, moves or commits its list.
+    /// A pick that leaves the scope as it was changes nothing, the selection included.
+    fn filter_input(&mut self, input: DialogInput) {
+        let Some(field) = self.filter_focus else {
+            return;
+        };
+        let select = self.filter_select(field);
+        if let SelectMove::Chose(choice) =
+            self.filter_list
+                .input(input, &select.options, select.chosen.as_ref())
+            && select.chosen != Some(choice)
+        {
+            self.choose_filter(field, choice);
+        }
+    }
+
+    /// Scope select `field` as drawn now, read from the ports.
+    fn filter_select(&self, field: FilterField) -> SelectView<FilterChoice> {
+        let ports = self.ports.borrow();
+        let plans = ports.bills().bill_plans();
+        self.select_view(&*ports, &plans, field)
+    }
+
+    /// Whether the focused scope select's list is open: the page's Filter mode.
+    pub(super) fn filter_list_open(&self) -> bool {
+        self.filter_list.is_open()
     }
 
     /// The tab on `period` with every filter cleared, as a hand-off from another View shows it.
@@ -319,7 +318,7 @@ impl SchedulePresenter {
         self.period = period;
         self.all = false;
         self.filters = BillFilters::default();
-        self.filter_focus = None;
+        self.focus_filter(None);
         self.selected = 0;
     }
 
@@ -337,15 +336,10 @@ impl SchedulePresenter {
             .unwrap_or(0);
     }
 
-    /// The scope select `f` has focused.
-    pub fn filter_focus(&self) -> Option<FilterField> {
-        self.filter_focus
-    }
-
     /// Leaves the filter row, as switching tab does.
     pub(super) fn reset_selection(&mut self) {
         self.selected = 0;
-        self.filter_focus = None;
+        self.focus_filter(None);
     }
 
     fn clamped(&self, len: usize) -> usize {
@@ -469,78 +463,6 @@ impl SchedulePresenter {
         msg::bills_status_period(&period, &shown.to_string(), count(unfiltered))
     }
 
-    pub fn view_model(&self) -> ScheduleViewModel {
-        let today = self.clock.today();
-        let ports = self.ports.borrow();
-        let ports = &*ports;
-        let (plans, entries) = (ports.bills().bill_plans(), ports.bills().entries());
-        let unfiltered = schedule_rows(&plans, &entries, (!self.all).then_some(self.period), today);
-        let rows = self.filters.apply(&unfiltered, &plans);
-        let splits = paid_splits(ports, &entries);
-        let selected = (!rows.is_empty()).then(|| self.clamped(rows.len()));
-        let accounts = ports.accounts().bill_accounts();
-        let lines = rows
-            .iter()
-            .enumerate()
-            .filter_map(|(index, row)| {
-                let plan = get(&plans, row.id.plan_id)?;
-                let stored = entry(&entries, row.id);
-                Some(line(LineInput {
-                    ports,
-                    row,
-                    plan,
-                    stored,
-                    plans: &plans,
-                    splits: &splits,
-                    account: accounts
-                        .iter()
-                        .find(|account| account.id == plan.account_id)
-                        .map(|account| account.name.clone()),
-                    selected: selected == Some(index),
-                }))
-            })
-            .collect();
-        let stats = self
-            .filters
-            .plan_id
-            .and_then(|id| get(&plans, id))
-            .map(|plan| {
-                let stats = plan_stats(plan, &plans, &entries, &splits, today);
-                stats_view(ports, plan, &stats)
-            });
-        ScheduleViewModel {
-            status: self.status(rows.len(), unfiltered.len()),
-            period: self.period,
-            period_label: format_year_month(self.period.year, self.period.month),
-            all: self.all,
-            all_label: msg::bills_period_all(),
-            meta: self.meta(ports, &rows, &plans, &entries, &splits),
-            filters: self.filters_view(ports, &plans),
-            history_footnote: stats.is_some().then(msg::bills_history_footnote),
-            stats,
-            columns: ScheduleColumns {
-                bill: upper(&msg::bills_column_bill()),
-                account: upper(&msg::bills_column_account()),
-                planned: upper(&msg::bills_column_planned()),
-                actual: upper(&msg::bills_column_actual()),
-                due: upper(&msg::bills_column_due()),
-                paid: upper(&msg::bills_column_paid()),
-                status: upper(&msg::bills_column_status()),
-                actions: upper(&lib_locale::msg::column_actions()),
-            },
-            empty: rows.is_empty().then(|| {
-                if self.filters.is_narrowed() {
-                    msg::bills_filter_empty()
-                } else {
-                    msg::bills_schedule_empty()
-                }
-            }),
-            rows: lines,
-            footnote: msg::bills_schedule_footnote(),
-            total: unfiltered.len(),
-        }
-    }
-
     /// `9 schedule entries this period · 2 overdue · 3 due · 1 paid · 842.50 planned`; a zero
     /// count's clause is left out.
     fn meta(
@@ -601,6 +523,49 @@ impl SchedulePresenter {
         clauses
     }
 
+    /// Scope select `field`: its options, the scope chosen and whether it has focus.
+    fn select_view(
+        &self,
+        ports: &dyn BillsPorts,
+        plans: &[BillPlan],
+        field: FilterField,
+    ) -> SelectView<FilterChoice> {
+        let filters = &self.filters;
+        let (label, all, chosen) = match field {
+            FilterField::Plan => (
+                msg::bills_column_bill(),
+                msg::bills_filter_all_bills(),
+                filters.plan_id.map(FilterChoice::Plan),
+            ),
+            FilterField::Category => (
+                msg::bills_column_category(),
+                msg::bills_filter_all_categories(),
+                filters.category_id.map(FilterChoice::Category),
+            ),
+            FilterField::Account => (
+                msg::bills_column_account(),
+                msg::bills_filter_all_accounts(),
+                filters.account_id.map(FilterChoice::Account),
+            ),
+        };
+        let options: Vec<Choice<FilterChoice>> = std::iter::once(Choice {
+            value: FilterChoice::All,
+            label: all,
+        })
+        .chain(filter_choices(ports, plans, field))
+        .collect();
+        // A scope whose row has gone reads as All.
+        let chosen = chosen
+            .filter(|value| options.iter().any(|choice| choice.value == *value))
+            .unwrap_or(FilterChoice::All);
+        SelectView {
+            label,
+            options,
+            chosen: Some(chosen),
+            focused: self.filter_focus == Some(field),
+        }
+    }
+
     fn filters_view(&self, ports: &dyn BillsPorts, plans: &[BillPlan]) -> FiltersView {
         let filters = &self.filters;
         FiltersView {
@@ -614,44 +579,15 @@ impl SchedulePresenter {
                 .collect(),
             selects: FilterField::ORDER
                 .iter()
-                .map(|field| {
-                    let (label, all, chosen) = match field {
-                        FilterField::Plan => (
-                            msg::bills_column_bill(),
-                            msg::bills_filter_all_bills(),
-                            filters.plan_id.map(FilterChoice::Plan),
-                        ),
-                        FilterField::Category => (
-                            msg::bills_column_category(),
-                            msg::bills_filter_all_categories(),
-                            filters.category_id.map(FilterChoice::Category),
-                        ),
-                        FilterField::Account => (
-                            msg::bills_column_account(),
-                            msg::bills_filter_all_accounts(),
-                            filters.account_id.map(FilterChoice::Account),
-                        ),
-                    };
-                    let options: Vec<Choice<FilterChoice>> = std::iter::once(Choice {
-                        value: FilterChoice::All,
-                        label: all,
-                    })
-                    .chain(filter_choices(ports, plans, *field))
-                    .collect();
-                    // A scope whose row has gone reads as All.
-                    let chosen = chosen
-                        .filter(|value| options.iter().any(|choice| choice.value == *value))
-                        .unwrap_or(FilterChoice::All);
-                    FilterSelectView {
-                        field: *field,
-                        view: SelectView {
-                            label,
-                            options,
-                            chosen: Some(chosen),
-                            focused: self.filter_focus == Some(*field),
-                        },
-                        accent: *field == FilterField::Plan && filters.plan_id.is_some(),
-                    }
+                .map(|field| FilterSelectView {
+                    field: *field,
+                    view: self.select_view(ports, plans, *field),
+                    list: if self.filter_focus == Some(*field) {
+                        self.filter_list
+                    } else {
+                        SelectList::default()
+                    },
+                    accent: *field == FilterField::Plan && filters.plan_id.is_some(),
                 })
                 .collect(),
             focused: self.filter_focus,
@@ -829,6 +765,163 @@ fn same_period_label(recurrence: Recurrence, payments: usize) -> String {
         Recurrence::Annually => msg::bills_history_last_year(),
         Recurrence::Monthly | Recurrence::Quarterly | Recurrence::OneShot => {
             msg::bills_history_same_month()
+        }
+    }
+}
+
+impl Presenter for SchedulePresenter {
+    type Event = ScheduleEvent;
+    type ViewModel = ScheduleViewModel;
+    type Router<'r> = dyn BillsRouter + 'r;
+
+    fn handle(&mut self, event: ScheduleEvent, router: &mut Self::Router<'_>) {
+        match event {
+            ScheduleEvent::Move(step) if self.filter_focus.is_some() => match step {
+                Step::Next => self.filter_input(DialogInput::SelectNext),
+                Step::Prev => self.filter_input(DialogInput::SelectPrevious),
+                _ => {}
+            },
+            ScheduleEvent::Move(step) => {
+                let len = self.rows(self.clock.today()).len();
+                self.selected = lib_list_cursor::step(self.clamped(len), len, step);
+            }
+            ScheduleEvent::Select(index) => self.selected = index,
+            ScheduleEvent::Open if self.filter_focus.is_some() => {
+                self.filter_input(DialogInput::Select);
+            }
+            ScheduleEvent::Open => self.view_transaction(router),
+            ScheduleEvent::Pay => self.pay(router),
+            ScheduleEvent::Skip => self.skip(router),
+            ScheduleEvent::PayRow(index) => {
+                self.selected = index;
+                self.pay(router);
+            }
+            ScheduleEvent::SkipRow(index) => {
+                self.selected = index;
+                self.skip(router);
+            }
+            ScheduleEvent::ViewTransaction(index) => {
+                self.selected = index;
+                self.view_transaction(router);
+            }
+            ScheduleEvent::PrevPeriod | ScheduleEvent::NextPeriod => {
+                if !std::mem::take(&mut self.all) {
+                    self.period = if event == ScheduleEvent::NextPeriod {
+                        self.period.next()
+                    } else {
+                        self.period.prev()
+                    };
+                }
+                self.selected = 0;
+            }
+            ScheduleEvent::ToggleAll => {
+                self.all = !self.all;
+                self.selected = 0;
+            }
+            ScheduleEvent::ToggleChip(status) => {
+                self.filters.toggle(status);
+                self.selected = 0;
+            }
+            ScheduleEvent::CycleFilter => {
+                let next = match self.filter_focus {
+                    None => Some(FilterField::Plan),
+                    Some(field) => field.next(),
+                };
+                self.focus_filter(next);
+            }
+            ScheduleEvent::ToggleFilter(field) => {
+                self.focus_filter(Some(field));
+                let select = self.filter_select(field);
+                self.filter_list
+                    .toggle(&select.options, select.chosen.as_ref());
+            }
+            ScheduleEvent::FilterOption(field, index) => {
+                self.filter_list.close();
+                if let Some(choice) = self.filter_select(field).options.get(index) {
+                    self.choose_filter(field, choice.value);
+                }
+            }
+            ScheduleEvent::LeaveFilters => {
+                if !self.filter_list.close() {
+                    self.filter_focus = None;
+                }
+            }
+            ScheduleEvent::Filter(field, choice) => {
+                self.filter_list.close();
+                self.choose_filter(field, choice);
+            }
+        }
+    }
+
+    fn view_model(&self) -> ScheduleViewModel {
+        let today = self.clock.today();
+        let ports = self.ports.borrow();
+        let ports = &*ports;
+        let (plans, entries) = (ports.bills().bill_plans(), ports.bills().entries());
+        let unfiltered = schedule_rows(&plans, &entries, (!self.all).then_some(self.period), today);
+        let rows = self.filters.apply(&unfiltered, &plans);
+        let splits = paid_splits(ports, &entries);
+        let selected = (!rows.is_empty()).then(|| self.clamped(rows.len()));
+        let accounts = ports.accounts().bill_accounts();
+        let lines = rows
+            .iter()
+            .enumerate()
+            .filter_map(|(index, row)| {
+                let plan = get(&plans, row.id.plan_id)?;
+                let stored = entry(&entries, row.id);
+                Some(line(LineInput {
+                    ports,
+                    row,
+                    plan,
+                    stored,
+                    plans: &plans,
+                    splits: &splits,
+                    account: accounts
+                        .iter()
+                        .find(|account| account.id == plan.account_id)
+                        .map(|account| account.name.clone()),
+                    selected: selected == Some(index),
+                }))
+            })
+            .collect();
+        let stats = self
+            .filters
+            .plan_id
+            .and_then(|id| get(&plans, id))
+            .map(|plan| {
+                let stats = plan_stats(plan, &plans, &entries, &splits, today);
+                stats_view(ports, plan, &stats)
+            });
+        ScheduleViewModel {
+            status: self.status(rows.len(), unfiltered.len()),
+            period: self.period,
+            period_label: format_year_month(self.period.year, self.period.month),
+            all: self.all,
+            all_label: msg::bills_period_all(),
+            meta: self.meta(ports, &rows, &plans, &entries, &splits),
+            filters: self.filters_view(ports, &plans),
+            history_footnote: stats.is_some().then(msg::bills_history_footnote),
+            stats,
+            columns: ScheduleColumns {
+                bill: upper(&msg::bills_column_bill()),
+                account: upper(&msg::bills_column_account()),
+                planned: upper(&msg::bills_column_planned()),
+                actual: upper(&msg::bills_column_actual()),
+                due: upper(&msg::bills_column_due()),
+                paid: upper(&msg::bills_column_paid()),
+                status: upper(&msg::bills_column_status()),
+                actions: upper(&lib_locale::msg::column_actions()),
+            },
+            empty: rows.is_empty().then(|| {
+                if self.filters.is_narrowed() {
+                    msg::bills_filter_empty()
+                } else {
+                    msg::bills_schedule_empty()
+                }
+            }),
+            rows: lines,
+            footnote: msg::bills_schedule_footnote(),
+            total: unfiltered.len(),
         }
     }
 }

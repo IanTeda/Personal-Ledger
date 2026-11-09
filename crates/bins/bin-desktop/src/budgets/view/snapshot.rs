@@ -65,14 +65,19 @@ impl BudgetsPage {
     #[doc(hidden)]
     pub fn snapshot(&self) -> BudgetsSnapshot {
         let presenter = self.presenter();
-        let ports = self.ports().borrow();
+        let ports = self.setup().ports.borrow();
         let reads: &dyn BudgetReads = ports.reads();
         let categories = reads.budget_categories();
         let (budget, rows) = ports
             .budgets()
             .budget(presenter.current())
             .map(|budget| {
-                let figures = period_figures(&budget, reads, presenter.period(), self.today());
+                let figures = period_figures(
+                    &budget,
+                    reads,
+                    presenter.period(),
+                    self.setup().clock.today(),
+                );
                 let rows = figures
                     .rows
                     .iter()

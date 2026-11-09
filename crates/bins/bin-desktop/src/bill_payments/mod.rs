@@ -3,7 +3,7 @@
 //! piece of text and the Presenter are `lib-bill-payments`'; this folder turns gpui keys and clicks
 //! into Presenter events and draws the view model.
 //!
-//! - `view/dialog/pay.rs` holds the Pay Dialog's Presenter in an Entity in the Dialog host and draws it.
+//! - `view/dialog/pay.rs` is the Pay Presenter's `DialogView`, which a `ModuleDialog` hosts.
 //! - `router.rs` is the module's entry point ([`router::open_pay`]), which the Bills Router calls.
 //!
 //! Pay it directly writes through `lib-database`'s `BillPaymentsAdapter` (`LedgerPorts`' `bill_payments`), over the Transactions
@@ -12,5 +12,3 @@
 
 pub mod router;
 pub(crate) mod view;
-
-pub use view::dialog::pay::PayDialog;

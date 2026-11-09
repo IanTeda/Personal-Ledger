@@ -1,457 +1,190 @@
-//! The Bills page's View: the `lib-bills` page Presenter in a gpui Entity, which the Shell hosts as
-//! the Bills destination (`docs/ux/desktop-mockups/12-bills/`). It looks up each key the
-//! Shell passes on, as chord text, in the Bills keymap, turns clicks into events, draws the view model (`schedule.rs`, `filters.rs`,
-//! `planner.rs`).
-//! Each key and click is one input (`crate::input::send`), which commits what it wrote.
-//!
-//! A focused scope select's open list and highlight are gpui's widget state, so they are kept here:
-//! while one has focus, `j`/`k` and `Enter` drive it instead of the rows.
+//! The Bills page's View: the `lib-bills` page Presenter's [`PageView`], which the generic
+//! `ModulePage` hosts as the Bills destination (ADR-0056, `docs/ux/desktop-mockups/12-bills/`). It
+//! names the page's Router, the domains it repaints on and its widget state (the page's scroll and
+//! the open scope list's window), and draws the view model (`schedule.rs`, `filters.rs`,
+//! `planner.rs`); the keymap, the scope selects' open lists and every event are the Presenter's.
 
 use crate::navigation::nav::NounLabel;
 
-use gpui::{
-    AnyElement, App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, SharedString,
-    Subscription, Window, div, prelude::*, px,
-};
-use lib_bill_payments::{PayOutcome, SharedPayments};
-use lib_bills::BillsOutcome;
+use gpui::{AnyElement, App, Context, ScrollHandle, SharedString, Window, div, prelude::*, px};
 use lib_bills::presenter::{
-    BillsPageEvent, BillsPagePresenter, BillsPageViewModel, BillsTab, FilterField, ScheduleEvent,
+    BillsPageEvent, BillsPagePresenter, BillsPageViewModel, BillsTab, ScheduleEvent,
 };
-use lib_core::Clock;
 use lib_database::Domain;
-use lib_list_cursor::Step;
-use lib_viper::keymap::Keymap;
-use lib_viper::view::SelectView;
 
 use super::{planner, schedule};
-use crate::announcer::{Announcer, LedgerChanged};
-use crate::bills::router::PageRouter;
-use crate::form::select::SelectState;
-use crate::form::viper::{choose_option, select_key, synced, toggle_select};
-use crate::navigation::{movement::Movement, nav::Noun};
-use crate::shell::view::dialog_entity::DialogKey;
-use crate::shell::view::page_clicks::{PageClicks, PresenterPage};
+use crate::bills::router::{BillsRoutes, PageRouter};
+use crate::navigation::nav::Noun;
+use crate::shell::view::module_page::{ModulePage, PageDraw, PageView};
+use crate::shell::view::page_clicks::PageClicks;
 use crate::view::help::HelpGroup;
 use crate::{
     shell::view::statusline::PageStatus,
     theme::color,
     view::event::{Reveal, ViewEvent},
 };
-use lib_viper::display::StatusGlyphs;
 
-impl EventEmitter<ViewEvent> for BillsPage {}
+/// The Bills page: its Presenter in the generic page.
+pub type BillsPage = ModulePage<BillsPagePresenter>;
 
-pub struct BillsPage {
-    presenter: BillsPagePresenter,
-    /// The day the page's Dialogs are opened on.
-    clock: Clock,
-    ports: lib_bills::SharedPorts,
-    /// What the Pay Dialog the page opens writes Pay it directly through.
-    payments: SharedPayments,
-    keymap: Keymap<BillsPageEvent>,
-    /// The page's own scroll, reset as it becomes the destination and as its tab changes.
+/// The widget state the page keeps beside its Presenter: its scroll, back at the top as it becomes
+/// the destination and as its tab changes, and the open scope list's window.
+#[derive(Default)]
+pub struct BillsWidgets {
     scroll: ScrollHandle,
-    /// The focused scope select and its open list and highlight.
-    filter_select: Option<(FilterField, SelectState)>,
-    _ledger_changed: Subscription,
+    filter_window: usize,
 }
 
-impl BillsPage {
-    pub fn new(
-        ports: lib_bills::SharedPorts,
-        payments: SharedPayments,
-        announcer: Entity<Announcer>,
-        keymap: Keymap<BillsPageEvent>,
-        clock: Clock,
-        cx: &mut Context<'_, Self>,
-    ) -> Self {
-        let presenter = BillsPagePresenter::new(ports.clone(), clock.clone(), keymap.clone());
-        // The rows name Accounts, Categories, Payees, Transactions and Units, which the ports read
-        // from their stores on each ask: a change to any is redrawn, as is a Bills write
-        // another module made (Account delete's Unmatch).
-        let _ledger_changed = cx.subscribe(&announcer, |_, _, event: &LedgerChanged, cx| {
-            let reads = [
-                Domain::Accounts,
-                Domain::Categories,
-                Domain::Payees,
-                Domain::Transactions,
-                Domain::Units,
-            ];
-            if reads.iter().any(|domain| event.what.contains(domain))
-                || event.what.contains(&Domain::Bills)
-            {
-                cx.notify();
-            }
-        });
-        Self {
+/// What [`PageView::before`] notes: the tab shown, and whether the event shows a tab, which a
+/// click on a tab clears the status line after as the key that switches tabs does.
+#[derive(Default)]
+pub struct BillsBefore {
+    tab: BillsTab,
+    shows_tab: bool,
+}
+
+impl PageView for BillsPagePresenter {
+    type Setup = BillsRoutes;
+    type Widgets = BillsWidgets;
+    type Before = BillsBefore;
+
+    /// A Bills write, another module's included (Account delete's Unmatch), and the Accounts,
+    /// Categories, Payees, Transactions and Units the rows name, which the ports read from their
+    /// stores on each ask.
+    const REPAINTS: &'static [Domain] = &[
+        Domain::Bills,
+        Domain::Accounts,
+        Domain::Categories,
+        Domain::Payees,
+        Domain::Transactions,
+        Domain::Units,
+    ];
+
+    /// The Router opens the Plan form and Pay in the date style the Presenter holds.
+    fn with_router<R>(
+        presenter: &mut Self,
+        setup: &BillsRoutes,
+        cx: &mut Context<'_, BillsPage>,
+        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
+    ) -> R {
+        let date_style = presenter.date_style();
+        handle(
             presenter,
-            clock,
-            ports,
-            payments,
-            keymap,
-            scroll: ScrollHandle::new(),
-            filter_select: None,
-            _ledger_changed,
-        }
-    }
-
-    /// A key or click on the page, or the page being entered: `event` as one input, committed
-    /// once it is handled.
-    fn send(&mut self, event: BillsPageEvent, cx: &mut Context<'_, Self>) {
-        crate::input::join_or_send(cx, |cx| self.handle(event, cx));
-    }
-
-    /// Hands `event` to the Presenter with the Desktop's Router. Inside an input already, as
-    /// [`Self::send`] or a Dialog's confirm.
-    fn handle(&mut self, event: BillsPageEvent, cx: &mut Context<'_, Self>) {
-        let tab = self.presenter.tab();
-        let mut router = PageRouter {
-            ports: self.ports.clone(),
-            payments: self.payments.clone(),
-            clock: self.clock.clone(),
-            date_style: self.presenter.date_style(),
-            cx,
-        };
-        self.presenter.handle(event, &mut router);
-        if self.presenter.tab() != tab {
-            self.scroll.set_offset(gpui::Point::default());
-        }
-        cx.notify();
-    }
-
-    /// A confirmed Dialog's outcome, handed back by the Dialog host inside the confirm's input.
-    pub(in crate::bills) fn dialog_landed(
-        &mut self,
-        outcome: BillsOutcome,
-        cx: &mut Context<'_, Self>,
-    ) {
-        self.handle(BillsPageEvent::DialogClosed(Some(outcome)), cx);
-    }
-
-    /// A landed Pay Dialog, handed back by the Dialog host: the page redraws from its ports, the
-    /// entry Paid. A Pay raises no Toast, since the row turning Paid is the feedback. Inside the
-    /// confirm's input.
-    pub(in crate::bills) fn pay_landed(
-        &mut self,
-        _outcome: PayOutcome,
-        cx: &mut Context<'_, Self>,
-    ) {
-        self.handle(BillsPageEvent::DialogClosed(None), cx);
-    }
-
-    /// The page as drawn.
-    pub fn view_model(&self) -> BillsPageViewModel {
-        self.presenter.view_model()
-    }
-
-    /// The scope select `field`'s view, from the view model.
-    fn filter_view(
-        view: &BillsPageViewModel,
-        field: FilterField,
-    ) -> Option<SelectView<lib_bills::presenter::FilterChoice>> {
-        view.schedule
-            .filters
-            .selects
-            .iter()
-            .find(|select| select.field == field)
-            .map(|select| select.view.clone())
-    }
-
-    /// The widget state of the select `field`, closed and fresh when another had it.
-    fn select_state(&mut self, field: FilterField) -> &mut SelectState {
-        if self.filter_select.as_ref().map(|(at, _)| *at) != Some(field) {
-            self.filter_select = Some((field, SelectState::default()));
-        }
-        &mut self
-            .filter_select
-            .get_or_insert_with(|| (field, SelectState::default()))
-            .1
-    }
-
-    /// A key on the focused scope select: steps or opens its list, and applies a new choice.
-    fn filter_key(&mut self, key: DialogKey, cx: &mut Context<'_, Self>) {
-        let view = self.view_model();
-        let Some(field) = view.schedule.filters.focused else {
-            return;
-        };
-        let Some(select) = Self::filter_view(&view, field) else {
-            return;
-        };
-        let (_, chosen) = select_key(self.select_state(field), &select, key);
-        match chosen {
-            Some(choice) => self.handle(
-                BillsPageEvent::Schedule(ScheduleEvent::Filter(field, choice)),
+            &mut PageRouter {
+                routes: setup,
+                date_style,
                 cx,
-            ),
-            None => cx.notify(),
-        }
-    }
-
-    fn filter_focused(&self) -> bool {
-        self.presenter.filter_focus().is_some()
-    }
-
-    /// A click on a scope select: focuses it and opens its list, or closes its own open list.
-    fn click_filter_field(&mut self, field: FilterField, cx: &mut Context<'_, Self>) {
-        if self.presenter.filter_focus() != Some(field) {
-            self.send(
-                BillsPageEvent::Schedule(ScheduleEvent::FocusFilter(field)),
-                cx,
-            );
-        }
-        let view = self.view_model();
-        if let Some(select) = Self::filter_view(&view, field) {
-            toggle_select(self.select_state(field), &select);
-        }
-        cx.notify();
-    }
-
-    /// A click on row `index` of a scope select's open list.
-    fn click_filter_option(
-        &mut self,
-        field: FilterField,
-        index: usize,
-        cx: &mut Context<'_, Self>,
-    ) {
-        let view = self.view_model();
-        let Some(select) = Self::filter_view(&view, field) else {
-            return;
-        };
-        match choose_option(self.select_state(field), &select, index) {
-            Some(choice) => self.send(
-                BillsPageEvent::Schedule(ScheduleEvent::Filter(field, choice)),
-                cx,
-            ),
-            None => cx.notify(),
-        }
-    }
-
-    /// Every chord the Bills keymap binds, the arrows, `g g` and `enter` among them. The Shell has
-    /// already taken its own keys. While a scope select has focus, the moves up and down and
-    /// `enter` drive it and the other movements wait.
-    pub fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {
-        let Some(event) = self.keymap.event(chord) else {
-            return false;
-        };
-        crate::input::send(cx, |cx| self.take(event, cx));
-        true
-    }
-
-    /// The one dispatch a keymap event takes into the page, from a key or a palette Command.
-    /// Inside an input already, as [`Self::send`].
-    fn take(&mut self, event: BillsPageEvent, cx: &mut Context<'_, Self>) {
-        match event {
-            BillsPageEvent::Move(step) if self.filter_focused() => match step {
-                Step::Next => self.filter_key(DialogKey::Down, cx),
-                Step::Prev => self.filter_key(DialogKey::Up, cx),
-                _ => {}
             },
-            BillsPageEvent::Open if self.filter_focused() => self.filter_key(DialogKey::Enter, cx),
-            event => self.handle(event, cx),
+        )
+    }
+
+    fn before(&mut self, event: &BillsPageEvent, _widgets: &BillsWidgets) -> BillsBefore {
+        BillsBefore {
+            tab: self.tab(),
+            shows_tab: matches!(event, BillsPageEvent::ShowTab(_)),
         }
     }
 
-    /// A palette Command, by its keymap `command` name: the event its key sends, on the tab it
-    /// belongs to. A Command of the other tab switches to it first, in the same input, since its
-    /// key does nothing there.
-    pub fn module_command(&mut self, command: &str, cx: &mut Context<'_, Self>) -> bool {
-        let Some(event) = self.keymap.event_for(command) else {
-            return false;
-        };
-        let other_tab = event.tab().filter(|tab| *tab != self.presenter.tab());
-        crate::input::join_or_send(cx, |cx| {
-            if let Some(tab) = other_tab {
-                self.handle(BillsPageEvent::ShowTab(tab), cx);
-            }
-            self.take(event, cx);
-        });
-        true
-    }
-
-    /// Every Bills key is the keymap's.
-    pub fn key_ahead(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    /// Every Bills key is the keymap's.
-    pub fn handle_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    /// A movement the keymap doesn't bind does nothing on the page.
-    pub fn apply_movement(&mut self, _movement: Movement, _cx: &mut Context<'_, Self>) {}
-
-    /// The scope selects: the first `Esc` closes an open list, the next leaves the filter row.
-    /// Returns whether it took the `Esc`.
-    pub fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
-        if !self.filter_focused() {
-            return false;
+    /// A tab change starts the page at the top; a tab shown clears the status line.
+    fn after(&self, before: BillsBefore, widgets: &mut BillsWidgets) -> Option<ViewEvent> {
+        if self.tab() != before.tab {
+            widgets.scroll.set_offset(gpui::Point::default());
         }
-        if let Some((_, select)) = self.filter_select.as_mut()
-            && select.is_open()
-        {
-            select.cancel();
-            cx.notify();
-            return true;
+        before.shows_tab.then_some(ViewEvent::SetStatus(None))
+    }
+
+    /// Generates a month the Desktop has crossed into since the page was last shown.
+    fn entered() -> Option<BillsPageEvent> {
+        Some(BillsPageEvent::Entered)
+    }
+
+    fn render(
+        view: &BillsPageViewModel,
+        page: PageDraw<'_, Self>,
+        _window: &mut Window,
+        cx: &mut Context<'_, BillsPage>,
+    ) -> AnyElement {
+        render(view, page.clicks, page.widgets, cx)
+    }
+
+    /// The tab shown's hints and right-hand text.
+    fn status(view: &BillsPageViewModel) -> PageStatus {
+        PageStatus {
+            hints: view.hints.clone(),
+            right: view.status.clone(),
         }
-        self.filter_select = None;
-        self.send(BillsPageEvent::Schedule(ScheduleEvent::LeaveFilters), cx);
-        true
-    }
-
-    /// The Bills page has no Search, so `/` is inert on it.
-    pub fn start_search(&mut self, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    /// The Bills page has no Search box to type into.
-    pub fn search_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    /// The page becomes the destination: it starts scrolled to the top, and generates a month the
-    /// Desktop has crossed into since.
-    pub fn on_enter(&mut self, cx: &mut Context<'_, Self>) {
-        self.scroll.set_offset(gpui::Point::default());
-        self.send(BillsPageEvent::Entered, cx);
     }
 
     /// Shows a record handed off from another View.
-    pub fn reveal(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
-        let event = match reveal {
-            Reveal::BillEntry(id) => BillsPageEvent::RevealEntry(id),
-            Reveal::BillPlan(id) => BillsPageEvent::RevealPlan(id),
-            Reveal::BillsPeriod(period) => BillsPageEvent::RevealPeriod(period),
-            Reveal::Account(_) | Reveal::Payee(_) => return,
-        };
-        self.send(event, cx);
+    fn reveal(reveal: Reveal) -> Option<BillsPageEvent> {
+        match reveal {
+            Reveal::BillEntry(id) => Some(BillsPageEvent::RevealEntry(id)),
+            Reveal::BillPlan(id) => Some(BillsPageEvent::RevealPlan(id)),
+            Reveal::BillsPeriod(period) => Some(BillsPageEvent::RevealPeriod(period)),
+            Reveal::Account(_) | Reveal::Payee(_) => None,
+        }
     }
 
-    /// Follows a change to the Display Preferences.
-    pub fn set_display(
-        &mut self,
-        date_style: Option<lib_core::DateStyle>,
-        glyphs: StatusGlyphs,
-        cx: &mut Context<'_, Self>,
-    ) {
-        crate::input::join_or_send(cx, |cx| {
-            self.handle(BillsPageEvent::DisplayChanged { glyphs }, cx);
-            self.handle(BillsPageEvent::SetDateStyle(date_style), cx);
-        });
-    }
-
-    /// The status line's hints and right-hand text for the tab shown.
-    pub fn page_status(&self, _cx: &App) -> Option<PageStatus> {
-        let view = self.view_model();
-        Some(PageStatus {
-            hints: view.hints,
-            right: view.status,
-        })
+    /// The scope selects: the first `Esc` closes an open list, the next leaves the filter row.
+    fn escape(view: &BillsPageViewModel) -> Option<BillsPageEvent> {
+        (view.tab == BillsTab::Schedule && view.schedule.filters.focused.is_some())
+            .then_some(BillsPageEvent::Schedule(ScheduleEvent::LeaveFilters))
     }
 
     /// The `?` cheat-sheet's Bills group: the hints the status line shows for the tab shown.
-    pub fn help_group(&self, cx: &App) -> Option<HelpGroup> {
-        let keys = self
-            .page_status(cx)?
-            .hints
-            .into_iter()
-            .map(|hint| (hint.action, hint.chord))
-            .collect();
+    fn help(view: &BillsPageViewModel) -> Option<HelpGroup> {
         Some(HelpGroup {
             heading: crate::msg::desktop_help_bills_label(),
-            keys,
+            keys: view
+                .hints
+                .iter()
+                .map(|hint| (hint.action.clone(), hint.chord.clone()))
+                .collect(),
         })
     }
-
-    /// The focused scope select's widget state, a closed one on its choice for any other.
-    fn filter_states(&self, view: &BillsPageViewModel) -> Vec<SelectState> {
-        view.schedule
-            .filters
-            .selects
-            .iter()
-            .map(|select| {
-                let own = self
-                    .filter_select
-                    .as_ref()
-                    .filter(|(field, _)| *field == select.field && select.view.focused)
-                    .map(|(_, state)| state.clone())
-                    .unwrap_or_default();
-                synced(&own, &select.view)
-            })
-            .collect()
-    }
 }
 
-/// A click on a scope select, which is the page's widget state as much as an event: the field
-/// focuses and toggles its list, and an option closes it with the choice.
-#[derive(Debug, Clone, Copy)]
-pub(super) enum FilterClick {
-    Field(FilterField),
-    Option(FilterField, usize),
-}
-
-/// Reached by clicks only (a key goes through the inherent `send`). A tab click also clears the
-/// status line after its event, as the key that switches tabs does.
-impl PresenterPage<BillsPageEvent> for BillsPage {
-    fn send(&mut self, event: BillsPageEvent, cx: &mut Context<'_, Self>) {
-        let show_tab = matches!(event, BillsPageEvent::ShowTab(_));
-        Self::send(self, event, cx);
-        if show_tab {
-            cx.emit(ViewEvent::SetStatus(None));
-        }
-    }
-}
-
-impl PresenterPage<FilterClick> for BillsPage {
-    fn send(&mut self, click: FilterClick, cx: &mut Context<'_, Self>) {
-        match click {
-            FilterClick::Field(field) => self.click_filter_field(field, cx),
-            FilterClick::Option(field, index) => self.click_filter_option(field, index, cx),
-        }
-    }
-}
-
-impl Render for BillsPage {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let clicks = PageClicks::new(cx);
-        let view = self.view_model();
-        let cx: &App = cx;
-        let (meta, body) = match view.tab {
-            BillsTab::Schedule => (
-                schedule::meta_line(&view.schedule.meta, cx),
-                schedule::render(&view.schedule, &self.filter_states(&view), &clicks, cx),
-            ),
-            BillsTab::Planner => (
-                planner::meta_line(&view.planner, cx),
-                planner::render(&view.planner, &clicks, cx),
-            ),
-        };
-        div()
-            .id("bills")
-            .flex_1()
-            .min_w(px(0.0))
-            .h_full()
-            .overflow_y_scroll()
-            .track_scroll(&self.scroll)
-            .px(px(28.0))
-            .py(px(22.0))
-            .child(page_header(
-                meta,
-                &view.add_button,
-                clicks.send(BillsPageEvent::New),
-                cx,
-            ))
-            .child(tab_row(&view, &clicks, cx))
-            .child(
-                div()
-                    .h(px(2.0))
-                    .flex_none()
-                    .bg(color::structural_rule(cx))
-                    .mb(px(24.0)),
-            )
-            .child(body)
-    }
+fn render(
+    view: &BillsPageViewModel,
+    clicks: &PageClicks<BillsPage>,
+    widgets: &mut BillsWidgets,
+    cx: &App,
+) -> AnyElement {
+    let (meta, body) = match view.tab {
+        BillsTab::Schedule => (
+            schedule::meta_line(&view.schedule.meta, cx),
+            schedule::render(&view.schedule, &mut widgets.filter_window, clicks, cx),
+        ),
+        BillsTab::Planner => (
+            planner::meta_line(&view.planner, cx),
+            planner::render(&view.planner, clicks, cx),
+        ),
+    };
+    div()
+        .id("bills")
+        .flex_1()
+        .min_w(px(0.0))
+        .h_full()
+        .overflow_y_scroll()
+        .track_scroll(&widgets.scroll)
+        .px(px(28.0))
+        .py(px(22.0))
+        .child(page_header(
+            meta,
+            &view.add_button,
+            clicks.send(BillsPageEvent::New),
+            cx,
+        ))
+        .child(tab_row(view, clicks, cx))
+        .child(
+            div()
+                .h(px(2.0))
+                .flex_none()
+                .bg(color::structural_rule(cx))
+                .mb(px(24.0)),
+        )
+        .child(body)
+        .into_any_element()
 }
 
 fn page_header(

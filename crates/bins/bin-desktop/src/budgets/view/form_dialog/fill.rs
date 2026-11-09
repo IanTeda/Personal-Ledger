@@ -3,21 +3,46 @@
 //! against the plan. "The plan" is the baseline rather than a source (#386).
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
-use lib_budgets::FillSource;
-use lib_budgets::presenter::{ChangeRow, FillEvent, FillViewModel, SourceRow};
+use lib_budgets::presenter::{ChangeRow, FillEvent, FillPresenter, FillViewModel, SourceRow};
 use lib_locale::format::upper;
+use lib_shell::Hint;
 
-use super::{Clicks, Form, FormDialog, Router};
 use crate::dialog;
 use crate::form::colour_field::error_line;
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 use crate::theme::color;
 
 /// The dialog's width: the handoff's 9f.
 const WIDTH: gpui::Pixels = px(560.0);
 
-fn choose(dialog: &mut FormDialog, source: FillSource) {
-    if let Form::Fill(presenter) = &mut dialog.view {
-        presenter.handle(FillEvent::Source(source), &mut Router::default());
+/// The open Dialog's clicks.
+type Clicks = ModuleDialogClicks<FillPresenter>;
+
+/// The `lib-budgets` Fill Presenter's [`DialogView`], hosted in a `ModuleDialog` (ADR-0056).
+impl DialogView for FillPresenter {
+    type Widgets = ();
+
+    fn kind(_view: &FillViewModel) -> &'static str {
+        "Fill"
+    }
+
+    fn render(view: &FillViewModel, _widgets: &mut (), clicks: &Clicks, cx: &App) -> AnyElement {
+        render(view, clicks, cx)
+    }
+
+    /// The chosen source, `PreviousMonth` or `Average`.
+    fn readback(view: &FillViewModel) -> Vec<(&'static str, String)> {
+        let source = view
+            .sources
+            .iter()
+            .find(|row| row.chosen)
+            .map(|row| format!("{:?}", row.source))
+            .unwrap_or_default();
+        framed(&view.frame, vec![("source", source)])
+    }
+
+    fn hints(view: &FillViewModel) -> Vec<Hint> {
+        view.hints.clone()
     }
 }
 
@@ -108,13 +133,13 @@ fn diff_line(row: &ChangeRow, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-pub(super) fn render(view: &FillViewModel, actions: &Clicks, cx: &App) -> AnyElement {
+fn render(view: &FillViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     let mut fields: Vec<AnyElement> = view
         .sources
         .iter()
         .map(|row| {
             let source = row.source;
-            source_row(row, actions.click(move |dialog| choose(dialog, source)), cx)
+            source_row(row, actions.send(FillEvent::Source(source)), cx)
         })
         .collect();
 

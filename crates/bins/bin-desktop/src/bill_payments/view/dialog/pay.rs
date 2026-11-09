@@ -1,34 +1,22 @@
 //! The Pay Dialog (`docs/ux/desktop-mockups/12-bills/README.md`'s 8d) on the shared
-//! `crate::dialog` frame, an Entity in the Dialog host (`shell::view::dialog_entity`): the segmented switch under the title bar,
-//! then either the Match list or the Pay it directly fields. Every key and click becomes a
-//! `lib-bill-payments` Presenter event, and this draws the view model and nothing else.
+//! `crate::dialog` frame: the `lib-bill-payments` Pay Presenter's `DialogView`, which the generic
+//! `ModuleDialog` hosts in the Dialog host (ADR-0056). It draws the segmented switch under the
+//! title bar, then either the Match list or the Pay it directly fields. Every key and click
+//! becomes a Presenter event, and this draws the view model, hints included, and nothing else.
 //!
 //! The body scrolls past [`BODY_MAX_HEIGHT`], so the switch and the buttons stay on screen however
-//! many candidates the Match list holds, and `j`/`k` scroll the chosen row into view.
-//!
-//! What each key means is the Presenter's (`lib_bill_payments::presenter::PayPresenter`): every
-//! Dialog command and typed key reaches it as a `lib-viper` `DialogInput`. It closes the Dialog
-//! through the host's [`HostRouter`]; a confirmed outcome is handed to the page, and the host
-//! closes on [`DialogClosed`].
+//! many candidates the Match list holds, and the chosen row is scrolled into view as it moves.
 
-use gpui::{
-    AnyElement, App, Context, EventEmitter, Render, ScrollHandle, SharedString, Window, div,
-    prelude::*, px,
-};
-use lib_bill_payments::PayOutcome;
+use gpui::{AnyElement, App, ScrollHandle, SharedString, div, prelude::*, px};
 use lib_bill_payments::presenter::{
     MatchChoice, PayEvent, PayField, PayMode, PayPresenter, PayViewModel,
 };
+use lib_shell::Hint;
 
 use crate::dialog;
 use crate::form::dialog_fields::{label, text_field, two_up};
-use crate::shell::view::dialog_entity::DialogReadback;
-use crate::shell::view::dialog_entity::{DialogClicks, DialogClosed, HostRouter, HostedDialog};
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 use crate::theme::color;
-use lib_shell::DialogCommand;
-use lib_shell::Hint;
-use lib_viper::dialog::DialogInput;
-use lib_viper::keymap::{BACK, Keymap, SELECT, list_step_chords};
 
 /// The Dialog's width: 8d's.
 const WIDTH: gpui::Pixels = px(460.0);
@@ -37,150 +25,66 @@ const WIDTH: gpui::Pixels = px(460.0);
 const BODY_MAX_HEIGHT: gpui::Pixels = px(480.0);
 
 /// The open Pay Dialog's clicks.
-type Clicks = DialogClicks<PayDialog>;
+type Clicks = ModuleDialogClicks<PayPresenter>;
 
-/// What a landed Pay hands the page that opened it.
-pub(crate) type Landed = Box<dyn Fn(PayOutcome, &mut App)>;
-
-/// The open Pay Dialog: its Presenter, the Bills ports its confirm copies the reads into, and the
-/// Ledger it reads from.
-pub struct PayDialog {
-    presenter: PayPresenter,
-    ports: lib_bills::SharedPorts,
-    landed: Landed,
-    /// The body's scroll, which `j`/`k` move to keep the chosen Match row in view.
+/// The body's scroll, and the panel and chosen Match row last drawn, so a step down the list keeps
+/// the chosen row in view.
+#[derive(Default)]
+pub struct PayWidgets {
     scroll: ScrollHandle,
+    followed: Option<(PayMode, Option<usize>)>,
 }
 
-impl PayDialog {
-    pub(crate) fn new(
-        presenter: PayPresenter,
-        ports: &lib_bills::SharedPorts,
-        landed: Landed,
-    ) -> Self {
-        Self {
-            presenter,
-            ports: ports.clone(),
-            landed,
-            scroll: ScrollHandle::new(),
-        }
+/// The `lib-bill-payments` Pay Presenter's [`DialogView`], hosted in a `ModuleDialog`.
+impl DialogView for PayPresenter {
+    type Widgets = PayWidgets;
+
+    fn kind(_view: &PayViewModel) -> &'static str {
+        "Pay"
     }
 
-    fn view(&self) -> PayViewModel {
-        self.presenter.view_model()
-    }
-
-    /// Sends `event` to the Presenter, returning what its Router was asked.
-    fn send(&mut self, event: PayEvent) -> Router {
-        let mut router = Router::default();
-        self.presenter.handle(event, &mut router);
-        router
-    }
-
-    /// A click's event, as one input.
-    fn on_click(actions: &Clicks, event: PayEvent) -> dialog::OnClick {
-        actions.click(move |dialog| {
-            dialog.send(event.clone());
-        })
-    }
-
-    /// Hands a landed payment to the page and tells the host, once the Presenter has closed the
-    /// Dialog.
-    fn closed(&self, router: Router, cx: &mut Context<'_, Self>) {
-        let Some(outcome) = router.closed() else {
-            return;
-        };
-        if let Some(outcome) = outcome {
-            (self.landed)(outcome, cx);
-        }
-        cx.emit(DialogClosed);
-    }
-}
-
-/// The host's Router, as the Pay Dialog's Presenter closes through it.
-type Router = HostRouter<PayOutcome>;
-
-impl EventEmitter<DialogClosed> for PayDialog {}
-
-impl HostedDialog for PayDialog {
-    /// Every input is the Presenter's to read. A step down
-    /// the Match list scrolls the chosen row into view.
-    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
-        let router = self.send(PayEvent::Input(input));
-        let steps = matches!(input, DialogInput::SelectNext | DialogInput::SelectPrevious);
-        let view = self.view();
-        if steps
-            && view.mode == PayMode::Match
-            && let Some(row) = chosen_row(&view)
+    /// Scrolls a Match row chosen on the Match list into view before drawing. Coming to the Match
+    /// list from the other panel leaves it where it was, whatever row is chosen.
+    fn render(
+        view: &PayViewModel,
+        widgets: &mut PayWidgets,
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        let drawn = (view.mode, chosen_row(view));
+        if let (PayMode::Match, Some(row)) = drawn
+            && widgets
+                .followed
+                .is_some_and(|(mode, followed)| mode == PayMode::Match && followed != Some(row))
         {
-            self.scroll.scroll_to_item(row);
+            widgets.scroll.scroll_to_item(row);
         }
-        self.closed(router, cx);
+        widgets.followed = Some(drawn);
+        render(view, &widgets.scroll, clicks, cx)
     }
 
-    fn can_confirm(&self) -> bool {
-        self.view().frame.can_confirm
-    }
-
-    /// Sends Confirm to the Presenter, which pays or matches. A refusal stays on the view model and keeps the Dialog open.
-    fn confirm(&mut self, cx: &mut Context<'_, Self>) {
-        let router = self.send(PayEvent::Confirm);
-        self.closed(router, cx);
-    }
-
-    /// A cancelled Pay has written nothing.
-    fn cancel(&mut self, cx: &mut Context<'_, Self>) {
-        let router = self.send(PayEvent::Cancel);
-        self.closed(router, cx);
-    }
-
-    /// Pay has no select.
-    fn close_open_select(&mut self) -> bool {
-        false
-    }
-
-    /// The Match panel's list; Direct's fields type.
-    fn steps_list(&self) -> bool {
-        self.presenter.steps_list()
-    }
-
-    fn hints(&self, keymap: &Keymap<DialogCommand>) -> Option<Vec<Hint>> {
-        let key = |command| keymap.chord(command).unwrap_or_default().to_string();
-        Some(vec![
-            Hint::new(key(BACK), lib_locale::msg::dialog_hint_cancel()),
-            Hint::new(key(SELECT), lib_locale::msg::dialog_hint_confirm()),
-            Hint::new(list_step_chords(keymap), crate::msg::desktop_hint_choose()),
-            Hint::new("\u{2190}/\u{2192}", crate::msg::desktop_hint_switch_panel()),
-        ])
-    }
-
-    /// The open Dialog's panel, what it shows and whether it would confirm, for a test.
-    fn readback(&self, _cx: &App) -> DialogReadback {
-        let view = self.view();
+    /// The panel, what it shows and whether it would confirm.
+    fn readback(view: &PayViewModel) -> Vec<(&'static str, String)> {
         let choice = match view.choice {
             Some(MatchChoice::Candidate(index)) => index.to_string(),
             Some(MatchChoice::NoneOfThese) => "none".to_string(),
             None => String::new(),
         };
-        DialogReadback {
-            kind: "Pay",
-            values: vec![
-                ("title", view.frame.title),
+        framed(
+            &view.frame,
+            vec![
                 ("mode", format!("{:?}", view.mode)),
                 ("candidates", view.candidates.len().to_string()),
                 ("choice", choice),
-                ("amount", view.amount.text),
-                ("date", view.date.text),
-                ("refusal", view.refusal.unwrap_or_default()),
-                ("can_confirm", view.frame.can_confirm.to_string()),
+                ("amount", view.amount.text.clone()),
+                ("date", view.date.text.clone()),
+                ("refusal", view.refusal.clone().unwrap_or_default()),
             ],
-        }
+        )
     }
-}
 
-impl Render for PayDialog {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        render(&self.view(), &self.scroll, &Clicks::new(cx), cx)
+    fn hints(view: &PayViewModel) -> Vec<Hint> {
+        view.hints.clone()
     }
 }
 
@@ -237,7 +141,7 @@ fn switch(view: &PayViewModel, actions: &Clicks, cx: &App) -> AnyElement {
         .border_1()
         .border_color(color::border(cx))
         .children(view.modes.iter().enumerate().map(|(index, mode)| {
-            let on_click = PayDialog::on_click(actions, PayEvent::Mode(mode.value));
+            let on_click = actions.send(PayEvent::Mode(mode.value));
             div()
                 .id(SharedString::from(format!("pay-bill-mode-{index}")))
                 .debug_selector(move || format!("pay-bill-mode-{index}"))
@@ -317,7 +221,7 @@ fn radio_row(
     actions: &Clicks,
     cx: &App,
 ) -> AnyElement {
-    let on_click = PayDialog::on_click(actions, PayEvent::Choose(choice));
+    let on_click = actions.send(PayEvent::Choose(choice));
     let id = match choice {
         MatchChoice::Candidate(index) => format!("pay-bill-candidate-{index}"),
         MatchChoice::NoneOfThese => "pay-bill-none-of-these".to_string(),
@@ -389,7 +293,7 @@ fn direct_panel(view: &PayViewModel, actions: &Clicks, cx: &App) -> Vec<AnyEleme
                     &view.amount.text,
                     &view.amount.placeholder,
                     view.amount.focused,
-                    PayDialog::on_click(actions, PayEvent::Focus(PayField::Amount)),
+                    actions.send(PayEvent::Focus(PayField::Amount)),
                     cx,
                 ),
                 view.amount_error.clone(),
@@ -401,7 +305,7 @@ fn direct_panel(view: &PayViewModel, actions: &Clicks, cx: &App) -> Vec<AnyEleme
                     &view.date.text,
                     &view.date.placeholder,
                     view.date.focused,
-                    PayDialog::on_click(actions, PayEvent::Focus(PayField::Date)),
+                    actions.send(PayEvent::Focus(PayField::Date)),
                     cx,
                 ),
                 view.date_error.clone(),

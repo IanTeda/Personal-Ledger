@@ -8,70 +8,51 @@
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use lib_budgets::presenter::{
-    AccountChip, BudgetField, BudgetFormEvent, BudgetFormPresenter, BudgetFormViewModel,
-    MethodCard, StartChoice,
+    AccountChip, BudgetField, BudgetFormEvent, BudgetFormPresenter, BudgetFormViewModel, MethodCard,
 };
-use lib_core::AccountId;
 use lib_locale::format::upper;
+use lib_shell::Hint;
 
-use super::{Clicks, Form, FormDialog, Router, help, picker, segmented};
+use super::{help, picker, segmented};
 use crate::dialog;
 use crate::form::colour_field::error_line;
 use crate::form::dialog_fields::{label, text_field, two_up};
 use crate::form::select_field::{self, SelectFieldProps};
 use crate::form::viper::{drawn, labels};
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 use crate::theme::color;
 
 /// The dialog's width: the handoff's 11c.
 const WIDTH: gpui::Pixels = px(640.0);
 
-fn handle(presenter: &mut BudgetFormPresenter, event: BudgetFormEvent) {
-    presenter.handle(event, &mut Router::default());
-}
+/// The open form's clicks.
+type Clicks = ModuleDialogClicks<BudgetFormPresenter>;
 
-fn form(dialog: &mut FormDialog) -> Option<&mut BudgetFormPresenter> {
-    match &mut dialog.view {
-        Form::Budget(presenter, _) => Some(presenter),
-        _ => None,
+/// The `lib-budgets` Budget form Presenter's [`DialogView`], hosted in a `ModuleDialog`
+/// (ADR-0056). Its widget state is the top row of the Unit list's window.
+impl DialogView for BudgetFormPresenter {
+    type Widgets = usize;
+
+    fn kind(_view: &BudgetFormViewModel) -> &'static str {
+        "Budget"
     }
-}
 
-fn focus(dialog: &mut FormDialog, field: BudgetField) {
-    if let Some(presenter) = form(dialog) {
-        handle(presenter, BudgetFormEvent::Focus(field));
+    fn render(
+        view: &BudgetFormViewModel,
+        scroll: &mut usize,
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        render(view, scroll, clicks, cx)
     }
-}
 
-/// A click on the Unit field focuses it and toggles its list; Edit's is locked.
-fn click_unit(dialog: &mut FormDialog) {
-    if let Some(presenter) = form(dialog) {
-        handle(presenter, BudgetFormEvent::ToggleUnitList);
+    /// The Name draft.
+    fn readback(view: &BudgetFormViewModel) -> Vec<(&'static str, String)> {
+        framed(&view.frame, vec![("name", view.name.text.clone())])
     }
-}
 
-/// A click on row `index` of the Unit's open list picks it; Edit's is locked.
-fn click_option(dialog: &mut FormDialog, index: usize) {
-    if let Some(presenter) = form(dialog) {
-        let view = presenter.view_model();
-        if view.editing {
-            return;
-        }
-        if let Some(choice) = view.unit.options.get(index) {
-            handle(presenter, BudgetFormEvent::Focus(BudgetField::Unit));
-            handle(presenter, BudgetFormEvent::Unit(choice.value));
-        }
-    }
-}
-
-fn toggle_account(dialog: &mut FormDialog, id: AccountId) {
-    if let Some(presenter) = form(dialog) {
-        handle(presenter, BudgetFormEvent::ToggleAccount(id));
-    }
-}
-
-fn choose_start(dialog: &mut FormDialog, choice: StartChoice) {
-    if let Some(presenter) = form(dialog) {
-        handle(presenter, BudgetFormEvent::StartFrom(choice));
+    fn hints(view: &BudgetFormViewModel) -> Vec<Hint> {
+        view.hints.clone()
     }
 }
 
@@ -149,7 +130,7 @@ fn method_grid(view: &BudgetFormViewModel, cx: &App) -> AnyElement {
 /// The Account chips: a selected one is solid ink with a `✓`; the keyboard cursor takes the
 /// accent border while the chips are focused.
 fn account_chips(view: &BudgetFormViewModel, actions: &Clicks, cx: &App) -> AnyElement {
-    let choose = actions.choose(toggle_account);
+    let choose = actions.choose(|id| vec![BudgetFormEvent::ToggleAccount(id)]);
     let chips = view.accounts.iter().map(|chip: &AccountChip| {
         let on_click = picker(choose.clone(), chip.id);
         let id = chip.id;
@@ -187,7 +168,32 @@ fn account_chips(view: &BudgetFormViewModel, actions: &Clicks, cx: &App) -> AnyE
         .into_any_element()
 }
 
-pub(super) fn render(
+/// A click on row `index` of the Unit's open list picks it; Edit's is locked. The Units are fixed
+/// while the Dialog is open.
+fn unit_option(view: &BudgetFormViewModel, actions: &Clicks) -> select_field::OnOptionClick {
+    if view.editing {
+        return actions.option(|_| Vec::new());
+    }
+    let units: Vec<_> = view
+        .unit
+        .options
+        .iter()
+        .map(|choice| choice.value)
+        .collect();
+    actions.option(move |index| {
+        units
+            .get(index)
+            .map(|unit| {
+                vec![
+                    BudgetFormEvent::Focus(BudgetField::Unit),
+                    BudgetFormEvent::Unit(*unit),
+                ]
+            })
+            .unwrap_or_default()
+    })
+}
+
+fn render(
     view: &BudgetFormViewModel,
     scroll: &mut usize,
     actions: &Clicks,
@@ -204,7 +210,7 @@ pub(super) fn render(
                     &view.name.text,
                     &view.name.placeholder,
                     view.name.focused,
-                    actions.click(|dialog| focus(dialog, BudgetField::Name)),
+                    actions.send(BudgetFormEvent::Focus(BudgetField::Name)),
                     cx,
                 ))
                 .into_any_element(),
@@ -220,8 +226,8 @@ pub(super) fn render(
                         focused: view.unit.focused,
                         accent: false,
                         read_only: view.unit_fixed.clone().map(SharedString::from),
-                        on_field_click: actions.click(click_unit),
-                        on_option_click: actions.option(click_option),
+                        on_field_click: actions.send(BudgetFormEvent::ToggleUnitList),
+                        on_option_click: unit_option(view, actions),
                     },
                     cx,
                 ))
@@ -231,7 +237,7 @@ pub(super) fn render(
         account_chips(view, actions, cx),
     ];
     if let Some(start) = &view.start {
-        let choose = actions.choose(choose_start);
+        let choose = actions.choose(|choice| vec![BudgetFormEvent::StartFrom(choice)]);
         fields.push(
             div()
                 .child(segmented(

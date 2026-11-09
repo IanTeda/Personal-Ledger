@@ -7,8 +7,9 @@
 
 use lib_core::{BudgetId, CategoryId, Clock, Period};
 use lib_toast::{Notice, ToastKind};
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::keymap::{BACK, Keymap, SELECT};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::{BACK, SELECT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
 use lib_viper::view::{Choice, DialogFrame, Hint, SelectList, SelectMove, SelectView};
 
 use super::{dialog_error_text, month_label};
@@ -31,12 +32,16 @@ pub enum StopEvent {
     ToggleList,
     /// Closes the open list without picking: the host's `back`.
     CloseList,
+    /// `submit`, `select` where it confirms, and the submit button.
+    Confirm,
     Cancel,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StopViewModel {
     pub frame: DialogFrame,
+    /// The Category the Stop is for.
+    pub category: CategoryId,
     pub from: SelectView<Period>,
     /// From's list: open, and its highlight.
     pub from_list: SelectList,
@@ -45,6 +50,8 @@ pub struct StopViewModel {
     /// The Category's Bill Plans, which keep counting as Known Costs.
     pub bills: Option<String>,
     pub error: Option<String>,
+    /// The status line's hints, in the Dialog keymap's chords.
+    pub hints: Vec<Hint>,
 }
 
 pub struct StopPresenter {
@@ -57,6 +64,8 @@ pub struct StopPresenter {
     from: Period,
     list: SelectList,
     error: Option<String>,
+    /// The Dialog keymap's chords, which its hints show.
+    keys: DialogKeys,
 }
 
 impl StopPresenter {
@@ -68,6 +77,7 @@ impl StopPresenter {
         budget: BudgetId,
         category: CategoryId,
         month: Period,
+        keys: DialogKeys,
     ) -> Option<Self> {
         let found = ports.borrow().budgets().budget(budget)?;
         if found.is_archived() {
@@ -103,6 +113,7 @@ impl StopPresenter {
             from,
             list: SelectList::default(),
             error: None,
+            keys,
         })
     }
 
@@ -111,29 +122,11 @@ impl StopPresenter {
         self.category
     }
 
-    pub fn handle(&mut self, event: StopEvent, router: &mut dyn DialogRouter<BudgetsOutcome>) {
-        match event {
-            StopEvent::Input(input) => self.input(input, router),
-            StopEvent::From(month) => {
-                self.list.close();
-                self.pick(month);
-            }
-            StopEvent::ToggleList => {
-                let options = self.choices();
-                self.list.toggle(&options, Some(&self.from));
-            }
-            StopEvent::CloseList => {
-                self.list.close();
-            }
-            StopEvent::Cancel => router.close(None),
-        }
-    }
-
     /// What `input` means: the From select's, except that `select` on a closed list confirms.
     fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<BudgetsOutcome>) {
         match input {
-            DialogInput::Submit => self.confirm(router),
-            DialogInput::Select if !self.list.is_open() => self.confirm(router),
+            DialogInput::Submit => self.submit(router),
+            DialogInput::Select if !self.list.is_open() => self.submit(router),
             DialogInput::Select
             | DialogInput::SelectNext
             | DialogInput::SelectPrevious
@@ -169,7 +162,7 @@ impl StopPresenter {
 
     /// Stops the Category through the Interactor, raises the Toast and closes the Dialog; a
     /// refusal stays on the form.
-    pub fn confirm(&mut self, router: &mut dyn DialogRouter<BudgetsOutcome>) {
+    fn submit(&mut self, router: &mut dyn DialogRouter<BudgetsOutcome>) {
         let today = self.clock.today();
         let done = {
             let mut ports = self.ports.borrow_mut();
@@ -194,7 +187,41 @@ impl StopPresenter {
         }
     }
 
-    pub fn view_model(&self) -> StopViewModel {
+    /// The status line's hints, in the Dialog keymap's chords it was handed at open.
+    fn hints(&self) -> Vec<Hint> {
+        vec![
+            Hint::new("\u{2191}/\u{2193}", msg::budgets_hint_choose()),
+            Hint::new(self.keys.chord(SELECT), msg::budgets_hint_confirm()),
+            Hint::new(self.keys.chord(BACK), msg::budgets_hint_cancel()),
+        ]
+    }
+}
+
+impl Presenter for StopPresenter {
+    type Event = StopEvent;
+    type ViewModel = StopViewModel;
+    type Router<'r> = dyn DialogRouter<BudgetsOutcome> + 'r;
+
+    fn handle(&mut self, event: StopEvent, router: &mut Self::Router<'_>) {
+        match event {
+            StopEvent::Input(input) => self.input(input, router),
+            StopEvent::From(month) => {
+                self.list.close();
+                self.pick(month);
+            }
+            StopEvent::ToggleList => {
+                let options = self.choices();
+                self.list.toggle(&options, Some(&self.from));
+            }
+            StopEvent::CloseList => {
+                self.list.close();
+            }
+            StopEvent::Confirm => self.submit(router),
+            StopEvent::Cancel => router.close(None),
+        }
+    }
+
+    fn view_model(&self) -> StopViewModel {
         let plans: Vec<String> = self
             .ports
             .borrow()
@@ -205,6 +232,7 @@ impl StopPresenter {
             .map(|plan| plan.name)
             .collect();
         StopViewModel {
+            category: self.category,
             frame: DialogFrame {
                 title: msg::budgets_stop_title(&self.category_name),
                 submit: msg::budgets_stop_submit(),
@@ -222,22 +250,38 @@ impl StopPresenter {
             body: msg::budgets_stop_body(&self.category_name),
             bills: (!plans.is_empty()).then(|| msg::budgets_stop_body_bills(&plans.join(", "))),
             error: self.error.clone(),
+            hints: self.hints(),
         }
     }
+}
 
-    /// The status line's legend, `select` and `back` read from the Dialog `keymap`.
-    pub fn legend<E: Clone>(&self, keymap: &Keymap<E>) -> Vec<Hint> {
-        vec![
-            Hint::new("\u{2191}/\u{2193}", msg::budgets_hint_choose()),
-            Hint::new(
-                keymap.chord(SELECT).unwrap_or_default(),
-                msg::budgets_hint_confirm(),
-            ),
-            Hint::new(
-                keymap.chord(BACK).unwrap_or_default(),
-                msg::budgets_hint_cancel(),
-            ),
-        ]
+impl DialogPresenter for StopPresenter {
+    type Outcome = BudgetsOutcome;
+
+    fn input_event(input: DialogInput) -> Self::Event {
+        StopEvent::Input(input)
+    }
+
+    fn confirm_event() -> Self::Event {
+        StopEvent::Confirm
+    }
+
+    fn cancel_event() -> Self::Event {
+        StopEvent::Cancel
+    }
+
+    /// There is always a month to stop from.
+    fn can_confirm(&self) -> bool {
+        true
+    }
+
+    fn close_open_select(&mut self) -> bool {
+        self.list.close()
+    }
+
+    /// The From select is a list throughout.
+    fn steps_list(&self) -> bool {
+        true
     }
 }
 
@@ -264,6 +308,7 @@ mod tests {
             PERSONAL_SPENDING_ID,
             category,
             month,
+            DialogKeys::default(),
         )
     }
 
@@ -314,7 +359,8 @@ mod tests {
                 Clock::fixed(today()),
                 PERSONAL_SPENDING_ID,
                 GROCERIES,
-                current()
+                current(),
+                DialogKeys::default()
             )
             .is_none()
         );
@@ -329,12 +375,13 @@ mod tests {
             PERSONAL_SPENDING_ID,
             GROCERIES,
             current(),
+            DialogKeys::default(),
         )
         .expect("budgeted");
         let mut router = RecordingRouter::default();
         presenter.handle(StopEvent::From(current().next()), &mut router);
 
-        presenter.confirm(&mut router);
+        presenter.handle(StopEvent::Confirm, &mut router);
 
         assert_eq!(
             router.routed,
@@ -365,6 +412,7 @@ mod tests {
             PERSONAL_SPENDING_ID,
             GROCERIES,
             current(),
+            DialogKeys::default(),
         )
         .expect("budgeted");
         let mut router = RecordingRouter::default();

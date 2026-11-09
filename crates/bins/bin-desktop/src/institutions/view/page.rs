@@ -23,16 +23,18 @@ impl PageView for InstitutionsPagePresenter {
     type Setup = InstitutionsRoutes;
     /// Where the open row menu is drawn: the pointer that opened it, in window coordinates.
     type Widgets = Point<Pixels>;
+    type Before = ();
 
     /// An Institutions write or a rollback.
     const REPAINTS: &'static [Domain] = &[Domain::Institutions];
 
     fn with_router<R>(
+        presenter: &mut Self,
         setup: &InstitutionsRoutes,
         cx: &mut Context<'_, InstitutionsPage>,
-        handle: impl FnOnce(&mut Self::Router<'_>) -> R,
+        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
     ) -> R {
-        handle(&mut PageRouter { routes: setup, cx })
+        handle(presenter, &mut PageRouter { routes: setup, cx })
     }
 
     fn render(

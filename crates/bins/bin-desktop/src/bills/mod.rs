@@ -3,10 +3,10 @@
 //! keymap are `lib-bills`'; this folder turns gpui keys and clicks into Presenter events and draws
 //! the view models.
 //!
-//! - `view/page.rs` wraps the page Presenter in an Entity, which the Shell hosts as the Bills
-//!   destination; `view/schedule.rs`, `view/filters.rs` and `view/planner.rs` draw its tabs.
-//! - `view/dialog.rs` holds the Plan form's and Skip's Presenters in Entities in the Dialog host, one View
-//!   per Dialog in `view/dialog/`.
+//! - `view/page.rs` is the page Presenter's `PageView`, which the generic `ModulePage` hosts as the
+//!   Bills destination; `view/schedule.rs`, `view/filters.rs` and `view/planner.rs` draw its tabs.
+//! - `view/dialog/` holds the Plan form's and Skip's `DialogView`s, each hosted in a
+//!   `ModuleDialog`.
 //! - `router.rs` is the Router and the module's entry point ([`bills_page`]). It opens the Pay
 //!   Dialog through the Bill Payments module's entry point (`crate::bill_payments`).
 //!
@@ -19,7 +19,6 @@ pub(crate) mod view;
 
 pub use lib_bills::*;
 pub use router::bills_page;
-pub use view::dialog::BillsDialog;
 pub use view::page::BillsPage;
 pub use view::snapshot::{BillRowSnapshot, BillsSnapshot};
 
@@ -41,23 +40,27 @@ pub fn new_month(ports: &SharedPorts, today: chrono::NaiveDate) {
 }
 
 /// What `shell::router::build` hands the Bills module: its ports, shared with the Open Ledger, the payments
-/// port the Pay Dialog it opens writes through, and its keymap under `[keybindings]`.
+/// port the Pay Dialog it opens writes through, its keymap under `[keybindings]` and the Dialog
+/// keys its Dialogs' hints show.
 pub struct BillsSetup {
     pub ports: SharedPorts,
     pub payments: lib_bill_payments::SharedPayments,
     pub keymap: lib_viper::keymap::Keymap<BillsPageEvent>,
+    pub dialog_keys: lib_viper::dialog::DialogKeys,
 }
 
 impl BillsSetup {
     pub fn new(
         ports: SharedPorts,
         payments: lib_bill_payments::SharedPayments,
+        dialog_keys: lib_viper::dialog::DialogKeys,
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
             ports,
             payments,
             keymap: keymap::bills_page_keymap(config),
+            dialog_keys,
         }
     }
 
@@ -68,6 +71,7 @@ impl BillsSetup {
         Self::new(
             storage.ports.bills.clone(),
             storage.ports.bill_payments.clone(),
+            lib_viper::dialog::DialogKeys::default(),
             &lib_config::KeyBindingConfig::default(),
         )
     }

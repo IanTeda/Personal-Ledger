@@ -8,28 +8,57 @@
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use lib_bills::presenter::{PlanField, PlanFormEvent, PlanFormPresenter, PlanFormViewModel};
-use lib_viper::view::{SelectList, SelectView, TextFieldView};
+use lib_shell::Hint;
+use lib_viper::view::{Choice, SelectList, SelectView, TextFieldView};
 
-use super::{BillsDialog, Clicks, View, send};
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 use crate::{
     dialog,
     form::{
         dialog_fields::{label, suffixed_label, text_field, two_up},
         fields::segmented_labelled,
-        select_field::{self, SelectFieldProps},
+        select_field::{self, OnOptionClick, SelectFieldProps},
         viper::{chosen_label, drawn, labels},
     },
     theme::color,
 };
 
+/// The open form's clicks.
+type Clicks = ModuleDialogClicks<PlanFormPresenter>;
+
+/// The `lib-bills` Plan form Presenter's [`DialogView`], hosted in a `ModuleDialog` (ADR-0056).
+/// Its widget state is the top row of the open list's window, which the View keeps between draws.
+impl DialogView for PlanFormPresenter {
+    type Widgets = usize;
+
+    /// Edit shows Active; Add doesn't.
+    fn kind(view: &PlanFormViewModel) -> &'static str {
+        if view.active.is_some() { "Edit" } else { "Add" }
+    }
+
+    fn render(
+        view: &PlanFormViewModel,
+        scroll: &mut usize,
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        render(view, scroll, clicks, cx)
+    }
+
+    /// The focused field, the drafts, the selects, whether a list is open and the refusal.
+    fn readback(view: &PlanFormViewModel) -> Vec<(&'static str, String)> {
+        framed(&view.frame, readback(view))
+    }
+
+    fn hints(view: &PlanFormViewModel) -> Vec<Hint> {
+        view.hints.clone()
+    }
+}
+
 /// The Dialog's width: 8c's, wider than the other Dialogs for its field count.
 const WIDTH: gpui::Pixels = px(480.0);
 /// The body's scroll cap.
 const BODY_MAX_HEIGHT: gpui::Pixels = px(480.0);
-
-fn handle(presenter: &mut PlanFormPresenter, event: PlanFormEvent) {
-    send(presenter, event, PlanFormPresenter::handle);
-}
 
 /// The field with focus.
 fn focused(view: &PlanFormViewModel) -> Option<PlanField> {
@@ -49,12 +78,10 @@ fn focused(view: &PlanFormViewModel) -> Option<PlanField> {
     })
 }
 
-/// A click on a field: focuses it, and opens or closes a select's list.
-fn click_field(dialog: &mut BillsDialog, field: PlanField) {
-    let View::PlanForm(presenter, _) = &mut dialog.view else {
-        return;
-    };
-    let event = match field {
+/// What a click on `field` sends: Active toggles, a select focuses and opens or closes its list,
+/// a text field focuses.
+fn field_click(field: PlanField) -> PlanFormEvent {
+    match field {
         PlanField::Active => PlanFormEvent::ToggleActive,
         PlanField::Category
         | PlanField::Unit
@@ -62,69 +89,41 @@ fn click_field(dialog: &mut BillsDialog, field: PlanField) {
         | PlanField::Payee
         | PlanField::Recurrence => PlanFormEvent::ToggleList(field),
         _ => PlanFormEvent::Focus(field),
-    };
-    handle(presenter, event);
+    }
 }
 
-/// A click on row `index` of `field`'s open list.
-fn click_option(dialog: &mut BillsDialog, field: PlanField, index: usize) {
-    let View::PlanForm(presenter, _) = &mut dialog.view else {
-        return;
-    };
-    let view = presenter.view_model();
-    let event = match field {
-        PlanField::Category => view
-            .category
-            .options
-            .get(index)
-            .map(|choice| PlanFormEvent::Category(choice.value)),
-        PlanField::Unit => view
-            .unit
-            .options
-            .get(index)
-            .map(|choice| PlanFormEvent::Unit(choice.value)),
-        PlanField::Account => view
-            .account
-            .options
-            .get(index)
-            .map(|choice| PlanFormEvent::Account(choice.value)),
-        PlanField::Payee => view
-            .payee
-            .options
-            .get(index)
-            .map(|choice| PlanFormEvent::Payee(choice.value)),
-        PlanField::Recurrence => view
-            .recurrence
-            .options
-            .get(index)
-            .map(|choice| PlanFormEvent::Recurrence(choice.value)),
-        _ => None,
-    };
-    if let Some(event) = event {
-        handle(presenter, event);
-    }
+/// A click on row `index` of a select's open list: the event choosing that row's value. The
+/// options are fixed while the Dialog is open.
+fn option_click<T: Clone + 'static>(
+    actions: &Clicks,
+    options: &[Choice<T>],
+    event: fn(T) -> PlanFormEvent,
+) -> OnOptionClick {
+    let values: Vec<T> = options.iter().map(|choice| choice.value.clone()).collect();
+    actions.option(move |index| values.get(index).cloned().map(event).into_iter().collect())
 }
 
 /// The form, its open list's window scrolled from `scroll`, which this draw moves to follow the
 /// highlight.
-pub(super) fn render(
-    view: &PlanFormViewModel,
-    scroll: &mut usize,
-    actions: &Clicks,
-    cx: &App,
-) -> AnyElement {
+fn render(view: &PlanFormViewModel, scroll: &mut usize, actions: &Clicks, cx: &App) -> AnyElement {
     let editing = view.active.is_some();
     let prefix = if editing {
         "edit-bill-plan"
     } else {
         "add-bill-plan"
     };
-    let click =
-        |field: PlanField| BillsDialog::on_click(actions, move |dialog| click_field(dialog, field));
-    let option = |field: PlanField| {
-        BillsDialog::on_option(actions, move |dialog, index| {
-            click_option(dialog, field, index)
-        })
+    let click = |field: PlanField| actions.send(field_click(field));
+    let option = |field: PlanField| match field {
+        PlanField::Category => {
+            option_click(actions, &view.category.options, PlanFormEvent::Category)
+        }
+        PlanField::Unit => option_click(actions, &view.unit.options, PlanFormEvent::Unit),
+        PlanField::Account => option_click(actions, &view.account.options, PlanFormEvent::Account),
+        PlanField::Payee => option_click(actions, &view.payee.options, PlanFormEvent::Payee),
+        PlanField::Recurrence => {
+            option_click(actions, &view.recurrence.options, PlanFormEvent::Recurrence)
+        }
+        _ => actions.option(|_| Vec::new()),
     };
     let text = |id: &'static str, field: &TextFieldView, at: PlanField, placeholder: &str| {
         text_field(
@@ -143,7 +142,7 @@ pub(super) fn render(
         list: SelectList,
         scroll: &mut usize,
         read_only: Option<SharedString>,
-        (on_field_click, on_option_click): (dialog::OnClick, select_field::OnOptionClick),
+        (on_field_click, on_option_click): (dialog::OnClick, OnOptionClick),
         cx: &App,
     ) -> AnyElement {
         let options = labels(view);
@@ -260,11 +259,7 @@ pub(super) fn render(
                                 view.amount_kind
                                     .chosen
                                     .unwrap_or(lib_bills::AmountKind::Fixed),
-                                actions.choose(|dialog: &mut BillsDialog, kind| {
-                                    if let View::PlanForm(presenter, _) = &mut dialog.view {
-                                        handle(presenter, PlanFormEvent::AmountKind(kind));
-                                    }
-                                }),
+                                actions.choose(|kind| vec![PlanFormEvent::AmountKind(kind)]),
                                 None,
                                 cx,
                             )),
@@ -425,7 +420,7 @@ fn error_line(text: String, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-pub(super) fn readback(view: &PlanFormViewModel) -> Vec<(&'static str, String)> {
+fn readback(view: &PlanFormViewModel) -> Vec<(&'static str, String)> {
     vec![
         ("name", view.name.text.clone()),
         (

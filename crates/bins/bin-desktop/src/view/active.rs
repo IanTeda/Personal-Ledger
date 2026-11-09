@@ -11,7 +11,7 @@ use gpui::{AnyElement, App, Entity, IntoElement, Keystroke};
 
 use super::event::Reveal;
 use crate::bills::BillsPage;
-use crate::budgets::view::page::BudgetsPage;
+use crate::budgets::BudgetsPage;
 use crate::dashboard::DashboardPage;
 use crate::documents::view::page::DocumentsPage;
 use crate::settings::state::SettingsView;
@@ -140,8 +140,9 @@ impl ActiveViewEntity {
     pub fn key_ahead(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
         match self {
             Self::Dashboard(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
-            Self::Bills(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
-            Self::Budgets(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
+            // A module page takes keys ahead only in a mode of its own.
+            Self::Bills(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
+            Self::Budgets(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
             Self::Transactions(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
             Self::Documents(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
             Self::Settings(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
@@ -154,28 +155,24 @@ impl ActiveViewEntity {
     pub fn handle_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
         match self {
             Self::Dashboard(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),
-            Self::Bills(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),
-            Self::Budgets(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),
             Self::Transactions(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),
             Self::Documents(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),
             Self::Settings(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),
-            // Every step key is its keymap's.
-            Self::Import(_) | Self::Shell(_) => false,
+            // Every step key and every module page's key is its keymap's.
+            Self::Bills(_) | Self::Budgets(_) | Self::Import(_) | Self::Shell(_) => false,
         }
     }
 
     pub fn apply_movement(&self, movement: Movement, cx: &mut App) {
         match self {
             Self::Dashboard(view) => view.update(cx, |view, cx| view.apply_movement(movement, cx)),
-            Self::Bills(view) => view.update(cx, |view, cx| view.apply_movement(movement, cx)),
-            Self::Budgets(view) => view.update(cx, |view, cx| view.apply_movement(movement, cx)),
             Self::Transactions(view) => {
                 view.update(cx, |view, cx| view.apply_movement(movement, cx))
             }
             Self::Documents(view) => view.update(cx, |view, cx| view.apply_movement(movement, cx)),
             Self::Settings(view) => view.update(cx, |view, cx| view.apply_movement(movement, cx)),
-            // The step's movements are its keymap's.
-            Self::Import(_) | Self::Shell(_) => {}
+            // The step's and a module page's movements are its keymap's.
+            Self::Bills(_) | Self::Budgets(_) | Self::Import(_) | Self::Shell(_) => {}
         }
     }
 
@@ -210,8 +207,8 @@ impl ActiveViewEntity {
     pub fn search_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
         match self {
             Self::Dashboard(view) => view.update(cx, |view, cx| view.search_key(keystroke, cx)),
-            Self::Bills(view) => view.update(cx, |view, cx| view.search_key(keystroke, cx)),
-            Self::Budgets(view) => view.update(cx, |view, cx| view.search_key(keystroke, cx)),
+            Self::Bills(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
+            Self::Budgets(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
             Self::Transactions(view) => view.update(cx, |view, cx| view.search_key(keystroke, cx)),
             Self::Documents(view) => view.update(cx, |view, cx| view.search_key(keystroke, cx)),
             Self::Settings(view) => view.update(cx, |view, cx| view.search_key(keystroke, cx)),
@@ -263,8 +260,8 @@ impl ActiveViewEntity {
     pub fn page_status(&self, cx: &App) -> Option<PageStatus> {
         match self {
             Self::Dashboard(view) => view.read(cx).page_status(cx),
-            Self::Bills(view) => view.read(cx).page_status(cx),
-            Self::Budgets(view) => view.read(cx).page_status(cx),
+            Self::Bills(view) => Some(view.read(cx).page_status()),
+            Self::Budgets(view) => Some(view.read(cx).page_status()),
             Self::Transactions(view) => view.read(cx).page_status(cx),
             Self::Import(view) => view.read(cx).page_status(cx),
             Self::Documents(view) => view.read(cx).page_status(cx),
@@ -277,11 +274,11 @@ impl ActiveViewEntity {
     /// to the global shortcuts.
     pub fn help_group(&self, cx: &App) -> Option<HelpGroup> {
         match self {
-            Self::Bills(view) => view.read(cx).help_group(cx),
+            Self::Bills(view) => view.read(cx).help_group(),
             Self::Transactions(view) => view.read(cx).help_group(cx),
             Self::Documents(view) => view.read(cx).help_group(cx),
             Self::Settings(view) => view.read(cx).help_group(cx),
-            Self::Budgets(view) => view.read(cx).help_group(cx),
+            Self::Budgets(view) => view.read(cx).help_group(),
             Self::Dashboard(_) | Self::Import(_) | Self::Shell(_) => None,
         }
     }

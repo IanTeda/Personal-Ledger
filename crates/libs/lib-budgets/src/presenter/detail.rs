@@ -9,8 +9,9 @@ use bigdecimal::{BigDecimal, Signed, ToPrimitive, Zero};
 use lib_core::{BudgetId, CategoryId, CategoryTypes, Clock, Money, Period};
 use lib_list_cursor::Step;
 use lib_locale::format::format_month_day;
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::keymap::{BACK, Keymap, list_step_chords};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::BACK;
+use lib_viper::presenter::{DialogPresenter, Presenter};
 use lib_viper::view::{DialogFrame, Hint, count};
 
 use super::{BarView, EMPTY_CELL, bar_view, money, period_label};
@@ -75,6 +76,8 @@ pub struct DetailViewModel {
     pub open_transactions: String,
     pub close: String,
     pub edit: String,
+    /// The status line's hints, in the Dialog keymap's chords.
+    pub hints: Vec<Hint>,
 }
 
 pub struct DetailPresenter {
@@ -84,6 +87,8 @@ pub struct DetailPresenter {
     category: CategoryId,
     month: Period,
     selected: usize,
+    /// The Dialog keymap's chords, which its hints show.
+    keys: DialogKeys,
 }
 
 impl DetailPresenter {
@@ -95,6 +100,7 @@ impl DetailPresenter {
         budget: BudgetId,
         category: CategoryId,
         month: Period,
+        keys: DialogKeys,
     ) -> Option<Self> {
         let presenter = Self {
             ports: ports.clone(),
@@ -103,6 +109,7 @@ impl DetailPresenter {
             category,
             month,
             selected: 0,
+            keys,
         };
         presenter.detail()?;
         Some(presenter)
@@ -141,7 +148,33 @@ impl DetailPresenter {
             })
     }
 
-    pub fn handle(&mut self, event: DetailEvent, router: &mut dyn DialogRouter<BudgetsOutcome>) {
+    /// The share of the budget spent, to a whole percent; `None` while Unbudgeted or at zero.
+    fn spent_percent(detail: &CategoryDetail) -> Option<i64> {
+        let budget = detail.figures.budget.as_ref().filter(|b| !b.0.is_zero())?;
+        let ratio: BigDecimal = detail.figures.spent.0.clone() * 100 / budget.0.clone();
+        ratio.round(0).to_i64()
+    }
+
+    /// The status line's hints, in the Dialog keymap's chords it was handed at open.
+    fn hints(&self) -> Vec<Hint> {
+        let mut hints = vec![
+            Hint::new(self.keys.chord(BACK), msg::budgets_hint_close()),
+            Hint::new(self.keys.list_step(), msg::budgets_hint_row()),
+        ];
+        if self.can_edit() {
+            hints.push(Hint::new("e", msg::budgets_hint_edit_budget()));
+        }
+        hints.push(Hint::new("t", msg::budgets_hint_transactions()));
+        hints
+    }
+}
+
+impl Presenter for DetailPresenter {
+    type Event = DetailEvent;
+    type ViewModel = Option<DetailViewModel>;
+    type Router<'r> = dyn DialogRouter<BudgetsOutcome> + 'r;
+
+    fn handle(&mut self, event: DetailEvent, router: &mut Self::Router<'_>) {
         match event {
             DetailEvent::Input(input) => match input {
                 DialogInput::SelectNext => {
@@ -152,7 +185,10 @@ impl DetailPresenter {
                 }
                 DialogInput::Char('t') => self.handle(DetailEvent::Transactions, router),
                 DialogInput::Char('e') => self.handle(DetailEvent::Edit, router),
-                DialogInput::Select | DialogInput::Submit => self.confirm(router),
+                // `enter` hands off to Transactions, as `t` does.
+                DialogInput::Select | DialogInput::Submit => {
+                    self.handle(DetailEvent::Transactions, router);
+                }
                 _ => {}
             },
             DetailEvent::Down => {
@@ -174,19 +210,7 @@ impl DetailPresenter {
         }
     }
 
-    /// `enter` hands off to Transactions, as `t` does.
-    pub fn confirm(&mut self, router: &mut dyn DialogRouter<BudgetsOutcome>) {
-        self.handle(DetailEvent::Transactions, router);
-    }
-
-    /// The share of the budget spent, to a whole percent; `None` while Unbudgeted or at zero.
-    fn spent_percent(detail: &CategoryDetail) -> Option<i64> {
-        let budget = detail.figures.budget.as_ref().filter(|b| !b.0.is_zero())?;
-        let ratio: BigDecimal = detail.figures.spent.0.clone() * 100 / budget.0.clone();
-        ratio.round(0).to_i64()
-    }
-
-    pub fn view_model(&self) -> Option<DetailViewModel> {
+    fn view_model(&self) -> Option<DetailViewModel> {
         let detail = self.detail()?;
         let ports = self.ports.borrow();
         let reads = ports.reads();
@@ -327,23 +351,34 @@ impl DetailPresenter {
             open_transactions: msg::budgets_detail_open_transactions(),
             close: msg::budgets_detail_close(),
             edit: msg::budgets_detail_edit(),
+            hints: self.hints(),
         })
     }
+}
 
-    /// The status line's legend, `back` read from the Dialog `keymap`.
-    pub fn legend<E: Clone>(&self, keymap: &Keymap<E>) -> Vec<Hint> {
-        let mut hints = vec![
-            Hint::new(
-                keymap.chord(BACK).unwrap_or_default(),
-                msg::budgets_hint_close(),
-            ),
-            Hint::new(list_step_chords(keymap), msg::budgets_hint_row()),
-        ];
-        if self.can_edit() {
-            hints.push(Hint::new("e", msg::budgets_hint_edit_budget()));
-        }
-        hints.push(Hint::new("t", msg::budgets_hint_transactions()));
-        hints
+impl DialogPresenter for DetailPresenter {
+    type Outcome = BudgetsOutcome;
+
+    fn input_event(input: DialogInput) -> Self::Event {
+        DetailEvent::Input(input)
+    }
+
+    fn confirm_event() -> Self::Event {
+        DetailEvent::Transactions
+    }
+
+    fn cancel_event() -> Self::Event {
+        DetailEvent::Close
+    }
+
+    /// The confirm is the hand-off to Transactions, always there.
+    fn can_confirm(&self) -> bool {
+        true
+    }
+
+    /// The Transactions are a list throughout.
+    fn steps_list(&self) -> bool {
+        true
     }
 }
 
@@ -369,6 +404,7 @@ mod tests {
             PERSONAL_SPENDING_ID,
             category,
             current(),
+            DialogKeys::default(),
         )
     }
 
@@ -412,7 +448,7 @@ mod tests {
 
         presenter.handle(DetailEvent::Transactions, &mut router);
         presenter.handle(DetailEvent::Edit, &mut router);
-        presenter.confirm(&mut router);
+        presenter.handle(DetailEvent::Transactions, &mut router);
         presenter.handle(DetailEvent::Close, &mut router);
 
         assert_eq!(

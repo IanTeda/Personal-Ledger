@@ -19,17 +19,19 @@ use crate::tags::{SettingsTagsSnapshot, TagsPage, TagsRoutes};
 impl PageView for TagsPagePresenter {
     type Setup = TagsRoutes;
     type Widgets = ();
+    type Before = ();
 
     /// A Tags write, a remove or merge, a rollback; and a Transaction, since usage drives the
     /// likely duplicates and the merge counts.
     const REPAINTS: &'static [Domain] = &[Domain::Tags, Domain::Transactions];
 
     fn with_router<R>(
+        presenter: &mut Self,
         setup: &TagsRoutes,
         cx: &mut Context<'_, TagsPage>,
-        handle: impl FnOnce(&mut Self::Router<'_>) -> R,
+        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
     ) -> R {
-        handle(&mut PageRouter { routes: setup, cx })
+        handle(presenter, &mut PageRouter { routes: setup, cx })
     }
 
     fn render(

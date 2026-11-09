@@ -22,8 +22,10 @@ use lib_locale::format::{
     AmountStyle, format_amount, format_date_input, format_month_day, parse_optional_date,
     parse_positive_amount, upper,
 };
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::view::{Choice, DialogFrame, TextFieldView};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::{BACK, SELECT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
+use lib_viper::view::{Choice, DialogFrame, Hint, TextFieldView};
 
 use crate::interactor::PayBill;
 use crate::msg;
@@ -109,6 +111,8 @@ pub struct PayViewModel {
     pub direct_notice: String,
     /// Why the last confirm was refused.
     pub refusal: Option<String>,
+    /// The status line's hints, in the Dialog keymap's chords.
+    pub hints: Vec<Hint>,
 }
 
 /// What the Dialog shows that it reads once, when it opens.
@@ -134,16 +138,20 @@ pub struct PayPresenter {
     /// What the Date field defaults to and is judged on.
     clock: Clock,
     date_style: Option<DateStyle>,
+    /// The Dialog keymap's chords, which its hints show.
+    keys: DialogKeys,
 }
 
 impl PayPresenter {
-    /// The Dialog on `request`'s entry, or `None` when its Plan is gone.
+    /// The Dialog on `request`'s entry, or `None` when its Plan is gone. `keys` are the Dialog
+    /// keymap's chords, which its hints show.
     pub fn new(
         bills: SharedPorts,
         payments: SharedPayments,
         request: PayRequest,
         clock: Clock,
         date_style: Option<DateStyle>,
+        keys: DialogKeys,
     ) -> Option<Self> {
         let PayRequest {
             entry,
@@ -234,22 +242,8 @@ impl PayPresenter {
             refusal: None,
             clock,
             date_style,
+            keys,
         })
-    }
-
-    /// Any event clears a refused confirm; Confirm sets it again if it is refused once more.
-    pub fn handle(&mut self, event: PayEvent, router: &mut dyn DialogRouter<PayOutcome>) {
-        self.refusal = None;
-        match event {
-            PayEvent::Input(input) => self.input(input, router),
-            PayEvent::Mode(mode) => self.mode = mode,
-            PayEvent::Choose(choice) => self.choose(choice),
-            PayEvent::Amount(text) => self.amount = decimal_characters(&text),
-            PayEvent::Date(text) => self.date = text,
-            PayEvent::Focus(field) => self.focused = field,
-            PayEvent::Confirm => self.confirm(router),
-            PayEvent::Cancel => router.close(None),
-        }
     }
 
     /// What `input` means on the active panel.
@@ -381,24 +375,62 @@ impl PayPresenter {
         parse_optional_date(&self.date, self.clock.today(), self.date_style)
     }
 
-    /// Whether confirm would pay or match from the active panel: Pay it directly needs a positive
-    /// amount and a date, Match a chosen candidate.
-    fn can_confirm(&self) -> bool {
-        match self.mode {
-            PayMode::Direct => {
-                self.amount_money().is_some() && matches!(self.parse_date(), Ok(Some(_)))
-            }
-            PayMode::Match => matches!(self.choice, Some(MatchChoice::Candidate(_))),
+    /// The status line's hints: `←`/`→` switch panel on either.
+    fn hints(&self) -> Vec<Hint> {
+        vec![
+            self.keys.hint(BACK, lib_locale::msg::dialog_hint_cancel()),
+            self.keys
+                .hint(SELECT, lib_locale::msg::dialog_hint_confirm()),
+            Hint::new(self.keys.list_step(), lib_locale::msg::dialog_hint_choose()),
+            Hint::new(
+                "\u{2190}/\u{2192}",
+                msg::bill_payments_pay_hint_switch_panel(),
+            ),
+        ]
+    }
+}
+
+/// `text` with only a decimal's characters: digits and the first point.
+fn decimal_characters(text: &str) -> String {
+    let mut kept = String::new();
+    for ch in text.chars() {
+        if ch.is_ascii_digit() || (ch == '.' && !kept.contains('.')) {
+            kept.push(ch);
+        }
+    }
+    kept
+}
+
+/// A refused confirm. The panel's own checks catch a bad amount first, so what's left is an entry
+/// settled, superseded or gone under the Dialog, or a candidate no longer one.
+fn refusal_text(refusal: &Error) -> String {
+    match refusal {
+        Error::AmountNotPositive => msg::bill_payments_pay_error_amount(),
+        _ => msg::bill_payments_pay_error_gone(),
+    }
+}
+
+impl Presenter for PayPresenter {
+    type Event = PayEvent;
+    type ViewModel = PayViewModel;
+    type Router<'r> = dyn DialogRouter<PayOutcome> + 'r;
+
+    /// Any event clears a refused confirm; Confirm sets it again if it is refused once more.
+    fn handle(&mut self, event: PayEvent, router: &mut Self::Router<'_>) {
+        self.refusal = None;
+        match event {
+            PayEvent::Input(input) => self.input(input, router),
+            PayEvent::Mode(mode) => self.mode = mode,
+            PayEvent::Choose(choice) => self.choose(choice),
+            PayEvent::Amount(text) => self.amount = decimal_characters(&text),
+            PayEvent::Date(text) => self.date = text,
+            PayEvent::Focus(field) => self.focused = field,
+            PayEvent::Confirm => self.confirm(router),
+            PayEvent::Cancel => router.close(None),
         }
     }
 
-    /// Whether the Dialog steps a list right now (the Match panel's), so the Dialog keymap's list step (`j`/`k` by
-    /// default) reaches it as a select step rather than typing.
-    pub fn steps_list(&self) -> bool {
-        self.mode == PayMode::Match
-    }
-
-    pub fn view_model(&self) -> PayViewModel {
+    fn view_model(&self) -> PayViewModel {
         let direct = self.mode == PayMode::Direct;
         let text = |label: String, text: &str, placeholder: String, field| TextFieldView {
             label,
@@ -456,27 +488,41 @@ impl PayPresenter {
             chips: self.opened.chips.clone(),
             direct_notice: msg::bill_payments_pay_direct_notice(),
             refusal: self.refusal.clone(),
+            hints: self.hints(),
         }
     }
 }
 
-/// `text` with only a decimal's characters: digits and the first point.
-fn decimal_characters(text: &str) -> String {
-    let mut kept = String::new();
-    for ch in text.chars() {
-        if ch.is_ascii_digit() || (ch == '.' && !kept.contains('.')) {
-            kept.push(ch);
+impl DialogPresenter for PayPresenter {
+    type Outcome = PayOutcome;
+
+    fn input_event(input: DialogInput) -> PayEvent {
+        PayEvent::Input(input)
+    }
+
+    fn confirm_event() -> PayEvent {
+        PayEvent::Confirm
+    }
+
+    fn cancel_event() -> PayEvent {
+        PayEvent::Cancel
+    }
+
+    /// Whether confirm would pay or match from the active panel: Pay it directly needs a positive
+    /// amount and a date, Match a chosen candidate.
+    fn can_confirm(&self) -> bool {
+        match self.mode {
+            PayMode::Direct => {
+                self.amount_money().is_some() && matches!(self.parse_date(), Ok(Some(_)))
+            }
+            PayMode::Match => matches!(self.choice, Some(MatchChoice::Candidate(_))),
         }
     }
-    kept
-}
 
-/// A refused confirm. The panel's own checks catch a bad amount first, so what's left is an entry
-/// settled, superseded or gone under the Dialog, or a candidate no longer one.
-fn refusal_text(refusal: &Error) -> String {
-    match refusal {
-        Error::AmountNotPositive => msg::bill_payments_pay_error_amount(),
-        _ => msg::bill_payments_pay_error_gone(),
+    /// Whether the Dialog steps a list right now (the Match panel's), so the Dialog keymap's list step (`j`/`k` by
+    /// default) reaches it as a select step rather than typing.
+    fn steps_list(&self) -> bool {
+        self.mode == PayMode::Match
     }
 }
 
@@ -533,6 +579,7 @@ mod tests {
                 request,
                 Clock::fixed(today()),
                 None,
+                DialogKeys::default(),
             )
             .expect("the Plan is there");
             Self {
@@ -821,7 +868,8 @@ mod tests {
                 PortsPayments::shared(&ports),
                 request,
                 Clock::fixed(today()),
-                None
+                None,
+                DialogKeys::default(),
             )
             .is_none()
         );
@@ -931,5 +979,35 @@ mod tests {
         dialog.send(PayEvent::Input(DialogInput::SelectPrevious));
         dialog.send(PayEvent::Input(DialogInput::Submit));
         assert_eq!(dialog.router.closed, [Some(PayOutcome::Matched)]);
+    }
+
+    #[test]
+    fn the_hints_read_the_dialog_keys() {
+        use lib_viper::keymap::{Binding, KeyBindingConfig, Keymap, LIST_NEXT, LIST_PREVIOUS};
+        const BINDINGS: &[Binding<()>] = &[
+            Binding::hidden(BACK, "esc", ()),
+            Binding::hidden(SELECT, "enter", ()),
+            Binding::hidden(LIST_NEXT, "j", ()),
+            Binding::hidden(LIST_PREVIOUS, "k", ()),
+        ];
+        let mut dialog = Dialog::open();
+        dialog.presenter.keys =
+            DialogKeys::of(&Keymap::new(BINDINGS, &KeyBindingConfig::default()));
+
+        let hints: Vec<String> = dialog
+            .view()
+            .hints
+            .into_iter()
+            .map(|hint| format!("{} {}", hint.chord, hint.action))
+            .collect();
+        assert_eq!(
+            hints,
+            [
+                "esc cancel",
+                "enter confirm",
+                "j/k choose",
+                "\u{2190}/\u{2192} switch panel"
+            ]
+        );
     }
 }

@@ -1,6 +1,7 @@
 //! The Bills page (8a–8e): the header's Add button, the Schedule and Planner tabs, and the status
 //! line's legend and right-hand text. It holds the two tab Presenters and sends each event to the
-//! tab it belongs to, ignoring one for the tab not shown.
+//! tab it belongs to, showing that tab first when another shows: a palette Command of the other
+//! tab acts there, while its key, which the shown tab's keymap doesn't bind, falls through.
 //!
 //! The page keeps the Bill Schedule generated for itself: when a running Client crosses into a new
 //! calendar month, the next event the page handles runs [`PopulateSchedule`] first, so the new
@@ -12,10 +13,11 @@ use lib_list_cursor::Step;
 use lib_toast::Notice;
 use lib_viper::display::{StatusGlyphs, flag_glyph};
 use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
+use lib_viper::presenter::{PageMode, PagePresenter, Presenter};
 use lib_viper::view::Hint;
 
 use super::planner::{PlannerEvent, PlannerPresenter, PlannerViewModel};
-use super::schedule::{FilterField, ScheduleEvent, SchedulePresenter, ScheduleViewModel};
+use super::schedule::{ScheduleEvent, SchedulePresenter, ScheduleViewModel};
 use crate::interactor::PopulateSchedule;
 use crate::keymap::{
     ALL, CHIP_PAID, CHIP_UPCOMING, FILTERS, NEXT_PERIOD, NEXT_TAB, PAY, PREVIOUS_PERIOD, SKIP,
@@ -59,10 +61,10 @@ pub enum BillsPageEvent {
     Planner(PlannerEvent),
     /// The page became the destination.
     Entered,
-    /// The Display Preference the Plan form's dates are typed in.
-    SetDateStyle(Option<DateStyle>),
-    /// The Status glyphs Display Preference, which marks a row in Needs Attention.
+    /// The Display Preferences: the date style the Plan form's and Pay's dates are typed in, and
+    /// the Status glyphs, which mark a row in Needs Attention.
     DisplayChanged {
+        date_style: Option<DateStyle>,
         glyphs: StatusGlyphs,
     },
     /// A hand-off from another View: an entry in the month that shows it, a Plan on the Planner,
@@ -110,7 +112,11 @@ pub struct TabView {
 pub struct BillsPagePresenter {
     ports: SharedPorts,
     clock: Clock,
+    /// Every binding, which the legend reads its chords from.
     keymap: Keymap<BillsPageEvent>,
+    /// The keymap each tab reaches its keys through: its own and the shared ones.
+    schedule_keys: Keymap<BillsPageEvent>,
+    planner_keys: Keymap<BillsPageEvent>,
     tab: BillsTab,
     schedule: SchedulePresenter,
     planner: PlannerPresenter,
@@ -126,11 +132,14 @@ impl BillsPagePresenter {
     /// Client looks keys up in, so the legend shows the chords it binds.
     pub fn new(ports: SharedPorts, clock: Clock, keymap: Keymap<BillsPageEvent>) -> Self {
         let today = clock.today();
+        let on = |tab| move |event: &BillsPageEvent| event.tab().is_none_or(|own| own == tab);
         Self {
             schedule: SchedulePresenter::new(ports.clone(), clock.clone()),
             planner: PlannerPresenter::new(ports.clone()),
             ports,
             clock,
+            schedule_keys: keymap.scoped(on(BillsTab::Schedule)),
+            planner_keys: keymap.scoped(on(BillsTab::Planner)),
             keymap,
             tab: BillsTab::default(),
             generated: Period::of(today),
@@ -149,15 +158,36 @@ impl BillsPagePresenter {
         self.tab
     }
 
-    /// The Schedule's focused scope select, while the Schedule shows.
-    pub fn filter_focus(&self) -> Option<FilterField> {
-        (self.tab == BillsTab::Schedule)
-            .then(|| self.schedule.filter_focus())
-            .flatten()
+    /// Generates the Schedule for a month the Client has crossed into since it last did.
+    fn catch_up(&mut self) {
+        let today = self.clock.today();
+        if Period::of(today) == self.generated {
+            return;
+        }
+        PopulateSchedule { today }.run(self.ports.borrow_mut().split_mut().bills);
+        self.generated = Period::of(today);
     }
 
-    pub fn handle(&mut self, event: BillsPageEvent, router: &mut dyn BillsRouter) {
+    /// Switches the tab, dropping the selection and any filter focus. A new tab starts at the top;
+    /// the Shell clears a stale status message on the key that switched it (ADR-0048), and the
+    /// Client on a click.
+    fn show_tab(&mut self, tab: BillsTab) {
+        self.tab = tab;
+        self.schedule.reset_selection();
+        self.planner.reset_selection();
+    }
+}
+
+impl Presenter for BillsPagePresenter {
+    type Event = BillsPageEvent;
+    type ViewModel = BillsPageViewModel;
+    type Router<'r> = dyn BillsRouter + 'r;
+
+    fn handle(&mut self, event: BillsPageEvent, router: &mut Self::Router<'_>) {
         self.catch_up();
+        if let Some(tab) = event.tab().filter(|tab| *tab != self.tab) {
+            self.show_tab(tab);
+        }
         match event {
             BillsPageEvent::Move(step) => match self.tab {
                 BillsTab::Schedule => {
@@ -174,19 +204,13 @@ impl BillsPagePresenter {
             BillsPageEvent::New => {
                 router.open_plan_form(None);
             }
-            BillsPageEvent::Schedule(event) => {
-                if self.tab == BillsTab::Schedule {
-                    self.schedule.handle(event, router);
-                }
-            }
-            BillsPageEvent::Planner(event) => {
-                if self.tab == BillsTab::Planner {
-                    self.planner.handle(event, router);
-                }
-            }
+            BillsPageEvent::Schedule(event) => self.schedule.handle(event, router),
+            BillsPageEvent::Planner(event) => self.planner.handle(event, router),
             BillsPageEvent::Entered => {}
-            BillsPageEvent::SetDateStyle(style) => self.date_style = style,
-            BillsPageEvent::DisplayChanged { glyphs } => self.glyphs = glyphs,
+            BillsPageEvent::DisplayChanged { date_style, glyphs } => {
+                self.date_style = date_style;
+                self.glyphs = glyphs;
+            }
             // A hand-off to a row that has gone leaves the page as it was.
             BillsPageEvent::RevealEntry(id) => {
                 if self.ports.borrow().bills().entry(id).is_some() {
@@ -211,31 +235,13 @@ impl BillsPagePresenter {
                 Some(BillsOutcome::SkipRefused) => {
                     router.notify(Notice::Status(msg::bills_skip_error_gone()));
                 }
-                Some(BillsOutcome::PlanSaved(_) | BillsOutcome::Skipped) | None => {}
+                Some(BillsOutcome::PlanSaved(_) | BillsOutcome::Skipped | BillsOutcome::Paid)
+                | None => {}
             },
         }
     }
 
-    /// Generates the Schedule for a month the Client has crossed into since it last did.
-    fn catch_up(&mut self) {
-        let today = self.clock.today();
-        if Period::of(today) == self.generated {
-            return;
-        }
-        PopulateSchedule { today }.run(self.ports.borrow_mut().split_mut().bills);
-        self.generated = Period::of(today);
-    }
-
-    /// Switches the tab, dropping the selection and any filter focus. A new tab starts at the top;
-    /// the Shell clears a stale status message on the key that switched it (ADR-0048), and the
-    /// Client on a click.
-    fn show_tab(&mut self, tab: BillsTab) {
-        self.tab = tab;
-        self.schedule.reset_selection();
-        self.planner.reset_selection();
-    }
-
-    pub fn view_model(&self) -> BillsPageViewModel {
+    fn view_model(&self) -> BillsPageViewModel {
         let mut schedule = self.schedule.view_model();
         for row in schedule.rows.iter_mut().filter(|row| row.needs_attention) {
             row.flag_glyph = Some(flag_glyph(self.glyphs).to_string());
@@ -264,7 +270,32 @@ impl BillsPagePresenter {
             status,
         }
     }
+}
 
+impl PagePresenter for BillsPagePresenter {
+    type Outcome = BillsOutcome;
+
+    fn dialog_closed(outcome: Option<BillsOutcome>) -> BillsPageEvent {
+        BillsPageEvent::DialogClosed(outcome)
+    }
+
+    /// The tab shown's keys and the ones both tabs share.
+    fn keymap(&self) -> &Keymap<BillsPageEvent> {
+        match self.tab {
+            BillsTab::Schedule => &self.schedule_keys,
+            BillsTab::Planner => &self.planner_keys,
+        }
+    }
+
+    /// An open scope select's list, which takes the moves up and down and `select` until it
+    /// closes.
+    fn mode(&self) -> Option<PageMode> {
+        (self.tab == BillsTab::Schedule && self.schedule.filter_list_open())
+            .then_some(PageMode::Filter)
+    }
+}
+
+impl BillsPagePresenter {
     /// The tab shown's legend, its chords read from the keymap so an override shows.
     fn hints(&self) -> Vec<Hint> {
         let chord = |command: &str| self.keymap.chord(command).unwrap_or_default().to_string();
@@ -446,6 +477,7 @@ mod tests {
             .collect();
         assert_eq!(flagged(&page), unicode);
         page.send(BillsPageEvent::DisplayChanged {
+            date_style: None,
             glyphs: StatusGlyphs::AsciiFallback,
         });
         let ascii: Vec<_> = attention(&page)
@@ -713,14 +745,90 @@ mod tests {
     }
 
     #[test]
-    fn a_schedule_key_does_nothing_on_the_planner() {
+    fn a_schedule_key_is_not_the_planners_but_its_command_shows_the_schedule_first() {
         let mut page = Page::new();
         page.send(BillsPageEvent::NextTab);
         page.router.routed.clear();
 
-        page.schedule(ScheduleEvent::Pay);
+        assert_eq!(page.presenter.keymap().event("p"), None);
+        let pay = page
+            .presenter
+            .keymap()
+            .event_for(PAY)
+            .expect("the palette finds Pay by name");
+        page.send(pay);
 
-        assert!(page.router.routed.is_empty());
+        let view = page.view();
+        assert_eq!(view.tab, BillsTab::Schedule);
+        let gym = view.schedule.rows[0].id;
+        assert!(
+            matches!(page.router.routed.as_slice(), [Routed::Pay(request)] if request.entry == gym),
+            "Pay acts on the Schedule's first row: {:?}",
+            page.router.routed
+        );
+    }
+
+    #[test]
+    fn a_focused_scope_select_steps_with_the_moves_and_opens_a_list_that_is_a_mode() {
+        let mut page = Page::new();
+        let plan = |page: &Page| page.view().schedule.filters.selects[0].view.chosen;
+        page.schedule(ScheduleEvent::CycleFilter);
+
+        page.send(BillsPageEvent::Move(Step::Next));
+        let first = page.view().schedule.filters.selects[0].view.options[1].value;
+        assert_eq!(plan(&page), Some(first), "a closed select steps its value");
+        assert_eq!(page.presenter.mode(), None);
+        page.send(BillsPageEvent::Move(Step::Last));
+        assert_eq!(plan(&page), Some(first), "the other moves wait");
+
+        page.send(BillsPageEvent::Open);
+        assert!(page.view().schedule.filters.selects[0].list.is_open());
+        assert_eq!(page.presenter.mode(), Some(PageMode::Filter));
+        page.send(BillsPageEvent::Move(Step::Next));
+        page.send(BillsPageEvent::Open);
+        let second = page.view().schedule.filters.selects[0].view.options[2].value;
+        assert_eq!(plan(&page), Some(second), "Open picks the highlight");
+        assert_eq!(page.presenter.mode(), None);
+    }
+
+    #[test]
+    fn escape_on_the_filter_row_closes_an_open_list_then_leaves_the_row() {
+        let mut page = Page::new();
+        page.schedule(ScheduleEvent::ToggleFilter(FilterField::Category));
+        assert_eq!(
+            page.view().schedule.filters.focused,
+            Some(FilterField::Category)
+        );
+        assert!(page.view().schedule.filters.selects[1].list.is_open());
+
+        page.schedule(ScheduleEvent::LeaveFilters);
+        assert_eq!(
+            page.view().schedule.filters.focused,
+            Some(FilterField::Category)
+        );
+        assert!(!page.view().schedule.filters.selects[1].list.is_open());
+        page.schedule(ScheduleEvent::LeaveFilters);
+        assert_eq!(page.view().schedule.filters.focused, None);
+    }
+
+    #[test]
+    fn a_click_on_an_option_scopes_the_schedule_and_closes_the_list() {
+        let mut page = Page::new();
+        page.schedule(ScheduleEvent::ToggleFilter(FilterField::Plan));
+        let telstra = page.view().schedule.rows[2].id.plan_id;
+        let index = page.view().schedule.filters.selects[0]
+            .view
+            .options
+            .iter()
+            .position(|choice| choice.value == FilterChoice::Plan(telstra))
+            .expect("Telstra is a scope");
+
+        page.schedule(ScheduleEvent::FilterOption(FilterField::Plan, index));
+
+        let view = page.view().schedule;
+        assert!(view.rows.iter().all(|row| row.name == "Telstra Internet"));
+        assert!(!view.filters.selects[0].list.is_open());
+        assert_eq!(page.presenter.mode(), None);
     }
 
     #[test]

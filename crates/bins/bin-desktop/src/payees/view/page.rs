@@ -20,17 +20,19 @@ use crate::view::event::Reveal;
 impl PageView for PayeesPagePresenter {
     type Setup = PayeesRoutes;
     type Widgets = ();
+    type Before = ();
 
     /// A Payees write, Import's new Payees, a rollback; and the Categories whose labels the Default
     /// category cells show.
     const REPAINTS: &'static [Domain] = &[Domain::Payees, Domain::Categories];
 
     fn with_router<R>(
+        presenter: &mut Self,
         setup: &PayeesRoutes,
         cx: &mut Context<'_, PayeesPage>,
-        handle: impl FnOnce(&mut Self::Router<'_>) -> R,
+        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
     ) -> R {
-        handle(&mut PageRouter { routes: setup, cx })
+        handle(presenter, &mut PageRouter { routes: setup, cx })
     }
 
     fn render(

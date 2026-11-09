@@ -14,8 +14,9 @@
 use bigdecimal::{BigDecimal, RoundingMode, Signed};
 use lib_core::{BudgetId, CategoryId, Clock, Money, Period};
 use lib_toast::{Notice, ToastKind};
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::keymap::{BACK, Keymap, NEXT_FIELD, SELECT};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::{BACK, NEXT_FIELD, SELECT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
 use lib_viper::view::{
     Choice, DialogFrame, Hint, SelectList, SelectMove, SelectView, TextFieldView,
 };
@@ -81,6 +82,8 @@ pub enum LimitFormEvent {
     StepForward,
     /// `Stop budgeting…`.
     StopBudgeting,
+    /// `submit`, `select` where it confirms, and the submit button.
+    Confirm,
     Cancel,
 }
 
@@ -114,6 +117,8 @@ pub struct LimitFormViewModel {
     /// `Stop budgeting…`, offered while editing a budgeted Category.
     pub stop: Option<String>,
     pub focused: LimitField,
+    /// The status line's hints, in the Dialog keymap's chords.
+    pub hints: Vec<Hint>,
 }
 
 pub struct LimitFormPresenter {
@@ -134,6 +139,8 @@ pub struct LimitFormPresenter {
     /// The focused select's list; it closes whenever focus leaves.
     list: SelectList,
     error: Option<String>,
+    /// The Dialog keymap's chords, which its hints show.
+    keys: DialogKeys,
 }
 
 /// What a save writes.
@@ -154,10 +161,11 @@ impl LimitFormPresenter {
         budget: BudgetId,
         category: CategoryId,
         month: Period,
+        keys: DialogKeys,
     ) -> Option<Self> {
         let found = Self::editable(ports, budget)?;
         let current = Period::of(clock.today());
-        let mut form = Self::open(ports, clock, &found);
+        let mut form = Self::open(ports, clock, &found, keys);
         if applied(found.chain(category), current).is_some() {
             let is_leaf = ports
                 .borrow()
@@ -191,9 +199,14 @@ impl LimitFormPresenter {
     }
 
     /// **+ Budget a category**: Edit budget with its Category picker.
-    pub fn picker(ports: &SharedPorts, clock: Clock, budget: BudgetId) -> Option<Self> {
+    pub fn picker(
+        ports: &SharedPorts,
+        clock: Clock,
+        budget: BudgetId,
+        keys: DialogKeys,
+    ) -> Option<Self> {
         let found = Self::editable(ports, budget)?;
-        Some(Self::open(ports, clock, &found))
+        Some(Self::open(ports, clock, &found, keys))
     }
 
     fn editable(ports: &SharedPorts, budget: BudgetId) -> Option<Budget> {
@@ -205,7 +218,7 @@ impl LimitFormPresenter {
     }
 
     /// The picker's defaults: the current month, Onward and no Rollover.
-    fn open(ports: &SharedPorts, clock: Clock, budget: &Budget) -> Self {
+    fn open(ports: &SharedPorts, clock: Clock, budget: &Budget, keys: DialogKeys) -> Self {
         let current = Period::of(clock.today());
         let unbudgeted = unbudgeted_leaves(budget, ports.borrow().reads(), current);
         let categories = ports
@@ -233,6 +246,7 @@ impl LimitFormPresenter {
             focused: LimitField::Category,
             list: SelectList::default(),
             error: None,
+            keys,
         }
     }
 
@@ -248,66 +262,16 @@ impl LimitFormPresenter {
         self.focused
     }
 
-    pub fn handle(&mut self, event: LimitFormEvent, router: &mut dyn DialogRouter<BudgetsOutcome>) {
-        match event {
-            LimitFormEvent::Input(input) => self.input(input, router),
-            LimitFormEvent::Amount(text) => {
-                self.amount = text;
-                self.error = None;
-            }
-            LimitFormEvent::Category(id) => {
-                self.list.close();
-                self.pick_category(id);
-            }
-            LimitFormEvent::Starting(month) => {
-                self.list.close();
-                self.pick_starting(month);
-            }
-            LimitFormEvent::ToggleList(field) => self.toggle_list(field),
-            LimitFormEvent::CloseList => {
-                self.list.close();
-            }
-            LimitFormEvent::Span(span) => {
-                self.list.close();
-                self.focused = LimitField::Span;
-                self.span = span;
-                self.error = None;
-            }
-            LimitFormEvent::Rollover(rollover) => {
-                self.list.close();
-                self.focused = LimitField::Rollover;
-                self.rollover = rollover;
-                self.error = None;
-            }
-            LimitFormEvent::Focus(field) => {
-                self.list.close();
-                if field != LimitField::Category || self.is_pick() {
-                    self.focused = field;
-                }
-            }
-            LimitFormEvent::NextField => self.cycle(false),
-            LimitFormEvent::PrevField => self.cycle(true),
-            LimitFormEvent::StepBack => self.step(false),
-            LimitFormEvent::StepForward => self.step(true),
-            LimitFormEvent::StopBudgeting => {
-                if let Some(category) = self.fixed {
-                    router.close(Some(BudgetsOutcome::Stop(category, self.starting)));
-                }
-            }
-            LimitFormEvent::Cancel => router.close(None),
-        }
-    }
-
     /// What `input` means on the focused field.
     fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<BudgetsOutcome>) {
         match (input, self.focused) {
             (DialogInput::NextField, _) => self.cycle(false),
             (DialogInput::PreviousField, _) => self.cycle(true),
-            (DialogInput::Submit, _) => self.confirm(router),
+            (DialogInput::Submit, _) => self.submit(router),
             (DialogInput::Left, _) => self.step(false),
             (DialogInput::Right, _) => self.step(true),
             // `select` confirms except where it commits an open list.
-            (DialogInput::Select, _) if !self.list.is_open() => self.confirm(router),
+            (DialogInput::Select, _) if !self.list.is_open() => self.submit(router),
             (_, LimitField::Category) => {
                 if self.is_pick() {
                     let options = self.category_choices();
@@ -454,13 +418,9 @@ impl LimitFormPresenter {
         })
     }
 
-    fn can_confirm(&self) -> bool {
-        self.draft().is_some()
-    }
-
     /// Saves the amount through the Interactor, raises the Toast and closes the Dialog; a refusal
     /// stays on the form. A form that can't confirm does nothing.
-    pub fn confirm(&mut self, router: &mut dyn DialogRouter<BudgetsOutcome>) {
+    fn submit(&mut self, router: &mut dyn DialogRouter<BudgetsOutcome>) {
         let Some(draft) = self.draft() else {
             return;
         };
@@ -559,7 +519,74 @@ impl LimitFormPresenter {
         Some(lines)
     }
 
-    pub fn view_model(&self) -> LimitFormViewModel {
+    /// The status line's hints, in the Dialog keymap's chords it was handed at open.
+    fn hints(&self) -> Vec<Hint> {
+        vec![
+            Hint::new(self.keys.chord(NEXT_FIELD), msg::budgets_hint_next_field()),
+            Hint::new("\u{2190}/\u{2192}", msg::budgets_hint_choose()),
+            Hint::new(self.keys.chord(SELECT), msg::budgets_hint_save()),
+            Hint::new(self.keys.chord(BACK), msg::budgets_hint_cancel()),
+        ]
+    }
+}
+
+impl Presenter for LimitFormPresenter {
+    type Event = LimitFormEvent;
+    type ViewModel = LimitFormViewModel;
+    type Router<'r> = dyn DialogRouter<BudgetsOutcome> + 'r;
+
+    fn handle(&mut self, event: LimitFormEvent, router: &mut Self::Router<'_>) {
+        match event {
+            LimitFormEvent::Input(input) => self.input(input, router),
+            LimitFormEvent::Amount(text) => {
+                self.amount = text;
+                self.error = None;
+            }
+            LimitFormEvent::Category(id) => {
+                self.list.close();
+                self.pick_category(id);
+            }
+            LimitFormEvent::Starting(month) => {
+                self.list.close();
+                self.pick_starting(month);
+            }
+            LimitFormEvent::ToggleList(field) => self.toggle_list(field),
+            LimitFormEvent::CloseList => {
+                self.list.close();
+            }
+            LimitFormEvent::Span(span) => {
+                self.list.close();
+                self.focused = LimitField::Span;
+                self.span = span;
+                self.error = None;
+            }
+            LimitFormEvent::Rollover(rollover) => {
+                self.list.close();
+                self.focused = LimitField::Rollover;
+                self.rollover = rollover;
+                self.error = None;
+            }
+            LimitFormEvent::Focus(field) => {
+                self.list.close();
+                if field != LimitField::Category || self.is_pick() {
+                    self.focused = field;
+                }
+            }
+            LimitFormEvent::NextField => self.cycle(false),
+            LimitFormEvent::PrevField => self.cycle(true),
+            LimitFormEvent::StepBack => self.step(false),
+            LimitFormEvent::StepForward => self.step(true),
+            LimitFormEvent::StopBudgeting => {
+                if let Some(category) = self.fixed {
+                    router.close(Some(BudgetsOutcome::Stop(category, self.starting)));
+                }
+            }
+            LimitFormEvent::Confirm => self.submit(router),
+            LimitFormEvent::Cancel => router.close(None),
+        }
+    }
+
+    fn view_model(&self) -> LimitFormViewModel {
         let draft = self.draft();
         let title = match self.fixed {
             Some(category) => msg::budgets_limit_title(&self.category_name(category)),
@@ -641,26 +668,33 @@ impl LimitFormPresenter {
             error: self.error.clone(),
             stop: (!pick).then(msg::budgets_limit_stop),
             focused: self.focused,
+            hints: self.hints(),
         }
     }
+}
 
-    /// The status line's legend, `next_field`, `select` and `back` read from the Dialog `keymap`.
-    pub fn legend<E: Clone>(&self, keymap: &Keymap<E>) -> Vec<Hint> {
-        vec![
-            Hint::new(
-                keymap.chord(NEXT_FIELD).unwrap_or_default(),
-                msg::budgets_hint_next_field(),
-            ),
-            Hint::new("\u{2190}/\u{2192}", msg::budgets_hint_choose()),
-            Hint::new(
-                keymap.chord(SELECT).unwrap_or_default(),
-                msg::budgets_hint_save(),
-            ),
-            Hint::new(
-                keymap.chord(BACK).unwrap_or_default(),
-                msg::budgets_hint_cancel(),
-            ),
-        ]
+impl DialogPresenter for LimitFormPresenter {
+    type Outcome = BudgetsOutcome;
+
+    fn input_event(input: DialogInput) -> Self::Event {
+        LimitFormEvent::Input(input)
+    }
+
+    fn confirm_event() -> Self::Event {
+        LimitFormEvent::Confirm
+    }
+
+    fn cancel_event() -> Self::Event {
+        LimitFormEvent::Cancel
+    }
+
+    /// The form would save: an amount, a Category and a month.
+    fn can_confirm(&self) -> bool {
+        self.draft().is_some()
+    }
+
+    fn close_open_select(&mut self) -> bool {
+        self.list.close()
     }
 }
 
@@ -694,6 +728,7 @@ mod tests {
                     PERSONAL_SPENDING_ID,
                     GROCERIES,
                     current(),
+                    DialogKeys::default(),
                 )
                 .expect("groceries is budgeted"),
                 ports,
@@ -720,6 +755,7 @@ mod tests {
                     &shared,
                     Clock::fixed(today()),
                     PERSONAL_SPENDING_ID,
+                    DialogKeys::default(),
                 )
                 .expect("the default takes edits"),
                 ports,
@@ -862,7 +898,8 @@ mod tests {
         let mut form = Form::edit();
         form.send(LimitFormEvent::Amount("700.456".into()));
 
-        form.presenter.confirm(&mut form.router);
+        form.presenter
+            .handle(LimitFormEvent::Confirm, &mut form.router);
 
         assert_eq!(
             form.router.routed,
@@ -916,6 +953,7 @@ mod tests {
                 PERSONAL_SPENDING_ID,
                 category,
                 current(),
+                DialogKeys::default(),
             )
         };
         assert!(open(CategoryId::seed(6)).is_none(), "Food is a parent");
@@ -931,8 +969,13 @@ mod tests {
             });
         assert!(open(GROCERIES).is_none());
         assert!(
-            LimitFormPresenter::picker(&shared, Clock::fixed(today()), PERSONAL_SPENDING_ID)
-                .is_none()
+            LimitFormPresenter::picker(
+                &shared,
+                Clock::fixed(today()),
+                PERSONAL_SPENDING_ID,
+                DialogKeys::default()
+            )
+            .is_none()
         );
     }
 

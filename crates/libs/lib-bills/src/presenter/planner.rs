@@ -9,6 +9,8 @@ use lib_locale::format::upper;
 use lib_viper::view::count;
 
 use super::{money, recurrence_label};
+use lib_viper::presenter::Presenter;
+
 use crate::protocols::{BillsRouter, SharedPorts};
 use crate::{AmountKind, BillPlan, inactive_count, msg, planner_order};
 
@@ -81,21 +83,6 @@ impl PlannerPresenter {
         Self { ports, selected: 0 }
     }
 
-    pub fn handle(&mut self, event: PlannerEvent, router: &mut dyn BillsRouter) {
-        match event {
-            PlannerEvent::Move(step) => {
-                let len = self.plans().len();
-                self.selected = lib_list_cursor::step(self.clamped(len), len, step);
-            }
-            PlannerEvent::Select(index) => self.selected = index,
-            PlannerEvent::Edit => self.edit(router),
-            PlannerEvent::EditRow(index) => {
-                self.selected = index;
-                self.edit(router);
-            }
-        }
-    }
-
     /// Selects Plan `id`; leaves the selection for a Plan that is gone.
     pub(super) fn select_plan(&mut self, id: BillPlanId) {
         if let Some(at) = planner_order(&self.plans())
@@ -130,8 +117,29 @@ impl PlannerPresenter {
     pub fn status(&self) -> String {
         msg::bills_status_plans(count(self.plans().len()))
     }
+}
 
-    pub fn view_model(&self) -> PlannerViewModel {
+impl Presenter for PlannerPresenter {
+    type Event = PlannerEvent;
+    type ViewModel = PlannerViewModel;
+    type Router<'r> = dyn BillsRouter + 'r;
+
+    fn handle(&mut self, event: PlannerEvent, router: &mut Self::Router<'_>) {
+        match event {
+            PlannerEvent::Move(step) => {
+                let len = self.plans().len();
+                self.selected = lib_list_cursor::step(self.clamped(len), len, step);
+            }
+            PlannerEvent::Select(index) => self.selected = index,
+            PlannerEvent::Edit => self.edit(router),
+            PlannerEvent::EditRow(index) => {
+                self.selected = index;
+                self.edit(router);
+            }
+        }
+    }
+
+    fn view_model(&self) -> PlannerViewModel {
         let ports = self.ports.borrow();
         let ports = &*ports;
         let plans = ports.bills().bill_plans();

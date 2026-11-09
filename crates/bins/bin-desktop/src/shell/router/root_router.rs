@@ -74,9 +74,9 @@ impl ShellRouter for RootRouter<'_, '_> {
             return;
         };
         crate::bills::new_month(&open.stores.ports.bills, today);
-        open.views
-            .budgets
-            .update(self.cx, |budgets, cx| budgets.month_turned(cx));
+        open.views.budgets.update(self.cx, |budgets, cx| {
+            budgets.send(lib_budgets::presenter::BudgetsPageEvent::MonthTurned, cx);
+        });
         open.views
             .documents
             .update(self.cx, |documents, cx| documents.month_turned(cx));
@@ -480,9 +480,12 @@ pub(super) fn set_view_keymaps(
     open.views
         .import
         .update(cx, |view, _| view.set_keymaps(config));
-    open.views
-        .budgets
-        .update(cx, |page, _| page.set_keymaps(config));
+    open.views.budgets.update(cx, |page, cx| {
+        page.send(
+            lib_budgets::presenter::BudgetsPageEvent::KeysChanged(config.clone()),
+            cx,
+        );
+    });
     open.views
         .documents
         .update(cx, |page, _| page.set_keymaps(config));
@@ -506,18 +509,24 @@ pub(super) fn push_display_preferences(
     open.views
         .dashboard
         .update(cx, |view, cx| view.set_display(date_style, glyphs, cx));
-    open.views
-        .bills
-        .update(cx, |view, cx| view.set_display(date_style, glyphs, cx));
+    open.views.bills.update(cx, |page, cx| {
+        page.send(
+            lib_bills::presenter::BillsPageEvent::DisplayChanged { date_style, glyphs },
+            cx,
+        );
+    });
     open.views.transactions.update(cx, |view, cx| {
         view.set_display(date_style, glyphs, density, cx)
     });
     open.views
         .documents
         .update(cx, |view, cx| view.set_display(date_style, cx));
-    open.views
-        .budgets
-        .update(cx, |page, cx| page.set_display(date_style, cx));
+    open.views.budgets.update(cx, |page, cx| {
+        page.send(
+            lib_budgets::presenter::BudgetsPageEvent::SetDateStyle(date_style),
+            cx,
+        );
+    });
 }
 
 /// An Error Toast saying a Ledger file couldn't be opened, naming it and why (#977).

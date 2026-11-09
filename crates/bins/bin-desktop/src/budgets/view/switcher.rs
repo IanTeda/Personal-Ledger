@@ -3,13 +3,70 @@
 //! active Budgets with their health line and method tag, then the archived ones dimmed, with
 //! `+ New budget` and `Manage budgets…` in the footer.
 
-use gpui::{AnyElement, App, BoxShadow, Context, Pixels, SharedString, div, point, prelude::*, px};
-use lib_budgets::presenter::{SwitcherEvent, SwitcherRow, SwitcherViewModel};
+use gpui::{AnyElement, App, BoxShadow, Pixels, SharedString, div, point, prelude::*, px};
+use lib_budgets::presenter::{SwitcherEvent, SwitcherPresenter, SwitcherRow, SwitcherViewModel};
 use lib_locale::format::upper;
+use lib_shell::Hint;
 
-use super::dialog::{ListDialog, SWITCHER_TOP};
 use crate::dialog::OnClick;
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks};
 use crate::theme::color;
+
+/// The Switcher card's top below the window's: under the top bar, the page's top padding and
+/// the title line.
+const SWITCHER_TOP: Pixels = px(122.0);
+
+/// The open Switcher's clicks.
+type Clicks = ModuleDialogClicks<SwitcherPresenter>;
+
+/// Where the Switcher card starts: the page's left edge, which the Shell sets as it lays the
+/// rails out, so the card sits under the page title.
+#[derive(Default)]
+pub struct SwitcherWidgets {
+    pub left: Pixels,
+}
+
+/// The `lib-budgets` Switcher Presenter's [`DialogView`], hosted in a `ModuleDialog` (ADR-0056).
+impl DialogView for SwitcherPresenter {
+    type Widgets = SwitcherWidgets;
+
+    fn kind(_view: &SwitcherViewModel) -> &'static str {
+        "Switcher"
+    }
+
+    fn render(
+        view: &SwitcherViewModel,
+        widgets: &mut SwitcherWidgets,
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        render(view, widgets.left, clicks, cx)
+    }
+
+    /// The Budgets listed, the highlighted one and the search.
+    fn readback(view: &SwitcherViewModel) -> Vec<(&'static str, String)> {
+        let selected = view
+            .selected
+            .and_then(|index| view.rows.get(index))
+            .map(|row| row.name.clone())
+            .unwrap_or_default();
+        let names = view
+            .rows
+            .iter()
+            .map(|row| row.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        vec![
+            ("Budgets", names),
+            ("Selected", selected),
+            ("Search", view.search.clone()),
+        ]
+    }
+
+    fn hints(view: &SwitcherViewModel) -> Vec<Hint> {
+        view.hints.clone()
+    }
+}
 
 /// The card's width: the handoff's 11b.
 const WIDTH: Pixels = px(380.0);
@@ -120,15 +177,11 @@ fn footer_button(
         .child(label)
 }
 
-pub(super) fn render(
-    view: &SwitcherViewModel,
-    left: Pixels,
-    cx: &Context<'_, ListDialog>,
-) -> AnyElement {
-    let on_search = ListDialog::on_switcher(cx, SwitcherEvent::Search);
-    let on_cancel = ListDialog::on_switcher(cx, SwitcherEvent::Cancel);
-    let on_new = ListDialog::on_switcher(cx, SwitcherEvent::New);
-    let on_manage = ListDialog::on_switcher(cx, SwitcherEvent::Manage);
+fn render(view: &SwitcherViewModel, left: Pixels, clicks: &Clicks, cx: &App) -> AnyElement {
+    let on_search = clicks.send(SwitcherEvent::Search);
+    let on_cancel = clicks.send(SwitcherEvent::Cancel);
+    let on_new = clicks.send(SwitcherEvent::New);
+    let on_manage = clicks.send(SwitcherEvent::Manage);
     let app: &App = cx;
 
     let caret = if view.searching { "\u{2502}" } else { "" };
@@ -183,7 +236,7 @@ pub(super) fn render(
                     .into_any_element(),
             );
         }
-        let on_click = ListDialog::on_switcher(cx, SwitcherEvent::ChooseBudget(each.id));
+        let on_click = clicks.send(SwitcherEvent::ChooseBudget(each.id));
         list.push(row(
             index,
             each,

@@ -173,6 +173,9 @@ pub enum BillsOutcome {
     /// The entry resolved or was superseded underneath the Skip Dialog, which has no form to show
     /// the refusal on, so it closes and the page says why.
     SkipRefused,
+    /// Paid or Matched through the Bill Payments module's Pay Dialog, whose own outcome its
+    /// opener maps to this: the row turning Paid is the feedback, so the page does nothing more.
+    Paid,
 }
 
 /// Pay on a Schedule entry, as the page asks the Router to open it: the entry, its Match

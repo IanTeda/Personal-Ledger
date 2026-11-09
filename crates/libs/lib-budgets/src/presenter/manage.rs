@@ -8,8 +8,9 @@
 
 use lib_core::{BudgetId, Clock, Period};
 use lib_locale::Segment;
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::keymap::{Keymap, SELECT, list_step_chords};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::SELECT;
+use lib_viper::presenter::{DialogPresenter, Presenter};
 use lib_viper::view::{Choice, Hint, count};
 
 use super::{error_text, method_label};
@@ -51,6 +52,8 @@ pub struct ManageViewModel {
     /// Each note's title and text.
     pub notes: Vec<(String, String)>,
     pub new_label: String,
+    /// The status line's hints, in the Dialog keymap's chords.
+    pub hints: Vec<Hint>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -116,16 +119,19 @@ pub struct ManagePresenter {
     clock: Clock,
     selected: usize,
     error: Option<String>,
+    /// The Dialog keymap's chords, which its hints show.
+    keys: DialogKeys,
 }
 
 impl ManagePresenter {
     /// Opens with Budget `current` under the cursor.
-    pub fn new(ports: SharedPorts, current: BudgetId, clock: Clock) -> Self {
+    pub fn new(ports: SharedPorts, current: BudgetId, clock: Clock, keys: DialogKeys) -> Self {
         let mut manage = Self {
             ports,
             clock,
             selected: 0,
             error: None,
+            keys,
         };
         manage.follow(current);
         manage
@@ -147,33 +153,6 @@ impl ManagePresenter {
             .iter()
             .position(|budget| budget.id == id)
             .unwrap_or(0);
-    }
-
-    pub fn handle(&mut self, event: ManageEvent, router: &mut dyn DialogRouter<BudgetsOutcome>) {
-        let budgets = self.budgets();
-        let last = budgets.len().saturating_sub(1);
-        match event {
-            ManageEvent::Input(input) => self.input(input, router),
-            ManageEvent::Down => self.selected = (self.selected + 1).min(last),
-            ManageEvent::Up => self.selected = self.selected.min(last).saturating_sub(1),
-            ManageEvent::Select(index) => self.selected = index.min(last),
-            ManageEvent::Act(action) => {
-                if let Some(budget) = budgets.get(self.selected.min(last)) {
-                    let action = match action {
-                        ManageAction::Archive if budget.is_archived() => ManageAction::Restore,
-                        other => other,
-                    };
-                    self.act(budget, action, router);
-                }
-            }
-            ManageEvent::ActOn(id, action) => {
-                if let Some(budget) = budgets.iter().find(|budget| budget.id == id) {
-                    self.act(budget, action, router);
-                }
-            }
-            ManageEvent::New => router.close(Some(BudgetsOutcome::NewBudget)),
-            ManageEvent::Cancel => router.close(None),
-        }
     }
 
     /// What `input` means: the row cursor and each action's letter.
@@ -241,7 +220,53 @@ impl ManagePresenter {
         write(self.ports.borrow_mut().split_mut().budgets)
     }
 
-    pub fn view_model(&self) -> ManageViewModel {
+    /// The status line's hints, in the Dialog keymap's chords it was handed at open.
+    fn hints(&self) -> Vec<Hint> {
+        vec![
+            Hint::new(self.keys.list_step(), msg::budgets_hint_row()),
+            Hint::new(self.keys.chord(SELECT), msg::budgets_hint_open()),
+            Hint::new("n", msg::budgets_hint_new_budget()),
+            Hint::new("e", msg::budgets_hint_edit()),
+            Hint::new("d", msg::budgets_hint_duplicate()),
+            Hint::new("*", msg::budgets_hint_set_default()),
+            Hint::new("x", msg::budgets_hint_archive()),
+        ]
+    }
+}
+
+impl Presenter for ManagePresenter {
+    type Event = ManageEvent;
+    type ViewModel = ManageViewModel;
+    type Router<'r> = dyn DialogRouter<BudgetsOutcome> + 'r;
+
+    fn handle(&mut self, event: ManageEvent, router: &mut Self::Router<'_>) {
+        let budgets = self.budgets();
+        let last = budgets.len().saturating_sub(1);
+        match event {
+            ManageEvent::Input(input) => self.input(input, router),
+            ManageEvent::Down => self.selected = (self.selected + 1).min(last),
+            ManageEvent::Up => self.selected = self.selected.min(last).saturating_sub(1),
+            ManageEvent::Select(index) => self.selected = index.min(last),
+            ManageEvent::Act(action) => {
+                if let Some(budget) = budgets.get(self.selected.min(last)) {
+                    let action = match action {
+                        ManageAction::Archive if budget.is_archived() => ManageAction::Restore,
+                        other => other,
+                    };
+                    self.act(budget, action, router);
+                }
+            }
+            ManageEvent::ActOn(id, action) => {
+                if let Some(budget) = budgets.iter().find(|budget| budget.id == id) {
+                    self.act(budget, action, router);
+                }
+            }
+            ManageEvent::New => router.close(Some(BudgetsOutcome::NewBudget)),
+            ManageEvent::Cancel => router.close(None),
+        }
+    }
+
+    fn view_model(&self) -> ManageViewModel {
         let budgets = self.budgets();
         let current = Period::of(self.clock.today());
         let active = budgets
@@ -311,24 +336,33 @@ impl ManagePresenter {
                 ),
             ],
             new_label: msg::budgets_switcher_new(),
+            hints: self.hints(),
         }
     }
+}
 
-    /// The status line's legend, `select` read from the Dialog `keymap` the Client looks keys up
-    /// in. The row actions' letters are Manage's own, not a keymap's.
-    pub fn legend<E: Clone>(&self, keymap: &Keymap<E>) -> Vec<Hint> {
-        vec![
-            Hint::new(list_step_chords(keymap), msg::budgets_hint_row()),
-            Hint::new(
-                keymap.chord(SELECT).unwrap_or_default(),
-                msg::budgets_hint_open(),
-            ),
-            Hint::new("n", msg::budgets_hint_new_budget()),
-            Hint::new("e", msg::budgets_hint_edit()),
-            Hint::new("d", msg::budgets_hint_duplicate()),
-            Hint::new("*", msg::budgets_hint_set_default()),
-            Hint::new("x", msg::budgets_hint_archive()),
-        ]
+impl DialogPresenter for ManagePresenter {
+    type Outcome = BudgetsOutcome;
+
+    fn input_event(input: DialogInput) -> Self::Event {
+        ManageEvent::Input(input)
+    }
+
+    fn confirm_event() -> Self::Event {
+        ManageEvent::Act(ManageAction::Open)
+    }
+
+    fn cancel_event() -> Self::Event {
+        ManageEvent::Cancel
+    }
+
+    fn can_confirm(&self) -> bool {
+        true
+    }
+
+    /// Manage is a list throughout.
+    fn steps_list(&self) -> bool {
+        true
     }
 }
 
@@ -347,7 +381,12 @@ mod tests {
         let (ports, shared) = sample();
         (
             ports,
-            ManagePresenter::new(shared, PERSONAL_SPENDING_ID, Clock::fixed(today())),
+            ManagePresenter::new(
+                shared,
+                PERSONAL_SPENDING_ID,
+                Clock::fixed(today()),
+                DialogKeys::default(),
+            ),
             RecordingRouter::default(),
         )
     }

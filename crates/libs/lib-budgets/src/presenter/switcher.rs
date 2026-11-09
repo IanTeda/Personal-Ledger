@@ -8,8 +8,9 @@
 
 use lib_core::{BudgetId, Clock, DateStyle};
 use lib_locale::format::format_date;
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::keymap::{BACK, Keymap, SELECT, list_step_chords};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::{BACK, SELECT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
 use lib_viper::view::Hint;
 
 use super::{method_label, money};
@@ -60,6 +61,8 @@ pub struct SwitcherViewModel {
     pub default_label: String,
     pub new_label: String,
     pub manage_label: String,
+    /// The status line's hints, in the Dialog keymap's chords.
+    pub hints: Vec<Hint>,
 }
 
 /// One Budget, already worded.
@@ -86,6 +89,8 @@ pub struct SwitcherPresenter {
     searching: bool,
     /// The highlight, a position in the rows matching the query.
     selected: usize,
+    /// The Dialog keymap's chords, which its hints show.
+    keys: DialogKeys,
 }
 
 impl SwitcherPresenter {
@@ -95,6 +100,7 @@ impl SwitcherPresenter {
         current: BudgetId,
         clock: Clock,
         date_style: Option<DateStyle>,
+        keys: DialogKeys,
     ) -> Self {
         let mut switcher = Self {
             ports,
@@ -104,6 +110,7 @@ impl SwitcherPresenter {
             query: String::new(),
             searching: false,
             selected: 0,
+            keys,
         };
         switcher.selected = switcher
             .matching()
@@ -131,7 +138,62 @@ impl SwitcherPresenter {
             .collect()
     }
 
-    pub fn handle(&mut self, event: SwitcherEvent, router: &mut dyn DialogRouter<BudgetsOutcome>) {
+    /// What `input` means: the movement keys and the list's letters, or the search's text while it
+    /// has the keys.
+    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<BudgetsOutcome>) {
+        let event = match input {
+            DialogInput::SelectNext => SwitcherEvent::Down,
+            DialogInput::SelectPrevious => SwitcherEvent::Up,
+            DialogInput::Select | DialogInput::Submit => SwitcherEvent::Choose,
+            DialogInput::Backspace if self.searching => SwitcherEvent::Backspace,
+            DialogInput::Char(c) if self.searching => SwitcherEvent::Type(c),
+            DialogInput::Char('/') => SwitcherEvent::Search,
+            DialogInput::Char('n') => SwitcherEvent::New,
+            _ => return,
+        };
+        self.handle(event, router);
+    }
+
+    /// A Budget's one-line summary: its health this month, or when it was archived.
+    fn summary(&self, budget: &Budget) -> String {
+        if let Some(date) = budget.archived_at {
+            return msg::budgets_switcher_archived_on(&format_date(date, self.date_style));
+        }
+        let health = {
+            let ports = self.ports.borrow();
+            health(budget, ports.reads(), self.clock.today())
+        };
+        let left = money(&health.left);
+        if health.at_risk > 0 {
+            msg::budgets_switcher_health_at_risk(
+                &health.over.to_string(),
+                &left,
+                &health.at_risk.to_string(),
+            )
+        } else {
+            msg::budgets_switcher_health(&health.over.to_string(), &left)
+        }
+    }
+
+    /// The status line's hints, in the Dialog keymap's chords it was handed at open.
+    fn hints(&self) -> Vec<Hint> {
+        let chord = |command: &str| self.keys.chord(command).to_string();
+        vec![
+            Hint::new(self.keys.list_step(), msg::budgets_hint_row()),
+            Hint::new(chord(SELECT), msg::budgets_hint_open()),
+            Hint::new("/", lib_locale::msg::hint_search()),
+            Hint::new("n", msg::budgets_hint_new_budget()),
+            Hint::new(chord(BACK), msg::budgets_hint_close()),
+        ]
+    }
+}
+
+impl Presenter for SwitcherPresenter {
+    type Event = SwitcherEvent;
+    type ViewModel = SwitcherViewModel;
+    type Router<'r> = dyn DialogRouter<BudgetsOutcome> + 'r;
+
+    fn handle(&mut self, event: SwitcherEvent, router: &mut Self::Router<'_>) {
         match event {
             SwitcherEvent::Input(input) => self.input(input, router),
             SwitcherEvent::Down => {
@@ -172,44 +234,7 @@ impl SwitcherPresenter {
         }
     }
 
-    /// What `input` means: the movement keys and the list's letters, or the search's text while it
-    /// has the keys.
-    fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<BudgetsOutcome>) {
-        let event = match input {
-            DialogInput::SelectNext => SwitcherEvent::Down,
-            DialogInput::SelectPrevious => SwitcherEvent::Up,
-            DialogInput::Select | DialogInput::Submit => SwitcherEvent::Choose,
-            DialogInput::Backspace if self.searching => SwitcherEvent::Backspace,
-            DialogInput::Char(c) if self.searching => SwitcherEvent::Type(c),
-            DialogInput::Char('/') => SwitcherEvent::Search,
-            DialogInput::Char('n') => SwitcherEvent::New,
-            _ => return,
-        };
-        self.handle(event, router);
-    }
-
-    /// A Budget's one-line summary: its health this month, or when it was archived.
-    fn summary(&self, budget: &Budget) -> String {
-        if let Some(date) = budget.archived_at {
-            return msg::budgets_switcher_archived_on(&format_date(date, self.date_style));
-        }
-        let health = {
-            let ports = self.ports.borrow();
-            health(budget, ports.reads(), self.clock.today())
-        };
-        let left = money(&health.left);
-        if health.at_risk > 0 {
-            msg::budgets_switcher_health_at_risk(
-                &health.over.to_string(),
-                &left,
-                &health.at_risk.to_string(),
-            )
-        } else {
-            msg::budgets_switcher_health(&health.over.to_string(), &left)
-        }
-    }
-
-    pub fn view_model(&self) -> SwitcherViewModel {
+    fn view_model(&self) -> SwitcherViewModel {
         let rows: Vec<SwitcherRow> = self
             .matching()
             .iter()
@@ -239,26 +264,39 @@ impl SwitcherPresenter {
             default_label: msg::budgets_switcher_default(),
             new_label: msg::budgets_switcher_new(),
             manage_label: msg::budgets_switcher_manage(),
+            hints: self.hints(),
         }
+    }
+}
+
+impl DialogPresenter for SwitcherPresenter {
+    type Outcome = BudgetsOutcome;
+
+    fn input_event(input: DialogInput) -> Self::Event {
+        SwitcherEvent::Input(input)
+    }
+
+    fn confirm_event() -> Self::Event {
+        SwitcherEvent::Choose
+    }
+
+    fn cancel_event() -> Self::Event {
+        SwitcherEvent::Cancel
+    }
+
+    fn can_confirm(&self) -> bool {
+        true
+    }
+
+    /// The first `back` while searching gives the keys back to the list.
+    fn close_open_select(&mut self) -> bool {
+        std::mem::replace(&mut self.searching, false)
     }
 
     /// Whether the Dialog steps a list right now (not while the search has the keys), so the Dialog keymap's list step (`j`/`k` by
     /// default) reaches it as a select step rather than typing.
-    pub fn steps_list(&self) -> bool {
+    fn steps_list(&self) -> bool {
         !self.searching
-    }
-
-    /// The status line's legend, `select` and `back` read from the Dialog `keymap` the Client
-    /// looks keys up in. The list's own letters are the Switcher's, not a keymap's.
-    pub fn legend<E: Clone>(&self, keymap: &Keymap<E>) -> Vec<Hint> {
-        let chord = |command: &str| keymap.chord(command).unwrap_or_default().to_string();
-        vec![
-            Hint::new(list_step_chords(keymap), msg::budgets_hint_row()),
-            Hint::new(chord(SELECT), msg::budgets_hint_open()),
-            Hint::new("/", lib_locale::msg::hint_search()),
-            Hint::new("n", msg::budgets_hint_new_budget()),
-            Hint::new(chord(BACK), msg::budgets_hint_close()),
-        ]
     }
 }
 
@@ -272,7 +310,13 @@ mod tests {
     fn switcher() -> (SwitcherPresenter, RecordingRouter) {
         let (_, shared) = sample();
         (
-            SwitcherPresenter::new(shared, PERSONAL_SPENDING_ID, Clock::fixed(today()), None),
+            SwitcherPresenter::new(
+                shared,
+                PERSONAL_SPENDING_ID,
+                Clock::fixed(today()),
+                None,
+                DialogKeys::default(),
+            ),
             RecordingRouter::default(),
         )
     }

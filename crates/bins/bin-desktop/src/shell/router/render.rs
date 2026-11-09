@@ -2,7 +2,9 @@
 //! concern, not a real module (`view/` holds the Views themselves).
 
 use super::Root;
-use crate::budgets::view::dialog::ListDialog;
+use crate::budgets::view::switcher::SwitcherWidgets;
+use crate::shell::view::dialog_entity::ModuleDialog;
+use lib_budgets::presenter::SwitcherPresenter;
 use lib_shell::{NavInput, ToastInput};
 use std::rc::Rc;
 
@@ -400,7 +402,7 @@ impl Root {
     ) {
         let Some(dialog) = self
             .hosted_dialog()
-            .and_then(|dialog| dialog.downcast::<ListDialog>())
+            .and_then(|dialog| dialog.downcast::<ModuleDialog<SwitcherPresenter>>())
         else {
             return;
         };
@@ -409,6 +411,8 @@ impl Root {
             crate::navigation::nav::RailMode::Collapsed => rail_view::primary::COLLAPSED_WIDTH,
         };
         let left = rail + rail_view::context::WIDTH + px(28.0);
-        dialog.update(cx, |dialog, _| dialog.set_left(left));
+        dialog.update(cx, |dialog, _| {
+            *dialog.widgets_mut() = SwitcherWidgets { left }
+        });
     }
 }

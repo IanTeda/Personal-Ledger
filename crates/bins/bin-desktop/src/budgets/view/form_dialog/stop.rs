@@ -4,45 +4,45 @@
 
 use gpui::{AnyElement, App, div, prelude::*, px};
 use lib_budgets::presenter::{StopEvent, StopPresenter, StopViewModel};
+use lib_shell::Hint;
 
-use super::{Clicks, Form, FormDialog, Router};
 use crate::dialog;
 use crate::form::colour_field::error_line;
 use crate::form::select_field::{self, SelectFieldProps};
 use crate::form::viper::{drawn, labels};
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 
 /// The dialog's width: the handoff's 9g.
 const WIDTH: gpui::Pixels = px(420.0);
 
-/// What each key means is the Presenter's (`lib_budgets::presenter::StopPresenter`); this View
-/// draws the dialog and turns its clicks into Presenter events.
-fn form(dialog: &mut FormDialog) -> Option<&mut StopPresenter> {
-    match &mut dialog.view {
-        Form::Stop(presenter, _) => Some(presenter),
-        _ => None,
+/// The open Dialog's clicks.
+type Clicks = ModuleDialogClicks<StopPresenter>;
+
+/// The `lib-budgets` Stop budgeting Presenter's [`DialogView`], hosted in a `ModuleDialog`
+/// (ADR-0056). What each key means is the Presenter's; this View draws the Dialog and turns its
+/// clicks into Presenter events. Its widget state is the top row of the From list's window.
+impl DialogView for StopPresenter {
+    type Widgets = usize;
+
+    fn kind(_view: &StopViewModel) -> &'static str {
+        "Stop"
+    }
+
+    fn render(view: &StopViewModel, scroll: &mut usize, clicks: &Clicks, cx: &App) -> AnyElement {
+        render(view, scroll, clicks, cx)
+    }
+
+    /// The Category the Stop is for, by id.
+    fn readback(view: &StopViewModel) -> Vec<(&'static str, String)> {
+        framed(&view.frame, vec![("category", view.category.to_string())])
+    }
+
+    fn hints(view: &StopViewModel) -> Vec<Hint> {
+        view.hints.clone()
     }
 }
 
-fn click_from(dialog: &mut FormDialog) {
-    if let Some(presenter) = form(dialog) {
-        presenter.handle(StopEvent::ToggleList, &mut Router::default());
-    }
-}
-
-fn click_option(dialog: &mut FormDialog, index: usize) {
-    if let Some(presenter) = form(dialog)
-        && let Some(choice) = presenter.view_model().from.options.get(index)
-    {
-        presenter.handle(StopEvent::From(choice.value), &mut Router::default());
-    }
-}
-
-pub(super) fn render(
-    view: &StopViewModel,
-    scroll: &mut usize,
-    actions: &Clicks,
-    cx: &App,
-) -> AnyElement {
+fn render(view: &StopViewModel, scroll: &mut usize, actions: &Clicks, cx: &App) -> AnyElement {
     let options = labels(&view.from);
     let mut fields = vec![
         select_field::render(
@@ -54,8 +54,22 @@ pub(super) fn render(
                 focused: true,
                 accent: false,
                 read_only: None,
-                on_field_click: actions.click(click_from),
-                on_option_click: actions.option(click_option),
+                on_field_click: actions.send(StopEvent::ToggleList),
+                on_option_click: {
+                    let months: Vec<_> = view
+                        .from
+                        .options
+                        .iter()
+                        .map(|choice| choice.value)
+                        .collect();
+                    actions.option(move |index| {
+                        months
+                            .get(index)
+                            .map(|month| StopEvent::From(*month))
+                            .into_iter()
+                            .collect()
+                    })
+                },
             },
             cx,
         ),

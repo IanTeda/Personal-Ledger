@@ -20,16 +20,18 @@ use crate::view::event::Reveal;
 impl PageView for AccountsPagePresenter {
     type Setup = AccountsRoutes;
     type Widgets = ();
+    type Before = ();
 
     /// An Accounts write, and the Units and Institutions whose codes and names the rows show.
     const REPAINTS: &'static [Domain] = &[Domain::Accounts, Domain::Units, Domain::Institutions];
 
     fn with_router<R>(
+        presenter: &mut Self,
         setup: &AccountsRoutes,
         cx: &mut Context<'_, AccountsPage>,
-        handle: impl FnOnce(&mut Self::Router<'_>) -> R,
+        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
     ) -> R {
-        handle(&mut PageRouter { routes: setup, cx })
+        handle(presenter, &mut PageRouter { routes: setup, cx })
     }
 
     fn render(

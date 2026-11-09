@@ -3,15 +3,54 @@
 //! track record, and a footer that hands off to Transactions already filtered.
 
 use gpui::{AnyElement, App, div, prelude::*, px};
-use lib_budgets::presenter::{DetailEvent, DetailViewModel};
+use lib_budgets::presenter::{DetailEvent, DetailPresenter, DetailViewModel};
+use lib_shell::Hint;
 
-use super::Clicks;
 use crate::budgets::view::progress;
 use crate::dialog;
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks, framed};
 use crate::theme::color;
 
 /// The dialog's width: the handoff's 9d.
 const WIDTH: gpui::Pixels = px(600.0);
+
+/// The open Dialog's clicks.
+type Clicks = ModuleDialogClicks<DetailPresenter>;
+
+/// The `lib-budgets` Category detail Presenter's [`DialogView`], hosted in a `ModuleDialog`
+/// (ADR-0056). Its view model is `None` once the Budget or Category went while it was open, which
+/// draws nothing.
+impl DialogView for DetailPresenter {
+    type Widgets = ();
+
+    fn kind(_view: &Option<DetailViewModel>) -> &'static str {
+        "Detail"
+    }
+
+    fn render(
+        view: &Option<DetailViewModel>,
+        _widgets: &mut (),
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        match view {
+            Some(view) => render(view, clicks, cx),
+            None => div().into_any_element(),
+        }
+    }
+
+    fn readback(view: &Option<DetailViewModel>) -> Vec<(&'static str, String)> {
+        view.as_ref()
+            .map(|view| framed(&view.frame, Vec::new()))
+            .unwrap_or_default()
+    }
+
+    fn hints(view: &Option<DetailViewModel>) -> Vec<Hint> {
+        view.as_ref()
+            .map(|view| view.hints.clone())
+            .unwrap_or_default()
+    }
+}
 
 fn stat(label: &str, value: String, negative: bool, cx: &App) -> impl IntoElement {
     div()
@@ -39,7 +78,7 @@ fn stat(label: &str, value: String, negative: bool, cx: &App) -> impl IntoElemen
         )
 }
 
-pub(super) fn render(view: &DetailViewModel, actions: &Clicks, cx: &App) -> AnyElement {
+fn render(view: &DetailViewModel, actions: &Clicks, cx: &App) -> AnyElement {
     let stats = div().flex().gap(px(16.0)).children(
         view.stats
             .iter()
@@ -121,9 +160,8 @@ pub(super) fn render(view: &DetailViewModel, actions: &Clicks, cx: &App) -> AnyE
                 .map(|note| div().text_color(color::muted(cx)).child(note)),
         );
 
-    let on_transactions =
-        actions.act(|dialog, cx| dialog.detail_event(DetailEvent::Transactions, cx));
-    let on_close = actions.act(|dialog, cx| dialog.detail_event(DetailEvent::Close, cx));
+    let on_transactions = actions.send(DetailEvent::Transactions);
+    let on_close = actions.send(DetailEvent::Close);
     let mut buttons = vec![
         div()
             .id("budgets-detail-transactions")
@@ -140,7 +178,7 @@ pub(super) fn render(view: &DetailViewModel, actions: &Clicks, cx: &App) -> AnyE
     ];
     // With Edit budget beside it, Close steps back to the outlined secondary button.
     if view.can_edit {
-        let on_edit = actions.act(|dialog, cx| dialog.detail_event(DetailEvent::Edit, cx));
+        let on_edit = actions.send(DetailEvent::Edit);
         buttons.push(
             div()
                 .id("budgets-detail-close")

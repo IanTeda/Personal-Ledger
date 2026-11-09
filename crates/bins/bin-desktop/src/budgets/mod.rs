@@ -7,4 +7,6 @@
 pub mod router;
 pub mod view;
 
+pub use view::page::BudgetsPage;
+
 pub use lib_budgets::*;

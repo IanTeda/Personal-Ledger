@@ -8,8 +8,9 @@ use bigdecimal::BigDecimal;
 use lib_core::{BudgetId, Clock, Money, Period};
 use lib_locale::format::format_month;
 use lib_toast::{Notice, ToastKind};
-use lib_viper::dialog::{DialogInput, DialogRouter};
-use lib_viper::keymap::{BACK, Keymap, SELECT, list_step_chords};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::{BACK, SELECT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
 use lib_viper::view::{DialogFrame, Hint, count};
 
 use super::{EMPTY_CELL, dialog_error_text, money, period_label, signed_money};
@@ -27,6 +28,8 @@ pub enum FillEvent {
     /// `j`/`k`, a source down or up.
     Down,
     Up,
+    /// `submit`, `select` where it confirms, and the submit button.
+    Confirm,
     Cancel,
 }
 
@@ -64,6 +67,8 @@ pub struct FillViewModel {
     pub unchanged: Option<String>,
     pub note: String,
     pub error: Option<String>,
+    /// The status line's hints, in the Dialog keymap's chords.
+    pub hints: Vec<Hint>,
 }
 
 pub struct FillPresenter {
@@ -73,11 +78,19 @@ pub struct FillPresenter {
     month: Period,
     source: FillSource,
     error: Option<String>,
+    /// The Dialog keymap's chords, which its hints show.
+    keys: DialogKeys,
 }
 
 impl FillPresenter {
     /// Fill `month` of Budget `budget`, or `None` when the Budget is gone or archived.
-    pub fn new(ports: &SharedPorts, clock: Clock, budget: BudgetId, month: Period) -> Option<Self> {
+    pub fn new(
+        ports: &SharedPorts,
+        clock: Clock,
+        budget: BudgetId,
+        month: Period,
+        keys: DialogKeys,
+    ) -> Option<Self> {
         let found = ports.borrow().budgets().budget(budget)?;
         if found.is_archived() {
             return None;
@@ -89,43 +102,12 @@ impl FillPresenter {
             month,
             source: FillSource::default(),
             error: None,
+            keys,
         })
     }
 
     pub fn source(&self) -> FillSource {
         self.source
-    }
-
-    pub fn handle(&mut self, event: FillEvent, router: &mut dyn DialogRouter<BudgetsOutcome>) {
-        let at = FillSource::ALL
-            .iter()
-            .position(|each| *each == self.source)
-            .unwrap_or(0);
-        match event {
-            FillEvent::Input(input) => {
-                match input {
-                    DialogInput::SelectNext => {
-                        self.handle(FillEvent::Down, router);
-                    }
-                    DialogInput::SelectPrevious => {
-                        self.handle(FillEvent::Up, router);
-                    }
-                    DialogInput::Select | DialogInput::Submit => self.confirm(router),
-                    _ => {}
-                }
-                return;
-            }
-            FillEvent::Source(source) => self.source = source,
-            FillEvent::Down => {
-                self.source = FillSource::ALL[(at + 1).min(FillSource::ALL.len() - 1)]
-            }
-            FillEvent::Up => self.source = FillSource::ALL[at.saturating_sub(1)],
-            FillEvent::Cancel => {
-                router.close(None);
-                return;
-            }
-        }
-        self.error = None;
     }
 
     fn preview(&self, source: FillSource) -> Option<FillPreview> {
@@ -134,15 +116,10 @@ impl FillPresenter {
         Some(fill_preview(&budget, ports.reads(), self.month, source))
     }
 
-    fn can_confirm(&self) -> bool {
-        self.preview(self.source)
-            .is_some_and(|preview| !preview.changes.is_empty())
-    }
-
     /// Fills the month through the Interactor, raises the Toast and closes the Dialog. A Fill
     /// that would change nothing does nothing; a refusal stays on the form.
-    pub fn confirm(&mut self, router: &mut dyn DialogRouter<BudgetsOutcome>) {
-        if !self.can_confirm() {
+    fn submit(&mut self, router: &mut dyn DialogRouter<BudgetsOutcome>) {
+        if !DialogPresenter::can_confirm(self) {
             return;
         }
         let today = self.clock.today();
@@ -169,7 +146,58 @@ impl FillPresenter {
         }
     }
 
-    pub fn view_model(&self) -> FillViewModel {
+    /// The status line's hints, in the Dialog keymap's chords it was handed at open.
+    fn hints(&self) -> Vec<Hint> {
+        vec![
+            Hint::new(self.keys.list_step(), msg::budgets_hint_source()),
+            Hint::new(self.keys.chord(SELECT), msg::budgets_hint_fill_confirm()),
+            Hint::new(self.keys.chord(BACK), msg::budgets_hint_cancel()),
+        ]
+    }
+}
+
+impl Presenter for FillPresenter {
+    type Event = FillEvent;
+    type ViewModel = FillViewModel;
+    type Router<'r> = dyn DialogRouter<BudgetsOutcome> + 'r;
+
+    fn handle(&mut self, event: FillEvent, router: &mut Self::Router<'_>) {
+        let at = FillSource::ALL
+            .iter()
+            .position(|each| *each == self.source)
+            .unwrap_or(0);
+        match event {
+            FillEvent::Input(input) => {
+                match input {
+                    DialogInput::SelectNext => {
+                        self.handle(FillEvent::Down, router);
+                    }
+                    DialogInput::SelectPrevious => {
+                        self.handle(FillEvent::Up, router);
+                    }
+                    DialogInput::Select | DialogInput::Submit => self.submit(router),
+                    _ => {}
+                }
+                return;
+            }
+            FillEvent::Source(source) => self.source = source,
+            FillEvent::Down => {
+                self.source = FillSource::ALL[(at + 1).min(FillSource::ALL.len() - 1)]
+            }
+            FillEvent::Up => self.source = FillSource::ALL[at.saturating_sub(1)],
+            FillEvent::Confirm => {
+                self.submit(router);
+                return;
+            }
+            FillEvent::Cancel => {
+                router.close(None);
+                return;
+            }
+        }
+        self.error = None;
+    }
+
+    fn view_model(&self) -> FillViewModel {
         let month = period_label(self.month);
         let categories = self.ports.borrow().reads().budget_categories();
         let name = |id| {
@@ -269,22 +297,35 @@ impl FillPresenter {
             unchanged,
             note: msg::budgets_fill_note(),
             error: self.error.clone(),
+            hints: self.hints(),
         }
     }
+}
 
-    /// The status line's legend, `select` and `back` read from the Dialog `keymap`.
-    pub fn legend<E: Clone>(&self, keymap: &Keymap<E>) -> Vec<Hint> {
-        vec![
-            Hint::new(list_step_chords(keymap), msg::budgets_hint_source()),
-            Hint::new(
-                keymap.chord(SELECT).unwrap_or_default(),
-                msg::budgets_hint_fill_confirm(),
-            ),
-            Hint::new(
-                keymap.chord(BACK).unwrap_or_default(),
-                msg::budgets_hint_cancel(),
-            ),
-        ]
+impl DialogPresenter for FillPresenter {
+    type Outcome = BudgetsOutcome;
+
+    fn input_event(input: DialogInput) -> Self::Event {
+        FillEvent::Input(input)
+    }
+
+    fn confirm_event() -> Self::Event {
+        FillEvent::Confirm
+    }
+
+    fn cancel_event() -> Self::Event {
+        FillEvent::Cancel
+    }
+
+    /// The source would change something.
+    fn can_confirm(&self) -> bool {
+        self.preview(self.source)
+            .is_some_and(|preview| !preview.changes.is_empty())
+    }
+
+    /// The sources are a list throughout.
+    fn steps_list(&self) -> bool {
+        true
     }
 }
 
@@ -325,9 +366,14 @@ mod tests {
             .run(&held.reads.clone(), &mut held.budgets)
             .expect("a leaf this month");
         }
-        let presenter =
-            FillPresenter::new(&shared, Clock::fixed(today()), PERSONAL_SPENDING_ID, next())
-                .expect("the default takes edits");
+        let presenter = FillPresenter::new(
+            &shared,
+            Clock::fixed(today()),
+            PERSONAL_SPENDING_ID,
+            next(),
+            DialogKeys::default(),
+        )
+        .expect("the default takes edits");
         (ports, presenter)
     }
 
@@ -368,7 +414,7 @@ mod tests {
             "the sample has a diff"
         );
 
-        presenter.confirm(&mut router);
+        presenter.handle(FillEvent::Confirm, &mut router);
 
         assert_eq!(
             router.routed,
@@ -389,7 +435,7 @@ mod tests {
     fn a_fill_that_would_change_nothing_cannot_confirm() {
         let (_, mut presenter) = fill();
         let mut router = RecordingRouter::default();
-        presenter.confirm(&mut router);
+        presenter.handle(FillEvent::Confirm, &mut router);
         router.routed.clear();
 
         assert!(!presenter.view_model().frame.can_confirm, "already filled");
@@ -397,7 +443,7 @@ mod tests {
             presenter.view_model().no_changes.as_deref(),
             Some("Nothing would change.")
         );
-        presenter.confirm(&mut router);
+        presenter.handle(FillEvent::Confirm, &mut router);
         assert_eq!(
             router.routed,
             [],
@@ -418,8 +464,14 @@ mod tests {
             });
 
         assert!(
-            FillPresenter::new(&shared, Clock::fixed(today()), PERSONAL_SPENDING_ID, next())
-                .is_none()
+            FillPresenter::new(
+                &shared,
+                Clock::fixed(today()),
+                PERSONAL_SPENDING_ID,
+                next(),
+                DialogKeys::default()
+            )
+            .is_none()
         );
     }
 
@@ -462,6 +514,7 @@ mod tests {
             Clock::fixed(today()),
             PERSONAL_SPENDING_ID,
             Period::of(today()).prev().prev().prev().prev(),
+            DialogKeys::default(),
         )
         .expect("the default takes edits");
         let mut router = RecordingRouter::default();
