@@ -1,5 +1,5 @@
 //! A migrated page's clicks as its Presenter's events (ADR-0037's 2026-11-04 amendment), the page
-//! twin of [`DialogClicks`](super::dialog_entity::DialogClicks). The page's `render` builds one
+//! twin of [`ModuleDialogClicks`](super::dialog_entity::ModuleDialogClicks). The page's `render` builds one
 //! [`PageClicks`] at its top and hands its render helpers a borrow of it beside the view model, so
 //! no page hand-writes a closure builder or a callback alias of its own.
 //!

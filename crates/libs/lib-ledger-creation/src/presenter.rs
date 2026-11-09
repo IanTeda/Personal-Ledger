@@ -14,6 +14,7 @@ use lib_locale::Label as _;
 use lib_units::interactor::AddUnit;
 use lib_units::{Precision, PriceLink, UnitKind};
 use lib_viper::dialog::{DialogInput, DialogRouter};
+use lib_viper::presenter::{DialogPresenter, Presenter};
 use lib_viper::view::{
     Choice, DialogFrame, DialogHint, SelectList, SelectMove, SelectView, TextFieldView,
 };
@@ -116,44 +117,6 @@ impl CreateLedgerPresenter {
         }
     }
 
-    pub fn handle(
-        &mut self,
-        event: CreateLedgerEvent,
-        router: &mut dyn DialogRouter<LedgerCreated>,
-    ) {
-        match event {
-            CreateLedgerEvent::Input(input) => self.input(input, router),
-            CreateLedgerEvent::Code(text) => self.code = text,
-            CreateLedgerEvent::Name(text) => self.name = text,
-            CreateLedgerEvent::Precision(text) => {
-                self.precision = text;
-                self.precision_typed = true;
-            }
-            CreateLedgerEvent::Kind(kind) => {
-                self.list.close();
-                self.pick_kind(kind);
-            }
-            CreateLedgerEvent::ToggleKind => {
-                if self.focused != LedgerField::Type {
-                    self.list.close();
-                    self.focused = LedgerField::Type;
-                }
-                let view = self.view_model();
-                self.list
-                    .toggle(&view.kind.options, view.kind.chosen.as_ref());
-            }
-            CreateLedgerEvent::Focus(field) => {
-                self.list.close();
-                self.focused = field;
-            }
-            CreateLedgerEvent::CloseList => {
-                self.list.close();
-            }
-            CreateLedgerEvent::Confirm => self.confirm(router),
-            CreateLedgerEvent::Cancel => router.close(None),
-        }
-    }
-
     fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<LedgerCreated>) {
         match input {
             DialogInput::NextField | DialogInput::PreviousField => {
@@ -253,8 +216,48 @@ impl CreateLedgerPresenter {
             router.close(Some(created));
         }
     }
+}
 
-    pub fn view_model(&self) -> CreateLedgerViewModel {
+impl Presenter for CreateLedgerPresenter {
+    type Event = CreateLedgerEvent;
+    type ViewModel = CreateLedgerViewModel;
+    type Router<'r> = dyn DialogRouter<LedgerCreated> + 'r;
+
+    fn handle(&mut self, event: CreateLedgerEvent, router: &mut Self::Router<'_>) {
+        match event {
+            CreateLedgerEvent::Input(input) => self.input(input, router),
+            CreateLedgerEvent::Code(text) => self.code = text,
+            CreateLedgerEvent::Name(text) => self.name = text,
+            CreateLedgerEvent::Precision(text) => {
+                self.precision = text;
+                self.precision_typed = true;
+            }
+            CreateLedgerEvent::Kind(kind) => {
+                self.list.close();
+                self.pick_kind(kind);
+            }
+            CreateLedgerEvent::ToggleKind => {
+                if self.focused != LedgerField::Type {
+                    self.list.close();
+                    self.focused = LedgerField::Type;
+                }
+                let view = self.view_model();
+                self.list
+                    .toggle(&view.kind.options, view.kind.chosen.as_ref());
+            }
+            CreateLedgerEvent::Focus(field) => {
+                self.list.close();
+                self.focused = field;
+            }
+            CreateLedgerEvent::CloseList => {
+                self.list.close();
+            }
+            CreateLedgerEvent::Confirm => self.confirm(router),
+            CreateLedgerEvent::Cancel => router.close(None),
+        }
+    }
+
+    fn view_model(&self) -> CreateLedgerViewModel {
         let text = |label: String, text: &str, placeholder: String, field| TextFieldView {
             label,
             text: text.to_string(),
@@ -314,6 +317,32 @@ impl CreateLedgerPresenter {
             help: msg::ledger_creation_base_unit_help(),
             list: self.list,
         }
+    }
+}
+
+impl DialogPresenter for CreateLedgerPresenter {
+    type Outcome = LedgerCreated;
+
+    fn input_event(input: DialogInput) -> CreateLedgerEvent {
+        CreateLedgerEvent::Input(input)
+    }
+
+    fn confirm_event() -> CreateLedgerEvent {
+        CreateLedgerEvent::Confirm
+    }
+
+    fn cancel_event() -> CreateLedgerEvent {
+        CreateLedgerEvent::Cancel
+    }
+
+    fn can_confirm(&self) -> bool {
+        self.is_valid()
+    }
+
+    fn close_open_select(&mut self) -> bool {
+        let open = self.list.is_open();
+        self.list.close();
+        open
     }
 }
 

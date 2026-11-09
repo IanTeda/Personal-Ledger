@@ -25,12 +25,10 @@ use crate::navigation::explorer::FsLedgerFolders;
 use crate::navigation::nav::Noun;
 use crate::settings::{SettingsPage, state::SettingsView};
 use crate::shell::state::ShellState;
-use crate::shell::view::dialog_entity::DialogHandle;
+use crate::shell::view::dialog_entity::{DialogHandle, ModuleDialog};
 use crate::shell::view::rail as rail_view;
-use crate::shell::view::toast::history::ToastHistoryDialog;
 use crate::shell::view::window_size::WindowSize;
 use crate::view::active::ActiveViewEntity;
-use crate::view::help::HelpDialog;
 use lib_settings::DisplayOutput;
 
 /// The Documents mode, Library scope and sort a Ledger's Documents page opens on.
@@ -164,10 +162,10 @@ impl ShellRouter for RootRouter<'_, '_> {
     fn host_dialog(&mut self, dialog: ShellDialog) {
         let handle = match dialog {
             ShellDialog::Help(presenter) => {
-                DialogHandle::new(self.cx.new(|_| HelpDialog::new(presenter)))
+                DialogHandle::new(self.cx.new(|_| ModuleDialog::new(presenter, |(), _| {})))
             }
             ShellDialog::ToastHistory(presenter) => {
-                DialogHandle::new(self.cx.new(|_| ToastHistoryDialog::new(presenter)))
+                DialogHandle::new(self.cx.new(|_| ModuleDialog::new(presenter, |(), _| {})))
             }
         };
         super::dialogs::host(self.state, handle, self.cx);
@@ -275,15 +273,20 @@ impl ShellRouter for RootRouter<'_, '_> {
     /// `false` either way: the explorer stays up under the Dialog, for another pick if Esc
     /// cancels it, and [`Root::ledger_created`] finishes the job once Create has written the file.
     fn create_ledger(&mut self, path: &Path) -> bool {
-        let dialog = crate::ledger_creation::open(path.to_path_buf(), self.cx);
-        self.cx
-            .subscribe(
-                &dialog,
-                |root, _dialog, event: &crate::ledger_creation::LedgerCreatedEvent, cx| {
-                    root.ledger_created(&event.0.path, cx);
-                },
-            )
-            .detach();
+        let root = self.cx.weak_entity();
+        let dialog = crate::ledger_creation::open(
+            path.to_path_buf(),
+            move |created, cx| {
+                // The Dialog is mid-input, inside the Shell's own update: the Shell opens the new
+                // Ledger once that update ends.
+                let root = root.clone();
+                cx.defer(move |cx| {
+                    // A Shell gone with its window has no Ledger to open.
+                    let _ = root.update(cx, |root, cx| root.ledger_created(&created.path, cx));
+                });
+            },
+            self.cx,
+        );
         super::dialogs::host(self.state, DialogHandle::new(dialog), self.cx);
         false
     }

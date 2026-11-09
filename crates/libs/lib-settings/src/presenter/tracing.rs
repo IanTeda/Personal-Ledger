@@ -12,6 +12,7 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 
 use lib_list_cursor::Step;
+use lib_viper::dialog::DialogKeys;
 use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP};
 use lib_viper::view::{Choice, Hint};
 
@@ -72,6 +73,8 @@ pub struct TracingSetup {
     pub keymap: Keymap<TracingEvent>,
     /// The chord of the Shell's `back`, for the legend.
     pub back_chord: String,
+    /// The Dialog keymap's chords, which Clear logs' hints show.
+    pub dialog_keys: DialogKeys,
     /// The radio the page opens on: the configured `log` level, clamped to the four offered.
     pub level: TracingLevel,
 }
@@ -175,6 +178,7 @@ pub struct TracingPresenter {
     mirror: Mirror,
     keymap: Keymap<TracingEvent>,
     back_chord: String,
+    dialog_keys: DialogKeys,
 }
 
 impl TracingPresenter {
@@ -184,6 +188,7 @@ impl TracingPresenter {
             log: setup.log,
             keymap: setup.keymap,
             back_chord: setup.back_chord,
+            dialog_keys: setup.dialog_keys,
         }
     }
 
@@ -191,10 +196,16 @@ impl TracingPresenter {
         &self.keymap
     }
 
-    /// Replaces the keymap and the `back` chord, for a `[keybindings]` change.
-    pub fn set_keymap(&mut self, keymap: Keymap<TracingEvent>, back_chord: String) {
+    /// Replaces the keymap, the `back` chord and the Dialog keys, for a `[keybindings]` change.
+    pub fn set_keymap(
+        &mut self,
+        keymap: Keymap<TracingEvent>,
+        back_chord: String,
+        dialog_keys: DialogKeys,
+    ) {
         self.keymap = keymap;
         self.back_chord = back_chord;
+        self.dialog_keys = dialog_keys;
     }
 
     /// Reads `log` from now on, opening on `level`. The Client restarts its list at the top, at
@@ -224,7 +235,10 @@ impl TracingPresenter {
             TracingEvent::ChooseLevel(level) => self.set_level(level, router),
             TracingEvent::Scroll(scroll) => router.scroll(scroll),
             TracingEvent::ClearLogs => {
-                router.open_clear_logs(ClearLogsPresenter::new(self.log.clone()));
+                router.open_clear_logs(ClearLogsPresenter::new(
+                    self.log.clone(),
+                    self.dialog_keys.clone(),
+                ));
             }
             TracingEvent::Appended => {
                 let change = self.mirror.pull();
@@ -330,6 +344,7 @@ mod tests {
             log: log.clone(),
             keymap: tracing_keymap(&KeyBindingConfig::default()),
             back_chord: "esc".to_string(),
+            dialog_keys: DialogKeys::default(),
             level,
         })
     }

@@ -4,9 +4,11 @@
 use super::Root;
 use crate::shell::state::ShellState;
 use crate::shell::view::dialog_entity::DialogReadback;
-use crate::view::help::{HelpDialog, HelpGroup};
+use crate::shell::view::dialog_entity::ModuleDialog;
+use crate::view::help::HelpGroup;
 use gpui::Context;
 use lib_shell::DialogInput;
+use lib_shell::HelpPresenter;
 
 use crate::shell::view::dialog_entity::DialogHandle;
 
@@ -37,15 +39,16 @@ impl Root {
         self.help_dialog().is_some()
     }
 
-    fn help_dialog(&self) -> Option<gpui::Entity<HelpDialog>> {
-        self.hosted_dialog()?.downcast::<HelpDialog>()
+    fn help_dialog(&self) -> Option<gpui::Entity<ModuleDialog<HelpPresenter>>> {
+        self.hosted_dialog()?
+            .downcast::<ModuleDialog<HelpPresenter>>()
     }
 
     /// The open Help Dialog's page group, for a test; `None` while it is not open or carries
     /// none.
     #[doc(hidden)]
     pub fn help_group(&self, cx: &gpui::App) -> Option<HelpGroup> {
-        self.help_dialog()?.read(cx).group()
+        self.help_dialog()?.read(cx).view_model().group
     }
 
     /// Closes the open Dialog without applying it.

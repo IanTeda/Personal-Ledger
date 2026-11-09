@@ -41,7 +41,7 @@ pub use explorer::{
     EntryKind, ExplorerChoice, ExplorerFilter, ExplorerFilters, ExplorerMode, ExplorerOutcome,
     ExplorerViewModel, FolderEntry, FolderUnreadable, LedgerFolders,
 };
-pub use help::{HelpGroup, HelpPresenter, HelpViewModel};
+pub use help::{HelpEvent, HelpGroup, HelpPresenter, HelpViewModel};
 pub use keymap::{ShellCommand, global_keymap};
 pub use nav::{ContextSelection, FocusZone, InputMode, NavState};
 pub use navigation::{ActiveView, Movement, Noun};
@@ -54,7 +54,9 @@ pub use presenter::{
 };
 pub use protocols::{RailCounts, ShellDialog, ShellRailCounts, ShellRouter};
 pub use rail::RailMode;
-pub use toast_history::{ToastHistoryPresenter, ToastHistoryRow, ToastHistoryViewModel};
+pub use toast_history::{
+    ToastHistoryEvent, ToastHistoryPresenter, ToastHistoryRow, ToastHistoryViewModel,
+};
 pub use window_size::WindowSize;
 
 /// What every status-line hint is, the Shell's own and each module's, so the bins name it here.

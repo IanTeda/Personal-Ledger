@@ -5,7 +5,8 @@
 use chrono::{DateTime, Local};
 use lib_locale::format::format_time;
 use lib_toast::{History, ToastKind};
-use lib_viper::dialog::DialogRouter;
+use lib_viper::dialog::{DialogInput, DialogRouter};
+use lib_viper::presenter::{DialogPresenter, Presenter};
 
 /// One history row as text, so the ordering and merging are testable without a window.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,19 +46,54 @@ impl ToastHistoryPresenter {
     pub fn refresh(&mut self, history: &History<DateTime<Local>>) {
         self.view_model.rows = rows(history);
     }
+}
 
-    pub fn view_model(&self) -> &ToastHistoryViewModel {
-        &self.view_model
-    }
-
+/// What the Toast history card takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToastHistoryEvent {
+    /// A Dialog command or typed key: every one is left to the Shell, so none does anything.
+    Input(DialogInput),
     /// The Close button.
-    pub fn confirm(&mut self, router: &mut impl DialogRouter<()>) {
-        router.close(Some(()));
+    Confirm,
+    /// `Esc`, the Shell's `back`.
+    Cancel,
+}
+
+impl Presenter for ToastHistoryPresenter {
+    type Event = ToastHistoryEvent;
+    type ViewModel = ToastHistoryViewModel;
+    type Router<'r> = dyn DialogRouter<()> + 'r;
+
+    fn handle(&mut self, event: ToastHistoryEvent, router: &mut Self::Router<'_>) {
+        match event {
+            ToastHistoryEvent::Input(_) => {}
+            ToastHistoryEvent::Confirm => router.close(Some(())),
+            ToastHistoryEvent::Cancel => router.close(None),
+        }
     }
 
-    /// `Esc`, the Shell's `back`.
-    pub fn cancel(&mut self, router: &mut impl DialogRouter<()>) {
-        router.close(None);
+    fn view_model(&self) -> ToastHistoryViewModel {
+        self.view_model.clone()
+    }
+}
+
+impl DialogPresenter for ToastHistoryPresenter {
+    type Outcome = ();
+
+    fn input_event(input: DialogInput) -> ToastHistoryEvent {
+        ToastHistoryEvent::Input(input)
+    }
+
+    fn confirm_event() -> ToastHistoryEvent {
+        ToastHistoryEvent::Confirm
+    }
+
+    fn cancel_event() -> ToastHistoryEvent {
+        ToastHistoryEvent::Cancel
+    }
+
+    fn can_confirm(&self) -> bool {
+        true
     }
 }
 
@@ -123,12 +159,8 @@ mod tests {
 
         history.refresh(toasts.history());
 
-        let texts: Vec<_> = history
-            .view_model()
-            .rows
-            .iter()
-            .map(|row| row.text.as_str())
-            .collect();
+        let view = history.view_model();
+        let texts: Vec<_> = view.rows.iter().map(|row| row.text.as_str()).collect();
         assert_eq!(texts, ["behind", "before"]);
     }
 
@@ -173,8 +205,8 @@ mod tests {
         let mut presenter = open(&Toasts::default());
         let mut router = Closing::default();
 
-        presenter.confirm(&mut router);
-        presenter.cancel(&mut router);
+        presenter.handle(ToastHistoryEvent::Confirm, &mut router);
+        presenter.handle(ToastHistoryEvent::Cancel, &mut router);
 
         assert_eq!(router.closed, [Some(()), None]);
     }

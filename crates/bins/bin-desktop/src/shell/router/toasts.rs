@@ -8,7 +8,8 @@ use lib_toast::{Notice, ToastKind};
 
 use super::Root;
 
-use crate::shell::view::toast::history::ToastHistoryDialog;
+use crate::shell::view::dialog_entity::ModuleDialog;
+use lib_shell::ToastHistoryPresenter;
 
 impl Root {
     /// Shows every Notice the Routers queued since the last drain (`crate::notices`) on the Shell's
@@ -26,10 +27,13 @@ impl Root {
         }
         if let Some(dialog) = self
             .hosted_dialog()
-            .and_then(|dialog| dialog.downcast::<ToastHistoryDialog>())
+            .and_then(|dialog| dialog.downcast::<ModuleDialog<ToastHistoryPresenter>>())
         {
             let history = self.presenter.toasts().history();
-            dialog.update(cx, |dialog, cx| dialog.refresh(history, cx));
+            dialog.update(cx, |dialog, cx| {
+                dialog.presenter_mut().refresh(history);
+                cx.notify();
+            });
         }
     }
 
@@ -83,7 +87,10 @@ impl Root {
     }
 
     pub(super) fn toast_history_open(&self) -> bool {
-        self.hosted_dialog()
-            .is_some_and(|dialog| dialog.downcast::<ToastHistoryDialog>().is_some())
+        self.hosted_dialog().is_some_and(|dialog| {
+            dialog
+                .downcast::<ModuleDialog<ToastHistoryPresenter>>()
+                .is_some()
+        })
     }
 }

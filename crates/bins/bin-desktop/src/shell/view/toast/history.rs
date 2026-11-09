@@ -5,19 +5,12 @@
 
 use std::rc::Rc;
 
-use chrono::{DateTime, Local};
-use gpui::{
-    AnyElement, App, Context, EventEmitter, IntoElement, Render, Window, div, prelude::*, px,
-};
-use lib_shell::{ToastHistoryPresenter, ToastHistoryRow};
-use lib_toast::History;
-use lib_viper::dialog::DialogInput;
+use gpui::{AnyElement, App, div, prelude::*, px};
+use lib_shell::{Hint, ToastHistoryPresenter, ToastHistoryRow, ToastHistoryViewModel};
 
 use crate::{
     dialog,
-    shell::view::dialog_entity::{
-        DialogClicks, DialogClosed, DialogReadback, HostRouter, HostedDialog,
-    },
+    shell::view::dialog_entity::{DialogView, ModuleDialogClicks},
     theme::{color, type_scale},
 };
 
@@ -27,71 +20,31 @@ const LIST_MAX_HEIGHT: gpui::Pixels = px(420.0);
 
 pub type OnClose = dialog::OnClick;
 
-/// The session Toast history: an Entity holding `lib-shell`'s [`ToastHistoryPresenter`], hosted
-/// like any module Dialog (#1043). Read-only, so `Esc` and the Close button close it and every
-/// key is left to the Shell.
-pub struct ToastHistoryDialog {
-    presenter: ToastHistoryPresenter,
-}
+/// The session Toast history: `lib-shell`'s [`ToastHistoryPresenter`] hosted in a `ModuleDialog`
+/// (#1043). Read-only, so `Esc` and the Close button close it and every key is left to the Shell.
+impl DialogView for ToastHistoryPresenter {
+    type Widgets = ();
 
-impl ToastHistoryDialog {
-    pub fn new(presenter: ToastHistoryPresenter) -> Self {
-        Self { presenter }
+    fn kind(_view: &ToastHistoryViewModel) -> &'static str {
+        "ToastHistory"
     }
 
-    /// Shows a Toast raised while the card is up.
-    pub fn refresh(&mut self, history: &History<DateTime<Local>>, cx: &mut Context<'_, Self>) {
-        self.presenter.refresh(history);
-        cx.notify();
+    fn render(
+        view: &ToastHistoryViewModel,
+        _widgets: &mut (),
+        clicks: &ModuleDialogClicks<Self>,
+        cx: &App,
+    ) -> AnyElement {
+        render(&view.rows, clicks.confirm.clone(), cx)
     }
 
-    /// Emits the close once the Presenter has closed it.
-    fn closed(router: HostRouter<()>, cx: &mut Context<'_, Self>) {
-        if router.closed().is_some() {
-            cx.emit(DialogClosed);
-        }
-    }
-}
-
-impl EventEmitter<DialogClosed> for ToastHistoryDialog {}
-
-impl HostedDialog for ToastHistoryDialog {
-    /// Every key is left to the Shell, so none reaches the Presenter.
-    fn input(&mut self, _input: DialogInput, _cx: &mut Context<'_, Self>) {}
-
-    fn can_confirm(&self) -> bool {
-        true
+    fn readback(view: &ToastHistoryViewModel) -> Vec<(&'static str, String)> {
+        vec![("rows", view.rows.len().to_string())]
     }
 
-    /// The Close button.
-    fn confirm(&mut self, cx: &mut Context<'_, Self>) {
-        let mut router = HostRouter::default();
-        self.presenter.confirm(&mut router);
-        Self::closed(router, cx);
-    }
-
-    fn cancel(&mut self, cx: &mut Context<'_, Self>) {
-        let mut router = HostRouter::default();
-        self.presenter.cancel(&mut router);
-        Self::closed(router, cx);
-    }
-
-    fn close_open_select(&mut self) -> bool {
-        false
-    }
-
-    fn readback(&self, _cx: &App) -> DialogReadback {
-        DialogReadback {
-            kind: "ToastHistory",
-            values: vec![("rows", self.presenter.view_model().rows.len().to_string())],
-        }
-    }
-}
-
-impl Render for ToastHistoryDialog {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let clicks = DialogClicks::new(cx);
-        render(&self.presenter.view_model().rows, clicks.confirm, cx)
+    /// The card is read-only and leaves the View's hints on the status line.
+    fn hints(_view: &ToastHistoryViewModel) -> Vec<Hint> {
+        Vec::new()
     }
 }
 

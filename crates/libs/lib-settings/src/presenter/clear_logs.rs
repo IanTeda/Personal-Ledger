@@ -5,7 +5,10 @@
 use std::rc::Rc;
 
 use lib_toast::{Notice, ToastKind};
-use lib_viper::dialog::{DialogInput, DialogRouter};
+use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
+use lib_viper::keymap::{BACK, SELECT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
+use lib_viper::view::Hint;
 
 use crate::msg;
 use crate::protocols::TracingLog;
@@ -17,6 +20,16 @@ pub enum ClearLogsOutcome {
     Cleared,
 }
 
+/// What the Clear logs Dialog takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClearLogsEvent {
+    /// A Dialog command or typed key: `Enter` confirms, and the Dialog has no field to type into.
+    Input(DialogInput),
+    /// The confirm button.
+    Confirm,
+    Cancel,
+}
+
 /// The Dialog as drawn.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClearLogsViewModel {
@@ -24,35 +37,24 @@ pub struct ClearLogsViewModel {
     pub warning: String,
     /// The confirm button's label.
     pub confirm: String,
+    /// The status line's legend while the Dialog is open.
+    pub hints: Vec<Hint>,
 }
 
 /// The Clear logs Dialog's Presenter.
 pub struct ClearLogsPresenter {
     log: Rc<dyn TracingLog>,
+    keys: DialogKeys,
 }
 
 impl ClearLogsPresenter {
-    pub fn new(log: Rc<dyn TracingLog>) -> Self {
-        Self { log }
-    }
-
-    pub fn view_model(&self) -> ClearLogsViewModel {
-        ClearLogsViewModel {
-            title: msg::settings_tracing_clear_title(),
-            warning: msg::settings_tracing_clear_warning(),
-            confirm: msg::settings_tracing_clear(),
-        }
-    }
-
-    /// `Enter` confirms; the Dialog has no field, so every other input is swallowed.
-    pub fn input(&mut self, input: DialogInput, router: &mut dyn DialogRouter<ClearLogsOutcome>) {
-        if matches!(input, DialogInput::Select | DialogInput::Submit) {
-            self.confirm(router);
-        }
+    /// The Dialog over `log`. `keys` are the Dialog keymap's chords, which its hints show.
+    pub fn new(log: Rc<dyn TracingLog>, keys: DialogKeys) -> Self {
+        Self { log, keys }
     }
 
     /// Empties the capture, says so and closes. Nothing can refuse it.
-    pub fn confirm(&mut self, router: &mut dyn DialogRouter<ClearLogsOutcome>) {
+    fn clear(&mut self, router: &mut dyn DialogRouter<ClearLogsOutcome>) {
         self.log.clear();
         router.notify(Notice::Toast(
             ToastKind::Info,
@@ -60,10 +62,56 @@ impl ClearLogsPresenter {
         ));
         router.close(Some(ClearLogsOutcome::Cleared));
     }
+}
 
-    /// `Esc`, the Shell's `back`: the capture stays as it was.
-    pub fn cancel(&mut self, router: &mut dyn DialogRouter<ClearLogsOutcome>) {
-        router.close(None);
+impl Presenter for ClearLogsPresenter {
+    type Event = ClearLogsEvent;
+    type ViewModel = ClearLogsViewModel;
+    type Router<'r> = dyn DialogRouter<ClearLogsOutcome> + 'r;
+
+    /// `Enter` confirms; every other input is swallowed. `Esc`, the Shell's `back`, keeps the
+    /// capture as it was.
+    fn handle(&mut self, event: ClearLogsEvent, router: &mut Self::Router<'_>) {
+        match event {
+            ClearLogsEvent::Input(DialogInput::Select | DialogInput::Submit)
+            | ClearLogsEvent::Confirm => self.clear(router),
+            ClearLogsEvent::Input(_) => {}
+            ClearLogsEvent::Cancel => router.close(None),
+        }
+    }
+
+    fn view_model(&self) -> ClearLogsViewModel {
+        ClearLogsViewModel {
+            title: msg::settings_tracing_clear_title(),
+            warning: msg::settings_tracing_clear_warning(),
+            confirm: msg::settings_tracing_clear(),
+            // A plain confirm has at most the one confirm field, so no `tab`.
+            hints: vec![
+                self.keys.hint(BACK, lib_locale::msg::dialog_hint_cancel()),
+                self.keys
+                    .hint(SELECT, lib_locale::msg::dialog_hint_confirm()),
+            ],
+        }
+    }
+}
+
+impl DialogPresenter for ClearLogsPresenter {
+    type Outcome = ClearLogsOutcome;
+
+    fn input_event(input: DialogInput) -> ClearLogsEvent {
+        ClearLogsEvent::Input(input)
+    }
+
+    fn confirm_event() -> ClearLogsEvent {
+        ClearLogsEvent::Confirm
+    }
+
+    fn cancel_event() -> ClearLogsEvent {
+        ClearLogsEvent::Cancel
+    }
+
+    fn can_confirm(&self) -> bool {
+        true
     }
 }
 
@@ -96,7 +144,10 @@ mod tests {
     fn presenter() -> (ClearLogsPresenter, Rc<InMemoryTracingLog>) {
         let log = Rc::new(InMemoryTracingLog::new(8));
         log.push(LogLevel::Info, "bin_desktop::shell", "hello");
-        (ClearLogsPresenter::new(log.clone()), log)
+        (
+            ClearLogsPresenter::new(log.clone(), DialogKeys::default()),
+            log,
+        )
     }
 
     #[test]
@@ -104,7 +155,7 @@ mod tests {
         let (mut presenter, log) = presenter();
         let mut router = Recording::default();
 
-        presenter.input(DialogInput::Select, &mut router);
+        presenter.handle(ClearLogsEvent::Input(DialogInput::Select), &mut router);
 
         assert!(log.since(0).is_empty());
         assert_eq!(router.closed, [Some(ClearLogsOutcome::Cleared)]);
@@ -119,7 +170,7 @@ mod tests {
         let (mut presenter, log) = presenter();
         let mut router = Recording::default();
 
-        presenter.cancel(&mut router);
+        presenter.handle(ClearLogsEvent::Cancel, &mut router);
 
         assert_eq!(log.since(0).len(), 1);
         assert_eq!(router.closed, [None]);
@@ -136,7 +187,7 @@ mod tests {
             DialogInput::NextField,
             DialogInput::Backspace,
         ] {
-            presenter.input(input, &mut router);
+            presenter.handle(ClearLogsEvent::Input(input), &mut router);
         }
 
         assert!(router.closed.is_empty());

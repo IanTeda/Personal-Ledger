@@ -918,6 +918,7 @@ mod tests {
     use lib_list_cursor::Step;
 
     use lib_toast::ToastKind;
+    use lib_viper::presenter::Presenter as _;
 
     use super::*;
     use crate::fake::{FakeRailCounts, RecordingRouter, Routed};

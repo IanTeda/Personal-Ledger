@@ -3,9 +3,9 @@
 //! chosen a path. Every rule, every piece of text and the Presenter are `lib-ledger-creation`'s;
 //! this folder turns gpui keys and clicks into Presenter events and draws the view model.
 //!
-//! Nothing is written until Create. A confirmed create emits [`LedgerCreatedEvent`], which the
-//! root Router answers by opening the new Ledger (as `:open` does) and landing on the Dashboard;
-//! the Dialog is not the Shell, so it cannot do that itself.
+//! Nothing is written until Create. A confirmed create lands on the root Router, which opens the
+//! new Ledger (as `:open` does) and lands on the Dashboard; the Dialog is not the Shell, so it
+//! cannot do that itself.
 
 mod dialog;
 
@@ -15,13 +15,19 @@ use std::rc::Rc;
 
 use gpui::{App, AppContext as _, Entity};
 use lib_database::LedgerCreationAdapter;
+use lib_ledger_creation::interactor::LedgerCreated;
 use lib_ledger_creation::presenter::{CreateLedgerPresenter, SharedLedgerCreation};
 
-pub use dialog::{CreateLedgerDialog, LedgerCreatedEvent};
+use crate::shell::view::dialog_entity::ModuleDialog;
 
 /// The Create ledger Dialog for the Ledger file at `path`, over the real creation port and
-/// prefilled from the Locale's Currency.
-pub(crate) fn open(path: PathBuf, cx: &mut App) -> Entity<CreateLedgerDialog> {
+/// prefilled from the Locale's Currency. `created` runs with the Ledger once Create has written
+/// it.
+pub(crate) fn open(
+    path: PathBuf,
+    created: impl Fn(LedgerCreated, &mut App) + 'static,
+    cx: &mut App,
+) -> Entity<ModuleDialog<CreateLedgerPresenter>> {
     let creation: SharedLedgerCreation = Rc::new(RefCell::new(LedgerCreationAdapter::new()));
     let presenter = CreateLedgerPresenter::new(
         creation,
@@ -29,5 +35,5 @@ pub(crate) fn open(path: PathBuf, cx: &mut App) -> Entity<CreateLedgerDialog> {
         lib_locale::locale().currency(),
         lib_locale::msg::institution_personal(),
     );
-    cx.new(|_| CreateLedgerDialog::new(presenter))
+    cx.new(|_| ModuleDialog::new(presenter, created))
 }

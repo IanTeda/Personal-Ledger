@@ -15,7 +15,7 @@ use lib_settings::{
 use lib_toast::{Notice, Notify};
 
 use super::state::SettingsView;
-use super::tracing::{TracingPage, apply_change, dialogs::clear_logs::ClearLogsDialog, scroll};
+use super::tracing::{TracingPage, apply_change, scroll};
 use crate::view::event::{ViewEvent, ViewMode};
 
 /// The page on show changed by the person's hand, for the root Router to record in the Shell's
@@ -106,8 +106,9 @@ impl lib_settings::TracingRouter for TracingRouter<'_, '_> {
     fn open_clear_logs(&mut self, dialog: ClearLogsPresenter) {
         self.cx.emit(ViewEvent::SetStatus(None));
         let page = self.cx.weak_entity();
-        crate::shell::view::dialog_entity::host_dialog(self.cx, |_| {
-            ClearLogsDialog::new(dialog, page)
+        crate::shell::view::dialog_entity::host_dialog(self.cx, dialog, move |_, cx| {
+            // A page that has gone has nothing to land on.
+            let _ = page.update(cx, |page, cx| page.cleared(cx));
         });
     }
 }

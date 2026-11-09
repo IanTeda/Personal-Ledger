@@ -4,14 +4,12 @@
 
 use std::rc::Rc;
 
-use gpui::{AnyElement, App, Context, EventEmitter, SharedString, Window, div, prelude::*, px};
-use lib_shell::{HelpPresenter, HelpViewModel};
-use lib_viper::dialog::DialogInput;
+use gpui::{AnyElement, App, SharedString, Window, div, prelude::*, px};
+use lib_shell::{HelpPresenter, HelpViewModel, Hint};
 
 use crate::{
     dialog, help,
-    shell::view::dialog_entity::DialogReadback,
-    shell::view::dialog_entity::{DialogClicks, DialogClosed, HelpRouter, HostedDialog},
+    shell::view::dialog_entity::{DialogView, ModuleDialogClicks},
     theme::color,
 };
 
@@ -25,82 +23,39 @@ pub type OnClose = dialog::OnClick;
 
 /// The `?` Help Dialog: read-only, so `?`, `Enter`, `Esc` and the Close button close it and every
 /// other key is left to the Shell. The Presenter carries the page group of the View it was opened
-/// over, worded when it opened.
-pub struct HelpDialog {
-    presenter: HelpPresenter,
-}
+/// over, worded when it opened. `lib-shell`'s [`HelpPresenter`] hosted in a `ModuleDialog`.
+impl DialogView for HelpPresenter {
+    type Widgets = ();
 
-impl HelpDialog {
-    pub fn new(presenter: HelpPresenter) -> Self {
-        Self { presenter }
+    fn kind(_view: &HelpViewModel) -> &'static str {
+        "Help"
     }
 
-    /// The page group of the View the card opened over, for a test.
-    pub fn group(&self) -> Option<HelpGroup> {
-        self.presenter.view_model().group.clone()
+    fn render(
+        view: &HelpViewModel,
+        _widgets: &mut (),
+        clicks: &ModuleDialogClicks<Self>,
+        cx: &App,
+    ) -> AnyElement {
+        render(clicks.confirm.clone(), view, cx)
     }
 
-    /// Emits the close once the Presenter has closed it.
-    fn closed(router: HelpRouter, cx: &mut Context<'_, Self>) {
-        if router.closed().is_some() {
-            cx.emit(DialogClosed);
-        }
-    }
-}
-
-impl EventEmitter<DialogClosed> for HelpDialog {}
-
-impl HostedDialog for HelpDialog {
-    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
-        let mut router = HelpRouter::default();
-        self.presenter.input(input, &mut router);
-        Self::closed(router, cx);
+    fn readback(view: &HelpViewModel) -> Vec<(&'static str, String)> {
+        vec![
+            (
+                "group",
+                view.group
+                    .as_ref()
+                    .map(|group| group.heading.clone())
+                    .unwrap_or_default(),
+            ),
+            ("jumps", view.jumps.len().to_string()),
+        ]
     }
 
-    fn can_confirm(&self) -> bool {
-        true
-    }
-
-    /// The Close button.
-    fn confirm(&mut self, cx: &mut Context<'_, Self>) {
-        let mut router = HelpRouter::default();
-        self.presenter.confirm(&mut router);
-        Self::closed(router, cx);
-    }
-
-    fn cancel(&mut self, cx: &mut Context<'_, Self>) {
-        let mut router = HelpRouter::default();
-        self.presenter.cancel(&mut router);
-        Self::closed(router, cx);
-    }
-
-    fn close_open_select(&mut self) -> bool {
-        false
-    }
-
-    fn readback(&self, _cx: &App) -> DialogReadback {
-        let model = self.presenter.view_model();
-        DialogReadback {
-            kind: "Help",
-            values: vec![
-                (
-                    "group",
-                    model
-                        .group
-                        .as_ref()
-                        .map(|group| group.heading.clone())
-                        .unwrap_or_default(),
-                ),
-                ("jumps", model.jumps.len().to_string()),
-            ],
-        }
-    }
-}
-
-impl Render for HelpDialog {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let clicks = DialogClicks::new(cx);
-        render(clicks.confirm, self.presenter.view_model(), cx)
+    /// The card is read-only and leaves the View's hints on the status line.
+    fn hints(_view: &HelpViewModel) -> Vec<Hint> {
+        Vec::new()
     }
 }
 

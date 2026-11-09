@@ -21,6 +21,7 @@ use lib_settings::{
     TracingSetup, TracingViewModel,
 };
 use lib_shell::Hint;
+use lib_viper::dialog::DialogKeys;
 use lib_viper::keymap::KeyBindingConfig;
 
 use crate::{
@@ -63,6 +64,7 @@ impl TracingPage {
             log,
             keymap: tracing_keymap(config),
             back_chord,
+            dialog_keys: DialogKeys::of(&lib_shell::dialog_keymap(config)),
             level,
         });
         log_list.reset(presenter.visible_count());
@@ -74,8 +76,11 @@ impl TracingPage {
 
     /// The page's keys under `config`'s overrides.
     pub fn set_keymaps(&mut self, config: &KeyBindingConfig, back_chord: String) {
-        self.presenter
-            .set_keymap(tracing_keymap(config), back_chord);
+        self.presenter.set_keymap(
+            tracing_keymap(config),
+            back_chord,
+            DialogKeys::of(&lib_shell::dialog_keymap(config)),
+        );
     }
 
     pub fn view_model(&self) -> TracingViewModel {

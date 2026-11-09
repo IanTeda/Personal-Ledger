@@ -10,6 +10,7 @@
 use lib_locale::msg;
 use lib_viper::dialog::{DialogInput, DialogRouter};
 use lib_viper::keymap::{BACK, Keymap, MOVE_DOWN, MOVE_UP, SELECT};
+use lib_viper::presenter::{DialogPresenter, Presenter};
 
 use crate::keymap::{GLOBAL_BINDINGS, HELP, OPEN_COMMAND_POPUP, ShellCommand};
 use crate::navigation::Noun;
@@ -56,27 +57,57 @@ impl HelpPresenter {
             },
         }
     }
+}
 
-    pub fn view_model(&self) -> &HelpViewModel {
-        &self.view_model
-    }
+/// What the Help card takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HelpEvent {
+    /// A Dialog command or typed key: `?` and `Enter` close the card, every other key is left to
+    /// the Shell.
+    Input(DialogInput),
+    /// The Close button.
+    Confirm,
+    /// `Esc`, the Shell's `back`.
+    Cancel,
+}
 
-    /// `?` and `Enter` close the card; every other key is left to the Shell.
-    pub fn input(&mut self, input: DialogInput, router: &mut impl DialogRouter<()>) {
-        match input {
-            DialogInput::Char('?') | DialogInput::Select => self.confirm(router),
-            _ => {}
+impl Presenter for HelpPresenter {
+    type Event = HelpEvent;
+    type ViewModel = HelpViewModel;
+    type Router<'r> = dyn DialogRouter<()> + 'r;
+
+    fn handle(&mut self, event: HelpEvent, router: &mut Self::Router<'_>) {
+        match event {
+            HelpEvent::Input(DialogInput::Char('?') | DialogInput::Select) | HelpEvent::Confirm => {
+                router.close(Some(()));
+            }
+            HelpEvent::Input(_) => {}
+            HelpEvent::Cancel => router.close(None),
         }
     }
 
-    /// The Close button.
-    pub fn confirm(&mut self, router: &mut impl DialogRouter<()>) {
-        router.close(Some(()));
+    fn view_model(&self) -> HelpViewModel {
+        self.view_model.clone()
+    }
+}
+
+impl DialogPresenter for HelpPresenter {
+    type Outcome = ();
+
+    fn input_event(input: DialogInput) -> HelpEvent {
+        HelpEvent::Input(input)
     }
 
-    /// `Esc`, the Shell's `back`.
-    pub fn cancel(&mut self, router: &mut impl DialogRouter<()>) {
-        router.close(None);
+    fn confirm_event() -> HelpEvent {
+        HelpEvent::Confirm
+    }
+
+    fn cancel_event() -> HelpEvent {
+        HelpEvent::Cancel
+    }
+
+    fn can_confirm(&self) -> bool {
+        true
     }
 }
 
@@ -254,7 +285,7 @@ mod tests {
             let mut help = open(&KeyBindingConfig::default(), None);
             let mut router = Closing::default();
 
-            help.input(input, &mut router);
+            help.handle(HelpEvent::Input(input), &mut router);
 
             assert_eq!(router.closed, [Some(())], "{input:?}");
         }
@@ -265,8 +296,8 @@ mod tests {
         let mut help = open(&KeyBindingConfig::default(), None);
         let mut router = Closing::default();
 
-        help.confirm(&mut router);
-        help.cancel(&mut router);
+        help.handle(HelpEvent::Confirm, &mut router);
+        help.handle(HelpEvent::Cancel, &mut router);
 
         assert_eq!(router.closed, [Some(()), None]);
     }
@@ -286,7 +317,7 @@ mod tests {
             DialogInput::Backspace,
             DialogInput::Left,
         ] {
-            help.input(input, &mut router);
+            help.handle(HelpEvent::Input(input), &mut router);
         }
 
         assert!(router.closed.is_empty());

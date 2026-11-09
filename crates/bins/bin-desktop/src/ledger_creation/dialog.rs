@@ -5,104 +5,48 @@
 
 use std::rc::Rc;
 
-use gpui::{AnyElement, App, Context, EventEmitter, IntoElement, Render, Window, div, prelude::*};
-use lib_ledger_creation::interactor::LedgerCreated;
+use gpui::{AnyElement, App, Window, div, prelude::*};
 use lib_ledger_creation::presenter::{
     CreateLedgerEvent, CreateLedgerPresenter, CreateLedgerViewModel, LedgerField,
 };
-use lib_viper::dialog::DialogInput;
+use lib_shell::Hint;
 use lib_viper::view::SelectList;
 
 use crate::dialog;
 use crate::form::dialog_fields::{label, text_field, two_up};
 use crate::form::select_field::{self, SelectFieldProps};
 use crate::form::viper::{chosen_label, drawn, labels};
-use crate::shell::view::dialog_entity::{
-    DialogClicks, DialogClosed, DialogReadback, HostRouter, HostedDialog,
-};
+use crate::shell::view::dialog_entity::{DialogView, ModuleDialogClicks};
 use crate::units::help;
 
-type Clicks = DialogClicks<CreateLedgerDialog>;
+type Clicks = ModuleDialogClicks<CreateLedgerPresenter>;
 
-/// A create went through: the Ledger file now exists at `created.path`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LedgerCreatedEvent(pub LedgerCreated);
-
-pub struct CreateLedgerDialog {
-    presenter: CreateLedgerPresenter,
-    /// The Type select's open-list scroll window.
+/// The Type select's open-list scroll window, the widget state the View keeps beside the
+/// Presenter.
+#[derive(Default)]
+pub struct CreateLedgerWidgets {
     scroll: usize,
 }
 
-impl CreateLedgerDialog {
-    pub fn new(presenter: CreateLedgerPresenter) -> Self {
-        Self {
-            presenter,
-            scroll: 0,
-        }
+/// `lib-ledger-creation`'s [`CreateLedgerPresenter`] hosted in a `ModuleDialog`: a confirmed
+/// create lands on the root Router, which opens the new Ledger.
+impl DialogView for CreateLedgerPresenter {
+    type Widgets = CreateLedgerWidgets;
+
+    fn kind(_view: &CreateLedgerViewModel) -> &'static str {
+        "CreateLedger"
     }
 
-    fn send(&mut self, event: CreateLedgerEvent, cx: &mut Context<'_, Self>) {
-        let mut router = HostRouter::default();
-        self.presenter.handle(event, &mut router);
-        match router.closed() {
-            Some(Some(created)) => {
-                cx.emit(LedgerCreatedEvent(created));
-                cx.emit(DialogClosed);
-            }
-            Some(None) => cx.emit(DialogClosed),
-            None => {}
-        }
+    fn render(
+        view: &CreateLedgerViewModel,
+        widgets: &mut CreateLedgerWidgets,
+        clicks: &Clicks,
+        cx: &App,
+    ) -> AnyElement {
+        render(view, &mut widgets.scroll, clicks, cx)
     }
 
-    /// An event that never closes the Dialog: a click on a field or a list row.
-    fn apply(&mut self, event: CreateLedgerEvent) {
-        self.presenter.handle(event, &mut HostRouter::default());
-    }
-
-    fn click_option(&mut self, index: usize) {
-        let kind = self
-            .presenter
-            .view_model()
-            .kind
-            .options
-            .get(index)
-            .map(|choice| choice.value);
-        if let Some(kind) = kind {
-            self.apply(CreateLedgerEvent::Kind(kind));
-        }
-    }
-}
-
-impl EventEmitter<DialogClosed> for CreateLedgerDialog {}
-impl EventEmitter<LedgerCreatedEvent> for CreateLedgerDialog {}
-
-impl HostedDialog for CreateLedgerDialog {
-    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
-        self.send(CreateLedgerEvent::Input(input), cx);
-    }
-
-    fn can_confirm(&self) -> bool {
-        self.presenter.view_model().frame.can_confirm
-    }
-
-    fn confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.send(CreateLedgerEvent::Confirm, cx);
-    }
-
-    /// A cancelled create has written nothing.
-    fn cancel(&mut self, cx: &mut Context<'_, Self>) {
-        self.send(CreateLedgerEvent::Cancel, cx);
-    }
-
-    fn close_open_select(&mut self) -> bool {
-        let open = self.presenter.view_model().list.is_open();
-        self.apply(CreateLedgerEvent::CloseList);
-        open
-    }
-
-    fn readback(&self, _cx: &App) -> DialogReadback {
-        let view = self.presenter.view_model();
+    fn readback(view: &CreateLedgerViewModel) -> Vec<(&'static str, String)> {
         let focused = [
             (view.code.focused, "Code"),
             (view.kind.focused, "Type"),
@@ -112,29 +56,23 @@ impl HostedDialog for CreateLedgerDialog {
         .into_iter()
         .find_map(|(focused, name)| focused.then(|| name.to_string()))
         .unwrap_or_default();
-        DialogReadback {
-            kind: "CreateLedger",
-            values: vec![
-                ("title", view.frame.title.clone()),
-                ("file", view.file.text.clone()),
-                ("code", view.code.text.clone()),
-                ("name", view.name.text.clone()),
-                ("precision", view.precision.text.clone()),
-                ("kind", chosen_label(&view.kind).unwrap_or_default()),
-                ("kinds", labels(&view.kind).join("|")),
-                ("field", focused),
-                ("select_open", view.list.is_open().to_string()),
-                ("can_confirm", view.frame.can_confirm.to_string()),
-            ],
-        }
+        vec![
+            ("title", view.frame.title.clone()),
+            ("file", view.file.text.clone()),
+            ("code", view.code.text.clone()),
+            ("name", view.name.text.clone()),
+            ("precision", view.precision.text.clone()),
+            ("kind", chosen_label(&view.kind).unwrap_or_default()),
+            ("kinds", labels(&view.kind).join("|")),
+            ("field", focused),
+            ("select_open", view.list.is_open().to_string()),
+            ("can_confirm", view.frame.can_confirm.to_string()),
+        ]
     }
-}
 
-impl Render for CreateLedgerDialog {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let view = self.presenter.view_model();
-        let clicks = Clicks::new(cx);
-        render(&view, &mut self.scroll, &clicks, cx)
+    /// The Dialog has no hints of its own and leaves the View's on the status line.
+    fn hints(_view: &CreateLedgerViewModel) -> Vec<Hint> {
+        Vec::new()
     }
 }
 
@@ -151,9 +89,7 @@ fn render(
             &field.text,
             &field.placeholder,
             field.focused,
-            actions.click(move |dialog: &mut CreateLedgerDialog| {
-                dialog.apply(CreateLedgerEvent::Focus(to));
-            }),
+            actions.send(CreateLedgerEvent::Focus(to)),
             cx,
         )
     };
@@ -172,11 +108,20 @@ fn render(
             focused: view.kind.focused,
             accent: false,
             read_only: None,
-            on_field_click: actions.click(|dialog: &mut CreateLedgerDialog| {
-                dialog.apply(CreateLedgerEvent::ToggleKind);
-            }),
-            on_option_click: actions.option(|dialog: &mut CreateLedgerDialog, index| {
-                dialog.click_option(index);
+            on_field_click: actions.send(CreateLedgerEvent::ToggleKind),
+            on_option_click: actions.option({
+                let kinds: Vec<_> = view
+                    .kind
+                    .options
+                    .iter()
+                    .map(|choice| choice.value)
+                    .collect();
+                move |index| {
+                    kinds
+                        .get(index)
+                        .map(|kind| vec![CreateLedgerEvent::Kind(*kind)])
+                        .unwrap_or_default()
+                }
             }),
         },
         cx,

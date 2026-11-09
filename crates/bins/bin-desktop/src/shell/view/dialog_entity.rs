@@ -9,7 +9,7 @@
 //! keymap doesn't bind types into the focused field.
 //!
 //! Every Dialog's Presenter takes `lib-viper`'s [`DialogInput`]s: each command and typed key is one
-//! ([`HostedDialog::input`]), and the Presenter closes through the one [`HostRouter`].
+//! ([`DialogPresenter::input_event`]), and the Presenter closes through the one [`HostRouter`].
 //!
 //! A Dialog's Presenter closes it through its Router. The Dialog then hands a confirm's outcome to
 //! the page that opened it and emits [`DialogClosed`], which the Shell closes the host on, so a
@@ -17,8 +17,8 @@
 //!
 //! [`ModuleDialog`] hosts any `lib-viper` `DialogPresenter` (ADR-0056): a domain writes a
 //! [`DialogView`] on its Presenter (how it draws, reads back and is named) and no Entity of its
-//! own. The hand-written Dialogs still implement [`HostedDialog`] themselves until each moves onto
-//! it (#1077); `ModuleDialog` is one more implementation, so the host and `route_key` don't change.
+//! own. It is the only Dialog Entity there is, so [`DialogHandle`] holds an `Entity<ModuleDialog<P>>`
+//! and nothing else.
 
 use std::fmt;
 use std::rc::Rc;
@@ -92,41 +92,6 @@ impl DialogReadback {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DialogClosed;
 
-/// A module's Dialog as the host holds it: an Entity owning its Presenter and its widget state.
-pub trait HostedDialog: Render + EventEmitter<DialogClosed> + Sized + 'static {
-    /// A Dialog input: the Presenter decides what it means, and confirms or closes through a
-    /// [`HostRouter`].
-    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>);
-
-    /// Whether the form would confirm now.
-    fn can_confirm(&self) -> bool;
-
-    /// Sends the Presenter its Confirm. One that lands hands its outcome to the page and emits
-    /// [`DialogClosed`]; a refusal stays on the form.
-    fn confirm(&mut self, cx: &mut Context<'_, Self>);
-
-    /// Sends the Presenter its Cancel, which closes the Dialog having written nothing.
-    fn cancel(&mut self, cx: &mut Context<'_, Self>);
-
-    /// Closes an open select's list. Returns whether one was open.
-    fn close_open_select(&mut self) -> bool;
-
-    /// Whether the Dialog steps a list right now, so the Dialog keymap's list step (`j`/`k` by
-    /// default) reaches it as a select step. Any other Dialog takes those keys as typing.
-    fn steps_list(&self) -> bool {
-        false
-    }
-
-    /// The status line's hints while the Dialog is open, keyed as `keymap` binds them; `None`
-    /// leaves the View's.
-    fn hints(&self, _keymap: &Keymap<DialogCommand>) -> Option<Vec<Hint>> {
-        None
-    }
-
-    /// The open Dialog's state for the UI tests.
-    fn readback(&self, cx: &App) -> DialogReadback;
-}
-
 /// A typed key as a Presenter's input: a character, `Backspace` or an arrow along a row. The
 /// others type nothing.
 fn typed_input(key: DialogKey) -> Option<DialogInput> {
@@ -189,11 +154,11 @@ trait AnyHosted {
     fn on_closed(&self, closed: Box<dyn Fn(&mut App)>, cx: &mut App) -> Subscription;
 }
 
-impl<D: HostedDialog> AnyHosted for Entity<D> {
+impl<P: DialogView> AnyHosted for Entity<ModuleDialog<P>> {
     fn command(&self, command: DialogCommand, cx: &mut App) {
         self.update(cx, |dialog, cx| {
             if let Some(input) = command.input() {
-                dialog.input(input, cx);
+                dialog.handle(P::input_event(input), cx);
             }
             cx.notify();
         });
@@ -203,7 +168,7 @@ impl<D: HostedDialog> AnyHosted for Entity<D> {
         // A key the keymap left unbound (`tab` once `next_field` moves) is no command here.
         if let Some(input) = typed_input(key) {
             self.update(cx, |dialog, cx| {
-                dialog.input(input, cx);
+                dialog.handle(P::input_event(input), cx);
                 cx.notify();
             });
         }
@@ -212,24 +177,33 @@ impl<D: HostedDialog> AnyHosted for Entity<D> {
     fn close_open_select(&self, cx: &mut App) -> bool {
         self.update(cx, |dialog, cx| {
             cx.notify();
-            dialog.close_open_select()
+            dialog.presenter.close_open_select()
         })
     }
 
     fn steps_list(&self, cx: &App) -> bool {
-        self.read(cx).steps_list()
+        self.read(cx).presenter.steps_list()
     }
 
     fn cancel(&self, cx: &mut App) {
-        self.update(cx, |dialog, cx| dialog.cancel(cx));
+        self.update(cx, |dialog, cx| {
+            dialog.handle(P::cancel_event(), cx);
+        });
     }
 
-    fn hints(&self, keymap: &Keymap<DialogCommand>, cx: &App) -> Option<Vec<Hint>> {
-        self.read(cx).hints(keymap)
+    /// The view model's hints: their chords are already the Dialog keymap's, so `keymap` is not
+    /// read. A Dialog with none leaves the View's.
+    fn hints(&self, _keymap: &Keymap<DialogCommand>, cx: &App) -> Option<Vec<Hint>> {
+        let hints = P::hints(&self.read(cx).presenter.view_model());
+        (!hints.is_empty()).then_some(hints)
     }
 
     fn readback(&self, cx: &App) -> DialogReadback {
-        self.read(cx).readback(cx)
+        let view = self.read(cx).presenter.view_model();
+        DialogReadback {
+            kind: P::kind(&view),
+            values: P::readback(&view),
+        }
     }
 
     fn view(&self) -> AnyView {
@@ -265,7 +239,7 @@ impl PartialEq for DialogHandle {
 impl Eq for DialogHandle {}
 
 impl DialogHandle {
-    pub fn new<D: HostedDialog>(dialog: Entity<D>) -> Self {
+    pub fn new<P: DialogView>(dialog: Entity<ModuleDialog<P>>) -> Self {
         Self(Rc::new(dialog))
     }
 
@@ -309,7 +283,7 @@ impl DialogHandle {
     }
 
     /// The open Dialog as a `D`, `None` when another module's is open.
-    pub fn downcast<D: HostedDialog>(&self) -> Option<Entity<D>> {
+    pub fn downcast<D: 'static>(&self) -> Option<Entity<D>> {
         self.0.entity().downcast::<D>().ok()
     }
 
@@ -319,98 +293,19 @@ impl DialogHandle {
     }
 }
 
-/// Opens the Dialog `build` makes over page `P`, as an Entity in the host.
-pub fn host_dialog<D, P>(cx: &mut Context<'_, P>, build: impl FnOnce(&mut Context<'_, D>) -> D)
-where
-    D: HostedDialog,
-    P: EventEmitter<ViewEvent> + 'static,
-{
-    let dialog = cx.new(build);
+/// Opens `presenter`'s Dialog in the host over page `Page`, whose confirm hands its outcome to
+/// `landed` (the page's `ModulePage::landing`).
+pub fn host_dialog<P: DialogView, Page: EventEmitter<ViewEvent> + 'static>(
+    cx: &mut Context<'_, Page>,
+    presenter: P,
+    landed: impl Fn(P::Outcome, &mut App) + 'static,
+) {
+    let dialog = cx.new(|_| ModuleDialog::new(presenter, landed));
     cx.emit(ViewEvent::HostDialog(DialogHandle::new(dialog)));
 }
 
 /// A click that picks a value of `T`.
 pub type OnChoose<T> = Rc<dyn Fn(T, &mut Window, &mut App)>;
-
-/// The open Dialog's clicks, each one input (`crate::input::send`): the cancel and confirm
-/// buttons, and the changes its fields and lists make to it.
-pub struct DialogClicks<D> {
-    this: WeakEntity<D>,
-    pub cancel: OnClick,
-    pub confirm: OnClick,
-}
-
-impl<D> Clone for DialogClicks<D> {
-    fn clone(&self) -> Self {
-        Self {
-            this: self.this.clone(),
-            cancel: self.cancel.clone(),
-            confirm: self.confirm.clone(),
-        }
-    }
-}
-
-impl<D: HostedDialog> DialogClicks<D> {
-    pub fn new(cx: &Context<'_, D>) -> Self {
-        let this = cx.weak_entity();
-        Self {
-            cancel: run(this.clone(), |dialog, cx| dialog.cancel(cx)),
-            confirm: run(this.clone(), |dialog, cx| {
-                if dialog.can_confirm() {
-                    dialog.confirm(cx);
-                }
-            }),
-            this,
-        }
-    }
-
-    /// A click that runs `change` on the Dialog.
-    pub fn click(&self, change: impl Fn(&mut D) + 'static) -> OnClick {
-        run(self.this.clone(), move |dialog, _| change(dialog))
-    }
-
-    /// A click that runs `change` on the Dialog with its context: one that closes the Dialog.
-    pub fn act(&self, change: impl Fn(&mut D, &mut Context<'_, D>) + 'static) -> OnClick {
-        run(self.this.clone(), change)
-    }
-
-    /// A click on row `index` of an open list, running `change` with it.
-    pub fn option(&self, change: impl Fn(&mut D, usize) + 'static) -> OnOptionClick {
-        self.choose(change)
-    }
-
-    /// A click that picks a value (a list row, a segment), running `change` with it.
-    pub fn choose<T: 'static>(&self, change: impl Fn(&mut D, T) + 'static) -> OnChoose<T> {
-        let this = self.this.clone();
-        let change = Rc::new(change);
-        Rc::new(move |value, _window: &mut Window, cx: &mut App| {
-            let change = change.clone();
-            crate::input::send(cx, |cx| {
-                // A Dialog that has closed takes no click.
-                let _ = this.update(cx, |dialog, cx| {
-                    change(dialog, value);
-                    cx.notify();
-                });
-            });
-        })
-    }
-}
-
-/// A click running `change` on the Dialog as one input, then redrawing it.
-fn run<D: HostedDialog>(
-    this: WeakEntity<D>,
-    change: impl Fn(&mut D, &mut Context<'_, D>) + 'static,
-) -> OnClick {
-    Rc::new(move |_window: &mut Window, cx: &mut App| {
-        crate::input::send(cx, |cx| {
-            // A Dialog that has closed takes no click.
-            let _ = this.update(cx, |dialog, cx| {
-                change(dialog, cx);
-                cx.notify();
-            });
-        });
-    })
-}
 
 /// The bin's half of a Dialog's Presenter: how [`ModuleDialog`] draws it, names it and reads it
 /// back, each from the view model the host builds once per call. Implemented on the Presenter type
@@ -464,6 +359,15 @@ pub struct ModuleDialog<P: DialogView> {
 }
 
 impl<P: DialogView> ModuleDialog<P> {
+    /// A Dialog over `presenter`, whose confirm hands its outcome to `landed`.
+    pub fn new(presenter: P, landed: impl Fn(P::Outcome, &mut App) + 'static) -> Self {
+        Self {
+            presenter,
+            widgets: P::Widgets::default(),
+            landed: Box::new(landed),
+        }
+    }
+
     /// Opens `presenter`'s Dialog in the host over page `Page`, whose confirm hands its outcome to
     /// `landed` (the page's `ModulePage::landing`).
     pub fn open<Page: EventEmitter<ViewEvent> + 'static>(
@@ -471,11 +375,13 @@ impl<P: DialogView> ModuleDialog<P> {
         presenter: P,
         landed: impl Fn(P::Outcome, &mut App) + 'static,
     ) {
-        host_dialog(cx, |_| Self {
-            presenter,
-            widgets: P::Widgets::default(),
-            landed: Box::new(landed),
-        });
+        host_dialog(cx, presenter, landed);
+    }
+
+    /// The Presenter, for the Shell to feed what changes behind the Dialog (a Toast raised under
+    /// the Toast history).
+    pub fn presenter_mut(&mut self) -> &mut P {
+        &mut self.presenter
     }
 
     /// The Dialog as drawn, for a test's snapshot.
@@ -506,49 +412,6 @@ impl<P: DialogView> ModuleDialog<P> {
 }
 
 impl<P: DialogView> EventEmitter<DialogClosed> for ModuleDialog<P> {}
-
-impl<P: DialogView> HostedDialog for ModuleDialog<P> {
-    /// Every input is the Presenter's to read.
-    fn input(&mut self, input: DialogInput, cx: &mut Context<'_, Self>) {
-        self.handle(P::input_event(input), cx);
-    }
-
-    fn can_confirm(&self) -> bool {
-        self.presenter.can_confirm()
-    }
-
-    /// A refusal stays on the Presenter's view model and keeps the Dialog open.
-    fn confirm(&mut self, cx: &mut Context<'_, Self>) {
-        self.handle(P::confirm_event(), cx);
-    }
-
-    /// A cancelled Dialog has written nothing.
-    fn cancel(&mut self, cx: &mut Context<'_, Self>) {
-        self.handle(P::cancel_event(), cx);
-    }
-
-    fn close_open_select(&mut self) -> bool {
-        self.presenter.close_open_select()
-    }
-
-    fn steps_list(&self) -> bool {
-        self.presenter.steps_list()
-    }
-
-    /// The view model's hints: their chords are already the Dialog keymap's, so `keymap` is not
-    /// read.
-    fn hints(&self, _keymap: &Keymap<DialogCommand>) -> Option<Vec<Hint>> {
-        Some(P::hints(&self.presenter.view_model()))
-    }
-
-    fn readback(&self, _cx: &App) -> DialogReadback {
-        let view = self.presenter.view_model();
-        DialogReadback {
-            kind: P::kind(&view),
-            values: P::readback(&view),
-        }
-    }
-}
 
 impl<P: DialogView> Render for ModuleDialog<P> {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {

@@ -13,7 +13,7 @@ mod sync_server;
 pub mod tracing;
 
 pub use about::{AboutPresenter, AboutSetup, AboutViewModel};
-pub use clear_logs::{ClearLogsOutcome, ClearLogsPresenter, ClearLogsViewModel};
+pub use clear_logs::{ClearLogsEvent, ClearLogsOutcome, ClearLogsPresenter, ClearLogsViewModel};
 pub use data_backup::{DataBackupEvent, DataBackupPresenter, DataBackupRow, DataBackupViewModel};
 pub use device::{ControlView, PageKey};
 pub use display::{
