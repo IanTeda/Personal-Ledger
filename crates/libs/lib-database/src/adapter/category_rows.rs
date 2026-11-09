@@ -9,9 +9,11 @@
 //! `protocols` functions, which its in-memory port answers with too; the Splits count is the
 //! Transactions store's own, counted in the file (#926), by the same rule.
 //!
-//! The handover is a Categories port write over the shared stores, not a cross-domain module's
-//! atomic port: it runs only inside `send`, whose one commit lands its writes with the Category
-//! save, as `CategoryBudget`'s do (#1010).
+//! The handover is a write across domains, so it follows the one rule: a port `lib-database`
+//! answers over the stores, with a contract suite (`lib-categories`' `contract::SaveFactory`) run
+//! against the in-memory fakes and SQLite. It runs only inside `send`, whose one commit lands its
+//! writes with the Category save, as `CategoryBudget`'s do (#1010, #1078). A cross-domain crate is
+//! for a workflow that belongs to neither domain, like Category delete.
 //!
 //! [`CategoryDeletionAdapter`]: crate::CategoryDeletionAdapter
 

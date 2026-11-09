@@ -7,11 +7,15 @@
 //! tree back, in the same order. There is no delete check: delete is `lib-category-deletion`'s
 //! atomic port (#1004), whose own contract checks it.
 
-use lib_core::{CategoryId, CategoryTypes};
+use std::collections::BTreeMap;
+
+use lib_core::{CategoryId, CategoryTypes, Money};
 
 use crate::fake::{InMemoryCategories, InMemoryCategoryBudget};
 use crate::interactor::{AddCategory, BudgetChange, MoveCategory, RenameCategory};
-use crate::{Category, CategoryError, CategoryRepository, sample_categories};
+use crate::{
+    Category, CategoryError, CategoryRepository, CategorySavePorts, Holdings, sample_categories,
+};
 
 /// A stored Categories port.
 pub trait StoredPorts {
@@ -350,6 +354,252 @@ pub fn a_failed_write_reloads_and_reports<F: PortsFactory>(factory: &mut F) {
     );
 }
 
+/// The ports an Add or Edit save writes through beyond the Categories (the Monthly budget and the
+/// handover), with the Categories repository they share.
+pub trait SavePorts {
+    /// The repository and the save ports, as an Interactor takes them.
+    fn parts(&mut self) -> (&mut dyn CategoryRepository, &mut dyn CategorySavePorts);
+}
+
+/// Builds the save ports a contract check runs on, and reads what was committed.
+///
+/// `create` makes the sample Categories with [`GROCERIES`] budgeted this month in the Personal
+/// spending Budget and holding at least one Split, as the Sample Ledger does; `Dining` is a
+/// leaf beside it. Writes are stored only on `commit`.
+pub trait SaveFactory {
+    type Ports: SavePorts;
+
+    fn create(&mut self) -> Self::Ports;
+
+    /// Ends one input's writes, as `send` does.
+    fn commit(&mut self, ports: &mut Self::Ports);
+
+    /// The Categories as committed, read afresh.
+    fn stored_categories(&mut self) -> Vec<Category>;
+
+    /// The Personal spending Budget's amount for `category` this month as committed, read afresh.
+    fn stored_amount(&mut self, category: CategoryId) -> Option<Money>;
+
+    /// What names `category` as committed, read afresh.
+    fn stored_holdings(&mut self, category: CategoryId) -> Holdings;
+}
+
+/// The in-memory save ports: the fakes together.
+#[derive(Debug, Clone, Default)]
+pub struct InMemorySavePorts {
+    pub categories: InMemoryCategories,
+    pub budget: InMemoryCategoryBudget,
+}
+
+impl SavePorts for InMemorySavePorts {
+    fn parts(&mut self) -> (&mut dyn CategoryRepository, &mut dyn CategorySavePorts) {
+        (&mut self.categories, &mut self.budget)
+    }
+}
+
+/// The in-memory ports keep a copy as of the last commit, which the `stored_*` reads answer from.
+#[derive(Debug, Default)]
+pub struct InMemorySaveFactory {
+    committed: InMemorySavePorts,
+}
+
+impl SaveFactory for InMemorySaveFactory {
+    type Ports = InMemorySavePorts;
+
+    fn create(&mut self) -> InMemorySavePorts {
+        let ports = InMemorySavePorts {
+            categories: InMemoryCategories {
+                categories: sample_categories(),
+            },
+            budget: InMemoryCategoryBudget {
+                amounts: BTreeMap::from([(GROCERIES, amount("400"))]),
+                other_budgets: 1,
+                held: BTreeMap::from([(
+                    GROCERIES,
+                    Holdings {
+                        splits: 3,
+                        bill_plans: 1,
+                        payee_defaults: 2,
+                    },
+                )]),
+                ..InMemoryCategoryBudget::default()
+            },
+        };
+        self.committed = ports.clone();
+        ports
+    }
+
+    fn commit(&mut self, ports: &mut InMemorySavePorts) {
+        self.committed = ports.clone();
+    }
+
+    fn stored_categories(&mut self) -> Vec<Category> {
+        self.committed.categories.categories.clone()
+    }
+
+    fn stored_amount(&mut self, category: CategoryId) -> Option<Money> {
+        self.committed.budget.amounts.get(&category).cloned()
+    }
+
+    fn stored_holdings(&mut self, category: CategoryId) -> Holdings {
+        crate::CategoryHandover::holdings(&self.committed.budget, category)
+    }
+}
+
+const DINING: CategoryId = CategoryId::seed(8);
+
+fn amount(text: &str) -> Money {
+    text.parse().expect("an amount")
+}
+
+fn loaded<P: SavePorts>(ports: &mut P) -> Vec<Category> {
+    ports.parts().0.categories()
+}
+
+/// A Monthly budget a rule refuses writes nothing, the Category included: not in the port, and not
+/// in the store after the input's commit.
+pub fn a_refused_monthly_budget_writes_nothing<F: SaveFactory>(factory: &mut F) {
+    let mut ports = factory.create();
+    let tree = loaded(&mut ports);
+    let budgeted = factory.stored_amount(GROCERIES);
+
+    let (categories, save) = ports.parts();
+    let refused = AddCategory {
+        name: "Dividends".into(),
+        parent_id: None,
+        category_type: CategoryTypes::Income,
+        monthly: BudgetChange::Set(amount("50")),
+    }
+    .run(categories, save);
+    assert!(refused.is_err(), "an Income Category takes no budget");
+    factory.commit(&mut ports);
+
+    assert_eq!(loaded(&mut ports), tree);
+    assert_eq!(factory.stored_categories(), tree);
+    assert_eq!(factory.stored_amount(GROCERIES), budgeted);
+}
+
+/// A budget that is set lands in the Personal spending Budget for this month, and a check that
+/// passes means the set passes: the check refuses a parent and passes a leaf, and the set it
+/// passed lands in the store at the commit.
+pub fn a_set_budget_lands_this_month_and_a_passing_check_means_the_set_passes<F: SaveFactory>(
+    factory: &mut F,
+) {
+    let mut ports = factory.create();
+    let tree = loaded(&mut ports);
+    let new = amount("612");
+
+    assert!(
+        ports
+            .parts()
+            .1
+            .check_monthly_budget(&tree, FOOD, Some(&new))
+            .is_err(),
+        "a parent takes no budget"
+    );
+    assert_eq!(
+        ports
+            .parts()
+            .1
+            .check_monthly_budget(&tree, DINING, Some(&new)),
+        Ok(())
+    );
+    assert_eq!(
+        ports
+            .parts()
+            .1
+            .set_monthly_budget(DINING, Some(new.clone())),
+        Ok(()),
+        "the set a check passed passes"
+    );
+    factory.commit(&mut ports);
+
+    assert_eq!(factory.stored_amount(DINING), Some(new.clone()));
+    assert_eq!(
+        ports.parts().1.monthly_budget(&tree, Some(DINING)).amount,
+        Some(new)
+    );
+}
+
+/// A leaf gaining its first child hands its Splits, Bill Plans and Payee defaults to it, across
+/// the three stores, and stops its own budget.
+pub fn a_first_child_takes_the_leafs_rows<F: SaveFactory>(factory: &mut F) {
+    let mut ports = factory.create();
+    let held = factory.stored_holdings(GROCERIES);
+    assert!(!held.is_empty(), "the sample's Groceries holds rows");
+
+    let (categories, save) = ports.parts();
+    let child = add("Organic", Some(GROCERIES), CategoryTypes::Expense)
+        .run(categories, save)
+        .expect("Groceries sits two levels down");
+    factory.commit(&mut ports);
+
+    assert_eq!(factory.stored_holdings(GROCERIES), Holdings::default());
+    assert_eq!(factory.stored_holdings(child.id), held);
+    assert_eq!(
+        factory.stored_amount(GROCERIES),
+        None,
+        "the parent only rolls up"
+    );
+}
+
+/// A new parent's budget is stopped in every active Budget: it is budgeted before and nowhere
+/// after, and the stop is stored at the commit.
+pub fn a_new_parents_budget_is_stopped_in_every_active_budget<F: SaveFactory>(factory: &mut F) {
+    let mut ports = factory.create();
+    let tree = loaded(&mut ports);
+    let stop = ports
+        .parts()
+        .1
+        .parent_stop(GROCERIES)
+        .expect("budgeted in the seed");
+    assert!(stop.budgets >= 1);
+
+    ports.parts().1.stop_new_parent(GROCERIES);
+    factory.commit(&mut ports);
+
+    assert_eq!(ports.parts().1.parent_stop(GROCERIES), None);
+    assert_eq!(
+        ports
+            .parts()
+            .1
+            .monthly_budget(&tree, Some(GROCERIES))
+            .amount,
+        None
+    );
+    assert_eq!(factory.stored_amount(GROCERIES), None);
+}
+
+/// The budget set, the stop and the handover wait for the one commit: nothing is stored before it,
+/// all of it after.
+pub fn the_writes_wait_for_the_one_commit<F: SaveFactory>(factory: &mut F) {
+    let mut ports = factory.create();
+    let held = factory.stored_holdings(GROCERIES);
+    let budgeted = factory.stored_amount(GROCERIES);
+    let tree = loaded(&mut ports);
+
+    let (categories, save) = ports.parts();
+    let child = AddCategory {
+        name: "Organic".into(),
+        parent_id: Some(GROCERIES),
+        category_type: CategoryTypes::Expense,
+        monthly: BudgetChange::Set(amount("75")),
+    }
+    .run(categories, save)
+    .expect("Groceries takes a child");
+
+    assert_eq!(factory.stored_categories(), tree);
+    assert_eq!(factory.stored_holdings(GROCERIES), held);
+    assert_eq!(factory.stored_amount(GROCERIES), budgeted);
+    assert_eq!(factory.stored_amount(child.id), None);
+
+    factory.commit(&mut ports);
+
+    assert_eq!(factory.stored_holdings(child.id), held);
+    assert_eq!(factory.stored_amount(child.id), Some(amount("75")));
+    assert_eq!(factory.stored_categories().len(), tree.len() + 1);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -382,5 +632,32 @@ mod tests {
     #[test]
     fn in_memory_a_failed_write_reloads_and_reports() {
         a_failed_write_reloads_and_reports(&mut InMemoryFactory::default());
+    }
+
+    #[test]
+    fn in_memory_a_refused_monthly_budget_writes_nothing() {
+        a_refused_monthly_budget_writes_nothing(&mut InMemorySaveFactory::default());
+    }
+
+    #[test]
+    fn in_memory_a_set_budget_lands_this_month() {
+        a_set_budget_lands_this_month_and_a_passing_check_means_the_set_passes(
+            &mut InMemorySaveFactory::default(),
+        );
+    }
+
+    #[test]
+    fn in_memory_a_first_child_takes_the_leafs_rows() {
+        a_first_child_takes_the_leafs_rows(&mut InMemorySaveFactory::default());
+    }
+
+    #[test]
+    fn in_memory_a_new_parents_budget_is_stopped() {
+        a_new_parents_budget_is_stopped_in_every_active_budget(&mut InMemorySaveFactory::default());
+    }
+
+    #[test]
+    fn in_memory_the_save_writes_wait_for_the_one_commit() {
+        the_writes_wait_for_the_one_commit(&mut InMemorySaveFactory::default());
     }
 }

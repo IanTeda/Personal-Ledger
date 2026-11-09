@@ -199,11 +199,123 @@ impl CategoryHandover for StoredCategoriesPorts {
 #[cfg(test)]
 mod tests {
     use chrono::NaiveDate;
+    use std::path::PathBuf;
+    use std::rc::Rc;
+
+    use lib_categories::CategorySavePorts;
     use lib_categories::Holdings;
+    use lib_categories::contract::{self, SaveFactory, SavePorts};
 
     use super::*;
+    use crate::commit::Commit;
     use crate::ports::test_support::{fakes, file};
-    use crate::{Domain, LedgerPorts};
+    use crate::{Domain, LedgerPorts, Stores, Writer, open_storage, seed};
+
+    /// The Sample Ledger as a file, opened as a Client opens it, with the ports a save writes
+    /// through; the `stored_*` reads open the file afresh once the writer has settled.
+    struct FileFactory {
+        path: PathBuf,
+        writer: Option<Writer>,
+        commit: Option<Rc<dyn Commit>>,
+    }
+
+    struct FileSavePorts {
+        repository: StoredCategoriesPorts,
+        save: StoredCategoriesPorts,
+    }
+
+    impl SavePorts for FileSavePorts {
+        fn parts(&mut self) -> (&mut dyn CategoryRepository, &mut dyn CategorySavePorts) {
+            (&mut self.repository, &mut self.save)
+        }
+    }
+
+    impl FileFactory {
+        fn new(dir: &std::path::Path) -> Self {
+            let path = dir.join("ledger.pldb");
+            seed::sample_ledger(&path, today()).expect("the Sample Ledger is created");
+            Self {
+                path,
+                writer: None,
+                commit: None,
+            }
+        }
+
+        /// The committed file's ports, read afresh.
+        fn fresh(&self) -> StoredCategoriesPorts {
+            self.writer
+                .as_ref()
+                .expect("create ran first")
+                .flush()
+                .expect("the writer is running");
+            let storage = open_storage(&self.path).expect("the Ledger reopens");
+            LedgerPorts::new(Stores::from(storage), Clock::fixed(today())).category_save
+        }
+    }
+
+    impl SaveFactory for FileFactory {
+        type Ports = FileSavePorts;
+
+        fn create(&mut self) -> FileSavePorts {
+            let storage = open_storage(&self.path).expect("the Ledger opens");
+            self.writer = Some(storage.writer.clone());
+            let ledger = LedgerPorts::new(Stores::from(storage), Clock::fixed(today()));
+            self.commit = Some(ledger.commit.clone());
+            FileSavePorts {
+                repository: ledger.category_save.clone(),
+                save: ledger.category_save,
+            }
+        }
+
+        fn commit(&mut self, _ports: &mut FileSavePorts) {
+            self.commit.as_ref().expect("create ran first").commit();
+        }
+
+        fn stored_categories(&mut self) -> Vec<Category> {
+            self.fresh().categories()
+        }
+
+        fn stored_amount(&mut self, category: CategoryId) -> Option<Money> {
+            let fresh = self.fresh();
+            fresh
+                .monthly_budget(&fresh.categories(), Some(category))
+                .amount
+        }
+
+        fn stored_holdings(&mut self, category: CategoryId) -> Holdings {
+            self.fresh().holdings(category)
+        }
+    }
+
+    fn on_a_file(check: impl FnOnce(&mut FileFactory)) {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        check(&mut FileFactory::new(dir.path()));
+    }
+
+    #[test]
+    fn sqlite_a_refused_monthly_budget_writes_nothing() {
+        on_a_file(contract::a_refused_monthly_budget_writes_nothing);
+    }
+
+    #[test]
+    fn sqlite_a_set_budget_lands_this_month() {
+        on_a_file(contract::a_set_budget_lands_this_month_and_a_passing_check_means_the_set_passes);
+    }
+
+    #[test]
+    fn sqlite_a_first_child_takes_the_leafs_rows() {
+        on_a_file(contract::a_first_child_takes_the_leafs_rows);
+    }
+
+    #[test]
+    fn sqlite_a_new_parents_budget_is_stopped() {
+        on_a_file(contract::a_new_parents_budget_is_stopped_in_every_active_budget);
+    }
+
+    #[test]
+    fn sqlite_the_save_writes_wait_for_the_one_commit() {
+        on_a_file(contract::the_writes_wait_for_the_one_commit);
+    }
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date")
@@ -284,10 +396,7 @@ mod tests {
     #[test]
     fn a_save_after_the_month_turns_starts_in_the_new_month() {
         let (clock, day) = Clock::settable(today());
-        let ledger = LedgerPorts::new(
-            crate::Stores::fake(crate::FakeStores::sample(today())).0,
-            clock,
-        );
+        let ledger = LedgerPorts::new(Stores::fake(crate::FakeStores::sample(today())).0, clock);
         let mut ports = ledger.category_save.clone();
         let months = || -> Vec<(i32, u32)> {
             ledger
