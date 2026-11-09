@@ -331,6 +331,7 @@ Accounts, Categories, Tags and Payees live here rather than on the main rail. Yo
 - Press `g` `s`, type `:settings` or click Settings on the main rail to open Settings on the index, even when a page is already showing. `j` and `k` move the index's cursor; no page opens until you choose one.
 - Press `enter` or `l`, or click an entry in either list, to open the page under the cursor with the keyboard in it. `:settings <page>` (such as `:settings units`), the page picker and a jump from another View to one of a page's records open that page straight away. Page keys such as `e` (edit), `d` (delete), `n` (new), `x` (remove) and `m` (merge) act on the open page.
 - `Esc`, `h` and the left arrow on a page go back to the index, at every window size. `Esc` backs out one step at a time: a dialog or search first, then the page back to the index.
+- In a wider window, clicking an entry in the docked list while a page is showing opens that page and leaves the keyboard on the docked list, its entry selected. `j` and `k` then show each page in turn, `enter`, `l` or the right arrow move the keyboard into the page, and `Esc` goes back to the index. A narrow window docks no list, so there the page takes the keyboard.
 - Back and Forward step between the pages you opened, showing each page itself; the index is not a step of its own.
 - The page you last had open is remembered as the index's cursor, so Settings reopens on the index with that page under the cursor, starting the app on Settings included. Resizing the window keeps whatever is showing, the index or a page.
 

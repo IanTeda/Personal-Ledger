@@ -27,6 +27,9 @@ pub struct SettingsSnapshot {
     pub page: String,
     /// Whether a page shows, with the keyboard in it, rather than the Settings index.
     pub page_focused: bool,
+    /// Whether a page shows with the keyboard on the docked index beside it, after a docked row
+    /// was clicked while a page showed (Large and X-Large).
+    pub dock_focused: bool,
     /// The status line's message, where the stubbed buttons report.
     pub status_message: Option<String>,
     /// The page the open Medium page picker has highlighted, the one `enter` opens.
@@ -52,6 +55,7 @@ impl SettingsView {
         SettingsSnapshot {
             page: format!("{:?}", self.selected_section()),
             page_focused: self.focus() == SettingsFocus::Page,
+            dock_focused: self.focus() == SettingsFocus::Dock,
             status_message: None,
             picker_chosen: self
                 .view_model()

@@ -24,7 +24,10 @@ fn clicking_an_index_entry_from_a_page_opens_that_page(app: &mut TestAppContext)
     ui.click("settings-index-Display");
     let page = ui.settings_frame();
     assert_eq!(page.page, "Display");
-    assert!(page.page_focused);
+    assert!(
+        page.dock_focused,
+        "the keyboard stays on the docked index (#1110)"
+    );
     assert!(ui.is_drawn("display-fields"));
 }
 

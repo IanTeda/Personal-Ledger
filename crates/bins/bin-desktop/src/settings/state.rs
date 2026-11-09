@@ -230,7 +230,7 @@ impl SettingsView {
     }
 
     /// The open page, while it has focus: the page, rather than the frame, then takes its keys,
-    /// movement and status. `None` on the index.
+    /// movement and status. `None` while the keyboard is on the index, on show or docked.
     fn focused_page(&self) -> Option<&dyn PageHandle> {
         (self.frame.focus() == SettingsFocus::Page).then(|| self.selected_page())
     }
@@ -412,8 +412,9 @@ impl SettingsView {
         true
     }
 
-    /// A movement the Shell fell back on: a page with its own selection moves it, the index steps
-    /// through the pages as the frame's own keys do, and anything else scrolls.
+    /// A movement the Shell fell back on: a page with its own selection moves it, the index (on
+    /// show, or docked with the keyboard) steps through the pages as the frame's own keys do, and
+    /// anything else scrolls.
     pub fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) {
         if let Some(page) = self.focused_page()
             && page.apply_movement(movement, cx)
@@ -428,7 +429,7 @@ impl SettingsView {
             _ => None,
         };
         match step {
-            Some(step) if self.frame.focus() == SettingsFocus::Index => {
+            Some(step) if self.frame.focus() != SettingsFocus::Page => {
                 self.send_frame(SettingsFrameEvent::Move(step), cx);
             }
             _ => crate::view::scroll_by_movement(&self.scroll_handle, movement),

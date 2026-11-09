@@ -425,6 +425,75 @@ fn esc_h_and_left_return_a_page_to_the_index_at_every_window_size(app: &mut Test
     }
 }
 
+/// Large or X-Large Settings on Tags, then Payees clicked in the docked index, which leaves the
+/// keyboard there.
+fn docked_on_payees(app: &mut TestAppContext, window_size: WindowSize) -> Harness<'_> {
+    let mut ui = Harness::new(app);
+    ui.resize_to(window_size);
+    ui.press(": s e t t i n g s space t a g s enter");
+    ui.click("settings-index-Payees");
+    let settings = ui.settings_frame();
+    assert_eq!(settings.page, "Payees");
+    assert!(settings.dock_focused, "{window_size:?}");
+    ui
+}
+
+#[gpui::test]
+fn at_large_and_x_large_j_and_k_on_the_docked_index_show_each_page(app: &mut TestAppContext) {
+    for window_size in [WindowSize::Large, WindowSize::XLarge] {
+        let mut ui = docked_on_payees(app, window_size);
+        assert_eq!(hint_keys(&mut ui), ["j/k", "l/enter"], "the docked index's");
+
+        ui.press("j");
+        let settings = ui.settings_frame();
+        assert_eq!(settings.page, "Documents", "{window_size:?}");
+        assert!(
+            settings.dock_focused,
+            "the keyboard stays on the docked index"
+        );
+        assert!(
+            ui.is_drawn("settings-page"),
+            "the page under the cursor shows"
+        );
+        ui.press("k k");
+        assert_eq!(ui.settings_frame().page, "Tags");
+        assert!(ui.settings_frame().dock_focused);
+    }
+}
+
+#[gpui::test]
+fn at_large_and_x_large_enter_l_or_right_move_the_keyboard_from_the_docked_index_into_the_page(
+    app: &mut TestAppContext,
+) {
+    for window_size in [WindowSize::Large, WindowSize::XLarge] {
+        for into in ["enter", "l", "right"] {
+            let mut ui = docked_on_payees(app, window_size);
+
+            ui.press(into);
+
+            let settings = ui.settings_frame();
+            assert_eq!(settings.page, "Payees");
+            assert!(settings.page_focused, "{into} at {window_size:?}");
+            assert!(!settings.dock_focused);
+        }
+    }
+}
+
+#[gpui::test]
+fn at_large_and_x_large_esc_on_the_docked_index_returns_to_the_index(app: &mut TestAppContext) {
+    for window_size in [WindowSize::Large, WindowSize::XLarge] {
+        let mut ui = docked_on_payees(app, window_size);
+
+        ui.press("escape");
+
+        let settings = ui.settings_frame();
+        assert!(!settings.dock_focused, "{window_size:?}");
+        assert!(!settings.page_focused);
+        assert!(ui.is_drawn("settings-index-page"));
+        assert_eq!(settings.page, "Payees", "the cursor stays on the page left");
+    }
+}
+
 #[gpui::test]
 fn every_way_into_settings_lands_on_the_index_even_from_a_page(app: &mut TestAppContext) {
     for enter in ["g s", ": s e t t i n g s enter", "rail"] {

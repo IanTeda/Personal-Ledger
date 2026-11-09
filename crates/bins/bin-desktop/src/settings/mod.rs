@@ -4,8 +4,8 @@
 //! (`shell::view::rail::settings_index`), and only the selected page is mounted. Each page keeps the same anatomy: one heading
 //! ("Settings - <page>") with its right-aligned meta over a 2px rule, then the page's content.
 //!
-//! The frame (which page shows, the Index/Page focus, the Medium drill-down and the page picker)
-//! is `lib-settings`' Presenter, held by [`state::SettingsView`] and drawn here from its view
+//! The frame (which page shows, whether the keyboard is on the index, in a page or on the docked
+//! index beside it, the Medium drill-down and the page picker) is `lib-settings`' Presenter, held by [`state::SettingsView`] and drawn here from its view
 //! model, its clicks going through [`PageClicks`]. What stays the Desktop's of a page's identity
 //! is its icon ([`icon`]) and which page shows a revealed record ([`for_reveal`]).
 

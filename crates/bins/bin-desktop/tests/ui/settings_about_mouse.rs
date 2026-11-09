@@ -42,6 +42,9 @@ fn clicking_about_from_another_page_opens_it(app: &mut TestAppContext) {
 
     let page = ui.settings_frame();
     assert_eq!(page.page, "About");
-    assert!(page.page_focused);
+    assert!(
+        page.dock_focused,
+        "the keyboard stays on the docked index (#1110)"
+    );
     assert!(ui.is_drawn("settings-about-version"));
 }

@@ -37,6 +37,33 @@ fn clicking_a_docked_index_entry_opens_its_page(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn at_large_and_x_large_a_docked_click_on_a_page_keeps_the_keyboard_on_the_docked_index(
+    app: &mut TestAppContext,
+) {
+    for window_size in [WindowSize::Large, WindowSize::XLarge] {
+        let mut ui = Harness::new(app);
+        ui.resize_to(window_size);
+        ui.press("g s");
+        ui.click("settings-index-Tags");
+        assert!(ui.settings_frame().page_focused, "from the index, the page");
+
+        ui.click("settings-index-Payees");
+
+        let settings = ui.settings_frame();
+        assert_eq!(settings.page, "Payees", "{window_size:?}");
+        assert!(settings.dock_focused, "{window_size:?}: the keyboard stays");
+        assert!(!settings.page_focused);
+        assert!(ui.is_drawn("settings-page"), "the page shows");
+
+        ui.click("settings-index-Payees");
+        assert!(
+            ui.settings_frame().dock_focused,
+            "the page on show's row keeps the keyboard on the docked index"
+        );
+    }
+}
+
+#[gpui::test]
 fn at_medium_an_index_row_opens_its_page_and_the_crumb_goes_back(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
     ui.resize_to(WindowSize::Medium);

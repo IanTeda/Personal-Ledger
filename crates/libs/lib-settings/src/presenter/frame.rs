@@ -8,6 +8,11 @@
 //! `esc`, `h` and `left` on a page return to the index. History records pages only, so moving the
 //! cursor announces nothing; opening a page does.
 //!
+//! At Large and X-Large a click on the docked index while a page shows opens the clicked page and
+//! keeps the keyboard on the docked index ([`SettingsFocus::Dock`], #1110): `j` and `k` then show
+//! each page in turn, `enter`, `l` or `right` hand the page the keyboard, and `esc` returns to the
+//! index. At Medium no index is docked, so there the page takes the keyboard.
+//!
 //! With no Ledger open the This Ledger pages stay on the index, drawn muted, and choosing one by
 //! any route (a key, a click, the picker, a command) is refused on the status line and leaves the
 //! frame as it was (`docs/settings.md`). A This Ledger page is never the cursor then: a restore
@@ -42,7 +47,8 @@ pub enum SettingsFrameEvent {
     OpenPicker,
     /// The Shell's `back` (`esc`): close the picker, else leave the page for the index.
     Back,
-    /// A click on a docked index row, at Large and X-Large: that page opens.
+    /// A click on a docked index row, at Large and X-Large: that page opens, with the keyboard in
+    /// it from the index, or left on the docked index from a page.
     ClickIndex(SettingsPage),
     /// A click on a row of the index on show: that page opens in the index's place.
     ClickIndexPage(SettingsPage),
@@ -98,6 +104,10 @@ pub enum SettingsFocus {
     Index,
     /// The selected page shows, with the keyboard in it.
     Page,
+    /// The selected page shows, with the keyboard on the docked index beside it, at Large and
+    /// X-Large after a docked row is clicked while a page shows: its row is drawn selected, and
+    /// `j` and `k` show each page in turn.
+    Dock,
 }
 
 /// What the Client hands the frame when it builds it.
@@ -117,7 +127,8 @@ pub struct IndexRow {
     pub label: String,
     /// The line under the label on the index page.
     pub description: String,
-    /// The page on show, drawn selected in the docked index. No row is while the index shows.
+    /// The page on show, drawn selected in the docked index, whether the keyboard is in the page or
+    /// on the docked index. No row is while the index shows.
     pub selected: bool,
     /// The index's cursor while the index shows: highlighted on the index page, and tinted, not
     /// selected, in the docked index (DESKTOP-181).
@@ -280,9 +291,10 @@ impl SettingsFramePresenter {
         self.ledger_open || !page.needs_ledger()
     }
 
-    /// Whether `back` has something to back out of: the picker, or a page with the keyboard.
+    /// Whether `back` has something to back out of: the picker, or a page on show, the keyboard in
+    /// it or on the docked index.
     pub fn takes_back(&self) -> bool {
-        self.picker.is_some() || self.focus == SettingsFocus::Page
+        self.picker.is_some() || self.focus != SettingsFocus::Index
     }
 
     /// The frame's status-line hints as things stand: the picker's while it is open, the index's
@@ -297,7 +309,7 @@ impl SettingsFramePresenter {
             ];
         }
         match self.focus {
-            SettingsFocus::Index => self.index_hints(),
+            SettingsFocus::Index | SettingsFocus::Dock => self.index_hints(),
             SettingsFocus::Page if self.drill_down => vec![
                 Hint::new(
                     self.pair(PREVIOUS_PAGE, NEXT_PAGE),
@@ -338,12 +350,18 @@ impl Presenter for SettingsFramePresenter {
                 let next =
                     lib_list_cursor::step(self.selected.index(), SettingsPage::ALL.len(), step);
                 let page = SettingsPage::ALL[next];
-                if self.allowed(page, router) {
+                if self.focus == SettingsFocus::Dock {
+                    self.show_docked(page, router);
+                } else if self.allowed(page, router) {
                     self.selected = page;
                 }
             }
             SettingsFrameEvent::Select | SettingsFrameEvent::EnterPage => {
-                self.open_page(self.selected, router);
+                if self.focus == SettingsFocus::Dock {
+                    self.focus = SettingsFocus::Page;
+                } else {
+                    self.open_page(self.selected, router);
+                }
             }
             SettingsFrameEvent::PageClicked => self.focus = SettingsFocus::Page,
             SettingsFrameEvent::FocusIndex
@@ -357,6 +375,9 @@ impl Presenter for SettingsFramePresenter {
                 self.open_page(SettingsPage::ALL[next], router);
             }
             SettingsFrameEvent::OpenPicker => self.open_picker(router),
+            SettingsFrameEvent::ClickIndex(page) if self.focus != SettingsFocus::Index => {
+                self.show_docked(page, router);
+            }
             SettingsFrameEvent::ClickIndex(page)
             | SettingsFrameEvent::ClickIndexPage(page)
             | SettingsFrameEvent::OpenPage(page) => {
@@ -395,6 +416,10 @@ impl Presenter for SettingsFramePresenter {
                 if !drill_down {
                     self.close_picker(router);
                 }
+                // Medium docks no index, so the page on show takes the keyboard.
+                if drill_down && self.focus == SettingsFocus::Dock {
+                    self.focus = SettingsFocus::Page;
+                }
             }
         }
     }
@@ -429,7 +454,7 @@ impl Presenter for SettingsFramePresenter {
                             page,
                             label: page.label(),
                             description: page.description(),
-                            selected: page == self.selected && self.focus == SettingsFocus::Page,
+                            selected: page == self.selected && self.focus != SettingsFocus::Index,
                             cursor: page == self.selected && self.focus == SettingsFocus::Index,
                             muted: !self.can_show(page),
                         })
@@ -448,14 +473,15 @@ impl Presenter for SettingsFramePresenter {
         if !event.is_key() || self.picker.is_some() {
             return true;
         }
-        let index = self.focus == SettingsFocus::Index;
-        let medium_page = self.drill_down && !index;
+        // The keyboard is on the index on show, or on the docked index beside a page.
+        let on_index = self.focus != SettingsFocus::Page;
+        let medium_page = self.drill_down && !on_index;
         match event {
             SettingsFrameEvent::Move(step) => {
-                index && matches!(step, Step::Next | Step::Prev | Step::First | Step::Last)
+                on_index && matches!(step, Step::Next | Step::Prev | Step::First | Step::Last)
             }
-            SettingsFrameEvent::Select | SettingsFrameEvent::EnterPage => index,
-            SettingsFrameEvent::FocusIndex => !index,
+            SettingsFrameEvent::Select | SettingsFrameEvent::EnterPage => on_index,
+            SettingsFrameEvent::FocusIndex => self.focus != SettingsFocus::Index,
             SettingsFrameEvent::StepPage(_) | SettingsFrameEvent::OpenPicker => medium_page,
             SettingsFrameEvent::Back => self.takes_back(),
             _ => false,
@@ -487,6 +513,19 @@ impl SettingsFramePresenter {
         self.focus = SettingsFocus::Page;
         router.page_changed(page);
         true
+    }
+
+    /// Shows `page` with the keyboard left on the docked index, announcing it for the Shell's
+    /// history as any page shown is. A refused page leaves the frame as it was.
+    fn show_docked(&mut self, page: SettingsPage, router: &mut dyn SettingsRouter) {
+        if !self.allowed(page, router) {
+            return;
+        }
+        self.focus = SettingsFocus::Dock;
+        if self.selected != page {
+            self.selected = page;
+            router.page_changed(page);
+        }
     }
 
     fn open_picker(&mut self, router: &mut dyn SettingsRouter) {
@@ -732,6 +771,182 @@ mod tests {
             assert!(!frame.view_model().index_page);
             assert_eq!(router.pages_changed(), [SettingsPage::Payees]);
         }
+    }
+
+    /// The frame with Tags open, then Payees clicked in the docked index.
+    fn docked_on_payees() -> SettingsFramePresenter {
+        let mut frame = frame();
+        send(
+            &mut frame,
+            [
+                E::OpenPage(SettingsPage::Tags),
+                E::ClickIndex(SettingsPage::Payees),
+            ],
+        );
+        frame
+    }
+
+    #[test]
+    fn a_docked_click_while_a_page_shows_keeps_the_keyboard_on_the_docked_index() {
+        let mut frame = frame();
+        send(&mut frame, [E::OpenPage(SettingsPage::Tags)]);
+
+        let router = send(&mut frame, [E::ClickIndex(SettingsPage::Payees)]);
+
+        assert_eq!(frame.selected(), SettingsPage::Payees);
+        assert_eq!(frame.focus(), SettingsFocus::Dock);
+        assert!(!frame.view_model().index_page, "the page shows");
+        assert_eq!(
+            rows(&frame),
+            (vec![SettingsPage::Payees], vec![]),
+            "the docked row is drawn selected, not tinted"
+        );
+        assert_eq!(router.pages_changed(), [SettingsPage::Payees]);
+        assert_eq!(
+            frame.hints(),
+            frame.index_hints(),
+            "the docked index's keys, not the page's"
+        );
+    }
+
+    #[test]
+    fn on_the_docked_index_j_and_k_show_each_page_in_turn() {
+        let mut frame = docked_on_payees();
+
+        let router = send(&mut frame, [E::Move(Step::Next), E::Move(Step::Next)]);
+
+        assert_eq!(frame.selected(), SettingsPage::Inventory);
+        assert_eq!(frame.focus(), SettingsFocus::Dock);
+        assert!(!frame.view_model().index_page);
+        assert_eq!(rows(&frame), (vec![SettingsPage::Inventory], vec![]));
+        assert_eq!(
+            router.pages_changed(),
+            [SettingsPage::Documents, SettingsPage::Inventory],
+            "each page shown is a history entry"
+        );
+
+        let router = send(&mut frame, [E::Move(Step::Prev)]);
+        assert_eq!(frame.selected(), SettingsPage::Documents);
+        assert_eq!(router.pages_changed(), [SettingsPage::Documents]);
+    }
+
+    #[test]
+    fn on_the_docked_index_enter_or_l_moves_the_keyboard_into_the_page() {
+        for into in [E::Select, E::EnterPage, E::PageClicked] {
+            let mut frame = docked_on_payees();
+
+            let router = send(&mut frame, [into]);
+
+            assert_eq!(frame.focus(), SettingsFocus::Page, "{into:?}");
+            assert_eq!(frame.selected(), SettingsPage::Payees);
+            assert!(router.routed.is_empty(), "the page already shows");
+            assert!(
+                !frame.takes(&E::Move(Step::Next)),
+                "{into:?}: the page has its keys"
+            );
+        }
+    }
+
+    #[test]
+    fn on_the_docked_index_esc_h_and_left_return_to_the_index() {
+        for leave in [E::Back, E::FocusIndex] {
+            let mut frame = docked_on_payees();
+            assert!(frame.takes_back());
+            assert!(frame.takes(&leave));
+
+            let router = send(&mut frame, [leave]);
+
+            assert_eq!(frame.focus(), SettingsFocus::Index, "{leave:?}");
+            assert!(frame.view_model().index_page);
+            assert_eq!(
+                rows(&frame),
+                (vec![], vec![SettingsPage::Payees]),
+                "the cursor stays"
+            );
+            assert!(router.routed.is_empty());
+        }
+    }
+
+    #[test]
+    fn the_docked_index_takes_the_index_s_keys_and_not_medium_s() {
+        let frame = docked_on_payees();
+
+        for key in [
+            E::Move(Step::Next),
+            E::Move(Step::Last),
+            E::Select,
+            E::EnterPage,
+            E::FocusIndex,
+            E::Back,
+        ] {
+            assert!(frame.takes(&key), "{key:?}");
+        }
+        for key in [
+            E::Move(Step::HalfPageDown),
+            E::StepPage(Step::Next),
+            E::OpenPicker,
+        ] {
+            assert!(!frame.takes(&key), "{key:?}");
+        }
+    }
+
+    #[test]
+    fn a_docked_click_on_the_page_on_show_hands_the_keyboard_to_the_docked_index() {
+        let mut frame = frame();
+        send(&mut frame, [E::OpenPage(SettingsPage::Tags)]);
+
+        let router = send(&mut frame, [E::ClickIndex(SettingsPage::Tags)]);
+
+        assert_eq!(frame.focus(), SettingsFocus::Dock);
+        assert!(router.routed.is_empty(), "the page already shows");
+    }
+
+    #[test]
+    fn with_no_ledger_a_docked_step_onto_a_this_ledger_page_is_refused_and_stays() {
+        let mut frame = no_ledger();
+        send(
+            &mut frame,
+            [
+                E::OpenPage(SettingsPage::Tracing),
+                E::ClickIndex(SettingsPage::About),
+            ],
+        );
+        assert_eq!(frame.focus(), SettingsFocus::Dock);
+
+        let router = send(
+            &mut frame,
+            [E::Move(Step::Next), E::ClickIndex(SettingsPage::Units)],
+        );
+
+        assert_eq!(frame.selected(), SettingsPage::About);
+        assert_eq!(frame.focus(), SettingsFocus::Dock);
+        assert!(router.pages_changed().is_empty());
+        assert_eq!(router.statuses().len(), 2);
+    }
+
+    #[test]
+    fn a_closing_ledger_returns_a_docked_this_ledger_page_to_the_index_on_general() {
+        let mut frame = docked_on_payees();
+
+        send(&mut frame, [E::LedgerClosed]);
+
+        assert_eq!(frame.selected(), SettingsPage::General);
+        assert_eq!(frame.focus(), SettingsFocus::Index);
+    }
+
+    #[test]
+    fn resizing_to_medium_hands_a_docked_page_the_keyboard() {
+        let mut frame = docked_on_payees();
+
+        medium(&mut frame);
+
+        assert_eq!(
+            frame.focus(),
+            SettingsFocus::Page,
+            "Medium docks no index, so the page keeps showing with the keyboard"
+        );
+        assert_eq!(frame.selected(), SettingsPage::Payees);
+        assert!(frame.view_model().breadcrumb.is_some());
     }
 
     #[test]

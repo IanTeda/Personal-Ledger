@@ -18,7 +18,8 @@ pub const WIDTH: gpui::Pixels = px(214.0);
 /// selected and, with no Ledger open, the This Ledger rows muted. While the Settings index shows
 /// beside it no row is selected, and the row under the index's cursor is tinted, so the two lists
 /// read as one (DESKTOP-181). A row's click is the frame's [`SettingsFrameEvent::ClickIndex`],
-/// which opens that page.
+/// which opens that page: with the keyboard in it from the index, or left on this rail from a
+/// page, its row selected while `j` and `k` show each page in turn (#1110).
 #[derive(IntoElement)]
 pub struct SettingsIndexRail {
     groups: Vec<IndexGroup>,
@@ -42,7 +43,7 @@ impl RenderOnce for SettingsIndexRail {
             .flex()
             .flex_col()
             .bg(color::background(cx))
-            // The keyboard is on the index page or in the page beside it, never on the rail.
+            // The page's own focus rule says whether the keyboard is in it or on this rail.
             .border_r(px(2.0))
             .border_color(color::structural_rule(cx))
             .child(rail_label(
