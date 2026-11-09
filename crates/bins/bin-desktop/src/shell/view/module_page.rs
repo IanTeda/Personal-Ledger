@@ -7,7 +7,7 @@
 //! The page never counts or announces a write: each input's `send` announces what its commit
 //! names (ADR-0055), and the page repaints on the domains in [`PageView::REPAINTS`].
 //!
-//! It takes no `handle_key`, `key_ahead` or `search_key`, the pre-module key paths #1079 retires: a
+//! It takes no leftover-key handler, `key_ahead` or `search_key`, the pre-module key paths #1079 retires: a
 //! page types text through `PagePresenter::typed` and reports a mode of its own through
 //! `PagePresenter::mode`, which the page turns into `EnterMode` and `ExitMode` around each handle
 //! ([`ModulePage::mode_key`]). It also serves the main Views' methods `ActiveViewEntity` forwards

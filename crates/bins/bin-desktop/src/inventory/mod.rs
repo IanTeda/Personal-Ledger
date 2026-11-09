@@ -5,7 +5,8 @@
 //! `gpui`-free model, rules and sample seed are re-exported from `lib_inventory` so every
 //! `inventory::X` path keeps working.
 //!
-//! - `view/page.rs` wraps the page Presenter in an Entity, which the Settings View hosts.
+//! - `view/page.rs` is the page Presenter's `PageView`: the generic `ModulePage` hosts it
+//!   ([`InventoryPage`]), which the Settings View hosts as any other page (ADR-0056).
 //! - `view/dialog.rs` and `view/dialog/` are each Dialog Presenter's `DialogView`, hosted in a
 //!   generic `ModuleDialog` (ADR-0056).
 //! - `router.rs` is the Router and the module's entry point ([`inventory_page`]).
@@ -22,9 +23,13 @@ mod view;
 
 pub use lib_inventory::*;
 pub use router::inventory_page;
-pub use view::page::InventoryPage;
 
-use lib_inventory::presenter::InventoryPageEvent;
+use lib_inventory::presenter::InventoryPagePresenter;
+
+use crate::shell::view::module_page::ModulePage;
+
+/// The Inventory Settings page: the page Presenter in the generic page Entity.
+pub type InventoryPage = ModulePage<InventoryPagePresenter>;
 
 /// The Inventory page as the UI tests read it (ADR-0030): the visible rows and the selected one,
 /// as `location:<name>` or `area:<name>`, each Location's Areas in order.
@@ -43,13 +48,14 @@ pub struct SettingsInventorySnapshot {
     pub inventory_area_items: Vec<(String, usize)>,
 }
 
-/// What the Open Ledger hands the Inventory module: `lib-database`'s Inventory repository, the Units and Documents its Dialogs quote, and its keymap under `[keybindings]`.
+/// What the Open Ledger hands the Inventory module: the page's Presenter, which owns the Inventory
+/// keymap under `[keybindings]`, `lib-database`'s Inventory repository, the Units and Documents its
+/// Dialogs quote, and the Dialog keys every Inventory Dialog's hints read.
 pub struct InventorySetup {
+    pub presenter: InventoryPagePresenter,
     pub inventory: SharedInventory,
     pub reads: lib_database::StoredInventoryReads,
-    /// The Dialog keymap's chords, which the module's Dialogs build their status-line hints from.
     pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
-    pub keymap: lib_viper::keymap::Keymap<InventoryPageEvent>,
 }
 
 impl InventorySetup {
@@ -60,10 +66,13 @@ impl InventorySetup {
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
+            presenter: InventoryPagePresenter::new(
+                inventory.clone(),
+                keymap::inventory_page_keymap(config),
+            ),
             inventory,
             reads,
             dialog_keys,
-            keymap: keymap::inventory_page_keymap(config),
         }
     }
 
@@ -80,4 +89,12 @@ impl InventorySetup {
             &config,
         )
     }
+}
+
+/// What the Inventory page's Router is built from for each call (its `PageView::Setup`): the
+/// Inventory and the reads and Dialog keys its Dialogs open on.
+pub struct InventoryRoutes {
+    pub inventory: SharedInventory,
+    pub reads: lib_database::StoredInventoryReads,
+    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
 }

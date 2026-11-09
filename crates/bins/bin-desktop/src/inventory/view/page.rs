@@ -1,153 +1,90 @@
-//! The Inventory Settings page's View: the `lib-inventory` page Presenter in a gpui Entity. It
-//! looks up each key the Shell passes on, as chord text, in the Inventory keymap, turns clicks into
-//! events, draws the view model (`render.rs`). Each key and click is one input (`crate::input::send`), which
-//! commits what it wrote. The Settings View hosts it as any other page.
-//!
-//! The row menu's position is the View's: the Presenter holds which row the menu is on and its
-//! entries, and the pointer that asked for it is gpui's.
+//! The Inventory Settings page's View: the `lib-inventory` page Presenter's [`PageView`], which the
+//! generic `ModulePage` hosts (ADR-0056). It names the page's Router, the domains it repaints on,
+//! and how it draws the view model (`render.rs`); the keymap, the take, send and handle path and
+//! the Dialogs' landing are the generic page's. Where the pointer opened a row's menu is the
+//! View's widget state.
 
 mod render;
 
-use gpui::{
-    AnyElement, App, Context, Entity, EventEmitter, IntoElement as _, Keystroke, Pixels, Point,
-    Subscription,
-};
+use gpui::{AnyElement, App, Context, IntoElement as _, Pixels, Point, Window};
 use lib_database::Domain;
-use lib_database::StoredInventoryReads;
 use lib_inventory::presenter::{
     InventoryPageEvent, InventoryPagePresenter, InventoryPageViewModel, MenuAction,
 };
-use lib_inventory::{InventoryOutcome, InventoryRow, InventoryUnits as _, SharedInventory};
-use lib_viper::keymap::Keymap;
-use lib_viper::presenter::Presenter as _;
-
-use lib_shell::Hint;
+use lib_inventory::{Inventory, InventoryRow, InventoryUnits as _};
 
 use crate::inventory::router::PageRouter;
-use crate::inventory::{InventorySetup, SettingsInventorySnapshot};
+use crate::inventory::{InventoryPage, InventoryRoutes, SettingsInventorySnapshot};
+use crate::settings::SettingsPage;
 use crate::settings::snapshot::PageSnapshot;
-use crate::{
-    announcer::{Announcer, notify_on},
-    navigation::movement::Movement,
-    settings::{
-        SettingsPage,
-        pages::{Page, PageRowClicked},
-    },
-    shell::view::page_clicks::PresenterPage,
-    view::event::ViewEvent,
-};
+use crate::shell::view::module_page::{PageDraw, PageView, SettingsPageView};
+use crate::shell::view::statusline::PageStatus;
 
-impl EventEmitter<ViewEvent> for InventoryPage {}
-impl EventEmitter<PageRowClicked> for InventoryPage {}
+impl PageView for InventoryPagePresenter {
+    type Setup = InventoryRoutes;
+    /// Where the open row menu is drawn: the pointer that opened it, in window coordinates.
+    type Widgets = Point<Pixels>;
+    type Before = ();
 
-pub struct InventoryPage {
-    presenter: InventoryPagePresenter,
-    inventory: SharedInventory,
-    /// The Units and Documents the Dialogs quote, over the stores (#1014).
-    reads: StoredInventoryReads,
-    dialog_keys: crate::dialog_keys::LiveDialogKeys,
-    keymap: Keymap<InventoryPageEvent>,
-    /// Where the open row menu was asked for, in window coordinates.
-    menu_at: Point<Pixels>,
-    /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
-    /// draws the page.
-    page_focused: bool,
-    /// Repaints the page when the Inventory its rows read changes, or the Units its amounts are
-    /// in.
-    _inventory_changed: Subscription,
-    _units_changed: Subscription,
-}
+    /// An Inventory write, or the Units its amounts are in.
+    const REPAINTS: &'static [Domain] = &[Domain::Inventory, Domain::Units];
 
-impl InventoryPage {
-    pub fn new(
-        setup: InventorySetup,
-        announcer: Entity<Announcer>,
-        cx: &mut Context<'_, Self>,
-    ) -> Self {
-        let inventory = setup.inventory;
-        Self {
-            presenter: InventoryPagePresenter::new(inventory.clone(), setup.keymap.clone()),
-            inventory,
-            reads: setup.reads,
-            dialog_keys: setup.dialog_keys,
-            _inventory_changed: notify_on(&announcer, Domain::Inventory, cx),
-            _units_changed: notify_on(&announcer, Domain::Units, cx),
-            keymap: setup.keymap,
-            menu_at: Point::default(),
-            page_focused: false,
+    fn with_router<R>(
+        presenter: &mut Self,
+        setup: &InventoryRoutes,
+        cx: &mut Context<'_, InventoryPage>,
+        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
+    ) -> R {
+        handle(presenter, &mut PageRouter { routes: setup, cx })
+    }
+
+    fn render(
+        view: &InventoryPageViewModel,
+        page: PageDraw<'_, Self>,
+        _window: &mut Window,
+        cx: &mut Context<'_, InventoryPage>,
+    ) -> AnyElement {
+        render::page(view, *page.widgets, page.clicks, page.focused, cx)
+    }
+
+    /// The Presenter's legend, rebound keys included, and its scope.
+    fn status(view: &InventoryPageViewModel) -> PageStatus {
+        PageStatus {
+            hints: view.hints.clone(),
+            right: view.scope.clone(),
         }
     }
 
-    /// The one dispatch a keymap event takes into the page, from a key ([`Self::module_key`]) or a palette Command ([`Self::module_command`]): sent as one input, unless the page doesn't take it now.
-    fn take(&mut self, event: InventoryPageEvent, cx: &mut Context<'_, Self>) -> bool {
-        if !self.presenter.takes(&event) {
-            return false;
-        }
-        self.send(event, cx);
-        true
+    fn heading_meta(view: &InventoryPageViewModel, _cx: &App) -> Option<AnyElement> {
+        Some(view.scope.clone().into_any_element())
     }
 
-    /// A key or click on the page: `event` as one input, committed once it is handled.
-    fn send(&mut self, event: InventoryPageEvent, cx: &mut Context<'_, Self>) {
-        crate::input::join_or_send(cx, |cx| self.handle(event, cx));
-    }
-
-    /// Hands `event` to the Presenter with the Desktop's Router. Inside an input already, as
-    /// [`Self::send`] or a Dialog's confirm.
-    fn handle(&mut self, event: InventoryPageEvent, cx: &mut Context<'_, Self>) {
-        let mut router = PageRouter {
-            inventory: self.inventory.clone(),
-            reads: self.reads.clone(),
-            dialog_keys: self.dialog_keys.clone(),
-            cx,
-        };
-        self.presenter.handle(event, &mut router);
-        cx.notify();
-    }
-
-    /// A confirmed Dialog's outcome, handed back by the Dialog host inside the confirm's input.
-    pub(in crate::inventory) fn dialog_landed(
-        &mut self,
-        outcome: InventoryOutcome,
-        cx: &mut Context<'_, Self>,
-    ) {
-        self.handle(InventoryPageEvent::DialogClosed(Some(outcome)), cx);
-    }
-
-    pub fn view_model(&self) -> InventoryPageViewModel {
-        self.presenter.view_model()
-    }
-
-    /// An `InventoryRow` as `location:<name>` or `area:<name>`.
-    fn row_label(&self, row: InventoryRow) -> String {
-        let inventory = self.inventory.borrow().inventory();
-        match row {
-            InventoryRow::Location(id) => inventory
-                .location(id)
-                .map(|location| format!("location:{}", location.name))
-                .unwrap_or_default(),
-            InventoryRow::Area(id) => inventory
-                .area(id)
-                .map(|(_, area)| format!("area:{}", area.name))
-                .unwrap_or_default(),
-        }
-    }
-}
-
-/// The page's clicks on its rows, its row menu and its buttons.
-impl PresenterPage<InventoryPageEvent> for InventoryPage {
-    fn send(&mut self, event: InventoryPageEvent, cx: &mut Context<'_, Self>) {
-        InventoryPage::send(self, event, cx);
-    }
-
-    /// A click on a row or its controls hands the page focus.
-    fn row_clicked(&mut self, cx: &mut Context<'_, Self>) {
-        cx.emit(PageRowClicked);
+    /// `Esc` closes an open row menu; otherwise it is left to Settings.
+    fn escape(view: &InventoryPageViewModel) -> Option<InventoryPageEvent> {
+        view.menu.is_some().then_some(InventoryPageEvent::CloseMenu)
     }
 
     /// The open row menu is drawn where the pointer opened it.
-    fn menu_at(&mut self, at: Point<Pixels>, _cx: &mut Context<'_, Self>) {
-        self.menu_at = at;
+    fn menu_at(widgets: &mut Point<Pixels>, at: Point<Pixels>) {
+        *widgets = at;
+    }
+}
+
+impl SettingsPageView for InventoryPagePresenter {
+    const PAGE: SettingsPage = SettingsPage::Inventory;
+}
+
+/// An `InventoryRow` as `location:<name>` or `area:<name>`.
+fn row_label(inventory: &Inventory, row: InventoryRow) -> String {
+    match row {
+        InventoryRow::Location(id) => inventory
+            .location(id)
+            .map(|location| format!("location:{}", location.name))
+            .unwrap_or_default(),
+        InventoryRow::Area(id) => inventory
+            .area(id)
+            .map(|(_, area)| format!("area:{}", area.name))
+            .unwrap_or_default(),
     }
 }
 
@@ -157,16 +94,17 @@ impl PageSnapshot for SettingsInventorySnapshot {
     /// The visible rows and the selected one, each Location's Areas, Units and insurers, and each
     /// Area's Item count.
     fn read(page: &InventoryPage, _cx: &App) -> Self {
-        let inventory = page.inventory.borrow().inventory();
+        let routes = page.setup();
+        let inventory = routes.inventory.borrow().inventory();
         let view = page.view_model();
-        let units = &page.reads;
+        let units = &routes.reads;
         SettingsInventorySnapshot {
             inventory_rows: view
                 .rows
                 .iter()
-                .map(|line| page.row_label(line.row))
+                .map(|line| row_label(&inventory, line.row))
                 .collect(),
-            selected_inventory: view.selected.map(|row| page.row_label(row)),
+            selected_inventory: view.selected.map(|row| row_label(&inventory, row)),
             inventory_areas: inventory
                 .locations
                 .iter()
@@ -183,7 +121,7 @@ impl PageSnapshot for SettingsInventorySnapshot {
                 .collect(),
             inventory_menu: view.menu.map(|menu| {
                 (
-                    page.row_label(menu.row),
+                    row_label(&inventory, menu.row),
                     menu.entries
                         .iter()
                         .map(|entry| slug(entry.action).to_string())
@@ -222,66 +160,5 @@ fn slug(action: MenuAction) -> &'static str {
         MenuAction::MoveUp => "move-up",
         MenuAction::MoveDown => "move-down",
         MenuAction::RemoveArea => "remove-area",
-    }
-}
-
-impl Page for InventoryPage {
-    const PAGE: SettingsPage = SettingsPage::Inventory;
-
-    /// Every chord the Inventory keymap binds, the arrows and `g g` among them, except `left` with
-    /// nothing to close or climb to, which is the Settings index's. The Shell has already taken
-    /// its own keys.
-    fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {
-        let Some(event) = self.keymap.event(chord) else {
-            return false;
-        };
-        self.take(event, cx)
-    }
-
-    /// A palette Command, by its keymap `command` name: the event its key sends, if the page
-    /// takes it now, as [`Self::module_key`] asks.
-    fn module_command(&mut self, command: &str, cx: &mut Context<'_, Self>) -> bool {
-        let Some(event) = self.keymap.event_for(command) else {
-            return false;
-        };
-        self.take(event, cx)
-    }
-
-    /// A movement the keymap doesn't bind (`enter`) does nothing on the page, and Settings leaves
-    /// the page where it is: there is no hand-off from a row.
-    fn apply_movement(&mut self, _movement: Movement, _cx: &mut Context<'_, Self>) -> bool {
-        true
-    }
-
-    /// `Esc` closes an open row menu; otherwise it is left to Settings, which steps back to the
-    /// index.
-    fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
-        if !self.presenter.menu_open() {
-            return false;
-        }
-        self.send(InventoryPageEvent::CloseMenu, cx);
-        true
-    }
-
-    /// Nothing the keymap doesn't bind is the page's.
-    fn handle_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    /// The Presenter's legend, rebound keys included, which the `?` cheat sheet reads.
-    fn hints(&self, _cx: &App) -> Vec<Hint> {
-        self.view_model().hints
-    }
-
-    fn status_note(&self, _cx: &App) -> String {
-        self.view_model().scope
-    }
-
-    fn set_page_focused(&mut self, focused: bool, _cx: &mut Context<'_, Self>) {
-        self.page_focused = focused;
-    }
-
-    fn heading_meta(&self, _cx: &App) -> AnyElement {
-        self.view_model().scope.into_any_element()
     }
 }

@@ -107,11 +107,6 @@ pub trait Page: Render + EventEmitter<ViewEvent> + EventEmitter<PageRowClicked> 
         false
     }
 
-    /// A key no other step took.
-    fn handle_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
     /// Whether the page took the movement. A page without a selection leaves Settings to scroll.
     fn apply_movement(&mut self, _movement: Movement, _cx: &mut Context<'_, Self>) -> bool {
         false
@@ -125,10 +120,6 @@ pub trait Page: Render + EventEmitter<ViewEvent> + EventEmitter<PageRowClicked> 
 
     /// `/` is inert on a page that does not open a Search.
     fn start_search(&mut self, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    fn search_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
         false
     }
 
@@ -174,11 +165,9 @@ pub trait PageHandle {
     fn module_key(&self, chord: &str, cx: &mut App) -> bool;
     fn module_command(&self, command: &str, cx: &mut App) -> bool;
     fn key_ahead(&self, keystroke: &Keystroke, cx: &mut App) -> bool;
-    fn handle_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool;
     fn apply_movement(&self, movement: Movement, cx: &mut App) -> bool;
     fn escape(&self, cx: &mut App) -> bool;
     fn start_search(&self, cx: &mut App) -> bool;
-    fn search_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool;
     fn reveal(&self, reveal: Reveal, cx: &mut App);
     fn set_page_focused(&self, focused: bool, cx: &mut App);
     fn set_frame(&self, frame: PageFrame, cx: &mut App);
@@ -207,10 +196,6 @@ impl<T: Page> PageHandle for Entity<T> {
         self.update(cx, |page, cx| page.key_ahead(keystroke, cx))
     }
 
-    fn handle_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
-        self.update(cx, |page, cx| page.handle_key(keystroke, cx))
-    }
-
     fn apply_movement(&self, movement: Movement, cx: &mut App) -> bool {
         self.update(cx, |page, cx| page.apply_movement(movement, cx))
     }
@@ -221,10 +206,6 @@ impl<T: Page> PageHandle for Entity<T> {
 
     fn start_search(&self, cx: &mut App) -> bool {
         self.update(cx, |page, cx| page.start_search(cx))
-    }
-
-    fn search_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
-        self.update(cx, |page, cx| page.search_key(keystroke, cx))
     }
 
     fn reveal(&self, reveal: Reveal, cx: &mut App) {

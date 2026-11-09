@@ -153,21 +153,6 @@ impl ActiveViewEntity {
         }
     }
 
-    /// A key no other step took. Returns whether the View took it.
-    pub fn handle_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
-        match self {
-            Self::Settings(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),
-            // Every step key and every module page's key is its keymap's.
-            Self::Dashboard(_)
-            | Self::Bills(_)
-            | Self::Budgets(_)
-            | Self::Transactions(_)
-            | Self::Documents(_)
-            | Self::Import(_)
-            | Self::Shell(_) => false,
-        }
-    }
-
     pub fn apply_movement(&self, movement: Movement, cx: &mut App) {
         match self {
             Self::Settings(view) => view.update(cx, |view, cx| view.apply_movement(movement, cx)),
@@ -217,8 +202,8 @@ impl ActiveViewEntity {
             Self::Budgets(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
             Self::Transactions(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
             Self::Documents(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
-            Self::Settings(view) => view.update(cx, |view, cx| view.search_key(keystroke, cx)),
-            Self::Import(_) | Self::Shell(_) => false,
+            // No Settings page opens a Search.
+            Self::Settings(_) | Self::Import(_) | Self::Shell(_) => false,
         }
     }
 

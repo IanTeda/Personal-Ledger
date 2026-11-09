@@ -9,8 +9,8 @@
 //! keyboard and the mouse reach the same handlers.
 
 use gpui::{
-    AnyElement, App, BoxShadow, ClickEvent, Context, MouseButton, MouseDownEvent, Pixels, Point,
-    Render, SharedString, Window, div, point, prelude::*, px,
+    AnyElement, App, BoxShadow, ClickEvent, MouseButton, MouseDownEvent, Pixels, Point,
+    SharedString, div, point, prelude::*, px,
 };
 use lib_core::LocationId;
 use lib_inventory::InventoryRow;
@@ -18,21 +18,14 @@ use lib_inventory::presenter::{
     InventoryLine, InventoryPageEvent, InventoryPageViewModel, MenuView,
 };
 
-use super::{InventoryPage, slug};
+use super::slug;
+use crate::inventory::InventoryPage;
 use crate::{shell::view::page_clicks::PageClicks, theme::color};
 
 /// The context menu's width (`width:190px`).
 const MENU_WIDTH: f32 = 190.0;
 
-impl Render for InventoryPage {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let view = self.view_model();
-        let clicks = PageClicks::new(cx);
-        render_page(&view, self.menu_at, &clicks, self.page_focused, cx)
-    }
-}
-
-fn render_page(
+pub(super) fn page(
     view: &InventoryPageViewModel,
     menu_at: Point<Pixels>,
     clicks: &PageClicks<InventoryPage>,

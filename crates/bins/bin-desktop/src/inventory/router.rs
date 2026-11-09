@@ -4,39 +4,32 @@
 //! (`crate::notices`), which the input's `send` drains.
 
 use gpui::{App, Context, Entity};
-use lib_database::StoredInventoryReads;
 use lib_inventory::presenter::{
     AreaBlockedPresenter, AreaFormPresenter, LocationFormPresenter, RemoveAreaPresenter,
     RemoveLocationPresenter,
 };
-use lib_inventory::{InventoryDialog as Which, InventoryOutcome, InventoryRouter, SharedInventory};
+use lib_inventory::{InventoryDialog as Which, InventoryRouter};
 use lib_toast::{Notice, Notify};
 
-use super::InventorySetup;
-use super::view::page::InventoryPage;
+use super::{InventoryPage, InventoryRoutes, InventorySetup};
 use crate::announcer::Announcer;
 use crate::notices::Queue;
 use crate::shell::view::dialog_entity::ModuleDialog;
+use crate::shell::view::module_page::ModulePage;
 
 pub(super) struct PageRouter<'a, 'b> {
-    pub inventory: SharedInventory,
-    pub reads: StoredInventoryReads,
-    /// The Dialog keys the Dialogs' status-line hints are built from.
-    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
+    pub routes: &'a InventoryRoutes,
     pub cx: &'a mut Context<'b, InventoryPage>,
 }
 
 impl InventoryRouter for PageRouter<'_, '_> {
     /// Builds `dialog`'s Presenter on the shared Inventory, its Units and Documents read through
-    /// [`StoredInventoryReads`], handed the Dialog keys, and hosts it as a `ModuleDialog`; its
-    /// confirmed outcome comes back to the page through [`InventoryPage::dialog_landed`].
+    /// `StoredInventoryReads`, handed the Dialog keys, and hosts it as a `ModuleDialog`; its
+    /// confirmed outcome comes back to the page through [`ModulePage::landing`].
     fn open_dialog(&mut self, dialog: Which) -> bool {
-        let page = self.cx.weak_entity();
-        let landed = move |outcome: InventoryOutcome, cx: &mut App| {
-            // A page that has gone has nothing to land on.
-            let _ = page.update(cx, |page, cx| page.dialog_landed(outcome, cx));
-        };
-        let (inventory, reads, keys) = (&self.inventory, &self.reads, self.dialog_keys.get());
+        let landed = InventoryPage::landing(self.cx);
+        let routes = self.routes;
+        let (inventory, reads, keys) = (&routes.inventory, &routes.reads, routes.dialog_keys.get());
         match dialog {
             Which::AddLocation { unit } => {
                 let form = LocationFormPresenter::add(inventory, reads, unit, keys);
@@ -98,5 +91,16 @@ pub fn inventory_page(
     cx: &mut App,
 ) -> Entity<InventoryPage> {
     use gpui::AppContext as _;
-    cx.new(|cx| InventoryPage::new(setup, announcer, cx))
+    let InventorySetup {
+        presenter,
+        inventory,
+        reads,
+        dialog_keys,
+    } = setup;
+    let routes = InventoryRoutes {
+        inventory,
+        reads,
+        dialog_keys,
+    };
+    cx.new(|cx| ModulePage::new(presenter, routes, &announcer, cx))
 }

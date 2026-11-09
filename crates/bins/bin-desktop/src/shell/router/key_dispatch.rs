@@ -317,7 +317,7 @@ impl KeyRoute for Keys<'_, '_> {
         self.shell.handle_view_key_ahead(self.keystroke, self.cx)
     }
 
-    fn fall_back(&mut self, fallback: Option<ShellCommand>, sequence: bool) -> bool {
+    fn fall_back(&mut self, fallback: Option<ShellCommand>, _sequence: bool) -> bool {
         let shell = &mut *self.shell;
         // The Shell's Presenter runs the command it falls back on, as one input.
         if let Some(command) = fallback {
@@ -325,13 +325,8 @@ impl KeyRoute for Keys<'_, '_> {
                 presenter.command(command, router)
             });
         }
-        !sequence
-            && match shell.active_view_entity(self.cx) {
-                ActiveViewEntity::Shell(_) => false,
-                view => {
-                    shell.view_takes_key(self.keystroke) && view.handle_key(self.keystroke, self.cx)
-                }
-            }
+        // No View takes a key the keymaps left: every View's keys are its module keymap's.
+        false
     }
 }
 

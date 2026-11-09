@@ -414,13 +414,6 @@ impl SettingsView {
         true
     }
 
-    /// A key no other step took goes to the open page's own Entity; the static pages claim their
-    /// keys ahead of the Shell's fallback.
-    pub fn handle_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
-        self.focused_page()
-            .is_some_and(|page| page.handle_key(keystroke, cx))
-    }
-
     /// A movement the Shell fell back on: a page with its own selection moves it, the index steps
     /// through the pages as the frame's own keys do, and anything else scrolls.
     pub fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) {
@@ -466,11 +459,6 @@ impl SettingsView {
     pub fn start_search(&mut self, cx: &mut Context<'_, Self>) -> bool {
         self.focused_page()
             .is_some_and(|page| page.start_search(cx))
-    }
-
-    pub fn search_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
-        self.focused_page()
-            .is_some_and(|page| page.search_key(keystroke, cx))
     }
 
     /// Settings has just become the destination: focus goes back to the index (`g s` "lands on

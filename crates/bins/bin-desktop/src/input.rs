@@ -228,8 +228,8 @@ pub(crate) trait KeyRoute {
     /// Step 5: the focused View's own key handler, for a single key. Whether it took the key.
     fn view(&mut self) -> bool;
 
-    /// No step took the key: the Shell's `fallback`, else the View's leftover handler, unless the
-    /// key finished a `sequence`. Whether the window needs redrawing.
+    /// No step took the key: the Shell's `fallback`, if it has one. Whether the window needs
+    /// redrawing.
     fn fall_back(&mut self, fallback: Option<ShellCommand>, sequence: bool) -> bool;
 }
 
