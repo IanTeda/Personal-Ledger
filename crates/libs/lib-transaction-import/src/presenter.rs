@@ -9,13 +9,21 @@
 //!   nothing.
 //! - The Payees and Categories the selects offer are read when the step opens: it is the only
 //!   thing on screen, so nothing changes them under it.
+//! - [`ImportStepPresenter`] (`step.rs`) is the page a Client hosts: closed until `:import` opens
+//!   it ([`ImportEvent::OpenStep`]), it holds this Presenter while open, and the keymap for its state.
 
+mod step;
+
+pub use step::{ImportStepPresenter, ImportStepViewModel};
+
+use lib_config::KeyBindingConfig;
 use lib_core::CategoryId;
 use lib_list_cursor::Step;
 use lib_locale::format::{AmountStyle, format_amount};
 use lib_payees::{Payee, PayeeCategory};
 use lib_toast::{Notice, ToastKind};
 use lib_viper::keymap::{ARROW_DOWN, ARROW_UP, BACK, MOVE_DOWN, MOVE_UP, SELECT};
+use lib_viper::presenter::Presenter;
 use lib_viper::view::{Choice, DialogHint, SelectView, count};
 
 use crate::entity::{ImportRow, PayeeChoices, RowPayee, RowStatus, cleaned_name, summary};
@@ -32,7 +40,7 @@ pub enum RowSelect {
     Category,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImportEvent {
     /// `j`/`k` and the rest: the selected row, clamped at either end.
     Move(Step),
@@ -57,6 +65,15 @@ pub enum ImportEvent {
     Cancel,
     /// **back**: leaves the step, closing an open select on the way.
     Back,
+    /// `:import`: the step opens on the statement, matched against the stored Payees. Only the
+    /// step's Presenter reads it.
+    OpenStep,
+    /// Transactions has just become the destination: a step left open doesn't come back with it,
+    /// and closes having written nothing. Only the step's Presenter reads it.
+    Leave,
+    /// `[keybindings]` changed: the step's keymaps are built afresh under it. Only the step's
+    /// Presenter reads it.
+    KeysChanged(KeyBindingConfig),
 }
 
 /// A row as drawn. `payee` and `category` read "choose …" until chosen, which `payee_chosen` and
@@ -159,43 +176,6 @@ impl ImportPresenter {
             selected: 0,
             open: None,
             remember: true,
-        }
-    }
-
-    pub fn handle(&mut self, event: ImportEvent, router: &mut dyn ImportRouter) {
-        match event {
-            ImportEvent::Move(step) => {
-                self.selected = lib_list_cursor::step(self.selected, self.rows.len(), step);
-            }
-            ImportEvent::SelectRow(index) => self.select_row(index),
-            ImportEvent::Open(which) => self.open(self.selected, which),
-            ImportEvent::OpenRow(index, which) => self.open(index, which),
-            ImportEvent::Highlight(step) => {
-                let len = self
-                    .options(self.open.as_ref().map(|open| (open.row, open.which)))
-                    .len();
-                if let Some(open) = self.open.as_mut() {
-                    open.highlight = lib_list_cursor::step(open.highlight, len, step);
-                }
-            }
-            ImportEvent::ChooseHighlighted => {
-                if let Some(open) = &self.open {
-                    self.apply(open.highlight);
-                }
-            }
-            ImportEvent::Choose(index) => self.apply(index),
-            ImportEvent::NewPayee => self.create_new_payee(),
-            ImportEvent::ToggleRemember => self.remember = !self.remember,
-            ImportEvent::Continue => self.commit(router),
-            ImportEvent::Cancel => {
-                if self.open.take().is_none() {
-                    router.close_import(None);
-                }
-            }
-            ImportEvent::Back => {
-                self.open = None;
-                router.close_import(None);
-            }
         }
     }
 
@@ -321,7 +301,7 @@ impl ImportPresenter {
         }
     }
 
-    fn commit(&mut self, router: &mut dyn ImportRouter) {
+    fn commit(&mut self, router: &mut (dyn ImportRouter + '_)) {
         // Read now, not at the call: the store behind the port may be the one that holds them.
         let stored = self.ports.payees.borrow().import_payees();
         let outcome = CommitImport {
@@ -372,7 +352,7 @@ impl ImportPresenter {
             })
     }
 
-    pub fn view_model(&self) -> ImportViewModel {
+    fn build_view_model(&self) -> ImportViewModel {
         let figures = summary(&self.rows);
         let can_continue = self.can_continue();
         let selected = self.selected.min(self.rows.len().saturating_sub(1));
@@ -481,6 +461,55 @@ impl ImportPresenter {
             hint(&[CONTINUE], msg::transaction_import_hint_continue()),
             hint(&[BACK], msg::transaction_import_hint_back()),
         ]
+    }
+}
+
+impl Presenter for ImportPresenter {
+    type Event = ImportEvent;
+    type ViewModel = ImportViewModel;
+    type Router<'r> = dyn ImportRouter + 'r;
+
+    fn handle(&mut self, event: ImportEvent, router: &mut Self::Router<'_>) {
+        match event {
+            ImportEvent::Move(step) => {
+                self.selected = lib_list_cursor::step(self.selected, self.rows.len(), step);
+            }
+            ImportEvent::SelectRow(index) => self.select_row(index),
+            ImportEvent::Open(which) => self.open(self.selected, which),
+            ImportEvent::OpenRow(index, which) => self.open(index, which),
+            ImportEvent::Highlight(step) => {
+                let len = self
+                    .options(self.open.as_ref().map(|open| (open.row, open.which)))
+                    .len();
+                if let Some(open) = self.open.as_mut() {
+                    open.highlight = lib_list_cursor::step(open.highlight, len, step);
+                }
+            }
+            ImportEvent::ChooseHighlighted => {
+                if let Some(open) = &self.open {
+                    self.apply(open.highlight);
+                }
+            }
+            ImportEvent::Choose(index) => self.apply(index),
+            ImportEvent::NewPayee => self.create_new_payee(),
+            ImportEvent::ToggleRemember => self.remember = !self.remember,
+            ImportEvent::Continue => self.commit(router),
+            ImportEvent::Cancel => {
+                if self.open.take().is_none() {
+                    router.close_import(None);
+                }
+            }
+            ImportEvent::Back => {
+                self.open = None;
+                router.close_import(None);
+            }
+            // The step's own: opening, leaving and rebinding keys are its Presenter's.
+            ImportEvent::OpenStep | ImportEvent::Leave | ImportEvent::KeysChanged(_) => {}
+        }
+    }
+
+    fn view_model(&self) -> ImportViewModel {
+        self.build_view_model()
     }
 }
 

@@ -17,6 +17,6 @@ impl Root {
     /// The Import step for a test; `None` while it is not showing.
     #[doc(hidden)]
     pub fn import_snapshot(&self, cx: &gpui::App) -> Option<ImportSnapshot> {
-        self.open().views.import.read(cx).snapshot()
+        ImportSnapshot::of(self.open().views.import.read(cx).view_model())
     }
 }

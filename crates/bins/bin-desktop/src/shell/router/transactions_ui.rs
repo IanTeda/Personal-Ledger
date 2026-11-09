@@ -16,7 +16,9 @@ impl Root {
         self.navigate(NavInput::Focus(FocusZone::View));
         self.reset_view_scroll(cx);
         if let Some(open) = &self.open {
-            open.views.import.update(cx, |view, cx| view.open(cx));
+            open.views.import.update(cx, |view, cx| {
+                view.send(lib_transaction_import::presenter::ImportEvent::OpenStep, cx);
+            });
         }
     }
 }

@@ -1,7 +1,7 @@
-//! What the integration tests read back of the Import step (ADR-0030), built by its Entity from
-//! the Presenter's view model (ADR-0037).
+//! What the integration tests read back of the Import step (ADR-0030), built from the step
+//! Presenter's view model.
 
-use super::page::ImportPage;
+use lib_transaction_import::presenter::ImportStepViewModel;
 
 /// One Import row: the raw statement text and its status.
 #[doc(hidden)]
@@ -26,12 +26,13 @@ pub struct ImportSnapshot {
     pub continue_chord: String,
 }
 
-impl ImportPage {
+impl ImportSnapshot {
     /// The Import step for a test; `None` while it is not showing.
     #[doc(hidden)]
-    pub fn snapshot(&self) -> Option<ImportSnapshot> {
-        let view = self.view_model()?;
-        Some(ImportSnapshot {
+    pub fn of(step: ImportStepViewModel) -> Option<Self> {
+        let continue_chord = step.continue_chord;
+        let view = step.step?;
+        Some(Self {
             rows: view
                 .rows
                 .iter()
@@ -44,7 +45,7 @@ impl ImportPage {
             remember: view.remember,
             open_select: view.open_select.map(|open| format!("{:?}", open.which)),
             can_continue: view.can_continue,
-            continue_chord: self.continue_chord(),
+            continue_chord,
         })
     }
 }

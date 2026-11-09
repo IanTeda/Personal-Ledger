@@ -147,8 +147,9 @@ impl ActiveViewEntity {
             Self::Transactions(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
             Self::Documents(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
             Self::Settings(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
-            // Every step key is its keymap's.
-            Self::Import(_) | Self::Shell(_) => false,
+            // The step's open select is a mode of its own.
+            Self::Import(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
+            Self::Shell(_) => false,
         }
     }
 
@@ -271,7 +272,7 @@ impl ActiveViewEntity {
             Self::Bills(view) => Some(view.read(cx).page_status()),
             Self::Budgets(view) => Some(view.read(cx).page_status()),
             Self::Transactions(view) => view.read(cx).page_status(cx),
-            Self::Import(view) => view.read(cx).page_status(cx),
+            Self::Import(view) => Some(view.read(cx).page_status()),
             Self::Documents(view) => view.read(cx).page_status(cx),
             Self::Settings(view) => view.read(cx).page_status(cx),
             Self::Shell(_) => None,

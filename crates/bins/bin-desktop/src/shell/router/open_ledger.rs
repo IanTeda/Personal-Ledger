@@ -27,7 +27,6 @@ use lib_viper::dialog::DialogKeys;
 use super::Root;
 use crate::announcer::{Announcer, notify_on};
 use crate::settings::state::SettingsView;
-use crate::transaction_import::ImportPage;
 use crate::transactions::TransactionsPage;
 use crate::view::active::ViewEntities;
 
@@ -254,7 +253,10 @@ impl OpenLedger {
         let transactions_subscription = Root::view_event_subscription(&transactions_view, cx);
         // The status line reads the page's state, so a change in it repaints `Root` too.
         let transactions_view_observer = cx.observe(&transactions_view, |_, _, cx| cx.notify());
-        let import_view = cx.new(|_| ImportPage::new(import_stores, clock.clone()));
+        let import_view =
+            crate::transaction_import::import_page(import_stores, &announcer, clock.clone(), cx);
+        // An open select is the step's Filter mode, which it tells `Root` of.
+        let import_subscription = Root::view_event_subscription(&import_view, cx);
         // The status line reads the step's state, and which View shows turns on it being open.
         let import_view_observer = cx.observe(&import_view, |_, _, cx| cx.notify());
         let budgets_view = crate::budgets::router::budgets_page(
@@ -316,6 +318,7 @@ impl OpenLedger {
                 bills_view_observer,
                 transactions_subscription,
                 transactions_view_observer,
+                import_subscription,
                 import_view_observer,
                 documents_subscription,
                 documents_view_observer,

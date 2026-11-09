@@ -1,12 +1,12 @@
 //! The Transaction Import module's Desktop half (`docs/development/viper-architecture.md`, #947):
 //! the Import "match payees" step's View, shown in place of the Transactions list on `:import`, the
 //! Noun staying Transactions. Every rule, every piece of text, the keymap and the Presenter are
-//! `lib-transaction-import`'s; this folder turns gpui keys and clicks into Presenter events and
-//! draws the view model.
+//! `lib-transaction-import`'s; this folder draws the view model.
 //!
-//! - `view/page.rs` holds the Presenter in an Entity while the step is open; `view/mod.rs` draws
-//!   it.
-//! - `router.rs` is `impl ImportRouter`: a close the page reads, and Notices onto the bin's queue.
+//! - `view/page.rs` is the step Presenter's `PageView`, which the generic `ModulePage` hosts, open
+//!   or closed; `view/mod.rs` draws the open step.
+//! - `router.rs` is `impl ImportRouter`: a commit lands on the Transactions list's first row, and
+//!   Notices go onto the bin's queue.
 //!
 //! A commit writes through `lib-database`'s `TransactionImportAdapter`, over the Payees and
 //! Transactions stores, so its new Payees and Transactions join the one
@@ -22,7 +22,7 @@ use lib_core::Clock;
 use lib_database::{StoredImportReads, TransactionImportAdapter};
 use lib_transaction_import::{ImportPorts, SeededStatement};
 
-pub use view::page::ImportPage;
+pub use view::page::{ImportPage, import_page};
 
 /// What the step reads and writes, which `lib-database`'s `LedgerPorts` built over the stores: the
 /// import port (also its Payees read) and the Accounts and Categories reads. The seeded statement

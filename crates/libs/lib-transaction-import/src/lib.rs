@@ -15,8 +15,8 @@
 //! - `fake`: the in-memory port and reads; `contract`: the checks both the fake and the adapter
 //!   keep.
 //!
-//! - `interactor`: [`MatchStatement`] and [`CommitImport`], one file each; `presenter`: the step's Presenter and
-//!   its snapshot; `keymap`: its default keys; `msg`: its Messages, which a Client composes into
+//! - `interactor`: [`MatchStatement`] and [`CommitImport`], one file each; `presenter`: the step's
+//!   page Presenter, closed or open, and the open step's Presenter and its snapshot; `keymap`: its default keys; `msg`: its Messages, which a Client composes into
 //!   its Locale as `LAYER`.
 //!
 //! The Desktop's Import runs on it (#947); the TUI's is still a wireframe placeholder.

@@ -225,7 +225,9 @@ impl ShellRouter for RootRouter<'_, '_> {
             CommandEffect::Import => {
                 self.reset_view_scroll(Noun::Transactions);
                 if let Some(open) = self.open.as_ref() {
-                    open.views.import.update(self.cx, |view, cx| view.open(cx));
+                    open.views.import.update(self.cx, |view, cx| {
+                        view.send(lib_transaction_import::presenter::ImportEvent::OpenStep, cx);
+                    });
                 }
             }
             CommandEffect::NotYetBuilt => {
@@ -437,7 +439,7 @@ pub(super) fn active_view_entity(
     let view = ActiveView::derive(
         noun,
         settings.read(cx).selected_section(),
-        open.is_some_and(|open| open.views.import.read(cx).is_open()),
+        open.is_some_and(|open| open.views.import.read(cx).presenter().is_open()),
     );
     ActiveViewEntity::new(view, open.map(|open| &open.views), settings)
 }
@@ -477,9 +479,12 @@ pub(super) fn set_view_keymaps(
     open.views
         .transactions
         .update(cx, |view, _| view.set_keymaps(config));
-    open.views
-        .import
-        .update(cx, |view, _| view.set_keymaps(config));
+    open.views.import.update(cx, |page, cx| {
+        page.send(
+            lib_transaction_import::presenter::ImportEvent::KeysChanged(config.clone()),
+            cx,
+        );
+    });
     open.views.dashboard.update(cx, |page, cx| {
         page.send(
             lib_dashboard::DashboardEvent::KeysChanged(config.clone()),

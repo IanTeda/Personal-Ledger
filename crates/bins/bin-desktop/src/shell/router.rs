@@ -661,7 +661,7 @@ impl Root {
             self.settings.read(cx).selected_section(),
             self.open
                 .as_ref()
-                .is_some_and(|open| open.views.import.read(cx).is_open()),
+                .is_some_and(|open| open.views.import.read(cx).presenter().is_open()),
         )
     }
 

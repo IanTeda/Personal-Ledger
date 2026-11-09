@@ -2,7 +2,8 @@
 //! the stepper, heading and subline, a scrolling table (RAW DESCRIPTION / PAYEE / CATEGORY / STATUS
 //! / AMOUNT), and a footer bar with the summary, the "remember new payees' rules" checkbox, **back**
 //! and **continue**. It draws a borrow of `lib-transaction-import`'s view model and nothing else,
-//! each click the Presenter's event sent through [`PageClicks`]; `page.rs` holds the Presenter.
+//! each click the Presenter's event sent through [`PageClicks`]; `page.rs` is the step Presenter's
+//! `PageView`.
 //!
 //! A row resolved by a rule shows its Payee and Category as text, as in the handoff; any other
 //! row, and any row whose select is open, shows the two selects. Their lists open inline beneath
@@ -13,7 +14,7 @@ pub mod snapshot;
 
 use std::ops::Range;
 
-use gpui::{AnyElement, App, ClickEvent, Context, Rgba, SharedString, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, ClickEvent, Rgba, SharedString, div, prelude::*, px};
 use lib_locale::format::upper;
 use lib_transaction_import::RowStatus;
 use lib_transaction_import::presenter::{
@@ -31,41 +32,39 @@ const AMOUNT_WIDTH: gpui::Pixels = px(90.0);
 /// The gap between the fixed columns, so a select never touches its neighbour.
 const COLUMN_GAP: gpui::Pixels = px(8.0);
 
-impl Render for ImportPage {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let Some(view) = self.view_model() else {
-            return gpui::Empty.into_any_element();
-        };
-        let clicks = PageClicks::new(cx);
-        let select_range = view
-            .open_select
-            .as_ref()
-            .map(|open| self.select_range(open.select.options.len()));
-        let rows = div()
-            .id("import-rows")
-            .flex_1()
-            .min_h(px(0.0))
-            .overflow_y_scroll()
-            .track_scroll(&self.scroll)
-            .children(
-                view.rows
-                    .iter()
-                    .enumerate()
-                    .map(|(index, row)| render_row(index, row, &view, &select_range, &clicks, cx)),
-            );
-        div()
-            .id("import")
-            .flex_1()
-            .min_w(px(0.0))
-            .h_full()
-            .flex()
-            .flex_col()
-            .child(heading(&view, cx))
-            .child(table_header(&view, cx))
-            .child(rows)
-            .child(footer(&view, self.continue_chord(), &clicks, cx))
-            .into_any_element()
-    }
+/// Draws the open step from `view`, its open select's options from `select_range`.
+pub(super) fn render(
+    view: &ImportViewModel,
+    continue_chord: String,
+    select_range: Option<Range<usize>>,
+    scroll: &gpui::ScrollHandle,
+    clicks: &PageClicks<ImportPage>,
+    cx: &App,
+) -> AnyElement {
+    let rows = div()
+        .id("import-rows")
+        .flex_1()
+        .min_h(px(0.0))
+        .overflow_y_scroll()
+        .track_scroll(scroll)
+        .children(
+            view.rows
+                .iter()
+                .enumerate()
+                .map(|(index, row)| render_row(index, row, view, &select_range, clicks, cx)),
+        );
+    div()
+        .id("import")
+        .flex_1()
+        .min_w(px(0.0))
+        .h_full()
+        .flex()
+        .flex_col()
+        .child(heading(view, cx))
+        .child(table_header(view, cx))
+        .child(rows)
+        .child(footer(view, continue_chord, clicks, cx))
+        .into_any_element()
 }
 
 /// The stepper (step 1 done, 2 current, 3 upcoming), the heading and the subline.

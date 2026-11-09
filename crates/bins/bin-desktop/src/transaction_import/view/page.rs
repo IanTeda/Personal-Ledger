@@ -1,208 +1,167 @@
-//! The Import step's View: `lib-transaction-import`'s Presenter in a gpui Entity, which the Shell
-//! shows in place of the Transactions list while the step is open (ADR-0037). It looks up each key
-//! the Shell passes on, as chord text, in the step's keymap (the open select's while one is open),
-//! takes its clicks as events (`PresenterPage`), and draws the view model (`super`). Each key and click is one input
-//! (`crate::input::send`), which commits what it wrote.
+//! The Import step's View: `lib-transaction-import`'s step Presenter's [`PageView`], which the
+//! generic `ModulePage` hosts in place of the Transactions list while the step is open (ADR-0056).
+//! The step's state, open or closed, its keymaps (the open select's while one is open) and every
+//! event are the Presenter's; it draws the view model (`super`).
 //!
-//! What stays here is gpui's: the rows' scroll and the open select's window of options. The
-//! Presenter is built as the step opens, reading the Payees and Categories its selects offer then,
-//! and dropped as it closes.
+//! What stays here is gpui's: the rows' scroll and the open select's window of options, which
+//! follow each handle in [`PageView::after`] and start afresh as the step opens or closes.
 
 use std::ops::Range;
 
-use gpui::{App, Context, ScrollHandle};
+use gpui::{AnyElement, Context, ScrollHandle, Window, prelude::*};
 use lib_core::Clock;
-use lib_transaction_import::keymap::{CONTINUE, import_keymap, import_select_keymap};
-use lib_transaction_import::presenter::{ImportEvent, ImportPresenter, ImportViewModel};
-use lib_viper::keymap::Keymap;
-use lib_viper::view::legend;
+use lib_database::Domain;
+use lib_transaction_import::presenter::RowSelect;
+use lib_transaction_import::presenter::{ImportEvent, ImportStepPresenter, ImportStepViewModel};
+use lib_viper::presenter::Presenter as _;
 
 use crate::form::select::MAX_VISIBLE_ROWS;
-use crate::shell::view::page_clicks::PresenterPage;
+use crate::shell::view::module_page::{ModulePage, PageDraw, PageView};
 use crate::shell::view::statusline::PageStatus;
 use crate::transaction_import::ImportStores;
 use crate::transaction_import::router::PageRouter;
+use crate::view::event::ViewEvent;
 
-/// The Import step's Entity.
-pub struct ImportPage {
-    stores: ImportStores,
-    clock: Clock,
-    /// The step's Presenter, `Some` while it shows in place of the Transactions list (`:import`).
-    presenter: Option<ImportPresenter>,
-    keymap: Keymap<ImportEvent>,
-    /// The keys while a row's select is open.
-    select_keymap: Keymap<ImportEvent>,
-    /// The step's own scroll, reset as it opens and closes.
-    pub(super) scroll: ScrollHandle,
-    /// The first option the open select draws, so its window follows the highlight.
+/// The Import step: its Presenter in the generic page.
+pub type ImportPage = ModulePage<ImportStepPresenter>;
+
+/// The step's scroll and the open select's first drawn option.
+#[derive(Default)]
+pub struct ImportWidgets {
+    scroll: ScrollHandle,
     select_window: usize,
 }
 
-impl ImportPage {
-    /// The step, closed, over `stores`, under the default keys until `Root` pushes
-    /// `[keybindings]`. `clock` dates the statement as the step opens.
-    pub fn new(stores: ImportStores, clock: Clock) -> Self {
-        let config = lib_config::KeyBindingConfig::default();
-        Self {
-            stores,
-            clock,
-            presenter: None,
-            keymap: import_keymap(&config),
-            select_keymap: import_select_keymap(&config),
-            scroll: ScrollHandle::new(),
-            select_window: 0,
+/// What a handle is compared against: whether the step was open, which select was, and whether
+/// the event moves the selection.
+#[derive(Default)]
+pub struct ImportBefore {
+    open: bool,
+    select: Option<(usize, RowSelect)>,
+    moves: bool,
+}
+
+impl PageView for ImportStepPresenter {
+    type Setup = ();
+    type Widgets = ImportWidgets;
+    type Before = ImportBefore;
+
+    /// The step reads the Payees and Categories as it opens, and nothing changes them under it.
+    const REPAINTS: &'static [Domain] = &[];
+
+    fn with_router<R>(
+        presenter: &mut Self,
+        _setup: &(),
+        cx: &mut Context<'_, ImportPage>,
+        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
+    ) -> R {
+        handle(presenter, &mut PageRouter { cx })
+    }
+
+    fn before(&mut self, event: &ImportEvent, _widgets: &ImportWidgets) -> ImportBefore {
+        ImportBefore {
+            open: self.is_open(),
+            select: open_select(&self.view_model()),
+            moves: matches!(event, ImportEvent::Move(_)),
         }
     }
 
-    /// Follows a change to `[keybindings]`.
-    pub fn set_keymaps(&mut self, config: &lib_config::KeyBindingConfig) {
-        self.keymap = import_keymap(config);
-        self.select_keymap = import_select_keymap(config);
-    }
-
-    /// Whether the step shows in place of the Transactions list.
-    pub fn is_open(&self) -> bool {
-        self.presenter.is_some()
-    }
-
-    /// The step as drawn; `None` while it is closed.
-    pub fn view_model(&self) -> Option<ImportViewModel> {
-        self.presenter.as_ref().map(ImportPresenter::view_model)
-    }
-
-    /// `:import`: opens the step on the seeded statement, matched against the stored Payees. Not
-    /// an input of its own: it writes nothing, and the palette Command that opened it is the input.
-    pub fn open(&mut self, cx: &mut Context<'_, Self>) {
-        self.presenter = Some(ImportPresenter::new(self.stores.ports(&self.clock)));
-        self.reset_scroll();
-        cx.notify();
-    }
-
-    fn close(&mut self) {
-        self.presenter = None;
-        self.reset_scroll();
-    }
-
-    fn reset_scroll(&mut self) {
-        self.scroll.set_offset(gpui::Point::default());
-        self.select_window = 0;
-    }
-
-    /// Transactions has just become the destination: a step left open when it was left doesn't
-    /// come back with it.
-    pub fn on_enter(&mut self, cx: &mut Context<'_, Self>) {
-        self.close();
-        cx.notify();
-    }
-
-    /// A key the step's keymap binds, by `chord`: the open select's while one is open, which
-    /// swallows every other key as an open list does in the Dialogs, else the rows'. `esc` is the
-    /// Shell's, and comes back as [`Self::escape`].
-    pub fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {
-        let Some(presenter) = self.presenter.as_ref() else {
-            return false;
-        };
-        let select_open = presenter.view_model().open_select.is_some();
-        let keymap = if select_open {
-            &self.select_keymap
-        } else {
-            &self.keymap
-        };
-        match keymap.event(chord) {
-            Some(event) => self.send(event, cx),
-            None => return select_open,
+    /// A step opened or closed starts at the top; an open one keeps its selected row in view and
+    /// the open select's window on its highlight.
+    fn after(&self, before: ImportBefore, widgets: &mut ImportWidgets) -> Option<ViewEvent> {
+        if self.is_open() != before.open {
+            *widgets = ImportWidgets::default();
+            return None;
         }
-        true
+        let view = self.view_model().step?;
+        if before.moves {
+            widgets.scroll.scroll_to_item(view.selected);
+        }
+        let open = view.open_select.as_ref().map(|open| (open.row, open.which));
+        if open != before.select {
+            widgets.select_window = 0;
+        }
+        if let Some(open) = &view.open_select {
+            widgets.select_window = follow(
+                widgets.select_window,
+                open.highlight,
+                open.select.options.len(),
+            );
+        }
+        None
+    }
+
+    /// A step left open when Transactions was left doesn't come back with it.
+    fn entered() -> Option<ImportEvent> {
+        Some(ImportEvent::Leave)
+    }
+
+    fn render(
+        view: &ImportStepViewModel,
+        page: PageDraw<'_, Self>,
+        _window: &mut Window,
+        cx: &mut Context<'_, ImportPage>,
+    ) -> AnyElement {
+        let Some(step) = &view.step else {
+            return gpui::Empty.into_any_element();
+        };
+        let select_range = step
+            .open_select
+            .as_ref()
+            .map(|open| select_range(page.widgets.select_window, open.select.options.len()));
+        super::render(
+            step,
+            view.continue_chord.clone(),
+            select_range,
+            &page.widgets.scroll,
+            page.clicks,
+            cx,
+        )
+    }
+
+    /// The legend for the keymap in use, and whether rows still need review.
+    fn status(view: &ImportStepViewModel) -> PageStatus {
+        PageStatus {
+            hints: view.hints.clone(),
+            right: view
+                .step
+                .as_ref()
+                .map(|step| step.status.clone())
+                .unwrap_or_default(),
+        }
     }
 
     /// `esc`: closes an open select, else leaves the step for the Transactions list.
-    pub fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
-        if self.presenter.is_none() {
-            return false;
-        }
-        self.send(ImportEvent::Cancel, cx);
-        true
-    }
-
-    /// A key or click as one input, committed once it is handled.
-    fn send(&mut self, event: ImportEvent, cx: &mut Context<'_, Self>) {
-        crate::input::join_or_send(cx, |cx| self.handle(event, cx));
-    }
-
-    /// Hands `event` to the Presenter, then follows what it did: the selected row into view, the
-    /// open select's window onto its highlight, and a close. A commit refreshes the Ledger's read
-    /// copies and lands on the Transactions list's first row, inside the same input.
-    fn handle(&mut self, event: ImportEvent, cx: &mut Context<'_, Self>) {
-        let Some(presenter) = self.presenter.as_mut() else {
-            return;
-        };
-        let was_open = presenter
-            .view_model()
-            .open_select
-            .map(|open| (open.row, open.which));
-        let mut router = PageRouter::default();
-        presenter.handle(event, &mut router);
-        match router.closed {
-            Some(committed) => {
-                self.close();
-                if committed.is_some() {
-                    crate::transactions::router::first_row(cx);
-                }
-            }
-            None => {
-                let view = presenter.view_model();
-                if let ImportEvent::Move(_) = event {
-                    self.scroll.scroll_to_item(view.selected);
-                }
-                let open = view.open_select.as_ref().map(|open| (open.row, open.which));
-                if open != was_open {
-                    self.select_window = 0;
-                }
-                if let Some(open) = &view.open_select {
-                    self.select_window = follow(
-                        self.select_window,
-                        open.highlight,
-                        open.select.options.len(),
-                    );
-                }
-            }
-        }
-        cx.notify();
-    }
-
-    /// The chord **continue** is on, which the footer shows beside it, so an override shows.
-    pub(super) fn continue_chord(&self) -> String {
-        self.keymap.chord(CONTINUE).unwrap_or_default().to_owned()
-    }
-
-    /// The open select's options to draw: at most [`MAX_VISIBLE_ROWS`], from where its window has
-    /// scrolled to.
-    pub(super) fn select_range(&self, len: usize) -> Range<usize> {
-        let start = self.select_window.min(len.saturating_sub(MAX_VISIBLE_ROWS));
-        start..(start + MAX_VISIBLE_ROWS).min(len)
-    }
-
-    /// The status line's legend, each chord read from the keymap in use so an override shows, and
-    /// whether rows still need review.
-    pub fn page_status(&self, _cx: &App) -> Option<PageStatus> {
-        let view = self.view_model()?;
-        let keymap = if view.open_select.is_some() {
-            &self.select_keymap
-        } else {
-            &self.keymap
-        };
-        Some(PageStatus {
-            hints: legend(&view.hints, keymap),
-            right: view.status,
-        })
+    fn escape(view: &ImportStepViewModel) -> Option<ImportEvent> {
+        view.step.as_ref().map(|_| ImportEvent::Cancel)
     }
 }
 
-/// The step's clicks: its rows, their selects and options, and the footer.
-impl PresenterPage<ImportEvent> for ImportPage {
-    fn send(&mut self, event: ImportEvent, cx: &mut Context<'_, Self>) {
-        ImportPage::send(self, event, cx);
-    }
+/// The open select's row and which select it is.
+fn open_select(view: &ImportStepViewModel) -> Option<(usize, RowSelect)> {
+    let open = view.step.as_ref()?.open_select.as_ref()?;
+    Some((open.row, open.which))
+}
+
+/// The Transaction Import module's entry point: the step, closed, over `stores`, under the default
+/// keys until `Root` pushes `[keybindings]`. `clock` dates the statement as the step opens.
+pub fn import_page(
+    stores: ImportStores,
+    announcer: &gpui::Entity<crate::announcer::Announcer>,
+    clock: Clock,
+    cx: &mut gpui::App,
+) -> gpui::Entity<ImportPage> {
+    let presenter = ImportStepPresenter::new(
+        move || stores.ports(&clock),
+        &lib_config::KeyBindingConfig::default(),
+    );
+    cx.new(|cx| ModulePage::new(presenter, (), announcer, cx))
+}
+
+/// The open select's options to draw: at most [`MAX_VISIBLE_ROWS`] of `len`, from `start`.
+fn select_range(start: usize, len: usize) -> Range<usize> {
+    let start = start.min(len.saturating_sub(MAX_VISIBLE_ROWS));
+    start..(start + MAX_VISIBLE_ROWS).min(len)
 }
 
 /// The first option of a window of [`MAX_VISIBLE_ROWS`] over `len` options, moved from `start`
