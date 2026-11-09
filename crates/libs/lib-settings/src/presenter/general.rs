@@ -442,7 +442,7 @@ impl GeneralPresenter {
     }
 }
 
-fn on_start_label(choice: OnStart) -> String {
+pub(crate) fn on_start_label(choice: OnStart) -> String {
     match choice {
         OnStart::ReopenLastLedger => msg::settings_general_on_start_reopen(),
         OnStart::NoLedger => msg::settings_general_on_start_none(),

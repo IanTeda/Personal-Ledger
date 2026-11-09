@@ -22,6 +22,7 @@ pub mod msg;
 pub mod page;
 pub mod presenter;
 pub mod protocols;
+pub mod summary;
 
 pub use crate::log::{LogLevel, LogLine, TracingLevel};
 pub use crate::page::{ScopeFacts, ScopeGroup, SettingsPage};
@@ -39,6 +40,7 @@ pub use crate::presenter::{
 };
 pub use crate::protocols::{
     BaseUnitAnswer, ColourChoice, DeviceAnswer, DeviceConfiguration, DeviceKey, DeviceRefusal,
-    DeviceRouter, LedgerPreferences, LedgerRouter, LedgerUnits, SettingsRouter, TracingLog,
-    TracingRouter, UnitChoice,
+    DeviceRouter, HeadlineAmount, LedgerCounts, LedgerPreferences, LedgerRouter, LedgerSummaries,
+    LedgerUnits, SettingsRouter, TracingLog, TracingRouter, UnitChoice,
 };
+pub use crate::summary::{PageSummary, SummaryRow, SummarySources, summarise};

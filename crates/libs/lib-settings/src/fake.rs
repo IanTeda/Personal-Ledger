@@ -13,7 +13,10 @@ use lib_toast::{Notice, Notify};
 use crate::log::{LogLevel, LogLine};
 use crate::page::SettingsPage;
 use crate::presenter::{ClearLogsPresenter, DisplayOutput, LogListChange, LogScroll};
-use crate::protocols::{BaseUnitAnswer, LedgerPreferences, LedgerRouter, LedgerUnits, UnitChoice};
+use crate::protocols::{
+    BaseUnitAnswer, HeadlineAmount, LedgerCounts, LedgerPreferences, LedgerRouter, LedgerSummaries,
+    LedgerUnits, UnitChoice,
+};
 use crate::protocols::{
     ColourChoice, DeviceAnswer, DeviceConfiguration, DeviceKey, DeviceRefusal, DeviceRouter,
     SettingsRouter, TracingLog, TracingRouter,
@@ -401,5 +404,52 @@ impl TracingLog for InMemoryTracingLog {
 
     fn clear(&self) {
         self.lines.borrow_mut().clear();
+    }
+}
+
+/// A [`LedgerSummaries`] holding the counts it is given, for the index summaries' tests and a
+/// Client's UI-first work.
+#[derive(Debug, Clone, Default)]
+pub struct FixedLedgerSummaries(pub LedgerCounts);
+
+impl FixedLedgerSummaries {
+    /// The Sample Ledger's counts as the mockups draw them: 3 units over aud, 7 institutions, 7
+    /// accounts worth 83,995.87 aud, 12 categories 3 levels deep, 18 tags with 2 likely
+    /// duplicates, 11 payees with 3 lacking a default category, 7 types with 392 of 412 files
+    /// typed, and 3 locations, 14 areas and 241 items.
+    #[expect(
+        clippy::expect_used,
+        reason = "the net worth is a decimal literal that always parses"
+    )]
+    pub fn sample() -> Self {
+        Self(LedgerCounts {
+            units: 3,
+            base_unit: Some("aud".to_string()),
+            institutions: 7,
+            accounts: 7,
+            net_worth: Some(HeadlineAmount {
+                amount: lib_core::Money("83995.87".parse().expect("a decimal literal")),
+                places: 2,
+                code: "aud".to_string(),
+            }),
+            categories: 12,
+            category_levels: 3,
+            tags: 18,
+            likely_duplicate_tags: 2,
+            payees: 11,
+            payees_without_default_category: 3,
+            document_types: 7,
+            files_typed: 392,
+            files: 412,
+            locations: 3,
+            areas: 14,
+            items: 241,
+        })
+    }
+}
+
+impl LedgerSummaries for FixedLedgerSummaries {
+    fn counts(&self) -> LedgerCounts {
+        self.0.clone()
     }
 }

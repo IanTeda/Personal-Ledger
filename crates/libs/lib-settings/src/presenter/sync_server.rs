@@ -10,6 +10,10 @@ use lib_viper::presenter::{PagePresenter, Presenter};
 
 use crate::msg;
 
+/// The mockup's own placeholder values, which the Sync server index summary quotes too.
+pub(crate) const PLACEHOLDER_URL: &str = "sync.ledger.localhost";
+pub(crate) const PLACEHOLDER_LAST: &str = "14 sep 2026 \u{b7} 09:14";
+
 /// What the person asks of Settings › Sync server.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SyncServerEvent {
@@ -66,11 +70,11 @@ impl Presenter for SyncServerPresenter {
     fn view_model(&self) -> SyncServerViewModel {
         SyncServerViewModel {
             url_label: msg::settings_sync_url(),
-            url: "sync.ledger.localhost".to_string(),
+            url: PLACEHOLDER_URL.to_string(),
             status_label: msg::settings_sync_status(),
             connected: msg::settings_sync_connected(),
             last_label: msg::settings_sync_last(),
-            last: "14 sep 2026 \u{b7} 09:14".to_string(),
+            last: PLACEHOLDER_LAST.to_string(),
             sync_now: msg::settings_sync_now(),
         }
     }

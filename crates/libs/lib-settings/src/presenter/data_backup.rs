@@ -10,6 +10,10 @@ use lib_viper::presenter::{PagePresenter, Presenter};
 
 use crate::msg;
 
+/// The mockup's own placeholder values, which the Data & backup index summary quotes too.
+pub(crate) const PLACEHOLDER_LOCATION: &str = "~/.ledger/personal";
+pub(crate) const PLACEHOLDER_LAST: &str = "12 sep 2026 \u{b7} 23:10";
+
 /// What the person asks of Settings › Data & backup.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DataBackupEvent {
@@ -72,12 +76,12 @@ impl Presenter for DataBackupPresenter {
             rows: vec![
                 DataBackupRow {
                     label: msg::settings_backup_location(),
-                    value: "~/.ledger/personal".to_string(),
+                    value: PLACEHOLDER_LOCATION.to_string(),
                     value_size: 11,
                 },
                 DataBackupRow {
                     label: msg::settings_backup_last(),
-                    value: "12 sep 2026 \u{b7} 23:10".to_string(),
+                    value: PLACEHOLDER_LAST.to_string(),
                     value_size: 12,
                 },
             ],

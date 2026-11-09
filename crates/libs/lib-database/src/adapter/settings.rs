@@ -5,16 +5,107 @@
 //! than moving it here: a Unit that is gone or inactive is refused as it is there.
 
 use lib_core::UnitId;
-use lib_settings::{BaseUnitAnswer, LedgerPreferences, LedgerUnits, UnitChoice};
+use lib_settings::{
+    BaseUnitAnswer, HeadlineAmount, LedgerCounts, LedgerPreferences, LedgerSummaries, LedgerUnits,
+    UnitChoice,
+};
 use lib_units::interactor::SetBaseUnit;
 use lib_units::{UnitUse, units_by_code};
 
-use super::store::SharedUnitsStore;
+use super::store::{
+    SharedAccountsStore, SharedCategoriesStore, SharedDocumentsStore, SharedInstitutionsStore,
+    SharedInventoryStore, SharedPayeesStore, SharedStores, SharedTagsStore,
+    SharedTransactionsStore, SharedUnitsStore, StoredTagReads,
+};
 
-/// `lib-settings`' read port answered by the Units store, borrowed for the one read.
+/// `lib-settings`' read ports answered by the stores, each borrowed for the one read: the Units
+/// the Ledger page offers, and the counts the Settings index's detail pane quotes (#1109), which
+/// call the domains' own rules (net worth, likely duplicates, levels deep) and re-implement none.
 #[derive(Clone)]
 pub struct StoredSettingsReads {
     pub units: SharedUnitsStore,
+    pub institutions: SharedInstitutionsStore,
+    pub accounts: SharedAccountsStore,
+    pub categories: SharedCategoriesStore,
+    pub tags: SharedTagsStore,
+    pub payees: SharedPayeesStore,
+    pub transactions: SharedTransactionsStore,
+    pub inventory: SharedInventoryStore,
+    pub documents: SharedDocumentsStore,
+}
+
+impl StoredSettingsReads {
+    /// The reads over the shared stores a Client holds.
+    pub fn over(stores: &SharedStores) -> Self {
+        Self {
+            units: stores.units.clone(),
+            institutions: stores.institutions.clone(),
+            accounts: stores.accounts.clone(),
+            categories: stores.categories.clone(),
+            tags: stores.tags.clone(),
+            payees: stores.payees.clone(),
+            transactions: stores.transactions.clone(),
+            inventory: stores.inventory.clone(),
+            documents: stores.documents.clone(),
+        }
+    }
+}
+
+impl LedgerSummaries for StoredSettingsReads {
+    fn counts(&self) -> LedgerCounts {
+        let (units, base_id) = {
+            let store = self.units.borrow();
+            (store.units().units(), store.base_unit().base_unit())
+        };
+        let base = units.iter().find(|unit| unit.id == base_id);
+        let accounts = self.accounts.borrow().accounts().accounts();
+        let net_worth = base.map(|unit| {
+            let net = lib_accounts::net_worth(&accounts, Some(unit.id));
+            HeadlineAmount {
+                amount: net.base_net,
+                places: unit.precision.places(),
+                code: unit.code.clone(),
+            }
+        });
+        let categories = self.categories.borrow().categories().categories();
+        let tags = self.tags.borrow().tags().tags();
+        let usage = StoredTagReads {
+            transactions: self.transactions.clone(),
+            accounts: self.accounts.clone(),
+            units: self.units.clone(),
+        };
+        let likely_duplicate_tags = lib_tags::duplicate_groups(&tags, &usage)
+            .iter()
+            .map(|group| group.duplicates.len())
+            .sum();
+        let payees = self.payees.borrow().payees().payees();
+        let types = self.documents.borrow().documents().document_types();
+        let inventory = self.inventory.borrow().inventory().inventory();
+        LedgerCounts {
+            units: units.len(),
+            base_unit: base.map(|unit| unit.code.clone()),
+            institutions: self
+                .institutions
+                .borrow()
+                .institutions()
+                .institutions()
+                .len(),
+            accounts: accounts.len(),
+            net_worth,
+            categories: categories.len(),
+            category_levels: lib_categories::levels_deep(&categories),
+            tags: lib_tags::active_count(&tags),
+            likely_duplicate_tags,
+            payees: lib_payees::active_count(&payees),
+            payees_without_default_category: lib_payees::without_default_category_count(&payees),
+            document_types: types.len(),
+            files_typed: lib_documents::types::typed_files(&types) as usize,
+            files: lib_documents::types::all_files(&types) as usize,
+            locations: inventory.location_count(),
+            areas: inventory.area_count(),
+            items: inventory.item_count(),
+        }
+    }
 }
 
 impl LedgerUnits for StoredSettingsReads {
@@ -77,6 +168,18 @@ mod tests {
     use crate::writer::WriteFailure;
     use crate::{PendingWrites, UnitsAdapter, Writer};
 
+    fn today() -> chrono::NaiveDate {
+        chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date")
+    }
+
+    /// The Sample Ledger's stores in memory, with the Units store swapped for `units`.
+    fn sample_stores(units: SharedUnitsStore) -> SharedStores {
+        let (stores, _) = crate::Stores::fake(crate::FakeStores::sample(today()));
+        let mut shared = crate::LedgerPorts::new(stores, lib_core::Clock::fixed(today())).stores;
+        shared.units = units;
+        shared
+    }
+
     fn sample_units(deactivated: &[UnitId]) -> InMemoryPorts {
         let mut ports = InMemoryPorts::sample(chrono::Utc::now());
         for unit in &mut ports.units.units {
@@ -89,9 +192,7 @@ mod tests {
 
     fn pair(units: SharedUnitsStore) -> (StoredSettingsReads, LedgerPreferencesAdapter) {
         (
-            StoredSettingsReads {
-                units: units.clone(),
-            },
+            StoredSettingsReads::over(&sample_stores(units.clone())),
             LedgerPreferencesAdapter::new(units),
         )
     }
@@ -106,6 +207,32 @@ mod tests {
         fn create(&mut self, deactivated: &[UnitId]) -> (Self::Reads, Self::Writes) {
             pair(Rc::new(RefCell::new(sample_units(deactivated))))
         }
+    }
+
+    #[test]
+    fn the_sample_ledgers_counts_are_the_domains_own() {
+        let (stores, _) = crate::Stores::fake(crate::FakeStores::sample(today()));
+        let shared = crate::LedgerPorts::new(stores, lib_core::Clock::fixed(today())).stores;
+        let counts = StoredSettingsReads::over(&shared).counts();
+        let accounts = shared.accounts.borrow().accounts().accounts();
+        let tags = shared.tags.borrow().tags().tags();
+        let categories = shared.categories.borrow().categories().categories();
+        assert_eq!(counts.accounts, accounts.len());
+        assert_eq!(counts.tags, lib_tags::active_count(&tags));
+        assert_eq!(counts.categories, categories.len());
+        assert_eq!(
+            counts.category_levels,
+            lib_categories::levels_deep(&categories)
+        );
+        assert_eq!(counts.base_unit.as_deref(), Some("aud"));
+        let worth = counts.net_worth.expect("the base Unit is known");
+        assert_eq!(worth.code, "aud");
+        assert_eq!(
+            worth.amount,
+            lib_accounts::net_worth(&accounts, Some(UnitId::SEED_AUD)).base_net
+        );
+        assert!(counts.units > 0 && counts.institutions > 0 && counts.payees > 0);
+        assert!(counts.locations > 0 && counts.items > 0 && counts.document_types > 0);
     }
 
     #[test]

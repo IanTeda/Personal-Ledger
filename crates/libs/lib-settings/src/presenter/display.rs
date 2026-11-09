@@ -659,7 +659,7 @@ pub fn date_style_label(choice: Option<DateStyle>) -> String {
     }
 }
 
-fn row_density_label(density: RowDensity) -> String {
+pub(crate) fn row_density_label(density: RowDensity) -> String {
     match density {
         RowDensity::Compact => msg::settings_display_density_compact(),
         RowDensity::Regular => msg::settings_display_density_regular(),
@@ -667,7 +667,7 @@ fn row_density_label(density: RowDensity) -> String {
     }
 }
 
-fn status_glyphs_label(glyphs: StatusGlyphs) -> String {
+pub(crate) fn status_glyphs_label(glyphs: StatusGlyphs) -> String {
     match glyphs {
         StatusGlyphs::Unicode => {
             msg::settings_display_glyphs_unicode("\u{25cb} \u{25d0} \u{25cf} \u{2691}")

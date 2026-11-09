@@ -7,7 +7,7 @@
 use std::rc::Rc;
 
 use lib_colour_theme::ColourAppearance;
-use lib_core::{DateStyle, OnStart, RowDensity, StartView, StatusGlyphs, UnitId};
+use lib_core::{DateStyle, Money, OnStart, RowDensity, StartView, StatusGlyphs, UnitId};
 use lib_toast::Notify;
 
 use crate::log::LogLine;
@@ -210,4 +210,48 @@ pub trait LedgerPreferences {
 pub trait LedgerRouter {
     /// The base Unit was saved, so the Client announces the Units domain.
     fn base_unit_changed(&mut self);
+}
+
+/// A Unit's figure as a list page's headline quotes it: the amount, the places the Unit shows
+/// and its code, formatted by the summary so the port stays free of the Locale.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HeadlineAmount {
+    pub amount: Money,
+    pub places: u32,
+    pub code: String,
+}
+
+/// What the list pages' summaries count in the Open Ledger: each page's count and its one headline
+/// fact, matching the page's heading note. Counts only, never rows.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct LedgerCounts {
+    pub units: usize,
+    /// The base Unit's code, which the Ledger page quotes.
+    pub base_unit: Option<String>,
+    pub institutions: usize,
+    pub accounts: usize,
+    /// The Accounts counted in the base Unit, summed; `None` when the base Unit is unknown.
+    pub net_worth: Option<HeadlineAmount>,
+    pub categories: usize,
+    /// How many levels the Category tree runs to.
+    pub category_levels: u32,
+    /// The active Tags.
+    pub tags: usize,
+    pub likely_duplicate_tags: usize,
+    /// The active Payees.
+    pub payees: usize,
+    pub payees_without_default_category: usize,
+    pub document_types: usize,
+    pub files_typed: usize,
+    pub files: usize,
+    pub locations: usize,
+    pub areas: usize,
+    pub items: usize,
+}
+
+/// What the Settings index's detail pane counts of the domains Settings doesn't own (#1109): the
+/// Client answers it over the stores (`lib-database`'s `StoredSettingsReads`), so the index never
+/// builds a domain's Presenter. Read only for the pane's page, and not at all with no Ledger open.
+pub trait LedgerSummaries {
+    fn counts(&self) -> LedgerCounts;
 }

@@ -3,13 +3,13 @@
 
 mod about;
 mod clear_logs;
-mod data_backup;
+pub(crate) mod data_backup;
 mod device;
 pub mod display;
 mod frame;
 pub mod general;
 pub mod ledger;
-mod sync_server;
+pub(crate) mod sync_server;
 pub mod tracing;
 
 pub use about::{AboutEvent, AboutPresenter, AboutSetup, AboutViewModel};
