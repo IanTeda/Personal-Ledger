@@ -7,6 +7,7 @@ use std::convert::Infallible;
 use lib_toast::{Notice, Notify};
 use lib_viper::keymap::{KeyBindingConfig, Keymap};
 use lib_viper::presenter::{PagePresenter, Presenter};
+use lib_viper::view::Hint;
 
 use crate::msg;
 
@@ -31,6 +32,10 @@ pub struct SyncServerViewModel {
     pub last_label: String,
     pub last: String,
     pub sync_now: String,
+    /// The page's keys, for the status line and the `?` cheat sheet: the frame's scroll and
+    /// focus-index chords, which only the Client can read from its keymap, so it hands them over
+    /// ([`SyncServerPresenter::set_legend`]).
+    pub hints: Vec<Hint>,
 }
 
 /// Settings › Sync server's Presenter. It holds no state, and its only events are its buttons' clicks,
@@ -38,13 +43,20 @@ pub struct SyncServerViewModel {
 #[derive(Debug)]
 pub struct SyncServerPresenter {
     keymap: Keymap<SyncServerEvent>,
+    legend: Vec<Hint>,
 }
 
 impl SyncServerPresenter {
     pub fn new() -> Self {
         Self {
             keymap: Keymap::new(&[], &KeyBindingConfig::default()),
+            legend: Vec::new(),
         }
+    }
+
+    /// Replaces the legend, for start-up and a `[keybindings]` change.
+    pub fn set_legend(&mut self, legend: Vec<Hint>) {
+        self.legend = legend;
     }
 }
 
@@ -76,6 +88,7 @@ impl Presenter for SyncServerPresenter {
             last_label: msg::settings_sync_last(),
             last: PLACEHOLDER_LAST.to_string(),
             sync_now: msg::settings_sync_now(),
+            hints: self.legend.clone(),
         }
     }
 }

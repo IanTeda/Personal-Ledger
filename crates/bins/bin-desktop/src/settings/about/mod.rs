@@ -1,61 +1,70 @@
 //! The Settings › About page (ADR-0037's amendment, one folder per page): static project info.
-//! `lib-settings`' About Presenter in a gpui Entity, given the version from this crate's `env!`.
-//! [`AboutPage`] renders itself (`render.rs`) and has no events.
+//! `lib-settings`' About Presenter, given the version from this crate's `env!`, is the
+//! [`PageView`] the generic `ModulePage` hosts (ADR-0056). It has no events, so the page only
+//! draws (`render.rs`).
 
 mod render;
 
-use gpui::{App, EventEmitter};
+use gpui::{AnyElement, Context, Window};
+use lib_database::Domain;
 use lib_settings::{AboutPresenter, AboutSetup, AboutViewModel, SettingsFrameEvent};
-use lib_shell::Hint;
 use lib_viper::keymap::Keymap;
-use lib_viper::presenter::Presenter;
 
-use crate::{
-    settings::{
-        SettingsPage,
-        hints::settings_plain_page_hints,
-        pages::{Page, PageRowClicked},
-    },
-    view::event::ViewEvent,
-};
+use crate::settings::SettingsPage;
+use crate::settings::hints::settings_plain_page_hints;
+use crate::shell::view::module_page::{ModulePage, PageDraw, PageView, SettingsPageView};
+use crate::shell::view::statusline::PageStatus;
 
-impl EventEmitter<ViewEvent> for AboutPage {}
+/// The About page: the Presenter in the generic page Entity.
+pub type AboutPage = ModulePage<AboutPresenter>;
 
-/// The page has no rows, so it never emits a row click.
-impl EventEmitter<PageRowClicked> for AboutPage {}
-
-/// The About page.
-pub struct AboutPage {
-    presenter: AboutPresenter,
-    /// The frame's keys, which the legend's chords are read from.
-    keymap: Keymap<SettingsFrameEvent>,
+/// The About page for a build of `version`, its legend read from the frame's `keymap`.
+pub fn about_page(version: &str, keymap: &Keymap<SettingsFrameEvent>) -> AboutPage {
+    let mut presenter = AboutPresenter::new(AboutSetup {
+        version: version.to_string(),
+    });
+    presenter.set_legend(settings_plain_page_hints(keymap));
+    ModulePage::detached(presenter, ())
 }
 
-impl AboutPage {
-    /// The page for a build of `version`, its legend read from the frame's `keymap`.
-    pub fn new(version: &str, keymap: Keymap<SettingsFrameEvent>) -> Self {
-        Self {
-            presenter: AboutPresenter::new(AboutSetup {
-                version: version.to_string(),
-            }),
-            keymap,
+impl PageView for AboutPresenter {
+    type Setup = ();
+    type Widgets = ();
+    type Before = ();
+
+    /// About reads no Ledger domain.
+    const REPAINTS: &'static [Domain] = &[];
+
+    /// The frame scrolls the page: it has no selection.
+    const FRAME_SCROLLS: bool = true;
+
+    /// About takes no event, so its Router is the status line's queue, which nothing uses.
+    fn with_router<R>(
+        presenter: &mut Self,
+        _setup: &(),
+        _cx: &mut Context<'_, AboutPage>,
+        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
+    ) -> R {
+        handle(presenter, &mut crate::notices::Queue)
+    }
+
+    fn render(
+        view: &AboutViewModel,
+        _page: PageDraw<'_, Self>,
+        _window: &mut Window,
+        cx: &mut Context<'_, AboutPage>,
+    ) -> AnyElement {
+        render::page(view, cx)
+    }
+
+    fn status(view: &AboutViewModel) -> PageStatus {
+        PageStatus {
+            hints: view.hints.clone(),
+            right: crate::settings::scope_note(SettingsPage::About),
         }
     }
-
-    /// The frame's keys under `[keybindings]`, for a rebind.
-    pub fn set_keymap(&mut self, keymap: Keymap<SettingsFrameEvent>) {
-        self.keymap = keymap;
-    }
-
-    pub fn view_model(&self) -> AboutViewModel {
-        self.presenter.view_model()
-    }
 }
 
-impl Page for AboutPage {
+impl SettingsPageView for AboutPresenter {
     const PAGE: SettingsPage = SettingsPage::About;
-
-    fn hints(&self, _cx: &App) -> Vec<Hint> {
-        settings_plain_page_hints(&self.keymap)
-    }
 }

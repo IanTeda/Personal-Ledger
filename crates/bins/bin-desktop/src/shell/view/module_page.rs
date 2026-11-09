@@ -55,6 +55,11 @@ pub trait PageView: PagePresenter + Sized + 'static {
     /// The Ledger domains whose change repaints the page: its own, and any its view model reads.
     const REPAINTS: &'static [Domain];
 
+    /// Whether a movement the page's keymap didn't take is left to the Settings frame, which
+    /// scrolls the body with it. A page with a selection of its own takes every movement, so
+    /// leaves this `false`; General, Ledger and the info pages have none.
+    const FRAME_SCROLLS: bool = false;
+
     /// Runs `handle` on `presenter` with the page's Router, built over `setup` around this call's
     /// context, which is how a Router opens a Dialog in the host. The Router may read what the
     /// Presenter holds for the Dialogs it opens (the date style) before `handle` runs.
@@ -131,6 +136,13 @@ pub trait PageView: PagePresenter + Sized + 'static {
         None
     }
 
+    /// Told whether the page, not Settings' index, has the keyboard, as the View draws it and as
+    /// focus moves, which can be every draw. Returns whether the Presenter's view model changed, so
+    /// the page redraws only then (General puts the keyboard on its first control).
+    fn focus_changed(&mut self, _focused: bool) -> bool {
+        false
+    }
+
     /// Records where the pointer opened a row's menu, before its event is sent. The position is
     /// the View's to draw the menu at; the Presenter never sees it.
     fn menu_at(_widgets: &mut Self::Widgets, _at: Point<Pixels>) {}
@@ -200,8 +212,31 @@ impl<P: PageView> ModulePage<P> {
         }
     }
 
+    /// Hosts `presenter` with no subscriptions, for a page that reads no Ledger domain and stands
+    /// before a Ledger (and its `Announcer`) exists: General and About.
+    pub fn detached(presenter: P, setup: P::Setup) -> Self {
+        debug_assert!(
+            P::REPAINTS.is_empty() && P::ledger_changed().is_none(),
+            "a detached page has no domain to repaint on"
+        );
+        Self {
+            presenter,
+            setup,
+            widgets: P::Widgets::default(),
+            page_focused: false,
+            _repaints: Vec::new(),
+        }
+    }
+
     pub fn view_model(&self) -> P::ViewModel {
         self.presenter.view_model()
+    }
+
+    /// Changes what the Presenter holds outside an event (a `[keybindings]` rebind, what start-up
+    /// read), then redraws.
+    pub fn update_presenter(&mut self, cx: &mut Context<'_, Self>, change: impl FnOnce(&mut P)) {
+        change(&mut self.presenter);
+        cx.notify();
     }
 
     /// Records whether the View zone has focus, as the Shell draws a main View's page: the focus
@@ -475,7 +510,7 @@ impl<P: SettingsPageView> Page for ModulePage<P> {
     /// A movement the keymap doesn't bind (`enter`) does nothing on the page, and Settings leaves
     /// the page where it is: the keymap binds every movement a module page takes.
     fn apply_movement(&mut self, _movement: Movement, _cx: &mut Context<'_, Self>) -> bool {
-        true
+        !P::FRAME_SCROLLS
     }
 
     fn reveal(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
@@ -486,8 +521,11 @@ impl<P: SettingsPageView> Page for ModulePage<P> {
         ModulePage::escape(self, cx)
     }
 
-    fn set_page_focused(&mut self, focused: bool, _cx: &mut Context<'_, Self>) {
+    fn set_page_focused(&mut self, focused: bool, cx: &mut Context<'_, Self>) {
         self.page_focused = focused;
+        if self.presenter.focus_changed(focused) {
+            cx.notify();
+        }
     }
 
     fn heading_meta(&self, cx: &App) -> AnyElement {

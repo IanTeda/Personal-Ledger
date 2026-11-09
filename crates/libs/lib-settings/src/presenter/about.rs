@@ -7,6 +7,7 @@ use std::convert::Infallible;
 use lib_toast::Notify;
 use lib_viper::keymap::{KeyBindingConfig, Keymap};
 use lib_viper::presenter::{PagePresenter, Presenter};
+use lib_viper::view::Hint;
 
 use crate::msg;
 
@@ -27,6 +28,10 @@ pub struct AboutViewModel {
     /// The release date, the mockup's own since no build stamps one.
     pub released: String,
     pub built_with: String,
+    /// The page's keys, for the status line and the `?` cheat sheet: the frame's scroll and
+    /// focus-index chords, which only the Client can read from its keymap, so it hands them over
+    /// ([`AboutPresenter::set_legend`]).
+    pub hints: Vec<Hint>,
 }
 
 /// Settings › About's Presenter. It takes no events, so its keymap binds nothing.
@@ -34,6 +39,7 @@ pub struct AboutViewModel {
 pub struct AboutPresenter {
     version: String,
     keymap: Keymap<AboutEvent>,
+    legend: Vec<Hint>,
 }
 
 impl AboutPresenter {
@@ -41,7 +47,13 @@ impl AboutPresenter {
         Self {
             version: setup.version,
             keymap: Keymap::new(&[], &KeyBindingConfig::default()),
+            legend: Vec::new(),
         }
+    }
+
+    /// Replaces the legend, for start-up and a `[keybindings]` change.
+    pub fn set_legend(&mut self, legend: Vec<Hint>) {
+        self.legend = legend;
     }
 }
 
@@ -59,6 +71,7 @@ impl Presenter for AboutPresenter {
             version: msg::settings_about_version(&self.version),
             released: "(08 September 2026)".to_string(),
             built_with: msg::settings_about_built_with(),
+            hints: self.legend.clone(),
         }
     }
 }

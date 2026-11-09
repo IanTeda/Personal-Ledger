@@ -10,6 +10,7 @@
 //! which page it is. Halfway state (#1036): every page, domain or config, still renders through
 //! that trait.
 
+use super::hints::settings_plain_page_hints;
 use super::router::{FrameRouter, PageChanged};
 use crate::{
     announcer::Announcer,
@@ -23,10 +24,12 @@ use crate::{
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, Subscription};
 use lib_list_cursor::Step;
 use lib_settings::{
-    ColourChoice, DeviceConfiguration, DisplayOutput, DisplaySettings, GeneralSettings,
-    PageSummary, ScopeFacts, SettingsFrameEvent, SettingsFramePresenter, SettingsFrameSetup,
-    SettingsFrameViewModel, SummarySources, ThisDevice, TracingLevel, TracingLog,
-    keymap::settings_frame_keymap, summarise,
+    ColourChoice, DeviceConfiguration, DisplayOutput, DisplaySettings, GeneralEvent,
+    GeneralSettings, PageSummary, ScopeFacts, SettingsFrameEvent, SettingsFramePresenter,
+    SettingsFrameSetup, SettingsFrameViewModel, SummarySources, ThisDevice, TracingLevel,
+    TracingLog,
+    keymap::{general_keymap, ledger_keymap, settings_frame_keymap},
+    summarise,
 };
 use lib_viper::keymap::KeyBindingConfig;
 use lib_viper::presenter::Presenter;
@@ -97,27 +100,34 @@ impl SettingsView {
     pub fn set_keymaps(&mut self, config: &KeyBindingConfig, cx: &mut Context<'_, Self>) {
         self.frame.set_keymap(settings_frame_keymap(config));
         self.frame.set_back_chord(back_chord(config));
-        self.pages
-            .general
-            .update(cx, |page, _| page.set_keymaps(config, back_chord(config)));
+        self.pages.general.update(cx, |page, cx| {
+            page.update_presenter(cx, |presenter| {
+                presenter.set_keymap(general_keymap(config), back_chord(config));
+            });
+        });
         self.pages
             .display
             .update(cx, |page, _| page.set_keymaps(config, back_chord(config)));
         self.pages
             .tracing
             .update(cx, |page, _| page.set_keymaps(config, back_chord(config)));
-        self.pages.about.update(cx, |page, _| {
-            page.set_keymap(settings_frame_keymap(config));
+        self.pages.about.update(cx, |page, cx| {
+            page.update_presenter(cx, |presenter| {
+                presenter.set_legend(settings_plain_page_hints(&settings_frame_keymap(config)));
+            });
         });
         if let Some(pages) = &self.pages.ledger {
-            pages
-                .ledger
-                .update(cx, |page, _| page.set_keymaps(config, back_chord(config)));
-            pages.sync_server.update(cx, |page, _| {
-                page.set_keymap(settings_frame_keymap(config));
+            pages.ledger.update(cx, |page, cx| {
+                page.update_presenter(cx, |presenter| {
+                    presenter.set_keymap(ledger_keymap(config), back_chord(config));
+                });
             });
-            pages.data_backup.update(cx, |page, _| {
-                page.set_keymap(settings_frame_keymap(config));
+            let plain = settings_plain_page_hints(&settings_frame_keymap(config));
+            pages.sync_server.update(cx, |page, cx| {
+                page.update_presenter(cx, |presenter| presenter.set_legend(plain.clone()));
+            });
+            pages.data_backup.update(cx, |page, cx| {
+                page.update_presenter(cx, |presenter| presenter.set_legend(plain));
             });
         }
     }
@@ -218,7 +228,9 @@ impl SettingsView {
         if !model.index_page || self.window_size != WindowSize::XLarge {
             return None;
         }
-        let (general, device, locale) = self.pages.general.read(cx).summary_sources();
+        let general = self.pages.general.read(cx).presenter();
+        let (general, device, locale) =
+            (general.settings(), general.this_device(), general.locale());
         let display = self.pages.display.read(cx).settings();
         let version = self.pages.about.read(cx).view_model().version;
         let sources = SummarySources {
@@ -619,32 +631,32 @@ impl SettingsView {
         cx: &mut Context<'_, Self>,
     ) {
         let for_general = device.clone();
-        self.pages
-            .general
-            .update(cx, |page, cx| page.configure(for_general, general, cx));
+        self.pages.general.update(cx, |page, cx| {
+            page.update_presenter(cx, |presenter| presenter.configure(for_general, general));
+        });
         self.pages
             .display
             .update(cx, |page, cx| page.configure(device, display, cx));
     }
 
     pub fn set_this_device(&mut self, device: ThisDevice, cx: &mut Context<'_, Self>) {
-        self.pages
-            .general
-            .update(cx, |page, cx| page.set_this_device(device, cx));
+        self.pages.general.update(cx, |page, cx| {
+            page.update_presenter(cx, |presenter| presenter.set_this_device(device));
+        });
     }
 
     /// The Ledger file the state file will remember at quit, once `:open` has opened one.
     pub fn set_last_ledger(&mut self, last_ledger: Option<PathBuf>, cx: &mut Context<'_, Self>) {
-        self.pages
-            .general
-            .update(cx, |page, cx| page.set_last_ledger(last_ledger, cx));
+        self.pages.general.update(cx, |page, cx| {
+            page.update_presenter(cx, |presenter| presenter.set_last_ledger(last_ledger));
+        });
     }
 
     /// `:toasts on|off`, saved as General's own choice is.
     pub fn set_toasts(&mut self, on: bool, cx: &mut Context<'_, Self>) {
         self.pages
             .general
-            .update(cx, |page, cx| page.set_toasts(on, cx));
+            .update(cx, |page, cx| page.send(GeneralEvent::SetToasts(on), cx));
     }
 }
 

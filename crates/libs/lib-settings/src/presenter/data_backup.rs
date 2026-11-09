@@ -7,6 +7,7 @@ use std::convert::Infallible;
 use lib_toast::{Notice, Notify};
 use lib_viper::keymap::{KeyBindingConfig, Keymap};
 use lib_viper::presenter::{PagePresenter, Presenter};
+use lib_viper::view::Hint;
 
 use crate::msg;
 
@@ -35,6 +36,10 @@ pub struct DataBackupViewModel {
     pub rows: Vec<DataBackupRow>,
     pub backup_now: String,
     pub export_ledger: String,
+    /// The page's keys, for the status line and the `?` cheat sheet: the frame's scroll and
+    /// focus-index chords, which only the Client can read from its keymap, so it hands them over
+    /// ([`DataBackupPresenter::set_legend`]).
+    pub hints: Vec<Hint>,
 }
 
 /// Settings › Data & backup's Presenter. It holds no state, and its only events are its buttons' clicks,
@@ -42,13 +47,20 @@ pub struct DataBackupViewModel {
 #[derive(Debug)]
 pub struct DataBackupPresenter {
     keymap: Keymap<DataBackupEvent>,
+    legend: Vec<Hint>,
 }
 
 impl DataBackupPresenter {
     pub fn new() -> Self {
         Self {
             keymap: Keymap::new(&[], &KeyBindingConfig::default()),
+            legend: Vec::new(),
         }
+    }
+
+    /// Replaces the legend, for start-up and a `[keybindings]` change.
+    pub fn set_legend(&mut self, legend: Vec<Hint>) {
+        self.legend = legend;
     }
 }
 
@@ -87,6 +99,7 @@ impl Presenter for DataBackupPresenter {
             ],
             backup_now: msg::settings_backup_now(),
             export_ledger: msg::settings_backup_export(),
+            hints: self.legend.clone(),
         }
     }
 }

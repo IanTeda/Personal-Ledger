@@ -25,14 +25,14 @@ use crate::{
     payees::{PayeesPage, PayeesSetup, payees_page},
     settings::{
         SettingsPage,
-        about::AboutPage,
-        data_backup::DataBackupPage,
+        about::{AboutPage, about_page},
+        data_backup::{DataBackupPage, data_backup_page},
         device::DeviceConfigFile,
         display::DisplayPage,
-        general::GeneralPage,
-        ledger::{LedgerKeys, LedgerPage},
+        general::{GeneralPage, general_page},
+        ledger::{LedgerKeys, LedgerPage, ledger_page},
         state::SettingsView,
-        sync_server::SyncServerPage,
+        sync_server::{SyncServerPage, sync_server_page},
         tracing::{TracingPage, log::CaptureLog},
     },
     shell::view::{statusline::PageStatus, window_size::WindowSize},
@@ -314,7 +314,7 @@ impl LedgerPages {
         let summaries: Rc<dyn LedgerSummaries> = ledger_keys.units.clone();
         Self {
             summaries,
-            ledger: cx.new(|cx| LedgerPage::new(announcer.clone(), ledger_keys, cx)),
+            ledger: cx.new(|cx| ledger_page(ledger_keys, announcer, cx)),
             units: units_page(units, announcer.clone(), clock.clone(), cx),
             institutions: institutions_page(institutions, announcer.clone(), cx),
             accounts: accounts_page(accounts, announcer.clone(), clock.clone(), cx),
@@ -323,8 +323,8 @@ impl LedgerPages {
             payees: payees_page(payees, announcer.clone(), clock.clone(), cx),
             documents: document_types_page(document_types, announcer.clone(), cx),
             inventory: inventory_page(inventory, announcer.clone(), cx),
-            sync_server: cx.new(|_| SyncServerPage::new(frame_keys.clone())),
-            data_backup: cx.new(|_| DataBackupPage::new(frame_keys.clone())),
+            sync_server: cx.new(|cx| sync_server_page(frame_keys, announcer, cx)),
+            data_backup: cx.new(|cx| data_backup_page(frame_keys, announcer, cx)),
         }
     }
 }
@@ -336,7 +336,7 @@ impl SettingsPages {
             // No configuration file until `configure_device` hands over start-up's, so a write
             // before then is refused.
             general: cx.new(|_| {
-                GeneralPage::new(
+                general_page(
                     Rc::new(DeviceConfigFile::default()),
                     &KeyBindingConfig::default(),
                     super::state::back_chord(&KeyBindingConfig::default()),
@@ -362,9 +362,9 @@ impl SettingsPages {
                 )
             }),
             about: cx.new(|_| {
-                AboutPage::new(
+                about_page(
                     env!("CARGO_PKG_VERSION"),
-                    settings_frame_keymap(&KeyBindingConfig::default()),
+                    &settings_frame_keymap(&KeyBindingConfig::default()),
                 )
             }),
             ledger: None,

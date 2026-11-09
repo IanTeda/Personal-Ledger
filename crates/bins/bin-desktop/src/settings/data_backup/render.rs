@@ -8,8 +8,8 @@
 //! handlers with no real effect) rather than "not yet built" behind a future ticket -- so, like
 //! `sync_server::sync_now_button`, their sample status-line messages name no issue.
 
-use gpui::{App, Context, Window, div, prelude::*, px};
-use lib_settings::{DataBackupEvent, DataBackupRow};
+use gpui::{AnyElement, App, Window, div, prelude::*, px};
+use lib_settings::{DataBackupEvent, DataBackupRow, DataBackupViewModel};
 
 use super::DataBackupPage;
 use crate::shell::view::page_clicks::PageClicks;
@@ -17,33 +17,34 @@ use crate::theme::color;
 
 const COLUMN_WIDTH: gpui::Pixels = px(300.0);
 
-impl Render for DataBackupPage {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let model = self.view_model();
-        let clicks = PageClicks::new(cx);
-        let cx: &App = cx;
-        div()
-            .w(COLUMN_WIDTH)
-            .flex_none()
-            .flex()
-            .flex_col()
-            .gap(px(12.0))
-            .children(model.rows.iter().map(|data| row(data, cx)))
-            .child(button(
-                "settings-backup-now",
-                model.backup_now.clone(),
-                true,
-                clicks.send(DataBackupEvent::BackupNow),
-                cx,
-            ))
-            .child(button(
-                "settings-export-ledger",
-                model.export_ledger.clone(),
-                false,
-                clicks.send(DataBackupEvent::ExportLedger),
-                cx,
-            ))
-    }
+/// The page drawn from `model`.
+pub(super) fn page(
+    model: &DataBackupViewModel,
+    clicks: &PageClicks<DataBackupPage>,
+    cx: &App,
+) -> AnyElement {
+    div()
+        .w(COLUMN_WIDTH)
+        .flex_none()
+        .flex()
+        .flex_col()
+        .gap(px(12.0))
+        .children(model.rows.iter().map(|data| row(data, cx)))
+        .child(button(
+            "settings-backup-now",
+            model.backup_now.clone(),
+            true,
+            clicks.send(DataBackupEvent::BackupNow),
+            cx,
+        ))
+        .child(button(
+            "settings-export-ledger",
+            model.export_ledger.clone(),
+            false,
+            clicks.send(DataBackupEvent::ExportLedger),
+            cx,
+        ))
+        .into_any_element()
 }
 
 fn row(data: &DataBackupRow, cx: &App) -> impl IntoElement {

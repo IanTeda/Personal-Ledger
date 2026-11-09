@@ -2,13 +2,13 @@
 //! view, Toasts, the read-only Locale and Ledger folder) beside the THIS DEVICE box. Every click is
 //! a Presenter event through [`PageClicks`].
 
-use gpui::{App, Context, SharedString, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use lib_core::StartView;
 use lib_settings::presenter::general::{
     GENERAL_FIELD_ON_START, GENERAL_FIELD_START_VIEW, GENERAL_FIELD_TOASTS,
 };
 use lib_settings::{
-    DeviceKey, GeneralEvent,
+    DeviceKey, GeneralEvent, GeneralViewModel,
     presenter::{ControlView, ReadOnlyView, StartViewControl, ThisDeviceView},
 };
 
@@ -23,60 +23,61 @@ use crate::{
 /// The field column's width (DESKTOP-178).
 const FIELD_COLUMN_WIDTH: gpui::Pixels = px(320.0);
 
-impl Render for GeneralPage {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let model = self.view_model();
-        let clicks = PageClicks::new(cx);
-        let cx: &App = cx;
-        div()
-            .flex()
-            .flex_wrap()
-            .gap_x(px(40.0))
-            .gap_y(px(24.0))
-            .child(
-                div()
-                    .debug_selector(|| "general-fields".to_string())
-                    .w(FIELD_COLUMN_WIDTH)
-                    .flex_none()
-                    .flex()
-                    .flex_col()
-                    .gap(px(18.0))
-                    .child(segmented(
-                        "general-on-start",
-                        &model.on_start,
-                        DeviceKey::OnStart,
-                        model.field == Some(GENERAL_FIELD_ON_START),
-                        None,
-                        clicks.segment(GeneralEvent::ChooseOnStart),
-                        cx,
-                    ))
-                    .child(start_view_field(
-                        &model.start_view,
-                        model.field == Some(GENERAL_FIELD_START_VIEW),
-                        &clicks,
-                        cx,
-                    ))
-                    .child(segmented(
-                        "general-toasts",
-                        &model.toasts,
-                        DeviceKey::Toasts,
-                        model.field == Some(GENERAL_FIELD_TOASTS),
-                        Some(px(UNIFORM_OPTION_WIDTH)),
-                        clicks.segment(GeneralEvent::ChooseToasts),
-                        cx,
-                    ))
-                    .child(
-                        read_only("general-locale", &model.locale, false, cx)
-                            .children(model.locale_fallback.clone().map(|note| hint(note, cx)))
-                            .child(hint(model.locale.hint.clone(), cx)),
-                    )
-                    .child(
-                        read_only("general-ledger-folder", &model.ledger_folder, true, cx)
-                            .child(hint(model.ledger_folder.hint.clone(), cx)),
-                    ),
-            )
-            .child(this_device_panel(&model.this_device, cx))
-    }
+/// The page drawn from `model`.
+pub(super) fn page(
+    model: &GeneralViewModel,
+    clicks: &PageClicks<GeneralPage>,
+    cx: &App,
+) -> AnyElement {
+    div()
+        .flex()
+        .flex_wrap()
+        .gap_x(px(40.0))
+        .gap_y(px(24.0))
+        .child(
+            div()
+                .debug_selector(|| "general-fields".to_string())
+                .w(FIELD_COLUMN_WIDTH)
+                .flex_none()
+                .flex()
+                .flex_col()
+                .gap(px(18.0))
+                .child(segmented(
+                    "general-on-start",
+                    &model.on_start,
+                    DeviceKey::OnStart,
+                    model.field == Some(GENERAL_FIELD_ON_START),
+                    None,
+                    clicks.segment(GeneralEvent::ChooseOnStart),
+                    cx,
+                ))
+                .child(start_view_field(
+                    &model.start_view,
+                    model.field == Some(GENERAL_FIELD_START_VIEW),
+                    clicks,
+                    cx,
+                ))
+                .child(segmented(
+                    "general-toasts",
+                    &model.toasts,
+                    DeviceKey::Toasts,
+                    model.field == Some(GENERAL_FIELD_TOASTS),
+                    Some(px(UNIFORM_OPTION_WIDTH)),
+                    clicks.segment(GeneralEvent::ChooseToasts),
+                    cx,
+                ))
+                .child(
+                    read_only("general-locale", &model.locale, false, cx)
+                        .children(model.locale_fallback.clone().map(|note| hint(note, cx)))
+                        .child(hint(model.locale.hint.clone(), cx)),
+                )
+                .child(
+                    read_only("general-ledger-folder", &model.ledger_folder, true, cx)
+                        .child(hint(model.ledger_folder.hint.clone(), cx)),
+                ),
+        )
+        .child(this_device_panel(&model.this_device, cx))
+        .into_any_element()
 }
 
 /// A segmented control with its label, hint and shadowed note. `focused` is the keyboard's mark,

@@ -2,7 +2,7 @@
 //! year starts, Base unit) beside the THIS LEDGER summary. Each Base unit option's click is a
 //! Presenter event through [`PageClicks`].
 
-use gpui::{App, Context, SharedString, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use lib_settings::LedgerEvent;
 use lib_settings::presenter::{BaseUnitView, LedgerViewModel};
 
@@ -11,17 +11,18 @@ use crate::form::fields::{field_label, field_value, radio_dot};
 use crate::shell::view::page_clicks::PageClicks;
 use crate::theme::color;
 
-impl Render for LedgerPage {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let model = self.view_model();
-        let clicks = PageClicks::new(cx);
-        let cx: &App = cx;
-        div()
-            .flex()
-            .gap(px(40.0))
-            .child(field_column(&model, &clicks, cx))
-            .child(summary_panel(&model, cx))
-    }
+/// The page drawn from `model`.
+pub(super) fn page(
+    model: &LedgerViewModel,
+    clicks: &PageClicks<LedgerPage>,
+    cx: &App,
+) -> AnyElement {
+    div()
+        .flex()
+        .gap(px(40.0))
+        .child(field_column(model, clicks, cx))
+        .child(summary_panel(model, cx))
+        .into_any_element()
 }
 
 /// The 320px field column: Ledger name, Owner, Financial year starts, Base unit -- in the

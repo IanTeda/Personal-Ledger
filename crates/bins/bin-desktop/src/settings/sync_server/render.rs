@@ -10,7 +10,7 @@
 //! stand-in with no real effect) rather than "not yet built" behind a future ticket -- so its
 //! sample status-line message, unlike Units'/Institutions' "+ Add" buttons, names no issue.
 
-use gpui::{App, Context, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, div, prelude::*, px};
 use lib_settings::{SyncServerEvent, SyncServerViewModel};
 
 use super::SyncServerPage;
@@ -27,22 +27,23 @@ const COLUMN_WIDTH: gpui::Pixels = px(300.0);
 /// builder method.
 const DOT_RADIUS: gpui::Pixels = px(3.0);
 
-impl Render for SyncServerPage {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let model = self.view_model();
-        let clicks = PageClicks::new(cx);
-        let cx: &App = cx;
-        div()
-            .w(COLUMN_WIDTH)
-            .flex_none()
-            .flex()
-            .flex_col()
-            .gap(px(12.0))
-            .child(row(model.url_label.clone(), model.url.clone(), cx))
-            .child(status_row(&model, cx))
-            .child(row(model.last_label.clone(), model.last.clone(), cx))
-            .child(sync_now_button(&model, &clicks, cx))
-    }
+/// The page drawn from `model`.
+pub(super) fn page(
+    model: &SyncServerViewModel,
+    clicks: &PageClicks<SyncServerPage>,
+    cx: &App,
+) -> AnyElement {
+    div()
+        .w(COLUMN_WIDTH)
+        .flex_none()
+        .flex()
+        .flex_col()
+        .gap(px(12.0))
+        .child(row(model.url_label.clone(), model.url.clone(), cx))
+        .child(status_row(model, cx))
+        .child(row(model.last_label.clone(), model.last.clone(), cx))
+        .child(sync_now_button(model, clicks, cx))
+        .into_any_element()
 }
 
 fn row(label: String, value: String, cx: &App) -> impl IntoElement {
