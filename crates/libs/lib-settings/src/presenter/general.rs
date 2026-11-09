@@ -210,6 +210,11 @@ impl GeneralPresenter {
     pub fn this_device(&self) -> &ThisDevice {
         &self.this_device
     }
+
+    /// The effective Locale as the Client described it at start-up.
+    pub fn locale(&self) -> &LocaleLine {
+        &self.locale
+    }
 }
 
 impl Presenter for GeneralPresenter {

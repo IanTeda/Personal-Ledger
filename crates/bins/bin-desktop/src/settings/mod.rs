@@ -1,7 +1,7 @@
 //! The Settings body (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting state", "Body"): the
 //! Settings index, Settings' resting view at every Window Size, or one page at a time, not a
 //! continuous scroll. At Large and X-Large the index is also docked beside it
-//! (`shell::view::rail::settings_index`), and only the selected page is mounted. Each page keeps the same anatomy: one heading
+//! (`shell::view::rail::settings_index`), at X-Large the index on show docks a detail pane following its cursor ([`pane`]), and only the selected page is mounted. Each page keeps the same anatomy: one heading
 //! ("Settings - <page>") with its right-aligned meta over a 2px rule, then the page's content.
 //!
 //! The frame (which page shows, whether the keyboard is on the index, in a page or on the docked
@@ -18,6 +18,7 @@ pub mod general;
 pub(crate) mod hints;
 pub mod ledger;
 pub mod pages;
+mod pane;
 pub mod router;
 pub mod snapshot;
 pub mod state;
@@ -154,6 +155,10 @@ impl Render for SettingsView {
                                 .scrollbar_show(ScrollbarShow::Always),
                         ),
                 );
+            // At X-Large a detail pane follows the cursor at the View's right edge (DESKTOP-182).
+            let pane = self
+                .pane_summary(cx)
+                .map(|summary| pane::index_pane(&summary, &clicks, cx));
             return div()
                 .id("settings")
                 .flex_1()
@@ -162,6 +167,7 @@ impl Render for SettingsView {
                 .flex()
                 .children(docked)
                 .child(index)
+                .children(pane)
                 .into_any_element();
         }
         self.sync_frame(cx);

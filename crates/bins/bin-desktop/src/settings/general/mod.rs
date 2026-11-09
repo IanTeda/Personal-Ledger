@@ -109,6 +109,15 @@ impl GeneralPage {
         self.presenter.view_model()
     }
 
+    /// The settings, this device's facts and the Locale the X-Large index pane quotes.
+    pub fn summary_sources(&self) -> (&GeneralSettings, &ThisDevice, &LocaleLine) {
+        (
+            self.presenter.settings(),
+            self.presenter.this_device(),
+            self.presenter.locale(),
+        )
+    }
+
     /// A key, click or command as one input, committed once it is handled; one sent inside
     /// another input (the palette's) runs in it.
     fn send(&mut self, event: GeneralEvent, cx: &mut Context<'_, Self>) {

@@ -23,9 +23,10 @@ use crate::{
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, Subscription};
 use lib_list_cursor::Step;
 use lib_settings::{
-    ColourChoice, DeviceConfiguration, DisplayOutput, DisplaySettings, GeneralSettings, ScopeFacts,
-    SettingsFrameEvent, SettingsFramePresenter, SettingsFrameSetup, SettingsFrameViewModel,
-    ThisDevice, TracingLevel, TracingLog, keymap::settings_frame_keymap,
+    ColourChoice, DeviceConfiguration, DisplayOutput, DisplaySettings, GeneralSettings,
+    PageSummary, ScopeFacts, SettingsFrameEvent, SettingsFramePresenter, SettingsFrameSetup,
+    SettingsFrameViewModel, SummarySources, ThisDevice, TracingLevel, TracingLog,
+    keymap::settings_frame_keymap, summarise,
 };
 use lib_viper::keymap::KeyBindingConfig;
 use lib_viper::presenter::Presenter;
@@ -207,6 +208,32 @@ impl SettingsView {
     /// The frame as drawn.
     pub(super) fn view_model(&self) -> SettingsFrameViewModel {
         self.frame.view_model()
+    }
+
+    /// What the X-Large index's detail pane shows (DESKTOP-182): the summary of the page under the
+    /// index's cursor, built from the values the pages hold and, with a Ledger open, its counts.
+    /// `None` wherever no pane docks: on a page, and at Medium and Large.
+    pub(super) fn pane_summary(&self, cx: &App) -> Option<PageSummary> {
+        let model = self.frame.view_model();
+        if !model.index_page || self.window_size != WindowSize::XLarge {
+            return None;
+        }
+        let (general, device, locale) = self.pages.general.read(cx).summary_sources();
+        let display = self.pages.display.read(cx).settings();
+        let version = self.pages.about.read(cx).view_model().version;
+        let sources = SummarySources {
+            general,
+            device,
+            locale,
+            display: &display,
+            log_level: self.pages.tracing.read(cx).level(),
+            version: &version,
+            facts: ScopeFacts {
+                log_capacity: lib_tracing::LOG_CAPACITY,
+            },
+            ledger: self.pages.ledger.as_ref().map(|pages| &*pages.summaries),
+        };
+        Some(summarise(model.selected, &sources))
     }
 
     /// The `T` page's Entity, for what `Root` drives on a page: a module Router's entry point and

@@ -700,3 +700,115 @@ fn an_accepted_settings_page_open_steps_back_and_forward_through_the_page_it_lef
     assert_eq!(ui.noun(), Noun::Settings);
     assert_eq!(ui.settings_frame().page, "Units");
 }
+
+#[gpui::test]
+fn at_x_large_the_index_docks_a_detail_pane_that_follows_j_and_k(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::XLarge);
+    ui.press("g s");
+
+    assert!(ui.is_drawn("settings-index-pane"));
+    assert!(ui.is_drawn("settings-index-pane-General"));
+    assert_eq!(ui.settings_frame().pane.as_deref(), Some("General"));
+    let pane = ui.bounds("settings-index-pane");
+    assert_eq!(
+        pane.size.width,
+        gpui::px(400.0),
+        "the list pages' dock width"
+    );
+    assert!(
+        ui.bounds("settings-index-page").right() <= pane.left(),
+        "the index spans the View up to the pane"
+    );
+
+    ui.press("j");
+    assert_eq!(ui.settings_frame().pane.as_deref(), Some("Display"));
+    assert!(ui.is_drawn("settings-index-pane-Display"));
+    ui.press("j j j");
+    assert_eq!(ui.settings_frame().pane.as_deref(), Some("Ledger"));
+    assert!(ui.settings_frame().pane_open_enabled);
+    ui.press("k");
+    assert_eq!(ui.settings_frame().pane.as_deref(), Some("About"));
+    assert!(
+        !ui.settings_frame().page_focused,
+        "the pane never takes focus"
+    );
+    assert_eq!(
+        hint_keys(&mut ui),
+        ["j/k", "l/enter"],
+        "the status line is the index's"
+    );
+}
+
+#[gpui::test]
+fn at_x_large_enter_opens_the_page_the_pane_shows_and_no_pane_docks_beside_a_page(
+    app: &mut TestAppContext,
+) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::XLarge);
+    ui.press("g s j j j j j");
+    assert_eq!(ui.settings_frame().pane.as_deref(), Some("Units"));
+
+    ui.press("enter");
+
+    let settings = ui.settings_frame();
+    assert_eq!(settings.page, "Units");
+    assert!(settings.page_focused);
+    assert_eq!(
+        settings.pane, None,
+        "a page shows, so the index's pane goes"
+    );
+
+    ui.press("escape");
+    assert_eq!(ui.settings_frame().pane.as_deref(), Some("Units"));
+}
+
+#[gpui::test]
+fn at_medium_and_large_the_index_docks_no_pane(app: &mut TestAppContext) {
+    for window_size in [WindowSize::Medium, WindowSize::Large] {
+        let mut ui = Harness::new(app);
+        ui.resize_to(window_size);
+        ui.press("g s j");
+
+        assert!(ui.is_drawn("settings-index-page"), "{window_size:?}");
+        assert!(!ui.is_drawn("settings-index-pane"), "{window_size:?}");
+        assert_eq!(ui.settings_frame().pane, None);
+    }
+}
+
+#[gpui::test]
+fn resizing_to_x_large_docks_the_pane_and_back_to_large_takes_it_away(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::Large);
+    ui.press("g s j");
+    assert_eq!(ui.settings_frame().pane, None);
+
+    ui.resize_to(WindowSize::XLarge);
+    assert_eq!(ui.settings_frame().pane.as_deref(), Some("Display"));
+    assert!(ui.is_drawn("settings-index-pane-Display"));
+
+    ui.resize_to(WindowSize::Large);
+    assert_eq!(ui.settings_frame().pane, None);
+}
+
+/// The pane would disable **Open** on a This Ledger page with no Ledger open, but the index's
+/// cursor never lands on one then (#977), so the pane only ever offers a page that opens.
+#[gpui::test]
+fn with_no_ledger_open_the_pane_follows_the_cursor_through_the_this_device_pages_only(
+    app: &mut TestAppContext,
+) {
+    let mut ui = Harness::without_ledger(app);
+    ui.resize_to(WindowSize::XLarge);
+    ui.press("g s");
+    assert_eq!(ui.settings_frame().pane.as_deref(), Some("General"));
+    assert!(ui.settings_frame().pane_open_enabled);
+
+    ui.press("j j j j j");
+
+    let settings = ui.settings_frame();
+    assert_eq!(settings.pane.as_deref(), Some("About"), "the cursor stops");
+    assert!(settings.pane_open_enabled);
+    ui.press("enter");
+    assert_eq!(ui.settings_frame().page, "About");
+    assert!(ui.settings_frame().page_focused);
+}

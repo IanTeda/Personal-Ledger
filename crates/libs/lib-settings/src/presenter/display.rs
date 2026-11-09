@@ -262,6 +262,17 @@ impl DisplayPresenter {
         self.output
     }
 
+    /// The settings as they stand now, as start-up read them or as the page last wrote them.
+    pub fn settings(&self) -> DisplaySettings {
+        DisplaySettings {
+            date_style: self.output.date_style,
+            row_density: self.output.row_density,
+            status_glyphs: self.output.status_glyphs,
+            colour_theme: self.colour_theme.clone(),
+            colour_appearance: self.colour_appearance,
+        }
+    }
+
     /// Whether the Colour Theme grid has the keyboard.
     pub fn in_grid(&self) -> bool {
         self.grid.is_some()
@@ -1032,6 +1043,27 @@ mod tests {
             Some(StatusGlyphs::AsciiFallback)
         );
         assert_eq!(view.preview.row_density, RowDensity::Compact);
+    }
+
+    #[test]
+    fn settings_reads_back_what_start_up_read_and_what_the_page_wrote() {
+        let (device, mut display) = writable();
+        let read = DisplaySettings {
+            row_density: RowDensity::Compact,
+            colour_theme: Some("not-a-theme-yet".to_string()),
+            colour_appearance: ColourAppearance::Dark,
+            ..DisplaySettings::default()
+        };
+        display.configure(device, read.clone());
+        assert_eq!(display.settings(), read, "as start-up read them");
+
+        send(
+            &mut display,
+            [DisplayEvent::ChooseRowDensity(RowDensity::Regular)],
+        );
+
+        assert_eq!(display.settings().row_density, RowDensity::Regular);
+        assert_eq!(display.settings().colour_theme, read.colour_theme);
     }
 
     #[test]

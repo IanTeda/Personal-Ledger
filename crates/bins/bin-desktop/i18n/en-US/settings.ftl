@@ -30,6 +30,13 @@ desktop-settings-display-colour-overrides = { $roles } overridden by [theme] in 
 
 desktop-settings-display-colour-contrast = { $subject } on { $surface } is { $ratio }:1, needs { $required }:1
 
+## The X-Large Settings index's detail pane (DESKTOP-182): its two group headings, drawn in caps,
+## and the button that opens the page under the cursor.
+
+desktop-settings-pane-page = Page
+desktop-settings-pane-scope = This device or This Ledger
+desktop-settings-pane-open = Open
+
 ## The pages that moved in from the primary rail, until each is rebuilt to the handoff.
 
 desktop-settings-page-placeholder = Not yet rebuilt as a Settings page.

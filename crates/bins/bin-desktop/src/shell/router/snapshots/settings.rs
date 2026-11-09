@@ -34,7 +34,7 @@ impl Root {
     pub fn settings_snapshot(&self, cx: &gpui::App) -> SettingsSnapshot {
         SettingsSnapshot {
             status_message: self.status_message(),
-            ..self.settings.read(cx).snapshot()
+            ..self.settings.read(cx).snapshot(cx)
         }
     }
 

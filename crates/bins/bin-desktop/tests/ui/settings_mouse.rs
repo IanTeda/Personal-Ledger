@@ -236,3 +236,71 @@ fn with_no_ledger_open_clicking_a_this_ledger_row_on_the_medium_index_is_refused
     assert_eq!(settings.page, "General");
     assert!(!settings.page_focused, "the index stays on show");
 }
+
+#[gpui::test]
+fn at_x_large_the_pane_s_open_opens_the_page_under_the_cursor(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::XLarge);
+    ui.press("g s j");
+    assert!(ui.is_drawn("settings-index-pane-Display"));
+
+    ui.click("settings-index-pane-open");
+
+    let settings = ui.settings_frame();
+    assert_eq!(settings.page, "Display");
+    assert!(
+        settings.page_focused,
+        "the page has the keyboard, as enter leaves it"
+    );
+    assert!(ui.is_drawn("settings-page"));
+    assert_eq!(settings.pane, None);
+}
+
+#[gpui::test]
+fn at_x_large_the_pane_follows_a_click_on_the_index_s_row_into_its_page(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::XLarge);
+    ui.press("g s");
+    assert_eq!(ui.settings_frame().pane.as_deref(), Some("General"));
+
+    ui.click("settings-index-page-Tags");
+    assert_eq!(ui.settings_frame().page, "Tags");
+    assert_eq!(ui.settings_frame().pane, None, "the page shows");
+
+    ui.press("escape");
+    assert_eq!(ui.settings_frame().pane.as_deref(), Some("Tags"));
+    ui.click("settings-index-pane-open");
+    assert_eq!(ui.settings_frame().page, "Tags");
+    assert!(ui.settings_frame().page_focused);
+}
+
+#[gpui::test]
+fn at_large_no_pane_docks_beside_the_index(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::Large);
+    ui.press("g s");
+
+    assert!(ui.is_drawn("settings-index-page"));
+    assert!(!ui.is_drawn("settings-index-pane-open"));
+    assert_eq!(ui.settings_frame().pane, None);
+}
+
+#[gpui::test]
+fn with_no_ledger_open_a_refused_this_ledger_row_leaves_the_pane_on_its_page(
+    app: &mut TestAppContext,
+) {
+    let mut ui = Harness::without_ledger(app);
+    ui.resize_to(WindowSize::XLarge);
+    ui.press("g s j");
+    assert_eq!(ui.settings_frame().pane.as_deref(), Some("Display"));
+
+    ui.click("settings-index-page-Units");
+
+    let settings = ui.settings_frame();
+    assert_eq!(settings.status_message.as_deref(), Some(common::NO_LEDGER));
+    assert_eq!(settings.pane.as_deref(), Some("Display"), "the pane stays");
+    assert!(settings.pane_open_enabled);
+    ui.click("settings-index-pane-open");
+    assert_eq!(ui.settings_frame().page, "Display");
+    assert!(ui.settings_frame().page_focused);
+}

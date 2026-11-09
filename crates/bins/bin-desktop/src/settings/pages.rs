@@ -10,7 +10,7 @@ use gpui::{
 
 use std::rc::Rc;
 
-use lib_settings::{SettingsFrameEvent, keymap::settings_frame_keymap};
+use lib_settings::{LedgerSummaries, SettingsFrameEvent, keymap::settings_frame_keymap};
 use lib_shell::Hint;
 use lib_viper::keymap::{KeyBindingConfig, Keymap};
 
@@ -286,6 +286,8 @@ pub struct LedgerPages {
     pub inventory: Entity<InventoryPage>,
     pub sync_server: Entity<SyncServerPage>,
     pub data_backup: Entity<DataBackupPage>,
+    /// The Open Ledger's counts, which the X-Large index pane quotes for a This Ledger page.
+    pub summaries: Rc<dyn LedgerSummaries>,
 }
 
 impl LedgerPages {
@@ -309,7 +311,9 @@ impl LedgerPages {
             inventory,
             ledger: ledger_keys,
         } = setup;
+        let summaries: Rc<dyn LedgerSummaries> = ledger_keys.units.clone();
         Self {
+            summaries,
             ledger: cx.new(|cx| LedgerPage::new(announcer.clone(), ledger_keys, cx)),
             units: units_page(units, announcer.clone(), clock.clone(), cx),
             institutions: institutions_page(institutions, announcer.clone(), cx),

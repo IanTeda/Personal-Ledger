@@ -34,6 +34,11 @@ pub struct SettingsSnapshot {
     pub status_message: Option<String>,
     /// The page the open Medium page picker has highlighted, the one `enter` opens.
     pub picker_chosen: Option<String>,
+    /// The page the X-Large index's detail pane summarises, `None` wherever no pane docks.
+    pub pane: Option<String>,
+    /// Whether the pane's **Open** opens its page: false for a This Ledger page with no Ledger
+    /// open, and with no pane.
+    pub pane_open_enabled: bool,
 }
 
 /// The Display page: the focused control above the Colour Theme grid and the focused card, then
@@ -51,8 +56,11 @@ pub struct SettingsDisplaySnapshot {
 
 impl SettingsView {
     /// The page on show and where focus sits. The status message is left empty.
-    pub fn snapshot(&self) -> SettingsSnapshot {
+    pub fn snapshot(&self, cx: &App) -> SettingsSnapshot {
+        let pane = self.pane_summary(cx);
         SettingsSnapshot {
+            pane: pane.as_ref().map(|summary| format!("{:?}", summary.page)),
+            pane_open_enabled: pane.is_some_and(|summary| summary.open_enabled),
             page: format!("{:?}", self.selected_section()),
             page_focused: self.focus() == SettingsFocus::Page,
             dock_focused: self.focus() == SettingsFocus::Dock,

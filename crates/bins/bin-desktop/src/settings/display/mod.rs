@@ -94,6 +94,11 @@ impl DisplayPage {
         self.presenter.output()
     }
 
+    /// The settings as they stand, which the X-Large index pane quotes.
+    pub fn settings(&self) -> DisplaySettings {
+        self.presenter.settings()
+    }
+
     pub fn view_model(&self) -> DisplayViewModel {
         self.presenter.view_model()
     }

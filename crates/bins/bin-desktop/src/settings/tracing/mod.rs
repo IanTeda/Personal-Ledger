@@ -88,6 +88,11 @@ impl TracingPage {
         self.presenter.view_model()
     }
 
+    /// The level the log box filters at, which the X-Large index pane quotes.
+    pub fn level(&self) -> TracingLevel {
+        self.presenter.level()
+    }
+
     pub fn log_list(&self) -> &ListState {
         &self.log_list
     }
