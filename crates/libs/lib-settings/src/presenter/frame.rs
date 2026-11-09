@@ -367,6 +367,9 @@ impl Presenter for SettingsFramePresenter {
             SettingsFrameEvent::FocusIndex
             | SettingsFrameEvent::Entered
             | SettingsFrameEvent::Back => {
+                // Settings entered afresh (a rail click while the picker is open) shows the
+                // index, so a picker left open would swallow its keys.
+                self.close_picker(router);
                 self.focus = SettingsFocus::Index;
             }
             SettingsFrameEvent::StepPage(step) => {
@@ -407,6 +410,7 @@ impl Presenter for SettingsFramePresenter {
             SettingsFrameEvent::LedgerClosed => {
                 self.ledger_open = false;
                 if !self.can_show(self.selected) {
+                    self.close_picker(router);
                     self.selected = SettingsPage::General;
                     self.focus = SettingsFocus::Index;
                 }
@@ -1350,6 +1354,36 @@ mod tests {
         assert!(!frame.picker_open());
         assert_eq!(frame.selected(), SettingsPage::Accounts);
         assert_eq!(frame.focus(), SettingsFocus::Page);
+    }
+
+    #[test]
+    fn entering_settings_afresh_closes_the_picker() {
+        let mut frame = frame();
+        medium(&mut frame);
+        send(&mut frame, [E::Select, E::ClickCaret]);
+
+        let router = send(&mut frame, [E::Entered]);
+
+        assert!(!frame.picker_open());
+        assert_eq!(frame.focus(), SettingsFocus::Index);
+        assert_eq!(router.routed, [Routed::PickerClosed]);
+    }
+
+    #[test]
+    fn a_closed_ledger_that_falls_back_to_the_index_closes_the_picker() {
+        let mut frame = frame();
+        medium(&mut frame);
+        send(
+            &mut frame,
+            [E::OpenPage(SettingsPage::Accounts), E::ClickCaret],
+        );
+
+        let router = send(&mut frame, [E::LedgerClosed]);
+
+        assert!(!frame.picker_open());
+        assert_eq!(frame.selected(), SettingsPage::General);
+        assert_eq!(frame.focus(), SettingsFocus::Index);
+        assert_eq!(router.routed, [Routed::PickerClosed]);
     }
 
     #[test]

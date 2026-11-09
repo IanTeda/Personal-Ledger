@@ -4,6 +4,7 @@
 use gpui::Context;
 
 use super::Root;
+use crate::navigation::nav::Noun;
 use crate::shell::view::topbar::TopBarAction;
 use lib_shell::NavInput;
 
@@ -40,8 +41,11 @@ impl Root {
             self.reset_view_scroll(cx);
         }
         // After the View is told it is entered, which lands Settings on its index: Back and Forward
-        // show the page the history holds itself, since it records pages only.
-        if matches!(action, TopBarAction::Back | TopBarAction::Forward) {
+        // show the page the history holds itself, since it records pages only. Only when Settings
+        // is where they landed: restoring a hidden page would hand it the keyboard.
+        if matches!(action, TopBarAction::Back | TopBarAction::Forward)
+            && self.nav().noun() == Noun::Settings
+        {
             let page = self.nav().settings_page();
             self.settings.update(cx, |view, cx| view.restore(page, cx));
         }

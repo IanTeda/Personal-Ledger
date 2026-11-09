@@ -1,14 +1,13 @@
 //! The Settings destination's Entity (ADR-0032, ADR-0037). [`SettingsView`] holds `lib-settings`'
 //! frame Presenter, which owns whether the index (Settings' resting view) or a page shows, the
-//! index's cursor, the Medium drill-down and the page picker, and builds its pages ([`SettingsPages`]). It renders the Presenter's view
-//! model (`impl Render` in `super`), sends the frame its keys and clicks, and reaches `Root` only
-//! through [`ViewEvent`], which it re-emits from its pages, and [`PageChanged`], which the frame's
-//! Router raises.
+//! index's cursor, the Medium drill-down and the page picker, and builds its pages
+//! ([`SettingsPages`]). It renders the Presenter's view model (`impl Render` in `super`), sends the
+//! frame its keys and clicks, and reaches `Root` only through [`ViewEvent`], which it re-emits from
+//! its pages, and [`PageChanged`], which the frame's Router raises.
 //!
-//! Every page is a [`Page`](super::pages::Page) behind one `dyn` handle, so while a page has
-//! focus this View forwards its keys, movement, `Esc`, Search and status to it without knowing
-//! which page it is. Halfway state (#1036): every page, domain or config, still renders through
-//! that trait.
+//! Every page is a [`Page`](super::pages::Page) behind one `dyn` handle, so while a page has focus
+//! this View forwards its keys, movement, `Esc`, Search and status to it without knowing which page
+//! it is. Halfway state (#1036): every page, domain or config, still renders through that trait.
 
 use super::hints::settings_plain_page_hints;
 use super::router::{FrameRouter, PageChanged};
@@ -25,9 +24,9 @@ use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, Subscrip
 use lib_list_cursor::Step;
 use lib_settings::{
     ColourChoice, DeviceConfiguration, DisplayOutput, DisplaySettings, GeneralEvent,
-    GeneralSettings, PageSummary, ScopeFacts, SettingsFrameEvent, SettingsFramePresenter,
-    SettingsFrameSetup, SettingsFrameViewModel, SummarySources, ThisDevice, TracingLevel,
-    TracingLog,
+    GeneralSettings, LedgerSummaries, PageSummary, ScopeFacts, SettingsFrameEvent,
+    SettingsFramePresenter, SettingsFrameSetup, SettingsFrameViewModel, SummarySources, ThisDevice,
+    TracingLevel, TracingLog,
     keymap::{general_keymap, ledger_keymap, settings_frame_keymap, tracing_keymap},
     summarise,
 };
@@ -181,6 +180,14 @@ impl SettingsView {
         self.sync_frame(cx);
     }
 
+    /// A write landed in the Open Ledger: the index pane's counts are recounted on its next draw.
+    pub(super) fn ledger_changed(&mut self, cx: &mut Context<'_, Self>) {
+        if let Some(pages) = &self.pages.ledger {
+            pages.summaries.invalidate();
+            cx.notify();
+        }
+    }
+
     /// Drops the This Ledger pages with the Ledger they were built on. A This Ledger page on show
     /// gives way to the index, its cursor on General.
     pub fn close_ledger(&mut self, cx: &mut Context<'_, Self>) {
@@ -250,7 +257,11 @@ impl SettingsView {
             facts: ScopeFacts {
                 log_capacity: lib_tracing::LOG_CAPACITY,
             },
-            ledger: self.pages.ledger.as_ref().map(|pages| &*pages.summaries),
+            ledger: self
+                .pages
+                .ledger
+                .as_ref()
+                .map(|pages| &pages.summaries as &dyn LedgerSummaries),
         };
         Some(summarise(model.selected, &sources))
     }

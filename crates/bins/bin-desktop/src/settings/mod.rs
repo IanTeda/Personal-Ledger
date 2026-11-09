@@ -1,13 +1,16 @@
-//! The Settings body (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting state", "Body"): the
-//! Settings index, Settings' resting view at every Window Size, or one page at a time, not a
-//! continuous scroll. At Large and X-Large the index is also docked beside it
-//! (`shell::view::rail::settings_index`), at X-Large the index on show docks a detail pane following its cursor ([`pane`]), and only the selected page is mounted. Each page keeps the same anatomy: one heading
-//! ("Settings - <page>") with its right-aligned meta over a 2px rule, then the page's content.
+//! The Settings body (`docs/ux/desktop-mockups/16-settings/README.md`'s "2a resting state",
+//! "Body"): the Settings index, Settings' resting view at every Window Size, or one page at a time,
+//! not a continuous scroll. At Large and X-Large the index is also docked beside it
+//! (`shell::view::rail::settings_index`), at X-Large the index on show docks a detail pane
+//! following its cursor ([`pane`]), and only the selected page is mounted. Each page keeps the same
+//! anatomy: one heading ("Settings - <page>") with its right-aligned meta over a 2px rule, then the
+//! page's content.
 //!
 //! The frame (which page shows, whether the keyboard is on the index, in a page or on the docked
-//! index beside it, the Medium drill-down and the page picker) is `lib-settings`' Presenter, held by [`state::SettingsView`] and drawn here from its view
-//! model, its clicks going through [`PageClicks`]. What stays the Desktop's of a page's identity
-//! is its icon ([`icon`]) and which page shows a revealed record ([`for_reveal`]).
+//! index beside it, the Medium drill-down and the page picker) is `lib-settings`' Presenter, held
+//! by [`state::SettingsView`] and drawn here from its view model, its clicks going through
+//! [`PageClicks`]. What stays the Desktop's of a page's identity is its icon ([`icon`]) and which
+//! page shows a revealed record ([`for_reveal`]).
 
 pub mod about;
 pub(crate) mod controls;

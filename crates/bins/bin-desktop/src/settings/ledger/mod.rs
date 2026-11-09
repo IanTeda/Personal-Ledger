@@ -33,15 +33,16 @@ pub type LedgerPage = ModulePage<LedgerPresenter>;
 pub struct LedgerKeys {
     pub keymap: Keymap<LedgerEvent>,
     pub back_chord: String,
-    /// The Units read and the base Unit write `LedgerPorts` built.
-    pub units: Rc<StoredSettingsReads>,
+    /// Settings' reads `LedgerPorts` built (the Units and the index pane's counts) and the base
+    /// Unit write.
+    pub settings_reads: Rc<StoredSettingsReads>,
     pub preferences: Rc<LedgerPreferencesAdapter>,
 }
 
 impl LedgerKeys {
     pub fn new(config: &KeyBindingConfig, ports: &LedgerPorts) -> Self {
         Self {
-            units: ports.ledger_units.clone(),
+            settings_reads: ports.settings_reads.clone(),
             preferences: ports.ledger_preferences.clone(),
             keymap: ledger_keymap(config),
             back_chord: crate::settings::state::back_chord(config),
@@ -56,7 +57,7 @@ pub fn ledger_page(
     cx: &mut Context<'_, LedgerPage>,
 ) -> LedgerPage {
     let presenter = LedgerPresenter::new(LedgerSetup {
-        units: keys.units,
+        units: keys.settings_reads,
         preferences: keys.preferences,
         keymap: keys.keymap,
         back_chord: keys.back_chord,

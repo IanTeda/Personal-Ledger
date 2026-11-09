@@ -122,8 +122,9 @@ pub struct LedgerPorts {
     pub inventory_reads: StoredInventoryReads,
     /// What the Documents page reads the other domains through.
     pub document_reads: StoredDocumentReads,
-    /// The Settings › Ledger page's Units read ([`StoredSettingsReads`]).
-    pub ledger_units: Rc<StoredSettingsReads>,
+    /// Settings' reads ([`StoredSettingsReads`]): the Ledger page's Units and the X-Large index
+    /// pane's counts.
+    pub settings_reads: Rc<StoredSettingsReads>,
     /// The Settings › Ledger page's base Unit write ([`LedgerPreferencesAdapter`]).
     pub ledger_preferences: Rc<LedgerPreferencesAdapter>,
     /// The Dashboard's Bills and Budgets reads ([`StoredDashboardReads`]).
@@ -219,7 +220,7 @@ impl LedgerPorts {
                 bills: stores.bills.clone(),
                 inventory: stores.inventory.clone(),
             },
-            ledger_units: Rc::new(StoredSettingsReads::over(&stores)),
+            settings_reads: Rc::new(StoredSettingsReads::over(&stores)),
             ledger_preferences: Rc::new(LedgerPreferencesAdapter::new(stores.units.clone())),
             dashboard_reads,
             shell_reads,

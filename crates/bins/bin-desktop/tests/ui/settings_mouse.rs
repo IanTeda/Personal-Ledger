@@ -129,6 +129,32 @@ fn the_rail_item_returns_an_open_page_to_the_index(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
+fn at_medium_the_rail_item_closes_an_open_picker_and_the_index_takes_the_keys(
+    app: &mut TestAppContext,
+) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::Medium);
+    ui.press("g s enter");
+    ui.click("settings-crumb-picker");
+    assert_eq!(mode(&mut ui), InputMode::Filter);
+
+    // Medium draws the collapsed rail.
+    ui.click("primary-rail-collapsed-Settings");
+
+    let settings = ui.settings_frame();
+    assert_eq!(settings.picker_chosen, None, "the picker closes");
+    assert!(!settings.page_focused, "the rail item lands on the index");
+    assert_eq!(mode(&mut ui), InputMode::Normal);
+    assert!(ui.is_drawn("settings-index-page"));
+    ui.press("j");
+    assert_eq!(
+        ui.settings_frame().page,
+        "Display",
+        "the index, not a hidden picker, takes the key"
+    );
+}
+
+#[gpui::test]
 fn at_x_large_the_docked_index_opens_the_capped_page(app: &mut TestAppContext) {
     let mut ui = on_settings(app);
     ui.resize_to(WindowSize::XLarge);

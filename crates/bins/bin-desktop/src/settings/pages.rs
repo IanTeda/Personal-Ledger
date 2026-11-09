@@ -8,9 +8,12 @@ use gpui::{
     Keystroke, Render, Subscription,
 };
 
+use std::cell::RefCell;
 use std::rc::Rc;
 
-use lib_settings::{LedgerSummaries, SettingsFrameEvent, keymap::settings_frame_keymap};
+use lib_settings::{
+    LedgerCounts, LedgerSummaries, SettingsFrameEvent, keymap::settings_frame_keymap,
+};
 use lib_shell::Hint;
 use lib_viper::keymap::{KeyBindingConfig, Keymap};
 
@@ -290,7 +293,40 @@ pub struct LedgerPages {
     pub sync_server: Entity<SyncServerPage>,
     pub data_backup: Entity<DataBackupPage>,
     /// The Open Ledger's counts, which the X-Large index pane quotes for a This Ledger page.
-    pub summaries: Rc<dyn LedgerSummaries>,
+    pub summaries: CachedCounts,
+    /// Drops the cached counts as a write lands, so the pane recounts once rather than every draw.
+    _ledger_changed: Subscription,
+}
+
+/// The Open Ledger's [`LedgerCounts`], counted once and kept until a write lands: counting clones
+/// every store and groups the Tags for likely duplicates, too much for every repaint of the X-Large
+/// index pane. It lives in [`LedgerPages`], so opening or closing a Ledger starts it afresh.
+pub struct CachedCounts {
+    source: Rc<dyn LedgerSummaries>,
+    counts: RefCell<Option<LedgerCounts>>,
+}
+
+impl CachedCounts {
+    fn new(source: Rc<dyn LedgerSummaries>) -> Self {
+        Self {
+            source,
+            counts: RefCell::new(None),
+        }
+    }
+
+    /// Forgets the counts, so the next read recounts.
+    pub(super) fn invalidate(&self) {
+        self.counts.replace(None);
+    }
+}
+
+impl LedgerSummaries for CachedCounts {
+    fn counts(&self) -> LedgerCounts {
+        self.counts
+            .borrow_mut()
+            .get_or_insert_with(|| self.source.counts())
+            .clone()
+    }
 }
 
 impl LedgerPages {
@@ -314,9 +350,14 @@ impl LedgerPages {
             inventory,
             ledger: ledger_keys,
         } = setup;
-        let summaries: Rc<dyn LedgerSummaries> = ledger_keys.units.clone();
+        let summaries = CachedCounts::new(ledger_keys.settings_reads.clone());
+        // Every domain's write can change a count, so any announcement drops them.
+        let _ledger_changed = cx.subscribe(announcer, |view: &mut SettingsView, _, _, cx| {
+            view.ledger_changed(cx);
+        });
         Self {
             summaries,
+            _ledger_changed,
             ledger: cx.new(|cx| ledger_page(ledger_keys, announcer, cx)),
             units: units_page(units, announcer.clone(), clock.clone(), cx),
             institutions: institutions_page(institutions, announcer.clone(), cx),
@@ -409,5 +450,42 @@ impl SettingsPages {
         SettingsPage::ALL
             .into_iter()
             .filter_map(|page| self.get(page))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::Cell;
+
+    use super::*;
+
+    /// Counts how often it is asked, so the cache's recounts show.
+    #[derive(Default)]
+    struct Counting {
+        asked: Cell<usize>,
+    }
+
+    impl LedgerSummaries for Counting {
+        fn counts(&self) -> LedgerCounts {
+            self.asked.set(self.asked.get() + 1);
+            LedgerCounts {
+                tags: self.asked.get(),
+                ..LedgerCounts::default()
+            }
+        }
+    }
+
+    #[test]
+    fn the_counts_are_counted_once_until_a_write_drops_them() {
+        let source = Rc::new(Counting::default());
+        let cached = CachedCounts::new(source.clone());
+
+        assert_eq!(cached.counts().tags, 1);
+        assert_eq!(cached.counts().tags, 1, "a repaint reads the cache");
+        assert_eq!(source.asked.get(), 1);
+
+        cached.invalidate();
+        assert_eq!(cached.counts().tags, 2, "the next read recounts");
+        assert_eq!(source.asked.get(), 2);
     }
 }
