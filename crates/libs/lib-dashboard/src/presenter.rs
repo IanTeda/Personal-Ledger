@@ -8,6 +8,11 @@
 //! The Display Preferences are pushed to it
 //! ([`DashboardEvent::DisplayChanged`]): the due dates follow the date style and the flag the
 //! Status glyphs. Row density isn't among them, since the Dashboard draws no table rows.
+//!
+//! It has no list, so its keymap's movements are scroll requests ([`DashboardEvent::Scroll`]) the
+//! Client applies to the page's scroll. `/` puts it in a Search with no box to type into, which
+//! takes no keys until `Esc` ends it: the mode and its badge are kept as they were before the
+//! Dashboard was a module.
 
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -15,8 +20,11 @@ use std::rc::Rc;
 use bigdecimal::{ToPrimitive, Zero};
 use chrono::NaiveDate;
 use lib_core::{Clock, DateStyle, Money};
+use lib_list_cursor::Step;
 use lib_locale::format::{AmountStyle, format_amount, format_date, format_year_month};
 use lib_viper::display::{StatusGlyphs, flag_glyph};
+use lib_viper::keymap::{KeyBindingConfig, Keymap};
+use lib_viper::presenter::{PageMode, PagePresenter, Presenter};
 
 use crate::msg;
 use crate::protocols::{
@@ -35,6 +43,14 @@ pub enum DashboardEvent {
         date_style: Option<DateStyle>,
         glyphs: StatusGlyphs,
     },
+    /// A movement key: the Client scrolls the page by `Step`, since the page has no list.
+    Scroll(Step),
+    /// `/`: the page enters its Search.
+    Search,
+    /// `Esc` in the Search: the page leaves it.
+    EndSearch,
+    /// `[keybindings]` changed: the keymap is built afresh under it.
+    KeysChanged(KeyBindingConfig),
 }
 
 /// One Needs Attention row, worded.
@@ -80,6 +96,8 @@ pub struct DashboardViewModel {
     /// The Flagged mark each Needs Attention row leads with, in the Status glyphs.
     pub flag: &'static str,
     pub budgets: BudgetListView,
+    /// Whether the page is in its Search, which `Esc` ends.
+    pub searching: bool,
 }
 
 pub struct DashboardPresenter {
@@ -87,46 +105,33 @@ pub struct DashboardPresenter {
     clock: Clock,
     date_style: Option<DateStyle>,
     glyphs: StatusGlyphs,
+    keymap: Keymap<DashboardEvent>,
+    /// The keymap while the Search is open: no chord, so the Search swallows every key.
+    searching_keys: Keymap<DashboardEvent>,
+    searching: bool,
     /// The view model with the day it was built on, kept until the Ledger changes, the Display
     /// Preferences change or the day moves, so a render or a scroll reads no port (#1029).
     kept: RefCell<Option<(NaiveDate, DashboardViewModel)>>,
 }
 
 impl DashboardPresenter {
-    /// The Dashboard over `reads`, dated by `clock`, in the default Display Preferences.
-    pub fn new(reads: Rc<dyn DashboardReads>, clock: Clock) -> Self {
+    /// The Dashboard over `reads`, dated by `clock`, in the default Display Preferences, its keys
+    /// looked up in `keymap`.
+    pub fn new(
+        reads: Rc<dyn DashboardReads>,
+        clock: Clock,
+        keymap: Keymap<DashboardEvent>,
+    ) -> Self {
         Self {
             reads,
             clock,
             date_style: None,
             glyphs: StatusGlyphs::default(),
+            searching_keys: keymap.scoped(|_| false),
+            keymap,
+            searching: false,
             kept: RefCell::new(None),
         }
-    }
-
-    pub fn handle(&mut self, event: DashboardEvent, router: &mut dyn DashboardRouter) {
-        match event {
-            DashboardEvent::OpenBill(id) => router.reveal_bill_entry(id),
-            DashboardEvent::LedgerChanged => *self.kept.get_mut() = None,
-            DashboardEvent::DisplayChanged { date_style, glyphs } => {
-                self.date_style = date_style;
-                self.glyphs = glyphs;
-                *self.kept.get_mut() = None;
-            }
-        }
-    }
-
-    /// The kept view model, rebuilt only when none is kept or the day has moved.
-    pub fn view_model(&self) -> DashboardViewModel {
-        let today = self.clock.today();
-        if let Some((day, kept)) = &*self.kept.borrow()
-            && *day == today
-        {
-            return kept.clone();
-        }
-        let built = self.build(today);
-        *self.kept.borrow_mut() = Some((today, built.clone()));
-        built
     }
 
     fn build(&self, today: NaiveDate) -> DashboardViewModel {
@@ -140,7 +145,75 @@ impl DashboardPresenter {
                 .collect(),
             flag: flag_glyph(self.glyphs),
             budgets: self.budget_list(today),
+            searching: false,
         }
+    }
+}
+
+impl Presenter for DashboardPresenter {
+    type Event = DashboardEvent;
+    type ViewModel = DashboardViewModel;
+    type Router<'r> = dyn DashboardRouter + 'r;
+
+    fn handle(&mut self, event: DashboardEvent, router: &mut Self::Router<'_>) {
+        match event {
+            DashboardEvent::OpenBill(id) => router.reveal_bill_entry(id),
+            DashboardEvent::LedgerChanged => *self.kept.get_mut() = None,
+            DashboardEvent::DisplayChanged { date_style, glyphs } => {
+                self.date_style = date_style;
+                self.glyphs = glyphs;
+                *self.kept.get_mut() = None;
+            }
+            // The scroll is the Client's to apply: the Presenter holds no widget state.
+            DashboardEvent::Scroll(_) => {}
+            DashboardEvent::Search => self.searching = true,
+            DashboardEvent::EndSearch => self.searching = false,
+            DashboardEvent::KeysChanged(config) => {
+                self.keymap = crate::keymap::dashboard_keymap(&config);
+                self.searching_keys = self.keymap.scoped(|_| false);
+            }
+        }
+    }
+
+    /// The kept view model, rebuilt only when none is kept or the day has moved.
+    fn view_model(&self) -> DashboardViewModel {
+        let today = self.clock.today();
+        let kept = match &*self.kept.borrow() {
+            Some((day, kept)) if *day == today => Some(kept.clone()),
+            _ => None,
+        };
+        let mut view = kept.unwrap_or_else(|| {
+            let built = self.build(today);
+            *self.kept.borrow_mut() = Some((today, built.clone()));
+            built
+        });
+        view.searching = self.searching;
+        view
+    }
+}
+
+/// The Dashboard opens no Dialog, so no outcome ever lands on it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DashboardOutcome {}
+
+impl PagePresenter for DashboardPresenter {
+    type Outcome = DashboardOutcome;
+
+    /// Never sent: the Dashboard opens no Dialog. A redraw is harmless if one ever is.
+    fn dialog_closed(_outcome: Option<DashboardOutcome>) -> DashboardEvent {
+        DashboardEvent::LedgerChanged
+    }
+
+    fn keymap(&self) -> &Keymap<DashboardEvent> {
+        if self.searching {
+            &self.searching_keys
+        } else {
+            &self.keymap
+        }
+    }
+
+    fn mode(&self) -> Option<PageMode> {
+        self.searching.then_some(PageMode::Search)
     }
 }
 
@@ -258,7 +331,8 @@ mod tests {
     fn presenter(reads: InMemoryDashboardReads) -> (Rc<Cell<NaiveDate>>, DashboardPresenter) {
         locale();
         let (clock, day) = Clock::settable(date(2026, 9, 21));
-        (day, DashboardPresenter::new(Rc::new(reads), clock))
+        let keymap = crate::keymap::dashboard_keymap(&KeyBindingConfig::default());
+        (day, DashboardPresenter::new(Rc::new(reads), clock, keymap))
     }
 
     fn reads_with_bills(bills: Vec<DashboardBill>) -> InMemoryDashboardReads {
@@ -443,7 +517,8 @@ mod tests {
             asked: Cell::new(0),
         });
         let (clock, day) = Clock::settable(date(2026, 9, 21));
-        let mut presenter = DashboardPresenter::new(reads.clone(), clock);
+        let keymap = crate::keymap::dashboard_keymap(&KeyBindingConfig::default());
+        let mut presenter = DashboardPresenter::new(reads.clone(), clock, keymap);
         let mut router = RecordingRouter::default();
 
         presenter.view_model();
@@ -514,5 +589,56 @@ mod tests {
         presenter.handle(DashboardEvent::OpenBill(id), &mut router);
 
         assert_eq!(router.routed, [Routed::BillEntry(id)]);
+    }
+
+    #[test]
+    fn the_search_takes_no_key_until_it_ends() {
+        let (_, mut presenter) = presenter(InMemoryDashboardReads::default());
+        let mut router = RecordingRouter::default();
+        assert_eq!(
+            presenter.keymap().event("j"),
+            Some(DashboardEvent::Scroll(Step::Next))
+        );
+
+        presenter.handle(DashboardEvent::Search, &mut router);
+        assert_eq!(presenter.mode(), Some(PageMode::Search));
+        assert!(presenter.view_model().searching);
+        assert_eq!(
+            presenter.keymap().event("j"),
+            None,
+            "the Search swallows it"
+        );
+        assert_eq!(
+            presenter.typed(lib_viper::presenter::TextKey::Char('x')),
+            None
+        );
+
+        presenter.handle(DashboardEvent::EndSearch, &mut router);
+        assert_eq!(presenter.mode(), None);
+        assert_eq!(
+            presenter.keymap().event("j"),
+            Some(DashboardEvent::Scroll(Step::Next))
+        );
+        assert!(router.routed.is_empty());
+    }
+
+    #[test]
+    fn rebound_keys_reach_the_keymap() {
+        let (_, mut presenter) = presenter(InMemoryDashboardReads::default());
+        let mut config = KeyBindingConfig::default();
+        config
+            .bindings
+            .insert(lib_viper::keymap::MOVE_DOWN.to_string(), "n".to_string());
+
+        presenter.handle(
+            DashboardEvent::KeysChanged(config),
+            &mut RecordingRouter::default(),
+        );
+
+        assert_eq!(
+            presenter.keymap().event("n"),
+            Some(DashboardEvent::Scroll(Step::Next))
+        );
+        assert_eq!(presenter.keymap().event("j"), None);
     }
 }

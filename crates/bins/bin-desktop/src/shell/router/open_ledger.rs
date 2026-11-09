@@ -26,7 +26,6 @@ use lib_viper::dialog::DialogKeys;
 
 use super::Root;
 use crate::announcer::{Announcer, notify_on};
-use crate::dashboard::DashboardPage;
 use crate::settings::state::SettingsView;
 use crate::transaction_import::ImportPage;
 use crate::transactions::TransactionsPage;
@@ -270,7 +269,7 @@ impl OpenLedger {
         // The status line reads the page's state, so a change in it repaints `Root` too.
         let budgets_view_observer = cx.observe(&budgets_view, |_, _, cx| cx.notify());
         let dashboard_view =
-            cx.new(|cx| DashboardPage::new(dashboard_reads, &announcer, clock.clone(), cx));
+            crate::dashboard::dashboard_page(dashboard_reads, &announcer, clock.clone(), cx);
         let dashboard_subscription = Root::view_event_subscription(&dashboard_view, cx);
         let dashboard_view_observer = cx.observe(&dashboard_view, |_, _, cx| cx.notify());
         let bills_view = crate::bills::bills_page(bills, &announcer, clock.clone(), cx);

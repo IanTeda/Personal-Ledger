@@ -480,6 +480,12 @@ pub(super) fn set_view_keymaps(
     open.views
         .import
         .update(cx, |view, _| view.set_keymaps(config));
+    open.views.dashboard.update(cx, |page, cx| {
+        page.send(
+            lib_dashboard::DashboardEvent::KeysChanged(config.clone()),
+            cx,
+        );
+    });
     open.views.budgets.update(cx, |page, cx| {
         page.send(
             lib_budgets::presenter::BudgetsPageEvent::KeysChanged(config.clone()),
@@ -506,9 +512,12 @@ pub(super) fn push_display_preferences(
         display.status_glyphs,
         display.row_density,
     );
-    open.views
-        .dashboard
-        .update(cx, |view, cx| view.set_display(date_style, glyphs, cx));
+    open.views.dashboard.update(cx, |page, cx| {
+        page.send(
+            lib_dashboard::DashboardEvent::DisplayChanged { date_style, glyphs },
+            cx,
+        );
+    });
     open.views.bills.update(cx, |page, cx| {
         page.send(
             lib_bills::presenter::BillsPageEvent::DisplayChanged { date_style, glyphs },

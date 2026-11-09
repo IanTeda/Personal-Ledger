@@ -132,14 +132,15 @@ impl ActiveViewEntity {
             Self::Import(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
             Self::Budgets(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
             Self::Documents(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
-            Self::Dashboard(_) | Self::Shell(_) => false,
+            Self::Dashboard(view) => view.update(cx, |view, cx| view.module_key(chord, cx)),
+            Self::Shell(_) => false,
         }
     }
 
     /// A key the View claims before the Shell's fallback. Returns whether it took the key.
     pub fn key_ahead(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
         match self {
-            Self::Dashboard(view) => view.update(cx, |view, cx| view.key_ahead(keystroke, cx)),
+            Self::Dashboard(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
             // A module page takes keys ahead only in a mode of its own.
             Self::Bills(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
             Self::Budgets(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
@@ -154,25 +155,31 @@ impl ActiveViewEntity {
     /// A key no other step took. Returns whether the View took it.
     pub fn handle_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
         match self {
-            Self::Dashboard(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),
             Self::Transactions(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),
             Self::Documents(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),
             Self::Settings(view) => view.update(cx, |view, cx| view.handle_key(keystroke, cx)),
             // Every step key and every module page's key is its keymap's.
-            Self::Bills(_) | Self::Budgets(_) | Self::Import(_) | Self::Shell(_) => false,
+            Self::Dashboard(_)
+            | Self::Bills(_)
+            | Self::Budgets(_)
+            | Self::Import(_)
+            | Self::Shell(_) => false,
         }
     }
 
     pub fn apply_movement(&self, movement: Movement, cx: &mut App) {
         match self {
-            Self::Dashboard(view) => view.update(cx, |view, cx| view.apply_movement(movement, cx)),
             Self::Transactions(view) => {
                 view.update(cx, |view, cx| view.apply_movement(movement, cx))
             }
             Self::Documents(view) => view.update(cx, |view, cx| view.apply_movement(movement, cx)),
             Self::Settings(view) => view.update(cx, |view, cx| view.apply_movement(movement, cx)),
             // The step's and a module page's movements are its keymap's.
-            Self::Bills(_) | Self::Budgets(_) | Self::Import(_) | Self::Shell(_) => {}
+            Self::Dashboard(_)
+            | Self::Bills(_)
+            | Self::Budgets(_)
+            | Self::Import(_)
+            | Self::Shell(_) => {}
         }
     }
 
@@ -206,7 +213,7 @@ impl ActiveViewEntity {
     /// A key typed while the View's Search is open. Returns whether the View took it.
     pub fn search_key(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
         match self {
-            Self::Dashboard(view) => view.update(cx, |view, cx| view.search_key(keystroke, cx)),
+            Self::Dashboard(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
             Self::Bills(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
             Self::Budgets(view) => view.update(cx, |view, cx| view.mode_key(keystroke, cx)),
             Self::Transactions(view) => view.update(cx, |view, cx| view.search_key(keystroke, cx)),
@@ -259,7 +266,8 @@ impl ActiveViewEntity {
     /// The status line's hints and right-hand text for the View's own state.
     pub fn page_status(&self, cx: &App) -> Option<PageStatus> {
         match self {
-            Self::Dashboard(view) => view.read(cx).page_status(cx),
+            // The Dashboard words no hints of its own, so the Shell's strip shows.
+            Self::Dashboard(_) => None,
             Self::Bills(view) => Some(view.read(cx).page_status()),
             Self::Budgets(view) => Some(view.read(cx).page_status()),
             Self::Transactions(view) => view.read(cx).page_status(cx),

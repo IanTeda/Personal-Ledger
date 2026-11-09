@@ -1,5 +1,5 @@
-//! The Dashboard module on the Desktop: the page, an Entity holding `lib-dashboard`'s Presenter
-//! (`view`), and where the Presenter asks to go (`router`). The Presenter reads the other domains
+//! The Dashboard module on the Desktop: the page, `lib-dashboard`'s Presenter's `PageView` in the
+//! generic `ModulePage` (`view`), and where the Presenter asks to go (`router`). The Presenter reads the other domains
 //! through `lib-database`'s `StoredDashboardReads`, built on the stores `shell::router::build` was
 //! given, so the page reads no `Ledger` accessor (#1024).
 //!
@@ -9,4 +9,4 @@
 pub mod router;
 pub mod view;
 
-pub use view::page::{DashboardBillSnapshot, DashboardPage};
+pub use view::page::{DashboardBillSnapshot, DashboardPage, dashboard_page};

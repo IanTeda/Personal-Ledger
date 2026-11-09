@@ -63,7 +63,9 @@ impl Root {
     /// The Dashboard's Needs Attention Bill rows, in the order they draw.
     #[doc(hidden)]
     pub fn dashboard_bills_snapshot(&self, cx: &gpui::App) -> Vec<DashboardBillSnapshot> {
-        self.open().views.dashboard.read(cx).bills_snapshot()
+        crate::dashboard::view::page::bills_snapshot(
+            self.open().views.dashboard.read(cx).view_model(),
+        )
     }
 
     /// How many times the Dashboard has asked to redraw from now on, for a test that checks a

@@ -388,6 +388,9 @@ mod tests {
         let transaction_filter = lib_transactions::keymap::TRANSACTIONS_FILTER_BINDINGS
             .iter()
             .map(|binding| (binding.command, binding.chord));
+        let dashboard = lib_dashboard::keymap::DASHBOARD_BINDINGS
+            .iter()
+            .map(|binding| (binding.command, binding.chord));
         let budgets = lib_budgets::keymap::BUDGETS_PAGE_BINDINGS
             .iter()
             .map(|binding| (binding.command, binding.chord));
@@ -416,6 +419,7 @@ mod tests {
             .chain(transactions)
             .chain(transaction_filter)
             .chain(budgets)
+            .chain(dashboard)
             .chain(import)
             .chain(settings_frame)
             .collect()
