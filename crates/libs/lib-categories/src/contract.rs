@@ -437,8 +437,14 @@ impl SaveFactory for InMemorySaveFactory {
         self.committed.categories.categories.clone()
     }
 
+    /// Read through the port, as the stored factory reads, so a parent's amount is its children's.
     fn stored_amount(&mut self, category: CategoryId) -> Option<Money> {
-        self.committed.budget.amounts.get(&category).cloned()
+        crate::CategoryBudget::monthly_budget(
+            &self.committed.budget,
+            &self.committed.categories.categories,
+            Some(category),
+        )
+        .amount
     }
 
     fn stored_holdings(&mut self, category: CategoryId) -> Holdings {
@@ -597,6 +603,8 @@ pub fn the_writes_wait_for_the_one_commit<F: SaveFactory>(factory: &mut F) {
 
     assert_eq!(factory.stored_holdings(child.id), held);
     assert_eq!(factory.stored_amount(child.id), Some(amount("75")));
+    // Groceries is stopped as a parent, so its amount is now its one child's.
+    assert_eq!(factory.stored_amount(GROCERIES), Some(amount("75")));
     assert_eq!(factory.stored_categories().len(), tree.len() + 1);
 }
 
