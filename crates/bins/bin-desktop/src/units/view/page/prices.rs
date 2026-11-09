@@ -5,9 +5,9 @@
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use gpui_component::chart::CandlestickChart;
-use lib_units::presenter::{PriceRow, UnitPricesEvent, UnitPricesViewModel};
+use lib_units::presenter::{PriceRow, UnitPricesEvent, UnitPricesViewModel, UnitsPageEvent};
 
-use super::UnitsPage;
+use crate::units::UnitsPage;
 use crate::{shell::view::page_clicks::PageClicks, theme::color};
 
 /// The chart's height, its axis labels included.
@@ -207,6 +207,6 @@ fn price_row(
             this.bg(color::foreground(cx))
                 .text_color(color::selection_text(cx))
         })
-        .on_click(clicks.send(UnitPricesEvent::Select(week)))
+        .on_click(clicks.send(UnitsPageEvent::Prices(UnitPricesEvent::Select(week))))
         .child(cells)
 }

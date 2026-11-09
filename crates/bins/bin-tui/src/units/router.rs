@@ -1,6 +1,6 @@
 //! `impl UnitsRouter` for the TUI. A Presenter's `handle` can't reach the Units View it runs in, so
-//! the Router collects what it asked for (a Dialog to open, the open one to close, the prices view
-//! to open or close, Toasts) and the View applies them once `handle` returns. Built for each call,
+//! the Router collects what it asked for (a Dialog to open, the open one to close, Toasts) and the
+//! View applies them once `handle` returns. The page Presenter holds the prices view itself. Built for each call,
 //! as on the Desktop. A Dialog's Presenter closes through the shared `DialogRouter`, which this
 //! Router also implements; the TUI's Dialogs still read their own keys until its redesign (#805).
 
@@ -20,8 +20,6 @@ pub struct Router<'a> {
     pub opened: Option<Dialog>,
     /// Set once the open Dialog asked to close, with its confirmed outcome or `None` on cancel.
     pub closed: Option<Option<UnitsOutcome>>,
-    /// Set once a Presenter asked to show a Unit's prices view (`Some`) or close it (`None`).
-    pub prices: Option<Option<UnitId>>,
 }
 
 impl<'a> Router<'a> {
@@ -41,7 +39,6 @@ impl<'a> Router<'a> {
             toasts,
             opened: None,
             closed: None,
-            prices: None,
         }
     }
 }
@@ -52,13 +49,10 @@ impl UnitsRouter for Router<'_> {
         self.opened.is_some()
     }
 
-    fn open_prices(&mut self, unit: UnitId) {
-        self.prices = Some(Some(unit));
-    }
+    /// The page Presenter holds the prices view, which the View draws from its view model.
+    fn open_prices(&mut self, _unit: UnitId) {}
 
-    fn close_prices(&mut self) {
-        self.prices = Some(None);
-    }
+    fn close_prices(&mut self) {}
 }
 
 impl DialogRouter<UnitsOutcome> for Router<'_> {

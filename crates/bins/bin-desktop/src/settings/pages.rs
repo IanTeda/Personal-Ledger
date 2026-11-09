@@ -129,8 +129,9 @@ pub trait Page: Render + EventEmitter<ViewEvent> + EventEmitter<PageRowClicked> 
     /// as focus moves in or out.
     fn set_page_focused(&mut self, _focused: bool, _cx: &mut Context<'_, Self>) {}
 
-    /// Told the space the page is drawn in, outside any input, which can be every draw. A module
-    /// page hands it on as `PageView::framed`'s event.
+    /// Told the space the page is drawn in, outside any input, which can be every draw. Every
+    /// Settings page is a module page now (#1099), which hands it on as `PageView::framed`'s
+    /// event; no page takes it directly.
     fn set_frame(&mut self, _frame: PageFrame, _cx: &mut Context<'_, Self>) {}
 
     /// The heading's right-aligned meta.

@@ -203,6 +203,33 @@ impl<E: Clone> Keymap<E> {
                 .collect(),
         }
     }
+
+    /// This keymap with each event wrapped by `wrap`, chords and palette entries kept: a page
+    /// Presenter that holds a view of its own (Units' prices view) takes that view's keys as page
+    /// events.
+    pub fn map<F>(&self, wrap: impl Fn(E) -> F) -> Keymap<F> {
+        Keymap {
+            bindings: self
+                .bindings
+                .iter()
+                .cloned()
+                .map(|bound| Bound {
+                    chord: bound.chord,
+                    command: bound.command,
+                    event: wrap(bound.event),
+                    palette: bound.palette,
+                })
+                .collect(),
+        }
+    }
+
+    /// This keymap's bindings, then `other`'s: a chord or a command bound in both reaches this
+    /// keymap's event.
+    #[must_use]
+    pub fn chain(mut self, other: Self) -> Self {
+        self.bindings.extend(other.bindings);
+        self
+    }
 }
 
 pub const MOVE_DOWN: &str = "move_down";
@@ -399,5 +426,30 @@ mod tests {
         );
         assert_eq!(scoped.event(""), None);
         assert_eq!(keymap.scoped(|_| false).event("n"), None);
+    }
+
+    #[test]
+    fn a_mapped_keymap_wraps_each_event_and_a_chained_one_looks_up_the_first_keymap_first() {
+        let keymap = Keymap::new(BINDINGS, &KeyBindingConfig::default());
+        let wrapped = keymap.map(Some);
+
+        assert_eq!(wrapped.event("d"), Some(Some(Event::Delete)));
+        assert_eq!(wrapped.listed().count(), 1, "the palette entry is kept");
+
+        // `toy.new`, a name `[keybindings]`' defaults leave alone, beside the first keymap's `new`.
+        let others = Keymap::new(
+            &[
+                Binding::hidden(NEW, "", None),
+                Binding::hidden("toy.new", "x", None),
+            ],
+            &KeyBindingConfig::default(),
+        );
+        let chained = wrapped.chain(others);
+        assert_eq!(chained.event_for(NEW), Some(Some(Event::New)));
+        assert_eq!(
+            chained.event("x"),
+            Some(None),
+            "the second keymap's chords still bind"
+        );
     }
 }

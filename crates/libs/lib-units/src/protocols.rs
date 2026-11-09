@@ -210,13 +210,15 @@ pub trait UnitsRouter: Notify {
     /// opened: a Dialog on a row removed since it was asked for has no Presenter to build.
     fn open_dialog(&mut self, dialog: UnitsDialog) -> bool;
 
-    /// Shows Unit `unit`'s prices view in place of the Units page's tables, on a
-    /// [`UnitPricesPresenter`] the Client builds on the shared ports.
+    /// Unit `unit`'s prices view now shows in place of the Units page's tables. The page
+    /// Presenter holds the view's [`UnitPricesPresenter`] and draws it in its view model, so a
+    /// Client is only told.
     ///
     /// [`UnitPricesPresenter`]: crate::presenter::UnitPricesPresenter
     fn open_prices(&mut self, unit: UnitId);
 
-    /// Closes the prices view, back to the Units page with its selection as it was.
+    /// The prices view has closed, back to the Units page with its selection as it was; told as
+    /// [`Self::open_prices`] is.
     fn close_prices(&mut self);
 }
 

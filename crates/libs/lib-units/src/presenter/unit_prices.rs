@@ -1,7 +1,8 @@
 //! The Unit prices view: one Unit's PRICE figures over its WEEKLY CLOSE chart and its WEEKLY PRICES
 //! table, in a 12-month window `[` steps back and `]` forward by a month, never past the current
-//! week. Opened from the Units page ([`UnitsRouter::open_prices`]) in place of its tables, so
-//! closing it ([`UnitPricesEvent::Back`]) finds the page's selection as it was.
+//! week. A state of the Units page, which holds it while it shows in place of the tables
+//! ([`UnitsRouter::open_prices`]) and hands it its events (`UnitsPageEvent::Prices`), so closing
+//! it ([`UnitPricesEvent::Back`]) finds the page's selection as it was.
 //!
 //! Prices show at the quote Unit's Precision. The chart's values are plain numbers, for drawing
 //! only; every figure a person reads is formatted here.

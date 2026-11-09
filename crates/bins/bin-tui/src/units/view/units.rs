@@ -5,7 +5,7 @@
 //! model; the two price regions point at the selected Unit's prices view.
 //!
 //! `enter` on a Unit (the `units.open` command) opens its Unit prices view (`prices.rs`) in place
-//! of both columns, on `lib-units`' prices Presenter; the Shell's back key closes it, through
+//! of both columns, a state of the page Presenter; the Shell's back key closes it, through
 //! [`View::back`], back to the page with its selection as it was.
 //!
 //! Keys become chord text and are looked up in the shared Units keymap, so `[keybindings]`
@@ -23,11 +23,11 @@ use lib_list_cursor::Step;
 use lib_locale::format::upper;
 use lib_shell::{DialogCommand, WindowSize};
 use lib_toast::ToastKind;
+use lib_units::SharedPorts;
 use lib_units::presenter::{
-    SourceLine, UnitLine, UnitPricesEvent, UnitPricesPresenter, UnitPricesViewModel,
-    UnitsPageEvent, UnitsPagePresenter, UnitsPageViewModel, UnitsRow,
+    SourceLine, UnitLine, UnitPricesEvent, UnitPricesViewModel, UnitsPageEvent, UnitsPagePresenter,
+    UnitsPageViewModel, UnitsRow,
 };
-use lib_units::{SharedPorts, UnitId};
 use lib_viper::keymap::Keymap;
 use lib_viper::presenter::Presenter as _;
 use ratatui::{
@@ -100,8 +100,6 @@ pub struct UnitsView {
     prices_keymap: Keymap<UnitPricesEvent>,
     dialog_keymap: Keymap<DialogCommand>,
     dialog: Option<Dialog>,
-    /// The Unit prices view, while it shows in place of the page.
-    prices: Option<UnitPricesPresenter>,
     /// Where the Presenters read the time from.
     now: lib_units::presenter::Clock,
     /// Raised by the Presenters since `Shell` last took them.
@@ -121,7 +119,8 @@ impl UnitsView {
     pub fn with_now(setup: &UnitsSetup, now: lib_units::presenter::Clock) -> Self {
         let shared: SharedPorts = setup.ports.clone();
         Self {
-            presenter: UnitsPagePresenter::new(shared, now.clone(), setup.keymap.clone()),
+            presenter: UnitsPagePresenter::new(shared, now.clone(), setup.keymap.clone())
+                .with_prices_keymap(setup.prices_keymap.clone()),
             now,
             ports: setup.ports.clone(),
             setup: setup.clone(),
@@ -129,7 +128,6 @@ impl UnitsView {
             prices_keymap: setup.prices_keymap.clone(),
             dialog_keymap: setup.dialog_keymap.clone(),
             dialog: None,
-            prices: None,
             toasts: Vec::new(),
             docked: false,
         }
@@ -142,53 +140,29 @@ impl UnitsView {
 
     /// The Unit prices view as drawn, while it shows.
     pub fn prices_view_model(&self) -> Option<UnitPricesViewModel> {
-        self.prices.as_ref().map(UnitPricesPresenter::view_model)
+        self.presenter.view_model().prices
     }
 
     /// Whether the Unit prices view shows in place of the page.
     pub fn prices_open(&self) -> bool {
-        self.prices.is_some()
+        self.presenter.prices_open()
     }
 
-    /// Sends `event` to the page Presenter, opens any Dialog or prices view it asked for, and
-    /// commits whatever it wrote as one transaction.
+    /// Sends `event` to the page Presenter, which holds the prices view and hands it its events,
+    /// hosts any Dialog it asked for, and commits whatever it wrote as one transaction.
     fn send(&mut self, event: UnitsPageEvent) {
         let mut router = Router::with_now(self.ports.clone(), &mut self.toasts, self.now.clone());
         self.presenter.handle(event, &mut router);
-        let (opened, prices) = (router.opened.take(), router.prices.take());
+        let opened = router.opened.take();
         self.setup.commit();
-        self.apply(opened, prices);
-    }
-
-    /// Sends `event` to the prices Presenter, as [`Self::send`] does to the page's.
-    fn send_to_prices(&mut self, event: UnitPricesEvent) {
-        let Some(presenter) = &mut self.prices else {
-            return;
-        };
-        let mut router = Router::with_now(self.ports.clone(), &mut self.toasts, self.now.clone());
-        presenter.handle(event, &mut router);
-        let (opened, prices) = (router.opened.take(), router.prices.take());
-        self.setup.commit();
-        self.apply(opened, prices);
-    }
-
-    /// Hosts the Dialog a Presenter opened, and opens or closes the prices view it asked for.
-    fn apply(&mut self, opened: Option<Dialog>, prices: Option<Option<UnitId>>) {
         if opened.is_some() {
             self.dialog = opened;
         }
-        match prices {
-            Some(Some(unit)) => {
-                self.prices = Some(UnitPricesPresenter::new(
-                    self.ports.clone(),
-                    self.now.clone(),
-                    self.prices_keymap.clone(),
-                    unit,
-                ));
-            }
-            Some(None) => self.prices = None,
-            None => {}
-        }
+    }
+
+    /// Sends `event` to the prices view, through the page that holds it.
+    fn send_to_prices(&mut self, event: UnitPricesEvent) {
+        self.send(UnitsPageEvent::Prices(event));
     }
 
     /// The prices view's event for `key`: its chord in the prices keymap, or Home, End or a Page
@@ -270,7 +244,7 @@ impl View for UnitsView {
             self.send_to_dialog(key);
             return Some(Action::NoOp);
         }
-        if self.prices.is_some() {
+        if self.prices_open() {
             let event = self.prices_event(key)?;
             self.send_to_prices(event);
             return Some(Action::NoOp);
@@ -347,7 +321,7 @@ impl View for UnitsView {
 
     /// The back key closes the prices view before the Shell pops the View.
     fn back(&mut self) -> bool {
-        if self.prices.is_none() {
+        if !self.prices_open() {
             return false;
         }
         self.send_to_prices(UnitPricesEvent::Back);
@@ -795,6 +769,7 @@ fn render_keybind_hints(frame: &mut Frame<'_>, area: Rect, view: &UnitsPageViewM
 #[cfg(test)]
 mod tests {
     use lib_config::KeyBindingConfig;
+    use lib_units::UnitId;
     use ratatui::{Terminal, backend::TestBackend};
 
     use super::*;

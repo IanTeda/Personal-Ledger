@@ -7,7 +7,7 @@
 //! menu at the pointer. Every click is an event to the Presenter, sent through [`PageClicks`].
 
 use gpui::{
-    AnyElement, App, BoxShadow, ClickEvent, Context, MouseButton, MouseDownEvent, Pixels, Point,
+    AnyElement, App, BoxShadow, ClickEvent, MouseButton, MouseDownEvent, Pixels, Point,
     SharedString, Window, div, point, prelude::*, px,
 };
 use lib_units::presenter::{
@@ -15,7 +15,7 @@ use lib_units::presenter::{
     UnitLine, UnitsPageEvent, UnitsPageViewModel, UnitsRow,
 };
 
-use super::UnitsPage;
+use crate::units::UnitsPage;
 use crate::{settings::SettingsPage, shell::view::page_clicks::PageClicks, theme::color};
 
 /// The context menu's width (`width:190px`).
@@ -36,52 +36,49 @@ const LAST_WIDTH: Pixels = px(130.0);
 const PRICE_SOURCE_NAME_WIDTH: Pixels = px(130.0);
 const PRICE_SOURCE_LAST_UPDATED_WIDTH: Pixels = px(130.0);
 
-impl Render for UnitsPage {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let clicks = PageClicks::new(cx);
-        if let Some(prices) = self.prices_view_model() {
-            return super::prices::prices_view(prices, &clicks, cx);
-        }
-        let view = self.view_model(cx);
-        let menu_at = self.menu_at;
-        let cx: &App = cx;
-        let UnitsPageViewModel {
-            unit_columns,
-            units,
-            price_sources_heading,
-            source_columns,
-            price_sources,
-            base_legend,
-            menu,
-            ..
-        } = view;
-        div()
-            .flex()
-            .flex_col()
-            .child(table_title(
-                lib_locale::format::upper(&SettingsPage::Units.label()),
-                "settings-add-unit",
-                clicks.send(UnitsPageEvent::NewUnit),
-                cx,
-            ))
-            .child(units_table(&unit_columns, &units, &clicks, cx))
-            .child(legend(base_legend, cx))
-            .child(
-                div()
-                    .mt(px(32.0))
-                    .flex()
-                    .flex_col()
-                    .child(table_title(
-                        lib_locale::format::upper(&price_sources_heading),
-                        "settings-add-price-source",
-                        clicks.send(UnitsPageEvent::NewPriceSource),
-                        cx,
-                    ))
-                    .child(sources_table(&source_columns, &price_sources, &clicks, cx)),
-            )
-            .children(menu.map(|menu| row_menu(menu, menu_at, &clicks, cx)))
-            .into_any_element()
-    }
+/// The tables, and the row menu where the pointer opened it.
+pub(super) fn page(
+    view: &UnitsPageViewModel,
+    clicks: &PageClicks<UnitsPage>,
+    menu_at: Point<Pixels>,
+    cx: &App,
+) -> AnyElement {
+    let UnitsPageViewModel {
+        unit_columns,
+        units,
+        price_sources_heading,
+        source_columns,
+        price_sources,
+        base_legend,
+        menu,
+        ..
+    } = view;
+    div()
+        .flex()
+        .flex_col()
+        .child(table_title(
+            lib_locale::format::upper(&SettingsPage::Units.label()),
+            "settings-add-unit",
+            clicks.send(UnitsPageEvent::NewUnit),
+            cx,
+        ))
+        .child(units_table(unit_columns, units, clicks, cx))
+        .child(legend(base_legend.clone(), cx))
+        .child(
+            div()
+                .mt(px(32.0))
+                .flex()
+                .flex_col()
+                .child(table_title(
+                    lib_locale::format::upper(price_sources_heading),
+                    "settings-add-price-source",
+                    clicks.send(UnitsPageEvent::NewPriceSource),
+                    cx,
+                ))
+                .child(sources_table(source_columns, price_sources, clicks, cx)),
+        )
+        .children(menu.clone().map(|menu| row_menu(menu, menu_at, clicks, cx)))
+        .into_any_element()
 }
 
 /// A table's caps title sharing its row with a square **+** at the table's right edge.

@@ -182,6 +182,9 @@ pub trait SettingsPageView: PageView {
     /// Whether the page fills the body's height and scrolls inside itself (Tracing's log box)
     /// rather than the body scrolling the whole page.
     const FILLS_PAGE: bool = false;
+
+    /// Whether the page draws past the Settings content width to the View's (Units' tables).
+    const FULL_WIDTH: bool = false;
 }
 
 /// What [`PageView::render`] draws with beside the view model.
@@ -550,6 +553,7 @@ impl<P: PageView> PresenterPage<P::Event> for ModulePage<P> {
 impl<P: SettingsPageView> Page for ModulePage<P> {
     const PAGE: SettingsPage = P::PAGE;
     const FILLS_PAGE: bool = P::FILLS_PAGE;
+    const FULL_WIDTH: bool = P::FULL_WIDTH;
 
     /// Every chord the page's keymap binds, the arrows and `g g` among them.
     fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {

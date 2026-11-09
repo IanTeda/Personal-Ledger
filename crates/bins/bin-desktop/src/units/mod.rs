@@ -3,7 +3,9 @@
 //! the keymap are `lib-units`'; this folder turns gpui keys and clicks into Presenter events and
 //! draws the view models.
 //!
-//! - `view/page.rs` wraps the page Presenter in an Entity, which the Settings View hosts.
+//! - `view/page.rs` is the page Presenter's `PageView`: the generic `ModulePage` hosts it
+//!   ([`UnitsPage`]), which the Settings View hosts as any other page (ADR-0056). A Unit's prices
+//!   view is a state of the page Presenter, drawn in place of the tables.
 //! - `view/dialog.rs` and `view/dialog/` are each Dialog Presenter's `DialogView`, hosted in a
 //!   generic `ModuleDialog` (ADR-0056).
 //! - `router.rs` is the Router and the module's entry point ([`units_page`]).
@@ -16,11 +18,16 @@ mod view;
 
 use gpui::App;
 use lib_units::SharedPorts;
+use lib_units::presenter::UnitsPagePresenter;
 pub use router::units_page;
 pub(crate) use view::dialog::{help, refusal};
-pub use view::page::UnitsPage;
 
 use crate::settings::snapshot::PageSnapshot;
+use crate::shell::view::module_page::ModulePage;
+
+/// The Units Settings page: the page Presenter, its prices view among its states, in the generic
+/// page Entity.
+pub type UnitsPage = ModulePage<UnitsPagePresenter>;
 
 /// The Units page as the UI tests read it: its view model.
 #[doc(hidden)]
@@ -33,8 +40,8 @@ pub type UnitPricesSnapshot = lib_units::presenter::UnitPricesViewModel;
 impl PageSnapshot for SettingsUnitsSnapshot {
     type Page = UnitsPage;
 
-    fn read(page: &UnitsPage, cx: &App) -> Self {
-        page.view_model(cx)
+    fn read(page: &UnitsPage, _cx: &App) -> Self {
+        page.view_model()
     }
 }
 
@@ -43,7 +50,7 @@ impl PageSnapshot for Option<UnitPricesSnapshot> {
     type Page = UnitsPage;
 
     fn read(page: &UnitsPage, _cx: &App) -> Self {
-        page.prices_view_model()
+        page.view_model().prices
     }
 }
 
@@ -62,7 +69,7 @@ pub fn unquote_for_test(ports: &SharedPorts) {
 }
 
 /// What `shell::router::build` hands the Units module: its ports, and the page's and the Unit
-/// prices view's keymaps under `[keybindings]`.
+/// prices view's keymaps under `[keybindings]`, which the page Presenter is built with.
 pub struct UnitsSetup {
     pub ports: SharedPorts,
     /// The Unit Deletion module's port over the Units and Institutions stores, which Delete unit
@@ -103,4 +110,13 @@ impl UnitsSetup {
             &config,
         )
     }
+}
+
+/// What the Units page's Router is built from for each call (its `PageView::Setup`): the ports and
+/// Dialog keys its Dialogs open on, and the Clock the Set price Dialog reads now from.
+pub struct UnitsRoutes {
+    pub ports: SharedPorts,
+    pub deletion: lib_unit_deletion::SharedUnitDeletion,
+    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
+    pub clock: lib_core::Clock,
 }

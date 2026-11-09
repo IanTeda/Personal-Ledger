@@ -8,14 +8,15 @@ use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::Label as _;
 use lib_locale::format::format_time_minutes;
 use lib_toast::{Notice, ToastKind};
-use lib_viper::keymap::{DELETE, EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
+use lib_viper::keymap::{DELETE, EDIT, KeyBindingConfig, Keymap, MOVE_DOWN, MOVE_UP, NEW};
 use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Hint, count};
 
+use super::unit_prices::{UnitPricesEvent, UnitPricesPresenter, UnitPricesViewModel};
 use super::units_pane::{DetailPane, PaneInput, amount, detail_pane};
 use super::{Clock, UnitChange, UnitsOutcome, ago, joined};
 use crate::interactor::ReactivateUnit;
-use crate::keymap::{NEXT_TABLE, OPEN, SET_PRICE, TEST_SOURCE};
+use crate::keymap::{NEXT_TABLE, OPEN, SET_PRICE, TEST_SOURCE, unit_prices_keymap};
 use crate::protocols::{SharedPorts, UnitsDialog, UnitsRouter};
 use crate::{MANUAL_ENTRY, PriceSource, SourceOrigin, UnitRow, last_fetched, msg};
 
@@ -190,10 +191,12 @@ pub enum UnitsPageEvent {
     SetDocked(bool),
     /// The open Dialog closed, with what its confirm did or `None` when cancelled.
     DialogClosed(Option<UnitsOutcome>),
+    /// A key or click on the Unit prices view, which the page hands the view while it shows.
+    Prices(UnitPricesEvent),
 }
 
-/// The page as drawn.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// The page as drawn. Not `Eq`: the prices view's chart is drawn from plain numbers.
+#[derive(Debug, Clone, PartialEq)]
 pub struct UnitsPageViewModel {
     /// The heading's meta: `3 units · synced`.
     pub scope: String,
@@ -215,6 +218,8 @@ pub struct UnitsPageViewModel {
     /// The detail pane, while docked.
     pub pane: Option<DetailPane>,
     pub open_dialog: Option<UnitsDialog>,
+    /// The Unit prices view, while it shows in place of the tables and the detail pane.
+    pub prices: Option<UnitPricesViewModel>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -308,12 +313,23 @@ pub struct UnitsPagePresenter {
     docked: bool,
     activity: Vec<ActivityLine>,
     open_dialog: Option<UnitsDialog>,
+    /// The Unit prices view, while it shows in place of the tables: opened and closed through the
+    /// Router's `open_prices` and `close_prices`, which the page notes ([`Noting`]).
+    prices: Option<UnitPricesPresenter>,
+    /// The keys the prices view is built with, so its legend shows the chords the Client binds.
+    prices_keymap: Keymap<UnitPricesEvent>,
+    /// The page's keys while the prices view shows ([`Self::prices_keys`]).
+    prices_keys: Keymap<UnitsPageEvent>,
 }
 
 impl UnitsPagePresenter {
     /// `keymap` is the one the Client looks keys up in, so the legend shows the chords it binds.
+    /// The prices view takes its default keys until [`Self::with_prices_keymap`] hands it the
+    /// Client's.
     pub fn new(ports: SharedPorts, clock: Clock, keymap: Keymap<UnitsPageEvent>) -> Self {
+        let prices_keymap = unit_prices_keymap(&KeyBindingConfig::default());
         Self {
+            prices_keys: Self::prices_keys(&keymap, &prices_keymap),
             ports,
             clock,
             keymap,
@@ -324,7 +340,82 @@ impl UnitsPagePresenter {
             docked: false,
             activity: Vec::new(),
             open_dialog: None,
+            prices: None,
+            prices_keymap,
         }
+    }
+
+    /// The page with its prices view taking keys through `keymap`, the Client's under
+    /// `[keybindings]`.
+    #[must_use]
+    pub fn with_prices_keymap(mut self, keymap: Keymap<UnitPricesEvent>) -> Self {
+        self.prices_keys = Self::prices_keys(&self.keymap, &keymap);
+        self.prices_keymap = keymap;
+        self
+    }
+
+    /// Whether the Unit prices view shows in place of the tables.
+    pub fn prices_open(&self) -> bool {
+        self.prices.is_some()
+    }
+
+    /// The page's keys while the prices view shows: only the view's chords bind, each sending
+    /// [`UnitsPageEvent::Prices`]. The page's own commands keep their names but lose their
+    /// chords, and come first, so a palette Command reaches the page's event by name, which
+    /// [`PagePresenter::shows`] closes the view ahead of, as it did before the view was the
+    /// page's (`units.set_price` among them, which both bind).
+    fn prices_keys(
+        page: &Keymap<UnitsPageEvent>,
+        prices: &Keymap<UnitPricesEvent>,
+    ) -> Keymap<UnitsPageEvent> {
+        page.scoped(|_| false)
+            .chain(prices.map(UnitsPageEvent::Prices))
+    }
+
+    /// Opens the prices view a Presenter asked for (`Some`) or closes it (`None`).
+    fn apply_prices(&mut self, prices: Option<Option<UnitId>>) {
+        match prices {
+            Some(Some(unit)) => {
+                self.prices = Some(UnitPricesPresenter::new(
+                    self.ports.clone(),
+                    self.clock.clone(),
+                    self.prices_keymap.clone(),
+                    unit,
+                ));
+            }
+            Some(None) => self.prices = None,
+            None => {}
+        }
+    }
+}
+
+/// The page's Router around one handle: it notes the prices view the page or the view asked to
+/// show or close, for the page to act on once the handle returns, and passes every call on, so a
+/// Client's Router still hears it.
+struct Noting<'a, 'r> {
+    router: &'a mut (dyn UnitsRouter + 'r),
+    prices: Option<Option<UnitId>>,
+}
+
+impl lib_toast::Notify for Noting<'_, '_> {
+    fn notify(&mut self, notice: Notice) {
+        self.router.notify(notice);
+    }
+}
+
+impl UnitsRouter for Noting<'_, '_> {
+    fn open_dialog(&mut self, dialog: UnitsDialog) -> bool {
+        self.router.open_dialog(dialog)
+    }
+
+    fn open_prices(&mut self, unit: UnitId) {
+        self.prices = Some(Some(unit));
+        self.router.open_prices(unit);
+    }
+
+    fn close_prices(&mut self) {
+        self.prices = Some(None);
+        self.router.close_prices();
     }
 }
 
@@ -333,7 +424,35 @@ impl Presenter for UnitsPagePresenter {
     type ViewModel = UnitsPageViewModel;
     type Router<'r> = dyn UnitsRouter + 'r;
 
+    /// Handles `event`, a prices view's on the open view, then opens or closes the prices view
+    /// the handle asked for.
     fn handle(&mut self, event: UnitsPageEvent, router: &mut Self::Router<'_>) {
+        let mut noting = Noting {
+            router,
+            prices: None,
+        };
+        self.handle_noted(event, &mut noting);
+        let prices = noting.prices;
+        self.apply_prices(prices);
+    }
+
+    fn view_model(&self) -> UnitsPageViewModel {
+        self.view()
+    }
+
+    /// The prices view's events while it shows, `SetDocked` only for a change, and every other
+    /// event of the page.
+    fn takes(&self, event: &UnitsPageEvent) -> bool {
+        match event {
+            UnitsPageEvent::Prices(_) => self.prices.is_some(),
+            UnitsPageEvent::SetDocked(docked) => *docked != self.docked,
+            _ => true,
+        }
+    }
+}
+
+impl UnitsPagePresenter {
+    fn handle_noted(&mut self, event: UnitsPageEvent, router: &mut dyn UnitsRouter) {
         // Any event but the menu's own closes it, as a key or click elsewhere does.
         let menu = self.menu.take();
         match event {
@@ -399,10 +518,15 @@ impl Presenter for UnitsPagePresenter {
                     self.land(outcome, router);
                 }
             }
+            UnitsPageEvent::Prices(event) => {
+                if let Some(prices) = self.prices.as_mut() {
+                    prices.handle(event, router);
+                }
+            }
         }
     }
 
-    fn view_model(&self) -> UnitsPageViewModel {
+    fn view(&self) -> UnitsPageViewModel {
         let ports = self.ports.borrow();
         let units = ports.units().units();
         let catalogue = ports.source_catalogue();
@@ -532,6 +656,7 @@ impl Presenter for UnitsPagePresenter {
                 })
             }),
             open_dialog: self.open_dialog,
+            prices: self.prices.as_ref().map(UnitPricesPresenter::view_model),
         }
     }
 }
@@ -543,8 +668,20 @@ impl PagePresenter for UnitsPagePresenter {
         Some(UnitsPageEvent::DialogClosed(outcome))
     }
 
+    /// The prices view's keys while it shows, else the page's.
     fn keymap(&self) -> &Keymap<UnitsPageEvent> {
-        &self.keymap
+        if self.prices.is_some() {
+            &self.prices_keys
+        } else {
+            &self.keymap
+        }
+    }
+
+    /// A page event while the prices view shows closes the view first, so a palette Command acts
+    /// on the tables the person then sees.
+    fn shows(&self, event: &UnitsPageEvent) -> Option<UnitsPageEvent> {
+        (self.prices.is_some() && !matches!(event, UnitsPageEvent::Prices(_)))
+            .then_some(UnitsPageEvent::Prices(UnitPricesEvent::Back))
     }
 }
 
@@ -1051,6 +1188,74 @@ mod tests {
             )),
             [RouterCall::OpenPrices(UnitId::SEED_VAS)]
         );
+    }
+
+    #[test]
+    fn the_prices_view_is_a_state_of_the_page_with_its_own_keys_and_back_closes_it() {
+        let mut page = Page::new();
+        page.send(UnitsPageEvent::Select(UnitsRow::Unit(UnitId::SEED_BTC)));
+        page.send(UnitsPageEvent::Open);
+
+        assert!(page.presenter.prices_open());
+        let prices = page.view().prices.expect("the prices view shows");
+        assert_eq!(prices.unit, UnitId::SEED_BTC);
+        let keymap = page.presenter.keymap();
+        assert_eq!(
+            keymap.event("["),
+            Some(UnitsPageEvent::Prices(UnitPricesEvent::Earlier))
+        );
+        assert_eq!(keymap.event("n"), None, "the tables' keys don't bind");
+        assert_eq!(
+            keymap.event_for(NEW),
+            Some(UnitsPageEvent::New),
+            "the palette still reaches the page's commands"
+        );
+        assert_eq!(
+            page.presenter.shows(&UnitsPageEvent::New),
+            Some(UnitsPageEvent::Prices(UnitPricesEvent::Back))
+        );
+
+        assert_eq!(
+            page.send(UnitsPageEvent::Prices(UnitPricesEvent::Back)),
+            [RouterCall::ClosePrices]
+        );
+        assert!(page.view().prices.is_none());
+        assert!(
+            !page
+                .presenter
+                .takes(&UnitsPageEvent::Prices(UnitPricesEvent::Back))
+        );
+        assert_eq!(
+            page.presenter.keymap().event("n"),
+            Some(UnitsPageEvent::New)
+        );
+        assert_eq!(page.selected(), "btc", "the selection is as it was");
+    }
+
+    #[test]
+    fn the_prices_view_opens_its_set_price_dialog_through_the_page() {
+        let mut page = Page::new();
+        page.send(UnitsPageEvent::Action(
+            MenuAction::Prices,
+            UnitsRow::Unit(UnitId::SEED_VAS),
+        ));
+
+        assert_eq!(
+            page.send(UnitsPageEvent::Prices(UnitPricesEvent::SetPrice)),
+            [RouterCall::OpenDialog(UnitsDialog::SetPrice(
+                UnitId::SEED_VAS
+            ))]
+        );
+    }
+
+    #[test]
+    fn docking_is_taken_only_as_a_change() {
+        let mut page = Page::new();
+        assert!(!page.presenter.takes(&UnitsPageEvent::SetDocked(false)));
+        assert!(page.presenter.takes(&UnitsPageEvent::SetDocked(true)));
+
+        page.send(UnitsPageEvent::SetDocked(true));
+        assert!(!page.presenter.takes(&UnitsPageEvent::SetDocked(true)));
     }
 
     #[test]

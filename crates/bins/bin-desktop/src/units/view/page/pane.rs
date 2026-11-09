@@ -8,7 +8,7 @@ use lib_units::presenter::{
     SourceGroup, UnitGroup, ValueLine, ValuesGroup,
 };
 
-use super::UnitsPage;
+use crate::units::UnitsPage;
 use crate::{shell::view::page_clicks::PageClicks, theme::color};
 
 /// `width:400px` at the View's right edge.
