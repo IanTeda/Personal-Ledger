@@ -1,4 +1,7 @@
 {
+  "env": {
+    "GRAPHIFY_OUT": ".graphify-out"
+  },
   "hooks": {
     "PreToolUse": [
       {
@@ -31,6 +34,5 @@
         "repo": "johnnyvizz/claude-kit"
       }
     }
-  },
-  "env": { "GRAPHIFY_OUT": ".graphify-out" }
+  }
 }
