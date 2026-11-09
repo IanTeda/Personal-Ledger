@@ -4,8 +4,8 @@
 //! the Settings View the open page as one `dyn` handle and `get` is the only match on the page.
 
 use gpui::{
-    AnyElement, AnyView, App, AppContext as _, Context, Entity, EventEmitter, IntoElement,
-    Keystroke, Render, Subscription,
+    AnyElement, AnyView, App, AppContext as _, Context, Entity, EventEmitter, IntoElement, Render,
+    Subscription,
 };
 
 use std::cell::RefCell;
@@ -31,7 +31,7 @@ use crate::{
         about::{AboutPage, about_page},
         data_backup::{DataBackupPage, data_backup_page},
         device::DeviceConfigFile,
-        display::DisplayPage,
+        display::{DisplayPage, display_page},
         general::{GeneralPage, general_page},
         ledger::{LedgerKeys, LedgerPage, ledger_page},
         state::SettingsView,
@@ -106,11 +106,6 @@ pub trait Page: Render + EventEmitter<ViewEvent> + EventEmitter<PageRowClicked> 
         false
     }
 
-    /// A key the page claims ahead of the Shell's fallback and Settings' focus keys.
-    fn key_ahead(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
     /// Whether the page took the movement. A page without a selection leaves Settings to scroll.
     fn apply_movement(&mut self, _movement: Movement, _cx: &mut Context<'_, Self>) -> bool {
         false
@@ -134,6 +129,8 @@ pub trait Page: Render + EventEmitter<ViewEvent> + EventEmitter<PageRowClicked> 
     /// as focus moves in or out.
     fn set_page_focused(&mut self, _focused: bool, _cx: &mut Context<'_, Self>) {}
 
+    /// Told the space the page is drawn in, outside any input, which can be every draw. A module
+    /// page hands it on as `PageView::framed`'s event.
     fn set_frame(&mut self, _frame: PageFrame, _cx: &mut Context<'_, Self>) {}
 
     /// The heading's right-aligned meta.
@@ -168,7 +165,6 @@ pub trait Page: Render + EventEmitter<ViewEvent> + EventEmitter<PageRowClicked> 
 pub trait PageHandle {
     fn module_key(&self, chord: &str, cx: &mut App) -> bool;
     fn module_command(&self, command: &str, cx: &mut App) -> bool;
-    fn key_ahead(&self, keystroke: &Keystroke, cx: &mut App) -> bool;
     fn apply_movement(&self, movement: Movement, cx: &mut App) -> bool;
     fn escape(&self, cx: &mut App) -> bool;
     fn start_search(&self, cx: &mut App) -> bool;
@@ -194,10 +190,6 @@ impl<T: Page> PageHandle for Entity<T> {
 
     fn module_command(&self, command: &str, cx: &mut App) -> bool {
         self.update(cx, |page, cx| page.module_command(command, cx))
-    }
-
-    fn key_ahead(&self, keystroke: &Keystroke, cx: &mut App) -> bool {
-        self.update(cx, |page, cx| page.key_ahead(keystroke, cx))
     }
 
     fn apply_movement(&self, movement: Movement, cx: &mut App) -> bool {
@@ -388,11 +380,12 @@ impl SettingsPages {
                     cx,
                 )
             }),
-            display: cx.new(|_| {
-                DisplayPage::new(
+            display: cx.new(|cx| {
+                display_page(
                     Rc::new(DeviceConfigFile::default()),
                     &KeyBindingConfig::default(),
                     super::state::back_chord(&KeyBindingConfig::default()),
+                    cx,
                 )
             }),
             // A private, empty capture until `set_log_capture` hands over the real one.

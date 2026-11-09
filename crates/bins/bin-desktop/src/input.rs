@@ -24,8 +24,9 @@
 //!    the View's `ViewEvent::EnterMode` and cleared on leaving any mode.
 //! 3. `lib-shell`'s global keymap, which takes the keys the Shell keeps (`?`, `:`, `/`, the rail
 //!    toggle, `shift+tab`, `esc`, the Toast keys and the `g` jumps) and passes the rest on.
-//! 4. The focused module's keymap. In Settings that is the open page's, then the page's own keys
-//!    while not every page is a module, then the frame's (`lib-settings`).
+//! 4. The focused module's keymap. In Settings that is the open page's, then the frame's
+//!    (`lib-settings`). A key whose event the page hands on (the Colour Theme grid's `tab`, once it
+//!    has left the grid) goes on as one the module declined.
 //! 5. A View that isn't a module yet, with its own key handler.
 //!
 //! A key no step takes falls back to the Shell when its global keymap binds it to focus `tab`, `a`,
@@ -409,6 +410,11 @@ mod tests {
         let settings_frame = lib_settings::keymap::SETTINGS_FRAME_BINDINGS
             .iter()
             .map(|binding| (binding.command, binding.chord));
+        // The Colour Theme grid's `tab` and half-page moves are the Shell's fallbacks, which the
+        // grid hands on once it has left; `shift+tab`, which the Shell keeps, it never binds.
+        let display = lib_settings::keymap::DISPLAY_BINDINGS
+            .iter()
+            .map(|binding| (binding.command, binding.chord));
         units
             .chain(unit_prices)
             .chain(bills)
@@ -426,6 +432,7 @@ mod tests {
             .chain(dashboard)
             .chain(import)
             .chain(settings_frame)
+            .chain(display)
             .collect()
     }
 

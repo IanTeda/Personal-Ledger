@@ -7,6 +7,7 @@
 use super::common;
 use bin_desktop::shell::router::SettingsDisplaySnapshot;
 
+use bin_desktop::navigation::nav::FocusZone;
 use common::Harness;
 use gpui::TestAppContext;
 use lib_colour_theme::ColourTheme;
@@ -317,6 +318,73 @@ fn h_in_the_first_grid_column_steps_out_to_the_index(app: &mut TestAppContext) {
     let page = ui.settings_frame();
     assert!(!page.page_focused);
     assert_eq!(display_page.colour_theme_focus, None);
+}
+
+/// `key` in the Colour Theme grid leaves it, then moves the focus off the View as it does
+/// anywhere.
+fn leaves_the_grid_and_moves_the_focus(app: &mut TestAppContext, key: &str) {
+    let mut ui = in_display(app);
+    ui.press("j j j j");
+    assert!(
+        ui.settings::<SettingsDisplaySnapshot>()
+            .colour_theme_focus
+            .is_some()
+    );
+
+    ui.press(key);
+
+    assert_eq!(
+        ui.settings::<SettingsDisplaySnapshot>().colour_theme_focus,
+        None
+    );
+    assert_ne!(ui.read(|shell| shell.nav().focus()), FocusZone::View);
+}
+
+#[gpui::test]
+fn tab_leaves_the_grid_and_moves_the_focus_on(app: &mut TestAppContext) {
+    leaves_the_grid_and_moves_the_focus(app, "tab");
+}
+
+#[gpui::test]
+fn shift_tab_leaves_the_grid_and_moves_the_focus_back(app: &mut TestAppContext) {
+    leaves_the_grid_and_moves_the_focus(app, "shift-tab");
+}
+
+/// `key` in the Colour Theme grid leaves it, the page keeping the keyboard as Settings scrolls.
+fn leaves_the_grid_and_scrolls(app: &mut TestAppContext, key: &str) {
+    let mut ui = in_display(app);
+    ui.press("j j j j");
+
+    ui.press(key);
+
+    let display_page = ui.settings::<SettingsDisplaySnapshot>();
+    assert_eq!(display_page.colour_theme_focus, None);
+    assert!(ui.settings_frame().page_focused);
+}
+
+#[gpui::test]
+fn ctrl_d_leaves_the_grid(app: &mut TestAppContext) {
+    leaves_the_grid_and_scrolls(app, "ctrl-d");
+}
+
+#[gpui::test]
+fn ctrl_u_leaves_the_grid(app: &mut TestAppContext) {
+    leaves_the_grid_and_scrolls(app, "ctrl-u");
+}
+
+#[gpui::test]
+fn a_key_the_grid_does_not_bind_leaves_it_where_it_is(app: &mut TestAppContext) {
+    let mut ui = in_display(app);
+    ui.press("j j j j");
+    let start = ui.settings::<SettingsDisplaySnapshot>().colour_theme_focus;
+
+    ui.press("space");
+    ui.press("shift-g");
+
+    assert_eq!(
+        ui.settings::<SettingsDisplaySnapshot>().colour_theme_focus,
+        start
+    );
 }
 
 #[gpui::test]

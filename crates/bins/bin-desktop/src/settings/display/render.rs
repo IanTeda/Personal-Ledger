@@ -4,10 +4,10 @@
 //! under the choices made, then the Colour Theme grid (`colour_theme.rs`). Every click is a
 //! Presenter event through [`PageClicks`].
 
-use gpui::{App, Context, SharedString, Window, div, prelude::*, px};
+use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use lib_settings::presenter::display::{DATE_STYLE_CHOICES, DISPLAY_FIELD_SIDEBAR};
 use lib_settings::presenter::{CheckboxView, PreviewView};
-use lib_settings::{DeviceKey, DisplayEvent};
+use lib_settings::{DeviceKey, DisplayEvent, DisplayViewModel};
 use lib_viper::display::{RowDensity, StatusGlyphs};
 use lib_viper::view::SelectView;
 
@@ -42,81 +42,78 @@ pub fn preview_row_padding_y(density: RowDensity) -> f32 {
     }
 }
 
-impl Render for DisplayPage {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let model = self.view_model();
-        let clicks = PageClicks::new(cx);
-        let cx: &App = cx;
-        let columns = div()
-            .flex()
-            .flex_wrap()
-            .gap_x(px(40.0))
-            .gap_y(px(24.0))
-            .child(
-                div()
-                    .debug_selector(|| "display-fields".to_string())
-                    .w(FIELD_COLUMN_WIDTH)
-                    .flex_none()
-                    .flex()
-                    .flex_col()
-                    .gap(px(18.0))
-                    .child(
-                        segmented(
-                            "display-date-style",
-                            &model.date_style.select,
-                            clicks.segment(DisplayEvent::ChooseDateStyle),
-                            cx,
-                        )
-                        .children(shadowed(
-                            DeviceKey::DateStyle,
-                            model.date_style.shadowed.as_deref(),
-                            cx,
-                        )),
+/// The page: the controls beside the PREVIEW, then the Colour Theme group.
+pub(super) fn page(
+    model: &DisplayViewModel,
+    clicks: &PageClicks<DisplayPage>,
+    cx: &App,
+) -> AnyElement {
+    let columns = div()
+        .flex()
+        .flex_wrap()
+        .gap_x(px(40.0))
+        .gap_y(px(24.0))
+        .child(
+            div()
+                .debug_selector(|| "display-fields".to_string())
+                .w(FIELD_COLUMN_WIDTH)
+                .flex_none()
+                .flex()
+                .flex_col()
+                .gap(px(18.0))
+                .child(
+                    segmented(
+                        "display-date-style",
+                        &model.date_style.select,
+                        clicks.segment(DisplayEvent::ChooseDateStyle),
+                        cx,
                     )
-                    .child(
-                        segmented(
-                            "display-row-density",
-                            &model.row_density.select,
-                            clicks.segment(DisplayEvent::ChooseRowDensity),
-                            cx,
-                        )
-                        .children(shadowed(
-                            DeviceKey::RowDensity,
-                            model.row_density.shadowed.as_deref(),
-                            cx,
-                        )),
+                    .children(shadowed(
+                        DeviceKey::DateStyle,
+                        model.date_style.shadowed.as_deref(),
+                        cx,
+                    )),
+                )
+                .child(
+                    segmented(
+                        "display-row-density",
+                        &model.row_density.select,
+                        clicks.segment(DisplayEvent::ChooseRowDensity),
+                        cx,
                     )
-                    .child(
-                        status_glyphs_field(&model.status_glyphs.select, &clicks, cx).children(
-                            shadowed(
-                                DeviceKey::StatusGlyphs,
-                                model.status_glyphs.shadowed.as_deref(),
-                                cx,
-                            ),
-                        ),
-                    )
-                    .child(
-                        focus_mark(model.field == Some(DISPLAY_FIELD_SIDEBAR), cx).child(
-                            start_sidebar_minimised_toggle(
-                                &model.start_sidebar_minimised,
-                                &clicks,
-                                cx,
-                            ),
+                    .children(shadowed(
+                        DeviceKey::RowDensity,
+                        model.row_density.shadowed.as_deref(),
+                        cx,
+                    )),
+                )
+                .child(
+                    status_glyphs_field(&model.status_glyphs.select, clicks, cx).children(
+                        shadowed(
+                            DeviceKey::StatusGlyphs,
+                            model.status_glyphs.shadowed.as_deref(),
+                            cx,
                         ),
                     ),
-            )
-            .child(preview_column(&model.preview, cx));
-        div()
-            .flex()
-            .flex_col()
-            .child(columns)
-            .child(colour_theme::render(
-                &model.colour_theme,
-                &model.appearance,
-                &clicks,
-                cx,
-            ))
-    }
+                )
+                .child(
+                    focus_mark(model.field == Some(DISPLAY_FIELD_SIDEBAR), cx).child(
+                        start_sidebar_minimised_toggle(&model.start_sidebar_minimised, clicks, cx),
+                    ),
+                ),
+        )
+        .child(preview_column(&model.preview, cx));
+    div()
+        .flex()
+        .flex_col()
+        .child(columns)
+        .child(colour_theme::render(
+            &model.colour_theme,
+            &model.appearance,
+            clicks,
+            cx,
+        ))
+        .into_any_element()
 }
 
 /// A uniform segmented control with its label, the keyboard's mark on it while focused.

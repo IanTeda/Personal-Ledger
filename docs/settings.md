@@ -521,7 +521,8 @@ Open Settings and go to Display. Below the other display settings is a Colour Th
 
 - Appearance is a Light / Dark / System switch.
 - Colour Theme is a grid of preview cards, each showing a small ledger drawn in that Colour Theme. The card you've chosen has a border in the accent colour and a bold name.
-- With the keyboard, press `Tab` to move onto the grid, use the arrow keys or `h` `j` `k` `l` to move between cards, and press `Enter` to choose one. Moving between cards doesn't change anything until you press `Enter`.
+- With the keyboard, press `j` past the last setting to move onto the grid, use the arrow keys or `h` `j` `k` `l` to move between cards, and press `Enter` to choose one. Moving between cards doesn't change anything until you press `Enter`.
+- To leave the grid, press `Esc` to go back up to the settings above it. `Tab` and `Shift+Tab` leave the grid and move to the next or previous part of the window, and `Ctrl+d` and `Ctrl+u` leave it and scroll the page. Other keys leave you on the grid.
 - From the command palette you can also run `theme modernist`, `theme high-contrast`, `theme catppuccin`, `theme gruvbox` or `theme nord`, and `appearance light`, `appearance dark` or `appearance system`.
 
 When your computer switches between light and dark, the Desktop follows it straight away if Appearance is System.

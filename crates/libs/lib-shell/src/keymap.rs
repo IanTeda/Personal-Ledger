@@ -29,7 +29,7 @@ pub const HELP: &str = "help";
 pub const OPEN_COMMAND_POPUP: &str = "open_command_popup";
 pub const SEARCH: &str = "search";
 pub const TOGGLE_RAIL: &str = "toggle_rail";
-pub const FOCUS_NEXT: &str = "focus_next";
+pub use lib_viper::keymap::FOCUS_NEXT;
 pub const FOCUS_PREVIOUS: &str = "focus_previous";
 pub const INSERT: &str = "insert";
 pub const DISMISS_TOASTS: &str = "dismiss_toasts";

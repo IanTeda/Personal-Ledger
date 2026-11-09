@@ -15,8 +15,8 @@
 
 use lib_list_cursor::Step;
 use lib_viper::keymap::{
-    ARROW_DOWN, ARROW_UP, Binding, END, HOME, KeyBindingConfig, Keymap, MOVE_DOWN, MOVE_FIRST,
-    MOVE_LAST, MOVE_UP, SELECT,
+    ARROW_DOWN, ARROW_UP, Binding, END, FOCUS_NEXT, HALF_PAGE_DOWN, HALF_PAGE_UP, HOME,
+    KeyBindingConfig, Keymap, MOVE_DOWN, MOVE_FIRST, MOVE_LAST, MOVE_UP, SELECT,
 };
 
 use crate::presenter::{
@@ -95,6 +95,12 @@ pub fn general_keymap(config: &KeyBindingConfig) -> Keymap<GeneralEvent> {
 
 /// Settings › Display's commands, with today's keys: General's, with `enter` and `space` for the
 /// checkbox and `enter` to choose a Colour Theme. None is listed in the palette.
+///
+/// The Colour Theme grid binds the keys that leave it, under the Shell's own command names so one
+/// override moves both: focus `tab` and the half-page moves leave the grid, then go on to the
+/// Shell, which moves the focus or scrolls the page. `shift+tab` is a key the Shell keeps, so no
+/// module sees it; it leaves the grid as the page loses the keyboard. Any other key the grid
+/// doesn't take leaves the grid where it is.
 pub const DISPLAY_BINDINGS: &[Binding<DisplayEvent>] = &[
     Binding::hidden(MOVE_DOWN, "j", DisplayEvent::Move(Step::Next)),
     Binding::hidden(MOVE_UP, "k", DisplayEvent::Move(Step::Prev)),
@@ -106,6 +112,9 @@ pub const DISPLAY_BINDINGS: &[Binding<DisplayEvent>] = &[
     Binding::hidden(CHOICE_RIGHT, "right", DisplayEvent::Change(Step::Next)),
     Binding::hidden(SELECT, "enter", DisplayEvent::Select),
     Binding::hidden(TOGGLE, "space", DisplayEvent::Toggle),
+    Binding::hidden(FOCUS_NEXT, "tab", DisplayEvent::LeaveGrid),
+    Binding::hidden(HALF_PAGE_DOWN, "ctrl+d", DisplayEvent::LeaveGrid),
+    Binding::hidden(HALF_PAGE_UP, "ctrl+u", DisplayEvent::LeaveGrid),
 ];
 
 /// Settings › Display's keymap under `config`'s overrides.
@@ -242,6 +251,9 @@ mod tests {
             ("right", DisplayEvent::Change(Step::Next)),
             ("enter", DisplayEvent::Select),
             ("space", DisplayEvent::Toggle),
+            ("tab", DisplayEvent::LeaveGrid),
+            ("ctrl+d", DisplayEvent::LeaveGrid),
+            ("ctrl+u", DisplayEvent::LeaveGrid),
         ] {
             assert_eq!(keymap.event(chord), Some(event), "{chord}");
         }

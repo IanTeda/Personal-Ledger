@@ -73,8 +73,12 @@ pub enum DisplayEvent {
     Toggle,
     /// `back` (`esc`) in the Colour Theme grid: up to the control above it.
     Back,
-    /// Any other key in the Colour Theme grid leaves it, as a movement the grid doesn't take does.
+    /// Focus `tab` or a half-page move in the Colour Theme grid leaves it, and the key goes on to
+    /// the Shell, which does what it does there.
     LeaveGrid,
+    /// How many Colour Theme cards fit one grid row as the Client lays them out, for `j`/`k`. The
+    /// layout, told outside any input; a count the Presenter already has is not taken.
+    SetGridColumns(usize),
     ChooseDateStyle(Option<DateStyle>),
     ChooseRowDensity(RowDensity),
     ChooseStatusGlyphs(StatusGlyphs),
@@ -239,11 +243,6 @@ impl DisplayPresenter {
         self.output.start_sidebar_minimised = minimised;
     }
 
-    /// How many Colour Theme cards fit one grid row, for `j`/`k`.
-    pub fn set_grid_columns(&mut self, columns: usize) {
-        self.columns = columns.max(1);
-    }
-
     /// Whether the page, not Settings' index, has the keyboard. Arriving puts it on the first
     /// control, and leaving takes it off the controls and the grid; only a change moves it.
     /// Answers whether it changed, so the View redraws only then: the frame tells the page on
@@ -272,11 +271,6 @@ impl DisplayPresenter {
             colour_appearance: self.colour_appearance,
         }
     }
-
-    /// Whether the Colour Theme grid has the keyboard.
-    pub fn in_grid(&self) -> bool {
-        self.grid.is_some()
-    }
 }
 
 impl Presenter for DisplayPresenter {
@@ -304,6 +298,7 @@ impl Presenter for DisplayPresenter {
                 self.field = Some(DISPLAY_FIELD_COUNT - 1);
             }
             DisplayEvent::LeaveGrid => self.grid = None,
+            DisplayEvent::SetGridColumns(columns) => self.columns = columns.max(1),
             DisplayEvent::ChooseDateStyle(style) => self.choose_date_style(style, router),
             DisplayEvent::ChooseRowDensity(density) => self.choose_row_density(density, router),
             DisplayEvent::ChooseStatusGlyphs(glyphs) => self.choose_status_glyphs(glyphs, router),
@@ -467,7 +462,8 @@ impl Presenter for DisplayPresenter {
 
     /// Whether Display takes `event` as things stand, so a key it declines goes on to the frame.
     /// The grid declines `h` in its first column, so the frame's `h` steps out to the index, and
-    /// `space`, which leaves it.
+    /// `space`, which it gives no meaning to. A grid column count it already has is declined, so
+    /// the Client, which tells it on every draw, redraws only on a change.
     fn takes(&self, event: &DisplayEvent) -> bool {
         if event.is_key() {
             return match (self.grid, self.field) {
@@ -482,6 +478,7 @@ impl Presenter for DisplayPresenter {
         }
         match event {
             DisplayEvent::Back | DisplayEvent::LeaveGrid => self.grid.is_some(),
+            DisplayEvent::SetGridColumns(columns) => (*columns).max(1) != self.columns,
             _ => true,
         }
     }
@@ -808,7 +805,7 @@ mod tests {
             back_chord: "esc".to_string(),
         });
         display.configure(device, DisplaySettings::default());
-        display.set_grid_columns(3);
+        send(&mut display, [DisplayEvent::SetGridColumns(3)]);
         display
     }
 
@@ -1147,6 +1144,43 @@ mod tests {
         let view = display.view_model();
         assert_eq!((view.field, view.grid), (Some(DISPLAY_FIELD_SIDEBAR), None));
         assert!(!display.takes(&DisplayEvent::LeaveGrid));
+    }
+
+    #[test]
+    fn tab_and_the_half_page_moves_leave_the_grid_only_while_it_has_the_keyboard() {
+        let (_, mut display) = writable();
+        display.set_page_focused(true);
+        let keymap = display_keymap(&KeyBindingConfig::default());
+        let leaving = ["tab", "ctrl+d", "ctrl+u"].map(|chord| keymap.event(chord));
+        assert!(
+            leaving
+                .iter()
+                .all(|event| *event == Some(DisplayEvent::LeaveGrid)),
+            "{leaving:?}"
+        );
+        assert!(
+            !display.takes(&DisplayEvent::LeaveGrid),
+            "on a control the key is the Shell's alone"
+        );
+
+        send(&mut display, [DOWN; 4]);
+        assert!(display.takes(&DisplayEvent::LeaveGrid));
+        send(&mut display, [DisplayEvent::LeaveGrid]);
+        let view = display.view_model();
+        assert_eq!((view.field, view.grid), (None, None));
+    }
+
+    #[test]
+    fn a_grid_column_count_it_already_has_is_not_taken() {
+        let (_, mut display) = writable();
+
+        assert!(!display.takes(&DisplayEvent::SetGridColumns(3)));
+        assert!(display.takes(&DisplayEvent::SetGridColumns(1)));
+        send(&mut display, [DisplayEvent::SetGridColumns(1)]);
+        assert!(
+            !display.takes(&DisplayEvent::SetGridColumns(0)),
+            "no room for a card still lays out one column"
+        );
     }
 
     #[test]

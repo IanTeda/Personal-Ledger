@@ -23,11 +23,13 @@ use crate::{
 use gpui::{App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, Subscription};
 use lib_list_cursor::Step;
 use lib_settings::{
-    ColourChoice, DeviceConfiguration, DisplayOutput, DisplaySettings, GeneralEvent,
+    ColourChoice, DeviceConfiguration, DisplayEvent, DisplayOutput, DisplaySettings, GeneralEvent,
     GeneralSettings, LedgerSummaries, PageSummary, ScopeFacts, SettingsFrameEvent,
     SettingsFramePresenter, SettingsFrameSetup, SettingsFrameViewModel, SummarySources, ThisDevice,
     TracingLevel, TracingLog,
-    keymap::{general_keymap, ledger_keymap, settings_frame_keymap, tracing_keymap},
+    keymap::{
+        display_keymap, general_keymap, ledger_keymap, settings_frame_keymap, tracing_keymap,
+    },
     summarise,
 };
 use lib_viper::dialog::DialogKeys;
@@ -105,9 +107,11 @@ impl SettingsView {
                 presenter.set_keymap(general_keymap(config), back_chord(config));
             });
         });
-        self.pages
-            .display
-            .update(cx, |page, _| page.set_keymaps(config, back_chord(config)));
+        self.pages.display.update(cx, |page, cx| {
+            page.update_presenter(cx, |presenter| {
+                presenter.set_keymap(display_keymap(config), back_chord(config));
+            });
+        });
         self.pages.tracing.update(cx, |page, cx| {
             page.update_presenter(cx, |presenter| {
                 presenter.set_keymap(
@@ -245,7 +249,7 @@ impl SettingsView {
         let general = self.pages.general.read(cx).presenter();
         let (general, device, locale) =
             (general.settings(), general.this_device(), general.locale());
-        let display = self.pages.display.read(cx).settings();
+        let display = self.pages.display.read(cx).presenter().settings();
         let version = self.pages.about.read(cx).view_model().version;
         let sources = SummarySources {
             general,
@@ -403,30 +407,20 @@ impl SettingsView {
     // The interface `Root` forwards to (ADR-0037)
     // -----------------------------------------------------------------------------------------
 
-    /// Settings' keys at the key route's module-keymap step, by `chord` (`keystroke` its last key),
-    /// in order: the focused page's module keymap, then the page's own keys (Display's controls and
-    /// Colour Theme grid, Tracing's, General's), then the frame's keymap. The page goes first, so a
-    /// page's `h`/`l` win over the frame's `h`. Not while the page picker is open, whose keys
-    /// [`Self::key_ahead`] reads in its mode.
-    pub fn module_key(
-        &mut self,
-        chord: &str,
-        keystroke: &Keystroke,
-        cx: &mut Context<'_, Self>,
-    ) -> bool {
+    /// Settings' keys at the key route's module-keymap step, by `chord`, in order: the focused
+    /// page's module keymap, then the frame's keymap. The page goes first, so a page's `h`/`l` win
+    /// over the frame's `h`. Not while the page picker is open, whose keys [`Self::key_ahead`]
+    /// reads in its mode.
+    pub fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {
         if self.frame.picker_open() {
             return false;
         }
         self.sync_frame(cx);
-        if let Some(page) = self.focused_page() {
-            // A page's own keys read one key at a time, with no `Ctrl`, `Alt` or `Cmd` (ADR-0037).
-            let modifiers = &keystroke.modifiers;
-            let plain =
-                !chord.contains(' ') && !(modifiers.control || modifiers.alt || modifiers.platform);
-            if page.module_key(chord, cx) || (plain && page.key_ahead(keystroke, cx)) {
-                cx.notify();
-                return true;
-            }
+        if let Some(page) = self.focused_page()
+            && page.module_key(chord, cx)
+        {
+            cx.notify();
+            return true;
         }
         self.frame_key(chord, cx)
     }
@@ -618,21 +612,23 @@ impl SettingsView {
 
     /// The Display output the Views draw with, which the Display page's Presenter holds.
     pub fn display_output(&self, cx: &App) -> DisplayOutput {
-        self.pages.display.read(cx).output()
+        self.pages.display.read(cx).presenter().output()
     }
 
     /// Start Sidebar minimised as the state file remembered it, at launch.
     pub fn set_start_sidebar_minimised(&mut self, minimised: bool, cx: &mut Context<'_, Self>) {
         self.pages.display.update(cx, |page, cx| {
-            page.set_start_sidebar_minimised(minimised, cx)
+            page.update_presenter(cx, |presenter| {
+                presenter.set_start_sidebar_minimised(minimised);
+            });
         });
     }
 
     /// `theme` or `appearance` from the palette, saved and applied as Display's own choice is.
     pub fn choose_colour(&mut self, colour: ColourChoice, cx: &mut Context<'_, Self>) {
-        self.pages
-            .display
-            .update(cx, |page, cx| page.choose_colour(colour, cx));
+        self.pages.display.update(cx, |page, cx| {
+            page.send(DisplayEvent::ChooseColour(colour), cx)
+        });
     }
 
     // -----------------------------------------------------------------------------------------
@@ -652,9 +648,9 @@ impl SettingsView {
         self.pages.general.update(cx, |page, cx| {
             page.update_presenter(cx, |presenter| presenter.configure(for_general, general));
         });
-        self.pages
-            .display
-            .update(cx, |page, cx| page.configure(device, display, cx));
+        self.pages.display.update(cx, |page, cx| {
+            page.update_presenter(cx, |presenter| presenter.configure(device, display));
+        });
     }
 
     pub fn set_this_device(&mut self, device: ThisDevice, cx: &mut Context<'_, Self>) {

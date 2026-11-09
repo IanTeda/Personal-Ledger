@@ -1,198 +1,129 @@
-//! Settings › Display's View: `lib-settings`' Display Presenter in a gpui Entity, which the
-//! Settings View hosts as any other page. It looks up each key the Shell passes on in Display's
-//! keymap, turns clicks into events through `PageClicks`, tells the Presenter how
-//! many Colour Theme cards fit a row, and draws the view model (`render.rs`, `colour_theme.rs`).
-//! The date style, Colour Theme and Appearance are written through the Presenter's
-//! `DeviceConfiguration` (`super::device`); the Display output reaches the Shell as
-//! `ViewEvent::DisplayChanged` and a saved colour is applied by the page's Router
-//! (`super::router`). Each key and click is one input (`crate::input::send`).
+//! Settings › Display's View: `lib-settings`' Display Presenter is the [`PageView`] the generic
+//! `ModulePage` hosts (ADR-0056), which the Settings View hosts as any other page. It names the
+//! page's Router, tells the Presenter how many Colour Theme cards fit a row ([`PageView::framed`]),
+//! and draws the view model (`render.rs`, `colour_theme.rs`); the keymap, the take, send and handle
+//! path and the clicks' path are the generic page's. The date style, Colour Theme and Appearance
+//! are written through the Presenter's `DeviceConfiguration` (`super::device`); the Display output
+//! reaches the Shell as `ViewEvent::DisplayChanged` and a saved colour is applied by the page's
+//! Router (`super::router`). Each key and click is one input (`crate::input::send`).
 
 pub mod colour_theme;
 pub(crate) mod render;
 
 use std::rc::Rc;
 
-use gpui::{App, Context, EventEmitter, Keystroke};
+use gpui::{AnyElement, Context, Window};
+use lib_database::Domain;
 use lib_settings::keymap::display_keymap;
 use lib_settings::{
-    ColourChoice, DeviceConfiguration, DisplayEvent, DisplayOutput, DisplayPresenter,
-    DisplaySettings, DisplaySetup, DisplayViewModel,
+    DeviceConfiguration, DisplayEvent, DisplayPresenter, DisplaySetup, DisplayViewModel,
 };
-use lib_shell::Hint;
 use lib_viper::keymap::KeyBindingConfig;
-use lib_viper::presenter::{PagePresenter, Presenter};
 
-use crate::{
-    navigation::movement::Movement,
-    settings::{
-        SettingsPage,
-        pages::{Page, PageFrame, PageRowClicked},
-        router::DeviceRouter,
-    },
-    shell::view::{page_clicks::PresenterPage, statusline::PageStatus},
-    view::event::ViewEvent,
-};
+use crate::settings::SettingsPage;
+use crate::settings::pages::PageFrame;
+use crate::settings::router::DeviceRouter;
+use crate::shell::view::module_page::{ModulePage, PageDraw, PageView, SettingsPageView};
+use crate::shell::view::statusline::PageStatus;
+use crate::view::help::HelpGroup;
 
-impl EventEmitter<ViewEvent> for DisplayPage {}
+/// The Display page: the Presenter in the generic page Entity. The Presenter holds the Display
+/// output, the Colour Theme and Appearance and the keyboard focus on the controls and the Colour
+/// Theme grid.
+pub type DisplayPage = ModulePage<DisplayPresenter>;
 
-/// The page has no rows, so it never emits a row click.
-impl EventEmitter<PageRowClicked> for DisplayPage {}
-
-/// The Display page: its Presenter, which holds the Display output, the Colour Theme and
-/// Appearance and the keyboard focus on the controls and the Colour Theme grid.
-pub struct DisplayPage {
-    presenter: DisplayPresenter,
+/// Display writing to `device` under `config`'s keys, with the Shell's `back` on `back_chord`.
+/// Display reads no Ledger, so it stands before one is open.
+pub fn display_page(
+    device: Rc<dyn DeviceConfiguration>,
+    config: &KeyBindingConfig,
+    back_chord: String,
+    cx: &mut Context<'_, DisplayPage>,
+) -> DisplayPage {
+    let presenter = DisplayPresenter::new(DisplaySetup {
+        device,
+        keymap: display_keymap(config),
+        back_chord,
+    });
+    ModulePage::detached(presenter, (), cx)
 }
 
-impl DisplayPage {
-    /// Display writing to `device` under `config`'s keys, with the Shell's `back` on
-    /// `back_chord`.
-    pub fn new(
-        device: Rc<dyn DeviceConfiguration>,
-        config: &KeyBindingConfig,
-        back_chord: String,
-    ) -> Self {
-        Self {
-            presenter: DisplayPresenter::new(DisplaySetup {
-                device,
-                keymap: display_keymap(config),
-                back_chord,
-            }),
+impl PageView for DisplayPresenter {
+    type Setup = ();
+    type Widgets = ();
+    type Before = ();
+
+    /// Display reads Configuration, not the Ledger.
+    const REPAINTS: &'static [Domain] = &[];
+
+    /// The page has no selection, so a movement its keymap doesn't bind (`Ctrl-d` on a control,
+    /// `G`) scrolls the Settings body, the Colour Theme grid keeping the keyboard.
+    const FRAME_SCROLLS: bool = true;
+
+    fn with_router<R>(
+        presenter: &mut Self,
+        _setup: &(),
+        cx: &mut Context<'_, DisplayPage>,
+        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
+    ) -> R {
+        handle(presenter, &mut DeviceRouter { cx })
+    }
+
+    /// The page body's width sets how many Colour Theme cards fit a row.
+    fn framed(frame: PageFrame) -> Option<DisplayEvent> {
+        Some(DisplayEvent::SetGridColumns(colour_theme::grid_columns(
+            frame.body_width,
+        )))
+    }
+
+    /// The grid's focus `tab` and half-page moves leave it, then the Shell moves the focus or
+    /// scrolls the page.
+    fn passes_on(event: &DisplayEvent) -> bool {
+        matches!(event, DisplayEvent::LeaveGrid)
+    }
+
+    /// `Esc` leaves the Colour Theme grid for the control above it. With the grid unfocused it is
+    /// left to Settings, which steps back to the index.
+    fn escape(view: &DisplayViewModel) -> Option<DisplayEvent> {
+        view.grid.is_some().then_some(DisplayEvent::Back)
+    }
+
+    fn render(
+        view: &DisplayViewModel,
+        page: PageDraw<'_, Self>,
+        _window: &mut Window,
+        cx: &mut Context<'_, DisplayPage>,
+    ) -> AnyElement {
+        render::page(view, page.clicks, cx)
+    }
+
+    /// The keys the status line shows: the grid's while it has the keyboard, else the controls'.
+    fn status(view: &DisplayViewModel) -> PageStatus {
+        PageStatus {
+            hints: view.hints.clone(),
+            right: crate::settings::scope_note(SettingsPage::Display),
         }
     }
 
-    /// The page's keys under `config`'s overrides.
-    pub fn set_keymaps(&mut self, config: &KeyBindingConfig, back_chord: String) {
-        self.presenter
-            .set_keymap(display_keymap(config), back_chord);
-    }
-
-    /// Writes to `device` from now on, showing `settings` as start-up read them.
-    pub fn configure(
-        &mut self,
-        device: Rc<dyn DeviceConfiguration>,
-        settings: DisplaySettings,
-        cx: &mut Context<'_, Self>,
-    ) {
-        self.presenter.configure(device, settings);
-        cx.notify();
-    }
-
-    /// Start Sidebar minimised as the state file remembered it.
-    pub fn set_start_sidebar_minimised(&mut self, minimised: bool, cx: &mut Context<'_, Self>) {
-        self.presenter.set_start_sidebar_minimised(minimised);
-        cx.notify();
-    }
-
-    /// `theme` or `appearance` from the palette, written as Display writes it, inside the
-    /// command's input.
-    pub fn choose_colour(&mut self, colour: ColourChoice, cx: &mut Context<'_, Self>) {
-        self.send(DisplayEvent::ChooseColour(colour), cx);
-    }
-
-    pub fn output(&self) -> DisplayOutput {
-        self.presenter.output()
-    }
-
-    /// The settings as they stand, which the X-Large index pane quotes.
-    pub fn settings(&self) -> DisplaySettings {
-        self.presenter.settings()
-    }
-
-    pub fn view_model(&self) -> DisplayViewModel {
-        self.presenter.view_model()
-    }
-
-    /// A key, click or command as one input, committed once it is handled; one sent inside
-    /// another input (the palette's) runs in it.
-    fn send(&mut self, event: DisplayEvent, cx: &mut Context<'_, Self>) {
-        crate::input::join_or_send(cx, |cx| self.handle(event, cx));
-    }
-
-    fn handle(&mut self, event: DisplayEvent, cx: &mut Context<'_, Self>) {
-        self.presenter.handle(event, &mut DeviceRouter { cx });
-        cx.notify();
-    }
-
-    /// Takes the keyboard off the Colour Theme grid, if it has it.
-    fn leave_grid(&mut self, cx: &mut Context<'_, Self>) {
-        if self.presenter.in_grid() {
-            self.send(DisplayEvent::LeaveGrid, cx);
-        }
-    }
-}
-
-/// The page's clicks on its options, its checkbox and its Colour Theme cards.
-impl PresenterPage<DisplayEvent> for DisplayPage {
-    fn send(&mut self, event: DisplayEvent, cx: &mut Context<'_, Self>) {
-        DisplayPage::send(self, event, cx);
-    }
-}
-
-impl Page for DisplayPage {
-    const PAGE: SettingsPage = SettingsPage::Display;
-
-    /// The keymap's chords while a control or the grid has the keyboard, ahead of the frame's, so
-    /// the page's `h`/`l` win. The grid declines `h` in its first column, which the frame's `h`
-    /// then takes back to the index.
-    fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {
-        let Some(event) = self.presenter.keymap().event(chord) else {
-            return false;
-        };
-        if !self.presenter.takes(&event) {
-            return false;
-        }
-        self.send(event, cx);
-        true
-    }
-
-    /// Any other plain key the grid doesn't take leaves it, and goes on (`tab` to the next zone).
-    fn key_ahead(&mut self, _keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
-        self.leave_grid(cx);
-        false
-    }
-
-    /// A movement the grid did not take (`Ctrl-d`/`Ctrl-u`) leaves it, as any other key does; the
-    /// page has no selection, so Settings scrolls.
-    fn apply_movement(&mut self, _movement: Movement, cx: &mut Context<'_, Self>) -> bool {
-        self.leave_grid(cx);
-        false
-    }
-
-    /// `Esc` leaves the Colour Theme grid for the control above it. `false` when the grid has no
-    /// focus, so the page is left to Settings.
-    fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
-        if !self.presenter.takes(&DisplayEvent::Back) {
-            return false;
-        }
-        cx.emit(ViewEvent::SetStatus(None));
-        self.send(DisplayEvent::Back, cx);
-        true
+    /// The `?` cheat sheet's keys: the controls', then the grid's own, whichever has the keyboard.
+    fn help(view: &DisplayViewModel) -> Option<HelpGroup> {
+        Some(HelpGroup {
+            heading: crate::msg::desktop_help_settings_label(),
+            keys: view
+                .help
+                .iter()
+                .map(|hint| (hint.action.clone(), hint.chord.clone()))
+                .collect(),
+        })
     }
 
     /// Focus arriving puts the keyboard on the first control; focus leaving, for the index or
     /// another page, takes it off the controls and the grid.
-    fn set_page_focused(&mut self, focused: bool, cx: &mut Context<'_, Self>) {
-        if self.presenter.set_page_focused(focused) {
-            cx.notify();
-        }
+    fn focus_changed(&mut self, focused: bool) -> bool {
+        self.set_page_focused(focused)
     }
+}
 
-    /// The page body's width sets how many Colour Theme cards fit a row.
-    fn set_frame(&mut self, frame: PageFrame, _cx: &mut Context<'_, Self>) {
-        self.presenter
-            .set_grid_columns(colour_theme::grid_columns(frame.body_width));
-    }
-
-    /// The `?` cheat sheet's keys: the controls', then the grid's own.
-    fn hints(&self, _cx: &App) -> Vec<Hint> {
-        self.presenter.view_model().help
-    }
-
-    fn page_status(&self, _cx: &App) -> Option<PageStatus> {
-        Some(PageStatus {
-            hints: self.presenter.view_model().hints,
-            right: crate::settings::scope_note(Self::PAGE),
-        })
-    }
+impl SettingsPageView for DisplayPresenter {
+    const PAGE: SettingsPage = SettingsPage::Display;
 }

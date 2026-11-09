@@ -305,10 +305,7 @@ impl KeyRoute for Keys<'_, '_> {
 
     fn module(&mut self, chord: &str) -> bool {
         let shell = &mut *self.shell;
-        shell.view_has_keys()
-            && shell
-                .active_view_entity(self.cx)
-                .module_key(chord, self.keystroke, self.cx)
+        shell.view_has_keys() && shell.active_view_entity(self.cx).module_key(chord, self.cx)
     }
 
     /// The View's keys that sit ahead of the Shell's fallback (a Budgets Plan cell's typing, the

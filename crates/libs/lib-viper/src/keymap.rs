@@ -209,6 +209,10 @@ pub const MOVE_DOWN: &str = "move_down";
 pub const MOVE_UP: &str = "move_up";
 pub const MOVE_FIRST: &str = "move_first";
 pub const MOVE_LAST: &str = "move_last";
+/// The Shell's focus `tab`, which it falls back on: a module binds its own `tab` under this name
+/// only where the key goes on to the Shell after it (the Colour Theme grid's), so one override moves
+/// both.
+pub const FOCUS_NEXT: &str = "focus_next";
 pub const HALF_PAGE_DOWN: &str = "half_page_down";
 pub const HALF_PAGE_UP: &str = "half_page_up";
 /// The arrow, Home/End and Page keys' commands: each moves as the `move_*` command beside it

@@ -7,8 +7,8 @@
 //! The page never counts or announces a write: each input's `send` announces what its commit
 //! names (ADR-0055), and the page repaints on the domains in [`PageView::REPAINTS`].
 //!
-//! It takes no leftover-key handler, `key_ahead` or `search_key`, the pre-module key paths #1079 retires: a
-//! page types text through `PagePresenter::typed` and reports a mode of its own through
+//! It takes no leftover-key handler, `key_ahead` or `search_key`, the pre-module key paths #1079
+//! retires: a page types text through `PagePresenter::typed` and reports a mode of its own through
 //! `PagePresenter::mode`, which the page turns into `EnterMode` and `ExitMode` around each handle
 //! ([`ModulePage::mode_key`]). It also serves the main Views' methods `ActiveViewEntity` forwards
 //! to (`on_enter`, `start_search`, the `?` Help group), with [`PageView`]'s hooks around a handle
@@ -31,7 +31,7 @@ use crate::announcer::{Announcer, LedgerChanged, notify_on};
 use crate::navigation::chord::chord;
 use crate::navigation::movement::Movement;
 use crate::settings::SettingsPage;
-use crate::settings::pages::{Page, PageRowClicked};
+use crate::settings::pages::{Page, PageFrame, PageRowClicked};
 use crate::view::event::{Reveal, ViewEvent, ViewMode};
 use crate::view::help::HelpGroup;
 
@@ -95,6 +95,22 @@ pub trait PageView: PagePresenter + Sized + 'static {
     /// The event the page is sent as it becomes the destination, after its widget state is reset.
     fn entered() -> Option<Self::Event> {
         None
+    }
+
+    /// The event giving the page the space it is drawn in (Display's grid columns), sent as the
+    /// Settings View hands it its frame, which can be every draw. It is layout, not an input, so
+    /// nothing commits; the Presenter declines a value it already has, so the page redraws only on
+    /// a change. `None` for a page the frame changes nothing on.
+    fn framed(_frame: PageFrame) -> Option<Self::Event> {
+        None
+    }
+
+    /// Whether a key that sent `event` goes on to the Shell after the page handled it, which then
+    /// does what the key does there: the Colour Theme grid's focus `tab` and half-page moves leave
+    /// the grid, then move the focus or scroll. `false` for every event of a page that keeps the
+    /// keys it takes.
+    fn passes_on(_event: &Self::Event) -> bool {
+        false
     }
 
     /// The event the page is sent when a domain in [`Self::REPAINTS`] changes, ahead of its
@@ -289,10 +305,12 @@ impl<P: PageView> ModulePage<P> {
     }
 
     /// A key the page's keymap binds, by its `chord`: the event it sends, unless the page doesn't
-    /// take it now. The Shell has already taken its own keys.
+    /// take it now. The Shell has already taken its own keys. Whether the key stops here: one whose
+    /// event [`PageView::passes_on`] goes on to the Shell's fallback even once taken.
     pub fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {
         let event = self.presenter.keymap().event(chord);
-        self.take(event, cx)
+        let passes_on = event.as_ref().is_some_and(P::passes_on);
+        self.take(event, cx) && !passes_on
     }
 
     /// A palette Command, by its keymap `command` name: the event its key sends.
@@ -340,6 +358,16 @@ impl<P: PageView> ModulePage<P> {
     /// The `?` Help Dialog's group for the page.
     pub fn help_group(&self) -> Option<HelpGroup> {
         P::help(&self.view_model())
+    }
+
+    /// Hands the Presenter [`PageView::framed`]'s event for `frame`, if it takes it. Not an input:
+    /// the frame is layout, and it is told outside any input (as the Settings View draws).
+    fn framed(&mut self, frame: PageFrame, cx: &mut Context<'_, Self>) {
+        if let Some(event) = P::framed(frame).filter(|event| self.presenter.takes(event))
+            && let Some(followed) = self.handle(event, cx)
+        {
+            cx.emit(followed);
+        }
     }
 
     /// The page has just become the destination: its widget state starts afresh (scrolled to the
@@ -553,13 +581,26 @@ impl<P: SettingsPageView> Page for ModulePage<P> {
         }
     }
 
+    fn set_frame(&mut self, frame: PageFrame, cx: &mut Context<'_, Self>) {
+        self.framed(frame, cx);
+    }
+
     fn heading_meta(&self, cx: &App) -> AnyElement {
         P::heading_meta(&self.view_model(), cx)
             .unwrap_or_else(|| crate::settings::scope_note(P::PAGE).into_any_element())
     }
 
+    /// The `?` cheat sheet's keys: the page's [`PageView::help`] group when it gives one (Display's
+    /// controls and grid both), else what its status line shows.
     fn hints(&self, _cx: &App) -> Vec<Hint> {
-        self.page_status().hints
+        match self.help_group() {
+            Some(group) => group
+                .keys
+                .into_iter()
+                .map(|(action, chord)| Hint::new(chord, action))
+                .collect(),
+            None => self.page_status().hints,
+        }
     }
 
     fn page_status(&self, _cx: &App) -> Option<PageStatus> {
