@@ -14,7 +14,7 @@ mod facts;
 mod import;
 mod picker;
 
-use gpui::{App, Context};
+use gpui::Context;
 use lib_documents::presenter::{
     AcceptAllPresenter, DeleteDocumentPresenter, DialogPorts, DocumentFormPresenter,
     FactsFormPresenter, ImportPresenter, LinkPickerPresenter, Purpose,
@@ -29,7 +29,7 @@ use crate::shell::view::dialog_entity::{DialogView, ModuleDialog};
 
 /// Opens `which`'s Dialog over the page on the page's `ports`, its hints under `keys`. Returns
 /// `false`, opening nothing, when the Document it names is gone. A confirm's outcome lands on the
-/// page through [`DocumentsPage::dialog_landed`].
+/// page through [`DocumentsPage::landing`].
 pub(crate) fn open(
     which: Which,
     ports: DialogPorts,
@@ -60,11 +60,6 @@ fn host<P: DialogView<Outcome = DocumentsOutcome>>(
     let Some(presenter) = presenter else {
         return false;
     };
-    let page = cx.weak_entity();
-    let landed = move |outcome, cx: &mut App| {
-        // A page that has gone has nothing to land on.
-        let _ = page.update(cx, |page, cx| page.dialog_landed(Some(outcome), cx));
-    };
-    ModuleDialog::open(cx, presenter, landed);
+    ModuleDialog::open(cx, presenter, DocumentsPage::landing(cx));
     true
 }

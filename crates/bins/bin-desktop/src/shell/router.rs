@@ -81,6 +81,7 @@ use gpui::{
     App, AppContext as _, Context, Entity, FocusHandle, Focusable, ScrollHandle, Subscription, Task,
 };
 
+use lib_documents::presenter::DocumentsPageEvent;
 use lib_shell::{NavInput, ToastInput};
 
 use crate::view::active::ActiveViewEntity;
@@ -365,9 +366,9 @@ impl Root {
     ) {
         self.documents_state = Some((mode, scope, sort));
         if let Some(open) = &self.open {
-            open.views
-                .documents
-                .update(cx, |page, cx| page.set_persisted(mode, scope, sort, cx));
+            open.views.documents.update(cx, |page, cx| {
+                page.send(DocumentsPageEvent::Restore { mode, scope, sort }, cx);
+            });
         }
     }
 
@@ -378,7 +379,7 @@ impl Root {
         cx: &App,
     ) -> Option<(DocumentsMode, LibraryScope, LibrarySort)> {
         let open = self.open.as_ref()?;
-        Some(open.views.documents.read(cx).persisted())
+        Some(open.views.documents.read(cx).presenter().persisted())
     }
 
     /// Files dropped anywhere on the window land in the Inbox like `Import…`, but the page stays
@@ -389,9 +390,13 @@ impl Root {
             self.refuse_without_ledger();
             return;
         };
-        open.views
-            .documents
-            .update(cx, |page, cx| page.drop_paths(paths, cx));
+        open.views.documents.update(cx, |page, cx| {
+            let typed = paths
+                .iter()
+                .map(|path| path.display().to_string())
+                .collect();
+            page.send(DocumentsPageEvent::Drop(typed), cx);
+        });
     }
 
     /// The last-visited Settings page, for persistence.

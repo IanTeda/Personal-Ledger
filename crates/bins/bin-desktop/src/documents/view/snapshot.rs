@@ -73,7 +73,7 @@ impl DocumentsPage {
             selected_file: selected.as_ref().map(Document::file_name),
             selected_links: selected.as_ref().map_or(0, |document| document.links.len()),
             selected_chips: presenter.selected_chips(),
-            selected_flag: presenter.view_model().library.and_then(|library| {
+            selected_flag: self.view_model().library.and_then(|library| {
                 match library.rows.get(library.selected)?.tail.clone() {
                     RowTail::Flag { text, red } => Some((text, red)),
                     RowTail::Type(_) => None,

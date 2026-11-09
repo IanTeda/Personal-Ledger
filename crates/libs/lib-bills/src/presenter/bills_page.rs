@@ -185,9 +185,6 @@ impl Presenter for BillsPagePresenter {
 
     fn handle(&mut self, event: BillsPageEvent, router: &mut Self::Router<'_>) {
         self.catch_up();
-        if let Some(tab) = event.tab().filter(|tab| *tab != self.tab) {
-            self.show_tab(tab);
-        }
         match event {
             BillsPageEvent::Move(step) => match self.tab {
                 BillsTab::Schedule => {
@@ -285,6 +282,14 @@ impl PagePresenter for BillsPagePresenter {
             BillsTab::Schedule => &self.schedule_keys,
             BillsTab::Planner => &self.planner_keys,
         }
+    }
+
+    /// A palette Command of the other tab shows that tab first.
+    fn shows(&self, event: &BillsPageEvent) -> Option<BillsPageEvent> {
+        event
+            .tab()
+            .filter(|tab| *tab != self.tab)
+            .map(BillsPageEvent::ShowTab)
     }
 
     /// An open scope select's list, which takes the moves up and down and `select` until it
@@ -756,6 +761,9 @@ mod tests {
             .keymap()
             .event_for(PAY)
             .expect("the palette finds Pay by name");
+        let shown = page.presenter.shows(&pay).expect("Pay is the Schedule's");
+        page.send(shown);
+        assert_eq!(page.presenter.shows(&pay), None, "the Schedule shows");
         page.send(pay);
 
         let view = page.view();

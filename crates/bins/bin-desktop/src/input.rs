@@ -364,8 +364,10 @@ mod tests {
         let document_types = lib_documents::keymap::DOCUMENT_TYPES_PAGE_BINDINGS
             .iter()
             .map(|binding| (binding.command, binding.chord));
+        // The Shell keeps `/` and sends the page's `search` by name.
         let documents = lib_documents::keymap::DOCUMENTS_PAGE_BINDINGS
             .iter()
+            .filter(|binding| binding.command != lib_viper::keymap::SEARCH)
             .map(|binding| (binding.command, binding.chord));
         let institutions = lib_institutions::keymap::INSTITUTIONS_PAGE_BINDINGS
             .iter()

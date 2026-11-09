@@ -15,7 +15,7 @@ use lib_config::KeyBindingConfig;
 use lib_list_cursor::Step;
 use lib_viper::keymap::{
     ARROW_DOWN, ARROW_UP, Binding, DELETE, EDIT, END, HALF_PAGE_DOWN, HALF_PAGE_UP, HOME, Keymap,
-    MOVE_DOWN, MOVE_FIRST, MOVE_LAST, MOVE_UP, NEW, PAGE_DOWN, PAGE_UP, SELECT,
+    MOVE_DOWN, MOVE_FIRST, MOVE_LAST, MOVE_UP, NEW, PAGE_DOWN, PAGE_UP, SEARCH, SELECT,
 };
 
 use crate::msg;
@@ -88,6 +88,8 @@ pub const DOCUMENTS_PAGE_BINDINGS: &[Binding<DocumentsPageEvent>] = &[
         DocumentsPageEvent::Move(Step::HalfPageUp),
     ),
     Binding::hidden(SELECT, "enter", DocumentsPageEvent::Select),
+    // The Shell keeps `/`, sending this by name, so the legend shows the chord bound.
+    Binding::hidden(SEARCH, "/", DocumentsPageEvent::StartSearch),
     Binding::hidden(LINK, "l", DocumentsPageEvent::Link),
     Binding::hidden(ARROW_RIGHT, "right", DocumentsPageEvent::FocusList),
     Binding::hidden(FOCUS_INDEX, "h", DocumentsPageEvent::FocusIndex),

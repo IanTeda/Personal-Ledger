@@ -1,329 +1,165 @@
-//! The Documents page's View: the `lib-documents` page Presenter in a gpui Entity, which the Shell
-//! hosts as the Documents destination (`docs/ux/desktop-mockups/04-documents/`). It looks up each
-//! key the Shell passes on, as chord text, in the Documents keymap and sends the event when the
-//! Presenter has a use for it in the zone and mode showing, turns clicks into events, draws the
-//! view model (`super::render`). Its Dialogs open as Entities in the Dialog host
-//! (`super::dialog`), and what each asks of the page as it closes comes back through
-//! [`DocumentsPage::dialog_landed`]. Each key and click is one input (`crate::input::send`), which
-//! commits what it wrote.
+//! The Documents page's View: `lib-documents`' page Presenter's [`PageView`], which the generic
+//! `ModulePage` hosts as the Documents destination (ADR-0056,
+//! `docs/ux/desktop-mockups/04-documents/`). The keymaps (the Library's, the Inbox's and the
+//! Search's), the Search as the page's mode, the mode a palette Command shows first and every event
+//! are the Presenter's; it draws the view model (`super::render`). Its Dialogs open as
+//! `ModuleDialog`s in the Dialog host (`super::dialog`), each landing its outcome back on the page.
 //!
-//! The Library's Search is the Shell's Search mode: `/` comes in as [`DocumentsPage::start_search`]
-//! and the typed keys as [`DocumentsPage::search_key`]. The page leaves the mode as the Presenter
-//! closes the Search.
-
-use std::path::PathBuf;
-use std::rc::Rc;
+//! What stays here is gpui's: the Library's and the Inbox's scroll, which [`PageView::after`]
+//! sends back to the top as the mode changes and otherwise onto the selection.
+//!
+//! The rows name records from every domain a Link reaches, and Settings › Documents writes the
+//! Document Types, so the page repaints on a change to any of them.
 
 use gpui::{
-    App, Context, Entity, EventEmitter, Keystroke, ScrollHandle, ScrollStrategy, Subscription,
-    UniformListScrollHandle, Window, prelude::*,
+    AnyElement, App, Context, Entity, ScrollHandle, ScrollStrategy, UniformListScrollHandle,
+    Window, prelude::*,
 };
-use lib_core::{Clock, DateStyle};
+use std::rc::Rc;
+
+use lib_core::Clock;
 use lib_database::Domain;
-use lib_documents::presenter::{DocumentsPageEvent, DocumentsPagePresenter};
-use lib_documents::{
-    DocumentsMode, DocumentsOutcome, LibraryScope, LibrarySort, SharedFiles, SharedRepository,
+use lib_documents::presenter::{
+    DocumentsPageEvent, DocumentsPagePresenter, DocumentsPageViewModel,
 };
+use lib_documents::{DocumentsMode, SharedFiles, SharedRepository};
 use lib_viper::dialog::DialogKeys;
-use lib_viper::keymap::Keymap;
 
 use super::Scrolls;
-use crate::announcer::{Announcer, LedgerChanged};
+use crate::announcer::Announcer;
 use crate::documents::router::PageRouter;
-use crate::navigation::movement::Movement;
-use crate::shell::view::page_clicks::{PageClicks, PresenterPage};
+use crate::shell::view::module_page::{ModulePage, PageDraw, PageView};
 use crate::shell::view::statusline::PageStatus;
-use crate::view::event::{Reveal, ViewEvent, ViewMode};
+use crate::view::event::ViewEvent;
 use crate::view::help::HelpGroup;
 
-impl EventEmitter<ViewEvent> for DocumentsPage {}
+/// The Documents page: its Presenter in the generic page.
+pub type DocumentsPage = ModulePage<DocumentsPagePresenter>;
 
-pub struct DocumentsPage {
-    presenter: DocumentsPagePresenter,
-    keymap: Keymap<DocumentsPageEvent>,
-    /// Whether the View zone has focus, which the index rail's and the list's focus rings draw
-    /// within. Handed over by the Shell as it draws the page.
-    zone_focused: bool,
+/// The Library's and the Inbox's scroll.
+#[derive(Default)]
+pub struct DocumentsWidgets {
     library_scroll: UniformListScrollHandle,
     inbox_scroll: ScrollHandle,
-    /// The Dialog keymap's chords, which the page's Dialogs' hints show.
-    dialog_keys: DialogKeys,
-    _ledger_changed: Subscription,
 }
 
-impl DocumentsPage {
-    pub fn new(
-        presenter: DocumentsPagePresenter,
-        announcer: &Entity<Announcer>,
-        keymap: Keymap<DocumentsPageEvent>,
-        dialog_keys: DialogKeys,
-        cx: &mut Context<'_, Self>,
-    ) -> Self {
-        // The rows name records from every domain a Link reaches, and Settings › Documents writes
-        // the Document Types: a change to any is redrawn.
-        let _ledger_changed = cx.subscribe(announcer, |_, _, event: &LedgerChanged, cx| {
-            let reads = [
-                Domain::Accounts,
-                Domain::Bills,
-                Domain::DocumentTypes,
-                Domain::Documents,
-                Domain::Inventory,
-                Domain::Payees,
-                Domain::Transactions,
-            ];
-            if reads.iter().any(|domain| event.what.contains(domain)) {
-                cx.notify();
-            }
-        });
-        Self {
-            presenter,
-            keymap,
-            zone_focused: false,
-            library_scroll: UniformListScrollHandle::new(),
-            inbox_scroll: ScrollHandle::new(),
-            dialog_keys,
-            _ledger_changed,
-        }
-    }
+/// The mode and the selected row before a handle, which the scroll follows from.
+#[derive(Default)]
+pub struct DocumentsBefore {
+    mode: DocumentsMode,
+    selected: usize,
+}
 
-    /// A key or click on the page, or the Shell telling it something: `event` as one input,
-    /// committed once it is handled.
-    fn send(&mut self, event: DocumentsPageEvent, cx: &mut Context<'_, Self>) {
-        crate::input::join_or_send(cx, |cx| self.handle(event, cx));
-    }
+impl PageView for DocumentsPagePresenter {
+    /// The Dialog keymap's chords, which the page's Dialogs' hints show.
+    type Setup = DialogKeys;
+    type Widgets = DocumentsWidgets;
+    type Before = DocumentsBefore;
 
-    /// Hands `event` to the Presenter with the Desktop's Router, then brings the Shell's Search
-    /// mode in line with the Presenter's Search, and the scroll with the selection. Inside an input already, as [`Self::send`] or a Dialog's confirm.
-    fn handle(&mut self, event: DocumentsPageEvent, cx: &mut Context<'_, Self>) {
-        let searching = self.presenter.searching();
-        self.handle_quietly(event, cx);
-        match (searching, self.presenter.searching()) {
-            (false, true) => cx.emit(ViewEvent::EnterMode(ViewMode::Search)),
-            (true, false) => cx.emit(ViewEvent::ExitMode),
-            _ => {}
-        }
-    }
+    const REPAINTS: &'static [Domain] = &[
+        Domain::Accounts,
+        Domain::Bills,
+        Domain::DocumentTypes,
+        Domain::Documents,
+        Domain::Inventory,
+        Domain::Payees,
+        Domain::Transactions,
+    ];
 
-    /// [`Self::handle`] without the Search mode: for `/`, whose mode the Shell enters itself.
-    fn handle_quietly(&mut self, event: DocumentsPageEvent, cx: &mut Context<'_, Self>) {
-        let (mode, before) = (self.presenter.mode(), self.presenter.selected());
+    fn with_router<R>(
+        presenter: &mut Self,
+        keys: &DialogKeys,
+        cx: &mut Context<'_, DocumentsPage>,
+        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
+    ) -> R {
         let mut router = PageRouter {
-            ports: self.presenter.dialog_ports(),
-            keys: self.dialog_keys.clone(),
+            ports: presenter.dialog_ports(),
+            keys: keys.clone(),
             cx,
         };
-        self.presenter.handle(event, &mut router);
-        self.follow_selection(mode, before);
-        cx.notify();
+        handle(presenter, &mut router)
+    }
+
+    fn before(
+        &mut self,
+        _event: &DocumentsPageEvent,
+        _widgets: &DocumentsWidgets,
+    ) -> DocumentsBefore {
+        DocumentsBefore {
+            mode: DocumentsPagePresenter::mode(self),
+            selected: self.selected(),
+        }
     }
 
     /// Back to the top as the mode changes; otherwise the selected row scrolled into view, landing
     /// at the edge it came from, as on Transactions.
-    fn follow_selection(&mut self, mode: DocumentsMode, before: usize) {
-        let at = self.presenter.selected();
-        if self.presenter.mode() != mode {
-            self.library_scroll.scroll_to_item(0, ScrollStrategy::Top);
-            self.inbox_scroll.set_offset(gpui::Point::default());
-            return;
+    fn after(&self, before: DocumentsBefore, widgets: &mut DocumentsWidgets) -> Option<ViewEvent> {
+        let (mode, at) = (DocumentsPagePresenter::mode(self), self.selected());
+        if mode != before.mode {
+            widgets
+                .library_scroll
+                .scroll_to_item(0, ScrollStrategy::Top);
+            widgets.inbox_scroll.set_offset(gpui::Point::default());
+            return None;
         }
         match mode {
             DocumentsMode::Library => {
-                let strategy = if at < before {
+                let strategy = if at < before.selected {
                     ScrollStrategy::Top
                 } else {
                     ScrollStrategy::Bottom
                 };
-                self.library_scroll.scroll_to_item(at, strategy);
+                widgets.library_scroll.scroll_to_item(at, strategy);
             }
-            DocumentsMode::Inbox => self.inbox_scroll.scroll_to_item(at),
+            DocumentsMode::Inbox => widgets.inbox_scroll.scroll_to_item(at),
         }
+        None
     }
 
-    /// A Documents Dialog the page opened has closed, inside the input that closed it: `outcome`
-    /// is what it asks of the page, or `None` when it asks nothing but a redraw of what it wrote.
-    pub fn dialog_landed(&mut self, outcome: Option<DocumentsOutcome>, cx: &mut Context<'_, Self>) {
-        match outcome {
-            Some(outcome) => self.handle(DocumentsPageEvent::DialogClosed(outcome), cx),
-            None => {
-                cx.notify();
-            }
-        }
-    }
-
-    /// Files dropped anywhere on the window: into the Inbox, the page staying where it is.
-    pub fn drop_paths(&mut self, paths: &[PathBuf], cx: &mut Context<'_, Self>) {
-        let typed = paths
-            .iter()
-            .map(|path| path.display().to_string())
-            .collect();
-        self.send(DocumentsPageEvent::Drop(typed), cx);
-    }
-
-    /// How many Documents wait in the Inbox, for the rail's badge.
-    pub fn inbox_count(&self) -> usize {
-        self.presenter.inbox_count()
-    }
-
-    /// The mode, scope and sort that persist across restarts.
-    pub fn persisted(&self) -> (DocumentsMode, LibraryScope, LibrarySort) {
-        self.presenter.persisted()
-    }
-
-    /// Restores the mode, scope and sort from the last run. It writes nothing, so it is no input.
-    pub fn set_persisted(
-        &mut self,
-        mode: DocumentsMode,
-        scope: LibraryScope,
-        sort: LibrarySort,
-        cx: &mut Context<'_, Self>,
-    ) {
-        self.handle(DocumentsPageEvent::Restore { mode, scope, sort }, cx);
-    }
-
-    pub(in crate::documents) fn presenter(&self) -> &DocumentsPagePresenter {
-        &self.presenter
-    }
-
-    /// Records whether the View zone has focus, as the Shell draws the page.
-    pub fn set_zone_focused(&mut self, focused: bool) {
-        self.zone_focused = focused;
-    }
-
-    /// Follows a change to `[keybindings]`.
-    pub fn set_keymaps(&mut self, config: &lib_config::KeyBindingConfig) {
-        self.keymap = lib_documents::keymap::documents_page_keymap(config);
-        self.presenter.set_keymap(self.keymap.clone());
-    }
-
-    /// Every chord the Documents keymap binds that the zone and mode showing have a use for. A key
-    /// they don't is left to the Shell; `a` in the Inbox is swallowed so it never enters Insert.
-    pub fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {
-        let Some(event) = self.keymap.event(chord) else {
-            return false;
-        };
-        if !self.presenter.takes(&event) {
-            return false;
-        }
-        self.send(event, cx);
-        true
-    }
-
-    /// A palette Command, by its keymap `command` name: the event its key sends, in the mode it
-    /// belongs to. A Command of the other mode switches to it first, in the same input.
-    pub fn module_command(&mut self, command: &str, cx: &mut Context<'_, Self>) -> bool {
-        let Some(event) = self.keymap.event_for(command) else {
-            return false;
-        };
-        let switch = event
-            .mode()
-            .filter(|mode| *mode != self.presenter.mode())
-            .map(|mode| match mode {
-                DocumentsMode::Inbox => DocumentsPageEvent::ShowInbox,
-                DocumentsMode::Library => DocumentsPageEvent::ShowLibrary,
-            });
-        crate::input::join_or_send(cx, |cx| {
-            if let Some(switch) = switch {
-                self.handle(switch, cx);
-            }
-            self.handle(event, cx);
-        });
-        true
-    }
-
-    /// Every Documents key is the keymap's.
-    pub fn key_ahead(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    /// Every Documents key is the keymap's.
-    pub fn handle_key(&mut self, _keystroke: &Keystroke, _cx: &mut Context<'_, Self>) -> bool {
-        false
-    }
-
-    /// A movement the keymap doesn't bind does nothing on the page.
-    pub fn apply_movement(&mut self, _movement: Movement, _cx: &mut Context<'_, Self>) {}
-
-    /// `Esc`, innermost first: the Search (its query cleared), then a kept query, then the list
-    /// back to the index.
-    pub fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
-        if !self.presenter.takes_back() {
-            return false;
-        }
-        self.send(DocumentsPageEvent::Back, cx);
-        true
-    }
-
-    /// The Library's `/`: the Search, from either zone. Inert in the Inbox, which has none. The
-    /// Shell enters Search mode on `true`. Not an input of its own: the root Router calls it inside
-    /// the input `/` arrived in, which commits it.
-    pub fn start_search(&mut self, cx: &mut Context<'_, Self>) -> bool {
-        self.handle_quietly(DocumentsPageEvent::StartSearch, cx);
-        self.presenter.searching()
-    }
-
-    /// Keys while the Search is open: typing narrows live, `Backspace` edits, `Enter` keeps the
-    /// query and returns to the list. `Esc` comes back as [`Self::escape`].
-    pub fn search_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
-        let event = match keystroke.key.as_str() {
-            "enter" => DocumentsPageEvent::KeepSearch,
-            "backspace" => DocumentsPageEvent::SearchBackspace,
-            _ => {
-                let modifiers = &keystroke.modifiers;
-                if modifiers.control || modifiers.alt || modifiers.platform || modifiers.function {
-                    return false;
-                }
-                let mut chars = keystroke.key_char.as_deref().unwrap_or_default().chars();
-                match (chars.next(), chars.next()) {
-                    (Some(ch), None) if !ch.is_control() => DocumentsPageEvent::SearchType(ch),
-                    _ => return false,
-                }
-            }
-        };
-        self.send(event, cx);
-        true
-    }
-
-    /// The page has just become the destination: `g f` and the palette land on the list. A Search
-    /// left open does not come back with it.
-    pub fn on_enter(&mut self, cx: &mut Context<'_, Self>) {
-        self.send(DocumentsPageEvent::Entered, cx);
-    }
-
-    /// No other View hands a record to Documents yet.
-    pub fn reveal(&mut self, _reveal: Reveal, _cx: &mut Context<'_, Self>) {}
-
-    /// The calendar month turned while the Desktop was open: inside the day poll's input.
-    pub fn month_turned(&mut self, cx: &mut Context<'_, Self>) {
-        self.handle(DocumentsPageEvent::MonthTurned, cx);
-    }
-
-    /// Follows a change to the Display Preferences.
-    pub fn set_display(&mut self, date_style: Option<DateStyle>, cx: &mut Context<'_, Self>) {
-        self.send(DocumentsPageEvent::SetDateStyle(date_style), cx);
-    }
-
-    /// The status line's legend for the zone and mode, and the stored size.
-    pub fn page_status(&self, _cx: &App) -> Option<PageStatus> {
-        let view = self.presenter.view_model();
-        Some(PageStatus {
-            hints: view.hints,
-            right: view.stored,
-        })
+    /// `g f` and the palette land on the list. A Search left open does not come back with it.
+    fn entered() -> Option<DocumentsPageEvent> {
+        Some(DocumentsPageEvent::Entered)
     }
 
     /// The `?` cheat-sheet's Documents group: the index keys, then the mode's, as the keymap binds
     /// them.
-    pub fn help_group(&self, _cx: &App) -> Option<HelpGroup> {
-        let keys = self
-            .presenter
-            .help()
-            .into_iter()
-            .map(|hint| (hint.action, hint.chord))
-            .collect();
+    fn help(view: &DocumentsPageViewModel) -> Option<HelpGroup> {
         Some(HelpGroup {
             heading: crate::msg::desktop_help_documents_label(),
-            keys,
+            keys: view
+                .help
+                .iter()
+                .map(|hint| (hint.action.clone(), hint.chord.clone()))
+                .collect(),
         })
+    }
+
+    fn render(
+        view: &DocumentsPageViewModel,
+        page: PageDraw<'_, Self>,
+        _window: &mut Window,
+        cx: &mut Context<'_, DocumentsPage>,
+    ) -> AnyElement {
+        let scroll = Scrolls {
+            library: page.widgets.library_scroll.clone(),
+            inbox: page.widgets.inbox_scroll.clone(),
+            list_focused: false,
+        };
+        super::render(page.focused, view, page.clicks, scroll, cx)
+    }
+
+    /// The status line's legend for the zone and mode, and the stored size.
+    fn status(view: &DocumentsPageViewModel) -> PageStatus {
+        PageStatus {
+            hints: view.hints.clone(),
+            right: view.stored.clone(),
+        }
+    }
+
+    /// `Esc`, innermost first: the Search (its query cleared), then a kept query, then the list
+    /// back to the index.
+    fn escape(view: &DocumentsPageViewModel) -> Option<DocumentsPageEvent> {
+        view.takes_back.then_some(DocumentsPageEvent::Back)
     }
 }
 
@@ -342,7 +178,6 @@ pub fn documents_page(
     clock: Clock,
     cx: &mut App,
 ) -> Entity<DocumentsPage> {
-    let keymap = lib_documents::keymap::documents_page_keymap(config);
     let dialog_keys = DialogKeys::of(&lib_shell::dialog_keymap(config));
     let documents = documents.clone();
     let reads = Rc::new(reads);
@@ -351,28 +186,8 @@ pub fn documents_page(
         reads,
         files,
         clock,
-        keymap.clone(),
+        config,
         crate::shell::view::statusline::STUB_LEDGER_FILE.to_string(),
     );
-    cx.new(|cx| DocumentsPage::new(presenter, &announcer, keymap, dialog_keys, cx))
-}
-
-/// The page's clicks, each one an event sent to its Presenter.
-impl PresenterPage<DocumentsPageEvent> for DocumentsPage {
-    fn send(&mut self, event: DocumentsPageEvent, cx: &mut Context<'_, Self>) {
-        DocumentsPage::send(self, event, cx);
-    }
-}
-
-impl Render for DocumentsPage {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let clicks = PageClicks::new(cx);
-        let view = self.presenter.view_model();
-        let scroll = Scrolls {
-            library: self.library_scroll.clone(),
-            inbox: self.inbox_scroll.clone(),
-            list_focused: false,
-        };
-        super::render(self.zone_focused, &view, &clicks, scroll, cx)
-    }
+    cx.new(|cx| ModulePage::new(presenter, dialog_keys, &announcer, cx))
 }

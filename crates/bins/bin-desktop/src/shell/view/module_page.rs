@@ -204,6 +204,12 @@ impl<P: PageView> ModulePage<P> {
         self.presenter.view_model()
     }
 
+    /// Records whether the View zone has focus, as the Shell draws a main View's page: the focus
+    /// rings it draws within itself follow it.
+    pub fn set_focused(&mut self, focused: bool) {
+        self.page_focused = focused;
+    }
+
     /// The Presenter, for a test's snapshot of what it holds beyond its view model.
     pub fn presenter(&self) -> &P {
         &self.presenter
@@ -231,9 +237,25 @@ impl<P: PageView> ModulePage<P> {
     }
 
     /// A palette Command, by its keymap `command` name: the event its key sends.
+    /// The tab or mode it belongs to is shown first ([`PagePresenter::shows`]), in the same input.
     pub fn module_command(&mut self, command: &str, cx: &mut Context<'_, Self>) -> bool {
-        let event = self.presenter.keymap().event_for(command);
-        self.take(event, cx)
+        let Some(event) = self.presenter.keymap().event_for(command) else {
+            return false;
+        };
+        let Some(shown) = self.presenter.shows(&event) else {
+            return self.take(Some(event), cx);
+        };
+        let followed = crate::input::join_or_send(cx, |cx| {
+            let mut followed: Vec<ViewEvent> = self.handle(shown, cx).into_iter().collect();
+            if self.presenter.takes(&event) {
+                followed.extend(self.handle(event, cx));
+            }
+            followed
+        });
+        for event in followed {
+            cx.emit(event);
+        }
+        true
     }
 
     /// Shows a record another View handed off, if the page shows it.

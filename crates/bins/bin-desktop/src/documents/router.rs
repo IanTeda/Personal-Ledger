@@ -45,7 +45,7 @@ impl DocumentsRouter for PageRouter<'_, '_> {
     }
 
     /// Builds `dialog`'s Presenter on the page's ports and hosts it in a `ModuleDialog`; what it
-    /// asks of the page as it closes comes back through [`DocumentsPage::dialog_landed`].
+    /// asks of the page as it closes comes back through [`DocumentsPage::landing`].
     fn open_dialog(&mut self, dialog: Which) -> bool {
         super::view::dialog::open(dialog, self.ports.clone(), self.keys.clone(), self.cx)
     }

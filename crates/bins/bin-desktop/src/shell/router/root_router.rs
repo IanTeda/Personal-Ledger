@@ -77,9 +77,12 @@ impl ShellRouter for RootRouter<'_, '_> {
         open.views.budgets.update(self.cx, |budgets, cx| {
             budgets.send(lib_budgets::presenter::BudgetsPageEvent::MonthTurned, cx);
         });
-        open.views
-            .documents
-            .update(self.cx, |documents, cx| documents.month_turned(cx));
+        open.views.documents.update(self.cx, |documents, cx| {
+            documents.send(
+                lib_documents::presenter::DocumentsPageEvent::MonthTurned,
+                cx,
+            );
+        });
     }
 
     /// Puts each domain `failure` names back as stored, with an Error Toast for each. A failure
@@ -177,7 +180,7 @@ impl ShellRouter for RootRouter<'_, '_> {
         let Some(open) = self.open.take() else {
             return;
         };
-        *self.documents_state = Some(open.views.documents.read(self.cx).persisted());
+        *self.documents_state = Some(open.views.documents.read(self.cx).presenter().persisted());
         self.report_failures_on_close(&open);
         crate::input::close_ledger(self.cx);
         // Dropped here, once the failures are read: the writer flushes again, which finds nothing.
@@ -345,7 +348,8 @@ impl RootRouter<'_, '_> {
             self.cx,
         );
         if let Some(open) = self.open.as_ref() {
-            *self.documents_state = Some(open.views.documents.read(self.cx).persisted());
+            *self.documents_state =
+                Some(open.views.documents.read(self.cx).presenter().persisted());
         }
         if let Some(replaced) = self.open.replace(opened) {
             // Reported before it drops, as `:close` does, so a write it lost is never silent.
@@ -355,7 +359,10 @@ impl RootRouter<'_, '_> {
             && let Some(open) = self.open.as_ref()
         {
             open.views.documents.update(self.cx, |page, cx| {
-                page.set_persisted(mode, scope, sort, cx)
+                page.send(
+                    lib_documents::presenter::DocumentsPageEvent::Restore { mode, scope, sort },
+                    cx,
+                );
             });
         }
         *self.last_ledger_forgotten = false;
@@ -499,9 +506,12 @@ pub(super) fn set_view_keymaps(
             cx,
         );
     });
-    open.views
-        .documents
-        .update(cx, |page, _| page.set_keymaps(config));
+    open.views.documents.update(cx, |page, cx| {
+        page.send(
+            lib_documents::presenter::DocumentsPageEvent::KeysChanged(config.clone()),
+            cx,
+        );
+    });
 }
 
 /// Hands the Display output to the Views that read it, after a Settings change; with no Ledger open
@@ -539,9 +549,12 @@ pub(super) fn push_display_preferences(
             cx,
         );
     });
-    open.views
-        .documents
-        .update(cx, |view, cx| view.set_display(date_style, cx));
+    open.views.documents.update(cx, |page, cx| {
+        page.send(
+            lib_documents::presenter::DocumentsPageEvent::SetDateStyle(date_style),
+            cx,
+        );
+    });
     open.views.budgets.update(cx, |page, cx| {
         page.send(
             lib_budgets::presenter::BudgetsPageEvent::SetDateStyle(date_style),

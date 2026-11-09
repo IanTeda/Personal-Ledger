@@ -57,8 +57,16 @@ pub trait PagePresenter: Presenter<Event: Clone> {
 
     /// The page's keys under `[keybindings]` for its current state (the tab shown, an open
     /// select), which its legend reads its chords from too. A palette Command of another state
-    /// still reaches its event by name, and the Presenter shows that state first inside `handle`.
+    /// still reaches its event by name, shown first through [`Self::shows`].
     fn keymap(&self) -> &Keymap<Self::Event>;
+
+    /// The event that shows the tab or mode `event` belongs to, when it isn't showing: a Client
+    /// sends it ahead of a palette Command's own event, in the same input. A key never sends it,
+    /// so a key the current tab or mode ignores stays ignored. `None` for an event the state
+    /// showing takes.
+    fn shows(&self, _event: &Self::Event) -> Option<Self::Event> {
+        None
+    }
 
     /// A key typed while the page is in a mode of its own ([`Self::mode`]), which its keymap
     /// didn't bind: the event it types, or `None` for one the mode gives no meaning to. A Client

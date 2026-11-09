@@ -13,10 +13,12 @@
 use std::collections::HashSet;
 use std::path::Path;
 
+use lib_config::KeyBindingConfig;
 use lib_core::{Clock, DateStyle, DocumentId, TransactionId};
 use lib_list_cursor::Step;
 use lib_toast::{Notice, ToastKind};
-use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, SELECT};
+use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, SEARCH, SELECT};
+use lib_viper::presenter::{PageMode, PagePresenter, Presenter, TextKey};
 use lib_viper::view::{Hint, count};
 
 use super::inbox::{self, InboxDetailView, InboxRowView};
@@ -26,6 +28,7 @@ use crate::interactor::{
 };
 use crate::keymap::{
     ACCEPT, ACCEPT_ALL, ADD, FOLLOW, IMPORT, LINK, SHOW_IN_FOLDER, SKIP, SORT, TOGGLE_MODE, UNDO,
+    documents_page_keymap,
 };
 use crate::protocols::{
     DocumentsDialog, DocumentsOutcome, DocumentsRouter, SharedFiles, SharedReads, SharedRepository,
@@ -128,8 +131,10 @@ pub enum DocumentsPageEvent {
         scope: LibraryScope,
         sort: LibrarySort,
     },
-    /// A Dialog the page opened closed, with what it did.
-    DialogClosed(DocumentsOutcome),
+    /// A Dialog the page opened closed, with what its confirm did, or `None` for a cancel.
+    DialogClosed(Option<DocumentsOutcome>),
+    /// `[keybindings]` changed: the page's keys and the legend's chords follow.
+    KeysChanged(KeyBindingConfig),
 }
 
 impl DocumentsPageEvent {
@@ -246,6 +251,14 @@ pub struct DocumentsPageViewModel {
     pub inbox: Option<InboxViewModel>,
     /// The status line's legend for the zone and mode.
     pub hints: Vec<Hint>,
+    /// The `?` cheat sheet's Documents keys: the index's, the mode's, then the keys the legend
+    /// has no room for.
+    pub help: Vec<Hint>,
+    /// Whether `esc` has something to back out of: the Search, a kept query, or the list.
+    pub takes_back: bool,
+    /// The Library's scope and sort, kept across a restart with the mode.
+    pub scope: LibraryScope,
+    pub sort: LibrarySort,
 }
 
 /// "3 more below": the Inbox rows under the last one in view, which only the View knows.
@@ -258,7 +271,15 @@ pub struct DocumentsPagePresenter {
     reads: SharedReads,
     files: SharedFiles,
     clock: Clock,
+    /// Every key, which the palette finds each command in by name.
     keymap: Keymap<DocumentsPageEvent>,
+    /// The keys while the Library or the Inbox shows: the other mode's verbs have no chord, so
+    /// their keys fall through to the Shell. Add keeps `a` in the Inbox, doing nothing there, so
+    /// it never falls through to the Shell's Insert.
+    library_keys: Keymap<DocumentsPageEvent>,
+    inbox_keys: Keymap<DocumentsPageEvent>,
+    /// The keys while the Search is open: none, so every key types.
+    search_keys: Keymap<DocumentsPageEvent>,
     /// The Ledger file's name, which the status line says the files are stored beside.
     ledger_file: String,
     date_style: Option<DateStyle>,
@@ -277,22 +298,25 @@ pub struct DocumentsPagePresenter {
 }
 
 impl DocumentsPagePresenter {
-    /// The Library on All documents, Newest first, focus on the list. `keymap` is the one the
-    /// Client looks keys up in, so the legend shows the chords it binds.
+    /// The Library on All documents, Newest first, focus on the list, its keys under `config`.
     pub fn new(
         documents: SharedRepository,
         reads: SharedReads,
         files: SharedFiles,
         clock: Clock,
-        keymap: Keymap<DocumentsPageEvent>,
+        config: &KeyBindingConfig,
         ledger_file: String,
     ) -> Self {
+        let (keymap, library_keys, inbox_keys, search_keys) = keymaps(config);
         Self {
             documents,
             reads,
             files,
             clock,
             keymap,
+            library_keys,
+            inbox_keys,
+            search_keys,
             ledger_file,
             date_style: None,
             mode: DocumentsMode::default(),
@@ -354,34 +378,6 @@ impl DocumentsPagePresenter {
     /// The mode, scope and sort the Client keeps across a restart.
     pub fn persisted(&self) -> (DocumentsMode, LibraryScope, LibrarySort) {
         (self.mode, self.scope(), self.sort)
-    }
-
-    /// Follows a change to `[keybindings]`, so the legend shows the chords now bound.
-    pub fn set_keymap(&mut self, keymap: Keymap<DocumentsPageEvent>) {
-        self.keymap = keymap;
-    }
-
-    /// Whether `event`, from a key, does anything where focus is and in the mode showing; the
-    /// Client offers a key it doesn't take on to the Shell. `a` is taken in the Inbox too, doing
-    /// nothing, so it never falls through to the Shell's Insert.
-    pub fn takes(&self, event: &DocumentsPageEvent) -> bool {
-        let list = self.focus == DocumentsFocus::List;
-        let inbox = self.mode == DocumentsMode::Inbox;
-        match event {
-            DocumentsPageEvent::Sort => !inbox,
-            DocumentsPageEvent::Accept | DocumentsPageEvent::Skip => inbox && list,
-            DocumentsPageEvent::AcceptAll | DocumentsPageEvent::Undo => inbox,
-            DocumentsPageEvent::FocusList => !list,
-            DocumentsPageEvent::FocusIndex
-            | DocumentsPageEvent::Follow
-            | DocumentsPageEvent::ShowInFolder => list,
-            _ => true,
-        }
-    }
-
-    /// Whether `esc` has something to back out of on the page.
-    pub fn takes_back(&self) -> bool {
-        self.searching || !self.query.is_empty() || self.focus == DocumentsFocus::List
     }
 
     /// The Document the selection is on: the Library's row or the Inbox's focused row.
@@ -489,122 +485,6 @@ impl DocumentsPagePresenter {
         inbox_rows(&documents, &self.skipped)
             .iter()
             .position(|document| document.id == id)
-    }
-
-    pub fn handle(&mut self, event: DocumentsPageEvent, router: &mut dyn DocumentsRouter) {
-        self.catch_up();
-        match event {
-            DocumentsPageEvent::Move(step) => match self.focus {
-                DocumentsFocus::Index => self.move_rail(step),
-                DocumentsFocus::List => self.move_row(step),
-            },
-            DocumentsPageEvent::Select => match self.focus {
-                DocumentsFocus::Index => self.focus = DocumentsFocus::List,
-                DocumentsFocus::List => self.open_selected(false, router),
-            },
-            DocumentsPageEvent::Link => match self.focus {
-                DocumentsFocus::Index => self.focus = DocumentsFocus::List,
-                DocumentsFocus::List => self.open_picker(router),
-            },
-            DocumentsPageEvent::FocusList => self.focus = DocumentsFocus::List,
-            DocumentsPageEvent::FocusIndex => self.focus = DocumentsFocus::Index,
-            DocumentsPageEvent::Follow => self.follow(router),
-            DocumentsPageEvent::ToggleMode => self.set_mode(match self.mode {
-                DocumentsMode::Library => DocumentsMode::Inbox,
-                DocumentsMode::Inbox => DocumentsMode::Library,
-            }),
-            DocumentsPageEvent::ShowInbox => self.set_mode(DocumentsMode::Inbox),
-            DocumentsPageEvent::ShowLibrary => self.set_mode(DocumentsMode::Library),
-            DocumentsPageEvent::Add => {
-                if self.mode == DocumentsMode::Library {
-                    router.open_dialog(DocumentsDialog::Add(self.scope()));
-                }
-            }
-            DocumentsPageEvent::Import => {
-                router.open_dialog(DocumentsDialog::Import);
-            }
-            DocumentsPageEvent::Sort => {
-                if self.mode == DocumentsMode::Library {
-                    self.sort = self.sort.toggle();
-                    self.selected = 0;
-                }
-            }
-            DocumentsPageEvent::ClickSort(sort) => {
-                if self.sort != sort {
-                    self.sort = sort;
-                    self.selected = 0;
-                }
-            }
-            DocumentsPageEvent::Edit => self.edit(router),
-            DocumentsPageEvent::Delete => self.delete_selected(router),
-            DocumentsPageEvent::Open => self.open_selected(false, router),
-            DocumentsPageEvent::ShowInFolder => self.open_selected(true, router),
-            DocumentsPageEvent::Accept => self.accept_focused(router),
-            DocumentsPageEvent::AcceptAll => self.ask_accept_all(router),
-            DocumentsPageEvent::Skip => self.skip_focused(),
-            DocumentsPageEvent::Undo => self.undo_last(router),
-            DocumentsPageEvent::OpenPicker => self.open_picker(router),
-            DocumentsPageEvent::ClickRail(entry) => {
-                self.select_entry(entry);
-                self.focus = DocumentsFocus::Index;
-            }
-            DocumentsPageEvent::ClickRow(index) => {
-                match self.mode {
-                    DocumentsMode::Library => self.selected = index,
-                    DocumentsMode::Inbox => self.inbox_selected = index,
-                }
-                self.focus = DocumentsFocus::List;
-            }
-            DocumentsPageEvent::ClickAccept(index) => {
-                self.inbox_selected = index;
-                self.focus = DocumentsFocus::List;
-                self.accept_focused(router);
-            }
-            DocumentsPageEvent::AcceptCandidate(transaction_id) => {
-                if let Some(document) = self.selected_document() {
-                    self.accept(document.id, transaction_id, router);
-                }
-            }
-            DocumentsPageEvent::Unlink(link) => self.unlink(link, router),
-            DocumentsPageEvent::Reveal(link) => router.reveal(link),
-            DocumentsPageEvent::WatchedFolder => router.notify(Notice::Toast(
-                ToastKind::Info,
-                msg::documents_watched_folder_toast(),
-            )),
-            DocumentsPageEvent::StartSearch => {
-                if self.mode == DocumentsMode::Library {
-                    self.focus = DocumentsFocus::List;
-                    self.searching = true;
-                }
-            }
-            DocumentsPageEvent::SearchType(ch) => {
-                if self.searching {
-                    self.query.push(ch);
-                    self.selected = 0;
-                }
-            }
-            DocumentsPageEvent::SearchBackspace => {
-                if self.searching {
-                    self.query.pop();
-                    self.selected = 0;
-                }
-            }
-            DocumentsPageEvent::KeepSearch => self.searching = false,
-            DocumentsPageEvent::Back => self.back(),
-            DocumentsPageEvent::Drop(paths) => self.drop_files(paths, router),
-            DocumentsPageEvent::Entered => {
-                self.focus = DocumentsFocus::List;
-                self.searching = false;
-            }
-            DocumentsPageEvent::MonthTurned => {}
-            DocumentsPageEvent::SetDateStyle(style) => self.date_style = style,
-            DocumentsPageEvent::Restore { mode, scope, sort } => {
-                self.mode = mode;
-                self.scope = scope;
-                self.sort = sort;
-            }
-            DocumentsPageEvent::DialogClosed(outcome) => self.dialog_closed(outcome, router),
-        }
     }
 
     /// A scope on a Document Type that has gone, or on a Financial Year the rail no longer
@@ -1036,7 +916,221 @@ impl DocumentsPagePresenter {
         &self.skipped
     }
 
-    pub fn view_model(&self) -> DocumentsPageViewModel {
+    fn chord(&self, command: &str) -> String {
+        self.keymap.chord(command).unwrap_or_default().to_string()
+    }
+
+    fn rows_hint(&self) -> Hint {
+        Hint::new(
+            format!("{}/{}", self.chord(MOVE_DOWN), self.chord(MOVE_UP)),
+            msg::documents_hint_row(),
+        )
+    }
+
+    /// The Inbox's legend, also its key strip under the detail.
+    fn inbox_hints(&self) -> Vec<Hint> {
+        vec![
+            self.rows_hint(),
+            Hint::new(self.chord(ACCEPT), msg::documents_hint_accept()),
+            Hint::new(self.chord(EDIT), msg::documents_hint_edit()),
+            Hint::new(self.chord(SKIP), msg::documents_hint_skip()),
+            Hint::new(self.chord(LINK), msg::documents_hint_link_elsewhere()),
+            Hint::new(self.chord(FOLLOW), msg::documents_hint_follow()),
+        ]
+    }
+
+    /// The status line's legend for the zone with focus and the mode showing.
+    fn hints(&self) -> Vec<Hint> {
+        self.legend(self.focus)
+    }
+
+    /// The legend for `focus` in the mode showing.
+    fn legend(&self, focus: DocumentsFocus) -> Vec<Hint> {
+        match (focus, self.mode) {
+            (DocumentsFocus::Index, _) => vec![
+                Hint::new(
+                    format!("{}/{}", self.chord(MOVE_DOWN), self.chord(MOVE_UP)),
+                    msg::documents_hint_scope(),
+                ),
+                Hint::new(
+                    format!("{}/{}", self.chord(LINK), self.chord(SELECT)),
+                    msg::documents_hint_list(),
+                ),
+                Hint::new(self.chord(TOGGLE_MODE), msg::documents_hint_inbox()),
+            ],
+            (DocumentsFocus::List, DocumentsMode::Library) => vec![
+                self.rows_hint(),
+                Hint::new(self.chord(SELECT), msg::documents_hint_open()),
+                // The Shell's key, which sends the page's `search` by name.
+                Hint::new(self.chord(SEARCH), lib_locale::msg::hint_search()),
+                Hint::new(self.chord(LINK), msg::documents_hint_link()),
+                Hint::new(self.chord(FOLLOW), msg::documents_hint_follow()),
+                Hint::new(
+                    self.chord(SHOW_IN_FOLDER),
+                    msg::documents_hint_show_in_folder(),
+                ),
+                Hint::new(self.chord(TOGGLE_MODE), msg::documents_hint_inbox()),
+            ],
+            (DocumentsFocus::List, DocumentsMode::Inbox) => self.inbox_hints(),
+        }
+    }
+
+    /// The `?` cheat sheet's Documents keys: the index's, the mode's, then the keys the legend has
+    /// no room for.
+    fn help(&self) -> Vec<Hint> {
+        let index = self.legend(DocumentsFocus::Index);
+        let list = self.legend(DocumentsFocus::List);
+        let more = match self.mode {
+            DocumentsMode::Library => vec![
+                Hint::new(self.chord(SORT), msg::documents_hint_sort()),
+                Hint::new(self.chord(EDIT), msg::documents_hint_edit()),
+                Hint::new(self.chord(ADD), msg::documents_hint_add()),
+            ],
+            DocumentsMode::Inbox => vec![
+                Hint::new(self.chord(UNDO), msg::documents_hint_undo()),
+                Hint::new(self.chord(ACCEPT_ALL), msg::documents_hint_accept_all()),
+            ],
+        };
+        index
+            .into_iter()
+            .chain(list)
+            .chain(more)
+            .chain([Hint::new(self.chord(IMPORT), msg::documents_hint_import())])
+            .collect()
+    }
+}
+
+impl Presenter for DocumentsPagePresenter {
+    type Event = DocumentsPageEvent;
+    type ViewModel = DocumentsPageViewModel;
+    type Router<'r> = dyn DocumentsRouter + 'r;
+
+    fn handle(&mut self, event: DocumentsPageEvent, router: &mut Self::Router<'_>) {
+        self.catch_up();
+        match event {
+            DocumentsPageEvent::Move(step) => match self.focus {
+                DocumentsFocus::Index => self.move_rail(step),
+                DocumentsFocus::List => self.move_row(step),
+            },
+            DocumentsPageEvent::Select => match self.focus {
+                DocumentsFocus::Index => self.focus = DocumentsFocus::List,
+                DocumentsFocus::List => self.open_selected(false, router),
+            },
+            DocumentsPageEvent::Link => match self.focus {
+                DocumentsFocus::Index => self.focus = DocumentsFocus::List,
+                DocumentsFocus::List => self.open_picker(router),
+            },
+            DocumentsPageEvent::FocusList => self.focus = DocumentsFocus::List,
+            DocumentsPageEvent::FocusIndex => self.focus = DocumentsFocus::Index,
+            DocumentsPageEvent::Follow => self.follow(router),
+            DocumentsPageEvent::ToggleMode => self.set_mode(match self.mode {
+                DocumentsMode::Library => DocumentsMode::Inbox,
+                DocumentsMode::Inbox => DocumentsMode::Library,
+            }),
+            DocumentsPageEvent::ShowInbox => self.set_mode(DocumentsMode::Inbox),
+            DocumentsPageEvent::ShowLibrary => self.set_mode(DocumentsMode::Library),
+            DocumentsPageEvent::Add => {
+                if self.mode == DocumentsMode::Library {
+                    router.open_dialog(DocumentsDialog::Add(self.scope()));
+                }
+            }
+            DocumentsPageEvent::Import => {
+                router.open_dialog(DocumentsDialog::Import);
+            }
+            DocumentsPageEvent::Sort => {
+                if self.mode == DocumentsMode::Library {
+                    self.sort = self.sort.toggle();
+                    self.selected = 0;
+                }
+            }
+            DocumentsPageEvent::ClickSort(sort) => {
+                if self.sort != sort {
+                    self.sort = sort;
+                    self.selected = 0;
+                }
+            }
+            DocumentsPageEvent::Edit => self.edit(router),
+            DocumentsPageEvent::Delete => self.delete_selected(router),
+            DocumentsPageEvent::Open => self.open_selected(false, router),
+            DocumentsPageEvent::ShowInFolder => self.open_selected(true, router),
+            DocumentsPageEvent::Accept => self.accept_focused(router),
+            DocumentsPageEvent::AcceptAll => self.ask_accept_all(router),
+            DocumentsPageEvent::Skip => self.skip_focused(),
+            DocumentsPageEvent::Undo => self.undo_last(router),
+            DocumentsPageEvent::OpenPicker => self.open_picker(router),
+            DocumentsPageEvent::ClickRail(entry) => {
+                self.select_entry(entry);
+                self.focus = DocumentsFocus::Index;
+            }
+            DocumentsPageEvent::ClickRow(index) => {
+                match self.mode {
+                    DocumentsMode::Library => self.selected = index,
+                    DocumentsMode::Inbox => self.inbox_selected = index,
+                }
+                self.focus = DocumentsFocus::List;
+            }
+            DocumentsPageEvent::ClickAccept(index) => {
+                self.inbox_selected = index;
+                self.focus = DocumentsFocus::List;
+                self.accept_focused(router);
+            }
+            DocumentsPageEvent::AcceptCandidate(transaction_id) => {
+                if let Some(document) = self.selected_document() {
+                    self.accept(document.id, transaction_id, router);
+                }
+            }
+            DocumentsPageEvent::Unlink(link) => self.unlink(link, router),
+            DocumentsPageEvent::Reveal(link) => router.reveal(link),
+            DocumentsPageEvent::WatchedFolder => router.notify(Notice::Toast(
+                ToastKind::Info,
+                msg::documents_watched_folder_toast(),
+            )),
+            DocumentsPageEvent::StartSearch => {
+                if self.mode == DocumentsMode::Library {
+                    self.focus = DocumentsFocus::List;
+                    self.searching = true;
+                }
+            }
+            DocumentsPageEvent::SearchType(ch) => {
+                if self.searching {
+                    self.query.push(ch);
+                    self.selected = 0;
+                }
+            }
+            DocumentsPageEvent::SearchBackspace => {
+                if self.searching {
+                    self.query.pop();
+                    self.selected = 0;
+                }
+            }
+            DocumentsPageEvent::KeepSearch => self.searching = false,
+            DocumentsPageEvent::Back => self.back(),
+            DocumentsPageEvent::Drop(paths) => self.drop_files(paths, router),
+            DocumentsPageEvent::Entered => {
+                self.focus = DocumentsFocus::List;
+                self.searching = false;
+            }
+            DocumentsPageEvent::MonthTurned => {}
+            DocumentsPageEvent::SetDateStyle(style) => self.date_style = style,
+            DocumentsPageEvent::Restore { mode, scope, sort } => {
+                self.mode = mode;
+                self.scope = scope;
+                self.sort = sort;
+            }
+            DocumentsPageEvent::DialogClosed(Some(outcome)) => self.dialog_closed(outcome, router),
+            DocumentsPageEvent::DialogClosed(None) => {}
+            DocumentsPageEvent::KeysChanged(config) => {
+                (
+                    self.keymap,
+                    self.library_keys,
+                    self.inbox_keys,
+                    self.search_keys,
+                ) = keymaps(&config);
+            }
+        }
+    }
+
+    fn view_model(&self) -> DocumentsPageViewModel {
         let documents = self.all_documents();
         let types = self.document_types();
         let records = self.records();
@@ -1119,91 +1213,100 @@ impl DocumentsPagePresenter {
             library,
             inbox,
             hints: self.hints(),
+            help: self.help(),
+            takes_back: self.searching
+                || !self.query.is_empty()
+                || self.focus == DocumentsFocus::List,
+            scope: self.scope(),
+            sort: self.sort,
         }
     }
 
-    fn chord(&self, command: &str) -> String {
-        self.keymap.chord(command).unwrap_or_default().to_string()
+    /// Whether `event` does anything where focus is; the Client offers a key it doesn't take on
+    /// to the Shell. A key of the other mode has no chord there ([`PagePresenter::keymap`]), so an
+    /// event of the other mode comes only from the palette, after [`PagePresenter::shows`] has
+    /// shown that mode.
+    fn takes(&self, event: &DocumentsPageEvent) -> bool {
+        let list = self.focus == DocumentsFocus::List;
+        let inbox = self.mode == DocumentsMode::Inbox;
+        match event {
+            DocumentsPageEvent::Sort => !inbox,
+            DocumentsPageEvent::Accept | DocumentsPageEvent::Skip => inbox && list,
+            DocumentsPageEvent::AcceptAll | DocumentsPageEvent::Undo => inbox,
+            DocumentsPageEvent::FocusList => !list,
+            DocumentsPageEvent::FocusIndex
+            | DocumentsPageEvent::Follow
+            | DocumentsPageEvent::ShowInFolder => list,
+            _ => true,
+        }
+    }
+}
+
+impl PagePresenter for DocumentsPagePresenter {
+    type Outcome = DocumentsOutcome;
+
+    fn dialog_closed(outcome: Option<DocumentsOutcome>) -> DocumentsPageEvent {
+        DocumentsPageEvent::DialogClosed(outcome)
     }
 
-    fn rows_hint(&self) -> Hint {
-        Hint::new(
-            format!("{}/{}", self.chord(MOVE_DOWN), self.chord(MOVE_UP)),
-            msg::documents_hint_row(),
-        )
-    }
-
-    /// The Inbox's legend, also its key strip under the detail.
-    fn inbox_hints(&self) -> Vec<Hint> {
-        vec![
-            self.rows_hint(),
-            Hint::new(self.chord(ACCEPT), msg::documents_hint_accept()),
-            Hint::new(self.chord(EDIT), msg::documents_hint_edit()),
-            Hint::new(self.chord(SKIP), msg::documents_hint_skip()),
-            Hint::new(self.chord(LINK), msg::documents_hint_link_elsewhere()),
-            Hint::new(self.chord(FOLLOW), msg::documents_hint_follow()),
-        ]
-    }
-
-    /// The status line's legend for the zone with focus and the mode showing.
-    pub fn hints(&self) -> Vec<Hint> {
-        self.legend(self.focus)
-    }
-
-    /// The legend for `focus` in the mode showing.
-    fn legend(&self, focus: DocumentsFocus) -> Vec<Hint> {
-        match (focus, self.mode) {
-            (DocumentsFocus::Index, _) => vec![
-                Hint::new(
-                    format!("{}/{}", self.chord(MOVE_DOWN), self.chord(MOVE_UP)),
-                    msg::documents_hint_scope(),
-                ),
-                Hint::new(
-                    format!("{}/{}", self.chord(LINK), self.chord(SELECT)),
-                    msg::documents_hint_list(),
-                ),
-                Hint::new(self.chord(TOGGLE_MODE), msg::documents_hint_inbox()),
-            ],
-            (DocumentsFocus::List, DocumentsMode::Library) => vec![
-                self.rows_hint(),
-                Hint::new(self.chord(SELECT), msg::documents_hint_open()),
-                // The Shell's key, not the page's.
-                Hint::new("/", lib_locale::msg::hint_search()),
-                Hint::new(self.chord(LINK), msg::documents_hint_link()),
-                Hint::new(self.chord(FOLLOW), msg::documents_hint_follow()),
-                Hint::new(
-                    self.chord(SHOW_IN_FOLDER),
-                    msg::documents_hint_show_in_folder(),
-                ),
-                Hint::new(self.chord(TOGGLE_MODE), msg::documents_hint_inbox()),
-            ],
-            (DocumentsFocus::List, DocumentsMode::Inbox) => self.inbox_hints(),
+    /// No keys while the Search is open, so every key types; else the mode showing's.
+    fn keymap(&self) -> &Keymap<DocumentsPageEvent> {
+        if self.searching {
+            &self.search_keys
+        } else {
+            match self.mode {
+                DocumentsMode::Library => &self.library_keys,
+                DocumentsMode::Inbox => &self.inbox_keys,
+            }
         }
     }
 
-    /// The `?` cheat sheet's Documents keys: the index's, the mode's, then the keys the legend has
-    /// no room for.
-    pub fn help(&self) -> Vec<Hint> {
-        let index = self.legend(DocumentsFocus::Index);
-        let list = self.legend(DocumentsFocus::List);
-        let more = match self.mode {
-            DocumentsMode::Library => vec![
-                Hint::new(self.chord(SORT), msg::documents_hint_sort()),
-                Hint::new(self.chord(EDIT), msg::documents_hint_edit()),
-                Hint::new(self.chord(ADD), msg::documents_hint_add()),
-            ],
-            DocumentsMode::Inbox => vec![
-                Hint::new(self.chord(UNDO), msg::documents_hint_undo()),
-                Hint::new(self.chord(ACCEPT_ALL), msg::documents_hint_accept_all()),
-            ],
-        };
-        index
-            .into_iter()
-            .chain(list)
-            .chain(more)
-            .chain([Hint::new(self.chord(IMPORT), msg::documents_hint_import())])
-            .collect()
+    /// A palette Command of the mode not showing shows that mode first.
+    fn shows(&self, event: &DocumentsPageEvent) -> Option<DocumentsPageEvent> {
+        event
+            .mode()
+            .filter(|mode| *mode != self.mode)
+            .map(|mode| match mode {
+                DocumentsMode::Inbox => DocumentsPageEvent::ShowInbox,
+                DocumentsMode::Library => DocumentsPageEvent::ShowLibrary,
+            })
     }
+
+    /// In the Search, typing narrows live, `Backspace` edits and `Enter` keeps the query.
+    fn typed(&self, key: TextKey) -> Option<DocumentsPageEvent> {
+        if !self.searching {
+            return None;
+        }
+        match key {
+            TextKey::Char(ch) if !ch.is_control() => Some(DocumentsPageEvent::SearchType(ch)),
+            TextKey::Backspace => Some(DocumentsPageEvent::SearchBackspace),
+            TextKey::Enter { .. } => Some(DocumentsPageEvent::KeepSearch),
+            TextKey::Char(_) | TextKey::Tab { .. } => None,
+        }
+    }
+
+    /// The Library's Search is the page's Search mode.
+    fn mode(&self) -> Option<PageMode> {
+        self.searching.then_some(PageMode::Search)
+    }
+}
+
+/// The page's keymaps under `config`: every key, the Library's, the Inbox's and the Search's.
+fn keymaps(
+    config: &KeyBindingConfig,
+) -> (
+    Keymap<DocumentsPageEvent>,
+    Keymap<DocumentsPageEvent>,
+    Keymap<DocumentsPageEvent>,
+    Keymap<DocumentsPageEvent>,
+) {
+    let keymap = documents_page_keymap(config);
+    let library = keymap.scoped(|event| event.mode() != Some(DocumentsMode::Inbox));
+    let inbox = keymap.scoped(|event| {
+        event.mode() != Some(DocumentsMode::Library) || *event == DocumentsPageEvent::Add
+    });
+    let search = keymap.scoped(|_| false);
+    (keymap, library, inbox, search)
 }
 
 fn file_name(path: &Path) -> String {
@@ -1224,7 +1327,6 @@ mod tests {
     use super::*;
     use crate::DocumentRepository as _;
     use crate::fake::{DocumentsCall, InMemoryDocuments, InMemoryFiles, RecordingDocumentsRouter};
-    use crate::keymap::documents_page_keymap;
     use crate::presenter::test_support::{locale, records, today};
     use crate::types::default_types;
     use crate::{KeyDate, KeyDateKind, YearFacet, sample_documents};
@@ -1252,7 +1354,7 @@ mod tests {
             Rc::new(records),
             Rc::new(files),
             clock,
-            documents_page_keymap(config),
+            config,
             "household.pldb".to_string(),
         );
         Page {
@@ -1265,6 +1367,58 @@ mod tests {
 
     fn page() -> Page {
         page_with(InMemoryFiles::default(), &KeyBindingConfig::default())
+    }
+
+    #[test]
+    fn the_inbox_keeps_a_but_not_the_librarys_sort_and_the_library_has_no_inbox_keys() {
+        let mut page = page();
+        let keys = page.presenter.keymap();
+        assert_eq!(keys.event("s"), Some(DocumentsPageEvent::Sort));
+        assert_eq!(keys.event("y"), None, "Accept is the Inbox's");
+        page.send(DocumentsPageEvent::ShowInbox);
+        let keys = page.presenter.keymap();
+        assert_eq!(
+            keys.event("a"),
+            Some(DocumentsPageEvent::Add),
+            "swallowed, not Insert"
+        );
+        assert_eq!(keys.event("s"), None, "Sort is the Library's");
+        assert_eq!(keys.event("y"), Some(DocumentsPageEvent::Accept));
+    }
+
+    #[test]
+    fn a_command_of_the_other_mode_names_the_event_that_shows_that_mode() {
+        let mut page = page();
+        assert_eq!(page.presenter.shows(&DocumentsPageEvent::Add), None);
+        assert_eq!(
+            page.presenter.shows(&DocumentsPageEvent::AcceptAll),
+            Some(DocumentsPageEvent::ShowInbox)
+        );
+        page.send(DocumentsPageEvent::ShowInbox);
+        assert_eq!(
+            page.presenter.shows(&DocumentsPageEvent::Add),
+            Some(DocumentsPageEvent::ShowLibrary)
+        );
+        assert_eq!(page.presenter.shows(&DocumentsPageEvent::Delete), None);
+    }
+
+    #[test]
+    fn the_search_is_the_pages_mode_and_takes_every_key_as_text() {
+        let mut page = page();
+        page.send(DocumentsPageEvent::StartSearch);
+        assert_eq!(PagePresenter::mode(&page.presenter), Some(PageMode::Search));
+        assert_eq!(page.presenter.keymap().event("j"), None, "j types");
+        assert_eq!(
+            page.presenter.typed(TextKey::Char('j')),
+            Some(DocumentsPageEvent::SearchType('j'))
+        );
+        assert_eq!(
+            page.presenter.typed(TextKey::Enter { shift: false }),
+            Some(DocumentsPageEvent::KeepSearch)
+        );
+        page.send(DocumentsPageEvent::KeepSearch);
+        assert_eq!(PagePresenter::mode(&page.presenter), None);
+        assert_eq!(page.presenter.typed(TextKey::Char('j')), None);
     }
 
     impl Page {
@@ -1501,13 +1655,13 @@ mod tests {
             page.router.take(),
             [DocumentsCall::OpenDialog(DocumentsDialog::File(id))]
         );
-        page.send(DocumentsPageEvent::DialogClosed(
+        page.send(DocumentsPageEvent::DialogClosed(Some(
             DocumentsOutcome::FileByHand {
                 id,
                 doc_type: DocumentType::TAX,
                 link: None,
             },
-        ));
+        )));
         let filed = page.stored("scan0012.pdf");
         assert!(filed.is_filed());
         assert_eq!(filed.doc_type, DocumentType::TAX);
@@ -1544,7 +1698,7 @@ mod tests {
             Rc::new(records(today())),
             Rc::new(InMemoryFiles::default()),
             Clock::fixed(today()),
-            documents_page_keymap(&KeyBindingConfig::default()),
+            &KeyBindingConfig::default(),
             String::new(),
         );
         assert!(restarted.skipped().is_empty());
@@ -1559,9 +1713,9 @@ mod tests {
         let id = page.stored(STRONG).id;
         page.send(DocumentsPageEvent::Skip);
 
-        page.send(DocumentsPageEvent::DialogClosed(
+        page.send(DocumentsPageEvent::DialogClosed(Some(
             DocumentsOutcome::FactsSaved(id),
-        ));
+        )));
 
         assert!(page.presenter.skipped().is_empty());
         assert_eq!(page.selected_file().as_deref(), Some(STRONG));
@@ -1578,9 +1732,9 @@ mod tests {
             [DocumentsCall::OpenDialog(DocumentsDialog::AcceptAll(1))]
         );
 
-        page.send(DocumentsPageEvent::DialogClosed(
+        page.send(DocumentsPageEvent::DialogClosed(Some(
             DocumentsOutcome::AcceptAll,
-        ));
+        )));
         assert_eq!(
             page.toasts(),
             [(ToastKind::Success, "Filed 1 · u undo".to_string())]
@@ -1645,8 +1799,8 @@ mod tests {
 
     fn delete_id(page: &mut Page, id: DocumentId) {
         page.store.borrow_mut().delete_document(id);
-        page.send(DocumentsPageEvent::DialogClosed(DocumentsOutcome::Deleted(
-            id,
+        page.send(DocumentsPageEvent::DialogClosed(Some(
+            DocumentsOutcome::Deleted(id),
         )));
     }
 
@@ -1753,8 +1907,8 @@ mod tests {
             page.router.take(),
             [DocumentsCall::OpenDialog(DocumentsDialog::Follow(id))]
         );
-        page.send(DocumentsPageEvent::DialogClosed(DocumentsOutcome::Follow(
-            DocumentLink::Payee(PayeeId::seed(2)),
+        page.send(DocumentsPageEvent::DialogClosed(Some(
+            DocumentsOutcome::Follow(DocumentLink::Payee(PayeeId::seed(2))),
         )));
         assert_eq!(
             page.router.take(),
@@ -1920,8 +2074,8 @@ mod tests {
             .map(|d| d.id)
             .expect("the passport");
 
-        page.send(DocumentsPageEvent::DialogClosed(DocumentsOutcome::Shown(
-            passport,
+        page.send(DocumentsPageEvent::DialogClosed(Some(
+            DocumentsOutcome::Shown(passport),
         )));
 
         assert_eq!(page.presenter.scope(), LibraryScope::All);

@@ -423,9 +423,6 @@ impl Presenter for BudgetsPagePresenter {
         ) {
             self.plan.edit = None;
         }
-        if let Some(tab) = event.tab().filter(|tab| *tab != self.tab) {
-            self.show_tab(tab);
-        }
         match event {
             BudgetsPageEvent::Move(step) => match self.tab {
                 BudgetsTab::Progress => self.progress_move(step),
@@ -641,6 +638,14 @@ impl PagePresenter for BudgetsPagePresenter {
         Some(BudgetsPageEvent::Plan(event))
     }
 
+    /// A palette Command of the other tab shows that tab first.
+    fn shows(&self, event: &BudgetsPageEvent) -> Option<BudgetsPageEvent> {
+        event
+            .tab()
+            .filter(|tab| *tab != self.tab)
+            .map(BudgetsPageEvent::ShowTab)
+    }
+
     /// A Plan cell being typed into is the page's Insert mode.
     fn mode(&self) -> Option<PageMode> {
         self.editing().then_some(PageMode::Insert)
@@ -735,10 +740,15 @@ mod tests {
     }
 
     #[test]
-    fn an_event_for_another_tab_shows_that_tab_first() {
+    fn an_event_for_another_tab_names_the_event_that_shows_that_tab() {
         let mut page = Page::new();
+        let export = BudgetsPageEvent::History(HistoryEvent::Export);
 
-        page.send(BudgetsPageEvent::History(HistoryEvent::Export));
+        let shown = page.presenter.shows(&export).expect("Export is History's");
+        assert_eq!(shown, BudgetsPageEvent::ShowTab(BudgetsTab::History));
+        page.send(shown);
+        assert_eq!(page.presenter.shows(&export), None, "History shows");
+        page.send(export);
 
         assert_eq!(page.presenter.tab(), BudgetsTab::History);
         assert!(matches!(page.router.routed.as_slice(), [Routed::Export(_)]));
