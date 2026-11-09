@@ -21,7 +21,6 @@ pub use router::accounts_page;
 use lib_accounts::presenter::AccountsPagePresenter;
 use lib_core::InstitutionId;
 use lib_institutions::Institution;
-use lib_viper::dialog::DialogKeys;
 
 use crate::shell::view::module_page::ModulePage;
 
@@ -51,14 +50,14 @@ pub struct AccountsSetup {
     pub presenter: AccountsPagePresenter,
     pub ports: lib_accounts::SharedPorts,
     pub deletion: crate::account_deletion::DeletionStores,
-    pub dialog_keys: DialogKeys,
+    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
 }
 
 impl AccountsSetup {
     pub fn new(
         ports: lib_accounts::SharedPorts,
         deletion: crate::account_deletion::DeletionStores,
-        dialog_keys: DialogKeys,
+        dialog_keys: crate::dialog_keys::LiveDialogKeys,
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
@@ -79,7 +78,9 @@ impl AccountsSetup {
         Self::new(
             storage.ports.accounts.clone(),
             crate::account_deletion::DeletionStores::of(&storage.ports),
-            DialogKeys::of(&lib_shell::dialog_keymap(&config)),
+            crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
+                &lib_shell::dialog_keymap(&config),
+            )),
             &config,
         )
     }
@@ -91,7 +92,7 @@ impl AccountsSetup {
 pub struct AccountsRoutes {
     pub ports: lib_accounts::SharedPorts,
     pub deletion: crate::account_deletion::DeletionStores,
-    pub dialog_keys: DialogKeys,
+    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
     pub clock: lib_core::Clock,
 }
 

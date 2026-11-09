@@ -30,7 +30,7 @@ impl AccountsRouter for PageRouter<'_, '_> {
     fn open_dialog(&mut self, dialog: Which) -> bool {
         let routes = self.routes;
         let landed = AccountsPage::landing(self.cx);
-        let (ports, keys) = (routes.ports.clone(), routes.dialog_keys.clone());
+        let (ports, keys) = (routes.ports.clone(), routes.dialog_keys.get());
         let today = routes.clock.today();
         let form = match dialog {
             Which::AddAccount { name } => AccountFormPresenter::add(ports, &name, today, keys),
@@ -58,7 +58,7 @@ impl AccountsRouter for PageRouter<'_, '_> {
             self.cx,
             &routes.deletion,
             id,
-            routes.dialog_keys.clone(),
+            routes.dialog_keys.get(),
             landed,
         )
     }

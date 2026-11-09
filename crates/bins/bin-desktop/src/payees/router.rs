@@ -26,7 +26,7 @@ impl PayeesRouter for PageRouter<'_, '_> {
     fn open_dialog(&mut self, dialog: Which) -> bool {
         let routes = self.routes;
         let landed = PayeesPage::landing(self.cx);
-        let (ports, keys) = (routes.ports.clone(), routes.dialog_keys.clone());
+        let (ports, keys) = (routes.ports.clone(), routes.dialog_keys.get());
         match dialog {
             Which::AddPayee => {
                 ModuleDialog::open(self.cx, PayeeFormPresenter::add(ports, keys), landed);

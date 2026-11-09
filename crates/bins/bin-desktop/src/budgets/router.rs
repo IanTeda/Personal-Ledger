@@ -33,7 +33,7 @@ const BUDGET_HISTORY_FILE: &str = "budget-history.csv";
 pub struct BudgetsRoutes {
     pub ports: SharedPorts,
     pub clock: Clock,
-    pub dialog_keys: DialogKeys,
+    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
 }
 
 pub(crate) struct PageRouter<'a, 'b> {
@@ -67,7 +67,7 @@ impl PageRouter<'_, '_> {
     }
 
     fn keys(&self) -> DialogKeys {
-        self.routes.dialog_keys.clone()
+        self.routes.dialog_keys.get()
     }
 }
 
@@ -216,7 +216,7 @@ pub fn budgets_page(
     announcer: &Entity<Announcer>,
     keymap: lib_viper::keymap::Keymap<BudgetsPageEvent>,
     clock: Clock,
-    dialog_keys: DialogKeys,
+    dialog_keys: crate::dialog_keys::LiveDialogKeys,
     cx: &mut gpui::App,
 ) -> Entity<BudgetsPage> {
     let presenter = BudgetsPagePresenter::new(ports.clone(), clock.clone(), keymap);

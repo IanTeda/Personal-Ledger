@@ -25,7 +25,7 @@ impl DocumentTypesRouter for PageRouter<'_, '_> {
     fn open_dialog(&mut self, dialog: Which) -> bool {
         let routes = self.routes;
         let landed = DocumentTypesPage::landing(self.cx);
-        let (documents, keys) = (routes.documents.clone(), routes.dialog_keys.clone());
+        let (documents, keys) = (routes.documents.clone(), routes.dialog_keys.get());
         match dialog {
             Which::Add => {
                 ModuleDialog::open(self.cx, TypeFormPresenter::add(documents, keys), landed);

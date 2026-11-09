@@ -23,7 +23,6 @@ use lib_units::presenter::{
     UnitPricesEvent, UnitPricesPresenter, UnitPricesViewModel, UnitsPageEvent, UnitsPagePresenter,
     UnitsPageViewModel,
 };
-use lib_viper::dialog::DialogKeys;
 use lib_viper::keymap::Keymap;
 use lib_viper::presenter::Presenter as _;
 
@@ -54,7 +53,7 @@ pub struct UnitsPage {
     presenter: UnitsPagePresenter,
     ports: lib_units::SharedPorts,
     deletion: lib_unit_deletion::SharedUnitDeletion,
-    dialog_keys: DialogKeys,
+    dialog_keys: crate::dialog_keys::LiveDialogKeys,
     keymap: Keymap<UnitsPageEvent>,
     prices_keymap: Keymap<UnitPricesEvent>,
     /// The Unit prices view, while it shows in place of the tables.

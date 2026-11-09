@@ -11,7 +11,6 @@ use lib_inventory::presenter::{
 };
 use lib_inventory::{InventoryDialog as Which, InventoryOutcome, InventoryRouter, SharedInventory};
 use lib_toast::{Notice, Notify};
-use lib_viper::dialog::DialogKeys;
 
 use super::InventorySetup;
 use super::view::page::InventoryPage;
@@ -23,7 +22,7 @@ pub(super) struct PageRouter<'a, 'b> {
     pub inventory: SharedInventory,
     pub reads: StoredInventoryReads,
     /// The Dialog keys the Dialogs' status-line hints are built from.
-    pub dialog_keys: DialogKeys,
+    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
     pub cx: &'a mut Context<'b, InventoryPage>,
 }
 
@@ -37,7 +36,7 @@ impl InventoryRouter for PageRouter<'_, '_> {
             // A page that has gone has nothing to land on.
             let _ = page.update(cx, |page, cx| page.dialog_landed(outcome, cx));
         };
-        let (inventory, reads, keys) = (&self.inventory, &self.reads, self.dialog_keys.clone());
+        let (inventory, reads, keys) = (&self.inventory, &self.reads, self.dialog_keys.get());
         match dialog {
             Which::AddLocation { unit } => {
                 let form = LocationFormPresenter::add(inventory, reads, unit, keys);

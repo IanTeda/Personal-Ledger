@@ -46,14 +46,14 @@ pub struct BillsSetup {
     pub ports: SharedPorts,
     pub payments: lib_bill_payments::SharedPayments,
     pub keymap: lib_viper::keymap::Keymap<BillsPageEvent>,
-    pub dialog_keys: lib_viper::dialog::DialogKeys,
+    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
 }
 
 impl BillsSetup {
     pub fn new(
         ports: SharedPorts,
         payments: lib_bill_payments::SharedPayments,
-        dialog_keys: lib_viper::dialog::DialogKeys,
+        dialog_keys: crate::dialog_keys::LiveDialogKeys,
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
@@ -71,7 +71,7 @@ impl BillsSetup {
         Self::new(
             storage.ports.bills.clone(),
             storage.ports.bill_payments.clone(),
-            lib_viper::dialog::DialogKeys::default(),
+            crate::dialog_keys::LiveDialogKeys::default(),
             &lib_config::KeyBindingConfig::default(),
         )
     }

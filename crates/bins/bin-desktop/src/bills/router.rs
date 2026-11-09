@@ -11,7 +11,6 @@ use lib_bills::presenter::{PlanFormPresenter, SkipPresenter};
 use lib_bills::{BillsOutcome, BillsRouter, EntryId, PayRequest};
 use lib_core::{BillPlanId, Clock, DateStyle, TransactionId};
 use lib_toast::{Notice, Notify};
-use lib_viper::dialog::DialogKeys;
 
 use super::{BillsPage, BillsSetup};
 use crate::announcer::Announcer;
@@ -26,7 +25,7 @@ pub struct BillsRoutes {
     pub ports: lib_bills::SharedPorts,
     pub payments: SharedPayments,
     pub clock: Clock,
-    pub dialog_keys: DialogKeys,
+    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
 }
 
 pub(crate) struct PageRouter<'a, 'b> {
@@ -42,7 +41,7 @@ impl BillsRouter for PageRouter<'_, '_> {
         let (ports, clock, keys) = (
             routes.ports.clone(),
             routes.clock.clone(),
-            routes.dialog_keys.clone(),
+            routes.dialog_keys.get(),
         );
         let presenter = match plan {
             None => Some(PlanFormPresenter::add(ports, clock, self.date_style, keys)),
@@ -59,7 +58,7 @@ impl BillsRouter for PageRouter<'_, '_> {
     fn open_skip(&mut self, entry: EntryId) -> bool {
         let routes = self.routes;
         let Some(presenter) =
-            SkipPresenter::new(routes.ports.clone(), entry, routes.dialog_keys.clone())
+            SkipPresenter::new(routes.ports.clone(), entry, routes.dialog_keys.get())
         else {
             return false;
         };
@@ -83,7 +82,7 @@ impl BillsRouter for PageRouter<'_, '_> {
             PayOpening {
                 clock: routes.clock.clone(),
                 date_style: self.date_style,
-                keys: routes.dialog_keys.clone(),
+                keys: routes.dialog_keys.get(),
             },
             move |_paid, cx| landing(BillsOutcome::Paid, cx),
         )

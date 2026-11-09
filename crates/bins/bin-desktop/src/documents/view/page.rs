@@ -23,7 +23,6 @@ use lib_documents::presenter::{
     DocumentsPageEvent, DocumentsPagePresenter, DocumentsPageViewModel,
 };
 use lib_documents::{DocumentsMode, SharedFiles, SharedRepository};
-use lib_viper::dialog::DialogKeys;
 
 use super::Scrolls;
 use crate::announcer::Announcer;
@@ -52,7 +51,7 @@ pub struct DocumentsBefore {
 
 impl PageView for DocumentsPagePresenter {
     /// The Dialog keymap's chords, which the page's Dialogs' hints show.
-    type Setup = DialogKeys;
+    type Setup = crate::dialog_keys::LiveDialogKeys;
     type Widgets = DocumentsWidgets;
     type Before = DocumentsBefore;
 
@@ -68,7 +67,7 @@ impl PageView for DocumentsPagePresenter {
 
     fn with_router<R>(
         presenter: &mut Self,
-        keys: &DialogKeys,
+        keys: &crate::dialog_keys::LiveDialogKeys,
         cx: &mut Context<'_, DocumentsPage>,
         handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
     ) -> R {
@@ -168,7 +167,11 @@ impl PageView for DocumentsPagePresenter {
 /// Documents destination. `clock` reads the day the Key Dates are banded against. The page writes
 /// the store through its Interactors; the input that wrote announces the Documents, so the rail's
 /// Inbox count follows a filing. Its keys, and the Dialog keys its Dialogs' hints show, are
-/// `config`'s.
+/// `config`'s, read from `dialog_keys` as each Dialog opens so a rebind reaches it.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the page's Setup is the shared Dialog keys alone; the rest build its Presenter"
+)]
 pub fn documents_page(
     documents: &SharedRepository,
     files: SharedFiles,
@@ -176,9 +179,9 @@ pub fn documents_page(
     announcer: Entity<Announcer>,
     config: &lib_config::KeyBindingConfig,
     clock: Clock,
+    dialog_keys: crate::dialog_keys::LiveDialogKeys,
     cx: &mut App,
 ) -> Entity<DocumentsPage> {
-    let dialog_keys = DialogKeys::of(&lib_shell::dialog_keymap(config));
     let documents = documents.clone();
     let reads = Rc::new(reads);
     let presenter = DocumentsPagePresenter::new(

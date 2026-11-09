@@ -485,6 +485,9 @@ pub(super) fn set_view_keymaps(
     let Some(open) = open else {
         return;
     };
+    open.dialog_keys.set(lib_viper::dialog::DialogKeys::of(
+        &lib_shell::dialog_keymap(config),
+    ));
     open.views.transactions.update(cx, |page, cx| {
         page.send(
             lib_transactions::presenter::TransactionsPageEvent::KeysChanged(config.clone()),

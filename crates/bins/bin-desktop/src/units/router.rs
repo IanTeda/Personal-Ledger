@@ -11,7 +11,6 @@ use lib_units::presenter::{
     UnitFormPresenter, UnitsOutcome,
 };
 use lib_units::{UnitId, UnitsDialog as Which, UnitsRouter};
-use lib_viper::dialog::DialogKeys;
 
 use super::UnitsSetup;
 use super::view::page::UnitsPage;
@@ -23,7 +22,7 @@ pub(super) struct PageRouter<'a, 'b> {
     pub ports: lib_units::SharedPorts,
     pub deletion: lib_unit_deletion::SharedUnitDeletion,
     /// The Dialog keys the Dialogs' status-line hints are built from.
-    pub dialog_keys: DialogKeys,
+    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
     /// The Clock the set price Dialog reads now from.
     pub clock: lib_core::Clock,
     pub cx: &'a mut Context<'b, UnitsPage>,
@@ -42,7 +41,7 @@ impl UnitsRouter for PageRouter<'_, '_> {
             // A page that has gone has nothing to land on.
             let _ = page.update(cx, |page, cx| page.dialog_landed(outcome, cx));
         };
-        let (ports, keys) = (self.ports.clone(), self.dialog_keys.clone());
+        let (ports, keys) = (self.ports.clone(), self.dialog_keys.get());
         match dialog {
             Which::AddUnit => {
                 ModuleDialog::open(self.cx, UnitFormPresenter::add(ports, keys), landed);

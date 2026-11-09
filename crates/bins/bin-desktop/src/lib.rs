@@ -16,6 +16,7 @@ mod categories;
 mod category_deletion;
 mod dashboard;
 mod dialog;
+mod dialog_keys;
 mod document_types;
 mod documents;
 mod error;

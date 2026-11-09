@@ -11,7 +11,6 @@ use gpui::{App, Context};
 use lib_documents::presenter::DialogPorts;
 use lib_documents::{DocumentLink, DocumentsDialog as Which, DocumentsRouter};
 use lib_toast::{Notice, Notify};
-use lib_viper::dialog::DialogKeys;
 
 use super::view::page::DocumentsPage;
 use crate::navigation::nav::Noun;
@@ -22,7 +21,7 @@ pub(super) struct PageRouter<'a, 'b> {
     /// What the page's Dialogs read and write through.
     pub ports: DialogPorts,
     /// The Dialog keymap's chords, which the Dialogs' hints show.
-    pub keys: DialogKeys,
+    pub keys: crate::dialog_keys::LiveDialogKeys,
     pub cx: &'a mut Context<'b, DocumentsPage>,
 }
 
@@ -47,7 +46,7 @@ impl DocumentsRouter for PageRouter<'_, '_> {
     /// Builds `dialog`'s Presenter on the page's ports and hosts it in a `ModuleDialog`; what it
     /// asks of the page as it closes comes back through [`DocumentsPage::landing`].
     fn open_dialog(&mut self, dialog: Which) -> bool {
-        super::view::dialog::open(dialog, self.ports.clone(), self.keys.clone(), self.cx)
+        super::view::dialog::open(dialog, self.ports.clone(), self.keys.get(), self.cx)
     }
 
     fn open_file(&mut self, path: &Path, in_folder: bool) {

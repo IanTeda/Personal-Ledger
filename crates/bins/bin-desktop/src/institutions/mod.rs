@@ -18,7 +18,6 @@ mod view;
 pub use router::institutions_page;
 
 use lib_institutions::presenter::InstitutionsPagePresenter;
-use lib_viper::dialog::DialogKeys;
 
 use crate::shell::view::module_page::ModulePage;
 
@@ -42,13 +41,13 @@ pub struct SettingsInstitutionsSnapshot {
 pub struct InstitutionsSetup {
     pub presenter: InstitutionsPagePresenter,
     pub ports: lib_institutions::SharedPorts,
-    pub dialog_keys: DialogKeys,
+    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
 }
 
 impl InstitutionsSetup {
     pub fn new(
         ports: lib_institutions::SharedPorts,
-        dialog_keys: DialogKeys,
+        dialog_keys: crate::dialog_keys::LiveDialogKeys,
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
@@ -68,7 +67,9 @@ impl InstitutionsSetup {
         let config = lib_config::KeyBindingConfig::default();
         Self::new(
             storage.ports.institutions.clone(),
-            DialogKeys::of(&lib_shell::dialog_keymap(&config)),
+            crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
+                &lib_shell::dialog_keymap(&config),
+            )),
             &config,
         )
     }
@@ -78,5 +79,5 @@ impl InstitutionsSetup {
 /// ports and Dialog keys its Dialogs open on.
 pub struct InstitutionsRoutes {
     pub ports: lib_institutions::SharedPorts,
-    pub dialog_keys: DialogKeys,
+    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
 }

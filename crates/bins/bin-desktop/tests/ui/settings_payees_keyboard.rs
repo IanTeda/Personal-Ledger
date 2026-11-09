@@ -484,6 +484,18 @@ fn the_dialogs_swap_their_hints_into_the_status_line(app: &mut TestAppContext) {
     assert_eq!(hint_keys(&mut ui), ["j/k", "enter", "e", "d", "n"]);
 }
 
+/// A rebind while the Ledger is open reaches the next Dialog's hints, not only its keys.
+#[gpui::test]
+fn a_dialog_opened_after_a_rebind_hints_the_new_chord(app: &mut TestAppContext) {
+    let mut ui = in_payees(app);
+    ui.rebind(&common::overriding("back", "ctrl+q"));
+
+    ui.press("n");
+    let keys = hint_keys(&mut ui);
+    assert_ne!(keys[0], "esc", "{keys:?}");
+    assert!(keys[0].contains('q'), "{keys:?}");
+}
+
 #[gpui::test]
 fn tab_reaches_the_default_category_and_down_picks_a_leaf_ctrl_enter_saves(
     app: &mut TestAppContext,

@@ -26,7 +26,7 @@ impl InstitutionsRouter for PageRouter<'_, '_> {
     fn open_dialog(&mut self, dialog: Which) -> bool {
         let routes = self.routes;
         let landed = InstitutionsPage::landing(self.cx);
-        let (ports, keys) = (routes.ports.clone(), routes.dialog_keys.clone());
+        let (ports, keys) = (routes.ports.clone(), routes.dialog_keys.get());
         match dialog {
             Which::AddInstitution => {
                 ModuleDialog::open(self.cx, InstitutionFormPresenter::add(ports, keys), landed);

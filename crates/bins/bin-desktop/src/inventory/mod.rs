@@ -48,7 +48,7 @@ pub struct InventorySetup {
     pub inventory: SharedInventory,
     pub reads: lib_database::StoredInventoryReads,
     /// The Dialog keymap's chords, which the module's Dialogs build their status-line hints from.
-    pub dialog_keys: lib_viper::dialog::DialogKeys,
+    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
     pub keymap: lib_viper::keymap::Keymap<InventoryPageEvent>,
 }
 
@@ -56,7 +56,7 @@ impl InventorySetup {
     pub fn new(
         inventory: SharedInventory,
         reads: lib_database::StoredInventoryReads,
-        dialog_keys: lib_viper::dialog::DialogKeys,
+        dialog_keys: crate::dialog_keys::LiveDialogKeys,
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
@@ -74,7 +74,9 @@ impl InventorySetup {
         Self::new(
             storage.ports.inventory.clone(),
             storage.ports.inventory_reads.clone(),
-            lib_viper::dialog::DialogKeys::of(&lib_shell::dialog_keymap(&config)),
+            crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
+                &lib_shell::dialog_keymap(&config),
+            )),
             &config,
         )
     }

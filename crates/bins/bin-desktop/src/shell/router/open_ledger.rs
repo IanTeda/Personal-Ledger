@@ -115,6 +115,8 @@ pub struct OpenLedger {
     /// Bills, Budgets, Transactions with its Import step, and Documents. Each reaches `Root` only
     /// through `ViewEvent`. Settings is `Root`'s own, given its This Ledger pages here.
     pub(super) views: ViewEntities,
+    /// The Dialog keys every page's Router hands a Dialog it opens, replaced on a rebind.
+    pub(super) dialog_keys: crate::dialog_keys::LiveDialogKeys,
     /// The Ledger file, `None` for a test's in-memory stores.
     path: Option<PathBuf>,
     /// The writer the stores save through, `None` for a test's in-memory stores.
@@ -154,8 +156,11 @@ impl OpenLedger {
         let announcer = cx.new(|_| Announcer::default());
         crate::input::open_ledger(commit, announcer.clone(), cx);
         let failures = Rc::new(failures);
-        // The Dialog keymap's chords, built once, which every module Dialog's hints read.
-        let dialog_keys = DialogKeys::of(&lib_shell::dialog_keymap(keybindings));
+        // The Dialog keymap's chords, which every module Dialog's hints read as it opens, and
+        // which a rebind replaces.
+        let dialog_keys = crate::dialog_keys::LiveDialogKeys::new(DialogKeys::of(
+            &lib_shell::dialog_keymap(keybindings),
+        ));
         let units = crate::units::UnitsSetup::new(
             storage.ports.units.clone(),
             storage.ports.unit_deletion.clone(),
@@ -268,7 +273,7 @@ impl OpenLedger {
             &announcer,
             lib_budgets::keymap::budgets_page_keymap(keybindings),
             clock.clone(),
-            dialog_keys,
+            dialog_keys.clone(),
             cx,
         );
         let budgets_subscription = Root::view_event_subscription(&budgets_view, cx);
@@ -291,6 +296,7 @@ impl OpenLedger {
             announcer.clone(),
             keybindings,
             clock.clone(),
+            dialog_keys.clone(),
             cx,
         );
         let documents_subscription = Root::view_event_subscription(&documents_view, cx);
@@ -311,6 +317,7 @@ impl OpenLedger {
                 import: import_view,
                 documents: documents_view,
             },
+            dialog_keys,
             path,
             writer,
             _subscriptions: vec![

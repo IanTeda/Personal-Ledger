@@ -18,7 +18,6 @@ mod view;
 pub use router::payees_page;
 
 use lib_payees::presenter::PayeesPagePresenter;
-use lib_viper::dialog::DialogKeys;
 
 use crate::shell::view::module_page::ModulePage;
 
@@ -42,13 +41,13 @@ pub struct SettingsPayeesSnapshot {
 pub struct PayeesSetup {
     pub presenter: PayeesPagePresenter,
     pub ports: lib_payees::SharedPorts,
-    pub dialog_keys: DialogKeys,
+    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
 }
 
 impl PayeesSetup {
     pub fn new(
         ports: lib_payees::SharedPorts,
-        dialog_keys: DialogKeys,
+        dialog_keys: crate::dialog_keys::LiveDialogKeys,
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
@@ -67,7 +66,9 @@ impl PayeesSetup {
         let config = lib_config::KeyBindingConfig::default();
         Self::new(
             storage.ports.payees.clone(),
-            DialogKeys::of(&lib_shell::dialog_keymap(&config)),
+            crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
+                &lib_shell::dialog_keymap(&config),
+            )),
             &config,
         )
     }
@@ -77,6 +78,6 @@ impl PayeesSetup {
 /// Dialog keys its Dialogs open on, and the Clock its Transactions hand-off dates its filter by.
 pub struct PayeesRoutes {
     pub ports: lib_payees::SharedPorts,
-    pub dialog_keys: DialogKeys,
+    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
     pub clock: lib_core::Clock,
 }

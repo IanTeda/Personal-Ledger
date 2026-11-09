@@ -22,7 +22,6 @@ pub use router::tags_page;
 use lib_core::TagId;
 use lib_tags::SharedPorts;
 use lib_tags::presenter::TagsPagePresenter;
-use lib_viper::dialog::DialogKeys;
 
 use crate::shell::view::module_page::ModulePage;
 use crate::tag_removal::RemovalStores;
@@ -47,14 +46,14 @@ pub struct TagsSetup {
     pub presenter: TagsPagePresenter,
     pub ports: SharedPorts,
     pub removal: RemovalStores,
-    pub dialog_keys: DialogKeys,
+    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
 }
 
 impl TagsSetup {
     pub fn new(
         ports: SharedPorts,
         removal: RemovalStores,
-        dialog_keys: DialogKeys,
+        dialog_keys: crate::dialog_keys::LiveDialogKeys,
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
@@ -75,7 +74,9 @@ impl TagsSetup {
         Self::new(
             storage.ports.tags.clone(),
             RemovalStores::of(&storage.ports),
-            DialogKeys::of(&lib_shell::dialog_keymap(&config)),
+            crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
+                &lib_shell::dialog_keymap(&config),
+            )),
             &config,
         )
     }
@@ -86,6 +87,6 @@ impl TagsSetup {
 pub struct TagsRoutes {
     pub ports: SharedPorts,
     pub removal: RemovalStores,
-    pub dialog_keys: DialogKeys,
+    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
     pub clock: lib_core::Clock,
 }

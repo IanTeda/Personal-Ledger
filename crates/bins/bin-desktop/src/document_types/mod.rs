@@ -20,7 +20,6 @@ pub use router::document_types_page;
 
 use lib_core::DocumentTypeId;
 use lib_documents::presenter::DocumentTypesPagePresenter;
-use lib_viper::dialog::DialogKeys;
 
 use crate::shell::view::module_page::ModulePage;
 
@@ -45,13 +44,13 @@ pub struct SettingsDocumentTypesSnapshot {
 pub struct DocumentTypesSetup {
     pub presenter: DocumentTypesPagePresenter,
     pub documents: lib_documents::SharedRepository,
-    pub dialog_keys: DialogKeys,
+    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
 }
 
 impl DocumentTypesSetup {
     pub fn new(
         documents: lib_documents::SharedRepository,
-        dialog_keys: DialogKeys,
+        dialog_keys: crate::dialog_keys::LiveDialogKeys,
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
@@ -70,7 +69,9 @@ impl DocumentTypesSetup {
         let config = lib_config::KeyBindingConfig::default();
         Self::new(
             storage.ports.documents.clone(),
-            DialogKeys::of(&lib_shell::dialog_keymap(&config)),
+            crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
+                &lib_shell::dialog_keymap(&config),
+            )),
             &config,
         )
     }
@@ -80,5 +81,5 @@ impl DocumentTypesSetup {
 /// repository and Dialog keys its Dialogs open on.
 pub struct DocumentTypesRoutes {
     pub documents: lib_documents::SharedRepository,
-    pub dialog_keys: DialogKeys,
+    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
 }

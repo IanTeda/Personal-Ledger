@@ -1675,6 +1675,15 @@ impl<'a> Harness<'a> {
         self.cx.run_until_parked();
     }
 
+    /// Applies `config` while the app runs, as saving `[keybindings]` in Settings does.
+    pub fn rebind(&mut self, config: &lib_config::KeyBindingConfig) {
+        self.shell.update(self.cx, |shell, cx| {
+            shell.set_keymaps(config, cx);
+            cx.notify();
+        });
+        self.cx.run_until_parked();
+    }
+
     /// Removes every Tag so the Tags page has nothing to select.
     pub fn empty_tags(&mut self) {
         self.shell.update(self.cx, |shell, cx| {

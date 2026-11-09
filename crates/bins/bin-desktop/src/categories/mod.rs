@@ -21,7 +21,6 @@ pub use router::categories_page;
 
 use lib_categories::presenter::CategoriesPagePresenter;
 use lib_core::{CategoryId, CategoryTypes};
-use lib_viper::dialog::DialogKeys;
 
 use crate::category_deletion::DeletionStores;
 use crate::shell::view::module_page::ModulePage;
@@ -57,7 +56,7 @@ pub struct CategoriesSetup {
     pub budgets: lib_database::SharedBudgetsStore,
     /// Category delete's port and reads, over the Categories store and the stores it re-points.
     pub deletion: DeletionStores,
-    pub dialog_keys: DialogKeys,
+    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
 }
 
 impl CategoriesSetup {
@@ -66,7 +65,7 @@ impl CategoriesSetup {
         save: lib_database::StoredCategoriesPorts,
         budgets: lib_database::SharedBudgetsStore,
         deletion: DeletionStores,
-        dialog_keys: DialogKeys,
+        dialog_keys: crate::dialog_keys::LiveDialogKeys,
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
@@ -92,7 +91,9 @@ impl CategoriesSetup {
             storage.ports.category_save.clone(),
             storage.ports.stores.budgets.clone(),
             DeletionStores::of(&storage.ports),
-            DialogKeys::of(&lib_shell::dialog_keymap(&config)),
+            crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
+                &lib_shell::dialog_keymap(&config),
+            )),
             &config,
         )
     }
@@ -105,5 +106,5 @@ pub struct CategoriesRoutes {
     pub save: lib_database::StoredCategoriesPorts,
     pub budgets: lib_database::SharedBudgetsStore,
     pub deletion: DeletionStores,
-    pub dialog_keys: DialogKeys,
+    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
 }

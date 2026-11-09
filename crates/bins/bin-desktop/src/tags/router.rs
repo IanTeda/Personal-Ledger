@@ -28,7 +28,7 @@ impl TagsRouter for PageRouter<'_, '_> {
     fn open_dialog(&mut self, dialog: Which) -> bool {
         let routes = self.routes;
         let landed = TagsPage::landing(self.cx);
-        let keys = routes.dialog_keys.clone();
+        let keys = routes.dialog_keys.get();
         let form = match dialog {
             Which::RemoveTag(id) => {
                 return crate::tag_removal::router::open_remove(

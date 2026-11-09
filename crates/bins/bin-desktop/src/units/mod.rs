@@ -69,7 +69,7 @@ pub struct UnitsSetup {
     /// writes through (#903).
     pub deletion: lib_unit_deletion::SharedUnitDeletion,
     /// The Dialog keymap's chords, which the module's Dialogs build their status-line hints from.
-    pub dialog_keys: lib_viper::dialog::DialogKeys,
+    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
     pub keymap: lib_viper::keymap::Keymap<lib_units::presenter::UnitsPageEvent>,
     pub prices_keymap: lib_viper::keymap::Keymap<lib_units::presenter::UnitPricesEvent>,
 }
@@ -78,7 +78,7 @@ impl UnitsSetup {
     pub fn new(
         ports: SharedPorts,
         deletion: lib_unit_deletion::SharedUnitDeletion,
-        dialog_keys: lib_viper::dialog::DialogKeys,
+        dialog_keys: crate::dialog_keys::LiveDialogKeys,
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
@@ -97,7 +97,9 @@ impl UnitsSetup {
         Self::new(
             storage.ports.units.clone(),
             storage.ports.unit_deletion.clone(),
-            lib_viper::dialog::DialogKeys::of(&lib_shell::dialog_keymap(&config)),
+            crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
+                &lib_shell::dialog_keymap(&config),
+            )),
             &config,
         )
     }

@@ -32,7 +32,7 @@ impl CategoriesRouter for PageRouter<'_, '_> {
     fn open_dialog(&mut self, dialog: Which) -> bool {
         let routes = self.routes;
         let landed = CategoriesPage::landing(self.cx);
-        let keys = routes.dialog_keys.clone();
+        let keys = routes.dialog_keys.get();
         let save: SharedSavePorts = Rc::new(RefCell::new(routes.save.clone()));
         let categories = routes.categories.clone();
         match dialog {
