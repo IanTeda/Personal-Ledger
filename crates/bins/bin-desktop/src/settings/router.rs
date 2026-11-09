@@ -7,7 +7,7 @@
 //! the root Router as [`ViewEvent`]s; a colour change is applied once the current update ends; a
 //! Notice goes onto the bin's queue (`crate::notices`), which the input's `send` drains.
 
-use gpui::{Context, EventEmitter, ListState};
+use gpui::{Context, EventEmitter};
 use lib_settings::{
     ClearLogsPresenter, ColourChoice, DisplayOutput, LogListChange, LogScroll, SettingsPage,
     SettingsRouter,
@@ -15,7 +15,7 @@ use lib_settings::{
 use lib_toast::{Notice, Notify};
 
 use super::state::SettingsView;
-use super::tracing::{TracingPage, apply_change, scroll};
+use super::tracing::{LogListEffect, TracingPage, queue_list_effect};
 use crate::view::event::{ViewEvent, ViewMode};
 
 /// The page on show changed by the person's hand, for the root Router to record in the Shell's
@@ -83,33 +83,27 @@ impl<P> Notify for DeviceRouter<'_, '_, P> {
 }
 
 /// `impl lib_settings::TracingRouter` for the Tracing page: the log box's list and the Dialog it
-/// opens. `list` is the page's own, lent beside its Presenter.
+/// opens. The list is the page's widget state, which the Router never holds: it queues what the
+/// Presenter asks of it for the page's `PageView::after` to apply.
 pub(super) struct TracingRouter<'a, 'b> {
-    pub list: &'a ListState,
     pub cx: &'a mut Context<'b, TracingPage>,
-    /// Whether the Presenter changed the log list, so a capture wake redraws only then.
-    pub list_changed: bool,
 }
 
 impl lib_settings::TracingRouter for TracingRouter<'_, '_> {
     fn scroll(&mut self, to: LogScroll) {
-        scroll(self.list, to);
+        queue_list_effect(LogListEffect::Scroll(to));
     }
 
     fn log_changed(&mut self, change: LogListChange) {
-        apply_change(self.list, change);
-        self.list_changed = true;
+        queue_list_effect(LogListEffect::Changed(change));
     }
 
     /// Clear logs asks first, since the capture is emptied for good (#502), and clears the status
     /// line as the page's other Dialogs do.
     fn open_clear_logs(&mut self, dialog: ClearLogsPresenter) {
         self.cx.emit(ViewEvent::SetStatus(None));
-        let page = self.cx.weak_entity();
-        crate::shell::view::dialog_entity::ModuleDialog::open(self.cx, dialog, move |_, cx| {
-            // A page that has gone has nothing to land on.
-            let _ = page.update(cx, |page, cx| page.cleared(cx));
-        });
+        let landed = TracingPage::landing(self.cx);
+        crate::shell::view::dialog_entity::ModuleDialog::open(self.cx, dialog, landed);
     }
 }
 

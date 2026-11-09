@@ -1,8 +1,11 @@
 //! The Desktop's half of Settings › Tracing's capture: [`CaptureLog`] answers `lib-settings`'
 //! `TracingLog` port over `lib_tracing`'s [`LogBuffer`], the ring the app's tracing subscriber
-//! feeds from any thread, and [`opening_level`] picks the radio the page opens on.
+//! feeds from any thread, [`LogFeed`] is what the page subscribes to for word that it gained
+//! entries, and [`opening_level`] picks the radio the page opens on.
 
 use std::rc::Rc;
+
+use gpui::{Context, EventEmitter};
 
 use lib_settings::log::{LogLevel, LogLine};
 use lib_settings::{TracingLevel, TracingLog};
@@ -39,6 +42,24 @@ impl TracingLog for CaptureLog {
 
     fn clear(&self) {
         self.buffer.clear();
+    }
+}
+
+/// The capture gained entries.
+#[derive(Debug, Clone, Copy)]
+pub struct LogAppended;
+
+/// Where the capture's wake reaches the gpui side: the capture feed (`shell/router/log_feed.rs`)
+/// signals it on the main thread once a burst settles, and the Tracing page subscribes to it as it
+/// is built (`PageView::subscribe`), before the real capture is handed over.
+pub struct LogFeed;
+
+impl EventEmitter<LogAppended> for LogFeed {}
+
+impl LogFeed {
+    /// Tells the page the capture gained entries.
+    pub fn signal(&mut self, cx: &mut Context<'_, Self>) {
+        cx.emit(LogAppended);
     }
 }
 

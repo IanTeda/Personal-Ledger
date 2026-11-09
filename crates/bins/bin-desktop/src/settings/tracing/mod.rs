@@ -1,182 +1,185 @@
 //! The **Tracing (Logs)** Settings page (ADR-0037, and its amendment's one folder per page): the
-//! live log capture. [`TracingPage`] is `lib-settings`' Tracing Presenter in a gpui Entity, with
-//! the virtualised list that shows its rows, which the Presenter's Router keeps in step
-//! (`super::router::TracingRouter`). The Settings View hosts it as any other page: it looks up each
-//! key the Shell passes on in the Tracing keymap, turns clicks into events through `PageClicks`
-//! and draws the view model (`render.rs`). The capture is read through the `TracingLog` port
-//! (`log.rs`); the capture feed (`shell/router/log_feed.rs`) signals it when entries arrive. Clear
-//! logs is a module Dialog (`dialogs/`) the Presenter's Router hosts. The page has no form: the
-//! level radios filter the mirror at once.
+//! live log capture. `lib-settings`' Tracing Presenter is the [`PageView`] the generic `ModulePage`
+//! hosts (ADR-0056), with the virtualised list that shows its rows as the page's widget state
+//! ([`LogList`]). The Presenter tells its Router (`super::router::TracingRouter`) how the rows
+//! changed and where to scroll; [`PageView::after`] applies that to the list. The capture is read
+//! through the `TracingLog` port (`log.rs`); the page subscribes to the capture feed's
+//! [`LogFeed`] (`PageView::subscribe`), and each signal is a [`TracingEvent::LogChanged`] input.
+//! Clear logs is a module Dialog (`dialogs/`) the Router hosts. The page has no form: the level
+//! radios filter the mirror at once.
 
 pub mod dialogs;
 pub mod log;
 mod render;
 
+use std::cell::RefCell;
 use std::rc::Rc;
 
-use gpui::{App, Context, EventEmitter, ListOffset, ListState, Pixels, px};
+use gpui::{
+    AnyElement, App, Context, Entity, ListAlignment, ListOffset, ListState, Pixels, Subscription,
+    Window, px,
+};
+use lib_database::Domain;
 use lib_settings::keymap::tracing_keymap;
 use lib_settings::{
     LogChange, LogListChange, LogScroll, TracingEvent, TracingLevel, TracingLog, TracingPresenter,
     TracingSetup, TracingViewModel,
 };
-use lib_shell::Hint;
 use lib_viper::dialog::DialogKeys;
 use lib_viper::keymap::KeyBindingConfig;
-use lib_viper::presenter::{PagePresenter, Presenter};
 
 use crate::{
-    settings::{
-        SettingsPage,
-        pages::{Page, PageRowClicked},
-        router::TracingRouter,
-        snapshot::PageSnapshot,
-    },
-    shell::view::page_clicks::PresenterPage,
+    settings::{SettingsPage, router::TracingRouter, snapshot::PageSnapshot},
+    shell::view::module_page::{ModulePage, PageDraw, PageView, SettingsPageView},
+    shell::view::statusline::PageStatus,
     view::event::ViewEvent,
 };
+use log::{LogAppended, LogFeed};
 
 /// One `j`/`k` step in the log box: a line of its 11px/1.6 monospace.
 pub const LOG_LINE_STEP: Pixels = px(17.6);
 
-impl EventEmitter<ViewEvent> for TracingPage {}
+/// Rows measured beyond the log box's visible edge, so scrolling doesn't pop rows in.
+const LOG_LIST_OVERDRAW: Pixels = px(200.0);
 
-/// The page has no rows, so it never emits a row click.
-impl EventEmitter<PageRowClicked> for TracingPage {}
+/// The Tracing page: the Presenter in the generic page Entity, following the capture through
+/// [`LogFeed`].
+pub type TracingPage = ModulePage<TracingPresenter>;
 
-/// The Tracing page. `log_list` is the virtualised list that shows the Presenter's visible
-/// entries, and is kept in step with them by the Router the Presenter's changes go through.
-pub struct TracingPage {
-    presenter: TracingPresenter,
-    log_list: ListState,
+/// Tracing reading `log`, opening on `level`, under `config`'s keys, with the Shell's `back` on
+/// `back_chord`, told of new entries by `feed`. Tracing reads no Ledger, so it stands before one
+/// is open.
+pub fn tracing_page(
+    log: Rc<dyn TracingLog>,
+    level: TracingLevel,
+    config: &KeyBindingConfig,
+    back_chord: String,
+    feed: Entity<LogFeed>,
+    cx: &mut Context<'_, TracingPage>,
+) -> TracingPage {
+    let presenter = TracingPresenter::new(TracingSetup {
+        log,
+        keymap: tracing_keymap(config),
+        back_chord,
+        dialog_keys: DialogKeys::of(&lib_shell::dialog_keymap(config)),
+        level,
+    });
+    ModulePage::detached(presenter, feed, cx)
 }
 
-impl TracingPage {
-    /// Tracing reading `log`, opening on `level`, under `config`'s keys, with the Shell's `back`
-    /// on `back_chord`.
-    pub fn new(
-        log: Rc<dyn TracingLog>,
-        level: TracingLevel,
-        config: &KeyBindingConfig,
-        back_chord: String,
-        log_list: ListState,
-    ) -> Self {
-        let presenter = TracingPresenter::new(TracingSetup {
-            log,
-            keymap: tracing_keymap(config),
-            back_chord,
-            dialog_keys: DialogKeys::of(&lib_shell::dialog_keymap(config)),
-            level,
-        });
-        log_list.reset(presenter.visible_count());
-        Self {
-            presenter,
-            log_list,
+/// The log box's virtualised list, the page's widget state: the Presenter never sees it.
+pub struct LogList(ListState);
+
+impl Default for LogList {
+    fn default() -> Self {
+        Self(ListState::new(0, ListAlignment::Top, LOG_LIST_OVERDRAW))
+    }
+}
+
+/// What the Presenter asked of the list during one handle, in order.
+#[derive(Debug, Clone, Copy)]
+pub(super) enum LogListEffect {
+    Scroll(LogScroll),
+    Changed(LogListChange),
+}
+
+thread_local! {
+    /// The Router's half of the hand-over to [`PageView::after`]: the Router is built over the
+    /// Setup and never sees the page's widget state, so it queues what the Presenter asked of the
+    /// list here and `after` applies it once the handle returns. Per thread, as the Notices'
+    /// queue is (`crate::notices`), since every handle runs on the main thread.
+    static LIST_EFFECTS: RefCell<Vec<LogListEffect>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Queues `effect` for the handle's [`PageView::after`].
+pub(super) fn queue_list_effect(effect: LogListEffect) {
+    LIST_EFFECTS.with_borrow_mut(|effects| effects.push(effect));
+}
+
+impl PageView for TracingPresenter {
+    /// The capture feed the page subscribes to.
+    type Setup = Entity<LogFeed>;
+    type Widgets = LogList;
+    type Before = ();
+
+    /// Tracing reads the capture, not the Ledger.
+    const REPAINTS: &'static [Domain] = &[];
+
+    /// A movement the keymap doesn't bind is left to the frame, as before the generic page: the
+    /// log box fills the page, so the frame has nothing to scroll.
+    const FRAME_SCROLLS: bool = true;
+
+    fn with_router<R>(
+        presenter: &mut Self,
+        _setup: &Entity<LogFeed>,
+        cx: &mut Context<'_, TracingPage>,
+        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
+    ) -> R {
+        handle(presenter, &mut TracingRouter { cx })
+    }
+
+    /// Drops anything a handle that never reached `after` left queued.
+    fn before(&mut self, _event: &TracingEvent, _widgets: &LogList) {
+        LIST_EFFECTS.with_borrow_mut(Vec::clear);
+    }
+
+    /// Applies what the Presenter asked of the list, in the order it asked.
+    fn after(&self, _before: (), widgets: &mut LogList) -> Option<ViewEvent> {
+        for effect in LIST_EFFECTS.with_borrow_mut(std::mem::take) {
+            match effect {
+                LogListEffect::Scroll(to) => scroll(&widgets.0, to),
+                LogListEffect::Changed(change) => apply_change(&widgets.0, change),
+            }
         }
+        None
     }
 
-    /// The page's keys under `config`'s overrides.
-    pub fn set_keymaps(&mut self, config: &KeyBindingConfig, back_chord: String) {
-        self.presenter.set_keymap(
-            tracing_keymap(config),
-            back_chord,
-            DialogKeys::of(&lib_shell::dialog_keymap(config)),
-        );
+    /// Each signal of the capture feed pulls the new entries in, as one input.
+    fn subscribe(feed: &Entity<LogFeed>, cx: &mut Context<'_, TracingPage>) -> Vec<Subscription> {
+        vec![cx.subscribe(feed, |page, _, _: &LogAppended, cx| {
+            page.send(TracingEvent::LogChanged, cx);
+        })]
     }
 
-    pub fn view_model(&self) -> TracingViewModel {
-        self.presenter.view_model()
-    }
-
-    /// The level the log box filters at, which the X-Large index pane quotes.
-    pub fn level(&self) -> TracingLevel {
-        self.presenter.level()
-    }
-
-    pub fn log_list(&self) -> &ListState {
-        &self.log_list
-    }
-
-    /// Reads `log` from now on, opening on `level` and restarting the list at its top.
-    pub fn configure(
-        &mut self,
-        log: Rc<dyn TracingLog>,
-        level: TracingLevel,
-        cx: &mut Context<'_, Self>,
-    ) {
-        self.presenter.configure(log, level);
-        self.log_list.reset(self.presenter.visible_count());
-        cx.notify();
-    }
-
-    /// The capture gained entries: pulls them in. Not an input, since nothing here writes, and it
-    /// redraws only when the rows changed, or while none show, since the empty note counts the
-    /// hidden ones; entries the level hides redraw nothing else.
-    pub fn appended(&mut self, cx: &mut Context<'_, Self>) {
-        if self.route(TracingEvent::Appended, cx) || self.presenter.visible_count() == 0 {
-            cx.notify();
-        }
-    }
-
-    /// Clear logs was confirmed, so the capture is empty.
-    pub fn cleared(&mut self, cx: &mut Context<'_, Self>) {
-        self.send(TracingEvent::Cleared, cx);
-    }
-
-    /// A key, click or command as one input, committed once it is handled; one sent inside another
-    /// input (a Dialog's) runs in it.
-    fn send(&mut self, event: TracingEvent, cx: &mut Context<'_, Self>) {
-        crate::input::join_or_send(cx, |cx| self.handle(event, cx));
-    }
-
-    fn handle(&mut self, event: TracingEvent, cx: &mut Context<'_, Self>) {
-        self.route(event, cx);
-        cx.notify();
-    }
-
-    /// Hands `event` to the Presenter; whether it changed the log list.
-    fn route(&mut self, event: TracingEvent, cx: &mut Context<'_, Self>) -> bool {
-        let mut router = TracingRouter {
-            list: &self.log_list,
-            cx,
-            list_changed: false,
-        };
-        self.presenter.handle(event, &mut router);
-        router.list_changed
-    }
-}
-
-/// The page's clicks on its level radios and Clear logs.
-impl PresenterPage<TracingEvent> for TracingPage {
-    fn send(&mut self, event: TracingEvent, cx: &mut Context<'_, Self>) {
-        TracingPage::send(self, event, cx);
-    }
-}
-
-impl Page for TracingPage {
-    const PAGE: SettingsPage = SettingsPage::Tracing;
-    /// The log box fills the page and scrolls itself.
-    const FILLS_PAGE: bool = true;
-
-    /// The keymap's chords ahead of the frame's, so `h` steps the level rather than leaving
-    /// (Display's radio grammar; `esc` leaves). Focus never enters the box itself.
-    fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {
-        let Some(event) = self.presenter.keymap().event(chord) else {
-            return false;
-        };
-        self.send(event, cx);
-        true
+    fn render(
+        view: &TracingViewModel,
+        page: PageDraw<'_, Self>,
+        _window: &mut Window,
+        cx: &mut Context<'_, TracingPage>,
+    ) -> AnyElement {
+        render::page(view, page.widgets.0.clone(), page.clicks, cx)
     }
 
     /// The Presenter's legend, rebound keys included, which the `?` cheat sheet reads.
-    fn hints(&self, _cx: &App) -> Vec<Hint> {
-        self.presenter.view_model().hints
+    fn status(view: &TracingViewModel) -> PageStatus {
+        PageStatus {
+            hints: view.hints.clone(),
+            right: crate::settings::scope_note(SettingsPage::Tracing),
+        }
     }
+}
+
+impl SettingsPageView for TracingPresenter {
+    const PAGE: SettingsPage = SettingsPage::Tracing;
+    /// The log box fills the page and scrolls itself.
+    const FILLS_PAGE: bool = true;
+}
+
+/// Reads `log` from now on, opening on `level`, with the list restarted at its top over what it
+/// shows: the level is chosen afresh, which is how the Presenter restarts the list.
+pub fn configure(
+    page: &mut TracingPage,
+    log: Rc<dyn TracingLog>,
+    level: TracingLevel,
+    cx: &mut Context<'_, TracingPage>,
+) {
+    page.update_presenter(cx, |presenter| presenter.configure(log, level));
+    page.send(TracingEvent::ChooseLevel(level), cx);
 }
 
 /// Keeps `list` in step with the rows the Presenter shows: a level or clear restarts it, new
 /// entries splice in.
-pub(super) fn apply_change(list: &ListState, change: LogListChange) {
+fn apply_change(list: &ListState, change: LogListChange) {
     match change {
         LogListChange::Reset(count) => list.reset(count),
         LogListChange::Spliced(change) => mirror_log_change(list, change),
@@ -198,7 +201,7 @@ fn mirror_log_change(list: &ListState, change: LogChange) {
 }
 
 /// Scrolls the log box: a line, a page of its height, or to the oldest entry.
-pub(super) fn scroll(list: &ListState, scroll: LogScroll) {
+fn scroll(list: &ListState, scroll: LogScroll) {
     use lib_list_cursor::Step;
     let page = list.viewport_bounds().size.height.max(LOG_LINE_STEP);
     match scroll {
@@ -219,13 +222,13 @@ impl PageSnapshot for SettingsTracingSnapshot {
 
     /// The Tracing page's state.
     fn read(page: &TracingPage, _cx: &App) -> Self {
-        let view = page.presenter.view_model();
+        let view = page.view_model();
         SettingsTracingSnapshot {
             tracing_level: format!("{:?}", view.level),
             log_line_count: view.entries.len(),
             log_lines: view.entries.iter().map(|entry| entry.body()).collect(),
             log_hidden_count: view.hidden,
-            log_scroll_top: page.log_list.logical_scroll_top().item_ix,
+            log_scroll_top: page.widgets().0.logical_scroll_top().item_ix,
         }
     }
 }

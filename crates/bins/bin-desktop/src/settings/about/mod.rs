@@ -19,12 +19,16 @@ use crate::shell::view::statusline::PageStatus;
 pub type AboutPage = ModulePage<AboutPresenter>;
 
 /// The About page for a build of `version`, its legend read from the frame's `keymap`.
-pub fn about_page(version: &str, keymap: &Keymap<SettingsFrameEvent>) -> AboutPage {
+pub fn about_page(
+    version: &str,
+    keymap: &Keymap<SettingsFrameEvent>,
+    cx: &mut Context<'_, AboutPage>,
+) -> AboutPage {
     let mut presenter = AboutPresenter::new(AboutSetup {
         version: version.to_string(),
     });
     presenter.set_legend(settings_plain_page_hints(keymap));
-    ModulePage::detached(presenter, ())
+    ModulePage::detached(presenter, (), cx)
 }
 
 impl PageView for AboutPresenter {

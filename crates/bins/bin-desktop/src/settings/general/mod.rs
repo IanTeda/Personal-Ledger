@@ -39,6 +39,7 @@ pub fn general_page(
     device: Rc<dyn DeviceConfiguration>,
     config: &KeyBindingConfig,
     back_chord: String,
+    cx: &mut Context<'_, GeneralPage>,
 ) -> GeneralPage {
     let (line, fallback) = crate::locale::describe(&crate::locale::info());
     let presenter = GeneralPresenter::new(GeneralSetup {
@@ -54,7 +55,7 @@ pub fn general_page(
             .collect(),
         locale: LocaleLine { line, fallback },
     });
-    ModulePage::detached(presenter, ())
+    ModulePage::detached(presenter, (), cx)
 }
 
 impl PageView for GeneralPresenter {

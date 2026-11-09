@@ -5,7 +5,7 @@
 
 use gpui::{
     AnyElement, AnyView, App, AppContext as _, Context, Entity, EventEmitter, IntoElement,
-    Keystroke, ListAlignment, ListState, Render, Subscription,
+    Keystroke, Render, Subscription,
 };
 
 use std::rc::Rc;
@@ -33,7 +33,11 @@ use crate::{
         ledger::{LedgerKeys, LedgerPage, ledger_page},
         state::SettingsView,
         sync_server::{SyncServerPage, sync_server_page},
-        tracing::{TracingPage, log::CaptureLog},
+        tracing::{
+            TracingPage,
+            log::{CaptureLog, LogFeed},
+            tracing_page,
+        },
     },
     shell::view::{statusline::PageStatus, window_size::WindowSize},
     tags::{TagsPage, TagsSetup, tags_page},
@@ -59,9 +63,6 @@ pub struct SettingsSetup {
     pub inventory: InventorySetup,
     pub ledger: LedgerKeys,
 }
-
-/// Rows measured beyond the Tracing log box's visible edge, so scrolling doesn't pop rows in.
-const LOG_LIST_OVERDRAW: gpui::Pixels = gpui::px(200.0);
 
 /// What the Settings View tells the open page about the space it is drawn in, before its keys and
 /// its draw.
@@ -268,6 +269,8 @@ pub struct SettingsPages {
     pub general: Entity<GeneralPage>,
     pub display: Entity<DisplayPage>,
     pub tracing: Entity<TracingPage>,
+    /// What the capture feed signals the Tracing page through.
+    pub log_feed: Entity<LogFeed>,
     pub about: Entity<AboutPage>,
     /// The This Ledger pages, `None` with no Ledger open.
     pub ledger: Option<LedgerPages>,
@@ -332,14 +335,16 @@ impl LedgerPages {
 impl SettingsPages {
     /// The This device pages, with no Ledger open.
     pub fn new(cx: &mut Context<'_, SettingsView>) -> Self {
+        let log_feed = cx.new(|_| LogFeed);
         Self {
             // No configuration file until `configure_device` hands over start-up's, so a write
             // before then is refused.
-            general: cx.new(|_| {
+            general: cx.new(|cx| {
                 general_page(
                     Rc::new(DeviceConfigFile::default()),
                     &KeyBindingConfig::default(),
                     super::state::back_chord(&KeyBindingConfig::default()),
+                    cx,
                 )
             }),
             display: cx.new(|_| {
@@ -350,21 +355,24 @@ impl SettingsPages {
                 )
             }),
             // A private, empty capture until `set_log_capture` hands over the real one.
-            tracing: cx.new(|_| {
-                TracingPage::new(
+            tracing: cx.new(|cx| {
+                tracing_page(
                     Rc::new(CaptureLog::new(lib_tracing::LogBuffer::new(
                         lib_tracing::LOG_CAPACITY,
                     ))),
                     lib_settings::TracingLevel::default(),
                     &KeyBindingConfig::default(),
                     super::state::back_chord(&KeyBindingConfig::default()),
-                    ListState::new(0, ListAlignment::Top, LOG_LIST_OVERDRAW),
+                    log_feed.clone(),
+                    cx,
                 )
             }),
-            about: cx.new(|_| {
+            log_feed,
+            about: cx.new(|cx| {
                 about_page(
                     env!("CARGO_PKG_VERSION"),
                     &settings_frame_keymap(&KeyBindingConfig::default()),
+                    cx,
                 )
             }),
             ledger: None,

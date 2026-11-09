@@ -155,10 +155,10 @@ pub trait TracingRouter: Notify {
 }
 
 /// The log capture Settings › Tracing reads and Clear logs empties. The Client answers it over its
-/// capture ring, which fills from any thread and signals the page ([`TracingEvent::Appended`])
+/// capture ring, which fills from any thread and signals the page ([`TracingEvent::LogChanged`])
 /// when entries arrive.
 ///
-/// [`TracingEvent::Appended`]: crate::TracingEvent::Appended
+/// [`TracingEvent::LogChanged`]: crate::TracingEvent::LogChanged
 pub trait TracingLog {
     /// How many entries the capture keeps before it evicts the oldest.
     fn capacity(&self) -> usize;

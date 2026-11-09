@@ -82,6 +82,16 @@ pub trait PageView: PagePresenter + Sized + 'static {
         None
     }
 
+    /// What the page follows besides the Ledger, built over `setup` as the page is: a source that
+    /// signals outside any input (Tracing's log capture), each signal sent as the page's own event
+    /// through [`ModulePage::send`]. The page keeps the subscriptions for its life. None by default.
+    fn subscribe(
+        _setup: &Self::Setup,
+        _cx: &mut Context<'_, ModulePage<Self>>,
+    ) -> Vec<Subscription> {
+        Vec::new()
+    }
+
     /// The event the page is sent as it becomes the destination, after its widget state is reset.
     fn entered() -> Option<Self::Event> {
         None
@@ -148,9 +158,14 @@ pub trait PageView: PagePresenter + Sized + 'static {
     fn menu_at(_widgets: &mut Self::Widgets, _at: Point<Pixels>) {}
 }
 
-/// A Settings page's [`PageView`]: its place in the index, which `Page` is keyed by.
+/// A Settings page's [`PageView`]: its place in the index, which `Page` is keyed by, and how the
+/// Settings body lays it out.
 pub trait SettingsPageView: PageView {
     const PAGE: SettingsPage;
+
+    /// Whether the page fills the body's height and scrolls inside itself (Tracing's log box)
+    /// rather than the body scrolling the whole page.
+    const FILLS_PAGE: bool = false;
 }
 
 /// What [`PageView::render`] draws with beside the view model.
@@ -171,20 +186,21 @@ pub struct ModulePage<P: PageView> {
     /// Whether the page, not Settings' index, has keyboard focus, told by the Settings View as it
     /// draws the page.
     page_focused: bool,
-    /// Repaints the page when a domain in [`PageView::REPAINTS`] changes.
-    _repaints: Vec<Subscription>,
+    /// Repaints the page when a domain in [`PageView::REPAINTS`] changes, and follows what
+    /// [`PageView::subscribe`] names.
+    _subscriptions: Vec<Subscription>,
 }
 
 impl<P: PageView> ModulePage<P> {
     /// Hosts `presenter`, its Router built over `setup`, repainting on `announcer`'s changes to
-    /// [`PageView::REPAINTS`].
+    /// [`PageView::REPAINTS`] and following [`PageView::subscribe`]'s sources.
     pub fn new(
         presenter: P,
         setup: P::Setup,
         announcer: &Entity<Announcer>,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        let repaints = match P::ledger_changed() {
+        let mut subscriptions: Vec<Subscription> = match P::ledger_changed() {
             None => P::REPAINTS
                 .iter()
                 .map(|domain| notify_on(announcer, *domain, cx))
@@ -203,28 +219,31 @@ impl<P: PageView> ModulePage<P> {
                 },
             )],
         };
+        subscriptions.extend(P::subscribe(&setup, cx));
         Self {
             presenter,
             setup,
             widgets: P::Widgets::default(),
             page_focused: false,
-            _repaints: repaints,
+            _subscriptions: subscriptions,
         }
     }
 
-    /// Hosts `presenter` with no subscriptions, for a page that reads no Ledger domain and stands
-    /// before a Ledger (and its `Announcer`) exists: General and About.
-    pub fn detached(presenter: P, setup: P::Setup) -> Self {
+    /// Hosts `presenter` on no Ledger, for a page that reads no Ledger domain and stands before a
+    /// Ledger (and its `Announcer`) exists: General, Tracing and About. It follows only
+    /// [`PageView::subscribe`]'s sources.
+    pub fn detached(presenter: P, setup: P::Setup, cx: &mut Context<'_, Self>) -> Self {
         debug_assert!(
             P::REPAINTS.is_empty() && P::ledger_changed().is_none(),
             "a detached page has no domain to repaint on"
         );
+        let subscriptions = P::subscribe(&setup, cx);
         Self {
             presenter,
             setup,
             widgets: P::Widgets::default(),
             page_focused: false,
-            _repaints: Vec::new(),
+            _subscriptions: subscriptions,
         }
     }
 
@@ -253,6 +272,11 @@ impl<P: PageView> ModulePage<P> {
     /// What the page's Router is built from, for a test's snapshot.
     pub fn setup(&self) -> &P::Setup {
         &self.setup
+    }
+
+    /// The widget state the View keeps, for a test's snapshot (Tracing's list scroll).
+    pub fn widgets(&self) -> &P::Widgets {
+        &self.widgets
     }
 
     /// Where a Dialog the page opens hands its confirmed outcome, inside the confirm's input,
@@ -497,6 +521,7 @@ impl<P: PageView> PresenterPage<P::Event> for ModulePage<P> {
 
 impl<P: SettingsPageView> Page for ModulePage<P> {
     const PAGE: SettingsPage = P::PAGE;
+    const FILLS_PAGE: bool = P::FILLS_PAGE;
 
     /// Every chord the page's keymap binds, the arrows and `g g` among them.
     fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {

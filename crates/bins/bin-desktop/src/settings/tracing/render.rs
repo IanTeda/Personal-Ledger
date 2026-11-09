@@ -1,6 +1,6 @@
 use gpui::{
-    AnyElement, App, Context, HighlightStyle, ListState, Rgba, SharedString, StyledText, Window,
-    div, list, prelude::*, px,
+    AnyElement, App, HighlightStyle, ListState, Rgba, SharedString, StyledText, div, list,
+    prelude::*, px,
 };
 use gpui_component::scroll::{Scrollbar, ScrollbarShow};
 use lib_settings::log::{LogLevel, LogLine};
@@ -13,14 +13,8 @@ use crate::{
 
 const LOG_TEXT_SIZE: gpui::Pixels = px(11.0);
 
-impl Render for TracingPage {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<'_, Self>) -> impl IntoElement {
-        let clicks = PageClicks::new(cx);
-        render_page(&self.view_model(), self.log_list().clone(), &clicks, cx)
-    }
-}
-
-fn render_page(
+/// The level row and Clear logs over the log box, which shows `list`.
+pub(super) fn page(
     view: &TracingViewModel,
     list: ListState,
     clicks: &PageClicks<TracingPage>,

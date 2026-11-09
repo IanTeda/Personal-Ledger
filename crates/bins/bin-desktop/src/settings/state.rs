@@ -28,9 +28,10 @@ use lib_settings::{
     GeneralSettings, PageSummary, ScopeFacts, SettingsFrameEvent, SettingsFramePresenter,
     SettingsFrameSetup, SettingsFrameViewModel, SummarySources, ThisDevice, TracingLevel,
     TracingLog,
-    keymap::{general_keymap, ledger_keymap, settings_frame_keymap},
+    keymap::{general_keymap, ledger_keymap, settings_frame_keymap, tracing_keymap},
     summarise,
 };
+use lib_viper::dialog::DialogKeys;
 use lib_viper::keymap::KeyBindingConfig;
 use lib_viper::presenter::Presenter;
 use std::path::PathBuf;
@@ -108,9 +109,15 @@ impl SettingsView {
         self.pages
             .display
             .update(cx, |page, _| page.set_keymaps(config, back_chord(config)));
-        self.pages
-            .tracing
-            .update(cx, |page, _| page.set_keymaps(config, back_chord(config)));
+        self.pages.tracing.update(cx, |page, cx| {
+            page.update_presenter(cx, |presenter| {
+                presenter.set_keymap(
+                    tracing_keymap(config),
+                    back_chord(config),
+                    DialogKeys::of(&lib_shell::dialog_keymap(config)),
+                );
+            });
+        });
         self.pages.about.update(cx, |page, cx| {
             page.update_presenter(cx, |presenter| {
                 presenter.set_legend(settings_plain_page_hints(&settings_frame_keymap(config)));
@@ -143,14 +150,14 @@ impl SettingsView {
         level: TracingLevel,
         cx: &mut Context<'_, Self>,
     ) {
-        self.pages
-            .tracing
-            .update(cx, |page, cx| page.configure(log, level, cx));
+        self.pages.tracing.update(cx, |page, cx| {
+            super::tracing::configure(page, log, level, cx)
+        });
     }
 
-    /// The capture gained entries, so the Tracing page pulls them in.
+    /// The capture gained entries: tells the Tracing page, which subscribes to the feed.
     pub fn log_appended(&mut self, cx: &mut Context<'_, Self>) {
-        self.pages.tracing.update(cx, |page, cx| page.appended(cx));
+        self.pages.log_feed.update(cx, |feed, cx| feed.signal(cx));
     }
 
     /// Builds the This Ledger pages on the Open Ledger's stores in `setup`, announcing through
@@ -238,7 +245,7 @@ impl SettingsView {
             device,
             locale,
             display: &display,
-            log_level: self.pages.tracing.read(cx).level(),
+            log_level: self.pages.tracing.read(cx).presenter().level(),
             version: &version,
             facts: ScopeFacts {
                 log_capacity: lib_tracing::LOG_CAPACITY,

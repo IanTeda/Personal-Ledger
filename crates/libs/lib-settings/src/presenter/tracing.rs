@@ -5,7 +5,7 @@
 //! session-only view filter that opens on the configured `log` level and never changes what is
 //! captured. Clear logs is a Dialog ([`ClearLogsPresenter`]).
 //!
-//! The capture fills from any thread, so the Client signals [`TracingEvent::Appended`] when
+//! The capture fills from any thread, so the Client signals [`TracingEvent::LogChanged`] when
 //! entries arrive; the page pulls them in then.
 
 use std::collections::VecDeque;
@@ -63,7 +63,7 @@ pub enum TracingEvent {
     /// `c` or the Clear logs button: asks first, since the capture is emptied for good (#502).
     ClearLogs,
     /// The capture gained entries.
-    Appended,
+    LogChanged,
     /// Clear logs was confirmed, so the capture is empty.
     Cleared,
 }
@@ -250,7 +250,7 @@ impl Presenter for TracingPresenter {
                     self.dialog_keys.clone(),
                 ));
             }
-            TracingEvent::Appended => {
+            TracingEvent::LogChanged => {
                 let change = self.mirror.pull();
                 if change != LogChange::default() {
                     router.log_changed(LogListChange::Spliced(change));
@@ -423,15 +423,15 @@ mod tests {
     }
 
     #[test]
-    fn appended_reports_only_visible_additions() {
+    fn log_changed_reports_only_visible_additions() {
         let log = Rc::new(InMemoryTracingLog::new(8));
         let mut presenter = presenter(&log, TracingLevel::Warn);
         let mut router = Recording::default();
         log.push(LogLevel::Warn, "bin_desktop::shell", "a");
         log.push(LogLevel::Debug, "bin_desktop::shell", "b");
 
-        presenter.handle(TracingEvent::Appended, &mut router);
-        presenter.handle(TracingEvent::Appended, &mut router);
+        presenter.handle(TracingEvent::LogChanged, &mut router);
+        presenter.handle(TracingEvent::LogChanged, &mut router);
 
         assert_eq!(
             router.changes,
@@ -444,15 +444,15 @@ mod tests {
     }
 
     #[test]
-    fn appended_drops_the_oldest_past_capacity() {
+    fn log_changed_drops_the_oldest_past_capacity() {
         let log = Rc::new(InMemoryTracingLog::new(2));
         let mut presenter = presenter(&log, TracingLevel::Info);
         let mut router = Recording::default();
         log.push(LogLevel::Info, "bin_desktop::shell", "a");
-        presenter.handle(TracingEvent::Appended, &mut router);
+        presenter.handle(TracingEvent::LogChanged, &mut router);
         log.push(LogLevel::Info, "bin_desktop::shell", "b");
         log.push(LogLevel::Info, "bin_desktop::shell", "c");
-        presenter.handle(TracingEvent::Appended, &mut router);
+        presenter.handle(TracingEvent::LogChanged, &mut router);
 
         assert_eq!(
             router.changes.last(),
@@ -478,7 +478,7 @@ mod tests {
         assert_eq!(router.changes, [LogListChange::Reset(0)]);
 
         log.push(LogLevel::Info, "bin_desktop::shell", "new");
-        presenter.handle(TracingEvent::Appended, &mut router);
+        presenter.handle(TracingEvent::LogChanged, &mut router);
         assert_eq!(messages(&presenter), ["new"]);
     }
 
@@ -492,7 +492,7 @@ mod tests {
         log.clear();
         log.push(LogLevel::Info, "lib_database::writer", "between");
         presenter.handle(TracingEvent::Cleared, &mut router);
-        presenter.handle(TracingEvent::Appended, &mut router);
+        presenter.handle(TracingEvent::LogChanged, &mut router);
 
         assert_eq!(messages(&presenter), ["between"]);
     }
@@ -530,7 +530,7 @@ mod tests {
         );
 
         log.push(LogLevel::Debug, "bin_desktop::shell", "noise");
-        presenter.handle(TracingEvent::Appended, &mut Recording::default());
+        presenter.handle(TracingEvent::LogChanged, &mut Recording::default());
         assert_eq!(
             presenter.view_model().empty.as_deref(),
             Some("No entries at error or above. Choose a lower level to see 1 hidden entry.")
