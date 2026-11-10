@@ -261,7 +261,7 @@ a{color:var(--color-accent,#ec3013);text-underline-offset:3px}a:hover{color:var(
 
 <!-- ═════════ TUI-058 General ═════════ -->
 <div class="dv-opt" id="TUI-058">
-<div class="dv-olabel"><a class="dv-oid" href="#TUI-058">TUI-058</a><span><b>Settings › General.</b> The first page, and the first of the <b>this device</b> group: what belongs to this device and applies whichever Ledger is open, or none. <b>On start</b> chooses which Ledger the TUI opens as it starts: reopen the last one (the default; none if none was open when it quit) or start with no Ledger open. A file named by <code>--file</code> or <code>file</code> always wins. <b>Toasts</b> moved here from Display. The <b>locale</b> and the <b>ledger folder</b> (<code>data</code>, where <code>:open</code> and <code>:new</code> start) are read-only: they change in the config file.</span></div>
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-058">TUI-058</a><span><b>Settings › General.</b> The first page, and the first of the <b>this device</b> group: what belongs to this device and applies whichever Ledger is open, or none. <b>On start</b> chooses which Ledger the TUI opens as it starts: reopen the last one (the default; none if none was open when it quit) or start with no Ledger open. A file named by <code>--file</code> or <code>file</code> always wins. <b>Start view</b> is the View it opens on. <b>Toasts</b> moved here from Display, with a <b>[ test ]</b> chip beside the checkbox (TUI-061). The <b>locale</b> and the <b>ledger folder</b> (<code>data</code>, where <code>:open</code> and <code>:new</code> start) are read-only: they change in the config file. The hint bar's right side names the <b>configuration file</b> Settings writes, as on every this device page, fitted to the room the hints leave: here <code>…/personal-ledger.conf</code>.</span></div>
 <div class="dv-card" style="width:700px">
 <div class="t" style="height:470px">
   <div class="tbar"><span><b>Personal Ledger</b></span><span>✓ Synced 14:22</span></div>
@@ -269,7 +269,8 @@ a{color:var(--color-accent,#ec3013);text-underline-offset:3px}a:hover{color:var(
     <div class="pane">
       <div class="ph"><b><span class="mut">Settings ›</span> General</b><span>this device · never synced</span></div>
       <div class="row sel" style="grid-template-columns:138px 1fr"><span>on start</span><span>[reopen last ledger] &nbsp;start with no ledger open</span></div>
-      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">toasts</span><span>[x] show toasts <span class="mut">· errors always show</span></span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">start view</span><span>dashboard</span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">toasts</span><span>[x] show toasts &nbsp;&nbsp;<b>[ test ]</b> <span class="mut">&nbsp;errors always show</span></span></div>
       <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">locale</span><span>en-AU <span class="mut">· from the config file · read-only</span></span></div>
       <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">ledger folder</span><span>~/documents/ledgers <span class="mut">· data · read-only</span></span></div>
       <div class="hd tight">this device</div>
@@ -281,7 +282,38 @@ a{color:var(--color-accent,#ec3013);text-underline-offset:3px}a:hover{color:var(
       <div class="row" style="grid-template-columns:1fr;padding:0"><span class="mut">reopens the last ledger above. What travels with the Ledger is under Ledger.</span></div>
     </div>
   </div>
-  <div class="tk"><span><span class="k">j/k</span>field</span><span><span class="k">enter</span>edit</span><span><span class="k">space</span>toggle</span><span><span class="k">[/]</span>pages</span><span><span class="k">p</span>picker</span><span><span class="k">esc</span>settings</span></div>
+  <div class="tk"><span><span class="k">j/k</span>field</span><span><span class="k">enter</span>edit</span><span><span class="k">space</span>toggle</span><span><span class="k">[/]</span>pages</span><span><span class="k">p</span>picker</span><span><span class="k">esc</span>settings</span><span style="margin-left:auto">…/personal-ledger.conf</span></div>
+</div>
+</div>
+</div>
+
+<!-- ═════════ TUI-061 General, after t ═════════ -->
+<div class="dv-opt" id="TUI-061">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-061">TUI-061</a><span><b>General, after Test.</b> Toasts selected, then <code>t</code> (<code>t test</code> joins the hints while Toasts is selected), or <code>:toasts test</code> from anywhere. One Toast of each kind is raised a second apart, Success, Info, Warning, then Error, each with its own test Message; <code>lib-toast</code> shows at most three, so the Error evicts the Success and the stack ends Info, Warning, Error, bottom-right over the View. The Toast History holds all four. <code>t</code> again merges each into its twin (<code>×2</code>). With <b>Toasts Off</b> the first three echo on the hint bar's left in turn and only the Error toasts (ADR-0027). At the 96-column floor the hints and the path don't both fit: the path is drawn last and wins, so the hints' tail is clipped under it, as the Ledger name already does.</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px;position:relative">
+  <div class="tbar"><span><b>Personal Ledger</b></span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    <div class="pane">
+      <div class="ph"><b><span class="mut">Settings ›</span> General</b><span>this device · never synced</span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">on start</span><span>[reopen last ledger] &nbsp;start with no ledger open</span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">start view</span><span>dashboard</span></div>
+      <div class="row sel" style="grid-template-columns:138px 1fr"><span>toasts</span><span>[x] show toasts &nbsp;&nbsp;<b>[ test ]</b> <span class="mut">&nbsp;errors always show</span></span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">locale</span><span>en-AU <span class="mut">· from the config file · read-only</span></span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">ledger folder</span><span>~/documents/ledgers <span class="mut">· data · read-only</span></span></div>
+      <div class="hd tight">this device</div>
+      <div class="box">
+        <div class="row" style="grid-template-columns:110px 1fr;padding:0"><span class="mut">last ledger</span><span>~/documents/ledgers/teda.pldb</span></div>
+        <div class="row" style="grid-template-columns:110px 1fr;padding:0"><span class="mut">config file</span><span>~/.config/personal-ledger/personal-ledger.conf</span></div>
+      </div>
+    </div>
+  </div>
+  <div style="position:absolute;right:0;bottom:24px;display:flex;flex-direction:column;gap:0;align-items:flex-end">
+    <div class="box" style="background:#fffdf8;padding:2px 7px"><span style="color:#2f6fb3">▌ i</span> Test: an Info Toast</div>
+    <div class="box" style="background:#fffdf8;padding:2px 7px"><span style="color:#b07800">▌ !</span> Test: a Warning Toast</div>
+    <div class="box" style="background:#fffdf8;padding:2px 7px"><span class="neg">▌ ✗</span> Test: an Error Toast, which stays until dismissed</div>
+  </div>
+  <div class="tk" style="flex-wrap:nowrap;overflow:hidden;white-space:nowrap"><span><span class="k">j/k</span>field</span><span><span class="k">enter</span>edit</span><span><span class="k">space</span>toggle</span><span><span class="k">t</span>test</span><span><span class="k">[/]</span>pages</span><span><span class="k">p</span>pi</span><span style="margin-left:auto">…/personal-ledger.conf</span></div>
 </div>
 </div>
 </div>
