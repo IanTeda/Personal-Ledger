@@ -11,6 +11,7 @@ pub mod categories;
 pub mod category_deletion;
 pub mod category_rows;
 pub mod documents;
+pub mod fake_fails;
 pub mod institutions;
 pub mod inventory;
 pub mod ledger_creation;

@@ -4,6 +4,7 @@
 //! `lib-bills`; these check the wiring, the Dialogs the Router opens and the status line.
 
 use super::common;
+use lib_database::Domain;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use common::Harness;
@@ -314,7 +315,7 @@ fn enter_on_a_planner_row_edits_it(app: &mut TestAppContext) {
 
 #[gpui::test]
 fn a_failed_bills_write_puts_the_schedule_back_with_an_error_toast(app: &mut TestAppContext) {
-    let mut ui = Harness::with_failing_bills(app);
+    let mut ui = Harness::arrange(app, |fakes| fakes.fails.writes = vec![Domain::Bills]);
     ui.press("g w");
     let stored = ui.bills().rows;
 

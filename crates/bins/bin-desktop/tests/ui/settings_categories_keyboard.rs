@@ -3,6 +3,7 @@
 
 use super::common;
 use bin_desktop::shell::router::SettingsCategoriesSnapshot;
+use lib_database::Domain;
 
 use bin_desktop::navigation::nav::InputMode;
 use common::Harness;
@@ -107,7 +108,7 @@ fn typing_a_name_and_pressing_enter_adds_the_category(app: &mut TestAppContext) 
 
 #[gpui::test]
 fn a_failed_write_puts_the_categories_back_with_an_error_toast(app: &mut TestAppContext) {
-    let mut ui = Harness::with_failing_categories(app);
+    let mut ui = Harness::arrange(app, |fakes| fakes.fails.writes = vec![Domain::Categories]);
     ui.press("g s");
     ui.press("j j j j j j j j");
     ui.press("l");

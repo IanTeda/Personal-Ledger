@@ -4,6 +4,7 @@
 use super::common;
 use bin_desktop::shell::router::SettingsDocumentTypesSnapshot;
 use lib_core::DocumentTypeId;
+use lib_database::Domain;
 
 use common::Harness;
 use gpui::TestAppContext;
@@ -211,7 +212,7 @@ fn the_kickers_add_button_is_the_n_key(app: &mut TestAppContext) {
 
 #[gpui::test]
 fn a_failed_write_puts_the_types_back_with_an_error_toast(app: &mut TestAppContext) {
-    let mut ui = Harness::with_failing_documents(app);
+    let mut ui = Harness::arrange(app, |fakes| fakes.fails.writes = vec![Domain::Documents]);
     ui.press("g s");
     ui.click("settings-index-Documents");
     let stored = ui

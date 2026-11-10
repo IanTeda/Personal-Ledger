@@ -3,6 +3,7 @@
 
 use super::common;
 use bin_desktop::shell::router::{SettingsCategoriesSnapshot, SettingsPayeesSnapshot};
+use lib_database::Domain;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use common::Harness;
@@ -145,7 +146,7 @@ fn e_edits_the_selected_payee_and_enter_saves_the_new_name(app: &mut TestAppCont
 
 #[gpui::test]
 fn a_failed_write_puts_the_payees_back_with_an_error_toast(app: &mut TestAppContext) {
-    let mut ui = Harness::with_failing_payees(app);
+    let mut ui = Harness::arrange(app, |fakes| fakes.fails.writes = vec![Domain::Payees]);
     ui.press("g s");
     ui.press("j j j j j j j j j j");
     ui.press("l");
@@ -226,7 +227,7 @@ fn a_delete_the_files_foreign_keys_refuse_puts_the_payee_back_with_an_error_toas
 
 #[gpui::test]
 fn d_on_a_payee_whose_use_cant_be_counted_offers_only_deactivate(app: &mut TestAppContext) {
-    let mut ui = Harness::with_unreadable_payee_usage(app);
+    let mut ui = Harness::arrange(app, |fakes| fakes.fails.payee_usage_fails = true);
     // Nothing names Netflix, so only the failed count keeps it from Delete.
     on_payee(&mut ui, "Netflix");
 

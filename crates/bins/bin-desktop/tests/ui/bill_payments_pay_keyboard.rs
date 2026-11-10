@@ -9,6 +9,7 @@
 )]
 
 use super::common;
+use lib_database::Domain;
 
 use bin_desktop::WindowSize;
 use bin_desktop::navigation::nav::{InputMode, Noun};
@@ -199,7 +200,9 @@ fn escape_cancels_without_paying(app: &mut TestAppContext) {
 
 #[gpui::test]
 fn a_failed_payment_puts_both_back_with_an_error_toast(app: &mut TestAppContext) {
-    let mut ui = Harness::with_failing_payments(app);
+    let mut ui = Harness::arrange(app, |fakes| {
+        fakes.fails.writes = vec![Domain::Transactions, Domain::Bills];
+    });
     on_telstra(&mut ui);
     let stored = ui.bills().rows;
 

@@ -3,6 +3,7 @@
 //! `Root`.
 
 use super::common;
+use lib_database::Domain;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use common::Harness;
@@ -121,7 +122,7 @@ fn a_day_tick_commits_once_and_a_month_turn_lands_its_new_bills_in_that_commit(
 fn a_new_months_generation_that_fails_to_save_rolls_back_with_an_error_toast(
     app: &mut TestAppContext,
 ) {
-    let mut ui = Harness::with_failing_bills(app);
+    let mut ui = Harness::arrange(app, |fakes| fakes.fails.writes = vec![Domain::Bills]);
 
     ui.turn_date_to(common::date(2026, 8, 31));
     ui.settle_writes();

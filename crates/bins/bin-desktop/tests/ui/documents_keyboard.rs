@@ -10,6 +10,7 @@
 )]
 
 use super::common;
+use lib_database::Domain;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use bin_desktop::shell::router::{DocumentsSnapshot, SettingsPayeesSnapshot};
@@ -300,7 +301,7 @@ fn a_skip_is_gone_after_a_restart(app: &mut TestAppContext) {
 
 #[gpui::test]
 fn a_failed_accept_puts_the_inbox_back_with_an_error_toast(app: &mut TestAppContext) {
-    let mut ui = Harness::with_failing_documents(app);
+    let mut ui = Harness::arrange(app, |fakes| fakes.fails.writes = vec![Domain::Documents]);
     ui.press("g f");
     ui.press("i");
     focus_row(&mut ui, STRONG_RECEIPT);
@@ -471,7 +472,7 @@ fn picking_in_the_inbox_files_the_document_and_u_undoes_it(app: &mut TestAppCont
 
 #[gpui::test]
 fn a_failed_documents_write_puts_the_inbox_back_with_an_error_toast(app: &mut TestAppContext) {
-    let mut ui = Harness::with_failing_documents(app);
+    let mut ui = Harness::arrange(app, |fakes| fakes.fails.writes = vec![Domain::Documents]);
     ui.press("g f");
     ui.press("i");
     focus_row(&mut ui, STRONG_RECEIPT);

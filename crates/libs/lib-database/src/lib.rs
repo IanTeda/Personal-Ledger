@@ -73,6 +73,7 @@ pub use adapter::categories::{CategoriesAdapter, budget_categories};
 pub use adapter::category_deletion::CategoryDeletionAdapter;
 pub use adapter::category_rows::StoredCategoryRows;
 pub use adapter::documents::DocumentsAdapter;
+pub use adapter::fake_fails::FakeFails;
 pub use adapter::institutions::{InstitutionsAdapter, unit_institutions};
 pub use adapter::inventory::{InventoryAdapter, unit_locations};
 pub use adapter::ledger_creation::{LedgerCreationAdapter, remove_ledger_files};

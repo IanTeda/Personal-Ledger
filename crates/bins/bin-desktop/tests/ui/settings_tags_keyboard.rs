@@ -3,6 +3,7 @@
 
 use super::common;
 use bin_desktop::shell::router::SettingsTagsSnapshot;
+use lib_database::Domain;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use common::Harness;
@@ -269,7 +270,7 @@ fn question_mark_lists_the_keys_the_status_line_shows(app: &mut TestAppContext) 
 
 #[gpui::test]
 fn a_failed_write_puts_the_tags_back_with_an_error_toast(app: &mut TestAppContext) {
-    let mut ui = Harness::with_failing_tags(app);
+    let mut ui = Harness::arrange(app, |fakes| fakes.fails.writes = vec![Domain::Tags]);
     ui.press("g s");
     ui.press("j j j j j j j j j");
     ui.press("l");

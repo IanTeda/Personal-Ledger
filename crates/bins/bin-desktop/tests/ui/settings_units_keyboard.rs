@@ -5,12 +5,13 @@
 
 use super::common;
 use bin_desktop::shell::router::SettingsUnitsSnapshot;
+use lib_database::Domain;
 
 use bin_desktop::{
     WindowSize, WindowSizeExt,
     navigation::nav::{FocusZone, InputMode, Noun},
 };
-use common::Harness;
+use common::{Harness, no_unit_users};
 use gpui::TestAppContext;
 use lib_core::{InstitutionId, UnitId};
 use lib_toast::{Notice, ToastKind};
@@ -30,7 +31,7 @@ fn on_units_unused(app: &mut TestAppContext) -> Harness<'_> {
 }
 
 fn on_units_unused_at(app: &mut TestAppContext, size: WindowSize) -> Harness<'_> {
-    to_units_at(Harness::without_unit_users(app), size)
+    to_units_at(Harness::arrange(app, no_unit_users), size)
 }
 
 fn to_units_at(mut ui: Harness<'_>, size: WindowSize) -> Harness<'_> {
@@ -660,7 +661,7 @@ fn visible_toasts(ui: &mut Harness<'_>) -> Vec<(String, String)> {
 
 #[gpui::test]
 fn a_failed_write_puts_the_units_back_as_stored_with_an_error_toast(app: &mut TestAppContext) {
-    let mut ui = Harness::with_failing_units(app, false);
+    let mut ui = Harness::arrange(app, |fakes| fakes.fails.writes = vec![Domain::Units]);
     ui.resize_to(WindowSize::Large);
     ui.press("g s j j j j j l");
     rename_aud_to_aux(&mut ui);
@@ -682,7 +683,7 @@ fn a_failed_write_puts_the_units_back_as_stored_with_an_error_toast(app: &mut Te
 
 #[gpui::test]
 fn a_failed_write_draws_its_error_toast_with_no_further_key(app: &mut TestAppContext) {
-    let mut ui = Harness::with_failing_units(app, false);
+    let mut ui = Harness::arrange(app, |fakes| fakes.fails.writes = vec![Domain::Units]);
     ui.resize_to(WindowSize::Large);
     ui.press("g s j j j j j l");
     rename_aud_to_aux(&mut ui);
@@ -728,7 +729,10 @@ fn each_units_key_commits_once_whether_or_not_it_writes(app: &mut TestAppContext
 
 #[gpui::test]
 fn a_failed_reload_leaves_the_units_in_memory_with_an_error_toast(app: &mut TestAppContext) {
-    let mut ui = Harness::with_failing_units(app, true);
+    let mut ui = Harness::arrange(app, |fakes| {
+        fakes.fails.writes = vec![Domain::Units];
+        fakes.fails.reloads = vec![Domain::Units];
+    });
     ui.resize_to(WindowSize::Large);
     ui.press("g s j j j j j l");
     rename_aud_to_aux(&mut ui);

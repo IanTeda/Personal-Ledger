@@ -4,6 +4,7 @@
 
 use super::common;
 use bin_desktop::shell::router::{SettingsAccountsSnapshot, SettingsPayeesSnapshot};
+use lib_database::Domain;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use common::Harness;
@@ -425,7 +426,7 @@ fn delete_the_first_account(ui: &mut Harness<'_>) {
 fn a_failed_transactions_write_puts_the_transactions_back_with_an_error_toast(
     app: &mut TestAppContext,
 ) {
-    let mut ui = Harness::with_failing_transactions(app);
+    let mut ui = Harness::arrange(app, |fakes| fakes.fails.writes = vec![Domain::Transactions]);
     ui.press("g l");
     let stored = ui.transactions().visible;
     delete_the_first_account(&mut ui);

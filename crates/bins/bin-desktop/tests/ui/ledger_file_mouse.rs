@@ -15,6 +15,7 @@
 )]
 
 use super::common;
+use lib_database::Domain;
 
 use std::path::{Path, PathBuf};
 
@@ -584,7 +585,7 @@ fn a_ledger_opened_by_click_gets_the_remembered_documents_view_back(app: &mut Te
 #[gpui::test]
 fn a_write_that_failed_just_before_a_swap_is_reported(app: &mut TestAppContext) {
     let folder = Folder::new();
-    let mut ui = Harness::with_failing_documents(app);
+    let mut ui = Harness::arrange(app, |fakes| fakes.fails.writes = vec![Domain::Documents]);
     ui.browse_from(folder.path());
     ui.press("g s");
     ui.press("j j j j j j j j j j j");

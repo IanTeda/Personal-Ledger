@@ -3,6 +3,7 @@
 
 use super::common;
 use bin_desktop::shell::router::SettingsDocumentTypesSnapshot;
+use lib_database::Domain;
 
 use common::Harness;
 use gpui::TestAppContext;
@@ -476,7 +477,7 @@ fn a_remove_destination_defaults_to_other(app: &mut TestAppContext) {
 
 #[gpui::test]
 fn a_failed_write_puts_the_types_back_with_an_error_toast(app: &mut TestAppContext) {
-    let mut ui = Harness::with_failing_documents(app);
+    let mut ui = Harness::arrange(app, |fakes| fakes.fails.writes = vec![Domain::Documents]);
     ui.press("g s");
     ui.press("j j j j j j j j j j j");
     ui.press("l");
@@ -507,7 +508,7 @@ fn a_failed_write_puts_the_types_back_with_an_error_toast(app: &mut TestAppConte
 
 #[gpui::test]
 fn a_failed_reorder_puts_the_order_back(app: &mut TestAppContext) {
-    let mut ui = Harness::with_failing_documents(app);
+    let mut ui = Harness::arrange(app, |fakes| fakes.fails.writes = vec![Domain::Documents]);
     ui.press("g s");
     ui.press("j j j j j j j j j j j");
     ui.press("l");

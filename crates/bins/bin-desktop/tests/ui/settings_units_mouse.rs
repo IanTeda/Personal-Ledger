@@ -12,7 +12,7 @@ use super::common;
 use bin_desktop::shell::router::SettingsUnitsSnapshot;
 
 use bin_desktop::{WindowSize, navigation::nav::Noun};
-use common::Harness;
+use common::{Harness, no_unit_users};
 use gpui::TestAppContext;
 use lib_core::{InstitutionId, UnitId};
 use lib_toast::{Notice, ToastKind};
@@ -23,7 +23,7 @@ fn on_units_at(app: &mut TestAppContext, size: WindowSize) -> Harness<'_> {
 
 /// As [`on_units`], on stores no Unit is in use in, so a seeded Unit can be deleted.
 fn on_units_unused(app: &mut TestAppContext) -> Harness<'_> {
-    to_units_at(Harness::without_unit_users(app), WindowSize::Large)
+    to_units_at(Harness::arrange(app, no_unit_users), WindowSize::Large)
 }
 
 fn to_units_at(mut ui: Harness<'_>, size: WindowSize) -> Harness<'_> {

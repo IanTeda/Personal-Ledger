@@ -14,6 +14,7 @@
 //! lands: each value with a Ledger open, and with none, where a noun lands on the Dashboard.
 
 use super::common;
+use lib_database::Domain;
 
 use bin_desktop::{
     Started,
@@ -722,7 +723,7 @@ fn quitting_after_close_remembers_no_last_ledger(app: &mut TestAppContext) {
 
 #[gpui::test]
 fn a_write_that_failed_just_before_close_is_reported(app: &mut TestAppContext) {
-    let mut ui = Harness::with_failing_documents(app);
+    let mut ui = Harness::arrange(app, |fakes| fakes.fails.writes = vec![Domain::Documents]);
     ui.press("g s");
     ui.press("j j j j j j j j j j j");
     ui.press("l");

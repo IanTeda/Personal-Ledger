@@ -101,8 +101,8 @@ use crate::adapter::{
 };
 use crate::{
     AccountsAdapter, BillsAdapter, BudgetsAdapter, CategoriesAdapter, Commit, DocumentsAdapter,
-    Domain, InMemoryCommit, InstitutionsAdapter, InventoryAdapter, PayeesAdapter, Result, Stores,
-    TagsAdapter, TransactionsAdapter, UnitsAdapter, Written,
+    Domain, InstitutionsAdapter, InventoryAdapter, PayeesAdapter, Result, Stores, TagsAdapter,
+    TransactionsAdapter, UnitsAdapter, Written,
 };
 
 /// A store as [`Stores`] holds it: the adapter or the in-memory fake, wrapped once as `Stores` is
@@ -1890,6 +1890,8 @@ pub struct FakeStores {
     pub budgets: InMemoryBudgets,
     pub inventory: InMemoryInventory,
     pub documents: InMemoryDocuments,
+    /// The writes and reloads a test arranges to fail; nothing by default (#1118).
+    pub fails: super::fake_fails::FakeFails,
 }
 
 impl FakeStores {
@@ -1955,41 +1957,53 @@ impl FakeStores {
                 locations: inventory.locations,
                 items: inventory.items,
             },
+            fails: super::fake_fails::FakeFails::default(),
         }
     }
 }
 
+/// Each fake wrapped in its switches, keeping a stored snapshot where its writes fail.
 impl From<FakeStores> for crate::StoreParts {
     fn from(fakes: FakeStores) -> Self {
+        let fails = &fakes.fails;
         Self {
-            units: Box::new(fakes.units),
-            institutions: Box::new(fakes.institutions),
-            accounts: Box::new(fakes.accounts),
-            categories: Box::new(fakes.categories),
-            tags: Box::new(fakes.tags),
-            payees: Box::new(fakes.payees),
-            transactions: Box::new(fakes.transactions),
-            bills: Box::new(fakes.bills),
-            budgets: Box::new(fakes.budgets),
-            inventory: Box::new(fakes.inventory),
-            documents: Box::new(fakes.documents),
+            units: Box::new(fails.switch(Domain::Units, fakes.units)),
+            institutions: Box::new(fails.switch(Domain::Institutions, fakes.institutions)),
+            accounts: Box::new(fails.switch(Domain::Accounts, fakes.accounts)),
+            categories: Box::new(fails.switch(Domain::Categories, fakes.categories)),
+            tags: Box::new(fails.switch(Domain::Tags, fakes.tags)),
+            payees: Box::new(fails.switch(Domain::Payees, fakes.payees)),
+            transactions: Box::new(
+                fails
+                    .switch(Domain::Transactions, fakes.transactions)
+                    .payee_usage_fails(fails.payee_usage_fails),
+            ),
+            bills: Box::new(fails.switch(Domain::Bills, fakes.bills)),
+            budgets: Box::new(fails.switch(Domain::Budgets, fakes.budgets)),
+            inventory: Box::new(fails.switch(Domain::Inventory, fakes.inventory)),
+            documents: Box::new(fails.switch(Domain::Documents, fakes.documents)),
         }
     }
 }
 
 impl Stores {
-    /// `fakes` in memory, committed through a [`CountingCommit`] whose count is returned, on a
-    /// failure channel nothing reports on, since there is no writer.
+    /// `fakes` in memory, committed through a [`CountingCommit`] whose count is returned. A commit
+    /// that wrote a domain `fakes.fails` says fails reports it on the failure channel.
     pub fn fake(fakes: FakeStores) -> (Self, Rc<Cell<usize>>) {
-        let in_memory = InMemoryCommit::default();
-        let written = in_memory.written().clone();
-        let commit = CountingCommit::new(Rc::new(in_memory));
+        let written = Written::default();
+        let (report, failures) = mpsc::channel();
+        let failing = super::fake_fails::FailingCommit {
+            written: written.clone(),
+            fails: fakes.fails.writes.clone(),
+            report,
+        };
+        let commit = CountingCommit::new(Rc::new(failing));
         let count = commit.count();
         let stores = Self::new(
             crate::StoreParts::from(fakes),
             &written,
             Rc::new(commit),
-            mpsc::channel().1,
+            failures,
         );
         (stores, count)
     }
@@ -2013,12 +2027,63 @@ mod tests {
             budgets: InMemoryBudgets::default(),
             inventory: InMemoryInventory::default(),
             documents: InMemoryDocuments::default(),
+            fails: crate::FakeFails::default(),
         });
 
         stores.commit.commit();
         stores.commit.commit();
 
         assert_eq!(count.get(), 2);
+    }
+
+    /// A write to a domain arranged to fail is reported on the failure channel at the commit, and
+    /// its reload puts the stored rows back; a commit that wrote nothing reports nothing.
+    #[test]
+    fn a_failing_domains_write_is_reported_and_its_reload_puts_the_stored_rows_back() {
+        let mut fakes = FakeStores::sample(chrono::Local::now().date_naive());
+        fakes.fails.writes = vec![Domain::Tags];
+        let before = fakes.tags.tags.tags.len();
+        let (mut stores, _) = Stores::fake(fakes);
+        let id = stores.tags.tags().tags()[0].id;
+
+        stores.commit.commit();
+        assert!(stores.failures.try_recv().is_err(), "nothing was written");
+
+        stores.tags.delete_tag(id);
+        stores.commit.commit();
+        let failure = stores.failures.try_recv().expect("the write's failure");
+        assert_eq!(failure.domains, vec![Domain::Tags]);
+
+        assert_eq!(stores.tags.tags().tags().len(), before - 1);
+        stores.tags.reload().expect("the reload");
+        assert_eq!(stores.tags.tags().tags().len(), before);
+    }
+
+    /// A domain whose writes succeed reports nothing, and one arranged to fail its reload does.
+    #[test]
+    fn a_reload_arranged_to_fail_fails_and_a_working_domain_reports_nothing() {
+        let mut fakes = FakeStores::sample(chrono::Local::now().date_naive());
+        fakes.fails.writes = vec![Domain::Units];
+        fakes.fails.reloads = vec![Domain::Units];
+        let (mut stores, _) = Stores::fake(fakes);
+        let id = stores.tags.tags().tags()[0].id;
+
+        stores.tags.delete_tag(id);
+        stores.commit.commit();
+
+        assert!(stores.failures.try_recv().is_err(), "Tags' writes succeed");
+        assert!(stores.units.reload().is_err());
+    }
+
+    /// The Transactions store's Payee usage count fails when arranged to, as an unreadable file's.
+    #[test]
+    fn payee_usage_arranged_to_fail_counts_none() {
+        let mut fakes = FakeStores::sample(chrono::Local::now().date_naive());
+        let payee = fakes.payees.payees.payees[0].id;
+        fakes.fails.payee_usage_fails = true;
+        let (stores, _) = Stores::fake(fakes);
+
+        assert_eq!(stores.transactions.payee_splits(payee), None);
     }
 
     /// Over the in-memory stores the UI tests run on, a Payee's use is what those stores hold, a

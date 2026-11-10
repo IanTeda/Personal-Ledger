@@ -4,6 +4,7 @@
 
 use super::common;
 use bin_desktop::shell::router::SettingsInventorySnapshot;
+use lib_database::Domain;
 
 use common::Harness;
 use gpui::TestAppContext;
@@ -632,7 +633,7 @@ fn the_status_line_reads_the_live_counts_and_a_adds_an_area(app: &mut TestAppCon
 
 #[gpui::test]
 fn a_failed_write_puts_the_inventory_back_with_an_error_toast(app: &mut TestAppContext) {
-    let mut ui = Harness::with_failing_inventory(app);
+    let mut ui = Harness::arrange(app, |fakes| fakes.fails.writes = vec![Domain::Inventory]);
     ui.press("g s");
     ui.press("j j j j j j j j j j j j");
     ui.press("l");

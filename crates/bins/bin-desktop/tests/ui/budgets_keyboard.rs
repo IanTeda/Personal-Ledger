@@ -3,6 +3,7 @@
 //! is read back from `Root`.
 
 use super::common;
+use lib_database::Domain;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use common::Harness;
@@ -324,7 +325,7 @@ fn budget_names(ui: &mut Harness<'_>) -> Vec<String> {
 
 #[gpui::test]
 fn a_failed_budgets_write_puts_the_budgets_back_with_an_error_toast(app: &mut TestAppContext) {
-    let mut ui = Harness::with_failing_budgets(app);
+    let mut ui = Harness::arrange(app, |fakes| fakes.fails.writes = vec![Domain::Budgets]);
     ui.press("g b");
     let stored = budget_names(&mut ui);
 

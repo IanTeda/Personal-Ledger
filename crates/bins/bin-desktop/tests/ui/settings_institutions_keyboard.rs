@@ -5,6 +5,7 @@
 
 use super::common;
 use bin_desktop::shell::router::SettingsInstitutionsSnapshot;
+use lib_database::Domain;
 
 use bin_desktop::navigation::nav::Noun;
 use common::Harness;
@@ -461,7 +462,7 @@ fn add_institution_enter_does_nothing_without_a_name(app: &mut TestAppContext) {
 
 #[gpui::test]
 fn a_failed_write_puts_the_institutions_back_with_an_error_toast(app: &mut TestAppContext) {
-    let mut ui = Harness::with_failing_institutions(app);
+    let mut ui = Harness::arrange(app, |fakes| fakes.fails.writes = vec![Domain::Institutions]);
     ui.press("g s");
     ui.click("settings-index-Institutions");
     let stored = ui.settings::<SettingsInstitutionsSnapshot>().institutions;
@@ -491,7 +492,7 @@ fn a_failed_write_puts_the_institutions_back_with_an_error_toast(app: &mut TestA
 
 #[gpui::test]
 fn a_failed_delete_puts_the_institution_back_with_an_error_toast(app: &mut TestAppContext) {
-    let mut ui = Harness::with_failing_institutions(app);
+    let mut ui = Harness::arrange(app, |fakes| fakes.fails.writes = vec![Domain::Institutions]);
     ui.press("g s");
     ui.click("settings-index-Institutions");
     ui.press("l");

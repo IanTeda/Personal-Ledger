@@ -6,6 +6,7 @@
 
 use super::common;
 use bin_desktop::shell::router::SettingsAccountsSnapshot;
+use lib_database::Domain;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use common::Harness;
@@ -414,7 +415,7 @@ fn an_institution_renamed_on_the_institutions_page_is_named_by_the_new_account_f
 
 #[gpui::test]
 fn a_failed_write_puts_the_accounts_back_with_an_error_toast(app: &mut TestAppContext) {
-    let mut ui = Harness::with_failing_accounts(app);
+    let mut ui = Harness::arrange(app, |fakes| fakes.fails.writes = vec![Domain::Accounts]);
     ui.press("g s");
     ui.press("j j j j j j j");
     ui.press("l");
