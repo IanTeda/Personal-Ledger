@@ -1,0 +1,254 @@
+<!doctype html>
+<!-- PROTOTYPE (#1133), throwaway: never merged. TUI Settings › General's Test control, the test
+     Toasts and the configuration file on the hint bar's right. Drawn as a cell grid, as ratatui would. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROTOTYPE TUI General</title>
+<style>
+:root{--bg:#f3f2f2;--fg:#201e1d;--mut:#9b9797;--acc:#ec3013;--bar:#201e1d;--barfg:#f3f2f2;--foot:#eae7e7;--ok:#1a7f37;--info:#2f6fb3;--warn:#b07800}
+body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.4 system-ui,sans-serif;padding:16px 16px 140px}
+h1{font-size:15px;margin:0 0 4px}
+p.sub{margin:0 0 14px;color:#605d5d;max-width:90ch}
+.wrap{overflow-x:auto;border:2px solid var(--fg);display:inline-block;max-width:100%;background:#fff}
+pre.term{margin:0;font:12px/15px "JetBrains Mono",ui-monospace,Menlo,monospace;white-space:pre}
+.st{background:var(--bar);color:var(--barfg)} .stb{background:var(--bar);color:var(--barfg);font-weight:700}
+.ft{background:var(--foot);color:#605d5d} .ftk{background:var(--foot);color:var(--fg);font-weight:700} .ftm{background:var(--foot);color:var(--mut)}
+.m{color:var(--mut)} .b{font-weight:700} .sel{background:var(--fg);color:var(--barfg)} .selm{background:var(--fg);color:#ffc4b8}
+.a{color:var(--acc)} .tb{background:#fffdf8;color:var(--fg)} .tbd{background:#fffdf8;color:var(--mut)}
+.k-success{background:#fffdf8;color:var(--ok)} .k-info{background:#fffdf8;color:var(--info)} .k-warning{background:#fffdf8;color:var(--warn)} .k-error{background:#fffdf8;color:var(--acc)}
+.ftk-success{background:var(--foot);color:var(--ok)} .ftk-info{background:var(--foot);color:var(--info)} .ftk-warning{background:var(--foot);color:var(--warn)} .ftk-error{background:var(--foot);color:var(--acc)}
+.btn{border:1px solid var(--fg);color:var(--fg)} .btnsel{background:var(--barfg);color:var(--fg)}
+#state{margin-top:12px;font:12px/1.5 ui-monospace,monospace;background:#fff;border:1px solid #bab6b6;padding:8px 10px;max-width:120ch;white-space:pre-wrap}
+.barx{position:fixed;left:0;right:0;bottom:0;background:var(--bar);color:var(--barfg);padding:8px 16px;display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12px}
+.barx fieldset{border:0;margin:0;padding:0;display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.barx legend{float:left;margin-right:6px;color:#bab6b6}
+.barx button{font:inherit;background:#3a3736;color:var(--barfg);border:1px solid #605d5d;padding:2px 8px;cursor:pointer}
+.barx button.on{background:var(--acc);border-color:var(--acc)}
+</style>
+</head>
+<body>
+<h1>PROTOTYPE · TUI Settings › General: Test Toasts and the configuration file (#1133)</h1>
+<p class="sub">Throwaway. A cell grid at the chosen terminal width (Medium 96 / 128, Large 171, X-Large 256 columns). Keys work when the page has focus: <b>j/k</b> field, <b>t</b> test (variant A/B on Toasts, C on its row with <b>enter</b>), <b>space</b> toggles Toasts, <b>[ ]</b> pages, <b>:</b> runs <code>:toasts test</code>. The bottom bar switches the variants.</p>
+<div class="wrap"><pre class="term" id="term" tabindex="0"></pre></div>
+<div id="state"></div>
+
+<div class="barx">
+  <fieldset id="f-variant"><legend>Test control</legend></fieldset>
+  <fieldset id="f-fit"><legend>Path fit</legend></fieldset>
+  <fieldset id="f-cols"><legend>Columns</legend></fieldset>
+  <fieldset id="f-page"><legend>Page</legend></fieldset>
+  <fieldset id="f-toasts"><legend>Toasts</legend></fieldset>
+  <fieldset><legend>Raise</legend><button id="b-test">t / Test</button><button id="b-cmd">:toasts test</button></fieldset>
+</div>
+
+<script>
+const HOME_CONF = '~/.config/personal-ledger/personal-ledger.conf';
+const S = {
+  variant: 'A', fit: 'room', cols: 96, page: 'General', toastsOn: true, sel: 2,
+  stack: [], echo: null, history: [], log: [], pending: [],
+};
+const VARIANTS = {A:'A: [test] on the Toasts row', B:'B: key only, in the note', C:'C: its own row'};
+const FITS = {size:'by Window Size', room:'to the room left'};
+const COLS = [96,128,171,256];
+const PAGES = ['General','Display','Ledger','No Ledger'];
+const MSG = {
+  success:'Test: a Success Toast', info:'Test: an Info Toast',
+  warning:'Test: a Warning Toast', error:'Test: an Error Toast, which stays until dismissed',
+};
+const GLYPH = {success:'✓', info:'i', warning:'!', error:'✗'};
+const LIFE = {success:4000, info:4000, warning:8000, error:null};
+const ROWS = 32;
+
+function size(){ return S.cols>=214?'X-Large':S.cols>=160?'Large':'Medium'; }
+function fields(){
+  const f = [
+    ['on start', [['[reopen last ledger]',''],['  start with no ledger open','']]],
+    ['start view', [['dashboard','']]],
+    ['toasts', toastsCells()],
+  ];
+  if (S.variant==='C') f.push(['test toasts', [['raise one of each kind','m']]]);
+  f.push(['locale', [['en-AU',''],[' · from the config file · read-only','m']]]);
+  f.push(['ledger folder', [['~/documents/ledgers',''],[' · data · read-only','m']]]);
+  return f;
+}
+function toastsCells(){
+  const box = S.toastsOn ? '[x] show toasts' : '[ ] show toasts';
+  if (S.variant==='A') return [[box,''],['   ',''],['[ test ]','btn'],['  errors always show','m']];
+  if (S.variant==='B') return [[box,''],[' · errors always show · t raises one of each kind','m']];
+  return [[box,''],[' · errors always show','m']];
+}
+function onToasts(){ return fields()[S.sel][0]==='toasts'; }
+function onTestRow(){ return fields()[S.sel][0]==='test toasts'; }
+
+function hints(){
+  if (S.page==='General'){
+    const h=[['j/k','field'],['enter','edit']];
+    if (onToasts()) { h.push(['space','toggle']); if (S.variant!=='C') h.push(['t','test']); }
+    if (onTestRow()) h.splice(1,1,['enter','test']);
+    return h.concat(size()==='Medium'?[['[/]','pages'],['p','picker'],['esc','settings']]:[['[/]','pages'],['esc','settings']]);
+  }
+  return [['j/k','field'],['enter','edit']].concat(size()==='Medium'?[['[/]','pages'],['p','picker'],['esc','settings']]:[['[/]','pages'],['esc','settings']]);
+}
+
+/* ---- grid ---- */
+let G;
+function grid(){ G = Array.from({length:ROWS},()=>Array.from({length:S.cols},()=>({c:' ',k:''}))); }
+function put(r,c,t,k=''){ for (const ch of [...t]) { if (c>=0 && c<S.cols && r>=0 && r<ROWS) G[r][c]={c:ch,k}; c++; } return c; }
+function fill(r,c0,c1,k){ for(let c=c0;c<c1&&c<S.cols;c++) G[r][c]={c:' ',k}; }
+function len(t){ return [...t].length; }
+function clip(t,n){ return len(t)<=n?t:[...t].slice(0,Math.max(0,n-1)).join('')+'…'; }
+
+function rightLabel(){
+  if (S.page==='Ledger') return 'teda';
+  if (S.page==='No Ledger') return 'No Ledger open';
+  return HOME_CONF;
+}
+/* fit the configuration file to the hint bar */
+function fitPath(room){
+  const full = HOME_CONF, short='…/personal-ledger.conf';
+  if (S.fit==='size') return size()==='Medium'? short : full;
+  if (len(full)<=room) return full;
+  const segs = full.split('/');            // keep as many trailing segments as fit
+  for (let i=1;i<segs.length;i++){ const t='…/'+segs.slice(i).join('/'); if (len(t)<=room) return t; }
+  return short;                            // never shorter: the hints clip under it
+}
+
+function draw(){
+  grid();
+  const W=S.cols;
+  // status line
+  fill(0,0,W,'st'); put(0,1,'Personal Ledger','stb');
+  const sync = S.page==='No Ledger'?'':'✓ Synced 14:22 ';
+  put(0,W-len(sync),sync,'st');
+  // view
+  let x0=0;
+  if (size()!=='Medium'){
+    const dw=31; x0=dw+1;
+    put(1,1,'Settings','b'); put(1,dw-len('17 pages')-1,'17 pages','m');
+    let r=3; put(r++,1,'THIS DEVICE','m');
+    for (const p of ['General','Display','AI connections','Logs','About']) { const cur=p===S.page||(p==='General'&&S.page==='No Ledger'); put(r,1,cur?'▌':' ', 'a'); put(r++,3,p,cur?'b':''); }
+    r++; put(r++,1,'THIS LEDGER','m');
+    for (const p of ['Ledger','Units','Institutions','Accounts','Categories','Tags','Payees','Documents','Inventory','Sync server','Backup','History']) { const cur=p===S.page; put(r,1,cur?'▌':' ','a'); put(r++,3,p,cur?'b':(S.page==='No Ledger'?'m':'')); }
+    for (let rr=1;rr<ROWS-1;rr++) put(rr,dw,'│','m');
+  }
+  const cap = Math.min(112, W-x0-2), cx=x0+1;
+  const page = S.page==='No Ledger'?'General':S.page;
+  put(1,cx,'Settings › ','m'); put(1,cx+11,page,'b');
+  const note = page==='Ledger'?'this ledger · synced':'this device · never synced';
+  put(1,cx+cap-len(note),note,'m');
+  put(2,cx,'━'.repeat(cap),'');
+  if (page==='General'){
+    const F=fields(); let r=3;
+    F.forEach(([lab,cells],i)=>{
+      const sel=i===S.sel;
+      if (sel) fill(r,cx,cx+cap,'sel');
+      let c=put(r,cx,lab.padEnd(16), sel?'sel':'m');
+      for (const [t,k] of cells) c=put(r,c,t, sel?(k==='m'?'selm':k==='btn'?'btnsel':'sel'):(k==='btn'?'b':k));
+      r++;
+    });
+    r++; put(r++,cx,'THIS DEVICE','m'); put(r++,cx,'┌'+'─'.repeat(cap-2)+'┐','m');
+    put(r,cx,'│','m'); put(r,cx+2,'last ledger   ','m'); put(r,cx+16,'~/documents/ledgers/teda.pldb'); put(r++,cx+cap-1,'│','m');
+    put(r,cx,'│','m'); put(r,cx+2,'config file   ','m'); put(r,cx+16,clip(HOME_CONF,cap-18)); put(r++,cx+cap-1,'│','m');
+    put(r++,cx,'└'+'─'.repeat(cap-2)+'┘','m');
+    r++; put(r++,cx,clip('General settings belong to this device and never sync. On start reopens the last ledger above.',cap),'m');
+  } else if (page==='Display'){
+    let r=3; for (const [l,v] of [['appearance','light · [dark] · system'],['colour theme','Modernist'],['date style','locale default'],['status glyphs','unicode'],['terminal colours','theme RGB'],['hint bar','[x] show']]) { put(r,cx,l.padEnd(16),'m'); put(r++,cx+16,v); }
+  } else {
+    let r=3; for (const [l,v] of [['ledger name','Teda household'],['owner','Ian Teda'],['financial year','starts 1 July'],['base unit','AUD']]) { put(r,cx,l.padEnd(16),'m'); put(r++,cx+16,v); }
+  }
+  // hint bar
+  const fr=ROWS-1; fill(fr,0,W,'ft');
+  if (S.echo){
+    let c=put(fr,1,GLYPH[S.echo.kind],'ftk-'+S.echo.kind); put(fr,c+1,S.echo.text,'ft');
+  } else {
+    let c=put(fr,1,'NORMAL','ftk');
+    for (const [k,l] of hints()){ c=put(fr,c,' · ','ft'); c=put(fr,c,k,'ftk'); c=put(fr,c,' '+l,'ft'); }
+    S._hintsEnd=c+1;
+  }
+  const hintsEnd = S.echo? (2+len(S.echo.text)+2) : S._hintsEnd;
+  let label = rightLabel();
+  if (label===HOME_CONF) label = fitPath(W - hintsEnd - 2);
+  label=' '+label+' ';
+  S._overlap = Math.max(0, hintsEnd - (W-len(label)));
+  put(fr,W-len(label),label,'ftm');
+  // toasts: bottom-right of the view, newest nearest the footer
+  const vis = S.stack.slice(-3); let bottom=ROWS-1;
+  for (const t of vis.slice().reverse()){
+    const badge = t.count>1?' ×'+t.count:'';
+    const w = Math.min(48, 7+len(t.text)+len(badge), W);
+    const x = W-w, room=w-7-len(badge);
+    put(bottom-3,x,'┌'+'─'.repeat(w-2)+'┐','tbd');
+    fill(bottom-2,x,x+w,'tb'); put(bottom-2,x,'│','tbd');
+    let c=put(bottom-2,x+1,'▌','k-'+t.kind); c=put(bottom-2,c+1,GLYPH[t.kind],'k-'+t.kind);
+    c=put(bottom-2,c+1,clip(t.text,room),'tb'); put(bottom-2,c,badge,'tbd'); put(bottom-2,x+w-1,'│','tbd');
+    put(bottom-1,x,'└'+'─'.repeat(w-2)+'┘','tbd');
+    bottom-=3;
+  }
+  // render
+  let html='';
+  for (const row of G){ let k=null,buf=''; for (const cell of row){ if(cell.k!==k){ if(buf) html+=k?`<span class="${k}">${esc(buf)}</span>`:esc(buf); buf='';k=cell.k;} buf+=cell.c; } html+=k?`<span class="${k}">${esc(buf)}</span>`:esc(buf); html+='\n'; }
+  document.getElementById('term').innerHTML=html;
+  state();
+}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;');}
+
+function state(){
+  document.getElementById('state').textContent =
+`variant=${S.variant} (${VARIANTS[S.variant]})  fit=${FITS[S.fit]}  ${S.cols} cols → ${size()}  page=${S.page}  toasts=${S.toastsOn?'On':'Off'}
+selected field=${fields()[S.sel][0]}   hint bar overlap under the right label: ${S._overlap} cols${S._overlap?'  ← hints clipped':''}
+visible (max 3): ${S.stack.slice(-3).map(t=>t.kind+(t.count>1?'×'+t.count:'')).join(', ')||'—'}   more: ${Math.max(0,S.stack.length-3)}
+echo: ${S.echo?S.echo.kind+' "'+S.echo.text+'"':'—'}
+history (${S.history.length}): ${S.history.map(t=>t.kind).join(', ')}
+log: ${S.log.slice(-6).join('  ›  ')}`;
+}
+
+/* ---- toasts, lib-toast's rules ---- */
+function raise(kind){
+  const text=MSG[kind]; S.history.push({kind,text}); S.log.push('raise '+kind);
+  if (!S.toastsOn && kind!=='error'){ S.echo={kind,text}; setTimeout(()=>{ if(S.echo&&S.echo.text===text){S.echo=null;draw();}},LIFE[kind]); draw(); return; }
+  const twin=S.stack.find(t=>t.text===text);
+  if (twin){ twin.count++; arm(twin); draw(); return; }
+  const t={kind,text,count:1}; S.stack.push(t);
+  while (S.stack.length>3){ const i=S.stack.findIndex(x=>LIFE[x.kind]!==null); if(i<0) break; S.log.push('evict '+S.stack[i].kind); S.stack.splice(i,1); }
+  arm(t); draw();
+}
+function arm(t){ clearTimeout(t.timer); if (LIFE[t.kind]) t.timer=setTimeout(()=>{ S.stack=S.stack.filter(x=>x!==t); draw(); },LIFE[t.kind]); }
+function testToasts(from){
+  S.log.push(from); S.pending.forEach(clearTimeout);
+  S.pending=['success','info','warning','error'].map((k,i)=>setTimeout(()=>raise(k),i*1000));
+  draw();
+}
+
+/* ---- controls ---- */
+function group(id,opts,key,label=v=>v){
+  const el=document.getElementById(id);
+  for (const v of opts){ const b=document.createElement('button'); b.textContent=label(v); b.onclick=()=>{S[key]=v; if(key==='variant'||key==='page') S.sel=Math.min(S.sel,fields().length-1); sync(); draw();}; b.dataset.v=v; b.dataset.k=key; el.appendChild(b); }
+}
+function sync(){ document.querySelectorAll('.barx button[data-k]').forEach(b=>b.classList.toggle('on',String(S[b.dataset.k])===b.dataset.v)); }
+group('f-variant',Object.keys(VARIANTS),'variant',v=>VARIANTS[v]);
+group('f-fit',Object.keys(FITS),'fit',v=>FITS[v]);
+group('f-cols',COLS.map(String),'cols');
+group('f-page',PAGES,'page');
+const tg=document.getElementById('f-toasts');
+for (const v of ['On','Off']){ const b=document.createElement('button'); b.textContent=v; b.dataset.k='toastsOn'; b.dataset.v=String(v==='On'); b.onclick=()=>{S.toastsOn=v==='On'; sync(); draw();}; tg.appendChild(b); }
+document.querySelectorAll('#f-cols button').forEach(b=>{ const f=b.onclick; b.onclick=()=>{ S.cols=+b.dataset.v; sync(); draw(); }; });
+document.getElementById('b-test').onclick=()=>testToasts('t on Toasts');
+document.getElementById('b-cmd').onclick=()=>testToasts(':toasts test');
+document.getElementById('term').addEventListener('keydown',e=>{
+  if (S.page!=='General' && S.page!=='No Ledger'){ if(e.key===':'){testToasts(':toasts test');} return; }
+  const n=fields().length;
+  if (e.key==='j'||e.key==='ArrowDown') S.sel=Math.min(n-1,S.sel+1);
+  else if (e.key==='k'||e.key==='ArrowUp') S.sel=Math.max(0,S.sel-1);
+  else if (e.key==='t' && onToasts() && S.variant!=='C') testToasts('t on Toasts');
+  else if (e.key==='Enter' && onTestRow()) testToasts('enter on test toasts');
+  else if (e.key===' ' && onToasts()) S.toastsOn=!S.toastsOn;
+  else if (e.key===':') testToasts(':toasts test');
+  else return;
+  e.preventDefault(); sync(); draw();
+});
+sync(); draw(); document.getElementById('term').focus();
+</script>
+</body>
+</html>
