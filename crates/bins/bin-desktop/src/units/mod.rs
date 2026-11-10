@@ -54,20 +54,6 @@ impl PageSnapshot for Option<UnitPricesSnapshot> {
     }
 }
 
-/// Prices every Unit in itself, so none is quoted in another and any can be deleted; for a UI test
-/// that deletes a seeded Unit.
-#[doc(hidden)]
-pub fn unquote_for_test(ports: &SharedPorts) {
-    let mut ports = ports.borrow_mut();
-    let units = ports.units().units();
-    for mut unit in units {
-        if unit.link.quote != unit.id {
-            unit.link.quote = unit.id;
-            ports.split_mut().units.upsert_unit(unit);
-        }
-    }
-}
-
 /// What `shell::router::build` hands the Units module: its ports, and the page's and the Unit
 /// prices view's keymaps under `[keybindings]`, which the page Presenter is built with.
 pub struct UnitsSetup {

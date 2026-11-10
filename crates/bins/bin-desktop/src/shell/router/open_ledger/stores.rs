@@ -1,16 +1,15 @@
 //! What an Open Ledger holds a Ledger by (#1085): the `LedgerPorts` [`super::OpenLedger::build`] is
 //! given, and nothing a Client builds beside them. The Open Ledger keeps them for what runs after
-//! it is built: a failed write's reload (`write_failures.rs`), a new month's Bill Schedule and the
-//! `*_for_test` hooks `Root`'s test support calls.
+//! it is built: a failed write's reload (`write_failures.rs`), a new month's Bill Schedule.
 
 use std::rc::Rc;
 use std::sync::mpsc;
 
-use lib_database::{LedgerPorts, PayeesStore};
+use lib_database::LedgerPorts;
 
 /// What an Open Ledger holds a Ledger by: the `LedgerPorts` `lib-database` built, nothing a Client
 /// builds beside them. The raw stores stay reachable through `ports.stores` for the reload after a
-/// failed write and the `*_for_test` hooks.
+/// failed write.
 pub struct LedgerStores {
     pub ports: LedgerPorts,
 }
@@ -51,100 +50,13 @@ impl LedgerStores {
     pub fn shared(&self) -> &lib_database::SharedStores {
         &self.ports.stores
     }
-
-    /// Adds a Location priced in `unit` to the Inventory store, so a test can delete a Unit one
-    /// names (#885).
-    #[doc(hidden)]
-    pub fn add_location_in_for_test(&self, unit: lib_core::UnitId) {
-        let mut scratch = lib_inventory::Inventory::default();
-        let draft = lib_inventory::LocationDraft {
-            name: "Beach shack".to_string(),
-            ..lib_inventory::LocationDraft::default()
-        };
-        if scratch.add_location(&draft, unit).is_err() {
-            return;
-        }
-        let Some(location) = scratch.locations.pop() else {
-            return;
-        };
-        self.ports
-            .stores
-            .inventory
-            .borrow_mut()
-            .inventory_mut()
-            .upsert_location(location);
-    }
-
-    /// Removes every Location from the Inventory store through the Interactor, as the Remove
-    /// location Dialog does.
-    #[doc(hidden)]
-    pub fn empty_inventory_for_test(&self) {
-        let ids: Vec<lib_core::LocationId> = self
-            .ports
-            .stores
-            .inventory
-            .borrow()
-            .inventory()
-            .locations()
-            .iter()
-            .map(|location| location.id)
-            .collect();
-        for id in ids {
-            let removed = lib_inventory::interactor::RemoveLocation(id)
-                .run(self.ports.stores.inventory.borrow_mut().inventory_mut());
-            assert!(
-                removed.is_ok(),
-                "a Location listed a moment ago must still be removable"
-            );
-        }
-    }
-
-    /// Writes an empty default Budget in `unit` straight to the Budgets store, which then names
-    /// the Unit.
-    #[doc(hidden)]
-    pub fn add_budget_in_for_test(&self, unit: lib_core::UnitId) {
-        let budget = lib_budgets::personal_spending(unit, &[]);
-        self.ports
-            .stores
-            .budgets
-            .borrow_mut()
-            .budgets_mut()
-            .upsert_budget(&budget);
-    }
-
-    /// Writes a Payee called `name` straight to the Payees store, so a test can meet the refusal
-    /// of an Import that creates the same name.
-    #[doc(hidden)]
-    pub fn add_payee_for_test(&self, name: &str) {
-        PayeesStore::payees_mut(&mut *self.ports.stores.payees.borrow_mut()).upsert_payee(
-            lib_payees::Payee {
-                id: lib_core::PayeeId::new(),
-                name: name.to_owned(),
-                aliases: Vec::new(),
-                default_category: None,
-                is_active: true,
-            },
-        );
-    }
-
-    /// Gives Institution `id` Unit `unit` as its Usual unit, so a test can delete a Unit an
-    /// Institution names.
-    #[doc(hidden)]
-    pub fn name_usual_unit_for_test(&self, id: lib_core::InstitutionId, unit: lib_core::UnitId) {
-        let mut store = self.ports.stores.institutions.borrow_mut();
-        let Some(mut institution) = store.institutions().institution(id) else {
-            return;
-        };
-        institution.usual_unit = Some(unit);
-        store.institutions_mut().upsert_institution(institution);
-    }
 }
 
 #[cfg(test)]
 mod tests {
 
     use gpui::{AppContext, Entity, TestAppContext};
-    use lib_database::{Commit, PendingWrites, Stores};
+    use lib_database::{Commit, PayeesStore, PendingWrites, Stores};
 
     use super::*;
 

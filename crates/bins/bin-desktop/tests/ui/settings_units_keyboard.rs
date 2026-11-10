@@ -14,6 +14,7 @@ use bin_desktop::{
 use common::{Harness, no_unit_users};
 use gpui::TestAppContext;
 use lib_core::{InstitutionId, UnitId};
+use lib_database::FakeStores;
 use lib_toast::{Notice, ToastKind};
 
 /// The page at Large with keyboard focus on it.
@@ -32,6 +33,16 @@ fn on_units_unused(app: &mut TestAppContext) -> Harness<'_> {
 
 fn on_units_unused_at(app: &mut TestAppContext, size: WindowSize) -> Harness<'_> {
     to_units_at(Harness::arrange(app, no_unit_users), size)
+}
+
+fn on_units_with(app: &mut TestAppContext, arrange: impl FnOnce(&mut FakeStores)) -> Harness<'_> {
+    to_units_at(
+        Harness::arrange(app, |fakes| {
+            no_unit_users(fakes);
+            arrange(fakes);
+        }),
+        WindowSize::Large,
+    )
 }
 
 fn to_units_at(mut ui: Harness<'_>, size: WindowSize) -> Harness<'_> {
@@ -375,8 +386,7 @@ fn a_notice_queued_while_a_dialog_handles_a_key_shows_once_the_key_returns(
 
 #[gpui::test]
 fn deleting_the_base_unit_moves_the_base_with_down(app: &mut TestAppContext) {
-    let mut ui = on_units_unused(app);
-    ui.unquote_units();
+    let mut ui = on_units_with(app, common::unquote_units);
     ui.press("d");
     assert_eq!(
         ui.dialog_value("new_base").as_deref(),
@@ -764,8 +774,7 @@ fn deleting_a_unit_other_units_quote_shows_the_refusal_and_keeps_it(app: &mut Te
 
 #[gpui::test]
 fn a_unit_a_budget_uses_opens_delete_as_deactivate_naming_the_budget(app: &mut TestAppContext) {
-    let mut ui = on_units_unused(app);
-    ui.add_budget_in(UnitId::SEED_VAS);
+    let mut ui = on_units_with(app, |fakes| common::add_budget_in(fakes, UnitId::SEED_VAS));
     ui.press("j j d");
     assert_eq!(ui.dialog(), Some("DeleteUnit"));
     assert_eq!(ui.dialog_value("in_use").as_deref(), Some("true"));
@@ -780,8 +789,9 @@ fn a_unit_a_budget_uses_opens_delete_as_deactivate_naming_the_budget(app: &mut T
 fn a_unit_a_location_names_opens_delete_as_deactivate_naming_the_location(
     app: &mut TestAppContext,
 ) {
-    let mut ui = on_units_unused(app);
-    ui.add_location_in(UnitId::SEED_VAS);
+    let mut ui = on_units_with(app, |fakes| {
+        common::add_location_in(fakes, UnitId::SEED_VAS)
+    });
     ui.press("j j d");
     assert_eq!(ui.dialog(), Some("DeleteUnit"));
     assert_eq!(ui.dialog_value("in_use").as_deref(), Some("true"));
@@ -854,9 +864,10 @@ fn down_on_an_institutions_usual_unit_reassigns_it_as_the_unit_goes(app: &mut Te
 
 #[gpui::test]
 fn the_named_base_unit_asks_for_both_and_tab_moves_between_the_selects(app: &mut TestAppContext) {
-    let mut ui = on_units_unused(app);
-    ui.unquote_units();
-    ui.name_usual_unit(InstitutionId::SEED_WESTPAC, UnitId::SEED_AUD);
+    let mut ui = on_units_with(app, |fakes| {
+        common::unquote_units(fakes);
+        common::name_usual_unit(fakes, InstitutionId::SEED_WESTPAC, UnitId::SEED_AUD);
+    });
     ui.press("d");
     assert_eq!(
         ui.dialog_value("new_base").as_deref(),

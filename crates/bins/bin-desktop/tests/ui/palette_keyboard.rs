@@ -12,7 +12,7 @@ use bin_desktop::shell::router::UnitPricesSnapshot;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use bin_desktop::shell::router::PaletteSnapshot;
-use common::Harness;
+use common::{Harness, empty_tags};
 use gpui::TestAppContext;
 
 fn palette(ui: &mut Harness<'_>) -> Option<PaletteSnapshot> {
@@ -394,8 +394,7 @@ fn tags_merge_runs_the_tags_merge_binding(app: &mut TestAppContext) {
 
 #[gpui::test]
 fn tags_merge_with_no_tag_says_it_is_not_available_and_opens_no_dialog(app: &mut TestAppContext) {
-    let mut ui = Harness::new(app);
-    ui.empty_tags();
+    let mut ui = Harness::arrange(app, empty_tags);
 
     run(&mut ui, "tags merge");
 

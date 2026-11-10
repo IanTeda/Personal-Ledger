@@ -6,7 +6,7 @@ use super::common;
 use bin_desktop::shell::router::SettingsInventorySnapshot;
 use lib_database::Domain;
 
-use common::Harness;
+use common::{Harness, empty_inventory};
 use gpui::TestAppContext;
 
 const ELM: &str = "location:12 Elm St contents";
@@ -341,8 +341,7 @@ fn removing_a_location_with_contents_asks_for_its_name_typed(app: &mut TestAppCo
 
 #[gpui::test]
 fn the_last_location_can_be_removed(app: &mut TestAppContext) {
-    let mut ui = Harness::new(app);
-    ui.empty_inventory();
+    let mut ui = Harness::arrange(app, empty_inventory);
     ui.press("g s");
     ui.press("j j j j j j j j j j j j l n o n e enter");
     assert_eq!(names(&mut ui), vec!["one".to_string()]);
@@ -380,8 +379,7 @@ fn a_expands_a_collapsed_location_and_works_from_an_area(app: &mut TestAppContex
 
 #[gpui::test]
 fn the_empty_state_ignores_a_e_and_x_but_a_raises_a_toast(app: &mut TestAppContext) {
-    let mut ui = Harness::new(app);
-    ui.empty_inventory();
+    let mut ui = Harness::arrange(app, empty_inventory);
     ui.press("g s");
     ui.press("j j j j j j j j j j j j l");
     let inventory_page = ui.settings::<SettingsInventorySnapshot>();

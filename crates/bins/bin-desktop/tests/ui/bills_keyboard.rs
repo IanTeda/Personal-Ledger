@@ -432,10 +432,12 @@ fn the_cheat_sheet_shows_a_rebound_bills_key(app: &mut TestAppContext) {
 /// Schedule shows the entry Unmatched (`lib-account-deletion`, #854).
 #[gpui::test]
 fn a_deleted_accounts_paid_entry_shows_unmatched(app: &mut TestAppContext) {
-    let mut ui = on_bills(app);
+    let mut ui = Harness::arrange(app, |fakes| {
+        common::move_bill_plans(fakes, lib_core::AccountId::seed(1));
+    });
+    ui.press("g w");
     let paid = ui.bills().rows.last().cloned().expect("a Schedule row");
     assert_eq!(paid.status, "Paid", "the last row is the Paid one");
-    ui.move_bill_plans_to(lib_core::AccountId::seed(1));
 
     ui.press(":");
     for ch in "accounts delete Amex Platinum".chars() {

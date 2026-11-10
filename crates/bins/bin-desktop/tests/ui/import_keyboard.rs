@@ -237,7 +237,17 @@ fn a_refused_commit_raises_an_error_toast_naming_the_clash(app: &mut TestAppCont
         select_row(&mut ui, index);
         ui.press("c j enter");
     }
-    ui.add_payee("Aussie Candle Co");
+    ui.write_outside(|stores| {
+        lib_database::PayeesStore::payees_mut(&mut *stores.payees.borrow_mut()).upsert_payee(
+            lib_payees::Payee {
+                id: lib_core::PayeeId::new(),
+                name: "Aussie Candle Co".to_owned(),
+                aliases: Vec::new(),
+                default_category: None,
+                is_active: true,
+            },
+        );
+    });
 
     ui.press("enter");
 

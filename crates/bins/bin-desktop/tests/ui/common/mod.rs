@@ -109,6 +109,77 @@ pub fn no_unit_users(fakes: &mut FakeStores) {
     fakes.inventory.items.clear();
 }
 
+/// Empties the Inventory, so the Inventory page shows its empty state. For [`Harness::arrange`].
+pub fn empty_inventory(fakes: &mut FakeStores) {
+    fakes.inventory.locations.clear();
+    fakes.inventory.items.clear();
+}
+
+/// Removes every Tag, and the Tags Splits carried, so the Tags page has nothing to select. For
+/// [`Harness::arrange`].
+pub fn empty_tags(fakes: &mut FakeStores) {
+    fakes.tags.tags.tags.clear();
+    for transaction in &mut fakes.transactions.transactions {
+        for split in &mut transaction.splits {
+            split.tag_ids.clear();
+        }
+    }
+}
+
+/// Adds a Location priced in `unit`, which then names it. For [`Harness::arrange`].
+pub fn add_location_in(fakes: &mut FakeStores, unit: UnitId) {
+    let mut scratch = lib_inventory::Inventory::default();
+    let draft = lib_inventory::LocationDraft {
+        name: "Beach shack".to_string(),
+        ..lib_inventory::LocationDraft::default()
+    };
+    scratch
+        .add_location(&draft, unit)
+        .expect("a valid Location");
+    fakes.inventory.locations.append(&mut scratch.locations);
+}
+
+/// Adds an empty default Budget in `unit`, which then names it. For [`Harness::arrange`].
+pub fn add_budget_in(fakes: &mut FakeStores, unit: UnitId) {
+    fakes
+        .budgets
+        .budgets
+        .push(lib_budgets::personal_spending(unit, &[]));
+}
+
+/// Moves every Bill Plan to pay from Account `to`, so the Accounts they paid from can be deleted
+/// rather than refused. For [`Harness::arrange`].
+pub fn move_bill_plans(fakes: &mut FakeStores, to: AccountId) {
+    for plan in &mut fakes.bills.plans {
+        plan.account_id = to;
+    }
+}
+
+/// Leaves no Unit quoted in another, so a seeded Unit can be deleted rather than refused. For
+/// [`Harness::arrange`].
+pub fn unquote_units(fakes: &mut FakeStores) {
+    for unit in &mut fakes.units.units.units {
+        unit.link.quote = unit.id;
+    }
+}
+
+/// Gives Institution `id` Unit `unit` as its Usual unit. For [`Harness::arrange`].
+pub fn name_usual_unit(fakes: &mut FakeStores, id: InstitutionId, unit: UnitId) {
+    for institution in &mut fakes.institutions.institutions {
+        if institution.id == id {
+            institution.usual_unit = Some(unit);
+        }
+    }
+}
+
+/// The device start-up would show on Settings › General, its Ledger folder `folder`.
+fn default_this_device(folder: &std::path::Path) -> lib_settings::ThisDevice {
+    lib_settings::ThisDevice {
+        ledger_folder: folder.to_path_buf(),
+        ..lib_settings::ThisDevice::default()
+    }
+}
+
 /// The default `[keybindings]` with `command` bound to `chord`.
 pub fn overriding(command: &str, chord: &str) -> lib_config::KeyBindingConfig {
     let mut config = lib_config::KeyBindingConfig::default();
@@ -308,9 +379,9 @@ impl<'a> Harness<'a> {
 
     /// Points `:open`'s file explorer at `folder`, as the Ledger folder would.
     pub fn browse_from(&mut self, folder: &std::path::Path) {
-        self.shell.update(self.cx, |shell, _| {
-            shell.browse_from_for_test(folder.to_path_buf())
-        });
+        let device = default_this_device(folder);
+        self.shell
+            .update(self.cx, |shell, cx| shell.set_this_device(device, cx));
     }
 
     /// The Open Ledger's file, `None` with none open.
@@ -431,6 +502,9 @@ impl<'a> Harness<'a> {
             conf_dir: tempfile::tempdir().expect("a temporary directory"),
         };
         ui.configure(config, &[]);
+        ui.shell.update(ui.cx, |shell, cx| {
+            shell.set_this_device(lib_settings::ThisDevice::default(), cx)
+        });
         ui
     }
 
@@ -608,15 +682,6 @@ impl<'a> Harness<'a> {
         self.cx.run_until_parked();
     }
 
-    /// Empties the Inventory so the Settings Inventory page shows its empty state.
-    pub fn empty_inventory(&mut self) {
-        self.shell.update(self.cx, |shell, cx| {
-            shell.empty_inventory_for_test(cx);
-            cx.notify();
-        });
-        self.cx.run_until_parked();
-    }
-
     /// Applies `config` while the app runs, as saving `[keybindings]` in Settings does.
     pub fn rebind(&mut self, config: &lib_config::KeyBindingConfig) {
         self.shell.update(self.cx, |shell, cx| {
@@ -626,74 +691,17 @@ impl<'a> Harness<'a> {
         self.cx.run_until_parked();
     }
 
-    /// Removes every Tag so the Tags page has nothing to select.
-    pub fn empty_tags(&mut self) {
-        self.shell.update(self.cx, |shell, cx| {
-            shell.empty_tags_for_test(cx);
-            cx.notify();
-        });
-        self.cx.run_until_parked();
-    }
-
-    /// Adds a Budget in `unit`, which then names it.
-    pub fn add_budget_in(&mut self, unit: UnitId) {
-        self.shell.update(self.cx, |shell, cx| {
-            shell.add_budget_in_for_test(unit, cx);
-            cx.notify();
-        });
-        self.cx.run_until_parked();
-    }
-
-    /// Adds a Location priced in `unit`, which then names it.
-    pub fn add_location_in(&mut self, unit: UnitId) {
-        self.shell.update(self.cx, |shell, cx| {
-            shell.add_location_in_for_test(unit, cx);
-            cx.notify();
-        });
-        self.cx.run_until_parked();
-    }
-
-    /// Adds a Payee called `name` behind the Import step's back, so committing an Import that
-    /// creates the same name is refused.
-    pub fn add_payee(&mut self, name: &str) {
-        self.shell.update(self.cx, |shell, cx| {
-            shell.add_payee_for_test(name, cx);
-            cx.notify();
-        });
-        self.cx.run_until_parked();
-    }
-
-    /// Moves every Bill Plan to pay from Account `to`, so the Accounts they paid from can be
-    /// deleted rather than refused.
-    pub fn move_bill_plans_to(&mut self, to: AccountId) {
-        self.shell.update(self.cx, |shell, cx| {
-            shell.move_bill_plans_for_test(to, cx);
-            cx.notify();
-        });
-        self.cx.run_until_parked();
-    }
-
-    /// Gives Institution `id` Unit `unit` as its Usual unit.
-    pub fn name_usual_unit(&mut self, id: InstitutionId, unit: UnitId) {
-        self.shell.update(self.cx, |shell, cx| {
-            shell.name_usual_unit_for_test(id, unit, cx);
-            cx.notify();
-        });
-        self.cx.run_until_parked();
-    }
-
-    /// The code of Institution `id`'s Usual unit, as the Ledger has it.
+    /// The code of Institution `id`'s Usual unit, read through the stores; `None` for none.
     pub fn usual_unit_code(&mut self, id: InstitutionId) -> Option<String> {
-        self.read_app(|shell, cx| shell.usual_unit_code(id, cx))
-    }
-
-    /// Leaves no Unit quoted in another, so the base Unit can be deleted rather than refused.
-    pub fn unquote_units(&mut self) {
-        self.shell.update(self.cx, |shell, cx| {
-            shell.unquote_units_for_test(cx);
-            cx.notify();
-        });
-        self.cx.run_until_parked();
+        self.stores(|stores| {
+            let unit = stores
+                .institutions
+                .borrow()
+                .institutions()
+                .institution(id)?
+                .usual_unit?;
+            Some(stores.units.borrow().units().unit(unit)?.code)
+        })
     }
 
     /// The Noun the Shell is showing.

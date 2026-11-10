@@ -6,7 +6,7 @@ use super::common;
 use bin_desktop::shell::router::SettingsInventorySnapshot;
 use lib_core::{AreaId, LocationId};
 
-use common::Harness;
+use common::{Harness, empty_inventory};
 use gpui::TestAppContext;
 
 fn on_inventory(app: &mut TestAppContext) -> Harness<'_> {
@@ -280,8 +280,7 @@ fn the_add_location_button_asks_for_its_dialog(app: &mut TestAppContext) {
 
 #[gpui::test]
 fn the_empty_state_keeps_the_add_location_button(app: &mut TestAppContext) {
-    let mut ui = Harness::new(app);
-    ui.empty_inventory();
+    let mut ui = Harness::arrange(app, empty_inventory);
     ui.press("g s");
     ui.click("settings-index-Inventory");
 

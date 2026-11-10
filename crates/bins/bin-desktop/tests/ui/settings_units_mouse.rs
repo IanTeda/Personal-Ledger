@@ -15,6 +15,7 @@ use bin_desktop::{WindowSize, navigation::nav::Noun};
 use common::{Harness, no_unit_users};
 use gpui::TestAppContext;
 use lib_core::{InstitutionId, UnitId};
+use lib_database::FakeStores;
 use lib_toast::{Notice, ToastKind};
 
 fn on_units_at(app: &mut TestAppContext, size: WindowSize) -> Harness<'_> {
@@ -24,6 +25,16 @@ fn on_units_at(app: &mut TestAppContext, size: WindowSize) -> Harness<'_> {
 /// As [`on_units`], on stores no Unit is in use in, so a seeded Unit can be deleted.
 fn on_units_unused(app: &mut TestAppContext) -> Harness<'_> {
     to_units_at(Harness::arrange(app, no_unit_users), WindowSize::Large)
+}
+
+fn on_units_with(app: &mut TestAppContext, arrange: impl FnOnce(&mut FakeStores)) -> Harness<'_> {
+    to_units_at(
+        Harness::arrange(app, |fakes| {
+            no_unit_users(fakes);
+            arrange(fakes);
+        }),
+        WindowSize::Large,
+    )
 }
 
 fn to_units_at(mut ui: Harness<'_>, size: WindowSize) -> Harness<'_> {
@@ -177,8 +188,7 @@ fn the_delete_dialogs_cancel_button_closes_it(app: &mut TestAppContext) {
 
 #[gpui::test]
 fn deleting_a_unit_by_mouse_removes_its_row_once_the_code_is_typed(app: &mut TestAppContext) {
-    let mut ui = on_units_unused(app);
-    ui.unquote_units();
+    let mut ui = on_units_with(app, common::unquote_units);
     let before = ui.unit_codes();
 
     ui.right_click("unit-row-0");
@@ -303,8 +313,7 @@ fn the_delete_confirm_button_deactivates_a_unit_in_use(app: &mut TestAppContext)
 
 #[gpui::test]
 fn the_new_base_select_moves_the_base_by_click(app: &mut TestAppContext) {
-    let mut ui = on_units_unused(app);
-    ui.unquote_units();
+    let mut ui = on_units_with(app, common::unquote_units);
     ui.right_click("unit-row-0");
     ui.click("settings-units-menu-delete-unit");
     ui.click("delete-unit-new-base");
@@ -351,9 +360,10 @@ fn an_institutions_usual_unit_select_reassigns_it_by_click(app: &mut TestAppCont
 
 #[gpui::test]
 fn the_named_base_units_two_selects_are_each_chosen_by_click(app: &mut TestAppContext) {
-    let mut ui = on_units_unused(app);
-    ui.unquote_units();
-    ui.name_usual_unit(InstitutionId::SEED_WESTPAC, UnitId::SEED_AUD);
+    let mut ui = on_units_with(app, |fakes| {
+        common::unquote_units(fakes);
+        common::name_usual_unit(fakes, InstitutionId::SEED_WESTPAC, UnitId::SEED_AUD);
+    });
     ui.right_click("unit-row-0");
     ui.click("settings-units-menu-delete-unit");
     ui.click("delete-unit-new-base");
