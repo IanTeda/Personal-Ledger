@@ -67,33 +67,6 @@ impl LedgerFile {
     }
 }
 
-/// The rail's counts over the stores, counting each read so a UI test can assert that an input which
-/// wrote nothing recounted no badge (#1029).
-pub(super) struct CountedRailReads {
-    inner: lib_database::StoredShellReads,
-    reads: std::cell::Cell<usize>,
-}
-
-impl CountedRailReads {
-    fn new(inner: lib_database::StoredShellReads) -> Self {
-        Self {
-            inner,
-            reads: std::cell::Cell::new(0),
-        }
-    }
-
-    pub(super) fn reads(&self) -> usize {
-        self.reads.get()
-    }
-}
-
-impl lib_shell::ShellRailCounts for CountedRailReads {
-    fn rail_counts(&self, today: chrono::NaiveDate) -> lib_shell::RailCounts {
-        self.reads.set(self.reads.get() + 1);
-        self.inner.rail_counts(today)
-    }
-}
-
 /// Everything built on one Ledger file: its stores and the ports over them, the Views that read
 /// them, the Announcer the input door announces their writes through, and the listener for its writer's
 /// failures. Its commit is installed in `input.rs`'s door as it is built, since `send` can't reach
@@ -112,7 +85,7 @@ pub struct OpenLedger {
     /// only after a change rather than after every input.
     pub(super) rail_counted_at: std::cell::Cell<usize>,
     /// The rail's badge counts over the stores, which the Shell's Presenter reads after each input.
-    pub(super) rail_reads: CountedRailReads,
+    pub(super) rail_reads: lib_database::StoredShellReads,
     /// The Views that render themselves and handle their own input (ADR-0037): the Dashboard,
     /// Bills, Budgets, Transactions with its Import step, and Documents. Each reaches `Root` only
     /// through `ViewEvent`. Settings is `Root`'s own, given its This Ledger pages here.
@@ -238,7 +211,7 @@ impl OpenLedger {
         let import_stores = crate::transaction_import::ImportStores::of(&storage.ports);
         // The Dashboard and the rail's badges read through the reads `LedgerPorts` built.
         let dashboard_reads = storage.ports.dashboard_reads.clone();
-        let rail_reads = CountedRailReads::new(storage.ports.shell_reads.clone());
+        let rail_reads = storage.ports.shell_reads.clone();
         let budgets_ports = storage.ports.budgets.clone();
         let units_ports = settings_setup.units.ports.clone();
         // The pages repaint when a domain they read is announced.

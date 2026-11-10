@@ -1411,8 +1411,7 @@ impl ShellRailCounts for StoredShellReads {
         let bills_attention = bills_attention(&self.budget_reads.bills, today).ids.len();
         let budgets_over = default_budget_figures(&self.budgets, &self.budget_reads, today)
             .map_or(0, |figures| figures.over_count);
-        let documents_inbox =
-            lib_documents::inbox_count(&self.documents.borrow().documents().documents());
+        let documents_inbox = self.documents.borrow().inbox_count();
         RailCounts {
             bills_attention,
             budgets_over,
@@ -1701,6 +1700,18 @@ pub trait DocumentsStore {
     fn documents(&self) -> &dyn DocumentRepository;
 
     fn documents_mut(&mut self) -> &mut dyn DocumentRepository;
+
+    /// The Documents in the Inbox, which the rail's badge counts. A read of its own so the in-memory
+    /// fakes can count how often the rail asks (#1120).
+    fn inbox_count(&self) -> usize {
+        lib_documents::inbox_count(&self.documents().documents())
+    }
+
+    /// How many times the rail asked for [`DocumentsStore::inbox_count`], for a test; only the
+    /// fakes count.
+    fn inbox_reads(&self) -> usize {
+        0
+    }
 
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///

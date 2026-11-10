@@ -51,6 +51,7 @@ impl FakeFails {
             live,
             reload_fails: self.reloads.contains(&domain),
             payee_usage_fails: false,
+            inbox_reads: std::cell::Cell::new(0),
         }
     }
 }
@@ -62,6 +63,8 @@ pub(crate) struct Switched<T> {
     stored: Option<T>,
     reload_fails: bool,
     payee_usage_fails: bool,
+    /// How many times the rail asked for the Inbox count, kept on the Documents store (#1120).
+    inbox_reads: std::cell::Cell<usize>,
 }
 
 impl<T> Switched<T> {
@@ -344,6 +347,15 @@ impl<T: DocumentsStore + Clone> DocumentsStore for Switched<T> {
 
     fn documents_mut(&mut self) -> &mut dyn DocumentRepository {
         self.live.documents_mut()
+    }
+
+    fn inbox_count(&self) -> usize {
+        self.inbox_reads.set(self.inbox_reads.get() + 1);
+        lib_documents::inbox_count(&self.live.documents().documents())
+    }
+
+    fn inbox_reads(&self) -> usize {
+        self.inbox_reads.get()
     }
 
     fn reload(&mut self) -> Result<()> {

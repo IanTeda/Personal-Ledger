@@ -570,7 +570,7 @@ fn moving_a_cursor_or_scrolling_recounts_no_badge(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
     // A first input past the Ledger opening, so any read it asks for has been made.
     ui.press("g h");
-    let reads = ui.read(|shell| shell.rail_count_reads());
+    let reads = ui.stores(|stores| stores.documents.borrow().inbox_reads());
 
     ui.press("j j k");
     ui.press("g w");
@@ -581,7 +581,7 @@ fn moving_a_cursor_or_scrolling_recounts_no_badge(app: &mut TestAppContext) {
     ui.press("j j ctrl+d");
 
     assert_eq!(
-        ui.read(|shell| shell.rail_count_reads()),
+        ui.stores(|stores| stores.documents.borrow().inbox_reads()),
         reads,
         "a cursor move or a scroll writes nothing, so no badge is counted again"
     );

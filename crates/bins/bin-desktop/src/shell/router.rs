@@ -479,12 +479,6 @@ impl Root {
             .update(cx, |view, cx| view.set_this_device(device, cx));
     }
 
-    /// How many times the rail's counts were read from the stores, for a test.
-    #[doc(hidden)]
-    pub fn rail_count_reads(&self) -> usize {
-        self.open.as_ref().map_or(0, |open| open.rail_reads.reads())
-    }
-
     /// The rail's badge counts the Shell's Presenter holds, which the rail draws; `None` with no
     /// Ledger open.
     #[doc(hidden)]
