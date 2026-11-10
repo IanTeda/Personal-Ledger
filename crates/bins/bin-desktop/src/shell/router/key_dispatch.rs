@@ -11,6 +11,7 @@ use super::Root;
 use crate::input::{self, KeyRoute, Offered};
 use crate::navigation::chord::chord;
 use crate::shell::view::dialog_entity::DialogHandle;
+use crate::shell::view::page_handle::PageKey;
 use crate::{
     navigation::nav::{FocusZone, InputMode},
     shell::view::dialog_entity::DialogKey,
@@ -265,7 +266,8 @@ impl KeyRoute for Keys<'_, '_> {
 
     /// The page and, should it not stop the key, the Shell's fallback are one input: a key whose
     /// event the page hands on ([`PageView::passes_on`]) commits once, with what the fallback
-    /// does. A key the page declines with no fallback is no input: nothing commits.
+    /// does, and is taken even with no fallback. A key the page declines with no fallback is no
+    /// input: nothing commits.
     ///
     /// [`PageView::passes_on`]: crate::shell::view::module_page::PageView::passes_on
     fn module(&mut self, chord: &str) -> bool {
@@ -279,9 +281,11 @@ impl KeyRoute for Keys<'_, '_> {
             let Some(page) = shell.active_page(cx) else {
                 return (false, false);
             };
-            if page.module_key(chord, cx) {
-                return (true, true);
-            }
+            let passed_on = match page.module_key(chord, cx) {
+                PageKey::Taken => return (true, true),
+                PageKey::PassedOn => true,
+                PageKey::Declined => false,
+            };
             match fallback {
                 Some(command) => {
                     shell.with_router(window_size, cx, |presenter, router| {
@@ -289,7 +293,7 @@ impl KeyRoute for Keys<'_, '_> {
                     });
                     (true, true)
                 }
-                None => (false, false),
+                None => (passed_on, passed_on),
             }
         })
     }

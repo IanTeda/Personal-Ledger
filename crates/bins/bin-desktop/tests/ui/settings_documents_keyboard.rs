@@ -506,6 +506,30 @@ fn a_failed_write_puts_the_types_back_with_an_error_toast(app: &mut TestAppConte
     }));
 }
 
+/// The Documents and the Document Types share one store, so a failure naming both reads it back
+/// once, with one Toast.
+#[gpui::test]
+fn a_failed_write_naming_both_document_domains_shows_one_toast(app: &mut TestAppContext) {
+    let mut ui = Harness::arrange(app, |fakes| {
+        fakes.fails.writes = vec![Domain::Documents, Domain::DocumentTypes];
+    });
+    ui.press("g s");
+    ui.press("j j j j j j j j j j j");
+    ui.press("l");
+
+    ui.press("n l e a s e s enter");
+    ui.settle_writes();
+
+    let errors: Vec<u32> = ui
+        .toasts()
+        .visible
+        .into_iter()
+        .filter(|toast| toast.kind == "Error")
+        .map(|toast| toast.count)
+        .collect();
+    assert_eq!(errors, [1], "one Toast, raised once");
+}
+
 #[gpui::test]
 fn a_failed_reorder_puts_the_order_back(app: &mut TestAppContext) {
     let mut ui = Harness::arrange(app, |fakes| fakes.fails.writes = vec![Domain::Documents]);

@@ -478,20 +478,32 @@ pub(super) fn reset_view_scroll(
     }
 }
 
-/// The keys of Settings and the Open Ledger's Views, under `config`'s overrides.
+/// The keys of Settings and the Open Ledger's Views, under `config`'s overrides: one input, so the
+/// rebind costs one commit however many pages hear it.
 pub(super) fn set_view_keymaps(
     settings: &Entity<SettingsView>,
     open: Option<&OpenLedger>,
     config: &lib_config::KeyBindingConfig,
     cx: &mut App,
 ) {
-    settings.update(cx, |view, cx| view.set_keymaps(config, cx));
-    let Some(open) = open else {
-        return;
-    };
+    crate::input::join_or_send(cx, |cx| {
+        settings.update(cx, |view, cx| view.set_keymaps(config, cx));
+        if let Some(open) = open {
+            set_ledger_keymaps(open, config, cx);
+        }
+    });
+}
+
+/// The keys of the Open Ledger's Views and the Dialogs they open, under `config`'s overrides.
+fn set_ledger_keymaps(open: &OpenLedger, config: &lib_config::KeyBindingConfig, cx: &mut App) {
     open.dialog_keys.set(lib_viper::dialog::DialogKeys::of(
         &lib_shell::dialog_keymap(config),
     ));
+    open.views.bills.update(cx, |page, cx| {
+        page.update_presenter(cx, |presenter| {
+            presenter.set_keymap(lib_bills::keymap::bills_page_keymap(config));
+        });
+    });
     open.views.transactions.update(cx, |page, cx| {
         page.send(
             lib_transactions::presenter::TransactionsPageEvent::KeysChanged(config.clone()),
@@ -525,7 +537,7 @@ pub(super) fn set_view_keymaps(
 }
 
 /// Hands the Display output to the Views that read it, after a Settings change; with no Ledger open
-/// there are none, and opening one hands it over.
+/// there are none, and opening one hands it over. One input, so one change costs one commit.
 pub(super) fn push_display_preferences(
     open: Option<&OpenLedger>,
     display: DisplayOutput,
@@ -534,6 +546,11 @@ pub(super) fn push_display_preferences(
     let Some(open) = open else {
         return;
     };
+    crate::input::join_or_send(cx, |cx| push_ledger_display(open, display, cx));
+}
+
+/// Hands the Display output to the Open Ledger's Views that read it.
+fn push_ledger_display(open: &OpenLedger, display: DisplayOutput, cx: &mut App) {
     let (date_style, glyphs, density) = (
         display.date_style,
         display.status_glyphs,

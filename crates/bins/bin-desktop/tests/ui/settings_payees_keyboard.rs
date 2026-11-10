@@ -497,6 +497,20 @@ fn a_dialog_opened_after_a_rebind_hints_the_new_chord(app: &mut TestAppContext) 
     assert!(keys[0].contains('q'), "{keys:?}");
 }
 
+/// A rebind while the Ledger is open reaches the page's own keys and its legend.
+#[gpui::test]
+fn a_rebind_while_open_reaches_the_pages_keys(app: &mut TestAppContext) {
+    let mut ui = in_payees(app);
+    ui.rebind(&common::overriding("new", "ctrl+n"));
+
+    assert_eq!(hint_keys(&mut ui), ["j/k", "enter", "e", "d", "ctrl+n"]);
+    ui.press("ctrl-n");
+    assert!(
+        ui.dialog().is_some(),
+        "the new chord opens the New payee Dialog"
+    );
+}
+
 #[gpui::test]
 fn tab_reaches_the_default_category_and_down_picks_a_leaf_ctrl_enter_saves(
     app: &mut TestAppContext,

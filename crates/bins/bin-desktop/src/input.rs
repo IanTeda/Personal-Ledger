@@ -146,8 +146,9 @@ pub(crate) fn send<C: BorrowMut<App>, R>(cx: &mut C, handle: impl FnOnce(&mut C)
 
 /// Delivers an input that may decline, as [`send`] does: `handle` says whether it took the input.
 /// One it took commits once and drains; one it declined commits nothing and drains nothing, so the
-/// step of the key route that takes the key next is its one input. The Shell's global keymap
-/// offers each key this way, passing on most keys without a Router call.
+/// step of the key route that takes the key next is its one input. One it declined that still read
+/// a domain back is delivered as taken, so the read is announced with this input, not the next.
+/// The Shell's global keymap offers each key this way, passing on most keys without a Router call.
 pub(crate) fn offer<C: BorrowMut<App>, R>(
     cx: &mut C,
     handle: impl FnOnce(&mut C) -> (R, bool),
@@ -171,7 +172,7 @@ pub(crate) fn offer<C: BorrowMut<App>, R>(
     let app: &mut App = cx.borrow_mut();
     let door = app.global_mut::<Door>();
     door.open = false;
-    if !taken {
+    if !taken && door.reloaded.is_empty() {
         return handled;
     }
     let reloaded = std::mem::take(&mut door.reloaded);
@@ -603,6 +604,25 @@ mod tests {
         cx.update(|cx| offer(cx, |_| ((), true)));
         assert_eq!(count.get(), 1);
         assert!(!cx.update(|cx| sending(cx)));
+    }
+
+    #[gpui::test]
+    fn an_offer_declined_after_a_reload_announces_it_with_itself(cx: &mut TestAppContext) {
+        let (_, written, announcer) = door_announcing(cx);
+        let (heard, _subscription) = heard(&announcer, cx);
+
+        cx.update(|cx| offer(cx, |cx| (reloaded(Domain::Budgets, cx), false)));
+        cx.run_until_parked();
+        cx.update(|cx| send(cx, |_| written.note(Domain::Tags)));
+        cx.run_until_parked();
+
+        assert_eq!(
+            *heard.borrow(),
+            [
+                BTreeSet::from([Domain::Budgets]),
+                BTreeSet::from([Domain::Tags])
+            ]
+        );
     }
 
     #[cfg(debug_assertions)]

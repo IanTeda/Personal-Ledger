@@ -78,14 +78,18 @@ pub(super) fn roll_back(failure: &WriteFailure, open: &OpenLedger, cx: &mut App)
     let mut done = Vec::new();
     let mut notices = Vec::new();
     for &domain in &failure.domains {
-        if done.contains(&domain) {
+        // Deduped by store, not domain: one reload and one Toast for a batch writing both.
+        let kept_with = sharing_a_store(domain);
+        if done.contains(&kept_with[0]) {
             continue;
         }
-        done.push(domain);
+        done.push(kept_with[0]);
         let (restored, unsaved) = messages(domain);
         let text = match open.stores.shared().reload(domain) {
             Ok(()) => {
-                crate::input::reloaded(domain, cx);
+                for &reloaded in kept_with {
+                    crate::input::reloaded(reloaded, cx);
+                }
                 restored()
             }
             Err(error) => {
@@ -96,6 +100,24 @@ pub(super) fn roll_back(failure: &WriteFailure, open: &OpenLedger, cx: &mut App)
         notices.push(Notice::Toast(ToastKind::Error, text));
     }
     notices
+}
+
+/// The domains kept in `domain`'s store, which a reload of it reads back together, the first
+/// standing for the store. The Documents and the Document Types share one.
+fn sharing_a_store(domain: Domain) -> &'static [Domain] {
+    match domain {
+        Domain::Documents | Domain::DocumentTypes => &[Domain::Documents, Domain::DocumentTypes],
+        Domain::Units => &[Domain::Units],
+        Domain::Institutions => &[Domain::Institutions],
+        Domain::Accounts => &[Domain::Accounts],
+        Domain::Categories => &[Domain::Categories],
+        Domain::Tags => &[Domain::Tags],
+        Domain::Payees => &[Domain::Payees],
+        Domain::Transactions => &[Domain::Transactions],
+        Domain::Bills => &[Domain::Bills],
+        Domain::Budgets => &[Domain::Budgets],
+        Domain::Inventory => &[Domain::Inventory],
+    }
 }
 
 /// A Toast's text, read from the Catalogue when it is shown.

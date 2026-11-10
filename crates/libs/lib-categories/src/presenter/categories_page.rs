@@ -112,6 +112,12 @@ pub struct CategoriesPagePresenter {
 }
 
 impl CategoriesPagePresenter {
+    /// Takes keys through `keymap` from now on, after a `[keybindings]` rebind, so the legend shows
+    /// its chords too.
+    pub fn set_keymap(&mut self, keymap: Keymap<CategoriesPageEvent>) {
+        self.keymap = keymap;
+    }
+
     /// `keymap` is the one the Client looks keys up in, so the legend shows the chords it binds.
     pub fn new(categories: SharedCategories, keymap: Keymap<CategoriesPageEvent>) -> Self {
         Self {

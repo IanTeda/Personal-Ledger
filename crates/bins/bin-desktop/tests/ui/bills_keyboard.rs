@@ -83,6 +83,24 @@ fn an_override_of_home_moves_it_and_frees_home(app: &mut TestAppContext) {
     assert_eq!(ui.bills().selected, 0);
 }
 
+/// A `[keybindings]` rebind while the Ledger is open reaches the Bills page's own keys.
+#[gpui::test]
+fn a_rebind_while_open_reaches_the_pages_keys(app: &mut TestAppContext) {
+    let mut ui = on_bills(app);
+    let commits = ui.commits();
+    ui.rebind(&common::overriding("bills.next_period", "ctrl+]"));
+    assert_eq!(
+        ui.commits(),
+        commits + 1,
+        "every page hears the rebind in one input"
+    );
+
+    ui.press("]");
+    assert_eq!(ui.bills().period, (2026, 6), "] is no longer bound");
+    ui.press("ctrl-]");
+    assert_eq!(ui.bills().period, (2026, 7));
+}
+
 #[gpui::test]
 fn switching_tab_resets_the_selection(app: &mut TestAppContext) {
     let mut ui = on_bills(app);

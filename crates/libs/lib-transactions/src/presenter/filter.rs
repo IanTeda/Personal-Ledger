@@ -302,7 +302,8 @@ impl FilterPresenter {
                         self.toggle_list();
                     }
                 } else {
-                    self.list.close();
+                    // Leaving the select by a click commits its highlight, as `tab` does.
+                    self.commit_list();
                     self.focused = field;
                     if field.is_select() {
                         self.toggle_list();
@@ -997,6 +998,19 @@ mod tests {
         presenter.handle(FilterEvent::Focus(FilterField::Category));
         presenter.handle(FilterEvent::SelectNext);
         presenter.handle(FilterEvent::NextField);
+
+        assert_eq!(presenter.focused(), FilterField::Payee);
+        assert!(!presenter.view_model().list.is_open());
+        assert_eq!(presenter.view_model().category.chosen, Some(Some(FOOD)));
+    }
+
+    #[test]
+    fn a_click_on_another_field_commits_an_open_lists_highlight() {
+        let mut presenter = au(|| open(&TransactionFilters::defaults(today())));
+        presenter.handle(FilterEvent::Focus(FilterField::Category));
+        presenter.handle(FilterEvent::SelectNext);
+
+        presenter.handle(FilterEvent::Focus(FilterField::Payee));
 
         assert_eq!(presenter.focused(), FilterField::Payee);
         assert!(!presenter.view_model().list.is_open());

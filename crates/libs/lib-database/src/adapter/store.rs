@@ -1745,6 +1745,15 @@ impl<S: DocumentsStore + ?Sized> DocumentsStore for Recorded<S> {
         self
     }
 
+    /// Forwarded, so a fake beneath counts the rail's reads (#1120).
+    fn inbox_count(&self) -> usize {
+        self.store.inbox_count()
+    }
+
+    fn inbox_reads(&self) -> usize {
+        self.store.inbox_reads()
+    }
+
     fn reload(&mut self) -> Result<()> {
         self.store.reload()
     }

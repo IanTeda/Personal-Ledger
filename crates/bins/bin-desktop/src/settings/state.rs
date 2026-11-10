@@ -23,7 +23,7 @@ use crate::{
     shell::view::{
         module_page::{ModulePage, SettingsPageView},
         page_clicks::PresenterPage,
-        page_handle::{PageHandle, PageLayout, PageSignals},
+        page_handle::{PageHandle, PageKey, PageLayout, PageSignals},
         statusline::PageStatus,
         window_size::WindowSize,
     },
@@ -150,6 +150,50 @@ impl SettingsView {
             });
             pages.data_backup.update(cx, |page, cx| {
                 page.update_presenter(cx, |presenter| presenter.set_legend(plain));
+            });
+            pages.units.update(cx, |page, cx| {
+                page.update_presenter(cx, |presenter| {
+                    presenter.set_keymaps(
+                        lib_units::keymap::units_page_keymap(config),
+                        lib_units::keymap::unit_prices_keymap(config),
+                    );
+                });
+            });
+            pages.institutions.update(cx, |page, cx| {
+                page.update_presenter(cx, |presenter| {
+                    presenter
+                        .set_keymap(lib_institutions::keymap::institutions_page_keymap(config));
+                });
+            });
+            pages.accounts.update(cx, |page, cx| {
+                page.update_presenter(cx, |presenter| {
+                    presenter.set_keymap(lib_accounts::keymap::accounts_page_keymap(config));
+                });
+            });
+            pages.categories.update(cx, |page, cx| {
+                page.update_presenter(cx, |presenter| {
+                    presenter.set_keymap(lib_categories::keymap::categories_page_keymap(config));
+                });
+            });
+            pages.tags.update(cx, |page, cx| {
+                page.update_presenter(cx, |presenter| {
+                    presenter.set_keymap(lib_tags::keymap::tags_page_keymap(config));
+                });
+            });
+            pages.payees.update(cx, |page, cx| {
+                page.update_presenter(cx, |presenter| {
+                    presenter.set_keymap(lib_payees::keymap::payees_page_keymap(config));
+                });
+            });
+            pages.documents.update(cx, |page, cx| {
+                page.update_presenter(cx, |presenter| {
+                    presenter.set_keymap(lib_documents::keymap::document_types_page_keymap(config));
+                });
+            });
+            pages.inventory.update(cx, |page, cx| {
+                page.update_presenter(cx, |presenter| {
+                    presenter.set_keymap(lib_inventory::keymap::inventory_page_keymap(config));
+                });
             });
         }
     }
@@ -414,18 +458,26 @@ impl SettingsView {
     /// page's module keymap, then the frame's keymap. The page goes first, so a page's `h`/`l` win
     /// over the frame's `h`. Not while the page picker is open, whose keys [`Self::mode_key`] reads
     /// in its mode.
-    pub fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {
+    pub fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> PageKey {
         if self.frame.picker_open() {
-            return false;
+            return PageKey::Declined;
         }
-        self.sync_frame(cx);
-        if let Some(page) = self.focused_page()
-            && page.module_key(chord, cx)
-        {
+        let page_key = match self.focused_page() {
+            Some(page) => {
+                // Only the page offered the key need act on the layout on screen.
+                page.set_frame(self.frame_space(), cx);
+                page.module_key(chord, cx)
+            }
+            None => PageKey::Declined,
+        };
+        if page_key == PageKey::Taken {
             cx.notify();
-            return true;
+            return PageKey::Taken;
         }
-        self.frame_key(chord, cx)
+        if self.frame_key(chord, cx) {
+            return PageKey::Taken;
+        }
+        page_key
     }
 
     /// A palette Command on `section`'s page, by its keymap `command` name. Whether the page has it.
@@ -435,11 +487,11 @@ impl SettingsView {
         command: &str,
         cx: &mut Context<'_, Self>,
     ) -> bool {
-        self.sync_frame(cx);
-        let taken = self
-            .pages
-            .get(section)
-            .is_some_and(|page| page.module_command(command, cx));
+        let frame = self.frame_space();
+        let taken = self.pages.get(section).is_some_and(|page| {
+            page.set_frame(frame, cx);
+            page.module_command(command, cx)
+        });
         if taken {
             cx.notify();
         }
@@ -449,11 +501,18 @@ impl SettingsView {
     /// A key while the frame is in a mode of its own (the page picker, a `PageMode::Filter`), as a
     /// module page's `mode_key` is offered one: its moves step the highlight and `select` opens the
     /// chosen page. Every other key is swallowed, so the picker's query is not typed into yet.
-    /// `Esc` comes back as [`Self::escape`]. In no mode the frame takes nothing here, and its keys
-    /// are the module step's ([`Self::module_key`]).
+    /// `Esc` comes back as [`Self::escape`]. In no mode of the frame's the key is the focused
+    /// page's, for a mode it entered; in Normal mode nothing takes it here, and the keys are the
+    /// module step's ([`Self::module_key`]).
     pub fn mode_key(&mut self, keystroke: &Keystroke, cx: &mut Context<'_, Self>) -> bool {
-        if keystroke.key == "escape" || self.frame.mode().is_none() {
+        if keystroke.key == "escape" {
             return false;
+        }
+        if self.frame.mode().is_none() {
+            // A mode the open page entered (its Search, an edit in place) reads its own keys.
+            return self
+                .focused_page()
+                .is_some_and(|page| page.mode_key(keystroke, cx));
         }
         let event = chord(keystroke).and_then(|chord| self.frame.keymap().event(&chord));
         if let Some(
@@ -711,7 +770,7 @@ fn subscribe_pages(pages: &SettingsPages, cx: &mut Context<'_, SettingsView>) ->
 /// Settings as `Root` hosts it: a composite host, offering each key to its open page through the
 /// same trait.
 impl PageHandle for Entity<SettingsView> {
-    fn module_key(&self, chord: &str, cx: &mut App) -> bool {
+    fn module_key(&self, chord: &str, cx: &mut App) -> PageKey {
         self.update(cx, |view, cx| view.module_key(chord, cx))
     }
 

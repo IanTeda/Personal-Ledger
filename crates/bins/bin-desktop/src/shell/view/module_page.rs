@@ -23,6 +23,7 @@ use lib_viper::keymap::SEARCH;
 use lib_viper::presenter::{PageMode, PagePresenter, TextKey};
 
 use super::page_clicks::{PageClicks, PresenterPage};
+use super::page_handle::PageKey;
 use super::statusline::PageStatus;
 use crate::announcer::{Announcer, LedgerChanged, notify_on};
 use crate::navigation::chord::chord;
@@ -314,13 +315,17 @@ impl<P: PageView> ModulePage<P> {
     }
 
     /// A key the page's keymap binds, by its `chord`: the event it sends, unless the page doesn't
-    /// take it now. The Shell has already taken its own keys. Whether the key stops here: one whose
-    /// event [`PageView::passes_on`] goes on to the Shell's fallback even once taken, inside the
-    /// same input.
-    pub fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> bool {
+    /// take it now. The Shell has already taken its own keys. One whose event
+    /// [`PageView::passes_on`] goes on to the Shell's fallback even once taken, inside the same
+    /// input.
+    pub fn module_key(&mut self, chord: &str, cx: &mut Context<'_, Self>) -> PageKey {
         let event = self.presenter.keymap().event(chord);
         let passes_on = event.as_ref().is_some_and(P::passes_on);
-        self.take(event, cx) && !passes_on
+        match (self.take(event, cx), passes_on) {
+            (false, _) => PageKey::Declined,
+            (true, false) => PageKey::Taken,
+            (true, true) => PageKey::PassedOn,
+        }
     }
 
     /// A palette Command, by its keymap `command` name: the event its key sends.
@@ -410,7 +415,7 @@ impl<P: PageView> ModulePage<P> {
             return false;
         }
         if let Some(chord) = chord(keystroke)
-            && self.module_key(&chord, cx)
+            && self.module_key(&chord, cx) == PageKey::Taken
         {
             return true;
         }

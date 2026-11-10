@@ -132,20 +132,32 @@ impl BillsPagePresenter {
     /// Client looks keys up in, so the legend shows the chords it binds.
     pub fn new(ports: SharedPorts, clock: Clock, keymap: Keymap<BillsPageEvent>) -> Self {
         let today = clock.today();
-        let on = |tab| move |event: &BillsPageEvent| event.tab().is_none_or(|own| own == tab);
         Self {
             schedule: SchedulePresenter::new(ports.clone(), clock.clone()),
             planner: PlannerPresenter::new(ports.clone()),
             ports,
             clock,
-            schedule_keys: keymap.scoped(on(BillsTab::Schedule)),
-            planner_keys: keymap.scoped(on(BillsTab::Planner)),
+            schedule_keys: Self::tab_keys(&keymap, BillsTab::Schedule),
+            planner_keys: Self::tab_keys(&keymap, BillsTab::Planner),
             keymap,
             tab: BillsTab::default(),
             generated: Period::of(today),
             date_style: None,
             glyphs: StatusGlyphs::default(),
         }
+    }
+
+    /// Takes keys through `keymap` from now on, after a `[keybindings]` rebind, so the legend shows
+    /// its chords too.
+    pub fn set_keymap(&mut self, keymap: Keymap<BillsPageEvent>) {
+        self.schedule_keys = Self::tab_keys(&keymap, BillsTab::Schedule);
+        self.planner_keys = Self::tab_keys(&keymap, BillsTab::Planner);
+        self.keymap = keymap;
+    }
+
+    /// `keymap`'s bindings `tab` reaches: its own and the shared ones.
+    fn tab_keys(keymap: &Keymap<BillsPageEvent>, tab: BillsTab) -> Keymap<BillsPageEvent> {
+        keymap.scoped(move |event: &BillsPageEvent| event.tab().is_none_or(|own| own == tab))
     }
 
     /// The date style the Plan form's dates are typed in.

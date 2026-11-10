@@ -355,6 +355,18 @@ impl UnitsPagePresenter {
         self
     }
 
+    /// Takes keys through `keymap` and the prices view through `prices_keymap` from now on, after
+    /// a `[keybindings]` rebind. A prices view already open keeps its keys until it next opens.
+    pub fn set_keymaps(
+        &mut self,
+        keymap: Keymap<UnitsPageEvent>,
+        prices_keymap: Keymap<UnitPricesEvent>,
+    ) {
+        self.prices_keys = Self::prices_keys(&keymap, &prices_keymap);
+        self.keymap = keymap;
+        self.prices_keymap = prices_keymap;
+    }
+
     /// Whether the Unit prices view shows in place of the tables.
     pub fn prices_open(&self) -> bool {
         self.prices.is_some()

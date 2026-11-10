@@ -21,6 +21,18 @@ use crate::settings::pages::{PageFrame, PageRowClicked};
 use crate::view::event::{Reveal, ViewEvent};
 use crate::view::help::HelpGroup;
 
+/// What a page made of a key offered to its module keymap.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PageKey {
+    /// Not the page's to take now: the key goes on to the Shell's next step.
+    Declined,
+    /// The page took it, and it stops there.
+    Taken,
+    /// The page took it and hands it on to the Shell's fallback, inside the same input
+    /// ([`PageView::passes_on`]).
+    PassedOn,
+}
+
 /// How a host lays a page out.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct PageLayout {
@@ -97,8 +109,9 @@ impl PageSignals {
 
 /// A hosted page behind one `dyn` handle: what a host calls, without knowing which page it shows.
 pub trait PageHandle {
-    /// A key the page's module keymap takes, by `chord`. Whether it took the key.
-    fn module_key(&self, chord: &str, cx: &mut App) -> bool;
+    /// A key the page's module keymap takes, by `chord`. Whether it took the key, and whether the
+    /// key stops there.
+    fn module_key(&self, chord: &str, cx: &mut App) -> PageKey;
     /// A palette Command, by its keymap `command` name. Whether the page took it.
     fn module_command(&self, command: &str, cx: &mut App) -> bool;
     /// A key while the page is in a mode it entered for something of its own (its Search, a
@@ -137,7 +150,7 @@ pub trait PageHandle {
 
 impl<P: PageView> PageHandle for Entity<ModulePage<P>> {
     /// Every chord the page's keymap binds, the arrows and `g g` among them.
-    fn module_key(&self, chord: &str, cx: &mut App) -> bool {
+    fn module_key(&self, chord: &str, cx: &mut App) -> PageKey {
         self.update(cx, |page, cx| page.module_key(chord, cx))
     }
 
