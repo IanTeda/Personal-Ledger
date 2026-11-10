@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROTOTYPE 1132 General</title>
+<link rel="stylesheet" href="../styles.css">
+<style>
+/* PROTOTYPE (#1132), throwaway: not a deck, not part of the handoff. Lives on prototype/1132-general only. */
+:root{--ink:#201e1d;--chrome:#eae9e9;--paper:#f3f2f2;--muted:#605d5d;--faint:#9b9797;--rule:rgba(32,30,29,.38);--line:rgba(32,30,29,.30)}
+body{margin:0;background:#e2e0df;font-family:"Archivo",system-ui,sans-serif;color:var(--ink);padding:16px 16px 120px}
+.note{max-width:1100px;font-size:12.5px;line-height:1.6;color:var(--muted);margin:0 0 14px}
+.note b{color:var(--ink)}
+.stage{transform-origin:top left}
+.card{background:var(--paper);box-shadow:0 14px 40px rgba(32,30,29,.30);overflow:hidden;display:flex;flex-direction:column;font-size:13px;position:relative}
+.hdr{height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 12px;background:var(--chrome);border-bottom:2px solid var(--rule)}
+.body{flex:1;display:flex;min-height:0;position:relative}
+.rail{flex:none;background:var(--chrome);border-right:2px solid var(--rule)}
+.idx{width:232px;flex:none;border-right:2px solid var(--rule)}
+.idx div{padding:7px 14px}
+.idx .sel{background:var(--ink);color:var(--paper);font-weight:800}
+.idx .grp{padding:12px 14px 6px;font:800 9.5px/1 Archivo;letter-spacing:.11em;color:var(--faint)}
+.view{flex:1;min-width:0;padding:22px 28px;overflow:hidden;position:relative}
+.head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.head h4{margin:0;font-size:20px}
+.scope{font-size:11.5px;color:var(--faint);white-space:nowrap}
+.hr{height:2px;background:var(--rule);margin:14px 0 18px}
+.row{display:flex;gap:40px}
+.col{width:320px;flex:none;display:flex;flex-direction:column;gap:16px}
+.col .lbl{display:block;font-weight:800;font-size:12px;margin-bottom:6px}
+.hint{margin-top:6px;font-size:11.5px;color:var(--muted);text-wrap:pretty}
+.seg{display:inline-flex;border:1px solid var(--line)}
+.seg span{padding:6px 10px;font-size:12.5px;border-right:1px solid var(--line);white-space:nowrap}
+.seg span:last-child{border-right:0}
+.seg .on{background:var(--ink);color:var(--paper);font-weight:800}
+.seg.wrap{display:flex;flex-wrap:wrap}
+.focus{outline:2px solid #ec3013;outline-offset:3px}
+.ro{width:100%;padding:8px 10px;border:1px solid var(--line);font-size:13px;box-sizing:border-box;background:var(--chrome);color:var(--muted)}
+.mono{font-family:ui-monospace,monospace}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border:1px solid var(--ink);background:var(--paper);font-size:12.5px;font-weight:800;cursor:pointer;white-space:nowrap}
+.btn kbd{font:400 11px ui-monospace,monospace;color:var(--faint)}
+.link{color:#ec3013;font-weight:800;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.box{flex:1;min-width:0}
+.boxhd{font:800 10px/1 Archivo;letter-spacing:.11em;color:var(--faint);margin-bottom:10px}
+.boxin{border:1px solid var(--line);background:var(--chrome)}
+.boxin div{display:flex;justify-content:space-between;gap:12px;padding:10px 12px;font-size:12px}
+.boxin div+div{border-top:1px solid #d7d3d3}
+.boxin span:first-child{color:var(--muted)}
+.boxin span:last-child{font-weight:800;font-family:ui-monospace,monospace;font-size:11.5px}
+.status{height:28px;flex:none;display:flex;align-items:center;gap:14px;padding:0 12px;background:var(--chrome);border-top:2px solid var(--rule);font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden}
+.status b{color:var(--ink)}
+.chip{background:var(--ink);color:var(--paper);font-weight:800;font-size:10px;letter-spacing:.1em;padding:2px 7px}
+.path{color:var(--ink);font-family:ui-monospace,monospace;font-size:11px}
+.toasts{position:absolute;right:16px;bottom:40px;width:420px;display:flex;flex-direction:column;gap:8px;z-index:5}
+.toast{display:flex;align-items:center;gap:10px;background:var(--chrome);border:1px solid var(--line);box-shadow:0 8px 24px rgba(32,30,29,.22);font-size:12.5px;padding:9px 12px 9px 0}
+.toast .bar{width:4px;align-self:stretch;margin:-9px 0}
+.toast .g{width:14px;text-align:center;font-weight:800;flex:none}
+.toast .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.toast .x{color:var(--faint)}
+.more{font-size:11px;color:var(--faint);text-align:right}
+.bbar{position:fixed;left:0;right:0;bottom:0;background:var(--ink);color:var(--paper);display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;padding:10px 16px;font-size:12px;z-index:50}
+.bbar button{font:inherit;background:transparent;color:var(--paper);border:1px solid #605d5d;padding:4px 9px;cursor:pointer}
+.bbar button.on{background:var(--paper);color:var(--ink);font-weight:800}
+.bbar .g{display:flex;gap:4px;align-items:center}
+.bbar .g>span{color:#bab6b6;margin-right:4px}
+pre.state{max-width:1100px;font-size:11px;background:#f3f2f2;padding:8px 10px;color:var(--muted);white-space:pre-wrap}
+</style>
+</head>
+<body>
+<p class="note"><b>PROTOTYPE · throwaway (#1132).</b> Settings › General with the map's decisions drawn in: Start view between On start and Toasts, the THIS DEVICE box filling the View at every Window Size (no 840 cap, no 400 cap), and the status line's right-hand side naming the configuration file. The open question is the <b>Test</b> control: switch variants A, B and C below. Press Test in the card (or the bottom bar) to raise the four test Toasts.</p>
+<pre class="state" id="state"></pre>
+<div class="stage" id="stage"></div>
+
+<div class="bbar">
+  <div class="g" id="g-variant"><span>Test control</span></div>
+  <div class="g" id="g-size"><span>Window</span></div>
+  <div class="g" id="g-toasts"><span>Toasts</span></div>
+  <div class="g"><span>Test</span><button id="fire">raise test Toasts (t)</button><button id="clear">clear</button></div>
+</div>
+
+<script>
+const VARIANTS = {
+  A: 'A · Test button beside On / Off',
+  B: 'B · Test link in the note',
+  C: 'C · Test toasts as its own row',
+};
+const SIZES = {
+  Medium: {w: 960, h: 1040, rail: 52, index: false},
+  Large: {w: 1280, h: 800, rail: 206, index: true},
+  'X-Large': {w: 1920, h: 1080, rail: 206, index: true},
+};
+const KINDS = [
+  {kind: 'Success', glyph: '✓', mark: '#1e8c4c', text: 'Test Toast: a Success looks like this'},
+  {kind: 'Info', glyph: 'i', mark: '#201e1d', text: 'Test Toast: an Info looks like this'},
+  {kind: 'Warning', glyph: '!', mark: '#ec3013', text: 'Test Toast: a Warning looks like this'},
+  {kind: 'Error', glyph: '✗', mark: '#ae1800', text: 'Test Toast: an Error looks like this (stays until dismissed)'},
+];
+const q = new URLSearchParams(location.search);
+const st = {
+  variant: VARIANTS[q.get('variant')] ? q.get('variant') : 'A',
+  size: SIZES[q.get('size')] ? q.get('size') : 'Large',
+  toastsOn: q.get('toasts') !== 'off',
+  fired: false,
+};
+
+function seg(opts, sel, extra = '') {
+  return `<div class="seg ${extra}">${opts.map(o => `<span class="${o === sel ? 'on' : ''}">${o}</span>`).join('')}</div>`;
+}
+
+function toastsField() {
+  const onoff = seg(['On', 'Off'], st.toastsOn ? 'On' : 'Off');
+  const note = 'Errors still show';
+  if (st.variant === 'A') return `
+    <div class="focus"><span class="lbl">Toasts</span>
+      <div style="display:flex;gap:8px;align-items:center">${onoff}<span class="btn" data-fire>Test <kbd>t</kbd></span></div>
+      <div class="hint">${note}. <b>Test</b> raises one of each kind.</div></div>`;
+  if (st.variant === 'B') return `
+    <div class="focus"><span class="lbl">Toasts</span>${onoff}
+      <div class="hint">${note}. <span class="link" data-fire>Show one of each</span> <span style="color:var(--faint)">(t)</span></div></div>`;
+  return `
+    <div><span class="lbl">Toasts</span>${onoff}<div class="hint">${note}</div></div>
+    <div class="focus"><span class="lbl">Test toasts</span><span class="btn" data-fire>Raise one of each <kbd>enter</kbd></span>
+      <div class="hint">A Success, Info, Warning and Error, as Toasts On or Off shows them.</div></div>`;
+}
+
+function hints() {
+  const k = s => `<b>${s}</b>`;
+  const test = st.variant === 'C' ? `${k('enter')} test` : `${k('t')} test`;
+  if (st.size === 'Medium') return `${k('j/k')} field · ${k('h/l')} change · ${test} · ${k('[/]')} pages · ${k('p')} picker · ${k('esc')} settings`;
+  return `${k('j/k')} field · ${k('h/l')} change · ${test} · ${k('b')} collapse sidebar · ${k('q')} back to dashboard`;
+}
+
+function echo() {
+  // Toasts Off: the newest non-Error test Toast echoes on the status line's left (ADR-0027).
+  if (!st.fired || st.toastsOn) return '';
+  const w = KINDS[2];
+  return `<span style="color:${w.mark};font-weight:800">${w.glyph}</span> <span style="color:var(--ink)">${w.text}</span>`;
+}
+
+function stack() {
+  if (!st.fired) return '';
+  let shown = st.toastsOn ? KINDS.slice() : KINDS.filter(k => k.kind === 'Error');
+  // lib-toast keeps at most 3 visible and evicts the oldest timed Toast first.
+  let evicted = [];
+  while (shown.length > 3) { const i = shown.findIndex(k => k.kind !== 'Error'); evicted.push(shown[i].kind); shown.splice(i, 1); }
+  st.evicted = evicted;
+  return `<div class="toasts">${shown.map(k => `
+    <div class="toast"><span class="bar" style="background:${k.mark}"></span><span class="g" style="color:${k.mark}">${k.glyph}</span><span class="t">${k.text}</span><span class="x">✕</span></div>`).join('')}</div>`;
+}
+
+function render() {
+  const S = SIZES[st.size];
+  const cfg = st.size === 'Medium' ? '…/personal-ledger.conf' : '~/.config/personal-ledger/personal-ledger.conf';
+  const idx = S.index ? `<div class="idx"><div style="padding:14px 14px 8px;font:800 10px/1 Archivo;letter-spacing:.11em">SETTINGS</div>
+    <div class="grp">THIS DEVICE</div><div class="sel">General</div><div>Display</div><div>AI Connections</div><div>Logs</div><div>About</div>
+    <div class="grp">THIS LEDGER</div>${['Ledger','Units','Institutions','Accounts','Categories','Tags','Payees','Documents','Inventory','Sync Server','Backup','History'].map(p => `<div>${p}</div>`).join('')}</div>` : '';
+  const heading = st.size === 'Medium'
+    ? `<h4><span style="color:#605d5d;font-weight:400">Settings</span> <span style="color:#9b9797;font-weight:400">›</span> General ▾</h4>`
+    : `<h4>General</h4>`;
+  const e = echo();
+  document.getElementById('stage').innerHTML = `
+  <div class="card" style="width:${S.w}px;height:${S.h}px">
+    <div class="hdr"><b>Personal Ledger</b><div style="flex:1"></div><span style="color:#605d5d;font-size:12px">Synced @ 14:22</span></div>
+    <div class="body">
+      <div class="rail" style="width:${S.rail}px"></div>${idx}
+      <div class="view">
+        <div class="head">${heading}<span class="scope">this device · never synced</span></div>
+        <div class="hr"></div>
+        <div class="row">
+          <div class="col">
+            <div><span class="lbl">On start</span>${seg(['Reopen last Ledger', 'Start with no Ledger open'], 'Reopen last Ledger')}
+              <div class="hint">Reopens the Ledger open when Personal Ledger last quit, or none if none was. A file named by <code>--file</code> or <code>file</code> in the configuration file always wins.</div></div>
+            <div><span class="lbl">Start view</span>${seg(['Dashboard', 'Last view', 'Settings', 'Transactions', 'Documents', 'Bills', 'Budgets'], 'Dashboard', 'wrap')}
+              <div class="hint">Where Personal Ledger opens, after On start. A View that needs a Ledger opens the Dashboard when none is open.</div></div>
+            ${toastsField()}
+            <div><span class="lbl">Language and region</span><input class="ro" readonly value="en-AU">
+              <div class="hint">Set with the <code>locale</code> setting or the <code>--locale</code> flag, then restart.</div></div>
+            <div><span class="lbl">Ledger folder</span><input class="ro mono" readonly value="~/documents/ledgers">
+              <div class="hint">Where <b>:open</b> and <b>:new</b> start browsing. Set by <code>data</code> in the configuration file.</div></div>
+          </div>
+          <div class="box"><div class="boxhd">THIS DEVICE</div>
+            <div class="boxin"><div><span>last ledger</span><span>~/documents/ledgers/teda.pldb</span></div>
+              <div><span>configuration</span><span>~/.config/personal-ledger/personal-ledger.conf</span></div></div>
+            <p style="margin-top:14px;font-size:12px;color:#605d5d">General settings belong to this device and never sync. What travels with the Ledger is under <b>Ledger</b>.</p>
+          </div>
+        </div>
+      </div>
+      ${stack()}
+    </div>
+    <div class="status"><span class="chip">NORMAL</span><span>${e || hints()}</span><div style="flex:1"></div><span class="path">${cfg}</span></div>
+  </div>`;
+  const avail = window.innerWidth - 32;
+  const scale = Math.min(1, avail / S.w);
+  const stage = document.getElementById('stage');
+  stage.style.transform = `scale(${scale})`;
+  stage.style.height = `${S.h * scale}px`;
+  document.querySelectorAll('[data-fire]').forEach(el => el.onclick = fire);
+  document.getElementById('state').textContent = JSON.stringify({
+    variant: VARIANTS[st.variant], window: `${st.size} ${S.w}×${S.h}`, toasts: st.toastsOn ? 'On' : 'Off',
+    testFired: st.fired, visibleToasts: st.fired ? (st.toastsOn ? KINDS.filter(k => !(st.evicted||[]).includes(k.kind)).map(k => k.kind) : ['Error']) : [],
+    evictedBy3Limit: st.evicted || [], statusLeft: e ? 'echo of the Warning' : 'hints', statusRight: cfg,
+    thisDeviceBoxWidth: `View minus 320 + 40 (≈ ${S.w - S.rail - (S.index ? 232 : 0) - 56 - 360}px)`,
+  }, null, 1);
+  bar();
+}
+
+function bar() {
+  const mk = (id, items, cur, set) => {
+    const g = document.getElementById(id);
+    g.querySelectorAll('button').forEach(b => b.remove());
+    items.forEach(([key, label]) => {
+      const b = document.createElement('button');
+      b.textContent = label; if (key === cur) b.className = 'on';
+      b.onclick = () => { set(key); sync(); render(); };
+      g.appendChild(b);
+    });
+  };
+  mk('g-variant', Object.entries(VARIANTS).map(([k, v]) => [k, v]), st.variant, k => st.variant = k);
+  mk('g-size', Object.keys(SIZES).map(k => [k, k]), st.size, k => st.size = k);
+  mk('g-toasts', [[true, 'On'], [false, 'Off']], st.toastsOn, k => { st.toastsOn = k; });
+}
+function sync() {
+  const p = new URLSearchParams({variant: st.variant, size: st.size, toasts: st.toastsOn ? 'on' : 'off'});
+  history.replaceState(null, '', '?' + p);
+}
+function fire() { st.fired = true; render(); }
+document.getElementById('fire').onclick = fire;
+document.getElementById('clear').onclick = () => { st.fired = false; render(); };
+document.addEventListener('keydown', ev => { if (ev.key === 't' || ev.key === 'Enter') fire(); if (ev.key === 'Escape') { st.fired = false; render(); } });
+window.addEventListener('resize', render);
+render();
+</script>
+</body>
+</html>
