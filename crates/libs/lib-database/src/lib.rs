@@ -100,7 +100,7 @@ pub use adapter::units::UnitsAdapter;
 /// A Client's Ledger file, opened at start-up with its adapters and the writer, and the
 /// [`Stores`] its Shell is built on.
 pub mod storage;
-pub use storage::{Storage, StoreParts, Stores, open_storage};
+pub use storage::{SharedLedger, Storage, StoreParts, Stores, open_storage};
 
 /// What a Client holds a Ledger by: [`LedgerPorts`], each domain's `Stored<Domain>Ports` and the
 /// cross-domain adapters over the shared stores. Its module doc states the invariant that keeps

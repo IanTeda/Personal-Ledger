@@ -40,7 +40,8 @@ use lib_core::{AccountId, CategoryId, InstitutionId, PayeeId, PriceSourceId, Tag
 use lib_database::{
     AccountsStore, BillsStore, BudgetsStore, CategoriesStore, Commit, Committed, CountingCommit,
     DocumentsStore, Domain, FakeStores, InstitutionsStore, InventoryStore, PayeesStore, Recorded,
-    StoreParts, Stores, TagsStore, TransactionsStore, UnitsStore, WriteFailure, Written,
+    SharedStores, StoreParts, Stores, TagsStore, TransactionsStore, UnitsStore, WriteFailure,
+    Written,
 };
 use lib_documents::fake::InMemoryDocuments;
 use lib_documents::types::DocumentTypeRow;
@@ -732,6 +733,9 @@ pub struct Harness<'a> {
     date: Rc<Cell<NaiveDate>>,
     /// How many times the Shell has committed, once per input (`input::send`).
     commits: Rc<Cell<usize>>,
+    /// A clone of the stores the Shell was built on, `None` with no Ledger open: what
+    /// [`Harness::write_outside`] writes and [`Harness::stores`] reads (#1117).
+    stores: Option<SharedStores>,
     /// Holds this Shell's own `personal-ledger.conf`, which Settings writes a device's settings to
     /// (ADR-0053), so no test writes the real one.
     conf_dir: tempfile::TempDir,
@@ -780,6 +784,37 @@ impl<'a> Harness<'a> {
             configured_level,
             Stores::fake(FakeStores::sample(today())),
         )
+    }
+
+    /// As [`Harness::new`], on the Sample Ledger as `arrange` leaves it: the state a test needs set
+    /// on the in-memory stores before the Shell is built on them.
+    pub fn arrange(app: &'a mut TestAppContext, arrange: impl FnOnce(&mut FakeStores)) -> Self {
+        let mut fakes = FakeStores::sample(today());
+        arrange(&mut fakes);
+        Self::build(
+            app,
+            lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
+            None,
+            Stores::fake(fakes),
+        )
+    }
+
+    /// Writes to the stores as something outside the app would, a sync or a second window: into
+    /// memory, where the Shell reads, with no commit and no `LedgerChanged`, so nothing repaints
+    /// until the test moves the Shell to read afresh.
+    ///
+    /// # Panics
+    /// With no Ledger open, since there are no stores to write.
+    pub fn write_outside(&mut self, write: impl FnOnce(&SharedStores)) {
+        write(self.stores.as_ref().expect("a Ledger is open"));
+    }
+
+    /// Reads the stores the Shell was built on, as persisted state rather than as drawn.
+    ///
+    /// # Panics
+    /// With no Ledger open, since there are no stores to read.
+    pub fn stores<T>(&self, read: impl FnOnce(&SharedStores) -> T) -> T {
+        read(self.stores.as_ref().expect("a Ledger is open"))
     }
 
     /// As [`Harness::new`], on stores that leave no Unit in use, so a seeded Unit can be deleted
@@ -1359,7 +1394,7 @@ impl<'a> Harness<'a> {
             app,
             logs,
             configured_level,
-            (Some(router::LedgerFile::in_memory(stores)), commits),
+            (Some(router::LedgerFile::in_memory(stores.share())), commits),
             keybindings,
             PersistedState::default(),
             &lib_config::PersonalLedgerConfig::default(),
@@ -1463,6 +1498,7 @@ impl<'a> Harness<'a> {
             theme::colours::init(ThemeOverrides::default(), cx);
         });
         let (clock, date) = lib_core::Clock::settable(today());
+        let shared = stores.as_ref().map(|ledger| ledger.stores.stores.clone());
         let (shell, cx) = app.add_window_view(|window, cx| {
             let focus_handle = cx.focus_handle();
             window.focus(&focus_handle);
@@ -1486,6 +1522,7 @@ impl<'a> Harness<'a> {
             logs,
             date,
             commits,
+            stores: shared,
             conf_dir: tempfile::tempdir().expect("a temporary directory"),
         };
         ui.configure(config, &[]);

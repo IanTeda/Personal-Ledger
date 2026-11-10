@@ -559,3 +559,18 @@ fn budgets_duplicate_writes_on_the_budgets_page_in_one_input(app: &mut TestAppCo
     );
     assert_eq!(ui.commits() - commits, 1, "the write commits once");
 }
+
+/// A Ledger arranged with no Tag before the Shell is built says `:tags merge` is not available,
+/// as one emptied after would (#1117).
+#[gpui::test]
+fn tags_merge_on_a_ledger_arranged_with_no_tag_opens_no_dialog(app: &mut TestAppContext) {
+    let mut ui = Harness::arrange(app, |fakes| fakes.tags.tags.tags.clear());
+
+    run(&mut ui, "tags merge");
+
+    assert_eq!(ui.dialog(), None);
+    assert_eq!(
+        ui.read(|s| s.status_message()).as_deref(),
+        Some(":tags merge \u{2014} not available here right now")
+    );
+}

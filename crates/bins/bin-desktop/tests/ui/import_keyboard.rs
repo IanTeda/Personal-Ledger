@@ -342,3 +342,66 @@ fn an_imports_transactions_show_in_their_accounts_edit_and_delete_counts(app: &m
 
     assert_eq!(everyday_dialog_counts(&mut ui), (edit + 18, delete + 18));
 }
+
+/// A Payee written from outside the app is silent: no commit, but the stores hold it, and the
+/// Import's commit then refuses the clash with it (#1117).
+#[gpui::test]
+fn a_payee_written_outside_is_silent_and_refuses_the_clashing_commit(app: &mut TestAppContext) {
+    let mut ui = on_import(app);
+    let candle = ui
+        .import()
+        .expect("import is open")
+        .rows
+        .iter()
+        .position(|row| row.raw == "SP AUSSIE CANDLE CO")
+        .expect("the seeded statement has the candle shop");
+    select_row(&mut ui, candle);
+    ui.press("n");
+    let to_review: Vec<usize> = ui
+        .import()
+        .expect("import is open")
+        .rows
+        .iter()
+        .enumerate()
+        .filter(|(_, row)| row.status == "NeedsReview")
+        .map(|(index, _)| index)
+        .collect();
+    for index in to_review {
+        select_row(&mut ui, index);
+        ui.press("c j enter");
+    }
+    let before = ui.commits();
+
+    ui.write_outside(|stores| {
+        stores
+            .payees
+            .borrow_mut()
+            .payees_mut()
+            .upsert_payee(lib_payees::Payee {
+                id: lib_core::PayeeId::new(),
+                name: "Aussie Candle Co".to_owned(),
+                aliases: Vec::new(),
+                default_category: None,
+                is_active: true,
+            });
+    });
+
+    assert_eq!(ui.commits(), before, "an outside write commits nothing");
+    assert!(
+        ui.stores(|stores| stores
+            .payees
+            .borrow()
+            .payees()
+            .payees()
+            .iter()
+            .any(|payee| payee.name == "Aussie Candle Co")),
+        "the stores hold the outside write"
+    );
+
+    ui.press("enter");
+
+    assert!(
+        ui.import().is_some(),
+        "a refused commit leaves the step open"
+    );
+}

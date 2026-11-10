@@ -107,7 +107,10 @@ mod tests {
                 cx,
             );
             let (stores, _) = lib_database::Stores::fake(lib_database::FakeStores::sample(today));
-            shell.open_ledger(crate::shell::router::LedgerFile::in_memory(stores), cx);
+            shell.open_ledger(
+                crate::shell::router::LedgerFile::in_memory(stores.share()),
+                cx,
+            );
             shell
         });
         let view = cx.new(|_| StandInView);
@@ -157,7 +160,10 @@ mod tests {
                 cx,
             );
             let (stores, _) = lib_database::Stores::fake(lib_database::FakeStores::sample(today));
-            shell.open_ledger(crate::shell::router::LedgerFile::in_memory(stores), cx);
+            shell.open_ledger(
+                crate::shell::router::LedgerFile::in_memory(stores.share()),
+                cx,
+            );
             shell
         });
         let view = cx.new(|_| StandInView);

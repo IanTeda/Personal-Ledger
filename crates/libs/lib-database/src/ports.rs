@@ -57,8 +57,8 @@ use crate::adapter::store::{
 };
 use crate::{
     AccountDeletionAdapter, BillPaymentsAdapter, CategoryDeletionAdapter, Commit, Domain,
-    LedgerPreferencesAdapter, Result, StoredCategoryRows, StoredSettingsReads, Stores,
-    TagRemovalAdapter, TransactionImportAdapter, UnitDeletionAdapter, WriteFailure,
+    LedgerPreferencesAdapter, Result, SharedLedger, StoredCategoryRows, StoredSettingsReads,
+    Stores, TagRemovalAdapter, TransactionImportAdapter, UnitDeletionAdapter, WriteFailure,
 };
 
 /// A Ledger as a Client holds it: every domain's ports over the shared stores, the cross-domain
@@ -141,34 +141,17 @@ impl LedgerPorts {
     /// Shares out each of `stores` once and builds every domain's ports and the cross-domain
     /// adapters over them. `clock` is what the Categories ports read the day from on each call.
     pub fn new(stores: Stores, clock: Clock) -> Self {
-        let Stores {
-            units,
-            institutions,
-            accounts,
-            categories,
-            tags,
-            payees,
-            transactions,
-            bills,
-            budgets,
-            inventory,
-            documents,
+        Self::over(stores.share(), clock)
+    }
+
+    /// Builds every domain's ports and the cross-domain adapters over `shared`, the stores a
+    /// Client shared out itself so it keeps a handle on them (the Desktop's UI tests, #1117).
+    pub fn over(shared: SharedLedger, clock: Clock) -> Self {
+        let SharedLedger {
+            stores,
             commit,
             failures,
-        } = stores;
-        let stores = SharedStores {
-            units: Rc::new(RefCell::new(units)),
-            institutions: Rc::new(RefCell::new(institutions)),
-            accounts: Rc::new(RefCell::new(accounts)),
-            categories: Rc::new(RefCell::new(categories)),
-            tags: Rc::new(RefCell::new(tags)),
-            payees: Rc::new(RefCell::new(payees)),
-            transactions: Rc::new(RefCell::new(transactions)),
-            bills: Rc::new(RefCell::new(bills)),
-            budgets: Rc::new(RefCell::new(budgets)),
-            inventory: Rc::new(RefCell::new(inventory)),
-            documents: Rc::new(RefCell::new(documents)),
-        };
+        } = shared;
         let category_save = StoredCategoriesPorts::new(
             stores.categories.clone(),
             stores.budgets.clone(),

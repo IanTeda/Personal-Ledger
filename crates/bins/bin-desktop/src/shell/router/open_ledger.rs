@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use gpui::{AppContext, Context, Entity, Subscription, Task};
-use lib_database::{Storage, Stores, Writer};
+use lib_database::{SharedLedger, Storage, Stores, Writer};
 use lib_viper::dialog::DialogKeys;
 
 use super::Root;
@@ -29,10 +29,11 @@ use crate::announcer::{Announcer, notify_on};
 use crate::settings::state::SettingsView;
 use crate::view::active::ViewEntities;
 
-/// What an Open Ledger is built on: the stores, and the file they read and its writer when they are
-/// a Ledger file's rather than a test's in-memory ports.
+/// What an Open Ledger is built on: the stores, shared out so the caller can keep a clone of them
+/// (#1117), and the file they read and its writer when they are a Ledger file's rather than a test's
+/// in-memory ports.
 pub struct LedgerFile {
-    pub stores: Stores,
+    pub stores: SharedLedger,
     /// The file the stores read, which the status line shows and the state file remembers at quit.
     pub path: Option<PathBuf>,
     /// The writer the stores save through, flushed when the Ledger is swapped out or the app quits.
@@ -49,14 +50,15 @@ impl LedgerFile {
     /// wraps the stores first.
     pub fn on(path: PathBuf, writer: Writer, stores: Stores) -> Self {
         Self {
-            stores,
+            stores: stores.share(),
             path: Some(path),
             writer: Some(writer),
         }
     }
 
-    /// `stores` with no file behind them: a test's in-memory ports.
-    pub fn in_memory(stores: Stores) -> Self {
+    /// `stores` with no file behind them: a test's in-memory ports, shared by the test so it keeps
+    /// a clone.
+    pub fn in_memory(stores: SharedLedger) -> Self {
         Self {
             stores,
             path: None,
@@ -150,7 +152,7 @@ impl OpenLedger {
             stores: storage,
             commit,
             failures,
-        } = LedgerStores::build(lib_database::LedgerPorts::new(stores, clock.clone()));
+        } = LedgerStores::build(lib_database::LedgerPorts::over(stores, clock.clone()));
         // The stores are the truth: the input door announces what each input wrote through the
         // Announcer, which holds no rows (#1028, #1057, #1081).
         let announcer = cx.new(|_| Announcer::default());

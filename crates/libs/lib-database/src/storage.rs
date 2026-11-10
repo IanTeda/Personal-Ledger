@@ -60,6 +60,37 @@ pub struct Stores {
     pub failures: mpsc::Receiver<WriteFailure>,
 }
 
+/// [`Stores`] with each store shared out once ([`Stores::share`]): what [`crate::LedgerPorts::over`]
+/// builds on, so a Client can keep a clone of the [`SharedStores`](store::SharedStores) first.
+pub struct SharedLedger {
+    pub stores: store::SharedStores,
+    pub commit: Rc<dyn crate::Commit>,
+    pub failures: mpsc::Receiver<WriteFailure>,
+}
+
+impl Stores {
+    /// Shares out each store once, keeping the commit and the failure channel beside them.
+    pub fn share(self) -> SharedLedger {
+        SharedLedger {
+            stores: store::SharedStores {
+                units: Rc::new(std::cell::RefCell::new(self.units)),
+                institutions: Rc::new(std::cell::RefCell::new(self.institutions)),
+                accounts: Rc::new(std::cell::RefCell::new(self.accounts)),
+                categories: Rc::new(std::cell::RefCell::new(self.categories)),
+                tags: Rc::new(std::cell::RefCell::new(self.tags)),
+                payees: Rc::new(std::cell::RefCell::new(self.payees)),
+                transactions: Rc::new(std::cell::RefCell::new(self.transactions)),
+                bills: Rc::new(std::cell::RefCell::new(self.bills)),
+                budgets: Rc::new(std::cell::RefCell::new(self.budgets)),
+                inventory: Rc::new(std::cell::RefCell::new(self.inventory)),
+                documents: Rc::new(std::cell::RefCell::new(self.documents)),
+            },
+            commit: self.commit,
+            failures: self.failures,
+        }
+    }
+}
+
 /// The stores [`Stores::new`] wraps, unrecorded: the adapters or the in-memory fakes.
 pub struct StoreParts {
     pub units: Box<dyn store::UnitsStore>,
