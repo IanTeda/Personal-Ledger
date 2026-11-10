@@ -39,7 +39,7 @@ a:hover{color:#ae1800}
 <p class="dv-pages-note"><a href="#DESKTOP-119"><b>Settings index</b></a> <span style="color:#9b9797">DESKTOP-119, 181, 182</span> · where <code>g s</code> lands at every Window Size, explaining the divide below</p>
 <p class="dv-pages-note"><b>This device</b></p>
 <ul class="dv-pages">
-<li><a href="#DESKTOP-177"><b>General</b></a> <span>DESKTOP-177, 178, 179 (no Ledger open)</span></li>
+<li><a href="#DESKTOP-177"><b>General</b></a> <span>DESKTOP-177, 178, 184 (after Test), 179 (no Ledger open), 183</span></li>
 <li><a href="#DESKTOP-129"><b>Display</b></a> <span>DESKTOP-129, 130, 132, 133, 064, 131</span></li>
 <li><a href="#DESKTOP-161"><b>AI Connections</b></a> <span>DESKTOP-161, 072, 148</span></li>
 <li><a href="#DESKTOP-165"><b>Logs</b></a> <span>DESKTOP-165, 075, 152</span></li>
@@ -292,7 +292,7 @@ a:hover{color:#ae1800}
 </div>
 </div>
 
-<div class="dv-rowhd" id="p-general">General <span>· Medium · Large · no Ledger open</span></div>
+<div class="dv-rowhd" id="p-general">General <span>· Medium · Large · after Test · no Ledger open · X-Large</span></div>
 <div class="dv-opt" id="DESKTOP-177" data-window-size="Medium">
 <div class="dv-olabel"><a class="dv-oid" href="#DESKTOP-177">DESKTOP-177</a><b>Medium · 960 × 1040.</b> <b>Settings › General at Medium.</b> The new General page: what belongs to this device and applies whichever Ledger is open, or none. The icon rail and no docked index, as on <a class="dv-oid" href="#DESKTOP-126">DESKTOP-126</a>: the breadcrumb <b>Settings › General ▾</b> (<a class="dv-oid" href="../01-shell/Shell.dc.html#DESKTOP-120">DESKTOP-120</a>), with <code>]</code> to Display; General is first in the index, so <code>[</code> stays put. <b>On start</b> (Reopen last Ledger, the default, or Start with no Ledger open), <b>Toasts</b> (moved from Display), and the read-only <b>Locale</b> and <b>Ledger folder</b> (the <code>data</code> folder) sit in the 320px column beside THIS DEVICE.</div>
 <div class="dv-card" style="width:960px;height:1040px;display:flex;flex-direction:column;font-size:13px;color:#201e1d;position:relative">
@@ -343,13 +343,26 @@ a:hover{color:#ae1800}
             </div>
             <div style="margin-top:6px;font-size:11.5px;color:#605d5d;text-wrap:pretty">Reopens the Ledger open when Personal Ledger last quit, or none if none was. A file named by <code>--file</code> or <code>file</code> in the configuration file always wins.</div>
           </div>
+          <div class="field" data-group="start-view" style="margin:0">
+            <label>Start view</label>
+            <div style="display:flex;flex-direction:column;gap:7px;margin-top:2px">
+              <label class="radio"><input type="radio" name="sv-177" checked="checked"><span class="dot"></span>Dashboard</label>
+              <label class="radio"><input type="radio" name="sv-177"><span class="dot"></span>Last view</label>
+              <label class="radio"><input type="radio" name="sv-177"><span class="dot"></span>Settings</label>
+              <label class="radio"><input type="radio" name="sv-177"><span class="dot"></span>Transactions</label>
+              <label class="radio"><input type="radio" name="sv-177"><span class="dot"></span>Documents</label>
+              <label class="radio"><input type="radio" name="sv-177"><span class="dot"></span>Bills</label>
+              <label class="radio"><input type="radio" name="sv-177"><span class="dot"></span>Budgets</label>
+            </div>
+            <div style="margin-top:6px;font-size:11.5px;color:#605d5d;text-wrap:pretty">Where Personal Ledger opens, after On start. A View that needs a Ledger opens the Dashboard when none is open.</div>
+          </div>
           <div class="field" data-group="toasts" style="margin:0">
             <label>Toasts</label>
-            <div class="seg">
+            <div style="display:flex;align-items:center"><div class="seg">
               <label class="seg-opt" style="width:88px;justify-content:center"><input type="radio" name="ts-177" checked="checked">On</label>
               <label class="seg-opt" style="width:88px;justify-content:center"><input type="radio" name="ts-177">Off</label>
-            </div>
-            <div style="margin-top:3px;font-size:12px;color:#605d5d">Errors still show</div>
+            </div><button class="btn btn-secondary" style="height:32px;margin-left:8px">Test <span style="font-weight:400;color:#9b9797;margin-left:6px">t</span></button></div>
+            <div style="margin-top:3px;font-size:12px;color:#605d5d">Errors still show. <b>Test</b> raises one of each kind.</div>
           </div>
           <div>
             <label style="display:block;font-weight:800;font-size:12px;margin-bottom:6px">Locale</label>
@@ -377,9 +390,9 @@ a:hover{color:#ae1800}
   </div>
   <div style="height:28px;flex:none;display:flex;align-items:center;gap:14px;padding:0 12px;background:#eae9e9;border-top:2px solid rgba(32,30,29,.38);font-size:11.5px;color:#605d5d;white-space:nowrap;overflow:hidden">
     <span style="background:#201e1d;color:#f3f2f2;font-weight:800;font-size:10px;letter-spacing:.1em;padding:2px 7px">NORMAL</span>
-    <span><span style="color:#201e1d;font-weight:800">j/k</span> section · <span style="color:#201e1d;font-weight:800">[/]</span> pages · <span style="color:#201e1d;font-weight:800">p</span> picker · <span style="color:#201e1d;font-weight:800">esc</span> settings</span>
+    <span><span style="color:#201e1d;font-weight:800">j/k</span> field · <span style="color:#201e1d;font-weight:800">h/l</span> change · <span style="color:#201e1d;font-weight:800">[/]</span> pages · <span style="color:#201e1d;font-weight:800">p</span> picker · <span style="color:#201e1d;font-weight:800">esc</span> settings</span>
     <div style="flex:1"></div>
-    <span>…/teda.pldb</span>
+    <span style="font-family:ui-monospace,monospace;font-size:11px">…/personal-ledger.conf</span>
   </div>
 </div>
 </div>
@@ -459,13 +472,26 @@ a:hover{color:#ae1800}
             </div>
             <div style="margin-top:6px;font-size:11.5px;color:#605d5d;text-wrap:pretty">Reopens the Ledger open when Personal Ledger last quit, or none if none was. A file named by <code>--file</code> or <code>file</code> in the configuration file always wins.</div>
           </div>
+          <div class="field" data-group="start-view" style="margin:0">
+            <label>Start view</label>
+            <div style="display:flex;flex-direction:column;gap:7px;margin-top:2px">
+              <label class="radio"><input type="radio" name="sv-178" checked="checked"><span class="dot"></span>Dashboard</label>
+              <label class="radio"><input type="radio" name="sv-178"><span class="dot"></span>Last view</label>
+              <label class="radio"><input type="radio" name="sv-178"><span class="dot"></span>Settings</label>
+              <label class="radio"><input type="radio" name="sv-178"><span class="dot"></span>Transactions</label>
+              <label class="radio"><input type="radio" name="sv-178"><span class="dot"></span>Documents</label>
+              <label class="radio"><input type="radio" name="sv-178"><span class="dot"></span>Bills</label>
+              <label class="radio"><input type="radio" name="sv-178"><span class="dot"></span>Budgets</label>
+            </div>
+            <div style="margin-top:6px;font-size:11.5px;color:#605d5d;text-wrap:pretty">Where Personal Ledger opens, after On start. A View that needs a Ledger opens the Dashboard when none is open.</div>
+          </div>
           <div class="field" data-group="toasts" style="margin:0">
             <label>Toasts</label>
-            <div class="seg">
+            <div style="display:flex;align-items:center"><div class="seg">
               <label class="seg-opt" style="width:88px;justify-content:center"><input type="radio" name="ts-178" checked="checked">On</label>
               <label class="seg-opt" style="width:88px;justify-content:center"><input type="radio" name="ts-178">Off</label>
-            </div>
-            <div style="margin-top:3px;font-size:12px;color:#605d5d">Errors still show</div>
+            </div><button class="btn btn-secondary" style="height:32px;margin-left:8px">Test <span style="font-weight:400;color:#9b9797;margin-left:6px">t</span></button></div>
+            <div style="margin-top:3px;font-size:12px;color:#605d5d">Errors still show. <b>Test</b> raises one of each kind.</div>
           </div>
           <div>
             <label style="display:block;font-weight:800;font-size:12px;margin-bottom:6px">Locale</label>
@@ -493,15 +519,145 @@ a:hover{color:#ae1800}
   </div>
   <div style="height:28px;flex:none;display:flex;align-items:center;gap:14px;padding:0 12px;background:#eae9e9;border-top:2px solid rgba(32,30,29,.38);font-size:11.5px;color:#605d5d;white-space:nowrap;overflow:hidden">
     <span style="background:#201e1d;color:#f3f2f2;font-weight:800;font-size:10px;letter-spacing:.1em;padding:2px 7px">NORMAL</span>
-    <span><span style="color:#201e1d;font-weight:800">j/k</span> section · <span style="color:#201e1d;font-weight:800">tab</span> next field · <span style="color:#201e1d;font-weight:800">b</span> collapse sidebar · <span style="color:#201e1d;font-weight:800">q</span> back to dashboard</span>
+    <span><span style="color:#201e1d;font-weight:800">j/k</span> field · <span style="color:#201e1d;font-weight:800">h/l</span> change · <span style="color:#201e1d;font-weight:800">b</span> collapse sidebar · <span style="color:#201e1d;font-weight:800">q</span> back to dashboard</span>
     <div style="flex:1"></div>
-    <span>~/documents/ledgers/teda.pldb</span>
+    <span style="font-family:ui-monospace,monospace;font-size:11px">~/.config/personal-ledger/personal-ledger.conf</span>
+  </div>
+</div>
+</div>
+
+<div class="dv-opt" id="DESKTOP-184" data-window-size="Large">
+<div class="dv-olabel"><a class="dv-oid" href="#DESKTOP-184">DESKTOP-184</a><b>Large · 1280 × 800, after Test.</b> <b>Settings › General, the four test Toasts.</b> Toasts focused, then <code>t</code>, a click on <b>Test</b> or <code>:toasts test</code>: one Toast of each kind, a second apart, Success, Info, Warning, then Error, each with its own test Message. At most three show (<code>lib-toast</code>&#39;s limit), so the Error evicts the Success and the stack ends as drawn: Info and Warning time out as usual and the Error stays until dismissed. The Toast History (<code>:toasts</code>) holds all four. With Toasts Off the Success, Info and Warning echo on the status line in turn and only the Error toasts (ADR-0027). <code>t</code> again while they show raises them again, each merging into its twin (<code>×2</code>).</div>
+<div class="dv-card" style="width:1280px;height:800px;display:flex;flex-direction:column;font-size:13px;color:#201e1d;position:relative">
+
+  <div style="height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 10px 0 12px;background:#eae9e9;border-bottom:2px solid rgba(32,30,29,.38)">
+    <div style="width:28px;height:28px;flex:none;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5"><rect x="1.5" y="2.5" width="13" height="11"></rect><line x1="6" y1="2.5" x2="6" y2="13.5"></line></svg></div>
+    <div style="display:flex;align-items:center;gap:4px;flex:none"><div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center" title="back"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5"><polyline points="10,3 5,8 10,13"></polyline></svg></div><div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center" title="forward"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#c4c0c0" stroke-width="1.5"><polyline points="6,3 11,8 6,13"></polyline></svg></div></div>
+    <div style="display:flex;align-items:baseline;gap:8px;min-width:0;flex:1;overflow:hidden">
+      <span style="font-weight:800;font-size:13.5px;letter-spacing:-.01em;flex:none">Personal Ledger</span><div style="display:flex;align-items:center;flex:none;align-self:center;margin-left:4px"><div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center" title="undo"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5"><polyline points="6,10 2.5,6.5 6,3"></polyline><path d="M2.5 6.5h7a3.5 3.5 0 0 1 0 7H7"></path></svg></div><div style="width:16px;height:28px;display:flex;align-items:center;justify-content:center;" title="recent actions"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#201e1d" stroke-width="1.4"><polyline points="2,3.5 5,6.5 8,3.5"></polyline></svg></div></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;color:#605d5d;font-size:12px;flex:none"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#2ecc71" stroke-width="2"><polyline points="3,8.5 6.5,12 13,4.5"></polyline></svg><span>Synced @ 14:22</span></div>
+    <div style="display:flex;gap:2px;margin-left:10px;flex:none"><div style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;background:rgba(32,30,29,.08)"><svg width="10" height="10" viewBox="0 0 10 10"  stroke="#201e1d" stroke-width="1.4"><line x1="1" y1="5" x2="9" y2="5"></line></svg></div><div style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;background:rgba(32,30,29,.08)"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#201e1d" stroke-width="1.4"><rect x="1.2" y="1.2" width="7.6" height="7.6"></rect></svg></div><div style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;background:rgba(32,30,29,.08)"><svg width="10" height="10" viewBox="0 0 10 10"  stroke="#201e1d" stroke-width="1.4"><line x1="1.5" y1="1.5" x2="8.5" y2="8.5"></line><line x1="8.5" y1="1.5" x2="1.5" y2="8.5"></line></svg></div></div>
+  </div>
+  <div style="flex:1;display:flex;min-height:0;position:relative">
+    <div style="width:206px;flex:none;background:#eae9e9;border-right:2px solid rgba(32,30,29,.38);display:flex;flex-direction:column;padding:14px 0 10px">
+      <div style="font:800 10px/1 'Archivo';letter-spacing:.11em;color:#9b9797;padding:0px 14px 8px">LEDGER</div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5" style="flex:none"><rect x="1.5" y="1.5" width="5.5" height="6.5"></rect><rect x="9" y="1.5" width="5.5" height="4"></rect><rect x="1.5" y="10" width="5.5" height="4.5"></rect><rect x="9" y="7.5" width="5.5" height="7"></rect></svg><span style="flex:1">Dashboard</span><span style="font-size:11px;color:#9b9797">g d</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5" style="flex:none"><line x1="2" y1="4" x2="14" y2="4"></line><line x1="2" y1="8" x2="14" y2="8"></line><line x1="2" y1="12" x2="10" y2="12"></line></svg><span style="flex:1">Transactions</span><span style="font-size:11px;color:#9b9797">g l</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5" style="flex:none"><path d="M3.5 1.5h6l3 3v10h-9z"></path><polyline points="9.5,1.5 9.5,4.5 12.5,4.5"></polyline><line x1="5.5" y1="8" x2="10.5" y2="8"></line><line x1="5.5" y1="11" x2="10.5" y2="11"></line></svg><span style="flex:1">Documents</span><span style="font-size:11px;color:#9b9797">g f</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5" style="flex:none"><path d="M3 14.5V1.5"></path><path d="M3 2h9.5l-2 3 2 3H3"></path></svg><span style="flex:1">Events</span><span style="font-size:11px;color:#9b9797">g e</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5" style="flex:none"><path d="M4 11.5V7a4 4 0 0 1 8 0v4.5l1.5 1.5h-11z"></path><path d="M6.5 14.5h3"></path></svg><span style="flex:1">Notifications</span><span style="background:#ec3013;color:#f3f2f2;font-size:10px;font-weight:800;padding:1px 5px;margin-right:4px">3</span><span style="font-size:11px;color:#9b9797">g m</span></div>
+      <div style="font:800 10px/1 'Archivo';letter-spacing:.11em;color:#9b9797;padding:16px 14px 8px">NET WORTH</div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5" style="flex:none"><rect x="1.5" y="3.5" width="13" height="10"></rect><path d="M1.5 6.5h10.5"></path><circle cx="11.5" cy="10" r="1"></circle></svg><span style="flex:1">Cash</span><span style="font-size:11px;color:#9b9797">g c</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5" style="flex:none"><path d="M1.5 5L8 1.5 14.5 5v6L8 14.5 1.5 11z"></path><polyline points="1.5,5 8,8.5 14.5,5"></polyline><line x1="8" y1="8.5" x2="8" y2="14.5"></line></svg><span style="flex:1">Inventory</span><span style="font-size:11px;color:#9b9797">g o</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5" style="flex:none"><line x1="13" y1="3" x2="3" y2="13"></line><circle cx="4.5" cy="4.5" r="2"></circle><circle cx="11.5" cy="11.5" r="2"></circle></svg><span style="flex:1">Loans</span><span style="font-size:11px;color:#9b9797">g n</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5" style="flex:none"><rect x="1.5" y="3.5" width="13" height="9"></rect><line x1="1.5" y1="6.5" x2="14.5" y2="6.5"></line><line x1="4" y1="10" x2="7.5" y2="10"></line></svg><span style="flex:1">Credit cards</span><span style="font-size:11px;color:#9b9797">g k</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5" style="flex:none"><line x1="3" y1="14" x2="3" y2="10"></line><line x1="8" y1="14" x2="8" y2="6.5"></line><line x1="13" y1="14" x2="13" y2="2.5"></line></svg><span style="flex:1">Investments</span><span style="font-size:11px;color:#9b9797">g i</span></div>
+      <div style="font:800 10px/1 'Archivo';letter-spacing:.11em;color:#9b9797;padding:16px 14px 8px">PLAN</div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5" style="flex:none"><line x1="2" y1="3" x2="14" y2="3"></line><line x1="2" y1="8" x2="14" y2="8"></line><line x1="2" y1="13" x2="14" y2="13"></line></svg><span style="flex:1">Bills</span><span style="font-size:11px;color:#9b9797">g w</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5" style="flex:none"><rect x="1.5" y="5" width="13" height="6"></rect><line x1="10" y1="3" x2="10" y2="13"></line></svg><span style="flex:1">Budgets</span><span style="font-size:11px;color:#9b9797">g b</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5" style="flex:none"><polyline points="2,12 6,7 9,10 14,3"></polyline></svg><span style="flex:1">Reports</span><span style="font-size:11px;color:#9b9797">g r</span></div>
+      <div style="flex:1"></div>
+      <div style="height:2px;background:rgba(32,30,29,.20);margin:8px 0"></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px;background:#201e1d;color:#f3f2f2"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#f3f2f2" stroke-width="1.5" style="flex:none"><path d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3M3.4 3.4l2.1 2.1M10.5 10.5l2.1 2.1M12.6 3.4l-2.1 2.1M5.5 10.5l-2.1 2.1"></path><circle cx="8" cy="8" r="2.2"></circle></svg><span style="font-weight:800;flex:1">Settings</span><span style="font-size:11px;color:#bab6b6">g s</span></div>
+    </div>
+    <div style="width:232px;flex:none;border-right:2px solid rgba(32,30,29,.38);display:flex;flex-direction:column;background:#f3f2f2">
+      <div style="padding:14px 14px 8px;font:800 10px/1 'Archivo';letter-spacing:.11em;color:#9b9797;color:#201e1d">SETTINGS</div>
+      <div style="height:2px;flex:none;background:rgba(32,30,29,.38)"></div>
+      <div style="padding:12px 14px 6px;font:800 9.5px/1 'Archivo';letter-spacing:.11em;color:#9b9797">THIS DEVICE</div><div style="height:1px;flex:none;margin:0 14px 4px;background:rgba(32,30,29,.18)"></div>
+      <div style="padding:7px 14px;background:#201e1d;color:#f3f2f2;font-weight:800">General</div>
+      <div style="padding:7px 14px">Display</div>
+      <div style="padding:7px 14px">AI Connections</div>
+      <div style="padding:7px 14px">Logs</div>
+      <div style="padding:7px 14px">About</div>
+      <div style="padding:12px 14px 6px;font:800 9.5px/1 'Archivo';letter-spacing:.11em;color:#9b9797">THIS LEDGER</div><div style="height:1px;flex:none;margin:0 14px 4px;background:rgba(32,30,29,.18)"></div>
+      <div style="padding:7px 14px">Ledger</div>
+      <div style="padding:7px 14px">Units</div>
+      <div style="padding:7px 14px">Institutions</div>
+      <div style="padding:7px 14px">Accounts</div>
+      <div style="padding:7px 14px">Categories</div>
+      <div style="padding:7px 14px">Tags</div>
+      <div style="padding:7px 14px">Payees</div>
+      <div style="padding:7px 14px">Documents</div>
+      <div style="padding:7px 14px">Inventory</div>
+      <div style="padding:7px 14px">Sync Server</div>
+      <div style="padding:7px 14px">Backup</div>
+      <div style="padding:7px 14px">History</div>
+    </div>
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;padding:22px 28px;overflow:hidden;position:relative">
+     <div style="width:100%">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+        <h4 style="margin:0;font-size:20px">General</h4>
+        <span style="font-size:11.5px;color:#9b9797;white-space:nowrap">this device · never synced</span>
+      </div>
+      <div style="height:2px;flex:none;background:rgba(32,30,29,.38);margin:14px 0 18px"></div>
+      <div style="display:flex;gap:40px;margin-bottom:0">
+        <div style="width:320px;flex:none;display:flex;flex-direction:column;gap:16px">
+          <div class="field" data-group="on-start" style="margin:0">
+            <label>On start</label>
+            <div class="seg">
+              <label class="seg-opt"><input type="radio" name="os-184" checked="checked">Reopen last Ledger</label>
+              <label class="seg-opt"><input type="radio" name="os-184">Start with no Ledger open</label>
+            </div>
+            <div style="margin-top:6px;font-size:11.5px;color:#605d5d;text-wrap:pretty">Reopens the Ledger open when Personal Ledger last quit, or none if none was. A file named by <code>--file</code> or <code>file</code> in the configuration file always wins.</div>
+          </div>
+          <div class="field" data-group="start-view" style="margin:0">
+            <label>Start view</label>
+            <div style="display:flex;flex-direction:column;gap:7px;margin-top:2px">
+              <label class="radio"><input type="radio" name="sv-184" checked="checked"><span class="dot"></span>Dashboard</label>
+              <label class="radio"><input type="radio" name="sv-184"><span class="dot"></span>Last view</label>
+              <label class="radio"><input type="radio" name="sv-184"><span class="dot"></span>Settings</label>
+              <label class="radio"><input type="radio" name="sv-184"><span class="dot"></span>Transactions</label>
+              <label class="radio"><input type="radio" name="sv-184"><span class="dot"></span>Documents</label>
+              <label class="radio"><input type="radio" name="sv-184"><span class="dot"></span>Bills</label>
+              <label class="radio"><input type="radio" name="sv-184"><span class="dot"></span>Budgets</label>
+            </div>
+            <div style="margin-top:6px;font-size:11.5px;color:#605d5d;text-wrap:pretty">Where Personal Ledger opens, after On start. A View that needs a Ledger opens the Dashboard when none is open.</div>
+          </div>
+          <div class="field" data-group="toasts" style="margin:0;outline:2px solid #ec3013;outline-offset:4px">
+            <label>Toasts</label>
+            <div style="display:flex;align-items:center"><div class="seg">
+              <label class="seg-opt" style="width:88px;justify-content:center"><input type="radio" name="ts-184" checked="checked">On</label>
+              <label class="seg-opt" style="width:88px;justify-content:center"><input type="radio" name="ts-184">Off</label>
+            </div><button class="btn btn-secondary" style="height:32px;margin-left:8px">Test <span style="font-weight:400;color:#9b9797;margin-left:6px">t</span></button></div>
+            <div style="margin-top:3px;font-size:12px;color:#605d5d">Errors still show. <b>Test</b> raises one of each kind.</div>
+          </div>
+          <div>
+            <label style="display:block;font-weight:800;font-size:12px;margin-bottom:6px">Locale</label>
+            <input style="width:100%;padding:8px 10px;border:1px solid rgba(32,30,29,.30);font-size:13px;box-sizing:border-box;background:#eae9e9;color:#605d5d" readonly value="en-AU">
+            <div style="margin-top:6px;font-size:11.5px;color:#605d5d;text-wrap:pretty">From the <code>locale</code> setting. Change it there or with <code>--locale</code>, then restart.</div>
+          </div>
+          <div>
+            <label style="display:block;font-weight:800;font-size:12px;margin-bottom:6px">Ledger folder</label>
+            <input style="width:100%;padding:8px 10px;border:1px solid rgba(32,30,29,.30);font-size:13px;box-sizing:border-box;background:#eae9e9;color:#605d5d;font-family:ui-monospace,monospace" readonly value="~/documents/ledgers">
+            <div style="margin-top:6px;font-size:11.5px;color:#605d5d;text-wrap:pretty">Where <b>:open</b> and <b>:new</b> start browsing. Set by <code>data</code> in the configuration file.</div>
+          </div>
+        </div>
+
+        <div style="flex:1;min-width:0">
+          <div style="font:800 10px/1 'Archivo';letter-spacing:.11em;color:#9b9797;margin-bottom:10px">THIS DEVICE</div>
+          <div style="border:1px solid rgba(32,30,29,.30);background:#eae9e9">
+            <div style="display:flex;justify-content:space-between;gap:12px;padding:10px 12px;border-bottom:1px solid #d7d3d3;font-size:12px"><span style="color:#605d5d">last ledger</span><span style="font-weight:800;font-family:ui-monospace,monospace;font-size:11.5px">~/documents/ledgers/teda.pldb</span></div>
+            <div style="display:flex;justify-content:space-between;gap:12px;padding:10px 12px;font-size:12px"><span style="color:#605d5d">configuration</span><span style="font-weight:800;font-family:ui-monospace,monospace;font-size:11.5px">~/.config/personal-ledger/personal-ledger.conf</span></div>
+          </div>
+          <p style="margin-top:14px;font-size:12px;color:#605d5d;text-wrap:pretty">General settings belong to this device and never sync. What travels with the Ledger is under <span style="font-weight:800">Ledger</span>.</p>
+        </div>
+      </div>
+     </div>
+    </div>
+  </div>
+  <div style="position:absolute;right:16px;bottom:40px;width:420px;display:flex;flex-direction:column;gap:8px;z-index:5"><div style="display:flex;align-items:center;gap:10px;background:#eae9e9;border:1px solid rgba(32,30,29,.30);box-shadow:0 8px 24px rgba(32,30,29,.22);font-size:12.5px;padding:9px 12px 9px 0"><span style="width:4px;align-self:stretch;margin:-9px 0;background:#201e1d"></span><span style="width:14px;text-align:center;font-weight:800;color:#201e1d">i</span><span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Test: an Info Toast</span><span style="color:#9b9797">✕</span></div><div style="display:flex;align-items:center;gap:10px;background:#eae9e9;border:1px solid rgba(32,30,29,.30);box-shadow:0 8px 24px rgba(32,30,29,.22);font-size:12.5px;padding:9px 12px 9px 0"><span style="width:4px;align-self:stretch;margin:-9px 0;background:#ec3013"></span><span style="width:14px;text-align:center;font-weight:800;color:#ec3013">!</span><span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Test: a Warning Toast</span><span style="color:#9b9797">✕</span></div><div style="display:flex;align-items:center;gap:10px;background:#eae9e9;border:1px solid rgba(32,30,29,.30);box-shadow:0 8px 24px rgba(32,30,29,.22);font-size:12.5px;padding:9px 12px 9px 0"><span style="width:4px;align-self:stretch;margin:-9px 0;background:#ae1800"></span><span style="width:14px;text-align:center;font-weight:800;color:#ae1800">✗</span><span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Test: an Error Toast, which stays until dismissed</span><span style="color:#9b9797">✕</span></div></div>
+  <div style="height:28px;flex:none;display:flex;align-items:center;gap:14px;padding:0 12px;background:#eae9e9;border-top:2px solid rgba(32,30,29,.38);font-size:11.5px;color:#605d5d;white-space:nowrap;overflow:hidden">
+    <span style="background:#201e1d;color:#f3f2f2;font-weight:800;font-size:10px;letter-spacing:.1em;padding:2px 7px">NORMAL</span>
+    <span><span style="color:#201e1d;font-weight:800">j/k</span> field · <span style="color:#201e1d;font-weight:800">h/l</span> on / off · <span style="color:#201e1d;font-weight:800">t</span> test · <span style="color:#201e1d;font-weight:800">b</span> collapse sidebar · <span style="color:#201e1d;font-weight:800">q</span> back to dashboard</span>
+    <div style="flex:1"></div>
+    <span style="font-family:ui-monospace,monospace;font-size:11px">~/.config/personal-ledger/personal-ledger.conf</span>
   </div>
 </div>
 </div>
 
 <div class="dv-opt" id="DESKTOP-179" data-window-size="Large">
-<div class="dv-olabel"><a class="dv-oid" href="#DESKTOP-179">DESKTOP-179</a><b>Large · 1280 × 800, no Ledger open.</b> <b>Settings with no Ledger open.</b> <code>g s</code> lands on the Settings index (<a class="dv-oid" href="#DESKTOP-181">DESKTOP-181</a>) with its THIS LEDGER rows dimmed and refused the same way; drawn here after opening General from it. The THIS LEDGER rows and the primary rail are drawn at 45% and refused: clicking one, a <code>g</code> jump, or <code>:settings units</code> leaves the page where it is and puts <b>No Ledger open: :open or :new first</b> on the status line, as drawn after clicking Units. The THIS DEVICE pages work as with a Ledger open. The header shows no sync state and the status line's right side reads <code>No ledger open…</code>; last ledger reads none, since <code>:close</code> was the last thing done.</div>
+<div class="dv-olabel"><a class="dv-oid" href="#DESKTOP-179">DESKTOP-179</a><b>Large · 1280 × 800, no Ledger open.</b> <b>Settings with no Ledger open.</b> <code>g s</code> lands on the Settings index (<a class="dv-oid" href="#DESKTOP-181">DESKTOP-181</a>) with its THIS LEDGER rows dimmed and refused the same way; drawn here after opening General from it. The THIS LEDGER rows and the primary rail are drawn at 45% and refused: clicking one, a <code>g</code> jump, or <code>:settings units</code> leaves the page where it is and puts <b>No Ledger open: :open or :new first</b> on the status line, as drawn after clicking Units. The THIS DEVICE pages work as with a Ledger open. The header shows no sync state and the status line's right side names the configuration file, as on any THIS DEVICE page; last ledger reads none, since <code>:close</code> was the last thing done.</div>
 <div class="dv-card" style="width:1280px;height:800px;display:flex;flex-direction:column;font-size:13px;color:#201e1d;position:relative">
 
   <div style="height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 10px 0 12px;background:#eae9e9;border-bottom:2px solid rgba(32,30,29,.38)">
@@ -575,13 +731,26 @@ a:hover{color:#ae1800}
             </div>
             <div style="margin-top:6px;font-size:11.5px;color:#605d5d;text-wrap:pretty">Reopens the Ledger open when Personal Ledger last quit, or none if none was. A file named by <code>--file</code> or <code>file</code> in the configuration file always wins.</div>
           </div>
+          <div class="field" data-group="start-view" style="margin:0">
+            <label>Start view</label>
+            <div style="display:flex;flex-direction:column;gap:7px;margin-top:2px">
+              <label class="radio"><input type="radio" name="sv-179" checked="checked"><span class="dot"></span>Dashboard</label>
+              <label class="radio"><input type="radio" name="sv-179"><span class="dot"></span>Last view</label>
+              <label class="radio"><input type="radio" name="sv-179"><span class="dot"></span>Settings</label>
+              <label class="radio"><input type="radio" name="sv-179"><span class="dot"></span>Transactions</label>
+              <label class="radio"><input type="radio" name="sv-179"><span class="dot"></span>Documents</label>
+              <label class="radio"><input type="radio" name="sv-179"><span class="dot"></span>Bills</label>
+              <label class="radio"><input type="radio" name="sv-179"><span class="dot"></span>Budgets</label>
+            </div>
+            <div style="margin-top:6px;font-size:11.5px;color:#605d5d;text-wrap:pretty">Where Personal Ledger opens, after On start. A View that needs a Ledger opens the Dashboard when none is open.</div>
+          </div>
           <div class="field" data-group="toasts" style="margin:0">
             <label>Toasts</label>
-            <div class="seg">
+            <div style="display:flex;align-items:center"><div class="seg">
               <label class="seg-opt" style="width:88px;justify-content:center"><input type="radio" name="ts-179" checked="checked">On</label>
               <label class="seg-opt" style="width:88px;justify-content:center"><input type="radio" name="ts-179">Off</label>
-            </div>
-            <div style="margin-top:3px;font-size:12px;color:#605d5d">Errors still show</div>
+            </div><button class="btn btn-secondary" style="height:32px;margin-left:8px">Test <span style="font-weight:400;color:#9b9797;margin-left:6px">t</span></button></div>
+            <div style="margin-top:3px;font-size:12px;color:#605d5d">Errors still show. <b>Test</b> raises one of each kind.</div>
           </div>
           <div>
             <label style="display:block;font-weight:800;font-size:12px;margin-bottom:6px">Locale</label>
@@ -611,7 +780,136 @@ a:hover{color:#ae1800}
     <span style="background:#201e1d;color:#f3f2f2;font-weight:800;font-size:10px;letter-spacing:.1em;padding:2px 7px">NORMAL</span>
     <span style="color:#ae1800;font-weight:800">No Ledger open: :open or :new first</span>
     <div style="flex:1"></div>
-    <span>No ledger open…</span>
+    <span style="font-family:ui-monospace,monospace;font-size:11px">~/.config/personal-ledger/personal-ledger.conf</span>
+  </div>
+</div>
+</div>
+
+<div class="dv-opt" id="DESKTOP-183" data-window-size="X-Large">
+<div class="dv-olabel"><a class="dv-oid" href="#DESKTOP-183">DESKTOP-183</a><b>X-Large · 1920 × 1080.</b> <b>Settings › General at X-Large.</b> No pane: Large&#39;s layout at full width. The 320px field column stays fixed and the THIS DEVICE box flexes to the View&#39;s right padding, as it does at Medium and Large; no Settings page is capped at 840px any more. The status line&#39;s right-hand side names the configuration file Settings writes, as on every THIS DEVICE page.</div>
+<div class="dv-card" style="width:1920px;height:1080px;display:flex;flex-direction:column;font-size:13px;color:#201e1d;position:relative">
+
+  <div style="height:48px;flex:none;display:flex;align-items:center;gap:12px;padding:0 10px 0 12px;background:#eae9e9;border-bottom:2px solid rgba(32,30,29,.38)">
+    <div style="width:28px;height:28px;flex:none;display:flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5"><rect x="1.5" y="2.5" width="13" height="11"></rect><line x1="6" y1="2.5" x2="6" y2="13.5"></line></svg></div>
+    <div style="display:flex;align-items:center;gap:4px;flex:none"><div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center" title="back"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5"><polyline points="10,3 5,8 10,13"></polyline></svg></div><div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center" title="forward"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#c4c0c0" stroke-width="1.5"><polyline points="6,3 11,8 6,13"></polyline></svg></div></div>
+    <div style="display:flex;align-items:baseline;gap:8px;min-width:0;flex:1;overflow:hidden">
+      <span style="font-weight:800;font-size:13.5px;letter-spacing:-.01em;flex:none">Personal Ledger</span><div style="display:flex;align-items:center;flex:none;align-self:center;margin-left:4px"><div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center" title="undo"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5"><polyline points="6,10 2.5,6.5 6,3"></polyline><path d="M2.5 6.5h7a3.5 3.5 0 0 1 0 7H7"></path></svg></div><div style="width:16px;height:28px;display:flex;align-items:center;justify-content:center;" title="recent actions"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#201e1d" stroke-width="1.4"><polyline points="2,3.5 5,6.5 8,3.5"></polyline></svg></div></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px;color:#605d5d;font-size:12px;flex:none"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#2ecc71" stroke-width="2"><polyline points="3,8.5 6.5,12 13,4.5"></polyline></svg><span>Synced @ 14:22</span></div>
+    <div style="display:flex;gap:2px;margin-left:10px;flex:none"><div style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;background:rgba(32,30,29,.08)"><svg width="10" height="10" viewBox="0 0 10 10"  stroke="#201e1d" stroke-width="1.4"><line x1="1" y1="5" x2="9" y2="5"></line></svg></div><div style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;background:rgba(32,30,29,.08)"><svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="#201e1d" stroke-width="1.4"><rect x="1.2" y="1.2" width="7.6" height="7.6"></rect></svg></div><div style="width:26px;height:26px;display:flex;align-items:center;justify-content:center;background:rgba(32,30,29,.08)"><svg width="10" height="10" viewBox="0 0 10 10"  stroke="#201e1d" stroke-width="1.4"><line x1="1.5" y1="1.5" x2="8.5" y2="8.5"></line><line x1="8.5" y1="1.5" x2="1.5" y2="8.5"></line></svg></div></div>
+  </div>
+  <div style="flex:1;display:flex;min-height:0;position:relative">
+    <div style="width:206px;flex:none;background:#eae9e9;border-right:2px solid rgba(32,30,29,.38);display:flex;flex-direction:column;padding:14px 0 10px">
+      <div style="font:800 10px/1 'Archivo';letter-spacing:.11em;color:#9b9797;padding:0px 14px 8px">LEDGER</div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5" style="flex:none"><rect x="1.5" y="1.5" width="5.5" height="6.5"></rect><rect x="9" y="1.5" width="5.5" height="4"></rect><rect x="1.5" y="10" width="5.5" height="4.5"></rect><rect x="9" y="7.5" width="5.5" height="7"></rect></svg><span style="flex:1">Dashboard</span><span style="font-size:11px;color:#9b9797">g d</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5" style="flex:none"><line x1="2" y1="4" x2="14" y2="4"></line><line x1="2" y1="8" x2="14" y2="8"></line><line x1="2" y1="12" x2="10" y2="12"></line></svg><span style="flex:1">Transactions</span><span style="font-size:11px;color:#9b9797">g l</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5" style="flex:none"><path d="M3.5 1.5h6l3 3v10h-9z"></path><polyline points="9.5,1.5 9.5,4.5 12.5,4.5"></polyline><line x1="5.5" y1="8" x2="10.5" y2="8"></line><line x1="5.5" y1="11" x2="10.5" y2="11"></line></svg><span style="flex:1">Documents</span><span style="font-size:11px;color:#9b9797">g f</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5" style="flex:none"><path d="M3 14.5V1.5"></path><path d="M3 2h9.5l-2 3 2 3H3"></path></svg><span style="flex:1">Events</span><span style="font-size:11px;color:#9b9797">g e</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5" style="flex:none"><path d="M4 11.5V7a4 4 0 0 1 8 0v4.5l1.5 1.5h-11z"></path><path d="M6.5 14.5h3"></path></svg><span style="flex:1">Notifications</span><span style="background:#ec3013;color:#f3f2f2;font-size:10px;font-weight:800;padding:1px 5px;margin-right:4px">3</span><span style="font-size:11px;color:#9b9797">g m</span></div>
+      <div style="font:800 10px/1 'Archivo';letter-spacing:.11em;color:#9b9797;padding:16px 14px 8px">NET WORTH</div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5" style="flex:none"><rect x="1.5" y="3.5" width="13" height="10"></rect><path d="M1.5 6.5h10.5"></path><circle cx="11.5" cy="10" r="1"></circle></svg><span style="flex:1">Cash</span><span style="font-size:11px;color:#9b9797">g c</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5" style="flex:none"><path d="M1.5 5L8 1.5 14.5 5v6L8 14.5 1.5 11z"></path><polyline points="1.5,5 8,8.5 14.5,5"></polyline><line x1="8" y1="8.5" x2="8" y2="14.5"></line></svg><span style="flex:1">Inventory</span><span style="font-size:11px;color:#9b9797">g o</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5" style="flex:none"><line x1="13" y1="3" x2="3" y2="13"></line><circle cx="4.5" cy="4.5" r="2"></circle><circle cx="11.5" cy="11.5" r="2"></circle></svg><span style="flex:1">Loans</span><span style="font-size:11px;color:#9b9797">g n</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5" style="flex:none"><rect x="1.5" y="3.5" width="13" height="9"></rect><line x1="1.5" y1="6.5" x2="14.5" y2="6.5"></line><line x1="4" y1="10" x2="7.5" y2="10"></line></svg><span style="flex:1">Credit cards</span><span style="font-size:11px;color:#9b9797">g k</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5" style="flex:none"><line x1="3" y1="14" x2="3" y2="10"></line><line x1="8" y1="14" x2="8" y2="6.5"></line><line x1="13" y1="14" x2="13" y2="2.5"></line></svg><span style="flex:1">Investments</span><span style="font-size:11px;color:#9b9797">g i</span></div>
+      <div style="font:800 10px/1 'Archivo';letter-spacing:.11em;color:#9b9797;padding:16px 14px 8px">PLAN</div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5" style="flex:none"><line x1="2" y1="3" x2="14" y2="3"></line><line x1="2" y1="8" x2="14" y2="8"></line><line x1="2" y1="13" x2="14" y2="13"></line></svg><span style="flex:1">Bills</span><span style="font-size:11px;color:#9b9797">g w</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5" style="flex:none"><rect x="1.5" y="5" width="13" height="6"></rect><line x1="10" y1="3" x2="10" y2="13"></line></svg><span style="flex:1">Budgets</span><span style="font-size:11px;color:#9b9797">g b</span></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#201e1d" stroke-width="1.5" style="flex:none"><polyline points="2,12 6,7 9,10 14,3"></polyline></svg><span style="flex:1">Reports</span><span style="font-size:11px;color:#9b9797">g r</span></div>
+      <div style="flex:1"></div>
+      <div style="height:2px;background:rgba(32,30,29,.20);margin:8px 0"></div>
+      <div style="display:flex;align-items:center;gap:9px;padding:7px 14px;background:#201e1d;color:#f3f2f2"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#f3f2f2" stroke-width="1.5" style="flex:none"><path d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3M3.4 3.4l2.1 2.1M10.5 10.5l2.1 2.1M12.6 3.4l-2.1 2.1M5.5 10.5l-2.1 2.1"></path><circle cx="8" cy="8" r="2.2"></circle></svg><span style="font-weight:800;flex:1">Settings</span><span style="font-size:11px;color:#bab6b6">g s</span></div>
+    </div>
+    <div style="width:232px;flex:none;border-right:2px solid rgba(32,30,29,.38);display:flex;flex-direction:column;background:#f3f2f2">
+      <div style="padding:14px 14px 8px;font:800 10px/1 'Archivo';letter-spacing:.11em;color:#9b9797;color:#201e1d">SETTINGS</div>
+      <div style="height:2px;flex:none;background:rgba(32,30,29,.38)"></div>
+      <div style="padding:12px 14px 6px;font:800 9.5px/1 'Archivo';letter-spacing:.11em;color:#9b9797">THIS DEVICE</div><div style="height:1px;flex:none;margin:0 14px 4px;background:rgba(32,30,29,.18)"></div>
+      <div style="padding:7px 14px;background:#201e1d;color:#f3f2f2;font-weight:800">General</div>
+      <div style="padding:7px 14px">Display</div>
+      <div style="padding:7px 14px">AI Connections</div>
+      <div style="padding:7px 14px">Logs</div>
+      <div style="padding:7px 14px">About</div>
+      <div style="padding:12px 14px 6px;font:800 9.5px/1 'Archivo';letter-spacing:.11em;color:#9b9797">THIS LEDGER</div><div style="height:1px;flex:none;margin:0 14px 4px;background:rgba(32,30,29,.18)"></div>
+      <div style="padding:7px 14px">Ledger</div>
+      <div style="padding:7px 14px">Units</div>
+      <div style="padding:7px 14px">Institutions</div>
+      <div style="padding:7px 14px">Accounts</div>
+      <div style="padding:7px 14px">Categories</div>
+      <div style="padding:7px 14px">Tags</div>
+      <div style="padding:7px 14px">Payees</div>
+      <div style="padding:7px 14px">Documents</div>
+      <div style="padding:7px 14px">Inventory</div>
+      <div style="padding:7px 14px">Sync Server</div>
+      <div style="padding:7px 14px">Backup</div>
+      <div style="padding:7px 14px">History</div>
+    </div>
+    <div style="flex:1;min-width:0;display:flex;flex-direction:column;padding:22px 28px;overflow:hidden;position:relative">
+     <div style="width:100%">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px">
+        <h4 style="margin:0;font-size:20px">General</h4>
+        <span style="font-size:11.5px;color:#9b9797;white-space:nowrap">this device · never synced</span>
+      </div>
+      <div style="height:2px;flex:none;background:rgba(32,30,29,.38);margin:14px 0 18px"></div>
+      <div style="display:flex;gap:40px;margin-bottom:0">
+        <div style="width:320px;flex:none;display:flex;flex-direction:column;gap:16px">
+          <div class="field" data-group="on-start" style="margin:0">
+            <label>On start</label>
+            <div class="seg">
+              <label class="seg-opt"><input type="radio" name="os-178" checked="checked">Reopen last Ledger</label>
+              <label class="seg-opt"><input type="radio" name="os-178">Start with no Ledger open</label>
+            </div>
+            <div style="margin-top:6px;font-size:11.5px;color:#605d5d;text-wrap:pretty">Reopens the Ledger open when Personal Ledger last quit, or none if none was. A file named by <code>--file</code> or <code>file</code> in the configuration file always wins.</div>
+          </div>
+          <div class="field" data-group="start-view" style="margin:0">
+            <label>Start view</label>
+            <div style="display:flex;flex-direction:column;gap:7px;margin-top:2px">
+              <label class="radio"><input type="radio" name="sv-178" checked="checked"><span class="dot"></span>Dashboard</label>
+              <label class="radio"><input type="radio" name="sv-178"><span class="dot"></span>Last view</label>
+              <label class="radio"><input type="radio" name="sv-178"><span class="dot"></span>Settings</label>
+              <label class="radio"><input type="radio" name="sv-178"><span class="dot"></span>Transactions</label>
+              <label class="radio"><input type="radio" name="sv-178"><span class="dot"></span>Documents</label>
+              <label class="radio"><input type="radio" name="sv-178"><span class="dot"></span>Bills</label>
+              <label class="radio"><input type="radio" name="sv-178"><span class="dot"></span>Budgets</label>
+            </div>
+            <div style="margin-top:6px;font-size:11.5px;color:#605d5d;text-wrap:pretty">Where Personal Ledger opens, after On start. A View that needs a Ledger opens the Dashboard when none is open.</div>
+          </div>
+          <div class="field" data-group="toasts" style="margin:0">
+            <label>Toasts</label>
+            <div style="display:flex;align-items:center"><div class="seg">
+              <label class="seg-opt" style="width:88px;justify-content:center"><input type="radio" name="ts-178" checked="checked">On</label>
+              <label class="seg-opt" style="width:88px;justify-content:center"><input type="radio" name="ts-178">Off</label>
+            </div><button class="btn btn-secondary" style="height:32px;margin-left:8px">Test <span style="font-weight:400;color:#9b9797;margin-left:6px">t</span></button></div>
+            <div style="margin-top:3px;font-size:12px;color:#605d5d">Errors still show. <b>Test</b> raises one of each kind.</div>
+          </div>
+          <div>
+            <label style="display:block;font-weight:800;font-size:12px;margin-bottom:6px">Locale</label>
+            <input style="width:100%;padding:8px 10px;border:1px solid rgba(32,30,29,.30);font-size:13px;box-sizing:border-box;background:#eae9e9;color:#605d5d" readonly value="en-AU">
+            <div style="margin-top:6px;font-size:11.5px;color:#605d5d;text-wrap:pretty">From the <code>locale</code> setting. Change it there or with <code>--locale</code>, then restart.</div>
+          </div>
+          <div>
+            <label style="display:block;font-weight:800;font-size:12px;margin-bottom:6px">Ledger folder</label>
+            <input style="width:100%;padding:8px 10px;border:1px solid rgba(32,30,29,.30);font-size:13px;box-sizing:border-box;background:#eae9e9;color:#605d5d;font-family:ui-monospace,monospace" readonly value="~/documents/ledgers">
+            <div style="margin-top:6px;font-size:11.5px;color:#605d5d;text-wrap:pretty">Where <b>:open</b> and <b>:new</b> start browsing. Set by <code>data</code> in the configuration file.</div>
+          </div>
+        </div>
+
+        <div style="flex:1;min-width:0">
+          <div style="font:800 10px/1 'Archivo';letter-spacing:.11em;color:#9b9797;margin-bottom:10px">THIS DEVICE</div>
+          <div style="border:1px solid rgba(32,30,29,.30);background:#eae9e9">
+            <div style="display:flex;justify-content:space-between;gap:12px;padding:10px 12px;border-bottom:1px solid #d7d3d3;font-size:12px"><span style="color:#605d5d">last ledger</span><span style="font-weight:800;font-family:ui-monospace,monospace;font-size:11.5px">~/documents/ledgers/teda.pldb</span></div>
+            <div style="display:flex;justify-content:space-between;gap:12px;padding:10px 12px;font-size:12px"><span style="color:#605d5d">configuration</span><span style="font-weight:800;font-family:ui-monospace,monospace;font-size:11.5px">~/.config/personal-ledger/personal-ledger.conf</span></div>
+          </div>
+          <p style="margin-top:14px;font-size:12px;color:#605d5d;text-wrap:pretty">General settings belong to this device and never sync. What travels with the Ledger is under <span style="font-weight:800">Ledger</span>.</p>
+        </div>
+      </div>
+     </div>
+    </div>
+  </div>
+  <div style="height:28px;flex:none;display:flex;align-items:center;gap:14px;padding:0 12px;background:#eae9e9;border-top:2px solid rgba(32,30,29,.38);font-size:11.5px;color:#605d5d;white-space:nowrap;overflow:hidden">
+    <span style="background:#201e1d;color:#f3f2f2;font-weight:800;font-size:10px;letter-spacing:.1em;padding:2px 7px">NORMAL</span>
+    <span><span style="color:#201e1d;font-weight:800">j/k</span> field · <span style="color:#201e1d;font-weight:800">h/l</span> change · <span style="color:#201e1d;font-weight:800">b</span> collapse sidebar · <span style="color:#201e1d;font-weight:800">q</span> back to dashboard</span>
+    <div style="flex:1"></div>
+    <span style="font-family:ui-monospace,monospace;font-size:11px">~/.config/personal-ledger/personal-ledger.conf</span>
   </div>
 </div>
 </div>
