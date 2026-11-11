@@ -156,10 +156,15 @@ mod tests {
     fn parse_with_env(ini: &str, env: HashMap<String, String>) -> ThemeConfig {
         let builder = config::Config::builder()
             .add_source(config::File::from_str(ini, config::FileFormat::Ini));
-        let config = LedgerConfig::add_explicit_and_env(builder, None, Some(env))
-            .unwrap()
-            .build()
-            .unwrap();
+        let config = LedgerConfig::add_explicit_and_env(
+            builder,
+            None,
+            Some(env),
+            &mut crate::Overrides::default(),
+        )
+        .unwrap()
+        .build()
+        .unwrap();
         ThemeConfig::from_config(&config)
     }
 

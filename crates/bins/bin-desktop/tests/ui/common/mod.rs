@@ -561,9 +561,10 @@ impl<'a> Harness<'a> {
     fn configure(&mut self, config: &lib_config::Config, env: &[(&str, &str)]) {
         let writer = lib_config::ConfigWriter::new(
             Some(self.conf_path()),
-            Vec::new(),
-            env.iter()
-                .map(|(name, value)| ((*name).to_string(), (*value).to_string())),
+            lib_config::Overrides::environment(
+                env.iter()
+                    .map(|(name, value)| ((*name).to_string(), (*value).to_string())),
+            ),
         );
         self.cx
             .update(|_, cx| theme::colours::set_device_colours(config, cx));

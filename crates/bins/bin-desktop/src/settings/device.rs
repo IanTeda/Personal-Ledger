@@ -7,7 +7,7 @@
 use std::path::{Path, PathBuf};
 
 use lib_colour_theme::ColourAppearance;
-use lib_config::{ConfigKey, ConfigValue, ConfigWriter, Shadow};
+use lib_config::{ConfigKey, ConfigValue, ConfigWriter};
 use lib_core::{DateStyle, OnStart, RowDensity, StartView, StatusGlyphs};
 use lib_locale::Locale;
 use lib_settings::{DeviceAnswer, DeviceConfiguration, DeviceKey, DeviceRefusal};
@@ -29,23 +29,17 @@ fn config_key(key: DeviceKey) -> ConfigKey {
     }
 }
 
-/// Where a device's settings are written and what outranks the file, as start-up found them.
-/// The default has no file, so every write is refused, as with no home folder.
+/// Where a device's settings are written and what outranks the file, as start-up's parse
+/// recorded it in the writer's overrides report. The default has no file, so every write is
+/// refused, as with no home folder.
 #[derive(Debug, Clone, Default)]
 pub struct DeviceConfigFile {
     writer: ConfigWriter,
-    /// The keys a source above the file sets, read once: the files above don't change while the
-    /// Desktop runs, and a draw shouldn't read them.
-    shadows: Vec<(DeviceKey, Shadow)>,
 }
 
 impl DeviceConfigFile {
     pub fn new(writer: ConfigWriter) -> Self {
-        let shadows = DeviceKey::ALL
-            .into_iter()
-            .filter_map(|key| writer.shadow(config_key(key)).map(|shadow| (key, shadow)))
-            .collect();
-        Self { writer, shadows }
+        Self { writer }
     }
 
     /// Writes `value` under its key, answering with `answer` once saved.
@@ -91,10 +85,10 @@ impl DeviceConfigFile {
 
 impl DeviceConfiguration for DeviceConfigFile {
     fn shadow(&self, key: DeviceKey) -> Option<String> {
-        self.shadows
-            .iter()
-            .find(|(shadowed, _)| *shadowed == key)
-            .map(|(_, shadow)| shadow.source())
+        self.writer
+            .overrides()
+            .get(config_key(key))
+            .map(lib_config::Shadow::source)
     }
 
     fn set_on_start(&self, on_start: OnStart) -> DeviceAnswer<OnStart> {
@@ -161,8 +155,7 @@ mod tests {
     fn writing_to(path: &Path, env: &[(String, String)]) -> DeviceConfigFile {
         DeviceConfigFile::new(ConfigWriter::new(
             Some(path.to_path_buf()),
-            Vec::new(),
-            env.iter().cloned(),
+            lib_config::Overrides::environment(env.iter().cloned()),
         ))
     }
 

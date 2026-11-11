@@ -91,9 +91,10 @@ pub fn writing_config(
     let path = dir.path().join("personal-ledger.conf");
     let writer = lib_config::ConfigWriter::new(
         Some(path.clone()),
-        Vec::new(),
-        env.iter()
-            .map(|(name, value)| ((*name).to_string(), (*value).to_string())),
+        lib_config::Overrides::environment(
+            env.iter()
+                .map(|(name, value)| ((*name).to_string(), (*value).to_string())),
+        ),
     );
     let shell = shell.with_configuration(&lib_config::Config::default(), writer);
     (shell, path)

@@ -457,10 +457,10 @@ mod tests {
         );
 
         values.configuration.hint_bar = false;
-        values.configuration.shadows = vec![(
+        values.configuration.overrides = lib_config::Overrides::default().with(
             lib_config::ConfigKey::HintBar,
             lib_config::Shadow::Env("PERSONAL_LEDGER_DISPLAY__HINT_BAR".into()),
-        )];
+        );
         let row = page.field(
             SettingField::HintBar,
             &context(&values),

@@ -225,7 +225,8 @@ fn with_deep_config(shell: bin_tui::Shell, dir: &tempfile::TempDir) -> (bin_tui:
         .join("one")
         .join("two")
         .join("personal-ledger.conf");
-    let writer = lib_config::ConfigWriter::new(Some(path.clone()), Vec::new(), std::iter::empty());
+    let writer =
+        lib_config::ConfigWriter::new(Some(path.clone()), lib_config::Overrides::default());
     let shell = shell.with_configuration(&lib_config::Config::default(), writer);
     (shell, path.display().to_string())
 }

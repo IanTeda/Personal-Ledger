@@ -5209,9 +5209,10 @@ mod tests {
             .join("personal-ledger.conf");
         let writer = ConfigWriter::new(
             Some(path.clone()),
-            Vec::new(),
-            env.iter()
-                .map(|(k, v)| ((*k).to_string(), (*v).to_string())),
+            lib_config::Overrides::environment(
+                env.iter()
+                    .map(|(k, v)| ((*k).to_string(), (*v).to_string())),
+            ),
         );
         let shell = opened().with_configuration(&lib_config::Config::default(), writer);
         (shell, path)

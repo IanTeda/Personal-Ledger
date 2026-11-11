@@ -11,7 +11,7 @@
 
 use chrono::{Datelike, Months, NaiveDate};
 use lib_colour_theme::ColourAppearance;
-use lib_config::{ConfigKey, ConfigValue, ConfigWriter, Shadow, StatusGlyphs};
+use lib_config::{ConfigKey, ConfigValue, ConfigWriter, Overrides, StatusGlyphs};
 use lib_core::{DateStyle, OnStart, StartView};
 use lib_locale::Locale;
 
@@ -201,9 +201,9 @@ pub struct Configuration {
     /// The Data folder the user's file sets, `None` with no `data` key; read from the file itself,
     /// since a write goes there whatever outranks it (TUI-063).
     pub data: Option<std::path::PathBuf>,
-    /// The source above the file that sets each key, so a write there changes nothing. Read
-    /// once at start-up, as the values are.
-    pub shadows: Vec<(ConfigKey, Shadow)>,
+    /// The source above the file that sets each key, so a write there changes nothing: the
+    /// overrides report start-up's parse recorded, as the values are.
+    pub overrides: Overrides,
 }
 
 impl Default for Configuration {
@@ -236,19 +236,13 @@ impl Configuration {
             ),
             effective_locale: crate::locale::info().effective,
             data: writer.value(ConfigKey::Data).map(std::path::PathBuf::from),
-            shadows: ConfigKey::ALL
-                .into_iter()
-                .filter_map(|key| writer.shadow(key).map(|shadow| (key, shadow)))
-                .collect(),
+            overrides: writer.overrides().clone(),
         }
     }
 
     /// The source that outranks `key`'s write, named as the row and the status line name it.
     pub fn shadow(&self, key: ConfigKey) -> Option<String> {
-        self.shadows
-            .iter()
-            .find(|(shadowed, _)| *shadowed == key)
-            .map(|(_, shadow)| shadow.source())
+        self.overrides.get(key).map(lib_config::Shadow::source)
     }
 
     /// A Configuration row's note when a source above the file sets its key, else `None`.
@@ -573,10 +567,10 @@ mod tests {
         configuration.path = Some("/home/someone/.config/personal-ledger.conf".into());
         assert_eq!(configuration.refusal(SettingField::HintBar), None);
         assert_eq!(configuration.refusal(SettingField::DateStyle), None);
-        configuration.shadows = vec![(
+        configuration.overrides = Overrides::default().with(
             ConfigKey::HintBar,
-            Shadow::Env("PERSONAL_LEDGER_DISPLAY__HINT_BAR".into()),
-        )];
+            lib_config::Shadow::Env("PERSONAL_LEDGER_DISPLAY__HINT_BAR".into()),
+        );
         assert!(
             configuration
                 .refusal(SettingField::HintBar)

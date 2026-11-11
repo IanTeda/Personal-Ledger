@@ -61,6 +61,13 @@ const APPLICATION_NAME: &str = "personal-ledger";
 /// `PERSONAL_LEDGER`).
 const ENV_PREFIX: &str = "PERSONAL_LEDGER";
 
+/// Between the prefix and the section in a variable's name.
+const ENV_PREFIX_SEPARATOR: &str = "_";
+
+/// Between the section and the key in a variable's name, `config`'s nesting separator, so single
+/// underscores inside a key, like `LOG_FILE_PATH`, are kept.
+const ENV_SEPARATOR: &str = "__";
+
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
 pub struct LedgerConfig {
     /// Settings › General's keys, from the `[General]` section (ADR-0057).
@@ -93,6 +100,8 @@ pub struct LedgerConfig {
 
     /// Where Settings writes Configuration, and what outranks it: the user's file under
     /// [`Self::parse`], nothing under [`Self::parse_for_sync_server`].
+    ///
+    /// It carries the overrides report: each key a source above the user's file sets.
     #[serde(skip)]
     pub(crate) writer: crate::ConfigWriter,
 }
@@ -128,48 +137,42 @@ impl LedgerConfig {
         detect_locale: impl FnOnce() -> Option<String>,
     ) -> crate::Result<LedgerConfig> {
         let mut config_builder = Self::defaults_builder()?;
+        // Each source above the user's file reports the keys it sets as it is layered in, lowest
+        // first, so the one that wins the parse is the one the report names.
+        let mut overrides = crate::Overrides::default();
 
         // A unit test reads none of the machine's files, so the developer's own config never leaks
-        // into what it asserts; the writer still names the user file as its target.
+        // into what it asserts; the writer still names the user file as its target. Each file is
+        // paired with whether it sits above the user's.
         let machine_files = if cfg!(test) {
             Vec::new()
         } else {
             vec![
-                Self::get_system_config_path(),
-                Self::get_user_config_path(),
-                Self::get_executable_config_path(),
+                (Self::get_system_config_path(), false),
+                (Self::get_user_config_path(), false),
+                (Self::get_executable_config_path(), true),
             ]
         };
-        for file in machine_files.into_iter().flatten().filter(|p| p.exists()) {
-            config_builder = Self::add_ini_source(config_builder, &file)?;
-        }
-
         let cwd_config = if config_file.is_none() {
             Some(Self::get_cwd_config_path()?)
         } else {
             None
         };
-        if let Some(cwd_config) = cwd_config.as_ref().filter(|p| p.exists()) {
-            config_builder = Self::add_ini_source(config_builder, cwd_config)?;
+        let files = machine_files
+            .into_iter()
+            .chain([(cwd_config, true)])
+            .filter_map(|(file, above)| file.map(|file| (file, above)));
+        for (file, above) in files.filter(|(file, _)| file.exists()) {
+            let report = above.then_some(&mut overrides);
+            config_builder = Self::add_ini_source(config_builder, &file, report)?;
         }
 
-        // The files above the user's, lowest first, for the writer to name the one that wins.
-        let above = [Self::get_executable_config_path(), cwd_config]
-            .into_iter()
-            .flatten()
-            .chain(config_file.map(Path::to_path_buf))
-            .collect();
-        let writer = crate::ConfigWriter::new(
-            Self::get_user_config_path(),
-            above,
-            env.clone().unwrap_or_else(|| std::env::vars().collect()),
-        );
-
-        config_builder = Self::add_explicit_and_env(config_builder, config_file, env)?;
+        config_builder =
+            Self::add_explicit_and_env(config_builder, config_file, env, &mut overrides)?;
 
         let mut ledger_config = Self::build(config_builder)?;
         ledger_config.general.resolve_locale(detect_locale)?;
-        ledger_config.writer = writer;
+        ledger_config.writer = crate::ConfigWriter::new(Self::get_user_config_path(), overrides);
         Ok(ledger_config)
     }
 
@@ -180,7 +183,7 @@ impl LedgerConfig {
     /// # Errors
     /// As [`Self::parse`], for the one file.
     pub(crate) fn parse_file_alone(path: &Path) -> crate::Result<LedgerConfig> {
-        let config_builder = Self::add_ini_source(Self::defaults_builder()?, path)?;
+        let config_builder = Self::add_ini_source(Self::defaults_builder()?, path, None)?;
         let mut ledger_config = Self::build(config_builder)?;
         ledger_config.general.resolve_locale(|| None)?;
         Ok(ledger_config)
@@ -204,8 +207,14 @@ impl LedgerConfig {
         config_file: Option<&Path>,
         env: Option<HashMap<String, String>>,
     ) -> crate::Result<LedgerConfig> {
+        // The Sync Server writes no file, so nothing it reads outranks one: its report is unused.
         let config_builder = Self::defaults_builder()?;
-        let config_builder = Self::add_explicit_and_env(config_builder, config_file, env)?;
+        let config_builder = Self::add_explicit_and_env(
+            config_builder,
+            config_file,
+            env,
+            &mut crate::Overrides::default(),
+        )?;
         Self::build(config_builder)
     }
 
@@ -237,36 +246,95 @@ impl LedgerConfig {
     /// (e.g. `PERSONAL_LEDGER_LOGS__LOG=debug`) always come last/highest: the
     /// single `_` after the prefix is followed by `SECTION__KEY`, where `__` is the nesting
     /// separator (so single underscores inside a key, like `LOG_FILE_PATH`, are preserved).
-    /// `env` replaces the process environment when given.
+    /// `env` replaces the process environment when given. Both tiers sit above the user's file, so
+    /// each reports the keys it sets into `overrides`.
     // Crate-visible so the `[theme]` tests can drive the same env wiring `parse` uses.
     pub(crate) fn add_explicit_and_env(
         config_builder: ConfigBuilder<DefaultState>,
         config_file: Option<&Path>,
         env: Option<HashMap<String, String>>,
+        overrides: &mut crate::Overrides,
     ) -> crate::Result<ConfigBuilder<DefaultState>> {
         let mut config_builder = config_builder;
 
         if let Some(explicit_config) = config_file.filter(|p| p.exists()) {
-            config_builder = Self::add_ini_source(config_builder, explicit_config)?;
+            config_builder =
+                Self::add_ini_source(config_builder, explicit_config, Some(&mut *overrides))?;
         }
 
-        // `prefix_separator` must be explicit: `config` otherwise reuses `separator` for it.
-        let environment = config::Environment::with_prefix(ENV_PREFIX)
-            .prefix_separator("_")
-            .separator("__")
-            .source(env);
-        config_builder = config_builder.add_source(environment);
-
-        Ok(config_builder)
+        match &env {
+            Some(env) => overrides.record_environment(env.clone()),
+            None => overrides.record_environment(std::env::vars()),
+        }
+        Ok(config_builder.add_source(Self::environment(env)))
     }
 
-    /// Read an INI file, normalise its section headers, and add it as a source.
+    /// The environment source the parse layers last: `env`, else the process environment, read
+    /// through [`ENV_PREFIX`] and its separators. [`Self::env_var`] spells a name by the same
+    /// constants, and [`Self::env_key`] reads one through this source.
+    fn environment(env: Option<HashMap<String, String>>) -> config::Environment {
+        // `prefix_separator` must be explicit: `config` otherwise reuses `separator` for it.
+        config::Environment::with_prefix(ENV_PREFIX)
+            .prefix_separator(ENV_PREFIX_SEPARATOR)
+            .separator(ENV_SEPARATOR)
+            .source(env)
+    }
+
+    /// The dotted key path the parse's environment source reads the variable `name` set to
+    /// `value` as (`general.toasts`), or `None` for a variable it doesn't read.
+    pub(crate) fn env_key(name: &str, value: &str) -> Option<String> {
+        use config::Source;
+        let one = HashMap::from([(name.to_string(), value.to_string())]);
+        Self::environment(Some(one))
+            .collect()
+            .ok()?
+            .into_keys()
+            .next()
+    }
+
+    /// The variable that sets `id`, spelt as [`Self::environment`] reads it:
+    /// `PERSONAL_LEDGER_<SECTION>__<KEY>`.
+    pub(crate) fn env_var((section, name): crate::keys::KeyId) -> String {
+        format!(
+            "{ENV_PREFIX}{ENV_PREFIX_SEPARATOR}{}{ENV_SEPARATOR}{}",
+            section.normalised().to_uppercase(),
+            name.to_uppercase()
+        )
+    }
+
+    /// Read an INI file, normalise its section headers, and add it as a source. A file above the
+    /// user's records the keys it sets into `overrides`, given.
     fn add_ini_source(
         config_builder: ConfigBuilder<DefaultState>,
         path: &Path,
+        overrides: Option<&mut crate::Overrides>,
     ) -> crate::Result<ConfigBuilder<DefaultState>> {
         let normalised = Self::normalise_ini(path)?;
+        if let Some(overrides) = overrides {
+            for id in Self::keys_set(&normalised)? {
+                overrides.record(id, crate::Shadow::File(path.to_path_buf()));
+            }
+        }
         Ok(config_builder.add_source(config::File::from_str(&normalised, config::FileFormat::Ini)))
+    }
+
+    /// The keys of the written sections `path` alone sets, read by the parser.
+    ///
+    /// # Errors
+    /// When the file can't be read or doesn't parse.
+    pub(crate) fn keys_in_file(path: &Path) -> crate::Result<Vec<crate::keys::KeyId>> {
+        Self::keys_set(&Self::normalise_ini(path)?)
+    }
+
+    /// The keys of the written sections an already-normalised file sets, by `config`'s own INI
+    /// reading of it, the reading the layered parse applies.
+    fn keys_set(normalised: &str) -> crate::Result<Vec<crate::keys::KeyId>> {
+        let file = Config::builder()
+            .add_source(config::File::from_str(normalised, config::FileFormat::Ini))
+            .build()?;
+        Ok(crate::keys::reported()
+            .filter(|id| file.get::<config::Value>(&crate::keys::path(*id)).is_ok())
+            .collect())
     }
 
     /// Read an INI file and normalise its section headers: lower-cased (so `[General]`/
@@ -394,7 +462,8 @@ impl LedgerConfig {
         &self.theme
     }
 
-    /// Where Settings writes Configuration back to, and what outranks it there.
+    /// Where Settings writes Configuration back to, and what outranks it there
+    /// ([`crate::ConfigWriter::overrides`]).
     pub fn writer(&self) -> &crate::ConfigWriter {
         &self.writer
     }
@@ -969,7 +1038,11 @@ mod tests {
             let env = env_map(&[("PERSONAL_LEDGER_DISPLAY__HINT_BAR", "false")]);
             let config = LedgerConfig::parse_with_detector(None, env, || None).unwrap();
             assert_eq!(
-                config.writer().shadow(crate::ConfigKey::HintBar),
+                config
+                    .writer()
+                    .overrides()
+                    .get(crate::ConfigKey::HintBar)
+                    .cloned(),
                 Some(crate::Shadow::Env(
                     "PERSONAL_LEDGER_DISPLAY__HINT_BAR".into()
                 ))
@@ -1040,7 +1113,11 @@ mod tests {
             };
             args.apply_overrides(&mut config);
             assert_eq!(
-                config.writer().shadow(crate::ConfigKey::Locale),
+                config
+                    .writer()
+                    .overrides()
+                    .get(crate::ConfigKey::Locale)
+                    .cloned(),
                 Some(crate::Shadow::Flag("--locale en-GB".to_string()))
             );
         });
@@ -1057,10 +1134,105 @@ mod tests {
             };
             args.apply_overrides(&mut config);
             assert_eq!(
-                config.writer().shadow(crate::ConfigKey::Data),
+                config
+                    .writer()
+                    .overrides()
+                    .get(crate::ConfigKey::Data)
+                    .cloned(),
                 Some(crate::Shadow::Flag("--data /tmp/ledgers".to_string()))
             );
         });
+    }
+
+    /// The overrides report `config` carries for `key`.
+    fn reported(config: &LedgerConfig, key: crate::ConfigKey) -> Option<crate::Shadow> {
+        config.writer().overrides().get(key).cloned()
+    }
+
+    #[test]
+    fn the_working_directory_s_file_reports_the_keys_it_sets_in_their_own_sections() {
+        in_empty_cwd(|| {
+            let cwd_file = LedgerConfig::get_cwd_config_path().unwrap();
+            fs::create_dir_all(cwd_file.parent().unwrap()).unwrap();
+            fs::write(
+                &cwd_file,
+                "[display]\nhint_bar = false\nstatus_glyphs = ascii\n\
+                 [Personal-Ledger]\ntoasts = false\n[General]\n# locale = en-GB\n",
+            )
+            .unwrap();
+            let config = LedgerConfig::parse_with_detector(None, env_map(&[]), || None).unwrap();
+            // Recorded as the parse layered the file: gone now, it is still what this run read.
+            fs::remove_file(&cwd_file).unwrap();
+
+            let by_file = Some(crate::Shadow::File(cwd_file));
+            assert_eq!(reported(&config, crate::ConfigKey::HintBar), by_file);
+            assert_eq!(reported(&config, crate::ConfigKey::StatusGlyphs), by_file);
+            assert_eq!(reported(&config, crate::ConfigKey::Toasts), None);
+            assert_eq!(reported(&config, crate::ConfigKey::Locale), None);
+        });
+    }
+
+    #[test]
+    fn the_explicit_file_reports_the_keys_it_sets_and_file_among_them() {
+        let temp_dir = TempDir::new().unwrap();
+        let explicit = temp_dir.path().join("explicit.conf");
+        fs::write(
+            &explicit,
+            "[General]\nlocale = en-GB\nfile = /tmp/a.pldb\n[Logs]\nlog = warn\n",
+        )
+        .unwrap();
+        let config =
+            LedgerConfig::parse_with_detector(Some(&explicit), env_map(&[]), || None).unwrap();
+        let by_file = Some(crate::Shadow::File(explicit.clone()));
+        assert_eq!(reported(&config, crate::ConfigKey::Locale), by_file);
+        assert_eq!(reported(&config, crate::ConfigKey::Log), by_file);
+        assert_eq!(
+            config.writer().overrides().of(crate::keys::FILE).cloned(),
+            by_file
+        );
+        assert_eq!(reported(&config, crate::ConfigKey::HintBar), None);
+    }
+
+    #[test]
+    fn a_variable_reports_its_key_over_a_file_and_a_flag_over_both() {
+        let temp_dir = TempDir::new().unwrap();
+        let explicit = temp_dir.path().join("explicit.conf");
+        fs::write(
+            &explicit,
+            "[General]\nlocale = en-GB\ndata = /tmp/from-file\ntoasts = false\n",
+        )
+        .unwrap();
+        let env = env_map(&[
+            (LOCALE_ENV, "en-AU"),
+            ("PERSONAL_LEDGER_GENERAL__DATA", "/tmp/from-env"),
+            ("PERSONAL_LEDGER_DISPLAY__ROW_DENSITY", "roomy"),
+        ]);
+        let mut config = LedgerConfig::parse_with_detector(Some(&explicit), env, || None).unwrap();
+        crate::ConfigArgs {
+            locale: Some("en-US".to_string()),
+            ..crate::ConfigArgs::default()
+        }
+        .apply_overrides(&mut config);
+
+        assert_eq!(
+            reported(&config, crate::ConfigKey::Locale),
+            Some(crate::Shadow::Flag("--locale en-US".into()))
+        );
+        assert_eq!(
+            reported(&config, crate::ConfigKey::Data),
+            Some(crate::Shadow::Env("PERSONAL_LEDGER_GENERAL__DATA".into()))
+        );
+        assert_eq!(
+            reported(&config, crate::ConfigKey::RowDensity),
+            Some(crate::Shadow::Env(
+                "PERSONAL_LEDGER_DISPLAY__ROW_DENSITY".into()
+            ))
+        );
+        assert_eq!(
+            reported(&config, crate::ConfigKey::Toasts),
+            Some(crate::Shadow::File(explicit))
+        );
+        assert_eq!(reported(&config, crate::ConfigKey::OnStart), None);
     }
 
     #[test]

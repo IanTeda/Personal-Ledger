@@ -20,6 +20,7 @@
 //! - [`keys`] - The key catalogue: every key parsed, and each key Settings writes with its
 //!   section, environment variable and typed [`ConfigValue`]
 //! - [`writer`] - Writes one key back to its section of the user's file, for Settings
+//! - [`overrides`] - The overrides report: each key a source above the user's file sets
 //! - [`keybindings`] - Keyboard shortcut configuration, read by the TUI/Desktop Clients
 //! - [`cli`] - Shared `--config`/`-c`/`--data`/`-d`/`--file`/`-f`/`--log`/`-l`/`--locale` CLI
 //!   arguments, flattened into each binary's own parser
@@ -41,6 +42,7 @@ mod keybindings;
 mod keys;
 mod ledger;
 mod logs;
+mod overrides;
 mod sync_server;
 mod theme;
 mod writer;
@@ -71,7 +73,11 @@ pub use lib_core::{RowDensity, StatusGlyphs};
 pub use keys::{ConfigKey, ConfigValue, Section};
 
 /// Writes Configuration back to the user's `personal-ledger.conf`, for Settings.
-pub use writer::{ConfigWriter, Shadow};
+pub use writer::ConfigWriter;
+
+/// Each key a source above the user's file sets, recorded as the parse and the flags apply
+/// precedence, and the source that does.
+pub use overrides::{Overrides, Shadow};
 
 /// Sync-Server-only configuration (bind address and database URI).
 pub use sync_server::SyncServerConfig;

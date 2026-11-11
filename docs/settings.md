@@ -18,16 +18,17 @@ Personal Ledger uses the following order of precedence, from lowest to highest.
   * Linux: /etc/personal-ledger/personal-ledger.conf
   * macOS: /Library/Preferences/personal-ledger/personal-ledger.conf
   * Windows: %ALLUSERSPROFILE%\personal-ledger\personal-ledger.conf
-3. Executable Directory
-  * Configuration file in the same directory as the binary
-  * Useful for portable applications
-4. Current Working Directory
-  * File: config/personal-ledger.conf
-  * Allows project-specific overrides when running from a directory
-5. User Configuration
+3. User Configuration
   * Platform-specific user config directory
   * Linux/macOS: ~/.config/personal-ledger/personal-ledger.conf
   * Windows: %APPDATA%\personal-ledger\personal-ledger.conf
+  * The file Settings writes; every source below this one outranks it
+4. Executable Directory
+  * Configuration file in the same directory as the binary
+  * Useful for portable applications
+5. Current Working Directory
+  * File: config/personal-ledger.conf, read only when --config/-c isn't given
+  * Allows project-specific overrides when running from a directory
 6. Explicit Configuration File
   * The file pointed to by --config/-c, if given (still layered in below Environment
     Variables, same as every other file source above)

@@ -97,7 +97,8 @@ fn enter_on_an_unmoved_colour_popup_saves_nothing_and_keeps_an_unknown_theme() {
     std::fs::write(&path, "[Display]\ncolour_theme = from_a_newer_release\n").expect("write");
     let mut config = lib_config::Config::default();
     config.display.colour_theme = Some("from_a_newer_release".into());
-    let writer = lib_config::ConfigWriter::new(Some(path.clone()), Vec::new(), []);
+    let writer =
+        lib_config::ConfigWriter::new(Some(path.clone()), lib_config::Overrides::default());
     let mut shell = shell().with_configuration(&config, writer);
     run_command(&mut shell, "settings display");
 
@@ -323,9 +324,10 @@ fn data_folder_shell(
     .expect("write");
     let writer = lib_config::ConfigWriter::new(
         Some(path.clone()),
-        Vec::new(),
-        env.iter()
-            .map(|(name, value)| ((*name).to_string(), (*value).to_string())),
+        lib_config::Overrides::environment(
+            env.iter()
+                .map(|(name, value)| ((*name).to_string(), (*value).to_string())),
+        ),
     );
     let shell = shell.with_configuration(&lib_config::Config::default(), writer);
     (shell, path, config_dir, data)

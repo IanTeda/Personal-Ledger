@@ -46,6 +46,28 @@ pub(crate) const KEYS: &[(&str, &[&str])] = &[
 /// `--file`. Every other key of those sections is a [`ConfigKey`].
 const NOT_WRITTEN: &[(&str, &str)] = &[("general", "file")];
 
+/// A key of a section Settings writes, as `(section, name)`: a [`ConfigKey`]'s, or [`FILE`]. What
+/// the overrides report ([`crate::Overrides`]) is kept by, so a flag on a key Settings never writes
+/// still reports itself.
+pub(crate) type KeyId = (Section, &'static str);
+
+/// `[General]`'s `file`, which only a hand or `--file` sets.
+pub(crate) const FILE: KeyId = (Section::General, "file");
+
+/// Every key [`KEYS`] lists in a section Settings writes: the keys the overrides report covers.
+pub(crate) fn reported() -> impl Iterator<Item = KeyId> {
+    Section::ALL.into_iter().flat_map(|section| {
+        KEYS.iter()
+            .filter(move |(name, _)| *name == section.normalised())
+            .flat_map(move |(_, keys)| keys.iter().map(move |key| (section, *key)))
+    })
+}
+
+/// `id`'s dotted path, as the parser keys a value: `general.toasts`.
+pub(crate) fn path((section, name): KeyId) -> String {
+    format!("{}.{name}", section.normalised())
+}
+
 /// The seven stored Colour Roles (`lib_colour_theme::ColourRole::ALL`, checked by a test).
 const THEME_ROLES: &[&str] = &[
     "foreground",
@@ -70,6 +92,9 @@ pub enum Section {
 }
 
 impl Section {
+    /// Every section Settings writes.
+    pub(crate) const ALL: [Section; 3] = [Self::General, Self::Display, Self::Logs];
+
     /// The section's header as a write adds it to a file that lacks it.
     pub fn header(self) -> &'static str {
         match self {
@@ -179,15 +204,15 @@ impl ConfigKey {
         }
     }
 
-    /// The environment variable that sets the key, by `add_explicit_and_env`'s naming:
-    /// `PERSONAL_LEDGER_<SECTION>__<KEY>`.
+    /// The key as the overrides report keeps it.
+    pub(crate) fn id(self) -> KeyId {
+        (self.section(), self.name())
+    }
+
+    /// The environment variable that sets the key, spelt by the parse's own
+    /// `LedgerConfig::env_var`: `PERSONAL_LEDGER_<SECTION>__<KEY>`.
     pub fn env_var(self) -> String {
-        format!(
-            "{}_{}__{}",
-            crate::ledger::LedgerConfig::env_prefix(),
-            self.section().normalised().to_uppercase(),
-            self.name().to_uppercase()
-        )
+        crate::ledger::LedgerConfig::env_var(self.id())
     }
 }
 
@@ -320,6 +345,22 @@ mod tests {
             "PERSONAL_LEDGER_DISPLAY__ROW_DENSITY"
         );
         assert_eq!(ConfigKey::Log.env_var(), "PERSONAL_LEDGER_LOGS__LOG");
+    }
+
+    #[test]
+    fn every_reported_key_s_variable_is_read_by_the_parse_as_that_key() {
+        for id in reported() {
+            let var = crate::ledger::LedgerConfig::env_var(id);
+            assert_eq!(
+                crate::ledger::LedgerConfig::env_key(&var, "x"),
+                Some(path(id)),
+                "{var}"
+            );
+        }
+        assert!(reported().any(|id| id == FILE));
+        for key in ConfigKey::ALL {
+            assert!(reported().any(|id| id == key.id()), "{key:?}");
+        }
     }
 
     #[test]

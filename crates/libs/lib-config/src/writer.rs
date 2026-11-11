@@ -6,108 +6,46 @@
 //! created with its directory when it doesn't exist. It is the one file that is the person's own
 //! on every install: the system file needs root, and the working-directory file is the repository's
 //! example when a binary runs from a checkout. Every source above it in the hierarchy (the
-//! executable-directory, working-directory and `--config` files, then the environment) still wins,
-//! so [`ConfigWriter::shadow`] names the one that does, for Settings to say so rather than appear
-//! to save.
+//! executable-directory, working-directory and `--config` files, then the environment and the
+//! flags) still wins, so the writer carries the parse's [`Overrides`], which name the one that
+//! does, for Settings to say so rather than appear to save.
 //!
 //! The file is edited line by line rather than round-tripped through an INI parser: neither the
 //! `config` crate nor `rust-ini` keeps comments on write, and the person's comments, key order and
 //! other sections must survive a write untouched. Only the one key's line changes, or one line is
 //! added for a new key, or one line removed.
 
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::keys::{ConfigKey, ConfigValue};
+use crate::overrides::Overrides;
 
-/// The source that outranks the file a write goes to, so the write changes nothing until it goes.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Shadow {
-    /// A command-line flag, as it was given (`--locale en-GB`).
-    Flag(String),
-    /// An environment variable, by name.
-    Env(String),
-    /// A configuration file above the user's in the hierarchy.
-    File(PathBuf),
-}
-
-impl Shadow {
-    /// The source as Settings names it: the flag as given, the variable's name or the file's path.
-    pub fn source(&self) -> String {
-        match self {
-            Self::Flag(flag) => flag.clone(),
-            Self::Env(var) => var.clone(),
-            Self::File(path) => path.display().to_string(),
-        }
-    }
-}
-
-/// Where Settings writes Configuration, and what outranks it there. Captured as the configuration
-/// is parsed, so it knows the files and environment that parse read.
+/// Where Settings writes Configuration, and what outranks it there: the overrides report the parse
+/// recorded as it applied precedence.
 #[derive(Debug, Clone, Default)]
 pub struct ConfigWriter {
     /// The user's file; `None` where nothing is written (the Sync Server, or no home directory).
     target: Option<PathBuf>,
-    /// The files above the target, lowest precedence first. Each counts only while it exists.
-    above: Vec<PathBuf>,
-    /// The environment's `PERSONAL_LEDGER_` variables, names lower-cased as `config` matches them.
-    env: HashMap<String, String>,
-    /// The keys this run's flags set, each with the flag as it was given; they outrank the rest.
-    flags: Vec<(ConfigKey, String)>,
+    /// Each key a source above the target sets, recorded by the parse and the flags.
+    pub(crate) overrides: Overrides,
 }
 
 impl ConfigWriter {
-    /// A writer to `target` that `above`'s files and `env`'s `PERSONAL_LEDGER_` variables
-    /// outrank. [`crate::Config::parse`] builds the Client's; a test builds one on a temp file.
-    pub fn new(
-        target: Option<PathBuf>,
-        above: Vec<PathBuf>,
-        env: impl IntoIterator<Item = (String, String)>,
-    ) -> Self {
-        let prefix = format!(
-            "{}_",
-            crate::ledger::LedgerConfig::env_prefix().to_lowercase()
-        );
-        let env = env
-            .into_iter()
-            .map(|(name, value)| (name.to_lowercase(), value))
-            .filter(|(name, _)| name.starts_with(&prefix))
-            .collect();
-        Self {
-            target,
-            above,
-            env,
-            flags: Vec::new(),
-        }
+    /// A writer to `target` that `overrides`' sources outrank. [`crate::Config::parse`] builds the
+    /// Client's; a test builds one on a temp file.
+    pub fn new(target: Option<PathBuf>, overrides: Overrides) -> Self {
+        Self { target, overrides }
     }
 
-    /// Records that `flag` (`--locale en-GB`) sets `key` for this run, so [`Self::shadow`] names
-    /// it: [`crate::ConfigArgs::apply_overrides`] calls it as it applies a flag.
-    pub fn flagged(&mut self, key: ConfigKey, flag: impl Into<String>) {
-        self.flags.retain(|(flagged, _)| *flagged != key);
-        self.flags.push((key, flag.into()));
+    /// Each key a source above the target sets, with the highest that does: what a Settings row
+    /// names when its write would change nothing.
+    pub fn overrides(&self) -> &Overrides {
+        &self.overrides
     }
 
     /// The file a write goes to.
     pub fn target(&self) -> Option<&Path> {
         self.target.as_deref()
-    }
-
-    /// The highest source that sets `key` above the target, or `None` when a write would apply.
-    pub fn shadow(&self, key: ConfigKey) -> Option<Shadow> {
-        if let Some((_, flag)) = self.flags.iter().find(|(flagged, _)| *flagged == key) {
-            return Some(Shadow::Flag(flag.clone()));
-        }
-        let var = key.env_var();
-        if self.env.contains_key(&var.to_lowercase()) {
-            return Some(Shadow::Env(var));
-        }
-        self.above
-            .iter()
-            .rev()
-            .find(|path| std::fs::read_to_string(path).is_ok_and(|text| sets_key(&text, key)))
-            .cloned()
-            .map(Shadow::File)
     }
 
     /// The value the target file itself sets `key` to, quotes taken off, whatever outranks it;
@@ -123,8 +61,7 @@ impl ConfigWriter {
     /// `None` when the file doesn't set the key in its section, doesn't exist, or doesn't parse.
     pub fn stored(&self, key: ConfigKey) -> Option<ConfigValue> {
         let path = self.target.as_deref()?;
-        let text = std::fs::read_to_string(path).ok()?;
-        if !sets_key(&text, key) {
+        if !crate::Config::keys_in_file(path).ok()?.contains(&key.id()) {
             return None;
         }
         let config = crate::Config::parse_file_alone(path).ok()?;
@@ -266,18 +203,6 @@ fn remove_key(text: &str, key: ConfigKey) -> Option<String> {
     removed.then_some(out)
 }
 
-/// Whether `text` sets `key` in its section.
-fn sets_key(text: &str, key: ConfigKey) -> bool {
-    let mut in_section = false;
-    text.lines().any(|line| {
-        if let Some(name) = section_name(line) {
-            in_section = name == key.section().normalised();
-            return false;
-        }
-        in_section && line_key(line).is_some_and(|name| name.eq_ignore_ascii_case(key.name()))
-    })
-}
-
 /// The value `text` sets `key` to in its section, the last line winning as the parser reads it,
 /// with surrounding quotes taken off.
 fn key_value(text: &str, key: ConfigKey) -> Option<String> {
@@ -362,6 +287,7 @@ fn line_key(line: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
     use tempfile::TempDir;
 
     const WRITTEN: &str = "\
@@ -476,7 +402,7 @@ back = \"esc\"
             .path()
             .join("personal-ledger")
             .join("personal-ledger.conf");
-        let writer = ConfigWriter::new(Some(path.clone()), Vec::new(), []);
+        let writer = ConfigWriter::new(Some(path.clone()), Overrides::default());
         writer.set(ConfigValue::HintBar(false)).unwrap();
         writer.set(ConfigValue::Toasts(false)).unwrap();
         writer
@@ -578,7 +504,7 @@ back = \"esc\"
         }
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("personal-ledger.conf");
-        let writer = ConfigWriter::new(Some(path.clone()), Vec::new(), []);
+        let writer = ConfigWriter::new(Some(path.clone()), Overrides::default());
         for value in values {
             writer.set(value.clone()).unwrap();
             let config =
@@ -601,7 +527,7 @@ back = \"esc\"
     fn a_locale_the_parser_would_refuse_is_not_written_and_a_tag_is_written_canonically() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("personal-ledger.conf");
-        let writer = ConfigWriter::new(Some(path.clone()), Vec::new(), []);
+        let writer = ConfigWriter::new(Some(path.clone()), Overrides::default());
         assert!(matches!(
             writer.set(ConfigValue::Locale("not a tag!".into())),
             Err(crate::Error::InvalidLocale { .. })
@@ -618,7 +544,7 @@ back = \"esc\"
     fn stored_reads_only_the_key_s_own_section_of_the_target() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("personal-ledger.conf");
-        let writer = ConfigWriter::new(Some(path.clone()), Vec::new(), []);
+        let writer = ConfigWriter::new(Some(path.clone()), Overrides::default());
         assert_eq!(writer.stored(ConfigKey::Toasts), None, "no file yet");
         std::fs::write(
             &path,
@@ -636,7 +562,7 @@ back = \"esc\"
     fn a_windows_data_folder_survives_the_parser_and_reads_back() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("personal-ledger.conf");
-        let writer = ConfigWriter::new(Some(path.clone()), Vec::new(), []);
+        let writer = ConfigWriter::new(Some(path.clone()), Overrides::default());
         let folder = r"C:\Users\me\new";
         writer.set(ConfigValue::Data(folder.into())).unwrap();
 
@@ -651,7 +577,7 @@ back = \"esc\"
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("personal-ledger.conf");
         std::fs::write(&path, "[General]\ndata = C:\\Users\\x0041\\\\b\n").unwrap();
-        let writer = ConfigWriter::new(Some(path.clone()), Vec::new(), []);
+        let writer = ConfigWriter::new(Some(path.clone()), Overrides::default());
         let config =
             crate::Config::parse_with_detector(Some(&path), Some(HashMap::new()), || None).unwrap();
         let parsed = config.general_config().data().display().to_string();
@@ -665,7 +591,7 @@ back = \"esc\"
         let before = "# notes\r\n[General]\r\ntoasts = false\r\n  locale = en-GB\r\n\
                       # locale = en-AU\r\non_start = none\r\n\r\n[Other]\r\nlocale = fr\r\n";
         std::fs::write(&path, before).unwrap();
-        let writer = ConfigWriter::new(Some(path.clone()), Vec::new(), []);
+        let writer = ConfigWriter::new(Some(path.clone()), Overrides::default());
         writer.remove(ConfigKey::Locale).unwrap();
         assert_eq!(
             std::fs::read_to_string(&path).unwrap(),
@@ -688,7 +614,7 @@ back = \"esc\"
     fn value_reads_the_key_from_its_own_section_of_the_target_only() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("personal-ledger.conf");
-        let writer = ConfigWriter::new(Some(path.clone()), Vec::new(), []);
+        let writer = ConfigWriter::new(Some(path.clone()), Overrides::default());
         assert_eq!(writer.value(ConfigKey::Locale), None, "no file yet");
 
         std::fs::write(
@@ -702,28 +628,10 @@ back = \"esc\"
     }
 
     #[test]
-    fn a_flag_outranks_the_environment_and_the_files_above() {
-        let mut writer = ConfigWriter::new(
-            None,
-            Vec::new(),
-            [(
-                "PERSONAL_LEDGER_GENERAL__LOCALE".to_string(),
-                "en-AU".to_string(),
-            )],
-        );
-        writer.flagged(ConfigKey::Locale, "--locale en-GB");
-        assert_eq!(
-            writer.shadow(ConfigKey::Locale),
-            Some(Shadow::Flag("--locale en-GB".to_string()))
-        );
-        assert_eq!(writer.shadow(ConfigKey::Toasts), None);
-    }
-
-    #[test]
     fn removing_from_a_missing_file_creates_nothing_and_with_no_target_is_refused() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("personal-ledger.conf");
-        ConfigWriter::new(Some(path.clone()), Vec::new(), [])
+        ConfigWriter::new(Some(path.clone()), Overrides::default())
             .remove(ConfigKey::Locale)
             .unwrap();
         assert!(!path.exists());
@@ -734,89 +642,11 @@ back = \"esc\"
     }
 
     #[test]
-    fn a_setting_an_environment_variable_sets_is_shadowed_by_its_section_s_name() {
-        let dir = TempDir::new().unwrap();
-        let writer = ConfigWriter::new(
-            Some(dir.path().join("user.conf")),
-            Vec::new(),
-            [
-                ("PERSONAL_LEDGER_GENERAL__TOASTS".into(), "false".into()),
-                (
-                    "PERSONAL_LEDGER_DISPLAY__ROW_DENSITY".into(),
-                    "compact".into(),
-                ),
-                ("personal_ledger_logs__log".into(), "warn".into()),
-                // The old section's name no longer sets anything.
-                (
-                    "PERSONAL_LEDGER_PERSONAL_LEDGER__ON_START".into(),
-                    "none".into(),
-                ),
-                ("HOME".into(), "/home/someone".into()),
-            ],
-        );
-        assert_eq!(
-            writer.shadow(ConfigKey::Toasts),
-            Some(Shadow::Env("PERSONAL_LEDGER_GENERAL__TOASTS".into()))
-        );
-        assert_eq!(
-            writer.shadow(ConfigKey::RowDensity),
-            Some(Shadow::Env("PERSONAL_LEDGER_DISPLAY__ROW_DENSITY".into()))
-        );
-        assert_eq!(
-            writer.shadow(ConfigKey::Log),
-            Some(Shadow::Env("PERSONAL_LEDGER_LOGS__LOG".into()))
-        );
-        assert_eq!(writer.shadow(ConfigKey::OnStart), None);
-        assert_eq!(writer.shadow(ConfigKey::StatusGlyphs), None);
-    }
-
-    #[test]
-    fn a_higher_file_shadows_the_target_only_in_the_key_s_section() {
-        let dir = TempDir::new().unwrap();
-        let cwd = dir.path().join("cwd.conf");
-        let explicit = dir.path().join("explicit.conf");
-        let missing = dir.path().join("missing.conf");
-        std::fs::write(
-            &cwd,
-            "[display]\nhint_bar = false\nstatus_glyphs = ascii\n[Personal-Ledger]\ntoasts = false\n",
-        )
-        .unwrap();
-        std::fs::write(
-            &explicit,
-            "[Display]\nhint_bar = true\n[General]\nlocale = en-GB\n",
-        )
-        .unwrap();
-        let writer = ConfigWriter::new(
-            Some(dir.path().join("user.conf")),
-            vec![cwd.clone(), explicit.clone(), missing],
-            [],
-        );
-        assert_eq!(
-            writer.shadow(ConfigKey::HintBar),
-            Some(Shadow::File(explicit.clone()))
-        );
-        assert_eq!(
-            writer.shadow(ConfigKey::StatusGlyphs),
-            Some(Shadow::File(cwd))
-        );
-        assert_eq!(
-            writer.shadow(ConfigKey::Locale),
-            Some(Shadow::File(explicit))
-        );
-        assert_eq!(writer.shadow(ConfigKey::Toasts), None);
-        assert_eq!(
-            ConfigWriter::new(Some(dir.path().join("user.conf")), Vec::new(), [])
-                .shadow(ConfigKey::HintBar),
-            None
-        );
-    }
-
-    #[test]
     fn an_existing_file_keeps_its_comments_and_other_sections() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("personal-ledger.conf");
         std::fs::write(&path, WRITTEN).unwrap();
-        let writer = ConfigWriter::new(Some(path.clone()), Vec::new(), []);
+        let writer = ConfigWriter::new(Some(path.clone()), Overrides::default());
         writer.set(ConfigValue::TerminalColours(true)).unwrap();
         writer
             .set(ConfigValue::StartView(lib_core::StartView::Last))
