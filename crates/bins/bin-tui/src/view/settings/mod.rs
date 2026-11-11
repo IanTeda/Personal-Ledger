@@ -813,6 +813,17 @@ impl View for SettingsView {
         toasts
     }
 
+    fn names_configuration_file(&self) -> bool {
+        self.showing == Showing::Page
+            && matches!(
+                self.selected(),
+                SettingsPage::General
+                    | SettingsPage::Display
+                    | SettingsPage::Logs
+                    | SettingsPage::About
+            )
+    }
+
     fn hints(&self, back: &str) -> Option<Vec<(String, String)>> {
         let prices = self
             .units_page

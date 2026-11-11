@@ -718,6 +718,12 @@ pub trait View {
         None
     }
 
+    /// Whether the view is a this device Settings page, whose footer label names the
+    /// configuration file in place of the Ledger file.
+    fn names_configuration_file(&self) -> bool {
+        false
+    }
+
     /// Runs a Settings page's key by name (`:sync`, `:backup`), returning what it does; `None`
     /// for every view but Settings, which `Shell` opens on the page first.
     fn run_page_command(&mut self, _command: settings::PageCommand) -> Option<Action> {

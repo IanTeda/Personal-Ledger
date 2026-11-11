@@ -2588,11 +2588,28 @@ impl Shell {
             spans.push(Span::raw(" "));
             Line::from(spans)
         };
+        let footer_width = footer.width();
         frame.render_widget(Paragraph::new(footer), rows[2]);
         // The right-aligned Ledger file label, drawn after the hints so a narrow frame keeps it.
-        let label = match &self.ledger {
-            Some(ledger) => format!(" {} ", ledger.name()),
-            None => format!(" {} ", crate::msg::tui_footer_no_ledger()),
+        let label = if self.view.names_configuration_file() {
+            let room = usize::from(rows[2].width).saturating_sub(footer_width);
+            let path = self.settings_values.borrow().configuration.path.clone();
+            match path {
+                Some(path) => format!(
+                    " {} ",
+                    fit_configuration_path(
+                        &path,
+                        dirs::home_dir().as_deref(),
+                        room.saturating_sub(2)
+                    )
+                ),
+                None => format!(" {} ", crate::msg::tui_footer_no_configuration_file()),
+            }
+        } else {
+            match &self.ledger {
+                Some(ledger) => format!(" {} ", ledger.name()),
+                None => format!(" {} ", crate::msg::tui_footer_no_ledger()),
+            }
         };
         let width = u16::try_from(label.chars().count()).unwrap_or(0);
         let [_, right] = Layout::horizontal([
@@ -2690,6 +2707,35 @@ fn expand_tilde(typed: &str, home: Option<&Path>) -> PathBuf {
         },
         None => PathBuf::from(typed),
     }
+}
+
+/// The configuration file's `path` fitted to `room` columns: the full path with `home` as `~`
+/// when it fits, else as many trailing folders as fit behind `\u{2026}/`, and never less than
+/// `\u{2026}/<file name>`, which wins over the hints when even that is too long.
+fn fit_configuration_path(path: &Path, home: Option<&Path>, room: usize) -> String {
+    let full = match home.and_then(|home| path.strip_prefix(home).ok()) {
+        Some(relative) => format!("~/{}", relative.display()),
+        None => path.display().to_string(),
+    };
+    if full.chars().count() <= room {
+        return full;
+    }
+    let parts: Vec<_> = path
+        .components()
+        .filter_map(|part| match part {
+            std::path::Component::Normal(name) => Some(name.to_string_lossy().into_owned()),
+            _ => None,
+        })
+        .collect();
+    let name = parts.last().cloned().unwrap_or_default();
+    for kept in (1..parts.len()).rev() {
+        let tail = parts[parts.len() - kept..].join("/");
+        let candidate = format!("\u{2026}/{tail}");
+        if candidate.chars().count() <= room {
+            return candidate;
+        }
+    }
+    format!("\u{2026}/{name}")
 }
 
 /// The name of the file at `path`, or the whole path if it names none.
@@ -2931,6 +2977,33 @@ impl Default for Shell {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_configuration_path_fits_the_room_the_hints_leave() {
+        let home = Path::new("/home/ian");
+        let file = Path::new("/home/ian/.config/personal-ledger/personal-ledger.conf");
+        let fit = |room| fit_configuration_path(file, Some(home), room);
+        let full = "~/.config/personal-ledger/personal-ledger.conf";
+        assert_eq!(fit(full.chars().count()), full);
+        assert_eq!(fit(200), full);
+        // `~/` and `…/` are as long, so the first fall is to the last folder and the file.
+        assert_eq!(
+            fit(full.chars().count() - 1),
+            "\u{2026}/personal-ledger/personal-ledger.conf"
+        );
+        assert_eq!(fit(38), "\u{2026}/personal-ledger/personal-ledger.conf");
+        let deep = Path::new("/home/ian/a/bb/ccc/personal-ledger.conf");
+        assert_eq!(
+            fit_configuration_path(deep, Some(home), 29),
+            "\u{2026}/bb/ccc/personal-ledger.conf"
+        );
+        assert_eq!(
+            fit_configuration_path(deep, Some(home), 26),
+            "\u{2026}/ccc/personal-ledger.conf"
+        );
+        assert_eq!(fit(26), "\u{2026}/personal-ledger.conf");
+        assert_eq!(fit(5), "\u{2026}/personal-ledger.conf");
+    }
+
     #[test]
     fn expand_tilde_takes_a_leading_tilde_as_the_home_directory() {
         let home = Path::new("/home/ian");
@@ -4994,7 +5067,7 @@ mod tests {
             ],
         );
         assert!(
-            drawn(&mut shell).contains("no user config directory"),
+            drawn_at(&mut shell, 140, 30).contains("no user config directory"),
             "a Shell with nowhere to write keeps the Configuration rows read-only"
         );
     }
@@ -5526,7 +5599,12 @@ mod tests {
         crate::locale::init_for_tests();
         let mut shell = opened();
         shell.update(Action::OpenSettingsPage(SettingsPage::General));
-        let page_footer = footer(&mut shell);
+        // Wide enough for the configuration file label beside the hints.
+        let page_footer = drawn_at(&mut shell, 140, 30)
+            .lines()
+            .last()
+            .unwrap_or_default()
+            .to_string();
         assert!(
             page_footer.contains("[/] pages · p picker · esc settings"),
             "{page_footer}"

@@ -149,8 +149,13 @@ pub fn run_command(shell: &mut Shell, command: &str) {
 
 /// Every row of the frame as one string, drawn at [`WIDTH`] by [`HEIGHT`].
 pub fn screen(shell: &mut Shell) -> String {
+    screen_at(shell, WIDTH)
+}
+
+/// [`screen`] at `width` columns.
+pub fn screen_at(shell: &mut Shell, width: u16) -> String {
     let mut terminal =
-        Terminal::new(TestBackend::new(WIDTH, HEIGHT)).expect("test backend should initialise");
+        Terminal::new(TestBackend::new(width, HEIGHT)).expect("test backend should initialise");
     terminal
         .draw(|frame| shell.draw(frame))
         .expect("drawing the shell should not error");

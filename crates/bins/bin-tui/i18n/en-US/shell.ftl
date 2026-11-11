@@ -43,6 +43,10 @@ tui-too-small-size = { $width } × { $height } · needs { $min-width } × { $min
 
 tui-footer-no-ledger = No Ledger open
 
+## The footer's right-hand label on a this device Settings page with no configuration file.
+
+tui-footer-no-configuration-file = no configuration file
+
 ## The Dashboard's place while no Ledger is open: two lines, centred. `$new` and `$open` are the
 ## `:new` and `:open` command names, never translated; the renderer bolds the tagged spans.
 

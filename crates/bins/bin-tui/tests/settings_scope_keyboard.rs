@@ -4,7 +4,9 @@
 
 mod common;
 
-use common::{cold_shell, press, read, run_command, screen, shell, type_text, writing_config};
+use common::{
+    cold_shell, press, read, run_command, screen, screen_at, shell, type_text, writing_config,
+};
 
 const REFUSED: &str = "No Ledger open: :open or :new first";
 
@@ -213,4 +215,53 @@ fn with_no_ledger_open_toasts_still_toggle_on_general() {
     type_text(&mut shell, " ");
 
     assert_eq!(read(&path), "[General]\ntoasts = false\n");
+}
+
+/// `shell` with its Settings writing to a configuration file under nested folders, so the path is
+/// long enough to need fitting.
+fn with_deep_config(shell: bin_tui::Shell, dir: &tempfile::TempDir) -> (bin_tui::Shell, String) {
+    let path = dir
+        .path()
+        .join("one")
+        .join("two")
+        .join("personal-ledger.conf");
+    let writer = lib_config::ConfigWriter::new(Some(path.clone()), Vec::new(), std::iter::empty());
+    let shell = shell.with_configuration(&lib_config::Config::default(), writer);
+    (shell, path.display().to_string())
+}
+
+#[test]
+fn a_this_device_page_names_the_configuration_file_on_the_hint_bar() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let (mut shell, path) = with_deep_config(shell(), &dir);
+    run_command(&mut shell, "settings general");
+
+    let wide = screen_at(&mut shell, 160);
+    assert!(hint_bar(&wide).trim_end().ends_with(&path), "{wide}");
+
+    let narrow = screen_at(&mut shell, 120);
+    let bar = hint_bar(&narrow).trim_end();
+    assert!(!bar.contains(&path), "{narrow}");
+    assert!(bar.ends_with("personal-ledger.conf"), "{narrow}");
+    assert!(bar.contains('\u{2026}'), "{narrow}");
+
+    run_command(&mut shell, "settings ledger");
+    let ledger = screen_at(&mut shell, 160);
+    assert!(
+        !hint_bar(&ledger).contains("personal-ledger.conf"),
+        "{ledger}"
+    );
+    assert!(hint_bar(&ledger).contains(".pldb"), "{ledger}");
+}
+
+#[test]
+fn with_no_ledger_open_general_still_names_the_configuration_file() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let (shell, path) = with_deep_config(cold_shell(None), &dir);
+    let mut shell = shell;
+    run_command(&mut shell, "settings general");
+
+    let frame = screen_at(&mut shell, 160);
+
+    assert!(hint_bar(&frame).trim_end().ends_with(&path), "{frame}");
 }
