@@ -13,7 +13,7 @@ This package replaces the earlier "database-backed settings" draft (a generic ke
 
 The index page, the picker and the docked index draw the two groups under their headings, which replace the earlier `●` / `○` scope glyphs and legend. On the index page each heading also carries its page count and sync scope on the right (`5 pages · never synced`, `12 pages · synced with the Ledger`) and a dim line under it that explains the divide: this device *Stays on this computer and never syncs. Applies whichever Ledger is open, or none.*; this ledger *Saved in the Ledger and synced with it, so every device that opens it shares them.*
 
-Twenty-three cards are drawn: the index page and the page picker, then one per page plus General after Test, the Settings-with-no-Ledger-open frame, the Ledger editing states and the Sync Server dialog:
+Twenty-eight cards are drawn: the index page and the page picker, then one per page plus General after Test, General's Locale and Data folder states, `:data`, the Settings-with-no-Ledger-open frame, the Ledger editing states and the Sync Server dialog:
 
 | ID | Local | Page or state | Desktop equivalent |
 | --- | --- | --- | --- |
@@ -21,6 +21,11 @@ Twenty-three cards are drawn: the index page and the page picker, then one per p
 | TUI-048 | — | Page picker, a centred popup over Ledger | DESKTOP-120, as a popup |
 | TUI-058 | — | General | DESKTOP-178 |
 | TUI-061 | — | General, after Test: the four test Toasts | DESKTOP-184 |
+| TUI-062 | — | General, Locale changed: saved, applies at the next start | DESKTOP-185 |
+| TUI-063 | — | General, Locale and Data folder overridden | DESKTOP-186 |
+| TUI-064 | — | General, the Data folder picker | DESKTOP-187 |
+| TUI-065 | — | General, after Use | DESKTOP-188 |
+| TUI-066 | — | `:data` from another View | DESKTOP-189 |
 | TUI-059 | — | Settings with no Ledger open | DESKTOP-179 |
 | TUI-032 | 4d | Display | DESKTOP-064 (16f) |
 | TUI-034 | 4f | AI Connections | DESKTOP-072 (16v) |
@@ -154,6 +159,8 @@ Settings has two places: the **index page** and a **page**. With no Ledger open,
 | `tab` | — | next block on pages with two (Units, AI Connections, Backup) |
 | `u` / `ctrl r` | undo / redo the last change, anywhere in the app (History) | same |
 
+In the Data folder picker (TUI-064): `j` / `k` (or `↑` / `↓`) move · `l` or `enter` into the folder under the cursor (`../` goes up; a file does nothing) · `h` or `backspace` up · `u` use the folder shown · `esc` close with nothing changed. It opens in the current Data folder and the mode stays `NORMAL`. `u` stands in for the Desktop's `ctrl-enter`, which many terminals send as `enter`.
+
 In the page picker: `j` / `k` (or `↑` / `↓`) move · `g` / `G` first / last · `enter` opens the selected page · `esc` closes the picker and stays on the page. It opens with the current page selected. There is no filter: all 17 pages are in view, and the mode stays `NORMAL`.
 
 Inside an open field (mode `INSERT`): `←→` choose · `space` toggle · `enter` save · `esc` keep the old value · `tab` save and move to the next field.
@@ -167,7 +174,7 @@ Page keys (shown in the hint bar):
 | Sync Server | `s` sync now · `e` edit (dialog) |
 | Backup | `b` back up now · `X` export ledger (CSV) · `e` edit Git backup (dialog) · `P` push now |
 | History | `enter` restore to here (or redo to here, on a greyed row) · `f` area filter |
-| General | `enter` edit · `space` toggle Toasts · `t` test Toasts, with Toasts selected (`t test` joins the hints only then) |
+| General | `enter` edit; on Data folder, `enter change` opens the folder picker · `space` toggle Toasts · `t` test Toasts, with Toasts selected (`t test` joins the hints only then) |
 | Logs | `←→` level · `j/k` scroll · `g/G` newest / oldest · `C` clear · `y` copy line |
 | About | `j/k` link · `enter` open in the browser · `y` copy link |
 
@@ -183,10 +190,11 @@ set        <field> [value]     edits a Preference or Configuration field; withou
 sync       now | edit
 backup     now | export | git
 toasts     test                raises one Toast of each kind, as General's [ test ] does
+data                           opens the Data folder picker, as General's [ change… ] does
 undo | redo
 ```
 
-`:toasts test` works from any View, with or without a Ledger open: Success, Info, Warning, then Error, a second apart, each with its own test Message. `lib-toast` shows at most three, so the Error evicts the Success; the Toast History holds all four, and running it again merges each into its twin (`×2`). With Toasts Off the first three echo on the hint bar in turn and only the Error toasts (ADR-0027). `<page>` completes on the 17 index labels. With no Ledger open, `:settings <this ledger page>` answers `No Ledger open: :open or :new first` and opens nothing. A page opened by name sits on the index as if it had been opened from there, so `esc` goes back to the index page with it selected. `<field>` completes on the field names of the form pages (`fy-start`, `base`, `date-style`, `glyphs` …). TUI-020 shows the command line echoing the equivalent `:set`, which is how users learn the typed form.
+`:toasts test` works from any View, with or without a Ledger open: Success, Info, Warning, then Error, a second apart, each with its own test Message. `lib-toast` shows at most three, so the Error evicts the Success; the Toast History holds all four, and running it again merges each into its twin (`×2`). With Toasts Off the first three echo on the hint bar in turn and only the Error toasts (ADR-0027). `:data` works from any View, with or without a Ledger open: it opens the Data folder picker over that View, and `u` or `esc` returns to it as it was (TUI-066). It takes no path; the picker is the one way in, as on the Desktop. `<page>` completes on the 17 index labels. With no Ledger open, `:settings <this ledger page>` answers `No Ledger open: :open or :new first` and opens nothing. A page opened by name sits on the index as if it had been opened from there, so `esc` goes back to the index page with it selected. `<field>` completes on the field names of the form pages (`fy-start`, `base`, `date-style`, `glyphs` …). TUI-020 shows the command line echoing the equivalent `:set`, which is how users learn the typed form.
 
 ---
 
@@ -196,7 +204,7 @@ The content of each page is the Desktop's (see its Pages table). Only TUI-specif
 
 | Page | Scope | TUI notes |
 | --- | --- | --- |
-| **General** (TUI-058, TUI-061) | this device · never synced | Fields: **on start** (reopen last ledger · start with no ledger open, a segmented row), **start view** (the View the TUI opens on, a choice opened in place), **toasts** (`[x]`, moved from Display, [ADR-0027](../../../adr/0027-toasts-off-is-a-client-scoped-preference-and-errors-always-toast.md), with a **`[ test ]`** chip beside the checkbox: `t` while Toasts is selected, no row of its own, raises one Toast of each kind, see TUI-061), **locale** read-only ([ADR-0021](../../../adr/0021-locale-owns-formatting-and-replaces-number-and-date-preferences.md)) and the **ledger folder** (`data`, where `:open` and `:new` start) read-only. Below them a THIS DEVICE box: the last ledger, which on start reopens, and the config file in use. |
+| **General** (TUI-058, TUI-061–066) | this device · never synced | Fields: **on start** (reopen last ledger · start with no ledger open, a segmented row), **start view** (the View the TUI opens on, a choice opened in place), **toasts** (`[x]`, moved from Display, [ADR-0027](../../../adr/0027-toasts-off-is-a-client-scoped-preference-and-errors-always-toast.md), with a **`[ test ]`** chip beside the checkbox: `t` while Toasts is selected, no row of its own, raises one Toast of each kind, see TUI-061), **locale** ([ADR-0021](../../../adr/0021-locale-owns-formatting-and-replaces-number-and-date-preferences.md), [ADR-0057](../../../adr/0057-the-configuration-files-sections-mirror-the-settings-pages.md)), a segmented row of **system** (`now en-AU`, the Locale it resolves to), en-AU, en-GB and en-US, never the pseudo-Locale, opened in place; `enter` writes `[General] locale` at once (system removes the key) and a note says it applies at the next start (TUI-062). **Data folder** (was ledger folder, `data`), where Ledger files (`.pldb`) are looked for and Documents kept and where `:open` and `:new` start, with a **`[ change… ]`** chip: `enter` opens the Data folder picker, a popup over the page that picks the folder it shows (TUI-064), writes `[General] data` at once and returns with a Success Toast (TUI-065); the folder already set writes nothing. A Locale or Data folder overridden by a flag, an environment variable or a higher file stays editable, with a note naming the override and the value in effect (TUI-063). Below them a THIS DEVICE box: the last ledger, which on start reopens, and the config file in use. |
 | **Display** (TUI-032) | this device · never synced | Wholly this device ([ADR-0051](../../../adr/0051-colour-theme-appearance-and-date-style-are-client-scoped.md)): **Appearance** (light · dark · system), **Colour Theme** and **Date style** are Client-scoped Preferences ([ADR-0023](../../../adr/0023-colour-theme-preferences-and-theme-role-overrides.md)), the rest Configuration, so the rows carry no scope glyph. `enter` on Colour Theme opens the existing theme list popup. Desktop's Date format and Separator controls are replaced to follow [ADR-0021](../../../adr/0021-locale-owns-formatting-and-replaces-number-and-date-preferences.md): **Date style** (locale default · short · medium · long · iso) replaces date format, and there is no separator control. **Toasts** and the read-only **Locale** have moved to General. Status glyphs (unicode / ascii) carry over. TUI-only changes: **Row density** and **Hide sidebar** don't apply. **Terminal colours** (theme RGB / terminal palette, [ADR-0024](../../../adr/0024-tui-draws-colour-themes-in-rgb-with-opt-in-terminal-colours.md)) is added. Desktop's **Show keyboard navigation hints** becomes **hint bar**. The preview box redraws as you choose. |
 | **AI Connections** (TUI-034) | this device | Model providers and Assistant access (MCP server). Status is a glyph plus a word (`● connected`, `■ key rejected`), never colour alone. Per Client and never synced, and Assistants are read only: Read & write is drawn dim as "not yet offered" ([ADR-0034](../../../adr/0034-ai-connections-are-per-client-and-assistant-access-starts-read-only.md)). |
 | **Logs** (TUI-038) | this device · diagnostic | The level filter and `C clear logs` share one row. The log box takes the `Min(0)` and always draws the 1-col scrollbar. Lines are `[hh:mm:ss] <subsystem>: <message>`, newest first. |
@@ -237,6 +245,7 @@ settings_view
   page_state: per page — selected field/row, focused block, expanded tree nodes
   editor: None | Field { field, candidate, was }            // INSERT
   picker: None | Picker { selected }
+  folder_picker: None | FolderPicker { path, cursor, return_to }   // TUI-064; :data opens it over any View
   overlay: None | BaseUnitGuard { to, typed } | EditSyncServer | SetupGitBackup
          | AddProvider | EditProvider(id) | AddAssistant | the domain forms (unit, account, …)
 ```
@@ -265,11 +274,11 @@ Never rely on colour alone. Scope is the group a page sits under, failures use `
 3. **`bin-tui` still draws the retired two-pane groups layout** (`src/view/settings.rs`). Stage 1 of `CLAUDE_CODE.md` replaces it with the index page and page host.
 4. **Window Sizes are decided in [ADR-0050](../../../adr/0050-the-tui-takes-the-desktops-window-sizes-in-columns.md)**, which also sets the 96 × 24 floor below which the Shell draws "terminal too small".
 5. **Only TUI-049–057 and TUI-060 are drawn per size.** The other list pages follow TUI-056's pattern with the groups in the Desktop's DESKTOP-141–148 rows; the other form pages follow TUI-052.
-6. **Only Ledger is drawn per size among the renamed pages.** TUI-049, TUI-050 and TUI-052 draw Ledger (was General); the new General page is drawn only at the floor (TUI-058, TUI-061) and follows TUI-052 at larger sizes, its hint bar's right side the full configuration file once the hints leave room.
+6. **Only Ledger is drawn per size among the renamed pages.** TUI-049, TUI-050 and TUI-052 draw Ledger (was General); the new General page is drawn only at the floor (TUI-058, TUI-061–066) and follows TUI-052 at larger sizes, its hint bar's right side the full configuration file once the hints leave room.
 7. **The index page's scope lines are drawn on TUI-047, TUI-059, TUI-051 and TUI-060.** Every other card that draws the docked index shows only its group headings, as the docked index always does.
 
 ## Files
 
-- `Ledger TUI Settings.dc.html` — turn 4: TUI-047 and TUI-048, then General (TUI-058) and General after Test (TUI-061), Settings with no Ledger open (TUI-059) and the other pages in index order (this device, then this ledger), at the 96-column floor. Turn 5: the Window Size cards TUI-049–057 and TUI-060. Open through `mise run mockups`.
+- `Ledger TUI Settings.dc.html` — turn 4: TUI-047 and TUI-048, then General (TUI-058), General after Test (TUI-061), its Locale and Data folder states (TUI-062–065) and `:data` (TUI-066), Settings with no Ledger open (TUI-059) and the other pages in index order (this device, then this ledger), at the 96-column floor. Turn 5: the Window Size cards TUI-049–057 and TUI-060. Open through `mise run mockups`.
 - `support.js` — runtime for the HTML file, not part of the deliverable.
 - `CLAUDE_CODE.md` — the staged work plan for building this design in `bin-tui`.

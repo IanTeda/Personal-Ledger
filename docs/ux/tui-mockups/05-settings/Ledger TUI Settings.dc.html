@@ -189,7 +189,7 @@ a{color:var(--color-accent,#ec3013);text-underline-offset:3px}a:hover{color:var(
       <div class="ph"><b>Settings</b><span>17 pages</span></div>
       <div class="hd ixg">this device<span>5 pages · never synced</span></div>
       <div class="row ixs" style="grid-template-columns:1fr"><span class="mut">Stays on this computer and never syncs. Applies whichever Ledger is open, or none.</span></div>
-      <div class="row ixp"><span>General</span><span class="mut">on start, toasts, locale and the ledger folder</span><span class="mut">›</span></div>
+      <div class="row ixp"><span>General</span><span class="mut">on start, toasts, locale and the data folder</span><span class="mut">›</span></div>
       <div class="row ixp sel"><span>Display</span><span class="mut">appearance, colour theme, date style, glyphs and hint bar</span><span class="mut">›</span></div>
       <div class="row ixp"><span>AI connections</span><span class="mut">model providers and assistant access</span><span class="mut">›</span></div>
       <div class="row ixp"><span>Logs</span><span class="mut">log level and the live log</span><span class="mut">›</span></div>
@@ -261,7 +261,7 @@ a{color:var(--color-accent,#ec3013);text-underline-offset:3px}a:hover{color:var(
 
 <!-- ═════════ TUI-058 General ═════════ -->
 <div class="dv-opt" id="TUI-058">
-<div class="dv-olabel"><a class="dv-oid" href="#TUI-058">TUI-058</a><span><b>Settings › General.</b> The first page, and the first of the <b>this device</b> group: what belongs to this device and applies whichever Ledger is open, or none. <b>On start</b> chooses which Ledger the TUI opens as it starts: reopen the last one (the default; none if none was open when it quit) or start with no Ledger open. A file named by <code>--file</code> or <code>file</code> always wins. <b>Start view</b> is the View it opens on. <b>Toasts</b> moved here from Display, with a <b>[ test ]</b> chip beside the checkbox (TUI-061). The <b>locale</b> and the <b>ledger folder</b> (<code>data</code>, where <code>:open</code> and <code>:new</code> start) are read-only: they change in the config file. The hint bar's right side names the <b>configuration file</b> Settings writes, as on every this device page, fitted to the room the hints leave: here <code>…/personal-ledger.conf</code>.</span></div>
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-058">TUI-058</a><span><b>Settings › General.</b> The first page, and the first of the <b>this device</b> group: what belongs to this device and applies whichever Ledger is open, or none. <b>On start</b> chooses which Ledger the TUI opens as it starts: reopen the last one (the default; none if none was open when it quit) or start with no Ledger open. A file named by <code>--file</code> or <code>file</code> always wins. <b>Start view</b> is the View it opens on. <b>Toasts</b> moved here from Display, with a <b>[ test ]</b> chip beside the checkbox (TUI-061). <b>Locale</b> is a segmented row, <b>system</b> (with <code>now en-AU</code>, the Locale it resolves to) then en-AU, en-GB and en-US, opened in place like any field; it applies at the next start (TUI-062). <b>Data folder</b> (was ledger folder, <code>data</code>) is where Ledger files are looked for and Documents kept, and where <code>:open</code> and <code>:new</code> start; <code>enter</code> on it, or the <b>[ change… ]</b> chip, opens the folder picker (TUI-064). A flag or an environment variable that overrides either is named under it (TUI-063). The hint bar's right side names the <b>configuration file</b> Settings writes, as on every this device page, fitted to the room the hints leave: here <code>…/personal-ledger.conf</code>.</span></div>
 <div class="dv-card" style="width:700px">
 <div class="t" style="height:470px">
   <div class="tbar"><span><b>Personal Ledger</b></span><span>✓ Synced 14:22</span></div>
@@ -271,8 +271,10 @@ a{color:var(--color-accent,#ec3013);text-underline-offset:3px}a:hover{color:var(
       <div class="row sel" style="grid-template-columns:138px 1fr"><span>on start</span><span>[reopen last ledger] &nbsp;start with no ledger open</span></div>
       <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">start view</span><span>dashboard</span></div>
       <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">toasts</span><span>[x] show toasts &nbsp;&nbsp;<b>[ test ]</b> <span class="mut">&nbsp;errors always show</span></span></div>
-      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">locale</span><span>en-AU <span class="mut">· from the config file · read-only</span></span></div>
-      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">ledger folder</span><span>~/documents/ledgers <span class="mut">· data · read-only</span></span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">locale</span><span>[system] &nbsp;en-AU &nbsp;en-GB &nbsp;en-US <span class="mut">&nbsp;now en-AU</span></span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:0"><span></span><span class="mut">how dates, numbers and money read · system follows this computer</span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">data folder</span><span>~/documents/ledgers &nbsp;&nbsp;<b>[ change… ]</b></span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:0"><span></span><span class="mut">where Ledger files (.pldb) are looked for and Documents kept</span></div>
       <div class="hd tight">this device</div>
       <div class="box">
         <div class="row" style="grid-template-columns:110px 1fr;padding:0"><span class="mut">last ledger</span><span>~/documents/ledgers/teda.pldb</span></div>
@@ -299,8 +301,10 @@ a{color:var(--color-accent,#ec3013);text-underline-offset:3px}a:hover{color:var(
       <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">on start</span><span>[reopen last ledger] &nbsp;start with no ledger open</span></div>
       <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">start view</span><span>dashboard</span></div>
       <div class="row sel" style="grid-template-columns:138px 1fr"><span>toasts</span><span>[x] show toasts &nbsp;&nbsp;<b>[ test ]</b> <span class="mut">&nbsp;errors always show</span></span></div>
-      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">locale</span><span>en-AU <span class="mut">· from the config file · read-only</span></span></div>
-      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">ledger folder</span><span>~/documents/ledgers <span class="mut">· data · read-only</span></span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">locale</span><span>[system] &nbsp;en-AU &nbsp;en-GB &nbsp;en-US <span class="mut">&nbsp;now en-AU</span></span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:0"><span></span><span class="mut">how dates, numbers and money read · system follows this computer</span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">data folder</span><span>~/documents/ledgers &nbsp;&nbsp;<b>[ change… ]</b></span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:0"><span></span><span class="mut">where Ledger files (.pldb) are looked for and Documents kept</span></div>
       <div class="hd tight">this device</div>
       <div class="box">
         <div class="row" style="grid-template-columns:110px 1fr;padding:0"><span class="mut">last ledger</span><span>~/documents/ledgers/teda.pldb</span></div>
@@ -318,6 +322,161 @@ a{color:var(--color-accent,#ec3013);text-underline-offset:3px}a:hover{color:var(
 </div>
 </div>
 
+<!-- ═════════ TUI-062 General, Locale changed ═════════ -->
+<div class="dv-opt" id="TUI-062">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-062">TUI-062</a><span><b>General, Locale changed.</b> Locale selected, <code>enter</code> opens it in place (<code>INSERT</code>), <code>←→</code> to en-US and <code>enter</code> saves: <code>[General] locale = en-US</code> is written at once (<b>system</b> removes the key), but the Locale applies only at the next start, so the page still reads en-AU and a note under the row says so. Choosing the running Locale again, or the system it resolves to, clears the note. <code>esc</code> keeps the old value. No Toast. As DESKTOP-185.</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px;position:relative">
+  <div class="tbar"><span><b>Personal Ledger</b></span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    <div class="pane">
+      <div class="ph"><b><span class="mut">Settings ›</span> General</b><span>this device · never synced</span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">on start</span><span>[reopen last ledger] &nbsp;start with no ledger open</span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">start view</span><span>dashboard</span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">toasts</span><span>[x] show toasts &nbsp;&nbsp;<b>[ test ]</b> <span class="mut">&nbsp;errors always show</span></span></div>
+      <div class="row sel" style="grid-template-columns:138px 1fr"><span>locale</span><span>system &nbsp;en-AU &nbsp;en-GB &nbsp;[en-US] <span class="mut">&nbsp;now en-AU</span></span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:0"><span></span><span class="neg">■ Saved. en-US applies when Personal Ledger next starts; until then it reads en-AU.</span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:0"><span></span><span class="mut">how dates, numbers and money read · system follows this computer</span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">data folder</span><span>~/documents/ledgers &nbsp;&nbsp;<b>[ change… ]</b></span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:0"><span></span><span class="mut">where Ledger files (.pldb) are looked for and Documents kept</span></div>
+      <div class="hd tight">this device</div>
+      <div class="box">
+        <div class="row" style="grid-template-columns:110px 1fr;padding:0"><span class="mut">last ledger</span><span>~/documents/ledgers/teda.pldb</span></div>
+        <div class="row" style="grid-template-columns:110px 1fr;padding:0"><span class="mut">config file</span><span>~/.config/personal-ledger/personal-ledger.conf</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="tk"><span><span class="k">j/k</span>field</span><span><span class="k">enter</span>edit</span><span><span class="k">[/]</span>pages</span><span><span class="k">p</span>picker</span><span><span class="k">esc</span>settings</span><span style="margin-left:auto">…/personal-ledger.conf</span></div>
+</div>
+</div>
+</div>
+
+<!-- ═════════ TUI-063 General, overridden ═════════ -->
+<div class="dv-opt" id="TUI-063">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-063">TUI-063</a><span><b>General, overridden.</b> Started with <code>--locale en-GB</code> and <code>PERSONAL_LEDGER_GENERAL__DATA=~/sync/ledgers</code>. Both rows stay editable and still write the file; each shows the file's value, with a note naming the override and the value in effect. A higher configuration file reads the same, naming the file. As DESKTOP-186.</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px;position:relative">
+  <div class="tbar"><span><b>Personal Ledger</b></span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    <div class="pane">
+      <div class="ph"><b><span class="mut">Settings ›</span> General</b><span>this device · never synced</span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">on start</span><span>[reopen last ledger] &nbsp;start with no ledger open</span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">start view</span><span>dashboard</span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">toasts</span><span>[x] show toasts &nbsp;&nbsp;<b>[ test ]</b> <span class="mut">&nbsp;errors always show</span></span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">locale</span><span>[system] &nbsp;en-AU &nbsp;en-GB &nbsp;en-US <span class="mut">&nbsp;now en-AU</span></span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:0"><span></span><span class="neg">■ --locale en-GB overrides this for this run, so it reads en-GB. Your choice is kept.</span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:0"><span></span><span class="mut">how dates, numbers and money read · system follows this computer</span></div>
+      <div class="row sel" style="grid-template-columns:138px 1fr"><span>data folder</span><span>~/documents/ledgers &nbsp;&nbsp;<b>[ change… ]</b></span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:0"><span></span><span class="neg">■ PERSONAL_LEDGER_GENERAL__DATA sets ~/sync/ledgers until unset, so :open and :new start there.</span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:0"><span></span><span class="mut">where Ledger files (.pldb) are looked for and Documents kept</span></div>
+      <div class="hd tight">this device</div>
+      <div class="box">
+        <div class="row" style="grid-template-columns:110px 1fr;padding:0"><span class="mut">last ledger</span><span>~/documents/ledgers/teda.pldb</span></div>
+        <div class="row" style="grid-template-columns:110px 1fr;padding:0"><span class="mut">config file</span><span>~/.config/personal-ledger/personal-ledger.conf</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="tk"><span><span class="k">j/k</span>field</span><span><span class="k">enter</span>change</span><span><span class="k">[/]</span>pages</span><span><span class="k">p</span>picker</span><span><span class="k">esc</span>settings</span><span style="margin-left:auto">…/personal-ledger.conf</span></div>
+</div>
+</div>
+</div>
+
+<!-- ═════════ TUI-064 Folder picker ═════════ -->
+<div class="dv-opt" id="TUI-064">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-064">TUI-064</a><span><b>Folder picker.</b> Data folder selected, then <code>enter</code> (or the <b>[ change… ]</b> chip): a popup centred over the dimmed page, the page picker's treatment, titled <b>Choose data folder</b> with <code>now ~/documents/ledgers</code> on its right. It opens in the current Data folder and is drawn walked to <code>~/documents/finance</code>; the path it shows is the folder it picks. Folders are the targets: <code>j/k</code> move, <code>l</code> or <code>enter</code> walks into the folder under the cursor (<code>../</code> goes up), <code>h</code> or <code>backspace</code> goes up. Files are listed dim and inert, so the Ledgers there can be seen; hidden files are hidden. <code>u</code> uses the folder shown, named in the hint and the <b>[ use finance ]</b> chip; the Desktop's <code>ctrl-enter</code> isn't used because many terminals send it as <code>enter</code>. <code>esc</code> returns with nothing changed. The mode stays <code>NORMAL</code>. The TUI's twin of the Desktop explorer's folder-picking mode (Shell 1e·pick, DESKTOP-187); <code>:open</code> and <code>:new</code> keep their typed paths.</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px;position:relative">
+  <div class="tbar"><span><b>Personal Ledger</b></span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    <div class="pane" style="opacity:.3">
+      <div class="ph"><b><span class="mut">Settings ›</span> General</b><span>this device · never synced</span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">on start</span><span>[reopen last ledger] &nbsp;start with no ledger open</span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">start view</span><span>dashboard</span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">toasts</span><span>[x] show toasts &nbsp;&nbsp;<b>[ test ]</b> <span class="mut">&nbsp;errors always show</span></span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">locale</span><span>[system] &nbsp;en-AU &nbsp;en-GB &nbsp;en-US <span class="mut">&nbsp;now en-AU</span></span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:0"><span></span><span class="mut">how dates, numbers and money read · system follows this computer</span></div>
+      <div class="row sel" style="grid-template-columns:138px 1fr"><span>data folder</span><span>~/documents/ledgers &nbsp;&nbsp;<b>[ change… ]</b></span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:0"><span></span><span class="mut">where Ledger files (.pldb) are looked for and Documents kept</span></div>
+      <div class="hd tight">this device</div>
+      <div class="box">
+        <div class="row" style="grid-template-columns:110px 1fr;padding:0"><span class="mut">last ledger</span><span>~/documents/ledgers/teda.pldb</span></div>
+        <div class="row" style="grid-template-columns:110px 1fr;padding:0"><span class="mut">config file</span><span>~/.config/personal-ledger/personal-ledger.conf</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="ovl pick" style="width:440px">
+    <div class="pkh"><b>Choose data folder</b><span class="mut">now ~/documents/ledgers</span></div>
+    <div class="pkb">
+      <div class="row" style="grid-template-columns:1fr;padding:0 0 2px;border-bottom:1px solid #d7d3d3">~/documents/finance/</div>
+      <div class="row" style="grid-template-columns:1fr;padding:2px 0 0"><span>&nbsp;&nbsp;../</span></div>
+      <div class="row sel" style="grid-template-columns:1fr;margin:0 -9px;padding:0 9px"><span>▸ 2025/</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:0"><span style="color:#cfcaca">&nbsp;&nbsp;house.pldb</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:0 0 2px"><span style="color:#cfcaca">&nbsp;&nbsp;statement.csv</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:2px 0 0;border-top:1px solid #d7d3d3"><span class="mut">Picks the folder you're in. Files show what's there; nothing is moved.</span></div>
+      <div class="row" style="grid-template-columns:1fr;padding:2px 0 0;text-align:right"><span>[ cancel ] &nbsp;<b class="neg">[ use finance ]</b></span></div>
+    </div>
+  </div>
+  <div class="tk"><span><span class="k">j/k</span>move</span><span><span class="k">l/enter</span>into folder</span><span><span class="k">h</span>up</span><span><span class="k">u</span>use finance</span><span><span class="k">esc</span>cancel</span><span style="margin-left:auto">…/personal-ledger.conf</span></div>
+</div>
+</div>
+</div>
+
+<!-- ═════════ TUI-065 General, after Use ═════════ -->
+<div class="dv-opt" id="TUI-065">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-065">TUI-065</a><span><b>General, after Use.</b> <code>u</code> closes the picker onto General with Data folder selected and <code>~/documents/finance</code> shown, and a Success Toast <b>Data folder is now ~/documents/finance</b> (echoed on the hint bar's left with Toasts Off). <code>[General] data</code> is written and applies at once: the next <code>:open</code> or <code>:new</code> starts there. Nothing moves; the open Ledger stays open and the last ledger is unchanged. Using the folder already set closes with no write and no Toast. As DESKTOP-188.</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px;position:relative">
+  <div class="tbar"><span><b>Personal Ledger</b></span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    <div class="pane">
+      <div class="ph"><b><span class="mut">Settings ›</span> General</b><span>this device · never synced</span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">on start</span><span>[reopen last ledger] &nbsp;start with no ledger open</span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">start view</span><span>dashboard</span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">toasts</span><span>[x] show toasts &nbsp;&nbsp;<b>[ test ]</b> <span class="mut">&nbsp;errors always show</span></span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:1px 0"><span class="mut">locale</span><span>[system] &nbsp;en-AU &nbsp;en-GB &nbsp;en-US <span class="mut">&nbsp;now en-AU</span></span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:0"><span></span><span class="mut">how dates, numbers and money read · system follows this computer</span></div>
+      <div class="row sel" style="grid-template-columns:138px 1fr"><span>data folder</span><span>~/documents/finance &nbsp;&nbsp;<b>[ change… ]</b></span></div>
+      <div class="row" style="grid-template-columns:138px 1fr;padding:0"><span></span><span class="mut">where Ledger files (.pldb) are looked for and Documents kept</span></div>
+      <div class="hd tight">this device</div>
+      <div class="box">
+        <div class="row" style="grid-template-columns:110px 1fr;padding:0"><span class="mut">last ledger</span><span>~/documents/ledgers/teda.pldb</span></div>
+        <div class="row" style="grid-template-columns:110px 1fr;padding:0"><span class="mut">config file</span><span>~/.config/personal-ledger/personal-ledger.conf</span></div>
+      </div>
+    </div>
+  </div>
+  <div style="position:absolute;right:0;bottom:24px;display:flex;flex-direction:column;align-items:flex-end">
+    <div class="box" style="background:#fffdf8;padding:2px 7px"><span style="color:#1a7f37">▌ ✓</span> Data folder is now ~/documents/finance</div>
+  </div>
+  <div class="tk"><span><span class="k">j/k</span>field</span><span><span class="k">enter</span>change</span><span><span class="k">[/]</span>pages</span><span><span class="k">p</span>picker</span><span><span class="k">esc</span>settings</span><span style="margin-left:auto">…/personal-ledger.conf</span></div>
+</div>
+</div>
+</div>
+
+<!-- ═════════ TUI-066 :data from anywhere ═════════ -->
+<div class="dv-opt" id="TUI-066">
+<div class="dv-olabel"><a class="dv-oid" href="#TUI-066">TUI-066</a><span><b><code>:data</code> from anywhere.</b> The command popup with <code>data</code> typed over Units, <b>data · change data folder</b> the only match. <code>enter</code> opens TUI-064's picker over whatever View is showing, with or without a Ledger open (over the empty shell too); <code>u</code> or <code>esc</code> returns to that View as it was, the Success Toast raised over it. <code>:data</code> takes no path: the picker is the one way in, as on the Desktop (DESKTOP-189).</span></div>
+<div class="dv-card" style="width:700px">
+<div class="t" style="height:470px;position:relative">
+  <div class="tbar"><span><b>Personal Ledger</b></span><span>✓ Synced 14:22</span></div>
+  <div class="tbody">
+    <div class="pane" style="opacity:.3">
+      <div class="ph"><b>Units</b><span>6 units</span></div>
+      <div class="row" style="grid-template-columns:60px 240px 1fr;padding:0"><span class="mut">code</span><span class="mut">name</span><span class="mut">kind</span></div>
+      <div class="row" style="grid-template-columns:60px 240px 1fr;padding:0"><span>AUD</span><span>Australian dollar</span><span>currency</span></div>
+      <div class="row sel" style="grid-template-columns:60px 240px 1fr;padding:0"><span>USD</span><span>US dollar</span><span>currency</span></div>
+      <div class="row" style="grid-template-columns:60px 240px 1fr;padding:0"><span>BTC</span><span>Bitcoin</span><span>crypto</span></div>
+      <div class="row" style="grid-template-columns:60px 240px 1fr;padding:0"><span>VAS</span><span>Vanguard Aus Shares</span><span>security</span></div>
+    </div>
+  </div>
+  <div class="ovl" style="position:absolute;left:8px;bottom:44px;width:320px;padding:3px 9px">
+    <div class="row sel" style="grid-template-columns:70px 1fr;margin:0 -9px;padding:0 9px"><span>data</span><span>change data folder</span></div>
+  </div>
+  <div class="cmd">:data<span class="neg">▌</span></div>
+  <div class="tk"><span><span class="k">enter</span>run</span><span><span class="k">tab</span>complete</span><span><span class="k">esc</span>cancel</span><span style="margin-left:auto">teda.pldb</span></div>
+</div>
+</div>
+</div>
+
 <!-- ═════════ TUI-059 Settings with no Ledger open ═════════ -->
 <div class="dv-opt" id="TUI-059">
 <div class="dv-olabel"><a class="dv-oid" href="#TUI-059">TUI-059</a><span><b>Settings with no Ledger open.</b> <code>g s</code> and <code>:settings</code> work with no Ledger open, landing on the index page as always (DESKTOP-119, DESKTOP-181). The <b>this ledger</b> rows are drawn dim and refused: <code>enter</code> on one, <code>[</code> / <code>]</code> or the picker onto one, or <code>:settings units</code> keeps you where you are and answers <b>No Ledger open: :open or :new first</b> on the status line, as drawn after <code>enter</code> on Units. The hint bar's right side reads <code>No Ledger open</code>, as on the cold-start screen.</span></div>
@@ -329,7 +488,7 @@ a{color:var(--color-accent,#ec3013);text-underline-offset:3px}a:hover{color:var(
       <div class="ph"><b>Settings</b><span>17 pages · 5 without a Ledger</span></div>
       <div class="hd ixg">this device<span>5 pages · never synced</span></div>
       <div class="row ixs" style="grid-template-columns:1fr"><span class="mut">Stays on this computer and never syncs. Applies whichever Ledger is open, or none.</span></div>
-      <div class="row ixp sel"><span>General</span><span class="mut">on start, toasts, locale and the ledger folder</span><span class="mut">›</span></div>
+      <div class="row ixp sel"><span>General</span><span class="mut">on start, toasts, locale and the data folder</span><span class="mut">›</span></div>
       <div class="row ixp"><span>Display</span><span class="mut">appearance, colour theme, date style, glyphs and hint bar</span><span class="mut">›</span></div>
       <div class="row ixp"><span>AI connections</span><span class="mut">model providers and assistant access</span><span class="mut">›</span></div>
       <div class="row ixp"><span>Logs</span><span class="mut">log level and the live log</span><span class="mut">›</span></div>
@@ -991,7 +1150,7 @@ a{color:var(--color-accent,#ec3013);text-underline-offset:3px}a:hover{color:var(
       <div class="ph"><b>Settings</b><span>17 pages</span></div>
       <div class="hd ixg">this device<span>5 pages · never synced</span></div>
       <div class="row ixs" style="grid-template-columns:1fr"><span class="mut">Stays on this computer and never syncs. Applies whichever Ledger is open, or none.</span></div>
-      <div class="row ixp sel" style="grid-template-columns:18ch 1fr auto"><span>General</span><span class="mut">on start, toasts, locale and the ledger folder</span><span class="mut">›</span></div>
+      <div class="row ixp sel" style="grid-template-columns:18ch 1fr auto"><span>General</span><span class="mut">on start, toasts, locale and the data folder</span><span class="mut">›</span></div>
       <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Display</span><span class="mut">appearance, colour theme, date style, glyphs and hint bar</span><span class="mut">›</span></div>
       <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>AI connections</span><span class="mut">model providers and assistant access</span><span class="mut">›</span></div>
       <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Logs</span><span class="mut">log level and the live log</span><span class="mut">›</span></div>
@@ -1029,7 +1188,7 @@ a{color:var(--color-accent,#ec3013);text-underline-offset:3px}a:hover{color:var(
       <div class="ph"><b>Settings</b><span>17 pages</span></div>
       <div class="hd ixg">this device<span>5 pages · never synced</span></div>
       <div class="row ixs" style="grid-template-columns:1fr"><span class="mut">Stays on this computer and never syncs. Applies whichever Ledger is open, or none.</span></div>
-      <div class="row ixp sel" style="grid-template-columns:18ch 1fr auto"><span>General</span><span class="mut">on start, toasts, locale and the ledger folder</span><span class="mut">›</span></div>
+      <div class="row ixp sel" style="grid-template-columns:18ch 1fr auto"><span>General</span><span class="mut">on start, toasts, locale and the data folder</span><span class="mut">›</span></div>
       <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Display</span><span class="mut">appearance, colour theme, date style, glyphs and hint bar</span><span class="mut">›</span></div>
       <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>AI connections</span><span class="mut">model providers and assistant access</span><span class="mut">›</span></div>
       <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Logs</span><span class="mut">log level and the live log</span><span class="mut">›</span></div>
@@ -1049,7 +1208,7 @@ a{color:var(--color-accent,#ec3013);text-underline-offset:3px}a:hover{color:var(
       <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>Backup</span><span class="mut">local backups, export and Git backup</span><span class="mut">›</span></div>
       <div class="row ixp" style="grid-template-columns:18ch 1fr auto"><span>History</span><span class="mut">every change, with undo and restore</span><span class="mut">›</span></div>
     </div></div>
-    <div class="pane wsdetail"><div class="hd tight">page</div><div class="row" style="grid-template-columns:1fr"><span><b>General</b></span></div><div class="row" style="grid-template-columns:1fr"><span class="mut">this device · never synced</span></div><div class="row" style="grid-template-columns:1fr"><span class="mut">How Personal Ledger starts on this computer and where it looks for Ledger files. Nothing here changes a Ledger.</span></div><div class="row" style="grid-template-columns:18ch 1fr"><span class="mut">on start</span><span>reopen last Ledger</span></div><div class="row" style="grid-template-columns:18ch 1fr"><span class="mut">toasts</span><span>on</span></div><div class="row" style="grid-template-columns:18ch 1fr"><span class="mut">locale</span><span>en-AU · read-only</span></div><div class="row" style="grid-template-columns:18ch 1fr"><span class="mut">ledger folder</span><span>~/documents/ledgers</span></div><div class="wskeys"><span><span class="k">enter</span>open General</span></div><div class="hd tight">this device or this ledger</div><div class="row" style="grid-template-columns:1fr"><span class="mut"><b>This device</b> settings live in personal-ledger.conf on this computer. Another computer keeps its own, and they work with no Ledger open.</span></div><div class="row" style="grid-template-columns:1fr;margin-top:15px"><span class="mut"><b>This ledger</b> settings live in the Ledger file and sync with it. Change one here and every device that opens the Ledger sees it. They need a Ledger open.</span></div></div>
+    <div class="pane wsdetail"><div class="hd tight">page</div><div class="row" style="grid-template-columns:1fr"><span><b>General</b></span></div><div class="row" style="grid-template-columns:1fr"><span class="mut">this device · never synced</span></div><div class="row" style="grid-template-columns:1fr"><span class="mut">How Personal Ledger starts on this computer and where it looks for Ledger files. Nothing here changes a Ledger.</span></div><div class="row" style="grid-template-columns:18ch 1fr"><span class="mut">on start</span><span>reopen last Ledger</span></div><div class="row" style="grid-template-columns:18ch 1fr"><span class="mut">toasts</span><span>on</span></div><div class="row" style="grid-template-columns:18ch 1fr"><span class="mut">locale</span><span>en-AU · read-only</span></div><div class="row" style="grid-template-columns:18ch 1fr"><span class="mut">data folder</span><span>~/documents/ledgers</span></div><div class="wskeys"><span><span class="k">enter</span>open General</span></div><div class="hd tight">this device or this ledger</div><div class="row" style="grid-template-columns:1fr"><span class="mut"><b>This device</b> settings live in personal-ledger.conf on this computer. Another computer keeps its own, and they work with no Ledger open.</span></div><div class="row" style="grid-template-columns:1fr;margin-top:15px"><span class="mut"><b>This ledger</b> settings live in the Ledger file and sync with it. Change one here and every device that opens the Ledger sees it. They need a Ledger open.</span></div></div>
   </div>
   <div class="tk"><span><span class="k">j/k</span>page</span><span><span class="k">enter</span>open</span><span><span class="k">g/G</span>first/last</span><span><span class="k">:settings</span>&lt;page&gt;</span><span><span class="k">u</span>undo</span><span><span class="k">esc</span>back</span></div>
 </div>
