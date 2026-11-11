@@ -1558,15 +1558,7 @@ impl Shell {
             }
             Action::TestToasts => {
                 self.command_popup = None;
-                self.toasts.raise_test(
-                    |kind| match kind {
-                        ToastKind::Success => lib_locale::msg::toast_test_success(),
-                        ToastKind::Info => lib_locale::msg::toast_test_info(),
-                        ToastKind::Warning => lib_locale::msg::toast_test_warning(),
-                        ToastKind::Error => lib_locale::msg::toast_test_error(),
-                    },
-                    Local::now(),
-                );
+                self.toasts.raise_test(lib_toast::test_text, Local::now());
             }
             Action::OpenToastHistory => {
                 self.command_popup = None;

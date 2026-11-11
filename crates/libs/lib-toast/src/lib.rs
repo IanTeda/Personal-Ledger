@@ -17,4 +17,4 @@ mod toasts;
 pub use history::{HISTORY_LIMIT, History, HistoryEntry};
 pub use kind::ToastKind;
 pub use notice::{Notice, Notify};
-pub use toasts::{Display, MAX_VISIBLE, TEST_INTERVAL, TEST_KINDS, Toast, Toasts};
+pub use toasts::{Display, MAX_VISIBLE, TEST_INTERVAL, TEST_KINDS, Toast, Toasts, test_text};

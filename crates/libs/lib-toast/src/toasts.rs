@@ -5,6 +5,17 @@ use crate::{History, ToastKind};
 /// Toasts drawn at once; past this the oldest timed Toast is evicted (#306).
 pub const MAX_VISIBLE: usize = 3;
 
+/// The test Message for a Toast of `kind`, which both Clients hand `Toasts::raise_test`.
+#[must_use]
+pub fn test_text(kind: ToastKind) -> String {
+    match kind {
+        ToastKind::Success => lib_locale::msg::toast_test_success(),
+        ToastKind::Info => lib_locale::msg::toast_test_info(),
+        ToastKind::Warning => lib_locale::msg::toast_test_warning(),
+        ToastKind::Error => lib_locale::msg::toast_test_error(),
+    }
+}
+
 /// The Kinds the Toasts test raises, in its order (DESKTOP-184).
 pub const TEST_KINDS: [ToastKind; 4] = [
     ToastKind::Success,

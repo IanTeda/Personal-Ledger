@@ -11,6 +11,7 @@ license.workspace = true
 doctest = false
 
 [dependencies]
+lib_locale = { path = "../lib-locale" }
 
 [lints]
 workspace = true
