@@ -1,0 +1,428 @@
+<!doctype html>
+<!-- PROTOTYPE (#1137), throwaway: never merged. TUI Settings › General's editable Locale and Data folder,
+     and three ways the TUI could pick a folder (it has no explorer: :open takes a typed path).
+     Drawn as a cell grid, as ratatui would. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROTOTYPE TUI Data folder</title>
+<style>
+:root{--bg:#f3f2f2;--fg:#201e1d;--mut:#9b9797;--acc:#ec3013;--bar:#201e1d;--barfg:#f3f2f2;--foot:#eae7e7;--ok:#1a7f37;--info:#2f6fb3;--warn:#b07800}
+body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.4 system-ui,sans-serif;padding:16px 16px 150px}
+h1{font-size:15px;margin:0 0 4px}
+p.sub{margin:0 0 14px;color:#605d5d;max-width:100ch}
+.wrap{overflow-x:auto;border:2px solid var(--fg);display:inline-block;max-width:100%;background:#fff}
+pre.term{margin:0;font:12px/15px "JetBrains Mono",ui-monospace,Menlo,monospace;white-space:pre;outline:none}
+pre.term:focus{box-shadow:inset 0 0 0 2px var(--acc)}
+.st{background:var(--bar);color:var(--barfg)} .stb{background:var(--bar);color:var(--barfg);font-weight:700}
+.ft{background:var(--foot);color:#605d5d} .ftk{background:var(--foot);color:var(--fg);font-weight:700} .ftm{background:var(--foot);color:var(--mut)}
+.fti{background:var(--foot);color:var(--acc);font-weight:700}
+.m{color:var(--mut)} .dim{color:#cfcaca} .b{font-weight:700} .sel{background:var(--fg);color:var(--barfg)} .selm{background:var(--fg);color:#ffc4b8}
+.a{color:var(--acc)} .ab{color:var(--acc);font-weight:700} .n{color:var(--fg)}
+.pop{background:#fffdf8;color:var(--fg)} .popm{background:#fffdf8;color:var(--mut)} .popd{background:#fffdf8;color:#cfcaca} .popa{background:#fffdf8;color:var(--acc)}
+.popsel{background:var(--fg);color:var(--barfg)}
+.k-success{background:#fffdf8;color:var(--ok)} .tb{background:#fffdf8;color:var(--fg)} .tbd{background:#fffdf8;color:var(--mut)}
+.ftk-success{background:var(--foot);color:var(--ok)}
+.btn{color:var(--fg);font-weight:700} .cur{background:var(--acc);color:#fff}
+#state{margin-top:12px;font:12px/1.5 ui-monospace,monospace;background:#fff;border:1px solid #bab6b6;padding:8px 10px;max-width:130ch;white-space:pre-wrap}
+.barx{position:fixed;left:0;right:0;bottom:0;background:var(--bar);color:var(--barfg);padding:8px 16px;display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12px}
+.barx fieldset{border:0;margin:0;padding:0;display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.barx legend{float:left;margin-right:6px;color:#bab6b6}
+.barx button{font:inherit;background:#3a3736;color:var(--barfg);border:1px solid #605d5d;padding:2px 8px;cursor:pointer}
+.barx button.on{background:var(--acc);border-color:var(--acc)}
+</style>
+</head>
+<body>
+<h1>PROTOTYPE · TUI Settings › General: editable Locale and Data folder (#1137)</h1>
+<p class="sub">Throwaway. Click the terminal to focus it. On General: <b>j/k</b> field, <b>enter</b> opens Locale or Data folder. <b>:</b> types <code>:data</code> (variants differ in where that lands). The bottom bar switches the picker variant (A explorer popup · B in place · C command line), the Locale control, the terminal width, where you start (General, Units with a Ledger, the empty shell with none) and the override. The TUI has no file explorer today: <code>:open [path]</code> takes a typed path.</p>
+<div class="wrap"><pre class="term" id="term" tabindex="0"></pre></div>
+<div id="state"></div>
+
+<div class="barx">
+  <fieldset id="f-variant"><legend>Folder picker</legend></fieldset>
+  <fieldset id="f-loc"><legend>Locale</legend></fieldset>
+  <fieldset id="f-cols"><legend>Columns</legend></fieldset>
+  <fieldset id="f-origin"><legend>Start in</legend></fieldset>
+  <fieldset id="f-ovr"><legend>Override</legend></fieldset>
+  <fieldset id="f-toasts"><legend>Toasts</legend></fieldset>
+  <fieldset><legend></legend><button id="b-reset">reset</button></fieldset>
+</div>
+
+<script>
+const HOME_CONF='~/.config/personal-ledger/personal-ledger.conf';
+const FS={
+  '~':['documents/','sync/','Downloads/','notes.txt'],
+  '~/documents':['finance/','ledgers/','scans/','budget-2025.xlsx'],
+  '~/documents/ledgers':['archive/','teda.pldb','teda.pldb.bak','test.pldb'],
+  '~/documents/ledgers/archive':['teda-2024.pldb'],
+  '~/documents/finance':['2025/','house.pldb','statement.csv'],
+  '~/documents/finance/2025':[],
+  '~/documents/scans':['receipt-01.pdf','receipt-02.pdf'],
+  '~/sync':['ledgers/'],
+  '~/sync/ledgers':['teda.pldb'],
+  '~/Downloads':['statement-oct.csv'],
+};
+const LOCALES=[['system','System'],['en-AU','English (Australia)'],['en-GB','English (United Kingdom)'],['en-US','English (United States)']];
+const VARIANTS={A:'A: explorer popup',B:'B: path in place',C:'C: command line'};
+const LOCS={row:'segmented row',list:'list in place'};
+const COLS=[96,128,171,256];
+const ORIGINS={General:'General',Units:'Units (Ledger open)',Empty:'empty shell (no Ledger)'};
+const OVRS={none:'none',on:'--locale en-GB + env DATA'};
+const ROWS=34;
+let S;
+function reset(keep){
+  const k=keep||{};
+  S={variant:k.variant||'A',loc:k.loc||'row',cols:k.cols||96,origin:k.origin||'General',ovr:k.ovr||'none',toastsOn:k.toastsOn!==undefined?k.toastsOn:true,
+     view:(k.origin||'General')==='General'?'General':(k.origin==='Units'?'Units':'Empty'),
+     sel:4, mode:'normal', ret:null,
+     locFile:'system', locRunning:'en-AU', locCand:0,
+     data:'~/documents/ledgers', pick:null, pickCur:0, input:'', cmpCur:0, err:null,
+     toasts:[], echo:null, log:[]};
+}
+reset();
+const size=()=>S.cols>=214?'X-Large':S.cols>=160?'Large':'Medium';
+const len=t=>[...t].length;
+const clip=(t,n)=>len(t)<=n?t:[...t].slice(0,Math.max(0,n-1)).join('')+'…';
+const ledgerOpen=()=>S.origin!=='Empty';
+const effLocale=()=>S.ovr==='on'?'en-GB':S.locRunning;
+const effData=()=>S.ovr==='on'?'~/sync/ledgers':S.data;
+const fileLocale=()=>S.locFile==='system'?'en-AU':S.locFile;
+const base=p=>p.split('/').pop()||p;
+const parent=p=>p==='~'?'~':p.slice(0,p.lastIndexOf('/'))||'~';
+const folders=p=>(FS[p]||[]).filter(e=>e.endsWith('/')).map(e=>e.slice(0,-1));
+
+/* ---------- grid ---------- */
+let G;
+function grid(){G=Array.from({length:ROWS},()=>Array.from({length:S.cols},()=>({c:' ',k:''})));}
+function put(r,c,t,k=''){for(const ch of [...t]){if(c>=0&&c<S.cols&&r>=0&&r<ROWS)G[r][c]={c:ch,k};c++;}return c;}
+function fill(r,c0,c1,k){for(let c=c0;c<c1&&c<S.cols;c++)if(r>=0&&r<ROWS)G[r][c]={c:' ',k};}
+function dimAll(r0,r1){for(let r=r0;r<r1;r++)for(const cell of G[r]){if(cell.k===''||cell.k==='b'||cell.k==='n'||cell.k==='btn'||cell.k==='a')cell.k='dim';}}
+function box(r,c,w,h,k,title,right){
+  for(let i=0;i<h;i++)fill(r+i,c,c+w,k);
+  put(r,c,'┌'+'─'.repeat(w-2)+'┐',k+'m');put(r+h-1,c,'└'+'─'.repeat(w-2)+'┘',k+'m');
+  for(let i=1;i<h-1;i++){put(r+i,c,'│',k+'m');put(r+i,c+w-1,'│',k+'m');}
+  if(title)put(r,c+2,' '+title+' ',k==='pop'?'popa':k);
+  if(right)put(r,c+w-3-len(right),' '+right+' ',k+'m');
+}
+
+/* ---------- General's fields ---------- */
+function fields(){
+  return ['on start','start view','toasts','locale','data folder'];
+}
+function drawGeneral(cx,cap){
+  let r=3;const LW=16;
+  const row=(i,lab,cells,note)=>{
+    const sel=i===S.sel&&S.view==='General';
+    if(sel)fill(r,cx,cx+cap,'sel');
+    let c=put(r,cx,lab.padEnd(LW),sel?'sel':'m');
+    for(const [t,k] of cells)c=put(r,c,t,sel?(k==='m'?'selm':'sel'):k);
+    r++;
+    if(note){for(const [t,k] of note){put(r,cx+LW,clip(t,cap-LW),k);r++;}}
+  };
+  row(0,'on start',[['[reopen last ledger]',''],[' · start with no ledger open','m']]);
+  row(1,'start view',[['dashboard','']]);
+  row(2,'toasts',[[S.toastsOn?'[x] show toasts':'[ ] show toasts',''],['   ',''],['[ test ]','btn'],['  errors always show','m']]);
+  // locale
+  const locNotes=[];
+  if(S.ovr==='on')locNotes.push([`■ --locale en-GB overrides this for this run, so it reads en-GB. Your choice is kept.`,'a']);
+  else if(fileLocale()!==S.locRunning)locNotes.push([`■ Saved. ${fileLocale()} applies when Personal Ledger next starts; until then it reads ${S.locRunning}.`,'a']);
+  locNotes.push(['how dates, numbers and money read · system follows this computer','m']);
+  if(S.mode==='locale'){r=drawLocaleOpen(r,cx,cap,LW);for(const n of locNotes){put(r,cx+LW,clip(n[0],cap-LW),n[1]);r++;}}
+  else if(S.loc==='row'){
+    row(3,'locale',LOCALES.map(([v],i)=>[(i?' · ':'')+(v===S.locFile?'['+label(v)+']':label(v)),v===S.locFile?'':'m']),locNotes);
+  } else {
+    row(3,'locale',[[label(S.locFile),''],[S.locFile==='system'?'':'  '+LOCALES.find(l=>l[0]===S.locFile)[1],'m']],locNotes);
+  }
+  // data folder
+  const dNotes=[];
+  if(S.ovr==='on')dNotes.push(['■ PERSONAL_LEDGER_GENERAL__DATA sets ~/sync/ledgers until unset, so :open and :new start there.','a']);
+  dNotes.push(['where Ledger files (.pldb) are looked for and Documents kept','m']);
+  if(S.mode==='inplace'&&S.view==='General'){r=drawInPlace(r,cx,cap,LW);for(const n of dNotes){put(r,cx+LW,clip(n[0],cap-LW),n[1]);r++;}}
+  else row(4,'data folder',[[S.data,''],['   ',''],['[ change… ]','btn']],dNotes);
+  r++;put(r++,cx,'THIS DEVICE','m');put(r++,cx,'┌'+'─'.repeat(cap-2)+'┐','m');
+  put(r,cx,'│','m');put(r,cx+2,'last ledger   ','m');put(r,cx+16,ledgerOpen()?'~/documents/ledgers/teda.pldb':'none');put(r++,cx+cap-1,'│','m');
+  put(r,cx,'│','m');put(r,cx+2,'config file   ','m');put(r,cx+16,clip(HOME_CONF,cap-18));put(r++,cx+cap-1,'│','m');
+  put(r++,cx,'└'+'─'.repeat(cap-2)+'┘','m');
+  r++;put(r++,cx,clip('General settings belong to this device and never sync.',cap),'m');
+}
+function label(v){return v==='system'?'system':v;}
+function drawLocaleOpen(r,cx,cap,LW){
+  const w=Math.min(cap,LW+58);
+  if(S.loc==='row'){
+    box(r,cx,w,3,'');
+    for(let c=cx;c<cx+w;c++){const k=G[r][c].k;} put(r,cx,'┌','a');put(r,cx+w-1,'┐','a');put(r+2,cx,'└','a');put(r+2,cx+w-1,'┘','a');
+    for(let c=cx+1;c<cx+w-1;c++){put(r,c,'─','a');put(r+2,c,'─','a');} put(r+1,cx,'│','a');put(r+1,cx+w-1,'│','a');
+    let c=put(r+1,cx+2,'locale'.padEnd(LW-2),'m');
+    LOCALES.forEach(([v],i)=>{if(i)c=put(r+1,c,' · ','m');const on=i===S.locCand;c=put(r+1,c,on?'['+v+']':v,on?'ab':'n');});
+    if(S.locCand===0)put(r+1,c+2,'now '+S.locRunning,'m');
+    return r+3;
+  }
+  const h=LOCALES.length+2;
+  for(let c=cx;c<cx+w;c++){put(r,c,'─','a');put(r+h-1,c,'─','a');}
+  put(r,cx,'┌','a');put(r,cx+w-1,'┐','a');put(r+h-1,cx,'└','a');put(r+h-1,cx+w-1,'┘','a');
+  put(r,cx+2,' locale ','ab');
+  LOCALES.forEach(([v,name],i)=>{
+    const rr=r+1+i;put(rr,cx,'│','a');put(rr,cx+w-1,'│','a');
+    const on=i===S.locCand;
+    let c=put(rr,cx+2,(on?'(•) ':'( ) ')+name.padEnd(26),on?'ab':'n');
+    put(rr,c,v==='system'?'now '+S.locRunning:v,'m');
+  });
+  return r+h;
+}
+
+/* ---------- variant B: path in place ---------- */
+function splitInput(){
+  const t=S.mode==='cmd'?S.input.replace(/^data\s*/,''):S.input;const i=t.lastIndexOf('/');
+  return i<0?{dir:'~',stem:t}:{dir:t.slice(0,i)||'~',stem:t.slice(i+1)};
+}
+function matches(){
+  const {dir,stem}=splitInput();
+  return folders(dir).filter(f=>f.toLowerCase().startsWith(stem.toLowerCase())).map(f=>dir+'/'+f);
+}
+function drawInPlace(r,cx,cap,LW){
+  const m=matches();const shown=m.slice(0,6);const h=3+Math.max(1,shown.length)+1;
+  const w=Math.min(cap,LW+60);
+  for(let c=cx;c<cx+w;c++){put(r,c,'─','a');put(r+h-1,c,'─','a');}
+  put(r,cx,'┌','a');put(r,cx+w-1,'┐','a');put(r+h-1,cx,'└','a');put(r+h-1,cx+w-1,'┘','a');
+  for(let i=1;i<h-1;i++){put(r+i,cx,'│','a');put(r+i,cx+w-1,'│','a');}
+  put(r,cx+2,' data folder ','ab');
+  let c=put(r+1,cx+2,'path'.padEnd(LW-2),'m');c=put(r+1,c,S.input,'n');put(r+1,c,' ','cur');
+  put(r+2,cx+2,S.err?'■ '+S.err:'folders in '+splitInput().dir,S.err?'a':'m');
+  if(!shown.length)put(r+3,cx+LW,'no folder starts with "'+splitInput().stem+'"','m');
+  shown.forEach((p,i)=>{const on=i===S.cmpCur;put(r+3+i,cx+LW,(on?'▸ ':'  ')+base(p)+'/',on?'ab':'n');const fs=(FS[p]||[]).filter(e=>e.endsWith('.pldb')).length;if(fs)put(r+3+i,cx+LW+24,fs+' ledger'+(fs>1?'s':''),'m');});
+  return r+h;
+}
+
+/* ---------- variant A: explorer popup ---------- */
+function drawPicker(){
+  const W=S.cols, w=Math.min(76,W-8), entries=pickEntries(), h=Math.min(ROWS-6,entries.length+9);
+  const x=Math.floor((W-w)/2), y=Math.max(2,Math.floor((ROWS-1-h)/2));
+  dimAll(1,ROWS-1);
+  box(y,x,w,h,'pop','Choose data folder','now '+S.data);
+  put(y+1,x+2,clip(S.pick+'/',w-4),'pop');put(y+2,x+1,'─'.repeat(w-2),'popm');
+  const listRows=h-7;let top=Math.max(0,S.pickCur-listRows+1);
+  entries.slice(top,top+listRows).forEach((e,i)=>{
+    const idx=top+i,on=idx===S.pickCur,isDir=e.endsWith('/');
+    const rr=y+3+i;if(on)fill(rr,x+1,x+w-1,'popsel');
+    put(rr,x+2,(on?'▸ ':'  ')+e,on?'popsel':(isDir?'pop':'popd'));
+  });
+  put(y+h-4,x+1,'─'.repeat(w-2),'popm');
+  put(y+h-3,x+2,clip("Picks the folder you're in. Files show what's there; nothing is moved.",w-4),'popm');
+  const use='[ use '+base(S.pick)+' ]';
+  let c=x+w-2-len(use)-12;c=put(y+h-2,c,'[ cancel ]','pop');put(y+h-2,c+2,use,'popa');
+}
+function pickEntries(){return (S.pick==='~'?[]:['../']).concat(FS[S.pick]||[]);}
+
+/* ---------- variant C: command line with completions ---------- */
+function drawCmdPopup(){
+  const m=matches().slice(0,8);if(!m.length)return;
+  const w=Math.min(48,S.cols-4),h=m.length+2,x=1+len(':data '),y=ROWS-1-h;
+  box(y,x,w,h,'pop');
+  m.forEach((p,i)=>{const on=i===S.cmpCur;if(on)fill(y+1+i,x+1,x+w-1,'popsel');put(y+1+i,x+2,base(p)+'/',on?'popsel':'pop');
+    const fs=(FS[p]||[]).filter(e=>e.endsWith('.pldb')).length;if(fs)put(y+1+i,x+w-14,fs+' ledger'+(fs>1?'s':''),on?'popsel':'popm');});
+}
+
+/* ---------- views ---------- */
+function drawUnits(cx,cap){
+  put(1,cx,'Units','b');put(1,cx+cap-len('6 units'),'6 units','m');put(2,cx,'━'.repeat(cap));
+  put(3,cx,'code  name                          kind','m');
+  [['AUD','Australian dollar','currency'],['USD','US dollar','currency'],['BTC','Bitcoin','crypto'],['VAS','Vanguard Aus Shares','security'],['kWh','Kilowatt hour','quantity'],['L','Litre','quantity']]
+    .forEach(([a,b,c],i)=>{if(i===1)fill(4+i,cx,cx+cap,'sel');put(4+i,cx,a.padEnd(6)+b.padEnd(30)+c,i===1?'sel':'');});
+}
+function drawEmpty(){
+  const t1='No Ledger open.',t2='Use :new to create a Ledger or :open to open one.';
+  put(14,Math.floor((S.cols-len(t1))/2),t1,'b');put(15,Math.floor((S.cols-len(t2))/2),t2,'m');
+}
+
+function hints(){
+  const tail=size()==='Medium'?[['[/]','pages'],['p','picker'],['esc','settings']]:[['[/]','pages'],['esc','settings']];
+  if(S.mode==='pick')return {mode:'NORMAL',h:[['j/k','move'],['l/enter','into folder'],['h','up'],['u','use '+base(S.pick)],['esc','cancel']]};
+  if(S.mode==='inplace')return {mode:'INSERT',h:[['↑↓','folder'],['tab','complete'],['enter','save'],['esc','keep']]};
+  if(S.mode==='cmd')return {mode:'COMMAND',h:[]};
+  if(S.mode==='locale')return {mode:'INSERT',h:S.loc==='row'?[['←→','choose'],['enter','save'],['esc','keep']]:[['j/k','choose'],['enter','save'],['esc','keep']]};
+  if(S.view==='Units')return {mode:'NORMAL',h:[['j/k','unit'],['n','add'],['e','edit'],[':','command']]};
+  if(S.view==='Empty')return {mode:'NORMAL',h:[[':','command'],['?','help']]};
+  const f=fields()[S.sel];
+  const h=[['j/k','field']];
+  if(f==='data folder')h.push(['enter','change']);else if(f==='toasts')h.push(['space','toggle'],['t','test']);else h.push(['enter','edit']);
+  return {mode:'NORMAL',h:h.concat(tail)};
+}
+function rightLabel(){
+  if(S.view==='General')return HOME_CONF;
+  if(S.view==='Units')return 'teda.pldb';
+  return 'No Ledger open';
+}
+function fitPath(room){
+  const full=HOME_CONF;if(len(full)<=room)return full;
+  const segs=full.split('/');for(let i=1;i<segs.length;i++){const t='…/'+segs.slice(i).join('/');if(len(t)<=room)return t;}
+  return '…/personal-ledger.conf';
+}
+
+function draw(){
+  grid();const W=S.cols;
+  fill(0,0,W,'st');put(0,1,'Personal Ledger','stb');
+  if(ledgerOpen()){const s='✓ Synced 14:22 ';put(0,W-len(s),s,'st');}
+  let x0=0;
+  if(S.view==='General'&&size()!=='Medium'){
+    const dw=31;x0=dw+1;
+    put(1,1,'Settings','b');put(1,dw-len('17 pages')-1,'17 pages','m');
+    let r=3;put(r++,1,'THIS DEVICE','m');
+    for(const p of ['General','Display','AI connections','Logs','About']){const cur=p==='General';put(r,1,cur?'▸':' ','m');put(r++,3,p,cur?'b':'');}
+    r++;put(r++,1,'THIS LEDGER','m');
+    for(const p of ['Ledger','Units','Institutions','Accounts','Categories','Tags','Payees','Documents','Inventory','Sync server','Backup','History'])put(r++,3,p,ledgerOpen()?'':'m');
+    for(let rr=1;rr<ROWS-1;rr++)put(rr,dw,'│','m');
+  }
+  const cap=Math.min(112,W-x0-2),cx=x0+1;
+  if(S.view==='General'){
+    put(1,cx,'Settings › ','m');put(1,cx+11,'General','b');
+    const note='this device · never synced';put(1,cx+cap-len(note),note,'m');put(2,cx,'━'.repeat(cap));
+    drawGeneral(cx,cap);
+    if(S.mode==='locale'||S.mode==='inplace')dimRowsExcept();
+  } else if(S.view==='Units') drawUnits(cx,cap); else drawEmpty();
+  if(S.mode==='pick')drawPicker();
+  // hint bar / command line
+  const fr=ROWS-1;fill(fr,0,W,'ft');let end;
+  if(S.mode==='cmd'){
+    let c=put(fr,1,':','ftk');c=put(fr,c,S.input,'ftk');put(fr,c,' ','cur');end=c+2;
+    if(S.err)put(fr,c+3,'■ '+S.err,'fti');
+    drawCmdPopup();
+  } else if(S.echo){
+    let c=put(fr,1,'✓','ftk-success');end=put(fr,c+1,S.echo,'ft')+1;
+  } else {
+    const {mode,h}=hints();let c=put(fr,1,mode,mode==='NORMAL'?'ftk':'fti');
+    for(const [k,l] of h){c=put(fr,c,' · ','ft');c=put(fr,c,k,'ftk');c=put(fr,c,' '+l,'ft');}
+    end=c+1;
+  }
+  if(S.mode!=='cmd'){let lab=rightLabel();if(lab===HOME_CONF)lab=fitPath(W-end-2);lab=' '+lab+' ';put(fr,W-len(lab),lab,'ftm');}
+  // toasts
+  let bottom=ROWS-1;
+  for(const t of S.toasts.slice(-3).reverse()){
+    const w=Math.min(52,7+len(t),W),x=W-w;
+    put(bottom-3,x,'┌'+'─'.repeat(w-2)+'┐','tbd');fill(bottom-2,x,x+w,'tb');put(bottom-2,x,'│','tbd');
+    let c=put(bottom-2,x+1,'▌','k-success');c=put(bottom-2,c+1,'✓','k-success');put(bottom-2,c+1,clip(t,w-7),'tb');put(bottom-2,x+w-1,'│','tbd');
+    put(bottom-1,x,'└'+'─'.repeat(w-2)+'┘','tbd');bottom-=3;
+  }
+  let html='';
+  for(const row of G){let k=null,buf='';for(const cell of row){if(cell.k!==k){if(buf)html+=k?`<span class="${k}">${esc(buf)}</span>`:esc(buf);buf='';k=cell.k;}buf+=cell.c;}html+=k?`<span class="${k}">${esc(buf)}</span>`:esc(buf);html+='\n';}
+  document.getElementById('term').innerHTML=html;
+  state();
+}
+function dimRowsExcept(){
+  // the rest of the page dims while a field is open in place (README: editing in place)
+  for(let r=3;r<ROWS-1;r++){const row=G[r];if(row.some(c=>c.k==='a'||c.k==='ab'))continue;for(const cell of row)if(cell.k===''||cell.k==='b'||cell.k==='btn'||cell.k==='n'||cell.k==='m')cell.k='dim';}
+}
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;');}
+
+function state(){
+  document.getElementById('state').textContent=
+`variant=${VARIANTS[S.variant]}  locale control=${LOCS[S.loc]}  ${S.cols} cols → ${size()}  view=${S.view}  mode=${S.mode}  return to=${S.ret||'—'}
+[General] locale = ${S.locFile==='system'?'(key absent: System)':S.locFile}   running Locale = ${S.locRunning}   in effect = ${effLocale()}${S.ovr==='on'?' (--locale)':''}
+[General] data   = ${S.data}   in effect = ${effData()}${S.ovr==='on'?' (env)':''}
+${S.mode==='pick'?'picker at '+S.pick+'  cursor '+pickEntries()[S.pickCur]:''}${S.mode==='inplace'||S.mode==='cmd'?'input "'+S.input+'"  matches '+matches().map(base).join(', '):''}
+toasts: ${S.toasts.join(' | ')||'—'}   echo: ${S.echo||'—'}
+log: ${S.log.slice(-6).join('  ›  ')}`;
+}
+
+/* ---------- actions ---------- */
+function useFolder(p){
+  const from=S.ret;S.mode='normal';S.err=null;
+  if(from)S.view=from;S.ret=null;
+  if(p===S.data){S.log.push('same folder: no write, no Toast');draw();return;}
+  S.data=p;S.log.push(`write [General] data = ${p}`);
+  const msg='Data folder is now '+p;
+  if(S.toastsOn){S.toasts.push(msg);setTimeout(()=>{S.toasts=S.toasts.filter(t=>t!==msg);draw();},4000);}
+  else{S.echo=msg;setTimeout(()=>{if(S.echo===msg){S.echo=null;draw();}},4000);}
+  draw();
+}
+function cancel(){S.log.push('cancel: nothing changed');S.mode='normal';S.err=null;if(S.ret)S.view=S.ret;S.ret=null;draw();}
+function openPicker(from){
+  // from: 'enter' on General or ':data' anywhere
+  S.log.push(from);S.ret=S.view;
+  if(S.variant==='A'){S.mode='pick';S.pick=S.data;S.pickCur=0;}
+  else if(S.variant==='B'){
+    if(S.view!=='General'){S.log.push(':data opens Settings › General with Data folder in place');S.view='General';S.sel=4;}
+    S.mode='inplace';S.input=S.data+'/';S.cmpCur=0;
+  } else {S.mode='cmd';S.input='data '+S.data+'/';S.cmpCur=0;}
+  draw();
+}
+function commitTyped(){
+  let p=S.mode==='cmd'?S.input.replace(/^data\s*/,''):S.input;p=p.replace(/\/+$/,'')||'~';
+  if(!(p in FS)){S.err='no folder at '+p;draw();return;}
+  useFolder(p);
+}
+function complete(){
+  const m=matches();if(!m.length)return;const p=m[Math.min(S.cmpCur,m.length-1)]+'/';
+  if(S.mode==='cmd')S.input='data '+p;else S.input=p;S.cmpCur=0;S.err=null;
+}
+
+const term=document.getElementById('term');
+term.addEventListener('keydown',e=>{
+  const k=e.key;
+  if(S.mode==='pick'){
+    const E=pickEntries();
+    if(k==='j'||k==='ArrowDown')S.pickCur=Math.min(E.length-1,S.pickCur+1);
+    else if(k==='k'||k==='ArrowUp')S.pickCur=Math.max(0,S.pickCur-1);
+    else if(k==='l'||k==='Enter'){const en=E[S.pickCur];if(!en)return;if(en==='../'){S.pick=parent(S.pick);S.pickCur=0;}else if(en.endsWith('/')){S.pick=S.pick+'/'+en.slice(0,-1);S.pickCur=0;}else{S.log.push('file: inert');}}
+    else if(k==='h'||k==='Backspace'){S.pick=parent(S.pick);S.pickCur=0;}
+    else if(k==='u'||(k==='Enter'&&e.ctrlKey)){useFolder(S.pick);e.preventDefault();return;}
+    else if(k==='Escape')return cancel();
+    else return;
+    e.preventDefault();draw();return;
+  }
+  if(S.mode==='inplace'||S.mode==='cmd'){
+    const m=matches();
+    if(k==='Escape')return cancel();
+    if(k==='Enter'){e.preventDefault();return commitTyped();}
+    if(k==='Tab'){e.preventDefault();complete();draw();return;}
+    if(k==='ArrowDown'){S.cmpCur=Math.min(Math.max(0,m.length-1),S.cmpCur+1);}
+    else if(k==='ArrowUp'){S.cmpCur=Math.max(0,S.cmpCur-1);}
+    else if(k==='Backspace'){if(S.mode==='cmd'&&S.input===''){return cancel();}S.input=S.input.slice(0,-1);S.cmpCur=0;S.err=null;}
+    else if(k.length===1&&!e.ctrlKey&&!e.metaKey){S.input+=k;S.cmpCur=0;S.err=null;}
+    else return;
+    e.preventDefault();draw();return;
+  }
+  if(S.mode==='locale'){
+    const prev=S.loc==='row'?['h','ArrowLeft']:['k','ArrowUp'],next=S.loc==='row'?['l','ArrowRight']:['j','ArrowDown'];
+    if(prev.includes(k))S.locCand=Math.max(0,S.locCand-1);
+    else if(next.includes(k))S.locCand=Math.min(3,S.locCand+1);
+    else if(k==='Enter'){const v=LOCALES[S.locCand][0];if(v!==S.locFile){S.locFile=v;S.log.push(v==='system'?'remove [General] locale':`write [General] locale = ${v}`);}S.mode='normal';}
+    else if(k==='Escape'){S.mode='normal';S.log.push('locale: kept');}
+    else return;
+    e.preventDefault();draw();return;
+  }
+  // normal
+  if(k===':'){e.preventDefault();
+    if(S.variant==='C'){S.ret=S.view;S.mode='cmd';S.input='data ';S.cmpCur=0;S.log.push(':');draw();}
+    else openPicker(':data');
+    return;}
+  if(S.view!=='General')return;
+  const n=fields().length;
+  if(k==='j'||k==='ArrowDown')S.sel=Math.min(n-1,S.sel+1);
+  else if(k==='k'||k==='ArrowUp')S.sel=Math.max(0,S.sel-1);
+  else if(k==='Enter'&&fields()[S.sel]==='data folder'){e.preventDefault();return openPicker('enter on data folder');}
+  else if(k==='Enter'&&fields()[S.sel]==='locale'){S.mode='locale';S.locCand=LOCALES.findIndex(l=>l[0]===S.locFile);}
+  else if(k===' '&&fields()[S.sel]==='toasts')S.toastsOn=!S.toastsOn;
+  else return;
+  e.preventDefault();draw();
+});
+
+function group(id,opts,key,lab){
+  const el=document.getElementById(id);
+  for(const v of Object.keys(opts)){const b=document.createElement('button');b.textContent=lab?lab(v):opts[v];b.dataset.k=key;b.dataset.v=v;
+    b.onclick=()=>{const keep={variant:S.variant,loc:S.loc,cols:S.cols,origin:S.origin,ovr:S.ovr,toastsOn:S.toastsOn};keep[key]=key==='cols'?+v:(key==='toastsOn'?v==='On':v);
+      if(key==='origin'||key==='variant'){reset(keep);}else{Object.assign(S,{[key]:keep[key]});}
+      sync();draw();term.focus();};el.appendChild(b);}
+}
+function sync(){document.querySelectorAll('.barx button[data-k]').forEach(b=>{const v=S[b.dataset.k];b.classList.toggle('on',b.dataset.k==='toastsOn'?(v?'On':'Off')===b.dataset.v:String(v)===b.dataset.v);});}
+group('f-variant',VARIANTS,'variant');
+group('f-loc',LOCS,'loc');
+group('f-cols',Object.fromEntries(COLS.map(c=>[c,String(c)])),'cols');
+group('f-origin',ORIGINS,'origin');
+group('f-ovr',OVRS,'ovr');
+group('f-toasts',{On:'On',Off:'Off'},'toastsOn');
+document.getElementById('b-reset').onclick=()=>{reset({variant:S.variant,loc:S.loc,cols:S.cols,origin:S.origin,ovr:S.ovr,toastsOn:S.toastsOn});sync();draw();term.focus();};
+sync();draw();term.focus();
+</script>
+</body>
+</html>
