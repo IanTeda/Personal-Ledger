@@ -56,6 +56,9 @@ pub enum Action {
     /// `toasts on` / `toasts off`, or `enter` or `space` on the Settings `toasts` row — sets the
     /// Client-scoped Toasts Preference (ADR-0027).
     SetToasts(bool),
+    /// `toasts test`, or `t` on the Settings Toasts row — raises one Toast of each Kind a second
+    /// apart.
+    TestToasts,
     /// `toasts` / `messages`, or the `toast_history` binding — opens the session Toast history.
     OpenToastHistory,
     /// `Esc` in the Toast history popup.

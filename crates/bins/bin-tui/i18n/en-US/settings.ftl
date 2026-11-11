@@ -212,6 +212,7 @@ tui-settings-edit-base-on-enter = asks you to type the code, then saves
 
 tui-settings-hint-choose = choose
 tui-settings-hint-toggle = toggle
+tui-settings-general-test-chip = [ test ]
 tui-settings-hint-save = save
 tui-settings-hint-keep = keep { $value }
 tui-settings-hint-next-field = next field

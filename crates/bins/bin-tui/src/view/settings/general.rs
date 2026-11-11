@@ -41,6 +41,7 @@ enum Command {
     Row,
     Open,
     Toggle,
+    Test,
 }
 
 /// The page's keys and its hint bar, one table (#898).
@@ -62,6 +63,12 @@ const KEYS: &[Binding<Command>] = &[
         label: "space",
         hint: msg::tui_settings_hint_toggle,
         command: Command::Toggle,
+    },
+    Binding {
+        keys: &[Press::char('t')],
+        label: "t",
+        hint: msg::tui_settings_hint_test,
+        command: Command::Test,
     },
 ];
 
@@ -97,12 +104,24 @@ impl GeneralPage {
                 Action::SetSetting(field, Some(on_off(on).to_string()))
             }
             Command::Open => Action::SetSetting(field, None),
-            Command::Toggle => Action::NoOp,
+            Command::Test if field == SettingField::Toasts => Action::TestToasts,
+            Command::Toggle | Command::Test => Action::NoOp,
         })
     }
 
+    /// The whole table, which the hint-bar test compares against the keys.
+    #[cfg(test)]
     pub(super) fn hints() -> Vec<(String, String)> {
         keys::hints(KEYS)
+    }
+
+    /// The hint bar for the selected field: `t test` only on Toasts.
+    pub(super) fn hints_for_selected(&self) -> Vec<(String, String)> {
+        let on_toasts = FIELDS[self.selected] == SettingField::Toasts;
+        keys::hints(KEYS)
+            .into_iter()
+            .filter(|(label, _)| on_toasts || label != "t")
+            .collect()
     }
 
     pub(super) fn step(&mut self, step: Step) {
@@ -217,7 +236,11 @@ impl GeneralPage {
                 shadowed(field).unwrap_or_else(msg::tui_settings_general_start_view_note),
             ),
             SettingField::Toasts => (
-                toasts_label(self.toasts_on),
+                format!(
+                    "{}  {}",
+                    toasts_label(self.toasts_on),
+                    msg::tui_settings_general_test_chip()
+                ),
                 shadowed(field).unwrap_or_else(lib_locale::msg::toast_setting_note),
             ),
             SettingField::Locale => {
@@ -359,6 +382,7 @@ mod tests {
             "start view",
             "dashboard",
             "Toasts",
+            "[ test ]",
             "locale",
             "en-US",
             "ledger folder",

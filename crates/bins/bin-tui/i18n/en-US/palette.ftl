@@ -80,6 +80,7 @@ tui-command-close-description = close the Open Ledger
 tui-command-dismiss-description = dismiss the newest Toast
 tui-command-dismiss-all-description = dismiss every Toast
 tui-command-toasts-on-description = show Toasts
+tui-command-toasts-test-description = raise one Toast of each Kind, a second apart
 tui-command-toasts-off-description = send Toasts to the status line (Errors still show)
 tui-command-toasts-description = show this session's Toasts
 tui-command-settings-description = the Settings index, or one page by name

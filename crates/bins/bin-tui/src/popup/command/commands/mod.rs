@@ -146,6 +146,7 @@ pub enum CommandId {
     DismissAll,
     ToastsOn,
     ToastsOff,
+    ToastsTest,
     ToastHistory,
     /// `messages`, the alias of `toasts`.
     ToastHistoryAlias,

@@ -178,3 +178,53 @@ fn a_start_view_an_environment_variable_sets_is_shown_and_not_saved() {
         "the status line says why"
     );
 }
+
+/// Lets `seconds` pass, a tick at a time.
+fn pass(shell: &mut bin_tui::Shell, seconds: u64) {
+    let ticks = seconds * 1000 / 250;
+    for _ in 0..ticks {
+        shell.handle_event(bin_tui::event::Event::Tick);
+    }
+}
+
+#[test]
+fn t_on_toasts_raises_the_four_test_toasts_as_ticks_pass() {
+    let mut shell = shell();
+    run_command(&mut shell, "settings general");
+    assert!(
+        !screen(&mut shell).contains("t test"),
+        "t test is not a hint off Toasts"
+    );
+    press(&mut shell, "j j");
+    let frame = screen(&mut shell);
+    assert!(frame.contains("t test"), "{frame}");
+    assert!(frame.contains("[ test ]"), "{frame}");
+
+    press(&mut shell, "t");
+    assert!(screen(&mut shell).contains("Test: a Success Toast"));
+    pass(&mut shell, 1);
+    assert!(screen(&mut shell).contains("Test: an Info Toast"));
+    pass(&mut shell, 1);
+    assert!(screen(&mut shell).contains("Test: a Warning Toast"));
+    pass(&mut shell, 1);
+    let frame = screen(&mut shell);
+    assert!(frame.contains("Test: an Error Toast"), "{frame}");
+}
+
+#[test]
+fn toasts_test_by_command_raises_four_and_with_toasts_off_only_the_error_stacks() {
+    let mut shell = shell();
+    run_command(&mut shell, "toasts test");
+    pass(&mut shell, 3);
+    let frame = screen(&mut shell);
+    assert!(frame.contains("Test: an Error Toast"), "{frame}");
+    assert!(frame.contains("Test: a Warning Toast"), "{frame}");
+
+    let mut shell = common::shell();
+    run_command(&mut shell, "toasts off");
+    run_command(&mut shell, "toasts test");
+    pass(&mut shell, 3);
+    let frame = screen(&mut shell);
+    assert!(frame.contains("Test: an Error Toast"), "{frame}");
+    assert!(!frame.contains("Test: a Success Toast"), "{frame}");
+}

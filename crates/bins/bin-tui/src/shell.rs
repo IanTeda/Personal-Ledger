@@ -846,6 +846,7 @@ impl Shell {
             CommandId::DismissAll => Some(Action::DismissAllToasts),
             CommandId::ToastsOn => Some(Action::SetToasts(true)),
             CommandId::ToastsOff => Some(Action::SetToasts(false)),
+            CommandId::ToastsTest => Some(Action::TestToasts),
             CommandId::ToastHistory | CommandId::ToastHistoryAlias => {
                 Some(Action::OpenToastHistory)
             }
@@ -1543,6 +1544,18 @@ impl Shell {
             Action::SetToasts(on) => {
                 self.command_popup = None;
                 self.set_toasts(on);
+            }
+            Action::TestToasts => {
+                self.command_popup = None;
+                self.toasts.raise_test(
+                    |kind| match kind {
+                        ToastKind::Success => lib_locale::msg::toast_test_success(),
+                        ToastKind::Info => lib_locale::msg::toast_test_info(),
+                        ToastKind::Warning => lib_locale::msg::toast_test_warning(),
+                        ToastKind::Error => lib_locale::msg::toast_test_error(),
+                    },
+                    Local::now(),
+                );
             }
             Action::OpenToastHistory => {
                 self.command_popup = None;
@@ -2748,6 +2761,7 @@ fn runs_without_ledger(id: CommandId) -> bool {
             | CommandId::DismissAll
             | CommandId::ToastsOn
             | CommandId::ToastsOff
+            | CommandId::ToastsTest
             | CommandId::ToastHistory
             | CommandId::ToastHistoryAlias
     )

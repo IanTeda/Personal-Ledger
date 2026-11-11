@@ -565,7 +565,7 @@ impl SettingsView {
     /// The page's own hints, before the paging hints every page ends with.
     fn page_hints(&self) -> Vec<(String, String)> {
         match self.selected() {
-            SettingsPage::General => general::GeneralPage::hints(),
+            SettingsPage::General => self.general.hints_for_selected(),
             SettingsPage::Ledger => ledger::LedgerPage::hints(),
             SettingsPage::Display => display::DisplayPage::hints(),
             SettingsPage::Units => self

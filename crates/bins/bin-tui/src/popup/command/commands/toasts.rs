@@ -34,6 +34,13 @@ pub const COMMANDS: &[Command] = &[
         args: &[],
     },
     Command {
+        id: CommandId::ToastsTest,
+        name: "toasts test",
+        chord: Chord::NONE,
+        description: crate::msg::tui_command_toasts_test_description,
+        args: &[],
+    },
+    Command {
         id: CommandId::ToastHistory,
         name: "toasts",
         chord: Chord::NONE,
