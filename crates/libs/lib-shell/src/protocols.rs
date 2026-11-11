@@ -98,6 +98,12 @@ pub trait ShellRouter: Notify {
     /// opened. A Client that asks first (the Desktop's Create ledger Dialog) returns `false` and
     /// reports the open later through `Presenter::explorer_chosen`.
     fn create_ledger(&mut self, path: &Path) -> bool;
+
+    /// The folder picker picked `folder` as the Data folder: has it written, by the one place that
+    /// writes it, which says how that went. Whether `folder` is now the Data folder in effect, so
+    /// `:open` and `:new` start there: not when it was already, when the write was refused, or when
+    /// a source above the configuration file still sets it.
+    fn set_data_folder(&mut self, folder: &Path) -> bool;
 }
 
 /// The counts the primary rail's badges show, each worked out by the domain that owns its rule.

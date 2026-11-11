@@ -240,6 +240,7 @@ At Medium, Settings is a drill-down with the page picker in a breadcrumb page he
 - `esc` or Cancel closes without opening
 - Open over an Open Ledger opens the new file first and swaps only on success; a file that won't open keeps the current Ledger and raises `Couldn't open <name>`. Success lands on the Dashboard.
 - Breadcrumb segments are clickable to jump up the path
+- `:data` opens it to pick the Data folder instead (1e·pick): folders are the targets, files inert, **Use …** (`ctrl-enter`, named for the folder) picks the folder browsed and returns to the View it opened over
 
 ### Command palette
 - `:` opens; typing filters the registry (fuzzy, substring-weighted)

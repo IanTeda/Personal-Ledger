@@ -47,7 +47,7 @@ use lib_settings::{
 use lib_viper::dialog::DialogKeys;
 use lib_viper::keymap::KeyBindingConfig;
 use lib_viper::presenter::Presenter;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 impl EventEmitter<ViewEvent> for SettingsView {}
@@ -750,6 +750,16 @@ impl SettingsView {
         self.pages
             .general
             .update(cx, |page, cx| page.send(GeneralEvent::SetToasts(on), cx));
+    }
+
+    /// The folder the Data folder picker picked, written by General's Presenter, the one place
+    /// the Data folder is written. Whether `folder` is now the Data folder in effect.
+    pub fn set_data_folder(&mut self, folder: &Path, cx: &mut Context<'_, Self>) -> bool {
+        self.pages.general.update(cx, |page, cx| {
+            let before = page.presenter().data_folder().to_path_buf();
+            page.send(GeneralEvent::SetDataFolder(folder.to_path_buf()), cx);
+            before != folder && page.presenter().data_folder() == folder
+        })
     }
 }
 

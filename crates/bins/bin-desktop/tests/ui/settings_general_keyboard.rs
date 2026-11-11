@@ -1,5 +1,7 @@
 //! Settings › General driven by keys: focus lands on On start, `j`/`k` walk On start, Start view,
-//! Toasts and the Locale, and `h`/`l` change the one focused. Each change is saved to the conf file
+//! Toasts, the Locale and the Data folder, and `h`/`l` change the one focused; `enter` on the Data
+//! folder opens the folder picker (DESKTOP-187), whose `ctrl-enter` writes it and raises a Toast
+//! (DESKTOP-188), and `esc` changes nothing. Each change is saved to the conf file
 //! (ADR-0053) and Toasts reach the Shell's Toasts; `t` on Toasts raises the Toasts test; a key an
 //! environment variable sets is shown as such and left alone, but for the Locale, which is written
 //! all the same (DESKTOP-186). A chosen Locale applies at the next start, so a note says so.
@@ -35,20 +37,26 @@ fn focus_starts_on_on_start(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn j_and_k_walk_the_four_controls_and_stop_at_the_ends(app: &mut TestAppContext) {
+fn j_and_k_walk_the_five_controls_and_stop_at_the_ends(app: &mut TestAppContext) {
     let mut ui = in_general(app);
 
     ui.press("j");
     assert_eq!(ui.settings::<SettingsGeneralSnapshot>().field, Some(1));
     ui.press("j");
     assert_eq!(ui.settings::<SettingsGeneralSnapshot>().field, Some(2));
-    ui.press("j j");
+    ui.press("j");
     assert_eq!(
         ui.settings::<SettingsGeneralSnapshot>().field,
         Some(3),
-        "the Locale comes after Toasts, and is the last"
+        "the Locale comes after Toasts"
     );
-    ui.press("k k k k");
+    ui.press("j j");
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().field,
+        Some(4),
+        "the Data folder comes after the Locale, and is the last"
+    );
+    ui.press("k k k k k");
     assert_eq!(ui.settings::<SettingsGeneralSnapshot>().field, Some(0));
 }
 
@@ -427,4 +435,108 @@ fn with_no_configuration_file_the_right_side_says_so(app: &mut TestAppContext) {
     let mut ui = in_general(app);
     ui.set_configuration_file(None);
     assert_eq!(ui.status_right(WindowSize::Large), "no configuration file");
+}
+
+/// General with the Data folder focused on `dir`.
+fn on_the_data_folder<'a>(app: &'a mut TestAppContext, dir: &std::path::Path) -> Harness<'a> {
+    let mut ui = in_general(app);
+    ui.browse_from(dir);
+    ui.press("j j j j");
+    assert_eq!(ui.settings::<SettingsGeneralSnapshot>().field, Some(4));
+    ui
+}
+
+#[gpui::test]
+fn enter_on_the_data_folder_picks_one_and_returns_to_general_with_a_toast(
+    app: &mut TestAppContext,
+) {
+    let dir = common::data_folder();
+    let mut ui = on_the_data_folder(app, dir.path());
+
+    ui.press("enter");
+    let open = ui.explorer().expect("enter opens the picker");
+    assert_eq!(open.mode, lib_shell::ExplorerMode::PickFolder);
+    assert_eq!(open.folder, dir.path(), "it opens in the Data folder");
+    ui.press("j l");
+    ui.press("ctrl-enter");
+
+    let finance = dir.path().join("finance");
+    assert_eq!(ui.explorer(), None);
+    assert_eq!(ui.settings_frame().page, "General");
+    let general = ui.settings::<SettingsGeneralSnapshot>();
+    assert_eq!(general.field, Some(4), "the Data folder keeps the keyboard");
+    assert_eq!(general.data_folder, finance.display().to_string());
+    assert_eq!(general.data_folder_shown, finance.display().to_string());
+    assert_eq!(
+        ui.conf(),
+        format!("[General]\ndata = {}\n", finance.display())
+    );
+    let toast = ui.toasts().visible.pop().expect("a Success Toast");
+    assert_eq!(toast.kind, "Success");
+    assert_eq!(
+        toast.text,
+        format!("Data folder is now {}", finance.display())
+    );
+}
+
+#[gpui::test]
+fn escape_from_the_data_folder_picker_changes_nothing(app: &mut TestAppContext) {
+    let dir = common::data_folder();
+    let mut ui = on_the_data_folder(app, dir.path());
+
+    ui.press("enter l escape");
+
+    assert_eq!(ui.explorer(), None);
+    assert_eq!(ui.conf(), "");
+    let general = ui.settings::<SettingsGeneralSnapshot>();
+    assert_eq!(general.field, Some(4));
+    assert_eq!(general.data_folder, dir.path().display().to_string());
+    assert!(ui.toasts().visible.is_empty());
+}
+
+#[gpui::test]
+fn a_data_folder_an_environment_variable_sets_is_still_written_and_the_override_noted(
+    app: &mut TestAppContext,
+) {
+    let dir = common::data_folder();
+    let var = "PERSONAL_LEDGER_GENERAL__DATA";
+    let mut ui = Harness::with_configuration(
+        app,
+        &lib_config::Config::default(),
+        &[(var, &dir.path().display().to_string())],
+    );
+    ui.browse_from(dir.path());
+    ui.press("g s l j j j j");
+    let note = ui.settings::<SettingsGeneralSnapshot>().data_folder_note;
+    assert!(
+        note.is_some_and(|note| note.starts_with(&format!(
+            "{var} sets the Data folder to {} for now",
+            dir.path().display()
+        ))),
+        "the note names the override and the folder in effect"
+    );
+    assert!(ui.is_drawn("general-data-folder-note"));
+
+    ui.press("enter j l ctrl-enter");
+
+    let finance = dir.path().join("finance");
+    assert_eq!(
+        ui.conf(),
+        format!("[General]\ndata = {}\n", finance.display()),
+        "written for when the override is gone"
+    );
+    let general = ui.settings::<SettingsGeneralSnapshot>();
+    assert_eq!(general.data_folder_shown, finance.display().to_string());
+    assert_eq!(
+        general.data_folder,
+        dir.path().display().to_string(),
+        "the override still decides"
+    );
+    assert!(ui.toasts().visible.is_empty(), "nothing changed in effect");
+    ui.press(": o p e n enter");
+    assert_eq!(
+        ui.explorer().map(|explorer| explorer.folder),
+        Some(dir.path().to_path_buf()),
+        ":open still starts where the override says"
+    );
 }

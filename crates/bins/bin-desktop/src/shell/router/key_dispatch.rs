@@ -27,8 +27,9 @@ impl Root {
     /// The status line's own COMMAND-mode echo (`crate::shell::view::statusline::StatusLine`'s
     /// `command_echo`): the palette's live input while it's open, or -- once `:open` or `:new` has
     /// been confirmed and the palette has closed in its favour -- the file explorer's frozen
-    /// `"open"` or `"new"` echo, each read from its Presenter and paired with its own "esc closes
-    /// ..." hint text, under the key `back` is bound to now.
+    /// `"open"`, `"new"` or `"data"` echo, each read from its Presenter and paired with its own
+    /// hint text under the key `back` is bound to now: "esc closes ...", or the folder picker's
+    /// keys, naming the folder its Use picks (DESKTOP-187).
     pub(super) fn command_echo(&self) -> Option<(String, String)> {
         if let Some(palette) = self.presenter.palette() {
             Some((
@@ -36,10 +37,16 @@ impl Root {
                 crate::msg::desktop_status_close_command_window(&palette.keys.close),
             ))
         } else if let Some(explorer) = self.presenter.explorer() {
-            Some((
-                explorer.mode.command().to_string(),
-                crate::msg::desktop_status_close_file_explorer(&explorer.close_key),
-            ))
+            let hint = match explorer.mode {
+                lib_shell::ExplorerMode::PickFolder => crate::msg::desktop_status_pick_folder(
+                    &lib_shell::explorer::display_name(&explorer.folder),
+                    &explorer.close_key,
+                ),
+                lib_shell::ExplorerMode::Open | lib_shell::ExplorerMode::New => {
+                    crate::msg::desktop_status_close_file_explorer(&explorer.close_key)
+                }
+            };
+            Some((explorer.mode.command().to_string(), hint))
         } else {
             None
         }
@@ -129,7 +136,8 @@ impl Root {
     /// A key while the file explorer is open, as one input: its Presenter resolves it through the
     /// Dialog keymap, `back` closing it, and in `:new` types any key the keymap doesn't bind into
     /// the File name, select creating the file through the root Router, as Create does. `:open`'s
-    /// explorer picks a file by mouse alone. The explorer takes every key, so a key it gives no
+    /// explorer picks a file by mouse alone; `:data`'s walks folders by key and picks with submit,
+    /// the root Router writing the Data folder. The explorer takes every key, so a key it gives no
     /// meaning to goes no further.
     fn handle_explorer_key(
         &mut self,

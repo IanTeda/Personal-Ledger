@@ -146,8 +146,8 @@ fn device_rows(page: SettingsPage, sources: &SummarySources<'_>) -> Vec<SummaryR
             ),
             row(msg::settings_summary_locale(), sources.locale.line.clone()),
             row(
-                msg::settings_general_ledger_folder(),
-                sources.device.ledger_folder.display().to_string(),
+                msg::settings_general_data_folder(),
+                sources.device.data_folder.display().to_string(),
             ),
         ],
         SettingsPage::Display => vec![
@@ -312,7 +312,7 @@ mod tests {
             Self {
                 general: GeneralSettings::default(),
                 device: ThisDevice {
-                    ledger_folder: PathBuf::from("~/documents/ledgers"),
+                    data_folder: PathBuf::from("~/documents/ledgers"),
                     ..ThisDevice::default()
                 },
                 locale: LocaleLine {
@@ -356,7 +356,7 @@ mod tests {
                 ("On start", "Reopen last Ledger"),
                 ("Toasts", "On"),
                 ("Locale", "en-AU"),
-                ("Ledger folder", "~/documents/ledgers"),
+                ("Data folder", "~/documents/ledgers"),
             ]
         );
         assert_eq!(summary.name, "General");

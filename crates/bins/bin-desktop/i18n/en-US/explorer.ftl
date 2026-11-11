@@ -1,10 +1,14 @@
 ## The file explorer dialog behind `:open` and `:new`: browsing real directories to a `.pldb`
-## ledger file. Title, column headers, instructions, and button labels.
+## ledger file, and behind `:data`, picking the Data folder. Title, column headers, instructions,
+## and button labels.
 
 ## The dialog title, mode-specific.
 
 desktop-explorer-open = Open ledger file
 desktop-explorer-new = New ledger file
+desktop-explorer-pick = Choose data folder
+# Beside the folder picker's title (1e·pick): the Data folder now. `$folder` is its path, home as ~.
+desktop-explorer-pick-now = now { $folder }
 
 ## The table column headers, all caps.
 
@@ -59,6 +63,10 @@ desktop-explorer-filter-hide-hidden-detail = — dot files and folders
 desktop-explorer-cancel = Cancel
 desktop-explorer-open-button = Open
 desktop-explorer-new-button = Create
+# The folder picker's primary button, named for the folder the path bar shows. `$folder` is its name.
+desktop-explorer-use-button = Use { $folder }
+# The folder picker's footer note (1e·pick).
+desktop-explorer-pick-note = Picks the folder you're in. Files show what's there; nothing is moved.
 
 ## New mode's File name field (1e·new): its label, and the inline refusal of a name already in the
 ## folder browsed to. `$name` is the file name with `.pldb` added, `$folder` the folder's name.

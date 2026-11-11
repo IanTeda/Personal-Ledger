@@ -44,6 +44,9 @@ impl ConfigArgs {
     pub fn apply_overrides(&self, config: &mut crate::Config) {
         if let Some(data) = &self.data {
             config.general.data = data.clone();
+            config
+                .writer
+                .flagged(crate::ConfigKey::Data, format!("--data {}", data.display()));
         }
         if let Some(file) = &self.file {
             config.general.file = Some(file.clone());

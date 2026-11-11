@@ -4,6 +4,7 @@
 //! [`Notify`] (ADR-0048). [`DeviceConfiguration`] writes a device's settings, Configuration in the
 //! user's configuration file (ADR-0053), which the Client answers over its own configuration writer.
 
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use lib_colour_theme::ColourAppearance;
@@ -44,6 +45,10 @@ pub trait DeviceRouter: Notify {
 
     /// General's **Test** asked for the Toasts test, which the Shell's Toasts raise (DESKTOP-184).
     fn test_toasts(&mut self);
+
+    /// General's **Change…** asked for the Data folder picker (DESKTOP-187), which the Shell's
+    /// file explorer is. What it picks comes back as `GeneralEvent::SetDataFolder`.
+    fn pick_data_folder(&mut self);
 }
 
 /// A Colour Theme or Appearance chosen on Display or by the palette.
@@ -67,10 +72,12 @@ pub enum DeviceKey {
     ColourTheme,
     ColourAppearance,
     Locale,
+    /// The Data folder, the configuration file's `data`.
+    Data,
 }
 
 impl DeviceKey {
-    pub const ALL: [DeviceKey; 9] = [
+    pub const ALL: [DeviceKey; 10] = [
         Self::OnStart,
         Self::StartView,
         Self::Toasts,
@@ -80,6 +87,7 @@ impl DeviceKey {
         Self::ColourTheme,
         Self::ColourAppearance,
         Self::Locale,
+        Self::Data,
     ];
 
     /// The key as the configuration file spells it, the TUI's `:set` and the environment variable
@@ -95,13 +103,15 @@ impl DeviceKey {
             Self::ColourTheme => "colour_theme",
             Self::ColourAppearance => "colour_appearance",
             Self::Locale => "locale",
+            Self::Data => "data",
         }
     }
 
-    /// Whether a write goes to the file even while a source above it sets the key: the Locale
-    /// (DESKTOP-186), whose choice is kept for when the override is gone. Every other key refuses.
+    /// Whether a write goes to the file even while a source above it sets the key: the Locale and
+    /// the Data folder (DESKTOP-186), whose choice is kept for when the override is gone. Every
+    /// other key refuses.
     pub fn writes_when_shadowed(self) -> bool {
-        matches!(self, Self::Locale)
+        matches!(self, Self::Locale | Self::Data)
     }
 }
 
@@ -156,6 +166,9 @@ pub trait DeviceConfiguration {
 
     /// `None` is **System**, which takes the key out of the file. Written even while shadowed.
     fn set_locale(&self, locale: Option<Locale>) -> DeviceAnswer<Option<Locale>>;
+
+    /// The Data folder, `[General] data`. Written even while shadowed.
+    fn set_data(&self, folder: &Path) -> DeviceAnswer<PathBuf>;
 }
 
 /// What only the Shell does for Settings › Tracing: the log box's list is the Client's, and Clear

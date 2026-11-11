@@ -264,7 +264,7 @@ impl Root {
                 presenter.set_palette_entries(command::palette_entries(
                     &lib_config::KeyBindingConfig::default(),
                 ));
-                // Until start-up names the Ledger folder, `:open` and `:new` start at home.
+                // Until start-up names the Data folder, `:open` and `:new` start at home.
                 presenter.set_explorer_start(None, dirs::home_dir());
                 presenter
             },
@@ -456,6 +456,10 @@ impl Root {
         let locale = writer
             .value(lib_config::ConfigKey::Locale)
             .map(|tag| lib_locale::Locale::negotiate(&tag));
+        // And its Data folder the file's own, which may be outranked the same way.
+        let data = writer
+            .value(lib_config::ConfigKey::Data)
+            .map(std::path::PathBuf::from);
         let device: Rc<dyn lib_settings::DeviceConfiguration> =
             Rc::new(DeviceConfigFile::new(writer));
         let general = lib_settings::GeneralSettings {
@@ -463,6 +467,7 @@ impl Root {
             start_view: config.general.start_view().clone(),
             toasts_on: config.general.toasts(),
             locale,
+            data,
         };
         let display = lib_settings::DisplaySettings {
             date_style: config.display.date_style(),
@@ -483,7 +488,7 @@ impl Root {
     pub fn set_this_device(&mut self, device: lib_settings::ThisDevice, cx: &mut App) {
         self.configuration_file = device.configuration.clone();
         self.presenter
-            .set_explorer_start(Some(device.ledger_folder.clone()), dirs::home_dir());
+            .set_explorer_start(Some(device.data_folder.clone()), dirs::home_dir());
         self.settings
             .update(cx, |view, cx| view.set_this_device(device, cx));
     }

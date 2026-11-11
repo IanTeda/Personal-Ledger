@@ -1,4 +1,4 @@
-//! Settings › General driven by the mouse: the On start, Start view, Toasts and Locale options, each saved to the conf file (ADR-0053), the Locale even under an override (DESKTOP-186), Toasts' Test raising the four test Toasts, and the read-only Ledger folder and THIS DEVICE box drawn beside them. State is read back from `Root` and the conf file.
+//! Settings › General driven by the mouse: the On start, Start view, Toasts and Locale options, each saved to the conf file (ADR-0053), the Locale even under an override (DESKTOP-186), Toasts' Test raising the four test Toasts, the Data folder's **Change…** opening the folder picker, whose **Use <folder>** writes it (DESKTOP-187, DESKTOP-188), and the THIS DEVICE box drawn beside them. State is read back from `Root` and the conf file.
 
 use super::common;
 use bin_desktop::shell::router::SettingsGeneralSnapshot;
@@ -122,11 +122,16 @@ fn under_an_environment_variable_a_locale_click_still_writes_and_the_override_is
 }
 
 #[gpui::test]
-fn the_locale_ledger_folder_and_this_device_box_are_drawn(app: &mut TestAppContext) {
+fn the_locale_data_folder_and_this_device_box_are_drawn(app: &mut TestAppContext) {
     let mut ui = on_general(app);
 
     assert!(ui.is_drawn("general-locale"));
-    assert!(ui.is_drawn("general-ledger-folder"));
+    assert!(ui.is_drawn("general-data-folder"));
+    assert!(ui.is_drawn("general-data-folder-change"));
+    assert!(
+        !ui.is_drawn("general-data-folder-note"),
+        "nothing overrides it"
+    );
     assert!(ui.is_drawn("general-this-device"));
     // A test Shell is told nothing of this device, so THIS DEVICE reads none.
     let general = ui.settings::<SettingsGeneralSnapshot>();
@@ -190,4 +195,35 @@ fn clicking_test_raises_the_four_test_toasts(app: &mut TestAppContext) {
         .collect();
     assert_eq!(kinds, ["Error", "Warning", "Info", "Success"]);
     assert!(ui.settings::<SettingsGeneralSnapshot>().toasts_on);
+}
+
+#[gpui::test]
+fn change_opens_the_folder_picker_and_use_writes_the_data_folder(app: &mut TestAppContext) {
+    let dir = common::data_folder();
+    let mut ui = on_general(app);
+    ui.browse_from(dir.path());
+
+    ui.click("general-data-folder-change");
+    let picker = ui.explorer().expect("the picker is open");
+    assert_eq!(picker.mode, lib_shell::ExplorerMode::PickFolder);
+    assert_eq!(picker.folder, dir.path());
+    assert!(ui.is_drawn("explorer-current"), "the header names it");
+    ui.click("explorer-row-1");
+    ui.click("explorer-open");
+
+    let finance = dir.path().join("finance");
+    assert_eq!(ui.explorer(), None);
+    assert_eq!(ui.settings_frame().page, "General");
+    assert_eq!(
+        ui.conf(),
+        format!("[General]\ndata = {}\n", finance.display())
+    );
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().data_folder_shown,
+        finance.display().to_string()
+    );
+    assert_eq!(
+        ui.toasts().visible.pop().map(|toast| toast.text),
+        Some(format!("Data folder is now {}", finance.display()))
+    );
 }

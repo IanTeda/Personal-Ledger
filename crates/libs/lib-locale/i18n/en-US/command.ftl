@@ -7,6 +7,7 @@ command-focus-next = move focus to the next zone
 command-focus-previous = move focus to the previous zone
 command-dismiss-toasts = dismiss every Toast
 command-toast-history = show this session's Toasts
+command-change-data-folder = Change data folder
 command-jump-dashboard = net worth and budget health
 command-jump-transactions = the transaction ledger
 command-jump-documents = receipts, statements and what they prove

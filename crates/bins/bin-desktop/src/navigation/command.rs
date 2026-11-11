@@ -615,6 +615,8 @@ fn global_domain(command: ShellCommand) -> Domain {
             Noun::Settings => Domain::Settings,
         },
         ShellCommand::DismissToasts | ShellCommand::ToastHistory => Domain::Toasts,
+        // Beside `:open`, `:new` and `:close`, the other file-level Commands.
+        ShellCommand::ChangeDataFolder => Domain::Ledger,
         _ => Domain::Navigation,
     }
 }
@@ -809,6 +811,24 @@ mod tests {
         assert_eq!(key(&config, "accounts new").as_deref(), Some("a"));
         assert_eq!(key(&config, "messages").as_deref(), Some("ctrl+t"));
         assert_eq!(key(&config, "toasts").as_deref(), Some("ctrl+t"));
+    }
+
+    #[test]
+    fn data_changes_the_data_folder_beside_the_ledger_commands_with_or_without_a_ledger() {
+        crate::locale::init_for_tests();
+        let data = defaults()
+            .into_iter()
+            .find(|entry| entry.name == "data")
+            .expect("`data` is listed");
+
+        assert_eq!(
+            data.effect,
+            CommandEffect::Shell(ShellCommand::ChangeDataFolder)
+        );
+        assert_eq!((data.description)(), "Change data folder");
+        assert_eq!(data.domain, Domain::Ledger);
+        assert_eq!(data.key, None, "change_data_folder is unbound");
+        assert!(!data.effect.needs_ledger());
     }
 
     #[test]

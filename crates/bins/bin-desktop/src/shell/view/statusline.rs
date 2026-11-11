@@ -501,12 +501,17 @@ pub fn configuration_label(
                 .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
             format!("\u{2026}/{name}")
         }
-        WindowSize::Large | WindowSize::XLarge => {
-            match home.and_then(|home| file.strip_prefix(home).ok()) {
-                Some(relative) => format!("~/{}", relative.display()),
-                None => file.display().to_string(),
-            }
-        }
+        WindowSize::Large | WindowSize::XLarge => under_home(file, home),
+    }
+}
+
+/// `path` with `home` as `~`, as the status line and the file explorer name a path; `path` itself
+/// when it isn't under `home`.
+pub(crate) fn under_home(path: &Path, home: Option<&Path>) -> String {
+    match home.and_then(|home| path.strip_prefix(home).ok()) {
+        Some(relative) if relative.as_os_str().is_empty() => "~".to_string(),
+        Some(relative) => format!("~/{}", relative.display()),
+        None => path.display().to_string(),
     }
 }
 
@@ -528,12 +533,7 @@ pub fn ledger_label(
     match (window_size, file) {
         (WindowSize::Medium, _) => format!("\u{2026}/{name}"),
         (WindowSize::Large | WindowSize::XLarge, None) => format!("~/Documents/{name}"),
-        (WindowSize::Large | WindowSize::XLarge, Some(file)) => {
-            match home.and_then(|home| file.strip_prefix(home).ok()) {
-                Some(relative) => format!("~/{}", relative.display()),
-                None => file.display().to_string(),
-            }
-        }
+        (WindowSize::Large | WindowSize::XLarge, Some(file)) => under_home(file, home),
     }
 }
 

@@ -1,6 +1,6 @@
 //! Settings › General drawn from its view model (DESKTOP-178): the field column (On start, Start
-//! view, Toasts, the Locale and the read-only Ledger folder) beside the THIS DEVICE box. Every click
-//! is a Presenter event through [`PageClicks`].
+//! view, Toasts, the Locale and the Data folder) beside the THIS DEVICE box. Every click is a
+//! Presenter event through [`PageClicks`].
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use lib_core::StartView;
@@ -9,7 +9,7 @@ use lib_settings::presenter::general::{
 };
 use lib_settings::{
     DeviceKey, GeneralEvent, GeneralViewModel,
-    presenter::{ControlView, LocaleControl, ReadOnlyView, StartViewControl, ThisDeviceView},
+    presenter::{ControlView, DataFolderView, LocaleControl, StartViewControl, ThisDeviceView},
 };
 use lib_viper::view::Hint;
 
@@ -70,10 +70,7 @@ pub(super) fn page(
                     clicks,
                     cx,
                 ))
-                .child(
-                    read_only("general-ledger-folder", &model.ledger_folder, true, cx)
-                        .child(hint(model.ledger_folder.hint.clone(), cx)),
-                ),
+                .child(data_folder_field(&model.data_folder, clicks, cx)),
         )
         .child(this_device_panel(&model.this_device, cx))
         .into_any_element()
@@ -126,10 +123,27 @@ fn segmented<T: Copy + PartialEq + 'static>(
 /// Toasts' secondary **Test** button, its key after its label. It is no `j`/`k` stop of its own:
 /// the key presses it from Toasts.
 fn test_button(test: &Hint, clicks: &PageClicks<GeneralPage>, cx: &App) -> impl IntoElement {
+    button(
+        "general-toasts-test",
+        test,
+        GeneralEvent::PressTest,
+        clicks,
+        cx,
+    )
+}
+
+/// A secondary button: its label, then the key that presses it, faint.
+fn button(
+    id: &'static str,
+    label: &Hint,
+    event: GeneralEvent,
+    clicks: &PageClicks<GeneralPage>,
+    cx: &App,
+) -> impl IntoElement {
     let hover = color::hover(cx);
     div()
-        .id("general-toasts-test")
-        .debug_selector(|| "general-toasts-test".to_string())
+        .id(id)
+        .debug_selector(move || id.to_string())
         .cursor_pointer()
         .flex_none()
         .flex()
@@ -144,13 +158,13 @@ fn test_button(test: &Hint, clicks: &PageClicks<GeneralPage>, cx: &App) -> impl 
         .font_weight(gpui::FontWeight::EXTRA_BOLD)
         .whitespace_nowrap()
         .hover(move |style| style.bg(hover))
-        .on_click(clicks.send(GeneralEvent::PressTest))
-        .child(test.action.clone())
+        .on_click(clicks.send(event))
+        .child(label.action.clone())
         .child(
             div()
                 .text_color(color::faint_text(cx))
                 .font_weight(gpui::FontWeight::NORMAL)
-                .child(test.chord.clone()),
+                .child(label.chord.clone()),
         )
 }
 
@@ -216,24 +230,10 @@ fn locale_field(
     cx: &App,
 ) -> impl IntoElement {
     let select = &view.control.select;
-    let note = view.note.clone().map(|text| {
-        div()
-            .debug_selector(|| "general-locale-note".to_string())
-            .mt(px(6.0))
-            .flex()
-            .items_start()
-            .gap(px(8.0))
-            .text_size(px(11.5))
-            .text_color(color::foreground(cx))
-            .child(
-                div()
-                    .flex_none()
-                    .mt(px(4.0))
-                    .size(px(8.0))
-                    .bg(color::accent(cx)),
-            )
-            .child(div().min_w(px(0.0)).child(text))
-    });
+    let note = view
+        .note
+        .clone()
+        .map(|text| note(text, "general-locale-note", cx));
     focus_mark(focused, cx)
         .debug_selector(|| "general-locale".to_string())
         .child(field_label(select.label.clone()))
@@ -272,17 +272,65 @@ fn locale_field(
         .children(view.control.hint.clone().map(|text| hint(text, cx)))
 }
 
-/// A read-only line: its label over its value, the Ledger folder's in monospace.
-fn read_only(selector: &'static str, view: &ReadOnlyView, monospace: bool, cx: &App) -> gpui::Div {
-    div()
-        .debug_selector(move || selector.to_string())
+/// The Data folder: its path in monospace beside **Change…** (DESKTOP-187), then the note while a
+/// source above the file sets it (DESKTOP-186) and the hint.
+fn data_folder_field(
+    view: &DataFolderView,
+    clicks: &PageClicks<GeneralPage>,
+    cx: &App,
+) -> impl IntoElement {
+    focus_mark(view.focused, cx)
+        .debug_selector(|| "general-data-folder".to_string())
         .child(field_label(view.label.clone()))
         .child(
             div()
-                .when(monospace, |this| this.font_family("monospace"))
-                .text_color(color::muted(cx))
-                .child(field_value(view.value.clone(), false, cx)),
+                .flex()
+                .items_center()
+                .gap(px(12.0))
+                .child(
+                    div()
+                        .debug_selector(|| "general-data-folder-path".to_string())
+                        .flex_1()
+                        .min_w(px(0.0))
+                        .truncate()
+                        .font_family("monospace")
+                        .text_color(color::muted(cx))
+                        .child(field_value(view.value.clone(), false, cx)),
+                )
+                .child(button(
+                    "general-data-folder-change",
+                    &view.change,
+                    GeneralEvent::PressChange,
+                    clicks,
+                    cx,
+                )),
         )
+        .children(
+            view.note
+                .clone()
+                .map(|text| note(text, "general-data-folder-note", cx)),
+        )
+        .child(hint(view.hint.clone(), cx))
+}
+
+/// A note under a field, after a square accent marker: the Locale's and the Data folder's.
+fn note(text: String, selector: &'static str, cx: &App) -> impl IntoElement {
+    div()
+        .debug_selector(move || selector.to_string())
+        .mt(px(6.0))
+        .flex()
+        .items_start()
+        .gap(px(8.0))
+        .text_size(px(11.5))
+        .text_color(color::foreground(cx))
+        .child(
+            div()
+                .flex_none()
+                .mt(px(4.0))
+                .size(px(8.0))
+                .bg(color::accent(cx)),
+        )
+        .child(div().min_w(px(0.0)).child(text))
 }
 
 /// The THIS DEVICE box, in the Ledger page's summary treatment: the Ledger On start would reopen

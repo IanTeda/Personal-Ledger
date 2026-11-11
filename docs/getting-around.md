@@ -110,7 +110,11 @@ When the desktop app starts, it opens the Ledger that **On start** names in [Set
 
 If the file it was told to open is missing, empty, a folder or won't open, an error Toast says which file and why. The app then starts with no Ledger open, and tries that file again next time.
 
-With no Ledger open the app sits on the Dashboard, which offers `:open` and `:new`, and the status line says "No ledger open…". The rail shows the screens that need a Ledger dimmed and without their counts. Choosing one says "No Ledger open: :open or :new first" and leaves you where you are. This applies to a click, a `g` jump or a command. `:open`, `:new`, `?` for help and Settings still work. In Settings only the This device pages open: General, Display, Tracing and About.
+With no Ledger open the app sits on the Dashboard, which offers `:open` and `:new`, and the status line says "No ledger open…". The rail shows the screens that need a Ledger dimmed and without their counts. Choosing one says "No Ledger open: :open or :new first" and leaves you where you are. This applies to a click, a `g` jump or a command. `:open`, `:new`, `:data`, `?` for help and Settings still work. In Settings only the This device pages open: General, Display, Tracing and About.
+
+## Choosing the Data folder
+
+In the desktop app, `:open` and `:new` start browsing in the **Data folder**, where Personal Ledger looks for Ledger files and keeps Documents. **`:data`** (**Change data folder** in the palette) opens the file explorer to choose it from any screen, with or without a Ledger open: go into the folder you want and press `ctrl-enter` or **Use …** (named for the folder). It applies at once and moves no files; `Esc` changes nothing. Settings › General's **Data folder** does the same (see [Settings](settings.md#general-page)).
 
 ## Starting a new Ledger
 

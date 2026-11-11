@@ -9,7 +9,7 @@ desktop-settings-general-locale-fallback = { $requested } is not supported, so {
 ## `lib-settings`' Messages. Terms such as Configuration, Preferences and Change Sets are the ones
 ## `GLOSSARY.md` defines.
 
-## General (DESKTOP-178): On start, Start view, the read-only Ledger folder and the THIS DEVICE box, whose
+## General (DESKTOP-178): On start, Start view, the Data folder and the THIS DEVICE box, whose
 ## rows are the Ledger On start reopens and the config file Settings writes to.
 
 ## Start view: the View the Desktop lands on as it starts. The nouns' own names are the rail's.

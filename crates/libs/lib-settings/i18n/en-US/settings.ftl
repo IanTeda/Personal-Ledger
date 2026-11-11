@@ -45,7 +45,7 @@ settings-section-about = About
 
 ## Each page's one-line description under its name on the Medium index page.
 
-settings-description-general = on start, toasts, locale and the ledger folder
+settings-description-general = on start, toasts, locale and the data folder
 settings-description-display = date format, row density, status glyphs, colour theme
 settings-description-ledger = ledger name, owner and start of the financial year
 settings-description-units = currencies and other units, and the default
@@ -112,7 +112,7 @@ settings-device-no-file = { $key } can't be saved: there's no home folder to kee
 settings-device-saved = { $key } saved to { $path }
 settings-device-write-failed = Couldn't save { $key } to personal-ledger.conf: the log says why
 
-## General (DESKTOP-178): On start, Start view, Toasts, the Locale, the read-only Ledger folder, and
+## General (DESKTOP-178): On start, Start view, Toasts, the Locale, the Data folder, and
 ## the THIS DEVICE box, whose rows are the Ledger On start reopens and the config file Settings
 ## writes to. Toasts' own label, choices and note are `lib-locale`'s, shared with the TUI.
 
@@ -136,8 +136,14 @@ settings-general-locale-en-us = English (United States)
 settings-general-locale-pending = Saved. { $chosen } applies when Personal Ledger next starts; until then it reads { $effective }.
 # A flag, an environment variable or a higher configuration file sets the Locale (DESKTOP-186). `$source` names it, such as --locale en-GB.
 settings-general-locale-overridden = { $source } overrides this for this run, so Personal Ledger reads { $effective }. Your choice is kept for when it's gone.
-settings-general-ledger-folder = Ledger folder
-settings-general-ledger-folder-hint = Where :open and :new start browsing. Set by data in the configuration file.
+settings-general-data-folder = Data folder
+settings-general-data-folder-hint = Where Personal Ledger looks for Ledger files (.pldb) and keeps Documents. :open and :new start here; :data changes it from anywhere.
+# The button that opens the Data folder picker (DESKTOP-187).
+settings-general-data-folder-change = Change…
+# The Success Toast once the picker's Use is written (DESKTOP-188). `$folder` is the folder picked.
+settings-general-data-folder-now = Data folder is now { $folder }
+# A flag, an environment variable or a higher configuration file sets the Data folder (DESKTOP-186). `$source` names it, such as PERSONAL_LEDGER_GENERAL__DATA; `$folder` is the folder in effect.
+settings-general-data-folder-overridden = { $source } sets the Data folder to { $folder } for now, so :open and :new start there. Change… keeps your choice for when it's gone.
 settings-general-this-device = This device
 settings-general-last-ledger = last ledger
 settings-general-configuration = configuration

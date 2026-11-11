@@ -25,6 +25,8 @@ desktop-hint-index = index
 
 desktop-status-close-command-window = { $key } close command window
 desktop-status-close-file-explorer = { $key } close file explorer
+# The Data folder picker's keys (DESKTOP-187). `$folder` is the name of the folder Use picks, `$key` the key that cancels.
+desktop-status-pick-folder = j/k move · l/enter into folder · h up · ctrl-enter use { $folder } · { $key } cancel
 
 ## Flashes on the status line. `$keys` is the typed chord, `$command` the command as typed (`:accounts
 ## delete`), `$name` what the user typed after it and `$matches` the names it matched.

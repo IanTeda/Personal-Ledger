@@ -460,8 +460,19 @@ impl<P: Copy + Eq + Default, E: Clone> ShellPresenter<P, E> {
                 let opened = match choice.mode {
                     ExplorerMode::Open => router.open_ledger(&choice.path),
                     ExplorerMode::New => router.create_ledger(&choice.path),
+                    // A folder pick is never a file choice.
+                    ExplorerMode::PickFolder => false,
                 };
                 self.explorer_chosen(opened, router);
+            }
+            // Picking closes the picker onto the View it opened over, as it was, whether the
+            // write went or not: the Router says how it went.
+            ExplorerOutcome::FolderPicked(folder) => {
+                if router.set_data_folder(folder) {
+                    self.explorer.set_start_folder(Some(folder.clone()));
+                }
+                self.explorer.close();
+                self.navigate(NavInput::ExitMode);
             }
             ExplorerOutcome::Ignored | ExplorerOutcome::Changed => {}
         }
@@ -500,13 +511,9 @@ impl<P: Copy + Eq + Default, E: Clone> ShellPresenter<P, E> {
         self.explorer.set_filters(filters);
     }
 
-    /// Where the explorer starts: `ledger_folder` while it can be read, else `fallback`.
-    pub fn set_explorer_start(
-        &mut self,
-        ledger_folder: Option<PathBuf>,
-        fallback: Option<PathBuf>,
-    ) {
-        self.explorer.set_start_folder(ledger_folder);
+    /// Where the explorer starts: `data_folder` while it can be read, else `fallback`.
+    pub fn set_explorer_start(&mut self, data_folder: Option<PathBuf>, fallback: Option<PathBuf>) {
+        self.explorer.set_start_folder(data_folder);
         self.explorer.set_fallback_folder(fallback);
     }
 
@@ -783,6 +790,10 @@ impl<P: Copy + Eq + Default, E: Clone> ShellPresenter<P, E> {
                 self.host(ShellDialog::ToastHistory(history), router);
             }
             ShellCommand::Jump(noun) => self.jump(noun, true, router),
+            ShellCommand::ChangeDataFolder => {
+                self.palette.close();
+                self.open_explorer(ExplorerMode::PickFolder, router.folders());
+            }
             ShellCommand::Insert => self.navigate(NavInput::EnterMode(InputMode::Insert)),
             ShellCommand::Move(_) | ShellCommand::Select => {
                 if let Some(movement) = Movement::of(command) {
@@ -1121,6 +1132,93 @@ mod tests {
         assert!(shell.explorer_open());
         assert_eq!(shell.nav().mode(), InputMode::Command);
         assert_eq!(shell.nav().noun(), Noun::Settings);
+    }
+
+    /// `:data` run from the palette on Bills, with or without a Ledger open, on a Router reading
+    /// `/ledgers` and `/ledgers/finance`.
+    fn picking_from_bills(ledger_open: bool) -> (Shell, RecordingRouter) {
+        let mut shell = palette_on(PaletteEffect::Shell(ShellCommand::ChangeDataFolder));
+        shell.navigate(NavInput::Show(Noun::Bills));
+        shell.set_explorer_start(Some(PathBuf::from("/ledgers")), None);
+        let mut router = RecordingRouter {
+            ledger_open,
+            folders: crate::fake::FakeLedgerFolders::default()
+                .folder(PathBuf::from("/ledgers"))
+                .folder(PathBuf::from("/ledgers/finance")),
+            ..RecordingRouter::default()
+        };
+        run_on(&mut shell, &mut router);
+        (shell, router)
+    }
+
+    #[test]
+    fn data_opens_the_folder_picker_in_the_data_folder_with_or_without_a_ledger() {
+        for ledger_open in [true, false] {
+            let (shell, router) = picking_from_bills(ledger_open);
+
+            let explorer = shell.explorer().expect("the picker is open");
+            assert_eq!(explorer.mode, ExplorerMode::PickFolder);
+            assert_eq!(explorer.folder, PathBuf::from("/ledgers"));
+            assert_eq!(shell.nav().mode(), InputMode::Command);
+            assert_eq!(shell.nav().noun(), Noun::Bills);
+            assert!(router.routed.is_empty(), "{:?}", router.routed);
+        }
+    }
+
+    #[test]
+    fn use_sets_the_data_folder_and_returns_to_the_view_it_came_from() {
+        let (mut shell, mut router) = picking_from_bills(true);
+        shell.explorer_key("l", None, &mut router);
+
+        assert_eq!(
+            shell.explorer_key("ctrl+enter", None, &mut router),
+            ExplorerOutcome::FolderPicked(PathBuf::from("/ledgers/finance"))
+        );
+
+        assert_eq!(
+            router.routed,
+            [Routed::SetDataFolder(PathBuf::from("/ledgers/finance"))]
+        );
+        assert!(!shell.explorer_open());
+        assert_eq!(shell.nav().mode(), InputMode::Normal);
+        assert_eq!(shell.nav().noun(), Noun::Bills);
+
+        shell.open_explorer(ExplorerMode::Open, &router.folders);
+        assert_eq!(
+            shell.explorer().map(|explorer| explorer.folder),
+            Some(PathBuf::from("/ledgers/finance")),
+            ":open starts in the new Data folder"
+        );
+    }
+
+    #[test]
+    fn a_data_folder_not_in_effect_leaves_where_the_explorer_starts() {
+        let (mut shell, mut router) = picking_from_bills(true);
+        router.data_folder_applies = false;
+        shell.explorer_key("l", None, &mut router);
+        shell.explorer_key("ctrl+enter", None, &mut router);
+
+        shell.open_explorer(ExplorerMode::Open, &router.folders);
+
+        assert_eq!(
+            shell.explorer().map(|explorer| explorer.folder),
+            Some(PathBuf::from("/ledgers"))
+        );
+    }
+
+    #[test]
+    fn cancelling_the_folder_picker_changes_nothing_and_returns_to_the_view() {
+        let (mut shell, mut router) = picking_from_bills(false);
+        shell.explorer_key("l", None, &mut router);
+
+        assert_eq!(
+            shell.explorer_key("esc", None, &mut router),
+            ExplorerOutcome::Closed
+        );
+
+        assert!(router.routed.is_empty());
+        assert_eq!(shell.nav().mode(), InputMode::Normal);
+        assert_eq!(shell.nav().noun(), Noun::Bills);
     }
 
     #[test]

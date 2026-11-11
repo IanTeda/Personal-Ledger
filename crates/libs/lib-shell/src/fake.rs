@@ -36,10 +36,11 @@ pub enum Routed {
     RanEffect(PaletteRun<&'static str>),
     OpenedLedger(PathBuf),
     CreatedLedger(PathBuf),
+    SetDataFolder(PathBuf),
 }
 
 /// A root Router that records each call and answers as a test set it: by default a Ledger is
-/// open, every View has a Search and takes `esc`, and every file opens.
+/// open, every View has a Search and takes `esc`, every file opens and every Data folder applies.
 #[derive(Debug)]
 pub struct RecordingRouter {
     pub routed: Vec<Routed>,
@@ -51,6 +52,8 @@ pub struct RecordingRouter {
     /// What [`ShellRouter::toggle_rail`] says the frame draws at.
     pub drawn_at: (WindowSize, bool),
     pub opens: bool,
+    /// What [`ShellRouter::set_data_folder`] answers: whether the folder picked is now in effect.
+    pub data_folder_applies: bool,
     pub folders: FakeLedgerFolders,
 }
 
@@ -65,6 +68,7 @@ impl Default for RecordingRouter {
             help_group: None,
             drawn_at: (WindowSize::Large, false),
             opens: true,
+            data_folder_applies: true,
             folders: FakeLedgerFolders::default(),
         }
     }
@@ -158,6 +162,12 @@ impl ShellRouter for RecordingRouter {
     fn create_ledger(&mut self, path: &Path) -> bool {
         self.routed.push(Routed::CreatedLedger(path.to_path_buf()));
         self.opens
+    }
+
+    fn set_data_folder(&mut self, folder: &Path) -> bool {
+        self.routed
+            .push(Routed::SetDataFolder(folder.to_path_buf()));
+        self.data_folder_applies
     }
 }
 

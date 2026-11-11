@@ -1034,6 +1034,23 @@ mod tests {
     }
 
     #[test]
+    fn the_data_flag_shadows_the_data_key() {
+        in_empty_cwd(|| {
+            let mut config =
+                LedgerConfig::parse_with_detector(None, env_map(&[]), || None).unwrap();
+            let args = crate::ConfigArgs {
+                data: Some(PathBuf::from("/tmp/ledgers")),
+                ..crate::ConfigArgs::default()
+            };
+            args.apply_overrides(&mut config);
+            assert_eq!(
+                config.writer().shadow(crate::ConfigKey::Data),
+                Some(crate::Shadow::Flag("--data /tmp/ledgers".to_string()))
+            );
+        });
+    }
+
+    #[test]
     fn locale_file_beats_system() {
         let temp_dir = TempDir::new().unwrap();
         let file = write_locale_file(&temp_dir, "en-GB");

@@ -39,6 +39,9 @@ pub enum ViewEvent {
     ToastsChanged(bool),
     /// General's **Test** asked for the Toasts test (DESKTOP-184): `Root` raises it on the Toasts.
     TestToasts,
+    /// General's **Change…** asked for the Data folder picker (DESKTOP-187): `Root` opens the file
+    /// explorer to pick it, as `:data` does.
+    PickDataFolder,
 }
 
 /// A mode a View enters for something it has opened itself: the [`InputMode`]s `Root` hands

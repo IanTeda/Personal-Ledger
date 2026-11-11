@@ -1,5 +1,6 @@
-//! The file explorer's Presenter (#1064): the floating window behind `:open` and `:new`, held by
-//! the Shell's Presenter. It holds the mode, the folder browsed, the entries read there, the
+//! The file explorer's Presenter (#1064): the floating window behind `:open` and `:new`, and the
+//! Data folder picker behind `:data` and Settings › General's **Change…** (#1148), held by the
+//! Shell's Presenter. It holds the mode, the folder browsed, the entries read there, the
 //! filters, the selection, `:new`'s file name and where it starts. The filters and where it
 //! starts outlive each opening, so the Presenter lives as long as the Shell and only the session
 //! opens and closes.
@@ -13,23 +14,31 @@
 //! with the explorer still open: it closes once the Client says the file opened
 //! ([`ExplorerPresenter::chosen`]), and stays open on a failure, so the person can pick another.
 //!
+//! Picking a folder hands back the folder browsed ([`ExplorerOutcome::FolderPicked`]), never a
+//! file: files are listed for what's there, inert, and the `.pldb`-only filter doesn't apply.
+//!
 //! Its keys are the Dialog keymap's, though the explorer is not a Dialog: back closes, and in
 //! `:new` select creates the file and a key the keymap doesn't bind is typed into the File name,
-//! `backspace` included. `:open` picks its file by mouse alone, so it takes no other key.
+//! `backspace` included. `:open` picks its file by mouse alone, so it takes no other key. The
+//! folder picker walks by keys too: its list steps move a cursor over the folders, select or `l`
+//! goes into the one under it, `h` or `backspace` goes up, and submit picks the folder browsed.
 
 use std::path::{Component, Path, PathBuf};
 use std::time::SystemTime;
 
+use lib_list_cursor::Step;
 use lib_viper::keymap::{BACK, Keymap};
 
 use crate::dialog::DialogCommand;
 
 /// Which command opened the explorer: `:open` browses to a Ledger file to open, `:new` names a
-/// file to create in the folder browsed to.
+/// file to create in the folder browsed to, and `:data` picks the folder browsed to as the Data
+/// folder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExplorerMode {
     Open,
     New,
+    PickFolder,
 }
 
 impl ExplorerMode {
@@ -39,6 +48,7 @@ impl ExplorerMode {
         match self {
             Self::Open => "open",
             Self::New => "new",
+            Self::PickFolder => "data",
         }
     }
 }
@@ -137,6 +147,8 @@ pub enum ExplorerOutcome {
     /// A file was chosen, the explorer still open until the Client says how it went
     /// ([`ExplorerPresenter::chosen`]).
     Chosen(ExplorerChoice),
+    /// The folder picker picked the folder browsed, for the Shell to make the Data folder.
+    FolderPicked(PathBuf),
 }
 
 /// What the explorer draws.
@@ -147,8 +159,11 @@ pub struct ExplorerViewModel {
     pub folder: PathBuf,
     /// Its entries after the filters, folders first, then files, each by name case-insensitively.
     pub entries: Vec<FolderEntry>,
+    /// Open's selected Ledger file, or the folder under the folder picker's cursor.
     pub selected: Option<PathBuf>,
     pub filters: ExplorerFilters,
+    /// Where each opening starts, the Data folder, which the folder picker's header names.
+    pub current: Option<PathBuf>,
     /// `:new`'s File name, as typed.
     pub file_name: String,
     /// The file `:new`'s name clashes with in the folder browsed, refused inline.
@@ -176,21 +191,21 @@ struct Session {
 /// The file explorer's Presenter.
 #[derive(Debug, Default)]
 pub struct ExplorerPresenter {
-    /// Where it starts: the Ledger folder, while it can be read.
+    /// Where it starts: the Data folder, while it can be read.
     start: Option<PathBuf>,
-    /// Where it starts when the Ledger folder can't be read, the home folder.
+    /// Where it starts when the Data folder can't be read, the home folder.
     fallback: Option<PathBuf>,
     filters: ExplorerFilters,
     session: Option<Session>,
 }
 
 impl ExplorerPresenter {
-    /// Starts each opening in `folder`, the Ledger folder.
+    /// Starts each opening in `folder`, the Data folder.
     pub fn set_start_folder(&mut self, folder: Option<PathBuf>) {
         self.start = folder;
     }
 
-    /// Starts in `folder` when the Ledger folder can't be read; the current folder without one.
+    /// Starts in `folder` when the Data folder can't be read; the current folder without one.
     pub fn set_fallback_folder(&mut self, folder: Option<PathBuf>) {
         self.fallback = folder;
     }
@@ -203,8 +218,9 @@ impl ExplorerPresenter {
         self.filters = filters;
     }
 
-    /// Opens in `mode` at the Ledger folder, else the fallback, else the current folder. A start
-    /// that can't be read is passed over for the next; the last lists nothing.
+    /// Opens in `mode` at the Data folder, else the fallback, else the current folder. A start
+    /// that can't be read is passed over for the next; the last lists nothing. The folder picker's
+    /// cursor starts on the first folder.
     pub fn open(&mut self, mode: ExplorerMode, folders: &dyn LedgerFolders) {
         let candidates = [self.start.clone(), self.fallback.clone()];
         let (folder, listing) = candidates
@@ -228,6 +244,7 @@ impl ExplorerPresenter {
             taken: None,
         };
         session.list(listing);
+        session.cursor_on(self.filters, None);
         self.session = Some(session);
     }
 
@@ -273,7 +290,7 @@ impl ExplorerPresenter {
         };
         match kind {
             EntryKind::Folder => {
-                session.browse(path.to_path_buf(), folders);
+                session.browse(path.to_path_buf(), filters, folders);
                 ExplorerOutcome::Changed
             }
             EntryKind::Ledger if session.mode == ExplorerMode::Open => {
@@ -289,9 +306,10 @@ impl ExplorerPresenter {
 
     /// A breadcrumb click: browses `folder`, one of the folder browsed's ancestors.
     pub fn navigate_to(&mut self, folder: PathBuf, folders: &dyn LedgerFolders) -> ExplorerOutcome {
+        let filters = self.filters;
         match self.session.as_mut() {
             Some(session) => {
-                session.browse(folder, folders);
+                session.browse(folder, filters, folders);
                 ExplorerOutcome::Changed
             }
             None => ExplorerOutcome::Ignored,
@@ -311,13 +329,19 @@ impl ExplorerPresenter {
             && !session.entries(filters).any(|entry| entry.path == selected)
         {
             session.selected = None;
+            session.cursor_on(filters, None);
         }
         ExplorerOutcome::Changed
     }
 
     /// Open or Create: chooses the selected Ledger file, or the file `:new`'s name makes, while
-    /// there is one.
+    /// there is one. Use: picks the folder browsed.
     pub fn confirm(&self) -> ExplorerOutcome {
+        if let Some(session) = self.session.as_ref()
+            && session.mode == ExplorerMode::PickFolder
+        {
+            return ExplorerOutcome::FolderPicked(session.folder.clone());
+        }
         match self.session.as_ref().and_then(Session::target) {
             Some(path) => ExplorerOutcome::Chosen(ExplorerChoice {
                 mode: self.session.as_ref().map_or(ExplorerMode::Open, |s| s.mode),
@@ -345,8 +369,10 @@ impl ExplorerPresenter {
             self.close();
             return ExplorerOutcome::Closed;
         }
-        if session.mode == ExplorerMode::Open {
-            return ExplorerOutcome::Ignored;
+        match session.mode {
+            ExplorerMode::Open => return ExplorerOutcome::Ignored,
+            ExplorerMode::PickFolder => return self.pick_key(chord, command, folders),
+            ExplorerMode::New => {}
         }
         match command {
             Some(DialogCommand::Select) => self.confirm(),
@@ -367,6 +393,33 @@ impl ExplorerPresenter {
         }
     }
 
+    /// The folder picker's keys: a list step moves the cursor over the folders, select or `l` goes
+    /// into the one under it, `h` or `backspace` goes up, and submit picks the folder browsed.
+    fn pick_key(
+        &mut self,
+        chord: &str,
+        command: Option<DialogCommand>,
+        folders: &dyn LedgerFolders,
+    ) -> ExplorerOutcome {
+        let filters = self.filters;
+        let Some(session) = self.session.as_mut() else {
+            return ExplorerOutcome::Ignored;
+        };
+        match command {
+            Some(DialogCommand::Submit) => self.confirm(),
+            Some(DialogCommand::ListNext | DialogCommand::SelectNext) => {
+                session.step_cursor(filters, Step::Next)
+            }
+            Some(DialogCommand::ListPrevious | DialogCommand::SelectPrevious) => {
+                session.step_cursor(filters, Step::Prev)
+            }
+            Some(DialogCommand::Select) => session.enter_cursor(filters, folders),
+            _ if chord == "l" => session.enter_cursor(filters, folders),
+            _ if chord == "h" || chord == "backspace" => session.up(filters, folders),
+            _ => ExplorerOutcome::Ignored,
+        }
+    }
+
     /// What the explorer draws, `None` while closed. `dialog_keymap` names the close key.
     pub fn view_model(&self, dialog_keymap: &Keymap<DialogCommand>) -> Option<ExplorerViewModel> {
         let session = self.session.as_ref()?;
@@ -376,9 +429,10 @@ impl ExplorerPresenter {
             entries: session.entries(self.filters).cloned().collect(),
             selected: session.selected.clone(),
             filters: self.filters,
+            current: self.start.clone(),
             file_name: session.file_name.clone(),
             name_taken: session.taken.clone(),
-            can_confirm: session.target().is_some(),
+            can_confirm: session.mode == ExplorerMode::PickFolder || session.target().is_some(),
             close_key: dialog_keymap.chord(BACK).unwrap_or_default().to_string(),
         })
     }
@@ -387,12 +441,88 @@ impl ExplorerPresenter {
 impl Session {
     /// Browses `folder`, dropping the selection. A folder that can't be read lists nothing: there
     /// is nothing the person can do about it here but browse elsewhere.
-    fn browse(&mut self, folder: PathBuf, folders: &dyn LedgerFolders) {
+    fn browse(&mut self, folder: PathBuf, filters: ExplorerFilters, folders: &dyn LedgerFolders) {
         let listing = folders.read_folder(&folder).unwrap_or_default();
         self.folder = folder;
         self.selected = None;
         self.list(listing);
+        self.cursor_on(filters, None);
         self.check_name(folders);
+    }
+
+    /// Puts the folder picker's cursor on the folder at `path`, else on the first folder shown
+    /// under `filters`, else nowhere. Any other mode has no cursor.
+    fn cursor_on(&mut self, filters: ExplorerFilters, path: Option<&Path>) {
+        if self.mode != ExplorerMode::PickFolder {
+            return;
+        }
+        let targets = self.targets(filters);
+        let cursor = path
+            .and_then(|path| targets.iter().find(|target| **target == path))
+            .or(targets.first())
+            .map(|target| target.to_path_buf());
+        self.selected = cursor;
+    }
+
+    /// The folders the picker's cursor moves over: the folders shown under `filters`.
+    fn targets(&self, filters: ExplorerFilters) -> Vec<&Path> {
+        self.entries(filters)
+            .filter(|entry| entry.kind == EntryKind::Folder)
+            .map(|entry| entry.path.as_path())
+            .collect()
+    }
+
+    /// Moves the picker's cursor a folder down or up, stopping at either end.
+    fn step_cursor(&mut self, filters: ExplorerFilters, step: Step) -> ExplorerOutcome {
+        let targets = self.targets(filters);
+        if targets.is_empty() {
+            return ExplorerOutcome::Ignored;
+        }
+        let at = self
+            .selected
+            .as_deref()
+            .and_then(|selected| targets.iter().position(|path| *path == selected));
+        let next = match at {
+            Some(at) => lib_list_cursor::step(at, targets.len(), step),
+            None => 0,
+        };
+        let next = targets[next].to_path_buf();
+        if self.selected.as_ref() == Some(&next) {
+            return ExplorerOutcome::Ignored;
+        }
+        self.selected = Some(next);
+        ExplorerOutcome::Changed
+    }
+
+    /// Goes into the folder under the picker's cursor.
+    fn enter_cursor(
+        &mut self,
+        filters: ExplorerFilters,
+        folders: &dyn LedgerFolders,
+    ) -> ExplorerOutcome {
+        match self.selected.clone() {
+            Some(folder) => {
+                self.browse(folder, filters, folders);
+                ExplorerOutcome::Changed
+            }
+            None => ExplorerOutcome::Ignored,
+        }
+    }
+
+    /// Goes up to the folder browsed's parent, the cursor on the folder it came from.
+    fn up(&mut self, filters: ExplorerFilters, folders: &dyn LedgerFolders) -> ExplorerOutcome {
+        let Some(parent) = self
+            .folder
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .map(Path::to_path_buf)
+        else {
+            return ExplorerOutcome::Ignored;
+        };
+        let from = self.folder.clone();
+        self.browse(parent, filters, folders);
+        self.cursor_on(filters, Some(&from));
+        ExplorerOutcome::Changed
     }
 
     /// Lists `listing`, folders first, then files, each by name case-insensitively.
@@ -407,12 +537,14 @@ impl Session {
         self.listing = listing;
     }
 
-    /// The listing under `filters`: what the rows and the item count show.
+    /// The listing under `filters`: what the rows and the item count show. The folder picker lists
+    /// every file, since none is a target.
     fn entries(&self, filters: ExplorerFilters) -> impl Iterator<Item = &FolderEntry> {
+        let pldb_only = filters.pldb_only && self.mode != ExplorerMode::PickFolder;
         self.listing
             .iter()
             .filter(move |entry| !(filters.hide_hidden && entry.name.starts_with('.')))
-            .filter(move |entry| !(filters.pldb_only && entry.kind == EntryKind::Other))
+            .filter(move |entry| !(pldb_only && entry.kind == EntryKind::Other))
     }
 
     /// The file Open or Create acts on: Open's selection, or the file `:new`'s name makes while
@@ -421,6 +553,7 @@ impl Session {
         match self.mode {
             ExplorerMode::Open => self.selected.clone(),
             ExplorerMode::New => self.new_file_path().filter(|_| self.taken.is_none()),
+            ExplorerMode::PickFolder => None,
         }
     }
 
@@ -570,7 +703,7 @@ mod tests {
     }
 
     #[test]
-    fn it_opens_in_its_mode_at_the_ledger_folder() {
+    fn it_opens_in_its_mode_at_the_data_folder() {
         let explorer = opened(ExplorerMode::New, &empty_root());
 
         assert_eq!(explorer.mode(), Some(ExplorerMode::New));
@@ -578,7 +711,7 @@ mod tests {
     }
 
     #[test]
-    fn an_unreadable_ledger_folder_opens_at_the_fallback() {
+    fn an_unreadable_data_folder_opens_at_the_fallback() {
         let home = PathBuf::from("/home");
         let folders = FakeLedgerFolders::default().folder(home.clone());
         let mut explorer = ExplorerPresenter::default();
@@ -954,6 +1087,145 @@ mod tests {
         explorer.click_entry(&ledgers, 1, &folders);
 
         assert_eq!(model(&explorer).name_taken, Some("teda.pldb".to_string()));
+    }
+
+    /// `/ledgers` holding two folders, a Ledger, a decoy and a CSV, with a folder inside `archive`.
+    fn picking_fixture() -> FakeLedgerFolders {
+        filtered_fixture()
+            .folder(root().join("finance"))
+            .folder(root().join("archive").join("2024"))
+    }
+
+    fn picking(folders: &FakeLedgerFolders) -> ExplorerPresenter {
+        let mut explorer = ExplorerPresenter::default();
+        explorer.set_start_folder(Some(root()));
+        explorer.open(ExplorerMode::PickFolder, folders);
+        explorer
+    }
+
+    #[test]
+    fn the_folder_picker_opens_in_the_data_folder_with_the_cursor_on_the_first_folder() {
+        let explorer = picking(&picking_fixture());
+
+        let model = model(&explorer);
+        assert_eq!(model.mode, ExplorerMode::PickFolder);
+        assert_eq!(model.folder, root());
+        assert_eq!(
+            model.current,
+            Some(root()),
+            "the header names the Data folder"
+        );
+        assert_eq!(model.selected, Some(root().join("archive")));
+        assert!(model.can_confirm, "Use always picks the folder browsed");
+    }
+
+    #[test]
+    fn the_folder_picker_lists_every_file_whatever_the_pldb_only_filter() {
+        let explorer = picking(&picking_fixture());
+
+        assert!(explorer.filters().pldb_only, "the default, kept for :open");
+        assert_eq!(
+            names(&explorer),
+            [
+                "archive",
+                "finance",
+                "expenses.csv",
+                "old-ledger.pldb.bak",
+                "teda.pldb"
+            ]
+        );
+    }
+
+    #[test]
+    fn the_folder_pickers_files_are_inert() {
+        let folders = picking_fixture();
+        let mut explorer = picking(&folders);
+
+        for file in ["teda.pldb", "expenses.csv"] {
+            assert_eq!(
+                explorer.click_entry(&root().join(file), 2, &folders),
+                ExplorerOutcome::Ignored,
+                "{file}"
+            );
+        }
+        assert_eq!(model(&explorer).selected, Some(root().join("archive")));
+    }
+
+    #[test]
+    fn j_and_k_move_the_cursor_over_the_folders_only() {
+        let folders = picking_fixture();
+        let mut explorer = picking(&folders);
+
+        assert_eq!(
+            press(&mut explorer, "j", &folders),
+            ExplorerOutcome::Changed
+        );
+        assert_eq!(model(&explorer).selected, Some(root().join("finance")));
+        assert_eq!(
+            press(&mut explorer, "j", &folders),
+            ExplorerOutcome::Ignored,
+            "files are no stop"
+        );
+        press(&mut explorer, "k", &folders);
+        assert_eq!(model(&explorer).selected, Some(root().join("archive")));
+    }
+
+    #[test]
+    fn l_or_enter_walks_into_the_folder_and_h_or_backspace_goes_back_up() {
+        let folders = picking_fixture();
+        let mut explorer = picking(&folders);
+
+        press(&mut explorer, "l", &folders);
+        assert_eq!(model(&explorer).folder, root().join("archive"));
+        assert_eq!(model(&explorer).selected, Some(root().join("archive/2024")));
+
+        press(&mut explorer, "h", &folders);
+        assert_eq!(model(&explorer).folder, root());
+        assert_eq!(
+            model(&explorer).selected,
+            Some(root().join("archive")),
+            "the cursor is back on the folder it came from"
+        );
+
+        press(&mut explorer, "j", &folders);
+        press(&mut explorer, "enter", &folders);
+        assert_eq!(model(&explorer).folder, root().join("finance"));
+        assert_eq!(model(&explorer).selected, None, "finance holds no folder");
+        assert_eq!(
+            press(&mut explorer, "enter", &folders),
+            ExplorerOutcome::Ignored
+        );
+        press(&mut explorer, "backspace", &folders);
+        assert_eq!(model(&explorer).folder, root());
+    }
+
+    #[test]
+    fn use_picks_the_folder_browsed_never_a_file() {
+        let folders = picking_fixture();
+        let mut explorer = picking(&folders);
+        press(&mut explorer, "l", &folders);
+
+        assert_eq!(
+            press(&mut explorer, "ctrl+enter", &folders),
+            ExplorerOutcome::FolderPicked(root().join("archive"))
+        );
+        assert_eq!(
+            explorer.confirm(),
+            ExplorerOutcome::FolderPicked(root().join("archive"))
+        );
+    }
+
+    #[test]
+    fn cancel_closes_the_folder_picker_with_nothing_picked() {
+        let folders = picking_fixture();
+        let mut explorer = picking(&folders);
+        press(&mut explorer, "l", &folders);
+
+        assert_eq!(
+            press(&mut explorer, "esc", &folders),
+            ExplorerOutcome::Closed
+        );
+        assert!(!explorer.is_open());
     }
 
     #[test]

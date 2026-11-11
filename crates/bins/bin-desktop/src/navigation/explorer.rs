@@ -1,4 +1,4 @@
-//! The floating "1e" file explorer behind `:open` and `:new`
+//! The floating "1e" file explorer behind `:open` and `:new`, and "1e·pick" behind `:data`
 //! (`docs/ux/desktop-mockups/01-shell/README.md`), drawn from `lib-shell`'s explorer Presenter
 //! ([`lib_shell::explorer`]), which the Shell's Presenter holds, and [`FsLedgerFolders`], the
 //! `LedgerFolders` port it reads the disk through. `render` draws the Presenter's view model; the
@@ -23,7 +23,7 @@ use lib_shell::{
     FolderUnreadable, LedgerFolders,
 };
 
-use crate::{assets::icon::DesktopIcon, msg, theme::color};
+use crate::{assets::icon::DesktopIcon, msg, shell::view::statusline::under_home, theme::color};
 
 pub use lib_shell::explorer::display_name;
 
@@ -195,7 +195,7 @@ pub fn render(
                     blur_radius: px(48.0),
                     spread_radius: px(0.0),
                 }])
-                .child(header(explorer.mode, cx))
+                .child(header(explorer.mode, explorer.current.as_deref(), cx))
                 .child(path_bar(
                     &explorer.folder,
                     entries.len(),
@@ -213,7 +213,15 @@ pub fn render(
                             let is_last = index == entries.len() - 1;
                             let selected =
                                 explorer.selected.as_deref() == Some(entry.path.as_path());
-                            row(entry, index, selected, is_last, on_entry_click.clone(), cx)
+                            row(
+                                entry,
+                                index,
+                                explorer.mode,
+                                selected,
+                                is_last,
+                                on_entry_click.clone(),
+                                cx,
+                            )
                         })),
                 )
                 .when(explorer.mode == ExplorerMode::New, |this| {
@@ -226,6 +234,7 @@ pub fn render(
                 })
                 .child(footer(
                     explorer.mode,
+                    &explorer.folder,
                     explorer.filters,
                     explorer.can_confirm,
                     on_filter_toggle,
@@ -237,19 +246,45 @@ pub fn render(
         .into_any_element()
 }
 
-fn header(mode: ExplorerMode, cx: &App) -> impl IntoElement {
+/// The title, and in the folder picker the Data folder now on its right.
+fn header(mode: ExplorerMode, current: Option<&Path>, cx: &App) -> impl IntoElement {
     let title = match mode {
         ExplorerMode::Open => msg::desktop_explorer_open(),
         ExplorerMode::New => msg::desktop_explorer_new(),
+        ExplorerMode::PickFolder => msg::desktop_explorer_pick(),
     };
+    let now = current
+        .filter(|_| mode == ExplorerMode::PickFolder)
+        .map(|folder| {
+            let home = dirs::home_dir();
+            msg::desktop_explorer_pick_now(&under_home(folder, home.as_deref()))
+        });
     div()
+        .flex()
+        .items_center()
+        .gap(px(12.0))
         .px(px(20.0))
         .py(px(16.0))
         .border_b(px(2.0))
         .border_color(color::border(cx))
-        .font_weight(gpui::FontWeight::EXTRA_BOLD)
-        .text_size(px(16.0))
-        .child(title)
+        .child(
+            div()
+                .debug_selector(|| "explorer-title".to_string())
+                .flex_1()
+                .font_weight(gpui::FontWeight::EXTRA_BOLD)
+                .text_size(px(16.0))
+                .child(title),
+        )
+        .children(now.map(|now| {
+            div()
+                .debug_selector(|| "explorer-current".to_string())
+                .min_w(px(0.0))
+                .truncate()
+                .font_family("monospace")
+                .text_size(px(12.0))
+                .text_color(color::muted(cx))
+                .child(now)
+        }))
 }
 
 fn path_bar(
@@ -336,15 +371,23 @@ fn column_header(cx: &App) -> impl IntoElement {
         )
 }
 
+/// One row. In the folder picker the folders are the targets, drawn in full, and the files are
+/// dimmed and inert.
 fn row(
     entry: &FolderEntry,
     index: usize,
+    mode: ExplorerMode,
     selected: bool,
     is_last: bool,
     on_entry_click: OnEntryClick,
     cx: &App,
 ) -> impl IntoElement {
-    let clickable = entry.kind != EntryKind::Other;
+    let picking = mode == ExplorerMode::PickFolder;
+    let clickable = if picking {
+        entry.kind == EntryKind::Folder
+    } else {
+        entry.kind != EntryKind::Other
+    };
     let (bg, text_color) = if selected {
         (
             Some(color::selection_background(cx)),
@@ -353,9 +396,10 @@ fn row(
     } else {
         (
             None,
-            match entry.kind {
-                EntryKind::Folder => color::faint_text(cx),
-                EntryKind::Ledger | EntryKind::Other => color::muted(cx),
+            match (picking, entry.kind) {
+                (true, EntryKind::Folder) => color::foreground(cx),
+                (true, _) | (false, EntryKind::Folder) => color::faint_text(cx),
+                (false, EntryKind::Ledger | EntryKind::Other) => color::muted(cx),
             },
         )
     };
@@ -475,8 +519,13 @@ fn file_name_field(
         .when(!refused, |this| this.pb(px(4.0)))
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the mode and folder it names its button for, its filters, and one handler per affordance"
+)]
 fn footer(
     mode: ExplorerMode,
+    folder: &Path,
     filters: ExplorerFilters,
     can_open: bool,
     on_filter_toggle: OnFilterToggle,
@@ -484,9 +533,11 @@ fn footer(
     on_open: OnOpen,
     cx: &App,
 ) -> impl IntoElement {
+    let picking = mode == ExplorerMode::PickFolder;
     let confirm_label = match mode {
         ExplorerMode::Open => msg::desktop_explorer_open_button(),
         ExplorerMode::New => msg::desktop_explorer_new_button(),
+        ExplorerMode::PickFolder => msg::desktop_explorer_use_button(&display_name(folder)),
     };
     div()
         .flex()
@@ -503,14 +554,17 @@ fn footer(
                 .flex()
                 .flex_col()
                 .gap(px(8.0))
-                .child(filter_checkbox(
-                    "explorer-filter-pldb-only",
-                    filters.pldb_only,
-                    div().child(msg::desktop_explorer_filter_pldb_only()),
-                    ExplorerFilter::PldbOnly,
-                    on_filter_toggle.clone(),
-                    cx,
-                ))
+                // Files are never the folder picker's targets, so it hides only dot entries.
+                .when(!picking, |this| {
+                    this.child(filter_checkbox(
+                        "explorer-filter-pldb-only",
+                        filters.pldb_only,
+                        div().child(msg::desktop_explorer_filter_pldb_only()),
+                        ExplorerFilter::PldbOnly,
+                        on_filter_toggle.clone(),
+                        cx,
+                    ))
+                })
                 .child(filter_checkbox(
                     "explorer-filter-hide-hidden",
                     filters.hide_hidden,
@@ -526,12 +580,20 @@ fn footer(
                     ExplorerFilter::HideHidden,
                     on_filter_toggle,
                     cx,
-                )),
+                ))
+                .when(picking, |this| {
+                    this.child(
+                        div()
+                            .debug_selector(|| "explorer-pick-note".to_string())
+                            .child(msg::desktop_explorer_pick_note()),
+                    )
+                }),
         )
         .child(div().flex_1())
         .child(
             div()
                 .id("explorer-cancel")
+                .debug_selector(|| "explorer-cancel".to_string())
                 .cursor_pointer()
                 .py(px(8.0))
                 .px(px(16.0))

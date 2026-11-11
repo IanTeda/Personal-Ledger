@@ -34,6 +34,7 @@ pub const FOCUS_PREVIOUS: &str = "focus_previous";
 pub const INSERT: &str = "insert";
 pub const DISMISS_TOASTS: &str = "dismiss_toasts";
 pub const TOAST_HISTORY: &str = "toast_history";
+pub const CHANGE_DATA_FOLDER: &str = "change_data_folder";
 pub const JUMP_DASHBOARD: &str = "jump_dashboard";
 pub const JUMP_TRANSACTIONS: &str = "jump_transactions";
 pub const JUMP_DOCUMENTS: &str = "jump_documents";
@@ -64,6 +65,9 @@ pub enum ShellCommand {
     DismissToasts,
     ToastHistory,
     Jump(Noun),
+    /// `:data`: opens the file explorer to pick the Data folder, from any View, with or without a
+    /// Ledger open.
+    ChangeDataFolder,
     /// Enters Insert mode.
     Insert,
     FocusNext,
@@ -83,9 +87,10 @@ impl ShellCommand {
     }
 }
 
-/// The global keymap's commands with their default keys. `toast_history` is unbound unless
-/// `[keybindings]` sets it. The palette lists every command the Shell keeps but `back` and the
-/// palette's own `:`; the ones it falls back on are a list's movement and `enter`, and `insert`.
+/// The global keymap's commands with their default keys. `toast_history` and `change_data_folder`
+/// are unbound unless `[keybindings]` sets them. The palette lists every command the Shell keeps
+/// but `back` and the palette's own `:`; the ones it falls back on are a list's movement and
+/// `enter`, and `insert`.
 pub const GLOBAL_BINDINGS: &[Binding<ShellCommand>] = &[
     Binding::listed(HELP, "?", ShellCommand::Help, "help", msg::command_help),
     Binding::hidden(OPEN_COMMAND_POPUP, ":", ShellCommand::Command),
@@ -125,6 +130,13 @@ pub const GLOBAL_BINDINGS: &[Binding<ShellCommand>] = &[
         ShellCommand::ToastHistory,
         "toasts",
         msg::command_toast_history,
+    ),
+    Binding::listed(
+        CHANGE_DATA_FOLDER,
+        "",
+        ShellCommand::ChangeDataFolder,
+        "data",
+        msg::command_change_data_folder,
     ),
     Binding::listed(
         JUMP_DASHBOARD,

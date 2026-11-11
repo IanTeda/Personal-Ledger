@@ -1,30 +1,35 @@
-//! Settings › General's Presenter (DESKTOP-177, DESKTOP-178): On start, Start view, Toasts and the
-//! Locale, Configuration in the user's configuration file (ADR-0053, ADR-0057) written through
-//! [`DeviceConfiguration`], and the read-only Ledger folder, last Ledger and configuration file,
+//! Settings › General's Presenter (DESKTOP-177, DESKTOP-178): On start, Start view, Toasts, the
+//! Locale and the Data folder, Configuration in the user's configuration file (ADR-0053, ADR-0057)
+//! written through [`DeviceConfiguration`], and the read-only last Ledger and configuration file,
 //! which the Client hands it. Everything here belongs to this device and works with no Ledger open
 //! (ADR-0051).
 //!
 //! A control shows a change only once it is saved: a shadowed key or a refused write leaves it as
-//! it was and says why on the status line. The Locale is the exception (DESKTOP-186): it is written
-//! even while shadowed and shows the file's value, with a note naming the override. A chosen Locale
-//! applies at the next start, so a note says so while the file's differs from the one in effect
-//! (DESKTOP-185).
+//! it was and says why on the status line. The Locale and the Data folder are the exceptions
+//! (DESKTOP-186): each is written even while shadowed and shows the file's value, with a note
+//! naming the override. A chosen Locale applies at the next start, so a note says so while the
+//! file's differs from the one in effect (DESKTOP-185).
+//!
+//! The Data folder is picked in the Shell's file explorer (DESKTOP-187): **Change…** asks the
+//! Router for it, and what it picks comes back as [`GeneralEvent::SetDataFolder`], this the one
+//! place the Data folder is written. It applies at once, with a Success Toast (DESKTOP-188).
 
 use std::convert::Infallible;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use lib_core::{OnStart, StartView};
 use lib_list_cursor::Step;
 use lib_locale::Locale;
-use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP};
+use lib_toast::{Notice, ToastKind};
+use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP, SELECT};
 use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Choice, Hint, SelectView};
 
 use super::device::{ControlView, chords, settle, shadowed_note, step_choice};
 use crate::keymap::{NEXT_CHOICE, PREVIOUS_CHOICE, TEST_TOASTS};
 use crate::msg;
-use crate::protocols::{DeviceConfiguration, DeviceKey, DeviceRouter};
+use crate::protocols::{DeviceAnswer, DeviceConfiguration, DeviceKey, DeviceRouter};
 
 /// On start's choices, in the segmented control's order.
 pub const ON_START_CHOICES: [OnStart; 2] = [OnStart::ReopenLastLedger, OnStart::NoLedger];
@@ -32,12 +37,13 @@ pub const ON_START_CHOICES: [OnStart; 2] = [OnStart::ReopenLastLedger, OnStart::
 /// Toasts' choices, On then Off as on the control.
 const TOASTS_CHOICES: [bool; 2] = [true, false];
 
-/// The page's controls, top to bottom. The Ledger folder is read-only, so the keyboard passes it by.
+/// The page's controls, top to bottom.
 pub const GENERAL_FIELD_ON_START: usize = 0;
 pub const GENERAL_FIELD_START_VIEW: usize = 1;
 pub const GENERAL_FIELD_TOASTS: usize = 2;
 pub const GENERAL_FIELD_LOCALE: usize = 3;
-const GENERAL_FIELD_COUNT: usize = 4;
+pub const GENERAL_FIELD_DATA_FOLDER: usize = 4;
+const GENERAL_FIELD_COUNT: usize = 5;
 
 /// The Locale's choices, in the radio group's order: **System** (`None`), then `lib-locale`'s
 /// supported Locales by tag, never the pseudo-Locale.
@@ -70,6 +76,12 @@ pub enum GeneralEvent {
     TestToasts,
     /// A click on **Test**, wherever the keyboard is.
     PressTest,
+    /// `enter`: the Data folder picker, only while the Data folder has the keyboard.
+    ChangeDataFolder,
+    /// A click on **Change…**, wherever the keyboard is.
+    PressChange,
+    /// The folder the picker picked, from **Change…** or `:data`: written as the Data folder.
+    SetDataFolder(PathBuf),
 }
 
 /// A device's settings General writes, as start-up read them from Configuration.
@@ -81,6 +93,9 @@ pub struct GeneralSettings {
     /// The Locale the user's configuration file names, `None` for **System**: not the one in
     /// effect, which a flag, a variable or a higher file may set.
     pub locale: Option<Locale>,
+    /// The Data folder the user's configuration file names, `None` when it names none: not the one
+    /// in effect ([`ThisDevice::data_folder`]), which a flag, a variable or a higher file may set.
+    pub data: Option<PathBuf>,
 }
 
 impl Default for GeneralSettings {
@@ -90,15 +105,17 @@ impl Default for GeneralSettings {
             start_view: StartView::default(),
             toasts_on: lib_toast::Display::default().toasts_on,
             locale: None,
+            data: None,
         }
     }
 }
 
-/// What start-up knows about this device that General shows read-only: the Ledger folder (the
-/// `data` setting), the Ledger On start would reopen and the configuration file Settings writes to.
+/// What start-up knows about this device: the Data folder in effect (the `data` setting, from
+/// wherever it was set), and, shown read-only, the Ledger On start would reopen and the
+/// configuration file Settings writes to.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ThisDevice {
-    pub ledger_folder: PathBuf,
+    pub data_folder: PathBuf,
     /// The Ledger file open now, which the Client remembers at quit; `None` with none open.
     pub last_ledger: Option<PathBuf>,
     /// The user's configuration file; `None` with no home directory to keep one in.
@@ -143,14 +160,6 @@ pub struct GeneralSetup {
     pub locale: LocaleLine,
 }
 
-/// A read-only line: its label, its value and the hint under it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ReadOnlyView {
-    pub label: String,
-    pub value: String,
-    pub hint: String,
-}
-
 /// The THIS DEVICE box: its heading, its `(label, value)` rows and the page's footnote.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ThisDeviceView {
@@ -179,6 +188,18 @@ pub struct LocaleControl {
     pub fallback: Option<String>,
 }
 
+/// The Data folder: the folder the file names (else the one in effect), the **Change…** button with
+/// the key that presses it, the hint, and the note while a source above the file sets it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DataFolderView {
+    pub label: String,
+    pub value: String,
+    pub change: Hint,
+    pub focused: bool,
+    pub hint: String,
+    pub note: Option<String>,
+}
+
 /// General as the Client draws it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GeneralViewModel {
@@ -190,7 +211,7 @@ pub struct GeneralViewModel {
     /// The **Test** button beside Toasts: its label and the key that presses it from Toasts.
     pub toasts_test: Hint,
     pub locale: LocaleControl,
-    pub ledger_folder: ReadOnlyView,
+    pub data_folder: DataFolderView,
     pub this_device: ThisDeviceView,
     /// The page's keys, for the status line and the `?` cheat sheet.
     pub hints: Vec<Hint>,
@@ -270,6 +291,11 @@ impl GeneralPresenter {
     pub fn locale(&self) -> &LocaleLine {
         &self.locale
     }
+
+    /// The Data folder in effect, where `:open` and `:new` start.
+    pub fn data_folder(&self) -> &Path {
+        &self.this_device.data_folder
+    }
 }
 
 impl Presenter for GeneralPresenter {
@@ -297,6 +323,10 @@ impl Presenter for GeneralPresenter {
             GeneralEvent::ChooseLocale(locale) => self.choose_locale(locale, router),
             // The test touches no setting: the Shell's Toasts raise it.
             GeneralEvent::TestToasts | GeneralEvent::PressTest => router.test_toasts(),
+            GeneralEvent::ChangeDataFolder | GeneralEvent::PressChange => {
+                router.pick_data_folder();
+            }
+            GeneralEvent::SetDataFolder(folder) => self.set_data_folder(folder, router),
         }
     }
 
@@ -369,10 +399,21 @@ impl Presenter for GeneralPresenter {
                 lib_locale::msg::toast_setting_test(),
             ),
             locale: self.locale_control(),
-            ledger_folder: ReadOnlyView {
-                label: msg::settings_general_ledger_folder(),
-                value: self.this_device.ledger_folder.display().to_string(),
-                hint: msg::settings_general_ledger_folder_hint(),
+            data_folder: DataFolderView {
+                label: msg::settings_general_data_folder(),
+                value: self.shown_data_folder().display().to_string(),
+                change: Hint::new(
+                    chords(&self.keymap, &[SELECT]),
+                    msg::settings_general_data_folder_change(),
+                ),
+                focused: self.field == Some(GENERAL_FIELD_DATA_FOLDER),
+                hint: msg::settings_general_data_folder_hint(),
+                note: self.device.shadow(DeviceKey::Data).map(|source| {
+                    msg::settings_general_data_folder_overridden(
+                        &source,
+                        &self.this_device.data_folder.display().to_string(),
+                    )
+                }),
             },
             this_device: ThisDeviceView {
                 heading: msg::settings_general_this_device(),
@@ -398,6 +439,7 @@ impl Presenter for GeneralPresenter {
         match event {
             GeneralEvent::Move(_) | GeneralEvent::Change(_) => self.field.is_some(),
             GeneralEvent::TestToasts => self.field == Some(GENERAL_FIELD_TOASTS),
+            GeneralEvent::ChangeDataFolder => self.field == Some(GENERAL_FIELD_DATA_FOLDER),
             _ => true,
         }
     }
@@ -418,14 +460,22 @@ impl PagePresenter for GeneralPresenter {
 }
 
 impl GeneralPresenter {
-    /// The page's keys: on Toasts, `h`/`l` read on / off and `t` raises the test.
+    /// The page's keys: on Toasts, `h`/`l` read on / off and `t` raises the test; on the Data
+    /// folder, `enter` changes it in place of `h`/`l`.
     fn hints(&self) -> Vec<Hint> {
         let on_toasts = self.field == Some(GENERAL_FIELD_TOASTS);
+        let field = Hint::new(
+            chords(&self.keymap, &[MOVE_DOWN, MOVE_UP]),
+            msg::settings_hint_field(),
+        );
+        if self.field == Some(GENERAL_FIELD_DATA_FOLDER) {
+            return vec![
+                field,
+                Hint::new(chords(&self.keymap, &[SELECT]), msg::settings_hint_change()),
+            ];
+        }
         let mut hints = vec![
-            Hint::new(
-                chords(&self.keymap, &[MOVE_DOWN, MOVE_UP]),
-                msg::settings_hint_field(),
-            ),
+            field,
             Hint::new(
                 chords(&self.keymap, &[PREVIOUS_CHOICE, NEXT_CHOICE]),
                 if on_toasts {
@@ -485,6 +535,8 @@ impl GeneralPresenter {
                     self.choose_locale(next, router);
                 }
             }
+            // A path has no choices to step through: `enter` opens the picker.
+            GENERAL_FIELD_DATA_FOLDER => {}
             _ => {
                 let current = self.settings.toasts_on;
                 if let Some(on) = step_choice(&TOASTS_CHOICES, &current, &current, step)
@@ -574,6 +626,39 @@ impl GeneralPresenter {
             .then(|| msg::settings_general_locale_pending(chosen.tag(), effective))
     }
 
+    /// The Data folder the field shows: the file's, else the one in effect.
+    fn shown_data_folder(&self) -> &Path {
+        self.settings
+            .data
+            .as_deref()
+            .unwrap_or(&self.this_device.data_folder)
+    }
+
+    /// Writes `folder` as the Data folder, unless the field shows it already. It applies at once,
+    /// with a Success Toast in place of the status line's word; under an override it is written
+    /// for when the override is gone, and the folder in effect stays as it was.
+    fn set_data_folder(&mut self, folder: PathBuf, router: &mut dyn DeviceRouter) {
+        if folder == self.shown_data_folder() {
+            return;
+        }
+        let shadowed = self.device.shadow(DeviceKey::Data).is_some();
+        match self.device.set_data(&folder) {
+            DeviceAnswer::Saved { value, .. } if !shadowed => {
+                router.notify(Notice::Toast(
+                    ToastKind::Success,
+                    msg::settings_general_data_folder_now(&value.display().to_string()),
+                ));
+                self.this_device.data_folder = value.clone();
+                self.settings.data = Some(value);
+            }
+            answer => {
+                if let Some(saved) = settle(answer, DeviceKey::Data, router) {
+                    self.settings.data = Some(saved);
+                }
+            }
+        }
+    }
+
     fn write_toasts(&mut self, on: bool, router: &mut dyn DeviceRouter) {
         let answer = self.device.set_toasts(on);
         if let Some(saved) = settle(answer, DeviceKey::Toasts, router) {
@@ -608,7 +693,7 @@ mod tests {
     use lib_viper::keymap::KeyBindingConfig;
 
     use super::*;
-    use crate::fake::{InMemoryDeviceConfiguration, RecordingRouter, Routed};
+    use crate::fake::{InMemoryDeviceConfiguration, RecordingRouter, Routed, StoredDevice};
     use crate::keymap::general_keymap;
 
     fn start_views() -> Vec<Choice<StartView>> {
@@ -686,7 +771,7 @@ mod tests {
     }
 
     #[test]
-    fn j_and_k_walk_the_four_controls_and_stop_at_the_ends() {
+    fn j_and_k_walk_the_five_controls_and_stop_at_the_ends() {
         let (_, mut general) = writable();
         general.set_page_focused(true);
 
@@ -695,21 +780,23 @@ mod tests {
             std::iter::repeat_n(GeneralEvent::Move(Step::Next), 2),
         );
         assert_eq!(general.view_model().field, Some(GENERAL_FIELD_TOASTS));
+        send(&mut general, [GeneralEvent::Move(Step::Next)]);
+        assert_eq!(general.view_model().field, Some(GENERAL_FIELD_LOCALE));
+        assert!(general.view_model().locale.control.select.focused);
         send(
             &mut general,
             std::iter::repeat_n(GeneralEvent::Move(Step::Next), 2),
         );
-        assert_eq!(general.view_model().field, Some(GENERAL_FIELD_LOCALE));
-        assert!(general.view_model().locale.control.select.focused);
+        assert_eq!(general.view_model().field, Some(GENERAL_FIELD_DATA_FOLDER));
+        assert!(general.view_model().data_folder.focused);
         send(
             &mut general,
             std::iter::repeat_n(GeneralEvent::Move(Step::Prev), 5),
         );
         assert_eq!(general.view_model().field, Some(GENERAL_FIELD_ON_START));
-        assert_eq!(
-            general.keymap().event("enter"),
-            None,
-            "enter is the frame's"
+        assert!(
+            !general.takes(&GeneralEvent::ChangeDataFolder),
+            "enter is the frame's off the Data folder"
         );
     }
 
@@ -1046,11 +1133,159 @@ mod tests {
         );
     }
 
+    /// General on `device` with the Data folder in effect `/home/me/ledgers`.
+    fn with_data_folder(device: Rc<InMemoryDeviceConfiguration>) -> GeneralPresenter {
+        let mut general = general_on(device);
+        general.set_this_device(ThisDevice {
+            data_folder: PathBuf::from("/home/me/ledgers"),
+            ..ThisDevice::default()
+        });
+        general
+    }
+
     #[test]
-    fn the_read_only_lines_show_what_the_client_told_it() {
+    fn enter_on_the_data_folder_and_change_ask_for_the_picker() {
+        let mut general = with_data_folder(Rc::new(InMemoryDeviceConfiguration::writable()));
+        general.set_page_focused(true);
+        send(
+            &mut general,
+            std::iter::repeat_n(GeneralEvent::Move(Step::Next), 4),
+        );
+        let view = general.view_model();
+        assert_eq!(view.data_folder.label, "Data folder");
+        assert_eq!(view.data_folder.value, "/home/me/ledgers");
+        assert_eq!(
+            (
+                view.data_folder.change.chord,
+                view.data_folder.change.action
+            ),
+            ("enter".to_string(), "Change…".to_string())
+        );
+        assert_eq!(
+            view.hints
+                .iter()
+                .map(|hint| (hint.chord.as_str(), hint.action.as_str()))
+                .collect::<Vec<_>>(),
+            [("j/k", "field"), ("enter", "change")]
+        );
+
+        let router = send(
+            &mut general,
+            [GeneralEvent::ChangeDataFolder, GeneralEvent::PressChange],
+        );
+
+        assert_eq!(
+            router.routed,
+            [Routed::PickDataFolder, Routed::PickDataFolder]
+        );
+    }
+
+    #[test]
+    fn a_picked_data_folder_is_written_applies_at_once_and_raises_a_toast() {
+        let device = Rc::new(InMemoryDeviceConfiguration::writable());
+        let mut general = with_data_folder(device.clone());
+
+        let router = send(
+            &mut general,
+            [GeneralEvent::SetDataFolder(PathBuf::from(
+                "/home/me/finance",
+            ))],
+        );
+
+        assert_eq!(
+            device.stored().data,
+            Some(PathBuf::from("/home/me/finance"))
+        );
+        assert_eq!(general.data_folder(), Path::new("/home/me/finance"));
+        assert_eq!(
+            general.settings().data,
+            Some(PathBuf::from("/home/me/finance"))
+        );
+        assert_eq!(general.view_model().data_folder.value, "/home/me/finance");
+        assert_eq!(
+            router.routed,
+            [Routed::Notice(Notice::Toast(
+                ToastKind::Success,
+                "Data folder is now /home/me/finance".to_string()
+            ))]
+        );
+    }
+
+    #[test]
+    fn picking_the_data_folder_already_set_writes_nothing_and_raises_nothing() {
+        let device = Rc::new(InMemoryDeviceConfiguration::writable());
+        let mut general = with_data_folder(device.clone());
+
+        let router = send(
+            &mut general,
+            [GeneralEvent::SetDataFolder(PathBuf::from(
+                "/home/me/ledgers",
+            ))],
+        );
+
+        assert_eq!(device.stored(), StoredDevice::default());
+        assert!(router.routed.is_empty());
+    }
+
+    #[test]
+    fn a_refused_data_folder_says_why_and_changes_nothing() {
+        let device = Rc::new(InMemoryDeviceConfiguration::default());
+        let mut general = with_data_folder(device);
+
+        let router = send(
+            &mut general,
+            [GeneralEvent::SetDataFolder(PathBuf::from(
+                "/home/me/finance",
+            ))],
+        );
+
+        assert_eq!(general.data_folder(), Path::new("/home/me/ledgers"));
+        assert_eq!(router.statuses().len(), 1);
+        assert!(router.statuses()[0].starts_with("data can't be saved"));
+    }
+
+    #[test]
+    fn a_shadowed_data_folder_is_written_and_names_the_override() {
+        let device = Rc::new(InMemoryDeviceConfiguration::shadowing(
+            DeviceKey::Data,
+            "PERSONAL_LEDGER_GENERAL__DATA",
+        ));
+        let mut general = with_data_folder(device.clone());
+        let overridden = "PERSONAL_LEDGER_GENERAL__DATA sets the Data folder to /home/me/ledgers for \
+                          now, so :open and :new start there. Change… keeps your choice for when \
+                          it's gone.";
+        assert_eq!(
+            general.view_model().data_folder.note.as_deref(),
+            Some(overridden)
+        );
+
+        let router = send(
+            &mut general,
+            [GeneralEvent::SetDataFolder(PathBuf::from(
+                "/home/me/finance",
+            ))],
+        );
+
+        assert_eq!(
+            device.stored().data,
+            Some(PathBuf::from("/home/me/finance"))
+        );
+        assert_eq!(
+            general.data_folder(),
+            Path::new("/home/me/ledgers"),
+            "the override still decides the folder in effect"
+        );
+        let view = general.view_model().data_folder;
+        assert_eq!(view.value, "/home/me/finance", "the file's value");
+        assert_eq!(view.note.as_deref(), Some(overridden));
+        assert_eq!(router.statuses(), ["data saved to personal-ledger.conf"]);
+    }
+
+    #[test]
+    fn the_data_folder_and_this_device_show_what_the_client_told_it() {
         let (_, mut general) = writable();
         general.set_this_device(ThisDevice {
-            ledger_folder: PathBuf::from("/home/me/Ledgers"),
+            data_folder: PathBuf::from("/home/me/Ledgers"),
             last_ledger: None,
             configuration: Some(PathBuf::from("/home/me/.config/personal-ledger.conf")),
         });
@@ -1058,7 +1293,7 @@ mod tests {
 
         let view = general.view_model();
         assert_eq!(general.locale().line, "en-AU, from config");
-        assert_eq!(view.ledger_folder.value, "/home/me/Ledgers");
+        assert_eq!(view.data_folder.value, "/home/me/Ledgers");
         assert_eq!(
             view.this_device.rows,
             [

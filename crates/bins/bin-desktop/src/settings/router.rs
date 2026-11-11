@@ -72,6 +72,10 @@ impl<P: EventEmitter<ViewEvent>> lib_settings::DeviceRouter for DeviceRouter<'_,
         self.cx.emit(ViewEvent::TestToasts);
     }
 
+    fn pick_data_folder(&mut self) {
+        self.cx.emit(ViewEvent::PickDataFolder);
+    }
+
     /// A colour change refreshes every window, which must wait until the Shell's update ends.
     fn colour_changed(&mut self, colour: ColourChoice) {
         self.cx

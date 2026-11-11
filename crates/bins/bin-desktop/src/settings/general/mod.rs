@@ -1,7 +1,7 @@
 //! Settings › General's View: `lib-settings`' General Presenter is the [`PageView`] the generic
 //! `ModulePage` hosts (ADR-0056), which the Settings View hosts as any other page. It names the
 //! page's Router and how it draws the view model (`render.rs`); the keymap, the take, send and
-//! handle path and the clicks' path are the generic page's. On start, Start view, Toasts and the Locale are
+//! handle path and the clicks' path are the generic page's. On start, Start view, Toasts, the Locale and the Data folder are
 //! written through the Presenter's `DeviceConfiguration` (`super::device`); saved Toasts reach the
 //! Shell as `ViewEvent::ToastsChanged` (`super::router`). Each key and click is one input
 //! (`crate::input::send`).
@@ -124,7 +124,12 @@ pub struct SettingsGeneralSnapshot {
     pub locale: Option<String>,
     /// The note under the Locale: pending until the next start, or overridden.
     pub locale_note: Option<String>,
-    pub ledger_folder: String,
+    /// The Data folder in effect, where `:open` and `:new` start.
+    pub data_folder: String,
+    /// The Data folder the field shows: the file's, else the one in effect.
+    pub data_folder_shown: String,
+    /// The note under the Data folder while a source above the file sets it.
+    pub data_folder_note: Option<String>,
     pub last_ledger: Option<String>,
     pub configuration: Option<String>,
 }
@@ -144,7 +149,9 @@ impl PageSnapshot for SettingsGeneralSnapshot {
             toasts_on: settings.toasts_on,
             locale: settings.locale.map(|locale| locale.tag().to_string()),
             locale_note: view.locale.note,
-            ledger_folder: path(&device.ledger_folder),
+            data_folder: path(&device.data_folder),
+            data_folder_shown: view.data_folder.value,
+            data_folder_note: view.data_folder.note,
             last_ledger: device.last_ledger.as_ref().map(path),
             configuration: device.configuration.as_ref().map(path),
         }

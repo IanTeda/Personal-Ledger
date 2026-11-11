@@ -573,3 +573,23 @@ fn tags_merge_on_a_ledger_arranged_with_no_tag_opens_no_dialog(app: &mut TestApp
         Some(":tags merge \u{2014} not available here right now")
     );
 }
+
+#[gpui::test]
+fn change_data_folder_is_listed_and_opens_the_folder_picker_over_the_view(
+    app: &mut TestAppContext,
+) {
+    let mut ui = Harness::new(app);
+    ui.press("g w");
+    open_palette(&mut ui);
+
+    ui.press("d a t a");
+    let typed = palette(&mut ui).expect("still open");
+    assert_eq!(typed.selected, Some("data"));
+    ui.press("enter");
+
+    assert_eq!(palette(&mut ui), None);
+    let picker = ui.explorer().expect("the folder picker is open");
+    assert_eq!(picker.mode, lib_shell::ExplorerMode::PickFolder);
+    assert_eq!(ui.read(|s| s.nav().mode()), InputMode::Command);
+    assert_eq!(ui.read(|s| s.nav().noun()), Noun::Bills);
+}

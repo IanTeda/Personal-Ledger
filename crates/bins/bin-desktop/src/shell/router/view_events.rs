@@ -12,7 +12,9 @@ use lib_toast::Notice;
 use super::Root;
 use crate::shell::view::page_handle::PageSignals;
 use crate::view::event::{Reveal, ViewEvent};
-use lib_shell::NavInput;
+use lib_shell::{NavInput, ShellCommand};
+
+use crate::shell::view::window_size::WindowSize;
 
 impl Root {
     /// Where a View's signals reach `Root`: its events to [`Self::handle_view_event`], and its
@@ -64,6 +66,11 @@ impl Root {
             ViewEvent::DisplayChanged(display) => self.push_display_preferences(display, cx),
             ViewEvent::ToastsChanged(on) => self.push_toasts_on(on),
             ViewEvent::TestToasts => self.test_toasts(),
+            ViewEvent::PickDataFolder => {
+                self.with_router(WindowSize::Large, cx, |presenter, router| {
+                    presenter.command(ShellCommand::ChangeDataFolder, router)
+                });
+            }
         }
     }
 

@@ -5,6 +5,8 @@
 //! device needs its own set-up (a temporary configuration file per check). Each writes through the
 //! port, reads the file back as a restart would, and expects what was saved, and only that.
 
+use std::path::{Path, PathBuf};
+
 use lib_colour_theme::ColourAppearance;
 use lib_core::{DateStyle, OnStart, RowDensity, StartView, StatusGlyphs, UnitId};
 use lib_locale::Locale;
@@ -65,6 +67,10 @@ pub fn every_setting_is_saved_and_reads_back(factory: &mut impl DeviceFactory) {
         ColourAppearance::Light,
     );
     assert_saved(device.set_locale(Some(Locale::EnGb)), Some(Locale::EnGb));
+    assert_saved(
+        device.set_data(Path::new("/home/me/finance")),
+        PathBuf::from("/home/me/finance"),
+    );
 
     assert_eq!(
         factory.reload(&device),
@@ -78,6 +84,7 @@ pub fn every_setting_is_saved_and_reads_back(factory: &mut impl DeviceFactory) {
             colour_theme: Some("nord".to_string()),
             colour_appearance: Some(ColourAppearance::Light),
             locale: Some(Locale::EnGb),
+            data: Some(PathBuf::from("/home/me/finance")),
         }
     );
 }
@@ -119,8 +126,8 @@ pub fn a_later_write_replaces_the_value(factory: &mut impl DeviceFactory) {
 }
 
 /// A key a source above the file sets is named by `shadow`, answers shadowed naming it, and is not
-/// written; the other keys are not shadowed. The Locale is named too, but still written
-/// ([`DeviceKey::writes_when_shadowed`]).
+/// written; the other keys are not shadowed. The Locale and the Data folder are named too, but
+/// still written ([`DeviceKey::writes_when_shadowed`]).
 pub fn a_shadowed_key_is_named_and_left_unwritten(factory: &mut impl DeviceFactory) {
     for key in DeviceKey::ALL {
         let (device, source) = factory.shadowing(key);
@@ -160,6 +167,21 @@ pub fn a_shadowed_key_is_named_and_left_unwritten(factory: &mut impl DeviceFacto
                         ..StoredDevice::default()
                     },
                     "the Locale is written under its override"
+                );
+                continue;
+            }
+            DeviceKey::Data => {
+                assert_saved(
+                    device.set_data(Path::new("/home/me/finance")),
+                    PathBuf::from("/home/me/finance"),
+                );
+                assert_eq!(
+                    factory.reload(&device),
+                    StoredDevice {
+                        data: Some(PathBuf::from("/home/me/finance")),
+                        ..StoredDevice::default()
+                    },
+                    "the Data folder is written under its override"
                 );
                 continue;
             }
@@ -223,8 +245,9 @@ fn assert_refused(device: &impl DeviceConfiguration, refusal: DeviceRefusal) {
         refused(device.set_colour_theme("nord")),
         refused(device.set_colour_appearance(ColourAppearance::Dark)),
         refused(device.set_locale(Some(Locale::EnGb))),
+        refused(device.set_data(Path::new("/home/me/finance"))),
     ];
-    assert_eq!(refusals, [Some(refusal); 9]);
+    assert_eq!(refusals, [Some(refusal); 10]);
 }
 
 /// Builds the capture a [`TracingLog`] contract check runs on. The capture fills from the Client's

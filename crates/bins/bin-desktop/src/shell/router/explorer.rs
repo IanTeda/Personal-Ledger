@@ -91,6 +91,13 @@ impl Root {
         }
     }
 
+    /// What the file explorer draws, while it is open: its mode, the folder browsed, the row under
+    /// the folder picker's cursor and the Data folder its header names.
+    #[doc(hidden)]
+    pub fn explorer_snapshot(&self) -> Option<lib_shell::ExplorerViewModel> {
+        self.presenter.explorer()
+    }
+
     /// The file explorer's rows by name, in order, while it is open.
     #[doc(hidden)]
     pub fn explorer_rows_snapshot(&self) -> Option<Vec<String>> {

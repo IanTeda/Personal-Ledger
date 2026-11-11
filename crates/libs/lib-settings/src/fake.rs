@@ -3,6 +3,7 @@
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::SystemTime;
 
@@ -33,6 +34,7 @@ pub enum Routed {
     DisplayChanged(DisplayOutput),
     ColourChanged(ColourChoice),
     TestToasts,
+    PickDataFolder,
     LogScrolled(LogScroll),
     LogChanged(LogListChange),
     ClearLogsOpened,
@@ -116,6 +118,10 @@ impl DeviceRouter for RecordingRouter {
 
     fn test_toasts(&mut self) {
         self.routed.push(Routed::TestToasts);
+    }
+
+    fn pick_data_folder(&mut self) {
+        self.routed.push(Routed::PickDataFolder);
     }
 }
 
@@ -233,6 +239,7 @@ pub struct StoredDevice {
     pub colour_appearance: Option<ColourAppearance>,
     /// The file's Locale; `None` with no `locale` key, as after **System**.
     pub locale: Option<Locale>,
+    pub data: Option<PathBuf>,
 }
 
 /// A configuration file in memory: the settings written, the keys a source above it sets, and
@@ -357,6 +364,12 @@ impl DeviceConfiguration for InMemoryDeviceConfiguration {
     fn set_locale(&self, locale: Option<Locale>) -> DeviceAnswer<Option<Locale>> {
         self.write(DeviceKey::Locale, locale, |stored, value| {
             stored.locale = value;
+        })
+    }
+
+    fn set_data(&self, folder: &Path) -> DeviceAnswer<PathBuf> {
+        self.write(DeviceKey::Data, folder.to_path_buf(), |stored, value| {
+            stored.data = Some(value);
         })
     }
 }

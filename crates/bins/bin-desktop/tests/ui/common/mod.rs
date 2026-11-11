@@ -172,10 +172,23 @@ pub fn name_usual_unit(fakes: &mut FakeStores, id: InstitutionId, unit: UnitId) 
     }
 }
 
-/// The device start-up would show on Settings › General, its Ledger folder `folder`.
+/// A Data folder holding the folders `archive` and `finance`, a Ledger file and a CSV: the folder
+/// picker lists `archive`, `finance`, `expenses.csv`, `teda.pldb`, in that order.
+pub fn data_folder() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    for folder in ["archive", "finance"] {
+        std::fs::create_dir(dir.path().join(folder)).expect("a folder");
+    }
+    for file in ["teda.pldb", "expenses.csv"] {
+        std::fs::write(dir.path().join(file), b"stub").expect("a file");
+    }
+    dir
+}
+
+/// The device start-up would show on Settings › General, its Data folder `folder`.
 fn default_this_device(folder: &std::path::Path) -> lib_settings::ThisDevice {
     lib_settings::ThisDevice {
-        ledger_folder: folder.to_path_buf(),
+        data_folder: folder.to_path_buf(),
         ..lib_settings::ThisDevice::default()
     }
 }
@@ -377,7 +390,12 @@ impl<'a> Harness<'a> {
         )
     }
 
-    /// Points `:open`'s file explorer at `folder`, as the Ledger folder would.
+    /// What the file explorer draws, `None` while it is closed.
+    pub fn explorer(&mut self) -> Option<lib_shell::ExplorerViewModel> {
+        self.read(|shell| shell.explorer_snapshot())
+    }
+
+    /// Points `:open`'s file explorer at `folder`, as the Data folder would.
     pub fn browse_from(&mut self, folder: &std::path::Path) {
         let device = default_this_device(folder);
         self.shell

@@ -1,8 +1,10 @@
 //! `impl DeviceConfiguration` for the Desktop (ADR-0053): Toasts, the Colour Theme and
-//! Appearance, the date style, Row density, Status glyphs, On start, Start view and the Locale live in the
+//! Appearance, the date style, Row density, Status glyphs, On start, Start view, the Locale and the Data folder live in the
 //! `[General]` and `[Display]` sections (ADR-0057) of the user's `personal-ledger.conf`, which Settings › General and Display write through
 //! `lib_config`'s [`ConfigWriter`] as each one changes, the TUI's file and spellings included.
 //! The pages' Presenters (`lib-settings`) decide what a write's answer means; this only writes.
+
+use std::path::{Path, PathBuf};
 
 use lib_colour_theme::ColourAppearance;
 use lib_config::{ConfigKey, ConfigWriter, Shadow};
@@ -22,6 +24,7 @@ fn config_key(key: DeviceKey) -> ConfigKey {
         DeviceKey::ColourTheme => ConfigKey::ColourTheme,
         DeviceKey::ColourAppearance => ConfigKey::ColourAppearance,
         DeviceKey::Locale => ConfigKey::Locale,
+        DeviceKey::Data => ConfigKey::Data,
     }
 }
 
@@ -137,6 +140,11 @@ impl DeviceConfiguration for DeviceConfigFile {
             None => self.change(DeviceKey::Locale, None, |writer, key| writer.remove(key)),
         }
     }
+
+    fn set_data(&self, folder: &Path) -> DeviceAnswer<PathBuf> {
+        let spelt = folder.display().to_string();
+        self.write(DeviceKey::Data, &spelt, folder.to_path_buf())
+    }
 }
 
 #[cfg(test)]
@@ -233,6 +241,7 @@ mod tests {
                         .into_iter()
                         .find(|locale| locale.tag() == value);
                 }
+                "data" => stored.data = Some(PathBuf::from(value)),
                 _ => {}
             }
         }

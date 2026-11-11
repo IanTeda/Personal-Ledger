@@ -15,6 +15,8 @@ mod categories_keyboard;
 mod categories_mouse;
 mod dashboard_keyboard;
 mod dashboard_mouse;
+mod data_folder_keyboard;
+mod data_folder_mouse;
 mod documents_keyboard;
 mod documents_mouse;
 mod harness;
