@@ -1,9 +1,11 @@
 //! Settings › General drawn from its view model (DESKTOP-178): the field column (On start, Start
 //! view, Toasts, the Locale and the Data folder) beside the THIS DEVICE box. Every click is a
-//! Presenter event through [`PageClicks`].
+//! Presenter event through [`PageClicks`]. Start view and the Locale are the shared dropdown, their
+//! lists the Presenter's; the View keeps only each open list's scroll ([`GeneralWidgets`]).
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use lib_core::StartView;
+use lib_locale::Locale;
 use lib_settings::presenter::general::{
     GENERAL_FIELD_LOCALE, GENERAL_FIELD_ON_START, GENERAL_FIELD_START_VIEW, GENERAL_FIELD_TOASTS,
 };
@@ -13,9 +15,12 @@ use lib_settings::{
 };
 use lib_viper::view::Hint;
 
-use super::GeneralPage;
+use super::{GeneralPage, GeneralWidgets};
 use crate::{
-    form::fields::{UNIFORM_OPTION_WIDTH, field_label, field_value, radio_dot, segmented_labelled},
+    form::fields::{UNIFORM_OPTION_WIDTH, field_label, field_value, segmented_labelled},
+    form::select::SelectState,
+    form::select_field::{self, SelectFieldProps},
+    form::viper::{drawn, labels},
     settings::controls::{focus_mark, hint, shadowed},
     shell::view::page_clicks::PageClicks,
     theme::color,
@@ -25,6 +30,7 @@ use crate::{
 pub(super) fn page(
     model: &GeneralViewModel,
     clicks: &PageClicks<GeneralPage>,
+    widgets: &mut GeneralWidgets,
     cx: &App,
 ) -> AnyElement {
     div()
@@ -52,6 +58,7 @@ pub(super) fn page(
                     &model.start_view,
                     model.field == Some(GENERAL_FIELD_START_VIEW),
                     clicks,
+                    &mut widgets.start_view_scroll,
                     cx,
                 ))
                 .child(segmented(
@@ -68,6 +75,7 @@ pub(super) fn page(
                     &model.locale,
                     model.field == Some(GENERAL_FIELD_LOCALE),
                     clicks,
+                    &mut widgets.locale_scroll,
                     cx,
                 ))
                 .child(data_folder_field(&model.data_folder, clicks, cx)),
@@ -120,19 +128,35 @@ fn segmented<T: Copy + PartialEq + 'static>(
         .children(shadowed(key, control.shadowed.as_deref(), cx))
 }
 
-/// Toasts' secondary **Test** button, its key after its label. It is no `j`/`k` stop of its own:
-/// the key presses it from Toasts.
+/// Toasts' **Test** button beside On/Off, in a segment's treatment (#1156): the same padding, text
+/// and `divider` border, so it stands as tall as the bar, with no fill since it is never chosen.
+/// Its key follows its label, faint. It is no `j`/`k` stop of its own: the key presses it from
+/// Toasts.
 fn test_button(test: &Hint, clicks: &PageClicks<GeneralPage>, cx: &App) -> impl IntoElement {
-    button(
-        "general-toasts-test",
-        test,
-        GeneralEvent::PressTest,
-        clicks,
-        cx,
-    )
+    div()
+        .id("general-toasts-test")
+        .debug_selector(|| "general-toasts-test".to_string())
+        .cursor_pointer()
+        .flex_none()
+        .flex()
+        .items_center()
+        .gap(px(6.0))
+        .py(px(7.0))
+        .px(px(12.0))
+        .border_1()
+        .border_color(color::divider(cx))
+        .text_size(px(13.0))
+        .whitespace_nowrap()
+        .on_click(clicks.send(GeneralEvent::PressTest))
+        .child(test.action.clone())
+        .child(
+            div()
+                .text_color(color::faint_text(cx))
+                .child(test.chord.clone()),
+        )
 }
 
-/// A secondary button: its label, then the key that presses it, faint.
+/// The Data folder's **Change…** button: its label, then the key that presses it, faint.
 fn button(
     id: &'static str,
     label: &Hint,
@@ -168,12 +192,13 @@ fn button(
         )
 }
 
-/// Start view's choices as a radio group, one per line: seven don't fit a segmented control in the
-/// field column. A noun from the file that isn't a choice checks none and is named in the hint.
+/// Start view's dropdown (#1156): seven choices don't fit a segmented control in the field column.
+/// A noun from the file that isn't a choice shows nothing chosen and is named under the field.
 fn start_view_field(
     view: &StartViewControl,
     focused: bool,
     clicks: &PageClicks<GeneralPage>,
+    scroll: &mut usize,
     cx: &App,
 ) -> impl IntoElement {
     let control = &view.control;
@@ -182,35 +207,30 @@ fn start_view_field(
             .debug_selector(|| "general-start-view-unlisted".to_string())
             .child(hint(text, cx))
     });
+    let options = labels(&control.select);
+    let values: Vec<StartView> = control
+        .select
+        .options
+        .iter()
+        .map(|choice| choice.value.clone())
+        .collect();
+    let state = drawn(&control.select, view.list, scroll);
     focus_mark(focused, cx)
-        .child(field_label(control.select.label.clone()))
-        .child(
-            div().flex().flex_col().gap(px(6.0)).children(
-                control
-                    .select
-                    .options
-                    .iter()
-                    .enumerate()
-                    .map(|(index, choice)| {
-                        let id = format!("general-start-view-{index}");
-                        let checked = control.select.chosen.as_ref() == Some(&choice.value);
-                        let value: StartView = choice.value.clone();
-                        div()
-                            .debug_selector({
-                                let id = id.clone();
-                                move || id
-                            })
-                            .id(SharedString::from(id))
-                            .cursor_pointer()
-                            .flex()
-                            .items_center()
-                            .gap(px(8.0))
-                            .on_click(clicks.send(GeneralEvent::ChooseStartView(value)))
-                            .child(radio_dot(checked, cx))
-                            .child(div().text_size(px(13.0)).child(choice.label.clone()))
-                    }),
-            ),
-        )
+        .child(select_field::render(
+            SelectFieldProps {
+                id: "general-start-view".into(),
+                label: control.select.label.clone().into(),
+                options: &options,
+                state: &state,
+                focused,
+                accent: false,
+                read_only: None,
+                on_field_click: clicks.click(GeneralEvent::PressStartView),
+                on_option_click: clicks
+                    .option(move |index| GeneralEvent::ChooseStartView(values[index].clone())),
+            },
+            cx,
+        ))
         .children(unlisted)
         .children(control.hint.clone().map(|text| hint(text, cx)))
         .children(shadowed(
@@ -220,13 +240,14 @@ fn start_view_field(
         ))
 }
 
-/// The Locale's choices as a radio group, one per line, each label followed by its code (`now
-/// en-AU` after **System**), then the note while the choice waits on the next start or a source
-/// above the file overrides it (DESKTOP-185, DESKTOP-186).
+/// The Locale's dropdown (#1156), each choice its label then its code (`System · now en-AU`), then
+/// the note while the choice waits on the next start or a source above the file overrides it
+/// (DESKTOP-185, DESKTOP-186).
 fn locale_field(
     view: &LocaleControl,
     focused: bool,
     clicks: &PageClicks<GeneralPage>,
+    scroll: &mut usize,
     cx: &App,
 ) -> impl IntoElement {
     let select = &view.control.select;
@@ -234,39 +255,31 @@ fn locale_field(
         .note
         .clone()
         .map(|text| note(text, "general-locale-note", cx));
+    let values: Vec<Option<Locale>> = select.options.iter().map(|choice| choice.value).collect();
+    let chosen = select
+        .options
+        .iter()
+        .position(|choice| Some(choice.value) == select.chosen)
+        .and_then(|index| view.lines.get(index).cloned());
+    let state = SelectState::drawn(chosen, view.list.highlight(), *scroll, view.lines.len());
+    *scroll = state.scroll();
     focus_mark(focused, cx)
         .debug_selector(|| "general-locale".to_string())
-        .child(field_label(select.label.clone()))
-        .child(
-            div().flex().flex_col().gap(px(6.0)).children(
-                select.options.iter().zip(&view.codes).enumerate().map(
-                    |(index, (choice, code))| {
-                        let id = format!("general-locale-{index}");
-                        let checked = select.chosen == Some(choice.value);
-                        div()
-                            .debug_selector({
-                                let id = id.clone();
-                                move || id
-                            })
-                            .id(SharedString::from(id))
-                            .cursor_pointer()
-                            .flex()
-                            .items_center()
-                            .gap(px(8.0))
-                            .on_click(clicks.send(GeneralEvent::ChooseLocale(choice.value)))
-                            .child(radio_dot(checked, cx))
-                            .child(div().text_size(px(13.0)).child(choice.label.clone()))
-                            .child(
-                                div()
-                                    .text_size(px(12.0))
-                                    .font_family("monospace")
-                                    .text_color(color::faint_text(cx))
-                                    .child(code.clone()),
-                            )
-                    },
-                ),
-            ),
-        )
+        .child(select_field::render(
+            SelectFieldProps {
+                id: "general-locale-select".into(),
+                label: select.label.clone().into(),
+                options: &view.lines,
+                state: &state,
+                focused,
+                accent: false,
+                read_only: None,
+                on_field_click: clicks.click(GeneralEvent::PressLocale),
+                on_option_click: clicks
+                    .option(move |index| GeneralEvent::ChooseLocale(values[index])),
+            },
+            cx,
+        ))
         .children(note)
         .children(view.fallback.clone().map(|text| hint(text, cx)))
         .children(view.control.hint.clone().map(|text| hint(text, cx)))

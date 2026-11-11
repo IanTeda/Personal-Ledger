@@ -1,7 +1,8 @@
 //! Settings › General driven by keys: focus lands on On start, `j`/`k` walk On start, Start view,
-//! Toasts, the Locale and the Data folder, and `h`/`l` change the one focused; `enter` on the Data
-//! folder opens the folder picker (DESKTOP-187), whose `ctrl-enter` writes it and raises a Toast
-//! (DESKTOP-188), and `esc` changes nothing. Each change is saved to the conf file
+//! Toasts, the Locale and the Data folder, and `h`/`l` change the one focused; `enter` opens Start
+//! view's and the Locale's dropdowns, whose `j`/`k` move, `enter` picks and `esc` closes (#1156);
+//! `enter` on the Data folder opens the folder picker (DESKTOP-187), whose `ctrl-enter` writes it
+//! and raises a Toast (DESKTOP-188), and `esc` changes nothing. Each change is saved to the conf file
 //! (ADR-0053) and Toasts reach the Shell's Toasts; `t` on Toasts raises the Toasts test; a key an
 //! environment variable sets is shown as such and left alone, but for the Locale, which is written
 //! all the same (DESKTOP-186). A chosen Locale applies at the next start, so a note says so.
@@ -266,6 +267,89 @@ fn general_starts_on_the_on_start_start_view_and_toasts_the_conf_file_holds(
     assert_eq!(general.start_view, "last");
     assert!(!general.toasts_on);
     assert!(!ui.toasts().on);
+}
+
+#[gpui::test]
+fn enter_opens_start_views_dropdown_and_j_and_enter_pick_the_next_choice(app: &mut TestAppContext) {
+    let mut ui = in_general(app);
+    ui.press("j");
+    assert_eq!(hint_keys(&mut ui), ["j/k", "h/l", "enter"]);
+
+    ui.press("enter");
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().start_view_list,
+        Some(0),
+        "on the Dashboard"
+    );
+    assert!(ui.is_drawn("general-start-view-option-0"));
+    assert_eq!(hint_keys(&mut ui), ["enter", "j/k", "esc"]);
+    ui.press("j");
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().field,
+        Some(1),
+        "j moves the highlight, not the focus"
+    );
+    assert_eq!(ui.conf(), "", "nothing picked yet");
+
+    ui.press("enter");
+
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().start_view_list,
+        None,
+        "closed"
+    );
+    assert_eq!(ui.settings::<SettingsGeneralSnapshot>().start_view, "last");
+    assert_eq!(ui.conf(), "[General]\nstart_view = last\n");
+}
+
+#[gpui::test]
+fn escape_closes_an_open_dropdown_without_leaving_the_page(app: &mut TestAppContext) {
+    let mut ui = in_general(app);
+    ui.press("j enter j j");
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().start_view_list,
+        Some(2)
+    );
+
+    ui.press("escape");
+
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().start_view_list,
+        None,
+        "closed"
+    );
+    assert!(ui.settings_frame().page_focused, "still on the page");
+    let general = ui.settings::<SettingsGeneralSnapshot>();
+    assert_eq!(general.field, Some(1));
+    assert_eq!(general.start_view, "dashboard");
+    assert_eq!(ui.conf(), "");
+
+    ui.press("escape");
+    assert!(!ui.settings_frame().page_focused, "then back to the index");
+}
+
+#[gpui::test]
+fn the_locale_dropdown_opens_picks_and_cancels(app: &mut TestAppContext) {
+    let mut ui = in_general(app);
+    ui.press("j j j enter");
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().locale_list,
+        Some(0),
+        "on System"
+    );
+    assert!(ui.is_drawn("general-locale-select-option-0"));
+    ui.press("j j escape");
+    assert_eq!(ui.settings::<SettingsGeneralSnapshot>().locale_list, None);
+    assert_eq!(ui.conf(), "", "cancelled");
+
+    ui.press("enter k enter");
+
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().locale.as_deref(),
+        Some("en-US"),
+        "k wraps from System to the last"
+    );
+    assert_eq!(ui.conf(), "[General]\nlocale = en-US\n");
 }
 
 #[gpui::test]

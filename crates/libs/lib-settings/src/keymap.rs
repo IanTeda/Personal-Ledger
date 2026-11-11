@@ -78,9 +78,11 @@ pub const TOGGLE: &str = "settings.toggle";
 pub const TEST_TOASTS: &str = "settings.test_toasts";
 
 /// Settings › General's commands, with today's keys: `j`/`k` walk the controls, `h`/`l` change
-/// the one focused, `t` on Toasts raises the Toasts test and `enter` on the Data folder opens its
-/// picker. None is listed in the palette: each means something only where the focus is, and
-/// `:toasts test` is the test's own Command.
+/// the one focused, `t` on Toasts raises the Toasts test, and `enter` opens Start view's or the
+/// Locale's list (then picks its highlight) and on the Data folder opens its picker. While a list
+/// is open, `j`/`k` move its highlight; `esc`, the Shell's `back`, closes it. None is listed in
+/// the palette: each means something only where the focus is, and `:toasts test` is the test's
+/// own Command.
 pub const GENERAL_BINDINGS: &[Binding<GeneralEvent>] = &[
     Binding::hidden(MOVE_DOWN, "j", GeneralEvent::Move(Step::Next)),
     Binding::hidden(MOVE_UP, "k", GeneralEvent::Move(Step::Prev)),
@@ -91,7 +93,7 @@ pub const GENERAL_BINDINGS: &[Binding<GeneralEvent>] = &[
     Binding::hidden(CHOICE_LEFT, "left", GeneralEvent::Change(Step::Prev)),
     Binding::hidden(CHOICE_RIGHT, "right", GeneralEvent::Change(Step::Next)),
     Binding::hidden(TEST_TOASTS, "t", GeneralEvent::TestToasts),
-    Binding::hidden(SELECT, "enter", GeneralEvent::ChangeDataFolder),
+    Binding::hidden(SELECT, "enter", GeneralEvent::Select),
 ];
 
 /// Settings › General's keymap under `config`'s overrides.
@@ -236,7 +238,7 @@ mod tests {
             ("left", GeneralEvent::Change(Step::Prev)),
             ("l", GeneralEvent::Change(Step::Next)),
             ("right", GeneralEvent::Change(Step::Next)),
-            ("enter", GeneralEvent::ChangeDataFolder),
+            ("enter", GeneralEvent::Select),
         ] {
             assert_eq!(keymap.event(chord), Some(event), "{chord}");
         }

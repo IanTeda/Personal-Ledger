@@ -13,6 +13,10 @@
 //! The Data folder is picked in the Shell's file explorer (DESKTOP-187): **Change…** asks the
 //! Router for it, and what it picks comes back as [`GeneralEvent::SetDataFolder`], this the one
 //! place the Data folder is written. It applies at once, with a Success Toast (DESKTOP-188).
+//!
+//! Start view and the Locale are dropdowns (#1156): each holds its open list as a [`SelectList`],
+//! as a Dialog's Presenter does, but driven by the page's keymap. While a list is open its keys
+//! (`j`/`k`, `enter`, `esc`) are the list's, and the rest of the page waits; at most one is open.
 
 use std::convert::Infallible;
 use std::path::{Path, PathBuf};
@@ -22,9 +26,10 @@ use lib_core::{OnStart, StartView};
 use lib_list_cursor::Step;
 use lib_locale::Locale;
 use lib_toast::{Notice, ToastKind};
+use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP, SELECT};
 use lib_viper::presenter::{PagePresenter, Presenter};
-use lib_viper::view::{Choice, Hint, SelectView};
+use lib_viper::view::{Choice, Hint, SelectList, SelectView};
 
 use super::device::{ControlView, chords, settle, shadowed_note, step_choice};
 use crate::keymap::{NEXT_CHOICE, PREVIOUS_CHOICE, TEST_TOASTS};
@@ -61,7 +66,7 @@ pub fn locale_choices() -> Vec<Option<Locale>> {
 /// What General is told and the person asks of it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GeneralEvent {
-    /// `j`/`k`: the control below or above.
+    /// `j`/`k`: the control below or above, or an open list's highlight.
     Move(Step),
     /// `h`/`l`: the focused control's choice after or before.
     Change(Step),
@@ -76,8 +81,15 @@ pub enum GeneralEvent {
     TestToasts,
     /// A click on **Test**, wherever the keyboard is.
     PressTest,
-    /// `enter`: the Data folder picker, only while the Data folder has the keyboard.
-    ChangeDataFolder,
+    /// `enter`: on Start view or the Locale, opens its list, or picks an open list's highlight; on
+    /// the Data folder, its picker.
+    Select,
+    /// `esc` while a list is open: closes it, changing nothing.
+    CloseList,
+    /// A click on Start view's field: opens its list, or closes it while open.
+    PressStartView,
+    /// A click on the Locale's field: opens its list, or closes it while open.
+    PressLocale,
     /// A click on **Change…**, wherever the keyboard is.
     PressChange,
     /// The folder the picker picked, from **Change…** or `:data`: written as the Data folder.
@@ -168,21 +180,25 @@ pub struct ThisDeviceView {
     pub note: String,
 }
 
-/// Start view's radio group: the choices, the one held (`None` for a value from the file that
-/// isn't a choice), and the line naming that value.
+/// Start view's dropdown: the choices, the one held (`None` for a value from the file that isn't a
+/// choice), its list, and the line naming that value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StartViewControl {
     pub control: ControlView<StartView>,
+    pub list: SelectList,
     pub unlisted: Option<String>,
 }
 
-/// The Locale's radio group: the choices with the file's value chosen, the code after each label
-/// (`now en-AU` after **System**), and the note while the file's Locale isn't the one in effect or
-/// a source above the file overrides it. `control.shadowed` stays `None`: the note says it.
+/// The Locale's dropdown: the choices with the file's value chosen, its list, each choice as the
+/// dropdown shows it, its label then its code (`System · now en-AU`), and the note while the
+/// file's Locale isn't the one in effect or a source above the file overrides it.
+/// `control.shadowed` stays `None`: the note says it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocaleControl {
     pub control: ControlView<Option<Locale>>,
-    pub codes: Vec<String>,
+    pub list: SelectList,
+    /// Each option's label with its code, in the options' order.
+    pub lines: Vec<String>,
     pub note: Option<String>,
     /// The note when the Locale asked for wasn't supported.
     pub fallback: Option<String>,
@@ -228,6 +244,8 @@ pub struct GeneralPresenter {
     this_device: ThisDevice,
     field: Option<usize>,
     page_focused: bool,
+    start_view_list: SelectList,
+    locale_list: SelectList,
 }
 
 impl GeneralPresenter {
@@ -243,6 +261,8 @@ impl GeneralPresenter {
             this_device: ThisDevice::default(),
             field: None,
             page_focused: false,
+            start_view_list: SelectList::default(),
+            locale_list: SelectList::default(),
         }
     }
 
@@ -276,6 +296,7 @@ impl GeneralPresenter {
         }
         self.page_focused = focused;
         self.field = focused.then_some(GENERAL_FIELD_ON_START);
+        self.close_lists();
         true
     }
 
@@ -307,9 +328,43 @@ impl Presenter for GeneralPresenter {
         if !self.takes(&event) {
             return;
         }
+        // Which list was open, so a second click on its field closes it rather than reopening it.
+        let (start_view_was_open, locale_was_open) =
+            (self.start_view_list.is_open(), self.locale_list.is_open());
+        if self.list_open() {
+            match event {
+                GeneralEvent::Move(step) => return self.move_highlight(step),
+                // `h`/`l` wait while a list is open, rather than step the value under it.
+                GeneralEvent::Change(_) => return,
+                GeneralEvent::Select => return self.pick_highlight(router),
+                // Another click, a picked row or a Command closes the open list first.
+                _ => {
+                    self.close_lists();
+                }
+            }
+        }
         match event {
             GeneralEvent::Move(step) => self.move_field(step),
             GeneralEvent::Change(step) => self.change(step, router),
+            GeneralEvent::Select => match self.field {
+                Some(GENERAL_FIELD_START_VIEW) => self.open_start_view(),
+                Some(GENERAL_FIELD_LOCALE) => self.open_locale(),
+                _ => router.pick_data_folder(),
+            },
+            // The open list closed above.
+            GeneralEvent::CloseList => {}
+            GeneralEvent::PressStartView => {
+                if !start_view_was_open {
+                    self.open_start_view();
+                    self.focus_if_on_page(GENERAL_FIELD_START_VIEW);
+                }
+            }
+            GeneralEvent::PressLocale => {
+                if !locale_was_open {
+                    self.open_locale();
+                    self.focus_if_on_page(GENERAL_FIELD_LOCALE);
+                }
+            }
             GeneralEvent::ChooseOnStart(on_start) => self.choose_on_start(on_start, router),
             GeneralEvent::ChooseStartView(start_view) => {
                 self.choose_start_view(start_view, router);
@@ -323,9 +378,7 @@ impl Presenter for GeneralPresenter {
             GeneralEvent::ChooseLocale(locale) => self.choose_locale(locale, router),
             // The test touches no setting: the Shell's Toasts raise it.
             GeneralEvent::TestToasts | GeneralEvent::PressTest => router.test_toasts(),
-            GeneralEvent::ChangeDataFolder | GeneralEvent::PressChange => {
-                router.pick_data_folder();
-            }
+            GeneralEvent::PressChange => router.pick_data_folder(),
             GeneralEvent::SetDataFolder(folder) => self.set_data_folder(folder, router),
         }
     }
@@ -370,6 +423,7 @@ impl Presenter for GeneralPresenter {
                     hint: Some(msg::settings_general_start_view_hint()),
                     shadowed: shadowed_note(device, DeviceKey::StartView),
                 },
+                list: self.start_view_list,
                 unlisted: (!listed).then(|| {
                     msg::settings_general_start_view_unlisted(self.settings.start_view.key())
                 }),
@@ -434,12 +488,22 @@ impl Presenter for GeneralPresenter {
     }
 
     /// Whether General takes `event` as things stand, so a key it declines goes on to the frame:
-    /// a move or change only while a control has the keyboard.
+    /// a move or change only while a control has the keyboard, and every list key while a list is
+    /// open, so neither the frame's `h` nor the Shell's `back` sees one.
     fn takes(&self, event: &GeneralEvent) -> bool {
+        let open = self.list_open();
         match event {
-            GeneralEvent::Move(_) | GeneralEvent::Change(_) => self.field.is_some(),
-            GeneralEvent::TestToasts => self.field == Some(GENERAL_FIELD_TOASTS),
-            GeneralEvent::ChangeDataFolder => self.field == Some(GENERAL_FIELD_DATA_FOLDER),
+            GeneralEvent::Move(_) | GeneralEvent::Change(_) => open || self.field.is_some(),
+            GeneralEvent::TestToasts => !open && self.field == Some(GENERAL_FIELD_TOASTS),
+            GeneralEvent::Select => {
+                open || matches!(
+                    self.field,
+                    Some(
+                        GENERAL_FIELD_START_VIEW | GENERAL_FIELD_LOCALE | GENERAL_FIELD_DATA_FOLDER
+                    )
+                )
+            }
+            GeneralEvent::CloseList => open,
             _ => true,
         }
     }
@@ -460,9 +524,20 @@ impl PagePresenter for GeneralPresenter {
 }
 
 impl GeneralPresenter {
-    /// The page's keys: on Toasts, `h`/`l` read on / off and `t` raises the test; on the Data
-    /// folder, `enter` changes it in place of `h`/`l`.
+    /// The page's keys: an open list's own while one is open; on Toasts, `h`/`l` read on / off and
+    /// `t` raises the test; on Start view and the Locale, `enter` opens the list beside `h`/`l`; on
+    /// the Data folder, `enter` changes it in place of `h`/`l`.
     fn hints(&self) -> Vec<Hint> {
+        if self.list_open() {
+            return vec![
+                Hint::new(chords(&self.keymap, &[SELECT]), msg::settings_hint_pick()),
+                Hint::new(
+                    chords(&self.keymap, &[MOVE_DOWN, MOVE_UP]),
+                    msg::settings_hint_move(),
+                ),
+                Hint::new(self.back_chord.clone(), msg::settings_hint_close()),
+            ];
+        }
         let on_toasts = self.field == Some(GENERAL_FIELD_TOASTS);
         let field = Hint::new(
             chords(&self.keymap, &[MOVE_DOWN, MOVE_UP]),
@@ -491,7 +566,82 @@ impl GeneralPresenter {
                 msg::settings_hint_test(),
             ));
         }
+        if matches!(
+            self.field,
+            Some(GENERAL_FIELD_START_VIEW | GENERAL_FIELD_LOCALE)
+        ) {
+            hints.push(Hint::new(
+                chords(&self.keymap, &[SELECT]),
+                msg::settings_hint_open(),
+            ));
+        }
         hints
+    }
+
+    /// Whether Start view's or the Locale's list is open.
+    pub fn list_open(&self) -> bool {
+        self.start_view_list.is_open() || self.locale_list.is_open()
+    }
+
+    fn close_lists(&mut self) {
+        self.start_view_list.close();
+        self.locale_list.close();
+    }
+
+    /// A click on a dropdown puts the keyboard on it, while the page has the keyboard, so its list
+    /// keys follow.
+    fn focus_if_on_page(&mut self, field: usize) {
+        if self.field.is_some() {
+            self.field = Some(field);
+        }
+    }
+
+    /// The Start view held, `None` for a value from the file that isn't a choice.
+    fn start_view_chosen(&self) -> Option<&StartView> {
+        self.start_views
+            .iter()
+            .any(|choice| choice.value == self.settings.start_view)
+            .then_some(&self.settings.start_view)
+    }
+
+    fn open_start_view(&mut self) {
+        self.locale_list.close();
+        let chosen = self.start_view_chosen().cloned();
+        self.start_view_list
+            .open(&self.start_views, chosen.as_ref());
+    }
+
+    fn open_locale(&mut self) {
+        self.start_view_list.close();
+        self.locale_list
+            .open(&locale_options(), Some(&self.settings.locale));
+    }
+
+    /// `j`/`k` on an open list: its highlight, wrapping at either end.
+    fn move_highlight(&mut self, step: Step) {
+        let input = match step {
+            Step::Next => DialogInput::SelectNext,
+            Step::Prev => DialogInput::SelectPrevious,
+            _ => return,
+        };
+        if self.start_view_list.is_open() {
+            let chosen = self.start_view_chosen().cloned();
+            self.start_view_list
+                .input(input, &self.start_views, chosen.as_ref());
+        } else {
+            let chosen = self.settings.locale;
+            self.locale_list
+                .input(input, &locale_options(), Some(&chosen));
+        }
+    }
+
+    /// `enter` on an open list: picks its highlight and closes it.
+    fn pick_highlight(&mut self, router: &mut dyn DeviceRouter) {
+        if let Some(start_view) = self.start_view_list.commit(&self.start_views) {
+            self.choose_start_view(start_view, router);
+        } else if let Some(locale) = self.locale_list.commit(&locale_options()) {
+            self.choose_locale(locale, router);
+        }
     }
 
     /// `j`/`k` walk the controls, stopping at either end.
@@ -583,32 +733,30 @@ impl GeneralPresenter {
     }
 
     fn locale_control(&self) -> LocaleControl {
-        let choices = locale_choices();
-        let codes = choices
+        let options = locale_options();
+        let lines = options
             .iter()
-            .map(|choice| match choice {
-                None => msg::settings_general_locale_system_now(self.locale.system.tag()),
-                Some(locale) => locale.tag().to_string(),
+            .map(|choice| {
+                let code = match choice.value {
+                    None => msg::settings_general_locale_system_now(self.locale.system.tag()),
+                    Some(locale) => locale.tag().to_string(),
+                };
+                msg::settings_general_locale_option(&choice.label, &code)
             })
             .collect();
         LocaleControl {
+            list: self.locale_list,
             control: ControlView {
                 select: SelectView {
                     label: msg::settings_general_locale_label(),
-                    options: choices
-                        .into_iter()
-                        .map(|value| Choice {
-                            value,
-                            label: locale_label(value),
-                        })
-                        .collect(),
+                    options,
                     chosen: Some(self.settings.locale),
                     focused: self.field == Some(GENERAL_FIELD_LOCALE),
                 },
                 hint: Some(msg::settings_general_locale_hint()),
                 shadowed: None,
             },
-            codes,
+            lines,
             note: self.locale_note(),
             fallback: self.locale.fallback.clone(),
         }
@@ -666,6 +814,17 @@ impl GeneralPresenter {
             router.toasts_changed(saved);
         }
     }
+}
+
+/// The Locale's choices, labelled.
+fn locale_options() -> Vec<Choice<Option<Locale>>> {
+    locale_choices()
+        .into_iter()
+        .map(|value| Choice {
+            value,
+            label: locale_label(value),
+        })
+        .collect()
 }
 
 /// A Locale choice's label, **System** for `None`.
@@ -795,7 +954,7 @@ mod tests {
         );
         assert_eq!(general.view_model().field, Some(GENERAL_FIELD_ON_START));
         assert!(
-            !general.takes(&GeneralEvent::ChangeDataFolder),
+            !general.takes(&GeneralEvent::Select),
             "enter is the frame's off the Data folder"
         );
     }
@@ -966,14 +1125,6 @@ mod tests {
     #[test]
     fn on_toasts_the_hints_read_on_off_and_test() {
         let (_, mut general) = writable();
-        let pairs = |general: &GeneralPresenter| -> Vec<(String, String)> {
-            general
-                .view_model()
-                .hints
-                .into_iter()
-                .map(|hint| (hint.chord, hint.action))
-                .collect()
-        };
         general.set_page_focused(true);
         assert_eq!(pairs(&general)[1].1, "change");
         send(
@@ -1028,7 +1179,15 @@ mod tests {
                 "English (United States)"
             ]
         );
-        assert_eq!(view.codes, ["now en-AU", "en-AU", "en-GB", "en-US"]);
+        assert_eq!(
+            view.lines,
+            [
+                "System · now en-AU",
+                "English (Australia) · en-AU",
+                "English (United Kingdom) · en-GB",
+                "English (United States) · en-US"
+            ]
+        );
         assert_eq!(
             view.control.select.chosen,
             Some(None),
@@ -1171,7 +1330,7 @@ mod tests {
 
         let router = send(
             &mut general,
-            [GeneralEvent::ChangeDataFolder, GeneralEvent::PressChange],
+            [GeneralEvent::Select, GeneralEvent::PressChange],
         );
 
         assert_eq!(
@@ -1312,14 +1471,6 @@ mod tests {
     #[test]
     fn the_legend_reads_its_chords_from_the_keymap() {
         let (_, mut general) = writable();
-        let pairs = |general: &GeneralPresenter| -> Vec<(String, String)> {
-            general
-                .view_model()
-                .hints
-                .into_iter()
-                .map(|hint| (hint.chord, hint.action))
-                .collect()
-        };
         assert_eq!(
             pairs(&general),
             [
@@ -1335,5 +1486,265 @@ mod tests {
             .insert(NEXT_CHOICE.to_string(), "ctrl+l".to_string());
         general.set_keymap(general_keymap(&config), "esc".to_string());
         assert_eq!(pairs(&general)[1].0, "h/ctrl+l");
+    }
+
+    fn pairs(general: &GeneralPresenter) -> Vec<(String, String)> {
+        general
+            .view_model()
+            .hints
+            .into_iter()
+            .map(|hint| (hint.chord, hint.action))
+            .collect()
+    }
+
+    /// General focused on Start view.
+    fn on_start_view(general: &mut GeneralPresenter) {
+        general.set_page_focused(true);
+        send(general, [GeneralEvent::Move(Step::Next)]);
+        assert_eq!(general.view_model().field, Some(GENERAL_FIELD_START_VIEW));
+    }
+
+    #[test]
+    fn enter_opens_start_views_list_on_the_chosen_option_and_offers_open_while_closed() {
+        let (device, mut general) = writable();
+        on_start_view(&mut general);
+        assert_eq!(
+            pairs(&general),
+            [
+                ("j/k".to_string(), "field".to_string()),
+                ("h/l".to_string(), "change".to_string()),
+                ("enter".to_string(), "open".to_string()),
+            ]
+        );
+
+        let router = send(&mut general, [GeneralEvent::Select]);
+
+        let view = general.view_model();
+        assert_eq!(view.start_view.list.highlight(), Some(0), "the Dashboard");
+        assert!(router.routed.is_empty());
+        assert_eq!(
+            device.stored(),
+            StoredDevice::default(),
+            "opening writes nothing"
+        );
+        assert_eq!(
+            pairs(&general),
+            [
+                ("enter".to_string(), "pick".to_string()),
+                ("j/k".to_string(), "move".to_string()),
+                ("esc".to_string(), "close".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn j_and_k_move_the_open_lists_highlight_not_the_focus_and_enter_picks_it() {
+        let (device, mut general) = writable();
+        on_start_view(&mut general);
+        send(
+            &mut general,
+            [
+                GeneralEvent::Select,
+                GeneralEvent::Move(Step::Next),
+                GeneralEvent::Move(Step::Next),
+                GeneralEvent::Move(Step::Prev),
+            ],
+        );
+        let view = general.view_model();
+        assert_eq!(view.field, Some(GENERAL_FIELD_START_VIEW));
+        assert_eq!(view.start_view.list.highlight(), Some(1));
+        assert_eq!(
+            general.settings().start_view,
+            StartView::Dashboard,
+            "not yet"
+        );
+
+        let router = send(&mut general, [GeneralEvent::Select]);
+
+        assert!(!general.list_open());
+        assert_eq!(general.settings().start_view, StartView::Last);
+        assert_eq!(device.stored().start_view, Some(StartView::Last));
+        assert_eq!(
+            router.statuses(),
+            ["start_view saved to personal-ledger.conf"]
+        );
+    }
+
+    #[test]
+    fn esc_closes_the_open_list_changing_nothing_and_is_the_frames_once_closed() {
+        let (device, mut general) = writable();
+        on_start_view(&mut general);
+        assert!(!general.takes(&GeneralEvent::CloseList), "nothing open");
+        send(
+            &mut general,
+            [GeneralEvent::Select, GeneralEvent::Move(Step::Next)],
+        );
+        assert!(general.takes(&GeneralEvent::CloseList));
+
+        let router = send(&mut general, [GeneralEvent::CloseList]);
+
+        assert!(!general.list_open());
+        assert!(router.routed.is_empty());
+        assert_eq!(device.stored(), StoredDevice::default());
+        assert_eq!(general.view_model().field, Some(GENERAL_FIELD_START_VIEW));
+        assert!(!general.takes(&GeneralEvent::CloseList));
+    }
+
+    #[test]
+    fn h_and_l_wait_while_a_list_is_open() {
+        let (device, mut general) = writable();
+        on_start_view(&mut general);
+        send(
+            &mut general,
+            [GeneralEvent::Select, GeneralEvent::Change(Step::Next)],
+        );
+        assert!(
+            general.takes(&GeneralEvent::Change(Step::Prev)),
+            "swallowed"
+        );
+        assert!(general.list_open());
+        assert_eq!(device.stored(), StoredDevice::default());
+    }
+
+    #[test]
+    fn an_unlisted_start_view_opens_its_list_on_the_first_choice() {
+        let (device, mut general) = writable();
+        general.configure(
+            device.clone(),
+            GeneralSettings {
+                start_view: StartView::Noun("units".into()),
+                ..GeneralSettings::default()
+            },
+        );
+        on_start_view(&mut general);
+        send(&mut general, [GeneralEvent::Select]);
+        let view = general.view_model().start_view;
+        assert_eq!(view.list.highlight(), Some(0));
+        assert_eq!(view.control.select.chosen, None);
+        assert!(view.unlisted.is_some());
+    }
+
+    #[test]
+    fn the_locales_list_opens_moves_picks_and_cancels() {
+        let (device, mut general) = writable();
+        on_locale(&mut general);
+        assert_eq!(
+            pairs(&general)[2],
+            ("enter".to_string(), "open".to_string())
+        );
+
+        send(&mut general, [GeneralEvent::Select]);
+        assert_eq!(
+            general.view_model().locale.list.highlight(),
+            Some(0),
+            "System"
+        );
+        send(
+            &mut general,
+            [GeneralEvent::Move(Step::Prev), GeneralEvent::CloseList],
+        );
+        assert!(!general.list_open());
+        assert_eq!(device.stored().locale, None, "cancelled");
+
+        let router = send(
+            &mut general,
+            [
+                GeneralEvent::Select,
+                GeneralEvent::Move(Step::Prev),
+                GeneralEvent::Select,
+            ],
+        );
+
+        assert_eq!(
+            device.stored().locale,
+            Some(Locale::EnUs),
+            "wrapped to the last"
+        );
+        assert_eq!(router.statuses(), ["locale saved to personal-ledger.conf"]);
+        assert_eq!(
+            general.view_model().locale.note.as_deref(),
+            Some(
+                "Saved. en-US applies when Personal Ledger next starts; until then it reads en-AU."
+            )
+        );
+    }
+
+    #[test]
+    fn h_and_l_still_step_a_closed_dropdown() {
+        let (device, mut general) = writable();
+        on_start_view(&mut general);
+        send(&mut general, [GeneralEvent::Change(Step::Next)]);
+        assert_eq!(device.stored().start_view, Some(StartView::Last));
+        assert!(!general.list_open());
+
+        send(
+            &mut general,
+            [
+                GeneralEvent::Move(Step::Next),
+                GeneralEvent::Move(Step::Next),
+            ],
+        );
+        send(&mut general, [GeneralEvent::Change(Step::Next)]);
+        assert_eq!(device.stored().locale, Some(Locale::EnAu));
+        assert!(!general.list_open());
+    }
+
+    #[test]
+    fn a_click_on_a_field_opens_its_list_closes_the_other_and_a_second_click_closes_it() {
+        let (_, mut general) = writable();
+        send(&mut general, [GeneralEvent::PressStartView]);
+        assert!(general.view_model().start_view.list.is_open());
+
+        send(&mut general, [GeneralEvent::PressLocale]);
+        let view = general.view_model();
+        assert!(!view.start_view.list.is_open(), "one list at a time");
+        assert!(view.locale.list.is_open());
+
+        send(&mut general, [GeneralEvent::PressLocale]);
+        assert!(!general.list_open());
+    }
+
+    #[test]
+    fn a_click_on_a_field_puts_the_keyboard_on_it_while_the_page_has_it() {
+        let (_, mut general) = writable();
+        send(&mut general, [GeneralEvent::PressLocale]);
+        assert_eq!(general.view_model().field, None, "the index keeps it");
+
+        general.set_page_focused(true);
+        send(&mut general, [GeneralEvent::PressLocale]);
+        assert_eq!(general.view_model().field, Some(GENERAL_FIELD_LOCALE));
+    }
+
+    #[test]
+    fn a_click_on_a_row_picks_it_and_closes_the_list() {
+        let (device, mut general) = writable();
+        send(
+            &mut general,
+            [
+                GeneralEvent::PressStartView,
+                GeneralEvent::ChooseStartView(StartView::Settings),
+            ],
+        );
+        assert!(!general.list_open());
+        assert_eq!(device.stored().start_view, Some(StartView::Settings));
+
+        send(
+            &mut general,
+            [
+                GeneralEvent::PressLocale,
+                GeneralEvent::ChooseLocale(Some(Locale::EnGb)),
+            ],
+        );
+        assert!(!general.list_open());
+        assert_eq!(device.stored().locale, Some(Locale::EnGb));
+    }
+
+    #[test]
+    fn leaving_the_page_closes_an_open_list() {
+        let (_, mut general) = writable();
+        on_start_view(&mut general);
+        send(&mut general, [GeneralEvent::Select]);
+        general.set_page_focused(false);
+        assert!(!general.list_open());
     }
 }

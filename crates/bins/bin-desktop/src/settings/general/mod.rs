@@ -16,7 +16,7 @@ use lib_core::StartView;
 use lib_database::Domain;
 use lib_settings::keymap::general_keymap;
 use lib_settings::{
-    DeviceConfiguration, GeneralPresenter, GeneralSetup, GeneralViewModel, LocaleLine,
+    DeviceConfiguration, GeneralEvent, GeneralPresenter, GeneralSetup, GeneralViewModel, LocaleLine,
 };
 use lib_viper::keymap::KeyBindingConfig;
 use lib_viper::view::Choice;
@@ -64,9 +64,16 @@ pub fn general_page(
     ModulePage::detached(presenter, (), cx)
 }
 
+/// What the View keeps between draws: each dropdown's open list's scroll, as widget mechanics.
+#[derive(Default)]
+pub struct GeneralWidgets {
+    start_view_scroll: usize,
+    locale_scroll: usize,
+}
+
 impl PageView for GeneralPresenter {
     type Setup = ();
-    type Widgets = ();
+    type Widgets = GeneralWidgets;
     type Before = ();
 
     /// General reads Configuration, not the Ledger.
@@ -90,7 +97,7 @@ impl PageView for GeneralPresenter {
         _window: &mut Window,
         cx: &mut Context<'_, GeneralPage>,
     ) -> AnyElement {
-        render::page(view, page.clicks, cx)
+        render::page(view, page.clicks, page.widgets, cx)
     }
 
     /// The Presenter's legend, rebound keys included, which the `?` cheat sheet reads.
@@ -99,6 +106,13 @@ impl PageView for GeneralPresenter {
             hints: view.hints.clone(),
             right: StatusRight::of_settings_page(SettingsPage::General),
         }
+    }
+
+    /// `Esc` closes an open dropdown list, changing nothing. With none open it is left to Settings,
+    /// which steps back to the index.
+    fn escape(view: &GeneralViewModel) -> Option<GeneralEvent> {
+        (view.start_view.list.is_open() || view.locale.list.is_open())
+            .then_some(GeneralEvent::CloseList)
     }
 
     /// Focus arriving puts the keyboard on On start; focus leaving takes it off the controls.
@@ -124,6 +138,10 @@ pub struct SettingsGeneralSnapshot {
     pub locale: Option<String>,
     /// The note under the Locale: pending until the next start, or overridden.
     pub locale_note: Option<String>,
+    /// Whether Start view's dropdown list is open, and the option it highlights.
+    pub start_view_list: Option<usize>,
+    /// Whether the Locale's dropdown list is open, and the option it highlights.
+    pub locale_list: Option<usize>,
     /// The Data folder in effect, where `:open` and `:new` start.
     pub data_folder: String,
     /// The Data folder the field shows: the file's, else the one in effect.
@@ -148,6 +166,8 @@ impl PageSnapshot for SettingsGeneralSnapshot {
             start_view: settings.start_view.key().to_string(),
             toasts_on: settings.toasts_on,
             locale: settings.locale.map(|locale| locale.tag().to_string()),
+            start_view_list: view.start_view.list.highlight(),
+            locale_list: view.locale.list.highlight(),
             locale_note: view.locale.note,
             data_folder: path(&device.data_folder),
             data_folder_shown: view.data_folder.value,

@@ -1,4 +1,4 @@
-//! Settings › General driven by the mouse: the On start, Start view, Toasts and Locale options, each saved to the conf file (ADR-0053), the Locale even under an override (DESKTOP-186), Toasts' Test raising the four test Toasts, the Data folder's **Change…** opening the folder picker, whose **Use <folder>** writes it (DESKTOP-187, DESKTOP-188), and the THIS DEVICE box drawn beside them. State is read back from `Root` and the conf file.
+//! Settings › General driven by the mouse: the On start and Toasts options and the Start view and Locale dropdowns (#1156), each saved to the conf file (ADR-0053), the Locale even under an override (DESKTOP-186), Toasts' Test raising the four test Toasts, the Data folder's **Change…** opening the folder picker, whose **Use <folder>** writes it (DESKTOP-187, DESKTOP-188), and the THIS DEVICE box drawn beside them. State is read back from `Root` and the conf file.
 
 use super::common;
 use bin_desktop::shell::router::SettingsGeneralSnapshot;
@@ -37,19 +37,83 @@ fn clicking_the_on_start_options_sets_on_start(app: &mut TestAppContext) {
 fn clicking_a_start_view_option_sets_start_view(app: &mut TestAppContext) {
     let mut ui = on_general(app);
     assert!(!ui.is_drawn("general-start-view-unlisted"));
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().start_view_list,
+        None,
+        "closed"
+    );
 
-    ui.click("general-start-view-4");
+    ui.click("general-start-view");
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().start_view_list,
+        Some(0),
+        "open"
+    );
+    ui.click("general-start-view-option-4");
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().start_view_list,
+        None,
+        "a pick closes it"
+    );
     assert_eq!(
         ui.settings::<SettingsGeneralSnapshot>().start_view,
         "documents"
     );
     assert_eq!(ui.conf(), "[General]\nstart_view = documents\n");
-    ui.click("general-start-view-2");
+    ui.click("general-start-view");
+    ui.click("general-start-view-option-2");
     assert_eq!(
         ui.settings::<SettingsGeneralSnapshot>().start_view,
         "settings"
     );
     assert_eq!(ui.conf(), "[General]\nstart_view = settings\n");
+}
+
+#[gpui::test]
+fn a_second_click_on_start_views_field_cancels_its_list(app: &mut TestAppContext) {
+    let mut ui = on_general(app);
+
+    ui.click("general-start-view");
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().start_view_list,
+        Some(0)
+    );
+    ui.click("general-start-view");
+
+    let general = ui.settings::<SettingsGeneralSnapshot>();
+    assert_eq!(general.start_view_list, None, "cancelled");
+    assert_eq!(general.start_view, "dashboard");
+    assert_eq!(ui.conf(), "", "nothing written");
+}
+
+#[gpui::test]
+fn a_second_click_on_a_dropdown_closes_it_and_opening_one_closes_the_other(
+    app: &mut TestAppContext,
+) {
+    let mut ui = on_general(app);
+
+    ui.click("general-start-view");
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().start_view_list,
+        Some(0)
+    );
+    ui.click("general-locale-select");
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().start_view_list,
+        None,
+        "one list at a time"
+    );
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().locale_list,
+        Some(0)
+    );
+    ui.click("general-locale-select");
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().locale_list,
+        None,
+        "cancelled"
+    );
+    assert_eq!(ui.conf(), "", "nothing written");
 }
 
 #[gpui::test]
@@ -87,7 +151,8 @@ fn clicking_a_locale_option_writes_it_and_system_takes_it_out(app: &mut TestAppC
     let mut ui = on_general(app);
     assert!(!ui.is_drawn("general-locale-note"));
 
-    ui.click("general-locale-2");
+    ui.click("general-locale-select");
+    ui.click("general-locale-select-option-2");
     assert_eq!(
         ui.settings::<SettingsGeneralSnapshot>().locale.as_deref(),
         Some("en-GB")
@@ -95,7 +160,8 @@ fn clicking_a_locale_option_writes_it_and_system_takes_it_out(app: &mut TestAppC
     assert_eq!(ui.conf(), "[General]\nlocale = en-GB\n");
     assert!(ui.is_drawn("general-locale-note"));
 
-    ui.click("general-locale-0");
+    ui.click("general-locale-select");
+    ui.click("general-locale-select-option-0");
     assert_eq!(ui.settings::<SettingsGeneralSnapshot>().locale, None);
     assert_eq!(ui.conf(), "[General]\n");
 }
@@ -110,7 +176,8 @@ fn under_an_environment_variable_a_locale_click_still_writes_and_the_override_is
     ui.press("g s enter");
     assert!(ui.is_drawn("general-locale-note"));
 
-    ui.click("general-locale-3");
+    ui.click("general-locale-select");
+    ui.click("general-locale-select-option-3");
 
     assert_eq!(ui.conf(), "[General]\nlocale = en-US\n");
     assert_eq!(

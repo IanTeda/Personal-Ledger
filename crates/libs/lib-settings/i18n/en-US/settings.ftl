@@ -101,6 +101,8 @@ settings-hint-toggle = toggle
 settings-hint-index = index
 settings-hint-colour = colour
 settings-hint-choose = choose
+settings-hint-pick = pick
+settings-hint-move = move
 
 ## A device's settings in personal-ledger.conf (ADR-0053). `$key` is the setting's key in the file,
 ## such as on_start; `$source` is the environment variable or configuration file that sets it, and
@@ -132,6 +134,8 @@ settings-general-locale-system-now = now { $tag }
 settings-general-locale-en-au = English (Australia)
 settings-general-locale-en-gb = English (United Kingdom)
 settings-general-locale-en-us = English (United States)
+# A Locale choice as its dropdown shows it: `$label` is the choice, `$code` its tag, or `now en-AU` for System.
+settings-general-locale-option = { $label } · { $code }
 # A chosen Locale applies at the next start (DESKTOP-185). `$chosen` is the tag the file now names, `$effective` the tag in effect for this run.
 settings-general-locale-pending = Saved. { $chosen } applies when Personal Ledger next starts; until then it reads { $effective }.
 # A flag, an environment variable or a higher configuration file sets the Locale (DESKTOP-186). `$source` names it, such as --locale en-GB.
