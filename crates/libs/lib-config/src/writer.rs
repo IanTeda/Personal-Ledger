@@ -257,7 +257,10 @@ impl ConfigWriter {
     /// Returns [`crate::Error::Validation`] when there is no target, and [`crate::Error::Write`]
     /// when the file or its directory can't be read or written.
     pub fn write(&self, key: ConfigKey, value: &str) -> crate::Result<()> {
-        edit(self.target_file()?, |text| Some(set_key(text, key, value)))
+        let escaped = escape(value);
+        edit(self.target_file()?, |text| {
+            Some(set_key(text, key, &escaped))
+        })
     }
 
     /// Removes `key`'s line from its section of the target file, keeping every other byte, so the
@@ -407,10 +410,48 @@ fn key_value(text: &str, key: ConfigKey) -> Option<String> {
                 .strip_prefix('"')
                 .and_then(|inner| inner.strip_suffix('"'))
                 .unwrap_or(raw);
-            value = Some(unquoted.to_string());
+            value = Some(unescape(unquoted));
         }
     }
     value
+}
+
+/// `value` as the parser reads it back: the INI parser takes `\` as an escape, so a Windows
+/// path's `C:\Users\me\new` would otherwise come back with a newline in it.
+fn escape(value: &str) -> String {
+    value.replace('\\', "\\\\")
+}
+
+/// `raw` with the parser's escapes undone, the way `rust-ini` reads them, so [`ConfigWriter::value`]
+/// shows what the parser takes: `\0`, `\a`, `\b`, `\t`, `\r`, `\n`, `\xHHHH`, and any other
+/// escaped character as itself.
+fn unescape(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut chars = raw.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        match chars.next() {
+            None => out.push('\\'),
+            Some('0') => out.push('\0'),
+            Some('a') => out.push('\x07'),
+            Some('b') => out.push('\x08'),
+            Some('t') => out.push('\t'),
+            Some('r') => out.push('\r'),
+            Some('n') => out.push('\n'),
+            Some('x') => {
+                let code: String = chars.by_ref().take(4).collect();
+                if let Some(decoded) = u32::from_str_radix(&code, 16).ok().and_then(char::from_u32)
+                {
+                    out.push(decoded);
+                }
+            }
+            Some(other) => out.push(other),
+        }
+    }
+    out
 }
 
 /// A section header's name as `normalise_ini` reads it, or `None` for any other line.
@@ -649,6 +690,32 @@ back = \"esc\"
         let config =
             crate::Config::parse_with_detector(Some(&path), Some(HashMap::new()), || None).unwrap();
         assert_eq!(config.display_config().date_style(), None);
+    }
+
+    #[test]
+    fn a_windows_data_folder_survives_the_parser_and_reads_back() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("personal-ledger.conf");
+        let writer = ConfigWriter::new(Some(path.clone()), Vec::new(), []);
+        let folder = r"C:\Users\me\new";
+        writer.write(ConfigKey::Data, folder).unwrap();
+
+        let config =
+            crate::Config::parse_with_detector(Some(&path), Some(HashMap::new()), || None).unwrap();
+        assert_eq!(config.general_config().data(), Path::new(folder));
+        assert_eq!(writer.value(ConfigKey::Data).as_deref(), Some(folder));
+    }
+
+    #[test]
+    fn value_undoes_the_parser_s_escapes_as_the_parser_does() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("personal-ledger.conf");
+        std::fs::write(&path, "[General]\ndata = C:\\Users\\x0041\\\\b\n").unwrap();
+        let writer = ConfigWriter::new(Some(path.clone()), Vec::new(), []);
+        let config =
+            crate::Config::parse_with_detector(Some(&path), Some(HashMap::new()), || None).unwrap();
+        let parsed = config.general_config().data().display().to_string();
+        assert_eq!(writer.value(ConfigKey::Data), Some(parsed));
     }
 
     #[test]

@@ -258,10 +258,12 @@ impl<S> Toasts<S> {
         true
     }
 
-    /// `:dismiss all` and `Ctrl+L`: removes every live Toast, held-back Errors included.
+    /// `:dismiss all` and `Ctrl+L`: removes every live Toast, held-back Errors included, and
+    /// drops the Toasts test's raises still waiting, so none appears after the user cleared them.
     pub fn dismiss_all(&mut self) {
         self.stack.clear();
         self.off_echo = None;
+        self.queued.clear();
     }
 
     /// Applies a change to the Preference. Turning Toasts off takes the showing
@@ -632,6 +634,16 @@ mod tests {
         toasts.pause();
         toasts.advance(secs(5));
         assert_eq!(kinds(&toasts), [(Success, 1)]);
+    }
+
+    #[test]
+    fn dismiss_all_drops_the_test_raises_still_waiting() {
+        let mut toasts = Toasts::default();
+        toasts.raise_test(test_text, 0);
+        toasts.dismiss_all();
+        assert!(!toasts.is_ticking());
+        toasts.advance(secs(5));
+        assert!(toasts.visible().is_empty());
     }
 
     #[test]

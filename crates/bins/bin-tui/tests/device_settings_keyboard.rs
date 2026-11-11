@@ -252,6 +252,17 @@ fn the_locale_row_saves_its_choice_and_system_removes_the_key() {
 }
 
 #[test]
+fn set_locale_system_in_any_case_removes_the_key() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let (mut shell, path) = writing_config(shell(), &dir, &[]);
+    run_command(&mut shell, "set locale en-GB");
+    assert_eq!(read(&path), "[General]\nlocale = en-GB\n");
+
+    run_command(&mut shell, "set locale System");
+    assert!(!read(&path).contains("locale"), "{}", read(&path));
+}
+
+#[test]
 fn the_locale_choices_never_offer_the_pseudo_locale() {
     let dir = tempfile::tempdir().expect("a temporary directory");
     let (mut shell, _path) = writing_config(shell(), &dir, &[]);
@@ -371,6 +382,29 @@ fn enter_on_the_data_folder_opens_the_picker_and_u_writes_the_folder_it_shows() 
 }
 
 #[test]
+fn the_picker_closes_on_the_user_s_own_back_key() {
+    let mut keybindings = lib_config::KeyBindingConfig::default();
+    keybindings
+        .bindings
+        .insert("back".to_string(), "q".to_string());
+    bin_tui::locale::init_for_tests();
+    let shell = bin_tui::build_shell(keybindings, bin_tui::colours::Colours::default(), None);
+    let (mut shell, _path, _config, _data) = data_folder_shell(shell, &[]);
+    run_command(&mut shell, "data");
+    let frame = screen(&mut shell);
+    assert!(frame.contains("Choose data folder"), "{frame}");
+    assert!(
+        frame.contains("q close"),
+        "the footer names the user's key:\n{frame}"
+    );
+
+    press(&mut shell, "q");
+
+    let frame = screen(&mut shell);
+    assert!(!frame.contains("Choose data folder"), "{frame}");
+}
+
+#[test]
 fn esc_in_the_picker_changes_nothing_and_enter_goes_into_the_folder_under_the_cursor() {
     let (mut shell, path, _config, data) = data_folder_shell(shell(), &[]);
     let before = read(&path);
@@ -429,6 +463,11 @@ fn an_override_names_itself_and_the_picker_still_writes_the_file() {
             "[General]\ndata = {}\n",
             data.path().join("finance").display()
         )
+    );
+    let frame = screen(&mut shell);
+    assert!(
+        !frame.contains("Data folder is now"),
+        "the override keeps its folder this run, so no Toast:\n{frame}"
     );
 }
 

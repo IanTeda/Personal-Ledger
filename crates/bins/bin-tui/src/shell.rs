@@ -69,7 +69,7 @@ use crate::{
         reports::ReportsView,
         settings::{
             BackupCommand, PageCommand, SettingsPage, SettingsView, SyncCommand,
-            field::{Configuration, LOCALE_SYSTEM, SettingField, SettingsValues, on_off},
+            field::{Configuration, SettingField, SettingsValues, on_off},
         },
         tags::TagsView,
         transactions::TransactionsView,
@@ -2338,7 +2338,11 @@ impl Shell {
             self.status_message = Some(reason);
             return;
         }
-        self.folder_picker = Some(FolderPickerPopup::open(current, dirs::home_dir()));
+        self.folder_picker = Some(FolderPickerPopup::open(
+            current,
+            dirs::home_dir(),
+            &self.keybindings,
+        ));
     }
 
     /// A key in the Data folder picker: `esc` closes it with nothing changed, and `u` uses the
@@ -2383,13 +2387,26 @@ impl Shell {
             ));
             return;
         }
-        {
+        let shadowed = {
             let mut values = self.settings_values.borrow_mut();
             values.configuration.data = Some(folder.clone());
             // Without a higher source it is in effect for the rest of the run, as the Desktop's.
-            if values.configuration.shadow(key).is_none() {
+            let shadowed = values.configuration.shadow(key).is_some();
+            if !shadowed {
                 values.ledger_folder = folder.clone();
             }
+            shadowed
+        };
+        // A higher source keeps its folder for this run, so, as on the Desktop, the write is only
+        // saved on the status line: a Toast saying the Data folder is now this one would be wrong.
+        if shadowed {
+            if let Some(path) = self.config_writer.target() {
+                self.status_message = Some(crate::msg::tui_settings_config_saved(
+                    SettingField::LedgerFolder.command_name(),
+                    &path.display().to_string(),
+                ));
+            }
+            return;
         }
         let home = dirs::home_dir();
         self.raise_toast(
@@ -2413,14 +2430,15 @@ impl Shell {
             return false;
         };
         // **System** takes the Locale's key out, so the sources below it decide at next start.
-        let written = if field == SettingField::Locale && value == LOCALE_SYSTEM {
-            self.config_writer.remove(key)
-        } else {
-            let Some(file_value) = Configuration::file_value(field, value) else {
-                return false;
+        let written =
+            if field == SettingField::Locale && Configuration::locale_choice(value) == Some(None) {
+                self.config_writer.remove(key)
+            } else {
+                let Some(file_value) = Configuration::file_value(field, value) else {
+                    return false;
+                };
+                self.config_writer.write(key, file_value)
             };
-            self.config_writer.write(key, file_value)
-        };
         if let Err(error) = written {
             tracing::warn!(%error, key = key.name(), "couldn't write Configuration");
             self.status_message = Some(crate::msg::tui_settings_config_write_failed(

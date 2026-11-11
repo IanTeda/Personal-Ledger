@@ -548,6 +548,14 @@ impl<'a> Harness<'a> {
         ui
     }
 
+    /// As [`Harness::new`], with the conf file holding `text` before start-up reads it.
+    pub fn with_conf_file(app: &'a mut TestAppContext, text: &str) -> Self {
+        let mut ui = Self::new(app);
+        std::fs::write(ui.conf_path(), text).expect("the conf file is written");
+        ui.configure(&lib_config::Config::default(), &[]);
+        ui
+    }
+
     /// Applies a device's settings from `config` as `run` does at start, writing to this Shell's
     /// conf file under `env`.
     fn configure(&mut self, config: &lib_config::Config, env: &[(&str, &str)]) {

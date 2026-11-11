@@ -96,15 +96,17 @@ impl std::fmt::Debug for FolderPickerPopup {
 }
 
 impl FolderPickerPopup {
-    /// Opens on `current`, the Data folder, falling back to `home` when it can't be read.
-    pub fn open(current: PathBuf, home: Option<PathBuf>) -> Self {
-        Self::open_on(current, home, Box::new(FsLedgerFolders))
+    /// Opens on `current`, the Data folder, falling back to `home` when it can't be read, its
+    /// keys the user's Dialog keys from `keybindings`, as the footer names them.
+    pub fn open(current: PathBuf, home: Option<PathBuf>, keybindings: &KeyBindingConfig) -> Self {
+        Self::open_on(current, home, keybindings, Box::new(FsLedgerFolders))
     }
 
     /// [`Self::open`] over any `folders`, so a test can walk a made-up disk.
     pub fn open_on(
         current: PathBuf,
         home: Option<PathBuf>,
+        keybindings: &KeyBindingConfig,
         folders: Box<dyn LedgerFolders>,
     ) -> Self {
         let mut presenter = ExplorerPresenter::default();
@@ -113,7 +115,7 @@ impl FolderPickerPopup {
         presenter.open(ExplorerMode::PickFolder, folders.as_ref());
         Self {
             presenter,
-            keymap: dialog_keymap(&KeyBindingConfig::default()),
+            keymap: dialog_keymap(keybindings),
             folders,
         }
     }

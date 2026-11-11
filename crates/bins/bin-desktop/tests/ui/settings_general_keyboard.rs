@@ -96,6 +96,19 @@ fn l_and_h_step_the_locale_and_each_step_is_saved_with_a_note_till_the_next_star
 }
 
 #[gpui::test]
+fn an_unsupported_locale_in_the_file_shows_as_system_and_en_us_still_writes(
+    app: &mut TestAppContext,
+) {
+    let mut ui = Harness::with_conf_file(app, "[General]\nlocale = fr-FR\n");
+    ui.press("g s l j j j");
+    assert_eq!(ui.settings::<SettingsGeneralSnapshot>().locale, None);
+
+    ui.press("l l l");
+
+    assert_eq!(ui.conf(), "[General]\nlocale = en-US\n");
+}
+
+#[gpui::test]
 fn a_locale_an_environment_variable_sets_is_still_written_and_the_override_noted(
     app: &mut TestAppContext,
 ) {
