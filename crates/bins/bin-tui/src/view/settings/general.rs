@@ -10,7 +10,9 @@
 //! file Display's rows write.
 
 use crossterm::event::{KeyCode, KeyEvent};
+use lib_config::ConfigKey;
 use lib_list_cursor::Step;
+use lib_locale::Locale;
 use ratatui::{
     Frame,
     layout::{Constraint, Layout, Rect},
@@ -18,7 +20,7 @@ use ratatui::{
     widgets::{Block, Paragraph, Wrap},
 };
 
-use super::field::{ON_STARTS, SettingField, on_off, on_start_label};
+use super::field::{Configuration, LOCALE_SYSTEM, ON_STARTS, SettingField, on_off, on_start_label};
 use super::keys::{self, Binding, Press};
 use super::{Context, FIELD_LABEL_WIDTH, FieldRow, Open, list, render_form};
 use crate::colours::Colours;
@@ -174,6 +176,30 @@ impl GeneralPage {
                     .unwrap_or_default();
                 Some((Draft::Choice { segments, chosen }, start_view::label(&key)))
             }
+            SettingField::Locale => {
+                let configuration = &context.values.configuration;
+                let mut segments = vec![Segment {
+                    value: LOCALE_SYSTEM.to_string(),
+                    label: msg::tui_settings_locale_system(configuration.system_locale.tag()),
+                }];
+                segments.extend(
+                    Locale::SUPPORTED
+                        .into_iter()
+                        .filter(|locale| !locale.is_pseudo())
+                        .map(|locale| Segment {
+                            value: locale.tag().to_string(),
+                            label: locale.tag().to_string(),
+                        }),
+                );
+                let chosen = configuration.locale.map_or(0, |locale| {
+                    segments
+                        .iter()
+                        .position(|segment| segment.value == locale.tag())
+                        .unwrap_or_default()
+                });
+                let was = segments[chosen].label.clone();
+                Some((Draft::Choice { segments, chosen }, was))
+            }
             // `:set toasts` without a value opens the checkbox in place.
             SettingField::Toasts => {
                 Some((Draft::Check(self.toasts_on), toasts_label(self.toasts_on)))
@@ -216,9 +242,11 @@ impl GeneralPage {
         ])
         .areas(rest);
         render_this_device(frame, this_device, context, c);
+        let foot = locale_row(&context.values.configuration)
+            .2
+            .unwrap_or_else(msg::tui_settings_general_note);
         frame.render_widget(
-            Paragraph::new(Span::styled(msg::tui_settings_general_note(), c.muted()))
-                .wrap(Wrap { trim: true }),
+            Paragraph::new(Span::styled(foot, c.muted())).wrap(Wrap { trim: true }),
             note,
         );
     }
@@ -244,8 +272,8 @@ impl GeneralPage {
                 shadowed(field).unwrap_or_else(lib_locale::msg::toast_setting_note),
             ),
             SettingField::Locale => {
-                // The Locale startup resolved and where it came from, never a fixed value.
-                crate::locale::describe(&crate::locale::info())
+                let (value, note, _) = locale_row(&context.values.configuration);
+                (value, note)
             }
             _ => (
                 context.values.ledger_folder.display().to_string(),
@@ -254,6 +282,35 @@ impl GeneralPage {
         };
         FieldRow { field, value, note }
     }
+}
+
+/// The Locale row: the file's choice with a short note, and the full sentence for the page's foot
+/// when an override outranks the file or the choice waits for the next start; otherwise the note
+/// says where the Locale in effect came from.
+fn locale_row(configuration: &Configuration) -> (String, String, Option<String>) {
+    let value = configuration.locale.map_or_else(
+        || msg::tui_settings_locale_system(configuration.system_locale.tag()),
+        |locale| locale.tag().to_string(),
+    );
+    let effective = configuration.effective_locale;
+    if let Some(source) = configuration.shadow(ConfigKey::Locale) {
+        let long = msg::tui_settings_locale_overridden(&source, effective.tag());
+        return (
+            value,
+            msg::tui_settings_config_shadowed_note(&source),
+            Some(long),
+        );
+    }
+    let chosen = configuration.chosen_locale();
+    if chosen != effective {
+        let long = msg::tui_settings_locale_restart(chosen.tag(), effective.tag());
+        return (value, msg::tui_settings_locale_restart_note(), Some(long));
+    }
+    (
+        value,
+        crate::locale::describe(&crate::locale::info()).1,
+        None,
+    )
 }
 
 fn toasts_label(on: bool) -> String {
@@ -363,7 +420,7 @@ mod tests {
             assert_eq!(
                 page.handle_key(key(KeyCode::Enter)),
                 Some(Action::SetSetting(field, None)),
-                "the Shell refuses the read-only {field:?} with its reason"
+                "{field:?} opens in place or the Shell refuses it with its reason"
             );
         }
     }

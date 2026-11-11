@@ -434,7 +434,7 @@ Resizing keeps the page you are on, its selected row and where you were.
 
 General, Ledger and Display are lists of fields. Move to a field and press `Enter` to open it where it sits. `←` and `→` choose between its options, typing changes a text field, `Enter` saves, `Tab` saves and moves to the next field, and `Esc` keeps the old value. While a field is open the status line shows `INSERT`, and the line above the hints shows the command that makes the same edit, for example `:set fy-start january`.
 
-The Locale and the ledger folder (`data`) can't be changed here: they are read from `personal-ledger.conf` when the app starts. Trying to change either says why.
+The ledger folder (`data`) can't be changed here: it is read from `personal-ledger.conf` when the app starts, and trying to change it says why. The **locale** row chooses `system` (which reads the operating system's Locale, shown as `now en-AU`) or one of the supported Locales, and `Enter` writes `[General] locale` at once, `system` removing the key. A Locale applies when Personal Ledger next starts, so a note says which one is in effect until then. `--locale` or `PERSONAL_LEDGER_GENERAL__LOCALE` outranks the file but the row still writes it, and its note names the override.
 
 ### On start
 

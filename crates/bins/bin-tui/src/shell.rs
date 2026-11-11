@@ -68,7 +68,7 @@ use crate::{
         reports::ReportsView,
         settings::{
             BackupCommand, PageCommand, SettingsPage, SettingsView, SyncCommand,
-            field::{Configuration, SettingField, SettingsValues, on_off},
+            field::{Configuration, LOCALE_SYSTEM, SettingField, SettingsValues, on_off},
         },
         tags::TagsView,
         transactions::TransactionsView,
@@ -2310,12 +2310,19 @@ impl Shell {
             self.status_message = Some(reason);
             return false;
         }
-        let (Some(key), Some(file_value)) =
-            (field.config_key(), Configuration::file_value(field, value))
-        else {
+        let Some(key) = field.config_key() else {
             return false;
         };
-        if let Err(error) = self.config_writer.write(key, file_value) {
+        // **System** takes the Locale's key out, so the sources below it decide at next start.
+        let written = if field == SettingField::Locale && value == LOCALE_SYSTEM {
+            self.config_writer.remove(key)
+        } else {
+            let Some(file_value) = Configuration::file_value(field, value) else {
+                return false;
+            };
+            self.config_writer.write(key, file_value)
+        };
+        if let Err(error) = written {
             tracing::warn!(%error, key = key.name(), "couldn't write Configuration");
             self.status_message = Some(crate::msg::tui_settings_config_write_failed(
                 field.command_name(),
@@ -5042,15 +5049,14 @@ mod tests {
         shell.update(Action::OpenSettingsPage(SettingsPage::General));
         press(
             &mut shell,
-            &[KeyCode::Char('j'), KeyCode::Char('j'), KeyCode::Char('j')],
+            &[
+                KeyCode::Char('j'),
+                KeyCode::Char('j'),
+                KeyCode::Char('j'),
+                KeyCode::Char('j'),
+            ],
         );
         press(&mut shell, &[KeyCode::Enter]);
-        assert!(!shell.view.editing());
-        assert!(
-            drawn(&mut shell).contains("locale is read-only"),
-            "the Locale names where it changes"
-        );
-        press(&mut shell, &[KeyCode::Char('j'), KeyCode::Enter]);
         assert!(!shell.view.editing());
         assert!(
             drawn(&mut shell).contains("ledger-folder is read-only"),

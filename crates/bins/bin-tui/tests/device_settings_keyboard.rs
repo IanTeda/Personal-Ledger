@@ -5,7 +5,7 @@
 
 mod common;
 
-use common::{press, read, run_command, screen, shell, writing_config};
+use common::{press, read, run_command, screen, screen_at, shell, writing_config};
 
 #[test]
 fn toasts_off_by_command_is_saved_to_the_config_file() {
@@ -227,4 +227,59 @@ fn toasts_test_by_command_raises_four_and_with_toasts_off_only_the_error_stacks(
     let frame = screen(&mut shell);
     assert!(frame.contains("Test: an Error Toast"), "{frame}");
     assert!(!frame.contains("Test: a Success Toast"), "{frame}");
+}
+
+#[test]
+fn the_locale_row_saves_its_choice_and_system_removes_the_key() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let (mut shell, path) = writing_config(shell(), &dir, &[]);
+    run_command(&mut shell, "settings general");
+
+    // system, en-US, en-GB, en-AU: the row opens on system, so `Right` twice is en-GB.
+    press(&mut shell, "j j j Enter Right Right Enter");
+
+    assert_eq!(read(&path), "[General]\nlocale = en-GB\n");
+    let frame = screen_at(&mut shell, 96);
+    assert!(
+        frame.contains(
+            "Saved. en-GB applies when Personal Ledger next starts; until then it reads en-US"
+        ),
+        "{frame}"
+    );
+
+    press(&mut shell, "Enter Left Left Enter");
+    assert!(!read(&path).contains("locale"), "{}", read(&path));
+}
+
+#[test]
+fn the_locale_choices_never_offer_the_pseudo_locale() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let (mut shell, _path) = writing_config(shell(), &dir, &[]);
+    run_command(&mut shell, "settings general");
+
+    press(&mut shell, "j j j Enter");
+    let frame = screen_at(&mut shell, 96);
+
+    for tag in ["system (now", "en-AU", "en-GB", "en-US"] {
+        assert!(frame.contains(tag), "{tag} missing:\n{frame}");
+    }
+    assert!(!frame.contains("en-XA"), "{frame}");
+}
+
+#[test]
+fn an_overridden_locale_still_writes_the_file_and_names_the_override() {
+    let dir = tempfile::tempdir().expect("a temporary directory");
+    let (mut shell, path) = writing_config(
+        shell(),
+        &dir,
+        &[("PERSONAL_LEDGER_GENERAL__LOCALE", "en-AU")],
+    );
+    run_command(&mut shell, "settings general");
+
+    press(&mut shell, "j j j Enter Right Right Enter");
+
+    assert_eq!(read(&path), "[General]\nlocale = en-GB\n");
+    let frame = screen_at(&mut shell, 96);
+    assert!(frame.contains("PERSONAL_LEDGER_GENERAL__LOCALE"), "{frame}");
+    assert!(frame.contains("in effect"), "{frame}");
 }

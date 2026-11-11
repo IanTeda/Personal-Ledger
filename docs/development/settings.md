@@ -105,7 +105,7 @@ Neither Client's Settings screen is wired to `lib_database::Preferences`.
 
 Both show the `[theme]` override note and any contrast failures `resolve` returns.
 
-Both Clients show the effective Locale read-only, sourced from `lib-config`, with no control to change it — the Locale changes only by editing configuration and restarting.
+Settings › General chooses the Locale in both Clients (the Desktop since #1146, the TUI since #1147), writing `[General] locale` and applying at the next start.
 
 ## Traceability
 

@@ -264,6 +264,13 @@ tui-settings-locale-from-system = from your system
 tui-settings-locale-from-config = from config
 tui-settings-locale-from-default = the default
 tui-settings-locale-unsupported = { $requested } is not supported
+# The Locale choice that removes the key, with the Locale it reads now.
+tui-settings-locale-system = system (now { $now })
+# A saved Locale applies at the next start (ADR-0021).
+tui-settings-locale-restart = Saved. { $chosen } applies when Personal Ledger next starts; until then it reads { $effective }.
+tui-settings-locale-restart-note = applies at next start
+# `$source` is a flag, an environment variable's name or a file's path.
+tui-settings-locale-overridden = set by { $source }, which outranks the file; { $effective } is in effect
 
 ## Date style labels for the Settings display.
 

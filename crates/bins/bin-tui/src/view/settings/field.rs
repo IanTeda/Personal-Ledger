@@ -12,6 +12,7 @@
 use chrono::{Datelike, Months, NaiveDate};
 use lib_config::{ConfigKey, ConfigWriter, Shadow, StatusGlyphs};
 use lib_core::{DateStyle, OnStart, StartView};
+use lib_locale::Locale;
 
 use super::SettingsPage;
 use crate::msg;
@@ -39,8 +40,6 @@ pub enum SettingField {
 /// Why a field can't be edited here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReadOnly {
-    /// The Locale is Configuration read at start-up (ADR-0021).
-    Locale,
     /// `data`, the ledger folder, is Configuration read at start-up.
     LedgerFolder,
 }
@@ -111,7 +110,6 @@ impl SettingField {
     /// but whether it is depends on the files and environment ([`Configuration::refusal`]).
     pub fn read_only(self) -> Option<ReadOnly> {
         match self {
-            Self::Locale => Some(ReadOnly::Locale),
             Self::LedgerFolder => Some(ReadOnly::LedgerFolder),
             _ => None,
         }
@@ -129,6 +127,7 @@ impl SettingField {
             Self::DateStyle => Some(ConfigKey::DateStyle),
             Self::OnStart => Some(ConfigKey::OnStart),
             Self::StartView => Some(ConfigKey::StartView),
+            Self::Locale => Some(ConfigKey::Locale),
             _ => None,
         }
     }
@@ -225,6 +224,13 @@ pub struct Configuration {
     pub date_style: Option<DateStyle>,
     pub on_start: OnStart,
     pub start_view: StartView,
+    /// The Locale the user's file sets, `None` for **system**; read from the file itself, since a
+    /// write goes there whatever outranks it (TUI-063).
+    pub locale: Option<Locale>,
+    /// The supported Locale the operating system's resolves to: what **system** reads.
+    pub system_locale: Locale,
+    /// The Locale this run started in, which a saved one doesn't change until the next start.
+    pub effective_locale: Locale,
     /// The source above the file that sets each key, so a write there changes nothing. Read
     /// once at start-up, as the values are.
     pub shadows: Vec<(ConfigKey, Shadow)>,
@@ -247,6 +253,18 @@ impl Configuration {
             date_style: config.display.date_style(),
             on_start: config.general.on_start(),
             start_view: config.general.start_view().clone(),
+            locale: writer.value(ConfigKey::Locale).and_then(|tag| {
+                Locale::SUPPORTED
+                    .into_iter()
+                    .find(|locale| !locale.is_pseudo() && locale.tag().eq_ignore_ascii_case(&tag))
+            }),
+            system_locale: Locale::negotiate(
+                config
+                    .general
+                    .system_locale()
+                    .unwrap_or(lib_config::DEFAULT_LOCALE),
+            ),
+            effective_locale: crate::locale::info().effective,
             shadows: ConfigKey::ALL
                 .into_iter()
                 .filter_map(|key| writer.shadow(key).map(|shadow| (key, shadow)))
@@ -264,6 +282,9 @@ impl Configuration {
 
     /// A Configuration row's note when a source above the file sets its key, else `None`.
     pub fn shadowed_note(&self, field: SettingField) -> Option<String> {
+        if field == SettingField::Locale {
+            return None;
+        }
         field
             .config_key()
             .and_then(|key| self.shadow(key))
@@ -276,6 +297,10 @@ impl Configuration {
         let key = field.config_key()?;
         if self.path.is_none() {
             return Some(msg::tui_settings_read_only_config(field.command_name()));
+        }
+        // The Locale writes under anything above it and says so on its row instead.
+        if field == SettingField::Locale {
+            return None;
         }
         self.shadow(key)
             .map(|source| msg::tui_settings_set_shadowed(field.command_name(), &source))
@@ -307,10 +332,31 @@ impl Configuration {
                 lib_config::on_start_from_key(value).map(lib_config::on_start_key)
             }
             SettingField::StartView => start_view_choice(value),
+            SettingField::Locale => Self::locale_choice(value).flatten().map(Locale::tag),
             _ => None,
         }
     }
+
+    /// What `:set locale` takes: `system` (`Some(None)`) or a supported Locale's tag, never the
+    /// pseudo-Locale. `None` for anything else.
+    pub fn locale_choice(value: &str) -> Option<Option<Locale>> {
+        if value.eq_ignore_ascii_case(LOCALE_SYSTEM) {
+            return Some(None);
+        }
+        Locale::SUPPORTED
+            .into_iter()
+            .find(|locale| !locale.is_pseudo() && locale.tag().eq_ignore_ascii_case(value))
+            .map(Some)
+    }
+
+    /// The Locale **system** reads, or the file's, whichever the row's choice is.
+    pub fn chosen_locale(&self) -> Locale {
+        self.locale.unwrap_or(self.system_locale)
+    }
 }
+
+/// The Locale choice that takes the key out of the file.
+pub const LOCALE_SYSTEM: &str = "system";
 
 /// The values the form pages show, shared by every Settings View `Shell` opens.
 ///
@@ -407,6 +453,12 @@ impl SettingsValues {
                 } else {
                     self.configuration.hint_bar = on;
                 }
+            }
+            SettingField::Locale => {
+                let Some(choice) = Configuration::locale_choice(value) else {
+                    return false;
+                };
+                self.configuration.locale = choice;
             }
             SettingField::StatusGlyphs => {
                 let Some(glyphs) = StatusGlyphs::from_key(value) else {
