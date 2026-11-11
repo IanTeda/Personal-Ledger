@@ -42,6 +42,7 @@ use crate::{
             CategoryPopup, edit_popup::EditPopup, move_popup::MovePopup, new_popup::NewPopup,
         },
         command::{CommandId, CommandPopup, record_history},
+        folder_picker::{self, FolderPickerPopup},
         payee::{
             PayeePopup, delete::DeleteCommit, delete::DeletePayeePopup, edit::EditPayeePopup,
             matches::ComposeCommit, matches::PayeeMatchesPopup, new::NewPayeePopup,
@@ -182,6 +183,10 @@ pub struct Shell {
     /// Showing Toasts hide and their timers pause behind it. Mutually exclusive with every
     /// other popup field.
     toast_history: Option<ToastHistoryPopup>,
+    /// The Data folder picker (`crate::popup::folder_picker`, TUI-064) — `Some` while open, over
+    /// whichever View is showing, which it leaves as it was. Opened by `:data` and General's row,
+    /// so it needs no `return_to`: closing it is returning.
+    folder_picker: Option<FolderPickerPopup>,
     /// The Open Ledger (`docs/ux/tui-mockups/01-shell/README.md`'s 1a). `None` on cold start and
     /// after `:close`, when the Dashboard's place shows the "no Ledger open" note and only `:new`,
     /// `:open`, help and quit run.
@@ -257,6 +262,7 @@ impl Shell {
             colours: Colours::default(),
             toasts: Toasts::default(),
             toast_history: None,
+            folder_picker: None,
             ledger: None,
             ledger_file: None,
             quit_ledger: None,
@@ -588,6 +594,7 @@ impl Shell {
             || self.tag_popup.is_some()
             || self.payee_popup.is_some()
             || self.toast_history.is_some()
+            || self.folder_picker.is_some()
     }
 
     /// Runs the shell until the user quits, then closes the Open Ledger.
@@ -716,6 +723,9 @@ impl Shell {
                 }
                 if self.toast_history.is_some() {
                     return map_toast_history_key(key);
+                }
+                if self.folder_picker.is_some() {
+                    return Some(Action::FolderPickerKey(key));
                 }
                 if self.pending_leader {
                     self.pending_leader = false;
@@ -850,6 +860,7 @@ impl Shell {
             CommandId::ToastHistory | CommandId::ToastHistoryAlias => {
                 Some(Action::OpenToastHistory)
             }
+            CommandId::Data => Some(Action::OpenFolderPicker),
             CommandId::Settings => Some(
                 match self
                     .command_popup
@@ -1562,6 +1573,8 @@ impl Shell {
                 self.toast_history = Some(ToastHistoryPopup::new());
             }
             Action::CloseToastHistory => self.toast_history = None,
+            Action::OpenFolderPicker => self.open_folder_picker(),
+            Action::FolderPickerKey(key) => self.folder_picker_key(key),
             Action::ToastHistoryScroll(down) => {
                 let len = self.toasts.history().len();
                 if let Some(popup) = &mut self.toast_history {
@@ -2221,6 +2234,7 @@ impl Shell {
         self.account_popup = None;
         self.tag_popup = None;
         self.payee_popup = None;
+        self.folder_picker = None;
     }
 
     /// Opens a Settings field in place, or saves a value to it ([`Action::SetSetting`]). A
@@ -2231,9 +2245,7 @@ impl Shell {
     /// session's values, is the Settings View's, opened on the field's page first.
     fn set_setting(&mut self, field: SettingField, value: Option<String>) {
         self.command_popup = None;
-        let refusal = field
-            .refusal()
-            .or_else(|| self.settings_values.borrow().configuration.refusal(field));
+        let refusal = self.settings_values.borrow().configuration.refusal(field);
         if let Some(reason) = refusal {
             self.status_message = Some(reason);
             return;
@@ -2245,6 +2257,11 @@ impl Shell {
                 value,
                 field.command_name(),
             ));
+            return;
+        }
+        // The Data folder is chosen in the picker, over the View showing; it takes no typed path.
+        if field == SettingField::LedgerFolder && value.is_none() {
+            self.open_folder_picker();
             return;
         }
         if self.view.id() != ViewId::Settings {
@@ -2300,6 +2317,88 @@ impl Shell {
         if field == SettingField::TerminalColours {
             self.colours.set_terminal_colours(value == "on");
         }
+    }
+
+    /// `:data`, or `enter` on General's data folder: opens the Data folder picker over the View
+    /// showing, in the current Data folder. Refused on the status line, opening nothing, when
+    /// there is no configuration file to write the choice to.
+    fn open_folder_picker(&mut self) {
+        self.command_popup = None;
+        let (refusal, current) = {
+            let values = self.settings_values.borrow();
+            let refusal = values.configuration.refusal(SettingField::LedgerFolder);
+            let current = values
+                .configuration
+                .data
+                .clone()
+                .unwrap_or_else(|| values.ledger_folder.clone());
+            (refusal, current)
+        };
+        if let Some(reason) = refusal {
+            self.status_message = Some(reason);
+            return;
+        }
+        self.folder_picker = Some(FolderPickerPopup::open(current, dirs::home_dir()));
+    }
+
+    /// A key in the Data folder picker: `esc` closes it with nothing changed, and `u` uses the
+    /// folder shown.
+    fn folder_picker_key(&mut self, key: KeyEvent) {
+        let Some(picker) = self.folder_picker.as_mut() else {
+            return;
+        };
+        match picker.handle_key(key) {
+            folder_picker::Outcome::Stay => {}
+            folder_picker::Outcome::Close => self.folder_picker = None,
+            folder_picker::Outcome::Use(folder) => {
+                self.folder_picker = None;
+                self.use_data_folder(folder);
+            }
+        }
+    }
+
+    /// Writes `[General] data` at once and raises the Success Toast; picking the folder already
+    /// set writes nothing and says nothing. A failed write leaves the setting as it was, with the
+    /// reason on the status line.
+    fn use_data_folder(&mut self, folder: PathBuf) {
+        let current = {
+            let values = self.settings_values.borrow();
+            values
+                .configuration
+                .data
+                .clone()
+                .unwrap_or_else(|| values.ledger_folder.clone())
+        };
+        if folder == current {
+            return;
+        }
+        let Some(key) = SettingField::LedgerFolder.config_key() else {
+            return;
+        };
+        if let Err(error) = self.config_writer.write(key, &folder.display().to_string()) {
+            tracing::warn!(%error, key = key.name(), "couldn't write Configuration");
+            self.status_message = Some(crate::msg::tui_settings_config_write_failed(
+                SettingField::LedgerFolder.command_name(),
+                &error.to_string(),
+            ));
+            return;
+        }
+        {
+            let mut values = self.settings_values.borrow_mut();
+            values.configuration.data = Some(folder.clone());
+            // Without a higher source it is in effect for the rest of the run, as the Desktop's.
+            if values.configuration.shadow(key).is_none() {
+                values.ledger_folder = folder.clone();
+            }
+        }
+        let home = dirs::home_dir();
+        self.raise_toast(
+            ToastKind::Success,
+            crate::msg::tui_settings_data_folder_now(&folder_picker::under_home(
+                &folder,
+                home.as_deref(),
+            )),
+        );
     }
 
     /// Writes `field`'s `value`, as `:set` takes it, to its key in the user's file, saying on the
@@ -2389,6 +2488,7 @@ impl Shell {
             SettingField::Appearance => ColourAppearance::from_key(value).is_some(),
             SettingField::Toasts => matches!(value, "on" | "off"),
             SettingField::BaseUnit => true,
+            SettingField::LedgerFolder => false,
             _ => self.settings_values.borrow().clone().set(field, value),
         }
     }
@@ -2548,6 +2648,14 @@ impl Shell {
                 crate::msg::tui_footer_close_dialog(back_key)
             ))
             .style(dim)
+        } else if let Some(picker) = &self.folder_picker {
+            // The mode stays NORMAL, so the footer still names it ahead of the picker's keys.
+            Line::from(format!(
+                " {}{HINT_SEPARATOR}{} ",
+                upper(&crate::msg::tui_mode_normal()),
+                picker.footer(back_key)
+            ))
+            .style(dim)
         } else if colour_popup_open {
             Line::from(format!(
                 " {} ",
@@ -2660,6 +2768,9 @@ impl Shell {
         } else if let Some(popup) = &self.toast_history {
             frame.render_widget(Dim, rows[1]);
             popup.render(frame, frame.area(), self.toasts.history(), c);
+        } else if let Some(popup) = &self.folder_picker {
+            frame.render_widget(Dim, rows[1]);
+            popup.render(frame, frame.area(), c);
         }
 
         // Above every popup and its `Dim`, confined to the view region so never over the footer.
@@ -2817,6 +2928,8 @@ fn runs_without_ledger(id: CommandId) -> bool {
             | CommandId::ToastsTest
             | CommandId::ToastHistory
             | CommandId::ToastHistoryAlias
+            // The Data folder is Configuration, not the Ledger's.
+            | CommandId::Data
     )
 }
 
@@ -5043,7 +5156,7 @@ mod tests {
     }
 
     #[test]
-    fn a_read_only_field_says_why_on_the_status_line() {
+    fn a_field_with_no_file_to_write_says_why_on_the_status_line() {
         crate::locale::init_for_tests();
         let mut shell = opened();
         shell.update(Action::OpenSettingsPage(SettingsPage::General));
@@ -5059,8 +5172,8 @@ mod tests {
         press(&mut shell, &[KeyCode::Enter]);
         assert!(!shell.view.editing());
         assert!(
-            drawn(&mut shell).contains("ledger-folder is read-only"),
-            "the ledger folder names where it changes"
+            drawn(&mut shell).contains("data is in personal-ledger.conf"),
+            "the data folder names why it opens no picker"
         );
         shell.update(Action::OpenSettingsPage(SettingsPage::Display));
         press(

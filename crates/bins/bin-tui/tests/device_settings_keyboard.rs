@@ -283,3 +283,199 @@ fn an_overridden_locale_still_writes_the_file_and_names_the_override() {
     assert!(frame.contains("PERSONAL_LEDGER_GENERAL__LOCALE"), "{frame}");
     assert!(frame.contains("in effect"), "{frame}");
 }
+
+/// A configuration file whose `data` is a folder holding `finance/` and `old/` and a stray file,
+/// and the shell writing to it.
+#[expect(
+    clippy::expect_used,
+    reason = "test support: a failed set-up should fail the test loudly"
+)]
+fn data_folder_shell(
+    shell: bin_tui::Shell,
+    env: &[(&str, &str)],
+) -> (
+    bin_tui::Shell,
+    std::path::PathBuf,
+    tempfile::TempDir,
+    tempfile::TempDir,
+) {
+    let config_dir = tempfile::tempdir().expect("a temporary directory");
+    let data = tempfile::tempdir().expect("a temporary directory");
+    std::fs::create_dir(data.path().join("finance")).expect("a folder");
+    std::fs::create_dir(data.path().join("old")).expect("a folder");
+    std::fs::write(data.path().join("household.pldb"), b"x").expect("a file");
+    let path = config_dir.path().join("personal-ledger.conf");
+    std::fs::write(
+        &path,
+        format!("[General]\ndata = {}\n", data.path().display()),
+    )
+    .expect("write");
+    let writer = lib_config::ConfigWriter::new(
+        Some(path.clone()),
+        Vec::new(),
+        env.iter()
+            .map(|(name, value)| ((*name).to_string(), (*value).to_string())),
+    );
+    let shell = shell.with_configuration(&lib_config::Config::default(), writer);
+    (shell, path, config_dir, data)
+}
+
+#[test]
+fn enter_on_the_data_folder_opens_the_picker_and_u_writes_the_folder_it_shows() {
+    let (mut shell, path, _config, data) = data_folder_shell(shell(), &[]);
+    run_command(&mut shell, "settings general");
+    let frame = screen(&mut shell);
+    assert!(frame.contains("data folder"), "{frame}");
+
+    press(&mut shell, "j j j j Enter");
+    let frame = screen(&mut shell);
+    assert!(frame.contains("Choose data folder"), "{frame}");
+    assert!(
+        frame.contains("now "),
+        "the header names the folder in use:\n{frame}"
+    );
+    assert!(
+        frame.contains("finance/") && frame.contains("old/"),
+        "{frame}"
+    );
+    assert!(
+        frame.contains("household.pldb"),
+        "files are listed:\n{frame}"
+    );
+    assert!(frame.contains("[ use "), "{frame}");
+
+    press(&mut shell, "l");
+    assert!(
+        screen(&mut shell).contains("[ use finance ]"),
+        "the chip names the folder shown"
+    );
+    press(&mut shell, "u");
+
+    assert_eq!(
+        read(&path),
+        format!(
+            "[General]\ndata = {}\n",
+            data.path().join("finance").display()
+        )
+    );
+    let frame = screen(&mut shell);
+    assert!(!frame.contains("Choose data folder"), "{frame}");
+    assert!(
+        frame.contains("Settings › General"),
+        "back on General:\n{frame}"
+    );
+    assert!(
+        frame.contains("Data folder is now"),
+        "the Success Toast:\n{frame}"
+    );
+}
+
+#[test]
+fn esc_in_the_picker_changes_nothing_and_enter_goes_into_the_folder_under_the_cursor() {
+    let (mut shell, path, _config, data) = data_folder_shell(shell(), &[]);
+    let before = read(&path);
+    run_command(&mut shell, "settings general");
+    press(&mut shell, "j j j j Enter");
+
+    press(&mut shell, "j");
+    press(&mut shell, "Enter");
+    assert!(screen(&mut shell).contains("[ use old ]"));
+    press(&mut shell, "h");
+    assert!(screen(&mut shell).contains(&format!(
+        "[ use {} ]",
+        data.path().file_name().unwrap().to_string_lossy()
+    )));
+    press(&mut shell, "Esc");
+
+    let frame = screen(&mut shell);
+    assert!(!frame.contains("Choose data folder"), "{frame}");
+    assert!(frame.contains("Settings › General"), "{frame}");
+    assert_eq!(read(&path), before);
+    assert!(!frame.contains("Data folder is now"), "{frame}");
+}
+
+#[test]
+fn the_picker_fits_at_96_columns_and_the_mode_stays_normal() {
+    let (mut shell, _path, _config, _data) = data_folder_shell(shell(), &[]);
+    run_command(&mut shell, "settings general");
+    press(&mut shell, "j j j j Enter");
+
+    let frame = screen_at(&mut shell, 96);
+    assert!(frame.contains("Choose data folder"), "{frame}");
+    assert!(frame.contains("NORMAL"), "{frame}");
+    for line in frame.lines() {
+        assert!(line.chars().count() <= 96, "{line}");
+    }
+}
+
+#[test]
+fn an_override_names_itself_and_the_picker_still_writes_the_file() {
+    let (mut shell, path, _config, data) = data_folder_shell(
+        shell(),
+        &[("PERSONAL_LEDGER_GENERAL__DATA", "/srv/elsewhere")],
+    );
+    run_command(&mut shell, "settings general");
+    let frame = screen(&mut shell);
+    assert!(
+        frame.contains("set by PERSONAL_LEDGER_GENERAL__DATA"),
+        "the row names what outranks it:\n{frame}"
+    );
+
+    press(&mut shell, "j j j j Enter l u");
+
+    assert_eq!(
+        read(&path),
+        format!(
+            "[General]\ndata = {}\n",
+            data.path().join("finance").display()
+        )
+    );
+}
+
+#[test]
+fn data_opens_the_picker_over_the_dashboard_with_or_without_a_ledger_and_returns_to_it() {
+    for ledger_open in [true, false] {
+        let base = if ledger_open {
+            shell()
+        } else {
+            common::cold_shell(None)
+        };
+        let (mut shell, path, _config, _data) = data_folder_shell(base, &[]);
+        let before = read(&path);
+        let dashboard = screen(&mut shell);
+
+        run_command(&mut shell, "data");
+        let frame = screen(&mut shell);
+        assert!(frame.contains("Choose data folder"), "{frame}");
+        assert!(frame.contains("NORMAL"), "{frame}");
+
+        press(&mut shell, "Esc");
+        assert_eq!(screen(&mut shell), dashboard, "ledger open: {ledger_open}");
+        assert_eq!(read(&path), before);
+    }
+}
+
+#[test]
+fn picking_the_current_folder_writes_nothing() {
+    let (mut shell, path, _config, _data) = data_folder_shell(shell(), &[]);
+    let before = read(&path);
+
+    run_command(&mut shell, "data");
+    press(&mut shell, "u");
+
+    let frame = screen(&mut shell);
+    assert!(!frame.contains("Choose data folder"), "{frame}");
+    assert!(!frame.contains("Data folder is now"), "{frame}");
+    assert_eq!(read(&path), before);
+}
+
+#[test]
+fn data_takes_no_path_and_set_data_refuses_one() {
+    let (mut shell, path, _config, _data) = data_folder_shell(shell(), &[]);
+    let before = read(&path);
+
+    run_command(&mut shell, "set data /tmp");
+
+    assert_eq!(read(&path), before);
+    assert!(!screen(&mut shell).contains("Choose data folder"));
+}

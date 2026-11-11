@@ -66,7 +66,7 @@ fn the_ledger_page_holds_what_general_held_and_general_holds_this_device() {
         "reopen last ledger",
         "Toasts",
         "locale",
-        "ledger folder",
+        "data folder",
         "last ledger",
         "test.pldb",
     ] {

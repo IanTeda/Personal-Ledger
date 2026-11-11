@@ -11,6 +11,7 @@
 pub mod account;
 pub mod category;
 pub mod command;
+pub mod folder_picker;
 pub mod payee;
 pub mod settings;
 pub mod tag;

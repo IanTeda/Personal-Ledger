@@ -84,6 +84,7 @@ tui-command-toasts-test-description = raise one Toast of each Kind, a second apa
 tui-command-toasts-off-description = send Toasts to the status line (Errors still show)
 tui-command-toasts-description = show this session's Toasts
 tui-command-settings-description = the Settings index, or one page by name
+tui-command-data-description = change data folder
 tui-command-set-description = edit a Settings field in place, or save a value to it
 tui-command-sync-now-description = sync with the Sync Server now
 tui-command-sync-edit-description = edit the Sync Server's address and access token

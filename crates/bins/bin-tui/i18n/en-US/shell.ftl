@@ -77,6 +77,8 @@ tui-ledger-file-incomplete = it isn't a complete Ledger; create it again with :n
 tui-footer-close-command-window = { $key } close command window
 tui-footer-close-form = { $key } close { $noun } form
 tui-footer-close-dialog = { $key } close dialog
+# The Data folder picker's keys (TUI-064); `$folder` is the folder `u` uses.
+tui-footer-folder-picker = j/k move · l into · h up · u use { $folder } · { $key } close
 
 ## The nouns the close-form hint takes.
 

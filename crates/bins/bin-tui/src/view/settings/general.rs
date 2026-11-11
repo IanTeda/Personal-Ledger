@@ -20,11 +20,14 @@ use ratatui::{
     widgets::{Block, Paragraph, Wrap},
 };
 
-use super::field::{Configuration, LOCALE_SYSTEM, ON_STARTS, SettingField, on_off, on_start_label};
+use super::field::{
+    Configuration, LOCALE_SYSTEM, ON_STARTS, SettingField, SettingsValues, on_off, on_start_label,
+};
 use super::keys::{self, Binding, Press};
 use super::{Context, FIELD_LABEL_WIDTH, FieldRow, Open, list, render_form};
 use crate::colours::Colours;
 use crate::msg;
+use crate::popup::folder_picker::under_home;
 use crate::popup::settings::edit::{Draft, Segment};
 use crate::start_view;
 use crate::view::Action;
@@ -244,6 +247,7 @@ impl GeneralPage {
         render_this_device(frame, this_device, context, c);
         let foot = locale_row(&context.values.configuration)
             .2
+            .or_else(|| data_row(context.values).2)
             .unwrap_or_else(msg::tui_settings_general_note);
         frame.render_widget(
             Paragraph::new(Span::styled(foot, c.muted())).wrap(Wrap { trim: true }),
@@ -275,12 +279,42 @@ impl GeneralPage {
                 let (value, note, _) = locale_row(&context.values.configuration);
                 (value, note)
             }
-            _ => (
-                context.values.ledger_folder.display().to_string(),
-                msg::tui_settings_general_ledger_folder_note(),
-            ),
+            _ => {
+                let (value, note, _) = data_row(context.values);
+                (value, note)
+            }
         };
         FieldRow { field, value, note }
+    }
+}
+
+/// The Data folder row: the file's folder, or the one in effect while the file sets none, with the
+/// `[ change… ]` chip, then a note. When an override outranks the file the note names it and the
+/// page's foot carries the full sentence.
+fn data_row(values: &SettingsValues) -> (String, String, Option<String>) {
+    let configuration = &values.configuration;
+    let folder = configuration
+        .data
+        .as_deref()
+        .unwrap_or(&values.ledger_folder);
+    let value = format!(
+        "{}  {}",
+        under_home(folder, dirs::home_dir().as_deref()),
+        msg::tui_settings_general_data_change_chip()
+    );
+    match configuration.shadow(ConfigKey::Data) {
+        Some(source) => {
+            let long = msg::tui_settings_data_overridden(
+                &source,
+                &values.ledger_folder.display().to_string(),
+            );
+            (
+                value,
+                msg::tui_settings_config_shadowed_note(&source),
+                Some(long),
+            )
+        }
+        None => (value, msg::tui_settings_general_ledger_folder_note(), None),
     }
 }
 
@@ -442,7 +476,8 @@ mod tests {
             "[ test ]",
             "locale",
             "en-US",
-            "ledger folder",
+            "data folder",
+            "[ change… ]",
             "last ledger",
             "config file",
         ] {

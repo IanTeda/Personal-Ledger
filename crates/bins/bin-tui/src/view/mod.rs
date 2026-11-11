@@ -63,6 +63,11 @@ pub enum Action {
     OpenToastHistory,
     /// `Esc` in the Toast history popup.
     CloseToastHistory,
+    /// `:data`, or `enter` on Settings › General's data folder — opens the Data folder picker
+    /// (TUI-064) over the View showing.
+    OpenFolderPicker,
+    /// Any key while the Data folder picker is open; it takes them all.
+    FolderPickerKey(KeyEvent),
     /// `j`/`↓` (`true`) or `k`/`↑` in the Toast history popup — scrolls one entry.
     ToastHistoryScroll(bool),
     /// `Ctrl+C` — the hard-quit safety net, recognised by `Shell` itself before any `View`

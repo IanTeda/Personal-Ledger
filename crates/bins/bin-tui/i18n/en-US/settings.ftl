@@ -38,7 +38,7 @@ tui-settings-page-history = History
 
 ## The one-line description beside each page's name on the index page.
 
-tui-settings-description-general = on start, start view, toasts, locale and the ledger folder
+tui-settings-description-general = on start, start view, toasts, locale and the data folder
 tui-settings-description-display = appearance, colour theme, date style, glyphs and hint bar
 tui-settings-description-ledger = ledger name, owner, financial year and base unit
 tui-settings-description-units = currencies and other units, and their price sources
@@ -123,8 +123,20 @@ tui-settings-start-view-accounts = accounts
 tui-settings-start-view-categories = categories
 tui-settings-start-view-payees = payees
 tui-settings-start-view-tags = tags
-tui-settings-general-ledger-folder = ledger folder
-tui-settings-general-ledger-folder-note = data · read-only
+tui-settings-general-ledger-folder = data folder
+tui-settings-general-ledger-folder-note = where Ledger files (.pldb) are looked for and Documents kept
+# The chip beside the Data folder's path (TUI-064).
+tui-settings-general-data-change-chip = [ change… ]
+# The Success Toast once the picker's Use is written (TUI-065). `$folder` is the folder picked.
+tui-settings-data-folder-now = Data folder is now { $folder }
+# A flag, an environment variable or a higher file sets the Data folder (TUI-063).
+tui-settings-data-overridden = set by { $source }, which outranks the file; { $effective } is in effect
+# The Data folder picker (TUI-064).
+tui-folder-picker-title = Choose data folder
+tui-folder-picker-now = now { $folder }
+tui-folder-picker-use = [ use { $folder } ]
+tui-folder-picker-up = ../
+tui-folder-picker-empty = nothing here
 tui-settings-general-this-device = this device
 tui-settings-general-last-ledger = last ledger
 tui-settings-general-config-file = config file
@@ -180,7 +192,6 @@ tui-settings-display-note-scope = These belong to this device and never sync. To
 
 ## Why a field can't be set. `$field` is the name `:set` takes.
 
-tui-settings-read-only-restart = { $field } is read-only: change it in personal-ledger.conf, then restart
 tui-settings-read-only-config = { $field } is in personal-ledger.conf, and there's no user config directory to write it to
 # `$source` is an environment variable's name or a file's path.
 tui-settings-set-shadowed = { $field } is set by { $source }, which outranks your personal-ledger.conf: change it there

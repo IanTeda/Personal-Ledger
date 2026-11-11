@@ -26,6 +26,13 @@ pub const COMMANDS: &[Command] = &[
         }],
     },
     Command {
+        id: CommandId::Data,
+        name: "data",
+        chord: Chord::NONE,
+        description: crate::msg::tui_command_data_description,
+        args: &[],
+    },
+    Command {
         id: CommandId::Set,
         name: "set <field> [value]",
         chord: Chord(&[KeyCode::Enter]),

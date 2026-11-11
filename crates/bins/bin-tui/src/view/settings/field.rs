@@ -37,13 +37,6 @@ pub enum SettingField {
     HintBar,
 }
 
-/// Why a field can't be edited here.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ReadOnly {
-    /// `data`, the ledger folder, is Configuration read at start-up.
-    LedgerFolder,
-}
-
 impl SettingField {
     /// Every field, General's, Ledger's then Display's, each in its page's row order.
     pub const ALL: [SettingField; 15] = [
@@ -70,7 +63,7 @@ impl SettingField {
         match self {
             Self::OnStart => "on-start",
             Self::StartView => "start-view",
-            Self::LedgerFolder => "ledger-folder",
+            Self::LedgerFolder => "data",
             Self::LedgerName => "ledger-name",
             Self::Owner => "owner",
             Self::FinancialYearStart => "fy-start",
@@ -106,15 +99,6 @@ impl SettingField {
         }
     }
 
-    /// Why the field can't be edited, or `None` when it can. A Configuration row can be too,
-    /// but whether it is depends on the files and environment ([`Configuration::refusal`]).
-    pub fn read_only(self) -> Option<ReadOnly> {
-        match self {
-            Self::LedgerFolder => Some(ReadOnly::LedgerFolder),
-            _ => None,
-        }
-    }
-
     /// The `personal-ledger.conf` key the field writes, for a Configuration row.
     pub fn config_key(self) -> Option<ConfigKey> {
         match self {
@@ -128,6 +112,7 @@ impl SettingField {
             Self::OnStart => Some(ConfigKey::OnStart),
             Self::StartView => Some(ConfigKey::StartView),
             Self::Locale => Some(ConfigKey::Locale),
+            Self::LedgerFolder => Some(ConfigKey::Data),
             _ => None,
         }
     }
@@ -151,12 +136,6 @@ impl SettingField {
             Self::Toasts => lib_locale::msg::toast_setting_label(),
             Self::HintBar => msg::tui_settings_setting_hint_bar(),
         }
-    }
-
-    /// What the status line says when the field is opened or set: why it can't be.
-    pub fn refusal(self) -> Option<String> {
-        self.read_only()
-            .map(|_| msg::tui_settings_read_only_restart(self.command_name()))
     }
 }
 
@@ -231,6 +210,9 @@ pub struct Configuration {
     pub system_locale: Locale,
     /// The Locale this run started in, which a saved one doesn't change until the next start.
     pub effective_locale: Locale,
+    /// The Data folder the user's file sets, `None` with no `data` key; read from the file itself,
+    /// since a write goes there whatever outranks it (TUI-063).
+    pub data: Option<std::path::PathBuf>,
     /// The source above the file that sets each key, so a write there changes nothing. Read
     /// once at start-up, as the values are.
     pub shadows: Vec<(ConfigKey, Shadow)>,
@@ -265,6 +247,7 @@ impl Configuration {
                     .unwrap_or(lib_config::DEFAULT_LOCALE),
             ),
             effective_locale: crate::locale::info().effective,
+            data: writer.value(ConfigKey::Data).map(std::path::PathBuf::from),
             shadows: ConfigKey::ALL
                 .into_iter()
                 .filter_map(|key| writer.shadow(key).map(|shadow| (key, shadow)))
@@ -282,7 +265,7 @@ impl Configuration {
 
     /// A Configuration row's note when a source above the file sets its key, else `None`.
     pub fn shadowed_note(&self, field: SettingField) -> Option<String> {
-        if field == SettingField::Locale {
+        if matches!(field, SettingField::Locale | SettingField::LedgerFolder) {
             return None;
         }
         field
@@ -298,8 +281,9 @@ impl Configuration {
         if self.path.is_none() {
             return Some(msg::tui_settings_read_only_config(field.command_name()));
         }
-        // The Locale writes under anything above it and says so on its row instead.
-        if field == SettingField::Locale {
+        // The Locale and the Data folder write under anything above them and say so on their rows
+        // instead.
+        if matches!(field, SettingField::Locale | SettingField::LedgerFolder) {
             return None;
         }
         self.shadow(key)

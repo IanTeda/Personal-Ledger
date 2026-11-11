@@ -147,6 +147,7 @@ pub enum CommandId {
     ToastsOn,
     ToastsOff,
     ToastsTest,
+    Data,
     ToastHistory,
     /// `messages`, the alias of `toasts`.
     ToastHistoryAlias,
