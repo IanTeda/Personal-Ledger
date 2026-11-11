@@ -1,15 +1,15 @@
 //! Settings › General drawn from its view model (DESKTOP-178): the field column (On start, Start
-//! view, Toasts, the read-only Locale and Ledger folder) beside the THIS DEVICE box. Every click is
-//! a Presenter event through [`PageClicks`].
+//! view, Toasts, the Locale and the read-only Ledger folder) beside the THIS DEVICE box. Every click
+//! is a Presenter event through [`PageClicks`].
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use lib_core::StartView;
 use lib_settings::presenter::general::{
-    GENERAL_FIELD_ON_START, GENERAL_FIELD_START_VIEW, GENERAL_FIELD_TOASTS,
+    GENERAL_FIELD_LOCALE, GENERAL_FIELD_ON_START, GENERAL_FIELD_START_VIEW, GENERAL_FIELD_TOASTS,
 };
 use lib_settings::{
     DeviceKey, GeneralEvent, GeneralViewModel,
-    presenter::{ControlView, ReadOnlyView, StartViewControl, ThisDeviceView},
+    presenter::{ControlView, LocaleControl, ReadOnlyView, StartViewControl, ThisDeviceView},
 };
 use lib_viper::view::Hint;
 
@@ -64,11 +64,12 @@ pub(super) fn page(
                     Some(test_button(&model.toasts_test, clicks, cx).into_any_element()),
                     cx,
                 ))
-                .child(
-                    read_only("general-locale", &model.locale, false, cx)
-                        .children(model.locale_fallback.clone().map(|note| hint(note, cx)))
-                        .child(hint(model.locale.hint.clone(), cx)),
-                )
+                .child(locale_field(
+                    &model.locale,
+                    model.field == Some(GENERAL_FIELD_LOCALE),
+                    clicks,
+                    cx,
+                ))
                 .child(
                     read_only("general-ledger-folder", &model.ledger_folder, true, cx)
                         .child(hint(model.ledger_folder.hint.clone(), cx)),
@@ -203,6 +204,72 @@ fn start_view_field(
             control.shadowed.as_deref(),
             cx,
         ))
+}
+
+/// The Locale's choices as a radio group, one per line, each label followed by its code (`now
+/// en-AU` after **System**), then the note while the choice waits on the next start or a source
+/// above the file overrides it (DESKTOP-185, DESKTOP-186).
+fn locale_field(
+    view: &LocaleControl,
+    focused: bool,
+    clicks: &PageClicks<GeneralPage>,
+    cx: &App,
+) -> impl IntoElement {
+    let select = &view.control.select;
+    let note = view.note.clone().map(|text| {
+        div()
+            .debug_selector(|| "general-locale-note".to_string())
+            .mt(px(6.0))
+            .flex()
+            .items_start()
+            .gap(px(8.0))
+            .text_size(px(11.5))
+            .text_color(color::foreground(cx))
+            .child(
+                div()
+                    .flex_none()
+                    .mt(px(4.0))
+                    .size(px(8.0))
+                    .bg(color::accent(cx)),
+            )
+            .child(div().min_w(px(0.0)).child(text))
+    });
+    focus_mark(focused, cx)
+        .debug_selector(|| "general-locale".to_string())
+        .child(field_label(select.label.clone()))
+        .child(
+            div().flex().flex_col().gap(px(6.0)).children(
+                select.options.iter().zip(&view.codes).enumerate().map(
+                    |(index, (choice, code))| {
+                        let id = format!("general-locale-{index}");
+                        let checked = select.chosen == Some(choice.value);
+                        div()
+                            .debug_selector({
+                                let id = id.clone();
+                                move || id
+                            })
+                            .id(SharedString::from(id))
+                            .cursor_pointer()
+                            .flex()
+                            .items_center()
+                            .gap(px(8.0))
+                            .on_click(clicks.send(GeneralEvent::ChooseLocale(choice.value)))
+                            .child(radio_dot(checked, cx))
+                            .child(div().text_size(px(13.0)).child(choice.label.clone()))
+                            .child(
+                                div()
+                                    .text_size(px(12.0))
+                                    .font_family("monospace")
+                                    .text_color(color::faint_text(cx))
+                                    .child(code.clone()),
+                            )
+                    },
+                ),
+            ),
+        )
+        .children(note)
+        .children(view.fallback.clone().map(|text| hint(text, cx)))
+        .children(view.control.hint.clone().map(|text| hint(text, cx)))
 }
 
 /// A read-only line: its label over its value, the Ledger folder's in monospace.

@@ -1,4 +1,4 @@
-//! Settings › General driven by the mouse: the On start, Start view and Toasts options, each saved to the conf file (ADR-0053), Toasts' Test raising the four test Toasts, and the read-only Locale, Ledger folder and THIS DEVICE box drawn beside them. State is read back from `Root` and the conf file.
+//! Settings › General driven by the mouse: the On start, Start view, Toasts and Locale options, each saved to the conf file (ADR-0053), the Locale even under an override (DESKTOP-186), Toasts' Test raising the four test Toasts, and the read-only Ledger folder and THIS DEVICE box drawn beside them. State is read back from `Root` and the conf file.
 
 use super::common;
 use bin_desktop::shell::router::SettingsGeneralSnapshot;
@@ -80,6 +80,45 @@ fn clicking_a_shadowed_toasts_option_changes_nothing(app: &mut TestAppContext) {
     assert!(ui.settings::<SettingsGeneralSnapshot>().toasts_on);
     assert!(ui.toasts().on);
     assert_eq!(ui.conf(), "");
+}
+
+#[gpui::test]
+fn clicking_a_locale_option_writes_it_and_system_takes_it_out(app: &mut TestAppContext) {
+    let mut ui = on_general(app);
+    assert!(!ui.is_drawn("general-locale-note"));
+
+    ui.click("general-locale-2");
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().locale.as_deref(),
+        Some("en-GB")
+    );
+    assert_eq!(ui.conf(), "[General]\nlocale = en-GB\n");
+    assert!(ui.is_drawn("general-locale-note"));
+
+    ui.click("general-locale-0");
+    assert_eq!(ui.settings::<SettingsGeneralSnapshot>().locale, None);
+    assert_eq!(ui.conf(), "[General]\n");
+}
+
+#[gpui::test]
+fn under_an_environment_variable_a_locale_click_still_writes_and_the_override_is_drawn(
+    app: &mut TestAppContext,
+) {
+    let var = "PERSONAL_LEDGER_GENERAL__LOCALE";
+    let mut ui =
+        Harness::with_configuration(app, &lib_config::Config::default(), &[(var, "en-GB")]);
+    ui.press("g s enter");
+    assert!(ui.is_drawn("general-locale-note"));
+
+    ui.click("general-locale-3");
+
+    assert_eq!(ui.conf(), "[General]\nlocale = en-US\n");
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().locale.as_deref(),
+        Some("en-US")
+    );
+    let note = ui.settings::<SettingsGeneralSnapshot>().locale_note;
+    assert!(note.is_some_and(|note| note.contains(var)));
 }
 
 #[gpui::test]

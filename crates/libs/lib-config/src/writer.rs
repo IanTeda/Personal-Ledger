@@ -155,10 +155,23 @@ impl ConfigKey {
 /// The source that outranks the file a write goes to, so the write changes nothing until it goes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Shadow {
+    /// A command-line flag, as it was given (`--locale en-GB`).
+    Flag(String),
     /// An environment variable, by name.
     Env(String),
     /// A configuration file above the user's in the hierarchy.
     File(PathBuf),
+}
+
+impl Shadow {
+    /// The source as Settings names it: the flag as given, the variable's name or the file's path.
+    pub fn source(&self) -> String {
+        match self {
+            Self::Flag(flag) => flag.clone(),
+            Self::Env(var) => var.clone(),
+            Self::File(path) => path.display().to_string(),
+        }
+    }
 }
 
 /// Where Settings writes Configuration, and what outranks it there. Captured as the configuration
@@ -171,6 +184,8 @@ pub struct ConfigWriter {
     above: Vec<PathBuf>,
     /// The environment's `PERSONAL_LEDGER_` variables, names lower-cased as `config` matches them.
     env: HashMap<String, String>,
+    /// The keys this run's flags set, each with the flag as it was given; they outrank the rest.
+    flags: Vec<(ConfigKey, String)>,
 }
 
 impl ConfigWriter {
@@ -190,7 +205,19 @@ impl ConfigWriter {
             .map(|(name, value)| (name.to_lowercase(), value))
             .filter(|(name, _)| name.starts_with(&prefix))
             .collect();
-        Self { target, above, env }
+        Self {
+            target,
+            above,
+            env,
+            flags: Vec::new(),
+        }
+    }
+
+    /// Records that `flag` (`--locale en-GB`) sets `key` for this run, so [`Self::shadow`] names
+    /// it: [`crate::ConfigArgs::apply_overrides`] calls it as it applies a flag.
+    pub fn flagged(&mut self, key: ConfigKey, flag: impl Into<String>) {
+        self.flags.retain(|(flagged, _)| *flagged != key);
+        self.flags.push((key, flag.into()));
     }
 
     /// The file a write goes to.
@@ -200,6 +227,9 @@ impl ConfigWriter {
 
     /// The highest source that sets `key` above the target, or `None` when a write would apply.
     pub fn shadow(&self, key: ConfigKey) -> Option<Shadow> {
+        if let Some((_, flag)) = self.flags.iter().find(|(flagged, _)| *flagged == key) {
+            return Some(Shadow::Flag(flag.clone()));
+        }
         let var = key.env_var();
         if self.env.contains_key(&var.to_lowercase()) {
             return Some(Shadow::Env(var));
@@ -210,6 +240,14 @@ impl ConfigWriter {
             .find(|path| std::fs::read_to_string(path).is_ok_and(|text| sets_key(&text, key)))
             .cloned()
             .map(Shadow::File)
+    }
+
+    /// The value the target file itself sets `key` to, quotes taken off, whatever outranks it;
+    /// `None` when the file doesn't set it, doesn't exist or can't be read, or there is no target.
+    /// Settings › General's Locale shows it, since a write goes there even while shadowed.
+    pub fn value(&self, key: ConfigKey) -> Option<String> {
+        let text = std::fs::read_to_string(self.target.as_deref()?).ok()?;
+        key_value(&text, key)
     }
 
     /// Writes `value` to `key` in its section of the target file, keeping the rest of the file as
@@ -347,6 +385,32 @@ fn sets_key(text: &str, key: ConfigKey) -> bool {
         }
         in_section && line_key(line).is_some_and(|name| name.eq_ignore_ascii_case(key.name()))
     })
+}
+
+/// The value `text` sets `key` to in its section, the last line winning as the parser reads it,
+/// with surrounding quotes taken off.
+fn key_value(text: &str, key: ConfigKey) -> Option<String> {
+    let mut in_section = false;
+    let mut value = None;
+    for line in text.lines() {
+        if let Some(name) = section_name(line) {
+            in_section = name == key.section().normalised();
+            continue;
+        }
+        if !in_section || !line_key(line).is_some_and(|name| name.eq_ignore_ascii_case(key.name()))
+        {
+            continue;
+        }
+        if let Some((_, raw)) = line.split_once(['=', ':']) {
+            let raw = raw.trim();
+            let unquoted = raw
+                .strip_prefix('"')
+                .and_then(|inner| inner.strip_suffix('"'))
+                .unwrap_or(raw);
+            value = Some(unquoted.to_string());
+        }
+    }
+    value
 }
 
 /// A section header's name as `normalise_ini` reads it, or `None` for any other line.
@@ -611,6 +675,41 @@ back = \"esc\"
             std::fs::read_to_string(&path).unwrap(),
             "[General]\ntoasts = false\n"
         );
+    }
+
+    #[test]
+    fn value_reads_the_key_from_its_own_section_of_the_target_only() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("personal-ledger.conf");
+        let writer = ConfigWriter::new(Some(path.clone()), Vec::new(), []);
+        assert_eq!(writer.value(ConfigKey::Locale), None, "no file yet");
+
+        std::fs::write(
+            &path,
+            "[Other]\nlocale = fr\n[General]\n# locale = en-AU\n  locale = \"en-GB\"\n",
+        )
+        .unwrap();
+        assert_eq!(writer.value(ConfigKey::Locale).as_deref(), Some("en-GB"));
+        assert_eq!(writer.value(ConfigKey::Toasts), None);
+        assert_eq!(ConfigWriter::default().value(ConfigKey::Locale), None);
+    }
+
+    #[test]
+    fn a_flag_outranks_the_environment_and_the_files_above() {
+        let mut writer = ConfigWriter::new(
+            None,
+            Vec::new(),
+            [(
+                "PERSONAL_LEDGER_GENERAL__LOCALE".to_string(),
+                "en-AU".to_string(),
+            )],
+        );
+        writer.flagged(ConfigKey::Locale, "--locale en-GB");
+        assert_eq!(
+            writer.shadow(ConfigKey::Locale),
+            Some(Shadow::Flag("--locale en-GB".to_string()))
+        );
+        assert_eq!(writer.shadow(ConfigKey::Toasts), None);
     }
 
     #[test]

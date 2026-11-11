@@ -1,7 +1,8 @@
-//! Settings › General driven by keys: focus lands on On start, `j`/`k` walk On start, Start view
-//! and Toasts, and `h`/`l` change the one focused. Each change is saved to the conf file (ADR-0053)
-//! and Toasts reach the Shell's Toasts; `t` on Toasts raises the Toasts test; a key an environment
-//! variable sets is shown as such and left alone.
+//! Settings › General driven by keys: focus lands on On start, `j`/`k` walk On start, Start view,
+//! Toasts and the Locale, and `h`/`l` change the one focused. Each change is saved to the conf file
+//! (ADR-0053) and Toasts reach the Shell's Toasts; `t` on Toasts raises the Toasts test; a key an
+//! environment variable sets is shown as such and left alone, but for the Locale, which is written
+//! all the same (DESKTOP-186). A chosen Locale applies at the next start, so a note says so.
 //! State is read back from `Root` and the conf file.
 
 use super::common;
@@ -34,15 +35,77 @@ fn focus_starts_on_on_start(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn j_and_k_walk_the_three_controls_and_stop_at_the_ends(app: &mut TestAppContext) {
+fn j_and_k_walk_the_four_controls_and_stop_at_the_ends(app: &mut TestAppContext) {
     let mut ui = in_general(app);
 
     ui.press("j");
     assert_eq!(ui.settings::<SettingsGeneralSnapshot>().field, Some(1));
-    ui.press("j j");
+    ui.press("j");
     assert_eq!(ui.settings::<SettingsGeneralSnapshot>().field, Some(2));
-    ui.press("k k k");
+    ui.press("j j");
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().field,
+        Some(3),
+        "the Locale comes after Toasts, and is the last"
+    );
+    ui.press("k k k k");
     assert_eq!(ui.settings::<SettingsGeneralSnapshot>().field, Some(0));
+}
+
+#[gpui::test]
+fn l_and_h_step_the_locale_and_each_step_is_saved_with_a_note_till_the_next_start(
+    app: &mut TestAppContext,
+) {
+    let mut ui = in_general(app);
+    ui.press("j j j");
+    let general = ui.settings::<SettingsGeneralSnapshot>();
+    assert_eq!(general.locale, None, "System, with no key in the file");
+    assert_eq!(general.locale_note, None);
+    let toasts = ui.toasts().history.len();
+
+    ui.press("l");
+
+    let general = ui.settings::<SettingsGeneralSnapshot>();
+    assert_eq!(general.locale.as_deref(), Some("en-AU"));
+    assert_eq!(ui.conf(), "[General]\nlocale = en-AU\n");
+    assert!(general.locale_note.is_some_and(|note| {
+        note.starts_with("Saved. en-AU applies when Personal Ledger next starts")
+    }));
+    assert!(ui.is_drawn("general-locale-note"));
+    assert_eq!(ui.toasts().history.len(), toasts, "no Toast");
+
+    ui.press("l l l");
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().locale.as_deref(),
+        Some("en-US"),
+        "stops at the last choice"
+    );
+    assert_eq!(ui.conf(), "[General]\nlocale = en-US\n");
+
+    ui.press("h h h");
+    assert_eq!(ui.settings::<SettingsGeneralSnapshot>().locale, None);
+    assert_eq!(ui.conf(), "[General]\n", "System takes the line out");
+}
+
+#[gpui::test]
+fn a_locale_an_environment_variable_sets_is_still_written_and_the_override_noted(
+    app: &mut TestAppContext,
+) {
+    let var = "PERSONAL_LEDGER_GENERAL__LOCALE";
+    let mut ui =
+        Harness::with_configuration(app, &lib_config::Config::default(), &[(var, "en-GB")]);
+    ui.press("g s l j j j");
+    assert!(
+        ui.settings::<SettingsGeneralSnapshot>()
+            .locale_note
+            .is_some_and(|note| note.starts_with(&format!("{var} overrides this for this run")))
+    );
+
+    ui.press("l");
+
+    assert_eq!(ui.conf(), "[General]\nlocale = en-AU\n");
+    assert!(ui.is_drawn("general-locale-note"));
+    assert!(!ui.is_drawn("shadowed-locale"));
 }
 
 #[gpui::test]

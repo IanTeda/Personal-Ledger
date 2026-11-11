@@ -317,7 +317,7 @@ mod tests {
                 },
                 locale: LocaleLine {
                     line: "en-AU".to_string(),
-                    fallback: None,
+                    ..LocaleLine::default()
                 },
                 display: DisplaySettings::default(),
             }

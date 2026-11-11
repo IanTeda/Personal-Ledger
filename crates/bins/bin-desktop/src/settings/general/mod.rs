@@ -1,7 +1,7 @@
 //! Settings › General's View: `lib-settings`' General Presenter is the [`PageView`] the generic
 //! `ModulePage` hosts (ADR-0056), which the Settings View hosts as any other page. It names the
 //! page's Router and how it draws the view model (`render.rs`); the keymap, the take, send and
-//! handle path and the clicks' path are the generic page's. On start, Start view and Toasts are
+//! handle path and the clicks' path are the generic page's. On start, Start view, Toasts and the Locale are
 //! written through the Presenter's `DeviceConfiguration` (`super::device`); saved Toasts reach the
 //! Shell as `ViewEvent::ToastsChanged` (`super::router`). Each key and click is one input
 //! (`crate::input::send`).
@@ -41,7 +41,8 @@ pub fn general_page(
     back_chord: String,
     cx: &mut Context<'_, GeneralPage>,
 ) -> GeneralPage {
-    let (line, fallback) = crate::locale::describe(&crate::locale::info());
+    let info = crate::locale::info();
+    let (line, fallback) = crate::locale::describe(&info);
     let presenter = GeneralPresenter::new(GeneralSetup {
         device,
         keymap: general_keymap(config),
@@ -53,7 +54,12 @@ pub fn general_page(
                 label: start_view::label(key),
             })
             .collect(),
-        locale: LocaleLine { line, fallback },
+        locale: LocaleLine {
+            line,
+            fallback,
+            effective: info.effective,
+            system: info.system,
+        },
     });
     ModulePage::detached(presenter, (), cx)
 }
@@ -114,6 +120,10 @@ pub struct SettingsGeneralSnapshot {
     /// Start view as the file spells it.
     pub start_view: String,
     pub toasts_on: bool,
+    /// The Locale the conf file names, by tag; `None` for **System**.
+    pub locale: Option<String>,
+    /// The note under the Locale: pending until the next start, or overridden.
+    pub locale_note: Option<String>,
     pub ledger_folder: String,
     pub last_ledger: Option<String>,
     pub configuration: Option<String>,
@@ -126,11 +136,14 @@ impl PageSnapshot for SettingsGeneralSnapshot {
         let path = |path: &PathBuf| path.display().to_string();
         let settings = page.presenter().settings();
         let device = page.presenter().this_device();
+        let view = page.view_model();
         SettingsGeneralSnapshot {
-            field: page.view_model().field,
+            field: view.field,
             on_start: settings.on_start,
             start_view: settings.start_view.key().to_string(),
             toasts_on: settings.toasts_on,
+            locale: settings.locale.map(|locale| locale.tag().to_string()),
+            locale_note: view.locale.note,
             ledger_folder: path(&device.ledger_folder),
             last_ledger: device.last_ledger.as_ref().map(path),
             configuration: device.configuration.as_ref().map(path),

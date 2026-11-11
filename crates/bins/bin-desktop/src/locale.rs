@@ -16,13 +16,18 @@ pub struct LocaleInfo {
 
     /// Whether the value came from config, the system, or the built-in default.
     pub source: LocaleSource,
+
+    /// The supported Locale the operating system's resolves to, whatever configuration sets: what
+    /// Settings › General's **System** would read.
+    pub system: Locale,
 }
 
 static INFO: OnceLock<LocaleInfo> = OnceLock::new();
 
 /// Sets the process-wide Locale (with this bin's own Message layer) and remembers how it was
-/// chosen. Call once, after configuration is parsed.
-pub fn init(requested: &str, source: LocaleSource) -> Locale {
+/// chosen, and what the operating system's, `system`, resolves to. Call once, after configuration
+/// is parsed.
+pub fn init(requested: &str, source: LocaleSource, system: Option<&str>) -> Locale {
     let effective = lib_locale::init_with_layers(
         requested,
         &[
@@ -53,6 +58,7 @@ pub fn init(requested: &str, source: LocaleSource) -> Locale {
         requested: requested.to_string(),
         effective,
         source,
+        system: Locale::negotiate(system.unwrap_or(lib_config::DEFAULT_LOCALE)),
     });
     effective
 }
@@ -99,6 +105,7 @@ pub fn info() -> LocaleInfo {
             requested: effective.tag().to_string(),
             effective,
             source: LocaleSource::Default,
+            system: effective,
         }
     })
 }
@@ -134,6 +141,7 @@ mod tests {
             requested: requested.to_string(),
             effective: Locale::negotiate(requested),
             source,
+            system: Locale::EnUs,
         }
     }
 

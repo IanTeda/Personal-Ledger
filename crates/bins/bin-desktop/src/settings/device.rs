@@ -1,5 +1,5 @@
 //! `impl DeviceConfiguration` for the Desktop (ADR-0053): Toasts, the Colour Theme and
-//! Appearance, the date style, Row density, Status glyphs, On start and Start view live in the
+//! Appearance, the date style, Row density, Status glyphs, On start, Start view and the Locale live in the
 //! `[General]` and `[Display]` sections (ADR-0057) of the user's `personal-ledger.conf`, which Settings › General and Display write through
 //! `lib_config`'s [`ConfigWriter`] as each one changes, the TUI's file and spellings included.
 //! The pages' Presenters (`lib-settings`) decide what a write's answer means; this only writes.
@@ -7,6 +7,7 @@
 use lib_colour_theme::ColourAppearance;
 use lib_config::{ConfigKey, ConfigWriter, Shadow};
 use lib_core::{DateStyle, OnStart, RowDensity, StartView, StatusGlyphs};
+use lib_locale::Locale;
 use lib_settings::{DeviceAnswer, DeviceConfiguration, DeviceKey, DeviceRefusal};
 
 /// The file a key is written under.
@@ -20,6 +21,7 @@ fn config_key(key: DeviceKey) -> ConfigKey {
         DeviceKey::StatusGlyphs => ConfigKey::StatusGlyphs,
         DeviceKey::ColourTheme => ConfigKey::ColourTheme,
         DeviceKey::ColourAppearance => ConfigKey::ColourAppearance,
+        DeviceKey::Locale => ConfigKey::Locale,
     }
 }
 
@@ -44,13 +46,25 @@ impl DeviceConfigFile {
 
     /// Writes `value`, spelt as the file and the TUI's `:set` spell it, under `key`.
     fn write<T>(&self, key: DeviceKey, spelt: &str, value: T) -> DeviceAnswer<T> {
-        if let Some(source) = self.shadow(key) {
+        self.change(key, value, |writer, key| writer.write(key, spelt))
+    }
+
+    /// Changes `key` in the file with `edit`, unless a source above sets a key that refuses then.
+    fn change<T>(
+        &self,
+        key: DeviceKey,
+        value: T,
+        edit: impl FnOnce(&ConfigWriter, ConfigKey) -> Result<(), lib_config::Error>,
+    ) -> DeviceAnswer<T> {
+        if !key.writes_when_shadowed()
+            && let Some(source) = self.shadow(key)
+        {
             return DeviceAnswer::Shadowed { source };
         }
         let Some(path) = self.writer.target() else {
             return DeviceAnswer::Refused(DeviceRefusal::NoFile);
         };
-        match self.writer.write(config_key(key), spelt) {
+        match edit(&self.writer, config_key(key)) {
             Ok(()) => DeviceAnswer::Saved {
                 value,
                 file: path.display().to_string(),
@@ -68,10 +82,7 @@ impl DeviceConfiguration for DeviceConfigFile {
         self.shadows
             .iter()
             .find(|(shadowed, _)| *shadowed == key)
-            .map(|(_, shadow)| match shadow {
-                Shadow::Env(var) => var.clone(),
-                Shadow::File(path) => path.display().to_string(),
-            })
+            .map(|(_, shadow)| shadow.source())
     }
 
     fn set_on_start(&self, on_start: OnStart) -> DeviceAnswer<OnStart> {
@@ -116,6 +127,15 @@ impl DeviceConfiguration for DeviceConfigFile {
         appearance: ColourAppearance,
     ) -> DeviceAnswer<ColourAppearance> {
         self.write(DeviceKey::ColourAppearance, appearance.key(), appearance)
+    }
+
+    /// **System** takes the key out, so the sources below it, the operating system's Locale
+    /// last, decide at the next start.
+    fn set_locale(&self, locale: Option<Locale>) -> DeviceAnswer<Option<Locale>> {
+        match locale {
+            Some(chosen) => self.write(DeviceKey::Locale, chosen.tag(), locale),
+            None => self.change(DeviceKey::Locale, None, |writer, key| writer.remove(key)),
+        }
     }
 }
 
@@ -208,6 +228,11 @@ mod tests {
                 "colour_appearance" => {
                     stored.colour_appearance = ColourAppearance::from_key(value);
                 }
+                "locale" => {
+                    stored.locale = Locale::SUPPORTED
+                        .into_iter()
+                        .find(|locale| locale.tag() == value);
+                }
                 _ => {}
             }
         }
@@ -243,9 +268,10 @@ mod tests {
         device.set_start_view(StartView::Noun("bills".into()));
         device.set_row_density(RowDensity::Compact);
         device.set_status_glyphs(StatusGlyphs::AsciiFallback);
+        device.set_locale(Some(Locale::EnGb));
         assert_eq!(
             std::fs::read_to_string(&path).unwrap_or_default(),
-            "[General]\ntoasts = false\non_start = none\nstart_view = bills\n\n\
+            "[General]\ntoasts = false\non_start = none\nstart_view = bills\nlocale = en-GB\n\n\
              [Display]\ncolour_theme = nord\ncolour_appearance = light\ndate_style = default\n\
              row_density = compact\nstatus_glyphs = ascii\n"
         );

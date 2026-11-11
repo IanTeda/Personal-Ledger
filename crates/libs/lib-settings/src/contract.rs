@@ -7,6 +7,7 @@
 
 use lib_colour_theme::ColourAppearance;
 use lib_core::{DateStyle, OnStart, RowDensity, StartView, StatusGlyphs, UnitId};
+use lib_locale::Locale;
 
 use crate::fake::StoredDevice;
 use crate::log::LogLevel;
@@ -63,6 +64,7 @@ pub fn every_setting_is_saved_and_reads_back(factory: &mut impl DeviceFactory) {
         device.set_colour_appearance(ColourAppearance::Light),
         ColourAppearance::Light,
     );
+    assert_saved(device.set_locale(Some(Locale::EnGb)), Some(Locale::EnGb));
 
     assert_eq!(
         factory.reload(&device),
@@ -75,6 +77,7 @@ pub fn every_setting_is_saved_and_reads_back(factory: &mut impl DeviceFactory) {
             status_glyphs: Some(StatusGlyphs::AsciiFallback),
             colour_theme: Some("nord".to_string()),
             colour_appearance: Some(ColourAppearance::Light),
+            locale: Some(Locale::EnGb),
         }
     );
 }
@@ -102,14 +105,22 @@ pub fn a_later_write_replaces_the_value(factory: &mut impl DeviceFactory) {
         StatusGlyphs::Unicode,
     );
 
+    assert_saved(device.set_locale(Some(Locale::EnAu)), Some(Locale::EnAu));
+    assert_saved(device.set_locale(Some(Locale::EnUs)), Some(Locale::EnUs));
+    assert_eq!(factory.reload(&device).locale, Some(Locale::EnUs));
+    assert_saved(device.set_locale(None), None);
+    assert_saved(device.set_locale(None), None);
+
     let stored = factory.reload(&device);
+    assert_eq!(stored.locale, None, "System takes the key out");
     assert_eq!(stored.status_glyphs, Some(StatusGlyphs::Unicode));
     assert_eq!(stored.date_style, Some(None));
     assert_eq!(stored.start_view, Some(StartView::Dashboard));
 }
 
 /// A key a source above the file sets is named by `shadow`, answers shadowed naming it, and is not
-/// written; the other keys are not shadowed.
+/// written; the other keys are not shadowed. The Locale is named too, but still written
+/// ([`DeviceKey::writes_when_shadowed`]).
 pub fn a_shadowed_key_is_named_and_left_unwritten(factory: &mut impl DeviceFactory) {
     for key in DeviceKey::ALL {
         let (device, source) = factory.shadowing(key);
@@ -140,6 +151,18 @@ pub fn a_shadowed_key_is_named_and_left_unwritten(factory: &mut impl DeviceFacto
             DeviceKey::ColourAppearance => shadowed(source_of(
                 device.set_colour_appearance(ColourAppearance::Dark),
             )),
+            DeviceKey::Locale => {
+                assert_saved(device.set_locale(Some(Locale::EnUs)), Some(Locale::EnUs));
+                assert_eq!(
+                    factory.reload(&device),
+                    StoredDevice {
+                        locale: Some(Locale::EnUs),
+                        ..StoredDevice::default()
+                    },
+                    "the Locale is written under its override"
+                );
+                continue;
+            }
         }
         assert_eq!(factory.reload(&device), StoredDevice::default(), "{key:?}");
     }
@@ -199,8 +222,9 @@ fn assert_refused(device: &impl DeviceConfiguration, refusal: DeviceRefusal) {
         refused(device.set_status_glyphs(StatusGlyphs::AsciiFallback)),
         refused(device.set_colour_theme("nord")),
         refused(device.set_colour_appearance(ColourAppearance::Dark)),
+        refused(device.set_locale(Some(Locale::EnGb))),
     ];
-    assert_eq!(refusals, [Some(refusal); 8]);
+    assert_eq!(refusals, [Some(refusal); 9]);
 }
 
 /// Builds the capture a [`TracingLog`] contract check runs on. The capture fills from the Client's

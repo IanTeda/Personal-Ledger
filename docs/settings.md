@@ -114,7 +114,7 @@ Whether Toasts show (see Toasts below). Errors show either way. Settings › Gen
 
 __locale:__
 
-The Locale the Client uses for its text, numbers, dates and currency amounts, as a BCP-47 language tag. Per Client and never synced; changing it needs a restart. `lib-config` only resolves the request and reports where it came from -- `lib-locale` decides which Locale is actually used, so a well-formed tag it doesn't support (for example `fr-FR`) is passed through unchanged and negotiated there.
+The Locale the Client uses for its text, numbers, dates and currency amounts, as a BCP-47 language tag. Per Client and never synced; a change applies at the next start. The Desktop's Settings › General writes it, and its **System** removes the key so the operating system's Locale applies. `lib-config` only resolves the request and reports where it came from -- `lib-locale` decides which Locale is actually used, so a well-formed tag it doesn't support (for example `fr-FR`) is passed through unchanged and negotiated there.
 
 * Type: String (Optional)
 * CLI Flag: --locale (long form only)
@@ -345,9 +345,10 @@ General holds what belongs to this device:
 - **On start** chooses which Ledger the app opens as it starts: **Reopen last Ledger** (the default) opens the one open when you last quit, or none if none was, and **Start with no Ledger open** opens none. A file named by `--file` or `file` always wins. Starting never creates a Ledger file: if the file named is missing or won't open, an error Toast says so and the app starts with no Ledger open. It still remembers that Ledger, so the next start tries it again.
 - **Start view** chooses the View the app lands on as it starts, after On start has opened a Ledger or none: **Dashboard** (the default), **Last view** (the View showing when you last quit), **Settings** (on the index, with the page you last had open under the cursor), or **Transactions**, **Documents**, **Bills** or **Budgets**. Every View but the Dashboard and Settings needs a Ledger, so with none open the app lands on the Dashboard's no Ledger open content instead, and Settings puts its cursor on General if the page you last had open is a This Ledger page. A `start_view` in `personal-ledger.conf` that isn't one of these, such as `cash` or the TUI's `units`, is named under the choices; `cash` still lands on its View, and a noun the Desktop doesn't have lands on the Dashboard.
 - **Toasts** turns Toasts on or off (see Toasts below).
-- **Language and region** and **Ledger folder** show the Locale and the `data` folder. They are read from `personal-ledger.conf` when the app starts, so change them there.
+- **Language and region** chooses the Locale: **System** (the operating system's, named after it as `now en-AU`), **English (Australia)**, **English (United Kingdom)** or **English (United States)**. It is written to `personal-ledger.conf` at once, and **System** removes the `locale` key, but the Locale applies only when the app next starts, so until then a note names the one you chose and the one it still reads. When `--locale`, `PERSONAL_LEDGER_GENERAL__LOCALE` or a higher configuration file sets the Locale, your choice is still written to your file, kept for when the override is gone, and a note names the override and the Locale it reads.
+- **Ledger folder** shows the `data` folder. It is read from `personal-ledger.conf` when the app starts, so change it there.
 
-Press `l` to move onto On start, `j` and `k` to move between On start, Start view and Toasts, and `h` and `l` to change the one you are on. Beside the fields, the THIS DEVICE box shows the Ledger On start would reopen and the config file Settings writes to.
+Press `l` to move onto On start, `j` and `k` to move between On start, Start view, Toasts and Language and region, and `h` and `l` to change the one you are on. Beside the fields, the THIS DEVICE box shows the Ledger On start would reopen and the config file Settings writes to.
 
 The Ledger page holds what used to be on General: the Ledger's name, owner, financial year and Base unit.
 

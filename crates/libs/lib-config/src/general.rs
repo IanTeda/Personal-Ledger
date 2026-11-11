@@ -166,6 +166,12 @@ impl GeneralConfig {
         self.locale.as_deref()
     }
 
+    /// The operating system's Locale as a canonical tag, whatever configuration sets; `None` when
+    /// it names no usable one. What Settings › General's **System** resolves to.
+    pub fn system_locale(&self) -> Option<&str> {
+        self.system_locale.as_deref()
+    }
+
     /// Resolves the requested Locale tag and where it came from: the configured value, else
     /// the operating system's, else [`DEFAULT_LOCALE`]. The tag is not checked against the
     /// Locales the application supports -- `lib-locale` negotiates that.
@@ -190,10 +196,12 @@ impl GeneralConfig {
         &mut self,
         detect: impl FnOnce() -> Option<String>,
     ) -> crate::Result<()> {
-        match self.locale.as_deref() {
-            Some(value) => self.locale = Some(parse_locale_tag(value)?),
-            None => self.system_locale = detect().and_then(|value| usable_system_locale(&value)),
+        if let Some(value) = self.locale.as_deref() {
+            self.locale = Some(parse_locale_tag(value)?);
         }
+        // Detected even when configuration sets the Locale, so Settings › General can say what
+        // **System** would read.
+        self.system_locale = detect().and_then(|value| usable_system_locale(&value));
         Ok(())
     }
 

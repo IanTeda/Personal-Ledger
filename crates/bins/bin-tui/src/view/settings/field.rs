@@ -259,10 +259,7 @@ impl Configuration {
         self.shadows
             .iter()
             .find(|(shadowed, _)| *shadowed == key)
-            .map(|(_, shadow)| match shadow {
-                Shadow::Env(var) => var.clone(),
-                Shadow::File(path) => path.display().to_string(),
-            })
+            .map(|(_, shadow)| shadow.source())
     }
 
     /// A Configuration row's note when a source above the file sets its key, else `None`.

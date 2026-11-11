@@ -452,12 +452,17 @@ impl Root {
         writer: lib_config::ConfigWriter,
         cx: &mut App,
     ) {
+        // General's Locale shows the file's own, which a flag or a variable may outrank.
+        let locale = writer
+            .value(lib_config::ConfigKey::Locale)
+            .map(|tag| lib_locale::Locale::negotiate(&tag));
         let device: Rc<dyn lib_settings::DeviceConfiguration> =
             Rc::new(DeviceConfigFile::new(writer));
         let general = lib_settings::GeneralSettings {
             on_start: config.general.on_start(),
             start_view: config.general.start_view().clone(),
             toasts_on: config.general.toasts(),
+            locale,
         };
         let display = lib_settings::DisplaySettings {
             date_style: config.display.date_style(),

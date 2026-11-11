@@ -139,8 +139,9 @@ impl Started {
 /// first, once and before any window opens, since the Toast saying why a file didn't open is
 /// written in it.
 pub fn start(config: &lib_config::Config) -> Started {
-    let (requested_locale, locale_source) = config.general_config().resolved_locale();
-    locale::init(requested_locale, locale_source);
+    let general = config.general_config();
+    let (requested_locale, locale_source) = general.resolved_locale();
+    locale::init(requested_locale, locale_source, general.system_locale());
     start_on(config, chrono::Local::now().date_naive())
 }
 

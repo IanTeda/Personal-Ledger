@@ -8,6 +8,7 @@ use std::rc::Rc;
 
 use lib_colour_theme::ColourAppearance;
 use lib_core::{DateStyle, Money, OnStart, RowDensity, StartView, StatusGlyphs, UnitId};
+use lib_locale::Locale;
 use lib_toast::Notify;
 
 use crate::log::LogLine;
@@ -65,10 +66,11 @@ pub enum DeviceKey {
     StatusGlyphs,
     ColourTheme,
     ColourAppearance,
+    Locale,
 }
 
 impl DeviceKey {
-    pub const ALL: [DeviceKey; 8] = [
+    pub const ALL: [DeviceKey; 9] = [
         Self::OnStart,
         Self::StartView,
         Self::Toasts,
@@ -77,6 +79,7 @@ impl DeviceKey {
         Self::StatusGlyphs,
         Self::ColourTheme,
         Self::ColourAppearance,
+        Self::Locale,
     ];
 
     /// The key as the configuration file spells it, the TUI's `:set` and the environment variable
@@ -91,7 +94,14 @@ impl DeviceKey {
             Self::StatusGlyphs => "status_glyphs",
             Self::ColourTheme => "colour_theme",
             Self::ColourAppearance => "colour_appearance",
+            Self::Locale => "locale",
         }
+    }
+
+    /// Whether a write goes to the file even while a source above it sets the key: the Locale
+    /// (DESKTOP-186), whose choice is kept for when the override is gone. Every other key refuses.
+    pub fn writes_when_shadowed(self) -> bool {
+        matches!(self, Self::Locale)
     }
 }
 
@@ -101,8 +111,9 @@ impl DeviceKey {
 pub enum DeviceAnswer<T> {
     /// Written: the value now in the file, and the file, as the status line names it.
     Saved { value: T, file: String },
-    /// Not written, since a source above the file sets the key: an environment variable or a
-    /// higher configuration file, named by `source`.
+    /// Not written, since a source above the file sets the key: a flag, an environment variable or
+    /// a higher configuration file, named by `source`. Never the answer for a key that
+    /// [writes when shadowed](DeviceKey::writes_when_shadowed).
     Shadowed { source: String },
     /// Not written, for the reason given.
     Refused(DeviceRefusal),
@@ -142,6 +153,9 @@ pub trait DeviceConfiguration {
 
     fn set_colour_appearance(&self, appearance: ColourAppearance)
     -> DeviceAnswer<ColourAppearance>;
+
+    /// `None` is **System**, which takes the key out of the file. Written even while shadowed.
+    fn set_locale(&self, locale: Option<Locale>) -> DeviceAnswer<Option<Locale>>;
 }
 
 /// What only the Shell does for Settings › Tracing: the log box's list is the Client's, and Clear

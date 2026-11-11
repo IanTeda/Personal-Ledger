@@ -94,7 +94,7 @@ pub struct LedgerConfig {
     /// Where Settings writes Configuration, and what outranks it: the user's file under
     /// [`Self::parse`], nothing under [`Self::parse_for_sync_server`].
     #[serde(skip)]
-    writer: crate::ConfigWriter,
+    pub(crate) writer: crate::ConfigWriter,
 }
 
 impl LedgerConfig {
@@ -1003,6 +1003,34 @@ mod tests {
             (tag.as_str(), source),
             ("en-AU", crate::LocaleSource::System)
         );
+    }
+
+    #[test]
+    fn the_system_locale_is_known_even_when_configuration_sets_one() {
+        let env = env_map(&[(LOCALE_ENV, "en-GB")]);
+        in_empty_cwd(|| {
+            let config =
+                LedgerConfig::parse_with_detector(None, env, || Some("en-AU".into())).unwrap();
+            assert_eq!(config.general.system_locale(), Some("en-AU"));
+            assert_eq!(config.general.resolved_locale().0, "en-GB");
+        });
+    }
+
+    #[test]
+    fn the_locale_flag_shadows_the_locale_key() {
+        in_empty_cwd(|| {
+            let mut config =
+                LedgerConfig::parse_with_detector(None, env_map(&[]), || None).unwrap();
+            let args = crate::ConfigArgs {
+                locale: Some("en-GB".to_string()),
+                ..crate::ConfigArgs::default()
+            };
+            args.apply_overrides(&mut config);
+            assert_eq!(
+                config.writer().shadow(crate::ConfigKey::Locale),
+                Some(crate::Shadow::Flag("--locale en-GB".to_string()))
+            );
+        });
     }
 
     #[test]

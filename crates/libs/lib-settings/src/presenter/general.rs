@@ -1,11 +1,14 @@
-//! Settings › General's Presenter (DESKTOP-177, DESKTOP-178): On start, Start view and Toasts,
-//! Configuration in the user's configuration file (ADR-0053) written through
-//! [`DeviceConfiguration`], and the read-only Locale, Ledger folder, last Ledger and configuration
-//! file, which the Client hands it. Everything here belongs to this device and works with no
-//! Ledger open (ADR-0051).
+//! Settings › General's Presenter (DESKTOP-177, DESKTOP-178): On start, Start view, Toasts and the
+//! Locale, Configuration in the user's configuration file (ADR-0053, ADR-0057) written through
+//! [`DeviceConfiguration`], and the read-only Ledger folder, last Ledger and configuration file,
+//! which the Client hands it. Everything here belongs to this device and works with no Ledger open
+//! (ADR-0051).
 //!
 //! A control shows a change only once it is saved: a shadowed key or a refused write leaves it as
-//! it was and says why on the status line.
+//! it was and says why on the status line. The Locale is the exception (DESKTOP-186): it is written
+//! even while shadowed and shows the file's value, with a note naming the override. A chosen Locale
+//! applies at the next start, so a note says so while the file's differs from the one in effect
+//! (DESKTOP-185).
 
 use std::convert::Infallible;
 use std::path::PathBuf;
@@ -13,6 +16,7 @@ use std::rc::Rc;
 
 use lib_core::{OnStart, StartView};
 use lib_list_cursor::Step;
+use lib_locale::Locale;
 use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP};
 use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Choice, Hint, SelectView};
@@ -28,12 +32,25 @@ pub const ON_START_CHOICES: [OnStart; 2] = [OnStart::ReopenLastLedger, OnStart::
 /// Toasts' choices, On then Off as on the control.
 const TOASTS_CHOICES: [bool; 2] = [true, false];
 
-/// The page's controls, top to bottom. The Locale and Ledger folder are read-only, so the keyboard
-/// passes them by.
+/// The page's controls, top to bottom. The Ledger folder is read-only, so the keyboard passes it by.
 pub const GENERAL_FIELD_ON_START: usize = 0;
 pub const GENERAL_FIELD_START_VIEW: usize = 1;
 pub const GENERAL_FIELD_TOASTS: usize = 2;
-const GENERAL_FIELD_COUNT: usize = 3;
+pub const GENERAL_FIELD_LOCALE: usize = 3;
+const GENERAL_FIELD_COUNT: usize = 4;
+
+/// The Locale's choices, in the radio group's order: **System** (`None`), then `lib-locale`'s
+/// supported Locales by tag, never the pseudo-Locale.
+pub fn locale_choices() -> Vec<Option<Locale>> {
+    let mut locales: Vec<Locale> = Locale::SUPPORTED
+        .into_iter()
+        .filter(|locale| !locale.is_pseudo())
+        .collect();
+    locales.sort_by_key(|locale| locale.tag());
+    std::iter::once(None)
+        .chain(locales.into_iter().map(Some))
+        .collect()
+}
 
 /// What General is told and the person asks of it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,6 +64,8 @@ pub enum GeneralEvent {
     ChooseToasts(bool),
     /// `:toasts on|off`, which writes the setting even when it holds already.
     SetToasts(bool),
+    /// A Locale, `None` for **System**.
+    ChooseLocale(Option<Locale>),
     /// `t`: the Toasts test, only while Toasts has the keyboard.
     TestToasts,
     /// A click on **Test**, wherever the keyboard is.
@@ -59,6 +78,9 @@ pub struct GeneralSettings {
     pub on_start: OnStart,
     pub start_view: StartView,
     pub toasts_on: bool,
+    /// The Locale the user's configuration file names, `None` for **System**: not the one in
+    /// effect, which a flag, a variable or a higher file may set.
+    pub locale: Option<Locale>,
 }
 
 impl Default for GeneralSettings {
@@ -67,6 +89,7 @@ impl Default for GeneralSettings {
             on_start: OnStart::default(),
             start_view: StartView::default(),
             toasts_on: lib_toast::Display::default().toasts_on,
+            locale: None,
         }
     }
 }
@@ -82,12 +105,28 @@ pub struct ThisDevice {
     pub configuration: Option<PathBuf>,
 }
 
-/// The effective Locale as the Client describes it, with the note when the one asked for wasn't
-/// supported. The Locale is Configuration read at start-up (ADR-0021), so it is shown, not set.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// The Locale in effect as the Client describes it, with the note when the one asked for wasn't
+/// supported. The Locale is Configuration read at start-up (ADR-0021) and applies only at the next
+/// start (ADR-0057), so this run's stays as it began.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocaleLine {
     pub line: String,
     pub fallback: Option<String>,
+    /// The Locale this run reads.
+    pub effective: Locale,
+    /// The Locale **System** resolves to on this computer.
+    pub system: Locale,
+}
+
+impl Default for LocaleLine {
+    fn default() -> Self {
+        Self {
+            line: String::new(),
+            fallback: None,
+            effective: Locale::DEFAULT,
+            system: Locale::DEFAULT,
+        }
+    }
 }
 
 /// What the Client hands General as it builds it.
@@ -128,6 +167,18 @@ pub struct StartViewControl {
     pub unlisted: Option<String>,
 }
 
+/// The Locale's radio group: the choices with the file's value chosen, the code after each label
+/// (`now en-AU` after **System**), and the note while the file's Locale isn't the one in effect or
+/// a source above the file overrides it. `control.shadowed` stays `None`: the note says it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocaleControl {
+    pub control: ControlView<Option<Locale>>,
+    pub codes: Vec<String>,
+    pub note: Option<String>,
+    /// The note when the Locale asked for wasn't supported.
+    pub fallback: Option<String>,
+}
+
 /// General as the Client draws it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GeneralViewModel {
@@ -138,9 +189,7 @@ pub struct GeneralViewModel {
     pub toasts: ControlView<bool>,
     /// The **Test** button beside Toasts: its label and the key that presses it from Toasts.
     pub toasts_test: Hint,
-    pub locale: ReadOnlyView,
-    /// The note when the Locale asked for wasn't supported.
-    pub locale_fallback: Option<String>,
+    pub locale: LocaleControl,
     pub ledger_folder: ReadOnlyView,
     pub this_device: ThisDeviceView,
     /// The page's keys, for the status line and the `?` cheat sheet.
@@ -217,7 +266,7 @@ impl GeneralPresenter {
         &self.this_device
     }
 
-    /// The effective Locale as the Client described it at start-up.
+    /// The Locale in effect as the Client described it at start-up.
     pub fn locale(&self) -> &LocaleLine {
         &self.locale
     }
@@ -245,6 +294,7 @@ impl Presenter for GeneralPresenter {
                 }
             }
             GeneralEvent::SetToasts(on) => self.write_toasts(on, router),
+            GeneralEvent::ChooseLocale(locale) => self.choose_locale(locale, router),
             // The test touches no setting: the Shell's Toasts raise it.
             GeneralEvent::TestToasts | GeneralEvent::PressTest => router.test_toasts(),
         }
@@ -318,12 +368,7 @@ impl Presenter for GeneralPresenter {
                 chords(&self.keymap, &[TEST_TOASTS]),
                 lib_locale::msg::toast_setting_test(),
             ),
-            locale: ReadOnlyView {
-                label: msg::settings_general_locale_label(),
-                value: self.locale.line.clone(),
-                hint: msg::settings_general_locale_hint(),
-            },
-            locale_fallback: self.locale.fallback.clone(),
+            locale: self.locale_control(),
             ledger_folder: ReadOnlyView {
                 label: msg::settings_general_ledger_folder(),
                 value: self.this_device.ledger_folder.display().to_string(),
@@ -434,6 +479,12 @@ impl GeneralPresenter {
                     self.choose_start_view(next, router);
                 }
             }
+            GENERAL_FIELD_LOCALE => {
+                let current = self.settings.locale;
+                if let Some(next) = step_choice(&locale_choices(), &current, &None, step) {
+                    self.choose_locale(next, router);
+                }
+            }
             _ => {
                 let current = self.settings.toasts_on;
                 if let Some(on) = step_choice(&TOASTS_CHOICES, &current, &current, step)
@@ -467,12 +518,80 @@ impl GeneralPresenter {
         }
     }
 
+    /// The Locale takes effect at the next start, so nothing else follows the write; it is written
+    /// even while shadowed.
+    fn choose_locale(&mut self, locale: Option<Locale>, router: &mut dyn DeviceRouter) {
+        if locale == self.settings.locale {
+            return;
+        }
+        let answer = self.device.set_locale(locale);
+        if let Some(saved) = settle(answer, DeviceKey::Locale, router) {
+            self.settings.locale = saved;
+        }
+    }
+
+    fn locale_control(&self) -> LocaleControl {
+        let choices = locale_choices();
+        let codes = choices
+            .iter()
+            .map(|choice| match choice {
+                None => msg::settings_general_locale_system_now(self.locale.system.tag()),
+                Some(locale) => locale.tag().to_string(),
+            })
+            .collect();
+        LocaleControl {
+            control: ControlView {
+                select: SelectView {
+                    label: msg::settings_general_locale_label(),
+                    options: choices
+                        .into_iter()
+                        .map(|value| Choice {
+                            value,
+                            label: locale_label(value),
+                        })
+                        .collect(),
+                    chosen: Some(self.settings.locale),
+                    focused: self.field == Some(GENERAL_FIELD_LOCALE),
+                },
+                hint: Some(msg::settings_general_locale_hint()),
+                shadowed: None,
+            },
+            codes,
+            note: self.locale_note(),
+            fallback: self.locale.fallback.clone(),
+        }
+    }
+
+    /// The override, while a source above the file sets the Locale; else the pending Locale, while
+    /// the one the file names isn't the one this run reads.
+    fn locale_note(&self) -> Option<String> {
+        let effective = self.locale.effective.tag();
+        if let Some(source) = self.device.shadow(DeviceKey::Locale) {
+            return Some(msg::settings_general_locale_overridden(&source, effective));
+        }
+        let chosen = self.settings.locale.unwrap_or(self.locale.system);
+        (chosen != self.locale.effective)
+            .then(|| msg::settings_general_locale_pending(chosen.tag(), effective))
+    }
+
     fn write_toasts(&mut self, on: bool, router: &mut dyn DeviceRouter) {
         let answer = self.device.set_toasts(on);
         if let Some(saved) = settle(answer, DeviceKey::Toasts, router) {
             self.settings.toasts_on = saved;
             router.toasts_changed(saved);
         }
+    }
+}
+
+/// A Locale choice's label, **System** for `None`.
+fn locale_label(choice: Option<Locale>) -> String {
+    match choice {
+        None => msg::settings_general_locale_system(),
+        Some(Locale::EnAu) => msg::settings_general_locale_en_au(),
+        Some(Locale::EnGb) => msg::settings_general_locale_en_gb(),
+        Some(Locale::EnUs) => msg::settings_general_locale_en_us(),
+        // Never offered; its tag is all there is to call it.
+        Some(Locale::EnXa) => Locale::EnXa.tag().to_string(),
     }
 }
 
@@ -503,6 +622,14 @@ mod tests {
     }
 
     fn general_on(device: Rc<InMemoryDeviceConfiguration>) -> GeneralPresenter {
+        general_reading(device, Locale::EnAu)
+    }
+
+    /// General on `device` in a run reading `effective`, with en-AU the system's Locale.
+    fn general_reading(
+        device: Rc<InMemoryDeviceConfiguration>,
+        effective: Locale,
+    ) -> GeneralPresenter {
         lib_locale::init_with_layers("en-US", &[msg::LAYER]);
         let mut general = GeneralPresenter::new(GeneralSetup {
             device: device.clone(),
@@ -512,6 +639,8 @@ mod tests {
             locale: LocaleLine {
                 line: "en-AU, from config".to_string(),
                 fallback: None,
+                effective,
+                system: Locale::EnAu,
             },
         });
         general.configure(device, GeneralSettings::default());
@@ -557,18 +686,24 @@ mod tests {
     }
 
     #[test]
-    fn j_and_k_walk_the_three_controls_and_stop_at_the_ends() {
+    fn j_and_k_walk_the_four_controls_and_stop_at_the_ends() {
         let (_, mut general) = writable();
         general.set_page_focused(true);
 
         send(
             &mut general,
-            std::iter::repeat_n(GeneralEvent::Move(Step::Next), 3),
+            std::iter::repeat_n(GeneralEvent::Move(Step::Next), 2),
         );
         assert_eq!(general.view_model().field, Some(GENERAL_FIELD_TOASTS));
         send(
             &mut general,
-            std::iter::repeat_n(GeneralEvent::Move(Step::Prev), 4),
+            std::iter::repeat_n(GeneralEvent::Move(Step::Next), 2),
+        );
+        assert_eq!(general.view_model().field, Some(GENERAL_FIELD_LOCALE));
+        assert!(general.view_model().locale.control.select.focused);
+        send(
+            &mut general,
+            std::iter::repeat_n(GeneralEvent::Move(Step::Prev), 5),
         );
         assert_eq!(general.view_model().field, Some(GENERAL_FIELD_ON_START));
         assert_eq!(
@@ -776,6 +911,141 @@ mod tests {
         );
     }
 
+    fn on_locale(general: &mut GeneralPresenter) {
+        general.set_page_focused(true);
+        send(
+            general,
+            std::iter::repeat_n(GeneralEvent::Move(Step::Next), 3),
+        );
+        assert_eq!(general.view_model().field, Some(GENERAL_FIELD_LOCALE));
+    }
+
+    #[test]
+    fn the_locale_offers_system_then_the_supported_locales_never_the_pseudo_locale() {
+        let (_, general) = writable();
+        let view = general.view_model().locale;
+
+        let labels: Vec<_> = view
+            .control
+            .select
+            .options
+            .iter()
+            .map(|choice| choice.label.as_str())
+            .collect();
+        assert_eq!(
+            labels,
+            [
+                "System",
+                "English (Australia)",
+                "English (United Kingdom)",
+                "English (United States)"
+            ]
+        );
+        assert_eq!(view.codes, ["now en-AU", "en-AU", "en-GB", "en-US"]);
+        assert_eq!(
+            view.control.select.chosen,
+            Some(None),
+            "System, with no key"
+        );
+        assert_eq!(view.note, None);
+    }
+
+    #[test]
+    fn l_steps_the_locale_and_each_choice_is_written_with_no_toast() {
+        let (device, mut general) = writable();
+        on_locale(&mut general);
+
+        let router = send(&mut general, [GeneralEvent::Change(Step::Next)]);
+
+        assert_eq!(general.settings().locale, Some(Locale::EnAu));
+        assert_eq!(device.stored().locale, Some(Locale::EnAu));
+        assert_eq!(router.statuses(), ["locale saved to personal-ledger.conf"]);
+        send(
+            &mut general,
+            std::iter::repeat_n(GeneralEvent::Change(Step::Next), 3),
+        );
+        assert_eq!(
+            device.stored().locale,
+            Some(Locale::EnUs),
+            "stops at the end"
+        );
+    }
+
+    #[test]
+    fn choosing_system_takes_the_locale_out_of_the_file() {
+        let (device, mut general) = writable();
+        send(
+            &mut general,
+            [GeneralEvent::ChooseLocale(Some(Locale::EnGb))],
+        );
+        assert_eq!(device.stored().locale, Some(Locale::EnGb));
+
+        send(&mut general, [GeneralEvent::ChooseLocale(None)]);
+
+        assert_eq!(device.stored().locale, None);
+        assert_eq!(general.settings().locale, None);
+        assert_eq!(
+            general.view_model().locale.control.select.chosen,
+            Some(None)
+        );
+    }
+
+    #[test]
+    fn a_locale_other_than_the_one_in_effect_is_noted_until_the_next_start() {
+        let (_, mut general) = writable();
+
+        send(
+            &mut general,
+            [GeneralEvent::ChooseLocale(Some(Locale::EnUs))],
+        );
+        assert_eq!(
+            general.view_model().locale.note.as_deref(),
+            Some(
+                "Saved. en-US applies when Personal Ledger next starts; until then it reads en-AU."
+            )
+        );
+
+        send(
+            &mut general,
+            [GeneralEvent::ChooseLocale(Some(Locale::EnAu))],
+        );
+        assert_eq!(general.view_model().locale.note, None, "en-AU is in effect");
+        send(&mut general, [GeneralEvent::ChooseLocale(None)]);
+        assert_eq!(
+            general.view_model().locale.note,
+            None,
+            "System reads en-AU on this computer"
+        );
+    }
+
+    #[test]
+    fn a_shadowed_locale_is_still_written_and_names_the_override() {
+        let device = Rc::new(InMemoryDeviceConfiguration::shadowing(
+            DeviceKey::Locale,
+            "--locale en-GB",
+        ));
+        let mut general = general_reading(device.clone(), Locale::EnGb);
+        let overridden = "--locale en-GB overrides this for this run, so Personal Ledger reads \
+                          en-GB. Your choice is kept for when it's gone.";
+        let view = general.view_model().locale;
+        assert_eq!(view.note.as_deref(), Some(overridden));
+        assert_eq!(view.control.shadowed, None, "the note says it, not Set by");
+        assert_eq!(view.control.select.chosen, Some(None), "the file's value");
+
+        let router = send(
+            &mut general,
+            [GeneralEvent::ChooseLocale(Some(Locale::EnUs))],
+        );
+
+        assert_eq!(device.stored().locale, Some(Locale::EnUs));
+        assert_eq!(general.settings().locale, Some(Locale::EnUs));
+        assert_eq!(router.statuses(), ["locale saved to personal-ledger.conf"]);
+        assert_eq!(
+            general.view_model().locale.note.as_deref(),
+            Some(overridden)
+        );
+    }
+
     #[test]
     fn the_read_only_lines_show_what_the_client_told_it() {
         let (_, mut general) = writable();
@@ -787,7 +1057,7 @@ mod tests {
         general.set_last_ledger(Some(PathBuf::from("/home/me/Ledgers/home.ledger")));
 
         let view = general.view_model();
-        assert_eq!(view.locale.value, "en-AU, from config");
+        assert_eq!(general.locale().line, "en-AU, from config");
         assert_eq!(view.ledger_folder.value, "/home/me/Ledgers");
         assert_eq!(
             view.this_device.rows,

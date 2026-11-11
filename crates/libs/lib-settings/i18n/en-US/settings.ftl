@@ -112,7 +112,7 @@ settings-device-no-file = { $key } can't be saved: there's no home folder to kee
 settings-device-saved = { $key } saved to { $path }
 settings-device-write-failed = Couldn't save { $key } to personal-ledger.conf: the log says why
 
-## General (DESKTOP-178): On start, Start view, Toasts, the read-only Locale and Ledger folder, and
+## General (DESKTOP-178): On start, Start view, Toasts, the Locale, the read-only Ledger folder, and
 ## the THIS DEVICE box, whose rows are the Ledger On start reopens and the config file Settings
 ## writes to. Toasts' own label, choices and note are `lib-locale`'s, shared with the TUI.
 
@@ -125,7 +125,17 @@ settings-general-start-view = Start view
 settings-general-start-view-unlisted = The configuration file names { $view }, which isn't one of these.
 settings-general-start-view-hint = Where Personal Ledger opens, after On start. A View that needs a Ledger opens the Dashboard when none is open.
 settings-general-locale-label = Language and region
-settings-general-locale-hint = Set with the locale setting or the --locale flag, then restart.
+settings-general-locale-hint = How dates, numbers and money read. System follows this computer. A change applies when Personal Ledger next starts.
+# The Locale choices (DESKTOP-178). System follows the operating system; `$tag` is the Locale it resolves to now, such as en-AU.
+settings-general-locale-system = System
+settings-general-locale-system-now = now { $tag }
+settings-general-locale-en-au = English (Australia)
+settings-general-locale-en-gb = English (United Kingdom)
+settings-general-locale-en-us = English (United States)
+# A chosen Locale applies at the next start (DESKTOP-185). `$chosen` is the tag the file now names, `$effective` the tag in effect for this run.
+settings-general-locale-pending = Saved. { $chosen } applies when Personal Ledger next starts; until then it reads { $effective }.
+# A flag, an environment variable or a higher configuration file sets the Locale (DESKTOP-186). `$source` names it, such as --locale en-GB.
+settings-general-locale-overridden = { $source } overrides this for this run, so Personal Ledger reads { $effective }. Your choice is kept for when it's gone.
 settings-general-ledger-folder = Ledger folder
 settings-general-ledger-folder-hint = Where :open and :new start browsing. Set by data in the configuration file.
 settings-general-this-device = This device

@@ -53,6 +53,9 @@ impl ConfigArgs {
         }
         if let Some(locale) = &self.locale {
             config.general.locale = Some(locale.clone());
+            config
+                .writer
+                .flagged(crate::ConfigKey::Locale, format!("--locale {locale}"));
         }
     }
 }

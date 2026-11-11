@@ -8,6 +8,7 @@ use std::time::SystemTime;
 
 use lib_colour_theme::ColourAppearance;
 use lib_core::{DateStyle, OnStart, RowDensity, StartView, StatusGlyphs, UnitId};
+use lib_locale::Locale;
 use lib_toast::{Notice, Notify};
 
 use crate::log::{LogLevel, LogLine};
@@ -230,6 +231,8 @@ pub struct StoredDevice {
     pub status_glyphs: Option<StatusGlyphs>,
     pub colour_theme: Option<String>,
     pub colour_appearance: Option<ColourAppearance>,
+    /// The file's Locale; `None` with no `locale` key, as after **System**.
+    pub locale: Option<Locale>,
 }
 
 /// A configuration file in memory: the settings written, the keys a source above it sets, and
@@ -273,7 +276,9 @@ impl InMemoryDeviceConfiguration {
         value: T,
         store: impl FnOnce(&mut StoredDevice, T),
     ) -> DeviceAnswer<T> {
-        if let Some(source) = self.shadow(key) {
+        if !key.writes_when_shadowed()
+            && let Some(source) = self.shadow(key)
+        {
             return DeviceAnswer::Shadowed { source };
         }
         let Some(file) = &self.file else {
@@ -346,6 +351,12 @@ impl DeviceConfiguration for InMemoryDeviceConfiguration {
     ) -> DeviceAnswer<ColourAppearance> {
         self.write(DeviceKey::ColourAppearance, appearance, |stored, value| {
             stored.colour_appearance = Some(value);
+        })
+    }
+
+    fn set_locale(&self, locale: Option<Locale>) -> DeviceAnswer<Option<Locale>> {
+        self.write(DeviceKey::Locale, locale, |stored, value| {
+            stored.locale = value;
         })
     }
 }
