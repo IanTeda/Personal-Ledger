@@ -12,7 +12,7 @@ use std::time::Duration;
 use chrono::{DateTime, Local};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use lib_colour_theme::ColourAppearance;
-use lib_config::{ConfigWriter, KeyBindingConfig, PersonalLedgerConfig};
+use lib_config::{ConfigWriter, KeyBindingConfig};
 use lib_database::{Domain, LedgerPorts, Stores, WriteFailure, Writer};
 use lib_locale::format::upper;
 use lib_shell::WindowSize;
@@ -335,25 +335,21 @@ impl Shell {
         self
     }
 
-    /// Applies `config`'s `[Personal-Ledger]` values, a device's settings among them (ADR-0053):
+    /// Applies `config`'s `[General]` and `[Display]` values, a device's settings among them (ADR-0053):
     /// Toasts, the Colour Theme and Appearance, the date style and On start. Settings › General
     /// and Display show them and write their rows through `writer` (#904). Call it after
     /// [`Self::with_colours`], whose `Colours` it sets the colour keys on.
-    pub fn with_configuration(
-        mut self,
-        config: &PersonalLedgerConfig,
-        writer: ConfigWriter,
-    ) -> Self {
+    pub fn with_configuration(mut self, config: &lib_config::Config, writer: ConfigWriter) -> Self {
         self.toasts.set_display(Display {
-            toasts_on: config.toasts(),
+            toasts_on: config.general.toasts(),
         });
         self.colours
-            .set_colour_theme(config.colour_theme().map(str::to_string));
+            .set_colour_theme(config.display.colour_theme().map(str::to_string));
         self.colours
-            .set_colour_appearance(Some(config.colour_appearance()));
+            .set_colour_appearance(Some(config.display.colour_appearance()));
         let mut values = self.settings_values.borrow_mut();
         values.configuration = Configuration::from_config(config, &writer);
-        values.ledger_folder = config.data().to_path_buf();
+        values.ledger_folder = config.general.data().to_path_buf();
         drop(values);
         self.config_writer = writer;
         self
@@ -2984,13 +2980,13 @@ mod tests {
 
     #[test]
     fn a_devices_settings_apply_at_start_from_configuration() {
-        let mut config = PersonalLedgerConfig::default();
-        config.toasts = false;
-        config.colour_theme = Some("nord".into());
-        config.colour_appearance = ColourAppearance::Light;
-        config.date_style = Some(lib_core::DateStyle::Iso);
-        config.on_start = lib_core::OnStart::NoLedger;
-        config.start_view = lib_core::StartView::Last;
+        let mut config = lib_config::Config::default();
+        config.general.toasts = false;
+        config.display.colour_theme = Some("nord".into());
+        config.display.colour_appearance = ColourAppearance::Light;
+        config.display.date_style = Some(lib_core::DateStyle::Iso);
+        config.general.on_start = lib_core::OnStart::NoLedger;
+        config.general.start_view = lib_core::StartView::Last;
         let shell = Shell::new().with_configuration(&config, ConfigWriter::default());
         assert!(!shell.toasts.display().toasts_on);
         assert_eq!(shell.colours.colour_theme(), Some("nord"));
@@ -5001,7 +4997,7 @@ mod tests {
             env.iter()
                 .map(|(k, v)| ((*k).to_string(), (*v).to_string())),
         );
-        let shell = opened().with_configuration(&PersonalLedgerConfig::default(), writer);
+        let shell = opened().with_configuration(&lib_config::Config::default(), writer);
         (shell, path)
     }
 
@@ -5021,7 +5017,7 @@ mod tests {
         );
         assert_eq!(
             std::fs::read_to_string(&path).unwrap(),
-            "[Personal-Ledger]\nterminal_colours = true\n"
+            "[Display]\nterminal_colours = true\n"
         );
         let text = drawn(&mut shell);
         assert!(text.contains("terminal palette"), "{text}");
@@ -5039,7 +5035,7 @@ mod tests {
         run_command(&mut shell, "set glyphs ascii");
         assert_eq!(
             std::fs::read_to_string(&path).unwrap(),
-            "[Personal-Ledger]\nstatus_glyphs = ascii\n"
+            "[Display]\nstatus_glyphs = ascii\n"
         );
         let text = drawn(&mut shell);
         assert!(row_of(&text, "status glyphs").contains("ascii"), "{text}");
@@ -5055,7 +5051,7 @@ mod tests {
         press(&mut shell, &[KeyCode::End, KeyCode::Char(' ')]);
         assert_eq!(
             std::fs::read_to_string(&path).unwrap(),
-            "[Personal-Ledger]\nhint_bar = false\n"
+            "[Display]\nhint_bar = false\n"
         );
         // The save's status message holds the footer until the next key.
         press(&mut shell, &[KeyCode::Char('k')]);
@@ -5069,14 +5065,11 @@ mod tests {
     fn a_key_an_environment_variable_sets_says_so_rather_than_saving() {
         crate::locale::init_for_tests();
         let dir = tempfile::TempDir::new().unwrap();
-        let (mut shell, path) = writing_to(
-            &dir,
-            &[("PERSONAL_LEDGER_PERSONAL_LEDGER__HINT_BAR", "true")],
-        );
+        let (mut shell, path) = writing_to(&dir, &[("PERSONAL_LEDGER_DISPLAY__HINT_BAR", "true")]);
         shell.update(Action::OpenSettingsPage(SettingsPage::Display));
         let text = drawn_at(&mut shell, 140, 30);
         assert!(
-            row_of(&text, "hint bar").contains("set by PERSONAL_LEDGER_PERSONAL_LEDGER__HINT_BAR"),
+            row_of(&text, "hint bar").contains("set by PERSONAL_LEDGER_DISPLAY__HINT_BAR"),
             "{text}"
         );
         press(&mut shell, &[KeyCode::End, KeyCode::Enter]);

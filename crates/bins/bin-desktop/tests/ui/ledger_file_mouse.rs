@@ -122,8 +122,8 @@ fn a_file_opened_by_click_lands_on_the_dashboard_whatever_start_view_says(
 ) {
     let folder = Folder::new();
     let started = bin_desktop::start_on(&config_for(&folder.household()), common::today());
-    let mut config = lib_config::PersonalLedgerConfig::default();
-    config.start_view = lib_core::StartView::Noun("bills".into());
+    let mut config = lib_config::Config::default();
+    config.general.start_view = lib_core::StartView::Noun("bills".into());
     let mut ui = Harness::starting_with(app, started, PersistedState::default(), &config);
     ui.browse_from(folder.path());
     assert_eq!(

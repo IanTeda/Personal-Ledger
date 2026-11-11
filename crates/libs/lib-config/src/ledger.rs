@@ -21,10 +21,18 @@
 //!
 //! ## Configuration File Example
 //!
+//! Each Settings page with keys has its own section (ADR-0057); a key in any other section, such
+//! as the old `[Personal-Ledger]`, is ignored.
+//!
 //! ```ini
-//! [personal-ledger]
+//! [General]
 //! data = "~/Documents/Personal-Ledger"
 //! file = "~/Documents/Personal-Ledger/My-Personal-Ledger.pldb"
+//!
+//! [Display]
+//! date_style = "iso"
+//!
+//! [Logs]
 //! log = "debug"
 //! log_file_path = "/var/log/personal-ledger/personal-ledger.log"
 //!
@@ -55,14 +63,17 @@ const ENV_PREFIX: &str = "PERSONAL_LEDGER";
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, Default)]
 pub struct LedgerConfig {
-    /// Bootstrap/startup settings, not synced across computer systems. Populated from the
-    /// `[Personal-Ledger]` section.
-    #[serde(
-        alias = "PersonalLedger",
-        alias = "Personal-Ledger",
-        alias = "personal-ledger"
-    )]
-    pub personal_ledger: crate::PersonalLedgerConfig,
+    /// Settings › General's keys, from the `[General]` section (ADR-0057).
+    #[serde(default)]
+    pub general: crate::GeneralConfig,
+
+    /// Settings › Display's keys, from the `[Display]` section.
+    #[serde(default)]
+    pub display: crate::DisplayConfig,
+
+    /// Settings › Logs' keys, from the `[Logs]` section, which all three binaries read.
+    #[serde(default)]
+    pub logs: crate::LogsConfig,
 
     /// Keyboard shortcut configuration, read by the TUI/Desktop Clients. Populated from the
     /// `[keybindings]` section; the Sync Server merges its defaults in but never reads them.
@@ -157,9 +168,7 @@ impl LedgerConfig {
         config_builder = Self::add_explicit_and_env(config_builder, config_file, env)?;
 
         let mut ledger_config = Self::build(config_builder)?;
-        ledger_config
-            .personal_ledger
-            .resolve_locale(detect_locale)?;
+        ledger_config.general.resolve_locale(detect_locale)?;
         ledger_config.writer = writer;
         Ok(ledger_config)
     }
@@ -200,7 +209,10 @@ impl LedgerConfig {
             config_builder = config_builder.set_default(key, value)?;
         }
 
-        for (key, value) in crate::PersonalLedgerConfig::default_config_values() {
+        for (key, value) in crate::GeneralConfig::default_config_values()
+            .into_iter()
+            .chain(crate::LogsConfig::default_config_values())
+        {
             config_builder = config_builder.set_default(key, value)?;
         }
 
@@ -209,7 +221,7 @@ impl LedgerConfig {
 
     /// Add the explicit config file (if given and it exists) and environment variable
     /// overrides -- the two highest-precedence tiers, shared by both entry points. Env vars
-    /// (e.g. `PERSONAL_LEDGER_PERSONAL_LEDGER__LOG=debug`) always come last/highest: the
+    /// (e.g. `PERSONAL_LEDGER_LOGS__LOG=debug`) always come last/highest: the
     /// single `_` after the prefix is followed by `SECTION__KEY`, where `__` is the nesting
     /// separator (so single underscores inside a key, like `LOG_FILE_PATH`, are preserved).
     /// `env` replaces the process environment when given.
@@ -244,8 +256,8 @@ impl LedgerConfig {
         Ok(config_builder.add_source(config::File::from_str(&normalised, config::FileFormat::Ini)))
     }
 
-    /// Read an INI file and normalise its section headers: lower-cased (so `[Personal-Ledger]`/
-    /// `[personal-ledger]` are equivalent) and with `-` translated to `_` (so `[sync-server]`
+    /// Read an INI file and normalise its section headers: lower-cased (so `[General]`/
+    /// `[general]` are equivalent) and with `-` translated to `_` (so `[sync-server]`
     /// matches the `sync_server` field/serde alias -- INI section names commonly use
     /// hyphens, but Rust field names can't).
     fn normalise_ini(p: &Path) -> crate::Result<String> {
@@ -374,10 +386,34 @@ impl LedgerConfig {
         &self.writer
     }
 
-    /// Get the Personal Ledger bootstrap/startup configuration.
-    pub fn personal_ledger_config(&self) -> &crate::PersonalLedgerConfig {
-        &self.personal_ledger
+    /// Settings › General's keys, from `[General]`.
+    pub fn general_config(&self) -> &crate::GeneralConfig {
+        &self.general
     }
+
+    /// Settings › Display's keys, from `[Display]`.
+    pub fn display_config(&self) -> &crate::DisplayConfig {
+        &self.display
+    }
+
+    /// Settings › Logs' keys, from `[Logs]`.
+    pub fn logs_config(&self) -> &crate::LogsConfig {
+        &self.logs
+    }
+}
+
+/// The configuration a Client parses from a file holding `text`, under `env` alone and with no
+/// system Locale, for the section modules' tests.
+#[cfg(test)]
+pub(crate) fn parsed_for_test(text: &str, env: &[(&str, &str)]) -> LedgerConfig {
+    let dir = tempfile::TempDir::new().unwrap();
+    let path = dir.path().join("personal-ledger.conf");
+    std::fs::write(&path, text).unwrap();
+    let env = env
+        .iter()
+        .map(|(name, value)| ((*name).to_string(), (*value).to_string()))
+        .collect();
+    LedgerConfig::parse_with_detector(Some(&path), Some(env), || None).unwrap()
 }
 
 #[cfg(test)]
@@ -461,15 +497,12 @@ mod tests {
     fn parse_with_defaults_loads_successfully() {
         in_empty_cwd(|| {
             let config = LedgerConfig::parse(None).unwrap();
+            assert_eq!(config.logs.log(), crate::LogsConfig::default().log());
             assert_eq!(
-                config.personal_ledger.log(),
-                crate::PersonalLedgerConfig::default().log()
+                config.general.data(),
+                crate::GeneralConfig::default().data()
             );
-            assert_eq!(
-                config.personal_ledger.data(),
-                crate::PersonalLedgerConfig::default().data()
-            );
-            assert_eq!(config.personal_ledger.file(), None);
+            assert_eq!(config.general.file(), None);
             assert_eq!(
                 config.sync_server.bind_address(),
                 crate::SyncServerConfig::default().bind_address()
@@ -481,10 +514,7 @@ mod tests {
     fn accessors_return_the_parsed_sections() {
         in_empty_cwd(|| {
             let config = LedgerConfig::parse(None).unwrap();
-            assert_eq!(
-                config.personal_ledger_config().log(),
-                config.personal_ledger.log()
-            );
+            assert_eq!(config.logs_config().log(), config.logs.log());
             assert_eq!(
                 config.sync_server_config().bind_address(),
                 config.sync_server.bind_address()
@@ -517,18 +547,69 @@ mod tests {
         let config_file = temp_dir.path().join("test.conf");
 
         let config_content = r#"
-        [personal-ledger]
+        [General]
         file = "/tmp/test-ledger.pldb"
+        [Logs]
         log = "debug"
         "#;
         fs::write(&config_file, config_content).unwrap();
 
         let config = LedgerConfig::parse(Some(&config_file)).unwrap();
         assert_eq!(
-            config.personal_ledger.file(),
+            config.general.file(),
             Some(Path::new("/tmp/test-ledger.pldb"))
         );
-        assert_eq!(config.personal_ledger.log(), lib_tracing::Levels::DEBUG);
+        assert_eq!(config.logs.log(), lib_tracing::Levels::DEBUG);
+    }
+
+    #[test]
+    fn each_settings_page_reads_its_own_section_and_personal_ledger_is_ignored() {
+        let config = parsed_for_test(
+            "[General]\non_start = none\n[Display]\ndate_style = iso\n[Logs]\nlog = warn\n\
+             [Personal-Ledger]\ntoasts = false\nrow_density = roomy\nlog = trace\n",
+            &[],
+        );
+        assert_eq!(
+            config.general_config().on_start(),
+            lib_core::OnStart::NoLedger
+        );
+        assert_eq!(
+            config.display_config().date_style(),
+            Some(lib_core::DateStyle::Iso)
+        );
+        assert_eq!(config.logs_config().log(), lib_tracing::Levels::WARN);
+
+        // `[Personal-Ledger]` is neither read nor migrated (ADR-0057).
+        assert!(config.general_config().toasts());
+        assert_eq!(
+            config.display_config().row_density(),
+            crate::RowDensity::Regular
+        );
+        let config = parsed_for_test("[Personal-Ledger]\nlog = trace\n", &[]);
+        assert_eq!(
+            config.logs_config().log(),
+            crate::LogsConfig::default().log()
+        );
+    }
+
+    #[test]
+    fn a_config_key_in_a_file_is_ignored_and_only_the_flag_picks_the_file() {
+        let temp_dir = TempDir::new().unwrap();
+        let elsewhere = temp_dir.path().join("elsewhere.conf");
+        fs::write(&elsewhere, "[Logs]\nlog = error\n").unwrap();
+        let chosen = temp_dir.path().join("chosen.conf");
+        fs::write(
+            &chosen,
+            format!(
+                "[General]\nconfig = \"{}\"\n[Logs]\nlog = warn\n",
+                elsewhere.display()
+            ),
+        )
+        .unwrap();
+
+        let config =
+            LedgerConfig::parse_with_detector(Some(&chosen), env_map(&[]), || None).unwrap();
+        assert_eq!(config.logs_config().log(), lib_tracing::Levels::WARN);
     }
 
     #[test]
@@ -560,7 +641,7 @@ mod tests {
             fs::write(
                 &cwd_config_file,
                 r#"
-                [personal-ledger]
+                [logs]
                 log = "warn"
                 "#,
             )
@@ -568,10 +649,7 @@ mod tests {
 
             // A Client (`parse`) would pick this up; the Sync Server must not.
             let config = LedgerConfig::parse_for_sync_server(None).unwrap();
-            assert_eq!(
-                config.personal_ledger.log(),
-                crate::PersonalLedgerConfig::default().log()
-            );
+            assert_eq!(config.logs.log(), crate::LogsConfig::default().log());
         });
     }
 
@@ -590,13 +668,13 @@ mod tests {
         let config_file = temp_dir.path().join("test.conf");
 
         let config_content = r#"
-        [Personal-Ledger]
+        [LOGS]
         log = "warn"
         "#;
         fs::write(&config_file, config_content).unwrap();
 
         let config = LedgerConfig::parse(Some(&config_file)).unwrap();
-        assert_eq!(config.personal_ledger.log(), lib_tracing::Levels::WARN);
+        assert_eq!(config.logs.log(), lib_tracing::Levels::WARN);
     }
 
     #[test]
@@ -606,7 +684,7 @@ mod tests {
 
         // Missing closing bracket -- malformed INI.
         let config_content = r#"
-        [personal-ledger
+        [logs
         log = "debug"
         "#;
         fs::write(&config_file, config_content).unwrap();
@@ -621,7 +699,7 @@ mod tests {
         let config_file = temp_dir.path().join("invalid_level.conf");
 
         let config_content = r#"
-        [personal-ledger]
+        [logs]
         log = "invalid"
         "#;
         fs::write(&config_file, config_content).unwrap();
@@ -639,7 +717,7 @@ mod tests {
             fs::write(
                 &cwd_config_file,
                 r#"
-                [Personal-Ledger]
+                [Logs]
                 log = "warn"
                 "#,
             )
@@ -649,14 +727,14 @@ mod tests {
             fs::write(
                 &explicit_file,
                 r#"
-                [Personal-Ledger]
+                [Logs]
                 log = "debug"
                 "#,
             )
             .unwrap();
 
             let config = LedgerConfig::parse(Some(&explicit_file)).unwrap();
-            assert_eq!(config.personal_ledger.log(), lib_tracing::Levels::DEBUG);
+            assert_eq!(config.logs.log(), lib_tracing::Levels::DEBUG);
         });
     }
 
@@ -689,9 +767,9 @@ mod tests {
 
     #[test]
     fn env_double_underscore_overrides_section_key() {
-        let env = env_map(&[("PERSONAL_LEDGER_PERSONAL_LEDGER__LOG", "trace")]);
+        let env = env_map(&[("PERSONAL_LEDGER_LOGS__LOG", "trace")]);
         let config = LedgerConfig::parse_for_sync_server_with_env(None, env).unwrap();
-        assert_eq!(config.personal_ledger.log(), lib_tracing::Levels::TRACE);
+        assert_eq!(config.logs.log(), lib_tracing::Levels::TRACE);
     }
 
     #[test]
@@ -741,13 +819,10 @@ mod tests {
 
     #[test]
     fn env_preserves_single_underscores_within_a_key() {
-        let env = env_map(&[(
-            "PERSONAL_LEDGER_PERSONAL_LEDGER__LOG_FILE_PATH",
-            "/tmp/ledger.log",
-        )]);
+        let env = env_map(&[("PERSONAL_LEDGER_LOGS__LOG_FILE_PATH", "/tmp/ledger.log")]);
         let config = LedgerConfig::parse_for_sync_server_with_env(None, env).unwrap();
         assert_eq!(
-            config.personal_ledger.log_file_path(),
+            config.logs.log_file_path(),
             Some(Path::new("/tmp/ledger.log"))
         );
     }
@@ -766,23 +841,23 @@ mod tests {
         fs::write(
             &config_file,
             r#"
-            [personal-ledger]
+            [logs]
             log = "warn"
             "#,
         )
         .unwrap();
 
-        let env = env_map(&[("PERSONAL_LEDGER_PERSONAL_LEDGER__LOG", "trace")]);
+        let env = env_map(&[("PERSONAL_LEDGER_LOGS__LOG", "trace")]);
         let config = LedgerConfig::parse_for_sync_server_with_env(Some(&config_file), env).unwrap();
-        assert_eq!(config.personal_ledger.log(), lib_tracing::Levels::TRACE);
+        assert_eq!(config.logs.log(), lib_tracing::Levels::TRACE);
     }
 
     #[test]
     fn client_parse_honours_injected_env() {
         in_empty_cwd(|| {
-            let env = env_map(&[("PERSONAL_LEDGER_PERSONAL_LEDGER__LOG", "error")]);
+            let env = env_map(&[("PERSONAL_LEDGER_LOGS__LOG", "error")]);
             let config = LedgerConfig::parse_with_detector(None, env, || None).unwrap();
-            assert_eq!(config.personal_ledger.log(), lib_tracing::Levels::ERROR);
+            assert_eq!(config.logs.log(), lib_tracing::Levels::ERROR);
         });
     }
 
@@ -845,32 +920,29 @@ mod tests {
     #[test]
     fn terminal_colours_defaults_off_and_reads_env() {
         let config = LedgerConfig::parse_for_sync_server_with_env(None, env_map(&[])).unwrap();
-        assert!(!config.personal_ledger.terminal_colours());
+        assert!(!config.display.terminal_colours());
 
-        let env = env_map(&[("PERSONAL_LEDGER_PERSONAL_LEDGER__TERMINAL_COLOURS", "true")]);
+        let env = env_map(&[("PERSONAL_LEDGER_DISPLAY__TERMINAL_COLOURS", "true")]);
         let config = LedgerConfig::parse_for_sync_server_with_env(None, env).unwrap();
-        assert!(config.personal_ledger.terminal_colours());
+        assert!(config.display.terminal_colours());
     }
 
     #[test]
     fn status_glyphs_and_the_hint_bar_default_to_unicode_and_shown_and_read_env() {
         let config = LedgerConfig::parse_for_sync_server_with_env(None, env_map(&[])).unwrap();
-        assert_eq!(
-            config.personal_ledger.status_glyphs(),
-            crate::StatusGlyphs::Unicode
-        );
-        assert!(config.personal_ledger.hint_bar());
+        assert_eq!(config.display.status_glyphs(), crate::StatusGlyphs::Unicode);
+        assert!(config.display.hint_bar());
 
         let env = env_map(&[
-            ("PERSONAL_LEDGER_PERSONAL_LEDGER__STATUS_GLYPHS", "ascii"),
-            ("PERSONAL_LEDGER_PERSONAL_LEDGER__HINT_BAR", "false"),
+            ("PERSONAL_LEDGER_DISPLAY__STATUS_GLYPHS", "ascii"),
+            ("PERSONAL_LEDGER_DISPLAY__HINT_BAR", "false"),
         ]);
         let config = LedgerConfig::parse_for_sync_server_with_env(None, env).unwrap();
         assert_eq!(
-            config.personal_ledger.status_glyphs(),
+            config.display.status_glyphs(),
             crate::StatusGlyphs::AsciiFallback
         );
-        assert!(!config.personal_ledger.hint_bar());
+        assert!(!config.display.hint_bar());
     }
 
     #[test]
@@ -881,12 +953,12 @@ mod tests {
                 config.writer().target(),
                 LedgerConfig::get_user_config_path().as_deref()
             );
-            let env = env_map(&[("PERSONAL_LEDGER_PERSONAL_LEDGER__HINT_BAR", "false")]);
+            let env = env_map(&[("PERSONAL_LEDGER_DISPLAY__HINT_BAR", "false")]);
             let config = LedgerConfig::parse_with_detector(None, env, || None).unwrap();
             assert_eq!(
                 config.writer().shadow(crate::ConfigKey::HintBar),
                 Some(crate::Shadow::Env(
-                    "PERSONAL_LEDGER_PERSONAL_LEDGER__HINT_BAR".into()
+                    "PERSONAL_LEDGER_DISPLAY__HINT_BAR".into()
                 ))
             );
         });
@@ -894,15 +966,11 @@ mod tests {
         assert_eq!(config.writer().target(), None);
     }
 
-    const LOCALE_ENV: &str = "PERSONAL_LEDGER_PERSONAL_LEDGER__LOCALE";
+    const LOCALE_ENV: &str = "PERSONAL_LEDGER_GENERAL__LOCALE";
 
     fn write_locale_file(dir: &TempDir, locale: &str) -> PathBuf {
         let config_file = dir.path().join("locale.conf");
-        fs::write(
-            &config_file,
-            format!("[Personal-Ledger]\nlocale = \"{locale}\"\n"),
-        )
-        .unwrap();
+        fs::write(&config_file, format!("[General]\nlocale = \"{locale}\"\n")).unwrap();
         config_file
     }
 
@@ -914,7 +982,7 @@ mod tests {
         in_empty_cwd(|| {
             let config =
                 LedgerConfig::parse_with_detector(config_file, env, || system.map(String::from))?;
-            let (tag, source) = config.personal_ledger.resolved_locale();
+            let (tag, source) = config.general.resolved_locale();
             Ok((tag.to_string(), source))
         })
     }
@@ -971,7 +1039,7 @@ mod tests {
             };
             args.apply_overrides(&mut config);
             assert_eq!(
-                config.personal_ledger.resolved_locale(),
+                config.general.resolved_locale(),
                 ("en-GB", crate::LocaleSource::Config)
             );
         });
@@ -1020,7 +1088,7 @@ mod tests {
         let env = env_map(&[(LOCALE_ENV, "not a locale")]);
         let config = LedgerConfig::parse_for_sync_server_with_env(None, env).unwrap();
         assert_eq!(
-            config.personal_ledger.resolved_locale(),
+            config.general.resolved_locale(),
             ("not a locale", crate::LocaleSource::Config)
         );
     }
@@ -1037,7 +1105,7 @@ mod tests {
     /// `[Tracing]` sections, long after `LedgerConfig` stopped reading either. Nothing
     /// complained, because `serde` ignores unknown fields here -- every key under them was
     /// silently discarded in favour of the built-in defaults. Parsing alone therefore proves
-    /// nothing; the section headers have to be checked against the three that are read.
+    /// nothing; the section headers have to be checked against the ones that are read.
     #[test]
     fn shipped_conf_has_no_section_lib_config_ignores() {
         let raw = fs::read_to_string(shipped_conf_path()).unwrap();
@@ -1060,7 +1128,14 @@ mod tests {
             assert!(
                 matches!(
                     section.as_str(),
-                    "personal_ledger" | "keybindings" | "sync_server"
+                    "general"
+                        | "display"
+                        | "logs"
+                        | "keybindings"
+                        | "sync_server"
+                        | "theme"
+                        | "theme.light"
+                        | "theme.dark"
                 ),
                 "[{section}] is not a section LedgerConfig reads, so every key under it is \
                  silently ignored -- remove it or wire it up"
@@ -1081,21 +1156,21 @@ mod tests {
 
             // The file sets `log = "debug"`; the built-in default is `INFO`.
             assert_eq!(
-                config.personal_ledger.log(),
+                config.logs.log(),
                 lib_tracing::Levels::DEBUG,
-                "[Personal-Ledger] log did not reach the config"
+                "[Logs] log did not reach the config"
             );
 
             // The file's `data` key is a literal tilde path -- `config` does no shell
             // expansion -- whereas the default is an expanded absolute path.
             assert_eq!(
-                config.personal_ledger.data(),
+                config.general.data(),
                 Path::new("~/Documents/Personal-Ledger"),
-                "[Personal-Ledger] data did not reach the config"
+                "[General] data did not reach the config"
             );
 
             // `file` overrides On start, so the shipped file leaves it commented out.
-            assert_eq!(config.personal_ledger.file(), None);
+            assert_eq!(config.general.file(), None);
 
             // `super_key` and the ten command bindings match the built-in defaults, so they
             // cannot discriminate -- but the file must at least not define an invalid

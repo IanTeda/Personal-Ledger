@@ -279,7 +279,7 @@ run = "mise run db-fresh && mise run db-prepare-generate && mise run db-prepare-
 # Dev data for local runs: writes the Sample Ledger (`seed::sample`), so ids match the Ledger the
 # tests run on, then generated rows on top. Run it on a migrated database (`db-fresh` for a clean
 # one). Idempotent: the rows are upserts, so running it again changes nothing but
-# timestamps. Point a Client at the file (`[Personal-Ledger] file`) to see the rows.
+# timestamps. Point a Client at the file (`[General] file`) to see the rows.
 [tasks.db-seed]
 description = "Add the Sample Ledger, and generated rows, to the dev database"
 run = """

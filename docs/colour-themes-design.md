@@ -105,7 +105,7 @@ Every role the TUI uses has a fallback to terminal colours, used when `terminal_
 Decided on [#299](https://github.com/IanTeda/Personal-Ledger/issues/299), [ADR-0024](adr/0024-tui-draws-colour-themes-in-rgb-with-opt-in-terminal-colours.md).
 
 - **RGB by default.** The TUI draws the resolved Colour Theme's RGB values, like the Desktop. With a null `colour_theme` both Clients draw Modernist.
-- **Opt-in terminal colours.** `terminal_colours = true` in the TUI's `[Personal-Ledger]` Configuration makes it ignore the Colour Theme (and `[theme]`) and draw with the [fallback table](#tui-fallback-to-terminal-colours), so the terminal's own theme wins. It is Configuration, not a Preference: it never syncs and the Desktop ignores it. There is no "Terminal" Colour Theme.
+- **Opt-in terminal colours.** `terminal_colours = true` in the TUI's `[Display]` Configuration makes it ignore the Colour Theme (and `[theme]`) and draw with the [fallback table](#tui-fallback-to-terminal-colours), so the terminal's own theme wins. It is Configuration, not a Preference: it never syncs and the Desktop ignores it. There is no "Terminal" Colour Theme.
 - **Colour depth.** Truecolor when `COLORTERM` is `truecolor`/`24bit`; otherwise the nearest of the 256 colours; on a 16-colour terminal the fallback table is used automatically, with a `warn`.
 - **System in a terminal.** At start the TUI queries the terminal background (OSC 11) and reads `COLORFGBG`; a light background picks the light Colour Variant, and no answer picks dark.
 - **Live changes.** Terminals that support colour-scheme notifications (DEC mode 2031) switch Colour Variant live; elsewhere the setting is read once at start. No polling.

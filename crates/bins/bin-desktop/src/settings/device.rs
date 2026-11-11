@@ -1,7 +1,6 @@
 //! `impl DeviceConfiguration` for the Desktop (ADR-0053): Toasts, the Colour Theme and
 //! Appearance, the date style, Row density, Status glyphs, On start and Start view live in the
-//! `[Personal-Ledger]` section of
-//! the user's `personal-ledger.conf`, which Settings › General and Display write through
+//! `[General]` and `[Display]` sections (ADR-0057) of the user's `personal-ledger.conf`, which Settings › General and Display write through
 //! `lib_config`'s [`ConfigWriter`] as each one changes, the TUI's file and spellings included.
 //! The pages' Presenters (`lib-settings`) decide what a write's answer means; this only writes.
 
@@ -186,7 +185,7 @@ mod tests {
         }
     }
 
-    /// The `[Personal-Ledger]` keys `text` holds, read with the file's spellings.
+    /// The `[General]` and `[Display]` keys `text` holds, read with the file's spellings.
     fn stored(text: &str) -> StoredDevice {
         let mut stored = StoredDevice::default();
         for (key, value) in text
@@ -246,9 +245,9 @@ mod tests {
         device.set_status_glyphs(StatusGlyphs::AsciiFallback);
         assert_eq!(
             std::fs::read_to_string(&path).unwrap_or_default(),
-            "[Personal-Ledger]\ntoasts = false\ncolour_theme = nord\ncolour_appearance = light\n\
-             date_style = default\non_start = none\nstart_view = bills\nrow_density = compact\n\
-             status_glyphs = ascii\n"
+            "[General]\ntoasts = false\non_start = none\nstart_view = bills\n\n\
+             [Display]\ncolour_theme = nord\ncolour_appearance = light\ndate_style = default\n\
+             row_density = compact\nstatus_glyphs = ascii\n"
         );
     }
 }

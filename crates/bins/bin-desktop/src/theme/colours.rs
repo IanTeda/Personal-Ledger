@@ -137,10 +137,10 @@ pub fn set_colour_appearance(colour_appearance: Option<ColourAppearance>, cx: &m
 /// Applies the Colour Theme and Appearance as start-up read them from Configuration (ADR-0053),
 /// before the window opens. The Colour Theme's id stays raw, so one from a newer release survives
 /// a run of this one.
-pub fn set_device_colours(config: &lib_config::PersonalLedgerConfig, cx: &mut App) {
+pub fn set_device_colours(config: &lib_config::Config, cx: &mut App) {
     update(cx, |colours| {
-        colours.colour_theme = config.colour_theme().map(str::to_string);
-        colours.colour_appearance = Some(config.colour_appearance());
+        colours.colour_theme = config.display.colour_theme().map(str::to_string);
+        colours.colour_appearance = Some(config.display.colour_appearance());
     });
 }
 

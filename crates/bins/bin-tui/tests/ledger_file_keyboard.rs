@@ -359,8 +359,8 @@ fn ledger_file(path: &std::path::Path) {
 
 /// `shell` with On start set to start with no Ledger open, as the config file would set it.
 fn no_ledger_on_start(shell: bin_tui::Shell) -> bin_tui::Shell {
-    let mut config = lib_config::PersonalLedgerConfig::default();
-    config.on_start = lib_core::OnStart::NoLedger;
+    let mut config = lib_config::Config::default();
+    config.general.on_start = lib_core::OnStart::NoLedger;
     shell.with_configuration(&config, lib_config::ConfigWriter::default())
 }
 
@@ -534,8 +534,8 @@ fn with_no_ledger_open_quit_still_quits() {
 
 /// `shell` with Start view set to `start_view`, as the config file would set it.
 fn start_view(shell: bin_tui::Shell, start_view: lib_core::StartView) -> bin_tui::Shell {
-    let mut config = lib_config::PersonalLedgerConfig::default();
-    config.start_view = start_view;
+    let mut config = lib_config::Config::default();
+    config.general.start_view = start_view;
     shell.with_configuration(&config, lib_config::ConfigWriter::default())
 }
 

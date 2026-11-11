@@ -201,7 +201,7 @@ Shell: focused view id · view stack for `q` · mode. Palette: input buffer · f
 ## Style
 The wireframe's colours (ink `#201e1d` on ground `#f3f2f2`, a single accent `#ec3013`, dim-text greys, a dark variant on `#161413`) are the Modernist Colour Theme, the default of five built-in Colour Themes. Code draws them through Colour Roles and calculated colours on the Shell's `Colours` (`src/colours.rs`), never literal RGB: see `docs/colour-themes-design.md`.
 
-The TUI draws the resolved Colour Theme in RGB by default, like the Desktop (ADR-0024): truecolor when `COLORTERM` is `truecolor`/`24bit`, otherwise the nearest of the 256 colours. On a 16-colour terminal, or with `terminal_colours = true` in `[Personal-Ledger]`, it draws the terminal's own colours through the design doc's "TUI fallback to terminal colours" table. System Colour Appearance asks the terminal (mode 2031, OSC 11, then `COLORFGBG`) once at start; no answer means dark.
+The TUI draws the resolved Colour Theme in RGB by default, like the Desktop (ADR-0024): truecolor when `COLORTERM` is `truecolor`/`24bit`, otherwise the nearest of the 256 colours. On a 16-colour terminal, or with `terminal_colours = true` in `[Display]`, it draws the terminal's own colours through the design doc's "TUI fallback to terminal colours" table. System Colour Appearance asks the terminal (mode 2031, OSC 11, then `COLORFGBG`) once at start; no answer means dark.
 
 One accent only. Never rely on color alone: negatives also carry `−`, over-budget also overshoots its track, flagged rows also carry `⚑`.
 

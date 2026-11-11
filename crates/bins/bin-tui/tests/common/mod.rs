@@ -95,7 +95,7 @@ pub fn writing_config(
         env.iter()
             .map(|(name, value)| ((*name).to_string(), (*value).to_string())),
     );
-    let shell = shell.with_configuration(&lib_config::PersonalLedgerConfig::default(), writer);
+    let shell = shell.with_configuration(&lib_config::Config::default(), writer);
     (shell, path)
 }
 

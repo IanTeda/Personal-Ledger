@@ -850,7 +850,7 @@ mod tests {
     fn a_shadowed_date_style_is_noted_and_reaches_no_view() {
         let device = Rc::new(InMemoryDeviceConfiguration::shadowing(
             DeviceKey::DateStyle,
-            "PERSONAL_LEDGER_PERSONAL_LEDGER__DATE_STYLE",
+            "PERSONAL_LEDGER_DISPLAY__DATE_STYLE",
         ));
         let mut display = display_on(device.clone());
         assert!(display.view_model().date_style.shadowed.is_some());
@@ -862,7 +862,7 @@ mod tests {
 
         assert_eq!(display.output().date_style, None);
         assert!(router.displays().is_empty());
-        assert!(router.statuses()[0].contains("PERSONAL_LEDGER_PERSONAL_LEDGER__DATE_STYLE"));
+        assert!(router.statuses()[0].contains("PERSONAL_LEDGER_DISPLAY__DATE_STYLE"));
     }
 
     #[test]

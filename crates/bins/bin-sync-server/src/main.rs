@@ -39,8 +39,8 @@ async fn main() -> SyncServerResult<()> {
     let mut config = config::Config::parse_for_sync_server(cli.config.path.as_deref())?;
     cli.config.apply_overrides(&mut config);
 
-    let telemetry_level = Some(&config.personal_ledger_config().log());
-    let log_file_path = config.personal_ledger_config().log_file_path();
+    let telemetry_level = Some(&config.logs_config().log());
+    let log_file_path = config.logs_config().log_file_path();
     // Held for the lifetime of `main` -- dropping it stops the background worker that
     // flushes buffered log lines to `log_file_path` (when configured).
     let _log_guard = telemetry::init(telemetry_level, log_file_path, None)?;
@@ -48,7 +48,7 @@ async fn main() -> SyncServerResult<()> {
 
     // The Sync Server's own durable Change Set log (ADR-0009) -- reuses lib-database's
     // conventions and migrations directly, pointed at its own `[sync-server] database_uri`,
-    // never a Client's local `[Personal-Ledger] file`.
+    // never a Client's local `[General] file`.
     let database_connection =
         lib_database::DatabaseConnection::new(config.sync_server_config().database_uri()).await?;
     let database_pool = database_connection.into_pool();

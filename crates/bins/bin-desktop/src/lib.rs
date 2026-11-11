@@ -81,7 +81,7 @@ pub fn ledger_path(
     config: &lib_config::Config,
     persisted: &PersistedState,
 ) -> Option<std::path::PathBuf> {
-    let config = config.personal_ledger_config();
+    let config = config.general_config();
     lib_core::ledger_to_open(
         config.on_start(),
         config.file(),
@@ -139,7 +139,7 @@ impl Started {
 /// first, once and before any window opens, since the Toast saying why a file didn't open is
 /// written in it.
 pub fn start(config: &lib_config::Config) -> Started {
-    let (requested_locale, locale_source) = config.personal_ledger_config().resolved_locale();
+    let (requested_locale, locale_source) = config.general_config().resolved_locale();
     locale::init(requested_locale, locale_source);
     start_on(config, chrono::Local::now().date_naive())
 }
@@ -299,7 +299,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, started: S
         Started::NoLedger => (None, None),
         Started::Failed(failure) => (None, Some(failure)),
     };
-    let configured_level = Some(config.personal_ledger_config().log());
+    let configured_level = Some(config.logs_config().log());
     config.theme_config().warn_invalid();
     let theme_overrides = config.theme_config().overrides.clone();
     let keybindings = config.keybindings_config().clone();
@@ -307,14 +307,14 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, started: S
     // machine"), the noun for Start view's `last`; everything else in `NavState` starts fresh every
     // launch, so there's nothing else to seed here. A device's settings are Configuration (ADR-0053), not state.
     let persisted = persistence::load();
-    let device_settings = config.personal_ledger_config().clone();
+    let device_settings = config.clone();
     let device_writer = config.writer().clone();
     // The file `start` opened, else the one remembered before, which the General page shows. The
     // state file keeps the one open at quit, which `:open` may have changed, for On start.
     let last_ledger = last_ledger_at_quit(opened.as_deref(), persisted.last_ledger.as_deref());
     let remembered_ledger = persisted.last_ledger.clone();
     let this_device = lib_settings::ThisDevice {
-        ledger_folder: config.personal_ledger_config().data().to_path_buf(),
+        ledger_folder: config.general_config().data().to_path_buf(),
         last_ledger,
         configuration: config.writer().target().map(std::path::Path::to_path_buf),
     };
@@ -399,7 +399,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, started: S
                     cx.new(|cx| {
                         let mut shell = shell::router::build(
                             persisted,
-                            device_settings.start_view(),
+                            device_settings.general.start_view(),
                             shell::router::ShellBindings { keybindings },
                             shell::router::ShellLogs {
                                 buffer: logs,
@@ -526,7 +526,7 @@ mod tests {
     /// [`config`] with On start set as the conf file would set it.
     fn starting(file: Option<&str>, on_start: lib_core::OnStart) -> lib_config::Config {
         let mut config = config(file);
-        config.personal_ledger.on_start = on_start;
+        config.general.on_start = on_start;
         config
     }
 
@@ -686,7 +686,7 @@ mod tests {
         let persisted = persistence::load_from(&home.path().join("desktop-state.json"));
         assert_eq!(persisted, PersistedState::default());
         let config = config_in(home.path(), None);
-        assert_eq!(config.personal_ledger_config().file(), None);
+        assert_eq!(config.general_config().file(), None);
         assert!(matches!(
             start_with(&config, &persisted, today()),
             Started::NoLedger

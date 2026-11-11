@@ -373,7 +373,7 @@ impl<'a> Harness<'a> {
             (Some(router::LedgerFile::in_memory(stores.share())), commits),
             keybindings,
             PersistedState::default(),
-            &lib_config::PersonalLedgerConfig::default(),
+            &lib_config::Config::default(),
         )
     }
 
@@ -411,12 +411,7 @@ impl<'a> Harness<'a> {
         started: bin_desktop::Started,
         persisted: PersistedState,
     ) -> Self {
-        Self::starting_with(
-            app,
-            started,
-            persisted,
-            &lib_config::PersonalLedgerConfig::default(),
-        )
+        Self::starting_with(app, started, persisted, &lib_config::Config::default())
     }
 
     /// As [`Harness::starting`], on a device's settings as start-up read them from `config`, so
@@ -425,7 +420,7 @@ impl<'a> Harness<'a> {
         app: &'a mut TestAppContext,
         started: bin_desktop::Started,
         persisted: PersistedState,
-        config: &lib_config::PersonalLedgerConfig,
+        config: &lib_config::Config,
     ) -> Self {
         let failure = match &started {
             bin_desktop::Started::Failed(failure) => Some(failure.clone()),
@@ -464,7 +459,7 @@ impl<'a> Harness<'a> {
         (stores, commits): (Option<router::LedgerFile>, Rc<Cell<usize>>),
         keybindings: lib_config::KeyBindingConfig,
         persisted: PersistedState,
-        config: &lib_config::PersonalLedgerConfig,
+        config: &lib_config::Config,
     ) -> Self {
         // Pins the process-wide Locale to en-US (and loads this bin's Messages), so rendered text
         // never depends on the host; `main` is never run in a test.
@@ -480,7 +475,7 @@ impl<'a> Harness<'a> {
             window.focus(&focus_handle);
             router::build(
                 persisted,
-                config.start_view(),
+                config.general.start_view(),
                 ShellBindings { keybindings },
                 ShellLogs {
                     buffer: logs.clone(),
@@ -512,7 +507,7 @@ impl<'a> Harness<'a> {
     /// `env`'s `PERSONAL_LEDGER_` variables.
     pub fn with_configuration(
         app: &'a mut TestAppContext,
-        config: &lib_config::PersonalLedgerConfig,
+        config: &lib_config::Config,
         env: &[(&str, &str)],
     ) -> Self {
         let mut ui = Self::new(app);
@@ -522,7 +517,7 @@ impl<'a> Harness<'a> {
 
     /// Applies a device's settings from `config` as `run` does at start, writing to this Shell's
     /// conf file under `env`.
-    fn configure(&mut self, config: &lib_config::PersonalLedgerConfig, env: &[(&str, &str)]) {
+    fn configure(&mut self, config: &lib_config::Config, env: &[(&str, &str)]) {
         let writer = lib_config::ConfigWriter::new(
             Some(self.conf_path()),
             Vec::new(),

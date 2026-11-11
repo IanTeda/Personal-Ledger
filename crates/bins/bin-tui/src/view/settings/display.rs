@@ -459,7 +459,7 @@ mod tests {
         values.configuration.hint_bar = false;
         values.configuration.shadows = vec![(
             lib_config::ConfigKey::HintBar,
-            lib_config::Shadow::Env("PERSONAL_LEDGER_PERSONAL_LEDGER__HINT_BAR".into()),
+            lib_config::Shadow::Env("PERSONAL_LEDGER_DISPLAY__HINT_BAR".into()),
         )];
         let row = page.field(
             SettingField::HintBar,
@@ -467,7 +467,7 @@ mod tests {
             &Colours::default(),
         );
         assert_eq!(row.value, "[ ] show key hints");
-        assert_eq!(row.note, "set by PERSONAL_LEDGER_PERSONAL_LEDGER__HINT_BAR");
+        assert_eq!(row.note, "set by PERSONAL_LEDGER_DISPLAY__HINT_BAR");
         assert_eq!(
             page.field(
                 SettingField::StatusGlyphs,

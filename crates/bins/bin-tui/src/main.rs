@@ -25,8 +25,8 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let mut config = lib_config::Config::parse(cli.config.path.as_deref())?;
     cli.config.apply_overrides(&mut config);
-    let telemetry_level = Some(&config.personal_ledger_config().log());
-    let log_file_path = config.personal_ledger_config().log_file_path();
+    let telemetry_level = Some(&config.logs_config().log());
+    let log_file_path = config.logs_config().log_file_path();
     // Held for the lifetime of `main` -- dropping it stops the background worker that
     // flushes buffered log lines to `log_file_path` (when configured).
     // Settings › Logs reads this; the capture only fills the buffer, never the terminal the TUI
@@ -36,12 +36,12 @@ async fn main() -> Result<()> {
     config.theme_config().warn_invalid();
 
     // Resolved once, before the terminal enters raw mode; the Locale never changes at runtime.
-    let (requested_locale, locale_source) = config.personal_ledger_config().resolved_locale();
+    let (requested_locale, locale_source) = config.general_config().resolved_locale();
     locale::init(requested_locale, locale_source);
 
     // Detected once, before the terminal enters raw mode and crossterm starts reading input,
     // which would otherwise read the probe's reply as key presses.
-    let terminal_colours = config.personal_ledger_config().terminal_colours();
+    let terminal_colours = config.display_config().terminal_colours();
     let depth = detect::colour_depth_from_env();
     if depth == colours::ColourDepth::Ansi16 && !terminal_colours {
         tracing::warn!("16-colour terminal: drawing terminal colours instead of the Colour Theme");
@@ -65,9 +65,9 @@ async fn main() -> Result<()> {
     let mut shell = build_shell(
         config.keybindings_config().clone(),
         colours,
-        config.personal_ledger_config().file(),
+        config.general_config().file(),
     )
-    .with_configuration(config.personal_ledger_config(), config.writer().clone())
+    .with_configuration(&config, config.writer().clone())
     .with_log_buffer(logs);
     shell.open_on_start(kept.last_ledger.as_deref());
     shell.land_on_start(kept.last_view.as_deref());

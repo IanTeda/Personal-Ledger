@@ -135,6 +135,6 @@ mod start_view;
 pub use start_view::StartView;
 
 /// How a table's rows are spaced and how a status is marked: Row density and Status glyphs,
-/// Configuration both Clients read from the same `[Personal-Ledger]` keys (ADR-0053).
+/// Configuration both Clients read from the same `[Display]` keys (ADR-0057).
 mod display;
 pub use display::{RowDensity, StatusGlyphs};

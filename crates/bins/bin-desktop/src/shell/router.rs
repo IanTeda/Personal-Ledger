@@ -445,30 +445,30 @@ impl Root {
     /// the colours', set before the window opens ([`crate::theme::colours::set_device_colours`]).
     pub fn set_configuration(
         &mut self,
-        config: &lib_config::PersonalLedgerConfig,
+        config: &lib_config::Config,
         writer: lib_config::ConfigWriter,
         cx: &mut App,
     ) {
         let device: Rc<dyn lib_settings::DeviceConfiguration> =
             Rc::new(DeviceConfigFile::new(writer));
         let general = lib_settings::GeneralSettings {
-            on_start: config.on_start(),
-            start_view: config.start_view().clone(),
-            toasts_on: config.toasts(),
+            on_start: config.general.on_start(),
+            start_view: config.general.start_view().clone(),
+            toasts_on: config.general.toasts(),
         };
         let display = lib_settings::DisplaySettings {
-            date_style: config.date_style(),
-            row_density: config.row_density(),
-            status_glyphs: config.status_glyphs(),
-            colour_theme: config.colour_theme().map(str::to_string),
-            colour_appearance: config.colour_appearance(),
+            date_style: config.display.date_style(),
+            row_density: config.display.row_density(),
+            status_glyphs: config.display.status_glyphs(),
+            colour_theme: config.display.colour_theme().map(str::to_string),
+            colour_appearance: config.display.colour_appearance(),
         };
         self.settings.update(cx, |view, cx| {
             view.configure_device(device, general, display, cx);
         });
         let output = self.display_output(cx);
         self.push_display_preferences(output, cx);
-        self.push_toasts_on(config.toasts());
+        self.push_toasts_on(config.general.toasts());
     }
 
     /// Shows `device` on Settings › General: what start-up knows of this device.

@@ -9,13 +9,15 @@
 //!
 //! - [`error`] - Configuration error types
 //! - [`ledger`] - Top-level application configuration, shared by all three consumers
-//! - [`personal_ledger`] - `[Personal-Ledger]` section: data dir, database file, log
-//!   level/file, shared by all three consumers (superseded `[tracing]`/`TracingConfig`)
+//! - [`general`] - `[General]` section: Settings › General's keys (On start, Start view,
+//!   Toasts, the Locale, the data dir and the Ledger file), ADR-0057
+//! - [`display`] - `[Display]` section: Settings › Display's keys
+//! - [`logs`] - `[Logs]` section: the log level and file, read by all three binaries
 //! - [`sync_server`] - Sync-Server-only configuration (bind address, database URI), not
 //!   read by Clients
 //! - [`theme`] - `[theme]`/`[theme.light]`/`[theme.dark]` Colour Role overrides, read by
 //!   the TUI/Desktop Clients
-//! - [`writer`] - Writes one `[Personal-Ledger]` key back to the user's file, for Settings
+//! - [`writer`] - Writes one key back to its section of the user's file, for Settings
 //! - [`keybindings`] - Keyboard shortcut configuration, read by the TUI/Desktop Clients
 //! - [`cli`] - Shared `--config`/`-c`/`--data`/`-d`/`--file`/`-f`/`--log`/`-l`/`--locale` CLI
 //!   arguments, flattened into each binary's own parser
@@ -30,10 +32,12 @@
 //! inside a Docker container.
 
 mod cli;
+mod display;
 mod error;
+mod general;
 mod keybindings;
 mod ledger;
-mod personal_ledger;
+mod logs;
 mod sync_server;
 mod theme;
 mod writer;
@@ -47,18 +51,17 @@ pub(crate) type Result<T> = std::result::Result<T, Error>;
 /// The top-level application configuration type, shared by all three consumers.
 pub use ledger::LedgerConfig as Config;
 
-/// Personal Ledger configuration.
-pub use personal_ledger::{
-    DATE_STYLE_DEFAULT, DEFAULT_LOCALE, LocaleSource, PersonalLedgerConfig, date_style_key,
-    on_start_from_key, on_start_key,
-};
+/// The `[General]`, `[Display]` and `[Logs]` sections, one per Settings page (ADR-0057).
+pub use display::{DATE_STYLE_DEFAULT, DisplayConfig, date_style_key};
+pub use general::{DEFAULT_LOCALE, GeneralConfig, LocaleSource, on_start_from_key, on_start_key};
+pub use logs::LogsConfig;
 
 /// The `status_glyphs` and `row_density` values, `lib_core`'s so the Presenters draw with the same
 /// type the file is read into.
 pub use lib_core::{RowDensity, StatusGlyphs};
 
 /// Writes Configuration back to the user's `personal-ledger.conf`, for Settings.
-pub use writer::{ConfigKey, ConfigWriter, Shadow};
+pub use writer::{ConfigKey, ConfigWriter, Section, Shadow};
 
 /// Sync-Server-only configuration (bind address and database URI).
 pub use sync_server::SyncServerConfig;

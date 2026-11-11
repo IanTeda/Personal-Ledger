@@ -10,7 +10,7 @@
 //! [`Action::SetSetting`]: crate::view::Action::SetSetting
 
 use chrono::{Datelike, Months, NaiveDate};
-use lib_config::{ConfigKey, ConfigWriter, PersonalLedgerConfig, Shadow, StatusGlyphs};
+use lib_config::{ConfigKey, ConfigWriter, Shadow, StatusGlyphs};
 use lib_core::{DateStyle, OnStart, StartView};
 
 use super::SettingsPage;
@@ -233,20 +233,20 @@ pub struct Configuration {
 impl Default for Configuration {
     /// `lib-config`'s defaults, with nowhere to write.
     fn default() -> Self {
-        Self::from_config(&PersonalLedgerConfig::default(), &ConfigWriter::default())
+        Self::from_config(&lib_config::Config::default(), &ConfigWriter::default())
     }
 }
 
 impl Configuration {
-    pub fn from_config(config: &PersonalLedgerConfig, writer: &ConfigWriter) -> Self {
+    pub fn from_config(config: &lib_config::Config, writer: &ConfigWriter) -> Self {
         Self {
             path: writer.target().map(std::path::Path::to_path_buf),
-            terminal_colours: config.terminal_colours(),
-            status_glyphs: config.status_glyphs(),
-            hint_bar: config.hint_bar(),
-            date_style: config.date_style(),
-            on_start: config.on_start(),
-            start_view: config.start_view().clone(),
+            terminal_colours: config.display.terminal_colours(),
+            status_glyphs: config.display.status_glyphs(),
+            hint_bar: config.display.hint_bar(),
+            date_style: config.display.date_style(),
+            on_start: config.general.on_start(),
+            start_view: config.general.start_view().clone(),
             shadows: ConfigKey::ALL
                 .into_iter()
                 .filter_map(|key| writer.shadow(key).map(|shadow| (key, shadow)))
@@ -342,7 +342,7 @@ impl Default for SettingsValues {
             ledger_name: "Teda household".into(),
             owner: "Ian Teda".into(),
             financial_year_start: 7,
-            ledger_folder: PersonalLedgerConfig::default().data().to_path_buf(),
+            ledger_folder: lib_config::GeneralConfig::default().data().to_path_buf(),
             last_ledger: None,
             configuration: Configuration::default(),
         }
@@ -564,12 +564,12 @@ mod tests {
         assert_eq!(configuration.refusal(SettingField::DateStyle), None);
         configuration.shadows = vec![(
             ConfigKey::HintBar,
-            Shadow::Env("PERSONAL_LEDGER_PERSONAL_LEDGER__HINT_BAR".into()),
+            Shadow::Env("PERSONAL_LEDGER_DISPLAY__HINT_BAR".into()),
         )];
         assert!(
             configuration
                 .refusal(SettingField::HintBar)
-                .is_some_and(|reason| reason.contains("PERSONAL_LEDGER_PERSONAL_LEDGER__HINT_BAR"))
+                .is_some_and(|reason| reason.contains("PERSONAL_LEDGER_DISPLAY__HINT_BAR"))
         );
         assert_eq!(
             Configuration::file_value(SettingField::TerminalColours, "on"),

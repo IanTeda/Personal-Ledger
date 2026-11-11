@@ -570,12 +570,12 @@ mod tests {
     fn a_shadowed_setting_is_noted_and_left_unwritten() {
         let device = Rc::new(InMemoryDeviceConfiguration::shadowing(
             DeviceKey::OnStart,
-            "PERSONAL_LEDGER_PERSONAL_LEDGER__ON_START",
+            "PERSONAL_LEDGER_GENERAL__ON_START",
         ));
         let mut general = general_on(device.clone());
         assert_eq!(
             general.view_model().on_start.shadowed.as_deref(),
-            Some("Set by PERSONAL_LEDGER_PERSONAL_LEDGER__ON_START")
+            Some("Set by PERSONAL_LEDGER_GENERAL__ON_START")
         );
         assert_eq!(general.view_model().toasts.shadowed, None);
 
@@ -586,7 +586,7 @@ mod tests {
 
         assert_eq!(general.settings().on_start, OnStart::ReopenLastLedger);
         assert_eq!(device.stored(), Default::default());
-        assert!(router.statuses()[0].contains("PERSONAL_LEDGER_PERSONAL_LEDGER__ON_START"));
+        assert!(router.statuses()[0].contains("PERSONAL_LEDGER_GENERAL__ON_START"));
     }
 
     #[test]

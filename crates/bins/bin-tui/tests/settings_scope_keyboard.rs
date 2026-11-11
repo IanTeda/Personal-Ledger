@@ -80,7 +80,7 @@ fn on_start_is_chosen_on_general_and_saved_to_the_config_file() {
 
     press(&mut shell, "Enter Right Enter");
 
-    assert_eq!(read(&path), "[Personal-Ledger]\non_start = none\n");
+    assert_eq!(read(&path), "[General]\non_start = none\n");
     assert!(screen(&mut shell).contains("start with no ledger open"));
 }
 
@@ -212,5 +212,5 @@ fn with_no_ledger_open_toasts_still_toggle_on_general() {
     press(&mut shell, "j j");
     type_text(&mut shell, " ");
 
-    assert_eq!(read(&path), "[Personal-Ledger]\ntoasts = false\n");
+    assert_eq!(read(&path), "[General]\ntoasts = false\n");
 }

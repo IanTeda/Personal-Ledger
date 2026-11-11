@@ -35,7 +35,7 @@ You change your locale in the config file, then restart Personal Ledger. There's
 The simplest way is to add a `locale` line to your config file (see [Settings](settings.md) for where that lives):
 
 ```ini
-[Personal-Ledger]
+[General]
 locale = en-GB
 ```
 
@@ -48,7 +48,7 @@ personal_ledger --locale en-GB
 Or with an environment variable:
 
 ```sh
-PERSONAL_LEDGER_PERSONAL_LEDGER__LOCALE=en-GB
+PERSONAL_LEDGER_GENERAL__LOCALE=en-GB
 ```
 
 If you set it more than one way, the most specific wins: the command-line flag beats the environment variable, which beats the config file, which beats your computer's settings. If you make a typo (`en_GB!!`), Personal Ledger stops at startup and tells you, rather than quietly picking something else.

@@ -31,7 +31,7 @@ fn clicking_a_date_format_option_selects_it(app: &mut TestAppContext) {
             .as_deref(),
         Some("Iso")
     );
-    assert_eq!(ui.conf(), "[Personal-Ledger]\ndate_style = iso\n");
+    assert_eq!(ui.conf(), "[Display]\ndate_style = iso\n");
     ui.click("display-date-style-0");
     assert_eq!(ui.settings::<SettingsDisplaySnapshot>().date_style, None);
 }
@@ -50,7 +50,7 @@ fn clicking_a_row_density_option_selects_it(app: &mut TestAppContext) {
         ui.settings::<SettingsDisplaySnapshot>().row_density,
         "Roomy"
     );
-    assert_eq!(ui.conf(), "[Personal-Ledger]\nrow_density = roomy\n");
+    assert_eq!(ui.conf(), "[Display]\nrow_density = roomy\n");
 }
 
 #[gpui::test]
@@ -62,7 +62,7 @@ fn clicking_a_status_glyph_radio_selects_it(app: &mut TestAppContext) {
         ui.settings::<SettingsDisplaySnapshot>().status_glyphs,
         "AsciiFallback"
     );
-    assert_eq!(ui.conf(), "[Personal-Ledger]\nstatus_glyphs = ascii\n");
+    assert_eq!(ui.conf(), "[Display]\nstatus_glyphs = ascii\n");
     ui.click("display-status-glyphs-0");
     assert_eq!(
         ui.settings::<SettingsDisplaySnapshot>().status_glyphs,
@@ -74,12 +74,12 @@ fn clicking_a_status_glyph_radio_selects_it(app: &mut TestAppContext) {
 fn clicking_a_status_glyph_radio_a_higher_file_or_variable_sets_changes_nothing(
     app: &mut TestAppContext,
 ) {
-    let mut config = lib_config::PersonalLedgerConfig::default();
-    config.status_glyphs = lib_core::StatusGlyphs::AsciiFallback;
+    let mut config = lib_config::Config::default();
+    config.display.status_glyphs = lib_core::StatusGlyphs::AsciiFallback;
     let mut ui = Harness::with_configuration(
         app,
         &config,
-        &[("PERSONAL_LEDGER_PERSONAL_LEDGER__STATUS_GLYPHS", "ascii")],
+        &[("PERSONAL_LEDGER_DISPLAY__STATUS_GLYPHS", "ascii")],
     );
     ui.press("g s");
     ui.click("settings-index-Display");
@@ -116,7 +116,7 @@ fn clicking_an_appearance_option_changes_the_appearance(app: &mut TestAppContext
 
     ui.click("display-colour-appearance-1");
     assert_eq!(ui.colour_choice().1.as_deref(), Some("Dark"));
-    assert_eq!(ui.conf(), "[Personal-Ledger]\ncolour_appearance = dark\n");
+    assert_eq!(ui.conf(), "[Display]\ncolour_appearance = dark\n");
     ui.click("display-colour-appearance-0");
     assert_eq!(ui.colour_choice().1.as_deref(), Some("Light"));
 }
@@ -130,7 +130,7 @@ fn clicking_a_colour_theme_card_chooses_it(app: &mut TestAppContext) {
     assert_eq!(ui.colour_choice().0.as_deref(), Some(themes[3].id));
     assert_eq!(
         ui.conf(),
-        format!("[Personal-Ledger]\ncolour_theme = {}\n", themes[3].id)
+        format!("[Display]\ncolour_theme = {}\n", themes[3].id)
     );
     ui.click("display-colour-theme-1");
     assert_eq!(ui.colour_choice().0.as_deref(), Some(themes[1].id));
@@ -140,10 +140,10 @@ fn clicking_a_colour_theme_card_chooses_it(app: &mut TestAppContext) {
 fn clicking_a_shadowed_colour_theme_or_appearance_changes_nothing(app: &mut TestAppContext) {
     let mut ui = Harness::with_configuration(
         app,
-        &lib_config::PersonalLedgerConfig::default(),
+        &lib_config::Config::default(),
         &[
-            ("PERSONAL_LEDGER_PERSONAL_LEDGER__COLOUR_THEME", "nord"),
-            ("PERSONAL_LEDGER_PERSONAL_LEDGER__COLOUR_APPEARANCE", "dark"),
+            ("PERSONAL_LEDGER_DISPLAY__COLOUR_THEME", "nord"),
+            ("PERSONAL_LEDGER_DISPLAY__COLOUR_APPEARANCE", "dark"),
         ],
     );
     ui.press("g s");

@@ -33,13 +33,14 @@ Personal Ledger uses the following order of precedence, from lowest to highest.
     Variables, same as every other file source above)
 7. Environment Variables
   * Prefix: PERSONAL_LEDGER_
-  * Example: PERSONAL_LEDGER_PERSONAL_LEDGER__LOG=debug
+  * Named PERSONAL_LEDGER_<SECTION>__<KEY>, after the key's section
+  * Example: PERSONAL_LEDGER_LOGS__LOG=debug
+  * Example: PERSONAL_LEDGER_GENERAL__TOASTS=false
   * Example: PERSONAL_LEDGER_SYNC_SERVER__DATABASE_URI=sqlite:/tmp/test.db
   * Use double underscores (__) to separate nested keys
 8. Explicit Command Line Flags (highest precedence)
-  * --data/-d, --file/-f, --log/-l, --locale -- override the `[Personal-Ledger]` section's
-    corresponding setting directly, applied after every source above (including
-    Environment Variables)
+  * --data/-d, --file/-f and --locale override their `[General]` key, and --log/-l the
+    `[Logs]` key, applied after every source above (including Environment Variables)
 
 ## INI Configuration Format
 
@@ -47,10 +48,10 @@ Personal Ledger uses the INI (Initialisation) file format for static configurati
 
 ### Basic Syntax
 
-* Sections: Enclosed in square brackets [], e.g., [Personal-Ledger]
+* Sections: Enclosed in square brackets [], e.g., [General]
 * Keys and Values: key = value, e.g., log = "debug"
 * Comments: Lines starting with # or ; are comments.
-* Case Sensitivity: Section names are case-insensitive (e.g., [Personal-Ledger] and [personal-ledger] are equivalent)
+* Case Sensitivity: Section names are case-insensitive, and `-` and `_` are interchangeable (e.g., [Sync-Server], [sync-server] and [sync_server] are equivalent)
 
 Example Structure
 
@@ -72,33 +73,70 @@ key3 = true
 
 Configuration sections group related settings together. The application currently supports:
 
-* [Personal-Ledger]: Bootstrap and startup configurations.
+* [General]: the keys Settings › General shows: on_start, start_view, toasts, locale, data and file.
+* [Display]: the keys Settings › Display shows: colour_theme, colour_appearance, date_style, row_density, status_glyphs, hint_bar and terminal_colours.
+* [Logs]: the keys Settings › Logs shows: log and log_file_path. Read by all three binaries, the Sync Server included.
 * [Keybindings]: Navigation and action keybindings.
 * [Theme]: Colour Role overrides laid over the chosen Colour Theme, with [Theme.Light] and [Theme.Dark] for one Colour Variant. Read by bin-tui and bin-desktop.
-* [Sync-Server]: Sync Server-specific settings (bind address). Only bin-sync-server uses the configuration settings. Both bin-tui and bin-desktop Sync Server settings are dynamic and thus use settings pulled from the database.
+* [Sync-Server]: Sync Server-specific settings (bind address). This is the Sync Server binary's own section, not Settings › Sync server, which is kept in the Ledger. Only bin-sync-server uses the configuration settings. Both bin-tui and bin-desktop Sync Server settings are dynamic and thus use settings pulled from the database.
 
-### Personal Ledger Section
+### General Section
 
-The [Personal-Ledger] section includes settings applied across Personal Ledger files and the client on a given system, but they are not intended to sync across computer systems.
-
-__config:__
-
-Points to a configuration directory not in the predefined hierarchy discussed above
-
-* Type: String (Optional)
-* CLI Flag: --config/-c
-* Default: Refer to above ‘Configuration Hierarchy’
-
-Example:
-
-```ini
-[Personal-Ledger]
-config = "~/.config/personal_ledger.conf"
-```
+The [General] section holds the keys Settings › General shows (ADR-0057). They belong to the computer you are on and never sync. The configuration file itself is chosen only with `--config/-c`; a `config` key in a file is ignored, since a file that names another file is circular.
 
 ```bash
 personal_ledger --config/-c '~/.config/personal_ledger.conf'
 ```
+
+__on_start:__
+
+Which Ledger the app opens as it starts: `reopen` opens the one open when you last quit, or none if none was, and `none` starts with no Ledger open. A file named by `file` or `--file` opens instead. Settings › General in the TUI writes it.
+
+* Type: String, `reopen` or `none`
+* Default: reopen
+* Environment Variable: PERSONAL_LEDGER_GENERAL__ON_START
+
+__start_view:__
+
+The View the app lands on as it starts: `dashboard`, `last` (the View showing when you last quit), `settings`, or a noun such as `bills` or `tags`. A View that needs a Ledger lands on the Dashboard's no Ledger open content when none is open, and a noun the app doesn't have (the TUI's `units` in the Desktop app, the Desktop's `bills` in the TUI) lands on the Dashboard. Settings › General writes it in both apps.
+
+* Type: String, `dashboard`, `last`, `settings` or a noun
+* Default: dashboard
+* Environment Variable: PERSONAL_LEDGER_GENERAL__START_VIEW
+
+__toasts:__
+
+Whether Toasts show (see Toasts below). Errors show either way. Settings › General in the TUI writes it.
+
+* Type: Boolean
+* Default: true
+* Environment Variable: PERSONAL_LEDGER_GENERAL__TOASTS
+
+__locale:__
+
+The Locale the Client uses for its text, numbers, dates and currency amounts, as a BCP-47 language tag. Per Client and never synced; changing it needs a restart. `lib-config` only resolves the request and reports where it came from -- `lib-locale` decides which Locale is actually used, so a well-formed tag it doesn't support (for example `fr-FR`) is passed through unchanged and negotiated there.
+
+* Type: String (Optional)
+* CLI Flag: --locale (long form only)
+* Environment Variable: PERSONAL_LEDGER_GENERAL__LOCALE
+* Valid Values: any well-formed BCP-47 tag, stored in canonical casing (`en-gb` becomes `en-GB`). A malformed value is a startup error. There is no `system` keyword: leave the key unset to follow the operating system.
+* Default, in order:
+  1. The value from the configuration files, environment variable or `--locale`
+  2. The operating system's Locale, when it is a usable tag (`C` and `POSIX` are ignored)
+  3. "en-US"
+
+Example:
+
+```ini
+[General]
+locale = "en-GB"
+```
+
+```bash
+personal_ledger --locale 'en-GB'
+```
+
+The Sync Server ignores this setting.
 
 __data:__
 
@@ -106,13 +144,14 @@ The folder `:open`'s file browser starts in, where you keep your Ledger files.
 
 * Type: String
 * CLI Flags: --data/-d 
+* Environment Variable: PERSONAL_LEDGER_GENERAL__DATA
 * Default:
   * Defaults to the users `document` folder
 
 Example:
 
 ```ini
-[Personal-Ledger]
+[General]
 data = "~/Documents/Personal-Ledger"
 ```
 
@@ -126,12 +165,13 @@ An explicit override: open this Ledger file at start, whatever `on_start` says. 
 
 * Type: String (Optional)
 * CLI Flags: --file/-f 
+* Environment Variable: PERSONAL_LEDGER_GENERAL__FILE
 * Default: none
 
 Example:
 
 ```ini
-[Personal-Ledger]
+[General]
 file = "~/Documents/My-Personal-Ledger.pldb"
 ```
 
@@ -139,12 +179,109 @@ file = "~/Documents/My-Personal-Ledger.pldb"
 personal_ledger --file/-f '~/Documents/My-Personal-Ledger.pldb'
 ```
 
+The TUI and the Desktop app both read on_start, start_view, toasts and the Colour Theme, Appearance and date style below, and both write them from Settings, so a change in one is the other's the next time it starts. A value a key doesn't take, such as `on_start = sometimes`, stops the app starting with an error naming it.
+
+Example:
+
+```ini
+[General]
+toasts = false
+on_start = none
+start_view = last
+
+[Display]
+colour_theme = nord
+colour_appearance = dark
+date_style = iso
+```
+
+### Display Section
+
+The [Display] section holds the keys Settings › Display shows. `hint_bar` and `terminal_colours` are read only by the TUI, `row_density` only by the Desktop app.
+
+__colour_theme:__
+
+The Colour Theme to draw in, by its id: `modernist`, `high_contrast`, `catppuccin`, `gruvbox` or `nord` (see Colour Theme and Colour Appearance below). Leave it unset for Modernist. An id this release doesn't know draws Modernist and is kept, so a newer release's Colour Theme survives. Settings › Display in the TUI writes it.
+
+* Type: String (Optional)
+* Default: unset (Modernist)
+* Environment Variable: PERSONAL_LEDGER_DISPLAY__COLOUR_THEME
+
+__colour_appearance:__
+
+Which version of the Colour Theme to draw: `light`, `dark` or `system`, which follows your computer or terminal. Settings › Display in the TUI writes it.
+
+* Type: String, `light`, `dark` or `system`
+* Default: system
+* Environment Variable: PERSONAL_LEDGER_DISPLAY__COLOUR_APPEARANCE
+
+__date_style:__
+
+How dates show: `short`, `medium` or `long` pick one of your Locale's date forms, `iso` shows `2026-07-01` whatever the Locale, and `default` uses the Locale's usual form. Settings › Display in the TUI writes it.
+
+* Type: String, `default`, `short`, `medium`, `long` or `iso`
+* Default: default
+* Environment Variable: PERSONAL_LEDGER_DISPLAY__DATE_STYLE
+
+__row_density:__
+
+Desktop only. How tightly the Desktop spaces the rows of its tables, such as Transactions: `compact`, `regular` or `roomy`. Settings › Display in the Desktop app writes it. The TUI ignores it.
+
+* Type: String, `compact`, `regular` or `roomy`
+* Default: regular
+* Environment Variable: PERSONAL_LEDGER_DISPLAY__ROW_DENSITY
+
+__status_glyphs:__
+
+`unicode` draws status glyphs such as `●`, `◐` and `⚑`; `ascii` draws plain stand-ins such as `x`, `o` and `!`, for a font that lacks them. Settings › Display writes it in both apps, so a choice in one is the other's the next time it starts. The Desktop draws with it; the TUI saves it but doesn't draw with it yet (see Heads up under The Settings screen in the TUI).
+
+* Type: String, `unicode` or `ascii`
+* Default: unicode
+* Environment Variable: PERSONAL_LEDGER_DISPLAY__STATUS_GLYPHS
+
+__hint_bar:__
+
+TUI only. When false, the footer shows only the mode (`NORMAL`, `INSERT` …) and not the keys the screen takes. Settings › Display in the TUI changes it at once and writes it. The Desktop ignores it.
+
+* Type: Boolean
+* Default: true
+* Environment Variable: PERSONAL_LEDGER_DISPLAY__HINT_BAR
+
+__terminal_colours:__
+
+TUI only. When true, the TUI ignores the Colour Theme and any `[theme]` overrides and draws in the terminal's own ANSI colours, so your terminal theme wins. Per Client and never synced. Settings › Display in the TUI changes it at once and writes it to your own file (see The Settings screen in the TUI). The Desktop ignores it.
+
+* Type: Boolean
+* Default: false
+* Environment Variable: PERSONAL_LEDGER_DISPLAY__TERMINAL_COLOURS
+
+Example:
+
+```ini
+[Display]
+terminal_colours = true
+```
+
+Example:
+
+```ini
+[Display]
+status_glyphs = ascii
+row_density = compact
+hint_bar = false
+```
+
+### Logs Section
+
+The [Logs] section holds the keys Settings › Logs shows. All three binaries read it, the Sync Server included.
+
 __log:__
 
 Controls the verbosity of logging output.
 
 * Type: String
 * CLI Flags:  --log/-l 
+* Environment Variable: PERSONAL_LEDGER_LOGS__LOG
 * Valid Values:
   * "trace": Most verbose, includes all internal debugging information
   * "debug": Detailed debugging information
@@ -157,148 +294,12 @@ Controls the verbosity of logging output.
 Example:
 
 ```ini
-[Personal-Ledger]
+[Logs]
 log = "debug"
 ```
 
 ```bash
 personal_ledger --log/-l 'debug'
-```
-
-__locale:__
-
-The Locale the Client uses for its text, numbers, dates and currency amounts, as a BCP-47 language tag. Per Client and never synced; changing it needs a restart. `lib-config` only resolves the request and reports where it came from -- `lib-locale` decides which Locale is actually used, so a well-formed tag it doesn't support (for example `fr-FR`) is passed through unchanged and negotiated there.
-
-* Type: String (Optional)
-* CLI Flag: --locale (long form only)
-* Environment Variable: PERSONAL_LEDGER_PERSONAL_LEDGER__LOCALE
-* Valid Values: any well-formed BCP-47 tag, stored in canonical casing (`en-gb` becomes `en-GB`). A malformed value is a startup error. There is no `system` keyword: leave the key unset to follow the operating system.
-* Default, in order:
-  1. The value from the configuration files, environment variable or `--locale`
-  2. The operating system's Locale, when it is a usable tag (`C` and `POSIX` are ignored)
-  3. "en-US"
-
-Example:
-
-```ini
-[Personal-Ledger]
-locale = "en-GB"
-```
-
-```bash
-personal_ledger --locale 'en-GB'
-```
-
-The Sync Server ignores this setting.
-
-__terminal_colours:__
-
-TUI only. When true, the TUI ignores the Colour Theme and any `[theme]` overrides and draws in the terminal's own ANSI colours, so your terminal theme wins. Per Client and never synced. Settings › Display in the TUI changes it at once and writes it to your own file (see The Settings screen in the TUI). The Desktop ignores it.
-
-* Type: Boolean
-* Default: false
-* Environment Variable: PERSONAL_LEDGER_PERSONAL_LEDGER__TERMINAL_COLOURS
-
-Example:
-
-```ini
-[Personal-Ledger]
-terminal_colours = true
-```
-
-__status_glyphs:__
-
-`unicode` draws status glyphs such as `●`, `◐` and `⚑`; `ascii` draws plain stand-ins such as `x`, `o` and `!`, for a font that lacks them. Settings › Display writes it in both apps, so a choice in one is the other's the next time it starts. The Desktop draws with it; the TUI saves it but doesn't draw with it yet (see Heads up under The Settings screen in the TUI).
-
-* Type: String, `unicode` or `ascii`
-* Default: unicode
-* Environment Variable: PERSONAL_LEDGER_PERSONAL_LEDGER__STATUS_GLYPHS
-
-__row_density:__
-
-Desktop only. How tightly the Desktop spaces the rows of its tables, such as Transactions: `compact`, `regular` or `roomy`. Settings › Display in the Desktop app writes it. The TUI ignores it.
-
-* Type: String, `compact`, `regular` or `roomy`
-* Default: regular
-* Environment Variable: PERSONAL_LEDGER_PERSONAL_LEDGER__ROW_DENSITY
-
-__hint_bar:__
-
-TUI only. When false, the footer shows only the mode (`NORMAL`, `INSERT` …) and not the keys the screen takes. Settings › Display in the TUI changes it at once and writes it. The Desktop ignores it.
-
-* Type: Boolean
-* Default: true
-* Environment Variable: PERSONAL_LEDGER_PERSONAL_LEDGER__HINT_BAR
-
-Example:
-
-```ini
-[Personal-Ledger]
-status_glyphs = ascii
-row_density = compact
-hint_bar = false
-```
-
-__toasts:__
-
-Whether Toasts show (see Toasts below). Errors show either way. Settings › General in the TUI writes it.
-
-* Type: Boolean
-* Default: true
-* Environment Variable: PERSONAL_LEDGER_PERSONAL_LEDGER__TOASTS
-
-__colour_theme:__
-
-The Colour Theme to draw in, by its id: `modernist`, `high_contrast`, `catppuccin`, `gruvbox` or `nord` (see Colour Theme and Colour Appearance below). Leave it unset for Modernist. An id this release doesn't know draws Modernist and is kept, so a newer release's Colour Theme survives. Settings › Display in the TUI writes it.
-
-* Type: String (Optional)
-* Default: unset (Modernist)
-* Environment Variable: PERSONAL_LEDGER_PERSONAL_LEDGER__COLOUR_THEME
-
-__colour_appearance:__
-
-Which version of the Colour Theme to draw: `light`, `dark` or `system`, which follows your computer or terminal. Settings › Display in the TUI writes it.
-
-* Type: String, `light`, `dark` or `system`
-* Default: system
-* Environment Variable: PERSONAL_LEDGER_PERSONAL_LEDGER__COLOUR_APPEARANCE
-
-__date_style:__
-
-How dates show: `short`, `medium` or `long` pick one of your Locale's date forms, `iso` shows `2026-07-01` whatever the Locale, and `default` uses the Locale's usual form. Settings › Display in the TUI writes it.
-
-* Type: String, `default`, `short`, `medium`, `long` or `iso`
-* Default: default
-* Environment Variable: PERSONAL_LEDGER_PERSONAL_LEDGER__DATE_STYLE
-
-__on_start:__
-
-Which Ledger the app opens as it starts: `reopen` opens the one open when you last quit, or none if none was, and `none` starts with no Ledger open. A file named by `file` or `--file` opens instead. Settings › General in the TUI writes it.
-
-* Type: String, `reopen` or `none`
-* Default: reopen
-* Environment Variable: PERSONAL_LEDGER_PERSONAL_LEDGER__ON_START
-
-__start_view:__
-
-The View the app lands on as it starts: `dashboard`, `last` (the View showing when you last quit), `settings`, or a noun such as `bills` or `tags`. A View that needs a Ledger lands on the Dashboard's no Ledger open content when none is open, and a noun the app doesn't have (the TUI's `units` in the Desktop app, the Desktop's `bills` in the TUI) lands on the Dashboard. Settings › General writes it in both apps.
-
-* Type: String, `dashboard`, `last`, `settings` or a noun
-* Default: dashboard
-* Environment Variable: PERSONAL_LEDGER_PERSONAL_LEDGER__START_VIEW
-
-The TUI and the Desktop app both read these six, and both write them from Settings, so a change in one is the other's the next time it starts. A value a key doesn't take, such as `on_start = sometimes`, stops the app starting with an error naming it.
-
-Example:
-
-```ini
-[Personal-Ledger]
-toasts = false
-colour_theme = nord
-colour_appearance = dark
-date_style = iso
-on_start = none
-start_view = last
 ```
 
 __log_file_path:__
@@ -307,11 +308,12 @@ Optional path to a file that log output should also be written to, in addition t
 
 * Type: String (Optional)
 * Default: unset (console output only)
+* Environment Variable: PERSONAL_LEDGER_LOGS__LOG_FILE_PATH
 
 Example:
 
 ```ini
-[Personal-Ledger]
+[Logs]
 log_file_path = "/var/log/personal-ledger/personal-ledger.log"
 ```
 
@@ -448,7 +450,7 @@ Settings › General's **start view** row chooses the View the TUI lands on as i
 Every field on General and Display that you can change belongs to this device, so Settings saves it to `personal-ledger.conf` rather than the Ledger: On start, Start view and Toasts on General, and Appearance, Colour Theme, Date style, Terminal colours, Status glyphs and Hint bar on Display. Each saves as you choose it: `Enter` in an open field, `Enter` in the Colour Theme or Appearance list (`Esc` there saves nothing), `Enter` or `Space` on Toasts or Hint bar, or the `set` and `toasts` commands. Your choice is the TUI's on its next start; nothing else is kept for it.
 
 - Settings writes only your own file: `~/.config/personal-ledger/personal-ledger.conf` on Linux, `~/Library/Preferences/personal-ledger/personal-ledger.conf` on macOS and `%APPDATA%\personal-ledger\personal-ledger.conf` on Windows. It creates the file and its folder if they don't exist. The note under Display's rows names the file.
-- A save changes only that key's line in the `[Personal-Ledger]` section, or adds one line if the key isn't there. Your comments, the order of your keys and every other section are left as you wrote them.
+- A save changes only that key's line in its section (`[General]` or `[Display]`), or adds one line if the key isn't there, adding the section too if the file has none. Your comments, the order of your keys and every other section are left as you wrote them.
 - Every one applies as soon as you save, except Status glyphs (see Heads up). The status line names the file it saved to.
 - With no user config folder to write to, these fields can't be changed here, and trying says so.
 - An environment variable, or a file that comes after yours in the Configuration Hierarchy (beside the executable, `config/personal-ledger.conf` in the working directory, or `--config`), wins over your file. When one sets a key, its row says `set by` and names it, and Settings won't save the key, because the change would do nothing until that variable or file goes.
@@ -708,7 +710,7 @@ The socket address the Sync Server’s gRPC/HTTP listener binds to.
 
 database_uri
 
-The URI of the Sync Server’s own database (its durable Change Set log, per ADR-0009) — not a Client’s local `[Personal-Ledger] file`; the Sync Server’s database is server-side storage, unrelated to any Client’s local Ledger file. Connection-pool settings (max/min connections, timeouts) are fixed in code, not configurable. A relative path resolves against the Sync Server's working directory (`/data` in the Docker image), and a missing database file is created on start.
+The URI of the Sync Server’s own database (its durable Change Set log, per ADR-0009) — not a Client’s local `[General] file`; the Sync Server’s database is server-side storage, unrelated to any Client’s local Ledger file. Connection-pool settings (max/min connections, timeouts) are fixed in code, not configurable. A relative path resolves against the Sync Server's working directory (`/data` in the Docker image), and a missing database file is created on start.
 
 * Type: String
 * Default: "sqlite:./sync-server.sqlite"
@@ -733,19 +735,23 @@ Example Configuration File
 # This file contains configuration settings for the Personal Ledger.
 # It uses INI format with sections and key-value pairs.
 #
-# Section names are case-insensitive (e.g., [Personal-Ledger] or [personal-ledger] both work).
+# Section names are case-insensitive, and `-` and `_` are interchangeable (e.g., [Sync-Server]
+# or [sync_server] both work).
 # Values should be quoted strings where appropriate.
 #
 # For more information, see the documentation at docs/settings.md
 
 
 
-# Settings applied across Personal Ledger files and the client on a given system, but 
-# they are not intended to sync across computer systems.
-[Personal-Ledger]
+# Settings › General. The file itself is chosen only with --config.
+[General]
+# on_start = reopen
+# start_view = dashboard
+# toasts = true
 
-# Points to a configuration file outside the normal search hierarchy. Usually left unset.
-# config = "~/.config/personal-ledger/personal-ledger.conf"
+# Optional: the interface Locale, as a BCP-47 tag -- "en-US", "en-GB" or "en-AU".
+# When absent, the operating system's locale is used, falling back to "en-US".
+# locale = "en-AU"
 
 # Client data directory: the folder `:open` starts in
 data = "~/Documents/Personal-Ledger"
@@ -754,23 +760,24 @@ data = "~/Documents/Personal-Ledger"
 # Client reopens the last Ledger, or none, as on_start says.
 # file = "~/Documents/Personal-Ledger/My-Personal-Ledger.pldb"
 
-# Client tracing log level
+
+# Settings › Display. Each shows its default.
+[Display]
+# colour_theme = modernist
+# colour_appearance = system
+# date_style = default
+# row_density = regular
+# status_glyphs = unicode
+# hint_bar = true
+# terminal_colours = false
+
+
+# Settings › Logs, read by all three binaries.
+[Logs]
 log = "debug"
 
 # Optional: also write log output to this file, in addition to the console
 # log_file_path = "/var/log/personal-ledger/personal-ledger.log"
-
-# Optional: the interface Locale, as a BCP-47 tag -- "en-US", "en-GB" or "en-AU".
-# When absent, the operating system's locale is used, falling back to "en-US".
-# locale = "en-AU"
-
-# This device's settings, which Settings writes. Each shows its default.
-# toasts = true
-# colour_theme = modernist
-# colour_appearance = system
-# date_style = default
-# on_start = reopen
-# start_view = dashboard
 
 
 
@@ -828,7 +835,7 @@ This example is kept in sync with the file shipped at `config/personal-ledger.co
 
 References
 
-Per ADR-0014, Configuration covers only settings needed before the app (or its database) can run: the database location (a Client’s optional `[Personal-Ledger] file` override, or the Sync Server’s own `[Sync-Server] database_uri`) and the telemetry level; connection-pool tuning (max/min connections, timeouts) is fixed in code rather than configurable. The gRPC bind address is Sync-Server-only. Everything else the user might tweak from inside a running Client — colour theme, date format, default Unit — is a Preference instead, stored in the Ledger: today the base Unit. A device's settings are the exception (ADR-0053): Toasts, the Colour Theme and Appearance, the date style, On start and Start view belong to the device rather than the Ledger, so they are Configuration in the `[Personal-Ledger]` section, which Settings writes. Both apps read them from here.
+Per ADR-0014, Configuration covers only settings needed before the app (or its database) can run: the database location (a Client’s optional `[General] file` override, or the Sync Server’s own `[Sync-Server] database_uri`) and the telemetry level; connection-pool tuning (max/min connections, timeouts) is fixed in code rather than configurable. The gRPC bind address is Sync-Server-only. Everything else the user might tweak from inside a running Client — colour theme, date format, default Unit — is a Preference instead, stored in the Ledger: today the base Unit. A device's settings are the exception (ADR-0053): Toasts, the Colour Theme and Appearance, the date style, On start and Start view belong to the device rather than the Ledger, so they are Configuration in the `[General]` and `[Display]` sections (ADR-0057), which Settings writes. Both apps read them from here.
 
 lib-config is shared by all three consumers (bin-tui, bin-desktop, bin-sync-server), but they don’t all see the same sections or search the same locations — see Configuration Hierarchy and Sync Server Section below.
 

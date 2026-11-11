@@ -61,7 +61,7 @@ verbose to least verbose:
 
 ## Configuration
 
-The `log` level and `log_file_path` live in the `[Personal-Ledger]` section; see [Settings](settings.md).
+The `log` level and `log_file_path` live in the `[Logs]` section; see [Settings](settings.md).
 
 ## What the Clients log
 

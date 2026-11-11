@@ -1,6 +1,6 @@
 //! # Display choices
 //!
-//! Row density and Status glyphs, a device's settings kept in `[Personal-Ledger]` as `row_density`
+//! Row density and Status glyphs, a device's settings kept in `[Display]` as `row_density`
 //! and `status_glyphs` (ADR-0053). Here, beside [`crate::DateStyle`], because `lib-config` reads
 //! them from the file and the Presenters draw with them (through `lib_viper::display`), and the
 //! two must agree on one vocabulary: the TUI and the Desktop share the `status_glyphs` key, so a

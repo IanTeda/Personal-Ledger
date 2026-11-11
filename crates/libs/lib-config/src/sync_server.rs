@@ -3,7 +3,7 @@
 //! Configuration specific to the Sync Server binary (`bin-sync-server`), not read by the
 //! TUI or Desktop Clients: the gRPC bind address and the Sync Server's own database URI
 //! (its durable Change Set log, per ADR-0009 -- distinct from any Client's local
-//! `[Personal-Ledger] file`). TLS is not configured here (see ADR-0014 and the
+//! `[General] file`). TLS is not configured here (see ADR-0014 and the
 //! "lib-config / lib-database refactor" Wayfinder map's Out of scope).
 
 /// Default gRPC bind address for the Sync Server.
@@ -47,7 +47,7 @@ impl SyncServerConfig {
     }
 
     /// Get the default configuration values as key-value pairs, for seeding a layered
-    /// configuration builder's defaults -- mirrors `PersonalLedgerConfig::default_config_values()`.
+    /// configuration builder's defaults -- mirrors `LogsConfig::default_config_values()`.
     pub fn default_config_values() -> Vec<(&'static str, String)> {
         let default_config = Self::default();
         vec![

@@ -10,7 +10,7 @@
 //! The library is structured around several key components:
 //!
 //! - **Connections** ([`DatabaseConnection`]): High-level connection pool management, built
-//!   from a database URI -- a Client's `[Personal-Ledger] file` or the Sync Server's
+//!   from a database URI -- a Client's `[General] file` or the Sync Server's
 //!   `[Sync-Server] database_uri` (see `lib_config`); pool settings themselves are fixed
 //!   (see `connection`'s `MAX_CONNECTIONS` etc)
 //! - **Error Handling** ([`DatabaseError`], [`DatabaseResult`]): Domain-specific error types

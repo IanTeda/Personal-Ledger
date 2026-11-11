@@ -23,7 +23,7 @@ fn clicking_the_on_start_options_sets_on_start(app: &mut TestAppContext) {
         ui.settings::<SettingsGeneralSnapshot>().on_start,
         OnStart::NoLedger
     );
-    assert_eq!(ui.conf(), "[Personal-Ledger]\non_start = none\n");
+    assert_eq!(ui.conf(), "[General]\non_start = none\n");
     ui.click("general-on-start-0");
     assert_eq!(
         ui.settings::<SettingsGeneralSnapshot>().on_start,
@@ -41,13 +41,13 @@ fn clicking_a_start_view_option_sets_start_view(app: &mut TestAppContext) {
         ui.settings::<SettingsGeneralSnapshot>().start_view,
         "documents"
     );
-    assert_eq!(ui.conf(), "[Personal-Ledger]\nstart_view = documents\n");
+    assert_eq!(ui.conf(), "[General]\nstart_view = documents\n");
     ui.click("general-start-view-2");
     assert_eq!(
         ui.settings::<SettingsGeneralSnapshot>().start_view,
         "settings"
     );
-    assert_eq!(ui.conf(), "[Personal-Ledger]\nstart_view = settings\n");
+    assert_eq!(ui.conf(), "[General]\nstart_view = settings\n");
 }
 
 #[gpui::test]
@@ -57,7 +57,7 @@ fn clicking_the_toasts_options_turns_them_off_and_on(app: &mut TestAppContext) {
     ui.click("general-toasts-1");
     assert!(!ui.settings::<SettingsGeneralSnapshot>().toasts_on);
     assert!(!ui.toasts().on);
-    assert_eq!(ui.conf(), "[Personal-Ledger]\ntoasts = false\n");
+    assert_eq!(ui.conf(), "[General]\ntoasts = false\n");
     ui.click("general-toasts-0");
     assert!(ui.settings::<SettingsGeneralSnapshot>().toasts_on);
     assert!(ui.toasts().on);
@@ -67,8 +67,8 @@ fn clicking_the_toasts_options_turns_them_off_and_on(app: &mut TestAppContext) {
 fn clicking_a_shadowed_toasts_option_changes_nothing(app: &mut TestAppContext) {
     let mut ui = Harness::with_configuration(
         app,
-        &lib_config::PersonalLedgerConfig::default(),
-        &[("PERSONAL_LEDGER_PERSONAL_LEDGER__TOASTS", "true")],
+        &lib_config::Config::default(),
+        &[("PERSONAL_LEDGER_GENERAL__TOASTS", "true")],
     );
     ui.press("g s enter");
     assert!(ui.is_drawn("shadowed-toasts"));

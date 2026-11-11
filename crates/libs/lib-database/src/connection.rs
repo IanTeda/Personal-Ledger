@@ -20,7 +20,7 @@
 //!
 //! - Built on top of SQLx's `SqlitePool` for robust connection pooling
 //! - Pool settings (connection limits, timeouts) are fixed, not user-configurable -- the
-//!   database URI itself is the only thing callers vary (a Client's `[Personal-Ledger]
+//!   database URI itself is the only thing callers vary (a Client's `[General]
 //!   file`, or the Sync Server's `[Sync-Server] database_uri`)
 //! - Error handling mapped to domain-specific `DatabaseError` types
 //! - Async-first design for non-blocking database operations

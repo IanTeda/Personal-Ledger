@@ -23,7 +23,7 @@ The Locale is Configuration, not a Preference. It is per-Client, never synced, n
 
 - A `DEFAULT_LOCALE` constant, `en-US`.
 - The operating system's locale, detected with `sys-locale`.
-- The `locale` key in the `[Personal-Ledger]` section, which follows `lib-config`'s existing layers: config files, then the `PERSONAL_LEDGER_PERSONAL_LEDGER__LOCALE` environment variable, then the `--locale <TAG>` (no short flag) command-line flag.
+- The `locale` key in the `[General]` section (ADR-0057), which follows `lib-config`'s existing layers: config files, then the `PERSONAL_LEDGER_GENERAL__LOCALE` environment variable, then the `--locale <TAG>` (no short flag) command-line flag.
 
 The layers are read into `locale: Option<String>` (absent means unset) and resolved in a step after the build: the config value if present (source `Config`), else the detected system locale (source `System`), else `DEFAULT_LOCALE` (source `Default`). There is no `system` keyword: an absent key means the detected system locale stands. The value is validated as a BCP-47 tag with `unic-langid` internally and stored as a plain canonical-cased string, and the `LocaleSource` lets the Settings page show the effective Locale read-only with where it came from. A malformed value from a file, environment variable or flag is a startup error (`InvalidLocale`). A valid but unsupported tag passes through, because `lib-config` does not know the supported set. An unreadable system value (`C`, `POSIX`) is ignored quietly. The Sync Server skips detection and never reads the field.
 

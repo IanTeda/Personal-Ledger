@@ -51,7 +51,7 @@ fn l_and_h_step_on_start_and_each_step_is_saved_to_the_conf_file(app: &mut TestA
         ui.settings::<SettingsGeneralSnapshot>().on_start,
         OnStart::NoLedger
     );
-    assert_eq!(ui.conf(), "[Personal-Ledger]\non_start = none\n");
+    assert_eq!(ui.conf(), "[General]\non_start = none\n");
     ui.press("l");
     assert_eq!(
         ui.settings::<SettingsGeneralSnapshot>().on_start,
@@ -62,7 +62,7 @@ fn l_and_h_step_on_start_and_each_step_is_saved_to_the_conf_file(app: &mut TestA
         ui.settings::<SettingsGeneralSnapshot>().on_start,
         OnStart::ReopenLastLedger
     );
-    assert_eq!(ui.conf(), "[Personal-Ledger]\non_start = reopen\n");
+    assert_eq!(ui.conf(), "[General]\non_start = reopen\n");
 }
 
 #[gpui::test]
@@ -75,25 +75,25 @@ fn l_and_h_step_start_view_through_its_choices_and_each_step_is_saved(app: &mut 
 
     ui.press("j l");
     assert_eq!(ui.settings::<SettingsGeneralSnapshot>().start_view, "last");
-    assert_eq!(ui.conf(), "[Personal-Ledger]\nstart_view = last\n");
+    assert_eq!(ui.conf(), "[General]\nstart_view = last\n");
     ui.press("l l l l l l");
     assert_eq!(
         ui.settings::<SettingsGeneralSnapshot>().start_view,
         "budgets",
         "stops at the last choice"
     );
-    assert_eq!(ui.conf(), "[Personal-Ledger]\nstart_view = budgets\n");
+    assert_eq!(ui.conf(), "[General]\nstart_view = budgets\n");
     ui.press("h");
     assert_eq!(ui.settings::<SettingsGeneralSnapshot>().start_view, "bills");
-    assert_eq!(ui.conf(), "[Personal-Ledger]\nstart_view = bills\n");
+    assert_eq!(ui.conf(), "[General]\nstart_view = bills\n");
 }
 
 #[gpui::test]
 fn a_start_view_from_the_file_that_isnt_a_choice_is_named_and_steps_from_the_dashboard(
     app: &mut TestAppContext,
 ) {
-    let mut config = lib_config::PersonalLedgerConfig::default();
-    config.start_view = StartView::Noun("units".into());
+    let mut config = lib_config::Config::default();
+    config.general.start_view = StartView::Noun("units".into());
     let mut ui = Harness::with_configuration(app, &config, &[]);
     ui.press("g s l");
     assert_eq!(ui.settings::<SettingsGeneralSnapshot>().start_view, "units");
@@ -105,12 +105,9 @@ fn a_start_view_from_the_file_that_isnt_a_choice_is_named_and_steps_from_the_das
 
 #[gpui::test]
 fn a_start_view_an_environment_variable_sets_is_shown_and_left_alone(app: &mut TestAppContext) {
-    let var = "PERSONAL_LEDGER_PERSONAL_LEDGER__START_VIEW";
-    let mut ui = Harness::with_configuration(
-        app,
-        &lib_config::PersonalLedgerConfig::default(),
-        &[(var, "bills")],
-    );
+    let var = "PERSONAL_LEDGER_GENERAL__START_VIEW";
+    let mut ui =
+        Harness::with_configuration(app, &lib_config::Config::default(), &[(var, "bills")]);
     ui.press("g s l");
     assert!(ui.is_drawn("shadowed-start_view"));
 
@@ -130,7 +127,7 @@ fn l_turns_toasts_off_and_h_turns_them_back_on(app: &mut TestAppContext) {
     ui.press("j j l");
     assert!(!ui.settings::<SettingsGeneralSnapshot>().toasts_on);
     assert!(!ui.toasts().on);
-    assert_eq!(ui.conf(), "[Personal-Ledger]\ntoasts = false\n");
+    assert_eq!(ui.conf(), "[General]\ntoasts = false\n");
     ui.press("h");
     assert!(ui.settings::<SettingsGeneralSnapshot>().toasts_on);
     assert!(ui.toasts().on);
@@ -143,17 +140,14 @@ fn the_toasts_command_moves_the_general_control(app: &mut TestAppContext) {
     ui.press(": t o a s t s space o f f enter");
     assert!(!ui.toasts().on);
     assert!(!ui.settings::<SettingsGeneralSnapshot>().toasts_on);
-    assert_eq!(ui.conf(), "[Personal-Ledger]\ntoasts = false\n");
+    assert_eq!(ui.conf(), "[General]\ntoasts = false\n");
 }
 
 #[gpui::test]
 fn a_setting_an_environment_variable_sets_is_shown_and_left_alone(app: &mut TestAppContext) {
-    let var = "PERSONAL_LEDGER_PERSONAL_LEDGER__ON_START";
-    let mut ui = Harness::with_configuration(
-        app,
-        &lib_config::PersonalLedgerConfig::default(),
-        &[(var, "reopen")],
-    );
+    let var = "PERSONAL_LEDGER_GENERAL__ON_START";
+    let mut ui =
+        Harness::with_configuration(app, &lib_config::Config::default(), &[(var, "reopen")]);
     ui.press("g s l");
     assert!(ui.is_drawn("shadowed-on_start"));
     assert!(!ui.is_drawn("shadowed-toasts"));
@@ -173,10 +167,10 @@ fn a_setting_an_environment_variable_sets_is_shown_and_left_alone(app: &mut Test
 fn general_starts_on_the_on_start_start_view_and_toasts_the_conf_file_holds(
     app: &mut TestAppContext,
 ) {
-    let mut config = lib_config::PersonalLedgerConfig::default();
-    config.on_start = OnStart::NoLedger;
-    config.start_view = StartView::Last;
-    config.toasts = false;
+    let mut config = lib_config::Config::default();
+    config.general.on_start = OnStart::NoLedger;
+    config.general.start_view = StartView::Last;
+    config.general.toasts = false;
     let mut ui = Harness::with_configuration(app, &config, &[]);
     ui.press("g s l");
 

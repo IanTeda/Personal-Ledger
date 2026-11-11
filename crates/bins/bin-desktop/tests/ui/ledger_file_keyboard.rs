@@ -117,8 +117,8 @@ fn starting_on<'a>(
     noun: Noun,
     page: &str,
 ) -> Harness<'a> {
-    let mut config = lib_config::PersonalLedgerConfig::default();
-    config.start_view = start_view;
+    let mut config = lib_config::Config::default();
+    config.general.start_view = start_view;
     Harness::starting_with(app, started, remembering(noun, page), &config)
 }
 

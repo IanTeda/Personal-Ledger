@@ -1,4 +1,4 @@
-//! A Client's Ledger file, opened at start-up: the shared writer on the `[Personal-Ledger] file`,
+//! A Client's Ledger file, opened at start-up: the shared writer on the `[General] file`,
 //! the Client migrations, then the Units, Institutions, Accounts, Categories, Tags, Payees,
 //! Transactions, Bills, Budgets, Inventory and Documents adapters on the pending batch every
 //! adapter shares. The Desktop and the TUI both open it here,
