@@ -294,6 +294,7 @@ fn on_settings_page(ui: &mut Harness<'_>, page: &str) {
 /// A THIS DEVICE page names the configuration file at every width.
 fn names_the_configuration_file(app: &mut TestAppContext, page: &str) {
     let mut ui = Harness::new(app);
+    #[expect(clippy::expect_used, reason = "a test with no home folder can't run")]
     let home = dirs::home_dir().expect("a home folder");
     ui.set_configuration_file(Some(
         home.join(".config/personal-ledger/personal-ledger.conf"),
