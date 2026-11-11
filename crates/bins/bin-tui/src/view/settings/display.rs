@@ -24,7 +24,7 @@ use ratatui::{
     widgets::{Paragraph, Wrap},
 };
 
-use super::field::{DATE_STYLES, SettingField, on_off};
+use super::field::{SettingField, on_off};
 use super::keys::{self, Binding, Press};
 use super::{Context, FieldRow, Open, list, render_form};
 use crate::colours::Colours;
@@ -200,16 +200,16 @@ impl DisplayPage {
                 hint_bar_label(configuration.hint_bar),
             )),
             SettingField::DateStyle => {
-                let segments = DATE_STYLES
+                let segments = lib_config::DATE_STYLES
                     .iter()
-                    .map(|(value, style)| Segment {
-                        value: (*value).to_string(),
+                    .map(|style| Segment {
+                        value: lib_config::date_style_key(*style).to_string(),
                         label: crate::locale::date_style_label(*style),
                     })
                     .collect();
-                let chosen = DATE_STYLES
+                let chosen = lib_config::DATE_STYLES
                     .iter()
-                    .position(|(_, style)| *style == context.values.configuration.date_style)
+                    .position(|style| *style == context.values.configuration.date_style)
                     .unwrap_or_default();
                 Some((
                     Draft::Choice { segments, chosen },

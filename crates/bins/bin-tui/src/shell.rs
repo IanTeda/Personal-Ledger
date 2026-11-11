@@ -12,7 +12,7 @@ use std::time::Duration;
 use chrono::{DateTime, Local};
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use lib_colour_theme::ColourAppearance;
-use lib_config::{ConfigWriter, KeyBindingConfig};
+use lib_config::{ConfigValue, ConfigWriter, KeyBindingConfig};
 use lib_database::{Domain, LedgerPorts, Stores, WriteFailure, Writer};
 use lib_locale::format::upper;
 use lib_shell::WindowSize;
@@ -2378,7 +2378,7 @@ impl Shell {
             .configuration
             .shadow(key)
             .is_some();
-        match self.config_writer.write(key, &folder.display().to_string()) {
+        match self.config_writer.set(ConfigValue::Data(folder.clone())) {
             Ok(()) if !shadowed => {
                 {
                     let mut values = self.settings_values.borrow_mut();
@@ -2429,10 +2429,10 @@ impl Shell {
             if field == SettingField::Locale && Configuration::locale_choice(value) == Some(None) {
                 self.config_writer.remove(key)
             } else {
-                let Some(file_value) = Configuration::file_value(field, value) else {
+                let Some(config_value) = Configuration::config_value(field, value) else {
                     return false;
                 };
-                self.config_writer.write(key, file_value)
+                self.config_writer.set(config_value)
             };
         if let Err(error) = written {
             tracing::warn!(%error, key = key.name(), "couldn't write Configuration");

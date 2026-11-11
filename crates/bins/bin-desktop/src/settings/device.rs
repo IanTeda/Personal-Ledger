@@ -7,12 +7,13 @@
 use std::path::{Path, PathBuf};
 
 use lib_colour_theme::ColourAppearance;
-use lib_config::{ConfigKey, ConfigWriter, Shadow};
+use lib_config::{ConfigKey, ConfigValue, ConfigWriter, Shadow};
 use lib_core::{DateStyle, OnStart, RowDensity, StartView, StatusGlyphs};
 use lib_locale::Locale;
 use lib_settings::{DeviceAnswer, DeviceConfiguration, DeviceKey, DeviceRefusal};
 
-/// The file a key is written under.
+/// The file's key a device's setting is written under: the one per-key table here, read both
+/// ways, since `lib-settings` can't name `lib-config`'s keys and `lib-config` spells every value.
 fn config_key(key: DeviceKey) -> ConfigKey {
     match key {
         DeviceKey::OnStart => ConfigKey::OnStart,
@@ -47,9 +48,17 @@ impl DeviceConfigFile {
         Self { writer, shadows }
     }
 
-    /// Writes `value`, spelt as the file and the TUI's `:set` spell it, under `key`.
-    fn write<T>(&self, key: DeviceKey, spelt: &str, value: T) -> DeviceAnswer<T> {
-        self.change(key, value, |writer, key| writer.write(key, spelt))
+    /// Writes `value` under its key, answering with `answer` once saved.
+    fn write<T>(&self, value: ConfigValue, answer: T) -> DeviceAnswer<T> {
+        let written = value.key();
+        let Some(key) = DeviceKey::ALL
+            .into_iter()
+            .find(|key| config_key(*key) == written)
+        else {
+            tracing::error!(key = written.name(), "A device's setting with no DeviceKey");
+            return DeviceAnswer::Refused(DeviceRefusal::WriteFailed);
+        };
+        self.change(key, answer, |writer, _| writer.set(value))
     }
 
     /// Changes `key` in the file with `edit`, unless a source above sets a key that refuses then.
@@ -89,61 +98,54 @@ impl DeviceConfiguration for DeviceConfigFile {
     }
 
     fn set_on_start(&self, on_start: OnStart) -> DeviceAnswer<OnStart> {
-        self.write(
-            DeviceKey::OnStart,
-            lib_config::on_start_key(on_start),
-            on_start,
-        )
+        self.write(ConfigValue::OnStart(on_start), on_start)
     }
 
     fn set_start_view(&self, start_view: StartView) -> DeviceAnswer<StartView> {
-        let spelt = start_view.key().to_string();
-        self.write(DeviceKey::StartView, &spelt, start_view)
+        self.write(ConfigValue::StartView(start_view.clone()), start_view)
     }
 
     fn set_toasts(&self, on: bool) -> DeviceAnswer<bool> {
-        self.write(DeviceKey::Toasts, if on { "true" } else { "false" }, on)
+        self.write(ConfigValue::Toasts(on), on)
     }
 
     fn set_date_style(&self, style: Option<DateStyle>) -> DeviceAnswer<Option<DateStyle>> {
-        self.write(
-            DeviceKey::DateStyle,
-            lib_config::date_style_key(style),
-            style,
-        )
+        self.write(ConfigValue::DateStyle(style), style)
     }
 
     fn set_row_density(&self, density: RowDensity) -> DeviceAnswer<RowDensity> {
-        self.write(DeviceKey::RowDensity, density.key(), density)
+        self.write(ConfigValue::RowDensity(density), density)
     }
 
     fn set_status_glyphs(&self, glyphs: StatusGlyphs) -> DeviceAnswer<StatusGlyphs> {
-        self.write(DeviceKey::StatusGlyphs, glyphs.key(), glyphs)
+        self.write(ConfigValue::StatusGlyphs(glyphs), glyphs)
     }
 
     fn set_colour_theme(&self, id: &'static str) -> DeviceAnswer<&'static str> {
-        self.write(DeviceKey::ColourTheme, id, id)
+        self.write(ConfigValue::ColourTheme(id.to_string()), id)
     }
 
     fn set_colour_appearance(
         &self,
         appearance: ColourAppearance,
     ) -> DeviceAnswer<ColourAppearance> {
-        self.write(DeviceKey::ColourAppearance, appearance.key(), appearance)
+        self.write(ConfigValue::ColourAppearance(appearance), appearance)
     }
 
     /// **System** takes the key out, so the sources below it, the operating system's Locale
     /// last, decide at the next start.
     fn set_locale(&self, locale: Option<Locale>) -> DeviceAnswer<Option<Locale>> {
         match locale {
-            Some(chosen) => self.write(DeviceKey::Locale, chosen.tag(), locale),
+            Some(chosen) => self.write(ConfigValue::Locale(chosen.tag().to_string()), locale),
             None => self.change(DeviceKey::Locale, None, |writer, key| writer.remove(key)),
         }
     }
 
     fn set_data(&self, folder: &Path) -> DeviceAnswer<PathBuf> {
-        let spelt = folder.display().to_string();
-        self.write(DeviceKey::Data, &spelt, folder.to_path_buf())
+        self.write(
+            ConfigValue::Data(folder.to_path_buf()),
+            folder.to_path_buf(),
+        )
     }
 }
 
@@ -203,49 +205,32 @@ mod tests {
             writing_to(&blocker.join("personal-ledger.conf"), &[])
         }
 
+        /// Reads the file back through `lib-config`'s parser, each key from its own section.
         fn reload(&mut self, device: &Self::Device) -> StoredDevice {
-            let text = device
-                .writer
-                .target()
-                .and_then(|path| std::fs::read_to_string(path).ok())
-                .unwrap_or_default();
-            stored(&text)
-        }
-    }
-
-    /// The `[General]` and `[Display]` keys `text` holds, read with the file's spellings.
-    fn stored(text: &str) -> StoredDevice {
-        let mut stored = StoredDevice::default();
-        for (key, value) in text
-            .lines()
-            .filter_map(|line| line.split_once(" = "))
-            .map(|(key, value)| (key.trim(), value.trim()))
-        {
-            match key {
-                "on_start" => stored.on_start = lib_config::on_start_from_key(value),
-                "start_view" => stored.start_view = Some(StartView::from_key(value)),
-                "toasts" => stored.toasts = value.parse().ok(),
-                "date_style" => {
-                    stored.date_style = lib_settings::presenter::display::DATE_STYLE_CHOICES
-                        .into_iter()
-                        .find(|style| lib_config::date_style_key(*style) == value);
+            let mut stored = StoredDevice::default();
+            for key in DeviceKey::ALL {
+                match device.writer.stored(config_key(key)) {
+                    Some(ConfigValue::OnStart(value)) => stored.on_start = Some(value),
+                    Some(ConfigValue::StartView(value)) => stored.start_view = Some(value),
+                    Some(ConfigValue::Toasts(value)) => stored.toasts = Some(value),
+                    Some(ConfigValue::DateStyle(value)) => stored.date_style = Some(value),
+                    Some(ConfigValue::RowDensity(value)) => stored.row_density = Some(value),
+                    Some(ConfigValue::StatusGlyphs(value)) => stored.status_glyphs = Some(value),
+                    Some(ConfigValue::ColourTheme(value)) => stored.colour_theme = Some(value),
+                    Some(ConfigValue::ColourAppearance(value)) => {
+                        stored.colour_appearance = Some(value);
+                    }
+                    Some(ConfigValue::Locale(tag)) => {
+                        stored.locale = Locale::SUPPORTED
+                            .into_iter()
+                            .find(|locale| locale.tag().eq_ignore_ascii_case(&tag));
+                    }
+                    Some(ConfigValue::Data(value)) => stored.data = Some(value),
+                    _ => {}
                 }
-                "row_density" => stored.row_density = RowDensity::from_key(value),
-                "status_glyphs" => stored.status_glyphs = StatusGlyphs::from_key(value),
-                "colour_theme" => stored.colour_theme = Some(value.to_string()),
-                "colour_appearance" => {
-                    stored.colour_appearance = ColourAppearance::from_key(value);
-                }
-                "locale" => {
-                    stored.locale = Locale::SUPPORTED
-                        .into_iter()
-                        .find(|locale| locale.tag() == value);
-                }
-                "data" => stored.data = Some(PathBuf::from(value)),
-                _ => {}
             }
+            stored
         }
-        stored
     }
 
     #[test]

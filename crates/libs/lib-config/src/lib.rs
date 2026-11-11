@@ -17,6 +17,8 @@
 //!   read by Clients
 //! - [`theme`] - `[theme]`/`[theme.light]`/`[theme.dark]` Colour Role overrides, read by
 //!   the TUI/Desktop Clients
+//! - [`keys`] - The key catalogue: every key parsed, and each key Settings writes with its
+//!   section, environment variable and typed [`ConfigValue`]
 //! - [`writer`] - Writes one key back to its section of the user's file, for Settings
 //! - [`keybindings`] - Keyboard shortcut configuration, read by the TUI/Desktop Clients
 //! - [`cli`] - Shared `--config`/`-c`/`--data`/`-d`/`--file`/`-f`/`--log`/`-l`/`--locale` CLI
@@ -53,16 +55,23 @@ pub(crate) type Result<T> = std::result::Result<T, Error>;
 pub use ledger::LedgerConfig as Config;
 
 /// The `[General]`, `[Display]` and `[Logs]` sections, one per Settings page (ADR-0057).
-pub use display::{DATE_STYLE_DEFAULT, DisplayConfig, date_style_key};
-pub use general::{DEFAULT_LOCALE, GeneralConfig, LocaleSource, on_start_from_key, on_start_key};
+pub use display::{
+    DATE_STYLE_DEFAULT, DATE_STYLES, DisplayConfig, date_style_from_key, date_style_key,
+};
+pub use general::{
+    DEFAULT_LOCALE, GeneralConfig, LocaleSource, ON_STARTS, on_start_from_key, on_start_key,
+};
 pub use logs::LogsConfig;
 
 /// The `status_glyphs` and `row_density` values, `lib_core`'s so the Presenters draw with the same
 /// type the file is read into.
 pub use lib_core::{RowDensity, StatusGlyphs};
 
+/// The key catalogue: each key Settings writes, its section, environment variable and typed value.
+pub use keys::{ConfigKey, ConfigValue, Section};
+
 /// Writes Configuration back to the user's `personal-ledger.conf`, for Settings.
-pub use writer::{ConfigKey, ConfigWriter, Section, Shadow};
+pub use writer::{ConfigWriter, Shadow};
 
 /// Sync-Server-only configuration (bind address and database URI).
 pub use sync_server::SyncServerConfig;

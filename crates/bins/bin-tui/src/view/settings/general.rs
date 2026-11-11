@@ -21,7 +21,7 @@ use ratatui::{
 };
 
 use super::field::{
-    Configuration, LOCALE_SYSTEM, ON_STARTS, SettingField, SettingsValues, on_off, on_start_label,
+    Configuration, LOCALE_SYSTEM, SettingField, SettingsValues, on_off, on_start_label,
 };
 use super::keys::{self, Binding, Press};
 use super::{Context, FIELD_LABEL_WIDTH, FieldRow, Open, list, render_form};
@@ -150,16 +150,16 @@ impl GeneralPage {
         match field {
             SettingField::OnStart => {
                 let on_start = context.values.configuration.on_start;
-                let segments = ON_STARTS
+                let segments = lib_config::ON_STARTS
                     .iter()
-                    .map(|(value, on_start)| Segment {
-                        value: (*value).to_string(),
+                    .map(|on_start| Segment {
+                        value: lib_config::on_start_key(*on_start).to_string(),
                         label: on_start_label(*on_start),
                     })
                     .collect();
-                let chosen = ON_STARTS
+                let chosen = lib_config::ON_STARTS
                     .iter()
-                    .position(|(_, choice)| *choice == on_start)
+                    .position(|choice| *choice == on_start)
                     .unwrap_or_default();
                 Some((Draft::Choice { segments, chosen }, on_start_label(on_start)))
             }

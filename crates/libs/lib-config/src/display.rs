@@ -47,9 +47,26 @@ pub struct DisplayConfig {
 /// The value `date_style` and `:set date-style` spell the Locale's default with.
 pub const DATE_STYLE_DEFAULT: &str = "default";
 
+/// Every date style, in the order a Client offers them: `None` is the Locale's default.
+pub const DATE_STYLES: [Option<DateStyle>; 5] = [
+    None,
+    Some(DateStyle::Short),
+    Some(DateStyle::Medium),
+    Some(DateStyle::Long),
+    Some(DateStyle::Iso),
+];
+
 /// The value the file and `:set date-style` spell `style` with.
 pub fn date_style_key(style: Option<DateStyle>) -> &'static str {
     style.map_or(DATE_STYLE_DEFAULT, |style| style.as_str())
+}
+
+/// The date style `key` spells, ignoring case: `Some(None)` for the Locale's default, `None` for
+/// a word that is no date style.
+pub fn date_style_from_key(key: &str) -> Option<Option<DateStyle>> {
+    DATE_STYLES
+        .into_iter()
+        .find(|style| date_style_key(*style).eq_ignore_ascii_case(key.trim()))
 }
 
 /// `colour_appearance` by [`ColourAppearance::key`].
@@ -84,14 +101,7 @@ mod date_style {
     pub fn deserialize<'de, D: serde::Deserializer<'de>>(
         deserializer: D,
     ) -> Result<Option<DateStyle>, D::Error> {
-        super::by_key(deserializer, |key| {
-            let key = key.trim();
-            if key.eq_ignore_ascii_case(super::DATE_STYLE_DEFAULT) {
-                Some(None)
-            } else {
-                key.parse().ok().map(Some)
-            }
-        })
+        super::by_key(deserializer, super::date_style_from_key)
     }
 }
 

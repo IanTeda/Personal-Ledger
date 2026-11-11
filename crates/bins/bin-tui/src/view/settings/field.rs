@@ -10,7 +10,8 @@
 //! [`Action::SetSetting`]: crate::view::Action::SetSetting
 
 use chrono::{Datelike, Months, NaiveDate};
-use lib_config::{ConfigKey, ConfigWriter, Shadow, StatusGlyphs};
+use lib_colour_theme::ColourAppearance;
+use lib_config::{ConfigKey, ConfigValue, ConfigWriter, Shadow, StatusGlyphs};
 use lib_core::{DateStyle, OnStart, StartView};
 use lib_locale::Locale;
 
@@ -152,13 +153,6 @@ pub fn month_label(month: u32) -> String {
     }
 }
 
-/// The On start choices, in the order the field shows them, by the value `:set on-start` and the
-/// file take ([`lib_config::on_start_key`]).
-pub const ON_STARTS: [(&str, OnStart); 2] = [
-    ("reopen", OnStart::ReopenLastLedger),
-    ("none", OnStart::NoLedger),
-];
-
 /// An On start choice's label.
 pub fn on_start_label(on_start: OnStart) -> String {
     match on_start {
@@ -174,20 +168,14 @@ pub fn start_view_choice(value: &str) -> Option<&'static str> {
         .find(|choice| choice.eq_ignore_ascii_case(value.trim()))
 }
 
-/// The date style choices, in the order the field cycles through them, by the value
-/// `:set date-style` and the file take ([`lib_config::date_style_key`]). `None` is the Locale's
-/// default (ADR-0021).
-pub const DATE_STYLES: [(&str, Option<DateStyle>); 5] = [
-    ("default", None),
-    ("short", Some(DateStyle::Short)),
-    ("medium", Some(DateStyle::Medium)),
-    ("long", Some(DateStyle::Long)),
-    ("iso", Some(DateStyle::Iso)),
-];
-
 /// The values `:set terminal-colours` and `:set hint-bar` take, as `:set toasts` does.
 pub fn on_off(on: bool) -> &'static str {
     if on { "on" } else { "off" }
+}
+
+/// Whether `value`, as [`on_off`] spells it, is on; `None` for any other word.
+pub fn from_on_off(value: &str) -> Option<bool> {
+    [true, false].into_iter().find(|on| on_off(*on) == value)
 }
 
 /// The Configuration General's and Display's rows edit, as read at start-up and written since,
@@ -290,35 +278,37 @@ impl Configuration {
             .map(|source| msg::tui_settings_set_shadowed(field.command_name(), &source))
     }
 
-    /// The value `field` holds as the file spells it, from the value `:set` takes.
-    pub fn file_value(field: SettingField, value: &str) -> Option<&'static str> {
-        match field {
-            SettingField::TerminalColours | SettingField::HintBar | SettingField::Toasts => {
-                match value {
-                    "on" => Some("true"),
-                    "off" => Some("false"),
-                    _ => None,
-                }
-            }
-            SettingField::StatusGlyphs => StatusGlyphs::from_key(value).map(StatusGlyphs::key),
-            SettingField::ColourTheme => lib_colour_theme::ColourTheme::built_in()
-                .iter()
-                .map(|theme| theme.id)
-                .find(|id| id.eq_ignore_ascii_case(value)),
+    /// The typed value `field` writes for the value `:set` takes, which `lib-config` spells in the
+    /// file; `None` for a value the field doesn't offer, or a field that isn't Configuration.
+    /// **System** is no value: the Locale's key is removed instead.
+    pub fn config_value(field: SettingField, value: &str) -> Option<ConfigValue> {
+        Some(match field {
+            SettingField::TerminalColours => ConfigValue::TerminalColours(from_on_off(value)?),
+            SettingField::HintBar => ConfigValue::HintBar(from_on_off(value)?),
+            SettingField::Toasts => ConfigValue::Toasts(from_on_off(value)?),
+            SettingField::StatusGlyphs => ConfigValue::StatusGlyphs(StatusGlyphs::from_key(value)?),
+            SettingField::ColourTheme => ConfigValue::ColourTheme(
+                lib_colour_theme::ColourTheme::built_in()
+                    .iter()
+                    .map(|theme| theme.id)
+                    .find(|id| id.eq_ignore_ascii_case(value))?
+                    .to_string(),
+            ),
             SettingField::Appearance => {
-                lib_colour_theme::ColourAppearance::from_key(value).map(|a| a.key())
+                ConfigValue::ColourAppearance(ColourAppearance::from_key(value)?)
             }
-            SettingField::DateStyle => DATE_STYLES
-                .iter()
-                .find(|(name, _)| name.eq_ignore_ascii_case(value))
-                .map(|(_, style)| lib_config::date_style_key(*style)),
-            SettingField::OnStart => {
-                lib_config::on_start_from_key(value).map(lib_config::on_start_key)
+            SettingField::DateStyle => {
+                ConfigValue::DateStyle(lib_config::date_style_from_key(value)?)
             }
-            SettingField::StartView => start_view_choice(value),
-            SettingField::Locale => Self::locale_choice(value).flatten().map(Locale::tag),
-            _ => None,
-        }
+            SettingField::OnStart => ConfigValue::OnStart(lib_config::on_start_from_key(value)?),
+            SettingField::StartView => {
+                ConfigValue::StartView(StartView::from_key(start_view_choice(value)?))
+            }
+            SettingField::Locale => {
+                ConfigValue::Locale(Self::locale_choice(value)??.tag().to_string())
+            }
+            _ => return None,
+        })
     }
 
     /// What `:set locale` takes: `system` (`Some(None)`) or a supported Locale's tag, never the
@@ -403,13 +393,10 @@ impl SettingsValues {
                 self.financial_year_start = *month;
             }
             SettingField::OnStart => {
-                let Some((_, on_start)) = ON_STARTS
-                    .iter()
-                    .find(|(name, _)| name.eq_ignore_ascii_case(value))
-                else {
+                let Some(on_start) = lib_config::on_start_from_key(value) else {
                     return false;
                 };
-                self.configuration.on_start = *on_start;
+                self.configuration.on_start = on_start;
             }
             SettingField::StartView => {
                 let Some(choice) = start_view_choice(value) else {
@@ -418,19 +405,14 @@ impl SettingsValues {
                 self.configuration.start_view = StartView::from_key(choice);
             }
             SettingField::DateStyle => {
-                let Some((_, style)) = DATE_STYLES
-                    .iter()
-                    .find(|(name, _)| name.eq_ignore_ascii_case(value))
-                else {
+                let Some(style) = lib_config::date_style_from_key(value) else {
                     return false;
                 };
-                self.configuration.date_style = *style;
+                self.configuration.date_style = style;
             }
             SettingField::TerminalColours | SettingField::HintBar => {
-                let on = match value {
-                    "on" => true,
-                    "off" => false,
-                    _ => return false,
+                let Some(on) = from_on_off(value) else {
+                    return false;
                 };
                 if field == SettingField::TerminalColours {
                     self.configuration.terminal_colours = on;
@@ -464,15 +446,11 @@ impl SettingsValues {
                 .iter()
                 .find(|(_, month)| *month == self.financial_year_start)
                 .map(|(name, _)| (*name).to_string())?,
-            SettingField::OnStart => ON_STARTS
-                .iter()
-                .find(|(_, on_start)| *on_start == self.configuration.on_start)
-                .map(|(name, _)| (*name).to_string())?,
+            SettingField::OnStart => lib_config::on_start_key(self.configuration.on_start).into(),
             SettingField::StartView => self.configuration.start_view.key().to_string(),
-            SettingField::DateStyle => DATE_STYLES
-                .iter()
-                .find(|(_, style)| *style == self.configuration.date_style)
-                .map(|(name, _)| (*name).to_string())?,
+            SettingField::DateStyle => {
+                lib_config::date_style_key(self.configuration.date_style).into()
+            }
             SettingField::TerminalColours => on_off(self.configuration.terminal_colours).into(),
             SettingField::StatusGlyphs => self.configuration.status_glyphs.key().into(),
             SettingField::HintBar => on_off(self.configuration.hint_bar).into(),
@@ -605,44 +583,115 @@ mod tests {
                 .is_some_and(|reason| reason.contains("PERSONAL_LEDGER_DISPLAY__HINT_BAR"))
         );
         assert_eq!(
-            Configuration::file_value(SettingField::TerminalColours, "on"),
-            Some("true")
+            Configuration::config_value(SettingField::TerminalColours, "on"),
+            Some(ConfigValue::TerminalColours(true))
         );
         assert_eq!(
-            Configuration::file_value(SettingField::StatusGlyphs, "ASCII"),
-            Some("ascii")
+            Configuration::config_value(SettingField::StatusGlyphs, "ASCII"),
+            Some(ConfigValue::StatusGlyphs(StatusGlyphs::AsciiFallback))
         );
     }
 
     #[test]
-    fn a_device_setting_is_written_as_the_file_spells_it() {
+    fn a_device_setting_is_written_as_the_value_its_key_takes() {
         for (field, value, written) in [
-            (SettingField::Toasts, "off", Some("false")),
-            (SettingField::ColourTheme, "NORD", Some("nord")),
+            (
+                SettingField::Toasts,
+                "off",
+                Some(ConfigValue::Toasts(false)),
+            ),
+            (SettingField::Toasts, "false", None),
+            (
+                SettingField::ColourTheme,
+                "NORD",
+                Some(ConfigValue::ColourTheme("nord".into())),
+            ),
             (SettingField::ColourTheme, "no-such-theme", None),
-            (SettingField::Appearance, "Light", Some("light")),
-            (SettingField::DateStyle, "default", Some("default")),
-            (SettingField::DateStyle, "ISO", Some("iso")),
-            (SettingField::OnStart, "none", Some("none")),
+            (
+                SettingField::Appearance,
+                "Light",
+                Some(ConfigValue::ColourAppearance(ColourAppearance::Light)),
+            ),
+            (
+                SettingField::DateStyle,
+                "default",
+                Some(ConfigValue::DateStyle(None)),
+            ),
+            (
+                SettingField::DateStyle,
+                "ISO",
+                Some(ConfigValue::DateStyle(Some(DateStyle::Iso))),
+            ),
+            (
+                SettingField::OnStart,
+                "none",
+                Some(ConfigValue::OnStart(OnStart::NoLedger)),
+            ),
             (SettingField::OnStart, "sometimes", None),
-            (SettingField::StartView, "Settings", Some("settings")),
-            (SettingField::StartView, "tags", Some("tags")),
+            (
+                SettingField::StartView,
+                "Settings",
+                Some(ConfigValue::StartView(StartView::Settings)),
+            ),
+            (
+                SettingField::StartView,
+                "tags",
+                Some(ConfigValue::StartView(StartView::Noun("tags".into()))),
+            ),
             (SettingField::StartView, "bills", None),
+            (
+                SettingField::Locale,
+                "en-gb",
+                Some(ConfigValue::Locale("en-GB".into())),
+            ),
+            (SettingField::Locale, LOCALE_SYSTEM, None),
             (SettingField::Owner, "Alex", None),
         ] {
             assert_eq!(
-                Configuration::file_value(field, value),
+                Configuration::config_value(field, value),
                 written,
                 "{field:?} {value}"
             );
         }
+    }
+
+    #[test]
+    fn a_field_s_value_is_written_under_the_field_s_own_key() {
+        let offered = |field: SettingField| -> Vec<String> {
+            match field {
+                SettingField::TerminalColours | SettingField::HintBar | SettingField::Toasts => {
+                    vec![on_off(true).into(), on_off(false).into()]
+                }
+                SettingField::StatusGlyphs => {
+                    StatusGlyphs::ALL.map(|glyphs| glyphs.key().into()).into()
+                }
+                SettingField::ColourTheme => lib_colour_theme::ColourTheme::built_in()
+                    .iter()
+                    .map(|theme| theme.id.into())
+                    .collect(),
+                SettingField::Appearance => vec!["light".into(), "dark".into(), "system".into()],
+                SettingField::DateStyle => lib_config::DATE_STYLES
+                    .map(|style| lib_config::date_style_key(style).into())
+                    .into(),
+                SettingField::OnStart => lib_config::ON_STARTS
+                    .map(|on_start| lib_config::on_start_key(on_start).into())
+                    .into(),
+                SettingField::StartView => crate::start_view::CHOICES
+                    .iter()
+                    .map(|choice| (*choice).to_string())
+                    .collect(),
+                SettingField::Locale => vec!["en-GB".into()],
+                _ => Vec::new(),
+            }
+        };
+        for field in SettingField::ALL {
+            for value in offered(field) {
+                let written = Configuration::config_value(field, &value)
+                    .unwrap_or_else(|| panic!("{field:?} refuses its own {value}"));
+                assert_eq!(Some(written.key()), field.config_key(), "{field:?} {value}");
+            }
+        }
         // `:set` and the file spell every choice alike, so a value read back is one `:set` takes.
-        for (name, on_start) in ON_STARTS {
-            assert_eq!(lib_config::on_start_key(on_start), name);
-        }
-        for (name, style) in DATE_STYLES {
-            assert_eq!(lib_config::date_style_key(style), name);
-        }
         for name in crate::start_view::CHOICES {
             assert_eq!(StartView::from_key(name).key(), name);
         }

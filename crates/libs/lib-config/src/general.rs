@@ -65,9 +65,12 @@ pub fn on_start_key(on_start: OnStart) -> &'static str {
     }
 }
 
+/// Every On start, in the order a Client offers them.
+pub const ON_STARTS: [OnStart; 2] = [OnStart::ReopenLastLedger, OnStart::NoLedger];
+
 /// The On start `key` spells, ignoring case.
 pub fn on_start_from_key(key: &str) -> Option<OnStart> {
-    [OnStart::ReopenLastLedger, OnStart::NoLedger]
+    ON_STARTS
         .into_iter()
         .find(|on_start| on_start_key(*on_start).eq_ignore_ascii_case(key.trim()))
 }

@@ -18,139 +18,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-/// The sections Settings writes, one per THIS DEVICE page with keys (ADR-0057). `[Theme*]`,
-/// `[Keybindings]` and `[Sync-Server]` are edited only by hand, so none is here.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Section {
-    /// `[General]`: Settings › General.
-    General,
-    /// `[Display]`: Settings › Display.
-    Display,
-    /// `[Logs]`: Settings › Logs.
-    Logs,
-}
-
-impl Section {
-    /// The section's header as a write adds it to a file that lacks it.
-    pub fn header(self) -> &'static str {
-        match self {
-            Self::General => "General",
-            Self::Display => "Display",
-            Self::Logs => "Logs",
-        }
-    }
-
-    /// The section's name as `normalise_ini` reads its header, and as its environment variables
-    /// spell it, upper-cased.
-    fn normalised(self) -> &'static str {
-        match self {
-            Self::General => "general",
-            Self::Display => "display",
-            Self::Logs => "logs",
-        }
-    }
-}
-
-/// The keys Settings writes, each in its page's [`Section`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConfigKey {
-    /// `on_start`: `reopen` or `none`.
-    OnStart,
-    /// `start_view`: `dashboard`, `last`, `settings` or a noun.
-    StartView,
-    /// `toasts`: whether non-Error Toasts show.
-    Toasts,
-    /// `locale`: the Locale's BCP-47 tag; removed for System, the operating system's.
-    Locale,
-    /// `data`: the folder `:open` and `:new` start in.
-    Data,
-    /// `colour_theme`: the Colour Theme's id.
-    ColourTheme,
-    /// `colour_appearance`: `light`, `dark` or `system`.
-    ColourAppearance,
-    /// `date_style`: `default`, `short`, `medium`, `long` or `iso`.
-    DateStyle,
-    /// `row_density`: `compact`, `regular` or `roomy`.
-    RowDensity,
-    /// `status_glyphs`: `unicode` or `ascii`.
-    StatusGlyphs,
-    /// `hint_bar`: whether the footer shows the key hints.
-    HintBar,
-    /// `terminal_colours`: draw with the terminal's own colours (ADR-0024).
-    TerminalColours,
-    /// `log`: the tracing level.
-    Log,
-    /// `log_file_path`: a file the logs are also written to.
-    LogFilePath,
-}
-
-impl ConfigKey {
-    /// Every key Settings writes, in the order the file's sections and keys are documented.
-    pub const ALL: [ConfigKey; 14] = [
-        Self::OnStart,
-        Self::StartView,
-        Self::Toasts,
-        Self::Locale,
-        Self::Data,
-        Self::ColourTheme,
-        Self::ColourAppearance,
-        Self::DateStyle,
-        Self::RowDensity,
-        Self::StatusGlyphs,
-        Self::HintBar,
-        Self::TerminalColours,
-        Self::Log,
-        Self::LogFilePath,
-    ];
-
-    /// The key as it is written in the file.
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::OnStart => "on_start",
-            Self::StartView => "start_view",
-            Self::Toasts => "toasts",
-            Self::Locale => "locale",
-            Self::Data => "data",
-            Self::ColourTheme => "colour_theme",
-            Self::ColourAppearance => "colour_appearance",
-            Self::DateStyle => "date_style",
-            Self::RowDensity => "row_density",
-            Self::StatusGlyphs => "status_glyphs",
-            Self::HintBar => "hint_bar",
-            Self::TerminalColours => "terminal_colours",
-            Self::Log => "log",
-            Self::LogFilePath => "log_file_path",
-        }
-    }
-
-    /// The section the key lives in, its Settings page's.
-    pub fn section(self) -> Section {
-        match self {
-            Self::OnStart | Self::StartView | Self::Toasts | Self::Locale | Self::Data => {
-                Section::General
-            }
-            Self::ColourTheme
-            | Self::ColourAppearance
-            | Self::DateStyle
-            | Self::RowDensity
-            | Self::StatusGlyphs
-            | Self::HintBar
-            | Self::TerminalColours => Section::Display,
-            Self::Log | Self::LogFilePath => Section::Logs,
-        }
-    }
-
-    /// The environment variable that sets the key, by `add_explicit_and_env`'s naming:
-    /// `PERSONAL_LEDGER_<SECTION>__<KEY>`.
-    pub fn env_var(self) -> String {
-        format!(
-            "{}_{}__{}",
-            crate::ledger::LedgerConfig::env_prefix(),
-            self.section().normalised().to_uppercase(),
-            self.name().to_uppercase()
-        )
-    }
-}
+use crate::keys::{ConfigKey, ConfigValue};
 
 /// The source that outranks the file a write goes to, so the write changes nothing until it goes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -250,17 +118,37 @@ impl ConfigWriter {
         key_value(&text, key)
     }
 
-    /// Writes `value` to `key` in its section of the target file, keeping the rest of the file as
-    /// it was.
+    /// The value the target file itself sets `key` to, read by the parser from that file alone,
+    /// with nothing above it and no environment, as a restart with only that file would read it;
+    /// `None` when the file doesn't set the key in its section, doesn't exist, or doesn't parse.
+    pub fn stored(&self, key: ConfigKey) -> Option<ConfigValue> {
+        let path = self.target.as_deref()?;
+        let text = std::fs::read_to_string(path).ok()?;
+        if !sets_key(&text, key) {
+            return None;
+        }
+        let config = crate::Config::parse_file_alone(path).ok()?;
+        ConfigValue::read(key, &config)
+    }
+
+    /// Writes `value` under its key in its section of the target file, spelt as the parser reads
+    /// it back, keeping the rest of the file as it was.
     ///
     /// # Errors
-    /// Returns [`crate::Error::Validation`] when there is no target, and [`crate::Error::Write`]
-    /// when the file or its directory can't be read or written.
-    pub fn write(&self, key: ConfigKey, value: &str) -> crate::Result<()> {
-        let escaped = escape(value);
-        edit(self.target_file()?, |text| {
-            Some(set_key(text, key, &escaped))
-        })
+    /// Returns [`crate::Error::Validation`] when there is no target,
+    /// [`crate::Error::InvalidLocale`] for a Locale that isn't a well-formed tag, which the parser
+    /// would refuse at the next start, and [`crate::Error::Write`] when the file or its directory
+    /// can't be read or written.
+    pub fn set(&self, value: ConfigValue) -> crate::Result<()> {
+        let path = self.target_file()?;
+        let value = match value {
+            ConfigValue::Locale(tag) => {
+                ConfigValue::Locale(crate::general::parse_locale_tag(&tag)?)
+            }
+            other => other,
+        };
+        let escaped = escape(&value.spelt());
+        edit(path, |text| Some(set_key(text, value.key(), &escaped)))
     }
 
     /// Removes `key`'s line from its section of the target file, keeping every other byte, so the
@@ -268,7 +156,7 @@ impl ConfigWriter {
     /// doesn't exist or doesn't set the key is left alone.
     ///
     /// # Errors
-    /// As [`Self::write`].
+    /// As [`Self::set`].
     pub fn remove(&self, key: ConfigKey) -> crate::Result<()> {
         edit(self.target_file()?, |text| remove_key(text, key))
     }
@@ -502,38 +390,6 @@ back = \"esc\"
     ];
 
     #[test]
-    fn every_key_names_its_section_and_its_environment_variable() {
-        assert_eq!(
-            ConfigKey::ALL.map(|key| (key.section(), key.name())),
-            [
-                (Section::General, "on_start"),
-                (Section::General, "start_view"),
-                (Section::General, "toasts"),
-                (Section::General, "locale"),
-                (Section::General, "data"),
-                (Section::Display, "colour_theme"),
-                (Section::Display, "colour_appearance"),
-                (Section::Display, "date_style"),
-                (Section::Display, "row_density"),
-                (Section::Display, "status_glyphs"),
-                (Section::Display, "hint_bar"),
-                (Section::Display, "terminal_colours"),
-                (Section::Logs, "log"),
-                (Section::Logs, "log_file_path"),
-            ]
-        );
-        assert_eq!(
-            ConfigKey::Toasts.env_var(),
-            "PERSONAL_LEDGER_GENERAL__TOASTS"
-        );
-        assert_eq!(
-            ConfigKey::RowDensity.env_var(),
-            "PERSONAL_LEDGER_DISPLAY__ROW_DENSITY"
-        );
-        assert_eq!(ConfigKey::Log.env_var(), "PERSONAL_LEDGER_LOGS__LOG");
-    }
-
-    #[test]
     fn an_existing_key_is_rewritten_in_place_in_each_section_and_nothing_else_changes() {
         assert_eq!(
             set_key(WRITTEN, ConfigKey::OnStart, "none"),
@@ -621,10 +477,16 @@ back = \"esc\"
             .join("personal-ledger")
             .join("personal-ledger.conf");
         let writer = ConfigWriter::new(Some(path.clone()), Vec::new(), []);
-        writer.write(ConfigKey::HintBar, "false").unwrap();
-        writer.write(ConfigKey::Toasts, "false").unwrap();
-        writer.write(ConfigKey::StatusGlyphs, "ascii").unwrap();
-        writer.write(ConfigKey::Log, "warn").unwrap();
+        writer.set(ConfigValue::HintBar(false)).unwrap();
+        writer.set(ConfigValue::Toasts(false)).unwrap();
+        writer
+            .set(ConfigValue::StatusGlyphs(
+                crate::StatusGlyphs::AsciiFallback,
+            ))
+            .unwrap();
+        writer
+            .set(ConfigValue::Log(lib_tracing::Levels::WARN))
+            .unwrap();
         assert_eq!(
             std::fs::read_to_string(&path).unwrap(),
             "[Display]\nhint_bar = false\nstatus_glyphs = ascii\n\n\
@@ -643,53 +505,131 @@ back = \"esc\"
         assert_eq!(config.logs_config().log(), lib_tracing::Levels::WARN);
     }
 
+    /// Every value each key Settings writes can take, open-ended ones by example: a Windows path
+    /// among the folders, and every built-in Colour Theme.
+    fn every_value() -> Vec<ConfigValue> {
+        use lib_colour_theme::{ColourAppearance, ColourTheme};
+        use lib_core::StartView;
+        let mut values = Vec::new();
+        for on in [true, false] {
+            values.extend([
+                ConfigValue::Toasts(on),
+                ConfigValue::HintBar(on),
+                ConfigValue::TerminalColours(on),
+            ]);
+        }
+        values.extend(crate::ON_STARTS.map(ConfigValue::OnStart));
+        values.extend(
+            [
+                StartView::Dashboard,
+                StartView::Last,
+                StartView::Settings,
+                StartView::Noun("units".into()),
+            ]
+            .map(ConfigValue::StartView),
+        );
+        values.extend(["en-GB", "en-US", "en-AU"].map(|tag| ConfigValue::Locale(tag.into())));
+        for folder in [
+            "/tmp/ledgers",
+            r"C:\Users\me\new",
+            "/tmp/with space/ledgers",
+        ] {
+            values.push(ConfigValue::Data(folder.into()));
+            values.push(ConfigValue::LogFilePath(folder.into()));
+        }
+        values.extend(
+            ColourTheme::built_in()
+                .iter()
+                .map(|theme| ConfigValue::ColourTheme(theme.id.into())),
+        );
+        values.extend(
+            [
+                ColourAppearance::Light,
+                ColourAppearance::Dark,
+                ColourAppearance::System,
+            ]
+            .map(ConfigValue::ColourAppearance),
+        );
+        values.extend(crate::DATE_STYLES.map(ConfigValue::DateStyle));
+        values.extend(crate::RowDensity::ALL.map(ConfigValue::RowDensity));
+        values.extend(crate::StatusGlyphs::ALL.map(ConfigValue::StatusGlyphs));
+        values.extend(
+            [
+                lib_tracing::Levels::OFF,
+                lib_tracing::Levels::ERROR,
+                lib_tracing::Levels::WARN,
+                lib_tracing::Levels::INFO,
+                lib_tracing::Levels::DEBUG,
+                lib_tracing::Levels::TRACE,
+            ]
+            .map(ConfigValue::Log),
+        );
+        values
+    }
+
     #[test]
-    fn each_device_setting_writes_its_key_and_reads_back() {
+    fn every_value_of_every_key_is_written_and_read_back_by_the_parser() {
+        let values = every_value();
+        for key in ConfigKey::ALL {
+            assert!(
+                values.iter().any(|value| value.key() == key),
+                "{key:?} has no value in the round trip"
+            );
+        }
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("personal-ledger.conf");
         let writer = ConfigWriter::new(Some(path.clone()), Vec::new(), []);
-        writer.write(ConfigKey::Toasts, "false").unwrap();
-        writer.write(ConfigKey::ColourTheme, "nord").unwrap();
-        writer.write(ConfigKey::ColourAppearance, "light").unwrap();
-        writer.write(ConfigKey::DateStyle, "iso").unwrap();
-        writer.write(ConfigKey::OnStart, "none").unwrap();
-        writer.write(ConfigKey::StartView, "units").unwrap();
-        writer.write(ConfigKey::Locale, "en-GB").unwrap();
-        writer.write(ConfigKey::Data, "/tmp/ledgers").unwrap();
-        writer
-            .write(ConfigKey::RowDensity, crate::RowDensity::Roomy.key())
-            .unwrap();
+        for value in values {
+            writer.set(value.clone()).unwrap();
+            let config =
+                crate::Config::parse_with_detector(Some(&path), Some(HashMap::new()), || None)
+                    .unwrap();
+            assert_eq!(
+                ConfigValue::read(value.key(), &config),
+                Some(value.clone()),
+                "read back through the parser"
+            );
+            assert_eq!(
+                writer.stored(value.key()),
+                Some(value),
+                "read back as stored"
+            );
+        }
+    }
+
+    #[test]
+    fn a_locale_the_parser_would_refuse_is_not_written_and_a_tag_is_written_canonically() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("personal-ledger.conf");
+        let writer = ConfigWriter::new(Some(path.clone()), Vec::new(), []);
+        assert!(matches!(
+            writer.set(ConfigValue::Locale("not a tag!".into())),
+            Err(crate::Error::InvalidLocale { .. })
+        ));
+        assert!(!path.exists());
+        writer.set(ConfigValue::Locale("en-gb".into())).unwrap();
         assert_eq!(
             std::fs::read_to_string(&path).unwrap(),
-            "[General]\ntoasts = false\non_start = none\nstart_view = units\nlocale = en-GB\n\
-             data = /tmp/ledgers\n\n[Display]\ncolour_theme = nord\ncolour_appearance = light\n\
-             date_style = iso\nrow_density = roomy\n"
+            "[General]\nlocale = en-GB\n"
         );
+    }
 
-        let config =
-            crate::Config::parse_with_detector(Some(&path), Some(HashMap::new()), || None).unwrap();
-        let general = config.general_config();
-        assert!(!general.toasts());
-        assert_eq!(general.on_start(), lib_core::OnStart::NoLedger);
+    #[test]
+    fn stored_reads_only_the_key_s_own_section_of_the_target() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("personal-ledger.conf");
+        let writer = ConfigWriter::new(Some(path.clone()), Vec::new(), []);
+        assert_eq!(writer.stored(ConfigKey::Toasts), None, "no file yet");
+        std::fs::write(
+            &path,
+            "[Display]\ntoasts = false\n[General]\non_start = none\n",
+        )
+        .unwrap();
+        assert_eq!(writer.stored(ConfigKey::Toasts), None);
         assert_eq!(
-            general.start_view(),
-            &lib_core::StartView::Noun("units".into())
+            writer.stored(ConfigKey::OnStart),
+            Some(ConfigValue::OnStart(lib_core::OnStart::NoLedger))
         );
-        assert_eq!(general.locale(), Some("en-GB"));
-        assert_eq!(general.data(), Path::new("/tmp/ledgers"));
-        let display = config.display_config();
-        assert_eq!(display.colour_theme(), Some("nord"));
-        assert_eq!(
-            display.colour_appearance(),
-            lib_colour_theme::ColourAppearance::Light
-        );
-        assert_eq!(display.date_style(), Some(lib_core::DateStyle::Iso));
-        assert_eq!(display.row_density(), crate::RowDensity::Roomy);
-
-        writer.write(ConfigKey::DateStyle, "default").unwrap();
-        let config =
-            crate::Config::parse_with_detector(Some(&path), Some(HashMap::new()), || None).unwrap();
-        assert_eq!(config.display_config().date_style(), None);
     }
 
     #[test]
@@ -698,7 +638,7 @@ back = \"esc\"
         let path = dir.path().join("personal-ledger.conf");
         let writer = ConfigWriter::new(Some(path.clone()), Vec::new(), []);
         let folder = r"C:\Users\me\new";
-        writer.write(ConfigKey::Data, folder).unwrap();
+        writer.set(ConfigValue::Data(folder.into())).unwrap();
 
         let config =
             crate::Config::parse_with_detector(Some(&path), Some(HashMap::new()), || None).unwrap();
@@ -877,8 +817,10 @@ back = \"esc\"
         let path = dir.path().join("personal-ledger.conf");
         std::fs::write(&path, WRITTEN).unwrap();
         let writer = ConfigWriter::new(Some(path.clone()), Vec::new(), []);
-        writer.write(ConfigKey::TerminalColours, "true").unwrap();
-        writer.write(ConfigKey::StartView, "last").unwrap();
+        writer.set(ConfigValue::TerminalColours(true)).unwrap();
+        writer
+            .set(ConfigValue::StartView(lib_core::StartView::Last))
+            .unwrap();
         assert_eq!(
             std::fs::read_to_string(&path).unwrap(),
             WRITTEN
@@ -893,7 +835,7 @@ back = \"esc\"
     #[test]
     fn with_no_target_a_write_is_refused() {
         assert!(matches!(
-            ConfigWriter::default().write(ConfigKey::HintBar, "true"),
+            ConfigWriter::default().set(ConfigValue::HintBar(true)),
             Err(crate::Error::Validation(_))
         ));
     }

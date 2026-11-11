@@ -173,6 +173,19 @@ impl LedgerConfig {
         Ok(ledger_config)
     }
 
+    /// The configuration `path` alone gives over the built-in defaults: no other file, no
+    /// environment and no operating-system Locale, the configured one checked as [`Self::parse`]
+    /// checks it. What [`crate::ConfigWriter::stored`] reads its target back with.
+    ///
+    /// # Errors
+    /// As [`Self::parse`], for the one file.
+    pub(crate) fn parse_file_alone(path: &Path) -> crate::Result<LedgerConfig> {
+        let config_builder = Self::add_ini_source(Self::defaults_builder()?, path)?;
+        let mut ledger_config = Self::build(config_builder)?;
+        ledger_config.general.resolve_locale(|| None)?;
+        Ok(ledger_config)
+    }
+
     /// Parse configuration for the Sync Server: a reduced defaults -> explicit path ->
     /// environment variables chain (ADR-0014) -- the Client-only system/user/executable-
     /// directory/working-directory search tiers don't correspond to anything meaningful
