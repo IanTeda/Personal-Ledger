@@ -71,7 +71,7 @@ Frames 1a–1f are drawn at **1280 × 800**, the Large reference frame. The Wind
 - Palette chrome: `background #f3f2f2; border: 2px solid #201e1d; box-shadow: 0 12px 32px rgba(45,43,43,.30)`
 
 ### 1e — File explorer (`:open`)
-**Purpose**: The popup behind `:open` — browsing the filesystem to open a `.pldb` Ledger file. It starts in the `data` folder, shown read-only on Settings › General. Floats over the same empty shell as 1a, using the same dimming pattern as the command palette (1d): header/rails/footer at reduced opacity, dialog at full opacity and elevated.
+**Purpose**: The popup behind `:open` — browsing the filesystem to open a `.pldb` Ledger file. It starts in the Data folder, set on Settings › General or with `:data`. Floats over the same empty shell as 1a, using the same dimming pattern as the command palette (1d): header/rails/footer at reduced opacity, dialog at full opacity and elevated.
 
 **Layout**:
 - Shell behind: identical to 1a (empty state, `:open` shown active in the header), dimmed to `opacity:.30` (rails) / `.38` (header)
@@ -93,6 +93,13 @@ Frames 1a–1f are drawn at **1280 × 800**, the Large reference frame. The Wind
 - Footer: the two checkboxes, Cancel, and **Create** (primary) in place of Open
 
 **Behaviour**: `enter` or Create makes the file in the current folder and opens it, landing on the Dashboard with `Created <name>.pldb`; with a Ledger already open it swaps only once the new file opens. `esc` or Cancel closes without creating anything. Until the new-file workflow (#912), Create writes the same starting data `:open`'s stand-in seed does.
+
+### 1e·pick — File explorer in folder-picking mode (Data folder, `:data`)
+**Purpose**: The same explorer choosing the Data folder, from Settings › General's **Change…** or `:data` from anywhere. Drawn in the Settings deck as [DESKTOP-187](../16-settings/Settings.dc.html#DESKTOP-187) (picker), [DESKTOP-188](../16-settings/Settings.dc.html#DESKTOP-188) (after Use) and [DESKTOP-189](../16-settings/Settings.dc.html#DESKTOP-189) (`:data` in the palette).
+
+**Layout** (1e's, except): header **Choose data folder** with the current Data folder on its right; folders are the targets, files are listed dimmed and inert; no `.pldb`-only checkbox; footer "Picks the folder you're in. Files show what's there; nothing is moved.", Cancel and **Use <folder>** (`ctrl-enter`), named for the folder the path bar shows.
+
+**Behaviour**: it opens in the current Data folder. `j/k` move, `l` or `enter` walks into a folder, `h` or `backspace` goes up. Use writes `[General] data`, which applies at once, raises a Success Toast and returns to where the user was; `esc` or Cancel returns with nothing changed. It works with or without a Ledger open.
 
 **Why it matters**: `.pldb` is the only openable extension — everything else in the list (folders, `.csv`, `.pldb.bak`) is present specifically to test that the row-type distinction reads correctly at a glance, and that Open is meaningfully gated on selecting a real `.pldb` row.
 
@@ -266,7 +273,7 @@ palette
   history: Vec<String>
 fileExplorer
   open: bool
-  mode: Open | New             // :open or :new (1e, 1e·new)
+  mode: Open | New | PickFolder  // :open, :new (1e, 1e·new), Data folder or :data (1e·pick)
   fileName: String             // New mode only; .pldb added if missing
   currentPath: PathBuf
   entries: Vec<DirEntry>       // folders + files, unfiltered

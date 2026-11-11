@@ -240,3 +240,10 @@ Every card in the Desktop and TUI mockups has a product-prefixed ID, so a prompt
 | DESKTOP-180 | 1e·new | `desktop-mockups/01-shell/Shell.dc.html` |
 | DESKTOP-181 | — | `desktop-mockups/16-settings/Settings.dc.html` |
 | DESKTOP-182 | — | `desktop-mockups/16-settings/Settings.dc.html` |
+| DESKTOP-183 | — | `desktop-mockups/16-settings/Settings.dc.html` |
+| DESKTOP-184 | — | `desktop-mockups/16-settings/Settings.dc.html` |
+| DESKTOP-185 | — | `desktop-mockups/16-settings/Settings.dc.html` |
+| DESKTOP-186 | — | `desktop-mockups/16-settings/Settings.dc.html` |
+| DESKTOP-187 | — | `desktop-mockups/16-settings/Settings.dc.html` |
+| DESKTOP-188 | — | `desktop-mockups/16-settings/Settings.dc.html` |
+| DESKTOP-189 | — | `desktop-mockups/16-settings/Settings.dc.html` |
