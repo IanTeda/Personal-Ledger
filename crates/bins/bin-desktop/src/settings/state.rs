@@ -24,7 +24,7 @@ use crate::{
         module_page::{ModulePage, SettingsPageView},
         page_clicks::PresenterPage,
         page_handle::{PageHandle, PageKey, PageLayout, PageSignals},
-        statusline::PageStatus,
+        statusline::{PageStatus, StatusRight},
         window_size::WindowSize,
     },
     view::event::{Reveal, ViewEvent},
@@ -600,7 +600,7 @@ impl SettingsView {
         if !self.zone_focused {
             return None;
         }
-        let right = super::scope_note(self.frame.selected());
+        let right = StatusRight::of_settings_page(self.frame.selected());
         if self.frame.picker_open() {
             return Some(PageStatus {
                 hints: self.frame.hints(),

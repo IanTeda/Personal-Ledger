@@ -47,7 +47,7 @@ impl PageView for AccountsPagePresenter {
     fn status(view: &AccountsPageViewModel) -> PageStatus {
         PageStatus {
             hints: view.hints.clone(),
-            right: view.status.clone(),
+            right: view.status.clone().into(),
         }
     }
 

@@ -38,6 +38,7 @@ desktop-status-command-refused = :{ $command } — not available here right now
 
 desktop-status-refused-no-ledger = No Ledger open: { $open } or { $new } first
 desktop-status-no-ledger-file = No ledger open…
+desktop-status-no-configuration-file = no configuration file
 
 ## Why start-up or `:open` couldn't open a Ledger file, the `$reason` of the Toast saying so.
 

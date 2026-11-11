@@ -116,7 +116,7 @@ impl PageView for BillsPagePresenter {
     fn status(view: &BillsPageViewModel) -> PageStatus {
         PageStatus {
             hints: view.hints.clone(),
-            right: view.status.clone(),
+            right: view.status.clone().into(),
         }
     }
 

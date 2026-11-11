@@ -24,7 +24,7 @@ use crate::settings::SettingsPage;
 use crate::settings::pages::PageFrame;
 use crate::settings::router::DeviceRouter;
 use crate::shell::view::module_page::{ModulePage, PageDraw, PageView, SettingsPageView};
-use crate::shell::view::statusline::PageStatus;
+use crate::shell::view::statusline::{PageStatus, StatusRight};
 use crate::view::help::HelpGroup;
 
 /// The Display page: the Presenter in the generic page Entity. The Presenter holds the Display
@@ -101,7 +101,7 @@ impl PageView for DisplayPresenter {
     fn status(view: &DisplayViewModel) -> PageStatus {
         PageStatus {
             hints: view.hints.clone(),
-            right: crate::settings::scope_note(SettingsPage::Display),
+            right: StatusRight::of_settings_page(SettingsPage::Display),
         }
     }
 

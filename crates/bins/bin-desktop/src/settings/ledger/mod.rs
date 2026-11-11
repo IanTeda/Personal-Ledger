@@ -23,7 +23,7 @@ use crate::settings::SettingsPage;
 use crate::settings::router::LedgerRouter;
 use crate::settings::snapshot::PageSnapshot;
 use crate::shell::view::module_page::{ModulePage, PageDraw, PageView, SettingsPageView};
-use crate::shell::view::statusline::PageStatus;
+use crate::shell::view::statusline::{PageStatus, StatusRight};
 
 /// The Ledger page: the Presenter, over the Units store, in the generic page Entity.
 pub type LedgerPage = ModulePage<LedgerPresenter>;
@@ -98,7 +98,7 @@ impl PageView for LedgerPresenter {
     fn status(view: &LedgerViewModel) -> PageStatus {
         PageStatus {
             hints: view.hints.clone(),
-            right: crate::settings::scope_note(SettingsPage::Ledger),
+            right: StatusRight::of_settings_page(SettingsPage::Ledger),
         }
     }
 

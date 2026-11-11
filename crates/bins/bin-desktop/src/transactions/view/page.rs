@@ -197,7 +197,7 @@ impl PageView for TransactionsPagePresenter {
     fn status(view: &TransactionsPageViewModel) -> PageStatus {
         PageStatus {
             hints: view.hints.clone(),
-            right: view.legend.clone(),
+            right: view.legend.clone().into(),
         }
     }
 

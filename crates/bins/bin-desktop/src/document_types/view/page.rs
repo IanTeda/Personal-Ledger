@@ -48,7 +48,7 @@ impl PageView for DocumentTypesPagePresenter {
     fn status(view: &DocumentTypesPageViewModel) -> PageStatus {
         PageStatus {
             hints: view.hints.clone(),
-            right: view.scope.clone(),
+            right: view.scope.clone().into(),
         }
     }
 

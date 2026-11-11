@@ -26,7 +26,7 @@ use crate::settings::SettingsPage;
 use crate::settings::pages::PageFrame;
 use crate::shell::view::module_page::{PageDraw, PageView, SettingsPageView};
 use crate::shell::view::page_clicks::PageClicks;
-use crate::shell::view::statusline::PageStatus;
+use crate::shell::view::statusline::{PageStatus, StatusRight};
 use crate::shell::view::window_size::WindowSize;
 use crate::units::router::PageRouter;
 use crate::units::{UnitsPage, UnitsRoutes};
@@ -90,7 +90,7 @@ impl PageView for UnitsPagePresenter {
         };
         PageStatus {
             hints,
-            right: crate::settings::scope_note(SettingsPage::Units),
+            right: StatusRight::of_settings_page(SettingsPage::Units),
         }
     }
 

@@ -13,7 +13,7 @@ use lib_viper::keymap::Keymap;
 use crate::settings::SettingsPage;
 use crate::settings::hints::settings_plain_page_hints;
 use crate::shell::view::module_page::{ModulePage, PageDraw, PageView, SettingsPageView};
-use crate::shell::view::statusline::PageStatus;
+use crate::shell::view::statusline::{PageStatus, StatusRight};
 
 /// The About page: the Presenter in the generic page Entity.
 pub type AboutPage = ModulePage<AboutPresenter>;
@@ -64,7 +64,7 @@ impl PageView for AboutPresenter {
     fn status(view: &AboutViewModel) -> PageStatus {
         PageStatus {
             hints: view.hints.clone(),
-            right: crate::settings::scope_note(SettingsPage::About),
+            right: StatusRight::of_settings_page(SettingsPage::About),
         }
     }
 }

@@ -384,6 +384,21 @@ impl<'a> Harness<'a> {
             .update(self.cx, |shell, cx| shell.set_this_device(device, cx));
     }
 
+    /// Names `file` as the configuration file Settings writes, or none.
+    pub fn set_configuration_file(&mut self, file: Option<std::path::PathBuf>) {
+        let device = lib_settings::ThisDevice {
+            configuration: file,
+            ..lib_settings::ThisDevice::default()
+        };
+        self.shell
+            .update(self.cx, |shell, cx| shell.set_this_device(device, cx));
+    }
+
+    /// The status line's right-hand side as drawn at `size`.
+    pub fn status_right(&mut self, size: WindowSize) -> String {
+        self.read_app(|shell, cx| shell.status_right_snapshot(size, cx))
+    }
+
     /// The Open Ledger's file, `None` with none open.
     pub fn ledger_path(&mut self) -> Option<std::path::PathBuf> {
         self.read(|shell| shell.ledger_path().map(std::path::Path::to_path_buf))

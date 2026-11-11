@@ -36,7 +36,48 @@ pub const HEIGHT: Pixels = px(28.0);
 #[derive(Debug, Clone, Default)]
 pub struct PageStatus {
     pub hints: Vec<Hint>,
-    pub right: String,
+    pub right: StatusRight,
+}
+
+/// What a page puts on the status line's right-hand side.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum StatusRight {
+    /// The Open Ledger's file ([`ledger_label`]): a THIS LEDGER Settings page.
+    #[default]
+    Ledger,
+    /// The configuration file Settings writes ([`configuration_label`]): a THIS DEVICE page.
+    Configuration,
+    /// The page's own text.
+    Text(String),
+}
+
+impl StatusRight {
+    /// The right-hand side of a Settings page: the file its settings live in.
+    pub fn of_settings_page(page: lib_settings::SettingsPage) -> Self {
+        match page.scope_group() {
+            lib_settings::ScopeGroup::ThisDevice => Self::Configuration,
+            lib_settings::ScopeGroup::ThisLedger => Self::Ledger,
+        }
+    }
+
+    /// Whether it says nothing: a file always has something to say.
+    pub fn is_empty(&self) -> bool {
+        matches!(self, Self::Text(text) if text.is_empty())
+    }
+
+    /// The page's own text, empty for a file.
+    pub fn text(&self) -> String {
+        match self {
+            Self::Text(text) => text.clone(),
+            Self::Ledger | Self::Configuration => String::new(),
+        }
+    }
+}
+
+impl From<String> for StatusRight {
+    fn from(text: String) -> Self {
+        Self::Text(text)
+    }
 }
 
 /// The shell-wide hint strip's clickable entries -- each does what its key does in `Normal` mode.
@@ -84,6 +125,8 @@ pub struct StatusLine {
     ledger_open: bool,
     /// The Open Ledger's file, `None` on a test's in-memory stores, which show the sample's.
     ledger_file: Option<PathBuf>,
+    /// The configuration file Settings writes, `None` with no home folder.
+    configuration_file: Option<PathBuf>,
 }
 
 impl StatusLine {
@@ -100,6 +143,7 @@ impl StatusLine {
             mode_label: None,
             ledger_open: true,
             ledger_file: None,
+            configuration_file: None,
         }
     }
 
@@ -108,6 +152,12 @@ impl StatusLine {
     pub fn ledger(mut self, open: bool, file: Option<PathBuf>) -> Self {
         self.ledger_open = open;
         self.ledger_file = file;
+        self
+    }
+
+    /// Sets the configuration file a THIS DEVICE Settings page names.
+    pub fn configuration(mut self, file: Option<PathBuf>) -> Self {
+        self.configuration_file = file;
         self
     }
 
@@ -139,12 +189,21 @@ impl RenderOnce for StatusLine {
         let right = right_side(
             self.command_echo.as_ref(),
             self.page.as_ref(),
-            ledger_label(
-                self.ledger_open,
-                self.ledger_file.as_deref(),
-                window_size,
-                HOME.as_deref(),
-            ),
+            || {
+                ledger_label(
+                    self.ledger_open,
+                    self.ledger_file.as_deref(),
+                    window_size,
+                    HOME.as_deref(),
+                )
+            },
+            || {
+                configuration_label(
+                    self.configuration_file.as_deref(),
+                    window_size,
+                    HOME.as_deref(),
+                )
+            },
         );
         let badge_label = lib_locale::format::upper(
             &self
@@ -410,16 +469,44 @@ fn command_query_echo(query: &str, cx: &App) -> impl IntoElement {
 }
 
 /// The status line's right-hand side: the command surface's "esc closes" hint, else the page's
-/// note, else `ledger`, the Open Ledger's file or "No ledger open…" ([`ledger_label`]).
-fn right_side(
+/// text or file, else `ledger`, the Open Ledger's file or "No ledger open…" ([`ledger_label`]).
+pub fn right_side(
     command_echo: Option<&(String, String)>,
     page: Option<&PageStatus>,
-    ledger: String,
+    ledger: impl FnOnce() -> String,
+    configuration: impl FnOnce() -> String,
 ) -> String {
-    match (command_echo, page) {
+    match (command_echo, page.map(|page| &page.right)) {
         (Some((_, hint)), _) => hint.clone(),
-        (None, Some(page)) => page.right.clone(),
-        (None, None) => ledger,
+        (None, Some(StatusRight::Text(text))) => text.clone(),
+        (None, Some(StatusRight::Configuration)) => configuration(),
+        (None, Some(StatusRight::Ledger) | None) => ledger(),
+    }
+}
+
+/// What the status line says of the configuration file: its path with `home` as `~`, shortened to
+/// its file name at Medium, or "no configuration file" when there is none.
+pub fn configuration_label(
+    file: Option<&Path>,
+    window_size: WindowSize,
+    home: Option<&Path>,
+) -> String {
+    let Some(file) = file else {
+        return crate::msg::desktop_status_no_configuration_file();
+    };
+    match window_size {
+        WindowSize::Medium => {
+            let name = file
+                .file_name()
+                .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
+            format!("\u{2026}/{name}")
+        }
+        WindowSize::Large | WindowSize::XLarge => {
+            match home.and_then(|home| file.strip_prefix(home).ok()) {
+                Some(relative) => format!("~/{}", relative.display()),
+                None => file.display().to_string(),
+            }
+        }
     }
 }
 
@@ -466,6 +553,33 @@ mod tests {
     }
 
     #[test]
+    fn a_this_device_page_names_the_configuration_file_shortened_at_medium() {
+        crate::locale::init_for_tests();
+        let home = Path::new("/home/ian");
+        let file = Path::new("/home/ian/.config/personal-ledger/personal-ledger.conf");
+        assert_eq!(
+            configuration_label(Some(file), WindowSize::Large, Some(home)),
+            "~/.config/personal-ledger/personal-ledger.conf"
+        );
+        assert_eq!(
+            configuration_label(Some(file), WindowSize::Medium, Some(home)),
+            "\u{2026}/personal-ledger.conf"
+        );
+        assert_eq!(
+            configuration_label(None, WindowSize::Large, Some(home)),
+            "no configuration file"
+        );
+        let page = PageStatus {
+            hints: Vec::new(),
+            right: StatusRight::Configuration,
+        };
+        assert_eq!(
+            right_side(None, Some(&page), || "ledger".into(), || "conf".into()),
+            "conf"
+        );
+    }
+
+    #[test]
     fn with_no_ledger_open_the_right_side_says_so_unless_a_page_or_command_has_it() {
         crate::locale::init_for_tests();
         assert_eq!(
@@ -474,19 +588,34 @@ mod tests {
         );
         let page = PageStatus {
             hints: Vec::new(),
-            right: "this device".to_string(),
+            right: "this device".to_string().into(),
         };
         assert_eq!(
-            right_side(None, Some(&page), "No ledger open…".to_string()),
+            right_side(
+                None,
+                Some(&page),
+                || "No ledger open…".to_string(),
+                || "conf".to_string()
+            ),
             "this device"
         );
         let echo = (String::new(), "esc close command window".to_string());
         assert_eq!(
-            right_side(Some(&echo), None, "No ledger open…".to_string()),
+            right_side(
+                Some(&echo),
+                None,
+                || "No ledger open…".to_string(),
+                || "conf".to_string()
+            ),
             "esc close command window"
         );
         assert_eq!(
-            right_side(None, None, "No ledger open…".to_string()),
+            right_side(
+                None,
+                None,
+                || "No ledger open…".to_string(),
+                || "conf".to_string()
+            ),
             "No ledger open…"
         );
     }
@@ -514,7 +643,7 @@ mod tests {
     fn the_toast_echo_replaces_the_hint_strip_and_the_page_legend() {
         let page = PageStatus {
             hints: vec![Hint::new("j/k", "row")],
-            right: String::new(),
+            right: String::new().into(),
         };
         assert_eq!(left(None, None, None, None), Left::HintStrip);
         assert_eq!(

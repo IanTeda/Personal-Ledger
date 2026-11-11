@@ -131,7 +131,7 @@ impl PageView for DashboardPresenter {
     fn status(_view: &DashboardViewModel) -> PageStatus {
         PageStatus {
             hints: Vec::new(),
-            right: String::new(),
+            right: String::new().into(),
         }
     }
 

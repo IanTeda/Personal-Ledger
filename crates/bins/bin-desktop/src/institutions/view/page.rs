@@ -50,7 +50,7 @@ impl PageView for InstitutionsPagePresenter {
     fn status(view: &InstitutionsPageViewModel) -> PageStatus {
         PageStatus {
             hints: view.hints.clone(),
-            right: view.scope.clone(),
+            right: view.scope.clone().into(),
         }
     }
 

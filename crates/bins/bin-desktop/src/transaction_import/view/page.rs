@@ -137,7 +137,8 @@ impl PageView for ImportStepPresenter {
                 .step
                 .as_ref()
                 .map(|step| step.status.clone())
-                .unwrap_or_default(),
+                .unwrap_or_default()
+                .into(),
         }
     }
 

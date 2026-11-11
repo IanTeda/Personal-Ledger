@@ -22,7 +22,7 @@ impl Root {
                 .into_iter()
                 .map(|hint| (hint.chord, hint.action))
                 .collect(),
-            right: status.right,
+            right: status.right.text(),
         })
     }
 
@@ -35,6 +35,27 @@ impl Root {
             self.ledger_path(),
             crate::WindowSize::Large,
             dirs::home_dir().as_deref(),
+        )
+    }
+
+    /// The status line's right-hand side as drawn at `size`, with no command open.
+    #[doc(hidden)]
+    pub fn status_right_snapshot(&self, size: crate::WindowSize, cx: &gpui::App) -> String {
+        use crate::shell::view::statusline::{configuration_label, ledger_label, right_side};
+        let home = dirs::home_dir();
+        let page = self.page_status(cx);
+        right_side(
+            None,
+            page.as_ref(),
+            || {
+                ledger_label(
+                    self.ledger_open(),
+                    self.ledger_path(),
+                    size,
+                    home.as_deref(),
+                )
+            },
+            || configuration_label(self.configuration_file.as_deref(), size, home.as_deref()),
         )
     }
 

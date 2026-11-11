@@ -32,7 +32,7 @@ use lib_viper::keymap::KeyBindingConfig;
 use crate::{
     settings::{SettingsPage, router::TracingRouter, snapshot::PageSnapshot},
     shell::view::module_page::{ModulePage, PageDraw, PageView, SettingsPageView},
-    shell::view::statusline::PageStatus,
+    shell::view::statusline::{PageStatus, StatusRight},
     view::event::ViewEvent,
 };
 use log::{LogAppended, LogFeed};
@@ -167,7 +167,7 @@ impl PageView for TracingPresenter {
     fn status(view: &TracingViewModel) -> PageStatus {
         PageStatus {
             hints: view.hints.clone(),
-            right: crate::settings::scope_note(SettingsPage::Tracing),
+            right: StatusRight::of_settings_page(SettingsPage::Tracing),
         }
     }
 }

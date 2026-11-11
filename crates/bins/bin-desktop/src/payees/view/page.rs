@@ -48,7 +48,7 @@ impl PageView for PayeesPagePresenter {
     fn status(view: &PayeesPageViewModel) -> PageStatus {
         PageStatus {
             hints: view.hints.clone(),
-            right: view.status.clone(),
+            right: view.status.clone().into(),
         }
     }
 

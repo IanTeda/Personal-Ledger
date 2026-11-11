@@ -277,3 +277,90 @@ fn on_toasts_the_hints_read_on_off_and_test(app: &mut TestAppContext) {
         ]
     );
 }
+
+/// Steps Settings' index with `j` until `page` is the one selected, then into it.
+fn on_settings_page(ui: &mut Harness<'_>, page: &str) {
+    ui.press("g s");
+    for _ in 0..20 {
+        if ui.settings_frame().page == page {
+            break;
+        }
+        ui.press("j");
+    }
+    assert_eq!(ui.settings_frame().page, page);
+    ui.press("l");
+}
+
+/// A THIS DEVICE page names the configuration file at every width.
+fn names_the_configuration_file(app: &mut TestAppContext, page: &str) {
+    let mut ui = Harness::new(app);
+    let home = dirs::home_dir().expect("a home folder");
+    ui.set_configuration_file(Some(
+        home.join(".config/personal-ledger/personal-ledger.conf"),
+    ));
+    on_settings_page(&mut ui, page);
+    for size in [WindowSize::Large, WindowSize::XLarge] {
+        ui.resize_to(size);
+        assert_eq!(
+            ui.status_right(size),
+            "~/.config/personal-ledger/personal-ledger.conf",
+            "{page}"
+        );
+    }
+    ui.resize_to(WindowSize::Medium);
+    assert_eq!(
+        ui.status_right(WindowSize::Medium),
+        "\u{2026}/personal-ledger.conf",
+        "{page}"
+    );
+}
+
+#[gpui::test]
+fn general_names_the_configuration_file(app: &mut TestAppContext) {
+    names_the_configuration_file(app, "General");
+}
+
+#[gpui::test]
+fn display_names_the_configuration_file(app: &mut TestAppContext) {
+    names_the_configuration_file(app, "Display");
+}
+
+#[gpui::test]
+fn logs_names_the_configuration_file(app: &mut TestAppContext) {
+    names_the_configuration_file(app, "Tracing");
+}
+
+#[gpui::test]
+fn about_names_the_configuration_file(app: &mut TestAppContext) {
+    names_the_configuration_file(app, "About");
+}
+
+#[gpui::test]
+fn a_this_ledger_page_names_the_ledger_file(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.set_configuration_file(Some("/etc/pl/personal-ledger.conf".into()));
+    on_settings_page(&mut ui, "Units");
+    let right = ui.status_right(WindowSize::Large);
+    assert!(!right.contains("personal-ledger.conf"), "{right}");
+    assert!(right.ends_with(".pldb"), "{right}");
+}
+
+#[gpui::test]
+fn with_no_ledger_open_general_still_names_the_configuration_file(app: &mut TestAppContext) {
+    let mut ui = Harness::without_ledger(app);
+    ui.set_configuration_file(Some("/etc/pl/personal-ledger.conf".into()));
+    ui.press("g s");
+    assert_eq!(ui.settings_frame().page, "General");
+    ui.press("l");
+    assert_eq!(
+        ui.status_right(WindowSize::Large),
+        "/etc/pl/personal-ledger.conf"
+    );
+}
+
+#[gpui::test]
+fn with_no_configuration_file_the_right_side_says_so(app: &mut TestAppContext) {
+    let mut ui = in_general(app);
+    ui.set_configuration_file(None);
+    assert_eq!(ui.status_right(WindowSize::Large), "no configuration file");
+}

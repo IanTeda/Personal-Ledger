@@ -14,7 +14,7 @@ use crate::announcer::Announcer;
 use crate::settings::SettingsPage;
 use crate::settings::hints::settings_plain_page_hints;
 use crate::shell::view::module_page::{ModulePage, PageDraw, PageView, SettingsPageView};
-use crate::shell::view::statusline::PageStatus;
+use crate::shell::view::statusline::{PageStatus, StatusRight};
 
 /// The Data & backup page: the Presenter in the generic page Entity.
 pub type DataBackupPage = ModulePage<DataBackupPresenter>;
@@ -62,7 +62,7 @@ impl PageView for DataBackupPresenter {
     fn status(view: &DataBackupViewModel) -> PageStatus {
         PageStatus {
             hints: view.hints.clone(),
-            right: crate::settings::scope_note(SettingsPage::DataBackup),
+            right: StatusRight::of_settings_page(SettingsPage::DataBackup),
         }
     }
 }

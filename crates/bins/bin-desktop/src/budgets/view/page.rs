@@ -120,7 +120,7 @@ impl PageView for BudgetsPagePresenter {
     fn status(view: &BudgetsPageViewModel) -> PageStatus {
         PageStatus {
             hints: view.hints.clone(),
-            right: view.status.clone(),
+            right: view.status.clone().into(),
         }
     }
 

@@ -47,7 +47,7 @@ impl PageView for TagsPagePresenter {
     fn status(view: &TagsPageViewModel) -> PageStatus {
         PageStatus {
             hints: view.hints.clone(),
-            right: view.status.clone(),
+            right: view.status.clone().into(),
         }
     }
 

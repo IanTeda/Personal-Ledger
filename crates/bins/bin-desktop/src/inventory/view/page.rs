@@ -51,7 +51,7 @@ impl PageView for InventoryPagePresenter {
     fn status(view: &InventoryPageViewModel) -> PageStatus {
         PageStatus {
             hints: view.hints.clone(),
-            right: view.scope.clone(),
+            right: view.scope.clone().into(),
         }
     }
 

@@ -268,6 +268,7 @@ impl Render for Root {
                         self.ledger_open(),
                         self.ledger_path().map(std::path::Path::to_path_buf),
                     )
+                    .configuration(self.configuration_file.clone())
                     .toast_echo(
                         self.presenter
                             .toasts()

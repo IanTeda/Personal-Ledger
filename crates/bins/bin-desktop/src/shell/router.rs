@@ -196,6 +196,8 @@ pub struct Root {
     debug_toast_kind: usize,
     /// The `[keybindings]` in effect, which a Ledger opened at run time builds its keymaps from.
     keybindings: lib_config::KeyBindingConfig,
+    /// The configuration file Settings writes, which a THIS DEVICE page names on the status line.
+    configuration_file: Option<std::path::PathBuf>,
     /// Everything built on the Ledger file, `None` with no Ledger open: the one source of truth
     /// for whether one is (#975).
     open: Option<OpenLedger>,
@@ -250,6 +252,7 @@ impl Root {
             #[cfg(debug_assertions)]
             debug_toast_kind: 0,
             keybindings: lib_config::KeyBindingConfig::default(),
+            configuration_file: None,
             last_ledger_forgotten: false,
             documents_state: None,
             open: None,
@@ -473,6 +476,7 @@ impl Root {
 
     /// Shows `device` on Settings › General: what start-up knows of this device.
     pub fn set_this_device(&mut self, device: lib_settings::ThisDevice, cx: &mut App) {
+        self.configuration_file = device.configuration.clone();
         self.presenter
             .set_explorer_start(Some(device.ledger_folder.clone()), dirs::home_dir());
         self.settings

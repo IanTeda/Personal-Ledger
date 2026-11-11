@@ -156,7 +156,7 @@ impl PageView for DocumentsPagePresenter {
     fn status(view: &DocumentsPageViewModel) -> PageStatus {
         PageStatus {
             hints: view.hints.clone(),
-            right: view.stored.clone(),
+            right: view.stored.clone().into(),
         }
     }
 

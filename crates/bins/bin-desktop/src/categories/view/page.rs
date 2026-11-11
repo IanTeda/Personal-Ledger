@@ -46,7 +46,7 @@ impl PageView for CategoriesPagePresenter {
     fn status(view: &CategoriesPageViewModel) -> PageStatus {
         PageStatus {
             hints: view.hints.clone(),
-            right: view.scope.clone(),
+            right: view.scope.clone().into(),
         }
     }
 
