@@ -25,8 +25,9 @@ pub use frame::{
     SettingsFrameEvent, SettingsFramePresenter, SettingsFrameSetup, SettingsFrameViewModel,
 };
 pub use general::{
-    DataFolderView, GeneralEvent, GeneralPresenter, GeneralSettings, GeneralSetup,
-    GeneralViewModel, LocaleControl, LocaleLine, StartViewControl, ThisDevice, ThisDeviceView,
+    DataFolderOutcome, DataFolderView, GeneralEvent, GeneralPresenter, GeneralSettings,
+    GeneralSetup, GeneralViewModel, LocaleControl, LocaleLine, StartViewControl, ThisDevice,
+    ThisDeviceView,
 };
 pub use ledger::{
     BaseUnitOption, BaseUnitView, LedgerEvent, LedgerPresenter, LedgerSetup, LedgerViewModel,

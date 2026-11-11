@@ -11,8 +11,9 @@
 //! file's differs from the one in effect (DESKTOP-185).
 //!
 //! The Data folder is picked in the Shell's file explorer (DESKTOP-187): **Change…** asks the
-//! Router for it, and what it picks comes back as [`GeneralEvent::SetDataFolder`], this the one
-//! place the Data folder is written. It applies at once, with a Success Toast (DESKTOP-188).
+//! Router for it, and what it picks comes back to [`GeneralPresenter::set_data_folder`], the one
+//! place the Data folder is written, which answers how the write went as a [`DataFolderOutcome`].
+//! It applies at once, with a Success Toast (DESKTOP-188).
 //!
 //! Start view and the Locale are dropdowns (#1156): each holds its open list as a [`SelectList`],
 //! as a Dialog's Presenter does, but driven by the page's keymap. While a list is open its keys
@@ -92,8 +93,29 @@ pub enum GeneralEvent {
     PressLocale,
     /// A click on **Change…**, wherever the keyboard is.
     PressChange,
-    /// The folder the picker picked, from **Change…** or `:data`: written as the Data folder.
-    SetDataFolder(PathBuf),
+}
+
+/// How writing the folder the picker picked went, which the Shell needs to know where `:open` and
+/// `:new` start: [`GeneralPresenter::set_data_folder`] answers it rather than the Client comparing
+/// the folder in effect before and after.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DataFolderOutcome {
+    /// The folder is the one the page already shows, so nothing was written.
+    Unchanged,
+    /// Written, and now the Data folder in effect.
+    Applied,
+    /// Written, but a source above the configuration file keeps the old folder in effect.
+    SavedOverridden,
+    /// Not written: there is no file to keep it in, or the write failed.
+    NotWritten,
+}
+
+impl DataFolderOutcome {
+    /// Whether the folder picked is now the Data folder in effect, the `bool` the Shell's Router
+    /// answers: only once applied.
+    pub fn in_effect(self) -> bool {
+        self == Self::Applied
+    }
 }
 
 /// A device's settings General writes, as start-up read them from Configuration.
@@ -317,6 +339,44 @@ impl GeneralPresenter {
     pub fn data_folder(&self) -> &Path {
         &self.this_device.data_folder
     }
+
+    /// The folder the picker picked, from **Change…** or `:data`, written as the Data folder: the
+    /// one place it is written. The folder the page shows already writes nothing. Without an
+    /// override it applies at once, with a Success Toast; with one it is saved for when the
+    /// override is gone, on the status line, as is a refused or failed write.
+    ///
+    /// A method, not an event, since `handle` answers nothing and the Shell needs the outcome
+    /// (ADR-0056's 2026-11-11 amendment).
+    pub fn set_data_folder(
+        &mut self,
+        folder: PathBuf,
+        router: &mut dyn DeviceRouter,
+    ) -> DataFolderOutcome {
+        // As any event but a list's own keys, it closes an open list first.
+        self.close_lists();
+        if folder == self.shown_data_folder() {
+            return DataFolderOutcome::Unchanged;
+        }
+        let shadowed = self.device.shadow(DeviceKey::Data).is_some();
+        match self.device.set_data(&folder) {
+            DeviceAnswer::Saved { value, .. } if !shadowed => {
+                router.notify(Notice::Toast(
+                    ToastKind::Success,
+                    msg::settings_general_data_folder_now(&value.display().to_string()),
+                ));
+                self.this_device.data_folder = value.clone();
+                self.settings.data = Some(value);
+                DataFolderOutcome::Applied
+            }
+            answer => match settle(answer, DeviceKey::Data, router) {
+                Some(saved) => {
+                    self.settings.data = Some(saved);
+                    DataFolderOutcome::SavedOverridden
+                }
+                None => DataFolderOutcome::NotWritten,
+            },
+        }
+    }
 }
 
 impl Presenter for GeneralPresenter {
@@ -379,7 +439,6 @@ impl Presenter for GeneralPresenter {
             // The test touches no setting: the Shell's Toasts raise it.
             GeneralEvent::TestToasts | GeneralEvent::PressTest => router.test_toasts(),
             GeneralEvent::PressChange => router.pick_data_folder(),
-            GeneralEvent::SetDataFolder(folder) => self.set_data_folder(folder, router),
         }
     }
 
@@ -780,31 +839,6 @@ impl GeneralPresenter {
             .data
             .as_deref()
             .unwrap_or(&self.this_device.data_folder)
-    }
-
-    /// Writes `folder` as the Data folder, unless the field shows it already. It applies at once,
-    /// with a Success Toast in place of the status line's word; under an override it is written
-    /// for when the override is gone, and the folder in effect stays as it was.
-    fn set_data_folder(&mut self, folder: PathBuf, router: &mut dyn DeviceRouter) {
-        if folder == self.shown_data_folder() {
-            return;
-        }
-        let shadowed = self.device.shadow(DeviceKey::Data).is_some();
-        match self.device.set_data(&folder) {
-            DeviceAnswer::Saved { value, .. } if !shadowed => {
-                router.notify(Notice::Toast(
-                    ToastKind::Success,
-                    msg::settings_general_data_folder_now(&value.display().to_string()),
-                ));
-                self.this_device.data_folder = value.clone();
-                self.settings.data = Some(value);
-            }
-            answer => {
-                if let Some(saved) = settle(answer, DeviceKey::Data, router) {
-                    self.settings.data = Some(saved);
-                }
-            }
-        }
     }
 
     fn write_toasts(&mut self, on: bool, router: &mut dyn DeviceRouter) {
@@ -1302,6 +1336,13 @@ mod tests {
         general
     }
 
+    /// The picker picking `folder`: what General answered and what it routed.
+    fn pick(general: &mut GeneralPresenter, folder: &str) -> (DataFolderOutcome, RecordingRouter) {
+        let mut router = RecordingRouter::default();
+        let outcome = general.set_data_folder(PathBuf::from(folder), &mut router);
+        (outcome, router)
+    }
+
     #[test]
     fn enter_on_the_data_folder_and_change_ask_for_the_picker() {
         let mut general = with_data_folder(Rc::new(InMemoryDeviceConfiguration::writable()));
@@ -1344,12 +1385,9 @@ mod tests {
         let device = Rc::new(InMemoryDeviceConfiguration::writable());
         let mut general = with_data_folder(device.clone());
 
-        let router = send(
-            &mut general,
-            [GeneralEvent::SetDataFolder(PathBuf::from(
-                "/home/me/finance",
-            ))],
-        );
+        let (outcome, router) = pick(&mut general, "/home/me/finance");
+
+        assert_eq!(outcome, DataFolderOutcome::Applied);
 
         assert_eq!(
             device.stored().data,
@@ -1375,12 +1413,9 @@ mod tests {
         let device = Rc::new(InMemoryDeviceConfiguration::writable());
         let mut general = with_data_folder(device.clone());
 
-        let router = send(
-            &mut general,
-            [GeneralEvent::SetDataFolder(PathBuf::from(
-                "/home/me/ledgers",
-            ))],
-        );
+        let (outcome, router) = pick(&mut general, "/home/me/ledgers");
+
+        assert_eq!(outcome, DataFolderOutcome::Unchanged);
 
         assert_eq!(device.stored(), StoredDevice::default());
         assert!(router.routed.is_empty());
@@ -1391,12 +1426,9 @@ mod tests {
         let device = Rc::new(InMemoryDeviceConfiguration::default());
         let mut general = with_data_folder(device);
 
-        let router = send(
-            &mut general,
-            [GeneralEvent::SetDataFolder(PathBuf::from(
-                "/home/me/finance",
-            ))],
-        );
+        let (outcome, router) = pick(&mut general, "/home/me/finance");
+
+        assert_eq!(outcome, DataFolderOutcome::NotWritten);
 
         assert_eq!(general.data_folder(), Path::new("/home/me/ledgers"));
         assert_eq!(router.statuses().len(), 1);
@@ -1418,12 +1450,9 @@ mod tests {
             Some(overridden)
         );
 
-        let router = send(
-            &mut general,
-            [GeneralEvent::SetDataFolder(PathBuf::from(
-                "/home/me/finance",
-            ))],
-        );
+        let (outcome, router) = pick(&mut general, "/home/me/finance");
+
+        assert_eq!(outcome, DataFolderOutcome::SavedOverridden);
 
         assert_eq!(
             device.stored().data,
@@ -1438,6 +1467,14 @@ mod tests {
         assert_eq!(view.value, "/home/me/finance", "the file's value");
         assert_eq!(view.note.as_deref(), Some(overridden));
         assert_eq!(router.statuses(), ["data saved to personal-ledger.conf"]);
+    }
+
+    #[test]
+    fn only_an_applied_data_folder_is_in_effect() {
+        assert!(DataFolderOutcome::Applied.in_effect());
+        assert!(!DataFolderOutcome::Unchanged.in_effect());
+        assert!(!DataFolderOutcome::SavedOverridden.in_effect());
+        assert!(!DataFolderOutcome::NotWritten.in_effect());
     }
 
     #[test]

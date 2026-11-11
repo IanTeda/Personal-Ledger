@@ -101,8 +101,10 @@ pub trait ShellRouter: Notify {
 
     /// The folder picker picked `folder` as the Data folder: has it written, by the one place that
     /// writes it, which says how that went. Whether `folder` is now the Data folder in effect, so
-    /// `:open` and `:new` start there: not when it was already, when the write was refused, or when
-    /// a source above the configuration file still sets it.
+    /// `:open` and `:new` start there: only when the write applied, not when it was already the
+    /// folder shown, when a source above the configuration file still sets it, or when it wasn't
+    /// written. lib-shell can't reach `lib-settings`, so the Desktop maps General's outcome to this
+    /// `bool` in one place, `DataFolderOutcome::in_effect`.
     fn set_data_folder(&mut self, folder: &Path) -> bool;
 }
 

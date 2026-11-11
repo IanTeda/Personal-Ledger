@@ -445,6 +445,34 @@ impl<P: PageView> ModulePage<P> {
         }
     }
 
+    /// A Presenter method that answers what it did, where `handle` answers nothing (ADR-0056's
+    /// 2026-11-11 amendment; General's `set_data_folder`): `ask` runs with the page's Router as
+    /// one input, as [`Self::send`] does, joining one being sent, and a mode it enters or leaves
+    /// is told the Shell, then the page redraws. [`PageView::before`] and [`PageView::after`] are
+    /// keyed by an event, so they don't run: a page that needs them answers through an event.
+    pub fn answer<T>(
+        &mut self,
+        cx: &mut Context<'_, Self>,
+        ask: impl FnOnce(&mut P, &mut P::Router<'_>) -> T,
+    ) -> T {
+        let mode = self.presenter.mode();
+        let answer = crate::input::join_or_send(cx, |cx| {
+            let Self {
+                presenter, setup, ..
+            } = self;
+            P::with_router(presenter, setup, cx, ask)
+        });
+        let now = self.presenter.mode();
+        if now != mode {
+            cx.emit(match now {
+                Some(mode) => ViewEvent::EnterMode(view_mode(mode)),
+                None => ViewEvent::ExitMode,
+            });
+        }
+        cx.notify();
+        answer
+    }
+
     /// A confirmed Dialog's outcome, handed back by the Dialog host inside the confirm's input.
     fn dialog_landed(&mut self, outcome: P::Outcome, cx: &mut Context<'_, Self>) {
         if let Some(event) = P::dialog_closed(Some(outcome))

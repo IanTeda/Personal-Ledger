@@ -311,11 +311,12 @@ impl ShellRouter for RootRouter<'_, '_> {
         false
     }
 
-    /// Settings › General's Presenter writes it and says how that went (DESKTOP-188); nothing
-    /// moves, and the Open Ledger stays open.
+    /// Settings › General's Presenter writes it and says how that went (DESKTOP-188), in effect
+    /// only once applied; nothing moves, and the Open Ledger stays open.
     fn set_data_folder(&mut self, folder: &Path) -> bool {
         self.settings
             .update(self.cx, |view, cx| view.set_data_folder(folder, cx))
+            .in_effect()
     }
 }
 

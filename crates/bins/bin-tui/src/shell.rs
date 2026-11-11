@@ -2361,9 +2361,10 @@ impl Shell {
         }
     }
 
-    /// Writes `[General] data` at once and raises the Success Toast; picking the folder already
-    /// set writes nothing and says nothing. A failed write leaves the setting as it was, with the
-    /// reason on the status line.
+    /// Writes `[General] data` by the Desktop's rule,
+    /// `lib_settings::GeneralPresenter::set_data_folder` and its `DataFolderOutcome`, matching its
+    /// cases in its order: the TUI can't depend on `lib-settings` until #805, so a change to that
+    /// rule changes this too.
     fn use_data_folder(&mut self, folder: PathBuf) {
         let current = {
             let values = self.settings_values.borrow();
@@ -2379,43 +2380,45 @@ impl Shell {
         let Some(key) = SettingField::LedgerFolder.config_key() else {
             return;
         };
-        if let Err(error) = self.config_writer.write(key, &folder.display().to_string()) {
-            tracing::warn!(%error, key = key.name(), "couldn't write Configuration");
-            self.status_message = Some(crate::msg::tui_settings_config_write_failed(
-                SettingField::LedgerFolder.command_name(),
-                &error.to_string(),
-            ));
-            return;
-        }
-        let shadowed = {
-            let mut values = self.settings_values.borrow_mut();
-            values.configuration.data = Some(folder.clone());
-            // Without a higher source it is in effect for the rest of the run, as the Desktop's.
-            let shadowed = values.configuration.shadow(key).is_some();
-            if !shadowed {
-                values.ledger_folder = folder.clone();
+        let shadowed = self
+            .settings_values
+            .borrow()
+            .configuration
+            .shadow(key)
+            .is_some();
+        match self.config_writer.write(key, &folder.display().to_string()) {
+            Ok(()) if !shadowed => {
+                {
+                    let mut values = self.settings_values.borrow_mut();
+                    values.configuration.data = Some(folder.clone());
+                    values.ledger_folder = folder.clone();
+                }
+                let home = dirs::home_dir();
+                self.raise_toast(
+                    ToastKind::Success,
+                    crate::msg::tui_settings_data_folder_now(&folder_picker::under_home(
+                        &folder,
+                        home.as_deref(),
+                    )),
+                );
             }
-            shadowed
-        };
-        // A higher source keeps its folder for this run, so, as on the Desktop, the write is only
-        // saved on the status line: a Toast saying the Data folder is now this one would be wrong.
-        if shadowed {
-            if let Some(path) = self.config_writer.target() {
-                self.status_message = Some(crate::msg::tui_settings_config_saved(
+            Ok(()) => {
+                self.settings_values.borrow_mut().configuration.data = Some(folder);
+                if let Some(path) = self.config_writer.target() {
+                    self.status_message = Some(crate::msg::tui_settings_config_saved(
+                        SettingField::LedgerFolder.command_name(),
+                        &path.display().to_string(),
+                    ));
+                }
+            }
+            Err(error) => {
+                tracing::warn!(%error, key = key.name(), "couldn't write Configuration");
+                self.status_message = Some(crate::msg::tui_settings_config_write_failed(
                     SettingField::LedgerFolder.command_name(),
-                    &path.display().to_string(),
+                    &error.to_string(),
                 ));
             }
-            return;
         }
-        let home = dirs::home_dir();
-        self.raise_toast(
-            ToastKind::Success,
-            crate::msg::tui_settings_data_folder_now(&folder_picker::under_home(
-                &folder,
-                home.as_deref(),
-            )),
-        );
     }
 
     /// Writes `field`'s `value`, as `:set` takes it, to its key in the user's file, saying on the

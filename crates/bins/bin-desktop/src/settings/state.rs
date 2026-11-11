@@ -35,10 +35,10 @@ use gpui::{
 };
 use lib_list_cursor::Step;
 use lib_settings::{
-    ColourChoice, DeviceConfiguration, DisplayEvent, DisplayOutput, DisplaySettings, GeneralEvent,
-    GeneralSettings, LedgerSummaries, PageSummary, ScopeFacts, SettingsFrameEvent,
-    SettingsFramePresenter, SettingsFrameSetup, SettingsFrameViewModel, SummarySources, ThisDevice,
-    TracingLevel, TracingLog,
+    ColourChoice, DataFolderOutcome, DeviceConfiguration, DisplayEvent, DisplayOutput,
+    DisplaySettings, GeneralEvent, GeneralSettings, LedgerSummaries, PageSummary, ScopeFacts,
+    SettingsFrameEvent, SettingsFramePresenter, SettingsFrameSetup, SettingsFrameViewModel,
+    SummarySources, ThisDevice, TracingLevel, TracingLog,
     keymap::{
         display_keymap, general_keymap, ledger_keymap, settings_frame_keymap, tracing_keymap,
     },
@@ -753,12 +753,16 @@ impl SettingsView {
     }
 
     /// The folder the Data folder picker picked, written by General's Presenter, the one place
-    /// the Data folder is written. Whether `folder` is now the Data folder in effect.
-    pub fn set_data_folder(&mut self, folder: &Path, cx: &mut Context<'_, Self>) -> bool {
+    /// the Data folder is written, which answers how that went.
+    pub fn set_data_folder(
+        &mut self,
+        folder: &Path,
+        cx: &mut Context<'_, Self>,
+    ) -> DataFolderOutcome {
         self.pages.general.update(cx, |page, cx| {
-            let before = page.presenter().data_folder().to_path_buf();
-            page.send(GeneralEvent::SetDataFolder(folder.to_path_buf()), cx);
-            before != folder && page.presenter().data_folder() == folder
+            page.answer(cx, |presenter, router| {
+                presenter.set_data_folder(folder.to_path_buf(), router)
+            })
         })
     }
 }

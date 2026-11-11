@@ -47,7 +47,7 @@ pub trait DeviceRouter: Notify {
     fn test_toasts(&mut self);
 
     /// General's **Change…** asked for the Data folder picker (DESKTOP-187), which the Shell's
-    /// file explorer is. What it picks comes back as `GeneralEvent::SetDataFolder`.
+    /// file explorer is. What it picks comes back to `GeneralPresenter::set_data_folder`.
     fn pick_data_folder(&mut self);
 }
 
