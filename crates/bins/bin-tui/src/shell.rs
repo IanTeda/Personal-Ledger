@@ -2388,7 +2388,7 @@ impl Shell {
                 let home = dirs::home_dir();
                 self.raise_toast(
                     ToastKind::Success,
-                    crate::msg::tui_settings_data_folder_now(&folder_picker::under_home(
+                    crate::msg::tui_settings_data_folder_now(&lib_shell::explorer::under_home(
                         &folder,
                         home.as_deref(),
                     )),
@@ -2844,10 +2844,7 @@ fn expand_tilde(typed: &str, home: Option<&Path>) -> PathBuf {
 /// when it fits, else as many trailing folders as fit behind `\u{2026}/`, and never less than
 /// `\u{2026}/<file name>`, which wins over the hints when even that is too long.
 fn fit_configuration_path(path: &Path, home: Option<&Path>, room: usize) -> String {
-    let full = match home.and_then(|home| path.strip_prefix(home).ok()) {
-        Some(relative) => format!("~/{}", relative.display()),
-        None => path.display().to_string(),
-    };
+    let full = lib_shell::explorer::under_home(path, home);
     if full.chars().count() <= room {
         return full;
     }

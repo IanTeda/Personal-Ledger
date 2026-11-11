@@ -3,6 +3,7 @@
 //! <noun>`) was dropped -- the active View's own heading names the screen, so a breadcrumb here
 //! was a plain duplicate (as was the top bar's View suffix, `crate::shell::view::topbar::brand_mark`).
 
+use lib_shell::explorer::under_home;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -502,16 +503,6 @@ pub fn configuration_label(
             format!("\u{2026}/{name}")
         }
         WindowSize::Large | WindowSize::XLarge => under_home(file, home),
-    }
-}
-
-/// `path` with `home` as `~`, as the status line and the file explorer name a path; `path` itself
-/// when it isn't under `home`.
-pub(crate) fn under_home(path: &Path, home: Option<&Path>) -> String {
-    match home.and_then(|home| path.strip_prefix(home).ok()) {
-        Some(relative) if relative.as_os_str().is_empty() => "~".to_string(),
-        Some(relative) => format!("~/{}", relative.display()),
-        None => path.display().to_string(),
     }
 }
 

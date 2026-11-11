@@ -27,10 +27,10 @@ use super::keys::{self, Binding, Press};
 use super::{Context, FIELD_LABEL_WIDTH, FieldRow, Open, list, render_form};
 use crate::colours::Colours;
 use crate::msg;
-use crate::popup::folder_picker::under_home;
 use crate::popup::settings::edit::{Draft, Segment};
 use crate::start_view;
 use crate::view::Action;
+use lib_shell::explorer::under_home;
 
 /// The fields, in the page's order.
 const FIELDS: [SettingField; 5] = [

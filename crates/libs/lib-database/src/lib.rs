@@ -107,6 +107,10 @@ pub use storage::{SharedLedger, Storage, StoreParts, Stores, open_storage};
 /// cross-domain adapters over the shared stores. Its module doc states the invariant that keeps
 /// every `Rc` pointing down a layer, so no build order guards against a cycle.
 pub mod ports;
+
+/// The `std::fs` adapter for `lib_shell`'s `LedgerFolders` port, shared by both Clients.
+pub mod ledger_folders;
+pub use ledger_folders::FsLedgerFolders;
 pub use ports::{
     LedgerPorts, StoredAccountsPorts, StoredBillsPorts, StoredBudgetsPorts, StoredCategoriesPorts,
     StoredDocumentsPorts, StoredInstitutionsPorts, StoredInventoryPorts, StoredPayeesPorts,

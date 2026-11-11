@@ -21,7 +21,6 @@ use super::{LedgerFile, OpenLedger, Root, ShellPresenter, explorer::file_name};
 use crate::documents::{DocumentsMode, LibraryScope, LibrarySort};
 use crate::navigation::active_view::ActiveView;
 use crate::navigation::command::{CommandEffect, ModulePage};
-use crate::navigation::explorer::FsLedgerFolders;
 use crate::navigation::nav::Noun;
 use crate::settings::{SettingsPage, state::SettingsView};
 use crate::shell::state::ShellState;
@@ -30,6 +29,7 @@ use crate::shell::view::page_handle::PageHandle;
 use crate::shell::view::rail as rail_view;
 use crate::shell::view::window_size::WindowSize;
 use crate::view::active;
+use lib_database::FsLedgerFolders;
 use lib_settings::DisplayOutput;
 
 /// The Documents mode, Library scope and sort a Ledger's Documents page opens on.

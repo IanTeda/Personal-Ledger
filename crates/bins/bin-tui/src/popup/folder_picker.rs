@@ -6,17 +6,18 @@
 //! mode stays NORMAL.
 //!
 //! The TUI has no explorer, and `:open` and `:new` keep their typed paths; this is the only place
-//! it walks folders. [`FsLedgerFolders`] is its own small `std::fs` adapter, as the Desktop has
-//! one, since `lib-shell` stays I/O-free.
+//! it walks folders. It reads the disk through `lib_database::FsLedgerFolders`, which the
+//! Desktop's explorer shares, since `lib-shell` stays I/O-free.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use lib_config::KeyBindingConfig;
+use lib_database::FsLedgerFolders;
 use lib_shell::{
-    DialogCommand, EntryKind, ExplorerMode, ExplorerOutcome, ExplorerViewModel, FolderEntry,
-    FolderUnreadable, LedgerFolders, dialog_keymap,
-    explorer::{ExplorerPresenter, display_name},
+    DialogCommand, EntryKind, ExplorerMode, ExplorerOutcome, ExplorerViewModel, LedgerFolders,
+    dialog_keymap,
+    explorer::{ExplorerPresenter, display_name, under_home},
 };
 use lib_viper::keymap::Keymap;
 use ratatui::{
@@ -36,38 +37,6 @@ const WIDTH: u16 = 76;
 
 /// The most folder rows it shows before it scrolls.
 const MAX_ROWS: u16 = 12;
-
-/// The Data folder picker's folders, read from the disk. An entry whose metadata can't be read (a
-/// race with its deletion) is left out.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct FsLedgerFolders;
-
-impl LedgerFolders for FsLedgerFolders {
-    fn read_folder(&self, folder: &Path) -> Result<Vec<FolderEntry>, FolderUnreadable> {
-        let read_dir =
-            std::fs::read_dir(folder).map_err(|error| FolderUnreadable(error.to_string()))?;
-        Ok(read_dir
-            .flatten()
-            .filter_map(|entry| {
-                let path = entry.path();
-                let metadata = entry.metadata().ok()?;
-                let is_folder = metadata.is_dir();
-                Some(FolderEntry {
-                    name: entry.file_name().to_string_lossy().into_owned(),
-                    kind: EntryKind::of(&path, is_folder),
-                    size: (!is_folder).then_some(metadata.len()),
-                    modified: metadata.modified().ok(),
-                    path,
-                })
-            })
-            .collect())
-    }
-
-    /// A broken link is there too: `symlink_metadata` doesn't follow it.
-    fn exists(&self, path: &Path) -> bool {
-        std::fs::symlink_metadata(path).is_ok()
-    }
-}
 
 /// What a key did to the picker, for the Shell to act on.
 #[derive(Debug, PartialEq, Eq)]
@@ -298,15 +267,6 @@ fn render_heading(frame: &mut Frame<'_>, area: Rect, title: &str, note: &str, c:
     );
 }
 
-/// `path` with `home` as a leading `~`, else as it is.
-pub fn under_home(path: &Path, home: Option<&Path>) -> String {
-    match home.and_then(|home| path.strip_prefix(home).ok()) {
-        Some(relative) if relative.as_os_str().is_empty() => "~".to_string(),
-        Some(relative) => format!("~/{}", relative.display()),
-        None => path.display().to_string(),
-    }
-}
-
 /// The Dialog keymap's spelling of `key`, `None` for one it has no spelling for.
 fn chord(key: KeyEvent) -> Option<String> {
     let name = match key.code {
@@ -389,17 +349,5 @@ mod tests {
             std::os::unix::fs::symlink(dir.path().join("gone"), &link).expect("a link");
             assert!(FsLedgerFolders.exists(&link), "a broken link is there too");
         }
-    }
-
-    #[test]
-    fn under_home_shortens_the_home_folder() {
-        let home = Path::new("/home/me");
-        assert_eq!(under_home(Path::new("/home/me"), Some(home)), "~");
-        assert_eq!(
-            under_home(Path::new("/home/me/finance"), Some(home)),
-            "~/finance"
-        );
-        assert_eq!(under_home(Path::new("/srv/data"), Some(home)), "/srv/data");
-        assert_eq!(under_home(Path::new("/srv/data"), None), "/srv/data");
     }
 }

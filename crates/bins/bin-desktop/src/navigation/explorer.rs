@@ -1,6 +1,6 @@
 //! The floating "1e" file explorer behind `:open` and `:new`, and "1e·pick" behind `:data`
 //! (`docs/ux/desktop-mockups/01-shell/README.md`), drawn from `lib-shell`'s explorer Presenter
-//! ([`lib_shell::explorer`]), which the Shell's Presenter holds, and [`FsLedgerFolders`], the
+//! ([`lib_shell::explorer`]), which the Shell's Presenter holds, and `lib_database::FsLedgerFolders`, the
 //! `LedgerFolders` port it reads the disk through. `render` draws the Presenter's view model; the
 //! row list's scroll handle is the Desktop's own.
 //!
@@ -20,12 +20,11 @@ use gpui::{App, BoxShadow, SharedString, Window, div, point, prelude::*, px};
 use gpui_component::Sizable;
 use lib_shell::{
     EntryKind, ExplorerFilter, ExplorerFilters, ExplorerMode, ExplorerViewModel, FolderEntry,
-    FolderUnreadable, LedgerFolders,
 };
 
-use crate::{assets::icon::DesktopIcon, msg, shell::view::statusline::under_home, theme::color};
+use crate::{assets::icon::DesktopIcon, msg, theme::color};
 
-pub use lib_shell::explorer::display_name;
+pub use lib_shell::explorer::{display_name, under_home};
 
 /// Dialog width: the "1e" spec's own `640px`.
 pub const WIDTH: gpui::Pixels = px(640.0);
@@ -37,38 +36,6 @@ pub const TOP_OFFSET: gpui::Pixels = px(80.0);
 /// ~13px line, per row) before it scrolls -- the mockup's own illustrative listing never shows
 /// more than that, but a real directory can hold far more entries than fit the dialog.
 const MAX_ROWS_HEIGHT: gpui::Pixels = px(6.0 * 31.0);
-
-/// The explorer's folders, read from the disk. An entry whose metadata can't be read (a race with
-/// its deletion) is left out.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct FsLedgerFolders;
-
-impl LedgerFolders for FsLedgerFolders {
-    fn read_folder(&self, folder: &Path) -> Result<Vec<FolderEntry>, FolderUnreadable> {
-        let read_dir =
-            std::fs::read_dir(folder).map_err(|error| FolderUnreadable(error.to_string()))?;
-        Ok(read_dir
-            .flatten()
-            .filter_map(|entry| {
-                let path = entry.path();
-                let metadata = entry.metadata().ok()?;
-                let is_folder = metadata.is_dir();
-                Some(FolderEntry {
-                    name: entry.file_name().to_string_lossy().into_owned(),
-                    kind: EntryKind::of(&path, is_folder),
-                    size: (!is_folder).then_some(metadata.len()),
-                    modified: metadata.modified().ok(),
-                    path,
-                })
-            })
-            .collect())
-    }
-
-    /// A broken link is there too: `symlink_metadata` doesn't follow it.
-    fn exists(&self, path: &Path) -> bool {
-        std::fs::symlink_metadata(path).is_ok()
-    }
-}
 
 /// Breadcrumb segments for `path`, oldest first: a display label paired with the real ancestor
 /// path a click on it should jump to (the Presenter's `explorer_browse`). A path under the home
@@ -665,40 +632,6 @@ fn filter_checkbox(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn the_disk_adapter_reads_a_real_folder_and_says_what_is_there() {
-        let dir = tempfile::tempdir().expect("tempdir should be creatable");
-        std::fs::create_dir(dir.path().join("archive")).expect("a folder");
-        std::fs::write(dir.path().join("teda.pldb"), b"stub").expect("a file");
-        std::fs::write(dir.path().join("notes.csv"), b"stub").expect("a file");
-
-        let mut entries = FsLedgerFolders
-            .read_folder(dir.path())
-            .expect("the folder reads");
-        entries.sort_by(|a, b| a.name.cmp(&b.name));
-
-        let read: Vec<_> = entries
-            .iter()
-            .map(|entry| (entry.name.as_str(), entry.kind, entry.size))
-            .collect();
-        assert_eq!(
-            read,
-            [
-                ("archive", EntryKind::Folder, None),
-                ("notes.csv", EntryKind::Other, Some(4)),
-                ("teda.pldb", EntryKind::Ledger, Some(4)),
-            ]
-        );
-        assert!(entries.iter().all(|entry| entry.modified.is_some()));
-        assert!(FsLedgerFolders.exists(&dir.path().join("teda.pldb")));
-        assert!(!FsLedgerFolders.exists(&dir.path().join("teda.pldb-wal")));
-        assert!(
-            FsLedgerFolders
-                .read_folder(&dir.path().join("missing"))
-                .is_err()
-        );
-    }
 
     #[test]
     fn breadcrumb_segments_collapse_the_home_directory_to_a_tilde() {

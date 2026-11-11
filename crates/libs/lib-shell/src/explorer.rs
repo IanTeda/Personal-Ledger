@@ -618,6 +618,17 @@ pub fn display_name(path: &Path) -> String {
     )
 }
 
+/// `path` with `home` as a leading `~` (the home folder itself as `~`), else as it is: how the
+/// status line, the file explorer, the folder picker and the Settings pages name a path, in both
+/// Clients.
+pub fn under_home(path: &Path, home: Option<&Path>) -> String {
+    match home.and_then(|home| path.strip_prefix(home).ok()) {
+        Some(relative) if relative.as_os_str().is_empty() => "~".to_string(),
+        Some(relative) => format!("~/{}", relative.display()),
+        None => path.display().to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use lib_config::KeyBindingConfig;
@@ -1233,5 +1244,17 @@ mod tests {
         let explorer = opened(ExplorerMode::Open, &empty_root());
 
         assert_eq!(model(&explorer).close_key, "esc");
+    }
+
+    #[test]
+    fn under_home_shortens_the_home_folder() {
+        let home = Path::new("/home/me");
+        assert_eq!(under_home(Path::new("/home/me"), Some(home)), "~");
+        assert_eq!(
+            under_home(Path::new("/home/me/finance"), Some(home)),
+            "~/finance"
+        );
+        assert_eq!(under_home(Path::new("/srv/data"), Some(home)), "/srv/data");
+        assert_eq!(under_home(Path::new("/srv/data"), None), "/srv/data");
     }
 }
