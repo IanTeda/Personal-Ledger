@@ -276,6 +276,8 @@ fn chord(key: KeyEvent) -> Option<String> {
         KeyCode::Backspace => "backspace".to_string(),
         KeyCode::Down => "down".to_string(),
         KeyCode::Up => "up".to_string(),
+        KeyCode::Left => "left".to_string(),
+        KeyCode::Right => "right".to_string(),
         KeyCode::Tab => "tab".to_string(),
         _ => return None,
     };
@@ -308,6 +310,29 @@ mod tests {
         std::fs::write(dir.path().join("ledger.pldb"), b"x").expect("a Ledger file");
         std::fs::write(dir.path().join("notes.txt"), b"hello").expect("another file");
         dir
+    }
+
+    #[test]
+    fn rebound_go_into_and_go_up_keys_walk_the_folders() {
+        let dir = disk();
+        let mut config = KeyBindingConfig::default();
+        config.bindings.insert("go_into".into(), "right".into());
+        config.bindings.insert("go_up".into(), "left".into());
+        let mut picker = FolderPickerPopup::open(dir.path().to_path_buf(), None, &config);
+        let press = |picker: &mut FolderPickerPopup, code| {
+            picker.handle_key(KeyEvent::new(code, KeyModifiers::NONE));
+        };
+
+        press(&mut picker, KeyCode::Right);
+        assert_eq!(picker.folder(), Some(dir.path().join("finance")));
+        press(&mut picker, KeyCode::Char('h'));
+        assert_eq!(
+            picker.folder(),
+            Some(dir.path().join("finance")),
+            "the replaced default does nothing"
+        );
+        press(&mut picker, KeyCode::Left);
+        assert_eq!(picker.folder(), Some(dir.path().to_path_buf()));
     }
 
     #[test]

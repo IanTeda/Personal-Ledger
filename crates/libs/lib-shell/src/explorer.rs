@@ -371,12 +371,14 @@ impl ExplorerPresenter {
         }
         match session.mode {
             ExplorerMode::Open => return ExplorerOutcome::Ignored,
-            ExplorerMode::PickFolder => return self.pick_key(chord, command, folders),
+            ExplorerMode::PickFolder => return self.pick_key(command, folders),
             ExplorerMode::New => {}
         }
         match command {
             Some(DialogCommand::Select) => self.confirm(),
-            Some(command) if !command.is_list_step() => ExplorerOutcome::Ignored,
+            Some(command) if !command.is_list_step() && !command.is_folder_step() => {
+                ExplorerOutcome::Ignored
+            }
             _ if chord == "backspace" => {
                 session.file_name.pop();
                 session.check_name(folders);
@@ -393,11 +395,10 @@ impl ExplorerPresenter {
         }
     }
 
-    /// The folder picker's keys: a list step moves the cursor over the folders, select or `l` goes
-    /// into the one under it, `h` or `backspace` goes up, and submit picks the folder browsed.
+    /// The folder picker's keys: a list step moves the cursor over the folders, select or go into goes
+    /// into the one under it (`l` by default), go up (`h` or `backspace`) goes up, and submit picks the folder browsed.
     fn pick_key(
         &mut self,
-        chord: &str,
         command: Option<DialogCommand>,
         folders: &dyn LedgerFolders,
     ) -> ExplorerOutcome {
@@ -414,8 +415,8 @@ impl ExplorerPresenter {
                 session.step_cursor(filters, Step::Prev)
             }
             Some(DialogCommand::Select) => session.enter_cursor(filters, folders),
-            _ if chord == "l" => session.enter_cursor(filters, folders),
-            _ if chord == "h" || chord == "backspace" => session.up(filters, folders),
+            Some(DialogCommand::GoInto) => session.enter_cursor(filters, folders),
+            Some(DialogCommand::GoUp) => session.up(filters, folders),
             _ => ExplorerOutcome::Ignored,
         }
     }

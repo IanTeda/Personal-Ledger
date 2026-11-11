@@ -17,8 +17,8 @@
 use lib_config::KeyBindingConfig;
 use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{
-    BACK, Binding, Keymap, LIST_NEXT, LIST_PREVIOUS, NEXT_FIELD, PREVIOUS_FIELD, SELECT,
-    SELECT_NEXT, SELECT_PREVIOUS, SUBMIT,
+    BACK, Binding, GO_INTO, GO_UP, Keymap, LIST_NEXT, LIST_PREVIOUS, NEXT_FIELD, PREVIOUS_FIELD,
+    SELECT, SELECT_NEXT, SELECT_PREVIOUS, SUBMIT,
 };
 
 /// A key the Dialog keymap binds, as the open Dialog receives it.
@@ -34,6 +34,10 @@ pub enum DialogCommand {
     /// A list Dialog's row step, typing in any other (see the module docs).
     ListNext,
     ListPrevious,
+    /// The folder picker's step into the folder under the cursor, typing everywhere else.
+    GoInto,
+    /// The folder picker's step up to the parent folder, typing everywhere else.
+    GoUp,
 }
 
 /// The Dialog keymap's commands with their default keys.
@@ -52,6 +56,9 @@ pub const DIALOG_BINDINGS: &[Binding<DialogCommand>] = &[
     Binding::hidden(SELECT_PREVIOUS, "ctrl+p", DialogCommand::SelectPrevious),
     Binding::hidden(LIST_NEXT, "j", DialogCommand::ListNext),
     Binding::hidden(LIST_PREVIOUS, "k", DialogCommand::ListPrevious),
+    Binding::hidden(GO_INTO, "l", DialogCommand::GoInto),
+    Binding::hidden(GO_UP, "h", DialogCommand::GoUp),
+    Binding::hidden(GO_UP, "backspace", DialogCommand::GoUp),
 ];
 
 impl DialogCommand {
@@ -66,13 +73,18 @@ impl DialogCommand {
             Self::SelectNext | Self::ListNext => Some(DialogInput::SelectNext),
             Self::SelectPrevious | Self::ListPrevious => Some(DialogInput::SelectPrevious),
             Self::Submit => Some(DialogInput::Submit),
-            Self::Back => None,
+            Self::Back | Self::GoInto | Self::GoUp => None,
         }
     }
 
     /// A list Dialog's row step, which a Dialog or field not stepping a list takes as typing.
     pub fn is_list_step(self) -> bool {
         matches!(self, Self::ListNext | Self::ListPrevious)
+    }
+
+    /// The folder picker's own step, which every other host takes as typing.
+    pub fn is_folder_step(self) -> bool {
+        matches!(self, Self::GoInto | Self::GoUp)
     }
 }
 
@@ -109,6 +121,9 @@ mod tests {
             ("ctrl+p", DialogCommand::SelectPrevious),
             ("j", DialogCommand::ListNext),
             ("k", DialogCommand::ListPrevious),
+            ("l", DialogCommand::GoInto),
+            ("h", DialogCommand::GoUp),
+            ("backspace", DialogCommand::GoUp),
         ] {
             assert_eq!(keymap.event(chord), Some(command), "{chord}");
         }
@@ -129,6 +144,20 @@ mod tests {
         assert_eq!(keymap.event("ctrl+j"), Some(DialogCommand::ListNext));
         assert_eq!(keymap.event("j"), None, "the default no longer binds");
         assert_eq!(lib_viper::keymap::list_step_chords(&keymap), "ctrl+j/k");
+    }
+
+    #[test]
+    fn a_folder_step_rebinds_on_its_own_and_types_elsewhere() {
+        assert!(DialogCommand::GoInto.is_folder_step());
+        assert!(!DialogCommand::ListNext.is_folder_step());
+        assert_eq!(DialogCommand::GoUp.input(), None);
+
+        let keymap = dialog_keymap(&overriding(GO_UP, "left"));
+
+        assert_eq!(keymap.event("left"), Some(DialogCommand::GoUp));
+        assert_eq!(keymap.event("h"), None, "the default no longer binds");
+        assert_eq!(keymap.event("backspace"), None);
+        assert_eq!(keymap.event("l"), Some(DialogCommand::GoInto));
     }
 
     #[test]

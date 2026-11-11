@@ -424,7 +424,10 @@ fn form_key(command: DialogCommand) -> Option<FormKey> {
         DialogCommand::PreviousField => FormKey::Prev,
         DialogCommand::SelectNext => FormKey::Step(1),
         DialogCommand::SelectPrevious => FormKey::Step(-1),
-        DialogCommand::ListNext | DialogCommand::ListPrevious => return None,
+        DialogCommand::ListNext
+        | DialogCommand::ListPrevious
+        | DialogCommand::GoInto
+        | DialogCommand::GoUp => return None,
     })
 }
 

@@ -257,7 +257,9 @@ impl<E: Clone> PalettePresenter<E> {
             Some(DialogCommand::SelectNext) => self.move_selection(1),
             Some(DialogCommand::SelectPrevious) => self.move_selection(-1),
             Some(DialogCommand::NextField) => self.complete(),
-            Some(command) if !command.is_list_step() => PaletteOutcome::Ignored,
+            Some(command) if !command.is_list_step() && !command.is_folder_step() => {
+                PaletteOutcome::Ignored
+            }
             _ if chord == "backspace" => self.edit(|input| {
                 input.pop();
             }),

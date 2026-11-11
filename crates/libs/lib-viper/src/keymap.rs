@@ -276,6 +276,11 @@ pub const SUBMIT: &str = "submit";
 /// alone.
 pub const LIST_NEXT: &str = "list_next";
 pub const LIST_PREVIOUS: &str = "list_previous";
+/// The folder picker's own steps, into the folder under the cursor and up to its parent, on
+/// letters (and `backspace`) by default: only the picker reads them, so in any other Dialog or
+/// field they type.
+pub const GO_INTO: &str = "go_into";
+pub const GO_UP: &str = "go_up";
 
 /// The list step's two chords as a hint shows them, `j/k` by default, read from a Dialog `keymap`.
 pub fn list_step_chords<E: Clone>(keymap: &Keymap<E>) -> String {
