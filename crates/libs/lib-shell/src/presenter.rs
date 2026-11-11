@@ -17,7 +17,7 @@ use lib_config::KeyBindingConfig;
 use lib_core::{Clock, Period};
 use lib_list_cursor::{HALF_PAGE, Step};
 use lib_locale::msg;
-use lib_toast::{Display, Notice, Toasts};
+use lib_toast::{Display, Notice, Toast, ToastKind, Toasts};
 use lib_viper::keymap::Keymap;
 use lib_viper::view::Hint;
 
@@ -616,18 +616,32 @@ impl<P: Copy + Eq + Default, E: Clone> ShellPresenter<P, E> {
     pub fn show(&mut self, notice: Notice, at: DateTime<Local>) {
         match notice {
             Notice::Toast(kind, text) => {
-                if self.toasts.visible().is_empty() {
-                    self.last_tick = None;
-                }
+                self.restart_idle_count();
                 self.toasts.raise(kind, text, at);
             }
             Notice::Status(text) => self.status = Some(text),
         }
     }
 
-    /// Whether a Toast is up for the Client's timer to tick.
+    /// The Toasts test, from Settings › General or `:toasts test` (DESKTOP-184): one Toast of each
+    /// Kind a second apart, `text` being the Client's test Message for each, stamped `at` for the
+    /// history. The Toast timer raises all but the first.
+    pub fn test_toasts(&mut self, text: impl Fn(ToastKind) -> String, at: DateTime<Local>) {
+        self.restart_idle_count();
+        self.toasts.raise_test(text, at);
+    }
+
+    /// Whether a Toast is up, echoed or waiting to be raised, for the Client's timer to tick.
     pub fn toasts_ticking(&self) -> bool {
-        !self.toasts.visible().is_empty()
+        self.toasts.is_ticking()
+    }
+
+    /// Before a raise: with nothing ticking, the time since the last tick is idle, not a Toast's
+    /// age, so the next tick only starts the count.
+    fn restart_idle_count(&mut self) {
+        if !self.toasts.is_ticking() {
+            self.last_tick = None;
+        }
     }
 
     pub fn toast(&mut self, input: ToastInput) {
@@ -872,14 +886,18 @@ impl<P: Copy + Eq + Default, E: Clone> ShellPresenter<P, E> {
         if self.toasts.visible().is_empty() {
             // A dismissed stack never reports the pointer leaving it.
             self.toasts_hovered = false;
+        }
+        if !self.toasts.is_ticking() {
             self.last_tick = None;
             return false;
         }
+        // What the stack and the echo draw, less the timers: a raise that evicts keeps the count.
         let drawn = |toasts: &Toasts<DateTime<Local>>| {
+            let shown = |toast: &Toast| (toast.kind(), toast.text().to_owned(), toast.count());
             (
-                toasts.visible().len(),
+                toasts.visible().iter().map(shown).collect::<Vec<_>>(),
                 toasts.more_count(),
-                toasts.echo().is_some(),
+                toasts.echo().map(shown),
             )
         };
         let before = drawn(&self.toasts);
@@ -1897,6 +1915,34 @@ mod tests {
             "the Success expiring changes the stack"
         );
         assert_eq!(texts(&shell), ["Save failed"]);
+    }
+
+    #[test]
+    fn the_toasts_test_raises_one_a_second_and_each_redraws() {
+        let mut shell = shell();
+        let start = Instant::now();
+        shell.toast(ToastInput::Display(Display { toasts_on: false }));
+        shell.test_toasts(|kind| format!("{kind:?}"), local(0));
+        let echo = |shell: &Shell| shell.toasts().echo().map(|t| t.text().to_owned());
+        assert_eq!(echo(&shell).as_deref(), Some("Success"));
+        assert!(
+            shell.toasts_ticking(),
+            "the queue ticks with nothing on the stack"
+        );
+
+        assert!(
+            !shell.tick_toasts(start),
+            "the first tick only starts the count"
+        );
+        for (second, echoed) in [(1, "Info"), (2, "Warning")] {
+            assert!(
+                shell.tick_toasts(start + Duration::from_secs(second)),
+                "the echo turning to {echoed} redraws"
+            );
+            assert_eq!(echo(&shell).as_deref(), Some(echoed));
+        }
+        assert!(shell.tick_toasts(start + Duration::from_secs(3)));
+        assert_eq!(texts(&shell), ["Error"]);
     }
 
     #[test]

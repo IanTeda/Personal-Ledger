@@ -46,6 +46,7 @@ Toasts on/off is the first **Client-scoped Preference**: default on, one switch,
 - **Precedence on the status line (left side):** command echo > status-line message > Toast echo > page legend / shell hint strip. The right-hand side is untouched.
 - **Switching off** removes the showing Info, Success and Warning Toasts, and the newest moves to the echo for the rest of its lifetime.
 - **Control:** a "Toasts" On/Off row in each Client's Settings Display group, above the Colour Theme group, with a note that Errors still show; plus `toasts on` / `toasts off` palette commands.
+- **Test:** the Desktop's **Test** button beside the row (`t` with Toasts focused) and `toasts test` raise one Toast of each Kind a second apart, Success, Info, Warning, then Error, each with its `toast-test-*` Message (DESKTOP-184). `lib-toast` queues the raises (`Toasts::raise_test`) and its one clock, `advance`, raises each as its delay runs out, so the Preference, eviction and merging apply as to any Toast. The Client passes the Messages and stamps all four with the time the test was asked for.
 
 ## Session Toast history
 

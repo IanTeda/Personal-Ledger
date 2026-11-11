@@ -27,6 +27,7 @@ desktop-command-institutions-description = open Settings, Institutions
 desktop-command-dismiss-description = dismiss the newest Toast
 desktop-command-toasts-on-description = show Toasts
 desktop-command-toasts-off-description = send Toasts to the status line (Errors still show)
+desktop-command-toasts-test-description = raise one Toast of each kind, a second apart
 
 ## The match count beside the input, for example `3 of 16`.
 

@@ -40,6 +40,9 @@ pub trait DeviceRouter: Notify {
 
     /// A Colour Theme or Appearance was saved, so the Client applies it to every window.
     fn colour_changed(&mut self, colour: ColourChoice);
+
+    /// General's **Test** asked for the Toasts test, which the Shell's Toasts raise (DESKTOP-184).
+    fn test_toasts(&mut self);
 }
 
 /// A Colour Theme or Appearance chosen on Display or by the palette.

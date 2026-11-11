@@ -52,6 +52,12 @@ impl Root {
             .show(Notice::Toast(kind, text.into()), Local::now());
     }
 
+    /// The Toasts test, from General's **Test** or `:toasts test` (DESKTOP-184): one Toast of each
+    /// Kind a second apart, each with its test Message, which the Toast clock raises in turn.
+    pub(crate) fn test_toasts(&mut self) {
+        self.presenter.test_toasts(test_toast_text, Local::now());
+    }
+
     /// Sets the status message from the Shell's own handling (a palette command, an Undo with
     /// nothing built behind it), which the next key clears.
     pub(super) fn set_status(&mut self, text: String) {
@@ -92,5 +98,15 @@ impl Root {
                 .downcast::<ModuleDialog<ToastHistoryPresenter>>()
                 .is_some()
         })
+    }
+}
+
+/// The test Message for a Toast of `kind`, shared with the TUI.
+fn test_toast_text(kind: ToastKind) -> String {
+    match kind {
+        ToastKind::Success => lib_locale::msg::toast_test_success(),
+        ToastKind::Info => lib_locale::msg::toast_test_info(),
+        ToastKind::Warning => lib_locale::msg::toast_test_warning(),
+        ToastKind::Error => lib_locale::msg::toast_test_error(),
     }
 }

@@ -1,6 +1,7 @@
 //! Settings › General driven by keys: focus lands on On start, `j`/`k` walk On start, Start view
 //! and Toasts, and `h`/`l` change the one focused. Each change is saved to the conf file (ADR-0053)
-//! and Toasts reach the Shell's Toasts; a key an environment variable sets is shown as such and left alone.
+//! and Toasts reach the Shell's Toasts; `t` on Toasts raises the Toasts test; a key an environment
+//! variable sets is shown as such and left alone.
 //! State is read back from `Root` and the conf file.
 
 use super::common;
@@ -10,6 +11,7 @@ use bin_desktop::WindowSize;
 use common::Harness;
 use gpui::TestAppContext;
 use lib_core::{OnStart, StartView};
+use std::time::Duration;
 
 /// Settings on General, the first page, with focus stepped into it.
 fn in_general(app: &mut TestAppContext) -> Harness<'_> {
@@ -232,4 +234,46 @@ fn after_close_this_devices_last_ledger_reads_none(app: &mut TestAppContext) {
 
     assert_eq!(ui.settings_frame().page, "General");
     assert_eq!(ui.settings::<SettingsGeneralSnapshot>().last_ledger, None);
+}
+
+fn visible_kinds(ui: &mut Harness<'_>) -> Vec<String> {
+    ui.toasts()
+        .visible
+        .into_iter()
+        .map(|toast| toast.kind)
+        .collect()
+}
+
+#[gpui::test]
+fn t_on_toasts_raises_the_four_test_toasts_as_the_clock_runs(app: &mut TestAppContext) {
+    let mut ui = in_general(app);
+    ui.press("t");
+    assert!(ui.toasts().visible.is_empty(), "t on On start does nothing");
+
+    ui.press("j j t");
+    assert_eq!(visible_kinds(&mut ui), ["Success"]);
+    ui.advance_clock(Duration::from_millis(1500));
+    assert_eq!(visible_kinds(&mut ui), ["Success", "Info"]);
+    ui.advance_clock(Duration::from_secs(2));
+    assert_eq!(visible_kinds(&mut ui), ["Info", "Warning", "Error"]);
+    assert_eq!(ui.toasts().history.len(), 4);
+    assert!(ui.settings::<SettingsGeneralSnapshot>().toasts_on);
+    assert_eq!(ui.conf(), "", "the test writes no setting");
+}
+
+#[gpui::test]
+fn on_toasts_the_hints_read_on_off_and_test(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::Large);
+    ui.press("g s l j j");
+
+    let hints = ui.status().map(|status| status.hints).unwrap_or_default();
+    assert_eq!(
+        hints,
+        [
+            ("j/k".to_string(), "field".to_string()),
+            ("h/l".to_string(), "on / off".to_string()),
+            ("t".to_string(), "test".to_string()),
+        ]
+    );
 }

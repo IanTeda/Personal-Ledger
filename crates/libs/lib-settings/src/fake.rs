@@ -31,6 +31,7 @@ pub enum Routed {
     ToastsChanged(bool),
     DisplayChanged(DisplayOutput),
     ColourChanged(ColourChoice),
+    TestToasts,
     LogScrolled(LogScroll),
     LogChanged(LogListChange),
     ClearLogsOpened,
@@ -110,6 +111,10 @@ impl DeviceRouter for RecordingRouter {
 
     fn colour_changed(&mut self, colour: ColourChoice) {
         self.routed.push(Routed::ColourChanged(colour));
+    }
+
+    fn test_toasts(&mut self) {
+        self.routed.push(Routed::TestToasts);
     }
 }
 

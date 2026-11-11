@@ -11,6 +11,7 @@ use lib_settings::{
     DeviceKey, GeneralEvent, GeneralViewModel,
     presenter::{ControlView, ReadOnlyView, StartViewControl, ThisDeviceView},
 };
+use lib_viper::view::Hint;
 
 use super::GeneralPage;
 use crate::{
@@ -44,6 +45,7 @@ pub(super) fn page(
                     model.field == Some(GENERAL_FIELD_ON_START),
                     None,
                     clicks.segment(GeneralEvent::ChooseOnStart),
+                    None,
                     cx,
                 ))
                 .child(start_view_field(
@@ -59,6 +61,7 @@ pub(super) fn page(
                     model.field == Some(GENERAL_FIELD_TOASTS),
                     Some(px(UNIFORM_OPTION_WIDTH)),
                     clicks.segment(GeneralEvent::ChooseToasts),
+                    Some(test_button(&model.toasts_test, clicks, cx).into_any_element()),
                     cx,
                 ))
                 .child(
@@ -75,8 +78,12 @@ pub(super) fn page(
         .into_any_element()
 }
 
-/// A segmented control with its label, hint and shadowed note. `focused` is the keyboard's mark,
-/// drawn as the Display page draws it.
+/// A segmented control with its label, hint and shadowed note, and `beside` it 8px to its right if
+/// given. `focused` is the keyboard's mark, drawn as the Display page draws it.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "one control's parts, each drawn once; a struct would only rename them"
+)]
 fn segmented<T: Copy + PartialEq + 'static>(
     id: &'static str,
     control: &ControlView<T>,
@@ -84,6 +91,7 @@ fn segmented<T: Copy + PartialEq + 'static>(
     focused: bool,
     option_width: Option<gpui::Pixels>,
     on_click: crate::form::fields::OnSegmentClick<T>,
+    beside: Option<AnyElement>,
     cx: &App,
 ) -> impl IntoElement {
     let select = &control.select;
@@ -95,16 +103,54 @@ fn segmented<T: Copy + PartialEq + 'static>(
     let chosen = select.chosen.unwrap_or(select.options[0].value);
     focus_mark(focused, cx)
         .child(field_label(select.label.clone()))
-        .child(segmented_labelled(
-            id,
-            options,
-            chosen,
-            on_click,
-            option_width,
-            cx,
-        ))
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(8.0))
+                .child(segmented_labelled(
+                    id,
+                    options,
+                    chosen,
+                    on_click,
+                    option_width,
+                    cx,
+                ))
+                .children(beside),
+        )
         .children(control.hint.clone().map(|text| hint(text, cx)))
         .children(shadowed(key, control.shadowed.as_deref(), cx))
+}
+
+/// Toasts' secondary **Test** button, its key after its label. It is no `j`/`k` stop of its own:
+/// the key presses it from Toasts.
+fn test_button(test: &Hint, clicks: &PageClicks<GeneralPage>, cx: &App) -> impl IntoElement {
+    let hover = color::hover(cx);
+    div()
+        .id("general-toasts-test")
+        .debug_selector(|| "general-toasts-test".to_string())
+        .cursor_pointer()
+        .flex_none()
+        .flex()
+        .items_center()
+        .gap(px(6.0))
+        .h(px(32.0))
+        .px(px(12.0))
+        .border_1()
+        .border_color(color::border(cx))
+        .text_size(px(13.0))
+        .text_color(color::foreground(cx))
+        .font_weight(gpui::FontWeight::EXTRA_BOLD)
+        .whitespace_nowrap()
+        .hover(move |style| style.bg(hover))
+        .on_click(clicks.send(GeneralEvent::PressTest))
+        .child(test.action.clone())
+        .child(
+            div()
+                .text_color(color::faint_text(cx))
+                .font_weight(gpui::FontWeight::NORMAL)
+                .child(test.chord.clone()),
+        )
 }
 
 /// Start view's choices as a radio group, one per line: seven don't fit a segmented control in the

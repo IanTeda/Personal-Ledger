@@ -5,6 +5,17 @@ use crate::{History, ToastKind};
 /// Toasts drawn at once; past this the oldest timed Toast is evicted (#306).
 pub const MAX_VISIBLE: usize = 3;
 
+/// The Kinds the Toasts test raises, in its order (DESKTOP-184).
+pub const TEST_KINDS: [ToastKind; 4] = [
+    ToastKind::Success,
+    ToastKind::Info,
+    ToastKind::Warning,
+    ToastKind::Error,
+];
+
+/// The gap between one test Toast and the next.
+pub const TEST_INTERVAL: Duration = Duration::from_secs(1);
+
 /// What the bin can show, passed in so the model never reads the Preference.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Display {
@@ -72,6 +83,15 @@ impl Toast {
     }
 }
 
+/// A Toast waiting to be raised once its delay has run down.
+#[derive(Debug, Clone)]
+struct Queued<S> {
+    delay: Duration,
+    kind: ToastKind,
+    text: String,
+    raised_at: S,
+}
+
 /// The Toasts for one Client window: the stack, the status-line echo and the session history.
 /// `S` is the bin's wall-clock stamp for the history's "time last raised".
 #[derive(Debug, Clone)]
@@ -82,6 +102,8 @@ pub struct Toasts<S> {
     // The non-Error Toast carried by the status line while Toasts are off.
     off_echo: Option<Toast>,
     history: History<S>,
+    // Raises waiting on a delay, in the order they were queued; `advance` runs them down.
+    queued: Vec<Queued<S>>,
     display: Display,
     paused: bool,
     next_seq: u64,
@@ -99,6 +121,7 @@ impl<S> Toasts<S> {
             stack: Vec::new(),
             off_echo: None,
             history: History::default(),
+            queued: Vec::new(),
             display,
             paused: false,
             next_seq: 0,
@@ -153,8 +176,30 @@ impl<S> Toasts<S> {
         }
     }
 
+    /// The Toasts test (DESKTOP-184): one Toast of each of [`TEST_KINDS`], [`TEST_INTERVAL`]
+    /// apart, the first at once, the rest as [`Self::advance`] runs their delays down. `text` is
+    /// the bin's resolved test Message for each Kind. Each goes through [`Self::raise`], so the
+    /// Preference and merging apply as to any Toast; every one is stamped `raised_at`, the time
+    /// the test was asked for, since the model has no wall clock.
+    pub fn raise_test(&mut self, text: impl Fn(ToastKind) -> String, raised_at: S)
+    where
+        S: Clone,
+    {
+        let mut delay = Duration::ZERO;
+        for kind in TEST_KINDS {
+            self.queued.push(Queued {
+                delay,
+                kind,
+                text: text(kind),
+                raised_at: raised_at.clone(),
+            });
+            delay += TEST_INTERVAL;
+        }
+        self.raise_due();
+    }
+
     /// The only clock: runs every live Toast's timer down by `elapsed` and drops the expired
-    /// ones. Does nothing while paused.
+    /// ones, then raises each queued Toast whose delay has run out. Does nothing while paused.
     pub fn advance(&mut self, elapsed: Duration) {
         if self.paused {
             return;
@@ -163,6 +208,16 @@ impl<S> Toasts<S> {
         if self.off_echo.as_mut().is_some_and(|t| t.tick(elapsed)) {
             self.off_echo = None;
         }
+        for queued in &mut self.queued {
+            queued.delay = queued.delay.saturating_sub(elapsed);
+        }
+        self.raise_due();
+    }
+
+    /// Whether anything has a timer for the bin's clock to run: a live Toast, stacked or
+    /// echoed, or a queued raise.
+    pub fn is_ticking(&self) -> bool {
+        !self.stack.is_empty() || self.off_echo.is_some() || !self.queued.is_empty()
     }
 
     /// Stops the timers, for hover (Desktop) and while a modal surface is open.
@@ -251,6 +306,17 @@ impl<S> Toasts<S> {
 
     pub fn history(&self) -> &History<S> {
         &self.history
+    }
+
+    /// Raises every queued Toast whose delay has run out, in the order queued.
+    fn raise_due(&mut self) {
+        let (due, waiting): (Vec<_>, Vec<_>) = std::mem::take(&mut self.queued)
+            .into_iter()
+            .partition(|queued| queued.delay.is_zero());
+        self.queued = waiting;
+        for queued in due {
+            self.raise(queued.kind, queued.text, queued.raised_at);
+        }
     }
 
     fn take_seq(&mut self) -> u64 {
@@ -496,6 +562,86 @@ mod tests {
         toasts.set_display(Display::default());
         assert!(toasts.echo().is_none());
         assert_eq!(texts(&toasts), ["a"]);
+    }
+
+    fn test_text(kind: ToastKind) -> String {
+        format!("{kind:?}")
+    }
+
+    fn kinds(toasts: &Toasts<u32>) -> Vec<(ToastKind, u32)> {
+        toasts
+            .visible()
+            .iter()
+            .map(|t| (t.kind(), t.count()))
+            .collect()
+    }
+
+    #[test]
+    fn the_test_raises_one_of_each_kind_a_second_apart() {
+        let mut toasts = Toasts::default();
+        toasts.raise_test(test_text, 0);
+        assert_eq!(kinds(&toasts), [(Success, 1)]);
+        toasts.advance(secs(1) - TICK);
+        assert_eq!(kinds(&toasts), [(Success, 1)]);
+        toasts.advance(TICK);
+        assert_eq!(kinds(&toasts), [(Success, 1), (Info, 1)]);
+        toasts.advance(secs(1));
+        assert_eq!(kinds(&toasts), [(Success, 1), (Info, 1), (Warning, 1)]);
+        toasts.advance(secs(1));
+        assert_eq!(kinds(&toasts), [(Info, 1), (Warning, 1), (Error, 1)]);
+        assert_eq!(texts(&toasts), ["Info", "Warning", "Error"]);
+
+        let history: Vec<_> = toasts.history().iter().map(|e| e.kind()).collect();
+        assert_eq!(history, [Error, Warning, Info, Success]);
+        assert!(toasts.is_ticking());
+    }
+
+    #[test]
+    fn with_toasts_off_the_test_echoes_all_but_the_error_in_turn() {
+        let mut toasts = Toasts::new(off());
+        toasts.raise_test(test_text, 0);
+        let mut echoed = vec![toasts.echo().map(Toast::kind)];
+        for _ in 0..3 {
+            toasts.advance(secs(1));
+            echoed.push(toasts.echo().map(Toast::kind));
+        }
+        assert_eq!(
+            echoed,
+            [Some(Success), Some(Info), Some(Warning), Some(Warning)]
+        );
+        assert_eq!(kinds(&toasts), [(Error, 1)]);
+        assert_eq!(toasts.history().len(), 4);
+    }
+
+    #[test]
+    fn a_second_test_merges_each_into_its_twin() {
+        let mut toasts = Toasts::default();
+        toasts.raise_test(test_text, 0);
+        toasts.raise_test(test_text, 1);
+        assert_eq!(kinds(&toasts), [(Success, 2)]);
+        toasts.advance(secs(3));
+        assert_eq!(kinds(&toasts), [(Info, 2), (Warning, 2), (Error, 2)]);
+        let history: Vec<_> = toasts.history().iter().map(|e| e.count()).collect();
+        assert_eq!(history, [2, 2, 2, 2]);
+    }
+
+    #[test]
+    fn a_paused_test_waits() {
+        let mut toasts = Toasts::default();
+        toasts.raise_test(test_text, 0);
+        toasts.pause();
+        toasts.advance(secs(5));
+        assert_eq!(kinds(&toasts), [(Success, 1)]);
+    }
+
+    #[test]
+    fn nothing_ticks_with_nothing_live_or_queued() {
+        let mut toasts = Toasts::<u32>::new(off());
+        assert!(!toasts.is_ticking());
+        toasts.raise(Info, "a", 0);
+        assert!(toasts.is_ticking(), "the echo runs down");
+        toasts.advance(secs(4));
+        assert!(!toasts.is_ticking());
     }
 
     #[test]

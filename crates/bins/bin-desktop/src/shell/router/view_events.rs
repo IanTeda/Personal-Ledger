@@ -63,6 +63,7 @@ impl Root {
             }
             ViewEvent::DisplayChanged(display) => self.push_display_preferences(display, cx),
             ViewEvent::ToastsChanged(on) => self.push_toasts_on(on),
+            ViewEvent::TestToasts => self.test_toasts(),
         }
     }
 

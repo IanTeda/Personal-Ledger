@@ -18,7 +18,7 @@ use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Choice, Hint, SelectView};
 
 use super::device::{ControlView, chords, settle, shadowed_note, step_choice};
-use crate::keymap::{NEXT_CHOICE, PREVIOUS_CHOICE};
+use crate::keymap::{NEXT_CHOICE, PREVIOUS_CHOICE, TEST_TOASTS};
 use crate::msg;
 use crate::protocols::{DeviceConfiguration, DeviceKey, DeviceRouter};
 
@@ -47,6 +47,10 @@ pub enum GeneralEvent {
     ChooseToasts(bool),
     /// `:toasts on|off`, which writes the setting even when it holds already.
     SetToasts(bool),
+    /// `t`: the Toasts test, only while Toasts has the keyboard.
+    TestToasts,
+    /// A click on **Test**, wherever the keyboard is.
+    PressTest,
 }
 
 /// A device's settings General writes, as start-up read them from Configuration.
@@ -132,6 +136,8 @@ pub struct GeneralViewModel {
     pub on_start: ControlView<OnStart>,
     pub start_view: StartViewControl,
     pub toasts: ControlView<bool>,
+    /// The **Test** button beside Toasts: its label and the key that presses it from Toasts.
+    pub toasts_test: Hint,
     pub locale: ReadOnlyView,
     /// The note when the Locale asked for wasn't supported.
     pub locale_fallback: Option<String>,
@@ -239,6 +245,8 @@ impl Presenter for GeneralPresenter {
                 }
             }
             GeneralEvent::SetToasts(on) => self.write_toasts(on, router),
+            // The test touches no setting: the Shell's Toasts raise it.
+            GeneralEvent::TestToasts | GeneralEvent::PressTest => router.test_toasts(),
         }
     }
 
@@ -303,9 +311,13 @@ impl Presenter for GeneralPresenter {
                     chosen: Some(self.settings.toasts_on),
                     focused: self.field == Some(GENERAL_FIELD_TOASTS),
                 },
-                hint: Some(lib_locale::msg::toast_setting_note()),
+                hint: Some(lib_locale::msg::toast_setting_test_note()),
                 shadowed: shadowed_note(device, DeviceKey::Toasts),
             },
+            toasts_test: Hint::new(
+                chords(&self.keymap, &[TEST_TOASTS]),
+                lib_locale::msg::toast_setting_test(),
+            ),
             locale: ReadOnlyView {
                 label: msg::settings_general_locale_label(),
                 value: self.locale.line.clone(),
@@ -331,16 +343,7 @@ impl Presenter for GeneralPresenter {
                 ],
                 note: msg::settings_general_note(),
             },
-            hints: vec![
-                Hint::new(
-                    chords(&self.keymap, &[MOVE_DOWN, MOVE_UP]),
-                    msg::settings_hint_field(),
-                ),
-                Hint::new(
-                    chords(&self.keymap, &[PREVIOUS_CHOICE, NEXT_CHOICE]),
-                    msg::settings_hint_change(),
-                ),
-            ],
+            hints: self.hints(),
         }
     }
 
@@ -349,6 +352,7 @@ impl Presenter for GeneralPresenter {
     fn takes(&self, event: &GeneralEvent) -> bool {
         match event {
             GeneralEvent::Move(_) | GeneralEvent::Change(_) => self.field.is_some(),
+            GeneralEvent::TestToasts => self.field == Some(GENERAL_FIELD_TOASTS),
             _ => true,
         }
     }
@@ -369,6 +373,32 @@ impl PagePresenter for GeneralPresenter {
 }
 
 impl GeneralPresenter {
+    /// The page's keys: on Toasts, `h`/`l` read on / off and `t` raises the test.
+    fn hints(&self) -> Vec<Hint> {
+        let on_toasts = self.field == Some(GENERAL_FIELD_TOASTS);
+        let mut hints = vec![
+            Hint::new(
+                chords(&self.keymap, &[MOVE_DOWN, MOVE_UP]),
+                msg::settings_hint_field(),
+            ),
+            Hint::new(
+                chords(&self.keymap, &[PREVIOUS_CHOICE, NEXT_CHOICE]),
+                if on_toasts {
+                    msg::settings_hint_on_off()
+                } else {
+                    msg::settings_hint_change()
+                },
+            ),
+        ];
+        if on_toasts {
+            hints.push(Hint::new(
+                chords(&self.keymap, &[TEST_TOASTS]),
+                msg::settings_hint_test(),
+            ));
+        }
+        hints
+    }
+
     /// `j`/`k` walk the controls, stopping at either end.
     fn move_field(&mut self, step: Step) {
         if let Some(field) = self.field {
@@ -668,6 +698,85 @@ mod tests {
     }
 
     #[test]
+    fn t_on_toasts_asks_for_the_test_and_touches_no_setting() {
+        let (device, mut general) = writable();
+        general.set_page_focused(true);
+        let router = send(
+            &mut general,
+            [
+                GeneralEvent::Move(Step::Next),
+                GeneralEvent::Move(Step::Next),
+            ],
+        );
+        assert!(router.routed.is_empty());
+        assert_eq!(general.keymap().event("t"), Some(GeneralEvent::TestToasts));
+
+        let router = send(&mut general, [GeneralEvent::TestToasts]);
+
+        assert_eq!(router.routed, [Routed::TestToasts]);
+        assert_eq!(device.stored(), Default::default());
+        assert!(general.settings().toasts_on);
+    }
+
+    #[test]
+    fn t_on_another_field_does_nothing() {
+        let (_, mut general) = writable();
+        assert!(
+            !general.takes(&GeneralEvent::TestToasts),
+            "no field focused"
+        );
+        general.set_page_focused(true);
+        assert!(!general.takes(&GeneralEvent::TestToasts), "on On start");
+        let router = send(
+            &mut general,
+            [GeneralEvent::Move(Step::Next), GeneralEvent::TestToasts],
+        );
+        assert!(router.routed.is_empty(), "on Start view");
+    }
+
+    #[test]
+    fn a_click_on_test_raises_it_wherever_the_keyboard_is() {
+        let (_, mut general) = writable();
+        let router = send(&mut general, [GeneralEvent::PressTest]);
+        assert_eq!(router.routed, [Routed::TestToasts]);
+    }
+
+    #[test]
+    fn on_toasts_the_hints_read_on_off_and_test() {
+        let (_, mut general) = writable();
+        let pairs = |general: &GeneralPresenter| -> Vec<(String, String)> {
+            general
+                .view_model()
+                .hints
+                .into_iter()
+                .map(|hint| (hint.chord, hint.action))
+                .collect()
+        };
+        general.set_page_focused(true);
+        assert_eq!(pairs(&general)[1].1, "change");
+        send(
+            &mut general,
+            std::iter::repeat_n(GeneralEvent::Move(Step::Next), 2),
+        );
+        assert_eq!(
+            pairs(&general),
+            [
+                ("j/k".to_string(), "field".to_string()),
+                ("h/l".to_string(), "on / off".to_string()),
+                ("t".to_string(), "test".to_string()),
+            ]
+        );
+        assert_eq!(
+            general.view_model().toasts_test,
+            Hint::new("t".to_string(), "Test".to_string())
+        );
+        assert_eq!(
+            general.view_model().toasts.hint.as_deref(),
+            Some("Errors still show. Test raises one of each kind.")
+        );
+    }
+
+    #[test]
     fn the_read_only_lines_show_what_the_client_told_it() {
         let (_, mut general) = writable();
         general.set_this_device(ThisDevice {
@@ -711,8 +820,8 @@ mod tests {
             [
                 ("j/k".to_string(), "field".to_string()),
                 ("h/l".to_string(), "change".to_string()),
-                ("esc".to_string(), "index".to_string()),
-            ]
+            ],
+            "the frame's esc is the only esc"
         );
 
         let mut config = KeyBindingConfig::default();

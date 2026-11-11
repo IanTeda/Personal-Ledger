@@ -37,6 +37,8 @@ pub enum ViewEvent {
     /// Toasts was saved on or off, on Settings › General or by `:toasts`: `Root` hands it to the
     /// Toasts.
     ToastsChanged(bool),
+    /// General's **Test** asked for the Toasts test (DESKTOP-184): `Root` raises it on the Toasts.
+    TestToasts,
 }
 
 /// A mode a View enters for something it has opened itself: the [`InputMode`]s `Root` hands

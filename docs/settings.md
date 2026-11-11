@@ -497,6 +497,8 @@ A Toast is a short message in the bottom-right corner that tells you how somethi
 
 With Toasts off, the message shows on the status line at the bottom instead, for as long as the Toast would have shown. Errors still appear as Toasts either way, so you never miss one; the note beside the row says so.
 
+To see what each kind of Toast looks like, in the Desktop app click **Test** beside the On / Off switch, or press `t` while the Toasts row is selected, or run `toasts test` from the command box anywhere. One Toast of each kind appears a second apart: Success, Info, Warning, then Error. At most three show at once, so the Error pushes out the Success; the Toast history keeps all four. With Toasts off, the first three show on the status line in turn and only the Error appears as a Toast.
+
 Two keys go with Toasts, both set in the Keybindings Section below:
 
 - `dismiss_toasts` (`Ctrl+L` by default) clears every Toast on screen.

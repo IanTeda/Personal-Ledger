@@ -223,6 +223,18 @@ impl ShellRouter for RootRouter<'_, '_> {
             CommandEffect::SetToasts(on) => {
                 self.settings.update(cx, |view, cx| view.set_toasts(on, cx));
             }
+            // The Toasts are the Shell's Presenter's, which this Router never holds: the test is
+            // raised once the Shell's update ends.
+            CommandEffect::TestToasts => {
+                let root = cx.weak_entity();
+                cx.defer(move |cx| {
+                    // A Shell gone with its window has no Toasts to raise.
+                    let _ = root.update(cx, |root, cx| {
+                        root.test_toasts();
+                        cx.notify();
+                    });
+                });
+            }
             CommandEffect::Module { page, command } => {
                 if !self.run_module_command(page, command) {
                     self.notify(Notice::Status(crate::msg::desktop_status_command_refused(

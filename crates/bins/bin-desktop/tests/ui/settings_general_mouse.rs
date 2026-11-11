@@ -1,4 +1,4 @@
-//! Settings › General driven by the mouse: the On start, Start view and Toasts options, each saved to the conf file (ADR-0053), and the read-only Locale, Ledger folder and THIS DEVICE box drawn beside them. State is read back from `Root` and the conf file.
+//! Settings › General driven by the mouse: the On start, Start view and Toasts options, each saved to the conf file (ADR-0053), Toasts' Test raising the four test Toasts, and the read-only Locale, Ledger folder and THIS DEVICE box drawn beside them. State is read back from `Root` and the conf file.
 
 use super::common;
 use bin_desktop::shell::router::SettingsGeneralSnapshot;
@@ -7,6 +7,7 @@ use bin_desktop::WindowSize;
 use common::Harness;
 use gpui::TestAppContext;
 use lib_core::OnStart;
+use std::time::Duration;
 
 fn on_general(app: &mut TestAppContext) -> Harness<'_> {
     let mut ui = Harness::new(app);
@@ -132,4 +133,22 @@ fn the_fields_and_this_device_box_each_take_half_the_view(app: &mut TestAppConte
             "{size:?}: same row"
         );
     }
+}
+
+#[gpui::test]
+fn clicking_test_raises_the_four_test_toasts(app: &mut TestAppContext) {
+    let mut ui = on_general(app);
+    assert!(ui.is_drawn("general-toasts-test"));
+
+    ui.click("general-toasts-test");
+    ui.advance_clock(Duration::from_millis(3500));
+
+    let kinds: Vec<String> = ui
+        .toasts()
+        .history
+        .into_iter()
+        .map(|toast| toast.kind)
+        .collect();
+    assert_eq!(kinds, ["Error", "Warning", "Info", "Success"]);
+    assert!(ui.settings::<SettingsGeneralSnapshot>().toasts_on);
 }

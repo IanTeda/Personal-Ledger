@@ -63,6 +63,8 @@ pub enum CommandEffect {
     DismissToast,
     /// `:toasts on` / `:toasts off`: sets the Toasts Preference, the same as Settings' Toasts row.
     SetToasts(bool),
+    /// `:toasts test`: raises the Toasts test, the same as Settings › General's **Test**.
+    TestToasts,
     /// `:import`: opens the stubbed 6e Import "match payees" step on the seeded statement.
     Import,
     /// A Command the Shell's global keymap lists: runs as its key does.
@@ -97,6 +99,7 @@ impl CommandEffect {
             | Self::Colour(_)
             | Self::DismissToast
             | Self::SetToasts(_)
+            | Self::TestToasts
             | Self::Shell(_) => false,
         }
     }
@@ -114,7 +117,7 @@ impl CommandEffect {
             Self::Accounts(_) => Some(Destination::Settings(SettingsPage::Accounts)),
             Self::Import => Some(Destination::Noun(Noun::Transactions)),
             Self::Module { page, .. } => Some(page.destination()),
-            Self::Colour(_) | Self::SetToasts(_) | Self::NotYetBuilt => None,
+            Self::Colour(_) | Self::SetToasts(_) | Self::TestToasts | Self::NotYetBuilt => None,
         };
         PaletteEffect::Client {
             destination,
@@ -265,7 +268,7 @@ impl Command {
 /// The Commands no keymap has, which the palette lists beside the keymaps' ([`entries`]): the
 /// noun aliases with no `g` jump (`accounts`, `categories`, `payees`, `tags`), the three `accounts
 /// <verb>` commands, which take a typed account name a keymap event can't carry, the file-level `open`/`new`/`close` trio, each `settings <page>`, the Colour Themes, and the Toast
-/// commands `dismiss`, `toasts on|off` and `messages` (an alias of the `toasts` binding). A
+/// commands `dismiss`, `toasts on|off|test` and `messages` (an alias of the `toasts` binding). A
 /// Command a keymap lists has no row here (`no_commands_row_is_a_command_a_keymap_lists`).
 pub const COMMANDS: &[Command] = &[
     Command {
@@ -411,6 +414,13 @@ pub const COMMANDS: &[Command] = &[
         description: crate::msg::desktop_command_toasts_off_description,
         binding: None,
         effect: CommandEffect::SetToasts(false),
+    },
+    Command {
+        name: "toasts test",
+        domain: Domain::Toasts,
+        description: crate::msg::desktop_command_toasts_test_description,
+        binding: None,
+        effect: CommandEffect::TestToasts,
     },
     // `messages` is the alias the design names, for a user reaching for vim's `:messages`.
     Command {
@@ -879,6 +889,12 @@ mod tests {
     fn toasts_on_and_off_set_the_preference() {
         assert_eq!(effect("toasts on"), Some(CommandEffect::SetToasts(true)));
         assert_eq!(effect("toasts off"), Some(CommandEffect::SetToasts(false)));
+    }
+
+    #[test]
+    fn toasts_test_raises_the_test_with_or_without_a_ledger() {
+        assert_eq!(effect("toasts test"), Some(CommandEffect::TestToasts));
+        assert!(!CommandEffect::TestToasts.needs_ledger());
     }
 
     #[test]

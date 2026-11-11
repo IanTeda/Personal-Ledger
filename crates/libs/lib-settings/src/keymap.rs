@@ -74,9 +74,12 @@ pub const CHOICE_LEFT: &str = "settings.choice_left";
 pub const CHOICE_RIGHT: &str = "settings.choice_right";
 /// Ticks or clears the focused checkbox.
 pub const TOGGLE: &str = "settings.toggle";
+/// On General, with Toasts focused, raises the Toasts test.
+pub const TEST_TOASTS: &str = "settings.test_toasts";
 
-/// Settings › General's commands, with today's keys: `j`/`k` walk the controls and `h`/`l` change
-/// the one focused. None is listed in the palette: each means something only where the focus is.
+/// Settings › General's commands, with today's keys: `j`/`k` walk the controls, `h`/`l` change
+/// the one focused and `t` on Toasts raises the Toasts test. None is listed in the palette: each
+/// means something only where the focus is, and `:toasts test` is the test's own Command.
 pub const GENERAL_BINDINGS: &[Binding<GeneralEvent>] = &[
     Binding::hidden(MOVE_DOWN, "j", GeneralEvent::Move(Step::Next)),
     Binding::hidden(MOVE_UP, "k", GeneralEvent::Move(Step::Prev)),
@@ -86,6 +89,7 @@ pub const GENERAL_BINDINGS: &[Binding<GeneralEvent>] = &[
     Binding::hidden(NEXT_CHOICE, "l", GeneralEvent::Change(Step::Next)),
     Binding::hidden(CHOICE_LEFT, "left", GeneralEvent::Change(Step::Prev)),
     Binding::hidden(CHOICE_RIGHT, "right", GeneralEvent::Change(Step::Next)),
+    Binding::hidden(TEST_TOASTS, "t", GeneralEvent::TestToasts),
 ];
 
 /// Settings › General's keymap under `config`'s overrides.

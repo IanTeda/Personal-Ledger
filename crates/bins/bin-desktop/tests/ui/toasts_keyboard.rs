@@ -1,12 +1,14 @@
 //! The Toast layer and the Toast history driven by keys and commands: raising and merging Toasts,
-//! `ctrl-l` and `:dismiss all`, `:messages` opening the history, `:toasts off`/`on`, and the Toast
-//! timer running a Toast's lifetime out. State is read back from `Root`.
+//! `ctrl-l` and `:dismiss all`, `:messages` opening the history, `:toasts off`/`on`, `:toasts test`
+//! raising one Toast of each kind a second apart, and the Toast timer running a Toast's lifetime
+//! out. State is read back from `Root`.
 
 use std::time::Duration;
 
 use super::common;
 
 use bin_desktop::navigation::nav::InputMode;
+use bin_desktop::shell::router::ToastSnapshot;
 use common::Harness;
 use gpui::TestAppContext;
 use lib_toast::ToastKind;
@@ -127,4 +129,61 @@ fn a_sticky_toast_ticks_without_an_input(app: &mut TestAppContext) {
         commits,
         "a tick writes nothing, so commits nothing"
     );
+}
+
+fn kinds(toasts: &[ToastSnapshot]) -> Vec<&str> {
+    toasts.iter().map(|toast| toast.kind.as_str()).collect()
+}
+
+#[gpui::test]
+fn toasts_test_from_the_dashboard_raises_one_of_each_kind_a_second_apart(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.press("g d");
+
+    ui.press(": t o a s t s space t e s t enter");
+    assert_eq!(kinds(&ui.toasts().visible), ["Success"]);
+    assert_eq!(ui.toasts().visible[0].text, "Test: a Success Toast");
+
+    ui.advance_clock(Duration::from_millis(1500));
+    assert_eq!(kinds(&ui.toasts().visible), ["Success", "Info"]);
+    ui.advance_clock(Duration::from_secs(1));
+    assert_eq!(kinds(&ui.toasts().visible), ["Success", "Info", "Warning"]);
+    ui.advance_clock(Duration::from_secs(1));
+    let toasts = ui.toasts();
+    assert_eq!(
+        kinds(&toasts.visible),
+        ["Info", "Warning", "Error"],
+        "the Error evicts the Success"
+    );
+    assert_eq!(
+        kinds(&toasts.history),
+        ["Error", "Warning", "Info", "Success"]
+    );
+}
+
+#[gpui::test]
+fn toasts_test_with_toasts_off_echoes_all_but_the_error(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.press(": t o a s t s space o f f enter");
+
+    ui.press(": t o a s t s space t e s t enter");
+    let echo = |ui: &mut Harness<'_>| ui.toasts().echo.map(|toast| toast.kind);
+    assert_eq!(echo(&mut ui).as_deref(), Some("Success"));
+    ui.advance_clock(Duration::from_millis(1500));
+    assert_eq!(echo(&mut ui).as_deref(), Some("Info"));
+    ui.advance_clock(Duration::from_secs(1));
+    assert_eq!(echo(&mut ui).as_deref(), Some("Warning"));
+    ui.advance_clock(Duration::from_secs(1));
+    let toasts = ui.toasts();
+    assert_eq!(kinds(&toasts.visible), ["Error"], "only the Error toasts");
+    assert_eq!(toasts.history.len(), 4);
+}
+
+#[gpui::test]
+fn toasts_test_runs_with_no_ledger_open(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.press(": c l o s e enter");
+
+    ui.press(": t o a s t s space t e s t enter");
+    assert_eq!(kinds(&ui.toasts().visible), ["Success"]);
 }

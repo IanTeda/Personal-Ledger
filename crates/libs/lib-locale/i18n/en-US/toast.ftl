@@ -60,3 +60,15 @@ toast-setting-label = Toasts
 toast-setting-on = On
 toast-setting-off = Off
 toast-setting-note = Errors still show
+
+## The Settings Toasts row's Test, and the note beside it once a Client has it. It raises one Toast of each Kind, a second apart (DESKTOP-184).
+
+toast-setting-test = Test
+toast-setting-test-note = Errors still show. Test raises one of each kind.
+
+## The four test Toasts, one per Kind.
+
+toast-test-success = Test: a Success Toast
+toast-test-info = Test: an Info Toast
+toast-test-warning = Test: a Warning Toast
+toast-test-error = Test: an Error Toast, which stays until dismissed

@@ -95,6 +95,8 @@ settings-status-refused-no-ledger = No Ledger open: { $open } or { $new } first
 
 settings-hint-field = field
 settings-hint-change = change
+settings-hint-on-off = on / off
+settings-hint-test = test
 settings-hint-toggle = toggle
 settings-hint-index = index
 settings-hint-colour = colour

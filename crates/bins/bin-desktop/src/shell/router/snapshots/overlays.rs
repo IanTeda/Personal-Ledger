@@ -20,6 +20,8 @@ pub struct ToastSnapshot {
 pub struct ToastsSnapshot {
     pub visible: Vec<ToastSnapshot>,
     pub more: usize,
+    /// The Toast the status line echoes while Toasts are off.
+    pub echo: Option<ToastSnapshot>,
     /// The session history, newest first.
     pub history: Vec<ToastSnapshot>,
     pub history_open: bool,
@@ -31,19 +33,21 @@ impl Root {
     /// The Toast layer for a test.
     #[doc(hidden)]
     pub fn toasts_snapshot(&self) -> ToastsSnapshot {
+        let snapshot = |toast: &lib_toast::Toast| ToastSnapshot {
+            kind: format!("{:?}", toast.kind()),
+            text: toast.text().to_string(),
+            count: toast.count(),
+        };
         ToastsSnapshot {
             visible: self
                 .presenter
                 .toasts()
                 .visible()
                 .iter()
-                .map(|toast| ToastSnapshot {
-                    kind: format!("{:?}", toast.kind()),
-                    text: toast.text().to_string(),
-                    count: toast.count(),
-                })
+                .map(snapshot)
                 .collect(),
             more: self.presenter.toasts().more_count(),
+            echo: self.presenter.toasts().echo().map(snapshot),
             history: self
                 .presenter
                 .toasts()
