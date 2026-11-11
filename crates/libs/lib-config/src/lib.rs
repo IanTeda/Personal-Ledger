@@ -36,6 +36,7 @@ mod display;
 mod error;
 mod general;
 mod keybindings;
+mod keys;
 mod ledger;
 mod logs;
 mod sync_server;

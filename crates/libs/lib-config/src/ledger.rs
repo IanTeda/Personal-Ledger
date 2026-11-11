@@ -1178,4 +1178,137 @@ mod tests {
             config.keybindings.validate().unwrap();
         });
     }
+
+    /// The `[section]` a line opens, normalised, whether live or commented as `# [section]`.
+    fn section_of(line: &str) -> Option<String> {
+        let line = line.trim();
+        let line = line.strip_prefix('#').map_or(line, str::trim);
+        let name = line.strip_prefix('[')?.strip_suffix(']')?;
+        Some(name.to_lowercase().replace('-', "_"))
+    }
+
+    /// The key a line sets, whether live or commented as `# key = ...`.
+    fn key_of(line: &str) -> Option<&str> {
+        let line = line.trim();
+        let line = line.strip_prefix('#').map_or(line, str::trim);
+        let (key, _) = line.split_once(" = ")?;
+        (!key.is_empty() && key.chars().all(|c| c.is_ascii_lowercase() || c == '_')).then_some(key)
+    }
+
+    /// Each section of the shipped file with the table's keys it holds, in file order.
+    /// `[Keybindings]` keeps only `super_key`: its bindings are an open-ended map.
+    fn shipped_keys(raw: &str) -> Vec<(String, Vec<String>)> {
+        let mut found: Vec<(String, Vec<String>)> = Vec::new();
+        for line in raw.lines() {
+            if let Some(section) = section_of(line) {
+                found.push((section, Vec::new()));
+            } else if let (Some(key), Some((section, keys))) = (key_of(line), found.last_mut())
+                && (section != "keybindings" || key == "super_key")
+            {
+                keys.push(key.to_string());
+            }
+        }
+        found
+    }
+
+    fn sorted(keys: impl IntoIterator<Item = impl Into<String>>) -> Vec<String> {
+        let mut keys: Vec<String> = keys.into_iter().map(Into::into).collect();
+        keys.sort();
+        keys
+    }
+
+    #[test]
+    fn key_table_matches_the_structs() {
+        let value = serde_json::to_value(LedgerConfig::default()).unwrap();
+        for (section, keys) in crate::keys::KEYS {
+            let field = match *section {
+                "theme" | "theme.light" | "theme.dark" => continue,
+                other => other,
+            };
+            let object = value[field].as_object().unwrap_or_else(|| {
+                panic!("[{section}] is in the key table but LedgerConfig has no such section")
+            });
+            let mut parsed: Vec<&str> = object.keys().map(String::as_str).collect();
+            if *section == "keybindings" {
+                parsed.retain(|key| *key == "super_key");
+            }
+            assert_eq!(
+                sorted(parsed),
+                sorted(keys.iter().copied()),
+                "[{section}]: the key table and its struct disagree"
+            );
+        }
+        // Every serialised section has a table row.
+        for field in value.as_object().unwrap().keys() {
+            assert!(
+                crate::keys::KEYS
+                    .iter()
+                    .any(|(section, _)| section == field),
+                "LedgerConfig section `{field}` has no row in the key table"
+            );
+        }
+    }
+
+    #[test]
+    fn key_table_theme_roles_are_the_colour_roles() {
+        let roles = lib_colour_theme::ColourRole::ALL.map(lib_colour_theme::ColourRole::key);
+        for (section, keys) in crate::keys::KEYS {
+            if section.starts_with("theme") {
+                assert_eq!(sorted(keys.iter().copied()), sorted(roles));
+            }
+        }
+    }
+
+    #[test]
+    fn shipped_conf_holds_exactly_the_tables_keys() {
+        let raw = fs::read_to_string(shipped_conf_path()).unwrap();
+        let shipped = shipped_keys(&raw);
+        for (section, keys) in crate::keys::KEYS {
+            let held: Vec<String> = shipped
+                .iter()
+                .filter(|(name, _)| name == section)
+                .flat_map(|(_, keys)| keys.clone())
+                .collect();
+            assert_eq!(
+                sorted(held),
+                sorted(keys.iter().copied()),
+                "[{section}]: the shipped file and the key table disagree"
+            );
+        }
+        for (name, _) in &shipped {
+            assert!(
+                crate::keys::KEYS.iter().any(|(section, _)| section == name),
+                "[{name}] is in the shipped file but not the key table"
+            );
+        }
+    }
+
+    #[test]
+    fn shipped_conf_examples_all_parse() {
+        let raw = fs::read_to_string(shipped_conf_path()).unwrap();
+        let uncommented: Vec<String> = raw
+            .lines()
+            .map(|line| {
+                if section_of(line).is_some() || key_of(line).is_some() {
+                    line.trim().trim_start_matches('#').trim().to_string()
+                } else {
+                    line.to_string()
+                }
+            })
+            .collect();
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("personal-ledger.conf");
+        fs::write(&path, uncommented.join("\n")).unwrap();
+
+        in_empty_cwd(|| {
+            let config = LedgerConfig::parse(Some(&path)).unwrap();
+            assert!(
+                config.theme.invalid.is_empty(),
+                "a Theme example is invalid: {:?}",
+                config.theme.invalid
+            );
+            config.keybindings.validate().unwrap();
+            assert_eq!(config.general.resolved_locale().0, "en-AU");
+        });
+    }
 }
