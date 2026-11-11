@@ -388,10 +388,10 @@ fn at_large_and_x_large_every_page_opens_beside_the_docked_index(app: &mut TestA
             assert_eq!(ui.settings_frame().page, page);
             assert!(ui.settings_frame().page_focused, "{page} opens");
             assert!(ui.is_drawn(&format!("settings-index-{page}")));
-            // Units' tables fill the View instead (`settings_units_keyboard`).
             assert!(
-                page == "Units" || ui.bounds("settings-page").size.width <= gpui::px(840.0),
-                "{page} caps its content at {window_size:?}"
+                window_size != WindowSize::XLarge
+                    || ui.bounds("settings-page").size.width > gpui::px(840.0),
+                "{page} spans the View at {window_size:?}"
             );
         }
         // `[`, `]` and `p` are Medium's; here they leave the page alone.

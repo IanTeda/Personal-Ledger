@@ -20,9 +20,6 @@ use crate::{
     theme::color,
 };
 
-/// The field column's width (DESKTOP-178).
-const FIELD_COLUMN_WIDTH: gpui::Pixels = px(320.0);
-
 /// The page drawn from `model`.
 pub(super) fn page(
     model: &GeneralViewModel,
@@ -31,14 +28,12 @@ pub(super) fn page(
 ) -> AnyElement {
     div()
         .flex()
-        .flex_wrap()
         .gap_x(px(40.0))
-        .gap_y(px(24.0))
         .child(
             div()
                 .debug_selector(|| "general-fields".to_string())
-                .w(FIELD_COLUMN_WIDTH)
-                .flex_none()
+                .flex_1()
+                .min_w(px(0.0))
                 .flex()
                 .flex_col()
                 .gap(px(18.0))
@@ -184,7 +179,6 @@ fn this_device_panel(view: &ThisDeviceView, cx: &App) -> impl IntoElement {
         .debug_selector(|| "general-this-device".to_string())
         .flex_1()
         .min_w(px(0.0))
-        .max_w(px(400.0))
         .child(
             div()
                 .font_weight(gpui::FontWeight::EXTRA_BOLD)

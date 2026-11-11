@@ -3,6 +3,7 @@
 use super::common;
 use bin_desktop::shell::router::SettingsGeneralSnapshot;
 
+use bin_desktop::WindowSize;
 use common::Harness;
 use gpui::TestAppContext;
 use lib_core::OnStart;
@@ -101,4 +102,34 @@ fn toasts_are_no_longer_on_display(app: &mut TestAppContext) {
 
     assert!(ui.is_drawn("display-fields"));
     assert!(!ui.is_drawn("display-toasts-0"));
+}
+
+#[gpui::test]
+fn the_fields_and_this_device_box_each_take_half_the_view(app: &mut TestAppContext) {
+    for size in [WindowSize::Medium, WindowSize::Large, WindowSize::XLarge] {
+        let mut ui = on_general(app);
+        ui.resize_to(size);
+        let page = ui.bounds("settings-page");
+        let fields = ui.bounds("general-fields");
+        let device = ui.bounds("general-this-device");
+        let half = (page.size.width - gpui::px(40.0)) / 2.0;
+        let close = |a: gpui::Pixels, b: gpui::Pixels| (a - b).abs() <= gpui::px(1.0);
+        assert!(
+            close(fields.size.width, half),
+            "{size:?}: fields {fields:?} of {page:?}"
+        );
+        assert!(
+            close(device.size.width, half),
+            "{size:?}: box {device:?} of {page:?}"
+        );
+        assert!(
+            device.origin.x >= fields.origin.x + fields.size.width,
+            "{size:?}: side by side"
+        );
+        assert!(
+            close(device.origin.y, fields.origin.y)
+                || device.origin.y < fields.origin.y + gpui::px(40.0),
+            "{size:?}: same row"
+        );
+    }
 }

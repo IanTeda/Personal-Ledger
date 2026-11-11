@@ -340,7 +340,6 @@ impl Presenter for GeneralPresenter {
                     chords(&self.keymap, &[PREVIOUS_CHOICE, NEXT_CHOICE]),
                     msg::settings_hint_change(),
                 ),
-                Hint::new(self.back_chord.clone(), msg::settings_hint_index()),
             ],
         }
     }

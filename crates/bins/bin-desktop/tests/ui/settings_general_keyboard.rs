@@ -6,6 +6,7 @@
 use super::common;
 use bin_desktop::shell::router::SettingsGeneralSnapshot;
 
+use bin_desktop::WindowSize;
 use common::Harness;
 use gpui::TestAppContext;
 use lib_core::{OnStart, StartView};
@@ -195,4 +196,40 @@ fn the_status_line_matches_the_cheat_sheet(app: &mut TestAppContext) {
     let mut ui = in_general(app);
 
     ui.assert_cheat_sheet_matches_status("Settings keys");
+}
+
+fn hint_keys(ui: &mut Harness<'_>) -> Vec<String> {
+    ui.status()
+        .map(|status| status.hints.into_iter().map(|(key, _)| key).collect())
+        .unwrap_or_default()
+}
+
+#[gpui::test]
+fn at_medium_the_hints_carry_one_esc(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::Medium);
+    ui.press("g s enter l");
+    assert!(ui.settings_frame().page_focused);
+
+    assert_eq!(hint_keys(&mut ui), ["j/k", "h/l", "[/]", "p", "esc"]);
+}
+
+#[gpui::test]
+fn at_large_the_hints_are_field_and_change(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.resize_to(WindowSize::Large);
+    ui.press("g s l");
+    assert!(ui.settings_frame().page_focused);
+
+    assert_eq!(hint_keys(&mut ui), ["j/k", "h/l"]);
+}
+
+#[gpui::test]
+fn after_close_this_devices_last_ledger_reads_none(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.press(": c l o s e enter");
+    ui.press("g s");
+
+    assert_eq!(ui.settings_frame().page, "General");
+    assert_eq!(ui.settings::<SettingsGeneralSnapshot>().last_ledger, None);
 }

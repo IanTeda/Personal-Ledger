@@ -39,8 +39,6 @@ pub struct PageLayout {
     /// The page fills the body's height and scrolls inside itself (Tracing's log box), rather than
     /// the body scrolling the whole page.
     pub fills_page: bool,
-    /// The page draws past the Settings content width to the View's (Units' tables).
-    pub full_width: bool,
     /// The narrowest the page lays out at, when it has content that must not squeeze (the
     /// Transactions table); a View area narrower than this scrolls sideways (ADR-0042).
     pub min_width: Option<Pixels>,
@@ -210,7 +208,6 @@ impl<P: PageView> PageHandle for Entity<ModulePage<P>> {
     fn layout(&self) -> PageLayout {
         PageLayout {
             fills_page: P::FILLS_PAGE,
-            full_width: P::FULL_WIDTH,
             min_width: P::min_width(),
             frame_scrolls: P::FRAME_SCROLLS,
         }

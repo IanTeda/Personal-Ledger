@@ -56,10 +56,6 @@ pub trait PageView: PagePresenter + Sized + 'static {
     /// box) rather than the body scrolling the whole page.
     const FILLS_PAGE: bool = false;
 
-    /// Whether a Settings page draws past the Settings content width to the View's (Units' tables,
-    /// down to their 610px minimum).
-    const FULL_WIDTH: bool = false;
-
     /// Whether a movement the page's keymap didn't take falls back to the Settings frame, which
     /// scrolls the body with it. A page with a selection of its own binds every movement it takes,
     /// so leaves this `false` and a movement it declines does nothing; General, Ledger and the info

@@ -155,7 +155,7 @@ fn at_medium_the_rail_item_closes_an_open_picker_and_the_index_takes_the_keys(
 }
 
 #[gpui::test]
-fn at_x_large_the_docked_index_opens_the_capped_page(app: &mut TestAppContext) {
+fn at_x_large_the_docked_index_opens_the_full_width_page(app: &mut TestAppContext) {
     let mut ui = on_settings(app);
     ui.resize_to(WindowSize::XLarge);
 
@@ -163,11 +163,7 @@ fn at_x_large_the_docked_index_opens_the_capped_page(app: &mut TestAppContext) {
     assert_eq!(ui.settings_frame().page, "Display");
     assert!(ui.settings_frame().page_focused);
     let page = ui.bounds("settings-page");
-    assert_eq!(
-        page.size.width,
-        gpui::px(840.0),
-        "capped, the rest of the View empty"
-    );
+    assert!(page.size.width > gpui::px(840.0), "spans the View");
     assert!(!ui.is_drawn("settings-crumb-picker"));
 }
 
