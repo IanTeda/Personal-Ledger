@@ -36,6 +36,8 @@ pub struct UnitsSetup {
     pub stores: SharedStores,
     /// The commit that ends each input, held here while Units is the only module that writes.
     pub commit: Rc<dyn Commit>,
+    /// The `[keybindings]` the page Presenter builds its keys from.
+    pub config: KeyBindingConfig,
     pub keymap: Keymap<UnitsPageEvent>,
     pub prices_keymap: Keymap<UnitPricesEvent>,
     pub dialog_keymap: Keymap<DialogCommand>,
@@ -48,6 +50,7 @@ impl UnitsSetup {
             ports: ledger.units.clone(),
             stores: ledger.stores.clone(),
             commit: ledger.commit.clone(),
+            config: config.clone(),
             keymap: units_page_keymap(config),
             prices_keymap: unit_prices_keymap(config),
             dialog_keymap: lib_shell::dialog_keymap(config),

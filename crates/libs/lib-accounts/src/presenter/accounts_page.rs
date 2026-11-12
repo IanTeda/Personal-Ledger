@@ -118,11 +118,11 @@ pub struct AccountsPagePresenter {
 }
 
 impl AccountsPagePresenter {
-    /// `keymap` is the one the Client looks keys up in, so the legend shows the chords it binds.
-    pub fn new(ports: SharedPorts, keymap: Keymap<AccountsPageEvent>) -> Self {
+    /// The page with its keys built from `config`, as [`PagePresenter::rebind`] builds them later.
+    pub fn new(ports: SharedPorts, config: &KeyBindingConfig) -> Self {
         Self {
             ports,
-            keymap,
+            keymap: crate::keymap::accounts_page_keymap(config),
             selected: None,
             open_dialog: None,
             delete_position: None,
@@ -425,7 +425,6 @@ mod tests {
     use super::*;
     use crate::AccountRepository as _;
     use crate::fake::{RecordingRouter, RouterCall};
-    use crate::keymap::accounts_page_keymap;
     use lib_config::KeyBindingConfig;
 
     struct Page {
@@ -440,7 +439,7 @@ mod tests {
 
         fn with_keys(shared: SharedPorts, config: &KeyBindingConfig) -> Self {
             Self {
-                presenter: AccountsPagePresenter::new(shared, accounts_page_keymap(config)),
+                presenter: AccountsPagePresenter::new(shared, config),
                 router: RecordingRouter::default(),
             }
         }

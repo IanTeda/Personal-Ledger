@@ -139,7 +139,7 @@ impl SettingsView {
         setup: SettingsSetup,
         cx: &mut Context<'_, Self>,
     ) {
-        let pages = LedgerPages::new(announcer, clock, setup, self.frame.keymap(), cx);
+        let pages = LedgerPages::new(announcer, clock, setup, cx);
         self.pages.ledger = Some(pages);
         // Subscribed afresh, so a swapped-out Ledger's pages leave no subscription behind.
         self._page_subscriptions = subscribe_pages(&self.pages, cx);

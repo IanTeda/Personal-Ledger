@@ -108,12 +108,9 @@ pub struct DashboardPresenter {
 
 impl DashboardPresenter {
     /// The Dashboard over `reads`, dated by `clock`, in the default Display Preferences, its keys
-    /// looked up in `keymap`.
-    pub fn new(
-        reads: Rc<dyn DashboardReads>,
-        clock: Clock,
-        keymap: Keymap<DashboardEvent>,
-    ) -> Self {
+    /// built from `config`.
+    pub fn new(reads: Rc<dyn DashboardReads>, clock: Clock, config: &KeyBindingConfig) -> Self {
+        let keymap = crate::keymap::dashboard_keymap(config);
         Self {
             reads,
             clock,
@@ -327,8 +324,10 @@ mod tests {
     fn presenter(reads: InMemoryDashboardReads) -> (Rc<Cell<NaiveDate>>, DashboardPresenter) {
         locale();
         let (clock, day) = Clock::settable(date(2026, 9, 21));
-        let keymap = crate::keymap::dashboard_keymap(&KeyBindingConfig::default());
-        (day, DashboardPresenter::new(Rc::new(reads), clock, keymap))
+        (
+            day,
+            DashboardPresenter::new(Rc::new(reads), clock, &KeyBindingConfig::default()),
+        )
     }
 
     fn reads_with_bills(bills: Vec<DashboardBill>) -> InMemoryDashboardReads {
@@ -513,8 +512,8 @@ mod tests {
             asked: Cell::new(0),
         });
         let (clock, day) = Clock::settable(date(2026, 9, 21));
-        let keymap = crate::keymap::dashboard_keymap(&KeyBindingConfig::default());
-        let mut presenter = DashboardPresenter::new(reads.clone(), clock, keymap);
+        let mut presenter =
+            DashboardPresenter::new(reads.clone(), clock, &KeyBindingConfig::default());
         let mut router = RecordingRouter::default();
 
         presenter.view_model();

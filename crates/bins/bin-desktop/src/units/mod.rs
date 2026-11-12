@@ -54,8 +54,8 @@ impl PageSnapshot for Option<UnitPricesSnapshot> {
     }
 }
 
-/// What `shell::router::build` hands the Units module: its ports, and the page's and the Unit
-/// prices view's keymaps under `[keybindings]`, which the page Presenter is built with.
+/// What `shell::router::build` hands the Units module: its ports, and the `[keybindings]` the page
+/// Presenter builds its keys, and the Unit prices view's, from.
 pub struct UnitsSetup {
     pub ports: SharedPorts,
     /// The Unit Deletion module's port over the Units and Institutions stores, which Delete unit
@@ -63,8 +63,7 @@ pub struct UnitsSetup {
     pub deletion: lib_unit_deletion::SharedUnitDeletion,
     /// The Dialog keymap's chords, which the module's Dialogs build their status-line hints from.
     pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
-    pub keymap: lib_viper::keymap::Keymap<lib_units::presenter::UnitsPageEvent>,
-    pub prices_keymap: lib_viper::keymap::Keymap<lib_units::presenter::UnitPricesEvent>,
+    pub config: lib_config::KeyBindingConfig,
 }
 
 impl UnitsSetup {
@@ -78,8 +77,7 @@ impl UnitsSetup {
             ports,
             deletion,
             dialog_keys,
-            keymap: lib_units::keymap::units_page_keymap(config),
-            prices_keymap: lib_units::keymap::unit_prices_keymap(config),
+            config: config.clone(),
         }
     }
 

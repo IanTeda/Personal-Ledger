@@ -69,10 +69,7 @@ impl CategoriesSetup {
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
-            presenter: CategoriesPagePresenter::new(
-                categories.clone(),
-                lib_categories::keymap::categories_page_keymap(config),
-            ),
+            presenter: CategoriesPagePresenter::new(categories.clone(), config),
             categories,
             save,
             budgets,

@@ -51,10 +51,7 @@ impl PayeesSetup {
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
-            presenter: PayeesPagePresenter::new(
-                ports.clone(),
-                lib_payees::keymap::payees_page_keymap(config),
-            ),
+            presenter: PayeesPagePresenter::new(ports.clone(), config),
             ports,
             dialog_keys,
         }

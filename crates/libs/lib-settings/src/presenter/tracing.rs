@@ -71,11 +71,6 @@ pub enum TracingEvent {
 /// What the Client hands Tracing as it builds it.
 pub struct TracingSetup {
     pub log: Rc<dyn TracingLog>,
-    pub keymap: Keymap<TracingEvent>,
-    /// The chord of the Shell's `back`, for the legend.
-    pub back_chord: String,
-    /// The Dialog keymap's chords, which Clear logs' hints show.
-    pub dialog_keys: DialogKeys,
     /// The radio the page opens on: the configured `log` level, clamped to the four offered.
     pub level: TracingLevel,
 }
@@ -183,13 +178,13 @@ pub struct TracingPresenter {
 }
 
 impl TracingPresenter {
-    pub fn new(setup: TracingSetup) -> Self {
+    pub fn new(setup: TracingSetup, config: &KeyBindingConfig) -> Self {
         Self {
             mirror: Mirror::new(setup.log.clone(), setup.level),
             log: setup.log,
-            keymap: setup.keymap,
-            back_chord: setup.back_chord,
-            dialog_keys: setup.dialog_keys,
+            keymap: crate::keymap::tracing_keymap(config),
+            back_chord: crate::keymap::back_chord(config),
+            dialog_keys: DialogKeys::of(&dialog_keymap(config)),
         }
     }
 
@@ -336,7 +331,6 @@ mod tests {
 
     use super::*;
     use crate::fake::InMemoryTracingLog;
-    use crate::keymap::tracing_keymap;
     use crate::log::LogLevel;
 
     #[derive(Default)]
@@ -365,13 +359,13 @@ mod tests {
     }
 
     fn presenter(log: &Rc<InMemoryTracingLog>, level: TracingLevel) -> TracingPresenter {
-        TracingPresenter::new(TracingSetup {
-            log: log.clone(),
-            keymap: tracing_keymap(&KeyBindingConfig::default()),
-            back_chord: "esc".to_string(),
-            dialog_keys: DialogKeys::default(),
-            level,
-        })
+        TracingPresenter::new(
+            TracingSetup {
+                log: log.clone(),
+                level,
+            },
+            &KeyBindingConfig::default(),
+        )
     }
 
     #[test]

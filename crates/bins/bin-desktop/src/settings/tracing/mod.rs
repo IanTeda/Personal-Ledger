@@ -21,12 +21,10 @@ use gpui::{
     Window, px,
 };
 use lib_database::Domain;
-use lib_settings::keymap::tracing_keymap;
 use lib_settings::{
     LogChange, LogListChange, LogScroll, TracingEvent, TracingLevel, TracingLog, TracingPresenter,
     TracingSetup, TracingViewModel,
 };
-use lib_viper::dialog::DialogKeys;
 use lib_viper::keymap::KeyBindingConfig;
 
 use crate::{
@@ -47,24 +45,16 @@ const LOG_LIST_OVERDRAW: Pixels = px(200.0);
 /// [`LogFeed`].
 pub type TracingPage = ModulePage<TracingPresenter>;
 
-/// Tracing reading `log`, opening on `level`, under `config`'s keys, with the Shell's `back` on
-/// `back_chord`, told of new entries by `feed`. Tracing reads no Ledger, so it stands before one
+/// Tracing reading `log`, opening on `level`, under `config`'s keys, told of new entries by `feed`. Tracing reads no Ledger, so it stands before one
 /// is open.
 pub fn tracing_page(
     log: Rc<dyn TracingLog>,
     level: TracingLevel,
     config: &KeyBindingConfig,
-    back_chord: String,
     feed: Entity<LogFeed>,
     cx: &mut Context<'_, TracingPage>,
 ) -> TracingPage {
-    let presenter = TracingPresenter::new(TracingSetup {
-        log,
-        keymap: tracing_keymap(config),
-        back_chord,
-        dialog_keys: DialogKeys::of(&lib_shell::dialog_keymap(config)),
-        level,
-    });
+    let presenter = TracingPresenter::new(TracingSetup { log, level }, config);
     let setup = TracingPageSetup {
         feed,
         list_effects: ListEffects::default(),

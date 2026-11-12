@@ -33,8 +33,7 @@ pub struct SyncServerViewModel {
     pub last: String,
     pub sync_now: String,
     /// The page's keys, for the status line and the `?` cheat sheet: the frame's scroll and
-    /// focus-index chords, which only the Client can read from its keymap, so it hands them over
-    /// ([`SyncServerPresenter::set_legend`]).
+    /// focus-index chords, which the Presenter reads from the frame's keymap under the config.
     pub hints: Vec<Hint>,
 }
 
@@ -47,22 +46,13 @@ pub struct SyncServerPresenter {
 }
 
 impl SyncServerPresenter {
-    pub fn new() -> Self {
+    pub fn new(config: &KeyBindingConfig) -> Self {
         Self {
             keymap: Keymap::new(&[], &KeyBindingConfig::default()),
-            legend: Vec::new(),
+            legend: crate::keymap::settings_plain_page_hints(
+                &crate::keymap::settings_frame_keymap(config),
+            ),
         }
-    }
-
-    /// Replaces the legend, for start-up and a `[keybindings]` change.
-    pub fn set_legend(&mut self, legend: Vec<Hint>) {
-        self.legend = legend;
-    }
-}
-
-impl Default for SyncServerPresenter {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -121,7 +111,8 @@ mod tests {
     fn sync_now_says_it_is_not_implemented() {
         let mut notices: Vec<Notice> = Vec::new();
 
-        SyncServerPresenter::new().handle(SyncServerEvent::SyncNow, &mut notices);
+        SyncServerPresenter::new(&KeyBindingConfig::default())
+            .handle(SyncServerEvent::SyncNow, &mut notices);
 
         assert_eq!(
             notices,
@@ -131,7 +122,7 @@ mod tests {
 
     #[test]
     fn the_view_model_holds_the_placeholder_values() {
-        let model = SyncServerPresenter::new().view_model();
+        let model = SyncServerPresenter::new(&KeyBindingConfig::default()).view_model();
 
         assert_eq!(model.url, "sync.ledger.localhost");
         assert_eq!(model.sync_now, "Sync now");

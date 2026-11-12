@@ -111,11 +111,11 @@ pub fn bills_page(
     let BillsSetup {
         ports,
         payments,
-        keymap,
+        config,
         dialog_keys,
     } = setup;
     let presenter =
-        lib_bills::presenter::BillsPagePresenter::new(ports.clone(), clock.clone(), keymap);
+        lib_bills::presenter::BillsPagePresenter::new(ports.clone(), clock.clone(), &config);
     let routes = BillsRoutes {
         ports,
         payments,

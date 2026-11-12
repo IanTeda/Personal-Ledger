@@ -198,9 +198,6 @@ impl DisplaySettings {
 pub struct DisplaySetup {
     /// Where the settings are read from, once, and written: the configuration file start-up read.
     pub device: Rc<dyn DeviceConfiguration>,
-    pub keymap: Keymap<DisplayEvent>,
-    /// The chord of the Shell's `back`, for the legend.
-    pub back_chord: String,
 }
 
 /// One PREVIEW row, formatted under the choices made.
@@ -278,7 +275,7 @@ pub struct DisplayPresenter {
 
 impl DisplayPresenter {
     /// Display on what `setup`'s device reads.
-    pub fn new(setup: DisplaySetup) -> Self {
+    pub fn new(setup: DisplaySetup, config: &KeyBindingConfig) -> Self {
         let snapshot = setup.device.read();
         let fields = DisplayField::ALL.into_iter().map(declare).collect();
         Self {
@@ -286,8 +283,8 @@ impl DisplayPresenter {
             colour_theme_shadowed: shadowed_note(
                 snapshot.get(ConfigKey::ColourTheme).shadow.as_deref(),
             ),
-            keymap: setup.keymap,
-            back_chord: setup.back_chord,
+            keymap: crate::keymap::display_keymap(config),
+            back_chord: crate::keymap::back_chord(config),
             colour_theme: DisplaySettings::read(&snapshot).colour_theme,
             grid: None,
             columns: 1,
@@ -847,11 +844,12 @@ mod tests {
 
     fn display_on(device: Rc<InMemoryDeviceConfiguration>) -> DisplayPresenter {
         lib_locale::init_with_layers("en-US", &[msg::LAYER]);
-        let mut display = DisplayPresenter::new(DisplaySetup {
-            device: device.clone(),
-            keymap: display_keymap(&KeyBindingConfig::default()),
-            back_chord: "esc".to_string(),
-        });
+        let mut display = DisplayPresenter::new(
+            DisplaySetup {
+                device: device.clone(),
+            },
+            &KeyBindingConfig::default(),
+        );
         send(&mut display, [DisplayEvent::SetGridColumns(3)]);
         display
     }

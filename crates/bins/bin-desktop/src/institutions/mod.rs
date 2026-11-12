@@ -51,10 +51,7 @@ impl InstitutionsSetup {
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
-            presenter: InstitutionsPagePresenter::new(
-                ports.clone(),
-                lib_institutions::keymap::institutions_page_keymap(config),
-            ),
+            presenter: InstitutionsPagePresenter::new(ports.clone(), config),
             ports,
             dialog_keys,
         }

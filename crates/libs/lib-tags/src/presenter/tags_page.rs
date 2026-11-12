@@ -90,11 +90,11 @@ pub struct TagsPagePresenter {
 }
 
 impl TagsPagePresenter {
-    /// `keymap` is the one the Client looks keys up in, so the legend shows the chords it binds.
-    pub fn new(ports: SharedPorts, keymap: Keymap<TagsPageEvent>) -> Self {
+    /// The page with its keys built from `config`, as [`PagePresenter::rebind`] builds them later.
+    pub fn new(ports: SharedPorts, config: &KeyBindingConfig) -> Self {
         Self {
             ports,
-            keymap,
+            keymap: crate::keymap::tags_page_keymap(config),
             selected: None,
             open_dialog: None,
         }
@@ -326,7 +326,6 @@ mod tests {
     use super::super::test_support::sample;
     use super::*;
     use crate::fake::{RecordingRouter, RouterCall};
-    use crate::keymap::tags_page_keymap;
     use crate::protocols::TagUse;
 
     struct Page {
@@ -341,7 +340,7 @@ mod tests {
 
         fn with_keys(shared: SharedPorts, config: &KeyBindingConfig) -> Self {
             Self {
-                presenter: TagsPagePresenter::new(shared, tags_page_keymap(config)),
+                presenter: TagsPagePresenter::new(shared, config),
                 router: RecordingRouter::default(),
             }
         }
@@ -574,8 +573,7 @@ mod tests {
             }
         }
         let (_, shared) = sample();
-        let mut presenter =
-            TagsPagePresenter::new(shared, tags_page_keymap(&KeyBindingConfig::default()));
+        let mut presenter = TagsPagePresenter::new(shared, &KeyBindingConfig::default());
 
         presenter.handle(
             TagsPageEvent::New,

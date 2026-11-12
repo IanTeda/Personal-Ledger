@@ -7,9 +7,8 @@ mod render;
 
 use gpui::{AnyElement, Context, Window};
 use lib_database::Domain;
-use lib_settings::keymap::settings_plain_page_hints;
-use lib_settings::{DataBackupPresenter, DataBackupViewModel, SettingsFrameEvent};
-use lib_viper::keymap::Keymap;
+use lib_settings::{DataBackupPresenter, DataBackupViewModel};
+use lib_viper::keymap::KeyBindingConfig;
 
 use crate::announcer::Announcer;
 use crate::settings::SettingsPage;
@@ -19,14 +18,13 @@ use crate::shell::view::statusline::{PageStatus, StatusRight};
 /// The Data & backup page: the Presenter in the generic page Entity.
 pub type DataBackupPage = ModulePage<DataBackupPresenter>;
 
-/// The page, its legend read from the frame's `keymap`.
+/// The page, its keys built from `config`.
 pub fn data_backup_page(
-    keymap: &Keymap<SettingsFrameEvent>,
+    config: &KeyBindingConfig,
     announcer: &gpui::Entity<Announcer>,
     cx: &mut Context<'_, DataBackupPage>,
 ) -> DataBackupPage {
-    let mut presenter = DataBackupPresenter::new();
-    presenter.set_legend(settings_plain_page_hints(keymap));
+    let presenter = DataBackupPresenter::new(config);
     ModulePage::new(presenter, (), announcer, cx)
 }
 

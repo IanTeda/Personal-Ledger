@@ -66,10 +66,7 @@ impl InventorySetup {
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
-            presenter: InventoryPagePresenter::new(
-                inventory.clone(),
-                keymap::inventory_page_keymap(config),
-            ),
+            presenter: InventoryPagePresenter::new(inventory.clone(), config),
             inventory,
             reads,
             dialog_keys,

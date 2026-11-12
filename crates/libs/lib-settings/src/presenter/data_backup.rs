@@ -37,8 +37,7 @@ pub struct DataBackupViewModel {
     pub backup_now: String,
     pub export_ledger: String,
     /// The page's keys, for the status line and the `?` cheat sheet: the frame's scroll and
-    /// focus-index chords, which only the Client can read from its keymap, so it hands them over
-    /// ([`DataBackupPresenter::set_legend`]).
+    /// focus-index chords, which the Presenter reads from the frame's keymap under the config.
     pub hints: Vec<Hint>,
 }
 
@@ -51,22 +50,13 @@ pub struct DataBackupPresenter {
 }
 
 impl DataBackupPresenter {
-    pub fn new() -> Self {
+    pub fn new(config: &KeyBindingConfig) -> Self {
         Self {
             keymap: Keymap::new(&[], &KeyBindingConfig::default()),
-            legend: Vec::new(),
+            legend: crate::keymap::settings_plain_page_hints(
+                &crate::keymap::settings_frame_keymap(config),
+            ),
         }
-    }
-
-    /// Replaces the legend, for start-up and a `[keybindings]` change.
-    pub fn set_legend(&mut self, legend: Vec<Hint>) {
-        self.legend = legend;
-    }
-}
-
-impl Default for DataBackupPresenter {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -131,7 +121,7 @@ mod tests {
     #[test]
     fn each_button_says_it_is_not_implemented() {
         let mut notices: Vec<Notice> = Vec::new();
-        let mut presenter = DataBackupPresenter::new();
+        let mut presenter = DataBackupPresenter::new(&KeyBindingConfig::default());
 
         presenter.handle(DataBackupEvent::BackupNow, &mut notices);
         presenter.handle(DataBackupEvent::ExportLedger, &mut notices);
@@ -147,7 +137,7 @@ mod tests {
 
     #[test]
     fn the_view_model_holds_the_placeholder_rows() {
-        let model = DataBackupPresenter::new().view_model();
+        let model = DataBackupPresenter::new(&KeyBindingConfig::default()).view_model();
 
         assert_eq!(model.rows[0].value, "~/.ledger/personal");
         assert_eq!(model.rows.len(), 2);

@@ -112,11 +112,11 @@ pub struct CategoriesPagePresenter {
 }
 
 impl CategoriesPagePresenter {
-    /// `keymap` is the one the Client looks keys up in, so the legend shows the chords it binds.
-    pub fn new(categories: SharedCategories, keymap: Keymap<CategoriesPageEvent>) -> Self {
+    /// The page with its keys built from `config`, as [`PagePresenter::rebind`] builds them later.
+    pub fn new(categories: SharedCategories, config: &KeyBindingConfig) -> Self {
         Self {
             categories,
-            keymap,
+            keymap: crate::keymap::categories_page_keymap(config),
             selected: None,
             expanded: OPEN_AT_START.to_vec(),
             open_dialog: None,
@@ -389,7 +389,6 @@ mod tests {
     use super::super::test_support::sample;
     use super::*;
     use crate::fake::{RecordingRouter, RouterCall};
-    use crate::keymap::categories_page_keymap;
     use crate::protocols::CategoryChange;
 
     const HOUSING: CategoryId = CategoryId::seed(1);
@@ -410,7 +409,7 @@ mod tests {
 
         fn with_keys(shared: SharedCategories, config: &KeyBindingConfig) -> Self {
             Self {
-                presenter: CategoriesPagePresenter::new(shared, categories_page_keymap(config)),
+                presenter: CategoriesPagePresenter::new(shared, config),
                 router: RecordingRouter::default(),
             }
         }

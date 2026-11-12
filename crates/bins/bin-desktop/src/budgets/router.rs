@@ -9,8 +9,8 @@
 
 use gpui::{AppContext as _, Context, Entity};
 use lib_budgets::presenter::{
-    BudgetFormPresenter, BudgetsPageEvent, BudgetsPagePresenter, DetailPresenter, FillPresenter,
-    LimitFormPresenter, ManagePresenter, StopPresenter, SwitcherPresenter,
+    BudgetFormPresenter, BudgetsPagePresenter, DetailPresenter, FillPresenter, LimitFormPresenter,
+    ManagePresenter, StopPresenter, SwitcherPresenter,
 };
 use lib_budgets::{BudgetsRouter, ExportHistory, SharedPorts};
 use lib_core::{BudgetId, CategoryId, Clock, DateStyle, Period};
@@ -214,12 +214,12 @@ impl Notify for PageRouter<'_, '_> {
 pub fn budgets_page(
     ports: SharedPorts,
     announcer: &Entity<Announcer>,
-    keymap: lib_viper::keymap::Keymap<BudgetsPageEvent>,
+    config: &lib_config::KeyBindingConfig,
     clock: Clock,
     dialog_keys: crate::dialog_keys::LiveDialogKeys,
     cx: &mut gpui::App,
 ) -> Entity<BudgetsPage> {
-    let presenter = BudgetsPagePresenter::new(ports.clone(), clock.clone(), keymap);
+    let presenter = BudgetsPagePresenter::new(ports.clone(), clock.clone(), config);
     let routes = BudgetsRoutes {
         ports,
         clock,

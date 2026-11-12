@@ -28,9 +28,6 @@ pub enum LedgerEvent {
 pub struct LedgerSetup {
     pub units: Rc<dyn LedgerUnits>,
     pub preferences: Rc<dyn LedgerPreferences>,
-    pub keymap: Keymap<LedgerEvent>,
-    /// The chord of the Shell's `back`, for the legend.
-    pub back_chord: String,
 }
 
 /// One Unit of the select.
@@ -77,12 +74,12 @@ pub struct LedgerPresenter {
 }
 
 impl LedgerPresenter {
-    pub fn new(setup: LedgerSetup) -> Self {
+    pub fn new(setup: LedgerSetup, config: &KeyBindingConfig) -> Self {
         Self {
             units: setup.units,
             preferences: setup.preferences,
-            keymap: setup.keymap,
-            back_chord: setup.back_chord,
+            keymap: crate::keymap::ledger_keymap(config),
+            back_chord: crate::keymap::back_chord(config),
             page_focused: false,
         }
     }
@@ -214,15 +211,15 @@ mod tests {
 
     use super::*;
     use crate::fake::{InMemoryLedgerUnits, RecordingRouter, Routed};
-    use crate::keymap::ledger_keymap;
 
     fn presenter(units: &InMemoryLedgerUnits) -> LedgerPresenter {
-        let mut presenter = LedgerPresenter::new(LedgerSetup {
-            units: Rc::new(units.clone()),
-            preferences: Rc::new(units.clone()),
-            keymap: ledger_keymap(&KeyBindingConfig::default()),
-            back_chord: "esc".to_string(),
-        });
+        let mut presenter = LedgerPresenter::new(
+            LedgerSetup {
+                units: Rc::new(units.clone()),
+                preferences: Rc::new(units.clone()),
+            },
+            &KeyBindingConfig::default(),
+        );
         presenter.set_page_focused(true);
         presenter
     }

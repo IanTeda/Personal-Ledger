@@ -57,10 +57,7 @@ impl TagsSetup {
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
-            presenter: TagsPagePresenter::new(
-                ports.clone(),
-                lib_tags::keymap::tags_page_keymap(config),
-            ),
+            presenter: TagsPagePresenter::new(ports.clone(), config),
             ports,
             removal,
             dialog_keys,

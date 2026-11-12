@@ -197,9 +197,9 @@ pub struct BudgetsPagePresenter {
 }
 
 impl BudgetsPagePresenter {
-    /// The page on the default Budget's Progress tab, on today's month. `keymap` is the one the
-    /// Client looks keys up in, so the legend shows the chords it binds.
-    pub fn new(ports: SharedPorts, clock: Clock, keymap: Keymap<BudgetsPageEvent>) -> Self {
+    /// The page on the default Budget's Progress tab, on today's month. Its keys are built from
+    /// `config`, as [`PagePresenter::rebind`] builds them later.
+    pub fn new(ports: SharedPorts, clock: Clock, config: &KeyBindingConfig) -> Self {
         let today = clock.today();
         let current = {
             let budgets = ports.borrow().budgets().budgets();
@@ -212,7 +212,7 @@ impl BudgetsPagePresenter {
         Self {
             ports,
             clock,
-            keys: Keys::new(keymap),
+            keys: Keys::new(budgets_page_keymap(config)),
             current,
             tab: BudgetsTab::default(),
             month: Period::of(today),
@@ -664,7 +664,6 @@ mod tests {
 
     use super::*;
     use crate::fake::{InMemoryPorts, RecordingRouter, Routed};
-    use crate::keymap::budgets_page_keymap;
     use crate::presenter::test_support::{clock, date, sample, today};
     use crate::{Span, applied};
 
@@ -679,11 +678,10 @@ mod tests {
         pub fn new() -> Self {
             let (ports, shared) = sample();
             let (day, clock) = clock();
-            let keymap = budgets_page_keymap(&KeyBindingConfig::default());
             Self {
                 ports,
                 day,
-                presenter: BudgetsPagePresenter::new(shared, clock, keymap),
+                presenter: BudgetsPagePresenter::new(shared, clock, &KeyBindingConfig::default()),
                 router: RecordingRouter::default(),
             }
         }
@@ -1093,8 +1091,7 @@ mod tests {
         config
             .bindings
             .insert(SWITCH.to_string(), "ctrl+b".to_string());
-        let presenter =
-            BudgetsPagePresenter::new(shared, Clock::fixed(today()), budgets_page_keymap(&config));
+        let presenter = BudgetsPagePresenter::new(shared, Clock::fixed(today()), &config);
 
         let hints = presenter.view_model().hints;
         assert!(hints.iter().any(|hint| hint.chord == "ctrl+b"));

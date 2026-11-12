@@ -14,7 +14,6 @@ use std::rc::Rc;
 
 use gpui::{AnyElement, Context, Window};
 use lib_database::Domain;
-use lib_settings::keymap::display_keymap;
 use lib_settings::{
     DeviceConfiguration, DisplayEvent, DisplayPresenter, DisplaySetup, DisplayViewModel,
 };
@@ -32,19 +31,14 @@ use crate::view::help::HelpGroup;
 /// Theme grid.
 pub type DisplayPage = ModulePage<DisplayPresenter>;
 
-/// Display writing to `device` under `config`'s keys, with the Shell's `back` on `back_chord`.
+/// Display writing to `device` under `config`'s keys.
 /// Display reads no Ledger, so it stands before one is open.
 pub fn display_page(
     device: Rc<dyn DeviceConfiguration>,
     config: &KeyBindingConfig,
-    back_chord: String,
     cx: &mut Context<'_, DisplayPage>,
 ) -> DisplayPage {
-    let presenter = DisplayPresenter::new(DisplaySetup {
-        device,
-        keymap: display_keymap(config),
-        back_chord,
-    });
+    let presenter = DisplayPresenter::new(DisplaySetup { device }, config);
     ModulePage::detached(presenter, (), cx)
 }
 

@@ -149,7 +149,6 @@ pub fn dashboard_page(
     clock: Clock,
     cx: &mut gpui::App,
 ) -> gpui::Entity<DashboardPage> {
-    let keymap = lib_dashboard::keymap::dashboard_keymap(&lib_config::KeyBindingConfig::default());
-    let presenter = DashboardPresenter::new(reads, clock, keymap);
+    let presenter = DashboardPresenter::new(reads, clock, &lib_config::KeyBindingConfig::default());
     cx.new(|cx| ModulePage::new(presenter, (), announcer, cx))
 }

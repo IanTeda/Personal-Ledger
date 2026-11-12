@@ -7,9 +7,8 @@ mod render;
 
 use gpui::{AnyElement, Context, Window};
 use lib_database::Domain;
-use lib_settings::keymap::settings_plain_page_hints;
-use lib_settings::{SettingsFrameEvent, SyncServerPresenter, SyncServerViewModel};
-use lib_viper::keymap::Keymap;
+use lib_settings::{SyncServerPresenter, SyncServerViewModel};
+use lib_viper::keymap::KeyBindingConfig;
 
 use crate::announcer::Announcer;
 use crate::settings::SettingsPage;
@@ -19,14 +18,13 @@ use crate::shell::view::statusline::{PageStatus, StatusRight};
 /// The Sync server page: the Presenter in the generic page Entity.
 pub type SyncServerPage = ModulePage<SyncServerPresenter>;
 
-/// The page, its legend read from the frame's `keymap`.
+/// The page, its keys built from `config`.
 pub fn sync_server_page(
-    keymap: &Keymap<SettingsFrameEvent>,
+    config: &KeyBindingConfig,
     announcer: &gpui::Entity<Announcer>,
     cx: &mut Context<'_, SyncServerPage>,
 ) -> SyncServerPage {
-    let mut presenter = SyncServerPresenter::new();
-    presenter.set_legend(settings_plain_page_hints(keymap));
+    let presenter = SyncServerPresenter::new(config);
     ModulePage::new(presenter, (), announcer, cx)
 }
 

@@ -119,8 +119,7 @@ impl UnitsView {
     pub fn with_now(setup: &UnitsSetup, now: lib_units::presenter::Clock) -> Self {
         let shared: SharedPorts = setup.ports.clone();
         Self {
-            presenter: UnitsPagePresenter::new(shared, now.clone(), setup.keymap.clone())
-                .with_prices_keymap(setup.prices_keymap.clone()),
+            presenter: UnitsPagePresenter::new(shared, now.clone(), &setup.config),
             now,
             ports: setup.ports.clone(),
             setup: setup.clone(),

@@ -93,11 +93,11 @@ pub struct PayeesPagePresenter {
 }
 
 impl PayeesPagePresenter {
-    /// `keymap` is the one the Client looks keys up in, so the legend shows the chords it binds.
-    pub fn new(ports: SharedPorts, keymap: Keymap<PayeesPageEvent>) -> Self {
+    /// The page with its keys built from `config`, as [`PagePresenter::rebind`] builds them later.
+    pub fn new(ports: SharedPorts, config: &KeyBindingConfig) -> Self {
         Self {
             ports,
-            keymap,
+            keymap: crate::keymap::payees_page_keymap(config),
             selected: None,
             open_dialog: None,
         }
@@ -300,7 +300,6 @@ mod tests {
     use super::*;
     use crate::PayeeRepository as _;
     use crate::fake::{RecordingRouter, RouterCall};
-    use crate::keymap::payees_page_keymap;
 
     struct Page {
         presenter: PayeesPagePresenter,
@@ -314,7 +313,7 @@ mod tests {
 
         fn with_keys(shared: SharedPorts, config: &KeyBindingConfig) -> Self {
             Self {
-                presenter: PayeesPagePresenter::new(shared, payees_page_keymap(config)),
+                presenter: PayeesPagePresenter::new(shared, config),
                 router: RecordingRouter::default(),
             }
         }

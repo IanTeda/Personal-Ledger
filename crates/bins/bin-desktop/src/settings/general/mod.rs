@@ -14,7 +14,6 @@ use std::rc::Rc;
 use gpui::{AnyElement, App, Context, Window};
 use lib_core::StartView;
 use lib_database::Domain;
-use lib_settings::keymap::general_keymap;
 use lib_settings::{
     DeviceConfiguration, GeneralEvent, GeneralField, GeneralPresenter, GeneralSetup,
     GeneralViewModel, LocaleLine,
@@ -33,35 +32,35 @@ use crate::start_view;
 /// settings, what it shows of this device and the keyboard focus on its controls.
 pub type GeneralPage = ModulePage<GeneralPresenter>;
 
-/// General writing to `device` under `config`'s keys, with the Shell's `back` on `back_chord`.
+/// General writing to `device` under `config`'s keys.
 /// Start view's choices are the Desktop's own Views. General reads no Ledger, so it stands before
 /// one is open.
 pub fn general_page(
     device: Rc<dyn DeviceConfiguration>,
     config: &KeyBindingConfig,
-    back_chord: String,
     cx: &mut Context<'_, GeneralPage>,
 ) -> GeneralPage {
     let info = crate::locale::info();
     let (line, fallback) = crate::locale::describe(&info);
-    let presenter = GeneralPresenter::new(GeneralSetup {
-        device,
-        keymap: general_keymap(config),
-        back_chord,
-        start_views: start_view::CHOICES
-            .into_iter()
-            .map(|key| Choice {
-                value: StartView::from_key(key),
-                label: start_view::label(key),
-            })
-            .collect(),
-        locale: LocaleLine {
-            line,
-            fallback,
-            effective: info.effective,
-            system: info.system,
+    let presenter = GeneralPresenter::new(
+        GeneralSetup {
+            device,
+            start_views: start_view::CHOICES
+                .into_iter()
+                .map(|key| Choice {
+                    value: StartView::from_key(key),
+                    label: start_view::label(key),
+                })
+                .collect(),
+            locale: LocaleLine {
+                line,
+                fallback,
+                effective: info.effective,
+                system: info.system,
+            },
         },
-    });
+        config,
+    );
     ModulePage::detached(presenter, (), cx)
 }
 

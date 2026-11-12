@@ -14,9 +14,8 @@ use std::rc::Rc;
 use gpui::{AnyElement, App, Context, Entity, Window};
 use lib_database::Domain;
 use lib_database::{LedgerPorts, LedgerPreferencesAdapter, StoredSettingsReads};
-use lib_settings::keymap::ledger_keymap;
-use lib_settings::{LedgerEvent, LedgerPresenter, LedgerSetup, LedgerViewModel};
-use lib_viper::keymap::{KeyBindingConfig, Keymap};
+use lib_settings::{LedgerPresenter, LedgerSetup, LedgerViewModel};
+use lib_viper::keymap::KeyBindingConfig;
 
 use crate::announcer::Announcer;
 use crate::settings::SettingsPage;
@@ -28,11 +27,10 @@ use crate::shell::view::statusline::{PageStatus, StatusRight};
 /// The Ledger page: the Presenter, over the Units store, in the generic page Entity.
 pub type LedgerPage = ModulePage<LedgerPresenter>;
 
-/// What `shell::router::build` hands the Ledger page: its keymap and the `back` chord, under
-/// `[keybindings]`.
+/// What `shell::router::build` hands the Ledger page: the `[keybindings]` every
+/// This Ledger page builds its keys from, and its reads.
 pub struct LedgerKeys {
-    pub keymap: Keymap<LedgerEvent>,
-    pub back_chord: String,
+    pub config: KeyBindingConfig,
     /// Settings' reads `LedgerPorts` built (the Units and the index pane's counts) and the base
     /// Unit write.
     pub settings_reads: Rc<StoredSettingsReads>,
@@ -44,8 +42,7 @@ impl LedgerKeys {
         Self {
             settings_reads: ports.settings_reads.clone(),
             preferences: ports.ledger_preferences.clone(),
-            keymap: ledger_keymap(config),
-            back_chord: lib_settings::keymap::back_chord(config),
+            config: config.clone(),
         }
     }
 }
@@ -56,12 +53,13 @@ pub fn ledger_page(
     announcer: &Entity<Announcer>,
     cx: &mut Context<'_, LedgerPage>,
 ) -> LedgerPage {
-    let presenter = LedgerPresenter::new(LedgerSetup {
-        units: keys.settings_reads,
-        preferences: keys.preferences,
-        keymap: keys.keymap,
-        back_chord: keys.back_chord,
-    });
+    let presenter = LedgerPresenter::new(
+        LedgerSetup {
+            units: keys.settings_reads,
+            preferences: keys.preferences,
+        },
+        &keys.config,
+    );
     ModulePage::new(presenter, (), announcer, cx)
 }
 

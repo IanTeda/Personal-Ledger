@@ -129,11 +129,11 @@ pub struct InstitutionsPagePresenter {
 }
 
 impl InstitutionsPagePresenter {
-    /// `keymap` is the one the Client looks keys up in, so the legend shows the chords it binds.
-    pub fn new(ports: SharedPorts, keymap: Keymap<InstitutionsPageEvent>) -> Self {
+    /// The page with its keys built from `config`, as [`PagePresenter::rebind`] builds them later.
+    pub fn new(ports: SharedPorts, config: &KeyBindingConfig) -> Self {
         Self {
             ports,
-            keymap,
+            keymap: crate::keymap::institutions_page_keymap(config),
             selected: None,
             menu: None,
             open_dialog: None,
@@ -322,7 +322,6 @@ mod tests {
 
     use super::*;
     use crate::fake::{InMemoryPorts, RecordingRouter, RouterCall};
-    use crate::keymap::institutions_page_keymap;
     use crate::presenter::test_support::sample;
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -339,7 +338,7 @@ mod tests {
 
         fn with_keys(ports: SharedPorts, config: &KeyBindingConfig) -> Self {
             Self {
-                presenter: InstitutionsPagePresenter::new(ports, institutions_page_keymap(config)),
+                presenter: InstitutionsPagePresenter::new(ports, config),
                 router: RecordingRouter::default(),
             }
         }

@@ -239,7 +239,7 @@ impl OpenLedger {
         let budgets_view = crate::budgets::router::budgets_page(
             budgets_ports,
             &announcer,
-            lib_budgets::keymap::budgets_page_keymap(keybindings),
+            keybindings,
             clock.clone(),
             dialog_keys.clone(),
             cx,

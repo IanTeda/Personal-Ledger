@@ -54,10 +54,7 @@ impl DocumentTypesSetup {
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
-            presenter: DocumentTypesPagePresenter::new(
-                documents.clone(),
-                lib_documents::keymap::document_types_page_keymap(config),
-            ),
+            presenter: DocumentTypesPagePresenter::new(documents.clone(), config),
             documents,
             dialog_keys,
         }

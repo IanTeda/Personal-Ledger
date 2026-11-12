@@ -61,10 +61,7 @@ impl AccountsSetup {
         config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
-            presenter: AccountsPagePresenter::new(
-                ports.clone(),
-                lib_accounts::keymap::accounts_page_keymap(config),
-            ),
+            presenter: AccountsPagePresenter::new(ports.clone(), config),
             ports,
             deletion,
             dialog_keys,

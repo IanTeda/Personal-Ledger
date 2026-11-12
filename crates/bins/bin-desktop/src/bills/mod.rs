@@ -23,7 +23,6 @@ pub use view::page::BillsPage;
 pub use view::snapshot::{BillRowSnapshot, BillsSnapshot};
 
 use lib_bills::interactor::PopulateSchedule;
-use lib_bills::presenter::BillsPageEvent;
 
 /// Brings the stored Bill Schedule up to the horizon as of `today` (ADR-0019's "on Client start"),
 /// writing the entries generation adds. The caller commits them.
@@ -40,12 +39,12 @@ pub fn new_month(ports: &SharedPorts, today: chrono::NaiveDate) {
 }
 
 /// What `shell::router::build` hands the Bills module: its ports, shared with the Open Ledger, the payments
-/// port the Pay Dialog it opens writes through, its keymap under `[keybindings]` and the Dialog
+/// port the Pay Dialog it opens writes through, the `[keybindings]` its keys are built from and the Dialog
 /// keys its Dialogs' hints show.
 pub struct BillsSetup {
     pub ports: SharedPorts,
     pub payments: lib_bill_payments::SharedPayments,
-    pub keymap: lib_viper::keymap::Keymap<BillsPageEvent>,
+    pub config: lib_config::KeyBindingConfig,
     pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
 }
 
@@ -59,7 +58,7 @@ impl BillsSetup {
         Self {
             ports,
             payments,
-            keymap: keymap::bills_page_keymap(config),
+            config: config.clone(),
             dialog_keys,
         }
     }

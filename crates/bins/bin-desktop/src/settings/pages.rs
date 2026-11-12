@@ -9,11 +9,8 @@ use gpui::{AppContext as _, Context, Entity, Subscription};
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use lib_settings::{
-    DeviceConfiguration, LedgerCounts, LedgerSummaries, SettingsFrameEvent,
-    keymap::settings_frame_keymap,
-};
-use lib_viper::keymap::{KeyBindingConfig, Keymap};
+use lib_settings::{DeviceConfiguration, LedgerCounts, LedgerSummaries};
+use lib_viper::keymap::KeyBindingConfig;
 
 use crate::{
     accounts::{AccountsPage, AccountsSetup, accounts_page},
@@ -138,13 +135,11 @@ impl LedgerSummaries for CachedCounts {
 }
 
 impl LedgerPages {
-    /// The This Ledger pages. `frame_keys` is the frame's keymap, which the Sync server and Data &
-    /// backup legends read their chords from.
+    /// The This Ledger pages, their keys built from `setup.ledger`'s config.
     pub fn new(
         announcer: &Entity<Announcer>,
         clock: &lib_core::Clock,
         setup: SettingsSetup,
-        frame_keys: &Keymap<SettingsFrameEvent>,
         cx: &mut Context<'_, SettingsView>,
     ) -> Self {
         let SettingsSetup {
@@ -158,6 +153,7 @@ impl LedgerPages {
             inventory,
             ledger: ledger_keys,
         } = setup;
+        let config = ledger_keys.config.clone();
         let summaries = CachedCounts::new(ledger_keys.settings_reads.clone());
         // Every domain's write can change a count, so any announcement drops them.
         let _ledger_changed = cx.subscribe(announcer, |view: &mut SettingsView, _, _, cx| {
@@ -175,8 +171,8 @@ impl LedgerPages {
             payees: payees_page(payees, announcer.clone(), clock.clone(), cx),
             documents: document_types_page(document_types, announcer.clone(), cx),
             inventory: inventory_page(inventory, announcer.clone(), cx),
-            sync_server: cx.new(|cx| sync_server_page(frame_keys, announcer, cx)),
-            data_backup: cx.new(|cx| data_backup_page(frame_keys, announcer, cx)),
+            sync_server: cx.new(|cx| sync_server_page(&config, announcer, cx)),
+            data_backup: cx.new(|cx| data_backup_page(&config, announcer, cx)),
         }
     }
 }
@@ -187,22 +183,8 @@ impl SettingsPages {
     pub fn new(device: Rc<dyn DeviceConfiguration>, cx: &mut Context<'_, SettingsView>) -> Self {
         let log_feed = cx.new(|_| LogFeed);
         Self {
-            general: cx.new(|cx| {
-                general_page(
-                    device.clone(),
-                    &KeyBindingConfig::default(),
-                    lib_settings::keymap::back_chord(&KeyBindingConfig::default()),
-                    cx,
-                )
-            }),
-            display: cx.new(|cx| {
-                display_page(
-                    device,
-                    &KeyBindingConfig::default(),
-                    lib_settings::keymap::back_chord(&KeyBindingConfig::default()),
-                    cx,
-                )
-            }),
+            general: cx.new(|cx| general_page(device.clone(), &KeyBindingConfig::default(), cx)),
+            display: cx.new(|cx| display_page(device, &KeyBindingConfig::default(), cx)),
             // A private, empty capture until `set_log_capture` hands over the real one.
             tracing: cx.new(|cx| {
                 tracing_page(
@@ -211,19 +193,13 @@ impl SettingsPages {
                     ))),
                     lib_settings::TracingLevel::default(),
                     &KeyBindingConfig::default(),
-                    lib_settings::keymap::back_chord(&KeyBindingConfig::default()),
                     log_feed.clone(),
                     cx,
                 )
             }),
             log_feed,
-            about: cx.new(|cx| {
-                about_page(
-                    env!("CARGO_PKG_VERSION"),
-                    &settings_frame_keymap(&KeyBindingConfig::default()),
-                    cx,
-                )
-            }),
+            about: cx
+                .new(|cx| about_page(env!("CARGO_PKG_VERSION"), &KeyBindingConfig::default(), cx)),
             ledger: None,
         }
     }

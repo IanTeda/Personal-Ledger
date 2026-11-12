@@ -159,11 +159,11 @@ pub struct InventoryPagePresenter {
 }
 
 impl InventoryPagePresenter {
-    /// `keymap` is the one the Client looks keys up in, so the legend shows the chords it binds.
-    pub fn new(inventory: SharedInventory, keymap: Keymap<InventoryPageEvent>) -> Self {
+    /// The page with its keys built from `config`, as [`PagePresenter::rebind`] builds them later.
+    pub fn new(inventory: SharedInventory, config: &KeyBindingConfig) -> Self {
         Self {
             inventory,
-            keymap,
+            keymap: crate::keymap::inventory_page_keymap(config),
             selected: None,
             expanded: HashSet::new(),
             menu: None,
@@ -608,7 +608,6 @@ mod tests {
     use super::super::test_support::sample;
     use super::*;
     use crate::fake::{InMemoryInventory, RecordingRouter, RouterCall};
-    use crate::keymap::inventory_page_keymap;
     use crate::protocols::InventoryRepository as _;
 
     struct Page {
@@ -625,7 +624,7 @@ mod tests {
         fn with_keys(config: &KeyBindingConfig) -> Self {
             let (inventory, shared) = sample();
             Self {
-                presenter: InventoryPagePresenter::new(shared, inventory_page_keymap(config)),
+                presenter: InventoryPagePresenter::new(shared, config),
                 router: RecordingRouter::default(),
                 inventory,
             }

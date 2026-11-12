@@ -324,11 +324,11 @@ pub struct UnitsPagePresenter {
 }
 
 impl UnitsPagePresenter {
-    /// `keymap` is the one the Client looks keys up in, so the legend shows the chords it binds.
-    /// The prices view takes its default keys until [`Self::with_prices_keymap`] hands it the
-    /// Client's.
-    pub fn new(ports: SharedPorts, clock: Clock, keymap: Keymap<UnitsPageEvent>) -> Self {
-        let prices_keymap = unit_prices_keymap(&KeyBindingConfig::default());
+    /// The page and its prices view with their keys built from `config`, as
+    /// [`PagePresenter::rebind`] builds them later.
+    pub fn new(ports: SharedPorts, clock: Clock, config: &KeyBindingConfig) -> Self {
+        let keymap = crate::keymap::units_page_keymap(config);
+        let prices_keymap = unit_prices_keymap(config);
         Self {
             prices_keys: Self::prices_keys(&keymap, &prices_keymap),
             ports,
@@ -344,15 +344,6 @@ impl UnitsPagePresenter {
             prices: None,
             prices_keymap,
         }
-    }
-
-    /// The page with its prices view taking keys through `keymap`, the Client's under
-    /// `[keybindings]`.
-    #[must_use]
-    pub fn with_prices_keymap(mut self, keymap: Keymap<UnitPricesEvent>) -> Self {
-        self.prices_keys = Self::prices_keys(&self.keymap, &keymap);
-        self.prices_keymap = keymap;
-        self
     }
 
     /// Whether the Unit prices view shows in place of the tables.
@@ -877,7 +868,6 @@ mod tests {
     use super::super::test_support::{self, clock, sample};
     use super::*;
     use crate::fake::{InMemoryPorts, RecordingRouter, RouterCall};
-    use crate::keymap::units_page_keymap;
     use crate::presenter::{PaneButton, PaneGroup, PriceGroup, SourceGroup};
     use crate::{COINGECKO, FRANKFURTER, YAHOO_FINANCE};
 
@@ -896,7 +886,7 @@ mod tests {
             let (ports, shared) = sample();
             Self {
                 ports,
-                presenter: UnitsPagePresenter::new(shared, clock(), units_page_keymap(&config)),
+                presenter: UnitsPagePresenter::new(shared, clock(), &config),
                 router: RecordingRouter::default(),
             }
         }

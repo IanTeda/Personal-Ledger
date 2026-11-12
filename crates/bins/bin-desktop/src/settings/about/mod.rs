@@ -7,9 +7,8 @@ mod render;
 
 use gpui::{AnyElement, Context, Window};
 use lib_database::Domain;
-use lib_settings::keymap::settings_plain_page_hints;
-use lib_settings::{AboutPresenter, AboutSetup, AboutViewModel, SettingsFrameEvent};
-use lib_viper::keymap::Keymap;
+use lib_settings::{AboutPresenter, AboutSetup, AboutViewModel};
+use lib_viper::keymap::KeyBindingConfig;
 
 use crate::settings::SettingsPage;
 use crate::shell::view::module_page::{ModulePage, PageDraw, PageView, SettingsPageView};
@@ -18,16 +17,18 @@ use crate::shell::view::statusline::{PageStatus, StatusRight};
 /// The About page: the Presenter in the generic page Entity.
 pub type AboutPage = ModulePage<AboutPresenter>;
 
-/// The About page for a build of `version`, its legend read from the frame's `keymap`.
+/// The About page for a build of `version`, its keys built from `config`.
 pub fn about_page(
     version: &str,
-    keymap: &Keymap<SettingsFrameEvent>,
+    config: &KeyBindingConfig,
     cx: &mut Context<'_, AboutPage>,
 ) -> AboutPage {
-    let mut presenter = AboutPresenter::new(AboutSetup {
-        version: version.to_string(),
-    });
-    presenter.set_legend(settings_plain_page_hints(keymap));
+    let presenter = AboutPresenter::new(
+        AboutSetup {
+            version: version.to_string(),
+        },
+        config,
+    );
     ModulePage::detached(presenter, (), cx)
 }
 

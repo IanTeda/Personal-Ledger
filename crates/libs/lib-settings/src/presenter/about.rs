@@ -30,8 +30,7 @@ pub struct AboutViewModel {
     pub released: String,
     pub built_with: String,
     /// The page's keys, for the status line and the `?` cheat sheet: the frame's scroll and
-    /// focus-index chords, which only the Client can read from its keymap, so it hands them over
-    /// ([`AboutPresenter::set_legend`]).
+    /// focus-index chords, which the Presenter reads from the frame's keymap under the config.
     pub hints: Vec<Hint>,
 }
 
@@ -44,17 +43,14 @@ pub struct AboutPresenter {
 }
 
 impl AboutPresenter {
-    pub fn new(setup: AboutSetup) -> Self {
+    pub fn new(setup: AboutSetup, config: &KeyBindingConfig) -> Self {
         Self {
             version: setup.version,
             keymap: Keymap::new(&[], &KeyBindingConfig::default()),
-            legend: Vec::new(),
+            legend: crate::keymap::settings_plain_page_hints(
+                &crate::keymap::settings_frame_keymap(config),
+            ),
         }
-    }
-
-    /// Replaces the legend, for start-up and a `[keybindings]` change.
-    pub fn set_legend(&mut self, legend: Vec<Hint>) {
-        self.legend = legend;
     }
 
     /// What the Settings index's detail pane quotes of About: the version line and what it is
@@ -119,9 +115,12 @@ mod tests {
     /// The About Presenter with the Settings Messages loaded, since its lines are Messages.
     fn about() -> AboutPresenter {
         lib_locale::init_with_layers("en-US", &[msg::LAYER]);
-        AboutPresenter::new(AboutSetup {
-            version: "1.2.3".to_string(),
-        })
+        AboutPresenter::new(
+            AboutSetup {
+                version: "1.2.3".to_string(),
+            },
+            &KeyBindingConfig::default(),
+        )
     }
 
     #[test]

@@ -122,10 +122,11 @@ pub struct BillsPagePresenter {
 
 impl BillsPagePresenter {
     /// The page on the Schedule tab, on today's month. The Client generated the Schedule when it
-    /// started, so the page generates again only once the month turns. `keymap` is the one the
-    /// Client looks keys up in, so the legend shows the chords it binds.
-    pub fn new(ports: SharedPorts, clock: Clock, keymap: Keymap<BillsPageEvent>) -> Self {
+    /// started, so the page generates again only once the month turns. Its keys are built from
+    /// `config`, as [`PagePresenter::rebind`] builds them later.
+    pub fn new(ports: SharedPorts, clock: Clock, config: &KeyBindingConfig) -> Self {
         let today = clock.today();
+        let keymap = crate::keymap::bills_page_keymap(config);
         Self {
             schedule: SchedulePresenter::new(ports.clone(), clock.clone()),
             planner: PlannerPresenter::new(ports.clone()),
@@ -355,7 +356,6 @@ mod tests {
 
     use super::*;
     use crate::fake::{InMemoryPorts, RecordingRouter, Routed};
-    use crate::keymap::bills_page_keymap;
     use crate::presenter::test_support::{clock, date, sample, today};
     use crate::presenter::{FilterChoice, FilterField, LineActions};
     use crate::{BillStatus, Resolution, SplitRef};
@@ -371,11 +371,10 @@ mod tests {
         fn new() -> Self {
             let (ports, shared) = sample();
             let (day, clock) = clock();
-            let keymap = bills_page_keymap(&KeyBindingConfig::default());
             Self {
                 ports,
                 day,
-                presenter: BillsPagePresenter::new(shared, clock, keymap),
+                presenter: BillsPagePresenter::new(shared, clock, &KeyBindingConfig::default()),
                 router: RecordingRouter::default(),
             }
         }

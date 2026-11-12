@@ -230,9 +230,6 @@ impl Default for LocaleLine {
 pub struct GeneralSetup {
     /// Where the settings are read from, once, and written: the configuration file start-up read.
     pub device: Rc<dyn DeviceConfiguration>,
-    pub keymap: Keymap<GeneralEvent>,
-    /// The chord of the Shell's `back`, for the legend.
-    pub back_chord: String,
     /// Start view's choices, labelled, in the order the radio group shows them: the Client's own
     /// Views, since each Client lands on its own.
     pub start_views: Vec<Choice<StartView>>,
@@ -294,7 +291,7 @@ pub struct GeneralPresenter {
 
 impl GeneralPresenter {
     /// General on what `setup`'s device reads.
-    pub fn new(setup: GeneralSetup) -> Self {
+    pub fn new(setup: GeneralSetup, config: &KeyBindingConfig) -> Self {
         let snapshot = setup.device.read();
         let data_folder = snapshot
             .data_folder()
@@ -309,8 +306,8 @@ impl GeneralPresenter {
             data_folder,
             last_ledger: None,
             snapshot,
-            keymap: setup.keymap,
-            back_chord: setup.back_chord,
+            keymap: crate::keymap::general_keymap(config),
+            back_chord: crate::keymap::back_chord(config),
             locale: setup.locale,
             page_focused: false,
         }
@@ -770,7 +767,6 @@ mod tests {
 
     use super::*;
     use crate::fake::{InMemoryDeviceConfiguration, RecordingRouter, Routed, StoredDevice};
-    use crate::keymap::general_keymap;
 
     fn start_views() -> Vec<Choice<StartView>> {
         ["dashboard", "last", "settings", "bills"]
@@ -792,18 +788,19 @@ mod tests {
         effective: Locale,
     ) -> GeneralPresenter {
         lib_locale::init_with_layers("en-US", &[msg::LAYER]);
-        GeneralPresenter::new(GeneralSetup {
-            device,
-            keymap: general_keymap(&KeyBindingConfig::default()),
-            back_chord: "esc".to_string(),
-            start_views: start_views(),
-            locale: LocaleLine {
-                line: "en-AU, from config".to_string(),
-                fallback: Some("en-XX isn't supported".to_string()),
-                effective,
-                system: Locale::EnAu,
+        GeneralPresenter::new(
+            GeneralSetup {
+                device,
+                start_views: start_views(),
+                locale: LocaleLine {
+                    line: "en-AU, from config".to_string(),
+                    fallback: Some("en-XX isn't supported".to_string()),
+                    effective,
+                    system: Locale::EnAu,
+                },
             },
-        })
+            &KeyBindingConfig::default(),
+        )
     }
 
     fn writable() -> (Rc<InMemoryDeviceConfiguration>, GeneralPresenter) {

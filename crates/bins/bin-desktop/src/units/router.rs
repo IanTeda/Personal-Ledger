@@ -100,12 +100,10 @@ pub fn units_page(
         ports,
         deletion,
         dialog_keys,
-        keymap,
-        prices_keymap,
+        config,
     } = setup;
     let presenter =
-        UnitsPagePresenter::new(ports.clone(), super::view::page::now_of(&clock), keymap)
-            .with_prices_keymap(prices_keymap);
+        UnitsPagePresenter::new(ports.clone(), super::view::page::now_of(&clock), &config);
     let routes = UnitsRoutes {
         ports,
         deletion,
