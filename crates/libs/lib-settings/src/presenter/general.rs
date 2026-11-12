@@ -129,7 +129,8 @@ pub struct GeneralSettings {
     /// effect, which a flag, a variable or a higher file may set.
     pub locale: Option<Locale>,
     /// The Data folder the user's configuration file names, `None` when it names none: not the one
-    /// in effect ([`ThisDevice::data_folder`]), which a flag, a variable or a higher file may set.
+    /// in effect ([`GeneralPresenter::data_folder`]), which a flag, a variable or a higher file may
+    /// set.
     pub data: Option<PathBuf>,
 }
 
@@ -177,18 +178,6 @@ impl Default for GeneralSettings {
     }
 }
 
-/// What start-up knows about this device: the Data folder in effect (the `data` setting, from
-/// wherever it was set), and, shown read-only, the Ledger On start would reopen and the
-/// configuration file Settings writes to.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ThisDevice {
-    pub data_folder: PathBuf,
-    /// The Ledger file open now, which the Client remembers at quit; `None` with none open.
-    pub last_ledger: Option<PathBuf>,
-    /// The user's configuration file; `None` with no home directory to keep one in.
-    pub configuration: Option<PathBuf>,
-}
-
 /// The Locale in effect as the Client describes it, with the note when the one asked for wasn't
 /// supported. The Locale is Configuration read at start-up (ADR-0021) and applies only at the next
 /// start (ADR-0057), so this run's stays as it began.
@@ -215,8 +204,7 @@ impl Default for LocaleLine {
 
 /// What the Client hands General as it builds it.
 pub struct GeneralSetup {
-    /// Where the settings are read from and written; the Client swaps in its configuration
-    /// file's once start-up has read it ([`GeneralPresenter::configure`]).
+    /// Where the settings are read from, once, and written: the configuration file start-up read.
     pub device: Rc<dyn DeviceConfiguration>,
     pub keymap: Keymap<GeneralEvent>,
     /// The chord of the Shell's `back`, for the legend.
@@ -299,7 +287,11 @@ pub struct GeneralPresenter {
     start_views: Vec<Choice<StartView>>,
     locale: LocaleLine,
     settings: GeneralSettings,
-    this_device: ThisDevice,
+    /// The Data folder in effect, where `:open` and `:new` start: Data's value in force, until a
+    /// write that applies at once replaces it.
+    data_folder: PathBuf,
+    /// The Ledger file open now, which the Client remembers at quit; `None` with none open.
+    last_ledger: Option<PathBuf>,
     field: Option<usize>,
     page_focused: bool,
     start_view_list: SelectList,
@@ -313,12 +305,16 @@ impl GeneralPresenter {
         Self {
             device: setup.device,
             settings: GeneralSettings::read(&snapshot),
+            data_folder: snapshot
+                .data_folder()
+                .map(Path::to_path_buf)
+                .unwrap_or_default(),
+            last_ledger: None,
             snapshot,
             keymap: setup.keymap,
             back_chord: setup.back_chord,
             start_views: setup.start_views,
             locale: setup.locale,
-            this_device: ThisDevice::default(),
             field: None,
             page_focused: false,
             start_view_list: SelectList::default(),
@@ -332,22 +328,9 @@ impl GeneralPresenter {
         self.back_chord = back_chord;
     }
 
-    /// Reads and writes `device` from now on, showing what it reads. Read once: a write's answer
-    /// keeps the page from then on, since a saved value is the one in force, or for the Locale and
-    /// the Data folder the file's, which is what they show.
-    pub fn configure(&mut self, device: Rc<dyn DeviceConfiguration>) {
-        self.snapshot = device.read();
-        self.settings = GeneralSettings::read(&self.snapshot);
-        self.device = device;
-    }
-
-    pub fn set_this_device(&mut self, this_device: ThisDevice) {
-        self.this_device = this_device;
-    }
-
     /// The Ledger file the Client will remember at quit, once one has opened or closed.
     pub fn set_last_ledger(&mut self, last_ledger: Option<PathBuf>) {
-        self.this_device.last_ledger = last_ledger;
+        self.last_ledger = last_ledger;
     }
 
     /// Whether the page, not Settings' index, has the keyboard. Arriving puts it on On start, and
@@ -367,8 +350,14 @@ impl GeneralPresenter {
         &self.settings
     }
 
-    pub fn this_device(&self) -> &ThisDevice {
-        &self.this_device
+    /// The Ledger file the Client will remember at quit, `None` with none open.
+    pub fn last_ledger(&self) -> Option<&Path> {
+        self.last_ledger.as_deref()
+    }
+
+    /// The user's configuration file, as the device read it; `None` with no home folder.
+    pub fn configuration_file(&self) -> Option<&Path> {
+        self.snapshot.file.as_deref()
     }
 
     /// The Locale in effect as the Client described it at start-up.
@@ -378,7 +367,7 @@ impl GeneralPresenter {
 
     /// The Data folder in effect, where `:open` and `:new` start.
     pub fn data_folder(&self) -> &Path {
-        &self.this_device.data_folder
+        &self.data_folder
     }
 
     /// The folder the picker picked, from **Change…** or `:data`, written as the Data folder: the
@@ -408,7 +397,7 @@ impl GeneralPresenter {
                     ToastKind::Success,
                     msg::settings_general_data_folder_now(&value.display().to_string()),
                 ));
-                self.this_device.data_folder = value.clone();
+                self.data_folder = value.clone();
                 self.settings.data = Some(value);
                 DataFolderOutcome::Applied
             }
@@ -492,7 +481,7 @@ impl Presenter for GeneralPresenter {
             .start_views
             .iter()
             .any(|choice| choice.value == self.settings.start_view);
-        let path = |path: Option<&PathBuf>| {
+        let path = |path: Option<&Path>| {
             path.map_or_else(msg::settings_general_none, |path| {
                 path.display().to_string()
             })
@@ -572,7 +561,7 @@ impl Presenter for GeneralPresenter {
                     .map(|source| {
                         msg::settings_general_data_folder_overridden(
                             source,
-                            &self.this_device.data_folder.display().to_string(),
+                            &self.data_folder.display().to_string(),
                         )
                     }),
             },
@@ -581,11 +570,11 @@ impl Presenter for GeneralPresenter {
                 rows: vec![
                     (
                         msg::settings_general_last_ledger(),
-                        path(self.this_device.last_ledger.as_ref()),
+                        path(self.last_ledger.as_deref()),
                     ),
                     (
                         msg::settings_general_configuration(),
-                        path(self.this_device.configuration.as_ref()),
+                        path(self.snapshot.file.as_deref()),
                     ),
                 ],
                 note: msg::settings_general_note(),
@@ -905,10 +894,7 @@ impl GeneralPresenter {
 
     /// The Data folder the field shows: the file's, else the one in effect.
     fn shown_data_folder(&self) -> &Path {
-        self.settings
-            .data
-            .as_deref()
-            .unwrap_or(&self.this_device.data_folder)
+        self.settings.data.as_deref().unwrap_or(&self.data_folder)
     }
 
     fn write_toasts(&mut self, on: bool, router: &mut dyn DeviceRouter) {
@@ -1034,26 +1020,6 @@ mod tests {
         );
 
         assert_eq!(general_on(device).settings().locale, None);
-    }
-
-    #[test]
-    fn configure_reads_the_new_device_once() {
-        let (_, mut general) = writable();
-        let device =
-            Rc::new(InMemoryDeviceConfiguration::writable().reading([ConfigValue::Toasts(false)]));
-
-        general.configure(device.clone());
-        assert!(!general.settings().toasts_on);
-
-        send(&mut general, [GeneralEvent::ChooseToasts(true)]);
-        assert!(
-            general.settings().toasts_on,
-            "the write's answer, not a re-read of what start-up read"
-        );
-        assert_eq!(
-            device.stored().get(ConfigKey::Toasts),
-            Some(&ConfigValue::Toasts(true))
-        );
     }
 
     /// The Locale `device`'s file names, as General reads it.
@@ -1465,14 +1431,9 @@ mod tests {
         );
     }
 
-    /// General on `device` with the Data folder in effect `/home/me/ledgers`.
-    fn with_data_folder(device: Rc<InMemoryDeviceConfiguration>) -> GeneralPresenter {
-        let mut general = general_on(device);
-        general.set_this_device(ThisDevice {
-            data_folder: PathBuf::from("/home/me/ledgers"),
-            ..ThisDevice::default()
-        });
-        general
+    /// `device` with the Data folder in effect `/home/me/ledgers`.
+    fn with_data_folder(device: InMemoryDeviceConfiguration) -> Rc<InMemoryDeviceConfiguration> {
+        Rc::new(device.reading([ConfigValue::Data(PathBuf::from("/home/me/ledgers"))]))
     }
 
     /// The picker picking `folder`: what General answered and what it routed.
@@ -1484,7 +1445,7 @@ mod tests {
 
     #[test]
     fn enter_on_the_data_folder_and_change_ask_for_the_picker() {
-        let mut general = with_data_folder(Rc::new(InMemoryDeviceConfiguration::writable()));
+        let mut general = general_on(with_data_folder(InMemoryDeviceConfiguration::writable()));
         general.set_page_focused(true);
         send(
             &mut general,
@@ -1521,8 +1482,8 @@ mod tests {
 
     #[test]
     fn a_picked_data_folder_is_written_applies_at_once_and_raises_a_toast() {
-        let device = Rc::new(InMemoryDeviceConfiguration::writable());
-        let mut general = with_data_folder(device.clone());
+        let device = with_data_folder(InMemoryDeviceConfiguration::writable());
+        let mut general = general_on(device.clone());
 
         let (outcome, router) = pick(&mut general, "/home/me/finance");
 
@@ -1549,8 +1510,8 @@ mod tests {
 
     #[test]
     fn picking_the_data_folder_already_set_writes_nothing_and_raises_nothing() {
-        let device = Rc::new(InMemoryDeviceConfiguration::writable());
-        let mut general = with_data_folder(device.clone());
+        let device = with_data_folder(InMemoryDeviceConfiguration::writable());
+        let mut general = general_on(device.clone());
 
         let (outcome, router) = pick(&mut general, "/home/me/ledgers");
 
@@ -1562,8 +1523,7 @@ mod tests {
 
     #[test]
     fn a_refused_data_folder_says_why_and_changes_nothing() {
-        let device = Rc::new(InMemoryDeviceConfiguration::default());
-        let mut general = with_data_folder(device);
+        let mut general = general_on(with_data_folder(InMemoryDeviceConfiguration::default()));
 
         let (outcome, router) = pick(&mut general, "/home/me/finance");
 
@@ -1576,11 +1536,11 @@ mod tests {
 
     #[test]
     fn a_shadowed_data_folder_is_written_and_names_the_override() {
-        let device = Rc::new(InMemoryDeviceConfiguration::shadowing(
+        let device = with_data_folder(InMemoryDeviceConfiguration::shadowing(
             ConfigKey::Data,
             "PERSONAL_LEDGER_GENERAL__DATA",
         ));
-        let mut general = with_data_folder(device.clone());
+        let mut general = general_on(device.clone());
         let overridden = "PERSONAL_LEDGER_GENERAL__DATA sets the Data folder to /home/me/ledgers for \
                           now, so :open and :new start there. Change… keeps your choice for when \
                           it's gone.";
@@ -1617,17 +1577,18 @@ mod tests {
     }
 
     #[test]
-    fn the_data_folder_and_this_device_show_what_the_client_told_it() {
-        let (_, mut general) = writable();
-        general.set_this_device(ThisDevice {
-            data_folder: PathBuf::from("/home/me/Ledgers"),
-            last_ledger: None,
-            configuration: Some(PathBuf::from("/home/me/.config/personal-ledger.conf")),
-        });
+    fn the_data_folder_and_this_device_show_what_the_device_reads() {
+        let device = InMemoryDeviceConfiguration {
+            file: Some(PathBuf::from("/home/me/.config/personal-ledger.conf")),
+            ..InMemoryDeviceConfiguration::writable()
+        }
+        .reading([ConfigValue::Data(PathBuf::from("/home/me/Ledgers"))]);
+        let mut general = general_on(Rc::new(device));
         general.set_last_ledger(Some(PathBuf::from("/home/me/Ledgers/home.ledger")));
 
         let view = general.view_model();
         assert_eq!(general.locale().line, "en-AU, from config");
+        assert_eq!(general.data_folder(), Path::new("/home/me/Ledgers"));
         assert_eq!(view.data_folder.value, "/home/me/Ledgers");
         assert_eq!(
             view.this_device.rows,

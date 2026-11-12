@@ -26,8 +26,7 @@ pub use frame::{
 };
 pub use general::{
     DataFolderOutcome, DataFolderView, GeneralEvent, GeneralPresenter, GeneralSettings,
-    GeneralSetup, GeneralViewModel, LocaleControl, LocaleLine, StartViewControl, ThisDevice,
-    ThisDeviceView,
+    GeneralSetup, GeneralViewModel, LocaleControl, LocaleLine, StartViewControl, ThisDeviceView,
 };
 pub use ledger::{
     BaseUnitOption, BaseUnitView, LedgerEvent, LedgerPresenter, LedgerSetup, LedgerViewModel,

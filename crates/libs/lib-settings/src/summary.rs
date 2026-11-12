@@ -17,9 +17,10 @@ use crate::page::{ScopeFacts, ScopeGroup, SettingsPage};
 use crate::presenter::display::{appearance_label, colour_theme_name, date_style_label};
 use crate::presenter::display::{row_density_label, status_glyphs_label};
 use crate::presenter::general::on_start_label;
-use crate::presenter::{DisplaySettings, GeneralSettings, LocaleLine, ThisDevice};
+use crate::presenter::{DisplaySettings, GeneralSettings, LocaleLine};
 use crate::presenter::{data_backup, sync_server};
 use crate::protocols::{HeadlineAmount, LedgerCounts, LedgerSummaries};
+use std::path::Path;
 
 /// One read-only value: its label and its value.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,7 +50,8 @@ pub struct PageSummary {
 /// What a summary reads that Settings doesn't own, from the same places the pages read it.
 pub struct SummarySources<'a> {
     pub general: &'a GeneralSettings,
-    pub device: &'a ThisDevice,
+    /// The Data folder in effect.
+    pub data_folder: &'a Path,
     pub locale: &'a LocaleLine,
     pub display: &'a DisplaySettings,
     /// The Tracing page's level radio.
@@ -147,7 +149,7 @@ fn device_rows(page: SettingsPage, sources: &SummarySources<'_>) -> Vec<SummaryR
             row(msg::settings_summary_locale(), sources.locale.line.clone()),
             row(
                 msg::settings_general_data_folder(),
-                sources.device.data_folder.display().to_string(),
+                sources.data_folder.display().to_string(),
             ),
         ],
         SettingsPage::Display => vec![
@@ -302,7 +304,7 @@ mod tests {
 
     struct Held {
         general: GeneralSettings,
-        device: ThisDevice,
+        data_folder: PathBuf,
         locale: LocaleLine,
         display: DisplaySettings,
     }
@@ -311,10 +313,7 @@ mod tests {
         fn new() -> Self {
             Self {
                 general: GeneralSettings::default(),
-                device: ThisDevice {
-                    data_folder: PathBuf::from("~/documents/ledgers"),
-                    ..ThisDevice::default()
-                },
+                data_folder: PathBuf::from("~/documents/ledgers"),
                 locale: LocaleLine {
                     line: "en-AU".to_string(),
                     ..LocaleLine::default()
@@ -326,7 +325,7 @@ mod tests {
         fn sources<'a>(&'a self, ledger: Option<&'a dyn LedgerSummaries>) -> SummarySources<'a> {
             SummarySources {
                 general: &self.general,
-                device: &self.device,
+                data_folder: &self.data_folder,
                 locale: &self.locale,
                 display: &self.display,
                 log_level: TracingLevel::Info,

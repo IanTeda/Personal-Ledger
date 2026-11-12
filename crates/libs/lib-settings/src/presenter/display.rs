@@ -143,8 +143,7 @@ impl DisplaySettings {
 
 /// What the Client hands Display as it builds it.
 pub struct DisplaySetup {
-    /// Where the settings are read from and written; the Client swaps in its configuration
-    /// file's once start-up has read it ([`DisplayPresenter::configure`]).
+    /// Where the settings are read from, once, and written: the configuration file start-up read.
     pub device: Rc<dyn DeviceConfiguration>,
     pub keymap: Keymap<DisplayEvent>,
     /// The chord of the Shell's `back`, for the legend.
@@ -242,40 +241,32 @@ pub struct DisplayPresenter {
 impl DisplayPresenter {
     /// Display on what `setup`'s device reads.
     pub fn new(setup: DisplaySetup) -> Self {
-        let mut display = Self {
-            snapshot: DeviceSnapshot::default(),
-            device: setup.device.clone(),
+        let snapshot = setup.device.read();
+        let settings = DisplaySettings::read(&snapshot);
+        Self {
+            snapshot,
+            device: setup.device,
             keymap: setup.keymap,
             back_chord: setup.back_chord,
-            output: DisplayOutput::default(),
-            colour_theme: None,
-            colour_appearance: ColourAppearance::default(),
+            output: DisplayOutput {
+                date_style: settings.date_style,
+                row_density: settings.row_density,
+                status_glyphs: settings.status_glyphs,
+                ..DisplayOutput::default()
+            },
+            colour_theme: settings.colour_theme,
+            colour_appearance: settings.colour_appearance,
             field: None,
             grid: None,
             columns: 1,
             page_focused: false,
-        };
-        display.configure(setup.device);
-        display
+        }
     }
 
     /// Replaces the keymap and the `back` chord, for a `[keybindings]` change.
     pub fn set_keymap(&mut self, keymap: Keymap<DisplayEvent>, back_chord: String) {
         self.keymap = keymap;
         self.back_chord = back_chord;
-    }
-
-    /// Reads and writes `device` from now on, showing what it reads. Read once: a saved value is
-    /// the one in force, so a write's answer keeps the page from then on.
-    pub fn configure(&mut self, device: Rc<dyn DeviceConfiguration>) {
-        self.snapshot = device.read();
-        self.device = device;
-        let settings = DisplaySettings::read(&self.snapshot);
-        self.output.date_style = settings.date_style;
-        self.output.row_density = settings.row_density;
-        self.output.status_glyphs = settings.status_glyphs;
-        self.colour_theme = settings.colour_theme;
-        self.colour_appearance = settings.colour_appearance;
     }
 
     /// Start Sidebar minimised as the Client remembered it from its last run.

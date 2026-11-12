@@ -200,10 +200,13 @@ fn the_locale_data_folder_and_this_device_box_are_drawn(app: &mut TestAppContext
         "nothing overrides it"
     );
     assert!(ui.is_drawn("general-this-device"));
-    // A test Shell is told nothing of this device, so THIS DEVICE reads none.
+    // A test Shell opened no Ledger file, and writes its own conf file.
     let general = ui.settings::<SettingsGeneralSnapshot>();
     assert_eq!(general.last_ledger, None);
-    assert_eq!(general.configuration, None);
+    assert_eq!(
+        general.configuration,
+        Some(ui.conf_path().display().to_string())
+    );
 }
 
 #[gpui::test]

@@ -10,7 +10,7 @@
 )]
 
 use bin_desktop::{
-    WindowSize, WindowSizeExt,
+    DeviceConfigFile, WindowSize, WindowSizeExt,
     locale::init_for_tests,
     navigation::nav::{Noun, RailMode},
     persistence::PersistedState,
@@ -185,12 +185,25 @@ pub fn data_folder() -> tempfile::TempDir {
     dir
 }
 
-/// The device start-up would show on Settings › General, its Data folder `folder`.
-fn default_this_device(folder: &std::path::Path) -> lib_settings::ThisDevice {
-    lib_settings::ThisDevice {
-        data_folder: folder.to_path_buf(),
-        ..lib_settings::ThisDevice::default()
-    }
+/// A device's settings as start-up read them with `folder` the Data folder in force.
+pub fn browsing(folder: &std::path::Path) -> lib_config::Config {
+    let mut config = lib_config::Config::default();
+    config.general.data = folder.to_path_buf();
+    config
+}
+
+/// The device a Harness builds the Shell on, as `run` hands start-up's to `build`: a device's
+/// settings as start-up read them, the `PERSONAL_LEDGER_` variables above the file, what the
+/// Harness's own conf file holds before start-up reads it, and the file Settings writes.
+#[derive(Default)]
+pub struct Device<'c> {
+    pub config: lib_config::Config,
+    pub env: &'c [(&'c str, &'c str)],
+    /// The conf file's text; empty for no file yet.
+    pub conf: &'c str,
+    /// The configuration file in place of the Harness's own, `Some(None)` for none. A file named
+    /// here is only read, never written, by a test that only looks.
+    pub file: Option<Option<std::path::PathBuf>>,
 }
 
 /// The default `[keybindings]` with `command` bound to `chord`.
@@ -386,7 +399,21 @@ impl<'a> Harness<'a> {
             (Some(router::LedgerFile::in_memory(stores.share())), commits),
             keybindings,
             PersistedState::default(),
-            &lib_config::Config::default(),
+            Device::default(),
+        )
+    }
+
+    /// As [`Harness::new`], on `device`.
+    pub fn on_device(app: &'a mut TestAppContext, device: Device<'_>) -> Self {
+        let (stores, commits) = Stores::fake(FakeStores::sample(today()));
+        Self::build_on(
+            app,
+            lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
+            None,
+            (Some(router::LedgerFile::in_memory(stores.share())), commits),
+            lib_config::KeyBindingConfig::default(),
+            PersistedState::default(),
+            device,
         )
     }
 
@@ -395,21 +422,13 @@ impl<'a> Harness<'a> {
         self.read(|shell| shell.explorer_snapshot())
     }
 
-    /// Points `:open`'s file explorer at `folder`, as the Data folder would.
+    /// Points `:open`, `:new` and `:data`'s file explorer at `folder`, a folder made after the
+    /// Shell was built, leaving the Data folder the device read as it is. A test that needs
+    /// Settings › General to show the same folder builds on it ([`browsing`]).
     pub fn browse_from(&mut self, folder: &std::path::Path) {
-        let device = default_this_device(folder);
+        let folder = folder.to_path_buf();
         self.shell
-            .update(self.cx, |shell, cx| shell.set_this_device(device, cx));
-    }
-
-    /// Names `file` as the configuration file Settings writes, or none.
-    pub fn set_configuration_file(&mut self, file: Option<std::path::PathBuf>) {
-        let device = lib_settings::ThisDevice {
-            configuration: file,
-            ..lib_settings::ThisDevice::default()
-        };
-        self.shell
-            .update(self.cx, |shell, cx| shell.set_this_device(device, cx));
+            .update(self.cx, |shell, _| shell.browse_from_for_test(folder));
     }
 
     /// The status line's right-hand side as drawn at `size`.
@@ -455,6 +474,24 @@ impl<'a> Harness<'a> {
         persisted: PersistedState,
         config: &lib_config::Config,
     ) -> Self {
+        Self::starting_on(
+            app,
+            started,
+            persisted,
+            Device {
+                config: config.clone(),
+                ..Device::default()
+            },
+        )
+    }
+
+    /// As [`Harness::starting`], on `device`.
+    pub fn starting_on(
+        app: &'a mut TestAppContext,
+        started: bin_desktop::Started,
+        persisted: PersistedState,
+        device: Device<'_>,
+    ) -> Self {
         let failure = match &started {
             bin_desktop::Started::Failed(failure) => Some(failure.clone()),
             _ => None,
@@ -474,7 +511,7 @@ impl<'a> Harness<'a> {
             (stores, commits),
             lib_config::KeyBindingConfig::default(),
             persisted,
-            config,
+            device,
         );
         if let Some(failure) = failure {
             ui.shell
@@ -483,8 +520,8 @@ impl<'a> Harness<'a> {
         ui
     }
 
-    /// The Shell on `stores`, or with no Ledger open, from `persisted` state and a device's settings
-    /// in `config`.
+    /// The Shell on `stores`, or with no Ledger open, from `persisted` state, built on `device` as
+    /// `run` builds it on start-up's.
     fn build_on(
         app: &'a mut TestAppContext,
         logs: lib_tracing::LogBuffer,
@@ -492,14 +529,33 @@ impl<'a> Harness<'a> {
         (stores, commits): (Option<router::LedgerFile>, Rc<Cell<usize>>),
         keybindings: lib_config::KeyBindingConfig,
         persisted: PersistedState,
-        config: &lib_config::Config,
+        device: Device<'_>,
     ) -> Self {
         // Pins the process-wide Locale to en-US (and loads this bin's Messages), so rendered text
         // never depends on the host; `main` is never run in a test.
         init_for_tests();
+        let Device {
+            config,
+            env,
+            conf,
+            file,
+        } = device;
+        let conf_dir = tempfile::tempdir().expect("a temporary directory");
+        let conf_path = conf_dir.path().join("personal-ledger.conf");
+        if !conf.is_empty() {
+            std::fs::write(&conf_path, conf).expect("the conf file is written");
+        }
+        let writer = lib_config::ConfigWriter::new(
+            file.unwrap_or(Some(conf_path)),
+            lib_config::Overrides::environment(
+                env.iter()
+                    .map(|(name, value)| ((*name).to_string(), (*value).to_string())),
+            ),
+        );
         app.update(|cx| {
             gpui_component::init(cx);
             theme::colours::init(ThemeOverrides::default(), cx);
+            theme::colours::set_device_colours(&config, cx);
         });
         let (clock, date) = lib_core::Clock::settable(today());
         let shared = stores.as_ref().map(|ledger| ledger.stores.stores.clone());
@@ -509,6 +565,7 @@ impl<'a> Harness<'a> {
             router::build(
                 persisted,
                 config.general.start_view(),
+                Rc::new(DeviceConfigFile::new(&config, writer)),
                 ShellBindings { keybindings },
                 ShellLogs {
                     buffer: logs.clone(),
@@ -520,20 +577,16 @@ impl<'a> Harness<'a> {
                 cx,
             )
         });
-        let mut ui = Self {
+        cx.run_until_parked();
+        Self {
             shell,
             cx,
             logs,
             date,
             commits,
             stores: shared,
-            conf_dir: tempfile::tempdir().expect("a temporary directory"),
-        };
-        ui.configure(config, &[]);
-        ui.shell.update(ui.cx, |shell, cx| {
-            shell.set_this_device(lib_settings::ThisDevice::default(), cx)
-        });
-        ui
+            conf_dir,
+        }
     }
 
     /// As [`Harness::new`], on a device's settings as start-up read them from `config`, under
@@ -543,35 +596,25 @@ impl<'a> Harness<'a> {
         config: &lib_config::Config,
         env: &[(&str, &str)],
     ) -> Self {
-        let mut ui = Self::new(app);
-        ui.configure(config, env);
-        ui
+        Self::on_device(
+            app,
+            Device {
+                config: config.clone(),
+                env,
+                ..Device::default()
+            },
+        )
     }
 
     /// As [`Harness::new`], with the conf file holding `text` before start-up reads it.
     pub fn with_conf_file(app: &'a mut TestAppContext, text: &str) -> Self {
-        let mut ui = Self::new(app);
-        std::fs::write(ui.conf_path(), text).expect("the conf file is written");
-        ui.configure(&lib_config::Config::default(), &[]);
-        ui
-    }
-
-    /// Applies a device's settings from `config` as `run` does at start, writing to this Shell's
-    /// conf file under `env`.
-    fn configure(&mut self, config: &lib_config::Config, env: &[(&str, &str)]) {
-        let writer = lib_config::ConfigWriter::new(
-            Some(self.conf_path()),
-            lib_config::Overrides::environment(
-                env.iter()
-                    .map(|(name, value)| ((*name).to_string(), (*value).to_string())),
-            ),
-        );
-        self.cx
-            .update(|_, cx| theme::colours::set_device_colours(config, cx));
-        self.shell.update(self.cx, |shell, cx| {
-            shell.set_configuration(config, writer, cx)
-        });
-        self.cx.run_until_parked();
+        Self::on_device(
+            app,
+            Device {
+                conf: text,
+                ..Device::default()
+            },
+        )
     }
 
     /// The `personal-ledger.conf` Settings writes a device's settings to.

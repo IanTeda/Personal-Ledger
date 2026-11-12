@@ -91,11 +91,11 @@ use crate::{
     documents::{DocumentsMode, LibraryScope, LibrarySort},
     navigation::active_view::ActiveView,
     navigation::nav::{NavState, Noun, RailMode},
-    settings::{SettingsPage, device::DeviceConfigFile, router::PageChanged, state::SettingsView},
+    settings::{SettingsPage, router::PageChanged, state::SettingsView},
     shell::state::ShellState,
     shell::view::window_size::WindowSize,
 };
-use lib_settings::DisplayOutput;
+use lib_settings::{DeviceConfiguration, DisplayOutput};
 use std::rc::Rc;
 
 /// The collapsed rail's own hover-reveal delay (`docs/ux/desktop-mockups/01-shell/README.md`'s
@@ -123,7 +123,9 @@ pub struct ShellLogs {
 /// in-memory ports), which the Shell opens as its Open Ledger through [`OpenLedger::build`]; `None`
 /// starts with no Ledger open. `start_view` is where it lands (ADR-0053,
 /// [`crate::start_view::landing`]): `last` reads the noun the state file remembers, and a noun that
-/// needs a Ledger lands on the Dashboard with none open.
+/// needs a Ledger lands on the Dashboard with none open. `device` is the configuration file
+/// start-up read (ADR-0053), which Settings › General and Display read once and write to, and whose
+/// Data folder `:open` and `:new` start in.
 #[expect(
     clippy::too_many_arguments,
     reason = "each is a separate thing start-up read; bundling them would only rename the list"
@@ -131,6 +133,7 @@ pub struct ShellLogs {
 pub fn build(
     persisted: PersistedState,
     start_view: &lib_core::StartView,
+    device: Rc<dyn DeviceConfiguration>,
     bindings: ShellBindings,
     logs: ShellLogs,
     ledger: Option<LedgerFile>,
@@ -157,7 +160,7 @@ pub fn build(
         .map(SettingsPage::from_id)
         .unwrap_or_default();
 
-    let mut shell = Root::with_clock(nav, focus_handle, clock, cx);
+    let mut shell = Root::with_clock(nav, focus_handle, clock, device, cx);
     shell.set_keymaps(&bindings.keybindings, cx);
     if let Some(ledger) = ledger {
         shell.open_ledger(ledger, cx);
@@ -222,14 +225,18 @@ pub struct Root {
 impl Root {
     /// Builds the Shell on `clock`, which dates the seeded sample data from the day it reads now, so
     /// tests pin it rather than live at the mercy of the wall clock. Builds no Ledger: that is
-    /// [`Self::open_ledger`]'s. Settings comes up with its This device pages.
+    /// [`Self::open_ledger`]'s. Settings comes up with its This device pages on `device`, and the
+    /// Toasts, the file explorer's start and the configuration file the status line names follow
+    /// what it reads. The Display output reaches the Views as a Ledger opens.
     pub fn with_clock(
         nav: NavState,
         focus_handle: FocusHandle,
         clock: lib_core::Clock,
+        device: Rc<dyn DeviceConfiguration>,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        let settings = cx.new(SettingsView::new);
+        let snapshot = device.read();
+        let settings = cx.new(|cx| SettingsView::new(device, cx));
         let mut _settings_subscriptions = settings.subscribe(&Self::page_signals(cx), cx);
         // The frame's Router says which page the person moved to, for Back and Forward.
         _settings_subscriptions.push(cx.subscribe(&settings, |shell, _, PageChanged(page), cx| {
@@ -252,7 +259,7 @@ impl Root {
             #[cfg(debug_assertions)]
             debug_toast_kind: 0,
             keybindings: lib_config::KeyBindingConfig::default(),
-            configuration_file: None,
+            configuration_file: snapshot.file.clone(),
             last_ledger_forgotten: false,
             documents_state: None,
             open: None,
@@ -264,8 +271,13 @@ impl Root {
                 presenter.set_palette_entries(command::palette_entries(
                     &lib_config::KeyBindingConfig::default(),
                 ));
-                // Until start-up names the Data folder, `:open` and `:new` start at home.
-                presenter.set_explorer_start(None, dirs::home_dir());
+                presenter.set_explorer_start(
+                    snapshot.data_folder().map(std::path::Path::to_path_buf),
+                    dirs::home_dir(),
+                );
+                presenter.toast(ToastInput::Display(lib_toast::Display {
+                    toasts_on: lib_settings::GeneralSettings::read(&snapshot).toasts_on,
+                }));
                 presenter
             },
         }
@@ -442,33 +454,19 @@ impl Root {
         });
     }
 
-    /// Hands Settings › General and Display the configuration file, which each reads its settings
-    /// from and writes them to (ADR-0053), and applies a device's settings as start-up read them:
-    /// the date style, Row density and Status glyphs to the Views that draw with them, and Toasts
-    /// to the Toasts. The Colour Theme and Appearance are the colours', set before the window opens
-    /// ([`crate::theme::colours::set_device_colours`]).
-    pub fn set_configuration(
-        &mut self,
-        config: &lib_config::Config,
-        writer: lib_config::ConfigWriter,
-        cx: &mut App,
-    ) {
-        let device: Rc<dyn lib_settings::DeviceConfiguration> =
-            Rc::new(DeviceConfigFile::new(config, writer));
+    /// Shows `last_ledger` on Settings › General: the Ledger file the state file will remember at
+    /// quit, which start-up knows before any `:open`.
+    pub fn set_last_ledger(&mut self, last_ledger: Option<std::path::PathBuf>, cx: &mut App) {
         self.settings
-            .update(cx, |view, cx| view.configure_device(device, cx));
-        let output = self.display_output(cx);
-        self.push_display_preferences(output, cx);
-        self.push_toasts_on(config.general.toasts());
+            .update(cx, |view, cx| view.set_last_ledger(last_ledger, cx));
     }
 
-    /// Shows `device` on Settings › General: what start-up knows of this device.
-    pub fn set_this_device(&mut self, device: lib_settings::ThisDevice, cx: &mut App) {
-        self.configuration_file = device.configuration.clone();
+    /// Points the file explorer at `folder` in place of the Data folder the device read, for a UI
+    /// test whose folder is made after the Shell is built.
+    #[doc(hidden)]
+    pub fn browse_from_for_test(&mut self, folder: std::path::PathBuf) {
         self.presenter
-            .set_explorer_start(Some(device.data_folder.clone()), dirs::home_dir());
-        self.settings
-            .update(cx, |view, cx| view.set_this_device(device, cx));
+            .set_explorer_start(Some(folder), dirs::home_dir());
     }
 
     /// The rail's badge counts the Shell's Presenter holds, which the rail draws; `None` with no

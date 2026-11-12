@@ -12,9 +12,11 @@ use super::common;
 use bin_desktop::shell::router::SettingsGeneralSnapshot;
 
 use bin_desktop::WindowSize;
-use common::Harness;
+use bin_desktop::persistence::PersistedState;
+use common::{Device, Harness};
 use gpui::TestAppContext;
 use lib_core::{OnStart, StartView};
+use std::path::PathBuf;
 use std::time::Duration;
 
 /// Settings on General, the first page, with focus stepped into it.
@@ -461,18 +463,19 @@ fn on_settings_page(ui: &mut Harness<'_>, page: &str) {
 
 /// A THIS DEVICE page names the configuration file at every width.
 fn names_the_configuration_file(app: &mut TestAppContext, page: &str) {
-    let mut ui = Harness::new(app);
     #[expect(clippy::expect_used, reason = "a test with no home folder can't run")]
     let home = dirs::home_dir().expect("a home folder");
-    ui.set_configuration_file(Some(
-        home.join(".config/personal-ledger/personal-ledger.conf"),
-    ));
+    // A folder no one keeps, so the test never reads a real configuration.
+    let mut ui = on_configuration_file(
+        app,
+        Some(home.join(".config/personal-ledger-ui-test/personal-ledger.conf")),
+    );
     on_settings_page(&mut ui, page);
     for size in [WindowSize::Large, WindowSize::XLarge] {
         ui.resize_to(size);
         assert_eq!(
             ui.status_right(size),
-            "~/.config/personal-ledger/personal-ledger.conf",
+            "~/.config/personal-ledger-ui-test/personal-ledger.conf",
             "{page}"
         );
     }
@@ -506,8 +509,7 @@ fn about_names_the_configuration_file(app: &mut TestAppContext) {
 
 #[gpui::test]
 fn a_this_ledger_page_names_the_ledger_file(app: &mut TestAppContext) {
-    let mut ui = Harness::new(app);
-    ui.set_configuration_file(Some("/etc/pl/personal-ledger.conf".into()));
+    let mut ui = on_configuration_file(app, Some("/etc/pl/personal-ledger.conf".into()));
     on_settings_page(&mut ui, "Units");
     let right = ui.status_right(WindowSize::Large);
     assert!(!right.contains("personal-ledger.conf"), "{right}");
@@ -516,8 +518,15 @@ fn a_this_ledger_page_names_the_ledger_file(app: &mut TestAppContext) {
 
 #[gpui::test]
 fn with_no_ledger_open_general_still_names_the_configuration_file(app: &mut TestAppContext) {
-    let mut ui = Harness::without_ledger(app);
-    ui.set_configuration_file(Some("/etc/pl/personal-ledger.conf".into()));
+    let mut ui = Harness::starting_on(
+        app,
+        bin_desktop::Started::NoLedger,
+        PersistedState::default(),
+        Device {
+            file: Some(Some("/etc/pl/personal-ledger.conf".into())),
+            ..Device::default()
+        },
+    );
     ui.press("g s");
     assert_eq!(ui.settings_frame().page, "General");
     ui.press("l");
@@ -529,15 +538,26 @@ fn with_no_ledger_open_general_still_names_the_configuration_file(app: &mut Test
 
 #[gpui::test]
 fn with_no_configuration_file_the_right_side_says_so(app: &mut TestAppContext) {
-    let mut ui = in_general(app);
-    ui.set_configuration_file(None);
+    let mut ui = on_configuration_file(app, None);
+    on_settings_page(&mut ui, "General");
     assert_eq!(ui.status_right(WindowSize::Large), "no configuration file");
 }
 
-/// General with the Data folder focused on `dir`.
+/// The Shell with `file` the configuration file Settings names, or none.
+fn on_configuration_file(app: &mut TestAppContext, file: Option<PathBuf>) -> Harness<'_> {
+    Harness::on_device(
+        app,
+        Device {
+            file: Some(file),
+            ..Device::default()
+        },
+    )
+}
+
+/// General with the Data folder focused, `dir` the Data folder in force.
 fn on_the_data_folder<'a>(app: &'a mut TestAppContext, dir: &std::path::Path) -> Harness<'a> {
-    let mut ui = in_general(app);
-    ui.browse_from(dir);
+    let mut ui = Harness::with_configuration(app, &common::browsing(dir), &[]);
+    ui.press("g s l");
     ui.press("j j j j");
     assert_eq!(ui.settings::<SettingsGeneralSnapshot>().field, Some(4));
     ui
@@ -599,10 +619,9 @@ fn a_data_folder_an_environment_variable_sets_is_still_written_and_the_override_
     let var = "PERSONAL_LEDGER_GENERAL__DATA";
     let mut ui = Harness::with_configuration(
         app,
-        &lib_config::Config::default(),
+        &common::browsing(dir.path()),
         &[(var, &dir.path().display().to_string())],
     );
-    ui.browse_from(dir.path());
     ui.press("g s l j j j j");
     let note = ui.settings::<SettingsGeneralSnapshot>().data_folder_note;
     assert!(

@@ -37,7 +37,7 @@ use lib_list_cursor::Step;
 use lib_settings::{
     ColourChoice, DataFolderOutcome, DeviceConfiguration, DisplayEvent, DisplayOutput,
     GeneralEvent, LedgerSummaries, PageSummary, ScopeFacts, SettingsFrameEvent,
-    SettingsFramePresenter, SettingsFrameSetup, SettingsFrameViewModel, SummarySources, ThisDevice,
+    SettingsFramePresenter, SettingsFrameSetup, SettingsFrameViewModel, SummarySources,
     TracingLevel, TracingLog,
     keymap::{
         display_keymap, general_keymap, ledger_keymap, settings_frame_keymap, tracing_keymap,
@@ -87,8 +87,8 @@ impl SettingsView {
     /// Builds the This device pages, which stand with no Ledger open; [`Self::open_ledger`] adds
     /// the This Ledger pages. The Tracing capture arrives later, through `Root::set_log_capture`,
     /// and the frame's `[keybindings]` through [`Self::set_keymaps`].
-    pub fn new(cx: &mut Context<'_, Self>) -> Self {
-        let pages = SettingsPages::new(cx);
+    pub fn new(device: Rc<dyn DeviceConfiguration>, cx: &mut Context<'_, Self>) -> Self {
+        let pages = SettingsPages::new(device, cx);
         let _page_subscriptions = subscribe_pages(&pages, cx);
         let config = KeyBindingConfig::default();
         let frame = SettingsFramePresenter::new(SettingsFrameSetup {
@@ -295,13 +295,13 @@ impl SettingsView {
             return None;
         }
         let general = self.pages.general.read(cx).presenter();
-        let (general, device, locale) =
-            (general.settings(), general.this_device(), general.locale());
+        let (general, data_folder, locale) =
+            (general.settings(), general.data_folder(), general.locale());
         let display = self.pages.display.read(cx).presenter().settings();
         let version = self.pages.about.read(cx).view_model().version;
         let sources = SummarySources {
             general,
-            device,
+            data_folder,
             locale,
             display: &display,
             log_level: self.pages.tracing.read(cx).presenter().level(),
@@ -714,28 +714,6 @@ impl SettingsView {
     // General
     // -----------------------------------------------------------------------------------------
 
-    /// Reads and writes General's and Display's settings on `device` from now on, each page
-    /// showing what it reads.
-    pub fn configure_device(
-        &mut self,
-        device: Rc<dyn DeviceConfiguration>,
-        cx: &mut Context<'_, Self>,
-    ) {
-        let for_general = device.clone();
-        self.pages.general.update(cx, |page, cx| {
-            page.update_presenter(cx, |presenter| presenter.configure(for_general));
-        });
-        self.pages.display.update(cx, |page, cx| {
-            page.update_presenter(cx, |presenter| presenter.configure(device));
-        });
-    }
-
-    pub fn set_this_device(&mut self, device: ThisDevice, cx: &mut Context<'_, Self>) {
-        self.pages.general.update(cx, |page, cx| {
-            page.update_presenter(cx, |presenter| presenter.set_this_device(device));
-        });
-    }
-
     /// The Ledger file the state file will remember at quit, once `:open` has opened one.
     pub fn set_last_ledger(&mut self, last_ledger: Option<PathBuf>, cx: &mut Context<'_, Self>) {
         self.pages.general.update(cx, |page, cx| {
@@ -930,7 +908,12 @@ mod tests {
         };
         let announcer = cx.new(|_| Announcer::default());
         let clock = lib_core::Clock::fixed(today);
-        let view = cx.new(SettingsView::new);
+        let view = cx.new(|cx| {
+            SettingsView::new(
+                Rc::new(lib_settings::fake::InMemoryDeviceConfiguration::default()),
+                cx,
+            )
+        });
         view.update(cx, |view, cx| {
             for page in SettingsPage::ALL {
                 assert_eq!(

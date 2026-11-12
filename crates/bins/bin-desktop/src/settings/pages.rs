@@ -10,7 +10,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use lib_settings::{
-    LedgerCounts, LedgerSummaries, SettingsFrameEvent, keymap::settings_frame_keymap,
+    DeviceConfiguration, LedgerCounts, LedgerSummaries, SettingsFrameEvent,
+    keymap::settings_frame_keymap,
 };
 use lib_viper::keymap::{KeyBindingConfig, Keymap};
 
@@ -26,7 +27,6 @@ use crate::{
         SettingsPage,
         about::{AboutPage, about_page},
         data_backup::{DataBackupPage, data_backup_page},
-        device::DeviceConfigFile,
         display::{DisplayPage, display_page},
         general::{GeneralPage, general_page},
         ledger::{LedgerKeys, LedgerPage, ledger_page},
@@ -182,15 +182,14 @@ impl LedgerPages {
 }
 
 impl SettingsPages {
-    /// The This device pages, with no Ledger open.
-    pub fn new(cx: &mut Context<'_, SettingsView>) -> Self {
+    /// The This device pages, with no Ledger open, General and Display on `device`, each reading
+    /// it once.
+    pub fn new(device: Rc<dyn DeviceConfiguration>, cx: &mut Context<'_, SettingsView>) -> Self {
         let log_feed = cx.new(|_| LogFeed);
         Self {
-            // No configuration file until `configure_device` hands over start-up's, so a write
-            // before then is refused.
             general: cx.new(|cx| {
                 general_page(
-                    Rc::new(DeviceConfigFile::default()),
+                    device.clone(),
                     &KeyBindingConfig::default(),
                     super::state::back_chord(&KeyBindingConfig::default()),
                     cx,
@@ -198,7 +197,7 @@ impl SettingsPages {
             }),
             display: cx.new(|cx| {
                 display_page(
-                    Rc::new(DeviceConfigFile::default()),
+                    device,
                     &KeyBindingConfig::default(),
                     super::state::back_chord(&KeyBindingConfig::default()),
                     cx,

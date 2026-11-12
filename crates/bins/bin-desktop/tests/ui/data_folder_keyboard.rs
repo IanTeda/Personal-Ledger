@@ -154,9 +154,8 @@ fn rebound_go_into_and_go_up_keys_walk_the_folders(app: &mut TestAppContext) {
 #[gpui::test]
 fn escape_closes_the_picker_with_nothing_changed(app: &mut TestAppContext) {
     let dir = common::data_folder();
-    let mut ui = Harness::new(app);
+    let mut ui = Harness::with_configuration(app, &common::browsing(dir.path()), &[]);
     ui.press("g w");
-    ui.browse_from(dir.path());
     ui.press(": d a t a enter");
     ui.press("l");
 
@@ -176,8 +175,7 @@ fn escape_closes_the_picker_with_nothing_changed(app: &mut TestAppContext) {
 #[gpui::test]
 fn using_the_folder_already_set_writes_nothing_and_raises_nothing(app: &mut TestAppContext) {
     let dir = common::data_folder();
-    let mut ui = Harness::new(app);
-    ui.browse_from(dir.path());
+    let mut ui = Harness::with_configuration(app, &common::browsing(dir.path()), &[]);
     ui.press(": d a t a enter");
 
     ui.press("ctrl-enter");

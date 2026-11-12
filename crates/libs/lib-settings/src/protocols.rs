@@ -114,6 +114,15 @@ impl DeviceSnapshot {
             state.effective.as_ref()
         }
     }
+
+    /// The Data folder in effect, where `:open` and `:new` start: Data's value in force, whatever
+    /// the file names; `None` when nothing sets it.
+    pub fn data_folder(&self) -> Option<&std::path::Path> {
+        match &self.get(ConfigKey::Data).effective {
+            Some(ConfigValue::Data(folder)) => Some(folder),
+            _ => None,
+        }
+    }
 }
 
 /// `key`'s place in [`ConfigKey::ALL`].
@@ -281,6 +290,24 @@ pub trait LedgerSummaries {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_data_folder_in_effect_is_datas_value_in_force_not_the_files() {
+        let snapshot = DeviceSnapshot::new(None, |key| match key {
+            ConfigKey::Data => KeyState {
+                stored: Some(ConfigValue::Data(PathBuf::from("/home/me/finance"))),
+                effective: Some(ConfigValue::Data(PathBuf::from("/home/me/ledgers"))),
+                shadow: Some("--data".to_string()),
+            },
+            _ => KeyState::default(),
+        });
+
+        assert_eq!(
+            snapshot.data_folder(),
+            Some(std::path::Path::new("/home/me/ledgers"))
+        );
+        assert_eq!(DeviceSnapshot::default().data_folder(), None);
+    }
 
     #[test]
     fn only_the_locale_and_the_data_folder_are_written_while_shadowed() {

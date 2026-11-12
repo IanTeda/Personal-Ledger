@@ -60,6 +60,7 @@ use gpui::{
 pub use error::Error;
 use lib_database::{Storage, open_storage};
 use persistence::{PersistedState, WindowGeometry};
+pub use settings::device::DeviceConfigFile;
 pub use shell::view::window_size::{WindowSize, WindowSizeExt};
 
 /// Crate Result type alias used across the Desktop binary.
@@ -314,11 +315,6 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, started: S
     // state file keeps the one open at quit, which `:open` may have changed, for On start.
     let last_ledger = last_ledger_at_quit(opened.as_deref(), persisted.last_ledger.as_deref());
     let remembered_ledger = persisted.last_ledger.clone();
-    let this_device = lib_settings::ThisDevice {
-        data_folder: config.general_config().data().to_path_buf(),
-        last_ledger,
-        configuration: config.writer().target().map(std::path::Path::to_path_buf),
-    };
     // What the state file holds that only a Ledger open at quit replaces.
     let remembered_settings_page = persisted.settings_page.clone();
     let remembered = (
@@ -398,9 +394,14 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, started: S
                         })
                         .detach();
                     cx.new(|cx| {
+                        let device = std::rc::Rc::new(DeviceConfigFile::new(
+                            &device_settings,
+                            device_writer,
+                        ));
                         let mut shell = shell::router::build(
                             persisted,
                             device_settings.general.start_view(),
+                            device,
                             shell::router::ShellBindings { keybindings },
                             shell::router::ShellLogs {
                                 buffer: logs,
@@ -411,8 +412,7 @@ pub fn run(config: &lib_config::Config, logs: lib_tracing::LogBuffer, started: S
                             focus_handle,
                             cx,
                         );
-                        shell.set_configuration(&device_settings, device_writer, cx);
-                        shell.set_this_device(this_device, cx);
+                        shell.set_last_ledger(last_ledger, cx);
                         if let Some(failure) = &failure {
                             shell.ledger_open_failed(failure);
                         }

@@ -8,7 +8,7 @@
 
 mod render;
 
-use std::path::PathBuf;
+use std::path::Path;
 use std::rc::Rc;
 
 use gpui::{AnyElement, App, Context, Window};
@@ -156,9 +156,9 @@ impl PageSnapshot for SettingsGeneralSnapshot {
     type Presenter = GeneralPresenter;
 
     fn read(page: &GeneralPage, _cx: &App) -> Self {
-        let path = |path: &PathBuf| path.display().to_string();
-        let settings = page.presenter().settings();
-        let device = page.presenter().this_device();
+        let path = |path: &Path| path.display().to_string();
+        let presenter = page.presenter();
+        let settings = presenter.settings();
         let view = page.view_model();
         SettingsGeneralSnapshot {
             field: view.field,
@@ -169,11 +169,11 @@ impl PageSnapshot for SettingsGeneralSnapshot {
             start_view_list: view.start_view.list.highlight(),
             locale_list: view.locale.list.highlight(),
             locale_note: view.locale.note,
-            data_folder: path(&device.data_folder),
+            data_folder: path(presenter.data_folder()),
             data_folder_shown: view.data_folder.value,
             data_folder_note: view.data_folder.note,
-            last_ledger: device.last_ledger.as_ref().map(path),
-            configuration: device.configuration.as_ref().map(path),
+            last_ledger: presenter.last_ledger().map(path),
+            configuration: presenter.configuration_file().map(path),
         }
     }
 }
