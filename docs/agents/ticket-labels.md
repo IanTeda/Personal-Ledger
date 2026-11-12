@@ -61,7 +61,7 @@ Tripwires, checked against the commit's diff and the run; the paths for each are
 3. **Security surface:** authentication, tokens or user credentials.
 4. **Build and guardrails:** workspace manifests, dependency policy, toolchain pins, hooks or CI workflows.
 5. **Decisions:** a new or changed ADR, or a glossary term.
-6. **The run:** an acceptance criterion not verified, a test skipped, or a decision the ticket didn't make.
+6. **The run:** an acceptance criterion not verified, a test skipped, or a decision the ticket didn't make: a public type, variant, function or field it doesn't name, a behaviour a user could notice changing, or a file changed outside its scope. Names, private helpers and test layout are the implementer's to choose and fire nothing.
 
 A gated ticket closes when you close it, or when you tell Claude it's approved.
 

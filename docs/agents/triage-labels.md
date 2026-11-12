@@ -34,7 +34,7 @@ Performance work is a `bug` or `tooling`, writing tests is part of the change it
 
 ## Agent Labels
 
-The `agent:` label names who actions a ticket: `agent:human`, or an `agent:<model>-<effort>` label naming the model and effort to run it with. Every `flow:implementation` ticket carries exactly one `agent:` label. Pick it by what the change adds, not by the ticket's type, and use the same split when picking a subagent's model. If Haiku medium hits ambiguity or a decision point, it stops and the ticket is relabelled up rather than guessed at.
+The `agent:` label names who actions a ticket: `agent:human`, or an `agent:<model>-<effort>` label naming the model and effort to run it with. Every `flow:implementation` ticket carries exactly one `agent:` label, except a parent, whose children carry the work and the labels. Pick it by what the change adds, not by the ticket's type, and use the same split when picking a subagent's model. If Haiku medium hits ambiguity or a decision point, it stops and the ticket is relabelled up rather than guessed at.
 
 | Label                 | Use for                                                                                                                                                                                                  |
 | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
