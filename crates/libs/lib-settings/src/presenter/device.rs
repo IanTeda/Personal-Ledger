@@ -1,19 +1,13 @@
 //! What the Settings pages share beside the device settings form (`form.rs`): the stock note
 //! under a field whose key a source above the file sets, and a command's chords for a hint.
 
-use lib_core::configuration::ConfigKey;
 use lib_viper::keymap::Keymap;
 
 use crate::msg;
-use crate::protocols::DeviceSnapshot;
 
-/// The note under a control whose key a source above the file sets.
-pub(super) fn shadowed_note(snapshot: &DeviceSnapshot, key: ConfigKey) -> Option<String> {
-    snapshot
-        .get(key)
-        .shadow
-        .as_deref()
-        .map(msg::settings_device_shadowed_note)
+/// The note under a control whose key `source`, a source above the file, sets; `None` for none.
+pub(super) fn shadowed_note(source: Option<&str>) -> Option<String> {
+    source.map(msg::settings_device_shadowed_note)
 }
 
 /// The chord `command` is bound to, for a hint.

@@ -82,7 +82,7 @@ impl PageSnapshot for SettingsDisplaySnapshot {
         let model = page.view_model();
         let display = model.output;
         SettingsDisplaySnapshot {
-            display_field: model.field,
+            display_field: model.fields.focused(),
             colour_theme_focus: model.grid,
             date_style: display.date_style.map(|style| format!("{style:?}")),
             row_density: format!("{:?}", display.row_density),

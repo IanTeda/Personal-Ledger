@@ -238,10 +238,6 @@ impl Presenter for TracingPresenter {
         match event {
             TracingEvent::Level(step) => {
                 let level = self.mirror.level;
-                // A level that isn't a choice stays where it is.
-                if !TracingLevel::ALL.contains(&level) {
-                    return;
-                }
                 if let Some(next) = lib_list_cursor::step_id(&TracingLevel::ALL, Some(level), step)
                 {
                     self.set_level(next, router);

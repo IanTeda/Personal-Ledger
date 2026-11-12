@@ -19,7 +19,7 @@ use lib_settings::{DisplayEvent, DisplayField};
 use super::DisplayPage;
 use crate::{
     form::fields::UNIFORM_OPTION_WIDTH,
-    settings::controls::{segmented_choices, shadowed},
+    settings::controls::{segmented_choices, shadowed, shadowed_note},
     shell::view::page_clicks::PageClicks,
     theme::color,
     theme::colours::{self, to_gpui},
@@ -78,17 +78,13 @@ pub fn render(
             cx,
         ))
         .child(note(system_hint(state.system()), cx))
-        .children(shadowed(
-            ConfigKey::ColourAppearance,
-            appearance.shadowed.as_deref(),
-            cx,
-        ))
+        .children(shadowed(appearance, cx))
         .child(
             div()
                 .mt(px(18.0))
                 .child(field_label(view.label.clone(), cx)),
         )
-        .children(shadowed(
+        .children(shadowed_note(
             ConfigKey::ColourTheme,
             view.shadowed.as_deref(),
             cx,

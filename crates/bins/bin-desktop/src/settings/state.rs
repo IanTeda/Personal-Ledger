@@ -295,12 +295,12 @@ impl SettingsView {
             return None;
         }
         let general = self.pages.general.read(cx).presenter();
-        let (general, data_folder, locale) =
+        let (general_settings, data_folder, locale) =
             (general.settings(), general.data_folder(), general.locale());
         let display = self.pages.display.read(cx).presenter().settings();
         let version = self.pages.about.read(cx).view_model().version;
         let sources = SummarySources {
-            general,
+            general: &general_settings,
             data_folder,
             locale,
             display: &display,

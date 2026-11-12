@@ -171,7 +171,7 @@ impl PageSnapshot for SettingsGeneralSnapshot {
                 .and_then(|field| field.own_note.clone())
         };
         SettingsGeneralSnapshot {
-            field: view.field,
+            field: view.fields.focused(),
             on_start: settings.on_start,
             start_view: settings.start_view.key().to_string(),
             toasts_on: settings.toasts_on,

@@ -17,7 +17,7 @@ use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP, SELECT};
 use lib_viper::view::{Choice, Hint, SelectList};
 
-use super::device::{chord, chords};
+use super::device::{chord, chords, shadowed_note};
 use crate::keymap::{NEXT_CHOICE, PREVIOUS_CHOICE};
 use crate::msg;
 use crate::protocols::{DeviceAnswer, DeviceConfiguration, DeviceRefusal, DeviceSnapshot};
@@ -60,11 +60,11 @@ pub enum FieldKind {
 
 /// A field's own note from its value and the source above the file that sets its key, if any:
 /// the Locale's next-start and override note, the Data folder's "overridden, in effect is X".
-pub type OwnNote = Rc<dyn Fn(&FieldValue, Option<&str>) -> Option<String>>;
+pub(crate) type OwnNote = Rc<dyn Fn(&FieldValue, Option<&str>) -> Option<String>>;
 
 /// One field as a page declares it.
 #[derive(Clone)]
-pub struct FieldDecl<F> {
+pub(crate) struct FieldDecl<F> {
     field: F,
     key: Option<ConfigKey>,
     label: String,
@@ -190,7 +190,7 @@ impl<F> FieldDecl<F> {
 
 /// What a page passes on to the form.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FormInput<F> {
+pub(crate) enum FormInput<F> {
     /// `j`/`k`: the field below or above, or an open list's highlight.
     Move(Step),
     /// `h`/`l`: the focused field's choice after or before.
@@ -211,7 +211,7 @@ pub enum FormInput<F> {
 
 /// What the form answers the page, for it to route.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum FormAnswer<F> {
+pub(crate) enum FormAnswer<F> {
     /// The field's value was written and is now shown.
     Saved(F, FieldValue),
     /// A remembered field's value changed; nothing was written.
@@ -225,6 +225,8 @@ pub enum FormAnswer<F> {
 /// One field as drawn.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldView {
+    /// The key the field writes, `None` for a remembered one: the stock shadowed note's selector.
+    pub key: Option<ConfigKey>,
     pub label: String,
     /// Each choice's label, in order.
     pub options: Vec<String>,
@@ -267,6 +269,14 @@ impl<F: Copy + Eq> FieldViews<F> {
     pub fn list_open(&self) -> bool {
         self.0.iter().any(|(_, view)| view.list.is_open())
     }
+
+    /// The field the keyboard is on, `None` while the page doesn't have it.
+    pub fn focused(&self) -> Option<F> {
+        self.0
+            .iter()
+            .find(|(_, view)| view.focused)
+            .map(|(field, _)| *field)
+    }
 }
 
 /// One field and its value now.
@@ -278,7 +288,7 @@ struct Field<F> {
 }
 
 /// A This device page's fields: their focus, values, open list and writes.
-pub struct DeviceForm<F> {
+pub(crate) struct DeviceForm<F> {
     device: Rc<dyn DeviceConfiguration>,
     fields: Vec<Field<F>>,
     focus: Option<F>,
@@ -336,16 +346,12 @@ impl<F: Copy + Eq> DeviceForm<F> {
     /// Whether the page has the keyboard: arriving puts it on the first field in the walk, and
     /// leaving takes it off the fields and closes an open list.
     pub fn set_focused(&mut self, focused: bool) {
-        self.focus = if focused {
-            self.walk().first().copied()
-        } else {
-            None
-        };
+        self.focus = if focused { self.walk().next() } else { None };
         self.close_list();
     }
 
     /// The field's value now.
-    pub fn value(&self, field: F) -> Option<&FieldValue> {
+    pub(crate) fn value(&self, field: F) -> Option<&FieldValue> {
         self.get(field).map(|field| &field.value)
     }
 
@@ -502,6 +508,7 @@ impl<F: Copy + Eq> DeviceForm<F> {
         let entry = self.get(field)?;
         let decl = &entry.decl;
         Some(FieldView {
+            key: decl.key,
             label: decl.label.clone(),
             options: decl
                 .choices
@@ -513,10 +520,7 @@ impl<F: Copy + Eq> DeviceForm<F> {
             hint: decl.note.clone(),
             shadowed: match decl.own_note {
                 Some(_) => None,
-                None => entry
-                    .shadow
-                    .as_deref()
-                    .map(msg::settings_device_shadowed_note),
+                None => shadowed_note(entry.shadow.as_deref()),
             },
             own_note: decl
                 .own_note
@@ -553,15 +557,16 @@ impl<F: Copy + Eq> DeviceForm<F> {
                 Hint::new(back_chord.to_string(), msg::settings_hint_close()),
             ];
         }
-        let walk = Hint::new(
-            chords(keymap, &[MOVE_DOWN, MOVE_UP]),
-            msg::settings_hint_field(),
-        );
-        let Some(decl) = self
-            .focus
-            .and_then(|field| self.get(field))
-            .map(|f| &f.decl)
-        else {
+        match self.focus {
+            Some(field) => self.field_hints(field, keymap),
+            None => vec![walk_hint(keymap)],
+        }
+    }
+
+    /// The keys while `field` has the keyboard and no list is open: `j`/`k` and the field's own.
+    pub(crate) fn field_hints<E: Clone>(&self, field: F, keymap: &Keymap<E>) -> Vec<Hint> {
+        let walk = walk_hint(keymap);
+        let Some(decl) = self.get(field).map(|f| &f.decl) else {
             return vec![walk];
         };
         let change = decl
@@ -601,37 +606,33 @@ impl<F: Copy + Eq> DeviceForm<F> {
     }
 
     /// The fields `j`/`k` walk, in order.
-    fn walk(&self) -> Vec<F> {
+    fn walk(&self) -> impl Iterator<Item = F> + '_ {
         self.fields
             .iter()
             .filter(|entry| entry.decl.kind != FieldKind::NotInWalk)
             .map(|entry| entry.decl.field)
-            .collect()
     }
 
     fn chosen(&self, entry: &Field<F>) -> Option<usize> {
-        entry
-            .decl
-            .choices
-            .iter()
-            .position(|choice| choice.value == entry.value)
+        position(&entry.decl.choices, &entry.value)
     }
 
     /// `j`/`k` walk the fields, answering [`FormAnswer::LeftEnd`] past either end.
     fn move_focus(&mut self, step: Step) -> Option<FormAnswer<F>> {
-        let walk = self.walk();
         let at = self
             .focus
-            .and_then(|focus| walk.iter().position(|field| *field == focus));
+            .and_then(|focus| self.walk().position(|field| field == focus));
         let Some(at) = at else {
-            self.focus = walk.first().copied();
+            let first = self.walk().next();
+            self.focus = first;
             return None;
         };
-        let next = lib_list_cursor::step(at, walk.len(), step);
+        let next = lib_list_cursor::step(at, self.walk().count(), step);
         if next == at && matches!(step, Step::Next | Step::Prev) {
             return Some(FormAnswer::LeftEnd(step));
         }
-        self.focus = walk.get(next).copied();
+        let next = self.walk().nth(next);
+        self.focus = next;
         None
     }
 
@@ -648,11 +649,12 @@ impl<F: Copy + Eq> DeviceForm<F> {
             }
             .map(|choice| choice.value.clone()),
             Presentation::Segmented | Presentation::Dropdown => {
-                let from = entry.decl.step_from.as_ref();
                 let at = self.chosen(entry).unwrap_or_else(|| {
-                    choices
-                        .iter()
-                        .position(|choice| Some(&choice.value) == from)
+                    entry
+                        .decl
+                        .step_from
+                        .as_ref()
+                        .and_then(|from| position(choices, from))
                         .unwrap_or(0)
                 });
                 let next = lib_list_cursor::step(at, choices.len(), step);
@@ -724,6 +726,19 @@ impl<F: Copy + Eq> DeviceForm<F> {
         let value = list.commit(&self.get(field)?.decl.choices)?;
         self.choose(field, value, notify)
     }
+}
+
+/// `value`'s index among `choices`, `None` for a value that isn't one.
+fn position(choices: &[Choice<FieldValue>], value: &FieldValue) -> Option<usize> {
+    choices.iter().position(|choice| &choice.value == value)
+}
+
+/// `j`/`k`'s hint: the field below or above.
+fn walk_hint<E: Clone>(keymap: &Keymap<E>) -> Hint {
+    Hint::new(
+        chords(keymap, &[MOVE_DOWN, MOVE_UP]),
+        msg::settings_hint_field(),
+    )
 }
 
 /// Says on the status line how the write of `key` went, and hands back the value saved, `None`
@@ -1470,6 +1485,7 @@ mod tests {
         assert_eq!(
             view,
             Some(FieldView {
+                key: Some(ConfigKey::RowDensity),
                 label: "Density".to_string(),
                 options: vec![
                     "Compact".to_string(),

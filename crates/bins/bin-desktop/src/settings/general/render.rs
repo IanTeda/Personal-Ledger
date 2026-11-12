@@ -4,7 +4,6 @@
 //! lists the Presenter's; the View keeps only each open list's scroll ([`GeneralWidgets`]).
 
 use gpui::{AnyElement, App, div, prelude::*, px};
-use lib_core::configuration::ConfigKey;
 use lib_settings::presenter::{DataFolderView, FieldView, ThisDeviceView};
 use lib_settings::{GeneralEvent, GeneralField, GeneralViewModel};
 use lib_viper::view::Hint;
@@ -43,7 +42,6 @@ pub(super) fn page(
                         "general-on-start",
                         view,
                         GeneralField::OnStart,
-                        ConfigKey::OnStart,
                         None,
                         clicks,
                         None,
@@ -53,7 +51,7 @@ pub(super) fn page(
                 .children(field(GeneralField::StartView).map(|view| {
                     start_view_field(
                         view,
-                        model.start_view_unlisted.clone(),
+                        model.start_view_unlisted.as_deref(),
                         clicks,
                         &mut widgets.start_view_scroll,
                         cx,
@@ -64,7 +62,6 @@ pub(super) fn page(
                         "general-toasts",
                         view,
                         GeneralField::Toasts,
-                        ConfigKey::Toasts,
                         Some(px(UNIFORM_OPTION_WIDTH)),
                         clicks,
                         Some(test_button(&model.toasts_test, clicks, cx).into_any_element()),
@@ -74,7 +71,7 @@ pub(super) fn page(
                 .children(field(GeneralField::Locale).map(|view| {
                     locale_field(
                         view,
-                        model.locale_fallback.clone(),
+                        model.locale_fallback.as_deref(),
                         clicks,
                         &mut widgets.locale_scroll,
                         cx,
@@ -91,15 +88,10 @@ pub(super) fn page(
 
 /// A segmented field with its label, hint and shadowed note, and `beside` it 8px to its right if
 /// given. A click on an option chooses it by its index.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "one control's parts, each drawn once; a struct would only rename them"
-)]
 fn segmented(
     id: &'static str,
     view: &FieldView,
     field: GeneralField,
-    key: ConfigKey,
     option_width: Option<gpui::Pixels>,
     clicks: &PageClicks<GeneralPage>,
     beside: Option<AnyElement>,
@@ -122,7 +114,7 @@ fn segmented(
                 .children(beside),
         )
         .children(view.hint.clone().map(|text| hint(text, cx)))
-        .children(shadowed(key, view.shadowed.as_deref(), cx))
+        .children(shadowed(view, cx))
 }
 
 /// A dropdown field as the shared select draws it, its list the Presenter's. `scroll` is the open
@@ -224,7 +216,7 @@ fn button(
 /// A noun from the file that isn't a choice shows nothing chosen and is named under the field.
 fn start_view_field(
     view: &FieldView,
-    unlisted: Option<String>,
+    unlisted: Option<&str>,
     clicks: &PageClicks<GeneralPage>,
     scroll: &mut usize,
     cx: &App,
@@ -232,7 +224,7 @@ fn start_view_field(
     let unlisted = unlisted.map(|text| {
         div()
             .debug_selector(|| "general-start-view-unlisted".to_string())
-            .child(hint(text, cx))
+            .child(hint(text.to_string(), cx))
     });
     focus_mark(view.focused, cx)
         .child(dropdown(
@@ -245,7 +237,7 @@ fn start_view_field(
         ))
         .children(unlisted)
         .children(view.hint.clone().map(|text| hint(text, cx)))
-        .children(shadowed(ConfigKey::StartView, view.shadowed.as_deref(), cx))
+        .children(shadowed(view, cx))
 }
 
 /// The Locale's dropdown (#1156), each choice its label then its code (`System · now en-AU`), then
@@ -253,7 +245,7 @@ fn start_view_field(
 /// (DESKTOP-185, DESKTOP-186).
 fn locale_field(
     view: &FieldView,
-    fallback: Option<String>,
+    fallback: Option<&str>,
     clicks: &PageClicks<GeneralPage>,
     scroll: &mut usize,
     cx: &App,
@@ -273,7 +265,7 @@ fn locale_field(
             cx,
         ))
         .children(note)
-        .children(fallback.map(|text| hint(text, cx)))
+        .children(fallback.map(|text| hint(text.to_string(), cx)))
         .children(view.hint.clone().map(|text| hint(text, cx)))
 }
 

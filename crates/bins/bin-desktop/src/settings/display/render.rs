@@ -6,7 +6,6 @@
 //! [`PageClicks`].
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
-use lib_core::configuration::ConfigKey;
 use lib_settings::presenter::display::DATE_STYLE_CHOICES;
 use lib_settings::presenter::{FieldView, PreviewView};
 use lib_settings::{DisplayEvent, DisplayField, DisplayViewModel};
@@ -50,60 +49,49 @@ pub(super) fn page(
     cx: &App,
 ) -> AnyElement {
     let field = |field| model.fields.view(field);
-    let columns = div()
-        .flex()
-        .flex_wrap()
-        .gap_x(px(40.0))
-        .gap_y(px(24.0))
-        .child(
-            div()
-                .debug_selector(|| "display-fields".to_string())
-                .w(FIELD_COLUMN_WIDTH)
-                .flex_none()
-                .flex()
-                .flex_col()
-                .gap(px(18.0))
-                .children(field(DisplayField::DateStyle).map(|view| {
-                    segmented(
-                        "display-date-style",
-                        view,
-                        DisplayField::DateStyle,
-                        clicks,
-                        cx,
-                    )
-                    .children(shadowed(
-                        ConfigKey::DateStyle,
-                        view.shadowed.as_deref(),
-                        cx,
-                    ))
-                }))
-                .children(field(DisplayField::RowDensity).map(|view| {
-                    segmented(
-                        "display-row-density",
-                        view,
-                        DisplayField::RowDensity,
-                        clicks,
-                        cx,
-                    )
-                    .children(shadowed(
-                        ConfigKey::RowDensity,
-                        view.shadowed.as_deref(),
-                        cx,
-                    ))
-                }))
-                .children(field(DisplayField::StatusGlyphs).map(|view| {
-                    status_glyphs_field(view, clicks, cx).children(shadowed(
-                        ConfigKey::StatusGlyphs,
-                        view.shadowed.as_deref(),
-                        cx,
-                    ))
-                }))
-                .children(field(DisplayField::StartSidebar).map(|view| {
-                    focus_mark(view.focused, cx)
-                        .child(start_sidebar_minimised_toggle(view, clicks, cx))
-                })),
-        )
-        .child(preview_column(&model.preview, cx));
+    let columns =
+        div()
+            .flex()
+            .flex_wrap()
+            .gap_x(px(40.0))
+            .gap_y(px(24.0))
+            .child(
+                div()
+                    .debug_selector(|| "display-fields".to_string())
+                    .w(FIELD_COLUMN_WIDTH)
+                    .flex_none()
+                    .flex()
+                    .flex_col()
+                    .gap(px(18.0))
+                    .children(field(DisplayField::DateStyle).map(|view| {
+                        segmented(
+                            "display-date-style",
+                            view,
+                            DisplayField::DateStyle,
+                            clicks,
+                            cx,
+                        )
+                        .children(shadowed(view, cx))
+                    }))
+                    .children(field(DisplayField::RowDensity).map(|view| {
+                        segmented(
+                            "display-row-density",
+                            view,
+                            DisplayField::RowDensity,
+                            clicks,
+                            cx,
+                        )
+                        .children(shadowed(view, cx))
+                    }))
+                    .children(field(DisplayField::StatusGlyphs).map(|view| {
+                        status_glyphs_field(view, clicks, cx).children(shadowed(view, cx))
+                    }))
+                    .children(field(DisplayField::StartSidebar).map(|view| {
+                        focus_mark(view.focused, cx)
+                            .child(start_sidebar_minimised_toggle(view, clicks, cx))
+                    })),
+            )
+            .child(preview_column(&model.preview, cx));
     div()
         .flex()
         .flex_col()

@@ -29,7 +29,7 @@ use lib_viper::keymap::{Keymap, SELECT};
 use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Choice, Hint};
 
-use super::device::chords;
+use super::device::chord;
 use super::form::{
     DeviceForm, FieldDecl, FieldValue, FieldViews, FormAnswer, FormInput, Presentation,
 };
@@ -176,15 +176,6 @@ impl GeneralSettings {
         settings
     }
 
-    /// Takes `value`, as a field saved it; **System** for `None`.
-    fn take_field(&mut self, field: GeneralField, value: &FieldValue) {
-        match value {
-            FieldValue::Set(value) => self.take(value),
-            FieldValue::Unset if field == GeneralField::Locale => self.locale = None,
-            FieldValue::Unset | FieldValue::Flag(_) => {}
-        }
-    }
-
     fn take(&mut self, value: &ConfigValue) {
         match value {
             ConfigValue::OnStart(on_start) => self.on_start = *on_start,
@@ -268,8 +259,6 @@ pub struct DataFolderView {
 /// General as the Client draws it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GeneralViewModel {
-    /// The field the keyboard is on.
-    pub field: Option<GeneralField>,
     /// Each field as the form draws it, in [`GeneralField::ALL`]'s order. The Locale's note while
     /// its choice waits on the next start or a source above the file overrides it is the field's
     /// own note.
@@ -293,11 +282,10 @@ pub struct GeneralPresenter {
     keymap: Keymap<GeneralEvent>,
     back_chord: String,
     locale: LocaleLine,
+    /// The fields and the values they show, as each write's answer keeps them.
     form: DeviceForm<GeneralField>,
-    /// The values shown, as each write's answer keeps them.
-    settings: GeneralSettings,
     /// The Data folder in effect, where `:open` and `:new` start: Data's value in force, until a
-    /// write that applies at once replaces it.
+    /// write that applies at once replaces it. Not the field's value, which is the file's.
     data_folder: PathBuf,
     /// The Ledger file open now, which the Client remembers at quit; `None` with none open.
     last_ledger: Option<PathBuf>,
@@ -318,7 +306,6 @@ impl GeneralPresenter {
             .collect();
         Self {
             form: DeviceForm::new(setup.device, &snapshot, fields),
-            settings: GeneralSettings::read(&snapshot),
             data_folder,
             last_ledger: None,
             snapshot,
@@ -352,8 +339,15 @@ impl GeneralPresenter {
         true
     }
 
-    pub fn settings(&self) -> &GeneralSettings {
-        &self.settings
+    /// The settings the fields show, as start-up read them or as the page last wrote them.
+    pub fn settings(&self) -> GeneralSettings {
+        let mut settings = GeneralSettings::default();
+        for field in GeneralField::ALL {
+            if let Some(FieldValue::Set(value)) = self.form.value(field) {
+                settings.take(value);
+            }
+        }
+        settings
     }
 
     /// The Ledger file the Client will remember at quit, `None` with none open.
@@ -374,11 +368,6 @@ impl GeneralPresenter {
     /// The Data folder in effect, where `:open` and `:new` start.
     pub fn data_folder(&self) -> &Path {
         &self.data_folder
-    }
-
-    /// Whether Start view's or the Locale's list is open.
-    pub fn list_open(&self) -> bool {
-        self.form.list_open()
     }
 
     /// The folder the picker picked, from **Change…** or `:data`, written as the Data folder: the
@@ -416,17 +405,13 @@ impl GeneralPresenter {
                     ToastKind::Success,
                     msg::settings_general_data_folder_now(&saved.display().to_string()),
                 ));
-                self.data_folder = saved.clone();
-                self.settings.data = Some(saved);
+                self.data_folder = saved;
                 DataFolderOutcome::Applied
             }
             saved => {
                 notices.into_iter().for_each(|notice| router.notify(notice));
                 match saved {
-                    Some(saved) => {
-                        self.settings.data = Some(saved);
-                        DataFolderOutcome::SavedOverridden
-                    }
+                    Some(_) => DataFolderOutcome::SavedOverridden,
                     None => DataFolderOutcome::NotWritten,
                 }
             }
@@ -443,44 +428,27 @@ impl Presenter for GeneralPresenter {
         if !self.takes(&event) {
             return;
         }
-        let answer = match event {
-            GeneralEvent::SetToasts(on) => {
-                self.form.close_list();
-                self.form.write(
-                    GeneralField::Toasts,
-                    FieldValue::Set(ConfigValue::Toasts(on)),
-                    router,
-                )
-            }
-            // The test touches no setting: the Shell's Toasts raise it.
-            GeneralEvent::TestToasts | GeneralEvent::PressTest => {
-                self.form.close_list();
-                router.test_toasts();
-                None
-            }
-            GeneralEvent::PressChange => {
-                self.form.close_list();
-                router.pick_data_folder();
-                None
-            }
-            event => event
-                .form_input()
-                .and_then(|input| self.form.handle(input, router)),
-        };
-        match answer {
-            Some(FormAnswer::Saved(field, value)) => {
-                self.settings.take_field(field, &value);
-                // Start view, the Locale and On start take effect at the next start, which reads
-                // them from the file, so only Toasts reach the Shell now.
-                if field == GeneralField::Toasts {
-                    router.toasts_changed(self.settings.toasts_on);
+        let Some(input) = event.form_input() else {
+            // As any input the form doesn't take, General's own closes an open list first.
+            self.form.close_list();
+            match event {
+                GeneralEvent::SetToasts(on) => {
+                    let saved = self.form.write(
+                        GeneralField::Toasts,
+                        FieldValue::Set(ConfigValue::Toasts(on)),
+                        router,
+                    );
+                    self.answered(saved, router);
                 }
+                // The test touches no setting: the Shell's Toasts raise it.
+                GeneralEvent::TestToasts | GeneralEvent::PressTest => router.test_toasts(),
+                GeneralEvent::PressChange => router.pick_data_folder(),
+                _ => {}
             }
-            Some(FormAnswer::Activated(GeneralField::DataFolder)) => router.pick_data_folder(),
-            // General's walk stops at either end, and remembers nothing.
-            Some(FormAnswer::Activated(_) | FormAnswer::Changed(..) | FormAnswer::LeftEnd(_))
-            | None => {}
-        }
+            return;
+        };
+        let answer = self.form.handle(input, router);
+        self.answered(answer, router);
     }
 
     fn view_model(&self) -> GeneralViewModel {
@@ -494,19 +462,19 @@ impl Presenter for GeneralPresenter {
             .view(GeneralField::StartView)
             .is_some_and(|view| view.chosen.is_some());
         GeneralViewModel {
-            field: self.form.focused(),
             fields,
-            start_view_unlisted: (!start_view_listed)
-                .then(|| msg::settings_general_start_view_unlisted(self.settings.start_view.key())),
+            start_view_unlisted: (!start_view_listed).then(|| {
+                msg::settings_general_start_view_unlisted(self.settings().start_view.key())
+            }),
             toasts_test: Hint::new(
-                chords(&self.keymap, &[TEST_TOASTS]),
+                chord(&self.keymap, TEST_TOASTS),
                 lib_locale::msg::toast_setting_test(),
             ),
             locale_fallback: self.locale.fallback.clone(),
             data_folder: DataFolderView {
                 value: self.shown_data_folder().display().to_string(),
                 change: Hint::new(
-                    chords(&self.keymap, &[SELECT]),
+                    chord(&self.keymap, SELECT),
                     msg::settings_general_data_folder_change(),
                 ),
             },
@@ -562,16 +530,44 @@ impl GeneralPresenter {
         let mut hints = self.form.hints(&self.keymap, &self.back_chord);
         if !self.form.list_open() && self.form.focused() == Some(GeneralField::Toasts) {
             hints.push(Hint::new(
-                chords(&self.keymap, &[TEST_TOASTS]),
+                chord(&self.keymap, TEST_TOASTS),
                 msg::settings_hint_test(),
             ));
         }
         hints
     }
 
+    /// What the form answered: saved Toasts reach the Shell, and the Data folder's **Change…** asks
+    /// for the picker.
+    fn answered(
+        &mut self,
+        answer: Option<FormAnswer<GeneralField>>,
+        router: &mut dyn DeviceRouter,
+    ) {
+        match answer {
+            // Start view, the Locale and On start take effect at the next start, which reads them
+            // from the file, so only Toasts reach the Shell now.
+            Some(FormAnswer::Saved(_, FieldValue::Set(ConfigValue::Toasts(on)))) => {
+                router.toasts_changed(on);
+            }
+            Some(FormAnswer::Activated(GeneralField::DataFolder)) => router.pick_data_folder(),
+            // General's walk stops at either end, and remembers nothing.
+            Some(
+                FormAnswer::Saved(..)
+                | FormAnswer::Activated(_)
+                | FormAnswer::Changed(..)
+                | FormAnswer::LeftEnd(_),
+            )
+            | None => {}
+        }
+    }
+
     /// The Data folder the field shows: the file's, else the one in effect.
     fn shown_data_folder(&self) -> &Path {
-        self.settings.data.as_deref().unwrap_or(&self.data_folder)
+        match self.form.value(GeneralField::DataFolder) {
+            Some(FieldValue::Set(ConfigValue::Data(folder))) => folder,
+            _ => &self.data_folder,
+        }
     }
 }
 
@@ -831,7 +827,7 @@ mod tests {
 
         assert_eq!(
             general.settings(),
-            &GeneralSettings {
+            GeneralSettings {
                 on_start: OnStart::NoLedger,
                 start_view: StartView::Last,
                 toasts_on: false,
@@ -963,7 +959,10 @@ mod tests {
             &mut general,
             std::iter::repeat_n(GeneralEvent::Move(Step::Next), 2),
         );
-        assert_eq!(general.view_model().field, Some(GeneralField::Toasts));
+        assert_eq!(
+            general.view_model().fields.focused(),
+            Some(GeneralField::Toasts)
+        );
         assert_eq!(
             pairs(&general),
             [
@@ -1089,7 +1088,7 @@ mod tests {
             std::iter::repeat_n(GeneralEvent::Move(Step::Next), 4),
         );
         let view = general.view_model();
-        assert_eq!(view.field, Some(GeneralField::DataFolder));
+        assert_eq!(view.fields.focused(), Some(GeneralField::DataFolder));
         assert_eq!(
             view.fields
                 .view(GeneralField::DataFolder)

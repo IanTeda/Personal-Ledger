@@ -57,9 +57,14 @@ pub(super) fn hint(text: String, cx: &App) -> impl IntoElement {
         .child(text)
 }
 
-/// The note under `key`'s control while a source above the file sets it, so the control says why
-/// a change won't take.
-pub(super) fn shadowed(key: ConfigKey, note: Option<&str>, cx: &App) -> Option<gpui::Div> {
+/// The note under a field while a source above the file sets its key, so the field says why a
+/// change won't take.
+pub(super) fn shadowed(view: &FieldView, cx: &App) -> Option<gpui::Div> {
+    shadowed_note(view.key?, view.shadowed.as_deref(), cx)
+}
+
+/// The note under `key`'s control while a source above the file sets it.
+pub(super) fn shadowed_note(key: ConfigKey, note: Option<&str>, cx: &App) -> Option<gpui::Div> {
     let note = note?.to_string();
     Some(
         div()
