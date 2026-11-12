@@ -1,20 +1,20 @@
 //! Settings › Display drawn from its view model (`docs/ux/desktop-mockups/16-settings/README.md`'s
-//! "2a resting state"): a column of segmented controls (Date format, Row density), a Status glyphs
+//! "2a resting state"): a column of segmented fields (Date format, Row density), a Status glyphs
 //! radio group and the Start Sidebar minimised checkbox, beside a PREVIEW of three seeded rows
-//! under the choices made, then the Colour Theme grid (`colour_theme.rs`). Every click is a
-//! Presenter event through [`PageClicks`].
+//! under the choices made, then the Colour Theme grid (`colour_theme.rs`). Each field is the
+//! form's `FieldView`, read by its `DisplayField`; every click is a Presenter event through
+//! [`PageClicks`].
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use lib_core::configuration::ConfigKey;
-use lib_settings::presenter::display::{DATE_STYLE_CHOICES, DISPLAY_FIELD_SIDEBAR};
-use lib_settings::presenter::{CheckboxView, PreviewView};
-use lib_settings::{DisplayEvent, DisplayViewModel};
-use lib_viper::display::{RowDensity, StatusGlyphs};
-use lib_viper::view::SelectView;
+use lib_settings::presenter::display::DATE_STYLE_CHOICES;
+use lib_settings::presenter::{FieldView, PreviewView};
+use lib_settings::{DisplayEvent, DisplayField, DisplayViewModel};
+use lib_viper::display::RowDensity;
 
 use super::{DisplayPage, colour_theme};
 use crate::{
-    form::fields::{OnSegmentClick, UNIFORM_OPTION_WIDTH, radio_dot, segmented_labelled},
+    form::fields::{UNIFORM_OPTION_WIDTH, radio_dot, segmented_labelled},
     settings::controls::{focus_mark, shadowed},
     shell::view::page_clicks::PageClicks,
     theme::color,
@@ -43,12 +43,13 @@ pub fn preview_row_padding_y(density: RowDensity) -> f32 {
     }
 }
 
-/// The page: the controls beside the PREVIEW, then the Colour Theme group.
+/// The page: the fields beside the PREVIEW, then the Colour Theme group.
 pub(super) fn page(
     model: &DisplayViewModel,
     clicks: &PageClicks<DisplayPage>,
     cx: &App,
 ) -> AnyElement {
+    let field = |field| model.view(field);
     let columns = div()
         .flex()
         .flex_wrap()
@@ -62,92 +63,93 @@ pub(super) fn page(
                 .flex()
                 .flex_col()
                 .gap(px(18.0))
-                .child(
+                .children(field(DisplayField::DateStyle).map(|view| {
                     segmented(
                         "display-date-style",
-                        &model.date_style.select,
-                        clicks.segment(DisplayEvent::ChooseDateStyle),
+                        view,
+                        DisplayField::DateStyle,
+                        clicks,
                         cx,
                     )
                     .children(shadowed(
                         ConfigKey::DateStyle,
-                        model.date_style.shadowed.as_deref(),
+                        view.shadowed.as_deref(),
                         cx,
-                    )),
-                )
-                .child(
+                    ))
+                }))
+                .children(field(DisplayField::RowDensity).map(|view| {
                     segmented(
                         "display-row-density",
-                        &model.row_density.select,
-                        clicks.segment(DisplayEvent::ChooseRowDensity),
+                        view,
+                        DisplayField::RowDensity,
+                        clicks,
                         cx,
                     )
                     .children(shadowed(
                         ConfigKey::RowDensity,
-                        model.row_density.shadowed.as_deref(),
+                        view.shadowed.as_deref(),
                         cx,
-                    )),
-                )
-                .child(
-                    status_glyphs_field(&model.status_glyphs.select, clicks, cx).children(
-                        shadowed(
-                            ConfigKey::StatusGlyphs,
-                            model.status_glyphs.shadowed.as_deref(),
-                            cx,
-                        ),
-                    ),
-                )
-                .child(
-                    focus_mark(model.field == Some(DISPLAY_FIELD_SIDEBAR), cx).child(
-                        start_sidebar_minimised_toggle(&model.start_sidebar_minimised, clicks, cx),
-                    ),
-                ),
+                    ))
+                }))
+                .children(field(DisplayField::StatusGlyphs).map(|view| {
+                    status_glyphs_field(view, clicks, cx).children(shadowed(
+                        ConfigKey::StatusGlyphs,
+                        view.shadowed.as_deref(),
+                        cx,
+                    ))
+                }))
+                .children(field(DisplayField::StartSidebar).map(|view| {
+                    focus_mark(view.focused, cx)
+                        .child(start_sidebar_minimised_toggle(view, clicks, cx))
+                })),
         )
         .child(preview_column(&model.preview, cx));
     div()
         .flex()
         .flex_col()
         .child(columns)
-        .child(colour_theme::render(
-            &model.colour_theme,
-            &model.appearance,
-            clicks,
-            cx,
-        ))
+        .children(
+            field(DisplayField::Appearance).map(|appearance| {
+                colour_theme::render(&model.colour_theme, appearance, clicks, cx)
+            }),
+        )
         .into_any_element()
 }
 
-/// A uniform segmented control with its label, the keyboard's mark on it while focused.
-fn segmented<T: Copy + PartialEq + 'static>(
+/// A uniform segmented field with its label, the keyboard's mark on it while focused. A click on
+/// an option chooses it by its index.
+fn segmented(
     id: &'static str,
-    select: &SelectView<T>,
-    on_click: OnSegmentClick<T>,
+    view: &FieldView,
+    field: DisplayField,
+    clicks: &PageClicks<DisplayPage>,
     cx: &App,
 ) -> gpui::Div {
-    let options = select
+    let options = view
         .options
         .iter()
-        .map(|choice| (choice.value, SharedString::from(choice.label.clone())))
+        .enumerate()
+        .map(|(index, label)| (index, SharedString::from(label.clone())))
         .collect();
-    let chosen = select.chosen.unwrap_or(select.options[0].value);
-    focus_mark(select.focused, cx)
-        .child(field_label(select.label.clone(), cx))
+    focus_mark(view.focused, cx)
+        .child(field_label(view.label.clone(), cx))
         .child(segmented_labelled(
             id,
             options,
-            chosen,
-            on_click,
+            view.chosen.unwrap_or(0),
+            clicks.segment(move |index| DisplayEvent::Choose { field, index }),
             Some(px(UNIFORM_OPTION_WIDTH)),
             cx,
         ))
 }
 
 fn start_sidebar_minimised_toggle(
-    view: &CheckboxView,
+    view: &FieldView,
     clicks: &PageClicks<DisplayPage>,
     cx: &App,
 ) -> impl IntoElement {
-    let checked = view.checked;
+    // The checkbox's choices are unticked then ticked.
+    let checked = view.chosen == Some(1);
     div()
         .debug_selector(|| "display-start-sidebar-minimised".to_string())
         .id("display-start-sidebar-minimised")
@@ -155,7 +157,7 @@ fn start_sidebar_minimised_toggle(
         .flex()
         .items_center()
         .gap(px(8.0))
-        .on_click(clicks.send(DisplayEvent::ToggleStartSidebarMinimised))
+        .on_click(clicks.send(DisplayEvent::Press(DisplayField::StartSidebar)))
         .child(
             div()
                 .w(px(14.0))
@@ -186,16 +188,12 @@ fn field_label(label: impl Into<SharedString>, cx: &App) -> impl IntoElement {
         .child(label.into())
 }
 
-fn status_glyphs_field(
-    select: &SelectView<StatusGlyphs>,
-    clicks: &PageClicks<DisplayPage>,
-    cx: &App,
-) -> gpui::Div {
-    focus_mark(select.focused, cx)
-        .child(field_label(select.label.clone(), cx))
+fn status_glyphs_field(view: &FieldView, clicks: &PageClicks<DisplayPage>, cx: &App) -> gpui::Div {
+    let field = DisplayField::StatusGlyphs;
+    focus_mark(view.focused, cx)
+        .child(field_label(view.label.clone(), cx))
         .child(div().flex().flex_col().gap(px(7.0)).mt(px(2.0)).children(
-            select.options.iter().enumerate().map(|(index, choice)| {
-                let checked = select.chosen == Some(choice.value);
+            view.options.iter().enumerate().map(|(index, label)| {
                 div()
                     .debug_selector(move || format!("display-status-glyphs-{index}"))
                     .id(SharedString::from(format!("display-status-glyphs-{index}")))
@@ -203,9 +201,9 @@ fn status_glyphs_field(
                     .flex()
                     .items_center()
                     .gap(px(8.0))
-                    .on_click(clicks.send(DisplayEvent::ChooseStatusGlyphs(choice.value)))
-                    .child(radio_dot(checked, cx))
-                    .child(div().text_size(px(12.0)).child(choice.label.clone()))
+                    .on_click(clicks.send(DisplayEvent::Choose { field, index }))
+                    .child(radio_dot(view.chosen == Some(index), cx))
+                    .child(div().text_size(px(12.0)).child(label.clone()))
             }),
         ))
 }

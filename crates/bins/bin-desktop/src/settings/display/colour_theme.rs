@@ -13,8 +13,8 @@ use gpui::{AnyElement, App, FontWeight, Rgba, SharedString, div, prelude::*, px}
 use lib_colour_theme::{ColourAppearance, ColourVariant, ResolvedColours};
 use lib_core::configuration::ConfigKey;
 use lib_settings::presenter::display::appearance_label;
-use lib_settings::presenter::{ColourCardView, ColourThemeView, ControlView};
-use lib_settings::{ColourChoice, DisplayEvent};
+use lib_settings::presenter::{ColourCardView, ColourThemeView, FieldView};
+use lib_settings::{DisplayEvent, DisplayField};
 
 use super::DisplayPage;
 use crate::{
@@ -55,16 +55,16 @@ pub fn grid_columns(body_width: f32) -> usize {
 
 pub fn render(
     view: &ColourThemeView,
-    appearance: &ControlView<ColourAppearance>,
+    appearance: &FieldView,
     clicks: &PageClicks<DisplayPage>,
     cx: &App,
 ) -> AnyElement {
     let state = colours::colours(cx);
-    let select = &appearance.select;
-    let options = select
+    let options = appearance
         .options
         .iter()
-        .map(|choice| (choice.value, SharedString::from(choice.label.clone())))
+        .enumerate()
+        .map(|(index, label)| (index, SharedString::from(label.clone())))
         .collect();
     div()
         .id("display-colour-theme")
@@ -72,13 +72,14 @@ pub fn render(
         .w_full()
         .flex()
         .flex_col()
-        .child(field_label(select.label.clone(), cx))
+        .child(field_label(appearance.label.clone(), cx))
         .child(segmented_labelled(
             "display-colour-appearance",
             options,
-            select.chosen.unwrap_or_default(),
-            clicks.segment(|appearance| {
-                DisplayEvent::ChooseColour(ColourChoice::Appearance(appearance))
+            appearance.chosen.unwrap_or(0),
+            clicks.segment(|index| DisplayEvent::Choose {
+                field: DisplayField::Appearance,
+                index,
             }),
             Some(px(UNIFORM_OPTION_WIDTH)),
             cx,

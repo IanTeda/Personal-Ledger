@@ -3,6 +3,11 @@
 //! [`DeviceConfiguration`]; and Start Sidebar minimised, which the Client remembers in its own
 //! state file. Beside them a PREVIEW re-renders three seeded rows under the choices made.
 //!
+//! The fields are the device settings form's ([`DeviceForm`]), which walks them, steps them and
+//! writes each change, showing it only once saved. Display declares them ([`DisplayField`]) and
+//! keeps what is its own: the Colour Theme grid after the form, the PREVIEW, the Display output and
+//! the colour hand-off.
+//!
 //! The date style, Row density, Status glyphs and Start Sidebar minimised are the Display output,
 //! which the Presenter hands the Shell on each change ([`DeviceRouter::display_changed`]) for the
 //! Views that draw with it. A saved Colour Theme or Appearance goes to the Shell to apply
@@ -21,9 +26,12 @@ use lib_locale::format::{AmountStyle, format_amount, format_date};
 use lib_viper::display::{RowDensity, StatusGlyphs};
 use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP, SELECT};
 use lib_viper::presenter::{PagePresenter, Presenter};
-use lib_viper::view::{Choice, Hint, SelectView};
+use lib_viper::view::{Choice, Hint};
 
-use super::device::{ControlView, chord, chords, shadowed_note, step_choice, write};
+use super::device::{chord, chords, shadowed_note};
+use super::form::{
+    DeviceForm, FieldDecl, FieldValue, FieldView, FormAnswer, FormInput, Presentation,
+};
 use crate::keymap::{NEXT_CHOICE, PREVIOUS_CHOICE};
 use crate::msg;
 use crate::protocols::{ColourChoice, DeviceConfiguration, DeviceRouter, DeviceSnapshot};
@@ -44,12 +52,26 @@ pub const APPEARANCES: [ColourAppearance; 3] = [
     ColourAppearance::System,
 ];
 
-/// The controls above the Colour Theme grid, top to bottom: Date format, Row density, Status
-/// glyphs, Start Sidebar minimised. The grid is the stop after the last.
-pub const DISPLAY_FIELD_COUNT: usize = 4;
+/// Display's fields, top to bottom. The `j`/`k` walk is the first four: Appearance is reached by a
+/// click, and the Colour Theme grid is the stop after Start Sidebar minimised.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DisplayField {
+    DateStyle,
+    RowDensity,
+    StatusGlyphs,
+    StartSidebar,
+    Appearance,
+}
 
-/// The Display field that is a checkbox rather than a segmented or radio control.
-pub const DISPLAY_FIELD_SIDEBAR: usize = 3;
+impl DisplayField {
+    pub const ALL: [DisplayField; 5] = [
+        Self::DateStyle,
+        Self::RowDensity,
+        Self::StatusGlyphs,
+        Self::StartSidebar,
+        Self::Appearance,
+    ];
+}
 
 /// What the Views and the Shell draw with, from Display: the Shell fans it out on each change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -64,15 +86,15 @@ pub struct DisplayOutput {
 /// What Display is told and the person asks of it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DisplayEvent {
-    /// `j`/`k`: the control below or above, or the grid's row.
+    /// `j`/`k`: the field below or above, or the grid's row.
     Move(Step),
-    /// `h`/`l`: the focused control's choice after or before, or the grid's card.
+    /// `h`/`l`: the focused field's choice after or before, or the grid's card.
     Change(Step),
     /// `enter`: ticks the checkbox, or chooses the Colour Theme the grid's focus is on.
     Select,
     /// `space`: ticks the checkbox.
     Toggle,
-    /// `back` (`esc`) in the Colour Theme grid: up to the control above it.
+    /// `back` (`esc`) in the Colour Theme grid: up to the field above it.
     Back,
     /// Focus `tab` or a half-page move in the Colour Theme grid leaves it, and the key goes on to
     /// the Shell, which does what it does there.
@@ -80,23 +102,40 @@ pub enum DisplayEvent {
     /// How many Colour Theme cards fit one grid row as the Client lays them out, for `j`/`k`. The
     /// layout, told outside any input; a count the Presenter already has is not taken.
     SetGridColumns(usize),
-    ChooseDateStyle(Option<DateStyle>),
-    ChooseRowDensity(RowDensity),
-    ChooseStatusGlyphs(StatusGlyphs),
-    ToggleStartSidebarMinimised,
+    /// A click on a field's choice, by its index.
+    Choose { field: DisplayField, index: usize },
+    /// A click on a field itself: the Start Sidebar minimised checkbox toggles.
+    Press(DisplayField),
     /// A click on a Colour Theme card, which also takes the keyboard off the grid.
     ClickColourTheme(&'static str),
-    /// An Appearance click, or the palette's `theme` or `appearance`.
+    /// The palette's `theme` or `appearance`.
     ChooseColour(ColourChoice),
 }
 
 impl DisplayEvent {
-    /// Whether the event is one of the keymap's keys, which go to the focused control or the grid.
+    /// Whether the event is one of the keymap's keys, which go to the focused field or the grid.
     fn is_key(&self) -> bool {
         matches!(
             self,
             Self::Move(_) | Self::Change(_) | Self::Select | Self::Toggle
         )
+    }
+
+    /// The event as the form takes it, `None` for one that is Display's own.
+    fn form_input(&self) -> Option<FormInput<DisplayField>> {
+        Some(match *self {
+            Self::Move(step) => FormInput::Move(step),
+            Self::Change(step) => FormInput::Change(step),
+            Self::Select => FormInput::Select,
+            Self::Toggle => FormInput::Toggle,
+            Self::Choose { field, index } => FormInput::Choose { field, index },
+            Self::Press(field) => FormInput::Press(field),
+            Self::Back
+            | Self::LeaveGrid
+            | Self::SetGridColumns(_)
+            | Self::ClickColourTheme(_)
+            | Self::ChooseColour(_) => return None,
+        })
     }
 }
 
@@ -112,31 +151,33 @@ pub struct DisplaySettings {
 }
 
 impl DisplaySettings {
-    /// What each control shows of `snapshot` ([`DeviceSnapshot::shown`]): the value in force, or
+    /// What each field shows of `snapshot` ([`DeviceSnapshot::shown`]): the value in force, or
     /// the default.
     pub fn read(snapshot: &DeviceSnapshot) -> Self {
-        let default = Self::default();
-        Self {
-            date_style: match snapshot.shown(ConfigKey::DateStyle) {
-                Some(ConfigValue::DateStyle(style)) => *style,
-                _ => default.date_style,
-            },
-            row_density: match snapshot.shown(ConfigKey::RowDensity) {
-                Some(ConfigValue::RowDensity(density)) => *density,
-                _ => default.row_density,
-            },
-            status_glyphs: match snapshot.shown(ConfigKey::StatusGlyphs) {
-                Some(ConfigValue::StatusGlyphs(glyphs)) => *glyphs,
-                _ => default.status_glyphs,
-            },
-            colour_theme: match snapshot.shown(ConfigKey::ColourTheme) {
-                Some(ConfigValue::ColourTheme(id)) => Some(id.clone()),
-                _ => default.colour_theme,
-            },
-            colour_appearance: match snapshot.shown(ConfigKey::ColourAppearance) {
-                Some(ConfigValue::ColourAppearance(appearance)) => *appearance,
-                _ => default.colour_appearance,
-            },
+        let mut settings = Self::default();
+        for key in [
+            ConfigKey::DateStyle,
+            ConfigKey::RowDensity,
+            ConfigKey::StatusGlyphs,
+            ConfigKey::ColourTheme,
+            ConfigKey::ColourAppearance,
+        ] {
+            if let Some(value) = snapshot.shown(key) {
+                settings.take(value);
+            }
+        }
+        settings
+    }
+
+    /// Takes `value`, as start-up read it or a write saved it.
+    fn take(&mut self, value: &ConfigValue) {
+        match value {
+            ConfigValue::DateStyle(style) => self.date_style = *style,
+            ConfigValue::RowDensity(density) => self.row_density = *density,
+            ConfigValue::StatusGlyphs(glyphs) => self.status_glyphs = *glyphs,
+            ConfigValue::ColourTheme(id) => self.colour_theme = Some(id.clone()),
+            ConfigValue::ColourAppearance(appearance) => self.colour_appearance = *appearance,
+            _ => {}
         }
     }
 }
@@ -150,14 +191,6 @@ pub struct DisplaySetup {
     pub back_chord: String,
 }
 
-/// The Start Sidebar minimised checkbox as drawn.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CheckboxView {
-    pub label: String,
-    pub checked: bool,
-    pub focused: bool,
-}
-
 /// One PREVIEW row, formatted under the choices made.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreviewRowView {
@@ -169,7 +202,7 @@ pub struct PreviewRowView {
     pub amount: String,
 }
 
-/// The PREVIEW table beside the controls.
+/// The PREVIEW table beside the fields.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PreviewView {
     pub heading: String,
@@ -202,36 +235,41 @@ pub struct ColourThemeView {
 /// Display as the Client draws it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DisplayViewModel {
-    /// The control the keyboard is on, by its `DISPLAY_FIELD_*` index.
-    pub field: Option<usize>,
+    /// The field the keyboard is on.
+    pub field: Option<DisplayField>,
     /// The Colour Theme card the keyboard is on, while the grid has it.
     pub grid: Option<usize>,
-    pub date_style: ControlView<Option<DateStyle>>,
-    pub row_density: ControlView<RowDensity>,
-    pub status_glyphs: ControlView<StatusGlyphs>,
-    pub start_sidebar_minimised: CheckboxView,
+    /// Each field as the form draws it, in [`DisplayField::ALL`]'s order.
+    pub fields: Vec<(DisplayField, FieldView)>,
     pub preview: PreviewView,
-    pub appearance: ControlView<ColourAppearance>,
     pub colour_theme: ColourThemeView,
     pub output: DisplayOutput,
-    /// The keys the status line shows: the grid's while it has the keyboard, else the controls'.
+    /// The keys the status line shows: the grid's while it has the keyboard, else the fields'.
     pub hints: Vec<Hint>,
-    /// The page's keys for the `?` cheat sheet: the controls', then the grid's own.
+    /// The page's keys for the `?` cheat sheet: the fields', then the grid's own.
     pub help: Vec<Hint>,
+}
+
+impl DisplayViewModel {
+    /// `field` as drawn.
+    pub fn view(&self, field: DisplayField) -> Option<&FieldView> {
+        self.fields
+            .iter()
+            .find(|(each, _)| *each == field)
+            .map(|(_, view)| view)
+    }
 }
 
 /// Settings › Display's Presenter.
 pub struct DisplayPresenter {
-    device: Rc<dyn DeviceConfiguration>,
-    /// The device as last read, for what sets each key above the file. The values shown are the
-    /// output and the colours, which each write's answer keeps.
+    /// The device as last read, for what sets the Colour Theme above the file.
     snapshot: DeviceSnapshot,
     keymap: Keymap<DisplayEvent>,
     back_chord: String,
+    form: DeviceForm<DisplayField>,
     output: DisplayOutput,
     colour_theme: Option<String>,
     colour_appearance: ColourAppearance,
-    field: Option<usize>,
     grid: Option<usize>,
     /// How many cards fit a grid row, as the Client lays them out.
     columns: usize,
@@ -243,9 +281,10 @@ impl DisplayPresenter {
     pub fn new(setup: DisplaySetup) -> Self {
         let snapshot = setup.device.read();
         let settings = DisplaySettings::read(&snapshot);
+        let fields = DisplayField::ALL.into_iter().map(declare).collect();
         Self {
+            form: DeviceForm::new(setup.device, &snapshot, fields),
             snapshot,
-            device: setup.device,
             keymap: setup.keymap,
             back_chord: setup.back_chord,
             output: DisplayOutput {
@@ -256,7 +295,6 @@ impl DisplayPresenter {
             },
             colour_theme: settings.colour_theme,
             colour_appearance: settings.colour_appearance,
-            field: None,
             grid: None,
             columns: 1,
             page_focused: false,
@@ -272,18 +310,19 @@ impl DisplayPresenter {
     /// Start Sidebar minimised as the Client remembered it from its last run.
     pub fn set_start_sidebar_minimised(&mut self, minimised: bool) {
         self.output.start_sidebar_minimised = minimised;
+        self.form
+            .set_value(DisplayField::StartSidebar, FieldValue::Flag(minimised));
     }
 
     /// Whether the page, not Settings' index, has the keyboard. Arriving puts it on the first
-    /// control, and leaving takes it off the controls and the grid; only a change moves it.
-    /// Answers whether it changed, so the View redraws only then: the frame tells the page on
-    /// every draw.
+    /// field, and leaving takes it off the fields and the grid; only a change moves it. Answers
+    /// whether it changed, so the View redraws only then: the frame tells the page on every draw.
     pub fn set_page_focused(&mut self, focused: bool) -> bool {
         if focused == self.page_focused {
             return false;
         }
         self.page_focused = focused;
-        self.field = focused.then_some(0);
+        self.form.set_focused(focused);
         self.grid = None;
         true
     }
@@ -313,54 +352,68 @@ impl Presenter for DisplayPresenter {
         if !self.takes(&event) {
             return;
         }
-        match event {
-            DisplayEvent::Move(_)
-            | DisplayEvent::Change(_)
-            | DisplayEvent::Select
-            | DisplayEvent::Toggle => {
-                if let Some(index) = self.grid {
-                    self.grid_key(index, event, router);
-                } else {
-                    self.field_key(event, router);
-                }
-            }
+        if let Some(index) = self.grid
+            && event.is_key()
+        {
+            self.grid_key(index, event, router);
+            return;
+        }
+        let answer = match event {
             DisplayEvent::Back => {
-                self.grid = None;
-                self.field = Some(DISPLAY_FIELD_COUNT - 1);
+                self.leave_grid_up();
+                None
             }
-            DisplayEvent::LeaveGrid => self.grid = None,
-            DisplayEvent::SetGridColumns(columns) => self.columns = columns.max(1),
-            DisplayEvent::ChooseDateStyle(style) => self.choose_date_style(style, router),
-            DisplayEvent::ChooseRowDensity(density) => self.choose_row_density(density, router),
-            DisplayEvent::ChooseStatusGlyphs(glyphs) => self.choose_status_glyphs(glyphs, router),
-            DisplayEvent::ToggleStartSidebarMinimised => self.change(
-                |output| output.start_sidebar_minimised = !output.start_sidebar_minimised,
-                router,
-            ),
+            DisplayEvent::LeaveGrid => {
+                self.grid = None;
+                None
+            }
+            DisplayEvent::SetGridColumns(columns) => {
+                self.columns = columns.max(1);
+                None
+            }
             DisplayEvent::ClickColourTheme(id) => {
                 self.grid = None;
-                self.choose_colour(ColourChoice::Theme(id), router);
+                self.choose_theme(id, router);
+                None
             }
-            DisplayEvent::ChooseColour(colour) => self.choose_colour(colour, router),
+            DisplayEvent::ChooseColour(ColourChoice::Theme(id)) => {
+                self.choose_theme(id, router);
+                None
+            }
+            DisplayEvent::ChooseColour(ColourChoice::Appearance(appearance)) => self.form.choose(
+                DisplayField::Appearance,
+                FieldValue::Set(ConfigValue::ColourAppearance(appearance)),
+                router,
+            ),
+            event => event
+                .form_input()
+                .and_then(|input| self.form.handle(input, router)),
+        };
+        match answer {
+            Some(FormAnswer::Saved(_, FieldValue::Set(value))) => self.saved(&value, router),
+            Some(FormAnswer::Changed(DisplayField::StartSidebar, FieldValue::Flag(minimised))) => {
+                self.output.start_sidebar_minimised = minimised;
+                router.display_changed(self.output);
+            }
+            // `j` past the last field enters the grid, on the Colour Theme drawn now.
+            Some(FormAnswer::LeftEnd(Step::Next)) => {
+                self.form.set_focused(false);
+                self.grid = Some(self.chosen_theme());
+            }
+            // The walk stops at the top, and Display has no action.
+            Some(
+                FormAnswer::Saved(..)
+                | FormAnswer::Changed(..)
+                | FormAnswer::LeftEnd(_)
+                | FormAnswer::Activated(_),
+            )
+            | None => {}
         }
     }
 
     fn view_model(&self) -> DisplayViewModel {
-        let snapshot = &self.snapshot;
         let output = self.output;
         let chosen = self.chosen_theme();
-        let field_hints = vec![
-            Hint::new(
-                chords(&self.keymap, &[MOVE_DOWN, MOVE_UP]),
-                msg::settings_hint_field(),
-            ),
-            Hint::new(
-                chords(&self.keymap, &[PREVIOUS_CHOICE, NEXT_CHOICE]),
-                msg::settings_hint_change(),
-            ),
-            Hint::new(chord(&self.keymap, SELECT), msg::settings_hint_toggle()),
-            Hint::new(self.back_chord.clone(), msg::settings_hint_index()),
-        ];
         let grid_hints = vec![
             Hint::new(
                 chords(
@@ -372,67 +425,30 @@ impl Presenter for DisplayPresenter {
             Hint::new(chord(&self.keymap, SELECT), msg::settings_hint_choose()),
             Hint::new(self.back_chord.clone(), msg::settings_hint_field()),
         ];
-        let help = field_hints
-            .iter()
-            .chain(grid_hints.iter().take(2))
-            .cloned()
-            .collect();
+        let index = Hint::new(self.back_chord.clone(), msg::settings_hint_index());
+        // The cheat sheet holds every field's keys, whichever field has the keyboard.
+        let help = [
+            Hint::new(
+                chords(&self.keymap, &[MOVE_DOWN, MOVE_UP]),
+                msg::settings_hint_field(),
+            ),
+            Hint::new(
+                chords(&self.keymap, &[PREVIOUS_CHOICE, NEXT_CHOICE]),
+                msg::settings_hint_change(),
+            ),
+            Hint::new(chord(&self.keymap, SELECT), msg::settings_hint_toggle()),
+            index.clone(),
+        ]
+        .into_iter()
+        .chain(grid_hints.iter().take(2).cloned())
+        .collect();
         DisplayViewModel {
-            field: self.field,
+            field: self.form.focused(),
             grid: self.grid,
-            date_style: ControlView {
-                select: SelectView {
-                    label: msg::settings_display_date_style_label(),
-                    options: DATE_STYLE_CHOICES
-                        .into_iter()
-                        .map(|value| Choice {
-                            value,
-                            label: date_style_label(value),
-                        })
-                        .collect(),
-                    chosen: Some(output.date_style),
-                    focused: self.field == Some(0),
-                },
-                hint: None,
-                shadowed: shadowed_note(snapshot, ConfigKey::DateStyle),
-            },
-            row_density: ControlView {
-                select: SelectView {
-                    label: msg::settings_display_row_density(),
-                    options: RowDensity::ALL
-                        .into_iter()
-                        .map(|value| Choice {
-                            value,
-                            label: row_density_label(value),
-                        })
-                        .collect(),
-                    chosen: Some(output.row_density),
-                    focused: self.field == Some(1),
-                },
-                hint: None,
-                shadowed: shadowed_note(snapshot, ConfigKey::RowDensity),
-            },
-            status_glyphs: ControlView {
-                select: SelectView {
-                    label: msg::settings_display_status_glyphs(),
-                    options: StatusGlyphs::ALL
-                        .into_iter()
-                        .map(|value| Choice {
-                            value,
-                            label: status_glyphs_label(value),
-                        })
-                        .collect(),
-                    chosen: Some(output.status_glyphs),
-                    focused: self.field == Some(2),
-                },
-                hint: None,
-                shadowed: shadowed_note(snapshot, ConfigKey::StatusGlyphs),
-            },
-            start_sidebar_minimised: CheckboxView {
-                label: msg::settings_display_start_minimised(),
-                checked: output.start_sidebar_minimised,
-                focused: self.field == Some(DISPLAY_FIELD_SIDEBAR),
-            },
+            fields: DisplayField::ALL
+                .into_iter()
+                .filter_map(|field| self.form.view(field).map(|view| (field, view)))
+                .collect(),
             preview: PreviewView {
                 heading: msg::settings_display_preview(),
                 date_column: lib_locale::msg::column_date(),
@@ -451,25 +467,9 @@ impl Presenter for DisplayPresenter {
                 row_density: output.row_density,
                 note: msg::settings_display_note(),
             },
-            appearance: ControlView {
-                select: SelectView {
-                    label: msg::settings_display_colour_appearance(),
-                    options: APPEARANCES
-                        .into_iter()
-                        .map(|value| Choice {
-                            value,
-                            label: appearance_label(value),
-                        })
-                        .collect(),
-                    chosen: Some(self.colour_appearance),
-                    focused: false,
-                },
-                hint: None,
-                shadowed: shadowed_note(snapshot, ConfigKey::ColourAppearance),
-            },
             colour_theme: ColourThemeView {
                 label: msg::settings_display_colour_theme(),
-                shadowed: shadowed_note(snapshot, ConfigKey::ColourTheme),
+                shadowed: shadowed_note(&self.snapshot, ConfigKey::ColourTheme),
                 cards: ColourTheme::built_in()
                     .iter()
                     .enumerate()
@@ -485,7 +485,9 @@ impl Presenter for DisplayPresenter {
             hints: if self.grid.is_some() {
                 grid_hints
             } else {
-                field_hints
+                let mut hints = self.form.hints(&self.keymap, &self.back_chord);
+                hints.push(index);
+                hints
             },
             help,
         }
@@ -493,24 +495,25 @@ impl Presenter for DisplayPresenter {
 
     /// Whether Display takes `event` as things stand, so a key it declines goes on to the frame.
     /// The grid declines `h` in its first column, so the frame's `h` steps out to the index, and
-    /// `space`, which it gives no meaning to. A grid column count it already has is declined, so
-    /// the Client, which tells it on every draw, redraws only on a change.
+    /// `space`, which it gives no meaning to; the fields' keys are as the form says. A grid column
+    /// count it already has is declined, so the Client, which tells it on every draw, redraws only
+    /// on a change.
     fn takes(&self, event: &DisplayEvent) -> bool {
-        if event.is_key() {
-            return match (self.grid, self.field) {
-                (Some(index), _) => match event {
-                    DisplayEvent::Change(Step::Prev) => index % self.columns != 0,
-                    DisplayEvent::Toggle => false,
-                    _ => true,
-                },
-                (None, Some(_)) => true,
-                (None, None) => false,
+        if let Some(index) = self.grid
+            && event.is_key()
+        {
+            return match event {
+                DisplayEvent::Change(Step::Prev) => index % self.columns != 0,
+                DisplayEvent::Toggle => false,
+                _ => true,
             };
         }
         match event {
             DisplayEvent::Back | DisplayEvent::LeaveGrid => self.grid.is_some(),
             DisplayEvent::SetGridColumns(columns) => (*columns).max(1) != self.columns,
-            _ => true,
+            event => event
+                .form_input()
+                .is_none_or(|input| self.form.takes(&input)),
         }
     }
 }
@@ -544,74 +547,18 @@ impl DisplayPresenter {
             .unwrap_or(0)
     }
 
-    /// The controls' keys: `j`/`k` walk the controls and on past the last into the Colour Theme
-    /// grid, `h`/`l` change a segmented or radio control (or clear or tick the checkbox) in place,
-    /// and `enter`/`space` toggle the checkbox.
-    fn field_key(&mut self, key: DisplayEvent, router: &mut dyn DeviceRouter) {
-        let Some(field) = self.field else {
-            return;
-        };
-        match key {
-            DisplayEvent::Move(Step::Prev) => self.field = Some(field.saturating_sub(1)),
-            DisplayEvent::Move(_) => {
-                if field + 1 >= DISPLAY_FIELD_COUNT {
-                    self.field = None;
-                    self.grid = Some(self.chosen_theme());
-                } else {
-                    self.field = Some(field + 1);
-                }
-            }
-            DisplayEvent::Change(step) => match field {
-                0 => {
-                    let current = self.output.date_style;
-                    if let Some(style) = step_choice(&DATE_STYLE_CHOICES, &current, &current, step)
-                    {
-                        self.choose_date_style(style, router);
-                    }
-                }
-                1 => {
-                    let current = self.output.row_density;
-                    if let Some(density) = step_choice(&RowDensity::ALL, &current, &current, step) {
-                        self.choose_row_density(density, router);
-                    }
-                }
-                2 => {
-                    let current = self.output.status_glyphs;
-                    if let Some(glyphs) = step_choice(&StatusGlyphs::ALL, &current, &current, step)
-                    {
-                        self.choose_status_glyphs(glyphs, router);
-                    }
-                }
-                _ => self.change(
-                    |output| output.start_sidebar_minimised = step == Step::Next,
-                    router,
-                ),
-            },
-            DisplayEvent::Select | DisplayEvent::Toggle if field == DISPLAY_FIELD_SIDEBAR => {
-                self.change(
-                    |output| output.start_sidebar_minimised = !output.start_sidebar_minimised,
-                    router,
-                );
-            }
-            _ => {}
-        }
-    }
-
     /// The Colour Theme grid (`docs/colour-themes-design.md` "Settings"): the moves step the focus,
-    /// stopping at the edges, `k` on the top row climbs back to the last control, and `enter`
+    /// stopping at the edges, `k` on the top row climbs back to the last field, and `enter`
     /// chooses the card. Moving the focus never previews.
     fn grid_key(&mut self, index: usize, key: DisplayEvent, router: &mut dyn DeviceRouter) {
         let last = ColourTheme::built_in().len().saturating_sub(1);
         match key {
             DisplayEvent::Select => {
                 if let Some(theme) = ColourTheme::built_in().get(index) {
-                    self.choose_colour(ColourChoice::Theme(theme.id), router);
+                    self.choose_theme(theme.id, router);
                 }
             }
-            DisplayEvent::Move(Step::Prev) if index < self.columns => {
-                self.grid = None;
-                self.field = Some(DISPLAY_FIELD_COUNT - 1);
-            }
+            DisplayEvent::Move(Step::Prev) if index < self.columns => self.leave_grid_up(),
             DisplayEvent::Move(Step::Prev) => self.grid = Some(index - self.columns),
             DisplayEvent::Move(_) => {
                 if index + self.columns <= last {
@@ -624,86 +571,114 @@ impl DisplayPresenter {
         }
     }
 
-    /// Saves the date style, which shows, and reaches the Views, only once saved.
-    fn choose_date_style(&mut self, style: Option<DateStyle>, router: &mut dyn DeviceRouter) {
-        if style == self.output.date_style {
-            return;
-        }
-        if let Some(ConfigValue::DateStyle(saved)) =
-            write(self.device.as_ref(), ConfigValue::DateStyle(style), router)
+    /// Hands the keyboard from the grid back to the form, on the field above the grid.
+    fn leave_grid_up(&mut self) {
+        self.grid = None;
+        self.form.focus(DisplayField::StartSidebar);
+    }
+
+    /// Saves a Colour Theme, which the Shell applies only once saved. The built-in id chosen goes
+    /// to the Shell, not the saved copy, since the Shell applies a built-in.
+    fn choose_theme(&mut self, id: &'static str, router: &mut dyn DeviceRouter) {
+        if let Some(ConfigValue::ColourTheme(saved)) = self
+            .form
+            .write_unfielded(ConfigValue::ColourTheme(id.to_string()), router)
         {
-            self.change(|output| output.date_style = saved, router);
+            self.colour_theme = Some(saved);
+            router.colour_changed(ColourChoice::Theme(id));
         }
     }
 
-    /// Saves the Row density, which shows, and reaches the Views, only once saved.
-    fn choose_row_density(&mut self, density: RowDensity, router: &mut dyn DeviceRouter) {
-        if density == self.output.row_density {
-            return;
-        }
-        if let Some(ConfigValue::RowDensity(saved)) = write(
-            self.device.as_ref(),
-            ConfigValue::RowDensity(density),
-            router,
-        ) {
-            self.change(|output| output.row_density = saved, router);
-        }
-    }
-
-    /// Saves the Status glyphs, which show, and reach the Views, only once saved.
-    fn choose_status_glyphs(&mut self, glyphs: StatusGlyphs, router: &mut dyn DeviceRouter) {
-        if glyphs == self.output.status_glyphs {
-            return;
-        }
-        if let Some(ConfigValue::StatusGlyphs(saved)) = write(
-            self.device.as_ref(),
-            ConfigValue::StatusGlyphs(glyphs),
-            router,
-        ) {
-            self.change(|output| output.status_glyphs = saved, router);
-        }
-    }
-
-    /// Saves a Colour Theme or Appearance, which the Shell applies only once saved.
-    fn choose_colour(&mut self, colour: ColourChoice, router: &mut dyn DeviceRouter) {
-        let saved = match colour {
-            // The built-in id chosen, not the saved copy, since the Shell applies a built-in.
-            ColourChoice::Theme(id) => {
-                match write(
-                    self.device.as_ref(),
-                    ConfigValue::ColourTheme(id.to_string()),
-                    router,
-                ) {
-                    Some(ConfigValue::ColourTheme(saved)) => {
-                        self.colour_theme = Some(saved);
-                        Some(ColourChoice::Theme(id))
-                    }
-                    _ => None,
-                }
+    /// A field's value saved: the Display output reaches the Views, and the Appearance the Shell.
+    fn saved(&mut self, value: &ConfigValue, router: &mut dyn DeviceRouter) {
+        match *value {
+            ConfigValue::DateStyle(style) => self.output.date_style = style,
+            ConfigValue::RowDensity(density) => self.output.row_density = density,
+            ConfigValue::StatusGlyphs(glyphs) => self.output.status_glyphs = glyphs,
+            ConfigValue::ColourAppearance(appearance) => {
+                self.colour_appearance = appearance;
+                router.colour_changed(ColourChoice::Appearance(appearance));
+                return;
             }
-            ColourChoice::Appearance(appearance) => {
-                match write(
-                    self.device.as_ref(),
-                    ConfigValue::ColourAppearance(appearance),
-                    router,
-                ) {
-                    Some(ConfigValue::ColourAppearance(saved)) => {
-                        self.colour_appearance = saved;
-                        Some(ColourChoice::Appearance(saved))
-                    }
-                    _ => None,
-                }
-            }
-        };
-        if let Some(colour) = saved {
-            router.colour_changed(colour);
+            _ => return,
         }
-    }
-
-    /// Applies a change to the Display output and hands the Shell the result.
-    fn change(&mut self, change: impl FnOnce(&mut DisplayOutput), router: &mut dyn DeviceRouter) {
-        change(&mut self.output);
         router.display_changed(self.output);
+    }
+}
+
+/// `field` as the form takes it: its key, label, choices and how it is drawn.
+fn declare(field: DisplayField) -> FieldDecl<DisplayField> {
+    let set = |value| FieldValue::Set(value);
+    let defaults = DisplaySettings::default();
+    let segmented = |key, label, choices: Vec<Choice<FieldValue>>, default| {
+        FieldDecl::configuration(field, key, label, Presentation::Segmented, choices)
+            .default(set(default))
+    };
+    match field {
+        DisplayField::DateStyle => segmented(
+            ConfigKey::DateStyle,
+            msg::settings_display_date_style_label(),
+            DATE_STYLE_CHOICES
+                .into_iter()
+                .map(|value| Choice {
+                    value: set(ConfigValue::DateStyle(value)),
+                    label: date_style_label(value),
+                })
+                .collect(),
+            ConfigValue::DateStyle(defaults.date_style),
+        ),
+        DisplayField::RowDensity => segmented(
+            ConfigKey::RowDensity,
+            msg::settings_display_row_density(),
+            RowDensity::ALL
+                .into_iter()
+                .map(|value| Choice {
+                    value: set(ConfigValue::RowDensity(value)),
+                    label: row_density_label(value),
+                })
+                .collect(),
+            ConfigValue::RowDensity(defaults.row_density),
+        ),
+        DisplayField::StatusGlyphs => segmented(
+            ConfigKey::StatusGlyphs,
+            msg::settings_display_status_glyphs(),
+            StatusGlyphs::ALL
+                .into_iter()
+                .map(|value| Choice {
+                    value: set(ConfigValue::StatusGlyphs(value)),
+                    label: status_glyphs_label(value),
+                })
+                .collect(),
+            ConfigValue::StatusGlyphs(defaults.status_glyphs),
+        ),
+        // The Client remembers it in its state file and hands it back at start-up. A checkbox
+        // draws its own label, not its choices'.
+        DisplayField::StartSidebar => FieldDecl::remembered(
+            field,
+            msg::settings_display_start_minimised(),
+            Presentation::Checkbox,
+            [false, true]
+                .into_iter()
+                .map(|minimised| Choice {
+                    value: FieldValue::Flag(minimised),
+                    label: String::new(),
+                })
+                .collect(),
+            FieldValue::Flag(false),
+        ),
+        DisplayField::Appearance => segmented(
+            ConfigKey::ColourAppearance,
+            msg::settings_display_colour_appearance(),
+            APPEARANCES
+                .into_iter()
+                .map(|value| Choice {
+                    value: set(ConfigValue::ColourAppearance(value)),
+                    label: appearance_label(value),
+                })
+                .collect(),
+            ConfigValue::ColourAppearance(defaults.colour_appearance),
+        )
+        .not_in_walk(),
     }
 }
 
@@ -882,47 +857,103 @@ mod tests {
         router
     }
 
+    fn chosen(display: &DisplayPresenter, field: DisplayField) -> Option<usize> {
+        display
+            .view_model()
+            .view(field)
+            .and_then(|view| view.chosen)
+    }
+
     const DOWN: DisplayEvent = DisplayEvent::Move(Step::Next);
     const UP: DisplayEvent = DisplayEvent::Move(Step::Prev);
     const LEFT: DisplayEvent = DisplayEvent::Change(Step::Prev);
     const RIGHT: DisplayEvent = DisplayEvent::Change(Step::Next);
 
     #[test]
-    fn the_date_style_is_saved_then_reaches_the_views() {
-        let (device, mut display) = writable();
+    fn each_saved_field_reaches_the_views_as_the_display_output() {
+        let (_, mut display) = writable();
         display.set_page_focused(true);
 
-        let router = send(&mut display, [RIGHT]);
+        let router = send(
+            &mut display,
+            [
+                RIGHT,
+                DisplayEvent::Choose {
+                    field: DisplayField::RowDensity,
+                    index: 2,
+                },
+                DisplayEvent::Choose {
+                    field: DisplayField::StatusGlyphs,
+                    index: 1,
+                },
+            ],
+        );
 
-        assert_eq!(display.output().date_style, Some(DateStyle::Short));
-        assert_eq!(
-            device.stored().get(ConfigKey::DateStyle),
-            Some(&ConfigValue::DateStyle(Some(DateStyle::Short)))
-        );
-        assert_eq!(
-            router.statuses(),
-            ["date_style saved to personal-ledger.conf"]
-        );
-        assert_eq!(router.displays(), [display.output()]);
+        let output = DisplayOutput {
+            date_style: Some(DateStyle::Short),
+            row_density: RowDensity::Roomy,
+            status_glyphs: StatusGlyphs::AsciiFallback,
+            start_sidebar_minimised: false,
+        };
+        assert_eq!(display.output(), output);
+        assert_eq!(router.displays().len(), 3);
+        assert_eq!(router.displays().last(), Some(&output));
+        let preview = display.view_model().preview;
+        assert_eq!(preview.rows[2].glyph, "!");
+        assert!(preview.rows[2].flagged);
+        assert_eq!(preview.row_density, RowDensity::Roomy);
     }
 
     #[test]
-    fn a_shadowed_date_style_is_noted_and_reaches_no_view() {
+    fn a_field_not_saved_reaches_no_view() {
         let device = Rc::new(InMemoryDeviceConfiguration::shadowing(
             ConfigKey::DateStyle,
             "PERSONAL_LEDGER_DISPLAY__DATE_STYLE",
         ));
-        let mut display = display_on(device.clone());
-        assert!(display.view_model().date_style.shadowed.is_some());
+        let mut display = display_on(device);
 
         let router = send(
             &mut display,
-            [DisplayEvent::ChooseDateStyle(Some(DateStyle::Iso))],
+            [DisplayEvent::Choose {
+                field: DisplayField::DateStyle,
+                index: 4,
+            }],
         );
 
-        assert_eq!(display.output().date_style, None);
+        assert_eq!(display.output(), DisplayOutput::default());
         assert!(router.displays().is_empty());
-        assert!(router.statuses()[0].contains("PERSONAL_LEDGER_DISPLAY__DATE_STYLE"));
+    }
+
+    #[test]
+    fn the_sidebar_is_the_display_output_unwritten() {
+        let (device, mut display) = writable();
+
+        let router = send(
+            &mut display,
+            [DisplayEvent::Press(DisplayField::StartSidebar)],
+        );
+
+        assert!(display.output().start_sidebar_minimised);
+        assert_eq!(router.displays(), [display.output()]);
+        assert!(router.statuses().is_empty());
+        assert_eq!(device.stored(), Default::default());
+        assert_eq!(chosen(&display, DisplayField::StartSidebar), Some(1));
+    }
+
+    #[test]
+    fn the_sidebar_shows_what_the_client_remembered() {
+        let (_, mut display) = writable();
+
+        display.set_start_sidebar_minimised(true);
+
+        assert!(display.output().start_sidebar_minimised);
+        assert_eq!(chosen(&display, DisplayField::StartSidebar), Some(1));
+        let router = send(
+            &mut display,
+            [DisplayEvent::Press(DisplayField::StartSidebar)],
+        );
+        assert!(!display.output().start_sidebar_minimised);
+        assert_eq!(router.displays(), [display.output()]);
     }
 
     #[test]
@@ -956,21 +987,26 @@ mod tests {
             [
                 DisplayEvent::ClickColourTheme("nord"),
                 DisplayEvent::ChooseColour(ColourChoice::Appearance(ColourAppearance::Light)),
+                DisplayEvent::Choose {
+                    field: DisplayField::Appearance,
+                    index: 1,
+                },
             ],
         );
 
-        assert!(
+        assert_eq!(
             router
                 .routed
-                .contains(&Routed::ColourChanged(ColourChoice::Theme("nord")))
+                .iter()
+                .filter(|routed| matches!(routed, Routed::ColourChanged(_)))
+                .collect::<Vec<_>>(),
+            [
+                &Routed::ColourChanged(ColourChoice::Theme("nord")),
+                &Routed::ColourChanged(ColourChoice::Appearance(ColourAppearance::Light)),
+                &Routed::ColourChanged(ColourChoice::Appearance(ColourAppearance::Dark)),
+            ]
         );
-        assert!(
-            router
-                .routed
-                .contains(&Routed::ColourChanged(ColourChoice::Appearance(
-                    ColourAppearance::Light
-                )))
-        );
+        assert!(router.displays().is_empty(), "colours aren't the output");
         let view = display.view_model();
         assert!(
             view.colour_theme
@@ -978,126 +1014,43 @@ mod tests {
                 .iter()
                 .any(|card| card.chosen && card.id == "nord")
         );
-        assert_eq!(view.appearance.select.chosen, Some(ColourAppearance::Light));
+        assert_eq!(chosen(&display, DisplayField::Appearance), Some(1));
         assert_eq!(
             device.stored().get(ConfigKey::ColourAppearance),
-            Some(&ConfigValue::ColourAppearance(ColourAppearance::Light))
-        );
-    }
-
-    #[test]
-    fn row_density_and_status_glyphs_are_saved_then_reach_the_views() {
-        let (device, mut display) = writable();
-
-        let router = send(
-            &mut display,
-            [
-                DisplayEvent::ChooseRowDensity(RowDensity::Roomy),
-                DisplayEvent::ChooseStatusGlyphs(StatusGlyphs::AsciiFallback),
-            ],
-        );
-
-        assert_eq!(
-            router.statuses(),
-            [
-                "row_density saved to personal-ledger.conf",
-                "status_glyphs saved to personal-ledger.conf",
-            ]
+            Some(&ConfigValue::ColourAppearance(ColourAppearance::Dark))
         );
         assert_eq!(
-            device.stored().get(ConfigKey::RowDensity),
-            Some(&ConfigValue::RowDensity(RowDensity::Roomy))
+            device.stored().get(ConfigKey::ColourTheme),
+            Some(&ConfigValue::ColourTheme("nord".to_string()))
         );
-        assert_eq!(
-            device.stored().get(ConfigKey::StatusGlyphs),
-            Some(&ConfigValue::StatusGlyphs(StatusGlyphs::AsciiFallback))
-        );
-        assert_eq!(
-            router.displays().last(),
-            Some(&DisplayOutput {
-                row_density: RowDensity::Roomy,
-                status_glyphs: StatusGlyphs::AsciiFallback,
-                ..DisplayOutput::default()
-            })
-        );
-        let preview = display.view_model().preview;
-        assert_eq!(preview.rows[2].glyph, "!");
-        assert!(preview.rows[2].flagged);
     }
 
     #[test]
-    fn choosing_the_row_density_or_status_glyphs_already_shown_writes_nothing() {
-        let (device, mut display) = writable();
-
-        let router = send(
-            &mut display,
-            [
-                DisplayEvent::ChooseRowDensity(RowDensity::Regular),
-                DisplayEvent::ChooseStatusGlyphs(StatusGlyphs::Unicode),
-            ],
-        );
-
-        assert!(router.routed.is_empty());
-        assert_eq!(device.stored(), Default::default());
-    }
-
-    #[test]
-    fn a_shadowed_row_density_or_status_glyphs_is_noted_and_reaches_no_view() {
-        for (key, event) in [
-            (
-                ConfigKey::RowDensity,
-                DisplayEvent::ChooseRowDensity(RowDensity::Compact),
-            ),
-            (
-                ConfigKey::StatusGlyphs,
-                DisplayEvent::ChooseStatusGlyphs(StatusGlyphs::AsciiFallback),
-            ),
-        ] {
-            let device = Rc::new(InMemoryDeviceConfiguration::shadowing(key, "ABOVE"));
-            let mut display = display_on(device);
-            let view = display.view_model();
-            let notes = [view.row_density.shadowed, view.status_glyphs.shadowed];
-            assert_eq!(
-                notes.iter().filter(|note| note.is_some()).count(),
-                1,
-                "{key:?}"
-            );
-
-            let router = send(&mut display, [event]);
-
-            assert_eq!(display.output(), DisplayOutput::default(), "{key:?}");
-            assert!(router.displays().is_empty(), "{key:?}");
-            assert!(router.statuses()[0].contains("ABOVE"), "{key:?}");
-        }
-    }
-
-    #[test]
-    fn a_refused_row_density_keeps_what_was_shown() {
-        let mut display = display_on(Rc::new(InMemoryDeviceConfiguration::default()));
-
-        let router = send(
-            &mut display,
-            [DisplayEvent::ChooseRowDensity(RowDensity::Compact)],
-        );
-
-        assert_eq!(display.output().row_density, RowDensity::Regular);
-        assert!(router.statuses()[0].contains("row_density can't be saved"));
-    }
-
-    #[test]
-    fn display_starts_on_the_row_density_and_status_glyphs_start_up_read() {
+    fn display_starts_on_what_start_up_read() {
         let display = reading([
+            ConfigValue::DateStyle(Some(DateStyle::Iso)),
             ConfigValue::RowDensity(RowDensity::Compact),
             ConfigValue::StatusGlyphs(StatusGlyphs::AsciiFallback),
+            ConfigValue::ColourAppearance(ColourAppearance::Dark),
         ]);
 
-        let view = display.view_model();
-        assert_eq!(view.row_density.select.chosen, Some(RowDensity::Compact));
         assert_eq!(
-            view.status_glyphs.select.chosen,
-            Some(StatusGlyphs::AsciiFallback)
+            display.output(),
+            DisplayOutput {
+                date_style: Some(DateStyle::Iso),
+                row_density: RowDensity::Compact,
+                status_glyphs: StatusGlyphs::AsciiFallback,
+                start_sidebar_minimised: false,
+            }
         );
-        assert_eq!(view.preview.row_density, RowDensity::Compact);
+        assert_eq!(chosen(&display, DisplayField::DateStyle), Some(4));
+        assert_eq!(chosen(&display, DisplayField::RowDensity), Some(0));
+        assert_eq!(chosen(&display, DisplayField::StatusGlyphs), Some(1));
+        assert_eq!(chosen(&display, DisplayField::Appearance), Some(1));
+        assert_eq!(
+            display.view_model().preview.row_density,
+            RowDensity::Compact
+        );
     }
 
     #[test]
@@ -1117,7 +1070,10 @@ mod tests {
 
         send(
             &mut display,
-            [DisplayEvent::ChooseRowDensity(RowDensity::Regular)],
+            [DisplayEvent::Choose {
+                field: DisplayField::RowDensity,
+                index: 1,
+            }],
         );
 
         assert_eq!(display.settings().row_density, RowDensity::Regular);
@@ -1125,50 +1081,27 @@ mod tests {
     }
 
     #[test]
-    fn the_sidebar_is_the_display_output_unwritten() {
-        let (device, mut display) = writable();
-
-        let router = send(&mut display, [DisplayEvent::ToggleStartSidebarMinimised]);
-
-        assert!(display.output().start_sidebar_minimised);
-        assert_eq!(router.displays(), [display.output()]);
-        assert!(router.statuses().is_empty());
-        assert_eq!(device.stored(), Default::default());
-    }
-
-    #[test]
-    fn the_keys_step_each_control_and_toggle_the_checkbox() {
-        let (_, mut display) = writable();
-        display.set_page_focused(true);
-
-        send(&mut display, [DOWN, RIGHT, RIGHT, DOWN, RIGHT, DOWN]);
-        assert_eq!(display.output().row_density, RowDensity::Roomy);
-        assert_eq!(display.output().status_glyphs, StatusGlyphs::AsciiFallback);
-        assert_eq!(display.view_model().field, Some(DISPLAY_FIELD_SIDEBAR));
-        send(&mut display, [DisplayEvent::Toggle]);
-        assert!(display.output().start_sidebar_minimised);
-        send(&mut display, [LEFT]);
-        assert!(!display.output().start_sidebar_minimised);
-        send(&mut display, [DisplayEvent::Select]);
-        assert!(display.output().start_sidebar_minimised);
-    }
-
-    #[test]
-    fn j_past_the_last_control_enters_the_grid_on_the_chosen_card_and_k_climbs_back() {
+    fn j_walks_the_fields_past_appearance_into_the_grid_on_the_chosen_card_and_k_climbs_back() {
         let mut display = reading([ConfigValue::ColourTheme("nord".to_string())]);
         display.set_page_focused(true);
         let nord = ColourTheme::built_in()
             .iter()
             .position(|theme| theme.id == "nord");
 
-        send(&mut display, [DOWN; 4]);
+        send(&mut display, [DOWN; 3]);
+        assert_eq!(display.view_model().field, Some(DisplayField::StartSidebar));
+        send(&mut display, [DOWN]);
 
         let view = display.view_model();
         assert_eq!((view.field, view.grid), (None, nord));
         assert_eq!(view.hints[0].chord, "h/j/k/l");
         let up = if nord.unwrap_or(0) < 3 { 1 } else { 2 };
         send(&mut display, std::iter::repeat_n(UP, up));
-        assert_eq!(display.view_model().field, Some(DISPLAY_FIELD_SIDEBAR));
+        let view = display.view_model();
+        assert_eq!(
+            (view.field, view.grid),
+            (Some(DisplayField::StartSidebar), None)
+        );
     }
 
     #[test]
@@ -1196,7 +1129,10 @@ mod tests {
 
         send(&mut display, [DisplayEvent::Back]);
         let view = display.view_model();
-        assert_eq!((view.field, view.grid), (Some(DISPLAY_FIELD_SIDEBAR), None));
+        assert_eq!(
+            (view.field, view.grid),
+            (Some(DisplayField::StartSidebar), None)
+        );
         assert!(!display.takes(&DisplayEvent::LeaveGrid));
     }
 
@@ -1214,7 +1150,7 @@ mod tests {
         );
         assert!(
             !display.takes(&DisplayEvent::LeaveGrid),
-            "on a control the key is the Shell's alone"
+            "on a field the key is the Shell's alone"
         );
 
         send(&mut display, [DOWN; 4]);
@@ -1246,12 +1182,18 @@ mod tests {
         };
 
         let view = display.view_model();
-        assert_eq!(chords(view.hints), ["j/k", "h/l", "enter", "esc"]);
+        assert_eq!(chords(view.hints), ["j/k", "h/l", "esc"]);
         assert_eq!(
             chords(view.help),
             ["j/k", "h/l", "enter", "esc", "h/j/k/l", "enter"]
         );
-        send(&mut display, [DOWN; 4]);
+        send(&mut display, [DOWN; 3]);
+        assert_eq!(
+            chords(display.view_model().hints),
+            ["j/k", "h/l", "enter", "esc"],
+            "the checkbox's enter toggles it"
+        );
+        send(&mut display, [DOWN]);
         assert_eq!(
             chords(display.view_model().hints),
             ["h/j/k/l", "enter", "esc"]
@@ -1276,18 +1218,22 @@ mod tests {
     fn the_labels_are_messages() {
         let (_, display) = writable();
         let view = display.view_model();
-        let labels: Vec<String> = view
-            .date_style
-            .select
-            .options
-            .into_iter()
-            .map(|choice| choice.label)
-            .collect();
-        assert_eq!(labels, ["Locale", "Short", "Medium", "Long", "ISO"]);
-        assert_eq!(view.row_density.select.options[2].label, "roomy");
+        let options = |field| view.view(field).map(|view| view.options.clone());
         assert_eq!(
-            view.status_glyphs.select.options[1].label,
-            "ascii fallback \u{2014} o / x !"
+            options(DisplayField::DateStyle),
+            Some(
+                ["Locale", "Short", "Medium", "Long", "ISO"]
+                    .map(str::to_string)
+                    .to_vec()
+            )
+        );
+        assert_eq!(
+            options(DisplayField::RowDensity).map(|options| options[2].clone()),
+            Some("roomy".to_string())
+        );
+        assert_eq!(
+            options(DisplayField::StatusGlyphs).map(|options| options[1].clone()),
+            Some("ascii fallback \u{2014} o / x !".to_string())
         );
     }
 }

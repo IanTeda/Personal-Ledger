@@ -42,12 +42,12 @@ pub struct SettingsSnapshot {
     pub pane_open_enabled: bool,
 }
 
-/// The Display page: the focused control above the Colour Theme grid and the focused card, then
+/// The Display page: the focused field above the Colour Theme grid and the focused card, then
 /// each control's value (enum variant names; `date_style` is `None` for the default).
 #[doc(hidden)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsDisplaySnapshot {
-    pub display_field: Option<usize>,
+    pub display_field: Option<lib_settings::DisplayField>,
     pub colour_theme_focus: Option<usize>,
     pub date_style: Option<String>,
     pub row_density: String,

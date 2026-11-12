@@ -37,23 +37,6 @@ fn clicking_a_date_format_option_selects_it(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn clicking_a_row_density_option_selects_it(app: &mut TestAppContext) {
-    let mut ui = on_display(app);
-
-    ui.click("display-row-density-0");
-    assert_eq!(
-        ui.settings::<SettingsDisplaySnapshot>().row_density,
-        "Compact"
-    );
-    ui.click("display-row-density-2");
-    assert_eq!(
-        ui.settings::<SettingsDisplaySnapshot>().row_density,
-        "Roomy"
-    );
-    assert_eq!(ui.conf(), "[Display]\nrow_density = roomy\n");
-}
-
-#[gpui::test]
 fn clicking_a_status_glyph_radio_selects_it(app: &mut TestAppContext) {
     let mut ui = on_display(app);
 

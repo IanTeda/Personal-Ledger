@@ -12,7 +12,7 @@ use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP};
 use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::Hint;
 
-use super::device::{chords, step_choice};
+use super::device::chords;
 use crate::msg;
 use crate::protocols::{BaseUnitAnswer, LedgerPreferences, LedgerRouter, LedgerUnits};
 
@@ -129,7 +129,11 @@ impl Presenter for LedgerPresenter {
                     return;
                 };
                 let ids: Vec<UnitId> = self.units.choices().into_iter().map(|c| c.id).collect();
-                if let Some(next) = step_choice(&ids, &base, &base, step) {
+                // A Base unit that isn't a choice stays where it is.
+                if !ids.contains(&base) {
+                    return;
+                }
+                if let Some(next) = lib_list_cursor::step_id(&ids, Some(base), step) {
                     self.set_base_unit(next, router);
                 }
             }

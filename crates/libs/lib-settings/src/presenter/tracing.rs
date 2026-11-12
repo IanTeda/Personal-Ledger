@@ -18,7 +18,7 @@ use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Choice, Hint};
 
 use super::clear_logs::{ClearLogsOutcome, ClearLogsPresenter};
-use super::device::{chord, chords, step_choice};
+use super::device::{chord, chords};
 use crate::keymap::{CLEAR_LOGS, NEXT_CHOICE, PREVIOUS_CHOICE};
 use crate::log::{LogLine, TracingLevel};
 use crate::msg;
@@ -238,7 +238,8 @@ impl Presenter for TracingPresenter {
         match event {
             TracingEvent::Level(step) => {
                 let level = self.mirror.level;
-                if let Some(next) = step_choice(&TracingLevel::ALL, &level, &level, step) {
+                if let Some(next) = lib_list_cursor::step_id(&TracingLevel::ALL, Some(level), step)
+                {
                     self.set_level(next, router);
                 }
             }

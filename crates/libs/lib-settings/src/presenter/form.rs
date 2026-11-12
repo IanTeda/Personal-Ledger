@@ -12,15 +12,15 @@ use std::rc::Rc;
 
 use lib_core::configuration::{ConfigKey, ConfigValue};
 use lib_list_cursor::Step;
-use lib_toast::Notify;
+use lib_toast::{Notice, Notify};
 use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP, SELECT};
 use lib_viper::view::{Choice, Hint, SelectList};
 
-use super::device::{chord, chords, settle, shadowed_note};
+use super::device::{chord, chords, shadowed_note};
 use crate::keymap::{NEXT_CHOICE, PREVIOUS_CHOICE};
 use crate::msg;
-use crate::protocols::{DeviceConfiguration, DeviceSnapshot};
+use crate::protocols::{DeviceAnswer, DeviceConfiguration, DeviceRefusal, DeviceSnapshot};
 
 /// A field's value: one its key holds, none (the key taken out of the file, as the Locale's
 /// **System**), or a remembered checkbox's, which no key holds.
@@ -439,16 +439,25 @@ impl<F: Copy + Eq> DeviceForm<F> {
         };
         let saved = match value {
             FieldValue::Set(value) => {
-                settle(device.write(value), key, notify).map(|saved| (entry.decl.read)(&saved))
+                said(device.write(value), key, notify).map(|saved| (entry.decl.read)(&saved))
             }
-            FieldValue::Unset => {
-                settle(device.remove(key), key, notify).map(|()| FieldValue::Unset)
-            }
+            FieldValue::Unset => said(device.remove(key), key, notify).map(|()| FieldValue::Unset),
             // A flag has no key to write it under.
             FieldValue::Flag(_) => None,
         }?;
         entry.value = saved.clone();
         Some(FormAnswer::Saved(field, saved))
+    }
+
+    /// Writes a value no field shows, as Display's Colour Theme grid does, saying how it went as a
+    /// field's write does: the value saved, `None` when it wasn't.
+    pub fn write_unfielded(
+        &self,
+        value: ConfigValue,
+        notify: &mut dyn Notify,
+    ) -> Option<ConfigValue> {
+        let key = value.key();
+        said(self.device.write(value), key, notify)
     }
 
     /// `field` as drawn.
@@ -660,10 +669,27 @@ impl<F: Copy + Eq> DeviceForm<F> {
     }
 }
 
+/// Says on the status line how the write of `key` went, and hands back the value saved, `None`
+/// when it wasn't, so the field keeps what it showed.
+fn said<T>(answer: DeviceAnswer<T>, key: ConfigKey, notify: &mut dyn Notify) -> Option<T> {
+    let name = key.name();
+    let (status, saved) = match answer {
+        DeviceAnswer::Saved { value, file } => {
+            (msg::settings_device_saved(name, &file), Some(value))
+        }
+        DeviceAnswer::Shadowed { source } => (msg::settings_device_shadowed(name, &source), None),
+        DeviceAnswer::Refused(DeviceRefusal::NoFile) => (msg::settings_device_no_file(name), None),
+        DeviceAnswer::Refused(DeviceRefusal::WriteFailed) => {
+            (msg::settings_device_write_failed(name), None)
+        }
+    };
+    notify.notify(Notice::Status(status));
+    saved
+}
+
 #[cfg(test)]
 mod tests {
     use lib_core::{ColourAppearance, RowDensity, StartView};
-    use lib_toast::Notice;
     use lib_viper::keymap::{Binding, KeyBindingConfig};
 
     use super::*;
@@ -1282,6 +1308,35 @@ mod tests {
             device.stored().get(ConfigKey::RowDensity),
             Some(&ConfigValue::RowDensity(RowDensity::Regular))
         );
+    }
+
+    #[test]
+    fn a_write_no_field_shows_settles_as_a_fields_does() {
+        let (device, form) = writable();
+        let mut notices = Vec::new();
+
+        let saved =
+            form.write_unfielded(ConfigValue::ColourTheme("nord".to_string()), &mut notices);
+
+        assert_eq!(saved, Some(ConfigValue::ColourTheme("nord".to_string())));
+        assert_eq!(
+            device.stored().get(ConfigKey::ColourTheme),
+            Some(&ConfigValue::ColourTheme("nord".to_string()))
+        );
+        assert_eq!(
+            notices,
+            [Notice::Status(
+                "colour_theme saved to personal-ledger.conf".to_string()
+            )]
+        );
+
+        let form = form_on(Rc::new(InMemoryDeviceConfiguration::default()));
+        let mut notices = Vec::new();
+        assert_eq!(
+            form.write_unfielded(ConfigValue::ColourTheme("nord".to_string()), &mut notices),
+            None
+        );
+        assert_eq!(notices.len(), 1);
     }
 
     #[test]

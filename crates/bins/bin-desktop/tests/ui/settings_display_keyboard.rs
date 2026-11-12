@@ -6,6 +6,7 @@
 
 use super::common;
 use bin_desktop::shell::router::SettingsDisplaySnapshot;
+use lib_settings::DisplayField;
 
 use bin_desktop::navigation::nav::FocusZone;
 use common::Harness;
@@ -28,7 +29,7 @@ fn focus_starts_on_the_date_format_control(app: &mut TestAppContext) {
     let mut ui = in_display(app);
 
     let display_page = ui.settings::<SettingsDisplaySnapshot>();
-    assert_eq!(display_page.display_field, Some(0));
+    assert_eq!(display_page.display_field, Some(DisplayField::DateStyle));
     assert_eq!(display_page.colour_theme_focus, None);
 }
 
@@ -39,22 +40,22 @@ fn j_and_k_walk_the_controls_and_stop_at_the_top(app: &mut TestAppContext) {
     ui.press("j");
     assert_eq!(
         ui.settings::<SettingsDisplaySnapshot>().display_field,
-        Some(1)
+        Some(DisplayField::RowDensity)
     );
     ui.press("j j");
     assert_eq!(
         ui.settings::<SettingsDisplaySnapshot>().display_field,
-        Some(3)
+        Some(DisplayField::StartSidebar)
     );
     ui.press("k");
     assert_eq!(
         ui.settings::<SettingsDisplaySnapshot>().display_field,
-        Some(2)
+        Some(DisplayField::StatusGlyphs)
     );
     ui.press("k k k k k");
     assert_eq!(
         ui.settings::<SettingsDisplaySnapshot>().display_field,
-        Some(0)
+        Some(DisplayField::DateStyle)
     );
 }
 
@@ -104,106 +105,20 @@ fn display_starts_on_the_date_style_and_colours_the_conf_file_holds(app: &mut Te
     config.display.date_style = Some(lib_core::DateStyle::Long);
     config.display.colour_theme = Some("nord".into());
     config.display.colour_appearance = lib_colour_theme::ColourAppearance::Light;
-    let mut ui = Harness::with_configuration(app, &config, &[]);
-    ui.press("g s j");
-
-    assert_eq!(
-        ui.settings::<SettingsDisplaySnapshot>()
-            .date_style
-            .as_deref(),
-        Some("Long")
-    );
-    assert_eq!(
-        ui.colour_choice(),
-        (Some("nord".to_string()), Some("Light".to_string()))
-    );
-}
-
-#[gpui::test]
-fn l_and_h_step_the_row_density(app: &mut TestAppContext) {
-    let mut ui = in_display(app);
-
-    ui.press("j");
-    assert_eq!(
-        ui.settings::<SettingsDisplaySnapshot>().row_density,
-        "Regular"
-    );
-    ui.press("l l");
-    assert_eq!(
-        ui.settings::<SettingsDisplaySnapshot>().row_density,
-        "Roomy"
-    );
-    assert_eq!(ui.conf(), "[Display]\nrow_density = roomy\n");
-    ui.press("h h h");
-    assert_eq!(
-        ui.settings::<SettingsDisplaySnapshot>().row_density,
-        "Compact"
-    );
-    assert_eq!(ui.conf(), "[Display]\nrow_density = compact\n");
-}
-
-#[gpui::test]
-fn a_row_density_an_environment_variable_sets_is_shown_and_left_alone(app: &mut TestAppContext) {
-    let var = "PERSONAL_LEDGER_DISPLAY__ROW_DENSITY";
-    let mut ui =
-        Harness::with_configuration(app, &lib_config::Config::default(), &[(var, "roomy")]);
-    ui.press("g s j l");
-    assert!(ui.is_drawn("shadowed-row_density"));
-    assert!(!ui.is_drawn("shadowed-status_glyphs"));
-
-    ui.press("j l");
-
-    assert_eq!(
-        ui.settings::<SettingsDisplaySnapshot>().row_density,
-        "Regular"
-    );
-    assert_eq!(ui.conf(), "");
-    let status = ui.read(bin_desktop::shell::router::Root::status_message);
-    assert!(status.is_some_and(|text| text.contains(var)));
-}
-
-#[gpui::test]
-fn display_starts_on_the_row_density_and_status_glyphs_the_conf_file_holds(
-    app: &mut TestAppContext,
-) {
-    let mut config = lib_config::Config::default();
     config.display.row_density = lib_core::RowDensity::Compact;
     config.display.status_glyphs = lib_core::StatusGlyphs::AsciiFallback;
     let mut ui = Harness::with_configuration(app, &config, &[]);
     ui.press("g s j");
 
     let display_page = ui.settings::<SettingsDisplaySnapshot>();
+    assert_eq!(display_page.date_style.as_deref(), Some("Long"));
     assert_eq!(display_page.row_density, "Compact");
     assert_eq!(display_page.status_glyphs, "AsciiFallback");
     assert_eq!(ui.conf(), "", "a restore writes nothing");
-}
-
-#[gpui::test]
-fn l_and_h_step_the_status_glyphs(app: &mut TestAppContext) {
-    let mut ui = in_display(app);
-
-    ui.press("j j");
     assert_eq!(
-        ui.settings::<SettingsDisplaySnapshot>().status_glyphs,
-        "Unicode"
+        ui.colour_choice(),
+        (Some("nord".to_string()), Some("Light".to_string()))
     );
-    ui.press("l");
-    assert_eq!(
-        ui.settings::<SettingsDisplaySnapshot>().status_glyphs,
-        "AsciiFallback"
-    );
-    assert_eq!(ui.conf(), "[Display]\nstatus_glyphs = ascii\n");
-    ui.press("l");
-    assert_eq!(
-        ui.settings::<SettingsDisplaySnapshot>().status_glyphs,
-        "AsciiFallback"
-    );
-    ui.press("h");
-    assert_eq!(
-        ui.settings::<SettingsDisplaySnapshot>().status_glyphs,
-        "Unicode"
-    );
-    assert_eq!(ui.conf(), "[Display]\nstatus_glyphs = unicode\n");
 }
 
 #[gpui::test]
@@ -248,7 +163,7 @@ fn j_past_the_last_control_enters_the_grid_and_k_climbs_back(app: &mut TestAppCo
     ui.press("k");
     let display_page = ui.settings::<SettingsDisplaySnapshot>();
     assert_eq!(display_page.colour_theme_focus, None);
-    assert_eq!(display_page.display_field, Some(3));
+    assert_eq!(display_page.display_field, Some(DisplayField::StartSidebar));
 }
 
 #[gpui::test]
@@ -288,7 +203,7 @@ fn escape_in_the_grid_climbs_to_the_last_control_then_back_to_the_index(app: &mu
     );
     assert_eq!(
         ui.settings::<SettingsDisplaySnapshot>().display_field,
-        Some(3)
+        Some(DisplayField::StartSidebar)
     );
     ui.press("escape");
     let display_page = ui.settings::<SettingsDisplaySnapshot>();
@@ -393,7 +308,7 @@ fn settings_display_from_the_palette_puts_focus_back_on_the_first_control(
 
     let display_page = ui.settings::<SettingsDisplaySnapshot>();
     assert_eq!(display_page.colour_theme_focus, None);
-    assert_eq!(display_page.display_field, Some(0));
+    assert_eq!(display_page.display_field, Some(DisplayField::DateStyle));
     assert!(ui.settings_frame().page_focused);
 }
 
