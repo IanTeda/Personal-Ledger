@@ -407,7 +407,8 @@ impl Presenter for DisplayPresenter {
                 self.choose_theme(id, router);
                 None
             }
-            DisplayEvent::ChooseColour(ColourChoice::Appearance(appearance)) => self.form.choose(
+            // A Command writes and reports even the value shown, as `:toasts` and a theme do.
+            DisplayEvent::ChooseColour(ColourChoice::Appearance(appearance)) => self.form.write(
                 DisplayField::Appearance,
                 FieldValue::Set(ConfigValue::ColourAppearance(appearance)),
                 router,
@@ -1005,6 +1006,32 @@ mod tests {
         );
         assert_eq!(router.statuses().len(), 2);
         assert!(router.statuses()[0].contains("colour_theme can't be saved"));
+    }
+
+    #[test]
+    fn the_palettes_appearance_writes_and_applies_the_appearance_already_shown() {
+        let (device, mut display) = writable();
+        let shown = ColourAppearance::Light;
+        send(
+            &mut display,
+            [DisplayEvent::ChooseColour(ColourChoice::Appearance(shown))],
+        );
+
+        let router = send(
+            &mut display,
+            [DisplayEvent::ChooseColour(ColourChoice::Appearance(shown))],
+        );
+
+        assert_eq!(router.statuses().len(), 1, "the write is reported");
+        assert!(
+            router
+                .routed
+                .contains(&Routed::ColourChanged(ColourChoice::Appearance(shown)))
+        );
+        assert_eq!(
+            device.read().get(ConfigKey::ColourAppearance).stored,
+            Some(ConfigValue::ColourAppearance(shown))
+        );
     }
 
     #[test]

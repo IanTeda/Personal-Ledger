@@ -58,17 +58,21 @@ impl ConfigWriter {
 
     /// The value the target file itself sets `key` to, read by the parser from that file alone,
     /// with nothing above it and no environment, as a restart with only that file would read it;
-    /// `None` when the file doesn't set the key in its section, doesn't exist, or doesn't parse.
+    /// `None` when the file doesn't set the key in its section, the parser refuses its value, or
+    /// the file doesn't exist. One key at a time: [`Self::stored_all`] reads the file once.
     pub fn stored(&self, key: ConfigKey) -> Option<ConfigValue> {
-        let path = self.target.as_deref()?;
-        if !crate::Config::keys_in_file(path)
-            .ok()?
-            .contains(&crate::keys::id(key))
-        {
-            return None;
-        }
-        let config = crate::Config::parse_file_alone(path).ok()?;
-        crate::keys::read_value(key, &config)
+        self.stored_all()
+            .into_iter()
+            .find_map(|(read, value)| (read == key).then_some(value))
+    }
+
+    /// Every key the target file itself sets, with its value as [`Self::stored`] reads it, from
+    /// one read of the file. A key whose value the parser refuses is left out, the others kept.
+    pub fn stored_all(&self) -> Vec<(ConfigKey, ConfigValue)> {
+        self.target
+            .as_deref()
+            .and_then(|path| crate::Config::stored_in_file(path).ok())
+            .unwrap_or_default()
     }
 
     /// Writes `value` under its key in its section of the target file, spelt as the parser reads
@@ -265,6 +269,25 @@ fn unescape(raw: &str) -> String {
                 }
             }
             Some(other) => out.push(other),
+        }
+    }
+    out
+}
+
+/// `key`'s own lines in an already-normalised `text`, under its section's header and nothing
+/// else, so the parser can read the key when another key of the file fails it.
+pub(crate) fn only_key(text: &str, key: ConfigKey) -> String {
+    let section = crate::keys::normalised(key.section());
+    let mut in_section = false;
+    let mut out = format!("[{section}]\n");
+    for line in text.lines() {
+        if let Some(name) = section_name(line) {
+            in_section = name == section;
+        } else if in_section
+            && line_key(line).is_some_and(|name| name.eq_ignore_ascii_case(key.name()))
+        {
+            out.push_str(line);
+            out.push('\n');
         }
     }
     out
@@ -559,6 +582,27 @@ back = \"esc\"
             writer.stored(ConfigKey::OnStart),
             Some(ConfigValue::OnStart(lib_core::OnStart::NoLedger))
         );
+    }
+
+    #[test]
+    fn a_key_the_parser_refuses_costs_only_its_own_stored_value() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("personal-ledger.conf");
+        let writer = ConfigWriter::new(Some(path.clone()), Overrides::default());
+        std::fs::write(
+            &path,
+            "[General]\nlocale = en-GB\ndata = /ledgers\n[Logs]\nlog = verbose\n",
+        )
+        .unwrap();
+
+        assert_eq!(
+            writer.stored_all(),
+            [
+                (ConfigKey::Locale, ConfigValue::Locale("en-GB".into())),
+                (ConfigKey::Data, ConfigValue::Data("/ledgers".into())),
+            ]
+        );
+        assert_eq!(writer.stored(ConfigKey::Log), None);
     }
 
     #[test]

@@ -405,10 +405,18 @@ impl GeneralPresenter {
     ) -> DataFolderOutcome {
         // As any event but a list's own keys, it closes an open list first.
         self.form.close_list();
-        if folder == self.shown_data_folder() {
+        let shadowed = self.snapshot.get(ConfigKey::Data).shadow.is_some();
+        // The folder in effect is unchanged only while nothing overrides it: under an override,
+        // the file naming no folder, it is saved for when the override is gone.
+        let in_file = match self.form.value(GeneralField::DataFolder) {
+            Some(FieldValue::Set(ConfigValue::Data(saved))) => Some(saved.as_path()),
+            _ => None,
+        };
+        if in_file == Some(folder.as_path())
+            || (in_file.is_none() && !shadowed && folder == self.data_folder)
+        {
             return DataFolderOutcome::Unchanged;
         }
-        let shadowed = self.snapshot.get(ConfigKey::Data).shadow.is_some();
         // The status line's word waits here, since an applied folder says so with a Toast instead.
         let mut notices = Vec::new();
         let answer = self.form.write(
@@ -921,6 +929,23 @@ mod tests {
     }
 
     #[test]
+    fn choosing_system_takes_out_a_files_locale_that_isnt_a_choice() {
+        let device = Rc::new(
+            InMemoryDeviceConfiguration::writable()
+                .storing([ConfigValue::Locale("en-XA".to_string())]),
+        );
+        let mut general = general_on(device.clone());
+
+        let router = send(&mut general, [choose_locale(0)]);
+
+        assert_eq!(device.stored().get(ConfigKey::Locale), None);
+        assert_eq!(router.statuses().len(), 1, "the removal is reported");
+
+        let again = send(&mut general, [choose_locale(0)]);
+        assert!(again.routed.is_empty(), "System is now the file's too");
+    }
+
+    #[test]
     fn an_unlisted_start_view_is_named_under_its_field() {
         let device = Rc::new(
             InMemoryDeviceConfiguration::writable()
@@ -1207,6 +1232,23 @@ mod tests {
         assert_eq!(outcome, DataFolderOutcome::Unchanged);
         assert_eq!(device.stored(), StoredDevice::default());
         assert!(router.routed.is_empty());
+    }
+
+    #[test]
+    fn the_overridden_data_folder_is_saved_when_the_file_names_none() {
+        let device = with_data_folder(InMemoryDeviceConfiguration::shadowing(
+            ConfigKey::Data,
+            "--data",
+        ));
+        let mut general = general_on(device.clone());
+
+        let (outcome, _) = pick(&mut general, "/home/me/ledgers");
+
+        assert_eq!(outcome, DataFolderOutcome::SavedOverridden);
+        assert_eq!(
+            device.stored().get(ConfigKey::Data),
+            Some(&ConfigValue::Data(PathBuf::from("/home/me/ledgers")))
+        );
     }
 
     #[test]

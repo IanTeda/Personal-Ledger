@@ -130,6 +130,15 @@ impl DeviceSnapshot {
         }
     }
 
+    /// Whether non-Error Toasts show: Toasts' value in force, else the Toasts default. The Shell
+    /// starts its Toasts on it and Settings › General shows it.
+    pub fn toasts_on(&self) -> bool {
+        match self.get(ConfigKey::Toasts).effective {
+            Some(ConfigValue::Toasts(on)) => on,
+            _ => lib_toast::Display::default().toasts_on,
+        }
+    }
+
     /// The Data folder in effect, where `:open` and `:new` start: Data's value in force, whatever
     /// the file names; `None` when nothing sets it.
     pub fn data_folder(&self) -> Option<&std::path::Path> {

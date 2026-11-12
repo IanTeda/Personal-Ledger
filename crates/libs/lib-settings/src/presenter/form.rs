@@ -285,6 +285,9 @@ struct Field<F> {
     value: FieldValue,
     /// The source above the file that sets the key, if any.
     shadow: Option<String>,
+    /// Whether the file holds the key, which a value the field can't show (a Locale no choice
+    /// takes) leaves true while the field shows no value.
+    in_file: bool,
 }
 
 /// A This device page's fields: their focus, values, open list and writes.
@@ -307,19 +310,23 @@ impl<F: Copy + Eq> DeviceForm<F> {
         let fields = fields
             .into_iter()
             .map(|decl| {
-                let (value, shadow) = match (decl.kind, decl.key) {
-                    (FieldKind::Remembered, _) | (_, None) => (decl.when_unset.clone(), None),
+                let (value, shadow, in_file) = match (decl.kind, decl.key) {
+                    (FieldKind::Remembered, _) | (_, None) => {
+                        (decl.when_unset.clone(), None, false)
+                    }
                     (_, Some(key)) => (
                         snapshot
                             .shown(key)
                             .map_or_else(|| decl.when_unset.clone(), decl.read),
                         snapshot.get(key).shadow.clone(),
+                        snapshot.get(key).stored.is_some(),
                     ),
                 };
                 Field {
                     decl,
                     value,
                     shadow,
+                    in_file,
                 }
             })
             .collect();
@@ -448,14 +455,16 @@ impl<F: Copy + Eq> DeviceForm<F> {
         }
     }
 
-    /// Writes `value` to `field` unless it is the value shown already.
+    /// Writes `value` to `field` unless it is the value shown already, and the file agrees: no
+    /// value while the file still holds the key (a Locale no choice takes) takes it out.
     pub fn choose(
         &mut self,
         field: F,
         value: FieldValue,
         notify: &mut dyn Notify,
     ) -> Option<FormAnswer<F>> {
-        if self.value(field)? == &value {
+        let entry = self.get(field)?;
+        if entry.value == value && !(value == FieldValue::Unset && entry.in_file) {
             return None;
         }
         self.write(field, value, notify)
@@ -488,6 +497,7 @@ impl<F: Copy + Eq> DeviceForm<F> {
             // A flag has no key to write it under.
             FieldValue::Flag(_) => None,
         }?;
+        entry.in_file = saved != FieldValue::Unset;
         entry.value = saved.clone();
         Some(FormAnswer::Saved(field, saved))
     }

@@ -276,7 +276,7 @@ impl Root {
                     dirs::home_dir(),
                 );
                 presenter.toast(ToastInput::Display(lib_toast::Display {
-                    toasts_on: lib_settings::GeneralSettings::read(&snapshot).toasts_on,
+                    toasts_on: snapshot.toasts_on(),
                 }));
                 presenter
             },

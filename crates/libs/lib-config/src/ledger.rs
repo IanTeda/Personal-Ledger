@@ -176,14 +176,42 @@ impl LedgerConfig {
         Ok(ledger_config)
     }
 
-    /// The configuration `path` alone gives over the built-in defaults: no other file, no
-    /// environment and no operating-system Locale, the configured one checked as [`Self::parse`]
-    /// checks it. What [`crate::ConfigWriter::stored`] reads its target back with.
+    /// Each key Settings writes that `path` alone sets, with the value the parser reads for it
+    /// from that file over the built-in defaults: no other file, no environment and no
+    /// operating-system Locale, the configured one checked as [`Self::parse`] checks it. What
+    /// [`crate::ConfigWriter::stored_all`] reads its target back with.
+    ///
+    /// The file is read and parsed once. When one key fails that parse, which a source above it
+    /// may hide at start-up, each key is parsed from its own line alone, so the bad key loses only
+    /// its own value rather than every key's.
     ///
     /// # Errors
-    /// As [`Self::parse`], for the one file.
-    pub(crate) fn parse_file_alone(path: &Path) -> crate::Result<LedgerConfig> {
-        let config_builder = Self::add_ini_source(Self::defaults_builder()?, path, None)?;
+    /// When the file can't be read or isn't INI.
+    pub(crate) fn stored_in_file(
+        path: &Path,
+    ) -> crate::Result<Vec<(crate::ConfigKey, crate::ConfigValue)>> {
+        let normalised = Self::normalise_ini(path)?;
+        let set = Self::keys_set(&normalised)?;
+        let whole = Self::parse_str_alone(&normalised);
+        Ok(crate::ConfigKey::ALL
+            .into_iter()
+            .filter(|key| set.contains(&crate::keys::id(*key)))
+            .filter_map(|key| {
+                let value = match &whole {
+                    Ok(config) => crate::keys::read_value(key, config),
+                    Err(_) => Self::parse_str_alone(&crate::writer::only_key(&normalised, key))
+                        .ok()
+                        .and_then(|config| crate::keys::read_value(key, &config)),
+                }?;
+                Some((key, value))
+            })
+            .collect())
+    }
+
+    /// The configuration an already-normalised INI text alone gives over the built-in defaults.
+    fn parse_str_alone(normalised: &str) -> crate::Result<LedgerConfig> {
+        let config_builder = Self::defaults_builder()?
+            .add_source(config::File::from_str(normalised, config::FileFormat::Ini));
         let mut ledger_config = Self::build(config_builder)?;
         ledger_config.general.resolve_locale(|| None)?;
         Ok(ledger_config)

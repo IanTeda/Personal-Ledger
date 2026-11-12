@@ -67,8 +67,13 @@ impl DeviceConfigFile {
 
 impl DeviceConfiguration for DeviceConfigFile {
     fn read(&self) -> DeviceSnapshot {
+        // The file is read and parsed once for every key, not once per key.
+        let stored = self.writer.stored_all();
         DeviceSnapshot::new(self.writer.target().map(Into::into), |key| KeyState {
-            stored: self.writer.stored(key),
+            stored: stored
+                .iter()
+                .find(|(read, _)| *read == key)
+                .map(|(_, value)| value.clone()),
             effective: self
                 .effective
                 .iter()
