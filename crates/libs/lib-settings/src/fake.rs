@@ -2,14 +2,13 @@
 //! Client's UI-first work.
 
 use std::cell::RefCell;
-use std::collections::VecDeque;
-use std::path::{Path, PathBuf};
+use std::collections::{HashMap, VecDeque};
+use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::SystemTime;
 
-use lib_colour_theme::ColourAppearance;
-use lib_core::{DateStyle, OnStart, RowDensity, StartView, StatusGlyphs, UnitId};
-use lib_locale::Locale;
+use lib_core::UnitId;
+use lib_core::configuration::{ConfigKey, ConfigValue};
 use lib_toast::{Notice, Notify};
 
 use crate::log::{LogLevel, LogLine};
@@ -20,8 +19,8 @@ use crate::protocols::{
     LedgerUnits, UnitChoice,
 };
 use crate::protocols::{
-    ColourChoice, DeviceAnswer, DeviceConfiguration, DeviceKey, DeviceRefusal, DeviceRouter,
-    SettingsRouter, TracingLog, TracingRouter,
+    ColourChoice, DeviceAnswer, DeviceConfiguration, DeviceRefusal, DeviceRouter, DeviceSnapshot,
+    KeyState, SettingsRouter, TracingLog, TracingRouter, writes_when_shadowed,
 };
 
 /// One thing a Presenter asked of the Shell, in the order asked.
@@ -226,30 +225,36 @@ impl TracingRouter for RecordingRouter {
     }
 }
 
-/// What a [`DeviceConfiguration`] holds of each setting, `None` for a key never written.
+/// What a [`DeviceConfiguration`]'s file holds, a value per key it sets.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct StoredDevice {
-    pub on_start: Option<OnStart>,
-    pub start_view: Option<StartView>,
-    pub toasts: Option<bool>,
-    pub date_style: Option<Option<DateStyle>>,
-    pub row_density: Option<RowDensity>,
-    pub status_glyphs: Option<StatusGlyphs>,
-    pub colour_theme: Option<String>,
-    pub colour_appearance: Option<ColourAppearance>,
-    /// The file's Locale; `None` with no `locale` key, as after **System**.
-    pub locale: Option<Locale>,
-    pub data: Option<PathBuf>,
+pub struct StoredDevice(pub HashMap<ConfigKey, ConfigValue>);
+
+impl StoredDevice {
+    /// The file holding each of `values` under its key.
+    pub fn of(values: impl IntoIterator<Item = ConfigValue>) -> Self {
+        Self(
+            values
+                .into_iter()
+                .map(|value| (value.key(), value))
+                .collect(),
+        )
+    }
+
+    pub fn get(&self, key: ConfigKey) -> Option<&ConfigValue> {
+        self.0.get(&key)
+    }
 }
 
-/// A configuration file in memory: the settings written, the keys a source above it sets, and
-/// whether there is a file to write at all or writes fail.
+/// A configuration file in memory: the settings written, the values start-up read, the keys a
+/// source above it sets, and whether there is a file to write at all or writes fail.
 #[derive(Debug, Default)]
 pub struct InMemoryDeviceConfiguration {
     /// The file a write names; `None` refuses every write, as with no home folder.
-    pub file: Option<String>,
+    pub file: Option<PathBuf>,
+    /// The values in force, as start-up read them; a write leaves them, as it does a run's.
+    pub effective: StoredDevice,
     /// The keys a source above the file sets, with the source's name.
-    pub shadows: Vec<(DeviceKey, String)>,
+    pub shadows: Vec<(ConfigKey, String)>,
     /// Makes every write fail, as a file that can't be written does.
     pub fail_writes: bool,
     pub stored: RefCell<StoredDevice>,
@@ -259,16 +264,32 @@ impl InMemoryDeviceConfiguration {
     /// A file that takes every write.
     pub fn writable() -> Self {
         Self {
-            file: Some("personal-ledger.conf".to_string()),
+            file: Some(PathBuf::from("personal-ledger.conf")),
             ..Self::default()
         }
     }
 
     /// [`Self::writable`], with `key` set by `source` above the file.
-    pub fn shadowing(key: DeviceKey, source: &str) -> Self {
+    pub fn shadowing(key: ConfigKey, source: &str) -> Self {
         Self {
             shadows: vec![(key, source.to_string())],
             ..Self::writable()
+        }
+    }
+
+    /// `self`, with start-up having read each of `values`.
+    pub fn reading(self, values: impl IntoIterator<Item = ConfigValue>) -> Self {
+        Self {
+            effective: StoredDevice::of(values),
+            ..self
+        }
+    }
+
+    /// `self`, with the file holding each of `values`.
+    pub fn storing(self, values: impl IntoIterator<Item = ConfigValue>) -> Self {
+        Self {
+            stored: RefCell::new(StoredDevice::of(values)),
+            ..self
         }
     }
 
@@ -276,14 +297,22 @@ impl InMemoryDeviceConfiguration {
         self.stored.borrow().clone()
     }
 
-    /// Writes `value` with `store` unless the key is shadowed, there's no file, or writes fail.
-    fn write<T: Clone>(
+    fn shadow(&self, key: ConfigKey) -> Option<String> {
+        self.shadows
+            .iter()
+            .find(|(shadowed, _)| *shadowed == key)
+            .map(|(_, source)| source.clone())
+    }
+
+    /// Changes `key` in the file with `edit`, answering `value`, unless the key is shadowed,
+    /// there's no file, or writes fail.
+    fn change<T>(
         &self,
-        key: DeviceKey,
+        key: ConfigKey,
         value: T,
-        store: impl FnOnce(&mut StoredDevice, T),
+        edit: impl FnOnce(&mut StoredDevice),
     ) -> DeviceAnswer<T> {
-        if !key.writes_when_shadowed()
+        if !writes_when_shadowed(key)
             && let Some(source) = self.shadow(key)
         {
             return DeviceAnswer::Shadowed { source };
@@ -294,82 +323,34 @@ impl InMemoryDeviceConfiguration {
         if self.fail_writes {
             return DeviceAnswer::Refused(DeviceRefusal::WriteFailed);
         }
-        store(&mut self.stored.borrow_mut(), value.clone());
+        edit(&mut self.stored.borrow_mut());
         DeviceAnswer::Saved {
             value,
-            file: file.clone(),
+            file: file.display().to_string(),
         }
     }
 }
 
 impl DeviceConfiguration for InMemoryDeviceConfiguration {
-    fn shadow(&self, key: DeviceKey) -> Option<String> {
-        self.shadows
-            .iter()
-            .find(|(shadowed, _)| *shadowed == key)
-            .map(|(_, source)| source.clone())
-    }
-
-    fn set_on_start(&self, on_start: OnStart) -> DeviceAnswer<OnStart> {
-        self.write(DeviceKey::OnStart, on_start, |stored, value| {
-            stored.on_start = Some(value);
+    fn read(&self) -> DeviceSnapshot {
+        let stored = self.stored.borrow();
+        DeviceSnapshot::new(self.file.clone(), |key| KeyState {
+            stored: stored.get(key).cloned(),
+            effective: self.effective.get(key).cloned(),
+            shadow: self.shadow(key),
         })
     }
 
-    fn set_start_view(&self, start_view: StartView) -> DeviceAnswer<StartView> {
-        self.write(DeviceKey::StartView, start_view, |stored, value| {
-            stored.start_view = Some(value);
+    fn write(&self, value: ConfigValue) -> DeviceAnswer<ConfigValue> {
+        let written = value.clone();
+        self.change(value.key(), value, |stored| {
+            stored.0.insert(written.key(), written);
         })
     }
 
-    fn set_toasts(&self, on: bool) -> DeviceAnswer<bool> {
-        self.write(DeviceKey::Toasts, on, |stored, value| {
-            stored.toasts = Some(value);
-        })
-    }
-
-    fn set_date_style(&self, style: Option<DateStyle>) -> DeviceAnswer<Option<DateStyle>> {
-        self.write(DeviceKey::DateStyle, style, |stored, value| {
-            stored.date_style = Some(value);
-        })
-    }
-
-    fn set_row_density(&self, density: RowDensity) -> DeviceAnswer<RowDensity> {
-        self.write(DeviceKey::RowDensity, density, |stored, value| {
-            stored.row_density = Some(value);
-        })
-    }
-
-    fn set_status_glyphs(&self, glyphs: StatusGlyphs) -> DeviceAnswer<StatusGlyphs> {
-        self.write(DeviceKey::StatusGlyphs, glyphs, |stored, value| {
-            stored.status_glyphs = Some(value);
-        })
-    }
-
-    fn set_colour_theme(&self, id: &'static str) -> DeviceAnswer<&'static str> {
-        self.write(DeviceKey::ColourTheme, id, |stored, value| {
-            stored.colour_theme = Some(value.to_string());
-        })
-    }
-
-    fn set_colour_appearance(
-        &self,
-        appearance: ColourAppearance,
-    ) -> DeviceAnswer<ColourAppearance> {
-        self.write(DeviceKey::ColourAppearance, appearance, |stored, value| {
-            stored.colour_appearance = Some(value);
-        })
-    }
-
-    fn set_locale(&self, locale: Option<Locale>) -> DeviceAnswer<Option<Locale>> {
-        self.write(DeviceKey::Locale, locale, |stored, value| {
-            stored.locale = value;
-        })
-    }
-
-    fn set_data(&self, folder: &Path) -> DeviceAnswer<PathBuf> {
-        self.write(DeviceKey::Data, folder.to_path_buf(), |stored, value| {
-            stored.data = Some(value);
+    fn remove(&self, key: ConfigKey) -> DeviceAnswer<()> {
+        self.change(key, (), |stored| {
+            stored.0.remove(&key);
         })
     }
 }

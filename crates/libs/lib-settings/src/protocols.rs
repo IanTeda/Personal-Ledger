@@ -1,15 +1,16 @@
 //! What the Settings module asks of the Shell and of the device, through ports each Client
 //! implements. [`SettingsRouter`] is the frame's and [`DeviceRouter`] the This device pages', each
 //! lent to every `handle` call; a refusal or a saved setting goes to the status line through
-//! [`Notify`] (ADR-0048). [`DeviceConfiguration`] writes a device's settings, Configuration in the
-//! user's configuration file (ADR-0053), which the Client answers over its own configuration writer.
+//! [`Notify`] (ADR-0048). [`DeviceConfiguration`] reads and writes a device's settings,
+//! Configuration in the user's configuration file (ADR-0053), which the Client answers over its own
+//! configuration writer.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::rc::Rc;
 
 use lib_colour_theme::ColourAppearance;
-use lib_core::{DateStyle, Money, OnStart, RowDensity, StartView, StatusGlyphs, UnitId};
-use lib_locale::Locale;
+use lib_core::configuration::{ConfigKey, ConfigValue};
+use lib_core::{Money, UnitId};
 use lib_toast::Notify;
 
 use crate::log::LogLine;
@@ -59,60 +60,68 @@ pub enum ColourChoice {
     Appearance(ColourAppearance),
 }
 
-/// A device's setting that is Configuration, by the key the configuration file spells it with,
-/// which the status line and a control's shadowed note name.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DeviceKey {
-    OnStart,
-    StartView,
-    Toasts,
-    DateStyle,
-    RowDensity,
-    StatusGlyphs,
-    ColourTheme,
-    ColourAppearance,
-    Locale,
-    /// The Data folder, the configuration file's `data`.
-    Data,
+/// Whether a write of `key` goes to the file even while a source above it sets the key: the
+/// Locale and the Data folder (DESKTOP-186), whose choice is kept for when the override is gone.
+/// Every other key refuses. A Settings rule, not the file's, so every [`DeviceConfiguration`] keeps
+/// it and every page shows by it ([`DeviceSnapshot::shown`]).
+pub fn writes_when_shadowed(key: ConfigKey) -> bool {
+    matches!(key, ConfigKey::Locale | ConfigKey::Data)
 }
 
-impl DeviceKey {
-    pub const ALL: [DeviceKey; 10] = [
-        Self::OnStart,
-        Self::StartView,
-        Self::Toasts,
-        Self::DateStyle,
-        Self::RowDensity,
-        Self::StatusGlyphs,
-        Self::ColourTheme,
-        Self::ColourAppearance,
-        Self::Locale,
-        Self::Data,
-    ];
+/// What a device holds of one key.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct KeyState {
+    /// The configuration file's own value, whatever outranks it; `None` when the file doesn't set
+    /// the key.
+    pub stored: Option<ConfigValue>,
+    /// The value in force, as start-up's parse read it from every source; `None` for a key with
+    /// no default that nothing sets.
+    pub effective: Option<ConfigValue>,
+    /// What sets the key above the file, by name, or `None` when a write to the file applies.
+    pub shadow: Option<String>,
+}
 
-    /// The key as the configuration file spells it, the TUI's `:set` and the environment variable
-    /// naming it too.
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::OnStart => "on_start",
-            Self::StartView => "start_view",
-            Self::Toasts => "toasts",
-            Self::DateStyle => "date_style",
-            Self::RowDensity => "row_density",
-            Self::StatusGlyphs => "status_glyphs",
-            Self::ColourTheme => "colour_theme",
-            Self::ColourAppearance => "colour_appearance",
-            Self::Locale => "locale",
-            Self::Data => "data",
+/// Every key Settings writes as a device holds it, read at once, and the file a write goes to.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DeviceSnapshot {
+    /// The user's configuration file; `None` with no home folder to keep one in.
+    pub file: Option<PathBuf>,
+    /// One per [`ConfigKey::ALL`], in its order.
+    keys: [KeyState; ConfigKey::ALL.len()],
+}
+
+impl DeviceSnapshot {
+    /// A snapshot of `file` with each key's state from `state`.
+    pub fn new(file: Option<PathBuf>, mut state: impl FnMut(ConfigKey) -> KeyState) -> Self {
+        Self {
+            file,
+            keys: ConfigKey::ALL.map(&mut state),
         }
     }
 
-    /// Whether a write goes to the file even while a source above it sets the key: the Locale and
-    /// the Data folder (DESKTOP-186), whose choice is kept for when the override is gone. Every
-    /// other key refuses.
-    pub fn writes_when_shadowed(self) -> bool {
-        matches!(self, Self::Locale | Self::Data)
+    pub fn get(&self, key: ConfigKey) -> &KeyState {
+        &self.keys[index(key)]
     }
+
+    /// The value `key`'s control shows: the file's for a key that [writes when
+    /// shadowed](writes_when_shadowed), since that is what a write changes, else the value in
+    /// force.
+    pub fn shown(&self, key: ConfigKey) -> Option<&ConfigValue> {
+        let state = self.get(key);
+        if writes_when_shadowed(key) {
+            state.stored.as_ref()
+        } else {
+            state.effective.as_ref()
+        }
+    }
+}
+
+/// `key`'s place in [`ConfigKey::ALL`].
+fn index(key: ConfigKey) -> usize {
+    ConfigKey::ALL
+        .iter()
+        .position(|listed| *listed == key)
+        .unwrap_or_default()
 }
 
 /// How a write of a device's setting went: an answer for the person, never a failure for the
@@ -123,7 +132,7 @@ pub enum DeviceAnswer<T> {
     Saved { value: T, file: String },
     /// Not written, since a source above the file sets the key: a flag, an environment variable or
     /// a higher configuration file, named by `source`. Never the answer for a key that
-    /// [writes when shadowed](DeviceKey::writes_when_shadowed).
+    /// [writes when shadowed](writes_when_shadowed).
     Shadowed { source: String },
     /// Not written, for the reason given.
     Refused(DeviceRefusal),
@@ -138,37 +147,20 @@ pub enum DeviceRefusal {
     WriteFailed,
 }
 
-/// Writes a device's settings to the user's configuration file, one typed method per setting, and
-/// says which keys a source above the file sets, so a control can say so before it is changed.
+/// A device's settings, Configuration in the user's configuration file: read all at once, and
+/// written or removed a key at a time by value, so a new key needs no method here. Every
+/// [`ConfigKey`] is taken, including those no page writes yet.
 pub trait DeviceConfiguration {
-    /// What sets `key` above the file, by name, or `None` when a write to the file applies.
-    fn shadow(&self, key: DeviceKey) -> Option<String>;
+    /// Every key's value in the file, the value in force and what sets it above the file.
+    fn read(&self) -> DeviceSnapshot;
 
-    fn set_on_start(&self, on_start: OnStart) -> DeviceAnswer<OnStart>;
+    /// Writes `value` under its key, unless a source above the file sets a key that doesn't
+    /// [write when shadowed](writes_when_shadowed).
+    fn write(&self, value: ConfigValue) -> DeviceAnswer<ConfigValue>;
 
-    fn set_start_view(&self, start_view: StartView) -> DeviceAnswer<StartView>;
-
-    fn set_toasts(&self, on: bool) -> DeviceAnswer<bool>;
-
-    /// `None` is the Locale's default.
-    fn set_date_style(&self, style: Option<DateStyle>) -> DeviceAnswer<Option<DateStyle>>;
-
-    fn set_row_density(&self, density: RowDensity) -> DeviceAnswer<RowDensity>;
-
-    /// Shared with the TUI, which reads the same key.
-    fn set_status_glyphs(&self, glyphs: StatusGlyphs) -> DeviceAnswer<StatusGlyphs>;
-
-    /// A built-in Colour Theme, by its id.
-    fn set_colour_theme(&self, id: &'static str) -> DeviceAnswer<&'static str>;
-
-    fn set_colour_appearance(&self, appearance: ColourAppearance)
-    -> DeviceAnswer<ColourAppearance>;
-
-    /// `None` is **System**, which takes the key out of the file. Written even while shadowed.
-    fn set_locale(&self, locale: Option<Locale>) -> DeviceAnswer<Option<Locale>>;
-
-    /// The Data folder, `[General] data`. Written even while shadowed.
-    fn set_data(&self, folder: &Path) -> DeviceAnswer<PathBuf>;
+    /// Takes `key` out of the file, so the sources below it decide at the next start: the
+    /// Locale's **System**. Shadowed as [`Self::write`] is.
+    fn remove(&self, key: ConfigKey) -> DeviceAnswer<()>;
 }
 
 /// What only the Shell does for Settings › Tracing: the log box's list is the Client's, and Clear
@@ -284,4 +276,49 @@ pub struct LedgerCounts {
 /// builds a domain's Presenter. Read only for the pane's page, and not at all with no Ledger open.
 pub trait LedgerSummaries {
     fn counts(&self) -> LedgerCounts;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_locale_and_the_data_folder_are_written_while_shadowed() {
+        let written: Vec<_> = ConfigKey::ALL
+            .into_iter()
+            .filter(|key| writes_when_shadowed(*key))
+            .collect();
+        assert_eq!(written, [ConfigKey::Locale, ConfigKey::Data]);
+    }
+
+    #[test]
+    fn a_control_shows_the_value_in_force_but_the_files_for_a_key_written_while_shadowed() {
+        let snapshot = DeviceSnapshot::new(None, |key| match key {
+            ConfigKey::Toasts => KeyState {
+                stored: Some(ConfigValue::Toasts(true)),
+                effective: Some(ConfigValue::Toasts(false)),
+                shadow: Some("--no-toasts".to_string()),
+            },
+            ConfigKey::Locale => KeyState {
+                stored: Some(ConfigValue::Locale("en-GB".to_string())),
+                effective: Some(ConfigValue::Locale("en-US".to_string())),
+                shadow: Some("--locale en-US".to_string()),
+            },
+            _ => KeyState::default(),
+        });
+
+        assert_eq!(
+            snapshot.shown(ConfigKey::Toasts),
+            Some(&ConfigValue::Toasts(false))
+        );
+        assert_eq!(
+            snapshot.shown(ConfigKey::Locale),
+            Some(&ConfigValue::Locale("en-GB".to_string()))
+        );
+        assert_eq!(snapshot.shown(ConfigKey::Data), None);
+        assert_eq!(
+            snapshot.get(ConfigKey::Toasts).shadow.as_deref(),
+            Some("--no-toasts")
+        );
+    }
 }

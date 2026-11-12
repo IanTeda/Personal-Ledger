@@ -14,6 +14,7 @@ use std::rc::Rc;
 
 use chrono::NaiveDate;
 use lib_colour_theme::{ColourAppearance, ColourTheme};
+use lib_core::configuration::{ConfigKey, ConfigValue};
 use lib_core::{DateStyle, Money};
 use lib_list_cursor::Step;
 use lib_locale::format::{AmountStyle, format_amount, format_date};
@@ -22,10 +23,10 @@ use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP, SELECT};
 use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Choice, Hint, SelectView};
 
-use super::device::{ControlView, chord, chords, settle, shadowed_note, step_choice};
+use super::device::{ControlView, chord, chords, shadowed_note, step_choice, write};
 use crate::keymap::{NEXT_CHOICE, PREVIOUS_CHOICE};
 use crate::msg;
-use crate::protocols::{ColourChoice, DeviceConfiguration, DeviceKey, DeviceRouter};
+use crate::protocols::{ColourChoice, DeviceConfiguration, DeviceRouter, DeviceSnapshot};
 
 /// The Date format control's choices: `None` is "Locale default", the Locale picking the form.
 pub const DATE_STYLE_CHOICES: [Option<DateStyle>; 5] = [
@@ -99,7 +100,7 @@ impl DisplayEvent {
     }
 }
 
-/// What start-up read of Display's Configuration.
+/// What Display shows of a device's Configuration.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DisplaySettings {
     pub date_style: Option<DateStyle>,
@@ -110,10 +111,40 @@ pub struct DisplaySettings {
     pub colour_appearance: ColourAppearance,
 }
 
+impl DisplaySettings {
+    /// What each control shows of `snapshot` ([`DeviceSnapshot::shown`]): the value in force, or
+    /// the default.
+    pub fn read(snapshot: &DeviceSnapshot) -> Self {
+        let default = Self::default();
+        Self {
+            date_style: match snapshot.shown(ConfigKey::DateStyle) {
+                Some(ConfigValue::DateStyle(style)) => *style,
+                _ => default.date_style,
+            },
+            row_density: match snapshot.shown(ConfigKey::RowDensity) {
+                Some(ConfigValue::RowDensity(density)) => *density,
+                _ => default.row_density,
+            },
+            status_glyphs: match snapshot.shown(ConfigKey::StatusGlyphs) {
+                Some(ConfigValue::StatusGlyphs(glyphs)) => *glyphs,
+                _ => default.status_glyphs,
+            },
+            colour_theme: match snapshot.shown(ConfigKey::ColourTheme) {
+                Some(ConfigValue::ColourTheme(id)) => Some(id.clone()),
+                _ => default.colour_theme,
+            },
+            colour_appearance: match snapshot.shown(ConfigKey::ColourAppearance) {
+                Some(ConfigValue::ColourAppearance(appearance)) => *appearance,
+                _ => default.colour_appearance,
+            },
+        }
+    }
+}
+
 /// What the Client hands Display as it builds it.
 pub struct DisplaySetup {
-    /// Where the settings are written; the Client swaps in its configuration file's once start-up
-    /// has read it ([`DisplayPresenter::configure`]).
+    /// Where the settings are read from and written; the Client swaps in its configuration
+    /// file's once start-up has read it ([`DisplayPresenter::configure`]).
     pub device: Rc<dyn DeviceConfiguration>,
     pub keymap: Keymap<DisplayEvent>,
     /// The chord of the Shell's `back`, for the legend.
@@ -193,6 +224,9 @@ pub struct DisplayViewModel {
 /// Settings › Display's Presenter.
 pub struct DisplayPresenter {
     device: Rc<dyn DeviceConfiguration>,
+    /// The device as last read, for what sets each key above the file. The values shown are the
+    /// output and the colours, which each write's answer keeps.
+    snapshot: DeviceSnapshot,
     keymap: Keymap<DisplayEvent>,
     back_chord: String,
     output: DisplayOutput,
@@ -206,10 +240,11 @@ pub struct DisplayPresenter {
 }
 
 impl DisplayPresenter {
-    /// Display on the defaults, until the Client tells it what start-up read.
+    /// Display on what `setup`'s device reads.
     pub fn new(setup: DisplaySetup) -> Self {
-        Self {
-            device: setup.device,
+        let mut display = Self {
+            snapshot: DeviceSnapshot::default(),
+            device: setup.device.clone(),
             keymap: setup.keymap,
             back_chord: setup.back_chord,
             output: DisplayOutput::default(),
@@ -219,7 +254,9 @@ impl DisplayPresenter {
             grid: None,
             columns: 1,
             page_focused: false,
-        }
+        };
+        display.configure(setup.device);
+        display
     }
 
     /// Replaces the keymap and the `back` chord, for a `[keybindings]` change.
@@ -228,9 +265,12 @@ impl DisplayPresenter {
         self.back_chord = back_chord;
     }
 
-    /// Writes to `device` from now on, and shows `settings` as start-up read them.
-    pub fn configure(&mut self, device: Rc<dyn DeviceConfiguration>, settings: DisplaySettings) {
+    /// Reads and writes `device` from now on, showing what it reads. Read once: a saved value is
+    /// the one in force, so a write's answer keeps the page from then on.
+    pub fn configure(&mut self, device: Rc<dyn DeviceConfiguration>) {
+        self.snapshot = device.read();
         self.device = device;
+        let settings = DisplaySettings::read(&self.snapshot);
         self.output.date_style = settings.date_style;
         self.output.row_density = settings.row_density;
         self.output.status_glyphs = settings.status_glyphs;
@@ -315,7 +355,7 @@ impl Presenter for DisplayPresenter {
     }
 
     fn view_model(&self) -> DisplayViewModel {
-        let device = self.device.as_ref();
+        let snapshot = &self.snapshot;
         let output = self.output;
         let chosen = self.chosen_theme();
         let field_hints = vec![
@@ -363,7 +403,7 @@ impl Presenter for DisplayPresenter {
                     focused: self.field == Some(0),
                 },
                 hint: None,
-                shadowed: shadowed_note(device, DeviceKey::DateStyle),
+                shadowed: shadowed_note(snapshot, ConfigKey::DateStyle),
             },
             row_density: ControlView {
                 select: SelectView {
@@ -379,7 +419,7 @@ impl Presenter for DisplayPresenter {
                     focused: self.field == Some(1),
                 },
                 hint: None,
-                shadowed: shadowed_note(device, DeviceKey::RowDensity),
+                shadowed: shadowed_note(snapshot, ConfigKey::RowDensity),
             },
             status_glyphs: ControlView {
                 select: SelectView {
@@ -395,7 +435,7 @@ impl Presenter for DisplayPresenter {
                     focused: self.field == Some(2),
                 },
                 hint: None,
-                shadowed: shadowed_note(device, DeviceKey::StatusGlyphs),
+                shadowed: shadowed_note(snapshot, ConfigKey::StatusGlyphs),
             },
             start_sidebar_minimised: CheckboxView {
                 label: msg::settings_display_start_minimised(),
@@ -434,11 +474,11 @@ impl Presenter for DisplayPresenter {
                     focused: false,
                 },
                 hint: None,
-                shadowed: shadowed_note(device, DeviceKey::ColourAppearance),
+                shadowed: shadowed_note(snapshot, ConfigKey::ColourAppearance),
             },
             colour_theme: ColourThemeView {
                 label: msg::settings_display_colour_theme(),
-                shadowed: shadowed_note(device, DeviceKey::ColourTheme),
+                shadowed: shadowed_note(snapshot, ConfigKey::ColourTheme),
                 cards: ColourTheme::built_in()
                     .iter()
                     .enumerate()
@@ -598,8 +638,9 @@ impl DisplayPresenter {
         if style == self.output.date_style {
             return;
         }
-        let answer = self.device.set_date_style(style);
-        if let Some(saved) = settle(answer, DeviceKey::DateStyle, router) {
+        if let Some(ConfigValue::DateStyle(saved)) =
+            write(self.device.as_ref(), ConfigValue::DateStyle(style), router)
+        {
             self.change(|output| output.date_style = saved, router);
         }
     }
@@ -609,8 +650,11 @@ impl DisplayPresenter {
         if density == self.output.row_density {
             return;
         }
-        let answer = self.device.set_row_density(density);
-        if let Some(saved) = settle(answer, DeviceKey::RowDensity, router) {
+        if let Some(ConfigValue::RowDensity(saved)) = write(
+            self.device.as_ref(),
+            ConfigValue::RowDensity(density),
+            router,
+        ) {
             self.change(|output| output.row_density = saved, router);
         }
     }
@@ -620,8 +664,11 @@ impl DisplayPresenter {
         if glyphs == self.output.status_glyphs {
             return;
         }
-        let answer = self.device.set_status_glyphs(glyphs);
-        if let Some(saved) = settle(answer, DeviceKey::StatusGlyphs, router) {
+        if let Some(ConfigValue::StatusGlyphs(saved)) = write(
+            self.device.as_ref(),
+            ConfigValue::StatusGlyphs(glyphs),
+            router,
+        ) {
             self.change(|output| output.status_glyphs = saved, router);
         }
     }
@@ -629,19 +676,32 @@ impl DisplayPresenter {
     /// Saves a Colour Theme or Appearance, which the Shell applies only once saved.
     fn choose_colour(&mut self, colour: ColourChoice, router: &mut dyn DeviceRouter) {
         let saved = match colour {
+            // The built-in id chosen, not the saved copy, since the Shell applies a built-in.
             ColourChoice::Theme(id) => {
-                let answer = self.device.set_colour_theme(id);
-                settle(answer, DeviceKey::ColourTheme, router).map(|id| {
-                    self.colour_theme = Some(id.to_string());
-                    ColourChoice::Theme(id)
-                })
+                match write(
+                    self.device.as_ref(),
+                    ConfigValue::ColourTheme(id.to_string()),
+                    router,
+                ) {
+                    Some(ConfigValue::ColourTheme(saved)) => {
+                        self.colour_theme = Some(saved);
+                        Some(ColourChoice::Theme(id))
+                    }
+                    _ => None,
+                }
             }
             ColourChoice::Appearance(appearance) => {
-                let answer = self.device.set_colour_appearance(appearance);
-                settle(answer, DeviceKey::ColourAppearance, router).map(|appearance| {
-                    self.colour_appearance = appearance;
-                    ColourChoice::Appearance(appearance)
-                })
+                match write(
+                    self.device.as_ref(),
+                    ConfigValue::ColourAppearance(appearance),
+                    router,
+                ) {
+                    Some(ConfigValue::ColourAppearance(saved)) => {
+                        self.colour_appearance = saved;
+                        Some(ColourChoice::Appearance(saved))
+                    }
+                    _ => None,
+                }
             }
         };
         if let Some(colour) = saved {
@@ -804,9 +864,15 @@ mod tests {
             keymap: display_keymap(&KeyBindingConfig::default()),
             back_chord: "esc".to_string(),
         });
-        display.configure(device, DisplaySettings::default());
         send(&mut display, [DisplayEvent::SetGridColumns(3)]);
         display
+    }
+
+    /// Display on a writable device whose start-up read each of `values`.
+    fn reading(values: impl IntoIterator<Item = ConfigValue>) -> DisplayPresenter {
+        display_on(Rc::new(
+            InMemoryDeviceConfiguration::writable().reading(values),
+        ))
     }
 
     fn writable() -> (Rc<InMemoryDeviceConfiguration>, DisplayPresenter) {
@@ -838,7 +904,10 @@ mod tests {
         let router = send(&mut display, [RIGHT]);
 
         assert_eq!(display.output().date_style, Some(DateStyle::Short));
-        assert_eq!(device.stored().date_style, Some(Some(DateStyle::Short)));
+        assert_eq!(
+            device.stored().get(ConfigKey::DateStyle),
+            Some(&ConfigValue::DateStyle(Some(DateStyle::Short)))
+        );
         assert_eq!(
             router.statuses(),
             ["date_style saved to personal-ledger.conf"]
@@ -849,7 +918,7 @@ mod tests {
     #[test]
     fn a_shadowed_date_style_is_noted_and_reaches_no_view() {
         let device = Rc::new(InMemoryDeviceConfiguration::shadowing(
-            DeviceKey::DateStyle,
+            ConfigKey::DateStyle,
             "PERSONAL_LEDGER_DISPLAY__DATE_STYLE",
         ));
         let mut display = display_on(device.clone());
@@ -920,8 +989,8 @@ mod tests {
         );
         assert_eq!(view.appearance.select.chosen, Some(ColourAppearance::Light));
         assert_eq!(
-            device.stored().colour_appearance,
-            Some(ColourAppearance::Light)
+            device.stored().get(ConfigKey::ColourAppearance),
+            Some(&ConfigValue::ColourAppearance(ColourAppearance::Light))
         );
     }
 
@@ -944,10 +1013,13 @@ mod tests {
                 "status_glyphs saved to personal-ledger.conf",
             ]
         );
-        assert_eq!(device.stored().row_density, Some(RowDensity::Roomy));
         assert_eq!(
-            device.stored().status_glyphs,
-            Some(StatusGlyphs::AsciiFallback)
+            device.stored().get(ConfigKey::RowDensity),
+            Some(&ConfigValue::RowDensity(RowDensity::Roomy))
+        );
+        assert_eq!(
+            device.stored().get(ConfigKey::StatusGlyphs),
+            Some(&ConfigValue::StatusGlyphs(StatusGlyphs::AsciiFallback))
         );
         assert_eq!(
             router.displays().last(),
@@ -982,11 +1054,11 @@ mod tests {
     fn a_shadowed_row_density_or_status_glyphs_is_noted_and_reaches_no_view() {
         for (key, event) in [
             (
-                DeviceKey::RowDensity,
+                ConfigKey::RowDensity,
                 DisplayEvent::ChooseRowDensity(RowDensity::Compact),
             ),
             (
-                DeviceKey::StatusGlyphs,
+                ConfigKey::StatusGlyphs,
                 DisplayEvent::ChooseStatusGlyphs(StatusGlyphs::AsciiFallback),
             ),
         ] {
@@ -1023,15 +1095,10 @@ mod tests {
 
     #[test]
     fn display_starts_on_the_row_density_and_status_glyphs_start_up_read() {
-        let (device, mut display) = writable();
-        display.configure(
-            device,
-            DisplaySettings {
-                row_density: RowDensity::Compact,
-                status_glyphs: StatusGlyphs::AsciiFallback,
-                ..DisplaySettings::default()
-            },
-        );
+        let display = reading([
+            ConfigValue::RowDensity(RowDensity::Compact),
+            ConfigValue::StatusGlyphs(StatusGlyphs::AsciiFallback),
+        ]);
 
         let view = display.view_model();
         assert_eq!(view.row_density.select.chosen, Some(RowDensity::Compact));
@@ -1044,14 +1111,17 @@ mod tests {
 
     #[test]
     fn settings_reads_back_what_start_up_read_and_what_the_page_wrote() {
-        let (device, mut display) = writable();
+        let mut display = reading([
+            ConfigValue::RowDensity(RowDensity::Compact),
+            ConfigValue::ColourTheme("not-a-theme-yet".to_string()),
+            ConfigValue::ColourAppearance(ColourAppearance::Dark),
+        ]);
         let read = DisplaySettings {
             row_density: RowDensity::Compact,
             colour_theme: Some("not-a-theme-yet".to_string()),
             colour_appearance: ColourAppearance::Dark,
             ..DisplaySettings::default()
         };
-        display.configure(device, read.clone());
         assert_eq!(display.settings(), read, "as start-up read them");
 
         send(
@@ -1094,14 +1164,7 @@ mod tests {
 
     #[test]
     fn j_past_the_last_control_enters_the_grid_on_the_chosen_card_and_k_climbs_back() {
-        let (device, mut display) = writable();
-        display.configure(
-            device,
-            DisplaySettings {
-                colour_theme: Some("nord".to_string()),
-                ..DisplaySettings::default()
-            },
-        );
+        let mut display = reading([ConfigValue::ColourTheme("nord".to_string())]);
         display.set_page_focused(true);
         let nord = ColourTheme::built_in()
             .iter()

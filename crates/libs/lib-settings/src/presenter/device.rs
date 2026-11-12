@@ -7,8 +7,10 @@ use lib_toast::{Notice, Notify};
 use lib_viper::keymap::Keymap;
 use lib_viper::view::SelectView;
 
+use lib_core::configuration::{ConfigKey, ConfigValue};
+
 use crate::msg;
-use crate::protocols::{DeviceAnswer, DeviceConfiguration, DeviceKey, DeviceRefusal};
+use crate::protocols::{DeviceAnswer, DeviceConfiguration, DeviceRefusal, DeviceSnapshot};
 
 /// One control as drawn: its choices and the one chosen, the line under it, and, when a source
 /// above the configuration file sets its key, the note saying so.
@@ -20,17 +22,29 @@ pub struct ControlView<T> {
 }
 
 /// The note under a control whose key a source above the file sets.
-pub(super) fn shadowed_note(device: &dyn DeviceConfiguration, key: DeviceKey) -> Option<String> {
-    device
-        .shadow(key)
-        .map(|source| msg::settings_device_shadowed_note(&source))
+pub(super) fn shadowed_note(snapshot: &DeviceSnapshot, key: ConfigKey) -> Option<String> {
+    snapshot
+        .get(key)
+        .shadow
+        .as_deref()
+        .map(msg::settings_device_shadowed_note)
+}
+
+/// Writes `value` to `device` and settles the answer: the value saved, `None` when it wasn't.
+pub(super) fn write(
+    device: &dyn DeviceConfiguration,
+    value: ConfigValue,
+    router: &mut dyn Notify,
+) -> Option<ConfigValue> {
+    let key = value.key();
+    settle(device.write(value), key, router)
 }
 
 /// Says on the status line how the write of `key` went, and hands back the value saved, `None`
 /// when it wasn't, so the page keeps what it had.
 pub(super) fn settle<T>(
     answer: DeviceAnswer<T>,
-    key: DeviceKey,
+    key: ConfigKey,
     router: &mut dyn Notify,
 ) -> Option<T> {
     let name = key.name();

@@ -2,7 +2,7 @@
 //! control and the note when a source above the configuration file sets its key.
 
 use gpui::{App, div, prelude::*, px};
-use lib_settings::DeviceKey;
+use lib_core::configuration::ConfigKey;
 
 use crate::theme::color;
 
@@ -31,7 +31,7 @@ pub(super) fn hint(text: String, cx: &App) -> impl IntoElement {
 
 /// The note under `key`'s control while a source above the file sets it, so the control says why
 /// a change won't take.
-pub(super) fn shadowed(key: DeviceKey, note: Option<&str>, cx: &App) -> Option<gpui::Div> {
+pub(super) fn shadowed(key: ConfigKey, note: Option<&str>, cx: &App) -> Option<gpui::Div> {
     let note = note?.to_string();
     Some(
         div()

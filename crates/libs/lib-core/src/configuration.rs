@@ -38,7 +38,7 @@ impl Section {
 }
 
 /// The keys Settings writes, each in its page's [`Section`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ConfigKey {
     /// `on_start`: `reopen` or `none`.
     OnStart,

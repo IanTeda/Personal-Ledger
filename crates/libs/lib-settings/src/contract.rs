@@ -3,19 +3,21 @@
 //!
 //! Each check is generic over a [`DeviceFactory`]: a Client runs it from its own tests, since its
 //! device needs its own set-up (a temporary configuration file per check). Each writes through the
-//! port, reads the file back as a restart would, and expects what was saved, and only that.
+//! port, reads the device back, and expects what was saved, and only that. The writes run over
+//! every [`ConfigKey`], so a new key is checked with no new arm here.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use lib_colour_theme::ColourAppearance;
-use lib_core::{DateStyle, OnStart, RowDensity, StartView, StatusGlyphs, UnitId};
-use lib_locale::Locale;
+use lib_core::configuration::{ConfigKey, ConfigValue};
+use lib_core::{
+    ColourAppearance, DateStyle, Levels, OnStart, RowDensity, StartView, StatusGlyphs, UnitId,
+};
 
 use crate::fake::StoredDevice;
 use crate::log::LogLevel;
 use crate::protocols::{
-    BaseUnitAnswer, DeviceAnswer, DeviceConfiguration, DeviceKey, DeviceRefusal, LedgerPreferences,
-    LedgerUnits, TracingLog,
+    BaseUnitAnswer, DeviceAnswer, DeviceConfiguration, DeviceRefusal, LedgerPreferences,
+    LedgerUnits, TracingLog, writes_when_shadowed,
 };
 
 /// Builds the device a contract check runs on.
@@ -27,167 +29,169 @@ pub trait DeviceFactory {
 
     /// [`Self::writable`], with `key` set by a source above the file, and that source's name as
     /// the device says it.
-    fn shadowing(&mut self, key: DeviceKey) -> (Self::Device, String);
+    fn shadowing(&mut self, key: ConfigKey) -> (Self::Device, String);
 
     /// A device with no file to write, as with no home folder.
     fn without_file(&mut self) -> Self::Device;
 
     /// A device whose file can't be written.
     fn unwritable(&mut self) -> Self::Device;
-
-    /// What `device`'s file holds, read afresh as a restart would.
-    fn reload(&mut self, device: &Self::Device) -> StoredDevice;
 }
 
-/// Every setting written through the port answers saved with its value, and reads back.
-pub fn every_setting_is_saved_and_reads_back(factory: &mut impl DeviceFactory) {
+/// A value for every key, each other than its default, in [`ConfigKey::ALL`]'s order.
+pub fn first_values() -> Vec<ConfigValue> {
+    vec![
+        ConfigValue::OnStart(OnStart::NoLedger),
+        ConfigValue::StartView(StartView::Noun("bills".into())),
+        ConfigValue::Toasts(false),
+        ConfigValue::Locale("en-GB".to_string()),
+        ConfigValue::Data(PathBuf::from("/home/me/finance")),
+        ConfigValue::ColourTheme("nord".to_string()),
+        ConfigValue::ColourAppearance(ColourAppearance::Light),
+        ConfigValue::DateStyle(Some(DateStyle::Iso)),
+        ConfigValue::RowDensity(RowDensity::Compact),
+        ConfigValue::StatusGlyphs(StatusGlyphs::AsciiFallback),
+        ConfigValue::HintBar(false),
+        ConfigValue::TerminalColours(true),
+        ConfigValue::Log(Levels::DEBUG),
+        ConfigValue::LogFilePath(PathBuf::from("/home/me/ledger.log")),
+    ]
+}
+
+/// A second value for every key, each other than [`first_values`]', the Locale's default date
+/// style among them.
+pub fn second_values() -> Vec<ConfigValue> {
+    vec![
+        ConfigValue::OnStart(OnStart::ReopenLastLedger),
+        ConfigValue::StartView(StartView::Dashboard),
+        ConfigValue::Toasts(true),
+        ConfigValue::Locale("en-US".to_string()),
+        ConfigValue::Data(PathBuf::from("/home/me/money")),
+        ConfigValue::ColourTheme("gruvbox".to_string()),
+        ConfigValue::ColourAppearance(ColourAppearance::Dark),
+        ConfigValue::DateStyle(None),
+        ConfigValue::RowDensity(RowDensity::Roomy),
+        ConfigValue::StatusGlyphs(StatusGlyphs::Unicode),
+        ConfigValue::HintBar(true),
+        ConfigValue::TerminalColours(false),
+        ConfigValue::Log(Levels::ERROR),
+        ConfigValue::LogFilePath(PathBuf::from("/home/me/other.log")),
+    ]
+}
+
+/// What `device`'s file holds, as its read says.
+fn stored(device: &impl DeviceConfiguration) -> StoredDevice {
+    let snapshot = device.read();
+    StoredDevice(
+        ConfigKey::ALL
+            .into_iter()
+            .filter_map(|key| Some((key, snapshot.get(key).stored.clone()?)))
+            .collect(),
+    )
+}
+
+/// The sample values cover every key, once each, so the checks below reach a new key.
+pub fn the_sample_values_cover_every_key() {
+    for values in [first_values(), second_values()] {
+        assert_eq!(
+            values.iter().map(ConfigValue::key).collect::<Vec<_>>(),
+            ConfigKey::ALL
+        );
+    }
+}
+
+/// Every key written through the port answers saved with its value, and reads back as stored.
+pub fn every_key_is_saved_and_reads_back(factory: &mut impl DeviceFactory) {
     let device = factory.writable();
 
-    assert_saved(device.set_on_start(OnStart::NoLedger), OnStart::NoLedger);
-    assert_saved(
-        device.set_start_view(StartView::Noun("bills".into())),
-        StartView::Noun("bills".into()),
-    );
-    assert_saved(device.set_toasts(false), false);
-    assert_saved(
-        device.set_date_style(Some(DateStyle::Iso)),
-        Some(DateStyle::Iso),
-    );
-    assert_saved(
-        device.set_row_density(RowDensity::Compact),
-        RowDensity::Compact,
-    );
-    assert_saved(
-        device.set_status_glyphs(StatusGlyphs::AsciiFallback),
-        StatusGlyphs::AsciiFallback,
-    );
-    assert_saved(device.set_colour_theme("nord"), "nord");
-    assert_saved(
-        device.set_colour_appearance(ColourAppearance::Light),
-        ColourAppearance::Light,
-    );
-    assert_saved(device.set_locale(Some(Locale::EnGb)), Some(Locale::EnGb));
-    assert_saved(
-        device.set_data(Path::new("/home/me/finance")),
-        PathBuf::from("/home/me/finance"),
-    );
+    for value in first_values() {
+        assert_saved(device.write(value.clone()), &value);
+    }
 
-    assert_eq!(
-        factory.reload(&device),
-        StoredDevice {
-            on_start: Some(OnStart::NoLedger),
-            start_view: Some(StartView::Noun("bills".into())),
-            toasts: Some(false),
-            date_style: Some(Some(DateStyle::Iso)),
-            row_density: Some(RowDensity::Compact),
-            status_glyphs: Some(StatusGlyphs::AsciiFallback),
-            colour_theme: Some("nord".to_string()),
-            colour_appearance: Some(ColourAppearance::Light),
-            locale: Some(Locale::EnGb),
-            data: Some(PathBuf::from("/home/me/finance")),
-        }
-    );
+    assert_eq!(stored(&device), StoredDevice::of(first_values()));
 }
 
-/// A later write replaces the value, the Locale's default date style included.
+/// A later write replaces the value, and a removed key reads back unset, the others kept.
 pub fn a_later_write_replaces_the_value(factory: &mut impl DeviceFactory) {
     let device = factory.writable();
-    assert_saved(
-        device.set_date_style(Some(DateStyle::Long)),
-        Some(DateStyle::Long),
-    );
-    assert_saved(device.set_date_style(None), None);
-    assert_saved(device.set_start_view(StartView::Last), StartView::Last);
-    assert_saved(
-        device.set_start_view(StartView::Dashboard),
-        StartView::Dashboard,
-    );
+    for value in first_values() {
+        device.write(value);
+    }
 
-    assert_saved(
-        device.set_status_glyphs(StatusGlyphs::AsciiFallback),
-        StatusGlyphs::AsciiFallback,
-    );
-    assert_saved(
-        device.set_status_glyphs(StatusGlyphs::Unicode),
-        StatusGlyphs::Unicode,
-    );
+    for value in second_values() {
+        assert_saved(device.write(value.clone()), &value);
+    }
+    assert_eq!(stored(&device), StoredDevice::of(second_values()));
 
-    assert_saved(device.set_locale(Some(Locale::EnAu)), Some(Locale::EnAu));
-    assert_saved(device.set_locale(Some(Locale::EnUs)), Some(Locale::EnUs));
-    assert_eq!(factory.reload(&device).locale, Some(Locale::EnUs));
-    assert_saved(device.set_locale(None), None);
-    assert_saved(device.set_locale(None), None);
-
-    let stored = factory.reload(&device);
-    assert_eq!(stored.locale, None, "System takes the key out");
-    assert_eq!(stored.status_glyphs, Some(StatusGlyphs::Unicode));
-    assert_eq!(stored.date_style, Some(None));
-    assert_eq!(stored.start_view, Some(StartView::Dashboard));
+    for key in ConfigKey::ALL {
+        assert!(
+            matches!(device.remove(key), DeviceAnswer::Saved { .. }),
+            "{key:?} removed"
+        );
+        assert!(
+            matches!(device.remove(key), DeviceAnswer::Saved { .. }),
+            "{key:?} removed again"
+        );
+        assert_eq!(device.read().get(key).stored, None, "{key:?} taken out");
+    }
+    assert_eq!(stored(&device), StoredDevice::default());
 }
 
-/// A key a source above the file sets is named by `shadow`, answers shadowed naming it, and is not
+/// A key a source above the file sets reads that source, answers shadowed naming it, and is not
 /// written; the other keys are not shadowed. The Locale and the Data folder are named too, but
-/// still written ([`DeviceKey::writes_when_shadowed`]).
-pub fn a_shadowed_key_is_named_and_left_unwritten(factory: &mut impl DeviceFactory) {
-    for key in DeviceKey::ALL {
+/// still written ([`writes_when_shadowed`]).
+pub fn a_shadowed_key_reads_its_source_and_is_left_unwritten(factory: &mut impl DeviceFactory) {
+    for value in first_values() {
+        let key = value.key();
         let (device, source) = factory.shadowing(key);
 
+        let snapshot = device.read();
         assert_eq!(
-            device.shadow(key).as_deref(),
+            snapshot.get(key).shadow.as_deref(),
             Some(source.as_str()),
             "{key:?}"
         );
-        for other in DeviceKey::ALL.into_iter().filter(|other| *other != key) {
-            assert_eq!(device.shadow(other), None, "{other:?} under {key:?}");
+        for other in ConfigKey::ALL.into_iter().filter(|other| *other != key) {
+            assert_eq!(snapshot.get(other).shadow, None, "{other:?} under {key:?}");
         }
-        let shadowed = |answer: Option<String>| {
-            assert_eq!(answer.as_deref(), Some(source.as_str()), "{key:?}");
-        };
-        match key {
-            DeviceKey::OnStart => shadowed(source_of(device.set_on_start(OnStart::NoLedger))),
-            DeviceKey::StartView => shadowed(source_of(device.set_start_view(StartView::Last))),
-            DeviceKey::Toasts => shadowed(source_of(device.set_toasts(false))),
-            DeviceKey::DateStyle => shadowed(source_of(device.set_date_style(None))),
-            DeviceKey::RowDensity => {
-                shadowed(source_of(device.set_row_density(RowDensity::Roomy)));
-            }
-            DeviceKey::StatusGlyphs => shadowed(source_of(
-                device.set_status_glyphs(StatusGlyphs::AsciiFallback),
-            )),
-            DeviceKey::ColourTheme => shadowed(source_of(device.set_colour_theme("nord"))),
-            DeviceKey::ColourAppearance => shadowed(source_of(
-                device.set_colour_appearance(ColourAppearance::Dark),
-            )),
-            DeviceKey::Locale => {
-                assert_saved(device.set_locale(Some(Locale::EnUs)), Some(Locale::EnUs));
-                assert_eq!(
-                    factory.reload(&device),
-                    StoredDevice {
-                        locale: Some(Locale::EnUs),
-                        ..StoredDevice::default()
-                    },
-                    "the Locale is written under its override"
-                );
-                continue;
-            }
-            DeviceKey::Data => {
-                assert_saved(
-                    device.set_data(Path::new("/home/me/finance")),
-                    PathBuf::from("/home/me/finance"),
-                );
-                assert_eq!(
-                    factory.reload(&device),
-                    StoredDevice {
-                        data: Some(PathBuf::from("/home/me/finance")),
-                        ..StoredDevice::default()
-                    },
-                    "the Data folder is written under its override"
-                );
-                continue;
-            }
+
+        if writes_when_shadowed(key) {
+            assert_saved(device.write(value.clone()), &value);
+            assert_eq!(
+                stored(&device),
+                StoredDevice::of([value]),
+                "{key:?} is written under its override"
+            );
+        } else {
+            assert_eq!(
+                source_of(device.write(value)).as_deref(),
+                Some(source.as_str()),
+                "{key:?}"
+            );
+            assert_eq!(
+                source_of(device.remove(key)).as_deref(),
+                Some(source.as_str()),
+                "{key:?} removed"
+            );
+            assert_eq!(stored(&device), StoredDevice::default(), "{key:?}");
         }
-        assert_eq!(factory.reload(&device), StoredDevice::default(), "{key:?}");
     }
+}
+
+/// The read names the file a write goes to, the one a save names, and no file without one.
+pub fn the_read_names_the_file(factory: &mut impl DeviceFactory) {
+    let device = factory.writable();
+    let Some(file) = device.read().file else {
+        panic!("a writable device names its file");
+    };
+    match device.write(ConfigValue::Toasts(false)) {
+        DeviceAnswer::Saved { file: saved, .. } => {
+            assert_eq!(saved, file.display().to_string());
+        }
+        other => panic!("expected a save, got {other:?}"),
+    }
+
+    assert_eq!(factory.without_file().read().file, None);
 }
 
 /// With no file to write, every write is refused.
@@ -204,17 +208,19 @@ pub fn a_failed_write_is_refused(factory: &mut impl DeviceFactory) {
 
 /// Runs every check.
 pub fn run_all(factory: &mut impl DeviceFactory) {
-    every_setting_is_saved_and_reads_back(factory);
+    the_sample_values_cover_every_key();
+    every_key_is_saved_and_reads_back(factory);
     a_later_write_replaces_the_value(factory);
-    a_shadowed_key_is_named_and_left_unwritten(factory);
+    a_shadowed_key_reads_its_source_and_is_left_unwritten(factory);
+    the_read_names_the_file(factory);
     with_no_file_every_write_is_refused(factory);
     a_failed_write_is_refused(factory);
 }
 
-fn assert_saved<T: std::fmt::Debug + PartialEq>(answer: DeviceAnswer<T>, expected: T) {
+fn assert_saved(answer: DeviceAnswer<ConfigValue>, expected: &ConfigValue) {
     match answer {
         DeviceAnswer::Saved { value, file } => {
-            assert_eq!(value, expected);
+            assert_eq!(&value, expected);
             assert!(!file.is_empty(), "a save names its file");
         }
         other => panic!("expected {expected:?} saved, got {other:?}"),
@@ -235,19 +241,16 @@ fn assert_refused(device: &impl DeviceConfiguration, refusal: DeviceRefusal) {
             _ => None,
         }
     }
-    let refusals = [
-        refused(device.set_on_start(OnStart::NoLedger)),
-        refused(device.set_start_view(StartView::Last)),
-        refused(device.set_toasts(false)),
-        refused(device.set_date_style(None)),
-        refused(device.set_row_density(RowDensity::Roomy)),
-        refused(device.set_status_glyphs(StatusGlyphs::AsciiFallback)),
-        refused(device.set_colour_theme("nord")),
-        refused(device.set_colour_appearance(ColourAppearance::Dark)),
-        refused(device.set_locale(Some(Locale::EnGb))),
-        refused(device.set_data(Path::new("/home/me/finance"))),
-    ];
-    assert_eq!(refusals, [Some(refusal); 10]);
+    for value in first_values() {
+        let key = value.key();
+        assert_eq!(refused(device.write(value)), Some(refusal), "{key:?}");
+        assert_eq!(
+            refused(device.remove(key)),
+            Some(refusal),
+            "{key:?} removed"
+        );
+    }
+    assert_eq!(stored(device), StoredDevice::default());
 }
 
 /// Builds the capture a [`TracingLog`] contract check runs on. The capture fills from the Client's
@@ -426,7 +429,7 @@ mod tests {
             InMemoryDeviceConfiguration::writable()
         }
 
-        fn shadowing(&mut self, key: DeviceKey) -> (Self::Device, String) {
+        fn shadowing(&mut self, key: ConfigKey) -> (Self::Device, String) {
             let source = format!("PERSONAL_LEDGER_{}", key.name().to_uppercase());
             (InMemoryDeviceConfiguration::shadowing(key, &source), source)
         }
@@ -440,10 +443,6 @@ mod tests {
                 fail_writes: true,
                 ..InMemoryDeviceConfiguration::writable()
             }
-        }
-
-        fn reload(&mut self, device: &Self::Device) -> StoredDevice {
-            device.stored()
         }
     }
 

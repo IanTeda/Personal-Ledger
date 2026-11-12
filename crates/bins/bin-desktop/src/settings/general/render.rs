@@ -5,12 +5,13 @@
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
 use lib_core::StartView;
+use lib_core::configuration::ConfigKey;
 use lib_locale::Locale;
 use lib_settings::presenter::general::{
     GENERAL_FIELD_LOCALE, GENERAL_FIELD_ON_START, GENERAL_FIELD_START_VIEW, GENERAL_FIELD_TOASTS,
 };
 use lib_settings::{
-    DeviceKey, GeneralEvent, GeneralViewModel,
+    GeneralEvent, GeneralViewModel,
     presenter::{ControlView, DataFolderView, LocaleControl, StartViewControl, ThisDeviceView},
 };
 use lib_viper::view::Hint;
@@ -47,7 +48,7 @@ pub(super) fn page(
                 .child(segmented(
                     "general-on-start",
                     &model.on_start,
-                    DeviceKey::OnStart,
+                    ConfigKey::OnStart,
                     model.field == Some(GENERAL_FIELD_ON_START),
                     None,
                     clicks.segment(GeneralEvent::ChooseOnStart),
@@ -64,7 +65,7 @@ pub(super) fn page(
                 .child(segmented(
                     "general-toasts",
                     &model.toasts,
-                    DeviceKey::Toasts,
+                    ConfigKey::Toasts,
                     model.field == Some(GENERAL_FIELD_TOASTS),
                     Some(px(UNIFORM_OPTION_WIDTH)),
                     clicks.segment(GeneralEvent::ChooseToasts),
@@ -93,7 +94,7 @@ pub(super) fn page(
 fn segmented<T: Copy + PartialEq + 'static>(
     id: &'static str,
     control: &ControlView<T>,
-    key: DeviceKey,
+    key: ConfigKey,
     focused: bool,
     option_width: Option<gpui::Pixels>,
     on_click: crate::form::fields::OnSegmentClick<T>,
@@ -234,7 +235,7 @@ fn start_view_field(
         .children(unlisted)
         .children(control.hint.clone().map(|text| hint(text, cx)))
         .children(shadowed(
-            DeviceKey::StartView,
+            ConfigKey::StartView,
             control.shadowed.as_deref(),
             cx,
         ))

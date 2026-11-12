@@ -36,9 +36,9 @@ use gpui::{
 use lib_list_cursor::Step;
 use lib_settings::{
     ColourChoice, DataFolderOutcome, DeviceConfiguration, DisplayEvent, DisplayOutput,
-    DisplaySettings, GeneralEvent, GeneralSettings, LedgerSummaries, PageSummary, ScopeFacts,
-    SettingsFrameEvent, SettingsFramePresenter, SettingsFrameSetup, SettingsFrameViewModel,
-    SummarySources, ThisDevice, TracingLevel, TracingLog,
+    GeneralEvent, LedgerSummaries, PageSummary, ScopeFacts, SettingsFrameEvent,
+    SettingsFramePresenter, SettingsFrameSetup, SettingsFrameViewModel, SummarySources, ThisDevice,
+    TracingLevel, TracingLog,
     keymap::{
         display_keymap, general_keymap, ledger_keymap, settings_frame_keymap, tracing_keymap,
     },
@@ -714,21 +714,19 @@ impl SettingsView {
     // General
     // -----------------------------------------------------------------------------------------
 
-    /// Writes General's and Display's settings to `device` from now on, showing them as start-up
-    /// read them.
+    /// Reads and writes General's and Display's settings on `device` from now on, each page
+    /// showing what it reads.
     pub fn configure_device(
         &mut self,
         device: Rc<dyn DeviceConfiguration>,
-        general: GeneralSettings,
-        display: DisplaySettings,
         cx: &mut Context<'_, Self>,
     ) {
         let for_general = device.clone();
         self.pages.general.update(cx, |page, cx| {
-            page.update_presenter(cx, |presenter| presenter.configure(for_general, general));
+            page.update_presenter(cx, |presenter| presenter.configure(for_general));
         });
         self.pages.display.update(cx, |page, cx| {
-            page.update_presenter(cx, |presenter| presenter.configure(device, display));
+            page.update_presenter(cx, |presenter| presenter.configure(device));
         });
     }
 

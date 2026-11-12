@@ -442,45 +442,21 @@ impl Root {
         });
     }
 
-    /// Applies a device's settings as start-up read them from Configuration (ADR-0053), and hands
-    /// Settings › General and Display the configuration file to write them to: the date style, Row
-    /// density and Status glyphs to the Views that draw with them, and Toasts to the Toasts. The Colour Theme and Appearance are
-    /// the colours', set before the window opens ([`crate::theme::colours::set_device_colours`]).
+    /// Hands Settings › General and Display the configuration file, which each reads its settings
+    /// from and writes them to (ADR-0053), and applies a device's settings as start-up read them:
+    /// the date style, Row density and Status glyphs to the Views that draw with them, and Toasts
+    /// to the Toasts. The Colour Theme and Appearance are the colours', set before the window opens
+    /// ([`crate::theme::colours::set_device_colours`]).
     pub fn set_configuration(
         &mut self,
         config: &lib_config::Config,
         writer: lib_config::ConfigWriter,
         cx: &mut App,
     ) {
-        // General's Locale shows the file's own, which a flag or a variable may outrank: one of
-        // its choices, else **System**, as the TUI reads it. Negotiating would show an
-        // unsupported tag as en-US checked, and choosing en-US would then write nothing.
-        let locale = writer
-            .value(lib_config::ConfigKey::Locale)
-            .and_then(|tag| lib_locale::Locale::choice(&tag));
-        // And its Data folder the file's own, which may be outranked the same way.
-        let data = writer
-            .value(lib_config::ConfigKey::Data)
-            .map(std::path::PathBuf::from);
         let device: Rc<dyn lib_settings::DeviceConfiguration> =
-            Rc::new(DeviceConfigFile::new(writer));
-        let general = lib_settings::GeneralSettings {
-            on_start: config.general.on_start(),
-            start_view: config.general.start_view().clone(),
-            toasts_on: config.general.toasts(),
-            locale,
-            data,
-        };
-        let display = lib_settings::DisplaySettings {
-            date_style: config.display.date_style(),
-            row_density: config.display.row_density(),
-            status_glyphs: config.display.status_glyphs(),
-            colour_theme: config.display.colour_theme().map(str::to_string),
-            colour_appearance: config.display.colour_appearance(),
-        };
-        self.settings.update(cx, |view, cx| {
-            view.configure_device(device, general, display, cx);
-        });
+            Rc::new(DeviceConfigFile::new(config, writer));
+        self.settings
+            .update(cx, |view, cx| view.configure_device(device, cx));
         let output = self.display_output(cx);
         self.push_display_preferences(output, cx);
         self.push_toasts_on(config.general.toasts());

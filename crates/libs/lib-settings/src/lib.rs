@@ -39,8 +39,9 @@ pub use crate::presenter::{
     TracingPresenter, TracingSetup, TracingViewModel,
 };
 pub use crate::protocols::{
-    BaseUnitAnswer, ColourChoice, DeviceAnswer, DeviceConfiguration, DeviceKey, DeviceRefusal,
-    DeviceRouter, HeadlineAmount, LedgerCounts, LedgerPreferences, LedgerRouter, LedgerSummaries,
-    LedgerUnits, SettingsRouter, TracingLog, TracingRouter, UnitChoice,
+    BaseUnitAnswer, ColourChoice, DeviceAnswer, DeviceConfiguration, DeviceRefusal, DeviceRouter,
+    DeviceSnapshot, HeadlineAmount, KeyState, LedgerCounts, LedgerPreferences, LedgerRouter,
+    LedgerSummaries, LedgerUnits, SettingsRouter, TracingLog, TracingRouter, UnitChoice,
+    writes_when_shadowed,
 };
 pub use crate::summary::{PageSummary, SummaryRow, SummarySources, summarise};

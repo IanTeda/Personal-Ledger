@@ -11,9 +11,10 @@
 
 use gpui::{AnyElement, App, FontWeight, Rgba, SharedString, div, prelude::*, px};
 use lib_colour_theme::{ColourAppearance, ColourVariant, ResolvedColours};
+use lib_core::configuration::ConfigKey;
 use lib_settings::presenter::display::appearance_label;
 use lib_settings::presenter::{ColourCardView, ColourThemeView, ControlView};
-use lib_settings::{ColourChoice, DeviceKey, DisplayEvent};
+use lib_settings::{ColourChoice, DisplayEvent};
 
 use super::DisplayPage;
 use crate::{
@@ -84,7 +85,7 @@ pub fn render(
         ))
         .child(note(system_hint(state.system()), cx))
         .children(shadowed(
-            DeviceKey::ColourAppearance,
+            ConfigKey::ColourAppearance,
             appearance.shadowed.as_deref(),
             cx,
         ))
@@ -94,7 +95,7 @@ pub fn render(
                 .child(field_label(view.label.clone(), cx)),
         )
         .children(shadowed(
-            DeviceKey::ColourTheme,
+            ConfigKey::ColourTheme,
             view.shadowed.as_deref(),
             cx,
         ))

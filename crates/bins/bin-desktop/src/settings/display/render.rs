@@ -5,9 +5,10 @@
 //! Presenter event through [`PageClicks`].
 
 use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
+use lib_core::configuration::ConfigKey;
 use lib_settings::presenter::display::{DATE_STYLE_CHOICES, DISPLAY_FIELD_SIDEBAR};
 use lib_settings::presenter::{CheckboxView, PreviewView};
-use lib_settings::{DeviceKey, DisplayEvent, DisplayViewModel};
+use lib_settings::{DisplayEvent, DisplayViewModel};
 use lib_viper::display::{RowDensity, StatusGlyphs};
 use lib_viper::view::SelectView;
 
@@ -69,7 +70,7 @@ pub(super) fn page(
                         cx,
                     )
                     .children(shadowed(
-                        DeviceKey::DateStyle,
+                        ConfigKey::DateStyle,
                         model.date_style.shadowed.as_deref(),
                         cx,
                     )),
@@ -82,7 +83,7 @@ pub(super) fn page(
                         cx,
                     )
                     .children(shadowed(
-                        DeviceKey::RowDensity,
+                        ConfigKey::RowDensity,
                         model.row_density.shadowed.as_deref(),
                         cx,
                     )),
@@ -90,7 +91,7 @@ pub(super) fn page(
                 .child(
                     status_glyphs_field(&model.status_glyphs.select, clicks, cx).children(
                         shadowed(
-                            DeviceKey::StatusGlyphs,
+                            ConfigKey::StatusGlyphs,
                             model.status_glyphs.shadowed.as_deref(),
                             cx,
                         ),

@@ -23,6 +23,7 @@ use std::convert::Infallible;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+use lib_core::configuration::{ConfigKey, ConfigValue};
 use lib_core::{OnStart, StartView};
 use lib_list_cursor::Step;
 use lib_locale::Locale;
@@ -32,10 +33,10 @@ use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP, SELECT};
 use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Choice, Hint, SelectList, SelectView};
 
-use super::device::{ControlView, chords, settle, shadowed_note, step_choice};
+use super::device::{ControlView, chords, settle, shadowed_note, step_choice, write};
 use crate::keymap::{NEXT_CHOICE, PREVIOUS_CHOICE, TEST_TOASTS};
 use crate::msg;
-use crate::protocols::{DeviceAnswer, DeviceConfiguration, DeviceKey, DeviceRouter};
+use crate::protocols::{DeviceAnswer, DeviceConfiguration, DeviceRouter, DeviceSnapshot};
 
 /// On start's choices, in the segmented control's order.
 pub const ON_START_CHOICES: [OnStart; 2] = [OnStart::ReopenLastLedger, OnStart::NoLedger];
@@ -118,7 +119,7 @@ impl DataFolderOutcome {
     }
 }
 
-/// A device's settings General writes, as start-up read them from Configuration.
+/// A device's settings General writes, as the device read them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GeneralSettings {
     pub on_start: OnStart,
@@ -130,6 +131,38 @@ pub struct GeneralSettings {
     /// The Data folder the user's configuration file names, `None` when it names none: not the one
     /// in effect ([`ThisDevice::data_folder`]), which a flag, a variable or a higher file may set.
     pub data: Option<PathBuf>,
+}
+
+impl GeneralSettings {
+    /// What each control shows of `snapshot` ([`DeviceSnapshot::shown`]): the value in force, but
+    /// the file's own Locale and Data folder, each one of the choices or the default.
+    pub fn read(snapshot: &DeviceSnapshot) -> Self {
+        let default = Self::default();
+        Self {
+            on_start: match snapshot.shown(ConfigKey::OnStart) {
+                Some(ConfigValue::OnStart(on_start)) => *on_start,
+                _ => default.on_start,
+            },
+            start_view: match snapshot.shown(ConfigKey::StartView) {
+                Some(ConfigValue::StartView(start_view)) => start_view.clone(),
+                _ => default.start_view,
+            },
+            toasts_on: match snapshot.shown(ConfigKey::Toasts) {
+                Some(ConfigValue::Toasts(on)) => *on,
+                _ => default.toasts_on,
+            },
+            // One of the choices, else **System**, as the TUI reads it: an unsupported tag would
+            // otherwise show as en-US checked, and choosing en-US would then write nothing.
+            locale: match snapshot.shown(ConfigKey::Locale) {
+                Some(ConfigValue::Locale(tag)) => Locale::choice(tag),
+                _ => default.locale,
+            },
+            data: match snapshot.shown(ConfigKey::Data) {
+                Some(ConfigValue::Data(folder)) => Some(folder.clone()),
+                _ => default.data,
+            },
+        }
+    }
 }
 
 impl Default for GeneralSettings {
@@ -182,8 +215,8 @@ impl Default for LocaleLine {
 
 /// What the Client hands General as it builds it.
 pub struct GeneralSetup {
-    /// Where the settings are written; the Client swaps in its configuration file's once start-up
-    /// has read it ([`GeneralPresenter::configure`]).
+    /// Where the settings are read from and written; the Client swaps in its configuration
+    /// file's once start-up has read it ([`GeneralPresenter::configure`]).
     pub device: Rc<dyn DeviceConfiguration>,
     pub keymap: Keymap<GeneralEvent>,
     /// The chord of the Shell's `back`, for the legend.
@@ -258,6 +291,9 @@ pub struct GeneralViewModel {
 /// Settings › General's Presenter.
 pub struct GeneralPresenter {
     device: Rc<dyn DeviceConfiguration>,
+    /// The device as last read: what sets each key above the file and the file itself. The
+    /// values shown are `settings`, which each write's answer keeps.
+    snapshot: DeviceSnapshot,
     keymap: Keymap<GeneralEvent>,
     back_chord: String,
     start_views: Vec<Choice<StartView>>,
@@ -271,15 +307,17 @@ pub struct GeneralPresenter {
 }
 
 impl GeneralPresenter {
-    /// General on the defaults, until the Client tells it what start-up read.
+    /// General on what `setup`'s device reads.
     pub fn new(setup: GeneralSetup) -> Self {
+        let snapshot = setup.device.read();
         Self {
             device: setup.device,
+            settings: GeneralSettings::read(&snapshot),
+            snapshot,
             keymap: setup.keymap,
             back_chord: setup.back_chord,
             start_views: setup.start_views,
             locale: setup.locale,
-            settings: GeneralSettings::default(),
             this_device: ThisDevice::default(),
             field: None,
             page_focused: false,
@@ -294,10 +332,13 @@ impl GeneralPresenter {
         self.back_chord = back_chord;
     }
 
-    /// Writes to `device` from now on, and shows `settings` as start-up read them.
-    pub fn configure(&mut self, device: Rc<dyn DeviceConfiguration>, settings: GeneralSettings) {
+    /// Reads and writes `device` from now on, showing what it reads. Read once: a write's answer
+    /// keeps the page from then on, since a saved value is the one in force, or for the Locale and
+    /// the Data folder the file's, which is what they show.
+    pub fn configure(&mut self, device: Rc<dyn DeviceConfiguration>) {
+        self.snapshot = device.read();
+        self.settings = GeneralSettings::read(&self.snapshot);
         self.device = device;
-        self.settings = settings;
     }
 
     pub fn set_this_device(&mut self, this_device: ThisDevice) {
@@ -357,9 +398,12 @@ impl GeneralPresenter {
         if folder == self.shown_data_folder() {
             return DataFolderOutcome::Unchanged;
         }
-        let shadowed = self.device.shadow(DeviceKey::Data).is_some();
-        match self.device.set_data(&folder) {
-            DeviceAnswer::Saved { value, .. } if !shadowed => {
+        let shadowed = self.snapshot.get(ConfigKey::Data).shadow.is_some();
+        match self.device.write(ConfigValue::Data(folder)) {
+            DeviceAnswer::Saved {
+                value: ConfigValue::Data(value),
+                ..
+            } if !shadowed => {
                 router.notify(Notice::Toast(
                     ToastKind::Success,
                     msg::settings_general_data_folder_now(&value.display().to_string()),
@@ -368,12 +412,12 @@ impl GeneralPresenter {
                 self.settings.data = Some(value);
                 DataFolderOutcome::Applied
             }
-            answer => match settle(answer, DeviceKey::Data, router) {
-                Some(saved) => {
+            answer => match settle(answer, ConfigKey::Data, router) {
+                Some(ConfigValue::Data(saved)) => {
                     self.settings.data = Some(saved);
                     DataFolderOutcome::SavedOverridden
                 }
-                None => DataFolderOutcome::NotWritten,
+                _ => DataFolderOutcome::NotWritten,
             },
         }
     }
@@ -443,7 +487,7 @@ impl Presenter for GeneralPresenter {
     }
 
     fn view_model(&self) -> GeneralViewModel {
-        let device = self.device.as_ref();
+        let snapshot = &self.snapshot;
         let listed = self
             .start_views
             .iter()
@@ -469,7 +513,7 @@ impl Presenter for GeneralPresenter {
                     focused: self.field == Some(GENERAL_FIELD_ON_START),
                 },
                 hint: Some(msg::settings_general_on_start_hint()),
-                shadowed: shadowed_note(device, DeviceKey::OnStart),
+                shadowed: shadowed_note(snapshot, ConfigKey::OnStart),
             },
             start_view: StartViewControl {
                 control: ControlView {
@@ -480,7 +524,7 @@ impl Presenter for GeneralPresenter {
                         focused: self.field == Some(GENERAL_FIELD_START_VIEW),
                     },
                     hint: Some(msg::settings_general_start_view_hint()),
-                    shadowed: shadowed_note(device, DeviceKey::StartView),
+                    shadowed: shadowed_note(snapshot, ConfigKey::StartView),
                 },
                 list: self.start_view_list,
                 unlisted: (!listed).then(|| {
@@ -505,7 +549,7 @@ impl Presenter for GeneralPresenter {
                     focused: self.field == Some(GENERAL_FIELD_TOASTS),
                 },
                 hint: Some(lib_locale::msg::toast_setting_test_note()),
-                shadowed: shadowed_note(device, DeviceKey::Toasts),
+                shadowed: shadowed_note(snapshot, ConfigKey::Toasts),
             },
             toasts_test: Hint::new(
                 chords(&self.keymap, &[TEST_TOASTS]),
@@ -521,12 +565,16 @@ impl Presenter for GeneralPresenter {
                 ),
                 focused: self.field == Some(GENERAL_FIELD_DATA_FOLDER),
                 hint: msg::settings_general_data_folder_hint(),
-                note: self.device.shadow(DeviceKey::Data).map(|source| {
-                    msg::settings_general_data_folder_overridden(
-                        &source,
-                        &self.this_device.data_folder.display().to_string(),
-                    )
-                }),
+                note: snapshot
+                    .get(ConfigKey::Data)
+                    .shadow
+                    .as_deref()
+                    .map(|source| {
+                        msg::settings_general_data_folder_overridden(
+                            source,
+                            &self.this_device.data_folder.display().to_string(),
+                        )
+                    }),
             },
             this_device: ThisDeviceView {
                 heading: msg::settings_general_this_device(),
@@ -761,8 +809,9 @@ impl GeneralPresenter {
         if on_start == self.settings.on_start {
             return;
         }
-        let answer = self.device.set_on_start(on_start);
-        if let Some(saved) = settle(answer, DeviceKey::OnStart, router) {
+        if let Some(ConfigValue::OnStart(saved)) =
+            write(self.device.as_ref(), ConfigValue::OnStart(on_start), router)
+        {
             self.settings.on_start = saved;
         }
     }
@@ -773,8 +822,11 @@ impl GeneralPresenter {
         if start_view == self.settings.start_view {
             return;
         }
-        let answer = self.device.set_start_view(start_view);
-        if let Some(saved) = settle(answer, DeviceKey::StartView, router) {
+        if let Some(ConfigValue::StartView(saved)) = write(
+            self.device.as_ref(),
+            ConfigValue::StartView(start_view),
+            router,
+        ) {
             self.settings.start_view = saved;
         }
     }
@@ -785,8 +837,26 @@ impl GeneralPresenter {
         if locale == self.settings.locale {
             return;
         }
-        let answer = self.device.set_locale(locale);
-        if let Some(saved) = settle(answer, DeviceKey::Locale, router) {
+        // **System** is no value: it takes the key out.
+        let saved = match locale {
+            Some(chosen) => {
+                match write(
+                    self.device.as_ref(),
+                    ConfigValue::Locale(chosen.tag().to_string()),
+                    router,
+                ) {
+                    Some(ConfigValue::Locale(tag)) => Some(Locale::choice(&tag)),
+                    _ => None,
+                }
+            }
+            None => settle(
+                self.device.remove(ConfigKey::Locale),
+                ConfigKey::Locale,
+                router,
+            )
+            .map(|()| None),
+        };
+        if let Some(saved) = saved {
             self.settings.locale = saved;
         }
     }
@@ -825,8 +895,8 @@ impl GeneralPresenter {
     /// the one the file names isn't the one this run reads.
     fn locale_note(&self) -> Option<String> {
         let effective = self.locale.effective.tag();
-        if let Some(source) = self.device.shadow(DeviceKey::Locale) {
-            return Some(msg::settings_general_locale_overridden(&source, effective));
+        if let Some(source) = &self.snapshot.get(ConfigKey::Locale).shadow {
+            return Some(msg::settings_general_locale_overridden(source, effective));
         }
         let chosen = self.settings.locale.unwrap_or(self.locale.system);
         (chosen != self.locale.effective)
@@ -842,8 +912,9 @@ impl GeneralPresenter {
     }
 
     fn write_toasts(&mut self, on: bool, router: &mut dyn DeviceRouter) {
-        let answer = self.device.set_toasts(on);
-        if let Some(saved) = settle(answer, DeviceKey::Toasts, router) {
+        if let Some(ConfigValue::Toasts(saved)) =
+            write(self.device.as_ref(), ConfigValue::Toasts(on), router)
+        {
             self.settings.toasts_on = saved;
             router.toasts_changed(saved);
         }
@@ -909,8 +980,8 @@ mod tests {
         effective: Locale,
     ) -> GeneralPresenter {
         lib_locale::init_with_layers("en-US", &[msg::LAYER]);
-        let mut general = GeneralPresenter::new(GeneralSetup {
-            device: device.clone(),
+        GeneralPresenter::new(GeneralSetup {
+            device,
             keymap: general_keymap(&KeyBindingConfig::default()),
             back_chord: "esc".to_string(),
             start_views: start_views(),
@@ -920,9 +991,77 @@ mod tests {
                 effective,
                 system: Locale::EnAu,
             },
-        });
-        general.configure(device, GeneralSettings::default());
-        general
+        })
+    }
+
+    #[test]
+    fn general_shows_the_values_in_force_but_the_files_locale_and_data_folder() {
+        let device = Rc::new(
+            InMemoryDeviceConfiguration::shadowing(ConfigKey::OnStart, "--no-ledger")
+                .reading([
+                    ConfigValue::OnStart(OnStart::NoLedger),
+                    ConfigValue::StartView(StartView::Last),
+                    ConfigValue::Toasts(false),
+                    ConfigValue::Locale("en-US".to_string()),
+                    ConfigValue::Data(PathBuf::from("/from/above")),
+                ])
+                .storing([
+                    ConfigValue::OnStart(OnStart::ReopenLastLedger),
+                    ConfigValue::Locale("en-gb".to_string()),
+                    ConfigValue::Data(PathBuf::from("/in/the/file")),
+                ]),
+        );
+
+        let general = general_on(device);
+
+        assert_eq!(
+            general.settings(),
+            &GeneralSettings {
+                on_start: OnStart::NoLedger,
+                start_view: StartView::Last,
+                toasts_on: false,
+                locale: Some(Locale::EnGb),
+                data: Some(PathBuf::from("/in/the/file")),
+            }
+        );
+    }
+
+    #[test]
+    fn a_files_locale_that_isnt_a_choice_shows_as_system() {
+        let device = Rc::new(
+            InMemoryDeviceConfiguration::writable()
+                .storing([ConfigValue::Locale("en-XA".to_string())]),
+        );
+
+        assert_eq!(general_on(device).settings().locale, None);
+    }
+
+    #[test]
+    fn configure_reads_the_new_device_once() {
+        let (_, mut general) = writable();
+        let device =
+            Rc::new(InMemoryDeviceConfiguration::writable().reading([ConfigValue::Toasts(false)]));
+
+        general.configure(device.clone());
+        assert!(!general.settings().toasts_on);
+
+        send(&mut general, [GeneralEvent::ChooseToasts(true)]);
+        assert!(
+            general.settings().toasts_on,
+            "the write's answer, not a re-read of what start-up read"
+        );
+        assert_eq!(
+            device.stored().get(ConfigKey::Toasts),
+            Some(&ConfigValue::Toasts(true))
+        );
+    }
+
+    /// The Locale `device`'s file names, as General reads it.
+    fn stored_locale(device: &InMemoryDeviceConfiguration) -> Option<Locale> {
+        match device.stored().get(ConfigKey::Locale) {
+            Some(ConfigValue::Locale(tag)) => Locale::choice(tag),
+            _ => None,
+        }
     }
 
     fn writable() -> (Rc<InMemoryDeviceConfiguration>, GeneralPresenter) {
@@ -1001,7 +1140,10 @@ mod tests {
         let router = send(&mut general, [GeneralEvent::Change(Step::Next)]);
 
         assert_eq!(general.settings().on_start, OnStart::NoLedger);
-        assert_eq!(device.stored().on_start, Some(OnStart::NoLedger));
+        assert_eq!(
+            device.stored().get(ConfigKey::OnStart),
+            Some(&ConfigValue::OnStart(OnStart::NoLedger))
+        );
         assert_eq!(
             router.statuses(),
             ["on_start saved to personal-ledger.conf"]
@@ -1013,7 +1155,7 @@ mod tests {
     #[test]
     fn a_shadowed_setting_is_noted_and_left_unwritten() {
         let device = Rc::new(InMemoryDeviceConfiguration::shadowing(
-            DeviceKey::OnStart,
+            ConfigKey::OnStart,
             "PERSONAL_LEDGER_GENERAL__ON_START",
         ));
         let mut general = general_on(device.clone());
@@ -1061,14 +1203,11 @@ mod tests {
 
     #[test]
     fn start_view_steps_through_its_choices_and_an_unlisted_one_steps_from_the_dashboard() {
-        let (device, mut general) = writable();
-        general.configure(
-            device.clone(),
-            GeneralSettings {
-                start_view: StartView::Noun("units".into()),
-                ..GeneralSettings::default()
-            },
+        let device = Rc::new(
+            InMemoryDeviceConfiguration::writable()
+                .reading([ConfigValue::StartView(StartView::Noun("units".into()))]),
         );
+        let mut general = general_on(device.clone());
         let view = general.view_model().start_view;
         assert_eq!(view.control.select.chosen, None);
         assert!(view.unlisted.is_some_and(|line| line.contains("units")));
@@ -1091,8 +1230,8 @@ mod tests {
             StartView::Noun("bills".into())
         );
         assert_eq!(
-            device.stored().start_view,
-            Some(StartView::Noun("bills".into()))
+            device.stored().get(ConfigKey::StartView),
+            Some(&ConfigValue::StartView(StartView::Noun("bills".into())))
         );
     }
 
@@ -1238,14 +1377,14 @@ mod tests {
         let router = send(&mut general, [GeneralEvent::Change(Step::Next)]);
 
         assert_eq!(general.settings().locale, Some(Locale::EnAu));
-        assert_eq!(device.stored().locale, Some(Locale::EnAu));
+        assert_eq!(stored_locale(&device), Some(Locale::EnAu));
         assert_eq!(router.statuses(), ["locale saved to personal-ledger.conf"]);
         send(
             &mut general,
             std::iter::repeat_n(GeneralEvent::Change(Step::Next), 3),
         );
         assert_eq!(
-            device.stored().locale,
+            stored_locale(&device),
             Some(Locale::EnUs),
             "stops at the end"
         );
@@ -1258,11 +1397,11 @@ mod tests {
             &mut general,
             [GeneralEvent::ChooseLocale(Some(Locale::EnGb))],
         );
-        assert_eq!(device.stored().locale, Some(Locale::EnGb));
+        assert_eq!(stored_locale(&device), Some(Locale::EnGb));
 
         send(&mut general, [GeneralEvent::ChooseLocale(None)]);
 
-        assert_eq!(device.stored().locale, None);
+        assert_eq!(stored_locale(&device), None);
         assert_eq!(general.settings().locale, None);
         assert_eq!(
             general.view_model().locale.control.select.chosen,
@@ -1301,7 +1440,7 @@ mod tests {
     #[test]
     fn a_shadowed_locale_is_still_written_and_names_the_override() {
         let device = Rc::new(InMemoryDeviceConfiguration::shadowing(
-            DeviceKey::Locale,
+            ConfigKey::Locale,
             "--locale en-GB",
         ));
         let mut general = general_reading(device.clone(), Locale::EnGb);
@@ -1317,7 +1456,7 @@ mod tests {
             [GeneralEvent::ChooseLocale(Some(Locale::EnUs))],
         );
 
-        assert_eq!(device.stored().locale, Some(Locale::EnUs));
+        assert_eq!(stored_locale(&device), Some(Locale::EnUs));
         assert_eq!(general.settings().locale, Some(Locale::EnUs));
         assert_eq!(router.statuses(), ["locale saved to personal-ledger.conf"]);
         assert_eq!(
@@ -1390,8 +1529,8 @@ mod tests {
         assert_eq!(outcome, DataFolderOutcome::Applied);
 
         assert_eq!(
-            device.stored().data,
-            Some(PathBuf::from("/home/me/finance"))
+            device.stored().get(ConfigKey::Data),
+            Some(&ConfigValue::Data(PathBuf::from("/home/me/finance")))
         );
         assert_eq!(general.data_folder(), Path::new("/home/me/finance"));
         assert_eq!(
@@ -1438,7 +1577,7 @@ mod tests {
     #[test]
     fn a_shadowed_data_folder_is_written_and_names_the_override() {
         let device = Rc::new(InMemoryDeviceConfiguration::shadowing(
-            DeviceKey::Data,
+            ConfigKey::Data,
             "PERSONAL_LEDGER_GENERAL__DATA",
         ));
         let mut general = with_data_folder(device.clone());
@@ -1455,8 +1594,8 @@ mod tests {
         assert_eq!(outcome, DataFolderOutcome::SavedOverridden);
 
         assert_eq!(
-            device.stored().data,
-            Some(PathBuf::from("/home/me/finance"))
+            device.stored().get(ConfigKey::Data),
+            Some(&ConfigValue::Data(PathBuf::from("/home/me/finance")))
         );
         assert_eq!(
             general.data_folder(),
@@ -1600,7 +1739,10 @@ mod tests {
 
         assert!(!general.list_open());
         assert_eq!(general.settings().start_view, StartView::Last);
-        assert_eq!(device.stored().start_view, Some(StartView::Last));
+        assert_eq!(
+            device.stored().get(ConfigKey::StartView),
+            Some(&ConfigValue::StartView(StartView::Last))
+        );
         assert_eq!(
             router.statuses(),
             ["start_view saved to personal-ledger.conf"]
@@ -1645,14 +1787,11 @@ mod tests {
 
     #[test]
     fn an_unlisted_start_view_opens_its_list_on_the_first_choice() {
-        let (device, mut general) = writable();
-        general.configure(
-            device.clone(),
-            GeneralSettings {
-                start_view: StartView::Noun("units".into()),
-                ..GeneralSettings::default()
-            },
+        let device = Rc::new(
+            InMemoryDeviceConfiguration::writable()
+                .reading([ConfigValue::StartView(StartView::Noun("units".into()))]),
         );
+        let mut general = general_on(device.clone());
         on_start_view(&mut general);
         send(&mut general, [GeneralEvent::Select]);
         let view = general.view_model().start_view;
@@ -1681,7 +1820,7 @@ mod tests {
             [GeneralEvent::Move(Step::Prev), GeneralEvent::CloseList],
         );
         assert!(!general.list_open());
-        assert_eq!(device.stored().locale, None, "cancelled");
+        assert_eq!(stored_locale(&device), None, "cancelled");
 
         let router = send(
             &mut general,
@@ -1693,7 +1832,7 @@ mod tests {
         );
 
         assert_eq!(
-            device.stored().locale,
+            stored_locale(&device),
             Some(Locale::EnUs),
             "wrapped to the last"
         );
@@ -1711,7 +1850,10 @@ mod tests {
         let (device, mut general) = writable();
         on_start_view(&mut general);
         send(&mut general, [GeneralEvent::Change(Step::Next)]);
-        assert_eq!(device.stored().start_view, Some(StartView::Last));
+        assert_eq!(
+            device.stored().get(ConfigKey::StartView),
+            Some(&ConfigValue::StartView(StartView::Last))
+        );
         assert!(!general.list_open());
 
         send(
@@ -1722,7 +1864,7 @@ mod tests {
             ],
         );
         send(&mut general, [GeneralEvent::Change(Step::Next)]);
-        assert_eq!(device.stored().locale, Some(Locale::EnAu));
+        assert_eq!(stored_locale(&device), Some(Locale::EnAu));
         assert!(!general.list_open());
     }
 
@@ -1763,7 +1905,10 @@ mod tests {
             ],
         );
         assert!(!general.list_open());
-        assert_eq!(device.stored().start_view, Some(StartView::Settings));
+        assert_eq!(
+            device.stored().get(ConfigKey::StartView),
+            Some(&ConfigValue::StartView(StartView::Settings))
+        );
 
         send(
             &mut general,
@@ -1773,7 +1918,7 @@ mod tests {
             ],
         );
         assert!(!general.list_open());
-        assert_eq!(device.stored().locale, Some(Locale::EnGb));
+        assert_eq!(stored_locale(&device), Some(Locale::EnGb));
     }
 
     #[test]
