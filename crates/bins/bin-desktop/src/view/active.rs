@@ -13,6 +13,7 @@ use crate::budgets::BudgetsPage;
 use crate::dashboard::DashboardPage;
 use crate::documents::view::page::DocumentsPage;
 use crate::navigation::{active_view::ActiveView, nav::Noun};
+use crate::settings::SettingsPage;
 use crate::settings::state::SettingsView;
 use crate::shell::view::page_handle::PageHandle;
 use crate::transaction_import::ImportPage;
@@ -50,17 +51,43 @@ pub struct ViewEntities {
 }
 
 impl ViewEntities {
-    /// Every View, for what `Root` does to each alike (following its events).
-    pub fn all(&self) -> [&dyn PageHandle; 6] {
-        [
-            &self.dashboard,
-            &self.bills,
-            &self.budgets,
-            &self.transactions,
-            &self.import,
-            &self.documents,
-        ]
+    /// Every View, for what `Root` does to each alike (following its events, a rebind, a Display
+    /// change). Built from [`Self::get`]'s exhaustive match over every View a Noun derives, so a
+    /// new View can't be left out.
+    pub fn all(&self) -> Vec<&dyn PageHandle> {
+        derived_views()
+            .into_iter()
+            .filter_map(|view| self.get(view))
+            .collect()
     }
+
+    /// The Entity behind `view`, `None` for Settings, which `Root` holds apart, and a placeholder.
+    fn get(&self, view: ActiveView) -> Option<&dyn PageHandle> {
+        match view {
+            ActiveView::Dashboard => Some(&self.dashboard),
+            ActiveView::Bills => Some(&self.bills),
+            ActiveView::Budgets => Some(&self.budgets),
+            ActiveView::Transactions => Some(&self.transactions),
+            ActiveView::Import => Some(&self.import),
+            ActiveView::Documents => Some(&self.documents),
+            ActiveView::Settings(_) | ActiveView::Placeholder(_) => None,
+        }
+    }
+}
+
+/// Every View a Noun derives, once each, in the rail's order: the Import step beside Transactions,
+/// and Settings on one page, standing for them all.
+fn derived_views() -> Vec<ActiveView> {
+    let mut views: Vec<ActiveView> = Vec::new();
+    for noun in Noun::ALL {
+        for import_open in [false, true] {
+            let view = ActiveView::derive(noun, SettingsPage::General, import_open);
+            if !views.contains(&view) {
+                views.push(view);
+            }
+        }
+    }
+    views
 }
 
 /// The Entity behind `view`, from the Open Ledger's View Entities and `Root`'s Settings: `None` for
@@ -74,15 +101,30 @@ pub fn page<'a>(
     if let ActiveView::Settings(_) = view {
         return Some(settings);
     }
-    let views = views?;
-    match view {
-        ActiveView::Dashboard => Some(&views.dashboard),
-        ActiveView::Bills => Some(&views.bills),
-        ActiveView::Budgets => Some(&views.budgets),
-        ActiveView::Transactions => Some(&views.transactions),
-        ActiveView::Import => Some(&views.import),
-        ActiveView::Documents => Some(&views.documents),
-        ActiveView::Settings(_) => Some(settings),
-        ActiveView::Placeholder(_) => None,
+    views?.get(view)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_view_a_noun_derives_is_listed_once() {
+        let views = derived_views();
+
+        for view in [
+            ActiveView::Dashboard,
+            ActiveView::Transactions,
+            ActiveView::Import,
+            ActiveView::Documents,
+            ActiveView::Bills,
+            ActiveView::Budgets,
+        ] {
+            assert_eq!(
+                views.iter().filter(|derived| **derived == view).count(),
+                1,
+                "{view:?}"
+            );
+        }
     }
 }

@@ -13,7 +13,8 @@
 //! `'static`, which no borrowing Router can be.
 
 use crate::dialog::{DialogInput, DialogRouter};
-use crate::keymap::Keymap;
+use crate::display::PageDisplay;
+use crate::keymap::{KeyBindingConfig, Keymap};
 
 /// A Presenter: it takes its events through [`Self::handle`], asking for navigation through the
 /// Router it is lent for that call, and builds a plain-data view model through
@@ -59,6 +60,15 @@ pub trait PagePresenter: Presenter<Event: Clone> {
     /// select), which its legend reads its chords from too. A palette Command of another state
     /// still reaches its event by name, shown first through [`Self::shows`].
     fn keymap(&self) -> &Keymap<Self::Event>;
+
+    /// `[keybindings]` changed: the page builds everything key-shaped it holds afresh under
+    /// `keys` (each keymap, and the chords its legend and Dialogs show). Required, so a new page
+    /// can't keep its old keys after a rebind.
+    fn rebind(&mut self, keys: &KeyBindingConfig);
+
+    /// The Display Preferences changed, or a Ledger opened: a page that draws with them keeps
+    /// what it reads. The rest draw nothing they choose, so the default ignores them.
+    fn display(&mut self, _display: &PageDisplay) {}
 
     /// The event that shows the tab or mode `event` belongs to, when it isn't showing: a Client
     /// sends it ahead of a palette Command's own event, in the same input. A key never sends it,
@@ -147,7 +157,6 @@ pub trait DialogPresenter:
 
 #[cfg(test)]
 mod tests {
-    use lib_config::KeyBindingConfig;
     use lib_toast::{Notice, Notify};
 
     use super::*;
@@ -205,6 +214,10 @@ mod tests {
 
         fn keymap(&self) -> &Keymap<PageEvent> {
             &self.keymap
+        }
+
+        fn rebind(&mut self, keys: &KeyBindingConfig) {
+            self.keymap = toy_keymap(keys);
         }
     }
 
@@ -308,16 +321,42 @@ mod tests {
         }
     }
 
-    fn page() -> ToyPage {
+    fn toy_keymap(keys: &KeyBindingConfig) -> Keymap<PageEvent> {
         const BINDINGS: &[Binding<PageEvent>] = &[
             Binding::hidden(NEW, "n", PageEvent::New),
             Binding::hidden(EDIT, "e", PageEvent::Edit),
         ];
+        Keymap::new(BINDINGS, keys)
+    }
+
+    fn page() -> ToyPage {
         ToyPage {
             count: 0,
             landed: Vec::new(),
-            keymap: Keymap::new(BINDINGS, &KeyBindingConfig::default()),
+            keymap: toy_keymap(&KeyBindingConfig::default()),
         }
+    }
+
+    #[test]
+    fn a_host_rebinds_a_page_through_the_trait_and_its_keymap_follows() {
+        let mut log = Vec::new();
+        let mut page = page();
+        let mut keys = KeyBindingConfig::default();
+        keys.bindings.insert(NEW.to_string(), "a".to_string());
+
+        page.rebind(&keys);
+
+        assert!(!press(&mut page, "n", &mut Borrowing { log: &mut log }));
+        assert!(press(&mut page, "a", &mut Borrowing { log: &mut log }));
+    }
+
+    #[test]
+    fn a_page_that_draws_no_display_preference_ignores_one() {
+        let mut page = page();
+
+        page.display(&PageDisplay::default());
+
+        assert_eq!(page.view_model(), 0);
     }
 
     #[test]

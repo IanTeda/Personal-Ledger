@@ -13,7 +13,6 @@
 //! a movement the Shell falls back on is the frame's own, scrolling the body or stepping the index
 //! (#1100).
 
-use super::hints::settings_plain_page_hints;
 use super::router::{FrameRouter, PageChanged};
 use crate::{
     announcer::Announcer,
@@ -23,7 +22,7 @@ use crate::{
     shell::view::{
         module_page::{ModulePage, SettingsPageView},
         page_clicks::PresenterPage,
-        page_handle::{PageHandle, PageKey, PageLayout, PageSignals},
+        page_handle::{PageBinding, PageHandle, PageKey, PageLayout, PageSignals},
         statusline::{PageStatus, StatusRight},
         window_size::WindowSize,
     },
@@ -39,12 +38,10 @@ use lib_settings::{
     GeneralEvent, LedgerSummaries, PageRows, PageSummary, ScopeFacts, SettingsFrameEvent,
     SettingsFramePresenter, SettingsFrameSetup, SettingsFrameViewModel, SummarySources,
     TracingLevel, TracingLog,
-    keymap::{
-        display_keymap, general_keymap, ledger_keymap, settings_frame_keymap, tracing_keymap,
-    },
+    keymap::{back_chord, settings_frame_keymap},
     summarise,
 };
-use lib_viper::dialog::DialogKeys;
+use lib_viper::display::PageDisplay;
 use lib_viper::keymap::KeyBindingConfig;
 use lib_viper::presenter::Presenter;
 use std::path::{Path, PathBuf};
@@ -75,18 +72,10 @@ pub struct SettingsView {
     _page_subscriptions: Vec<Subscription>,
 }
 
-/// The chord of the Shell's `back` under `config`, which the frame's legend shows.
-pub(super) fn back_chord(config: &KeyBindingConfig) -> String {
-    lib_shell::global_keymap(config)
-        .chord(lib_viper::keymap::BACK)
-        .unwrap_or_default()
-        .to_string()
-}
-
 impl SettingsView {
     /// Builds the This device pages, which stand with no Ledger open; [`Self::open_ledger`] adds
     /// the This Ledger pages. The Tracing capture arrives later, through `Root::set_log_capture`,
-    /// and the frame's `[keybindings]` through [`Self::set_keymaps`].
+    /// and the frame's `[keybindings]` through [`PageHandle::rebind`].
     pub fn new(device: Rc<dyn DeviceConfiguration>, cx: &mut Context<'_, Self>) -> Self {
         let pages = SettingsPages::new(device, cx);
         let _page_subscriptions = subscribe_pages(&pages, cx);
@@ -110,92 +99,14 @@ impl SettingsView {
         }
     }
 
-    /// The frame's keys under `config`'s overrides.
-    pub fn set_keymaps(&mut self, config: &KeyBindingConfig, cx: &mut Context<'_, Self>) {
+    /// The frame's keys under `config`'s overrides, then every page built.
+    fn rebind(&mut self, config: &KeyBindingConfig, cx: &mut Context<'_, Self>) {
         self.frame.set_keymap(settings_frame_keymap(config));
         self.frame.set_back_chord(back_chord(config));
-        self.pages.general.update(cx, |page, cx| {
-            page.update_presenter(cx, |presenter| {
-                presenter.set_keymap(general_keymap(config), back_chord(config));
-            });
-        });
-        self.pages.display.update(cx, |page, cx| {
-            page.update_presenter(cx, |presenter| {
-                presenter.set_keymap(display_keymap(config), back_chord(config));
-            });
-        });
-        self.pages.tracing.update(cx, |page, cx| {
-            page.update_presenter(cx, |presenter| {
-                presenter.set_keymap(
-                    tracing_keymap(config),
-                    back_chord(config),
-                    DialogKeys::of(&lib_shell::dialog_keymap(config)),
-                );
-            });
-        });
-        self.pages.about.update(cx, |page, cx| {
-            page.update_presenter(cx, |presenter| {
-                presenter.set_legend(settings_plain_page_hints(&settings_frame_keymap(config)));
-            });
-        });
-        if let Some(pages) = &self.pages.ledger {
-            pages.ledger.update(cx, |page, cx| {
-                page.update_presenter(cx, |presenter| {
-                    presenter.set_keymap(ledger_keymap(config), back_chord(config));
-                });
-            });
-            let plain = settings_plain_page_hints(&settings_frame_keymap(config));
-            pages.sync_server.update(cx, |page, cx| {
-                page.update_presenter(cx, |presenter| presenter.set_legend(plain.clone()));
-            });
-            pages.data_backup.update(cx, |page, cx| {
-                page.update_presenter(cx, |presenter| presenter.set_legend(plain));
-            });
-            pages.units.update(cx, |page, cx| {
-                page.update_presenter(cx, |presenter| {
-                    presenter.set_keymaps(
-                        lib_units::keymap::units_page_keymap(config),
-                        lib_units::keymap::unit_prices_keymap(config),
-                    );
-                });
-            });
-            pages.institutions.update(cx, |page, cx| {
-                page.update_presenter(cx, |presenter| {
-                    presenter
-                        .set_keymap(lib_institutions::keymap::institutions_page_keymap(config));
-                });
-            });
-            pages.accounts.update(cx, |page, cx| {
-                page.update_presenter(cx, |presenter| {
-                    presenter.set_keymap(lib_accounts::keymap::accounts_page_keymap(config));
-                });
-            });
-            pages.categories.update(cx, |page, cx| {
-                page.update_presenter(cx, |presenter| {
-                    presenter.set_keymap(lib_categories::keymap::categories_page_keymap(config));
-                });
-            });
-            pages.tags.update(cx, |page, cx| {
-                page.update_presenter(cx, |presenter| {
-                    presenter.set_keymap(lib_tags::keymap::tags_page_keymap(config));
-                });
-            });
-            pages.payees.update(cx, |page, cx| {
-                page.update_presenter(cx, |presenter| {
-                    presenter.set_keymap(lib_payees::keymap::payees_page_keymap(config));
-                });
-            });
-            pages.documents.update(cx, |page, cx| {
-                page.update_presenter(cx, |presenter| {
-                    presenter.set_keymap(lib_documents::keymap::document_types_page_keymap(config));
-                });
-            });
-            pages.inventory.update(cx, |page, cx| {
-                page.update_presenter(cx, |presenter| {
-                    presenter.set_keymap(lib_inventory::keymap::inventory_page_keymap(config));
-                });
-            });
+        for page in self.pages.all() {
+            page.rebind(config, cx);
         }
+        cx.notify();
     }
 
     // -----------------------------------------------------------------------------------------
@@ -277,7 +188,7 @@ impl SettingsView {
             .expect("the selected Settings page is one that is built")
     }
 
-    pub(super) fn pages(&self) -> &SettingsPages {
+    pub(crate) fn pages(&self) -> &SettingsPages {
         &self.pages
     }
 
@@ -767,6 +678,30 @@ impl PageHandle for Entity<SettingsView> {
 
     fn on_enter(&self, cx: &mut App) {
         self.update(cx, |view, cx| view.on_enter(cx));
+    }
+
+    /// The frame's keys and `back` chord, then every page built.
+    fn rebind(&self, keys: &KeyBindingConfig, cx: &mut App) {
+        self.update(cx, |view, cx| view.rebind(keys, cx));
+    }
+
+    /// Every page built.
+    fn display(&self, display: PageDisplay, cx: &mut App) {
+        self.update(cx, |view, cx| {
+            for page in view.pages.all() {
+                page.display(display, cx);
+            }
+        });
+    }
+
+    /// The frame's keys, then every page built's.
+    fn keys(&self, cx: &App) -> Vec<PageBinding> {
+        let view = self.read(cx);
+        let mut keys = PageBinding::all_of(view.frame.keymap());
+        for page in view.pages.all() {
+            keys.extend(page.keys(cx));
+        }
+        keys
     }
 
     fn reveal(&self, reveal: Reveal, cx: &mut App) {

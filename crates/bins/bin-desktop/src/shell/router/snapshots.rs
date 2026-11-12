@@ -5,6 +5,7 @@
 mod bills;
 mod budgets;
 mod documents;
+mod keys;
 mod overlays;
 mod palette;
 mod settings;
@@ -16,6 +17,7 @@ pub use crate::view::help::HelpGroup;
 pub use bills::{BillRowSnapshot, BillsSnapshot};
 pub use budgets::{BudgetRowSnapshot, BudgetsSnapshot};
 pub use documents::DocumentsSnapshot;
+pub use keys::{DisplayDatesSnapshot, PageKeysSnapshot};
 pub use overlays::{ToastSnapshot, ToastsSnapshot};
 pub use palette::PaletteSnapshot;
 pub use settings::{

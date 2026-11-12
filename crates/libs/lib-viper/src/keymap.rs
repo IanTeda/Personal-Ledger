@@ -78,6 +78,15 @@ pub struct Listed<'a> {
     pub chord: &'a str,
 }
 
+/// One binding as a keymap holds it, listed or not: its command, its live chord (empty while
+/// unbound) and, for a Command the palette lists, the Message describing it.
+#[derive(Debug, Clone, Copy)]
+pub struct KeyBound<'a> {
+    pub command: &'static str,
+    pub chord: &'a str,
+    pub description: Option<fn() -> String>,
+}
+
 /// A module's bindings with any overrides applied, looked up by chord.
 #[derive(Debug, Clone)]
 pub struct Keymap<E> {
@@ -196,6 +205,19 @@ impl<E: Clone> Keymap<E> {
                 }),
                 Palette::Hidden => None,
             })
+    }
+
+    /// Every binding, in binding order, each with its live chord (empty while unbound) and the
+    /// palette's description of it when the palette lists it: what a host reports a page's keys as.
+    pub fn bindings(&self) -> impl Iterator<Item = KeyBound<'_>> {
+        self.bindings.iter().map(|bound| KeyBound {
+            command: bound.command,
+            chord: &bound.chord,
+            description: match bound.palette {
+                Palette::Listed { description, .. } => Some(description),
+                Palette::Hidden => None,
+            },
+        })
     }
 
     /// This keymap for one state of its page (a tab, an open select): a chord reaches only the
@@ -326,6 +348,26 @@ mod tests {
             delete_description,
         ),
     ];
+
+    #[test]
+    fn bindings_report_every_command_with_its_live_chord_and_listed_description() {
+        let mut config = KeyBindingConfig::default();
+        config.bindings.insert(NEW.to_string(), "a".to_string());
+        let keymap = Keymap::new(BINDINGS, &config);
+
+        let bound: Vec<_> = keymap
+            .bindings()
+            .map(|bound| (bound.command, bound.chord, bound.description.map(|d| d())))
+            .collect();
+
+        assert_eq!(
+            bound,
+            [
+                (NEW, "a", None),
+                (DELETE, "d", Some("delete the selected row".to_string())),
+            ]
+        );
+    }
 
     #[test]
     fn a_default_chord_reaches_its_event_and_names_its_command() {

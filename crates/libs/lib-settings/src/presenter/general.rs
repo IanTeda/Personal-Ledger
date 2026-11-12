@@ -25,7 +25,7 @@ use lib_core::{OnStart, StartView};
 use lib_list_cursor::Step;
 use lib_locale::Locale;
 use lib_toast::{Notice, ToastKind};
-use lib_viper::keymap::{Keymap, SELECT};
+use lib_viper::keymap::{KeyBindingConfig, Keymap, SELECT};
 use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Choice, Hint};
 
@@ -316,12 +316,6 @@ impl GeneralPresenter {
         }
     }
 
-    /// Replaces the keymap and the `back` chord, for a `[keybindings]` change.
-    pub fn set_keymap(&mut self, keymap: Keymap<GeneralEvent>, back_chord: String) {
-        self.keymap = keymap;
-        self.back_chord = back_chord;
-    }
-
     /// The Ledger file the Client will remember at quit, once one has opened or closed.
     pub fn set_last_ledger(&mut self, last_ledger: Option<PathBuf>) {
         self.last_ledger = last_ledger;
@@ -550,6 +544,12 @@ impl PagePresenter for GeneralPresenter {
 
     fn keymap(&self) -> &Keymap<GeneralEvent> {
         &self.keymap
+    }
+
+    /// The keymap and the `back` chord its legend shows.
+    fn rebind(&mut self, keys: &KeyBindingConfig) {
+        self.keymap = crate::keymap::general_keymap(keys);
+        self.back_chord = crate::keymap::back_chord(keys);
     }
 }
 

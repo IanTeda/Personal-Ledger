@@ -105,6 +105,12 @@ impl PagePresenter for SyncServerPresenter {
     fn keymap(&self) -> &Keymap<SyncServerEvent> {
         &self.keymap
     }
+
+    /// The legend, which reads the frame's chords.
+    fn rebind(&mut self, keys: &KeyBindingConfig) {
+        self.legend =
+            crate::keymap::settings_plain_page_hints(&crate::keymap::settings_frame_keymap(keys));
+    }
 }
 
 #[cfg(test)]

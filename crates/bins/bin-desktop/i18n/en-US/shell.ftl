@@ -18,8 +18,6 @@ desktop-hint-open = open
 desktop-hint-edit = edit
 desktop-hint-add = add
 desktop-hint-filter = filter
-desktop-hint-scroll = scroll
-desktop-hint-index = index
 
 ## The right-hand side of the status line while a command surface is open. `$key` is the key token.
 

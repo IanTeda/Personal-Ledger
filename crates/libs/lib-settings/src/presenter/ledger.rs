@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 use lib_core::UnitId;
 use lib_list_cursor::Step;
-use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP};
+use lib_viper::keymap::{KeyBindingConfig, Keymap, MOVE_DOWN, MOVE_UP};
 use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::Hint;
 
@@ -85,12 +85,6 @@ impl LedgerPresenter {
             back_chord: setup.back_chord,
             page_focused: false,
         }
-    }
-
-    /// Replaces the keymap and the `back` chord, for a `[keybindings]` change.
-    pub fn set_keymap(&mut self, keymap: Keymap<LedgerEvent>, back_chord: String) {
-        self.keymap = keymap;
-        self.back_chord = back_chord;
     }
 
     /// Whether the page, not Settings' index, has the keyboard. Answers whether that changed, so
@@ -205,6 +199,12 @@ impl PagePresenter for LedgerPresenter {
 
     fn keymap(&self) -> &Keymap<LedgerEvent> {
         &self.keymap
+    }
+
+    /// The keymap and the `back` chord its legend shows.
+    fn rebind(&mut self, keys: &KeyBindingConfig) {
+        self.keymap = crate::keymap::ledger_keymap(keys);
+        self.back_chord = crate::keymap::back_chord(keys);
     }
 }
 

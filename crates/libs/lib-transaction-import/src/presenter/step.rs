@@ -86,16 +86,12 @@ impl Presenter for ImportStepPresenter {
     type ViewModel = ImportStepViewModel;
     type Router<'r> = dyn ImportRouter + 'r;
 
-    /// Opens, leaves or rebinds the step; any other event is the open step's. A close the open
+    /// Opens or leaves the step; any other event is the open step's. A close the open
     /// step asks for drops it, then tells `router` what its commit wrote.
     fn handle(&mut self, event: ImportEvent, router: &mut Self::Router<'_>) {
         match event {
             ImportEvent::OpenStep => self.open = Some(ImportPresenter::new((self.ports)())),
             ImportEvent::Leave => self.open = None,
-            ImportEvent::KeysChanged(config) => {
-                self.keymap = import_keymap(&config);
-                self.select_keymap = import_select_keymap(&config);
-            }
             event => {
                 let Some(step) = self.open.as_mut() else {
                     return;
@@ -126,13 +122,9 @@ impl Presenter for ImportStepPresenter {
         }
     }
 
-    /// A closed step takes only what opens it or its keys; there are no rows to act on.
+    /// A closed step takes only what opens or leaves it; there are no rows to act on.
     fn takes(&self, event: &ImportEvent) -> bool {
-        self.open.is_some()
-            || matches!(
-                event,
-                ImportEvent::OpenStep | ImportEvent::Leave | ImportEvent::KeysChanged(_)
-            )
+        self.open.is_some() || matches!(event, ImportEvent::OpenStep | ImportEvent::Leave)
     }
 }
 
@@ -152,6 +144,12 @@ impl PagePresenter for ImportStepPresenter {
         } else {
             &self.keymap
         }
+    }
+
+    /// The rows' and the select's keymaps, so the footer's chord follows too.
+    fn rebind(&mut self, keys: &KeyBindingConfig) {
+        self.keymap = import_keymap(keys);
+        self.select_keymap = import_select_keymap(keys);
     }
 
     /// An open select takes every key until it closes.
@@ -246,10 +244,7 @@ mod tests {
             .bindings
             .insert(CONTINUE.to_string(), "ctrl+s".to_string());
 
-        step.handle(
-            ImportEvent::KeysChanged(config),
-            &mut RecordingRouter::default(),
-        );
+        step.rebind(&config);
 
         assert_eq!(step.view_model().continue_chord, "ctrl+s");
         assert_eq!(step.keymap().event("ctrl+s"), Some(ImportEvent::Continue));

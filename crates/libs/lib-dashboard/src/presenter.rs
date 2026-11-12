@@ -2,12 +2,11 @@
 //! built into a plain-data view model with every figure already worded, so a View only draws.
 //!
 //! It keeps its view model with the day it was built on and reads the ports again only after a
-//! change ([`DashboardEvent::LedgerChanged`], [`DashboardEvent::DisplayChanged`]) or when the Shell's
+//! change ([`DashboardEvent::LedgerChanged`], [`PagePresenter::display`]) or when the Shell's
 //! Clock says the day moved, so a day or month turn shows on the next draw with nothing to catch up.
 //!
-//! The Display Preferences are pushed to it
-//! ([`DashboardEvent::DisplayChanged`]): the due dates follow the date style and the flag the
-//! Status glyphs. Row density isn't among them, since the Dashboard draws no table rows.
+//! The Display Preferences are handed to it ([`PagePresenter::display`]): the due dates follow the
+//! date style and the flag the Status glyphs. Row density isn't among them, since the Dashboard draws no table rows.
 //!
 //! It has no list, so its keymap's movements are scroll requests ([`DashboardEvent::Scroll`]) the
 //! Client applies to the page's scroll. `/` puts it in a Search with no box to type into, which
@@ -22,7 +21,7 @@ use chrono::NaiveDate;
 use lib_core::{Clock, DateStyle, Money};
 use lib_list_cursor::Step;
 use lib_locale::format::{AmountStyle, format_amount, format_date, format_year_month};
-use lib_viper::display::{StatusGlyphs, flag_glyph};
+use lib_viper::display::{PageDisplay, StatusGlyphs, flag_glyph};
 use lib_viper::keymap::{KeyBindingConfig, Keymap};
 use lib_viper::presenter::{PageMode, PagePresenter, Presenter};
 
@@ -38,19 +37,12 @@ pub enum DashboardEvent {
     OpenBill(DashboardEntryId),
     /// A domain the page reads changed in the Ledger: the kept view model is stale.
     LedgerChanged,
-    /// The Display Preferences the page draws with.
-    DisplayChanged {
-        date_style: Option<DateStyle>,
-        glyphs: StatusGlyphs,
-    },
     /// A movement key: the Client scrolls the page by `Step`, since the page has no list.
     Scroll(Step),
     /// `/`: the page enters its Search.
     Search,
     /// `Esc` in the Search: the page leaves it.
     EndSearch,
-    /// `[keybindings]` changed: the keymap is built afresh under it.
-    KeysChanged(KeyBindingConfig),
 }
 
 /// One Needs Attention row, worded.
@@ -159,19 +151,10 @@ impl Presenter for DashboardPresenter {
         match event {
             DashboardEvent::OpenBill(id) => router.reveal_bill_entry(id),
             DashboardEvent::LedgerChanged => *self.kept.get_mut() = None,
-            DashboardEvent::DisplayChanged { date_style, glyphs } => {
-                self.date_style = date_style;
-                self.glyphs = glyphs;
-                *self.kept.get_mut() = None;
-            }
             // The scroll is the Client's to apply: the Presenter holds no widget state.
             DashboardEvent::Scroll(_) => {}
             DashboardEvent::Search => self.searching = true,
             DashboardEvent::EndSearch => self.searching = false,
-            DashboardEvent::KeysChanged(config) => {
-                self.keymap = crate::keymap::dashboard_keymap(&config);
-                self.searching_keys = self.keymap.scoped(|_| false);
-            }
         }
     }
 
@@ -210,6 +193,19 @@ impl PagePresenter for DashboardPresenter {
         } else {
             &self.keymap
         }
+    }
+
+    fn rebind(&mut self, keys: &KeyBindingConfig) {
+        self.keymap = crate::keymap::dashboard_keymap(keys);
+        self.searching_keys = self.keymap.scoped(|_| false);
+    }
+
+    /// The due dates follow the date style and the flag the Status glyphs; the kept view model is
+    /// stale.
+    fn display(&mut self, display: &PageDisplay) {
+        self.date_style = display.date_style;
+        self.glyphs = display.glyphs;
+        *self.kept.get_mut() = None;
     }
 
     fn mode(&self) -> Option<PageMode> {
@@ -531,13 +527,7 @@ mod tests {
         presenter.view_model();
         assert_eq!(reads.asked.get(), once * 2, "a change reads again");
 
-        presenter.handle(
-            DashboardEvent::DisplayChanged {
-                date_style: None,
-                glyphs: StatusGlyphs::default(),
-            },
-            &mut router,
-        );
+        presenter.display(&PageDisplay::default());
         presenter.view_model();
         assert_eq!(reads.asked.get(), once * 3, "a Display change rebuilds");
 
@@ -560,13 +550,11 @@ mod tests {
         let before = presenter.view_model();
         assert_eq!(before.flag, "\u{2691}");
 
-        presenter.handle(
-            DashboardEvent::DisplayChanged {
-                date_style: Some(DateStyle::Iso),
-                glyphs: StatusGlyphs::AsciiFallback,
-            },
-            &mut RecordingRouter::default(),
-        );
+        presenter.display(&PageDisplay {
+            date_style: Some(DateStyle::Iso),
+            glyphs: StatusGlyphs::AsciiFallback,
+            ..PageDisplay::default()
+        });
 
         let after = presenter.view_model();
         assert_eq!(after.flag, "!");
@@ -630,10 +618,7 @@ mod tests {
             .bindings
             .insert(lib_viper::keymap::MOVE_DOWN.to_string(), "n".to_string());
 
-        presenter.handle(
-            DashboardEvent::KeysChanged(config),
-            &mut RecordingRouter::default(),
-        );
+        presenter.rebind(&config);
 
         assert_eq!(
             presenter.keymap().event("n"),

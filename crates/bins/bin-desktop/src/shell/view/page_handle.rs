@@ -6,14 +6,17 @@
 //!
 //! It is implemented for every [`ModulePage<P>`] and for the Settings View, a composite host that
 //! offers each key to its open page through this same trait. Both hosts keep their typed Entities
-//! for what one page hands another (a reveal, a month turning, rebound keys): only dispatch is
-//! erased.
+//! for what one page hands another (a reveal, a month turning): only dispatch is erased. A
+//! `[keybindings]` rebind and a Display change reach every page through it too (#1167), so a new
+//! page can't be left out of either.
 
 use std::rc::Rc;
 
 use gpui::{
     AnyElement, AnyView, App, Context, Entity, EventEmitter, Keystroke, Pixels, Subscription,
 };
+use lib_viper::display::PageDisplay;
+use lib_viper::keymap::{KeyBindingConfig, Keymap};
 
 use super::module_page::{ModulePage, PageView};
 use super::statusline::PageStatus;
@@ -31,6 +34,29 @@ pub enum PageKey {
     /// The page took it and hands it on to the Shell's fallback, inside the same input
     /// ([`PageView::passes_on`]).
     PassedOn,
+}
+
+/// One key a page holds now, as [`PageHandle::keys`] reports it: its command, its live chord
+/// (empty while unbound) and, for a Command the palette lists, what the palette says it does.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PageBinding {
+    pub command: &'static str,
+    pub chord: String,
+    pub description: Option<String>,
+}
+
+impl PageBinding {
+    /// Every binding of `keymap`, in binding order.
+    pub fn all_of<E: Clone>(keymap: &Keymap<E>) -> Vec<Self> {
+        keymap
+            .bindings()
+            .map(|bound| Self {
+                command: bound.command,
+                chord: bound.chord.to_string(),
+                description: bound.description.map(|describe| describe()),
+            })
+            .collect()
+    }
 }
 
 /// How a host lays a page out.
@@ -121,6 +147,12 @@ pub trait PageHandle {
     fn start_search(&self, cx: &mut App) -> bool;
     /// The page has just become the destination.
     fn on_enter(&self, cx: &mut App);
+    /// `[keybindings]` changed: the page builds its keys afresh under `keys`.
+    fn rebind(&self, keys: &KeyBindingConfig, cx: &mut App);
+    /// The Display Preferences changed, or a Ledger opened.
+    fn display(&self, display: PageDisplay, cx: &mut App);
+    /// Every key the page holds now, each with its chord.
+    fn keys(&self, cx: &App) -> Vec<PageBinding>;
     /// Shows a record another View handed off.
     fn reveal(&self, reveal: Reveal, cx: &mut App);
     /// Whether the page has the keyboard, as the host draws it and as focus moves, which can be
@@ -172,6 +204,23 @@ impl<P: PageView> PageHandle for Entity<ModulePage<P>> {
 
     fn on_enter(&self, cx: &mut App) {
         self.update(cx, |page, cx| page.on_enter(cx));
+    }
+
+    fn rebind(&self, keys: &KeyBindingConfig, cx: &mut App) {
+        self.update(cx, |page, cx| {
+            page.update_presenter(cx, |presenter| presenter.rebind(keys));
+        });
+    }
+
+    fn display(&self, display: PageDisplay, cx: &mut App) {
+        self.update(cx, |page, cx| {
+            page.update_presenter(cx, |presenter| presenter.display(&display));
+        });
+    }
+
+    /// The keymap the Presenter answers keys through in the state it is in.
+    fn keys(&self, cx: &App) -> Vec<PageBinding> {
+        PageBinding::all_of(self.read(cx).presenter().keymap())
     }
 
     fn reveal(&self, reveal: Reveal, cx: &mut App) {

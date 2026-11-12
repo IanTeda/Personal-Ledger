@@ -18,7 +18,6 @@ pub mod data_backup;
 pub mod device;
 pub mod display;
 pub mod general;
-pub(crate) mod hints;
 pub mod ledger;
 pub mod pages;
 mod pane;

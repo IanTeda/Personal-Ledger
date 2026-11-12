@@ -11,7 +11,7 @@ use lib_core::DocumentTypeId;
 use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::Segment;
 use lib_toast::Notice;
-use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
+use lib_viper::keymap::{EDIT, KeyBindingConfig, Keymap, MOVE_DOWN, MOVE_UP, NEW};
 use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Hint, count};
 
@@ -99,12 +99,6 @@ pub struct DocumentTypesPagePresenter {
 }
 
 impl DocumentTypesPagePresenter {
-    /// Takes keys through `keymap` from now on, after a `[keybindings]` rebind, so the legend shows
-    /// its chords too.
-    pub fn set_keymap(&mut self, keymap: Keymap<DocumentTypesPageEvent>) {
-        self.keymap = keymap;
-    }
-
     /// `keymap` is the one the Client looks keys up in, so the legend shows the chords it binds.
     pub fn new(ports: SharedRepository, keymap: Keymap<DocumentTypesPageEvent>) -> Self {
         Self {
@@ -224,6 +218,11 @@ impl PagePresenter for DocumentTypesPagePresenter {
 
     fn keymap(&self) -> &Keymap<DocumentTypesPageEvent> {
         &self.keymap
+    }
+
+    /// The legend reads its chords from the keymap, so it follows too.
+    fn rebind(&mut self, keys: &KeyBindingConfig) {
+        self.keymap = crate::keymap::document_types_page_keymap(keys);
     }
 }
 

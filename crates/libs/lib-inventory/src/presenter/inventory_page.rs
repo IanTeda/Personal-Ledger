@@ -15,7 +15,7 @@ use lib_core::{AreaId, LocationId};
 use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::format::upper;
 use lib_toast::{Notice, ToastKind};
-use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
+use lib_viper::keymap::{EDIT, KeyBindingConfig, Keymap, MOVE_DOWN, MOVE_UP, NEW};
 use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Hint, count};
 
@@ -159,12 +159,6 @@ pub struct InventoryPagePresenter {
 }
 
 impl InventoryPagePresenter {
-    /// Takes keys through `keymap` from now on, after a `[keybindings]` rebind, so the legend shows
-    /// its chords too.
-    pub fn set_keymap(&mut self, keymap: Keymap<InventoryPageEvent>) {
-        self.keymap = keymap;
-    }
-
     /// `keymap` is the one the Client looks keys up in, so the legend shows the chords it binds.
     pub fn new(inventory: SharedInventory, keymap: Keymap<InventoryPageEvent>) -> Self {
         Self {
@@ -292,6 +286,11 @@ impl PagePresenter for InventoryPagePresenter {
 
     fn keymap(&self) -> &Keymap<InventoryPageEvent> {
         &self.keymap
+    }
+
+    /// The legend reads its chords from the keymap, so it follows too.
+    fn rebind(&mut self, keys: &KeyBindingConfig) {
+        self.keymap = crate::keymap::inventory_page_keymap(keys);
     }
 }
 

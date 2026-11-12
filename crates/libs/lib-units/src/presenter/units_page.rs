@@ -355,18 +355,6 @@ impl UnitsPagePresenter {
         self
     }
 
-    /// Takes keys through `keymap` and the prices view through `prices_keymap` from now on, after
-    /// a `[keybindings]` rebind. A prices view already open keeps its keys until it next opens.
-    pub fn set_keymaps(
-        &mut self,
-        keymap: Keymap<UnitsPageEvent>,
-        prices_keymap: Keymap<UnitPricesEvent>,
-    ) {
-        self.prices_keys = Self::prices_keys(&keymap, &prices_keymap);
-        self.keymap = keymap;
-        self.prices_keymap = prices_keymap;
-    }
-
     /// Whether the Unit prices view shows in place of the tables.
     pub fn prices_open(&self) -> bool {
         self.prices.is_some()
@@ -648,6 +636,16 @@ impl PagePresenter for UnitsPagePresenter {
         } else {
             &self.keymap
         }
+    }
+
+    /// The page's keys and the prices view's. A prices view already open keeps its keys until it
+    /// next opens.
+    fn rebind(&mut self, keys: &KeyBindingConfig) {
+        let keymap = crate::keymap::units_page_keymap(keys);
+        let prices_keymap = unit_prices_keymap(keys);
+        self.prices_keys = Self::prices_keys(&keymap, &prices_keymap);
+        self.keymap = keymap;
+        self.prices_keymap = prices_keymap;
     }
 
     /// A page event while the prices view shows closes the view first, so a palette Command acts

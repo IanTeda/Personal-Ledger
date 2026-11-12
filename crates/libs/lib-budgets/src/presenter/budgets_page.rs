@@ -17,6 +17,7 @@ use lib_core::{BudgetId, Clock, DateStyle, Period};
 use lib_list_cursor::Step;
 use lib_locale::Segment;
 use lib_toast::Notice;
+use lib_viper::display::PageDisplay;
 use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, SELECT};
 use lib_viper::presenter::{PageMode, PagePresenter, Presenter, TextKey};
 use lib_viper::view::Hint;
@@ -93,10 +94,6 @@ pub enum BudgetsPageEvent {
     Entered,
     /// The calendar month turned while the page was open.
     MonthTurned,
-    /// The Display Preference the Switcher's archived dates are written in.
-    SetDateStyle(Option<DateStyle>),
-    /// `[keybindings]` changed: the keys and the legend's chords follow it.
-    KeysChanged(KeyBindingConfig),
     /// The open Switcher or Manage budgets closed, with what it hands the page, `None` when it
     /// closed with nothing to show.
     DialogClosed(Option<BudgetsOutcome>),
@@ -484,10 +481,6 @@ impl Presenter for BudgetsPagePresenter {
             BudgetsPageEvent::Plan(event) => self.plan_event(event, router),
             BudgetsPageEvent::History(event) => self.history_event(event, router),
             BudgetsPageEvent::Entered | BudgetsPageEvent::MonthTurned => {}
-            BudgetsPageEvent::SetDateStyle(style) => self.date_style = style,
-            BudgetsPageEvent::KeysChanged(config) => {
-                self.keys = Keys::new(budgets_page_keymap(&config));
-            }
             BudgetsPageEvent::DialogClosed(outcome) => match outcome {
                 Some(BudgetsOutcome::Show(id)) => self.show_budget(id),
                 Some(BudgetsOutcome::ShowAndEdit(id)) => {
@@ -615,6 +608,16 @@ impl PagePresenter for BudgetsPagePresenter {
             BudgetsTab::Plan => &self.keys.plan,
             BudgetsTab::History => &self.keys.history,
         }
+    }
+
+    /// Every tab's keys, and the legend's chords, follow the new bindings.
+    fn rebind(&mut self, keys: &KeyBindingConfig) {
+        self.keys = Keys::new(budgets_page_keymap(keys));
+    }
+
+    /// The date style the Switcher's archived dates are written in.
+    fn display(&mut self, display: &PageDisplay) {
+        self.date_style = display.date_style;
     }
 
     /// The Plan cell editor's keys (9b): `enter` saves onward and `shift+enter` this month only,
@@ -817,7 +820,7 @@ mod tests {
             .bindings
             .insert(SWITCH.to_string(), "ctrl+b".to_string());
 
-        page.send(BudgetsPageEvent::KeysChanged(config));
+        page.presenter.rebind(&config);
 
         assert_eq!(
             page.presenter.keymap().event("ctrl+b"),

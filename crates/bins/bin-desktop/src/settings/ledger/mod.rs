@@ -45,7 +45,7 @@ impl LedgerKeys {
             settings_reads: ports.settings_reads.clone(),
             preferences: ports.ledger_preferences.clone(),
             keymap: ledger_keymap(config),
-            back_chord: crate::settings::state::back_chord(config),
+            back_chord: lib_settings::keymap::back_chord(config),
         }
     }
 }

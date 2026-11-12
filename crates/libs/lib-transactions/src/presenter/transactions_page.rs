@@ -14,10 +14,10 @@
 //!   hand-off (an Account's, a Payee's, a Tag's, a Budget Category's) starts from the first row.
 //! - **Not yet built:** `Enter`, `e` and `n` say so on the status line, since there is no
 //!   Transaction form yet.
-//! - **Display Preferences** are pushed to it ([`TransactionsPageEvent::DisplayChanged`]): each
+//! - **Display Preferences** are handed to it ([`PagePresenter::display`]): each
 //!   row's status marks and the legend follow the Status glyphs, and the view model carries the
 //!   Row density for the Client to size its rows by.
-//! - **Keys:** it owns its keymaps, built from `[keybindings]` ([`TransactionsPageEvent::KeysChanged`]):
+//! - **Keys:** it owns its keymaps, built from `[keybindings]` ([`PagePresenter::rebind`]):
 //!   the page's, the popover's while it is open (its Filter mode), and none while the Search is
 //!   open (its Search mode), where every key types ([`PagePresenter::typed`]).
 //!
@@ -32,7 +32,7 @@ use lib_core::{AccountId, Clock, DateStyle, HexColor, Money, PayeeId, TagId, Tra
 use lib_list_cursor::Step;
 use lib_locale::format::{AmountStyle, format_amount, format_date};
 use lib_toast::{Notice, Notify};
-use lib_viper::display::{RowDensity, StatusGlyphs, flag_glyph};
+use lib_viper::display::{PageDisplay, RowDensity, StatusGlyphs, flag_glyph};
 use lib_viper::keymap::{EDIT, KeyBindingConfig, Keymap, MOVE_DOWN, MOVE_UP, NEW, SEARCH, SELECT};
 use lib_viper::presenter::{PageMode, PagePresenter, Presenter, TextKey};
 use lib_viper::view::{Hint, count};
@@ -86,16 +86,6 @@ pub enum TransactionsPageEvent {
     ShowFiltered(TransactionFilters),
     /// The page became the destination.
     Entered,
-    /// The Display Preference the dates show and are typed in.
-    SetDateStyle(Option<DateStyle>),
-    /// The Display Preferences the rows draw with: the status marks and legend in `glyphs`, and
-    /// the rows spaced at `density`.
-    DisplayChanged {
-        glyphs: StatusGlyphs,
-        density: RowDensity,
-    },
-    /// `[keybindings]` changed: the keymaps are built afresh under it.
-    KeysChanged(KeyBindingConfig),
 }
 
 /// The TAGS cell.
@@ -312,11 +302,6 @@ impl Presenter for TransactionsPagePresenter {
                 | TransactionsPageEvent::RevealAccount(_)
                 | TransactionsPageEvent::ShowFiltered(_)
                 | TransactionsPageEvent::Entered => self.filter = None,
-                // The rows behind the popover redraw in the new Preferences, and new keys reach it.
-                TransactionsPageEvent::DisplayChanged { .. }
-                | TransactionsPageEvent::KeysChanged(_) => {}
-                // The draft's dates follow a new style, so what was typed still reads as meant.
-                TransactionsPageEvent::SetDateStyle(style) => filter.set_date_style(style),
                 // The popover is modal: nothing else on the page is reached while it is open.
                 _ => return,
             }
@@ -384,16 +369,6 @@ impl Presenter for TransactionsPagePresenter {
             }
             TransactionsPageEvent::ShowFiltered(filters) => self.show_filtered(filters),
             TransactionsPageEvent::Entered => self.searching = false,
-            TransactionsPageEvent::SetDateStyle(style) => self.date_style = style,
-            TransactionsPageEvent::DisplayChanged { glyphs, density } => {
-                self.glyphs = glyphs;
-                self.density = density;
-            }
-            TransactionsPageEvent::KeysChanged(config) => {
-                self.keymap = transactions_page_keymap(&config);
-                self.search_keymap = self.keymap.scoped(|_| false);
-                self.filter_keymap = transactions_filter_keymap(&config);
-            }
         }
     }
 
@@ -444,6 +419,25 @@ impl PagePresenter for TransactionsPagePresenter {
             &self.search_keymap
         } else {
             &self.keymap
+        }
+    }
+
+    /// The page's, the Search's and the popover's keymaps, an open popover's included.
+    fn rebind(&mut self, keys: &KeyBindingConfig) {
+        self.keymap = transactions_page_keymap(keys);
+        self.search_keymap = self.keymap.scoped(|_| false);
+        self.filter_keymap = transactions_filter_keymap(keys);
+    }
+
+    /// The dates' style, the status marks and legend in the glyphs, and the rows spaced at the
+    /// density. An open popover's draft dates follow the style, so what was typed still reads as
+    /// meant, and the rows behind it redraw.
+    fn display(&mut self, display: &PageDisplay) {
+        self.date_style = display.date_style;
+        self.glyphs = display.glyphs;
+        self.density = display.density;
+        if let Some(filter) = self.filter.as_mut() {
+            filter.set_date_style(display.date_style);
         }
     }
 
@@ -1050,17 +1044,25 @@ mod tests {
         assert_eq!(page.view().footer.total, FooterTotal::Empty);
     }
 
+    /// The Display Preferences with ISO dates, the rest at their defaults.
+    fn iso() -> PageDisplay {
+        PageDisplay {
+            date_style: Some(DateStyle::Iso),
+            ..PageDisplay::default()
+        }
+    }
+
     #[test]
-    fn set_date_style_formats_the_dates() {
+    fn a_date_style_formats_the_dates() {
         let mut page = Page::new();
 
-        page.send(TransactionsPageEvent::SetDateStyle(Some(DateStyle::Iso)));
+        page.presenter.display(&iso());
 
         assert_eq!(page.view().rows[0].date, "2026-09-18");
     }
 
     #[test]
-    fn the_status_marks_and_legend_follow_display_changed() {
+    fn the_status_marks_and_legend_follow_the_display_preferences() {
         let mut page = Page::new();
         let view = page.view();
         assert_eq!(view.rows[0].status_glyph, "\u{25cb}", "the shop is Open");
@@ -1069,9 +1071,10 @@ mod tests {
         assert_eq!(view.legend, status_legend(StatusGlyphs::Unicode));
         assert_eq!(view.density, RowDensity::Regular);
 
-        page.send(TransactionsPageEvent::DisplayChanged {
+        page.presenter.display(&PageDisplay {
             glyphs: StatusGlyphs::AsciiFallback,
             density: RowDensity::Compact,
+            ..PageDisplay::default()
         });
 
         let view = page.view();
@@ -1098,21 +1101,22 @@ mod tests {
         };
         assert_eq!(flagged(&page).as_deref(), Some("\u{2691}"));
 
-        page.send(TransactionsPageEvent::DisplayChanged {
+        page.presenter.display(&PageDisplay {
             glyphs: StatusGlyphs::AsciiFallback,
-            density: RowDensity::Regular,
+            ..PageDisplay::default()
         });
         assert_eq!(flagged(&page).as_deref(), Some("!"));
     }
 
     #[test]
-    fn display_changed_reaches_the_rows_behind_an_open_popover() {
+    fn a_display_change_reaches_the_rows_behind_an_open_popover() {
         let mut page = Page::new();
         page.send(TransactionsPageEvent::OpenFilter(None));
 
-        page.send(TransactionsPageEvent::DisplayChanged {
+        page.presenter.display(&PageDisplay {
             glyphs: StatusGlyphs::AsciiFallback,
             density: RowDensity::Roomy,
+            ..PageDisplay::default()
         });
 
         let view = page.view();
@@ -1335,7 +1339,7 @@ mod tests {
         let mut page = Page::new();
         page.send(TransactionsPageEvent::OpenFilter(Some(ChipField::Date)));
 
-        page.send(TransactionsPageEvent::SetDateStyle(Some(DateStyle::Iso)));
+        page.presenter.display(&iso());
 
         let view = page.view();
         let filter = view.filter.expect("the popover stays open");

@@ -397,7 +397,7 @@ impl RootRouter<'_, '_> {
         // opens it.
         set_view_keymaps(self.settings, self.open.as_ref(), self.keybindings, self.cx);
         let display = self.display_output();
-        push_display_preferences(self.open.as_ref(), display, self.cx);
+        push_display_preferences(self.settings, self.open.as_ref(), display, self.cx);
     }
 
     /// Flushes the closing Ledger `open` and reports a write that failed since the last poll: each
@@ -498,6 +498,15 @@ pub(super) fn reset_view_scroll(
     }
 }
 
+/// Settings and, with a Ledger open, its Views: every page `Root` hosts, for what each hears alike.
+fn hosted_pages<'a>(
+    settings: &'a Entity<SettingsView>,
+    open: Option<&'a OpenLedger>,
+) -> impl Iterator<Item = &'a dyn PageHandle> {
+    let views = open.map(|open| open.views.all()).unwrap_or_default();
+    std::iter::once(settings as &dyn PageHandle).chain(views)
+}
+
 /// The keys of Settings and the Open Ledger's Views, under `config`'s overrides: one input, so the
 /// rebind costs one commit however many pages hear it.
 pub(super) fn set_view_keymaps(
@@ -506,108 +515,49 @@ pub(super) fn set_view_keymaps(
     config: &lib_config::KeyBindingConfig,
     cx: &mut App,
 ) {
-    crate::input::join_or_send(cx, |cx| {
-        settings.update(cx, |view, cx| view.set_keymaps(config, cx));
-        if let Some(open) = open {
-            set_ledger_keymaps(open, config, cx);
-        }
-    });
+    crate::input::join_or_send(cx, |cx| set_ledger_keymaps(settings, open, config, cx));
 }
 
-/// The keys of the Open Ledger's Views and the Dialogs they open, under `config`'s overrides.
-fn set_ledger_keymaps(open: &OpenLedger, config: &lib_config::KeyBindingConfig, cx: &mut App) {
-    open.dialog_keys.set(lib_viper::dialog::DialogKeys::of(
-        &lib_shell::dialog_keymap(config),
-    ));
-    open.views.bills.update(cx, |page, cx| {
-        page.update_presenter(cx, |presenter| {
-            presenter.set_keymap(lib_bills::keymap::bills_page_keymap(config));
-        });
-    });
-    open.views.transactions.update(cx, |page, cx| {
-        page.send(
-            lib_transactions::presenter::TransactionsPageEvent::KeysChanged(config.clone()),
-            cx,
-        );
-    });
-    open.views.import.update(cx, |page, cx| {
-        page.send(
-            lib_transaction_import::presenter::ImportEvent::KeysChanged(config.clone()),
-            cx,
-        );
-    });
-    open.views.dashboard.update(cx, |page, cx| {
-        page.send(
-            lib_dashboard::DashboardEvent::KeysChanged(config.clone()),
-            cx,
-        );
-    });
-    open.views.budgets.update(cx, |page, cx| {
-        page.send(
-            lib_budgets::presenter::BudgetsPageEvent::KeysChanged(config.clone()),
-            cx,
-        );
-    });
-    open.views.documents.update(cx, |page, cx| {
-        page.send(
-            lib_documents::presenter::DocumentsPageEvent::KeysChanged(config.clone()),
-            cx,
-        );
-    });
+/// The keys of every hosted page and of the Dialogs the Open Ledger's Views open, under `config`'s
+/// overrides.
+fn set_ledger_keymaps(
+    settings: &Entity<SettingsView>,
+    open: Option<&OpenLedger>,
+    config: &lib_config::KeyBindingConfig,
+    cx: &mut App,
+) {
+    if let Some(open) = open {
+        open.dialog_keys.set(lib_viper::dialog::DialogKeys::of(
+            &lib_shell::dialog_keymap(config),
+        ));
+    }
+    for page in hosted_pages(settings, open) {
+        page.rebind(config, cx);
+    }
 }
 
-/// Hands the Display output to the Views that read it, after a Settings change; with no Ledger open
-/// there are none, and opening one hands it over. One input, so one change costs one commit.
+/// Hands the Display output to every hosted page, after a Settings change and as a Ledger opens.
+/// One input, so one change costs one commit.
 pub(super) fn push_display_preferences(
+    settings: &Entity<SettingsView>,
     open: Option<&OpenLedger>,
     display: DisplayOutput,
     cx: &mut App,
 ) {
-    let Some(open) = open else {
-        return;
-    };
-    crate::input::join_or_send(cx, |cx| push_ledger_display(open, display, cx));
+    crate::input::join_or_send(cx, |cx| push_ledger_display(settings, open, display, cx));
 }
 
-/// Hands the Display output to the Open Ledger's Views that read it.
-fn push_ledger_display(open: &OpenLedger, display: DisplayOutput, cx: &mut App) {
-    let (date_style, glyphs, density) = (
-        display.date_style,
-        display.status_glyphs,
-        display.row_density,
-    );
-    open.views.dashboard.update(cx, |page, cx| {
-        page.send(
-            lib_dashboard::DashboardEvent::DisplayChanged { date_style, glyphs },
-            cx,
-        );
-    });
-    open.views.bills.update(cx, |page, cx| {
-        page.send(
-            lib_bills::presenter::BillsPageEvent::DisplayChanged { date_style, glyphs },
-            cx,
-        );
-    });
-    open.views.transactions.update(cx, |page, cx| {
-        use lib_transactions::presenter::TransactionsPageEvent;
-        page.send(TransactionsPageEvent::SetDateStyle(date_style), cx);
-        page.send(
-            TransactionsPageEvent::DisplayChanged { glyphs, density },
-            cx,
-        );
-    });
-    open.views.documents.update(cx, |page, cx| {
-        page.send(
-            lib_documents::presenter::DocumentsPageEvent::SetDateStyle(date_style),
-            cx,
-        );
-    });
-    open.views.budgets.update(cx, |page, cx| {
-        page.send(
-            lib_budgets::presenter::BudgetsPageEvent::SetDateStyle(date_style),
-            cx,
-        );
-    });
+/// Hands the Display output to every hosted page; the ones that draw with it keep it.
+fn push_ledger_display(
+    settings: &Entity<SettingsView>,
+    open: Option<&OpenLedger>,
+    display: DisplayOutput,
+    cx: &mut App,
+) {
+    let display = display.page();
+    for page in hosted_pages(settings, open) {
+        page.display(display, cx);
+    }
 }
 
 /// An Error Toast saying a Ledger file couldn't be opened, naming it and why (#977).

@@ -23,8 +23,8 @@ use lib_core::configuration::{ConfigKey, ConfigValue};
 use lib_core::{DateStyle, Money};
 use lib_list_cursor::Step;
 use lib_locale::format::{AmountStyle, format_amount, format_date};
-use lib_viper::display::{RowDensity, StatusGlyphs};
-use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP, SELECT};
+use lib_viper::display::{PageDisplay, RowDensity, StatusGlyphs};
+use lib_viper::keymap::{KeyBindingConfig, Keymap, MOVE_DOWN, MOVE_UP, SELECT};
 use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Choice, Hint};
 
@@ -82,6 +82,17 @@ pub struct DisplayOutput {
     pub status_glyphs: StatusGlyphs,
     /// Applied to the primary rail at launch, so a change waits for the next one.
     pub start_sidebar_minimised: bool,
+}
+
+impl DisplayOutput {
+    /// What every page is handed of it; Start Sidebar minimised is the Shell's alone.
+    pub fn page(&self) -> PageDisplay {
+        PageDisplay {
+            date_style: self.date_style,
+            glyphs: self.status_glyphs,
+            density: self.row_density,
+        }
+    }
 }
 
 /// What Display is told and the person asks of it.
@@ -282,12 +293,6 @@ impl DisplayPresenter {
             columns: 1,
             page_focused: false,
         }
-    }
-
-    /// Replaces the keymap and the `back` chord, for a `[keybindings]` change.
-    pub fn set_keymap(&mut self, keymap: Keymap<DisplayEvent>, back_chord: String) {
-        self.keymap = keymap;
-        self.back_chord = back_chord;
     }
 
     /// Start Sidebar minimised as the Client remembered it from its last run.
@@ -543,6 +548,12 @@ impl PagePresenter for DisplayPresenter {
 
     fn keymap(&self) -> &Keymap<DisplayEvent> {
         &self.keymap
+    }
+
+    /// The keymap and the `back` chord its legend shows.
+    fn rebind(&mut self, keys: &KeyBindingConfig) {
+        self.keymap = crate::keymap::display_keymap(keys);
+        self.back_chord = crate::keymap::back_chord(keys);
     }
 }
 
@@ -850,6 +861,25 @@ mod tests {
         display_on(Rc::new(
             InMemoryDeviceConfiguration::writable().reading(values),
         ))
+    }
+
+    #[test]
+    fn a_page_is_handed_the_display_output_but_the_sidebar() {
+        let output = DisplayOutput {
+            date_style: Some(DateStyle::Iso),
+            row_density: RowDensity::Compact,
+            status_glyphs: StatusGlyphs::AsciiFallback,
+            start_sidebar_minimised: true,
+        };
+
+        assert_eq!(
+            output.page(),
+            PageDisplay {
+                date_style: Some(DateStyle::Iso),
+                glyphs: StatusGlyphs::AsciiFallback,
+                density: RowDensity::Compact,
+            }
+        );
     }
 
     #[test]

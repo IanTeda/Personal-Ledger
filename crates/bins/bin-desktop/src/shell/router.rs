@@ -61,13 +61,13 @@ pub use open_ledger::{LedgerFile, OpenLedger};
 #[doc(hidden)]
 pub use snapshots::{
     BillRowSnapshot, BillsSnapshot, BudgetRowSnapshot, BudgetsSnapshot, ChipSnapshot,
-    DashboardBillSnapshot, DocumentsSnapshot, HelpGroup, ImportRowSnapshot, ImportSnapshot,
-    PageSnapshot, PaletteSnapshot, SettingsAccountsSnapshot, SettingsCategoriesSnapshot,
-    SettingsDisplaySnapshot, SettingsDocumentTypesSnapshot, SettingsGeneralSnapshot,
-    SettingsInstitutionsSnapshot, SettingsInventorySnapshot, SettingsLedgerSnapshot,
-    SettingsPayeesSnapshot, SettingsSnapshot, SettingsTagsSnapshot, SettingsTracingSnapshot,
-    SettingsUnitsSnapshot, StatusSnapshot, ToastSnapshot, ToastsSnapshot, TransactionsSnapshot,
-    UnitPricesSnapshot,
+    DashboardBillSnapshot, DisplayDatesSnapshot, DocumentsSnapshot, HelpGroup, ImportRowSnapshot,
+    ImportSnapshot, PageKeysSnapshot, PageSnapshot, PaletteSnapshot, SettingsAccountsSnapshot,
+    SettingsCategoriesSnapshot, SettingsDisplaySnapshot, SettingsDocumentTypesSnapshot,
+    SettingsGeneralSnapshot, SettingsInstitutionsSnapshot, SettingsInventorySnapshot,
+    SettingsLedgerSnapshot, SettingsPayeesSnapshot, SettingsSnapshot, SettingsTagsSnapshot,
+    SettingsTracingSnapshot, SettingsUnitsSnapshot, StatusSnapshot, ToastSnapshot, ToastsSnapshot,
+    TransactionsSnapshot, UnitPricesSnapshot,
 };
 pub use write_failures::WRITE_FAILURE_POLL;
 
@@ -547,7 +547,7 @@ impl Root {
     /// Hands the Display output to the Views that read it, after a Settings change; with no Ledger
     /// open there are none, and opening one hands it over.
     fn push_display_preferences(&mut self, display: DisplayOutput, cx: &mut App) {
-        root_router::push_display_preferences(self.open.as_ref(), display, cx);
+        root_router::push_display_preferences(&self.settings, self.open.as_ref(), display, cx);
     }
 }
 
@@ -559,12 +559,11 @@ impl Focusable for Root {
 
 #[cfg(test)]
 mod tests {
-    use crate::settings::hints::settings_plain_page_hints;
     use crate::transactions;
     use chrono::Local;
     use lib_accounts::Account;
     use lib_categories::Category;
-    use lib_settings::keymap::settings_frame_keymap;
+    use lib_settings::keymap::{settings_frame_keymap, settings_plain_page_hints};
     use lib_transactions::Transaction;
     use lib_viper::keymap::KeyBindingConfig;
 

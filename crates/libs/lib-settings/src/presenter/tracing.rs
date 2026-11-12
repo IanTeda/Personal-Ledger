@@ -12,8 +12,8 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 
 use lib_list_cursor::Step;
-use lib_viper::dialog::DialogKeys;
-use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP};
+use lib_viper::dialog::{DialogKeys, dialog_keymap};
+use lib_viper::keymap::{KeyBindingConfig, Keymap, MOVE_DOWN, MOVE_UP};
 use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Choice, Hint};
 
@@ -193,18 +193,6 @@ impl TracingPresenter {
         }
     }
 
-    /// Replaces the keymap, the `back` chord and the Dialog keys, for a `[keybindings]` change.
-    pub fn set_keymap(
-        &mut self,
-        keymap: Keymap<TracingEvent>,
-        back_chord: String,
-        dialog_keys: DialogKeys,
-    ) {
-        self.keymap = keymap;
-        self.back_chord = back_chord;
-        self.dialog_keys = dialog_keys;
-    }
-
     /// Reads `log` from now on, opening on `level`. The Client restarts its list at the top, at
     /// [`Self::visible_count`].
     pub fn configure(&mut self, log: Rc<dyn TracingLog>, level: TracingLevel) {
@@ -331,6 +319,13 @@ impl PagePresenter for TracingPresenter {
 
     fn keymap(&self) -> &Keymap<TracingEvent> {
         &self.keymap
+    }
+
+    /// The keymap, the `back` chord and the keys its Clear logs Dialog hints.
+    fn rebind(&mut self, keys: &KeyBindingConfig) {
+        self.keymap = crate::keymap::tracing_keymap(keys);
+        self.back_chord = crate::keymap::back_chord(keys);
+        self.dialog_keys = DialogKeys::of(&dialog_keymap(keys));
     }
 }
 

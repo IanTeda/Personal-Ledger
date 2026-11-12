@@ -17,6 +17,7 @@ use lib_config::KeyBindingConfig;
 use lib_core::{Clock, DateStyle, DocumentId, TransactionId};
 use lib_list_cursor::Step;
 use lib_toast::{Notice, ToastKind};
+use lib_viper::display::PageDisplay;
 use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, SEARCH, SELECT};
 use lib_viper::presenter::{PageMode, PagePresenter, Presenter, TextKey};
 use lib_viper::view::{Hint, count};
@@ -123,8 +124,6 @@ pub enum DocumentsPageEvent {
     Entered,
     /// The calendar month turned while the page was open.
     MonthTurned,
-    /// The Display Preference the page's dates follow.
-    SetDateStyle(Option<DateStyle>),
     /// The mode, scope and sort kept from the last run.
     Restore {
         mode: DocumentsMode,
@@ -133,8 +132,6 @@ pub enum DocumentsPageEvent {
     },
     /// A Dialog the page opened closed, with what its confirm did, or `None` for a cancel.
     DialogClosed(Option<DocumentsOutcome>),
-    /// `[keybindings]` changed: the page's keys and the legend's chords follow.
-    KeysChanged(KeyBindingConfig),
 }
 
 impl DocumentsPageEvent {
@@ -1125,7 +1122,6 @@ impl Presenter for DocumentsPagePresenter {
                 self.searching = false;
             }
             DocumentsPageEvent::MonthTurned => {}
-            DocumentsPageEvent::SetDateStyle(style) => self.date_style = style,
             DocumentsPageEvent::Restore { mode, scope, sort } => {
                 self.mode = mode;
                 self.scope = scope;
@@ -1133,14 +1129,6 @@ impl Presenter for DocumentsPagePresenter {
             }
             DocumentsPageEvent::DialogClosed(Some(outcome)) => self.dialog_closed(outcome, router),
             DocumentsPageEvent::DialogClosed(None) => {}
-            DocumentsPageEvent::KeysChanged(config) => {
-                (
-                    self.keymap,
-                    self.library_keys,
-                    self.inbox_keys,
-                    self.search_keys,
-                ) = keymaps(&config);
-            }
         }
     }
 
@@ -1273,6 +1261,21 @@ impl PagePresenter for DocumentsPagePresenter {
                 DocumentsMode::Inbox => &self.inbox_keys,
             }
         }
+    }
+
+    /// Each mode's keys and the Search's, so the legend's chords follow too.
+    fn rebind(&mut self, keys: &KeyBindingConfig) {
+        (
+            self.keymap,
+            self.library_keys,
+            self.inbox_keys,
+            self.search_keys,
+        ) = keymaps(keys);
+    }
+
+    /// The date style the page's dates follow.
+    fn display(&mut self, display: &PageDisplay) {
+        self.date_style = display.date_style;
     }
 
     /// A palette Command of the mode not showing shows that mode first.

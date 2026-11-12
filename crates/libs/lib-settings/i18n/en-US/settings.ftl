@@ -96,6 +96,7 @@ settings-hint-on-off = on / off
 settings-hint-test = test
 settings-hint-toggle = toggle
 settings-hint-index = index
+settings-hint-scroll = scroll
 settings-hint-colour = colour
 settings-hint-choose = choose
 settings-hint-pick = pick

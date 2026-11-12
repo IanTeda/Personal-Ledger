@@ -11,8 +11,8 @@
 use lib_core::{BillPlanId, Clock, DateStyle, Period};
 use lib_list_cursor::Step;
 use lib_toast::Notice;
-use lib_viper::display::{StatusGlyphs, flag_glyph};
-use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW};
+use lib_viper::display::{PageDisplay, StatusGlyphs, flag_glyph};
+use lib_viper::keymap::{EDIT, KeyBindingConfig, Keymap, MOVE_DOWN, MOVE_UP, NEW};
 use lib_viper::presenter::{PageMode, PagePresenter, Presenter};
 use lib_viper::view::Hint;
 
@@ -61,12 +61,6 @@ pub enum BillsPageEvent {
     Planner(PlannerEvent),
     /// The page became the destination.
     Entered,
-    /// The Display Preferences: the date style the Plan form's and Pay's dates are typed in, and
-    /// the Status glyphs, which mark a row in Needs Attention.
-    DisplayChanged {
-        date_style: Option<DateStyle>,
-        glyphs: StatusGlyphs,
-    },
     /// A hand-off from another View: an entry in the month that shows it, a Plan on the Planner,
     /// or a month of the Schedule, with no filter hiding it.
     RevealEntry(EntryId),
@@ -147,14 +141,6 @@ impl BillsPagePresenter {
         }
     }
 
-    /// Takes keys through `keymap` from now on, after a `[keybindings]` rebind, so the legend shows
-    /// its chords too.
-    pub fn set_keymap(&mut self, keymap: Keymap<BillsPageEvent>) {
-        self.schedule_keys = Self::tab_keys(&keymap, BillsTab::Schedule);
-        self.planner_keys = Self::tab_keys(&keymap, BillsTab::Planner);
-        self.keymap = keymap;
-    }
-
     /// `keymap`'s bindings `tab` reaches: its own and the shared ones.
     fn tab_keys(keymap: &Keymap<BillsPageEvent>, tab: BillsTab) -> Keymap<BillsPageEvent> {
         keymap.scoped(move |event: &BillsPageEvent| event.tab().is_none_or(|own| own == tab))
@@ -216,10 +202,6 @@ impl Presenter for BillsPagePresenter {
             BillsPageEvent::Schedule(event) => self.schedule.handle(event, router),
             BillsPageEvent::Planner(event) => self.planner.handle(event, router),
             BillsPageEvent::Entered => {}
-            BillsPageEvent::DisplayChanged { date_style, glyphs } => {
-                self.date_style = date_style;
-                self.glyphs = glyphs;
-            }
             // A hand-off to a row that has gone leaves the page as it was.
             BillsPageEvent::RevealEntry(id) => {
                 if self.ports.borrow().bills().entry(id).is_some() {
@@ -294,6 +276,21 @@ impl PagePresenter for BillsPagePresenter {
             BillsTab::Schedule => &self.schedule_keys,
             BillsTab::Planner => &self.planner_keys,
         }
+    }
+
+    /// Each tab's keys are scoped afresh, so the legend shows the new chords too.
+    fn rebind(&mut self, keys: &KeyBindingConfig) {
+        let keymap = crate::keymap::bills_page_keymap(keys);
+        self.schedule_keys = Self::tab_keys(&keymap, BillsTab::Schedule);
+        self.planner_keys = Self::tab_keys(&keymap, BillsTab::Planner);
+        self.keymap = keymap;
+    }
+
+    /// The date style the Plan form's and Pay's dates are typed in, and the Status glyphs, which
+    /// mark a row in Needs Attention.
+    fn display(&mut self, display: &PageDisplay) {
+        self.date_style = display.date_style;
+        self.glyphs = display.glyphs;
     }
 
     /// A palette Command of the other tab shows that tab first.
@@ -493,9 +490,9 @@ mod tests {
             .map(|on| on.then(|| "\u{2691}".to_string()))
             .collect();
         assert_eq!(flagged(&page), unicode);
-        page.send(BillsPageEvent::DisplayChanged {
-            date_style: None,
+        page.presenter.display(&PageDisplay {
             glyphs: StatusGlyphs::AsciiFallback,
+            ..PageDisplay::default()
         });
         let ascii: Vec<_> = attention(&page)
             .iter()

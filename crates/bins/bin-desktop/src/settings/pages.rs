@@ -191,7 +191,7 @@ impl SettingsPages {
                 general_page(
                     device.clone(),
                     &KeyBindingConfig::default(),
-                    super::state::back_chord(&KeyBindingConfig::default()),
+                    lib_settings::keymap::back_chord(&KeyBindingConfig::default()),
                     cx,
                 )
             }),
@@ -199,7 +199,7 @@ impl SettingsPages {
                 display_page(
                     device,
                     &KeyBindingConfig::default(),
-                    super::state::back_chord(&KeyBindingConfig::default()),
+                    lib_settings::keymap::back_chord(&KeyBindingConfig::default()),
                     cx,
                 )
             }),
@@ -211,7 +211,7 @@ impl SettingsPages {
                     ))),
                     lib_settings::TracingLevel::default(),
                     &KeyBindingConfig::default(),
-                    super::state::back_chord(&KeyBindingConfig::default()),
+                    lib_settings::keymap::back_chord(&KeyBindingConfig::default()),
                     log_feed.clone(),
                     cx,
                 )

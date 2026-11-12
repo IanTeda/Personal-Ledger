@@ -14,10 +14,14 @@
 //! [`SettingsFramePresenter::takes`]: crate::presenter::SettingsFramePresenter::takes
 
 use lib_list_cursor::Step;
+use lib_viper::dialog::dialog_keymap;
 use lib_viper::keymap::{
-    ARROW_DOWN, ARROW_UP, Binding, END, FOCUS_NEXT, HALF_PAGE_DOWN, HALF_PAGE_UP, HOME,
+    ARROW_DOWN, ARROW_UP, BACK, Binding, END, FOCUS_NEXT, HALF_PAGE_DOWN, HALF_PAGE_UP, HOME,
     KeyBindingConfig, Keymap, MOVE_DOWN, MOVE_FIRST, MOVE_LAST, MOVE_UP, SELECT,
 };
+use lib_viper::view::Hint;
+
+use crate::msg;
 
 use crate::presenter::{
     DisplayEvent, GeneralEvent, LedgerEvent, LogScroll, SettingsFrameEvent, TracingEvent,
@@ -62,6 +66,26 @@ pub const SETTINGS_FRAME_BINDINGS: &[Binding<SettingsFrameEvent>] = &[
 /// The frame's keymap under `config`'s overrides.
 pub fn settings_frame_keymap(config: &KeyBindingConfig) -> Keymap<SettingsFrameEvent> {
     Keymap::new(SETTINGS_FRAME_BINDINGS, config)
+}
+
+/// The chord of the Shell's `back` under `config`, which the frame's and the pages' legends show.
+/// `back` is one command name the Shell's keymap and the Dialog keymap share, on the same default,
+/// so it is read from the Dialog keymap, which this crate reaches through `lib_viper`.
+pub fn back_chord(config: &KeyBindingConfig) -> String {
+    dialog_keymap(config).hint_chord(BACK).to_string()
+}
+
+/// The keys of a Settings page with no row or field cursor of its own (the info pages). Their
+/// chords are read from the frame's keymap, so a `[keybindings]` rebind of the frame's move or
+/// focus-index key shows here.
+pub fn settings_plain_page_hints(keymap: &Keymap<SettingsFrameEvent>) -> Vec<Hint> {
+    vec![
+        Hint::new(
+            keymap.hint_chords(&[MOVE_DOWN, MOVE_UP]),
+            msg::settings_hint_scroll(),
+        ),
+        Hint::new(keymap.hint_chord(FOCUS_INDEX), msg::settings_hint_index()),
+    ]
 }
 
 /// On a This device page, the focused control's choice before.
@@ -202,6 +226,31 @@ pub fn tracing_keymap(config: &KeyBindingConfig) -> Keymap<TracingEvent> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn overriding(command: &str, chord: &str) -> KeyBindingConfig {
+        let mut config = KeyBindingConfig::default();
+        config
+            .bindings
+            .insert(command.to_string(), chord.to_string());
+        config
+    }
+
+    #[test]
+    fn the_back_chord_is_esc_until_a_rebind_moves_it() {
+        assert_eq!(back_chord(&KeyBindingConfig::default()), "esc");
+        assert_eq!(back_chord(&overriding(BACK, "ctrl+q")), "ctrl+q");
+    }
+
+    #[test]
+    fn a_plain_pages_hints_read_the_frames_chords() {
+        lib_locale::init_with_layers("en-US", &[msg::LAYER]);
+        let keymap = settings_frame_keymap(&overriding(MOVE_DOWN, "n"));
+
+        assert_eq!(
+            settings_plain_page_hints(&keymap),
+            [Hint::new("n/k", "scroll"), Hint::new("h", "index")]
+        );
+    }
 
     #[test]
     fn the_defaults_are_todays_keys() {

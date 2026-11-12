@@ -7,12 +7,12 @@ mod render;
 
 use gpui::{AnyElement, Context, Window};
 use lib_database::Domain;
+use lib_settings::keymap::settings_plain_page_hints;
 use lib_settings::{DataBackupPresenter, DataBackupViewModel, SettingsFrameEvent};
 use lib_viper::keymap::Keymap;
 
 use crate::announcer::Announcer;
 use crate::settings::SettingsPage;
-use crate::settings::hints::settings_plain_page_hints;
 use crate::shell::view::module_page::{ModulePage, PageDraw, PageView, SettingsPageView};
 use crate::shell::view::statusline::{PageStatus, StatusRight};
 

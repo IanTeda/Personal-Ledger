@@ -16,7 +16,6 @@ mod step;
 
 pub use step::{ImportStepPresenter, ImportStepViewModel};
 
-use lib_config::KeyBindingConfig;
 use lib_core::CategoryId;
 use lib_list_cursor::Step;
 use lib_locale::format::{AmountStyle, format_amount};
@@ -71,9 +70,6 @@ pub enum ImportEvent {
     /// Transactions has just become the destination: a step left open doesn't come back with it,
     /// and closes having written nothing. Only the step's Presenter reads it.
     Leave,
-    /// `[keybindings]` changed: the step's keymaps are built afresh under it. Only the step's
-    /// Presenter reads it.
-    KeysChanged(KeyBindingConfig),
 }
 
 /// A row as drawn. `payee` and `category` read "choose …" until chosen, which `payee_chosen` and
@@ -503,8 +499,8 @@ impl Presenter for ImportPresenter {
                 self.open = None;
                 router.close_import(None);
             }
-            // The step's own: opening, leaving and rebinding keys are its Presenter's.
-            ImportEvent::OpenStep | ImportEvent::Leave | ImportEvent::KeysChanged(_) => {}
+            // The step's own: opening and leaving are its Presenter's.
+            ImportEvent::OpenStep | ImportEvent::Leave => {}
         }
     }
 

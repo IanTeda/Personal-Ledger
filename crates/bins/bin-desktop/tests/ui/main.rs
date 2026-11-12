@@ -30,6 +30,7 @@ mod palette_keyboard;
 mod palette_mouse;
 mod placeholders_keyboard;
 mod placeholders_mouse;
+mod rebind_keyboard;
 mod settings_about_keyboard;
 mod settings_about_mouse;
 mod settings_accounts_keyboard;

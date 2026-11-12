@@ -8,7 +8,7 @@
 use lib_core::PayeeId;
 use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::Segment;
-use lib_viper::keymap::{DELETE, EDIT, Keymap, MOVE_DOWN, MOVE_UP, NEW, SELECT};
+use lib_viper::keymap::{DELETE, EDIT, KeyBindingConfig, Keymap, MOVE_DOWN, MOVE_UP, NEW, SELECT};
 use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Hint, count};
 
@@ -93,12 +93,6 @@ pub struct PayeesPagePresenter {
 }
 
 impl PayeesPagePresenter {
-    /// Takes keys through `keymap` from now on, after a `[keybindings]` rebind, so the legend shows
-    /// its chords too.
-    pub fn set_keymap(&mut self, keymap: Keymap<PayeesPageEvent>) {
-        self.keymap = keymap;
-    }
-
     /// `keymap` is the one the Client looks keys up in, so the legend shows the chords it binds.
     pub fn new(ports: SharedPorts, keymap: Keymap<PayeesPageEvent>) -> Self {
         Self {
@@ -235,6 +229,11 @@ impl PagePresenter for PayeesPagePresenter {
 
     fn keymap(&self) -> &Keymap<PayeesPageEvent> {
         &self.keymap
+    }
+
+    /// The legend reads its chords from the keymap, so it follows too.
+    fn rebind(&mut self, keys: &KeyBindingConfig) {
+        self.keymap = crate::keymap::payees_page_keymap(keys);
     }
 }
 
