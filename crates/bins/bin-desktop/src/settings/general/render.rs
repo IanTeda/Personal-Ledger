@@ -3,7 +3,7 @@
 //! Presenter event through [`PageClicks`]. Start view and the Locale are the shared dropdown, their
 //! lists the Presenter's; the View keeps only each open list's scroll ([`GeneralWidgets`]).
 
-use gpui::{AnyElement, App, SharedString, div, prelude::*, px};
+use gpui::{AnyElement, App, div, prelude::*, px};
 use lib_core::configuration::ConfigKey;
 use lib_settings::presenter::{DataFolderView, FieldView, ThisDeviceView};
 use lib_settings::{GeneralEvent, GeneralField, GeneralViewModel};
@@ -11,10 +11,10 @@ use lib_viper::view::Hint;
 
 use super::{GeneralPage, GeneralWidgets};
 use crate::{
-    form::fields::{UNIFORM_OPTION_WIDTH, field_label, field_value, segmented_labelled},
+    form::fields::{UNIFORM_OPTION_WIDTH, field_label, field_value},
     form::select::SelectState,
     form::select_field::{self, SelectFieldProps},
-    settings::controls::{focus_mark, hint, shadowed},
+    settings::controls::{focus_mark, hint, segmented_choices, shadowed},
     shell::view::page_clicks::PageClicks,
     theme::color,
 };
@@ -26,7 +26,7 @@ pub(super) fn page(
     widgets: &mut GeneralWidgets,
     cx: &App,
 ) -> AnyElement {
-    let field = |field| model.view(field);
+    let field = |field| model.fields.view(field);
     div()
         .flex()
         .gap_x(px(40.0))
@@ -71,11 +71,15 @@ pub(super) fn page(
                         cx,
                     )
                 }))
-                .children(
-                    field(GeneralField::Locale).map(|view| {
-                        locale_field(view, model, clicks, &mut widgets.locale_scroll, cx)
-                    }),
-                )
+                .children(field(GeneralField::Locale).map(|view| {
+                    locale_field(
+                        view,
+                        model.locale_fallback.clone(),
+                        clicks,
+                        &mut widgets.locale_scroll,
+                        cx,
+                    )
+                }))
                 .children(
                     field(GeneralField::DataFolder)
                         .map(|view| data_folder_field(view, &model.data_folder, clicks, cx)),
@@ -101,12 +105,6 @@ fn segmented(
     beside: Option<AnyElement>,
     cx: &App,
 ) -> impl IntoElement {
-    let options = view
-        .options
-        .iter()
-        .enumerate()
-        .map(|(index, label)| (index, SharedString::from(label.clone())))
-        .collect();
     focus_mark(view.focused, cx)
         .child(field_label(view.label.clone()))
         .child(
@@ -114,10 +112,9 @@ fn segmented(
                 .flex()
                 .items_center()
                 .gap(px(8.0))
-                .child(segmented_labelled(
+                .child(segmented_choices(
                     id,
-                    options,
-                    view.chosen.unwrap_or(0),
+                    view,
                     clicks.segment(move |index| GeneralEvent::Choose { field, index }),
                     option_width,
                     cx,
@@ -256,13 +253,13 @@ fn start_view_field(
 /// (DESKTOP-185, DESKTOP-186).
 fn locale_field(
     view: &FieldView,
-    model: &GeneralViewModel,
+    fallback: Option<String>,
     clicks: &PageClicks<GeneralPage>,
     scroll: &mut usize,
     cx: &App,
 ) -> impl IntoElement {
-    let note = model
-        .locale_note
+    let note = view
+        .own_note
         .clone()
         .map(|text| note(text, "general-locale-note", cx));
     focus_mark(view.focused, cx)
@@ -276,7 +273,7 @@ fn locale_field(
             cx,
         ))
         .children(note)
-        .children(model.locale_fallback.clone().map(|text| hint(text, cx)))
+        .children(fallback.map(|text| hint(text, cx)))
         .children(view.hint.clone().map(|text| hint(text, cx)))
 }
 
@@ -315,8 +312,7 @@ fn data_folder_field(
                 )),
         )
         .children(
-            folder
-                .note
+            view.own_note
                 .clone()
                 .map(|text| note(text, "general-data-folder-note", cx)),
         )

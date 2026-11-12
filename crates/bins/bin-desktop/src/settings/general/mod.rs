@@ -112,7 +112,7 @@ impl PageView for GeneralPresenter {
     /// `Esc` closes an open dropdown list, changing nothing. With none open it is left to Settings,
     /// which steps back to the index.
     fn escape(view: &GeneralViewModel) -> Option<GeneralEvent> {
-        view.list_open().then_some(GeneralEvent::CloseList)
+        view.fields.list_open().then_some(GeneralEvent::CloseList)
     }
 
     /// Focus arriving puts the keyboard on On start; focus leaving takes it off the controls.
@@ -160,7 +160,16 @@ impl PageSnapshot for SettingsGeneralSnapshot {
         let presenter = page.presenter();
         let settings = presenter.settings();
         let view = page.view_model();
-        let highlight = |field| view.view(field).and_then(|field| field.list.highlight());
+        let highlight = |field| {
+            view.fields
+                .view(field)
+                .and_then(|field| field.list.highlight())
+        };
+        let own_note = |field| {
+            view.fields
+                .view(field)
+                .and_then(|field| field.own_note.clone())
+        };
         SettingsGeneralSnapshot {
             field: view.field,
             on_start: settings.on_start,
@@ -169,10 +178,10 @@ impl PageSnapshot for SettingsGeneralSnapshot {
             locale: settings.locale.map(|locale| locale.tag().to_string()),
             start_view_list: highlight(GeneralField::StartView),
             locale_list: highlight(GeneralField::Locale),
-            locale_note: view.locale_note.clone(),
+            locale_note: own_note(GeneralField::Locale),
             data_folder: path(presenter.data_folder()),
             data_folder_shown: view.data_folder.value.clone(),
-            data_folder_note: view.data_folder.note.clone(),
+            data_folder_note: own_note(GeneralField::DataFolder),
             last_ledger: presenter.last_ledger().map(path),
             configuration: presenter.configuration_file().map(path),
         }

@@ -21,7 +21,8 @@ pub use display::{
     DisplaySettings, DisplaySetup, DisplayViewModel, PreviewRowView, PreviewView,
 };
 pub use form::{
-    DeviceForm, FieldDecl, FieldKind, FieldValue, FieldView, FormAnswer, FormInput, Presentation,
+    DeviceForm, FieldDecl, FieldKind, FieldValue, FieldView, FieldViews, FormAnswer, FormInput,
+    OwnNote, Presentation,
 };
 pub use frame::{
     Breadcrumb, IndexGroup, IndexRow, PickerGroup, PickerRow, PickerView, SettingsFocus,

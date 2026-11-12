@@ -17,7 +17,7 @@ use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP, SELECT};
 use lib_viper::view::{Choice, Hint, SelectList};
 
-use super::device::{chord, chords, shadowed_note};
+use super::device::{chord, chords};
 use crate::keymap::{NEXT_CHOICE, PREVIOUS_CHOICE};
 use crate::msg;
 use crate::protocols::{DeviceAnswer, DeviceConfiguration, DeviceRefusal, DeviceSnapshot};
@@ -58,8 +58,12 @@ pub enum FieldKind {
     NotInWalk,
 }
 
+/// A field's own note from its value and the source above the file that sets its key, if any:
+/// the Locale's next-start and override note, the Data folder's "overridden, in effect is X".
+pub type OwnNote = Rc<dyn Fn(&FieldValue, Option<&str>) -> Option<String>>;
+
 /// One field as a page declares it.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct FieldDecl<F> {
     field: F,
     key: Option<ConfigKey>,
@@ -70,8 +74,8 @@ pub struct FieldDecl<F> {
     step_from: Option<FieldValue>,
     change_hint: Option<String>,
     note: Option<String>,
-    own_note: bool,
-    default: FieldValue,
+    own_note: Option<OwnNote>,
+    when_unset: FieldValue,
     read: fn(&ConfigValue) -> FieldValue,
 }
 
@@ -94,8 +98,8 @@ impl<F> FieldDecl<F> {
             step_from: None,
             change_hint: None,
             note: None,
-            own_note: false,
-            default: FieldValue::Unset,
+            own_note: None,
+            when_unset: FieldValue::Unset,
             read: |value| FieldValue::Set(value.clone()),
         }
     }
@@ -118,8 +122,8 @@ impl<F> FieldDecl<F> {
             step_from: None,
             change_hint: None,
             note: None,
-            own_note: false,
-            default: value,
+            own_note: None,
+            when_unset: value,
             read: |value| FieldValue::Set(value.clone()),
         }
     }
@@ -157,19 +161,22 @@ impl<F> FieldDecl<F> {
         }
     }
 
-    /// The page draws its own note while a source above the file sets the key, so the form draws
-    /// no stock "Set by" note.
-    pub fn own_note(self) -> Self {
+    /// The field's own note ([`FieldView::own_note`]), drawn in place of the stock "Set by" note,
+    /// which the field then never shows.
+    pub fn own_note_replacing_shadowed(
+        self,
+        note: impl Fn(&FieldValue, Option<&str>) -> Option<String> + 'static,
+    ) -> Self {
         Self {
-            own_note: true,
+            own_note: Some(Rc::new(note)),
             ..self
         }
     }
 
     /// The value shown while the device reads none for the key.
-    pub fn default(self, value: FieldValue) -> Self {
+    pub fn when_unset(self, value: FieldValue) -> Self {
         Self {
-            default: value,
+            when_unset: value,
             ..self
         }
     }
@@ -226,18 +233,48 @@ pub struct FieldView {
     pub focused: bool,
     /// The line under the field.
     pub hint: Option<String>,
-    /// The note while a source above the file sets the key, unless the page draws its own.
+    /// The stock note while a source above the file sets the key, unless the field declares its
+    /// own.
     pub shadowed: Option<String>,
+    /// The field's own note, which it declares in place of the stock one.
+    pub own_note: Option<String>,
     pub presentation: Presentation,
     /// A dropdown's list, closed for every other field.
     pub list: SelectList,
+}
+
+impl FieldView {
+    /// Whether a checkbox is ticked: its choices are unticked then ticked.
+    pub fn checked(&self) -> bool {
+        self.chosen == Some(1)
+    }
+}
+
+/// A page's fields as drawn, in the order the page asked for them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldViews<F>(Vec<(F, FieldView)>);
+
+impl<F: Copy + Eq> FieldViews<F> {
+    /// `field` as drawn.
+    pub fn view(&self, field: F) -> Option<&FieldView> {
+        self.0
+            .iter()
+            .find(|(each, _)| *each == field)
+            .map(|(_, view)| view)
+    }
+
+    /// Whether a dropdown's list is open.
+    pub fn list_open(&self) -> bool {
+        self.0.iter().any(|(_, view)| view.list.is_open())
+    }
 }
 
 /// One field and its value now.
 struct Field<F> {
     decl: FieldDecl<F>,
     value: FieldValue,
-    shadowed: Option<String>,
+    /// The source above the file that sets the key, if any.
+    shadow: Option<String>,
 }
 
 /// A This device page's fields: their focus, values, open list and writes.
@@ -260,21 +297,19 @@ impl<F: Copy + Eq> DeviceForm<F> {
         let fields = fields
             .into_iter()
             .map(|decl| {
-                let (value, shadowed) = match (decl.kind, decl.key) {
-                    (FieldKind::Remembered, _) | (_, None) => (decl.default.clone(), None),
+                let (value, shadow) = match (decl.kind, decl.key) {
+                    (FieldKind::Remembered, _) | (_, None) => (decl.when_unset.clone(), None),
                     (_, Some(key)) => (
                         snapshot
                             .shown(key)
-                            .map_or_else(|| decl.default.clone(), decl.read),
-                        (!decl.own_note)
-                            .then(|| shadowed_note(snapshot, key))
-                            .flatten(),
+                            .map_or_else(|| decl.when_unset.clone(), decl.read),
+                        snapshot.get(key).shadow.clone(),
                     ),
                 };
                 Field {
                     decl,
                     value,
-                    shadowed,
+                    shadow,
                 }
             })
             .collect();
@@ -439,9 +474,11 @@ impl<F: Copy + Eq> DeviceForm<F> {
         };
         let saved = match value {
             FieldValue::Set(value) => {
-                said(device.write(value), key, notify).map(|saved| (entry.decl.read)(&saved))
+                settle(device.write(value), key, notify).map(|saved| (entry.decl.read)(&saved))
             }
-            FieldValue::Unset => said(device.remove(key), key, notify).map(|()| FieldValue::Unset),
+            FieldValue::Unset => {
+                settle(device.remove(key), key, notify).map(|()| FieldValue::Unset)
+            }
             // A flag has no key to write it under.
             FieldValue::Flag(_) => None,
         }?;
@@ -457,7 +494,7 @@ impl<F: Copy + Eq> DeviceForm<F> {
         notify: &mut dyn Notify,
     ) -> Option<ConfigValue> {
         let key = value.key();
-        said(self.device.write(value), key, notify)
+        settle(self.device.write(value), key, notify)
     }
 
     /// `field` as drawn.
@@ -474,13 +511,33 @@ impl<F: Copy + Eq> DeviceForm<F> {
             chosen: self.chosen(entry),
             focused: self.focus == Some(field),
             hint: decl.note.clone(),
-            shadowed: entry.shadowed.clone(),
+            shadowed: match decl.own_note {
+                Some(_) => None,
+                None => entry
+                    .shadow
+                    .as_deref()
+                    .map(msg::settings_device_shadowed_note),
+            },
+            own_note: decl
+                .own_note
+                .as_ref()
+                .and_then(|note| note(&entry.value, entry.shadow.as_deref())),
             presentation: decl.presentation,
             list: match self.open {
                 Some((open, list)) if open == field => list,
                 _ => SelectList::default(),
             },
         })
+    }
+
+    /// Each of `fields` as drawn, in their order.
+    pub fn views(&self, fields: impl IntoIterator<Item = F>) -> FieldViews<F> {
+        FieldViews(
+            fields
+                .into_iter()
+                .filter_map(|field| self.view(field).map(|view| (field, view)))
+                .collect(),
+        )
     }
 
     /// The form's keys: an open list's own while one is open; else `j`/`k` and the focused field's
@@ -671,7 +728,7 @@ impl<F: Copy + Eq> DeviceForm<F> {
 
 /// Says on the status line how the write of `key` went, and hands back the value saved, `None`
 /// when it wasn't, so the field keeps what it showed.
-fn said<T>(answer: DeviceAnswer<T>, key: ConfigKey, notify: &mut dyn Notify) -> Option<T> {
+fn settle<T>(answer: DeviceAnswer<T>, key: ConfigKey, notify: &mut dyn Notify) -> Option<T> {
     let name = key.name();
     let (status, saved) = match answer {
         DeviceAnswer::Saved { value, file } => {
@@ -750,7 +807,7 @@ mod tests {
                     density(RowDensity::Roomy, "Roomy"),
                 ],
             )
-            .default(set(ConfigValue::RowDensity(RowDensity::Regular)))
+            .when_unset(set(ConfigValue::RowDensity(RowDensity::Regular)))
             .note("Rows".to_string()),
             FieldDecl::configuration(
                 Toy::Appearance,
@@ -774,7 +831,7 @@ mod tests {
                     start(StartView::Settings, "Settings"),
                 ],
             )
-            .default(set(ConfigValue::StartView(StartView::Last)))
+            .when_unset(set(ConfigValue::StartView(StartView::Last)))
             .step_from(set(ConfigValue::StartView(StartView::Dashboard))),
             FieldDecl::configuration(
                 Toy::Lang,
@@ -787,7 +844,7 @@ mod tests {
                     choice(locale("en-GB"), "en-GB"),
                 ],
             )
-            .own_note()
+            .own_note_replacing_shadowed(|_, source| source.map(|source| format!("Over {source}")))
             .reading(|value| match value {
                 ConfigValue::Locale(tag) if tag.eq_ignore_ascii_case("en-gb") => locale("en-GB"),
                 ConfigValue::Locale(tag) if tag.eq_ignore_ascii_case("en-au") => locale("en-AU"),
@@ -800,7 +857,7 @@ mod tests {
                 Presentation::Checkbox,
                 vec![hints(false, "off"), hints(true, "on")],
             )
-            .default(set(ConfigValue::HintBar(true))),
+            .when_unset(set(ConfigValue::HintBar(true))),
             FieldDecl::configuration(
                 Toy::Folder,
                 ConfigKey::Data,
@@ -1246,9 +1303,13 @@ mod tests {
             "the file's"
         );
         assert_eq!(
-            view.and_then(|view| view.shadowed),
+            view.as_ref().and_then(|view| view.shadowed.clone()),
             None,
-            "the page draws its own note"
+            "the field draws its own note"
+        );
+        assert_eq!(
+            view.and_then(|view| view.own_note),
+            Some("Over --locale en-AU".to_string())
         );
 
         let (answer, statuses) = send(
@@ -1419,6 +1480,7 @@ mod tests {
                 focused: false,
                 hint: Some("Rows".to_string()),
                 shadowed: None,
+                own_note: None,
                 presentation: Presentation::Segmented,
                 list: SelectList::default(),
             })

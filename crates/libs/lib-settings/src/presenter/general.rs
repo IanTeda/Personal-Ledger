@@ -31,7 +31,7 @@ use lib_viper::view::{Choice, Hint};
 
 use super::device::chords;
 use super::form::{
-    DeviceForm, FieldDecl, FieldValue, FieldView, FormAnswer, FormInput, Presentation,
+    DeviceForm, FieldDecl, FieldValue, FieldViews, FormAnswer, FormInput, Presentation,
 };
 use crate::keymap::TEST_TOASTS;
 use crate::msg;
@@ -257,13 +257,12 @@ pub struct ThisDeviceView {
 }
 
 /// What the Data folder shows beside its field: the folder the file names (else the one in
-/// effect), the **Change…** button with the key that presses it, and the note while a source above
-/// the file sets it.
+/// effect) and the **Change…** button with the key that presses it. Its note while a source above
+/// the file sets it is the field's own note.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DataFolderView {
     pub value: String,
     pub change: Hint,
-    pub note: Option<String>,
 }
 
 /// General as the Client draws it.
@@ -271,36 +270,20 @@ pub struct DataFolderView {
 pub struct GeneralViewModel {
     /// The field the keyboard is on.
     pub field: Option<GeneralField>,
-    /// Each field as the form draws it, in [`GeneralField::ALL`]'s order.
-    pub fields: Vec<(GeneralField, FieldView)>,
+    /// Each field as the form draws it, in [`GeneralField::ALL`]'s order. The Locale's note while
+    /// its choice waits on the next start or a source above the file overrides it is the field's
+    /// own note.
+    pub fields: FieldViews<GeneralField>,
     /// The line naming a Start view from the file that isn't one of the choices.
     pub start_view_unlisted: Option<String>,
     /// The **Test** button beside Toasts: its label and the key that presses it from Toasts.
     pub toasts_test: Hint,
-    /// The note while the file's Locale isn't the one in effect or a source above the file
-    /// overrides it.
-    pub locale_note: Option<String>,
     /// The note when the Locale asked for wasn't supported.
     pub locale_fallback: Option<String>,
     pub data_folder: DataFolderView,
     pub this_device: ThisDeviceView,
     /// The page's keys, for the status line and the `?` cheat sheet.
     pub hints: Vec<Hint>,
-}
-
-impl GeneralViewModel {
-    /// `field` as drawn.
-    pub fn view(&self, field: GeneralField) -> Option<&FieldView> {
-        self.fields
-            .iter()
-            .find(|(each, _)| *each == field)
-            .map(|(_, view)| view)
-    }
-
-    /// Whether a dropdown's list is open.
-    pub fn list_open(&self) -> bool {
-        self.fields.iter().any(|(_, view)| view.list.is_open())
-    }
 }
 
 /// Settings › General's Presenter.
@@ -325,17 +308,18 @@ impl GeneralPresenter {
     /// General on what `setup`'s device reads.
     pub fn new(setup: GeneralSetup) -> Self {
         let snapshot = setup.device.read();
+        let data_folder = snapshot
+            .data_folder()
+            .map(Path::to_path_buf)
+            .unwrap_or_default();
         let fields = GeneralField::ALL
             .into_iter()
-            .map(|field| declare(field, &setup.start_views, &setup.locale))
+            .map(|field| declare(field, &setup.start_views, &setup.locale, &data_folder))
             .collect();
         Self {
             form: DeviceForm::new(setup.device, &snapshot, fields),
             settings: GeneralSettings::read(&snapshot),
-            data_folder: snapshot
-                .data_folder()
-                .map(Path::to_path_buf)
-                .unwrap_or_default(),
+            data_folder,
             last_ledger: None,
             snapshot,
             keymap: setup.keymap,
@@ -505,13 +489,10 @@ impl Presenter for GeneralPresenter {
                 path.display().to_string()
             })
         };
-        let fields: Vec<(GeneralField, FieldView)> = GeneralField::ALL
-            .into_iter()
-            .filter_map(|field| self.form.view(field).map(|view| (field, view)))
-            .collect();
+        let fields = self.form.views(GeneralField::ALL);
         let start_view_listed = fields
-            .iter()
-            .any(|(field, view)| *field == GeneralField::StartView && view.chosen.is_some());
+            .view(GeneralField::StartView)
+            .is_some_and(|view| view.chosen.is_some());
         GeneralViewModel {
             field: self.form.focused(),
             fields,
@@ -521,7 +502,6 @@ impl Presenter for GeneralPresenter {
                 chords(&self.keymap, &[TEST_TOASTS]),
                 lib_locale::msg::toast_setting_test(),
             ),
-            locale_note: self.locale_note(),
             locale_fallback: self.locale.fallback.clone(),
             data_folder: DataFolderView {
                 value: self.shown_data_folder().display().to_string(),
@@ -529,17 +509,6 @@ impl Presenter for GeneralPresenter {
                     chords(&self.keymap, &[SELECT]),
                     msg::settings_general_data_folder_change(),
                 ),
-                note: self
-                    .snapshot
-                    .get(ConfigKey::Data)
-                    .shadow
-                    .as_deref()
-                    .map(|source| {
-                        msg::settings_general_data_folder_overridden(
-                            source,
-                            &self.data_folder.display().to_string(),
-                        )
-                    }),
             },
             this_device: ThisDeviceView {
                 heading: msg::settings_general_this_device(),
@@ -600,29 +569,20 @@ impl GeneralPresenter {
         hints
     }
 
-    /// The override, while a source above the file sets the Locale; else the pending Locale, while
-    /// the one the file names isn't the one this run reads.
-    fn locale_note(&self) -> Option<String> {
-        let effective = self.locale.effective.tag();
-        if let Some(source) = &self.snapshot.get(ConfigKey::Locale).shadow {
-            return Some(msg::settings_general_locale_overridden(source, effective));
-        }
-        let chosen = self.settings.locale.unwrap_or(self.locale.system);
-        (chosen != self.locale.effective)
-            .then(|| msg::settings_general_locale_pending(chosen.tag(), effective))
-    }
-
     /// The Data folder the field shows: the file's, else the one in effect.
     fn shown_data_folder(&self) -> &Path {
         self.settings.data.as_deref().unwrap_or(&self.data_folder)
     }
 }
 
-/// `field` as the form takes it: its key, label, choices, how it is drawn and the line under it.
+/// `field` as the form takes it: its key, label, choices, how it is drawn, the line under it and
+/// the Locale's and the Data folder's own notes. `data_folder` is the one in effect, which stays
+/// as start-up read it while a source above the file sets it, the only time its note shows.
 fn declare(
     field: GeneralField,
     start_views: &[Choice<StartView>],
     locale: &LocaleLine,
+    data_folder: &Path,
 ) -> FieldDecl<GeneralField> {
     let set = |value| FieldValue::Set(value);
     let defaults = GeneralSettings::default();
@@ -640,7 +600,7 @@ fn declare(
                 })
                 .collect(),
         )
-        .default(set(ConfigValue::OnStart(defaults.on_start)))
+        .when_unset(set(ConfigValue::OnStart(defaults.on_start)))
         .note(msg::settings_general_on_start_hint()),
         GeneralField::StartView => FieldDecl::configuration(
             field,
@@ -655,7 +615,7 @@ fn declare(
                 })
                 .collect(),
         )
-        .default(set(ConfigValue::StartView(defaults.start_view)))
+        .when_unset(set(ConfigValue::StartView(defaults.start_view)))
         // A noun from the file that isn't a choice steps from the Dashboard.
         .step_from(set(ConfigValue::StartView(StartView::Dashboard)))
         .note(msg::settings_general_start_view_hint()),
@@ -676,7 +636,7 @@ fn declare(
                 })
                 .collect(),
         )
-        .default(set(ConfigValue::Toasts(defaults.toasts_on)))
+        .when_unset(set(ConfigValue::Toasts(defaults.toasts_on)))
         .change_hint(msg::settings_hint_on_off())
         .note(lib_locale::msg::toast_setting_test_note()),
         // **System** is no value: choosing it takes the key out. Each choice reads as its label
@@ -704,7 +664,7 @@ fn declare(
             ConfigValue::Locale(tag) => locale_value(Locale::choice(tag)),
             _ => FieldValue::Unset,
         })
-        .own_note()
+        .own_note_replacing_shadowed(locale_note(locale.effective, locale.system))
         .note(msg::settings_general_locale_hint()),
         GeneralField::DataFolder => FieldDecl::configuration(
             field,
@@ -713,8 +673,38 @@ fn declare(
             Presentation::Action,
             Vec::new(),
         )
-        .own_note()
+        .own_note_replacing_shadowed({
+            let in_effect = data_folder.display().to_string();
+            move |_, source| {
+                source
+                    .map(|source| msg::settings_general_data_folder_overridden(source, &in_effect))
+            }
+        })
         .note(msg::settings_general_data_folder_hint()),
+    }
+}
+
+/// The Locale's own note: the override, while a source above the file sets it; else the pending
+/// Locale, while the one chosen (**System** being `system`) isn't `effective`, the one this run
+/// reads.
+fn locale_note(
+    effective: Locale,
+    system: Locale,
+) -> impl Fn(&FieldValue, Option<&str>) -> Option<String> {
+    move |value, source| {
+        if let Some(source) = source {
+            return Some(msg::settings_general_locale_overridden(
+                source,
+                effective.tag(),
+            ));
+        }
+        let chosen = match value {
+            FieldValue::Set(ConfigValue::Locale(tag)) => Locale::choice(tag),
+            _ => None,
+        }
+        .unwrap_or(system);
+        (chosen != effective)
+            .then(|| msg::settings_general_locale_pending(chosen.tag(), effective.tag()))
     }
 }
 
@@ -802,14 +792,6 @@ mod tests {
         router
     }
 
-    /// The Locale `device`'s file names, as General reads it.
-    fn stored_locale(device: &InMemoryDeviceConfiguration) -> Option<Locale> {
-        match device.stored().get(ConfigKey::Locale) {
-            Some(ConfigValue::Locale(tag)) => Locale::choice(tag),
-            _ => None,
-        }
-    }
-
     /// A click on the Locale's choice `index`: System, en-AU, en-GB, en-US.
     fn choose_locale(index: usize) -> GeneralEvent {
         GeneralEvent::Choose {
@@ -859,7 +841,9 @@ mod tests {
         );
         let view = general.view_model();
         assert_eq!(
-            view.view(GeneralField::Locale).and_then(|view| view.chosen),
+            view.fields
+                .view(GeneralField::Locale)
+                .and_then(|view| view.chosen),
             Some(2),
             "en-GB, whatever the file's case"
         );
@@ -878,6 +862,7 @@ mod tests {
         assert_eq!(
             general
                 .view_model()
+                .fields
                 .view(GeneralField::Locale)
                 .and_then(|view| view.chosen),
             Some(0)
@@ -993,7 +978,8 @@ mod tests {
             Hint::new("t".to_string(), "Test".to_string())
         );
         assert_eq!(
-            view.view(GeneralField::Toasts)
+            view.fields
+                .view(GeneralField::Toasts)
                 .and_then(|view| view.hint.clone())
                 .as_deref(),
             Some("Errors still show. Test raises one of each kind.")
@@ -1004,7 +990,7 @@ mod tests {
     fn the_locale_offers_system_then_the_supported_locales_with_their_codes() {
         let (_, general) = writable();
         let view = general.view_model();
-        let locale = view.view(GeneralField::Locale);
+        let locale = view.fields.view(GeneralField::Locale);
 
         assert_eq!(
             locale.map(|view| view.options.clone()),
@@ -1016,23 +1002,30 @@ mod tests {
             ])
         );
         assert_eq!(locale.and_then(|view| view.chosen), Some(0), "System");
-        assert_eq!(view.locale_note, None);
+        assert_eq!(locale.and_then(|view| view.own_note.clone()), None);
         assert_eq!(
             view.locale_fallback.as_deref(),
             Some("en-XX isn't supported")
         );
     }
 
+    /// The Locale's own note as drawn.
+    fn locale_note(general: &GeneralPresenter) -> Option<String> {
+        general
+            .view_model()
+            .fields
+            .view(GeneralField::Locale)
+            .and_then(|view| view.own_note.clone())
+    }
+
     #[test]
-    fn choosing_system_takes_the_locale_out_of_the_file() {
-        let (device, mut general) = writable();
+    fn choosing_system_reads_back_as_no_locale() {
+        let (_, mut general) = writable();
         send(&mut general, [choose_locale(2)]);
-        assert_eq!(stored_locale(&device), Some(Locale::EnGb));
         assert_eq!(general.settings().locale, Some(Locale::EnGb));
 
         send(&mut general, [choose_locale(0)]);
 
-        assert_eq!(stored_locale(&device), None);
         assert_eq!(general.settings().locale, None);
     }
 
@@ -1042,49 +1035,37 @@ mod tests {
 
         send(&mut general, [choose_locale(3)]);
         assert_eq!(
-            general.view_model().locale_note.as_deref(),
+            locale_note(&general).as_deref(),
             Some(
                 "Saved. en-US applies when Personal Ledger next starts; until then it reads en-AU."
             )
         );
 
         send(&mut general, [choose_locale(1)]);
-        assert_eq!(general.view_model().locale_note, None, "en-AU is in effect");
+        assert_eq!(locale_note(&general), None, "en-AU is in effect");
         send(&mut general, [choose_locale(0)]);
         assert_eq!(
-            general.view_model().locale_note,
+            locale_note(&general),
             None,
             "System reads en-AU on this computer"
         );
     }
 
     #[test]
-    fn a_shadowed_locale_is_still_written_and_names_the_override() {
+    fn a_shadowed_locale_names_the_override_and_reads_back_its_choice() {
         let device = Rc::new(InMemoryDeviceConfiguration::shadowing(
             ConfigKey::Locale,
             "--locale en-GB",
         ));
-        let mut general = general_reading(device.clone(), Locale::EnGb);
+        let mut general = general_reading(device, Locale::EnGb);
         let overridden = "--locale en-GB overrides this for this run, so Personal Ledger reads \
                           en-GB. Your choice is kept for when it's gone.";
-        let view = general.view_model();
-        assert_eq!(view.locale_note.as_deref(), Some(overridden));
-        assert_eq!(
-            view.view(GeneralField::Locale)
-                .and_then(|view| view.shadowed.clone()),
-            None,
-            "the note says it, not Set by"
-        );
+        assert_eq!(locale_note(&general).as_deref(), Some(overridden));
 
-        let router = send(&mut general, [choose_locale(3)]);
+        send(&mut general, [choose_locale(3)]);
 
-        assert_eq!(stored_locale(&device), Some(Locale::EnUs));
         assert_eq!(general.settings().locale, Some(Locale::EnUs));
-        assert_eq!(router.statuses(), ["locale saved to personal-ledger.conf"]);
-        assert_eq!(
-            general.view_model().locale_note.as_deref(),
-            Some(overridden)
-        );
+        assert_eq!(locale_note(&general).as_deref(), Some(overridden));
     }
 
     /// `device` with the Data folder in effect `/home/me/ledgers`.
@@ -1110,7 +1091,8 @@ mod tests {
         let view = general.view_model();
         assert_eq!(view.field, Some(GeneralField::DataFolder));
         assert_eq!(
-            view.view(GeneralField::DataFolder)
+            view.fields
+                .view(GeneralField::DataFolder)
                 .map(|view| view.label.as_str()),
             Some("Data folder")
         );
@@ -1195,10 +1177,14 @@ mod tests {
         let overridden = "PERSONAL_LEDGER_GENERAL__DATA sets the Data folder to /home/me/ledgers for \
                           now, so :open and :new start there. Change… keeps your choice for when \
                           it's gone.";
-        assert_eq!(
-            general.view_model().data_folder.note.as_deref(),
-            Some(overridden)
-        );
+        let note = |general: &GeneralPresenter| {
+            general
+                .view_model()
+                .fields
+                .view(GeneralField::DataFolder)
+                .and_then(|view| view.own_note.clone())
+        };
+        assert_eq!(note(&general).as_deref(), Some(overridden));
 
         let (outcome, router) = pick(&mut general, "/home/me/finance");
 
@@ -1212,9 +1198,12 @@ mod tests {
             Path::new("/home/me/ledgers"),
             "the override still decides the folder in effect"
         );
-        let view = general.view_model().data_folder;
-        assert_eq!(view.value, "/home/me/finance", "the file's value");
-        assert_eq!(view.note.as_deref(), Some(overridden));
+        assert_eq!(
+            general.view_model().data_folder.value,
+            "/home/me/finance",
+            "the file's value"
+        );
+        assert_eq!(note(&general).as_deref(), Some(overridden));
         assert_eq!(router.statuses(), ["data saved to personal-ledger.conf"]);
     }
 

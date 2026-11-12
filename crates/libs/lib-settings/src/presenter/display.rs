@@ -30,7 +30,7 @@ use lib_viper::view::{Choice, Hint};
 
 use super::device::{chord, chords, shadowed_note};
 use super::form::{
-    DeviceForm, FieldDecl, FieldValue, FieldView, FormAnswer, FormInput, Presentation,
+    DeviceForm, FieldDecl, FieldValue, FieldViews, FormAnswer, FormInput, Presentation,
 };
 use crate::keymap::{NEXT_CHOICE, PREVIOUS_CHOICE};
 use crate::msg;
@@ -240,7 +240,7 @@ pub struct DisplayViewModel {
     /// The Colour Theme card the keyboard is on, while the grid has it.
     pub grid: Option<usize>,
     /// Each field as the form draws it, in [`DisplayField::ALL`]'s order.
-    pub fields: Vec<(DisplayField, FieldView)>,
+    pub fields: FieldViews<DisplayField>,
     pub preview: PreviewView,
     pub colour_theme: ColourThemeView,
     pub output: DisplayOutput,
@@ -248,16 +248,6 @@ pub struct DisplayViewModel {
     pub hints: Vec<Hint>,
     /// The page's keys for the `?` cheat sheet: the fields', then the grid's own.
     pub help: Vec<Hint>,
-}
-
-impl DisplayViewModel {
-    /// `field` as drawn.
-    pub fn view(&self, field: DisplayField) -> Option<&FieldView> {
-        self.fields
-            .iter()
-            .find(|(each, _)| *each == field)
-            .map(|(_, view)| view)
-    }
 }
 
 /// Settings › Display's Presenter.
@@ -445,10 +435,7 @@ impl Presenter for DisplayPresenter {
         DisplayViewModel {
             field: self.form.focused(),
             grid: self.grid,
-            fields: DisplayField::ALL
-                .into_iter()
-                .filter_map(|field| self.form.view(field).map(|view| (field, view)))
-                .collect(),
+            fields: self.form.views(DisplayField::ALL),
             preview: PreviewView {
                 heading: msg::settings_display_preview(),
                 date_column: lib_locale::msg::column_date(),
@@ -612,7 +599,7 @@ fn declare(field: DisplayField) -> FieldDecl<DisplayField> {
     let defaults = DisplaySettings::default();
     let segmented = |key, label, choices: Vec<Choice<FieldValue>>, default| {
         FieldDecl::configuration(field, key, label, Presentation::Segmented, choices)
-            .default(set(default))
+            .when_unset(set(default))
     };
     match field {
         DisplayField::DateStyle => segmented(
@@ -860,6 +847,7 @@ mod tests {
     fn chosen(display: &DisplayPresenter, field: DisplayField) -> Option<usize> {
         display
             .view_model()
+            .fields
             .view(field)
             .and_then(|view| view.chosen)
     }
@@ -1218,7 +1206,7 @@ mod tests {
     fn the_labels_are_messages() {
         let (_, display) = writable();
         let view = display.view_model();
-        let options = |field| view.view(field).map(|view| view.options.clone());
+        let options = |field| view.fields.view(field).map(|view| view.options.clone());
         assert_eq!(
             options(DisplayField::DateStyle),
             Some(

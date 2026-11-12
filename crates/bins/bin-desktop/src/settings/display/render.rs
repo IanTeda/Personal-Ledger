@@ -14,8 +14,8 @@ use lib_viper::display::RowDensity;
 
 use super::{DisplayPage, colour_theme};
 use crate::{
-    form::fields::{UNIFORM_OPTION_WIDTH, radio_dot, segmented_labelled},
-    settings::controls::{focus_mark, shadowed},
+    form::fields::{UNIFORM_OPTION_WIDTH, radio_dot},
+    settings::controls::{focus_mark, segmented_choices, shadowed},
     shell::view::page_clicks::PageClicks,
     theme::color,
 };
@@ -49,7 +49,7 @@ pub(super) fn page(
     clicks: &PageClicks<DisplayPage>,
     cx: &App,
 ) -> AnyElement {
-    let field = |field| model.view(field);
+    let field = |field| model.fields.view(field);
     let columns = div()
         .flex()
         .flex_wrap()
@@ -125,18 +125,11 @@ fn segmented(
     clicks: &PageClicks<DisplayPage>,
     cx: &App,
 ) -> gpui::Div {
-    let options = view
-        .options
-        .iter()
-        .enumerate()
-        .map(|(index, label)| (index, SharedString::from(label.clone())))
-        .collect();
     focus_mark(view.focused, cx)
         .child(field_label(view.label.clone(), cx))
-        .child(segmented_labelled(
+        .child(segmented_choices(
             id,
-            options,
-            view.chosen.unwrap_or(0),
+            view,
             clicks.segment(move |index| DisplayEvent::Choose { field, index }),
             Some(px(UNIFORM_OPTION_WIDTH)),
             cx,
@@ -148,8 +141,7 @@ fn start_sidebar_minimised_toggle(
     clicks: &PageClicks<DisplayPage>,
     cx: &App,
 ) -> impl IntoElement {
-    // The checkbox's choices are unticked then ticked.
-    let checked = view.chosen == Some(1);
+    let checked = view.checked();
     div()
         .debug_selector(|| "display-start-sidebar-minimised".to_string())
         .id("display-start-sidebar-minimised")

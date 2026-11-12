@@ -18,8 +18,8 @@ use lib_settings::{DisplayEvent, DisplayField};
 
 use super::DisplayPage;
 use crate::{
-    form::fields::{UNIFORM_OPTION_WIDTH, segmented_labelled},
-    settings::controls::shadowed,
+    form::fields::UNIFORM_OPTION_WIDTH,
+    settings::controls::{segmented_choices, shadowed},
     shell::view::page_clicks::PageClicks,
     theme::color,
     theme::colours::{self, to_gpui},
@@ -60,12 +60,6 @@ pub fn render(
     cx: &App,
 ) -> AnyElement {
     let state = colours::colours(cx);
-    let options = appearance
-        .options
-        .iter()
-        .enumerate()
-        .map(|(index, label)| (index, SharedString::from(label.clone())))
-        .collect();
     div()
         .id("display-colour-theme")
         .mt(px(28.0))
@@ -73,10 +67,9 @@ pub fn render(
         .flex()
         .flex_col()
         .child(field_label(appearance.label.clone(), cx))
-        .child(segmented_labelled(
+        .child(segmented_choices(
             "display-colour-appearance",
-            options,
-            appearance.chosen.unwrap_or(0),
+            appearance,
             clicks.segment(|index| DisplayEvent::Choose {
                 field: DisplayField::Appearance,
                 index,
