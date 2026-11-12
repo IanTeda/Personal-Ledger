@@ -18,7 +18,7 @@ use lib_list_cursor::Step;
 use lib_locale::Segment;
 use lib_toast::Notice;
 use lib_viper::display::PageDisplay;
-use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, SELECT};
+use lib_viper::keymap::{EDIT, KeyBound, Keymap, MOVE_DOWN, MOVE_UP, SELECT};
 use lib_viper::presenter::{PageMode, PagePresenter, Presenter, TextKey};
 use lib_viper::view::Hint;
 
@@ -608,6 +608,11 @@ impl PagePresenter for BudgetsPagePresenter {
             BudgetsTab::Plan => &self.keys.plan,
             BudgetsTab::History => &self.keys.history,
         }
+    }
+
+    /// Every tab's keys, in the one keymap they are scoped from.
+    fn bindings(&self) -> Vec<KeyBound<'_>> {
+        self.keys.all.bindings().collect()
     }
 
     /// Every tab's keys, and the legend's chords, follow the new bindings.

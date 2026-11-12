@@ -290,8 +290,18 @@ pub struct GeneralPresenter {
 }
 
 impl GeneralPresenter {
+    /// The page's keymap and the back chord its legend shows under `config`, as [`Self::new`] and
+    /// [`PagePresenter::rebind`] build them.
+    fn keys(config: &KeyBindingConfig) -> (Keymap<GeneralEvent>, String) {
+        (
+            crate::keymap::general_keymap(config),
+            crate::keymap::back_chord(config),
+        )
+    }
+
     /// General on what `setup`'s device reads.
     pub fn new(setup: GeneralSetup, config: &KeyBindingConfig) -> Self {
+        let (keymap, back_chord) = Self::keys(config);
         let snapshot = setup.device.read();
         let data_folder = snapshot
             .data_folder()
@@ -306,8 +316,8 @@ impl GeneralPresenter {
             data_folder,
             last_ledger: None,
             snapshot,
-            keymap: crate::keymap::general_keymap(config),
-            back_chord: crate::keymap::back_chord(config),
+            keymap,
+            back_chord,
             locale: setup.locale,
             page_focused: false,
         }
@@ -545,8 +555,7 @@ impl PagePresenter for GeneralPresenter {
 
     /// The keymap and the `back` chord its legend shows.
     fn rebind(&mut self, keys: &KeyBindingConfig) {
-        self.keymap = crate::keymap::general_keymap(keys);
-        self.back_chord = crate::keymap::back_chord(keys);
+        (self.keymap, self.back_chord) = Self::keys(keys);
     }
 }
 

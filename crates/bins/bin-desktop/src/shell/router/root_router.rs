@@ -515,12 +515,12 @@ pub(super) fn set_view_keymaps(
     config: &lib_config::KeyBindingConfig,
     cx: &mut App,
 ) {
-    crate::input::join_or_send(cx, |cx| set_ledger_keymaps(settings, open, config, cx));
+    crate::input::join_or_send(cx, |cx| rebind_hosted_pages(settings, open, config, cx));
 }
 
 /// The keys of every hosted page and of the Dialogs the Open Ledger's Views open, under `config`'s
 /// overrides.
-fn set_ledger_keymaps(
+fn rebind_hosted_pages(
     settings: &Entity<SettingsView>,
     open: Option<&OpenLedger>,
     config: &lib_config::KeyBindingConfig,
@@ -544,11 +544,11 @@ pub(super) fn push_display_preferences(
     display: DisplayOutput,
     cx: &mut App,
 ) {
-    crate::input::join_or_send(cx, |cx| push_ledger_display(settings, open, display, cx));
+    crate::input::join_or_send(cx, |cx| display_hosted_pages(settings, open, display, cx));
 }
 
 /// Hands the Display output to every hosted page; the ones that draw with it keep it.
-fn push_ledger_display(
+fn display_hosted_pages(
     settings: &Entity<SettingsView>,
     open: Option<&OpenLedger>,
     display: DisplayOutput,

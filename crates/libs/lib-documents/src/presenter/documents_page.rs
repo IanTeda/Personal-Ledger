@@ -18,7 +18,7 @@ use lib_core::{Clock, DateStyle, DocumentId, TransactionId};
 use lib_list_cursor::Step;
 use lib_toast::{Notice, ToastKind};
 use lib_viper::display::PageDisplay;
-use lib_viper::keymap::{EDIT, Keymap, MOVE_DOWN, MOVE_UP, SEARCH, SELECT};
+use lib_viper::keymap::{EDIT, KeyBound, Keymap, MOVE_DOWN, MOVE_UP, SEARCH, SELECT};
 use lib_viper::presenter::{PageMode, PagePresenter, Presenter, TextKey};
 use lib_viper::view::{Hint, count};
 
@@ -1261,6 +1261,11 @@ impl PagePresenter for DocumentsPagePresenter {
                 DocumentsMode::Inbox => &self.inbox_keys,
             }
         }
+    }
+
+    /// Every key, each mode's in one keymap.
+    fn bindings(&self) -> Vec<KeyBound<'_>> {
+        self.keymap.bindings().collect()
     }
 
     /// Each mode's keys and the Search's, so the legend's chords follow too.

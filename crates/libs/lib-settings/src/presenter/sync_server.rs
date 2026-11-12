@@ -49,9 +49,7 @@ impl SyncServerPresenter {
     pub fn new(config: &KeyBindingConfig) -> Self {
         Self {
             keymap: Keymap::new(&[], &KeyBindingConfig::default()),
-            legend: crate::keymap::settings_plain_page_hints(
-                &crate::keymap::settings_frame_keymap(config),
-            ),
+            legend: crate::keymap::settings_plain_page_legend(config),
         }
     }
 }
@@ -98,8 +96,7 @@ impl PagePresenter for SyncServerPresenter {
 
     /// The legend, which reads the frame's chords.
     fn rebind(&mut self, keys: &KeyBindingConfig) {
-        self.legend =
-            crate::keymap::settings_plain_page_hints(&crate::keymap::settings_frame_keymap(keys));
+        self.legend = crate::keymap::settings_plain_page_legend(keys);
     }
 }
 

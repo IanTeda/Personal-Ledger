@@ -8,7 +8,7 @@
 //! of both columns, a state of the page Presenter; the Shell's back key closes it, through
 //! [`View::back`], back to the page with its selection as it was.
 //!
-//! Keys become chord text and are looked up in the shared Units keymap, so `[keybindings]`
+//! Keys become chord text and are looked up in the page Presenter's keymap, so `[keybindings]`
 //! overrides reach them as on the Desktop. The arrows walk the tables and `Enter` opens a Unit's
 //! prices or edits a Price Source, as the Desktop's keys do. While a Dialog is open it takes every
 //! key ([`View::dialog_open`]), looked up first in `lib-shell`'s Dialog keymap, and draws over the
@@ -29,7 +29,7 @@ use lib_units::presenter::{
     UnitsPageViewModel, UnitsRow,
 };
 use lib_viper::keymap::Keymap;
-use lib_viper::presenter::Presenter as _;
+use lib_viper::presenter::{PagePresenter as _, Presenter as _};
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -96,8 +96,6 @@ pub struct UnitsView {
     ports: TuiPorts,
     /// What ends each input: the Units, its stores and the commit, as the Open Ledger holds them.
     setup: UnitsSetup,
-    keymap: Keymap<UnitsPageEvent>,
-    prices_keymap: Keymap<UnitPricesEvent>,
     dialog_keymap: Keymap<DialogCommand>,
     dialog: Option<Dialog>,
     /// Where the Presenters read the time from.
@@ -123,8 +121,6 @@ impl UnitsView {
             now,
             ports: setup.ports.clone(),
             setup: setup.clone(),
-            keymap: setup.keymap.clone(),
-            prices_keymap: setup.prices_keymap.clone(),
             dialog_keymap: setup.dialog_keymap.clone(),
             dialog: None,
             toasts: Vec::new(),
@@ -164,19 +160,22 @@ impl UnitsView {
         self.send(UnitsPageEvent::Prices(event));
     }
 
-    /// The prices view's event for `key`: its chord in the prices keymap, or Home, End or a Page
-    /// key, which [`chord`] doesn't name.
-    fn prices_event(&self, key: KeyEvent) -> Option<UnitPricesEvent> {
-        if let Some(event) = chord(key).and_then(|chord| self.prices_keymap.event(&chord)) {
+    /// The prices view's event for `key`: its chord in the page Presenter's keymap, which binds
+    /// only the prices view's keys while it shows, or Home, End or a Page key, which [`chord`]
+    /// doesn't name.
+    fn prices_event(&self, key: KeyEvent) -> Option<UnitsPageEvent> {
+        if let Some(event) = chord(key).and_then(|chord| self.presenter.keymap().event(&chord)) {
             return Some(event);
         }
-        Some(UnitPricesEvent::Move(match key.code {
-            KeyCode::Home => Step::First,
-            KeyCode::End => Step::Last,
-            KeyCode::PageDown => Step::HalfPageDown,
-            KeyCode::PageUp => Step::HalfPageUp,
-            _ => return None,
-        }))
+        Some(UnitsPageEvent::Prices(UnitPricesEvent::Move(
+            match key.code {
+                KeyCode::Home => Step::First,
+                KeyCode::End => Step::Last,
+                KeyCode::PageDown => Step::HalfPageDown,
+                KeyCode::PageUp => Step::HalfPageUp,
+                _ => return None,
+            },
+        )))
     }
 
     /// Hands `key` to the open Dialog, commits what its confirm wrote, and once it closes tells
@@ -195,9 +194,10 @@ impl UnitsView {
         }
     }
 
-    /// The page event `key` means: its chord in the Units keymap, or an arrow or `Enter`.
+    /// The page event `key` means: its chord in the page Presenter's keymap, or an arrow or
+    /// `Enter`.
     fn page_event(&self, key: KeyEvent) -> Option<UnitsPageEvent> {
-        if let Some(event) = chord(key).and_then(|chord| self.keymap.event(&chord)) {
+        if let Some(event) = chord(key).and_then(|chord| self.presenter.keymap().event(&chord)) {
             return Some(event);
         }
         Some(match key.code {
@@ -245,7 +245,7 @@ impl View for UnitsView {
         }
         if self.prices_open() {
             let event = self.prices_event(key)?;
-            self.send_to_prices(event);
+            self.send(event);
             return Some(Action::NoOp);
         }
         let event = self.page_event(key)?;
@@ -372,7 +372,7 @@ impl UnitsView {
     ) {
         if let Some(detail) = &view.pane {
             let keys = PaneKeys {
-                keymap: &self.keymap,
+                keymap: self.presenter.keymap(),
                 selected: selected_row(view),
                 sources: &view.price_sources_heading,
             };

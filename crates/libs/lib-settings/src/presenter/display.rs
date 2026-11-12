@@ -274,8 +274,18 @@ pub struct DisplayPresenter {
 }
 
 impl DisplayPresenter {
+    /// The page's keymap and the back chord its legend shows under `config`, as [`Self::new`] and
+    /// [`PagePresenter::rebind`] build them.
+    fn keys(config: &KeyBindingConfig) -> (Keymap<DisplayEvent>, String) {
+        (
+            crate::keymap::display_keymap(config),
+            crate::keymap::back_chord(config),
+        )
+    }
+
     /// Display on what `setup`'s device reads.
     pub fn new(setup: DisplaySetup, config: &KeyBindingConfig) -> Self {
+        let (keymap, back_chord) = Self::keys(config);
         let snapshot = setup.device.read();
         let fields = DisplayField::ALL.into_iter().map(declare).collect();
         Self {
@@ -283,8 +293,8 @@ impl DisplayPresenter {
             colour_theme_shadowed: shadowed_note(
                 snapshot.get(ConfigKey::ColourTheme).shadow.as_deref(),
             ),
-            keymap: crate::keymap::display_keymap(config),
-            back_chord: crate::keymap::back_chord(config),
+            keymap,
+            back_chord,
             colour_theme: DisplaySettings::read(&snapshot).colour_theme,
             grid: None,
             columns: 1,
@@ -549,8 +559,7 @@ impl PagePresenter for DisplayPresenter {
 
     /// The keymap and the `back` chord its legend shows.
     fn rebind(&mut self, keys: &KeyBindingConfig) {
-        self.keymap = crate::keymap::display_keymap(keys);
-        self.back_chord = crate::keymap::back_chord(keys);
+        (self.keymap, self.back_chord) = Self::keys(keys);
     }
 }
 

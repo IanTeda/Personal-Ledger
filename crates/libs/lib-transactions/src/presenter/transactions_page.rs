@@ -33,7 +33,9 @@ use lib_list_cursor::Step;
 use lib_locale::format::{AmountStyle, format_amount, format_date};
 use lib_toast::{Notice, Notify};
 use lib_viper::display::{PageDisplay, RowDensity, StatusGlyphs, flag_glyph};
-use lib_viper::keymap::{EDIT, KeyBindingConfig, Keymap, MOVE_DOWN, MOVE_UP, NEW, SEARCH, SELECT};
+use lib_viper::keymap::{
+    EDIT, KeyBindingConfig, KeyBound, Keymap, MOVE_DOWN, MOVE_UP, NEW, SEARCH, SELECT,
+};
 use lib_viper::presenter::{PageMode, PagePresenter, Presenter, TextKey};
 use lib_viper::view::{Hint, count};
 
@@ -420,6 +422,14 @@ impl PagePresenter for TransactionsPagePresenter {
         } else {
             &self.keymap
         }
+    }
+
+    /// The page's keys, then the popover's.
+    fn bindings(&self) -> Vec<KeyBound<'_>> {
+        self.keymap
+            .bindings()
+            .chain(self.filter_keymap.bindings())
+            .collect()
     }
 
     /// The page's, the Search's and the popover's keymaps, an open popover's included.

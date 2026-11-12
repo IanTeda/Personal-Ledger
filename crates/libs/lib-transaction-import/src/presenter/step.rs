@@ -9,7 +9,7 @@ use std::rc::Rc;
 
 use lib_config::KeyBindingConfig;
 use lib_toast::{Notice, Notify};
-use lib_viper::keymap::Keymap;
+use lib_viper::keymap::{KeyBound, Keymap};
 use lib_viper::presenter::{PageMode, PagePresenter, Presenter};
 use lib_viper::view::{Hint, legend};
 
@@ -144,6 +144,14 @@ impl PagePresenter for ImportStepPresenter {
         } else {
             &self.keymap
         }
+    }
+
+    /// The rows' keys, then the open select's.
+    fn bindings(&self) -> Vec<KeyBound<'_>> {
+        self.keymap
+            .bindings()
+            .chain(self.select_keymap.bindings())
+            .collect()
     }
 
     /// The rows' and the select's keymaps, so the footer's chord follows too.

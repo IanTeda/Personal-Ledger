@@ -8,7 +8,9 @@ use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::Label as _;
 use lib_locale::format::format_time_minutes;
 use lib_toast::{Notice, ToastKind};
-use lib_viper::keymap::{DELETE, EDIT, KeyBindingConfig, Keymap, MOVE_DOWN, MOVE_UP, NEW};
+use lib_viper::keymap::{
+    DELETE, EDIT, KeyBindingConfig, KeyBound, Keymap, MOVE_DOWN, MOVE_UP, NEW,
+};
 use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Hint, count};
 
@@ -629,6 +631,14 @@ impl PagePresenter for UnitsPagePresenter {
         }
     }
 
+    /// The page's keys, then the prices view's.
+    fn bindings(&self) -> Vec<KeyBound<'_>> {
+        self.keymap
+            .bindings()
+            .chain(self.prices_keymap.bindings())
+            .collect()
+    }
+
     /// The page's keys and the prices view's. A prices view already open keeps its keys until it
     /// next opens.
     fn rebind(&mut self, keys: &KeyBindingConfig) {
@@ -915,6 +925,29 @@ mod tests {
                 })
                 .unwrap_or_default()
         }
+    }
+
+    #[test]
+    fn bindings_hold_the_prices_views_keys_while_it_is_closed() {
+        let page = Page::new();
+        assert!(!page.presenter.prices_open());
+
+        let bindings = page.presenter.bindings();
+        let chord = |command: &str| {
+            bindings
+                .iter()
+                .find(|bound| bound.command == command)
+                .map(|bound| bound.chord)
+        };
+
+        assert_eq!(chord(OPEN), page.presenter.keymap().chord(OPEN));
+        assert!(chord(crate::keymap::EARLIER).is_some_and(|chord| !chord.is_empty()));
+        assert!(
+            page.presenter
+                .keymap()
+                .chord(crate::keymap::EARLIER)
+                .is_none()
+        );
     }
 
     #[test]

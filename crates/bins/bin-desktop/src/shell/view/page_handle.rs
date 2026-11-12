@@ -16,7 +16,7 @@ use gpui::{
     AnyElement, AnyView, App, Context, Entity, EventEmitter, Keystroke, Pixels, Subscription,
 };
 use lib_viper::display::PageDisplay;
-use lib_viper::keymap::{KeyBindingConfig, Keymap};
+use lib_viper::keymap::{KeyBindingConfig, KeyBound, Keymap};
 
 use super::module_page::{ModulePage, PageView};
 use super::statusline::PageStatus;
@@ -48,14 +48,17 @@ pub struct PageBinding {
 impl PageBinding {
     /// Every binding of `keymap`, in binding order.
     pub fn all_of<E: Clone>(keymap: &Keymap<E>) -> Vec<Self> {
-        keymap
-            .bindings()
-            .map(|bound| Self {
-                command: bound.command,
-                chord: bound.chord.to_string(),
-                description: bound.description.map(|describe| describe()),
-            })
-            .collect()
+        keymap.bindings().map(Self::from).collect()
+    }
+}
+
+impl From<KeyBound<'_>> for PageBinding {
+    fn from(bound: KeyBound<'_>) -> Self {
+        Self {
+            command: bound.command,
+            chord: bound.chord.to_string(),
+            description: bound.description.map(|describe| describe()),
+        }
     }
 }
 
@@ -218,9 +221,14 @@ impl<P: PageView> PageHandle for Entity<ModulePage<P>> {
         });
     }
 
-    /// The keymap the Presenter answers keys through in the state it is in.
+    /// Every keymap the Presenter holds, whatever state it is in (`PagePresenter::bindings`).
     fn keys(&self, cx: &App) -> Vec<PageBinding> {
-        PageBinding::all_of(self.read(cx).presenter().keymap())
+        self.read(cx)
+            .presenter()
+            .bindings()
+            .into_iter()
+            .map(PageBinding::from)
+            .collect()
     }
 
     fn reveal(&self, reveal: Reveal, cx: &mut App) {

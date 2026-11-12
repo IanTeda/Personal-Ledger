@@ -142,13 +142,14 @@ impl PageView for DashboardPresenter {
 }
 
 /// The Dashboard module's entry point: its page over `reads`, dated by `clock`, its keys under
-/// `[keybindings]`'s defaults until `Root` pushes the ones in effect.
+/// `config`.
 pub fn dashboard_page(
     reads: std::rc::Rc<dyn DashboardReads>,
     announcer: &gpui::Entity<Announcer>,
+    config: &lib_config::KeyBindingConfig,
     clock: Clock,
     cx: &mut gpui::App,
 ) -> gpui::Entity<DashboardPage> {
-    let presenter = DashboardPresenter::new(reads, clock, &lib_config::KeyBindingConfig::default());
+    let presenter = DashboardPresenter::new(reads, clock, config);
     cx.new(|cx| ModulePage::new(presenter, (), announcer, cx))
 }

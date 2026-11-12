@@ -14,7 +14,7 @@
 
 use crate::dialog::{DialogInput, DialogRouter};
 use crate::display::PageDisplay;
-use crate::keymap::{KeyBindingConfig, Keymap};
+use crate::keymap::{KeyBindingConfig, KeyBound, Keymap};
 
 /// A Presenter: it takes its events through [`Self::handle`], asking for navigation through the
 /// Router it is lent for that call, and builds a plain-data view model through
@@ -60,6 +60,13 @@ pub trait PagePresenter: Presenter<Event: Clone> {
     /// select), which its legend reads its chords from too. A palette Command of another state
     /// still reaches its event by name, shown first through [`Self::shows`].
     fn keymap(&self) -> &Keymap<Self::Event>;
+
+    /// Every binding of every keymap the page holds now, whatever state it is in (each tab's, a
+    /// popover's, a view it shows in place of itself), each with its live chord: what a host
+    /// reports the page's keys as. The default is [`Self::keymap`]'s, for a page with one.
+    fn bindings(&self) -> Vec<KeyBound<'_>> {
+        self.keymap().bindings().collect()
+    }
 
     /// `[keybindings]` changed: the page builds everything key-shaped it holds afresh under
     /// `keys` (each keymap, and the chords its legend and Dialogs show). Required, so a new page

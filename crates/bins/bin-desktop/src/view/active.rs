@@ -13,7 +13,6 @@ use crate::budgets::BudgetsPage;
 use crate::dashboard::DashboardPage;
 use crate::documents::view::page::DocumentsPage;
 use crate::navigation::{active_view::ActiveView, nav::Noun};
-use crate::settings::SettingsPage;
 use crate::settings::state::SettingsView;
 use crate::shell::view::page_handle::PageHandle;
 use crate::transaction_import::ImportPage;
@@ -52,13 +51,31 @@ pub struct ViewEntities {
 
 impl ViewEntities {
     /// Every View, for what `Root` does to each alike (following its events, a rebind, a Display
-    /// change). Built from [`Self::get`]'s exhaustive match over every View a Noun derives, so a
-    /// new View can't be left out.
+    /// change).
     pub fn all(&self) -> Vec<&dyn PageHandle> {
-        derived_views()
-            .into_iter()
-            .filter_map(|view| self.get(view))
-            .collect()
+        self.each().into_iter().map(|(_, page)| page).collect()
+    }
+
+    /// Every View with its Entity, in the rail's order. A new View fails to compile twice before
+    /// it can be left out: [`Self::get`]'s match needs an arm for it, which needs an Entity field,
+    /// which this destructuring needs listed.
+    pub fn each(&self) -> [(ActiveView, &dyn PageHandle); 6] {
+        let Self {
+            dashboard,
+            bills,
+            budgets,
+            transactions,
+            import,
+            documents,
+        } = self;
+        [
+            (ActiveView::Dashboard, dashboard),
+            (ActiveView::Transactions, transactions),
+            (ActiveView::Import, import),
+            (ActiveView::Documents, documents),
+            (ActiveView::Bills, bills),
+            (ActiveView::Budgets, budgets),
+        ]
     }
 
     /// The Entity behind `view`, `None` for Settings, which `Root` holds apart, and a placeholder.
@@ -75,21 +92,6 @@ impl ViewEntities {
     }
 }
 
-/// Every View a Noun derives, once each, in the rail's order: the Import step beside Transactions,
-/// and Settings on one page, standing for them all.
-fn derived_views() -> Vec<ActiveView> {
-    let mut views: Vec<ActiveView> = Vec::new();
-    for noun in Noun::ALL {
-        for import_open in [false, true] {
-            let view = ActiveView::derive(noun, SettingsPage::General, import_open);
-            if !views.contains(&view) {
-                views.push(view);
-            }
-        }
-    }
-    views
-}
-
 /// The Entity behind `view`, from the Open Ledger's View Entities and `Root`'s Settings: `None` for
 /// a View `Root` still draws ([`ShellView`]). With no Ledger open (`views` is `None`) only Settings
 /// has a handle.
@@ -102,29 +104,4 @@ pub fn page<'a>(
         return Some(settings);
     }
     views?.get(view)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn every_view_a_noun_derives_is_listed_once() {
-        let views = derived_views();
-
-        for view in [
-            ActiveView::Dashboard,
-            ActiveView::Transactions,
-            ActiveView::Import,
-            ActiveView::Documents,
-            ActiveView::Bills,
-            ActiveView::Budgets,
-        ] {
-            assert_eq!(
-                views.iter().filter(|derived| **derived == view).count(),
-                1,
-                "{view:?}"
-            );
-        }
-    }
 }

@@ -230,12 +230,18 @@ impl OpenLedger {
         let transactions_view = crate::transactions::transactions_page(
             transactions_ports,
             &announcer,
+            keybindings,
             clock.clone(),
             cx,
         );
         crate::transactions::router::install(&transactions_view, cx);
-        let import_view =
-            crate::transaction_import::import_page(import_stores, &announcer, clock.clone(), cx);
+        let import_view = crate::transaction_import::import_page(
+            import_stores,
+            &announcer,
+            keybindings,
+            clock.clone(),
+            cx,
+        );
         let budgets_view = crate::budgets::router::budgets_page(
             budgets_ports,
             &announcer,
@@ -244,8 +250,13 @@ impl OpenLedger {
             dialog_keys.clone(),
             cx,
         );
-        let dashboard_view =
-            crate::dashboard::dashboard_page(dashboard_reads, &announcer, clock.clone(), cx);
+        let dashboard_view = crate::dashboard::dashboard_page(
+            dashboard_reads,
+            &announcer,
+            keybindings,
+            clock.clone(),
+            cx,
+        );
         let bills_view = crate::bills::bills_page(bills, &announcer, clock.clone(), cx);
         // The Documents page writes the store through its Interactors, and reads the other
         // domains through their stores (#967).

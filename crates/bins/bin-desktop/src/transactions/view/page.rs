@@ -217,15 +217,15 @@ impl PageView for TransactionsPagePresenter {
 }
 
 /// The Transactions module's entry point: the page on `ports`, filtered to this year by `clock`'s
-/// today, under the default keys until `Root` pushes `[keybindings]`.
+/// today, under `config`'s keys.
 pub fn transactions_page(
     ports: SharedPorts,
     announcer: &gpui::Entity<Announcer>,
+    config: &lib_config::KeyBindingConfig,
     clock: Clock,
     cx: &mut gpui::App,
 ) -> gpui::Entity<TransactionsPage> {
-    let presenter =
-        TransactionsPagePresenter::new(ports, clock, &lib_config::KeyBindingConfig::default());
+    let presenter = TransactionsPagePresenter::new(ports, clock, config);
     gpui::AppContext::new(cx, |cx| ModulePage::new(presenter, (), announcer, cx))
 }
 

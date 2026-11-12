@@ -1,47 +1,60 @@
 //! A `[keybindings]` rebind and a Display change reach every page `Root` hosts through the one
-//! hosting trait (#1167): every main View's and every Settings page's keys show a rebound chord,
-//! iterated rather than named, and each Display reader draws with a new date style, after a
-//! Settings › Display change and as a Ledger opens. State is read back from `Root`.
+//! hosting trait (#1167): every main View's and every Settings page's keys show a rebound chord
+//! (an info page's in its legend), iterated rather than named, and each Display reader draws with
+//! a new date style, after a Settings › Display change and as a Ledger opens. State is read back
+//! from `Root`.
 
 use super::common;
 use bin_desktop::shell::router::{DisplayDatesSnapshot, PageKeysSnapshot};
 use common::Harness;
 use gpui::TestAppContext;
 use lib_core::DateStyle;
+use lib_settings::SettingsPage;
 use lib_viper::keymap::MOVE_DOWN;
 
-/// The pages binding `command`, each with the chords it binds it to.
-fn chords_of(pages: &[PageKeysSnapshot], command: &str) -> Vec<(String, Vec<String>)> {
-    pages
+/// The main Views `Root` hosts with a Ledger open: Dashboard, Transactions, the Import step,
+/// Documents, Bills and Budgets.
+const MAIN_VIEWS: usize = 6;
+
+/// How many pages `Root` hosts with the Sample Ledger open: each main View, the Settings View, then
+/// every Settings page.
+fn hosted_pages() -> usize {
+    MAIN_VIEWS + 1 + SettingsPage::ALL.len()
+}
+
+/// The chords `page` binds `command` to; empty for a page that doesn't bind it.
+fn chords_of<'a>(page: &'a PageKeysSnapshot, command: &str) -> Vec<&'a str> {
+    page.keys
         .iter()
-        .map(|page| {
-            let chords = page
-                .keys
-                .iter()
-                .filter(|(bound, _)| *bound == command)
-                .map(|(_, chord)| chord.clone())
-                .collect();
-            (page.page.clone(), chords)
-        })
-        .filter(|(_, chords): &(String, Vec<String>)| !chords.is_empty())
+        .filter(|(bound, _)| *bound == command)
+        .map(|(_, chord)| chord.as_str())
         .collect()
+}
+
+/// Whether `page` shows `chord` as `MOVE_DOWN`'s: bound to it, or, for a page binding no key of
+/// its own (an info page), in the scroll hint its legend reads from the Settings frame.
+fn shows_move_down(page: &PageKeysSnapshot, chord: &str) -> bool {
+    let bound = chords_of(page, MOVE_DOWN);
+    if bound.is_empty() {
+        let scroll = format!("{chord}/k");
+        page.legend.contains(&scroll)
+    } else {
+        bound.iter().all(|bound| *bound == chord)
+    }
 }
 
 #[gpui::test]
 fn a_rebind_reaches_every_main_view_and_settings_page(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
     let before = ui.read_app(|shell, cx| shell.page_keys_snapshot(cx));
-    let bound_before = chords_of(&before, MOVE_DOWN);
-    assert!(
-        bound_before.len() > 10,
-        "most pages bind {MOVE_DOWN}: {bound_before:?}"
+    assert_eq!(
+        before.len(),
+        hosted_pages(),
+        "every page is hosted: {before:?}"
     );
-    assert!(
-        bound_before
-            .iter()
-            .all(|(_, chords)| chords.iter().all(|chord| chord == "j")),
-        "{bound_before:?}"
-    );
+    for page in &before {
+        assert!(shows_move_down(page, "j"), "{page:?}");
+    }
     let commits = ui.commits();
 
     ui.rebind(&common::overriding(MOVE_DOWN, "n"));
@@ -57,15 +70,11 @@ fn a_rebind_reaches_every_main_view_and_settings_page(app: &mut TestAppContext) 
         before.iter().map(|page| &page.page).collect::<Vec<_>>(),
         "the same pages are hosted"
     );
-    let bound_after = chords_of(&after, MOVE_DOWN);
-    let pages = |bound: &[(String, Vec<String>)]| -> Vec<String> {
-        bound.iter().map(|(page, _)| page.clone()).collect()
-    };
-    assert_eq!(pages(&bound_after), pages(&bound_before));
-    for (page, chords) in &bound_after {
+    for page in &after {
         assert!(
-            chords.iter().all(|chord| chord == "n"),
-            "{page} shows the new chord and not the old: {chords:?}"
+            shows_move_down(page, "n") && !shows_move_down(page, "j"),
+            "{} shows the new chord and not the old: {page:?}",
+            page.page
         );
     }
 }

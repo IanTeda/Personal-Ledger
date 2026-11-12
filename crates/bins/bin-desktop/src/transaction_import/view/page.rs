@@ -154,18 +154,16 @@ fn open_select(view: &ImportStepViewModel) -> Option<(usize, RowSelect)> {
     Some((open.row, open.which))
 }
 
-/// The Transaction Import module's entry point: the step, closed, over `stores`, under the default
-/// keys until `Root` pushes `[keybindings]`. `clock` dates the statement as the step opens.
+/// The Transaction Import module's entry point: the step, closed, over `stores`, under `config`'s
+/// keys. `clock` dates the statement as the step opens.
 pub fn import_page(
     stores: ImportStores,
     announcer: &gpui::Entity<crate::announcer::Announcer>,
+    config: &lib_config::KeyBindingConfig,
     clock: Clock,
     cx: &mut gpui::App,
 ) -> gpui::Entity<ImportPage> {
-    let presenter = ImportStepPresenter::new(
-        move || stores.ports(&clock),
-        &lib_config::KeyBindingConfig::default(),
-    );
+    let presenter = ImportStepPresenter::new(move || stores.ports(&clock), config);
     cx.new(|cx| ModulePage::new(presenter, (), announcer, cx))
 }
 

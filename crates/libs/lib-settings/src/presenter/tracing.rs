@@ -179,13 +179,24 @@ pub struct TracingPresenter {
 
 impl TracingPresenter {
     pub fn new(setup: TracingSetup, config: &KeyBindingConfig) -> Self {
+        let (keymap, back_chord, dialog_keys) = Self::keys(config);
         Self {
             mirror: Mirror::new(setup.log.clone(), setup.level),
             log: setup.log,
-            keymap: crate::keymap::tracing_keymap(config),
-            back_chord: crate::keymap::back_chord(config),
-            dialog_keys: DialogKeys::of(&dialog_keymap(config)),
+            keymap,
+            back_chord,
+            dialog_keys,
         }
+    }
+
+    /// The page's keymap, the back chord its legend shows and the Clear logs Dialog's keys under
+    /// `config`, as [`Self::new`] and [`PagePresenter::rebind`] build them.
+    fn keys(config: &KeyBindingConfig) -> (Keymap<TracingEvent>, String, DialogKeys) {
+        (
+            crate::keymap::tracing_keymap(config),
+            crate::keymap::back_chord(config),
+            DialogKeys::of(&dialog_keymap(config)),
+        )
     }
 
     /// Reads `log` from now on, opening on `level`. The Client restarts its list at the top, at
@@ -318,9 +329,7 @@ impl PagePresenter for TracingPresenter {
 
     /// The keymap, the `back` chord and the keys its Clear logs Dialog hints.
     fn rebind(&mut self, keys: &KeyBindingConfig) {
-        self.keymap = crate::keymap::tracing_keymap(keys);
-        self.back_chord = crate::keymap::back_chord(keys);
-        self.dialog_keys = DialogKeys::of(&dialog_keymap(keys));
+        (self.keymap, self.back_chord, self.dialog_keys) = Self::keys(keys);
     }
 }
 

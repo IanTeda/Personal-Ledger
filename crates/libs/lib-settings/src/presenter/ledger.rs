@@ -74,12 +74,22 @@ pub struct LedgerPresenter {
 }
 
 impl LedgerPresenter {
+    /// The page's keymap and the back chord its legend shows under `config`, as [`Self::new`] and
+    /// [`PagePresenter::rebind`] build them.
+    fn keys(config: &KeyBindingConfig) -> (Keymap<LedgerEvent>, String) {
+        (
+            crate::keymap::ledger_keymap(config),
+            crate::keymap::back_chord(config),
+        )
+    }
+
     pub fn new(setup: LedgerSetup, config: &KeyBindingConfig) -> Self {
+        let (keymap, back_chord) = Self::keys(config);
         Self {
             units: setup.units,
             preferences: setup.preferences,
-            keymap: crate::keymap::ledger_keymap(config),
-            back_chord: crate::keymap::back_chord(config),
+            keymap,
+            back_chord,
             page_focused: false,
         }
     }
@@ -200,8 +210,7 @@ impl PagePresenter for LedgerPresenter {
 
     /// The keymap and the `back` chord its legend shows.
     fn rebind(&mut self, keys: &KeyBindingConfig) {
-        self.keymap = crate::keymap::ledger_keymap(keys);
-        self.back_chord = crate::keymap::back_chord(keys);
+        (self.keymap, self.back_chord) = Self::keys(keys);
     }
 }
 

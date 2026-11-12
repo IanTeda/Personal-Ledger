@@ -288,12 +288,6 @@ mod tests {
         assert_eq!(router.closed, [Some("saved"), None]);
         assert_eq!(router.notices, [Notice::Status("saved".to_string())]);
     }
-}
-
-#[cfg(test)]
-mod dialog_keymap_tests {
-    use super::*;
-    use crate::keymap::KeyBindingConfig;
 
     fn overriding(command: &str, chord: &str) -> KeyBindingConfig {
         let mut config = KeyBindingConfig::default();

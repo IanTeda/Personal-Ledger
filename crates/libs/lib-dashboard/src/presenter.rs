@@ -3,10 +3,12 @@
 //!
 //! It keeps its view model with the day it was built on and reads the ports again only after a
 //! change ([`DashboardEvent::LedgerChanged`], [`PagePresenter::display`]) or when the Shell's
-//! Clock says the day moved, so a day or month turn shows on the next draw with nothing to catch up.
+//! Clock says the day moved, so a day or month turn shows on the next draw with nothing to catch
+//! up.
 //!
 //! The Display Preferences are handed to it ([`PagePresenter::display`]): the due dates follow the
-//! date style and the flag the Status glyphs. Row density isn't among them, since the Dashboard draws no table rows.
+//! date style and the flag the Status glyphs. Row density isn't among them, since the Dashboard
+//! draws no table rows.
 //!
 //! It has no list, so its keymap's movements are scroll requests ([`DashboardEvent::Scroll`]) the
 //! Client applies to the page's scroll. `/` puts it in a Search with no box to type into, which
@@ -22,7 +24,7 @@ use lib_core::{Clock, DateStyle, Money};
 use lib_list_cursor::Step;
 use lib_locale::format::{AmountStyle, format_amount, format_date, format_year_month};
 use lib_viper::display::{PageDisplay, StatusGlyphs, flag_glyph};
-use lib_viper::keymap::{KeyBindingConfig, Keymap};
+use lib_viper::keymap::{KeyBindingConfig, KeyBound, Keymap};
 use lib_viper::presenter::{PageMode, PagePresenter, Presenter};
 
 use crate::msg;
@@ -110,17 +112,25 @@ impl DashboardPresenter {
     /// The Dashboard over `reads`, dated by `clock`, in the default Display Preferences, its keys
     /// built from `config`.
     pub fn new(reads: Rc<dyn DashboardReads>, clock: Clock, config: &KeyBindingConfig) -> Self {
-        let keymap = crate::keymap::dashboard_keymap(config);
+        let (keymap, searching_keys) = Self::keymaps(config);
         Self {
             reads,
             clock,
             date_style: None,
             glyphs: StatusGlyphs::default(),
-            searching_keys: keymap.scoped(|_| false),
+            searching_keys,
             keymap,
             searching: false,
             kept: RefCell::new(None),
         }
+    }
+
+    /// The page's keymaps under `config`, as [`Self::new`] and [`PagePresenter::rebind`] build
+    /// them: every key, then the Search's, which binds none.
+    fn keymaps(config: &KeyBindingConfig) -> (Keymap<DashboardEvent>, Keymap<DashboardEvent>) {
+        let keymap = crate::keymap::dashboard_keymap(config);
+        let searching = keymap.scoped(|_| false);
+        (keymap, searching)
     }
 
     fn build(&self, today: NaiveDate) -> DashboardViewModel {
@@ -192,9 +202,13 @@ impl PagePresenter for DashboardPresenter {
         }
     }
 
+    /// Every key, the Search's closed or open.
+    fn bindings(&self) -> Vec<KeyBound<'_>> {
+        self.keymap.bindings().collect()
+    }
+
     fn rebind(&mut self, keys: &KeyBindingConfig) {
-        self.keymap = crate::keymap::dashboard_keymap(keys);
-        self.searching_keys = self.keymap.scoped(|_| false);
+        (self.keymap, self.searching_keys) = Self::keymaps(keys);
     }
 
     /// The due dates follow the date style and the flag the Status glyphs; the kept view model is

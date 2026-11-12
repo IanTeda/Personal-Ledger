@@ -88,6 +88,12 @@ pub fn settings_plain_page_hints(keymap: &Keymap<SettingsFrameEvent>) -> Vec<Hin
     ]
 }
 
+/// [`settings_plain_page_hints`] under `config`: the legend an info page builds as it is made and
+/// again on each rebind.
+pub fn settings_plain_page_legend(config: &KeyBindingConfig) -> Vec<Hint> {
+    settings_plain_page_hints(&settings_frame_keymap(config))
+}
+
 /// On a This device page, the focused control's choice before.
 pub const PREVIOUS_CHOICE: &str = "settings.previous_choice";
 /// On a This device page, the focused control's choice after.

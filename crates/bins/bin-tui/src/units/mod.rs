@@ -19,16 +19,14 @@ use std::rc::Rc;
 use lib_config::KeyBindingConfig;
 use lib_database::{Commit, FakeStores, LedgerPorts, SharedStores, Stores};
 use lib_shell::DialogCommand;
-use lib_units::keymap::{unit_prices_keymap, units_page_keymap};
-use lib_units::presenter::{UnitPricesEvent, UnitsPageEvent};
 use lib_viper::keymap::Keymap;
 
 /// The Units ports the Units View and its Dialogs share.
 pub type TuiPorts = lib_units::SharedPorts;
 
 /// What `Shell` builds each Units View from: the shared ports, the stores beside them, the commit
-/// each input ends in, and the page's, the prices view's and the Dialogs' keymaps under
-/// `[keybindings]`.
+/// each input ends in, the `[keybindings]` the page Presenter builds its own keymaps from, and the
+/// Dialogs' keymap.
 #[derive(Clone)]
 pub struct UnitsSetup {
     pub ports: TuiPorts,
@@ -38,8 +36,6 @@ pub struct UnitsSetup {
     pub commit: Rc<dyn Commit>,
     /// The `[keybindings]` the page Presenter builds its keys from.
     pub config: KeyBindingConfig,
-    pub keymap: Keymap<UnitsPageEvent>,
-    pub prices_keymap: Keymap<UnitPricesEvent>,
     pub dialog_keymap: Keymap<DialogCommand>,
 }
 
@@ -51,8 +47,6 @@ impl UnitsSetup {
             stores: ledger.stores.clone(),
             commit: ledger.commit.clone(),
             config: config.clone(),
-            keymap: units_page_keymap(config),
-            prices_keymap: unit_prices_keymap(config),
             dialog_keymap: lib_shell::dialog_keymap(config),
         }
     }

@@ -1,8 +1,9 @@
 //! The Display choices a Presenter draws with (Settings › Display): how a table's rows are spaced
 //! and how a status is marked. The choices are `lib_core`'s, which `lib_config` reads from the
 //! file too (ADR-0053); they are re-exported here, where the Transactions, Bills and Dashboard
-//! Presenters already reach for them, with [`PageDisplay`], the three as one page is handed them. Their labels are the Client's Messages, and density to pixels
-//! is the Client's toolkit's; only the Flagged mark every module shares is defined here.
+//! Presenters already reach for them, with [`PageDisplay`], the three as one page is handed them.
+//! Their labels are the Client's Messages, and density to pixels is the Client's toolkit's; only
+//! the Flagged mark every module shares is defined here.
 
 pub use lib_core::{RowDensity, StatusGlyphs};
 

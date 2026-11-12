@@ -12,7 +12,7 @@ use lib_core::{BillPlanId, Clock, DateStyle, Period};
 use lib_list_cursor::Step;
 use lib_toast::Notice;
 use lib_viper::display::{PageDisplay, StatusGlyphs, flag_glyph};
-use lib_viper::keymap::{EDIT, KeyBindingConfig, Keymap, MOVE_DOWN, MOVE_UP, NEW};
+use lib_viper::keymap::{EDIT, KeyBindingConfig, KeyBound, Keymap, MOVE_DOWN, MOVE_UP, NEW};
 use lib_viper::presenter::{PageMode, PagePresenter, Presenter};
 use lib_viper::view::Hint;
 
@@ -126,20 +126,35 @@ impl BillsPagePresenter {
     /// `config`, as [`PagePresenter::rebind`] builds them later.
     pub fn new(ports: SharedPorts, clock: Clock, config: &KeyBindingConfig) -> Self {
         let today = clock.today();
-        let keymap = crate::keymap::bills_page_keymap(config);
+        let (keymap, schedule_keys, planner_keys) = Self::keymaps(config);
         Self {
             schedule: SchedulePresenter::new(ports.clone(), clock.clone()),
             planner: PlannerPresenter::new(ports.clone()),
             ports,
             clock,
-            schedule_keys: Self::tab_keys(&keymap, BillsTab::Schedule),
-            planner_keys: Self::tab_keys(&keymap, BillsTab::Planner),
+            schedule_keys,
+            planner_keys,
             keymap,
             tab: BillsTab::default(),
             generated: Period::of(today),
             date_style: None,
             glyphs: StatusGlyphs::default(),
         }
+    }
+
+    /// The page's keymaps under `config`, as [`Self::new`] and [`PagePresenter::rebind`] build
+    /// them: every binding, then the Schedule's and the Planner's.
+    fn keymaps(
+        config: &KeyBindingConfig,
+    ) -> (
+        Keymap<BillsPageEvent>,
+        Keymap<BillsPageEvent>,
+        Keymap<BillsPageEvent>,
+    ) {
+        let keymap = crate::keymap::bills_page_keymap(config);
+        let schedule = Self::tab_keys(&keymap, BillsTab::Schedule);
+        let planner = Self::tab_keys(&keymap, BillsTab::Planner);
+        (keymap, schedule, planner)
     }
 
     /// `keymap`'s bindings `tab` reaches: its own and the shared ones.
@@ -279,12 +294,14 @@ impl PagePresenter for BillsPagePresenter {
         }
     }
 
+    /// Every tab's keys, in the one keymap they are scoped from.
+    fn bindings(&self) -> Vec<KeyBound<'_>> {
+        self.keymap.bindings().collect()
+    }
+
     /// Each tab's keys are scoped afresh, so the legend shows the new chords too.
     fn rebind(&mut self, keys: &KeyBindingConfig) {
-        let keymap = crate::keymap::bills_page_keymap(keys);
-        self.schedule_keys = Self::tab_keys(&keymap, BillsTab::Schedule);
-        self.planner_keys = Self::tab_keys(&keymap, BillsTab::Planner);
-        self.keymap = keymap;
+        (self.keymap, self.schedule_keys, self.planner_keys) = Self::keymaps(keys);
     }
 
     /// The date style the Plan form's and Pay's dates are typed in, and the Status glyphs, which
