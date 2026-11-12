@@ -110,12 +110,17 @@ impl PagePresenter for AboutPresenter {
 mod tests {
     use super::*;
 
-    #[test]
-    fn the_version_line_names_the_version_the_client_gave() {
-        let model = AboutPresenter::new(AboutSetup {
+    /// The About Presenter with the Settings Messages loaded, since its lines are Messages.
+    fn about() -> AboutPresenter {
+        lib_locale::init_with_layers("en-US", &[msg::LAYER]);
+        AboutPresenter::new(AboutSetup {
             version: "1.2.3".to_string(),
         })
-        .view_model();
+    }
+
+    #[test]
+    fn the_version_line_names_the_version_the_client_gave() {
+        let model = about().view_model();
 
         assert_eq!(model.version, "Personal Ledger v1.2.3");
         assert_eq!(model.built_with, "Built with Rust + GPUI + SQLite");
@@ -123,10 +128,7 @@ mod tests {
 
     #[test]
     fn about_summarises_its_version_and_what_it_is_built_with() {
-        let rows = AboutPresenter::new(AboutSetup {
-            version: "1.2.3".to_string(),
-        })
-        .summary_rows();
+        let rows = about().summary_rows();
 
         assert_eq!(rows[0].value, "Personal Ledger v1.2.3");
         assert_eq!(rows[1].value, "Built with Rust + GPUI + SQLite");
@@ -134,9 +136,7 @@ mod tests {
 
     #[test]
     fn about_binds_no_key() {
-        let about = AboutPresenter::new(AboutSetup {
-            version: "1.2.3".to_string(),
-        });
+        let about = about();
 
         assert_eq!(about.keymap().event("enter"), None);
         assert_eq!(about.keymap().listed().count(), 0);

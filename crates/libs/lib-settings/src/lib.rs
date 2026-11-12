@@ -44,4 +44,4 @@ pub use crate::protocols::{
     LedgerSummaries, LedgerUnits, SettingsRouter, TracingLog, TracingRouter, UnitChoice,
     writes_when_shadowed,
 };
-pub use crate::summary::{PageSummary, SummaryRow, SummarySources, summarise};
+pub use crate::summary::{PageRows, PageSummary, SummaryRow, SummarySources, summarise};

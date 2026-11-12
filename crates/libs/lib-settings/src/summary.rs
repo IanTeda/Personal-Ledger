@@ -50,14 +50,18 @@ pub struct PageSummary {
     pub open_enabled: bool,
 }
 
-/// What a summary reads: the page's own rows for a This device page, or the Ledger's counts.
+/// What a summary reads: where its page's values come from, and the scope facts.
 pub struct SummarySources<'a> {
-    /// The summarised page's rows as its Presenter answers them (`summary_rows`), for a This
-    /// device page; ignored for a This Ledger page.
-    pub device_rows: Vec<SummaryRow>,
+    pub rows: PageRows<'a>,
     pub facts: ScopeFacts,
-    /// The Open Ledger's counts; `None` with no Ledger open.
-    pub ledger: Option<&'a dyn LedgerSummaries>,
+}
+
+/// Where a page's values come from, one per scope group, so neither carries the other's.
+pub enum PageRows<'a> {
+    /// A This device page's rows, as its Presenter answers them (`summary_rows`).
+    Device(Vec<SummaryRow>),
+    /// A This Ledger page's: the Open Ledger's counts, `None` with no Ledger open.
+    Ledger(Option<&'a dyn LedgerSummaries>),
 }
 
 impl ScopeGroup {
@@ -106,13 +110,10 @@ pub fn summarise(page: SettingsPage, sources: SummarySources<'_>) -> PageSummary
         note: None,
         open_enabled: true,
     };
-    if !page.needs_ledger() {
-        summary.rows = sources.device_rows;
-        return summary;
-    }
-    match sources.ledger {
-        Some(ledger) => summary.rows = ledger_rows(page, &ledger.counts()),
-        None => {
+    match sources.rows {
+        PageRows::Device(rows) => summary.rows = rows,
+        PageRows::Ledger(Some(ledger)) => summary.rows = ledger_rows(page, &ledger.counts()),
+        PageRows::Ledger(None) => {
             summary.note = Some(msg::settings_status_refused_no_ledger(":open", ":new"));
             summary.open_enabled = false;
         }
@@ -221,15 +222,19 @@ mod tests {
 
     const FACTS: ScopeFacts = ScopeFacts { log_capacity: 500 };
 
-    /// Sources for a page whose Presenter answered `device_rows`, with `ledger` open or none.
-    fn sources(
-        device_rows: Vec<SummaryRow>,
-        ledger: Option<&dyn LedgerSummaries>,
-    ) -> SummarySources<'_> {
+    /// Sources for a This device page whose Presenter answered `rows`.
+    fn device(rows: Vec<SummaryRow>) -> SummarySources<'static> {
         SummarySources {
-            device_rows,
+            rows: PageRows::Device(rows),
             facts: FACTS,
-            ledger,
+        }
+    }
+
+    /// Sources for a This Ledger page, with `ledger` open or none.
+    fn of_ledger(ledger: Option<&dyn LedgerSummaries>) -> SummarySources<'_> {
+        SummarySources {
+            rows: PageRows::Ledger(ledger),
+            facts: FACTS,
         }
     }
 
@@ -246,7 +251,7 @@ mod tests {
         locale();
         let rows = vec![SummaryRow::new("Toasts".to_string(), "On")];
 
-        let summary = summarise(SettingsPage::General, sources(rows.clone(), None));
+        let summary = summarise(SettingsPage::General, device(rows.clone()));
 
         assert_eq!(summary.rows, rows);
         assert_eq!(summary.name, "General");
@@ -260,28 +265,17 @@ mod tests {
     fn a_this_device_page_needs_no_ledger() {
         locale();
         for page in ScopeGroup::ThisDevice.pages() {
-            let summary = summarise(page, sources(Vec::new(), None));
+            let summary = summarise(page, device(Vec::new()));
             assert!(summary.open_enabled, "{page:?} opens with no Ledger");
             assert_eq!(summary.note, None);
         }
     }
 
     #[test]
-    fn a_this_ledger_page_ignores_device_rows() {
-        locale();
-        let ledger = FixedLedgerSummaries::sample();
-        let rows = vec![SummaryRow::new("Toasts".to_string(), "On")];
-
-        let summary = summarise(SettingsPage::Institutions, sources(rows, Some(&ledger)));
-
-        assert_eq!(pairs(&summary), [("Institutions", "7")]);
-    }
-
-    #[test]
     fn list_pages_quote_a_count_and_a_headline_fact() {
         locale();
         let ledger = FixedLedgerSummaries::sample();
-        let of = |page| summarise(page, sources(Vec::new(), Some(&ledger)));
+        let of = |page| summarise(page, of_ledger(Some(&ledger)));
         assert_eq!(
             pairs(&of(SettingsPage::Accounts)),
             [("Accounts", "7"), ("Net worth", "83,995.87 aud")]
@@ -324,7 +318,7 @@ mod tests {
         if let Some(worth) = counts.0.net_worth.as_mut() {
             worth.amount = lib_core::Money("-120.5".parse().expect("a decimal literal"));
         }
-        let summary = summarise(SettingsPage::Accounts, sources(Vec::new(), Some(&counts)));
+        let summary = summarise(SettingsPage::Accounts, of_ledger(Some(&counts)));
         assert_eq!(summary.rows[1].value, "\u{2212}120.50 aud");
     }
 
@@ -333,7 +327,7 @@ mod tests {
         locale();
         let ledger = FixedLedgerSummaries::sample();
         for page in ScopeGroup::ThisLedger.pages() {
-            let summary = summarise(page, sources(Vec::new(), Some(&ledger)));
+            let summary = summarise(page, of_ledger(Some(&ledger)));
             let stub = matches!(page, SettingsPage::SyncServer | SettingsPage::DataBackup);
             assert_eq!(summary.rows.is_empty(), stub, "{page:?} quotes values");
             assert!(summary.open_enabled);
@@ -345,7 +339,7 @@ mod tests {
     fn with_no_ledger_a_this_ledger_page_has_no_values_says_so_and_cannot_open() {
         locale();
         for page in ScopeGroup::ThisLedger.pages() {
-            let summary = summarise(page, sources(Vec::new(), None));
+            let summary = summarise(page, of_ledger(None));
             assert!(summary.rows.is_empty(), "{page:?} quotes nothing");
             assert_eq!(
                 summary.note.as_deref(),

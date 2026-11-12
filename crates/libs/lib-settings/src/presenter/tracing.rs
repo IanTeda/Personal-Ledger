@@ -217,13 +217,13 @@ impl TracingPresenter {
     }
 
     /// What the Settings index's detail pane quotes of Tracing: the level radio and how many
-    /// entries the log keeps, `log_capacity`.
-    pub fn summary_rows(&self, log_capacity: usize) -> Vec<SummaryRow> {
+    /// entries the log keeps, as the log says.
+    pub fn summary_rows(&self) -> Vec<SummaryRow> {
         vec![
             SummaryRow::new(msg::settings_summary_log_level(), self.level().label()),
             SummaryRow::new(
                 msg::settings_summary_log_entries(),
-                log_capacity.to_string(),
+                self.mirror.capacity.to_string(),
             ),
         ]
     }
@@ -384,13 +384,13 @@ mod tests {
         lib_locale::init_with_layers("en-US", &[msg::LAYER]);
         let log = Rc::new(InMemoryTracingLog::new(8));
 
-        let rows = presenter(&log, TracingLevel::Info).summary_rows(500);
+        let rows = presenter(&log, TracingLevel::Info).summary_rows();
 
         let pairs: Vec<_> = rows
             .iter()
             .map(|row| (row.label.as_str(), row.value.as_str()))
             .collect();
-        assert_eq!(pairs, [("Log level", "info"), ("Entries kept", "500")]);
+        assert_eq!(pairs, [("Log level", "info"), ("Entries kept", "8")]);
     }
 
     fn messages(presenter: &TracingPresenter) -> Vec<String> {

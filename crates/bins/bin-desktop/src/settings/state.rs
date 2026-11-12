@@ -36,7 +36,7 @@ use gpui::{
 use lib_list_cursor::Step;
 use lib_settings::{
     ColourChoice, DataFolderOutcome, DeviceConfiguration, DisplayEvent, DisplayOutput,
-    GeneralEvent, LedgerSummaries, PageSummary, ScopeFacts, SettingsFrameEvent,
+    GeneralEvent, LedgerSummaries, PageRows, PageSummary, ScopeFacts, SettingsFrameEvent,
     SettingsFramePresenter, SettingsFrameSetup, SettingsFrameViewModel, SummarySources,
     TracingLevel, TracingLog,
     keymap::{
@@ -294,28 +294,42 @@ impl SettingsView {
         if !model.index_page || self.window_size != WindowSize::XLarge {
             return None;
         }
-        let device_rows = match model.selected {
-            SettingsPage::General => self.pages.general.read(cx).presenter().summary_rows(),
-            SettingsPage::Display => self.pages.display.read(cx).presenter().summary_rows(),
-            SettingsPage::Tracing => self
-                .pages
-                .tracing
-                .read(cx)
-                .presenter()
-                .summary_rows(lib_tracing::LOG_CAPACITY),
-            SettingsPage::About => self.pages.about.read(cx).presenter().summary_rows(),
-            _ => Vec::new(),
+        // Every page named, so a new one says where its values come from.
+        let rows = match model.selected {
+            SettingsPage::General => {
+                PageRows::Device(self.pages.general.read(cx).presenter().summary_rows())
+            }
+            SettingsPage::Display => {
+                PageRows::Device(self.pages.display.read(cx).presenter().summary_rows())
+            }
+            SettingsPage::Tracing => {
+                PageRows::Device(self.pages.tracing.read(cx).presenter().summary_rows())
+            }
+            SettingsPage::About => {
+                PageRows::Device(self.pages.about.read(cx).presenter().summary_rows())
+            }
+            SettingsPage::Ledger
+            | SettingsPage::Units
+            | SettingsPage::Institutions
+            | SettingsPage::Accounts
+            | SettingsPage::Categories
+            | SettingsPage::Tags
+            | SettingsPage::Payees
+            | SettingsPage::Documents
+            | SettingsPage::Inventory
+            | SettingsPage::SyncServer
+            | SettingsPage::DataBackup => PageRows::Ledger(
+                self.pages
+                    .ledger
+                    .as_ref()
+                    .map(|pages| &pages.summaries as &dyn LedgerSummaries),
+            ),
         };
         let sources = SummarySources {
-            device_rows,
+            rows,
             facts: ScopeFacts {
                 log_capacity: lib_tracing::LOG_CAPACITY,
             },
-            ledger: self
-                .pages
-                .ledger
-                .as_ref()
-                .map(|pages| &pages.summaries as &dyn LedgerSummaries),
         };
         Some(summarise(model.selected, sources))
     }
