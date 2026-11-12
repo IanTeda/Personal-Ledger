@@ -168,6 +168,21 @@ impl<E: Clone> Keymap<E> {
             .map(|bound| bound.chord.as_str())
     }
 
+    /// The chord `command` is bound to, as a status-line hint shows it: empty while unbound, so an
+    /// unbound command's hint keeps its words.
+    pub fn hint_chord(&self, command: &str) -> &str {
+        self.chord(command).unwrap_or_default()
+    }
+
+    /// Several commands' chords as one hint shows them, `j/k`.
+    pub fn hint_chords(&self, commands: &[&str]) -> String {
+        commands
+            .iter()
+            .map(|command| self.hint_chord(command))
+            .collect::<Vec<_>>()
+            .join("/")
+    }
+
     /// The Commands the palette lists, in binding order, each with its live chord.
     pub fn listed(&self) -> impl Iterator<Item = Listed<'_>> {
         self.bindings
@@ -284,11 +299,7 @@ pub const GO_UP: &str = "go_up";
 
 /// The list step's two chords as a hint shows them, `j/k` by default, read from a Dialog `keymap`.
 pub fn list_step_chords<E: Clone>(keymap: &Keymap<E>) -> String {
-    format!(
-        "{}/{}",
-        keymap.chord(LIST_NEXT).unwrap_or_default(),
-        keymap.chord(LIST_PREVIOUS).unwrap_or_default()
-    )
+    keymap.hint_chords(&[LIST_NEXT, LIST_PREVIOUS])
 }
 
 #[cfg(test)]
@@ -324,6 +335,16 @@ mod tests {
         assert_eq!(keymap.event("q"), None);
         assert_eq!(keymap.chord(DELETE), Some("d"));
         assert_eq!(keymap.chord("unbound"), None);
+    }
+
+    #[test]
+    fn a_hint_reads_each_chord_and_leaves_an_unbound_one_empty() {
+        let keymap = Keymap::new(BINDINGS, &KeyBindingConfig::default());
+
+        assert_eq!(keymap.hint_chord(DELETE), "d");
+        assert_eq!(keymap.hint_chord("unbound"), "");
+        assert_eq!(keymap.hint_chords(&[NEW, DELETE]), "n/d");
+        assert_eq!(keymap.hint_chords(&[NEW, "unbound"]), "n/");
     }
 
     #[test]

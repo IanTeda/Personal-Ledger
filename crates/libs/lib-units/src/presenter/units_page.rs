@@ -835,7 +835,7 @@ impl UnitsPagePresenter {
 
     /// The legend for `row`'s table, with Set price while `row` offers it.
     fn hints(&self, row: Option<Row<'_>>) -> Vec<Hint> {
-        let chord = |command| self.keymap.chord(command).unwrap_or_default().to_string();
+        let chord = |command| self.keymap.hint_chord(command).to_string();
         let hint = |chord: String, action: String| Hint { chord, action };
         let moves = format!("{}/{}", chord(MOVE_DOWN), chord(MOVE_UP));
         let on_source = matches!(row, Some(Row::Source(..)));

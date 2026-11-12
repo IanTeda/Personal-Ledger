@@ -263,7 +263,7 @@ impl Presenter for InventoryPagePresenter {
                 .iter()
                 .filter_map(|row| self.line(&inventory, *row))
                 .collect(),
-            empty: msg::inventory_empty(self.chord(NEW)),
+            empty: msg::inventory_empty(self.keymap.hint_chord(NEW)),
             note: msg::inventory_note(),
             selected,
             menu: self.menu.map(|row| MenuView {
@@ -526,22 +526,24 @@ impl InventoryPagePresenter {
         self.open(dialog, router);
     }
 
-    fn chord(&self, command: &str) -> &str {
-        self.keymap.chord(command).unwrap_or_default()
-    }
-
     /// The legend for the selected row.
     fn hints(&self, selected: Option<InventoryRow>) -> Vec<Hint> {
         let hint = |chord: &str, action: String| Hint {
             chord: chord.to_string(),
             action,
         };
-        let pair = |a: &str, b: &str| format!("{}/{}", self.chord(a), self.chord(b));
+        let pair = |a: &str, b: &str| self.keymap.hint_chords(&[a, b]);
         let motion = hint(&pair(MOVE_DOWN, MOVE_UP), msg::inventory_hint_move());
-        let edit = hint(self.chord(EDIT), msg::inventory_hint_edit());
-        let remove = hint(self.chord(REMOVE), msg::inventory_hint_remove());
-        let new_location = hint(self.chord(NEW), msg::inventory_hint_new_location());
-        let new_area = hint(self.chord(ADD_AREA), msg::inventory_hint_new_area());
+        let edit = hint(self.keymap.hint_chord(EDIT), msg::inventory_hint_edit());
+        let remove = hint(self.keymap.hint_chord(REMOVE), msg::inventory_hint_remove());
+        let new_location = hint(
+            self.keymap.hint_chord(NEW),
+            msg::inventory_hint_new_location(),
+        );
+        let new_area = hint(
+            self.keymap.hint_chord(ADD_AREA),
+            msg::inventory_hint_new_area(),
+        );
         match selected {
             Some(InventoryRow::Location(_)) => vec![
                 motion,
@@ -553,7 +555,10 @@ impl InventoryPagePresenter {
             ],
             Some(InventoryRow::Area(_)) => vec![
                 motion,
-                hint(self.chord(COLLAPSE), msg::inventory_hint_location()),
+                hint(
+                    self.keymap.hint_chord(COLLAPSE),
+                    msg::inventory_hint_location(),
+                ),
                 hint(
                     &pair(MOVE_AREA_DOWN, MOVE_AREA_UP),
                     msg::inventory_hint_reorder(),

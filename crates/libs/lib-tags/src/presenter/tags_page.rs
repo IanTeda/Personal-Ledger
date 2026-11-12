@@ -200,7 +200,9 @@ impl Presenter for TagsPagePresenter {
             add_button: msg::tags_add_button("+"),
             column_tag: msg::tags_column_tag(),
             column_actions: lib_locale::msg::column_actions(),
-            empty: rows.is_empty().then(|| msg::tags_empty(self.chord(NEW))),
+            empty: rows
+                .is_empty()
+                .then(|| msg::tags_empty(self.keymap.hint_chord(NEW))),
             rows,
             footnote: msg::tags_footnote(),
             inactive: msg::tags_inactive(),
@@ -265,25 +267,33 @@ impl TagsPagePresenter {
         }
     }
 
-    fn chord(&self, command: &str) -> &str {
-        self.keymap.chord(command).unwrap_or_default()
-    }
-
     fn hints(&self) -> Vec<Hint> {
         let hint = |chord: String, action: String| Hint { chord, action };
         vec![
             hint(
-                format!("{}/{}", self.chord(MOVE_DOWN), self.chord(MOVE_UP)),
+                self.keymap.hint_chords(&[MOVE_DOWN, MOVE_UP]),
                 msg::tags_hint_row(),
             ),
             hint(
-                self.chord(SELECT).to_string(),
+                self.keymap.hint_chord(SELECT).to_string(),
                 msg::tags_hint_open_transactions(),
             ),
-            hint(self.chord(EDIT).to_string(), msg::tags_hint_edit()),
-            hint(self.chord(REMOVE).to_string(), msg::tags_hint_remove()),
-            hint(self.chord(MERGE).to_string(), msg::tags_hint_merge()),
-            hint(self.chord(NEW).to_string(), msg::tags_hint_new()),
+            hint(
+                self.keymap.hint_chord(EDIT).to_string(),
+                msg::tags_hint_edit(),
+            ),
+            hint(
+                self.keymap.hint_chord(REMOVE).to_string(),
+                msg::tags_hint_remove(),
+            ),
+            hint(
+                self.keymap.hint_chord(MERGE).to_string(),
+                msg::tags_hint_merge(),
+            ),
+            hint(
+                self.keymap.hint_chord(NEW).to_string(),
+                msg::tags_hint_new(),
+            ),
         ]
     }
 }

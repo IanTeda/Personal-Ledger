@@ -7,13 +7,14 @@
 //! the root Router as [`ViewEvent`]s; a colour change is applied once the current update ends; a
 //! Notice goes onto the bin's queue (`crate::notices`), which the input's `send` drains.
 
-use gpui::{Context, EventEmitter};
+use gpui::{Context, EventEmitter, ScrollHandle};
 use lib_settings::{
     ClearLogsPresenter, ColourChoice, DisplayOutput, LogListChange, LogScroll, SettingsPage,
     SettingsRouter,
 };
 use lib_toast::{Notice, Notify};
 
+use super::pages::SettingsPages;
 use super::state::SettingsView;
 use super::tracing::{ListEffects, LogListEffect, TracingPage};
 use crate::view::event::{ViewEvent, ViewMode};
@@ -23,11 +24,25 @@ use crate::view::event::{ViewEvent, ViewMode};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PageChanged(pub SettingsPage);
 
+/// The frame's Router, lent the View's pages and scrolls beside its context, so what the frame
+/// reports of the keyboard and the selected page is applied as it is reported.
 pub(super) struct FrameRouter<'a, 'b> {
     pub cx: &'a mut Context<'b, SettingsView>,
-    /// Whether the frame refused what it was asked (a This Ledger page with no Ledger open), so
-    /// the View leaves the page on show as it was.
-    pub refused: bool,
+    pub pages: &'a SettingsPages,
+    /// The page body's scroll.
+    pub scroll_handle: &'a ScrollHandle,
+    /// The index page's scroll.
+    pub index_scroll: &'a ScrollHandle,
+}
+
+impl FrameRouter<'_, '_> {
+    /// Tells `page` whether it has the keyboard. A This Ledger page with no Ledger open isn't
+    /// built, so has nothing to tell.
+    fn set_focused(&mut self, page: SettingsPage, focused: bool) {
+        if let Some(page) = self.pages.get(page) {
+            page.set_focused(focused, self.cx);
+        }
+    }
 }
 
 impl SettingsRouter for FrameRouter<'_, '_> {
@@ -43,13 +58,28 @@ impl SettingsRouter for FrameRouter<'_, '_> {
     fn picker_closed(&mut self) {
         self.cx.emit(ViewEvent::ExitMode);
     }
+
+    fn page_selected(&mut self, _page: SettingsPage) {
+        self.scroll_handle.set_offset(gpui::Point::default());
+    }
+
+    fn keyboard_left(&mut self, page: SettingsPage) {
+        self.set_focused(page, false);
+    }
+
+    fn keyboard_entered(&mut self, page: SettingsPage) {
+        self.set_focused(page, true);
+    }
+
+    fn index_revealed(&mut self, page: SettingsPage) {
+        self.index_scroll
+            .scroll_to_item(super::index_page_child(page));
+    }
 }
 
 impl Notify for FrameRouter<'_, '_> {
-    /// Queues `notice`, for the input's `send` to drain into the Shell. The frame's only Notice is
-    /// a refusal.
+    /// Queues `notice`, for the input's `send` to drain into the Shell.
     fn notify(&mut self, notice: Notice) {
-        self.refused = true;
         crate::notices::Queue.notify(notice);
     }
 }

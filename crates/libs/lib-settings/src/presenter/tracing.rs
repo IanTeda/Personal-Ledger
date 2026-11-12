@@ -18,7 +18,6 @@ use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Choice, Hint};
 
 use super::clear_logs::{ClearLogsOutcome, ClearLogsPresenter};
-use super::device::{chord, chords};
 use crate::keymap::{CLEAR_LOGS, NEXT_CHOICE, PREVIOUS_CHOICE};
 use crate::log::{LogLine, TracingLevel};
 use crate::msg;
@@ -291,15 +290,15 @@ impl Presenter for TracingPresenter {
             empty,
             hints: vec![
                 Hint::new(
-                    chords(&self.keymap, &[PREVIOUS_CHOICE, NEXT_CHOICE]),
+                    self.keymap.hint_chords(&[PREVIOUS_CHOICE, NEXT_CHOICE]),
                     msg::settings_tracing_hint_level(),
                 ),
                 Hint::new(
-                    chords(&self.keymap, &[MOVE_DOWN, MOVE_UP]),
+                    self.keymap.hint_chords(&[MOVE_DOWN, MOVE_UP]),
                     msg::settings_tracing_hint_scroll(),
                 ),
                 Hint::new(
-                    chord(&self.keymap, CLEAR_LOGS),
+                    self.keymap.hint_chord(CLEAR_LOGS),
                     msg::settings_tracing_hint_clear_logs(),
                 ),
                 Hint::new(self.back_chord.clone(), msg::settings_hint_index()),

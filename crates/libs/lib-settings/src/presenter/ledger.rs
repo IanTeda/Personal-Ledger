@@ -12,7 +12,6 @@ use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP};
 use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::Hint;
 
-use super::device::chords;
 use crate::msg;
 use crate::protocols::{BaseUnitAnswer, LedgerPreferences, LedgerRouter, LedgerUnits};
 
@@ -177,7 +176,7 @@ impl Presenter for LedgerPresenter {
             note: msg::settings_ledger_note(),
             hints: vec![
                 Hint::new(
-                    chords(&self.keymap, &[MOVE_DOWN, MOVE_UP]),
+                    self.keymap.hint_chords(&[MOVE_DOWN, MOVE_UP]),
                     msg::settings_hint_change(),
                 ),
                 Hint::new(self.back_chord.clone(), msg::settings_hint_index()),

@@ -233,7 +233,7 @@ impl Presenter for AccountsPagePresenter {
             groups,
             empty: accounts
                 .is_empty()
-                .then(|| msg::accounts_empty(self.chord(NEW))),
+                .then(|| msg::accounts_empty(self.keymap.hint_chord(NEW))),
             row_edit: msg::accounts_row_edit(),
             row_delete: msg::accounts_row_delete(),
             selected,
@@ -356,24 +356,29 @@ impl AccountsPagePresenter {
         }
     }
 
-    fn chord(&self, command: &str) -> &str {
-        self.keymap.chord(command).unwrap_or_default()
-    }
-
     fn hints(&self) -> Vec<Hint> {
         let hint = |chord: String, action: String| Hint { chord, action };
         vec![
             hint(
-                format!("{}/{}", self.chord(MOVE_DOWN), self.chord(MOVE_UP)),
+                self.keymap.hint_chords(&[MOVE_DOWN, MOVE_UP]),
                 msg::accounts_hint_row(),
             ),
             hint(
-                self.chord(SELECT).to_string(),
+                self.keymap.hint_chord(SELECT).to_string(),
                 msg::accounts_hint_open_ledger(),
             ),
-            hint(self.chord(EDIT).to_string(), msg::accounts_hint_edit()),
-            hint(self.chord(DELETE).to_string(), msg::accounts_hint_delete()),
-            hint(self.chord(NEW).to_string(), msg::accounts_hint_new()),
+            hint(
+                self.keymap.hint_chord(EDIT).to_string(),
+                msg::accounts_hint_edit(),
+            ),
+            hint(
+                self.keymap.hint_chord(DELETE).to_string(),
+                msg::accounts_hint_delete(),
+            ),
+            hint(
+                self.keymap.hint_chord(NEW).to_string(),
+                msg::accounts_hint_new(),
+            ),
         ]
     }
 }

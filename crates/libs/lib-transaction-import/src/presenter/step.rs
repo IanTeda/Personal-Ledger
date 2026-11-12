@@ -122,7 +122,7 @@ impl Presenter for ImportStepPresenter {
         ImportStepViewModel {
             step,
             hints,
-            continue_chord: self.keymap.chord(CONTINUE).unwrap_or_default().to_owned(),
+            continue_chord: self.keymap.hint_chord(CONTINUE).to_owned(),
         }
     }
 

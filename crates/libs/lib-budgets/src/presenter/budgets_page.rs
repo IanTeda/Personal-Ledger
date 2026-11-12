@@ -342,7 +342,7 @@ impl BudgetsPagePresenter {
     /// The tab shown's legend, its chords read from the keymap so an override shows. The Plan
     /// cell editor's keys are its own, not the keymap's.
     fn hints(&self) -> Vec<Hint> {
-        let chord = |command: &str| self.keys.all.chord(command).unwrap_or_default().to_string();
+        let chord = |command: &str| self.keys.all.hint_chord(command).to_string();
         let pair = |a: &str, b: &str| format!("{}/{}", chord(a), chord(b));
         let hint = |chord: String, action: String| Hint { chord, action };
         let rows = hint(pair(MOVE_DOWN, MOVE_UP), msg::budgets_hint_row());

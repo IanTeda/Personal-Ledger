@@ -28,7 +28,7 @@ use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP, SELECT};
 use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Choice, Hint};
 
-use super::device::{chord, chords, shadowed_note};
+use super::device::shadowed_note;
 use super::form::{
     DeviceForm, FieldDecl, FieldValue, FieldViews, FormAnswer, FormInput, Presentation,
 };
@@ -414,13 +414,11 @@ impl Presenter for DisplayPresenter {
         let chosen = self.chosen_theme();
         let grid_hints = vec![
             Hint::new(
-                chords(
-                    &self.keymap,
-                    &[PREVIOUS_CHOICE, MOVE_DOWN, MOVE_UP, NEXT_CHOICE],
-                ),
+                self.keymap
+                    .hint_chords(&[PREVIOUS_CHOICE, MOVE_DOWN, MOVE_UP, NEXT_CHOICE]),
                 msg::settings_hint_colour(),
             ),
-            Hint::new(chord(&self.keymap, SELECT), msg::settings_hint_choose()),
+            Hint::new(self.keymap.hint_chord(SELECT), msg::settings_hint_choose()),
             Hint::new(self.back_chord.clone(), msg::settings_hint_field()),
         ];
         let index = Hint::new(self.back_chord.clone(), msg::settings_hint_index());

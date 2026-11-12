@@ -11,14 +11,12 @@ use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP};
 pub(crate) fn settings_plain_page_hints(keymap: &Keymap<SettingsFrameEvent>) -> Vec<Hint> {
     vec![
         Hint::new(
-            format!("{}/{}", chord(keymap, MOVE_DOWN), chord(keymap, MOVE_UP)),
+            keymap.hint_chords(&[MOVE_DOWN, MOVE_UP]),
             crate::msg::desktop_hint_scroll(),
         ),
-        Hint::new(chord(keymap, FOCUS_INDEX), crate::msg::desktop_hint_index()),
+        Hint::new(
+            keymap.hint_chord(FOCUS_INDEX),
+            crate::msg::desktop_hint_index(),
+        ),
     ]
-}
-
-/// The chord `command` is bound to, for a hint.
-fn chord(keymap: &Keymap<SettingsFrameEvent>, command: &str) -> String {
-    keymap.chord(command).unwrap_or_default().to_string()
 }

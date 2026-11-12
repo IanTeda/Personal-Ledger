@@ -210,7 +210,9 @@ impl Presenter for PayeesPagePresenter {
                 match_rules: msg::payees_column_match_rules(),
                 actions: lib_locale::msg::column_actions(),
             },
-            empty: rows.is_empty().then(|| msg::payees_empty(self.chord(NEW))),
+            empty: rows
+                .is_empty()
+                .then(|| msg::payees_empty(self.keymap.hint_chord(NEW))),
             rows,
             footnote: msg::payees_footnote(),
             no_default_category: msg::payees_no_default_category(),
@@ -264,24 +266,29 @@ impl PayeesPagePresenter {
         }
     }
 
-    fn chord(&self, command: &str) -> &str {
-        self.keymap.chord(command).unwrap_or_default()
-    }
-
     fn hints(&self) -> Vec<Hint> {
         let hint = |chord: String, action: String| Hint { chord, action };
         vec![
             hint(
-                format!("{}/{}", self.chord(MOVE_DOWN), self.chord(MOVE_UP)),
+                self.keymap.hint_chords(&[MOVE_DOWN, MOVE_UP]),
                 msg::payees_hint_row(),
             ),
             hint(
-                self.chord(SELECT).to_string(),
+                self.keymap.hint_chord(SELECT).to_string(),
                 msg::payees_hint_open_transactions(),
             ),
-            hint(self.chord(EDIT).to_string(), msg::payees_hint_edit()),
-            hint(self.chord(DELETE).to_string(), msg::payees_hint_delete()),
-            hint(self.chord(NEW).to_string(), msg::payees_hint_new()),
+            hint(
+                self.keymap.hint_chord(EDIT).to_string(),
+                msg::payees_hint_edit(),
+            ),
+            hint(
+                self.keymap.hint_chord(DELETE).to_string(),
+                msg::payees_hint_delete(),
+            ),
+            hint(
+                self.keymap.hint_chord(NEW).to_string(),
+                msg::payees_hint_new(),
+            ),
         ]
     }
 }

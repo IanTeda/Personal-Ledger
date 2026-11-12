@@ -916,13 +916,9 @@ impl DocumentsPagePresenter {
         &self.skipped
     }
 
-    fn chord(&self, command: &str) -> String {
-        self.keymap.chord(command).unwrap_or_default().to_string()
-    }
-
     fn rows_hint(&self) -> Hint {
         Hint::new(
-            format!("{}/{}", self.chord(MOVE_DOWN), self.chord(MOVE_UP)),
+            self.keymap.hint_chords(&[MOVE_DOWN, MOVE_UP]),
             msg::documents_hint_row(),
         )
     }
@@ -931,11 +927,14 @@ impl DocumentsPagePresenter {
     fn inbox_hints(&self) -> Vec<Hint> {
         vec![
             self.rows_hint(),
-            Hint::new(self.chord(ACCEPT), msg::documents_hint_accept()),
-            Hint::new(self.chord(EDIT), msg::documents_hint_edit()),
-            Hint::new(self.chord(SKIP), msg::documents_hint_skip()),
-            Hint::new(self.chord(LINK), msg::documents_hint_link_elsewhere()),
-            Hint::new(self.chord(FOLLOW), msg::documents_hint_follow()),
+            Hint::new(self.keymap.hint_chord(ACCEPT), msg::documents_hint_accept()),
+            Hint::new(self.keymap.hint_chord(EDIT), msg::documents_hint_edit()),
+            Hint::new(self.keymap.hint_chord(SKIP), msg::documents_hint_skip()),
+            Hint::new(
+                self.keymap.hint_chord(LINK),
+                msg::documents_hint_link_elsewhere(),
+            ),
+            Hint::new(self.keymap.hint_chord(FOLLOW), msg::documents_hint_follow()),
         ]
     }
 
@@ -949,27 +948,36 @@ impl DocumentsPagePresenter {
         match (focus, self.mode) {
             (DocumentsFocus::Index, _) => vec![
                 Hint::new(
-                    format!("{}/{}", self.chord(MOVE_DOWN), self.chord(MOVE_UP)),
+                    self.keymap.hint_chords(&[MOVE_DOWN, MOVE_UP]),
                     msg::documents_hint_scope(),
                 ),
                 Hint::new(
-                    format!("{}/{}", self.chord(LINK), self.chord(SELECT)),
+                    self.keymap.hint_chords(&[LINK, SELECT]),
                     msg::documents_hint_list(),
                 ),
-                Hint::new(self.chord(TOGGLE_MODE), msg::documents_hint_inbox()),
+                Hint::new(
+                    self.keymap.hint_chord(TOGGLE_MODE),
+                    msg::documents_hint_inbox(),
+                ),
             ],
             (DocumentsFocus::List, DocumentsMode::Library) => vec![
                 self.rows_hint(),
-                Hint::new(self.chord(SELECT), msg::documents_hint_open()),
+                Hint::new(self.keymap.hint_chord(SELECT), msg::documents_hint_open()),
                 // The Shell's key, which sends the page's `search` by name.
-                Hint::new(self.chord(SEARCH), lib_locale::msg::hint_search()),
-                Hint::new(self.chord(LINK), msg::documents_hint_link()),
-                Hint::new(self.chord(FOLLOW), msg::documents_hint_follow()),
                 Hint::new(
-                    self.chord(SHOW_IN_FOLDER),
+                    self.keymap.hint_chord(SEARCH),
+                    lib_locale::msg::hint_search(),
+                ),
+                Hint::new(self.keymap.hint_chord(LINK), msg::documents_hint_link()),
+                Hint::new(self.keymap.hint_chord(FOLLOW), msg::documents_hint_follow()),
+                Hint::new(
+                    self.keymap.hint_chord(SHOW_IN_FOLDER),
                     msg::documents_hint_show_in_folder(),
                 ),
-                Hint::new(self.chord(TOGGLE_MODE), msg::documents_hint_inbox()),
+                Hint::new(
+                    self.keymap.hint_chord(TOGGLE_MODE),
+                    msg::documents_hint_inbox(),
+                ),
             ],
             (DocumentsFocus::List, DocumentsMode::Inbox) => self.inbox_hints(),
         }
@@ -982,20 +990,26 @@ impl DocumentsPagePresenter {
         let list = self.legend(DocumentsFocus::List);
         let more = match self.mode {
             DocumentsMode::Library => vec![
-                Hint::new(self.chord(SORT), msg::documents_hint_sort()),
-                Hint::new(self.chord(EDIT), msg::documents_hint_edit()),
-                Hint::new(self.chord(ADD), msg::documents_hint_add()),
+                Hint::new(self.keymap.hint_chord(SORT), msg::documents_hint_sort()),
+                Hint::new(self.keymap.hint_chord(EDIT), msg::documents_hint_edit()),
+                Hint::new(self.keymap.hint_chord(ADD), msg::documents_hint_add()),
             ],
             DocumentsMode::Inbox => vec![
-                Hint::new(self.chord(UNDO), msg::documents_hint_undo()),
-                Hint::new(self.chord(ACCEPT_ALL), msg::documents_hint_accept_all()),
+                Hint::new(self.keymap.hint_chord(UNDO), msg::documents_hint_undo()),
+                Hint::new(
+                    self.keymap.hint_chord(ACCEPT_ALL),
+                    msg::documents_hint_accept_all(),
+                ),
             ],
         };
         index
             .into_iter()
             .chain(list)
             .chain(more)
-            .chain([Hint::new(self.chord(IMPORT), msg::documents_hint_import())])
+            .chain([Hint::new(
+                self.keymap.hint_chord(IMPORT),
+                msg::documents_hint_import(),
+            )])
             .collect()
     }
 }

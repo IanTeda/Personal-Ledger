@@ -183,7 +183,7 @@ pub fn legend<E: Clone>(hints: &[DialogHint], keymap: &Keymap<E>) -> Vec<Hint> {
             let chords: Vec<&str> = hint
                 .commands
                 .iter()
-                .map(|command| keymap.chord(command).unwrap_or_default())
+                .map(|command| keymap.hint_chord(command))
                 .collect();
             Hint {
                 chord: chords.join("/"),

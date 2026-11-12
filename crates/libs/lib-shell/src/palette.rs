@@ -302,7 +302,7 @@ impl<E: Clone> PalettePresenter<E> {
             }));
         }
 
-        let chord = |command| dialog_keymap.chord(command).unwrap_or_default().to_string();
+        let chord = |command| dialog_keymap.hint_chord(command).to_string();
         Some(PaletteViewModel {
             input: session.input.clone(),
             match_count: matches.len(),
@@ -314,7 +314,7 @@ impl<E: Clone> PalettePresenter<E> {
                 step_next: chord(SELECT_NEXT),
                 complete: chord(NEXT_FIELD),
                 run: chord(SELECT),
-                history: keymap.chord(HISTORY_BACK).unwrap_or_default().to_string(),
+                history: keymap.hint_chord(HISTORY_BACK).to_string(),
                 close: chord(BACK),
             },
         })

@@ -78,7 +78,7 @@ impl DialogKeys {
             chords: Self::COMMANDS
                 .iter()
                 .map(|command| {
-                    let chord = keymap.chord(command).unwrap_or_default();
+                    let chord = keymap.hint_chord(command);
                     (*command, chord.to_string())
                 })
                 .collect(),

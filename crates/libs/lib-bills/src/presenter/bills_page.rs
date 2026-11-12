@@ -315,7 +315,7 @@ impl PagePresenter for BillsPagePresenter {
 impl BillsPagePresenter {
     /// The tab shown's legend, its chords read from the keymap so an override shows.
     fn hints(&self) -> Vec<Hint> {
-        let chord = |command: &str| self.keymap.chord(command).unwrap_or_default().to_string();
+        let chord = |command: &str| self.keymap.hint_chord(command).to_string();
         let pair = |a: &str, b: &str, joint: &str| format!("{}{joint}{}", chord(a), chord(b));
         let hint = |chord: String, action: String| Hint { chord, action };
         let rows = hint(pair(MOVE_DOWN, MOVE_UP, "/"), msg::bills_hint_row());

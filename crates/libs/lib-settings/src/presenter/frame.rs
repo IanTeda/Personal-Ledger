@@ -228,6 +228,28 @@ impl Picker {
     }
 }
 
+/// The selected page and where the keyboard is, as an input finds them, for the frame to report
+/// what the input changed.
+#[derive(Debug, Clone, Copy)]
+struct Held {
+    selected: SettingsPage,
+    focus: SettingsFocus,
+}
+
+impl Held {
+    fn of(frame: &SettingsFramePresenter) -> Self {
+        Self {
+            selected: frame.selected,
+            focus: frame.focus,
+        }
+    }
+
+    /// The page with the keyboard in it, `None` while the keyboard is on the index, docked or not.
+    fn keyboard(self) -> Option<SettingsPage> {
+        (self.focus == SettingsFocus::Page).then_some(self.selected)
+    }
+}
+
 /// The Settings frame's Presenter.
 #[derive(Debug, Clone)]
 pub struct SettingsFramePresenter {
@@ -311,8 +333,11 @@ impl SettingsFramePresenter {
     pub fn hints(&self) -> Vec<Hint> {
         if self.picker.is_some() {
             return vec![
-                Hint::new(self.pair(MOVE_DOWN, MOVE_UP), msg::settings_hint_page()),
-                Hint::new(self.chord(SELECT), msg::settings_hint_open()),
+                Hint::new(
+                    self.keymap.hint_chords(&[MOVE_DOWN, MOVE_UP]),
+                    msg::settings_hint_page(),
+                ),
+                Hint::new(self.keymap.hint_chord(SELECT), msg::settings_hint_open()),
                 Hint::new(self.back_chord.clone(), msg::settings_hint_close()),
             ];
         }
@@ -320,10 +345,10 @@ impl SettingsFramePresenter {
             SettingsFocus::Index | SettingsFocus::Dock => self.index_hints(),
             SettingsFocus::Page if self.drill_down => vec![
                 Hint::new(
-                    self.pair(PREVIOUS_PAGE, NEXT_PAGE),
+                    self.keymap.hint_chords(&[PREVIOUS_PAGE, NEXT_PAGE]),
                     msg::settings_hint_pages(),
                 ),
-                Hint::new(self.chord(PICKER), msg::settings_hint_picker()),
+                Hint::new(self.keymap.hint_chord(PICKER), msg::settings_hint_picker()),
                 Hint::new(self.back_chord.clone(), msg::settings_hint_settings()),
             ],
             SettingsFocus::Page => Vec::new(),
@@ -345,95 +370,19 @@ impl Presenter for SettingsFramePresenter {
     type ViewModel = SettingsFrameViewModel;
     type Router<'r> = dyn SettingsRouter + 'r;
 
+    /// Handles `event`, then reports what it did to the selected page, the keyboard and the index,
+    /// so the Client applies that to its pages and scrolls rather than working it out.
     fn handle(&mut self, event: SettingsFrameEvent, router: &mut Self::Router<'_>) {
         if !self.takes(&event) {
             return;
         }
-        if self.picker.is_some() && event.is_key() {
-            self.picker_key(event, router);
-            return;
-        }
-        match event {
-            SettingsFrameEvent::Move(step) => {
-                let next =
-                    lib_list_cursor::step(self.selected.index(), SettingsPage::ALL.len(), step);
-                let page = SettingsPage::ALL[next];
-                if self.focus == SettingsFocus::Dock {
-                    self.show_docked(page, router);
-                } else if self.allowed(page, router) {
-                    self.selected = page;
-                }
-            }
-            SettingsFrameEvent::Select | SettingsFrameEvent::EnterPage => {
-                if self.focus == SettingsFocus::Dock {
-                    self.focus = SettingsFocus::Page;
-                } else {
-                    self.open_page(self.selected, router);
-                }
-            }
-            SettingsFrameEvent::PageClicked => self.focus = SettingsFocus::Page,
-            SettingsFrameEvent::FocusIndex
-            | SettingsFrameEvent::Entered
-            | SettingsFrameEvent::Back => {
-                // Settings entered afresh (a rail click while the picker is open) shows the
-                // index, so a picker left open would swallow its keys.
-                self.close_picker(router);
-                self.focus = SettingsFocus::Index;
-            }
-            SettingsFrameEvent::StepPage(step) => {
-                let next =
-                    lib_list_cursor::step(self.selected.index(), SettingsPage::ALL.len(), step);
-                self.open_page(SettingsPage::ALL[next], router);
-            }
-            SettingsFrameEvent::OpenPicker => self.open_picker(router),
-            SettingsFrameEvent::ClickIndex(page) if self.focus != SettingsFocus::Index => {
-                self.show_docked(page, router);
-            }
-            SettingsFrameEvent::ClickIndex(page)
-            | SettingsFrameEvent::ClickIndexPage(page)
-            | SettingsFrameEvent::OpenPage(page) => {
-                self.open_page(page, router);
-            }
-            SettingsFrameEvent::ClickCrumb => {
-                self.close_picker(router);
-                self.focus = SettingsFocus::Index;
-            }
-            SettingsFrameEvent::ClickCaret => {
-                if self.picker.is_some() {
-                    self.close_picker(router);
-                } else {
-                    self.open_picker(router);
-                }
-            }
-            SettingsFrameEvent::ClickPicker(page) => self.pick(page, router),
-            SettingsFrameEvent::Restore(page) => {
-                self.selected = if self.can_show(page) {
-                    page
-                } else {
-                    SettingsPage::General
-                };
-                self.focus = SettingsFocus::Page;
-            }
-            SettingsFrameEvent::LedgerOpened => self.ledger_open = true,
-            SettingsFrameEvent::LedgerClosed => {
-                self.ledger_open = false;
-                if !self.can_show(self.selected) {
-                    self.close_picker(router);
-                    self.selected = SettingsPage::General;
-                    self.focus = SettingsFocus::Index;
-                }
-            }
-            SettingsFrameEvent::DrillDown(drill_down) => {
-                self.drill_down = drill_down;
-                if !drill_down {
-                    self.close_picker(router);
-                }
-                // Medium docks no index, so the page on show takes the keyboard.
-                if drill_down && self.focus == SettingsFocus::Dock {
-                    self.focus = SettingsFocus::Page;
-                }
-            }
-        }
+        let before = Held::of(self);
+        let opened = if self.picker.is_some() && event.is_key() {
+            self.picker_key(event, router)
+        } else {
+            self.input(event, router)
+        };
+        self.report(before, opened, event, router);
     }
 
     fn view_model(&self) -> SettingsFrameViewModel {
@@ -502,6 +451,94 @@ impl Presenter for SettingsFramePresenter {
 }
 
 impl SettingsFramePresenter {
+    /// `event` with the picker closed. Whether it opened a page, the page on show included, which
+    /// takes the keyboard afresh.
+    fn input(&mut self, event: SettingsFrameEvent, router: &mut dyn SettingsRouter) -> bool {
+        let mut opened = false;
+        match event {
+            SettingsFrameEvent::Move(step) => {
+                let next =
+                    lib_list_cursor::step(self.selected.index(), SettingsPage::ALL.len(), step);
+                let page = SettingsPage::ALL[next];
+                if self.focus == SettingsFocus::Dock {
+                    self.show_docked(page, router);
+                } else if self.allowed(page, router) {
+                    self.selected = page;
+                }
+            }
+            SettingsFrameEvent::Select | SettingsFrameEvent::EnterPage => {
+                if self.focus == SettingsFocus::Dock {
+                    self.focus = SettingsFocus::Page;
+                } else {
+                    opened = self.open_page(self.selected, router);
+                }
+            }
+            SettingsFrameEvent::PageClicked => self.focus = SettingsFocus::Page,
+            SettingsFrameEvent::FocusIndex
+            | SettingsFrameEvent::Entered
+            | SettingsFrameEvent::Back => {
+                // Settings entered afresh (a rail click while the picker is open) shows the
+                // index, so a picker left open would swallow its keys.
+                self.close_picker(router);
+                self.focus = SettingsFocus::Index;
+            }
+            SettingsFrameEvent::StepPage(step) => {
+                let next =
+                    lib_list_cursor::step(self.selected.index(), SettingsPage::ALL.len(), step);
+                opened = self.open_page(SettingsPage::ALL[next], router);
+            }
+            SettingsFrameEvent::OpenPicker => self.open_picker(router),
+            SettingsFrameEvent::ClickIndex(page) if self.focus != SettingsFocus::Index => {
+                self.show_docked(page, router);
+            }
+            SettingsFrameEvent::ClickIndex(page)
+            | SettingsFrameEvent::ClickIndexPage(page)
+            | SettingsFrameEvent::OpenPage(page) => {
+                opened = self.open_page(page, router);
+            }
+            SettingsFrameEvent::ClickCrumb => {
+                self.close_picker(router);
+                self.focus = SettingsFocus::Index;
+            }
+            SettingsFrameEvent::ClickCaret => {
+                if self.picker.is_some() {
+                    self.close_picker(router);
+                } else {
+                    self.open_picker(router);
+                }
+            }
+            SettingsFrameEvent::ClickPicker(page) => opened = self.pick(page, router),
+            SettingsFrameEvent::Restore(page) => {
+                self.selected = if self.can_show(page) {
+                    page
+                } else {
+                    SettingsPage::General
+                };
+                self.focus = SettingsFocus::Page;
+            }
+            SettingsFrameEvent::LedgerOpened => self.ledger_open = true,
+            SettingsFrameEvent::LedgerClosed => {
+                self.ledger_open = false;
+                if !self.can_show(self.selected) {
+                    self.close_picker(router);
+                    self.selected = SettingsPage::General;
+                    self.focus = SettingsFocus::Index;
+                }
+            }
+            SettingsFrameEvent::DrillDown(drill_down) => {
+                self.drill_down = drill_down;
+                if !drill_down {
+                    self.close_picker(router);
+                }
+                // Medium docks no index, so the page on show takes the keyboard.
+                if drill_down && self.focus == SettingsFocus::Dock {
+                    self.focus = SettingsFocus::Page;
+                }
+            }
+        }
+        opened
+    }
+
     /// Whether `page` may be chosen. With no Ledger open a This Ledger page is refused on the
     /// status line, and the frame stays as it was.
     fn allowed(&self, page: SettingsPage, router: &mut dyn SettingsRouter) -> bool {
@@ -554,20 +591,21 @@ impl SettingsFramePresenter {
         }
     }
 
-    /// Straight to `page` from the picker. A refused page leaves the picker open.
-    fn pick(&mut self, page: SettingsPage, router: &mut dyn SettingsRouter) {
+    /// Straight to `page` from the picker. A refused page leaves the picker open. Whether `page`
+    /// now shows.
+    fn pick(&mut self, page: SettingsPage, router: &mut dyn SettingsRouter) -> bool {
         if !self.allowed(page, router) {
-            return;
+            return false;
         }
         self.close_picker(router);
-        self.open_page(page, router);
+        self.open_page(page, router)
     }
 
     /// A key while the picker is open: the moves step its highlight through the matches, `enter`
-    /// opens it, `back` closes it, and every other key is swallowed.
-    fn picker_key(&mut self, event: SettingsFrameEvent, router: &mut dyn SettingsRouter) {
+    /// opens it, `back` closes it, and every other key is swallowed. Whether it opened a page.
+    fn picker_key(&mut self, event: SettingsFrameEvent, router: &mut dyn SettingsRouter) -> bool {
         let Some(picker) = self.picker.as_mut() else {
-            return;
+            return false;
         };
         match event {
             SettingsFrameEvent::Move(step) => {
@@ -575,14 +613,48 @@ impl SettingsFramePresenter {
                 if let Some(page) = lib_list_cursor::step_id(&matches, picker.chosen(), step) {
                     picker.chosen = page;
                 }
+                false
             }
             SettingsFrameEvent::Select => {
-                if let Some(page) = picker.chosen() {
-                    self.pick(page, router);
-                }
+                picker.chosen().is_some_and(|page| self.pick(page, router))
             }
-            SettingsFrameEvent::Back => self.close_picker(router),
-            _ => {}
+            SettingsFrameEvent::Back => {
+                self.close_picker(router);
+                false
+            }
+            _ => false,
+        }
+    }
+
+    /// Tells the Client what the input that started at `before` did, once the frame has settled: a
+    /// page newly selected (a restore keeps its scroll, so isn't), the keyboard leaving one page
+    /// and entering another, or the same page when `opened` reopened it, and the index's row
+    /// revealed when the index shows with its cursor newly placed.
+    fn report(
+        &self,
+        before: Held,
+        opened: bool,
+        event: SettingsFrameEvent,
+        router: &mut dyn SettingsRouter,
+    ) {
+        let now = Held::of(self);
+        let reselected = now.selected != before.selected;
+        if reselected && !matches!(event, SettingsFrameEvent::Restore(_)) {
+            router.page_selected(now.selected);
+        }
+        if opened || now.keyboard() != before.keyboard() {
+            if let Some(page) = before.keyboard() {
+                router.keyboard_left(page);
+            }
+            if let Some(page) = now.keyboard() {
+                router.keyboard_entered(page);
+            }
+        }
+        let refocused = now.focus != before.focus;
+        if now.focus == SettingsFocus::Index
+            && (reselected || refocused || event == SettingsFrameEvent::Entered)
+        {
+            router.index_revealed(now.selected);
         }
     }
 
@@ -615,18 +687,15 @@ impl SettingsFramePresenter {
 
     fn index_hints(&self) -> Vec<Hint> {
         vec![
-            Hint::new(self.pair(MOVE_DOWN, MOVE_UP), msg::settings_hint_page()),
-            Hint::new(self.pair(ENTER_PAGE, SELECT), msg::settings_hint_open()),
+            Hint::new(
+                self.keymap.hint_chords(&[MOVE_DOWN, MOVE_UP]),
+                msg::settings_hint_page(),
+            ),
+            Hint::new(
+                self.keymap.hint_chords(&[ENTER_PAGE, SELECT]),
+                msg::settings_hint_open(),
+            ),
         ]
-    }
-
-    fn chord(&self, command: &str) -> String {
-        self.keymap.chord(command).unwrap_or_default().to_string()
-    }
-
-    /// Two commands' chords as one hint shows them, `j/k`.
-    fn pair(&self, first: &str, second: &str) -> String {
-        format!("{}/{}", self.chord(first), self.chord(second))
     }
 }
 
@@ -851,7 +920,7 @@ mod tests {
 
             assert_eq!(frame.focus(), SettingsFocus::Page, "{into:?}");
             assert_eq!(frame.selected(), SettingsPage::Payees);
-            assert!(router.routed.is_empty(), "the page already shows");
+            assert!(router.shell().is_empty(), "the page already shows");
             assert!(
                 !frame.takes(&E::Move(Step::Next)),
                 "{into:?}: the page has its keys"
@@ -875,7 +944,7 @@ mod tests {
                 (vec![], vec![SettingsPage::Payees]),
                 "the cursor stays"
             );
-            assert!(router.routed.is_empty());
+            assert!(router.shell().is_empty());
         }
     }
 
@@ -910,7 +979,7 @@ mod tests {
         let router = send(&mut frame, [E::ClickIndex(SettingsPage::Tags)]);
 
         assert_eq!(frame.focus(), SettingsFocus::Dock);
-        assert!(router.routed.is_empty(), "the page already shows");
+        assert!(router.shell().is_empty(), "the page already shows");
     }
 
     #[test]
@@ -1118,7 +1187,7 @@ mod tests {
                 let model = frame.view_model();
                 assert!(model.index_page, "{leave:?} at drill-down {drill_down}");
                 assert_eq!(model.selected, SettingsPage::Tags, "the cursor stays");
-                assert!(router.routed.is_empty(), "the index is no history entry");
+                assert!(router.shell().is_empty(), "the index is no history entry");
             }
         }
     }
@@ -1134,7 +1203,7 @@ mod tests {
         assert_eq!(frame.focus(), SettingsFocus::Index);
         assert!(frame.view_model().index_page);
         assert_eq!(frame.selected(), SettingsPage::Display, "the cursor stays");
-        assert!(router.routed.is_empty());
+        assert!(router.shell().is_empty());
     }
 
     #[test]
@@ -1145,7 +1214,7 @@ mod tests {
 
         assert_eq!(frame.selected(), SettingsPage::Units);
         assert_eq!(frame.focus(), SettingsFocus::Index);
-        assert!(router.routed.is_empty());
+        assert!(router.shell().is_empty());
     }
 
     #[test]
@@ -1191,7 +1260,7 @@ mod tests {
             );
             assert!(!frame.view_model().index_page);
             assert!(
-                router.routed.is_empty(),
+                router.shell().is_empty(),
                 "the Shell restored it, so nothing goes back"
             );
         }
@@ -1205,7 +1274,7 @@ mod tests {
 
         assert_eq!(frame.selected(), SettingsPage::General);
         assert_eq!(frame.focus(), SettingsFocus::Page);
-        assert!(router.routed.is_empty(), "a restore falls back quietly");
+        assert!(router.shell().is_empty(), "a restore falls back quietly");
     }
 
     #[test]
@@ -1287,7 +1356,7 @@ mod tests {
             "a page on show is in no mode of the frame's"
         );
         let router = send(&mut frame, [E::OpenPicker]);
-        assert_eq!(router.routed, [Routed::PickerOpened]);
+        assert_eq!(router.shell(), [Routed::PickerOpened]);
         assert_eq!(
             frame.mode(),
             Some(PageMode::Filter),
@@ -1317,7 +1386,7 @@ mod tests {
         assert!(!frame.picker_open());
         assert_eq!(frame.mode(), None, "closing the picker leaves its mode");
         assert_eq!(
-            router.routed,
+            router.shell(),
             [
                 Routed::PickerClosed,
                 Routed::PageChanged(SettingsPage::Tracing)
@@ -1354,7 +1423,7 @@ mod tests {
             SettingsFocus::Page,
             "the page keeps the keyboard"
         );
-        assert_eq!(router.routed, [Routed::PickerClosed]);
+        assert_eq!(router.shell(), [Routed::PickerClosed]);
 
         send(&mut frame, [E::ClickCaret]);
         assert!(frame.picker_open());
@@ -1385,7 +1454,7 @@ mod tests {
 
         assert!(!frame.picker_open());
         assert_eq!(frame.focus(), SettingsFocus::Index);
-        assert_eq!(router.routed, [Routed::PickerClosed]);
+        assert_eq!(router.shell(), [Routed::PickerClosed]);
     }
 
     #[test]
@@ -1402,7 +1471,7 @@ mod tests {
         assert!(!frame.picker_open());
         assert_eq!(frame.selected(), SettingsPage::General);
         assert_eq!(frame.focus(), SettingsFocus::Index);
-        assert_eq!(router.routed, [Routed::PickerClosed]);
+        assert_eq!(router.shell(), [Routed::PickerClosed]);
     }
 
     #[test]
@@ -1414,7 +1483,7 @@ mod tests {
         let router = send(&mut frame, [E::DrillDown(false)]);
 
         assert!(!frame.picker_open());
-        assert_eq!(router.routed, [Routed::PickerClosed]);
+        assert_eq!(router.shell(), [Routed::PickerClosed]);
         assert!(!frame.view_model().drill_down);
     }
 
@@ -1478,6 +1547,187 @@ mod tests {
         assert_eq!(
             frame.view_model().scope_note,
             "this device · diagnostic · last 500 entries"
+        );
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // What the frame reports of the selected page, the keyboard and the index
+    // -----------------------------------------------------------------------------------------
+
+    use Routed::{IndexRevealed, KeyboardEntered, KeyboardLeft, PageSelected};
+    use SettingsPage as P;
+
+    #[test]
+    fn opening_a_page_from_the_index_hands_it_the_keyboard() {
+        let mut frame = frame();
+
+        let router = send(&mut frame, [E::OpenPage(P::Units)]);
+
+        assert_eq!(
+            router.keyboard(),
+            [PageSelected(P::Units), KeyboardEntered(P::Units)]
+        );
+    }
+
+    #[test]
+    fn opening_the_page_under_the_cursor_hands_it_the_keyboard_without_reselecting_it() {
+        let mut frame = frame();
+
+        let router = send(&mut frame, [E::Select]);
+
+        assert_eq!(router.keyboard(), [KeyboardEntered(P::General)]);
+    }
+
+    #[test]
+    fn reopening_the_page_on_show_hands_it_the_keyboard_afresh() {
+        let mut frame = frame();
+        send(&mut frame, [E::OpenPage(P::Display)]);
+
+        let router = send(&mut frame, [E::OpenPage(P::Display)]);
+
+        assert_eq!(
+            router.keyboard(),
+            [KeyboardLeft(P::Display), KeyboardEntered(P::Display)],
+            "`:settings display` on Display puts the keyboard back on its first control"
+        );
+    }
+
+    #[test]
+    fn stepping_to_another_page_moves_the_keyboard_to_it() {
+        let mut frame = frame();
+        medium(&mut frame);
+        send(&mut frame, [E::OpenPage(P::General)]);
+
+        let router = send(&mut frame, [E::StepPage(Step::Next)]);
+
+        assert_eq!(
+            router.keyboard(),
+            [
+                PageSelected(P::Display),
+                KeyboardLeft(P::General),
+                KeyboardEntered(P::Display),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_docked_step_shows_the_next_page_with_the_keyboard_left_on_the_index() {
+        let mut frame = frame();
+        send(&mut frame, [E::OpenPage(P::General)]);
+
+        let router = send(&mut frame, [E::ClickIndex(P::Display)]);
+        assert_eq!(
+            router.keyboard(),
+            [PageSelected(P::Display), KeyboardLeft(P::General)]
+        );
+
+        let router = send(&mut frame, [E::Move(Step::Next)]);
+        assert_eq!(
+            router.keyboard(),
+            [PageSelected(P::Tracing)],
+            "no page held the keyboard, so none loses it"
+        );
+
+        let router = send(&mut frame, [E::EnterPage]);
+        assert_eq!(router.keyboard(), [KeyboardEntered(P::Tracing)]);
+    }
+
+    #[test]
+    fn a_restore_hands_the_page_the_keyboard_and_keeps_its_scroll() {
+        let mut frame = frame();
+
+        let router = send(&mut frame, [E::Restore(P::Tags)]);
+
+        assert_eq!(
+            router.keyboard(),
+            [KeyboardEntered(P::Tags)],
+            "a restored page is not reselected, so it keeps its scroll"
+        );
+    }
+
+    #[test]
+    fn a_refused_page_reports_nothing_but_the_refusal() {
+        let mut frame = no_ledger();
+        send(&mut frame, [E::OpenPage(P::Display)]);
+
+        for refused in [
+            E::OpenPage(P::Units),
+            E::ClickIndexPage(P::Units),
+            E::ClickIndex(P::Units),
+        ] {
+            let router = send(&mut frame, [refused]);
+
+            assert!(router.keyboard().is_empty(), "{refused:?}");
+            assert_eq!(frame.selected(), P::Display, "{refused:?}");
+        }
+    }
+
+    #[test]
+    fn a_refused_pick_leaves_the_picker_and_the_keyboard_as_they_were() {
+        let mut frame = no_ledger();
+        medium(&mut frame);
+        send(&mut frame, [E::OpenPage(P::Display), E::ClickCaret]);
+
+        let router = send(&mut frame, [E::ClickPicker(P::Units)]);
+
+        assert!(router.keyboard().is_empty());
+        assert!(frame.picker_open());
+    }
+
+    #[test]
+    fn leaving_a_page_for_the_index_reveals_its_row() {
+        let mut frame = frame();
+        send(&mut frame, [E::OpenPage(P::Tags)]);
+
+        let router = send(&mut frame, [E::FocusIndex]);
+
+        assert_eq!(
+            router.keyboard(),
+            [KeyboardLeft(P::Tags), IndexRevealed(P::Tags)]
+        );
+    }
+
+    #[test]
+    fn moving_the_index_cursor_reselects_and_reveals_each_row() {
+        let mut frame = frame();
+
+        let router = send(&mut frame, [E::Move(Step::Next)]);
+
+        assert_eq!(
+            router.keyboard(),
+            [PageSelected(P::Display), IndexRevealed(P::Display)]
+        );
+    }
+
+    #[test]
+    fn entering_settings_reveals_the_cursor_row_even_on_the_index() {
+        let mut frame = frame();
+        send(&mut frame, [E::Restore(P::Units)]);
+
+        let router = send(&mut frame, [E::Entered]);
+        assert_eq!(
+            router.keyboard(),
+            [KeyboardLeft(P::Units), IndexRevealed(P::Units)]
+        );
+
+        let router = send(&mut frame, [E::Entered]);
+        assert_eq!(router.keyboard(), [IndexRevealed(P::Units)]);
+    }
+
+    #[test]
+    fn a_closing_ledger_takes_the_keyboard_from_a_this_ledger_page() {
+        let mut frame = frame();
+        send(&mut frame, [E::OpenPage(P::Units)]);
+
+        let router = send(&mut frame, [E::LedgerClosed]);
+
+        assert_eq!(
+            router.keyboard(),
+            [
+                PageSelected(P::General),
+                KeyboardLeft(P::Units),
+                IndexRevealed(P::General),
+            ]
         );
     }
 }

@@ -144,7 +144,7 @@ fn global_shortcuts(keymap: &Keymap<ShellCommand>) -> Vec<(String, String)> {
 
 /// The chord `command` is bound to, empty when `[keybindings]` unbinds it.
 fn bound(keymap: &Keymap<ShellCommand>, command: &str) -> String {
-    keymap.chord(command).unwrap_or_default().to_string()
+    keymap.hint_chord(command).to_string()
 }
 
 #[cfg(test)]

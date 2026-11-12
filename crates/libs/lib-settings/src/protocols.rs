@@ -30,6 +30,21 @@ pub trait SettingsRouter: Notify {
 
     /// The page picker closed, so the Shell's input mode returns to normal.
     fn picker_closed(&mut self);
+
+    /// `page` became the selected page, on show or under the index's cursor, by anything but a
+    /// restore, so its body starts at its top when it shows. A restored page keeps its scroll.
+    fn page_selected(&mut self, page: SettingsPage);
+
+    /// `page` lost the keyboard, to the index, to another page, or to its own reopening.
+    fn keyboard_left(&mut self, page: SettingsPage);
+
+    /// `page` has the keyboard, newly or reopened, so it puts it back on its first control. Sent
+    /// after any [`Self::keyboard_left`] of the same input.
+    fn keyboard_entered(&mut self, page: SettingsPage);
+
+    /// The index shows with its cursor on `page`, newly placed there, so the Client scrolls its row
+    /// into view.
+    fn index_revealed(&mut self, page: SettingsPage);
 }
 
 /// What only the Shell does once a This device page has changed a setting: the Toasts, the colours

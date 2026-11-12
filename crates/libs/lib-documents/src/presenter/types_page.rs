@@ -271,27 +271,25 @@ impl DocumentTypesPagePresenter {
         }
     }
 
-    fn chord(&self, command: &str) -> &str {
-        self.keymap.chord(command).unwrap_or_default()
-    }
-
     fn hints(&self) -> Vec<Hint> {
         vec![
             Hint::new(
-                format!("{}/{}", self.chord(MOVE_DOWN), self.chord(MOVE_UP)),
+                self.keymap.hint_chords(&[MOVE_DOWN, MOVE_UP]),
                 msg::documents_types_hint_row(),
             ),
             Hint::new(
-                format!(
-                    "{}/{}",
-                    self.chord(MOVE_TYPE_DOWN),
-                    self.chord(MOVE_TYPE_UP)
-                ),
+                self.keymap.hint_chords(&[MOVE_TYPE_DOWN, MOVE_TYPE_UP]),
                 msg::documents_types_hint_reorder(),
             ),
-            Hint::new(self.chord(EDIT), msg::documents_types_hint_edit()),
-            Hint::new(self.chord(REMOVE_TYPE), msg::documents_types_hint_remove()),
-            Hint::new(self.chord(NEW), msg::documents_types_hint_new()),
+            Hint::new(
+                self.keymap.hint_chord(EDIT),
+                msg::documents_types_hint_edit(),
+            ),
+            Hint::new(
+                self.keymap.hint_chord(REMOVE_TYPE),
+                msg::documents_types_hint_remove(),
+            ),
+            Hint::new(self.keymap.hint_chord(NEW), msg::documents_types_hint_new()),
         ]
     }
 }

@@ -122,7 +122,7 @@ fn source_rows(rows: &mut Vec<Row>, group: &SourceGroup, keys: &PaneKeys<'_>, c:
     }
     // A group with no title is a selected Unit's link, whose source `tab` reaches.
     let to_sources = group.title.is_none().then(|| {
-        let chord = keys.keymap.chord(NEXT_TABLE).unwrap_or_default();
+        let chord = keys.keymap.hint_chord(NEXT_TABLE);
         (chord.to_string(), keys.sources.to_string())
     });
     key_row(rows, &group.buttons, to_sources, keys, c);

@@ -109,7 +109,7 @@ A named action the user can run. Every Command is reachable by its typed name in
 _Avoid_: action, shortcut (a shortcut is the key, not the Command).
 
 **Refusal**:
-The Ledger declining a request because a rule forbids it, such as deleting the only Unit or deactivating the base Unit. The person is told why in the Dialog and nothing changes. Distinct from a failure the person didn't cause, such as a write that didn't save, which always raises an Error Toast.
+The Ledger declining a request because a rule forbids it, such as deleting the only Unit or deactivating the base Unit, or the Shell declining one that needs an Open Ledger while none is open, such as choosing a This Ledger Settings page. The person is told why, in the Dialog or on the status line, and nothing changes. Distinct from a failure the person didn't cause, such as a write that didn't save, which always raises an Error Toast.
 _Avoid_: validation error, rejection.
 
 **Shell**:

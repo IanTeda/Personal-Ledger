@@ -434,7 +434,7 @@ impl ExplorerPresenter {
             file_name: session.file_name.clone(),
             name_taken: session.taken.clone(),
             can_confirm: session.mode == ExplorerMode::PickFolder || session.target().is_some(),
-            close_key: dialog_keymap.chord(BACK).unwrap_or_default().to_string(),
+            close_key: dialog_keymap.hint_chord(BACK).to_string(),
         })
     }
 }

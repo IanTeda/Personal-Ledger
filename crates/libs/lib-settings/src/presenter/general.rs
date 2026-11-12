@@ -29,7 +29,6 @@ use lib_viper::keymap::{Keymap, SELECT};
 use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Choice, Hint};
 
-use super::device::chord;
 use super::form::{
     DeviceForm, FieldDecl, FieldValue, FieldViews, FormAnswer, FormInput, Presentation,
 };
@@ -467,14 +466,14 @@ impl Presenter for GeneralPresenter {
                 msg::settings_general_start_view_unlisted(self.settings().start_view.key())
             }),
             toasts_test: Hint::new(
-                chord(&self.keymap, TEST_TOASTS),
+                self.keymap.hint_chord(TEST_TOASTS),
                 lib_locale::msg::toast_setting_test(),
             ),
             locale_fallback: self.locale.fallback.clone(),
             data_folder: DataFolderView {
                 value: self.shown_data_folder().display().to_string(),
                 change: Hint::new(
-                    chord(&self.keymap, SELECT),
+                    self.keymap.hint_chord(SELECT),
                     msg::settings_general_data_folder_change(),
                 ),
             },
@@ -530,7 +529,7 @@ impl GeneralPresenter {
         let mut hints = self.form.hints(&self.keymap, &self.back_chord);
         if !self.form.list_open() && self.form.focused() == Some(GeneralField::Toasts) {
             hints.push(Hint::new(
-                chord(&self.keymap, TEST_TOASTS),
+                self.keymap.hint_chord(TEST_TOASTS),
                 msg::settings_hint_test(),
             ));
         }

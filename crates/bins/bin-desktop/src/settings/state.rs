@@ -388,53 +388,18 @@ impl SettingsView {
         crate::input::join_or_send(cx, |cx| self.handle(event, cx));
     }
 
-    /// Hands `event` to the frame, then brings the pages and scrolls into line with where it left
-    /// the selection and focus: a newly shown page starts at its top, a page losing the keyboard is
-    /// told so, and one (re)opened is told it has it, so `:settings display` on Display puts the
-    /// keyboard back on its first control. A restored page keeps its scroll. The index scrolls to
-    /// its cursor's row.
+    /// Hands `event` to the frame, whose Router applies what it reports as it reports it: which
+    /// page loses and gains the keyboard, a newly selected page starting at its top, and the index
+    /// scrolling to its cursor's row.
     fn handle(&mut self, event: SettingsFrameEvent, cx: &mut Context<'_, Self>) {
-        let page_before = self.frame.selected();
-        let focus_before = self.frame.focus();
-        let opens = matches!(
-            event,
-            SettingsFrameEvent::OpenPage(_)
-                | SettingsFrameEvent::ClickIndexPage(_)
-                | SettingsFrameEvent::ClickPicker(_)
-                | SettingsFrameEvent::StepPage(_)
-        ) || (self.frame.picker_open() && event == SettingsFrameEvent::Select);
-        let mut router = FrameRouter { cx, refused: false };
+        let mut router = FrameRouter {
+            cx,
+            pages: &self.pages,
+            scroll_handle: &self.scroll_handle,
+            index_scroll: &self.index_scroll,
+        };
         self.frame.handle(event, &mut router);
-        let reopened = opens && !router.refused;
-        let page = self.frame.selected();
-        let focus = self.frame.focus();
-        let moved = page != page_before;
-        if moved {
-            if !matches!(event, SettingsFrameEvent::Restore(_)) {
-                self.scroll_handle.set_offset(gpui::Point::default());
-            }
-            if let Some(before) = self.pages.get(page_before) {
-                before.set_focused(false, cx);
-            }
-        }
-        if moved || reopened || focus != focus_before {
-            self.selected_page().set_focused(false, cx);
-            if focus == SettingsFocus::Page {
-                self.selected_page().set_focused(true, cx);
-            }
-        }
-        let entered = event == SettingsFrameEvent::Entered;
-        if focus == SettingsFocus::Index && (moved || entered || focus != focus_before) {
-            self.reveal_index_row();
-        }
         cx.notify();
-    }
-
-    /// Scrolls the index page just enough to show the cursor's row, as the cursor moves or the
-    /// index comes back on show.
-    fn reveal_index_row(&self) {
-        self.index_scroll
-            .scroll_to_item(super::index_page_child(self.frame.selected()));
     }
 
     /// The frame's key by `chord`, when the frame takes it as things stand. The page has had the

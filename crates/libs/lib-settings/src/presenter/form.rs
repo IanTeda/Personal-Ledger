@@ -17,7 +17,7 @@ use lib_viper::dialog::DialogInput;
 use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP, SELECT};
 use lib_viper::view::{Choice, Hint, SelectList};
 
-use super::device::{chord, chords, shadowed_note};
+use super::device::shadowed_note;
 use crate::keymap::{NEXT_CHOICE, PREVIOUS_CHOICE};
 use crate::msg;
 use crate::protocols::{DeviceAnswer, DeviceConfiguration, DeviceRefusal, DeviceSnapshot};
@@ -549,9 +549,9 @@ impl<F: Copy + Eq> DeviceForm<F> {
     pub fn hints<E: Clone>(&self, keymap: &Keymap<E>, back_chord: &str) -> Vec<Hint> {
         if self.list_open() {
             return vec![
-                Hint::new(chord(keymap, SELECT), msg::settings_hint_pick()),
+                Hint::new(keymap.hint_chord(SELECT), msg::settings_hint_pick()),
                 Hint::new(
-                    chords(keymap, &[MOVE_DOWN, MOVE_UP]),
+                    keymap.hint_chords(&[MOVE_DOWN, MOVE_UP]),
                     msg::settings_hint_move(),
                 ),
                 Hint::new(back_chord.to_string(), msg::settings_hint_close()),
@@ -574,19 +574,22 @@ impl<F: Copy + Eq> DeviceForm<F> {
             .clone()
             .unwrap_or_else(msg::settings_hint_change);
         if decl.presentation == Presentation::Action {
-            return vec![walk, Hint::new(chord(keymap, SELECT), change)];
+            return vec![walk, Hint::new(keymap.hint_chord(SELECT), change)];
         }
         let mut hints = vec![
             walk,
-            Hint::new(chords(keymap, &[PREVIOUS_CHOICE, NEXT_CHOICE]), change),
+            Hint::new(keymap.hint_chords(&[PREVIOUS_CHOICE, NEXT_CHOICE]), change),
         ];
         match decl.presentation {
             Presentation::Dropdown => {
-                hints.push(Hint::new(chord(keymap, SELECT), msg::settings_hint_open()));
+                hints.push(Hint::new(
+                    keymap.hint_chord(SELECT),
+                    msg::settings_hint_open(),
+                ));
             }
             Presentation::Checkbox => {
                 hints.push(Hint::new(
-                    chord(keymap, SELECT),
+                    keymap.hint_chord(SELECT),
                     msg::settings_hint_toggle(),
                 ));
             }
@@ -736,7 +739,7 @@ fn position(choices: &[Choice<FieldValue>], value: &FieldValue) -> Option<usize>
 /// `j`/`k`'s hint: the field below or above.
 fn walk_hint<E: Clone>(keymap: &Keymap<E>) -> Hint {
     Hint::new(
-        chords(keymap, &[MOVE_DOWN, MOVE_UP]),
+        keymap.hint_chords(&[MOVE_DOWN, MOVE_UP]),
         msg::settings_hint_field(),
     )
 }

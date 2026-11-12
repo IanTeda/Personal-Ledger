@@ -29,6 +29,10 @@ pub enum Routed {
     PageChanged(SettingsPage),
     PickerOpened,
     PickerClosed,
+    PageSelected(SettingsPage),
+    KeyboardLeft(SettingsPage),
+    KeyboardEntered(SettingsPage),
+    IndexRevealed(SettingsPage),
     ToastsChanged(bool),
     DisplayChanged(DisplayOutput),
     ColourChanged(ColourChoice),
@@ -39,6 +43,20 @@ pub enum Routed {
     ClearLogsOpened,
     BaseUnitChanged,
     Notice(Notice),
+}
+
+impl Routed {
+    /// The frame reporting the selected page, the keyboard or the index, for the Client's pages
+    /// and scrolls rather than the Shell.
+    fn is_keyboard(&self) -> bool {
+        matches!(
+            self,
+            Self::PageSelected(_)
+                | Self::KeyboardLeft(_)
+                | Self::KeyboardEntered(_)
+                | Self::IndexRevealed(_)
+        )
+    }
 }
 
 /// A [`SettingsRouter`] and [`DeviceRouter`] that records every call.
@@ -56,6 +74,24 @@ impl RecordingRouter {
                 Routed::PageChanged(page) => Some(*page),
                 _ => None,
             })
+            .collect()
+    }
+
+    /// What the frame reported of the selected page, the keyboard and the index, in order.
+    pub fn keyboard(&self) -> Vec<Routed> {
+        self.routed
+            .iter()
+            .filter(|routed| routed.is_keyboard())
+            .cloned()
+            .collect()
+    }
+
+    /// Everything else asked of the Shell, in order: history, the picker's mode and Notices.
+    pub fn shell(&self) -> Vec<Routed> {
+        self.routed
+            .iter()
+            .filter(|routed| !routed.is_keyboard())
+            .cloned()
             .collect()
     }
 
@@ -99,6 +135,22 @@ impl SettingsRouter for RecordingRouter {
 
     fn picker_closed(&mut self) {
         self.routed.push(Routed::PickerClosed);
+    }
+
+    fn page_selected(&mut self, page: SettingsPage) {
+        self.routed.push(Routed::PageSelected(page));
+    }
+
+    fn keyboard_left(&mut self, page: SettingsPage) {
+        self.routed.push(Routed::KeyboardLeft(page));
+    }
+
+    fn keyboard_entered(&mut self, page: SettingsPage) {
+        self.routed.push(Routed::KeyboardEntered(page));
+    }
+
+    fn index_revealed(&mut self, page: SettingsPage) {
+        self.routed.push(Routed::IndexRevealed(page));
     }
 }
 

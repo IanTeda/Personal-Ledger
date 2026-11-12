@@ -559,7 +559,7 @@ fn footer_line<'a>(dialog: &DialogFrame, keymap: &Keymap<DialogCommand>, c: &Col
     } else {
         Style::default().add_modifier(Modifier::BOLD)
     };
-    let confirm = keymap.chord(SELECT).unwrap_or_default();
+    let confirm = keymap.hint_chord(SELECT);
     let mut spans = vec![Span::styled(format!("{confirm} {}", dialog.submit), submit)];
     for hint in dialog.legend(keymap) {
         spans.push(Span::styled(
