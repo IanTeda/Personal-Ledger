@@ -21,6 +21,6 @@ Under ADR-0046 every write joins one pending batch and the Desktop's `send` comm
 ## Consequences
 
 - No module counts or announces a write, so a cross-domain write is announced from what its adapter wrote, and the UI tests on `Stores::fake` see the same announcements as the app.
-- A Client keeps only what is its own: Presenters, Routers, Views, input routing, the Announcer, its Messages, and adapters that aren't domain ports (`FsLedgerFolders`, `DeviceConfiguration`, `TracingLog`).
+- A Client keeps only what is its own: Presenters, Routers, Views, input routing, the Announcer, its Messages, and the device-local adapters (`DeviceConfiguration`, `TracingLog`). The Ledger-file I/O both Clients share, which runs before a Ledger is open as well as on one, stays in `lib-database` beside `open_storage` and `LedgerCreationAdapter`: `FsLedgerFolders`, the `std::fs` adapter for `lib-shell`'s `LedgerFolders` port (#1151).
 - `LedgerPorts` is one struct every domain adds a field to, and the Categories hold two values over the same stores (`categories` for the page, `category_save` for the Dialogs), so a Presenter holding one never borrows it while a Dialog writes through the other.
 - The writer thread, one commit per input and the cascade reload stay as ADR-0046 has them.
