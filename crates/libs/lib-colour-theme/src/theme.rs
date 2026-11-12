@@ -1,4 +1,7 @@
-//! Colour Roles, Colour Variants, Colour Appearances and the built-in Colour Themes.
+//! Colour Roles, Colour Variants and the built-in Colour Themes, and the Colour Variant each
+//! Colour Appearance (`lib-core`'s) draws.
+
+pub use lib_core::ColourAppearance;
 
 use crate::colour::Rgba;
 use crate::parse::{ROLE_KEYS, VariantRgb};
@@ -56,44 +59,18 @@ impl ColourVariant {
             Self::Dark => "dark",
         }
     }
-}
 
-/// The `colour_appearance` Preference: which Colour Variant to draw.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
-pub enum ColourAppearance {
-    Light,
-    Dark,
-    /// Follow the OS (or terminal) light/dark setting. A null Preference means this.
-    #[default]
-    System,
-}
-
-impl ColourAppearance {
-    pub fn key(self) -> &'static str {
-        match self {
-            Self::Light => "light",
-            Self::Dark => "dark",
-            Self::System => "system",
-        }
-    }
-
-    /// The Preference value for a stored key; `None` for an unknown one.
-    pub fn from_key(key: &str) -> Option<Self> {
-        match key.trim().to_ascii_lowercase().as_str() {
-            "light" => Some(Self::Light),
-            "dark" => Some(Self::Dark),
-            "system" => Some(Self::System),
-            _ => None,
-        }
-    }
-
-    /// The Colour Variant to draw. `system` is the OS or terminal setting, if one was
-    /// detected; with none, System draws Dark.
-    pub fn variant(self, system: Option<ColourVariant>) -> ColourVariant {
-        match self {
-            Self::Light => ColourVariant::Light,
-            Self::Dark => ColourVariant::Dark,
-            Self::System => system.unwrap_or(ColourVariant::Dark),
+    /// The Colour Variant `appearance` draws. `system` is the OS or terminal setting, if one was
+    /// detected; with none, System draws Dark. Here, not on [`ColourAppearance`], since that is
+    /// `lib-core`'s (ADR-0058).
+    pub fn for_appearance(
+        appearance: ColourAppearance,
+        system: Option<ColourVariant>,
+    ) -> ColourVariant {
+        match appearance {
+            ColourAppearance::Light => ColourVariant::Light,
+            ColourAppearance::Dark => ColourVariant::Dark,
+            ColourAppearance::System => system.unwrap_or(ColourVariant::Dark),
         }
     }
 }
@@ -241,13 +218,16 @@ mod tests {
 
     #[test]
     fn system_with_no_detected_setting_is_dark() {
-        assert_eq!(ColourAppearance::System.variant(None), ColourVariant::Dark);
         assert_eq!(
-            ColourAppearance::System.variant(Some(ColourVariant::Light)),
+            ColourVariant::for_appearance(ColourAppearance::System, None),
+            ColourVariant::Dark
+        );
+        assert_eq!(
+            ColourVariant::for_appearance(ColourAppearance::System, Some(ColourVariant::Light)),
             ColourVariant::Light
         );
         assert_eq!(
-            ColourAppearance::Light.variant(Some(ColourVariant::Dark)),
+            ColourVariant::for_appearance(ColourAppearance::Light, Some(ColourVariant::Dark)),
             ColourVariant::Light
         );
         assert_eq!(ColourAppearance::default(), ColourAppearance::System);

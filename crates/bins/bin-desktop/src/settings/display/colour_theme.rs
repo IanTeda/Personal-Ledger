@@ -39,7 +39,7 @@ pub fn system_hint(system: Option<ColourVariant>) -> String {
     match system {
         Some(variant) => lib_locale::msg::colour_appearance_system_current(&variant_label(variant)),
         None => lib_locale::msg::colour_appearance_system_undetected(&variant_label(
-            ColourAppearance::System.variant(None),
+            ColourVariant::for_appearance(ColourAppearance::System, None),
         )),
     }
 }

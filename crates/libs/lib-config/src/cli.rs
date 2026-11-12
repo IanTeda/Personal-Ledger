@@ -81,7 +81,10 @@ impl Given<'_> {
         match self {
             Self::Data(dir) => {
                 config.general.data = dir.to_path_buf();
-                (ConfigKey::Data.id(), format!("--data {}", dir.display()))
+                (
+                    crate::keys::id(ConfigKey::Data),
+                    format!("--data {}", dir.display()),
+                )
             }
             Self::File(file) => {
                 config.general.file = Some(file.to_path_buf());
@@ -89,11 +92,14 @@ impl Given<'_> {
             }
             Self::Log(level) => {
                 config.logs.log = level;
-                (ConfigKey::Log.id(), format!("--log {level}"))
+                (crate::keys::id(ConfigKey::Log), format!("--log {level}"))
             }
             Self::Locale(tag) => {
                 config.general.locale = Some(tag.to_string());
-                (ConfigKey::Locale.id(), format!("--locale {tag}"))
+                (
+                    crate::keys::id(ConfigKey::Locale),
+                    format!("--locale {tag}"),
+                )
             }
         }
     }
@@ -178,8 +184,8 @@ mod tests {
         crate::ConfigKey::ALL
             .into_iter()
             .map(|key| {
-                let value = crate::ConfigValue::read(key, config);
-                (key.id(), format!("{value:?}"))
+                let value = crate::keys::read_value(key, config);
+                (crate::keys::id(key), format!("{value:?}"))
             })
             .chain([(
                 crate::keys::FILE,

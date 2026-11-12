@@ -188,7 +188,7 @@ impl GeneralPage {
                 segments.extend(
                     Locale::SUPPORTED
                         .into_iter()
-                        .filter(|locale| !locale.is_pseudo())
+                        .filter_map(|locale| Locale::choice(locale.tag()))
                         .map(|locale| Segment {
                             value: locale.tag().to_string(),
                             label: locale.tag().to_string(),

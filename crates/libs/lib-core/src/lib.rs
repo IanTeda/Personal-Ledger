@@ -138,3 +138,16 @@ pub use start_view::StartView;
 /// Configuration both Clients read from the same `[Display]` keys (ADR-0057).
 mod display;
 pub use display::{RowDensity, StatusGlyphs};
+
+/// Which Colour Variant to draw: the `colour_appearance` Configuration, re-exported by
+/// `lib-colour-theme`.
+mod colour_appearance;
+pub use colour_appearance::ColourAppearance;
+
+/// The tracing level Configuration sets, re-exported by `lib-tracing`.
+mod levels;
+pub use levels::{Levels, ParseLevelError};
+
+/// The Configuration key catalogue Settings writes (ADR-0058): its keys, their sections and typed
+/// values, shared by `lib-config` and `lib-settings`.
+pub mod configuration;

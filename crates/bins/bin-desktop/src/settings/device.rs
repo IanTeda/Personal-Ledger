@@ -182,7 +182,7 @@ mod tests {
         }
 
         fn shadowing(&mut self, key: DeviceKey) -> (Self::Device, String) {
-            let var = config_key(key).env_var();
+            let var = lib_config::env_var(config_key(key));
             let path = self.next_path();
             (writing_to(&path, &[(var.clone(), "x".to_string())]), var)
         }
@@ -214,9 +214,7 @@ mod tests {
                         stored.colour_appearance = Some(value);
                     }
                     Some(ConfigValue::Locale(tag)) => {
-                        stored.locale = Locale::SUPPORTED
-                            .into_iter()
-                            .find(|locale| locale.tag().eq_ignore_ascii_case(&tag));
+                        stored.locale = Locale::choice(&tag);
                     }
                     Some(ConfigValue::Data(value)) => stored.data = Some(value),
                     _ => {}

@@ -12,9 +12,9 @@ doctest = false
 
 [dependencies]
 ## -- Internal Dependencies --
+lib_core = { path = "../lib-core" }
 
 #-- Workspace Dependencies --
-serde = { workspace = true }
 sqlx = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
@@ -26,7 +26,6 @@ tracing-subscriber = { version = "0.3.20", features = ["env-filter", "std"] }
 
 [dev-dependencies]
 log = { version = "0.4" }
-serde_json = { workspace = true }
 fake = { workspace = true }
 
 [lints]

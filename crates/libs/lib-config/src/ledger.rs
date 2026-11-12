@@ -297,7 +297,7 @@ impl LedgerConfig {
     pub(crate) fn env_var((section, name): crate::keys::KeyId) -> String {
         format!(
             "{ENV_PREFIX}{ENV_PREFIX_SEPARATOR}{}{ENV_SEPARATOR}{}",
-            section.normalised().to_uppercase(),
+            crate::keys::normalised(section).to_uppercase(),
             name.to_uppercase()
         )
     }

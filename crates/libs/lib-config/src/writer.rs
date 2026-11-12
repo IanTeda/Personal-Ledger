@@ -17,8 +17,8 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::keys::{ConfigKey, ConfigValue};
 use crate::overrides::Overrides;
+use crate::{ConfigKey, ConfigValue};
 
 /// Where Settings writes Configuration, and what outranks it there: the overrides report the parse
 /// recorded as it applied precedence.
@@ -61,11 +61,14 @@ impl ConfigWriter {
     /// `None` when the file doesn't set the key in its section, doesn't exist, or doesn't parse.
     pub fn stored(&self, key: ConfigKey) -> Option<ConfigValue> {
         let path = self.target.as_deref()?;
-        if !crate::Config::keys_in_file(path).ok()?.contains(&key.id()) {
+        if !crate::Config::keys_in_file(path)
+            .ok()?
+            .contains(&crate::keys::id(key))
+        {
             return None;
         }
         let config = crate::Config::parse_file_alone(path).ok()?;
-        ConfigValue::read(key, &config)
+        crate::keys::read_value(key, &config)
     }
 
     /// Writes `value` under its key in its section of the target file, spelt as the parser reads
@@ -84,7 +87,7 @@ impl ConfigWriter {
             }
             other => other,
         };
-        let escaped = escape(&value.spelt());
+        let escaped = escape(&crate::keys::spelt(&value));
         edit(path, |text| Some(set_key(text, value.key(), &escaped)))
     }
 
@@ -145,7 +148,7 @@ fn set_key(text: &str, key: ConfigKey, value: &str) -> String {
     let mut insert_at = None;
     for (index, line) in lines.iter_mut().enumerate() {
         if let Some(name) = section_name(line) {
-            in_section = name == section.normalised();
+            in_section = name == crate::keys::normalised(section);
             if in_section {
                 insert_at = Some(index + 1);
             }
@@ -191,7 +194,7 @@ fn remove_key(text: &str, key: ConfigKey) -> Option<String> {
     let mut out = String::with_capacity(text.len());
     for line in text.split_inclusive('\n') {
         if let Some(name) = section_name(line) {
-            in_section = name == key.section().normalised();
+            in_section = name == crate::keys::normalised(key.section());
         } else if in_section
             && line_key(line).is_some_and(|name| name.eq_ignore_ascii_case(key.name()))
         {
@@ -210,7 +213,7 @@ fn key_value(text: &str, key: ConfigKey) -> Option<String> {
     let mut value = None;
     for line in text.lines() {
         if let Some(name) = section_name(line) {
-            in_section = name == key.section().normalised();
+            in_section = name == crate::keys::normalised(key.section());
             continue;
         }
         if !in_section || !line_key(line).is_some_and(|name| name.eq_ignore_ascii_case(key.name()))
@@ -511,7 +514,7 @@ back = \"esc\"
                 crate::Config::parse_with_detector(Some(&path), Some(HashMap::new()), || None)
                     .unwrap();
             assert_eq!(
-                ConfigValue::read(value.key(), &config),
+                crate::keys::read_value(value.key(), &config),
                 Some(value.clone()),
                 "read back through the parser"
             );

@@ -54,6 +54,18 @@ impl Locale {
             .unwrap_or(Locale::DEFAULT)
     }
 
+    /// The Locale a person can choose for a stored tag: a supported Locale whose tag matches,
+    /// ignoring case, and never the pseudo-Locale. `None` reads as **System**. Unlike
+    /// [`negotiate`](Self::negotiate) an unsupported tag falls to no choice rather than `en-US`,
+    /// so Settings shows **System** checked and not an `en-US` a write would leave unwritten.
+    pub fn choice(tag: &str) -> Option<Locale> {
+        let tag = tag.trim();
+        Locale::SUPPORTED
+            .into_iter()
+            .filter(|locale| !locale.is_pseudo())
+            .find(|locale| locale.tag().eq_ignore_ascii_case(tag))
+    }
+
     /// The Locales consulted for a Message, highest priority first, ending in `en-US`:
     /// `en-AU`, `en-GB`, `en-US` for `en-AU`, and so on.
     pub fn fallback_chain(self) -> &'static [Locale] {
@@ -110,6 +122,26 @@ mod tests {
     fn everything_else_becomes_en_us() {
         for requested in ["en-NZ", "fr-FR", "en", "C", "POSIX", "", "not a tag!!"] {
             assert_eq!(Locale::negotiate(requested), Locale::EnUs, "{requested}");
+        }
+    }
+
+    #[test]
+    fn a_choice_matches_a_supported_tag_ignoring_case() {
+        assert_eq!(Locale::choice("en-AU"), Some(Locale::EnAu));
+        assert_eq!(Locale::choice("en-au"), Some(Locale::EnAu));
+        assert_eq!(Locale::choice("EN-gb"), Some(Locale::EnGb));
+    }
+
+    #[test]
+    fn the_pseudo_locale_is_no_choice() {
+        assert_eq!(Locale::choice("en-XA"), None);
+        assert_eq!(Locale::choice("en-xa"), None);
+    }
+
+    #[test]
+    fn an_unsupported_tag_is_no_choice() {
+        for tag in ["en-NZ", "fr-FR", "en", "C", "", "system"] {
+            assert_eq!(Locale::choice(tag), None, "{tag}");
         }
     }
 

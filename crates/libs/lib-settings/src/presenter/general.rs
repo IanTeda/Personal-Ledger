@@ -51,12 +51,12 @@ pub const GENERAL_FIELD_LOCALE: usize = 3;
 pub const GENERAL_FIELD_DATA_FOLDER: usize = 4;
 const GENERAL_FIELD_COUNT: usize = 5;
 
-/// The Locale's choices, in the radio group's order: **System** (`None`), then `lib-locale`'s
-/// supported Locales by tag, never the pseudo-Locale.
+/// The Locale's choices, in the radio group's order: **System** (`None`), then each supported
+/// Locale [`Locale::choice`] takes, by tag, so the list and every read of the file agree.
 pub fn locale_choices() -> Vec<Option<Locale>> {
     let mut locales: Vec<Locale> = Locale::SUPPORTED
         .into_iter()
-        .filter(|locale| !locale.is_pseudo())
+        .filter_map(|locale| Locale::choice(locale.tag()))
         .collect();
     locales.sort_by_key(|locale| locale.tag());
     std::iter::once(None)

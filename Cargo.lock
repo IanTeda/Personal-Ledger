@@ -5092,9 +5092,8 @@ name = "lib_tracing"
 version = "0.1.0"
 dependencies = [
  "fake",
+ "lib_core",
  "log",
- "serde",
- "serde_json",
  "sqlx",
  "thiserror 2.0.20",
  "tracing",

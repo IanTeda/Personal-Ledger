@@ -203,10 +203,8 @@ pub fn resolve(inputs: ResolveInputs<'_>) -> (ResolvedColours, Vec<ContrastFailu
         .colour_theme
         .and_then(ColourTheme::by_id)
         .unwrap_or_else(|| ColourTheme::default_theme());
-    let variant = inputs
-        .colour_appearance
-        .unwrap_or_default()
-        .variant(inputs.system);
+    let variant =
+        ColourVariant::for_appearance(inputs.colour_appearance.unwrap_or_default(), inputs.system);
 
     let mut roles = theme.palette(variant);
     for role in ColourRole::ALL {

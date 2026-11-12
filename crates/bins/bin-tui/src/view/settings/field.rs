@@ -223,11 +223,9 @@ impl Configuration {
             date_style: config.display.date_style(),
             on_start: config.general.on_start(),
             start_view: config.general.start_view().clone(),
-            locale: writer.value(ConfigKey::Locale).and_then(|tag| {
-                Locale::SUPPORTED
-                    .into_iter()
-                    .find(|locale| !locale.is_pseudo() && locale.tag().eq_ignore_ascii_case(&tag))
-            }),
+            locale: writer
+                .value(ConfigKey::Locale)
+                .and_then(|tag| Locale::choice(&tag)),
             system_locale: Locale::negotiate(
                 config
                     .general
@@ -311,10 +309,7 @@ impl Configuration {
         if value.eq_ignore_ascii_case(LOCALE_SYSTEM) {
             return Some(None);
         }
-        Locale::SUPPORTED
-            .into_iter()
-            .find(|locale| !locale.is_pseudo() && locale.tag().eq_ignore_ascii_case(value))
-            .map(Some)
+        Locale::choice(value).map(Some)
     }
 
     /// The Locale **system** reads, or the file's, whichever the row's choice is.

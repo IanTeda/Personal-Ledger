@@ -7,7 +7,7 @@ mod levels;
 pub use error::Error;
 
 // Re-export log level types
-pub use levels::Levels;
+pub use levels::{Levels, level_filter};
 
 // The opt-in in-memory capture of recent events, for an in-app log view
 pub use capture::{LOG_CAPACITY, LogBuffer, LogEntry};

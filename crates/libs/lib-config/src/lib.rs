@@ -17,8 +17,9 @@
 //!   read by Clients
 //! - [`theme`] - `[theme]`/`[theme.light]`/`[theme.dark]` Colour Role overrides, read by
 //!   the TUI/Desktop Clients
-//! - [`keys`] - The key catalogue: every key parsed, and each key Settings writes with its
-//!   section, environment variable and typed [`ConfigValue`]
+//! - [`keys`] - The key catalogue's file side: every key parsed, and for each key Settings
+//!   writes (`lib_core::configuration`), its environment variable and how its typed
+//!   [`ConfigValue`] is spelt and read
 //! - [`writer`] - Writes one key back to its section of the user's file, for Settings
 //! - [`overrides`] - The overrides report: each key a source above the user's file sets
 //! - [`keybindings`] - Keyboard shortcut configuration, read by the TUI/Desktop Clients
@@ -69,8 +70,11 @@ pub use logs::LogsConfig;
 /// type the file is read into.
 pub use lib_core::{RowDensity, StatusGlyphs};
 
-/// The key catalogue: each key Settings writes, its section, environment variable and typed value.
-pub use keys::{ConfigKey, ConfigValue, Section};
+/// The key catalogue: each key Settings writes, its section and typed value, `lib-core`'s so
+/// `lib-settings` names the same keys (ADR-0058); and here, each key's environment variable and
+/// the value a parsed Configuration holds for it.
+pub use keys::{env_var, read_value};
+pub use lib_core::configuration::{ConfigKey, ConfigValue, Section};
 
 /// Writes Configuration back to the user's `personal-ledger.conf`, for Settings.
 pub use writer::ConfigWriter;

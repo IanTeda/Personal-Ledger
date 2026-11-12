@@ -9,7 +9,8 @@
 
 use std::path::PathBuf;
 
-use crate::keys::{ConfigKey, KeyId};
+use crate::ConfigKey;
+use crate::keys::KeyId;
 
 /// The source that outranks the file a write goes to, so the write changes nothing until it goes.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,7 +43,7 @@ pub struct Overrides {
 impl Overrides {
     /// The source that outranks `key`'s write, or `None` when a write would apply.
     pub fn get(&self, key: ConfigKey) -> Option<&Shadow> {
-        self.of(key.id())
+        self.of(crate::keys::id(key))
     }
 
     /// As [`Self::get`], for any key of the written sections, `file` among them.
@@ -56,7 +57,7 @@ impl Overrides {
     /// The report with `key` set by `shadow`, over whatever set it before: for a Client's test
     /// that starts on a key already overridden.
     pub fn with(mut self, key: ConfigKey, shadow: Shadow) -> Self {
-        self.record(key.id(), shadow);
+        self.record(crate::keys::id(key), shadow);
         self
     }
 

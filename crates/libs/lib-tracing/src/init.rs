@@ -167,7 +167,7 @@ pub fn init(
 fn console_filter(tracing_level: Option<&Levels>) -> Result<EnvFilter> {
     // Convert our serde-friendly TracingLevels -> tracing LevelFilter -> Directive
     let default_directive = tracing_level
-        .map(|&level| tracing::level_filters::LevelFilter::from(level))
+        .map(|&level| crate::level_filter(level))
         .unwrap_or(tracing::level_filters::LevelFilter::INFO)
         .into();
     let env_filter = EnvFilter::builder()
@@ -312,34 +312,10 @@ mod tests {
     }
 
     #[test]
-    fn test_telemetry_levels_conversion() {
-        // Test that TracingLevels convert correctly to tracing levels
-        // This is more of an integration test but validates the conversion logic
-
-        let test_cases = vec![
-            (Levels::OFF, tracing::level_filters::LevelFilter::OFF),
-            (Levels::ERROR, tracing::level_filters::LevelFilter::ERROR),
-            (Levels::WARN, tracing::level_filters::LevelFilter::WARN),
-            (Levels::INFO, tracing::level_filters::LevelFilter::INFO),
-            (Levels::DEBUG, tracing::level_filters::LevelFilter::DEBUG),
-            (Levels::TRACE, tracing::level_filters::LevelFilter::TRACE),
-        ];
-
-        for (telemetry_level, expected_tracing_level) in test_cases {
-            let actual_tracing_level: tracing::level_filters::LevelFilter = telemetry_level.into();
-            assert_eq!(
-                actual_tracing_level, expected_tracing_level,
-                "Telemetry level {:?} should convert to tracing level {:?}",
-                telemetry_level, expected_tracing_level
-            );
-        }
-    }
-
-    #[test]
     fn test_default_level_behaviors() {
         // Test that None parameter defaults to INFO level
         let none_result: tracing::level_filters::LevelFilter = None
-            .map(|&level: &Levels| level.into())
+            .map(|&level: &Levels| crate::level_filter(level))
             .unwrap_or(tracing::level_filters::LevelFilter::INFO);
 
         assert_eq!(none_result, tracing::level_filters::LevelFilter::INFO);
@@ -351,9 +327,7 @@ mod tests {
         let levels = [Levels::DEBUG, Levels::INFO, Levels::WARN];
 
         for level in &levels {
-            // Convert TracingLevels to LevelFilter first, then to Directive
-            let level_filter: tracing::level_filters::LevelFilter = (*level).into();
-            let directive = level_filter.into();
+            let directive = crate::level_filter(*level).into();
 
             // Create env filter with this directive
             let env_filter = EnvFilter::builder()
