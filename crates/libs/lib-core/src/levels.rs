@@ -1,79 +1,24 @@
-//! # Telemetry Levels
-//!
-//! This module provides a serde-compatible representation of telemetry levels for the telemetry system.
-//!
-//! The `Levels` enum serves as a configuration-friendly stand-in for `tracing`'s `LevelFilter`,
-//! enabling telemetry level configuration through configuration files, environment variables, and
-//! other serde-compatible sources. It lives here, not in `lib-tracing`, so the Configuration key
-//! catalogue (`crate::configuration`) can hold it (ADR-0058); `lib-tracing` re-exports it and
-//! turns it into a `LevelFilter` with `lib_tracing::level_filter`.
+//! The tracing level as Configuration names it. It lives here, not in `lib-tracing`, so the
+//! Configuration key catalogue (`crate::configuration`) can hold it (ADR-0058); `lib-tracing`
+//! re-exports it and turns it into a `LevelFilter` with `lib_tracing::level_filter`.
 
-// A serde-friendly representation of telemetry levels used in configuration.
-/// The tracing crate's `LevelFilter` type does not implement `serde::{Deserialize, Serialize}`
-/// so we expose a small enum that can be used in configuration files and converted to
-/// the runtime `LevelFilter` when initialising telemetry.
-///
-/// This enum provides a clean interface for configuring telemetry verbosity across different
-/// parts of the Personal Ledger application, supporting both human-readable configuration
-/// files and environment variable settings.
-///
-/// # Serialization
-///
-/// The enum serializes to lowercase strings (`"off"`, `"error"`, `"warn"`, etc.) for
-/// better readability in configuration files.
-///
-/// # Default
-///
-/// Defaults to `WARN` level, providing a balance between visibility of important issues
-/// and avoiding excessive telemetry noise in production environments.
+/// A tracing level a configuration file or environment variable can name, since `tracing`'s
+/// `LevelFilter` has no serde support. Spelt in lowercase so the file reads as a person writes
+/// it; `WARN` by default, so a fresh install shows what needs attention without the noise.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Levels {
-    /// No telemetry output.
-    ///
-    /// Completely disables all telemetry output. Useful for performance-critical
-    /// environments or when telemetry is not needed.
     OFF,
-
-    /// Error-level telemetry only.
-    ///
-    /// Telemetry logs only error conditions that may require attention. This is the most
-    /// minimal telemetry level for production systems.
     ERROR,
-
-    /// Warning and error-level telemetry.
-    ///
-    /// Telemetry logs warnings and errors. This is the default level, providing visibility
-    /// into potential issues while minimising telemetry volume.
     #[default]
     WARN,
-
-    /// Informational, warning, and error-level telemetry   .
-    ///
-    /// Telemetry logs informational messages, warnings, and errors. Useful for understanding
-    /// application flow and identifying potential issues.
     INFO,
-
-    /// Debug, informational, warning, and error-level telemetry.
-    ///
-    /// Includes debug information for troubleshooting. Suitable for development
-    /// and staging environments.
     DEBUG,
-
-    /// All telemetry levels including trace information.
-    ///
-    /// Maximum verbosity including trace-level information. Primarily used for
-    /// detailed debugging and development. May impact performance due to high
-    /// telemetry volume.
     TRACE,
 }
 
 impl std::fmt::Display for Levels {
-    /// Formats the telemetry level as a lowercase string.
-    ///
-    /// This implementation matches the serde serialization format, producing
-    /// lowercase strings like "info", "debug", etc. This ensures consistency
-    /// between serialized configuration and string representations.
+    /// Spelt as serde spells it, so a level shown reads as the file would hold it.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let level_str = match self {
             Levels::OFF => "off",

@@ -127,10 +127,9 @@ impl DeviceSnapshot {
 
 /// `key`'s place in [`ConfigKey::ALL`].
 fn index(key: ConfigKey) -> usize {
-    ConfigKey::ALL
-        .iter()
-        .position(|listed| *listed == key)
-        .unwrap_or_default()
+    // The discriminant, not a search that would need a fallback: `ALL` lists the keys in
+    // declaration order, which `each_key_sits_at_its_place_in_all` holds.
+    key as usize
 }
 
 /// How a write of a device's setting went: an answer for the person, never a failure for the
@@ -290,6 +289,13 @@ pub trait LedgerSummaries {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_key_sits_at_its_place_in_all() {
+        for (place, key) in ConfigKey::ALL.into_iter().enumerate() {
+            assert_eq!(index(key), place, "{key:?}");
+        }
+    }
 
     #[test]
     fn the_data_folder_in_effect_is_datas_value_in_force_not_the_files() {
