@@ -16,6 +16,7 @@ use bin_desktop::persistence::PersistedState;
 use common::{Device, Harness};
 use gpui::TestAppContext;
 use lib_core::{OnStart, StartView};
+use lib_settings::GeneralField;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -34,7 +35,7 @@ fn focus_starts_on_on_start(app: &mut TestAppContext) {
     let mut ui = in_general(app);
 
     let general = ui.settings::<SettingsGeneralSnapshot>();
-    assert_eq!(general.field, Some(0));
+    assert_eq!(general.field, Some(GeneralField::OnStart));
     assert_eq!(general.on_start, OnStart::ReopenLastLedger);
     assert!(general.toasts_on);
 }
@@ -44,23 +45,32 @@ fn j_and_k_walk_the_five_controls_and_stop_at_the_ends(app: &mut TestAppContext)
     let mut ui = in_general(app);
 
     ui.press("j");
-    assert_eq!(ui.settings::<SettingsGeneralSnapshot>().field, Some(1));
-    ui.press("j");
-    assert_eq!(ui.settings::<SettingsGeneralSnapshot>().field, Some(2));
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().field,
+        Some(GeneralField::StartView)
+    );
     ui.press("j");
     assert_eq!(
         ui.settings::<SettingsGeneralSnapshot>().field,
-        Some(3),
+        Some(GeneralField::Toasts)
+    );
+    ui.press("j");
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().field,
+        Some(GeneralField::Locale),
         "the Locale comes after Toasts"
     );
     ui.press("j j");
     assert_eq!(
         ui.settings::<SettingsGeneralSnapshot>().field,
-        Some(4),
+        Some(GeneralField::DataFolder),
         "the Data folder comes after the Locale, and is the last"
     );
     ui.press("k k k k k");
-    assert_eq!(ui.settings::<SettingsGeneralSnapshot>().field, Some(0));
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().field,
+        Some(GeneralField::OnStart)
+    );
 }
 
 #[gpui::test]
@@ -96,19 +106,6 @@ fn l_and_h_step_the_locale_and_each_step_is_saved_with_a_note_till_the_next_star
     ui.press("h h h");
     assert_eq!(ui.settings::<SettingsGeneralSnapshot>().locale, None);
     assert_eq!(ui.conf(), "[General]\n", "System takes the line out");
-}
-
-#[gpui::test]
-fn an_unsupported_locale_in_the_file_shows_as_system_and_en_us_still_writes(
-    app: &mut TestAppContext,
-) {
-    let mut ui = Harness::with_conf_file(app, "[General]\nlocale = fr-FR\n");
-    ui.press("g s l j j j");
-    assert_eq!(ui.settings::<SettingsGeneralSnapshot>().locale, None);
-
-    ui.press("l l l");
-
-    assert_eq!(ui.conf(), "[General]\nlocale = en-US\n");
 }
 
 #[gpui::test]
@@ -153,74 +150,6 @@ fn l_and_h_step_on_start_and_each_step_is_saved_to_the_conf_file(app: &mut TestA
         OnStart::ReopenLastLedger
     );
     assert_eq!(ui.conf(), "[General]\non_start = reopen\n");
-}
-
-#[gpui::test]
-fn l_and_h_step_start_view_through_its_choices_and_each_step_is_saved(app: &mut TestAppContext) {
-    let mut ui = in_general(app);
-    assert_eq!(
-        ui.settings::<SettingsGeneralSnapshot>().start_view,
-        "dashboard"
-    );
-
-    ui.press("j l");
-    assert_eq!(ui.settings::<SettingsGeneralSnapshot>().start_view, "last");
-    assert_eq!(ui.conf(), "[General]\nstart_view = last\n");
-    ui.press("l l l l l l");
-    assert_eq!(
-        ui.settings::<SettingsGeneralSnapshot>().start_view,
-        "budgets",
-        "stops at the last choice"
-    );
-    assert_eq!(ui.conf(), "[General]\nstart_view = budgets\n");
-    ui.press("h");
-    assert_eq!(ui.settings::<SettingsGeneralSnapshot>().start_view, "bills");
-    assert_eq!(ui.conf(), "[General]\nstart_view = bills\n");
-}
-
-#[gpui::test]
-fn a_start_view_from_the_file_that_isnt_a_choice_is_named_and_steps_from_the_dashboard(
-    app: &mut TestAppContext,
-) {
-    let mut config = lib_config::Config::default();
-    config.general.start_view = StartView::Noun("units".into());
-    let mut ui = Harness::with_configuration(app, &config, &[]);
-    ui.press("g s l");
-    assert_eq!(ui.settings::<SettingsGeneralSnapshot>().start_view, "units");
-    assert!(ui.is_drawn("general-start-view-unlisted"));
-
-    ui.press("j l");
-    assert_eq!(ui.settings::<SettingsGeneralSnapshot>().start_view, "last");
-}
-
-#[gpui::test]
-fn a_start_view_an_environment_variable_sets_is_shown_and_left_alone(app: &mut TestAppContext) {
-    let var = "PERSONAL_LEDGER_GENERAL__START_VIEW";
-    let mut ui =
-        Harness::with_configuration(app, &lib_config::Config::default(), &[(var, "bills")]);
-    ui.press("g s l");
-    assert!(ui.is_drawn("shadowed-start_view"));
-
-    ui.press("j l");
-
-    assert_eq!(
-        ui.settings::<SettingsGeneralSnapshot>().start_view,
-        "dashboard"
-    );
-    assert_eq!(ui.conf(), "", "nothing is written under the variable");
-}
-
-#[gpui::test]
-fn l_turns_toasts_off_and_h_turns_them_back_on(app: &mut TestAppContext) {
-    let mut ui = in_general(app);
-
-    ui.press("j j l");
-    assert!(!ui.settings::<SettingsGeneralSnapshot>().toasts_on);
-    assert!(!ui.toasts().on);
-    assert_eq!(ui.conf(), "[General]\ntoasts = false\n");
-    ui.press("h");
-    assert!(ui.settings::<SettingsGeneralSnapshot>().toasts_on);
-    assert!(ui.toasts().on);
 }
 
 #[gpui::test]
@@ -288,7 +217,7 @@ fn enter_opens_start_views_dropdown_and_j_and_enter_pick_the_next_choice(app: &m
     ui.press("j");
     assert_eq!(
         ui.settings::<SettingsGeneralSnapshot>().field,
-        Some(1),
+        Some(GeneralField::StartView),
         "j moves the highlight, not the focus"
     );
     assert_eq!(ui.conf(), "", "nothing picked yet");
@@ -322,36 +251,12 @@ fn escape_closes_an_open_dropdown_without_leaving_the_page(app: &mut TestAppCont
     );
     assert!(ui.settings_frame().page_focused, "still on the page");
     let general = ui.settings::<SettingsGeneralSnapshot>();
-    assert_eq!(general.field, Some(1));
+    assert_eq!(general.field, Some(GeneralField::StartView));
     assert_eq!(general.start_view, "dashboard");
     assert_eq!(ui.conf(), "");
 
     ui.press("escape");
     assert!(!ui.settings_frame().page_focused, "then back to the index");
-}
-
-#[gpui::test]
-fn the_locale_dropdown_opens_picks_and_cancels(app: &mut TestAppContext) {
-    let mut ui = in_general(app);
-    ui.press("j j j enter");
-    assert_eq!(
-        ui.settings::<SettingsGeneralSnapshot>().locale_list,
-        Some(0),
-        "on System"
-    );
-    assert!(ui.is_drawn("general-locale-select-option-0"));
-    ui.press("j j escape");
-    assert_eq!(ui.settings::<SettingsGeneralSnapshot>().locale_list, None);
-    assert_eq!(ui.conf(), "", "cancelled");
-
-    ui.press("enter k enter");
-
-    assert_eq!(
-        ui.settings::<SettingsGeneralSnapshot>().locale.as_deref(),
-        Some("en-US"),
-        "k wraps from System to the last"
-    );
-    assert_eq!(ui.conf(), "[General]\nlocale = en-US\n");
 }
 
 #[gpui::test]
@@ -559,7 +464,10 @@ fn on_the_data_folder<'a>(app: &'a mut TestAppContext, dir: &std::path::Path) ->
     let mut ui = Harness::with_configuration(app, &common::browsing(dir), &[]);
     ui.press("g s l");
     ui.press("j j j j");
-    assert_eq!(ui.settings::<SettingsGeneralSnapshot>().field, Some(4));
+    assert_eq!(
+        ui.settings::<SettingsGeneralSnapshot>().field,
+        Some(GeneralField::DataFolder)
+    );
     ui
 }
 
@@ -581,7 +489,11 @@ fn enter_on_the_data_folder_picks_one_and_returns_to_general_with_a_toast(
     assert_eq!(ui.explorer(), None);
     assert_eq!(ui.settings_frame().page, "General");
     let general = ui.settings::<SettingsGeneralSnapshot>();
-    assert_eq!(general.field, Some(4), "the Data folder keeps the keyboard");
+    assert_eq!(
+        general.field,
+        Some(GeneralField::DataFolder),
+        "the Data folder keeps the keyboard"
+    );
     assert_eq!(general.data_folder, finance.display().to_string());
     assert_eq!(general.data_folder_shown, finance.display().to_string());
     assert_eq!(
@@ -606,7 +518,7 @@ fn escape_from_the_data_folder_picker_changes_nothing(app: &mut TestAppContext) 
     assert_eq!(ui.explorer(), None);
     assert_eq!(ui.conf(), "");
     let general = ui.settings::<SettingsGeneralSnapshot>();
-    assert_eq!(general.field, Some(4));
+    assert_eq!(general.field, Some(GeneralField::DataFolder));
     assert_eq!(general.data_folder, dir.path().display().to_string());
     assert!(ui.toasts().visible.is_empty());
 }

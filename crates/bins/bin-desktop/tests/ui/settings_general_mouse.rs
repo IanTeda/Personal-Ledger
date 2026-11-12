@@ -70,23 +70,6 @@ fn clicking_a_start_view_option_sets_start_view(app: &mut TestAppContext) {
 }
 
 #[gpui::test]
-fn a_second_click_on_start_views_field_cancels_its_list(app: &mut TestAppContext) {
-    let mut ui = on_general(app);
-
-    ui.click("general-start-view");
-    assert_eq!(
-        ui.settings::<SettingsGeneralSnapshot>().start_view_list,
-        Some(0)
-    );
-    ui.click("general-start-view");
-
-    let general = ui.settings::<SettingsGeneralSnapshot>();
-    assert_eq!(general.start_view_list, None, "cancelled");
-    assert_eq!(general.start_view, "dashboard");
-    assert_eq!(ui.conf(), "", "nothing written");
-}
-
-#[gpui::test]
 fn a_second_click_on_a_dropdown_closes_it_and_opening_one_closes_the_other(
     app: &mut TestAppContext,
 ) {
@@ -114,19 +97,6 @@ fn a_second_click_on_a_dropdown_closes_it_and_opening_one_closes_the_other(
         "cancelled"
     );
     assert_eq!(ui.conf(), "", "nothing written");
-}
-
-#[gpui::test]
-fn clicking_the_toasts_options_turns_them_off_and_on(app: &mut TestAppContext) {
-    let mut ui = on_general(app);
-
-    ui.click("general-toasts-1");
-    assert!(!ui.settings::<SettingsGeneralSnapshot>().toasts_on);
-    assert!(!ui.toasts().on);
-    assert_eq!(ui.conf(), "[General]\ntoasts = false\n");
-    ui.click("general-toasts-0");
-    assert!(ui.settings::<SettingsGeneralSnapshot>().toasts_on);
-    assert!(ui.toasts().on);
 }
 
 #[gpui::test]

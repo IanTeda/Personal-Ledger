@@ -16,7 +16,8 @@ use lib_core::StartView;
 use lib_database::Domain;
 use lib_settings::keymap::general_keymap;
 use lib_settings::{
-    DeviceConfiguration, GeneralEvent, GeneralPresenter, GeneralSetup, GeneralViewModel, LocaleLine,
+    DeviceConfiguration, GeneralEvent, GeneralField, GeneralPresenter, GeneralSetup,
+    GeneralViewModel, LocaleLine,
 };
 use lib_viper::keymap::KeyBindingConfig;
 use lib_viper::view::Choice;
@@ -111,8 +112,7 @@ impl PageView for GeneralPresenter {
     /// `Esc` closes an open dropdown list, changing nothing. With none open it is left to Settings,
     /// which steps back to the index.
     fn escape(view: &GeneralViewModel) -> Option<GeneralEvent> {
-        (view.start_view.list.is_open() || view.locale.list.is_open())
-            .then_some(GeneralEvent::CloseList)
+        view.list_open().then_some(GeneralEvent::CloseList)
     }
 
     /// Focus arriving puts the keyboard on On start; focus leaving takes it off the controls.
@@ -129,7 +129,7 @@ impl SettingsPageView for GeneralPresenter {
 #[doc(hidden)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsGeneralSnapshot {
-    pub field: Option<usize>,
+    pub field: Option<GeneralField>,
     pub on_start: lib_core::OnStart,
     /// Start view as the file spells it.
     pub start_view: String,
@@ -160,18 +160,19 @@ impl PageSnapshot for SettingsGeneralSnapshot {
         let presenter = page.presenter();
         let settings = presenter.settings();
         let view = page.view_model();
+        let highlight = |field| view.view(field).and_then(|field| field.list.highlight());
         SettingsGeneralSnapshot {
             field: view.field,
             on_start: settings.on_start,
             start_view: settings.start_view.key().to_string(),
             toasts_on: settings.toasts_on,
             locale: settings.locale.map(|locale| locale.tag().to_string()),
-            start_view_list: view.start_view.list.highlight(),
-            locale_list: view.locale.list.highlight(),
-            locale_note: view.locale.note,
+            start_view_list: highlight(GeneralField::StartView),
+            locale_list: highlight(GeneralField::Locale),
+            locale_note: view.locale_note.clone(),
             data_folder: path(presenter.data_folder()),
-            data_folder_shown: view.data_folder.value,
-            data_folder_note: view.data_folder.note,
+            data_folder_shown: view.data_folder.value.clone(),
+            data_folder_note: view.data_folder.note.clone(),
             last_ledger: presenter.last_ledger().map(path),
             configuration: presenter.configuration_file().map(path),
         }

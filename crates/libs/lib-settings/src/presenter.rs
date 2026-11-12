@@ -6,6 +6,7 @@ mod clear_logs;
 pub(crate) mod data_backup;
 mod device;
 pub mod display;
+pub mod form;
 mod frame;
 pub mod general;
 pub mod ledger;
@@ -20,13 +21,16 @@ pub use display::{
     CheckboxView, ColourCardView, ColourThemeView, DisplayEvent, DisplayOutput, DisplayPresenter,
     DisplaySettings, DisplaySetup, DisplayViewModel, PreviewRowView, PreviewView,
 };
+pub use form::{
+    DeviceForm, FieldDecl, FieldKind, FieldValue, FieldView, FormAnswer, FormInput, Presentation,
+};
 pub use frame::{
     Breadcrumb, IndexGroup, IndexRow, PickerGroup, PickerRow, PickerView, SettingsFocus,
     SettingsFrameEvent, SettingsFramePresenter, SettingsFrameSetup, SettingsFrameViewModel,
 };
 pub use general::{
-    DataFolderOutcome, DataFolderView, GeneralEvent, GeneralPresenter, GeneralSettings,
-    GeneralSetup, GeneralViewModel, LocaleControl, LocaleLine, StartViewControl, ThisDeviceView,
+    DataFolderOutcome, DataFolderView, GeneralEvent, GeneralField, GeneralPresenter,
+    GeneralSettings, GeneralSetup, GeneralViewModel, LocaleLine, ThisDeviceView,
 };
 pub use ledger::{
     BaseUnitOption, BaseUnitView, LedgerEvent, LedgerPresenter, LedgerSetup, LedgerViewModel,
