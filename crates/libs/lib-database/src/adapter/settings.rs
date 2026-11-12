@@ -74,10 +74,8 @@ impl LedgerSummaries for StoredSettingsReads {
             accounts: self.accounts.clone(),
             units: self.units.clone(),
         };
-        let likely_duplicate_tags = lib_tags::duplicate_groups(&tags, &usage)
-            .iter()
-            .map(|group| group.duplicates.len())
-            .sum();
+        let likely_duplicate_tags =
+            lib_tags::likely_duplicate_count(&lib_tags::duplicate_groups(&tags, &usage));
         let payees = self.payees.borrow().payees().payees();
         let types = self.documents.borrow().documents().document_types();
         let inventory = self.inventory.borrow().inventory().inventory();

@@ -248,6 +248,12 @@ pub struct DuplicateGroup {
     pub duplicates: Vec<TagId>,
 }
 
+/// The likely duplicates across `groups`: every member but each group's suggested target. The
+/// Tags page heading and the Settings index both quote it.
+pub fn likely_duplicate_count(groups: &[DuplicateGroup]) -> usize {
+    groups.iter().map(|group| group.duplicates.len()).sum()
+}
+
 /// Every group of two or more Tags sharing a normalised name, ordered by their lowest id.
 pub fn duplicate_groups(tags: &[Tag], usage: &dyn TagUsage) -> Vec<DuplicateGroup> {
     let mut by_name: Vec<(String, Vec<&Tag>)> = Vec::new();
@@ -419,6 +425,22 @@ mod tests {
 
         assert!(duplicate_groups(&tags, &usage).is_empty());
         assert_eq!(usage.reads.get(), 0);
+    }
+
+    #[test]
+    fn likely_duplicates_count_every_tag_but_each_groups_target() {
+        let tags = vec![
+            tag(TagId::seed(1), "Shared"),
+            tag(TagId::seed(2), "shared"),
+            tag(TagId::seed(3), "SHARED"),
+            tag(TagId::seed(4), "Trip"),
+            tag(TagId::seed(5), "trip"),
+            tag(TagId::seed(6), "other"),
+        ];
+        let groups = duplicate_groups(&tags, &used(&[]));
+
+        assert_eq!(likely_duplicate_count(&groups), 3);
+        assert_eq!(likely_duplicate_count(&[]), 0);
     }
 
     #[test]

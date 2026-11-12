@@ -5,28 +5,31 @@
 //! Client) and, with no Ledger open, carries no values, says so, and is marked so **Open** can be
 //! disabled.
 //!
-//! The summary is built from the values the pages read, handed in as [`SummarySources`], so the
-//! index never builds a page's Presenter, and a plain function of them, so the pane follows the
-//! cursor without holding state.
+//! A This device page answers its own rows (each Presenter's `summary_rows`), so the summary never
+//! reads a page's state; a This Ledger page's rows come from the Ledger's counts, so the index
+//! never builds a domain's Presenter. The summary is a plain function of them, handed in as
+//! [`SummarySources`], so the pane follows the cursor without holding state.
 
 use lib_locale::format::{AmountStyle, format_amount};
 
-use crate::log::TracingLevel;
 use crate::msg;
 use crate::page::{ScopeFacts, ScopeGroup, SettingsPage};
-use crate::presenter::display::{appearance_label, colour_theme_name, date_style_label};
-use crate::presenter::display::{row_density_label, status_glyphs_label};
-use crate::presenter::general::on_start_label;
-use crate::presenter::{DisplaySettings, GeneralSettings, LocaleLine};
-use crate::presenter::{data_backup, sync_server};
 use crate::protocols::{HeadlineAmount, LedgerCounts, LedgerSummaries};
-use std::path::Path;
 
 /// One read-only value: its label and its value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SummaryRow {
     pub label: String,
     pub value: String,
+}
+
+impl SummaryRow {
+    pub fn new(label: String, value: impl Into<String>) -> Self {
+        Self {
+            label,
+            value: value.into(),
+        }
+    }
 }
 
 /// A page as the detail pane summarises it.
@@ -47,17 +50,11 @@ pub struct PageSummary {
     pub open_enabled: bool,
 }
 
-/// What a summary reads that Settings doesn't own, from the same places the pages read it.
+/// What a summary reads: the page's own rows for a This device page, or the Ledger's counts.
 pub struct SummarySources<'a> {
-    pub general: &'a GeneralSettings,
-    /// The Data folder in effect.
-    pub data_folder: &'a Path,
-    pub locale: &'a LocaleLine,
-    pub display: &'a DisplaySettings,
-    /// The Tracing page's level radio.
-    pub log_level: TracingLevel,
-    /// The Client's version, as About shows it.
-    pub version: &'a str,
+    /// The summarised page's rows as its Presenter answers them (`summary_rows`), for a This
+    /// device page; ignored for a This Ledger page.
+    pub device_rows: Vec<SummaryRow>,
     pub facts: ScopeFacts,
     /// The Open Ledger's counts; `None` with no Ledger open.
     pub ledger: Option<&'a dyn LedgerSummaries>,
@@ -99,7 +96,7 @@ impl SettingsPage {
 
 /// `page`'s summary under `sources`. The Ledger's counts are read only for a This Ledger page
 /// that has them.
-pub fn summarise(page: SettingsPage, sources: &SummarySources<'_>) -> PageSummary {
+pub fn summarise(page: SettingsPage, sources: SummarySources<'_>) -> PageSummary {
     let mut summary = PageSummary {
         page,
         name: page.label(),
@@ -110,7 +107,7 @@ pub fn summarise(page: SettingsPage, sources: &SummarySources<'_>) -> PageSummar
         open_enabled: true,
     };
     if !page.needs_ledger() {
-        summary.rows = device_rows(page, sources);
+        summary.rows = sources.device_rows;
         return summary;
     }
     match sources.ledger {
@@ -123,83 +120,14 @@ pub fn summarise(page: SettingsPage, sources: &SummarySources<'_>) -> PageSummar
     summary
 }
 
-fn row(label: String, value: impl Into<String>) -> SummaryRow {
-    SummaryRow {
-        label,
-        value: value.into(),
-    }
-}
-
-/// A This device page's field values.
-fn device_rows(page: SettingsPage, sources: &SummarySources<'_>) -> Vec<SummaryRow> {
-    match page {
-        SettingsPage::General => vec![
-            row(
-                msg::settings_general_on_start(),
-                on_start_label(sources.general.on_start),
-            ),
-            row(
-                lib_locale::msg::toast_setting_label(),
-                if sources.general.toasts_on {
-                    lib_locale::msg::toast_setting_on()
-                } else {
-                    lib_locale::msg::toast_setting_off()
-                },
-            ),
-            row(msg::settings_summary_locale(), sources.locale.line.clone()),
-            row(
-                msg::settings_general_data_folder(),
-                sources.data_folder.display().to_string(),
-            ),
-        ],
-        SettingsPage::Display => vec![
-            row(
-                msg::settings_display_date_style_label(),
-                date_style_label(sources.display.date_style),
-            ),
-            row(
-                msg::settings_display_row_density(),
-                row_density_label(sources.display.row_density),
-            ),
-            row(
-                msg::settings_display_status_glyphs(),
-                status_glyphs_label(sources.display.status_glyphs),
-            ),
-            row(
-                msg::settings_display_colour_theme(),
-                colour_theme_name(sources.display.colour_theme.as_deref().unwrap_or_default()),
-            ),
-            row(
-                msg::settings_summary_appearance(),
-                appearance_label(sources.display.colour_appearance),
-            ),
-        ],
-        SettingsPage::Tracing => vec![
-            row(msg::settings_summary_log_level(), sources.log_level.label()),
-            row(
-                msg::settings_summary_log_entries(),
-                sources.facts.log_capacity.to_string(),
-            ),
-        ],
-        SettingsPage::About => vec![
-            row(msg::settings_summary_version(), sources.version),
-            row(
-                msg::settings_summary_built_with(),
-                msg::settings_about_built_with(),
-            ),
-        ],
-        _ => Vec::new(),
-    }
-}
-
 /// A This Ledger page's values, from the Ledger's counts.
 fn ledger_rows(page: SettingsPage, counts: &LedgerCounts) -> Vec<SummaryRow> {
-    let number = |label: String, n: usize| row(label, n.to_string());
+    let number = |label: String, n: usize| SummaryRow::new(label, n.to_string());
     match page {
         SettingsPage::Ledger => counts
             .base_unit
             .iter()
-            .map(|code| row(msg::settings_ledger_base_unit(), code.clone()))
+            .map(|code| SummaryRow::new(msg::settings_ledger_base_unit(), code.clone()))
             .collect(),
         SettingsPage::Units => {
             let mut rows = vec![number(msg::settings_summary_units(), counts.units)];
@@ -207,7 +135,7 @@ fn ledger_rows(page: SettingsPage, counts: &LedgerCounts) -> Vec<SummaryRow> {
                 counts
                     .base_unit
                     .iter()
-                    .map(|code| row(msg::settings_ledger_base_unit(), code.clone())),
+                    .map(|code| SummaryRow::new(msg::settings_ledger_base_unit(), code.clone())),
             );
             rows
         }
@@ -223,13 +151,13 @@ fn ledger_rows(page: SettingsPage, counts: &LedgerCounts) -> Vec<SummaryRow> {
                 counts
                     .net_worth
                     .iter()
-                    .map(|worth| row(msg::settings_summary_net_worth(), amount(worth))),
+                    .map(|worth| SummaryRow::new(msg::settings_summary_net_worth(), amount(worth))),
             );
             rows
         }
         SettingsPage::Categories => vec![
             number(msg::settings_summary_categories(), counts.categories),
-            row(
+            SummaryRow::new(
                 msg::settings_summary_levels_deep(),
                 counts.category_levels.to_string(),
             ),
@@ -253,7 +181,7 @@ fn ledger_rows(page: SettingsPage, counts: &LedgerCounts) -> Vec<SummaryRow> {
                 msg::settings_summary_document_types(),
                 counts.document_types,
             ),
-            row(
+            SummaryRow::new(
                 msg::settings_summary_files_typed(),
                 msg::settings_summary_typed_of(
                     &counts.files_typed.to_string(),
@@ -266,19 +194,10 @@ fn ledger_rows(page: SettingsPage, counts: &LedgerCounts) -> Vec<SummaryRow> {
             number(msg::settings_summary_areas(), counts.areas),
             number(msg::settings_summary_items(), counts.items),
         ],
-        SettingsPage::SyncServer => vec![
-            row(msg::settings_sync_url(), sync_server::PLACEHOLDER_URL),
-            row(msg::settings_sync_status(), msg::settings_sync_connected()),
-            row(msg::settings_sync_last(), sync_server::PLACEHOLDER_LAST),
-        ],
-        SettingsPage::DataBackup => vec![
-            row(
-                msg::settings_backup_location(),
-                data_backup::PLACEHOLDER_LOCATION,
-            ),
-            row(msg::settings_backup_last(), data_backup::PLACEHOLDER_LAST),
-        ],
-        SettingsPage::General
+        // Neither has data of its own yet, so neither quotes a value (#1161).
+        SettingsPage::SyncServer
+        | SettingsPage::DataBackup
+        | SettingsPage::General
         | SettingsPage::Display
         | SettingsPage::Tracing
         | SettingsPage::About => Vec::new(),
@@ -293,8 +212,6 @@ fn amount(worth: &HeadlineAmount) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
     use super::*;
     use crate::fake::FixedLedgerSummaries;
 
@@ -302,37 +219,17 @@ mod tests {
         lib_locale::init_with_layers("en-US", &[msg::LAYER]);
     }
 
-    struct Held {
-        general: GeneralSettings,
-        data_folder: PathBuf,
-        locale: LocaleLine,
-        display: DisplaySettings,
-    }
+    const FACTS: ScopeFacts = ScopeFacts { log_capacity: 500 };
 
-    impl Held {
-        fn new() -> Self {
-            Self {
-                general: GeneralSettings::default(),
-                data_folder: PathBuf::from("~/documents/ledgers"),
-                locale: LocaleLine {
-                    line: "en-AU".to_string(),
-                    ..LocaleLine::default()
-                },
-                display: DisplaySettings::default(),
-            }
-        }
-
-        fn sources<'a>(&'a self, ledger: Option<&'a dyn LedgerSummaries>) -> SummarySources<'a> {
-            SummarySources {
-                general: &self.general,
-                data_folder: &self.data_folder,
-                locale: &self.locale,
-                display: &self.display,
-                log_level: TracingLevel::Info,
-                version: "0.1.0",
-                facts: ScopeFacts { log_capacity: 500 },
-                ledger,
-            }
+    /// Sources for a page whose Presenter answered `device_rows`, with `ledger` open or none.
+    fn sources(
+        device_rows: Vec<SummaryRow>,
+        ledger: Option<&dyn LedgerSummaries>,
+    ) -> SummarySources<'_> {
+        SummarySources {
+            device_rows,
+            facts: FACTS,
+            ledger,
         }
     }
 
@@ -345,19 +242,13 @@ mod tests {
     }
 
     #[test]
-    fn general_quotes_its_four_fields() {
+    fn a_this_device_page_quotes_the_rows_its_presenter_answered() {
         locale();
-        let held = Held::new();
-        let summary = summarise(SettingsPage::General, &held.sources(None));
-        assert_eq!(
-            pairs(&summary),
-            [
-                ("On start", "Reopen last Ledger"),
-                ("Toasts", "On"),
-                ("Locale", "en-AU"),
-                ("Data folder", "~/documents/ledgers"),
-            ]
-        );
+        let rows = vec![SummaryRow::new("Toasts".to_string(), "On")];
+
+        let summary = summarise(SettingsPage::General, sources(rows.clone(), None));
+
+        assert_eq!(summary.rows, rows);
         assert_eq!(summary.name, "General");
         assert_eq!(summary.scope_note, "this device · never synced");
         assert_eq!(summary.purpose, SettingsPage::General.purpose());
@@ -368,39 +259,29 @@ mod tests {
     #[test]
     fn a_this_device_page_needs_no_ledger() {
         locale();
-        let held = Held::new();
         for page in ScopeGroup::ThisDevice.pages() {
-            let summary = summarise(page, &held.sources(None));
-            assert!(!summary.rows.is_empty(), "{page:?} quotes its fields");
+            let summary = summarise(page, sources(Vec::new(), None));
             assert!(summary.open_enabled, "{page:?} opens with no Ledger");
             assert_eq!(summary.note, None);
         }
     }
 
     #[test]
-    fn the_other_device_pages_quote_their_fields() {
+    fn a_this_ledger_page_ignores_device_rows() {
         locale();
-        let held = Held::new();
-        let display = summarise(SettingsPage::Display, &held.sources(None));
-        assert_eq!(display.rows.len(), 5);
-        assert_eq!(display.rows[0].label, "Date format");
-        assert_eq!(display.rows[0].value, "Locale");
-        let tracing = summarise(SettingsPage::Tracing, &held.sources(None));
-        assert_eq!(
-            pairs(&tracing),
-            [("Log level", "info"), ("Entries kept", "500")]
-        );
-        let about = summarise(SettingsPage::About, &held.sources(None));
-        assert_eq!(about.rows[0].value, "0.1.0");
+        let ledger = FixedLedgerSummaries::sample();
+        let rows = vec![SummaryRow::new("Toasts".to_string(), "On")];
+
+        let summary = summarise(SettingsPage::Institutions, sources(rows, Some(&ledger)));
+
+        assert_eq!(pairs(&summary), [("Institutions", "7")]);
     }
 
     #[test]
     fn list_pages_quote_a_count_and_a_headline_fact() {
         locale();
-        let held = Held::new();
         let ledger = FixedLedgerSummaries::sample();
-        let sources = held.sources(Some(&ledger));
-        let of = |page| summarise(page, &sources);
+        let of = |page| summarise(page, sources(Vec::new(), Some(&ledger)));
         assert_eq!(
             pairs(&of(SettingsPage::Accounts)),
             [("Accounts", "7"), ("Net worth", "83,995.87 aud")]
@@ -439,23 +320,22 @@ mod tests {
     #[test]
     fn a_negative_net_worth_keeps_its_sign() {
         locale();
-        let held = Held::new();
         let mut counts = FixedLedgerSummaries::sample();
         if let Some(worth) = counts.0.net_worth.as_mut() {
             worth.amount = lib_core::Money("-120.5".parse().expect("a decimal literal"));
         }
-        let summary = summarise(SettingsPage::Accounts, &held.sources(Some(&counts)));
+        let summary = summarise(SettingsPage::Accounts, sources(Vec::new(), Some(&counts)));
         assert_eq!(summary.rows[1].value, "\u{2212}120.50 aud");
     }
 
     #[test]
-    fn every_this_ledger_page_has_values_with_a_ledger_open() {
+    fn every_this_ledger_page_with_data_has_values_with_a_ledger_open() {
         locale();
-        let held = Held::new();
         let ledger = FixedLedgerSummaries::sample();
         for page in ScopeGroup::ThisLedger.pages() {
-            let summary = summarise(page, &held.sources(Some(&ledger)));
-            assert!(!summary.rows.is_empty(), "{page:?} quotes values");
+            let summary = summarise(page, sources(Vec::new(), Some(&ledger)));
+            let stub = matches!(page, SettingsPage::SyncServer | SettingsPage::DataBackup);
+            assert_eq!(summary.rows.is_empty(), stub, "{page:?} quotes values");
             assert!(summary.open_enabled);
             assert_eq!(summary.note, None);
         }
@@ -464,9 +344,8 @@ mod tests {
     #[test]
     fn with_no_ledger_a_this_ledger_page_has_no_values_says_so_and_cannot_open() {
         locale();
-        let held = Held::new();
         for page in ScopeGroup::ThisLedger.pages() {
-            let summary = summarise(page, &held.sources(None));
+            let summary = summarise(page, sources(Vec::new(), None));
             assert!(summary.rows.is_empty(), "{page:?} quotes nothing");
             assert_eq!(
                 summary.note.as_deref(),
@@ -475,10 +354,7 @@ mod tests {
             assert!(!summary.open_enabled, "{page:?} cannot open");
             assert_eq!(summary.name, page.label());
             assert_eq!(summary.purpose, page.purpose());
-            assert_eq!(
-                summary.scope_note,
-                page.scope_note(held.sources(None).facts)
-            );
+            assert_eq!(summary.scope_note, page.scope_note(FACTS));
         }
     }
 

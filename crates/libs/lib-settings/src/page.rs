@@ -186,8 +186,8 @@ impl SettingsPage {
             | Self::Payees
             | Self::Documents
             | Self::Inventory => msg::settings_scope_ledger_data(),
-            Self::SyncServer => msg::settings_scope_sync_server(30),
-            Self::DataBackup => msg::settings_scope_data_backup("aud", "2.84 mb"),
+            Self::SyncServer => msg::settings_scope_sync_server(),
+            Self::DataBackup => msg::settings_scope_data_backup(),
             Self::Tracing => msg::settings_scope_tracing(count(facts.log_capacity)),
             Self::About => msg::settings_scope_about(),
         }
@@ -337,7 +337,13 @@ mod tests {
         );
         assert_eq!(
             SettingsPage::SyncServer.scope_note(facts),
-            "synced · every 30 seconds"
+            "synced",
+            "no interval until the Sync server has one"
+        );
+        assert_eq!(
+            SettingsPage::DataBackup.scope_note(facts),
+            "local files",
+            "no size until Data & backup reads one"
         );
         assert_eq!(
             SettingsPage::Tracing.scope_note(ScopeFacts { log_capacity: 1 }),

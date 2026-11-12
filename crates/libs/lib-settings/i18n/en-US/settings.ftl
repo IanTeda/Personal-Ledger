@@ -68,11 +68,8 @@ settings-scope-this-device = this device · never synced
 settings-scope-ledger = preferences · synced · ledger identity
 settings-scope-synced-change-sets = synced · change sets
 settings-scope-ledger-data = ledger data · synced
-settings-scope-sync-server = synced · every { $seconds ->
-    [one] { $seconds } second
-   *[other] { $seconds } seconds
-}
-settings-scope-data-backup = local files · { $unit } · { $size }
+settings-scope-sync-server = synced
+settings-scope-data-backup = local files
 settings-scope-tracing = this device · diagnostic · last { $entries ->
     [one] { $entries } entry
    *[other] { $entries } entries

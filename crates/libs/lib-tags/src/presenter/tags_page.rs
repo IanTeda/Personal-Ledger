@@ -18,7 +18,8 @@ use lib_viper::view::{Hint, count};
 use crate::keymap::{MERGE, REMOVE};
 use crate::protocols::{SharedPorts, TagChange, TagsDialog, TagsOutcome, TagsRouter};
 use crate::{
-    DuplicateGroup, Tag, active_count, duplicate_groups, duplicate_of, get, msg, sorted_by_name,
+    DuplicateGroup, Tag, active_count, duplicate_groups, duplicate_of, get, likely_duplicate_count,
+    msg, sorted_by_name,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -306,7 +307,7 @@ fn scope(tags: &[Tag], groups: &[DuplicateGroup]) -> (Vec<Segment>, String) {
         token: None,
     };
     let total = msg::tags_count(count(active_count(tags)));
-    let duplicates = groups.iter().map(|group| group.duplicates.len()).sum();
+    let duplicates = likely_duplicate_count(groups);
     if duplicates == 0 {
         return (vec![plain(total.clone())], total);
     }

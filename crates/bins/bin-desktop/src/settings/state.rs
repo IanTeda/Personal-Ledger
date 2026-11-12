@@ -294,18 +294,20 @@ impl SettingsView {
         if !model.index_page || self.window_size != WindowSize::XLarge {
             return None;
         }
-        let general = self.pages.general.read(cx).presenter();
-        let (general_settings, data_folder, locale) =
-            (general.settings(), general.data_folder(), general.locale());
-        let display = self.pages.display.read(cx).presenter().settings();
-        let version = self.pages.about.read(cx).view_model().version;
+        let device_rows = match model.selected {
+            SettingsPage::General => self.pages.general.read(cx).presenter().summary_rows(),
+            SettingsPage::Display => self.pages.display.read(cx).presenter().summary_rows(),
+            SettingsPage::Tracing => self
+                .pages
+                .tracing
+                .read(cx)
+                .presenter()
+                .summary_rows(lib_tracing::LOG_CAPACITY),
+            SettingsPage::About => self.pages.about.read(cx).presenter().summary_rows(),
+            _ => Vec::new(),
+        };
         let sources = SummarySources {
-            general: &general_settings,
-            data_folder,
-            locale,
-            display: &display,
-            log_level: self.pages.tracing.read(cx).presenter().level(),
-            version: &version,
+            device_rows,
             facts: ScopeFacts {
                 log_capacity: lib_tracing::LOG_CAPACITY,
             },
@@ -315,7 +317,7 @@ impl SettingsView {
                 .as_ref()
                 .map(|pages| &pages.summaries as &dyn LedgerSummaries),
         };
-        Some(summarise(model.selected, &sources))
+        Some(summarise(model.selected, sources))
     }
 
     /// The page Entity hosting Presenter `P`, for what `Root` drives on a page: a module Router's

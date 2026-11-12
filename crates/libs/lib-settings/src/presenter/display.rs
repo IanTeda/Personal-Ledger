@@ -35,6 +35,7 @@ use super::form::{
 use crate::keymap::{NEXT_CHOICE, PREVIOUS_CHOICE};
 use crate::msg;
 use crate::protocols::{ColourChoice, DeviceConfiguration, DeviceRouter, DeviceSnapshot};
+use crate::summary::SummaryRow;
 
 /// The Date format control's choices: `None` is "Locale default", the Locale picking the form.
 pub const DATE_STYLE_CHOICES: [Option<DateStyle>; 5] = [
@@ -339,6 +340,33 @@ impl DisplayPresenter {
             }
         }
         settings
+    }
+
+    /// What the Settings index's detail pane quotes of Display: each field as it stands.
+    pub fn summary_rows(&self) -> Vec<SummaryRow> {
+        let settings = self.settings();
+        vec![
+            SummaryRow::new(
+                msg::settings_display_date_style_label(),
+                date_style_label(settings.date_style),
+            ),
+            SummaryRow::new(
+                msg::settings_display_row_density(),
+                row_density_label(settings.row_density),
+            ),
+            SummaryRow::new(
+                msg::settings_display_status_glyphs(),
+                status_glyphs_label(settings.status_glyphs),
+            ),
+            SummaryRow::new(
+                msg::settings_display_colour_theme(),
+                colour_theme_name(settings.colour_theme.as_deref().unwrap_or_default()),
+            ),
+            SummaryRow::new(
+                msg::settings_summary_appearance(),
+                appearance_label(settings.colour_appearance),
+            ),
+        ]
     }
 }
 
@@ -821,6 +849,24 @@ mod tests {
         display_on(Rc::new(
             InMemoryDeviceConfiguration::writable().reading(values),
         ))
+    }
+
+    #[test]
+    fn display_summarises_its_five_fields() {
+        let rows = reading([]).summary_rows();
+
+        let labels: Vec<_> = rows.iter().map(|row| row.label.as_str()).collect();
+        assert_eq!(
+            labels,
+            [
+                "Date format",
+                "Row density",
+                "Status glyphs",
+                "Colour theme",
+                "Appearance"
+            ]
+        );
+        assert_eq!(rows[0].value, "Locale");
     }
 
     fn writable() -> (Rc<InMemoryDeviceConfiguration>, DisplayPresenter) {

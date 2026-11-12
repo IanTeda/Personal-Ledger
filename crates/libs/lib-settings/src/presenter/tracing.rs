@@ -22,6 +22,7 @@ use crate::keymap::{CLEAR_LOGS, NEXT_CHOICE, PREVIOUS_CHOICE};
 use crate::log::{LogLine, TracingLevel};
 use crate::msg;
 use crate::protocols::{TracingLog, TracingRouter};
+use crate::summary::SummaryRow;
 
 /// How the log box scrolls.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -215,6 +216,18 @@ impl TracingPresenter {
         self.mirror.level
     }
 
+    /// What the Settings index's detail pane quotes of Tracing: the level radio and how many
+    /// entries the log keeps, `log_capacity`.
+    pub fn summary_rows(&self, log_capacity: usize) -> Vec<SummaryRow> {
+        vec![
+            SummaryRow::new(msg::settings_summary_log_level(), self.level().label()),
+            SummaryRow::new(
+                msg::settings_summary_log_entries(),
+                log_capacity.to_string(),
+            ),
+        ]
+    }
+
     /// How many entries the filter shows.
     pub fn visible_count(&self) -> usize {
         self.mirror.visible.len()
@@ -364,6 +377,20 @@ mod tests {
             dialog_keys: DialogKeys::default(),
             level,
         })
+    }
+
+    #[test]
+    fn tracing_summarises_its_level_and_the_entries_kept() {
+        lib_locale::init_with_layers("en-US", &[msg::LAYER]);
+        let log = Rc::new(InMemoryTracingLog::new(8));
+
+        let rows = presenter(&log, TracingLevel::Info).summary_rows(500);
+
+        let pairs: Vec<_> = rows
+            .iter()
+            .map(|row| (row.label.as_str(), row.value.as_str()))
+            .collect();
+        assert_eq!(pairs, [("Log level", "info"), ("Entries kept", "500")]);
     }
 
     fn messages(presenter: &TracingPresenter) -> Vec<String> {

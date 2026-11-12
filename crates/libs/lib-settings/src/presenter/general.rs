@@ -35,6 +35,7 @@ use super::form::{
 use crate::keymap::TEST_TOASTS;
 use crate::msg;
 use crate::protocols::{DeviceConfiguration, DeviceRouter, DeviceSnapshot};
+use crate::summary::SummaryRow;
 
 /// On start's choices, in the segmented control's order.
 pub const ON_START_CHOICES: [OnStart; 2] = [OnStart::ReopenLastLedger, OnStart::NoLedger];
@@ -369,6 +370,27 @@ impl GeneralPresenter {
         &self.data_folder
     }
 
+    /// What the Settings index's detail pane quotes of General: its fields as they stand, with
+    /// the Locale and the Data folder in effect rather than the file's.
+    pub fn summary_rows(&self) -> Vec<SummaryRow> {
+        let settings = self.settings();
+        vec![
+            SummaryRow::new(
+                msg::settings_general_on_start(),
+                on_start_label(settings.on_start),
+            ),
+            SummaryRow::new(
+                lib_locale::msg::toast_setting_label(),
+                toasts_label(settings.toasts_on),
+            ),
+            SummaryRow::new(msg::settings_summary_locale(), self.locale.line.clone()),
+            SummaryRow::new(
+                msg::settings_general_data_folder(),
+                self.data_folder.display().to_string(),
+            ),
+        ]
+    }
+
     /// The folder the picker picked, from **Change…** or `:data`, written as the Data folder: the
     /// one place it is written. The folder the page shows already writes nothing. Without an
     /// override it applies at once, with a Success Toast in place of the status line; with one it
@@ -623,11 +645,7 @@ fn declare(
                 .into_iter()
                 .map(|value| Choice {
                     value: set(ConfigValue::Toasts(value)),
-                    label: if value {
-                        lib_locale::msg::toast_setting_on()
-                    } else {
-                        lib_locale::msg::toast_setting_off()
-                    },
+                    label: toasts_label(value),
                 })
                 .collect(),
         )
@@ -722,10 +740,19 @@ fn locale_label(choice: Option<Locale>) -> String {
     }
 }
 
-pub(crate) fn on_start_label(choice: OnStart) -> String {
+fn on_start_label(choice: OnStart) -> String {
     match choice {
         OnStart::ReopenLastLedger => msg::settings_general_on_start_reopen(),
         OnStart::NoLedger => msg::settings_general_on_start_none(),
+    }
+}
+
+/// Toasts' choice as its control and the index's summary both name it.
+fn toasts_label(on: bool) -> String {
+    if on {
+        lib_locale::msg::toast_setting_on()
+    } else {
+        lib_locale::msg::toast_setting_off()
     }
 }
 
@@ -841,6 +868,35 @@ mod tests {
                 .and_then(|view| view.chosen),
             Some(2),
             "en-GB, whatever the file's case"
+        );
+    }
+
+    #[test]
+    fn general_summarises_its_four_fields_with_the_data_folder_in_effect() {
+        let device = Rc::new(
+            InMemoryDeviceConfiguration::writable()
+                .reading([
+                    ConfigValue::OnStart(OnStart::ReopenLastLedger),
+                    ConfigValue::Toasts(false),
+                    ConfigValue::Data(PathBuf::from("/from/above")),
+                ])
+                .storing([ConfigValue::Data(PathBuf::from("/in/the/file"))]),
+        );
+
+        let rows = general_on(device).summary_rows();
+
+        let pairs: Vec<_> = rows
+            .iter()
+            .map(|row| (row.label.as_str(), row.value.as_str()))
+            .collect();
+        assert_eq!(
+            pairs,
+            [
+                ("On start", "Reopen last Ledger"),
+                ("Toasts", "Off"),
+                ("Locale", "en-AU, from config"),
+                ("Data folder", "/from/above"),
+            ]
         );
     }
 

@@ -10,6 +10,7 @@ use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::Hint;
 
 use crate::msg;
+use crate::summary::SummaryRow;
 
 /// What the Client hands Settings › About as it builds it.
 pub struct AboutSetup {
@@ -54,6 +55,21 @@ impl AboutPresenter {
     /// Replaces the legend, for start-up and a `[keybindings]` change.
     pub fn set_legend(&mut self, legend: Vec<Hint>) {
         self.legend = legend;
+    }
+
+    /// What the Settings index's detail pane quotes of About: the version line and what it is
+    /// built with.
+    pub fn summary_rows(&self) -> Vec<SummaryRow> {
+        vec![
+            SummaryRow::new(
+                msg::settings_summary_version(),
+                msg::settings_about_version(&self.version),
+            ),
+            SummaryRow::new(
+                msg::settings_summary_built_with(),
+                msg::settings_about_built_with(),
+            ),
+        ]
     }
 }
 
@@ -103,6 +119,17 @@ mod tests {
 
         assert_eq!(model.version, "Personal Ledger v1.2.3");
         assert_eq!(model.built_with, "Built with Rust + GPUI + SQLite");
+    }
+
+    #[test]
+    fn about_summarises_its_version_and_what_it_is_built_with() {
+        let rows = AboutPresenter::new(AboutSetup {
+            version: "1.2.3".to_string(),
+        })
+        .summary_rows();
+
+        assert_eq!(rows[0].value, "Personal Ledger v1.2.3");
+        assert_eq!(rows[1].value, "Built with Rust + GPUI + SQLite");
     }
 
     #[test]
