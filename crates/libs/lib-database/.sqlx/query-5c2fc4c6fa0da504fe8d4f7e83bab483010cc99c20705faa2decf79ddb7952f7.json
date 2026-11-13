@@ -6,12 +6,12 @@
       {
         "name": "id!: domain::RowID",
         "ordinal": 0,
-        "type_info": "Null"
+        "type_info": "Text"
       },
       {
         "name": "payee_id!: domain::RowID",
         "ordinal": 1,
-        "type_info": "Null"
+        "type_info": "Text"
       },
       {
         "name": "pattern",

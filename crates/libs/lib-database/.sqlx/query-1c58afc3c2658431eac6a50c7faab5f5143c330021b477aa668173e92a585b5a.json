@@ -6,7 +6,7 @@
       {
         "name": "transaction_id!: TransactionId",
         "ordinal": 0,
-        "type_info": "Null"
+        "type_info": "Text"
       },
       {
         "name": "position",
@@ -21,12 +21,12 @@
       {
         "name": "category_id!: CategoryId",
         "ordinal": 3,
-        "type_info": "Null"
+        "type_info": "Text"
       },
       {
         "name": "payee_id?: PayeeId",
         "ordinal": 4,
-        "type_info": "Null"
+        "type_info": "Text"
       }
     ],
     "parameters": {

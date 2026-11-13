@@ -6,7 +6,7 @@
       {
         "name": "id!: domain::RowID",
         "ordinal": 0,
-        "type_info": "Null"
+        "type_info": "Text"
       },
       {
         "name": "name",

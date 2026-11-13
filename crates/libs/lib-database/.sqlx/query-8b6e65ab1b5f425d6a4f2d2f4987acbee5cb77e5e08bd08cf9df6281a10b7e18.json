@@ -6,7 +6,7 @@
       {
         "name": "id!: UnitId",
         "ordinal": 0,
-        "type_info": "Null"
+        "type_info": "Text"
       },
       {
         "name": "code",
@@ -41,7 +41,7 @@
       {
         "name": "quote_unit_id!: UnitId",
         "ordinal": 7,
-        "type_info": "Null"
+        "type_info": "Text"
       },
       {
         "name": "is_active",

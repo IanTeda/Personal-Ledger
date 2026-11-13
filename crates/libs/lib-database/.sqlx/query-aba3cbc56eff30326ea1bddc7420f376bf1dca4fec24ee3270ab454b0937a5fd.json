@@ -6,7 +6,7 @@
       {
         "name": "id!: AccountId",
         "ordinal": 0,
-        "type_info": "Null"
+        "type_info": "Text"
       },
       {
         "name": "name",
@@ -16,7 +16,7 @@
       {
         "name": "institution_id!: InstitutionId",
         "ordinal": 2,
-        "type_info": "Null"
+        "type_info": "Text"
       },
       {
         "name": "account_type!: AccountType",
@@ -26,7 +26,7 @@
       {
         "name": "unit_id!: UnitId",
         "ordinal": 4,
-        "type_info": "Null"
+        "type_info": "Text"
       },
       {
         "name": "balance!: Money",

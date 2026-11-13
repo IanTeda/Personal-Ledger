@@ -6,7 +6,7 @@
       {
         "name": "id!: PayeeId",
         "ordinal": 0,
-        "type_info": "Null"
+        "type_info": "Text"
       },
       {
         "name": "name",
@@ -16,7 +16,7 @@
       {
         "name": "default_category_id?: CategoryId",
         "ordinal": 2,
-        "type_info": "Null"
+        "type_info": "Text"
       },
       {
         "name": "is_active",

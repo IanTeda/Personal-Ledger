@@ -6,7 +6,7 @@
       {
         "name": "id!: DocumentId",
         "ordinal": 0,
-        "type_info": "Null"
+        "type_info": "Text"
       },
       {
         "name": "path",
@@ -36,7 +36,7 @@
       {
         "name": "document_type_id!: DocumentTypeId",
         "ordinal": 6,
-        "type_info": "Null"
+        "type_info": "Text"
       },
       {
         "name": "date!: NaiveDate",

@@ -6,12 +6,12 @@
       {
         "name": "budget_id!: BudgetId",
         "ordinal": 0,
-        "type_info": "Null"
+        "type_info": "Text"
       },
       {
         "name": "category_id!: CategoryId",
         "ordinal": 1,
-        "type_info": "Null"
+        "type_info": "Text"
       },
       {
         "name": "month!: NaiveDate",

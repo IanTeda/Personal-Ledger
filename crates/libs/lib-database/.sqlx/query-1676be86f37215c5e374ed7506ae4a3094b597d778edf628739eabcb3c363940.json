@@ -6,12 +6,12 @@
       {
         "name": "id!: BillScheduleEntryId",
         "ordinal": 0,
-        "type_info": "Null"
+        "type_info": "Text"
       },
       {
         "name": "plan_id!: BillPlanId",
         "ordinal": 1,
-        "type_info": "Null"
+        "type_info": "Text"
       },
       {
         "name": "due!: NaiveDate",
@@ -36,7 +36,7 @@
       {
         "name": "transaction_id?: TransactionId",
         "ordinal": 6,
-        "type_info": "Null"
+        "type_info": "Text"
       },
       {
         "name": "position?: i64",

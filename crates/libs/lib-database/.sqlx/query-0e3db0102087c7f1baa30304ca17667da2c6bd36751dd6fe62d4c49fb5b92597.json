@@ -6,7 +6,7 @@
       {
         "name": "id!: LocationId",
         "ordinal": 0,
-        "type_info": "Null"
+        "type_info": "Text"
       },
       {
         "name": "name",
@@ -21,7 +21,7 @@
       {
         "name": "unit_id!: UnitId",
         "ordinal": 3,
-        "type_info": "Null"
+        "type_info": "Text"
       },
       {
         "name": "cover_insurer",
