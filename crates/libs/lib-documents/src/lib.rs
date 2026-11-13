@@ -35,7 +35,7 @@ pub mod types;
 
 pub use crate::protocols::{
     DocumentAccount, DocumentAccounts, DocumentBillPlan, DocumentBillPlans, DocumentFiles,
-    DocumentItem, DocumentItems, DocumentPayee, DocumentPayees, DocumentReads, DocumentRepository,
+    DocumentItem, DocumentItems, DocumentPayees, DocumentReads, DocumentRepository,
     DocumentTransaction, DocumentTransactions, DocumentTypesDialog, DocumentTypesOutcome,
     DocumentTypesRouter, DocumentsDialog, DocumentsOutcome, DocumentsRouter, LinkRecords,
     SharedFiles, SharedReads, SharedRepository, TypeChange,

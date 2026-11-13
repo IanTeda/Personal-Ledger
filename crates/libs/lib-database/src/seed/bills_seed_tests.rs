@@ -9,12 +9,13 @@ use chrono::{Datelike, NaiveDate};
 use lib_bills::*;
 use lib_core::AccountRef;
 use lib_core::CategoryRef;
+use lib_core::PayeeRef;
 use lib_core::{AccountId, BillPlanId, CategoryId, PayeeId, Period};
 use lib_core::{Money, Total, TransactionId, UnitId};
 
 use crate::adapter::accounts::account_refs;
 use crate::adapter::categories::category_refs;
-use crate::adapter::payees::bill_payees;
+use crate::adapter::payees::payee_refs;
 use crate::seed::{SampleNames, bill_splits, sample_bills, sample_transactions};
 
 fn cents_money(cents: i64) -> Money {
@@ -561,7 +562,7 @@ fn the_read_ports_answer_every_row_flagged_by_its_domains_rules() {
         sample.categories.categories.len()
     );
     assert_eq!(
-        bill_payees(&sample.payees.payees.payees).len(),
+        payee_refs(&sample.payees.payees.payees).len(),
         sample.payees.payees.payees.len()
     );
     let splits: usize = sample
@@ -606,7 +607,7 @@ fn the_read_ports_answer_every_row_flagged_by_its_domains_rules() {
         .expect("the sample has Utilities");
     assert!(!utilities.is_leaf);
     assert!(
-        bill_payees(&sample.payees.payees.payees)
+        payee_refs(&sample.payees.payees.payees)
             .iter()
             .any(|p| !p.is_active)
     );
@@ -625,9 +626,18 @@ fn the_bills_fake_sample_is_the_ledgers() {
         category_refs(&sample.categories.categories),
         fake::sample_categories()
     );
-    let payees = bill_payees(&sample.payees.payees.payees);
+    let payees = payee_refs(&sample.payees.payees.payees);
+    // The fake's Payees carry no aliases, which Bills ignores.
     for payee in fake::sample_payees() {
-        assert!(payees.contains(&payee), "{payee:?}");
+        let stored = PayeeRef {
+            aliases: payees
+                .iter()
+                .find(|row| row.id == payee.id)
+                .map(|row| row.aliases.clone())
+                .unwrap_or_default(),
+            ..payee
+        };
+        assert!(payees.contains(&stored), "{stored:?}");
     }
 
     // The fake numbers the Bills' Transactions from 1 rather than after the generated history.

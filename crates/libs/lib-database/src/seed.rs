@@ -423,7 +423,7 @@ pub fn sample_bills(today: NaiveDate) -> BillsSeed {
     lib_bills::sample_bills(
         &crate::adapter::accounts::account_refs(&sample_accounts()),
         &crate::adapter::categories::category_refs(&sample_categories()),
-        &crate::adapter::payees::bill_payees(&sample_payees()),
+        &crate::adapter::payees::payee_refs(&sample_payees()),
         lib_transactions::fake::FIRST_BOOKED,
         today,
     )
@@ -440,7 +440,7 @@ pub fn sample_link_records(
         transactions: crate::adapter::transactions::document_transactions(&sample_transactions(
             today,
         )),
-        payees: crate::adapter::payees::document_payees(&sample_payees()),
+        payees: crate::adapter::payees::payee_refs(&sample_payees()),
         accounts: crate::adapter::accounts::document_accounts(&sample_accounts(), institutions),
         plans: crate::adapter::bills::document_bill_plans(&sample_bills(today).plans),
         items: crate::adapter::inventory::document_items(&sample_inventory(today).items),

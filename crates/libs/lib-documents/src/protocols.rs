@@ -10,6 +10,7 @@
 //! write, so a write never fails here; a failed save is the adapter's to report. `lib-database`'s
 //! Documents adapter implements it (#963).
 
+use lib_core::PayeeRef;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -203,17 +204,6 @@ impl DocumentTransaction {
     }
 }
 
-/// A Payee as Documents reads it: the merchant on an Unfiled Document's facts is matched against
-/// its name and aliases.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DocumentPayee {
-    pub id: PayeeId,
-    pub name: String,
-    /// The match text: each alias, upper case, as the Payees store it.
-    pub aliases: Vec<String>,
-    pub is_active: bool,
-}
-
 /// An Account as Documents reads it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocumentAccount {
@@ -250,7 +240,7 @@ pub trait DocumentTransactions {
 /// The Payees a Document can link to and a merchant is matched against.
 pub trait DocumentPayees {
     /// Every Payee, active or not.
-    fn document_payees(&self) -> Vec<DocumentPayee>;
+    fn document_payees(&self) -> Vec<PayeeRef>;
 }
 
 /// The Accounts a Document can link to.
@@ -288,7 +278,7 @@ impl<T> DocumentReads for T where
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct LinkRecords {
     pub transactions: Vec<DocumentTransaction>,
-    pub payees: Vec<DocumentPayee>,
+    pub payees: Vec<PayeeRef>,
     pub accounts: Vec<DocumentAccount>,
     pub plans: Vec<DocumentBillPlan>,
     pub items: Vec<DocumentItem>,
@@ -309,7 +299,7 @@ impl LinkRecords {
         self.transactions.iter().find(|row| row.id == id)
     }
 
-    pub fn payee(&self, id: PayeeId) -> Option<&DocumentPayee> {
+    pub fn payee(&self, id: PayeeId) -> Option<&PayeeRef> {
         self.payees.iter().find(|row| row.id == id)
     }
 

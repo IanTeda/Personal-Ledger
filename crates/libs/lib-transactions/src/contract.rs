@@ -12,6 +12,7 @@
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
 use lib_core::AccountRef;
+use lib_core::PayeeRef;
 use lib_core::{
     AccountId, CategoryId, HexColor, Money, PayeeId, TagId, TransactionId, TransactionStatus,
     UnitId, UnitRef,
@@ -20,8 +21,8 @@ use lib_core::{CategoryRef, CategoryTypes};
 
 use crate::fake::{InMemoryTransactionReads, InMemoryTransactions};
 use crate::{
-    Split, Transaction, TransactionAccounts, TransactionCategories, TransactionPayee,
-    TransactionPayees, TransactionRepository, TransactionTag, TransactionTags, TransactionUnits,
+    Split, Transaction, TransactionAccounts, TransactionCategories, TransactionPayees,
+    TransactionRepository, TransactionTag, TransactionTags, TransactionUnits,
 };
 
 /// Builds the port a contract check runs on.
@@ -147,10 +148,10 @@ impl ReadsFactory<CategoryRef> for InMemoryReadsFactory {
     }
 }
 
-impl ReadsFactory<TransactionPayee> for InMemoryReadsFactory {
+impl ReadsFactory<PayeeRef> for InMemoryReadsFactory {
     type Reads = InMemoryTransactionReads;
 
-    fn create(&mut self, rows: Vec<TransactionPayee>) -> InMemoryTransactionReads {
+    fn create(&mut self, rows: Vec<PayeeRef>) -> InMemoryTransactionReads {
         InMemoryTransactionReads {
             payees: rows,
             ..InMemoryTransactionReads::default()
@@ -376,12 +377,14 @@ where
 /// Every Payee is answered with its name, in the order stored, and again after a reload.
 pub fn payees_read_back<F>(factory: &mut F)
 where
-    F: ReadsFactory<TransactionPayee>,
+    F: ReadsFactory<PayeeRef>,
     F::Reads: TransactionPayees,
 {
-    let payee = |id: u32, name: &str| TransactionPayee {
+    let payee = |id: u32, name: &str| PayeeRef {
         id: PayeeId::seed(id),
         name: name.into(),
+        aliases: Vec::new(),
+        is_active: true,
     };
     let stored = vec![payee(4, "Woolworths"), payee(2, "BP"), payee(9, "Origin")];
 

@@ -25,8 +25,9 @@ pub(crate) mod test_support {
         AccountId, AccountRef, CategoryId, CategoryRef, CategoryTypes, PayeeId, TagId, UnitId,
     };
 
+    use crate::TransactionTag;
     use crate::fake::InMemoryTransactionReads;
-    use crate::{TransactionPayee, TransactionTag};
+    use lib_core::PayeeRef;
 
     /// Composes this crate's layer into the process Locale, which every test that reads text
     /// needs: the first explicit `init` wins, so each test calls it before reading any.
@@ -85,9 +86,11 @@ pub(crate) mod test_support {
                 ),
                 category(HOUSING, "Housing", None, "Housing"),
             ],
-            payees: vec![TransactionPayee {
+            payees: vec![PayeeRef {
                 id: WOOLWORTHS,
                 name: "Woolworths".to_string(),
+                aliases: Vec::new(),
+                is_active: true,
             }],
             tags: vec![TransactionTag {
                 id: WORK_TRIP,

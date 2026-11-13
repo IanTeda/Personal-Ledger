@@ -6,6 +6,7 @@ mod seed;
 
 use lib_core::AccountRef;
 use lib_core::CategoryRef;
+use lib_core::PayeeRef;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -19,7 +20,7 @@ pub use seed::{DEFAULT_SEED, HISTORY_DAYS, SeedAccount, SeedNames, sample_transa
 
 use crate::protocols::SharedPorts;
 use crate::{
-    Transaction, TransactionAccounts, TransactionCategories, TransactionPayee, TransactionPayees,
+    Transaction, TransactionAccounts, TransactionCategories, TransactionPayees,
     TransactionRepository, TransactionTag, TransactionTags, TransactionUnits, TransactionsPorts,
 };
 
@@ -55,7 +56,7 @@ impl TransactionRepository for InMemoryTransactions {
 pub struct InMemoryTransactionReads {
     pub accounts: Vec<AccountRef>,
     pub categories: Vec<CategoryRef>,
-    pub payees: Vec<TransactionPayee>,
+    pub payees: Vec<PayeeRef>,
     pub tags: Vec<TransactionTag>,
     pub units: Vec<UnitRef>,
 }
@@ -73,7 +74,7 @@ impl TransactionCategories for InMemoryTransactionReads {
 }
 
 impl TransactionPayees for InMemoryTransactionReads {
-    fn transaction_payees(&self) -> Vec<TransactionPayee> {
+    fn transaction_payees(&self) -> Vec<PayeeRef> {
         self.payees.clone()
     }
 }
@@ -128,7 +129,7 @@ impl TransactionCategories for InMemoryPorts {
 }
 
 impl TransactionPayees for InMemoryPorts {
-    fn transaction_payees(&self) -> Vec<TransactionPayee> {
+    fn transaction_payees(&self) -> Vec<PayeeRef> {
         self.reads.transaction_payees()
     }
 }

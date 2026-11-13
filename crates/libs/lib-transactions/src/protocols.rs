@@ -13,10 +13,11 @@
 
 use lib_core::AccountRef;
 use lib_core::CategoryRef;
+use lib_core::PayeeRef;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use lib_core::{HexColor, PayeeId, TagId, TransactionId, UnitId};
+use lib_core::{HexColor, TagId, TransactionId, UnitId};
 
 use crate::Transaction;
 
@@ -36,13 +37,6 @@ pub trait TransactionRepository {
 
     /// Removes the Transaction and its Splits. A Transaction not stored is no error.
     fn delete_transaction(&mut self, id: TransactionId);
-}
-
-/// A Payee as the Transactions read it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TransactionPayee {
-    pub id: PayeeId,
-    pub name: String,
 }
 
 /// A Tag as the Transactions read it: a row's Tag chip takes its colour.
@@ -66,7 +60,7 @@ pub trait TransactionCategories {
 
 /// The Payees a Split may name: every Payee, inactive ones included, as a Split may name one.
 pub trait TransactionPayees {
-    fn transaction_payees(&self) -> Vec<TransactionPayee>;
+    fn transaction_payees(&self) -> Vec<PayeeRef>;
 }
 
 /// The Tags a Split may carry: every Tag, in the order they were added.

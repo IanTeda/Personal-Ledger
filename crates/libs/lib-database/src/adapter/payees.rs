@@ -13,10 +13,8 @@
 //! counted by each of their stores. A Payee those tables name can't be deleted (their foreign
 //! keys), which backstops the delete refusal.
 
-use lib_bills::BillPayee;
-use lib_core::{CategoryId, PayeeId, RowID};
+use lib_core::{CategoryId, PayeeId, PayeeRef, RowID};
 use lib_payees::{Payee, PayeeRepository};
-use lib_transactions::TransactionPayee;
 use sqlx::SqliteConnection;
 
 use crate::commit::PendingWrites;
@@ -128,31 +126,6 @@ impl PayeeRepository for StoredPayees {
     }
 }
 
-/// `payees` as Bills reads them.
-pub fn bill_payees(payees: &[Payee]) -> Vec<BillPayee> {
-    payees
-        .iter()
-        .map(|payee| BillPayee {
-            id: payee.id,
-            name: payee.name.clone(),
-            is_active: payee.is_active,
-        })
-        .collect()
-}
-
-/// `payees` as `lib-documents`' `DocumentPayees` reads them, inactive ones included.
-pub(crate) fn document_payees(payees: &[Payee]) -> Vec<lib_documents::DocumentPayee> {
-    payees
-        .iter()
-        .map(|payee| lib_documents::DocumentPayee {
-            id: payee.id,
-            name: payee.name.clone(),
-            aliases: payee.aliases.clone(),
-            is_active: payee.is_active,
-        })
-        .collect()
-}
-
 impl Change for PayeesChange {
     fn domain(&self) -> Domain {
         Domain::Payees
@@ -256,13 +229,16 @@ async fn read(conn: &mut SqliteConnection) -> Result<Vec<Payee>> {
     Ok(payees)
 }
 
-/// `payees` as Transactions reads them.
-pub(crate) fn transaction_payees(payees: &[Payee]) -> Vec<TransactionPayee> {
+/// `payees` as the modules that read them (Transactions, Bills, Documents) see them, in store
+/// order and inactive ones included: each reads the fields it uses.
+pub fn payee_refs(payees: &[Payee]) -> Vec<PayeeRef> {
     payees
         .iter()
-        .map(|payee| TransactionPayee {
+        .map(|payee| PayeeRef {
             id: payee.id,
             name: payee.name.clone(),
+            aliases: payee.aliases.clone(),
+            is_active: payee.is_active,
         })
         .collect()
 }
@@ -358,7 +334,7 @@ mod tests {
         _: SqlitePoolOptions,
         options: SqliteConnectOptions,
     ) {
-        fn store(writer: &Writer, rows: Vec<TransactionPayee>) {
+        fn store(writer: &Writer, rows: Vec<PayeeRef>) {
             let payees = rows
                 .into_iter()
                 .map(|row| Payee {
@@ -592,7 +568,7 @@ mod tests {
         ports.payees.payees_mut().upsert_payee(hudson);
         let ports = factory.reload(ports);
 
-        let read = bill_payees(&ports.payees.payees.rows);
+        let read = payee_refs(&ports.payees.payees.rows);
         assert_eq!(read.len(), sample_payees().len());
         let hudson = read
             .iter()

@@ -24,6 +24,7 @@
 //!   `clear filters` and the popover's `reset` both mean "the defaults".
 
 use lib_core::CategoryRef;
+use lib_core::PayeeRef;
 pub use lib_core::Total;
 use std::collections::HashMap;
 
@@ -32,8 +33,8 @@ use chrono::{Datelike, NaiveDate};
 use lib_core::{AccountId, CategoryId, Money, PayeeId, TagId, TransactionStatus, UnitId};
 
 use crate::{
-    Split, Transaction, TransactionAccounts, TransactionCategories, TransactionPayee,
-    TransactionPayees, TransactionTag, TransactionTags, TransactionUnits,
+    Split, Transaction, TransactionAccounts, TransactionCategories, TransactionPayees,
+    TransactionTag, TransactionTags, TransactionUnits,
 };
 
 /// The Status filter: all, or exactly one of the three Transaction Statuses. (Flagged is not a
@@ -227,7 +228,7 @@ struct Names {
 }
 
 impl Names {
-    fn new(payees: &[TransactionPayee], tags: &[TransactionTag]) -> Self {
+    fn new(payees: &[PayeeRef], tags: &[TransactionTag]) -> Self {
         Self {
             payees: payees
                 .iter()
@@ -487,9 +488,11 @@ mod tests {
                 return Some(row.id);
             }
             let id = PayeeId::seed(reads.payees.len() as u32 + 1);
-            reads.payees.push(TransactionPayee {
+            reads.payees.push(PayeeRef {
                 id,
                 name: name.to_string(),
+                aliases: Vec::new(),
+                is_active: true,
             });
             Some(id)
         }

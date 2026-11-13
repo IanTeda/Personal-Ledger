@@ -25,6 +25,7 @@
 //! shows on the next draw.
 
 use lib_core::CategoryRef;
+use lib_core::PayeeRef;
 use std::collections::HashSet;
 
 use chrono::NaiveDate;
@@ -47,7 +48,7 @@ use super::glyphs::{status_glyph, status_legend};
 use crate::keymap::{FILTER, transactions_filter_keymap, transactions_page_keymap};
 use crate::protocols::{SharedPorts, TransactionsPorts};
 use crate::query::{TransactionFilters, Visible, query};
-use crate::{Transaction, TransactionPayee, TransactionTag, msg};
+use crate::{Transaction, TransactionTag, msg};
 
 /// The mark for an empty Payee or Tags cell.
 pub const EMPTY_CELL: &str = "\u{2014}";
@@ -597,7 +598,7 @@ fn rows(
 }
 
 /// The PAYEE cell: the first Payee among the Splits, then `+N` for each further *different* Payee.
-fn payee_summary(transaction: &Transaction, payees: &[TransactionPayee]) -> String {
+fn payee_summary(transaction: &Transaction, payees: &[PayeeRef]) -> String {
     let ids: Vec<PayeeId> = transaction
         .splits
         .iter()

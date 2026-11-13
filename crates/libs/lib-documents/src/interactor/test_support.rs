@@ -1,5 +1,6 @@
 //! The fixtures every Interactor's tests share: the recording repository and a small Library.
 
+use lib_core::PayeeRef;
 use std::path::PathBuf;
 
 use bigdecimal::BigDecimal;
@@ -8,7 +9,7 @@ use lib_core::{AccountId, DocumentId, DocumentTypeId, Money, PayeeId, Transactio
 
 use crate::fake::InMemoryDocuments;
 use crate::interactor::EditDocument;
-use crate::protocols::{DocumentPayee, DocumentRepository, DocumentTransaction, LinkRecords};
+use crate::protocols::{DocumentRepository, DocumentTransaction, LinkRecords};
 use crate::types::{DocumentTypeDraft, DocumentTypeRow, default_types};
 use crate::{
     Document, DocumentType, ExtractedFacts, FileKind, Filing, Intake, NewDocument, Source, get,
@@ -193,8 +194,8 @@ pub(super) fn shop(
     }
 }
 
-pub(super) fn payee(id: u32, name: &str) -> DocumentPayee {
-    DocumentPayee {
+pub(super) fn payee(id: u32, name: &str) -> PayeeRef {
+    PayeeRef {
         id: PayeeId::seed(id),
         name: name.to_string(),
         aliases: Vec::new(),

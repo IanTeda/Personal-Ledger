@@ -34,6 +34,7 @@
 //! [`Stores::fake`] takes its in-memory stores as one [`FakeStores`], so a domain joining the
 //! bundle adds a field rather than an argument (#866).
 
+use lib_core::PayeeRef;
 use lib_core::{AccountRef, CategoryRef};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -48,8 +49,8 @@ use lib_accounts::{
 };
 use lib_bills::fake::InMemoryBills;
 use lib_bills::{
-    BillAccounts, BillCategories, BillPayee, BillPayees, BillPlanRepository,
-    BillScheduleRepository, BillSplit, BillTransactions, BillUnits, SplitRef,
+    BillAccounts, BillCategories, BillPayees, BillPlanRepository, BillScheduleRepository,
+    BillSplit, BillTransactions, BillUnits, SplitRef,
 };
 use lib_budgets::fake::InMemoryBudgets;
 use lib_budgets::{
@@ -70,8 +71,7 @@ use lib_dashboard::{
 use lib_documents::fake::InMemoryDocuments;
 use lib_documents::{
     DocumentAccount, DocumentAccounts, DocumentBillPlan, DocumentBillPlans, DocumentItem,
-    DocumentItems, DocumentPayee, DocumentPayees, DocumentRepository, DocumentTransaction,
-    DocumentTransactions,
+    DocumentItems, DocumentPayees, DocumentRepository, DocumentTransaction, DocumentTransactions,
 };
 use lib_institutions::fake::InMemoryInstitutions;
 use lib_institutions::{InstitutionRepository, InstitutionUnits, InstitutionUsage, InstitutionUse};
@@ -84,7 +84,7 @@ use lib_tags::{TagRepository, TagUsage, TagUse};
 use lib_transaction_import::{ImportAccount, ImportAccounts, ImportCategories};
 use lib_transactions::fake::InMemoryTransactions;
 use lib_transactions::{
-    Transaction, TransactionAccounts, TransactionCategories, TransactionPayee, TransactionPayees,
+    Transaction, TransactionAccounts, TransactionCategories, TransactionPayees,
     TransactionRepository, TransactionTag, TransactionTags, TransactionUnits,
 };
 use lib_units::fake::InMemoryPorts;
@@ -93,9 +93,9 @@ use lib_units::{
     UnitUsage, UnitUse, UnitsPorts,
 };
 
-use crate::adapter::payees::bill_payees;
+use crate::adapter::payees::payee_refs;
 use crate::adapter::{
-    accounts, bills, categories, institutions, inventory, payees, tags, transactions, units,
+    accounts, bills, categories, institutions, inventory, tags, transactions, units,
 };
 use crate::{
     AccountsAdapter, BillsAdapter, BudgetsAdapter, CategoriesAdapter, Commit, DocumentsAdapter,
@@ -1400,8 +1400,8 @@ pub struct StoredBillReads {
 }
 
 impl BillPayees for StoredBillReads {
-    fn bill_payees(&self) -> Vec<BillPayee> {
-        bill_payees(&self.payees.borrow().payees().payees())
+    fn bill_payees(&self) -> Vec<PayeeRef> {
+        payee_refs(&self.payees.borrow().payees().payees())
     }
 }
 
@@ -1453,8 +1453,8 @@ impl TransactionCategories for StoredTransactionReads {
 }
 
 impl TransactionPayees for StoredTransactionReads {
-    fn transaction_payees(&self) -> Vec<TransactionPayee> {
-        payees::transaction_payees(&self.payees.borrow().payees().payees())
+    fn transaction_payees(&self) -> Vec<PayeeRef> {
+        payee_refs(&self.payees.borrow().payees().payees())
     }
 }
 
@@ -1764,8 +1764,8 @@ impl DocumentTransactions for StoredDocumentReads {
 }
 
 impl DocumentPayees for StoredDocumentReads {
-    fn document_payees(&self) -> Vec<DocumentPayee> {
-        payees::document_payees(&self.payees.borrow().payees().payees())
+    fn document_payees(&self) -> Vec<PayeeRef> {
+        payee_refs(&self.payees.borrow().payees().payees())
     }
 }
 

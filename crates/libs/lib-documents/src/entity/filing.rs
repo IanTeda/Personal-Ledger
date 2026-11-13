@@ -1,5 +1,6 @@
 //! The Inbox's filing actions: Accept, file by hand, Accept all strong, undo, skip and edit facts.
 
+use lib_core::PayeeRef;
 use std::collections::HashSet;
 
 use chrono::NaiveDate;
@@ -7,7 +8,7 @@ use lib_core::{DocumentId, TransactionId};
 
 use super::document::{Document, DocumentLink, DocumentType, ExtractedFacts, Filing, get, get_mut};
 use super::suggestion::{inbox_rows, suggestion};
-use crate::protocols::{DocumentPayee, DocumentTransaction};
+use crate::protocols::DocumentTransaction;
 use crate::types;
 use crate::types::DocumentTypeRow;
 
@@ -134,7 +135,7 @@ pub fn accept_all_strong(
     documents: &mut [Document],
     skipped: &HashSet<DocumentId>,
     transactions: &[DocumentTransaction],
-    payees: &[DocumentPayee],
+    payees: &[PayeeRef],
     focus: Option<DocumentId>,
 ) -> Option<FilingUndo> {
     let strong: Vec<(DocumentId, TransactionId)> = inbox_rows(documents, skipped)
@@ -164,7 +165,7 @@ pub fn accept_all_strong(
 pub fn strong_count(
     documents: &[Document],
     transactions: &[DocumentTransaction],
-    payees: &[DocumentPayee],
+    payees: &[PayeeRef],
 ) -> usize {
     documents
         .iter()

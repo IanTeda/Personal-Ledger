@@ -1,5 +1,6 @@
 //! The Inbox's Suggested Link: Signals, candidates and the Payee match.
 
+use lib_core::PayeeRef;
 use std::collections::HashSet;
 
 use lib_core::{DocumentId, PayeeId, TransactionId};
@@ -7,7 +8,7 @@ use lib_core::{DocumentId, PayeeId, TransactionId};
 use super::document::{
     CANDIDATE_WINDOW_DAYS, DATE_SIGNAL_DAYS, Document, DocumentLink, OTHER_CANDIDATES,
 };
-use crate::protocols::{DocumentPayee, DocumentTransaction};
+use crate::protocols::DocumentTransaction;
 
 /// Which of amount, date and payee agree with a candidate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -84,7 +85,7 @@ impl Suggestion {
 
 /// The Payee an extracted merchant names: an alias match, else the active Payee whose name the
 /// merchant contains (case-insensitive, the longest name winning).
-pub fn merchant_payee(payees: &[DocumentPayee], merchant: &str) -> Option<PayeeId> {
+pub fn merchant_payee(payees: &[PayeeRef], merchant: &str) -> Option<PayeeId> {
     match_alias(payees, merchant).or_else(|| {
         let haystack = merchant.to_lowercase();
         payees
@@ -102,7 +103,7 @@ pub fn merchant_payee(payees: &[DocumentPayee], merchant: &str) -> Option<PayeeI
 
 /// The active Payee with an alias the merchant contains, the longest alias winning: the Payees'
 /// own alias rule (`lib_payees::match_alias`), over the rows Documents reads.
-fn match_alias(payees: &[DocumentPayee], raw: &str) -> Option<PayeeId> {
+fn match_alias(payees: &[PayeeRef], raw: &str) -> Option<PayeeId> {
     let haystack = raw.to_uppercase();
     payees
         .iter()
@@ -123,7 +124,7 @@ pub fn candidates(
     document: &Document,
     documents: &[Document],
     transactions: &[DocumentTransaction],
-    payees: &[DocumentPayee],
+    payees: &[PayeeRef],
 ) -> Vec<Candidate> {
     let Some(intake) = &document.intake else {
         return Vec::new();
@@ -180,7 +181,7 @@ pub fn suggestion(
     document: &Document,
     documents: &[Document],
     transactions: &[DocumentTransaction],
-    payees: &[DocumentPayee],
+    payees: &[PayeeRef],
 ) -> Suggestion {
     let readable = document
         .intake

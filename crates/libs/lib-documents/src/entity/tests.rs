@@ -1,10 +1,11 @@
+use lib_core::PayeeRef;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use super::seed::Draft;
 use super::*;
+use crate::DocumentTransaction;
 use crate::types::{self, DocumentTypeRow, TracksDate};
-use crate::{DocumentPayee, DocumentTransaction};
 use crate::{fake::InMemoryFiles, protocols::resolve_typed};
 use chrono::{Duration, NaiveDate};
 use lib_core::{AccountId, DocumentId, DocumentTypeId, PayeeId, TransactionId};
@@ -44,8 +45,8 @@ fn txn(id: u32, on: NaiveDate, cents: i64, payee_id: Option<PayeeId>) -> Documen
     }
 }
 
-fn payee(id: u32, name: &str, aliases: &[&str]) -> DocumentPayee {
-    DocumentPayee {
+fn payee(id: u32, name: &str, aliases: &[&str]) -> PayeeRef {
+    PayeeRef {
         id: PayeeId::seed(id),
         name: name.to_string(),
         aliases: aliases.iter().map(|alias| alias.to_string()).collect(),
@@ -55,7 +56,7 @@ fn payee(id: u32, name: &str, aliases: &[&str]) -> DocumentPayee {
 
 /// Woolworths and Cafe Vittoria as the Payees' sample seeds them, and an inactive Payee whose alias
 /// the ATO's merchant would match.
-fn payees() -> Vec<DocumentPayee> {
+fn payees() -> Vec<PayeeRef> {
     let mut retired = payee(30, "Taxation", &["AUSTRALIAN TAXATION"]);
     retired.is_active = false;
     vec![
@@ -331,7 +332,7 @@ fn removing_the_last_link_leaves_the_document_filed() {
 
 // Suggested Link
 
-fn woolworths() -> Vec<DocumentPayee> {
+fn woolworths() -> Vec<PayeeRef> {
     payees()
 }
 

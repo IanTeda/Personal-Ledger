@@ -8,6 +8,7 @@
 //! expects the same rows back. A Link names a record the factory
 //! says storage holds ([`PortsFactory::records`]), since the adapter's Links are foreign keys.
 
+use lib_core::PayeeRef;
 use std::path::PathBuf;
 
 use bigdecimal::BigDecimal;
@@ -17,8 +18,8 @@ use lib_core::{AccountId, BillPlanId, DocumentId, DocumentTypeId, ItemId, Money,
 use crate::fake::InMemoryDocuments;
 use crate::interactor::{RemoveDocumentType, ToggleLink};
 use crate::protocols::{
-    DocumentAccount, DocumentBillPlan, DocumentItem, DocumentPayee, DocumentRepository,
-    DocumentTransaction, LinkRecords,
+    DocumentAccount, DocumentBillPlan, DocumentItem, DocumentRepository, DocumentTransaction,
+    LinkRecords,
 };
 use crate::types::{DocumentTypeRow, RemindLead, TracksDate, default_types, remove_type};
 use crate::{
@@ -94,7 +95,7 @@ impl PortsFactory for InMemoryFactory {
                 payee_ids: vec![Some(PayeeId::seed(1))],
                 memo: None,
             }],
-            payees: vec![DocumentPayee {
+            payees: vec![PayeeRef {
                 id: PayeeId::seed(1),
                 name: "Woolworths".into(),
                 aliases: Vec::new(),

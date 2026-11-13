@@ -51,8 +51,10 @@ pub use ids::{
 mod account_ref;
 pub use account_ref::AccountRef;
 mod category_ref;
+mod payee_ref;
 mod unit_ref;
 pub use category_ref::CategoryRef;
+pub use payee_ref::PayeeRef;
 pub use unit_ref::UnitRef;
 
 /// Category types used for classifying financial transactions.

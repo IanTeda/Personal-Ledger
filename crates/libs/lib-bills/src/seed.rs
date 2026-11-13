@@ -8,12 +8,13 @@
 
 use bigdecimal::BigDecimal;
 use chrono::{Datelike, Duration, NaiveDate};
+use lib_core::PayeeRef;
 use lib_core::{AccountRef, CategoryRef};
 use lib_core::{BillPlanId, BillScheduleEntryId, Money, Period, TransactionId};
 
 use crate::{
-    AmountKind, BillPayee, BillPlan, BillPlanDraft, BillScheduleEntry, EntryId, Recurrence,
-    Resolution, SplitRef, entry_mut, insert_plan_as, set_active, skip,
+    AmountKind, BillPlan, BillPlanDraft, BillScheduleEntry, EntryId, Recurrence, Resolution,
+    SplitRef, entry_mut, insert_plan_as, set_active, skip,
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -274,7 +275,7 @@ fn paid_cents(seed: &PlanSeed, index: u32, cycles: u32) -> i64 {
 pub fn sample_bills(
     accounts: &[AccountRef],
     categories: &[CategoryRef],
-    payees: &[BillPayee],
+    payees: &[PayeeRef],
     first_payment: TransactionId,
     today: NaiveDate,
 ) -> SampleBills {

@@ -5,6 +5,7 @@
 //! none of those domains. [`RecordingRouter`] records what a Presenter asked for.
 
 use lib_core::AccountRef;
+use lib_core::PayeeRef;
 use lib_core::{CategoryRef, CategoryTypes};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -20,9 +21,8 @@ use crate::protocols::{
     SharedPorts,
 };
 use crate::{
-    BillAccounts, BillCategories, BillPayee, BillPayees, BillPlan, BillPlanRepository,
-    BillScheduleEntry, BillScheduleRepository, BillSplit, BillTransactions, BillsSeed, EntryId,
-    SampleBills, SplitRef,
+    BillAccounts, BillCategories, BillPayees, BillPlan, BillPlanRepository, BillScheduleEntry,
+    BillScheduleRepository, BillSplit, BillTransactions, BillsSeed, EntryId, SampleBills, SplitRef,
 };
 
 /// The Bill Plans and the Bill Schedule, stored in memory.
@@ -77,7 +77,7 @@ impl BillScheduleRepository for InMemoryBills {
 pub struct InMemoryBillReads {
     pub accounts: Vec<AccountRef>,
     pub categories: Vec<CategoryRef>,
-    pub payees: Vec<BillPayee>,
+    pub payees: Vec<PayeeRef>,
     pub splits: Vec<BillSplit>,
 }
 
@@ -104,7 +104,7 @@ impl BillCategories for InMemoryBillReads {
 }
 
 impl BillPayees for InMemoryBillReads {
-    fn bill_payees(&self) -> Vec<BillPayee> {
+    fn bill_payees(&self) -> Vec<PayeeRef> {
         self.payees.clone()
     }
 }
@@ -235,7 +235,7 @@ fn book(
     sample: SampleBills,
     accounts: &[AccountRef],
     categories: &[CategoryRef],
-    payees: &[BillPayee],
+    payees: &[PayeeRef],
     today: NaiveDate,
 ) -> (BillsSeed, Vec<BillSplit>) {
     let SampleBills { seed, payments } = sample;
@@ -362,10 +362,11 @@ pub fn sample_categories() -> Vec<CategoryRef> {
 
 /// The sample Payees Bills' seed and tests name, with the Payees sample's ids, and its one inactive
 /// Payee.
-pub fn sample_payees() -> Vec<BillPayee> {
-    let payee = |n, name: &str, is_active| BillPayee {
+pub fn sample_payees() -> Vec<PayeeRef> {
+    let payee = |n, name: &str, is_active| PayeeRef {
         id: PayeeId::seed(n),
         name: name.to_string(),
+        aliases: Vec::new(),
         is_active,
     };
     vec![

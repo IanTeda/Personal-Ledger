@@ -2,6 +2,7 @@
 //! [`InMemoryFiles`], a file system of the files it is given, and [`LinkRecords`] answering every
 //! read port from its lists, and Routers that record what each Presenter asked.
 
+use lib_core::PayeeRef;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -13,10 +14,9 @@ use lib_viper::dialog::DialogRouter;
 
 use crate::protocols::{
     DocumentAccount, DocumentAccounts, DocumentBillPlan, DocumentBillPlans, DocumentFiles,
-    DocumentItem, DocumentItems, DocumentPayee, DocumentPayees, DocumentRepository,
-    DocumentTransaction, DocumentTransactions, DocumentTypesDialog, DocumentTypesOutcome,
-    DocumentTypesRouter, DocumentsDialog, DocumentsOutcome, DocumentsRouter, LinkRecords,
-    move_type_to, resolve_typed,
+    DocumentItem, DocumentItems, DocumentPayees, DocumentRepository, DocumentTransaction,
+    DocumentTransactions, DocumentTypesDialog, DocumentTypesOutcome, DocumentTypesRouter,
+    DocumentsDialog, DocumentsOutcome, DocumentsRouter, LinkRecords, move_type_to, resolve_typed,
 };
 use crate::types::DocumentTypeRow;
 use crate::{Document, DocumentLink};
@@ -124,7 +124,7 @@ impl DocumentTransactions for LinkRecords {
 }
 
 impl DocumentPayees for LinkRecords {
-    fn document_payees(&self) -> Vec<DocumentPayee> {
+    fn document_payees(&self) -> Vec<PayeeRef> {
         self.payees.clone()
     }
 }

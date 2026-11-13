@@ -89,7 +89,7 @@ pub(crate) mod test_support {
 
     use bigdecimal::BigDecimal;
     use chrono::NaiveDate;
-    use lib_core::{AccountId, BillPlanId, ItemId, Money, PayeeId, TransactionId};
+    use lib_core::{AccountId, BillPlanId, ItemId, Money, PayeeId, PayeeRef, TransactionId};
 
     use lib_viper::dialog::{DialogKeys, dialog_keymap};
     use lib_viper::keymap::KeyBindingConfig;
@@ -97,8 +97,8 @@ pub(crate) mod test_support {
     use super::library::Lookups;
     use crate::fake::InMemoryDocuments;
     use crate::protocols::{
-        DocumentAccount, DocumentBillPlan, DocumentItem, DocumentPayee, DocumentTransaction,
-        LinkRecords, SharedRepository,
+        DocumentAccount, DocumentBillPlan, DocumentItem, DocumentTransaction, LinkRecords,
+        SharedRepository,
     };
     use crate::types::{DocumentTypeRow, default_types};
     use crate::{Document, sample_documents};
@@ -129,7 +129,7 @@ pub(crate) mod test_support {
             name: name.to_string(),
             institution: String::new(),
         };
-        let payee = |id: u32, name: &str, aliases: &[&str]| DocumentPayee {
+        let payee = |id: u32, name: &str, aliases: &[&str]| PayeeRef {
             id: PayeeId::seed(id),
             name: name.to_string(),
             aliases: aliases.iter().map(|alias| (*alias).to_string()).collect(),

@@ -7,6 +7,7 @@
 
 use lib_core::AccountRef;
 use lib_core::CategoryRef;
+use lib_core::PayeeRef;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -82,14 +83,6 @@ pub trait BillTransactions {
     fn paid_split(&self, split: SplitRef) -> Option<BillSplit>;
 }
 
-/// A Payee as Bills reads it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BillPayee {
-    pub id: PayeeId,
-    pub name: String,
-    pub is_active: bool,
-}
-
 /// The Accounts a Bill Plan may be paid from: every Account, flagged, not a filtered list.
 pub trait BillAccounts {
     fn bill_accounts(&self) -> Vec<AccountRef>;
@@ -102,7 +95,7 @@ pub trait BillCategories {
 
 /// The Payees a Bill Plan may be paid to: every Payee, inactive ones included.
 pub trait BillPayees {
-    fn bill_payees(&self) -> Vec<BillPayee>;
+    fn bill_payees(&self) -> Vec<PayeeRef>;
 }
 
 /// The Units Bills names its amounts in. A read port, so `lib-bills` needn't depend on the Units
