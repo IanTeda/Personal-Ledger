@@ -1,5 +1,5 @@
 //! The command palette's Presenter (#1063): the `:` window listing every Command, held by the
-//! Shell's Presenter. It holds the input, the selection, matching and ranking, the domain-headed
+//! Shell's Presenter. It holds the input, the selection, matching and ranking, the group-headed
 //! resting list, completion and the history with its walk. The history outlives each palette
 //! session, so the Presenter lives as long as the Shell and only the session opens and closes.
 //!
@@ -55,7 +55,7 @@ pub struct PaletteEntry<E> {
     pub description: fn() -> String,
     /// The resting list's group the Command sits under, as its header reads. The Client hands the
     /// entries over grouped, in the order the resting list shows them.
-    pub domain: String,
+    pub group: String,
     /// The key it is bound to now, `None` while unbound.
     pub key: Option<String>,
     /// Whether text typed after the name is an argument (`accounts delete Home Loan`) rather than
@@ -67,7 +67,7 @@ pub struct PaletteEntry<E> {
 /// One row of the palette's list.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PaletteRow {
-    /// A domain's header, at rest only.
+    /// A group's header, at rest only.
     Header(String),
     Entry(PaletteEntryRow),
 }
@@ -284,11 +284,11 @@ impl<E: Clone> PalettePresenter<E> {
 
         let mut rows = Vec::with_capacity(matches.len() * 2);
         let mut selected_row = None;
-        let mut last_domain: Option<&str> = None;
+        let mut last_group: Option<&str> = None;
         for (index, entry) in matches.iter().enumerate() {
-            if at_rest && last_domain != Some(entry.domain.as_str()) {
-                rows.push(PaletteRow::Header(entry.domain.clone()));
-                last_domain = Some(entry.domain.as_str());
+            if at_rest && last_group != Some(entry.group.as_str()) {
+                rows.push(PaletteRow::Header(entry.group.clone()));
+                last_group = Some(entry.group.as_str());
             }
             if index == selected {
                 selected_row = Some(rows.len());
@@ -347,7 +347,7 @@ impl<E: Clone> PalettePresenter<E> {
     }
 
     /// Every entry matching `input`'s query case-insensitively, against its name, description or
-    /// domain, ranked by [`rank`]; ties keep the entries' order.
+    /// group, ranked by [`rank`]; ties keep the entries' order.
     fn matches(&self, input: &str) -> Vec<&PaletteEntry<E>> {
         let needle = self.split(input).0.to_lowercase();
         let mut matches: Vec<_> = self
@@ -357,7 +357,7 @@ impl<E: Clone> PalettePresenter<E> {
                 needle.is_empty()
                     || entry.name.to_lowercase().contains(&needle)
                     || (entry.description)().to_lowercase().contains(&needle)
-                    || entry.domain.to_lowercase().contains(&needle)
+                    || entry.group.to_lowercase().contains(&needle)
             })
             .collect();
         matches.sort_by_key(|entry| rank(entry, &needle));
@@ -465,12 +465,12 @@ impl<E: Clone> PalettePresenter<E> {
 
 /// Ranks `entry` against a lowercased, possibly empty `needle`: `0` for a name starting with it
 /// (every entry at rest, so the entries' order wins), `1` for the needle anywhere in the name or
-/// the domain, `2` for a match in the description alone.
+/// the group, `2` for a match in the description alone.
 fn rank<E>(entry: &PaletteEntry<E>, needle: &str) -> u8 {
     let name = entry.name.to_lowercase();
     if needle.is_empty() || name.starts_with(needle) {
         0
-    } else if name.contains(needle) || entry.domain.to_lowercase().contains(needle) {
+    } else if name.contains(needle) || entry.group.to_lowercase().contains(needle) {
         1
     } else {
         2
@@ -501,14 +501,14 @@ mod tests {
 
     fn entry(
         name: &'static str,
-        domain: &str,
+        group: &str,
         description: fn() -> String,
         takes_argument: bool,
     ) -> PaletteEntry<PaletteEffect<(), &'static str>> {
         PaletteEntry {
             name,
             description,
-            domain: domain.to_string(),
+            group: group.to_string(),
             key: None,
             takes_argument,
             effect: PaletteEffect::Client {
@@ -527,7 +527,7 @@ mod tests {
         "the ledger preferences".to_string()
     }
 
-    /// A registry in the Client's shape: grouped by domain, a noun before its verbs.
+    /// A registry in the Client's shape: grouped under headers, a noun before its verbs.
     fn entries() -> Vec<PaletteEntry<PaletteEffect<(), &'static str>>> {
         let mut dashboard = entry("dashboard", "Dashboard", plain, false);
         dashboard.key = Some("g d".to_string());
@@ -637,7 +637,7 @@ mod tests {
             .rows
             .into_iter()
             .filter_map(|row| match row {
-                PaletteRow::Header(domain) => Some(domain),
+                PaletteRow::Header(group) => Some(group),
                 PaletteRow::Entry(_) => None,
             })
             .collect()
@@ -701,7 +701,7 @@ mod tests {
     }
 
     #[test]
-    fn the_resting_list_heads_each_domain_once_and_a_filtered_list_has_no_headers() {
+    fn the_resting_list_heads_each_group_once_and_a_filtered_list_has_no_headers() {
         let shell = opened();
         assert_eq!(
             headers(&shell),
@@ -720,15 +720,15 @@ mod tests {
     }
 
     #[test]
-    fn typing_filters_to_the_commands_matching_by_name_description_or_domain() {
+    fn typing_filters_to_the_commands_matching_by_name_description_or_group() {
         let shell = typed("budg");
         assert_eq!(names(&shell), ["budgets", "budgets new"]);
         assert_eq!(model(&shell).match_count, 2);
 
-        let by_domain = typed("ledger");
-        assert!(names(&by_domain).contains(&"open"), "the Ledger domain");
+        let by_group = typed("ledger");
+        assert!(names(&by_group).contains(&"open"), "the Ledger group");
         assert!(
-            names(&by_domain).contains(&"settings"),
+            names(&by_group).contains(&"settings"),
             "its description says ledger"
         );
 
@@ -737,7 +737,7 @@ mod tests {
     }
 
     #[test]
-    fn a_name_prefix_outranks_a_name_or_domain_match_which_outranks_a_description_match() {
+    fn a_name_prefix_outranks_a_name_or_group_match_which_outranks_a_description_match() {
         assert_eq!(
             names(&typed("reports")),
             ["reports", "transactions reports"]

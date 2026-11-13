@@ -1610,7 +1610,7 @@ mod tests {
         shell.set_palette_entries(vec![PaletteEntry {
             name: "run",
             description: String::new,
-            domain: "Tests".to_string(),
+            group: "Tests".to_string(),
             key: None,
             takes_argument: false,
             effect,

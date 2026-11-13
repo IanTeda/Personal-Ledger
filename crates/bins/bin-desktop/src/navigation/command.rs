@@ -124,7 +124,7 @@ impl CommandEffect {
             Self::CloseLedger => return PaletteEffect::CloseLedger,
             Self::OpenSettingsPage(section) => Some(Destination::Settings(section)),
             Self::Accounts(_) => Some(Destination::Settings(SettingsPage::Accounts)),
-            Self::Import => Some(Destination::Noun(Noun::Transactions)),
+            Self::Import => Some(ActiveView::Import.destination()),
             Self::Module { page, .. } => Some(page.destination()),
             Self::Colour(_) | Self::SetToasts(_) | Self::TestToasts | Self::NotYetBuilt => None,
         };
@@ -566,7 +566,7 @@ pub fn palette_entries(
         .map(|entry| PaletteEntry {
             name: entry.name,
             description: entry.description,
-            domain: entry.group.label(),
+            group: entry.group.label(),
             takes_argument: entry.takes_argument(),
             key: entry.key,
             effect: entry.effect.palette_effect(),
@@ -1059,7 +1059,7 @@ mod tests {
     #[test]
     fn groups_are_contiguous_dashboard_first_then_alphabetical() {
         // Mirrors bin-tui's own `dashboard_is_first_and_the_rest_are_alphabetical` invariant --
-        // the palette's resting-state grouping (`lib_shell::palette`) assumes each domain's commands
+        // the palette's resting-state grouping (`lib_shell::palette`) assumes each group's commands
         // sit together, never split across two separate runs.
         let mut order: Vec<CommandGroup> = Vec::new();
         for entry in defaults() {
@@ -1073,11 +1073,11 @@ mod tests {
             }
         }
         assert_eq!(order[0], CommandGroup::Dashboard);
-        // The domains' stable ids (their variant names) sort alphabetically, whatever the Locale
+        // The groups' stable ids (their variant names) sort alphabetically, whatever the Locale
         // calls them.
         let rest = &order[1..];
         let mut sorted_rest = rest.to_vec();
-        sorted_rest.sort_unstable_by_key(|domain| format!("{domain:?}"));
+        sorted_rest.sort_unstable_by_key(|group| format!("{group:?}"));
         assert_eq!(rest, sorted_rest.as_slice());
     }
 
