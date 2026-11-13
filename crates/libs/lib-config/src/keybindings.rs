@@ -165,11 +165,7 @@ impl KeyBindingConfig {
     /// enabling `lib_config/test-support` in `[dev-dependencies]`.
     #[cfg(any(test, feature = "test-support"))]
     pub fn overriding(command: &str, chord: &str) -> Self {
-        let mut config = Self::default();
-        config
-            .bindings
-            .insert(command.to_string(), chord.to_string());
-        config
+        Self::default().and(command, chord)
     }
 
     /// Adds one more rebind to this configuration, so a test with several rebinds chains

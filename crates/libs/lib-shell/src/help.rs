@@ -267,9 +267,9 @@ mod tests {
 
     #[test]
     fn the_words_are_fixed_when_the_card_opens() {
-        let mut config = KeyBindingConfig::default();
-        let before = open(&config, None);
-        config.bindings.insert("help".to_string(), "f1".to_string());
+        let defaults = KeyBindingConfig::default();
+        let before = open(&defaults, None);
+        let config = defaults.and("help", "f1");
 
         assert!(
             before
@@ -277,6 +277,7 @@ mod tests {
                 .globals
                 .contains(&(msg::help_shortcut_help(), "?".to_string()))
         );
+        assert_eq!(config.bindings.get("help").map(String::as_str), Some("f1"));
     }
 
     #[test]

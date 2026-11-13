@@ -597,9 +597,7 @@ mod tests {
             ["j/k", "J/K", "e", "x", "n"]
         );
 
-        let mut config = KeyBindingConfig::default();
-        config.bindings.insert("new".into(), "a".into());
-        config.bindings.insert(REMOVE_TYPE.into(), "d".into());
+        let config = KeyBindingConfig::overriding("new", "a").and(REMOVE_TYPE, "d");
         assert_eq!(
             chords(&Page::with_keys(shared, &config)),
             ["j/k", "J/K", "e", "d", "a"]

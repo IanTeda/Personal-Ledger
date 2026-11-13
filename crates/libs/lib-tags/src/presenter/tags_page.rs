@@ -655,9 +655,7 @@ mod tests {
                 row("n", "new"),
             ]
         );
-        let mut config = KeyBindingConfig::default();
-        config.bindings.insert("tags.merge".into(), "u".into());
-        config.bindings.insert("tags.remove".into(), "d".into());
+        let config = KeyBindingConfig::overriding("tags.merge", "u").and("tags.remove", "d");
         let rebound = hints(&config);
         assert_eq!(rebound[3], row("d", "remove"));
         assert_eq!(rebound[4], row("u", "merge"));

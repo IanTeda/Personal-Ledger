@@ -315,9 +315,7 @@ mod tests {
     #[test]
     fn rebound_go_into_and_go_up_keys_walk_the_folders() {
         let dir = disk();
-        let mut config = KeyBindingConfig::default();
-        config.bindings.insert("go_into".into(), "right".into());
-        config.bindings.insert("go_up".into(), "left".into());
+        let config = KeyBindingConfig::overriding("go_into", "right").and("go_up", "left");
         let mut picker = FolderPickerPopup::open(dir.path().to_path_buf(), None, &config);
         let press = |picker: &mut FolderPickerPopup, code| {
             picker.handle_key(KeyEvent::new(code, KeyModifiers::NONE));

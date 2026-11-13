@@ -125,10 +125,7 @@ fn h_and_backspace_go_up_with_the_cursor_on_the_folder_left(app: &mut TestAppCon
 #[gpui::test]
 fn rebound_go_into_and_go_up_keys_walk_the_folders(app: &mut TestAppContext) {
     let dir = common::data_folder();
-    let mut config = KeyBindingConfig::overriding("go_into", "right");
-    config
-        .bindings
-        .insert("go_up".to_string(), "left".to_string());
+    let config = KeyBindingConfig::overriding("go_into", "right").and("go_up", "left");
     let mut ui = Harness::with_keybindings(app, config);
     picking_from_the_dashboard(&mut ui, dir.path());
 

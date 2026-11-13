@@ -707,9 +707,7 @@ mod tests {
     fn an_empty_ledger_says_how_to_add_one_with_the_bound_chord_and_the_legend_follows_the_keys() {
         let (ports, shared) = sample();
         ports.borrow_mut().accounts.accounts.clear();
-        let mut config = KeyBindingConfig::default();
-        config.bindings.insert("new".into(), "a".into());
-        config.bindings.insert("select".into(), "o".into());
+        let config = KeyBindingConfig::overriding("new", "a").and("select", "o");
         let view = Page::with_keys(shared, &config).view();
 
         assert_eq!(

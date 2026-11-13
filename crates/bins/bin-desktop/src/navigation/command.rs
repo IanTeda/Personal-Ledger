@@ -797,17 +797,10 @@ mod tests {
         assert_eq!(key(&defaults, "units set-base").as_deref(), Some("B"));
         assert_eq!(key(&defaults, "toasts"), None, "toast_history is unbound");
 
-        let mut config = KeyBindingConfig::default();
-        config
-            .bindings
-            .insert("jump_dashboard".to_string(), "g h".to_string());
+        let config = KeyBindingConfig::overriding("jump_dashboard", "g h");
         assert_eq!(key(&config, "dashboard").as_deref(), Some("g h"));
 
-        let mut config = KeyBindingConfig::default();
-        config.bindings.insert("new".to_string(), "a".to_string());
-        config
-            .bindings
-            .insert("toast_history".to_string(), "ctrl+t".to_string());
+        let config = KeyBindingConfig::overriding("new", "a").and("toast_history", "ctrl+t");
         assert_eq!(key(&config, "accounts new").as_deref(), Some("a"));
         assert_eq!(key(&config, "messages").as_deref(), Some("ctrl+t"));
         assert_eq!(key(&config, "toasts").as_deref(), Some("ctrl+t"));

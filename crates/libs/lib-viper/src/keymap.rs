@@ -354,8 +354,7 @@ mod tests {
 
     #[test]
     fn bindings_report_every_command_with_its_live_chord_and_listed_description() {
-        let mut config = KeyBindingConfig::default();
-        config.bindings.insert(NEW.to_string(), "a".to_string());
+        let config = KeyBindingConfig::overriding(NEW, "a");
         let keymap = Keymap::new(BINDINGS, &config);
 
         let bound: Vec<_> = keymap

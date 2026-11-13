@@ -3840,8 +3840,7 @@ mod tests {
     #[test]
     fn the_footer_hints_follow_a_rebound_key() {
         crate::locale::init_for_tests();
-        let mut keybindings = KeyBindingConfig::default();
-        keybindings.bindings.insert("help".into(), "F1".into());
+        let keybindings = KeyBindingConfig::overriding("help", "F1");
         let text = drawn(&mut opened_with(keybindings));
         assert!(
             text.contains("F1 help"),

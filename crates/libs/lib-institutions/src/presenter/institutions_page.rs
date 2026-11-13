@@ -590,8 +590,7 @@ mod tests {
     #[test]
     fn the_legend_shows_the_bound_chords() {
         let (_, shared) = sample();
-        let mut config = KeyBindingConfig::default();
-        config.bindings.insert("new".into(), "a".into());
+        let config = KeyBindingConfig::overriding("new", "a");
         let page = Page::with_keys(shared, &config);
 
         let chords: Vec<String> = page

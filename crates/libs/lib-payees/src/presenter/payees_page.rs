@@ -477,8 +477,7 @@ mod tests {
     fn an_empty_ledger_says_how_to_add_one_with_the_bound_chord() {
         let (ports, shared) = sample();
         ports.borrow_mut().payees.payees.clear();
-        let mut config = KeyBindingConfig::default();
-        config.bindings.insert("new".into(), "a".into());
+        let config = KeyBindingConfig::overriding("new", "a");
         let page = Page::with_keys(shared, &config);
         let view = page.view();
 

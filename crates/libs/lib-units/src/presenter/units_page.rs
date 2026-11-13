@@ -1565,9 +1565,7 @@ mod tests {
 
     #[test]
     fn the_legend_follows_the_selected_table_and_the_keymaps_chords() {
-        let mut config = KeyBindingConfig::default();
-        config.bindings.insert("edit".into(), "E".into());
-        let mut page = Page::with(config);
+        let mut page = Page::with(KeyBindingConfig::overriding("edit", "E"));
         let hints = |page: &Page| -> Vec<(String, String)> {
             page.view()
                 .hints

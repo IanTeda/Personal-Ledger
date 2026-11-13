@@ -1486,11 +1486,7 @@ mod tests {
 
     #[test]
     fn the_hints_follow_the_focus_and_the_keymap() {
-        let mut config = KeyBindingConfig::default();
-        config
-            .bindings
-            .insert(MOVE_DOWN.to_string(), "n".to_string());
-        config.bindings.insert(PICKER.to_string(), "P".to_string());
+        let config = KeyBindingConfig::overriding(MOVE_DOWN, "n").and(PICKER, "P");
         let mut frame = frame_on(&config, true);
         let pairs = |hints: Vec<Hint>| -> Vec<(String, String)> {
             hints

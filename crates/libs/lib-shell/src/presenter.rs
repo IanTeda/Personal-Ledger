@@ -2242,11 +2242,7 @@ mod tests {
             ]
         );
 
-        let mut config = KeyBindingConfig::default();
-        config
-            .bindings
-            .insert(TOGGLE_RAIL.to_string(), "ctrl+b".to_string());
-        config.bindings.insert(SEARCH.to_string(), String::new());
+        let config = KeyBindingConfig::overriding(TOGGLE_RAIL, "ctrl+b").and(SEARCH, "");
         shell.set_keymap(&config);
 
         assert_eq!(
