@@ -10,6 +10,10 @@ license.workspace = true
 # Usage is specified by unit tests, not doctests (see CLAUDE.md Conventions).
 doctest = false
 
+[features]
+# `KeyBindingConfig::overriding`, for a dependent crate's tests.
+test-support = ["lib_config/test-support"]
+
 [dependencies]
 ## -- Internal Dependencies --
 lib_config = { path = "../lib-config" }

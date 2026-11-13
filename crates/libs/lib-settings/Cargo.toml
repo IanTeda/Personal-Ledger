@@ -32,9 +32,9 @@ chrono = { workspace = true }
 lib_locale_build = { path = "../lib-locale-build" }
 
 [dev-dependencies]
-# Only to enable `test-support` for `KeyBindingConfig::overriding` in the keymap tests; the
-# library itself still reads `[keybindings]` through `lib_viper`'s re-export.
-lib_config = { path = "../lib-config", features = ["test-support"] }
+# `test-support` turns on `KeyBindingConfig::overriding` for the keymap tests, through `lib_viper`
+# so the crate still never names `lib_config`.
+lib_viper = { path = "../lib-viper", features = ["test-support"] }
 
 [lints]
 workspace = true
