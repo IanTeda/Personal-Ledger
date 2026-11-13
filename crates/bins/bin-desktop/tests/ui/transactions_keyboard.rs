@@ -4,6 +4,7 @@
 
 use super::common;
 use bin_desktop::shell::router::{SettingsAccountsSnapshot, SettingsPayeesSnapshot};
+use lib_config::KeyBindingConfig;
 use lib_database::Domain;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
@@ -243,14 +244,8 @@ fn ctrl_r_resets_the_draft_but_not_the_applied_filters(app: &mut TestAppContext)
 
 #[gpui::test]
 fn the_popovers_legend_and_reset_follow_keybindings(app: &mut TestAppContext) {
-    let mut config = lib_config::KeyBindingConfig::default();
-    config
-        .bindings
-        .insert("next_field".to_string(), "ctrl+n".to_string());
-    config.bindings.insert(
-        "transactions.reset_filters".to_string(),
-        "ctrl+x".to_string(),
-    );
+    let config = KeyBindingConfig::overriding("next_field", "ctrl+n")
+        .and("transactions.reset_filters", "ctrl+x");
     let mut ui = Harness::with_keybindings(app, config);
     ui.press("g l f");
 
@@ -489,7 +484,7 @@ fn question_mark_lists_the_keys_the_status_line_shows(app: &mut TestAppContext) 
 fn a_keybindings_override_moves_the_filter_key(app: &mut TestAppContext) {
     let mut ui = Harness::with_keybindings(
         app,
-        lib_config::KeyBindingConfig::overriding("transactions.filter", "F"),
+        KeyBindingConfig::overriding("transactions.filter", "F"),
     );
     ui.press("g l");
 

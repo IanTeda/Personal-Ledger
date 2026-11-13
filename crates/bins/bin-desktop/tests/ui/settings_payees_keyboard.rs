@@ -3,6 +3,7 @@
 
 use super::common;
 use bin_desktop::shell::router::{SettingsCategoriesSnapshot, SettingsPayeesSnapshot};
+use lib_config::KeyBindingConfig;
 use lib_database::Domain;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
@@ -489,7 +490,7 @@ fn the_dialogs_swap_their_hints_into_the_status_line(app: &mut TestAppContext) {
 #[gpui::test]
 fn a_dialog_opened_after_a_rebind_hints_the_new_chord(app: &mut TestAppContext) {
     let mut ui = in_payees(app);
-    ui.rebind(&lib_config::KeyBindingConfig::overriding("back", "ctrl+q"));
+    ui.rebind(&KeyBindingConfig::overriding("back", "ctrl+q"));
 
     ui.press("n");
     let keys = hint_keys(&mut ui);
@@ -501,7 +502,7 @@ fn a_dialog_opened_after_a_rebind_hints_the_new_chord(app: &mut TestAppContext) 
 #[gpui::test]
 fn a_rebind_while_open_reaches_the_pages_keys(app: &mut TestAppContext) {
     let mut ui = in_payees(app);
-    ui.rebind(&lib_config::KeyBindingConfig::overriding("new", "ctrl+n"));
+    ui.rebind(&KeyBindingConfig::overriding("new", "ctrl+n"));
 
     assert_eq!(hint_keys(&mut ui), ["j/k", "enter", "e", "d", "ctrl+n"]);
     ui.press("ctrl-n");
@@ -584,10 +585,8 @@ fn enter_in_the_rule_input_adds_a_chip_and_backspace_takes_it_back(app: &mut Tes
 
 #[gpui::test]
 fn an_override_of_next_field_moves_the_field_and_frees_tab(app: &mut TestAppContext) {
-    let mut ui = Harness::with_keybindings(
-        app,
-        lib_config::KeyBindingConfig::overriding("next_field", "ctrl+n"),
-    );
+    let mut ui =
+        Harness::with_keybindings(app, KeyBindingConfig::overriding("next_field", "ctrl+n"));
     ui.press("g s");
     ui.press("j j j j j j j j j j");
     ui.press("l");
@@ -640,10 +639,7 @@ fn question_mark_lists_the_keys_the_status_line_shows(app: &mut TestAppContext) 
 
 #[gpui::test]
 fn the_cheat_sheet_shows_a_rebound_key(app: &mut TestAppContext) {
-    let mut ui = Harness::with_keybindings(
-        app,
-        lib_config::KeyBindingConfig::overriding("new", "ctrl+n"),
-    );
+    let mut ui = Harness::with_keybindings(app, KeyBindingConfig::overriding("new", "ctrl+n"));
     ui.press("g s");
     ui.press("j j j j j j j j j j");
     ui.press("l");

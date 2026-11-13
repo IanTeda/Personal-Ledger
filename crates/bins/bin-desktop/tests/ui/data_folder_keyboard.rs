@@ -12,6 +12,7 @@
 )]
 
 use super::common;
+use lib_config::KeyBindingConfig;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use bin_desktop::shell::router::SettingsGeneralSnapshot;
@@ -124,7 +125,7 @@ fn h_and_backspace_go_up_with_the_cursor_on_the_folder_left(app: &mut TestAppCon
 #[gpui::test]
 fn rebound_go_into_and_go_up_keys_walk_the_folders(app: &mut TestAppContext) {
     let dir = common::data_folder();
-    let mut config = lib_config::KeyBindingConfig::overriding("go_into", "right");
+    let mut config = KeyBindingConfig::overriding("go_into", "right");
     config
         .bindings
         .insert("go_up".to_string(), "left".to_string());

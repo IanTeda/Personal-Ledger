@@ -9,6 +9,7 @@
 
 use super::common;
 use bin_desktop::shell::router::UnitPricesSnapshot;
+use lib_config::KeyBindingConfig;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use bin_desktop::shell::router::PaletteSnapshot;
@@ -256,10 +257,8 @@ fn key_of(ui: &mut Harness<'_>, name: &str) -> String {
 
 #[gpui::test]
 fn a_rebound_key_shows_in_the_palette(app: &mut TestAppContext) {
-    let mut ui = Harness::with_keybindings(
-        app,
-        lib_config::KeyBindingConfig::overriding("jump_dashboard", "g h"),
-    );
+    let mut ui =
+        Harness::with_keybindings(app, KeyBindingConfig::overriding("jump_dashboard", "g h"));
 
     assert_eq!(key_of(&mut ui, "dashboard"), "g h");
     assert_eq!(key_of(&mut ui, "units set-base"), "B");
@@ -486,10 +485,7 @@ fn a_bare_settings_noun_opens_its_page_not_a_dialog(app: &mut TestAppContext) {
 
 #[gpui::test]
 fn a_rebound_back_closes_the_palette_and_esc_no_longer_does(app: &mut TestAppContext) {
-    let mut ui = Harness::with_keybindings(
-        app,
-        lib_config::KeyBindingConfig::overriding("back", "ctrl+g"),
-    );
+    let mut ui = Harness::with_keybindings(app, KeyBindingConfig::overriding("back", "ctrl+g"));
     open_palette(&mut ui);
     ui.press("b u d");
 
@@ -506,7 +502,7 @@ fn a_rebound_back_closes_the_palette_and_esc_no_longer_does(app: &mut TestAppCon
 
 #[gpui::test]
 fn rebound_dialog_keys_move_complete_and_run_in_the_palette(app: &mut TestAppContext) {
-    let mut config = lib_config::KeyBindingConfig::overriding("select_next", "ctrl+j");
+    let mut config = KeyBindingConfig::overriding("select_next", "ctrl+j");
     for (command, chord) in [("next_field", "ctrl+t"), ("select", "ctrl+y")] {
         config
             .bindings
@@ -531,10 +527,8 @@ fn rebound_dialog_keys_move_complete_and_run_in_the_palette(app: &mut TestAppCon
 
 #[gpui::test]
 fn a_rebound_history_back_recalls_and_control_r_no_longer_does(app: &mut TestAppContext) {
-    let mut ui = Harness::with_keybindings(
-        app,
-        lib_config::KeyBindingConfig::overriding("history_back", "ctrl+b"),
-    );
+    let mut ui =
+        Harness::with_keybindings(app, KeyBindingConfig::overriding("history_back", "ctrl+b"));
     open_palette(&mut ui);
     ui.press("b i l l s enter");
     open_palette(&mut ui);

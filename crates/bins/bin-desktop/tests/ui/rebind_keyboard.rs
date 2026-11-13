@@ -8,6 +8,7 @@ use super::common;
 use bin_desktop::shell::router::{DisplayDatesSnapshot, PageKeysSnapshot};
 use common::Harness;
 use gpui::TestAppContext;
+use lib_config::KeyBindingConfig;
 use lib_core::DateStyle;
 use lib_settings::SettingsPage;
 use lib_viper::keymap::MOVE_DOWN;
@@ -53,7 +54,7 @@ fn a_rebind_reaches_every_main_view_and_settings_page(app: &mut TestAppContext) 
     }
     let commits = ui.commits();
 
-    ui.rebind(&lib_config::KeyBindingConfig::overriding(MOVE_DOWN, "n"));
+    ui.rebind(&KeyBindingConfig::overriding(MOVE_DOWN, "n"));
 
     assert_eq!(
         ui.commits(),

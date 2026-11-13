@@ -2,6 +2,7 @@
 //! only mouse entry is the status line's `:` hint; running a result is a keyboard flow.
 
 use super::common;
+use lib_config::KeyBindingConfig;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use common::Harness;
@@ -41,10 +42,8 @@ fn the_command_hint_does_nothing_outside_normal_mode(app: &mut TestAppContext) {
 
 #[gpui::test]
 fn a_palette_opened_by_click_lists_each_command_with_its_live_key(app: &mut TestAppContext) {
-    let mut ui = Harness::with_keybindings(
-        app,
-        lib_config::KeyBindingConfig::overriding("jump_dashboard", "g h"),
-    );
+    let mut ui =
+        Harness::with_keybindings(app, KeyBindingConfig::overriding("jump_dashboard", "g h"));
 
     ui.click("hint-command");
 

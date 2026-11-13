@@ -172,6 +172,15 @@ impl KeyBindingConfig {
         config
     }
 
+    /// Adds one more rebind to this configuration, so a test with several rebinds chains
+    /// `overriding(..).and(..)` instead of mutating `bindings` by hand. Test-only, like
+    /// [`Self::overriding`].
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn and(mut self, command: &str, chord: &str) -> Self {
+        self.bindings.insert(command.to_string(), chord.to_string());
+        self
+    }
+
     /// Get the default configuration values as key-value pairs, for seeding a layered
     /// configuration builder's defaults -- mirrors `SyncServerConfig::default_config_values()`.
     pub fn default_config_values() -> Vec<(String, String)> {
@@ -229,6 +238,16 @@ mod tests {
         let config = KeyBindingConfig::overriding("back", "ctrl+q");
 
         assert_eq!(config.key_for("back"), Some("ctrl+q"));
+        assert_eq!(config.key_for("help"), Some("?"));
+        assert_eq!(config.super_key(), "ctrl");
+    }
+
+    #[test]
+    fn chained_overrides_rebind_each_command_and_keep_every_other_default() {
+        let config = KeyBindingConfig::overriding("back", "ctrl+q").and("select", "ctrl+y");
+
+        assert_eq!(config.key_for("back"), Some("ctrl+q"));
+        assert_eq!(config.key_for("select"), Some("ctrl+y"));
         assert_eq!(config.key_for("help"), Some("?"));
         assert_eq!(config.super_key(), "ctrl");
     }

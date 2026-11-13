@@ -4,6 +4,7 @@
 //! `lib-bills`; these check the wiring, the Dialogs the Router opens and the status line.
 
 use super::common;
+use lib_config::KeyBindingConfig;
 use lib_database::Domain;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
@@ -74,8 +75,7 @@ fn the_arrows_home_end_and_the_page_keys_move_through_the_bills_keymap(app: &mut
 
 #[gpui::test]
 fn an_override_of_home_moves_it_and_frees_home(app: &mut TestAppContext) {
-    let mut ui =
-        Harness::with_keybindings(app, lib_config::KeyBindingConfig::overriding("home", "H"));
+    let mut ui = Harness::with_keybindings(app, KeyBindingConfig::overriding("home", "H"));
     ui.press("g w j j");
 
     ui.press("home");
@@ -89,10 +89,7 @@ fn an_override_of_home_moves_it_and_frees_home(app: &mut TestAppContext) {
 fn a_rebind_while_open_reaches_the_pages_keys(app: &mut TestAppContext) {
     let mut ui = on_bills(app);
     let commits = ui.commits();
-    ui.rebind(&lib_config::KeyBindingConfig::overriding(
-        "bills.next_period",
-        "ctrl+]",
-    ));
+    ui.rebind(&KeyBindingConfig::overriding("bills.next_period", "ctrl+]"));
     assert_eq!(
         ui.commits(),
         commits + 1,
@@ -410,10 +407,8 @@ fn ctrl_enter_saves_the_plan_form_from_a_select(app: &mut TestAppContext) {
 
 #[gpui::test]
 fn an_override_of_next_field_moves_the_plan_forms_field(app: &mut TestAppContext) {
-    let mut ui = Harness::with_keybindings(
-        app,
-        lib_config::KeyBindingConfig::overriding("next_field", "ctrl+n"),
-    );
+    let mut ui =
+        Harness::with_keybindings(app, KeyBindingConfig::overriding("next_field", "ctrl+n"));
     ui.press("g w n");
     assert_eq!(ui.dialog_value("field").as_deref(), Some("Name"));
 
@@ -441,10 +436,8 @@ fn question_mark_lists_the_planners_keys_the_status_line_shows(app: &mut TestApp
 
 #[gpui::test]
 fn the_cheat_sheet_shows_a_rebound_bills_key(app: &mut TestAppContext) {
-    let mut ui = Harness::with_keybindings(
-        app,
-        lib_config::KeyBindingConfig::overriding("bills.pay", "ctrl+p"),
-    );
+    let mut ui =
+        Harness::with_keybindings(app, KeyBindingConfig::overriding("bills.pay", "ctrl+p"));
     ui.press("g w");
     assert!(
         ui.status_as_shortcuts()

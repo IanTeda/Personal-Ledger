@@ -10,6 +10,7 @@
     reason = "test support: a sample row or count the test relies on missing should fail it loudly"
 )]
 
+use lib_config::KeyBindingConfig;
 use std::time::Duration;
 
 use super::common;
@@ -355,8 +356,7 @@ fn the_palette_takes_a_key_the_shell_keeps(app: &mut TestAppContext) {
 
 #[gpui::test]
 fn a_key_the_shell_keeps_wins_over_a_module_binding_on_it(app: &mut TestAppContext) {
-    let mut ui =
-        Harness::with_keybindings(app, lib_config::KeyBindingConfig::overriding("new", "b"));
+    let mut ui = Harness::with_keybindings(app, KeyBindingConfig::overriding("new", "b"));
     to_units(&mut ui);
     let before = rail(&mut ui);
 
@@ -368,8 +368,7 @@ fn a_key_the_shell_keeps_wins_over_a_module_binding_on_it(app: &mut TestAppConte
 
 #[gpui::test]
 fn a_module_binding_wins_over_its_hosts_own_key(app: &mut TestAppContext) {
-    let mut ui =
-        Harness::with_keybindings(app, lib_config::KeyBindingConfig::overriding("new", "h"));
+    let mut ui = Harness::with_keybindings(app, KeyBindingConfig::overriding("new", "h"));
     to_units(&mut ui);
 
     ui.press("h");
@@ -421,7 +420,7 @@ fn the_shell_falls_back_on_a_key_no_view_takes(app: &mut TestAppContext) {
 
 #[gpui::test]
 fn an_override_moves_a_global_key_and_frees_its_default(app: &mut TestAppContext) {
-    let mut config = lib_config::KeyBindingConfig::overriding("toggle_rail", "ctrl+b");
+    let mut config = KeyBindingConfig::overriding("toggle_rail", "ctrl+b");
     config
         .bindings
         .insert("jump_settings".to_string(), "g z".to_string());
@@ -452,10 +451,8 @@ fn a_status_message_answers_its_key_and_clears_on_the_next(app: &mut TestAppCont
 
 #[gpui::test]
 fn the_shell_hints_name_a_rebound_key(app: &mut TestAppContext) {
-    let mut ui = Harness::with_keybindings(
-        app,
-        lib_config::KeyBindingConfig::overriding("toggle_rail", "ctrl+b"),
-    );
+    let mut ui =
+        Harness::with_keybindings(app, KeyBindingConfig::overriding("toggle_rail", "ctrl+b"));
 
     let keys: Vec<String> = ui
         .read(|shell| shell.shell_hints_snapshot())

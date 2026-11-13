@@ -973,16 +973,10 @@ mod tests {
 
     #[test]
     fn the_palette_follows_the_dialog_keys_rebound_under_keybindings() {
-        let mut config = KeyBindingConfig::overriding(BACK, "ctrl+h");
-        for (command, chord) in [
-            (SELECT, "ctrl+y"),
-            (NEXT_FIELD, "ctrl+t"),
-            (SELECT_NEXT, "ctrl+j"),
-        ] {
-            config
-                .bindings
-                .insert(command.to_string(), chord.to_string());
-        }
+        let config = KeyBindingConfig::overriding(BACK, "ctrl+h")
+            .and(SELECT, "ctrl+y")
+            .and(NEXT_FIELD, "ctrl+t")
+            .and(SELECT_NEXT, "ctrl+j");
         let mut shell = shell_under(&config);
         shell.open_palette();
         type_text(&mut shell, "acc");

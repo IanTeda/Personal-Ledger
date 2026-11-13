@@ -9,6 +9,7 @@
 )]
 
 use super::common;
+use lib_config::KeyBindingConfig;
 use lib_database::Domain;
 
 use bin_desktop::WindowSize;
@@ -250,10 +251,8 @@ fn ctrl_enter_confirms_a_valid_pay_as_enter_does(app: &mut TestAppContext) {
 
 #[gpui::test]
 fn an_override_of_next_field_moves_pay_it_directly_to_the_date(app: &mut TestAppContext) {
-    let mut ui = Harness::with_keybindings(
-        app,
-        lib_config::KeyBindingConfig::overriding("next_field", "ctrl+n"),
-    );
+    let mut ui =
+        Harness::with_keybindings(app, KeyBindingConfig::overriding("next_field", "ctrl+n"));
     on_telstra(&mut ui);
     ui.press("p right");
     let mut amount = ui.dialog_value("amount").unwrap_or_default();
@@ -272,10 +271,8 @@ fn an_override_of_next_field_moves_pay_it_directly_to_the_date(app: &mut TestApp
 
 #[gpui::test]
 fn an_override_of_list_next_steps_the_match_list_and_shows_in_the_hint(app: &mut TestAppContext) {
-    let mut ui = Harness::with_keybindings(
-        app,
-        lib_config::KeyBindingConfig::overriding("list_next", "ctrl+j"),
-    );
+    let mut ui =
+        Harness::with_keybindings(app, KeyBindingConfig::overriding("list_next", "ctrl+j"));
     on_telstra(&mut ui);
     ui.press("p");
     let choice = ui.dialog_value("choice");
