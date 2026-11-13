@@ -7,8 +7,8 @@
 use lib_config::KeyBindingConfig;
 use lib_list_cursor::Step;
 use lib_viper::keymap::{
-    ARROW_DOWN, ARROW_UP, BACK, Binding, END, HALF_PAGE_DOWN, HALF_PAGE_UP, HOME, Keymap,
-    MOVE_DOWN, MOVE_FIRST, MOVE_LAST, MOVE_UP, PAGE_DOWN, PAGE_UP, SELECT,
+    ARROW_DOWN, ARROW_UP, BACK, BACK_DEFAULT, Binding, END, HALF_PAGE_DOWN, HALF_PAGE_UP, HOME,
+    Keymap, MOVE_DOWN, MOVE_FIRST, MOVE_LAST, MOVE_UP, PAGE_DOWN, PAGE_UP, SELECT,
 };
 
 use crate::presenter::{ImportEvent, RowSelect};
@@ -45,7 +45,7 @@ pub const IMPORT_BINDINGS: &[Binding<ImportEvent>] = &[
     Binding::hidden(NEW_PAYEE, "n", ImportEvent::NewPayee),
     Binding::hidden(REMEMBER, "r", ImportEvent::ToggleRemember),
     Binding::hidden(CONTINUE, "enter", ImportEvent::Continue),
-    Binding::hidden(BACK, "esc", ImportEvent::Cancel),
+    Binding::hidden(BACK, BACK_DEFAULT, ImportEvent::Cancel),
 ];
 
 /// While a select is open: the highlight, choose and close. Anything else is swallowed by the
@@ -57,7 +57,7 @@ pub const IMPORT_SELECT_BINDINGS: &[Binding<ImportEvent>] = &[
     Binding::hidden(ARROW_UP, "up", ImportEvent::Highlight(Step::Prev)),
     Binding::hidden(SELECT, "enter", ImportEvent::ChooseHighlighted),
     Binding::hidden(CHOOSE, "space", ImportEvent::ChooseHighlighted),
-    Binding::hidden(BACK, "esc", ImportEvent::Cancel),
+    Binding::hidden(BACK, BACK_DEFAULT, ImportEvent::Cancel),
 ];
 
 /// The rows' keymap under `config`'s overrides.

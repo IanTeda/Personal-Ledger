@@ -10,9 +10,9 @@
 use lib_config::KeyBindingConfig;
 use lib_list_cursor::Step;
 use lib_viper::keymap::{
-    ARROW_DOWN, ARROW_UP, BACK, Binding, EDIT, END, HALF_PAGE_DOWN, HALF_PAGE_UP, HOME, Keymap,
-    MOVE_DOWN, MOVE_FIRST, MOVE_LAST, MOVE_UP, NEW, NEXT_FIELD, PAGE_DOWN, PAGE_UP, PREVIOUS_FIELD,
-    SEARCH, SELECT, SELECT_NEXT, SELECT_PREVIOUS, SUBMIT,
+    ARROW_DOWN, ARROW_UP, BACK, BACK_DEFAULT, Binding, EDIT, END, HALF_PAGE_DOWN, HALF_PAGE_UP,
+    HOME, Keymap, MOVE_DOWN, MOVE_FIRST, MOVE_LAST, MOVE_UP, NEW, NEXT_FIELD, PAGE_DOWN, PAGE_UP,
+    PREVIOUS_FIELD, SEARCH, SELECT, SELECT_NEXT, SELECT_PREVIOUS, SUBMIT,
 };
 
 use crate::msg;
@@ -106,7 +106,7 @@ pub const TRANSACTIONS_FILTER_BINDINGS: &[Binding<TransactionsPageEvent>] = &[
 /// keys the Shell keeps (`shift+tab`) without clashing.
 pub const TRANSACTIONS_POPOVER_BINDINGS: &[Binding<TransactionsPageEvent>] = &[
     filter(SELECT, "enter", FilterEvent::Activate),
-    filter(BACK, "esc", FilterEvent::Back),
+    filter(BACK, BACK_DEFAULT, FilterEvent::Back),
     filter(NEXT_FIELD, "tab", FilterEvent::NextField),
     filter(PREVIOUS_FIELD, "shift+tab", FilterEvent::PreviousField),
     filter(SELECT_NEXT, "down", FilterEvent::SelectNext),

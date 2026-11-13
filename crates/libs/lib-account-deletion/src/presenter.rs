@@ -457,9 +457,9 @@ mod tests {
 
     #[test]
     fn the_legend_reads_the_dialog_keys() {
-        use lib_viper::keymap::{Binding, KeyBindingConfig, Keymap};
+        use lib_viper::keymap::{BACK_DEFAULT, Binding, KeyBindingConfig, Keymap};
         const BINDINGS: &[Binding<()>] = &[
-            Binding::hidden(BACK, "esc", ()),
+            Binding::hidden(BACK, BACK_DEFAULT, ()),
             Binding::hidden(SELECT, "enter", ()),
         ];
         let keys = DialogKeys::of(&Keymap::new(BINDINGS, &KeyBindingConfig::default()));

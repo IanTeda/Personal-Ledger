@@ -983,9 +983,11 @@ mod tests {
 
     #[test]
     fn the_hints_read_the_dialog_keys() {
-        use lib_viper::keymap::{Binding, KeyBindingConfig, Keymap, LIST_NEXT, LIST_PREVIOUS};
+        use lib_viper::keymap::{
+            BACK_DEFAULT, Binding, KeyBindingConfig, Keymap, LIST_NEXT, LIST_PREVIOUS,
+        };
         const BINDINGS: &[Binding<()>] = &[
-            Binding::hidden(BACK, "esc", ()),
+            Binding::hidden(BACK, BACK_DEFAULT, ()),
             Binding::hidden(SELECT, "enter", ()),
             Binding::hidden(LIST_NEXT, "j", ()),
             Binding::hidden(LIST_PREVIOUS, "k", ()),

@@ -35,7 +35,9 @@ pub(crate) mod test_support {
     use std::rc::Rc;
 
     use lib_viper::dialog::DialogKeys;
-    use lib_viper::keymap::{BACK, Binding, KeyBindingConfig, Keymap, NEXT_FIELD, SELECT};
+    use lib_viper::keymap::{
+        BACK, BACK_DEFAULT, Binding, KeyBindingConfig, Keymap, NEXT_FIELD, SELECT,
+    };
 
     use crate::fake::InMemoryPorts;
     use crate::protocols::SharedPorts;
@@ -55,7 +57,7 @@ pub(crate) mod test_support {
     /// The Dialog keys a Dialog's legend reads, bound as `lib-shell`'s defaults bind them.
     pub fn dialog_keys() -> DialogKeys {
         const BINDINGS: &[Binding<()>] = &[
-            Binding::hidden(BACK, "esc", ()),
+            Binding::hidden(BACK, BACK_DEFAULT, ()),
             Binding::hidden(SELECT, "enter", ()),
             Binding::hidden(NEXT_FIELD, "tab", ()),
         ];

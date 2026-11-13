@@ -283,7 +283,8 @@ pub(crate) mod test_support {
     use super::Clock;
     use lib_viper::dialog::DialogKeys;
     use lib_viper::keymap::{
-        BACK, Binding, KeyBindingConfig, Keymap, NEXT_FIELD, SELECT, SELECT_NEXT, SELECT_PREVIOUS,
+        BACK, BACK_DEFAULT, Binding, KeyBindingConfig, Keymap, NEXT_FIELD, SELECT, SELECT_NEXT,
+        SELECT_PREVIOUS,
     };
 
     use crate::fake::InMemoryPorts;
@@ -298,7 +299,7 @@ pub(crate) mod test_support {
     /// The Dialog keys a Dialog's legend reads, bound as `lib-shell`'s defaults bind them.
     pub fn dialog_keys() -> DialogKeys {
         const BINDINGS: &[Binding<()>] = &[
-            Binding::hidden(BACK, "esc", ()),
+            Binding::hidden(BACK, BACK_DEFAULT, ()),
             Binding::hidden(SELECT, "enter", ()),
             Binding::hidden(NEXT_FIELD, "tab", ()),
             Binding::hidden(SELECT_NEXT, "down", ()),

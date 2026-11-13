@@ -1627,9 +1627,11 @@ mod tests {
 
     #[test]
     fn the_legend_reads_the_dialog_keys() {
-        use lib_viper::keymap::{BACK, Binding, KeyBindingConfig, Keymap, NEXT_FIELD, SELECT};
+        use lib_viper::keymap::{
+            BACK, BACK_DEFAULT, Binding, KeyBindingConfig, Keymap, NEXT_FIELD, SELECT,
+        };
         const BINDINGS: &[Binding<()>] = &[
-            Binding::hidden(BACK, "esc", ()),
+            Binding::hidden(BACK, BACK_DEFAULT, ()),
             Binding::hidden(SELECT, "enter", ()),
             Binding::hidden(NEXT_FIELD, "tab", ()),
         ];

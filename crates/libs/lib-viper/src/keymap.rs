@@ -523,4 +523,14 @@ mod tests {
             "the second keymap's chords still bind"
         );
     }
+
+    #[test]
+    fn back_default_is_the_config_default_for_back() {
+        // `lib-config` cannot read this constant (it depends the other way), so its own copy of
+        // the `back` default is guarded here instead.
+        assert_eq!(
+            KeyBindingConfig::default().key_for(BACK),
+            Some(BACK_DEFAULT)
+        );
+    }
 }
