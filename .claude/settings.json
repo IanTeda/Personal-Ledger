@@ -20,7 +20,13 @@
         "hooks": [
           {
             "type": "command",
-            "if": "Bash(grep *)",
+            "if": "Bash(grep -r*)",
+            "command": "/home/ian/.local/share/mise/installs/pipx-graphifyy/0.9.73/bin/graphify hook-guard search",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "if": "Bash(grep -R*)",
             "command": "/home/ian/.local/share/mise/installs/pipx-graphifyy/0.9.73/bin/graphify hook-guard search",
             "timeout": 10
           },
