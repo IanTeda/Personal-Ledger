@@ -1,9 +1,11 @@
 //! What the rebind and Display tests read back of every page `Root` hosts (#1167): each page's
-//! keys through the one hosting trait, and the date style each Display reader draws with.
+//! keys through the one hosting trait, and the date each Display reader draws.
 
-use lib_core::DateStyle;
+use lib_bills::presenter::PlanFormPresenter;
+use lib_budgets::presenter::SwitcherPresenter;
 
 use crate::shell::router::Root;
+use crate::shell::view::dialog_entity::ModuleDialog;
 use crate::shell::view::page_handle::{PageBinding, PageHandle};
 
 /// One hosted page's keys, as `PageHandle::keys` reports them.
@@ -37,8 +39,8 @@ impl PageKeysSnapshot {
     }
 }
 
-/// The date style each Display reader draws with: the dates Dashboard and Transactions show, and
-/// the style Bills, Documents and Budgets hand the Dialogs and rows that show theirs.
+/// The date each Display reader draws, as drawn. Bills and Budgets draw theirs only in a Dialog,
+/// so their fields are `None` while that Dialog is closed.
 #[doc(hidden)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DisplayDatesSnapshot {
@@ -46,12 +48,13 @@ pub struct DisplayDatesSnapshot {
     pub dashboard_due: Option<String>,
     /// The first Transaction's date, as drawn.
     pub transactions_date: Option<String>,
-    /// The date style the Bills page hands its rows and Dialogs.
-    pub bills: Option<DateStyle>,
-    /// The date style the Documents page hands its rows and Dialogs.
-    pub documents: Option<DateStyle>,
-    /// The date style the Budgets page hands its rows.
-    pub budgets: Option<DateStyle>,
+    /// The first Library row's date, as drawn.
+    pub documents: Option<String>,
+    /// The Plan form's first due date, as drawn, while the Plan form is the open Dialog.
+    pub bills: Option<String>,
+    /// The first archived Budget's summary (`archived <date>`), as the Switcher draws it, while
+    /// the Switcher is the open Dialog.
+    pub budgets: Option<String>,
 }
 
 impl Root {
@@ -86,10 +89,17 @@ impl Root {
         self.open().views.each().len()
     }
 
-    /// The date style each Display reader draws with, read back for assertions.
+    /// The date each Display reader draws, read back for assertions. The Plan form and the
+    /// Switcher are read only while each is the open Dialog.
     #[doc(hidden)]
     pub fn display_dates_snapshot(&self, cx: &gpui::App) -> DisplayDatesSnapshot {
         let views = &self.open().views;
+        let plan_form = self
+            .hosted_dialog()
+            .and_then(|dialog| dialog.downcast::<ModuleDialog<PlanFormPresenter>>());
+        let switcher = self
+            .hosted_dialog()
+            .and_then(|dialog| dialog.downcast::<ModuleDialog<SwitcherPresenter>>());
         DisplayDatesSnapshot {
             dashboard_due: views
                 .dashboard
@@ -105,9 +115,22 @@ impl Root {
                 .rows
                 .first()
                 .map(|row| row.date.clone()),
-            bills: views.bills.read(cx).presenter().date_style(),
-            documents: views.documents.read(cx).presenter().date_style(),
-            budgets: views.budgets.read(cx).presenter().date_style(),
+            documents: views
+                .documents
+                .read(cx)
+                .view_model()
+                .library
+                .and_then(|library| library.rows.first().map(|row| row.date.clone())),
+            bills: plan_form.map(|form| form.read(cx).view_model().first_due.text),
+            budgets: switcher.and_then(|switcher| {
+                switcher
+                    .read(cx)
+                    .view_model()
+                    .rows
+                    .into_iter()
+                    .find(|row| row.archived)
+                    .map(|row| row.summary)
+            }),
         }
     }
 }

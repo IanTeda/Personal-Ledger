@@ -2,7 +2,7 @@
 //! hosting trait (#1167): every main View's and every Settings page's keys show a rebound chord
 //! (an info page's in its legend), iterated rather than named, and each Display reader draws with
 //! a new date style, after a Settings › Display change and as a Ledger opens. State is read back
-//! from `Root`.
+//! from `Root`, and Bills' and Budgets' dates from the Dialogs that draw them.
 
 use super::common;
 use bin_desktop::shell::router::{DisplayDatesSnapshot, PageKeysSnapshot};
@@ -84,29 +84,70 @@ fn choose_iso_dates(ui: &mut Harness<'_>) {
     ui.press("l l l l l");
 }
 
-fn dates(ui: &mut Harness<'_>) -> DisplayDatesSnapshot {
+/// The dates `Root` reads from the open Dialog, if any.
+fn open_dialog_dates(ui: &mut Harness<'_>) -> DisplayDatesSnapshot {
     ui.read_app(|shell, cx| shell.display_dates_snapshot(cx))
 }
 
-/// Whether `text` is an ISO date, `2026-09-18`.
+/// Every Display reader's drawn date: the pages' from `Root`, then Bills' and Budgets' from the
+/// Plan form and the Switcher, each opened through the keyboard and closed again.
+fn dates(ui: &mut Harness<'_>) -> DisplayDatesSnapshot {
+    let mut dates = open_dialog_dates(ui);
+    ui.press("g w");
+    if ui.bills().tab == "Schedule" {
+        ui.press("tab");
+    }
+    ui.press("e");
+    assert_eq!(ui.bills().dialog.as_deref(), Some("Edit"));
+    dates.bills = open_dialog_dates(ui).bills;
+    ui.press("escape");
+    ui.press("g b");
+    ui.press("shift-b");
+    assert_eq!(ui.budgets().dialog.as_deref(), Some("Switcher"));
+    dates.budgets = open_dialog_dates(ui).budgets;
+    ui.press("escape");
+    assert_eq!(ui.budgets().dialog, None);
+    dates
+}
+
+/// Archives the Joint household Budget through Manage, so the Switcher lists an archived Budget.
+fn archive_a_budget(ui: &mut Harness<'_>) {
+    ui.press("g b");
+    ui.press(": b u d g e t s space m a n a g e enter");
+    ui.press("j x");
+    ui.press("escape");
+    assert_eq!(ui.budgets().dialog, None);
+}
+
+/// Whether `text` ends in an ISO date, `2026-09-18`: a Switcher row's summary ends in its date,
+/// `archived 2026-09-18`.
 fn is_iso(text: Option<&str>) -> bool {
-    text.is_some_and(|text| chrono::NaiveDate::parse_from_str(text, "%Y-%m-%d").is_ok())
+    text.and_then(|text| text.split_whitespace().last())
+        .is_some_and(|word| chrono::NaiveDate::parse_from_str(word, "%Y-%m-%d").is_ok())
 }
 
 fn assert_iso(dates: &DisplayDatesSnapshot) {
     assert!(is_iso(dates.dashboard_due.as_deref()), "{dates:?}");
     assert!(is_iso(dates.transactions_date.as_deref()), "{dates:?}");
-    assert_eq!(dates.bills, Some(DateStyle::Iso));
-    assert_eq!(dates.documents, Some(DateStyle::Iso));
-    assert_eq!(dates.budgets, Some(DateStyle::Iso));
+    assert!(is_iso(dates.bills.as_deref()), "{dates:?}");
+    assert!(is_iso(dates.documents.as_deref()), "{dates:?}");
+    assert!(is_iso(dates.budgets.as_deref()), "{dates:?}");
+}
+
+fn assert_not_iso(dates: &DisplayDatesSnapshot) {
+    assert!(!is_iso(dates.dashboard_due.as_deref()), "{dates:?}");
+    assert!(!is_iso(dates.transactions_date.as_deref()), "{dates:?}");
+    assert!(!is_iso(dates.bills.as_deref()), "{dates:?}");
+    assert!(!is_iso(dates.documents.as_deref()), "{dates:?}");
+    assert!(!is_iso(dates.budgets.as_deref()), "{dates:?}");
 }
 
 #[gpui::test]
 fn a_display_change_reaches_every_display_reader(app: &mut TestAppContext) {
     let mut ui = Harness::new(app);
+    archive_a_budget(&mut ui);
     let before = dates(&mut ui);
-    assert!(!is_iso(before.dashboard_due.as_deref()), "{before:?}");
-    assert!(!is_iso(before.transactions_date.as_deref()), "{before:?}");
+    assert_not_iso(&before);
 
     choose_iso_dates(&mut ui);
 
@@ -119,6 +160,7 @@ fn a_ledger_opens_under_the_display_preferences(app: &mut TestAppContext) {
     config.display.date_style = Some(DateStyle::Iso);
 
     let mut ui = Harness::with_configuration(app, &config, &[]);
+    archive_a_budget(&mut ui);
 
     assert_iso(&dates(&mut ui));
 }
