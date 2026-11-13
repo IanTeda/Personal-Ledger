@@ -101,14 +101,6 @@ pub fn inventory_page_keymap(config: &KeyBindingConfig) -> Keymap<InventoryPageE
 mod tests {
     use super::*;
 
-    fn overriding(command: &str, chord: &str) -> KeyBindingConfig {
-        let mut config = KeyBindingConfig::default();
-        config
-            .bindings
-            .insert(command.to_string(), chord.to_string());
-        config
-    }
-
     #[test]
     fn a_default_chord_reaches_its_event() {
         let keymap = inventory_page_keymap(&KeyBindingConfig::default());
@@ -133,12 +125,13 @@ mod tests {
 
     #[test]
     fn a_keybindings_override_moves_the_event_to_the_new_chord() {
-        let keymap = inventory_page_keymap(&overriding("inventory.add_area", "s"));
+        let keymap =
+            inventory_page_keymap(&KeyBindingConfig::overriding("inventory.add_area", "s"));
 
         assert_eq!(keymap.event("s"), Some(InventoryPageEvent::AddArea));
         assert_eq!(keymap.event("a"), None, "the default no longer binds");
         // `new` is the flat name every module shares, so one override moves it here too.
-        let flat = inventory_page_keymap(&overriding("new", "c"));
+        let flat = inventory_page_keymap(&KeyBindingConfig::overriding("new", "c"));
         assert_eq!(flat.event("c"), Some(InventoryPageEvent::New));
         assert_eq!(flat.chord(NEW), Some("c"));
     }

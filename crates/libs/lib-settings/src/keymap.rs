@@ -252,25 +252,20 @@ pub fn tracing_keymap(config: &KeyBindingConfig) -> Keymap<TracingEvent> {
 mod tests {
     use super::*;
 
-    fn overriding(command: &str, chord: &str) -> KeyBindingConfig {
-        let mut config = KeyBindingConfig::default();
-        config
-            .bindings
-            .insert(command.to_string(), chord.to_string());
-        config
-    }
-
     #[test]
     fn the_back_chord_is_esc_until_a_rebind_moves_it() {
         assert_eq!(back_chord(&KeyBindingConfig::default()), "esc");
-        assert_eq!(back_chord(&overriding(BACK, "ctrl+q")), "ctrl+q");
+        assert_eq!(
+            back_chord(&KeyBindingConfig::overriding(BACK, "ctrl+q")),
+            "ctrl+q"
+        );
     }
 
     #[test]
     fn a_plain_pages_hints_read_the_frames_chords() {
         lib_locale::init_with_layers("en-US", &[msg::LAYER]);
         assert_eq!(
-            settings_plain_page_legend(&overriding(MOVE_DOWN, "n")),
+            settings_plain_page_legend(&KeyBindingConfig::overriding(MOVE_DOWN, "n")),
             [Hint::new("n/k", "scroll"), Hint::new("h", "index")]
         );
     }

@@ -140,7 +140,10 @@ fn home_end_and_the_page_keys_move_through_the_units_keymap(app: &mut TestAppCon
 
 #[gpui::test]
 fn an_override_of_arrow_down_moves_it_and_frees_down(app: &mut TestAppContext) {
-    let mut ui = Harness::with_keybindings(app, common::overriding("arrow_down", "ctrl+n"));
+    let mut ui = Harness::with_keybindings(
+        app,
+        lib_config::KeyBindingConfig::overriding("arrow_down", "ctrl+n"),
+    );
     ui.resize_to(WindowSize::Large);
     to_units(&mut ui);
 
@@ -974,7 +977,10 @@ fn ctrl_enter_confirms_a_valid_form_from_a_select(app: &mut TestAppContext) {
 
 #[gpui::test]
 fn an_override_of_next_field_moves_the_field_and_frees_tab(app: &mut TestAppContext) {
-    let mut ui = Harness::with_keybindings(app, common::overriding("next_field", "ctrl+n"));
+    let mut ui = Harness::with_keybindings(
+        app,
+        lib_config::KeyBindingConfig::overriding("next_field", "ctrl+n"),
+    );
     ui.resize_to(WindowSize::Large);
     to_units(&mut ui);
     ui.press("n");
@@ -999,7 +1005,10 @@ fn question_mark_lists_the_keys_the_status_line_shows(app: &mut TestAppContext) 
 
 #[gpui::test]
 fn the_cheat_sheet_shows_a_rebound_key(app: &mut TestAppContext) {
-    let mut ui = Harness::with_keybindings(app, common::overriding("new", "ctrl+n"));
+    let mut ui = Harness::with_keybindings(
+        app,
+        lib_config::KeyBindingConfig::overriding("new", "ctrl+n"),
+    );
     ui.resize_to(WindowSize::Large);
     to_units(&mut ui);
     assert!(

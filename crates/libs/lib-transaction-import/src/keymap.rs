@@ -74,14 +74,6 @@ pub fn import_select_keymap(config: &KeyBindingConfig) -> Keymap<ImportEvent> {
 mod tests {
     use super::*;
 
-    fn overriding(command: &str, chord: &str) -> KeyBindingConfig {
-        let mut config = KeyBindingConfig::default();
-        config
-            .bindings
-            .insert(command.to_string(), chord.to_string());
-        config
-    }
-
     #[test]
     fn the_default_chords_reach_their_events() {
         let rows = import_keymap(&KeyBindingConfig::default());
@@ -113,11 +105,11 @@ mod tests {
 
     #[test]
     fn a_keybindings_override_moves_a_namespaced_and_a_shared_command() {
-        let moved = import_keymap(&overriding(NEW_PAYEE, "N"));
+        let moved = import_keymap(&KeyBindingConfig::overriding(NEW_PAYEE, "N"));
         assert_eq!(moved.event("N"), Some(ImportEvent::NewPayee));
         assert_eq!(moved.event("n"), None);
 
-        let moved = import_keymap(&overriding(MOVE_DOWN, "ctrl+n"));
+        let moved = import_keymap(&KeyBindingConfig::overriding(MOVE_DOWN, "ctrl+n"));
         assert_eq!(moved.event("ctrl+n"), Some(ImportEvent::Move(Step::Next)));
         assert_eq!(moved.chord(MOVE_DOWN), Some("ctrl+n"));
     }

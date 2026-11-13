@@ -156,14 +156,6 @@ pub fn unit_prices_keymap(config: &KeyBindingConfig) -> Keymap<UnitPricesEvent> 
 mod tests {
     use super::*;
 
-    fn overriding(command: &str, chord: &str) -> KeyBindingConfig {
-        let mut config = KeyBindingConfig::default();
-        config
-            .bindings
-            .insert(command.to_string(), chord.to_string());
-        config
-    }
-
     #[test]
     fn a_default_chord_reaches_its_event_for_a_shared_and_a_namespaced_command() {
         let keymap = units_page_keymap(&KeyBindingConfig::default());
@@ -189,7 +181,7 @@ mod tests {
         assert_eq!(keymap.event("]"), Some(UnitPricesEvent::Later));
         assert_eq!(keymap.event("j"), Some(UnitPricesEvent::Move(Step::Next)));
 
-        let config = overriding("units.set_price", "P");
+        let config = KeyBindingConfig::overriding("units.set_price", "P");
         assert_eq!(
             unit_prices_keymap(&config).event("P"),
             Some(UnitPricesEvent::SetPrice)
@@ -202,7 +194,7 @@ mod tests {
 
     #[test]
     fn a_keybindings_override_of_a_shared_name_moves_its_event_to_the_new_chord() {
-        let keymap = units_page_keymap(&overriding("delete", "ctrl+x"));
+        let keymap = units_page_keymap(&KeyBindingConfig::overriding("delete", "ctrl+x"));
 
         assert_eq!(keymap.event("ctrl+x"), Some(UnitsPageEvent::Delete));
         assert_eq!(keymap.event("d"), None, "the default no longer binds");
@@ -211,12 +203,12 @@ mod tests {
 
     #[test]
     fn a_keybindings_override_of_a_namespaced_name_moves_only_that_command() {
-        let keymap = units_page_keymap(&overriding("units.set_base", "S"));
+        let keymap = units_page_keymap(&KeyBindingConfig::overriding("units.set_base", "S"));
 
         assert_eq!(keymap.event("S"), Some(UnitsPageEvent::SetBase));
         assert_eq!(keymap.event("B"), None);
         // `set_base` alone names no Units command, so it can't move this one.
-        let flat = units_page_keymap(&overriding("set_base", "x"));
+        let flat = units_page_keymap(&KeyBindingConfig::overriding("set_base", "x"));
         assert_eq!(flat.event("B"), Some(UnitsPageEvent::SetBase));
     }
 }

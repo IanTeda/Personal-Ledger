@@ -280,14 +280,6 @@ pub fn keeps(keymap: &Keymap<ShellCommand>, chord: &str) -> bool {
 mod tests {
     use super::*;
 
-    fn overriding(command: &str, chord: &str) -> KeyBindingConfig {
-        let mut config = KeyBindingConfig::default();
-        config
-            .bindings
-            .insert(command.to_string(), chord.to_string());
-        config
-    }
-
     #[test]
     fn the_keybindings_defaults_agree_with_every_global_default() {
         let keymap = global_keymap(&KeyBindingConfig::default());
@@ -330,7 +322,7 @@ mod tests {
 
     #[test]
     fn an_override_moves_a_kept_key() {
-        let keymap = global_keymap(&overriding(TOGGLE_RAIL, "ctrl+b"));
+        let keymap = global_keymap(&KeyBindingConfig::overriding(TOGGLE_RAIL, "ctrl+b"));
 
         assert!(keeps(&keymap, "ctrl+b"));
         assert!(!keeps(&keymap, "b"), "the default no longer binds");

@@ -130,14 +130,6 @@ pub fn transactions_filter_keymap(config: &KeyBindingConfig) -> Keymap<Transacti
 mod tests {
     use super::*;
 
-    fn overriding(command: &str, chord: &str) -> KeyBindingConfig {
-        let mut config = KeyBindingConfig::default();
-        config
-            .bindings
-            .insert(command.to_string(), chord.to_string());
-        config
-    }
-
     #[test]
     fn the_default_chords_reach_their_events() {
         let keymap = transactions_page_keymap(&KeyBindingConfig::default());
@@ -173,7 +165,8 @@ mod tests {
         let reset = Some(TransactionsPageEvent::Filter(FilterEvent::Reset));
         assert_eq!(default.event("ctrl+r"), reset);
 
-        let moved = transactions_filter_keymap(&overriding(RESET_FILTERS, "ctrl+x"));
+        let moved =
+            transactions_filter_keymap(&KeyBindingConfig::overriding(RESET_FILTERS, "ctrl+x"));
         assert_eq!(moved.event("ctrl+x"), reset);
         assert_eq!(moved.event("ctrl+r"), None);
     }
@@ -191,14 +184,15 @@ mod tests {
         assert_eq!(default.event("ctrl+enter"), filter(FilterEvent::Apply));
         assert_eq!(default.event("j"), None, "the list step's letters type");
 
-        let moved = transactions_filter_keymap(&overriding(NEXT_FIELD, "ctrl+f"));
+        let moved = transactions_filter_keymap(&KeyBindingConfig::overriding(NEXT_FIELD, "ctrl+f"));
         assert_eq!(moved.event("ctrl+f"), filter(FilterEvent::NextField));
         assert_eq!(moved.event("tab"), None);
     }
 
     #[test]
     fn a_keybindings_override_moves_only_that_command() {
-        let keymap = transactions_page_keymap(&overriding("transactions.filter", "F"));
+        let keymap =
+            transactions_page_keymap(&KeyBindingConfig::overriding("transactions.filter", "F"));
 
         assert_eq!(
             keymap.event("F"),
@@ -206,7 +200,7 @@ mod tests {
         );
         assert_eq!(keymap.event("f"), None);
         // `filter` alone names no Transactions command, so it can't move this one.
-        let flat = transactions_page_keymap(&overriding("filter", "x"));
+        let flat = transactions_page_keymap(&KeyBindingConfig::overriding("filter", "x"));
         assert_eq!(
             flat.event("f"),
             Some(TransactionsPageEvent::OpenFilter(None))

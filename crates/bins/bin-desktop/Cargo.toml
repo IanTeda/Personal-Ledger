@@ -83,6 +83,8 @@ lib_locale_build = { path = "../../libs/lib-locale-build" }
 # The contract suite `settings::device` runs its `DeviceConfiguration` against.
 lib_settings = { path = "../../libs/lib-settings", features = ["contract-tests"] }
 bin_desktop = { path = ".", features = ["test-support"] }
+# `KeyBindingConfig::overriding`, for the UI tests' rebinds.
+lib_config = { path = "../../libs/lib-config", features = ["test-support"] }
 tempfile = { workspace = true }
 fake = { workspace = true }
 

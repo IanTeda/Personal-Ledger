@@ -41,7 +41,7 @@ fn l_steps_into_sync_server_and_escape_steps_back_out(app: &mut TestAppContext) 
 /// focus-index key show their new chords where the defaults `j/k` and `h` stood.
 #[gpui::test]
 fn a_rebound_frame_key_shows_in_the_plain_page_legend(app: &mut TestAppContext) {
-    let mut config = common::overriding("move_down", "ctrl+j");
+    let mut config = lib_config::KeyBindingConfig::overriding("move_down", "ctrl+j");
     config
         .bindings
         .insert("settings.focus_index".to_string(), "H".to_string());

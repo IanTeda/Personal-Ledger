@@ -77,14 +77,6 @@ pub fn institutions_page_keymap(config: &KeyBindingConfig) -> Keymap<Institution
 mod tests {
     use super::*;
 
-    fn overriding(command: &str, chord: &str) -> KeyBindingConfig {
-        let mut config = KeyBindingConfig::default();
-        config
-            .bindings
-            .insert(command.to_string(), chord.to_string());
-        config
-    }
-
     #[test]
     fn a_default_chord_reaches_its_event() {
         let keymap = institutions_page_keymap(&KeyBindingConfig::default());
@@ -109,13 +101,14 @@ mod tests {
 
     #[test]
     fn a_keybindings_override_moves_the_event_to_the_new_chord() {
-        let keymap = institutions_page_keymap(&overriding("new", "a"));
+        let keymap = institutions_page_keymap(&KeyBindingConfig::overriding("new", "a"));
 
         assert_eq!(keymap.event("a"), Some(InstitutionsPageEvent::New));
         assert_eq!(keymap.event("n"), None, "the default no longer binds");
         assert_eq!(keymap.chord(NEW), Some("a"));
         // `institutions.new` names no Institutions command: they all keep their flat names.
-        let namespaced = institutions_page_keymap(&overriding("institutions.new", "x"));
+        let namespaced =
+            institutions_page_keymap(&KeyBindingConfig::overriding("institutions.new", "x"));
         assert_eq!(namespaced.event("n"), Some(InstitutionsPageEvent::New));
     }
 }

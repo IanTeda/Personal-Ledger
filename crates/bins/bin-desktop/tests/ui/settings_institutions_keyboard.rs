@@ -404,7 +404,10 @@ fn question_mark_lists_the_keys_the_status_line_shows(app: &mut TestAppContext) 
 
 #[gpui::test]
 fn a_rebound_new_key_shows_on_the_status_line_and_in_the_cheat_sheet(app: &mut TestAppContext) {
-    let mut ui = Harness::with_keybindings(app, common::overriding("new", "ctrl+n"));
+    let mut ui = Harness::with_keybindings(
+        app,
+        lib_config::KeyBindingConfig::overriding("new", "ctrl+n"),
+    );
     ui.press("g s");
     ui.click("settings-index-Institutions");
     ui.press("l");

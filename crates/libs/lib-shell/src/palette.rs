@@ -559,14 +559,6 @@ mod tests {
         shell
     }
 
-    fn overriding(command: &str, chord: &str) -> KeyBindingConfig {
-        let mut config = KeyBindingConfig::default();
-        config
-            .bindings
-            .insert(command.to_string(), chord.to_string());
-        config
-    }
-
     /// Presses each space-separated chord, a single character typing itself. Returns what the
     /// last did to the palette, read back from what the Shell ran: a Command it ran through the
     /// Router, or else whether the palette changed and is still open.
@@ -981,7 +973,7 @@ mod tests {
 
     #[test]
     fn the_palette_follows_the_dialog_keys_rebound_under_keybindings() {
-        let mut config = overriding(BACK, "ctrl+h");
+        let mut config = KeyBindingConfig::overriding(BACK, "ctrl+h");
         for (command, chord) in [
             (SELECT, "ctrl+y"),
             (NEXT_FIELD, "ctrl+t"),
@@ -1017,7 +1009,7 @@ mod tests {
 
     #[test]
     fn history_back_follows_keybindings_and_frees_ctrl_r() {
-        let mut shell = shell_under(&overriding(HISTORY_BACK, "ctrl+b"));
+        let mut shell = shell_under(&KeyBindingConfig::overriding(HISTORY_BACK, "ctrl+b"));
         run(&mut shell, "budgets");
         shell.open_palette();
 
@@ -1041,7 +1033,7 @@ mod tests {
             }
         );
 
-        let mut shell = shell_under(&overriding(HISTORY_BACK, "ctrl+b"));
+        let mut shell = shell_under(&KeyBindingConfig::overriding(HISTORY_BACK, "ctrl+b"));
         shell.open_palette();
         assert_eq!(model(&shell).keys.history, "ctrl+b");
     }

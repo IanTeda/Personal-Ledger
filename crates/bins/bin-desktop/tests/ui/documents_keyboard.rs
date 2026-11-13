@@ -349,7 +349,7 @@ fn the_month_turning_moves_a_key_date_into_need_review(app: &mut TestAppContext)
 fn a_rebound_accept_moves_and_the_cheat_sheet_follows(app: &mut TestAppContext) {
     let mut ui = Harness::with_keybindings(
         app,
-        common::overriding(lib_documents::keymap::ACCEPT, "ctrl+y"),
+        lib_config::KeyBindingConfig::overriding(lib_documents::keymap::ACCEPT, "ctrl+y"),
     );
     ui.press("g f");
     ui.press("i");

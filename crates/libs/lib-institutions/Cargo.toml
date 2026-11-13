@@ -30,5 +30,9 @@ contract-tests = []
 [build-dependencies]
 lib_locale_build = { path = "../lib-locale-build" }
 
+[dev-dependencies]
+# `KeyBindingConfig::overriding`, for the keymap tests' rebinds.
+lib_config = { path = "../lib-config", features = ["test-support"] }
+
 [lints]
 workspace = true

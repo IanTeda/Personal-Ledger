@@ -23,5 +23,9 @@ lib_viper = { path = "../lib-viper" }
 chrono = { workspace = true }
 serde = { workspace = true }
 
+[dev-dependencies]
+# `KeyBindingConfig::overriding`, for the keymap tests' rebinds.
+lib_config = { path = "../lib-config", features = ["test-support"] }
+
 [lints]
 workspace = true

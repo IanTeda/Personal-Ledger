@@ -487,7 +487,10 @@ fn question_mark_lists_the_keys_the_status_line_shows(app: &mut TestAppContext) 
 
 #[gpui::test]
 fn a_keybindings_override_moves_the_filter_key(app: &mut TestAppContext) {
-    let mut ui = Harness::with_keybindings(app, common::overriding("transactions.filter", "F"));
+    let mut ui = Harness::with_keybindings(
+        app,
+        lib_config::KeyBindingConfig::overriding("transactions.filter", "F"),
+    );
     ui.press("g l");
 
     ui.press("f");

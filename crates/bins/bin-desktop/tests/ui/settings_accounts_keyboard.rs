@@ -543,7 +543,10 @@ fn question_mark_lists_the_keys_the_status_line_shows(app: &mut TestAppContext) 
 
 #[gpui::test]
 fn the_cheat_sheet_and_the_legend_show_a_rebound_key(app: &mut TestAppContext) {
-    let mut ui = Harness::with_keybindings(app, common::overriding("new", "ctrl+n"));
+    let mut ui = Harness::with_keybindings(
+        app,
+        lib_config::KeyBindingConfig::overriding("new", "ctrl+n"),
+    );
     ui.press("g s");
     ui.press("j j j j j j j");
     ui.press("l");

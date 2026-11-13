@@ -91,7 +91,10 @@ fn escape_leaves_the_import_step(app: &mut TestAppContext) {
 /// The step's keys are its module's keymap, so `[keybindings]` moves them and the legend follows.
 #[gpui::test]
 fn a_keybindings_override_moves_the_new_payee_key(app: &mut TestAppContext) {
-    let mut ui = Harness::with_keybindings(app, common::overriding("import.new_payee", "N"));
+    let mut ui = Harness::with_keybindings(
+        app,
+        lib_config::KeyBindingConfig::overriding("import.new_payee", "N"),
+    );
     ui.press(": i m p o r t enter");
     let candle = ui
         .import()
@@ -130,7 +133,10 @@ fn a_keybindings_override_moves_the_new_payee_key(app: &mut TestAppContext) {
 
 #[gpui::test]
 fn the_continue_button_shows_the_key_continue_is_on(app: &mut TestAppContext) {
-    let mut ui = Harness::with_keybindings(app, common::overriding("import.continue", "C"));
+    let mut ui = Harness::with_keybindings(
+        app,
+        lib_config::KeyBindingConfig::overriding("import.continue", "C"),
+    );
     ui.press(": i m p o r t enter");
 
     assert_eq!(

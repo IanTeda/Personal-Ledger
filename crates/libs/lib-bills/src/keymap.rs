@@ -184,14 +184,6 @@ pub fn bills_page_keymap(config: &KeyBindingConfig) -> Keymap<BillsPageEvent> {
 mod tests {
     use super::*;
 
-    fn overriding(command: &str, chord: &str) -> KeyBindingConfig {
-        let mut config = KeyBindingConfig::default();
-        config
-            .bindings
-            .insert(command.to_string(), chord.to_string());
-        config
-    }
-
     #[test]
     fn a_default_chord_reaches_its_event_for_a_shared_and_a_namespaced_command() {
         let keymap = bills_page_keymap(&KeyBindingConfig::default());
@@ -224,7 +216,7 @@ mod tests {
             Some(BillsPageEvent::Move(Step::HalfPageDown))
         );
         assert_eq!(keymap.event("enter"), Some(BillsPageEvent::Open));
-        let moved = bills_page_keymap(&overriding("arrow_up", "ctrl+p"));
+        let moved = bills_page_keymap(&KeyBindingConfig::overriding("arrow_up", "ctrl+p"));
         assert_eq!(
             moved.event("ctrl+p"),
             Some(BillsPageEvent::Move(Step::Prev))
@@ -234,7 +226,7 @@ mod tests {
 
     #[test]
     fn a_keybindings_override_of_a_namespaced_name_moves_only_that_command() {
-        let keymap = bills_page_keymap(&overriding("bills.pay", "P"));
+        let keymap = bills_page_keymap(&KeyBindingConfig::overriding("bills.pay", "P"));
 
         assert_eq!(
             keymap.event("P"),
@@ -242,7 +234,7 @@ mod tests {
         );
         assert_eq!(keymap.event("p"), None);
         // `pay` alone names no Bills command, so it can't move this one.
-        let flat = bills_page_keymap(&overriding("pay", "x"));
+        let flat = bills_page_keymap(&KeyBindingConfig::overriding("pay", "x"));
         assert_eq!(
             flat.event("p"),
             Some(BillsPageEvent::Schedule(ScheduleEvent::Pay))

@@ -206,15 +206,6 @@ pub struct Device<'c> {
     pub file: Option<Option<std::path::PathBuf>>,
 }
 
-/// The default `[keybindings]` with `command` bound to `chord`.
-pub fn overriding(command: &str, chord: &str) -> lib_config::KeyBindingConfig {
-    let mut config = lib_config::KeyBindingConfig::default();
-    config
-        .bindings
-        .insert(command.to_string(), chord.to_string());
-    config
-}
-
 /// The date every test is anchored to, so scopes and seeded relative dates never drift.
 pub fn today() -> NaiveDate {
     date(2026, 6, 15)

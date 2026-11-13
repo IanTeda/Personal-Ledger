@@ -566,7 +566,7 @@ fn question_mark_lists_the_keys_the_status_line_shows(app: &mut TestAppContext) 
 fn the_cheat_sheet_shows_a_rebound_key_and_the_key_works(app: &mut TestAppContext) {
     let mut ui = Harness::with_keybindings(
         app,
-        common::overriding("documents.move_type_down", "ctrl+j"),
+        lib_config::KeyBindingConfig::overriding("documents.move_type_down", "ctrl+j"),
     );
     ui.press("g s");
     ui.press("j j j j j j j j j j j");

@@ -289,14 +289,6 @@ mod tests {
         assert_eq!(router.notices, [Notice::Status("saved".to_string())]);
     }
 
-    fn overriding(command: &str, chord: &str) -> KeyBindingConfig {
-        let mut config = KeyBindingConfig::default();
-        config
-            .bindings
-            .insert(command.to_string(), chord.to_string());
-        config
-    }
-
     #[test]
     fn each_default_key_reaches_its_command() {
         let keymap = dialog_keymap(&KeyBindingConfig::default());
@@ -331,7 +323,7 @@ mod tests {
         assert!(DialogCommand::ListPrevious.is_list_step());
         assert!(!DialogCommand::SelectNext.is_list_step());
 
-        let keymap = dialog_keymap(&overriding(LIST_NEXT, "ctrl+j"));
+        let keymap = dialog_keymap(&KeyBindingConfig::overriding(LIST_NEXT, "ctrl+j"));
 
         assert_eq!(keymap.event("ctrl+j"), Some(DialogCommand::ListNext));
         assert_eq!(keymap.event("j"), None, "the default no longer binds");
@@ -344,7 +336,7 @@ mod tests {
         assert!(!DialogCommand::ListNext.is_folder_step());
         assert_eq!(DialogCommand::GoUp.input(), None);
 
-        let keymap = dialog_keymap(&overriding(GO_UP, "left"));
+        let keymap = dialog_keymap(&KeyBindingConfig::overriding(GO_UP, "left"));
 
         assert_eq!(keymap.event("left"), Some(DialogCommand::GoUp));
         assert_eq!(keymap.event("h"), None, "the default no longer binds");
@@ -364,7 +356,7 @@ mod tests {
 
     #[test]
     fn an_override_moves_only_its_command() {
-        let keymap = dialog_keymap(&overriding(NEXT_FIELD, "ctrl+n"));
+        let keymap = dialog_keymap(&KeyBindingConfig::overriding(NEXT_FIELD, "ctrl+n"));
 
         assert_eq!(keymap.event("ctrl+n"), Some(DialogCommand::NextField));
         assert_eq!(keymap.event("tab"), None, "the default no longer binds");
@@ -387,7 +379,7 @@ mod tests {
     #[test]
     fn a_rebound_next_field_keeps_ctrl_n() {
         // `next_field` is bound earlier, so on `ctrl+n` it wins and the list step gives way.
-        let keymap = dialog_keymap(&overriding(NEXT_FIELD, "ctrl+n"));
+        let keymap = dialog_keymap(&KeyBindingConfig::overriding(NEXT_FIELD, "ctrl+n"));
 
         assert_eq!(keymap.event("ctrl+n"), Some(DialogCommand::NextField));
         assert_eq!(keymap.event("ctrl+p"), Some(DialogCommand::SelectPrevious));
@@ -395,7 +387,7 @@ mod tests {
 
     #[test]
     fn back_and_select_follow_the_overrides_views_already_read() {
-        let keymap = dialog_keymap(&overriding(BACK, "ctrl+h"));
+        let keymap = dialog_keymap(&KeyBindingConfig::overriding(BACK, "ctrl+h"));
 
         assert_eq!(keymap.event("ctrl+h"), Some(DialogCommand::Back));
         assert_eq!(keymap.event("esc"), None);

@@ -239,14 +239,6 @@ pub fn tab_keymap(keymap: &Keymap<BudgetsPageEvent>, tab: BudgetsTab) -> Keymap<
 mod tests {
     use super::*;
 
-    fn overriding(command: &str, chord: &str) -> KeyBindingConfig {
-        let mut config = KeyBindingConfig::default();
-        config
-            .bindings
-            .insert(command.to_string(), chord.to_string());
-        config
-    }
-
     fn defaults() -> Keymap<BudgetsPageEvent> {
         budgets_page_keymap(&KeyBindingConfig::default())
     }
@@ -303,7 +295,7 @@ mod tests {
 
     #[test]
     fn an_override_moves_a_command_on_every_tab_that_binds_it() {
-        let keymap = budgets_page_keymap(&overriding(NEXT_PERIOD, "ctrl+n"));
+        let keymap = budgets_page_keymap(&KeyBindingConfig::overriding(NEXT_PERIOD, "ctrl+n"));
 
         assert_eq!(
             tab_keymap(&keymap, BudgetsTab::Plan).event("ctrl+n"),
@@ -314,7 +306,7 @@ mod tests {
             Some(Progress(ProgressEvent::NextPeriod))
         );
         assert_eq!(tab_keymap(&keymap, BudgetsTab::Plan).event("]"), None);
-        let bound = budgets_page_keymap(&overriding(ARCHIVE, "A"));
+        let bound = budgets_page_keymap(&KeyBindingConfig::overriding(ARCHIVE, "A"));
         assert_eq!(
             tab_keymap(&bound, BudgetsTab::Progress).event("A"),
             Some(BudgetsPageEvent::Archive)

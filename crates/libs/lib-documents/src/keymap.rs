@@ -223,14 +223,6 @@ pub fn document_types_page_keymap(config: &KeyBindingConfig) -> Keymap<DocumentT
 mod tests {
     use super::*;
 
-    fn overriding(command: &str, chord: &str) -> KeyBindingConfig {
-        let mut config = KeyBindingConfig::default();
-        config
-            .bindings
-            .insert(command.to_string(), chord.to_string());
-        config
-    }
-
     #[test]
     fn a_documents_default_chord_reaches_its_event() {
         let keymap = documents_page_keymap(&KeyBindingConfig::default());
@@ -252,11 +244,11 @@ mod tests {
 
     #[test]
     fn a_documents_override_moves_the_event_and_frees_the_default() {
-        let keymap = documents_page_keymap(&overriding(ACCEPT, "ctrl+y"));
+        let keymap = documents_page_keymap(&KeyBindingConfig::overriding(ACCEPT, "ctrl+y"));
 
         assert_eq!(keymap.event("ctrl+y"), Some(DocumentsPageEvent::Accept));
         assert_eq!(keymap.event("y"), None);
-        let bound = documents_page_keymap(&overriding(SHOW_INBOX, "g x"));
+        let bound = documents_page_keymap(&KeyBindingConfig::overriding(SHOW_INBOX, "g x"));
         assert_eq!(bound.event("g x"), Some(DocumentsPageEvent::ShowInbox));
         assert!(bound.is_prefix("g"));
     }
@@ -322,12 +314,13 @@ mod tests {
 
     #[test]
     fn a_keybindings_override_moves_the_event_to_the_new_chord() {
-        let keymap = document_types_page_keymap(&overriding("new", "a"));
+        let keymap = document_types_page_keymap(&KeyBindingConfig::overriding("new", "a"));
 
         assert_eq!(keymap.event("a"), Some(DocumentTypesPageEvent::New));
         assert_eq!(keymap.event("n"), None, "the default no longer binds");
         assert_eq!(keymap.chord(NEW), Some("a"));
-        let moved = document_types_page_keymap(&overriding(MOVE_TYPE_DOWN, "ctrl+j"));
+        let moved =
+            document_types_page_keymap(&KeyBindingConfig::overriding(MOVE_TYPE_DOWN, "ctrl+j"));
         assert_eq!(
             moved.event("ctrl+j"),
             Some(DocumentTypesPageEvent::Reorder(1))

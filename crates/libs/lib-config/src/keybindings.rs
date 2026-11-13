@@ -160,6 +160,18 @@ impl KeyBindingConfig {
         Ok(())
     }
 
+    /// The defaults with `command` rebound to `chord`, for a test that needs one rebind. Behind
+    /// the `test-support` feature so shipped builds never carry it; a crate's tests reach it by
+    /// enabling `lib_config/test-support` in `[dev-dependencies]`.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn overriding(command: &str, chord: &str) -> Self {
+        let mut config = Self::default();
+        config
+            .bindings
+            .insert(command.to_string(), chord.to_string());
+        config
+    }
+
     /// Get the default configuration values as key-value pairs, for seeding a layered
     /// configuration builder's defaults -- mirrors `SyncServerConfig::default_config_values()`.
     pub fn default_config_values() -> Vec<(String, String)> {
@@ -210,6 +222,22 @@ mod tests {
             None,
             "toast_history is unbound by default"
         );
+    }
+
+    #[test]
+    fn an_override_rebinds_one_command_and_keeps_every_other_default() {
+        let config = KeyBindingConfig::overriding("back", "ctrl+q");
+
+        assert_eq!(config.key_for("back"), Some("ctrl+q"));
+        assert_eq!(config.key_for("help"), Some("?"));
+        assert_eq!(config.super_key(), "ctrl");
+    }
+
+    #[test]
+    fn an_override_binds_a_command_with_no_default() {
+        let config = KeyBindingConfig::overriding("toast_history", "H");
+
+        assert_eq!(config.key_for("toast_history"), Some("H"));
     }
 
     #[test]

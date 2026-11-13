@@ -53,7 +53,7 @@ fn a_rebind_reaches_every_main_view_and_settings_page(app: &mut TestAppContext) 
     }
     let commits = ui.commits();
 
-    ui.rebind(&common::overriding(MOVE_DOWN, "n"));
+    ui.rebind(&lib_config::KeyBindingConfig::overriding(MOVE_DOWN, "n"));
 
     assert_eq!(
         ui.commits(),

@@ -5025,6 +5025,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "lib_colour_theme",
+ "lib_config",
  "lib_core",
  "lib_list_cursor",
  "lib_locale",

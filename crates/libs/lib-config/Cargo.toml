@@ -10,6 +10,11 @@ license.workspace = true
 # Usage is specified by unit tests, not doctests (see CLAUDE.md Conventions).
 doctest = false
 
+[features]
+# Test-only constructors (`KeyBindingConfig::overriding`). A crate's tests enable it from their
+# `[dev-dependencies]`, so shipped builds never compile them.
+test-support = []
+
 [dependencies]
 ## -- Internal Dependencies --
 lib_colour_theme = { path = "../lib-colour-theme" }
