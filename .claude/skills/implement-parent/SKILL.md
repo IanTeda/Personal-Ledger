@@ -1,6 +1,6 @@
 ---
 name: implement-parent
-description: Implement every sub-issue of a parent ticket in one unattended run, one fresh implementer subagent per child, then close the parent with a review, a simplify pass and the full suites.
+description: Implement every sub-issue of a parent ticket in one unattended run, one fresh implementer subagent per child, then run the full suites and gate the parent for /review-parent.
 argument-hint: "<parent issue number>"
 disable-model-invocation: true
 ---
@@ -27,7 +27,7 @@ Every check passes before the first write. On any failure, stop and report which
 3. **Signing key**: CLAUDE.md's signing key check passes.
 4. **Read the parent and its children**: `gh issue view <parent>` and `gh api repos/{owner}/{repo}/issues/<parent>/sub_issues --paginate`, then `gh issue view <n> --json number,title,body,labels,state,assignees` for each open child.
 5. **Every child is specified**: every open child carries `flow:implementation`. Any open child on `flow:grilling`, `flow:wayfinding` or `flow:triage` refuses the run: list each one with its label, so your human resolves them first.
-6. **Base commit**: record `BASE`, the commit before the parent's work began. It is the parent of the oldest commit whose message names the parent or any child (`git log --reverse --format=%H --grep '#<n>'` over all of them), or `HEAD` when none exists yet. The parent-close review diffs from it, so a resumed run reviews the whole parent.
+6. **Base commit**: record `BASE`, the commit before the parent's work began. It is the parent of the oldest commit whose message names the parent or any child (`git log --reverse --format=%H --grep '#<n>'` over all of them), or `HEAD` when none exists yet. The parent's close or gate checks the tripwires over `git diff BASE...HEAD`, so a resumed run covers the whole parent.
 
 ## 2. Build the task graph
 
@@ -51,17 +51,14 @@ Loop until the frontier is empty or the run halts.
    - **Two failures in a row** (seam or failed, back to back): something in the environment is likely wrong.
    - **Signing key gone**: the implementer reports the check failed. Leave its work uncommitted in place, unassigned, and comment on the child that the run halted there.
 
-   On a halt, send a push notification (the `PushNotification` tool) naming the reason, then go straight to the report (step 5), skipping parent close.
+   On a halt, send a push notification (the `PushNotification` tool) naming the reason, then go straight to the report (step 5), skipping the parent gate.
 
-## 4. Close the parent
+## 4. Gate the parent
 
-Once the frontier is empty, run these in order. Run CLAUDE.md's signing key check before each commit; a failure is a halt.
+Once the frontier is empty, run these in order. This skill writes no code here: the review is your human's to trigger, through `/review-parent`, which turns findings into new children.
 
-1. **Review**: call the Skill tool with `mattpocock-skills:code-review`, fixed point `BASE`, spec source the parent and its children.
-2. **Fix**: one fresh fixer subagent (model `opus`, effort `medium`) takes every finding, applies them, runs the targeted tests and `mise run lint`, and commits once as `<area>: address the #<parent> review`. Findings it cannot resolve without a decision go to the report unapplied. Close-or-gate the fix commit with the parent (step 4.5).
-3. **Simplify**: call the Skill tool with `simplify` over `git diff BASE...HEAD`, then `mise run lint` and the targeted tests for the files it touched, and commit as `<area>: simplify the #<parent> changes`. If lint or a test goes red, `git revert --no-edit` the commit (signed) and record it in the report.
-4. **Full suites**: bare `mise run end-to-end-ui`, `mise run end-to-end-ui smoke` and `cargo test --workspace`, so they test the final tree. Each suite's exit status is its verdict; read its output only for the names of failing tests. On a red suite with a simplify commit in place, revert it and re-run the failing suite: green means the simplify caused it (keep the revert, record it); still red means the failure is the parent's, and the parent is gated.
-5. **Close or gate the parent** by ticket-labels.md "Closing or review", over `git diff BASE...HEAD`. It is gated if any child was gated, seamed, failed or skipped, if a suite stayed red, or if any review finding went unapplied; the gate comment lists each reason. Then do ticket-labels.md's "A parent ticket closes" re-rank.
+1. **Full suites**: bare `mise run end-to-end-ui`, `mise run end-to-end-ui smoke` and `cargo test --workspace`. Each suite's exit status is its verdict; read its output only for the names of failing tests.
+2. **Gate the parent**: swap its `state:` for `state:needs-review`, so it waits on `/review-parent`. The gate comment lists the commits since `BASE`, each suite's result, the tripwires that fired over `git diff BASE...HEAD` (ticket-labels.md "Closing or review"), and each child that was gated, seamed, failed or skipped. Then do ticket-labels.md's "A parent ticket closes" re-rank.
 
 ## 5. Report
 
@@ -71,7 +68,7 @@ The run's final message, first line `Needs human review: #<n>, …` when anythin
 - **Gated**: each gated ticket with its tripwires.
 - **Seams and failures**: each with its stash name and where it stopped.
 - **Skipped**: each with why (label, assignee, or a blocker that seamed or failed).
-- **Parent close**: review findings applied and unapplied, whether the simplify commit stayed, and each suite's result.
+- **Parent**: each suite's result and the tripwires that fired. The next step is `/review-parent <parent>`.
 - **Halt**: the reason, and the resume line: fix the cause, `git stash pop` if needed, then `/implement-parent <parent>`. A re-run resumes by itself, since closed, gated and waiting children drop out of the frontier.
 - **Pushed**: nothing. Commits stay local on `concept`.
 - Close with: run `/retro` on this session.
