@@ -1627,15 +1627,9 @@ mod tests {
 
     #[test]
     fn the_legend_reads_the_dialog_keys() {
-        use lib_viper::keymap::{
-            BACK, BACK_DEFAULT, Binding, KeyBindingConfig, Keymap, NEXT_FIELD, SELECT,
-        };
-        const BINDINGS: &[Binding<()>] = &[
-            Binding::hidden(BACK, BACK_DEFAULT, ()),
-            Binding::hidden(SELECT, "enter", ()),
-            Binding::hidden(NEXT_FIELD, "tab", ()),
-        ];
-        let keys = DialogKeys::of(&Keymap::new(BINDINGS, &KeyBindingConfig::default()));
+        use lib_viper::dialog::dialog_keymap;
+        use lib_viper::keymap::KeyBindingConfig;
+        let keys = DialogKeys::of(&dialog_keymap(&KeyBindingConfig::default()));
         let (_, shared) = sample();
         let form = CategoryFormPresenter::add(
             shared,

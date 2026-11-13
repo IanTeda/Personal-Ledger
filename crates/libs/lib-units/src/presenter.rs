@@ -281,11 +281,8 @@ pub(crate) mod test_support {
     use chrono::{DateTime, TimeZone, Utc};
 
     use super::Clock;
-    use lib_viper::dialog::DialogKeys;
-    use lib_viper::keymap::{
-        BACK, BACK_DEFAULT, Binding, KeyBindingConfig, Keymap, NEXT_FIELD, SELECT, SELECT_NEXT,
-        SELECT_PREVIOUS,
-    };
+    use lib_viper::dialog::{DialogKeys, dialog_keymap};
+    use lib_viper::keymap::KeyBindingConfig;
 
     use crate::fake::InMemoryPorts;
     use crate::protocols::SharedPorts;
@@ -298,14 +295,7 @@ pub(crate) mod test_support {
 
     /// The Dialog keys a Dialog's legend reads, bound as `lib-shell`'s defaults bind them.
     pub fn dialog_keys() -> DialogKeys {
-        const BINDINGS: &[Binding<()>] = &[
-            Binding::hidden(BACK, BACK_DEFAULT, ()),
-            Binding::hidden(SELECT, "enter", ()),
-            Binding::hidden(NEXT_FIELD, "tab", ()),
-            Binding::hidden(SELECT_NEXT, "down", ()),
-            Binding::hidden(SELECT_PREVIOUS, "up", ()),
-        ];
-        DialogKeys::of(&Keymap::new(BINDINGS, &KeyBindingConfig::default()))
+        DialogKeys::of(&dialog_keymap(&KeyBindingConfig::default()))
     }
 
     /// The instant the tests' clock reads.

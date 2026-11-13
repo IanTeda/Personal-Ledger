@@ -983,18 +983,10 @@ mod tests {
 
     #[test]
     fn the_hints_read_the_dialog_keys() {
-        use lib_viper::keymap::{
-            BACK_DEFAULT, Binding, KeyBindingConfig, Keymap, LIST_NEXT, LIST_PREVIOUS,
-        };
-        const BINDINGS: &[Binding<()>] = &[
-            Binding::hidden(BACK, BACK_DEFAULT, ()),
-            Binding::hidden(SELECT, "enter", ()),
-            Binding::hidden(LIST_NEXT, "j", ()),
-            Binding::hidden(LIST_PREVIOUS, "k", ()),
-        ];
+        use lib_viper::dialog::dialog_keymap;
+        use lib_viper::keymap::KeyBindingConfig;
         let mut dialog = Dialog::open();
-        dialog.presenter.keys =
-            DialogKeys::of(&Keymap::new(BINDINGS, &KeyBindingConfig::default()));
+        dialog.presenter.keys = DialogKeys::of(&dialog_keymap(&KeyBindingConfig::default()));
 
         let hints: Vec<String> = dialog
             .view()

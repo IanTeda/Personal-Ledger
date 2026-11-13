@@ -891,12 +891,9 @@ mod tests {
 
     #[test]
     fn the_legend_reads_the_dialog_keys_and_follows_the_mode() {
-        use lib_viper::keymap::{BACK, BACK_DEFAULT, Binding, KeyBindingConfig, Keymap, SELECT};
-        const BINDINGS: &[Binding<()>] = &[
-            Binding::hidden(BACK, BACK_DEFAULT, ()),
-            Binding::hidden(SELECT, "enter", ()),
-        ];
-        let keys = DialogKeys::of(&Keymap::new(BINDINGS, &KeyBindingConfig::default()));
+        use lib_viper::dialog::dialog_keymap;
+        use lib_viper::keymap::KeyBindingConfig;
+        let keys = DialogKeys::of(&dialog_keymap(&KeyBindingConfig::default()));
         let mut dialog = Dialog::open(BTC);
         let (ports, deletion): (SharedPorts, SharedUnitDeletion) =
             (dialog.ports.clone(), dialog.deletion.clone());
