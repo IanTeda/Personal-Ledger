@@ -197,13 +197,13 @@ impl TransactionsPagePresenter {
     /// The page on its first row, filtered to the defaults (this year), its keys under `config`.
     pub fn new(ports: SharedPorts, clock: Clock, config: &KeyBindingConfig) -> Self {
         let filters = TransactionFilters::defaults(clock.today());
-        let keymap = transactions_page_keymap(config);
+        let (keymap, filter_keymap, search_keymap) = Self::keymaps(config);
         Self {
             ports,
             clock,
-            search_keymap: keymap.scoped(|_| false),
             keymap,
-            filter_keymap: transactions_filter_keymap(config),
+            search_keymap,
+            filter_keymap,
             selected: 0,
             half_page: lib_list_cursor::HALF_PAGE,
             filters,
@@ -214,6 +214,20 @@ impl TransactionsPagePresenter {
             glyphs: StatusGlyphs::default(),
             density: RowDensity::default(),
         }
+    }
+
+    /// The page's keymap, the popover's and the Search's (the page's with no keys), all under
+    /// `config`, so `new` and `rebind` build them the same way.
+    fn keymaps(
+        config: &KeyBindingConfig,
+    ) -> (
+        Keymap<TransactionsPageEvent>,
+        Keymap<TransactionsPageEvent>,
+        Keymap<TransactionsPageEvent>,
+    ) {
+        let keymap = transactions_page_keymap(config);
+        let search_keymap = keymap.scoped(|_| false);
+        (keymap, transactions_filter_keymap(config), search_keymap)
     }
 
     /// How many rows a half-page move steps: what the Client measures half its viewport to hold.
@@ -434,9 +448,7 @@ impl PagePresenter for TransactionsPagePresenter {
 
     /// The page's, the Search's and the popover's keymaps, an open popover's included.
     fn rebind(&mut self, keys: &KeyBindingConfig) {
-        self.keymap = transactions_page_keymap(keys);
-        self.search_keymap = self.keymap.scoped(|_| false);
-        self.filter_keymap = transactions_filter_keymap(keys);
+        (self.keymap, self.filter_keymap, self.search_keymap) = Self::keymaps(keys);
     }
 
     /// The dates' style, the status marks and legend in the glyphs, and the rows spaced at the
