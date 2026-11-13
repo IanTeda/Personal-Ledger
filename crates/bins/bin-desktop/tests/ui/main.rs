@@ -24,6 +24,7 @@ mod help_keyboard;
 mod help_mouse;
 mod import_keyboard;
 mod import_mouse;
+mod key_clashes;
 mod ledger_file_keyboard;
 mod ledger_file_mouse;
 mod palette_keyboard;

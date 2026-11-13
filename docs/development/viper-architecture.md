@@ -210,7 +210,7 @@ These are the rules Claude follows and a review checks against.
 - An adapter test pins each refusal the file makes, a foreign key or a composite key, so a rollback the in-memory ports don't model is caught.
 - Each View still has `<view>_keyboard.rs` and `<view>_mouse.rs` in the bin's `tests/ui/`, but they check wiring and drawing (the key reaches the Presenter, the view model is drawn), not behaviour the Presenter tests already cover. They run on the `fake.rs` ports, which the Desktop's `shell::router::build` takes as parameters, so they never open SQLite.
 - The UI tests add a test for each hand-off into a page (a Document's Payee link) and each writer from another module reaching it, asserting one commit for the input. The keyboard test opens `?` and checks it lists the status line's keys under the page's heading (`Harness::assert_cheat_sheet_matches_status`).
-- `Stores::fake` takes one `FakeStores` with a field per domain, and the UI harness fills every one from `FakeStores::sample(today)`, the Sample Ledger in memory, so a test overrides only the store it changes. `Harness::with_failing_<domain>` runs on a `Failing<Domain>` store, and a test of a file cascade runs on a Ledger file (`Harness::with_storage`).
+- `Stores::fake` takes one `FakeStores` with a field per domain, and the UI harness fills every one from `FakeStores::sample(today)`, the Sample Ledger in memory, so a test overrides only the store it changes. `Harness::arrange` sets `FakeFails` on those stores (`fakes.fails.writes` names the domains whose writes fail, `fakes.fails.reloads` those whose reload fails too), so no domain has a failing store of its own, and a test of a file cascade runs on a Ledger file (`Harness::with_storage`).
 - A test helper writes a store directly (`add_payee_for_test`) rather than through a command that's gone, and a restart test the adapter's contract already covers is dropped.
 - An end-to-end smoke test per module runs the real app on a temporary SQLite file: start, change a row, restart, see it, its readers seeing it from the adapter. Where the Desktop can't add a row yet, it reads back one that exists and the adapter's test covers the add. It runs when a parent ticket closes and before a merge to `main`.
 
@@ -313,7 +313,7 @@ A domain's tickets link here rather than restate these steps. The worked example
 7. **Edit the schema** by [Schema](#schema): the table's file, the foreign keys the referencing tables gain, and the refusal each key without a cascade backs.
 8. **Grep what writes the old schema:** every `::seed(` and adapter test factory that writes a referencing table, the older per-entity `sqlx::test`s, and `bin-sync-server/tests`.
 9. **Write the adapter** after `adapter/units.rs`, with its `<Domain>Store` trait and fake, its `Recorded` impl, its field in `Stores`, `Stores::fake` and `FakeStores::sample`, its `Domain` variant and `SharedStores::reload` arm, and its `Stored<Domain>Ports` in `ports/<domain>.rs`, built in `LedgerPorts::new` ([Stores](#stores)).
-10. **Wire write failures:** a `Failing<Domain>` store, `Harness::with_failing_<domain>`, an arm in `roll_back` (`shell/router/write_failures.rs`) and two `desktop-toast-write-failed-<domain>` Messages.
+10. **Wire write failures:** the domain's `Switched` fake in `Stores::fake` (a test arranges its failure through `FakeFails`), an arm in `roll_back` (`shell/router/write_failures.rs`) and two `desktop-toast-write-failed-<domain>` Messages.
 11. **Write the contract suite** by [Tests](#tests), with a `PortsFactory` hook for the other domains' rows it names.
 12. **Seed it** through `seed::SampleLedger`, ahead of the domains that reference it ([Seeds](#seeds)), and, if every new Ledger needs a row of it, through `NewLedger`.
 13. **Keep a read copy** for the Views that aren't modules, refreshed after each of the module's writes, and say which rows stay.
@@ -326,12 +326,11 @@ A domain's tickets link here rather than restate these steps. The worked example
 20. **Make `router.rs` the entry point**, point every other module's Router at it, and check each gesture a doc names has a caller.
 21. **Move the Dialogs** onto the Entity host, and take the domain out of the legacy-Dialogs row. Build the Dialogs the page has, and leave the rest to the View's ticket. Each Dialog Presenter implements `Presenter` and `DialogPresenter` (a `confirm(router)` becomes a `Confirm` arm, its keys arrive as an `Input(DialogInput)` event, and it takes `DialogKeys` at open for the hints in its view model) and `DialogView` in `view/`, and the Router opens it with `ModuleDialog::open(cx, presenter, ModulePage::landing(cx))`: one `ModuleDialog<P>` per Presenter, never an enum of Presenters (Tag Removal's `view/remove_tag.rs` and `view/merge_tags.rs`).
 22. **Answer a reassign-shaped delete** with a cross-domain module (`lib-category-deletion`, `lib-tag-removal`): the domain crate keeps only the Router's Dialog variant, and the page's Router opens the module's Dialog through its entry point ([#1003](https://github.com/IanTeda/Personal-Ledger/issues/1003), [#1005](https://github.com/IanTeda/Personal-Ledger/issues/1005)).
-23. **Register the keys:** both clash tests' `module_defaults`, each binding's `Palette` and description, `module_entries` in `navigation/command.rs`, `module_command` through `event_for`, and drop the old `COMMANDS` rows.
-24. **Compare the view model with the old View** before deleting it. A change the person sees (a new Toast, new wording) is new behaviour: name it in the findings and gate it for review.
-25. **Write the UI tests** by [Tests](#tests): keyboard and mouse for each View on the Entity host, the hand-offs, the one-commit writers, the cheat sheet and the smoke test.
-26. **Name the transition rows.** Each ticket's acceptance criteria name the row it adds, narrows or removes; the last ticket checks the domain's rows against the code.
-27. **Close with the docs.** Each ticket logs findings on the parent; the last brings the domain's pages into line (`/end-user-docs`) and turns each finding into a rule here, an ADR or a ticket.
-28. **Expect review gates:** tickets that touch `migrations/`, `.sqlx/` or `lib-database` gate for review (`docs/agents/ticket-labels.md`).
+23. **Compare the view model with the old View** before deleting it. A change the person sees (a new Toast, new wording) is new behaviour: name it in the findings and gate it for review.
+24. **Write the UI tests** by [Tests](#tests): keyboard and mouse for each View on the Entity host, the hand-offs, the one-commit writers, the cheat sheet and the smoke test.
+25. **Name the transition rows.** Each ticket's acceptance criteria name the row it adds, narrows or removes; the last ticket checks the domain's rows against the code.
+26. **Close with the docs.** Each ticket logs findings on the parent; the last brings the domain's pages into line (`/end-user-docs`) and turns each finding into a rule here, an ADR or a ticket.
+27. **Expect review gates:** tickets that touch `migrations/`, `.sqlx/` or `lib-database` gate for review (`docs/agents/ticket-labels.md`).
 
 ## During the transition
 
