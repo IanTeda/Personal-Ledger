@@ -7,10 +7,11 @@
 use bigdecimal::{BigDecimal, Signed};
 use chrono::{Datelike, NaiveDate};
 use lib_bills::*;
+use lib_core::AccountRef;
 use lib_core::{AccountId, BillPlanId, CategoryId, PayeeId, Period};
 use lib_core::{Money, Total, TransactionId, UnitId};
 
-use crate::adapter::accounts::bill_accounts;
+use crate::adapter::accounts::account_refs;
 use crate::adapter::categories::bill_categories;
 use crate::adapter::payees::bill_payees;
 use crate::seed::{SampleNames, bill_splits, sample_bills, sample_transactions};
@@ -28,7 +29,7 @@ fn today() -> NaiveDate {
 }
 
 struct World {
-    accounts: Vec<BillAccount>,
+    accounts: Vec<AccountRef>,
     categories: Vec<BillCategory>,
     splits: Vec<BillSplit>,
     plans: Vec<BillPlan>,
@@ -38,7 +39,7 @@ struct World {
 fn world() -> World {
     let bills = sample_bills(today());
     World {
-        accounts: bill_accounts(&lib_accounts::sample_accounts()),
+        accounts: account_refs(&lib_accounts::sample_accounts()),
         categories: bill_categories(&lib_categories::sample_categories()),
         splits: bill_splits(&sample_transactions(today())),
         plans: bills.plans,
@@ -543,9 +544,9 @@ fn a_plan_never_paid_shows_dashes() {
 #[test]
 fn the_read_ports_answer_every_row_flagged_by_its_domains_rules() {
     let sample = crate::FakeStores::sample(today());
-    let ids = |accounts: Vec<BillAccount>| accounts.iter().map(|a| a.id).collect::<Vec<_>>();
+    let ids = |accounts: Vec<AccountRef>| accounts.iter().map(|a| a.id).collect::<Vec<_>>();
     assert_eq!(
-        ids(bill_accounts(&sample.accounts.accounts.accounts)),
+        ids(account_refs(&sample.accounts.accounts.accounts)),
         sample
             .accounts
             .accounts
@@ -587,7 +588,7 @@ fn the_read_ports_answer_every_row_flagged_by_its_domains_rules() {
     assert_eq!(second.category_id, split.splits[1].category_id);
     assert_eq!(second.payee_id, split.splits[1].payee_id);
 
-    let home_loan = bill_accounts(&sample.accounts.accounts.accounts)
+    let home_loan = account_refs(&sample.accounts.accounts.accounts)
         .into_iter()
         .find(|a| a.name == "Home Loan")
         .expect("the sample has a Home Loan");
@@ -616,7 +617,7 @@ fn the_read_ports_answer_every_row_flagged_by_its_domains_rules() {
 fn the_bills_fake_sample_is_the_ledgers() {
     let sample = crate::FakeStores::sample(today());
     assert_eq!(
-        bill_accounts(&sample.accounts.accounts.accounts),
+        account_refs(&sample.accounts.accounts.accounts),
         fake::sample_accounts()
     );
     assert_eq!(
@@ -632,7 +633,7 @@ fn the_bills_fake_sample_is_the_ledgers() {
     let fake = fake::InMemoryPorts::sample(today());
     let first = TransactionId::seed(1);
     let bills = lib_bills::sample_bills(
-        &bill_accounts(&sample.accounts.accounts.accounts),
+        &account_refs(&sample.accounts.accounts.accounts),
         &bill_categories(&sample.categories.categories),
         &payees,
         first,

@@ -48,6 +48,8 @@ pub use ids::{
 };
 
 /// The shared read values (`…Ref`): a row of one domain as the modules that don't own it read it.
+mod account_ref;
+pub use account_ref::AccountRef;
 mod unit_ref;
 pub use unit_ref::UnitRef;
 

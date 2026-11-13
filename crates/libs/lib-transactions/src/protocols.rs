@@ -11,10 +11,11 @@
 //! the query engine, rows, chips and filter form read, so this crate depends on no other feature
 //! crate. `lib-database`'s adapters answer them from the rows they hold.
 
+use lib_core::AccountRef;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use lib_core::{AccountId, CategoryId, HexColor, PayeeId, TagId, TransactionId, UnitId};
+use lib_core::{CategoryId, HexColor, PayeeId, TagId, TransactionId, UnitId};
 
 use crate::Transaction;
 
@@ -34,15 +35,6 @@ pub trait TransactionRepository {
 
     /// Removes the Transaction and its Splits. A Transaction not stored is no error.
     fn delete_transaction(&mut self, id: TransactionId);
-}
-
-/// An Account as the Transactions read it: the Account filter's option, a row's Account name, and
-/// the Unit its Transactions' totals are named in.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TransactionAccount {
-    pub id: AccountId,
-    pub name: String,
-    pub unit: UnitId,
 }
 
 /// A Category as the Transactions read it. `parent` lets a parent's filter match its
@@ -73,7 +65,7 @@ pub struct TransactionTag {
 
 /// The Accounts a Transaction may be posted against: every Account, in the order they were added.
 pub trait TransactionAccounts {
-    fn transaction_accounts(&self) -> Vec<TransactionAccount>;
+    fn transaction_accounts(&self) -> Vec<AccountRef>;
 }
 
 /// The Categories a Split may be filed under: every Category, in tree order (each parent before

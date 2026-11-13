@@ -264,7 +264,7 @@ pub fn sample_categories() -> Vec<lib_categories::Category> {
 /// Categories as Budgets reads them. Personal spending is `NewLedger`'s, with the sample's Accounts
 /// and Limits put on it, as a person would after `:new`.
 pub fn sample_budgets(today: NaiveDate) -> Vec<lib_budgets::Budget> {
-    let accounts = crate::adapter::accounts::budget_accounts(&sample_accounts());
+    let accounts = crate::adapter::accounts::account_refs(&sample_accounts());
     let categories = crate::adapter::categories::budget_categories(&sample_categories());
     let personal = sample_new_ledger(today).budget;
     lib_budgets::sample_budgets(&accounts, &categories, today)
@@ -421,7 +421,7 @@ pub fn bill_splits(transactions: &[Transaction]) -> Vec<lib_bills::BillSplit> {
 /// and Payees as Bills reads them, whose Paid entries name [`sample_transactions`]' payments.
 pub fn sample_bills(today: NaiveDate) -> BillsSeed {
     lib_bills::sample_bills(
-        &crate::adapter::accounts::bill_accounts(&sample_accounts()),
+        &crate::adapter::accounts::account_refs(&sample_accounts()),
         &crate::adapter::categories::bill_categories(&sample_categories()),
         &crate::adapter::payees::bill_payees(&sample_payees()),
         lib_transactions::fake::FIRST_BOOKED,

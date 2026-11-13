@@ -2,11 +2,11 @@
 //! store, and the other domains' rows the page shows through [`StoredTransactionReads`] (#774,
 //! #923, #1083).
 
+use lib_core::AccountRef;
 use lib_core::UnitId;
 use lib_transactions::{
-    Transaction, TransactionAccount, TransactionAccounts, TransactionCategories,
-    TransactionCategory, TransactionPayee, TransactionPayees, TransactionTag, TransactionTags,
-    TransactionUnits, TransactionsPorts,
+    Transaction, TransactionAccounts, TransactionCategories, TransactionCategory, TransactionPayee,
+    TransactionPayees, TransactionTag, TransactionTags, TransactionUnits, TransactionsPorts,
 };
 
 use crate::adapter::store::{SharedTransactionsStore, StoredTransactionReads};
@@ -35,7 +35,7 @@ impl TransactionsPorts for StoredTransactionsPorts {
 }
 
 impl TransactionAccounts for StoredTransactionsPorts {
-    fn transaction_accounts(&self) -> Vec<TransactionAccount> {
+    fn transaction_accounts(&self) -> Vec<AccountRef> {
         self.reads.transaction_accounts()
     }
 }

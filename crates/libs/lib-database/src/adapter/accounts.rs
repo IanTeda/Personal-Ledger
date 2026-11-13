@@ -16,11 +16,10 @@
 
 use chrono::NaiveDate;
 use lib_accounts::{Account, AccountRepository};
-use lib_bills::BillAccount;
+use lib_core::AccountRef;
 use lib_core::{AccountId, AccountType, InstitutionId, Money, UnitId};
 
 use lib_transaction_import::ImportAccount;
-use lib_transactions::TransactionAccount;
 use lib_units::Holding;
 use sqlx::SqliteConnection;
 
@@ -185,26 +184,12 @@ pub(crate) fn institution_accounts(
         .collect()
 }
 
-/// `accounts` as Bills reads them, each flagged by `lib-transactions`' rule for whether it takes
-/// Transactions.
-pub(crate) fn bill_accounts(accounts: &[Account]) -> Vec<BillAccount> {
+/// `accounts` as every reading module sees them (Bills, Budgets, Transactions), each flagged by
+/// `lib-transactions`' rule for whether it takes Transactions.
+pub(crate) fn account_refs(accounts: &[Account]) -> Vec<AccountRef> {
     accounts
         .iter()
-        .map(|account| BillAccount {
-            id: account.id,
-            name: account.name.clone(),
-            unit: account.unit,
-            takes_transactions: lib_transactions::takes_transactions(&account.account_type),
-        })
-        .collect()
-}
-
-/// `accounts` as `lib-budgets`' `BudgetAccounts` reads them, each flagged by the Transactions'
-/// rule for whether it takes Transactions.
-pub(crate) fn budget_accounts(accounts: &[Account]) -> Vec<lib_budgets::BudgetAccount> {
-    accounts
-        .iter()
-        .map(|account| lib_budgets::BudgetAccount {
+        .map(|account| AccountRef {
             id: account.id,
             name: account.name.clone(),
             unit: account.unit,
@@ -313,18 +298,6 @@ async fn read(conn: &mut SqliteConnection) -> Result<Vec<Account>> {
     })
     .collect();
     Ok(rows)
-}
-
-/// `accounts` as Transactions reads them.
-pub(crate) fn transaction_accounts(accounts: &[Account]) -> Vec<TransactionAccount> {
-    accounts
-        .iter()
-        .map(|account| TransactionAccount {
-            id: account.id,
-            name: account.name.clone(),
-            unit: account.unit,
-        })
-        .collect()
 }
 
 /// The ids of the `accounts` that count in `unit`, in order.
@@ -745,7 +718,7 @@ mod tests {
         _: SqlitePoolOptions,
         options: SqliteConnectOptions,
     ) {
-        fn store(writer: &Writer, rows: Vec<TransactionAccount>) {
+        fn store(writer: &Writer, rows: Vec<AccountRef>) {
             UnitsAdapter::seed_from(
                 writer,
                 lib_units::fake::InMemoryPorts::sample(chrono::Utc::now()),
@@ -814,7 +787,7 @@ mod tests {
             aud.len()
         );
         assert_eq!(unit_accounts(&adapter.accounts.rows, UnitId::new()), 0);
-        let bills = bill_accounts(&adapter.accounts.rows);
+        let bills = account_refs(&adapter.accounts.rows);
         assert_eq!(bills.len(), sample_accounts().len());
         assert_eq!(bills[1].id, everyday);
         assert!(bills[1].takes_transactions);

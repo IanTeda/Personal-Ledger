@@ -4,6 +4,7 @@
 //! them, which `lib-database`'s seed tests hold to the samples themselves. [`InMemoryPorts`] holds both
 //! as the Presenters share them, and [`RecordingRouter`] records what a Presenter asked for.
 
+use lib_core::AccountRef;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -14,9 +15,9 @@ use lib_toast::{Notice, Notify};
 use lib_viper::dialog::DialogRouter;
 
 use crate::protocols::{
-    BudgetAccount, BudgetAccounts, BudgetBill, BudgetBillPlan, BudgetBills, BudgetCategories,
-    BudgetCategory, BudgetPayees, BudgetReads, BudgetRepository, BudgetSplit, BudgetSplits,
-    BudgetUnits, BudgetsOutcome, BudgetsPorts, BudgetsRouter, ExportHistory, PortsMut, SharedPorts,
+    BudgetAccounts, BudgetBill, BudgetBillPlan, BudgetBills, BudgetCategories, BudgetCategory,
+    BudgetPayees, BudgetReads, BudgetRepository, BudgetSplit, BudgetSplits, BudgetUnits,
+    BudgetsOutcome, BudgetsPorts, BudgetsRouter, ExportHistory, PortsMut, SharedPorts,
 };
 use crate::{Budget, sample_budgets};
 
@@ -55,7 +56,7 @@ impl BudgetRepository for InMemoryBudgets {
 pub struct InMemoryBudgetReads {
     /// In tree order, as [`BudgetCategories`] returns them.
     pub categories: Vec<BudgetCategory>,
-    pub accounts: Vec<BudgetAccount>,
+    pub accounts: Vec<AccountRef>,
     /// In the Transactions' order.
     pub splits: Vec<BudgetSplit>,
     pub open_bills: Vec<BudgetBill>,
@@ -87,7 +88,7 @@ impl BudgetCategories for InMemoryBudgetReads {
 }
 
 impl BudgetAccounts for InMemoryBudgetReads {
-    fn budget_accounts(&self) -> Vec<BudgetAccount> {
+    fn budget_accounts(&self) -> Vec<AccountRef> {
         self.accounts.clone()
     }
 }
@@ -274,8 +275,8 @@ impl Notify for RecordingRouter {
 
 /// The sample Accounts as Budgets reads them: the Accounts sample's ids, names, Units and whether each
 /// takes Transactions.
-pub fn sample_accounts() -> Vec<BudgetAccount> {
-    let account = |n, name: &str, unit, takes_transactions| BudgetAccount {
+pub fn sample_accounts() -> Vec<AccountRef> {
+    let account = |n, name: &str, unit, takes_transactions| AccountRef {
         id: AccountId::seed(n),
         name: name.to_string(),
         unit,

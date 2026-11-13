@@ -5,6 +5,7 @@
 //! The Presenters reach the ports together, through [`BillsPorts`], and ask for navigation through
 //! [`BillsRouter`], which each Client implements.
 
+use lib_core::AccountRef;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -80,16 +81,6 @@ pub trait BillTransactions {
     fn paid_split(&self, split: SplitRef) -> Option<BillSplit>;
 }
 
-/// An Account as Bills reads it. `takes_transactions` is the Accounts' rule, filled by the side
-/// that answers [`BillAccounts`], so Bills checks the flag rather than knowing Account types.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BillAccount {
-    pub id: AccountId,
-    pub name: String,
-    pub unit: UnitId,
-    pub takes_transactions: bool,
-}
-
 /// A Category as Bills reads it. `path` (ancestors then `name`) and `is_leaf` are the
 /// Categories' rules, filled by the side that answers [`BillCategories`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -111,7 +102,7 @@ pub struct BillPayee {
 
 /// The Accounts a Bill Plan may be paid from: every Account, flagged, not a filtered list.
 pub trait BillAccounts {
-    fn bill_accounts(&self) -> Vec<BillAccount>;
+    fn bill_accounts(&self) -> Vec<AccountRef>;
 }
 
 /// The Categories a Bill Plan may be filed under: every Category, flagged.

@@ -4,6 +4,7 @@
 //! [`sample_categories`], [`sample_payees`]) that carry the sample's ids and names, so this crate needs
 //! none of those domains. [`RecordingRouter`] records what a Presenter asked for.
 
+use lib_core::AccountRef;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -18,7 +19,7 @@ use crate::protocols::{
     SharedPorts,
 };
 use crate::{
-    BillAccount, BillAccounts, BillCategories, BillCategory, BillPayee, BillPayees, BillPlan,
+    BillAccounts, BillCategories, BillCategory, BillPayee, BillPayees, BillPlan,
     BillPlanRepository, BillScheduleEntry, BillScheduleRepository, BillSplit, BillTransactions,
     BillsSeed, EntryId, SampleBills, SplitRef,
 };
@@ -73,7 +74,7 @@ impl BillScheduleRepository for InMemoryBills {
 /// The other domains' rows Bills reads, held in memory.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct InMemoryBillReads {
-    pub accounts: Vec<BillAccount>,
+    pub accounts: Vec<AccountRef>,
     pub categories: Vec<BillCategory>,
     pub payees: Vec<BillPayee>,
     pub splits: Vec<BillSplit>,
@@ -90,7 +91,7 @@ impl BillTransactions for InMemoryBillReads {
 }
 
 impl BillAccounts for InMemoryBillReads {
-    fn bill_accounts(&self) -> Vec<BillAccount> {
+    fn bill_accounts(&self) -> Vec<AccountRef> {
         self.accounts.clone()
     }
 }
@@ -231,7 +232,7 @@ impl BillsPorts for InMemoryPorts {
 /// Payee. `lib-database`'s seed tests check the two agree.
 fn book(
     sample: SampleBills,
-    accounts: &[BillAccount],
+    accounts: &[AccountRef],
     categories: &[BillCategory],
     payees: &[BillPayee],
     today: NaiveDate,
@@ -293,8 +294,8 @@ fn insert_newest_first(splits: &mut Vec<BillSplit>, split: BillSplit) {
 
 /// The sample Accounts as Bills reads them: the Accounts sample's ids, names, Units and whether each
 /// takes Transactions.
-pub fn sample_accounts() -> Vec<BillAccount> {
-    let account = |n, name: &str, unit, takes_transactions| BillAccount {
+pub fn sample_accounts() -> Vec<AccountRef> {
+    let account = |n, name: &str, unit, takes_transactions| AccountRef {
         id: AccountId::seed(n),
         name: name.to_string(),
         unit,

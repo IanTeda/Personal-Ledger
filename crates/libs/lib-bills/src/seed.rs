@@ -8,11 +8,12 @@
 
 use bigdecimal::BigDecimal;
 use chrono::{Datelike, Duration, NaiveDate};
+use lib_core::AccountRef;
 use lib_core::{BillPlanId, BillScheduleEntryId, Money, Period, TransactionId};
 
 use crate::{
-    AmountKind, BillAccount, BillCategory, BillPayee, BillPlan, BillPlanDraft, BillScheduleEntry,
-    EntryId, Recurrence, Resolution, SplitRef, entry_mut, insert_plan_as, set_active, skip,
+    AmountKind, BillCategory, BillPayee, BillPlan, BillPlanDraft, BillScheduleEntry, EntryId,
+    Recurrence, Resolution, SplitRef, entry_mut, insert_plan_as, set_active, skip,
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -271,7 +272,7 @@ fn paid_cents(seed: &PlanSeed, index: u32, cycles: u32) -> i64 {
 /// `lib-transactions`' sample books them. A Plan whose Account, Category or Payee is missing is left
 /// out.
 pub fn sample_bills(
-    accounts: &[BillAccount],
+    accounts: &[AccountRef],
     categories: &[BillCategory],
     payees: &[BillPayee],
     first_payment: TransactionId,

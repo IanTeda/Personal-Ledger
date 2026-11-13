@@ -11,6 +11,7 @@
 
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
+use lib_core::AccountRef;
 use lib_core::{
     AccountId, CategoryId, HexColor, Money, PayeeId, TagId, TransactionId, TransactionStatus,
     UnitId, UnitRef,
@@ -18,9 +19,9 @@ use lib_core::{
 
 use crate::fake::{InMemoryTransactionReads, InMemoryTransactions};
 use crate::{
-    Split, Transaction, TransactionAccount, TransactionAccounts, TransactionCategories,
-    TransactionCategory, TransactionPayee, TransactionPayees, TransactionRepository,
-    TransactionTag, TransactionTags, TransactionUnits,
+    Split, Transaction, TransactionAccounts, TransactionCategories, TransactionCategory,
+    TransactionPayee, TransactionPayees, TransactionRepository, TransactionTag, TransactionTags,
+    TransactionUnits,
 };
 
 /// Builds the port a contract check runs on.
@@ -120,10 +121,10 @@ fn tree_order(categories: &[TransactionCategory]) -> Vec<TransactionCategory> {
     out
 }
 
-impl ReadsFactory<TransactionAccount> for InMemoryReadsFactory {
+impl ReadsFactory<AccountRef> for InMemoryReadsFactory {
     type Reads = InMemoryTransactionReads;
 
-    fn create(&mut self, rows: Vec<TransactionAccount>) -> InMemoryTransactionReads {
+    fn create(&mut self, rows: Vec<AccountRef>) -> InMemoryTransactionReads {
         InMemoryTransactionReads {
             accounts: rows,
             ..InMemoryTransactionReads::default()
@@ -311,13 +312,14 @@ pub fn a_failed_write_reloads_and_reports<F: PortsFactory>(factory: &mut F) {
 /// reload.
 pub fn accounts_read_back<F>(factory: &mut F)
 where
-    F: ReadsFactory<TransactionAccount>,
+    F: ReadsFactory<AccountRef>,
     F::Reads: TransactionAccounts,
 {
-    let account = |id: u32, name: &str, unit: UnitId| TransactionAccount {
+    let account = |id: u32, name: &str, unit: UnitId| AccountRef {
         id: AccountId::seed(id),
         name: name.into(),
         unit,
+        takes_transactions: true,
     };
     let stored = vec![
         account(7, "Offset", UnitId::SEED_AUD),

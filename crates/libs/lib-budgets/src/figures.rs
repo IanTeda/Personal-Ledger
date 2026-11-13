@@ -1,15 +1,14 @@
 //! The figures every Budgets surface reads for a month: Spent, carries, Known Costs, the
 //! Progress rows, the switcher's health line and the Dashboard's bars, all from [`period_figures`].
 
+use lib_core::AccountRef;
 use std::collections::BTreeMap;
 
 use bigdecimal::{BigDecimal, RoundingMode, Signed, Zero};
 use chrono::{Datelike, NaiveDate};
 use lib_core::{CategoryId, CategoryTypes, Money, Period};
 
-use super::protocols::{
-    BudgetAccount, BudgetBill, BudgetCategories, BudgetCategory, BudgetReads, BudgetSplit,
-};
+use super::protocols::{BudgetBill, BudgetCategories, BudgetCategory, BudgetReads, BudgetSplit};
 use super::{Budget, LimitRecord, Rollover, applied, cents_money, tree, zero};
 
 /// The Splits on Budget `budget`'s Accounts dated from `first` to `last`, reaching back to the
@@ -17,7 +16,7 @@ use super::{Budget, LimitRecord, Rollover, applied, cents_money, tree, zero};
 pub(super) fn counted_splits(
     budget: &Budget,
     reads: &dyn BudgetReads,
-    accounts: &[BudgetAccount],
+    accounts: &[AccountRef],
     first: Period,
     last: Period,
 ) -> Vec<BudgetSplit> {
@@ -51,7 +50,7 @@ impl SpentIndex {
     pub(super) fn load(
         budget: &Budget,
         reads: &dyn BudgetReads,
-        accounts: &[BudgetAccount],
+        accounts: &[AccountRef],
         first: Period,
         last: Period,
     ) -> Self {
@@ -150,7 +149,7 @@ pub fn effective_budget(
 /// many entries make them up.
 pub(super) fn known_costs(
     budget: &Budget,
-    accounts: &[BudgetAccount],
+    accounts: &[AccountRef],
     bills: &[BudgetBill],
     category_id: CategoryId,
     month: Period,

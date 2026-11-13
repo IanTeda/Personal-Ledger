@@ -34,6 +34,7 @@
 //! [`Stores::fake`] takes its in-memory stores as one [`FakeStores`], so a domain joining the
 //! bundle adds a field rather than an argument (#866).
 
+use lib_core::AccountRef;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -47,14 +48,13 @@ use lib_accounts::{
 };
 use lib_bills::fake::InMemoryBills;
 use lib_bills::{
-    BillAccount, BillAccounts, BillCategories, BillCategory, BillPayee, BillPayees,
-    BillPlanRepository, BillScheduleRepository, BillSplit, BillTransactions, BillUnits, SplitRef,
+    BillAccounts, BillCategories, BillCategory, BillPayee, BillPayees, BillPlanRepository,
+    BillScheduleRepository, BillSplit, BillTransactions, BillUnits, SplitRef,
 };
 use lib_budgets::fake::InMemoryBudgets;
 use lib_budgets::{
-    BudgetAccount, BudgetAccounts, BudgetBill, BudgetBillPlan, BudgetBills, BudgetCategories,
-    BudgetCategory, BudgetPayees, BudgetRepository, BudgetSplit, BudgetSplits, BudgetUnits,
-    Budgets,
+    BudgetAccounts, BudgetBill, BudgetBillPlan, BudgetBills, BudgetCategories, BudgetCategory,
+    BudgetPayees, BudgetRepository, BudgetSplit, BudgetSplits, BudgetUnits, Budgets,
 };
 use lib_categories::CategoryRepository;
 use lib_categories::fake::InMemoryCategories;
@@ -84,9 +84,8 @@ use lib_tags::{TagRepository, TagUsage, TagUse};
 use lib_transaction_import::{ImportAccount, ImportAccounts, ImportCategories};
 use lib_transactions::fake::InMemoryTransactions;
 use lib_transactions::{
-    Transaction, TransactionAccount, TransactionAccounts, TransactionCategories,
-    TransactionCategory, TransactionPayee, TransactionPayees, TransactionRepository,
-    TransactionTag, TransactionTags, TransactionUnits,
+    Transaction, TransactionAccounts, TransactionCategories, TransactionCategory, TransactionPayee,
+    TransactionPayees, TransactionRepository, TransactionTag, TransactionTags, TransactionUnits,
 };
 use lib_units::fake::InMemoryPorts;
 use lib_units::{
@@ -1214,8 +1213,8 @@ impl BudgetCategories for StoredBudgetReads {
 }
 
 impl BudgetAccounts for StoredBudgetReads {
-    fn budget_accounts(&self) -> Vec<BudgetAccount> {
-        accounts::budget_accounts(&self.accounts.borrow().accounts().accounts())
+    fn budget_accounts(&self) -> Vec<AccountRef> {
+        accounts::account_refs(&self.accounts.borrow().accounts().accounts())
     }
 }
 
@@ -1407,8 +1406,8 @@ impl BillPayees for StoredBillReads {
 }
 
 impl BillAccounts for StoredBillReads {
-    fn bill_accounts(&self) -> Vec<BillAccount> {
-        accounts::bill_accounts(&self.accounts.borrow().accounts().accounts())
+    fn bill_accounts(&self) -> Vec<AccountRef> {
+        accounts::account_refs(&self.accounts.borrow().accounts().accounts())
     }
 }
 
@@ -1441,8 +1440,8 @@ pub struct StoredTransactionReads {
 }
 
 impl TransactionAccounts for StoredTransactionReads {
-    fn transaction_accounts(&self) -> Vec<TransactionAccount> {
-        accounts::transaction_accounts(&self.accounts.borrow().accounts().accounts())
+    fn transaction_accounts(&self) -> Vec<AccountRef> {
+        accounts::account_refs(&self.accounts.borrow().accounts().accounts())
     }
 }
 

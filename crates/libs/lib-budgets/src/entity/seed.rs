@@ -1,12 +1,13 @@
 //! The sample dataset: the seeded Budgets and their Category Limits.
 
+use lib_core::AccountRef;
 use std::collections::BTreeMap;
 
 use chrono::NaiveDate;
 
 use lib_core::{AccountId, BudgetId, CategoryId, Period, UnitId};
 
-use crate::protocols::{BudgetAccount, BudgetCategory};
+use crate::protocols::BudgetCategory;
 use crate::{Budget, Budgets, Limit, LimitRecord, Method, Rollover, cents_money, put, tree};
 
 /// The id the seeded **Personal spending** Budget carries: Categories 5c binds it by id, so a
@@ -105,7 +106,7 @@ fn seeded_limits(
 /// in `unit` (the base Unit) on every Account in it that takes Transactions, with no amounts, so
 /// there is always an active Budget for the Dashboard, the rail badge and the Categories Monthly
 /// budget field. It carries [`PERSONAL_SPENDING_ID`], as the sample's does.
-pub fn personal_spending(unit: UnitId, accounts: &[BudgetAccount]) -> Budget {
+pub fn personal_spending(unit: UnitId, accounts: &[AccountRef]) -> Budget {
     Budget {
         id: PERSONAL_SPENDING_ID,
         name: "Personal spending".to_string(),
@@ -127,7 +128,7 @@ pub fn personal_spending(unit: UnitId, accounts: &[BudgetAccount]) -> Budget {
 /// Accounts and some of the same Categories, so the two overlap. A Category or Account the samples
 /// lack is left out.
 pub fn sample_budgets(
-    accounts: &[BudgetAccount],
+    accounts: &[AccountRef],
     categories: &[BudgetCategory],
     today: NaiveDate,
 ) -> Budgets {

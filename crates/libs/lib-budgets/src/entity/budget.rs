@@ -1,13 +1,12 @@
 //! The Budget: a named container with one Category Limit chain per leaf Expense Category, the
 //! records a chain holds and what a month resolves to along one.
 
+use lib_core::AccountRef;
 use std::collections::BTreeMap;
 
 use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
 use lib_core::{AccountId, BudgetId, CategoryId, Money, Period, UnitId};
-
-use crate::BudgetAccount;
 
 /// How a Budget measures spending. Only Category limits is built; Envelope, Percentage split and
 /// Project are named Methods deferred to their own maps.
@@ -83,7 +82,7 @@ impl Budget {
     /// Whether the Budget counts Account `id`: one of its [`Budget::account_ids`] that names one
     /// of `accounts`. An id with no Account counts nothing, so a Budget left with none compares
     /// nothing (#854).
-    pub fn counts(&self, accounts: &[BudgetAccount], id: AccountId) -> bool {
+    pub fn counts(&self, accounts: &[AccountRef], id: AccountId) -> bool {
         self.account_ids.contains(&id) && accounts.iter().any(|account| account.id == id)
     }
 }

@@ -4,6 +4,7 @@
 
 use bigdecimal::{BigDecimal, Signed};
 use chrono::NaiveDate;
+use lib_core::AccountRef;
 use lib_core::{
     AccountId, BillPlanId, CategoryId, Money, PayeeId, Period, Total, TransactionId, UnitId,
 };
@@ -35,7 +36,7 @@ pub struct BillPlanDraft {
 fn validate(
     draft: &BillPlanDraft,
     categories: &[BillCategory],
-    accounts: &[BillAccount],
+    accounts: &[AccountRef],
 ) -> Result<String, Error> {
     let name = draft.name.trim();
     if name.is_empty() {
@@ -70,7 +71,7 @@ pub fn insert_plan(
     entries: &mut Vec<BillScheduleEntry>,
     draft: &BillPlanDraft,
     categories: &[BillCategory],
-    accounts: &[BillAccount],
+    accounts: &[AccountRef],
     today: NaiveDate,
 ) -> Result<BillPlanId, Error> {
     insert_plan_as(
@@ -91,7 +92,7 @@ pub(crate) fn insert_plan_as(
     entries: &mut Vec<BillScheduleEntry>,
     draft: &BillPlanDraft,
     categories: &[BillCategory],
-    accounts: &[BillAccount],
+    accounts: &[AccountRef],
     today: NaiveDate,
 ) -> Result<BillPlanId, Error> {
     let name = validate(draft, categories, accounts)?;
@@ -125,7 +126,7 @@ pub fn edit_plan(
     id: BillPlanId,
     draft: &BillPlanDraft,
     categories: &[BillCategory],
-    accounts: &[BillAccount],
+    accounts: &[AccountRef],
     today: NaiveDate,
 ) -> Result<(), Error> {
     let plan = plans
@@ -228,7 +229,7 @@ pub fn match_candidates(
     plans: &[BillPlan],
     entries: &[BillScheduleEntry],
     splits: &[BillSplit],
-    accounts: &[BillAccount],
+    accounts: &[AccountRef],
     categories: &[BillCategory],
     id: EntryId,
 ) -> Vec<SplitRef> {
@@ -290,7 +291,7 @@ pub fn match_split(
     plans: &[BillPlan],
     entries: &mut [BillScheduleEntry],
     splits: &[BillSplit],
-    accounts: &[BillAccount],
+    accounts: &[AccountRef],
     categories: &[BillCategory],
     id: EntryId,
     split: SplitRef,
@@ -563,7 +564,7 @@ mod tests {
     }
 
     struct World {
-        accounts: Vec<BillAccount>,
+        accounts: Vec<AccountRef>,
         categories: Vec<BillCategory>,
         splits: Vec<BillSplit>,
         plans: Vec<BillPlan>,

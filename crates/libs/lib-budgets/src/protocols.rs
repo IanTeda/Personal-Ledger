@@ -13,6 +13,7 @@
 //! The Presenters reach the repository and the read ports together, through [`BudgetsPorts`], and
 //! ask for navigation through [`BudgetsRouter`], which each Client implements.
 
+use lib_core::AccountRef;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -47,16 +48,6 @@ pub struct BudgetCategory {
     pub parent: Option<CategoryId>,
     pub category_type: CategoryTypes,
     pub is_leaf: bool,
-}
-
-/// An Account as Budgets reads it. `takes_transactions` is the Accounts' rule, filled by the side
-/// that answers [`BudgetAccounts`], so Budgets checks the flag rather than knowing Account types.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BudgetAccount {
-    pub id: AccountId,
-    pub name: String,
-    pub unit: UnitId,
-    pub takes_transactions: bool,
 }
 
 /// One Split of a Transaction as Budgets reads it, flattened with its Transaction's date and
@@ -110,7 +101,7 @@ impl BudgetCategories for Vec<BudgetCategory> {
 
 /// The Accounts a Budget may count: every Account, flagged, not a filtered list.
 pub trait BudgetAccounts {
-    fn budget_accounts(&self) -> Vec<BudgetAccount>;
+    fn budget_accounts(&self) -> Vec<AccountRef>;
 }
 
 /// The Splits Spent is counted from.

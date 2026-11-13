@@ -4,6 +4,7 @@
 mod booked;
 mod seed;
 
+use lib_core::AccountRef;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -17,9 +18,9 @@ pub use seed::{DEFAULT_SEED, HISTORY_DAYS, SeedAccount, SeedNames, sample_transa
 
 use crate::protocols::SharedPorts;
 use crate::{
-    Transaction, TransactionAccount, TransactionAccounts, TransactionCategories,
-    TransactionCategory, TransactionPayee, TransactionPayees, TransactionRepository,
-    TransactionTag, TransactionTags, TransactionUnits, TransactionsPorts,
+    Transaction, TransactionAccounts, TransactionCategories, TransactionCategory, TransactionPayee,
+    TransactionPayees, TransactionRepository, TransactionTag, TransactionTags, TransactionUnits,
+    TransactionsPorts,
 };
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -52,7 +53,7 @@ impl TransactionRepository for InMemoryTransactions {
 /// Categories already in tree order with their paths.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct InMemoryTransactionReads {
-    pub accounts: Vec<TransactionAccount>,
+    pub accounts: Vec<AccountRef>,
     pub categories: Vec<TransactionCategory>,
     pub payees: Vec<TransactionPayee>,
     pub tags: Vec<TransactionTag>,
@@ -60,7 +61,7 @@ pub struct InMemoryTransactionReads {
 }
 
 impl TransactionAccounts for InMemoryTransactionReads {
-    fn transaction_accounts(&self) -> Vec<TransactionAccount> {
+    fn transaction_accounts(&self) -> Vec<AccountRef> {
         self.accounts.clone()
     }
 }
@@ -115,7 +116,7 @@ impl TransactionsPorts for InMemoryPorts {
 }
 
 impl TransactionAccounts for InMemoryPorts {
-    fn transaction_accounts(&self) -> Vec<TransactionAccount> {
+    fn transaction_accounts(&self) -> Vec<AccountRef> {
         self.reads.transaction_accounts()
     }
 }

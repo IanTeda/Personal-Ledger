@@ -22,7 +22,7 @@ use lib_accounts::Account;
 use lib_categories::Category;
 use lib_transactions::Transaction;
 
-use crate::adapter::accounts::budget_accounts;
+use crate::adapter::accounts::account_refs;
 use crate::adapter::categories::budget_categories;
 use crate::seed::sample_transaction_history;
 
@@ -54,7 +54,7 @@ impl World {
     fn reads(&self) -> InMemoryBudgetReads {
         InMemoryBudgetReads {
             categories: budget_categories(&self.categories),
-            accounts: budget_accounts(&self.accounts),
+            accounts: account_refs(&self.accounts),
             splits: self
                 .transactions
                 .iter()
@@ -108,7 +108,7 @@ fn seeded() -> (World, Budgets) {
         today(),
     );
     let budgets = sample_budgets(
-        &budget_accounts(&accounts),
+        &account_refs(&accounts),
         &budget_categories(&categories),
         today(),
     );
@@ -149,7 +149,7 @@ fn the_seed_only_budgets_valid_leaves_and_accounts_in_the_unit() {
     let (world, budgets) = seeded();
     let (categories, accounts) = (
         budget_categories(&world.categories),
-        budget_accounts(&world.accounts),
+        account_refs(&world.accounts),
     );
     for budget in budgets.all() {
         for id in budget.category_ids() {
@@ -194,7 +194,7 @@ fn dining_steps_up_next_month_in_the_seed() {
 fn the_budgets_fake_sample_is_the_ledgers() {
     let sample = crate::FakeStores::sample(today());
     assert_eq!(
-        budget_accounts(&sample.accounts.accounts.accounts),
+        account_refs(&sample.accounts.accounts.accounts),
         lib_budgets::fake::sample_accounts()
     );
     assert_eq!(

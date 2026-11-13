@@ -1,6 +1,7 @@
 //! The Budgets set: every Budget, and the rules that hold across them -- a unique name, one
 //! default that can't be archived, and creating, editing, duplicating and archiving a Budget.
 
+use lib_core::AccountRef;
 use std::collections::BTreeMap;
 
 use bigdecimal::{BigDecimal, Zero};
@@ -9,7 +10,7 @@ use lib_core::{AccountId, BudgetId, CategoryId, Money, Period, UnitId};
 
 use crate::figures::expense_leaves;
 use crate::plan::{FillSource, three_month_averages};
-use crate::protocols::{BudgetAccount, BudgetAccounts, BudgetCategories, BudgetReads};
+use crate::protocols::{BudgetAccounts, BudgetCategories, BudgetReads};
 use crate::{
     Budget, Error, Limit, LimitRecord, Method, Result, Rollover, Span, applied, put, tree, zero,
 };
@@ -424,7 +425,7 @@ impl Budgets {
     }
 }
 
-pub fn check_accounts(accounts: &[BudgetAccount], unit: UnitId, ids: &[AccountId]) -> Result<()> {
+pub fn check_accounts(accounts: &[AccountRef], unit: UnitId, ids: &[AccountId]) -> Result<()> {
     for id in ids {
         let account = accounts
             .iter()

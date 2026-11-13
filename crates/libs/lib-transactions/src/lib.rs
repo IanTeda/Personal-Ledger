@@ -26,9 +26,9 @@ pub mod query;
 
 pub use protocols::SharedPorts;
 pub use protocols::{
-    TransactionAccount, TransactionAccounts, TransactionCategories, TransactionCategory,
-    TransactionPayee, TransactionPayees, TransactionRepository, TransactionTag, TransactionTags,
-    TransactionUnits, TransactionsPorts,
+    TransactionAccounts, TransactionCategories, TransactionCategory, TransactionPayee,
+    TransactionPayees, TransactionRepository, TransactionTag, TransactionTags, TransactionUnits,
+    TransactionsPorts,
 };
 
 use bigdecimal::BigDecimal;

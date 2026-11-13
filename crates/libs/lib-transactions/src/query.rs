@@ -448,10 +448,9 @@ mod tests {
     use std::cell::RefCell;
 
     use chrono::Duration;
-    use lib_core::AccountType;
+    use lib_core::{AccountRef, AccountType};
 
     use super::*;
-    use crate::TransactionAccount;
     use crate::fake::{InMemoryTransactionReads, SeedAccount, SeedNames, sample_transactions};
     use lib_core::UnitRef;
 
@@ -542,10 +541,11 @@ mod tests {
             }
             reads.accounts = seed_accounts
                 .iter()
-                .map(|account| TransactionAccount {
+                .map(|account| AccountRef {
                     id: account.id,
                     name: account.name.clone(),
                     unit: UnitId::SEED_AUD,
+                    takes_transactions: true,
                 })
                 .collect();
             reads.units = vec![
