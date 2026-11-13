@@ -127,13 +127,7 @@ impl Root {
                     .view_model()
                     .rows
                     .into_iter()
-                    .find(|row| row.archived)
-                    .map(|row| {
-                        // The summary is `archived <date>`: the date is its last word.
-                        row.summary
-                            .rsplit_once(' ')
-                            .map_or_else(|| row.summary.clone(), |(_, date)| date.to_string())
-                    })
+                    .find_map(|row| row.archived_on)
             }),
         }
     }

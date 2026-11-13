@@ -74,6 +74,8 @@ pub struct SwitcherRow {
     /// The Budget the page shows: its row carries the check.
     pub is_current: bool,
     pub archived: bool,
+    /// The date an archived Budget was archived, in the Switcher's `DateStyle`; `None` while active.
+    pub archived_on: Option<String>,
     /// The health summary, or `archived <date>`.
     pub summary: String,
     pub method: String,
@@ -155,9 +157,9 @@ impl SwitcherPresenter {
     }
 
     /// A Budget's one-line summary: its health this month, or when it was archived.
-    fn summary(&self, budget: &Budget) -> String {
-        if let Some(date) = budget.archived_at {
-            return msg::budgets_switcher_archived_on(&format_date(date, self.date_style));
+    fn summary(&self, budget: &Budget, archived_on: Option<&str>) -> String {
+        if let Some(date) = archived_on {
+            return msg::budgets_switcher_archived_on(date);
         }
         let health = {
             let ports = self.ports.borrow();
@@ -238,14 +240,20 @@ impl Presenter for SwitcherPresenter {
         let rows: Vec<SwitcherRow> = self
             .matching()
             .iter()
-            .map(|budget| SwitcherRow {
-                id: budget.id,
-                name: budget.name.clone(),
-                is_default: budget.is_default,
-                is_current: budget.id == self.current,
-                archived: budget.is_archived(),
-                summary: self.summary(budget),
-                method: method_label(budget.method),
+            .map(|budget| {
+                let archived_on = budget
+                    .archived_at
+                    .map(|date| format_date(date, self.date_style));
+                SwitcherRow {
+                    id: budget.id,
+                    name: budget.name.clone(),
+                    is_default: budget.is_default,
+                    is_current: budget.id == self.current,
+                    archived: budget.is_archived(),
+                    summary: self.summary(budget, archived_on.as_deref()),
+                    archived_on,
+                    method: method_label(budget.method),
+                }
             })
             .collect();
         SwitcherViewModel {
@@ -334,6 +342,35 @@ mod tests {
         assert_eq!(
             router.routed,
             [Routed::Closed(Some(BudgetsOutcome::Show(view.rows[1].id)))]
+        );
+    }
+
+    #[test]
+    fn an_archived_row_carries_its_date_in_the_switchers_style_and_an_active_one_has_none() {
+        let (ports, shared) = sample();
+        ports.borrow_mut().budgets.budgets[0].archived_at = Some(today());
+        let archived_id = ports.borrow().budgets.budgets[0].id;
+        let switcher = SwitcherPresenter::new(
+            shared,
+            archived_id,
+            Clock::fixed(today()),
+            Some(DateStyle::Medium),
+            DialogKeys::default(),
+        );
+
+        let rows = switcher.view_model().rows;
+
+        let expected = format_date(today(), Some(DateStyle::Medium));
+        let archived = rows
+            .iter()
+            .find(|row| row.archived)
+            .expect("an archived row");
+        assert_eq!(archived.archived_on.as_deref(), Some(expected.as_str()));
+        assert!(archived.summary.contains(&expected));
+        assert!(
+            rows.iter()
+                .filter(|row| !row.archived)
+                .all(|row| row.archived_on.is_none())
         );
     }
 
