@@ -39,6 +39,7 @@ use lib_config::KeyBindingConfig;
 use lib_settings::ColourChoice;
 use lib_shell::{Destination, PaletteEffect, PaletteEntry, ShellCommand};
 use lib_viper::keymap::Palette;
+use std::collections::HashSet;
 
 use crate::navigation::active_view::ActiveView;
 use crate::shell::view::page_handle::PageBinding;
@@ -657,11 +658,12 @@ pub fn group(view: ActiveView) -> CommandGroup {
 fn module_entries(pages: impl IntoIterator<Item = (ActiveView, Vec<PageBinding>)>) -> Vec<Entry> {
     let mut entries: Vec<Entry> = Vec::new();
     for (page, keys) in pages {
+        let mut listed: HashSet<&'static str> = HashSet::new();
         for binding in keys {
             let Palette::Listed { name, description } = binding.palette else {
                 continue;
             };
-            if entries.iter().any(|entry| entry.name == name) {
+            if !listed.insert(name) {
                 continue;
             }
             entries.push(Entry {
@@ -893,6 +895,31 @@ mod tests {
                 command: lib_units::keymap::SET_BASE,
             }
         );
+    }
+
+    #[test]
+    fn two_pages_listing_one_name_each_keep_a_row_under_their_own_group() {
+        let shared = |chord: &str| PageBinding {
+            command: lib_viper::keymap::EDIT,
+            chord: chord.to_string(),
+            palette: Palette::Listed {
+                name: "shared verb",
+                description: || "Shared verb".to_string(),
+            },
+        };
+
+        let listed = module_entries([
+            (ActiveView::Settings(Page::Units), vec![shared("e")]),
+            (ActiveView::Bills, vec![shared("f")]),
+        ]);
+
+        let rows: Vec<_> = listed
+            .iter()
+            .filter(|entry| entry.name == "shared verb")
+            .collect();
+        assert_eq!(rows.len(), 2, "one row per page");
+        assert_eq!(rows[0].group, CommandGroup::Units);
+        assert_eq!(rows[1].group, CommandGroup::Bills);
     }
 
     #[test]
