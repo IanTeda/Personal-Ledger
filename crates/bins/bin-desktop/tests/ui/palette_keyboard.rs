@@ -13,8 +13,14 @@ use lib_config::KeyBindingConfig;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use bin_desktop::shell::router::PaletteSnapshot;
-use common::{Harness, empty_tags};
+use common::{Harness, empty_tags, new_ledger};
 use gpui::TestAppContext;
+
+/// How many times the palette's Commands have been rebuilt, so a test sees a rebuild that changes
+/// nothing visible.
+fn refreshes(ui: &mut Harness<'_>) -> usize {
+    ui.read(|shell| shell.palette_refreshes())
+}
 
 fn palette(ui: &mut Harness<'_>) -> Option<PaletteSnapshot> {
     ui.read(|shell| shell.palette_snapshot())
@@ -646,4 +652,36 @@ fn no_module_command_is_listed_with_no_ledger_from_start_up(app: &mut TestAppCon
 
     assert!(!open.matches.contains(&"units set-base"));
     assert!(open.matches.contains(&"settings general"));
+}
+
+#[gpui::test]
+fn open_replacing_the_open_ledger_rebuilds_the_palette_once(app: &mut TestAppContext) {
+    let folder = tempfile::tempdir().expect("a temporary directory");
+    let other = folder.path().join("other.pldb");
+    new_ledger(&other);
+    let mut ui = Harness::new(app);
+    ui.browse_from(folder.path());
+    let before = refreshes(&mut ui);
+
+    ui.press(": o p e n enter");
+    ui.click("explorer-row-0");
+    ui.double_click("explorer-row-0");
+
+    assert_eq!(ui.ledger_path(), Some(other));
+    assert_eq!(refreshes(&mut ui), before + 1);
+}
+
+#[gpui::test]
+fn close_rebuilds_the_palette_once_and_a_cursor_move_does_not(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    ui.press("g w");
+
+    let before = refreshes(&mut ui);
+    ui.press("j");
+    assert_eq!(refreshes(&mut ui), before, "a cursor move rebuilds nothing");
+
+    run(&mut ui, "close");
+
+    assert!(!ui.read(|shell| shell.ledger_open()));
+    assert_eq!(refreshes(&mut ui), before + 1);
 }

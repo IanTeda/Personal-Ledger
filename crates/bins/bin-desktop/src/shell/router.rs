@@ -210,6 +210,9 @@ pub struct Root {
     /// closed left: put on each Ledger's Documents page as it opens, so one opened while the app
     /// runs gets them back too.
     documents_state: Option<(DocumentsMode, LibraryScope, LibrarySort)>,
+    /// How many times the palette's Commands have been rebuilt, which a test reads back to see a
+    /// rebuild that changes nothing visible.
+    refreshes: usize,
     /// The Settings View, which stands with no Ledger open for its This device pages; the Open
     /// Ledger gives it its This Ledger pages (#977).
     settings: Entity<SettingsView>,
@@ -264,6 +267,7 @@ impl Root {
             configuration_file: snapshot.file.clone(),
             last_ledger_forgotten: false,
             documents_state: None,
+            refreshes: 0,
             open: None,
             settings,
             _settings_subscriptions,
@@ -495,6 +499,7 @@ impl Root {
     /// The palette's Commands under the `[keybindings]` in effect, a module's from the pages hosted
     /// now with the keys each holds: on start-up, after a rebind and as a Ledger opens or closes.
     pub(crate) fn refresh_palette_entries(&mut self, cx: &App) {
+        self.refreshes += 1;
         let views = self.open.as_ref().map(|open| open.views.each());
         let settings = self.settings.read(cx).pages().each();
         let pages: Vec<(ActiveView, Vec<PageBinding>)> = views
@@ -511,6 +516,12 @@ impl Root {
     #[doc(hidden)]
     pub fn status_message(&self) -> Option<String> {
         self.presenter.view_model().status
+    }
+
+    /// How many times the palette's Commands have been rebuilt since the Shell was built.
+    #[doc(hidden)]
+    pub fn palette_refreshes(&self) -> usize {
+        self.refreshes
     }
 
     /// Previously run palette commands, most recent first.

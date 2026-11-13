@@ -44,6 +44,9 @@ pub(super) struct RootRouter<'a, 'b> {
     view_x_scroll_handle: &'a ScrollHandle,
     documents_state: &'a mut Option<DocumentsState>,
     last_ledger_forgotten: &'a mut bool,
+    /// Set when a Ledger is installed or closed, so `with_router` rebuilds the palette's Commands
+    /// once after the input rather than after every one.
+    ledger_swapped: &'a mut bool,
     keybindings: &'a lib_config::KeyBindingConfig,
     /// The Shell's Clock, which a Ledger opened now is built on.
     clock: Clock,
@@ -186,6 +189,7 @@ impl ShellRouter for RootRouter<'_, '_> {
         let Some(open) = self.open.take() else {
             return;
         };
+        *self.ledger_swapped = true;
         *self.documents_state = Some(open.views.documents.read(self.cx).presenter().persisted());
         self.report_failures_on_close(&open);
         crate::input::close_ledger(self.cx);
@@ -392,6 +396,7 @@ impl RootRouter<'_, '_> {
             });
         }
         *self.last_ledger_forgotten = false;
+        *self.ledger_swapped = true;
         // The Views that read their keys and Display Preferences after construction take
         // `[keybindings]` and the Preferences here, so the Open Ledger comes up under them whoever
         // opens it.
@@ -578,7 +583,7 @@ impl Root {
         act: impl FnOnce(&mut ShellPresenter, &mut RootRouter<'_, '_>) -> T,
     ) -> T {
         let palette_was_open = self.presenter.palette_open();
-        let ledger_was_open = self.ledger_open();
+        let mut ledger_swapped = false;
         let Root {
             presenter,
             open,
@@ -597,6 +602,7 @@ impl Root {
             view_x_scroll_handle,
             documents_state,
             last_ledger_forgotten,
+            ledger_swapped: &mut ledger_swapped,
             keybindings,
             clock: presenter.clock().clone(),
             window_size,
@@ -604,7 +610,7 @@ impl Root {
         };
         let acted = act(presenter, &mut router);
         // The pages a module Command runs on come and go with the Ledger.
-        if ledger_was_open != self.ledger_open() {
+        if ledger_swapped {
             self.refresh_palette_entries(cx);
         }
         if !palette_was_open && self.presenter.palette_open() {
