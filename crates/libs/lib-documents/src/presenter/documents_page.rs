@@ -357,11 +357,6 @@ impl DocumentsPagePresenter {
         &self.query
     }
 
-    /// The Display Preference the page's dates follow, which the Dialogs it opens follow too.
-    pub fn date_style(&self) -> Option<DateStyle> {
-        self.date_style
-    }
-
     /// The day the page is worked out on.
     pub fn today(&self) -> chrono::NaiveDate {
         self.clock.today()
