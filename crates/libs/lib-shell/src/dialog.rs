@@ -13,7 +13,6 @@
 //! are a step only in a Dialog stepping a list right then (the Pay Dialog's Match list, the
 //! Budgets lists); every other Dialog and field takes the key as typing
 //! ([`DialogCommand::is_list_step`]).
-
 //!
 //! The keymap itself lives in `lib_viper::dialog` (#1167), so a page Presenter outside the bins
 //! builds its Dialog keys from it; it is re-exported here so the Shell's callers don't change.

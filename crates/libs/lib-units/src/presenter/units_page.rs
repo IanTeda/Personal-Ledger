@@ -653,8 +653,7 @@ impl PagePresenter for UnitsPagePresenter {
             .collect()
     }
 
-    /// The page's keys and the prices view's. A prices view already open keeps its keys until it
-    /// next opens.
+    /// The page's keys and the prices view's.
     fn rebind(&mut self, keys: &KeyBindingConfig) {
         (self.keymap, self.prices_keymap, self.prices_keys) = Self::keymaps(keys);
     }

@@ -56,7 +56,9 @@ impl ViewEntities {
         self.each().into_iter().map(|(_, page)| page)
     }
 
-    /// Every View with its Entity, in the rail's order. A new View fails to compile twice before
+    /// Every View with its Entity, in the rail's order, with Import under Transactions: it has no
+    /// rail row of its own, and is the View `Noun::Transactions` takes over during a CSV import.
+    /// A new View fails to compile twice before
     /// it can be left out: [`Self::get`]'s match needs an arm for it, which needs an Entity field,
     /// which this destructuring needs listed.
     pub fn each(&self) -> [(ActiveView, &dyn PageHandle); 6] {
