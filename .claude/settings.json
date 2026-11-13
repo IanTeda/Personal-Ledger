@@ -6,7 +6,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash|Grep",
+        "matcher": "Grep|Glob",
         "hooks": [
           {
             "type": "command",
@@ -16,10 +16,28 @@
         ]
       },
       {
-        "matcher": "Read|Glob",
+        "matcher": "Bash",
         "hooks": [
           {
             "type": "command",
+            "if": "Bash(grep *)",
+            "command": "/home/ian/.local/share/mise/installs/pipx-graphifyy/0.9.73/bin/graphify hook-guard search",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "if": "Bash(rg *)",
+            "command": "/home/ian/.local/share/mise/installs/pipx-graphifyy/0.9.73/bin/graphify hook-guard search",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "if": "Read(crates/**)",
             "command": "/home/ian/.local/share/mise/installs/pipx-graphifyy/0.9.73/bin/graphify hook-guard read",
             "timeout": 10
           }

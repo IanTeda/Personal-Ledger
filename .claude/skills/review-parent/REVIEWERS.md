@@ -9,7 +9,7 @@ The orchestrator sends one of these, with the placeholders filled in, as a revie
 Review the commits under parent ticket #<parent> in this repository against their spec. You are read-only: do not edit files, commit, stash or write to the issue tracker.
 
 - **Diff**: `git diff <BASE>...<HEAD>`. Commits: <commit list>.
-- **Spec**: #<parent> and its children <children>. Read each with `gh issue view <n> --json title,body`. The `## Decisions` and `## Acceptance criteria` sections are the spec. Read gate comments for the decisions they record, but judge the code yourself.
+- **Spec**: #<parent> and its children <children>. Read each with `gh issue view <n> --json title,body`. The `## Decisions` and `## Acceptance criteria` sections are the spec. Read gate comments for the decisions they record, but judge the code yourself. Children on `priority:99-backlog` are deferred work, so an open backlog child is not a Missing finding.
 
 Report:
 

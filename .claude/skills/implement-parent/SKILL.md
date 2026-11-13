@@ -41,7 +41,7 @@ Loop until the frontier is empty or the run halts.
 
 1. **Claim**: `gh issue edit <n> --add-assignee @me`.
 2. **Dispatch**: one fresh implementer via the Agent tool, in the foreground, with `model` and `effort` read from the child's `agent:<model>-<effort>` label (`agent:sonnet-low` is model `sonnet`, effort `low`). This skill is the instruction that sets the effort. The prompt is the brief in [`IMPLEMENTER.md`](IMPLEMENTER.md) with `<n>` and `<parent>` filled in; send nothing more.
-3. **Check the report** against the diff: `git show --stat <sha>` confirms the commit exists and the tripwire paths it lists are the ones it touched.
+3. **Check the report** against the diff: `git show --stat <sha>` confirms the commit exists and the tripwire paths it lists are the ones it touched. A `not verified` line under `criteria:` gates the ticket (`state:needs-review`), with that criterion in the gate comment.
 4. **Finish** by its outcome:
    - **Done**: follow ticket-labels.md "Finishing a ticket": set the `agent:` label and its `## Labels` line to the model and effort the implementer ran with, then close or gate by "Closing or review", checking the tripwires against the commit's diff and the implementer's report. Tripwire 6 fires on the report's `decisions:` line only; its `notes:` line goes in the closing comment and gates nothing. A gate does not stop the run.
    - **Seam**: the ticket needs a decision it doesn't make. `git stash push -u -m "implement-parent #<n>: <one-line reason>" -- <the report's changed paths>`, so another session's edits stay in the tree, swap `flow:implementation` for `flow:grilling` by ticket-labels.md, unassign, and comment with the seam and the stash name.
@@ -58,7 +58,7 @@ Loop until the frontier is empty or the run halts.
 Once the frontier is empty, run these in order. This skill writes no code here: the review is your human's to trigger, through `/review-parent`, which turns findings into new children.
 
 1. **Full suites**: bare `mise run end-to-end-ui`, `mise run end-to-end-ui smoke` and `cargo test --workspace`. Each suite's exit status is its verdict; read its output only for the names of failing tests.
-2. **Gate the parent**: swap its `state:` for `state:needs-review`, so it waits on `/review-parent`. The gate comment lists the commits since `BASE`, each suite's result, the tripwires that fired over `git diff BASE...HEAD` (ticket-labels.md "Closing or review"), and each child that was gated, seamed, failed or skipped. Then do ticket-labels.md's "A parent ticket closes" re-rank.
+2. **Gate the parent**: swap its `state:` for `state:needs-review`, so it waits on `/review-parent`. The gate comment lists the commits since `BASE`, each suite's result, the tripwires that fired over `git diff REVIEWED...HEAD` (ticket-labels.md "Closing or review"; `REVIEWED` is the SHA in the parent's latest `Reviewed through <sha>` comment, else `BASE`, and tripwires that fired only before it are listed as already reviewed), and each child that was gated, seamed, failed or skipped. Then do ticket-labels.md's "A parent ticket closes" re-rank.
 
 ## 5. Report
 

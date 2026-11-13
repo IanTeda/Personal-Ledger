@@ -61,13 +61,14 @@ Then ask a second, single-select question about the parent:
 
 Create each picked ticket by `ticket-labels.md` "Creating a ticket":
 
-1. **Body**: a self-contained spec. Include `## Problem` (each finding, quoted with `file:line`), `## Decisions`, `## Seams to decide` (`None`, or the open seam), `## Acceptance criteria` (naming the tests that prove it), and `## Labels` (one line per label, with its reason).
-2. **Labels**:
+1. **Verify each premise**: before writing a Decision, open the `file:line` it rests on and confirm the code is as the Decision assumes (an order, a type, what a page draws). A premise you can't confirm moves the ticket to `flow:grilling`, with the doubt as its seam. Reviewer output and your memory are claims, not facts.
+2. **Body**: a self-contained spec. Include `## Problem` (each finding, quoted with `file:line`), `## Decisions`, `## Seams to decide` (`None`, or the open seam), `## Acceptance criteria`, and `## Labels` (one line per label, with its reason). Each acceptance criterion names a test or command that would fail without the change; a criterion that a check rejects something names a test that feeds it the bad input.
+3. **Labels**:
    - `category:`: inherited from the parent.
    - `priority:`: as drafted.
    - `flow:`: as drafted.
    - `agent:`: as drafted, by the `triage-labels.md` table. When the label leans on an earlier commit's pattern, name that commit in the body.
-3. **Link**: make it a sub-issue of the parent, and wire any blocking edges in a second pass, once every new ticket has its number.
+4. **Link**: make it a sub-issue of the parent, and wire any blocking edges in a second pass, once every new ticket has its number.
 
 Then comment on the parent: `Reviewed through <HEAD>` (the marker step 1 reads next time), the commit range, and each new ticket with its findings and why. If the parent carries `state:needs-review` and your human chose to close it, close it by `ticket-labels.md` "You approve a `state:needs-review` ticket".
 
