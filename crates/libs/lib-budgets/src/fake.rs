@@ -5,6 +5,7 @@
 //! as the Presenters share them, and [`RecordingRouter`] records what a Presenter asked for.
 
 use lib_core::AccountRef;
+use lib_core::CategoryRef;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -15,9 +16,9 @@ use lib_toast::{Notice, Notify};
 use lib_viper::dialog::DialogRouter;
 
 use crate::protocols::{
-    BudgetAccounts, BudgetBill, BudgetBillPlan, BudgetBills, BudgetCategories, BudgetCategory,
-    BudgetPayees, BudgetReads, BudgetRepository, BudgetSplit, BudgetSplits, BudgetUnits,
-    BudgetsOutcome, BudgetsPorts, BudgetsRouter, ExportHistory, PortsMut, SharedPorts,
+    BudgetAccounts, BudgetBill, BudgetBillPlan, BudgetBills, BudgetCategories, BudgetPayees,
+    BudgetReads, BudgetRepository, BudgetSplit, BudgetSplits, BudgetUnits, BudgetsOutcome,
+    BudgetsPorts, BudgetsRouter, ExportHistory, PortsMut, SharedPorts,
 };
 use crate::{Budget, sample_budgets};
 
@@ -55,7 +56,7 @@ impl BudgetRepository for InMemoryBudgets {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct InMemoryBudgetReads {
     /// In tree order, as [`BudgetCategories`] returns them.
-    pub categories: Vec<BudgetCategory>,
+    pub categories: Vec<CategoryRef>,
     pub accounts: Vec<AccountRef>,
     /// In the Transactions' order.
     pub splits: Vec<BudgetSplit>,
@@ -82,7 +83,7 @@ impl InMemoryBudgetReads {
 }
 
 impl BudgetCategories for InMemoryBudgetReads {
-    fn budget_categories(&self) -> Vec<BudgetCategory> {
+    fn budget_categories(&self) -> Vec<CategoryRef> {
         self.categories.clone()
     }
 }
@@ -294,9 +295,9 @@ pub fn sample_accounts() -> Vec<AccountRef> {
 }
 
 /// The sample Categories as Budgets reads them, in tree order.
-pub fn sample_categories() -> Vec<BudgetCategory> {
+pub fn sample_categories() -> Vec<CategoryRef> {
     let category =
-        |n, name: &str, path: &str, parent: Option<u32>, is_expense, is_leaf| BudgetCategory {
+        |n, name: &str, path: &str, parent: Option<u32>, is_expense, is_leaf| CategoryRef {
             id: CategoryId::seed(n),
             name: name.to_string(),
             path: path.to_string(),

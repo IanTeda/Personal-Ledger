@@ -24,6 +24,7 @@
 //! The rows are read from the ports each time the view model is built, so a write any module makes
 //! shows on the next draw.
 
+use lib_core::CategoryRef;
 use std::collections::HashSet;
 
 use chrono::NaiveDate;
@@ -46,7 +47,7 @@ use super::glyphs::{status_glyph, status_legend};
 use crate::keymap::{FILTER, transactions_filter_keymap, transactions_page_keymap};
 use crate::protocols::{SharedPorts, TransactionsPorts};
 use crate::query::{TransactionFilters, Visible, query};
-use crate::{Transaction, TransactionCategory, TransactionPayee, TransactionTag, msg};
+use crate::{Transaction, TransactionPayee, TransactionTag, msg};
 
 /// The mark for an empty Payee or Tags cell.
 pub const EMPTY_CELL: &str = "\u{2014}";
@@ -620,7 +621,7 @@ fn payee_summary(transaction: &Transaction, payees: &[TransactionPayee]) -> Stri
 }
 
 /// The CATEGORY cell: the leaf's own name for one Split, `split · N` for several.
-fn category_summary(transaction: &Transaction, categories: &[TransactionCategory]) -> String {
+fn category_summary(transaction: &Transaction, categories: &[CategoryRef]) -> String {
     match transaction.splits.as_slice() {
         [only] => categories
             .iter()

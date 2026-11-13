@@ -2,13 +2,14 @@
 //! Progress rows, the switcher's health line and the Dashboard's bars, all from [`period_figures`].
 
 use lib_core::AccountRef;
+use lib_core::CategoryRef;
 use std::collections::BTreeMap;
 
 use bigdecimal::{BigDecimal, RoundingMode, Signed, Zero};
 use chrono::{Datelike, NaiveDate};
 use lib_core::{CategoryId, CategoryTypes, Money, Period};
 
-use super::protocols::{BudgetBill, BudgetCategories, BudgetCategory, BudgetReads, BudgetSplit};
+use super::protocols::{BudgetBill, BudgetCategories, BudgetReads, BudgetSplit};
 use super::{Budget, LimitRecord, Rollover, applied, cents_money, tree, zero};
 
 /// The Splits on Budget `budget`'s Accounts dated from `first` to `last`, reaching back to the
@@ -278,7 +279,7 @@ impl LeafFigures {
     }
 }
 
-pub(super) fn expense_leaves(categories: &[BudgetCategory]) -> Vec<CategoryId> {
+pub(super) fn expense_leaves(categories: &[CategoryRef]) -> Vec<CategoryId> {
     categories
         .iter()
         .filter(|c| c.category_type == CategoryTypes::Expense && c.is_leaf)

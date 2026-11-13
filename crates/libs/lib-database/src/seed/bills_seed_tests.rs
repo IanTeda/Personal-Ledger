@@ -8,11 +8,12 @@ use bigdecimal::{BigDecimal, Signed};
 use chrono::{Datelike, NaiveDate};
 use lib_bills::*;
 use lib_core::AccountRef;
+use lib_core::CategoryRef;
 use lib_core::{AccountId, BillPlanId, CategoryId, PayeeId, Period};
 use lib_core::{Money, Total, TransactionId, UnitId};
 
 use crate::adapter::accounts::account_refs;
-use crate::adapter::categories::bill_categories;
+use crate::adapter::categories::category_refs;
 use crate::adapter::payees::bill_payees;
 use crate::seed::{SampleNames, bill_splits, sample_bills, sample_transactions};
 
@@ -30,7 +31,7 @@ fn today() -> NaiveDate {
 
 struct World {
     accounts: Vec<AccountRef>,
-    categories: Vec<BillCategory>,
+    categories: Vec<CategoryRef>,
     splits: Vec<BillSplit>,
     plans: Vec<BillPlan>,
     entries: Vec<BillScheduleEntry>,
@@ -40,7 +41,7 @@ fn world() -> World {
     let bills = sample_bills(today());
     World {
         accounts: account_refs(&lib_accounts::sample_accounts()),
-        categories: bill_categories(&lib_categories::sample_categories()),
+        categories: category_refs(&lib_categories::sample_categories()),
         splits: bill_splits(&sample_transactions(today())),
         plans: bills.plans,
         entries: bills.entries,
@@ -556,7 +557,7 @@ fn the_read_ports_answer_every_row_flagged_by_its_domains_rules() {
             .collect::<Vec<_>>()
     );
     assert_eq!(
-        bill_categories(&sample.categories.categories).len(),
+        category_refs(&sample.categories.categories).len(),
         sample.categories.categories.len()
     );
     assert_eq!(
@@ -593,13 +594,13 @@ fn the_read_ports_answer_every_row_flagged_by_its_domains_rules() {
         .find(|a| a.name == "Home Loan")
         .expect("the sample has a Home Loan");
     assert!(!home_loan.takes_transactions);
-    let water = bill_categories(&sample.categories.categories)
+    let water = category_refs(&sample.categories.categories)
         .into_iter()
         .find(|c| c.name == "Water")
         .expect("the sample has Water");
     assert_eq!(water.path, "Housing \u{203a} Utilities \u{203a} Water");
-    assert!(water.is_expense && water.is_leaf);
-    let utilities = bill_categories(&sample.categories.categories)
+    assert!(water.is_expense() && water.is_leaf);
+    let utilities = category_refs(&sample.categories.categories)
         .into_iter()
         .find(|c| c.name == "Utilities")
         .expect("the sample has Utilities");
@@ -621,7 +622,7 @@ fn the_bills_fake_sample_is_the_ledgers() {
         fake::sample_accounts()
     );
     assert_eq!(
-        bill_categories(&sample.categories.categories),
+        category_refs(&sample.categories.categories),
         fake::sample_categories()
     );
     let payees = bill_payees(&sample.payees.payees.payees);
@@ -634,7 +635,7 @@ fn the_bills_fake_sample_is_the_ledgers() {
     let first = TransactionId::seed(1);
     let bills = lib_bills::sample_bills(
         &account_refs(&sample.accounts.accounts.accounts),
-        &bill_categories(&sample.categories.categories),
+        &category_refs(&sample.categories.categories),
         &payees,
         first,
         today(),

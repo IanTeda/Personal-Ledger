@@ -4,10 +4,10 @@
 
 use bigdecimal::{BigDecimal, Signed};
 use chrono::NaiveDate;
-use lib_core::AccountRef;
 use lib_core::{
     AccountId, BillPlanId, CategoryId, Money, PayeeId, Period, Total, TransactionId, UnitId,
 };
+use lib_core::{AccountRef, CategoryRef};
 
 use super::*;
 
@@ -35,7 +35,7 @@ pub struct BillPlanDraft {
 /// Checks everything a draft must satisfy; returns the trimmed name.
 fn validate(
     draft: &BillPlanDraft,
-    categories: &[BillCategory],
+    categories: &[CategoryRef],
     accounts: &[AccountRef],
 ) -> Result<String, Error> {
     let name = draft.name.trim();
@@ -44,7 +44,7 @@ fn validate(
     }
     let is_expense_leaf = categories
         .iter()
-        .any(|c| c.id == draft.category_id && c.is_expense && c.is_leaf);
+        .any(|c| c.id == draft.category_id && c.is_expense() && c.is_leaf);
     if !is_expense_leaf {
         return Err(Error::CategoryNotExpenseLeaf);
     }
@@ -70,7 +70,7 @@ pub fn insert_plan(
     plans: &mut Vec<BillPlan>,
     entries: &mut Vec<BillScheduleEntry>,
     draft: &BillPlanDraft,
-    categories: &[BillCategory],
+    categories: &[CategoryRef],
     accounts: &[AccountRef],
     today: NaiveDate,
 ) -> Result<BillPlanId, Error> {
@@ -91,7 +91,7 @@ pub(crate) fn insert_plan_as(
     plans: &mut Vec<BillPlan>,
     entries: &mut Vec<BillScheduleEntry>,
     draft: &BillPlanDraft,
-    categories: &[BillCategory],
+    categories: &[CategoryRef],
     accounts: &[AccountRef],
     today: NaiveDate,
 ) -> Result<BillPlanId, Error> {
@@ -125,7 +125,7 @@ pub fn edit_plan(
     entries: &mut Vec<BillScheduleEntry>,
     id: BillPlanId,
     draft: &BillPlanDraft,
-    categories: &[BillCategory],
+    categories: &[CategoryRef],
     accounts: &[AccountRef],
     today: NaiveDate,
 ) -> Result<(), Error> {
@@ -198,7 +198,7 @@ fn open_entry<'a>(
 
 /// Category `id`'s full path, as a View names a Bill Plan's Category: for a module that reads the
 /// Categories through Bills' port and so can't reach the Categories crate.
-pub fn category_path(categories: &[BillCategory], id: CategoryId) -> Option<String> {
+pub fn category_path(categories: &[CategoryRef], id: CategoryId) -> Option<String> {
     categories
         .iter()
         .find(|category| category.id == id)
@@ -230,7 +230,7 @@ pub fn match_candidates(
     entries: &[BillScheduleEntry],
     splits: &[BillSplit],
     accounts: &[AccountRef],
-    categories: &[BillCategory],
+    categories: &[CategoryRef],
     id: EntryId,
 ) -> Vec<SplitRef> {
     let Ok(plan) = open_entry(plans, entries, id) else {
@@ -241,7 +241,7 @@ pub fn match_candidates(
     let is_expense = |category_id: CategoryId| {
         categories
             .iter()
-            .any(|c| c.id == category_id && c.is_expense)
+            .any(|c| c.id == category_id && c.is_expense())
     };
     let mut found: Vec<(bool, bool, BigDecimal, i64, SplitRef)> = Vec::new();
     for split in splits {
@@ -292,7 +292,7 @@ pub fn match_split(
     entries: &mut [BillScheduleEntry],
     splits: &[BillSplit],
     accounts: &[AccountRef],
-    categories: &[BillCategory],
+    categories: &[CategoryRef],
     id: EntryId,
     split: SplitRef,
 ) -> Result<(), Error> {
@@ -565,7 +565,7 @@ mod tests {
 
     struct World {
         accounts: Vec<AccountRef>,
-        categories: Vec<BillCategory>,
+        categories: Vec<CategoryRef>,
         splits: Vec<BillSplit>,
         plans: Vec<BillPlan>,
         entries: Vec<BillScheduleEntry>,

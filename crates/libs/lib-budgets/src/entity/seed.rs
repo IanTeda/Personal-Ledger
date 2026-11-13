@@ -1,13 +1,13 @@
 //! The sample dataset: the seeded Budgets and their Category Limits.
 
 use lib_core::AccountRef;
+use lib_core::CategoryRef;
 use std::collections::BTreeMap;
 
 use chrono::NaiveDate;
 
 use lib_core::{AccountId, BudgetId, CategoryId, Period, UnitId};
 
-use crate::protocols::BudgetCategory;
 use crate::{Budget, Budgets, Limit, LimitRecord, Method, Rollover, cents_money, put, tree};
 
 /// The id the seeded **Personal spending** Budget carries: Categories 5c binds it by id, so a
@@ -67,7 +67,7 @@ fn month_from(today: NaiveDate, offset: i32) -> Period {
 
 fn seeded_limits(
     seeds: &[LimitSeed],
-    categories: &[BudgetCategory],
+    categories: &[CategoryRef],
     today: NaiveDate,
 ) -> BTreeMap<CategoryId, Vec<LimitRecord>> {
     let mut limits: BTreeMap<CategoryId, Vec<LimitRecord>> = BTreeMap::new();
@@ -129,7 +129,7 @@ pub fn personal_spending(unit: UnitId, accounts: &[AccountRef]) -> Budget {
 /// lack is left out.
 pub fn sample_budgets(
     accounts: &[AccountRef],
-    categories: &[BudgetCategory],
+    categories: &[CategoryRef],
     today: NaiveDate,
 ) -> Budgets {
     let on_budget = |names: Option<&[&str]>| -> Vec<AccountId> {

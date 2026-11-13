@@ -824,6 +824,40 @@ mod tests {
         assert_eq!(page.presenter.mode(), None);
     }
 
+    /// The Category scope lists in the order the Categories port answers, which is tree order
+    /// (parents beside their children), not by name (#1198).
+    #[test]
+    fn the_schedule_category_filter_lists_in_the_ports_tree_order() {
+        let mut page = Page::new();
+        page.ports.borrow_mut().reads.categories.reverse();
+        let tree: Vec<String> = page
+            .ports
+            .borrow()
+            .reads
+            .categories
+            .iter()
+            .map(|category| category.name.clone())
+            .collect();
+        page.schedule(ScheduleEvent::ToggleFilter(FilterField::Category));
+
+        let labels: Vec<String> = page.view().schedule.filters.selects[1]
+            .view
+            .options
+            .iter()
+            .map(|choice| choice.label.clone())
+            .filter(|label| tree.contains(label))
+            .collect();
+
+        let mut by_name = labels.clone();
+        by_name.sort_by_key(|label| label.to_lowercase());
+        assert_ne!(labels, by_name, "the list is not sorted by name");
+        let expected: Vec<String> = tree
+            .into_iter()
+            .filter(|name| labels.contains(name))
+            .collect();
+        assert_eq!(labels, expected);
+    }
+
     #[test]
     fn escape_on_the_filter_row_closes_an_open_list_then_leaves_the_row() {
         let mut page = Page::new();

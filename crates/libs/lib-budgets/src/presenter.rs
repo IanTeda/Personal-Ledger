@@ -21,6 +21,7 @@ mod progress;
 mod stop;
 mod switcher;
 
+use lib_core::CategoryRef;
 use lib_core::{CategoryId, Money, Period};
 use lib_locale::Segment;
 use lib_locale::format::{AmountStyle, format_amount, format_month, format_year_month};
@@ -54,7 +55,6 @@ pub use progress::{
 pub use stop::{StopEvent, StopPresenter, StopViewModel};
 pub use switcher::{SwitcherEvent, SwitcherPresenter, SwitcherRow, SwitcherViewModel};
 
-use crate::protocols::BudgetCategory;
 use crate::{Error, Method, msg};
 
 /// A cell with no figure.
@@ -113,7 +113,7 @@ fn range_label(first: Period, last: Period) -> String {
 }
 
 /// Category `id`'s name, or the empty cell once it has gone.
-fn category_name(categories: &[BudgetCategory], id: CategoryId) -> String {
+fn category_name(categories: &[CategoryRef], id: CategoryId) -> String {
     categories
         .iter()
         .find(|category| category.id == id)
@@ -121,7 +121,7 @@ fn category_name(categories: &[BudgetCategory], id: CategoryId) -> String {
 }
 
 /// How many ancestors Category `id` has: its indent in the tables.
-fn depth(categories: &[BudgetCategory], id: CategoryId) -> usize {
+fn depth(categories: &[CategoryRef], id: CategoryId) -> usize {
     let mut depth = 0;
     let mut parent = categories
         .iter()

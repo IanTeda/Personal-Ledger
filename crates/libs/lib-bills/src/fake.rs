@@ -5,6 +5,7 @@
 //! none of those domains. [`RecordingRouter`] records what a Presenter asked for.
 
 use lib_core::AccountRef;
+use lib_core::{CategoryRef, CategoryTypes};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -19,9 +20,9 @@ use crate::protocols::{
     SharedPorts,
 };
 use crate::{
-    BillAccounts, BillCategories, BillCategory, BillPayee, BillPayees, BillPlan,
-    BillPlanRepository, BillScheduleEntry, BillScheduleRepository, BillSplit, BillTransactions,
-    BillsSeed, EntryId, SampleBills, SplitRef,
+    BillAccounts, BillCategories, BillPayee, BillPayees, BillPlan, BillPlanRepository,
+    BillScheduleEntry, BillScheduleRepository, BillSplit, BillTransactions, BillsSeed, EntryId,
+    SampleBills, SplitRef,
 };
 
 /// The Bill Plans and the Bill Schedule, stored in memory.
@@ -75,7 +76,7 @@ impl BillScheduleRepository for InMemoryBills {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct InMemoryBillReads {
     pub accounts: Vec<AccountRef>,
-    pub categories: Vec<BillCategory>,
+    pub categories: Vec<CategoryRef>,
     pub payees: Vec<BillPayee>,
     pub splits: Vec<BillSplit>,
 }
@@ -97,7 +98,7 @@ impl BillAccounts for InMemoryBillReads {
 }
 
 impl BillCategories for InMemoryBillReads {
-    fn bill_categories(&self) -> Vec<BillCategory> {
+    fn bill_categories(&self) -> Vec<CategoryRef> {
         self.categories.clone()
     }
 }
@@ -233,7 +234,7 @@ impl BillsPorts for InMemoryPorts {
 fn book(
     sample: SampleBills,
     accounts: &[AccountRef],
-    categories: &[BillCategory],
+    categories: &[CategoryRef],
     payees: &[BillPayee],
     today: NaiveDate,
 ) -> (BillsSeed, Vec<BillSplit>) {
@@ -313,12 +314,22 @@ pub fn sample_accounts() -> Vec<AccountRef> {
 }
 
 /// The sample Categories as Bills reads them, the Categories sample's tree flattened to paths.
-pub fn sample_categories() -> Vec<BillCategory> {
-    let category = |n, name: &str, path: &str, is_expense, is_leaf| BillCategory {
+pub fn sample_categories() -> Vec<CategoryRef> {
+    let category = |n, name: &str, path: &str, is_expense, is_leaf| CategoryRef {
         id: CategoryId::seed(n),
         name: name.to_string(),
         path: path.to_string(),
-        is_expense,
+        parent: match n {
+            2 | 3 => Some(CategoryId::seed(1)),
+            4 | 5 => Some(CategoryId::seed(3)),
+            7 | 8 => Some(CategoryId::seed(6)),
+            _ => None,
+        },
+        category_type: if is_expense {
+            CategoryTypes::Expense
+        } else {
+            CategoryTypes::Income
+        },
         is_leaf,
     };
     vec![

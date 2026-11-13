@@ -15,11 +15,10 @@
 //! defaults it re-points: their foreign keys, and `parent_id`'s, refuse deleting a Category
 //! anything still names.
 
-use lib_bills::BillCategory;
 use lib_categories::{Category, CategoryRepository, tree_order};
+use lib_core::CategoryRef;
 use lib_core::{CategoryId, CategoryTypes};
 use lib_payees::PayeeCategory;
-use lib_transactions::TransactionCategory;
 use sqlx::SqliteConnection;
 
 use crate::Result;
@@ -122,16 +121,15 @@ impl CategoryRepository for CategoriesAdapter {
     }
 }
 
-/// `categories` as Bills reads them, in order: each with its path, and whether it is an Expense
-/// and a leaf by `lib-categories`' rules.
-/// `categories` as `lib-budgets`' `BudgetCategories` reads them, in tree order, each with its path
-/// and whether it is a leaf by the Categories' rules.
-pub fn budget_categories(categories: &[Category]) -> Vec<lib_budgets::BudgetCategory> {
+/// `categories` as the other modules read them, in tree order (each parent before its children),
+/// each with its path and whether it is a leaf by `lib-categories`' rules: the one mapping from a
+/// Category to `lib_core::CategoryRef`.
+pub fn category_refs(categories: &[Category]) -> Vec<CategoryRef> {
     lib_categories::paths_in_tree_order(categories)
         .into_iter()
         .filter_map(|(id, path)| {
             let category = lib_categories::get(categories, id)?;
-            Some(lib_budgets::BudgetCategory {
+            Some(CategoryRef {
                 id,
                 name: category.name.clone(),
                 path,
@@ -139,20 +137,6 @@ pub fn budget_categories(categories: &[Category]) -> Vec<lib_budgets::BudgetCate
                 category_type: category.category_type.clone(),
                 is_leaf: lib_categories::is_leaf(categories, id),
             })
-        })
-        .collect()
-}
-
-pub(crate) fn bill_categories(categories: &[Category]) -> Vec<BillCategory> {
-    categories
-        .iter()
-        .map(|category| BillCategory {
-            id: category.id,
-            name: category.name.clone(),
-            path: lib_categories::path(categories, category.id)
-                .unwrap_or_else(|| category.name.clone()),
-            is_expense: category.category_type == CategoryTypes::Expense,
-            is_leaf: lib_categories::is_leaf(categories, category.id),
         })
         .collect()
 }
@@ -254,22 +238,6 @@ async fn read(conn: &mut SqliteConnection) -> Result<Vec<Category>> {
     })
     .collect();
     Ok(rows)
-}
-
-/// `categories` in tree order, each with its path, as Transactions reads them.
-pub(crate) fn transaction_categories(categories: &[Category]) -> Vec<TransactionCategory> {
-    lib_categories::paths_in_tree_order(categories)
-        .into_iter()
-        .filter_map(|(id, path)| {
-            let category = lib_categories::get(categories, id)?;
-            Some(TransactionCategory {
-                id,
-                name: category.name.clone(),
-                parent: category.parent,
-                path,
-            })
-        })
-        .collect()
 }
 
 #[cfg(test)]
@@ -454,7 +422,7 @@ mod tests {
         _: SqlitePoolOptions,
         options: SqliteConnectOptions,
     ) {
-        fn store(writer: &Writer, rows: Vec<TransactionCategory>) {
+        fn store(writer: &Writer, rows: Vec<CategoryRef>) {
             let categories = rows
                 .into_iter()
                 .map(|row| Category {
@@ -569,7 +537,7 @@ mod tests {
         let categories = factory.create(sample_categories());
 
         assert_eq!(
-            bill_categories(&categories.categories()),
+            category_refs(&categories.categories()),
             lib_bills::fake::sample_categories()
         );
         assert_eq!(

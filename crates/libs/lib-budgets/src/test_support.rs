@@ -5,7 +5,9 @@
 pub(crate) use std::collections::BTreeMap;
 
 pub(crate) use chrono::NaiveDate;
-pub(crate) use lib_core::{AccountId, BudgetId, CategoryId, CategoryTypes, Money, Period, UnitId};
+pub(crate) use lib_core::{
+    AccountId, BudgetId, CategoryId, CategoryRef, CategoryTypes, Money, Period, UnitId,
+};
 
 pub(crate) use crate::fake::InMemoryBudgetReads;
 pub(crate) use crate::*;
@@ -26,7 +28,7 @@ pub(crate) fn money(text: &str) -> Money {
     text.parse().expect("a valid test amount")
 }
 
-pub(crate) fn category_id(categories: &[BudgetCategory], name: &str) -> CategoryId {
+pub(crate) fn category_id(categories: &[CategoryRef], name: &str) -> CategoryId {
     tree::find_by_name(categories, name).expect("a seeded Category")
 }
 
@@ -98,7 +100,7 @@ impl World {
         let path = format!("{} \u{203a} {name}", categories[at].path);
         categories.insert(
             at + 1,
-            BudgetCategory {
+            CategoryRef {
                 id: CategoryId::new(),
                 name: name.to_string(),
                 path,

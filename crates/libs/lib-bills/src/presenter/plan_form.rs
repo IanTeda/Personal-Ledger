@@ -274,7 +274,7 @@ impl PlanFormPresenter {
         let all_categories = ports.categories().bill_categories();
         let mut categories: Vec<Choice<CategoryId>> = all_categories
             .iter()
-            .filter(|c| c.is_expense && c.is_leaf)
+            .filter(|c| c.is_expense() && c.is_leaf)
             .map(|c| Choice {
                 value: c.id,
                 label: c.name.clone(),
@@ -1062,7 +1062,7 @@ mod tests {
                 .iter()
                 .find(|c| c.id == choice.value)
                 .expect("listed");
-            assert!(category.is_expense && category.is_leaf);
+            assert!(category.is_expense() && category.is_leaf);
         }
     }
 

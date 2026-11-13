@@ -45,7 +45,7 @@ pub mod msg;
 pub mod presenter;
 pub mod protocols;
 pub use protocols::{
-    BillAccounts, BillCategories, BillCategory, BillPayee, BillPayees, BillPlanRepository,
+    BillAccounts, BillCategories, BillPayee, BillPayees, BillPlanRepository,
     BillScheduleRepository, BillSplit, BillTransactions, BillUnits, BillsOutcome, BillsPorts,
     BillsRepository, BillsRouter, PayRequest, PortsMut, SharedPorts,
 };

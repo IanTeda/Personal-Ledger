@@ -16,12 +16,12 @@ use lib_core::{
     AccountId, CategoryId, HexColor, Money, PayeeId, TagId, TransactionId, TransactionStatus,
     UnitId, UnitRef,
 };
+use lib_core::{CategoryRef, CategoryTypes};
 
 use crate::fake::{InMemoryTransactionReads, InMemoryTransactions};
 use crate::{
-    Split, Transaction, TransactionAccounts, TransactionCategories, TransactionCategory,
-    TransactionPayee, TransactionPayees, TransactionRepository, TransactionTag, TransactionTags,
-    TransactionUnits,
+    Split, Transaction, TransactionAccounts, TransactionCategories, TransactionPayee,
+    TransactionPayees, TransactionRepository, TransactionTag, TransactionTags, TransactionUnits,
 };
 
 /// Builds the port a contract check runs on.
@@ -105,12 +105,8 @@ pub trait ReadsFactory<Row> {
 pub struct InMemoryReadsFactory;
 
 /// `categories` depth-first from each top-level one, siblings in the order given.
-fn tree_order(categories: &[TransactionCategory]) -> Vec<TransactionCategory> {
-    fn walk(
-        categories: &[TransactionCategory],
-        parent: Option<CategoryId>,
-        out: &mut Vec<TransactionCategory>,
-    ) {
+fn tree_order(categories: &[CategoryRef]) -> Vec<CategoryRef> {
+    fn walk(categories: &[CategoryRef], parent: Option<CategoryId>, out: &mut Vec<CategoryRef>) {
         for category in categories.iter().filter(|row| row.parent == parent) {
             out.push(category.clone());
             walk(categories, Some(category.id), out);
@@ -136,10 +132,10 @@ impl ReadsFactory<AccountRef> for InMemoryReadsFactory {
     }
 }
 
-impl ReadsFactory<TransactionCategory> for InMemoryReadsFactory {
+impl ReadsFactory<CategoryRef> for InMemoryReadsFactory {
     type Reads = InMemoryTransactionReads;
 
-    fn create(&mut self, rows: Vec<TransactionCategory>) -> InMemoryTransactionReads {
+    fn create(&mut self, rows: Vec<CategoryRef>) -> InMemoryTransactionReads {
         InMemoryTransactionReads {
             categories: tree_order(&rows),
             ..InMemoryTransactionReads::default()
@@ -337,15 +333,18 @@ where
 /// added in, and again after a reload.
 pub fn categories_read_back_in_tree_order<F>(factory: &mut F)
 where
-    F: ReadsFactory<TransactionCategory>,
+    F: ReadsFactory<CategoryRef>,
     F::Reads: TransactionCategories,
 {
     // The path separator is `lib-categories`' rule, which the answering side fills.
-    let category = |id: u32, name: &str, parent: Option<u32>, path: &str| TransactionCategory {
+    let category = |id: u32, name: &str, parent: Option<u32>, path: &str| CategoryRef {
         id: CategoryId::seed(id),
         name: name.into(),
         parent: parent.map(CategoryId::seed),
         path: path.into(),
+        category_type: CategoryTypes::Expense,
+        // Housing, Utilities and Food have children; the rest are leaves.
+        is_leaf: !matches!(id, 1 | 3 | 5),
     };
     let housing = category(1, "Housing", None, "Housing");
     let rent = category(2, "Rent", Some(1), "Housing \u{203a} Rent");

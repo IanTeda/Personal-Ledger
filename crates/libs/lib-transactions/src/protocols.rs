@@ -12,10 +12,11 @@
 //! crate. `lib-database`'s adapters answer them from the rows they hold.
 
 use lib_core::AccountRef;
+use lib_core::CategoryRef;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use lib_core::{CategoryId, HexColor, PayeeId, TagId, TransactionId, UnitId};
+use lib_core::{HexColor, PayeeId, TagId, TransactionId, UnitId};
 
 use crate::Transaction;
 
@@ -35,17 +36,6 @@ pub trait TransactionRepository {
 
     /// Removes the Transaction and its Splits. A Transaction not stored is no error.
     fn delete_transaction(&mut self, id: TransactionId);
-}
-
-/// A Category as the Transactions read it. `parent` lets a parent's filter match its
-/// descendants, and `path` (ancestors then `name`) is the Categories' rule, filled by the side that
-/// answers [`TransactionCategories`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TransactionCategory {
-    pub id: CategoryId,
-    pub name: String,
-    pub parent: Option<CategoryId>,
-    pub path: String,
 }
 
 /// A Payee as the Transactions read it.
@@ -71,7 +61,7 @@ pub trait TransactionAccounts {
 /// The Categories a Split may be filed under: every Category, in tree order (each parent before
 /// its children, siblings in the order they were added).
 pub trait TransactionCategories {
-    fn transaction_categories(&self) -> Vec<TransactionCategory>;
+    fn transaction_categories(&self) -> Vec<CategoryRef>;
 }
 
 /// The Payees a Split may name: every Payee, inactive ones included, as a Split may name one.

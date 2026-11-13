@@ -2,10 +2,11 @@
 
 use bigdecimal::{BigDecimal, RoundingMode, Signed};
 use chrono::NaiveDate;
+use lib_core::CategoryRef;
 use lib_core::{CategoryId, CategoryTypes, Money, Period};
 
 use super::figures::{SpentIndex, expense_leaves};
-use super::protocols::{BudgetCategories, BudgetCategory, BudgetReads};
+use super::protocols::{BudgetCategories, BudgetReads};
 use super::{Budget, Rollover, applied, tree, zero};
 
 /// How far back "the last 3 months" reaches, for the average and Unallocated figures.
@@ -16,7 +17,7 @@ pub fn total_budgeted(budget: &Budget, categories: &dyn BudgetCategories, month:
     total_over(budget, &categories.budget_categories(), month)
 }
 
-fn total_over(budget: &Budget, categories: &[BudgetCategory], month: Period) -> Money {
+fn total_over(budget: &Budget, categories: &[CategoryRef], month: Period) -> Money {
     Money(
         expense_leaves(categories)
             .into_iter()

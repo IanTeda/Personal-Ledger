@@ -14,11 +14,12 @@
 //! ask for navigation through [`BudgetsRouter`], which each Client implements.
 
 use lib_core::AccountRef;
+use lib_core::CategoryRef;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use chrono::NaiveDate;
-use lib_core::{AccountId, BudgetId, CategoryId, CategoryTypes, Money, PayeeId, Period, UnitId};
+use lib_core::{AccountId, BudgetId, CategoryId, Money, PayeeId, Period, UnitId};
 use lib_toast::Notify;
 
 use crate::Budget;
@@ -36,18 +37,6 @@ pub trait BudgetRepository {
     /// Writes `budget` whole, replacing the Budget with its id or adding it: its row, its Accounts
     /// and every chain, so a chain it no longer holds is gone.
     fn upsert_budget(&mut self, budget: &Budget);
-}
-
-/// A Category as Budgets reads it. `path` (ancestors then `name`) and `is_leaf` are the
-/// Categories' rules, filled by the side that answers [`BudgetCategories`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BudgetCategory {
-    pub id: CategoryId,
-    pub name: String,
-    pub path: String,
-    pub parent: Option<CategoryId>,
-    pub category_type: CategoryTypes,
-    pub is_leaf: bool,
 }
 
 /// One Split of a Transaction as Budgets reads it, flattened with its Transaction's date and
@@ -88,13 +77,13 @@ pub struct BudgetBillPlan {
 pub trait BudgetCategories {
     /// Every Category in tree order: depth-first from each top-level Category, each parent before
     /// its children. A row the tree can't reach is left out.
-    fn budget_categories(&self) -> Vec<BudgetCategory>;
+    fn budget_categories(&self) -> Vec<CategoryRef>;
 }
 
 /// Rows already read answer the port as themselves, for a caller holding a tree the port's side
 /// hasn't saved yet.
-impl BudgetCategories for Vec<BudgetCategory> {
-    fn budget_categories(&self) -> Vec<BudgetCategory> {
+impl BudgetCategories for Vec<CategoryRef> {
+    fn budget_categories(&self) -> Vec<CategoryRef> {
         self.clone()
     }
 }

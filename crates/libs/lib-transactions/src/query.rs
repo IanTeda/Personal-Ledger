@@ -23,6 +23,7 @@
 //! - The default filter set is **this year**: 1 January to `today`, with everything else empty.
 //!   `clear filters` and the popover's `reset` both mean "the defaults".
 
+use lib_core::CategoryRef;
 pub use lib_core::Total;
 use std::collections::HashMap;
 
@@ -31,8 +32,8 @@ use chrono::{Datelike, NaiveDate};
 use lib_core::{AccountId, CategoryId, Money, PayeeId, TagId, TransactionStatus, UnitId};
 
 use crate::{
-    Split, Transaction, TransactionAccounts, TransactionCategories, TransactionCategory,
-    TransactionPayee, TransactionPayees, TransactionTag, TransactionTags, TransactionUnits,
+    Split, Transaction, TransactionAccounts, TransactionCategories, TransactionPayee,
+    TransactionPayees, TransactionTag, TransactionTags, TransactionUnits,
 };
 
 /// The Status filter: all, or exactly one of the three Transaction Statuses. (Flagged is not a
@@ -196,7 +197,7 @@ pub struct Visible<'a> {
 }
 
 /// `id` and every Category nested under it, at any depth: what a filter on a parent matches.
-fn descendants_inclusive(categories: &[TransactionCategory], id: CategoryId) -> Vec<CategoryId> {
+fn descendants_inclusive(categories: &[CategoryRef], id: CategoryId) -> Vec<CategoryId> {
     let mut found = vec![id];
     let mut index = 0;
     while index < found.len() {
@@ -251,7 +252,7 @@ struct SplitFilter {
 }
 
 impl SplitFilter {
-    fn new(categories: &[TransactionCategory], filters: &TransactionFilters) -> Self {
+    fn new(categories: &[CategoryRef], filters: &TransactionFilters) -> Self {
         Self {
             categories: filters
                 .category
@@ -452,7 +453,7 @@ mod tests {
 
     use super::*;
     use crate::fake::{InMemoryTransactionReads, SeedAccount, SeedNames, sample_transactions};
-    use lib_core::UnitRef;
+    use lib_core::{CategoryRef, CategoryTypes, UnitRef};
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 19).unwrap()
@@ -469,11 +470,13 @@ mod tests {
                 return Some(row.id);
             }
             let id = CategoryId::seed(reads.categories.len() as u32 + 1);
-            reads.categories.push(TransactionCategory {
+            reads.categories.push(CategoryRef {
                 id,
                 name: name.to_string(),
                 parent: None,
                 path: name.to_string(),
+                category_type: CategoryTypes::Expense,
+                is_leaf: true,
             });
             Some(id)
         }

@@ -23,7 +23,7 @@ use lib_categories::Category;
 use lib_transactions::Transaction;
 
 use crate::adapter::accounts::account_refs;
-use crate::adapter::categories::budget_categories;
+use crate::adapter::categories::category_refs;
 use crate::seed::sample_transaction_history;
 
 fn date(y: i32, m: u32, d: u32) -> NaiveDate {
@@ -53,7 +53,7 @@ impl World {
     /// The Budgets read ports over the sample's rows, as `lib-database`'s stores answer them.
     fn reads(&self) -> InMemoryBudgetReads {
         InMemoryBudgetReads {
-            categories: budget_categories(&self.categories),
+            categories: category_refs(&self.categories),
             accounts: account_refs(&self.accounts),
             splits: self
                 .transactions
@@ -109,7 +109,7 @@ fn seeded() -> (World, Budgets) {
     );
     let budgets = sample_budgets(
         &account_refs(&accounts),
-        &budget_categories(&categories),
+        &category_refs(&categories),
         today(),
     );
     (
@@ -148,7 +148,7 @@ fn the_seed_has_a_default_personal_spending_and_an_overlapping_second_budget() {
 fn the_seed_only_budgets_valid_leaves_and_accounts_in_the_unit() {
     let (world, budgets) = seeded();
     let (categories, accounts) = (
-        budget_categories(&world.categories),
+        category_refs(&world.categories),
         account_refs(&world.accounts),
     );
     for budget in budgets.all() {
@@ -198,7 +198,7 @@ fn the_budgets_fake_sample_is_the_ledgers() {
         lib_budgets::fake::sample_accounts()
     );
     assert_eq!(
-        budget_categories(&sample.categories.categories),
+        category_refs(&sample.categories.categories),
         lib_budgets::fake::sample_categories()
     );
 }

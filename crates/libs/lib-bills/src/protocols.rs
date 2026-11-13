@@ -6,6 +6,7 @@
 //! [`BillsRouter`], which each Client implements.
 
 use lib_core::AccountRef;
+use lib_core::CategoryRef;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -81,17 +82,6 @@ pub trait BillTransactions {
     fn paid_split(&self, split: SplitRef) -> Option<BillSplit>;
 }
 
-/// A Category as Bills reads it. `path` (ancestors then `name`) and `is_leaf` are the
-/// Categories' rules, filled by the side that answers [`BillCategories`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BillCategory {
-    pub id: CategoryId,
-    pub name: String,
-    pub path: String,
-    pub is_expense: bool,
-    pub is_leaf: bool,
-}
-
 /// A Payee as Bills reads it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BillPayee {
@@ -107,7 +97,7 @@ pub trait BillAccounts {
 
 /// The Categories a Bill Plan may be filed under: every Category, flagged.
 pub trait BillCategories {
-    fn bill_categories(&self) -> Vec<BillCategory>;
+    fn bill_categories(&self) -> Vec<CategoryRef>;
 }
 
 /// The Payees a Bill Plan may be paid to: every Payee, inactive ones included.

@@ -4,10 +4,11 @@
 
 use bigdecimal::{RoundingMode, Signed};
 use chrono::NaiveDate;
+use lib_core::CategoryRef;
 use lib_core::{CategoryId, Money, Period};
 
 use crate::plan::{FillSource, fill_preview};
-use crate::protocols::{BudgetCategories, BudgetCategory, BudgetReads};
+use crate::protocols::{BudgetCategories, BudgetReads};
 use crate::{
     Budget, Error, Limit, LimitRecord, Result, Rollover, applied, inherited_rollover, put, tree,
 };
@@ -269,7 +270,7 @@ impl Budget {
     }
 }
 
-pub fn check_leaf(categories: &[BudgetCategory], category_id: CategoryId) -> Result<()> {
+pub fn check_leaf(categories: &[CategoryRef], category_id: CategoryId) -> Result<()> {
     if tree::is_expense(categories, category_id) && tree::is_leaf(categories, category_id) {
         Ok(())
     } else {

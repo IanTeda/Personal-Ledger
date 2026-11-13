@@ -634,7 +634,10 @@ fn filter_choices(
             })
             .collect(),
     };
-    choices.sort_by_key(|choice| choice.label.to_lowercase());
+    // The Categories port answers in tree order, which the Category scope keeps.
+    if field != FilterField::Category {
+        choices.sort_by_key(|choice| choice.label.to_lowercase());
+    }
     choices
 }
 

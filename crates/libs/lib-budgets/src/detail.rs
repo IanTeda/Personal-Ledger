@@ -1,5 +1,6 @@
 //! Category detail (9d): the Splits behind a Category's Spent in a month, and its track record.
 
+use lib_core::CategoryRef;
 use std::collections::BTreeMap;
 
 use bigdecimal::{BigDecimal, RoundingMode};
@@ -10,7 +11,7 @@ use super::figures::{
     CategoryFigures, Elapsed, LeafFigures, SpentIndex, counted_splits, effective, elapsed,
     known_costs, leaf_row, parent_row,
 };
-use super::protocols::{BudgetCategory, BudgetReads};
+use super::protocols::BudgetReads;
 use super::{Budget, Rollover, tree, zero};
 
 /// How many closed months before the month shown the track record looks back over.
@@ -59,7 +60,7 @@ pub struct CategoryDetail {
 fn detail_leaves(
     budget: &Budget,
     index: &SpentIndex,
-    categories: &[BudgetCategory],
+    categories: &[CategoryRef],
     category_id: CategoryId,
     month: Period,
     today: NaiveDate,

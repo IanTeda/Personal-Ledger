@@ -21,10 +21,12 @@ pub use transactions_page::{
 #[cfg(test)]
 pub(crate) mod test_support {
     use chrono::NaiveDate;
-    use lib_core::{AccountId, AccountRef, CategoryId, PayeeId, TagId, UnitId};
+    use lib_core::{
+        AccountId, AccountRef, CategoryId, CategoryRef, CategoryTypes, PayeeId, TagId, UnitId,
+    };
 
     use crate::fake::InMemoryTransactionReads;
-    use crate::{TransactionCategory, TransactionPayee, TransactionTag};
+    use crate::{TransactionPayee, TransactionTag};
 
     /// Composes this crate's layer into the process Locale, which every test that reads text
     /// needs: the first explicit `init` wins, so each test calls it before reading any.
@@ -63,11 +65,13 @@ pub(crate) mod test_support {
             unit: UnitId::SEED_AUD,
             takes_transactions: true,
         };
-        let category = |id, name: &str, parent, path: &str| TransactionCategory {
+        let category = |id, name: &str, parent, path: &str| CategoryRef {
             id,
             name: name.to_string(),
             parent,
             path: path.to_string(),
+            category_type: CategoryTypes::Expense,
+            is_leaf: true,
         };
         InMemoryTransactionReads {
             accounts: vec![account(EVERYDAY, "Everyday"), account(WALLET, "Wallet")],

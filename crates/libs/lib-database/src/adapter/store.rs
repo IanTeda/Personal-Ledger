@@ -34,7 +34,7 @@
 //! [`Stores::fake`] takes its in-memory stores as one [`FakeStores`], so a domain joining the
 //! bundle adds a field rather than an argument (#866).
 
-use lib_core::AccountRef;
+use lib_core::{AccountRef, CategoryRef};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -48,13 +48,13 @@ use lib_accounts::{
 };
 use lib_bills::fake::InMemoryBills;
 use lib_bills::{
-    BillAccounts, BillCategories, BillCategory, BillPayee, BillPayees, BillPlanRepository,
+    BillAccounts, BillCategories, BillPayee, BillPayees, BillPlanRepository,
     BillScheduleRepository, BillSplit, BillTransactions, BillUnits, SplitRef,
 };
 use lib_budgets::fake::InMemoryBudgets;
 use lib_budgets::{
-    BudgetAccounts, BudgetBill, BudgetBillPlan, BudgetBills, BudgetCategories, BudgetCategory,
-    BudgetPayees, BudgetRepository, BudgetSplit, BudgetSplits, BudgetUnits, Budgets,
+    BudgetAccounts, BudgetBill, BudgetBillPlan, BudgetBills, BudgetCategories, BudgetPayees,
+    BudgetRepository, BudgetSplit, BudgetSplits, BudgetUnits, Budgets,
 };
 use lib_categories::CategoryRepository;
 use lib_categories::fake::InMemoryCategories;
@@ -84,8 +84,8 @@ use lib_tags::{TagRepository, TagUsage, TagUse};
 use lib_transaction_import::{ImportAccount, ImportAccounts, ImportCategories};
 use lib_transactions::fake::InMemoryTransactions;
 use lib_transactions::{
-    Transaction, TransactionAccounts, TransactionCategories, TransactionCategory, TransactionPayee,
-    TransactionPayees, TransactionRepository, TransactionTag, TransactionTags, TransactionUnits,
+    Transaction, TransactionAccounts, TransactionCategories, TransactionPayee, TransactionPayees,
+    TransactionRepository, TransactionTag, TransactionTags, TransactionUnits,
 };
 use lib_units::fake::InMemoryPorts;
 use lib_units::{
@@ -1060,8 +1060,8 @@ pub struct StoredBudgetCategories {
 }
 
 impl BudgetCategories for StoredBudgetCategories {
-    fn budget_categories(&self) -> Vec<BudgetCategory> {
-        categories::budget_categories(&self.categories.borrow().categories().categories())
+    fn budget_categories(&self) -> Vec<CategoryRef> {
+        categories::category_refs(&self.categories.borrow().categories().categories())
     }
 }
 
@@ -1207,8 +1207,8 @@ pub struct StoredBudgetReads {
 }
 
 impl BudgetCategories for StoredBudgetReads {
-    fn budget_categories(&self) -> Vec<BudgetCategory> {
-        categories::budget_categories(&self.categories.borrow().categories().categories())
+    fn budget_categories(&self) -> Vec<CategoryRef> {
+        categories::category_refs(&self.categories.borrow().categories().categories())
     }
 }
 
@@ -1412,8 +1412,8 @@ impl BillAccounts for StoredBillReads {
 }
 
 impl BillCategories for StoredBillReads {
-    fn bill_categories(&self) -> Vec<BillCategory> {
-        categories::bill_categories(&self.categories.borrow().categories().categories())
+    fn bill_categories(&self) -> Vec<CategoryRef> {
+        categories::category_refs(&self.categories.borrow().categories().categories())
     }
 }
 
@@ -1447,8 +1447,8 @@ impl TransactionAccounts for StoredTransactionReads {
 
 /// In tree order, each with its path, as the Categories' rule writes it.
 impl TransactionCategories for StoredTransactionReads {
-    fn transaction_categories(&self) -> Vec<TransactionCategory> {
-        categories::transaction_categories(&self.categories.borrow().categories().categories())
+    fn transaction_categories(&self) -> Vec<CategoryRef> {
+        categories::category_refs(&self.categories.borrow().categories().categories())
     }
 }
 

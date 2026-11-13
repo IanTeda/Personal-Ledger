@@ -378,7 +378,7 @@ pub fn bar_view(row: &CategoryFigures) -> Option<BarView> {
     })
 }
 
-fn progress_row(row: &CategoryFigures, categories: &[crate::BudgetCategory]) -> ProgressRow {
+fn progress_row(row: &CategoryFigures, categories: &[lib_core::CategoryRef]) -> ProgressRow {
     let name = category_name(categories, row.category_id);
     let note = if row.is_parent {
         Some(msg::budgets_row_rollup())

@@ -15,7 +15,7 @@ use lib_categories::{
 use lib_core::{CategoryId, Clock, Money};
 
 use crate::adapter::store::{SharedBudgetsStore, SharedCategoriesStore, StoredBudgetCategories};
-use crate::{StoredCategoryRows, budget_categories};
+use crate::{StoredCategoryRows, category_refs};
 
 /// [`lib_categories`]' repository, usage, budget and handover ports over the shared Categories and
 /// Budgets stores and the rows naming a Category, each borrowed for one call. A write reaches the
@@ -112,7 +112,7 @@ impl CategoryBudget for StoredCategoriesPorts {
             amount: category.and_then(|id| {
                 budgets.monthly_limit(
                     PERSONAL_SPENDING_ID,
-                    &budget_categories(categories),
+                    &category_refs(categories),
                     id,
                     self.clock.today(),
                 )
@@ -135,7 +135,7 @@ impl CategoryBudget for StoredCategoriesPorts {
         budgets
             .set_monthly_limit(
                 PERSONAL_SPENDING_ID,
-                &budget_categories(categories),
+                &category_refs(categories),
                 category,
                 amount.cloned(),
                 self.clock.today(),
