@@ -12,7 +12,7 @@ Implement ticket #<n>, a child of #<parent>, on the current branch (`concept`). 
 4. **Stop on a seam**: if the ticket leaves a decision open (a seam under "Seams to decide", a type or event it doesn't name, an acceptance criterion you can't meet as written), leave your changes uncommitted and report `seam`.
 5. **Commit**: run CLAUDE.md's signing key check; if it fails, leave your changes uncommitted and report `signing`. Otherwise stage the paths you changed by name and commit once, `<area>: <short description> (#<n>)`. Another session may be editing the same tree, so a change you didn't make stays unstaged. Leave the issue's labels, comments and state alone; the orchestrator owns them.
 
-A **decision** is a choice that changes what the spec promised, and each one gates the ticket for review: a public type, variant, function or field the ticket doesn't name; a behaviour a user could notice changing; a file changed outside the ticket's scope. Everything else you chose (names, private helpers, test layout, the order you built in) is a **note**.
+A **decision** is a choice that changes what the spec promised, and each one gates the ticket for review: a public type, variant, function or field the ticket doesn't name; a behaviour a user could notice changing; a file changed outside the ticket's scope; an existing test whose assertions change beyond the call sites the ticket names. Everything else you chose (names, private helpers, test layout, the order you built in) is a **note**.
 
 Report back in exactly this shape and nothing else:
 

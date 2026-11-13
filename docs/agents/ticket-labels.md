@@ -10,7 +10,7 @@ On finishing, the `agent:*` label is set to the model and effort that actually a
 - **The Now cap:** no more than 5 open tickets are `priority:10-now`, whatever their state. A sixth means moving one down to `priority:20-next`.
 - **The Next cap:** no more than 10 open tickets are `priority:20-next`, whatever their state. An eleventh means moving the lowest-ranked one down to `priority:99-backlog`, where it keeps its `flow:implementation` and `agent:` labels.
 - **Blocked by a ticket:** a ticket blocked only by another ticket keeps its rank and gets no state. GitHub's native dependency shows the block, and the ticket rises once the blocker closes.
-- **Backlog is not worked:** Claude takes a `priority:99-backlog` ticket only to grill or chart it, never to implement it. A specified ticket on the backlog is implemented only once it is ranked back into Next.
+- **Backlog is not worked:** Claude takes a `priority:99-backlog` ticket only to grill or chart it, never to implement it. A specified ticket on the backlog is implemented only once it is ranked back into Next. A parent's children are the exception: `/implement-parent` runs them whatever their rank, since your human chose the parent.
 
 ## Recording label decisions
 
@@ -61,7 +61,7 @@ Tripwires, checked against the commit's diff and the run; the paths for each are
 3. **Security surface:** authentication, tokens or user credentials.
 4. **Build and guardrails:** workspace manifests, dependency policy, toolchain pins, hooks or CI workflows.
 5. **Decisions:** a new or changed ADR, or a glossary term.
-6. **The run:** an acceptance criterion not verified, a test skipped, or a decision the ticket didn't make: a public type, variant, function or field it doesn't name, a behaviour a user could notice changing, or a file changed outside its scope. Names, private helpers and test layout are the implementer's to choose and fire nothing.
+6. **The run:** an acceptance criterion not verified, a test skipped, or a decision the ticket didn't make: a public type, variant, function or field it doesn't name, a behaviour a user could notice changing, a file changed outside its scope, or an existing test whose assertions change beyond the call sites the ticket names. Names, private helpers and test layout are the implementer's to choose and fire nothing.
 
 A gated ticket closes when you close it, or when you tell Claude it's approved.
 

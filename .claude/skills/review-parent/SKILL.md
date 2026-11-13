@@ -62,7 +62,7 @@ Then ask a second, single-select question about the parent:
 Create each picked ticket by `ticket-labels.md` "Creating a ticket":
 
 1. **Verify each premise**: before writing a Decision, open the `file:line` it rests on and confirm the code is as the Decision assumes (an order, a type, what a page draws). A premise you can't confirm moves the ticket to `flow:grilling`, with the doubt as its seam. Reviewer output and your memory are claims, not facts.
-2. **Body**: a self-contained spec. Include `## Problem` (each finding, quoted with `file:line`), `## Decisions`, `## Seams to decide` (`None`, or the open seam), `## Acceptance criteria`, and `## Labels` (one line per label, with its reason). Each acceptance criterion names a test or command that would fail without the change; a criterion that a check rejects something names a test that feeds it the bad input.
+2. **Body**: a self-contained spec. Include `## Problem` (each finding, quoted with `file:line`), `## Decisions`, `## Seams to decide` (`None`, or the open seam), `## Acceptance criteria`, and `## Labels` (one line per label, with its reason). Each acceptance criterion names a test or command that would fail without the change; a criterion that a check rejects something names a test that feeds it the bad input. A Decision that states a rule across the codebase ("no test mutates X") lists every site in `## Problem` and carries the grep that proves it as an acceptance criterion.
 3. **Labels**:
    - `category:`: inherited from the parent.
    - `priority:`: as drafted.

@@ -31,7 +31,7 @@ Every check passes before the first write. On any failure, stop and report which
 
 ## 2. Build the task graph
 
-- **Eligible**: an open child on `flow:implementation` with no `agent:human`, `state:waiting` or `state:needs-review` label and no assignee. Every other open child is **skipped**; record why for the report.
+- **Eligible**: an open child on `flow:implementation` with no `agent:human`, `state:waiting` or `state:needs-review` label and no assignee, whatever its `priority:` rank (ticket-labels.md "Backlog is not worked"). Every other open child is **skipped**; record why for the report.
 - **Edges**: each child's blockers from `gh api repos/{owner}/{repo}/issues/<n>/dependencies/blocked_by`. A child is ready once every blocker is closed or gated (a gated blocker's commit is on `concept`, so its dependants build on it).
 - **Order**: the **frontier** is every ready eligible child; take them one at a time, first in sub-issue order.
 
