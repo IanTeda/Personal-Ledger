@@ -27,7 +27,7 @@ use lib_documents::{DocumentsMode, SharedFiles, SharedRepository};
 use super::Scrolls;
 use crate::announcer::Announcer;
 use crate::documents::router::PageRouter;
-use crate::shell::view::module_page::{ModulePage, PageDraw, PageView};
+use crate::shell::view::module_page::{ModulePage, PageCue, PageDraw, PageView};
 use crate::shell::view::statusline::PageStatus;
 use crate::view::event::ViewEvent;
 use crate::view::help::HelpGroup;
@@ -121,8 +121,8 @@ impl PageView for DocumentsPagePresenter {
     }
 
     /// `g f` and the palette land on the list. A Search left open does not come back with it.
-    fn entered() -> Option<DocumentsPageEvent> {
-        Some(DocumentsPageEvent::Entered)
+    fn cued(cue: PageCue) -> Option<DocumentsPageEvent> {
+        matches!(cue, PageCue::Entered).then_some(DocumentsPageEvent::Entered)
     }
 
     /// The `?` cheat-sheet's Documents group: the index keys, then the mode's, as the keymap binds

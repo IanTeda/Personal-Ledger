@@ -1,6 +1,6 @@
 //! Settings › Display's View: `lib-settings`' Display Presenter is the [`PageView`] the generic
 //! `ModulePage` hosts (ADR-0056), which the Settings View hosts as any other page. It names the
-//! page's Router, tells the Presenter how many Colour Theme cards fit a row ([`PageView::framed`]),
+//! page's Router, tells the Presenter how many Colour Theme cards fit a row ([`PageView::cued`]),
 //! and draws the view model (`render.rs`, `colour_theme.rs`); the keymap, the take, send and handle
 //! path and the clicks' path are the generic page's. The date style, Colour Theme and Appearance
 //! are written through the Presenter's `DeviceConfiguration` (`super::device`); the Display output
@@ -20,9 +20,10 @@ use lib_settings::{
 use lib_viper::keymap::KeyBindingConfig;
 
 use crate::settings::SettingsPage;
-use crate::settings::pages::PageFrame;
 use crate::settings::router::DeviceRouter;
-use crate::shell::view::module_page::{ModulePage, PageDraw, PageView, SettingsPageView};
+use crate::shell::view::module_page::{
+    ModulePage, PageCue, PageDraw, PageLayout, PageView, SettingsPageView,
+};
 use crate::shell::view::statusline::{PageStatus, StatusRight};
 use crate::view::help::HelpGroup;
 
@@ -52,7 +53,12 @@ impl PageView for DisplayPresenter {
 
     /// The page has no selection, so a movement its keymap doesn't bind (`Ctrl-d` on a control,
     /// `G`) scrolls the Settings body, the Colour Theme grid keeping the keyboard.
-    const FRAME_SCROLLS: bool = true;
+    fn layout() -> PageLayout {
+        PageLayout {
+            frame_scrolls: true,
+            ..PageLayout::default()
+        }
+    }
 
     fn with_router<R>(
         presenter: &mut Self,
@@ -63,11 +69,16 @@ impl PageView for DisplayPresenter {
         handle(presenter, &mut DeviceRouter { cx })
     }
 
-    /// The page body's width sets how many Colour Theme cards fit a row.
-    fn framed(frame: PageFrame) -> Option<DisplayEvent> {
-        Some(DisplayEvent::SetGridColumns(colour_theme::grid_columns(
-            frame.body_width,
-        )))
+    /// The page body's width sets how many Colour Theme cards fit a row, and the focus is the
+    /// Presenter's to place on its controls.
+    fn cued(cue: PageCue) -> Option<DisplayEvent> {
+        match cue {
+            PageCue::Framed(frame) => Some(DisplayEvent::SetGridColumns(
+                colour_theme::grid_columns(frame.body_width),
+            )),
+            PageCue::Focused(focused) => Some(DisplayEvent::Focused(focused)),
+            PageCue::Entered | PageCue::LedgerChanged | PageCue::Reveal(_) => None,
+        }
     }
 
     /// The grid's focus `tab` and half-page moves leave it, then the Shell moves the focus or
@@ -109,12 +120,6 @@ impl PageView for DisplayPresenter {
                 .map(|hint| (hint.action.clone(), hint.chord.clone()))
                 .collect(),
         })
-    }
-
-    /// Focus arriving puts the keyboard on the first control; focus leaving, for the index or
-    /// another page, takes it off the controls and the grid.
-    fn focus_changed(&mut self, focused: bool) -> bool {
-        self.set_page_focused(focused)
     }
 }
 

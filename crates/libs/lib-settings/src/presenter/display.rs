@@ -111,6 +111,10 @@ pub enum DisplayEvent {
     ClickColourTheme(&'static str),
     /// The palette's `theme` or `appearance`.
     ChooseColour(ColourChoice),
+    /// Whether the page, not Settings' index, has the keyboard, told as the frame draws the page,
+    /// which can be every draw. Arriving puts the keyboard on the first field, and leaving takes
+    /// it off the fields and the grid; a value the Presenter already holds is not taken.
+    Focused(bool),
 }
 
 impl DisplayEvent {
@@ -135,7 +139,8 @@ impl DisplayEvent {
             | Self::LeaveGrid
             | Self::SetGridColumns(_)
             | Self::ClickColourTheme(_)
-            | Self::ChooseColour(_) => return None,
+            | Self::ChooseColour(_)
+            | Self::Focused(_) => return None,
         })
     }
 }
@@ -297,19 +302,6 @@ impl DisplayPresenter {
             .set_value(DisplayField::StartSidebar, FieldValue::Flag(minimised));
     }
 
-    /// Whether the page, not Settings' index, has the keyboard. Arriving puts it on the first
-    /// field, and leaving takes it off the fields and the grid; only a change moves it. Answers
-    /// whether it changed, so the View redraws only then: the frame tells the page on every draw.
-    pub fn set_page_focused(&mut self, focused: bool) -> bool {
-        if focused == self.page_focused {
-            return false;
-        }
-        self.page_focused = focused;
-        self.form.set_focused(focused);
-        self.grid = None;
-        true
-    }
-
     /// The Display output the fields show.
     pub fn output(&self) -> DisplayOutput {
         let mut output = DisplayOutput::default();
@@ -399,6 +391,12 @@ impl Presenter for DisplayPresenter {
             }
             DisplayEvent::SetGridColumns(columns) => {
                 self.columns = columns.max(1);
+                None
+            }
+            DisplayEvent::Focused(focused) => {
+                self.page_focused = focused;
+                self.form.set_focused(focused);
+                self.grid = None;
                 None
             }
             DisplayEvent::ClickColourTheme(id) => {
@@ -519,7 +517,7 @@ impl Presenter for DisplayPresenter {
     /// The grid declines `h` in its first column, so the frame's `h` steps out to the index, and
     /// `space`, which it gives no meaning to; the fields' keys are as the form says. A grid column
     /// count it already has is declined, so the Client, which tells it on every draw, redraws only
-    /// on a change.
+    /// on a change; as is a focus it already holds.
     fn takes(&self, event: &DisplayEvent) -> bool {
         if let Some(index) = self.grid
             && event.is_key()
@@ -533,6 +531,7 @@ impl Presenter for DisplayPresenter {
         match event {
             DisplayEvent::Back | DisplayEvent::LeaveGrid => self.grid.is_some(),
             DisplayEvent::SetGridColumns(columns) => (*columns).max(1) != self.columns,
+            DisplayEvent::Focused(focused) => *focused != self.page_focused,
             event => event
                 .form_input()
                 .is_none_or(|input| self.form.takes(&input)),
@@ -916,7 +915,7 @@ mod tests {
     #[test]
     fn each_saved_field_reaches_the_views_as_the_display_output() {
         let (_, mut display) = writable();
-        display.set_page_focused(true);
+        send(&mut display, [DisplayEvent::Focused(true)]);
 
         let router = send(
             &mut display,
@@ -1157,7 +1156,7 @@ mod tests {
     #[test]
     fn j_walks_the_fields_past_appearance_into_the_grid_on_the_chosen_card_and_k_climbs_back() {
         let mut display = reading([ConfigValue::ColourTheme("nord".to_string())]);
-        display.set_page_focused(true);
+        send(&mut display, [DisplayEvent::Focused(true)]);
         let nord = ColourTheme::built_in()
             .iter()
             .position(|theme| theme.id == "nord");
@@ -1184,7 +1183,7 @@ mod tests {
     #[test]
     fn the_grid_declines_h_in_its_first_column_and_space_and_esc_climbs_out() {
         let (_, mut display) = writable();
-        display.set_page_focused(true);
+        send(&mut display, [DisplayEvent::Focused(true)]);
         send(&mut display, [DOWN; 4]);
         assert_eq!(display.view_model().grid, Some(0));
 
@@ -1216,7 +1215,7 @@ mod tests {
     #[test]
     fn tab_and_the_half_page_moves_leave_the_grid_only_while_it_has_the_keyboard() {
         let (_, mut display) = writable();
-        display.set_page_focused(true);
+        send(&mut display, [DisplayEvent::Focused(true)]);
         let keymap = display_keymap(&KeyBindingConfig::default());
         let leaving = ["tab", "ctrl+d", "ctrl+u"].map(|chord| keymap.event(chord));
         assert!(
@@ -1238,6 +1237,20 @@ mod tests {
     }
 
     #[test]
+    fn a_focus_it_already_has_is_not_taken() {
+        let (_, mut display) = writable();
+
+        assert!(!display.takes(&DisplayEvent::Focused(false)));
+        assert!(display.takes(&DisplayEvent::Focused(true)));
+        send(&mut display, [DisplayEvent::Focused(true)]);
+        assert!(!display.takes(&DisplayEvent::Focused(true)));
+        assert!(display.view_model().fields.focused().is_some());
+
+        send(&mut display, [DisplayEvent::Focused(false)]);
+        assert_eq!(display.view_model().fields.focused(), None);
+    }
+
+    #[test]
     fn a_grid_column_count_it_already_has_is_not_taken() {
         let (_, mut display) = writable();
 
@@ -1253,7 +1266,7 @@ mod tests {
     #[test]
     fn the_legend_follows_the_focus_and_the_cheat_sheet_holds_both() {
         let (_, mut display) = writable();
-        display.set_page_focused(true);
+        send(&mut display, [DisplayEvent::Focused(true)]);
         let chords = |hints: Vec<Hint>| -> Vec<String> {
             hints.into_iter().map(|hint| hint.chord).collect()
         };

@@ -12,7 +12,9 @@ use lib_viper::keymap::KeyBindingConfig;
 
 use crate::announcer::Announcer;
 use crate::settings::SettingsPage;
-use crate::shell::view::module_page::{ModulePage, PageDraw, PageView, SettingsPageView};
+use crate::shell::view::module_page::{
+    ModulePage, PageDraw, PageLayout, PageView, SettingsPageView,
+};
 use crate::shell::view::statusline::{PageStatus, StatusRight};
 
 /// The Data & backup page: the Presenter in the generic page Entity.
@@ -37,7 +39,12 @@ impl PageView for DataBackupPresenter {
     const REPAINTS: &'static [Domain] = &[];
 
     /// The frame scrolls the page: it has no selection.
-    const FRAME_SCROLLS: bool = true;
+    fn layout() -> PageLayout {
+        PageLayout {
+            frame_scrolls: true,
+            ..PageLayout::default()
+        }
+    }
 
     fn with_router<R>(
         presenter: &mut Self,

@@ -26,7 +26,7 @@ use lib_viper::display::RowDensity;
 use super::header::ChipBounds;
 use crate::announcer::Announcer;
 use crate::notices::Queue;
-use crate::shell::view::module_page::{ModulePage, PageDraw, PageView};
+use crate::shell::view::module_page::{ModulePage, PageCue, PageDraw, PageLayout, PageView};
 use crate::shell::view::statusline::PageStatus;
 use crate::view::{event::ViewEvent, format, help::HelpGroup};
 
@@ -86,8 +86,11 @@ impl PageView for TransactionsPagePresenter {
     ];
 
     /// The table draws every column, scrolling sideways in a narrower View.
-    fn min_width() -> Option<gpui::Pixels> {
-        Some(crate::transactions::view::table::min_width())
+    fn layout() -> PageLayout {
+        PageLayout {
+            min_width: Some(crate::transactions::view::table::min_width()),
+            ..PageLayout::default()
+        }
     }
 
     fn with_router<R>(
@@ -168,8 +171,8 @@ impl PageView for TransactionsPagePresenter {
     }
 
     /// A Search or popover left open when the page was left doesn't come back with it.
-    fn entered() -> Option<TransactionsPageEvent> {
-        Some(TransactionsPageEvent::Entered)
+    fn cued(cue: PageCue) -> Option<TransactionsPageEvent> {
+        matches!(cue, PageCue::Entered).then_some(TransactionsPageEvent::Entered)
     }
 
     /// The `?` cheat-sheet's Transactions group: the keys the status line shows.

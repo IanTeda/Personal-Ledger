@@ -40,7 +40,9 @@ use lib_settings::{Breadcrumb, IndexGroup, IndexRow, PickerView, ScopeFacts, Set
 use crate::{
     assets::icon::DesktopIcon,
     navigation::nav::Noun,
-    shell::view::{page_clicks::PageClicks, rail::settings_index::SettingsIndexRail},
+    shell::view::{
+        module_page::PageCue, page_clicks::PageClicks, rail::settings_index::SettingsIndexRail,
+    },
     theme::color,
     view::event::Reveal,
 };
@@ -170,7 +172,7 @@ impl Render for SettingsView {
         }
         self.sync_frame(cx);
         let page = self.selected_page();
-        page.set_focused(page_focused, cx);
+        page.cue(PageCue::Focused(page_focused), cx);
         let meta = page
             .heading_meta(cx)
             .unwrap_or_else(|| scope_note(self.selected_section()).into_any_element());
@@ -220,10 +222,10 @@ impl Render for SettingsView {
 /// One page: heading + right-aligned scope note, a 2px rule, the page's content, then a **48px**
 /// bottom gap -- every page, no exceptions (README's implementation note 4: mixed top/bottom
 /// margin ownership is how this gap goes missing, so it's carried on a single edge, here). The
-/// whole block spans the View's width. A
-/// [`PageView::FILLS_PAGE`] page fills the body's height.
+/// whole block spans the View's width. A page whose layout sets [`PageLayout::fills_page`] fills
+/// the body's height.
 ///
-/// [`PageView::FILLS_PAGE`]: crate::shell::view::module_page::PageView::FILLS_PAGE
+/// [`PageLayout::fills_page`]: crate::shell::view::module_page::PageLayout::fills_page
 fn section_block(
     heading: AnyElement,
     meta: AnyElement,

@@ -15,7 +15,7 @@ use lib_database::Domain;
 use super::{planner, schedule};
 use crate::bills::router::{BillsRoutes, PageRouter};
 use crate::navigation::nav::Noun;
-use crate::shell::view::module_page::{ModulePage, PageDraw, PageView};
+use crate::shell::view::module_page::{ModulePage, PageCue, PageDraw, PageView};
 use crate::shell::view::page_clicks::PageClicks;
 use crate::view::help::HelpGroup;
 use crate::{
@@ -98,9 +98,19 @@ impl PageView for BillsPagePresenter {
         before.shows_tab.then_some(ViewEvent::SetStatus(None))
     }
 
-    /// Generates a month the Desktop has crossed into since the page was last shown.
-    fn entered() -> Option<BillsPageEvent> {
-        Some(BillsPageEvent::Entered)
+    /// Entering generates a month the Desktop has crossed into since the page was last shown; a
+    /// record handed off from another View is shown.
+    fn cued(cue: PageCue) -> Option<BillsPageEvent> {
+        match cue {
+            PageCue::Entered => Some(BillsPageEvent::Entered),
+            PageCue::Reveal(reveal) => match reveal {
+                Reveal::BillEntry(id) => Some(BillsPageEvent::RevealEntry(id)),
+                Reveal::BillPlan(id) => Some(BillsPageEvent::RevealPlan(id)),
+                Reveal::BillsPeriod(period) => Some(BillsPageEvent::RevealPeriod(period)),
+                Reveal::Account(_) | Reveal::Payee(_) => None,
+            },
+            PageCue::LedgerChanged | PageCue::Framed(_) | PageCue::Focused(_) => None,
+        }
     }
 
     fn render(
@@ -117,16 +127,6 @@ impl PageView for BillsPagePresenter {
         PageStatus {
             hints: view.hints.clone(),
             right: view.status.clone().into(),
-        }
-    }
-
-    /// Shows a record handed off from another View.
-    fn reveal(reveal: Reveal) -> Option<BillsPageEvent> {
-        match reveal {
-            Reveal::BillEntry(id) => Some(BillsPageEvent::RevealEntry(id)),
-            Reveal::BillPlan(id) => Some(BillsPageEvent::RevealPlan(id)),
-            Reveal::BillsPeriod(period) => Some(BillsPageEvent::RevealPeriod(period)),
-            Reveal::Account(_) | Reveal::Payee(_) => None,
         }
     }
 

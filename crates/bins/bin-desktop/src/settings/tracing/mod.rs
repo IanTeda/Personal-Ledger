@@ -29,7 +29,7 @@ use lib_viper::keymap::KeyBindingConfig;
 
 use crate::{
     settings::{SettingsPage, router::TracingRouter, snapshot::PageSnapshot},
-    shell::view::module_page::{ModulePage, PageDraw, PageView, SettingsPageView},
+    shell::view::module_page::{ModulePage, PageDraw, PageLayout, PageView, SettingsPageView},
     shell::view::statusline::{PageStatus, StatusRight},
     view::event::ViewEvent,
 };
@@ -101,12 +101,14 @@ impl PageView for TracingPresenter {
     /// Tracing reads the capture, not the Ledger.
     const REPAINTS: &'static [Domain] = &[];
 
-    /// A movement the keymap doesn't bind does nothing: the log box fills the page and scrolls
-    /// itself, so the frame's body has nothing to scroll.
-    const FRAME_SCROLLS: bool = false;
-
-    /// The log box fills the page and scrolls itself.
-    const FILLS_PAGE: bool = true;
+    /// The log box fills the page and scrolls itself, so a movement the keymap doesn't bind does
+    /// nothing: the frame's body has nothing to scroll.
+    fn layout() -> PageLayout {
+        PageLayout {
+            fills_page: true,
+            ..PageLayout::default()
+        }
+    }
 
     fn with_router<R>(
         presenter: &mut Self,

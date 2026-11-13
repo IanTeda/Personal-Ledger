@@ -17,6 +17,7 @@ use lib_toast::{Notice, Notify};
 use super::pages::SettingsPages;
 use super::state::SettingsView;
 use super::tracing::{ListEffects, LogListEffect, TracingPage};
+use crate::shell::view::module_page::PageCue;
 use crate::view::event::{ViewEvent, ViewMode};
 
 /// The page on show changed by the person's hand, for the root Router to record in the Shell's
@@ -40,7 +41,7 @@ impl FrameRouter<'_, '_> {
     /// built, so has nothing to tell.
     fn set_focused(&mut self, page: SettingsPage, focused: bool) {
         if let Some(page) = self.pages.get(page) {
-            page.set_focused(focused, self.cx);
+            page.cue(PageCue::Focused(focused), self.cx);
         }
     }
 }

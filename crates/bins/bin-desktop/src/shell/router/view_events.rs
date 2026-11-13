@@ -10,6 +10,7 @@ use lib_shell::ShellInput;
 use lib_toast::Notice;
 
 use super::Root;
+use crate::shell::view::module_page::PageCue;
 use crate::shell::view::page_handle::PageSignals;
 use crate::view::event::{Reveal, ViewEvent};
 use lib_shell::{NavInput, ShellCommand};
@@ -79,7 +80,7 @@ impl Root {
         self.navigate(NavInput::Show(reveal.noun()));
         self.reset_view_scroll(cx);
         if let Some(page) = self.active_page(cx) {
-            page.reveal(reveal, cx);
+            page.cue(PageCue::Reveal(reveal), cx);
         }
     }
 

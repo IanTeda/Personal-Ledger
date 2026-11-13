@@ -24,7 +24,9 @@ use lib_viper::view::Choice;
 use crate::settings::SettingsPage;
 use crate::settings::router::DeviceRouter;
 use crate::settings::snapshot::PageSnapshot;
-use crate::shell::view::module_page::{ModulePage, PageDraw, PageView, SettingsPageView};
+use crate::shell::view::module_page::{
+    ModulePage, PageCue, PageDraw, PageLayout, PageView, SettingsPageView,
+};
 use crate::shell::view::statusline::{PageStatus, StatusRight};
 use crate::start_view;
 
@@ -80,7 +82,12 @@ impl PageView for GeneralPresenter {
     const REPAINTS: &'static [Domain] = &[];
 
     /// With no control focused, the frame scrolls the page.
-    const FRAME_SCROLLS: bool = true;
+    fn layout() -> PageLayout {
+        PageLayout {
+            frame_scrolls: true,
+            ..PageLayout::default()
+        }
+    }
 
     fn with_router<R>(
         presenter: &mut Self,
@@ -115,8 +122,11 @@ impl PageView for GeneralPresenter {
     }
 
     /// Focus arriving puts the keyboard on On start; focus leaving takes it off the controls.
-    fn focus_changed(&mut self, focused: bool) -> bool {
-        self.set_page_focused(focused)
+    fn cued(cue: PageCue) -> Option<GeneralEvent> {
+        match cue {
+            PageCue::Focused(focused) => Some(GeneralEvent::Focused(focused)),
+            _ => None,
+        }
     }
 }
 

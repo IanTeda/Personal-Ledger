@@ -11,7 +11,9 @@ use lib_settings::{AboutPresenter, AboutSetup, AboutViewModel};
 use lib_viper::keymap::KeyBindingConfig;
 
 use crate::settings::SettingsPage;
-use crate::shell::view::module_page::{ModulePage, PageDraw, PageView, SettingsPageView};
+use crate::shell::view::module_page::{
+    ModulePage, PageDraw, PageLayout, PageView, SettingsPageView,
+};
 use crate::shell::view::statusline::{PageStatus, StatusRight};
 
 /// The About page: the Presenter in the generic page Entity.
@@ -41,7 +43,12 @@ impl PageView for AboutPresenter {
     const REPAINTS: &'static [Domain] = &[];
 
     /// The frame scrolls the page: it has no selection.
-    const FRAME_SCROLLS: bool = true;
+    fn layout() -> PageLayout {
+        PageLayout {
+            frame_scrolls: true,
+            ..PageLayout::default()
+        }
+    }
 
     /// About takes no event, so its Router is the status line's queue, which nothing uses.
     fn with_router<R>(

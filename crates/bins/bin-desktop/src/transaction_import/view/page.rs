@@ -16,7 +16,7 @@ use lib_transaction_import::presenter::{ImportEvent, ImportStepPresenter, Import
 use lib_viper::presenter::Presenter as _;
 
 use crate::form::select::MAX_VISIBLE_ROWS;
-use crate::shell::view::module_page::{ModulePage, PageDraw, PageView};
+use crate::shell::view::module_page::{ModulePage, PageCue, PageDraw, PageLayout, PageView};
 use crate::shell::view::statusline::PageStatus;
 use crate::transaction_import::ImportStores;
 use crate::transaction_import::router::PageRouter;
@@ -50,8 +50,11 @@ impl PageView for ImportStepPresenter {
     const REPAINTS: &'static [Domain] = &[];
 
     /// The step keeps the Transactions table's width, which it shows in place of.
-    fn min_width() -> Option<gpui::Pixels> {
-        Some(crate::transactions::view::table::min_width())
+    fn layout() -> PageLayout {
+        PageLayout {
+            min_width: Some(crate::transactions::view::table::min_width()),
+            ..PageLayout::default()
+        }
     }
 
     fn with_router<R>(
@@ -102,8 +105,8 @@ impl PageView for ImportStepPresenter {
     }
 
     /// A step left open when Transactions was left doesn't come back with it.
-    fn entered() -> Option<ImportEvent> {
-        Some(ImportEvent::Leave)
+    fn cued(cue: PageCue) -> Option<ImportEvent> {
+        matches!(cue, PageCue::Entered).then_some(ImportEvent::Leave)
     }
 
     fn render(

@@ -13,7 +13,7 @@ use crate::payees::router::PageRouter;
 use crate::payees::{PayeesPage, PayeesRoutes, SettingsPayeesSnapshot};
 use crate::settings::SettingsPage;
 use crate::settings::snapshot::PageSnapshot;
-use crate::shell::view::module_page::{PageDraw, PageView, SettingsPageView};
+use crate::shell::view::module_page::{PageCue, PageDraw, PageView, SettingsPageView};
 use crate::shell::view::statusline::PageStatus;
 use crate::view::event::Reveal;
 
@@ -57,9 +57,9 @@ impl PageView for PayeesPagePresenter {
     }
 
     /// A Documents Payee link (the root Router's `Reveal::Payee`) selects its Payee.
-    fn reveal(reveal: Reveal) -> Option<PayeesPageEvent> {
-        match reveal {
-            Reveal::Payee(id) => Some(PayeesPageEvent::Reveal(id)),
+    fn cued(cue: PageCue) -> Option<PayeesPageEvent> {
+        match cue {
+            PageCue::Reveal(Reveal::Payee(id)) => Some(PayeesPageEvent::Reveal(id)),
             _ => None,
         }
     }

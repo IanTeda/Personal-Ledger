@@ -20,9 +20,9 @@ use crate::{
     settings::pages::{LedgerPages, PageFrame, SettingsPages, SettingsSetup},
     settings::{SettingsFocus, SettingsPage},
     shell::view::{
-        module_page::{ModulePage, SettingsPageView},
+        module_page::{ModulePage, PageCue, PageLayout, SettingsPageView},
         page_clicks::PresenterPage,
-        page_handle::{PageBinding, PageHandle, PageKey, PageLayout, PageSignals},
+        page_handle::{PageBinding, PageHandle, PageKey, PageSignals},
         statusline::{PageStatus, StatusRight},
         window_size::WindowSize,
     },
@@ -286,7 +286,7 @@ impl SettingsView {
     pub(super) fn sync_frame(&self, cx: &mut App) {
         let frame = self.frame_space();
         for page in self.pages.all() {
-            page.set_frame(frame, cx);
+            page.cue(PageCue::Framed(frame), cx);
         }
     }
 
@@ -361,7 +361,7 @@ impl SettingsView {
         let page_key = match self.focused_page() {
             Some(page) => {
                 // Only the page offered the key need act on the layout on screen.
-                page.set_frame(self.frame_space(), cx);
+                page.cue(PageCue::Framed(self.frame_space()), cx);
                 page.module_key(chord, cx)
             }
             None => PageKey::Declined,
@@ -385,7 +385,7 @@ impl SettingsView {
     ) -> bool {
         let frame = self.frame_space();
         let taken = self.pages.get(section).is_some_and(|page| {
-            page.set_frame(frame, cx);
+            page.cue(PageCue::Framed(frame), cx);
             page.module_command(command, cx)
         });
         if taken {
@@ -424,7 +424,7 @@ impl SettingsView {
 
     /// A movement the Shell fell back on, which no keymap took: the frame's own. The index (on
     /// show, or docked with the keyboard) steps through the pages as the frame's own keys do, and a
-    /// page the frame scrolls (`PageView::FRAME_SCROLLS`) scrolls the body. A page with a
+    /// page the frame scrolls (`PageLayout::frame_scrolls`) scrolls the body. A page with a
     /// selection of its own binds every movement it takes, so one it declined does nothing.
     pub fn apply_movement(&mut self, movement: Movement, cx: &mut Context<'_, Self>) {
         if let Some(page) = self.focused_page()
@@ -485,7 +485,7 @@ impl SettingsView {
             return;
         };
         if self.open_page(page, cx) {
-            self.selected_page().reveal(reveal, cx);
+            self.selected_page().cue(PageCue::Reveal(reveal), cx);
         }
     }
 
@@ -680,8 +680,18 @@ impl PageHandle for Entity<SettingsView> {
         self.update(cx, |view, cx| view.start_search(cx))
     }
 
-    fn on_enter(&self, cx: &mut App) {
-        self.update(cx, |view, cx| view.on_enter(cx));
+    /// Entering lands on the index; a reveal opens the page that owns the record; the focus is
+    /// the View zone's; the frame tells only the Window Size, since the View measures its own
+    /// body, which it tells its pages. A Ledger change reaches each page through its own
+    /// subscription, so the frame has nothing to do on one.
+    fn cue(&self, cue: PageCue, cx: &mut App) {
+        self.update(cx, |view, cx| match cue {
+            PageCue::Entered => view.on_enter(cx),
+            PageCue::Reveal(reveal) => view.reveal(reveal, cx),
+            PageCue::Focused(focused) => view.set_zone_focused(focused),
+            PageCue::Framed(frame) => view.set_window_size(frame.window_size, cx),
+            PageCue::LedgerChanged => {}
+        });
     }
 
     /// The frame's keys and `back` chord, then every page built.
@@ -706,20 +716,6 @@ impl PageHandle for Entity<SettingsView> {
             keys.extend(page.keys(cx));
         }
         keys
-    }
-
-    fn reveal(&self, reveal: Reveal, cx: &mut App) {
-        self.update(cx, |view, cx| view.reveal(reveal, cx));
-    }
-
-    /// Whether the View zone has focus.
-    fn set_focused(&self, focused: bool, cx: &mut App) {
-        self.update(cx, |view, _| view.set_zone_focused(focused));
-    }
-
-    /// The Window Size only: the View measures its own body, which it tells its pages.
-    fn set_frame(&self, frame: PageFrame, cx: &mut App) {
-        self.update(cx, |view, cx| view.set_window_size(frame.window_size, cx));
     }
 
     fn page_status(&self, cx: &App) -> Option<PageStatus> {

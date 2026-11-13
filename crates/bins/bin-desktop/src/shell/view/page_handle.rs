@@ -12,16 +12,14 @@
 
 use std::rc::Rc;
 
-use gpui::{
-    AnyElement, AnyView, App, Context, Entity, EventEmitter, Keystroke, Pixels, Subscription,
-};
+use gpui::{AnyElement, AnyView, App, Context, Entity, EventEmitter, Keystroke, Subscription};
 use lib_viper::display::PageDisplay;
 use lib_viper::keymap::{KeyBindingConfig, KeyBound, Keymap, Palette};
 
-use super::module_page::{ModulePage, PageView};
+use super::module_page::{ModulePage, PageCue, PageLayout, PageView};
 use super::statusline::PageStatus;
-use crate::settings::pages::{PageFrame, PageRowClicked};
-use crate::view::event::{Reveal, ViewEvent};
+use crate::settings::pages::PageRowClicked;
+use crate::view::event::ViewEvent;
 use crate::view::help::HelpGroup;
 
 /// What a page made of a key offered to its module keymap.
@@ -61,20 +59,6 @@ impl From<KeyBound<'_>> for PageBinding {
             palette: bound.palette,
         }
     }
-}
-
-/// How a host lays a page out.
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
-pub struct PageLayout {
-    /// The page fills the body's height and scrolls inside itself (Tracing's log box), rather than
-    /// the body scrolling the whole page.
-    pub fills_page: bool,
-    /// The narrowest the page lays out at, when it has content that must not squeeze (the
-    /// Transactions table); a View area narrower than this scrolls sideways (ADR-0042).
-    pub min_width: Option<Pixels>,
-    /// A movement the page's keymap didn't take falls back to the Settings frame, which scrolls
-    /// the body with it.
-    pub frame_scrolls: bool,
 }
 
 /// What a host does with one of its page's [`ViewEvent`]s.
@@ -149,21 +133,16 @@ pub trait PageHandle {
     fn escape(&self, cx: &mut App) -> bool;
     /// `/`. `false` when the page has no Search, leaving `/` inert.
     fn start_search(&self, cx: &mut App) -> bool;
-    /// The page has just become the destination.
-    fn on_enter(&self, cx: &mut App);
+    /// What the host tells the page: it has become the destination, the space it is drawn in, a
+    /// record handed off to show, whether it has the keyboard. The space and the focus are told
+    /// outside any input, which can be every draw.
+    fn cue(&self, cue: PageCue, cx: &mut App);
     /// `[keybindings]` changed: the page builds its keys afresh under `keys`.
     fn rebind(&self, keys: &KeyBindingConfig, cx: &mut App);
     /// The Display Preferences changed, or a Ledger opened.
     fn display(&self, display: PageDisplay, cx: &mut App);
     /// Every key the page holds now, each with its chord.
     fn keys(&self, cx: &App) -> Vec<PageBinding>;
-    /// Shows a record another View handed off.
-    fn reveal(&self, reveal: Reveal, cx: &mut App);
-    /// Whether the page has the keyboard, as the host draws it and as focus moves, which can be
-    /// every draw.
-    fn set_focused(&self, focused: bool, cx: &mut App);
-    /// The space the page is drawn in, told outside any input, which can be every draw.
-    fn set_frame(&self, frame: PageFrame, cx: &mut App);
     /// The status line's hints and right-hand text for the page's own state; `None` leaves the
     /// Shell's strip and the Ledger file.
     fn page_status(&self, cx: &App) -> Option<PageStatus>;
@@ -206,8 +185,9 @@ impl<P: PageView> PageHandle for Entity<ModulePage<P>> {
         self.update(cx, |page, cx| page.start_search(cx))
     }
 
-    fn on_enter(&self, cx: &mut App) {
-        self.update(cx, |page, cx| page.on_enter(cx));
+    /// Handed on as `PageView::cued`'s event.
+    fn cue(&self, cue: PageCue, cx: &mut App) {
+        self.update(cx, |page, cx| page.cued(cue, cx));
     }
 
     fn rebind(&self, keys: &KeyBindingConfig, cx: &mut App) {
@@ -232,19 +212,6 @@ impl<P: PageView> PageHandle for Entity<ModulePage<P>> {
             .collect()
     }
 
-    fn reveal(&self, reveal: Reveal, cx: &mut App) {
-        self.update(cx, |page, cx| page.reveal(reveal, cx));
-    }
-
-    fn set_focused(&self, focused: bool, cx: &mut App) {
-        self.update(cx, |page, cx| page.set_focused(focused, cx));
-    }
-
-    /// Handed on as `PageView::framed`'s event.
-    fn set_frame(&self, frame: PageFrame, cx: &mut App) {
-        self.update(cx, |page, cx| page.framed(frame, cx));
-    }
-
     /// An empty status (the Dashboard words no hints of its own) leaves the Shell's strip.
     fn page_status(&self, cx: &App) -> Option<PageStatus> {
         let status = self.read(cx).page_status();
@@ -264,11 +231,7 @@ impl<P: PageView> PageHandle for Entity<ModulePage<P>> {
     }
 
     fn layout(&self) -> PageLayout {
-        PageLayout {
-            fills_page: P::FILLS_PAGE,
-            min_width: P::min_width(),
-            frame_scrolls: P::FRAME_SCROLLS,
-        }
+        P::layout()
     }
 
     fn view(&self) -> AnyView {

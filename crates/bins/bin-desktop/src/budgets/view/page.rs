@@ -20,7 +20,7 @@ use lib_locale::format::upper;
 use super::{history, plan, progress};
 use crate::budgets::router::{BudgetsRoutes, PageRouter};
 use crate::navigation::nav::Noun;
-use crate::shell::view::module_page::{ModulePage, PageDraw, PageView};
+use crate::shell::view::module_page::{ModulePage, PageCue, PageDraw, PageView};
 use crate::shell::view::page_clicks::PageClicks;
 use crate::shell::view::statusline::PageStatus;
 use crate::theme::color;
@@ -103,8 +103,8 @@ impl PageView for BudgetsPagePresenter {
     }
 
     /// An edit left open when the page was left doesn't come back with it.
-    fn entered() -> Option<BudgetsPageEvent> {
-        Some(BudgetsPageEvent::Entered)
+    fn cued(cue: PageCue) -> Option<BudgetsPageEvent> {
+        matches!(cue, PageCue::Entered).then_some(BudgetsPageEvent::Entered)
     }
 
     fn render(

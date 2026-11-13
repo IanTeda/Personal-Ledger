@@ -52,20 +52,17 @@ pub trait PageView: PagePresenter + Sized + 'static {
     /// The Ledger domains whose change repaints the page: its own, and any its view model reads.
     const REPAINTS: &'static [Domain];
 
-    /// Whether a Settings page fills the body's height and scrolls inside itself (Tracing's log
-    /// box) rather than the body scrolling the whole page.
-    const FILLS_PAGE: bool = false;
+    /// How a host lays the page out. A function, not a `const`: the Transactions table's width
+    /// sums `Pixels`, which a `const` can't.
+    fn layout() -> PageLayout {
+        PageLayout::default()
+    }
 
-    /// Whether a movement the page's keymap didn't take falls back to the Settings frame, which
-    /// scrolls the body with it. A page with a selection of its own binds every movement it takes,
-    /// so leaves this `false` and a movement it declines does nothing; General, Ledger and the info
-    /// pages have none.
-    const FRAME_SCROLLS: bool = false;
-
-    /// The narrowest the page lays out at, when it has content that must not squeeze (the
-    /// Transactions table, whose width the Import step keeps). A View area narrower than this
-    /// scrolls sideways (ADR-0042).
-    fn min_width() -> Option<Pixels> {
+    /// The Presenter's event for what the host tells the page, `None` for a cue the page does
+    /// nothing on. The event goes through the Presenter's `takes`, then is handled with the
+    /// Router as any other, so a value it already holds (a focus, a grid width told every draw)
+    /// redraws nothing.
+    fn cued(_cue: PageCue) -> Option<Self::Event> {
         None
     }
 
@@ -100,6 +97,9 @@ pub trait PageView: PagePresenter + Sized + 'static {
     /// What the page follows besides the Ledger, built over `setup` as the page is: a source that
     /// signals outside any input (Tracing's log capture), each signal sent as the page's own event
     /// through [`ModulePage::send`]. The page keeps the subscriptions for its life. None by default.
+    ///
+    /// A hook of its own, not a [`PageCue`]: it builds subscriptions once, at construction, rather
+    /// than translating a value the host tells the page.
     fn subscribe(
         _setup: &Self::Setup,
         _cx: &mut Context<'_, ModulePage<Self>>,
@@ -107,31 +107,15 @@ pub trait PageView: PagePresenter + Sized + 'static {
         Vec::new()
     }
 
-    /// The event the page is sent as it becomes the destination, after its widget state is reset.
-    fn entered() -> Option<Self::Event> {
-        None
-    }
-
-    /// The event giving the page the space it is drawn in (Display's grid columns), sent as the
-    /// Settings View hands it its frame, which can be every draw. It is layout, not an input, so
-    /// nothing commits; the Presenter declines a value it already has, so the page redraws only on
-    /// a change. `None` for a page the frame changes nothing on.
-    fn framed(_frame: PageFrame) -> Option<Self::Event> {
-        None
-    }
-
     /// Whether a key that sent `event` goes on to the Shell after the page handled it, which then
     /// does what the key does there: the Colour Theme grid's focus `tab` and half-page moves leave
     /// the grid, then move the focus or scroll. `false` for every event of a page that keeps the
     /// keys it takes.
+    ///
+    /// A hook of its own, not a [`PageCue`]: it is a query about a key the page already took, not
+    /// a fact the host tells it.
     fn passes_on(_event: &Self::Event) -> bool {
         false
-    }
-
-    /// The event the page is sent when a domain in [`Self::REPAINTS`] changes, ahead of its
-    /// repaint, for a Presenter that keeps what it read until told; `None` only repaints.
-    fn ledger_changed() -> Option<Self::Event> {
-        None
     }
 
     /// The page's group of keys for the `?` Help Dialog, `None` for a page that adds none.
@@ -157,6 +141,8 @@ pub trait PageView: PagePresenter + Sized + 'static {
     }
 
     /// A pane drawn at the View's right edge, beside the page.
+    ///
+    /// A hook of its own, not a [`PageCue`]: it draws, rather than handing the Presenter an event.
     fn side_pane(
         _view: &Self::ViewModel,
         _clicks: &PageClicks<ModulePage<Self>>,
@@ -165,28 +151,60 @@ pub trait PageView: PagePresenter + Sized + 'static {
         None
     }
 
-    /// The event showing a record another View handed off, `None` for a record the page doesn't
-    /// show.
-    fn reveal(_reveal: Reveal) -> Option<Self::Event> {
-        None
-    }
-
     /// The event `Esc` sends to close what the page has open (a row menu), `None` while it has
     /// nothing open, which leaves `Esc` to Settings: it steps back to the index.
+    ///
+    /// A hook of its own, not a [`PageCue`]: it reads the view model to choose its event.
     fn escape(_view: &Self::ViewModel) -> Option<Self::Event> {
         None
     }
 
-    /// Told whether the page, not Settings' index, has the keyboard, as the View draws it and as
-    /// focus moves, which can be every draw. Returns whether the Presenter's view model changed, so
-    /// the page redraws only then (General puts the keyboard on its first control).
-    fn focus_changed(&mut self, _focused: bool) -> bool {
-        false
-    }
-
     /// Records where the pointer opened a row's menu, before its event is sent. The position is
     /// the View's to draw the menu at; the Presenter never sees it.
+    ///
+    /// A hook of its own, not a [`PageCue`]: it writes widget state, which the Presenter never
+    /// sees, rather than handing the Presenter an event.
     fn menu_at(_widgets: &mut Self::Widgets, _at: Point<Pixels>) {}
+}
+
+/// What a host tells a page, which [`PageView::cued`] turns into the Presenter's own event. A cue
+/// runs from the host to the page, the other way to the Presenter's `<Domain>PageEvent`.
+#[derive(Debug, Clone, Copy)]
+pub enum PageCue {
+    /// The page has just become the destination, its widget state reset. Not an input of its own:
+    /// entering writes nothing, and the navigation that entered the page is the input, or follows
+    /// a hand-off's, whose commit has landed.
+    Entered,
+    /// A domain in [`PageView::REPAINTS`] changed, ahead of the page's repaint, for a Presenter
+    /// that keeps what it read until told. Sent only by [`ModulePage`]'s own Announcer
+    /// subscription, never by a host; a page that translates it to `None` only repaints.
+    LedgerChanged,
+    /// The space the page is drawn in (Display's grid columns), told as the Settings View hands
+    /// it its frame, which can be every draw. Layout, not an input, so nothing commits.
+    Framed(PageFrame),
+    /// A record another View handed off, to show.
+    Reveal(Reveal),
+    /// Whether the page has the keyboard, told as the host draws it and as focus moves in or out,
+    /// which can be every draw: the View zone for a main View, the page rather than the index for
+    /// a Settings page.
+    Focused(bool),
+}
+
+/// How a host lays a page out, [`PageView::layout`].
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct PageLayout {
+    /// The page fills the body's height and scrolls inside itself (Tracing's log box), rather than
+    /// the body scrolling the whole page.
+    pub fills_page: bool,
+    /// The narrowest the page lays out at, when it has content that must not squeeze (the
+    /// Transactions table, whose width the Import step keeps); a View area narrower than this
+    /// scrolls sideways (ADR-0042).
+    pub min_width: Option<Pixels>,
+    /// A movement the page's keymap didn't take falls back to the Settings frame, which scrolls
+    /// the body with it. A page with a selection of its own binds every movement it takes, so
+    /// leaves this `false` and a movement it declines does nothing; General, Ledger and the info
+    /// pages have none.
+    pub frame_scrolls: bool,
 }
 
 /// A Settings page's [`PageView`]: its place in the index, which the Settings View finds the page
@@ -228,7 +246,7 @@ impl<P: PageView> ModulePage<P> {
         announcer: &Entity<Announcer>,
         cx: &mut Context<'_, Self>,
     ) -> Self {
-        let mut subscriptions: Vec<Subscription> = match P::ledger_changed() {
+        let mut subscriptions: Vec<Subscription> = match P::cued(PageCue::LedgerChanged) {
             None => P::REPAINTS
                 .iter()
                 .map(|domain| notify_on(announcer, *domain, cx))
@@ -238,11 +256,8 @@ impl<P: PageView> ModulePage<P> {
             Some(_) => vec![cx.subscribe(
                 announcer,
                 |page: &mut Self, _, event: &LedgerChanged, cx| {
-                    if P::REPAINTS.iter().any(|domain| event.what.contains(domain))
-                        && let Some(changed) = P::ledger_changed()
-                        && let Some(followed) = page.handle(changed, cx)
-                    {
-                        cx.emit(followed);
+                    if P::REPAINTS.iter().any(|domain| event.what.contains(domain)) {
+                        page.cued(PageCue::LedgerChanged, cx);
                     }
                 },
             )],
@@ -262,7 +277,7 @@ impl<P: PageView> ModulePage<P> {
     /// [`PageView::subscribe`]'s sources.
     pub fn detached(presenter: P, setup: P::Setup, cx: &mut Context<'_, Self>) -> Self {
         debug_assert!(
-            P::REPAINTS.is_empty() && P::ledger_changed().is_none(),
+            P::REPAINTS.is_empty() && P::cued(PageCue::LedgerChanged).is_none(),
             "a detached page has no domain to repaint on"
         );
         let subscriptions = P::subscribe(&setup, cx);
@@ -349,13 +364,6 @@ impl<P: PageView> ModulePage<P> {
         taken
     }
 
-    /// Shows a record another View handed off, if the page shows it.
-    pub fn reveal(&mut self, reveal: Reveal, cx: &mut Context<'_, Self>) {
-        if let Some(event) = P::reveal(reveal) {
-            self.send(event, cx);
-        }
-    }
-
     /// `Esc` on the page: closes what [`PageView::escape`] names, if the page has it open.
     pub fn escape(&mut self, cx: &mut Context<'_, Self>) -> bool {
         let event = P::escape(&self.view_model());
@@ -371,29 +379,35 @@ impl<P: PageView> ModulePage<P> {
         P::help(&self.view_model())
     }
 
-    /// Hands the Presenter [`PageView::framed`]'s event for `frame`, if it takes it. Not an input:
-    /// the frame is layout, and it is told outside any input (as the Settings View draws).
-    pub fn framed(&mut self, frame: PageFrame, cx: &mut Context<'_, Self>) {
-        if let Some(event) = P::framed(frame).filter(|event| self.presenter.takes(event))
-            && let Some(followed) = self.handle(event, cx)
-        {
-            cx.emit(followed);
-        }
-    }
-
-    /// The page has just become the destination: its widget state starts afresh (scrolled to the
-    /// top), and the Presenter is handed [`PageView::entered`]. Not an input of its own: entering
-    /// writes nothing, and the navigation that entered the page is the input, or follows a
-    /// hand-off's, whose commit has landed.
-    pub fn on_enter(&mut self, cx: &mut Context<'_, Self>) {
-        self.widgets = P::Widgets::default();
-        match P::entered() {
+    /// What the host tells the page, handed to the Presenter as [`PageView::cued`]'s event if it
+    /// takes it. On [`PageCue::Entered`] the widget state starts afresh (scrolled to the top) and
+    /// the page redraws, even when it has no event for it; on [`PageCue::Focused`] the page notes
+    /// the focus its own rings follow. A [`PageCue::Reveal`] is sent as an input, joining the
+    /// hand-off's; the others are told outside any input and commit nothing.
+    pub fn cued(&mut self, cue: PageCue, cx: &mut Context<'_, Self>) {
+        // The host's half first: what the page keeps of the cue itself, whether the cue is an
+        // input, and whether it redraws with no event.
+        let (input, redraws) = match cue {
+            PageCue::Entered => {
+                self.widgets = P::Widgets::default();
+                (false, true)
+            }
+            PageCue::Focused(focused) => {
+                self.page_focused = focused;
+                (false, false)
+            }
+            PageCue::Reveal(_) => (true, false),
+            PageCue::LedgerChanged | PageCue::Framed(_) => (false, false),
+        };
+        match P::cued(cue).filter(|event| self.presenter.takes(event)) {
+            Some(event) if input => self.send(event, cx),
             Some(event) => {
                 if let Some(followed) = self.handle(event, cx) {
                     cx.emit(followed);
                 }
             }
-            None => cx.notify(),
+            None if redraws => cx.notify(),
+            None => {}
         }
     }
 
@@ -588,16 +602,6 @@ impl<P: PageView> PresenterPage<P::Event> for ModulePage<P> {
 
 /// What a host reads of the page beyond its keys, through `PageHandle`.
 impl<P: PageView> ModulePage<P> {
-    /// Told whether the page has the keyboard, as its host draws it and as focus moves in or out:
-    /// the View zone for a main View, the page rather than the index for a Settings page. The focus
-    /// rings the page draws within itself follow it.
-    pub fn set_focused(&mut self, focused: bool, cx: &mut Context<'_, Self>) {
-        self.page_focused = focused;
-        if self.presenter.focus_changed(focused) {
-            cx.notify();
-        }
-    }
-
     /// A Settings page heading's right-aligned meta, [`PageView::heading_meta`].
     pub fn heading_meta(&self, cx: &App) -> Option<AnyElement> {
         P::heading_meta(&self.view_model(), cx)

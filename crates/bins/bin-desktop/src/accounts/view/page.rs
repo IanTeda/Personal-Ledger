@@ -13,7 +13,7 @@ use crate::accounts::router::PageRouter;
 use crate::accounts::{AccountsPage, AccountsRoutes, SettingsAccountsSnapshot};
 use crate::settings::SettingsPage;
 use crate::settings::snapshot::PageSnapshot;
-use crate::shell::view::module_page::{PageDraw, PageView, SettingsPageView};
+use crate::shell::view::module_page::{PageCue, PageDraw, PageView, SettingsPageView};
 use crate::shell::view::statusline::PageStatus;
 use crate::view::event::Reveal;
 
@@ -56,9 +56,9 @@ impl PageView for AccountsPagePresenter {
     }
 
     /// Selects an Account another View handed off.
-    fn reveal(reveal: Reveal) -> Option<AccountsPageEvent> {
-        match reveal {
-            Reveal::Account(id) => Some(AccountsPageEvent::Reveal(id)),
+    fn cued(cue: PageCue) -> Option<AccountsPageEvent> {
+        match cue {
+            PageCue::Reveal(Reveal::Account(id)) => Some(AccountsPageEvent::Reveal(id)),
             _ => None,
         }
     }

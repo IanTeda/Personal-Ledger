@@ -14,14 +14,16 @@ use std::rc::Rc;
 use gpui::{AnyElement, App, Context, Entity, Window};
 use lib_database::Domain;
 use lib_database::{LedgerPorts, LedgerPreferencesAdapter, StoredSettingsReads};
-use lib_settings::{LedgerPresenter, LedgerSetup, LedgerViewModel};
+use lib_settings::{LedgerEvent, LedgerPresenter, LedgerSetup, LedgerViewModel};
 use lib_viper::keymap::KeyBindingConfig;
 
 use crate::announcer::Announcer;
 use crate::settings::SettingsPage;
 use crate::settings::router::LedgerRouter;
 use crate::settings::snapshot::PageSnapshot;
-use crate::shell::view::module_page::{ModulePage, PageDraw, PageView, SettingsPageView};
+use crate::shell::view::module_page::{
+    ModulePage, PageCue, PageDraw, PageLayout, PageView, SettingsPageView,
+};
 use crate::shell::view::statusline::{PageStatus, StatusRight};
 
 /// The Ledger page: the Presenter, over the Units store, in the generic page Entity.
@@ -70,7 +72,12 @@ impl PageView for LedgerPresenter {
     const REPAINTS: &'static [Domain] = &[Domain::Units];
 
     /// With the keyboard off the select, the frame scrolls the page.
-    const FRAME_SCROLLS: bool = true;
+    fn layout() -> PageLayout {
+        PageLayout {
+            frame_scrolls: true,
+            ..PageLayout::default()
+        }
+    }
 
     fn with_router<R>(
         presenter: &mut Self,
@@ -98,8 +105,12 @@ impl PageView for LedgerPresenter {
         }
     }
 
-    fn focus_changed(&mut self, focused: bool) -> bool {
-        self.set_page_focused(focused)
+    /// Focus on the page draws the Base unit select in the accent, and lets `j`/`k` step it.
+    fn cued(cue: PageCue) -> Option<LedgerEvent> {
+        match cue {
+            PageCue::Focused(focused) => Some(LedgerEvent::Focused(focused)),
+            _ => None,
+        }
     }
 }
 

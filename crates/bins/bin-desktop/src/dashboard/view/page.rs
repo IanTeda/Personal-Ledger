@@ -14,7 +14,7 @@ use lib_shell::{Movement, ShellCommand};
 use super::content;
 use crate::announcer::Announcer;
 use crate::dashboard::router::PageRouter;
-use crate::shell::view::module_page::{ModulePage, PageDraw, PageView};
+use crate::shell::view::module_page::{ModulePage, PageCue, PageDraw, PageView};
 use crate::shell::view::statusline::PageStatus;
 use crate::view::event::ViewEvent;
 use crate::view::scroll_by_movement;
@@ -100,14 +100,14 @@ impl PageView for DashboardPresenter {
         None
     }
 
-    /// A Search left open when the page was left doesn't come back with it.
-    fn entered() -> Option<DashboardEvent> {
-        Some(DashboardEvent::EndSearch)
-    }
-
-    /// The kept view model is stale once a domain it reads changes.
-    fn ledger_changed() -> Option<DashboardEvent> {
-        Some(DashboardEvent::LedgerChanged)
+    /// A Search left open when the page was left doesn't come back with it, and the kept view
+    /// model is stale once a domain it reads changes.
+    fn cued(cue: PageCue) -> Option<DashboardEvent> {
+        match cue {
+            PageCue::Entered => Some(DashboardEvent::EndSearch),
+            PageCue::LedgerChanged => Some(DashboardEvent::LedgerChanged),
+            PageCue::Framed(_) | PageCue::Reveal(_) | PageCue::Focused(_) => None,
+        }
     }
 
     fn render(

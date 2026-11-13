@@ -23,8 +23,7 @@ use lib_units::presenter::{
 };
 
 use crate::settings::SettingsPage;
-use crate::settings::pages::PageFrame;
-use crate::shell::view::module_page::{PageDraw, PageView, SettingsPageView};
+use crate::shell::view::module_page::{PageCue, PageDraw, PageView, SettingsPageView};
 use crate::shell::view::page_clicks::PageClicks;
 use crate::shell::view::statusline::{PageStatus, StatusRight};
 use crate::shell::view::window_size::WindowSize;
@@ -58,10 +57,13 @@ impl PageView for UnitsPagePresenter {
     }
 
     /// X-Large docks the detail pane, which the Presenter takes only as a change.
-    fn framed(frame: PageFrame) -> Option<UnitsPageEvent> {
-        Some(UnitsPageEvent::SetDocked(
-            frame.window_size == WindowSize::XLarge,
-        ))
+    fn cued(cue: PageCue) -> Option<UnitsPageEvent> {
+        match cue {
+            PageCue::Framed(frame) => Some(UnitsPageEvent::SetDocked(
+                frame.window_size == WindowSize::XLarge,
+            )),
+            _ => None,
+        }
     }
 
     fn render(

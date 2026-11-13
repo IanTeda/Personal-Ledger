@@ -100,6 +100,10 @@ pub enum GeneralEvent {
     PressTest,
     /// A click on **Change…**, wherever the keyboard is.
     PressChange,
+    /// Whether the page, not Settings' index, has the keyboard, told as the frame draws the page,
+    /// which can be every draw. Arriving puts the keyboard on On start, and leaving takes it off
+    /// the fields; a value the Presenter already holds is not taken.
+    Focused(bool),
 }
 
 impl GeneralEvent {
@@ -112,7 +116,11 @@ impl GeneralEvent {
             Self::CloseList => FormInput::CloseList,
             Self::Choose { field, index } => FormInput::Choose { field, index },
             Self::Press(field) => FormInput::Press(field),
-            Self::SetToasts(_) | Self::TestToasts | Self::PressTest | Self::PressChange => {
+            Self::SetToasts(_)
+            | Self::TestToasts
+            | Self::PressTest
+            | Self::PressChange
+            | Self::Focused(_) => {
                 return None;
             }
         })
@@ -328,18 +336,6 @@ impl GeneralPresenter {
         self.last_ledger = last_ledger;
     }
 
-    /// Whether the page, not Settings' index, has the keyboard. Arriving puts it on On start, and
-    /// leaving takes it off the fields; only a change moves it. Answers whether it changed, so
-    /// the View redraws only then: the frame tells the page on every draw.
-    pub fn set_page_focused(&mut self, focused: bool) -> bool {
-        if focused == self.page_focused {
-            return false;
-        }
-        self.page_focused = focused;
-        self.form.set_focused(focused);
-        true
-    }
-
     /// The settings the fields show, as start-up read them or as the page last wrote them.
     pub fn settings(&self) -> GeneralSettings {
         let mut settings = GeneralSettings::default();
@@ -458,6 +454,11 @@ impl Presenter for GeneralPresenter {
         if !self.takes(&event) {
             return;
         }
+        if let GeneralEvent::Focused(focused) = event {
+            self.page_focused = focused;
+            self.form.set_focused(focused);
+            return;
+        }
         let Some(input) = event.form_input() else {
             // As any input the form doesn't take, General's own closes an open list first.
             self.form.close_list();
@@ -527,9 +528,11 @@ impl Presenter for GeneralPresenter {
     }
 
     /// Whether General takes `event` as things stand, so a key it declines goes on to the frame:
-    /// the form's keys as the form says, and `t` only on Toasts with no list open.
+    /// the form's keys as the form says, and `t` only on Toasts with no list open. A focus it
+    /// already holds is declined, so the page redraws only on a change.
     fn takes(&self, event: &GeneralEvent) -> bool {
         match event {
+            GeneralEvent::Focused(focused) => *focused != self.page_focused,
             GeneralEvent::TestToasts => {
                 !self.form.list_open() && self.form.focused() == Some(GeneralField::Toasts)
             }
@@ -1009,9 +1012,26 @@ mod tests {
     }
 
     #[test]
+    fn a_focus_it_already_has_is_not_taken() {
+        let (_, mut general) = writable();
+
+        assert!(!general.takes(&GeneralEvent::Focused(false)));
+        assert!(general.takes(&GeneralEvent::Focused(true)));
+        send(&mut general, [GeneralEvent::Focused(true)]);
+        assert!(!general.takes(&GeneralEvent::Focused(true)));
+        assert_eq!(
+            general.view_model().fields.focused(),
+            Some(GeneralField::OnStart)
+        );
+
+        send(&mut general, [GeneralEvent::Focused(false)]);
+        assert_eq!(general.view_model().fields.focused(), None);
+    }
+
+    #[test]
     fn t_on_toasts_asks_for_the_test_and_touches_no_setting() {
         let (device, mut general) = writable();
-        general.set_page_focused(true);
+        send(&mut general, [GeneralEvent::Focused(true)]);
         assert!(!general.takes(&GeneralEvent::TestToasts), "on On start");
         let router = send(
             &mut general,
@@ -1040,7 +1060,7 @@ mod tests {
     #[test]
     fn on_toasts_the_hints_read_on_off_and_test() {
         let (_, mut general) = writable();
-        general.set_page_focused(true);
+        send(&mut general, [GeneralEvent::Focused(true)]);
         send(
             &mut general,
             std::iter::repeat_n(GeneralEvent::Move(Step::Next), 2),
@@ -1168,7 +1188,7 @@ mod tests {
     #[test]
     fn enter_on_the_data_folder_and_change_ask_for_the_picker() {
         let mut general = general_on(with_data_folder(InMemoryDeviceConfiguration::writable()));
-        general.set_page_focused(true);
+        send(&mut general, [GeneralEvent::Focused(true)]);
         send(
             &mut general,
             std::iter::repeat_n(GeneralEvent::Move(Step::Next), 4),

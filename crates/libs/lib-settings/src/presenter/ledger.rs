@@ -22,6 +22,9 @@ pub enum LedgerEvent {
     Step(Step),
     /// A click on a Unit of the select.
     ChooseBaseUnit(UnitId),
+    /// Whether the page, not Settings' index, has the keyboard, told as the frame draws the page,
+    /// which can be every draw: a value the Presenter already holds is not taken.
+    Focused(bool),
 }
 
 /// What the Client hands Settings › Ledger as it builds it.
@@ -94,14 +97,6 @@ impl LedgerPresenter {
         }
     }
 
-    /// Whether the page, not Settings' index, has the keyboard. Answers whether that changed, so
-    /// the View redraws only then: the frame tells the page on every draw.
-    pub fn set_page_focused(&mut self, focused: bool) -> bool {
-        let changed = focused != self.page_focused;
-        self.page_focused = focused;
-        changed
-    }
-
     /// A refusal means the Unit was removed or deactivated under the select, which repaints
     /// without it, so there is nothing to report.
     fn set_base_unit(&mut self, id: UnitId, router: &mut dyn LedgerRouter) {
@@ -138,6 +133,7 @@ impl Presenter for LedgerPresenter {
                 }
             }
             LedgerEvent::ChooseBaseUnit(id) => self.set_base_unit(id, router),
+            LedgerEvent::Focused(focused) => self.page_focused = focused,
         }
     }
 
@@ -186,11 +182,13 @@ impl Presenter for LedgerPresenter {
     }
 
     /// Whether the Presenter takes `event` as things stand, so a key it declines goes on to the
-    /// frame: a step only while the page has the keyboard.
+    /// frame: a step only while the page has the keyboard. A focus it already holds is declined,
+    /// so the page redraws only on a change.
     fn takes(&self, event: &LedgerEvent) -> bool {
         match event {
             LedgerEvent::Step(_) => self.page_focused,
             LedgerEvent::ChooseBaseUnit(_) => true,
+            LedgerEvent::Focused(focused) => *focused != self.page_focused,
         }
     }
 }
@@ -229,7 +227,7 @@ mod tests {
             },
             &KeyBindingConfig::default(),
         );
-        presenter.set_page_focused(true);
+        presenter.handle(LedgerEvent::Focused(true), &mut RecordingRouter::default());
         presenter
     }
 
@@ -271,10 +269,22 @@ mod tests {
     }
 
     #[test]
+    fn a_focus_it_already_has_is_not_taken() {
+        let units = InMemoryLedgerUnits::sample();
+        let mut presenter = presenter(&units);
+
+        assert!(!presenter.takes(&LedgerEvent::Focused(true)));
+        assert!(presenter.view_model().base_unit.focused);
+        assert!(presenter.takes(&LedgerEvent::Focused(false)));
+        presenter.handle(LedgerEvent::Focused(false), &mut RecordingRouter::default());
+        assert!(!presenter.view_model().base_unit.focused);
+    }
+
+    #[test]
     fn a_step_is_left_to_the_frame_while_the_index_has_the_keyboard() {
         let units = InMemoryLedgerUnits::sample();
         let mut presenter = presenter(&units);
-        presenter.set_page_focused(false);
+        presenter.handle(LedgerEvent::Focused(false), &mut RecordingRouter::default());
         let mut router = RecordingRouter::default();
 
         assert!(!presenter.takes(&LedgerEvent::Step(Step::Next)));

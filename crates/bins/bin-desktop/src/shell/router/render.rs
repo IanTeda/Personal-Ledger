@@ -4,6 +4,7 @@
 use super::Root;
 use crate::budgets::view::switcher::SwitcherWidgets;
 use crate::shell::view::dialog_entity::ModuleDialog;
+use crate::shell::view::module_page::PageCue;
 use lib_budgets::presenter::SwitcherPresenter;
 use lib_shell::{NavInput, ToastInput};
 use std::rc::Rc;
@@ -173,8 +174,8 @@ impl Render for Root {
             body_width: f32::from(self.view_x_scroll_handle.bounds().size.width),
         };
         let active_element = self.active_page(cx).map(|page| {
-            page.set_focused(focus == FocusZone::View, cx);
-            page.set_frame(frame, cx);
+            page.cue(PageCue::Focused(focus == FocusZone::View), cx);
+            page.cue(PageCue::Framed(frame), cx);
             (page.view().into_any_element(), page.layout().min_width)
         });
         let view_status = self.view_status(cx);

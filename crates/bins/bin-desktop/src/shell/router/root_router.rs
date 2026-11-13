@@ -25,6 +25,7 @@ use crate::navigation::nav::Noun;
 use crate::settings::{SettingsPage, state::SettingsView};
 use crate::shell::state::ShellState;
 use crate::shell::view::dialog_entity::{DialogHandle, ModuleDialog};
+use crate::shell::view::module_page::PageCue;
 use crate::shell::view::page_handle::PageHandle;
 use crate::shell::view::rail as rail_view;
 use crate::shell::view::window_size::WindowSize;
@@ -483,8 +484,8 @@ fn active_page<'a>(
 
 /// A new noun's view is a different (usually much shorter) length -- carrying over the old scroll
 /// offset could leave it scrolled past all its content, rendering blank. Every fresh noun starts
-/// scrolled to the top, and the View that is now the destination is told (`on_enter`), so it can
-/// reset its own scroll and focus. The Import step is the Transactions destination's second View:
+/// scrolled to the top, and the View that is now the destination is told (`PageCue::Entered`), so
+/// it can reset its own scroll and focus. The Import step is the Transactions destination's second View:
 /// entering it closes the step, so the list it uncovers is told too.
 pub(super) fn reset_view_scroll(
     view_x_scroll_handle: &ScrollHandle,
@@ -496,10 +497,10 @@ pub(super) fn reset_view_scroll(
     view_x_scroll_handle.set_offset(gpui::Point::default());
     let views = open.map(|open| &open.views);
     if let Some(page) = active::page(view, views, settings) {
-        page.on_enter(cx);
+        page.cue(PageCue::Entered, cx);
     }
     if let (ActiveView::Import, Some(views)) = (view, views) {
-        views.transactions.on_enter(cx);
+        views.transactions.cue(PageCue::Entered, cx);
     }
 }
 
