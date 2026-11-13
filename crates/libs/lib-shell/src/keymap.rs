@@ -16,8 +16,8 @@
 use lib_config::KeyBindingConfig;
 use lib_list_cursor::Step;
 use lib_viper::keymap::{
-    ARROW_DOWN, ARROW_UP, BACK, Binding, END, HALF_PAGE_DOWN, HALF_PAGE_UP, HOME, Keymap,
-    MOVE_DOWN, MOVE_FIRST, MOVE_LAST, MOVE_UP, PAGE_DOWN, PAGE_UP, SELECT,
+    ARROW_DOWN, ARROW_UP, BACK, BACK_DEFAULT, Binding, END, HALF_PAGE_DOWN, HALF_PAGE_UP, HOME,
+    Keymap, MOVE_DOWN, MOVE_FIRST, MOVE_LAST, MOVE_UP, PAGE_DOWN, PAGE_UP, SELECT,
 };
 
 use lib_locale::msg;
@@ -115,7 +115,7 @@ pub const GLOBAL_BINDINGS: &[Binding<ShellCommand>] = &[
         "focus-previous",
         msg::command_focus_previous,
     ),
-    Binding::hidden(BACK, "esc", ShellCommand::Back),
+    Binding::hidden(BACK, BACK_DEFAULT, ShellCommand::Back),
     // Not `esc`: a sticky Error Toast must not vanish on the key that backs out of a Dialog.
     Binding::listed(
         DISMISS_TOASTS,

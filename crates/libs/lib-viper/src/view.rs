@@ -231,10 +231,10 @@ mod tests {
     use lib_config::KeyBindingConfig;
 
     use super::*;
-    use crate::keymap::{BACK, Binding, SELECT_NEXT, SELECT_PREVIOUS};
+    use crate::keymap::{BACK, BACK_DEFAULT, Binding, SELECT_NEXT, SELECT_PREVIOUS};
 
     const BINDINGS: &[Binding<()>] = &[
-        Binding::hidden(BACK, "esc", ()),
+        Binding::hidden(BACK, BACK_DEFAULT, ()),
         Binding::hidden(SELECT_NEXT, "down", ()),
         Binding::hidden(SELECT_PREVIOUS, "up", ()),
     ];

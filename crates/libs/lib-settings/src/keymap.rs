@@ -69,8 +69,9 @@ pub fn settings_frame_keymap(config: &KeyBindingConfig) -> Keymap<SettingsFrameE
 }
 
 /// The chord of the Shell's `back` under `config`, which the frame's and the pages' legends show.
-/// `back` is one command name the Shell's keymap and the Dialog keymap share, on the same default,
-/// so it is read from the Dialog keymap, which this crate reaches through `lib_viper`.
+/// `back` is one command name the Shell's keymap and the Dialog keymap share, both defaulting to
+/// `lib_viper::keymap::BACK_DEFAULT`, so it is read from the Dialog keymap, which this crate
+/// reaches through `lib_viper`.
 pub fn back_chord(config: &KeyBindingConfig) -> String {
     dialog_keymap(config).hint_chord(BACK).to_string()
 }

@@ -302,6 +302,9 @@ pub const SEARCH: &str = "search";
 /// both meanings.
 pub const SELECT: &str = "select";
 pub const BACK: &str = "back";
+/// `back`'s default chord, read by the Shell's keymap, the Dialog keymap and the Settings legend
+/// (`lib_settings`' `back_chord`), so a change to it cannot leave one of them showing another key.
+pub const BACK_DEFAULT: &str = "esc";
 pub const NEXT_FIELD: &str = "next_field";
 pub const PREVIOUS_FIELD: &str = "previous_field";
 pub const SELECT_NEXT: &str = "select_next";

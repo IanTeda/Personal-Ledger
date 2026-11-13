@@ -13,8 +13,8 @@
 use lib_toast::Notify;
 
 use crate::keymap::{
-    BACK, Binding, GO_INTO, GO_UP, KeyBindingConfig, Keymap, LIST_NEXT, LIST_PREVIOUS, NEXT_FIELD,
-    PREVIOUS_FIELD, SELECT, SELECT_NEXT, SELECT_PREVIOUS, SUBMIT,
+    BACK, BACK_DEFAULT, Binding, GO_INTO, GO_UP, KeyBindingConfig, Keymap, LIST_NEXT,
+    LIST_PREVIOUS, NEXT_FIELD, PREVIOUS_FIELD, SELECT, SELECT_NEXT, SELECT_PREVIOUS, SUBMIT,
 };
 use crate::view::{DialogHint, Hint};
 
@@ -61,7 +61,7 @@ pub enum DialogCommand {
 /// The Dialog keymap's commands with their default keys.
 pub const DIALOG_BINDINGS: &[Binding<DialogCommand>] = &[
     Binding::hidden(SELECT, "enter", DialogCommand::Select),
-    Binding::hidden(BACK, "esc", DialogCommand::Back),
+    Binding::hidden(BACK, BACK_DEFAULT, DialogCommand::Back),
     Binding::hidden(NEXT_FIELD, "tab", DialogCommand::NextField),
     Binding::hidden(PREVIOUS_FIELD, "shift+tab", DialogCommand::PreviousField),
     Binding::hidden(SELECT_NEXT, "down", DialogCommand::SelectNext),
@@ -204,7 +204,7 @@ mod tests {
     use crate::keymap::Binding;
 
     const DIALOG_BINDINGS: &[Binding<()>] = &[
-        Binding::hidden(BACK, "esc", ()),
+        Binding::hidden(BACK, BACK_DEFAULT, ()),
         Binding::hidden(SELECT, "enter", ()),
         Binding::hidden(LIST_NEXT, "j", ()),
         Binding::hidden(LIST_PREVIOUS, "k", ()),
