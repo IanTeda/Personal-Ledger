@@ -824,37 +824,36 @@ mod tests {
         assert_eq!(page.presenter.mode(), None);
     }
 
-    /// The Category scope lists in the order the Categories port answers, which is tree order
-    /// (parents beside their children), not by name (#1198).
+    /// The Category scope lists the Categories some Plan uses, labelled by path and in the order
+    /// the Categories port answers, which is tree order (#1198, #1200). The fake's Categories stay
+    /// in their sample order, so this checks the labels against `sample_categories()` directly.
     #[test]
-    fn the_schedule_category_filter_lists_in_the_ports_tree_order() {
+    fn the_schedule_category_filter_labels_its_leaves_by_path_in_tree_order() {
         let mut page = Page::new();
-        page.ports.borrow_mut().reads.categories.reverse();
-        let tree: Vec<String> = page
+        let used: Vec<lib_core::CategoryId> = page
             .ports
             .borrow()
-            .reads
-            .categories
+            .bills
+            .plans
             .iter()
-            .map(|category| category.name.clone())
+            .map(|plan| plan.category_id)
             .collect();
+        let expected: Vec<String> = crate::fake::sample_categories()
+            .into_iter()
+            .filter(|category| used.contains(&category.id))
+            .map(|category| category.path)
+            .collect();
+        assert!(!expected.is_empty(), "the sample Plans use some Categories");
         page.schedule(ScheduleEvent::ToggleFilter(FilterField::Category));
 
         let labels: Vec<String> = page.view().schedule.filters.selects[1]
             .view
             .options
             .iter()
+            .filter(|choice| matches!(choice.value, FilterChoice::Category(_)))
             .map(|choice| choice.label.clone())
-            .filter(|label| tree.contains(label))
             .collect();
 
-        let mut by_name = labels.clone();
-        by_name.sort_by_key(|label| label.to_lowercase());
-        assert_ne!(labels, by_name, "the list is not sorted by name");
-        let expected: Vec<String> = tree
-            .into_iter()
-            .filter(|name| labels.contains(name))
-            .collect();
         assert_eq!(labels, expected);
     }
 

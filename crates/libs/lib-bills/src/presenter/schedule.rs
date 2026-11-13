@@ -596,23 +596,22 @@ impl SchedulePresenter {
     }
 }
 
-/// A scope select's choices after its All option: the Bill Plans in Planner order, and the
-/// Categories and Accounts some Plan uses, by name.
+/// A scope select's choices after its All option: the Bill Plans in Planner order, the Categories
+/// some Plan uses by path in the Categories port's tree order, and the Accounts some Plan uses by
+/// name.
 fn filter_choices(
     ports: &dyn BillsPorts,
     plans: &[BillPlan],
     field: FilterField,
 ) -> Vec<Choice<FilterChoice>> {
-    let mut choices: Vec<Choice<FilterChoice>> = match field {
-        FilterField::Plan => {
-            return planner_order(plans)
-                .into_iter()
-                .map(|plan| Choice {
-                    value: FilterChoice::Plan(plan.id),
-                    label: plan.name.clone(),
-                })
-                .collect();
-        }
+    match field {
+        FilterField::Plan => planner_order(plans)
+            .into_iter()
+            .map(|plan| Choice {
+                value: FilterChoice::Plan(plan.id),
+                label: plan.name.clone(),
+            })
+            .collect(),
         FilterField::Category => ports
             .categories()
             .bill_categories()
@@ -620,25 +619,24 @@ fn filter_choices(
             .filter(|c| plans.iter().any(|p| p.category_id == c.id))
             .map(|c| Choice {
                 value: FilterChoice::Category(c.id),
-                label: c.name,
+                label: c.path,
             })
             .collect(),
-        FilterField::Account => ports
-            .accounts()
-            .bill_accounts()
-            .into_iter()
-            .filter(|a| plans.iter().any(|p| p.account_id == a.id))
-            .map(|a| Choice {
-                value: FilterChoice::Account(a.id),
-                label: a.name,
-            })
-            .collect(),
-    };
-    // The Categories port answers in tree order, which the Category scope keeps.
-    if field != FilterField::Category {
-        choices.sort_by_key(|choice| choice.label.to_lowercase());
+        FilterField::Account => {
+            let mut choices: Vec<Choice<FilterChoice>> = ports
+                .accounts()
+                .bill_accounts()
+                .into_iter()
+                .filter(|a| plans.iter().any(|p| p.account_id == a.id))
+                .map(|a| Choice {
+                    value: FilterChoice::Account(a.id),
+                    label: a.name,
+                })
+                .collect();
+            choices.sort_by_key(|choice| choice.label.to_lowercase());
+            choices
+        }
     }
-    choices
 }
 
 struct LineInput<'a> {
