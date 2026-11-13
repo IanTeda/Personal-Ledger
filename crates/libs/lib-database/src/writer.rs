@@ -59,32 +59,6 @@ pub enum Domain {
     Test,
 }
 
-impl Domain {
-    /// The domains a reload of this one's store reads back together, this domain among them and
-    /// the store's first domain first (ADR-0046). The Documents and the Document Types share one
-    /// store, so either reads back both; every other domain reads back only itself. Kept beside
-    /// the enum so a new domain is one arm here and one in [`SharedStores::reload`](crate::SharedStores::reload).
-    pub fn reloaded_with(self) -> &'static [Domain] {
-        match self {
-            Domain::Documents | Domain::DocumentTypes => {
-                &[Domain::Documents, Domain::DocumentTypes]
-            }
-            Domain::Units => &[Domain::Units],
-            Domain::Institutions => &[Domain::Institutions],
-            Domain::Accounts => &[Domain::Accounts],
-            Domain::Categories => &[Domain::Categories],
-            Domain::Tags => &[Domain::Tags],
-            Domain::Payees => &[Domain::Payees],
-            Domain::Transactions => &[Domain::Transactions],
-            Domain::Bills => &[Domain::Bills],
-            Domain::Budgets => &[Domain::Budgets],
-            Domain::Inventory => &[Domain::Inventory],
-            #[cfg(test)]
-            Domain::Test => &[Domain::Test],
-        }
-    }
-}
-
 /// One port write, saved inside its batch's transaction.
 pub trait Change: Send + 'static {
     /// The domain whose adapter holds the row in memory, so must reload if the write is lost.
@@ -612,18 +586,5 @@ mod tests {
             Writer::spawn(options).map(|_| ()),
             Err(Error::Sqlx(_))
         ));
-    }
-
-    #[test]
-    fn the_documents_and_document_types_reload_together_and_a_lone_domain_reloads_itself() {
-        assert_eq!(
-            Domain::Documents.reloaded_with(),
-            &[Domain::Documents, Domain::DocumentTypes]
-        );
-        assert_eq!(
-            Domain::DocumentTypes.reloaded_with(),
-            &[Domain::Documents, Domain::DocumentTypes]
-        );
-        assert_eq!(Domain::Units.reloaded_with(), &[Domain::Units]);
     }
 }

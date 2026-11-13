@@ -37,7 +37,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::mpsc;
+use std::sync::{OnceLock, mpsc};
 
 use chrono::NaiveDate;
 use lib_account_deletion::DeletionReads;
@@ -317,21 +317,107 @@ impl SharedStores {
     /// # Errors
     /// Returns the error reading the rows back; memory is left as it was.
     pub fn reload(&self, domain: Domain) -> Result<()> {
-        match domain {
-            Domain::Units => self.units.borrow_mut().reload(),
-            Domain::Institutions => self.institutions.borrow_mut().reload(),
-            Domain::Accounts => self.accounts.borrow_mut().reload(),
-            Domain::Categories => self.categories.borrow_mut().reload(),
-            Domain::Tags => self.tags.borrow_mut().reload(),
-            Domain::Payees => self.payees.borrow_mut().reload(),
-            Domain::Transactions => self.transactions.borrow_mut().reload(),
-            Domain::Bills => self.bills.borrow_mut().reload(),
-            Domain::Budgets => self.budgets.borrow_mut().reload(),
-            Domain::Inventory => self.inventory.borrow_mut().reload(),
-            Domain::Documents | Domain::DocumentTypes => self.documents.borrow_mut().reload(),
+        match StoreKey::of(domain) {
+            StoreKey::Units => self.units.borrow_mut().reload(),
+            StoreKey::Institutions => self.institutions.borrow_mut().reload(),
+            StoreKey::Accounts => self.accounts.borrow_mut().reload(),
+            StoreKey::Categories => self.categories.borrow_mut().reload(),
+            StoreKey::Tags => self.tags.borrow_mut().reload(),
+            StoreKey::Payees => self.payees.borrow_mut().reload(),
+            StoreKey::Transactions => self.transactions.borrow_mut().reload(),
+            StoreKey::Bills => self.bills.borrow_mut().reload(),
+            StoreKey::Budgets => self.budgets.borrow_mut().reload(),
+            StoreKey::Inventory => self.inventory.borrow_mut().reload(),
+            StoreKey::Documents => self.documents.borrow_mut().reload(),
             #[cfg(test)]
-            Domain::Test => Ok(()),
+            StoreKey::Test => Ok(()),
         }
+    }
+}
+
+/// One field of [`SharedStores`]: the store a [`Domain`] is kept in. The one place that says which
+/// domains share a store, so [`SharedStores::reload`] and [`Domain::reloaded_with`] can't drift.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StoreKey {
+    Units,
+    Institutions,
+    Accounts,
+    Categories,
+    Tags,
+    Payees,
+    Transactions,
+    Bills,
+    Budgets,
+    Inventory,
+    Documents,
+    #[cfg(test)]
+    Test,
+}
+
+impl StoreKey {
+    /// The store `domain` is kept in. Exhaustive, so a new domain must say where it lives.
+    fn of(domain: Domain) -> Self {
+        match domain {
+            Domain::Units => Self::Units,
+            Domain::Institutions => Self::Institutions,
+            Domain::Accounts => Self::Accounts,
+            Domain::Categories => Self::Categories,
+            Domain::Tags => Self::Tags,
+            Domain::Payees => Self::Payees,
+            Domain::Transactions => Self::Transactions,
+            Domain::Bills => Self::Bills,
+            Domain::Budgets => Self::Budgets,
+            Domain::Inventory => Self::Inventory,
+            Domain::Documents | Domain::DocumentTypes => Self::Documents,
+            #[cfg(test)]
+            Domain::Test => Self::Test,
+        }
+    }
+}
+
+impl Domain {
+    /// Every domain a Ledger holds, in declaration order, so a store's domains can be derived from
+    /// [`StoreKey::of`]. The test-only domain is left out.
+    pub const ALL: &'static [Domain] = &[
+        Domain::Units,
+        Domain::Institutions,
+        Domain::Accounts,
+        Domain::Categories,
+        Domain::Tags,
+        Domain::Payees,
+        Domain::Transactions,
+        Domain::Bills,
+        Domain::Budgets,
+        Domain::Inventory,
+        Domain::Documents,
+        Domain::DocumentTypes,
+    ];
+
+    /// The domains a reload of this one's store reads back together, this domain among them and
+    /// the store's first domain first (ADR-0046): the domains whose [`StoreKey`] is this one's.
+    pub fn reloaded_with(self) -> &'static [Domain] {
+        #[cfg(test)]
+        if self == Domain::Test {
+            return &[Domain::Test];
+        }
+        static GROUPS: OnceLock<Vec<(StoreKey, Vec<Domain>)>> = OnceLock::new();
+        let groups = GROUPS.get_or_init(|| {
+            let mut groups: Vec<(StoreKey, Vec<Domain>)> = Vec::new();
+            for &domain in Domain::ALL {
+                let key = StoreKey::of(domain);
+                match groups.iter_mut().find(|(k, _)| *k == key) {
+                    Some((_, domains)) => domains.push(domain),
+                    None => groups.push((key, vec![domain])),
+                }
+            }
+            groups
+        });
+        let key = StoreKey::of(self);
+        groups
+            .iter()
+            .find(|(k, _)| *k == key)
+            .map(|(_, domains)| domains.as_slice())
+            .unwrap_or_default()
     }
 }
 
@@ -1932,6 +2018,58 @@ impl Stores {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Exhaustive, so a new `Domain` variant missing from `Domain::ALL` fails to compile here.
+    fn in_all(domain: Domain) -> bool {
+        match domain {
+            Domain::Units
+            | Domain::Institutions
+            | Domain::Accounts
+            | Domain::Categories
+            | Domain::Tags
+            | Domain::Payees
+            | Domain::Transactions
+            | Domain::Bills
+            | Domain::Budgets
+            | Domain::Inventory
+            | Domain::Documents
+            | Domain::DocumentTypes => Domain::ALL.contains(&domain),
+            Domain::Test => !Domain::ALL.contains(&domain),
+        }
+    }
+
+    #[test]
+    fn every_domain_is_in_all_but_the_test_domain() {
+        assert!(in_all(Domain::Units) && in_all(Domain::DocumentTypes) && in_all(Domain::Test));
+    }
+
+    #[test]
+    fn the_documents_and_document_types_reload_together_and_a_lone_domain_reloads_itself() {
+        assert_eq!(
+            Domain::Documents.reloaded_with(),
+            &[Domain::Documents, Domain::DocumentTypes]
+        );
+        assert_eq!(
+            Domain::DocumentTypes.reloaded_with(),
+            &[Domain::Documents, Domain::DocumentTypes]
+        );
+        assert_eq!(Domain::Units.reloaded_with(), &[Domain::Units]);
+    }
+
+    #[test]
+    fn every_domain_is_in_its_own_group_and_in_no_other_stores() {
+        for &domain in Domain::ALL {
+            assert!(domain.reloaded_with().contains(&domain), "{domain:?}");
+            for &other in Domain::ALL {
+                let shares = domain.reloaded_with() == other.reloaded_with();
+                assert_eq!(
+                    other.reloaded_with().contains(&domain),
+                    shares,
+                    "{domain:?} in {other:?}'s group"
+                );
+            }
+        }
+    }
 
     #[test]
     fn the_fake_counts_every_commit_including_one_with_nothing_written() {
