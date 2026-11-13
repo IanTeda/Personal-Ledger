@@ -12,7 +12,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::{Inventory, Item, Location};
-use lib_core::{AreaId, ItemId, LocationId, UnitId};
+use lib_core::{AreaId, ItemId, LocationId, UnitId, UnitRef};
 use lib_toast::Notify;
 
 /// The Locations and Items on the Ledger.
@@ -61,20 +61,11 @@ pub trait InventoryRepository {
 /// on the page as soon as the Dialog closes. Single-threaded, as both Clients' UI threads are.
 pub type SharedInventory = Rc<RefCell<dyn InventoryRepository>>;
 
-/// A fiat Unit a Location can be kept in.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UnitChoice {
-    pub id: UnitId,
-    /// Lower case, as Units hold it.
-    pub code: String,
-    pub name: String,
-}
-
 /// The reads of Units the Location form makes, so `lib-inventory` needn't depend on the Units
 /// crate. The form copies them in when it opens, as it is modal.
 pub trait InventoryUnits {
     /// The fiat Units, in Settings order: a Location's Unit is chosen from them when it is added.
-    fn currencies(&self) -> Vec<UnitChoice>;
+    fn currencies(&self) -> Vec<UnitRef>;
 
     /// Unit `id`'s code, lower case, or `None` when it has none.
     fn unit_code(&self, id: UnitId) -> Option<String>;

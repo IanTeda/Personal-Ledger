@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use lib_core::{InstitutionId, UnitId};
+use lib_core::{InstitutionId, UnitId, UnitRef};
 use lib_toast::{Notice, Notify};
 use lib_viper::dialog::DialogRouter;
 
@@ -14,8 +14,8 @@ use crate::protocols::{
     InstitutionsDialog, InstitutionsOutcome, InstitutionsPorts, InstitutionsRouter, SharedPorts,
 };
 use crate::{
-    Institution, InstitutionRepository, InstitutionUnit, InstitutionUnits, InstitutionUsage,
-    InstitutionUse, sample_institutions,
+    Institution, InstitutionRepository, InstitutionUnits, InstitutionUsage, InstitutionUse,
+    sample_institutions,
 };
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -72,29 +72,31 @@ impl InstitutionUsage for InMemoryInstitutionUsage {
 /// The Units an Institution may name, set by the test.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct InMemoryInstitutionUnits {
-    pub units: Vec<InstitutionUnit>,
+    pub units: Vec<UnitRef>,
 }
 
 impl InMemoryInstitutionUnits {
     /// The Sample Ledger's three Units (see `lib-units`' seed), all active.
     pub fn sample() -> Self {
-        let unit = |id, code: &str| InstitutionUnit {
+        let unit = |id, code: &str, name: &str, precision| UnitRef {
             id,
             code: code.to_string(),
+            name: name.to_string(),
             is_active: true,
+            precision,
         };
         Self {
             units: vec![
-                unit(UnitId::SEED_AUD, "aud"),
-                unit(UnitId::SEED_BTC, "btc"),
-                unit(UnitId::SEED_VAS, "vas"),
+                unit(UnitId::SEED_AUD, "aud", "Australian Dollar", 2),
+                unit(UnitId::SEED_BTC, "btc", "Bitcoin", 8),
+                unit(UnitId::SEED_VAS, "vas", "Vanguard Aus Shares", 2),
             ],
         }
     }
 }
 
 impl InstitutionUnits for InMemoryInstitutionUnits {
-    fn institution_units(&self) -> Vec<InstitutionUnit> {
+    fn institution_units(&self) -> Vec<UnitRef> {
         self.units.clone()
     }
 }

@@ -7,8 +7,8 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::SystemTime;
 
-use lib_core::UnitId;
 use lib_core::configuration::{ConfigKey, ConfigValue};
+use lib_core::{UnitId, UnitRef};
 use lib_toast::{Notice, Notify};
 
 use crate::log::{LogLevel, LogLine};
@@ -16,7 +16,7 @@ use crate::page::SettingsPage;
 use crate::presenter::{ClearLogsPresenter, DisplayOutput, LogListChange, LogScroll};
 use crate::protocols::{
     BaseUnitAnswer, HeadlineAmount, LedgerCounts, LedgerPreferences, LedgerRouter, LedgerSummaries,
-    LedgerUnits, UnitChoice,
+    LedgerUnits,
 };
 use crate::protocols::{
     ColourChoice, DeviceAnswer, DeviceConfiguration, DeviceRefusal, DeviceRouter, DeviceSnapshot,
@@ -191,30 +191,27 @@ pub struct InMemoryLedgerUnits {
 
 #[derive(Debug)]
 struct LedgerRows {
-    /// `(choice, is_active)`, in code order.
-    units: Vec<(UnitChoice, bool)>,
+    /// In code order.
+    units: Vec<UnitRef>,
     base: UnitId,
 }
 
 impl InMemoryLedgerUnits {
     /// aud, btc and vas, all active, with aud the base.
     pub fn sample() -> Self {
-        let unit = |id, code: &str, name: &str| {
-            (
-                UnitChoice {
-                    id,
-                    code: code.to_string(),
-                    name: name.to_string(),
-                },
-                true,
-            )
+        let unit = |id, code: &str, name: &str, precision| UnitRef {
+            id,
+            code: code.to_string(),
+            name: name.to_string(),
+            is_active: true,
+            precision,
         };
         Self {
             rows: Rc::new(RefCell::new(LedgerRows {
                 units: vec![
-                    unit(UnitId::SEED_AUD, "aud", "Australian dollar"),
-                    unit(UnitId::SEED_BTC, "btc", "Bitcoin"),
-                    unit(UnitId::SEED_VAS, "vas", "Vanguard Australian Shares"),
+                    unit(UnitId::SEED_AUD, "aud", "Australian dollar", 2),
+                    unit(UnitId::SEED_BTC, "btc", "Bitcoin", 8),
+                    unit(UnitId::SEED_VAS, "vas", "Vanguard Australian Shares", 2),
                 ],
                 base: UnitId::SEED_AUD,
             })),
@@ -223,22 +220,22 @@ impl InMemoryLedgerUnits {
 
     /// Deactivates `id`, as the Units page does.
     pub fn deactivate(&self, id: UnitId) {
-        for (choice, active) in &mut self.rows.borrow_mut().units {
-            if choice.id == id {
-                *active = false;
+        for unit in &mut self.rows.borrow_mut().units {
+            if unit.id == id {
+                unit.is_active = false;
             }
         }
     }
 }
 
 impl LedgerUnits for InMemoryLedgerUnits {
-    fn choices(&self) -> Vec<UnitChoice> {
+    fn choices(&self) -> Vec<UnitRef> {
         self.rows
             .borrow()
             .units
             .iter()
-            .filter(|(_, active)| *active)
-            .map(|(choice, _)| choice.clone())
+            .filter(|unit| unit.is_active)
+            .cloned()
             .collect()
     }
 
@@ -253,7 +250,7 @@ impl LedgerPreferences for InMemoryLedgerUnits {
         if rows
             .units
             .iter()
-            .any(|(choice, active)| choice.id == id && *active)
+            .any(|unit| unit.id == id && unit.is_active)
         {
             rows.base = id;
             BaseUnitAnswer::Saved

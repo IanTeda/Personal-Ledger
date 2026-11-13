@@ -10,7 +10,7 @@ use std::rc::Rc;
 
 use lib_colour_theme::ColourAppearance;
 use lib_core::configuration::{ConfigKey, ConfigValue};
-use lib_core::{Money, UnitId};
+use lib_core::{Money, UnitId, UnitRef};
 use lib_toast::Notify;
 
 use crate::log::LogLine;
@@ -228,19 +228,11 @@ pub trait TracingLog {
     fn clear(&self);
 }
 
-/// A Unit the Base unit select offers.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UnitChoice {
-    pub id: UnitId,
-    pub code: String,
-    pub name: String,
-}
-
 /// What Settings › Ledger reads of the Units: the Client answers it over the Units store
 /// (`lib-database`'s `StoredSettingsReads`), so the page never holds a copy.
 pub trait LedgerUnits {
     /// The Units the Base unit select offers: the active ones, by code.
-    fn choices(&self) -> Vec<UnitChoice>;
+    fn choices(&self) -> Vec<UnitRef>;
 
     /// The Ledger's base Unit.
     fn base_unit(&self) -> Option<UnitId>;

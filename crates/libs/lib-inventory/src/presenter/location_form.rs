@@ -11,7 +11,7 @@
 //!
 //! A confirm raises its own Toast and hands the page the Location to select.
 
-use lib_core::{LocationId, UnitId};
+use lib_core::{LocationId, UnitId, UnitRef};
 use lib_toast::{Notice, ToastKind};
 use lib_viper::dialog::{DialogInput, DialogKeys, DialogRouter};
 use lib_viper::keymap::{BACK, NEXT_FIELD, SELECT};
@@ -23,7 +23,7 @@ use lib_viper::view::{
 use super::{location_name_error_text, location_refusal_text};
 use crate::interactor::{AddLocation, EditLocation};
 use crate::protocols::{
-    InventoryChange, InventoryOutcome, InventoryRow, InventoryUnits, SharedInventory, UnitChoice,
+    InventoryChange, InventoryOutcome, InventoryRow, InventoryUnits, SharedInventory,
 };
 use crate::{Inventory, LocationDraft, LocationError, NameError, msg};
 
@@ -107,7 +107,7 @@ pub struct LocationFormPresenter {
     keys: DialogKeys,
     inventory: SharedInventory,
     /// The fiat Units, copied in when the Dialog opened.
-    choices: Vec<UnitChoice>,
+    choices: Vec<UnitRef>,
     editing: Option<Editing>,
     name: String,
     unit: Option<UnitId>,

@@ -12,7 +12,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, NaiveDate, Utc};
-use lib_core::{Money, PriceSourceId, UnitId, UnitKind};
+use lib_core::{Money, PriceSourceId, UnitId, UnitKind, UnitRef};
 use lib_units::{
     BaseUnitRepository, BuiltInOverride, CustomSource, Endpoint, KeyPlacement, PortsMut, Precision,
     PriceLink, PriceSourceAuth, PriceSourceRecord, PriceSourceRepository, UnitRepository, UnitRow,
@@ -575,27 +575,18 @@ fn parse_placement(text: &str) -> Result<KeyPlacement> {
     }
 }
 
-/// The Units as `lib-accounts`' `AccountUnits` reads them, in the Units' order.
-pub(crate) fn account_units(units: &[UnitRow]) -> Vec<lib_accounts::AccountUnit> {
+/// Each Unit as the other modules read it, in the order given: the one mapping from a Unit row to
+/// `lib_core::UnitRef`. A reader that offers only some Units filters the rows before, or the refs
+/// after, as its port says.
+pub(crate) fn unit_refs<'a>(units: impl IntoIterator<Item = &'a UnitRow>) -> Vec<UnitRef> {
     units
-        .iter()
-        .map(|unit| lib_accounts::AccountUnit {
+        .into_iter()
+        .map(|unit| UnitRef {
             id: unit.id,
             code: unit.code.clone(),
+            name: unit.name.clone(),
             is_active: unit.is_active,
             precision: unit.precision.get(),
-        })
-        .collect()
-}
-
-/// The Units as `lib-institutions`' `InstitutionUnits` reads them, in the Units' order.
-pub(crate) fn institution_units(units: &[UnitRow]) -> Vec<lib_institutions::InstitutionUnit> {
-    units
-        .iter()
-        .map(|unit| lib_institutions::InstitutionUnit {
-            id: unit.id,
-            code: unit.code.clone(),
-            is_active: unit.is_active,
         })
         .collect()
 }
@@ -652,7 +643,7 @@ mod tests {
     /// history and priced by Manual entry, and the first is the base Unit, which each is quoted in.
     #[sqlx::test(migrations = "migrations/client")]
     async fn transactions_read_the_units_rows(_: SqlitePoolOptions, options: SqliteConnectOptions) {
-        fn store(writer: &Writer, rows: Vec<lib_transactions::TransactionUnit>) {
+        fn store(writer: &Writer, rows: Vec<UnitRef>) {
             let template = InMemoryPorts::sample(Utc::now())
                 .units
                 .units
@@ -664,8 +655,10 @@ mod tests {
                 .into_iter()
                 .map(|row| UnitRow {
                     id: row.id,
-                    name: row.code.to_uppercase(),
+                    name: row.name,
                     code: row.code,
+                    is_active: row.is_active,
+                    precision: Precision::new(row.precision).expect("the contract's places fit"),
                     link: PriceLink::manual(base),
                     prices: Vec::new(),
                     ..template.clone()

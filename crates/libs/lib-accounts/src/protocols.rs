@@ -10,7 +10,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use lib_core::{AccountId, InstitutionId, UnitId};
+use lib_core::{AccountId, InstitutionId, UnitId, UnitRef};
 use lib_toast::Notify;
 
 use crate::Account;
@@ -66,24 +66,11 @@ pub trait AccountInstitutions {
     fn account_institutions(&self) -> Vec<AccountInstitution>;
 }
 
-/// A Unit an Account may count in, as Accounts reads it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AccountUnit {
-    pub id: UnitId,
-    pub code: String,
-    /// A deactivated Unit takes no new Account, though one already on it keeps showing its code.
-    pub is_active: bool,
-    /// The Unit's Precision (GLOSSARY): the places an amount in it shows at, and an opening balance
-    /// is padded to. The number, not `lib_units::Precision`, so `lib-accounts` needn't depend on the
-    /// Units crate.
-    pub precision: u8,
-}
-
 /// The Units on the Ledger and the base Unit. A read port, so `lib-accounts` needn't depend on the
 /// Units crate.
 pub trait AccountUnits {
     /// Every Unit, in the Units' order.
-    fn account_units(&self) -> Vec<AccountUnit>;
+    fn account_units(&self) -> Vec<UnitRef>;
 
     /// The Unit the net worth is summed in and a new Account starts on; `None` when none is set.
     fn base_unit(&self) -> Option<UnitId>;

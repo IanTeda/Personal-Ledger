@@ -6,13 +6,13 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use chrono::NaiveDate;
-use lib_core::{ItemId, LocationId, UnitId};
+use lib_core::{ItemId, LocationId, UnitId, UnitRef};
 use lib_toast::{Notice, Notify};
 use lib_viper::dialog::DialogRouter;
 
 use crate::protocols::{
     InventoryDialog, InventoryOutcome, InventoryRepository, InventoryRouter, InventoryUnits,
-    LocationUsage, LocationUse, SharedInventory, UnitChoice,
+    LocationUsage, LocationUse, SharedInventory,
 };
 use crate::{Inventory, Item, Location, sample_inventory};
 
@@ -77,16 +77,18 @@ impl InventoryRepository for InMemoryInventory {
 /// The fiat Units a test sets; any other Unit has no code.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct InMemoryUnits {
-    pub units: Vec<UnitChoice>,
+    pub units: Vec<UnitRef>,
 }
 
 impl InMemoryUnits {
     /// Australian and US dollars, the first with the seed id `lib-database`'s joined Sample Ledger gives AUD.
     pub fn sample() -> Self {
-        let unit = |id, code: &str, name: &str| UnitChoice {
+        let unit = |id, code: &str, name: &str| UnitRef {
             id,
             code: code.into(),
             name: name.into(),
+            is_active: true,
+            precision: 2,
         };
         Self {
             units: vec![
@@ -98,7 +100,7 @@ impl InMemoryUnits {
 }
 
 impl InventoryUnits for InMemoryUnits {
-    fn currencies(&self) -> Vec<UnitChoice> {
+    fn currencies(&self) -> Vec<UnitRef> {
         self.units.clone()
     }
 

@@ -28,7 +28,7 @@ pub use protocols::SharedPorts;
 pub use protocols::{
     TransactionAccount, TransactionAccounts, TransactionCategories, TransactionCategory,
     TransactionPayee, TransactionPayees, TransactionRepository, TransactionTag, TransactionTags,
-    TransactionUnit, TransactionUnits, TransactionsPorts,
+    TransactionUnits, TransactionsPorts,
 };
 
 use bigdecimal::BigDecimal;

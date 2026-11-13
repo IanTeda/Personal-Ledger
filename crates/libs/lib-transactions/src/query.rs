@@ -451,8 +451,9 @@ mod tests {
     use lib_core::AccountType;
 
     use super::*;
+    use crate::TransactionAccount;
     use crate::fake::{InMemoryTransactionReads, SeedAccount, SeedNames, sample_transactions};
-    use crate::{TransactionAccount, TransactionUnit};
+    use lib_core::UnitRef;
 
     fn today() -> NaiveDate {
         NaiveDate::from_ymd_opt(2026, 9, 19).unwrap()
@@ -548,13 +549,19 @@ mod tests {
                 })
                 .collect();
             reads.units = vec![
-                TransactionUnit {
+                UnitRef {
                     id: UnitId::SEED_AUD,
                     code: "aud".to_string(),
+                    name: "Australian Dollar".to_string(),
+                    is_active: true,
+                    precision: 2,
                 },
-                TransactionUnit {
+                UnitRef {
                     id: UnitId::SEED_BTC,
                     code: "btc".to_string(),
+                    name: "Bitcoin".to_string(),
+                    is_active: true,
+                    precision: 8,
                 },
             ];
             Self {

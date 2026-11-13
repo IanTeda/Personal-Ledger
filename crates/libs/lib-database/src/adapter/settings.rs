@@ -4,10 +4,9 @@
 //! still the Units page's Set base unit Dialog's rule, so the write reuses its Interactor rather
 //! than moving it here: a Unit that is gone or inactive is refused as it is there.
 
-use lib_core::UnitId;
+use lib_core::{UnitId, UnitRef};
 use lib_settings::{
     BaseUnitAnswer, HeadlineAmount, LedgerCounts, LedgerPreferences, LedgerSummaries, LedgerUnits,
-    UnitChoice,
 };
 use lib_units::interactor::SetBaseUnit;
 use lib_units::{UnitUse, units_by_code};
@@ -17,6 +16,7 @@ use super::store::{
     SharedInventoryStore, SharedPayeesStore, SharedStores, SharedTagsStore,
     SharedTransactionsStore, SharedUnitsStore, StoredTagReads,
 };
+use super::units;
 
 /// `lib-settings`' read ports answered by the stores, each borrowed for the one read: the Units
 /// the Ledger page offers, and the counts the Settings index's detail pane quotes (#1109), which
@@ -108,17 +108,13 @@ impl LedgerSummaries for StoredSettingsReads {
 
 impl LedgerUnits for StoredSettingsReads {
     /// The active Units, by code.
-    fn choices(&self) -> Vec<UnitChoice> {
+    fn choices(&self) -> Vec<UnitRef> {
         let units = self.units.borrow().units().units();
-        units_by_code(&units)
-            .into_iter()
-            .filter(|unit| unit.is_active)
-            .map(|unit| UnitChoice {
-                id: unit.id,
-                code: unit.code.clone(),
-                name: unit.name.clone(),
-            })
-            .collect()
+        units::unit_refs(
+            units_by_code(&units)
+                .into_iter()
+                .filter(|unit| unit.is_active),
+        )
     }
 
     fn base_unit(&self) -> Option<UnitId> {

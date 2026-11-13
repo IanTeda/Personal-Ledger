@@ -5,13 +5,13 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use lib_core::{AccountId, InstitutionId, UnitId};
+use lib_core::{AccountId, InstitutionId, UnitId, UnitRef};
 use lib_toast::{Notice, Notify};
 use lib_viper::dialog::DialogRouter;
 
 use crate::protocols::{
-    AccountInstitution, AccountInstitutions, AccountUnit, AccountUnits, AccountsDialog,
-    AccountsOutcome, AccountsPorts, AccountsRouter, SharedPorts,
+    AccountInstitution, AccountInstitutions, AccountUnits, AccountsDialog, AccountsOutcome,
+    AccountsPorts, AccountsRouter, SharedPorts,
 };
 use crate::{Account, AccountRepository, AccountUsage, AccountUse, sample_accounts};
 
@@ -74,12 +74,12 @@ impl AccountInstitutions for InMemoryAccountInstitutions {
 /// The Units an Account may count in, and the base Unit, as a test sets them.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct InMemoryAccountUnits {
-    pub units: Vec<AccountUnit>,
+    pub units: Vec<UnitRef>,
     pub base: Option<UnitId>,
 }
 
 impl AccountUnits for InMemoryAccountUnits {
-    fn account_units(&self) -> Vec<AccountUnit> {
+    fn account_units(&self) -> Vec<UnitRef> {
         self.units.clone()
     }
 
@@ -112,16 +112,17 @@ pub fn sample_institutions() -> Vec<AccountInstitution> {
 }
 
 /// The sample Units the sample Accounts count in: aud (the base), the vas fund and btc.
-pub fn sample_units() -> Vec<AccountUnit> {
+pub fn sample_units() -> Vec<UnitRef> {
     [
-        (UnitId::SEED_AUD, "aud", 2),
-        (UnitId::SEED_VAS, "vas", 2),
-        (UnitId::SEED_BTC, "btc", 8),
+        (UnitId::SEED_AUD, "aud", "Australian Dollar", 2),
+        (UnitId::SEED_VAS, "vas", "Vanguard Aus Shares", 2),
+        (UnitId::SEED_BTC, "btc", "Bitcoin", 8),
     ]
     .into_iter()
-    .map(|(id, code, precision)| AccountUnit {
+    .map(|(id, code, name, precision)| UnitRef {
         id,
         code: code.to_string(),
+        name: name.to_string(),
         is_active: true,
         precision,
     })

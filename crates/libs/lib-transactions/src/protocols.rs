@@ -71,13 +71,6 @@ pub struct TransactionTag {
     pub color: Option<HexColor>,
 }
 
-/// A Unit as the Transactions read it: the code a single-Unit total is named in.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TransactionUnit {
-    pub id: UnitId,
-    pub code: String,
-}
-
 /// The Accounts a Transaction may be posted against: every Account, in the order they were added.
 pub trait TransactionAccounts {
     fn transaction_accounts(&self) -> Vec<TransactionAccount>;

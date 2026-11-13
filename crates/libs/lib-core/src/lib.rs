@@ -47,6 +47,10 @@ pub use ids::{
     TransactionId, UnitId,
 };
 
+/// The shared read values (`…Ref`): a row of one domain as the modules that don't own it read it.
+mod unit_ref;
+pub use unit_ref::UnitRef;
+
 /// Category types used for classifying financial transactions.
 ///
 /// [`CategoryTypes`] represents the fundamental accounting categories

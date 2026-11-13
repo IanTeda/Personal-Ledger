@@ -702,11 +702,12 @@ mod tests {
 
     use super::*;
     use crate::Split;
+    use crate::TransactionRepository;
     use crate::fake::{InMemoryPorts, InMemoryTransactions};
     use crate::keymap::RESET_FILTERS;
     use crate::presenter::FilterField;
     use crate::presenter::test_support::*;
-    use crate::{TransactionRepository, TransactionUnit};
+    use lib_core::UnitRef;
     use lib_viper::keymap::{BACK, NEXT_FIELD};
 
     const SHOP: TransactionId = TransactionId::seed(1);
@@ -746,9 +747,12 @@ mod tests {
     /// Four Transactions this year and one last year, in no particular order, as a port lists them.
     fn sample() -> InMemoryPorts {
         let mut reads = reads();
-        reads.units = vec![TransactionUnit {
+        reads.units = vec![UnitRef {
             id: UnitId::SEED_AUD,
             code: "aud".to_string(),
+            name: "Australian Dollar".to_string(),
+            is_active: true,
+            precision: 2,
         }];
         let transactions = vec![
             transaction(

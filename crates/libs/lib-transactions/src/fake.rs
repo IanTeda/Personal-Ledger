@@ -7,7 +7,7 @@ mod seed;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use lib_core::{TransactionId, UnitId};
+use lib_core::{TransactionId, UnitId, UnitRef};
 
 pub use booked::{
     FIRST_BOOKED, bill_transactions, booked_sample_transactions, document_transactions,
@@ -19,7 +19,7 @@ use crate::protocols::SharedPorts;
 use crate::{
     Transaction, TransactionAccount, TransactionAccounts, TransactionCategories,
     TransactionCategory, TransactionPayee, TransactionPayees, TransactionRepository,
-    TransactionTag, TransactionTags, TransactionUnit, TransactionUnits, TransactionsPorts,
+    TransactionTag, TransactionTags, TransactionUnits, TransactionsPorts,
 };
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -56,7 +56,7 @@ pub struct InMemoryTransactionReads {
     pub categories: Vec<TransactionCategory>,
     pub payees: Vec<TransactionPayee>,
     pub tags: Vec<TransactionTag>,
-    pub units: Vec<TransactionUnit>,
+    pub units: Vec<UnitRef>,
 }
 
 impl TransactionAccounts for InMemoryTransactionReads {

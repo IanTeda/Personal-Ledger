@@ -23,7 +23,6 @@ pub mod protocols;
 
 pub use entity::*;
 pub use protocols::{
-    AccountInstitution, AccountInstitutions, AccountRepository, AccountUnit, AccountUnits,
-    AccountUsage, AccountUse, AccountsDialog, AccountsOutcome, AccountsPorts, AccountsRouter,
-    SharedPorts,
+    AccountInstitution, AccountInstitutions, AccountRepository, AccountUnits, AccountUsage,
+    AccountUse, AccountsDialog, AccountsOutcome, AccountsPorts, AccountsRouter, SharedPorts,
 };

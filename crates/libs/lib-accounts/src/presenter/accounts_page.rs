@@ -8,7 +8,7 @@
 //! row selected. A delete that lands is the exception: the Presenter remembers where the row was
 //! when Delete opened, and selects the Account that slid into its place.
 
-use lib_core::{AccountId, UnitId};
+use lib_core::{AccountId, UnitId, UnitRef};
 use lib_list_cursor::{Step, resolve, step_id};
 use lib_locale::Label;
 use lib_locale::format::{AmountStyle, format_amount};
@@ -18,7 +18,7 @@ use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::{Hint, count};
 
 use super::institution_label;
-use crate::protocols::{AccountUnit, AccountsDialog, AccountsOutcome, AccountsRouter, SharedPorts};
+use crate::protocols::{AccountsDialog, AccountsOutcome, AccountsRouter, SharedPorts};
 use crate::{Account, NameLookup, display_order, find_by_name, group_accounts, msg, net_worth};
 
 /// The verb of a typed `:accounts` command.
@@ -384,7 +384,7 @@ impl AccountsPagePresenter {
 
 /// The heading's meta: `7 accounts · net worth 83,995.87 aud · vas, btc held separately`. One net
 /// figure in the base Unit only, then every other Unit held named rather than summed or dropped.
-fn scope_note(accounts: &[Account], units: &[AccountUnit], base: Option<UnitId>) -> String {
+fn scope_note(accounts: &[Account], units: &[UnitRef], base: Option<UnitId>) -> String {
     if accounts.is_empty() {
         return msg::accounts_summary_empty();
     }

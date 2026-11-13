@@ -42,8 +42,8 @@ use std::sync::mpsc;
 use chrono::NaiveDate;
 use lib_account_deletion::DeletionReads;
 use lib_accounts::{
-    AccountInstitution, AccountInstitutions, AccountRepository, AccountUnit, AccountUnits,
-    AccountUsage, AccountUse,
+    AccountInstitution, AccountInstitutions, AccountRepository, AccountUnits, AccountUsage,
+    AccountUse,
 };
 use lib_bills::fake::InMemoryBills;
 use lib_bills::{
@@ -61,7 +61,7 @@ use lib_categories::fake::InMemoryCategories;
 use lib_category_deletion::{CategoryDeletionReads, CategoryInUse};
 use lib_core::{
     AccountId, CategoryId, InstitutionId, LocationId, PayeeId, TagId, Total, TransactionId, UnitId,
-    UnitKind,
+    UnitKind, UnitRef,
 };
 use lib_dashboard::{
     DashboardBill, DashboardBills, DashboardBudgetBar, DashboardBudgetMonth, DashboardBudgets,
@@ -74,11 +74,9 @@ use lib_documents::{
     DocumentTransactions,
 };
 use lib_institutions::fake::InMemoryInstitutions;
-use lib_institutions::{
-    InstitutionRepository, InstitutionUnit, InstitutionUnits, InstitutionUsage, InstitutionUse,
-};
+use lib_institutions::{InstitutionRepository, InstitutionUnits, InstitutionUsage, InstitutionUse};
 use lib_inventory::fake::InMemoryInventory;
-use lib_inventory::{InventoryRepository, InventoryUnits, LocationUsage, LocationUse, UnitChoice};
+use lib_inventory::{InventoryRepository, InventoryUnits, LocationUsage, LocationUse};
 use lib_payees::{PayeeCategories, PayeeCategory, PayeeRepository, PayeeUsage, PayeeUse};
 use lib_shell::{RailCounts, ShellRailCounts};
 use lib_tag_removal::{TagCount, TagRemovalReads};
@@ -1514,8 +1512,8 @@ impl InstitutionUsage for StoredInstitutionReads {
 }
 
 impl InstitutionUnits for StoredInstitutionReads {
-    fn institution_units(&self) -> Vec<InstitutionUnit> {
-        units::institution_units(&self.units.borrow().units().units())
+    fn institution_units(&self) -> Vec<UnitRef> {
+        units::unit_refs(&self.units.borrow().units().units())
     }
 }
 
@@ -1549,8 +1547,8 @@ impl AccountUsage for StoredAccountReads {
 }
 
 impl AccountUnits for StoredAccountReads {
-    fn account_units(&self) -> Vec<AccountUnit> {
-        units::account_units(&self.units.borrow().units().units())
+    fn account_units(&self) -> Vec<UnitRef> {
+        units::unit_refs(&self.units.borrow().units().units())
     }
 
     fn base_unit(&self) -> Option<UnitId> {
@@ -1805,19 +1803,9 @@ pub struct StoredInventoryReads {
 
 impl InventoryUnits for StoredInventoryReads {
     /// In the Units' order.
-    fn currencies(&self) -> Vec<UnitChoice> {
-        self.units
-            .borrow()
-            .units()
-            .units()
-            .into_iter()
-            .filter(|unit| unit.kind == UnitKind::Currency)
-            .map(|unit| UnitChoice {
-                id: unit.id,
-                code: unit.code,
-                name: unit.name,
-            })
-            .collect()
+    fn currencies(&self) -> Vec<UnitRef> {
+        let units = self.units.borrow().units().units();
+        units::unit_refs(units.iter().filter(|unit| unit.kind == UnitKind::Currency))
     }
 
     fn unit_code(&self, id: UnitId) -> Option<String> {

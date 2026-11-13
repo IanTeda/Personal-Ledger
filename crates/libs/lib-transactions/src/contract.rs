@@ -13,14 +13,14 @@ use bigdecimal::BigDecimal;
 use chrono::NaiveDate;
 use lib_core::{
     AccountId, CategoryId, HexColor, Money, PayeeId, TagId, TransactionId, TransactionStatus,
-    UnitId,
+    UnitId, UnitRef,
 };
 
 use crate::fake::{InMemoryTransactionReads, InMemoryTransactions};
 use crate::{
     Split, Transaction, TransactionAccount, TransactionAccounts, TransactionCategories,
     TransactionCategory, TransactionPayee, TransactionPayees, TransactionRepository,
-    TransactionTag, TransactionTags, TransactionUnit, TransactionUnits,
+    TransactionTag, TransactionTags, TransactionUnits,
 };
 
 /// Builds the port a contract check runs on.
@@ -180,10 +180,10 @@ impl ReadsFactory<TransactionTag> for InMemoryReadsFactory {
     }
 }
 
-impl ReadsFactory<TransactionUnit> for InMemoryReadsFactory {
+impl ReadsFactory<UnitRef> for InMemoryReadsFactory {
     type Reads = InMemoryTransactionReads;
 
-    fn create(&mut self, rows: Vec<TransactionUnit>) -> InMemoryTransactionReads {
+    fn create(&mut self, rows: Vec<UnitRef>) -> InMemoryTransactionReads {
         InMemoryTransactionReads {
             units: rows,
             ..InMemoryTransactionReads::default()
@@ -417,12 +417,15 @@ where
 /// Each Unit's code is answered by its id, and again after a reload; a Unit not stored has none.
 pub fn unit_codes_read_back<F>(factory: &mut F)
 where
-    F: ReadsFactory<TransactionUnit>,
+    F: ReadsFactory<UnitRef>,
     F::Reads: TransactionUnits,
 {
-    let unit = |id: u32, code: &str| TransactionUnit {
+    let unit = |id: u32, code: &str| UnitRef {
         id: UnitId::seed(id),
         code: code.into(),
+        name: code.to_uppercase(),
+        is_active: true,
+        precision: 2,
     };
     let stored = vec![unit(11, "aud"), unit(12, "usd"), unit(13, "btc")];
     let codes = |reads: &F::Reads| -> Vec<Option<String>> {
