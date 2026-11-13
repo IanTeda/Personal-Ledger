@@ -73,7 +73,6 @@ pub struct SwitcherRow {
     pub is_default: bool,
     /// The Budget the page shows: its row carries the check.
     pub is_current: bool,
-    pub archived: bool,
     /// The date an archived Budget was archived, in the Switcher's `DateStyle`; `None` while active.
     pub archived_on: Option<String>,
     /// The health summary, or `archived <date>`.
@@ -249,7 +248,6 @@ impl Presenter for SwitcherPresenter {
                     name: budget.name.clone(),
                     is_default: budget.is_default,
                     is_current: budget.id == self.current,
-                    archived: budget.is_archived(),
                     summary: self.summary(budget, archived_on.as_deref()),
                     archived_on,
                     method: method_label(budget.method),
@@ -265,7 +263,7 @@ impl Presenter for SwitcherPresenter {
             search_empty: self.query.is_empty(),
             searching: self.searching,
             selected: (!rows.is_empty()).then(|| self.selected.min(rows.len() - 1)),
-            archived_from: rows.iter().position(|row| row.archived),
+            archived_from: rows.iter().position(|row| row.archived_on.is_some()),
             none: rows.is_empty().then(msg::budgets_switcher_none),
             rows,
             archived_label: msg::budgets_switcher_archived(),
@@ -363,14 +361,13 @@ mod tests {
         let expected = format_date(today(), Some(DateStyle::Medium));
         let archived = rows
             .iter()
-            .find(|row| row.archived)
+            .find(|row| row.archived_on.is_some())
             .expect("an archived row");
         assert_eq!(archived.archived_on.as_deref(), Some(expected.as_str()));
         assert!(archived.summary.contains(&expected));
         assert!(
-            rows.iter()
-                .filter(|row| !row.archived)
-                .all(|row| row.archived_on.is_none())
+            rows.iter().any(|row| row.archived_on.is_none()),
+            "an active row carries no date"
         );
     }
 

@@ -95,7 +95,9 @@ fn row(
         .px(px(14.0))
         .py(px(9.0))
         .text_color(primary)
-        .when(row.archived && !selected, |this| this.opacity(0.55))
+        .when(row.archived_on.is_some() && !selected, |this| {
+            this.opacity(0.55)
+        })
         .when(selected, |this| this.bg(color::selection_background(cx)))
         .when(!selected, |this| this.hover(move |style| style.bg(hover)))
         .on_click(move |_event, window, cx| on_click(window, cx))
