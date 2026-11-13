@@ -329,10 +329,9 @@ impl UnitsPagePresenter {
     /// The page and its prices view with their keys built from `config`, as
     /// [`PagePresenter::rebind`] builds them later.
     pub fn new(ports: SharedPorts, clock: Clock, config: &KeyBindingConfig) -> Self {
-        let keymap = crate::keymap::units_page_keymap(config);
-        let prices_keymap = unit_prices_keymap(config);
+        let (keymap, prices_keymap, prices_keys) = Self::keymaps(config);
         Self {
-            prices_keys: Self::prices_keys(&keymap, &prices_keymap),
+            prices_keys,
             ports,
             clock,
             keymap,
@@ -346,6 +345,21 @@ impl UnitsPagePresenter {
             prices: None,
             prices_keymap,
         }
+    }
+
+    /// The page's keys, the prices view's, and the page's while the prices view shows, from
+    /// `config`.
+    fn keymaps(
+        config: &KeyBindingConfig,
+    ) -> (
+        Keymap<UnitsPageEvent>,
+        Keymap<UnitPricesEvent>,
+        Keymap<UnitsPageEvent>,
+    ) {
+        let keymap = crate::keymap::units_page_keymap(config);
+        let prices_keymap = unit_prices_keymap(config);
+        let prices_keys = Self::prices_keys(&keymap, &prices_keymap);
+        (keymap, prices_keymap, prices_keys)
     }
 
     /// Whether the Unit prices view shows in place of the tables.
@@ -642,11 +656,7 @@ impl PagePresenter for UnitsPagePresenter {
     /// The page's keys and the prices view's. A prices view already open keeps its keys until it
     /// next opens.
     fn rebind(&mut self, keys: &KeyBindingConfig) {
-        let keymap = crate::keymap::units_page_keymap(keys);
-        let prices_keymap = unit_prices_keymap(keys);
-        self.prices_keys = Self::prices_keys(&keymap, &prices_keymap);
-        self.keymap = keymap;
-        self.prices_keymap = prices_keymap;
+        (self.keymap, self.prices_keymap, self.prices_keys) = Self::keymaps(keys);
     }
 
     /// A page event while the prices view shows closes the view first, so a palette Command acts

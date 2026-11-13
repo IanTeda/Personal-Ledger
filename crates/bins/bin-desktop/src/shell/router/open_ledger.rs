@@ -140,7 +140,6 @@ impl OpenLedger {
             storage.ports.units.clone(),
             storage.ports.unit_deletion.clone(),
             dialog_keys.clone(),
-            keybindings,
         );
         let institutions_setup = crate::institutions::InstitutionsSetup::new(
             storage.ports.institutions.clone(),
@@ -192,7 +191,6 @@ impl OpenLedger {
             storage.ports.bills.clone(),
             payments,
             dialog_keys.clone(),
-            keybindings,
         );
         let settings_setup = crate::settings::pages::SettingsSetup {
             units,
@@ -203,7 +201,7 @@ impl OpenLedger {
             categories: categories_setup,
             tags: tags_setup,
             inventory: inventory_setup,
-            ledger: crate::settings::ledger::LedgerKeys::new(keybindings, &storage.ports),
+            ledger: crate::settings::ledger::LedgerPageSetup::new(&storage.ports),
         };
 
         // The Transactions page and the Import step come from `lib-database`'s `LedgerPorts`.
@@ -225,7 +223,7 @@ impl OpenLedger {
         // Documents resolve their Links against the Inventory.
         let inventory_changed = notify_on(&announcer, lib_database::Domain::Inventory, cx);
         settings.update(cx, |view, cx| {
-            view.open_ledger(&announcer, clock, settings_setup, cx)
+            view.open_ledger(&announcer, clock, keybindings, settings_setup, cx)
         });
         let transactions_view = crate::transactions::transactions_page(
             transactions_ports,
@@ -257,7 +255,8 @@ impl OpenLedger {
             clock.clone(),
             cx,
         );
-        let bills_view = crate::bills::bills_page(bills, &announcer, clock.clone(), cx);
+        let bills_view =
+            crate::bills::bills_page(bills, &announcer, keybindings, clock.clone(), cx);
         // The Documents page writes the store through its Interactors, and reads the other
         // domains through their stores (#967).
         let documents_view = crate::documents::view::page::documents_page(
@@ -283,7 +282,6 @@ impl OpenLedger {
         let signals = Root::page_signals(cx);
         let mut subscriptions: Vec<Subscription> = views
             .all()
-            .into_iter()
             .flat_map(|view| view.subscribe(&signals, cx))
             .collect();
         subscriptions.extend([

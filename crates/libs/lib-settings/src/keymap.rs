@@ -75,10 +75,12 @@ pub fn back_chord(config: &KeyBindingConfig) -> String {
     dialog_keymap(config).hint_chord(BACK).to_string()
 }
 
-/// The keys of a Settings page with no row or field cursor of its own (the info pages). Their
-/// chords are read from the frame's keymap, so a `[keybindings]` rebind of the frame's move or
+/// The keys of a Settings page with no row or field cursor of its own (the info pages), under
+/// `config`: the legend an info page builds as it is made and again on each rebind. Their chords
+/// are read from the frame's keymap, so a `[keybindings]` rebind of the frame's move or
 /// focus-index key shows here.
-pub fn settings_plain_page_hints(keymap: &Keymap<SettingsFrameEvent>) -> Vec<Hint> {
+pub fn settings_plain_page_legend(config: &KeyBindingConfig) -> Vec<Hint> {
+    let keymap = settings_frame_keymap(config);
     vec![
         Hint::new(
             keymap.hint_chords(&[MOVE_DOWN, MOVE_UP]),
@@ -88,10 +90,26 @@ pub fn settings_plain_page_hints(keymap: &Keymap<SettingsFrameEvent>) -> Vec<Hin
     ]
 }
 
-/// [`settings_plain_page_hints`] under `config`: the legend an info page builds as it is made and
-/// again on each rebind.
-pub fn settings_plain_page_legend(config: &KeyBindingConfig) -> Vec<Hint> {
-    settings_plain_page_hints(&settings_frame_keymap(config))
+/// An info page's keys: a keymap that binds nothing, since the page's only events are its
+/// buttons' clicks, and the legend [`settings_plain_page_legend`] reads from the frame's keymap.
+#[derive(Debug)]
+pub(crate) struct PlainPageKeys<E> {
+    pub(crate) keymap: Keymap<E>,
+    pub(crate) legend: Vec<Hint>,
+}
+
+impl<E: Clone> PlainPageKeys<E> {
+    pub(crate) fn new(config: &KeyBindingConfig) -> Self {
+        Self {
+            keymap: Keymap::new(&[], &KeyBindingConfig::default()),
+            legend: settings_plain_page_legend(config),
+        }
+    }
+
+    /// The legend under `config`; the keymap binds nothing to rebind.
+    pub(crate) fn rebind(&mut self, config: &KeyBindingConfig) {
+        self.legend = settings_plain_page_legend(config);
+    }
 }
 
 /// On a This device page, the focused control's choice before.
@@ -250,10 +268,8 @@ mod tests {
     #[test]
     fn a_plain_pages_hints_read_the_frames_chords() {
         lib_locale::init_with_layers("en-US", &[msg::LAYER]);
-        let keymap = settings_frame_keymap(&overriding(MOVE_DOWN, "n"));
-
         assert_eq!(
-            settings_plain_page_hints(&keymap),
+            settings_plain_page_legend(&overriding(MOVE_DOWN, "n")),
             [Hint::new("n/k", "scroll"), Hint::new("h", "index")]
         );
     }

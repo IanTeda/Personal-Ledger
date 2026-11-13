@@ -27,38 +27,36 @@ use crate::shell::view::statusline::{PageStatus, StatusRight};
 /// The Ledger page: the Presenter, over the Units store, in the generic page Entity.
 pub type LedgerPage = ModulePage<LedgerPresenter>;
 
-/// What `shell::router::build` hands the Ledger page: the `[keybindings]` every
-/// This Ledger page builds its keys from, and its reads.
-pub struct LedgerKeys {
-    pub config: KeyBindingConfig,
+/// What `shell::router::build` hands the Ledger page: its reads and its write.
+pub struct LedgerPageSetup {
     /// Settings' reads `LedgerPorts` built (the Units and the index pane's counts) and the base
     /// Unit write.
     pub settings_reads: Rc<StoredSettingsReads>,
     pub preferences: Rc<LedgerPreferencesAdapter>,
 }
 
-impl LedgerKeys {
-    pub fn new(config: &KeyBindingConfig, ports: &LedgerPorts) -> Self {
+impl LedgerPageSetup {
+    pub fn new(ports: &LedgerPorts) -> Self {
         Self {
             settings_reads: ports.settings_reads.clone(),
             preferences: ports.ledger_preferences.clone(),
-            config: config.clone(),
         }
     }
 }
 
-/// The Ledger page on `keys`, repainting when the Units change.
+/// The Ledger page on `setup`, its keys from `config`, repainting when the Units change.
 pub fn ledger_page(
-    keys: LedgerKeys,
+    setup: LedgerPageSetup,
+    config: &KeyBindingConfig,
     announcer: &Entity<Announcer>,
     cx: &mut Context<'_, LedgerPage>,
 ) -> LedgerPage {
     let presenter = LedgerPresenter::new(
         LedgerSetup {
-            units: keys.settings_reads,
-            preferences: keys.preferences,
+            units: setup.settings_reads,
+            preferences: setup.preferences,
         },
-        &keys.config,
+        config,
     );
     ModulePage::new(presenter, (), announcer, cx)
 }

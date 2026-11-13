@@ -9,6 +9,7 @@ use lib_viper::keymap::{KeyBindingConfig, Keymap};
 use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::Hint;
 
+use crate::keymap::PlainPageKeys;
 use crate::msg;
 use crate::summary::SummaryRow;
 
@@ -38,16 +39,14 @@ pub struct AboutViewModel {
 #[derive(Debug)]
 pub struct AboutPresenter {
     version: String,
-    keymap: Keymap<AboutEvent>,
-    legend: Vec<Hint>,
+    keys: PlainPageKeys<AboutEvent>,
 }
 
 impl AboutPresenter {
     pub fn new(setup: AboutSetup, config: &KeyBindingConfig) -> Self {
         Self {
             version: setup.version,
-            keymap: Keymap::new(&[], &KeyBindingConfig::default()),
-            legend: crate::keymap::settings_plain_page_legend(config),
+            keys: PlainPageKeys::new(config),
         }
     }
 
@@ -81,7 +80,7 @@ impl Presenter for AboutPresenter {
             version: msg::settings_about_version(&self.version),
             released: "(08 September 2026)".to_string(),
             built_with: msg::settings_about_built_with(),
-            hints: self.legend.clone(),
+            hints: self.keys.legend.clone(),
         }
     }
 }
@@ -96,12 +95,12 @@ impl PagePresenter for AboutPresenter {
     }
 
     fn keymap(&self) -> &Keymap<AboutEvent> {
-        &self.keymap
+        &self.keys.keymap
     }
 
     /// The legend, which reads the frame's chords.
     fn rebind(&mut self, keys: &KeyBindingConfig) {
-        self.legend = crate::keymap::settings_plain_page_legend(keys);
+        self.keys.rebind(keys);
     }
 }
 

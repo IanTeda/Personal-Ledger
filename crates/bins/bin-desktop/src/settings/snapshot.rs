@@ -84,9 +84,9 @@ impl PageSnapshot for SettingsDisplaySnapshot {
         SettingsDisplaySnapshot {
             display_field: model.fields.focused(),
             colour_theme_focus: model.grid,
-            date_style: display.date_style.map(|style| format!("{style:?}")),
-            row_density: format!("{:?}", display.row_density),
-            status_glyphs: format!("{:?}", display.status_glyphs),
+            date_style: display.page.date_style.map(|style| format!("{style:?}")),
+            row_density: format!("{:?}", display.page.density),
+            status_glyphs: format!("{:?}", display.page.glyphs),
             start_sidebar_minimised: display.start_sidebar_minimised,
         }
     }

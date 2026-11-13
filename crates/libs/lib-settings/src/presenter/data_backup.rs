@@ -9,6 +9,7 @@ use lib_viper::keymap::{KeyBindingConfig, Keymap};
 use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::Hint;
 
+use crate::keymap::PlainPageKeys;
 use crate::msg;
 
 /// The mockup's own placeholder values, which the Data & backup index summary quotes too.
@@ -45,15 +46,13 @@ pub struct DataBackupViewModel {
 /// so its keymap binds nothing.
 #[derive(Debug)]
 pub struct DataBackupPresenter {
-    keymap: Keymap<DataBackupEvent>,
-    legend: Vec<Hint>,
+    keys: PlainPageKeys<DataBackupEvent>,
 }
 
 impl DataBackupPresenter {
     pub fn new(config: &KeyBindingConfig) -> Self {
         Self {
-            keymap: Keymap::new(&[], &KeyBindingConfig::default()),
-            legend: crate::keymap::settings_plain_page_legend(config),
+            keys: PlainPageKeys::new(config),
         }
     }
 }
@@ -87,7 +86,7 @@ impl Presenter for DataBackupPresenter {
             ],
             backup_now: msg::settings_backup_now(),
             export_ledger: msg::settings_backup_export(),
-            hints: self.legend.clone(),
+            hints: self.keys.legend.clone(),
         }
     }
 }
@@ -102,12 +101,12 @@ impl PagePresenter for DataBackupPresenter {
     }
 
     fn keymap(&self) -> &Keymap<DataBackupEvent> {
-        &self.keymap
+        &self.keys.keymap
     }
 
     /// The legend, which reads the frame's chords.
     fn rebind(&mut self, keys: &KeyBindingConfig) {
-        self.legend = crate::keymap::settings_plain_page_legend(keys);
+        self.keys.rebind(keys);
     }
 }
 

@@ -26,7 +26,7 @@ use crate::{
         data_backup::{DataBackupPage, data_backup_page},
         display::{DisplayPage, display_page},
         general::{GeneralPage, general_page},
-        ledger::{LedgerKeys, LedgerPage, ledger_page},
+        ledger::{LedgerPage, LedgerPageSetup, ledger_page},
         state::SettingsView,
         sync_server::{SyncServerPage, sync_server_page},
         tracing::{
@@ -45,8 +45,8 @@ use crate::{
 #[derive(Debug, Clone, Copy)]
 pub struct PageRowClicked;
 
-/// What `shell::router::build` hands the Settings pages that are modules' Views: the Units,
-/// Institutions, Accounts, Categories, Payees and Document Types modules' ports and keymaps.
+/// What `shell::router::build` hands the This Ledger pages: the Units, Institutions, Accounts,
+/// Categories, Payees and Document Types modules' ports and keymaps, and the Ledger page's reads.
 pub struct SettingsSetup {
     pub units: UnitsSetup,
     pub institutions: InstitutionsSetup,
@@ -56,7 +56,7 @@ pub struct SettingsSetup {
     pub categories: CategoriesSetup,
     pub tags: TagsSetup,
     pub inventory: InventorySetup,
-    pub ledger: LedgerKeys,
+    pub ledger: LedgerPageSetup,
 }
 
 /// What the Settings View tells the open page about the space it is drawn in, before its keys and
@@ -135,10 +135,11 @@ impl LedgerSummaries for CachedCounts {
 }
 
 impl LedgerPages {
-    /// The This Ledger pages, their keys built from `setup.ledger`'s config.
+    /// The This Ledger pages, the Ledger, Units and info pages' keys built from `config`.
     pub fn new(
         announcer: &Entity<Announcer>,
         clock: &lib_core::Clock,
+        config: &KeyBindingConfig,
         setup: SettingsSetup,
         cx: &mut Context<'_, SettingsView>,
     ) -> Self {
@@ -151,10 +152,9 @@ impl LedgerPages {
             categories,
             tags,
             inventory,
-            ledger: ledger_keys,
+            ledger,
         } = setup;
-        let config = ledger_keys.config.clone();
-        let summaries = CachedCounts::new(ledger_keys.settings_reads.clone());
+        let summaries = CachedCounts::new(ledger.settings_reads.clone());
         // Every domain's write can change a count, so any announcement drops them.
         let _ledger_changed = cx.subscribe(announcer, |view: &mut SettingsView, _, _, cx| {
             view.ledger_changed(cx);
@@ -162,8 +162,8 @@ impl LedgerPages {
         Self {
             summaries,
             _ledger_changed,
-            ledger: cx.new(|cx| ledger_page(ledger_keys, announcer, cx)),
-            units: units_page(units, announcer.clone(), clock.clone(), cx),
+            ledger: cx.new(|cx| ledger_page(ledger, config, announcer, cx)),
+            units: units_page(units, announcer.clone(), config, clock.clone(), cx),
             institutions: institutions_page(institutions, announcer.clone(), cx),
             accounts: accounts_page(accounts, announcer.clone(), clock.clone(), cx),
             categories: categories_page(categories, announcer.clone(), cx),
@@ -171,20 +171,24 @@ impl LedgerPages {
             payees: payees_page(payees, announcer.clone(), clock.clone(), cx),
             documents: document_types_page(document_types, announcer.clone(), cx),
             inventory: inventory_page(inventory, announcer.clone(), cx),
-            sync_server: cx.new(|cx| sync_server_page(&config, announcer, cx)),
-            data_backup: cx.new(|cx| data_backup_page(&config, announcer, cx)),
+            sync_server: cx.new(|cx| sync_server_page(config, announcer, cx)),
+            data_backup: cx.new(|cx| data_backup_page(config, announcer, cx)),
         }
     }
 }
 
 impl SettingsPages {
     /// The This device pages, with no Ledger open, General and Display on `device`, each reading
-    /// it once.
-    pub fn new(device: Rc<dyn DeviceConfiguration>, cx: &mut Context<'_, SettingsView>) -> Self {
+    /// it once, their keys built from `config`.
+    pub fn new(
+        device: Rc<dyn DeviceConfiguration>,
+        config: &KeyBindingConfig,
+        cx: &mut Context<'_, SettingsView>,
+    ) -> Self {
         let log_feed = cx.new(|_| LogFeed);
         Self {
-            general: cx.new(|cx| general_page(device.clone(), &KeyBindingConfig::default(), cx)),
-            display: cx.new(|cx| display_page(device, &KeyBindingConfig::default(), cx)),
+            general: cx.new(|cx| general_page(device.clone(), config, cx)),
+            display: cx.new(|cx| display_page(device, config, cx)),
             // A private, empty capture until `set_log_capture` hands over the real one.
             tracing: cx.new(|cx| {
                 tracing_page(
@@ -192,14 +196,13 @@ impl SettingsPages {
                         lib_tracing::LOG_CAPACITY,
                     ))),
                     lib_settings::TracingLevel::default(),
-                    &KeyBindingConfig::default(),
+                    config,
                     log_feed.clone(),
                     cx,
                 )
             }),
             log_feed,
-            about: cx
-                .new(|cx| about_page(env!("CARGO_PKG_VERSION"), &KeyBindingConfig::default(), cx)),
+            about: cx.new(|cx| about_page(env!("CARGO_PKG_VERSION"), config, cx)),
             ledger: None,
         }
     }
@@ -229,11 +232,16 @@ impl SettingsPages {
         }
     }
 
-    /// Every page built, in index order.
-    pub fn all(&self) -> impl Iterator<Item = &dyn PageHandle> {
+    /// Every page built, with which page it is, in index order.
+    pub fn each(&self) -> impl Iterator<Item = (SettingsPage, &dyn PageHandle)> {
         SettingsPage::ALL
             .into_iter()
-            .filter_map(|page| self.get(page))
+            .filter_map(|page| self.get(page).map(|handle| (page, handle)))
+    }
+
+    /// Every page built, in index order.
+    pub fn all(&self) -> impl Iterator<Item = &dyn PageHandle> {
+        self.each().map(|(_, handle)| handle)
     }
 }
 

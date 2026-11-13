@@ -113,6 +113,7 @@ mod tests {
                 cx.focus_handle(),
                 lib_core::Clock::fixed(today),
                 std::rc::Rc::new(lib_settings::fake::InMemoryDeviceConfiguration::default()),
+                &lib_config::KeyBindingConfig::default(),
                 cx,
             );
             let (stores, _) = lib_database::Stores::fake(lib_database::FakeStores::sample(today));
@@ -167,6 +168,7 @@ mod tests {
                 cx.focus_handle(),
                 lib_core::Clock::fixed(today),
                 std::rc::Rc::new(lib_settings::fake::InMemoryDeviceConfiguration::default()),
+                &lib_config::KeyBindingConfig::default(),
                 cx,
             );
             let (stores, _) = lib_database::Stores::fake(lib_database::FakeStores::sample(today));

@@ -100,22 +100,23 @@ impl Notify for PageRouter<'_, '_> {
     }
 }
 
-/// The Bills module's entry point: its page, built on `setup`'s ports, which the Shell hosts as
-/// the Bills destination. `clock` reads the calendar day the page dates its rows by.
+/// The Bills module's entry point: its page, built on `setup`'s ports with its keys from
+/// `config`, which the Shell hosts as the Bills destination. `clock` reads the calendar day the
+/// page dates its rows by.
 pub fn bills_page(
     setup: BillsSetup,
     announcer: &Entity<Announcer>,
+    config: &lib_config::KeyBindingConfig,
     clock: Clock,
     cx: &mut gpui::App,
 ) -> Entity<BillsPage> {
     let BillsSetup {
         ports,
         payments,
-        config,
         dialog_keys,
     } = setup;
     let presenter =
-        lib_bills::presenter::BillsPagePresenter::new(ports.clone(), clock.clone(), &config);
+        lib_bills::presenter::BillsPagePresenter::new(ports.clone(), clock.clone(), config);
     let routes = BillsRoutes {
         ports,
         payments,

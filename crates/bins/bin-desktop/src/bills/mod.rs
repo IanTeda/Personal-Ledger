@@ -39,12 +39,10 @@ pub fn new_month(ports: &SharedPorts, today: chrono::NaiveDate) {
 }
 
 /// What `shell::router::build` hands the Bills module: its ports, shared with the Open Ledger, the payments
-/// port the Pay Dialog it opens writes through, the `[keybindings]` its keys are built from and the Dialog
-/// keys its Dialogs' hints show.
+/// port the Pay Dialog it opens writes through and the Dialog keys its Dialogs' hints show.
 pub struct BillsSetup {
     pub ports: SharedPorts,
     pub payments: lib_bill_payments::SharedPayments,
-    pub config: lib_config::KeyBindingConfig,
     pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
 }
 
@@ -53,25 +51,21 @@ impl BillsSetup {
         ports: SharedPorts,
         payments: lib_bill_payments::SharedPayments,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
-        config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
             ports,
             payments,
-            config: config.clone(),
             dialog_keys,
         }
     }
 
-    /// `storage`'s Bills ports and payments under the default keys, for a test that builds
-    /// `Root` directly.
+    /// `storage`'s Bills ports and payments, for a test that builds `Root` directly.
     #[cfg(test)]
     pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
         Self::new(
             storage.ports.bills.clone(),
             storage.ports.bill_payments.clone(),
             crate::dialog_keys::LiveDialogKeys::default(),
-            &lib_config::KeyBindingConfig::default(),
         )
     }
 }

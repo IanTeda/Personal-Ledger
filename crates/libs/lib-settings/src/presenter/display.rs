@@ -77,22 +77,11 @@ impl DisplayField {
 /// What the Views and the Shell draw with, from Display: the Shell fans it out on each change.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct DisplayOutput {
-    pub date_style: Option<DateStyle>,
-    pub row_density: RowDensity,
-    pub status_glyphs: StatusGlyphs,
-    /// Applied to the primary rail at launch, so a change waits for the next one.
+    /// What every page is handed of it.
+    pub page: PageDisplay,
+    /// The Shell's alone: applied to the primary rail at launch, so a change waits for the next
+    /// one.
     pub start_sidebar_minimised: bool,
-}
-
-impl DisplayOutput {
-    /// What every page is handed of it; Start Sidebar minimised is the Shell's alone.
-    pub fn page(&self) -> PageDisplay {
-        PageDisplay {
-            date_style: self.date_style,
-            glyphs: self.status_glyphs,
-            density: self.row_density,
-        }
-    }
 }
 
 /// What Display is told and the person asks of it.
@@ -326,12 +315,14 @@ impl DisplayPresenter {
         let mut output = DisplayOutput::default();
         for field in DisplayField::ALL {
             match self.form.value(field) {
-                Some(FieldValue::Set(ConfigValue::DateStyle(style))) => output.date_style = *style,
+                Some(FieldValue::Set(ConfigValue::DateStyle(style))) => {
+                    output.page.date_style = *style;
+                }
                 Some(FieldValue::Set(ConfigValue::RowDensity(density))) => {
-                    output.row_density = *density;
+                    output.page.density = *density;
                 }
                 Some(FieldValue::Set(ConfigValue::StatusGlyphs(glyphs))) => {
-                    output.status_glyphs = *glyphs;
+                    output.page.glyphs = *glyphs;
                 }
                 Some(FieldValue::Flag(minimised)) => output.start_sidebar_minimised = *minimised,
                 _ => {}
@@ -483,14 +474,19 @@ impl Presenter for DisplayPresenter {
                 rows: PREVIEW_ROWS
                     .iter()
                     .map(|row| PreviewRowView {
-                        glyph: row.status.glyph(output.status_glyphs).to_string(),
+                        glyph: row.status.glyph(output.page.glyphs).to_string(),
                         flagged: row.status == PreviewStatus::Flagged,
-                        date: format_preview_date(row.year, row.month, row.day, output.date_style),
+                        date: format_preview_date(
+                            row.year,
+                            row.month,
+                            row.day,
+                            output.page.date_style,
+                        ),
                         payee: row.payee.to_string(),
                         amount: format_preview_amount(row.amount_cents),
                     })
                     .collect(),
-                row_density: output.row_density,
+                row_density: output.page.density,
                 note: msg::settings_display_note(),
             },
             colour_theme: ColourThemeView {
@@ -871,25 +867,6 @@ mod tests {
     }
 
     #[test]
-    fn a_page_is_handed_the_display_output_but_the_sidebar() {
-        let output = DisplayOutput {
-            date_style: Some(DateStyle::Iso),
-            row_density: RowDensity::Compact,
-            status_glyphs: StatusGlyphs::AsciiFallback,
-            start_sidebar_minimised: true,
-        };
-
-        assert_eq!(
-            output.page(),
-            PageDisplay {
-                date_style: Some(DateStyle::Iso),
-                glyphs: StatusGlyphs::AsciiFallback,
-                density: RowDensity::Compact,
-            }
-        );
-    }
-
-    #[test]
     fn display_summarises_its_five_fields() {
         let rows = reading([]).summary_rows();
 
@@ -957,9 +934,11 @@ mod tests {
         );
 
         let output = DisplayOutput {
-            date_style: Some(DateStyle::Short),
-            row_density: RowDensity::Roomy,
-            status_glyphs: StatusGlyphs::AsciiFallback,
+            page: PageDisplay {
+                date_style: Some(DateStyle::Short),
+                density: RowDensity::Roomy,
+                glyphs: StatusGlyphs::AsciiFallback,
+            },
             start_sidebar_minimised: false,
         };
         assert_eq!(display.output(), output);
@@ -1130,9 +1109,11 @@ mod tests {
         assert_eq!(
             display.output(),
             DisplayOutput {
-                date_style: Some(DateStyle::Iso),
-                row_density: RowDensity::Compact,
-                status_glyphs: StatusGlyphs::AsciiFallback,
+                page: PageDisplay {
+                    date_style: Some(DateStyle::Iso),
+                    density: RowDensity::Compact,
+                    glyphs: StatusGlyphs::AsciiFallback,
+                },
                 start_sidebar_minimised: false,
             }
         );

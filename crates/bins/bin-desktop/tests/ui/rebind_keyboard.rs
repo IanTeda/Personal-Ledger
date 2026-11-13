@@ -12,14 +12,10 @@ use lib_core::DateStyle;
 use lib_settings::SettingsPage;
 use lib_viper::keymap::MOVE_DOWN;
 
-/// The main Views `Root` hosts with a Ledger open: Dashboard, Transactions, the Import step,
-/// Documents, Bills and Budgets.
-const MAIN_VIEWS: usize = 6;
-
 /// How many pages `Root` hosts with the Sample Ledger open: each main View, the Settings View, then
 /// every Settings page.
-fn hosted_pages() -> usize {
-    MAIN_VIEWS + 1 + SettingsPage::ALL.len()
+fn hosted_pages(ui: &mut Harness<'_>) -> usize {
+    ui.read_app(|shell, _| shell.main_view_count()) + 1 + SettingsPage::ALL.len()
 }
 
 /// The chords `page` binds `command` to; empty for a page that doesn't bind it.
@@ -49,7 +45,7 @@ fn a_rebind_reaches_every_main_view_and_settings_page(app: &mut TestAppContext) 
     let before = ui.read_app(|shell, cx| shell.page_keys_snapshot(cx));
     assert_eq!(
         before.len(),
-        hosted_pages(),
+        hosted_pages(&mut ui),
         "every page is hosted: {before:?}"
     );
     for page in &before {
@@ -94,13 +90,7 @@ fn dates(ui: &mut Harness<'_>) -> DisplayDatesSnapshot {
 
 /// Whether `text` is an ISO date, `2026-09-18`.
 fn is_iso(text: Option<&str>) -> bool {
-    text.is_some_and(|text| {
-        text.len() == 10
-            && text.chars().enumerate().all(|(index, ch)| match index {
-                4 | 7 => ch == '-',
-                _ => ch.is_ascii_digit(),
-            })
-    })
+    text.is_some_and(|text| chrono::NaiveDate::parse_from_str(text, "%Y-%m-%d").is_ok())
 }
 
 fn assert_iso(dates: &DisplayDatesSnapshot) {

@@ -160,8 +160,7 @@ pub fn build(
         .map(SettingsPage::from_id)
         .unwrap_or_default();
 
-    let mut shell = Root::with_clock(nav, focus_handle, clock, device, cx);
-    shell.set_keymaps(&bindings.keybindings, cx);
+    let mut shell = Root::with_clock(nav, focus_handle, clock, device, &bindings.keybindings, cx);
     if let Some(ledger) = ledger {
         shell.open_ledger(ledger, cx);
     }
@@ -227,16 +226,19 @@ impl Root {
     /// tests pin it rather than live at the mercy of the wall clock. Builds no Ledger: that is
     /// [`Self::open_ledger`]'s. Settings comes up with its This device pages on `device`, and the
     /// Toasts, the file explorer's start and the configuration file the status line names follow
-    /// what it reads. The Display output reaches the Views as a Ledger opens.
+    /// what it reads. The global keys, the palette's and Settings' are built from `keybindings`,
+    /// which a Ledger opened later builds its Views on. The Display output reaches the Views as a
+    /// Ledger opens.
     pub fn with_clock(
         nav: NavState,
         focus_handle: FocusHandle,
         clock: lib_core::Clock,
         device: Rc<dyn DeviceConfiguration>,
+        keybindings: &lib_config::KeyBindingConfig,
         cx: &mut Context<'_, Self>,
     ) -> Self {
         let snapshot = device.read();
-        let settings = cx.new(|cx| SettingsView::new(device, cx));
+        let settings = cx.new(|cx| SettingsView::new(device, keybindings, cx));
         let mut _settings_subscriptions = settings.subscribe(&Self::page_signals(cx), cx);
         // The frame's Router says which page the person moved to, for Back and Forward.
         _settings_subscriptions.push(cx.subscribe(&settings, |shell, _, PageChanged(page), cx| {
@@ -258,7 +260,7 @@ impl Root {
             },
             #[cfg(debug_assertions)]
             debug_toast_kind: 0,
-            keybindings: lib_config::KeyBindingConfig::default(),
+            keybindings: keybindings.clone(),
             configuration_file: snapshot.file.clone(),
             last_ledger_forgotten: false,
             documents_state: None,
@@ -267,10 +269,9 @@ impl Root {
             _settings_subscriptions,
             presenter: {
                 let mut presenter = ShellPresenter::new(clock, nav);
+                presenter.set_keymap(keybindings);
                 presenter.set_noun_label(NounLabel::label);
-                presenter.set_palette_entries(command::palette_entries(
-                    &lib_config::KeyBindingConfig::default(),
-                ));
+                presenter.set_palette_entries(command::palette_entries(keybindings));
                 presenter.set_explorer_start(
                     snapshot.data_folder().map(std::path::Path::to_path_buf),
                     dirs::home_dir(),
@@ -563,7 +564,7 @@ mod tests {
     use chrono::Local;
     use lib_accounts::Account;
     use lib_categories::Category;
-    use lib_settings::keymap::{settings_frame_keymap, settings_plain_page_hints};
+    use lib_settings::keymap::settings_plain_page_legend;
     use lib_transactions::Transaction;
     use lib_viper::keymap::KeyBindingConfig;
 
@@ -583,8 +584,7 @@ mod tests {
     #[test]
     fn a_plain_settings_page_has_its_own_legend() {
         crate::locale::init_for_tests();
-        let keymap = settings_frame_keymap(&KeyBindingConfig::default());
-        let hints = settings_plain_page_hints(&keymap);
+        let hints = settings_plain_page_legend(&KeyBindingConfig::default());
         let keys: Vec<&str> = hints.iter().map(|hint| hint.chord.as_str()).collect();
         assert_eq!(keys, ["j/k", "h"]);
         assert!(hints.iter().all(|hint| !hint.action.is_empty()));
@@ -623,8 +623,7 @@ mod tests {
             let hint = crate::msg::desktop_no_ledger_hint(":open", ":new");
             assert!(hint.iter().any(|s| s.tag.as_deref() == Some("open")));
             assert!(hint.iter().any(|s| s.tag.as_deref() == Some("new")));
-            let keymap = settings_frame_keymap(&KeyBindingConfig::default());
-            for hint in settings_plain_page_hints(&keymap) {
+            for hint in settings_plain_page_legend(&KeyBindingConfig::default()) {
                 assert!(hint.action.starts_with('['), "{}", hint.action);
             }
         });

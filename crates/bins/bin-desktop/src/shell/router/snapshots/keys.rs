@@ -3,7 +3,6 @@
 
 use lib_core::DateStyle;
 
-use crate::settings::SettingsPage;
 use crate::shell::router::Root;
 use crate::shell::view::page_handle::{PageBinding, PageHandle};
 
@@ -72,13 +71,19 @@ impl Root {
             &self.settings,
             cx,
         ));
-        let settings = self.settings.read(cx).pages();
-        pages.extend(SettingsPage::ALL.into_iter().filter_map(|page| {
-            settings
-                .get(page)
-                .map(|handle| PageKeysSnapshot::of(format!("Settings({page:?})"), handle, cx))
-        }));
+        pages.extend(
+            self.settings.read(cx).pages().each().map(|(page, handle)| {
+                PageKeysSnapshot::of(format!("Settings({page:?})"), handle, cx)
+            }),
+        );
         pages
+    }
+
+    /// How many main Views the Open Ledger hosts, so a test counting the hosted pages follows a
+    /// new View.
+    #[doc(hidden)]
+    pub fn main_view_count(&self) -> usize {
+        self.open().views.each().len()
     }
 
     /// The date style each Display reader draws with, read back for assertions.

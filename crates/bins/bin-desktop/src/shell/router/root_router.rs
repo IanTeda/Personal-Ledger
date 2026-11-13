@@ -503,7 +503,7 @@ fn hosted_pages<'a>(
     settings: &'a Entity<SettingsView>,
     open: Option<&'a OpenLedger>,
 ) -> impl Iterator<Item = &'a dyn PageHandle> {
-    let views = open.map(|open| open.views.all()).unwrap_or_default();
+    let views = open.into_iter().flat_map(|open| open.views.all());
     std::iter::once(settings as &dyn PageHandle).chain(views)
 }
 
@@ -554,9 +554,8 @@ fn display_hosted_pages(
     display: DisplayOutput,
     cx: &mut App,
 ) {
-    let display = display.page();
     for page in hosted_pages(settings, open) {
-        page.display(display, cx);
+        page.display(display.page, cx);
     }
 }
 

@@ -37,9 +37,7 @@ use lib_settings::{
     ColourChoice, DataFolderOutcome, DeviceConfiguration, DisplayEvent, DisplayOutput,
     GeneralEvent, LedgerSummaries, PageRows, PageSummary, ScopeFacts, SettingsFrameEvent,
     SettingsFramePresenter, SettingsFrameSetup, SettingsFrameViewModel, SummarySources,
-    TracingLevel, TracingLog,
-    keymap::{back_chord, settings_frame_keymap},
-    summarise,
+    TracingLevel, TracingLog, summarise,
 };
 use lib_viper::display::PageDisplay;
 use lib_viper::keymap::KeyBindingConfig;
@@ -73,21 +71,26 @@ pub struct SettingsView {
 }
 
 impl SettingsView {
-    /// Builds the This device pages, which stand with no Ledger open; [`Self::open_ledger`] adds
-    /// the This Ledger pages. The Tracing capture arrives later, through `Root::set_log_capture`,
-    /// and the frame's `[keybindings]` through [`PageHandle::rebind`].
-    pub fn new(device: Rc<dyn DeviceConfiguration>, cx: &mut Context<'_, Self>) -> Self {
-        let pages = SettingsPages::new(device, cx);
+    /// Builds the This device pages, which stand with no Ledger open, and the frame, their keys
+    /// from `config`; [`Self::open_ledger`] adds the This Ledger pages. The Tracing capture
+    /// arrives later, through `Root::set_log_capture`, and a `[keybindings]` change through
+    /// [`PageHandle::rebind`].
+    pub fn new(
+        device: Rc<dyn DeviceConfiguration>,
+        config: &KeyBindingConfig,
+        cx: &mut Context<'_, Self>,
+    ) -> Self {
+        let pages = SettingsPages::new(device, config, cx);
         let _page_subscriptions = subscribe_pages(&pages, cx);
-        let config = KeyBindingConfig::default();
-        let frame = SettingsFramePresenter::new(SettingsFrameSetup {
-            keymap: settings_frame_keymap(&config),
-            back_chord: back_chord(&config),
-            facts: ScopeFacts {
-                log_capacity: lib_tracing::LOG_CAPACITY,
+        let frame = SettingsFramePresenter::new(
+            SettingsFrameSetup {
+                facts: ScopeFacts {
+                    log_capacity: lib_tracing::LOG_CAPACITY,
+                },
+                ledger_open: false,
             },
-            ledger_open: false,
-        });
+            config,
+        );
         Self {
             pages,
             frame,
@@ -101,8 +104,7 @@ impl SettingsView {
 
     /// The frame's keys under `config`'s overrides, then every page built.
     fn rebind(&mut self, config: &KeyBindingConfig, cx: &mut Context<'_, Self>) {
-        self.frame.set_keymap(settings_frame_keymap(config));
-        self.frame.set_back_chord(back_chord(config));
+        self.frame.rebind(config);
         for page in self.pages.all() {
             page.rebind(config, cx);
         }
@@ -130,16 +132,18 @@ impl SettingsView {
         self.pages.log_feed.update(cx, |feed, cx| feed.signal(cx));
     }
 
-    /// Builds the This Ledger pages on the Open Ledger's stores in `setup`, announcing through
-    /// `announcer`, so they can be shown, in place of any built on a Ledger opened before.
+    /// Builds the This Ledger pages on the Open Ledger's stores in `setup`, their keys from
+    /// `config`, announcing through `announcer`, so they can be shown, in place of any built on a
+    /// Ledger opened before.
     pub fn open_ledger(
         &mut self,
         announcer: &Entity<Announcer>,
         clock: &lib_core::Clock,
+        config: &KeyBindingConfig,
         setup: SettingsSetup,
         cx: &mut Context<'_, Self>,
     ) {
-        let pages = LedgerPages::new(announcer, clock, setup, cx);
+        let pages = LedgerPages::new(announcer, clock, config, setup, cx);
         self.pages.ledger = Some(pages);
         // Subscribed afresh, so a swapped-out Ledger's pages leave no subscription behind.
         self._page_subscriptions = subscribe_pages(&self.pages, cx);
@@ -817,16 +821,14 @@ mod tests {
             categories: crate::categories::CategoriesSetup::sample(&storage),
             tags: crate::tags::TagsSetup::sample(&storage),
             inventory: crate::inventory::InventorySetup::sample(&storage),
-            ledger: crate::settings::ledger::LedgerKeys::new(
-                &KeyBindingConfig::default(),
-                &storage.ports,
-            ),
+            ledger: crate::settings::ledger::LedgerPageSetup::new(&storage.ports),
         };
         let announcer = cx.new(|_| Announcer::default());
         let clock = lib_core::Clock::fixed(today);
         let view = cx.new(|cx| {
             SettingsView::new(
                 Rc::new(lib_settings::fake::InMemoryDeviceConfiguration::default()),
+                &KeyBindingConfig::default(),
                 cx,
             )
         });
@@ -838,7 +840,7 @@ mod tests {
                     "with no Ledger open only the This device pages are built"
                 );
             }
-            view.open_ledger(&announcer, &clock, setup, cx);
+            view.open_ledger(&announcer, &clock, &KeyBindingConfig::default(), setup, cx);
         });
 
         view.read_with(cx, |view, _| {

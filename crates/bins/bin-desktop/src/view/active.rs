@@ -52,8 +52,8 @@ pub struct ViewEntities {
 impl ViewEntities {
     /// Every View, for what `Root` does to each alike (following its events, a rebind, a Display
     /// change).
-    pub fn all(&self) -> Vec<&dyn PageHandle> {
-        self.each().into_iter().map(|(_, page)| page).collect()
+    pub fn all(&self) -> impl Iterator<Item = &dyn PageHandle> {
+        self.each().into_iter().map(|(_, page)| page)
     }
 
     /// Every View with its Entity, in the rail's order. A new View fails to compile twice before

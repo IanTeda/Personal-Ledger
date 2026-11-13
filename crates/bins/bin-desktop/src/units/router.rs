@@ -88,11 +88,13 @@ impl Notify for PageRouter<'_, '_> {
     }
 }
 
-/// The Units module's entry point: its Settings page, built on `setup`'s ports and dated by
-/// `clock`, which the Settings View hosts as any other page.
+/// The Units module's entry point: its Settings page, built on `setup`'s ports with its keys, and
+/// the Unit prices view's, from `config`, and dated by `clock`, which the Settings View hosts as
+/// any other page.
 pub fn units_page(
     setup: UnitsSetup,
     announcer: Entity<Announcer>,
+    config: &lib_config::KeyBindingConfig,
     clock: lib_core::Clock,
     cx: &mut gpui::App,
 ) -> Entity<UnitsPage> {
@@ -100,10 +102,9 @@ pub fn units_page(
         ports,
         deletion,
         dialog_keys,
-        config,
     } = setup;
     let presenter =
-        UnitsPagePresenter::new(ports.clone(), super::view::page::now_of(&clock), &config);
+        UnitsPagePresenter::new(ports.clone(), super::view::page::now_of(&clock), config);
     let routes = UnitsRoutes {
         ports,
         deletion,

@@ -54,8 +54,7 @@ impl PageSnapshot for Option<UnitPricesSnapshot> {
     }
 }
 
-/// What `shell::router::build` hands the Units module: its ports, and the `[keybindings]` the page
-/// Presenter builds its keys, and the Unit prices view's, from.
+/// What `shell::router::build` hands the Units module: its ports and the Dialog keys.
 pub struct UnitsSetup {
     pub ports: SharedPorts,
     /// The Unit Deletion module's port over the Units and Institutions stores, which Delete unit
@@ -63,7 +62,6 @@ pub struct UnitsSetup {
     pub deletion: lib_unit_deletion::SharedUnitDeletion,
     /// The Dialog keymap's chords, which the module's Dialogs build their status-line hints from.
     pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
-    pub config: lib_config::KeyBindingConfig,
 }
 
 impl UnitsSetup {
@@ -71,17 +69,16 @@ impl UnitsSetup {
         ports: SharedPorts,
         deletion: lib_unit_deletion::SharedUnitDeletion,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
-        config: &lib_config::KeyBindingConfig,
     ) -> Self {
         Self {
             ports,
             deletion,
             dialog_keys,
-            config: config.clone(),
         }
     }
 
-    /// `storage`'s Units ports under the default keys, for a test that builds `Root` directly.
+    /// `storage`'s Units ports under the default Dialog keys, for a test that builds `Root`
+    /// directly.
     #[cfg(test)]
     pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
         let config = lib_config::KeyBindingConfig::default();
@@ -91,7 +88,6 @@ impl UnitsSetup {
             crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
                 &lib_shell::dialog_keymap(&config),
             )),
-            &config,
         )
     }
 }

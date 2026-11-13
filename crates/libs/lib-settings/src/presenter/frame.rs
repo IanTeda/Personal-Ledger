@@ -20,11 +20,13 @@
 
 use lib_list_cursor::Step;
 use lib_toast::Notice;
-use lib_viper::keymap::{Keymap, MOVE_DOWN, MOVE_UP, SELECT};
+use lib_viper::keymap::{KeyBindingConfig, Keymap, MOVE_DOWN, MOVE_UP, SELECT};
 use lib_viper::presenter::{PageMode, Presenter};
 use lib_viper::view::{Hint, count};
 
-use crate::keymap::{ENTER_PAGE, NEXT_PAGE, PICKER, PREVIOUS_PAGE};
+use crate::keymap::{
+    ENTER_PAGE, NEXT_PAGE, PICKER, PREVIOUS_PAGE, back_chord, settings_frame_keymap,
+};
 use crate::msg;
 use crate::page::{ScopeFacts, ScopeGroup, SettingsPage};
 use crate::protocols::SettingsRouter;
@@ -110,12 +112,10 @@ pub enum SettingsFocus {
     Dock,
 }
 
-/// What the Client hands the frame when it builds it.
+/// What the Client hands the frame when it builds it, beside the `[keybindings]` its keys are
+/// built from.
 #[derive(Debug, Clone)]
 pub struct SettingsFrameSetup {
-    pub keymap: Keymap<SettingsFrameEvent>,
-    /// The chord of the Shell's `back`, which the Shell keeps, for the legend.
-    pub back_chord: String,
     pub facts: ScopeFacts,
     pub ledger_open: bool,
 }
@@ -254,6 +254,7 @@ impl Held {
 #[derive(Debug, Clone)]
 pub struct SettingsFramePresenter {
     keymap: Keymap<SettingsFrameEvent>,
+    /// The chord of the Shell's `back`, which the Shell keeps, for the legend.
     back_chord: String,
     facts: ScopeFacts,
     selected: SettingsPage,
@@ -264,11 +265,12 @@ pub struct SettingsFramePresenter {
 }
 
 impl SettingsFramePresenter {
-    /// The frame on the index, its cursor on General, docked rather than drilled down.
-    pub fn new(setup: SettingsFrameSetup) -> Self {
+    /// The frame on the index, its cursor on General, docked rather than drilled down, its keys
+    /// built from `config` as [`Self::rebind`] builds them later.
+    pub fn new(setup: SettingsFrameSetup, config: &KeyBindingConfig) -> Self {
         Self {
-            keymap: setup.keymap,
-            back_chord: setup.back_chord,
+            keymap: settings_frame_keymap(config),
+            back_chord: back_chord(config),
             facts: setup.facts,
             selected: SettingsPage::default(),
             focus: SettingsFocus::default(),
@@ -282,14 +284,11 @@ impl SettingsFramePresenter {
         &self.keymap
     }
 
-    /// Replaces the keymap, for a `[keybindings]` change.
-    pub fn set_keymap(&mut self, keymap: Keymap<SettingsFrameEvent>) {
-        self.keymap = keymap;
-    }
-
-    /// Replaces the chord of the Shell's `back` the legend shows, for a `[keybindings]` change.
-    pub fn set_back_chord(&mut self, back_chord: String) {
-        self.back_chord = back_chord;
+    /// The keymap and the chord of the Shell's `back` the legend shows, under `config`'s
+    /// overrides, for a `[keybindings]` change.
+    pub fn rebind(&mut self, config: &KeyBindingConfig) {
+        self.keymap = settings_frame_keymap(config);
+        self.back_chord = back_chord(config);
     }
 
     /// The page on show, or the index's cursor while the index shows: the last-visited page the
@@ -701,11 +700,8 @@ impl SettingsFramePresenter {
 
 #[cfg(test)]
 mod tests {
-    use lib_viper::keymap::KeyBindingConfig;
-
     use super::*;
     use crate::fake::{RecordingRouter, Routed};
-    use crate::keymap::settings_frame_keymap;
 
     use SettingsFrameEvent as E;
 
@@ -715,12 +711,13 @@ mod tests {
 
     fn frame_on(config: &KeyBindingConfig, ledger_open: bool) -> SettingsFramePresenter {
         locale();
-        SettingsFramePresenter::new(SettingsFrameSetup {
-            keymap: settings_frame_keymap(config),
-            back_chord: "esc".to_string(),
-            facts: ScopeFacts { log_capacity: 500 },
-            ledger_open,
-        })
+        SettingsFramePresenter::new(
+            SettingsFrameSetup {
+                facts: ScopeFacts { log_capacity: 500 },
+                ledger_open,
+            },
+            config,
+        )
     }
 
     fn frame() -> SettingsFramePresenter {

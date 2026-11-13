@@ -9,6 +9,7 @@ use lib_viper::keymap::{KeyBindingConfig, Keymap};
 use lib_viper::presenter::{PagePresenter, Presenter};
 use lib_viper::view::Hint;
 
+use crate::keymap::PlainPageKeys;
 use crate::msg;
 
 /// The mockup's own placeholder values, which the Sync server index summary quotes too.
@@ -41,15 +42,13 @@ pub struct SyncServerViewModel {
 /// so its keymap binds nothing.
 #[derive(Debug)]
 pub struct SyncServerPresenter {
-    keymap: Keymap<SyncServerEvent>,
-    legend: Vec<Hint>,
+    keys: PlainPageKeys<SyncServerEvent>,
 }
 
 impl SyncServerPresenter {
     pub fn new(config: &KeyBindingConfig) -> Self {
         Self {
-            keymap: Keymap::new(&[], &KeyBindingConfig::default()),
-            legend: crate::keymap::settings_plain_page_legend(config),
+            keys: PlainPageKeys::new(config),
         }
     }
 }
@@ -76,7 +75,7 @@ impl Presenter for SyncServerPresenter {
             last_label: msg::settings_sync_last(),
             last: PLACEHOLDER_LAST.to_string(),
             sync_now: msg::settings_sync_now(),
-            hints: self.legend.clone(),
+            hints: self.keys.legend.clone(),
         }
     }
 }
@@ -91,12 +90,12 @@ impl PagePresenter for SyncServerPresenter {
     }
 
     fn keymap(&self) -> &Keymap<SyncServerEvent> {
-        &self.keymap
+        &self.keys.keymap
     }
 
     /// The legend, which reads the frame's chords.
     fn rebind(&mut self, keys: &KeyBindingConfig) {
-        self.legend = crate::keymap::settings_plain_page_legend(keys);
+        self.keys.rebind(keys);
     }
 }
 
