@@ -509,7 +509,8 @@ impl Entry {
                     AccountsVerb::Edit => lib_viper::keymap::EDIT,
                     AccountsVerb::Delete => lib_viper::keymap::DELETE,
                 };
-                // The hosted Accounts page's own key; the static binding while none is hosted.
+                // The hosted Accounts page's own key. With no Accounts page hosted the row has no
+                // key: the verbs need a Ledger, and no Accounts page exists to bind them.
                 match pages
                     .iter()
                     .find(|(view, _)| *view == ActiveView::Settings(SettingsPage::Accounts))
@@ -518,7 +519,7 @@ impl Entry {
                         .iter()
                         .find(|binding| binding.command == name)
                         .and_then(|binding| key(&binding.chord)),
-                    None => command.binding.map(str::to_string),
+                    None => None,
                 }
             }
             CommandEffect::Shell(ShellCommand::ToastHistory) => lib_shell::global_keymap(config)
@@ -732,6 +733,16 @@ mod tests {
             .find(|entry| entry.name == "accounts new")
             .expect("the accounts new row");
         assert_eq!(row.key.as_deref(), Some("ctrl+shift+n"));
+    }
+
+    #[test]
+    fn an_accounts_verb_row_has_no_key_while_no_accounts_page_is_hosted() {
+        let config = KeyBindingConfig::default();
+        let row = entries(&config, [])
+            .into_iter()
+            .find(|entry| entry.name == "accounts new")
+            .expect("the accounts new row");
+        assert_eq!(row.key, None);
     }
 
     #[test]
