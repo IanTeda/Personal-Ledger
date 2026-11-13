@@ -496,7 +496,11 @@ impl Entry {
     /// `command` as a row, its key read live where a keymap binds the same event: the Accounts
     /// verbs share the Accounts page's `new`, `edit` and `delete`, and `messages` the global
     /// keymap's `toast_history`.
-    fn from_command(command: &Command, config: &KeyBindingConfig) -> Self {
+    fn from_command(
+        command: &Command,
+        config: &KeyBindingConfig,
+        pages: &[(ActiveView, Vec<PageBinding>)],
+    ) -> Self {
         let live = match command.effect {
             CommandEffect::Accounts(verb) => {
                 let name = match verb {
@@ -504,9 +508,17 @@ impl Entry {
                     AccountsVerb::Edit => lib_viper::keymap::EDIT,
                     AccountsVerb::Delete => lib_viper::keymap::DELETE,
                 };
-                lib_accounts::keymap::accounts_page_keymap(config)
-                    .chord(name)
-                    .and_then(key)
+                // The hosted Accounts page's own key; the static binding while none is hosted.
+                match pages
+                    .iter()
+                    .find(|(view, _)| *view == ActiveView::Settings(SettingsPage::Accounts))
+                {
+                    Some((_, keys)) => keys
+                        .iter()
+                        .find(|binding| binding.command == name)
+                        .and_then(|binding| key(&binding.chord)),
+                    None => command.binding.map(str::to_string),
+                }
             }
             CommandEffect::Shell(ShellCommand::ToastHistory) => lib_shell::global_keymap(config)
                 .chord(lib_shell::keymap::TOAST_HISTORY)
@@ -531,11 +543,12 @@ pub fn entries(
     config: &KeyBindingConfig,
     pages: impl IntoIterator<Item = (ActiveView, Vec<PageBinding>)>,
 ) -> Vec<Entry> {
+    let pages: Vec<_> = pages.into_iter().collect();
     let mut entries = global_entries(config);
     entries.extend(
         COMMANDS
             .iter()
-            .map(|command| Entry::from_command(command, config)),
+            .map(|command| Entry::from_command(command, config, &pages)),
     );
     entries.extend(module_entries(pages));
     entries.sort_by_key(|entry| entry.group);
@@ -684,64 +697,10 @@ pub fn find(name: &str) -> Option<CommandEffect> {
 mod tests {
     use super::*;
     use crate::settings::SettingsPage as Page;
-
-    /// The module pages a Ledger open hosts, each with its page keymap's keys under `config`: what
-    /// `Root` hands [`entries`], without building the pages.
-    fn hosted(config: &KeyBindingConfig) -> Vec<(ActiveView, Vec<PageBinding>)> {
-        vec![
-            (
-                ActiveView::Settings(Page::Accounts),
-                PageBinding::all_of(&lib_accounts::keymap::accounts_page_keymap(config)),
-            ),
-            (
-                ActiveView::Bills,
-                PageBinding::all_of(&lib_bills::keymap::bills_page_keymap(config)),
-            ),
-            (
-                ActiveView::Budgets,
-                PageBinding::all_of(&lib_budgets::keymap::budgets_page_keymap(config)),
-            ),
-            (
-                ActiveView::Settings(Page::Categories),
-                PageBinding::all_of(&lib_categories::keymap::categories_page_keymap(config)),
-            ),
-            (
-                ActiveView::Documents,
-                PageBinding::all_of(&lib_documents::keymap::documents_page_keymap(config)),
-            ),
-            (
-                ActiveView::Settings(Page::Documents),
-                PageBinding::all_of(&lib_documents::keymap::document_types_page_keymap(config)),
-            ),
-            (
-                ActiveView::Settings(Page::Institutions),
-                PageBinding::all_of(&lib_institutions::keymap::institutions_page_keymap(config)),
-            ),
-            (
-                ActiveView::Settings(Page::Inventory),
-                PageBinding::all_of(&lib_inventory::keymap::inventory_page_keymap(config)),
-            ),
-            (
-                ActiveView::Settings(Page::Payees),
-                PageBinding::all_of(&lib_payees::keymap::payees_page_keymap(config)),
-            ),
-            (
-                ActiveView::Settings(Page::Tags),
-                PageBinding::all_of(&lib_tags::keymap::tags_page_keymap(config)),
-            ),
-            (
-                ActiveView::Transactions,
-                PageBinding::all_of(&lib_transactions::keymap::transactions_page_keymap(config)),
-            ),
-            (
-                ActiveView::Settings(Page::Units),
-                PageBinding::all_of(&lib_units::keymap::units_page_keymap(config)),
-            ),
-        ]
-    }
+    use crate::shell::view::page_handle::hosted_pages_for_test;
 
     fn entries_under(config: &KeyBindingConfig) -> Vec<Entry> {
-        entries(config, hosted(config))
+        entries(config, hosted_pages_for_test(config))
     }
 
     fn defaults() -> Vec<Entry> {
@@ -753,6 +712,24 @@ mod tests {
             .into_iter()
             .find(|entry| entry.name == name)
             .map(|entry| entry.effect)
+    }
+
+    #[test]
+    fn an_accounts_verb_row_shows_the_hosted_pages_chord() {
+        let config = KeyBindingConfig::default();
+        let pages = vec![(
+            ActiveView::Settings(Page::Accounts),
+            vec![PageBinding {
+                command: lib_viper::keymap::NEW,
+                chord: "ctrl+shift+n".to_string(),
+                palette: Palette::Hidden,
+            }],
+        )];
+        let row = entries(&config, pages)
+            .into_iter()
+            .find(|entry| entry.name == "accounts new")
+            .expect("the accounts new row");
+        assert_eq!(row.key.as_deref(), Some("ctrl+shift+n"));
     }
 
     #[test]
@@ -779,7 +756,7 @@ mod tests {
         let config = KeyBindingConfig::default();
         let listed: Vec<_> = global_entries(&config)
             .into_iter()
-            .chain(module_entries(hosted(&config)))
+            .chain(module_entries(hosted_pages_for_test(&config)))
             .collect();
         for command in COMMANDS {
             assert!(
@@ -879,7 +856,7 @@ mod tests {
             lib_inventory::keymap::EXPAND,
             lib_inventory::keymap::COLLAPSE,
         ];
-        for entry in module_entries(hosted(&KeyBindingConfig::default())) {
+        for entry in module_entries(hosted_pages_for_test(&KeyBindingConfig::default())) {
             let CommandEffect::Module { page, command } = entry.effect else {
                 panic!("{} is a module's but runs no module Command", entry.name);
             };
@@ -895,7 +872,7 @@ mod tests {
     #[test]
     fn a_page_lists_its_commands_under_its_live_keys_once_each() {
         let config = KeyBindingConfig::overriding(lib_units::keymap::SET_BASE, "ctrl+b");
-        let keymap = lib_units::keymap::units_page_keymap(&config);
+        let keymap = crate::shell::view::page_handle::units_keymap_for_test(&config);
         let mut keys = PageBinding::all_of(&keymap);
         // A second keymap holding the same Command, as a tab's beside its page's.
         keys.extend(PageBinding::all_of(&keymap));
