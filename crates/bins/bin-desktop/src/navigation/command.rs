@@ -6,7 +6,7 @@
 //! `docs/ux/tui-mockups/navigation.md`'s "Commands" section) -- plain, hand-authored data, one flat
 //! array rather than domain modules (the desktop registry is small enough not to need
 //! splitting the way the TUI's much larger one does), but each `Command` now carries a
-//! `domain` field so the palette's own resting-state list can group by it the same way.
+//! `group` field so the palette's own resting-state list can group by it the same way.
 //!
 //! **This reverses the "1d" spec's original "Results are ranked across kinds, not grouped"**
 //! (recorded when the palette was first built, issue #151) -- the user's own later call, for
@@ -26,18 +26,22 @@
 //!
 //! **The keymap is the table** (#846, ADR-0037's 2026-10-30 amendment): the global keymap and each
 //! module's keymap mark every binding `Listed` or `Hidden` (`lib_viper::keymap::Palette`), and
-//! [`entries`] lists each `Listed` one with its live key, one registration line per keymap. Running
-//! one goes back through its keymap by name ([`CommandEffect::Shell`], [`CommandEffect::Module`]),
-//! so the palette and the key can't drift. [`COMMANDS`] keeps only the Commands no keymap has.
+//! [`entries`] lists each `Listed` one with its live key. A module's come from the pages `Root`
+//! hosts, each page's keys as it holds them now (`PageHandle::keys`, #1169), so a new page is listed
+//! without a line here, and only while it is hosted: a This Ledger page's Commands with a Ledger
+//! open. Running one goes back through its keymap by name ([`CommandEffect::Shell`],
+//! [`CommandEffect::Module`]), so the palette and the key can't drift. [`COMMANDS`] keeps only the
+//! Commands no keymap has.
 
 use crate::navigation::nav::NounLabel;
 use lib_colour_theme::ColourAppearance;
 use lib_config::KeyBindingConfig;
 use lib_settings::ColourChoice;
 use lib_shell::{Destination, PaletteEffect, PaletteEntry, ShellCommand};
-use lib_viper::keymap::Keymap;
+use lib_viper::keymap::Palette;
 
 use crate::navigation::active_view::ActiveView;
+use crate::shell::view::page_handle::PageBinding;
 use crate::{navigation::nav::Noun, settings::SettingsPage};
 use lib_shell::ExplorerMode;
 
@@ -72,7 +76,7 @@ pub enum CommandEffect {
     /// A Command a module's keymap lists: opens `page`, whose module Router sends the event its
     /// keymap binds `command` to, as the key would, on whatever row the page last had selected.
     Module {
-        page: ModulePage,
+        page: ActiveView,
         command: &'static str,
     },
     /// No real behaviour behind this command yet (`docs/ux/tui-mockups/01-shell/README.md`'s commitment: "a
@@ -83,12 +87,16 @@ pub enum CommandEffect {
 
 impl CommandEffect {
     /// Whether the effect needs a Ledger open, so it is refused with none (#977): one that opens a
-    /// This Ledger page, a noun that needs one or a module's page, and `:close`, `:import` and the
-    /// commands not yet built. `:open`, `:new`, Help, the This device Settings pages and the Shell's
-    /// and Preferences' own commands run with no Ledger open.
+    /// This Ledger page, a noun that needs one or a module's page but a This device Settings page,
+    /// and `:close`, `:import` and the commands not yet built. `:open`, `:new`, Help, the This
+    /// device Settings pages and the Shell's and Preferences' own commands run with no Ledger open.
     pub fn needs_ledger(&self) -> bool {
         match self {
-            Self::OpenSettingsPage(section) => section.needs_ledger(),
+            Self::OpenSettingsPage(section)
+            | Self::Module {
+                page: ActiveView::Settings(section),
+                ..
+            } => section.needs_ledger(),
             Self::Shell(ShellCommand::Jump(noun)) => crate::navigation::nav::needs_ledger(*noun),
             Self::CloseLedger
             | Self::Accounts(_)
@@ -134,42 +142,6 @@ impl CommandEffect {
     }
 }
 
-/// The page a module Command runs on.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ModulePage {
-    /// A Settings page that is a module's View.
-    Settings(SettingsPage),
-    Bills,
-    Budgets,
-    Documents,
-    Transactions,
-}
-
-impl ModulePage {
-    /// Where the page shows, which the Shell shows before the page takes the Command.
-    pub fn destination(self) -> Destination<SettingsPage> {
-        match self {
-            Self::Settings(section) => Destination::Settings(section),
-            Self::Bills => Destination::Noun(Noun::Bills),
-            Self::Budgets => Destination::Noun(Noun::Budgets),
-            Self::Documents => Destination::Noun(Noun::Documents),
-            Self::Transactions => Destination::Noun(Noun::Transactions),
-        }
-    }
-
-    /// The View the page is, which takes the Command through its `PageHandle`. The Transactions
-    /// list, not the Import step, even while the step is open over it.
-    pub fn view(self) -> ActiveView {
-        match self {
-            Self::Settings(section) => ActiveView::Settings(section),
-            Self::Bills => ActiveView::Bills,
-            Self::Budgets => ActiveView::Budgets,
-            Self::Documents => ActiveView::Documents,
-            Self::Transactions => ActiveView::Transactions,
-        }
-    }
-}
-
 /// The Accounts verbs the palette understands -- the same three the page's `n`/`e`/`d` keys and
 /// buttons reach, through the same dialog-opening handlers. The TUI's `account off`/`on`/`check`
 /// have no desktop counterpart: the desktop design has no active flag and no balance checks.
@@ -187,8 +159,13 @@ pub enum AccountsVerb {
 /// for the file-level `open`/`new`/`close` trio and `Navigation` for the Shell's own keys, which
 /// have no noun. The header text is a Message; the variants are the stable ids, declared in the
 /// palette's order (`Dashboard` first, then alphabetical), which `Ord` follows.
+///
+/// It groups the palette's rows and is not a store, so it stays apart from `lib_database::Domain`,
+/// which names what a write touched: half its groups (the placeholder nouns, `Ledger`,
+/// `Navigation`, `Toasts`, `Settings`) have no store, and a store's domain gains no palette group.
+/// A page's group is [`group`]'s.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Domain {
+pub enum CommandGroup {
     Dashboard,
     Accounts,
     Bills,
@@ -213,32 +190,32 @@ pub enum Domain {
     Units,
 }
 
-impl Domain {
+impl CommandGroup {
     /// The header text in the Locale in effect, in sentence case.
     pub fn label(self) -> String {
         match self {
-            Domain::Dashboard => Noun::Dashboard.label(),
-            Domain::Accounts => SettingsPage::Accounts.label(),
-            Domain::Bills => Noun::Bills.label(),
-            Domain::Budgets => Noun::Budgets.label(),
-            Domain::Cash => Noun::Cash.label(),
-            Domain::Categories => SettingsPage::Categories.label(),
-            Domain::CreditCards => Noun::CreditCards.label(),
-            Domain::Documents => Noun::Documents.label(),
-            Domain::Institutions => SettingsPage::Institutions.label(),
-            Domain::Inventory => Noun::Inventory.label(),
-            Domain::Investments => Noun::Investments.label(),
-            Domain::Ledger => crate::msg::desktop_command_domain_ledger(),
-            Domain::Loans => Noun::Loans.label(),
-            Domain::Navigation => crate::msg::desktop_command_domain_navigation(),
-            Domain::Notifications => Noun::Notifications.label(),
-            Domain::Payees => SettingsPage::Payees.label(),
-            Domain::Reports => Noun::Reports.label(),
-            Domain::Settings => Noun::Settings.label(),
-            Domain::Tags => SettingsPage::Tags.label(),
-            Domain::Toasts => crate::msg::desktop_command_domain_toasts(),
-            Domain::Transactions => Noun::Transactions.label(),
-            Domain::Units => SettingsPage::Units.label(),
+            CommandGroup::Dashboard => Noun::Dashboard.label(),
+            CommandGroup::Accounts => SettingsPage::Accounts.label(),
+            CommandGroup::Bills => Noun::Bills.label(),
+            CommandGroup::Budgets => Noun::Budgets.label(),
+            CommandGroup::Cash => Noun::Cash.label(),
+            CommandGroup::Categories => SettingsPage::Categories.label(),
+            CommandGroup::CreditCards => Noun::CreditCards.label(),
+            CommandGroup::Documents => Noun::Documents.label(),
+            CommandGroup::Institutions => SettingsPage::Institutions.label(),
+            CommandGroup::Inventory => Noun::Inventory.label(),
+            CommandGroup::Investments => Noun::Investments.label(),
+            CommandGroup::Ledger => crate::msg::desktop_command_domain_ledger(),
+            CommandGroup::Loans => Noun::Loans.label(),
+            CommandGroup::Navigation => crate::msg::desktop_command_domain_navigation(),
+            CommandGroup::Notifications => Noun::Notifications.label(),
+            CommandGroup::Payees => SettingsPage::Payees.label(),
+            CommandGroup::Reports => Noun::Reports.label(),
+            CommandGroup::Settings => Noun::Settings.label(),
+            CommandGroup::Tags => SettingsPage::Tags.label(),
+            CommandGroup::Toasts => crate::msg::desktop_command_domain_toasts(),
+            CommandGroup::Transactions => Noun::Transactions.label(),
+            CommandGroup::Units => SettingsPage::Units.label(),
         }
     }
 }
@@ -250,7 +227,7 @@ pub struct Command {
     /// The command as typed: a stable English id, never translated.
     pub name: &'static str,
     /// The palette's resting-state group (mirroring `bin-tui`'s own per-domain grouping).
-    pub domain: Domain,
+    pub group: CommandGroup,
     /// The description Message, resolved in the Locale in effect when called.
     pub description: fn() -> String,
     pub binding: Option<&'static str>,
@@ -273,63 +250,63 @@ impl Command {
 pub const COMMANDS: &[Command] = &[
     Command {
         name: "accounts",
-        domain: Domain::Accounts,
+        group: CommandGroup::Accounts,
         description: crate::msg::desktop_command_accounts_description,
         binding: None,
         effect: CommandEffect::OpenSettingsPage(SettingsPage::Accounts),
     },
     Command {
         name: "accounts new",
-        domain: Domain::Accounts,
+        group: CommandGroup::Accounts,
         description: accounts_new_description,
         binding: None,
         effect: CommandEffect::Accounts(AccountsVerb::New),
     },
     Command {
         name: "accounts edit",
-        domain: Domain::Accounts,
+        group: CommandGroup::Accounts,
         description: crate::msg::desktop_command_accounts_edit_description,
         binding: None,
         effect: CommandEffect::Accounts(AccountsVerb::Edit),
     },
     Command {
         name: "accounts delete",
-        domain: Domain::Accounts,
+        group: CommandGroup::Accounts,
         description: crate::msg::desktop_command_accounts_delete_description,
         binding: None,
         effect: CommandEffect::Accounts(AccountsVerb::Delete),
     },
     Command {
         name: "categories",
-        domain: Domain::Categories,
+        group: CommandGroup::Categories,
         description: crate::msg::desktop_command_categories_description,
         binding: None,
         effect: CommandEffect::OpenSettingsPage(SettingsPage::Categories),
     },
     Command {
         name: "open",
-        domain: Domain::Ledger,
+        group: CommandGroup::Ledger,
         description: crate::msg::desktop_command_open_description,
         binding: None,
         effect: CommandEffect::OpenDialog(ExplorerMode::Open),
     },
     Command {
         name: "new",
-        domain: Domain::Ledger,
+        group: CommandGroup::Ledger,
         description: crate::msg::desktop_command_new_description,
         binding: None,
         effect: CommandEffect::OpenDialog(ExplorerMode::New),
     },
     Command {
         name: "close",
-        domain: Domain::Ledger,
+        group: CommandGroup::Ledger,
         description: crate::msg::desktop_command_close_description,
         binding: None,
         effect: CommandEffect::CloseLedger,
     },
     Command {
         name: "payees",
-        domain: Domain::Payees,
+        group: CommandGroup::Payees,
         description: crate::msg::desktop_command_payees_description,
         binding: None,
         effect: CommandEffect::OpenSettingsPage(SettingsPage::Payees),
@@ -375,49 +352,49 @@ pub const COMMANDS: &[Command] = &[
     }),
     Command {
         name: "units",
-        domain: Domain::Units,
+        group: CommandGroup::Units,
         description: crate::msg::desktop_command_units_description,
         binding: None,
         effect: CommandEffect::OpenSettingsPage(SettingsPage::Units),
     },
     Command {
         name: "institutions",
-        domain: Domain::Institutions,
+        group: CommandGroup::Institutions,
         description: crate::msg::desktop_command_institutions_description,
         binding: None,
         effect: CommandEffect::OpenSettingsPage(SettingsPage::Institutions),
     },
     Command {
         name: "tags",
-        domain: Domain::Tags,
+        group: CommandGroup::Tags,
         description: crate::msg::desktop_command_tags_description,
         binding: None,
         effect: CommandEffect::OpenSettingsPage(SettingsPage::Tags),
     },
     Command {
         name: "dismiss",
-        domain: Domain::Toasts,
+        group: CommandGroup::Toasts,
         description: crate::msg::desktop_command_dismiss_description,
         binding: None,
         effect: CommandEffect::DismissToast,
     },
     Command {
         name: "toasts on",
-        domain: Domain::Toasts,
+        group: CommandGroup::Toasts,
         description: crate::msg::desktop_command_toasts_on_description,
         binding: None,
         effect: CommandEffect::SetToasts(true),
     },
     Command {
         name: "toasts off",
-        domain: Domain::Toasts,
+        group: CommandGroup::Toasts,
         description: crate::msg::desktop_command_toasts_off_description,
         binding: None,
         effect: CommandEffect::SetToasts(false),
     },
     Command {
         name: "toasts test",
-        domain: Domain::Toasts,
+        group: CommandGroup::Toasts,
         description: crate::msg::desktop_command_toasts_test_description,
         binding: None,
         effect: CommandEffect::TestToasts,
@@ -425,14 +402,14 @@ pub const COMMANDS: &[Command] = &[
     // `messages` is the alias the design names, for a user reaching for vim's `:messages`.
     Command {
         name: "messages",
-        domain: Domain::Toasts,
+        group: CommandGroup::Toasts,
         description: lib_locale::msg::command_toast_history,
         binding: None,
         effect: CommandEffect::Shell(ShellCommand::ToastHistory),
     },
     Command {
         name: "import",
-        domain: Domain::Transactions,
+        group: CommandGroup::Transactions,
         description: crate::msg::desktop_command_import_description,
         binding: None,
         effect: CommandEffect::Import,
@@ -442,7 +419,7 @@ pub const COMMANDS: &[Command] = &[
 const fn settings_page_command(name: &'static str, section: SettingsPage) -> Command {
     Command {
         name,
-        domain: Domain::Settings,
+        group: CommandGroup::Settings,
         // A fn pointer cannot capture `section`, so the description is the same sentence for
         // every page, naming it by the command itself.
         description: settings_page_description,
@@ -462,7 +439,7 @@ const fn colour_theme_command(
 ) -> Command {
     Command {
         name,
-        domain: Domain::Settings,
+        group: CommandGroup::Settings,
         description,
         binding: None,
         effect: CommandEffect::Colour(ColourChoice::Theme(id)),
@@ -476,7 +453,7 @@ const fn colour_appearance_command(
 ) -> Command {
     Command {
         name,
-        domain: Domain::Settings,
+        group: CommandGroup::Settings,
         description,
         binding: None,
         effect: CommandEffect::Colour(ColourChoice::Appearance(appearance)),
@@ -501,7 +478,7 @@ fn accounts_new_description() -> String {
 pub struct Entry {
     /// The command as typed: a stable English id, never translated.
     pub name: &'static str,
-    pub domain: Domain,
+    pub group: CommandGroup,
     /// The description Message, resolved in the Locale in effect when called.
     pub description: fn() -> String,
     /// The key, `None` while unbound (drawn as an em dash).
@@ -538,7 +515,7 @@ impl Entry {
         };
         Self {
             name: command.name,
-            domain: command.domain,
+            group: command.group,
             description: command.description,
             key: live,
             effect: command.effect,
@@ -546,31 +523,36 @@ impl Entry {
     }
 }
 
-/// Every Command the palette lists under `config`: the global keymap's, [`COMMANDS`], then each
-/// module keymap's, grouped by [`Domain`] in its order and otherwise in that order -- the
-/// palette's resting-state (empty query) order, and the order ties fall back to once ranked.
-pub fn entries(config: &KeyBindingConfig) -> Vec<Entry> {
+/// Every Command the palette lists under `config`: the global keymap's, [`COMMANDS`], then those
+/// each hosted page in `pages` lists, by its keys as it holds them now, grouped by
+/// [`CommandGroup`] in its order and otherwise in that order -- the palette's resting-state (empty
+/// query) order, and the order ties fall back to once ranked.
+pub fn entries(
+    config: &KeyBindingConfig,
+    pages: impl IntoIterator<Item = (ActiveView, Vec<PageBinding>)>,
+) -> Vec<Entry> {
     let mut entries = global_entries(config);
     entries.extend(
         COMMANDS
             .iter()
             .map(|command| Entry::from_command(command, config)),
     );
-    entries.extend(module_entries(config));
-    entries.sort_by_key(|entry| entry.domain);
+    entries.extend(module_entries(pages));
+    entries.sort_by_key(|entry| entry.group);
     entries
 }
 
-/// [`entries`] as the palette's Presenter lists them, each under its domain's header.
+/// [`entries`] as the palette's Presenter lists them, each under its group's header.
 pub fn palette_entries(
     config: &KeyBindingConfig,
+    pages: impl IntoIterator<Item = (ActiveView, Vec<PageBinding>)>,
 ) -> Vec<PaletteEntry<PaletteEffect<SettingsPage, CommandEffect>>> {
-    entries(config)
+    entries(config, pages)
         .into_iter()
         .map(|entry| PaletteEntry {
             name: entry.name,
             description: entry.description,
-            domain: entry.domain.label(),
+            domain: entry.group.label(),
             takes_argument: entry.takes_argument(),
             key: entry.key,
             effect: entry.effect.palette_effect(),
@@ -588,7 +570,7 @@ fn global_entries(config: &KeyBindingConfig) -> Vec<Entry> {
             let command = keymap.event_for(listed.command)?;
             Some(Entry {
                 name: listed.name,
-                domain: global_domain(command),
+                group: global_group(command),
                 description: listed.description,
                 key: key(listed.chord),
                 effect: CommandEffect::Shell(command),
@@ -597,127 +579,91 @@ fn global_entries(config: &KeyBindingConfig) -> Vec<Entry> {
         .collect()
 }
 
-fn global_domain(command: ShellCommand) -> Domain {
+fn global_group(command: ShellCommand) -> CommandGroup {
     match command {
-        ShellCommand::Jump(noun) => match noun {
-            Noun::Dashboard => Domain::Dashboard,
-            Noun::Transactions => Domain::Transactions,
-            Noun::Documents => Domain::Documents,
-            Noun::Notifications => Domain::Notifications,
-            Noun::Cash => Domain::Cash,
-            Noun::Inventory => Domain::Inventory,
-            Noun::Loans => Domain::Loans,
-            Noun::CreditCards => Domain::CreditCards,
-            Noun::Investments => Domain::Investments,
-            Noun::Bills => Domain::Bills,
-            Noun::Budgets => Domain::Budgets,
-            Noun::Reports => Domain::Reports,
-            Noun::Settings => Domain::Settings,
-        },
-        ShellCommand::DismissToasts | ShellCommand::ToastHistory => Domain::Toasts,
+        ShellCommand::Jump(noun) => noun_group(noun),
+        ShellCommand::DismissToasts | ShellCommand::ToastHistory => CommandGroup::Toasts,
         // Beside `:open`, `:new` and `:close`, the other file-level Commands.
-        ShellCommand::ChangeDataFolder => Domain::Ledger,
-        _ => Domain::Navigation,
+        ShellCommand::ChangeDataFolder => CommandGroup::Ledger,
+        _ => CommandGroup::Navigation,
     }
 }
 
-/// One line per module keymap: the keymap, the page its Commands run on, and their group. The
-/// Unit prices keymap has none here: every Command it binds is hidden.
-fn module_entries(config: &KeyBindingConfig) -> Vec<Entry> {
-    use crate::settings::SettingsPage as Page;
-    let mut entries = Vec::new();
-    let settings = |page| ModulePage::Settings(page);
-    listed(
-        &mut entries,
-        &lib_accounts::keymap::accounts_page_keymap(config),
-        settings(Page::Accounts),
-        Domain::Accounts,
-    );
-    listed(
-        &mut entries,
-        &lib_bills::keymap::bills_page_keymap(config),
-        ModulePage::Bills,
-        Domain::Bills,
-    );
-    listed(
-        &mut entries,
-        &lib_budgets::keymap::budgets_page_keymap(config),
-        ModulePage::Budgets,
-        Domain::Budgets,
-    );
-    listed(
-        &mut entries,
-        &lib_categories::keymap::categories_page_keymap(config),
-        settings(Page::Categories),
-        Domain::Categories,
-    );
-    listed(
-        &mut entries,
-        &lib_documents::keymap::documents_page_keymap(config),
-        ModulePage::Documents,
-        Domain::Documents,
-    );
-    listed(
-        &mut entries,
-        &lib_documents::keymap::document_types_page_keymap(config),
-        settings(Page::Documents),
-        Domain::Documents,
-    );
-    listed(
-        &mut entries,
-        &lib_institutions::keymap::institutions_page_keymap(config),
-        settings(Page::Institutions),
-        Domain::Institutions,
-    );
-    listed(
-        &mut entries,
-        &lib_inventory::keymap::inventory_page_keymap(config),
-        settings(Page::Inventory),
-        Domain::Inventory,
-    );
-    listed(
-        &mut entries,
-        &lib_payees::keymap::payees_page_keymap(config),
-        settings(Page::Payees),
-        Domain::Payees,
-    );
-    listed(
-        &mut entries,
-        &lib_tags::keymap::tags_page_keymap(config),
-        settings(Page::Tags),
-        Domain::Tags,
-    );
-    listed(
-        &mut entries,
-        &lib_transactions::keymap::transactions_page_keymap(config),
-        ModulePage::Transactions,
-        Domain::Transactions,
-    );
-    listed(
-        &mut entries,
-        &lib_units::keymap::units_page_keymap(config),
-        settings(Page::Units),
-        Domain::Units,
-    );
-    entries
+fn noun_group(noun: Noun) -> CommandGroup {
+    match noun {
+        Noun::Dashboard => CommandGroup::Dashboard,
+        Noun::Transactions => CommandGroup::Transactions,
+        Noun::Documents => CommandGroup::Documents,
+        Noun::Notifications => CommandGroup::Notifications,
+        Noun::Cash => CommandGroup::Cash,
+        Noun::Inventory => CommandGroup::Inventory,
+        Noun::Loans => CommandGroup::Loans,
+        Noun::CreditCards => CommandGroup::CreditCards,
+        Noun::Investments => CommandGroup::Investments,
+        Noun::Bills => CommandGroup::Bills,
+        Noun::Budgets => CommandGroup::Budgets,
+        Noun::Reports => CommandGroup::Reports,
+        Noun::Settings => CommandGroup::Settings,
+    }
 }
 
-fn listed<E: Clone>(
-    entries: &mut Vec<Entry>,
-    keymap: &Keymap<E>,
-    page: ModulePage,
-    domain: Domain,
-) {
-    entries.extend(keymap.listed().map(|listed| Entry {
-        name: listed.name,
-        domain,
-        description: listed.description,
-        key: key(listed.chord),
-        effect: CommandEffect::Module {
-            page,
-            command: listed.command,
-        },
-    }));
+/// The group a page's Commands sit under: its module's, so a Settings page that is a module's View
+/// sits with that module, and the This device and info pages under Settings.
+pub fn group(view: ActiveView) -> CommandGroup {
+    match view {
+        ActiveView::Dashboard => CommandGroup::Dashboard,
+        ActiveView::Transactions | ActiveView::Import => CommandGroup::Transactions,
+        ActiveView::Documents | ActiveView::Settings(SettingsPage::Documents) => {
+            CommandGroup::Documents
+        }
+        ActiveView::Bills => CommandGroup::Bills,
+        ActiveView::Budgets => CommandGroup::Budgets,
+        ActiveView::Settings(SettingsPage::Units) => CommandGroup::Units,
+        ActiveView::Settings(SettingsPage::Institutions) => CommandGroup::Institutions,
+        ActiveView::Settings(SettingsPage::Accounts) => CommandGroup::Accounts,
+        ActiveView::Settings(SettingsPage::Categories) => CommandGroup::Categories,
+        ActiveView::Settings(SettingsPage::Tags) => CommandGroup::Tags,
+        ActiveView::Settings(SettingsPage::Payees) => CommandGroup::Payees,
+        ActiveView::Settings(SettingsPage::Inventory) => CommandGroup::Inventory,
+        ActiveView::Settings(
+            SettingsPage::General
+            | SettingsPage::Ledger
+            | SettingsPage::Display
+            | SettingsPage::SyncServer
+            | SettingsPage::DataBackup
+            | SettingsPage::Tracing
+            | SettingsPage::About,
+        ) => CommandGroup::Settings,
+        ActiveView::Placeholder(noun) => noun_group(noun),
+    }
+}
+
+/// The Commands each hosted page lists, by its keys as it holds them now (a rebind's chord
+/// included), each running on its page and grouped by [`group`]. A Command a page holds in more
+/// than one keymap (a tab's and the page's) is listed once, by the first.
+fn module_entries(pages: impl IntoIterator<Item = (ActiveView, Vec<PageBinding>)>) -> Vec<Entry> {
+    let mut entries: Vec<Entry> = Vec::new();
+    for (page, keys) in pages {
+        for binding in keys {
+            let Palette::Listed { name, description } = binding.palette else {
+                continue;
+            };
+            if entries.iter().any(|entry| entry.name == name) {
+                continue;
+            }
+            entries.push(Entry {
+                name,
+                group: group(page),
+                description,
+                key: key(&binding.chord),
+                effect: CommandEffect::Module {
+                    page,
+                    command: binding.command,
+                },
+            });
+        }
+    }
+    entries
 }
 
 /// A live chord as the palette shows it: an empty one is unbound.
@@ -737,9 +683,69 @@ pub fn find(name: &str) -> Option<CommandEffect> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::settings::SettingsPage as Page;
+
+    /// The module pages a Ledger open hosts, each with its page keymap's keys under `config`: what
+    /// `Root` hands [`entries`], without building the pages.
+    fn hosted(config: &KeyBindingConfig) -> Vec<(ActiveView, Vec<PageBinding>)> {
+        vec![
+            (
+                ActiveView::Settings(Page::Accounts),
+                PageBinding::all_of(&lib_accounts::keymap::accounts_page_keymap(config)),
+            ),
+            (
+                ActiveView::Bills,
+                PageBinding::all_of(&lib_bills::keymap::bills_page_keymap(config)),
+            ),
+            (
+                ActiveView::Budgets,
+                PageBinding::all_of(&lib_budgets::keymap::budgets_page_keymap(config)),
+            ),
+            (
+                ActiveView::Settings(Page::Categories),
+                PageBinding::all_of(&lib_categories::keymap::categories_page_keymap(config)),
+            ),
+            (
+                ActiveView::Documents,
+                PageBinding::all_of(&lib_documents::keymap::documents_page_keymap(config)),
+            ),
+            (
+                ActiveView::Settings(Page::Documents),
+                PageBinding::all_of(&lib_documents::keymap::document_types_page_keymap(config)),
+            ),
+            (
+                ActiveView::Settings(Page::Institutions),
+                PageBinding::all_of(&lib_institutions::keymap::institutions_page_keymap(config)),
+            ),
+            (
+                ActiveView::Settings(Page::Inventory),
+                PageBinding::all_of(&lib_inventory::keymap::inventory_page_keymap(config)),
+            ),
+            (
+                ActiveView::Settings(Page::Payees),
+                PageBinding::all_of(&lib_payees::keymap::payees_page_keymap(config)),
+            ),
+            (
+                ActiveView::Settings(Page::Tags),
+                PageBinding::all_of(&lib_tags::keymap::tags_page_keymap(config)),
+            ),
+            (
+                ActiveView::Transactions,
+                PageBinding::all_of(&lib_transactions::keymap::transactions_page_keymap(config)),
+            ),
+            (
+                ActiveView::Settings(Page::Units),
+                PageBinding::all_of(&lib_units::keymap::units_page_keymap(config)),
+            ),
+        ]
+    }
+
+    fn entries_under(config: &KeyBindingConfig) -> Vec<Entry> {
+        entries(config, hosted(config))
+    }
 
     fn defaults() -> Vec<Entry> {
-        entries(&KeyBindingConfig::default())
+        entries_under(&KeyBindingConfig::default())
     }
 
     fn effect(name: &str) -> Option<CommandEffect> {
@@ -773,7 +779,7 @@ mod tests {
         let config = KeyBindingConfig::default();
         let listed: Vec<_> = global_entries(&config)
             .into_iter()
-            .chain(module_entries(&config))
+            .chain(module_entries(hosted(&config)))
             .collect();
         for command in COMMANDS {
             assert!(
@@ -787,7 +793,7 @@ mod tests {
     #[test]
     fn a_listed_command_shows_its_live_key_or_none_while_unbound() {
         let key = |config: &KeyBindingConfig, name: &str| {
-            entries(config)
+            entries_under(config)
                 .into_iter()
                 .find(|entry| entry.name == name)
                 .and_then(|entry| entry.key)
@@ -819,7 +825,7 @@ mod tests {
             CommandEffect::Shell(ShellCommand::ChangeDataFolder)
         );
         assert_eq!((data.description)(), "Change data folder");
-        assert_eq!(data.domain, Domain::Ledger);
+        assert_eq!(data.group, CommandGroup::Ledger);
         assert_eq!(data.key, None, "change_data_folder is unbound");
         assert!(!data.effect.needs_ledger());
     }
@@ -829,21 +835,21 @@ mod tests {
         assert_eq!(
             effect("units set-base"),
             Some(CommandEffect::Module {
-                page: ModulePage::Settings(SettingsPage::Units),
+                page: ActiveView::Settings(SettingsPage::Units),
                 command: lib_units::keymap::SET_BASE,
             })
         );
         assert_eq!(
             effect("bills pay"),
             Some(CommandEffect::Module {
-                page: ModulePage::Bills,
+                page: ActiveView::Bills,
                 command: lib_bills::keymap::PAY,
             })
         );
         assert_eq!(
             effect("tags merge"),
             Some(CommandEffect::Module {
-                page: ModulePage::Settings(SettingsPage::Tags),
+                page: ActiveView::Settings(SettingsPage::Tags),
                 command: lib_tags::keymap::MERGE,
             })
         );
@@ -873,17 +879,67 @@ mod tests {
             lib_inventory::keymap::EXPAND,
             lib_inventory::keymap::COLLAPSE,
         ];
-        for entry in module_entries(&KeyBindingConfig::default()) {
+        for entry in module_entries(hosted(&KeyBindingConfig::default())) {
             let CommandEffect::Module { page, command } = entry.effect else {
                 panic!("{} is a module's but runs no module Command", entry.name);
             };
             assert_ne!(
                 page,
-                ModulePage::Settings(SettingsPage::Accounts),
+                ActiveView::Settings(SettingsPage::Accounts),
                 "Accounts' verbs take a name, so only COMMANDS lists them"
             );
             assert!(!hidden.contains(&command), "{command}");
         }
+    }
+
+    #[test]
+    fn a_page_lists_its_commands_under_its_live_keys_once_each() {
+        let config = KeyBindingConfig::overriding(lib_units::keymap::SET_BASE, "ctrl+b");
+        let keymap = lib_units::keymap::units_page_keymap(&config);
+        let mut keys = PageBinding::all_of(&keymap);
+        // A second keymap holding the same Command, as a tab's beside its page's.
+        keys.extend(PageBinding::all_of(&keymap));
+
+        let listed = module_entries([(ActiveView::Settings(Page::Units), keys)]);
+
+        let set_base: Vec<_> = listed
+            .iter()
+            .filter(|entry| entry.name == "units set-base")
+            .collect();
+        assert_eq!(set_base.len(), 1, "listed once");
+        assert_eq!(set_base[0].key.as_deref(), Some("ctrl+b"));
+        assert_eq!(set_base[0].group, CommandGroup::Units);
+        assert_eq!(
+            set_base[0].effect,
+            CommandEffect::Module {
+                page: ActiveView::Settings(Page::Units),
+                command: lib_units::keymap::SET_BASE,
+            }
+        );
+    }
+
+    #[test]
+    fn no_page_hosted_lists_no_module_command() {
+        let config = KeyBindingConfig::default();
+        let listed = entries(&config, []);
+        assert!(
+            listed
+                .iter()
+                .all(|entry| !matches!(entry.effect, CommandEffect::Module { .. })),
+            "a module Command is listed with no page hosting it"
+        );
+        assert!(listed.iter().any(|entry| entry.name == "settings general"));
+    }
+
+    #[test]
+    fn a_this_device_page_command_runs_without_a_ledger_and_a_module_one_needs_one() {
+        let on = |page| CommandEffect::Module {
+            page,
+            command: lib_viper::keymap::EDIT,
+        };
+        assert!(!on(ActiveView::Settings(Page::Display)).needs_ledger());
+        assert!(on(ActiveView::Settings(Page::Units)).needs_ledger());
+        assert!(on(ActiveView::Bills).needs_ledger());
     }
 
     #[test]
@@ -926,7 +982,7 @@ mod tests {
             assert_eq!(
                 effect(name),
                 Some(CommandEffect::Module {
-                    page: ModulePage::Budgets,
+                    page: ActiveView::Budgets,
                     command,
                 }),
                 "{name}"
@@ -957,7 +1013,7 @@ mod tests {
         let entries = defaults();
         for (index, entry) in entries.iter().enumerate() {
             let CommandEffect::Module {
-                page: ModulePage::Settings(page),
+                page: ActiveView::Settings(page),
                 ..
             } = entry.effect
             else {
@@ -997,22 +1053,22 @@ mod tests {
     }
 
     #[test]
-    fn domains_are_contiguous_dashboard_first_then_alphabetical() {
+    fn groups_are_contiguous_dashboard_first_then_alphabetical() {
         // Mirrors bin-tui's own `dashboard_is_first_and_the_rest_are_alphabetical` invariant --
         // the palette's resting-state grouping (`lib_shell::palette`) assumes each domain's commands
         // sit together, never split across two separate runs.
-        let mut order: Vec<Domain> = Vec::new();
+        let mut order: Vec<CommandGroup> = Vec::new();
         for entry in defaults() {
-            if order.last() != Some(&entry.domain) {
+            if order.last() != Some(&entry.group) {
                 assert!(
-                    !order.contains(&entry.domain),
-                    "domain {:?} is split across non-adjacent commands",
-                    entry.domain
+                    !order.contains(&entry.group),
+                    "group {:?} is split across non-adjacent commands",
+                    entry.group
                 );
-                order.push(entry.domain);
+                order.push(entry.group);
             }
         }
-        assert_eq!(order[0], Domain::Dashboard);
+        assert_eq!(order[0], CommandGroup::Dashboard);
         // The domains' stable ids (their variant names) sort alphabetically, whatever the Locale
         // calls them.
         let rest = &order[1..];

@@ -201,6 +201,16 @@ impl<P> ActiveView<P> {
         }
     }
 
+    /// Where the View shows, which the Shell shows before a palette Command runs on it: the
+    /// Transactions destination for the CSV import as for the list, since the Shell can't show the
+    /// step, only the Noun it opens over.
+    pub fn destination(self) -> crate::palette::Destination<P> {
+        match self {
+            Self::Settings(page) => crate::palette::Destination::Settings(page),
+            view => crate::palette::Destination::Noun(view.noun()),
+        }
+    }
+
     pub fn derive(noun: Noun, settings_page: P, import_open: bool) -> Self {
         match noun {
             Noun::Dashboard => Self::Dashboard,
@@ -247,6 +257,23 @@ mod tests {
         }
         assert_eq!(Movement::of(ShellCommand::Select), Some(Movement::Enter));
         assert_eq!(Movement::of(ShellCommand::Help), None);
+    }
+
+    #[test]
+    fn a_view_shows_at_its_noun_or_its_settings_page_and_the_import_at_transactions() {
+        use crate::palette::Destination;
+        assert_eq!(
+            ActiveView::<Page>::Bills.destination(),
+            Destination::Noun(Noun::Bills)
+        );
+        assert_eq!(
+            ActiveView::<Page>::Import.destination(),
+            Destination::Noun(Noun::Transactions)
+        );
+        assert_eq!(
+            ActiveView::Settings(Page::Units).destination(),
+            Destination::Settings(Page::Units)
+        );
     }
 
     #[test]

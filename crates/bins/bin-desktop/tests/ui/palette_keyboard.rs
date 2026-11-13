@@ -596,3 +596,54 @@ fn change_data_folder_is_listed_and_opens_the_folder_picker_over_the_view(
     assert_eq!(ui.read(|s| s.nav().mode()), InputMode::Command);
     assert_eq!(ui.read(|s| s.nav().noun()), Noun::Bills);
 }
+
+#[gpui::test]
+fn a_page_key_rebound_while_the_app_runs_shows_in_the_palette(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    assert_eq!(key_of(&mut ui, "units set-base"), "B");
+
+    ui.rebind(&KeyBindingConfig::overriding(
+        lib_units::keymap::SET_BASE,
+        "ctrl+b",
+    ));
+
+    assert_eq!(key_of(&mut ui, "units set-base"), "ctrl+b");
+    assert_eq!(
+        key_of(&mut ui, "bills pay"),
+        "p",
+        "the other pages keep theirs"
+    );
+}
+
+#[gpui::test]
+fn module_commands_are_listed_only_with_a_ledger_open(app: &mut TestAppContext) {
+    let mut ui = Harness::new(app);
+    let open = open_palette(&mut ui);
+    assert!(open.matches.contains(&"units set-base"));
+    ui.press("escape");
+
+    run(&mut ui, "close");
+
+    let closed = open_palette(&mut ui);
+    for module in [
+        "units set-base",
+        "bills pay",
+        "budgets switch",
+        "tags merge",
+    ] {
+        assert!(!closed.matches.contains(&module), "{module}");
+    }
+    assert!(
+        closed.matches.contains(&"settings units"),
+        "the Settings commands stay"
+    );
+}
+
+#[gpui::test]
+fn no_module_command_is_listed_with_no_ledger_from_start_up(app: &mut TestAppContext) {
+    let mut ui = Harness::without_ledger(app);
+    let open = open_palette(&mut ui);
+
+    assert!(!open.matches.contains(&"units set-base"));
+    assert!(open.matches.contains(&"settings general"));
+}

@@ -79,12 +79,12 @@ pub struct Listed<'a> {
 }
 
 /// One binding as a keymap holds it, listed or not: its command, its live chord (empty while
-/// unbound) and, for a Command the palette lists, the Message describing it.
+/// unbound) and whether the palette lists it, under what name and Message.
 #[derive(Debug, Clone, Copy)]
 pub struct KeyBound<'a> {
     pub command: &'static str,
     pub chord: &'a str,
-    pub description: Option<fn() -> String>,
+    pub palette: Palette,
 }
 
 /// A module's bindings with any overrides applied, looked up by chord.
@@ -207,16 +207,14 @@ impl<E: Clone> Keymap<E> {
             })
     }
 
-    /// Every binding, in binding order, each with its live chord (empty while unbound) and the
-    /// palette's description of it when the palette lists it: what a host reports a page's keys as.
+    /// Every binding, in binding order, each with its live chord (empty while unbound) and whether
+    /// the palette lists it: what a host reports a page's keys as, and the palette lists a page's
+    /// Commands from.
     pub fn bindings(&self) -> impl Iterator<Item = KeyBound<'_>> {
         self.bindings.iter().map(|bound| KeyBound {
             command: bound.command,
             chord: &bound.chord,
-            description: match bound.palette {
-                Palette::Listed { description, .. } => Some(description),
-                Palette::Hidden => None,
-            },
+            palette: bound.palette,
         })
     }
 
@@ -353,20 +351,30 @@ mod tests {
     ];
 
     #[test]
-    fn bindings_report_every_command_with_its_live_chord_and_listed_description() {
+    fn bindings_report_every_command_with_its_live_chord_and_listing() {
         let config = KeyBindingConfig::overriding(NEW, "a");
         let keymap = Keymap::new(BINDINGS, &config);
 
         let bound: Vec<_> = keymap
             .bindings()
-            .map(|bound| (bound.command, bound.chord, bound.description.map(|d| d())))
+            .map(|bound| {
+                let listed = match bound.palette {
+                    Palette::Listed { name, description } => Some((name, description())),
+                    Palette::Hidden => None,
+                };
+                (bound.command, bound.chord, listed)
+            })
             .collect();
 
         assert_eq!(
             bound,
             [
                 (NEW, "a", None),
-                (DELETE, "d", Some("delete the selected row".to_string())),
+                (
+                    DELETE,
+                    "d",
+                    Some(("rows delete", "delete the selected row".to_string()))
+                ),
             ]
         );
     }

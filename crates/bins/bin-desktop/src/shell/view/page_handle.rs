@@ -16,7 +16,7 @@ use gpui::{
     AnyElement, AnyView, App, Context, Entity, EventEmitter, Keystroke, Pixels, Subscription,
 };
 use lib_viper::display::PageDisplay;
-use lib_viper::keymap::{KeyBindingConfig, KeyBound, Keymap};
+use lib_viper::keymap::{KeyBindingConfig, KeyBound, Keymap, Palette};
 
 use super::module_page::{ModulePage, PageView};
 use super::statusline::PageStatus;
@@ -37,12 +37,13 @@ pub enum PageKey {
 }
 
 /// One key a page holds now, as [`PageHandle::keys`] reports it: its command, its live chord
-/// (empty while unbound) and, for a Command the palette lists, what the palette says it does.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// (empty while unbound) and whether the palette lists it, which the palette's module Commands are
+/// read from (#1169).
+#[derive(Debug, Clone)]
 pub struct PageBinding {
     pub command: &'static str,
     pub chord: String,
-    pub description: Option<String>,
+    pub palette: Palette,
 }
 
 impl PageBinding {
@@ -57,7 +58,7 @@ impl From<KeyBound<'_>> for PageBinding {
         Self {
             command: bound.command,
             chord: bound.chord.to_string(),
-            description: bound.description.map(|describe| describe()),
+            palette: bound.palette,
         }
     }
 }

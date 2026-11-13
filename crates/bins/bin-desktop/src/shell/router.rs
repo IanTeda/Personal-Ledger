@@ -85,7 +85,7 @@ use gpui::{
 use lib_documents::presenter::DocumentsPageEvent;
 use lib_shell::{NavInput, ToastInput};
 
-use crate::shell::view::page_handle::PageHandle;
+use crate::shell::view::page_handle::{PageBinding, PageHandle};
 use crate::view::active;
 use crate::{
     documents::{DocumentsMode, LibraryScope, LibrarySort},
@@ -245,7 +245,7 @@ impl Root {
             shell.navigate(NavInput::SettingsPage(*page));
             cx.notify();
         }));
-        Self {
+        let mut root = Self {
             focus_handle,
             view_x_scroll_handle: ScrollHandle::new(),
             prefix_timer: None,
@@ -271,7 +271,6 @@ impl Root {
                 let mut presenter = ShellPresenter::new(clock, nav);
                 presenter.set_keymap(keybindings);
                 presenter.set_noun_label(NounLabel::label);
-                presenter.set_palette_entries(command::palette_entries(keybindings));
                 presenter.set_explorer_start(
                     snapshot.data_folder().map(std::path::Path::to_path_buf),
                     dirs::home_dir(),
@@ -281,7 +280,9 @@ impl Root {
                 }));
                 presenter
             },
-        }
+        };
+        root.refresh_palette_entries(cx);
+        root
     }
 
     /// Opens `ledger` as the Open Ledger, building everything on it under the `[keybindings]` in
@@ -487,9 +488,23 @@ impl Root {
     pub fn set_keymaps(&mut self, config: &lib_config::KeyBindingConfig, cx: &mut App) {
         self.keybindings = config.clone();
         self.presenter.set_keymap(config);
-        self.presenter
-            .set_palette_entries(command::palette_entries(config));
         root_router::set_view_keymaps(&self.settings, self.open.as_ref(), config, cx);
+        self.refresh_palette_entries(cx);
+    }
+
+    /// The palette's Commands under the `[keybindings]` in effect, a module's from the pages hosted
+    /// now with the keys each holds: on start-up, after a rebind and as a Ledger opens or closes.
+    pub(crate) fn refresh_palette_entries(&mut self, cx: &App) {
+        let views = self.open.as_ref().map(|open| open.views.each());
+        let settings = self.settings.read(cx).pages().each();
+        let pages: Vec<(ActiveView, Vec<PageBinding>)> = views
+            .into_iter()
+            .flatten()
+            .chain(settings.map(|(page, handle)| (ActiveView::Settings(page), handle)))
+            .map(|(view, handle)| (view, handle.keys(cx)))
+            .collect();
+        self.presenter
+            .set_palette_entries(command::palette_entries(&self.keybindings, pages));
     }
 
     /// The status line's flash message (e.g. "not yet built"), if one is showing.

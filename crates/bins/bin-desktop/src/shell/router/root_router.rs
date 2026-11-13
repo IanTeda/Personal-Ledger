@@ -20,7 +20,7 @@ use lib_toast::{Notice, Notify, ToastKind};
 use super::{LedgerFile, OpenLedger, Root, ShellPresenter, explorer::file_name};
 use crate::documents::{DocumentsMode, LibraryScope, LibrarySort};
 use crate::navigation::active_view::ActiveView;
-use crate::navigation::command::{CommandEffect, ModulePage};
+use crate::navigation::command::CommandEffect;
 use crate::navigation::nav::Noun;
 use crate::settings::{SettingsPage, state::SettingsView};
 use crate::shell::state::ShellState;
@@ -431,9 +431,9 @@ impl RootRouter<'_, '_> {
     /// focus in it): the page's Router takes the event its keymap binds `command` to, inside the
     /// input, as the key's is. Whether the page took it: a This Ledger page Settings refused to
     /// open with no Ledger open takes nothing.
-    fn run_module_command(&mut self, page: ModulePage, command: &'static str) -> bool {
+    fn run_module_command(&mut self, page: ActiveView, command: &'static str) -> bool {
         let cx = &mut *self.cx;
-        if let ModulePage::Settings(section) = page
+        if let ActiveView::Settings(section) = page
             && !self
                 .settings
                 .update(cx, |view, cx| view.open_page(section, cx))
@@ -441,7 +441,7 @@ impl RootRouter<'_, '_> {
             return false;
         }
         let views = self.open.as_ref().map(|open| &open.views);
-        active::page(page.view(), views, self.settings)
+        active::page(page, views, self.settings)
             .is_some_and(|handle| handle.module_command(command, cx))
     }
 }
@@ -578,6 +578,7 @@ impl Root {
         act: impl FnOnce(&mut ShellPresenter, &mut RootRouter<'_, '_>) -> T,
     ) -> T {
         let palette_was_open = self.presenter.palette_open();
+        let ledger_was_open = self.ledger_open();
         let Root {
             presenter,
             open,
@@ -602,6 +603,10 @@ impl Root {
             cx,
         };
         let acted = act(presenter, &mut router);
+        // The pages a module Command runs on come and go with the Ledger.
+        if ledger_was_open != self.ledger_open() {
+            self.refresh_palette_entries(cx);
+        }
         if !palette_was_open && self.presenter.palette_open() {
             self.state.palette_scroll = ScrollHandle::new();
         }
