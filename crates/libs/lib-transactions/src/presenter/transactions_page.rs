@@ -170,6 +170,13 @@ pub struct TransactionsPageViewModel {
     pub filter: Option<FilterViewModel>,
 }
 
+/// The three keymaps `keymaps` builds, named so a swapped pair cannot compile at a call site.
+struct Keymaps {
+    page: Keymap<TransactionsPageEvent>,
+    filter: Keymap<TransactionsPageEvent>,
+    search: Keymap<TransactionsPageEvent>,
+}
+
 pub struct TransactionsPagePresenter {
     ports: SharedPorts,
     /// Today, which the default filters and a date typed as `today` read.
@@ -197,13 +204,13 @@ impl TransactionsPagePresenter {
     /// The page on its first row, filtered to the defaults (this year), its keys under `config`.
     pub fn new(ports: SharedPorts, clock: Clock, config: &KeyBindingConfig) -> Self {
         let filters = TransactionFilters::defaults(clock.today());
-        let (keymap, filter_keymap, search_keymap) = Self::keymaps(config);
+        let keymaps = Self::keymaps(config);
         Self {
             ports,
             clock,
-            keymap,
-            search_keymap,
-            filter_keymap,
+            keymap: keymaps.page,
+            search_keymap: keymaps.search,
+            filter_keymap: keymaps.filter,
             selected: 0,
             half_page: lib_list_cursor::HALF_PAGE,
             filters,
@@ -218,16 +225,14 @@ impl TransactionsPagePresenter {
 
     /// The page's keymap, the popover's and the Search's (the page's with no keys), all under
     /// `config`, so `new` and `rebind` build them the same way.
-    fn keymaps(
-        config: &KeyBindingConfig,
-    ) -> (
-        Keymap<TransactionsPageEvent>,
-        Keymap<TransactionsPageEvent>,
-        Keymap<TransactionsPageEvent>,
-    ) {
-        let keymap = transactions_page_keymap(config);
-        let search_keymap = keymap.scoped(|_| false);
-        (keymap, transactions_filter_keymap(config), search_keymap)
+    fn keymaps(config: &KeyBindingConfig) -> Keymaps {
+        let page = transactions_page_keymap(config);
+        let search = page.scoped(|_| false);
+        Keymaps {
+            page,
+            filter: transactions_filter_keymap(config),
+            search,
+        }
     }
 
     /// How many rows a half-page move steps: what the Client measures half its viewport to hold.
@@ -448,7 +453,10 @@ impl PagePresenter for TransactionsPagePresenter {
 
     /// The page's, the Search's and the popover's keymaps, an open popover's included.
     fn rebind(&mut self, keys: &KeyBindingConfig) {
-        (self.keymap, self.filter_keymap, self.search_keymap) = Self::keymaps(keys);
+        let keymaps = Self::keymaps(keys);
+        self.keymap = keymaps.page;
+        self.filter_keymap = keymaps.filter;
+        self.search_keymap = keymaps.search;
     }
 
     /// The dates' style, the status marks and legend in the glyphs, and the rows spaced at the
