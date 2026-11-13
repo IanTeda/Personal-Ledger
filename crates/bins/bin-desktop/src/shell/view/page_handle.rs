@@ -286,71 +286,65 @@ impl<P: PageView> PageHandle for Entity<ModulePage<P>> {
 }
 
 #[cfg(test)]
-use crate::navigation::active_view::ActiveView;
-#[cfg(test)]
-use crate::settings::SettingsPage;
+pub(crate) mod test_support {
+    use lib_viper::keymap::KeyBindingConfig;
 
-#[cfg(test)]
-/// The module pages a Ledger open hosts, each with its page keymap's keys under `config`: what
-/// `Root` hands [`entries`], without building the pages.
-pub(crate) fn hosted_pages_for_test(
-    config: &KeyBindingConfig,
-) -> Vec<(ActiveView, Vec<PageBinding>)> {
-    vec![
-        (
-            ActiveView::Settings(SettingsPage::Accounts),
-            PageBinding::all_of(&lib_accounts::keymap::accounts_page_keymap(config)),
-        ),
-        (
-            ActiveView::Bills,
-            PageBinding::all_of(&lib_bills::keymap::bills_page_keymap(config)),
-        ),
-        (
-            ActiveView::Budgets,
-            PageBinding::all_of(&lib_budgets::keymap::budgets_page_keymap(config)),
-        ),
-        (
-            ActiveView::Settings(SettingsPage::Categories),
-            PageBinding::all_of(&lib_categories::keymap::categories_page_keymap(config)),
-        ),
-        (
-            ActiveView::Documents,
-            PageBinding::all_of(&lib_documents::keymap::documents_page_keymap(config)),
-        ),
-        (
-            ActiveView::Settings(SettingsPage::Documents),
-            PageBinding::all_of(&lib_documents::keymap::document_types_page_keymap(config)),
-        ),
-        (
-            ActiveView::Settings(SettingsPage::Institutions),
-            PageBinding::all_of(&lib_institutions::keymap::institutions_page_keymap(config)),
-        ),
-        (
-            ActiveView::Settings(SettingsPage::Inventory),
-            PageBinding::all_of(&lib_inventory::keymap::inventory_page_keymap(config)),
-        ),
-        (
-            ActiveView::Settings(SettingsPage::Payees),
-            PageBinding::all_of(&lib_payees::keymap::payees_page_keymap(config)),
-        ),
-        (
-            ActiveView::Settings(SettingsPage::Tags),
-            PageBinding::all_of(&lib_tags::keymap::tags_page_keymap(config)),
-        ),
-        (
-            ActiveView::Transactions,
-            PageBinding::all_of(&lib_transactions::keymap::transactions_page_keymap(config)),
-        ),
-        (
-            ActiveView::Settings(SettingsPage::Units),
-            PageBinding::all_of(&lib_units::keymap::units_page_keymap(config)),
-        ),
-    ]
-}
+    use super::PageBinding;
+    use crate::navigation::active_view::ActiveView;
+    use crate::settings::SettingsPage;
 
-#[cfg(test)]
-pub(crate) fn units_keymap_for_test(
-    config: &KeyBindingConfig,
-) -> Keymap<lib_units::presenter::UnitsPageEvent> {
-    lib_units::keymap::units_page_keymap(config)
+    /// The module pages a Ledger open hosts, each with its page keymap's keys under `config`: what
+    /// `Root` hands [`crate::navigation::command::entries`], without building the pages.
+    pub(crate) fn hosted_pages(config: &KeyBindingConfig) -> Vec<(ActiveView, Vec<PageBinding>)> {
+        vec![
+            (
+                ActiveView::Settings(SettingsPage::Accounts),
+                PageBinding::all_of(&lib_accounts::keymap::accounts_page_keymap(config)),
+            ),
+            (
+                ActiveView::Bills,
+                PageBinding::all_of(&lib_bills::keymap::bills_page_keymap(config)),
+            ),
+            (
+                ActiveView::Budgets,
+                PageBinding::all_of(&lib_budgets::keymap::budgets_page_keymap(config)),
+            ),
+            (
+                ActiveView::Settings(SettingsPage::Categories),
+                PageBinding::all_of(&lib_categories::keymap::categories_page_keymap(config)),
+            ),
+            (
+                ActiveView::Documents,
+                PageBinding::all_of(&lib_documents::keymap::documents_page_keymap(config)),
+            ),
+            (
+                ActiveView::Settings(SettingsPage::Documents),
+                PageBinding::all_of(&lib_documents::keymap::document_types_page_keymap(config)),
+            ),
+            (
+                ActiveView::Settings(SettingsPage::Institutions),
+                PageBinding::all_of(&lib_institutions::keymap::institutions_page_keymap(config)),
+            ),
+            (
+                ActiveView::Settings(SettingsPage::Inventory),
+                PageBinding::all_of(&lib_inventory::keymap::inventory_page_keymap(config)),
+            ),
+            (
+                ActiveView::Settings(SettingsPage::Payees),
+                PageBinding::all_of(&lib_payees::keymap::payees_page_keymap(config)),
+            ),
+            (
+                ActiveView::Settings(SettingsPage::Tags),
+                PageBinding::all_of(&lib_tags::keymap::tags_page_keymap(config)),
+            ),
+            (
+                ActiveView::Transactions,
+                PageBinding::all_of(&lib_transactions::keymap::transactions_page_keymap(config)),
+            ),
+            (
+                ActiveView::Settings(SettingsPage::Units),
+                PageBinding::all_of(&lib_units::keymap::units_page_keymap(config)),
+            ),
+        ]
+    }
 }

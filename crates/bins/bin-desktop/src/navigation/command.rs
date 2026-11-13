@@ -699,10 +699,10 @@ pub fn find(name: &str) -> Option<CommandEffect> {
 mod tests {
     use super::*;
     use crate::settings::SettingsPage as Page;
-    use crate::shell::view::page_handle::hosted_pages_for_test;
+    use crate::shell::view::page_handle::test_support::hosted_pages;
 
     fn entries_under(config: &KeyBindingConfig) -> Vec<Entry> {
-        entries(config, hosted_pages_for_test(config))
+        entries(config, hosted_pages(config))
     }
 
     fn defaults() -> Vec<Entry> {
@@ -758,7 +758,7 @@ mod tests {
         let config = KeyBindingConfig::default();
         let listed: Vec<_> = global_entries(&config)
             .into_iter()
-            .chain(module_entries(hosted_pages_for_test(&config)))
+            .chain(module_entries(hosted_pages(&config)))
             .collect();
         for command in COMMANDS {
             assert!(
@@ -858,7 +858,7 @@ mod tests {
             lib_inventory::keymap::EXPAND,
             lib_inventory::keymap::COLLAPSE,
         ];
-        for entry in module_entries(hosted_pages_for_test(&KeyBindingConfig::default())) {
+        for entry in module_entries(hosted_pages(&KeyBindingConfig::default())) {
             let CommandEffect::Module { page, command } = entry.effect else {
                 panic!("{} is a module's but runs no module Command", entry.name);
             };
@@ -874,10 +874,12 @@ mod tests {
     #[test]
     fn a_page_lists_its_commands_under_its_live_keys_once_each() {
         let config = KeyBindingConfig::overriding(lib_units::keymap::SET_BASE, "ctrl+b");
-        let keymap = crate::shell::view::page_handle::units_keymap_for_test(&config);
-        let mut keys = PageBinding::all_of(&keymap);
+        let (_, mut keys) = hosted_pages(&config)
+            .into_iter()
+            .find(|(page, _)| *page == ActiveView::Settings(Page::Units))
+            .expect("the Units page is hosted");
         // A second keymap holding the same Command, as a tab's beside its page's.
-        keys.extend(PageBinding::all_of(&keymap));
+        keys.extend(keys.clone());
 
         let listed = module_entries([(ActiveView::Settings(Page::Units), keys)]);
 
