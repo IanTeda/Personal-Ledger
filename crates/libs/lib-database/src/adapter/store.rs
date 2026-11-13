@@ -37,7 +37,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::{OnceLock, mpsc};
+use std::sync::mpsc;
 
 use chrono::NaiveDate;
 use lib_account_deletion::DeletionReads;
@@ -373,51 +373,34 @@ impl StoreKey {
             Domain::Test => Self::Test,
         }
     }
+
+    /// The domains kept in this store, its first domain first (ADR-0046). Exhaustive, so a new
+    /// store must list its domains.
+    fn domains(self) -> &'static [Domain] {
+        match self {
+            Self::Units => &[Domain::Units],
+            Self::Institutions => &[Domain::Institutions],
+            Self::Accounts => &[Domain::Accounts],
+            Self::Categories => &[Domain::Categories],
+            Self::Tags => &[Domain::Tags],
+            Self::Payees => &[Domain::Payees],
+            Self::Transactions => &[Domain::Transactions],
+            Self::Bills => &[Domain::Bills],
+            Self::Budgets => &[Domain::Budgets],
+            Self::Inventory => &[Domain::Inventory],
+            Self::Documents => &[Domain::Documents, Domain::DocumentTypes],
+            #[cfg(test)]
+            Self::Test => &[Domain::Test],
+        }
+    }
 }
 
 impl Domain {
-    /// Every domain a Ledger holds, in declaration order, so a store's domains can be derived from
-    /// [`StoreKey::of`]. The test-only domain is left out.
-    pub const ALL: &'static [Domain] = &[
-        Domain::Units,
-        Domain::Institutions,
-        Domain::Accounts,
-        Domain::Categories,
-        Domain::Tags,
-        Domain::Payees,
-        Domain::Transactions,
-        Domain::Bills,
-        Domain::Budgets,
-        Domain::Inventory,
-        Domain::Documents,
-        Domain::DocumentTypes,
-    ];
-
     /// The domains a reload of this one's store reads back together, this domain among them and
-    /// the store's first domain first (ADR-0046): the domains whose [`StoreKey`] is this one's.
+    /// the store's first domain first (ADR-0046): [`StoreKey::domains`] of the store it is kept in.
+    /// Here beside [`StoreKey`], which it reads; the enum itself is in `writer.rs`.
     pub fn reloaded_with(self) -> &'static [Domain] {
-        #[cfg(test)]
-        if self == Domain::Test {
-            return &[Domain::Test];
-        }
-        static GROUPS: OnceLock<Vec<(StoreKey, Vec<Domain>)>> = OnceLock::new();
-        let groups = GROUPS.get_or_init(|| {
-            let mut groups: Vec<(StoreKey, Vec<Domain>)> = Vec::new();
-            for &domain in Domain::ALL {
-                let key = StoreKey::of(domain);
-                match groups.iter_mut().find(|(k, _)| *k == key) {
-                    Some((_, domains)) => domains.push(domain),
-                    None => groups.push((key, vec![domain])),
-                }
-            }
-            groups
-        });
-        let key = StoreKey::of(self);
-        groups
-            .iter()
-            .find(|(k, _)| *k == key)
-            .map(|(_, domains)| domains.as_slice())
-            .unwrap_or_default()
+        StoreKey::of(self).domains()
     }
 }
 
@@ -2019,30 +2002,6 @@ impl Stores {
 mod tests {
     use super::*;
 
-    /// Exhaustive, so a new `Domain` variant missing from `Domain::ALL` fails to compile here.
-    fn in_all(domain: Domain) -> bool {
-        match domain {
-            Domain::Units
-            | Domain::Institutions
-            | Domain::Accounts
-            | Domain::Categories
-            | Domain::Tags
-            | Domain::Payees
-            | Domain::Transactions
-            | Domain::Bills
-            | Domain::Budgets
-            | Domain::Inventory
-            | Domain::Documents
-            | Domain::DocumentTypes => Domain::ALL.contains(&domain),
-            Domain::Test => !Domain::ALL.contains(&domain),
-        }
-    }
-
-    #[test]
-    fn every_domain_is_in_all_but_the_test_domain() {
-        assert!(in_all(Domain::Units) && in_all(Domain::DocumentTypes) && in_all(Domain::Test));
-    }
-
     #[test]
     fn the_documents_and_document_types_reload_together_and_a_lone_domain_reloads_itself() {
         assert_eq!(
@@ -2056,19 +2015,49 @@ mod tests {
         assert_eq!(Domain::Units.reloaded_with(), &[Domain::Units]);
     }
 
+    /// Every store lists only domains kept in it, and every domain of a store reloads that store's
+    /// whole group. The match is exhaustive, so a new store must be listed here.
     #[test]
-    fn every_domain_is_in_its_own_group_and_in_no_other_stores() {
-        for &domain in Domain::ALL {
-            assert!(domain.reloaded_with().contains(&domain), "{domain:?}");
-            for &other in Domain::ALL {
-                let shares = domain.reloaded_with() == other.reloaded_with();
-                assert_eq!(
-                    other.reloaded_with().contains(&domain),
-                    shares,
-                    "{domain:?} in {other:?}'s group"
-                );
+    fn each_stores_domains_are_kept_in_that_store() {
+        let keys = [
+            StoreKey::Units,
+            StoreKey::Institutions,
+            StoreKey::Accounts,
+            StoreKey::Categories,
+            StoreKey::Tags,
+            StoreKey::Payees,
+            StoreKey::Transactions,
+            StoreKey::Bills,
+            StoreKey::Budgets,
+            StoreKey::Inventory,
+            StoreKey::Documents,
+            StoreKey::Test,
+        ];
+        for key in keys {
+            match key {
+                StoreKey::Units
+                | StoreKey::Institutions
+                | StoreKey::Accounts
+                | StoreKey::Categories
+                | StoreKey::Tags
+                | StoreKey::Payees
+                | StoreKey::Transactions
+                | StoreKey::Bills
+                | StoreKey::Budgets
+                | StoreKey::Inventory
+                | StoreKey::Documents
+                | StoreKey::Test => {}
+            }
+            assert!(!key.domains().is_empty(), "{key:?}");
+            for &domain in key.domains() {
+                assert_eq!(StoreKey::of(domain), key, "{domain:?}");
+                assert_eq!(domain.reloaded_with(), key.domains(), "{domain:?}");
             }
         }
+        assert_eq!(
+            StoreKey::Documents.domains(),
+            &[Domain::Documents, Domain::DocumentTypes]
+        );
     }
 
     #[test]
