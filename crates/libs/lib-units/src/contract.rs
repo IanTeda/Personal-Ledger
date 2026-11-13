@@ -8,15 +8,15 @@
 use chrono::{NaiveDate, Utc};
 use lib_core::UnitId;
 
-use crate::fake::{InMemoryPorts, InMemoryUnitUsage};
+use crate::fake::{InMemoryHoldings, InMemoryPorts, InMemoryUnitUsage};
 use crate::interactor::{
     AddPriceSource, AddUnit, DeactivateUnit, DeletePriceSource, DeleteUnit, EditPriceSource,
     EditUnit, SetBaseUnit, SetPrice,
 };
 use crate::protocols::PortsMut;
 use crate::{
-    COINGECKO, Endpoint, Error, KeyPlacement, MANUAL_ENTRY, Precision, PriceLink, PriceSourceAuth,
-    PriceSourceRecord, UnitKind, UnitRow, UnitUsage, Updates,
+    COINGECKO, Endpoint, Error, Holding, KeyPlacement, MANUAL_ENTRY, Precision, PriceLink,
+    PriceSourceAuth, PriceSourceRecord, UnitKind, UnitRow, UnitUsage, UnitUse, UnitsPorts, Updates,
 };
 
 /// A stored set of the Units, Price Sources and base Unit ports, lent out together for one
@@ -97,6 +97,113 @@ impl PortsFactory for InMemoryFactory {
         let committed = self.committed.clone().expect("create ran first");
         (committed, std::mem::take(&mut self.failures))
     }
+}
+
+/// Builds the ports a usage check runs on: what names a Unit and the Accounts held in it are other
+/// domains' rows, so the factory books them.
+pub trait UsageFactory {
+    type Ports: UnitsPorts;
+
+    /// Ports on a Ledger whose aud Accounts hold Transactions.
+    fn create(&mut self) -> Self::Ports;
+
+    /// Books one more Transaction to the Account named `account`, in this input: written to the
+    /// Transactions, not yet committed.
+    fn book(&mut self, ports: &mut Self::Ports, account: &str);
+
+    /// Ends the input's writes, as a Client does once per input.
+    fn commit(&mut self, ports: &mut Self::Ports);
+}
+
+/// The in-memory ports' usage is what a test sets, so a booking adds to it.
+#[derive(Debug, Default)]
+pub struct InMemoryUsageFactory;
+
+impl UsageFactory for InMemoryUsageFactory {
+    type Ports = InMemoryPorts;
+
+    fn create(&mut self) -> InMemoryPorts {
+        let held = |name: &str, transactions| Holding {
+            name: name.into(),
+            kind: lib_core::AccountType::Bank,
+            balance: "0".parse().expect("an amount"),
+            transactions,
+        };
+        let holdings = vec![held("ANZ Everyday", 2), held("Amex", 1)];
+        let mut ports = InMemoryPorts::sample(Utc::now());
+        ports.usage.uses.insert(
+            UnitId::SEED_AUD,
+            UnitUse {
+                accounts: holdings.len(),
+                ..UnitUse::default()
+            },
+        );
+        ports.holdings = InMemoryHoldings {
+            by_unit: [(UnitId::SEED_AUD, holdings)].into(),
+        };
+        ports
+    }
+
+    fn book(&mut self, ports: &mut InMemoryPorts, account: &str) {
+        let holding = ports
+            .holdings
+            .by_unit
+            .values_mut()
+            .flatten()
+            .find(|holding| holding.name == account)
+            .expect("the Account is held");
+        holding.transactions += 1;
+    }
+
+    fn commit(&mut self, _ports: &mut InMemoryPorts) {}
+}
+
+/// [`UnitUsage`] counts the Accounts held in a Unit and [`crate::UnitHoldings`] the Transactions
+/// booked to each, a Transaction booked earlier in the same input included before its commit
+/// (#1123); a Unit nothing names has neither.
+pub fn usage_counts_the_accounts_and_transactions_in_a_unit<F: UsageFactory>(factory: &mut F) {
+    let mut ports = factory.create();
+    let aud = UnitId::SEED_AUD;
+    let before = ports.holdings().holdings(aud);
+    let used = ports.usage().unit_usage(aud);
+    assert_eq!(used.accounts, before.len(), "one Account per holding");
+    let account = before
+        .iter()
+        .find(|holding| holding.transactions > 0)
+        .expect("an aud Account holds Transactions")
+        .name
+        .clone();
+    let nothing = UnitId::new();
+    assert_eq!(ports.usage().unit_usage(nothing), UnitUse::default());
+    assert!(ports.holdings().holdings(nothing).is_empty());
+
+    factory.book(&mut ports, &account);
+    let counted = |ports: &F::Ports| {
+        before
+            .iter()
+            .map(|was| {
+                let now = ports
+                    .holdings()
+                    .holdings(aud)
+                    .into_iter()
+                    .find(|holding| holding.name == was.name)
+                    .expect("still held");
+                (was.name.clone(), now.transactions)
+            })
+            .collect::<Vec<_>>()
+    };
+    let plus_one: Vec<_> = before
+        .iter()
+        .map(|was| {
+            let added = u32::from(was.name == account);
+            (was.name.clone(), was.transactions + added)
+        })
+        .collect();
+    assert_eq!(counted(&ports), plus_one, "counted before the commit");
+    assert_eq!(ports.usage().unit_usage(aud), used, "no Account is added");
+
+    factory.commit(&mut ports);
+    assert_eq!(counted(&ports), plus_one, "and after it");
 }
 
 /// What a port set holds, in a fixed order so two sets compare whatever order they list in.
@@ -502,5 +609,10 @@ mod tests {
     #[test]
     fn in_memory_a_failed_write_reloads_and_reports() {
         a_failed_write_reloads_and_reports(&mut InMemoryFactory::default());
+    }
+
+    #[test]
+    fn in_memory_usage_counts_the_accounts_and_transactions_in_a_unit() {
+        usage_counts_the_accounts_and_transactions_in_a_unit(&mut InMemoryUsageFactory);
     }
 }

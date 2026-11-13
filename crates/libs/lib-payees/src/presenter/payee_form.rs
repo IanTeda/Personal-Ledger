@@ -144,15 +144,13 @@ impl PayeeFormPresenter {
     }
 
     /// The Edit form pre-filled from Payee `id`, or `None` when it is gone. A Default category
-    /// that is no longer a leaf opens as none. A use that can't be counted shows no callout: it only
-    /// says how many transactions a new default category leaves as they are, and saving is safe
-    /// whatever names the Payee.
+    /// that is no longer a leaf opens as none.
     pub fn edit(ports: SharedPorts, id: PayeeId, keys: DialogKeys) -> Option<Self> {
         let (payee, splits) = {
             let ports = ports.borrow();
             (
                 ports.payees().payee(id)?,
-                ports.usage().payee_usage(id).map_or(0, |uses| uses.splits),
+                ports.usage().payee_usage(id).splits,
             )
         };
         let mut form = Self::add(ports, keys);

@@ -23,9 +23,11 @@
 //! [`StoredDocumentReads`], [`StoredBudgetReads`], [`StoredDashboardReads`]): it holds the shared stores of the domains it
 //! reads and answers the module's read ports from them, so the same struct stands over the
 //! adapters and over [`Stores::fake`]'s in-memory stores. Payees' is the pattern (#992): each
-//! store answers about its own rows in its own terms (`payee_splits`, `payee_bill_plans`), and
-//! the reads struct maps them into the reading module's. A stored reads struct composes its
-//! domains' store methods; it never runs SQL across two domains' tables in one job. An atomic
+//! store answers only about its own rows, and a count another module reads (`payee_splits`,
+//! `payee_bill_plans`) is a free function over the rows the store holds, which the reads struct
+//! calls and maps into the reading module's terms. No store counts in the file, so the fakes and
+//! the adapters answer through the same code, and a write still pending is counted (#1123). A
+//! stored reads struct never runs SQL. An atomic
 //! write across domains is a cross-domain adapter's job (`BillPaymentsAdapter` and the like), not
 //! a read's.
 //!
@@ -95,7 +97,6 @@ use lib_units::{
 };
 
 use crate::adapter::payees::bill_payees;
-use crate::adapter::transactions::TaggedSplit;
 use crate::adapter::{
     accounts, bills, categories, institutions, inventory, payees, tags, transactions, units,
 };
@@ -687,41 +688,6 @@ pub trait TransactionsStore {
         self.transactions_mut().upsert_transaction(transaction);
     }
 
-    /// The Splits filed under Category `id`: the Splits half of `lib-categories`' `CategoryUsage`.
-    /// An in-memory store counts its own rows; the adapter counts in the file.
-    fn category_splits(&self, id: CategoryId) -> usize {
-        transactions::category_splits(&self.all_transactions(), id)
-    }
-
-    /// The Transactions booked to each of `accounts` that has any: the Transactions half of
-    /// [`StoredAccountReads`]' `AccountUsage` and of [`StoredUnitReads`]' holdings. An in-memory
-    /// store counts its own rows; the adapter counts in the file in one query, and answers none
-    /// for a count it can't read.
-    fn account_transaction_counts(&self, accounts: &[AccountId]) -> HashMap<AccountId, usize> {
-        transactions::account_transaction_counts(&self.all_transactions(), accounts)
-    }
-
-    /// The Splits naming Payee `id`, `None` when they can't be counted: the Splits half of
-    /// [`StoredPayeeReads`]' `PayeeUsage`. An in-memory store counts its own rows; the adapter
-    /// counts in the file.
-    fn payee_splits(&self, id: PayeeId) -> Option<usize> {
-        Some(transactions::payee_splits(&self.all_transactions(), id))
-    }
-
-    /// The Splits carrying Tag `id`, one each however often the Split lists it, in the
-    /// Transactions' order: the Transactions half of [`StoredTagReads`]' `TagUsage`. An in-memory
-    /// store reads its own rows; the adapter reads the file, and answers none for a read it can't
-    /// make.
-    fn tagged_splits(&self, id: TagId) -> Vec<TaggedSplit> {
-        transactions::tagged_splits(&self.all_transactions(), id)
-    }
-
-    /// Distinct Transactions per Tag, for every Tag a Split carries; a Tag nothing carries has no
-    /// entry. The batch half of [`StoredTagReads`]' `TagUsage`.
-    fn tag_transaction_counts(&self) -> HashMap<TagId, usize> {
-        transactions::tag_transaction_counts(&self.all_transactions())
-    }
-
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
     /// # Errors
@@ -736,26 +702,6 @@ impl TransactionsStore for TransactionsAdapter {
 
     fn transactions_mut(&mut self) -> &mut dyn TransactionRepository {
         self
-    }
-
-    fn category_splits(&self, id: CategoryId) -> usize {
-        TransactionsAdapter::category_splits(self, id)
-    }
-
-    fn payee_splits(&self, id: PayeeId) -> Option<usize> {
-        TransactionsAdapter::payee_splits(self, id)
-    }
-
-    fn account_transaction_counts(&self, accounts: &[AccountId]) -> HashMap<AccountId, usize> {
-        TransactionsAdapter::account_transaction_counts(self, accounts)
-    }
-
-    fn tagged_splits(&self, id: TagId) -> Vec<TaggedSplit> {
-        TransactionsAdapter::tagged_splits(self, id)
-    }
-
-    fn tag_transaction_counts(&self) -> HashMap<TagId, usize> {
-        TransactionsAdapter::tag_transaction_counts(self)
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -774,26 +720,6 @@ impl<S: TransactionsStore + ?Sized> TransactionsStore for Recorded<S> {
         self.store.transactions_mut()
     }
 
-    fn category_splits(&self, id: CategoryId) -> usize {
-        self.store.category_splits(id)
-    }
-
-    fn payee_splits(&self, id: PayeeId) -> Option<usize> {
-        self.store.payee_splits(id)
-    }
-
-    fn account_transaction_counts(&self, accounts: &[AccountId]) -> HashMap<AccountId, usize> {
-        self.store.account_transaction_counts(accounts)
-    }
-
-    fn tagged_splits(&self, id: TagId) -> Vec<TaggedSplit> {
-        self.store.tagged_splits(id)
-    }
-
-    fn tag_transaction_counts(&self) -> HashMap<TagId, usize> {
-        self.store.tag_transaction_counts()
-    }
-
     fn reload(&mut self) -> Result<()> {
         self.store.reload()
     }
@@ -810,18 +736,6 @@ impl TransactionsStore for InMemoryTransactions {
         self
     }
 
-    fn category_splits(&self, id: CategoryId) -> usize {
-        transactions::category_splits(&self.transactions, id)
-    }
-
-    fn payee_splits(&self, id: PayeeId) -> Option<usize> {
-        Some(transactions::payee_splits(&self.transactions, id))
-    }
-
-    fn account_transaction_counts(&self, accounts: &[AccountId]) -> HashMap<AccountId, usize> {
-        transactions::account_transaction_counts(&self.transactions, accounts)
-    }
-
     fn reload(&mut self) -> Result<()> {
         Ok(())
     }
@@ -836,13 +750,6 @@ pub trait BillsStore {
     fn entries(&self) -> &dyn BillScheduleRepository;
 
     fn entries_mut(&mut self) -> &mut dyn BillScheduleRepository;
-
-    /// The Bill Plans naming Payee `id`, `None` when they can't be counted: the Bill Plans half of
-    /// [`StoredPayeeReads`]' `PayeeUsage`. An in-memory store counts its own rows; the adapter
-    /// counts in the file.
-    fn payee_bill_plans(&self, id: PayeeId) -> Option<usize> {
-        Some(bills::payee_bill_plans(&self.plans().bill_plans(), id))
-    }
 
     /// Puts the rows back as they are stored, after a write failed (ADR-0046).
     ///
@@ -868,10 +775,6 @@ impl BillsStore for BillsAdapter {
         self
     }
 
-    fn payee_bill_plans(&self, id: PayeeId) -> Option<usize> {
-        BillsAdapter::payee_bill_plans(self, id)
-    }
-
     fn reload(&mut self) -> Result<()> {
         BillsAdapter::reload(self)
     }
@@ -895,10 +798,6 @@ impl<S: BillsStore + ?Sized> BillsStore for Recorded<S> {
     fn entries_mut(&mut self) -> &mut dyn BillScheduleRepository {
         self.written.note(self.domain);
         self.store.entries_mut()
-    }
-
-    fn payee_bill_plans(&self, id: PayeeId) -> Option<usize> {
-        self.store.payee_bill_plans(id)
     }
 
     fn reload(&mut self) -> Result<()> {
@@ -1113,7 +1012,8 @@ pub struct StoredTagReads {
 
 impl TagUsage for StoredTagReads {
     fn tag_usage(&self, id: TagId) -> TagUse {
-        let splits = self.transactions.borrow().tagged_splits(id);
+        let splits =
+            transactions::tagged_splits(&self.transactions.borrow().all_transactions(), id);
         let units = self.units.borrow();
         let account_units: HashMap<AccountId, UnitId> = self
             .accounts
@@ -1161,7 +1061,8 @@ impl TagUsage for StoredTagReads {
     }
 
     fn transactions_by_tag(&self, ids: &[TagId]) -> HashMap<TagId, usize> {
-        let counted = self.transactions.borrow().tag_transaction_counts();
+        let counted =
+            transactions::tag_transaction_counts(&self.transactions.borrow().all_transactions());
         ids.iter()
             .map(|id| (*id, counted.get(id).copied().unwrap_or(0)))
             .collect()
@@ -1179,7 +1080,8 @@ pub struct StoredTagRemovalReads {
 
 impl TagRemovalReads for StoredTagRemovalReads {
     fn tags_by_usage(&self) -> Vec<TagCount> {
-        let counts = self.transactions.borrow().tag_transaction_counts();
+        let counts =
+            transactions::tag_transaction_counts(&self.transactions.borrow().all_transactions());
         lib_tag_removal::protocols::by_usage(&self.tags.borrow().tags().tags(), &counts)
     }
 
@@ -1191,16 +1093,13 @@ impl TagRemovalReads for StoredTagRemovalReads {
             .tags()
             .into_iter()
             .find(|tag| tag.id == id)?;
-        // The Splits carrying the Tag, not every Tag counted over every Transaction: the adapter
-        // filters them in the file.
-        let transactions = self
-            .transactions
-            .borrow()
-            .tagged_splits(id)
-            .into_iter()
-            .map(|split| split.transaction)
-            .collect::<std::collections::HashSet<_>>()
-            .len();
+        // The Splits carrying the Tag, not every Tag counted over every Transaction.
+        let transactions =
+            transactions::tagged_splits(&self.transactions.borrow().all_transactions(), id)
+                .into_iter()
+                .map(|split| split.transaction)
+                .collect::<std::collections::HashSet<_>>()
+                .len();
         Some(TagCount { tag, transactions })
     }
 }
@@ -1220,7 +1119,10 @@ impl CategoryDeletionReads for StoredCategoryDeletionReads {
     fn category_in_use(&self, id: CategoryId) -> Option<CategoryInUse> {
         Some(CategoryInUse {
             category: self.categories.borrow().categories().category(id)?,
-            splits: self.transactions.borrow().category_splits(id),
+            splits: transactions::category_splits(
+                &self.transactions.borrow().all_transactions(),
+                id,
+            ),
             budgets: self.budgets.borrow().category_budgets(id),
         })
     }
@@ -1566,7 +1468,10 @@ pub struct StoredAccountReads {
 
 impl AccountUsage for StoredAccountReads {
     fn account_usage(&self, id: AccountId) -> AccountUse {
-        let counts = self.transactions.borrow().account_transaction_counts(&[id]);
+        let counts = transactions::account_transaction_counts(
+            &self.transactions.borrow().all_transactions(),
+            &[id],
+        );
         AccountUse {
             transactions: counts.get(&id).copied().unwrap_or_default(),
             budgets: self.budgets.borrow().account_budgets(id),
@@ -1631,13 +1536,13 @@ impl UnitUsage for StoredUnitReads {
 }
 
 impl UnitHoldings for StoredUnitReads {
-    /// One count of the Transactions for every Account in the Unit, rather than one per Account.
+    /// One pass over the Transactions for every Account in the Unit, rather than one per Account.
     fn holdings(&self, id: UnitId) -> Vec<Holding> {
         let rows = self.accounts.borrow().accounts().accounts();
-        let counts = self
-            .transactions
-            .borrow()
-            .account_transaction_counts(&accounts::unit_account_ids(&rows, id));
+        let counts = transactions::account_transaction_counts(
+            &self.transactions.borrow().all_transactions(),
+            &accounts::unit_account_ids(&rows, id),
+        );
         accounts::holdings(&rows, id, |account| {
             counts.get(&account).copied().unwrap_or_default()
         })
@@ -1673,15 +1578,14 @@ pub struct StoredPayeeReads {
 }
 
 impl PayeeUsage for StoredPayeeReads {
-    /// Unknown when either half can't be counted, never unused (#840). The two counts are made
-    /// one after the other, not from one snapshot: that is safe because every write is queued from
-    /// the UI thread, which blocks across both, and the foreign keys (`splits.payee_id`,
+    /// Counted over the rows the stores hold, so a Split upserted earlier in the same input is
+    /// counted before it is committed (#1123). The foreign keys (`splits.payee_id`,
     /// `bill_plans.payee_id`) back the refusal in the file.
-    fn payee_usage(&self, id: PayeeId) -> Option<PayeeUse> {
-        Some(PayeeUse {
-            splits: self.transactions.borrow().payee_splits(id)?,
-            bill_plans: self.bills.borrow().payee_bill_plans(id)?,
-        })
+    fn payee_usage(&self, id: PayeeId) -> PayeeUse {
+        PayeeUse {
+            splits: transactions::payee_splits(&self.transactions.borrow().all_transactions(), id),
+            bill_plans: bills::payee_bill_plans(&self.bills.borrow().plans().bill_plans(), id),
+        }
     }
 }
 
@@ -1993,11 +1897,7 @@ impl From<FakeStores> for crate::StoreParts {
             categories: Box::new(fails.switch(Domain::Categories, fakes.categories)),
             tags: Box::new(fails.switch(Domain::Tags, fakes.tags)),
             payees: Box::new(fails.switch(Domain::Payees, fakes.payees)),
-            transactions: Box::new(
-                fails
-                    .switch(Domain::Transactions, fakes.transactions)
-                    .payee_usage_fails(fails.payee_usage_fails),
-            ),
+            transactions: Box::new(fails.switch(Domain::Transactions, fakes.transactions)),
             bills: Box::new(fails.switch(Domain::Bills, fakes.bills)),
             budgets: Box::new(fails.switch(Domain::Budgets, fakes.budgets)),
             inventory: Box::new(fails.switch(Domain::Inventory, fakes.inventory)),
@@ -2095,17 +1995,6 @@ mod tests {
         assert!(stores.units.reload().is_err());
     }
 
-    /// The Transactions store's Payee usage count fails when arranged to, as an unreadable file's.
-    #[test]
-    fn payee_usage_arranged_to_fail_counts_none() {
-        let mut fakes = FakeStores::sample(chrono::Local::now().date_naive());
-        let payee = fakes.payees.payees.payees[0].id;
-        fakes.fails.payee_usage_fails = true;
-        let (stores, _) = Stores::fake(fakes);
-
-        assert_eq!(stores.transactions.payee_splits(payee), None);
-    }
-
     /// Over the in-memory stores the UI tests run on, a Payee's use is what those stores hold, a
     /// Split written to the Transactions store after the reads were built included.
     #[test]
@@ -2123,12 +2012,9 @@ mod tests {
             categories: Rc::new(RefCell::new(InMemoryCategories::sample())),
         };
         let (woolworths, telstra) = (PayeeId::seed(1), PayeeId::seed(20));
-        let before = reads.payee_usage(woolworths).expect("memory always counts");
+        let before = reads.payee_usage(woolworths);
         assert!(before.splits > 0, "the sample's groceries name Woolworths");
-        assert_eq!(
-            reads.payee_usage(telstra).map(|uses| uses.bill_plans),
-            Some(1)
-        );
+        assert_eq!(reads.payee_usage(telstra).bill_plans, 1);
 
         let mut booked = sample.transactions.transactions[0].clone();
         booked.id = TransactionId::seed(9_999);
@@ -2136,10 +2022,7 @@ mod tests {
         booked.splits[0].payee_id = Some(woolworths);
         transactions.borrow_mut().upsert_transaction(booked);
 
-        assert_eq!(
-            reads.payee_usage(woolworths).map(|uses| uses.splits),
-            Some(before.splits + 1)
-        );
+        assert_eq!(reads.payee_usage(woolworths).splits, before.splits + 1);
         assert!(
             reads
                 .payee_categories()

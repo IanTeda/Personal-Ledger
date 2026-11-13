@@ -88,4 +88,39 @@ mod tests {
             assert_eq!(commit.commit().wrote, [Domain::Payees]);
         }
     }
+
+    /// On a Ledger file, a Split upserted through the ports earlier in the same input names the
+    /// Payee before it is committed: the count is over the rows the stores hold, not the file's
+    /// (#1123). So the delete is refused with the Split counted.
+    #[test]
+    fn payee_usage_counts_a_split_upserted_in_the_same_input_before_its_commit() {
+        let dir = tempfile::tempdir().expect("a temporary directory");
+        let LedgerPorts { stores, payees, .. } = file(dir.path());
+        let payee = lib_core::PayeeId::seed(3);
+        let before = payees.borrow().usage().payee_usage(payee);
+
+        let mut booked = stores
+            .transactions
+            .borrow()
+            .all_transactions()
+            .into_iter()
+            .next()
+            .expect("a sample Transaction");
+        booked.id = lib_core::TransactionId::new();
+        booked.splits.truncate(1);
+        booked.splits[0].payee_id = Some(payee);
+        stores.transactions.borrow_mut().upsert_transaction(booked);
+
+        let counted = payees.borrow().usage().payee_usage(payee);
+        assert_eq!(
+            counted.splits,
+            before.splits + 1,
+            "counted while still pending"
+        );
+        assert_eq!(counted.bill_plans, before.bill_plans);
+        assert_eq!(
+            lib_payees::interactor::DeletePayee(payee).run(payees.borrow_mut().split_mut()),
+            Err(lib_payees::DeletePayeeRefusal::InUse(counted))
+        );
+    }
 }

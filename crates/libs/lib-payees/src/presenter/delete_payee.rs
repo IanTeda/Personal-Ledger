@@ -1,8 +1,7 @@
 //! The Delete payee Dialog (6d), and the Deactivate and Reactivate Dialogs it turns into (#283).
 //!
 //! It reads the Payee's use when it opens: a Payee nothing names is deleted, one in use can only be
-//! deactivated, and an inactive one in use is offered reactivation. A use that can't be counted is
-//! taken as in use, and the warning says it couldn't be checked (#840). Delete and Deactivate sit
+//! deactivated, and an inactive one in use is offered reactivation. Delete and Deactivate sit
 //! behind the typed-back name (exact, case-sensitive) and the destructive frame; reactivating
 //! loses nothing, so it drops both. A Payee that came into use under the open Dialog turns it into
 //! Deactivate, as the Interactor's refusal says.
@@ -34,9 +33,8 @@ pub enum DeleteAction {
 }
 
 impl DeleteAction {
-    /// `uses` is `None` when it couldn't be counted, which offers what a Payee in use is offered.
-    pub fn for_payee(is_active: bool, uses: Option<PayeeUse>) -> Self {
-        if uses.is_some_and(|uses| !uses.is_used()) {
+    pub fn for_payee(is_active: bool, uses: PayeeUse) -> Self {
+        if !uses.is_used() {
             Self::Delete
         } else if is_active {
             Self::Deactivate
@@ -83,8 +81,7 @@ pub struct DeletePayeePresenter {
     id: PayeeId,
     name: String,
     rules: usize,
-    /// `None` when it couldn't be counted.
-    uses: Option<PayeeUse>,
+    uses: PayeeUse,
     action: DeleteAction,
     confirm_text: String,
     refusal: Option<String>,
@@ -147,19 +144,19 @@ impl Presenter for DeletePayeePresenter {
             DeleteAction::Deactivate => (
                 msg::payees_deactivate_title(name),
                 msg::payees_deactivate_submit(),
-                self.uses
-                    .map_or_else(msg::payees_deactivate_warning_unchecked, |uses| {
-                        msg::payees_deactivate_warning(count(uses.splits), count(uses.bill_plans))
-                    }),
+                msg::payees_deactivate_warning(
+                    count(self.uses.splits),
+                    count(self.uses.bill_plans),
+                ),
                 msg::payees_deactivate_callout(),
             ),
             DeleteAction::Reactivate => (
                 msg::payees_reactivate_title(name),
                 msg::payees_reactivate_submit(),
-                self.uses
-                    .map_or_else(msg::payees_reactivate_warning_unchecked, |uses| {
-                        msg::payees_reactivate_warning(count(uses.splits), count(uses.bill_plans))
-                    }),
+                msg::payees_reactivate_warning(
+                    count(self.uses.splits),
+                    count(self.uses.bill_plans),
+                ),
                 msg::payees_reactivate_callout(),
             ),
         };
@@ -230,8 +227,7 @@ impl DeletePayeePresenter {
                 DeleteAction::Delete => DeletePayee(self.id)
                     .run(ports)
                     .map_err(|refusal| match refusal {
-                        DeletePayeeRefusal::InUse(uses) => Refused::InUse(Some(uses)),
-                        DeletePayeeRefusal::Unchecked => Refused::InUse(None),
+                        DeletePayeeRefusal::InUse(uses) => Refused::InUse(uses),
                         DeletePayeeRefusal::NotFound => Refused::Gone,
                     })
                     .map(|payee| (PayeeChange::Deleted, payee.name)),
@@ -264,8 +260,7 @@ impl DeletePayeePresenter {
                     name,
                 }));
             }
-            // It came into use under the Dialog, or its use can no longer be counted: what's left
-            // to offer is Deactivate.
+            // It came into use under the Dialog: what's left to offer is Deactivate.
             Err(Refused::InUse(uses)) => {
                 self.uses = uses;
                 self.action = DeleteAction::Deactivate;
@@ -279,8 +274,8 @@ impl DeletePayeePresenter {
 /// Why a confirm didn't land.
 enum Refused {
     Gone,
-    /// What names the Payee, `None` when it couldn't be counted.
-    InUse(Option<PayeeUse>),
+    /// What names the Payee.
+    InUse(PayeeUse),
 }
 
 #[cfg(test)]
@@ -492,35 +487,11 @@ mod tests {
     }
 
     #[test]
-    fn a_use_that_cant_be_counted_offers_no_delete_and_says_why() {
-        let (ports, shared) = sample();
-        ports.borrow_mut().usage.unreadable = true;
-        let open = |id| {
-            DeletePayeePresenter::new(shared.clone(), id, DialogKeys::default())
-                .expect("a sample Payee")
-                .view_model()
-        };
-
-        let active = open(NETFLIX);
-        assert_eq!(active.action, DeleteAction::Deactivate);
-        assert_eq!(
-            plain(&active.warning),
-            "What uses this payee couldn't be checked, so it can't be deleted — only deactivated."
-        );
-        let inactive = open(DON_QUIJOTE);
-        assert_eq!(inactive.action, DeleteAction::Reactivate);
-        assert_eq!(
-            plain(&inactive.warning),
-            "This payee is inactive, and what uses it couldn't be checked."
-        );
-    }
-
-    #[test]
-    fn a_count_that_fails_under_the_dialog_turns_it_into_deactivate() {
+    fn a_use_counted_under_the_dialog_turns_it_into_deactivate() {
         let (ports, shared) = sample();
         let mut dialog = DeletePayeePresenter::new(shared, NETFLIX, DialogKeys::default())
             .expect("a sample Payee");
-        ports.borrow_mut().usage.unreadable = true;
+        ports.borrow_mut().usage.uses.insert(NETFLIX, used(2));
 
         assert_eq!(
             send(
@@ -532,7 +503,10 @@ mod tests {
 
         let view = dialog.view_model();
         assert_eq!(view.action, DeleteAction::Deactivate);
-        assert!(plain(&view.warning).contains("couldn't be checked"));
+        assert_eq!(
+            plain(&view.warning),
+            "This payee is used by 2 transactions, so it can't be deleted — only deactivated."
+        );
         assert!(ports.borrow().payees.payee(NETFLIX).is_some());
     }
 

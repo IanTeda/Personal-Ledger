@@ -22,6 +22,7 @@
 - The UI never waits on storage, but a failed write shows only as a Toast and a reload that drops the queued writes, as under ADR-0044.
 - Every adapter holds its whole domain in memory. That is fine at a personal ledger's size, and Transactions are the first place to check it.
 - A cross-domain module's atomic port goes through the same writer, so its one transaction is still ordered with every other write.
+- The usage counts other modules read (the Splits naming a Payee, Category or Tag, the Transactions booked to an Account, the Bill Plans naming a Payee) once queried the file through the writer; [#1123](https://github.com/IanTeda/Personal-Ledger/issues/1123) brought them back in line with this decision, as free functions over the rows the stores hold.
 
 ## Amendment (2026-11-02): a cascade reloads the rows it changed
 

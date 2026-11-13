@@ -14,7 +14,8 @@ use lib_core::{CategoryId, CategoryTypes, Money};
 use crate::fake::{InMemoryCategories, InMemoryCategoryBudget};
 use crate::interactor::{AddCategory, BudgetChange, MoveCategory, RenameCategory};
 use crate::{
-    Category, CategoryError, CategoryRepository, CategorySavePorts, Holdings, sample_categories,
+    Category, CategoryError, CategoryRepository, CategorySavePorts, CategoryUse, Holdings,
+    sample_categories,
 };
 
 /// A stored Categories port.
@@ -382,6 +383,10 @@ pub trait SaveFactory {
 
     /// What names `category` as committed, read afresh.
     fn stored_holdings(&mut self, category: CategoryId) -> Holdings;
+
+    /// Files one more Split under `category` in this input: written to the Transactions, not yet
+    /// committed.
+    fn file_split(&mut self, ports: &mut Self::Ports, category: CategoryId);
 }
 
 /// The in-memory save ports: the fakes together.
@@ -422,6 +427,13 @@ impl SaveFactory for InMemorySaveFactory {
                         payee_defaults: 2,
                     },
                 )]),
+                uses: BTreeMap::from([(
+                    GROCERIES,
+                    CategoryUse {
+                        splits: 3,
+                        budgets: 1,
+                    },
+                )]),
                 ..InMemoryCategoryBudget::default()
             },
         };
@@ -450,9 +462,40 @@ impl SaveFactory for InMemorySaveFactory {
     fn stored_holdings(&mut self, category: CategoryId) -> Holdings {
         crate::CategoryHandover::holdings(&self.committed.budget, category)
     }
+
+    /// The fake's usage is what a test sets, so the Split adds to it.
+    fn file_split(&mut self, ports: &mut InMemorySavePorts, category: CategoryId) {
+        ports.budget.uses.entry(category).or_default().splits += 1;
+    }
 }
 
 const DINING: CategoryId = CategoryId::seed(8);
+
+/// [`crate::CategoryUsage`] counts the Splits filed under a Category and the Budgets limiting it,
+/// a Split filed earlier in the same input included before its commit (#1123); a Category nothing
+/// names has neither.
+pub fn usage_counts_the_splits_and_budgets_naming_a_category<F: SaveFactory>(factory: &mut F) {
+    let mut ports = factory.create();
+    let usage = |ports: &mut F::Ports, id| ports.parts().1.category_usage(id);
+    let before = usage(&mut ports, GROCERIES);
+    assert!(before.splits > 0, "Groceries holds a Split");
+    assert!(before.budgets > 0, "Groceries is budgeted");
+    assert_eq!(usage(&mut ports, CategoryId::new()), CategoryUse::default());
+
+    factory.file_split(&mut ports, GROCERIES);
+    let filed = CategoryUse {
+        splits: before.splits + 1,
+        ..before
+    };
+    assert_eq!(
+        usage(&mut ports, GROCERIES),
+        filed,
+        "counted before the commit"
+    );
+
+    factory.commit(&mut ports);
+    assert_eq!(usage(&mut ports, GROCERIES), filed, "and after it");
+}
 
 fn amount(text: &str) -> Money {
     text.parse().expect("an amount")
@@ -662,6 +705,11 @@ mod tests {
     #[test]
     fn in_memory_a_new_parents_budget_is_stopped() {
         a_new_parents_budget_is_stopped_in_every_active_budget(&mut InMemorySaveFactory::default());
+    }
+
+    #[test]
+    fn in_memory_usage_counts_the_splits_and_budgets_naming_a_category() {
+        usage_counts_the_splits_and_budgets_naming_a_category(&mut InMemorySaveFactory::default());
     }
 
     #[test]

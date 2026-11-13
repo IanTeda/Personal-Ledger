@@ -6,8 +6,8 @@
 //! holdings and the type-change blockers' Bill Plans all select through here, so a rule one gains
 //! (skipping a superseded Bill Plan, say) is gained by all four, and the counts a Dialog quotes
 //! stay the rows a confirm writes. The selection itself is `lib-category-deletion`'s
-//! `protocols` functions, which its in-memory port answers with too; the Splits count is the
-//! Transactions store's own, counted in the file (#926), by the same rule.
+//! `protocols` functions, which its in-memory port answers with too; the Splits count is a free
+//! function over the Transactions store's rows (#1123), by the same rule.
 //!
 //! The handover is a write across domains, so it follows the one rule: a port `lib-database`
 //! answers over the stores, with a contract suite (`lib-categories`' `contract::SaveFactory`) run
@@ -27,6 +27,7 @@ use lib_payees::Payee;
 use lib_transactions::Transaction;
 
 use super::store::{SharedBillsStore, SharedPayeesStore, SharedTransactionsStore};
+use super::transactions;
 
 /// The rows naming a Category in the stores the Transactions, Bills and Payees modules also hold,
 /// each borrowed for the one read or write.
@@ -53,9 +54,9 @@ impl StoredCategoryRows {
         payees_defaulting_to(self.payees.borrow().payees().payees(), id)
     }
 
-    /// The Splits filed under Category `id`, as the Transactions store counts them.
+    /// The Splits filed under Category `id`, counted over the rows the Transactions store holds.
     pub fn splits(&self, id: CategoryId) -> usize {
-        self.transactions.borrow().category_splits(id)
+        transactions::category_splits(&self.transactions.borrow().all_transactions(), id)
     }
 
     /// How many Bill Plans, active or not, name any of `categories`: the Bills half of what keeps

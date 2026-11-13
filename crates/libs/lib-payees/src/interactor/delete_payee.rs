@@ -66,14 +66,6 @@ mod tests {
             DeletePayee(PayeeId::new()).run(ports.split_mut()),
             Err(DeletePayeeRefusal::NotFound)
         );
-        let mut unreadable = before.clone();
-        unreadable.usage.unreadable = true;
-        assert_eq!(
-            DeletePayee(PayeeId::seed(3)).run(unreadable.split_mut()),
-            Err(DeletePayeeRefusal::Unchecked),
-            "a Payee whose use can't be counted may be in use"
-        );
         assert_eq!(ports, before);
-        assert_eq!(unreadable.payees, before.payees);
     }
 }

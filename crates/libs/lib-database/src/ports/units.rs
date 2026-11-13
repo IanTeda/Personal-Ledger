@@ -141,6 +141,93 @@ mod tests {
     use crate::ports::test_support::{fakes, file};
     use crate::{Domain, LedgerPorts};
 
+    use super::StoredUnitsPorts;
+    use crate::adapter::store::StoredUnitReads;
+
+    /// `lib-units`' usage check over a [`LedgerPorts`]: the Units ports with the reads over the
+    /// other stores, a booking upserted into the Transactions store and the commit the Client's.
+    struct LedgerUsageFactory {
+        ledger: Option<LedgerPorts>,
+        make: Box<dyn Fn() -> LedgerPorts>,
+    }
+
+    impl LedgerUsageFactory {
+        fn ledger(&self) -> &LedgerPorts {
+            self.ledger.as_ref().expect("create ran first")
+        }
+    }
+
+    impl lib_units::contract::UsageFactory for LedgerUsageFactory {
+        type Ports = StoredUnitsPorts;
+
+        fn create(&mut self) -> StoredUnitsPorts {
+            let ledger = (self.make)();
+            let stores = &ledger.stores;
+            let ports = StoredUnitsPorts::new(
+                stores.units.clone(),
+                StoredUnitReads {
+                    accounts: stores.accounts.clone(),
+                    transactions: stores.transactions.clone(),
+                    bills: stores.bills.clone(),
+                    budgets: stores.budgets.clone(),
+                    inventory: stores.inventory.clone(),
+                    institutions: stores.institutions.clone(),
+                },
+            );
+            self.ledger = Some(ledger);
+            ports
+        }
+
+        fn book(&mut self, _ports: &mut StoredUnitsPorts, account: &str) {
+            let stores = &self.ledger().stores;
+            let account = stores
+                .accounts
+                .borrow()
+                .accounts()
+                .accounts()
+                .into_iter()
+                .find(|row| row.name == account)
+                .expect("the Account is stored")
+                .id;
+            let mut booked = stores
+                .transactions
+                .borrow()
+                .all_transactions()
+                .into_iter()
+                .next()
+                .expect("a sample Transaction");
+            booked.id = lib_core::TransactionId::new();
+            booked.account_id = account;
+            stores.transactions.borrow_mut().upsert_transaction(booked);
+        }
+
+        fn commit(&mut self, _ports: &mut StoredUnitsPorts) {
+            let committed = self.ledger().commit.commit();
+            assert_eq!(committed.wrote, [Domain::Transactions]);
+        }
+    }
+
+    #[test]
+    fn usage_counts_the_accounts_and_transactions_in_a_unit_in_memory() {
+        lib_units::contract::usage_counts_the_accounts_and_transactions_in_a_unit(
+            &mut LedgerUsageFactory {
+                ledger: None,
+                make: Box::new(fakes),
+            },
+        );
+    }
+
+    #[test]
+    fn usage_counts_the_accounts_and_transactions_in_a_unit_on_sqlite() {
+        let dir = std::rc::Rc::new(tempfile::tempdir().expect("a temporary directory"));
+        lib_units::contract::usage_counts_the_accounts_and_transactions_in_a_unit(
+            &mut LedgerUsageFactory {
+                ledger: None,
+                make: Box::new(move || file(dir.path())),
+            },
+        );
+    }
+
     #[test]
     fn each_units_write_reports_the_units_written_on_either() {
         let dir = tempfile::tempdir().expect("a temporary directory");

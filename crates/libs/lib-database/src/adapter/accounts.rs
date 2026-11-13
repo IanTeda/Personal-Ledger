@@ -379,11 +379,10 @@ mod tests {
     /// The Holdings of `unit` as a Client reads them: the Accounts store's rows with the
     /// Transactions store's counts.
     fn holdings(ports: &AdapterPorts, unit: UnitId) -> Vec<Holding> {
-        let counts = ports
-            .reads
-            .transactions
-            .borrow()
-            .account_transaction_counts(&unit_account_ids(&ports.adapter.accounts.rows, unit));
+        let counts = crate::adapter::transactions::account_transaction_counts(
+            &ports.reads.transactions.borrow().all_transactions(),
+            &unit_account_ids(&ports.adapter.accounts.rows, unit),
+        );
         super::holdings(&ports.adapter.accounts.rows, unit, |id| {
             counts.get(&id).copied().unwrap_or_default()
         })
@@ -525,10 +524,18 @@ mod tests {
             self.pending.commit();
         }
 
-        fn name_account(&mut self, _ports: &mut AdapterPorts, id: AccountId, uses: AccountUse) {
+        /// Writes the Transactions to the file, then reloads the Transactions store the reads count
+        /// over, as a Client's would hold them.
+        fn name_account(&mut self, ports: &mut AdapterPorts, id: AccountId, uses: AccountUse) {
             let transactions = (0..uses.transactions).map(|_| transaction_on(id)).collect();
             TransactionsAdapter::seed(&self.writer, transactions)
                 .expect("the Transactions are written");
+            ports
+                .reads
+                .transactions
+                .borrow_mut()
+                .reload()
+                .expect("the Transactions load");
             self.budgets
                 .borrow_mut()
                 .budgets

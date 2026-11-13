@@ -282,9 +282,9 @@ pub fn payee_usage_counts_and_refuses_the_delete<F: PortsFactory>(factory: &mut 
     let mut ports = factory.reload(ports);
 
     let usage = |ports: &mut F::Ports, id| ports.split_mut().usage.payee_usage(id);
-    assert_eq!(usage(&mut ports, woolworths), Some(named));
-    assert!(usage(&mut ports, telstra).is_some_and(PayeeUse::is_used));
-    assert_eq!(usage(&mut ports, coles), Some(PayeeUse::default()));
+    assert_eq!(usage(&mut ports, woolworths), named);
+    assert!(usage(&mut ports, telstra).is_used());
+    assert_eq!(usage(&mut ports, coles), PayeeUse::default());
 
     let before = snapshot(&mut ports);
     assert_eq!(
@@ -317,7 +317,7 @@ pub fn payee_usage_counts_and_refuses_the_delete<F: PortsFactory>(factory: &mut 
             .expect("deactivated, not gone")
             .is_active
     );
-    assert_eq!(usage(&mut ports, woolworths), Some(named));
+    assert_eq!(usage(&mut ports, woolworths), named);
 }
 
 /// A write that fails is reported once, naming the Payees domain, and the ports go back to the

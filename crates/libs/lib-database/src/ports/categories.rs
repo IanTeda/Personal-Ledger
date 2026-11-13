@@ -217,6 +217,7 @@ mod tests {
         path: PathBuf,
         writer: Option<Writer>,
         commit: Option<Rc<dyn Commit>>,
+        transactions: Option<crate::SharedTransactionsStore>,
     }
 
     struct FileSavePorts {
@@ -238,6 +239,7 @@ mod tests {
                 path,
                 writer: None,
                 commit: None,
+                transactions: None,
             }
         }
 
@@ -261,6 +263,7 @@ mod tests {
             self.writer = Some(storage.writer.clone());
             let ledger = LedgerPorts::new(Stores::from(storage), Clock::fixed(today()));
             self.commit = Some(ledger.commit.clone());
+            self.transactions = Some(ledger.stores.transactions.clone());
             FileSavePorts {
                 repository: ledger.category_save.clone(),
                 save: ledger.category_save,
@@ -284,6 +287,20 @@ mod tests {
 
         fn stored_holdings(&mut self, category: CategoryId) -> Holdings {
             self.fresh().holdings(category)
+        }
+
+        fn file_split(&mut self, _ports: &mut FileSavePorts, category: CategoryId) {
+            let transactions = self.transactions.as_ref().expect("create ran first");
+            let mut filed = transactions
+                .borrow()
+                .all_transactions()
+                .into_iter()
+                .next()
+                .expect("a sample Transaction");
+            filed.id = lib_core::TransactionId::new();
+            filed.splits.truncate(1);
+            filed.splits[0].category_id = category;
+            transactions.borrow_mut().upsert_transaction(filed);
         }
     }
 
@@ -310,6 +327,11 @@ mod tests {
     #[test]
     fn sqlite_a_new_parents_budget_is_stopped() {
         on_a_file(contract::a_new_parents_budget_is_stopped_in_every_active_budget);
+    }
+
+    #[test]
+    fn sqlite_usage_counts_the_splits_and_budgets_naming_a_category() {
+        on_a_file(contract::usage_counts_the_splits_and_budgets_naming_a_category);
     }
 
     #[test]

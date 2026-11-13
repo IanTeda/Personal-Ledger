@@ -27,11 +27,8 @@ use gpui::{
     ScrollDelta, ScrollWheelEvent, Size, TestAppContext, VisualTestContext,
 };
 use lib_colour_theme::ThemeOverrides;
-use lib_core::{AccountId, CategoryId, InstitutionId, PayeeId, UnitId};
-use lib_database::{
-    CountingCommit, Domain, FakeStores, Recorded, SharedStores, Stores, TransactionsStore, Written,
-};
-use lib_transactions::TransactionRepository;
+use lib_core::{AccountId, InstitutionId, UnitId};
+use lib_database::{CountingCommit, FakeStores, SharedStores, Stores};
 use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -66,36 +63,6 @@ fn counted(mut stores: Stores) -> (Stores, Rc<Cell<usize>>) {
     let count = commit.count();
     stores.commit = Rc::new(commit);
     (stores, count)
-}
-
-/// A Transactions store whose Splits naming a Payee are counted as `payee_splits` says, whatever
-/// it holds: `Some(0)`, as a count taken before a Split naming one landed would, so a delete it
-/// allows reaches the file; `None`, as a Ledger file that can't be read would.
-struct MiscountedTransactions {
-    inner: Box<dyn TransactionsStore>,
-    payee_splits: Option<usize>,
-}
-
-impl TransactionsStore for MiscountedTransactions {
-    fn transactions(&self) -> &dyn TransactionRepository {
-        self.inner.transactions()
-    }
-
-    fn transactions_mut(&mut self) -> &mut dyn TransactionRepository {
-        self.inner.transactions_mut()
-    }
-
-    fn category_splits(&self, id: CategoryId) -> usize {
-        self.inner.category_splits(id)
-    }
-
-    fn payee_splits(&self, _id: PayeeId) -> Option<usize> {
-        self.payee_splits
-    }
-
-    fn reload(&mut self) -> lib_database::Result<()> {
-        self.inner.reload()
-    }
 }
 
 /// Leaves no Unit in use, so a seeded Unit can be deleted rather than deactivated: no Account,
@@ -331,31 +298,6 @@ impl<'a> Harness<'a> {
             lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
             None,
             counted(Stores::from(storage)),
-        )
-    }
-
-    /// As [`Harness::with_storage`], with a Transactions store that counts no Split naming any
-    /// Payee, so a delete of a Payee only Splits name reaches the file and its foreign keys refuse
-    /// it. [`Harness::settle_writes`], after the writer is flushed, lets the Shell hear of the
-    /// failure.
-    pub fn with_storage_counting_payees_unused(
-        app: &'a mut TestAppContext,
-        storage: lib_database::Storage,
-    ) -> Self {
-        let mut stores = Stores::from(storage);
-        stores.transactions = Recorded::new(
-            Domain::Transactions,
-            Written::default(),
-            Box::new(MiscountedTransactions {
-                inner: Box::new(stores.transactions),
-                payee_splits: Some(0),
-            }),
-        );
-        Self::build(
-            app,
-            lib_tracing::LogBuffer::new(lib_tracing::LOG_CAPACITY),
-            None,
-            counted(stores),
         )
     }
 

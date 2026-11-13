@@ -4,7 +4,10 @@
 use super::common;
 use bin_desktop::shell::router::{SettingsCategoriesSnapshot, SettingsPayeesSnapshot};
 use lib_config::KeyBindingConfig;
-use lib_database::Domain;
+use lib_core::{PayeeId, TransactionId};
+use lib_database::{Commit as _, Domain};
+use lib_payees::Payee;
+use lib_transactions::TransactionRepository as _;
 
 use bin_desktop::navigation::nav::{InputMode, Noun};
 use common::Harness;
@@ -196,25 +199,49 @@ fn a_delete_the_files_foreign_keys_refuse_puts_the_payee_back_with_an_error_toas
 ) {
     let dir = tempfile::tempdir().expect("a temporary directory");
     let config = common::new_ledger(&dir.path().join("ledger.pldb"));
-    let storage = bin_desktop::start_on(&config, common::today())
+    let mut storage = bin_desktop::start_on(&config, common::today())
         .storage()
         .expect("a new Ledger starts");
     let writer = storage.writer.clone();
-    let mut ui = Harness::with_storage_counting_payees_unused(app, storage);
-    on_payee(&mut ui, "Woolworths");
+    // A new Payee, committed, then a Split naming it written straight to the file once the
+    // adapters hold their rows: memory counts it unused while the file's foreign keys see it in
+    // use, so the delete reaches the file and is refused there.
+    let unused = Payee {
+        id: PayeeId::new(),
+        name: "Zephyr".into(),
+        aliases: Vec::new(),
+        default_category: None,
+        is_active: true,
+    };
+    storage.payees.payees_mut().upsert_payee(unused.clone());
+    storage.pending.commit();
+    let mut booked = storage
+        .transactions
+        .transactions()
+        .into_iter()
+        .next()
+        .expect("a sample Transaction");
+    booked.id = TransactionId::new();
+    booked.splits.truncate(1);
+    booked.splits[0].payee_id = Some(unused.id);
+    lib_database::TransactionsAdapter::seed(&writer, vec![booked])
+        .expect("the Split is written to the file");
+    let mut ui = Harness::with_storage(app, storage);
+    on_payee(&mut ui, &unused.name);
     let stored = ui.settings::<SettingsPayeesSnapshot>().payee_names;
 
     ui.press("d");
     assert_eq!(
         ui.dialog_value("action").as_deref(),
         Some("Delete"),
-        "the miscount offers Delete for a Payee the sample's Splits name"
+        "memory holds no Split naming {}",
+        unused.name
     );
-    ui.press("W o o l w o r t h s enter");
+    ui.press("Z e p h y r enter");
     assert_eq!(ui.dialog(), None);
     assert_eq!(
-        last_toast(&mut ui).as_deref(),
-        Some("Deleted payee Woolworths")
+        last_toast(&mut ui),
+        Some(format!("Deleted payee {}", unused.name))
     );
     writer.flush().expect("the writer is running");
     ui.settle_writes();
@@ -224,23 +251,6 @@ fn a_delete_the_files_foreign_keys_refuse_puts_the_payee_back_with_an_error_toas
         toast.kind == "Error"
             && toast.text == "Couldn't save the change to payees, so they are back as last saved"
     }));
-}
-
-#[gpui::test]
-fn d_on_a_payee_whose_use_cant_be_counted_offers_only_deactivate(app: &mut TestAppContext) {
-    let mut ui = Harness::arrange(app, |fakes| fakes.fails.payee_usage_fails = true);
-    // Nothing names Netflix, so only the failed count keeps it from Delete.
-    on_payee(&mut ui, "Netflix");
-
-    ui.press("d");
-
-    assert_eq!(ui.dialog_value("action").as_deref(), Some("Deactivate"));
-    assert_eq!(
-        ui.dialog_value("warning").as_deref(),
-        Some(
-            "What uses this payee couldn't be checked, so it can't be deleted — only deactivated."
-        )
-    );
 }
 
 #[gpui::test]

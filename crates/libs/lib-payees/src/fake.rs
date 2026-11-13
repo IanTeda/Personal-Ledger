@@ -38,17 +38,15 @@ impl PayeeRepository for InMemoryPayees {
     }
 }
 
-/// Usage counts a test sets per Payee; a Payee not listed is unused. With `unreadable`, every
-/// count fails, as a Ledger file that can't be read would.
+/// Usage counts a test sets per Payee; a Payee not listed is unused.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct InMemoryPayeeUsage {
     pub uses: HashMap<PayeeId, PayeeUse>,
-    pub unreadable: bool,
 }
 
 impl PayeeUsage for InMemoryPayeeUsage {
-    fn payee_usage(&self, id: PayeeId) -> Option<PayeeUse> {
-        (!self.unreadable).then(|| self.uses.get(&id).copied().unwrap_or_default())
+    fn payee_usage(&self, id: PayeeId) -> PayeeUse {
+        self.uses.get(&id).copied().unwrap_or_default()
     }
 }
 
@@ -220,7 +218,7 @@ mod tests {
         let ports = InMemoryPorts::sample();
         assert_eq!(
             ports.usage.payee_usage(PayeeId::seed(1)),
-            Some(PayeeUse::default())
+            PayeeUse::default()
         );
     }
 }

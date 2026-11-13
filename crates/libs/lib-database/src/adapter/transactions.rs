@@ -1,6 +1,6 @@
 //! The Transactions adapter: `lib-transactions`' repository port over the `transactions`, `splits`
 //! and `split_tags` tables, `lib-bills`' `BillTransactions` read port from the same rows, and the
-//! Splits half of `lib-categories`' `CategoryUsage`, counted in the file (ADR-0046, #926).
+//! usage counts other modules read, free functions over the rows a store holds (ADR-0046, #1123).
 //!
 //! It loads every row into memory, blocking, and serves reads from there. A port write changes
 //! memory at once and joins the [`PendingWrites`] every adapter shares, which the bin commits
@@ -125,106 +125,6 @@ impl TransactionRepository for TransactionsAdapter {
     fn delete_transaction(&mut self, id: TransactionId) {
         self.rows.retain(|row| row.id != id);
         self.pending.push(TransactionsChange::Delete(id));
-    }
-}
-
-impl TransactionsAdapter {
-    /// The Splits filed under Category `id` in the file, blocking: what the last commit left, not
-    /// a write still pending. It only words the Categories Dialogs, so a count that can't be read
-    /// is logged and answered from the rows in memory, rather than as a 0 that would say none.
-    pub fn category_splits(&self, id: CategoryId) -> usize {
-        self.pending
-            .writer()
-            .run(move |pool| async move {
-                let count = sqlx::query_scalar!(
-                    r#"SELECT COUNT(*) AS "splits!: i64" FROM splits WHERE category_id = ?"#,
-                    id
-                )
-                .fetch_one(&pool)
-                .await?;
-                usize::try_from(count).map_err(|_| {
-                    Error::Validation(format!("Category {id}'s Splits count is {count}"))
-                })
-            })
-            .unwrap_or_else(|error| {
-                tracing::error!(%error, category = %id, "Failed to count the Splits filed under a Category");
-                category_splits(&self.rows, id)
-            })
-    }
-}
-
-impl TransactionsAdapter {
-    /// How many Transactions are booked to each of `accounts` that has any, counted in the file,
-    /// blocking: what the last commit left, not a write still pending. Counts only `accounts`'
-    /// Transactions, through `idx_transactions_account_id`, rather than grouping the whole table;
-    /// the list is a Unit's Accounts or one, so the placeholders stay few. It only feeds a figure
-    /// the Account Dialogs and the Units page show, so a count that can't be read is logged and
-    /// answered as none.
-    pub fn account_transaction_counts(&self, accounts: &[AccountId]) -> HashMap<AccountId, usize> {
-        let accounts = accounts.to_vec();
-        self.pending
-            .writer()
-            .run(move |pool| async move {
-                let mut conn = pool.acquire().await?;
-                count_account_transactions(&mut conn, &accounts).await
-            })
-            .inspect_err(|error| {
-                tracing::error!(%error, "Failed to count the Transactions booked to Accounts");
-            })
-            .unwrap_or_default()
-    }
-
-    /// The Splits naming Payee `id` in the file, blocking: what the last commit left, not a write
-    /// still pending. `None` when the count can't be read, logged, so a Payee that may be in use is
-    /// never offered for deleting (#840).
-    pub fn payee_splits(&self, id: PayeeId) -> Option<usize> {
-        self.pending
-            .writer()
-            .run(move |pool| async move {
-                let count = sqlx::query_scalar!(
-                    r#"SELECT COUNT(*) AS "splits!: i64" FROM splits WHERE payee_id = ?"#,
-                    id
-                )
-                .fetch_one(&pool)
-                .await?;
-                usize::try_from(count)
-                    .map_err(|_| Error::Validation(format!("Payee {id}'s Splits count is {count}")))
-            })
-            .inspect_err(|error| {
-                tracing::error!(%error, payee = %id, "Failed to count the Splits naming a Payee");
-            })
-            .ok()
-    }
-
-    /// The Splits carrying Tag `id` in the file, blocking: what the last commit left, not a write
-    /// still pending. It only feeds figures the Tags page shows, so a read that can't be made is
-    /// logged and answered as none (#862).
-    pub fn tagged_splits(&self, id: TagId) -> Vec<TaggedSplit> {
-        self.pending
-            .writer()
-            .run(move |pool| async move {
-                let mut conn = pool.acquire().await?;
-                read_tagged_splits(&mut conn, id).await
-            })
-            .inspect_err(|error| {
-                tracing::error!(%error, tag = %id, "Failed to read the Splits carrying a Tag");
-            })
-            .unwrap_or_default()
-    }
-
-    /// Distinct Transactions per Tag, for every Tag a Split carries, in one grouped read of the
-    /// file. A read that can't be made is logged and answered as none.
-    pub fn tag_transaction_counts(&self) -> HashMap<TagId, usize> {
-        self.pending
-            .writer()
-            .run(|pool| async move {
-                let mut conn = pool.acquire().await?;
-                count_tag_transactions(&mut conn).await
-            })
-            .inspect_err(|error| {
-                tracing::error!(%error, "Failed to count the Transactions carrying each Tag");
-            })
-            .unwrap_or_default()
     }
 }
 
@@ -554,94 +454,6 @@ async fn read(conn: &mut SqliteConnection) -> Result<Vec<Transaction>> {
     Ok(transactions)
 }
 
-/// The counts [`TransactionsAdapter::account_transaction_counts`] reads.
-async fn count_account_transactions(
-    conn: &mut SqliteConnection,
-    accounts: &[AccountId],
-) -> Result<HashMap<AccountId, usize>> {
-    if accounts.is_empty() {
-        return Ok(HashMap::new());
-    }
-    let placeholders = vec!["?"; accounts.len()].join(", ");
-    let sql = format!(
-        "SELECT account_id, COUNT(*) FROM transactions WHERE account_id IN ({placeholders}) \
-         GROUP BY account_id"
-    );
-    let mut query = sqlx::query_as::<_, (AccountId, i64)>(&sql);
-    for account in accounts {
-        query = query.bind(*account);
-    }
-    query
-        .fetch_all(&mut *conn)
-        .await?
-        .into_iter()
-        .map(|(account_id, count)| {
-            usize::try_from(count)
-                .map(|count| (account_id, count))
-                .map_err(|_| {
-                    Error::Validation(format!(
-                        "Account {account_id}'s Transactions count is {count}"
-                    ))
-                })
-        })
-        .collect()
-}
-
-/// The Splits [`TransactionsAdapter::tagged_splits`] reads, in the Transactions' order.
-async fn read_tagged_splits(conn: &mut SqliteConnection, id: TagId) -> Result<Vec<TaggedSplit>> {
-    let rows = sqlx::query!(
-        r#"SELECT
-               t.id         AS "transaction_id!: TransactionId",
-               t.date       AS "date!: NaiveDate",
-               t.account_id AS "account_id!: AccountId",
-               s.amount     AS "amount!: Money"
-           FROM splits s
-           JOIN transactions t ON t.id = s.transaction_id
-           WHERE EXISTS (
-               SELECT 1 FROM split_tags st
-               WHERE st.transaction_id = s.transaction_id
-                 AND st.position = s.position
-                 AND st.tag_id = ?
-           )
-           ORDER BY t.rowid, s.position"#,
-        id,
-    )
-    .fetch_all(&mut *conn)
-    .await?;
-    Ok(rows
-        .into_iter()
-        .map(|row| TaggedSplit {
-            transaction: row.transaction_id,
-            date: row.date,
-            account: row.account_id,
-            amount: row.amount,
-        })
-        .collect())
-}
-
-/// Distinct Transactions per Tag, for every Tag a Split carries, in one grouped read. A Tag
-/// nothing carries has no row.
-async fn count_tag_transactions(conn: &mut SqliteConnection) -> Result<HashMap<TagId, usize>> {
-    let rows = sqlx::query!(
-        r#"SELECT
-               tag_id                          AS "tag_id!: TagId",
-               COUNT(DISTINCT transaction_id)  AS "transactions!: i64"
-           FROM split_tags
-           GROUP BY tag_id"#
-    )
-    .fetch_all(&mut *conn)
-    .await?;
-    Ok(rows
-        .into_iter()
-        .map(|row| {
-            (
-                row.tag_id,
-                usize::try_from(row.transactions).unwrap_or_default(),
-            )
-        })
-        .collect())
-}
-
 #[cfg(test)]
 mod tests {
     use std::sync::mpsc;
@@ -844,47 +656,6 @@ mod tests {
             ),
             None
         );
-    }
-
-    /// The count is the file's: a Split written is counted once committed, as the in-memory
-    /// store counts its own rows.
-    #[sqlx::test(migrations = "migrations/client")]
-    async fn the_category_splits_are_counted_in_the_file(
-        _: SqlitePoolOptions,
-        options: SqliteConnectOptions,
-    ) {
-        let mut factory = AdapterFactory::new(options);
-        let seeded = sample_transactions();
-        let mut memory = InMemoryTransactions {
-            transactions: seeded.clone(),
-        };
-        let mut adapter = factory.create(memory.clone());
-        let category = seeded[0].splits[0].category_id;
-        let before = adapter.category_splits(category);
-        assert!(before > 0, "the sample files a Split under it");
-        assert_eq!(
-            before,
-            crate::TransactionsStore::category_splits(&memory, category)
-        );
-
-        let mut booked = seeded[0].clone();
-        booked.id = TransactionId::new();
-        booked.splits.truncate(1);
-        TransactionRepository::upsert_transaction(&mut adapter, booked.clone());
-        TransactionRepository::upsert_transaction(&mut memory, booked);
-        assert_eq!(
-            adapter.category_splits(category),
-            before,
-            "a write still pending isn't in the file"
-        );
-        factory.commit(&mut adapter);
-
-        assert_eq!(adapter.category_splits(category), before + 1);
-        assert_eq!(
-            crate::TransactionsStore::category_splits(&memory, category),
-            before + 1
-        );
-        assert_eq!(adapter.category_splits(CategoryId::new()), 0);
     }
 
     #[sqlx::test(migrations = "migrations/client")]

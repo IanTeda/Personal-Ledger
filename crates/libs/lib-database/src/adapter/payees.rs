@@ -279,7 +279,7 @@ mod tests {
     use std::rc::Rc;
 
     use lib_payees::contract::{self, PortsFactory, StoredPorts};
-    use lib_payees::{PayeeUsage, PayeeUse, PortsMut, sample_payees};
+    use lib_payees::{PayeeUse, PortsMut, sample_payees};
     use lib_transactions::{Split, Transaction};
     use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 
@@ -555,46 +555,6 @@ mod tests {
             payees.reload().expect("the rows load");
             assert!(payees.payees().payee(id).is_some(), "Payee {id} stays");
         }
-    }
-
-    /// A count the file can't answer, of either half, is unknown, not unused, so the delete it
-    /// would allow is refused before anything is written.
-    #[sqlx::test(migrations = "migrations/client")]
-    async fn a_count_that_fails_is_unknown_and_refuses_the_delete(
-        _: SqlitePoolOptions,
-        options: SqliteConnectOptions,
-    ) {
-        let mut factory = AdapterFactory::new(options);
-        let mut ports = factory.create(sample_payees());
-        let netflix = PayeeId::seed(3);
-        let rename = |table: &'static str| {
-            factory
-                .writer
-                .run(move |pool| async move {
-                    sqlx::query(&format!("ALTER TABLE {table} RENAME TO {table}_gone"))
-                        .execute(&pool)
-                        .await?;
-                    Ok(())
-                })
-                .expect("the table is renamed");
-        };
-
-        rename("bill_plans");
-        assert_eq!(
-            ports.reads.payee_usage(netflix),
-            None,
-            "no Bill Plans count"
-        );
-        rename("splits");
-        assert_eq!(ports.reads.payee_usage(netflix), None);
-        assert_eq!(
-            lib_payees::interactor::DeletePayee(netflix).run(ports.split_mut()),
-            Err(lib_payees::DeletePayeeRefusal::Unchecked)
-        );
-        assert!(
-            ports.payees.payees().payee(netflix).is_some(),
-            "Netflix stays"
-        );
     }
 
     /// The new foreign keys refuse a Split or Bill Plan naming a Payee that doesn't exist.

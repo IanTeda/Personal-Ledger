@@ -7,7 +7,6 @@
 //! reach it, so a reload puts memory back to it. [`FailingCommit`] reports a commit that wrote a
 //! failing domain on the failure channel, as the writer would.
 
-use std::collections::HashMap;
 use std::sync::mpsc;
 
 use lib_accounts::AccountRepository;
@@ -27,7 +26,7 @@ use super::store::{
     AccountsStore, BillsStore, BudgetsStore, CategoriesStore, DocumentsStore, InstitutionsStore,
     InventoryStore, PayeesStore, TagsStore, TransactionsStore, UnitsStore,
 };
-use crate::{Commit, Committed, Domain, Result, TaggedSplit, WriteFailure, Written};
+use crate::{Commit, Committed, Domain, Result, WriteFailure, Written};
 
 /// What a test arranges to fail on the in-memory stores. Nothing fails by default.
 #[derive(Debug, Clone, Default)]
@@ -38,9 +37,6 @@ pub struct FakeFails {
     pub writes: Vec<Domain>,
     /// The domains whose reload, after a failed write, fails too.
     pub reloads: Vec<Domain>,
-    /// Whether the Transactions store's count of the Splits naming a Payee fails, as a Ledger file
-    /// that can't be read would.
-    pub payee_usage_fails: bool,
 }
 
 impl FakeFails {
@@ -50,7 +46,6 @@ impl FakeFails {
             stored: self.writes.contains(&domain).then(|| live.clone()),
             live,
             reload_fails: self.reloads.contains(&domain),
-            payee_usage_fails: false,
             inbox_reads: std::cell::Cell::new(0),
         }
     }
@@ -62,17 +57,8 @@ pub(crate) struct Switched<T> {
     live: T,
     stored: Option<T>,
     reload_fails: bool,
-    payee_usage_fails: bool,
     /// How many times the rail asked for the Inbox count, kept on the Documents store (#1120).
     inbox_reads: std::cell::Cell<usize>,
-}
-
-impl<T> Switched<T> {
-    /// This Transactions store with its Payee usage count failing as `fails` says.
-    pub(crate) fn payee_usage_fails(mut self, fails: bool) -> Self {
-        self.payee_usage_fails = fails;
-        self
-    }
 }
 
 impl<T: Clone> Switched<T> {
@@ -242,29 +228,6 @@ impl<T: TransactionsStore + Clone> TransactionsStore for Switched<T> {
         self.live.upsert_transaction(transaction);
     }
 
-    fn category_splits(&self, id: CategoryId) -> usize {
-        self.live.category_splits(id)
-    }
-
-    fn account_transaction_counts(&self, accounts: &[AccountId]) -> HashMap<AccountId, usize> {
-        self.live.account_transaction_counts(accounts)
-    }
-
-    fn payee_splits(&self, id: PayeeId) -> Option<usize> {
-        if self.payee_usage_fails {
-            return None;
-        }
-        self.live.payee_splits(id)
-    }
-
-    fn tagged_splits(&self, id: TagId) -> Vec<TaggedSplit> {
-        self.live.tagged_splits(id)
-    }
-
-    fn tag_transaction_counts(&self) -> HashMap<TagId, usize> {
-        self.live.tag_transaction_counts()
-    }
-
     fn reload(&mut self) -> Result<()> {
         self.reload_snapshot()
     }
@@ -285,10 +248,6 @@ impl<T: BillsStore + Clone> BillsStore for Switched<T> {
 
     fn entries_mut(&mut self) -> &mut dyn BillScheduleRepository {
         self.live.entries_mut()
-    }
-
-    fn payee_bill_plans(&self, id: PayeeId) -> Option<usize> {
-        self.live.payee_bill_plans(id)
     }
 
     fn reload(&mut self) -> Result<()> {

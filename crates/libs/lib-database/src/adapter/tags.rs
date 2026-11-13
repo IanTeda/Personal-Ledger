@@ -386,10 +386,11 @@ mod tests {
             self.pending.commit();
         }
 
-        /// Stores Transactions whose Splits carry the Tag so the SQL answers `uses`: the sum on
+        /// Stores Transactions whose Splits carry the Tag so the reads answer `uses`: the sum on
         /// the first Split, nothing on the rest, the newest on the last Transaction. A `Mixed`
-        /// total takes one Transaction in the base Unit and the rest in another.
-        fn carry_tag(&mut self, _ports: &mut Ports, id: TagId, uses: TagUse) {
+        /// total takes one Transaction in the base Unit and the rest in another. The Transactions
+        /// store the reads count over is reloaded, as a Client's would hold them.
+        fn carry_tag(&mut self, ports: &mut Ports, id: TagId, uses: TagUse) {
             let aud = account_in(UnitId::SEED_AUD);
             let Some(last_used) = uses.last_used else {
                 return;
@@ -416,6 +417,12 @@ mod tests {
                 .collect();
             TransactionsAdapter::seed(&self.writer, transactions)
                 .expect("the carrying Transactions are written");
+            ports
+                .reads
+                .transactions
+                .borrow_mut()
+                .reload()
+                .expect("the Transactions load");
         }
 
         fn break_writes(&mut self, _ports: &mut Ports) {
@@ -550,6 +557,10 @@ mod tests {
             )],
         )
         .expect("the Transaction is written");
+        tags.transactions
+            .borrow_mut()
+            .reload()
+            .expect("the Transactions load");
 
         let used = tags.tag_usage(shared);
         assert_eq!(used.transactions, 1);
