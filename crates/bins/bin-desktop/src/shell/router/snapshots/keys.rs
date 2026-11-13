@@ -52,8 +52,8 @@ pub struct DisplayDatesSnapshot {
     pub documents: Option<String>,
     /// The Plan form's first due date, as drawn, while the Plan form is the open Dialog.
     pub bills: Option<String>,
-    /// The first archived Budget's summary (`archived <date>`), as the Switcher draws it, while
-    /// the Switcher is the open Dialog.
+    /// The first archived Budget's date, as the Switcher draws it in its summary (`archived <date>`),
+    /// while the Switcher is the open Dialog.
     pub budgets: Option<String>,
 }
 
@@ -94,12 +94,11 @@ impl Root {
     #[doc(hidden)]
     pub fn display_dates_snapshot(&self, cx: &gpui::App) -> DisplayDatesSnapshot {
         let views = &self.open().views;
-        let plan_form = self
-            .hosted_dialog()
-            .and_then(|dialog| dialog.downcast::<ModuleDialog<PlanFormPresenter>>());
-        let switcher = self
-            .hosted_dialog()
-            .and_then(|dialog| dialog.downcast::<ModuleDialog<SwitcherPresenter>>());
+        let dialog = self.hosted_dialog();
+        let plan_form =
+            dialog.and_then(|dialog| dialog.downcast::<ModuleDialog<PlanFormPresenter>>());
+        let switcher =
+            dialog.and_then(|dialog| dialog.downcast::<ModuleDialog<SwitcherPresenter>>());
         DisplayDatesSnapshot {
             dashboard_due: views
                 .dashboard
@@ -129,7 +128,12 @@ impl Root {
                     .rows
                     .into_iter()
                     .find(|row| row.archived)
-                    .map(|row| row.summary)
+                    .map(|row| {
+                        // The summary is `archived <date>`: the date is its last word.
+                        row.summary
+                            .rsplit_once(' ')
+                            .map_or_else(|| row.summary.clone(), |(_, date)| date.to_string())
+                    })
             }),
         }
     }

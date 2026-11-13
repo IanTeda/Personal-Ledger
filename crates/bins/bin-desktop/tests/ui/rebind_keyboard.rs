@@ -119,11 +119,9 @@ fn archive_a_budget(ui: &mut Harness<'_>) {
     assert_eq!(ui.budgets().dialog, None);
 }
 
-/// Whether `text` ends in an ISO date, `2026-09-18`: a Switcher row's summary ends in its date,
-/// `archived 2026-09-18`.
+/// Whether `text` is an ISO date, `2026-09-18`, whole.
 fn is_iso(text: Option<&str>) -> bool {
-    text.and_then(|text| text.split_whitespace().last())
-        .is_some_and(|word| chrono::NaiveDate::parse_from_str(word, "%Y-%m-%d").is_ok())
+    text.is_some_and(|text| chrono::NaiveDate::parse_from_str(text, "%Y-%m-%d").is_ok())
 }
 
 fn assert_iso(dates: &DisplayDatesSnapshot) {
@@ -134,7 +132,13 @@ fn assert_iso(dates: &DisplayDatesSnapshot) {
     assert!(is_iso(dates.budgets.as_deref()), "{dates:?}");
 }
 
+/// Each reader draws a date, and none of them is ISO: a missing date fails here, not as "not ISO".
 fn assert_not_iso(dates: &DisplayDatesSnapshot) {
+    assert!(dates.dashboard_due.is_some(), "{dates:?}");
+    assert!(dates.transactions_date.is_some(), "{dates:?}");
+    assert!(dates.bills.is_some(), "{dates:?}");
+    assert!(dates.documents.is_some(), "{dates:?}");
+    assert!(dates.budgets.is_some(), "{dates:?}");
     assert!(!is_iso(dates.dashboard_due.as_deref()), "{dates:?}");
     assert!(!is_iso(dates.transactions_date.as_deref()), "{dates:?}");
     assert!(!is_iso(dates.bills.as_deref()), "{dates:?}");
