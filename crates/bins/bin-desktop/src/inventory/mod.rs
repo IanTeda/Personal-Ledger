@@ -48,34 +48,35 @@ pub struct SettingsInventorySnapshot {
     pub inventory_area_items: Vec<(String, usize)>,
 }
 
-/// What the Open Ledger hands the Inventory module: the page's Presenter, which owns the Inventory
-/// keymap under `[keybindings]`, `lib-database`'s Inventory repository, the Units and Documents its
-/// Dialogs quote, and the Dialog keys every Inventory Dialog's hints read.
+/// What the Inventory page's Router is built from for each call (its `PageView::Setup`):
+/// `lib-database`'s Inventory repository, the Units and Documents its Dialogs quote, and the Dialog
+/// keys every Inventory Dialog's hints read.
 pub struct InventorySetup {
-    pub presenter: InventoryPagePresenter,
     pub inventory: SharedInventory,
     pub reads: lib_database::StoredInventoryReads,
     pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
 }
 
 impl InventorySetup {
+    /// The page's Presenter, which owns the Inventory keymap under `[keybindings]`, and its Setup.
     pub fn new(
         inventory: SharedInventory,
         reads: lib_database::StoredInventoryReads,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
         config: &lib_config::KeyBindingConfig,
-    ) -> Self {
-        Self {
-            presenter: InventoryPagePresenter::new(inventory.clone(), config),
+    ) -> (InventoryPagePresenter, Self) {
+        let presenter = InventoryPagePresenter::new(inventory.clone(), config);
+        let setup = Self {
             inventory,
             reads,
             dialog_keys,
-        }
+        };
+        (presenter, setup)
     }
 
     /// `storage`'s Inventory store under the default keys, for a test that builds `Root` directly.
     #[cfg(test)]
-    pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
+    pub fn sample(storage: &crate::shell::router::LedgerStores) -> (InventoryPagePresenter, Self) {
         let config = lib_config::KeyBindingConfig::default();
         Self::new(
             storage.ports.inventory.clone(),
@@ -86,12 +87,4 @@ impl InventorySetup {
             &config,
         )
     }
-}
-
-/// What the Inventory page's Router is built from for each call (its `PageView::Setup`): the
-/// Inventory and the reads and Dialog keys its Dialogs open on.
-pub struct InventoryRoutes {
-    pub inventory: SharedInventory,
-    pub reads: lib_database::StoredInventoryReads,
-    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
 }

@@ -13,7 +13,8 @@ use lib_bills::presenter::{
 use lib_database::Domain;
 
 use super::{planner, schedule};
-use crate::bills::router::{BillsRoutes, PageRouter};
+use crate::bills::BillsSetup;
+use crate::bills::router::BillsPageRouter;
 use crate::navigation::nav::Noun;
 use crate::shell::view::module_page::{ModulePage, PageCue, PageDraw, PageView};
 use crate::shell::view::page_clicks::PageClicks;
@@ -44,7 +45,7 @@ pub struct BillsBefore {
 }
 
 impl PageView for BillsPagePresenter {
-    type Setup = BillsRoutes;
+    type Setup = BillsSetup;
     type Widgets = BillsWidgets;
     type Before = BillsBefore;
 
@@ -60,21 +61,18 @@ impl PageView for BillsPagePresenter {
         Domain::Units,
     ];
 
-    /// The Router opens the Plan form and Pay in the date style the Presenter holds.
+    /// The Router opens the Plan form and Pay in the date style the Presenter holds, lent before
+    /// the handle borrows it.
     fn with_router<R>(
         presenter: &mut Self,
-        setup: &BillsRoutes,
+        setup: &BillsSetup,
         cx: &mut Context<'_, BillsPage>,
         handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
     ) -> R {
         let date_style = presenter.date_style();
         handle(
             presenter,
-            &mut PageRouter {
-                routes: setup,
-                date_style,
-                cx,
-            },
+            &mut BillsPageRouter::lending(setup, cx, date_style),
         )
     }
 

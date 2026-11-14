@@ -1,23 +1,25 @@
 //! The Settings module's Routers for the Desktop: [`FrameRouter`], what the frame's Presenter asks
-//! of the Shell, [`DeviceRouter`], what the This device pages' Presenters ask, and
-//! [`TracingRouter`], what Tracing's does, and [`LedgerRouter`], what Ledger's does. Each goes
-//! through its Entity's gpui context, which is why a Router is built for each `handle` call. A
-//! page change reaches the root Router as [`PageChanged`], which feeds the Shell's history; the
-//! picker's mode is the View's own (`ViewEvent::EnterMode`); Toasts and the Display output reach
-//! the root Router as [`ViewEvent`]s; a colour change is applied once the current update ends; a
-//! Notice goes onto the bin's queue (`crate::notices`), which the input's `send` drains.
+//! of the Shell, and the generic page Router's impls of what the pages' Presenters ask:
+//! `DeviceRouter` for the This device pages ([`DevicePage`]), `TracingRouter` for Tracing and
+//! `LedgerRouter` for Ledger. Each goes through its Entity's gpui context, which is why a Router is
+//! built for each `handle` call. A page change reaches the root Router as [`PageChanged`], which
+//! feeds the Shell's history; the picker's mode is the View's own (`ViewEvent::EnterMode`); Toasts
+//! and the Display output reach the root Router as [`ViewEvent`]s; a colour change is applied once
+//! the current update ends; a Notice goes onto the bin's queue (`crate::notices`), which the
+//! input's `send` drains.
 
-use gpui::{Context, EventEmitter, ScrollHandle};
+use gpui::{Context, ScrollHandle};
 use lib_settings::{
-    ClearLogsPresenter, ColourChoice, DisplayOutput, LogListChange, LogScroll, SettingsPage,
-    SettingsRouter,
+    ClearLogsPresenter, ColourChoice, DisplayOutput, DisplayPresenter, GeneralPresenter,
+    LedgerPresenter, LogListChange, LogScroll, SettingsPage, SettingsRouter, TracingPresenter,
 };
 use lib_toast::{Notice, Notify};
 
 use super::pages::SettingsPages;
 use super::state::SettingsView;
-use super::tracing::{ListEffects, LogListEffect, TracingPage};
-use crate::shell::view::module_page::PageCue;
+use super::tracing::LogListEffect;
+use crate::shell::view::module_page::{PageCue, PageView};
+use crate::shell::view::page_router::PageRouter;
 use crate::view::event::{ViewEvent, ViewMode};
 
 /// The page on show changed by the person's hand, for the root Router to record in the Shell's
@@ -85,12 +87,14 @@ impl Notify for FrameRouter<'_, '_> {
     }
 }
 
-/// `impl lib_settings::DeviceRouter` for a This device page `P` (General or Display).
-pub(super) struct DeviceRouter<'a, 'b, P> {
-    pub cx: &'a mut Context<'b, P>,
-}
+/// A This device page whose Presenter asks for a `lib_settings::DeviceRouter`: General and
+/// Display, which share its one impl on [`PageRouter`].
+pub(super) trait DevicePage: PageView {}
 
-impl<P: EventEmitter<ViewEvent>> lib_settings::DeviceRouter for DeviceRouter<'_, '_, P> {
+impl DevicePage for GeneralPresenter {}
+impl DevicePage for DisplayPresenter {}
+
+impl<P: DevicePage> lib_settings::DeviceRouter for PageRouter<'_, '_, P> {
     fn toasts_changed(&mut self, on: bool) {
         self.cx.emit(ViewEvent::ToastsChanged(on));
     }
@@ -114,31 +118,17 @@ impl<P: EventEmitter<ViewEvent>> lib_settings::DeviceRouter for DeviceRouter<'_,
     }
 }
 
-impl<P> Notify for DeviceRouter<'_, '_, P> {
-    /// Queues `notice`, for the input's `send` to drain into the Shell.
-    fn notify(&mut self, notice: Notice) {
-        crate::notices::Queue.notify(notice);
-    }
-}
-
 /// `impl lib_settings::TracingRouter` for the Tracing page: the log box's list and the Dialog it
 /// opens. The list is the page's widget state, which the Router never holds: it queues what the
-/// Presenter asks of it in the page's `list_effects`, for its `PageView::after` to apply.
-pub(super) struct TracingRouter<'a, 'b> {
-    pub cx: &'a mut Context<'b, TracingPage>,
-    pub list_effects: &'a ListEffects,
-}
-
-impl lib_settings::TracingRouter for TracingRouter<'_, '_> {
+/// Presenter asks of it in the Setup's `list_effects`, for its `PageView::after` to apply.
+impl lib_settings::TracingRouter for PageRouter<'_, '_, TracingPresenter> {
     fn scroll(&mut self, to: LogScroll) {
-        self.list_effects
-            .borrow_mut()
-            .push(LogListEffect::Scroll(to));
+        self.setup.list_effects().push(LogListEffect::Scroll(to));
     }
 
     fn log_changed(&mut self, change: LogListChange) {
-        self.list_effects
-            .borrow_mut()
+        self.setup
+            .list_effects()
             .push(LogListEffect::Changed(change));
     }
 
@@ -146,23 +136,13 @@ impl lib_settings::TracingRouter for TracingRouter<'_, '_> {
     /// line as the page's other Dialogs do.
     fn open_clear_logs(&mut self, dialog: ClearLogsPresenter) {
         self.cx.emit(ViewEvent::SetStatus(None));
-        let landed = TracingPage::landing(self.cx);
-        crate::shell::view::dialog_entity::ModuleDialog::open(self.cx, dialog, landed);
-    }
-}
-
-impl Notify for TracingRouter<'_, '_> {
-    /// Queues `notice`, for the input's `send` to drain into the Shell.
-    fn notify(&mut self, notice: Notice) {
-        crate::notices::Queue.notify(notice);
+        self.open(dialog);
     }
 }
 
 /// `impl lib_settings::LedgerRouter` for the Ledger page. It does nothing: the input the base
 /// Unit is changed in announces `Domain::Units` from its commit, so every view of the base Unit
 /// follows at once (#1081).
-pub(super) struct LedgerRouter;
-
-impl lib_settings::LedgerRouter for LedgerRouter {
+impl lib_settings::LedgerRouter for PageRouter<'_, '_, LedgerPresenter> {
     fn base_unit_changed(&mut self) {}
 }

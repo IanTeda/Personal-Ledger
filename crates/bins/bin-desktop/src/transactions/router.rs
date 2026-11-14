@@ -1,18 +1,45 @@
-//! The Transactions module's entry point for other modules' Routers, as
-//! `bill_payments::router::open_pay` is for the Pay Dialog: [`show`] and [`show_filtered`] hand
-//! the page what to show and ask the Shell to make it the destination. Every hand-off into the
-//! page calls one of them, from Bills, Documents, Accounts, Payees, Tags and the Budgets detail,
-//! and the Import's commit lands through [`first_row`].
+//! The Transactions module's entry points: [`transactions_page`], the page, and, for other
+//! modules' Routers, as `bill_payments::router::open_pay` is for the Pay Dialog, [`show`] and
+//! [`show_filtered`], which hand the page what to show and ask the Shell to make it the
+//! destination. Every hand-off into the page calls one of them, from Bills, Documents, Accounts,
+//! Payees, Tags and the Budgets detail, and the Import's commit lands through [`first_row`]. The
+//! page's Presenter asks only for a Notice, which the generic page Router queues.
+//!
+//! The hand-offs reach the page through a gpui global holding it weakly, the bin's only one, not a
+//! `ViewEvent::Reveal` routed by `Root` as other Views' hand-offs are (#1127):
+//!
+//! - A hand-off runs synchronously inside the sending input and its one commit: the sender's
+//!   Router calls it while its Presenter handles, so the page has shown what was handed it before
+//!   that input ends. An emitted event is handled later, by `Root`, outside it.
+//! - [`TransactionFilters`] isn't `Copy`, which `Reveal` and `PageCue` are.
+//! - [`first_row`] doesn't navigate: the Import's commit lands on the page already the
+//!   destination.
 
-use gpui::{App, Entity, Global, WeakEntity};
-use lib_core::TransactionId;
+use gpui::{App, AppContext as _, Entity, Global, WeakEntity};
+use lib_core::{Clock, TransactionId};
 use lib_list_cursor::Step;
-use lib_transactions::presenter::TransactionsPageEvent;
+use lib_transactions::SharedPorts;
+use lib_transactions::presenter::{TransactionsPageEvent, TransactionsPagePresenter};
 use lib_transactions::query::TransactionFilters;
 
 use super::TransactionsPage;
+use crate::announcer::Announcer;
 use crate::navigation::nav::Noun;
+use crate::shell::view::module_page::ModulePage;
 use crate::view::event::ViewEvent;
+
+/// The Transactions module's entry point: the page on `ports`, filtered to this year by `clock`'s
+/// today, under `config`'s keys.
+pub fn transactions_page(
+    ports: SharedPorts,
+    announcer: &Entity<Announcer>,
+    config: &lib_config::KeyBindingConfig,
+    clock: Clock,
+    cx: &mut App,
+) -> Entity<TransactionsPage> {
+    let presenter = TransactionsPagePresenter::new(ports, clock, config);
+    cx.new(|cx| ModulePage::new(presenter, (), announcer, cx))
+}
 
 /// The page the entry point reaches, installed once by `shell::router::build`'s `Root`.
 struct Page(WeakEntity<TransactionsPage>);

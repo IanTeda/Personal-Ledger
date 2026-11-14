@@ -9,30 +9,23 @@ use gpui::{AnyElement, App, Context, IntoElement as _, Window};
 use lib_accounts::presenter::{AccountsPageEvent, AccountsPagePresenter, AccountsPageViewModel};
 use lib_database::Domain;
 
-use crate::accounts::router::PageRouter;
-use crate::accounts::{AccountsPage, AccountsRoutes, SettingsAccountsSnapshot};
+use crate::accounts::{AccountsPage, AccountsSetup, SettingsAccountsSnapshot};
 use crate::settings::SettingsPage;
 use crate::settings::snapshot::PageSnapshot;
 use crate::shell::view::module_page::{PageCue, PageDraw, PageView, SettingsPageView};
+use crate::shell::view::page_router::page_router;
 use crate::shell::view::statusline::PageStatus;
 use crate::view::event::Reveal;
 
 impl PageView for AccountsPagePresenter {
-    type Setup = AccountsRoutes;
+    type Setup = AccountsSetup;
     type Widgets = ();
     type Before = ();
 
     /// An Accounts write, and the Units and Institutions whose codes and names the rows show.
     const REPAINTS: &'static [Domain] = &[Domain::Accounts, Domain::Units, Domain::Institutions];
 
-    fn with_router<R>(
-        presenter: &mut Self,
-        setup: &AccountsRoutes,
-        cx: &mut Context<'_, AccountsPage>,
-        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
-    ) -> R {
-        handle(presenter, &mut PageRouter { routes: setup, cx })
-    }
+    page_router!();
 
     fn render(
         view: &AccountsPageViewModel,

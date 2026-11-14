@@ -20,10 +20,10 @@ use lib_settings::{
 use lib_viper::keymap::KeyBindingConfig;
 
 use crate::settings::SettingsPage;
-use crate::settings::router::DeviceRouter;
 use crate::shell::view::module_page::{
     ModulePage, PageCue, PageDraw, PageLayout, PageView, SettingsPageView,
 };
+use crate::shell::view::page_router::page_router;
 use crate::shell::view::statusline::{PageStatus, StatusRight};
 use crate::view::help::HelpGroup;
 
@@ -60,14 +60,7 @@ impl PageView for DisplayPresenter {
         }
     }
 
-    fn with_router<R>(
-        presenter: &mut Self,
-        _setup: &(),
-        cx: &mut Context<'_, DisplayPage>,
-        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
-    ) -> R {
-        handle(presenter, &mut DeviceRouter { cx })
-    }
+    page_router!();
 
     /// The page body's width sets how many Colour Theme cards fit a row, and the focus is the
     /// Presenter's to place on its controls.

@@ -35,11 +35,9 @@ pub struct SettingsInstitutionsSnapshot {
     pub menu: Option<Vec<&'static str>>,
 }
 
-/// What the Open Ledger hands the Institutions module: the page's Presenter, which owns the
-/// Institutions keymap under `[keybindings]`, its ports, shared with the Ledger store, and the
-/// Dialog keys every Institutions Dialog's hints read.
+/// What the Institutions page's Router is built from for each call (its `PageView::Setup`): the
+/// ports, shared with the Ledger store, and the Dialog keys every Institutions Dialog's hints read.
 pub struct InstitutionsSetup {
-    pub presenter: InstitutionsPagePresenter,
     pub ports: lib_institutions::SharedPorts,
     pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
 }
@@ -49,18 +47,17 @@ impl InstitutionsSetup {
         ports: lib_institutions::SharedPorts,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
         config: &lib_config::KeyBindingConfig,
-    ) -> Self {
-        Self {
-            presenter: InstitutionsPagePresenter::new(ports.clone(), config),
-            ports,
-            dialog_keys,
-        }
+    ) -> (InstitutionsPagePresenter, Self) {
+        let presenter = InstitutionsPagePresenter::new(ports.clone(), config);
+        (presenter, Self { ports, dialog_keys })
     }
 
     /// `storage`'s Institutions ports under the default keys, for a test that builds `Root`
     /// directly.
     #[cfg(test)]
-    pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
+    pub fn sample(
+        storage: &crate::shell::router::LedgerStores,
+    ) -> (InstitutionsPagePresenter, Self) {
         let config = lib_config::KeyBindingConfig::default();
         Self::new(
             storage.ports.institutions.clone(),
@@ -70,11 +67,4 @@ impl InstitutionsSetup {
             &config,
         )
     }
-}
-
-/// What the Institutions page's Router is built from for each call (its `PageView::Setup`): the
-/// ports and Dialog keys its Dialogs open on.
-pub struct InstitutionsRoutes {
-    pub ports: lib_institutions::SharedPorts,
-    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
 }

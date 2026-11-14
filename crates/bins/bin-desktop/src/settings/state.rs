@@ -138,12 +138,11 @@ impl SettingsView {
     pub fn open_ledger(
         &mut self,
         announcer: &Entity<Announcer>,
-        clock: &lib_core::Clock,
         config: &KeyBindingConfig,
         setup: SettingsSetup,
         cx: &mut Context<'_, Self>,
     ) {
-        let pages = LedgerPages::new(announcer, clock, config, setup, cx);
+        let pages = LedgerPages::new(announcer, config, setup, cx);
         self.pages.ledger = Some(pages);
         // Subscribed afresh, so a swapped-out Ledger's pages leave no subscription behind.
         self._page_subscriptions = subscribe_pages(&self.pages, cx);
@@ -808,19 +807,19 @@ mod tests {
         crate::locale::init_for_tests();
         let today = chrono::NaiveDate::from_ymd_opt(2026, 10, 30).expect("a valid date");
         let storage = crate::shell::router::LedgerStores::sample(today);
+        let clock = lib_core::Clock::fixed(today);
         let setup = SettingsSetup {
-            units: crate::units::UnitsSetup::sample(&storage),
+            units: crate::units::UnitsSetup::sample(&storage, &clock),
             institutions: crate::institutions::InstitutionsSetup::sample(&storage),
-            payees: crate::payees::PayeesSetup::sample(&storage),
+            payees: crate::payees::PayeesSetup::sample(&storage, &clock),
             document_types: crate::document_types::DocumentTypesSetup::sample(&storage),
-            accounts: crate::accounts::AccountsSetup::sample(&storage),
+            accounts: crate::accounts::AccountsSetup::sample(&storage, &clock),
             categories: crate::categories::CategoriesSetup::sample(&storage),
-            tags: crate::tags::TagsSetup::sample(&storage),
+            tags: crate::tags::TagsSetup::sample(&storage, &clock),
             inventory: crate::inventory::InventorySetup::sample(&storage),
             ledger: crate::settings::ledger::LedgerPageSetup::new(&storage.ports),
         };
         let announcer = cx.new(|_| Announcer::default());
-        let clock = lib_core::Clock::fixed(today);
         let view = cx.new(|cx| {
             SettingsView::new(
                 Rc::new(lib_settings::fake::InMemoryDeviceConfiguration::default()),
@@ -836,7 +835,7 @@ mod tests {
                     "with no Ledger open only the This device pages are built"
                 );
             }
-            view.open_ledger(&announcer, &clock, &KeyBindingConfig::default(), setup, cx);
+            view.open_ledger(&announcer, &KeyBindingConfig::default(), setup, cx);
         });
 
         view.read_with(cx, |view, _| {

@@ -38,34 +38,33 @@ pub fn new_month(ports: &SharedPorts, today: chrono::NaiveDate) {
     PopulateSchedule { today }.run(ports.borrow_mut().split_mut().bills);
 }
 
-/// What `shell::router::build` hands the Bills module: its ports, shared with the Open Ledger, the payments
-/// port the Pay Dialog it opens writes through and the Dialog keys its Dialogs' hints show.
+/// What the Bills page's Router is built from for each call (its `PageView::Setup`): its ports,
+/// shared with the Open Ledger, the payments port the Pay Dialog it opens writes through, the
+/// Clock its Dialogs open on and the Dialog keys their hints show.
 pub struct BillsSetup {
     pub ports: SharedPorts,
     pub payments: lib_bill_payments::SharedPayments,
+    pub clock: lib_core::Clock,
     pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
 }
 
 impl BillsSetup {
+    /// The page's Presenter, its keys from `config`, dating its rows by `clock`'s calendar day,
+    /// and its Setup.
     pub fn new(
         ports: SharedPorts,
         payments: lib_bill_payments::SharedPayments,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
-    ) -> Self {
-        Self {
+        clock: lib_core::Clock,
+        config: &lib_config::KeyBindingConfig,
+    ) -> (presenter::BillsPagePresenter, Self) {
+        let presenter = presenter::BillsPagePresenter::new(ports.clone(), clock.clone(), config);
+        let setup = Self {
             ports,
             payments,
+            clock,
             dialog_keys,
-        }
-    }
-
-    /// `storage`'s Bills ports and payments, for a test that builds `Root` directly.
-    #[cfg(test)]
-    pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
-        Self::new(
-            storage.ports.bills.clone(),
-            storage.ports.bill_payments.clone(),
-            crate::dialog_keys::LiveDialogKeys::default(),
-        )
+        };
+        (presenter, setup)
     }
 }

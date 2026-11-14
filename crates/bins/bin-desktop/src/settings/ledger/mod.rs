@@ -19,11 +19,11 @@ use lib_viper::keymap::KeyBindingConfig;
 
 use crate::announcer::Announcer;
 use crate::settings::SettingsPage;
-use crate::settings::router::LedgerRouter;
 use crate::settings::snapshot::PageSnapshot;
 use crate::shell::view::module_page::{
     ModulePage, PageCue, PageDraw, PageLayout, PageView, SettingsPageView,
 };
+use crate::shell::view::page_router::page_router;
 use crate::shell::view::statusline::{PageStatus, StatusRight};
 
 /// The Ledger page: the Presenter, over the Units store, in the generic page Entity.
@@ -79,14 +79,7 @@ impl PageView for LedgerPresenter {
         }
     }
 
-    fn with_router<R>(
-        presenter: &mut Self,
-        _setup: &(),
-        _cx: &mut Context<'_, LedgerPage>,
-        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
-    ) -> R {
-        handle(presenter, &mut LedgerRouter)
-    }
+    page_router!();
 
     fn render(
         view: &LedgerViewModel,

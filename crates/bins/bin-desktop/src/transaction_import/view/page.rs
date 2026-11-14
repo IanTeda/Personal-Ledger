@@ -9,7 +9,6 @@
 use std::ops::Range;
 
 use gpui::{AnyElement, Context, ScrollHandle, Window, prelude::*};
-use lib_core::Clock;
 use lib_database::Domain;
 use lib_transaction_import::presenter::RowSelect;
 use lib_transaction_import::presenter::{ImportEvent, ImportStepPresenter, ImportStepViewModel};
@@ -17,9 +16,8 @@ use lib_viper::presenter::Presenter as _;
 
 use crate::form::select::MAX_VISIBLE_ROWS;
 use crate::shell::view::module_page::{ModulePage, PageCue, PageDraw, PageLayout, PageView};
+use crate::shell::view::page_router::page_router;
 use crate::shell::view::statusline::PageStatus;
-use crate::transaction_import::ImportStores;
-use crate::transaction_import::router::PageRouter;
 use crate::view::event::ViewEvent;
 
 /// The Import step: its Presenter in the generic page.
@@ -57,14 +55,7 @@ impl PageView for ImportStepPresenter {
         }
     }
 
-    fn with_router<R>(
-        presenter: &mut Self,
-        _setup: &(),
-        cx: &mut Context<'_, ImportPage>,
-        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
-    ) -> R {
-        handle(presenter, &mut PageRouter { cx })
-    }
+    page_router!();
 
     fn before(&mut self, event: &ImportEvent, _widgets: &ImportWidgets) -> ImportBefore {
         ImportBefore {
@@ -155,19 +146,6 @@ impl PageView for ImportStepPresenter {
 fn open_select(view: &ImportStepViewModel) -> Option<(usize, RowSelect)> {
     let open = view.step.as_ref()?.open_select.as_ref()?;
     Some((open.row, open.which))
-}
-
-/// The Transaction Import module's entry point: the step, closed, over `stores`, under `config`'s
-/// keys. `clock` dates the statement as the step opens.
-pub fn import_page(
-    stores: ImportStores,
-    announcer: &gpui::Entity<crate::announcer::Announcer>,
-    config: &lib_config::KeyBindingConfig,
-    clock: Clock,
-    cx: &mut gpui::App,
-) -> gpui::Entity<ImportPage> {
-    let presenter = ImportStepPresenter::new(move || stores.ports(&clock), config);
-    cx.new(|cx| ModulePage::new(presenter, (), announcer, cx))
 }
 
 /// The open select's options to draw: at most [`MAX_VISIBLE_ROWS`] of `len`, from `start`.

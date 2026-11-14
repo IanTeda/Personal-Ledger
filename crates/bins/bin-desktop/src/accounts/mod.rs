@@ -43,34 +43,42 @@ pub struct SettingsAccountsSnapshot {
     pub selected_account: Option<String>,
 }
 
-/// What `shell::router::build` hands the Accounts module: the page's Presenter, which owns the
-/// Accounts keymap under `[keybindings]`, its ports, what its Delete Dialog reads and writes
-/// through, and the Dialog keys every Accounts Dialog's hints read.
+/// What the Accounts page's Router is built from for each call (its `PageView::Setup`): the ports,
+/// what its Delete Dialog reads and writes through, the Dialog keys every Accounts Dialog's hints
+/// read, and the Clock an Added Account's opening date and the Transactions hand-off read.
 pub struct AccountsSetup {
-    pub presenter: AccountsPagePresenter,
     pub ports: lib_accounts::SharedPorts,
     pub deletion: crate::account_deletion::DeletionStores,
     pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
+    pub clock: lib_core::Clock,
 }
 
 impl AccountsSetup {
+    /// The page's Presenter, which owns the Accounts keymap under `[keybindings]`, and its Setup.
     pub fn new(
         ports: lib_accounts::SharedPorts,
         deletion: crate::account_deletion::DeletionStores,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
+        clock: lib_core::Clock,
         config: &lib_config::KeyBindingConfig,
-    ) -> Self {
-        Self {
-            presenter: AccountsPagePresenter::new(ports.clone(), config),
+    ) -> (AccountsPagePresenter, Self) {
+        let presenter = AccountsPagePresenter::new(ports.clone(), config);
+        let setup = Self {
             ports,
             deletion,
             dialog_keys,
-        }
+            clock,
+        };
+        (presenter, setup)
     }
 
-    /// `storage`'s Accounts ports under the default keys, for a test that builds `Root` directly.
+    /// `storage`'s Accounts ports under the default keys, dated by `clock`, for a test that builds
+    /// `Root` directly.
     #[cfg(test)]
-    pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
+    pub fn sample(
+        storage: &crate::shell::router::LedgerStores,
+        clock: &lib_core::Clock,
+    ) -> (AccountsPagePresenter, Self) {
         let config = lib_config::KeyBindingConfig::default();
         Self::new(
             storage.ports.accounts.clone(),
@@ -78,19 +86,10 @@ impl AccountsSetup {
             crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
                 &lib_shell::dialog_keymap(&config),
             )),
+            clock.clone(),
             &config,
         )
     }
-}
-
-/// What the Accounts page's Router is built from for each call (its `PageView::Setup`): the ports,
-/// the Delete Dialog's stores and the Dialog keys its Dialogs open on, and the Clock an Added
-/// Account's opening date and the Transactions hand-off read.
-pub struct AccountsRoutes {
-    pub ports: lib_accounts::SharedPorts,
-    pub deletion: crate::account_deletion::DeletionStores,
-    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
-    pub clock: lib_core::Clock,
 }
 
 #[cfg(test)]

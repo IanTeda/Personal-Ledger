@@ -18,7 +18,8 @@ use lib_database::Domain;
 use lib_locale::format::upper;
 
 use super::{history, plan, progress};
-use crate::budgets::router::{BudgetsRoutes, PageRouter};
+use crate::budgets::BudgetsSetup;
+use crate::budgets::router::BudgetsPageRouter;
 use crate::navigation::nav::Noun;
 use crate::shell::view::module_page::{ModulePage, PageCue, PageDraw, PageView};
 use crate::shell::view::page_clicks::PageClicks;
@@ -48,7 +49,7 @@ pub struct BudgetsBefore {
 }
 
 impl PageView for BudgetsPagePresenter {
-    type Setup = BudgetsRoutes;
+    type Setup = BudgetsSetup;
     type Widgets = BudgetsWidgets;
     type Before = BudgetsBefore;
 
@@ -63,21 +64,18 @@ impl PageView for BudgetsPagePresenter {
         Domain::Units,
     ];
 
-    /// The Router opens the Switcher in the date style the Presenter holds.
+    /// The Router opens the Switcher in the date style the Presenter holds, lent before the
+    /// handle borrows it.
     fn with_router<R>(
         presenter: &mut Self,
-        setup: &BudgetsRoutes,
+        setup: &BudgetsSetup,
         cx: &mut Context<'_, BudgetsPage>,
         handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
     ) -> R {
         let date_style = presenter.date_style();
         handle(
             presenter,
-            &mut PageRouter {
-                routes: setup,
-                date_style,
-                cx,
-            },
+            &mut BudgetsPageRouter::lending(setup, cx, date_style),
         )
     }
 

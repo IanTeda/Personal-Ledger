@@ -13,13 +13,13 @@ use lib_settings::{DeviceConfiguration, LedgerCounts, LedgerSummaries};
 use lib_viper::keymap::KeyBindingConfig;
 
 use crate::{
-    accounts::{AccountsPage, AccountsSetup, accounts_page},
+    accounts::{AccountsPage, accounts_page},
     announcer::Announcer,
-    categories::{CategoriesPage, CategoriesSetup, categories_page},
-    document_types::{DocumentTypesPage, DocumentTypesSetup, document_types_page},
-    institutions::{InstitutionsPage, InstitutionsSetup, institutions_page},
-    inventory::{InventoryPage, InventorySetup, inventory_page},
-    payees::{PayeesPage, PayeesSetup, payees_page},
+    categories::{CategoriesPage, categories_page},
+    document_types::{DocumentTypesPage, document_types_page},
+    institutions::{InstitutionsPage, institutions_page},
+    inventory::{InventoryPage, inventory_page},
+    payees::{PayeesPage, payees_page},
     settings::{
         SettingsPage,
         about::{AboutPage, about_page},
@@ -35,27 +35,35 @@ use crate::{
             tracing_page,
         },
     },
-    shell::view::{page_handle::PageHandle, window_size::WindowSize},
-    tags::{TagsPage, TagsSetup, tags_page},
-    units::{UnitsPage, UnitsSetup, units_page},
+    shell::view::{page_handle::PageHandle, page_router::Built, window_size::WindowSize},
+    tags::{TagsPage, tags_page},
+    units::{UnitsPage, units_page},
 };
+use lib_accounts::presenter::AccountsPagePresenter;
+use lib_categories::presenter::CategoriesPagePresenter;
+use lib_documents::presenter::DocumentTypesPagePresenter;
+use lib_institutions::presenter::InstitutionsPagePresenter;
+use lib_inventory::presenter::InventoryPagePresenter;
+use lib_payees::presenter::PayeesPagePresenter;
+use lib_tags::presenter::TagsPagePresenter;
+use lib_units::presenter::UnitsPagePresenter;
 
 /// A click on a row of a Settings page, which hands the page keyboard focus. Every page with rows
 /// emits it, and the Settings View, which owns the focus, follows it.
 #[derive(Debug, Clone, Copy)]
 pub struct PageRowClicked;
 
-/// What `shell::router::build` hands the This Ledger pages: the Units, Institutions, Accounts,
-/// Categories, Payees and Document Types modules' ports and keymaps, and the Ledger page's reads.
+/// What `shell::router::build` hands the This Ledger pages: each domain page's Presenter, which
+/// owns its keymap, beside its Setup ([`Built`]), and the Ledger page's reads.
 pub struct SettingsSetup {
-    pub units: UnitsSetup,
-    pub institutions: InstitutionsSetup,
-    pub payees: PayeesSetup,
-    pub document_types: DocumentTypesSetup,
-    pub accounts: AccountsSetup,
-    pub categories: CategoriesSetup,
-    pub tags: TagsSetup,
-    pub inventory: InventorySetup,
+    pub units: Built<UnitsPagePresenter>,
+    pub institutions: Built<InstitutionsPagePresenter>,
+    pub payees: Built<PayeesPagePresenter>,
+    pub document_types: Built<DocumentTypesPagePresenter>,
+    pub accounts: Built<AccountsPagePresenter>,
+    pub categories: Built<CategoriesPagePresenter>,
+    pub tags: Built<TagsPagePresenter>,
+    pub inventory: Built<InventoryPagePresenter>,
     pub ledger: LedgerPageSetup,
 }
 
@@ -135,10 +143,9 @@ impl LedgerSummaries for CachedCounts {
 }
 
 impl LedgerPages {
-    /// The This Ledger pages, the Ledger, Units and info pages' keys built from `config`.
+    /// The This Ledger pages, the Ledger and info pages' keys built from `config`.
     pub fn new(
         announcer: &Entity<Announcer>,
-        clock: &lib_core::Clock,
         config: &KeyBindingConfig,
         setup: SettingsSetup,
         cx: &mut Context<'_, SettingsView>,
@@ -163,14 +170,19 @@ impl LedgerPages {
             summaries,
             _ledger_changed,
             ledger: cx.new(|cx| ledger_page(ledger, config, announcer, cx)),
-            units: units_page(units, announcer.clone(), config, clock.clone(), cx),
-            institutions: institutions_page(institutions, announcer.clone(), cx),
-            accounts: accounts_page(accounts, announcer.clone(), clock.clone(), cx),
-            categories: categories_page(categories, announcer.clone(), cx),
-            tags: tags_page(tags, announcer.clone(), clock.clone(), cx),
-            payees: payees_page(payees, announcer.clone(), clock.clone(), cx),
-            documents: document_types_page(document_types, announcer.clone(), cx),
-            inventory: inventory_page(inventory, announcer.clone(), cx),
+            units: units_page(units.0, units.1, announcer.clone(), cx),
+            institutions: institutions_page(institutions.0, institutions.1, announcer.clone(), cx),
+            accounts: accounts_page(accounts.0, accounts.1, announcer.clone(), cx),
+            categories: categories_page(categories.0, categories.1, announcer.clone(), cx),
+            tags: tags_page(tags.0, tags.1, announcer.clone(), cx),
+            payees: payees_page(payees.0, payees.1, announcer.clone(), cx),
+            documents: document_types_page(
+                document_types.0,
+                document_types.1,
+                announcer.clone(),
+                cx,
+            ),
+            inventory: inventory_page(inventory.0, inventory.1, announcer.clone(), cx),
             sync_server: cx.new(|cx| sync_server_page(config, announcer, cx)),
             data_backup: cx.new(|cx| data_backup_page(config, announcer, cx)),
         }

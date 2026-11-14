@@ -9,31 +9,22 @@ use gpui::{AnyElement, App, Context, IntoElement as _, Window};
 use lib_database::Domain;
 use lib_documents::presenter::{DocumentTypesPagePresenter, DocumentTypesPageViewModel};
 
-use crate::document_types::router::PageRouter;
-use crate::document_types::{
-    DocumentTypesPage, DocumentTypesRoutes, SettingsDocumentTypesSnapshot,
-};
+use crate::document_types::{DocumentTypesPage, DocumentTypesSetup, SettingsDocumentTypesSnapshot};
 use crate::settings::SettingsPage;
 use crate::settings::snapshot::PageSnapshot;
 use crate::shell::view::module_page::{PageDraw, PageView, SettingsPageView};
+use crate::shell::view::page_router::page_router;
 use crate::shell::view::statusline::PageStatus;
 
 impl PageView for DocumentTypesPagePresenter {
-    type Setup = DocumentTypesRoutes;
+    type Setup = DocumentTypesSetup;
     type Widgets = ();
     type Before = ();
 
     /// A Document Type write: the rows read the types and their Filed file counts.
     const REPAINTS: &'static [Domain] = &[Domain::DocumentTypes];
 
-    fn with_router<R>(
-        presenter: &mut Self,
-        setup: &DocumentTypesRoutes,
-        cx: &mut Context<'_, DocumentTypesPage>,
-        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
-    ) -> R {
-        handle(presenter, &mut PageRouter { routes: setup, cx })
-    }
+    page_router!();
 
     fn render(
         view: &DocumentTypesPageViewModel,

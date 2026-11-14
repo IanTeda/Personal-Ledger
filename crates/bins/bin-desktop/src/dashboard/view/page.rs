@@ -5,16 +5,14 @@
 //! one input, whose commit writes nothing, since the Dashboard writes nothing.
 
 use gpui::{AnyElement, Context, ScrollHandle, Window, div, prelude::*, px};
-use lib_core::Clock;
-use lib_dashboard::{DashboardEvent, DashboardPresenter, DashboardReads, DashboardViewModel};
+use lib_dashboard::{DashboardEvent, DashboardPresenter, DashboardViewModel};
 use lib_database::Domain;
 use lib_list_cursor::Step;
 use lib_shell::{Movement, ShellCommand};
 
 use super::content;
-use crate::announcer::Announcer;
-use crate::dashboard::router::PageRouter;
 use crate::shell::view::module_page::{ModulePage, PageCue, PageDraw, PageView};
+use crate::shell::view::page_router::page_router;
 use crate::shell::view::statusline::PageStatus;
 use crate::view::event::ViewEvent;
 use crate::view::scroll_by_movement;
@@ -71,14 +69,7 @@ impl PageView for DashboardPresenter {
         Domain::Payees,
     ];
 
-    fn with_router<R>(
-        presenter: &mut Self,
-        _setup: &(),
-        cx: &mut Context<'_, DashboardPage>,
-        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
-    ) -> R {
-        handle(presenter, &mut PageRouter { cx })
-    }
+    page_router!();
 
     fn before(&mut self, event: &DashboardEvent, _widgets: &DashboardWidgets) -> Option<Step> {
         match event {
@@ -139,17 +130,4 @@ impl PageView for DashboardPresenter {
     fn escape(view: &DashboardViewModel) -> Option<DashboardEvent> {
         view.searching.then_some(DashboardEvent::EndSearch)
     }
-}
-
-/// The Dashboard module's entry point: its page over `reads`, dated by `clock`, its keys under
-/// `config`.
-pub fn dashboard_page(
-    reads: std::rc::Rc<dyn DashboardReads>,
-    announcer: &gpui::Entity<Announcer>,
-    config: &lib_config::KeyBindingConfig,
-    clock: Clock,
-    cx: &mut gpui::App,
-) -> gpui::Entity<DashboardPage> {
-    let presenter = DashboardPresenter::new(reads, clock, config);
-    cx.new(|cx| ModulePage::new(presenter, (), announcer, cx))
 }

@@ -38,31 +38,37 @@ pub struct SettingsDocumentTypesSnapshot {
     pub document_type_files: Vec<u32>,
 }
 
-/// What the Open Ledger hands the Document Types module: the page's Presenter, which owns the
-/// Document Types keymap under `[keybindings]`, `lib-database`'s Documents repository, which it
-/// shares with the Documents page, and the Dialog keys every Document Types Dialog's hints read.
+/// What the Document Types page's Router is built from for each call (its `PageView::Setup`):
+/// `lib-database`'s Documents repository, which it shares with the Documents page, and the Dialog
+/// keys every Document Types Dialog's hints read.
 pub struct DocumentTypesSetup {
-    pub presenter: DocumentTypesPagePresenter,
     pub documents: lib_documents::SharedRepository,
     pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
 }
 
 impl DocumentTypesSetup {
+    /// The page's Presenter, which owns the Document Types keymap under `[keybindings]`, and its
+    /// Setup.
     pub fn new(
         documents: lib_documents::SharedRepository,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
         config: &lib_config::KeyBindingConfig,
-    ) -> Self {
-        Self {
-            presenter: DocumentTypesPagePresenter::new(documents.clone(), config),
-            documents,
-            dialog_keys,
-        }
+    ) -> (DocumentTypesPagePresenter, Self) {
+        let presenter = DocumentTypesPagePresenter::new(documents.clone(), config);
+        (
+            presenter,
+            Self {
+                documents,
+                dialog_keys,
+            },
+        )
     }
 
     /// `storage`'s Documents store under the default keys, for a test that builds `Root` directly.
     #[cfg(test)]
-    pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
+    pub fn sample(
+        storage: &crate::shell::router::LedgerStores,
+    ) -> (DocumentTypesPagePresenter, Self) {
         let config = lib_config::KeyBindingConfig::default();
         Self::new(
             storage.ports.documents.clone(),
@@ -72,11 +78,4 @@ impl DocumentTypesSetup {
             &config,
         )
     }
-}
-
-/// What the Document Types page's Router is built from for each call (its `PageView::Setup`): the
-/// repository and Dialog keys its Dialogs open on.
-pub struct DocumentTypesRoutes {
-    pub documents: lib_documents::SharedRepository,
-    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
 }

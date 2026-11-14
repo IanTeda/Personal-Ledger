@@ -39,34 +39,42 @@ pub struct SettingsTagsSnapshot {
     pub selected_tag: Option<String>,
 }
 
-/// What the Open Ledger hands the Tags module: the page's Presenter, which owns the Tags keymap
-/// under `[keybindings]`, the ports `LedgerPorts` built over the Tags store, Tag remove and
-/// merge's port and reads, and the Dialog keys every Tags Dialog's hints read.
+/// What the Tags page's Router is built from for each call (its `PageView::Setup`): the ports
+/// `LedgerPorts` built over the Tags store, Tag remove and merge's port and reads, the Dialog keys
+/// every Tags Dialog's hints read, and the Clock its Transactions hand-off dates its filter by.
 pub struct TagsSetup {
-    pub presenter: TagsPagePresenter,
     pub ports: SharedPorts,
     pub removal: RemovalStores,
     pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
+    pub clock: lib_core::Clock,
 }
 
 impl TagsSetup {
+    /// The page's Presenter, which owns the Tags keymap under `[keybindings]`, and its Setup.
     pub fn new(
         ports: SharedPorts,
         removal: RemovalStores,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
+        clock: lib_core::Clock,
         config: &lib_config::KeyBindingConfig,
-    ) -> Self {
-        Self {
-            presenter: TagsPagePresenter::new(ports.clone(), config),
+    ) -> (TagsPagePresenter, Self) {
+        let presenter = TagsPagePresenter::new(ports.clone(), config);
+        let setup = Self {
             ports,
             removal,
             dialog_keys,
-        }
+            clock,
+        };
+        (presenter, setup)
     }
 
-    /// `storage`'s Tags ports under the default keys, for a test that builds `Root` directly.
+    /// `storage`'s Tags ports under the default keys, dated by `clock`, for a test that builds
+    /// `Root` directly.
     #[cfg(test)]
-    pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
+    pub fn sample(
+        storage: &crate::shell::router::LedgerStores,
+        clock: &lib_core::Clock,
+    ) -> (TagsPagePresenter, Self) {
         let config = lib_config::KeyBindingConfig::default();
         Self::new(
             storage.ports.tags.clone(),
@@ -74,16 +82,8 @@ impl TagsSetup {
             crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
                 &lib_shell::dialog_keymap(&config),
             )),
+            clock.clone(),
             &config,
         )
     }
-}
-
-/// What the Tags page's Router is built from for each call (its `PageView::Setup`): the ports and
-/// Dialog keys its Dialogs open on, and the Clock its Transactions hand-off dates its filter by.
-pub struct TagsRoutes {
-    pub ports: SharedPorts,
-    pub removal: RemovalStores,
-    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
-    pub clock: lib_core::Clock,
 }

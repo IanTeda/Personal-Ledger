@@ -54,7 +54,8 @@ impl PageSnapshot for Option<UnitPricesSnapshot> {
     }
 }
 
-/// What `shell::router::build` hands the Units module: its ports and the Dialog keys.
+/// What the Units page's Router is built from for each call (its `PageView::Setup`): the ports and
+/// Dialog keys its Dialogs open on, and the Clock the Set price Dialog reads now from.
 pub struct UnitsSetup {
     pub ports: SharedPorts,
     /// The Unit Deletion module's port over the Units and Institutions stores, which Delete unit
@@ -62,25 +63,36 @@ pub struct UnitsSetup {
     pub deletion: lib_unit_deletion::SharedUnitDeletion,
     /// The Dialog keymap's chords, which the module's Dialogs build their status-line hints from.
     pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
+    pub clock: lib_core::Clock,
 }
 
 impl UnitsSetup {
+    /// The page's Presenter, with its keys, and the Unit prices view's, from `config`, dated by
+    /// `clock`, and its Setup.
     pub fn new(
         ports: SharedPorts,
         deletion: lib_unit_deletion::SharedUnitDeletion,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
-    ) -> Self {
-        Self {
+        clock: lib_core::Clock,
+        config: &lib_config::KeyBindingConfig,
+    ) -> (UnitsPagePresenter, Self) {
+        let presenter = UnitsPagePresenter::new(ports.clone(), view::page::now_of(&clock), config);
+        let setup = Self {
             ports,
             deletion,
             dialog_keys,
-        }
+            clock,
+        };
+        (presenter, setup)
     }
 
-    /// `storage`'s Units ports under the default Dialog keys, for a test that builds `Root`
-    /// directly.
+    /// `storage`'s Units ports under the default keys, dated by `clock`, for a test that builds
+    /// `Root` directly.
     #[cfg(test)]
-    pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
+    pub fn sample(
+        storage: &crate::shell::router::LedgerStores,
+        clock: &lib_core::Clock,
+    ) -> (UnitsPagePresenter, Self) {
         let config = lib_config::KeyBindingConfig::default();
         Self::new(
             storage.ports.units.clone(),
@@ -88,15 +100,8 @@ impl UnitsSetup {
             crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
                 &lib_shell::dialog_keymap(&config),
             )),
+            clock.clone(),
+            &config,
         )
     }
-}
-
-/// What the Units page's Router is built from for each call (its `PageView::Setup`): the ports and
-/// Dialog keys its Dialogs open on, and the Clock the Set price Dialog reads now from.
-pub struct UnitsRoutes {
-    pub ports: SharedPorts,
-    pub deletion: lib_unit_deletion::SharedUnitDeletion,
-    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
-    pub clock: lib_core::Clock,
 }

@@ -14,6 +14,7 @@ use crate::settings::SettingsPage;
 use crate::shell::view::module_page::{
     ModulePage, PageDraw, PageLayout, PageView, SettingsPageView,
 };
+use crate::shell::view::page_router::page_router;
 use crate::shell::view::statusline::{PageStatus, StatusRight};
 
 /// The About page: the Presenter in the generic page Entity.
@@ -50,15 +51,7 @@ impl PageView for AboutPresenter {
         }
     }
 
-    /// About takes no event, so its Router is the status line's queue, which nothing uses.
-    fn with_router<R>(
-        presenter: &mut Self,
-        _setup: &(),
-        _cx: &mut Context<'_, AboutPage>,
-        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
-    ) -> R {
-        handle(presenter, &mut crate::notices::Queue)
-    }
+    page_router!();
 
     fn render(
         view: &AboutViewModel,

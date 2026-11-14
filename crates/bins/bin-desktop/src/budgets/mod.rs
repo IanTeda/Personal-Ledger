@@ -10,3 +10,30 @@ pub mod view;
 pub use view::page::BudgetsPage;
 
 pub use lib_budgets::*;
+
+/// What the Budgets page's Router is built from for each call (its `PageView::Setup`): the ports
+/// its Dialogs open on, the Clock whose day they open on and the Dialog keys their hints show.
+pub struct BudgetsSetup {
+    pub ports: SharedPorts,
+    pub clock: lib_core::Clock,
+    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
+}
+
+impl BudgetsSetup {
+    /// The page's Presenter, its keys from `config`, working its figures out on `clock`'s
+    /// calendar day, and its Setup.
+    pub fn new(
+        ports: SharedPorts,
+        clock: lib_core::Clock,
+        dialog_keys: crate::dialog_keys::LiveDialogKeys,
+        config: &lib_config::KeyBindingConfig,
+    ) -> (presenter::BudgetsPagePresenter, Self) {
+        let presenter = presenter::BudgetsPagePresenter::new(ports.clone(), clock.clone(), config);
+        let setup = Self {
+            ports,
+            clock,
+            dialog_keys,
+        };
+        (presenter, setup)
+    }
+}

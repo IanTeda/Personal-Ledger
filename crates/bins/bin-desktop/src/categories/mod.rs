@@ -44,12 +44,11 @@ pub struct SettingsCategoriesSnapshot {
     pub selected_budget_months: Vec<(i32, u32)>,
 }
 
-/// What the Open Ledger hands the Categories module: the page's Presenter, which owns the
-/// Categories keymap under `[keybindings]`, `lib-database`'s Categories ports as the save ports each
-/// form holds from open, the Budgets store the page's snapshot reads, Category delete's port and
-/// reads, and the Dialog keys every Categories Dialog's hints read.
+/// What the Categories page's Router is built from for each call (its `PageView::Setup`):
+/// `lib-database`'s Categories ports as the save ports each form holds from open, the Budgets store
+/// the page's snapshot reads, Category delete's port and reads, and the Dialog keys every
+/// Categories Dialog's hints read.
 pub struct CategoriesSetup {
-    pub presenter: CategoriesPagePresenter,
     pub categories: lib_categories::SharedCategories,
     pub save: lib_database::StoredCategoriesPorts,
     /// The Budgets store, which the page's snapshot reads the selected Category's records from.
@@ -60,6 +59,8 @@ pub struct CategoriesSetup {
 }
 
 impl CategoriesSetup {
+    /// The page's Presenter, which owns the Categories keymap under `[keybindings]`, and its
+    /// Setup.
     pub fn new(
         categories: lib_categories::SharedCategories,
         save: lib_database::StoredCategoriesPorts,
@@ -67,21 +68,22 @@ impl CategoriesSetup {
         deletion: DeletionStores,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
         config: &lib_config::KeyBindingConfig,
-    ) -> Self {
-        Self {
-            presenter: CategoriesPagePresenter::new(categories.clone(), config),
+    ) -> (CategoriesPagePresenter, Self) {
+        let presenter = CategoriesPagePresenter::new(categories.clone(), config);
+        let setup = Self {
             categories,
             save,
             budgets,
             deletion,
             dialog_keys,
-        }
+        };
+        (presenter, setup)
     }
 
     /// `storage`'s Categories store under the default keys, for a test that builds `Root`
     /// directly.
     #[cfg(test)]
-    pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
+    pub fn sample(storage: &crate::shell::router::LedgerStores) -> (CategoriesPagePresenter, Self) {
         let config = lib_config::KeyBindingConfig::default();
         Self::new(
             storage.ports.categories.clone(),
@@ -94,14 +96,4 @@ impl CategoriesSetup {
             &config,
         )
     }
-}
-
-/// What the Categories page's Router is built from for each call (its `PageView::Setup`): the
-/// ports and Dialog keys its Dialogs open on, and the Budgets store its snapshot reads.
-pub struct CategoriesRoutes {
-    pub categories: lib_categories::SharedCategories,
-    pub save: lib_database::StoredCategoriesPorts,
-    pub budgets: lib_database::SharedBudgetsStore,
-    pub deletion: DeletionStores,
-    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
 }

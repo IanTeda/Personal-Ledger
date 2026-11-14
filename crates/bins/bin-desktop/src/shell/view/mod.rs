@@ -10,6 +10,7 @@ pub(crate) mod module_page;
 pub(crate) mod no_ledger;
 pub(crate) mod page_clicks;
 pub(crate) mod page_handle;
+pub(crate) mod page_router;
 pub(crate) mod palette;
 pub(crate) mod rail;
 pub(crate) mod statusline;

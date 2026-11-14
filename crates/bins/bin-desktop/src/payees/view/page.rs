@@ -9,16 +9,16 @@ use gpui::{AnyElement, App, Context, Window};
 use lib_database::Domain;
 use lib_payees::presenter::{PayeesPageEvent, PayeesPagePresenter, PayeesPageViewModel};
 
-use crate::payees::router::PageRouter;
-use crate::payees::{PayeesPage, PayeesRoutes, SettingsPayeesSnapshot};
+use crate::payees::{PayeesPage, PayeesSetup, SettingsPayeesSnapshot};
 use crate::settings::SettingsPage;
 use crate::settings::snapshot::PageSnapshot;
 use crate::shell::view::module_page::{PageCue, PageDraw, PageView, SettingsPageView};
+use crate::shell::view::page_router::page_router;
 use crate::shell::view::statusline::PageStatus;
 use crate::view::event::Reveal;
 
 impl PageView for PayeesPagePresenter {
-    type Setup = PayeesRoutes;
+    type Setup = PayeesSetup;
     type Widgets = ();
     type Before = ();
 
@@ -26,14 +26,7 @@ impl PageView for PayeesPagePresenter {
     /// category cells show.
     const REPAINTS: &'static [Domain] = &[Domain::Payees, Domain::Categories];
 
-    fn with_router<R>(
-        presenter: &mut Self,
-        setup: &PayeesRoutes,
-        cx: &mut Context<'_, PayeesPage>,
-        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
-    ) -> R {
-        handle(presenter, &mut PageRouter { routes: setup, cx })
-    }
+    page_router!();
 
     fn render(
         view: &PayeesPageViewModel,

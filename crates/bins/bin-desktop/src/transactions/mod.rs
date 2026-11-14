@@ -16,4 +16,5 @@ pub(crate) mod view;
 
 #[cfg(test)]
 pub use lib_database::seed::sample_transaction_history;
-pub use view::page::{TransactionsPage, transactions_page};
+pub use router::transactions_page;
+pub use view::page::TransactionsPage;

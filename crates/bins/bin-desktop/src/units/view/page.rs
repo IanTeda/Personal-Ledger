@@ -25,10 +25,10 @@ use lib_units::presenter::{
 use crate::settings::SettingsPage;
 use crate::shell::view::module_page::{PageCue, PageDraw, PageView, SettingsPageView};
 use crate::shell::view::page_clicks::PageClicks;
+use crate::shell::view::page_router::page_router;
 use crate::shell::view::statusline::{PageStatus, StatusRight};
 use crate::shell::view::window_size::WindowSize;
-use crate::units::router::PageRouter;
-use crate::units::{UnitsPage, UnitsRoutes};
+use crate::units::{UnitsPage, UnitsSetup};
 
 pub use pane::detail_pane;
 
@@ -39,7 +39,7 @@ pub(crate) fn now_of(clock: &lib_core::Clock) -> Rc<dyn Fn() -> chrono::DateTime
 }
 
 impl PageView for UnitsPagePresenter {
-    type Setup = UnitsRoutes;
+    type Setup = UnitsSetup;
     /// Where the open row menu is drawn: the pointer that opened it, in window coordinates.
     type Widgets = Point<Pixels>;
     type Before = ();
@@ -47,14 +47,7 @@ impl PageView for UnitsPagePresenter {
     /// A Units write or a rollback, and the Accounts the detail pane's ACCOUNTS group reads.
     const REPAINTS: &'static [Domain] = &[Domain::Units, Domain::Accounts];
 
-    fn with_router<R>(
-        presenter: &mut Self,
-        setup: &UnitsRoutes,
-        cx: &mut Context<'_, UnitsPage>,
-        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
-    ) -> R {
-        handle(presenter, &mut PageRouter { routes: setup, cx })
-    }
+    page_router!();
 
     /// X-Large docks the detail pane, which the Presenter takes only as a change.
     fn cued(cue: PageCue) -> Option<UnitsPageEvent> {

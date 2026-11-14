@@ -2,7 +2,8 @@
 //! owns the Presenter, the widget state its View keeps beside it, whether the page has focus and
 //! its repaints, and is the one take, send and handle path a key, a palette Command, a click or a
 //! landed Dialog reaches the Presenter through. A domain writes a [`PageView`] on its page
-//! Presenter (its Router, what it repaints on, how it draws and lays out) and no Entity of its own.
+//! Presenter (what it repaints on, how it draws and lays out) and its Router trait's impl on the
+//! generic [`PageRouter`](super::page_router::PageRouter), and no Entity of its own.
 //!
 //! The page never counts or announces a write: each input's `send` announces what its commit
 //! names (ADR-0055), and the page repaints on the domains in [`PageView::REPAINTS`].
@@ -67,8 +68,11 @@ pub trait PageView: PagePresenter + Sized + 'static {
     }
 
     /// Runs `handle` on `presenter` with the page's Router, built over `setup` around this call's
-    /// context, which is how a Router opens a Dialog in the host. The Router may read what the
-    /// Presenter holds for the Dialogs it opens (the date style) before `handle` runs.
+    /// context, which is how a Router opens a Dialog in the host. A page writes
+    /// [`page_router!`](super::page_router::page_router), lending the generic
+    /// [`PageRouter`](super::page_router::PageRouter); one whose Router reads what the Presenter
+    /// holds for the Dialogs it opens (the date style) lends it through `PageRouter::lending`
+    /// before `handle` runs.
     fn with_router<R>(
         presenter: &mut Self,
         setup: &Self::Setup,

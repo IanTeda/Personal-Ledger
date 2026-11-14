@@ -13,15 +13,15 @@ use lib_inventory::presenter::{
 };
 use lib_inventory::{Inventory, InventoryRow, InventoryUnits as _};
 
-use crate::inventory::router::PageRouter;
-use crate::inventory::{InventoryPage, InventoryRoutes, SettingsInventorySnapshot};
+use crate::inventory::{InventoryPage, InventorySetup, SettingsInventorySnapshot};
 use crate::settings::SettingsPage;
 use crate::settings::snapshot::PageSnapshot;
 use crate::shell::view::module_page::{PageDraw, PageView, SettingsPageView};
+use crate::shell::view::page_router::page_router;
 use crate::shell::view::statusline::PageStatus;
 
 impl PageView for InventoryPagePresenter {
-    type Setup = InventoryRoutes;
+    type Setup = InventorySetup;
     /// Where the open row menu is drawn: the pointer that opened it, in window coordinates.
     type Widgets = Point<Pixels>;
     type Before = ();
@@ -29,14 +29,7 @@ impl PageView for InventoryPagePresenter {
     /// An Inventory write, or the Units its amounts are in.
     const REPAINTS: &'static [Domain] = &[Domain::Inventory, Domain::Units];
 
-    fn with_router<R>(
-        presenter: &mut Self,
-        setup: &InventoryRoutes,
-        cx: &mut Context<'_, InventoryPage>,
-        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
-    ) -> R {
-        handle(presenter, &mut PageRouter { routes: setup, cx })
-    }
+    page_router!();
 
     fn render(
         view: &InventoryPageViewModel,
@@ -94,10 +87,10 @@ impl PageSnapshot for SettingsInventorySnapshot {
     /// The visible rows and the selected one, each Location's Areas, Units and insurers, and each
     /// Area's Item count.
     fn read(page: &InventoryPage, _cx: &App) -> Self {
-        let routes = page.setup();
-        let inventory = routes.inventory.borrow().inventory();
+        let setup = page.setup();
+        let inventory = setup.inventory.borrow().inventory();
         let view = page.view_model();
-        let units = &routes.reads;
+        let units = &setup.reads;
         SettingsInventorySnapshot {
             inventory_rows: view
                 .rows

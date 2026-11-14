@@ -14,19 +14,16 @@
 
 use gpui::{AnyElement, Context, ScrollStrategy, UniformListScrollHandle, Window};
 
-use lib_core::Clock;
 use lib_database::Domain;
 use lib_list_cursor::Step;
-use lib_transactions::SharedPorts;
 use lib_transactions::presenter::{
     ChipField, TransactionsPageEvent, TransactionsPagePresenter, TransactionsPageViewModel,
 };
 use lib_viper::display::RowDensity;
 
 use super::header::ChipBounds;
-use crate::announcer::Announcer;
-use crate::notices::Queue;
 use crate::shell::view::module_page::{ModulePage, PageCue, PageDraw, PageLayout, PageView};
+use crate::shell::view::page_router::page_router;
 use crate::shell::view::statusline::PageStatus;
 use crate::view::{event::ViewEvent, format, help::HelpGroup};
 
@@ -93,14 +90,7 @@ impl PageView for TransactionsPagePresenter {
         }
     }
 
-    fn with_router<R>(
-        presenter: &mut Self,
-        _setup: &(),
-        _cx: &mut Context<'_, TransactionsPage>,
-        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
-    ) -> R {
-        handle(presenter, &mut Queue)
-    }
+    page_router!();
 
     /// A row step is measured against the half page the table shows now.
     fn before(
@@ -217,19 +207,6 @@ impl PageView for TransactionsPagePresenter {
             None
         }
     }
-}
-
-/// The Transactions module's entry point: the page on `ports`, filtered to this year by `clock`'s
-/// today, under `config`'s keys.
-pub fn transactions_page(
-    ports: SharedPorts,
-    announcer: &gpui::Entity<Announcer>,
-    config: &lib_config::KeyBindingConfig,
-    clock: Clock,
-    cx: &mut gpui::App,
-) -> gpui::Entity<TransactionsPage> {
-    let presenter = TransactionsPagePresenter::new(ports, clock, config);
-    gpui::AppContext::new(cx, |cx| ModulePage::new(presenter, (), announcer, cx))
 }
 
 /// How many rows a half-page move steps, from the list's measured viewport height.

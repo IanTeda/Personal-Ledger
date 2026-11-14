@@ -22,11 +22,11 @@ use lib_viper::keymap::KeyBindingConfig;
 use lib_viper::view::Choice;
 
 use crate::settings::SettingsPage;
-use crate::settings::router::DeviceRouter;
 use crate::settings::snapshot::PageSnapshot;
 use crate::shell::view::module_page::{
     ModulePage, PageCue, PageDraw, PageLayout, PageView, SettingsPageView,
 };
+use crate::shell::view::page_router::page_router;
 use crate::shell::view::statusline::{PageStatus, StatusRight};
 use crate::start_view;
 
@@ -89,14 +89,7 @@ impl PageView for GeneralPresenter {
         }
     }
 
-    fn with_router<R>(
-        presenter: &mut Self,
-        _setup: &(),
-        cx: &mut Context<'_, GeneralPage>,
-        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
-    ) -> R {
-        handle(presenter, &mut DeviceRouter { cx })
-    }
+    page_router!();
 
     fn render(
         view: &GeneralViewModel,

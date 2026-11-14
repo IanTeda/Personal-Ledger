@@ -15,6 +15,7 @@ use crate::settings::SettingsPage;
 use crate::shell::view::module_page::{
     ModulePage, PageDraw, PageLayout, PageView, SettingsPageView,
 };
+use crate::shell::view::page_router::page_router;
 use crate::shell::view::statusline::{PageStatus, StatusRight};
 
 /// The Sync server page: the Presenter in the generic page Entity.
@@ -46,14 +47,7 @@ impl PageView for SyncServerPresenter {
         }
     }
 
-    fn with_router<R>(
-        presenter: &mut Self,
-        _setup: &(),
-        _cx: &mut Context<'_, SyncServerPage>,
-        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
-    ) -> R {
-        handle(presenter, &mut crate::notices::Queue)
-    }
+    page_router!();
 
     fn render(
         view: &SyncServerViewModel,

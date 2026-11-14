@@ -9,29 +9,22 @@ use gpui::{AnyElement, App, Context, IntoElement as _, Window};
 use lib_categories::presenter::{CategoriesPagePresenter, CategoriesPageViewModel};
 use lib_database::Domain;
 
-use crate::categories::router::PageRouter;
-use crate::categories::{CategoriesPage, CategoriesRoutes, SettingsCategoriesSnapshot};
+use crate::categories::{CategoriesPage, CategoriesSetup, SettingsCategoriesSnapshot};
 use crate::settings::SettingsPage;
 use crate::settings::snapshot::PageSnapshot;
 use crate::shell::view::module_page::{PageDraw, PageView, SettingsPageView};
+use crate::shell::view::page_router::page_router;
 use crate::shell::view::statusline::PageStatus;
 
 impl PageView for CategoriesPagePresenter {
-    type Setup = CategoriesRoutes;
+    type Setup = CategoriesSetup;
     type Widgets = ();
     type Before = ();
 
     /// A Categories write, a reassign, a rollback.
     const REPAINTS: &'static [Domain] = &[Domain::Categories];
 
-    fn with_router<R>(
-        presenter: &mut Self,
-        setup: &CategoriesRoutes,
-        cx: &mut Context<'_, CategoriesPage>,
-        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
-    ) -> R {
-        handle(presenter, &mut PageRouter { routes: setup, cx })
-    }
+    page_router!();
 
     fn render(
         view: &CategoriesPageViewModel,

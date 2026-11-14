@@ -9,4 +9,5 @@
 pub mod router;
 pub mod view;
 
-pub use view::page::{DashboardBillSnapshot, DashboardPage, dashboard_page};
+pub use router::dashboard_page;
+pub use view::page::{DashboardBillSnapshot, DashboardPage};

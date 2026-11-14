@@ -1,19 +1,19 @@
-//! `impl ImportRouter` for the Import step: where its Presenter asks to go, through the page's gpui
-//! context, which is why the Router is built for each `handle` call (`PageView::with_router`). A
-//! commit lands on the Transactions list's first row, inside the same input; a Notice goes onto the
-//! bin's queue (`crate::notices`), which the input's `send` drains.
+//! `impl ImportRouter` for the Import step: where its Presenter asks to go, through the generic
+//! [`PageRouter`]'s gpui context, which is why the Router is built for each `handle` call
+//! (`PageView::with_router`). A commit lands on the Transactions list's first row, inside the same
+//! input; the Router queues a Notice for the input's `send` to drain.
 
-use gpui::Context;
-use lib_toast::{Notice, Notify};
+use gpui::{AppContext as _, Entity};
+use lib_core::Clock;
+use lib_transaction_import::presenter::ImportStepPresenter;
 use lib_transaction_import::{ImportCommitted, ImportRouter};
 
-use super::ImportPage;
+use super::{ImportPage, ImportStores};
+use crate::announcer::Announcer;
+use crate::shell::view::module_page::ModulePage;
+use crate::shell::view::page_router::PageRouter;
 
-pub(super) struct PageRouter<'a, 'b> {
-    pub cx: &'a mut Context<'b, ImportPage>,
-}
-
-impl ImportRouter for PageRouter<'_, '_> {
+impl ImportRouter for PageRouter<'_, '_, ImportStepPresenter> {
     /// The step has closed itself; a commit puts the Transactions list back on its first row.
     fn close_import(&mut self, committed: Option<ImportCommitted>) {
         if committed.is_some() {
@@ -22,8 +22,15 @@ impl ImportRouter for PageRouter<'_, '_> {
     }
 }
 
-impl Notify for PageRouter<'_, '_> {
-    fn notify(&mut self, notice: Notice) {
-        crate::notices::Queue.notify(notice);
-    }
+/// The Transaction Import module's entry point: the step, closed, over `stores`, under `config`'s
+/// keys. `clock` dates the statement as the step opens.
+pub fn import_page(
+    stores: ImportStores,
+    announcer: &Entity<Announcer>,
+    config: &lib_config::KeyBindingConfig,
+    clock: Clock,
+    cx: &mut gpui::App,
+) -> Entity<ImportPage> {
+    let presenter = ImportStepPresenter::new(move || stores.ports(&clock), config);
+    cx.new(|cx| ModulePage::new(presenter, (), announcer, cx))
 }

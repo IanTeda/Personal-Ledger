@@ -35,46 +35,47 @@ pub struct SettingsPayeesSnapshot {
     pub selected_payee: Option<String>,
 }
 
-/// What the Open Ledger hands the Payees module: the page's Presenter, which owns the Payees keymap
-/// under `[keybindings]`, its ports, shared with the Ledger and the Bills reads, and the Dialog keys
-/// every Payees Dialog's hints read.
+/// What the Payees page's Router is built from for each call (its `PageView::Setup`): its ports,
+/// shared with the Ledger and the Bills reads, the Dialog keys every Payees Dialog's hints read,
+/// and the Clock its Transactions hand-off dates its filter by.
 pub struct PayeesSetup {
-    pub presenter: PayeesPagePresenter,
     pub ports: lib_payees::SharedPorts,
     pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
+    pub clock: lib_core::Clock,
 }
 
 impl PayeesSetup {
+    /// The page's Presenter, which owns the Payees keymap under `[keybindings]`, and its Setup.
     pub fn new(
         ports: lib_payees::SharedPorts,
         dialog_keys: crate::dialog_keys::LiveDialogKeys,
+        clock: lib_core::Clock,
         config: &lib_config::KeyBindingConfig,
-    ) -> Self {
-        Self {
-            presenter: PayeesPagePresenter::new(ports.clone(), config),
+    ) -> (PayeesPagePresenter, Self) {
+        let presenter = PayeesPagePresenter::new(ports.clone(), config);
+        let setup = Self {
             ports,
             dialog_keys,
-        }
+            clock,
+        };
+        (presenter, setup)
     }
 
-    /// `storage`'s Payees ports under the default keys, for a test that builds `Root` directly.
+    /// `storage`'s Payees ports under the default keys, dated by `clock`, for a test that builds
+    /// `Root` directly.
     #[cfg(test)]
-    pub fn sample(storage: &crate::shell::router::LedgerStores) -> Self {
+    pub fn sample(
+        storage: &crate::shell::router::LedgerStores,
+        clock: &lib_core::Clock,
+    ) -> (PayeesPagePresenter, Self) {
         let config = lib_config::KeyBindingConfig::default();
         Self::new(
             storage.ports.payees.clone(),
             crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
                 &lib_shell::dialog_keymap(&config),
             )),
+            clock.clone(),
             &config,
         )
     }
-}
-
-/// What the Payees page's Router is built from for each call (its `PageView::Setup`): the ports and
-/// Dialog keys its Dialogs open on, and the Clock its Transactions hand-off dates its filter by.
-pub struct PayeesRoutes {
-    pub ports: lib_payees::SharedPorts,
-    pub dialog_keys: crate::dialog_keys::LiveDialogKeys,
-    pub clock: lib_core::Clock,
 }

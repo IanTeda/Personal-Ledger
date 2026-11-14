@@ -1,11 +1,11 @@
 //! The **Tracing (Logs)** Settings page (ADR-0037, and its amendment's one folder per page): the
 //! live log capture. `lib-settings`' Tracing Presenter is the [`PageView`] the generic `ModulePage`
 //! hosts (ADR-0056), with the virtualised list that shows its rows as the page's widget state
-//! ([`LogList`]). The Presenter tells its Router (`super::router::TracingRouter`) how the rows
-//! changed and where to scroll, queued in the page's [`TracingPageSetup`]; [`PageView::after`]
-//! applies that to the list. The capture is read
-//! through the `TracingLog` port (`log.rs`); the page subscribes to the capture feed's
-//! [`LogFeed`] (`PageView::subscribe`), and each signal is a [`TracingEvent::LogChanged`] input.
+//! ([`LogList`]). The Presenter tells its Router (`super::router`'s `TracingRouter` impl on the
+//! generic page Router) how the rows changed and where to scroll, queued in the page's
+//! [`TracingPageSetup`]; [`PageView::after`] applies that to the list. The capture is read through
+//! the `TracingLog` port (`log.rs`); the page subscribes to the capture feed's [`LogFeed`]
+//! (`PageView::subscribe`), and each signal is a [`TracingEvent::LogChanged`] input.
 //! Clear logs is a module Dialog (`dialogs/`) the Router hosts. The page has no form: the level
 //! radios filter the mirror at once.
 
@@ -28,8 +28,9 @@ use lib_settings::{
 use lib_viper::keymap::KeyBindingConfig;
 
 use crate::{
-    settings::{SettingsPage, router::TracingRouter, snapshot::PageSnapshot},
+    settings::{SettingsPage, snapshot::PageSnapshot},
     shell::view::module_page::{ModulePage, PageDraw, PageLayout, PageView, SettingsPageView},
+    shell::view::page_router::page_router,
     shell::view::statusline::{PageStatus, StatusRight},
     view::event::ViewEvent,
 };
@@ -92,6 +93,13 @@ pub struct TracingPageSetup {
     list_effects: ListEffects,
 }
 
+impl TracingPageSetup {
+    /// The list effects queued since `after` last applied them, for the Router to queue onto.
+    pub(super) fn list_effects(&self) -> std::cell::RefMut<'_, Vec<LogListEffect>> {
+        self.list_effects.borrow_mut()
+    }
+}
+
 impl PageView for TracingPresenter {
     /// The capture feed the page subscribes to, and the list effects its Router queues.
     type Setup = TracingPageSetup;
@@ -110,18 +118,7 @@ impl PageView for TracingPresenter {
         }
     }
 
-    fn with_router<R>(
-        presenter: &mut Self,
-        setup: &TracingPageSetup,
-        cx: &mut Context<'_, TracingPage>,
-        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
-    ) -> R {
-        let mut router = TracingRouter {
-            cx,
-            list_effects: &setup.list_effects,
-        };
-        handle(presenter, &mut router)
-    }
+    page_router!();
 
     /// Applies what the Presenter asked of the list, in the order it asked.
     fn after(

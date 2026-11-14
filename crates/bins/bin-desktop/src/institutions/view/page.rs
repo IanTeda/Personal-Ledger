@@ -12,15 +12,15 @@ use lib_institutions::presenter::{
     InstitutionsPageEvent, InstitutionsPagePresenter, InstitutionsPageViewModel,
 };
 
-use crate::institutions::router::PageRouter;
-use crate::institutions::{InstitutionsPage, InstitutionsRoutes, SettingsInstitutionsSnapshot};
+use crate::institutions::{InstitutionsPage, InstitutionsSetup, SettingsInstitutionsSnapshot};
 use crate::settings::SettingsPage;
 use crate::settings::snapshot::PageSnapshot;
 use crate::shell::view::module_page::{PageDraw, PageView, SettingsPageView};
+use crate::shell::view::page_router::page_router;
 use crate::shell::view::statusline::PageStatus;
 
 impl PageView for InstitutionsPagePresenter {
-    type Setup = InstitutionsRoutes;
+    type Setup = InstitutionsSetup;
     /// Where the open row menu is drawn: the pointer that opened it, in window coordinates.
     type Widgets = Point<Pixels>;
     type Before = ();
@@ -28,14 +28,7 @@ impl PageView for InstitutionsPagePresenter {
     /// An Institutions write or a rollback.
     const REPAINTS: &'static [Domain] = &[Domain::Institutions];
 
-    fn with_router<R>(
-        presenter: &mut Self,
-        setup: &InstitutionsRoutes,
-        cx: &mut Context<'_, InstitutionsPage>,
-        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
-    ) -> R {
-        handle(presenter, &mut PageRouter { routes: setup, cx })
-    }
+    page_router!();
 
     fn render(
         view: &InstitutionsPageViewModel,

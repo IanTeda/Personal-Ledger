@@ -11,22 +11,15 @@
 //! The rows name records from every domain a Link reaches, and Settings › Documents writes the
 //! Document Types, so the page repaints on a change to any of them.
 
-use gpui::{
-    AnyElement, App, Context, Entity, ScrollHandle, ScrollStrategy, UniformListScrollHandle,
-    Window, prelude::*,
-};
-use std::rc::Rc;
-
-use lib_core::Clock;
+use gpui::{AnyElement, Context, ScrollHandle, ScrollStrategy, UniformListScrollHandle, Window};
 use lib_database::Domain;
+use lib_documents::DocumentsMode;
 use lib_documents::presenter::{
     DocumentsPageEvent, DocumentsPagePresenter, DocumentsPageViewModel,
 };
-use lib_documents::{DocumentsMode, SharedFiles, SharedRepository};
 
 use super::Scrolls;
-use crate::announcer::Announcer;
-use crate::documents::router::PageRouter;
+use crate::documents::router::DocumentsPageRouter;
 use crate::shell::view::module_page::{ModulePage, PageCue, PageDraw, PageView};
 use crate::shell::view::statusline::PageStatus;
 use crate::view::event::ViewEvent;
@@ -65,18 +58,19 @@ impl PageView for DocumentsPagePresenter {
         Domain::Transactions,
     ];
 
+    /// The Router opens the Dialogs on the ports the Presenter holds, lent before the handle
+    /// borrows it.
     fn with_router<R>(
         presenter: &mut Self,
         keys: &crate::dialog_keys::LiveDialogKeys,
         cx: &mut Context<'_, DocumentsPage>,
         handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
     ) -> R {
-        let mut router = PageRouter {
-            ports: presenter.dialog_ports(),
-            keys: keys.clone(),
-            cx,
-        };
-        handle(presenter, &mut router)
+        let ports = presenter.dialog_ports();
+        handle(
+            presenter,
+            &mut DocumentsPageRouter::lending(keys, cx, ports),
+        )
     }
 
     fn before(
@@ -165,37 +159,4 @@ impl PageView for DocumentsPagePresenter {
     fn escape(view: &DocumentsPageViewModel) -> Option<DocumentsPageEvent> {
         view.takes_back.then_some(DocumentsPageEvent::Back)
     }
-}
-
-/// The Documents module's entry point: its page, on the Documents repository (`documents`), the other
-/// domains' reads over their stores (`reads`) and the disk (`files`), which the Shell hosts as the
-/// Documents destination. `clock` reads the day the Key Dates are banded against. The page writes
-/// the store through its Interactors; the input that wrote announces the Documents, so the rail's
-/// Inbox count follows a filing. Its keys, and the Dialog keys its Dialogs' hints show, are
-/// `config`'s, read from `dialog_keys` as each Dialog opens so a rebind reaches it.
-#[expect(
-    clippy::too_many_arguments,
-    reason = "the page's Setup is the shared Dialog keys alone; the rest build its Presenter"
-)]
-pub fn documents_page(
-    documents: &SharedRepository,
-    files: SharedFiles,
-    reads: lib_database::StoredDocumentReads,
-    announcer: Entity<Announcer>,
-    config: &lib_config::KeyBindingConfig,
-    clock: Clock,
-    dialog_keys: crate::dialog_keys::LiveDialogKeys,
-    cx: &mut App,
-) -> Entity<DocumentsPage> {
-    let documents = documents.clone();
-    let reads = Rc::new(reads);
-    let presenter = DocumentsPagePresenter::new(
-        documents,
-        reads,
-        files,
-        clock,
-        config,
-        crate::shell::view::statusline::STUB_LEDGER_FILE.to_string(),
-    );
-    cx.new(|cx| ModulePage::new(presenter, dialog_keys, &announcer, cx))
 }

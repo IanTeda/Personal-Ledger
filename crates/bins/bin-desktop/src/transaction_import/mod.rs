@@ -22,7 +22,8 @@ use lib_core::Clock;
 use lib_database::{StoredImportReads, TransactionImportAdapter};
 use lib_transaction_import::{ImportPorts, SeededStatement};
 
-pub use view::page::{ImportPage, import_page};
+pub use router::import_page;
+pub use view::page::ImportPage;
 
 /// What the step reads and writes, which `lib-database`'s `LedgerPorts` built over the stores: the
 /// import port (also its Payees read) and the Accounts and Categories reads. The seeded statement

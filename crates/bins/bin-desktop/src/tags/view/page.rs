@@ -12,12 +12,12 @@ use lib_tags::presenter::{TagsPagePresenter, TagsPageViewModel};
 use crate::settings::SettingsPage;
 use crate::settings::snapshot::PageSnapshot;
 use crate::shell::view::module_page::{PageDraw, PageView, SettingsPageView};
+use crate::shell::view::page_router::page_router;
 use crate::shell::view::statusline::PageStatus;
-use crate::tags::router::PageRouter;
-use crate::tags::{SettingsTagsSnapshot, TagsPage, TagsRoutes};
+use crate::tags::{SettingsTagsSnapshot, TagsPage, TagsSetup};
 
 impl PageView for TagsPagePresenter {
-    type Setup = TagsRoutes;
+    type Setup = TagsSetup;
     type Widgets = ();
     type Before = ();
 
@@ -25,14 +25,7 @@ impl PageView for TagsPagePresenter {
     /// likely duplicates and the merge counts.
     const REPAINTS: &'static [Domain] = &[Domain::Tags, Domain::Transactions];
 
-    fn with_router<R>(
-        presenter: &mut Self,
-        setup: &TagsRoutes,
-        cx: &mut Context<'_, TagsPage>,
-        handle: impl FnOnce(&mut Self, &mut Self::Router<'_>) -> R,
-    ) -> R {
-        handle(presenter, &mut PageRouter { routes: setup, cx })
-    }
+    page_router!();
 
     fn render(
         view: &TagsPageViewModel,

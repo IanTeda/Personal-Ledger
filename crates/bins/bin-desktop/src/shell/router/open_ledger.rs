@@ -140,6 +140,8 @@ impl OpenLedger {
             storage.ports.units.clone(),
             storage.ports.unit_deletion.clone(),
             dialog_keys.clone(),
+            clock.clone(),
+            keybindings,
         );
         let institutions_setup = crate::institutions::InstitutionsSetup::new(
             storage.ports.institutions.clone(),
@@ -150,6 +152,7 @@ impl OpenLedger {
             storage.ports.tags.clone(),
             crate::tag_removal::RemovalStores::of(&storage.ports),
             dialog_keys.clone(),
+            clock.clone(),
             keybindings,
         );
         let payments = storage.ports.bill_payments.clone();
@@ -159,11 +162,13 @@ impl OpenLedger {
             storage.ports.accounts.clone(),
             account_deletion,
             dialog_keys.clone(),
+            clock.clone(),
             keybindings,
         );
         let payees_setup = crate::payees::PayeesSetup::new(
             storage.ports.payees.clone(),
             dialog_keys.clone(),
+            clock.clone(),
             keybindings,
         );
         let document_types_setup = crate::document_types::DocumentTypesSetup::new(
@@ -191,6 +196,8 @@ impl OpenLedger {
             storage.ports.bills.clone(),
             payments,
             dialog_keys.clone(),
+            clock.clone(),
+            keybindings,
         );
         let settings_setup = crate::settings::pages::SettingsSetup {
             units,
@@ -211,7 +218,7 @@ impl OpenLedger {
         let dashboard_reads = storage.ports.dashboard_reads.clone();
         let rail_reads = storage.ports.shell_reads.clone();
         let budgets_ports = storage.ports.budgets.clone();
-        let units_ports = settings_setup.units.ports.clone();
+        let units_ports = settings_setup.units.1.ports.clone();
         // The pages repaint when a domain they read is announced.
         let categories_subscription = notify_on(&announcer, lib_database::Domain::Categories, cx);
         let units_subscription = notify_on(&announcer, lib_database::Domain::Units, cx);
@@ -223,7 +230,7 @@ impl OpenLedger {
         // Documents resolve their Links against the Inventory.
         let inventory_changed = notify_on(&announcer, lib_database::Domain::Inventory, cx);
         settings.update(cx, |view, cx| {
-            view.open_ledger(&announcer, clock, keybindings, settings_setup, cx)
+            view.open_ledger(&announcer, keybindings, settings_setup, cx)
         });
         let transactions_view = crate::transactions::transactions_page(
             transactions_ports,
@@ -240,14 +247,14 @@ impl OpenLedger {
             clock.clone(),
             cx,
         );
-        let budgets_view = crate::budgets::router::budgets_page(
+        let (budgets_presenter, budgets_setup) = crate::budgets::BudgetsSetup::new(
             budgets_ports,
-            &announcer,
-            keybindings,
             clock.clone(),
             dialog_keys.clone(),
-            cx,
+            keybindings,
         );
+        let budgets_view =
+            crate::budgets::router::budgets_page(budgets_presenter, budgets_setup, &announcer, cx);
         let dashboard_view = crate::dashboard::dashboard_page(
             dashboard_reads,
             &announcer,
@@ -255,11 +262,11 @@ impl OpenLedger {
             clock.clone(),
             cx,
         );
-        let bills_view =
-            crate::bills::bills_page(bills, &announcer, keybindings, clock.clone(), cx);
+        let (bills_presenter, bills) = bills;
+        let bills_view = crate::bills::bills_page(bills_presenter, bills, &announcer, cx);
         // The Documents page writes the store through its Interactors, and reads the other
         // domains through their stores (#967).
-        let documents_view = crate::documents::view::page::documents_page(
+        let documents_view = crate::documents::router::documents_page(
             &storage.ports.documents,
             Rc::new(crate::documents::files::DiskFiles),
             storage.ports.document_reads.clone(),
