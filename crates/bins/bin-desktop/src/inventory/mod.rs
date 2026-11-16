@@ -79,7 +79,7 @@ impl InventorySetup {
     pub fn sample(ports: &lib_database::LedgerPorts) -> (InventoryPagePresenter, Self) {
         let config = lib_config::KeyBindingConfig::default();
         Self::new(
-            ports.inventory.clone(),
+            ports.inventory(),
             ports.inventory_reads.clone(),
             crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
                 &lib_shell::dialog_keymap(&config),

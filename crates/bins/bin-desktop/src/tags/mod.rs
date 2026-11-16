@@ -77,7 +77,7 @@ impl TagsSetup {
     ) -> (TagsPagePresenter, Self) {
         let config = lib_config::KeyBindingConfig::default();
         Self::new(
-            ports.tags.clone(),
+            ports.tags(),
             RemovalStores::of(ports),
             crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
                 &lib_shell::dialog_keymap(&config),

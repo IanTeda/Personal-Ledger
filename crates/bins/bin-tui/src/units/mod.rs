@@ -43,7 +43,7 @@ impl UnitsSetup {
     /// The Units `ledger` holds, under `config`'s key bindings.
     pub fn on(ledger: &LedgerPorts, config: &KeyBindingConfig) -> Self {
         Self {
-            ports: ledger.units.clone(),
+            ports: ledger.units(),
             stores: ledger.stores.clone(),
             commit: ledger.commit(),
             config: config.clone(),

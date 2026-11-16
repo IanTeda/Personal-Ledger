@@ -132,19 +132,19 @@ impl OpenLedger {
             &lib_shell::dialog_keymap(keybindings),
         ));
         let units = crate::units::UnitsSetup::new(
-            ports.units.clone(),
+            ports.units(),
             ports.unit_deletion.clone(),
             dialog_keys.clone(),
             clock.clone(),
             keybindings,
         );
         let institutions_setup = crate::institutions::InstitutionsSetup::new(
-            ports.institutions.clone(),
+            ports.institutions(),
             dialog_keys.clone(),
             keybindings,
         );
         let tags_setup = crate::tags::TagsSetup::new(
-            ports.tags.clone(),
+            ports.tags(),
             crate::tag_removal::RemovalStores::of(&ports),
             dialog_keys.clone(),
             clock.clone(),
@@ -154,20 +154,20 @@ impl OpenLedger {
         // Account delete writes the Accounts, Transactions and Bills stores together (#854).
         let account_deletion = crate::account_deletion::DeletionStores::of(&ports);
         let accounts_setup = crate::accounts::AccountsSetup::new(
-            ports.accounts.clone(),
+            ports.accounts(),
             account_deletion,
             dialog_keys.clone(),
             clock.clone(),
             keybindings,
         );
         let payees_setup = crate::payees::PayeesSetup::new(
-            ports.payees.clone(),
+            ports.payees(),
             dialog_keys.clone(),
             clock.clone(),
             keybindings,
         );
         let document_types_setup = crate::document_types::DocumentTypesSetup::new(
-            ports.documents.clone(),
+            ports.documents(),
             dialog_keys.clone(),
             keybindings,
         );
@@ -182,13 +182,13 @@ impl OpenLedger {
             keybindings,
         );
         let inventory_setup = crate::inventory::InventorySetup::new(
-            ports.inventory.clone(),
+            ports.inventory(),
             ports.inventory_reads.clone(),
             dialog_keys.clone(),
             keybindings,
         );
         let bills = crate::bills::BillsSetup::new(
-            ports.bills.clone(),
+            ports.bills(),
             payments,
             dialog_keys.clone(),
             clock.clone(),
@@ -207,12 +207,12 @@ impl OpenLedger {
         };
 
         // The Transactions page and the Import step come from `lib-database`'s `LedgerPorts`.
-        let transactions_ports = ports.transactions.clone();
+        let transactions_ports = ports.transactions();
         let import_stores = crate::transaction_import::ImportStores::of(&ports);
         // The Dashboard and the rail's badges read through the reads `LedgerPorts` built.
         let dashboard_reads = ports.dashboard_reads.clone();
         let rail_reads = ports.shell_reads.clone();
-        let budgets_ports = ports.budgets.clone();
+        let budgets_ports = ports.budgets();
         let units_ports = settings_setup.units.1.ports.clone();
         // The pages repaint when a domain they read is announced.
         let categories_subscription = notify_on(&announcer, lib_database::Domain::Categories, cx);
@@ -262,7 +262,7 @@ impl OpenLedger {
         // The Documents page writes the store through its Interactors, and reads the other
         // domains through their stores (#967).
         let documents_view = crate::documents::router::documents_page(
-            &ports.documents,
+            &ports.documents(),
             Rc::new(crate::documents::files::DiskFiles),
             ports.document_reads.clone(),
             announcer.clone(),

@@ -326,6 +326,66 @@ impl LedgerPorts {
         (ports, failures)
     }
 
+    /// The units ports, a clone of the one value every page shares.
+    #[must_use]
+    pub fn units(&self) -> lib_units::SharedPorts {
+        self.units.clone()
+    }
+
+    /// The institutions ports, a clone of the one value every page shares.
+    #[must_use]
+    pub fn institutions(&self) -> lib_institutions::SharedPorts {
+        self.institutions.clone()
+    }
+
+    /// The accounts ports, a clone of the one value every page shares.
+    #[must_use]
+    pub fn accounts(&self) -> lib_accounts::SharedPorts {
+        self.accounts.clone()
+    }
+
+    /// The payees ports, a clone of the one value every page shares.
+    #[must_use]
+    pub fn payees(&self) -> lib_payees::SharedPorts {
+        self.payees.clone()
+    }
+
+    /// The bills ports, a clone of the one value every page shares.
+    #[must_use]
+    pub fn bills(&self) -> lib_bills::SharedPorts {
+        self.bills.clone()
+    }
+
+    /// The tags ports, a clone of the one value every page shares.
+    #[must_use]
+    pub fn tags(&self) -> lib_tags::SharedPorts {
+        self.tags.clone()
+    }
+
+    /// The transactions ports, a clone of the one value every page shares.
+    #[must_use]
+    pub fn transactions(&self) -> lib_transactions::SharedPorts {
+        self.transactions.clone()
+    }
+
+    /// The budgets ports, a clone of the one value every page shares.
+    #[must_use]
+    pub fn budgets(&self) -> lib_budgets::SharedPorts {
+        self.budgets.clone()
+    }
+
+    /// The inventory ports, a clone of the one value every page shares.
+    #[must_use]
+    pub fn inventory(&self) -> lib_inventory::SharedInventory {
+        self.inventory.clone()
+    }
+
+    /// The documents ports, a clone of the one value every page shares.
+    #[must_use]
+    pub fn documents(&self) -> lib_documents::SharedRepository {
+        self.documents.clone()
+    }
+
     /// The one commit every input ends with, for the Client's input door to hold.
     pub fn commit(&self) -> Rc<dyn Commit> {
         self.commit.clone()

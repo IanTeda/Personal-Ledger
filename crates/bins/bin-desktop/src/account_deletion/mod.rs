@@ -38,8 +38,8 @@ impl DeletionStores {
     pub fn of(ports: &LedgerPorts) -> Self {
         Self {
             deletion: ports.account_deletion.clone(),
-            accounts: ports.accounts.clone(),
-            bills: ports.bills.clone(),
+            accounts: ports.accounts(),
+            bills: ports.bills(),
             reads: ports.account_reads.clone(),
         }
     }

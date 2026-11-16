@@ -70,7 +70,7 @@ impl PayeesSetup {
     ) -> (PayeesPagePresenter, Self) {
         let config = lib_config::KeyBindingConfig::default();
         Self::new(
-            ports.payees.clone(),
+            ports.payees(),
             crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
                 &lib_shell::dialog_keymap(&config),
             )),

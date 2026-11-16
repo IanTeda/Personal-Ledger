@@ -69,7 +69,7 @@ impl DocumentTypesSetup {
     pub fn sample(ports: &lib_database::LedgerPorts) -> (DocumentTypesPagePresenter, Self) {
         let config = lib_config::KeyBindingConfig::default();
         Self::new(
-            ports.documents.clone(),
+            ports.documents(),
             crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
                 &lib_shell::dialog_keymap(&config),
             )),

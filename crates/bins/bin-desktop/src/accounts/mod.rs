@@ -81,7 +81,7 @@ impl AccountsSetup {
     ) -> (AccountsPagePresenter, Self) {
         let config = lib_config::KeyBindingConfig::default();
         Self::new(
-            ports.accounts.clone(),
+            ports.accounts(),
             crate::account_deletion::DeletionStores::of(ports),
             crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
                 &lib_shell::dialog_keymap(&config),

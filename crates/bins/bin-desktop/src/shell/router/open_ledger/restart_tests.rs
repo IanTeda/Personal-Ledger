@@ -49,7 +49,7 @@ fn on_storage_with_bills(cx: &mut TestAppContext, storage: lib_database::Storage
         Stores::from(storage),
         lib_core::Clock::fixed(chrono::NaiveDate::from_ymd_opt(2026, 9, 19).expect("a date")),
     );
-    let bills = built.bills.clone();
+    let bills = built.bills();
     let payments = built.bill_payments.clone();
     let deletion = built.account_deletion.clone();
     let category_deletion = built.category_deletion.clone();
@@ -216,7 +216,7 @@ fn entries_of(store: &LedgerPorts) -> Vec<lib_bills::BillScheduleEntry> {
 /// Every Split as the Bills ports read them from the Transactions store.
 fn splits_of(store: &LedgerPorts) -> Vec<lib_bills::BillSplit> {
     store
-        .bills
+        .bills()
         .borrow()
         .transactions()
         .splits_between(chrono::NaiveDate::MIN, chrono::NaiveDate::MAX)
