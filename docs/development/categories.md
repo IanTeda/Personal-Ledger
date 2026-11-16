@@ -73,7 +73,7 @@ The Desktop's sample and the TUI's fixture are independent and do not share a mo
 | CAT-005 | `lib_categories::insert_category`, `move_exceeds_depth` | `lib-categories` unit tests |
 | CAT-006 | `bin-tui/src/view/categories.rs` (the TUI's fixture; the Desktop tree shows names and actions only) | |
 | CAT-008 | `lib-database`'s `adapter/categories.rs` | `smoke_categories_persist.rs` |
-| CAT-009 | `lib_category_deletion::interactor::DeleteCategory`, `lib-database`'s `CategoryDeletionAdapter` | `settings_categories_keyboard.rs`, `shell/router/open_ledger/stores.rs`' `a_deleted_categorys_rows_survive_a_restart` |
+| CAT-009 | `lib_category_deletion::interactor::DeleteCategory`, `lib-database`'s `CategoryDeletionAdapter` | `settings_categories_keyboard.rs`, `shell/router/open_ledger/restart_tests.rs`' `a_deleted_categorys_rows_survive_a_restart` |
 | CAT-010 | `lib_categories::is_uncategorised`, `EditCategory`, `category_form.rs` | `settings_categories_keyboard.rs`, `settings_categories_mouse.rs`, `lib-categories` unit tests |
 
 ## Decisions

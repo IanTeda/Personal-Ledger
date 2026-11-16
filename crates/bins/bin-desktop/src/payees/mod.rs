@@ -61,16 +61,16 @@ impl PayeesSetup {
         (presenter, setup)
     }
 
-    /// `storage`'s Payees ports under the default keys, dated by `clock`, for a test that builds
+    /// `ports`' Payees ports under the default keys, dated by `clock`, for a test that builds
     /// `Root` directly.
     #[cfg(test)]
     pub fn sample(
-        storage: &crate::shell::router::LedgerStores,
+        ports: &lib_database::LedgerPorts,
         clock: &lib_core::Clock,
     ) -> (PayeesPagePresenter, Self) {
         let config = lib_config::KeyBindingConfig::default();
         Self::new(
-            storage.ports.payees.clone(),
+            ports.payees.clone(),
             crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
                 &lib_shell::dialog_keymap(&config),
             )),

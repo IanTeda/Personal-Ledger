@@ -1,9 +1,10 @@
 //! What a Client holds a Ledger by (#1076): [`LedgerPorts`], built once from [`Stores`], with one
 //! `Stored<Domain>Ports` per domain implementing that domain crate's own ports trait, the
-//! cross-domain adapters, the module reads, the commit and the failure channel. A Client hands a
-//! Presenter the domain crate's shared ports straight from here, with no adapter of its own. The
-//! module reads come from here too: the Dashboard's, the Shell rail's, the Inventory's, the
-//! Documents' and Settings › Ledger's (#1085). The decision is ADR-0055.
+//! cross-domain adapters, the module reads and the commit, handed out with the failure channel it
+//! reports a failed write on (#1202). A Client hands a Presenter the domain crate's shared ports
+//! straight from here, with no adapter of its own. The module reads come from here too: the
+//! Dashboard's, the Shell rail's, the Inventory's, the Documents' and Settings › Ledger's (#1085).
+//! The decision is ADR-0055.
 //!
 //! There are two layers. The bottom is one shared store per domain ([`SharedStores`]), the
 //! adapter or the fake wrapped in its recorder. The top is the `Stored<Domain>Ports`, each holding
@@ -62,7 +63,8 @@ use crate::{
 };
 
 /// A Ledger as a Client holds it: every domain's ports over the shared stores, the cross-domain
-/// adapters, the commit every input ends in and the channel a failed commit is reported on.
+/// adapters and the commit every input ends in. The channel a failed commit is reported on is
+/// handed out beside it when it is built, so a Client polls it without taking it out of here.
 pub struct LedgerPorts {
     /// Every domain's store, shared: the bottom layer the ports, reads and adapters hold.
     pub stores: SharedStores,
@@ -132,21 +134,21 @@ pub struct LedgerPorts {
     /// The Shell's rail-count reads ([`StoredShellReads`]).
     pub shell_reads: StoredShellReads,
     /// The one commit every input ends with, returning what it wrote ([`Committed`](crate::Committed)).
-    pub commit: Rc<dyn Commit>,
-    /// The writer's failed writes, for the Client to reload and announce.
-    pub failures: mpsc::Receiver<WriteFailure>,
+    commit: Rc<dyn Commit>,
 }
 
 impl LedgerPorts {
     /// Shares out each of `stores` once and builds every domain's ports and the cross-domain
     /// adapters over them. `clock` is what the Categories ports read the day from on each call.
-    pub fn new(stores: Stores, clock: Clock) -> Self {
+    /// Returns them with the writer's failed writes, for the Client to reload and announce.
+    pub fn new(stores: Stores, clock: Clock) -> (Self, mpsc::Receiver<WriteFailure>) {
         Self::over(stores.share(), clock)
     }
 
     /// Builds every domain's ports and the cross-domain adapters over `shared`, the stores a
     /// Client shared out itself so it keeps a handle on them (the Desktop's UI tests, #1117).
-    pub fn over(shared: SharedLedger, clock: Clock) -> Self {
+    /// Returns them with the writer's failed writes, for the Client to reload and announce.
+    pub fn over(shared: SharedLedger, clock: Clock) -> (Self, mpsc::Receiver<WriteFailure>) {
         let SharedLedger {
             stores,
             commit,
@@ -189,7 +191,7 @@ impl LedgerPorts {
             documents: stores.documents.clone(),
             budget_reads: (*budget_reads).clone(),
         };
-        Self {
+        let ports = Self {
             inventory_reads: StoredInventoryReads {
                 units: stores.units.clone(),
                 inventory: stores.inventory.clone(),
@@ -320,8 +322,13 @@ impl LedgerPorts {
             },
             stores,
             commit,
-            failures,
-        }
+        };
+        (ports, failures)
+    }
+
+    /// The one commit every input ends with, for the Client's input door to hold.
+    pub fn commit(&self) -> Rc<dyn Commit> {
+        self.commit.clone()
     }
 
     /// Reads `domain`'s rows back as stored and drops its writes not yet committed: after a failed
@@ -354,6 +361,7 @@ pub(crate) mod test_support {
             Stores::fake(FakeStores::sample(today())).0,
             Clock::fixed(today()),
         )
+        .0
     }
 
     /// The Sample Ledger created as a Ledger file in `dir`, opened as a Client opens it.
@@ -364,5 +372,6 @@ pub(crate) mod test_support {
             Stores::from(open_storage(&path).expect("the Ledger opens")),
             Clock::fixed(today()),
         )
+        .0
     }
 }

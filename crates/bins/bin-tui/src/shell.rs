@@ -375,11 +375,12 @@ impl Shell {
     /// The Open Ledger on `LedgerPorts` over `stores`, its Units under the key bindings already
     /// set.
     fn open_ledger_on(&self, path: PathBuf, stores: Stores, writer: Option<Writer>) -> OpenLedger {
-        let ledger = LedgerPorts::new(stores, lib_core::Clock::new(|| Local::now().date_naive()));
+        let (ledger, failures) =
+            LedgerPorts::new(stores, lib_core::Clock::new(|| Local::now().date_naive()));
         OpenLedger {
             path,
             units: UnitsSetup::on(&ledger, &self.keybindings),
-            failures: Some(ledger.failures),
+            failures: Some(failures),
             writer,
         }
     }

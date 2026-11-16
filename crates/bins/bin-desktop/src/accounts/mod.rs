@@ -72,17 +72,17 @@ impl AccountsSetup {
         (presenter, setup)
     }
 
-    /// `storage`'s Accounts ports under the default keys, dated by `clock`, for a test that builds
+    /// `ports`' Accounts ports under the default keys, dated by `clock`, for a test that builds
     /// `Root` directly.
     #[cfg(test)]
     pub fn sample(
-        storage: &crate::shell::router::LedgerStores,
+        ports: &lib_database::LedgerPorts,
         clock: &lib_core::Clock,
     ) -> (AccountsPagePresenter, Self) {
         let config = lib_config::KeyBindingConfig::default();
         Self::new(
-            storage.ports.accounts.clone(),
-            crate::account_deletion::DeletionStores::of(&storage.ports),
+            ports.accounts.clone(),
+            crate::account_deletion::DeletionStores::of(ports),
             crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
                 &lib_shell::dialog_keymap(&config),
             )),

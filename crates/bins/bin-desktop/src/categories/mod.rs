@@ -80,16 +80,16 @@ impl CategoriesSetup {
         (presenter, setup)
     }
 
-    /// `storage`'s Categories store under the default keys, for a test that builds `Root`
+    /// `ports`' Categories store under the default keys, for a test that builds `Root`
     /// directly.
     #[cfg(test)]
-    pub fn sample(storage: &crate::shell::router::LedgerStores) -> (CategoriesPagePresenter, Self) {
+    pub fn sample(ports: &lib_database::LedgerPorts) -> (CategoriesPagePresenter, Self) {
         let config = lib_config::KeyBindingConfig::default();
         Self::new(
-            storage.ports.categories.clone(),
-            storage.ports.category_save.clone(),
-            storage.ports.stores.budgets.clone(),
-            DeletionStores::of(&storage.ports),
+            ports.categories.clone(),
+            ports.category_save.clone(),
+            ports.stores.budgets.clone(),
+            DeletionStores::of(ports),
             crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
                 &lib_shell::dialog_keymap(&config),
             )),

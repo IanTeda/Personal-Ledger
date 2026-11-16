@@ -86,17 +86,17 @@ impl UnitsSetup {
         (presenter, setup)
     }
 
-    /// `storage`'s Units ports under the default keys, dated by `clock`, for a test that builds
+    /// `ports`' Units ports under the default keys, dated by `clock`, for a test that builds
     /// `Root` directly.
     #[cfg(test)]
     pub fn sample(
-        storage: &crate::shell::router::LedgerStores,
+        ports: &lib_database::LedgerPorts,
         clock: &lib_core::Clock,
     ) -> (UnitsPagePresenter, Self) {
         let config = lib_config::KeyBindingConfig::default();
         Self::new(
-            storage.ports.units.clone(),
-            storage.ports.unit_deletion.clone(),
+            ports.units.clone(),
+            ports.unit_deletion.clone(),
             crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
                 &lib_shell::dialog_keymap(&config),
             )),

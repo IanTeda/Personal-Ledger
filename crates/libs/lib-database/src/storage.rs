@@ -686,11 +686,12 @@ mod committed_tests {
 
     /// Every store shared, as a Client holds them through [`crate::LedgerPorts`], and the commit.
     fn share(stores: Stores) -> (SharedStores, Rc<dyn crate::Commit>) {
-        let ledger = crate::LedgerPorts::new(
+        let (ledger, _) = crate::LedgerPorts::new(
             stores,
             lib_core::Clock::fixed(NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date")),
         );
-        (ledger.stores, ledger.commit)
+        let commit = ledger.commit();
+        (ledger.stores, commit)
     }
 
     /// Renames the first sample Tag, a write to the Tags alone.
@@ -749,7 +750,7 @@ mod committed_tests {
     fn a_tag_merge_reports_the_tags_and_the_transactions() {
         let dir = tempfile::tempdir().expect("a temporary directory");
         for stores in [fakes(), file(dir.path()).0] {
-            let ledger = crate::LedgerPorts::new(
+            let (ledger, _) = crate::LedgerPorts::new(
                 stores,
                 lib_core::Clock::fixed(NaiveDate::from_ymd_opt(2026, 9, 19).expect("a real date")),
             );
@@ -771,7 +772,7 @@ mod committed_tests {
                 .expect("both Tags exist");
 
             assert_eq!(
-                ledger.commit.commit(),
+                ledger.commit().commit(),
                 wrote(&[Domain::Transactions, Domain::Tags])
             );
         }

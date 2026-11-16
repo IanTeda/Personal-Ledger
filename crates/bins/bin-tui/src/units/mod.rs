@@ -45,7 +45,7 @@ impl UnitsSetup {
         Self {
             ports: ledger.units.clone(),
             stores: ledger.stores.clone(),
-            commit: ledger.commit.clone(),
+            commit: ledger.commit(),
             config: config.clone(),
             dialog_keymap: lib_shell::dialog_keymap(config),
         }
@@ -56,7 +56,7 @@ impl UnitsSetup {
         let today = chrono::Local::now().date_naive();
         let (stores, _) = Stores::fake(FakeStores::sample(today));
         Self::on(
-            &LedgerPorts::new(stores, lib_core::Clock::fixed(today)),
+            &LedgerPorts::new(stores, lib_core::Clock::fixed(today)).0,
             config,
         )
     }

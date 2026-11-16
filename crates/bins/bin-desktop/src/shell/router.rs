@@ -54,9 +54,6 @@ use crate::navigation::nav::NounLabel;
 pub use date_clock::{DATE_POLL, wall_clock};
 pub use key_dispatch::PENDING_G_TIMEOUT;
 pub use log_feed::LOG_COALESCE;
-/// The stores a test builds the module Setups on, as the Open Ledger does.
-#[cfg(test)]
-pub(crate) use open_ledger::LedgerStores;
 pub use open_ledger::{LedgerFile, OpenLedger};
 #[doc(hidden)]
 pub use snapshots::{

@@ -8,14 +8,13 @@
 //! The Settings View stands outside it, since its This device pages work with no Ledger open;
 //! building the Open Ledger hands that View its This Ledger pages.
 //!
-//! It is the one place a Ledger's stores and stored reads are assembled ([`LedgerStores`], #1057):
-//! `build` hands each page the reads it needs, and keeps the stores for a failed write's reload, a
-//! new month and the test hooks. The input door announces each input's writes through its
-//! [`Announcer`] (#1081).
+//! `build` hands each page the ports and reads it needs from the `LedgerPorts` `lib-database`
+//! built (#1057), and keeps those for a failed write's reload, a new month and the test hooks
+//! (#1202). The input door announces each input's
+//! writes through its [`Announcer`] (#1081).
 
-mod stores;
-
-pub use stores::{BuiltStores, LedgerStores};
+#[cfg(test)]
+mod restart_tests;
 
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -75,9 +74,9 @@ pub struct OpenLedger {
     /// What the input door announces each input's writes through, which the pages repaint on. It holds no
     /// rows: every page reads the stores below.
     pub(super) announcer: Entity<Announcer>,
-    /// The shared stores, reloaded here when a write to them fails, and which a new month's Bill
+    /// The Ledger's ports, reloaded here when a write to them fails, and which a new month's Bill
     /// Schedule is generated through.
-    pub(super) stores: LedgerStores,
+    pub(super) ports: lib_database::LedgerPorts,
     /// The Units ports the Units page and the General page share, reloaded here when a write to
     /// them fails.
     pub(super) units: lib_units::SharedPorts,
@@ -121,15 +120,11 @@ impl OpenLedger {
             path,
             writer,
         } = file;
-        let BuiltStores {
-            stores: storage,
-            commit,
-            failures,
-        } = LedgerStores::build(lib_database::LedgerPorts::over(stores, clock.clone()));
+        let (ports, failures) = lib_database::LedgerPorts::over(stores, clock.clone());
         // The stores are the truth: the input door announces what each input wrote through the
         // Announcer, which holds no rows (#1028, #1057, #1081).
         let announcer = cx.new(|_| Announcer::default());
-        crate::input::open_ledger(commit, announcer.clone(), cx);
+        crate::input::open_ledger(ports.commit(), announcer.clone(), cx);
         let failures = Rc::new(failures);
         // The Dialog keymap's chords, which every module Dialog's hints read as it opens, and
         // which a rebind replaces.
@@ -137,63 +132,63 @@ impl OpenLedger {
             &lib_shell::dialog_keymap(keybindings),
         ));
         let units = crate::units::UnitsSetup::new(
-            storage.ports.units.clone(),
-            storage.ports.unit_deletion.clone(),
+            ports.units.clone(),
+            ports.unit_deletion.clone(),
             dialog_keys.clone(),
             clock.clone(),
             keybindings,
         );
         let institutions_setup = crate::institutions::InstitutionsSetup::new(
-            storage.ports.institutions.clone(),
+            ports.institutions.clone(),
             dialog_keys.clone(),
             keybindings,
         );
         let tags_setup = crate::tags::TagsSetup::new(
-            storage.ports.tags.clone(),
-            crate::tag_removal::RemovalStores::of(&storage.ports),
+            ports.tags.clone(),
+            crate::tag_removal::RemovalStores::of(&ports),
             dialog_keys.clone(),
             clock.clone(),
             keybindings,
         );
-        let payments = storage.ports.bill_payments.clone();
+        let payments = ports.bill_payments.clone();
         // Account delete writes the Accounts, Transactions and Bills stores together (#854).
-        let account_deletion = crate::account_deletion::DeletionStores::of(&storage.ports);
+        let account_deletion = crate::account_deletion::DeletionStores::of(&ports);
         let accounts_setup = crate::accounts::AccountsSetup::new(
-            storage.ports.accounts.clone(),
+            ports.accounts.clone(),
             account_deletion,
             dialog_keys.clone(),
             clock.clone(),
             keybindings,
         );
         let payees_setup = crate::payees::PayeesSetup::new(
-            storage.ports.payees.clone(),
+            ports.payees.clone(),
             dialog_keys.clone(),
             clock.clone(),
             keybindings,
         );
         let document_types_setup = crate::document_types::DocumentTypesSetup::new(
-            storage.ports.documents.clone(),
+            ports.documents.clone(),
             dialog_keys.clone(),
             keybindings,
         );
         // Category delete writes the Categories, Transactions, Bills, Payees and Budgets stores
         // together (#1005).
         let categories_setup = crate::categories::CategoriesSetup::new(
-            storage.ports.categories.clone(),
-            storage.ports.category_save.clone(),
-            storage.ports.stores.budgets.clone(),
-            crate::category_deletion::DeletionStores::of(&storage.ports),
+            ports.categories.clone(),
+            ports.category_save.clone(),
+            ports.stores.budgets.clone(),
+            crate::category_deletion::DeletionStores::of(&ports),
             dialog_keys.clone(),
             keybindings,
         );
         let inventory_setup = crate::inventory::InventorySetup::new(
-            storage.ports.inventory.clone(),
-            storage.ports.inventory_reads.clone(),
+            ports.inventory.clone(),
+            ports.inventory_reads.clone(),
             dialog_keys.clone(),
             keybindings,
         );
         let bills = crate::bills::BillsSetup::new(
-            storage.ports.bills.clone(),
+            ports.bills.clone(),
             payments,
             dialog_keys.clone(),
             clock.clone(),
@@ -208,16 +203,16 @@ impl OpenLedger {
             categories: categories_setup,
             tags: tags_setup,
             inventory: inventory_setup,
-            ledger: crate::settings::ledger::LedgerPageSetup::new(&storage.ports),
+            ledger: crate::settings::ledger::LedgerPageSetup::new(&ports),
         };
 
         // The Transactions page and the Import step come from `lib-database`'s `LedgerPorts`.
-        let transactions_ports = storage.ports.transactions.clone();
-        let import_stores = crate::transaction_import::ImportStores::of(&storage.ports);
+        let transactions_ports = ports.transactions.clone();
+        let import_stores = crate::transaction_import::ImportStores::of(&ports);
         // The Dashboard and the rail's badges read through the reads `LedgerPorts` built.
-        let dashboard_reads = storage.ports.dashboard_reads.clone();
-        let rail_reads = storage.ports.shell_reads.clone();
-        let budgets_ports = storage.ports.budgets.clone();
+        let dashboard_reads = ports.dashboard_reads.clone();
+        let rail_reads = ports.shell_reads.clone();
+        let budgets_ports = ports.budgets.clone();
         let units_ports = settings_setup.units.1.ports.clone();
         // The pages repaint when a domain they read is announced.
         let categories_subscription = notify_on(&announcer, lib_database::Domain::Categories, cx);
@@ -267,9 +262,9 @@ impl OpenLedger {
         // The Documents page writes the store through its Interactors, and reads the other
         // domains through their stores (#967).
         let documents_view = crate::documents::router::documents_page(
-            &storage.ports.documents,
+            &ports.documents,
             Rc::new(crate::documents::files::DiskFiles),
-            storage.ports.document_reads.clone(),
+            ports.document_reads.clone(),
             announcer.clone(),
             keybindings,
             clock.clone(),
@@ -302,7 +297,7 @@ impl OpenLedger {
         ]);
         Self {
             announcer,
-            stores: storage,
+            ports,
             units: units_ports,
             // No count read yet, so the first refresh after the Ledger opens reads its counts.
             rail_counted_at: std::cell::Cell::new(usize::MAX),

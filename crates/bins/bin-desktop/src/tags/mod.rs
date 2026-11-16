@@ -68,17 +68,17 @@ impl TagsSetup {
         (presenter, setup)
     }
 
-    /// `storage`'s Tags ports under the default keys, dated by `clock`, for a test that builds
+    /// `ports`' Tags ports under the default keys, dated by `clock`, for a test that builds
     /// `Root` directly.
     #[cfg(test)]
     pub fn sample(
-        storage: &crate::shell::router::LedgerStores,
+        ports: &lib_database::LedgerPorts,
         clock: &lib_core::Clock,
     ) -> (TagsPagePresenter, Self) {
         let config = lib_config::KeyBindingConfig::default();
         Self::new(
-            storage.ports.tags.clone(),
-            RemovalStores::of(&storage.ports),
+            ports.tags.clone(),
+            RemovalStores::of(ports),
             crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
                 &lib_shell::dialog_keymap(&config),
             )),

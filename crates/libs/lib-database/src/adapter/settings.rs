@@ -169,7 +169,9 @@ mod tests {
     /// The Sample Ledger's stores in memory, with the Units store swapped for `units`.
     fn sample_stores(units: SharedUnitsStore) -> SharedStores {
         let (stores, _) = crate::Stores::fake(crate::FakeStores::sample(today()));
-        let mut shared = crate::LedgerPorts::new(stores, lib_core::Clock::fixed(today())).stores;
+        let mut shared = crate::LedgerPorts::new(stores, lib_core::Clock::fixed(today()))
+            .0
+            .stores;
         shared.units = units;
         shared
     }
@@ -206,7 +208,9 @@ mod tests {
     #[test]
     fn the_sample_ledgers_counts_are_the_domains_own() {
         let (stores, _) = crate::Stores::fake(crate::FakeStores::sample(today()));
-        let shared = crate::LedgerPorts::new(stores, lib_core::Clock::fixed(today())).stores;
+        let shared = crate::LedgerPorts::new(stores, lib_core::Clock::fixed(today()))
+            .0
+            .stores;
         let counts = StoredSettingsReads::over(&shared).counts();
         let accounts = shared.accounts.borrow().accounts().accounts();
         let tags = shared.tags.borrow().tags().tags();

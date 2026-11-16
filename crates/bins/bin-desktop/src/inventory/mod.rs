@@ -74,13 +74,13 @@ impl InventorySetup {
         (presenter, setup)
     }
 
-    /// `storage`'s Inventory store under the default keys, for a test that builds `Root` directly.
+    /// `ports`' Inventory store under the default keys, for a test that builds `Root` directly.
     #[cfg(test)]
-    pub fn sample(storage: &crate::shell::router::LedgerStores) -> (InventoryPagePresenter, Self) {
+    pub fn sample(ports: &lib_database::LedgerPorts) -> (InventoryPagePresenter, Self) {
         let config = lib_config::KeyBindingConfig::default();
         Self::new(
-            storage.ports.inventory.clone(),
-            storage.ports.inventory_reads.clone(),
+            ports.inventory.clone(),
+            ports.inventory_reads.clone(),
             crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
                 &lib_shell::dialog_keymap(&config),
             )),

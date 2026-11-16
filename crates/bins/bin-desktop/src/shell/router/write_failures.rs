@@ -61,7 +61,7 @@ impl Root {
             return;
         };
         for &domain in cascades {
-            if let Err(error) = open.stores.shared().reload(domain) {
+            if let Err(error) = open.ports.reload(domain) {
                 tracing::error!(%error, ?domain, "Failed to reload after a cascade");
                 let (_, unsaved) = messages(domain);
                 crate::notices::Queue.notify(Notice::Toast(ToastKind::Error, unsaved()));
@@ -85,7 +85,7 @@ pub(super) fn roll_back(failure: &WriteFailure, open: &OpenLedger, cx: &mut App)
         }
         done.push(kept_with[0]);
         let (restored, unsaved) = messages(domain);
-        let text = match open.stores.shared().reload(domain) {
+        let text = match open.ports.reload(domain) {
             Ok(()) => {
                 for &reloaded in kept_with {
                     crate::input::reloaded(reloaded, cx);

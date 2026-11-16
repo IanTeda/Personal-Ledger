@@ -806,7 +806,10 @@ mod tests {
     fn page_returns_the_page_for_every_settings_page(cx: &mut TestAppContext) {
         crate::locale::init_for_tests();
         let today = chrono::NaiveDate::from_ymd_opt(2026, 10, 30).expect("a valid date");
-        let storage = crate::shell::router::LedgerStores::sample(today);
+        let (storage, _) = lib_database::LedgerPorts::new(
+            lib_database::Stores::fake(lib_database::FakeStores::sample(today)).0,
+            lib_core::Clock::fixed(today),
+        );
         let clock = lib_core::Clock::fixed(today);
         let setup = SettingsSetup {
             units: crate::units::UnitsSetup::sample(&storage, &clock),
@@ -817,7 +820,7 @@ mod tests {
             categories: crate::categories::CategoriesSetup::sample(&storage),
             tags: crate::tags::TagsSetup::sample(&storage, &clock),
             inventory: crate::inventory::InventorySetup::sample(&storage),
-            ledger: crate::settings::ledger::LedgerPageSetup::new(&storage.ports),
+            ledger: crate::settings::ledger::LedgerPageSetup::new(&storage),
         };
         let announcer = cx.new(|_| Announcer::default());
         let view = cx.new(|cx| {

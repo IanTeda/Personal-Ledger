@@ -64,14 +64,12 @@ impl DocumentTypesSetup {
         )
     }
 
-    /// `storage`'s Documents store under the default keys, for a test that builds `Root` directly.
+    /// `ports`' Documents store under the default keys, for a test that builds `Root` directly.
     #[cfg(test)]
-    pub fn sample(
-        storage: &crate::shell::router::LedgerStores,
-    ) -> (DocumentTypesPagePresenter, Self) {
+    pub fn sample(ports: &lib_database::LedgerPorts) -> (DocumentTypesPagePresenter, Self) {
         let config = lib_config::KeyBindingConfig::default();
         Self::new(
-            storage.ports.documents.clone(),
+            ports.documents.clone(),
             crate::dialog_keys::LiveDialogKeys::new(lib_viper::dialog::DialogKeys::of(
                 &lib_shell::dialog_keymap(&config),
             )),

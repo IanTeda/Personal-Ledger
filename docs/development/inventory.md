@@ -76,7 +76,7 @@ The sample seed is written last, after the Transactions and Bills: Units, Instit
 - **`LocationUsage`** — the Items and Documents a Location holds, which the Remove Dialog quotes, lent at open like Categories' usage. Documents depend on Inventory, so the count is the bin's.
 
 
-`lib-database`'s `StoredInventoryReads` answers `InventoryUnits` and `LocationUsage` from the Units, Inventory and Documents stores when a Dialog opens ([#1014](https://github.com/IanTeda/Personal-Ledger/issues/1014)); the Open Ledger hands it to the page in `InventorySetup` (`LedgerStores::inventory_reads`), and the page to its Router, and `lib-inventory`'s read contract runs on it. `UpsertLocation`, `UpsertArea`, `UpsertItem` and the Location, Area and Item deletes have left the store-wide change list, with `lib-ledger`'s Inventory commands, which `lib-inventory`'s Interactors replaced.
+`lib-database`'s `StoredInventoryReads` answers `InventoryUnits` and `LocationUsage` from the Units, Inventory and Documents stores when a Dialog opens ([#1014](https://github.com/IanTeda/Personal-Ledger/issues/1014)); the Open Ledger hands it to the page in `InventorySetup` (`LedgerPorts::inventory_reads`), and the page to its Router, and `lib-inventory`'s read contract runs on it. `UpsertLocation`, `UpsertArea`, `UpsertItem` and the Location, Area and Item deletes have left the store-wide change list, with `lib-ledger`'s Inventory commands, which `lib-inventory`'s Interactors replaced.
 
 ## UI
 
