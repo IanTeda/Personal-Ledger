@@ -115,6 +115,10 @@ mod tests {
                 lib_core::Clock::fixed(today),
                 std::rc::Rc::new(lib_settings::fake::InMemoryDeviceConfiguration::default()),
                 &lib_config::KeyBindingConfig::default(),
+                std::rc::Rc::new(std::cell::RefCell::new(
+                    lib_ledger_creation::fake::InMemoryLedgerCreation::default(),
+                )),
+                std::rc::Rc::new(lib_shell::fake::FakeLedgerFolders::default()),
                 cx,
             );
             let (stores, _) = lib_database::Stores::fake(lib_database::FakeStores::sample(today));
@@ -170,6 +174,10 @@ mod tests {
                 lib_core::Clock::fixed(today),
                 std::rc::Rc::new(lib_settings::fake::InMemoryDeviceConfiguration::default()),
                 &lib_config::KeyBindingConfig::default(),
+                std::rc::Rc::new(std::cell::RefCell::new(
+                    lib_ledger_creation::fake::InMemoryLedgerCreation::default(),
+                )),
+                std::rc::Rc::new(lib_shell::fake::FakeLedgerFolders::default()),
                 cx,
             );
             let (stores, _) = lib_database::Stores::fake(lib_database::FakeStores::sample(today));

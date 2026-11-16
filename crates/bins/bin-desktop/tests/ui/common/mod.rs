@@ -28,8 +28,10 @@ use gpui::{
 };
 use lib_colour_theme::ThemeOverrides;
 use lib_core::{AccountId, InstitutionId, UnitId};
-use lib_database::{CountingCommit, FakeStores, SharedStores, Stores};
-use std::cell::Cell;
+use lib_database::{
+    CountingCommit, FakeStores, FsLedgerFolders, LedgerCreationAdapter, SharedStores, Stores,
+};
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -506,6 +508,8 @@ impl<'a> Harness<'a> {
                 },
                 stores,
                 clock,
+                Rc::new(RefCell::new(LedgerCreationAdapter::new())),
+                Rc::new(FsLedgerFolders),
                 focus_handle,
                 cx,
             )

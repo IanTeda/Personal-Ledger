@@ -7,11 +7,13 @@
 //! root Router, which is `Root` itself, and the Router struct it lends.
 
 use std::path::Path;
+use std::rc::Rc;
 
 use chrono::NaiveDate;
 use gpui::{App, AppContext as _, Context, Entity, ScrollHandle};
 use lib_core::Clock;
 use lib_database::{Storage, WriteFailure};
+use lib_ledger_creation::presenter::SharedLedgerCreation;
 use lib_shell::{
     HelpGroup, LedgerFolders, Movement, PaletteRun, ShellDialog, ShellInput, ShellKey, ShellRouter,
 };
@@ -30,7 +32,6 @@ use crate::shell::view::page_handle::PageHandle;
 use crate::shell::view::rail as rail_view;
 use crate::shell::view::window_size::WindowSize;
 use crate::view::active;
-use lib_database::FsLedgerFolders;
 use lib_settings::DisplayOutput;
 
 /// The Documents mode, Library scope and sort a Ledger's Documents page opens on.
@@ -49,6 +50,10 @@ pub(super) struct RootRouter<'a, 'b> {
     /// once after the input rather than after every one.
     ledger_swapped: &'a mut bool,
     keybindings: &'a lib_config::KeyBindingConfig,
+    /// The creation port the Create ledger Dialog writes through, and the folder reads the file
+    /// explorer makes, both handed in at the composition root.
+    creation: &'a SharedLedgerCreation,
+    folders: &'a Rc<dyn LedgerFolders>,
     /// The Shell's Clock, which a Ledger opened now is built on.
     clock: Clock,
     /// The Window Size the window is drawn at, which the rail toggle flips the rail for.
@@ -269,7 +274,7 @@ impl ShellRouter for RootRouter<'_, '_> {
     }
 
     fn folders(&self) -> &dyn LedgerFolders {
-        &FsLedgerFolders
+        &**self.folders
     }
 
     /// Opens the Ledger file at `path` in place of the Open Ledger, if any, saying so. The Open
@@ -301,6 +306,7 @@ impl ShellRouter for RootRouter<'_, '_> {
         let root = self.cx.weak_entity();
         let dialog = crate::ledger_creation::open(
             path.to_path_buf(),
+            self.creation.clone(),
             move |created, cx| {
                 // The Dialog is mid-input, inside the Shell's own update: the Shell opens the new
                 // Ledger once that update ends.
@@ -594,6 +600,8 @@ impl Root {
             documents_state,
             last_ledger_forgotten,
             keybindings,
+            creation,
+            folders,
             ..
         } = self;
         let mut router = RootRouter {
@@ -605,6 +613,8 @@ impl Root {
             last_ledger_forgotten,
             ledger_swapped: &mut ledger_swapped,
             keybindings,
+            creation,
+            folders,
             clock: presenter.clock().clone(),
             window_size,
             cx,

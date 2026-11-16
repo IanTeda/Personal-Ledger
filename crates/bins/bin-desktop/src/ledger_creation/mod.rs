@@ -9,26 +9,23 @@
 
 mod dialog;
 
-use std::cell::RefCell;
 use std::path::PathBuf;
-use std::rc::Rc;
 
 use gpui::{App, AppContext as _, Entity};
-use lib_database::LedgerCreationAdapter;
 use lib_ledger_creation::interactor::LedgerCreated;
 use lib_ledger_creation::presenter::{CreateLedgerPresenter, SharedLedgerCreation};
 
 use crate::shell::view::dialog_entity::ModuleDialog;
 
-/// The Create ledger Dialog for the Ledger file at `path`, over the real creation port and
-/// prefilled from the Locale's Currency. `created` runs with the Ledger once Create has written
-/// it.
+/// The Create ledger Dialog for the Ledger file at `path`, over `creation`, the port the composition
+/// root built, and prefilled from the Locale's Currency. `created` runs with the Ledger once Create
+/// has written it.
 pub(crate) fn open(
     path: PathBuf,
+    creation: SharedLedgerCreation,
     created: impl Fn(LedgerCreated, &mut App) + 'static,
     cx: &mut App,
 ) -> Entity<ModuleDialog<CreateLedgerPresenter>> {
-    let creation: SharedLedgerCreation = Rc::new(RefCell::new(LedgerCreationAdapter::new()));
     let presenter = CreateLedgerPresenter::new(
         creation,
         path,

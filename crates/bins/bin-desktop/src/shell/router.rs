@@ -80,7 +80,8 @@ use gpui::{
 };
 
 use lib_documents::presenter::DocumentsPageEvent;
-use lib_shell::{NavInput, ToastInput};
+use lib_ledger_creation::presenter::SharedLedgerCreation;
+use lib_shell::{LedgerFolders, NavInput, ToastInput};
 
 use crate::shell::view::page_handle::{PageBinding, PageHandle};
 use crate::view::active;
@@ -122,7 +123,9 @@ pub struct ShellLogs {
 /// [`crate::start_view::landing`]): `last` reads the noun the state file remembers, and a noun that
 /// needs a Ledger lands on the Dashboard with none open. `device` is the configuration file
 /// start-up read (ADR-0053), which Settings › General and Display read once and write to, and whose
-/// Data folder `:open` and `:new` start in.
+/// Data folder `:open` and `:new` start in. `creation` and `folders` are the no-Ledger adapters the
+/// composition root built: the Create ledger Dialog writes through the one, the file explorer reads
+/// the disk through the other.
 #[expect(
     clippy::too_many_arguments,
     reason = "each is a separate thing start-up read; bundling them would only rename the list"
@@ -135,6 +138,8 @@ pub fn build(
     logs: ShellLogs,
     ledger: Option<LedgerFile>,
     clock: lib_core::Clock,
+    creation: SharedLedgerCreation,
+    folders: Rc<dyn LedgerFolders>,
     focus_handle: FocusHandle,
     cx: &mut Context<'_, Root>,
 ) -> Root {
@@ -157,7 +162,16 @@ pub fn build(
         .map(SettingsPage::from_id)
         .unwrap_or_default();
 
-    let mut shell = Root::with_clock(nav, focus_handle, clock, device, &bindings.keybindings, cx);
+    let mut shell = Root::with_clock(
+        nav,
+        focus_handle,
+        clock,
+        device,
+        &bindings.keybindings,
+        creation,
+        folders,
+        cx,
+    );
     if let Some(ledger) = ledger {
         shell.open_ledger(ledger, cx);
     }
@@ -187,6 +201,10 @@ pub struct Root {
     /// which sends the Presenter `PrefixExpired`. The executor's clock, not the wall clock, so a
     /// loaded test run can't lapse a `g` between two simulated keys.
     prefix_timer: Option<Task<()>>,
+    /// The Create ledger Dialog's creation port and the file explorer's folder reads, handed in by
+    /// the composition root: the one place that names their adapters.
+    creation: SharedLedgerCreation,
+    folders: Rc<dyn LedgerFolders>,
     /// The Shell's own state (the palette's scroll, the Dialog and the rail tooltip), see [`ShellState`] and
     /// ADR-0032. The status message and Toasts are the Presenter's.
     state: ShellState,
@@ -229,12 +247,18 @@ impl Root {
     /// what it reads. The global keys, the palette's and Settings' are built from `keybindings`,
     /// which a Ledger opened later builds its Views on. The Display output reaches the Views as a
     /// Ledger opens.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "each is a separate thing the Shell is built on; bundling them would only rename the list"
+    )]
     pub fn with_clock(
         nav: NavState,
         focus_handle: FocusHandle,
         clock: lib_core::Clock,
         device: Rc<dyn DeviceConfiguration>,
         keybindings: &lib_config::KeyBindingConfig,
+        creation: SharedLedgerCreation,
+        folders: Rc<dyn LedgerFolders>,
         cx: &mut Context<'_, Self>,
     ) -> Self {
         let snapshot = device.read();
@@ -261,6 +285,8 @@ impl Root {
             #[cfg(debug_assertions)]
             debug_toast_kind: 0,
             keybindings: keybindings.clone(),
+            creation,
+            folders,
             configuration_file: snapshot.file.clone(),
             last_ledger_forgotten: false,
             documents_state: None,
